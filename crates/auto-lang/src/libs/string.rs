@@ -2,8 +2,8 @@
 //!
 //! Provides built-in functions for creating and manipulating owned strings.
 
-use auto_val::{Arg, Args, Value};
 use auto_val::StrSlice;
+use auto_val::{Arg, Args, Value};
 
 /// Create a new owned string from a string literal and capacity hint
 ///
@@ -101,8 +101,12 @@ pub fn str_upper(args: &Args) -> Value {
     }
 
     match &args.args[0] {
-        Arg::Pos(Value::Str(s)) => Value::String(auto_val::Str::from_str(s.as_str().to_uppercase().as_str())),
-        Arg::Pos(Value::String(s)) => Value::String(auto_val::Str::from_str(s.as_str().to_uppercase().as_str())),
+        Arg::Pos(Value::Str(s)) => {
+            Value::String(auto_val::Str::from_str(s.as_str().to_uppercase().as_str()))
+        }
+        Arg::Pos(Value::String(s)) => {
+            Value::String(auto_val::Str::from_str(s.as_str().to_uppercase().as_str()))
+        }
         _ => Value::Error("str_upper expects a string argument".into()),
     }
 }
@@ -122,8 +126,12 @@ pub fn str_lower(args: &Args) -> Value {
     }
 
     match &args.args[0] {
-        Arg::Pos(Value::Str(s)) => Value::String(auto_val::Str::from_str(s.as_str().to_lowercase().as_str())),
-        Arg::Pos(Value::String(s)) => Value::String(auto_val::Str::from_str(s.as_str().to_lowercase().as_str())),
+        Arg::Pos(Value::Str(s)) => {
+            Value::String(auto_val::Str::from_str(s.as_str().to_lowercase().as_str()))
+        }
+        Arg::Pos(Value::String(s)) => {
+            Value::String(auto_val::Str::from_str(s.as_str().to_lowercase().as_str()))
+        }
         _ => Value::Error("str_lower expects a string argument".into()),
     }
 }
@@ -253,10 +261,12 @@ pub fn str_slice_get(args: &Args) -> Value {
             // Support regular strings by creating temporary slice
             &StrSlice::from_auto_str(s)
         },
-        Arg::Pos(Value::String(s)) => unsafe {
-            &StrSlice::from_str(s.as_str())
-        },
-        _ => return Value::Error("str_slice_get expects a str_slice or string as first argument".into()),
+        Arg::Pos(Value::String(s)) => unsafe { &StrSlice::from_str(s.as_str()) },
+        _ => {
+            return Value::Error(
+                "str_slice_get expects a str_slice or string as first argument".into(),
+            )
+        }
     };
 
     let index = match &args.args[1] {
@@ -360,7 +370,7 @@ mod tests {
             Value::StrSlice(slice) => {
                 assert_eq!(slice.len(), 5);
                 assert!(!slice.is_empty());
-            },
+            }
             _ => panic!("Expected StrSlice"),
         }
     }
@@ -385,10 +395,7 @@ mod tests {
         };
         let slice = str_slice(&args);
         let get_args = Args {
-            args: vec![
-                auto_val::Arg::Pos(slice),
-                auto_val::Arg::Pos(Value::Int(0)),
-            ],
+            args: vec![auto_val::Arg::Pos(slice), auto_val::Arg::Pos(Value::Int(0))],
         };
         let result = str_slice_get(&get_args);
         // 'h' is ASCII 104
@@ -557,7 +564,9 @@ pub fn str_trim_left(args: &Args) -> Value {
 
     match &args.args[0] {
         Arg::Pos(Value::Str(s)) => Value::String(auto_val::Str::from_str(s.as_str().trim_start())),
-        Arg::Pos(Value::String(s)) => Value::String(auto_val::Str::from_str(s.as_str().trim_start())),
+        Arg::Pos(Value::String(s)) => {
+            Value::String(auto_val::Str::from_str(s.as_str().trim_start()))
+        }
         _ => Value::Error("str_trim_left expects a string argument".into()),
     }
 }
@@ -647,7 +656,9 @@ pub fn str_split(args: &Args) -> Value {
 
     let parts: Vec<Value> = if delimiter.is_empty() {
         // Split by characters
-        s.chars().map(|c| Value::Str(c.to_string().into())).collect()
+        s.chars()
+            .map(|c| Value::Str(c.to_string().into()))
+            .collect()
     } else {
         s.split(&delimiter)
             .map(|part| Value::String(auto_val::Str::from_str(part)))

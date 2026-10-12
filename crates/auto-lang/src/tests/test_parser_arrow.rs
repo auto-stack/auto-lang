@@ -22,7 +22,11 @@ fn main() -> int {
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
         let code = result.unwrap();
         // Should have at least 2 function declarations (may have additional statements)
-        assert!(code.stmts.len() >= 2, "Expected at least 2 function declarations, got {}", code.stmts.len());
+        assert!(
+            code.stmts.len() >= 2,
+            "Expected at least 2 function declarations, got {}",
+            code.stmts.len()
+        );
 
         // Find test_float_return with float return type
         let float_fn = code.stmts.iter().find(|stmt| {
@@ -33,7 +37,10 @@ fn main() -> int {
             }
         });
 
-        assert!(float_fn.is_some(), "Expected to find test_float_return function");
+        assert!(
+            float_fn.is_some(),
+            "Expected to find test_float_return function"
+        );
         if let Some(crate::ast::Stmt::Fn(fn_decl)) = float_fn {
             assert!(matches!(fn_decl.ret, crate::ast::Type::Float));
         }
@@ -56,7 +63,11 @@ fn main() -> int {
 
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
         let code = result.unwrap();
-        assert!(code.stmts.len() >= 2, "Expected at least 2 function declarations, got {}", code.stmts.len());
+        assert!(
+            code.stmts.len() >= 2,
+            "Expected at least 2 function declarations, got {}",
+            code.stmts.len()
+        );
 
         // Find test_double_return with double return type
         let double_fn = code.stmts.iter().find(|stmt| {
@@ -67,7 +78,10 @@ fn main() -> int {
             }
         });
 
-        assert!(double_fn.is_some(), "Expected to find test_double_return function");
+        assert!(
+            double_fn.is_some(),
+            "Expected to find test_double_return function"
+        );
         if let Some(crate::ast::Stmt::Fn(fn_decl)) = double_fn {
             assert!(matches!(fn_decl.ret, crate::ast::Type::Double));
         }
@@ -90,7 +104,11 @@ fn main() -> int {
 
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
         let code = result.unwrap();
-        assert!(code.stmts.len() >= 2, "Expected at least 2 function declarations, got {}", code.stmts.len());
+        assert!(
+            code.stmts.len() >= 2,
+            "Expected at least 2 function declarations, got {}",
+            code.stmts.len()
+        );
 
         // Find test_int_return with int return type
         let int_fn = code.stmts.iter().find(|stmt| {
@@ -101,7 +119,10 @@ fn main() -> int {
             }
         });
 
-        assert!(int_fn.is_some(), "Expected to find test_int_return function");
+        assert!(
+            int_fn.is_some(),
+            "Expected to find test_int_return function"
+        );
         if let Some(crate::ast::Stmt::Fn(fn_decl)) = int_fn {
             assert!(matches!(fn_decl.ret, crate::ast::Type::Int));
         }
@@ -122,7 +143,11 @@ fn main() -> int { 0 }
 
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
         let code = result.unwrap();
-        assert!(code.stmts.len() >= 5, "Expected at least 5 function declarations, got {}", code.stmts.len());
+        assert!(
+            code.stmts.len() >= 5,
+            "Expected at least 5 function declarations, got {}",
+            code.stmts.len()
+        );
 
         // Verify each function has the correct return type
         for stmt in &code.stmts {
@@ -157,7 +182,11 @@ fn main() int {
 
         assert!(result.is_ok(), "Parse failed: {:?}", result.err());
         let code = result.unwrap();
-        assert!(code.stmts.len() >= 2, "Expected at least 2 function declarations, got {}", code.stmts.len());
+        assert!(
+            code.stmts.len() >= 2,
+            "Expected at least 2 function declarations, got {}",
+            code.stmts.len()
+        );
 
         // Find test_old_style with int return type
         let old_style_fn = code.stmts.iter().find(|stmt| {
@@ -168,7 +197,10 @@ fn main() int {
             }
         });
 
-        assert!(old_style_fn.is_some(), "Expected to find test_old_style function");
+        assert!(
+            old_style_fn.is_some(),
+            "Expected to find test_old_style function"
+        );
         if let Some(crate::ast::Stmt::Fn(fn_decl)) = old_style_fn {
             assert!(matches!(fn_decl.ret, crate::ast::Type::Int));
         }

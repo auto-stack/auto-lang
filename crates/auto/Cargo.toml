@@ -50,3 +50,6 @@ mpv-gpu = ["auto-lang/mpv-gpu"]
 mpv-widget = ["auto-lang/mpv-widget"]
 # 便捷别名：一次性打开全部三层（`cargo build -p auto --features mpv`）。
 mpv = ["mpv-native", "mpv-gpu", "mpv-widget"]
+
+[dev-dependencies]
+tempfile = "3"

@@ -142,11 +142,11 @@ fn mtime_secs(meta: &std::fs::Metadata) -> i64 {
 /// Count supported images *directly* inside `dir` (non-recursive; one
 /// read_dir). Used for subdirectory tab badges.
 fn count_direct_images(dir: &Path) -> usize {
-    let Ok(rd) = std::fs::read_dir(dir) else { return 0 };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return 0;
+    };
     rd.filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().map(|t| t.is_file()).unwrap_or(false) && is_supported(&e.path())
-        })
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false) && is_supported(&e.path()))
         .count()
 }
 
@@ -199,12 +199,26 @@ pub fn list_directory(root: &Path, rel: &str) -> io::Result<PhotoListing> {
     }
     // 自然序（文件名数字感知）——浏览型图库的确定性排序。
     images.sort_by(|(a, _, _), (b, _, _)| {
-        let a_rel = a.strip_prefix(root).unwrap_or(a).to_string_lossy().replace('\\', "/");
-        let b_rel = b.strip_prefix(root).unwrap_or(b).to_string_lossy().replace('\\', "/");
-        natural_key(&a_rel).cmp(&natural_key(&b_rel)).then_with(|| a_rel.cmp(&b_rel))
+        let a_rel = a
+            .strip_prefix(root)
+            .unwrap_or(a)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let b_rel = b
+            .strip_prefix(root)
+            .unwrap_or(b)
+            .to_string_lossy()
+            .replace('\\', "/");
+        natural_key(&a_rel)
+            .cmp(&natural_key(&b_rel))
+            .then_with(|| a_rel.cmp(&b_rel))
     });
     dirs.sort_by(|a, b| natural_key(&a.rel_path).cmp(&natural_key(&b.rel_path)));
-    let mut listing = PhotoListing { dir_rel, images: Vec::new(), dirs };
+    let mut listing = PhotoListing {
+        dir_rel,
+        images: Vec::new(),
+        dirs,
+    };
     for (path, bytes, mtime) in images {
         let relative_path = path
             .strip_prefix(root)
@@ -227,11 +241,28 @@ pub fn list_directory(root: &Path, rel: &str) -> io::Result<PhotoListing> {
             .to_ascii_lowercase();
         let (width, height) = header_dimensions(&path);
         let id = blake3::hash(relative_path.as_bytes()).to_hex().to_string();
-        listing.images.push(PhotoEntry { id, name, relative_path, rel_dir, extension, bytes, width, height, mtime });
+        listing.images.push(PhotoEntry {
+            id,
+            name,
+            relative_path,
+            rel_dir,
+            extension,
+            bytes,
+            width,
+            height,
+            mtime,
+        });
     }
     // token → 相对路径注册表（thumb/full 反查用），按 root 分桶。
     if let Ok(mut reg) = token_registry().lock() {
-        reg.insert(root.to_string_lossy().to_string(), listing.images.iter().map(|e| (e.id.clone(), e.relative_path.clone())).collect());
+        reg.insert(
+            root.to_string_lossy().to_string(),
+            listing
+                .images
+                .iter()
+                .map(|e| (e.id.clone(), e.relative_path.clone()))
+                .collect(),
+        );
     }
     Ok(listing)
 }
@@ -239,8 +270,14 @@ pub fn list_directory(root: &Path, rel: &str) -> io::Result<PhotoListing> {
 /// token → root-relative path registry. Bucketed by root so two photo apps
 /// with identical relative paths never collide. Rebuilt wholesale per scan
 /// (bounded by the scanned dir's image count).
-fn token_registry() -> &'static std::sync::Mutex<std::collections::HashMap<String, std::collections::HashMap<String, String>>> {
-    static REG: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, std::collections::HashMap<String, String>>>> = std::sync::OnceLock::new();
+fn token_registry() -> &'static std::sync::Mutex<
+    std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+> {
+    static REG: std::sync::OnceLock<
+        std::sync::Mutex<
+            std::collections::HashMap<String, std::collections::HashMap<String, String>>,
+        >,
+    > = std::sync::OnceLock::new();
     &REG.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
@@ -249,7 +286,9 @@ fn token_registry() -> &'static std::sync::Mutex<std::collections::HashMap<Strin
 /// scan of this same root — otherwise None (404 arm).
 pub fn resolve_token(root: &Path, token: &str) -> Option<String> {
     let reg = token_registry().lock().ok()?;
-    reg.get(&root.to_string_lossy().to_string())?.get(token).cloned()
+    reg.get(&root.to_string_lossy().to_string())?
+        .get(token)
+        .cloned()
 }
 
 /// Rebuild a `PhotoEntry` for a root-relative path (thumb/full 端点的
@@ -261,8 +300,15 @@ pub fn photo_from_rel(root: &Path, rel: &str) -> Option<PhotoEntry> {
         return None;
     }
     let name = path.file_name()?.to_string_lossy().to_string();
-    let rel_dir = rel.rsplit_once('/').map(|(d, _)| d.to_string()).unwrap_or_default();
-    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let rel_dir = rel
+        .rsplit_once('/')
+        .map(|(d, _)| d.to_string())
+        .unwrap_or_default();
+    let extension = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     let (width, height) = header_dimensions(&path);
     Some(PhotoEntry {
         id: blake3::hash(rel.as_bytes()).to_hex().to_string(),
@@ -292,14 +338,18 @@ fn natural_key(s: &str) -> Vec<NaturalPart> {
             num.push(ch);
         } else {
             if !num.is_empty() {
-                parts.push(NaturalPart::Number(num.parse::<u128>().unwrap_or(u128::MAX)));
+                parts.push(NaturalPart::Number(
+                    num.parse::<u128>().unwrap_or(u128::MAX),
+                ));
                 num.clear();
             }
             txt.push(ch);
         }
     }
     if !num.is_empty() {
-        parts.push(NaturalPart::Number(num.parse::<u128>().unwrap_or(u128::MAX)));
+        parts.push(NaturalPart::Number(
+            num.parse::<u128>().unwrap_or(u128::MAX),
+        ));
     }
     if !txt.is_empty() {
         parts.push(NaturalPart::Text(txt.to_lowercase()));
@@ -358,7 +408,12 @@ pub fn content_type(extension: &str) -> &'static str {
 /// Album label for an entry: first path segment of `rel_dir`, with root-level
 /// files grouped under "photos" (matches the legacy gallery's top-level album).
 pub fn album_of(entry: &PhotoEntry) -> &str {
-    entry.rel_dir.split('/').next().filter(|s| !s.is_empty()).unwrap_or("photos")
+    entry
+        .rel_dir
+        .split('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("photos")
 }
 
 /// Display title: the file name without its extension.
@@ -381,7 +436,7 @@ pub fn date_label(mtime: i64) -> String {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let doe = z - era * 146_097; // [0, 146096]
-    // era 相对年（Hinnant 公式全程用相对值；era*400 只在最终年份上加）。
+                                 // era 相对年（Hinnant 公式全程用相对值；era*400 只在最终年份上加）。
     let y_rel = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
     let doy = doe - (365 * y_rel + y_rel / 4 - y_rel / 100); // [0, 365]
     let mp = (5 * doy + 2) / 153;
@@ -480,13 +535,18 @@ pub fn render_thumbnail(root: &Path, entry: &PhotoEntry, width: u32) -> Result<V
     let img = apply_orientation(img, orientation);
     // Fit-in-box preserving aspect (PIL `thumbnail` semantics).
     let (w, h) = (img.width(), img.height());
-    let scale = (width as f64 / w as f64).min(width as f64 / h as f64).min(1.0);
+    let scale = (width as f64 / w as f64)
+        .min(width as f64 / h as f64)
+        .min(1.0);
     let tw = ((w as f64 * scale).round() as u32).max(1);
     let th = ((h as f64 * scale).round() as u32).max(1);
     let thumb = img.thumbnail(tw, th);
     let mut out: Vec<u8> = Vec::new();
     thumb
-        .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Jpeg)
+        .write_to(
+            &mut std::io::Cursor::new(&mut out),
+            image::ImageFormat::Jpeg,
+        )
         .map_err(|e| format!("encode: {e}"))?;
     if let Some(dir) = cache.parent() {
         let _ = std::fs::create_dir_all(dir);
@@ -515,8 +575,14 @@ mod tests {
             0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
         ];
         for f in [
-            "a.png", "b.PNG", "c.jpg", "notes.txt", "noext",
-            "Screenshots/s2.png", "Screenshots/s10.png", "Trip/t1.webp",
+            "a.png",
+            "b.PNG",
+            "c.jpg",
+            "notes.txt",
+            "noext",
+            "Screenshots/s2.png",
+            "Screenshots/s10.png",
+            "Trip/t1.webp",
         ] {
             let p = base.join(f);
             if let Some(d) = p.parent() {
@@ -570,7 +636,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
-    fn name_only(e: &PhotoEntry) -> String { e.name.clone() }
+    fn name_only(e: &PhotoEntry) -> String {
+        e.name.clone()
+    }
 
     #[test]
     fn sanitize_rel_dir_rejects_traversal() {
@@ -595,7 +663,10 @@ mod tests {
             assert!(!e.relative_path.contains(base.to_string_lossy().as_ref()));
         }
         let first = l.images[0].id.clone();
-        assert_eq!(resolve_token(&base, &first).as_deref(), Some(l.images[0].relative_path.as_str()));
+        assert_eq!(
+            resolve_token(&base, &first).as_deref(),
+            Some(l.images[0].relative_path.as_str())
+        );
         assert!(resolve_token(&base, "deadbeef").is_none());
         // 异 root 不串桶。
         let other = std::env::temp_dir().join("p043_other_root");
@@ -659,9 +730,7 @@ mod tests {
         let base = std::env::temp_dir().join(format!("p043_thumb_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
-        let img = image::RgbImage::from_fn(40, 20, |x, _| {
-            image::Rgb([x as u8, 128, 64])
-        });
+        let img = image::RgbImage::from_fn(40, 20, |x, _| image::Rgb([x as u8, 128, 64]));
         let src = base.join("grad.png");
         img.save(&src).unwrap();
         list_directory(&base, "").unwrap();

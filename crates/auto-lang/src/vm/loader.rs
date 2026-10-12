@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::vm::native::NativeInterface;
 use crate::vm::scheduler::GlobalMeta;
-use crate::vm::task_handler::{TaskHandlerTable, SerializedPattern, TaskHandler};
+use crate::vm::task_handler::{SerializedPattern, TaskHandler, TaskHandlerTable};
 use crate::vm::virt_memory::VirtualFlash;
 
 // ============================================================================
@@ -101,7 +101,10 @@ impl VMLoader {
     }
 
     /// Create a loader with pre-configured native interface
-    pub fn with_native_interface(package: CompiledPackage, native_interface: NativeInterface) -> Self {
+    pub fn with_native_interface(
+        package: CompiledPackage,
+        native_interface: NativeInterface,
+    ) -> Self {
         Self {
             package,
             native_interface,

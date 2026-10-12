@@ -41,13 +41,18 @@ pub fn locale_prefers_zh() -> bool {
 pub fn load_from_dir(base_dir: &Path) {
     let lang = std::env::var("AUTO_LOCALE").unwrap_or_else(|_| "zh".to_string());
     let path = base_dir.join("i18n").join(format!("{lang}.json"));
-    let table = std::fs::read_to_string(&path).ok().and_then(|raw| {
-        let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
-        let mut map = HashMap::new();
-        flatten("", &value, &mut map);
-        Some(map)
-    }).unwrap_or_default();
-    let dir = base_dir.canonicalize().unwrap_or_else(|_| base_dir.to_path_buf());
+    let table = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| {
+            let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+            let mut map = HashMap::new();
+            flatten("", &value, &mut map);
+            Some(map)
+        })
+        .unwrap_or_default();
+    let dir = base_dir
+        .canonicalize()
+        .unwrap_or_else(|_| base_dir.to_path_buf());
     if let Ok(mut guard) = TABLES.write() {
         if let Some(slot) = guard.iter_mut().find(|(d, _)| *d == dir) {
             slot.1 = table;
@@ -61,7 +66,11 @@ fn flatten(prefix: &str, value: &serde_json::Value, out: &mut HashMap<String, St
     match value {
         serde_json::Value::Object(map) => {
             for (k, v) in map {
-                let key = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                let key = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{prefix}.{k}")
+                };
                 flatten(&key, v, out);
             }
         }
@@ -151,7 +160,10 @@ mod tests {
         // 无闭合原样保留（防误吞用户文本）
         assert_eq!(unescape_literals("{'unclosed"), "{'unclosed");
         // 无转义零改动
-        assert_eq!(unescape_literals("普通文案 {count} 条"), "普通文案 {count} 条");
+        assert_eq!(
+            unescape_literals("普通文案 {count} 条"),
+            "普通文案 {count} 条"
+        );
         // substitute_params 出口同样消费（param 值路径）
         assert_eq!(
             substitute_params("{'@'} 呼出 {n} 个", &[("n".into(), "3".into())]),

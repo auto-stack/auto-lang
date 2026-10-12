@@ -202,7 +202,8 @@ impl JetProjectConfig {
 
     /// Add dependency (builder pattern)
     pub fn with_dependency(mut self, name: &str, version: &str) -> Self {
-        self.dependencies.insert(name.to_string(), version.to_string());
+        self.dependencies
+            .insert(name.to_string(), version.to_string());
         self
     }
 
@@ -254,8 +255,8 @@ pub struct ThemeColors {
 impl Default for ThemeColors {
     fn default() -> Self {
         Self {
-            primary: "#6750A4".to_string(),   // Purple40
-            secondary: "#625B71".to_string(), // PurpleGrey40
+            primary: "#6750A4".to_string(),        // Purple40
+            secondary: "#625B71".to_string(),      // PurpleGrey40
             tertiary: Some("#7D5260".to_string()), // Pink40
         }
     }
@@ -886,7 +887,9 @@ widget {safe_name}App {{
                     extra_deps.push_str("    implementation(\"androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0\")\n");
                 }
                 "navigation" => {
-                    extra_deps.push_str("    implementation(\"androidx.navigation:navigation-compose:2.7.6\")\n");
+                    extra_deps.push_str(
+                        "    implementation(\"androidx.navigation:navigation-compose:2.7.6\")\n",
+                    );
                 }
                 _ => {}
             }
@@ -956,13 +959,7 @@ dependencies {{
     debugImplementation(libs.compose.ui.test.manifest)
 }}
 "#,
-            namespace,
-            compile_sdk,
-            application_id,
-            min_sdk,
-            target_sdk,
-            version_name,
-            extra_deps,
+            namespace, compile_sdk, application_id, min_sdk, target_sdk, version_name, extra_deps,
         );
         self.add_file("app/build.gradle.kts", &content);
     }
@@ -1048,7 +1045,10 @@ class MainActivity : ComponentActivity() {{
 "#,
         );
         self.add_file(
-            &format!("app/src/main/java/{}/MainActivity.kt", self.config.package_path()),
+            &format!(
+                "app/src/main/java/{}/MainActivity.kt",
+                self.config.package_path()
+            ),
             &content,
         );
     }
@@ -1091,8 +1091,14 @@ class MainActivity : ComponentActivity() {{
     <foreground android:drawable="@drawable/ic_launcher_foreground"/>
 </adaptive-icon>
 "#;
-        self.add_file("app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml", content);
-        self.add_file("app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml", content);
+        self.add_file(
+            "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml",
+            content,
+        );
+        self.add_file(
+            "app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml",
+            content,
+        );
 
         // Generate launcher background (simple colored background)
         let background = r##"<?xml version="1.0" encoding="utf-8"?>
@@ -1106,7 +1112,10 @@ class MainActivity : ComponentActivity() {{
         android:pathData="M0,0h108v108h-108z" />
 </vector>
 "##;
-        self.add_file("app/src/main/res/drawable/ic_launcher_background.xml", background);
+        self.add_file(
+            "app/src/main/res/drawable/ic_launcher_background.xml",
+            background,
+        );
 
         // Generate launcher foreground (simple icon)
         let foreground = r##"<?xml version="1.0" encoding="utf-8"?>
@@ -1125,7 +1134,10 @@ class MainActivity : ComponentActivity() {{
     </group>
 </vector>
 "##;
-        self.add_file("app/src/main/res/drawable/ic_launcher_foreground.xml", foreground);
+        self.add_file(
+            "app/src/main/res/drawable/ic_launcher_foreground.xml",
+            foreground,
+        );
     }
 
     // =========================================================================
@@ -1192,7 +1204,10 @@ fun {widget_name}Preview() {{
 "#,
             );
             self.add_file(
-                &format!("app/src/main/java/{}/ui/widgets/{}.kt", package_path, widget_name),
+                &format!(
+                    "app/src/main/java/{}/ui/widgets/{}.kt",
+                    package_path, widget_name
+                ),
                 &content,
             );
         }
@@ -1249,7 +1264,10 @@ val Pink40 = Color(0x{tertiary_40})
             tertiary_40 = tertiary_40,
         );
         self.add_file(
-            &format!("app/src/main/java/{}/ui/theme/Color.kt", self.config.package_path()),
+            &format!(
+                "app/src/main/java/{}/ui/theme/Color.kt",
+                self.config.package_path()
+            ),
             &content,
         );
     }
@@ -1296,7 +1314,10 @@ val Typography = Typography(
 "#,
         );
         self.add_file(
-            &format!("app/src/main/java/{}/ui/theme/Type.kt", self.config.package_path()),
+            &format!(
+                "app/src/main/java/{}/ui/theme/Type.kt",
+                self.config.package_path()
+            ),
             &content,
         );
     }
@@ -1369,7 +1390,10 @@ fun {theme_name}(
 "#,
         );
         self.add_file(
-            &format!("app/src/main/java/{}/ui/theme/Theme.kt", self.config.package_path()),
+            &format!(
+                "app/src/main/java/{}/ui/theme/Theme.kt",
+                self.config.package_path()
+            ),
             &content,
         );
     }
@@ -1387,8 +1411,10 @@ fun {theme_name}(
     /// Add routes from config (routes {} block)
     pub fn add_config_routes(&mut self, routes: Vec<crate::aura::AuraRoute>) {
         for route in routes {
-            self.routes.push(crate::route::RouteDef::new(&route.path, &route.module)
-                .with_source(RouteSource::Config));
+            self.routes.push(
+                crate::route::RouteDef::new(&route.path, &route.module)
+                    .with_source(RouteSource::Config),
+            );
         }
     }
 
@@ -1458,9 +1484,7 @@ fun {theme_name}(
         }
 
         // Generate NavHost
-        let start_dest = self.routes.first()
-            .map(|r| r.path.as_str())
-            .unwrap_or("/");
+        let start_dest = self.routes.first().map(|r| r.path.as_str()).unwrap_or("/");
 
         match nav_gen.generate_nav_host(start_dest) {
             Ok(code) => {
@@ -1710,7 +1734,9 @@ mod tests {
         gen.generate_main_activity();
         let files = gen.files();
 
-        let content = files.get("app/src/main/java/com/test/app/MainActivity.kt").unwrap();
+        let content = files
+            .get("app/src/main/java/com/test/app/MainActivity.kt")
+            .unwrap();
         assert!(content.contains("package com.test.app"));
         assert!(content.contains("class MainActivity"));
         assert!(content.contains("TestAppTheme"));
@@ -1724,7 +1750,9 @@ mod tests {
         gen.generate_theme_kt();
         let files = gen.files();
 
-        let content = files.get("app/src/main/java/com/test/app/ui/theme/Theme.kt").unwrap();
+        let content = files
+            .get("app/src/main/java/com/test/app/ui/theme/Theme.kt")
+            .unwrap();
         assert!(content.contains("package com.test.app.ui.theme"));
         assert!(content.contains("fun TestAppTheme"));
         assert!(content.contains("MaterialTheme"));
@@ -1769,7 +1797,9 @@ mod tests {
         gen.generate_color_kt();
         let files = gen.files();
 
-        let content = files.get("app/src/main/java/com/example/testapp/ui/theme/Color.kt").unwrap();
+        let content = files
+            .get("app/src/main/java/com/example/testapp/ui/theme/Color.kt")
+            .unwrap();
         assert!(content.contains("FF0000")); // Custom primary
     }
 }

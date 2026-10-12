@@ -1,0 +1,95 @@
+{
+  "stage": "review",
+  "plan_id": "PLAN-755",
+  "plan_revision": 1,
+  "outcome": "needs_fix",
+  "reviewed_commit": "4ce6455167fd55cee3514789f5d461daf08cebe2",
+  "base_commit": "d6e4819ba686298238237ae6f473da77b22478bf",
+  "main_commit_at_review": "bda49d5be12ffb5767b45364a0328abdce1882f6",
+  "dependency_revisions": {
+    "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846"
+  },
+  "root_cargo_lock_sha256": "30fdffc6c8d8642b765340ff1238a4e84bcfbf119428e3ed7617579408c5ec06",
+  "spec_inputs": {
+    "canonical_path": "docs/specs/stdlib/design/assembly-manifest.md",
+    "canonical_sha256": "71a696ff4aedf1d1f4b8b23fceb69a28620e00762f9761b36b9efe67fca583f8",
+    "reviewed_delta_sha256": "9c802df4673706a3dea3a33d230a98f6d834f0cc3779d2c21db940ab5267df96",
+    "reviewed_delta_git_blob": "383d2dabeca541647be1444022b31b9bef63e0fd",
+    "frozen_patch": "755-review-r2-sd.patch"
+  },
+  "test_configuration": {
+    ".cargo\\config.toml": "13cb02bef7ce0ad685135e36b667ccbe54ab1a04ba6d743de1a3c5f41d239003",
+    ".config\\nextest.toml": "0fbea4b493e2437105d5cd68c616549b1a39aaad6ae4b2f85fd83adf4782d5a2"
+  },
+  "tests": {
+    "contract_guards": {
+      "run": 2,
+      "pass": 2,
+      "seconds": 0.223,
+      "exit": 0
+    },
+    "original_http": {
+      "run": 2,
+      "pass": 2,
+      "seconds": [
+        0.596,
+        0.629
+      ],
+      "exit": 0
+    },
+    "panic_forwarding_negative": {
+      "run": 1,
+      "pass": 0,
+      "fail": 1,
+      "seconds": 2.153,
+      "exit": 100,
+      "parent_message": "crate::run panicked: Any { .. }",
+      "child_default_hook_prints_original_message": true,
+      "only_cfg_test_thread_injection": true,
+      "restored_exact_bytes": true
+    },
+    "format": {
+      "files": 4,
+      "exit": 1,
+      "source_restored": true
+    }
+  },
+  "worktree_clean_end": true,
+  "not_rerun": [
+    "full daily t",
+    "tv",
+    "full th",
+    "tf",
+    "taa",
+    "tu",
+    "docs_gen"
+  ],
+  "historical_evidence_policy": "Executor full daily/tv/th records retained as history; no fresh independent whole-gate pass; concrete AC-01 and AC-06 failures require repair before broader final rebinding",
+  "evidence": [
+    {
+      "path": "755-review-r2-contract-evidence.txt",
+      "sha256": "7a90e427feefd07a65ef8c276fc913fbb5ed0f09f64ab492d1749f85e8ba0d53"
+    },
+    {
+      "path": "755-review-r2-original-evidence.txt",
+      "sha256": "d7e342aef2e267f750459c015fc17ba2d0d841b60166bfb176677ad3bc589752"
+    },
+    {
+      "path": "755-review-r2-panic-evidence.txt",
+      "sha256": "91f8df00925fe454585621ffa12768478ba7188322bef8f3255c0368c30fe523"
+    },
+    {
+      "path": "755-review-r2-format-evidence.txt",
+      "sha256": "4bc4281151bd03dcc2bf4903e141a57f068dd17a2ffe2f94d4a444bfba4e6a25"
+    },
+    {
+      "path": "755-review-r2-sd.patch",
+      "sha256": "372d5bb79e3e5fa566103e2694f68d546b196064dad8eb3f512c3622968dcb5d"
+    },
+    {
+      "path": "755-review-r2-panic-probe.py",
+      "sha256": "84cdf3af69ac91316e03c7e0aed7bb766dce966cbc9a5e140a3fd129d533c62a"
+    }
+  ],
+  "next": "work in existing lang-755; no merge"
+}

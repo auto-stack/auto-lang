@@ -16,8 +16,11 @@ fn test_parse_generic_spec() {
 
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // The parsing should succeed (no "syntax error")
-    assert!(!result.contains("syntax error"),
-        "Generic spec parsing should succeed, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Generic spec parsing should succeed, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -38,8 +41,11 @@ fn test_parse_generic_spec_impl() {
 
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // The parsing should succeed (no "syntax error")
-    assert!(!result.contains("syntax error"),
-        "Generic spec impl parsing should succeed, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Generic spec impl parsing should succeed, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -60,8 +66,11 @@ fn test_parse_non_generic_spec() {
 
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // The parsing should succeed (no "syntax error")
-    assert!(!result.contains("syntax error"),
-        "Non-generic spec parsing should succeed, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Non-generic spec parsing should succeed, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -79,8 +88,11 @@ fn test_parse_generic_spec_with_multiple_params() {
 
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // The parsing should succeed (no "syntax error")
-    assert!(!result.contains("syntax error"),
-        "Generic spec with multiple params parsing should succeed, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Generic spec with multiple params parsing should succeed, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -98,8 +110,11 @@ fn test_parse_generic_spec_with_const_param() {
 
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // The parsing should succeed (no "syntax error")
-    assert!(!result.contains("syntax error"),
-        "Generic spec with const param parsing should succeed, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Generic spec with const param parsing should succeed, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -124,6 +139,9 @@ fn test_parse_type_with_multiple_generic_specs() {
 
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // The parsing should succeed (no "syntax error")
-    assert!(!result.contains("syntax error"),
-        "Type with multiple generic specs parsing should succeed, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Type with multiple generic specs parsing should succeed, got: {}",
+        result
+    );
 }

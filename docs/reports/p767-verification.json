@@ -1,0 +1,106 @@
+{
+  "plan": "PLAN-767",
+  "revision": 2,
+  "build": {
+    "exit": 0,
+    "seconds": 137.27,
+    "log_sha256": "bb042ad3a0ceb149151e5731b55650f59515a8ab244a42d7452df8fe14016a58"
+  },
+  "local_tests": {
+    "passed": 36,
+    "suites": [
+      "desktop-showcase",
+      "os-ai-introduction",
+      "v05-copy",
+      "site-ui (desktop cards / launcher)"
+    ],
+    "logs": {
+      "tests-retry.log": "bb7b9dee3e4bd4f86def897eb617d441ad68b0b6d98a82d005fa5fc21ad32c1d",
+      "site-ui.log": "b3d11fc09b2b4e8506120d554bf99d1d762d13991cf19c313d498e4dc23f5b6b"
+    }
+  },
+  "matrix": {
+    "visits": 40,
+    "routes": [
+      "/os",
+      "/zh/os",
+      "/v05/",
+      "/zh/v05/"
+    ],
+    "widths": [
+      360,
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "captures": {
+      "os-1440-dark-first.png": "08807a02e018d92741c0eb6fec008c3ef4a3e814c2582b3b9b8fad4014c98a77",
+      "os-1440-dark.png": "5ba983f3b6f11b83a667f8f56021b4abfed547a722508805bf6454b4233f7371",
+      "os-1440-light-first.png": "14549462e92e134121c4033ccc4b1e241d66be67e92071b841826015c3bda764",
+      "os-1440-light.png": "1e0a766f9d57f45ab6f9cab1bbb1bdcbeddda6c61cabef2636ff9dbd2d21202d",
+      "os-390-dark-first.png": "5d6fc9187bda45bcc23ba2d07408bb56ef6daa1fc64267c60927e71917472b78",
+      "os-390-dark.png": "e6a2fbc985fbc3bc2bdfcc1924fea3cf5f738a629a4d1e1d8bddcd959a45d2ee",
+      "os-390-light-first.png": "5a3288aa834962b801a3c8d4d6cf9826b9f5474b3e85c2dfc5f2253f0f2e5c56",
+      "os-390-light.png": "4700c7340e5d0f5ba3bef7b71c0207001ab29f501c5de9bf23ff55eabdc52320",
+      "v05--1440-dark-first.png": "f7fd00e8e0d3176865e35948be33e35b0b962772c02c884c46e84d10e275b998",
+      "v05--1440-dark.png": "f9cf61d0e4f6ac63ff2b8cd9a586adb27289a76675e5d8e922104f9d26d35953",
+      "v05--1440-light-first.png": "266611b9a1821b451ab5714adbfe82aba685f4d43677f07061408cf2ee9c842e",
+      "v05--1440-light.png": "64afea9b86b1dfdc2ce12a34d01e04fcefc2bb9a8406e486efdfa329910b80f7",
+      "v05--390-dark-first.png": "ad09fbd14f7dc9cf87b6dbea0a995ff85183041d2b1aa68d97dae1d390eff1d4",
+      "v05--390-dark.png": "598701525309dc9316f615f5dd79588c7ec3cabc87d94da7d661f225087d89e4",
+      "v05--390-light-first.png": "497e472a5107c451ed165743a72d25ebeb4267a70d5587b8328c231c31219bc0",
+      "v05--390-light.png": "db410bf2c2f4614bb40f4d88461bf69797ee6e2a6339c5388985f5fbccca3c0b",
+      "zh-os-1440-dark-first.png": "45f8a68cf6e727b8d08e895dc3083ecf932963406b9f90722d2329cc73331309",
+      "zh-os-1440-dark.png": "67429e5408f5f60133488e2af7290d14d94e5db9e4f31786024d4e0891211001",
+      "zh-os-1440-light-first.png": "35e75dd7ca131583c11b076b36b23bc5f2712c15d51759f1f0ba427ff9377802",
+      "zh-os-1440-light.png": "db4051ffc2165b3af919df3880070dba5e23e1a48ab150f847b43ae2b4bb4e88",
+      "zh-os-390-dark-first.png": "3b5708193006ae51b5c455b282981d7eb0fcdeeddc3f468a0b6ebde6917a5ea8",
+      "zh-os-390-dark.png": "4d38fb1e6d44a73e16305ca20b9e9fdd48711f52107819714209e6e6ef30958f",
+      "zh-os-390-light-first.png": "ad1eea16a388b9ba20185618074162c8a2f4da9002be243fb1feb77a860f87c0",
+      "zh-os-390-light.png": "bfd95f8136901a06267acb76066147bcbbb5c47634809e54177acdb39bfef2c3",
+      "zh-v05--1440-dark-first.png": "fefde1364515820d56153324f6bfa7beb16fd7dbd659b648b3437b67b36f2936",
+      "zh-v05--1440-dark.png": "75e0998ca370ce8ed1a70471de5948b7f16d5be09b993dad3cbde991d6005978",
+      "zh-v05--1440-light-first.png": "a59223727e10f4c56bac47f597b1abf6b28ed296373cd4942f456733a4541906",
+      "zh-v05--1440-light.png": "4536b35193b87cbfc508325877312f617649e63c7ab7eadb6e552ea191d4e767",
+      "zh-v05--390-dark-first.png": "532f09427c0b2b669d0a1dd3926ebbab441f2bd7364722f3ee36b4cb9dbeb817",
+      "zh-v05--390-dark.png": "3436b8b6da2075792e18daa6890bfce61115eeb1744dd53d4f0462e916abce9c",
+      "zh-v05--390-light-first.png": "09144aa9ac31520f970318096e9c0819f164433e7c79e42001481e4a59e775f3",
+      "zh-v05--390-light.png": "795050bc129f4bb1f5c3f3eaf353caf2666ed2e73be786305c819c7fefd84bfb"
+    },
+    "manifest_sha256": "735dd612d5297b057a9db847e98853e4c4da96a6797474e736b132aa041f85e4"
+  },
+  "visual_review": [
+    "os-1440-dark-first.png",
+    "zh-os-390-light-first.png"
+  ],
+  "source_catalog": "p767-os-source-catalog.json",
+  "book_head": "d7a71a7fb1fa42ddd26d6cec859715ed98161f7a",
+  "dependency_lock_sha256": "cccc36b221de0180ac773220098a6c5dbb8b4d8d559e356cb557672ad506bf5e",
+  "scope": "website / Category A; no Cargo or docs_gen",
+  "implementation_commit": "964dd64bbdd373b8508d1641186cfbb2c47cc9e0",
+  "deployment": {
+    "release": "20261012-964dd64bb",
+    "revision": "964dd64bb",
+    "archive_sha256": "50a079bc3c7a251794f20d1860d36a3c88887658bf309e30974858daf4670b0b",
+    "backup": "/home/visus/auto-website-backup-20261012-964dd64bb",
+    "clean_url_aliases": 926,
+    "preserved_cached_assets": 1838
+  },
+  "online_tests": {
+    "passed": 4,
+    "log_sha256": "dee1e11cb3d32d214cbfe8cb0f26289b1419c2a5cd1d5f7dc62f462c618372eb",
+    "extra_decode_tests": 2,
+    "decode_log_sha256": "ac318a6d93d62ad92af16f4b19d719348b21350652cb055b1e39d31d06942eb3",
+    "test_sha256": "41f86fda9f243e5558b4afa6930cf92081f96d1bd563fc95e1a9fcc40732c1ca",
+    "corrected_probe": "Initial probe expected hidden default VPNavBar. Site uses its custom navigation; that unrelated assertion was removed. Initial image capture preceded async decode; extra decode checks and recapture completed."
+  },
+  "online_captures": {
+    "online-en.png": "730dd18e2d82afa3120fd2e26210f0a85c4858a165a07c93af25897c40a0c376",
+    "online-zh.png": "c665deeaed0d08b64d2d1ecec944325aadaa1b1966bd167aa9326250aa221ae8"
+  }
+}

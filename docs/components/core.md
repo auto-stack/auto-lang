@@ -1084,6 +1084,21 @@ P1 extracted from production tables; props TBD
 
 ---
 
+### `remote-frame`
+
+`builtin_widget` · `remote-frame` · web: `component` · iced: `full` · category: `display`
+
+Host-side remote frame consumer (PLAN-760): subscribes DisplayList v2 frames from a desktop-protocol bridge (rqhost --bridge-ws) and renders them via the iced canvas element; local pointer/char input is forwarded as protocol InputMsg. Host data leaf - frames never flow through VM state. Web arm = passthrough div placeholder (data-remote-frame marker; host frontend adopts).
+
+别名:`remoteframe` `remote_frame`
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `url` | `string` | — | Bridge WS endpoint (ws://127.0.0.1:port/?token=...); change = drop old connection, dial new |
+| `class` | `union: string|class_binding` | — | Chrome classes (w-/h- define the frame fit box) |
+
+---
+
 ### `row`
 
 `builtin_widget` · `row` · web: `component` · iced: `full` · category: `layout`

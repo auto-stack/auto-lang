@@ -23,20 +23,18 @@
 // - IME: over-the-spot declaration kept for winit cursor-area anchoring,
 //   preedit string self-drawn at the cursor cell (#11 workaround).
 
-use iced::advanced::text::{LineHeight, Paragraph, Shaping, Span, Text, Wrapping};
-use iced::advanced::text::Renderer as _;
-use iced::advanced::widget::{tree, Tree};
-use iced::advanced::{
-    input_method, layout::Node, mouse, renderer, widget::Widget, Layout,
-};
-use iced::advanced::Renderer as _;
-use iced::keyboard::{self, Modifiers};
-use iced::{alignment, Background, Border, Color, Element, Font, Length, Point, Rectangle, Size, Theme};
 use cosmic_text::{Attrs, Family};
-
-use crate::ui::terminal::{
-    TermCell, TermColor, TermCursorShape, TermSelectionType, TerminalCore,
+use iced::advanced::text::Renderer as _;
+use iced::advanced::text::{LineHeight, Paragraph, Shaping, Span, Text, Wrapping};
+use iced::advanced::widget::{tree, Tree};
+use iced::advanced::Renderer as _;
+use iced::advanced::{input_method, layout::Node, mouse, renderer, widget::Widget, Layout};
+use iced::keyboard::{self, Modifiers};
+use iced::{
+    alignment, Background, Border, Color, Element, Font, Length, Point, Rectangle, Size, Theme,
 };
+
+use crate::ui::terminal::{TermCell, TermColor, TermCursorShape, TermSelectionType, TerminalCore};
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -75,7 +73,9 @@ pub fn cell_w() -> f32 {
         return *w;
     }
     crate::ui::code_editor::core::set_font_system_call(|with| {
-        let mut guard = iced::advanced::graphics::text::font_system().write().unwrap();
+        let mut guard = iced::advanced::graphics::text::font_system()
+            .write()
+            .unwrap();
         with(guard.raw());
     });
     let measured = crate::ui::code_editor::core::try_with_font_system(|fs| {
@@ -190,18 +190,21 @@ pub(crate) fn refresh_row_cache(
     }
     // 溢出护栏:远离可见区(± 3×可见行数 + 预取余量)的 id 清出。
     if cache.len() > ROW_CACHE_CAP {
-        let lo = visible.first().map(|r| r.id).unwrap_or(0)
-            - (visible.len() as i64 * 3 + 64);
-        let hi = visible.last().map(|r| r.id).unwrap_or(0)
-            + (visible.len() as i64 * 3 + 64);
+        let lo = visible.first().map(|r| r.id).unwrap_or(0) - (visible.len() as i64 * 3 + 64);
+        let hi = visible.last().map(|r| r.id).unwrap_or(0) + (visible.len() as i64 * 3 + 64);
         cache.retain(|id, _| *id >= lo && *id <= hi);
     }
     drop(caches);
     ROW_REBUILDS.fetch_add(rebuilt as u64, std::sync::atomic::Ordering::Relaxed);
     if rebuilt > 0
-        && std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false)
+        && std::env::var("AUTO_MA_DBG")
+            .map(|v| v == "1")
+            .unwrap_or(false)
     {
-        eprintln!("[P25-ROWS] key={key} visible={} rebuilt={rebuilt}", visible.len());
+        eprintln!(
+            "[P25-ROWS] key={key} visible={} rebuilt={rebuilt}",
+            visible.len()
+        );
     }
     rebuilt
 }
@@ -546,9 +549,7 @@ impl<M: Clone> Terminal<M> {
     /// 非快照窗顶 hist×CELL_H——两者差 8px(底部 PAD)使圆角弧下半段
     /// 落在视口外,视觉≈直角(用户实机门实录:方角探出窗框)。offset
     /// 换算是底隙口径,两种 y 的观察结果同为 offset 0,语义自洽。
-    pub(crate) fn bind_request_y(
-        core: &crate::ui::terminal::TerminalCore,
-    ) -> Option<f32> {
+    pub(crate) fn bind_request_y(core: &crate::ui::terminal::TerminalCore) -> Option<f32> {
         if core.take_scroll_repin_pending() {
             let history = crate::ui::terminal::terminal_history(core);
             let y = Self::bottom_bind_y(core, history);
@@ -632,7 +633,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
     }
 
     fn size(&self) -> Size<Length> {
-        Size { width: self.width, height: self.height }
+        Size {
+            width: self.width,
+            height: self.height,
+        }
     }
 
     fn layout(
@@ -775,7 +779,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // terminal;app 面保证同帧仅一个带表实例)。IME 提交串非
         // Keyboard 事件,天然不经本面。
         if state.menu_open.is_none() {
-            if let iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event {
+            if let iced::Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, .. }) = event
+            {
                 let name = terminal_key_binding_name(key, *modifiers);
                 if !name.is_empty() {
                     if let Some(msg) = self.shortcut_hit(&name) {
@@ -795,17 +800,21 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         // 入队并上抛 on_input(载荷走 TerminalCore 队列,消息只当触发器)。
         if focused && state.menu_open.is_none() {
             let payload = match event {
-                iced::Event::Keyboard(keyboard::Event::KeyPressed { key, text, modifiers, .. }) => {
-                    key_event_to_vt(key, text.as_deref(), *modifiers)
-                }
+                iced::Event::Keyboard(keyboard::Event::KeyPressed {
+                    key,
+                    text,
+                    modifiers,
+                    ..
+                }) => key_event_to_vt(key, text.as_deref(), *modifiers),
                 // IME 提交(中文等组合串)整串透传;Preedit 由 props 自绘。
-                iced::Event::InputMethod(input_method::Event::Commit(c)) => {
-                    Some(c.to_string())
-                }
+                iced::Event::InputMethod(input_method::Event::Commit(c)) => Some(c.to_string()),
                 _ => None,
             };
             if let (Some(payload), Some(msg)) = (payload, self.on_input.clone()) {
-                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
+                if std::env::var("AUTO_MA_DBG")
+                    .map(|v| v == "1")
+                    .unwrap_or(false)
+                {
                     eprintln!("[P22-KEY] key={} vt={:?}", self.key, payload);
                 }
                 crate::ui::terminal::terminal_push_input(core, &payload);
@@ -821,10 +830,17 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):press 子路径
                 // 首站——组件收到 press 即留痕(bounds/落点/命中带判定),
                 // 与 [MA_BUILD]/[UI_EVENT] 对读定位断点层级。
-                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                    eprintln!("[TERM_PRESS] cursor={:?} pos={:?} bounds={:?} key={}",
-                        cursor, cursor.position().map(|p| (p.x, p.y)),
-                        (bounds.x, bounds.y, bounds.width, bounds.height), self.key);
+                if std::env::var("AUTO_MA_DBG")
+                    .map(|v| v == "1")
+                    .unwrap_or(false)
+                {
+                    eprintln!(
+                        "[TERM_PRESS] cursor={:?} pos={:?} bounds={:?} key={}",
+                        cursor,
+                        cursor.position().map(|p| (p.x, p.y)),
+                        (bounds.x, bounds.y, bounds.width, bounds.height),
+                        self.key
+                    );
                 }
                 let Some(pos) = cursor.position_over(bounds) else {
                     // 点在组件外:失焦(键入归他处,标准终端焦点语义)。
@@ -834,15 +850,24 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 };
                 state.focused = true;
                 crate::ui::terminal::terminal_claim_focus(core);
-                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                    eprintln!("[P22-FOCUS] key={} shift={:?}", self.key, (bounds.y, bounds.x, bounds.width, bounds.height));
+                if std::env::var("AUTO_MA_DBG")
+                    .map(|v| v == "1")
+                    .unwrap_or(false)
+                {
+                    eprintln!(
+                        "[P22-FOCUS] key={} shift={:?}",
+                        self.key,
+                        (bounds.y, bounds.x, bounds.width, bounds.height)
+                    );
                 }
                 // IME 英文起步:pending 置位(重试制),update 顶部逐 tick
                 // 消费直到上下文可查且强制落地(两拍竞态见 request_ime 块注记)。
                 state.ime_force_pending = IME_FORCE_TICKS;
                 // 菜单开着时左键归菜单:命中项→动作,未命中→关闭;一律吞。
                 if let Some(at) = state.menu_open {
-                    if let Some(idx) = menu_item_at(at, Point::new(pos.x - bounds.x, pos.y - bounds.y)) {
+                    if let Some(idx) =
+                        menu_item_at(at, Point::new(pos.x - bounds.x, pos.y - bounds.y))
+                    {
                         crate::ui::terminal::terminal_set_menu_item(core, idx as u8);
                         if let Some(msg) = self.on_menu.clone() {
                             shell.publish(msg);
@@ -857,7 +882,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 let now = Instant::now();
                 let cell = self.pixel_to_cell(pos, bounds);
                 let same_cell = state.last_cell == Some(cell);
-                let count = if now.duration_since(state.last_click_at.unwrap_or(now - Duration::from_secs(10)))
+                let count = if now
+                    .duration_since(state.last_click_at.unwrap_or(now - Duration::from_secs(10)))
                     <= MULTI_CLICK_WINDOW
                     && same_cell
                 {
@@ -889,9 +915,9 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 }
                 // 菜单悬停项随光标刷新(draw 反色)。
                 if let Some(at) = state.menu_open {
-                    state.hover_item = cursor
-                        .position()
-                        .and_then(|pos| menu_item_at(at, Point::new(pos.x - bounds.x, pos.y - bounds.y)));
+                    state.hover_item = cursor.position().and_then(|pos| {
+                        menu_item_at(at, Point::new(pos.x - bounds.x, pos.y - bounds.y))
+                    });
                 }
             }
             iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
@@ -1010,7 +1036,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
         //    引擎(display_offset 单源;scroll_to 回声由 bind_suppress
         //    吞一次,防回灌环路)。
         let shift = if self.virtual_scroll {
-            viewport_h_register().lock().unwrap().insert(self.key.clone(), viewport.height);
+            viewport_h_register()
+                .lock()
+                .unwrap()
+                .insert(self.key.clone(), viewport.height);
             let view_y = viewport.y - bounds.y;
             let history = self.history();
             // PLAN-024 底隙量化口径:offset = 视口底上方的新行数——
@@ -1034,8 +1063,14 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             if let Some(delta) =
                 Self::observe_view_scroll(self.core, view_y, viewport.height, canvas_h, history)
             {
-                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                    eprintln!("[P22-WHEEL] key={} view_y={:.0} delta={}", self.key, view_y, delta);
+                if std::env::var("AUTO_MA_DBG")
+                    .map(|v| v == "1")
+                    .unwrap_or(false)
+                {
+                    eprintln!(
+                        "[P22-WHEEL] key={} view_y={:.0} delta={}",
+                        self.key, view_y, delta
+                    );
                 }
                 crate::ui::terminal::terminal_queue_scroll_delta(self.core, delta);
             }
@@ -1102,9 +1137,8 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             && ((view_top + viewport.height) / CELL_H).ceil() as i64
                 - (view_top / CELL_H).floor() as i64
                 <= 4096;
-        let anchored = self.virtual_scroll
-            && anchor != crate::ui::terminal::WINDOW_ANCHOR_UNSET
-            && span_sane;
+        let anchored =
+            self.virtual_scroll && anchor != crate::ui::terminal::WINDOW_ANCHOR_UNSET && span_sane;
         let visible: Vec<VisibleRow> = if anchored {
             let id0 = (view_top / CELL_H).floor() as i64;
             let id1 = ((view_top + viewport.height) / CELL_H).ceil() as i64;
@@ -1113,9 +1147,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             (id0..id1)
                 .filter(|id| *id >= 0)
                 .filter_map(|id| {
-                    if let Some(row) =
-                        crate::ui::terminal::terminal_window_row(self.core, id)
-                    {
+                    if let Some(row) = crate::ui::terminal::terminal_window_row(self.core, id) {
                         Some(VisibleRow {
                             id,
                             y_px: id as f32 * CELL_H,
@@ -1206,10 +1238,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                                 bounds.x + PAD + col_begin as f32 * cell_w(),
                                 bounds.y + PAD + shift + row as f32 * CELL_H,
                             ),
-                            Size::new(
-                                (col_last - col_begin + 1) as f32 * cell_w(),
-                                CELL_H,
-                            ),
+                            Size::new((col_last - col_begin + 1) as f32 * cell_w(), CELL_H),
                         ),
                         ..renderer::Quad::default()
                     },
@@ -1254,12 +1283,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                         Point::new(bounds.x + PAD + col, bounds.y + PAD + row),
                         Size::new(cell_w(), CELL_H),
                     ),
-                    Color::from_rgba(
-                        pal_fg.r,
-                        pal_fg.g,
-                        pal_fg.b,
-                        0.85,
-                    ),
+                    Color::from_rgba(pal_fg.r, pal_fg.g, pal_fg.b, 0.85),
                 ),
                 TermCursorShape::Beam => (
                     Rectangle::new(
@@ -1270,10 +1294,7 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 ),
                 TermCursorShape::Underline => (
                     Rectangle::new(
-                        Point::new(
-                            bounds.x + PAD + col,
-                            bounds.y + PAD + row + CELL_H - 2.0,
-                        ),
+                        Point::new(bounds.x + PAD + col, bounds.y + PAD + row + CELL_H - 2.0),
                         Size::new(cell_w(), 2.0),
                     ),
                     pal_fg,
@@ -1281,7 +1302,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 TermCursorShape::Hidden => unreachable!("filtered above"),
             };
             renderer.fill_quad(
-                renderer::Quad { bounds: rect, ..renderer::Quad::default() },
+                renderer::Quad {
+                    bounds: rect,
+                    ..renderer::Quad::default()
+                },
                 Background::Color(color),
             );
         }
@@ -1297,10 +1321,10 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                     bounds: Rectangle::new(Point::new(x, y), Size::new(w, CELL_H)),
                     ..renderer::Quad::default()
                 },
-            Background::Color(Color::from_rgba(0.2, 0.3, 0.45, 0.9)),
-        );
-        fill_cached_para(renderer, preedit, w, Point::new(x, y), pal_fg, bounds);
-    }
+                Background::Color(Color::from_rgba(0.2, 0.3, 0.45, 0.9)),
+            );
+            fill_cached_para(renderer, preedit, w, Point::new(x, y), pal_fg, bounds);
+        }
 
         // PLAN-022 T-02:自绘拇指绘制随退役移除(scrollbar 视觉归外层
         // iced scrollable 官方 rail/scroller)。
@@ -1319,10 +1343,20 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 Size::new(badge_w, CELL_H),
             );
             renderer.fill_quad(
-                renderer::Quad { bounds: bg_bounds, ..renderer::Quad::default() },
+                renderer::Quad {
+                    bounds: bg_bounds,
+                    ..renderer::Quad::default()
+                },
                 Background::Color(pal_bg),
             );
-            fill_cached_para(renderer, &badge, badge_w, bg_bounds.position(), pal_fg, bounds);
+            fill_cached_para(
+                renderer,
+                &badge,
+                badge_w,
+                bg_bounds.position(),
+                pal_fg,
+                bounds,
+            );
         }
 
         // 菜单层:右键打开的 Copy/Paste/Select All/Interrupt 浮层,悬停项反色。
@@ -1333,12 +1367,12 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
             let menu_fg = Color::from_rgb(0.87, 0.87, 0.87);
             static TRACE: OnceLock<bool> = OnceLock::new();
             let trace = *TRACE.get_or_init(|| {
-                std::env::var("AUTO_IME_TRACE").map(|v| v == "1").unwrap_or(false)
+                std::env::var("AUTO_IME_TRACE")
+                    .map(|v| v == "1")
+                    .unwrap_or(false)
             });
             if trace {
-                eprintln!(
-                    "[menu-draw] at={at:?} rect={rect:?} bounds={bounds:?} fg={menu_fg:?}"
-                );
+                eprintln!("[menu-draw] at={at:?} rect={rect:?} bounds={bounds:?} fg={menu_fg:?}");
             }
             renderer.fill_quad(
                 renderer::Quad {
@@ -1360,20 +1394,22 @@ impl<M: Clone + std::fmt::Debug + 'static> Widget<M, Theme, iced::Renderer> for 
                 let hover = state.hover_item == Some(i);
                 if hover {
                     renderer.fill_quad(
-                        renderer::Quad { bounds: item_rect, ..renderer::Quad::default() },
+                        renderer::Quad {
+                            bounds: item_rect,
+                            ..renderer::Quad::default()
+                        },
                         Background::Color(Color::from_rgb(0.25, 0.35, 0.55)),
                     );
                 }
                 let para = &menu_paras()[i];
                 if trace {
-                    eprintln!("[menu-draw] label {i} '{label}' pos={:?} para={:?}", item_rect.position(), para.min_bounds());
+                    eprintln!(
+                        "[menu-draw] label {i} '{label}' pos={:?} para={:?}",
+                        item_rect.position(),
+                        para.min_bounds()
+                    );
                 }
-                renderer.fill_paragraph(
-                    &para,
-                    item_rect.position(),
-                    menu_fg,
-                    bounds,
-                );
+                renderer.fill_paragraph(&para, item_rect.position(), menu_fg, bounds);
             }
         }
     }
@@ -1461,15 +1497,19 @@ mod virtual_scroll_tests {
         let history = 50usize;
         // PLAN-024 底隙口径驱动:gap px → observe(view_y 恒 0、视口高
         // 恒 100、canvas = gap+100,几何自洽;draw 契约:返回增量入队)。
-        let mut observe =
-            |gap: f32| match Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, gap + 100.0, history)
-            {
-                Some(delta) => {
-                    crate::ui::terminal::terminal_queue_scroll_delta(core, delta);
-                    Some(delta)
-                }
-                None => None,
-            };
+        let mut observe = |gap: f32| match Terminal::<u8>::observe_view_scroll(
+            core,
+            0.0,
+            100.0,
+            gap + 100.0,
+            history,
+        ) {
+            Some(delta) => {
+                crate::ui::terminal::terminal_queue_scroll_delta(core, delta);
+                Some(delta)
+            }
+            None => None,
+        };
         // 贴底起步(基线 0)。滚轮上翻 3 行 → 底隙 3×CELL_H。
         assert_eq!(observe(0.0), None, "贴底基线零增量");
         let delta = observe(3.0 * 16.0);
@@ -1497,13 +1537,15 @@ mod virtual_scroll_tests {
         assert!(core.take_scroll_bind_suppress(), "绑定应吞一次读出回声");
         // 回声观察(底隙 = offset 10×CELL_H):对齐(目标==登记 offset)
         // 但零回灌。
-        let delta = Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 10.0 * 16.0 + 100.0, history);
+        let delta =
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 10.0 * 16.0 + 100.0, history);
         assert_eq!(delta, None, "scroll_to 回声不得回灌增量");
         // 稳态:同 offset 重复 bind → None(不重复发 scroll_to)。
         let y = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y, None, "稳态不得重复绑定");
         // 用户滚回顶:底隙 = 40 行 → 目标 40 → 回灌 +30(10→40)。
-        let delta = Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 40.0 * 16.0 + 100.0, history);
+        let delta =
+            Terminal::<u8>::observe_view_scroll(core, 0.0, 100.0, 40.0 * 16.0 + 100.0, history);
         assert_eq!(delta, Some(30));
     }
 
@@ -1640,7 +1682,8 @@ mod virtual_scroll_tests {
         );
         // 用户再滚一格(代数已进),视图上移 3 行(offset 13):真实增量回灌。
         core.bump_wheel_gen();
-        let delta = Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 13.0 * 16.0 + 100.0, history);
+        let delta =
+            Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 13.0 * 16.0 + 100.0, history);
         assert_eq!(delta, Some(3), "用户滚轮增量不得被回声吞没");
         // 镜像 draw 调用方:observe 返回 Some 即入队。
         crate::ui::terminal::terminal_queue_scroll_delta(core, 3);
@@ -1650,10 +1693,12 @@ mod virtual_scroll_tests {
         crate::ui::terminal::terminal_set_scroll_offset(core, 13);
         let y2 = Terminal::<u8>::bind_request_y(core);
         assert_eq!(y2, Some(27.0 * 16.0));
-        let delta = Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 13.0 * 16.0 + 100.0, history);
+        let delta =
+            Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 13.0 * 16.0 + 100.0, history);
         assert_eq!(delta, None, "scroll_to 回声不得回灌增量");
         // 错位(无滚轮事件但落点偏离期望位)= 真实观察,回灌差值。
-        let delta = Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 20.0 * 16.0 + 100.0, history);
+        let delta =
+            Terminal::<u8>::observe_view_scroll(core, 1.0, 100.0, 20.0 * 16.0 + 100.0, history);
         assert_eq!(delta, Some(7), "错位偏离应回灌 13→20 差值");
     }
 
@@ -1755,12 +1800,15 @@ mod virtual_scroll_tests {
         use crate::vm::ffi::stdlib::{lock_storage_for_test, storage_host_read_fresh};
         use iced_test::simulator;
         let _serial = lock_storage_for_test();
-        let path = std::env::temp_dir()
-            .join(format!("auto-probe-storage-{}.json", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("auto-probe-storage-{}.json", std::process::id()));
         let _ = std::fs::remove_file(&path);
         std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
         terminal_dispose("p028-probe");
-        viewport_h_register().lock().unwrap().insert("p028-probe".to_string(), 120.0);
+        viewport_h_register()
+            .lock()
+            .unwrap()
+            .insert("p028-probe".to_string(), 120.0);
         let probe_key = "vm.term_probe.p028-probe";
         let view = |w: u16| {
             View::<()>::col()
@@ -1795,7 +1843,10 @@ mod virtual_scroll_tests {
         // 宽容器:可用宽度变化 → 探针随动。
         let _ = simulator(view(900).into_iced());
         let second = storage_host_read_fresh(probe_key).expect("几何变化应再发布");
-        assert_ne!(first, second, "可用宽度变化必须反映到探针值: {first} vs {second}");
+        assert_ne!(
+            first, second,
+            "可用宽度变化必须反映到探针值: {first} vs {second}"
+        );
 
         // 同宽重布局:发布守护命中,值稳定。
         let _ = simulator(view(900).into_iced());
@@ -1812,34 +1863,82 @@ mod virtual_scroll_tests {
 #[cfg(test)]
 mod key_to_vt_tests {
     use super::key_event_to_vt;
-    use iced::keyboard::{Key, Modifiers, key::Named};
+    use iced::keyboard::{key::Named, Key, Modifiers};
     fn vt(key: Key, text: Option<&str>, mods: Modifiers) -> Option<String> {
         key_event_to_vt(&key, text, mods)
     }
 
     #[test]
     fn printable_text_and_named_keys() {
-        assert_eq!(vt(Key::Character("a".into()), Some("a"), Modifiers::default()).as_deref(), Some("a"));
+        assert_eq!(
+            vt(Key::Character("a".into()), Some("a"), Modifiers::default()).as_deref(),
+            Some("a")
+        );
         // Shift 符号:平台合成文本优先(winit 已合成)。
-        assert_eq!(vt(Key::Character("A".into()), Some("A"), Modifiers::default()).as_deref(), Some("A"));
-        assert_eq!(vt(Key::Named(Named::Enter), None, Modifiers::default()).as_deref(), Some("\r"));
-        assert_eq!(vt(Key::Named(Named::Backspace), None, Modifiers::default()).as_deref(), Some("\u{7f}"));
-        assert_eq!(vt(Key::Named(Named::Tab), None, Modifiers::default()).as_deref(), Some("\t"));
-        assert_eq!(vt(Key::Named(Named::Escape), None, Modifiers::default()).as_deref(), Some("\u{1b}"));
-        assert_eq!(vt(Key::Named(Named::Space), None, Modifiers::default()).as_deref(), Some(" "));
+        assert_eq!(
+            vt(Key::Character("A".into()), Some("A"), Modifiers::default()).as_deref(),
+            Some("A")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::Enter), None, Modifiers::default()).as_deref(),
+            Some("\r")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::Backspace), None, Modifiers::default()).as_deref(),
+            Some("\u{7f}")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::Tab), None, Modifiers::default()).as_deref(),
+            Some("\t")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::Escape), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::Space), None, Modifiers::default()).as_deref(),
+            Some(" ")
+        );
     }
 
     #[test]
     fn navigation_csi_sequences() {
-        assert_eq!(vt(Key::Named(Named::ArrowUp), None, Modifiers::default()).as_deref(), Some("\u{1b}[A"));
-        assert_eq!(vt(Key::Named(Named::ArrowDown), None, Modifiers::default()).as_deref(), Some("\u{1b}[B"));
-        assert_eq!(vt(Key::Named(Named::ArrowRight), None, Modifiers::default()).as_deref(), Some("\u{1b}[C"));
-        assert_eq!(vt(Key::Named(Named::ArrowLeft), None, Modifiers::default()).as_deref(), Some("\u{1b}[D"));
-        assert_eq!(vt(Key::Named(Named::Home), None, Modifiers::default()).as_deref(), Some("\u{1b}[H"));
-        assert_eq!(vt(Key::Named(Named::End), None, Modifiers::default()).as_deref(), Some("\u{1b}[F"));
-        assert_eq!(vt(Key::Named(Named::PageUp), None, Modifiers::default()).as_deref(), Some("\u{1b}[5~"));
-        assert_eq!(vt(Key::Named(Named::PageDown), None, Modifiers::default()).as_deref(), Some("\u{1b}[6~"));
-        assert_eq!(vt(Key::Named(Named::Delete), None, Modifiers::default()).as_deref(), Some("\u{1b}[3~"));
+        assert_eq!(
+            vt(Key::Named(Named::ArrowUp), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[A")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::ArrowDown), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[B")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::ArrowRight), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[C")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::ArrowLeft), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[D")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::Home), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[H")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::End), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[F")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::PageUp), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[5~")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::PageDown), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[6~")
+        );
+        assert_eq!(
+            vt(Key::Named(Named::Delete), None, Modifiers::default()).as_deref(),
+            Some("\u{1b}[3~")
+        );
     }
 
     #[test]
@@ -1847,8 +1946,14 @@ mod key_to_vt_tests {
         let mut ctrl = Modifiers::default();
         ctrl |= Modifiers::CTRL;
         // Ctrl+C = ETX(0x03,中断);Ctrl+D = EOT(0x04,EOF)。
-        assert_eq!(vt(Key::Character("c".into()), Some("c"), ctrl).as_deref(), Some("\u{3}"));
-        assert_eq!(vt(Key::Character("D".into()), Some("D"), ctrl).as_deref(), Some("\u{4}"));
+        assert_eq!(
+            vt(Key::Character("c".into()), Some("c"), ctrl).as_deref(),
+            Some("\u{3}")
+        );
+        assert_eq!(
+            vt(Key::Character("D".into()), Some("D"), ctrl).as_deref(),
+            Some("\u{4}")
+        );
         // Ctrl+非字母(如 Ctrl+1)不透传。
         assert_eq!(vt(Key::Character("1".into()), Some("1"), ctrl), None);
     }
@@ -1879,16 +1984,43 @@ mod key_to_vt_tests {
     #[test]
     fn terminal_key_binding_names_wt_style() {
         // WT 风格组合键:大小写合成漂移吸收(Ctrl+Shift+E → 'E'/'e' 恒同名)。
-        assert_eq!(name(Key::Character("E".into()), mods(true, false, true)), "ctrl.shift.e");
-        assert_eq!(name(Key::Character("e".into()), mods(true, false, true)), "ctrl.shift.e");
-        assert_eq!(name(Key::Character("W".into()), mods(true, false, true)), "ctrl.shift.w");
-        assert_eq!(name(Key::Named(Named::Tab), mods(true, false, true)), "ctrl.shift.tab");
-        assert_eq!(name(Key::Named(Named::ArrowLeft), mods(true, false, true)), "ctrl.shift.left");
-        assert_eq!(name(Key::Named(Named::ArrowRight), mods(true, false, true)), "ctrl.shift.right");
-        assert_eq!(name(Key::Named(Named::ArrowUp), mods(true, false, true)), "ctrl.shift.up");
-        assert_eq!(name(Key::Named(Named::ArrowDown), mods(true, false, true)), "ctrl.shift.down");
+        assert_eq!(
+            name(Key::Character("E".into()), mods(true, false, true)),
+            "ctrl.shift.e"
+        );
+        assert_eq!(
+            name(Key::Character("e".into()), mods(true, false, true)),
+            "ctrl.shift.e"
+        );
+        assert_eq!(
+            name(Key::Character("W".into()), mods(true, false, true)),
+            "ctrl.shift.w"
+        );
+        assert_eq!(
+            name(Key::Named(Named::Tab), mods(true, false, true)),
+            "ctrl.shift.tab"
+        );
+        assert_eq!(
+            name(Key::Named(Named::ArrowLeft), mods(true, false, true)),
+            "ctrl.shift.left"
+        );
+        assert_eq!(
+            name(Key::Named(Named::ArrowRight), mods(true, false, true)),
+            "ctrl.shift.right"
+        );
+        assert_eq!(
+            name(Key::Named(Named::ArrowUp), mods(true, false, true)),
+            "ctrl.shift.up"
+        );
+        assert_eq!(
+            name(Key::Named(Named::ArrowDown), mods(true, false, true)),
+            "ctrl.shift.down"
+        );
         // 裸控制码不进捷径命名冲突面:Ctrl+C → "ctrl.c"(表未声明即不命中)。
-        assert_eq!(name(Key::Character("c".into()), mods(true, false, false)), "ctrl.c");
+        assert_eq!(
+            name(Key::Character("c".into()), mods(true, false, false)),
+            "ctrl.c"
+        );
         // 修饰全无的普通字符照常命名(表声明才拦截)。
         assert_eq!(name(Key::Character("a".into()), Modifiers::default()), "a");
     }
@@ -2047,7 +2179,9 @@ fn fill_cached_para(
 fn ime_force_alphanumeric() -> bool {
     static TRACE: OnceLock<bool> = OnceLock::new();
     let trace = *TRACE.get_or_init(|| {
-        std::env::var("AUTO_IME_TRACE").map(|v| v == "1").unwrap_or(false)
+        std::env::var("AUTO_IME_TRACE")
+            .map(|v| v == "1")
+            .unwrap_or(false)
     });
 
     #[link(name = "user32")]
@@ -2060,11 +2194,8 @@ fn ime_force_alphanumeric() -> bool {
     extern "system" {
         fn ImmGetContext(hwnd: isize) -> isize;
         fn ImmReleaseContext(hwnd: isize, himc: isize) -> i32;
-        fn ImmGetConversionStatus(
-            himc: isize,
-            lpconversion: *mut u32,
-            lpsentence: *mut u32,
-        ) -> i32;
+        fn ImmGetConversionStatus(himc: isize, lpconversion: *mut u32, lpsentence: *mut u32)
+            -> i32;
         fn ImmSetConversionStatus(himc: isize, conversion: u32, sentence: u32) -> i32;
     }
     const IME_CMODE_NATIVE: u32 = 0x0001;
@@ -2074,16 +2205,24 @@ fn ime_force_alphanumeric() -> bool {
     unsafe {
         let hwnd = {
             let active = GetActiveWindow();
-            if active != 0 { active } else { GetForegroundWindow() }
+            if active != 0 {
+                active
+            } else {
+                GetForegroundWindow()
+            }
         };
         if hwnd == 0 {
-            if trace { eprintln!("[ime-trace] no hwnd"); }
+            if trace {
+                eprintln!("[ime-trace] no hwnd");
+            }
             return false;
         }
         let himc = ImmGetContext(hwnd);
         if himc == 0 {
             // 关联尚未落地(winit 异步入队)——调用方续重试。
-            if trace { eprintln!("[ime-trace] no himc (hwnd={hwnd:#x}), retry"); }
+            if trace {
+                eprintln!("[ime-trace] no himc (hwnd={hwnd:#x}), retry");
+            }
             return false;
         }
         let mut mode: u32 = 0;
@@ -2154,10 +2293,22 @@ pub fn rgb_u32(v: u32) -> Color {
 /// 232-255 = grayscale ramp).
 fn xterm256(i: u8) -> [u8; 3] {
     const BASE16: [[u8; 3]; 16] = [
-        [0x00, 0x00, 0x00], [0x80, 0x00, 0x00], [0x00, 0x80, 0x00], [0x80, 0x80, 0x00],
-        [0x00, 0x00, 0x80], [0x80, 0x00, 0x80], [0x00, 0x80, 0x80], [0xc0, 0xc0, 0xc0],
-        [0x80, 0x80, 0x80], [0xff, 0x00, 0x00], [0x00, 0xff, 0x00], [0xff, 0xff, 0x00],
-        [0x00, 0x00, 0xff], [0xff, 0x00, 0xff], [0x00, 0xff, 0xff], [0xff, 0xff, 0xff],
+        [0x00, 0x00, 0x00],
+        [0x80, 0x00, 0x00],
+        [0x00, 0x80, 0x00],
+        [0x80, 0x80, 0x00],
+        [0x00, 0x00, 0x80],
+        [0x80, 0x00, 0x80],
+        [0x00, 0x80, 0x80],
+        [0xc0, 0xc0, 0xc0],
+        [0x80, 0x80, 0x80],
+        [0xff, 0x00, 0x00],
+        [0x00, 0xff, 0x00],
+        [0xff, 0xff, 0x00],
+        [0x00, 0x00, 0xff],
+        [0xff, 0x00, 0xff],
+        [0x00, 0xff, 0xff],
+        [0xff, 0xff, 0xff],
     ];
     if i < 16 {
         return BASE16[i as usize];

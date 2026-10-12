@@ -1,0 +1,23 @@
+// PLAN-729 T-05: server file-response lowering matrix.
+// file_response construction (zero-I/O descriptor): sync/async same shape;
+// typed handler return face; strict options passthrough as string literal.
+
+fn main() {
+    let root = env.get("PLAN729_ROOT")
+
+    // 1. qualified construction with env root
+    let fr = http.file_response(root, "docs/report.pdf", "{}")
+
+    // 2. qualified construction with strict options
+    let dl = http.file_response(root, "a.bin", "{\"download_name\":\"a.bin\",\"disposition\":\"inline\"}")
+
+    // 3. typed helper returning the descriptor (declared-return face)
+    let r = file_endpoint("name.txt")
+
+    // 4. strong etag option
+    let v = http.file_response(root, "v.bin", "{\"etag\":\"\\\"v1\\\"\"}")
+}
+
+fn file_endpoint(name str) FileResponse {
+    return http.file_response("files", name, "{}")
+}

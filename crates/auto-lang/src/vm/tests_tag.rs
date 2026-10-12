@@ -3,8 +3,7 @@
 #![cfg(test)]
 
 fn run(code: &str) -> (String, String) {
-    crate::run_autovm_capture(code)
-        .unwrap_or_else(|e| (format!("ERR: {:?}", e), String::new()))
+    crate::run_autovm_capture(code).unwrap_or_else(|e| (format!("ERR: {:?}", e), String::new()))
 }
 
 #[test]

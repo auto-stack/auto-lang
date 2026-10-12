@@ -2,8 +2,8 @@
 //!
 //! Plan 102 Phase 5.2: Generate Tauri commands from API definitions
 
-use crate::api::{ApiEndpoint, ApiModule};
 use super::TargetGenerator;
+use crate::api::{ApiEndpoint, ApiModule};
 
 /// Tauri command generator
 pub struct TauriGenerator {
@@ -26,7 +26,6 @@ impl Default for TauriGenerator {
 }
 
 impl TauriGenerator {
-
     /// Convert Auto type to Rust type
     fn to_rust_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
@@ -102,11 +101,13 @@ impl TauriGenerator {
         lines.push("#[tauri::command]".to_string());
 
         // Plan 329: SSE handler → Channel command (async, streaming via emit)
-        let is_sse = endpoint.return_type.contains("~Iter")
-            || endpoint.return_type.contains("~Stream");
+        // PLAN-734 T-05：契约分类（身份判定）。
+        let is_sse = crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == crate::api::contract::ResponseKind::Stream;
 
         // Build function signature
-        let mut params: Vec<String> = endpoint.params
+        let mut params: Vec<String> = endpoint
+            .params
             .iter()
             .map(|p| {
                 let rust_type = self.to_rust_type(&p.ty);
@@ -124,13 +125,14 @@ impl TauriGenerator {
             params.push("on_event: tauri::ipc::Channel".to_string());
         }
 
-        let call_args: Vec<String> = endpoint.params
-            .iter()
-            .map(|p| p.name.to_string())
-            .collect();
+        let call_args: Vec<String> = endpoint.params.iter().map(|p| p.name.to_string()).collect();
 
         let signature = if is_sse {
-            format!("pub async fn {}({}) {{", endpoint.fn_name, params.join(", "))
+            format!(
+                "pub async fn {}({}) {{",
+                endpoint.fn_name,
+                params.join(", ")
+            )
         } else {
             let return_type = self.to_rust_type(&endpoint.return_type);
             let return_sig = if return_type == "()" {
@@ -141,24 +143,102 @@ impl TauriGenerator {
             if return_sig.is_empty() {
                 format!("pub fn {}({}) {{", endpoint.fn_name, params.join(", "))
             } else {
-                format!("pub fn {}({}) {} {{", endpoint.fn_name, params.join(", "), return_sig)
+                format!(
+                    "pub fn {}({}) {} {{",
+                    endpoint.fn_name,
+                    params.join(", "),
+                    return_sig
+                )
             }
         };
         lines.push(signature);
+
+        // PLAN-730 T-06: 上传端点不经 Tauri IPC——UploadRequest 是宿主注入
+        // 能力（不可序列化句柄；明确 Unsupported 诊断 + HTTP URL 指引）。
+        let is_upload_endpoint = endpoint
+            .params
+            .iter()
+            .any(|p| crate::api::contract::is_upload_param(&p.ty))
+            || crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+                == crate::api::contract::ResponseKind::Upload;
+        if is_upload_endpoint {
+            lines.clear();
+            lines.push(format!(
+                "// PLAN-730: upload endpoint `{}` — Tauri IPC is unsupported for uploads;",
+                endpoint.fn_name
+            ));
+            lines.push("// call the HTTP URL directly instead.".to_string());
+            lines.push("#[tauri::command]".to_string());
+            lines.push(format!(
+                "pub fn {}() -> Result<String, String> {{",
+                endpoint.fn_name
+            ));
+            lines.push(format!(
+                "{}Err(\"PLAN-730: upload endpoint `{}` requires HTTP transport; call the HTTP URL directly instead of the Tauri IPC bridge\".to_string())",
+                self.indent, endpoint.fn_name
+            ));
+            lines.push("}".to_string());
+            return lines.join("\n");
+        }
+
+        // PLAN-729 T-05: 文件端点不经 Tauri IPC——描述符不是可序列化数据
+        // （明确 Unsupported 诊断 + 改走 HTTP URL 指引，不 opaque 当成功数据）。
+        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == crate::api::contract::ResponseKind::File
+        {
+            lines.clear();
+            lines.push(format!(
+                "// PLAN-729: file endpoint `{}` — Tauri IPC is unsupported for file responses;",
+                endpoint.fn_name
+            ));
+            lines.push("// call the HTTP URL directly instead.".to_string());
+            lines.push("#[tauri::command]".to_string());
+            lines.push(format!(
+                "pub fn {}() -> Result<String, String> {{",
+                endpoint.fn_name
+            ));
+            lines.push(format!(
+                "{}Err(\"PLAN-729: file endpoint `{}` requires HTTP transport; call the HTTP URL directly instead of the Tauri IPC bridge\".to_string())",
+                self.indent, endpoint.fn_name
+            ));
+            lines.push("}".to_string());
+            return lines.join(
+                "
+",
+            );
+        }
 
         // Plan 329: SSE handler → for loop + channel.emit (streaming).
         // Non-SSE → call api::fn and return result.
         if is_sse {
             // SSE: iterate the generator stream and emit each item via Channel
-            lines.push(format!("{}for item in api::{}({}) {{", self.indent, endpoint.fn_name, call_args.join(", ")));
-            lines.push(format!("{}{}let _ = on_event.emit(serde_json::json!(item));", self.indent, self.indent));
+            lines.push(format!(
+                "{}for item in api::{}({}) {{",
+                self.indent,
+                endpoint.fn_name,
+                call_args.join(", ")
+            ));
+            lines.push(format!(
+                "{}{}let _ = on_event.emit(serde_json::json!(item));",
+                self.indent, self.indent
+            ));
             lines.push(format!("{}}}", self.indent));
         } else {
             let rt = endpoint.return_type.trim();
             if rt == "()" || rt == "void" {
-                lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+                lines.push(format!(
+                    "{}api::{}({})",
+                    self.indent,
+                    endpoint.fn_name,
+                    call_args.join(", ")
+                ));
             } else {
-                lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+                lines.push(format!(
+                    "{}api::{}({})",
+                    self.indent,
+                    endpoint.fn_name,
+                    call_args.join(", ")
+                ));
             }
         }
 
@@ -177,7 +257,10 @@ impl TauriGenerator {
         ];
 
         for endpoint in endpoints {
-            lines.push(format!("{}{}{},", self.indent, self.indent, endpoint.fn_name));
+            lines.push(format!(
+                "{}{}{},",
+                self.indent, self.indent, endpoint.fn_name
+            ));
         }
 
         lines.push(format!("{}])", self.indent));
@@ -260,11 +343,17 @@ impl TauriGenerator {
             for field in &api_type.fields {
                 let rust_type = self.to_rust_type(&field.ty);
                 let serde_skip = if field.optional {
-                    format!("#[serde(skip_serializing_if = \"Option::is_none\")]\n{}", self.indent)
+                    format!(
+                        "#[serde(skip_serializing_if = \"Option::is_none\")]\n{}",
+                        self.indent
+                    )
                 } else {
                     "".to_string()
                 };
-                lines.push(format!("{}{}pub {}: {},", self.indent, serde_skip, field.name, rust_type));
+                lines.push(format!(
+                    "{}{}pub {}: {},",
+                    self.indent, serde_skip, field.name, rust_type
+                ));
             }
 
             lines.push("}".to_string());
@@ -312,6 +401,40 @@ impl TargetGenerator for TauriGenerator {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-729 R1 [G-02]：文件端点 → Tauri IPC 明确 Unsupported 诊断
+    /// （Err + 改走 HTTP URL 指引；不 opaque 当成功数据）。
+    #[test]
+    fn test_plan729_file_endpoint_unsupported_diagnostic() {
+        use crate::api::{ApiAttrs, ApiEndpoint};
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some("GET".to_string());
+        attrs.path = Some("/api/files/:name".to_string());
+        let endpoint = ApiEndpoint {
+            fn_name: "download".to_string(),
+            params: Vec::new(),
+            return_type: "FileResponse".to_string(),
+            attrs,
+            body: None,
+            doc: None,
+        };
+        let gen = super::TauriGenerator::default();
+        let cmd = gen.generate_command(&endpoint);
+        assert!(cmd.contains("#[tauri::command]"), "{cmd}");
+        assert!(cmd.contains("Result<String, String>"), "{cmd}");
+        assert!(
+            cmd.contains("requires HTTP transport"),
+            "改走 HTTP URL 指引: {cmd}"
+        );
+        assert!(
+            cmd.contains("call the HTTP URL directly"),
+            "指引文案: {cmd}"
+        );
+        assert!(
+            !cmd.contains("a2r_std::http::FileResponse"),
+            "不得回 opaque 数据: {cmd}"
+        );
+    }
+
     use super::*;
     use crate::api::{ApiAttrs, ApiParam};
 
@@ -335,9 +458,7 @@ mod tests {
         let endpoint = ApiEndpoint {
             fn_name: "get_user".to_string(),
             attrs: ApiAttrs::new(),
-            params: vec![
-                ApiParam::new("id".to_string(), "int".to_string()),
-            ],
+            params: vec![ApiParam::new("id".to_string(), "int".to_string())],
             return_type: "User".to_string(),
             doc: Some("Get user by ID".to_string()),
             body: None,

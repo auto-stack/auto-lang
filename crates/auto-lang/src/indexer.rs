@@ -124,7 +124,13 @@ impl<'db> Indexer<'db> {
                 }
 
                 // Control flow statements (shouldn't appear at top level)
-                Stmt::If(_) | Stmt::For(_) | Stmt::Is(_) | Stmt::Break | Stmt::Continue | Stmt::Return(_) | Stmt::Reply(_) => {
+                Stmt::If(_)
+                | Stmt::For(_)
+                | Stmt::Is(_)
+                | Stmt::Break
+                | Stmt::Continue
+                | Stmt::Return(_)
+                | Stmt::Reply(_) => {
                     // These shouldn't appear at top level, but skip them if they do
                 }
 
@@ -151,7 +157,15 @@ impl<'db> Indexer<'db> {
                 }
 
                 // Plan 096: UI scenario statements
-                Stmt::WidgetDecl(_) | Stmt::StoreDecl(_) | Stmt::ViewFragmentDecl(_) | Stmt::StyleRecipeDecl(_) | Stmt::Try(_) | Stmt::MsgDecl(_) | Stmt::ModelBlock(_) | Stmt::ViewBlock(_) | Stmt::ActionsDecl(_) => {
+                Stmt::WidgetDecl(_)
+                | Stmt::StoreDecl(_)
+                | Stmt::ViewFragmentDecl(_)
+                | Stmt::StyleRecipeDecl(_)
+                | Stmt::Try(_)
+                | Stmt::MsgDecl(_)
+                | Stmt::ModelBlock(_)
+                | Stmt::ViewBlock(_)
+                | Stmt::ActionsDecl(_) => {
                     // For now, skip UI declarations
                     // Phase 2: Could index widget declarations
                 }
@@ -166,7 +180,11 @@ impl<'db> Indexer<'db> {
                 }
 
                 // Plan 095: Compile-time execution
-                Stmt::HashIf(_) | Stmt::HashFor(_) | Stmt::HashIs(_) | Stmt::HashBrace(_) | Stmt::MacroCall(_) => {
+                Stmt::HashIf(_)
+                | Stmt::HashFor(_)
+                | Stmt::HashIs(_)
+                | Stmt::HashBrace(_)
+                | Stmt::MacroCall(_) => {
                     // Compile-time constructs are processed before indexing
                     // Skip them here as they should be resolved by CTEE
                 }
@@ -217,7 +235,11 @@ impl<'db> Indexer<'db> {
     }
 
     /// Index a type declaration (struct)
-    fn index_type_decl(&mut self, _type_decl: &crate::ast::TypeDecl, file_id: FileId) -> Result<FragId, String> {
+    fn index_type_decl(
+        &mut self,
+        _type_decl: &crate::ast::TypeDecl,
+        file_id: FileId,
+    ) -> Result<FragId, String> {
         // TODO: Implement type declaration indexing
         // Phase 1: Create placeholder fragment
         // Phase 2: Extract fields and methods
@@ -226,7 +248,11 @@ impl<'db> Indexer<'db> {
     }
 
     /// Index an enum declaration
-    fn index_enum_decl(&mut self, _enum_decl: &crate::ast::EnumDecl, file_id: FileId) -> Result<FragId, String> {
+    fn index_enum_decl(
+        &mut self,
+        _enum_decl: &crate::ast::EnumDecl,
+        file_id: FileId,
+    ) -> Result<FragId, String> {
         // TODO: Implement enum declaration indexing
         let frag_id = FragId::new(file_id, 0);
         Ok(frag_id)
@@ -268,7 +294,11 @@ impl<'db> Indexer<'db> {
     }
 
     /// Index an ext (impl) declaration
-    fn index_ext_decl(&mut self, _ext: &crate::ast::Ext, _file_id: FileId) -> Result<Vec<FragId>, String> {
+    fn index_ext_decl(
+        &mut self,
+        _ext: &crate::ast::Ext,
+        _file_id: FileId,
+    ) -> Result<Vec<FragId>, String> {
         // TODO: Implement ext declaration indexing
         // Ext blocks can contain multiple methods
         // Phase 1: Return empty list
@@ -278,12 +308,16 @@ impl<'db> Indexer<'db> {
     /// Index a use (import) statement
     ///
     /// Phase 2: Track file-level dependencies
-    fn index_use_stmt(&mut self, use_stmt: &crate::ast::Use, file_id: FileId) -> Result<(), String> {
+    fn index_use_stmt(
+        &mut self,
+        use_stmt: &crate::ast::Use,
+        file_id: FileId,
+    ) -> Result<(), String> {
         // Phase 2: Only track Auto imports (not C or Rust)
         use crate::ast::UseKind;
 
         if !matches!(use_stmt.kind, UseKind::Auto) {
-            return Ok(());  // Skip C and Rust imports
+            return Ok(()); // Skip C and Rust imports
         }
 
         // Try to resolve import paths to FileIds
@@ -306,14 +340,16 @@ impl<'db> Indexer<'db> {
             for candidate in candidates {
                 if let Some(imported_file_id) = self.db.get_file_id_by_path(&candidate) {
                     imported_files.push(imported_file_id);
-                    break;  // Found a match, stop trying other patterns
+                    break; // Found a match, stop trying other patterns
                 }
             }
         }
 
         // Add dependencies to the graph
         if !imported_files.is_empty() {
-            self.db.dep_graph_mut().add_file_import(file_id, imported_files);
+            self.db
+                .dep_graph_mut()
+                .add_file_import(file_id, imported_files);
         }
 
         Ok(())
@@ -322,7 +358,11 @@ impl<'db> Indexer<'db> {
     /// Index a dependency declaration (Plan 092)
     ///
     /// Tracks Rust crate dependencies for FFI.
-    fn index_dep_stmt(&mut self, dep_stmt: &crate::ast::DepStmt, _file_id: FileId) -> Result<(), String> {
+    fn index_dep_stmt(
+        &mut self,
+        dep_stmt: &crate::ast::DepStmt,
+        _file_id: FileId,
+    ) -> Result<(), String> {
         // Log the dependency for now
         // Phase 5: Could register in sandbox registry
         log::info!(
@@ -339,7 +379,11 @@ impl<'db> Indexer<'db> {
     }
 
     /// Index a store declaration (let, mut, const)
-    fn index_store_decl(&mut self, _store: &crate::ast::Store, file_id: FileId) -> Result<FragId, String> {
+    fn index_store_decl(
+        &mut self,
+        _store: &crate::ast::Store,
+        file_id: FileId,
+    ) -> Result<FragId, String> {
         // Global constants are fragments, local variables are not
         // Phase 1: Treat all stores as potential fragments
         let frag_id = FragId::new(file_id, 0);
@@ -347,40 +391,60 @@ impl<'db> Indexer<'db> {
     }
 
     /// Index a tag declaration
-    fn index_tag_decl(&mut self, _tag: &crate::ast::Tag, file_id: FileId) -> Result<FragId, String> {
+    fn index_tag_decl(
+        &mut self,
+        _tag: &crate::ast::Tag,
+        file_id: FileId,
+    ) -> Result<FragId, String> {
         // TODO: Implement tag declaration indexing
         let frag_id = FragId::new(file_id, 0);
         Ok(frag_id)
     }
 
     /// Index an alias declaration
-    fn index_alias_decl(&mut self, _alias: &crate::ast::Alias, _file_id: FileId) -> Result<(), String> {
+    fn index_alias_decl(
+        &mut self,
+        _alias: &crate::ast::Alias,
+        _file_id: FileId,
+    ) -> Result<(), String> {
         // Aliases are not fragments (they're symbol table entries)
         Ok(())
     }
 
     /// Index a type alias declaration
-    fn index_type_alias_decl(&mut self, _type_alias: &crate::ast::TypeAlias, _file_id: FileId) -> Result<(), String> {
+    fn index_type_alias_decl(
+        &mut self,
+        _type_alias: &crate::ast::TypeAlias,
+        _file_id: FileId,
+    ) -> Result<(), String> {
         // Type aliases are not fragments (they're symbol table entries)
         Ok(())
     }
 
     /// Index a union declaration
-    fn index_union_decl(&mut self, _union: &crate::ast::Union, file_id: FileId) -> Result<FragId, String> {
+    fn index_union_decl(
+        &mut self,
+        _union: &crate::ast::Union,
+        file_id: FileId,
+    ) -> Result<FragId, String> {
         // TODO: Implement union declaration indexing
         let frag_id = FragId::new(file_id, 0);
         Ok(frag_id)
     }
 
     /// Index an on event handler
-    fn index_on_events(&mut self, _on: &crate::ast::OnEvents, file_id: FileId) -> Result<FragId, String> {
+    fn index_on_events(
+        &mut self,
+        _on: &crate::ast::OnEvents,
+        file_id: FileId,
+    ) -> Result<FragId, String> {
         // TODO: Implement on event handler indexing
         let frag_id = FragId::new(file_id, 0);
         Ok(frag_id)
     }
 
     /// Extract span information from optional (line, col, pos) tuple
-    #[allow(dead_code)]  // Phase 2: Will be used for other declaration types
+    #[allow(dead_code)] // Phase 2: Will be used for other declaration types
     fn extract_span(&self, span: Option<&(usize, usize, usize)>) -> Result<FragSpan, String> {
         if let Some((line, col, pos)) = span {
             Ok(FragSpan {
@@ -445,13 +509,11 @@ impl<'db> Indexer<'db> {
     /// # Returns
     ///
     /// A list of fragment IDs that were created, or empty if no change detected.
-    pub fn reindex_file(
-        &mut self,
-        file_id: FileId,
-        new_code: &str,
-    ) -> AutoResult<Vec<FragId>> {
+    pub fn reindex_file(&mut self, file_id: FileId, new_code: &str) -> AutoResult<Vec<FragId>> {
         // Get file path before any mutations
-        let file_path = self.db.get_file_path(file_id)
+        let file_path = self
+            .db
+            .get_file_path(file_id)
             .map(|p| p.to_string())
             .unwrap_or_else(|| "unknown.at".to_string());
 
@@ -460,7 +522,7 @@ impl<'db> Indexer<'db> {
 
         // Check if file actually changed
         if !self.db.is_file_dirty(file_id) {
-            return Ok(vec![]);  // No change, skip re-indexing
+            return Ok(vec![]); // No change, skip re-indexing
         }
 
         // Phase 3.3: Save old fragment interface hashes before clearing
@@ -487,13 +549,17 @@ impl<'db> Indexer<'db> {
         // Phase 2: More granular cache invalidation
 
         // Re-parse the source code
-        let _scope = Rc::new(std::cell::RefCell::new(crate::scope_manager::ScopeManager::new()));
+        let _scope = Rc::new(std::cell::RefCell::new(
+            crate::scope_manager::ScopeManager::new(),
+        ));
         let mut parser = Parser::from(new_code);
-        let ast = parser.parse()
+        let ast = parser
+            .parse()
             .map_err(|e| AutoError::Msg(format!("Parse error during re-indexing: {}", e)))?;
 
         // Re-index the AST
-        let frag_ids = self.index_ast(&ast, file_id)
+        let frag_ids = self
+            .index_ast(&ast, file_id)
             .map_err(|e| AutoError::Msg(format!("Index error during re-indexing: {}", e)))?;
 
         // Phase 3.3: Compare L3 hashes and implement熔断
@@ -501,8 +567,7 @@ impl<'db> Indexer<'db> {
         for new_frag_id in &frag_ids {
             if let Some(meta) = self.db.get_fragment_meta(new_frag_id) {
                 if let Some(&old_hash) = old_hashes.get(&meta.name) {
-                    let new_hash = self.db.get_fragment_iface_hash(new_frag_id)
-                        .unwrap_or(0);  // Should always exist after indexing
+                    let new_hash = self.db.get_fragment_iface_hash(new_frag_id).unwrap_or(0); // Should always exist after indexing
 
                     if old_hash != new_hash {
                         // Signature changed! Mark dependents dirty (熔断FAILED)
@@ -636,7 +701,10 @@ mod tests {
         let imported_file = db.insert_source("std/io.at", AutoStr::from("fn say() void {}"));
 
         // Insert main file that imports std::io
-        let main_file = db.insert_source("main.at", AutoStr::from("use std::io\nfn main() int { 42 }"));
+        let main_file = db.insert_source(
+            "main.at",
+            AutoStr::from("use std::io\nfn main() int { 42 }"),
+        );
 
         // Create AST with use statement
         let use_stmt = crate::ast::Use {
@@ -682,7 +750,7 @@ mod tests {
 
         assert!(result.is_ok());
         let frag_ids = result.unwrap();
-        assert_eq!(frag_ids.len(), 0);  // No change detected, skipped
+        assert_eq!(frag_ids.len(), 0); // No change detected, skipped
 
         // File should not be marked as dirty
         assert!(!db.is_marked_dirty(file_id));
@@ -703,7 +771,7 @@ mod tests {
 
         assert!(result.is_ok());
         let frag_ids = result.unwrap();
-        assert_eq!(frag_ids.len(), 2);  // Two functions indexed
+        assert_eq!(frag_ids.len(), 2); // Two functions indexed
 
         // File should not be marked as dirty (we just re-indexed it)
         assert!(!db.is_marked_dirty(file_id));
@@ -719,7 +787,8 @@ mod tests {
         // Set up dependency: main imports lib
         let lib_file = db.insert_source("lib.at", AutoStr::from("fn lib_fn() int { 1 }"));
         let main_file = db.insert_source("main.at", AutoStr::from("fn main() int { 42 }"));
-        db.dep_graph_mut().add_file_import(main_file, vec![lib_file]);
+        db.dep_graph_mut()
+            .add_file_import(main_file, vec![lib_file]);
 
         // Hash both files
         db.hash_file(lib_file);
@@ -748,7 +817,8 @@ mod tests {
         let app_file = db.insert_source("app.at", AutoStr::from("fn app_fn() int { 3 }"));
 
         // lib imports core, app imports lib
-        db.dep_graph_mut().add_file_import(lib_file, vec![core_file]);
+        db.dep_graph_mut()
+            .add_file_import(lib_file, vec![core_file]);
         db.dep_graph_mut().add_file_import(app_file, vec![lib_file]);
 
         // Hash all files
@@ -766,7 +836,10 @@ mod tests {
         assert!(db.is_marked_dirty(lib_file));
 
         // app_file should ALSO be marked dirty (transitive dependency via lib_file)
-        assert!(db.is_marked_dirty(app_file), "app_file should be marked dirty due to transitive dependency");
+        assert!(
+            db.is_marked_dirty(app_file),
+            "app_file should be marked dirty due to transitive dependency"
+        );
 
         // core_file should NOT be marked dirty (we just re-indexed it)
         assert!(!db.is_marked_dirty(core_file));

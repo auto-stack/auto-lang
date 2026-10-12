@@ -69,8 +69,11 @@ pub fn split_frontmatter(spec_md: &str) -> Result<(&str, &str), String> {
         .ok_or_else(|| "spec.md frontmatter is missing closing `+++`".to_string())?;
     let frontmatter = &after_open[..close];
     let body = &after_open[close + 4..]; // skip "\n+++"
-    // Drop a single leading newline from the body.
-    let body = body.strip_prefix('\n').or_else(|| body.strip_prefix("\r\n")).unwrap_or(body);
+                                         // Drop a single leading newline from the body.
+    let body = body
+        .strip_prefix('\n')
+        .or_else(|| body.strip_prefix("\r\n"))
+        .unwrap_or(body);
     Ok((frontmatter, body))
 }
 
@@ -86,8 +89,8 @@ impl BlueprintSpec {
         // loudly instead of being silently dropped by serde. Only top-level
         // keys are checked; a `[dataSource]` slot named `version` is a
         // legitimate fetcher signature.
-        let table: toml::Table = toml::from_str(frontmatter)
-            .map_err(|e| format!("invalid spec frontmatter: {e}"))?;
+        let table: toml::Table =
+            toml::from_str(frontmatter).map_err(|e| format!("invalid spec frontmatter: {e}"))?;
         for key in Self::VERSION_KEYS {
             if table.contains_key(key) {
                 return Err(format!(
@@ -159,7 +162,10 @@ A login form.
         assert_eq!(spec.name, "login");
         assert_eq!(spec.palette, vec!["Button", "Input", "Label"]); // sorted
         assert_eq!(spec.variants, vec!["minimal", "with_sso"]);
-        assert_eq!(spec.data_source.get("attempt").unwrap(), "(creds) -> Session");
+        assert_eq!(
+            spec.data_source.get("attempt").unwrap(),
+            "(creds) -> Session"
+        );
         assert!(body.contains("# Intent"));
     }
 

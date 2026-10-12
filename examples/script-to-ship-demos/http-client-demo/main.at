@@ -3,7 +3,7 @@
 // Dev:  auto main.at                     (VM 脚本秒级跑,跳过编译)
 // Ship: auto trans --path main.at rust   (a2r 转 Rust 发布,链 a2r-std 的 ureq)
 //
-// 对应 parity 用例: parity/libs/http_client_sync/ (L1 ✓ 三向一致,本地 mock server)
+// 对应 parity 用例: test/parity/libs/http_client_sync/ (L1 ✓ 三向一致,本地 mock server)
 // 覆盖特性:
 //   * auto.http 模块调用 (a2r 发射 a2r_std::http,VM 走原生 shim)
 //   * POST + 响应体/状态码双通道 (post_sync + last_status)

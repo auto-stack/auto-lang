@@ -34,7 +34,10 @@ mod plan446_batch3_probes {
             out.contains("daemon"),
             "D1: nested dot access after json.parse broken, stdout={out:?}"
         );
-        assert!(out.contains('3'), "D1: scalar field access broken, stdout={out:?}");
+        assert!(
+            out.contains('3'),
+            "D1: scalar field access broken, stdout={out:?}"
+        );
         // 占位 shim 的症状:原样返回 JSON 文本本身。
         assert!(
             !out.contains("{\\\"provider"),

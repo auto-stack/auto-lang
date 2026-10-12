@@ -23,8 +23,6 @@ mod plan370_store_vm_tests {
     use crate::plan370_test_support::build_015_component;
     use std::collections::HashMap;
 
-
-
     /// REGRESSION: store fields must be merged into root state after Init.
     ///
     /// Before the fix, root state held ONLY the App's own `search` field; the
@@ -138,7 +136,10 @@ mod plan370_store_vm_tests {
                 values: (0..6).map(auto_val::Value::Int).collect(),
             }),
         );
-        state.insert("active_folder".to_string(), auto_val::Value::Str("all".into()));
+        state.insert(
+            "active_folder".to_string(),
+            auto_val::Value::Str("all".into()),
+        );
         let builder = AuraSnapshotBuilder::new(&state);
 
         // The exact condition from app.at:

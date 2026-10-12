@@ -63,8 +63,7 @@ pub fn parse_dropfiles(bytes: &[u8]) -> Vec<String> {
     if !ok {
         return Vec::new();
     }
-    let p_files =
-        u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+    let p_files = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
     if p_files < DROPFILES_HEADER_SIZE || p_files + 2 > bytes.len() {
         return Vec::new();
     }
@@ -153,7 +152,13 @@ pub fn parse_dib_header(bytes: &[u8]) -> Option<DibInfo> {
             if bytes.len() < 52 {
                 return None;
             }
-            (le_u32(bytes, 40), le_u32(bytes, 44), le_u32(bytes, 48), 0, 52)
+            (
+                le_u32(bytes, 40),
+                le_u32(bytes, 44),
+                le_u32(bytes, 48),
+                0,
+                52,
+            )
         } else {
             let (r, g, b) = STD_RGB_MASKS;
             (r, g, b, 0, 40)
@@ -216,7 +221,7 @@ pub fn dib_bgra_to_rgba(info: &DibInfo, bytes: &[u8]) -> Option<(u32, u32, Vec<u
             rgba.push(px[2]); // R
             rgba.push(px[1]); // G
             rgba.push(px[0]); // B
-            // 无 alpha 掩码（BI_RGB / 旧头）时 alpha 字节不可信，视为不透明。
+                              // 无 alpha 掩码（BI_RGB / 旧头）时 alpha 字节不可信，视为不透明。
             rgba.push(if info.alpha_mask == 0 { 255 } else { px[3] });
         }
     }
@@ -269,8 +274,8 @@ use windows::core::w;
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, WAIT_OBJECT_0};
 #[cfg(all(windows, feature = "native-clipboard"))]
 use windows::Win32::System::DataExchange::{
-    CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
-    OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
+    CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+    RegisterClipboardFormatW, SetClipboardData,
 };
 #[cfg(all(windows, feature = "native-clipboard"))]
 use windows::Win32::System::Memory::{
@@ -704,7 +709,11 @@ mod tests {
         // 零高。
         assert!(parse_dib_header(&mk_header(32, 0, 0)).is_none());
         // 像素区截断：头声称 1×1 但 blob 只有头。
-        assert!(dib_bgra_to_rgba(&parse_dib_header(&mk_header(32, 0, 1)).unwrap(), &mk_header(32, 0, 1)).is_none());
+        assert!(dib_bgra_to_rgba(
+            &parse_dib_header(&mk_header(32, 0, 1)).unwrap(),
+            &mk_header(32, 0, 1)
+        )
+        .is_none());
         // 64MP 防爆：解析几何成功但转换拒绝。
         let mut huge = mk_header(32, 0, 1);
         huge[4..8].copy_from_slice(&80_000i32.to_le_bytes()); // 80000×80000=6.4G

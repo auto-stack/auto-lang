@@ -28,6 +28,8 @@ All AI coding assistants working in this repository must strictly adhere to the 
   - *Criteria*: Minor typos, comment updates, or 1-2 line simple bugfixes without side-effects.
   - *Action* (**2026-09-15 用户裁定：小型改动同样必须走 worktree，master 零 WIP 代码**):
     轻量路径（无需正式 plan 文档）：`git worktree add D:/autostack/.wt/fix-<slug>/auto-lang -b fix-<slug>`
+    （或一键建组含 auto-down 兄弟仓：`bash scripts/new-wt-group.sh fix-<slug> --branch fix-<slug>`，
+    PLAN-726 T-04——组内 cargo 解析即开即用，缺兄弟仓时 check 直接失败）
     → 修改 + 按改动范围跑验证门禁 → 提交 → 合回 master → `bash D:/autostack/wt-guard.sh
     D:/autostack/.wt/fix-<slug>/auto-lang`（必须 clean）→ 移除 worktree/分支/组目录。
     实机走查/核查会话中的**顺手修复**同样适用本条（2026-09-15 三线 WIP 直接落 master 的事后矫正）。
@@ -37,7 +39,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
   - *Action*:
     1. Run `scripts/new-plan.sh <slug>` on the default checkout (master) to atomically take the next `<NNN>` plan ID from `docs/plans/.next-id` and create the plan skeleton (v2 frontmatter).
     2. Fill `docs/plans/<NNN>-<plan-name>.md` (needs-analysis seeded from [docs/specs/overview.md](docs/specs/overview.md)) detailing goals, design, task checklist, and verification plan; present for confirmation before executing.
-    3. Create a dedicated worktree in the sibling-group layout (Plan 529): `git worktree add D:/autostack/.wt/lang-<NNN>/auto-lang -b plan-<NNN>-dev`. Cross-repo plans add sibling worktrees into the same group dir (e.g. `.wt/down-047/{auto-down, auto-lang}`) so `../auto-lang` resolves uniformly.
+    3. Create a dedicated worktree in the sibling-group layout (Plan 529): `git worktree add D:/autostack/.wt/lang-<NNN>/auto-lang -b plan-<NNN>-dev`，或一键 `bash scripts/new-wt-group.sh lang-<NNN> --branch plan-<NNN>-dev`（自动补 auto-down 兄弟 detached；基面恒钉 master，PLAN-726 T-04）. Cross-repo plans add sibling worktrees into the same group dir (e.g. `.wt/down-047/{auto-down, auto-lang}`) so `../auto-lang` resolves uniformly.
     4. Perform all code implementation and testing inside that worktree; plan-file bookkeeping (`[✅]` markers, frontmatter flips) stays on the default checkout.
 - **L2: Architectural Overhaul (重大架构级任务)**
   - *Criteria*: Changes impacting overall architecture, compiler/VM pipelines, core protocol definitions, or cross-system runtime contracts.
@@ -81,10 +83,15 @@ All AI coding assistants working in this repository must strictly adhere to the 
       tf 批量档对 ui_gen 仍全覆盖（nextest-full 不排除）。
     - **并行纪律**：多 agent 并行时，worktree 内只跑 `cargo check` / scoped `t` / `tv`
       级负载；全量档（`tf`/`ta`/`taa`/`t3`）一律主检出单实例串行。
+      重型测试族（画廊围栏 / 1M churn）自 PLAN-726 T-02 起带**机器级单实例闸门**
+      （`heavy_gate.rs::machine_gate`，锁 `D:/autostack/.locks/<family>.lock`）：
+      多跑并发时第二实例秒级确定性红（含持锁者 PID/cwd 提示），不再互毁挂死；
+      持锁进程死亡的陈锁自动接管。aavm XL/LG 族经 2026-10-02 裁定豁免
+      （aavm/aa2r 拟退役短期不跑；恢复运行时补接线即可）。
     - **AAVM 专项（Plan 568）**：改 VM/编译器的复审随身跑 `cargo tv`（PLAN-700 语料三族，
       与 t/tf 同二进制零重编），全量收口归批量回归档；aavm 无实用面，不需要关心是否被
-      改坏，守护=CI+`ta`。只有 diff 触及 aavm 代码（`auto/lib/*.at`、`test/vm/aavm2/**`、
-      `parity/**`、aavm2 测试基建）才跑 `cargo taa`，且按 §AAVM/AA2R Test Tier 作用域
+      改坏，守护=本地 `taa`/`ta`（PLAN-763 已移除旧 CI）。只有 diff 触及 aavm 代码（`packages/aavm/lib/*.at`、`test/vm/aavm2/**`、
+      `test/parity/**`、aavm2 测试基建）才跑 `cargo taa`，且按 §AAVM/AA2R Test Tier 作用域
       映射缩小范围，不全量跑。
   - **Category C: Docs / Schema Changes (文档与元数据改动)**:
     - **仅当**修改了文档生成器、Schema 定义文件或语法参考时，才运行 `cargo test -p auto-lang --test docs_gen`。
@@ -95,11 +102,11 @@ All AI coding assistants working in this repository must strictly adhere to the 
 
 #### AAVM/AA2R Test Tier (Plan 568)
 
-**概念**："改 VM/编译器后的回归"（`cargo tv`，纯 .at 语料 golden）与"AAVM 自举展示"（`cargo taa`）是两个独立概念。AAVM（auto/lib/*.at 自举 + a2r.at 发射对齐）目前无实用面，平时改 VM/编译器**不需要**测 aavm（守护=CI `vm-files-ci.yml` push/PR + `cargo ta` 全量档 + fold 前裸 `taa`）。
+**概念**："改 VM/编译器后的回归"（`cargo tv`，纯 .at 语料 golden）与"AAVM 自举展示"（`cargo taa`）是两个独立概念。AAVM（packages/aavm/lib/*.at 自举 + a2r.at 发射对齐）目前无实用面，平时改 VM/编译器**不需要**测 aavm（守护=`cargo ta` 全量档 + fold 前裸 `taa`；PLAN-763 删除未维护的 vm-files-ci.yml）。
 
 **双重解释器路径裁定（2026-09-06 用户，Plan 574 落地）**：avm+aavm / avm+aa2r 进程内双重解释路径（宿主 VM `run_with_capture` 拼 470KB lib 形态）**非真实需求**（2×2 对称性产物）；其进程内执行栈需求随 lib 规模增长，已越过 `run_autovm_capture` 硬编码 4MB 执行线程栈（探针定量 4MB 爆/5MB 过，RUST_MIN_STACK 护栏被显式 stack_size 绕过），与用例规模无关。12 个该路径语料测试已 `#[cfg_attr(windows, ignore)]`（Linux/CI 保留全量）。**新计划/新能力验收避免该路径重型化**——重型对拍一律走转译+编译+运行形态（⑤腿 compile corpus / at_mode / gen2 管道）；规约注记见 `docs/specs/aavm/project.md` 验证矩阵节，对账表 `docs/reports/p574-coverage-map.md`。
 
-**触发条件（只有这些路径的改动才跑 `taa`）**：`auto/lib/*.at`、`test/vm/aavm2/**`、`parity/**`、`crates/auto-lang/src/tests/aavm2_*.rs` / `aavm_runner_tests.rs`、`lib.rs` 的 `aavm2_lib_source`/`AUTO_LIB_FILES*`。其余改动零触发。
+**触发条件（只有这些路径的改动才跑 `taa`）**：`packages/aavm/lib/*.at`、`test/vm/aavm2/**`、`test/parity/**`、`crates/auto-lang/src/tests/aavm2_*.rs` / `aavm_runner_tests.rs`、`lib.rs` 的 `aavm2_lib_source`/`AUTO_LIB_FILES*`。其余改动零触发。
 
 **作用域映射（改什么 → 跑哪个闸门；耗时为 2026-09-05 实测）**：
 
@@ -111,9 +118,9 @@ All AI coding assistants working in this repository must strictly adhere to the 
 | `corpus_m4/**` | `cargo taa aavm2_m4` | ~315s |
 | `corpus_use/**` | `cargo taa aavm2_m4 aavm2_m5` | ~127s |
 | `corpus_a2r/**` | `cargo taa aavm2_a2r` | ~185s |
-| `auto/lib/engine.at`（终段执行器） | `cargo taa aavm2_m5` | ~350s |
-| `auto/lib/a2r.at`（终段发射器） | `cargo taa aavm2_a2r aavm_at_mode` | ~260s |
-| `auto/lib/{token,lexer,parser,typeinfo,codegen}.at`（上游共享） | 全管线级联，直接裸 `cargo taa` | ~10min 量级 |
+| `packages/aavm/lib/engine.at`（终段执行器） | `cargo taa aavm2_m5` | ~350s |
+| `packages/aavm/lib/a2r.at`（终段发射器） | `cargo taa aavm2_a2r aavm_at_mode` | ~260s |
+| `packages/aavm/lib/{token,lexer,parser,typeinfo,codegen}.at`（上游共享） | 全管线级联，直接裸 `cargo taa` | ~10min 量级 |
 
 review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜底。闸门粒度=测试目录级（单语料文件由所属闸门整体覆盖）。compile 腿（`compile_corpus`/`compile_use_corpus`）现场 cargo build 产物按内容 hash 缓存，二次运行秒级。
 
@@ -121,12 +128,12 @@ review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜�
 
 | 档位 | 适用场景 | 测试数 | 实测耗时 | 内存 |
 |---|---|---|---|---|
-| `cargo t` | 日常快速回归 + **per-plan 复审门禁**（1M churn + 语料族 + 画廊围栏 + ui_gen 排除，PLAN-700/fix-tiering 系） | 4892（=5745−ui_gen 854；2026-09-30） | **62s**（fix-ui-tier 实测 2026-09-30，轻度竞争；e4 确定性红 P707-R1 占 30s——其修复后预计 ~32s） | 轻池 <50MB/测 |
-| `cargo tf` | **批量回归档**（`/auto-plan:regress` 触发，主检出单实例；含 1M churn + 语料族 + 画廊围栏，PLAN-700；fix-test-tiering 2026-09-30 起**非 per-plan 门禁**） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存） | ≤2GB 预算 |
+| `cargo t` | 日常快速回归 + **per-plan 复审门禁**（1M churn + 语料族 + 画廊围栏 + ui_gen 排除，PLAN-700/fix-tiering 系） | 4976（2026-10-02 实测选择面；含 PLAN-726 闸门单测 5） | **54.1s**（PLAN-726 merge 实测 2026-10-02，轻度竞争；e4 红已清偿[PLAN-724 T-02]——62s 旧值含其 30s 长尾；余量含预存红族红时长：plan606 10.2s/schema_fence 10.5s/plan707 flake 5.1s，14 预存红族见 §1 非目标/批量回执） | 轻池 <50MB/测 |
+| `cargo tf` | **批量回归档**（`/auto-plan:regress` 触发，主检出单实例；含 1M churn + 语料族 + 画廊围栏，PLAN-700；fix-test-tiering 2026-09-30 起**非 per-plan 门禁**） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存）；围栏与 1M churn 自 PLAN-726 带机器级单实例闸门（并发第二实例秒级红，见 §2 并行纪律） | ≤2GB 预算 |
 | `cargo tv` | 改 VM/编译器后定向语料回归——filter 档（profile tv）与 t/tf 同二进制零重编（**不含 aavm**；PLAN-700） | 162 | 3.95s（2026-09-24 实测） | 同日常档 |
 | `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
 | `cargo tb` | 改 book/文档后 | 3494（book 增量 69，单测 <0.4s——旧"5-7s/测"注释已过时） | 24s | 轻池 |
-| `cargo tu` | 改 UI 代码生成后（`ui_gen/**`：vue/jet/ark/rust 四生成器；fix-ui-tier 2026-09-30 从日常档析出） | 856（内联，2 ignored） | **测试段 0.85s**（单进程 libtest 实测 2026-09-30；warm 全档含 nextest→libtest 零重编切换 ~29s 内）；1 预存红=a2vue desktop 金样（4f123a50e 在案四红之一） | 轻池（无重内存/无全局态；tu 档内**禁止 env set_var 类进程级全局测试**——plan646 改 builder 前车之鉴） |
+| `cargo tu` | 改 UI 代码生成后（`ui_gen/**`：vue/jet/ark/rust 四生成器；fix-ui-tier 2026-09-30 从日常档析出） | 863（内联，2 ignored；2026-10-11 实测） | **测试段 0.85s**（单进程 libtest 实测 2026-09-30；warm 全档含 nextest→libtest 零重编切换 ~29s 内）；a2vue desktop 金样预存红已清（2026-10-11 fix-a2vue-desktop-golden 再基线：09-22 pin 同步 e85143621 带入深/浅主题菜单项后金样漏再生——4f123a50e 四红末枚）；bp root_resolution env 竞争已清（2026-10-11 fix-bp-root-env-lock：BLUEPRINTS_ROOT_TEST_SERIALIZER 全触点串行+poison 接管+panic 恢复回归，镜像 F-759-R2；reader=scan_tests×4+plan640/643/649/657 同锁；附带修 plan643 t01/t02 共享 pid scratch 互删 os error 32——裸单进程预存 flake，标准档不可见） | 轻池（无重内存/无全局态；tu 档内**禁止 env set_var 类进程级全局测试**——plan646 改 builder 前车之鉴） |
 | `cargo taa` | **仅** aavm 改动后（触发条件/作用域见上） | 3600（其中 aavm 21，XL 9 个 78-303s/个） | 182s（-j6 实测；564 组限流合入后 XL 串行将更长）。P574 后 Windows 本地：双重解释器 12 测试 cfg_attr 跳过（607 skipped），~24s，唯一余红=charts_gallery 预存 | XL 单测 0.8-1.2GB；并发受 jobs 限制 |
 | `cargo ta` | 终极全量（VM+aavm+trans+book+1M churn） | 4023 | 407s（-j6 实测） | 同上 |
 | `cargo th` | 改 HTTP 服务后（真 TCP，串行） | 20 | ~50s（本机实测 ≥3 环境相关红，归因见 plan 568 T7；fix-test-tiering 2026-09-30 后 back_proxy 固定端口族（39xx/40xx 撞 Hyper-V 保留段 WSAEACCES）已改 OS 临时分配清零，plan707 帧时序断言并行负载下偶发 flake 在案=4f123a50e） | 轻（真 TCP 端口） |

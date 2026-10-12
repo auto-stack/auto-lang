@@ -28,16 +28,18 @@ fn has_counted_native(codegen: &Codegen, id: u16) -> bool {
     let code = &codegen.code;
     let op = OpCode::CALL_NAT_COUNTED as u8;
     let idb = id.to_le_bytes();
-    code.windows(3).any(|w| w[0] == op && w[1] == idb[0] && w[2] == idb[1])
+    code.windows(3)
+        .any(|w| w[0] == op && w[1] == idb[0] && w[2] == idb[1])
 }
 
 /// T03-① py-ffi 调用结果变量 `.len()` → obj_len(1863)。
 #[test]
 fn py_var_len_routes_obj_len() {
-    let cg = compile_for_test(
-        "use.py numpy: arange\nvar t = arange(6)\nvar n = t.len()\n",
+    let cg = compile_for_test("use.py numpy: arange\nvar t = arange(6)\nvar n = t.len()\n");
+    assert!(
+        cg.py_typed_vars.contains("t"),
+        "侧表变量落盘：py_typed_vars 应含 t"
     );
-    assert!(cg.py_typed_vars.contains("t"), "侧表变量落盘：py_typed_vars 应含 t");
     assert!(
         has_counted_native(&cg, NATIVE_INTEROP_OBJ_LEN),
         "py 接收者 .len() 应发射 obj_len(1863) CALL_NAT_COUNTED"
@@ -47,9 +49,7 @@ fn py_var_len_routes_obj_len() {
 /// T03-② py 接收者其他方法 → obj_call(1862)，且结果续传侧表。
 #[test]
 fn py_var_method_routes_obj_call() {
-    let cg = compile_for_test(
-        "use.py numpy: arange\nvar t = arange(6)\nvar u = t.reshape(2, 3)\n",
-    );
+    let cg = compile_for_test("use.py numpy: arange\nvar t = arange(6)\nvar u = t.reshape(2, 3)\n");
     assert!(
         has_counted_native(&cg, NATIVE_INTEROP_OBJ_CALL),
         "py 接收者 .reshape(...) 应发射 obj_call(1862) CALL_NAT_COUNTED"
@@ -78,10 +78,11 @@ fn auto_str_len_unchanged() {
 /// T03-④ Auto fn 返回 str 的 `.len()` 不受影响（fn_may_py_returns 空）。
 #[test]
 fn auto_fn_return_len_unchanged() {
-    let cg = compile_for_test(
-        "fn get() -> str { return \"abc\" }\nvar n = get().len()\n",
+    let cg = compile_for_test("fn get() -> str { return \"abc\" }\nvar n = get().len()\n");
+    assert!(
+        cg.fn_may_py_returns.is_empty(),
+        "Auto fn 不入 fn_may_py_returns"
     );
-    assert!(cg.fn_may_py_returns.is_empty(), "Auto fn 不入 fn_may_py_returns");
     assert!(
         !has_counted_native(&cg, NATIVE_INTEROP_OBJ_LEN),
         "Auto fn 返回 str 的 .len() 不得改发 obj_len（零回归红线）"
@@ -99,7 +100,10 @@ fn fn_return_py_propagates_to_obj_len() {
         cg.fn_may_py_returns.contains("mk"),
         "fn 尾表达式 may_py 应回填 fn_may_py_returns"
     );
-    assert!(cg.py_typed_vars.contains("t"), "调用点传导：t 应入 py_typed_vars");
+    assert!(
+        cg.py_typed_vars.contains("t"),
+        "调用点传导：t 应入 py_typed_vars"
+    );
     assert!(
         has_counted_native(&cg, NATIVE_INTEROP_OBJ_LEN),
         "经用户 fn 返回的 py 值 .len() 应路由 obj_len"

@@ -27,7 +27,10 @@ fn a2r_track(root: &Path, depth: i32) -> String {
 
 #[test]
 fn fs_tree_dual_track_byte_parity() {
-    let dir = std::env::temp_dir().join(format!("auto_lang_fs_tree_parity_681_{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "auto_lang_fs_tree_parity_681_{}",
+        std::process::id()
+    ));
     let _ = fs::remove_dir_all(&dir);
     let src = dir.join("ws");
     // Fixture mirrors plan626_fs_tree_nested_json_schema_and_order plus a
@@ -40,7 +43,11 @@ fn fs_tree_dual_track_byte_parity() {
     fs::write(src.join("m.md"), "m").unwrap();
     fs::write(src.join("a_dir").join("f.at"), "fn main() {}").unwrap();
     fs::write(src.join("a_dir").join("nested").join("deep.md"), "# d").unwrap();
-    fs::write(src.join("a_dir").join("nested").join("deeper").join("x.rs"), "").unwrap();
+    fs::write(
+        src.join("a_dir").join("nested").join("deeper").join("x.rs"),
+        "",
+    )
+    .unwrap();
     fs::create_dir_all(src.join(".git")).unwrap();
     fs::write(src.join(".git").join("HEAD"), "ref").unwrap();
     fs::create_dir_all(src.join("target")).unwrap();
@@ -67,11 +74,12 @@ fn fs_tree_dual_track_byte_parity() {
     let items = parsed.as_array().unwrap();
     // Dirs first (a_dir, b_dir, B_Dir2), then files case-insensitive (m.md, z.txt);
     // .git/target/node_modules skipped.
-    let labels: Vec<&str> = items
-        .iter()
-        .map(|n| n["label"].as_str().unwrap())
-        .collect();
-    assert_eq!(labels, vec!["a_dir", "b_dir", "B_Dir2", "m.md", "z.txt"], "dirs-first + case-insensitive: {a2r}");
+    let labels: Vec<&str> = items.iter().map(|n| n["label"].as_str().unwrap()).collect();
+    assert_eq!(
+        labels,
+        vec!["a_dir", "b_dir", "B_Dir2", "m.md", "z.txt"],
+        "dirs-first + case-insensitive: {a2r}"
+    );
     assert_eq!(items[0]["kind"], "dir");
     assert_eq!(items[0]["icon"], "folder");
     assert_eq!(items[0]["is_leaf"], false);

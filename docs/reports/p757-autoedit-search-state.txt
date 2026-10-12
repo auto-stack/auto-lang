@@ -1,0 +1,433 @@
+ActionResult
+  status: ok
+  element: #aura_0
+  action: press
+  handler: .App.FifResultClicki0
+  state_changes:
+    path_active: "D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit/src/back/fsys.at" -> "D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit\\src\\back\\api.at"
+    tab: 1 -> 0
+    active_key: "tab-3" -> "tab-2"
+    title_active: "fsys.at" -> "api.at"
+State:
+  console: "fif: 2 hits — D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit\nloaded: D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit/src/back/fsys.at 17991 bytes\nmeta: D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit/src/back/fsys.at eol=lf\nopen: D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit/src/back/fsys.at\nclosed tab; open=1\nloaded: D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit\\tests\\probe_session_app\\src\\back\\api.at 4584 bytes\nmeta: D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit\\tests\\probe_session_app\\src\\back\\api.at eol=lf\nloaded: D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit\\src\\back\\api.at 9868 bytes\nmeta: D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit\\src\\back\\api.at eol=lf\n[boot] MCP automation on 127.0.0.1:9577\n[boot] AutoUI VM app \"App\" started (1 app window)\nsession: restored 2 tabs\nworkspace: D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit" (str)
+  fif_count: 2 (int)
+  find_query: "fn ws_root" (str)
+  path_active: "D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit\\src\\back\\api.at" (str)
+
+AURA Snapshot v2 (rendered)
+widget: "App"
+
+tree:
+col #vnode_14695981039346656037 {
+  style: "h-full w-full"
+  row #vnode_12642422519345821663 {
+    style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0 px-2"
+    row #vnode_4305065243889594349 {
+      style: "items-center"
+      col #vnode_4321691031005245367 {
+        button #vnode_15876414090542715893 "文件" {
+          onclick: __menubar_toggle("file")
+        }
+        col #vnode_15876396498356671042
+      }
+      col #vnode_4321673438819200516 {
+        button #vnode_15861108888683884748 "编辑" {
+          onclick: __menubar_toggle("edit")
+        }
+        col #vnode_15861126480869929599
+      }
+      col #vnode_4321726215377335069 {
+        button #vnode_15907024494260378183 "视图" {
+          onclick: __menubar_toggle("view")
+        }
+        col #vnode_15907006902074333332
+      }
+      col #vnode_4321708623191290218 {
+        button #vnode_15891719292401547038 "工具" {
+          onclick: __menubar_toggle("tools")
+        }
+        col #vnode_15891736884587591889
+      }
+      col #vnode_4321620662261065963 {
+        button #vnode_15815193283107391313 "帮助" {
+          onclick: __menubar_toggle("help")
+        }
+        col #vnode_15815175690921346462
+      }
+    }
+    row #vnode_4305047651703549498 {
+      style: "ml-auto"
+      button #vnode_4306385829146414222 "file-plus新建" {
+        onclick: .ActNew
+      }
+      button #vnode_4306403421332459073 "folder-open打开…" {
+        onclick: .ActOpen
+      }
+      button #vnode_4306350644774324520 "save保存" {
+        onclick: .ActSave
+      }
+      container #vnode_4306368236960369371 {
+        col #vnode_5874464675837719073
+      }
+      button #vnode_4306456197890593626 "undo-2撤销" {
+        onclick: .ActUndo
+      }
+      button #vnode_4306473790076638477 "redo-2重做" {
+        onclick: .ActRedo
+      }
+      container #vnode_4306421013518503924 {
+        col #vnode_5920380281414212508
+      }
+      button #vnode_4306438605704548775 "scissors剪切" {
+        onclick: .ActCut
+      }
+      button #vnode_4306245091658055414 "copy复制" {
+        onclick: .ActCopy
+      }
+      button #vnode_4306262683844100265 "clipboard粘贴" {
+        onclick: .ActPaste
+      }
+    }
+  }
+  row #vnode_12642404927159776812 {
+    style: "flex-1 items-stretch overflow-hidden w-full"
+    container #vnode_4289760042030763204 {
+      style: "w-56 shrink-0 border-r border-border bg-card hidden md:flex flex-col gap-2 p-2 overflow-y-auto"
+      scrollable #vnode_12781790891868631308 {
+        style: "text-[11px] text-muted-foreground px-1 pt-1 tracking-wider"
+        col #vnode_15900409796501198692 {
+          text #vnode_8766178259980025580 "EXPLORER"
+          text #vnode_8766195852166070431 "auto-edit"
+          col #vnode_8766213444352115282 {
+            col #vnode_9248793601388933462 {
+              row #vnode_3498349726003336482 {
+                container #vnode_13279515759892392134 {
+                  col #vnode_10147847123825330290 {
+                    text #vnode_10191385572091255222 "[Image]"
+                  }
+                }
+                row #vnode_13279533352078436985 {
+                  text #vnode_10163152325684161435 "deps"
+                }
+              }
+              row #vnode_3498367318189381333 {
+                container #vnode_13294820961751223279 {
+                  col #vnode_1687747262961944349 {
+                    text #vnode_10167389866132772423 "[Image]"
+                  }
+                }
+                row #vnode_13294803369565178428 {
+                  text #vnode_1672442061103113204 "scripts"
+                }
+              }
+              row #vnode_3498314541631246780 {
+                container #vnode_13248905356174729844 {
+                  col #vnode_8621302771842550556 {
+                    text #vnode_10239376984008220820 "[Image]"
+                  }
+                }
+                row #vnode_13248922948360774695 {
+                  text #vnode_8636607973701381701 "src"
+                }
+              }
+              row #vnode_3498332133817291631 {
+                row #vnode_13264210558033560989 {
+                  container #vnode_161202910979164615 {
+                  }
+                }
+                container #vnode_13264192965847516138 {
+                  col #vnode_145897709120333470 {
+                    text #vnode_228737065203572346 "[Image]"
+                  }
+                }
+                row #vnode_13264175373661471287 {
+                  text #vnode_130592507261502325 "back"
+                }
+              }
+              row #vnode_3498279357259157078 {
+                row #vnode_13218294952457067554 {
+                  container #vnode_7094758419859770822 {
+                  }
+                }
+                container #vnode_13218312544643112405 {
+                }
+                container #vnode_13218259768084977852 {
+                }
+                row #vnode_13218277360271022703 {
+                  text #vnode_7079453218000939677 "api.at"
+                }
+              }
+              row #vnode_3498296949445201929 {
+                row #vnode_13233600154315898699 {
+                  container #vnode_17081402632705936497 {
+                  }
+                }
+                container #vnode_13233582562129853848 {
+                }
+                container #vnode_13233635338687988401 {
+                }
+                row #vnode_13233617746501943550 {
+                  text #vnode_17096707834564767642 "fsys.at"
+                }
+              }
+              row #vnode_3498244172887067376 {
+                row #vnode_13187684548739405264 {
+                  container #vnode_5568214067876991088 {
+                  }
+                }
+                container #vnode_13187702140925450115 {
+                  col #vnode_5583519269735822233 {
+                    text #vnode_1875259946978766075 "[Image]"
+                  }
+                }
+                row #vnode_13187719733111494966 {
+                  text #vnode_5598824471594653378 "front"
+                }
+              }
+              row #vnode_3498261765073112227 {
+                container #vnode_13202989750598236409 {
+                  col #vnode_15554858280723156763 {
+                    text #vnode_10311364101883669217 "[Image]"
+                  }
+                }
+                row #vnode_13202972158412191558 {
+                  text #vnode_15539553078864325618 "tests"
+                }
+              }
+              row #vnode_3498490463491695290 {
+                container #vnode_13401957374763041294 {
+                }
+                row #vnode_13401974966949086145 {
+                  text #vnode_16269329733615280371 "pac.at"
+                }
+              }
+              row #vnode_3498508055677740141 {
+                container #vnode_13417262576621872439 {
+                }
+                row #vnode_13417244984435827588 {
+                  text #vnode_7778619469034232140 "README.md"
+                }
+              }
+            }
+          }
+          text #vnode_8766231036538160133 "最近文件"
+          col #vnode_8766107891235846176 {
+            button #vnode_9156962390235946592 "api.at"
+            button #vnode_9156979982421991443 "api.at"
+            button #vnode_9156997574608036294 "fsys.at"
+          }
+        }
+      }
+    }
+    col #vnode_4289777634216808055 {
+      style: "flex-1 overflow-hidden"
+      row #vnode_12797096093727462453 {
+        style: "h-8 items-center bg-muted/30 shrink-0 w-full gap-0"
+        col #vnode_7440309935637812751 {
+          row #vnode_8742182554021542781 {
+            button #vnode_5393886225687582055 "api.at"
+            button #vnode_5393868633501537204 "" {
+              text #vnode_16367229749138979548 "[Image]"
+            }
+          }
+        }
+        col #vnode_7440292343451767900 {
+          row #vnode_8726894944348756487 {
+            button #vnode_13869291288409799141 "fsys.at"
+          }
+        }
+        button #vnode_7440345120009902453 "" {
+          style: "h-7 w-7 px-0 py-0 ml-1"
+          onclick: .ActOpen
+          text #vnode_8772792957739205071 "[Image]"
+        }
+      }
+      col #vnode_12797078501541417602 {
+        style: "h-px w-full bg-border shrink-0"
+      }
+      col #vnode_12797060909355372751 {
+        style: "shrink-0 w-full bg-muted/10 border-b border-border"
+        row #vnode_7409699531920150461 {
+          style: "h-9 items-center gap-1 px-2 shrink-0"
+          input #vnode_7215638202038763047 {
+            style: "h-7 flex-1 min-w-0 px-2 text-[12px]"
+            placeholder: "查找"
+            value: "fn ws_root"
+            oninput: .FindInput
+          }
+          button #vnode_7215620609852718196 "Aa" {
+            style: "h-6 px-2 text-[11px] text-muted-foreground"
+            onclick: .FindToggleCase
+          }
+          button #vnode_7215673386410852749 "[w]" {
+            style: "h-6 px-2 text-[11px] text-muted-foreground"
+            onclick: .FindToggleWord
+          }
+          button #vnode_7215655794224807898 ".*" {
+            style: "h-6 px-2 text-[11px] text-muted-foreground"
+            onclick: .FindToggleRegex
+          }
+          button #vnode_7215567833294583643 "下一处" {
+            style: "h-6 px-2 text-[11px] text-muted-foreground"
+            onclick: .FindNext
+          }
+          button #vnode_7215550241108538792 "" {
+            style: "h-6 w-6 px-0 py-0"
+            onclick: .FindClose
+            text #vnode_5365351628310391928 "[Image]"
+          }
+        }
+      }
+      col #vnode_12797043317169327900 {
+        col #vnode_7394394330061319316 {
+          textarea #vnode_15675738062902148988 [for: t, 0 = <vmref>] {
+            style: "flex-1 w-full"
+            value: ""
+            oncontextmenu: .EditorCtx
+            oncursor: .CursorMoved(i)
+            oninput: .SrcChanged(i)
+          }
+        }
+      }
+      col #vnode_12797025724983283049 {
+        style: "w-full shrink-0"
+        col #vnode_7379089128202488171 {
+          style: "h-px w-full bg-border"
+        }
+        row #vnode_7379071536016443320 {
+          style: "h-7 items-center bg-muted/30 shrink-0 gap-3 px-2"
+          text #vnode_5673788648197152168 "FIND RESULTS" {
+            style: "text-[11px] font-bold text-muted-foreground"
+          }
+          button #vnode_5673806240383197019 "搜索" {
+            style: "text-[11px] h-5 px-1 text-muted-foreground"
+            onclick: .FifSearch
+          }
+          button #vnode_5673823832569241870 "×" {
+            style: "text-[11px] h-5 px-1 text-muted-foreground"
+            onclick: .FifClose
+          }
+          text #vnode_5673841424755286721 "2 处" {
+            style: "text-[11px] text-muted-foreground ml-auto"
+          }
+        }
+        col #vnode_7379124312574577873 {
+          style: "p-2 max-h-40 w-full overflow-hidden bg-muted/10 shrink-0"
+          col #vnode_5719704253773645603 {
+            button #vnode_7016413401504292985 "D:\autostack\.wt\lang-757\auto-edit\specs\auto-edit\src\back\api.at:28: pub fn ws_root() str {" [for: r, 0 = <vmref>] {
+              style: "h-6 px-1 text-[11px] font-mono text-muted-foreground text-left w-full"
+              onclick: .FifResultClick(idx)
+            }
+            button #vnode_7016395809318248134 "D:\autostack\.wt\lang-757\auto-edit\specs\auto-edit\tests\probe_session_app\src\back\api.at:28: pub fn ws_root() str {" [for: r, 1 = <vmref>] {
+              style: "h-6 px-1 text-[11px] font-mono text-muted-foreground text-left w-full"
+              onclick: .FifResultClick(idx)
+            }
+          }
+        }
+      }
+    }
+  }
+  col #vnode_12642457703717911365 {
+    style: "w-40 bg-popover text-popover-foreground border border-border shadow-md py-1"
+    ondismiss: .Dismiss
+    col #vnode_4335675647607256639 {
+      button #vnode_5848235382988025101 "剪切" {
+        style: "h-7 w-full justify-start px-2 text-[12px] text-popover-foreground"
+        onclick: .Cut
+      }
+      button #vnode_5848217790801980250 "复制" {
+        style: "h-7 w-full justify-start px-2 text-[12px] text-popover-foreground"
+        onclick: .Copy
+      }
+      button #vnode_5848200198615935399 "全选" {
+        style: "h-7 w-full justify-start px-2 text-[12px] text-popover-foreground"
+        onclick: .SelectAll
+      }
+    }
+  }
+  col #vnode_12642440111531866514 {
+    col #vnode_4320388037934470345 {
+      col #vnode_14323640445710242187 {
+        onclick: .ConfirmCancel
+        text #vnode_7392318523720847153 "有未保存的修改"
+        text #vnode_7392300931534802302 "关闭前要保存吗?"
+      }
+      row #vnode_14323622853524197336 {
+        onclick: .ConfirmClose
+        button #vnode_7377013321862016008 "取消"
+        button #vnode_7377030914048060859 "直接关闭"
+      }
+    }
+  }
+  col #vnode_12642352150601642259 {
+    col #vnode_4243826844268224918 {
+      col #vnode_1253297125180854754 {
+        onclick: .QuitConfirmCancel
+        text #vnode_5985752701530481414 "有未保存的修改"
+        text #vnode_5985770293716526265 "退出前要保存吗?"
+      }
+      row #vnode_1253314717366899605 {
+        onclick: .QuitDiscard
+        button #vnode_6001057903389312559 "取消"
+        button #vnode_6001040311203267708 "不保存退出"
+        button #vnode_6001093087761402261 "保存并退出"
+      }
+    }
+  }
+  col #vnode_12642334558415597408 {
+    col #vnode_4228556826781483475 {
+      col #vnode_9744007389761902985 {
+        onclick: .EolConfirmCancel
+        text #vnode_7536292759471743947 "混合行尾"
+        text #vnode_7536275167285699096 "文件包含混合行尾形态。统一转换将把所有行尾改为目标形态，继续吗?"
+      }
+      row #vnode_9743989797575858134 {
+        onclick: .EolConfirmGo
+        button #vnode_7520987557612912802 "取消"
+        button #vnode_7521005149798957653 "统一转换"
+      }
+    }
+  }
+  col #vnode_12642387334973731961 {
+    col #vnode_4274437247985887208 {
+      col #vnode_2779841477163634488 {
+        onclick: .DirConfirmCancel
+        text #vnode_5937761289613515816 "确认同步动作"
+      }
+      row #vnode_2779859069349679339 {
+        onclick: .DirConfirmGo
+        button #vnode_5953066491472346961 "取消"
+        button #vnode_5953048899286302110 "确认执行"
+      }
+    }
+  }
+  col #vnode_12642369742787687110 {
+    style: "w-full shrink-0"
+    col #vnode_4259149638313100914 {
+      style: "h-px w-full bg-border"
+    }
+    row #vnode_4259167230499145765 {
+      style: "h-6 items-center bg-muted/30 shrink-0 w-full gap-3 px-2"
+      text #vnode_11270551741744682719 "Auto" {
+        style: "text-[11px] text-muted-foreground"
+      }
+      text #vnode_11270534149558637868 "UTF-8" {
+        style: "text-[11px] text-muted-foreground"
+      }
+      text #vnode_11270586926116772421 "EOL LF" {
+        style: "text-[11px] text-muted-foreground"
+      }
+      text #vnode_11270569333930727570 "Spaces: 4" {
+        style: "text-[11px] text-muted-foreground"
+      }
+      text #vnode_11270481373000503315 "1:1" {
+        style: "text-[11px] text-muted-foreground ml-auto"
+      }
+      button #vnode_11270463780814458464 "" {
+        style: "h-6 w-9 px-0 py-0"
+        onclick: .ToggleConsole
+        text #vnode_7411775338260622624 "[Image]"
+      }
+    }
+  }
+}

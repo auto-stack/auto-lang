@@ -1,0 +1,4 @@
+// VM 选定层：真实 body。VM 装配合并本层——val→142。
+pub fn val() int {
+    return 142
+}

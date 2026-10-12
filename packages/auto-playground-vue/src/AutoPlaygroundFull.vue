@@ -76,7 +76,9 @@ type PlaygroundMode = 'editor' | 'run' | 'trans' | 'debug' | 'replay';
 
 // 当前笔记元信息（后端壳注入标题栏；内联类型镜像——compiler-sfc 不解析导入类型，P581-D2）。
 const props = defineProps<{
-  noteMeta?: { title: string; sourcePath: string; sourceType: string; repoBase?: string } | null;
+  noteMeta?: { title: string; sourcePath: string; sourceType: string; repoBase?: string; prependLib?: boolean } | null;
+  /** PLAN-754: 后端 API base（website 宿主探测传入；默认 '/api'）。 */
+  apiBase?: string;
 }>();
 
 const {
@@ -85,7 +87,11 @@ const {
   projectFiles, activeFile,
   highlightedOutputLines, highlightedSourceLine, mappedSourceFiles,
   run, transpile, runCode, selectTransFile, selectFile, loadExample, highlightOutputLine, share, shareToast,
-} = usePlaygroundFull();
+  setPrependLib,
+} = usePlaygroundFull({ apiBase: props.apiBase });
+
+// PLAN-752: bootstrap 笔记（宿主按组前缀判定）开启 lib 前置拼接。
+watch(() => props.noteMeta, (m) => setPrependLib(!!m?.prependLib), { immediate: true });
 
 const debug = useDebugger();
 const replay = useReplayPlayer();

@@ -53,7 +53,11 @@ print(result.title)
 "#;
         let result = run_with_capture(code);
         eprintln!("RESULT: {:?}", result);
-        assert!(result.is_ok(), "add_note should not loop: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "add_note should not loop: {:?}",
+            result.err()
+        );
         let (val, stdout) = result.unwrap();
         eprintln!("val=[{}] stdout=[{}]", val, stdout);
         assert!(stdout.contains("hello"), "got: [{}]", stdout);

@@ -41,7 +41,9 @@ fn collect_view_texts(
                 collect_view_texts(c, out);
             }
         }
-        View::Input { placeholder, value, .. } => {
+        View::Input {
+            placeholder, value, ..
+        } => {
             out.push(placeholder.clone());
             out.push(value.clone());
         }
@@ -72,14 +74,22 @@ fn t01_vm_track_full_assembly_renders_four_regions() {
         .expect("047 full assembly must compile on the VM track");
     // PLAN-702 段驱动适配：挂载自发 Init 经 back.api mock 播种即 park——
     // 驱动恢复泵至 nav 标签落账（生产 = __parked_resume_tick 泵）。
-    crate::plan370_test_support::drive_parked_segments(&mut dc, |dc| {
-        let (view, _m, _p) = dc.view_with_debug();
-        let mut texts = Vec::new();
-        collect_view_texts(&view, &mut texts);
-        let joined = texts.join("
-");
-        ["Data", "Settings", "Reports", "About"].iter().all(|e| joined.contains(e))
-    }, "plan657 t01 nav seeding");
+    crate::plan370_test_support::drive_parked_segments(
+        &mut dc,
+        |dc| {
+            let (view, _m, _p) = dc.view_with_debug();
+            let mut texts = Vec::new();
+            collect_view_texts(&view, &mut texts);
+            let joined = texts.join(
+                "
+",
+            );
+            ["Data", "Settings", "Reports", "About"]
+                .iter()
+                .all(|e| joined.contains(e))
+        },
+        "plan657 t01 nav seeding",
+    );
     let (view, _debug_map, _probe) = dc.view_with_debug();
     let mut texts = Vec::new();
     collect_view_texts(&view, &mut texts);
@@ -134,7 +144,16 @@ fn t02_vue_track_imports_and_zero_copy() {
             "app SFC must import the bp component; missing {import:?}; code:\n{code}"
         );
     }
-    for binding in ["@Nav=", "@SignOut=", "@Query=", "@Create=", "@Update=", "@Delete=", "@Save=", "@Primary="] {
+    for binding in [
+        "@Nav=",
+        "@SignOut=",
+        "@Query=",
+        "@Create=",
+        "@Update=",
+        "@Delete=",
+        "@Save=",
+        "@Primary=",
+    ] {
         assert!(
             code.contains(binding),
             "app SFC must wire callback {binding:?}; code:\n{code}"
@@ -164,7 +183,7 @@ fn t03_corpus_references_generate_and_palette_zero_drift() {
         "feedback/empty-state/reference/no_result.at",
     ];
     for rel in references {
-        let path = repo_root().join("blueprints").join(rel);
+        let path = repo_root().join("packages/blueprints").join(rel);
         let result = crate::ui_gen::generate_component_from_file(
             &path,
             crate::ui_gen::ComponentGenOptions::default(),
@@ -180,7 +199,12 @@ fn t03_corpus_references_generate_and_palette_zero_drift() {
     // palette 零漂移（全包扫描——参数化修整不得引入词表外 widget）
     use crate::ui_gen::bp::BlueprintRegistry;
     use crate::ui_gen::widget::WidgetRegistry;
-    let reg = BlueprintRegistry::with_defaults();
+    // with_defaults() 读 AUTO_BLUEPRINTS_ROOT,须与 root_resolution 的 setter
+    // 窗口互斥(bare cargo test 单进程面)。
+    let reg = {
+        let _bp_ser = crate::ui_gen::bp::registry::lock_blueprints_root_for_test();
+        BlueprintRegistry::with_defaults()
+    };
     let widgets = WidgetRegistry::with_defaults();
     let drift = reg.palette_drift(&widgets);
     assert!(drift.is_empty(), "palette drift after PLAN-657: {drift:?}");

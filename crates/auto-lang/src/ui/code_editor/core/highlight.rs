@@ -168,8 +168,7 @@ fn build_syntax_system() -> SyntaxSystem {
     let syntax_set = {
         let mut builder = syntect::parsing::SyntaxSet::load_defaults_newlines().into_builder();
         for def in [AUTO_SYNTAX_YAML, TOML_SYNTAX_YAML] {
-            if let Ok(parsed) =
-                syntect::parsing::SyntaxDefinition::load_from_str(def, false, None)
+            if let Ok(parsed) = syntect::parsing::SyntaxDefinition::load_from_str(def, false, None)
             {
                 builder.add(parsed);
             }
@@ -178,19 +177,19 @@ fn build_syntax_system() -> SyntaxSystem {
     };
     // 主题底座= syntect default-themes（含 base16-eighties.dark——SyntaxEditor
     // bootstrap 键与 warm-up 依赖）；AutoUI 合成主题照旧预烘焙覆盖其上。
-    let mut theme_set: syntect::highlighting::ThemeSet = syntect::highlighting::ThemeSet::load_defaults();
+    let mut theme_set: syntect::highlighting::ThemeSet =
+        syntect::highlighting::ThemeSet::load_defaults();
     // Pre-register the synthesized AutoUI themes (builtin themes × dark/light
     // × accents). PLAN-601 T-10: every named builtin joins the baked set so
     // switching themes re-keys without re-synthesis; composed (declared)
     // themes register lazily via register_theme.
     for &theme_id in crate::design_tokens::registry::BUILTIN_NAMES.iter() {
-        let spec = crate::design_tokens::registry::builtin(theme_id)
-            .expect("BUILTIN_NAMES 与表互锁");
+        let spec =
+            crate::design_tokens::registry::builtin(theme_id).expect("BUILTIN_NAMES 与表互锁");
         for &accent in KNOWN_ACCENTS.iter() {
             for &dark in [true, false].iter() {
-                let theme = crate::ui::code_editor::theme::CodeEditorTheme::for_builtin(
-                    spec, dark, accent,
-                );
+                let theme =
+                    crate::ui::code_editor::theme::CodeEditorTheme::for_builtin(spec, dark, accent);
                 let name = theme_name_inner(theme_id, dark, accent);
                 theme_set.themes.insert(name, theme.syntax_theme());
             }
@@ -217,7 +216,9 @@ fn build_syntax_system() -> SyntaxSystem {
     // lowlight 观感对齐：tokenize 仍是 syntect，仅色板跨轨共享。
     #[cfg(feature = "autodown")]
     for &dark in [true, false].iter() {
-        theme_set.themes.insert(hljs_theme_name_inner(dark), hljs_syntax_theme(dark));
+        theme_set
+            .themes
+            .insert(hljs_theme_name_inner(dark), hljs_syntax_theme(dark));
     }
     SyntaxSystem {
         syntax_set,
@@ -232,7 +233,13 @@ fn build_syntax_system() -> SyntaxSystem {
 fn theme_name_inner(theme: &str, dark: bool, accent: &str) -> String {
     let safe: String = theme
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     format!(
         "autoui-{}-{}-{}",
@@ -286,20 +293,27 @@ pub fn hljs_theme_name(dark: bool) -> String {
 #[cfg(feature = "autodown")]
 fn hljs_syntax_theme(dark: bool) -> SynTheme {
     use autodown_core::hljs_scope_map::{hljs_group_for_class, hljs_group_rgb, SCOPE_CLASS_TABLE};
-    use syntect::highlighting::{
-        Color, ScopeSelectors, StyleModifier, ThemeItem, ThemeSettings,
-    };
+    use syntect::highlighting::{Color, ScopeSelectors, StyleModifier, ThemeItem, ThemeSettings};
 
     let fg = if dark { (250, 250, 250) } else { (9, 9, 11) };
     let mut theme = SynTheme::default();
     theme.settings = ThemeSettings {
-        foreground: Some(Color { r: fg.0, g: fg.1, b: fg.2, a: 0xFF }),
+        foreground: Some(Color {
+            r: fg.0,
+            g: fg.1,
+            b: fg.2,
+            a: 0xFF,
+        }),
         ..Default::default()
     };
     for row in SCOPE_CLASS_TABLE.iter() {
-        let Some(group) = hljs_group_for_class(row.hljs) else { continue };
+        let Some(group) = hljs_group_for_class(row.hljs) else {
+            continue;
+        };
         let (r, g, b) = hljs_group_rgb(group, dark);
-        let Ok(selector) = row.scope.parse::<ScopeSelectors>() else { continue };
+        let Ok(selector) = row.scope.parse::<ScopeSelectors>() else {
+            continue;
+        };
         theme.scopes.push(ThemeItem {
             scope: selector,
             style: StyleModifier {
@@ -366,16 +380,17 @@ pub(crate) fn highlight_segments_syntect(
     };
     let system = syntax_system();
     let theme_id = crate::ui::style::theme::theme_name();
-    let Some(theme) = system.theme_set.themes.get(&theme_name(&theme_id, dark, accent)) else {
+    let Some(theme) = system
+        .theme_set
+        .themes
+        .get(&theme_name(&theme_id, dark, accent))
+    else {
         return fallback();
     };
     let Some(syntax) = system.syntax_set.find_syntax_by_extension(ext) else {
         return fallback();
     };
-    let base_fg = theme
-        .settings
-        .foreground
-        .map(|fg| (fg.r, fg.g, fg.b));
+    let base_fg = theme.settings.foreground.map(|fg| (fg.r, fg.g, fg.b));
 
     let mut hl = HighlightLines::new(syntax, theme);
     let mut out: Vec<(String, Option<(u8, u8, u8)>)> = Vec::new();
@@ -385,7 +400,11 @@ pub(crate) fn highlight_segments_syntect(
         };
         for (style, seg) in regions {
             let rgb = (style.foreground.r, style.foreground.g, style.foreground.b);
-            let color = if base_fg == Some(rgb) { None } else { Some(rgb) };
+            let color = if base_fg == Some(rgb) {
+                None
+            } else {
+                Some(rgb)
+            };
             match out.last_mut() {
                 Some((prev, prev_color)) if *prev_color == color => prev.push_str(seg),
                 _ => out.push((seg.to_string(), color)),
@@ -426,7 +445,10 @@ mod tests {
         );
         assert!(elapsed.as_millis() < 5000, "单例构建超 CI 上界 {elapsed:?}");
         // 缩减集功能面守卫：.at 在册+常见 tail/fallback 扩展名仍可解析。
-        for ext in ["at", "rs", "py", "js", "json", "toml", "yaml", "md", "sh", "c", "cpp", "html", "css", "go", "java", "sql", "xml"] {
+        for ext in [
+            "at", "rs", "py", "js", "json", "toml", "yaml", "md", "sh", "c", "cpp", "html", "css",
+            "go", "java", "sql", "xml",
+        ] {
             assert!(
                 system.syntax_set.find_syntax_by_extension(ext).is_some(),
                 "缩减集缺扩展名 {ext}"
@@ -449,9 +471,15 @@ mod tests {
         // Pre-registered names resolve to themselves (all five builtins are
         // baked per (theme, mode, accent) — PLAN-601 T-10).
         let dark = theme_name("stella", true, "indigo");
-        assert_eq!(register_theme(&dark, cosmic_text::SyntaxTheme::default()), dark);
+        assert_eq!(
+            register_theme(&dark, cosmic_text::SyntaxTheme::default()),
+            dark
+        );
         for theme_id in crate::design_tokens::registry::BUILTIN_NAMES {
-            assert!(syntax_system().theme_set.themes.contains_key(&theme_name(theme_id, true, "indigo")));
+            assert!(syntax_system()
+                .theme_set
+                .themes
+                .contains_key(&theme_name(theme_id, true, "indigo")));
         }
         // Unknown names snap to the stella dark indigo fallback.
         assert_eq!(
@@ -459,8 +487,14 @@ mod tests {
             theme_name("stella", true, "indigo")
         );
         // Unknown accents normalize when building names.
-        assert_eq!(theme_name("stella", true, "purple"), theme_name("stella", true, "indigo"));
-        assert_ne!(theme_name("stella", true, "coral"), theme_name("stella", false, "coral"));
+        assert_eq!(
+            theme_name("stella", true, "purple"),
+            theme_name("stella", true, "indigo")
+        );
+        assert_ne!(
+            theme_name("stella", true, "coral"),
+            theme_name("stella", false, "coral")
+        );
         assert!(syntax_system().theme_set.themes.contains_key(&dark));
     }
 
@@ -490,11 +524,17 @@ mod tests {
         // String quotes are separate grammar regions — match by content.
         let fn_seg = segs.iter().find(|(s, _)| s == "fn").expect("fn segment");
         assert!(fn_seg.1.is_some(), "keyword must be colored: {segs:?}");
-        let str_seg = segs.iter().find(|(s, _)| s.contains("hi")).expect("string segment");
+        let str_seg = segs
+            .iter()
+            .find(|(s, _)| s.contains("hi"))
+            .expect("string segment");
         assert!(str_seg.1.is_some(), "string must be colored: {segs:?}");
         // Base-fg runs are None and merge across ident+space boundaries
         // (e.g. " x " between `let` and `=` arrives as one unstyled run).
-        assert!(segs.iter().any(|(_, c)| c.is_none()), "base-fg runs are None: {segs:?}");
+        assert!(
+            segs.iter().any(|(_, c)| c.is_none()),
+            "base-fg runs are None: {segs:?}"
+        );
 
         // Degradations: unknown language token, explicit none, empty text.
         assert_eq!(
@@ -505,7 +545,10 @@ mod tests {
             highlight_segments("", code, true, "indigo"),
             vec![(code.to_string(), None)]
         );
-        assert_eq!(highlight_segments("no-such-lang", code, true, "indigo").len(), 1);
+        assert_eq!(
+            highlight_segments("no-such-lang", code, true, "indigo").len(),
+            1
+        );
         assert_eq!(
             highlight_segments("rust", "", true, "indigo"),
             vec![("".to_string(), None)]

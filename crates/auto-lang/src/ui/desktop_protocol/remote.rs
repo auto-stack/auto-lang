@@ -48,7 +48,11 @@ impl DesktopSession {
                 self.desktop.remote_listener = Some(listener);
                 let line = format!(
                     "[remote] ws listening on 127.0.0.1:{} (token required)",
-                    self.desktop.remote_listener.as_ref().map(|l| l.port()).unwrap_or(port)
+                    self.desktop
+                        .remote_listener
+                        .as_ref()
+                        .map(|l| l.port())
+                        .unwrap_or(port)
                 );
                 crate::vm::ui_console::ui_console_push(&line);
                 eprintln!("{line}");
@@ -76,7 +80,9 @@ impl DesktopSession {
 
     /// 排空受理队列 → 镜像会话在册（ServiceTick 周期调用）。
     pub fn attach_pending_remotes(&mut self) {
-        let Some(listener) = self.desktop.remote_listener.as_mut() else { return };
+        let Some(listener) = self.desktop.remote_listener.as_mut() else {
+            return;
+        };
         while let Some(end) = listener.try_accept() {
             self.desktop.remote_mirrors.push(RemoteMirror {
                 end,
@@ -206,18 +212,12 @@ impl DesktopSession {
     /// 宿主孪生命中表：resolver 同源编译 + RqProjector（PLAN-033 T-05
     /// D4=A 迁移——AppProjector 退役；孪生随 native 布局 = 镜像 T-02 后
     /// VM app 的真实命中面，几何按 native 重录）。
-    fn remote_twin_hits(
-        &self,
-        app_name: &str,
-        width: f32,
-        height: f32,
-    ) -> Option<Vec<HitRegion>> {
+    fn remote_twin_hits(&self, app_name: &str, width: f32, height: f32) -> Option<Vec<HitRegion>> {
         use crate::ui::desktop_protocol::endpoint::FrameSource;
         let spec = self.desktop.app_resolver.as_ref()?(app_name)?;
         let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref()).ok()?;
-        let mut twin = crate::ui::desktop_protocol::native_projector::RqProjector::new(
-            comp, width, height,
-        );
+        let mut twin =
+            crate::ui::desktop_protocol::native_projector::RqProjector::new(comp, width, height);
         twin.render_frame();
         Some(
             twin.hit_regions()
@@ -283,9 +283,10 @@ mod tests {
                 fit: false,
                 daemon: None,
                 back_root: None,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
         }));
         // PLAN-033 T-04：process_model 拔除——outproc 触发 = spawner 注入。
         let pipe_for_spawn = broker_pipe.clone();
@@ -316,19 +317,20 @@ mod tests {
         // 远程端连入 + 订阅。
         let url = format!("ws://127.0.0.1:{port}/?token=t2-token");
         let mut remote = ws::connect(&url, 3000).expect("ws connect");
-        let mut remote_hello = |remote: &mut Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>| {
-            use crate::ui::desktop_protocol::message::HandshakeMsg;
-            let _ = remote.send(&ProtocolMsg::Handshake(HandshakeMsg::Hello {
-                version: crate::ui::desktop_protocol::PROTOCOL_VERSION,
-                app_name: app.to_string(),
-                title: app.to_string(),
-                icon: None,
-                width: 480.0,
-                height: 320.0,
-                fonts: Vec::new(),
-                surfaces: Vec::new(),
-            }));
-        };
+        let mut remote_hello =
+            |remote: &mut Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>| {
+                use crate::ui::desktop_protocol::message::HandshakeMsg;
+                let _ = remote.send(&ProtocolMsg::Handshake(HandshakeMsg::Hello {
+                    version: crate::ui::desktop_protocol::PROTOCOL_VERSION,
+                    app_name: app.to_string(),
+                    title: app.to_string(),
+                    icon: None,
+                    width: 480.0,
+                    height: 320.0,
+                    fonts: Vec::new(),
+                    surfaces: Vec::new(),
+                }));
+            };
         remote_hello(&mut remote);
 
         // 泊泵：Welcome + HitTable + 首帧（"Counter: 0"）。
@@ -352,18 +354,16 @@ mod tests {
                     ProtocolMsg::Frame(FrameMsg::HitTable { hits, .. }) => {
                         saw_hits = true;
                         // "+" = 第三个按钮命中区（T3 行序同源）。
-                        if let Some(r) = hits
-                            .iter()
-                            .filter(|h| h.kind == HIT_KIND_BUTTON)
-                            .nth(2)
-                        {
-                            plus_center = Some((r.rect.x + r.rect.w / 2.0, r.rect.y + r.rect.h / 2.0));
+                        if let Some(r) = hits.iter().filter(|h| h.kind == HIT_KIND_BUTTON).nth(2) {
+                            plus_center =
+                                Some((r.rect.x + r.rect.w / 2.0, r.rect.y + r.rect.h / 2.0));
                         }
                     }
                     ProtocolMsg::Frame(FrameMsg::FrameReady { payload, .. }) => {
-                        if payload.ops.iter().any(|op| matches!(op,
-                            DrawOp::Text { text, .. } if text == "Counter: 0"))
-                        {
+                        if payload.ops.iter().any(|op| {
+                            matches!(op,
+                            DrawOp::Text { text, .. } if text == "Counter: 0")
+                        }) {
                             saw_first_frame = true;
                         }
                     }
@@ -394,9 +394,10 @@ mod tests {
                 if let ProtocolMsg::Frame(FrameMsg::FrameReady { payload, .. }) =
                     loaded.expect("解码")
                 {
-                    if payload.ops.iter().any(|op| matches!(op,
-                        DrawOp::Text { text, .. } if text == "Counter: 1"))
-                    {
+                    if payload.ops.iter().any(|op| {
+                        matches!(op,
+                        DrawOp::Text { text, .. } if text == "Counter: 1")
+                    }) {
                         clicked = true;
                     }
                 }
@@ -467,18 +468,38 @@ mod ts_fixtures {
             damage: None,
             revision: 2,
             payload: crate::ui::desktop_protocol::message::DrawList {
-                clear: Some(Rgba8 { r: 9, g: 14, b: 26, a: 255 }),
+                clear: Some(Rgba8 {
+                    r: 9,
+                    g: 14,
+                    b: 26,
+                    a: 255,
+                }),
                 ops: vec![
                     DrawOp::Quad {
-                        rect: WRect { x: 8.0, y: 8.0, w: 100.0, h: 40.0 },
-                        color: Rgba8 { r: 59, g: 130, b: 246, a: 255 },
+                        rect: WRect {
+                            x: 8.0,
+                            y: 8.0,
+                            w: 100.0,
+                            h: 40.0,
+                        },
+                        color: Rgba8 {
+                            r: 59,
+                            g: 130,
+                            b: 246,
+                            a: 255,
+                        },
                     },
                     DrawOp::Text {
                         x: 12.0,
                         y: 16.0,
                         size: 14.0,
                         line_height: 20.0,
-                        color: Rgba8 { r: 255, g: 255, b: 255, a: 255 },
+                        color: Rgba8 {
+                            r: 255,
+                            g: 255,
+                            b: 255,
+                            a: 255,
+                        },
                         text: "Counter: 0".into(),
                     },
                 ],
@@ -506,12 +527,34 @@ mod ts_fixtures {
             damage: None,
             revision: 2,
             payload: crate::ui::desktop_protocol::message::DrawList {
-                clear: Some(Rgba8 { r: 9, g: 14, b: 26, a: 255 }),
+                clear: Some(Rgba8 {
+                    r: 9,
+                    g: 14,
+                    b: 26,
+                    a: 255,
+                }),
                 ops: vec![
-                    DrawOp::Scissor { rect: WRect { x: 8.0, y: 8.0, w: 120.0, h: 60.0 } },
+                    DrawOp::Scissor {
+                        rect: WRect {
+                            x: 8.0,
+                            y: 8.0,
+                            w: 120.0,
+                            h: 60.0,
+                        },
+                    },
                     DrawOp::Quad {
-                        rect: WRect { x: 0.0, y: 0.0, w: 400.0, h: 400.0 },
-                        color: Rgba8 { r: 59, g: 130, b: 246, a: 255 },
+                        rect: WRect {
+                            x: 0.0,
+                            y: 0.0,
+                            w: 400.0,
+                            h: 400.0,
+                        },
+                        color: Rgba8 {
+                            r: 59,
+                            g: 130,
+                            b: 246,
+                            a: 255,
+                        },
                     },
                     DrawOp::ScissorPop,
                 ],
@@ -524,9 +567,13 @@ mod ts_fixtures {
             0x0e, 0x1a, 0xff, 0x03, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00,
             0x00, 0x41, 0x00, 0x00, 0xf0, 0x42, 0x00, 0x00, 0x70, 0x42, 0x01, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc8, 0x43, 0x00, 0x00, 0xc8, 0x43, 0x3b,
-            0x82, 0xf6, 0xff, 0x04
+            0x82, 0xf6, 0xff, 0x04,
         ];
-        assert_eq!(scissor_frame.encode(), expect_scissor, "TS 对拍锚点 scissor 帧");
+        assert_eq!(
+            scissor_frame.encode(),
+            expect_scissor,
+            "TS 对拍锚点 scissor 帧"
+        );
 
         // Plan 515 G2 —— typography 差分对拍锚点（TS fixtures.golden.ts
         // STYLED_FRAME_HEX 同批字节）：TextStyled weight=700。
@@ -543,22 +590,31 @@ mod ts_fixtures {
                     y: 20.0,
                     size: 16.0,
                     line_height: 21.6,
-                    color: Rgba8 { r: 220, g: 220, b: 220, a: 255 },
+                    color: Rgba8 {
+                        r: 220,
+                        g: 220,
+                        b: 220,
+                        a: 255,
+                    },
                     weight: 700,
                     italic: false,
                     text: "Bold".into(),
                 }],
             },
         });
-let expect_styled: Vec<u8> = vec![
+        let expect_styled: Vec<u8> = vec![
             0x41, 0x50, 0x44, 0x4c, 0x01, 0x00, 0x02, 0x00, 0x41, 0x00, 0x00, 0x00, 0x04, 0x03,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
             0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x20, 0x41, 0x00, 0x00, 0xa0, 0x41, 0x00, 0x00,
             0x80, 0x41, 0xcd, 0xcc, 0xac, 0x41, 0xdc, 0xdc, 0xdc, 0xff, 0xbc, 0x02, 0x00, 0x04,
-            0x00, 0x00, 0x00, 0x42, 0x6f, 0x6c, 0x64
+            0x00, 0x00, 0x00, 0x42, 0x6f, 0x6c, 0x64,
         ];
-        assert_eq!(styled_frame.encode(), expect_styled, "TS 对拍锚点 TextStyled 帧");
+        assert_eq!(
+            styled_frame.encode(),
+            expect_styled,
+            "TS 对拍锚点 TextStyled 帧"
+        );
 
         // PLAN-028 —— 图像算子对拍锚点（TS fixtures.golden.ts
         // IMAGE_FRAME_HEX 同批字节）：Image{8,8,100,40} + src
@@ -570,9 +626,19 @@ let expect_styled: Vec<u8> = vec![
             damage: None,
             revision: 2,
             payload: crate::ui::desktop_protocol::message::DrawList {
-                clear: Some(Rgba8 { r: 9, g: 14, b: 26, a: 255 }),
+                clear: Some(Rgba8 {
+                    r: 9,
+                    g: 14,
+                    b: 26,
+                    a: 255,
+                }),
                 ops: vec![DrawOp::Image {
-                    rect: WRect { x: 8.0, y: 8.0, w: 100.0, h: 40.0 },
+                    rect: WRect {
+                        x: 8.0,
+                        y: 8.0,
+                        w: 100.0,
+                        h: 40.0,
+                    },
                     src: "https://example.com/a.png".into(),
                     fit: crate::ui::desktop_protocol::message::ImageFit::Stretch,
                 }],
@@ -664,8 +730,8 @@ mod host_body {
                 "/../../examples/ui/P/src/front/app.at"
             )
             .replace('P', name);
-            let code = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("read {path}: {e}"));
+            let code =
+                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
             entries.push((
                 name.clone(),
                 LaunchSpec {
@@ -677,25 +743,27 @@ mod host_body {
                     source_path: Some(path),
                     title: Some(name.clone()),
                     ..Default::default()
-    },
+                },
             ));
         }
         session.desktop.app_resolver = Some(Arc::new(move |name: &str| {
-            entries.iter().find(|(n, _)| n == name).map(|(_, s)| LaunchSpec {
-                media_root: None,
-                photo_root: None,
-                back_entry: None,
+            entries
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, s)| LaunchSpec {
+                    media_root: None,
+                    photo_root: None,
+                    back_entry: None,
 
-                code: s.code.clone(),
-                source_path: s.source_path.clone(),
-                title: s.title.clone(),
-                ..Default::default()
-    })
+                    code: s.code.clone(),
+                    source_path: s.source_path.clone(),
+                    title: s.title.clone(),
+                    ..Default::default()
+                })
         }));
         // outproc 生产 spawner：真 auto.exe + 测试隔离 broker 管道名。
         let exe = auto_exe();
-        let app_root =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/ui");
+        let app_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/ui");
         let pipe_for_spawn = broker_pipe.clone();
         session.desktop.outproc_spawner = Some(Arc::new(move |child_name| {
             let mut cmd = std::process::Command::new(&exe);
@@ -720,9 +788,7 @@ mod host_body {
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
         session.enable_remote_ws(&token, port);
         let actual_port = session.remote_ws_port().expect("ws port");
-        eprintln!(
-            "[p508-host] ws=ws://127.0.0.1:{actual_port}/?token={token} apps={apps:?}"
-        );
+        eprintln!("[p508-host] ws=ws://127.0.0.1:{actual_port}/?token={token} apps={apps:?}");
         // ready 文件 = 驱动脚本同步点（端口握手）。
         if let Ok(ready) = std::env::var(ENV_READY) {
             std::fs::write(&ready, actual_port.to_string()).expect("write ready");

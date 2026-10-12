@@ -84,7 +84,7 @@ i18n/{lang}.json 是应用内内容文案机制，与 app 元数据名称无关�
 
 ## pac.at opens 文件关联键（PLAN-016）
 
-桌面互操作动词 `open_with`（协议 v1.7，schema/projection-protocol-v1.md
+桌面互操作动词 `open_with`（协议 v1.7，docs/schema/projection-protocol-v1.md
 §6）的关联声明面。app 在 pac.at 平铺声明可打开的扩展名集合：
 
 ```
@@ -175,3 +175,44 @@ routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false
 - 非法输入口径：未知组件引用 → 非零退出 + 可定位诊断
   （"App.vue 引用的组件 SFC 未编译落盘（dep 源未解析？）：X"）。
 - S001 schema drift 维持 Severity::Info；升级/删除逐条判断，不批量改级。
+
+- api_gen 文件分支（PLAN-729）：声明 `FileResponse` 返回的端点生成真实文件 adapter
+  （method/headers 提取器 + 委托/内联体 + 共享宿主 serve，`-> axum::response::Response`，
+  不包 JsonResponse）；转译失败 = 位置诊断 500 handler，**不落 CRUD 模板**；GET 文件
+  路由自动 `.head()`；非 GET/HEAD → 405。TS HTTP 文件方法返回原生 `Response`；Tauri
+  IPC 明确 Unsupported。见 stdlib [http-server-files §6](../stdlib/design/http-server-files.md)。
+
+## 上传端点生成（PLAN-730）
+
+- 参数含 `UploadRequest` 的 `#[api]` 端点：Request 提取器置最后（不预读）、
+  转译体 await 直发（`try_transpile_body` 对 `Future<T>` 端点置位 async 上下文）、
+  收据映射真实 status + JSON（不落 CRUD 模板；非 POST/PUT 405）；main 安装宿主
+  executor；TS 客户端 FormData 直传。契约见
+  [auto-lang/trans/design/http-upload-lowering.md](../auto-lang/trans/design/http-upload-lowering.md)
+  与 [stdlib/design/http-server-uploads.md](../stdlib/design/http-server-uploads.md)。
+
+## checked generation 与错误传播（PLAN-734）
+
+- route A（endpoint body → a2r 内联转译）已是生产实现源（733 期文档"未建/
+  空桩"描述过时）。PLAN-734 起：strict 解析门（失败=Err，lenient 显式
+  opt-in）；真实实现优先（转译失败不落 CRUD 模板）；`AUTO_A2R_BODY=0` 重语义
+  = SCAFFOLD 标注；`generation.json` ready 记录 + `AUTO_REUSE_BACKEND=1`
+  复用新鲜度门；全部 8 个生成入口 Err 硬传播（vue/tauri/rust_ui 的 warn/
+  静默丢弃清零）。契约见 [design/api-generation-integrity.md](design/api-generation-integrity.md)。
+
+## 服务进程托管与 ready 身份（PLAN-736）
+
+- `crates/auto-man/src/http_service.rs` 是 `auto service` 的进程托管面：VM 轨 =
+  进程内大栈 VM 线程（32MB，同 start_vm_server）+ `bound_addr_snapshot()` 等待真实
+  bind（port=0 解析内核分配地址）；rust 轨 = 734 strict 门重新生成 → `cargo run
+  --release` 子进程 + service JSON 经 `AUTO_HTTP_SERVICE_JSON` env 注入 re-resolve。
+- **ready 探针**：legacy 的纯 TCP-connect 判 ready 已废弃——`probe_service_ready`
+  走 `GET /__auto/health/ready`：503=未 ready（不再误判），404=legacy 无控制面按
+  可继续处理；`start_api_server`/`start_vm_server`（UI split 消费方）共用该探针。
+- 占口/生成失败/初始化失败不得 ready：rust 轨子进程 bind/配置失败 exit(1)/exit(2)
+  → parent 非零；VM 轨 serve fatal → Err 非零。父进程当前以退出码 + 状态码探针承载
+  rust 轨判定，不消费 health 身份体做核对（P736-R1 增强候选）；734 新鲜度门
+  （`AUTO_REUSE_BACKEND=1` 复用臂）维持不动。
+- 关闭：shutdown 端点与 Ctrl+C/SIGTERM 同 watch（VM 网络线程 join / rust 子进程
+  有界排空后 parent 退出），端口与子进程零残留。部署/配置/策略合同见
+  [stdlib/design/http-service-deployment.md](../stdlib/design/http-service-deployment.md)。

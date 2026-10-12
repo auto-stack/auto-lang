@@ -20,7 +20,7 @@
 Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为**桌面运行时**：
 
 - **前端解析**：UI 方言（`widget`/`msg`/`model`/`view`/`on`/`setup`/`actions`，dialect 机制）。
-- **AURA 提取与校验**：WidgetDecl → 视图树/状态/事件三元 IR，按 `schema/aura.at`（唯一契约源，plan-435）校验。
+- **AURA 提取与校验**：WidgetDecl → 视图树/状态/事件三元 IR，按 `docs/schema/aura.at`（唯一契约源，plan-435）校验。
 - **代码生成**（`ui_gen/`）：a2vue（主力）、a2rust、a2jet/a2ark、ts adapter、widget 契约表、block 层。
 - **VM 运行时渲染**（`ui/`）：vnode/事件路由/VM 桥接、iced/headless 后端、code_editor 与
   autodown_editor 内建 widget、热重载、MCP 调试服务。
@@ -28,6 +28,90 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   WmCommand 桌面消息）、`ui/iced/virtual_window.rs`（VirtualWindow 渲染）、排布纯函数与
   DesktopBus v0——单 OS 窗口内多 App 虚拟桌面。
 - **a2ui 协议** 与 **`#[api]` 前后端契约**（`src/api/`）。
+
+## 现状（2026-10-02）——文件后援分页 rope（PLAN-728）
+
+> auto-edit M4 供⑮ 承接：>50MB 文档装载链从全量读改后援分页（下游
+> open_1gb/512MB 拒绝位的上游解阻件）。契约真源=
+> [design/paged-rope.md](design/paged-rope.md)（SD-01）；基准谱=
+> docs/reports/p728-bench.jsonl。
+
+- **后援形 rope**：`Node::Chunk` 叶变体（页描述符+预扫摘要）——行数/
+  长度/内容摘要/diff 剪枝 Merkle **零驻留应答**；`Rope`/`RopeSnapshot`
+  公共 API 零破坏（签名钉探针）。装载阈值 50MB（下游 big 态对齐）；
+  小文件臂逐字节原样。
+- **内存上界契约**：LRU 页缓存 6MB+结构计量 ≤12MB@1GB（实测 3.03MB/
+  RSS 峰值 17MB LT）；异步预取 ±16 页（页面态可观测）保温滚动/编辑窗。
+- **保存合并**：`write_backed` 未改区段基底句柄磁盘到磁盘照抄+temp+
+  原子改名+外部修改拒绝（byte-for-byte；BOM/EOL 解释归下游）。
+- **窗口视图**：>50MB 档 cosmic Buffer 物化=2MB 头窗口；跳转/查找落点
+  rewindow；提交漏斗窗口基址映射；S2 全文档视口物化=下游消费件（供料
+  档 §10 回执预告位在档）。
+- **顺手修复**：703 对齐行走字符中间切片隐患（leaf 比较改字节基）。
+
+## 现状（2026-10-11）——remote-frame 宿主侧远程帧消费元件（PLAN-760）
+
+> `.at` 元件谱新增 **`remote-frame`**（宿主侧远程帧消费面——auto-musk
+> PLAN-102 T-04 VM 轨消费面缺口 J2 的上游交付）。SD-01（元件契约）/SD-02
+>（桌面协议宿主侧元件化路径）。
+
+- **元件契约（SD-01）**：`remote-frame { url, class }`——无子件、无业务
+  事件（v1）；`url` = bridge WS 端点（`ws://127.0.0.1:port/?token=…&app=…`，
+  **订阅名 = url query `app` 参数**，缺省 `remote-frame`——与 web 消费面
+  canvas_embed_web 的 `appName` 同源对齐）；url 变化 = 断旧连建新连（url
+  即身份，迟到帧随旧客户端对象 Drop 丢弃）。**宿主数据叶**
+  （window_thumbnail 同族）：帧不进 VM 状态，iced 渲染臂直读进程级
+  `remote_frame_registry`（`ui/iced/remote_frame_registry.rs`）最新帧槽。
+- **双轨产物**：web = 透传 div 占位（`<div data-remote-frame="1"
+  data-remote-frame-url="…" class="…"/>`——宿主前端 querySelector 接管，
+  本仓不做 JS 渲染器）；VM = `View::RemoteFrame` → canvas
+  `RemoteFramePainter`（draw = 最新 DisplayList 等比 fit+居中直绘
+  （paint_ops_v2 委托）/相位占位灰底文本 connecting…/reconnecting…/
+  connection lost；update = 指针 move/press/release → bounds 局部坐标
+  等比换算远端逻辑域 → `InputMsg` 注册表直发，不经 View 消息面）。
+- **生命周期与重连**：租约法（渲染臂每帧 `note(url)` 续租，2s 落后 =
+  url 退场 → Client Drop → WsEnd Drop（shutdown oneshot + join 读线程
+  确定性回收，transport.rs 既有语义））；EOF/协议错 → 30s 预算内重拨
+  （50ms 节流；ReconnectPolicy 语义内联——首连/重连共路收编），预算尽
+  = `Exhausted` 占位终态；断连清残帧（占位语义）。
+- **帧节奏约束（如实登记）**：帧推进上限 = ServiceTick 400ms 拍 +
+  presentation_keepalive 保活；standalone（`auto run -r vm`）经
+  `remote_frame_tick` 条件拉起（注册表非空时订阅、退场自动回落）。
+  交互手感（逐帧跟手）弱于 shell 原生 remote 窗——embedded 面板的受控
+  取舍，非缺陷；不可接受时另立提频项。
+- **输入回传语义**：坐标 = 元件像素域等比换算（Welcome.rect 逻辑域基，
+  canvas_embed_web.ts `toLogical` 同一算式；draw 的 fit 缩放因子互逆）；
+  `InputMsg::Pointer{Moved,Pressed,Released}{wid, x, y, button,
+  modifiers}` 直投 bridge（rqhost.rs `wire_button` 同映射）。
+- **验收**：单测 8 例（生命周期/租约 Drop 断言/输入直发出站/EOF→重连→
+  预算尽状态机/重连收编回归/订阅名提取/双路径分派/schema 登记）；
+  实机 e2e `scripts/remote_frame_e2e.py`（rqhost bridge + 计数器夹具 +
+  宿主 demo；断言 = 首帧 ≤10s 特征像素/PostMessage 输入闭环（对照臂
+  分层定位 + remote count+1）/kill 桥占位/重启恢复/no-panic）11/11
+  PASS（2026-10-11 三轮）。musk 侧集成归 PLAN-102 T-04 收口。
+
+## 现状（2026-10-02）——编辑路径帧管线增量更新（PLAN-725）
+
+> auto-edit M4 帧两行 FAIL（type_latency/scroll_fps）清偿本体：编辑路径
+> 帧管线从每帧全量重建改脏域/增量更新。契约真源=
+> [design/frame-pipeline-incremental.md](design/frame-pipeline-incremental.md)（SD-01）；
+> 勘定+双态谱=docs/plans/evidence/725/。
+
+- **单帧单建**：脏帧 `view_with_debug_gated` 恰一次（builds=1 探针断言）——
+  MCP 同步块复用主重建产物（此前同帧两遍全量模板走查）。
+- **键入载荷静态消费判定**：编辑器 on_change 的 `input_value` 全文携带仅
+  在三静态消费点（`$event`/双向绑定/空 payload 首实参）命中时发射——
+  `.SrcChanged(i)` 形零携带（O(doc) 物化退役；`.Edit(str)` 契约逐字保真）。
+- **元素级 O(1) 高度上报**：hosted 编辑器 `content_height()` 无折叠快道
+  （rope 摘要）——根因链=iced `scrollable::new` 构造期 `size_hint()`→
+  逐行物化 `fresh_fold_map()`（1MB 实测 95ms/帧→O(1)）；尺寸缩放清零
+  （1MB/5KB 键入谱 P50 比 1.52）。
+- **Element 缓存 put-then-take 勘定**：死写移除（iced 所有权模型下快道
+  结构性不可能）；非脏帧=fallback 全树重建（孤儿帧行观测 ~1.3-2.4ms）。
+- **上游阶梯谱基准**：5KB/100KB/1MB × VM 轨（ladder.py+双态 JSONL 在档；
+  5KB 档 segsum P95 ≤16.7ms 定量门 PASS）。memo 域（045/046/047 机制在库）
+  编辑路径消费=下游 app 侧 opt-in。
+- a2r frame fn 值域收窄 i32（SD-B §3b saturating 口径——供⑬ E0308 清偿）。
 
 ## 现状（2026-09-22）——code_editor 内核 rope 化 + 统一 delta 流（PLAN-673）
 
@@ -352,7 +436,7 @@ on_toggle/on_select 回调契约，PLAN-037 T3 通道 payload=首实参）+ File
 **导航组件线（plan-482 落地，✅ plan-562 退役）**：nav/nav-group/nav-item/nav-link
 族已全部迁移至 sidebar_* 族并退役——仓内 015-notes/018-book-reader/019-video-app +
 widgets-gallery 外壳与 navitem/navlink 两页 + 外仓 auto-musk(052)/auto-os-config(012)
-零残留；schema/aura.at 四元素加 `superseded_by` 标注（schema_loader/ElementMeta
+零残留；docs/schema/aura.at 四元素加 `superseded_by` 标注（schema_loader/ElementMeta
 新增该字段解析，docs_gen 生成物 core.md/kitchen-sink.at 过滤带标注元素，本机制
 首个应用即本族）；gallery 侧栏滚动随 562 增补改 AutoUI `scroll` 组件（ScrollArea/
 Scrollable 双端）。nav 族实现（nav_contract.rs/脚手架 Nav*.vue/渲染臂）保留一个
@@ -360,7 +444,7 @@ Scrollable 双端）。nav 族实现（nav_contract.rs/脚手架 Nav*.vue/渲染
 sidebar_input VM 缺口裁定）登记 KNOWN-DEBT。原 482 契约细节见归档计划。
 
 **sidebar 组件族（plan-548 落地，Vue 端先行）**：shadcn-vue Sidebar 1:1 复刻的
-sidebar_* 23 元素族——schema/aura.at 手写扩全 props（collapsible/variant/side/
+sidebar_* 23 元素族——docs/schema/aura.at 手写扩全 props（collapsible/variant/side/
 collapsed_size 等，`SCHEMA_DRIFT_UPDATE_BASELINE=1` 更基线）+ Vue 端逐元素接线
 （gen/vue.rs shadcn 发射臂，脚手架组件模板对齐 shadcn 原版）+ `to:`/`active` D2
 扩展（免 RouterLink 手写）+ sidebar 裸用自动包 Provider + widgets-gallery sidebar
@@ -422,9 +506,9 @@ DesktopBus v0。**465 vue 端虚拟桌面已落地**（M4）：`auto run --deskt
 （auto-man `generate_desktop_host`：scan_apps 过滤 + `src/apps-registry.ts` 静态 import 注册表 +
 子组件/stores 合并）+ WM 运行时（auto-man `assets/wm/`：store.ts WmStore、layout.ts 布局 TS
 直译〔I6 与 layout.rs 共享期望值表 layout_cases.json——表内 `reservedTaskbar` 与 layout.rs `TASKBAR_HEIGHT` 须双端同值（56，PLAN-526 T24 起；Plan 686 勘正 TS 侧残留 48 与 Rust 测试期望漏同步）〕、keyboard.ts R12 热键捕获段、
-VirtualWindow/Taskbar.vue DOM 叶——schema/aura.at `vue:` 登记源两端同源）；E1 `(AppId,event)`
+VirtualWindow/Taskbar.vue DOM 叶——docs/schema/aura.at `vue:` 登记源两端同源）；E1 `(AppId,event)`
 注入形状与 E2 AppWindow 叶枚举成文（`docs/plans/reports/465-t4-wm-dom-leaf.md`）；
-tauri 全屏壳复用同一宿主页。**464 launcher 已落地**（SummonLauncher 懒挂载 + 真注册表平行串列注入 + windowless 特权 App 拆借垫片）。**472 AutoShell 地基已落地（shell-track M1）**：DesktopBus v1 对账定案（候选 B 传输 + `desktop.*` 动词词表 8 动词，Design 25 §3 注记回写）+ 投影协议 v1 合同 （`schema/projection-protocol-v1.md`：`__wm_*` 六字段全集/`__wm_workspaces`/指纹门控，双端对拍基线）+ workspace 分区驱动（WmState 加法增域、默认 2 分区、过滤六点）+ shell.at 升格 `widget Desktop` dock（图标化/pinned activate/切换条/`shell.dock.*` 数据级配置，pinned 宿主解析 {id,icon} 注入）。M2（switcher/pager）消费面就绪。**478 shell-track M2 已落地**：投影协议升版 v1.1（`__wm_mru` 当前分区 MRU 序投影 + `__wm_workspaces.label` 1 基标签 + 指纹扩段 + 动词词表增 `workspace_add`/`workspace_close`/`send_to`，vue 端对拍基线）+ switcher overlay（`assets/switcher.at` 进程内嵌第二枚 overlay 槽：Ctrl+Tab 召唤/推进、MRU 快照平行串列注入 + RebuildMru、Tab/←→/Enter/Esc 键盘流、点击聚焦、键盘独占 + Esc 仲裁 + 仅 visible 推层）+ dock 切换条升格 pager（1 基 label、当前分区高亮、每分区 × 删除——宿主 toast 门（非空不删/末分区保底）、尾部 + 增分区即入）+ send_to 跨区发送（Ctrl+Alt+Shift+←/→，WmCommand::SendFocusedTo）+ 驱动配套（remove_workspace 重排相邻前驱/下标压实/clamp/焦点让渡、move_win_to_workspace、mru_in_workspace）。热键表：Ctrl+Tab 改道 switcher（**490 起 Alt+Tab 退役**——Win11 系统保留死键位；分区切换迁 Ctrl+Alt+[ / ]，launcher Ctrl+Space+Ctrl+Alt+Space 双收，见下 490 条目）。**479 shell-track M3 已落地**：463 瞬时 toast 升格「浮现+历史聚合」双面（`push_notification` 单入口——入史+未读+落盘+浮现+面板活更新，既有 8 处 toast 调用点改道）+ 通知中心（dock 铃铛+未读 badge——`__wm_notes_unread` 条件消费空串/零双守卫 + 第三枚 overlay 槽 `assets/notification_center.at` 右下锚定面板：懒挂载/快照注入 note_ids·kinds·msgs·ats+RebuildNotes、开面板未读清零、逐条 ×/全部清除/Esc 关、键盘独占+Esc 仲裁+仅 visible 推层）+ `notify`/`notes_toggle`/`notes_clear`/`notes_dismiss` 动词（词表 v1.2）+ storage 定长槽 `shell.notes.0..9` 持久化（persist_notes 全量重写/restore_notifications boot 恢复，NOTES_CAP=50 内存 FIFO MRU）+ 投影协议升版 v1.2（`__wm_notes` 全量 {id,kind,msg,at} + `__wm_notes_unread` 未读串 + 指纹尾接 `|notes:{len}:{front_id}:{unread};` 段，vue 端对拍基线）。**487 shell-track M4 已落地（系统设置面板 S7）**：设置面板 overlay（`assets/settings.at` 第四枚 overlay 槽：左列 Dock/通知/关于三分区导航 + 右列内容卡；DesktopState.settings_app + HostCtx.settings_fields + split_mut windowless 第五路/split_ref_settings/settings_visible + toggle_settings 懒挂载/二态翻转/配置快照注入（cfg_dock_position/cfg_dock_enabled/cfg_notes_enabled + pinned_ids 平行列表〔B12 规避〕+ about_host/about_version 常量）+ call_handler RebuildPinned + 仅 visible 推层装配 + Esc 仲裁链第五路/键盘独占/订阅第五块）+ dock 几何驱动动词与执行臂（`open_settings`/`set_dock_position`/`set_dock_enabled` 词表 v1.4——execute_set_dock_position/enabled → apply_dock_edges_now 三联动：storage 键写回 → dock_edges 键重推导〔boot 同函数，I9〕→ apply_layout relayout + 槽位排水 + shell `__dock_*` 投影热同步；enabled=false 零预留位置键保留，重开按原位恢复）+ dock 配置链升格读写闭环（`shell.dock.*` 由 472 boot 单向读 → 驱动写回 + pinned UI 写手——面板行内增删 storage.set 直写逗号拼接 = load_dock_pinned 格式，boot 生效）+ 通知持久化开关（`shell.notes.enabled` "false"=关——479 消费链 push_notification 单点门控，notify 全链路短路；缺席/其余=开向后兼容）+ 投影协议升版 **v1.4**（486 先合占 v1.3、487 按并行协调叠 v1.4——纯增量动词/storage 键，零新投影字段零指纹变化）+ shell.at 双任务栏分支齿轮入口（OpenSettingsPanel → open_settings，铃铛邻位）。os-config 跨仓深桥/主题分区待续（壁纸已由 M5 落地，见下）。**496 shell-track M5 已落地（桌面本体 S9）**：第五面 `assets/desktop.at`（常驻不召唤——boot 装载挂 463 预留桌面层 z 槽：view 装配 Stack 先于 z_order 虚拟窗推层=壁纸之上/App 窗口之下；DesktopState.desktop_app/desktop_wallpaper + HostCtx.desktop_fields + windowless 第六路拆借/split_ref_desktop）+ 壁纸双径（#hex 由 desktop.at 根 bg 插值实铺〔`__desktop_bg` 注入〕/图片路径由宿主壁纸图层铺底——DSL 无重叠布局 z 序宿主兑现；boot 解析回退 #090e1a 默认色）+ 图标网格（pinned ∪ 自定义合并去重 hidden 排除，icon/label 注册表解析；storage 三键 shell.desktop.wallpaper/icons/hidden——487 非几何无动词判定同款，boot 生效）+ ondblclick VM 全链（View::MouseArea.on_double_click 双映射→iced mouse_area；convert_view_messages 补 MouseArea 显式臂——此前 VM 动态路径落 Empty 兜底，484 图表族经 Rust codegen 未暴露）+ 右键三项本地面板（打开=activate 472 两臂/移除=hidden 直写/更换壁纸=open_settings）+ 空白点击 463 语义+ settings 四分区（+外观：壁纸输入 storage 直写 + cfg_wallpaper 召唤快照）+ 投影协议 v1.4 内字段扩展（§2.1 `__desktop_*` 三字段族，boot 一次注入无指纹门控，零新动词）+ a2vue 真资产同源金样（插值 class 缺口修复：`${.field}` 静态段+`:class` 拼接表达式五点落码）。**497 shell-track S3 已落地（Status 栏——桌面特性线收官）**：每窗口真缩略三件套——①快照核心 `ui/iced/snapshot.rs`（**T1 定案裁剪式整窗快照**：headless no-op/iced 无公开子树离屏 API 双证伪 → `iced::window::screenshot` 整窗 RGBA〔自带 scale_factor，官方支持 widget-bounds 裁剪语义〕按 `VWinState.rect×scale_factor` 裁剪 + box 降采样长边≤256；进程级 TTL 2s 缓存〔惰性过期〕+ 抓取请求队列〔500ms 冷却防风暴〕+ 事件失效三点接线〔CloseWindow/SetLayout/apply_dock_edges_now〕）②`window_thumbnail` widget 七表登记（aura.at〔vue: @/wm/WindowThumbnail I4 同源〕+registry+schema.rs+view_builder 双臂+View 变体+渲染臂+render_support Full；渲染臂命中 `Handle::from_rgba` 直绘/miss→lucide fallback+request_capture——native "N<slot>" parse 失败天然回退）③消费者三面（switcher 行缩略〔`mru_thumbs` 平行就绪标记合同面〕+ dock 条目 hover popover〔422 先例 mouse-area+open 表达式〕+ pager 分区hover 网格〔该区窗口缩略+标题〕）+ 宿主抓取编排闭环（ServiceTick 排空队列→一次整窗截图服务全部请求〔`SnapshotShot` 事件回调按 pending wid 集裁剪入缓存+switcher/shell dirty 驱动 miss→真缩略一帧升级〕）；dock 时钟（`__wm_clock` HH:MM 本地——ServiceTick 分钟变化才写，**唯一非门控注入字段**不进指纹〔投影协议 v1.4 内字段扩展注记〕）+ 托盘组右置（挂载点容器 v1 占位+铃铛+齿轮+时钟两态）；**缺陷修复**：untracked convert_element 补 popover 臂（tracked 兜底委托路径下 popover 落容器直通锚/overlay 语义全失）+ invalidate_all 清冷却表 + SnapshotShot 补 shell dirty；T5 实机六项 PASS（switcher 真像素缩略/dock hover/pager 网格/时钟走字/顶底两态/冷缓存升级链）；tf 3316+desktop_mcp 3+t2_snapshot 4+a2vue 14 绿；债务 P497-1（pager ≤4 截断——.at 无过滤后截断原语）/P497-2（a2vue props 不透传，465 先例一致）。**501 shell-track S7 已落地（系统设置接通统一 settings center——487 预留的 os-config 跨仓深桥兑现）**：daemon 生命周期管理器 `ui/osconfig_daemon.rs`（DaemonStatus 三态 Running/Spawning/Offline + DaemonIo 注入式检活〔std TCP 裸 HTTP `/api/health`——reqwest blocking 在 tokio 上下文 panic 故弃〕+ detached spawn〔Win DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP + stdio null，桌面退出不杀——共享服务语义，待澄清② v1〕+ 就绪轮询 ≤5s + badge_projection 三态徽标投影；端口约定 17701，spawn 期 `AUTOOS_BACK_PORT` 覆盖 daemon 缺省 17901；发现序 storage `shell.osconfig.daemon` > 相邻仓 `auto-os-config-back/target/release`〔二进制实名 `auto-os-config-back-server`，计划原文路径现场核验修正〕> PATH 留扩展位〔P501-1——安装态立项时接宿主 which 语义〕）+ app 注册表多扫描根（`aggregate_scan`：主根 examples 优先按 id 去重；extra 根 = storage `shell.apps.extra_dirs`〔分号分隔 `id=path`/`path`，`parse_extra_dirs`〕+ 相邻仓探测缺省 `../auto-os-config/auto` → id `os-config`〔`shell.apps.scan_siblings=false` 可关；boot 期 `host_extra_roots` 包装〕）+ launch 执行臂依赖面（pac 可选字段 `daemon: autoos`〔跨仓 os-config 0e81196〕→ `ensure_ready` 检活/懒起 → `AUTOOS_DAEMON` env 进程注入〔VM Env.get 同源〕；**Offline 不阻断 launch**〔App 自带 daemon_view 连接测试 UX〕，原因记 `DesktopState.osconfig_status` 供徽标；pac `back: { project }` 外部 back cdylib 桩桥装载〔Plan 061 链桌面补齐——`set_external_back_root` + `load_back_cdylib` auto-man rust_ui 同型，句柄驻 `DesktopState.back_keepalive` 丢弃即卸载〕）+ settings.at 五分区（+系统：「系统设置（全部模块）」入口卡 `OpenSystemSettings` → `launch	os-config`；offline 置灰「重试并打开」双态——launch 每次重新探活零额外动词；召唤注入 `osconfig_state`/`osconfig_hint`）；T3 集成档 `tests/osconfig_integration.rs`（材料门控跳过 + 90s 看门狗 + 六段面包屑：daemon 起〔USERPROFILE/HOME 重定向配置根零污染——待澄清③跨仓 config root env 因此非必需〕→ 就绪 ping → 真相邻仓条目 launch → App Init 真数据 sys_host → GET /api/modules ≥7 → PUT ai-daemon.at 落盘断言）；合并后 master 全量 3323/3323 + scoped 189/189 + T3 1/1 绿；债务 P501-1（PATH 级）/P501-2（人手点击链残差）；P501-1..6 台账。**473 native dock 假洞 Phase 1 已落地**：`ui/native_dock/`（NativeSlot 模型+状态机+策略纯逻辑 + Win32 适配层 #[cfg(windows)]/非 Windows no-op——EnumWindows+PID 发现/DWM ext-frame 几何写读回/GWL_STYLE 剥离还原/DWMWCP_DONOTROUND 直角/sink_desktop_below z 序〔insertAfter 语义实测勘误：对 desktop 调 SetWindowPos 沉到 slot 之下〕/WinEventHook 五事件 OUTOFCONTEXT 钩子线程〔RwLock 数据槽×占用 AtomicBool 分立防回调死锁〕）；DesktopBus 动词增 `dock_native`（pid=/hwnd=）/`undock_native`；WmState.native_slots 注册表 + 槽位伪 Wid 进 apply_layout 同轮排布（min-size 扩张 C3/free 恒等）+ sync_native_geometry DPI 排水（CoordMapper 桌面原点×GetDpiForWindow+标题条客户区内缩）+ 槽位框 chrome（标题条 min/close）+ C2 独占全屏拒绝 + C4 拖走/B7 回收事件臂 + B8 退出批量恢复；feature 阶梯 native-dock（windows optional+target 双门控，默认档零开销）/test-native-dock + tools/native-fixture 夹具（JSON-lines start/bounds/close）+ 真第三方进程 E2E 六测试；**486 native dock Phase 1.5 触发面已落地**：DragWatch 拖入手势会话（`ui/native_dock/mod.rs` 纯逻辑状态机 Idle→Watching→Over——注入式落点计算〔含 free-cell 命中/最近〕+30Hz 节流+rect 变化即时重发+T1 七测；win32 钩子增 MOVESIZESTART 六事件+GetCursorPos 光标采样）+ session 接线（`DesktopEvent::NativeDragOver` 物理域消息面〔E2E/headless 注入用〕+`DesktopSession.native_drag_watch/native_drag_over` 字段+renderer `drive_drag_watch`〔START 起会话/被拖窗 LOCATIONCHANGE 采样/END 终态→dock 执行臂或清 overlay〕+`native_candidate_logical` 级联占位抽取〔高亮即落点不变量〕）+ 落点高亮 overlay（`native_drag_over_element` 主色 18% 半透明+2px 描边，view 层栈槽位 chrome 之上）+ 投影协议升版 **v1.3**（`__wm_wins` 纖入 native 槽位条目 {wid:"N<slot>",title,native,icon,focused}——仅 Docked 态/App 条目 native 恒空串统一/指纹窗段扩 "N{slot}:0,"，vue 端对拍基线）+ 任务栏动词 `focus_native`/`close_native`（三处落点+N 前缀 arg 双形态容收；执行臂 SW_RESTORE+SetForegroundWindow best-effort / WM_CLOSE→DESTROY 自然回收 B7）+ shell.at dock 区 native 分支（title 文本按钮 max-w-32 truncate+×）+ T4 E2E 拖入/拖出（`drag_sim` 合成拖拽——SendInput caption 真拖主路径〔TOPMOST 置顶+AttachThreadInput 前台化+激活结算+70% 宽大窗抓点四要素，4K@200% 小窗 caption 按钮占宽过半实测教训〕+SC_MOVE|HTCAPTION 注入退路〔同入真实 move-size 循环〕）+ T5 实机冒烟（t5_smoke #[ignore] 手动驱动：B1/B5/B8 实机留痕、D1 ◐ Chrome 自移触发 C4、G2 附带实证；B6/C1/B9 仍待用户）+ P473 债务行清偿回写；债务 P486-1 事件泵吞吐（16ms 单事件/拍，系统噪声下 dock 落位秒级延迟）；**485 原生互操作 Phase 2 剪贴板已落地（三族全通）**：`ui/clipboard_native.rs`（纯 codec 层 DROPFILES/DIBV5↔RGBA 全平台可测 + Win32 双门控层——files_get/files_set（CF_HDROP，DragQueryFileW/GMEM_MOVEABLE DROPFILES）/image_get（CF_DIBV5→CF_DIB→registered PNG 三退路→temp PNG，64MP 防爆）/image_set（DIBV5+PNG 双挂）；feature native-clipboard=[dep:windows,dep:image]（ui-iced 隐含，windows dep features 与 native-dock 共条目扩列）；四 VM natives auto.clipboard.files_get/files_set/image_get/image_set（catalog 2934-2937，降级臂空表/false/null——.at 零平台分支）+ codegen bare-name intrinsics；GlobalClipboardTestLock 跨进程命名互斥（nextest 多进程剪贴板测试互清根治）；示例 043-clipboard-bridge（三卡实机演示，Explorer/截图工具/画图往返留痕）；OLE 拖放 Phase 3/真洞 Phase 4 待续（真人清单顺延 KD-P473-2；P481-6 实机 Ctrl+C 末步复验受阻于合成输入不达 winit raw-input 流，债务开放）。**494 原生真洞 Phase 4 已落地（Region 机制替换形态）**：双 spike 证伪原设计——透明 swapchain 本机不可行（wgpu HWND surface 仅 [Opaque] alpha；DxgiFromVisual/DirectComposition 能力解锁但内容不上屏〔疑 ToDesk 远程显示环境〕；色键分层破坏 flip-model 呈现）+ HTTRANSPARENT 跨进程证伪（MSDN 同线程文义——WindowFromPoint 不跳层、真实点击被丢弃）→ 机制替换为 **SetWindowRgn 洞排除**：`raise_desktop_above`（SetWindowPos(slot,desktop) 单步 z 翻转，473 sink 参数对调）+ `apply_hole_regions`（CreateRectRgn+RGN_DIFF 逐洞扣除+SetWindowRgn(berase=false)，空表复位）——洞区窗口不存在=视觉透出 z 下层+点击直达（OS 区域语义，无同线程限制）；模式位 `shell.native.hole` storage（默认 off，DesktopOptions 程序位取或）+ sync_native_geometry hole 分支（z 翻转+refresh_hole_regions 洞集重建=全部 Docked 槽位 slot_rect）+ 失败自动回退假洞（hole_mode 翻 off+473 z 全量重申+日志，`refresh_hole_regions_at` 可测核心+stale hwnd 实测）+ 退出清 Region；T1 纯逻辑（window_local_holes 裁剪换算+z 序插入模型）+ 真实测试（z 不变量〔首可见邻居断言——IME 伴随窗楔位实测〕/Region 穿透/复位）+ T3 E2E 铁证（洞心 SendInput 跨进程精确穿透 ±6/洞外零泄漏；夹具增 click 坐标日志+win32::test_support scratch 设施）；G4 覆盖层洞边裁剪（Region 代价）+T5 实机清单+透明路径复验=已批准债务 P494-1/2/3（物理机复验，AUTO_DESKTOP_HOLE=1 钩子）。**709 槽位交互主体化已落地（2026-09-30）**：473 系已 dock 原生槽位从「布局占位」升格为与虚拟窗同级的交互主体——①拖动/缩放（`WmCommand::NativeSlotStartDrag/StartResize` + `WmInteraction::NativeDrag/NativeResize` 原生臂，几何真值域 `native_slot_local_rects`；`min_size_est` DPI 折算钳制；标题栏整条拖拽把手 + 八向把手 chrome；`__mouse_moved` 拦截臂尾随 `sync_native_geometry` 排水 = SetWindowPos 跟手；拖拽走宿主程序化排水不进 OS move-size 循环，C4 undock 手势天然不误触）+ Free 布局落定（Free 恒等分支下拖拽写回即真值，relayout 不跳位）；②统一序域（槽位伪 Wid（`0x8000...|slot` 段，与布局伪 Wid 同段）进 `focused`/`z_order`/`mru`——焦点回退六处统一 `top_member_in_workspace`（虚拟窗∪槽位）、Alt+Tab 环与 switcher/MRU 并入槽位、chrome 装配从「固定垫全部虚拟窗之后」改统一 z 序插序）+ 聚焦置顶（WM 侧 `focus_native_slot` + 带内 OS `restack_slots` 全带重申——473 逐 pending `sink_desktop_below` 多槽勘误：移除重插语义会把先处理槽位压到桌面下方，改锚定+顶向下链插一次成型）+ `EVENT_SYSTEM_FOREGROUND` 钩子跟随（docked 命中→WM focused 置槽位；他窗/桌面自身前台不改 WM 焦点——473「native 焦点域在 OS 层」窄化收口）；③workspace 感知（`NativeSlot.workspace` dock 时归属当前分区；切分区 SW_HIDE/SW_SHOW 失配 tick 隐现 + chrome 缺席 + 带序只含当前分区；`send_to`/`SendFocusedTo` 槽位臂 `move_native_slot_to_workspace`——clamp/负一屏守卫/焦点让渡同虚拟窗口径；任务栏 `focus_native` 点击「切到窗所在分区」语义 ActivateApp 同款）；④投影协议升版 **v1.11**（`schema/projection-protocol-v1.md` §6：native 条目补 `workspace`（分区下标串，App 条目同口径）+ `focused` 实时位（v1.3「恒空」退役），`__wm_wins`/`__wm_mru`/switcher 快照三面同步，指纹 native 段扩 `"N{slot}:{focused},{workspace},"`，typed 载体 `ShellWin` wire 零变化纯构建面增量，vue 端对拍基线）。**DesktopBus 词表增量 `win_rect`**：`win_rect	<wid>	<x>,<y>,<w>,<h>`（VM 窗摆位编程化——移动+缩放一体；数字五族全 f32 接受；坏值/缺参/未知 wid/槽位伪 Wid 一律 no-op；执行臂 `VWinState.rect` 直写 + 160/120 min 钳制 + window_size 同步，无 relayout/不动他窗/不夺焦点/不改 workspace；Free 布局即落定，铺排布局下被下次 relayout 重铺为预期语义——ToDesk 等远程输入层吞合成输入的环境下，MCP 验收通道 `autoui_desktop action=bus` 发动词即确定性摆窗面）。**386 路线 B 桌面协议 Stage 1+2 已落地（v1.1）**：`ui/desktop_protocol/`
+tauri 全屏壳复用同一宿主页。**464 launcher 已落地**（SummonLauncher 懒挂载 + 真注册表平行串列注入 + windowless 特权 App 拆借垫片）。**472 AutoShell 地基已落地（shell-track M1）**：DesktopBus v1 对账定案（候选 B 传输 + `desktop.*` 动词词表 8 动词，Design 25 §3 注记回写）+ 投影协议 v1 合同 （`docs/schema/projection-protocol-v1.md`：`__wm_*` 六字段全集/`__wm_workspaces`/指纹门控，双端对拍基线）+ workspace 分区驱动（WmState 加法增域、默认 2 分区、过滤六点）+ shell.at 升格 `widget Desktop` dock（图标化/pinned activate/切换条/`shell.dock.*` 数据级配置，pinned 宿主解析 {id,icon} 注入）。M2（switcher/pager）消费面就绪。**478 shell-track M2 已落地**：投影协议升版 v1.1（`__wm_mru` 当前分区 MRU 序投影 + `__wm_workspaces.label` 1 基标签 + 指纹扩段 + 动词词表增 `workspace_add`/`workspace_close`/`send_to`，vue 端对拍基线）+ switcher overlay（`assets/switcher.at` 进程内嵌第二枚 overlay 槽：Ctrl+Tab 召唤/推进、MRU 快照平行串列注入 + RebuildMru、Tab/←→/Enter/Esc 键盘流、点击聚焦、键盘独占 + Esc 仲裁 + 仅 visible 推层）+ dock 切换条升格 pager（1 基 label、当前分区高亮、每分区 × 删除——宿主 toast 门（非空不删/末分区保底）、尾部 + 增分区即入）+ send_to 跨区发送（Ctrl+Alt+Shift+←/→，WmCommand::SendFocusedTo）+ 驱动配套（remove_workspace 重排相邻前驱/下标压实/clamp/焦点让渡、move_win_to_workspace、mru_in_workspace）。热键表：Ctrl+Tab 改道 switcher（**490 起 Alt+Tab 退役**——Win11 系统保留死键位；分区切换迁 Ctrl+Alt+[ / ]，launcher Ctrl+Space+Ctrl+Alt+Space 双收，见下 490 条目）。**479 shell-track M3 已落地**：463 瞬时 toast 升格「浮现+历史聚合」双面（`push_notification` 单入口——入史+未读+落盘+浮现+面板活更新，既有 8 处 toast 调用点改道）+ 通知中心（dock 铃铛+未读 badge——`__wm_notes_unread` 条件消费空串/零双守卫 + 第三枚 overlay 槽 `assets/notification_center.at` 右下锚定面板：懒挂载/快照注入 note_ids·kinds·msgs·ats+RebuildNotes、开面板未读清零、逐条 ×/全部清除/Esc 关、键盘独占+Esc 仲裁+仅 visible 推层）+ `notify`/`notes_toggle`/`notes_clear`/`notes_dismiss` 动词（词表 v1.2）+ storage 定长槽 `shell.notes.0..9` 持久化（persist_notes 全量重写/restore_notifications boot 恢复，NOTES_CAP=50 内存 FIFO MRU）+ 投影协议升版 v1.2（`__wm_notes` 全量 {id,kind,msg,at} + `__wm_notes_unread` 未读串 + 指纹尾接 `|notes:{len}:{front_id}:{unread};` 段，vue 端对拍基线）。**487 shell-track M4 已落地（系统设置面板 S7）**：设置面板 overlay（`assets/settings.at` 第四枚 overlay 槽：左列 Dock/通知/关于三分区导航 + 右列内容卡；DesktopState.settings_app + HostCtx.settings_fields + split_mut windowless 第五路/split_ref_settings/settings_visible + toggle_settings 懒挂载/二态翻转/配置快照注入（cfg_dock_position/cfg_dock_enabled/cfg_notes_enabled + pinned_ids 平行列表〔B12 规避〕+ about_host/about_version 常量）+ call_handler RebuildPinned + 仅 visible 推层装配 + Esc 仲裁链第五路/键盘独占/订阅第五块）+ dock 几何驱动动词与执行臂（`open_settings`/`set_dock_position`/`set_dock_enabled` 词表 v1.4——execute_set_dock_position/enabled → apply_dock_edges_now 三联动：storage 键写回 → dock_edges 键重推导〔boot 同函数，I9〕→ apply_layout relayout + 槽位排水 + shell `__dock_*` 投影热同步；enabled=false 零预留位置键保留，重开按原位恢复）+ dock 配置链升格读写闭环（`shell.dock.*` 由 472 boot 单向读 → 驱动写回 + pinned UI 写手——面板行内增删 storage.set 直写逗号拼接 = load_dock_pinned 格式，boot 生效）+ 通知持久化开关（`shell.notes.enabled` "false"=关——479 消费链 push_notification 单点门控，notify 全链路短路；缺席/其余=开向后兼容）+ 投影协议升版 **v1.4**（486 先合占 v1.3、487 按并行协调叠 v1.4——纯增量动词/storage 键，零新投影字段零指纹变化）+ shell.at 双任务栏分支齿轮入口（OpenSettingsPanel → open_settings，铃铛邻位）。os-config 跨仓深桥/主题分区待续（壁纸已由 M5 落地，见下）。**496 shell-track M5 已落地（桌面本体 S9）**：第五面 `assets/desktop.at`（常驻不召唤——boot 装载挂 463 预留桌面层 z 槽：view 装配 Stack 先于 z_order 虚拟窗推层=壁纸之上/App 窗口之下；DesktopState.desktop_app/desktop_wallpaper + HostCtx.desktop_fields + windowless 第六路拆借/split_ref_desktop）+ 壁纸双径（#hex 由 desktop.at 根 bg 插值实铺〔`__desktop_bg` 注入〕/图片路径由宿主壁纸图层铺底——DSL 无重叠布局 z 序宿主兑现；boot 解析回退 #090e1a 默认色）+ 图标网格（pinned ∪ 自定义合并去重 hidden 排除，icon/label 注册表解析；storage 三键 shell.desktop.wallpaper/icons/hidden——487 非几何无动词判定同款，boot 生效）+ ondblclick VM 全链（View::MouseArea.on_double_click 双映射→iced mouse_area；convert_view_messages 补 MouseArea 显式臂——此前 VM 动态路径落 Empty 兜底，484 图表族经 Rust codegen 未暴露）+ 右键三项本地面板（打开=activate 472 两臂/移除=hidden 直写/更换壁纸=open_settings）+ 空白点击 463 语义+ settings 四分区（+外观：壁纸输入 storage 直写 + cfg_wallpaper 召唤快照）+ 投影协议 v1.4 内字段扩展（§2.1 `__desktop_*` 三字段族，boot 一次注入无指纹门控，零新动词）+ a2vue 真资产同源金样（插值 class 缺口修复：`${.field}` 静态段+`:class` 拼接表达式五点落码）。**497 shell-track S3 已落地（Status 栏——桌面特性线收官）**：每窗口真缩略三件套——①快照核心 `ui/iced/snapshot.rs`（**T1 定案裁剪式整窗快照**：headless no-op/iced 无公开子树离屏 API 双证伪 → `iced::window::screenshot` 整窗 RGBA〔自带 scale_factor，官方支持 widget-bounds 裁剪语义〕按 `VWinState.rect×scale_factor` 裁剪 + box 降采样长边≤256；进程级 TTL 2s 缓存〔惰性过期〕+ 抓取请求队列〔500ms 冷却防风暴〕+ 事件失效三点接线〔CloseWindow/SetLayout/apply_dock_edges_now〕）②`window_thumbnail` widget 七表登记（aura.at〔vue: @/wm/WindowThumbnail I4 同源〕+registry+schema.rs+view_builder 双臂+View 变体+渲染臂+render_support Full；渲染臂命中 `Handle::from_rgba` 直绘/miss→lucide fallback+request_capture——native "N<slot>" parse 失败天然回退）③消费者三面（switcher 行缩略〔`mru_thumbs` 平行就绪标记合同面〕+ dock 条目 hover popover〔422 先例 mouse-area+open 表达式〕+ pager 分区hover 网格〔该区窗口缩略+标题〕）+ 宿主抓取编排闭环（ServiceTick 排空队列→一次整窗截图服务全部请求〔`SnapshotShot` 事件回调按 pending wid 集裁剪入缓存+switcher/shell dirty 驱动 miss→真缩略一帧升级〕）；dock 时钟（`__wm_clock` HH:MM 本地——ServiceTick 分钟变化才写，**唯一非门控注入字段**不进指纹〔投影协议 v1.4 内字段扩展注记〕）+ 托盘组右置（挂载点容器 v1 占位+铃铛+齿轮+时钟两态）；**缺陷修复**：untracked convert_element 补 popover 臂（tracked 兜底委托路径下 popover 落容器直通锚/overlay 语义全失）+ invalidate_all 清冷却表 + SnapshotShot 补 shell dirty；T5 实机六项 PASS（switcher 真像素缩略/dock hover/pager 网格/时钟走字/顶底两态/冷缓存升级链）；tf 3316+desktop_mcp 3+t2_snapshot 4+a2vue 14 绿；债务 P497-1（pager ≤4 截断——.at 无过滤后截断原语）/P497-2（a2vue props 不透传，465 先例一致）。**501 shell-track S7 已落地（系统设置接通统一 settings center——487 预留的 os-config 跨仓深桥兑现）**：daemon 生命周期管理器 `ui/osconfig_daemon.rs`（DaemonStatus 三态 Running/Spawning/Offline + DaemonIo 注入式检活〔std TCP 裸 HTTP `/api/health`——reqwest blocking 在 tokio 上下文 panic 故弃〕+ detached spawn〔Win DETACHED_PROCESS|CREATE_NEW_PROCESS_GROUP + stdio null，桌面退出不杀——共享服务语义，待澄清② v1〕+ 就绪轮询 ≤5s + badge_projection 三态徽标投影；端口约定 17701，spawn 期 `AUTOOS_BACK_PORT` 覆盖 daemon 缺省 17901；发现序 storage `shell.osconfig.daemon` > 相邻仓 `auto-os-config-back/target/release`〔二进制实名 `auto-os-config-back-server`，计划原文路径现场核验修正〕> PATH 留扩展位〔P501-1——安装态立项时接宿主 which 语义〕）+ app 注册表多扫描根（`aggregate_scan`：主根 examples 优先按 id 去重；extra 根 = storage `shell.apps.extra_dirs`〔分号分隔 `id=path`/`path`，`parse_extra_dirs`〕+ 相邻仓探测缺省 `../auto-os-config/auto` → id `os-config`〔`shell.apps.scan_siblings=false` 可关；boot 期 `host_extra_roots` 包装〕）+ launch 执行臂依赖面（pac 可选字段 `daemon: autoos`〔跨仓 os-config 0e81196〕→ `ensure_ready` 检活/懒起 → `AUTOOS_DAEMON` env 进程注入〔VM Env.get 同源〕；**Offline 不阻断 launch**〔App 自带 daemon_view 连接测试 UX〕，原因记 `DesktopState.osconfig_status` 供徽标；pac `back: { project }` 外部 back cdylib 桩桥装载〔Plan 061 链桌面补齐——`set_external_back_root` + `load_back_cdylib` auto-man rust_ui 同型，句柄驻 `DesktopState.back_keepalive` 丢弃即卸载〕）+ settings.at 五分区（+系统：「系统设置（全部模块）」入口卡 `OpenSystemSettings` → `launch	os-config`；offline 置灰「重试并打开」双态——launch 每次重新探活零额外动词；召唤注入 `osconfig_state`/`osconfig_hint`）；T3 集成档 `tests/osconfig_integration.rs`（材料门控跳过 + 90s 看门狗 + 六段面包屑：daemon 起〔USERPROFILE/HOME 重定向配置根零污染——待澄清③跨仓 config root env 因此非必需〕→ 就绪 ping → 真相邻仓条目 launch → App Init 真数据 sys_host → GET /api/modules ≥7 → PUT ai-daemon.at 落盘断言）；合并后 master 全量 3323/3323 + scoped 189/189 + T3 1/1 绿；债务 P501-1（PATH 级）/P501-2（人手点击链残差）；P501-1..6 台账。**473 native dock 假洞 Phase 1 已落地**：`ui/native_dock/`（NativeSlot 模型+状态机+策略纯逻辑 + Win32 适配层 #[cfg(windows)]/非 Windows no-op——EnumWindows+PID 发现/DWM ext-frame 几何写读回/GWL_STYLE 剥离还原/DWMWCP_DONOTROUND 直角/sink_desktop_below z 序〔insertAfter 语义实测勘误：对 desktop 调 SetWindowPos 沉到 slot 之下〕/WinEventHook 五事件 OUTOFCONTEXT 钩子线程〔RwLock 数据槽×占用 AtomicBool 分立防回调死锁〕）；DesktopBus 动词增 `dock_native`（pid=/hwnd=）/`undock_native`；WmState.native_slots 注册表 + 槽位伪 Wid 进 apply_layout 同轮排布（min-size 扩张 C3/free 恒等）+ sync_native_geometry DPI 排水（CoordMapper 桌面原点×GetDpiForWindow+标题条客户区内缩）+ 槽位框 chrome（标题条 min/close）+ C2 独占全屏拒绝 + C4 拖走/B7 回收事件臂 + B8 退出批量恢复；feature 阶梯 native-dock（windows optional+target 双门控，默认档零开销）/test-native-dock + scripts/tools/native-fixture 夹具（JSON-lines start/bounds/close）+ 真第三方进程 E2E 六测试；**486 native dock Phase 1.5 触发面已落地**：DragWatch 拖入手势会话（`ui/native_dock/mod.rs` 纯逻辑状态机 Idle→Watching→Over——注入式落点计算〔含 free-cell 命中/最近〕+30Hz 节流+rect 变化即时重发+T1 七测；win32 钩子增 MOVESIZESTART 六事件+GetCursorPos 光标采样）+ session 接线（`DesktopEvent::NativeDragOver` 物理域消息面〔E2E/headless 注入用〕+`DesktopSession.native_drag_watch/native_drag_over` 字段+renderer `drive_drag_watch`〔START 起会话/被拖窗 LOCATIONCHANGE 采样/END 终态→dock 执行臂或清 overlay〕+`native_candidate_logical` 级联占位抽取〔高亮即落点不变量〕）+ 落点高亮 overlay（`native_drag_over_element` 主色 18% 半透明+2px 描边，view 层栈槽位 chrome 之上）+ 投影协议升版 **v1.3**（`__wm_wins` 纖入 native 槽位条目 {wid:"N<slot>",title,native,icon,focused}——仅 Docked 态/App 条目 native 恒空串统一/指纹窗段扩 "N{slot}:0,"，vue 端对拍基线）+ 任务栏动词 `focus_native`/`close_native`（三处落点+N 前缀 arg 双形态容收；执行臂 SW_RESTORE+SetForegroundWindow best-effort / WM_CLOSE→DESTROY 自然回收 B7）+ shell.at dock 区 native 分支（title 文本按钮 max-w-32 truncate+×）+ T4 E2E 拖入/拖出（`drag_sim` 合成拖拽——SendInput caption 真拖主路径〔TOPMOST 置顶+AttachThreadInput 前台化+激活结算+70% 宽大窗抓点四要素，4K@200% 小窗 caption 按钮占宽过半实测教训〕+SC_MOVE|HTCAPTION 注入退路〔同入真实 move-size 循环〕）+ T5 实机冒烟（t5_smoke #[ignore] 手动驱动：B1/B5/B8 实机留痕、D1 ◐ Chrome 自移触发 C4、G2 附带实证；B6/C1/B9 仍待用户）+ P473 债务行清偿回写；债务 P486-1 事件泵吞吐（16ms 单事件/拍，系统噪声下 dock 落位秒级延迟）；**485 原生互操作 Phase 2 剪贴板已落地（三族全通）**：`ui/clipboard_native.rs`（纯 codec 层 DROPFILES/DIBV5↔RGBA 全平台可测 + Win32 双门控层——files_get/files_set（CF_HDROP，DragQueryFileW/GMEM_MOVEABLE DROPFILES）/image_get（CF_DIBV5→CF_DIB→registered PNG 三退路→temp PNG，64MP 防爆）/image_set（DIBV5+PNG 双挂）；feature native-clipboard=[dep:windows,dep:image]（ui-iced 隐含，windows dep features 与 native-dock 共条目扩列）；四 VM natives auto.clipboard.files_get/files_set/image_get/image_set（catalog 2934-2937，降级臂空表/false/null——.at 零平台分支）+ codegen bare-name intrinsics；GlobalClipboardTestLock 跨进程命名互斥（nextest 多进程剪贴板测试互清根治）；示例 043-clipboard-bridge（三卡实机演示，Explorer/截图工具/画图往返留痕）；OLE 拖放 Phase 3/真洞 Phase 4 待续（真人清单顺延 KD-P473-2；P481-6 实机 Ctrl+C 末步复验受阻于合成输入不达 winit raw-input 流，债务开放）。**494 原生真洞 Phase 4 已落地（Region 机制替换形态）**：双 spike 证伪原设计——透明 swapchain 本机不可行（wgpu HWND surface 仅 [Opaque] alpha；DxgiFromVisual/DirectComposition 能力解锁但内容不上屏〔疑 ToDesk 远程显示环境〕；色键分层破坏 flip-model 呈现）+ HTTRANSPARENT 跨进程证伪（MSDN 同线程文义——WindowFromPoint 不跳层、真实点击被丢弃）→ 机制替换为 **SetWindowRgn 洞排除**：`raise_desktop_above`（SetWindowPos(slot,desktop) 单步 z 翻转，473 sink 参数对调）+ `apply_hole_regions`（CreateRectRgn+RGN_DIFF 逐洞扣除+SetWindowRgn(berase=false)，空表复位）——洞区窗口不存在=视觉透出 z 下层+点击直达（OS 区域语义，无同线程限制）；模式位 `shell.native.hole` storage（默认 off，DesktopOptions 程序位取或）+ sync_native_geometry hole 分支（z 翻转+refresh_hole_regions 洞集重建=全部 Docked 槽位 slot_rect）+ 失败自动回退假洞（hole_mode 翻 off+473 z 全量重申+日志，`refresh_hole_regions_at` 可测核心+stale hwnd 实测）+ 退出清 Region；T1 纯逻辑（window_local_holes 裁剪换算+z 序插入模型）+ 真实测试（z 不变量〔首可见邻居断言——IME 伴随窗楔位实测〕/Region 穿透/复位）+ T3 E2E 铁证（洞心 SendInput 跨进程精确穿透 ±6/洞外零泄漏；夹具增 click 坐标日志+win32::test_support scratch 设施）；G4 覆盖层洞边裁剪（Region 代价）+T5 实机清单+透明路径复验=已批准债务 P494-1/2/3（物理机复验，AUTO_DESKTOP_HOLE=1 钩子）。**709 槽位交互主体化已落地（2026-09-30）**：473 系已 dock 原生槽位从「布局占位」升格为与虚拟窗同级的交互主体——①拖动/缩放（`WmCommand::NativeSlotStartDrag/StartResize` + `WmInteraction::NativeDrag/NativeResize` 原生臂，几何真值域 `native_slot_local_rects`；`min_size_est` DPI 折算钳制；标题栏整条拖拽把手 + 八向把手 chrome；`__mouse_moved` 拦截臂尾随 `sync_native_geometry` 排水 = SetWindowPos 跟手；拖拽走宿主程序化排水不进 OS move-size 循环，C4 undock 手势天然不误触）+ Free 布局落定（Free 恒等分支下拖拽写回即真值，relayout 不跳位）；②统一序域（槽位伪 Wid（`0x8000...|slot` 段，与布局伪 Wid 同段）进 `focused`/`z_order`/`mru`——焦点回退六处统一 `top_member_in_workspace`（虚拟窗∪槽位）、Alt+Tab 环与 switcher/MRU 并入槽位、chrome 装配从「固定垫全部虚拟窗之后」改统一 z 序插序）+ 聚焦置顶（WM 侧 `focus_native_slot` + 带内 OS `restack_slots` 全带重申——473 逐 pending `sink_desktop_below` 多槽勘误：移除重插语义会把先处理槽位压到桌面下方，改锚定+顶向下链插一次成型）+ `EVENT_SYSTEM_FOREGROUND` 钩子跟随（docked 命中→WM focused 置槽位；他窗/桌面自身前台不改 WM 焦点——473「native 焦点域在 OS 层」窄化收口）；③workspace 感知（`NativeSlot.workspace` dock 时归属当前分区；切分区 SW_HIDE/SW_SHOW 失配 tick 隐现 + chrome 缺席 + 带序只含当前分区；`send_to`/`SendFocusedTo` 槽位臂 `move_native_slot_to_workspace`——clamp/负一屏守卫/焦点让渡同虚拟窗口径；任务栏 `focus_native` 点击「切到窗所在分区」语义 ActivateApp 同款）；④投影协议升版 **v1.11**（`docs/schema/projection-protocol-v1.md` §6：native 条目补 `workspace`（分区下标串，App 条目同口径）+ `focused` 实时位（v1.3「恒空」退役），`__wm_wins`/`__wm_mru`/switcher 快照三面同步，指纹 native 段扩 `"N{slot}:{focused},{workspace},"`，typed 载体 `ShellWin` wire 零变化纯构建面增量，vue 端对拍基线）。**DesktopBus 词表增量 `win_rect`**：`win_rect	<wid>	<x>,<y>,<w>,<h>`（VM 窗摆位编程化——移动+缩放一体；数字五族全 f32 接受；坏值/缺参/未知 wid/槽位伪 Wid 一律 no-op；执行臂 `VWinState.rect` 直写 + 160/120 min 钳制 + window_size 同步，无 relayout/不动他窗/不夺焦点/不改 workspace；Free 布局即落定，铺排布局下被下次 relayout 重铺为预期语义——ToDesk 等远程输入层吞合成输入的环境下，MCP 验收通道 `autoui_desktop action=bus` 发动词即确定性摆窗面）。**386 路线 B 桌面协议 Stage 1+2 已落地（v1.1）**：`ui/desktop_protocol/`
 （五通道消息 + 二进制编解码 + 双端状态机 + 命名管道/共享内存传输 + broker
 入口裁决 + L2 detach-attach，re-exec 两进程集成验证，状态保持经 revision
 连续性证明）；spawn-client 双态启动 + broker 孵化中转就绪，live-iced 渲染
@@ -458,7 +542,7 @@ J1/J2 渲染器子树，批五转正中）。
 **512 示例桌面化批二（fit 动态重测机制 + 批二 20 例）**：`window: "fit"` 语义补全——由首帧一次性测量升级为**动态重测双向跟随**：app view 重建（dispatch 漏斗 view_dirty）落到 fit 窗条目打 `fit_dirty` 标 → ServiceTick 400ms 节拍发起内容测量（**standalone 订阅补齐**：原仅 desktop 门控且宿主窗句柄恒 None，现 desktop 或 standalone 有脏标即订、测量目标取待测窗自身 id）→ `decide_fit_resize` 滞回 8px 决策 → standalone `window::resize` / desktop vwin rect 更新双路径；用户手动 resize 一次性锁定（程序化回波 ±2px 豁免）。**量测法关键修正**：活树布局受当前窗口钳制（内容自然高超出窗口即被裁，增长方向量不到；504 首测成功仅因默认窗大于内容）——`fit_aware_root` 锚点外套 vertical scrollable（内部无限高约束排版），锚点量真实自然尺寸；副作用=内容超窗瞬态出滚动条而非裁剪，宽度方向 v1 仍受视口钳制（P512-1）。实证：011 Scientific +44px/回缩基线、005 校验错误行 +39px/回缩（双探针 `tests/test_512_fit_remeasure.py`，win32 物理尺寸断言，阈值 >24px=3×滞回有实测依据）。迁移：fit 线 4 例（001/004/005/016）拆 `center` 外壳 + 卡片固定宽（**实证：`w-[28rem]` rem 任意值 iced 端不支持塌缩 213px，改 Tailwind 刻度 w-96/w-112 双端兼容**）实测 213x236/445x451/573x535/541x441 截图留痕；title-only 线 16 例 pac.at 补 `title:`。债项 P512-1（宽度钳制）/P512-2（锁定后余量视觉语义）/P512-3（p508_g2_outproc_arm 并发偶红）见 KNOWN-DEBT；P504-2 已清偿，P506-1（038 Reveal UAF）核对仍在（511 归档未修）。
 
 **552 桌面应用策展已落地（desktop 字段 opt-in + 测试探针清退）**：R10 注册表条目增 `desktop_visible`（pac `desktop:` 字段——主根 examples/ui 缺省 false=opt-in、外部自含根缺省 true=opt-out，坏值静默回退；`entry_for_dir(default_visible)`）；boot 两分——`app_resolver` 捕获全量（按名启动/自定义图标启动不受策展限制），`registry_entries`=策展过滤（launcher/图标格/dock 三消费面只见策展集，boot 日志双计数）。C 档 19 例加 `desktop: "true"`（045 已由 551 退役，20→19）；8 个测试探针（overlay-probe/p051/p493/p507/p515/p518/459-dual-app/042-two-inputs-child）迁 `examples/capability-tests/`（stage3 e2e 双根解析、ui_desktop/ui_dual_app include_str 改指、`scan_examples_ui_curation_set` 恰等断言防今后 demo 悄悄上架/掉字段）；examples/ui README 总览表增"桌面"列。债务 P552（customs 非策展 id 元数据回退 app-window/裸 id）。
-**527 VM 轨 Tailwind 全量覆盖契约**：样式子系统从「Tailwind-inspired 按需子集」升级为 **v3.4 清单驱动的全量覆盖契约**——①清单锚定：Tailwind v3.4 core 展开清单 vendor 入库（`tests/fixtures/tailwind-v34-utilities.txt` 8861 类×15 families，`tools/gen_tailwind_manifest.py` 零依赖再生）+`Style::parse_reported` 报告通道（未映射类按原文名报告，**静默丢弃通道关闭**）；②对拍审计台常驻（`tests/style_parity.rs` 已挂 `cargo t`）：白名单外零 missing + 布局/视觉/文本三家族 iced applied 门 + PARSED_ONLY_ALLOWED 豁免台账 + 覆盖率表 `docs/style-coverage.md` 同源再生（基线 applied 3807/parsed-only 276/unsupported 4778/missing 0）；③三家族补全：布局 1582/视觉 1901/文本 308 applied（SizeValue::Fraction 分数 Fill-ratio 口径、四色板 lime/violet/fuchsia/stone 补全+950 真值行、渐变三 stop+位置百分比真消费、彩色阴影、object-fit→ContentFit、全字重 9 档、leading 双轨、line-clamp；顺修 from-100 三位 hex 误吞/min-h 未知命名误落 0.0 等隐性假映射）；④Variant 管道泛化：hover/focus/active/disabled 同构（按钮状态面真消费+opacity 乘法降级）、responsive 五断点解析期按 `theme::window_width` 门控（resize→view 重建→重解析既有回路）、`dark:` 按 `theme::dark_mode` 门控——未命中态登记 variant_classes 可见不静默；⑤不做/受限台账 KNOWN-DEBT P527-1..5（永久不做族/宿主上限/分数近似口径/变体分期消费/存字段类）。复审 tf 3397/3398（唯一红=在案存量）零新增红。
+**527 VM 轨 Tailwind 全量覆盖契约**：样式子系统从「Tailwind-inspired 按需子集」升级为 **v3.4 清单驱动的全量覆盖契约**——①清单锚定：Tailwind v3.4 core 展开清单 vendor 入库（`tests/fixtures/tailwind-v34-utilities.txt` 8861 类×15 families，`scripts/tools/gen_tailwind_manifest.py` 零依赖再生）+`Style::parse_reported` 报告通道（未映射类按原文名报告，**静默丢弃通道关闭**）；②对拍审计台常驻（`tests/style_parity.rs` 已挂 `cargo t`）：白名单外零 missing + 布局/视觉/文本三家族 iced applied 门 + PARSED_ONLY_ALLOWED 豁免台账 + 覆盖率表 `docs/style-coverage.md` 同源再生（基线 applied 3807/parsed-only 276/unsupported 4778/missing 0）；③三家族补全：布局 1582/视觉 1901/文本 308 applied（SizeValue::Fraction 分数 Fill-ratio 口径、四色板 lime/violet/fuchsia/stone 补全+950 真值行、渐变三 stop+位置百分比真消费、彩色阴影、object-fit→ContentFit、全字重 9 档、leading 双轨、line-clamp；顺修 from-100 三位 hex 误吞/min-h 未知命名误落 0.0 等隐性假映射）；④Variant 管道泛化：hover/focus/active/disabled 同构（按钮状态面真消费+opacity 乘法降级）、responsive 五断点解析期按 `theme::window_width` 门控（resize→view 重建→重解析既有回路）、`dark:` 按 `theme::dark_mode` 门控——未命中态登记 variant_classes 可见不静默；⑤不做/受限台账 KNOWN-DEBT P527-1..5（永久不做族/宿主上限/分数近似口径/变体分期消费/存字段类）。复审 tf 3397/3398（唯一红=在案存量）零新增红。
 **593 语义 token 值单源化（Design 29 Phase 1，GOAL-007）**：样式值从四处置手抄
 互锁（vue.rs base_css 模板/theme.rs match 臂/code_editor accent 副本 + accent 双份）
 收敛为 **`design_tokens/registry.rs` 单一事实源**——①对账先行：七发射点实勘
@@ -536,7 +620,7 @@ Width/Height，Vue 生成器折内联 `style="width:Npx;height:Npx"` 并撤缺�
 `lucide_svg_doc_with` 从 fragment 单层包 `<svg>`；若把完整 16×16 文档（如 `lucide_svg`
 的缓存产物）再套一层 24×24 `<svg>`，嵌套 viewport 会按 16/24 二次缩放（跨端 icon ink
 系统性偏小 ≈33%，即「声明 18px 实测 ≈12px 盒」——619 实证根因，617 换表时一度复发，
-由 619 回归锚守住）。④门禁：`tools/parity_shot_diff.py` 预算化（语义面色 ≤2/通道、图标 ink 比
+由 619 回归锚守住）。④门禁：`scripts/tools/parity_shot_diff.py` 预算化（语义面色 ≤2/通道、图标 ink 比
 ∈[0.9,1.1]、左缩进 ≤1px，违规退出码 1）+ 015-notes acceptance **T14/C-PARITY-1** +
 autoui-verifier 技能「步骤 3.5 像素预算对拍」。实机（1280x800）：面色 Δ0/Δ1、图标 ink 比
 1.03/1.03、左缩进 Δ0/Δ1/Δ0；19 MCP + 18 Vue 场景全绿；`cargo t`/`tv` 零新增红。
@@ -689,6 +773,43 @@ demo 轨/app 轨分道扬镳的 enduring 数据源契约（2026-09-20 落地，�
 4. **旧 Fill 包装形态退役（retire）**：build_row 不再用「子项包 height:Fill 容器」模拟 stretch（该形态依赖有界祖先，无界下塌缩 0 高）；上节第 6 条「内嵌 demo 避免 items-stretch」约定自本节起解除，008 语料还原 items-stretch。scroll 兜底本身（overflow-hidden 列包 Shrink Scrollable）不受影响。
 5. **非目标**：012-clock 横向 stretch 行（列交叉轴=宽度，现实现无害）；iced 引擎级 flex 补丁（P642-D12 远期路线 B，iced 升级时处理）。
 
+## overflow 滚动转写·视口视觉层（PLAN-748）
+
+`overflow-y-auto`（及 `overflow-auto`）col 经 aura_view_builder `needs_scroll`
+转写为 `View::Scrollable` 时的 enduring 视觉契约（2026-10-10 落地，auto-jade
+供料件一根修）：
+
+1. **视觉类上移视口**（add）：bg/border/rounded/shadow/ring 族
+   （`StyleClass::is_visual_paint`）上移到**视口层** `View::Container`——CSS
+   语义里滚动容器的背景/边框属容器本体，随容器在 stretch/bounded 语境拉伸
+   满高；滚动内容 col 拿剥离余集（内容止于内容高，视觉不随之止步——
+   「侧栏 bg 底边=树内容底」根因消除）。此前转写把整串 style clone 给内容
+   col，`flex-col` 等显式显示类阻断 overflow-y 的 height=Fill 推断时视觉
+   随内容塌缩。无视觉类 → 零包装层（现行为不变）。
+2. **视口头寸镜像**：视口 Container 拷贝原显式 Width/Height 类、缺省补
+   Full；Scrollable 在容器内 Fill×Fill 铺满（`ensure_full_scroll_dims`）——
+   iced 0.14 `Limits::(Shrink)` 置 compression 位，Fill 子件在压缩轴解析为
+   内容高（StretchLine measure 遍同机制），Shrink 包装会塌缩。
+3. **类序无关**：由 Style::parse 逐 token 解析天然保证（layout_tests
+   `p748_j2_explicit_height_scrollable_class_order_invariant` 三变体等价锁
+   在案——h-full 类串首位/末位/乱序渲染等价）。
+4. **回归锚**：`crates/auto-lang/src/ui/iced/layout_tests.rs` p748_j1/j2/j3
+   （复现形几何 + 结构锁）；`split_scroll_visual_classes`/`
+   `ensure_full_scroll_dims`（aura_view_builder）。
+
+## autodown_editor 引擎 parity（PLAN-748）
+
+vm 轨 `autodown_editor` 官方件的内建视觉基线（2026-10-10 落地，auto-jade
+供料件四）：**内容 wrapper padding 与 auto-down 引擎 CSS 等值**——上下
+16 / 左右 20 逻辑 px，单一真源 = 引擎
+`autodown/packages/engine/src/editor/styles/autodown-editor.css:103`
+`.autodown-editor-content-wrapper { padding: 1rem 1.25rem }`（vue 轨由引擎
+样式层承担，vm 件内建等值层使双轨呈现等值）。widget 契约四点联动：
+layout 内缩测量（宽 −2×20、高 +2×16）/ draw 内容原点平移 / update 鼠标
+命中坐标内缩 / IME 光标锚偏移。常量锚：`autodown_editor/widget.rs`
+`CONTENT_PAD_X/Y`（单源锁测试在案）；行为锚：plan732 真实 iced 事件全管线
+点击 + `p748_t10_editor_wrapper_padding_in_layout`（哨兵 y = 内容高 + 32）。
+
 ## MCP fixture trigger 派发契约（PLAN-659）
 
 `autoui_fixture`（`AUTOUI_TEST_FIXTURES=1` 门控，VM-only）的 trigger
@@ -763,6 +884,35 @@ inproc VM App（ui_desktop 宿主 `launch_app`）拉起零宿主退出是桌面�
   MCP 双探逐秒盯存活）+ Windows 事件日志三查（Application 1000/1001/
   1002 + System 41/1001/6008 + WER 桶）；cdb 托管形态见上节（F1）。
 
+## VM 宿主活跃会话稳定域（PLAN-765）
+
+承接 697 死亡判位表与 650 空转减负域,活跃会话(客户端轮询打开态)两面
+契约,全文见 [vm-host-stability](design/vm-host-stability.md):
+
+- **HTTP 消息桥生命周期**(`Http.get_msg` 轮询消费方):共享连接池 Client
+  (禁每请求新建)+ 响应体按 CL 预留 + 载荷单缓冲预编码
+  (`{handler}\u{1F}s\u{1F}{json}` 入队侧产出,泵零拷贝直投)+ 诊断
+  eprintln env 门控(`AUTOUI_HTTP_BRIDGE_DIAG`)。
+- **回填派发 seq 门控**:`DesktopMessage::HttpBackfill` 专用通道,handler
+  零状态写的空回填不置脏(F1 fire_timer 语义延伸;普通事件派发语义不动;
+  逃生门 `AUTOUI_MSG_BACKFILL_DIRTY=1`)。事件名推导 `::` 截断只作用首个
+  \u{1F} 前的事件名段——载荷 body 内 `std::process` 等文本不再截坏
+  handler 名(musk K10 空渲染族)。
+- **退出审计四分法**:697 三挂点 + main_err/main_err_ai_mode/
+  mem_guard_f12_escape + **native_crash 钩**(SetUnhandledExceptionFilter,
+  落笔后 CONTINUE_SEARCH 保 WER)。**外部击杀指纹 = 审计册零行 + 退出码
+  1**(Windows 强杀恒 1)。musk soak 仪器的"VM 必退 code=1"定谳为收尾
+  taskkill 假象;斜率报值实为 MB/hour(单位 bug,musk 侧修)。
+- **r2 增补（瞬态尖峰退出面归因）**:musk bigpage 矩阵呈报的"burst/大快照
+  触发原生 exit(1)"定谳为**仪器 finally-taskkill 假象**(try/finally 无
+  catch:工具调用 isError 抛错→收尾击杀,"VM EXITED code=1" 先于错误栈打印
+  被误读;判别台四臂全存活)。**外部击杀假象高发警示**:驱动方仪器收尾
+  kill 与进程自退的区分是判读前提——判真死亡须击杀标记与错误分离或采样
+  时间线。观测缺口闭合:F-10 **exitproc_trace**(env `P765_EXIT_TRACE=1`,
+  IAT 槽替换)——依赖直调 ExitProcess 的零痕盲区(原"零行+码 1"指纹的
+  例外),落调用栈偏移后确定性自终止(规避 LdrShutdownProcess detach
+  竞态,退出码精确保持)。
+
 ## 桌面端点跨仓配对契约（PLAN-698 SD-04）
 
 auto-os 桌面 shell（ui_desktop 宿主装载的特权 .at App）所在进程=**真实
@@ -789,7 +939,7 @@ desktop 端点**：a2r exe（native 轨，P693 三模式 CLI）经
 
 ## 关键入口
 
-- `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `schema/aura.at`）
+- `dialect/ui.rs:UiDialect` · `aura/extract.rs` · `aura/schema_loader.rs`（契约源自 `docs/schema/aura.at`）
 - `ui_gen/vue.rs:VueGenerator` · `ui_gen/api.rs` · `ui_gen/widget/registry.rs`（widget/chart 契约表；
   **PLAN-609 后 use 引用的包组件必须落盘 `components/*.vue` 与 import 发射一致**
   ——dep 源经 `resolve_dep_os_mirror` 按 resolve_os_top_dir 解析序回退 auto-os 镜像，
@@ -1069,6 +1219,47 @@ NULL 守卫——0 参 widget handler 派发带 λ 的 store msg 后读 `__state
 jade facade 切换实机 P2 面真因）。带参 handler 的泄漏值恰等自身故不可见；
 守卫语料须覆盖「0 参 handler × store λ 派发」组合（plan624 p2 臂）。
 
+
+## vue 轨 store handler 事件重入与 await 悬窗契约（PLAN-750）
+
+### 派发时序契约（SD-01）
+
+`.at` 单源双轨（vm 解释 / vue 转译 JS）下，store/widget handler 的派发
+时序契约钉死如下（语料：`docs/plans/evidence/p750/`（auto-jade 实机
+A/B/C/D 场景双载体对照）；实证基线 auto-lang master @ ab7a650bd 与
+HEAD 双载体，2026-10-10）：
+
+1. **handler 体原子域**：handler 从入口到最后一个显式 `await`（vue 轨：
+   转译 async fn 内的 await；vm 轨：契约调用挂起）之间的同步段原子执行
+   ——外部事件不会插入同步段中间。
+2. **await 悬窗可重入**：handler 在 await 挂起期间，**同 store 的新事件
+   可重入启动新的 handler 调用**（两轨一致——vm 轨 INPUT_TEXT 通道与
+   vue 轨引擎事件同理；AutoJade editor_store 排水循环的身份重查模式即按此
+   模型设计）。宿主不得假定「await 期间无重入」；重入安全性由身份重查
+   （按稳定 id 重扫）而非调用互斥达成。
+3. **悬窗内身份分配的单飞责任在宿主**：悬窗内做「分配型」状态变更
+   （首次身份分配：`x == ""` → `x = await alloc()` 形态）时，重入调用会
+   走同一分配臂产生**双分配并覆写身份**——身份重查兜不住「身份被换」。
+   分配臂必须加 in-flight 门（范式：分配前置位、重入跳过分配只更新
+   数据面、in-flight 调用的续体收尾排水；见 PLAN-750 供料包草案
+   `evidence/p750/supply-draft.md` §修复范式）。jade d0003 卡死+
+   d0004 空目录双分配事故的实机直证（同运行 d0001 erev=1 单键弧健康、
+   d0003 erev=2 双键弧卡死并存）。
+4. **双轨事件节奏分野**：vm 轨输入经 MCP 往返串行（事件间隔 ≫ 悬窗），
+   vue 轨引擎事件逐键直达（首挂载编辑器逐键发射存活——重挂载后
+   blur 冲刷为 D-17 既有边界；间隔可 ~5ms < 悬窗 15-60ms）。**vue 轨
+   宿主必须按「事件可落进任意 await 悬窗」设计**；vm 轨绿不能作为该
+   设计缺席的证据。
+5. **保存流天然屏障（非契约保证）**：保存型 handler 自身的写盘+读回
+   两个 await 通常构成回执屏障（settle 检查前在途回执已落账）——这是
+   观测事实（p750 场景 B/C 双载体绿），**不构成可依赖的时序保证**；
+   settle 类操作仍应以确认账（seq/erev）为准而非时序。
+
+vue 轨事件派发**不提供**跨 handler 串行化（排队等待前序 handler 完成
+含其全部 await）：串行化会把后续键入的时延耦合到前序排水链（jade
+PLAN-031 T-05 逐键 POST 风暴正是要规避的形态）。若个别应用需要互斥，
+由宿主 .at 以 in-flight 门/信号位表达（本节第 3 条范式）。
+
 ## icon 字符串协议族（PLAN-018）
 
 icon 通道是**字符串协议**：pac `icon:` → 注册表 `AppRegistryEntry.icon` →
@@ -1221,13 +1412,13 @@ vue 轨生成工程的**裸产出即自完备可构建**——`auto build --gen-
      有镜像键（`text` = `''` 空差量类，chromeless 互锁；双面 =
      WidgetTemplate variants.ts + 脚手架资产 assets/shadcn-ui/button）。
 
-验证面：`tests/vue-gen-gap/`（九特性集中的通用 fixture，零消费方业务名）。
+验证面：`test/ui/vue-gen-gap/`（九特性集中的通用 fixture，零消费方业务名）。
 脚手架 ui 组件为 write-if-missing（PLAN-457 契约，用户补丁不被覆写）——
 存量树的陈旧脚手架资产需冷重生成（rm gen/ 后 regen）取新版。
 
 ### menubar 族 props schema 吸收（SD-02）
 
-PLAN-630 menubar 组件族 props 进 `schema/aura.at`：`menubar_item` /
+PLAN-630 menubar 组件族 props 进 `docs/schema/aura.at`：`menubar_item` /
 `menubar_checkbox_item` 声明 title/icon/shortcut/checked/enabled
 （union:string|state_ref / union:bool,state_ref）+ text/disabled/onclick/
 class；`menubar_checkbox_item` 为 vm view_builder 既有臂的 schema 补册
@@ -1264,7 +1455,7 @@ type` 亦关 route A（api_impl.rs 不发射）。路径/面包屑/排序走前�
 ## 已知坑
 
 - **`video` 元素：Vue 是原生 `<video>`，iced 是原生命中播放面（PLAN-617；SD-05）**：
-  - **支持级别**：`schema/aura.at` 的 `video.backends.iced` 为 **`partial`**
+  - **支持级别**：`docs/schema/aura.at` 的 `video.backends.iced` 为 **`partial`**
     （由 `fallback` 提升）。`render_support` 同步为 partial，`ignored` 列
     `poster/preload/playsinline/autoplay/controls`（浏览器专有语义，iced 端无对应）。
   - **实现位置**：`crates/auto-lang/src/ui/mpv/`（`engine` 生命周期 / `channel` 帧上屏 /
@@ -1357,7 +1548,7 @@ type` 亦关 route A（api_impl.rs 不发射）。路径/面包屑/排序走前�
 - 446 批五（U2–U6）在 worktree 待 merge；463 合入后需实测内存给 386 提供数据。
 - 455 矩阵多数示例（008–025）仍 Pending Audit；示例矩阵编号与目录有漂移（todo 在计划内）。
 - 桌面线由并行会话活跃推进：WM 无独立 wm.rs 文件（WmState/WmCommand 实体在 session.rs，Plan 471 实测
-  校正）；virtual_window 的 schema/aura.at 契约登记（462-I4）master 暂未见，随桌面线收尾合入。
+  校正）；virtual_window 的 docs/schema/aura.at 契约登记（462-I4）master 暂未见，随桌面线收尾合入。
 - 465 未落地前，vue codegen 的 modal `position:fixed`/teleport-to-body 假设与虚拟桌面容器冲突（改造点已定位 vue.rs:6310/3599/4057）。
 - a2vue 工程庞大（vue.rs 万行级），缺陷修复走 444 式"五类分簇"模式；013/015/011 构建失败系 master 预存（R006/R007）。
 - router 双语法并存（Plan 105/106，见 docs/router.md）。
@@ -1410,7 +1601,7 @@ props 透传、daemon 发现序三级 PATH、`shutdown_broker` 五退出点；C 
 **632 画廊内嵌 demo 模块组件桥接（ADR-20，清偿 625"6 模块 use 降级"中的组件/store 族）**：T-01 standalone 对照实验修订两处预设——016 store 桥接 standalone 全通（store→child 转换+模型并根+计算属性全绿），内嵌降级根因=use.web 适配器链（Demo*.at）携带的 StoreDecl 在 load_ext_imports_for_vm 才进 import_stmts、晚于 store→child 转换位——ext 装载后按名去重补转换（F1）；006 双缺口=dep 目录 item 命名文件（settings_popover.at）解析永不命中（F2：resolve_use_module dotted-module 探测，`deps/{dep}/{item_snake}.at` 候选复用，snake_case 优先）+适配器模块 use 链 widget 从不注册（F3：扫 visited 按显式 items 注册进 registry/child_decls，P545 bare use 不触发）；F4=适配器链符号别名补齐（视图 computed 内 `month_name(...)` 裸名查 exports miss → raw 模板回退根因；or_insert 根环优先）。**实证**：006 弹层开合（settings_open 状态断言+截图）、016 June/42 格填充网格/Selected 点击更新、002/003/011 回归巡检——内嵌 MCP 10/10 双轮（实现期+复审期）；plan632_demo_bridge_tests 5 测（T-02 红→绿）；tv 3715/3715、tf 3568/3569（唯一红=P615-D3 预存并发抖动，隔离恒绿）。**债**：P632-D1 App.Init 兜底告警（宿主根件无 Init 的既有形态）；006 standalone 的 deps/settings 空目录为 vue 臂 dep 管线产物缺口（环境面，非运行时范围）。
 
 
-**641 tabs variant 形态词表（default/enclosed 连通形态）**：`tabs` 根节点 `variant` 两值词表——`default`=按钮托盘（零回归），`enclosed`=连通形态（激活 tab 与内容面板共享背景无缝、非激活扁平等高 cell 仅背景色差、条与面板层次分明）；Chrome（顶圆角）/IDE（直角）观感差异归 token 层（Vue `rounded-t-*` class、VM 根 style `effective_border_radius` 顶角），不扩词表（SD-02 治理：新增取值须双端同落+gallery 覆盖）。VM 轨从无 tabs 到全链：`convert_tabs` 复合标签折叠（受控最小集——`active`/`value`/`defaultvalue` 解析序 + `resolve_expr_to_value` 状态引用穿透 + `onselect`/trigger `onclick` 注参索引回调）、`convert_view_messages` 显式 Tabs 臂（除名 `_ => Empty` 折叠）、iced 渲染臂双形态（theme token + 顶角半径 + button 命中面透明化）；A2UI 线协议 `Tabs.variant`（Option 缺省省略，向后兼容）。Vue 轨：registry 四件 variant provide/inject（`autoTabsVariant`）——顺修两处既有隐患（wrapper 自闭合丢 slot、`defineEmits()` 未类型化断 v-model 转发）；**tabs SFC 三源同步纪律**（registry 手工源 / vue.rs WidgetTemplate 库模式 / auto-man assets 脚手架快照〔`@/lib/utils`+reactiveOmit 风格，patch 记 SNAPSHOT.md〕）。schema/aura.at + schema.rs 双源 prop 词表（value/active/defaultvalue/variant/onselect，iced partial），五表漂移围栏过栅（baseline 裁剪 tabs 孤儿两条）。契约细节见 [design/tabs-components.md](design/tabs-components.md)；双端验证 capability-tests/tabs-variants + vue-gallery tabs 页。
+**641 tabs variant 形态词表（default/enclosed 连通形态）**：`tabs` 根节点 `variant` 两值词表——`default`=按钮托盘（零回归），`enclosed`=连通形态（激活 tab 与内容面板共享背景无缝、非激活扁平等高 cell 仅背景色差、条与面板层次分明）；Chrome（顶圆角）/IDE（直角）观感差异归 token 层（Vue `rounded-t-*` class、VM 根 style `effective_border_radius` 顶角），不扩词表（SD-02 治理：新增取值须双端同落+gallery 覆盖）。VM 轨从无 tabs 到全链：`convert_tabs` 复合标签折叠（受控最小集——`active`/`value`/`defaultvalue` 解析序 + `resolve_expr_to_value` 状态引用穿透 + `onselect`/trigger `onclick` 注参索引回调）、`convert_view_messages` 显式 Tabs 臂（除名 `_ => Empty` 折叠）、iced 渲染臂双形态（theme token + 顶角半径 + button 命中面透明化）；A2UI 线协议 `Tabs.variant`（Option 缺省省略，向后兼容）。Vue 轨：registry 四件 variant provide/inject（`autoTabsVariant`）——顺修两处既有隐患（wrapper 自闭合丢 slot、`defineEmits()` 未类型化断 v-model 转发）；**tabs SFC 三源同步纪律**（registry 手工源 / vue.rs WidgetTemplate 库模式 / auto-man assets 脚手架快照〔`@/lib/utils`+reactiveOmit 风格，patch 记 SNAPSHOT.md〕）。docs/schema/aura.at + schema.rs 双源 prop 词表（value/active/defaultvalue/variant/onselect，iced partial），五表漂移围栏过栅（baseline 裁剪 tabs 孤儿两条）。契约细节见 [design/tabs-components.md](design/tabs-components.md)；双端验证 capability-tests/tabs-variants + vue-gallery tabs 页。
 
 ## shell outproc 客户端（PLAN-030，provisional）
 
@@ -1435,3 +1626,59 @@ a2r 编译面轨随缺省翻转计划另立。
 - ImageSurface onload/onerror 运行时事件已接通（管线代次+50ms 唤醒
   轮询+notify sweep，规则见 design/image-surface-events.md）；renderer
   6399 处回调丢弃臂已由 notify sweep 替代消费。
+
+## PLAN-732 注记（2026-10-03）
+
+- autodown 编辑壳正文内链激活供给：`[[t#a]]` 经 flatten_inlines 语义消费
+  （attr wikilink 单源）→ DocLayout.links 单 run 段命中区 → 完整点击门
+  （core handle_input 汇聚点）→ on_link 回调（`.at` 绑定
+  `on "open-wiki-link"` 完整 kebab，与 jade Vue 同名）→ 双 Str 载荷直达
+  VM handler。新 design 文档：autodown-wikilink.md（契约八节+测试索引）；
+  裁定沉淀 architecture.md ADR-27。
+
+## PLAN-735 注记（2026-10-03）
+
+- 帧观测通道升格为**呈现/通知分离**语义（frame-observability.md §1/§4/§5）：
+  `present_ms`=通知面（稳态走 ready 唤醒链，711 D-2 订阅门稳态关）；
+  新增 `draw_end_ms` 逐帧呈现真值（根包装 draw 括号结束——iced_winit
+  RedrawRequested 臂内同步先行于 present；Rust 读侧
+  `frame_draw_end_ms()`，VM 9920/a2r 为下游重判件建议项）。
+- 交付节奏契约（§4）：呈现节奏=驱动器节奏传递（每输入更新轮无条件
+  request_redraw→下一轮同步 draw+present）；~100ms 级恒定节拍=驱动器
+  调用周期+服务端锁长尾的传递读数，非渲染天花板——帧率类判定必须
+  连同驱动协议周期归因。
+- 泵配对契约（frame-pipeline-incremental.md §4b 升格）：发布点
+  truthful present（draw_end_ms 优先）——建帧 100% 拿行，
+  `present=-1` 仅真未呈现帧；731 的「-1=测量配对面」定性由
+  发布点错位机理细化并修复（evidence/735/）。
+
+## PLAN-740 注记（2026-10-08）
+
+- 交付节奏持续率契约（frame-pipeline-incremental.md §4d）：交付数/驱动数
+  ∈[0.9,1.1] 至 ≥54Hz 档——消费侧**间隔结构**是权威杠杆：MCP action 消费
+  16ms 轮询→push 通道（到达即投递+drain-to-empty），tick 网格重排消息对
+  →呈现槽合并的坍缩面升格为禁例（54Hz 档 0.79→1.06 实测双谱，
+  evidence/740/）。
+- 交付节奏三轴（frame-observability.md §1/§4）：`mcp_recv`（push 逐动作
+  消费时刻；`mcp_poll` tick 节奏轴退役双形态兼容）+`update_end`（发出节拍
+  代理）+`redraw_deliver`（既有）——与 `draw_end_ms` 同 t0 归因链；观测
+  边界=门控行+不进判定阈值语义（frozen）。
+- 下游复判解锁（auto-edit 027 协议零工具改动）：上游交付能力谱在档
+  （evidence/740/downstream-handoff-v3.md——54Hz 探针档带内；HTTP 驱动
+  scroll 时延地板 ~36.5Hz 如实注记）；027 ~93ms 恒定 pacing 上游不复现，
+  下游定责归下游域复判件消费。
+
+## PLAN-759 注记（2026-10-11）
+
+- **壁纸测试态隔离规约**（712 T-13/T-14 优先级语义的测试侧契约）：
+  `load_desktop_wallpaper` 的目录档（config `wallpapers_dir` → env
+  `AUTO_DESKTOP_WALLPAPERS_DIR` → stella 素材目录探测）使 `#hex` 色值
+  在有壁纸目录的机器上被主题默认图/目录首图覆盖——**机器相关断言漂移**。
+  凡断言壁纸解析值的测试，会话构造时必须以存活至测试结束的空临时目录
+  写入 `config.wallpapers_dir` 隔离（先例：desktop_bus_inbox_drains /
+  desktop_surface_merge 双测）；断言保持逐字精确，禁止「预期色值或任意
+  图片存在」宽松放行。
+- **登记债务**：硬编码 `D:\Down\stella-os\wallpapers` 探测
+  （renderer.rs `wallpapers_dir_or_default`，PLAN-526 T19 机器便利默认）
+  挪 env/配置显式开启——dev 便利不应进库代码路径；独立裁定，非消红
+  前置（KNOWN-DEBT R5-② 条目）。

@@ -30,7 +30,7 @@ total_steps: 7
    漏网点。
 2. **内容页 UX 重设计**（revision 2 新增，用户裁定"内容也很粗糙…重新
    设计内容页的 UI/UX，让 gallery 更专业化"）：Spec/Gotchas 从裸 `pre`
-   文本升级为 **autodown 渲染件**双臂呈现（对齐 jade-edit 的
+   文本升级为 **autodown 渲染件**双臂呈现（对齐 auto-jade 的
    `@autodown/engine` 消费），新增**分节快速导航**（Spec/Reference/
    Gotchas tab 直切，消灭长滚动），内容页头部专业化（面包屑/kind 徽标
    /变体数/前后条目导航）。
@@ -47,7 +47,7 @@ total_steps: 7
   （修复若小则同批，若大则记债立项，以勘定产物为准）。
 - **G4（内容渲染专业化）**：Spec 正文与 Gotchas 以 markdown 渲染件呈现
   （标题层级/列表/表格/引用/代码块 chrome），双臂同源同能力，对齐
-  jade-edit 的 autodown 消费形态；Reference 源码至少 mono + 代码块
+  auto-jade 的 autodown 消费形态；Reference 源码至少 mono + 代码块
   chrome（语法高亮视引擎能力，见 Q-3）。
 - **G5（快速导航）**：内容页三节（Spec/Reference/Gotchas）tab 直切，
   点击即达，不依赖长滚动；VM 臂实现不依赖 `scroll_to`（既有不可靠，
@@ -94,7 +94,7 @@ PLAN-669 分界：669 收敛的是 **vm-server（HTTP 路径）**；本计划是
   同源）。
 - Vue 臂：`ui_gen/vue.rs` :12857 将 `autodown|markdown|markdown_editor`
   tag 映射到 `@autodown/engine` StreamingRenderer（content → :source）；
-  消费先例 = jade-edit `pac.at` dep link +
+  消费先例 = auto-jade `pac.at` dep link +
   `autodown_editor (key:, final: true) { content: ... }`（app.at :220）。
 
 **设计**（app.at 内容区改造，catalog.at 配套）：
@@ -126,7 +126,7 @@ while+索引。
 
 Rust（crates/auto-lang，仅 T-01/T-02 触及）；应用层 `.at`
 （examples/bps-gallery：app.at/catalog.at/pac.at）；`@autodown/engine`
-（vue 臂 dep link，jade-edit 先例）；测试三层：① 最小 .at 复现语料
+（vue 臂 dep link，auto-jade 先例）；测试三层：① 最小 .at 复现语料
 ② 既有门禁档（`cargo t`/`cargo tv`，按改动面）③ MCP E2E
 （`.agents/skills/autoui-verifier/scripts/` 形态）。
 
@@ -150,7 +150,7 @@ Rust（crates/auto-lang，仅 T-01/T-02 触及）；应用层 `.at`
   行内码，全部以等宽纯文本渲染，无层级无强调；Gotchas（结构化
   markdown）同为裸文本；三节总高数千 px，仅靠整页滚动。
 - **漏网原因**：PLAN-676 门禁只盖 vue 臂构建，VM 臂点击路径无 E2E。
-- **相关先例**：PLAN-669（vm-server 按名绑定——不同路径）；jade-edit
+- **相关先例**：PLAN-669（vm-server 按名绑定——不同路径）；auto-jade
   PLAN-081（autodown_editor 消费形态）；plan-450 批次三（VM 面板样式）；
   PLAN-019 批次七（markdown widget 真渲染收口）。
 - **约束/坑**：master 零 WIP 代码（实现在 `D:/autostack/.wt/lang-685/
@@ -240,7 +240,7 @@ Select 链剥离快照兜底（T-02 已封）；③实证：带修 auto.exe 共 
 改 `examples/bps-gallery/src/front/app.at`（+catalog.at 配套 fn）：
 1. `active_section` 状态 + 分节 tab 条（§2.2.1）；
 2. Spec/Gotchas 换 `markdown` 渲染件（§2.2.2；vue 臂 pac.at 补
-   `@autodown/engine` dep link——jade-edit pac.at :33 形态，相对路径按
+   `@autodown/engine` dep link——auto-jade pac.at :33 形态，相对路径按
    bps-gallery 深度修正，gen 后实测解析）；
 3. 头部面包屑/kind 徽标/变体计数（§2.2.4）；
 4. prev/next 导航（§2.2.5，catalog.at 新 fn，全键书写 Obj）。
@@ -376,7 +376,7 @@ wrong:/why:/right: 加粗/行内码 chip/列表/表格 chrome）、tab 直切、
 - 2026-09-22 `revision: 1 → 2`（drafting 内用户扩围，未开工）：新增
   G4/G5 + T-05/T-06 + AC-06..09 + SD-03。技术面勘定：markdown 渲染件
   双臂通道齐备（VM=autodown_render.rs 实勘；vue=ui_gen/vue.rs :12857
-  映射 @autodown/engine；jade-edit 消费先例 :220），快速导航裁定走
+  映射 @autodown/engine；auto-jade 消费先例 :220），快速导航裁定走
   状态分节 tab 而非锚点滚动（scroll_to 不可靠先例）。授权 = 用户原话
   "把这些设计和修改方式也记录到计划 685 里，之后一起实施"。
 - 2026-09-22 `stage: work` `plan_id: PLAN-685` `plan_revision: 2`

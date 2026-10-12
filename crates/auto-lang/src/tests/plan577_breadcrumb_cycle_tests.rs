@@ -43,11 +43,8 @@ widget BreadcrumbPage {
     let app_path = dir.path().join("app.at");
     let code = std::fs::read_to_string(&app_path).expect("read app.at");
     // 未守卫时 view 构建无限自递归（栈溢出杀整个测试进程）；守卫后正常返回。
-    let comp = crate::build_dynamic_component(
-        &code,
-        app_path.to_str(),
-    )
-    .expect("自名折叠环 app 编译");
+    let comp =
+        crate::build_dynamic_component(&code, app_path.to_str()).expect("自名折叠环 app 编译");
     let (view, _, _) = comp.view_with_debug();
     let rendered = format!("{view:?}");
     assert!(

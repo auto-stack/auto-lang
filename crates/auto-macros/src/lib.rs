@@ -767,6 +767,18 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Now call_args is in the correct order for the function call
 
+    // Independent producer contract: derive from the Rust callee, never the
+    // Auto declaration which will later be checked against it.
+    let parameter_types: Vec<_> = func.sig.inputs.iter().filter_map(|arg| {
+        if let syn::FnArg::Typed(arg) = arg {
+            let ty = &arg.ty;
+            Some(quote! { stringify!(#ty) })
+        } else { None }
+    }).collect();
+    let return_type = match &func.sig.output {
+        syn::ReturnType::Default => quote! { "()" },
+        syn::ReturnType::Type(_, ty) => quote! { stringify!(#ty) },
+    };
     // Generate inventory::submit! for each name
     let inventory_submits: Vec<_> = names.iter().map(|name| {
         let name_str = name.as_str();
@@ -775,6 +787,9 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
                 crate::vm::ffi::StaticFFIRegistration {
                     name: #name_str,
                     shim: #shim_name,
+                    parameters: &[#(#parameter_types),*],
+                    returns: #return_type,
+                    producer: concat!(module_path!(), "::", stringify!(#func_name)),
                 }
             }
         }

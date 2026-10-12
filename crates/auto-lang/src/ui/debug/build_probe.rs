@@ -234,18 +234,14 @@ mod tests {
         probe.record_event(&[0, 0], "onclick", "handle_click");
 
         let snap = probe.snapshot();
-        let n = snap
-            .get(&[0, 0].to_vec())
-            .expect("path [0,0] recorded");
+        let n = snap.get(&[0, 0].to_vec()).expect("path [0,0] recorded");
         assert_eq!(n.state_bindings.len(), 1);
         assert_eq!(n.state_bindings[0].expr, "${.count}");
         assert_eq!(n.state_bindings[0].current_value, "3");
         assert_eq!(n.events.len(), 1);
         assert_eq!(n.events[0].handler, "handle_click");
 
-        let m = snap
-            .get(&[1, 2].to_vec())
-            .expect("path [1,2] recorded");
+        let m = snap.get(&[1, 2].to_vec()).expect("path [1,2] recorded");
         assert_eq!(m.for_context.as_ref().unwrap().value_repr, "apple");
         assert_eq!(m.for_context.as_ref().unwrap().index, Some(2));
     }
@@ -291,7 +287,10 @@ mod tests {
             },
         );
         probe.record_event(&[2], "onclick", "h");
-        assert!(probe.snapshot().is_empty(), "disabled probe must not record");
+        assert!(
+            probe.snapshot().is_empty(),
+            "disabled probe must not record"
+        );
 
         // Enable and it records.
         probe.set_enabled(true);
@@ -334,7 +333,10 @@ mod tests {
     fn record_raw_class_disabled_is_noop() {
         let mut probe = BuildProbe::new_disabled();
         probe.record_raw_class(&[0], Some("p-4".into()));
-        assert!(probe.snapshot().is_empty(), "disabled probe must not record");
+        assert!(
+            probe.snapshot().is_empty(),
+            "disabled probe must not record"
+        );
     }
 
     // -----------------------------------------------------------------

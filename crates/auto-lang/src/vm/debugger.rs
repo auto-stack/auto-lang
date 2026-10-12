@@ -4,11 +4,11 @@
 //! with NoOpController (normal execution), AgentController (AI Agent),
 //! and GdbController (interactive human debugging with GDB-like commands).
 
-use crate::vm::task::{AutoTask, CallFrame};
 use crate::vm::opcode::OpCode;
+use crate::vm::task::{AutoTask, CallFrame};
 use crate::vm::virt_memory::VirtualFlash;
-use std::collections::HashSet;
 use colored::Colorize;
+use std::collections::HashSet;
 
 /// Snapshot of VM state at a pause point
 pub struct DebugContext<'a> {
@@ -201,7 +201,10 @@ impl JsonAgentController {
         let locals: Vec<AgentLocal> = (0..ctx.task.current_fn_n_locals)
             .map(|i| {
                 let val = ctx.task.ram.read_i32(ctx.task.bp + 1 + i);
-                AgentLocal { index: i, value: val }
+                AgentLocal {
+                    index: i,
+                    value: val,
+                }
             })
             .collect();
         AgentDebugState {
@@ -250,13 +253,12 @@ impl DebuggerController for JsonAgentController {
                 let hit = self.breakpoints.iter().any(|bp| match bp {
                     Breakpoint::AtIp(ip) => *ip == ctx.ip,
                     Breakpoint::AtLine(line) => *line == ctx.line,
-                    Breakpoint::AtFunction(name) => {
-                        ctx.call_stack
-                            .last()
-                            .and_then(|f| f.fn_name.as_ref())
-                            .map(|n| n == name)
-                            .unwrap_or(false)
-                    }
+                    Breakpoint::AtFunction(name) => ctx
+                        .call_stack
+                        .last()
+                        .and_then(|f| f.fn_name.as_ref())
+                        .map(|n| n == name)
+                        .unwrap_or(false),
                 });
                 if hit {
                     self.last_line = ctx.line;
@@ -316,19 +318,16 @@ impl DebuggerController for AgentController {
                 }
                 should
             }
-            DebugMode::Run => {
-                self.breakpoints.iter().any(|bp| match bp {
-                    Breakpoint::AtIp(ip) => *ip == ctx.ip,
-                    Breakpoint::AtLine(line) => *line == ctx.line,
-                    Breakpoint::AtFunction(name) => {
-                        ctx.call_stack
-                            .last()
-                            .and_then(|f| f.fn_name.as_ref())
-                            .map(|n| n == name)
-                            .unwrap_or(false)
-                    }
-                })
-            }
+            DebugMode::Run => self.breakpoints.iter().any(|bp| match bp {
+                Breakpoint::AtIp(ip) => *ip == ctx.ip,
+                Breakpoint::AtLine(line) => *line == ctx.line,
+                Breakpoint::AtFunction(name) => ctx
+                    .call_stack
+                    .last()
+                    .and_then(|f| f.fn_name.as_ref())
+                    .map(|n| n == name)
+                    .unwrap_or(false),
+            }),
         }
     }
 
@@ -374,7 +373,11 @@ pub struct GdbController {
 }
 
 impl GdbController {
-    pub fn new(source_lines: Vec<String>, flash_bytes: Vec<u8>, exports_by_name: std::collections::HashMap<String, u32>) -> Self {
+    pub fn new(
+        source_lines: Vec<String>,
+        flash_bytes: Vec<u8>,
+        exports_by_name: std::collections::HashMap<String, u32>,
+    ) -> Self {
         Self {
             breakpoints: Vec::new(),
             step_mode: StepMode::None,
@@ -399,9 +402,18 @@ impl GdbController {
             let ln = i + 1;
             let is_current = ln == center;
             if is_current {
-                println!("{} {} | {}", ">".green().bold(), format!("{:>4}", ln).yellow().bold(), self.source_lines[i].white());
+                println!(
+                    "{} {} | {}",
+                    ">".green().bold(),
+                    format!("{:>4}", ln).yellow().bold(),
+                    self.source_lines[i].white()
+                );
             } else {
-                println!("  {} | {}", format!("{:>4}", ln).dimmed(), self.source_lines[i].dimmed());
+                println!(
+                    "  {} | {}",
+                    format!("{:>4}", ln).dimmed(),
+                    self.source_lines[i].dimmed()
+                );
             }
         }
     }
@@ -422,7 +434,8 @@ impl GdbController {
                 None => String::new(),
             };
             if is_current {
-                println!("{} {:04x}  {:<12} {} {}",
+                println!(
+                    "{} {:04x}  {:<12} {} {}",
                     ">".green().bold(),
                     dl.offset,
                     dl.mnemonic.white().bold(),
@@ -430,7 +443,8 @@ impl GdbController {
                     line_info
                 );
             } else {
-                println!("  {}  {:<12} {} {}",
+                println!(
+                    "  {}  {:<12} {} {}",
                     format!("{:04x}", dl.offset).dimmed(),
                     dl.mnemonic,
                     dl.operands,
@@ -462,8 +476,11 @@ impl GdbController {
 
     /// Get a truncated source line for display
     fn source_preview(&self, line: u32) -> String {
-        if line == 0 { return String::new(); }
-        self.source_lines.get(line as usize - 1)
+        if line == 0 {
+            return String::new();
+        }
+        self.source_lines
+            .get(line as usize - 1)
             .map(|s| {
                 let trimmed = s.trim();
                 if trimmed.len() > 50 {
@@ -479,9 +496,19 @@ impl GdbController {
     fn print_bp_confirmed(&self, idx: usize, detail: &str, line: u32) {
         let preview = self.source_preview(line);
         if preview.is_empty() {
-            println!("{} {} {}", "Breakpoint".green(), idx.to_string().cyan(), detail);
+            println!(
+                "{} {} {}",
+                "Breakpoint".green(),
+                idx.to_string().cyan(),
+                detail
+            );
         } else {
-            println!("{} {} {}:", "Breakpoint".green(), idx.to_string().cyan(), detail);
+            println!(
+                "{} {} {}:",
+                "Breakpoint".green(),
+                idx.to_string().cyan(),
+                detail
+            );
             println!("  {} {}", format!("{}:", line).dimmed(), preview);
         }
     }
@@ -524,9 +551,7 @@ impl DebuggerController for GdbController {
                 // Only pause at breakpoints, but skip AtLine if same as paused_line
                 self.breakpoints.iter().any(|bp| match bp {
                     Breakpoint::AtIp(ip) => *ip == ctx.ip,
-                    Breakpoint::AtLine(line) => {
-                        *line == ctx.line && ctx.line != self.paused_line
-                    }
+                    Breakpoint::AtLine(line) => *line == ctx.line && ctx.line != self.paused_line,
                     Breakpoint::AtFunction(name) => {
                         if self.paused_line > 0 {
                             return false;
@@ -547,9 +572,7 @@ impl DebuggerController for GdbController {
                 }
                 line_changed
             }
-            StepMode::StepOut => {
-                ctx.call_stack.len() < self.call_depth_at_step
-            }
+            StepMode::StepOut => ctx.call_stack.len() < self.call_depth_at_step,
             StepMode::UntilLine(target) => {
                 if ctx.line == target {
                     self.step_mode = StepMode::None;
@@ -567,10 +590,13 @@ impl DebuggerController for GdbController {
 
         // Show current position
         if ctx.line > 0 {
-            let source_line = self.source_lines.get(ctx.line as usize - 1)
+            let source_line = self
+                .source_lines
+                .get(ctx.line as usize - 1)
                 .map(|s| s.as_str())
                 .unwrap_or("");
-            println!("\n{} {} {} {} {} {}",
+            println!(
+                "\n{} {} {} {} {} {}",
                 "---".dimmed(),
                 format!("line {}", ctx.line).yellow().bold(),
                 "|".dimmed(),
@@ -580,7 +606,8 @@ impl DebuggerController for GdbController {
             );
             println!("  {}", source_line);
         } else {
-            println!("\n{} {} {} {}",
+            println!(
+                "\n{} {} {} {}",
                 "---".dimmed(),
                 format!("ip={:04x}", ctx.ip).blue(),
                 "|".dimmed(),
@@ -658,7 +685,10 @@ impl DebuggerController for GdbController {
 
                     // 2. Contains colon → file:line or file:fn/N (multi-file, not yet supported)
                     if arg.contains(':') {
-                        println!("{} multi-file breakpoints not yet supported.", "Error:".red().bold());
+                        println!(
+                            "{} multi-file breakpoints not yet supported.",
+                            "Error:".red().bold()
+                        );
                         println!("  Use: b <line> or b <function> or b <function/N>");
                         continue;
                     }
@@ -670,24 +700,48 @@ impl DebuggerController for GdbController {
                         let offset: u32 = match offset_str.parse() {
                             Ok(n) => n,
                             Err(_) => {
-                                println!("{} invalid line offset '{}'", "Error:".red().bold(), offset_str);
+                                println!(
+                                    "{} invalid line offset '{}'",
+                                    "Error:".red().bold(),
+                                    offset_str
+                                );
                                 continue;
                             }
                         };
                         if let Some(&addr) = self.exports_by_name.get(fn_name) {
                             let start_line = self.find_function_start_line(addr as usize);
                             if start_line == 0 {
-                                println!("{} could not determine start line for function '{}'", "Error:".red().bold(), fn_name);
+                                println!(
+                                    "{} could not determine start line for function '{}'",
+                                    "Error:".red().bold(),
+                                    fn_name
+                                );
                                 continue;
                             }
                             let target_line = start_line + offset;
                             self.breakpoints.push(Breakpoint::AtLine(target_line));
-                            self.print_bp_confirmed(idx, &format!("at line {} ({} + {})", target_line, fn_name, offset), target_line);
+                            self.print_bp_confirmed(
+                                idx,
+                                &format!("at line {} ({} + {})", target_line, fn_name, offset),
+                                target_line,
+                            );
                         } else {
-                            println!("{} function '{}' not found.", "Error:".red().bold(), fn_name);
+                            println!(
+                                "{} function '{}' not found.",
+                                "Error:".red().bold(),
+                                fn_name
+                            );
                             let names: Vec<&String> = self.exports_by_name.keys().collect();
                             if !names.is_empty() {
-                                println!("  {} {}", "Available:".dimmed(), names.iter().map(|s| s.cyan().to_string()).collect::<Vec<_>>().join(", "));
+                                println!(
+                                    "  {} {}",
+                                    "Available:".dimmed(),
+                                    names
+                                        .iter()
+                                        .map(|s| s.cyan().to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                );
                             }
                         }
                         continue;
@@ -695,19 +749,38 @@ impl DebuggerController for GdbController {
 
                     // 4. Plain function name → AtFunction
                     if self.exports_by_name.contains_key(arg) {
-                        self.breakpoints.push(Breakpoint::AtFunction(arg.to_string()));
-                        let start_line = self.exports_by_name.get(arg)
+                        self.breakpoints
+                            .push(Breakpoint::AtFunction(arg.to_string()));
+                        let start_line = self
+                            .exports_by_name
+                            .get(arg)
                             .and_then(|&addr| {
                                 let sl = self.find_function_start_line(addr as usize);
-                                if sl > 0 { Some(sl) } else { None }
+                                if sl > 0 {
+                                    Some(sl)
+                                } else {
+                                    None
+                                }
                             })
                             .unwrap_or(0);
-                        self.print_bp_confirmed(idx, &format!("at function {}", arg.cyan()), start_line);
+                        self.print_bp_confirmed(
+                            idx,
+                            &format!("at function {}", arg.cyan()),
+                            start_line,
+                        );
                     } else {
                         println!("{} function '{}' not found.", "Error:".red().bold(), arg);
                         let names: Vec<&String> = self.exports_by_name.keys().collect();
                         if !names.is_empty() {
-                            println!("  {} {}", "Available:".dimmed(), names.iter().map(|s| s.cyan().to_string()).collect::<Vec<_>>().join(", "));
+                            println!(
+                                "  {} {}",
+                                "Available:".dimmed(),
+                                names
+                                    .iter()
+                                    .map(|s| s.cyan().to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            );
                         }
                     }
                 }
@@ -723,68 +796,105 @@ impl DebuggerController for GdbController {
                         println!("Usage: delete <breakpoint_number>");
                     }
                 }
-                "info" | "i" => {
-                    match arg {
-                        "breakpoints" | "b" => {
-                            if self.breakpoints.is_empty() {
-                                println!("No breakpoints.");
-                            } else {
-                                for (i, bp) in self.breakpoints.iter().enumerate() {
-                                    match bp {
-                                        Breakpoint::AtLine(line) => {
-                                            let preview = self.source_preview(*line);
-                                            println!("  {} at {} {}",
-                                                format!("#{}", i).cyan(),
-                                                format!("line {}", line).yellow(),
-                                                if preview.is_empty() { String::new() } else { format!(": {}", preview.dimmed()) }
-                                            );
-                                        }
-                                        Breakpoint::AtIp(ip) => {
-                                            println!("  {} at {} {:04x}", format!("#{}", i).cyan(), "ip".blue(), ip);
-                                        }
-                                        Breakpoint::AtFunction(name) => {
-                                            println!("  {} at {} {}", format!("#{}", i).cyan(), "function".blue(), name.cyan());
-                                        }
+                "info" | "i" => match arg {
+                    "breakpoints" | "b" => {
+                        if self.breakpoints.is_empty() {
+                            println!("No breakpoints.");
+                        } else {
+                            for (i, bp) in self.breakpoints.iter().enumerate() {
+                                match bp {
+                                    Breakpoint::AtLine(line) => {
+                                        let preview = self.source_preview(*line);
+                                        println!(
+                                            "  {} at {} {}",
+                                            format!("#{}", i).cyan(),
+                                            format!("line {}", line).yellow(),
+                                            if preview.is_empty() {
+                                                String::new()
+                                            } else {
+                                                format!(": {}", preview.dimmed())
+                                            }
+                                        );
+                                    }
+                                    Breakpoint::AtIp(ip) => {
+                                        println!(
+                                            "  {} at {} {:04x}",
+                                            format!("#{}", i).cyan(),
+                                            "ip".blue(),
+                                            ip
+                                        );
+                                    }
+                                    Breakpoint::AtFunction(name) => {
+                                        println!(
+                                            "  {} at {} {}",
+                                            format!("#{}", i).cyan(),
+                                            "function".blue(),
+                                            name.cyan()
+                                        );
                                     }
                                 }
                             }
                         }
-                        "stack" | "s" => {
-                            if ctx.call_stack.is_empty() {
-                                println!("Call stack: {}", "<top level>".dimmed());
-                            } else {
-                                println!("{}", "Call stack:".bold());
-                                for (i, frame) in ctx.call_stack.iter().enumerate().rev() {
-                                    let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");
-                                    println!("  {} {} {} {}",
-                                        format!("#{}", i).cyan(),
-                                        name.green(),
-                                        "at line".dimmed(),
-                                        frame.line.to_string().yellow(),
-                                    );
-                                }
+                    }
+                    "stack" | "s" => {
+                        if ctx.call_stack.is_empty() {
+                            println!("Call stack: {}", "<top level>".dimmed());
+                        } else {
+                            println!("{}", "Call stack:".bold());
+                            for (i, frame) in ctx.call_stack.iter().enumerate().rev() {
+                                let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");
+                                println!(
+                                    "  {} {} {} {}",
+                                    format!("#{}", i).cyan(),
+                                    name.green(),
+                                    "at line".dimmed(),
+                                    frame.line.to_string().yellow(),
+                                );
                             }
-                        }
-                        "locals" | "l" => {
-                            let bp = ctx.task.bp;
-                            let n = ctx.task.current_fn_n_locals;
-                            println!("{} ({} slots from bp+1):", "Locals".bold(), n);
-                            for i in 0..n {
-                                let val = ctx.task.ram.read_i32(bp + 1 + i);
-                                println!("  {} = {}", format!("[{}]", i).cyan(), val.to_string().yellow());
-                            }
-                        }
-                        "registers" | "r" => {
-                            println!("  {} = {} ({})", "IP ".blue().bold(), format!("{:04x}", ctx.task.ip).yellow(), ctx.task.ip);
-                            println!("  {} = {} ({})", "BP ".blue().bold(), format!("{:04x}", ctx.task.bp).yellow(), ctx.task.bp);
-                            println!("  {} = {} ({})", "SP ".blue().bold(), format!("{:04x}", ctx.task.ram.sp).yellow(), ctx.task.ram.sp);
-                            println!("  {} = {}", "Line".blue().bold(), ctx.task.current_line.to_string().yellow());
-                        }
-                        _ => {
-                            println!("Usage: info <breakpoints|stack|locals|registers>");
                         }
                     }
-                }
+                    "locals" | "l" => {
+                        let bp = ctx.task.bp;
+                        let n = ctx.task.current_fn_n_locals;
+                        println!("{} ({} slots from bp+1):", "Locals".bold(), n);
+                        for i in 0..n {
+                            let val = ctx.task.ram.read_i32(bp + 1 + i);
+                            println!(
+                                "  {} = {}",
+                                format!("[{}]", i).cyan(),
+                                val.to_string().yellow()
+                            );
+                        }
+                    }
+                    "registers" | "r" => {
+                        println!(
+                            "  {} = {} ({})",
+                            "IP ".blue().bold(),
+                            format!("{:04x}", ctx.task.ip).yellow(),
+                            ctx.task.ip
+                        );
+                        println!(
+                            "  {} = {} ({})",
+                            "BP ".blue().bold(),
+                            format!("{:04x}", ctx.task.bp).yellow(),
+                            ctx.task.bp
+                        );
+                        println!(
+                            "  {} = {} ({})",
+                            "SP ".blue().bold(),
+                            format!("{:04x}", ctx.task.ram.sp).yellow(),
+                            ctx.task.ram.sp
+                        );
+                        println!(
+                            "  {} = {}",
+                            "Line".blue().bold(),
+                            ctx.task.current_line.to_string().yellow()
+                        );
+                    }
+                    _ => {
+                        println!("Usage: info <breakpoints|stack|locals|registers>");
+                    }
+                },
                 "list" | "l" => {
                     self.print_source_context(ctx.line, 5);
                 }
@@ -795,7 +905,11 @@ impl DebuggerController for GdbController {
                     if let Ok(slot) = arg.parse::<usize>() {
                         let bp = ctx.task.bp;
                         let val = ctx.task.ram.read_i32(bp + 1 + slot);
-                        println!("{} = {}", format!("local[{}]", slot).cyan(), val.to_string().yellow());
+                        println!(
+                            "{} = {}",
+                            format!("local[{}]", slot).cyan(),
+                            val.to_string().yellow()
+                        );
                     } else {
                         println!("Usage: print <slot_index>");
                     }
@@ -808,7 +922,12 @@ impl DebuggerController for GdbController {
                     self.show_help();
                 }
                 _ => {
-                    println!("{}: {}. Type {} for commands.", "Unknown command".red(), cmd, "'help'".cyan());
+                    println!(
+                        "{}: {}. Type {} for commands.",
+                        "Unknown command".red(),
+                        cmd,
+                        "'help'".cyan()
+                    );
                 }
             }
         }

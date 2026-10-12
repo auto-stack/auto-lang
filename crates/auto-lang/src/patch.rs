@@ -162,10 +162,10 @@ impl RelocKind {
     /// Get the size of this relocation in bytes
     pub fn size(&self) -> usize {
         match self {
-            RelocKind::Abs => 4,   // 32-bit absolute address
-            RelocKind::Rel => 4,   // 32-bit relative offset
-            RelocKind::GOT => 4,   // 32-bit GOT entry
-            RelocKind::PLT => 4,   // 32-bit PLT entry
+            RelocKind::Abs => 4, // 32-bit absolute address
+            RelocKind::Rel => 4, // 32-bit relative offset
+            RelocKind::GOT => 4, // 32-bit GOT entry
+            RelocKind::PLT => 4, // 32-bit PLT entry
         }
     }
 }
@@ -193,10 +193,7 @@ impl RelocKind {
 /// let patch = generate_patch(frag_id, &db)?;
 /// runtime.apply_patch(patch)?;
 /// ```
-pub fn generate_patch(
-    frag_id: FragId,
-    _db: &crate::database::Database,
-) -> AutoResult<Patch> {
+pub fn generate_patch(frag_id: FragId, _db: &crate::database::Database) -> AutoResult<Patch> {
     // Phase 3.5: Create placeholder patch
     // Future: Integrate with codegen to generate actual bytecode
 
@@ -235,10 +232,7 @@ mod tests {
 
     #[test]
     fn test_patch_new() {
-        let frag_id = crate::database::FragId::new(
-            crate::database::FileId::new(1),
-            100,
-        );
+        let frag_id = crate::database::FragId::new(crate::database::FileId::new(1), 100);
 
         let code = vec![0x01, 0x02, 0x03, 0x04];
         let relocs = vec![];
@@ -252,10 +246,7 @@ mod tests {
 
     #[test]
     fn test_patch_validate_valid() {
-        let frag_id = crate::database::FragId::new(
-            crate::database::FileId::new(1),
-            100,
-        );
+        let frag_id = crate::database::FragId::new(crate::database::FileId::new(1), 100);
 
         // Code is 8 bytes, relocs at offsets 0 and 4
         let code = vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
@@ -271,10 +262,7 @@ mod tests {
 
     #[test]
     fn test_patch_validate_invalid_size() {
-        let frag_id = crate::database::FragId::new(
-            crate::database::FileId::new(1),
-            100,
-        );
+        let frag_id = crate::database::FragId::new(crate::database::FileId::new(1), 100);
 
         let code = vec![0x01, 0x02, 0x03, 0x04];
         let relocs = vec![];
@@ -287,10 +275,7 @@ mod tests {
 
     #[test]
     fn test_patch_validate_invalid_reloc_offset() {
-        let frag_id = crate::database::FragId::new(
-            crate::database::FileId::new(1),
-            100,
-        );
+        let frag_id = crate::database::FragId::new(crate::database::FileId::new(1), 100);
 
         let code = vec![0x01, 0x02, 0x03, 0x04];
         let relocs = vec![
@@ -305,11 +290,7 @@ mod tests {
 
     #[test]
     fn test_reloc_new() {
-        let reloc = Reloc::new(
-            100,
-            Sid::from("test_function"),
-            RelocKind::Abs,
-        );
+        let reloc = Reloc::new(100, Sid::from("test_function"), RelocKind::Abs);
 
         assert_eq!(reloc.offset, 100);
         assert_eq!(format!("{}", reloc.symbol), "test_function");
@@ -327,10 +308,7 @@ mod tests {
     #[test]
     fn test_generate_patch_placeholder() {
         let db = crate::database::Database::new();
-        let frag_id = crate::database::FragId::new(
-            crate::database::FileId::new(1),
-            100,
-        );
+        let frag_id = crate::database::FragId::new(crate::database::FileId::new(1), 100);
 
         let result = generate_patch(frag_id, &db);
         assert!(result.is_ok());
@@ -343,10 +321,7 @@ mod tests {
 
     #[test]
     fn test_apply_patch_placeholder() {
-        let frag_id = crate::database::FragId::new(
-            crate::database::FileId::new(1),
-            100,
-        );
+        let frag_id = crate::database::FragId::new(crate::database::FileId::new(1), 100);
 
         let patch = Patch::new(frag_id, vec![0x01, 0x02], vec![]);
         let result = apply_patch(&patch);

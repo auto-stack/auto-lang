@@ -110,9 +110,9 @@
 //! └── gradle/libs.versions.toml
 //! ```
 
-mod generator;
 mod components;
 mod form;
+mod generator;
 mod layout;
 mod list;
 mod modifier;
@@ -122,10 +122,10 @@ mod state;
 mod theme;
 
 // Re-export main types
-pub use generator::JetGenerator;
 #[allow(deprecated)]
 pub use components::Material3Registry;
 pub use form::FormGenerator;
+pub use generator::JetGenerator;
 pub use layout::LayoutGenerator;
 pub use list::ListGenerator;
 pub use modifier::{ModifierDsl, ModifierResult};

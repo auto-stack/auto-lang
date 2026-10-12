@@ -1,8 +1,8 @@
 // VM implementation of storage strategies (Plan 052)
 // This module provides VM-level implementations for Heap<T>, Inline<T>, etc.
 
-use auto_val::{Value, Instance, Obj};
 use super::context::VmContext;
+use auto_val::{Instance, Obj, Value};
 
 // ============================================================================
 // Heap<T> Implementation
@@ -11,14 +11,12 @@ use super::context::VmContext;
 /// Create a new empty Heap storage
 /// Returns an Instance with empty array and 0 capacity
 pub fn heap_new(_ctx: &mut VmContext, _args: Value) -> Value {
-    
-
     // Start with empty array (no allocation yet)
     let initial_array = Value::Array(auto_val::Array::new());
 
     let mut fields = Obj::new();
-    fields.set("ptr", initial_array);  // Store actual array, not pointer
-    fields.set("cap", Value::Uint(0));  // zero capacity
+    fields.set("ptr", initial_array); // Store actual array, not pointer
+    fields.set("cap", Value::Uint(0)); // zero capacity
 
     let instance = Instance {
         ty: auto_val::Type::User("Heap".into()),
@@ -33,9 +31,9 @@ pub fn heap_new(_ctx: &mut VmContext, _args: Value) -> Value {
 pub fn heap_data(_ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // Extract .ptr field from the Heap instance (now stores actual array)
     match self_instance {
-        Value::Instance(instance) => {
-            instance.fields.get_or("ptr", Value::Array(auto_val::Array::new()))
-        }
+        Value::Instance(instance) => instance
+            .fields
+            .get_or("ptr", Value::Array(auto_val::Array::new())),
         _ => Value::Error("heap_data: self is not an Instance".into()),
     }
 }
@@ -44,9 +42,7 @@ pub fn heap_data(_ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Val
 pub fn heap_capacity(_ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
     // Extract .cap field from the Heap instance
     match self_instance {
-        Value::Instance(instance) => {
-            instance.fields.get_or("cap", Value::Int(0))
-        }
+        Value::Instance(instance) => instance.fields.get_or("cap", Value::Int(0)),
         _ => Value::Error("heap_capacity: self is not an Instance".into()),
     }
 }
@@ -85,7 +81,9 @@ pub fn heap_try_grow(ctx: &mut VmContext, self_instance: &mut Value, args: Vec<V
             };
 
             // Get current array
-            let current_array = instance.fields.get_or("ptr", Value::Array(auto_val::Array::new()));
+            let current_array = instance
+                .fields
+                .get_or("ptr", Value::Array(auto_val::Array::new()));
 
             // Allocate or reallocate memory
             let new_array = if cap == 0 {
@@ -110,9 +108,7 @@ pub fn heap_try_grow(ctx: &mut VmContext, self_instance: &mut Value, args: Vec<V
                     // Allocation failed
                     Value::Error(format!("heap_try_grow: allocation failed: {}", msg).into())
                 }
-                _ => {
-                    Value::Error("heap_try_grow: unexpected result from allocation".into())
-                }
+                _ => Value::Error("heap_try_grow: unexpected result from allocation".into()),
             }
         }
         _ => Value::Error("heap_try_grow: self is not an Instance".into()),
@@ -126,7 +122,9 @@ pub fn heap_drop(ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Valu
     match self_instance {
         Value::Instance(instance) => {
             // Get the array from .ptr field
-            let array_value = instance.fields.get_or("ptr", Value::Array(auto_val::Array::new()));
+            let array_value = instance
+                .fields
+                .get_or("ptr", Value::Array(auto_val::Array::new()));
 
             match array_value {
                 Value::Array(_) => {
@@ -135,7 +133,9 @@ pub fn heap_drop(ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Valu
 
                     // Reset fields to empty state
                     let mut instance_mut = instance.clone();
-                    instance_mut.fields.set("ptr", Value::Array(auto_val::Array::new()));
+                    instance_mut
+                        .fields
+                        .set("ptr", Value::Array(auto_val::Array::new()));
                     instance_mut.fields.set("cap", Value::Uint(0));
                     *self_instance = Value::Instance(instance_mut);
                     Value::Nil
@@ -144,7 +144,9 @@ pub fn heap_drop(ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Valu
                     // Unexpected state (non-Array in ptr field)
                     // Just reset to empty
                     let mut instance_mut = instance.clone();
-                    instance_mut.fields.set("ptr", Value::Array(auto_val::Array::new()));
+                    instance_mut
+                        .fields
+                        .set("ptr", Value::Array(auto_val::Array::new()));
                     instance_mut.fields.set("cap", Value::Uint(0));
                     *self_instance = Value::Instance(instance_mut);
                     Value::Nil
@@ -179,25 +181,39 @@ pub fn inline_int64_new(_ctx: &mut VmContext, _args: Value) -> Value {
 
 /// Get the data pointer from InlineInt64 storage
 /// Returns the buffer field (which is an Array)
-pub fn inline_int64_data(_ctx: &mut VmContext, self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_data(
+    _ctx: &mut VmContext,
+    self_instance: &mut Value,
+    _args: Vec<Value>,
+) -> Value {
     // Extract .buffer field from the InlineInt64 instance
     match self_instance {
         Value::Instance(instance) => {
             // Return the buffer array (acts as a pointer in the VM)
-            instance.fields.get_or("buffer", Value::Array(auto_val::Array::new()))
+            instance
+                .fields
+                .get_or("buffer", Value::Array(auto_val::Array::new()))
         }
         _ => Value::Error("inline_int64_data: self is not an Instance".into()),
     }
 }
 
 /// Get the capacity from InlineInt64 storage (always 64)
-pub fn inline_int64_capacity(_ctx: &mut VmContext, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_capacity(
+    _ctx: &mut VmContext,
+    _self_instance: &mut Value,
+    _args: Vec<Value>,
+) -> Value {
     // InlineInt64 always has capacity 64
     Value::Int(64)
 }
 
 /// Try to grow the InlineInt64 storage (only succeeds if min_cap <= 64)
-pub fn inline_int64_try_grow(_ctx: &mut VmContext, _self_instance: &mut Value, args: Vec<Value>) -> Value {
+pub fn inline_int64_try_grow(
+    _ctx: &mut VmContext,
+    _self_instance: &mut Value,
+    args: Vec<Value>,
+) -> Value {
     // Extract min_cap from args[0]
     if args.is_empty() {
         return Value::Error("inline_int64_try_grow requires min_cap argument".into());
@@ -214,7 +230,11 @@ pub fn inline_int64_try_grow(_ctx: &mut VmContext, _self_instance: &mut Value, a
 }
 
 /// Free the InlineInt64 storage (no-op for stack allocation)
-pub fn inline_int64_drop(_ctx: &mut VmContext, _self_instance: &mut Value, _args: Vec<Value>) -> Value {
+pub fn inline_int64_drop(
+    _ctx: &mut VmContext,
+    _self_instance: &mut Value,
+    _args: Vec<Value>,
+) -> Value {
     // No-op for stack-allocated storage
     Value::Nil
 }

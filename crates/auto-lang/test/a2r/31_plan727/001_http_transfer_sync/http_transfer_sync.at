@@ -1,0 +1,30 @@
+// PLAN-727 T-06: sync-context file-transfer lowering matrix.
+// transfer_download/upload (non-blocking submit, same shape in any context),
+// transfer_wait (sync bridge), progress/cancel/error (sync observation).
+// URL/paths come from env (PLAN727_*) so the same source runs VM/a2r/native.
+
+fn main() {
+    let base = env.get("PLAN727_URL")
+    let dst = env.get("PLAN727_DST")
+    let src = env.get("PLAN727_SRC")
+
+    // 1. download submit + wait (receipt JSON)
+    let t = http.transfer_download(base, dst, "{}")
+    let receipt = http.transfer_wait(t)
+    print("receipt:", receipt)
+
+    // 2. upload submit + wait (multipart wire 上可见 fields/file)
+    let up = http.transfer_upload(base, src, "{\"fields\":{\"note\":\"plan727\"}}")
+    let up_receipt = http.transfer_wait(up)
+    print("up_receipt:", up_receipt)
+    let err = http.transfer_error(up)
+    print("error:", err)
+
+    // 3. cancel 词汇（对全新传输；收据为 cancelled 或已完成 success，不固定）
+    let c = http.transfer_download(base, dst, "{}")
+    let p = http.transfer_next_progress(c)
+    print("progress:", p)
+    http.transfer_cancel(c)
+    let c_receipt = http.transfer_wait(c)
+    print("c_receipt:", c_receipt)
+}

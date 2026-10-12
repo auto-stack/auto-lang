@@ -62,7 +62,7 @@ File 面此前未细化，本节为新增（契约详档 `design/autoui/editor-k
   `a2r-std/src/fs.rs:read_text_range` 同一 serde 形状/字段序/边界语义；对拍测试
   `tests/read_text_range_parity.rs`（14 组边界矩阵断言 byte-identical；a2r 侧 usize 无负数
   面，负数错误形仅 VM i32 可达，两侧注释互标注）。aavm 自举双臂在册：
-  `auto/lib/engine.at` nat#1016 CallNat 臂 + `auto/lib/codegen.at` 发射臂
+  `packages/aavm/lib/engine.at` nat#1016 CallNat 臂 + `packages/aavm/lib/codegen.at` 发射臂
   （aavm2_bin prelude File shim 补同名直通，语料不触达、仅为可编译）。
 - **M1 不发射面**：ts_adapter/vue client 不发射本内建（vue 轨对这些内建无运行时，
   consumers.d.ts 为 fail-fast 声明层）；vue/split 轨需真实分块端点时另立计划。

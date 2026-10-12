@@ -6,8 +6,8 @@
 // Allow unused assignments in error structs - these fields are used by the Diagnostic macro
 #![allow(unused_assignments)]
 
-use crate::token::Pos;
 use crate::ast::Name;
+use crate::token::Pos;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
@@ -241,7 +241,9 @@ impl Diagnostic for MsgWithSource {
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.help.as_ref().map(|h| Box::new(h.clone()) as Box<dyn std::fmt::Display>)
+        self.help
+            .as_ref()
+            .map(|h| Box::new(h.clone()) as Box<dyn std::fmt::Display>)
     }
 
     fn labels<'a>(&'a self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + 'a>> {
@@ -1178,7 +1180,9 @@ pub enum ComptimeError {
     #[error("non-deterministic operation not allowed at compile time")]
     #[diagnostic(
         code(auto_comptime_E0402),
-        help("Operations like I/O, random, and time are not allowed during compile-time execution")
+        help(
+            "Operations like I/O, random, and time are not allowed during compile-time execution"
+        )
     )]
     NonDeterministic {
         operation: String,
@@ -1188,10 +1192,7 @@ pub enum ComptimeError {
 
     /// Resource limit exceeded at compile time
     #[error("compile-time resource limit exceeded")]
-    #[diagnostic(
-        code(auto_comptime_E0403),
-        help("{limit}: {value} (limit: {max})")
-    )]
+    #[diagnostic(code(auto_comptime_E0403), help("{limit}: {value} (limit: {max})"))]
     ResourceLimit {
         limit: String,
         value: String,

@@ -1,0 +1,24 @@
+Test execution output; preceding compiler warnings omitted.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 18s
+     Running unittests src\lib.rs (D:/autostack/auto-lang/target\debug\deps\auto_lang-6d39c440c67ee9fc.exe)
+
+running 1 test
+test tests::plan730_http_upload_tests::http_e2e::review751_http_entry_contracts ... warning: 'nil' is deprecated: use 'null' instead
+REVIEW751_HTTP actual crate::run: Err("Msg(\"STDASSEMBLY.SIGNATURE_UNVERIFIED: http.upload_receive (stdlib/auto/http.at, native #9937): selected callee lacks an independent adapter contract\")")
+REVIEW751_HTTP compile: Msg("STDASSEMBLY.SIGNATURE_UNVERIFIED: http.upload_receive (stdlib/auto/http.at, native #9937): selected callee lacks an independent adapter contract")
+REVIEW751_HTTP actual crate::run: Err("Msg(\"STDASSEMBLY.SIGNATURE_UNVERIFIED: http.response_redirect (stdlib/auto/http.at, native #3108): selected callee lacks an independent adapter contract\")")
+REVIEW751_HTTP compile: Msg("STDASSEMBLY.SIGNATURE_UNVERIFIED: http.response_redirect (stdlib/auto/http.at, native #3108): selected callee lacks an independent adapter contract")
+
+thread 'tests::plan730_http_upload_tests::http_e2e::review751_http_entry_contracts' (40352) panicked at crates\auto-lang\src\tests\plan730_http_upload_tests.rs:286:9:
+HTTP fixture handler preflight failed: ["compile: Msg(\"STDASSEMBLY.SIGNATURE_UNVERIFIED: http.upload_receive (stdlib/auto/http.at, native #9937): selected callee lacks an independent adapter contract\")", "compile: Msg(\"STDASSEMBLY.SIGNATURE_UNVERIFIED: http.response_redirect (stdlib/auto/http.at, native #3108): selected callee lacks an independent adapter contract\")"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    tests::plan730_http_upload_tests::http_e2e::review751_http_entry_contracts
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6861 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `-p auto-lang --lib`

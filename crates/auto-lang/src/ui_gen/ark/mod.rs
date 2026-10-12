@@ -19,9 +19,9 @@
 //! ```
 
 mod generator;
-mod state;
-mod project;
 mod modifier;
+mod project;
+mod state;
 
 pub use generator::ArkGenerator;
 pub use project::ArkProjectGenerator;

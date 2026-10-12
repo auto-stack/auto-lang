@@ -1,0 +1,20 @@
+{
+  "base": "5ab336c96a73191e33a59b0cf1b70f4ca936818f",
+  "reviewed_source_commit": "af021ed7a6bcf2f8f907e9520cf80bcc099a62e8",
+  "website_tree": "7534870417758cf789229b31ea41e9e03b57aa71",
+  "spec_input_sha256_lf": "eac0d50509bdddc7f873dbc53c5207d724f667d4fcd681c0aaef0aac90624733",
+  "spec_output_sha256_lf": "1e2817dce9cee1b593122d8d433f238943529adba53643aa55b38d568e6cd92d",
+  "spec_patch_sha256": "4b4acdf4d02a1bbaa0aa6ecfbbdf98a0dd2a6605a3c0741502def9939c94215b",
+  "spec_patch_gzip_sha256": "1fb62253bf2f73e583253cf6c5a94df9cf0777bf112ed3c62d86b949d4dc3a8b",
+  "screenshot_sha256": "5c96e19b76d03e76a24a8525049ee8a912c1b631a1a6484b7f32ff9ac8952888",
+  "logs": {
+    "build.log": {
+      "raw_sha256": "0e3c0afc7d9b3aaf6ba84007b3c0f4dba39678274d8e0b00491a28ac4def25c1",
+      "gzip_sha256": "490e0ec5f68a81f1958eb32d84531261c9d3b04327199acfebb3d10c82b3ad8b"
+    },
+    "tests.log": {
+      "raw_sha256": "924069ba1c6dbf1bdce24a8109abfec890f54b6966b56f0f3b85aa28aca7cb91",
+      "gzip_sha256": "b0b2eb991ddd8d8f82d5abe0b9001f62eb00845ab9731c018359b43f07396cb4"
+    }
+  }
+}

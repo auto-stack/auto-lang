@@ -73,12 +73,16 @@ impl ProgramGenerator {
         for _ in 0..func_count {
             let func = self.gen_func_signature();
             let body = self.gen_func_body(&func);
-            let params_str = func.params.iter()
+            let params_str = func
+                .params
+                .iter()
                 .map(|(n, t)| format!("{} {}", n, t))
                 .collect::<Vec<_>>()
                 .join(", ");
-            code.push_str(&format!("fn {}({}) {} {{\n    {}\n}}\n\n",
-                func.name, params_str, func.ret_type, body));
+            code.push_str(&format!(
+                "fn {}({}) {} {{\n    {}\n}}\n\n",
+                func.name, params_str, func.ret_type, body
+            ));
             self.functions.push(func);
         }
 
@@ -130,42 +134,66 @@ impl ProgramGenerator {
         }
 
         match target {
-            GenType::Int => {
-                match self.rng.usize(0..5) {
-                    0 => format!("{} + {}", self.gen_expr(target, depth - 1), self.gen_expr(target, depth - 1)),
-                    1 => format!("{} * {}", self.gen_expr(target, depth - 1), self.gen_expr(target, depth - 1)),
-                    2 => format!("{} - {}", self.gen_expr(target, depth - 1), self.gen_literal(target)),
-                    3 => {
-                        let divisor = self.rng.i32(1..=10);
-                        format!("{} / {}", self.gen_expr(target, depth - 1), divisor)
-                    }
-                    _ => self.gen_literal(target),
+            GenType::Int => match self.rng.usize(0..5) {
+                0 => format!(
+                    "{} + {}",
+                    self.gen_expr(target, depth - 1),
+                    self.gen_expr(target, depth - 1)
+                ),
+                1 => format!(
+                    "{} * {}",
+                    self.gen_expr(target, depth - 1),
+                    self.gen_expr(target, depth - 1)
+                ),
+                2 => format!(
+                    "{} - {}",
+                    self.gen_expr(target, depth - 1),
+                    self.gen_literal(target)
+                ),
+                3 => {
+                    let divisor = self.rng.i32(1..=10);
+                    format!("{} / {}", self.gen_expr(target, depth - 1), divisor)
                 }
-            }
-            GenType::Str => {
-                match self.rng.usize(0..3) {
-                    0 => format!("{} + {}", self.gen_expr(target, depth - 1), self.gen_expr(target, depth - 1)),
-                    1 => {
-                        let var = self.fresh_var();
-                        format!(r#"f"${}"#, var)
-                    }
-                    _ => self.gen_literal(target),
+                _ => self.gen_literal(target),
+            },
+            GenType::Str => match self.rng.usize(0..3) {
+                0 => format!(
+                    "{} + {}",
+                    self.gen_expr(target, depth - 1),
+                    self.gen_expr(target, depth - 1)
+                ),
+                1 => {
+                    let var = self.fresh_var();
+                    format!(r#"f"${}"#, var)
                 }
-            }
-            GenType::Bool => {
-                match self.rng.usize(0..3) {
-                    0 => format!("{} < {}", self.gen_expr(&GenType::Int, depth - 1), self.gen_expr(&GenType::Int, depth - 1)),
-                    1 => format!("{} == {}", self.gen_expr(&GenType::Int, depth - 1), self.gen_expr(&GenType::Int, depth - 1)),
-                    _ => self.gen_literal(target),
-                }
-            }
-            GenType::F64 => {
-                match self.rng.usize(0..3) {
-                    0 => format!("{} + {}", self.gen_expr(target, depth - 1), self.gen_expr(target, depth - 1)),
-                    1 => format!("{} * {}", self.gen_literal(target), self.gen_expr(target, depth - 1)),
-                    _ => self.gen_literal(target),
-                }
-            }
+                _ => self.gen_literal(target),
+            },
+            GenType::Bool => match self.rng.usize(0..3) {
+                0 => format!(
+                    "{} < {}",
+                    self.gen_expr(&GenType::Int, depth - 1),
+                    self.gen_expr(&GenType::Int, depth - 1)
+                ),
+                1 => format!(
+                    "{} == {}",
+                    self.gen_expr(&GenType::Int, depth - 1),
+                    self.gen_expr(&GenType::Int, depth - 1)
+                ),
+                _ => self.gen_literal(target),
+            },
+            GenType::F64 => match self.rng.usize(0..3) {
+                0 => format!(
+                    "{} + {}",
+                    self.gen_expr(target, depth - 1),
+                    self.gen_expr(target, depth - 1)
+                ),
+                1 => format!(
+                    "{} * {}",
+                    self.gen_literal(target),
+                    self.gen_expr(target, depth - 1)
+                ),
+                _ => self.gen_literal(target),
+            },
         }
     }
 
@@ -197,7 +225,11 @@ impl ProgramGenerator {
                 strs[self.rng.usize(0..strs.len())].to_string()
             }
             GenType::Bool => {
-                if self.rng.bool() { "true".into() } else { "false".into() }
+                if self.rng.bool() {
+                    "true".into()
+                } else {
+                    "false".into()
+                }
             }
             GenType::F64 => {
                 let v = self.rng.f64() * 100.0;
@@ -216,7 +248,9 @@ pub fn minimize_program(source: &str, is_still_failing: impl Fn(&str) -> bool) -
         changed = false;
         let lines: Vec<&str> = minimal.lines().collect();
         for i in (0..lines.len()).rev() {
-            let candidate: String = lines.iter().enumerate()
+            let candidate: String = lines
+                .iter()
+                .enumerate()
                 .filter(|(j, _)| *j != i)
                 .map(|(_, l)| *l)
                 .collect::<Vec<_>>()
@@ -242,9 +276,19 @@ mod gen_tests {
             let mut gen = ProgramGenerator::new(seed);
             let program = gen.generate_program();
             // Should contain fn main
-            assert!(program.contains("fn main()"), "Seed {} missing main: {}", seed, program);
+            assert!(
+                program.contains("fn main()"),
+                "Seed {} missing main: {}",
+                seed,
+                program
+            );
             // Should contain print
-            assert!(program.contains("print("), "Seed {} missing print: {}", seed, program);
+            assert!(
+                program.contains("print("),
+                "Seed {} missing print: {}",
+                seed,
+                program
+            );
         }
     }
 

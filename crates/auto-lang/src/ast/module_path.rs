@@ -37,7 +37,11 @@ pub struct ModulePath {
 impl ModulePath {
     /// Create a new module path
     pub fn new(prefix: PathPrefix, segments: Vec<AutoStr>, items: Vec<AutoStr>) -> Self {
-        Self { prefix, segments, items }
+        Self {
+            prefix,
+            segments,
+            items,
+        }
     }
 
     /// Create a simple path (same directory)
@@ -71,15 +75,17 @@ impl ModulePath {
         let mut result = String::new();
         match &self.prefix {
             PathPrefix::None => {}
-            PathPrefix::Super(count) => {
-                match count {
-                    1 => result.push_str("super."),
-                    2 => result.push_str("super2."),
-                    3 => result.push_str("super3."),
-                    4 => result.push_str("super4."),
-                    _ => { for _ in 0..*count { result.push_str("super."); } }
+            PathPrefix::Super(count) => match count {
+                1 => result.push_str("super."),
+                2 => result.push_str("super2."),
+                3 => result.push_str("super3."),
+                4 => result.push_str("super4."),
+                _ => {
+                    for _ in 0..*count {
+                        result.push_str("super.");
+                    }
                 }
-            }
+            },
             PathPrefix::Pac => result.push_str("pac."),
             PathPrefix::Dep(name) => {
                 result.push_str(name.as_str());
@@ -131,8 +137,8 @@ mod tests {
 
     #[test]
     fn test_with_items() {
-        let path = ModulePath::local(vec!["db".into()])
-            .with_items(vec!["load".into(), "save".into()]);
+        let path =
+            ModulePath::local(vec!["db".into()]).with_items(vec!["load".into(), "save".into()]);
         assert_eq!(path.items, vec!["load", "save"]);
     }
 }

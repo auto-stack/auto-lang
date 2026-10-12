@@ -14,7 +14,10 @@ pub struct McpServer {
 
 impl McpServer {
     pub fn new() -> Self {
-        Self { sessions: SessionManager::new(), initialized: false }
+        Self {
+            sessions: SessionManager::new(),
+            initialized: false,
+        }
     }
 
     /// Run the MCP server loop. Reads from stdin, writes to stdout.
@@ -35,50 +38,64 @@ impl McpServer {
             // ── MCP Protocol Lifecycle ──
             "initialize" => {
                 self.initialized = true;
-                JsonRpcResponse::success(req.id, serde_json::to_value(InitializeResult {
-                    protocol_version: "2024-11-05".into(),
-                    capabilities: ServerCapabilities {
-                        tools: ToolCapabilities {},
-                    },
-                    server_info: ServerInfo {
-                        name: "autovm".into(),
-                        version: "0.1.0".into(),
-                    },
-                }).unwrap())
+                JsonRpcResponse::success(
+                    req.id,
+                    serde_json::to_value(InitializeResult {
+                        protocol_version: "2024-11-05".into(),
+                        capabilities: ServerCapabilities {
+                            tools: ToolCapabilities {},
+                        },
+                        server_info: ServerInfo {
+                            name: "autovm".into(),
+                            version: "0.1.0".into(),
+                        },
+                    })
+                    .unwrap(),
+                )
             }
             "notifications/initialized" => {
                 // Client confirms initialization — no response needed for notifications
-                JsonRpcResponse { jsonrpc: "2.0".into(), id: None, result: Some(json!({})), error: None }
+                JsonRpcResponse {
+                    jsonrpc: "2.0".into(),
+                    id: None,
+                    result: Some(json!({})),
+                    error: None,
+                }
             }
-            "ping" => {
-                JsonRpcResponse::success(req.id, json!({}))
-            }
+            "ping" => JsonRpcResponse::success(req.id, json!({})),
 
             // ── Tool Discovery ──
-            "tools/list" => {
-                JsonRpcResponse::success(req.id, json!({
+            "tools/list" => JsonRpcResponse::success(
+                req.id,
+                json!({
                     "tools": self.tool_definitions()
-                }))
-            }
+                }),
+            ),
 
             // ── Tool Execution ──
             "tools/call" => {
-                let params: ToolCallParams = match serde_json::from_value(
-                    req.params.unwrap_or(json!({}))
-                ) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        return JsonRpcResponse::success(req.id, serde_json::to_value(
-                            ToolResult::error(format!("Invalid tool call params: {}", e))
-                        ).unwrap());
-                    }
-                };
+                let params: ToolCallParams =
+                    match serde_json::from_value(req.params.unwrap_or(json!({}))) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            return JsonRpcResponse::success(
+                                req.id,
+                                serde_json::to_value(ToolResult::error(format!(
+                                    "Invalid tool call params: {}",
+                                    e
+                                )))
+                                .unwrap(),
+                            );
+                        }
+                    };
                 let result = self.dispatch_tool(&params.name, params.arguments);
                 JsonRpcResponse::success(req.id, serde_json::to_value(result).unwrap())
             }
 
             // ── Unknown Method ──
-            _ => JsonRpcResponse::error(req.id, -32601, format!("Method not found: {}", req.method)),
+            _ => {
+                JsonRpcResponse::error(req.id, -32601, format!("Method not found: {}", req.method))
+            }
         }
     }
 
@@ -184,12 +201,18 @@ impl McpServer {
     // ── Tool Implementations ──
 
     fn tool_session_create(&mut self, args: serde_json::Value) -> ToolResult {
-        let sandbox = args.get("sandbox").and_then(|v| v.as_bool()).unwrap_or(false);
+        let sandbox = args
+            .get("sandbox")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let session_id = self.sessions.create(sandbox);
-        ToolResult::text(serde_json::to_string(&json!({
-            "session_id": session_id,
-            "status": "created"
-        })).unwrap())
+        ToolResult::text(
+            serde_json::to_string(&json!({
+                "session_id": session_id,
+                "status": "created"
+            }))
+            .unwrap(),
+        )
     }
 
     fn tool_evaluate(&mut self, args: serde_json::Value) -> ToolResult {
@@ -209,30 +232,37 @@ impl McpServer {
 
         match session.run(&code) {
             Ok(output) => {
-                let result_value = session.format_last_result()
+                let result_value = session
+                    .format_last_result()
                     .or_else(|| session.get_last_result().map(|v| v.to_string()));
 
                 // Record successful source for patch/snapshot
                 self.sessions.append_source(&session_id, &code);
 
-                ToolResult::text(serde_json::to_string(&json!({
-                    "status": "ok",
-                    "output": output,
-                    "value": result_value,
-                    "diagnostics": []
-                })).unwrap())
+                ToolResult::text(
+                    serde_json::to_string(&json!({
+                        "status": "ok",
+                        "output": output,
+                        "value": result_value,
+                        "diagnostics": []
+                    }))
+                    .unwrap(),
+                )
             }
             Err(e) => {
                 let err_str = format!("{}", e);
-                ToolResult::text(serde_json::to_string(&json!({
-                    "status": "error",
-                    "output": null,
-                    "value": null,
-                    "diagnostics": [{
-                        "severity": "error",
-                        "message": err_str
-                    }]
-                })).unwrap())
+                ToolResult::text(
+                    serde_json::to_string(&json!({
+                        "status": "error",
+                        "output": null,
+                        "value": null,
+                        "diagnostics": [{
+                            "severity": "error",
+                            "message": err_str
+                        }]
+                    }))
+                    .unwrap(),
+                )
             }
         }
     }
@@ -242,25 +272,35 @@ impl McpServer {
             Some(id) => id.to_string(),
             None => return ToolResult::error("Missing required parameter: session_id"),
         };
-        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("reset");
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("reset");
 
         match action {
             "delete" => {
                 if self.sessions.delete(&session_id) {
-                    ToolResult::text(serde_json::to_string(&json!({
-                        "status": "deleted",
-                        "session_id": session_id
-                    })).unwrap())
+                    ToolResult::text(
+                        serde_json::to_string(&json!({
+                            "status": "deleted",
+                            "session_id": session_id
+                        }))
+                        .unwrap(),
+                    )
                 } else {
                     ToolResult::error(format!("Session not found: {}", session_id))
                 }
             }
-            _ => { // "reset"
+            _ => {
+                // "reset"
                 if self.sessions.reset(&session_id) {
-                    ToolResult::text(serde_json::to_string(&json!({
-                        "status": "reset",
-                        "session_id": session_id
-                    })).unwrap())
+                    ToolResult::text(
+                        serde_json::to_string(&json!({
+                            "status": "reset",
+                            "session_id": session_id
+                        }))
+                        .unwrap(),
+                    )
                 } else {
                     ToolResult::error(format!("Session not found: {}", session_id))
                 }
@@ -292,13 +332,23 @@ impl McpServer {
 
         if kind == "functions" || kind == "all" {
             result["functions"] = serde_json::to_value(
-                session.functions().into_iter().map(|f| json!({"name": f})).collect::<Vec<_>>()
-            ).unwrap();
+                session
+                    .functions()
+                    .into_iter()
+                    .map(|f| json!({"name": f}))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
         }
         if kind == "variables" || kind == "all" {
             result["variables"] = serde_json::to_value(
-                session.locals().into_iter().map(|v| json!({"name": v})).collect::<Vec<_>>()
-            ).unwrap();
+                session
+                    .locals()
+                    .into_iter()
+                    .map(|v| json!({"name": v}))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
         }
 
         ToolResult::text(serde_json::to_string(&result).unwrap())
@@ -352,16 +402,19 @@ impl McpServer {
                     }
                 }
 
-                ToolResult::text(serde_json::to_string(&json!({
-                    "status": "ok",
-                    "valid": true,
-                    "symbols": symbols,
-                    "imports": imports,
-                    "diagnostics": []
-                })).unwrap())
+                ToolResult::text(
+                    serde_json::to_string(&json!({
+                        "status": "ok",
+                        "valid": true,
+                        "symbols": symbols,
+                        "imports": imports,
+                        "diagnostics": []
+                    }))
+                    .unwrap(),
+                )
             }
-            Err(e) => {
-                ToolResult::text(serde_json::to_string(&json!({
+            Err(e) => ToolResult::text(
+                serde_json::to_string(&json!({
                     "status": "error",
                     "valid": false,
                     "symbols": [],
@@ -370,8 +423,9 @@ impl McpServer {
                         "severity": "error",
                         "message": format!("{}", e)
                     }]
-                })).unwrap())
-            }
+                }))
+                .unwrap(),
+            ),
         }
     }
 
@@ -406,11 +460,14 @@ impl McpServer {
 
         // Validate the patched source parses correctly
         if let Err(e) = crate::parse_preserve_error(&patched) {
-            return ToolResult::text(serde_json::to_string(&json!({
-                "status": "error",
-                "message": "Patched code has syntax errors",
-                "diagnostics": [{"severity": "error", "message": format!("{}", e)}]
-            })).unwrap());
+            return ToolResult::text(
+                serde_json::to_string(&json!({
+                    "status": "error",
+                    "message": "Patched code has syntax errors",
+                    "diagnostics": [{"severity": "error", "message": format!("{}", e)}]
+                }))
+                .unwrap(),
+            );
         }
 
         // Rebuild session with patched source
@@ -423,18 +480,24 @@ impl McpServer {
         };
 
         match session.run(&patched) {
-            Ok(output) => ToolResult::text(serde_json::to_string(&json!({
-                "status": "ok",
-                "message": format!("Patched '{}' and rebuilt session", old_name),
-                "output": output,
-                "diagnostics": []
-            })).unwrap()),
-            Err(e) => ToolResult::text(serde_json::to_string(&json!({
-                "status": "error",
-                "message": "Patch parsed OK but execution failed",
-                "output": null,
-                "diagnostics": [{"severity": "error", "message": format!("{}", e)}]
-            })).unwrap()),
+            Ok(output) => ToolResult::text(
+                serde_json::to_string(&json!({
+                    "status": "ok",
+                    "message": format!("Patched '{}' and rebuilt session", old_name),
+                    "output": output,
+                    "diagnostics": []
+                }))
+                .unwrap(),
+            ),
+            Err(e) => ToolResult::text(
+                serde_json::to_string(&json!({
+                    "status": "error",
+                    "message": "Patch parsed OK but execution failed",
+                    "output": null,
+                    "diagnostics": [{"severity": "error", "message": format!("{}", e)}]
+                }))
+                .unwrap(),
+            ),
         }
     }
 
@@ -449,20 +512,26 @@ impl McpServer {
         match self.sessions.get_source(&session_id) {
             Some(source) => {
                 if source.is_empty() {
-                    return ToolResult::text(serde_json::to_string(&json!({
-                        "status": "ok",
-                        "source": "",
-                        "lines": 0,
-                        "message": "Session is empty (no code executed yet)"
-                    })).unwrap());
+                    return ToolResult::text(
+                        serde_json::to_string(&json!({
+                            "status": "ok",
+                            "source": "",
+                            "lines": 0,
+                            "message": "Session is empty (no code executed yet)"
+                        }))
+                        .unwrap(),
+                    );
                 }
 
                 let lines = source.lines().count();
-                ToolResult::text(serde_json::to_string(&json!({
-                    "status": "ok",
-                    "source": source,
-                    "lines": lines
-                })).unwrap())
+                ToolResult::text(
+                    serde_json::to_string(&json!({
+                        "status": "ok",
+                        "source": source,
+                        "lines": lines
+                    }))
+                    .unwrap(),
+                )
             }
             None => ToolResult::error(format!("Session not found: {}", session_id)),
         }
@@ -484,7 +553,12 @@ fn patch_replace_definition(source: &str, old_name: &str, new_code: &str) -> Str
             if trimmed.starts_with(&prefix) {
                 // Check that old_name is followed by a word boundary
                 let after = &trimmed[prefix.len()..];
-                if after.is_empty() || after.starts_with('(') || after.starts_with(' ') || after.starts_with('{') || after.starts_with('<') {
+                if after.is_empty()
+                    || after.starts_with('(')
+                    || after.starts_with(' ')
+                    || after.starts_with('{')
+                    || after.starts_with('<')
+                {
                     start_line = Some(i);
                     break;
                 }
@@ -510,8 +584,13 @@ fn patch_replace_definition(source: &str, old_name: &str, new_code: &str) -> Str
     for i in start..lines.len() {
         for ch in lines[i].chars() {
             match ch {
-                '{' => { depth += 1; found_open = true; }
-                '}' => { depth -= 1; }
+                '{' => {
+                    depth += 1;
+                    found_open = true;
+                }
+                '}' => {
+                    depth -= 1;
+                }
                 _ => {}
             }
         }

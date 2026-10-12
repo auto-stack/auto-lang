@@ -8,7 +8,7 @@
 //!
 //! Syntax sugar: `?T` is equivalent to `May<T>` (e.g., `?int`, `?str`)
 
-use auto_val::{Args, Arg, AutoStr, Value};
+use auto_val::{Arg, Args, AutoStr, Value};
 
 // ==================== Creation Functions ====================
 
@@ -157,9 +157,7 @@ pub fn may_unwrap(args: &Args) -> Value {
     // TODO: Unwrap May<T> variant when added to Value enum
     // For now, return the value if not Error and not Nil
     match &args.args[0] {
-        Arg::Pos(Value::Nil) => {
-            Value::Error("May_unwrap: called on Empty state".into())
-        }
+        Arg::Pos(Value::Nil) => Value::Error("May_unwrap: called on Empty state".into()),
         Arg::Pos(Value::Error(e)) => {
             Value::Error(format!("May_unwrap: called on Error state: {}", e).into())
         }
@@ -412,10 +410,7 @@ mod tests {
     #[test]
     fn test_may_unwrap_or_value() {
         let args = Args {
-            args: vec![
-                Arg::Pos(Value::Int(42)),
-                Arg::Pos(Value::Int(100)),
-            ],
+            args: vec![Arg::Pos(Value::Int(42)), Arg::Pos(Value::Int(100))],
         };
         let result = may_unwrap_or(&args);
         match result {
@@ -427,10 +422,7 @@ mod tests {
     #[test]
     fn test_may_unwrap_or_empty() {
         let args = Args {
-            args: vec![
-                Arg::Pos(Value::Nil),
-                Arg::Pos(Value::Int(100)),
-            ],
+            args: vec![Arg::Pos(Value::Nil), Arg::Pos(Value::Int(100))],
         };
         let result = may_unwrap_or(&args);
         match result {

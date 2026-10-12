@@ -197,18 +197,18 @@ impl VideoPresenter {
     ///
     /// 给 T-19 的 iced `Primitive::Pipeline` 用：那边要按 widget 自建 bind group
     /// （纹理是每 widget 一张的持久纹理），而管线与采样器是**全局共享**的。
-    pub fn into_parts(
-        self,
-    ) -> (
-        wgpu::RenderPipeline,
-        wgpu::BindGroupLayout,
-        wgpu::Sampler,
-    ) {
+    pub fn into_parts(self) -> (wgpu::RenderPipeline, wgpu::BindGroupLayout, wgpu::Sampler) {
         (self.pipeline, self.layout, self.sampler)
     }
 
     /// 把 `view` 画满 `target`（清屏 + 全屏三角形）。
-    pub fn draw(&mut self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, target: &wgpu::TextureView) {
+    pub fn draw(
+        &mut self,
+        device: &wgpu::Device,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        target: &wgpu::TextureView,
+    ) {
         self.ensure_bound(device, view);
         let bg = self.bind_group.as_ref().expect("bind group 刚建立");
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

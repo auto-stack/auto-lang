@@ -152,7 +152,11 @@ impl crate::ui::session::DesktopSession {
     /// 共享，不重复 add）→ 计数 +1。返回前缀化 root（Some = 该 app 有
     /// proxy 供给，launch 臂需对 spec.code 做内存态前缀化；None = ④ 零
     /// 供给）。AppId 归属绑定在 allocate_app 之后（`bind_app_backend`）。
-    pub fn ensure_backend(&mut self, spec: &crate::ui::session::LaunchSpec, app_key: &str) -> Option<String> {
+    pub fn ensure_backend(
+        &mut self,
+        spec: &crate::ui::session::LaunchSpec,
+        app_key: &str,
+    ) -> Option<String> {
         if !back_proxy_enabled() {
             return None;
         }
@@ -172,7 +176,11 @@ impl crate::ui::session::DesktopSession {
                 Err(err) => {
                     // 懒启失败降级：launch 继续（前端拿可诊断的连接错误，
                     // 与零供给面同形），下次命中重试。
-                    crate::syslog!(crate::ui::syslog::SyslogLevel::Error, "host", "[session] back-proxy start failed (degraded): {err}");
+                    crate::syslog!(
+                        crate::ui::syslog::SyslogLevel::Error,
+                        "host",
+                        "[session] back-proxy start failed (degraded): {err}"
+                    );
                     return None;
                 }
             }
@@ -190,11 +198,19 @@ impl crate::ui::session::DesktopSession {
             }
             if let Some(session) = plan.session {
                 if let Err(err) = proxy.add_session(session) {
-                    crate::syslog!(crate::ui::syslog::SyslogLevel::Error, "host", "[session] back-proxy add_session {app_key} failed: {err}");
+                    crate::syslog!(
+                        crate::ui::syslog::SyslogLevel::Error,
+                        "host",
+                        "[session] back-proxy add_session {app_key} failed: {err}"
+                    );
                 }
             }
         }
-        *self.desktop.back_refs.entry(app_key.to_string()).or_insert(0) += 1;
+        *self
+            .desktop
+            .back_refs
+            .entry(app_key.to_string())
+            .or_insert(0) += 1;
         // 前缀化 root = **origin-only**（`http://127.0.0.1:{port}`）——
         // `prefix_api_url_literals` 自身拼 `/apps/{id}/api/` 段（658 画廊
         // `set_gallery_proxy_root` 同语义；`base_url_for` 含完整子前缀，
@@ -247,7 +263,9 @@ mod tests {
         // 三特形各自命中。
         assert!(back_needs_session("pub fn events() ~Stream<Event> { }"));
         assert!(back_needs_session("pub fn load() ~Promise<Data> { }"));
-        assert!(back_needs_session("use auto.image\npub fn ok() int { return 1 }"));
+        assert!(back_needs_session(
+            "use auto.image\npub fn ok() int { return 1 }"
+        ));
         assert!(back_needs_session("    use auto.image"));
         // PLAN-043 走查修正：#[api] CRUD 路由 back 也命中（桌面轨 inproc
         // CALL 面失效实锤——018/017 P-15 跳过 → Init 崩，见谓词文档注释）。
@@ -262,8 +280,7 @@ mod tests {
 
     #[test]
     fn prefix_rewrites_http_lines_only() {
-        let src = "let data = json.to_value(Http.get_json(\"/api/media/scan\"))\n"
-            .to_string()
+        let src = "let data = json.to_value(Http.get_json(\"/api/media/scan\"))\n".to_string()
             + "// 注释提及 \"/api/foo\" 但无调用\n"
             + "#[api(method = \"GET\", path = \"/api/notes\")]\n"
             + "let two = 1 + Http.get_json(\"/api/a\") + Http.post(\"/api/b\")\n";
@@ -274,8 +291,14 @@ mod tests {
             "let data = json.to_value(Http.get_json(\"http://127.0.0.1:3358/apps/020-music-player/api/media/scan\"))",
             "调用行内 \"/api/ 前缀化"
         );
-        assert_eq!(lines[1], "// 注释提及 \"/api/foo\" 但无调用", "无调用行原样");
-        assert_eq!(lines[2], "#[api(method = \"GET\", path = \"/api/notes\")]", "属性行原样");
+        assert_eq!(
+            lines[1], "// 注释提及 \"/api/foo\" 但无调用",
+            "无调用行原样"
+        );
+        assert_eq!(
+            lines[2], "#[api(method = \"GET\", path = \"/api/notes\")]",
+            "属性行原样"
+        );
         assert_eq!(
             lines[3],
             "let two = 1 + Http.get_json(\"http://127.0.0.1:3358/apps/020-music-player/api/a\") + Http.post(\"http://127.0.0.1:3358/apps/020-music-player/api/b\")",
@@ -299,7 +322,10 @@ mod tests {
             daemon: Some("autoos".into()),
             ..Default::default()
         };
-        assert!(plan_backend(&plain, "app-x").is_empty(), "① daemon 臂零 proxy 计划（④ 形）");
+        assert!(
+            plan_backend(&plain, "app-x").is_empty(),
+            "① daemon 臂零 proxy 计划（④ 形）"
+        );
 
         // ② capability：media_root 声明 → 原生 media 路由，无 session。
         let media = LaunchSpec {
@@ -307,8 +333,14 @@ mod tests {
             ..Default::default()
         };
         let plan = plan_backend(&media, "020-music-player");
-        assert_eq!(plan.native_media.as_ref().unwrap().app_id, "020-music-player");
-        assert_eq!(plan.native_media.as_ref().unwrap().media_root.as_deref(), Some("E:\\Music\\"));
+        assert_eq!(
+            plan.native_media.as_ref().unwrap().app_id,
+            "020-music-player"
+        );
+        assert_eq!(
+            plan.native_media.as_ref().unwrap().media_root.as_deref(),
+            Some("E:\\Music\\")
+        );
         assert!(plan.session.is_none());
 
         // ③ session：back api.at 特形（~Stream）→ VM session。
@@ -335,13 +367,20 @@ mod tests {
         // #[api] CRUD back：PLAN-043 走查修正后谓词命中 → 建 session
         // （桌面轨 inproc CALL 面失效实锤——018/017 P-15 跳过 → Init 崩）。
         let plain_back = dir.join("crud.at");
-        std::fs::write(&plain_back, "#[api(method = \"GET\", path = \"/api/notes\")]\npub fn list() int { return 1 }").unwrap();
+        std::fs::write(
+            &plain_back,
+            "#[api(method = \"GET\", path = \"/api/notes\")]\npub fn list() int { return 1 }",
+        )
+        .unwrap();
         let spec = LaunchSpec {
             back_entry: Some(plain_back),
             ..Default::default()
         };
         let plan = plan_backend(&spec, "013-todo");
-        assert!(plan.session.is_some(), "CRUD back 建 session（PLAN-043 修正）");
+        assert!(
+            plan.session.is_some(),
+            "CRUD back 建 session（PLAN-043 修正）"
+        );
 
         // ②③叠加：media_root + 特形 back 同存 → 双命中。
         let both = LaunchSpec {
@@ -350,7 +389,10 @@ mod tests {
             ..Default::default()
         };
         let plan = plan_backend(&both, "combo");
-        assert!(plan.native_media.is_some() && plan.session.is_some(), "②③叠加");
+        assert!(
+            plan.native_media.is_some() && plan.session.is_some(),
+            "②③叠加"
+        );
 
         // back_entry 指向缺席文件（注册后语料被删）：读失败按零供给，
         // 不 panic。
@@ -367,7 +409,8 @@ mod tests {
     fn http_get_status_body(port: u16, path: &str) -> (u16, String) {
         use std::io::{BufRead, BufReader, Read, Write};
         let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
-        let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+        let req =
+            format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
         stream.write_all(req.as_bytes()).expect("write");
         let mut reader = BufReader::new(stream);
         let mut status_line = String::new();
@@ -442,7 +485,10 @@ mod tests {
         ds.desktop.app_resolver = Some(resolver);
 
         // AC-06 懒启门：boot 后零 proxy。
-        assert!(ds.desktop.back_proxy.is_none(), "boot 零 back-proxy（懒启）");
+        assert!(
+            ds.desktop.back_proxy.is_none(),
+            "boot 零 back-proxy（懒启）"
+        );
 
         // launch → 懒启 + scan 200 + entries 非空 + 绝对 url（AC-01 段）。
         let wid1 = ds.launch_app("020-fixture").expect("launch 020-fixture");
@@ -455,16 +501,25 @@ mod tests {
         assert_eq!(entries.len(), 1, "合成根 1 条目");
         let url = entries[0]["url"].as_str().expect("url").to_string();
         assert!(
-            url.starts_with(&format!("http://127.0.0.1:{port}/apps/020-fixture/api/media/stream/")),
+            url.starts_with(&format!(
+                "http://127.0.0.1:{port}/apps/020-fixture/api/media/stream/"
+            )),
             "绝对 url 指向 proxy：{url}"
         );
         assert_eq!(ds.desktop.back_refs.get("020-fixture"), Some(&1), "计数 1");
-        assert!(ds.desktop.app_back.values().any(|k| k == "020-fixture"), "归属绑定");
+        assert!(
+            ds.desktop.app_back.values().any(|k| k == "020-fixture"),
+            "归属绑定"
+        );
 
         // 双窗：第二次 launch 共享一份后端（计数 2，proxy 不重复装载）。
         let wid2 = ds.launch_app("020-fixture").expect("second launch");
         assert_eq!(ds.desktop.back_refs.get("020-fixture"), Some(&2));
-        assert_eq!(ds.desktop.back_proxy.as_ref().unwrap().port, port, "同一 proxy 实例");
+        assert_eq!(
+            ds.desktop.back_proxy.as_ref().unwrap().port,
+            port,
+            "同一 proxy 实例"
+        );
 
         // 关第一窗（镜像 DC::CloseWindow / WmCommand::Close 站点接线）：
         // 计数 2→1，路由仍在。
@@ -479,7 +534,10 @@ mod tests {
         let app2 = ds.wm_remove_win(wid2).expect("app of wid2");
         ds.apps.remove(&app2);
         ds.release_backend(app2);
-        assert!(ds.desktop.back_refs.get("020-fixture").is_none(), "计数清零");
+        assert!(
+            ds.desktop.back_refs.get("020-fixture").is_none(),
+            "计数清零"
+        );
         assert!(
             ds.desktop.app_back.values().all(|k| k != "020-fixture"),
             "归属清空"
@@ -489,7 +547,11 @@ mod tests {
 
         // 复 launch 重建可用（AC-02 复 launch 段；proxy listener 常驻复用）。
         let wid3 = ds.launch_app("020-fixture").expect("relaunch");
-        assert_eq!(ds.desktop.back_proxy.as_ref().unwrap().port, port, "listener 常驻");
+        assert_eq!(
+            ds.desktop.back_proxy.as_ref().unwrap().port,
+            port,
+            "listener 常驻"
+        );
         let (status, _) = http_get_status_body(port, "/apps/020-fixture/api/media/scan");
         assert_eq!(status, 200, "复 launch 重建");
         let app3 = ds.wm_remove_win(wid3).expect("app of wid3");

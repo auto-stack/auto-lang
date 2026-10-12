@@ -504,7 +504,7 @@ fn main() {
   E 的 Display 文本）。`.unwrap()` 范式三轨可用。
 - 参数位 `Option<T>`：V1 仅收口返回侧（参数位显式跳过）。
 
-### 已知分歧（详见 parity/docs/known-divergences.md DIV-DEP-15+）
+### 已知分歧（详见 test/parity/docs/known-divergences.md DIV-DEP-15+）
 
 - `use.rs` 单类型无花括号形态不进 dep 管线——**一律用 `{...}` 花括号形态**。
 - 方法/字段名撞 Auto 内建名（`find`/`count` 等）会被 a2r 发射器劫持——命名避开。

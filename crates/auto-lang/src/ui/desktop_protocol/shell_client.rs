@@ -18,13 +18,13 @@
 //! ReconnectPolicy 30s 自愈不对称的显式取舍，I5 桌面不炸）。
 
 use crate::ui::desktop_protocol::broker::{self, RequestedRender};
-use crate::ui::desktop_protocol::native_projector::RqProjector;
 use crate::ui::desktop_protocol::codec::Reader;
 use crate::ui::desktop_protocol::endpoint::FrameSource;
 use crate::ui::desktop_protocol::message::{
-    shell_face, surface_role, ControlMsg, FrameMsg, FrameMode, HandshakeMsg, InputMsg,
-    ProtocolMsg, SurfaceDecl,
+    shell_face, surface_role, ControlMsg, FrameMode, FrameMsg, HandshakeMsg, InputMsg, ProtocolMsg,
+    SurfaceDecl,
 };
+use crate::ui::desktop_protocol::native_projector::RqProjector;
 use crate::ui::desktop_protocol::transport;
 use crate::ui::desktop_protocol::PROTOCOL_VERSION;
 use crate::ui::shell_projection::{
@@ -52,7 +52,11 @@ impl ShellGeometry {
         if w <= 0.0 || h <= 0.0 || band <= 0.0 || band >= h {
             return None;
         }
-        Some(Self { viewport_w: w, viewport_h: h, band_h: band })
+        Some(Self {
+            viewport_w: w,
+            viewport_h: h,
+            band_h: band,
+        })
     }
 
     pub fn encode(&self) -> String {
@@ -60,11 +64,18 @@ impl ShellGeometry {
     }
 
     pub fn from_env() -> Option<Self> {
-        std::env::var("AUTO_SHELL_GEOM").ok().as_deref().and_then(Self::parse)
+        std::env::var("AUTO_SHELL_GEOM")
+            .ok()
+            .as_deref()
+            .and_then(Self::parse)
     }
 
     pub fn fallback() -> Self {
-        Self { viewport_w: 1280.0, viewport_h: 800.0, band_h: 48.0 }
+        Self {
+            viewport_w: 1280.0,
+            viewport_h: 800.0,
+            band_h: 48.0,
+        }
     }
 }
 
@@ -143,7 +154,9 @@ pub struct FaceProjector<C: crate::ui::component::Component + ShellStateAccess> 
 
 impl<C: crate::ui::component::Component + ShellStateAccess> FaceProjector<C> {
     pub fn new(component: C, width: f32, height: f32) -> Self {
-        Self { inner: RqProjector::new(component, width, height) }
+        Self {
+            inner: RqProjector::new(component, width, height),
+        }
     }
 
     /// 029 覆盖门（装载期过门——027 五件 Covered 前提）。
@@ -156,9 +169,7 @@ impl<C: crate::ui::component::Component + ShellStateAccess> FaceProjector<C> {
     }
 }
 
-impl<C: crate::ui::component::Component + ShellStateAccess> ShellSurface
-    for FaceProjector<C>
-{
+impl<C: crate::ui::component::Component + ShellStateAccess> ShellSurface for FaceProjector<C> {
     fn apply_writes(&mut self, writes: Vec<ShellWrite>) {
         for w in writes {
             match w {
@@ -215,7 +226,9 @@ impl<C: crate::ui::component::Component + ShellStateAccess> ShellSurface
     }
 
     fn dispatch_key(&mut self, vk: u32, modifiers: u8) -> bool {
-        let Some(name) = vk_to_bind_name(vk) else { return false };
+        let Some(name) = vk_to_bind_name(vk) else {
+            return false;
+        };
         if modifiers != 0 {
             // Ctrl/Shift/Alt 组合 = 宿主热键域（D5 边界）——child 不消费。
             return false;
@@ -284,8 +297,7 @@ impl ShellFaces {
             .map_err(|e| format!("壳 chrome 面装载失败: {e}"))?;
         let background = crate::build_dynamic_component(&bg_src, None)
             .map_err(|e| format!("壳 background 面装载失败: {e}"))?;
-        let mut chrome =
-            FaceProjector::new(chrome, geometry.viewport_w, geometry.band_h);
+        let mut chrome = FaceProjector::new(chrome, geometry.viewport_w, geometry.band_h);
         let mut background =
             FaceProjector::new(background, geometry.viewport_w, geometry.viewport_h);
         if let Err(gate) = chrome.ensure_covered() {
@@ -296,7 +308,10 @@ impl ShellFaces {
         }
         let mut faces = BTreeMap::new();
         faces.insert(shell_face::SHELL, Box::new(chrome) as Box<dyn ShellSurface>);
-        faces.insert(shell_face::DESKTOP_SURFACE, Box::new(background) as Box<dyn ShellSurface>);
+        faces.insert(
+            shell_face::DESKTOP_SURFACE,
+            Box::new(background) as Box<dyn ShellSurface>,
+        );
         Ok(Self { faces, geometry })
     }
 
@@ -304,15 +319,15 @@ impl ShellFaces {
     /// `mount_face` 工厂产物——crates/auto cmd_autodesk 装配点注入；
     /// T-04 起五面全给，overlay 预装免懒装）。面已由工厂
     /// ensure_covered 过门。
-    pub fn from_faces(
-        geometry: ShellGeometry,
-        faces: Vec<(u8, Box<dyn ShellSurface>)>,
-    ) -> Self {
+    pub fn from_faces(geometry: ShellGeometry, faces: Vec<(u8, Box<dyn ShellSurface>)>) -> Self {
         let mut map = BTreeMap::new();
         for (face, surface) in faces {
             map.insert(face, surface);
         }
-        Self { faces: map, geometry }
+        Self {
+            faces: map,
+            geometry,
+        }
     }
 
     /// overlay 面懒装（解释轨；已装 = 幂等 true）。编译轨 overlay 由
@@ -385,7 +400,10 @@ impl ShellFaces {
 
     /// PLAN-036 T-07：空会话构造（launcher 单面 exe 入口）。
     pub fn empty(geometry: ShellGeometry) -> Self {
-        Self { faces: BTreeMap::new(), geometry }
+        Self {
+            faces: BTreeMap::new(),
+            geometry,
+        }
     }
 
     /// 公共装载面（ensure_overlay 包装——launcher 入口单面装配）。
@@ -412,10 +430,15 @@ impl ShellFaces {
                 let Ok(proj) = ShellProjection::wire_decode(&mut r) else {
                     return false;
                 };
-                let Some(p) = self.projector_mut(face) else { return false };
+                let Some(p) = self.projector_mut(face) else {
+                    return false;
+                };
                 p.apply_writes(proj.interpreted_writes());
                 if std::env::var("AUTO030_TRACE").is_ok() {
-                    eprintln!("[p030-child] applied shell proj: proj.wins={}", proj.wins.len());
+                    eprintln!(
+                        "[p030-child] applied shell proj: proj.wins={}",
+                        proj.wins.len()
+                    );
                 }
                 p.bump_revision();
                 true
@@ -428,7 +451,9 @@ impl ShellFaces {
                 // 召唤事件（宿主写状态不触发 handler——随快照显式携带，
                 // 027 语义）。
                 let events = snap.events.clone();
-                let Some(p) = self.projector_mut(face) else { return false };
+                let Some(p) = self.projector_mut(face) else {
+                    return false;
+                };
                 p.apply_writes(snap.interpreted_writes());
                 for e in &events {
                     p.dispatch_event(shell_event_name(e));
@@ -445,7 +470,9 @@ impl ShellFaces {
                 if !self.ensure_overlay(face) {
                     return false;
                 }
-                let Some(p) = self.projector_mut(face) else { return false };
+                let Some(p) = self.projector_mut(face) else {
+                    return false;
+                };
                 p.apply_writes(snap.interpreted_writes());
                 for e in &events {
                     p.dispatch_event(shell_event_name(e));
@@ -462,7 +489,9 @@ impl ShellFaces {
                 if !self.ensure_overlay(face) {
                     return false;
                 }
-                let Some(p) = self.projector_mut(face) else { return false };
+                let Some(p) = self.projector_mut(face) else {
+                    return false;
+                };
                 p.apply_writes(snap.interpreted_writes());
                 for e in &events {
                     p.dispatch_event(shell_event_name(e));
@@ -479,13 +508,19 @@ impl ShellFaces {
                 if !self.ensure_overlay(face) {
                     return false;
                 }
-                let Some(p) = self.projector_mut(face) else { return false };
+                let Some(p) = self.projector_mut(face) else {
+                    return false;
+                };
                 p.apply_writes(snap.interpreted_writes());
                 for e in &events {
                     p.dispatch_event(shell_event_name(e));
                 }
                 // D5：ApplyFilter 后自主聚焦首输入（__focus_input 等价）。
-                if events.iter().any(|e| matches!(e, crate::ui::shell_projection::ShellEvent::ApplyFilter)) && snap.visible {
+                if events
+                    .iter()
+                    .any(|e| matches!(e, crate::ui::shell_projection::ShellEvent::ApplyFilter))
+                    && snap.visible
+                {
                     p.focus_input();
                 }
                 p.bump_revision();
@@ -500,7 +535,9 @@ impl ShellFaces {
                 if !self.ensure_overlay(face) {
                     return false;
                 }
-                let Some(p) = self.projector_mut(face) else { return false };
+                let Some(p) = self.projector_mut(face) else {
+                    return false;
+                };
                 p.apply_writes(snap.interpreted_writes());
                 for e in &events {
                     p.dispatch_event(shell_event_name(e));
@@ -514,7 +551,9 @@ impl ShellFaces {
 
     /// 时钟（分钟门数据——chrome 面任务栏钟）。
     pub fn apply_clock(&mut self, face: u8, time: &str, date: &str) -> bool {
-        let Some(p) = self.projector_mut(face) else { return false };
+        let Some(p) = self.projector_mut(face) else {
+            return false;
+        };
         p.write_scalar("__wm_clock", time);
         p.write_scalar("__wm_date", date);
         p.bump_revision();
@@ -524,7 +563,9 @@ impl ShellFaces {
     /// 光标事件（空白菜单坐标锚——background 面消费；逐事件语义——
     /// 宿主侧消费门控制推送节拍[D3 定案]）。
     pub fn apply_cursor(&mut self, face: u8, x: f32, y: f32) -> bool {
-        let Some(p) = self.projector_mut(face) else { return false };
+        let Some(p) = self.projector_mut(face) else {
+            return false;
+        };
         p.write_scalar("__desktop_cursor_x", &x.to_string());
         p.write_scalar("__desktop_cursor_y", &y.to_string());
         p.bump_revision();
@@ -549,7 +590,9 @@ impl ShellFaces {
 
     /// 命令读走（c4 语义 child 化：read_state + 清空；面局部 `__desktop_cmd`）。
     pub fn drain_commands(&mut self, face: u8) -> Vec<String> {
-        let Some(p) = self.projector_mut(face) else { return Vec::new() };
+        let Some(p) = self.projector_mut(face) else {
+            return Vec::new();
+        };
         let cur = p.read_state_str("__desktop_cmd").unwrap_or_default();
         if cur.is_empty() {
             return Vec::new();
@@ -562,10 +605,7 @@ impl ShellFaces {
     }
 
     /// 渲染一面（queue 臂 DrawList）。
-    pub fn render(
-        &mut self,
-        face: u8,
-    ) -> Option<crate::ui::desktop_protocol::message::DrawList> {
+    pub fn render(&mut self, face: u8) -> Option<crate::ui::desktop_protocol::message::DrawList> {
         self.projector_mut(face).and_then(|p| p.render_frame())
     }
 
@@ -575,10 +615,12 @@ impl ShellFaces {
 
     /// 面命中区矩形快照（e2e 点击钩子消费——宿主 pointer 路由的等价载荷）。
     pub fn hit_rects(&self, face: u8) -> Vec<crate::ui::desktop_protocol::message::WRect> {
-        self.faces.get(&face).map(|p| p.hit_rects()).unwrap_or_default()
+        self.faces
+            .get(&face)
+            .map(|p| p.hit_rects())
+            .unwrap_or_default()
     }
 }
-
 
 /// 每表面帧产状态（内联帧：frame_id 单调 + 双槽轮转——FrameAck 归还）。
 #[derive(Default)]
@@ -630,7 +672,13 @@ impl ShellPump {
         geometry: ShellGeometry,
         faces: ShellFaces,
     ) -> Result<Self, String> {
-        Self::start_as(broker_pipe, "shell", geometry, faces, shell_surfaces(&geometry))
+        Self::start_as(
+            broker_pipe,
+            "shell",
+            geometry,
+            faces,
+            shell_surfaces(&geometry),
+        )
     }
 
     /// PLAN-036 T-07（D3-C）：泛化入口——launcher 独立 exe 单面握手
@@ -653,7 +701,10 @@ impl ShellPump {
         let (_, end) = broker::request_incubation_render(
             broker_pipe,
             "shell",
-            RequestedRender { mode: FrameMode::Commands, auto_downgraded: false },
+            RequestedRender {
+                mode: FrameMode::Commands,
+                auto_downgraded: false,
+            },
             5000,
         )
         .map_err(|e| format!("壳 broker 孵化失败: {e:?}"))?;
@@ -668,7 +719,8 @@ impl ShellPump {
             surfaces,
         });
         let mut end = end;
-        end.send(&hello).map_err(|e| format!("壳 Hello 发送失败: {e:?}"))?;
+        end.send(&hello)
+            .map_err(|e| format!("壳 Hello 发送失败: {e:?}"))?;
         Ok(Self {
             end,
             faces,
@@ -681,10 +733,7 @@ impl ShellPump {
     }
 
     /// 注册投影应用钩子（e2e 专用——builder）。
-    pub fn with_on_applied(
-        mut self,
-        f: Box<dyn FnMut(&mut ShellFaces) + Send>,
-    ) -> Self {
+    pub fn with_on_applied(mut self, f: Box<dyn FnMut(&mut ShellFaces) + Send>) -> Self {
         self.on_applied = Some(f);
         self
     }
@@ -702,7 +751,12 @@ impl ShellPump {
             };
             let msg = msg.map_err(|e| format!("壳消息解码失败: {e:?}"))?;
             match msg {
-                ProtocolMsg::Handshake(HandshakeMsg::Welcome { wid, surface, extra_surfaces, .. }) => {
+                ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+                    wid,
+                    surface,
+                    extra_surfaces,
+                    ..
+                }) => {
                     self.routes.insert(wid, (surface, self.leading_face));
                     self.frames.entry(wid).or_default();
                     // PLAN-036 T-04：OVERLAY 依序映射（Hello 声明序约定
@@ -753,9 +807,10 @@ impl ShellPump {
                                 .find(|(_, (_, f))| *f == face)
                                 .map(|(w, _)| *w)
                                 .unwrap_or(0);
-                            let _ = self.end.send(
-                                &ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record }),
-                            );
+                            let _ = self.end.send(&ProtocolMsg::Control(ControlMsg::DesktopBus {
+                                wid,
+                                record,
+                            }));
                         }
                     }
                     self.sync_frames();
@@ -786,9 +841,10 @@ impl ShellPump {
                     self.faces.on_input(face, &input);
                     // 输入可能写命令（按钮 handler）：读走 + 上行。
                     for record in self.faces.drain_commands(face) {
-                        let _ = self
-                            .end
-                            .send(&ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record }));
+                        let _ = self.end.send(&ProtocolMsg::Control(ControlMsg::DesktopBus {
+                            wid,
+                            record,
+                        }));
                     }
                     self.sync_frames();
                 }
@@ -832,7 +888,10 @@ impl ShellPump {
                 payload: list,
             });
             if std::env::var("AUTO030_TRACE").is_ok() {
-                eprintln!("[p030-child] send frame face={face} wid={wid} rev={rev} ops={}", frame_ops(&frame));
+                eprintln!(
+                    "[p030-child] send frame face={face} wid={wid} rev={rev} ops={}",
+                    frame_ops(&frame)
+                );
             }
             if self.end.send(&frame).is_err() {
                 eprintln!("[p030-child] frame send FAILED face={face} wid={wid}");
@@ -934,7 +993,11 @@ mod tests {
 
     #[test]
     fn shell_geometry_roundtrip() {
-        let g = ShellGeometry { viewport_w: 1280.0, viewport_h: 800.0, band_h: 48.0 };
+        let g = ShellGeometry {
+            viewport_w: 1280.0,
+            viewport_h: 800.0,
+            band_h: 48.0,
+        };
         assert_eq!(ShellGeometry::parse(&g.encode()), Some(g));
         assert!(ShellGeometry::parse("1280").is_none());
         assert!(ShellGeometry::parse("axbxc").is_none());
@@ -1022,7 +1085,11 @@ mod tests {
         // 方向键：bind 命中 → handler 派发 → revision 前进。
         faces.on_input(
             shell_face::SWITCHER,
-            &InputMsg::KeyPressed { wid: 0, key: 0x27, modifiers: 0 },
+            &InputMsg::KeyPressed {
+                wid: 0,
+                key: 0x27,
+                modifiers: 0,
+            },
         );
         assert!(
             faces.revision(shell_face::SWITCHER) > rev,
@@ -1032,13 +1099,21 @@ mod tests {
         let rev2 = faces.revision(shell_face::SWITCHER);
         faces.on_input(
             shell_face::SWITCHER,
-            &InputMsg::KeyPressed { wid: 0, key: 0x27, modifiers: 2 },
+            &InputMsg::KeyPressed {
+                wid: 0,
+                key: 0x27,
+                modifiers: 2,
+            },
         );
         assert!(faces.revision(shell_face::SWITCHER) >= rev2);
         // 无 bind 键（字母）落投影器 no-op——不炸不前进。
         faces.on_input(
             shell_face::SWITCHER,
-            &InputMsg::KeyPressed { wid: 0, key: 0x51, modifiers: 0 },
+            &InputMsg::KeyPressed {
+                wid: 0,
+                key: 0x51,
+                modifiers: 0,
+            },
         );
     }
 
@@ -1095,7 +1170,10 @@ mod tests {
         };
         let mut payload = Vec::new();
         proj.wire_encode(&mut payload);
-        assert!(faces.apply_projection(shell_face::SHELL, &payload), "shell 面应用");
+        assert!(
+            faces.apply_projection(shell_face::SHELL, &payload),
+            "shell 面应用"
+        );
         let rev_before = faces.revision(shell_face::SHELL);
         assert!(rev_before > 0);
         // 同 payload 再应用：child 侧无指纹门（宿主侧门控）——revision

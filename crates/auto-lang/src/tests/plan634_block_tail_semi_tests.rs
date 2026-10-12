@@ -53,9 +53,8 @@ widget App {{
 /// 必须发射块尾 `;`，且限定名头照旧改写掉。
 #[test]
 fn if_block_tail_value_call_emits_semicolon() {
-    let code = gen_rust(
-        ".Init -> {\n            if .lines.is_empty() { api.get_lines() }\n        }",
-    );
+    let code =
+        gen_rust(".Init -> {\n            if .lines.is_empty() { api.get_lines() }\n        }");
     assert!(
         code.contains("if ") && code.contains("{ get_lines(); }"),
         "if 块尾值调用必须发射块尾分号 `{{ get_lines(); }}`:\n{code}"
@@ -79,26 +78,21 @@ fn handler_tail_value_call_emits_semicolon() {
 /// 赋值尾/let 尾形态回归：语句位置恒补 `;` 不破坏既有形态。
 #[test]
 fn assignment_and_let_tails_keep_semicolons() {
-    let code = gen_rust(
-        ".Init -> {\n            var n int = 1\n            .lines = []\n        }",
-    );
+    let code =
+        gen_rust(".Init -> {\n            var n int = 1\n            .lines = []\n        }");
     assert!(
         code.contains("let mut n = 1;"),
         "块尾 let 必须带分号:\n{code}"
     );
-    assert!(
-        code.contains("self.lines ="),
-        "状态赋值必须发射:\n{code}"
-    );
+    assert!(code.contains("self.lines ="), "状态赋值必须发射:\n{code}");
 }
 
 /// for 循环体块尾同规则（语句位置块发射的第四个组装点）。注意：值调用
 /// 体内的循环变量会走 iter_mut 臂（既有 scan 行为,与分号规则正交）。
 #[test]
 fn for_body_tail_statement_emits_semicolon() {
-    let code = gen_rust(
-        ".Init -> {\n            for line in .lines { api.get_lines() }\n        }",
-    );
+    let code =
+        gen_rust(".Init -> {\n            for line in .lines { api.get_lines() }\n        }");
     assert!(
         code.contains("self.lines.iter_mut() { get_lines(); }")
             || code.contains("self.lines.iter() { get_lines(); }"),

@@ -27,9 +27,14 @@ fn main() {
     h.send(1)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
-    assert!(stdout.contains("Greeter started"), "start hook: stdout={:?} result={:?}", stdout, result);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    assert!(
+        stdout.contains("Greeter started"),
+        "start hook: stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// `on { Pat -> {} }` message handler executes for a matching message.
@@ -54,9 +59,14 @@ fn main() {
     h.send(1)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
-    assert!(stdout.contains("got one"), "handler match: stdout={:?} result={:?}", stdout, result);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    assert!(
+        stdout.contains("got one"),
+        "handler match: stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// Multiple messages each trigger their handler, in send order.
@@ -83,10 +93,16 @@ fn main() {
     h.send(1)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // All three messages dispatched.
-    assert_eq!(stdout.trim(), "got one\ngot two\ngot one", "multi-msg: stdout={:?} result={:?}", stdout, result);
+    assert_eq!(
+        stdout.trim(),
+        "got one\ngot two\ngot one",
+        "multi-msg: stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// `else -> {}` handler runs when no pattern matches.
@@ -111,10 +127,19 @@ fn main() {
     h.send(99)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
-    assert!(stdout.contains("fell through"), "else handler: stdout={:?} result={:?}", stdout, result);
-    assert!(!stdout.contains("matched one"), "else handler should not match: stdout={:?}", stdout);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    assert!(
+        stdout.contains("fell through"),
+        "else handler: stdout={:?} result={:?}",
+        stdout,
+        result
+    );
+    assert!(
+        !stdout.contains("matched one"),
+        "else handler should not match: stdout={:?}",
+        stdout
+    );
 }
 
 /// Actor does not hang the VM after messages are consumed: main returns and
@@ -138,12 +163,17 @@ fn main() {
     print("main done")
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // Both the handler output and main's "done" must appear, and the VM must
     // have returned (result is the last expression repr, not a timeout).
     assert!(stdout.contains("ping"), "handler ran: stdout={:?}", stdout);
-    assert!(stdout.contains("main done"), "main completed: stdout={:?} result={:?}", stdout, result);
+    assert!(
+        stdout.contains("main done"),
+        "main completed: stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// Plan 317 §11 Phase 8 (P4'): a task with `on` handlers but NO `fn start()` and
@@ -170,10 +200,20 @@ fn main() {
     h.send(99)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
-    assert!(stdout.contains("got 42"), "payload msg1 (42): stdout={:?} result={:?}", stdout, result);
-    assert!(stdout.contains("got 99"), "payload msg2 (99): stdout={:?} result={:?}", stdout, result);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    assert!(
+        stdout.contains("got 42"),
+        "payload msg1 (42): stdout={:?} result={:?}",
+        stdout,
+        result
+    );
+    assert!(
+        stdout.contains("got 99"),
+        "payload msg2 (99): stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// Plan 317 §11 Phase 8 (P4'): cross-actor coexistence + independent payload
@@ -206,12 +246,32 @@ fn main() {
     h2.send(9)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // Adder1: 0+5=5, 5+3=8; Adder2: 0+7=7, 7+9=16. Independent totals, correct
     // payloads (no bleed across actors).
-    assert!(stdout.contains("5"), "Adder1 msg1 (total=5): stdout={:?} result={:?}", stdout, result);
-    assert!(stdout.contains("8"), "Adder1 msg2 (total=8): stdout={:?} result={:?}", stdout, result);
-    assert!(stdout.contains("7"), "Adder2 msg1 (total=7): stdout={:?} result={:?}", stdout, result);
-    assert!(stdout.contains("16"), "Adder2 msg2 (total=16): stdout={:?} result={:?}", stdout, result);
+    assert!(
+        stdout.contains("5"),
+        "Adder1 msg1 (total=5): stdout={:?} result={:?}",
+        stdout,
+        result
+    );
+    assert!(
+        stdout.contains("8"),
+        "Adder1 msg2 (total=8): stdout={:?} result={:?}",
+        stdout,
+        result
+    );
+    assert!(
+        stdout.contains("7"),
+        "Adder2 msg1 (total=7): stdout={:?} result={:?}",
+        stdout,
+        result
+    );
+    assert!(
+        stdout.contains("16"),
+        "Adder2 msg2 (total=16): stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }

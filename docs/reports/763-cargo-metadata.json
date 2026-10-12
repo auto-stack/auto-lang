@@ -1,0 +1,28 @@
+{
+  "workspace_root": "D:\\autostack\\.wt\\lang-763\\auto-lang",
+  "workspace_packages": [
+    "a2r-std",
+    "shim-metadata",
+    "a2r-actor-tests",
+    "auto-lang",
+    "auto-atom",
+    "auto-val",
+    "auto-bindgen",
+    "auto-cache",
+    "auto-macros",
+    "auto",
+    "auto-man",
+    "auto-gen",
+    "shell-pack",
+    "auto-lsp",
+    "auto-vm",
+    "auto-playground",
+    "auto-cosmic-ports",
+    "auto-cosmic-demo",
+    "auto-cosmic-host-libcosmic",
+    "auto-cosmic-ports-linux",
+    "auto-cosmic-host-smithay"
+  ],
+  "patch_contract": "Cargo.toml [patch.crates-io] iced_widget.path = crates/patches/iced_widget",
+  "patch_tree": "iced_widget v0.14.2 (D:\\autostack\\.wt\\lang-763\\auto-lang\\crates\\patches\\iced_widget)\n"
+}

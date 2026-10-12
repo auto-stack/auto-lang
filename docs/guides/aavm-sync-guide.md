@@ -1,7 +1,7 @@
 # AAVM ↔ Rust 同步操作手册
 
 > **⚠️ 已被取代（Plan 429-434 系列，2026-08）**：本手册描述的"增量同步旧 AAVM"路线
-> 已废弃——旧 AAVM（auto/lib-legacy，13 文件）已封存，AAVM v2 采用"纯 Rust 模式全新重写 +
+> 已废弃——旧 AAVM（packages/aavm/lib-legacy，13 文件）已封存，AAVM v2 采用"纯 Rust 模式全新重写 +
 > divergence 登记"路线。现行规范见 `docs/specs/aavm/`（porting-boundary / file-mapping /
 > divergence-rules / corpus），系列复盘见 `docs/specs/aavm/design/series-429-434-retrospective.md`。
 > 本文件仅作历史参考保留。
@@ -42,7 +42,7 @@ Baseline commit 记录在各 .at 文件头部的 `AAVM Sync Snapshot` 注释中�
 
 对需要同步的组件：
 1. 阅读 Rust 侧的新增代码
-2. 用 Auto 语法重写对应功能到 `auto/lib/*.at`
+2. 用 Auto 语法重写对应功能到 `packages/aavm/lib/*.at`
 3. 添加 bootstrap 测试验证
 4. 更新文件头部的 Baseline commit 和 Coverage/Missing
 
@@ -63,7 +63,7 @@ cargo test -p auto-lang --lib -- a2r_tests
 ```
 请执行 AAVM 同步检查。
 
-1. 读取每个 auto/lib/*.at 文件头部的 AAVM Sync Snapshot，提取各组件的 Baseline commit
+1. 读取每个 packages/aavm/lib/*.at 文件头部的 AAVM Sync Snapshot，提取各组件的 Baseline commit
 2. 对每个组件运行 `git log --oneline <baseline>..HEAD -- <rust-ref-paths>` 检查变更
 3. 列出每个组件的新增 commit，标注哪些是 AAVM 需要同步的（排除 UI/debugger/FFI/DB/多文件）
 4. 对需要同步的变更，生成实施计划

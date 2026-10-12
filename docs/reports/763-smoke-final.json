@@ -1,0 +1,30 @@
+[
+  {
+    "name": "aavm-namespace",
+    "exit": 0,
+    "seconds": 0.49,
+    "stdout": "----------------------\nRunning Auto scratch\\p763-token.at \n----------------------\nFn\n\n\n\n",
+    "stderr": ""
+  },
+  {
+    "name": "bp-admin-gen",
+    "exit": 1,
+    "seconds": 0.44,
+    "stdout": "com:soutek/auto-stack/auto-index.git\", \"boe\": \"git@codeup.aliyun.com:soutek/boe/index.git\", \"default\": \"git@gitee.com:auto-stack/auto-index.git\"}\nused index: [\"default\"]\n08:21:11 [INFO] loading index store from C:/Users/zhaop/.auto/auto-man/index/default\nsetting port builder: windows_ninja ninja, at build\n08:21:11 [INFO] AutoCache initialized for project: bp-admin\n08:21:11 [INFO] Downloading deps\n",
+    "stderr": "[X9] main Err:   × Local dep dir ../../packages/blueprints does not exist\n\nError:   × Local dep dir ../../packages/blueprints does not exist\n\n"
+  },
+  {
+    "name": "bps-gallery-gen",
+    "exit": 1,
+    "seconds": 0.4,
+    "stdout": "\", \"boe\": \"git@codeup.aliyun.com:soutek/boe/index.git\", \"default\": \"git@gitee.com:auto-stack/auto-index.git\"}\nused index: [\"default\"]\n08:21:12 [INFO] loading index store from C:/Users/zhaop/.auto/auto-man/index/default\nsetting port builder: windows_ninja ninja, at build\n08:21:12 [INFO] AutoCache initialized for project: bps-gallery\n  Frontend dev server port: 4046\n08:21:12 [INFO] Downloading deps\n",
+    "stderr": "[X9] main Err:   × Local dep dir ../../packages/blueprints does not exist\n\nError:   × Local dep dir ../../packages/blueprints does not exist\n\n"
+  },
+  {
+    "name": "parity-list",
+    "exit": 0,
+    "seconds": 0.56,
+    "stdout": "_wget\ncli_app\ngenerators\nhttp_client_sync\npy_anno\npy_configparser\npy_datetime\npy_hashlib\npy_json\npy_list\npy_math\npy_matplotlib\npy_numpy\npy_os\npy_pandas\npy_random\npy_re\npy_string\npy_struct\npy_sys\npy_torch\npy_torch_infer\npy_torch_subclass\npy_torch_train\npy_uuid\nregex\nregex_real\nrusqlite\nsemver_real\nserde_json\nserde_json_real\nsha2\nstring_utils\ntokio\ntokio_stream\ntrait_advanced\nurl\nurl_real\nuuid_real\n",
+    "stderr": ""
+  }
+]

@@ -1,0 +1,5 @@
+// PLAN-729: file-download service example (minimal project format).
+{
+  "scene": "workspace",
+  "members": ["back"]
+}

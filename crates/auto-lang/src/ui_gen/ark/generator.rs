@@ -131,7 +131,10 @@ impl ArkGenerator {
     /// Check if a tag looks like a custom component (starts with uppercase, not in registry)
     fn is_capitalized_component(&self, tag: &str) -> bool {
         // If it starts with uppercase and is not a built-in component, it's likely a custom widget
-        tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+        tag.chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
             && !Self::is_builtin_component(tag)
             && !self.registry.get(tag).is_some()
     }
@@ -145,17 +148,73 @@ impl ArkGenerator {
     fn is_builtin_component(name: &str) -> bool {
         // List of built-in ArkUI components that could conflict
         const BUILTIN_COMPONENTS: &[&str] = &[
-            "Button", "Column", "Row", "Text", "Image", "List", "Grid", "Scroll",
-            "Stack", "Flex", "GridRow", "GridCol", "Counter", "Toggle", "Checkbox",
-            "Radio", "Select", "Slider", "Progress", "Rating", "TextInput", "TextArea",
-            "Search", "Divider", "Span", "Canvas", "Video", "Web", "XComponent",
-            "AlphabetIndexer", "Badge", "Blank", "Clock", "DataPanel", "DatePicker",
-            "DatePickerDialog", "LoadingProgress", "Marquee", "Navigation", "NavRouter",
-            "NavDestination", "Navigator", "Panel", "Refresh", "RelativeContainer",
-            "SideBarContainer", "Stepper", "StepperItem", "Swiper", "Tabs", "TabContent",
-            "TimePicker", "TimePickerDialog", "Timer", "TextPicker", "TextPickerDialog",
-            "Toast", "Dialog", "AlertDialog", "ActionSheet", "Menu", "MenuItem",
-            "MenuGroup", "ContextMenu", "Popup", "PromptAction", "Hyperlink",
+            "Button",
+            "Column",
+            "Row",
+            "Text",
+            "Image",
+            "List",
+            "Grid",
+            "Scroll",
+            "Stack",
+            "Flex",
+            "GridRow",
+            "GridCol",
+            "Counter",
+            "Toggle",
+            "Checkbox",
+            "Radio",
+            "Select",
+            "Slider",
+            "Progress",
+            "Rating",
+            "TextInput",
+            "TextArea",
+            "Search",
+            "Divider",
+            "Span",
+            "Canvas",
+            "Video",
+            "Web",
+            "XComponent",
+            "AlphabetIndexer",
+            "Badge",
+            "Blank",
+            "Clock",
+            "DataPanel",
+            "DatePicker",
+            "DatePickerDialog",
+            "LoadingProgress",
+            "Marquee",
+            "Navigation",
+            "NavRouter",
+            "NavDestination",
+            "Navigator",
+            "Panel",
+            "Refresh",
+            "RelativeContainer",
+            "SideBarContainer",
+            "Stepper",
+            "StepperItem",
+            "Swiper",
+            "Tabs",
+            "TabContent",
+            "TimePicker",
+            "TimePickerDialog",
+            "Timer",
+            "TextPicker",
+            "TextPickerDialog",
+            "Toast",
+            "Dialog",
+            "AlertDialog",
+            "ActionSheet",
+            "Menu",
+            "MenuItem",
+            "MenuGroup",
+            "ContextMenu",
+            "Popup",
+            "PromptAction",
+            "Hyperlink",
         ];
 
         BUILTIN_COMPONENTS.contains(&name)
@@ -165,8 +224,20 @@ impl ArkGenerator {
     /// Some ArkUI components like Radio, Slider, Progress, Image cannot have child components
     fn component_cannot_have_children(name: &str) -> bool {
         const NO_CHILDREN_COMPONENTS: &[&str] = &[
-            "Radio", "Slider", "Progress", "Image", "Rating", "Checkbox", "Toggle",
-            "Switch", "Badge", "Blank", "Divider", "Span", "TextArea", "TextInput",
+            "Radio",
+            "Slider",
+            "Progress",
+            "Image",
+            "Rating",
+            "Checkbox",
+            "Toggle",
+            "Switch",
+            "Badge",
+            "Blank",
+            "Divider",
+            "Span",
+            "TextArea",
+            "TextInput",
         ];
         NO_CHILDREN_COMPONENTS.contains(&name)
     }
@@ -176,11 +247,33 @@ impl ArkGenerator {
     fn component_supports_trailing_lambda(name: &str) -> bool {
         // Built-in container components that support trailing lambda
         const CONTAINER_COMPONENTS: &[&str] = &[
-            "Column", "Row", "Stack", "Flex", "Scroll", "List", "Grid", "Swiper",
-            "Tabs", "TabContent", "Navigation", "NavDestination", "NavRouter",
-            "Button", "Card", "Panel", "SideBarContainer", "Refresh", "ColumnSplit",
-            "RowSplit", "RelativeContainer", "GridRow", "GridCol", "WaterFlow",
-            "RelativeContainer", "Form", "AlphabetIndexer",
+            "Column",
+            "Row",
+            "Stack",
+            "Flex",
+            "Scroll",
+            "List",
+            "Grid",
+            "Swiper",
+            "Tabs",
+            "TabContent",
+            "Navigation",
+            "NavDestination",
+            "NavRouter",
+            "Button",
+            "Card",
+            "Panel",
+            "SideBarContainer",
+            "Refresh",
+            "ColumnSplit",
+            "RowSplit",
+            "RelativeContainer",
+            "GridRow",
+            "GridCol",
+            "WaterFlow",
+            "RelativeContainer",
+            "Form",
+            "AlphabetIndexer",
         ];
         // Check if it's a known container component
         CONTAINER_COMPONENTS.contains(&name)
@@ -220,7 +313,10 @@ impl ArkGenerator {
         lines.push("  tabBarBuilder(title: string, targetIndex: number, selectedIcon?: Resource, unselectIcon?: Resource) {".to_string());
         lines.push("    Column() {".to_string());
         lines.push("      if (selectedIcon && unselectIcon) {".to_string());
-        lines.push("        Image(this.currentIndex === targetIndex ? selectedIcon : unselectIcon)".to_string());
+        lines.push(
+            "        Image(this.currentIndex === targetIndex ? selectedIcon : unselectIcon)"
+                .to_string(),
+        );
         lines.push("          .width(24)".to_string());
         lines.push("          .height(24)".to_string());
         lines.push("      }".to_string());
@@ -246,19 +342,35 @@ impl ArkGenerator {
     }
 
     /// Generate Tabs component with TabContent children
-    fn generate_tabs_component(&mut self, node: &AuraNode, tab_items: &[TabItem]) -> GenResult<String> {
+    fn generate_tabs_component(
+        &mut self,
+        node: &AuraNode,
+        tab_items: &[TabItem],
+    ) -> GenResult<String> {
         let mut lines = Vec::new();
 
         // Tabs header
-        lines.push("    Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {".to_string());
+        lines.push(
+            "    Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {"
+                .to_string(),
+        );
 
         // Generate TabContent for each TabsContent child
         if let AuraNode::Element { children, .. } = node {
             let mut content_index = 0;
             for child in children {
-                if let AuraNode::Element { tag, props, children: content_children, .. } = child {
+                if let AuraNode::Element {
+                    tag,
+                    props,
+                    children: content_children,
+                    ..
+                } = child
+                {
                     if tag.to_lowercase() == "tabscontent" {
-                        let tab_id = props.get("id").map(extract_string_from_prop).unwrap_or_default();
+                        let tab_id = props
+                            .get("id")
+                            .map(extract_string_from_prop)
+                            .unwrap_or_default();
 
                         // Find matching tab item for label
                         let tab_item = tab_items.iter().find(|t| t.id == tab_id);
@@ -283,8 +395,10 @@ impl ArkGenerator {
                                 lines.push(format!("      .tabBar(this.tabBarBuilder('{}', {}, $r('{}'), $r('{}')))",
                                     item.label, content_index, icon_on, icon_off));
                             } else {
-                                lines.push(format!("      .tabBar(this.tabBarBuilder('{}', {}))",
-                                    item.label, content_index));
+                                lines.push(format!(
+                                    "      .tabBar(this.tabBarBuilder('{}', {}))",
+                                    item.label, content_index
+                                ));
                             }
                         }
 
@@ -338,13 +452,23 @@ fn extract_tab_triggers(tabs_list: &AuraNode) -> Vec<TabItem> {
         for child in children {
             if let AuraNode::Element { tag, props, .. } = child {
                 if tag.to_lowercase() == "tabstrigger" {
-                    let id = props.get("id").map(extract_string_from_prop).unwrap_or_default();
-                    let label = props.get("label").map(extract_string_from_prop).unwrap_or_default();
+                    let id = props
+                        .get("id")
+                        .map(extract_string_from_prop)
+                        .unwrap_or_default();
+                    let label = props
+                        .get("label")
+                        .map(extract_string_from_prop)
+                        .unwrap_or_default();
                     items.push(TabItem {
                         id,
                         label,
-                        icon_on: props.get("iconOn").and_then(extract_optional_string_from_prop),
-                        icon_off: props.get("iconOff").and_then(extract_optional_string_from_prop),
+                        icon_on: props
+                            .get("iconOn")
+                            .and_then(extract_optional_string_from_prop),
+                        icon_off: props
+                            .get("iconOff")
+                            .and_then(extract_optional_string_from_prop),
                     });
                 }
             }
@@ -385,13 +509,18 @@ impl ArkGenerator {
                         Type::Slice(slice) => Some(Self::type_to_arkts_simple(&slice.elem)),
                         Type::List(inner) => Some(Self::type_to_arkts_simple(inner)),
                         Type::Array(arr) => Some(Self::type_to_arkts_simple(&arr.elem)),
-                        Type::Map(_, v) => Some(Self::type_to_arkts_simple(v)),  // Plan 160
+                        Type::Map(_, v) => Some(Self::type_to_arkts_simple(v)), // Plan 160
                         _ => None,
                     };
 
                     if let Some(elem) = elem_type {
                         // Only track if element type is not Object (i.e., it's a custom type)
-                        if elem != "Object" && elem != "Object[]" && !elem.starts_with("number") && !elem.starts_with("string") && !elem.starts_with("boolean") {
+                        if elem != "Object"
+                            && elem != "Object[]"
+                            && !elem.starts_with("number")
+                            && !elem.starts_with("string")
+                            && !elem.starts_with("boolean")
+                        {
                             props.insert(member.name.as_str().to_string(), elem);
                         }
                     }
@@ -440,7 +569,11 @@ impl ArkGenerator {
     }
 
     /// Generate full project with custom package
-    pub fn generate_project_with_package(&self, name: &str, package: &str) -> HashMap<String, String> {
+    pub fn generate_project_with_package(
+        &self,
+        name: &str,
+        package: &str,
+    ) -> HashMap<String, String> {
         let gen = ArkProjectGenerator::with_package(name, package);
         gen.generate()
     }
@@ -506,7 +639,10 @@ impl ArkGenerator {
             for route in &routes.routes {
                 // Import uses actual widget name (e.g., ListPage from ./ListPage)
                 let component_name = &route.widget_name;
-                lines.push(format!("import {{ {} }} from './{}';", component_name, component_name));
+                lines.push(format!(
+                    "import {{ {} }} from './{}';",
+                    component_name, component_name
+                ));
             }
             if !routes.routes.is_empty() {
                 lines.push(String::new());
@@ -514,7 +650,9 @@ impl ArkGenerator {
         }
 
         // Import custom widgets used in view (detected from custom_widgets set)
-        let custom_imports: Vec<_> = self.custom_widgets.iter()
+        let custom_imports: Vec<_> = self
+            .custom_widgets
+            .iter()
             .filter(|w| {
                 // Only import if it's used in the view tree
                 Self::widget_uses_custom_component(&widget.view_tree, w)
@@ -526,7 +664,10 @@ impl ArkGenerator {
             .collect();
 
         for custom_widget in &custom_imports {
-            lines.push(format!("import {{ {} }} from './{}';", custom_widget, custom_widget));
+            lines.push(format!(
+                "import {{ {} }} from './{}';",
+                custom_widget, custom_widget
+            ));
         }
         if !custom_imports.is_empty() {
             lines.push(String::new());
@@ -535,7 +676,10 @@ impl ArkGenerator {
         // Import model types from model directory
         let model_imports = self.collect_model_imports(widget);
         for model_type in &model_imports {
-            lines.push(format!("import {{ {} }} from '../model/{}';", model_type, model_type));
+            lines.push(format!(
+                "import {{ {} }} from '../model/{}';",
+                model_type, model_type
+            ));
         }
         if !model_imports.is_empty() {
             lines.push(String::new());
@@ -556,7 +700,8 @@ impl ArkGenerator {
             let base_interface_name = super::state::to_pascal_case(&state_var.name);
             let prefixed_interface_name = format!("{}{}", sanitized_name, base_interface_name);
             if interfaces.iter().any(|i| i.name == prefixed_interface_name) {
-                self.state_interfaces.insert(state_var.name.clone(), prefixed_interface_name);
+                self.state_interfaces
+                    .insert(state_var.name.clone(), prefixed_interface_name);
             }
 
             // Also track user types (e.g., Section) for nested property access
@@ -568,7 +713,8 @@ impl ArkGenerator {
                 let type_name = type_decl.name.as_str().to_string();
                 // Only add if not already present (don't override interface types)
                 if !self.state_interfaces.contains_key(&state_var.name) {
-                    self.state_interfaces.insert(state_var.name.clone(), type_name);
+                    self.state_interfaces
+                        .insert(state_var.name.clone(), type_name);
                 }
             }
         }
@@ -598,30 +744,42 @@ impl ArkGenerator {
         lines.push("@Component".to_string());
 
         // Add export for child pages (non-App widgets)
-        let struct_keyword = if is_app_widget { "struct" } else { "export struct" };
+        let struct_keyword = if is_app_widget {
+            "struct"
+        } else {
+            "export struct"
+        };
         lines.push(format!("{} {} {{", struct_keyword, sanitized_name));
 
         self.indent_level = 1;
 
         // Check if pathStack is already declared in state_vars with @Provide or @Consume
-        let has_pathstack_provide = widget.state_vars.iter().any(|v| {
-            v.name == "pathStack" && v.decorators.iter().any(|d| d.name == "Provide")
-        });
-        let has_pathstack_consume = widget.state_vars.iter().any(|v| {
-            v.name == "pathStack" && v.decorators.iter().any(|d| d.name == "Consume")
-        });
+        let has_pathstack_provide = widget
+            .state_vars
+            .iter()
+            .any(|v| v.name == "pathStack" && v.decorators.iter().any(|d| d.name == "Provide"));
+        let has_pathstack_consume = widget
+            .state_vars
+            .iter()
+            .any(|v| v.name == "pathStack" && v.decorators.iter().any(|d| d.name == "Consume"));
 
         // Add NavPathStack with @Provide decorator if widget has routes (App widget)
         // Only add if not already declared in state_vars
         if has_routes && !has_pathstack_provide {
-            lines.push(format!("{}@Provide('pathStack') pathStack: NavPathStack = new NavPathStack()", self.indent()));
+            lines.push(format!(
+                "{}@Provide('pathStack') pathStack: NavPathStack = new NavPathStack()",
+                self.indent()
+            ));
             lines.push(String::new());
         }
 
         // Add @Consume decorator if widget uses navigation but doesn't have routes (child page with links)
         // Only add if not already declared in state_vars
         if uses_navigation && !has_routes && !has_pathstack_consume {
-            lines.push(format!("{}@Consume('pathStack') pathStack: NavPathStack", self.indent()));
+            lines.push(format!(
+                "{}@Consume('pathStack') pathStack: NavPathStack",
+                self.indent()
+            ));
             lines.push(String::new());
         }
 
@@ -644,11 +802,15 @@ impl ArkGenerator {
         }
 
         // Lifecycle: .Init → aboutToAppear, .Destroy → aboutToDisappear
-        let init_body = widget.lifecycle.iter()
+        let init_body = widget
+            .lifecycle
+            .iter()
             .find(|l| l.name == "Init")
             .map(|l| generate_handler_body(&l.payload))
             .unwrap_or_default();
-        let destroy_body = widget.lifecycle.iter()
+        let destroy_body = widget
+            .lifecycle
+            .iter()
             .find(|l| l.name == "Destroy")
             .map(|l| generate_handler_body(&l.payload))
             .unwrap_or_default();
@@ -675,8 +837,14 @@ impl ArkGenerator {
             lines.push(format!("{}private timerId: number = -1", self.indent()));
             lines.push("".to_string());
             lines.push(format!("{}aboutToAppear(): void {{", self.indent()));
-            lines.push(format!("{}  this.timerId = setInterval(() => {{", self.indent()));
-            lines.push(format!("{}    this.dispatch(new Msg.Tick());", self.indent()));
+            lines.push(format!(
+                "{}  this.timerId = setInterval(() => {{",
+                self.indent()
+            ));
+            lines.push(format!(
+                "{}    this.dispatch(new Msg.Tick());",
+                self.indent()
+            ));
             lines.push(format!("{}, {});", self.indent(), interval));
             lines.push(format!("{}}}", self.indent()));
             lines.push("".to_string());
@@ -692,7 +860,10 @@ impl ArkGenerator {
         let has_tabs = Self::widget_has_tabs(&widget.view_tree);
         if has_tabs {
             lines.push(format!("{}@State currentIndex: number = 0", self.indent()));
-            lines.push(format!("{}private tabsController: TabsController = new TabsController()", self.indent()));
+            lines.push(format!(
+                "{}private tabsController: TabsController = new TabsController()",
+                self.indent()
+            ));
             lines.push(String::new());
         }
 
@@ -715,7 +886,9 @@ impl ArkGenerator {
                 // Check if this component can have children or supports trailing lambda
                 // Custom components (capitalized, not built-in) need @BuilderParam for trailing lambda
                 // So we only add { } for built-in containers that support it
-                if Self::component_cannot_have_children(component_name) || !Self::component_supports_trailing_lambda(component_name) {
+                if Self::component_cannot_have_children(component_name)
+                    || !Self::component_supports_trailing_lambda(component_name)
+                {
                     lines.push(format!("{}  {}()", self.indent(), component_name));
                 } else {
                     lines.push(format!("{}  {}() {{ }}", self.indent(), component_name));
@@ -726,20 +899,33 @@ impl ArkGenerator {
 
             // Generate buildNavDestination builder for navDestination
             lines.push(format!("{}@Builder", self.indent()));
-            lines.push(format!("{}buildNavDestination(name: string, param: Object) {{", self.indent()));
+            lines.push(format!(
+                "{}buildNavDestination(name: string, param: Object) {{",
+                self.indent()
+            ));
             let mut first = true;
             for route in &routes.routes {
                 let component_name = &route.widget_name;
                 if first {
-                    lines.push(format!("{}  if (name === '{}') {{", self.indent(), route.module));
+                    lines.push(format!(
+                        "{}  if (name === '{}') {{",
+                        self.indent(),
+                        route.module
+                    ));
                     first = false;
                 } else {
-                    lines.push(format!("{}  else if (name === '{}') {{", self.indent(), route.module));
+                    lines.push(format!(
+                        "{}  else if (name === '{}') {{",
+                        self.indent(),
+                        route.module
+                    ));
                 }
                 // Check if this component can have children or supports trailing lambda
                 // Custom components (capitalized, not built-in) need @BuilderParam for trailing lambda
                 // So we only add { } for built-in containers that support it
-                if Self::component_cannot_have_children(component_name) || !Self::component_supports_trailing_lambda(component_name) {
+                if Self::component_cannot_have_children(component_name)
+                    || !Self::component_supports_trailing_lambda(component_name)
+                {
                     lines.push(format!("{}    {}()", self.indent(), component_name));
                 } else {
                     lines.push(format!("{}    {}() {{ }}", self.indent(), component_name));
@@ -779,7 +965,8 @@ impl ArkGenerator {
         // For @Entry components, ArkTS requires a container as the root.
         // If the App widget doesn't have routes (which provide NavHostContainer),
         // we need to wrap custom components in a Column.
-        let root_needs_container = is_app_widget && !has_routes && self.is_custom_component_node(&widget.view_tree);
+        let root_needs_container =
+            is_app_widget && !has_routes && self.is_custom_component_node(&widget.view_tree);
         if root_needs_container {
             // Wrap custom component in Column for @Entry requirement
             lines.push(format!("{}Column() {{", self.indent()));
@@ -787,7 +974,11 @@ impl ArkGenerator {
         }
 
         // Generate UI tree from view_tree (not root)
-        let ui_code = self.generate_node_with_routes(&widget.view_tree, has_routes, index_component.as_deref())?;
+        let ui_code = self.generate_node_with_routes(
+            &widget.view_tree,
+            has_routes,
+            index_component.as_deref(),
+        )?;
         for line in ui_code.lines() {
             lines.push(format!("{}{}", self.indent(), line));
         }
@@ -820,13 +1011,17 @@ impl ArkGenerator {
             AuraNode::Element { children, .. } => {
                 children.iter().any(|c| Self::widget_uses_navigation(c))
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 then_body.iter().any(|c| Self::widget_uses_navigation(c))
-                    || else_body.as_ref().map_or(false, |e| e.iter().any(|c| Self::widget_uses_navigation(c)))
+                    || else_body
+                        .as_ref()
+                        .map_or(false, |e| e.iter().any(|c| Self::widget_uses_navigation(c)))
             }
-            AuraNode::ForLoop { body, .. } => {
-                body.iter().any(|c| Self::widget_uses_navigation(c))
-            }
+            AuraNode::ForLoop { body, .. } => body.iter().any(|c| Self::widget_uses_navigation(c)),
             _ => false,
         }
     }
@@ -840,15 +1035,26 @@ impl ArkGenerator {
                     return true;
                 }
                 // Recursively check children
-                children.iter().any(|c| Self::widget_uses_custom_component(c, component_name))
+                children
+                    .iter()
+                    .any(|c| Self::widget_uses_custom_component(c, component_name))
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
-                then_body.iter().any(|c| Self::widget_uses_custom_component(c, component_name))
-                    || else_body.as_ref().map_or(false, |e| e.iter().any(|c| Self::widget_uses_custom_component(c, component_name)))
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
+                then_body
+                    .iter()
+                    .any(|c| Self::widget_uses_custom_component(c, component_name))
+                    || else_body.as_ref().map_or(false, |e| {
+                        e.iter()
+                            .any(|c| Self::widget_uses_custom_component(c, component_name))
+                    })
             }
-            AuraNode::ForLoop { body, .. } => {
-                body.iter().any(|c| Self::widget_uses_custom_component(c, component_name))
-            }
+            AuraNode::ForLoop { body, .. } => body
+                .iter()
+                .any(|c| Self::widget_uses_custom_component(c, component_name)),
             _ => false,
         }
     }
@@ -878,7 +1084,11 @@ impl ArkGenerator {
                     self.collect_custom_components(child, components);
                 }
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for child in then_body {
                     self.collect_custom_components(child, components);
                 }
@@ -901,7 +1111,10 @@ impl ArkGenerator {
     fn page_to_builder_name(module: &str) -> String {
         // e.g., "counter" -> "CounterBuilder"
         let mut chars = module.chars();
-        let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+        let first = chars
+            .next()
+            .map(|c| c.to_uppercase().collect::<String>())
+            .unwrap_or_default();
         let rest: String = chars.collect();
         format!("{}{}Builder", first, rest)
     }
@@ -909,7 +1122,10 @@ impl ArkGenerator {
     /// Capitalize module name (e.g., "counter" -> "Counter", "index" -> "Index")
     fn capitalize_module(module: &str) -> String {
         let mut chars = module.chars();
-        let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+        let first = chars
+            .next()
+            .map(|c| c.to_uppercase().collect::<String>())
+            .unwrap_or_default();
         let rest: String = chars.collect();
         format!("{}{}", first, rest)
     }
@@ -948,7 +1164,12 @@ impl ArkGenerator {
     }
 
     /// Generate ArkTS code for a node, with route awareness
-    fn generate_node_with_routes(&mut self, node: &AuraNode, has_routes: bool, index_component: Option<&str>) -> GenResult<String> {
+    fn generate_node_with_routes(
+        &mut self,
+        node: &AuraNode,
+        has_routes: bool,
+        index_component: Option<&str>,
+    ) -> GenResult<String> {
         match node {
             AuraNode::Element {
                 tag,
@@ -1018,11 +1239,20 @@ impl ArkGenerator {
         lines.push(format!("{}}}", self.indent()));
 
         // Add navDestination modifier for route handling
-        lines.push(format!("{}.navDestination(this.buildNavDestination)", self.indent()));
+        lines.push(format!(
+            "{}.navDestination(this.buildNavDestination)",
+            self.indent()
+        ));
 
         // Add common Navigation modifiers
-        lines.last_mut().unwrap().push_str("\n    .hideTitleBar(true)");
-        lines.last_mut().unwrap().push_str("\n    .mode(NavigationMode.Stack)");
+        lines
+            .last_mut()
+            .unwrap()
+            .push_str("\n    .hideTitleBar(true)");
+        lines
+            .last_mut()
+            .unwrap()
+            .push_str("\n    .mode(NavigationMode.Stack)");
 
         // Add modifiers
         let modifiers = self.generate_modifiers(props, events, None, Some("Navigation"));
@@ -1084,11 +1314,20 @@ impl ArkGenerator {
         lines.push(format!("{}}}", self.indent()));
 
         // Add navDestination modifier for route handling
-        lines.push(format!("{}.navDestination(this.buildNavDestination)", self.indent()));
+        lines.push(format!(
+            "{}.navDestination(this.buildNavDestination)",
+            self.indent()
+        ));
 
         // Add common Navigation modifiers
-        lines.last_mut().unwrap().push_str("\n    .hideTitleBar(true)");
-        lines.last_mut().unwrap().push_str("\n    .mode(NavigationMode.Stack)");
+        lines
+            .last_mut()
+            .unwrap()
+            .push_str("\n    .hideTitleBar(true)");
+        lines
+            .last_mut()
+            .unwrap()
+            .push_str("\n    .mode(NavigationMode.Stack)");
 
         // Add modifiers from props/events
         let modifiers = self.generate_modifiers(props, events, None, Some("Navigation"));
@@ -1123,9 +1362,12 @@ impl ArkGenerator {
                 else_body,
                 ..
             } => self.generate_conditional(condition, then_body, else_body.as_deref()),
-            AuraNode::Component { name, props, events, .. } => {
-                self.generate_component(name, props, events)
-            }
+            AuraNode::Component {
+                name,
+                props,
+                events,
+                ..
+            } => self.generate_component(name, props, events),
             AuraNode::Outlet { .. } => Ok("// Outlet - router placeholder".to_string()),
             // PLAN-046: memo block — VM-track boundary; emit children.
             AuraNode::MemoBlock { body, .. } => {
@@ -1196,7 +1438,10 @@ impl ArkGenerator {
             let mut merged_props = props.clone();
             for (key, value) in &widget.default_props {
                 if !merged_props.contains_key(key) {
-                    merged_props.insert(key.clone(), AuraPropValue::Expr(crate::ast::Expr::Str(value.as_str().into())));
+                    merged_props.insert(
+                        key.clone(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str(value.as_str().into())),
+                    );
                 }
             }
 
@@ -1209,10 +1454,8 @@ impl ArkGenerator {
                 let content_arg = if let Some(primary_prop) = &widget.primary_prop {
                     if let Some(prop_value) = merged_props.get(primary_prop) {
                         match prop_value {
-                            AuraPropValue::Expr(expr) => {
-                                self.expr_to_ark_string(expr)
-                            }
-                            _ => String::new()
+                            AuraPropValue::Expr(expr) => self.expr_to_ark_string(expr),
+                            _ => String::new(),
                         }
                     } else {
                         String::new()
@@ -1229,7 +1472,12 @@ impl ArkGenerator {
                 };
 
                 // Generate modifiers (to be placed AFTER the component body)
-                let modifiers = self.generate_modifiers(&merged_props, events, widget.primary_prop.as_deref(), Some(tag));
+                let modifiers = self.generate_modifiers(
+                    &merged_props,
+                    events,
+                    widget.primary_prop.as_deref(),
+                    Some(tag),
+                );
 
                 // Start component call with current indentation
                 lines.push(format!("{}{}", self.indent(), component_call));
@@ -1304,12 +1552,16 @@ impl ArkGenerator {
 
             // Generate props as constructor arguments
             let props_str = self.generate_custom_component_props(props);
-            lines.push(format!("{}{}({})", self.indent(), component_name, props_str));
+            lines.push(format!(
+                "{}{}({})",
+                self.indent(),
+                component_name,
+                props_str
+            ));
 
             // Custom components should NOT have trailing lambda
             // Only built-in containers support @BuilderParam
             // The component call is complete - no body or extra parens needed
-
         } else {
             // Unknown component - emit as comment
             lines.push(format!("/* Unknown component: {} */", tag));
@@ -1328,9 +1580,16 @@ fn modifier_order(modifier: &str) -> u8 {
         2
     } else if modifier.contains(".padding") || modifier.contains(".margin") {
         3
-    } else if modifier.contains(".fontSize") || modifier.contains(".fontWeight") || modifier.contains(".fontColor") || modifier.contains(".fontFamily") {
+    } else if modifier.contains(".fontSize")
+        || modifier.contains(".fontWeight")
+        || modifier.contains(".fontColor")
+        || modifier.contains(".fontFamily")
+    {
         4
-    } else if modifier.contains(".backgroundColor") || modifier.contains(".borderRadius") || modifier.contains(".border") {
+    } else if modifier.contains(".backgroundColor")
+        || modifier.contains(".borderRadius")
+        || modifier.contains(".border")
+    {
         5
     } else if modifier.contains(".onClick") {
         10
@@ -1406,10 +1665,7 @@ impl ArkGenerator {
                     // Fall back to direct state update
                     self.generate_handler_code(&event.handler)
                 };
-                modifiers.push(format!(
-                    ".onClick(() => {{\n    {}\n  }})",
-                    handler_code
-                ));
+                modifiers.push(format!(".onClick(() => {{\n    {}\n  }})", handler_code));
             }
         }
 
@@ -1448,7 +1704,13 @@ impl ArkGenerator {
             AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.to_string()),
             AuraPropValue::StyleBinding(bindings) => {
                 // Combine all style names
-                Some(bindings.iter().map(|b| b.style_name.as_str()).collect::<Vec<_>>().join(" "))
+                Some(
+                    bindings
+                        .iter()
+                        .map(|b| b.style_name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
             }
             _ => None,
         }
@@ -1471,7 +1733,11 @@ impl ArkGenerator {
             Expr::Float(n, _) | Expr::Double(n, _) => prop_to_modifier(key, &n.to_string(), None),
             Expr::Bool(b) => prop_to_modifier(key, &b.to_string(), None),
             Expr::Ident(name) => {
-                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                let resolved = if name.starts_with('.') {
+                    &name[1..]
+                } else {
+                    name.as_str()
+                };
                 // Generate binding to state
                 Some(format!(".{}(this.{})", key, resolved))
             }
@@ -1496,7 +1762,7 @@ impl ArkGenerator {
             // Use ES Object type wrapper to satisfy ArkTS type checking
             if param_str.starts_with("{ ") && param_str.ends_with(" }") {
                 // Create an ES Object with the properties
-                let obj_content = &param_str[2..param_str.len()-2]; // Remove "{ " and " }"
+                let obj_content = &param_str[2..param_str.len() - 2]; // Remove "{ " and " }"
                 let props: Vec<&str> = obj_content.split(", ").collect();
                 let mut obj_builder = String::from("Object({");
                 for (i, prop) in props.iter().enumerate() {
@@ -1515,7 +1781,10 @@ impl ArkGenerator {
             "''".to_string()
         };
 
-        format!("this.pathStack.pushPathByName({}, {})", route_name, nav_param)
+        format!(
+            "this.pathStack.pushPathByName({}, {})",
+            route_name, nav_param
+        )
     }
 
     /// Generate console.log() call from params
@@ -1547,7 +1816,9 @@ impl ArkGenerator {
             for decorator in &state_var.decorators {
                 if decorator.name == "NavParam" {
                     // Get route name from decorator arg
-                    let route_name = decorator.args.first()
+                    let route_name = decorator
+                        .args
+                        .first()
                         .map(|s| s.as_str())
                         .unwrap_or(&state_var.name);
 
@@ -1567,8 +1838,10 @@ impl ArkGenerator {
         lines.push("aboutToAppear(): void {".to_string());
 
         for (var_name, route_name, type_name) in nav_params {
-            lines.push(format!("  this.{} = this.pathStack.getParamByName('{}')[0] as {}",
-                var_name, route_name, type_name));
+            lines.push(format!(
+                "  this.{} = this.pathStack.getParamByName('{}')[0] as {}",
+                var_name, route_name, type_name
+            ));
         }
 
         lines.push("}".to_string());
@@ -1578,9 +1851,13 @@ impl ArkGenerator {
     /// Convert Type to ArkTS type string
     fn type_to_ark_string(ty: &Type) -> String {
         match ty {
-            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
+            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => {
+                "number".to_string()
+            }
             Type::Bool => "boolean".to_string(),
-            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => "string".to_string(),
+            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => {
+                "string".to_string()
+            }
             Type::User(type_decl) => type_decl.name.to_string(),
             Type::Option(inner) => format!("{} | null", Self::type_to_ark_string(inner)),
             _ => ty.unique_name().to_string(), // Fallback
@@ -1632,7 +1909,10 @@ impl ArkGenerator {
             if let Type::User(type_decl) = inner_type {
                 let type_name = type_decl.name.as_str().to_string();
                 // Skip built-in types
-                if matches!(type_name.as_str(), "NavPathStack" | "string" | "number" | "boolean" | "Object") {
+                if matches!(
+                    type_name.as_str(),
+                    "NavPathStack" | "string" | "number" | "boolean" | "Object"
+                ) {
                     continue;
                 }
                 // Only import if the type has no members (external type reference)
@@ -1670,7 +1950,10 @@ impl ArkGenerator {
             Type::User(type_decl) => {
                 let name = type_decl.name.as_str().to_string();
                 // Skip built-in types
-                if matches!(name.as_str(), "NavPathStack" | "string" | "number" | "boolean" | "Object") {
+                if matches!(
+                    name.as_str(),
+                    "NavPathStack" | "string" | "number" | "boolean" | "Object"
+                ) {
                     None
                 } else {
                     Some(name)
@@ -1703,7 +1986,10 @@ impl ArkGenerator {
                 } else {
                     "''".to_string()
                 };
-                lines.push(format!("  {}: {} = {}", field_name, field_type, default_value));
+                lines.push(format!(
+                    "  {}: {} = {}",
+                    field_name, field_type, default_value
+                ));
             }
             lines.push("}".to_string());
             Some(lines.join("\n"))
@@ -1717,9 +2003,13 @@ impl ArkGenerator {
     /// Simple type to ArkTS string (for type definitions)
     fn type_to_arkts_simple(ty: &Type) -> String {
         match ty {
-            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
+            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => {
+                "number".to_string()
+            }
             Type::Bool => "boolean".to_string(),
-            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => "string".to_string(),
+            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => {
+                "string".to_string()
+            }
             Type::User(type_decl) => {
                 // Special handling for List type - treat as Object[]
                 if type_decl.name.as_str() == "List" {
@@ -1727,7 +2017,7 @@ impl ArkGenerator {
                 } else {
                     type_decl.name.to_string()
                 }
-            },
+            }
             Type::Option(inner) => format!("{} | null", Self::type_to_arkts_simple(inner)),
             Type::List(inner) => {
                 let elem_type = Self::type_to_arkts_simple(inner);
@@ -1739,7 +2029,11 @@ impl ArkGenerator {
                 }
             }
             Type::Map(k, v) => {
-                format!("HashMap<{}, {}>", Self::type_to_arkts_simple(k), Self::type_to_arkts_simple(v))
+                format!(
+                    "HashMap<{}, {}>",
+                    Self::type_to_arkts_simple(k),
+                    Self::type_to_arkts_simple(v)
+                )
             }
             Type::Slice(slice) => {
                 let elem_type = Self::type_to_arkts_simple(&slice.elem);
@@ -1757,8 +2051,8 @@ impl ArkGenerator {
                     format!("{}[]", elem_type)
                 }
             }
-            Type::Unknown => "Object[]".to_string(),  // Unknown types (e.g., unresolved List) treated as array
-            _ => "Object[]".to_string(),  // Use Object[] instead of any for ArkTS compatibility
+            Type::Unknown => "Object[]".to_string(), // Unknown types (e.g., unresolved List) treated as array
+            _ => "Object[]".to_string(), // Use Object[] instead of any for ArkTS compatibility
         }
     }
 
@@ -1796,7 +2090,11 @@ impl ArkGenerator {
                 }
             }
             Expr::Ident(field) => {
-                let resolved = if field.starts_with('.') { &field[1..] } else { field.as_str() };
+                let resolved = if field.starts_with('.') {
+                    &field[1..]
+                } else {
+                    field.as_str()
+                };
                 // Check if this is a loop variable (should not be prefixed with `this.`)
                 if self.loop_vars.contains(resolved) {
                     resolved.to_string()
@@ -1808,7 +2106,11 @@ impl ArkGenerator {
                 let field = field.clone();
                 // Check if object is a nullable state variable - use optional chaining
                 let is_nullable = if let Expr::Ident(obj_name) = object.as_ref() {
-                    let resolved = if obj_name.starts_with('.') { &obj_name[1..] } else { obj_name.as_str() };
+                    let resolved = if obj_name.starts_with('.') {
+                        &obj_name[1..]
+                    } else {
+                        obj_name.as_str()
+                    };
                     self.nullable_state_vars.contains(resolved)
                 } else {
                     false
@@ -1825,13 +2127,12 @@ impl ArkGenerator {
             Expr::Float(f, _) | Expr::Double(f, _) => f.to_string(),
             Expr::Bool(b) => b.to_string(),
             Expr::Array(elems) => {
-                let items: Vec<String> = elems.iter()
-                    .map(|e| self.expr_to_ark_string(e))
-                    .collect();
+                let items: Vec<String> = elems.iter().map(|e| self.expr_to_ark_string(e)).collect();
                 format!("[{}]", items.join(", "))
             }
             Expr::Object(pairs) => {
-                let pairs: Vec<String> = pairs.iter()
+                let pairs: Vec<String> = pairs
+                    .iter()
                     .map(|p| {
                         let val = self.expr_to_ark_string(&p.value);
                         format!("{}: {}", p.key, val)
@@ -1852,9 +2153,15 @@ impl ArkGenerator {
                 let mut result = template.clone();
                 for binding in bindings {
                     // Replace ${.field} with ${this.field}
-                    result = result.replace(&format!("${{.{}}}", binding), &format!("${{this.{}}}", binding));
+                    result = result.replace(
+                        &format!("${{.{}}}", binding),
+                        &format!("${{this.{}}}", binding),
+                    );
                     // Also handle ${..field} (double dot) pattern
-                    result = result.replace(&format!("${{..{}}}", binding), &format!("${{this.{}}}", binding));
+                    result = result.replace(
+                        &format!("${{..{}}}", binding),
+                        &format!("${{this.{}}}", binding),
+                    );
                 }
                 Ok(format!("Text(`{}`)", result))
             }
@@ -1870,7 +2177,6 @@ impl ArkGenerator {
         body: &[AuraNode],
     ) -> GenResult<String> {
         let mut lines = Vec::new();
-
 
         // Strip leading dot from iterable if present (e.g., ".items" -> "items")
         let iterable_path = iterable.strip_prefix('.').unwrap_or(iterable);
@@ -2017,7 +2323,11 @@ impl ArkGenerator {
             lines.push(format!("{}}}", self.indent()));
             // onClick modifier comes AFTER the closing brace
             lines.push(format!("{}.onClick(() => {{", self.indent()));
-            lines.push(format!("{}  this.pathStack.pushPathByName('{}', '')", self.indent(), route_name));
+            lines.push(format!(
+                "{}  this.pathStack.pushPathByName('{}', '')",
+                self.indent(),
+                route_name
+            ));
             lines.push(format!("{}}})", self.indent()));
         } else if !children.is_empty() {
             // Link with children
@@ -2036,7 +2346,11 @@ impl ArkGenerator {
             lines.push(format!("{}}}", self.indent()));
             // onClick modifier comes AFTER the closing brace
             lines.push(format!("{}.onClick(() => {{", self.indent()));
-            lines.push(format!("{}  this.pathStack.pushPathByName('{}', '')", self.indent(), route_name));
+            lines.push(format!(
+                "{}  this.pathStack.pushPathByName('{}', '')",
+                self.indent(),
+                route_name
+            ));
             lines.push(format!("{}}})", self.indent()));
         }
 
@@ -2105,8 +2419,8 @@ impl BackendGenerator for ArkGenerator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aura::{AuraMessage, AuraMsgVariant, AuraNode, AuraStateDef, Type};
     use crate::ast::Expr;
+    use crate::aura::{AuraMessage, AuraMsgVariant, AuraNode, AuraStateDef, Type};
     use std::collections::HashMap;
 
     #[test]
@@ -2130,10 +2444,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = ArkGenerator::new();
@@ -2240,8 +2558,7 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
-        }
-;
+        };
 
         let mut gen = ArkGenerator::new();
         let code = gen.generate_entry_component(&widget).unwrap();
@@ -2335,7 +2652,9 @@ mod tests {
                 tag: "header".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
-                children: vec![AuraNode::Text(AuraTextContent::Literal("Hello".to_string()))],
+                children: vec![AuraNode::Text(AuraTextContent::Literal(
+                    "Hello".to_string(),
+                ))],
                 span: None,
                 debug_id: None,
             },
@@ -2464,7 +2783,9 @@ mod tests {
                 tag: "col".to_string(),
                 props: HashMap::new(),
                 events: HashMap::new(),
-                children: vec![AuraNode::Text(AuraTextContent::Literal("Hello, World!".to_string()))],
+                children: vec![AuraNode::Text(AuraTextContent::Literal(
+                    "Hello, World!".to_string(),
+                ))],
                 span: None,
                 debug_id: None,
             },
@@ -2591,7 +2912,10 @@ mod tests {
     fn test_image_with_url_source() {
         // Test that Image component with URL source generates correct code
         let mut props = HashMap::new();
-        props.insert("src".to_string(), AuraPropValue::Expr(Expr::Str("https://example.com/logo.png".into())));
+        props.insert(
+            "src".to_string(),
+            AuraPropValue::Expr(Expr::Str("https://example.com/logo.png".into())),
+        );
 
         let widget = AuraWidget {
             named_views: Vec::new(),
@@ -2647,7 +2971,10 @@ mod tests {
     fn test_image_with_resource_reference() {
         // Test that Image component with $r() resource reference generates correct code
         let mut props = HashMap::new();
-        props.insert("src".to_string(), AuraPropValue::Expr(Expr::Str("$r('app.media.icon')".into())));
+        props.insert(
+            "src".to_string(),
+            AuraPropValue::Expr(Expr::Str("$r('app.media.icon')".into())),
+        );
 
         let widget = AuraWidget {
             named_views: Vec::new(),
@@ -2703,9 +3030,9 @@ mod tests {
     // a2ark Test Framework - AURA -> ArkTS transpilation tests
     // ============================================================================
 
-    use std::path::PathBuf;
     use std::fs::{read_to_string, File};
     use std::io::Write;
+    use std::path::PathBuf;
 
     /// Helper function for a2ark tests
     ///

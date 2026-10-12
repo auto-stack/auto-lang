@@ -49,13 +49,14 @@ impl DndPayload {
 /// 语境全错——`\ui` 被误判 unicode 转义、`\note` 被误判换行。首解析失败
 /// 即证串不是合法 JSON，无条件转义才是正确语义。
 fn escape_all_backslashes(s: &str) -> String {
-    s.chars().fold(String::with_capacity(s.len() * 2), |mut out, c| {
-        out.push(c);
-        if c == '\u{5C}' {
-            out.push('\u{5C}');
-        }
-        out
-    })
+    s.chars()
+        .fold(String::with_capacity(s.len() * 2), |mut out, c| {
+            out.push(c);
+            if c == '\u{5C}' {
+                out.push('\u{5C}');
+            }
+            out
+        })
 }
 
 /// `auto.dnd.start(payload_json)` 的载荷解析（纯函数，全平台可测）。
@@ -101,7 +102,10 @@ pub fn parse_payload_json(s: &str) -> Option<DndPayload> {
     });
     Some(DndPayload {
         text: raw.text,
-        files: raw.files.map(|fs| fs.into_iter().map(PathBuf::from).collect()).unwrap_or_default(),
+        files: raw
+            .files
+            .map(|fs| fs.into_iter().map(PathBuf::from).collect())
+            .unwrap_or_default(),
         virtual_files: virtual_files.unwrap_or_default(),
     })
 }
@@ -128,26 +132,23 @@ pub mod win32 {
     use super::{DndPayload, NativeDropData, VirtualFile};
     use windows::core::{implement, w, Error, HRESULT};
     use windows::Win32::Foundation::{
-        BOOL, DV_E_FORMATETC, E_NOTIMPL, HGLOBAL, OLE_E_ADVISENOTSUPPORTED, POINTL,
-        DRAGDROP_S_CANCEL, DRAGDROP_S_DROP, DRAGDROP_S_USEDEFAULTCURSORS, GlobalFree,
+        GlobalFree, BOOL, DRAGDROP_S_CANCEL, DRAGDROP_S_DROP, DRAGDROP_S_USEDEFAULTCURSORS,
+        DV_E_FORMATETC, E_NOTIMPL, HGLOBAL, OLE_E_ADVISENOTSUPPORTED, POINTL,
     };
     use windows::Win32::System::Com::{
-        DVASPECT_CONTENT, DATADIR_GET, FORMATETC, IDataObject, IDataObject_Impl,
-        IEnumFORMATETC, IEnumFORMATETC_Impl, IEnumSTATDATA, STGMEDIUM, STGMEDIUM_0,
-        TYMED_HGLOBAL,
+        IDataObject, IDataObject_Impl, IEnumFORMATETC, IEnumFORMATETC_Impl, IEnumSTATDATA,
+        DATADIR_GET, DVASPECT_CONTENT, FORMATETC, STGMEDIUM, STGMEDIUM_0, TYMED_HGLOBAL,
     };
     use windows::Win32::System::DataExchange::RegisterClipboardFormatW;
     use windows::Win32::System::Memory::{
         GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
     };
     use windows::Win32::System::Ole::{
-        DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE, DROPEFFECT_NONE,
         DoDragDrop, IDropSource, IDropSource_Impl, IDropTarget, IDropTarget_Impl, OleInitialize,
+        DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_LINK, DROPEFFECT_MOVE, DROPEFFECT_NONE,
     };
-    use windows::Win32::System::SystemServices::{
-        MK_LBUTTON, MK_RBUTTON, MODIFIERKEYS_FLAGS,
-    };
-    use windows::Win32::UI::Shell::{FILEDESCRIPTORW, CFSTR_FILECONTENTS, CFSTR_FILEDESCRIPTORW};
+    use windows::Win32::System::SystemServices::{MK_LBUTTON, MK_RBUTTON, MODIFIERKEYS_FLAGS};
+    use windows::Win32::UI::Shell::{CFSTR_FILECONTENTS, CFSTR_FILEDESCRIPTORW, FILEDESCRIPTORW};
 
     /// CF_UNICODETEXT（Ole 域 CLIPBOARD_FORMAT(13)；FORMATETC.cfFormat 是裸 u16）。
     const CF_UNICODETEXT_U16: u16 = 13;
@@ -201,10 +202,7 @@ pub mod win32 {
                 std::ptr::copy_nonoverlapping(units.as_ptr(), dst, units.len());
             }
             bytes.extend_from_slice(unsafe {
-                std::slice::from_raw_parts(
-                    (&fd as *const FILEDESCRIPTORW) as *const u8,
-                    fd_size,
-                )
+                std::slice::from_raw_parts((&fd as *const FILEDESCRIPTORW) as *const u8, fd_size)
             });
         }
         bytes
@@ -405,12 +403,7 @@ pub mod win32 {
 
     #[allow(non_snake_case)]
     impl IEnumFORMATETC_Impl for FormatEtcEnum_Impl {
-        fn Next(
-            &self,
-            celt: u32,
-            rgelt: *mut FORMATETC,
-            pceltfetched: *mut u32,
-        ) -> HRESULT {
+        fn Next(&self, celt: u32, rgelt: *mut FORMATETC, pceltfetched: *mut u32) -> HRESULT {
             let celt = celt as usize;
             let remaining = self.items.len().saturating_sub(self.pos.get());
             let take = celt.min(remaining);
@@ -544,9 +537,10 @@ pub mod win32 {
 
     /// 完成效果通道（全局单份；订阅侧 16ms 轮询）。Receiver 装 Mutex——
     /// iced subscription 流按 &self 持有，需 Sync。
-    static DONE: std::sync::OnceLock<
-        (std::sync::mpsc::Sender<DndEffect>, std::sync::Mutex<std::sync::mpsc::Receiver<DndEffect>>),
-    > = std::sync::OnceLock::new();
+    static DONE: std::sync::OnceLock<(
+        std::sync::mpsc::Sender<DndEffect>,
+        std::sync::Mutex<std::sync::mpsc::Receiver<DndEffect>>,
+    )> = std::sync::OnceLock::new();
 
     /// 会话在拖旗标（DoDragDrop 模态；重入受理即拒）。
     static DRAG_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -688,7 +682,10 @@ pub mod win32 {
 
     fn temp_drop_png_path() -> Option<std::path::PathBuf> {
         let dir = std::env::temp_dir();
-        let name = format!("auto-lang-drop-{}.png", std::process::id() as u64 ^ fastrand::u64(..));
+        let name = format!(
+            "auto-lang-drop-{}.png",
+            std::process::id() as u64 ^ fastrand::u64(..)
+        );
         let p = dir.join(name);
         p.is_absolute().then_some(p)
     }
@@ -763,7 +760,10 @@ pub mod win32 {
             // Drop 卡住）。
             wake_ticker_arm(true);
             if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
-                eprintln!("[dnd-hop0] DragEnter enter (thread={:?})", std::thread::current().id());
+                eprintln!(
+                    "[dnd-hop0] DragEnter enter (thread={:?})",
+                    std::thread::current().id()
+                );
             }
             let usable = pdataobj
                 .map(|d| {
@@ -772,7 +772,13 @@ pub mod win32 {
                     hit.iter().any(|(_, _, n)| n != &"FileGroupDescriptorW")
                 })
                 .unwrap_or(false);
-            unsafe { *pdweffect = if usable { DROPEFFECT_COPY } else { DROPEFFECT_NONE } };
+            unsafe {
+                *pdweffect = if usable {
+                    DROPEFFECT_COPY
+                } else {
+                    DROPEFFECT_NONE
+                }
+            };
             Ok(())
         }
 
@@ -807,7 +813,10 @@ pub mod win32 {
             wake_ticker_arm(false);
             if let Some(data) = pdataobj {
                 if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
-                    eprintln!("[dnd-hop1] Drop callback enter (sta thread={:?})", std::thread::current().id());
+                    eprintln!(
+                        "[dnd-hop1] Drop callback enter (sta thread={:?})",
+                        std::thread::current().id()
+                    );
                 }
                 let drop = extract_drop(data, pt);
                 let (tx, _) = DROP.get_or_init(|| {
@@ -827,8 +836,7 @@ pub mod win32 {
     /// 40ms 向注册窗 PostMessage WM_NULL——排队消息必唤醒任何等待形态，
     /// 主线程一进入取消息态，挂起的跨线程 SendMessage（COM 投递）即被
     /// 优先送达。
-    static TICKER_ARMED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+    static TICKER_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     static TICK_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
     fn wake_ticker_arm(armed: bool) {
@@ -881,8 +889,7 @@ pub mod win32 {
 
     /// 已挂载目标 的宿主 HWND（0 = 未挂载）。身份键控：宿主窗重建
     /// （HWND 变化）时由 [`ensure_host_drop_target`] 重挂。
-    static REGISTERED_HWND: std::sync::atomic::AtomicIsize =
-        std::sync::atomic::AtomicIsize::new(0);
+    static REGISTERED_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
 
     /// 宿主 HWND 挂载拖入目标（spike 结论：先 Revoke winit 自带目标再注
     /// 我方多格式目标；幂等——HWND 不变时零开销直返）。宿主发现复用 473
@@ -1061,7 +1068,9 @@ pub mod win32 {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use windows::Win32::Foundation::{DRAGDROP_E_ALREADYREGISTERED, HINSTANCE, HWND, LRESULT, WPARAM};
+        use windows::Win32::Foundation::{
+            DRAGDROP_E_ALREADYREGISTERED, HINSTANCE, HWND, LRESULT, WPARAM,
+        };
         use windows::Win32::System::Com::DATADIR_SET;
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
         use windows::Win32::System::Ole::{
@@ -1215,7 +1224,10 @@ pub mod win32 {
         fn t1_query_get_data_hits_and_misses() {
             unsafe {
                 let obj: IDataObject = DndDataObject::new(full_payload()).into();
-                assert_eq!(obj.QueryGetData(&formatetc(CF_UNICODETEXT_U16, -1)), HRESULT(0));
+                assert_eq!(
+                    obj.QueryGetData(&formatetc(CF_UNICODETEXT_U16, -1)),
+                    HRESULT(0)
+                );
                 assert_eq!(obj.QueryGetData(&formatetc(CF_HDROP_U16, -1)), HRESULT(0));
                 assert_eq!(
                     obj.QueryGetData(&formatetc(file_descriptor_cf(), -1)),
@@ -1253,7 +1265,9 @@ pub mod win32 {
         fn t1_get_data_text_roundtrip() {
             unsafe {
                 let obj: IDataObject = DndDataObject::new(full_payload()).into();
-                let mut medium = obj.GetData(&formatetc(CF_UNICODETEXT_U16, -1)).expect("text");
+                let mut medium = obj
+                    .GetData(&formatetc(CF_UNICODETEXT_U16, -1))
+                    .expect("text");
                 assert_eq!(medium.tymed, TYMED_HGLOBAL.0 as u32);
                 let bytes = hglobal_to_bytes(medium.u.hGlobal).expect("read hglobal");
                 let units: Vec<u16> = bytes
@@ -1296,7 +1310,8 @@ pub mod win32 {
                 assert!(bytes.len() >= 4 + 2 * fd_size);
                 let c_items = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
                 assert_eq!(c_items, 2);
-                let fd0: FILEDESCRIPTORW = std::ptr::read(bytes[4..].as_ptr() as *const FILEDESCRIPTORW);
+                let fd0: FILEDESCRIPTORW =
+                    std::ptr::read(bytes[4..].as_ptr() as *const FILEDESCRIPTORW);
                 assert_eq!(fd0.dwFlags & FD_WRITESTREAM, FD_WRITESTREAM, "流式虚拟文件");
                 assert_eq!(fd0.dwFlags & FD_BASE, FD_BASE, "UNICODE|FILESIZE");
                 assert_eq!(
@@ -1364,7 +1379,10 @@ pub mod win32 {
                 assert_eq!(err.code(), E_NOTIMPL);
                 // GetCanonicalFormatEtc → E_NOTIMPL。
                 assert_eq!(
-                    obj.GetCanonicalFormatEtc(&formatetc(CF_UNICODETEXT_U16, -1), std::ptr::null_mut()),
+                    obj.GetCanonicalFormatEtc(
+                        &formatetc(CF_UNICODETEXT_U16, -1),
+                        std::ptr::null_mut()
+                    ),
                     E_NOTIMPL
                 );
             }
@@ -1387,7 +1405,10 @@ pub mod win32 {
                     src.QueryContinueDrag(false, MODIFIERKEYS_FLAGS(0)),
                     DRAGDROP_S_DROP
                 );
-                assert_eq!(src.GiveFeedback(DROPEFFECT_NONE), DRAGDROP_S_USEDEFAULTCURSORS);
+                assert_eq!(
+                    src.GiveFeedback(DROPEFFECT_NONE),
+                    DRAGDROP_S_USEDEFAULTCURSORS
+                );
             }
         }
 
@@ -1396,7 +1417,10 @@ pub mod win32 {
         #[test]
         fn t4_start_drag_rejects_empty_payload() {
             assert!(!start_drag(DndPayload::default()), "空载荷拒收");
-            assert!(!start_drag(super::super::parse_payload_json("{}").unwrap()), "空对象拒收");
+            assert!(
+                !start_drag(super::super::parse_payload_json("{}").unwrap()),
+                "空对象拒收"
+            );
         }
 
         // ---------- 步骤 5：拖入面（本进程自产 IDataObject 直喂，无需真拖） ----------
@@ -1508,7 +1532,9 @@ mod payload_tests {
         let p = parse_payload_json(&bad).expect("repair parse");
         assert_eq!(
             p.files,
-            vec![std::path::PathBuf::from("D:\x5Cautostack\x5Cx\x5Cassets\x5Chello.txt")]
+            vec![std::path::PathBuf::from(
+                "D:\x5Cautostack\x5Cx\x5Cassets\x5Chello.txt"
+            )]
         );
         // 二轮教训：\ui（曾误判 unicode 前缀）与 \note（曾误判换行）——
         // 无条件转义后全部按字面反斜杠解析。
@@ -1516,7 +1542,9 @@ mod payload_tests {
         let p2 = parse_payload_json(&bad2).expect("repair parse 2");
         assert_eq!(
             p2.files,
-            vec![std::path::PathBuf::from("D:\x5Cws\x5Cui\x5C044\x5Cassets\x5Cnote.md")]
+            vec![std::path::PathBuf::from(
+                "D:\x5Cws\x5Cui\x5C044\x5Cassets\x5Cnote.md"
+            )]
         );
         // 首解析即合法的 JSON（\\ → 单反斜杠）不走修复、结果不变。
         let ok = parse_payload_json("{\"text\":\"a\\\\b\"}");
@@ -1531,7 +1559,10 @@ mod payload_tests {
         )
         .expect("parse");
         assert_eq!(p.virtual_files[0].bytes, b"binary\0".to_vec());
-        assert_eq!(p.virtual_files[0].mime, "application/octet-stream", "缺省 mime");
+        assert_eq!(
+            p.virtual_files[0].mime, "application/octet-stream",
+            "缺省 mime"
+        );
     }
 
     #[test]

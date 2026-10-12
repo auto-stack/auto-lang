@@ -1,7 +1,7 @@
 @echo off
 rem Plan 597 (004 SS5-3): build the a2c engine-face driver from its
 rem snapshot and stage a self-contained layout. The snapshot pair
-rem (engine_face.expected.c/.h) is gated byte-exact by tests/a2c_tests.at,
+rem (engine_face.expected.c/.h) is gated byte-exact by test/runners/a2c_tests.at,
 rem so compiling it directly builds the transpiler output.
 rem
 rem Link form (Plan 597 T-01 evidence): MSVC rejects a DLL as direct link

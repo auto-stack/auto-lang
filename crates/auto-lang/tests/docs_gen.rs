@@ -73,21 +73,27 @@ const DOC_EXCLUDE: &[&str] = &[
     "sheetclose",
     // PLAN-012 W3：workspace_preview = 宿主合成整桌面预览（web: none，
     // iced 宿主层贴片渲染，gallery 页无法呈现）；契约文档化于
-    // schema/projection-protocol-v1.md §2.1（DSL 合同面）+ PLAN-012 §5。
+    // docs/schema/projection-protocol-v1.md §2.1（DSL 合同面）+ PLAN-012 §5。
     // （存折叠形——fence 以 fold 探测，多词名须无连写。）
     "workspacepreview",
     // Plan 497:每窗口真缩略(桌面 shell 专用消费面——switcher 行/dock
     // hover/pager 分区;单 App gallery 无虚拟窗可缩略,恒 fallback 形态,
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +
-    // schema/aura.at element 描述。
+    // docs/schema/aura.at element 描述。
     "windowthumbnail",
+    // PLAN-760:宿主侧远程帧消费 leaf(bridge WS 端点订阅 DisplayList v2,
+    // iced canvas 直绘;gallery 页无在跑 bridge 呈现不了,不设独立页)。
+    // 契约文档化于 docs/specs/auto-lang/ui/overview.md「现状(2026-10-11)
+    // ——remote-frame」节(SD-01)+ docs/components/core.md 生成条目 +
+    // examples/ui/remote-frame-e2e 双工程。
+    "remoteframe",
     // Plan 563:状态驱动画布(引擎原语,能力样板轨道——不设 gallery 页);
     // 场景数据契约与双端映射规约文档化于
     // examples/capability-tests/043-canvas-paint/SPEC.md + schema 描述。
     // PLAN-661 T-05: 场景 v2（图元三表+onhit）详规沉淀于
     // docs/specs/auto-lang/ui/design/canvas-scene.md（样板 049-canvas-graph）。
     "canvas",
-    // Plan 562:nav 家族已退役(superseded_by sidebar 族,见 schema/aura.at
+    // Plan 562:nav 家族已退役(superseded_by sidebar 族,见 docs/schema/aura.at
     // 标注与 docs/plans/562-nav-to-sidebar-migration.md),gallery 页
     // (nav-item/nav-link)随退役删除;实现移除留观察期,期间进白名单。
     "navgroup", "navitem", "navlink",
@@ -99,7 +105,7 @@ const DOC_EXCLUDE: &[&str] = &[
     "dropdownmenuseparator", // dropdownmenu 页
     "toastprovider",     // toast 页
     "tabtrigger",        // tabs 页(Pascal 拼写变体)
-    // PLAN-536 T11(schema/aura.at 再生成随 Plan 533/540 家族臂补齐后进入
+    // PLAN-536 T11(docs/schema/aura.at 再生成随 Plan 533/540 家族臂补齐后进入
     // builtin_widget 层的新件,文档面归类):
     "btn",           // button 同臂别名(convert_button "button"|"btn"|"native_button" 一臂),随 button 页文档化
     "nativebutton",  // button 同臂原生逃生名,随 button 页文档化(schema 描述在案)

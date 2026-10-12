@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "plan": "PLAN-757",
+  "captured_at": "2026-10-10",
+  "app": {
+    "repo": "auto-edit",
+    "commit": "f9ae2a64361f74ad8565fc5df5c4a9aeb5fc10f2",
+    "project": "specs/auto-edit",
+    "pac_version": "1.0.0",
+    "tracked_changes": "",
+    "sources": {
+      "specs/auto-edit/src/back/api.at": "f4c821d1fa4d7cfd83530e38fe494b2e543cd3b44ef0246841730f0e59fd301c",
+      "specs/auto-edit/src/back/fsys.at": "8e2e806fdfe45bf1036611fe0a088cba47aa2e94d63bbf39e1a8b09a7603de08",
+      "specs/auto-edit/src/front/app.at": "dc46f6e6588668f091f55b104280a5c19136ebe1b743f4cbc1eed32d4b0f2aed",
+      "specs/auto-edit/src/front/console_panel.at": "54a4e93ab68d68153e2905bcaf646d50a0380ff1b6db562f3156b95226d426b4",
+      "specs/auto-edit/src/front/ctx_menu.at": "827debc6163fc4300505fa21cf5ac6252a6377fdb0a4a43adce7c175301f0f86",
+      "specs/auto-edit/src/front/editor_store.at": "3845cc92778b78f1d82f32b9b7c9a85cd115a813d221abaac55356c75f01ab6f",
+      "specs/auto-edit/src/front/status_bar.at": "53bf6a042a9b2cb7aa14f940e1f00e65ea50545dc306897ded1991ba0a161b73",
+      "specs/auto-edit/src/front/components/package.at": "b6ff9789c1eda5afa914dd12724120f8ac2ed61f683a23315e0b8466ffe0317e",
+      "specs/auto-edit/src/front/components/treeview.at": "f2e35890566b8aa1b6201238061bae87286f7c5a04a325b5caaa88e5ad6dc6c5"
+    }
+  },
+  "toolchain": {
+    "repo": "auto-lang",
+    "build_commit": "aea687684ae09c49ed1c32be1040b1290e36ffb1",
+    "executable": "D:\\autostack\\.wt\\lang-757\\auto-capture-cli.exe",
+    "sha256": "c1281ad05f03407995308af0c808562dc4012a52b415ed9e3ffb37aa6f806839",
+    "version": "auto 0.1.0+v0.4.2-2944-gaea687684",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+    "build_command": "cargo build -p auto -j2",
+    "build_env": {
+      "CARGO_TARGET_DIR": "D:/autostack/auto-lang/target",
+      "RUSTC_WRAPPER": "",
+      "RUST_MIN_STACK": "16777216"
+    },
+    "build_log": "docs/reports/p757-capture/cli-build.log.gz",
+    "dependencies": {
+      "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846"
+    },
+    "rust_preview": "Attempted before user correction; canceled; no Rust capture is published."
+  },
+  "runtime": {
+    "command": "auto-capture-cli.exe run -r vm --theme dark",
+    "cwd": "D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit",
+    "workspace": "D:\\autostack\\.wt\\lang-757\\auto-edit\\specs\\auto-edit",
+    "workspace_reason": "AutoMan sets AUTO_PROJECT_DIR to its current project directory; this is the app own-source project inside a clean self-repository copy.",
+    "backend": "VM/Iced",
+    "server": "merged AutoVM, no external HTTP or model service",
+    "theme": "dark",
+    "os": "Windows 11 Pro 10.0.26200 build 26200",
+    "env": {
+      "APPDATA": "D:\\autostack\\.wt\\lang-757\\capture-session-vm",
+      "AUTOUI_MCP_PORT": "9577",
+      "RUST_MIN_STACK": "16777216"
+    },
+    "capture_method": "autoui_screenshot -> iced::window::screenshot of the live VM window; full native client surface, no OS title bar, no compositing/redraw/image resize",
+    "native_png_size": [
+      2560,
+      1600
+    ],
+    "logical_client_size": [
+      1280,
+      800
+    ],
+    "scale_factor": 2,
+    "automation": "Existing .agents/skills/autoui-verifier/scripts/test_vm_mcp.py AutoUiMcpClient, and @oai/sky native window inputs.",
+    "fixtures_enabled": false
+  },
+  "captures": [
+    {
+      "id": "SHOT-01",
+      "path": "website/public/v05/candidate/autoedit-workspace.png",
+      "status": "qualified",
+      "width": 2560,
+      "height": 1600,
+      "bytes": 601689,
+      "sha256": "452599c4949f3318d342b7585512ab2e0142ce215e3d94b3c579226bb9b2b33f",
+      "action": "Open src/back/api.at and src/back/fsys.at; activate fsys.at, expand back and collapse front."
+    },
+    {
+      "id": "SHOT-02",
+      "path": "website/public/v05/candidate/autoedit-search.png",
+      "status": "qualified",
+      "width": 2560,
+      "height": 1600,
+      "bytes": 687238,
+      "sha256": "f696c8b61a1d53ff0d3bae2dfeec24413afafbff118e62ab6d0b9a14ffe1abe7",
+      "action": "FindInput fn ws_root, Edit > Find in files, Search; wait for 2 hits; open test-module hit, then main-source hit; capture main api.at:28 highlight."
+    },
+    {
+      "id": "SHOT-03",
+      "path": "docs/reports/media/p757-autoedit-diff-layout.png",
+      "status": "rejected_layout",
+      "width": 2560,
+      "height": 1600,
+      "bytes": 370433,
+      "sha256": "c2d5027c84231e1e3ce5d3092c6fe6f2960e9b5bd0c296ce460a2a1421cbe3f9",
+      "action": "Load two actual Git versions via AUTO_DIFF_A/B, observe +16/-1 and 1 hunk; switch side to inline. Large blank editor area above diff prevents marketing qualification."
+    }
+  ],
+  "comparison_sources": [
+    {
+      "label": "before",
+      "commit": "5eb719970e56196c191b08e4d9f98fd9b58457fe",
+      "source": "specs/auto-edit/src/front/status_bar.at",
+      "path": "D:\\autostack\\.wt\\lang-757\\capture-fixtures\\status-before.at",
+      "sha256": "f7694d7c67263d57885fb02634ff1a672710f914c157f1826bfd5ddf3f401ced",
+      "bytes": 2872,
+      "preserved_original": "docs/reports/p757-capture/status-before.at"
+    },
+    {
+      "label": "after",
+      "commit": "f9ae2a64361f74ad8565fc5df5c4a9aeb5fc10f2",
+      "source": "specs/auto-edit/src/front/status_bar.at",
+      "path": "D:\\autostack\\.wt\\lang-757\\capture-fixtures\\status-after.at",
+      "sha256": "53bf6a042a9b2cb7aa14f940e1f00e65ea50545dc306897ded1991ba0a161b73",
+      "bytes": 3771,
+      "preserved_original": "docs/reports/p757-capture/status-after.at"
+    }
+  ],
+  "save_recompare": {
+    "path": "D:\\autostack\\.wt\\lang-757\\capture-fixtures\\status-after.at",
+    "change": "Add one space at EOF in the isolated B file using the editor, then ActSave.",
+    "before_sha256": "53bf6a042a9b2cb7aa14f940e1f00e65ea50545dc306897ded1991ba0a161b73",
+    "after_sha256": "59f6a06a96847928b94294a764ae752578eb2b58119fc24719326ad392a5439c",
+    "before_hunks": 1,
+    "after_hunks": 2,
+    "before_counts": "+16/-1",
+    "after_counts": "+17/-1",
+    "evidence": "docs/reports/p757-autoedit-save-recompare.txt"
+  },
+  "limitations": [
+    "SHOT-03 remains a placeholder pending layout repair; the diagnostic original is not in CAPTURE_IMAGES.",
+    "Native find typing also reached the code editor in an untitled built-in sample. That buffer was not saved; final search uses the real input handler through the application MCP.",
+    "Search is synchronous and blocked the window during scanning; completion was observed before capture. No universal latency claim.",
+    "The other nine capture contracts and final v0.5 W-02 acceptance remain pending.",
+    "AutoEdit tracked source and unrelated primary-checkout changes were not modified."
+  ]
+}

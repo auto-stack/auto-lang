@@ -83,7 +83,9 @@ pub fn set_theme(name: &str) -> bool {
 
 /// PLAN-601 T-03：应用 theme{} 合成主题（decl::compose 产物）。
 /// 返回是否发生变化（同名同值不触发 epoch）。
-pub fn set_theme_composed(theme: std::sync::Arc<crate::design_tokens::decl::ComposedTheme>) -> bool {
+pub fn set_theme_composed(
+    theme: std::sync::Arc<crate::design_tokens::decl::ComposedTheme>,
+) -> bool {
     set_active(ActiveSpec::Composed(theme))
 }
 
@@ -196,14 +198,28 @@ fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (u8, u8, u8) {
         let v = (l * 255.0) as u8;
         return (v, v, v);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let hue_to_rgb = |p: f64, q: f64, mut t: f64| -> f64 {
-        if t < 0.0 { t += 1.0; }
-        if t > 1.0 { t -= 1.0; }
-        if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
-        if t < 1.0 / 2.0 { return q; }
-        if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+        if t < 0.0 {
+            t += 1.0;
+        }
+        if t > 1.0 {
+            t -= 1.0;
+        }
+        if t < 1.0 / 6.0 {
+            return p + (q - p) * 6.0 * t;
+        }
+        if t < 1.0 / 2.0 {
+            return q;
+        }
+        if t < 2.0 / 3.0 {
+            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        }
         p
     };
     let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
@@ -251,7 +267,9 @@ pub fn system_theme_bootstrap_js(indent: &str) -> String {
         "{indent}  var md = window.matchMedia('(prefers-color-scheme: dark)');\n"
     ));
     s.push_str(&format!("{indent}  var apply = function () {{\n"));
-    s.push_str(&format!("{indent}    var t = md.matches ? 'dark' : 'light';\n"));
+    s.push_str(&format!(
+        "{indent}    var t = md.matches ? 'dark' : 'light';\n"
+    ));
     s.push_str(&format!("{indent}    window.__AUTO_UI_THEME__ = t;\n"));
     s.push_str(&format!(
         "{indent}    document.documentElement.classList.toggle('dark', t === 'dark');\n"
@@ -306,16 +324,34 @@ pub fn accent_primary_rgb(name: &str, dark: bool) -> Option<(u8, u8, u8)> {
 pub fn font_stack(kind: &str) -> &'static [&'static str] {
     match kind {
         "sans" => &[
-            "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto",
-            "Helvetica Neue", "Arial", "Noto Sans", "sans-serif",
+            "ui-sans-serif",
+            "system-ui",
+            "-apple-system",
+            "Segoe UI",
+            "Roboto",
+            "Helvetica Neue",
+            "Arial",
+            "Noto Sans",
+            "sans-serif",
         ],
         "serif" => &[
-            "ui-serif", "Georgia", "Cambria", "Times New Roman", "Times",
-            "Noto Serif", "serif",
+            "ui-serif",
+            "Georgia",
+            "Cambria",
+            "Times New Roman",
+            "Times",
+            "Noto Serif",
+            "serif",
         ],
         "mono" => &[
-            "ui-monospace", "SFMono-Regular", "Cascadia Mono", "Consolas",
-            "Menlo", "Monaco", "DejaVu Sans Mono", "monospace",
+            "ui-monospace",
+            "SFMono-Regular",
+            "Cascadia Mono",
+            "Consolas",
+            "Menlo",
+            "Monaco",
+            "DejaVu Sans Mono",
+            "monospace",
         ],
         _ => &[],
     }
@@ -391,7 +427,10 @@ mod tests {
         // THEME_PREFS 名单校验（不 set env，只测名单包含性）
         assert!(THEME_PREFS.contains(&"system"));
         let js = system_theme_bootstrap_js("    ");
-        assert!(js.contains("matchMedia('(prefers-color-scheme: dark)')"), "{js}");
+        assert!(
+            js.contains("matchMedia('(prefers-color-scheme: dark)')"),
+            "{js}"
+        );
         assert!(js.contains("__AUTO_UI_THEME__ = t"), "{js}");
         assert!(js.contains("classList.toggle('dark'"), "{js}");
         assert!(js.contains("addEventListener('change', apply)"), "{js}");
@@ -479,7 +518,11 @@ mod tests {
             Some((245, 241, 232)),
             "stella 暖纸恢复"
         );
-        assert_eq!(super::theme_epoch(), e0.wrapping_add(2), "两次主题切换各 +1（无 dark 翻转）");
+        assert_eq!(
+            super::theme_epoch(),
+            e0.wrapping_add(2),
+            "两次主题切换各 +1（无 dark 翻转）"
+        );
         super::set_dark_mode(true); // 还原默认档，防污染其他用例
     }
 
@@ -492,7 +535,7 @@ mod tests {
         assert_eq!(rgb(Color::OnBackground), (42, 39, 35)); // 墨色 #2a2723
         assert_eq!(rgb(Color::Border), (227, 221, 209)); // 暖灰 #e3ddd1
         assert_eq!(rgb(Color::Muted), (240, 235, 226)); // 暖 muted #f0ebe2
-        // PLAN-571: secondary 分档（≠muted）——light 暖灰一档深 #e3ddd1。
+                                                        // PLAN-571: secondary 分档（≠muted）——light 暖灰一档深 #e3ddd1。
         assert_eq!(rgb(Color::Secondary), (227, 221, 209));
         assert_eq!(rgb(Color::OnSurface), (125, 119, 109)); // 暖次级文本 #7d776d
         assert_eq!(resolve_border_rgb(), (227, 221, 209));

@@ -3,7 +3,7 @@
 // Dev:  auto main.at                     (VM 脚本秒级跑,跳过编译)
 // Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
 //
-// 对应 parity 用例: parity/libs/tokio/ (L1 ✓ 三向一致)
+// 对应 parity 用例: test/parity/libs/tokio/ (L1 ✓ 三向一致)
 // 覆盖特性:
 //   * ~T 返回类型 = async 函数 (a2r 发射 async fn/impl Future)
 //   * .await 串行组合

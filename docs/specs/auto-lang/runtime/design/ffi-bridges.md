@@ -93,6 +93,6 @@
 - **验证资产**：三轨对拍 runner（ffi_dep_parity_tests：VM/a2r/oracle 同
   path fixture，stdout 精确相等；a2r 腿 `AUTO_LANG_DEP_PARITY_A2R` 门控）
   + 语料 016_dep_abi_matrix/017_dep_lifecycle；已知分歧面登记
-  `parity/docs/known-divergences.md` DIV-DEP-1..7，工程债 KNOWN-DEBT P592-D1..D5。
+  `test/parity/docs/known-divergences.md` DIV-DEP-1..7，工程债 KNOWN-DEBT P592-D1..D5。
 
 > 来源: docs/plans/archive/592-dep-rust-parity-matrix.md（PLAN-592）

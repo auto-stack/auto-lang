@@ -3,7 +3,7 @@
 // Dev:  auto main.at              (VM 脚本秒级跑，跳过编译)
 // Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
 //
-// 对应 parity 用例: parity/libs/regex/ (L1 ✓ 45/45 三向一致)
+// 对应 parity 用例: test/parity/libs/regex/ (L1 ✓ 45/45 三向一致)
 // 这是一个最小正则引擎子集（支持 . * 字面量），对标 Rust regex crate。
 
 /// 匹配单个原子字符 against 输入字符 (codepoint)。返回消耗的输入字符数。

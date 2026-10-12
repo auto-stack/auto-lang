@@ -20,7 +20,7 @@ use auto_val::{Node, Obj, Value};
 
 use crate::ui::debug::BoxModel;
 use crate::ui::mcp_server::{ComputedNodeLite, StyledNodeSnapshot};
-use crate::ui::vnode::{VNode, VNodeProps, VTree, VNodeId, kind_keyword};
+use crate::ui::vnode::{kind_keyword, VNode, VNodeId, VNodeProps, VTree};
 
 // ============================================================================
 // Options
@@ -68,9 +68,7 @@ pub struct VTreeAtomBuilder;
 impl VTreeAtomBuilder {
     /// 由快照 + 选项构建 Atom `Node` 树。
     pub fn build(snap: &StyledNodeSnapshot, opts: &VTreeAtomOptions) -> Node {
-        let root_id = opts
-            .scope
-            .or_else(|| snap.vtree.root().map(|r| r.id));
+        let root_id = opts.scope.or_else(|| snap.vtree.root().map(|r| r.id));
         match root_id.and_then(|id| snap.vtree.get(id)) {
             Some(root) => Self::build_node(root, &snap.vtree, &snap.computed, opts, 0),
             None => Node::new("empty"),
@@ -131,7 +129,10 @@ impl VTreeAtomBuilder {
         if let Some(max) = opts.depth {
             if depth >= max {
                 if !vnode.children.is_empty() {
-                    node.set_prop("_truncated_children", Value::Int(vnode.children.len() as i32));
+                    node.set_prop(
+                        "_truncated_children",
+                        Value::Int(vnode.children.len() as i32),
+                    );
                 }
                 return node;
             }
@@ -147,7 +148,10 @@ impl VTreeAtomBuilder {
     fn attach_widget_props(node: &mut Node, props: &VNodeProps) {
         match props {
             VNodeProps::Empty => {}
-            VNodeProps::Text { content, selectable } => {
+            VNodeProps::Text {
+                content,
+                selectable,
+            } => {
                 node.set_prop("content", Value::Str(content.clone().into()));
                 if *selectable {
                     node.set_prop("selectable", Value::Str("true".into()));
@@ -159,7 +163,11 @@ impl VTreeAtomBuilder {
                     node.set_prop("disabled", Value::Str("true".into()));
                 }
             }
-            VNodeProps::Input { placeholder, value, password } => {
+            VNodeProps::Input {
+                placeholder,
+                value,
+                password,
+            } => {
                 node.set_prop("placeholder", Value::Str(placeholder.clone().into()));
                 node.set_prop("value", Value::Str(value.clone().into()));
                 node.set_prop("password", Value::Bool(*password));
@@ -176,28 +184,37 @@ impl VTreeAtomBuilder {
                 node.set_prop("label", Value::Str(label.clone().into()));
                 node.set_prop("selected", Value::Bool(*is_selected));
             }
-            VNodeProps::Select { options, selected_index } => {
+            VNodeProps::Select {
+                options,
+                selected_index,
+            } => {
                 let arr: Vec<Value> = options
                     .iter()
                     .map(|o| Value::Str(o.clone().into()))
                     .collect();
                 node.set_prop("options", Value::Array(arr.into()));
-                node.set_prop(
-                    "selected",
-                    Value::Int(selected_index.unwrap_or(0) as i32),
-                );
+                node.set_prop("selected", Value::Int(selected_index.unwrap_or(0) as i32));
             }
             VNodeProps::Layout { spacing, padding } => {
                 node.set_prop("spacing", Value::Int(*spacing as i32));
                 node.set_prop("padding", Value::Int(*padding as i32));
             }
-            VNodeProps::Container { padding, center_x, center_y } => {
+            VNodeProps::Container {
+                padding,
+                center_x,
+                center_y,
+            } => {
                 node.set_prop("padding", Value::Int(*padding as i32));
                 node.set_prop("center_x", Value::Bool(*center_x));
                 node.set_prop("center_y", Value::Bool(*center_y));
             }
             VNodeProps::Scrollable { .. } => {}
-            VNodeProps::Slider { min, max, value, step } => {
+            VNodeProps::Slider {
+                min,
+                max,
+                value,
+                step,
+            } => {
                 node.set_prop("min", Value::Float(*min as f64));
                 node.set_prop("max", Value::Float(*max as f64));
                 node.set_prop("value", Value::Float(*value as f64));
@@ -209,7 +226,12 @@ impl VTreeAtomBuilder {
                 node.set_prop("progress", Value::Float(*progress as f64));
             }
             VNodeProps::List { spacing } => node.set_prop("spacing", Value::Int(*spacing as i32)),
-            VNodeProps::Table { spacing, col_spacing, table_key, col_widths } => {
+            VNodeProps::Table {
+                spacing,
+                col_spacing,
+                table_key,
+                col_widths,
+            } => {
                 node.set_prop("spacing", Value::Int(*spacing as i32));
                 node.set_prop("col_spacing", Value::Int(*col_spacing as i32));
                 // Plan 045 T7: 表键/列宽进 atom 属性面（快照与寻址下游）。
@@ -281,13 +303,15 @@ impl VTreeAtomBuilder {
         let mut obj = Obj::new();
         // bbox = border_box（iced 实测的包围盒，含 border）
         let bb = bm.border_box();
-        obj.set(
-            "bbox",
-            Self::rect_obj(bb.x, bb.y, bb.width, bb.height),
-        );
+        obj.set("bbox", Self::rect_obj(bb.x, bb.y, bb.width, bb.height));
         obj.set(
             "content",
-            Self::rect_obj(bm.content.x, bm.content.y, bm.content.width, bm.content.height),
+            Self::rect_obj(
+                bm.content.x,
+                bm.content.y,
+                bm.content.width,
+                bm.content.height,
+            ),
         );
         obj.set("padding", Self::insets_obj(&bm.padding));
         obj.set("border", Self::insets_obj(&bm.border));
@@ -310,7 +334,7 @@ mod tests {
     use super::*;
     use crate::ui::debug::{BoxModel, EdgeInsets, EventHandlerInfo, InspectorCache, Rect};
     use crate::ui::mcp_server::StyledNodeSnapshot;
-    use crate::ui::vnode::{VNode, VNodeKind, VNodeProps, VTree, VNodeId};
+    use crate::ui::vnode::{VNode, VNodeId, VNodeKind, VNodeProps, VTree};
 
     /// 复制 mcp_server 测试里的样例树构建（独立，避免跨模块依赖）。
     fn sample_snapshot() -> StyledNodeSnapshot {
@@ -318,34 +342,70 @@ mod tests {
         tree.set_root(VNode::new(
             VNodeId::new(0),
             VNodeKind::Column,
-            VNodeProps::Layout { spacing: 8, padding: 4 },
+            VNodeProps::Layout {
+                spacing: 8,
+                padding: 4,
+            },
         ));
         tree.add_node(VNode::new(
             VNodeId::new(1),
             VNodeKind::Text,
-            VNodeProps::Text { content: "Hello".into(), selectable: false },
+            VNodeProps::Text {
+                content: "Hello".into(),
+                selectable: false,
+            },
         ));
-        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
+        tree.get_mut(VNodeId::new(0))
+            .unwrap()
+            .add_child(VNodeId::new(1));
         tree.add_node(VNode::new(
             VNodeId::new(2),
             VNodeKind::Button,
-            VNodeProps::Button { label: "OK".into(), disabled: false },
+            VNodeProps::Button {
+                label: "OK".into(),
+                disabled: false,
+            },
         ));
-        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(2));
+        tree.get_mut(VNodeId::new(0))
+            .unwrap()
+            .add_child(VNodeId::new(2));
 
         let mut cache = InspectorCache::new();
         let r = cache.get_mut_or_default(VNodeId::new(0));
-        r.bounds = Some(Rect { x: 0.0, y: 0.0, width: 100.0, height: 50.0 });
+        r.bounds = Some(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 50.0,
+        });
         let b = cache.get_mut_or_default(VNodeId::new(2));
-        b.bounds = Some(Rect { x: 40.0, y: 10.0, width: 60.0, height: 30.0 });
+        b.bounds = Some(Rect {
+            x: 40.0,
+            y: 10.0,
+            width: 60.0,
+            height: 30.0,
+        });
         b.box_model = Some(BoxModel {
-            content: Rect { x: 44.0, y: 14.0, width: 52.0, height: 22.0 },
-            padding: EdgeInsets { top: 4.0, right: 4.0, bottom: 4.0, left: 4.0 },
+            content: Rect {
+                x: 44.0,
+                y: 14.0,
+                width: 52.0,
+                height: 22.0,
+            },
+            padding: EdgeInsets {
+                top: 4.0,
+                right: 4.0,
+                bottom: 4.0,
+                left: 4.0,
+            },
             border: EdgeInsets::default(),
             margin: EdgeInsets::default(),
         });
         b.computed_style.push(("color".into(), "#ffffff".into()));
-        b.events.push(EventHandlerInfo { event: "press".into(), handler: ".Ok".into() });
+        b.events.push(EventHandlerInfo {
+            event: "press".into(),
+            handler: ".Ok".into(),
+        });
         b.raw_class = Some("btn".into());
 
         StyledNodeSnapshot::from_live("Demo", &tree, &cache)
@@ -357,7 +417,10 @@ mod tests {
         let atom = VTreeAtomBuilder::build(&snap, &VTreeAtomOptions::default()).to_string();
 
         // node names = source keywords
-        assert!(atom.contains("col vnode_0"), "root named 'col vnode_0': {atom}");
+        assert!(
+            atom.contains("col vnode_0"),
+            "root named 'col vnode_0': {atom}"
+        );
         assert!(atom.contains("text vnode_1"), "text child: {atom}");
         assert!(atom.contains("button vnode_2"), "button child: {atom}");
     }
@@ -396,17 +459,36 @@ mod tests {
             assert!(after.contains(c), "expected child {c}: {atom}");
         }
         // 'box'/'style'/'events' must appear as `key: {` props, never as bare `box vnode` nodes
-        assert!(!atom.contains("box vnode_"), "box must be a prop not a node: {atom}");
-        assert!(!atom.contains("style vnode_"), "style must be a prop: {atom}");
+        assert!(
+            !atom.contains("box vnode_"),
+            "box must be a prop not a node: {atom}"
+        );
+        assert!(
+            !atom.contains("style vnode_"),
+            "style must be a prop: {atom}"
+        );
     }
 
     #[test]
     fn depth_truncates_children() {
         let snap = sample_snapshot();
-        let atom = VTreeAtomBuilder::build(&snap, &VTreeAtomOptions { depth: Some(0), ..Default::default() }).to_string();
+        let atom = VTreeAtomBuilder::build(
+            &snap,
+            &VTreeAtomOptions {
+                depth: Some(0),
+                ..Default::default()
+            },
+        )
+        .to_string();
         // root only, children truncated
-        assert!(!atom.contains("text vnode_1"), "no text child at depth 0: {atom}");
-        assert!(atom.contains("_truncated_children: 2"), "truncation marker: {atom}");
+        assert!(
+            !atom.contains("text vnode_1"),
+            "no text child at depth 0: {atom}"
+        );
+        assert!(
+            atom.contains("_truncated_children: 2"),
+            "truncation marker: {atom}"
+        );
     }
 
     #[test]
@@ -414,11 +496,20 @@ mod tests {
         let snap = sample_snapshot();
         let atom = VTreeAtomBuilder::build(
             &snap,
-            &VTreeAtomOptions { scope: Some(VNodeId::new(2)), ..Default::default() },
+            &VTreeAtomOptions {
+                scope: Some(VNodeId::new(2)),
+                ..Default::default()
+            },
         )
         .to_string();
-        assert!(atom.starts_with("button vnode_2"), "rooted at button: {atom}");
-        assert!(!atom.contains("col vnode_0"), "sibling/root excluded: {atom}");
+        assert!(
+            atom.starts_with("button vnode_2"),
+            "rooted at button: {atom}"
+        );
+        assert!(
+            !atom.contains("col vnode_0"),
+            "sibling/root excluded: {atom}"
+        );
     }
 
     #[test]

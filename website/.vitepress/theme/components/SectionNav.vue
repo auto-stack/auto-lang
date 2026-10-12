@@ -181,9 +181,18 @@ onBeforeUnmount(() => {
 
   .section-nav-list {
     display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
     flex-direction: column;
     gap: 2px;
     padding: 0 12px 12px;
+    max-height: calc(100dvh - var(--site-nav-height, 56px) - 60px);
+    overflow-y: auto;
+    background: hsl(var(--background));
+    border-bottom: 1px solid hsl(var(--border));
+    box-shadow: 0 8px 20px rgb(0 0 0 / 12%);
   }
 
   .section-nav-list.open {

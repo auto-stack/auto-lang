@@ -3,8 +3,8 @@
 //! Stores Rust stdlib types (Instant, Duration, PathBuf, etc.) as opaque
 //! heap objects so they can be passed around in the VM.
 
-use std::any::Any;
 use crate::vm::heap_object::{HeapObject, TypeTag};
+use std::any::Any;
 
 /// Wrapper for any Rust stdlib type stored in the VM heap.
 pub struct RustStdlibObject {

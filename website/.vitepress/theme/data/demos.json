@@ -166,7 +166,7 @@
         "用文件夹、标签和置顶入口整理已有便笺。"
       ],
       "requirements": "需要便笺后端或本地 VM 后端逻辑；持久化行为以运行形态为准。",
-      "state": "它是短笔记应用；页面关系与知识库工作由 JadeEdit 的独立介绍说明。",
+      "state": "它是短笔记应用；页面关系与知识库工作由 AutoJade 的独立介绍说明。",
       "caption": "VM 原生窗口 · 内置便笺与编辑区。"
     },
     "en": {
@@ -178,7 +178,7 @@
         "Organize notes using folders, tags, and pinning."
       ],
       "requirements": "Requires the notes backend or local VM backend logic; persistence depends on the runtime.",
-      "state": "This is a short-note application. Page relationships and knowledge-base work are described separately for JadeEdit.",
+      "state": "This is a short-note application. Page relationships and knowledge-base work are described separately for AutoJade.",
       "caption": "Native VM window · built-in notes and editing area."
     },
     "image": {

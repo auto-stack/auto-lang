@@ -1,0 +1,707 @@
+{
+  "pattern": "jade[-_]?edit|(?<!\\w)jade edit(?!\\w)",
+  "flags": "case-insensitive",
+  "scan": "all tracked UTF-8 text at reconciled implementation; self excluded to avoid recursive inventory",
+  "implementation_commit": "7f6861efda83e6ec0e81bbbd67151281bf37ed5d",
+  "base": "53f81a09dcc26716b2a67b2c3f9922c70008315b",
+  "remaining": [
+    {
+      "path": ".autoos/specs.json",
+      "line": 5332,
+      "reason": "derived_ledger_store_writer_unavailable",
+      "text": "     \"content\": \"局部 spec 八节：语义消费（attr wikilink 单源、代码域/外链负例、文本域覆盖）；命中区间模型（LinkRegion 单 run 段矩形、LINK_DRAG_SLOP 4px、快照失配零区间）；完整点击门（登记/取消/核对/清除四腿表+零激活族清单）；激活出口与双 Str 载荷（split_wikilink_target 单点归一、事件绑定双形态、Typed 形态、无拦截直达形参）；origin 结构性实例绑定（载荷不携 key、双实例反例强制证据）；验证面（UserInterface 生产事件泵 seam、__mcp_click 只作负例锚、binary 指纹重绑规则）；兼容矩阵（缺省 None/map/cloning/scroll_sync/oninput/onfocusblock/feature 降级/输入期非承诺）；测试索引（C/W/L/O/R/X 组 15 测+六环语料 test/ui/plan732_wikilink）。消费方 jade-edit PLAN-037 契约 C-01..06 对岸对齐。\","
+    },
+    {
+      "path": ".autoos/specs.json",
+      "line": 5448,
+      "reason": "derived_ledger_store_writer_unavailable",
+      "text": "     \"title\": \"四主应用介绍契约：AutoEdit/AutoShell/AutoMusk/JadeEdit 双语专题与系统应用分组（PLAN-722）\","
+    },
+    {
+      "path": "README.cn.md",
+      "line": 44,
+      "reason": "actual_repository_url_rename_pending",
+      "text": "| **AutoJade** | AutoDown 文档与本地知识库：编辑、页面链接、反链、搜索和组织 | [介绍](website/zh/apps/auto-jade/index.md) · [auto-jade](https://github.com/auto-stack/jade-edit) |"
+    },
+    {
+      "path": "README.md",
+      "line": 47,
+      "reason": "actual_repository_url_rename_pending",
+      "text": "| **AutoJade** | AutoDown documents and local knowledge bases: editing, page links, backlinks, search, and organization | [Introduction](website/apps/auto-jade/index.md) · [auto-jade](https://github.com/auto-stack/jade-edit) |"
+    },
+    {
+      "path": "docs/plans/758-autojade-rename-and-promo.md",
+      "line": 23,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "更新网站双语首页、v0.5、应用总览/专题、README、当前规范、可维护文档和源码注释中的名称；规范专题 URL 为 /apps/auto-jade/，旧 jadeedit URL 兼容跳转。现有仓库实际地址未改名，不制造不存在的下载/源仓地址。历史冻结证据保留原字节并登记残余理由；derived ledger 只通过应用 store 更新。"
+    },
+    {
+      "path": "docs/plans/758-autojade-rename-and-promo.md",
+      "line": 32,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "授权：2026-10-10 用户提供 D:/autostack/jade-edit/docs/releases/v0.1.0-rc/promo-dark，并明确要求本仓引用全部改为 auto-jade / AutoJade；对岸产品已改名，仓库名尚未改。延续 website 截图补齐授权，无需再确认这项明确要求。"
+    },
+    {
+      "path": "docs/plans/758-autojade-rename-and-promo.md",
+      "line": 44,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "| SD-01 | modify | docs/specs/website/project.md、design/application-introductions.md、design/ecosystem-readme.md、design/ui-presentation.md | JadeEdit 名称/待图 → AutoJade 规范路径、实际准备态图与恢复待拍 | 用户改名与素材供给 | AC-01..03 |"
+    },
+    {
+      "path": "docs/plans/758-autojade-rename-and-promo.md",
+      "line": 53,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "- AC-02：新双语规范路径可达，旧 jadeedit 路径跳转相同语言新页，导航/首页/v0.5/搜索引用一致；现有物理仓链接继续可用。"
+    },
+    {
+      "path": "docs/plans/archive/671-vue-gen-gap-debt.md",
+      "line": 239,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "| SD-01 | modify | docs/specs/auto-lang/ui/overview.md vue 生成器段 | before：vue 轨生成缺口/限制散记（natives 声明/gen-only 完整性/自调/形参装配等无契约）/ after：vue 生成工程自完备契约（裸产出可构建：声明层完备/gen-only 工程完整/转译保真三条规则 + 各机制归属） | 修复落地的规范面收口，消费方（auto-edit/jade-edit）围栏解除依据 | AC-04/06 |"
+    },
+    {
+      "path": "docs/plans/archive/685-vm-bp-callback-arg-forward.md",
+      "line": 137,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "  显示（参看 ../jade-edit），没有高亮和格式化，三挡需要滚动很远…缺乏"
+    },
+    {
+      "path": "docs/plans/archive/732-autodown-wikilink-activation.md",
+      "line": 25,
+      "reason": "actual_physical_repository_or_historical_source_path",
+      "text": "auto-jade 仓 [PLAN-037](../../../jade-edit/docs/plans/037-native-wiki-link-navigation.md)（VM 原生正文内链导航，R-03b3）的消费合同要求本仓先交付原生 wikilink 供给。其[需求包](../../../jade-edit/docs/upstream/2026-10-native-wiki-link-supply.md)（U-01..06）与[契约冻结件](../../../jade-edit/docs/plans/attachments/037-native-link-contract.md)（C-01..06，jade 904547d）已冻结验收条款；本 Plan 在本仓独立承接，是五环链从\"仅样式\"到\"可激活\"的供给本体。"
+    },
+    {
+      "path": "docs/plans/archive/747-fix-ui-focus-refcell-storm.md",
+      "line": 61,
+      "reason": "actual_physical_repository_or_historical_source_path",
+      "text": "- 上游报告：`D:\\autostack\\jade-edit\\docs\\analysis\\2026-10-09-auto-lang-ui-hang-report.md`"
+    },
+    {
+      "path": "docs/plans/archive/748-vm-cond-eval-and-field-write.md",
+      "line": 767,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "4. **jade 撤层复验时点与 owner**（owner=用户/jade-edit 会话；Phase 2）："
+    },
+    {
+      "path": "docs/plans/evidence/756/consolidation-spec-delta.patch",
+      "line": 22,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "+- PLAN-756 用户明确要求先修文本、截图留空：本轮首页/v0.5/产品专题可用有标题、场景和 `SHOT-01..12` 的文字待拍槽。槽不渲染图片、不冒充已完成展示，拍摄合同在 `docs/reports/website-v05-capture-guide.md`；新图验收后替换为 EvidenceImage。现有获准桌面、Shell 和 AutoEdit 专题原图保留。四主应用从 applicationCopy 取数；AutoDown/Jade Garden 作为相关资料，与 JadeEdit 分开。发布状态明示里程碑与待冻结工件，运行/转译/调试明示后端条件。"
+    },
+    {
+      "path": "docs/plans/evidence/756/consolidation-spec-delta.patch",
+      "line": 43,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "+- 首页/v0.5 文案与待拍位置（PLAN-756）：四主应用统一从 applicationCopy 取数，明示里程碑、发行工件待冻结与 Playground 后端条件；28 项介绍与在线体验覆盖分述。用户批准的文字待拍槽按 SHOT-01..12 绑定逐图拍摄合同，保留已批准桌面/Shell/AutoEdit 原图；Musk Kanban/Canvas 和 JadeEdit 新图仍需候选验收。中文共享画廊链接不拼 /zh，快速开始直达运行与构建。"
+    },
+    {
+      "path": "docs/plans/evidence/756/spec-delta.patch",
+      "line": 22,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "+- PLAN-756 用户明确要求先修文本、截图留空：本轮首页/v0.5/产品专题可用有标题、场景和 `SHOT-01..12` 的文字待拍槽。槽不渲染图片、不冒充已完成展示，拍摄合同在 `docs/reports/website-v05-capture-guide.md`；新图验收后替换为 EvidenceImage。现有获准桌面、Shell 和 AutoEdit 专题原图保留。四主应用从 applicationCopy 取数；AutoDown/Jade Garden 作为相关资料，与 JadeEdit 分开。发布状态明示里程碑与待冻结工件，运行/转译/调试明示后端条件。"
+    },
+    {
+      "path": "docs/plans/evidence/p750/matrix-m1-run1.txt",
+      "line": 21,
+      "reason": "actual_physical_repository_or_historical_source_path",
+      "text": "        at D:\\autostack\\jade-edit\\e2e\\matrix.spec.ts:166:14"
+    },
+    {
+      "path": "docs/plans/evidence/p750/matrix-m1-run2.txt",
+      "line": 183,
+      "reason": "actual_physical_repository_or_historical_source_path",
+      "text": "        at D:\\autostack\\jade-edit\\e2e\\matrix.spec.ts:548:58"
+    },
+    {
+      "path": "docs/plans/evidence/p750/repro.md",
+      "line": 68,
+      "reason": "actual_physical_repository_or_historical_source_path",
+      "text": "- 复现配方：`cd D:/autostack/jade-edit && node <本目录>/repro.mjs D`"
+    },
+    {
+      "path": "docs/plans/evidence/p750/repro.mjs",
+      "line": 5,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "// 依赖：jade-edit 只读引用（serveBackend 库 + @playwright/test + gen/front/vue）"
+    },
+    {
+      "path": "docs/plans/evidence/p750/repro.mjs",
+      "line": 12,
+      "reason": "actual_physical_repository_or_historical_source_path",
+      "text": "const JADE = 'D:/autostack/jade-edit'"
+    },
+    {
+      "path": "docs/plans/evidence/p750/supply-draft.md",
+      "line": 3,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "> 落点建议：jade-edit `docs/upstream/2026-10-10-draft-settle-race-rootcause.md`"
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 69,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 70,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 74,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 77,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 78,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 82,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 189,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 190,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 194,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 195,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"screenshot\": \"apps-jadeedit-390-light.png\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 198,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 199,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 203,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 204,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"screenshot\": \"zh-apps-jadeedit-390-light.png\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 307,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 308,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 312,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 315,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 316,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 320,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 419,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 420,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 424,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 427,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 428,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 432,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 539,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 540,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 544,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 545,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"screenshot\": \"apps-jadeedit-1440-light.png\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 548,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 549,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 553,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 554,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"screenshot\": \"zh-apps-jadeedit-1440-light.png\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 657,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 658,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 662,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 665,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 666,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 670,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 777,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 778,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 782,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 783,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"screenshot\": \"apps-jadeedit-390-dark.png\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 786,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 787,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 791,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 792,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"screenshot\": \"zh-apps-jadeedit-390-dark.png\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 895,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 896,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 900,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 903,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 904,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 908,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1007,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1008,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1012,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1015,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1016,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1020,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1127,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1128,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1132,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit: documents and local knowledge\\n​\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1133,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"screenshot\": \"apps-jadeedit-1440-dark.png\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1136,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"route\": \"/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1137,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"actualUrl\": \"http://127.0.0.1:4227/zh/apps/jadeedit/\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1141,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"h1\": \"JadeEdit：文档与本地知识工作台\\n​\","
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/manifest.json",
+      "line": 1142,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"screenshot\": \"zh-apps-jadeedit-1440-dark.png\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/playwright-results.txt",
+      "line": 22,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "[5/88] [chromium] › tests\\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /apps/jadeedit/"
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/playwright-results.txt",
+      "line": 30,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "[13/88] [chromium] › tests\\apps-introduction.spec.ts:10:5 › static application introduction and navigation: /zh/apps/jadeedit/"
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/reviewed-spec-delta.json",
+      "line": 4,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "    \"text\": \"# Website application introductions\\n\\n> PLAN-722 · 2026-10-01 · VitePress / Vue 3\\n\\n## Product structure\\n\\n/apps (EN/ZH) distinguishes four main products—AutoEdit, AutoShell, AutoMusk, JadeEdit—from system apps and demos. AutoDown and AutoUI retain related resource pages; neither replaces one of the four product entries. AutoEdit and JadeEdit remain separate products with shared foundations.\\n\\nAppsOverview.vue and data/applications.ts provide SSR cards, a two-column desktop grid, a single-column narrow layout, system categories, and ecosystem/resource links. No business API or runtime gallery is loaded by the introduction. Global navigation is a separate change.\\n\\n## Reading topics and truthful progress\\n\\nFour EN/ZH product topics use the default reading layout with a single H1, an outline, locale-correct internal links, and a material date. Explain purpose, a typical operation, current capabilities, runtime prerequisites, related projects, and work still in progress. Current claims come from the sibling source/spec snapshot recorded in docs/reports/p722-source-baseline.json.\\n\\nDo not claim all-Auto, full runtime parity, unattended coding, completed Milestones, universal performance budgets, or collaboration from project direction alone. AutoMusk distinguishes skill contracts from runtime Relay, and provider/daemon communication from application tool execution. JadeEdit distinguishes single-document draft/reload protection from in-progress multi-document operations.\\n\\n## Screenshot contract for this content phase\\n\\nThe user explicitly requested image-free introductions. HTML comments reserve planned capture positions; do not render empty frames, broken images, visible TODOs, or fake screenshots. The approved AutoEdit PixPin capture and AutoShell ash-01 selection remain future introduction inputs. Musk captures await its sample-project walkthrough; Jade captures await its Milestone.\\n\\nAutoShell's existing evidence and interactive examples remain at /apps/autoshell/guide/ and the ZH mirror, using unchanged AutoShellLanding.vue. The introduction links the guide; the guide links back. Retain the native ls overview, mode records and their provenance, script tabs, keyboard navigation, copy, downloads, and version/platform boundaries. Release AutoShellPreview remains unchanged.\\n\\n## Verification\\n\\nBuild and verify SSR, routes, local links, outline/locale behavior, absence of intro images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo or docs_gen.\\n\""
+    },
+    {
+      "path": "docs/reports/p722-apps-introduction/reviewed-spec-delta.json",
+      "line": 12,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "    \"text\": \"# website\\n\\n> **Status**: active\\n> 路径：`website/`  | 技术栈：VitePress + Vue 3 + CodeMirror 6（Playwright e2e）\\n\\n官方站点：中英双语文档 + 8 本译/著作书籍 + 内嵌 playground。\\n\\n## 目标与范围\\n\\n- 文档：语言指南、CLI、架构、特性、教程、releases（`docs/`，中文镜像 `zh/`）。\\n- 书籍：byte-of-python / little-c / modern-c / rust / tapl / think-python / typescript / typescript-deepdive。\\n- 应用实跑指南：`/apps/autoshell/guide/` 与 ZH 镜像共用 `AutoShellLanding.vue`，按日常会话、数据管道、多行脚本、自动化和快速开始组织；保留原生终端总览图与 F1/F2/F3 常见形式图示，分别说明原图和 PTY 记录重绘的来源；版本、验证平台/日期随示例标注。使用指南与 v0.5 发布的双语页面共用 `AutoShellPreview.vue`，通过 CSS 视窗展示 ash-01 原生彩色 ls 命令/表格，放大保留完整原图，禁止用模拟终端输出代替该主图。`EvidenceImage.vue` 提供可键盘操作的截图放大；脚本标签支持方向键/Home/End、代码复制及样例下载，布局适配窄屏与深浅色主题（plan-713）。\\n- 应用介绍（PLAN-722）：Apps 总览由 `AppsOverview.vue` / `theme/data/applications.ts` 双语 SSR 呈现四主产品 AutoEdit、AutoShell、AutoMusk、JadeEdit，与系统 Demo 分组；四产品专题使用默认阅读布局，当前阶段截图留在源注释槽、不显示空图。AutoShell 介绍链接独立 guide 保留原生图和交互示例；AutoDown/AutoUI 原资料保留。系统介绍 `/apps/demos/` 静态可读，分类/真图优先，在线入口需逐项无后台验证，28 项仅设计候选不冒充统一发布数；不自动嵌入画廊/加载业务API。规则见 [application introductions](design/application-introductions.md) 与 [application demos](design/application-demos.md)。\\n- 全站导航（plan-715）：`.vitepress/theme/data/navigation.ts` 是中英导航单一来源——UnifiedNavbar（实际可见顶栏）与 en.ts/zh.ts 的默认主题 nav 都取数于此；每项带 en/zh 链接，缺省按 `/` 前缀规则换 locale（docs/books 双语 1:1、手工专题页全镜像，未译文档在 ZH URL 下呈现 EN 内容为既定行为），共享 SPA（`/ui/gallery|blocks|charts|a2ui|demos`）双语同 URL 并在菜单标注\\\"共享\\\"，禁止拼造 `/zh/ui/gallery` 之类不存在的镜像路由。共享 SPA 的规范入口是 `index.html` 全路径（sirv 对目录 URL 的 extensions 解析会让 `/ui/a2ui/` 优先命中 VitePress 专题页 `a2ui.html`，为静态服务既定行为）。当前项用 `aria-current=\\\"page\\\"`、父组触发器 `aria-current=\\\"true\\\"`；菜单/下拉有名称与 `aria-expanded`，Esc 收起并回焦触发器，路由变更后自动收起；触控目标 ≥44px。主题态统一走 VitePress `useData().isDark`（storageKey `vitepress-theme-appearance`），组件不得自建第二主题源。\\n- 站内搜索（plan-715）：VitePress local provider（`themeConfig.search.provider='local'`，按 locale 分库，覆盖专题正文/docs/books；不含图片文字、独立 SPA 与 Playground 全语料）。主题层 `SiteSearch.vue` 以合成 Ctrl/Cmd+K 热键事件打开官方弹窗（同 VitePress 自用 poll 机制；弹窗 Teleport 到 body，不受 VPNav 的 `display:none` 影响）；CodeMirror 编辑器内的 Ctrl/Cmd+K 由 document 捕获相守卫拦截，不抢编辑器输入。依赖 vitepress 1.6.x 的 local search 行为，升级需回归 site-ui 搜索用例。\\n- 首页演示（plan-715）：`HomeDemo.vue` + `theme/data/home-demo.ts` 提供轻量三视图（Auto 源码/输出/Rust），初始为标明来源的预置示例——纯 `<pre>` 渲染，不加载 CodeMirror、不发任何请求；点击运行才发**同源** `/api/run`（dev 由 vite 代理到本地后端；静态部署下无后端时诚实报错并保留预置示例），10 秒超时可取消、离页清理，stdout/stderr 分列展示（HTTP 200 携 stderr 也是合法响应）。预置输出必须标注来源（仓内金样/实跑记录），永远不得显示为实时成功。Rust 视图仅在有真实 a2r 产物的示例上出现（如 cookbook `*.expected.rs` 金样），禁止手写假转译。\\n- 内嵌 playground 页面（playground.md，CodeMirror 6），blocks/charts/ui/os 等专题页。\\n- Playground Notes manifest 管线（Plan 581）：`prepare-content.js` 末段调 `scripts/build-playground-notes.mjs`，从仓内语料（vm-golden 460 / aavm 158 / books 围栏 634 / demo 28）确定性生成 `public/playground-data/notes.json`（gitignore 生成物，0.82MB 单文件；`--check` 幂等+计数断言供 CI 防采集回归）。\\n- 图片与展示骨架（plan-713 起单页规则推广，plan-715 收敛）：`EvidenceImage.vue` 统一\\\"缩略可放大\\\"展示——Enter/Space 打开原生 dialog、Esc/背板点击关闭、焦点返回缩略图、原图链接与说明保留；可选 `loading`（首图 eager）、`width/height` 占位防 CLS、`framed` 深色容器（缺省 true 兼容旧调用）。跨主题多帧截图用 `ScreenshotGallery.vue`（tab 选择器、键盘方向键、不自动轮播、选中态 `aria-selected`+live 区域）；应用专题 hero 共用 `AppLandingLayout.vue`（返回链接/badge/状态/标题/简介/入口/实图；后续章节由页面顶层排版——`.md` 中 Vue 组件调用必须压成单一 HTML 块且内部不留空行、插槽不放多段大块内容，否则被 markdown 块规则切断；提升到顶层的内容须去 4+ 空格缩进，防被解析成缩进代码块）。发布页截图用 `ReleaseLanding.vue` + `theme/data/release-v05.ts` 数据驱动，理念完整论述用原生 `details` 可键盘展开。禁止 TODO 占位空图、假截图与死链；AutoShell 原生主图契约（ash-01）不变。\\n- scripts/prepare-content.js 在 dev/build 前预处理内容；tests/ 为 Playwright e2e。\\n- 桌面实景展示（PLAN-720）：`DesktopShowcase.vue` 与 `theme/data/desktop-showcase.ts` 共用六张 2026-10-01 原生截图，按无展开窗口的浅/深桌面、浅/深 Launcher、三小游戏、多应用工作场景递进。v0.5 和 AutoOS 专题展示完整过程，OS 总览显示双主题预览并链接到当前语言专题。小组件来自已启动并最小化的应用；保留完整 PNG、捕获日、尺寸、可键盘放大和原图链接，不把静态演示状态当成功能证明。\\n- 学习与阅读（PLAN-718）：docs/books 双语根页共用作者数据与 SSR 学习卡片（静态 HTML 与本地搜索均可索引）；书籍按当前书分侧栏、章节 prev/next 不跨书，提供本书目录和正确作者源链接；AutoFence 操作栏及提示双语；运行器按需异步加载（冷访问不取编辑器 chunk、不调 `/api/run`），失败可重试且原文保持可读。规则见 [learning-reading](design/learning-reading.md)。\\n- 不做：不实现 playground 后端（crates/auto-playground）与可复用组件库（packages/auto-playground-vue）。\\n- OS/AI 介绍（PLAN-719）：LaOS 实现理念、OS over OS 当前形态与 AI + Lang + OS 长期人本方向连续说明；宿主/现有内核独立系统/自有内核分清现状。OS、AI、AutoOS、ui-desktop 双语采用默认阅读布局及同源概要/架构关系，首页与 v0.5 同步相关摘要；两篇双语独立历史文章提供总览互链、资料时点与公开来源。规则见 [os-ai-introduction](design/os-ai-introduction.md)。\\n\\n## 模块架构\\n\\n```mermaid\\ngraph LR\\n  vp[.vitepress 配置与主题] --> docs[docs 英文文档]\\n  vp --> zh[zh 中文镜像]\\n  vp --> books[books 8 本书]\\n  vp --> pg[playground 内嵌页]\\n  scripts[scripts/prepare-content] --> vp\\n  e2e[tests Playwright e2e] -.验证.-> vp\\n  click vp \\\"./vitepress/\\\" \\\"vitepress\\\"\\n  click docs \\\"./docs/\\\" \\\"docs\\\"\\n  click zh \\\"./zh/\\\" \\\"zh\\\"\\n  click books \\\"./books/\\\" \\\"books\\\"\\n  click pg \\\"./playground/\\\" \\\"playground\\\"\\n  click scripts \\\"./scripts/\\\" \\\"scripts\\\"\\n  click e2e \\\"./tests/\\\" \\\"tests\\\"\\n```\\n\\n## 模块清单\\n\\n| 模块 | 职责 | 状态 |\\n|---|---|---|\\n| .vitepress | VitePress 配置与自定义主题（theme/data 导航与页面数据单源） | active |\\n| docs | 英文文档（architecture/cli/features/guides/language/tutorials 等） | active |\\n| zh | 中文文档镜像（docs/books/ui 等） | active |\\n| books | 8 本书籍内容 | active |\\n| playground.md / ui / blocks / charts 等 | 专题页与内嵌 playground | active |\\n| public/playground-data | Notes manifest 确定性生成物（notes.json，gitignore；Plan 581） | active |\\n| scripts | prepare-content 等内容预处理脚本（末段接线 manifest 生成） | active |\\n| tests | Playwright e2e（`AUTO_WEBSITE_TEST_PORT` 独占端口，baseURL/webServer 同源 strictPort；`locale:'en-US'` 钉定防宿主 OS locale 泄入触发首页自动跳转） | active |\\n\\n> **Plan 582（2026-09-07，archived）**：/playground（EN/ZH）换 Notes Explorer；旧 /playground/ SPA 退役为 meta-refresh 重定向；prepare-content 裸尖括号通用转义器（P581-D1 清偿）；AutoFence 书页围栏 ▶ Run（§12 迁移路线同期入档）；playground-notes e2e + playwright.config。\\n\\n> **Plan 715（2026-09-30，archived）**：全站 UI 刷新——navigation.ts 单源双语导航/当前位置/共享 SPA 例外；VitePress local search 接线（合成热键法+CodeMirror 捕获守卫）；全站设计令牌与断点矩阵（360/390/768/1024/1440 无溢出）；HomeDemo 轻量三视图（预置/实时/降级诚实契约）；v0.5 发布页 ReleaseLanding 数据驱动重建（产品前置/理念 details 展开/统计后移/launcher 实图换 TODO 占位）；EvidenceImage/ScreenshotGallery/AppLandingLayout 统一图片与骨架；e2e 64 例 + 五断点×双语×深浅截图矩阵；site-ui/home-demo 双测试族。证据：docs/reports/p715-website-ui-{baseline,review}.md。\\n\""
+    },
+    {
+      "path": "docs/reports/p722-source-baseline.json",
+      "line": 23,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"repo\": \"jade-edit\","
+    },
+    {
+      "path": "docs/reports/p722-source-baseline.json",
+      "line": 29,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"repo\": \"jade-edit\","
+    },
+    {
+      "path": "docs/reports/p722-source-baseline.json",
+      "line": 35,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"repo\": \"jade-edit\","
+    },
+    {
+      "path": "docs/reports/p722-source-baseline.json",
+      "line": 41,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "      \"repo\": \"jade-edit\","
+    },
+    {
+      "path": "docs/reports/p723-r2-spec-delta.patch",
+      "line": 54,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "-- 应用介绍（PLAN-722）：Apps 总览由 `AppsOverview.vue` / `theme/data/applications.ts` 双语 SSR 呈现四主产品 AutoEdit、AutoShell、AutoMusk、JadeEdit，与系统 Demo 分组；四产品专题使用默认阅读布局，当前阶段截图留在源注释槽、不显示空图。AutoShell 介绍链接独立 guide 保留原生图和交互示例；AutoDown/AutoUI 原资料保留。系统介绍 `/apps/demos/` 静态可读，分类/真图优先，在线入口需逐项无后台验证，28 项仅设计候选不冒充统一发布数；不自动嵌入画廊/加载业务API。规则见 [application introductions](design/application-introductions.md) 与 [application demos](design/application-demos.md)。"
+    },
+    {
+      "path": "docs/reports/p723-spec-delta.patch",
+      "line": 50,
+      "reason": "immutable_historical_evidence_or_reviewed_source_snapshot",
+      "text": "-- 应用介绍（PLAN-722）：Apps 总览由 `AppsOverview.vue` / `theme/data/applications.ts` 双语 SSR 呈现四主产品 AutoEdit、AutoShell、AutoMusk、JadeEdit，与系统 Demo 分组；四产品专题使用默认阅读布局，当前阶段截图留在源注释槽、不显示空图。AutoShell 介绍链接独立 guide 保留原生图和交互示例；AutoDown/AutoUI 原资料保留。系统介绍 `/apps/demos/` 静态可读，分类/真图优先，在线入口需逐项无后台验证，28 项仅设计候选不冒充统一发布数；不自动嵌入画廊/加载业务API。规则见 [application introductions](design/application-introductions.md) 与 [application demos](design/application-demos.md)。"
+    },
+    {
+      "path": "docs/reports/p758-autojade-capture-catalog.json",
+      "line": 6,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "  \"physical_repository\": \"D:/autostack/jade-edit\","
+    },
+    {
+      "path": "docs/reports/p758-autojade-capture-catalog.json",
+      "line": 14,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "      \"source_path\": \"D:\\\\autostack\\\\jade-edit\\\\docs\\\\releases\\\\v0.1.0-rc\\\\promo-dark\\\\p1-main-dark.png\","
+    },
+    {
+      "path": "docs/reports/p758-autojade-capture-catalog.json",
+      "line": 25,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "      \"source_path\": \"D:\\\\autostack\\\\jade-edit\\\\docs\\\\releases\\\\v0.1.0-rc\\\\promo-dark\\\\p2-backlinks-dark.png\","
+    },
+    {
+      "path": "docs/reports/p758-autojade-capture-catalog.json",
+      "line": 36,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "      \"source_path\": \"D:\\\\autostack\\\\jade-edit\\\\docs\\\\releases\\\\v0.1.0-rc\\\\promo-dark\\\\p3-wikilink-dark.png\","
+    },
+    {
+      "path": "docs/reports/p758-autojade-capture-catalog.json",
+      "line": 47,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "      \"source_path\": \"D:\\\\autostack\\\\jade-edit\\\\docs\\\\releases\\\\v0.1.0-rc\\\\promo-dark\\\\p4-tags-dark.png\","
+    },
+    {
+      "path": "docs/reports/p758-autojade-capture-catalog.json",
+      "line": 58,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "      \"source_path\": \"D:\\\\autostack\\\\jade-edit\\\\docs\\\\releases\\\\v0.1.0-rc\\\\promo-dark\\\\p5-quick-open-dark.png\","
+    },
+    {
+      "path": "docs/reports/p758-autojade-capture-catalog.json",
+      "line": 69,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "      \"source_path\": \"D:\\\\autostack\\\\jade-edit\\\\docs\\\\releases\\\\v0.1.0-rc\\\\promo-dark\\\\p6-dangling-create-dark.png\","
+    },
+    {
+      "path": "docs/reports/p758-autojade-capture-catalog.json",
+      "line": 80,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "      \"source_path\": \"D:\\\\autostack\\\\jade-edit\\\\docs\\\\releases\\\\v0.1.0-rc\\\\promo-dark\\\\p7-filetree-dark.png\","
+    },
+    {
+      "path": "docs/reports/p758-autojade-verification.md",
+      "line": 12,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "| AC-02 / T-01 | EN/ZH 新 `/apps/auto-jade/` 可达；旧 `/apps/jadeedit/` 保留语言、query 与 hash，使用 replace 跳转。四个 AutoJade 用例实际检查首页/v0.5/总览新链接、原图及兼容路径。搜索关闭兼容页索引。 |"
+    },
+    {
+      "path": "docs/reports/p758-autojade/ledger-projection-pending.json",
+      "line": 15,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "      \"title\": \"四主应用介绍契约：AutoEdit/AutoShell/AutoMusk/JadeEdit 双语专题与系统应用分组（PLAN-722）\","
+    },
+    {
+      "path": "docs/reports/website-v05-capture-guide.md",
+      "line": 25,
+      "reason": "actual_physical_repository_or_historical_source_path",
+      "text": "| **SHOT-07，已接入准备态图** `p1-main-dark.png` | 首页、v0.5、应用概览与 AutoJade 专题主图 | 使用用户提供的 `docs/releases/v0.1.0-rc/promo-dark` 欢迎页，第一方产品手册示例库；原样保留 1933×1245 PNG。实际仓目录仍为 `D:/autostack/jade-edit`，产品/工程现名 auto-jade。 | 目录、文档标签与欢迎正文；本次按提供文件完整保存，不声称底部状态栏完整可见。源批准备态和深色文件精确工具链待独立确认项见 [来源清单](p758-autojade-capture-catalog.json)；不能当成最终 RC 验收。 |"
+    },
+    {
+      "path": "docs/specs/website/design/application-introductions.md",
+      "line": 29,
+      "reason": "legacy_route_compatibility",
+      "text": "PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。"
+    },
+    {
+      "path": "docs/specs/website/design/ui-presentation.md",
+      "line": 46,
+      "reason": "legacy_route_compatibility",
+      "text": "PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。"
+    },
+    {
+      "path": "docs/specs/website/project.md",
+      "line": 79,
+      "reason": "legacy_route_compatibility",
+      "text": "PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。"
+    },
+    {
+      "path": "website/tests/autojade.spec.ts",
+      "line": 8,
+      "reason": "legacy_route_compatibility_and_negative_assertions",
+      "text": "    await page.goto(`${prefix}/apps/jadeedit/?from=legacy#connect-pages-as-well-as-files`)"
+    },
+    {
+      "path": "website/tests/autojade.spec.ts",
+      "line": 15,
+      "reason": "legacy_route_negative_assertion",
+      "text": "      await expect(page.locator('a[href*=\"/apps/jadeedit/\"]')).toHaveCount(0)"
+    }
+  ],
+  "count": 116,
+  "unclassified": []
+}

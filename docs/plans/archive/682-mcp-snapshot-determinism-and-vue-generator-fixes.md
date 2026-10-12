@@ -15,8 +15,8 @@ touched_goals: []
 
 # [PLAN-682] MCP 快照投影确定性 + vue 生成器四缺陷修复批
 
-> 来源：jade-edit PLAN-002（execution_done）执行期实证登记 + 2026-09-22
-> 四路源码级根因分析（jade-edit `docs/upstream/2026-09-jade-supply.md`
+> 来源：auto-jade PLAN-002（execution_done）执行期实证登记 + 2026-09-22
+> 四路源码级根因分析（auto-jade `docs/upstream/2026-09-jade-supply.md`
 > 供料包 + parity-ledger D-17/D-18）。669 先例：下游实证与根因已备，
 > 本计划为上游本体修复。worktree = `D:/autostack/.wt/lang-682/auto-lang`，
 > branch `plan-682-dev`（基点 3f2eb0b56）。
@@ -130,7 +130,7 @@ detect 并集 + 直接调 `crate::vue_shadcn::materialize(&output_dir,
 ## 6. 复审记录
 
 - 2026-09-22 work 入场（auto-plan-work，用户直接授权上游修复批）：
-  根因分析 + 修复设计见 §2（jade-edit 四路勘察报告在案），T-01 起步。
+  根因分析 + 修复设计见 §2（auto-jade 四路勘察报告在案），T-01 起步。
 - 2026-09-22 T-01..T-04 实施完成（commit 5f46d99fb）+ 验证实录：
   - **AC-01 (F1)**：新 exe 下三全新实例快照恒带 style/onclick、逐字节
     同尺寸（5201B×3——旧双态消失）；jade vm_matrix 双臂对新 exe

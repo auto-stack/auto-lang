@@ -40,7 +40,8 @@ pub const TEXTS_FILL: &str = "flex-1 min-w-0";
 /// Secondary line text (desc) color/size.
 pub const TEXT_DESC: &str = "text-xs text-muted-foreground";
 /// Non-collapsible group label header.
-pub const GROUP_LABEL: &str = "nav-group-label px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground";
+pub const GROUP_LABEL: &str =
+    "nav-group-label px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground";
 /// Collapsible group header (a button).
 pub const GROUP_TOGGLE: &str = "nav-group-toggle flex w-full items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-foreground cursor-pointer select-none";
 /// Collapsible header hover feedback.
@@ -67,20 +68,44 @@ const WEB_ONLY_TOKENS: &[&str] = &[
 ];
 
 /// Marker (inert hook) classes carried inside the contract strings.
-const MARKER_TOKENS: &[&str] = &["nav-item", "nav-group-label", "nav-group-toggle", "nav-group-content", "nav-search"];
+const MARKER_TOKENS: &[&str] = &[
+    "nav-item",
+    "nav-group-label",
+    "nav-group-toggle",
+    "nav-group-content",
+    "nav-search",
+];
 
 /// Every whitespace-separated token that carries geometry/color on both ends.
 /// Excludes web-only enhancement tokens and inert marker classes.
 pub fn parity_tokens() -> Vec<&'static str> {
     let all = [
-        ITEM_BASE_MD, ITEM_BASE_LG, ITEM_BASE_SM, ITEM_HOVER, ITEM_ACTIVE, ITEM_DISABLED,
-        BADGE_PILL, ICON_MD, ICON_LG, TEXTS_FILL, TEXT_DESC, GROUP_LABEL, GROUP_TOGGLE,
-        GROUP_TOGGLE_HOVER, GROUP_CONTENT, GROUP_CONTENT_INDENT, SEARCH_ROW, SEARCH_INPUT,
+        ITEM_BASE_MD,
+        ITEM_BASE_LG,
+        ITEM_BASE_SM,
+        ITEM_HOVER,
+        ITEM_ACTIVE,
+        ITEM_DISABLED,
+        BADGE_PILL,
+        ICON_MD,
+        ICON_LG,
+        TEXTS_FILL,
+        TEXT_DESC,
+        GROUP_LABEL,
+        GROUP_TOGGLE,
+        GROUP_TOGGLE_HOVER,
+        GROUP_CONTENT,
+        GROUP_CONTENT_INDENT,
+        SEARCH_ROW,
+        SEARCH_INPUT,
     ];
     let mut tokens = Vec::new();
     for s in all {
         for token in s.split_whitespace() {
-            if !WEB_ONLY_TOKENS.contains(&token) && !MARKER_TOKENS.contains(&token) && !tokens.contains(&token) {
+            if !WEB_ONLY_TOKENS.contains(&token)
+                && !MARKER_TOKENS.contains(&token)
+                && !tokens.contains(&token)
+            {
                 tokens.push(token);
             }
         }
@@ -119,7 +144,10 @@ mod tests {
     #[test]
     fn nav_contract_hover_parses_into_hover_classes() {
         let style = crate::ui::style::Style::parse(ITEM_HOVER).unwrap();
-        assert!(!style.hover_classes.is_empty(), "hover utilities must land in hover_classes");
+        assert!(
+            !style.hover_classes.is_empty(),
+            "hover utilities must land in hover_classes"
+        );
         let style = crate::ui::style::Style::parse(GROUP_TOGGLE_HOVER).unwrap();
         assert!(!style.hover_classes.is_empty());
     }
@@ -131,15 +159,41 @@ mod tests {
     fn nav_contract_matches_scaffold_assets() {
         let manifest = env!("CARGO_MANIFEST_DIR");
         for (file, consts) in [
-            ("nav/NavItem.vue", vec![ITEM_BASE_MD, ITEM_BASE_LG, ITEM_BASE_SM, ITEM_ACTIVE, ITEM_DISABLED, BADGE_PILL, ICON_MD, ICON_LG, TEXTS_FILL, TEXT_DESC]),
-            ("nav/NavGroup.vue", vec![GROUP_LABEL, GROUP_TOGGLE, GROUP_TOGGLE_HOVER, GROUP_CONTENT, GROUP_CONTENT_INDENT]),
+            (
+                "nav/NavItem.vue",
+                vec![
+                    ITEM_BASE_MD,
+                    ITEM_BASE_LG,
+                    ITEM_BASE_SM,
+                    ITEM_ACTIVE,
+                    ITEM_DISABLED,
+                    BADGE_PILL,
+                    ICON_MD,
+                    ICON_LG,
+                    TEXTS_FILL,
+                    TEXT_DESC,
+                ],
+            ),
+            (
+                "nav/NavGroup.vue",
+                vec![
+                    GROUP_LABEL,
+                    GROUP_TOGGLE,
+                    GROUP_TOGGLE_HOVER,
+                    GROUP_CONTENT,
+                    GROUP_CONTENT_INDENT,
+                ],
+            ),
         ] {
             let path = std::path::Path::new(manifest)
                 .join("../auto-man/assets/shadcn-ui")
                 .join(file);
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,
-                Err(e) => panic!("scaffold asset {} missing ({e}) — Vue/VM contract drift", path.display()),
+                Err(e) => panic!(
+                    "scaffold asset {} missing ({e}) — Vue/VM contract drift",
+                    path.display()
+                ),
             };
             for c in consts {
                 assert!(

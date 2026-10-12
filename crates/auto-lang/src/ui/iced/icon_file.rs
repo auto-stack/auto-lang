@@ -37,8 +37,7 @@ pub fn parse_field(field: &str) -> Option<IconFileRef> {
 }
 
 fn cache() -> &'static Mutex<HashMap<(String, bool, u32), Option<Handle>>> {
-    static CACHE: OnceLock<Mutex<HashMap<(String, bool, u32), Option<Handle>>>> =
-        OnceLock::new();
+    static CACHE: OnceLock<Mutex<HashMap<(String, bool, u32), Option<Handle>>>> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -80,7 +79,10 @@ pub fn icon_root() -> Option<PathBuf> {
 /// 桌面 boot 接线（PLAN-018 W4）：读 `<root>/mapping.json`（id → stem；
 /// `_` 前缀键为注释忽略；坏 JSON 静默跳过），把命中 id 的条目 icon 改写为
 /// `iconfile:<stem>`。未映射/缺席 = 原样（lucide 兜底零回归）。
-pub fn apply_icon_mapping(entries: &mut [crate::ui::app_registry::AppRegistryEntry], root: &PathBuf) {
+pub fn apply_icon_mapping(
+    entries: &mut [crate::ui::app_registry::AppRegistryEntry],
+    root: &PathBuf,
+) {
     use std::collections::HashMap as Map;
     let Ok(raw) = std::fs::read_to_string(root.join("mapping.json")) else {
         return;
@@ -158,8 +160,7 @@ fn decode_resized(bytes: &[u8], tex_px: u32) -> Option<(u32, u32, Vec<u8>)> {
         let rgba = img.to_rgba8();
         return Some((w, h, rgba.into_raw()));
     }
-    let resized =
-        img.resize_exact(tex_px, tex_px, image::imageops::FilterType::Triangle);
+    let resized = img.resize_exact(tex_px, tex_px, image::imageops::FilterType::Triangle);
     let rgba = resized.to_rgba8();
     Some((tex_px, tex_px, rgba.into_raw()))
 }
@@ -183,10 +184,7 @@ mod tests {
         assert!(parse_field("iconfile:").is_none(), "空 stem 拒收");
         assert!(parse_field("iconfile:../escape").is_none(), "穿越拒收");
         assert!(parse_field("iconfile:has space").is_none(), "非法字符拒收");
-        assert!(
-            parse_field("lucide:app-window").is_none(),
-            "lucide 不误吞"
-        );
+        assert!(parse_field("lucide:app-window").is_none(), "lucide 不误吞");
         assert!(parse_field("hicon:5").is_none(), "hicon 不误吞");
         assert!(parse_field("app-window").is_none(), "裸 lucide 名不误吞");
     }
@@ -214,7 +212,11 @@ mod tests {
         let mut img = image::RgbaImage::new(64, 64);
         for y in 0..64 {
             for x in 0..64 {
-                let a = if x < 8 { (x as f32 / 8.0 * 255.0) as u8 } else { 255 };
+                let a = if x < 8 {
+                    (x as f32 / 8.0 * 255.0) as u8
+                } else {
+                    255
+                };
                 img.put_pixel(x, y, image::Rgba([200, 120, 60, a]));
             }
         }

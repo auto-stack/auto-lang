@@ -2,12 +2,12 @@ use auto_val::AutoStr;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+pub mod abt;
 pub mod builder;
 pub mod channel;
 pub mod codegen;
 pub mod context;
 pub mod debugger;
-pub mod abt;
 pub mod disasm;
 pub mod trace;
 // Plan 364 Step 5: runtime VM Config eval tests (ConfigCodegen was removed;
@@ -49,8 +49,8 @@ pub mod list_storage;
 pub mod heap;
 pub mod heap_object;
 // Plan 419 Phase 1: 引用计数协议核心(copy-on-load 所有权协议)
-pub mod rc;
 pub mod io;
+pub mod rc;
 // Plan 088 Phase 5: Reference types for parameter passing modes
 pub mod list;
 pub mod loader;
@@ -63,9 +63,9 @@ pub mod pattern_matcher;
 pub mod native_catalog;
 // Plan 019 批次八: autodown_* 文档 natives（JSON 传输；feature autodown 门控）。
 pub mod autodown_natives;
+pub mod host_bridge;
 pub mod native;
 pub mod shell_bridge;
-pub mod host_bridge;
 // Plan 061:外部后端 cdylib 插件 ABI(merged 模式,BackendRegistry + 装载器)
 pub mod backend_abi;
 pub mod native_registry;
@@ -80,11 +80,11 @@ pub mod task_system;
 // Plan 127: Task Handler Table for message routing
 pub mod task_handler;
 // Plan 127: Scheduler Message Dispatch Loop
+pub mod interop;
 pub mod scheduler;
 pub mod types;
-pub mod virt_memory;
-pub mod interop; // Plan 555 T05/T06: ForeignObject 协议 + 分发组合子
-// Plan 091: Extracted from universe.rs
+pub mod virt_memory; // Plan 555 T05/T06: ForeignObject 协议 + 分发组合子
+                     // Plan 091: Extracted from universe.rs
 pub mod object_data;
 
 // Plan 413 follow-up: in-app console ring buffer (print/console_log sink)
@@ -99,9 +99,9 @@ pub mod ffi;
 #[cfg(test)]
 mod tests_closures;
 
+mod tests_chart_geometry;
 #[cfg(test)]
 mod tests_collections;
-mod tests_chart_geometry;
 
 // Plan 485 T3: clipboard natives 四件套 VM 层栈协议（实剪贴板往返；
 // 门控 native-clipboard——测试用 image crate 造合成 PNG）。

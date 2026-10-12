@@ -1,7 +1,6 @@
 /// Test VecDeque and BTreeMap collections (Plan 085)
 /// These tests verify that the VM-native VecDeque and BTreeMap implementations
 /// work correctly with AutoLang code
-
 use crate::run;
 
 // ============================================================================
@@ -195,7 +194,11 @@ fn test_vecdeque_is_empty() {
         [empty1, empty2]
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("true") && result.contains("false"), "got: {}", result);
+    assert!(
+        result.contains("true") && result.contains("false"),
+        "got: {}",
+        result
+    );
 }
 
 #[test]
@@ -345,7 +348,11 @@ fn test_btreemap_is_empty() {
         [empty1, empty2]
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("true") && result.contains("false"), "got: {}", result);
+    assert!(
+        result.contains("true") && result.contains("false"),
+        "got: {}",
+        result
+    );
 }
 
 #[test]

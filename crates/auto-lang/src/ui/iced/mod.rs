@@ -26,6 +26,8 @@ pub mod right_press_area;
 // iced-layout-tests 门控)。
 #[cfg(all(test, feature = "iced-layout-tests"))]
 mod pointer_placement_tests;
+// PLAN-731 T-00: S5 分段根包装探针(layout/draw 括号计量,纯委托)。
+pub mod frame_probe;
 // Plan 547: native display surface backed by the shared media registry.
 pub mod image_surface;
 // Plan 563: pen 事件层 widget(canvas onpenstart/onpenmove/onpenend 承载,
@@ -45,11 +47,22 @@ pub mod icon_file;
 /// PLAN-617 后续：lucide 全量字形表（由 scripts/gen-lucide-table.mjs 生成，勿手改）。
 /// PLAN-706: pub(crate) — vue 生成器用 `is_known` 校验字面量图标名，防非法 import。
 pub(crate) mod lucide_generated;
+
+/// PLAN-748 T-02：lucide 名集成员资格（kebab 名二分查全量表）。图标组件/
+/// 网页生态组件的判别真值源——`Plus`/`Info` 等 PascalCase lucide 名命中
+/// （走 glyph 路径），`AppViewport` 等 ∉ 表（走 web 占位卡，PLAN-625
+/// T-09(b) 意图保持）。勿在生成文件内改可见性，经本包装暴露。
+pub(crate) fn lucide_icon_known(kebab: &str) -> bool {
+    lucide_generated::lookup(kebab).is_some()
+}
 // Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
-pub mod virtual_window;
 pub mod broker_surface;
+pub mod virtual_window;
 // PLAN-012 W3: 整桌面等比预览（workspace_preview 布局件宿主数据面）。
 pub mod workspace_preview;
+
+// PLAN-760: remote-frame 宿主客户端注册表 + canvas 画师（元件 iced 臂）。
+pub mod remote_frame_registry;
 // Plan 481: SelectableText 的选区纯逻辑（归一/词界/扩展/清空，全平台单测）。
 pub mod selection;
 // Plan 481: 可选文本 widget（text 的选择/复制变体，advanced Widget）。
@@ -76,8 +89,14 @@ mod p022_stack_click_tests;
 mod terminal_input_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
-pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_with_title, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_iced_pixels, run_native_iced_pixels, run_dynamic_desktop, run_dynamic_desktop_with_options, run_dynamic_desktop_fullscreen, DesktopOptions, last_input_text, store_input_text};
 pub(crate) use renderer::encode_payload;
+pub use renderer::{
+    last_input_text, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools,
+    run_app_with_title, run_dynamic_desktop, run_dynamic_desktop_fullscreen,
+    run_dynamic_desktop_with_options, run_dynamic_iced, run_dynamic_iced_multi,
+    run_dynamic_iced_pixels, run_native_iced_pixels, store_input_text, ComponentIced,
+    DesktopOptions, IcedMessage, IntoIcedElement,
+};
 // PLAN-077 (auto-musk): `max-w-[N%]` 百分比上限委托 widget——layout 期按
 // 父级 offered 宽度收窄 limits.max_width（iced Container::max_width 只收像素）。
 pub mod max_width;

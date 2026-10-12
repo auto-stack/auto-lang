@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test'
 
-const topics = ['autoedit', 'autoshell', 'automusk', 'jadeedit']
+const topics = ['autoedit', 'autoshell', 'automusk', 'auto-jade']
 const widths = [360, 390, 768, 1024, 1440]
+const captureIds: Record<string, string[]> = { overview: ['SHOT-01', 'SHOT-04', 'SHOT-07'], autoedit: ['SHOT-01', 'SHOT-02', 'SHOT-03'], automusk: ['SHOT-04', 'SHOT-05', 'SHOT-06'], 'auto-jade': ['SHOT-07', 'SHOT-08', 'SHOT-09'] }
 
 for (const prefix of ['', '/zh']) {
   const zh = !!prefix
@@ -16,16 +17,20 @@ for (const prefix of ['', '/zh']) {
       const response = await request.get(route)
       expect(response.ok()).toBe(true)
       const html = await response.text()
-      expect(html).toContain('2026-10-01')
+      expect(html).toContain(topic === 'auto-jade' || topic === 'autoedit' ? '2026-10-10' : '2026-10-01')
       expect(html).toContain(topic === 'overview' ? 'AutoEdit' : '<h2 id=')
       await page.goto(route)
       const content = page.locator(topic === 'overview' ? '.apps-overview' : '.vp-doc')
       await expect(content.locator('h1')).toHaveCount(1)
       await expect(content.locator('iframe')).toHaveCount(0)
-      const imageCount = topic === 'overview' ? 60 : ['autoedit', 'autoshell'].includes(topic) ? 2 : 0
+      const imageCount = topic === 'overview' ? 32 : topic === 'autoedit' ? 3 : topic === 'auto-jade' || topic === 'automusk' ? 2 : topic === 'autoshell' ? 1 : 0
       await expect(content.locator('img')).toHaveCount(imageCount)
+      await expect(content.locator('.evidence-dialog img')).toHaveCount(0)
+      const slots = content.locator('[data-capture-id]')
+      expect(await slots.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-capture-id')))).toEqual(captureIds[topic] || [])
+      await expect(slots.locator('img')).toHaveCount(topic === 'autoedit' || topic === 'overview' ? 3 : topic === 'auto-jade' || topic === 'automusk' ? 2 : 0)
       expect((await content.innerText()).length).toBeGreaterThan(600)
-      expect(await content.innerText()).not.toMatch(/TODO|Screenshot slot|截图待补|100% Auto/)
+      expect(await content.innerText()).not.toMatch(/TODO|Screenshot slot|100% Auto/)
       const links = await content.locator('a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')!).filter(href => href.startsWith('/')))
       for (const href of new Set(links)) {
         const dest = await request.get(href)
@@ -75,7 +80,7 @@ for (const prefix of ['', '/zh']) {
     await page.goto(`${prefix}/apps/autoshell/`)
     await page.locator('.vp-doc').getByRole('link', { name: zh ? '使用指南与实跑示例' : 'Usage guide and recorded examples', exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`${prefix}/apps/autoshell/guide/$`))
-    await expect(page.locator('img[src="/apps/autoshell/ash-01.png"]').first()).toBeVisible()
+    await expect(page.locator('img[data-original-src="/apps/autoshell/ash-01.png"]').first()).toBeVisible()
     const tabs = page.locator('.script-tabs [role="tab"]')
     await tabs.nth(2).click()
     await expect(page.locator('.script-panel .code-title').first()).toHaveText('user-report.ash')

@@ -84,8 +84,7 @@ fn route_param_survives_push_and_reaches_page_init() {
     let dir = tempfile::tempdir().expect("tempdir");
     let app_path = write_fixture(&dir);
     let code = std::fs::read_to_string(&app_path).expect("read app.at");
-    let mut dc = build_dynamic_component(&code, app_path.to_str())
-        .expect("routes app 必须能编译");
+    let mut dc = build_dynamic_component(&code, app_path.to_str()).expect("routes app 必须能编译");
 
     // boot：home 页挂载（outlet 首路由）。
     dc.fire_init();
@@ -109,9 +108,7 @@ fn route_param_survives_push_and_reaches_page_init() {
     let params = dc.read_state("__route_params").ok();
     match params {
         Some(auto_val::Value::VmRef(_)) => {}
-        other => panic!(
-            "push 后 __route_params 应为堆对象引用（VmRef），实际 {other:?}"
-        ),
+        other => panic!("push 后 __route_params 应为堆对象引用（VmRef），实际 {other:?}"),
     }
 
     // detail 页 Init 已被 outlet 挂载 demand 驱动：got 应为 "7"。
@@ -197,7 +194,10 @@ widget home {
     // 构建产物的 Debug 串里检查逐实例烘焙实参。
     let (view, _, _) = dc.view_with_debug_gated(true);
     let dump = format!("{view:?}");
-    eprintln!("T17L3-DBG view dump（截 800）: {}", &dump[..dump.len().min(800)]);
+    eprintln!(
+        "T17L3-DBG view dump（截 800）: {}",
+        &dump[..dump.len().min(800)]
+    );
     let has_go7 = dump.contains("Go") && dump.contains("Int(7)");
     let has_go8 = dump.contains("Go") && dump.contains("Int(8)");
     assert!(

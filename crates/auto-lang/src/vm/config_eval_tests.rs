@@ -50,9 +50,11 @@ kernel: kernel_config
     // `kernel` must resolve to the recorded object.
     let kernel = cfg.root.get_prop("kernel");
     let repr = kernel.repr().to_string();
-    assert!(repr.contains("lockstep"),
+    assert!(
+        repr.contains("lockstep"),
         "kernel should resolve to the var's object value (containing 'lockstep'), got {}",
-        repr);
+        repr
+    );
 }
 
 #[test]
@@ -75,8 +77,11 @@ ports: [8080, 9090]
     // This is a baseline: array literal as a field value.
     let cfg = eval_with_port(source, "win32");
     let ports = cfg.root.get_prop("ports");
-    assert!(matches!(ports, auto_val::Value::Array(_)),
-        "ports should be an array, got {:?}", ports);
+    assert!(
+        matches!(ports, auto_val::Value::Array(_)),
+        "ports should be an array, got {:?}",
+        ports
+    );
 }
 
 #[test]
@@ -150,7 +155,12 @@ lib("x") {
     let cfg = eval_with_port(source, "win32");
     let lib_x = cfg.root.nodes("lib").into_iter().next().expect("lib node");
     let dirs: Vec<_> = lib_x.nodes("dir");
-    assert_eq!(dirs.len(), 2, "lib x should have 2 dir kids, got {}", dirs.len());
+    assert_eq!(
+        dirs.len(),
+        2,
+        "lib x should have 2 dir kids, got {}",
+        dirs.len()
+    );
     let ids: Vec<String> = dirs.iter().map(|n| n.id().to_string()).collect();
     assert!(ids.contains(&"a".to_string()), "dir ids = {:?}", ids);
     assert!(ids.contains(&"b".to_string()), "dir ids = {:?}", ids);
@@ -173,8 +183,11 @@ fn diag_scu001_real_manifest() {
         .iter()
         .map(|n| n.id().to_string())
         .collect();
-    assert!(port_names.iter().any(|n| n == "lanshan"),
-        "port lanshan must be present, got {:?}", port_names);
+    assert!(
+        port_names.iter().any(|n| n == "lanshan"),
+        "port lanshan must be present, got {:?}",
+        port_names
+    );
 
     let osal = cfg
         .root
@@ -183,8 +196,11 @@ fn diag_scu001_real_manifest() {
         .find(|n| n.id().as_str() == "osal")
         .expect("dep osal node");
     let kernel = osal.get_prop("kernel");
-    assert!(kernel.repr().contains("heap_4"),
-        "osal.kernel must be the lanshan-branch value, got {}", kernel.repr());
+    assert!(
+        kernel.repr().contains("heap_4"),
+        "osal.kernel must be the lanshan-branch value, got {}",
+        kernel.repr()
+    );
 }
 
 // Plan 375: regression guard for the parser fix that lets a Pair's value be a
@@ -239,6 +255,14 @@ fn test_config_pair_value_is_node_with_block() {
         .iter()
         .map(|n| n.id().to_string())
         .collect();
-    assert!(dir_names.iter().any(|n| n == "Adc"), "dir Adc, got {:?}", dir_names);
-    assert!(dir_names.iter().any(|n| n == "Can"), "dir Can, got {:?}", dir_names);
+    assert!(
+        dir_names.iter().any(|n| n == "Adc"),
+        "dir Adc, got {:?}",
+        dir_names
+    );
+    assert!(
+        dir_names.iter().any(|n| n == "Can"),
+        "dir Can, got {:?}",
+        dir_names
+    );
 }

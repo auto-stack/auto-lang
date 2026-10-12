@@ -30,9 +30,12 @@ fn official_chart_pkg_dir() -> PathBuf {
 
 /// 把官方 chart 包物化到 scratch 目录（plain copy,无链接）,并写入
 /// with_charts reference,返回 scratch 下的 reference 路径。
-fn materialize_with_charts_fixture() -> PathBuf {
+fn materialize_with_charts_fixture(track: &str) -> PathBuf {
     let pkg_dir = official_chart_pkg_dir();
-    let scratch = std::env::temp_dir().join(format!("plan643_with_charts_{}", std::process::id()));
+    // 裸 cargo test 单进程内 t01/t02 并行——pid 后缀不足以区分调用方,须按
+    // 轨道唯一化 scratch,否则互相 remove_dir_all/覆盖(os error 32 实录)。
+    let scratch =
+        std::env::temp_dir().join(format!("plan643_with_charts_{}_{}", std::process::id(), track));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(scratch.join("components")).expect("scratch components dir");
     for entry in std::fs::read_dir(&pkg_dir).expect("official package dir") {
@@ -42,7 +45,7 @@ fn materialize_with_charts_fixture() -> PathBuf {
         std::fs::copy(entry.path(), &target)
             .unwrap_or_else(|e| panic!("copy {}: {e}", name.to_string_lossy()));
     }
-    let reference = repo_root().join("blueprints/dashboard/overview/reference/with_charts.at");
+    let reference = repo_root().join("packages/blueprints/dashboard/overview/reference/with_charts.at");
     let dest = scratch.join("with_charts.at");
     std::fs::copy(&reference, &dest).expect("copy reference into scratch");
     dest
@@ -52,7 +55,7 @@ fn materialize_with_charts_fixture() -> PathBuf {
 /// 组件装载成功（动态分支 package 臂）,图例文本面进入 View 树。
 #[test]
 fn t01_with_charts_vm_track_renders_charts() {
-    let fixture = materialize_with_charts_fixture();
+    let fixture = materialize_with_charts_fixture("vm");
     let src = std::fs::read_to_string(&fixture).expect("fixture readable");
     let mut dc = crate::build_dynamic_component(&src, Some(&fixture.to_string_lossy()))
         .expect("with_charts reference must compile through the VM pipeline");
@@ -72,17 +75,13 @@ fn t01_with_charts_vm_track_renders_charts() {
             "with_charts VM view must contain {expected:?}; snapshot: {texts:?}"
         );
     }
-    let _ = std::fs::remove_dir_all(
-        fixture
-            .parent()
-            .expect("fixture has scratch parent"),
-    );
+    let _ = std::fs::remove_dir_all(fixture.parent().expect("fixture has scratch parent"));
 }
 
 /// T-06 vue 轨:with_charts 变体生成 SFC——chart 组件引用与 bp 文本面进码。
 #[test]
 fn t02_with_charts_vue_track_generates_sfc() {
-    let fixture = materialize_with_charts_fixture();
+    let fixture = materialize_with_charts_fixture("vue");
     let result = crate::ui_gen::generate_component_from_file(
         &fixture,
         crate::ui_gen::ComponentGenOptions::default(),
@@ -106,17 +105,16 @@ fn t02_with_charts_vue_track_generates_sfc() {
             .filter(|w| w.rule == "S004")
             .collect::<Vec<_>>()
     );
-    let _ = std::fs::remove_dir_all(
-        fixture
-            .parent()
-            .expect("fixture has scratch parent"),
-    );
+    let _ = std::fs::remove_dir_all(fixture.parent().expect("fixture has scratch parent"));
 }
 
 /// T-05 正断言（bp 级）:dashboard/overview palette（含 chart 四 tag）对
 /// WidgetRegistry 零漂移——package_origin 词汇面被 palette_drift 接受。
 #[test]
 fn t03_dashboard_overview_palette_with_charts_has_no_drift() {
+    // with_defaults() 读 AUTO_BLUEPRINTS_ROOT,须与 root_resolution 的 setter
+    // 窗口互斥(bare cargo test 单进程面)。
+    let _bp_ser = crate::ui_gen::bp::registry::lock_blueprints_root_for_test();
     let reg = crate::ui_gen::bp::BlueprintRegistry::with_defaults();
     let pkg = reg.get("dashboard", "overview").expect("overview package");
     assert_eq!(
@@ -149,7 +147,9 @@ fn collect_view_texts(
                 collect_view_texts(c, out);
             }
         }
-        View::Input { placeholder, value, .. } => {
+        View::Input {
+            placeholder, value, ..
+        } => {
             out.push(placeholder.clone());
             out.push(value.clone());
         }

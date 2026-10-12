@@ -1,0 +1,28 @@
+{
+  "base": "d2c2c0a3352a0596958eed51a02c7a405bad7584",
+  "unchanged_baseline_components": [
+    {
+      "path": "website/.vitepress/theme/components/PlaygroundIDEPage.vue",
+      "git_blob_sha256": "e485a300379eaf897d4f2d10c2f86ccd324bf30bdb093f92fdea638bed054262",
+      "comparison": "LF/CRLF normalized bytes identical"
+    },
+    {
+      "path": "packages/auto-playground-vue/src/components/PlaygroundIDEApp.vue",
+      "git_blob_sha256": "ba94e247ccca61e96e9364cb04b0a30e619230ecc160f783670bfd087e26fc9d",
+      "comparison": "LF/CRLF normalized bytes identical"
+    }
+  ],
+  "failed_requests": [
+    {
+      "url": "http://localhost:4217/api/examples",
+      "status": 404
+    },
+    {
+      "url": "http://127.0.0.1:3030/api/examples",
+      "status": -1,
+      "console": "ERR_CONNECTION_REFUSED"
+    }
+  ],
+  "probe": "website-two-probe.log.gz: search isolated pass; playground console error reproduces",
+  "cause": "PLAN-754 API discovery runs on static preview without a backend; no P758 changes to either component. No new error exemption or product workaround."
+}

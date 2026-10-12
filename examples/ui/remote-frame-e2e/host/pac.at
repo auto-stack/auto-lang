@@ -1,0 +1,7 @@
+name: "rf-e2e-host"
+version: "0.1.0"
+scene: "ui"
+render: "vue"
+title: "RF Host"
+theme: "dark"
+window: "480x680"

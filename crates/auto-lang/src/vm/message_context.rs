@@ -22,8 +22,8 @@
 //! - `reply()`: Send a response back to the caller (only available in ask mode)
 
 use auto_val::Value;
-use std::sync::mpsc::Sender;
 use std::fmt;
+use std::sync::mpsc::Sender;
 
 /// Message context - runtime representation for task message handlers
 ///
@@ -60,11 +60,7 @@ impl MessageContext {
     ///
     /// In ask mode, `reply()` can be called exactly once to send a
     /// response back to the caller.
-    pub fn for_ask(
-        sender_id: Option<u64>,
-        trace_id: String,
-        reply_tx: Sender<Value>,
-    ) -> Self {
+    pub fn for_ask(sender_id: Option<u64>, trace_id: String, reply_tx: Sender<Value>) -> Self {
         Self {
             sender_id,
             trace_id,
@@ -110,7 +106,8 @@ impl MessageContext {
     /// ```
     pub fn reply(&self, payload: Value) -> Result<(), String> {
         if let Some(tx) = &self.reply_tx {
-            tx.send(payload).map_err(|_| "Reply channel closed".to_string())
+            tx.send(payload)
+                .map_err(|_| "Reply channel closed".to_string())
         } else {
             Err("No reply channel available (not in ask mode)".to_string())
         }
@@ -151,11 +148,15 @@ impl MessageContext {
     /// }
     /// ```
     pub fn to_value(&self) -> Value {
-        use auto_val::Obj;
         use auto_val::AutoStr;
+        use auto_val::Obj;
 
         let mut obj = Obj::new();
-        obj.set(AutoStr::from("sender_id"), self.sender_id.map_or(Value::Nil, |id| Value::I64(id as i64)));
+        obj.set(
+            AutoStr::from("sender_id"),
+            self.sender_id
+                .map_or(Value::Nil, |id| Value::I64(id as i64)),
+        );
         obj.set(AutoStr::from("trace_id"), Value::str(&self.trace_id));
         obj.set(AutoStr::from("is_ask"), Value::Bool(self.is_ask));
         obj.set(AutoStr::from("can_reply"), Value::Bool(self.can_reply()));
@@ -381,11 +382,7 @@ mod tests {
     fn test_with_reply_channel() {
         let (tx, _rx) = mpsc::channel();
 
-        let ctx = MessageContext::with_reply_channel(
-            Some(1),
-            "custom-trace",
-            Some(tx),
-        );
+        let ctx = MessageContext::with_reply_channel(Some(1), "custom-trace", Some(tx));
 
         assert_eq!(ctx.sender_id, Some(1));
         assert_eq!(ctx.trace_id, "custom-trace");
@@ -395,11 +392,7 @@ mod tests {
 
     #[test]
     fn test_with_reply_channel_none() {
-        let ctx = MessageContext::with_reply_channel(
-            None,
-            "no-reply-trace",
-            None,
-        );
+        let ctx = MessageContext::with_reply_channel(None, "no-reply-trace", None);
 
         assert_eq!(ctx.sender_id, None);
         assert_eq!(ctx.trace_id, "no-reply-trace");

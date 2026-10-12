@@ -5,11 +5,11 @@
 //! 2. FFI error handling
 //! 3. Built-in stdlib function IDs
 
-use crate::vm::ffi::VMConvertible;
-use crate::vm::ffi::FFIError;
-use crate::vm::ffi::stdlib;
-use crate::vm::ffi::{STATIC_ID_MAX, DYNAMIC_ID_START};
 use crate::vm::engine::AutoVM;
+use crate::vm::ffi::stdlib;
+use crate::vm::ffi::FFIError;
+use crate::vm::ffi::VMConvertible;
+use crate::vm::ffi::{DYNAMIC_ID_START, STATIC_ID_MAX};
 use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
 use std::sync::Arc;

@@ -29,6 +29,9 @@ const NotesExplorer = defineAsyncComponent(() =>
   import('auto-playground-vue').then((m) => m.NotesExplorer),
 )
 
+// PLAN-754：website /playground 与独立版同形宿主（PlaygroundIDEApp 探测接线）。
+import PlaygroundIDEPage from './components/PlaygroundIDEPage.vue'
+
 // SPA routes served from public/ui/*/index.html.
 // VitePress client-side router doesn't know about these, so we must
 // force a full page load when navigating to them.
@@ -134,6 +137,7 @@ export default {
     app.component('ShowcaseSection', ShowcaseSection)
     app.component('AutoPlayground', AutoPlayground)
     app.component('NotesExplorer', NotesExplorer)
+    app.component('PlaygroundIDEPage', PlaygroundIDEPage)
     app.component('AutoFence', AutoFence)
     app.component('CodeView', CodeView)
     app.component('ScriptShipView', ScriptShipView)

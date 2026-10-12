@@ -48,7 +48,10 @@ impl LoopbackEnd {
 pub fn loopback_pair() -> (LoopbackEnd, LoopbackEnd) {
     let a2h: SharedPipe = Rc::new(RefCell::new(VecDeque::new()));
     let h2a: SharedPipe = Rc::new(RefCell::new(VecDeque::new()));
-    let app = LoopbackEnd { out: Rc::clone(&a2h), inn: Rc::clone(&h2a) };
+    let app = LoopbackEnd {
+        out: Rc::clone(&a2h),
+        inn: Rc::clone(&h2a),
+    };
     let host = LoopbackEnd { out: h2a, inn: a2h };
     (app, host)
 }

@@ -16,7 +16,9 @@
 use super::broker;
 use super::endpoint::{AppEndpoint, AppState, FrameSource};
 use super::host::ProtocolHost;
-use super::message::{ControlMsg, DrawList, FrameMsg, InputMsg, MouseButton, ProtocolMsg, Rgba8, WRect};
+use super::message::{
+    ControlMsg, DrawList, FrameMsg, InputMsg, MouseButton, ProtocolMsg, Rgba8, WRect,
+};
 use super::shm::SharedFrameBuffer;
 use super::transport::{self, Transport};
 use crate::ui::dynamic::DynamicComponent;
@@ -39,7 +41,11 @@ struct SpawnCounterSource {
 
 impl SpawnCounterSource {
     fn new(component: DynamicComponent) -> Self {
-        Self { component, button: WRect::new(10.0, 10.0, 120.0, 36.0), rev: 1 }
+        Self {
+            component,
+            button: WRect::new(10.0, 10.0, 120.0, 36.0),
+            rev: 1,
+        }
     }
 
     fn count(&self) -> i64 {
@@ -61,7 +67,10 @@ impl FrameSource for SpawnCounterSource {
         DrawList {
             clear: Some(Rgba8::new(24, 24, 28, 255)),
             ops: vec![
-                super::message::DrawOp::Quad { rect: b, color: Rgba8::new(48, 96, 200, 255) },
+                super::message::DrawOp::Quad {
+                    rect: b,
+                    color: Rgba8::new(48, 96, 200, 255),
+                },
                 super::message::DrawOp::Text {
                     x: b.x + 50.0,
                     y: b.y + 10.0,
@@ -83,7 +92,13 @@ impl FrameSource for SpawnCounterSource {
     }
 
     fn on_input(&mut self, input: &InputMsg) {
-        if let InputMsg::PointerPressed { x, y, button: MouseButton::Left, .. } = input {
+        if let InputMsg::PointerPressed {
+            x,
+            y,
+            button: MouseButton::Left,
+            ..
+        } = input
+        {
             let b = self.button;
             if *x >= b.x && *x < b.x + b.w && *y >= b.y && *y < b.y + b.h {
                 self.component.on_with_input("__evt_onclick_1", None);
@@ -163,7 +178,9 @@ fn dual_mode_spawn_client_two_process() {
 
     // ---- 共享内存帧：3 次协议点击 → 帧内容递增（载荷走 shm 不走管道）----
     for expect in 1..=3i64 {
-        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected).unwrap();
         let mut composed = None;
         for _ in 0..200 {
@@ -200,7 +217,10 @@ fn dual_mode_spawn_client_two_process() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert!(ph.session.apps.is_empty(), "L2Detached 后 App 回收");
-    assert!(ph.session.host.as_ref().unwrap().wm.wins.is_empty(), "虚拟窗回收");
+    assert!(
+        ph.session.host.as_ref().unwrap().wm.wins.is_empty(),
+        "虚拟窗回收"
+    );
     assert!(ph.surfaces.is_empty(), "表面释放");
 
     // ---- 等 child 退出 + 断言状态标记（app 进程持有状态的证据）----
@@ -244,9 +264,8 @@ fn dual_mode_child_body() {
 
     // 直连 per-app 管道 → AppEndpoint（真实组件）。
     let mut app_end = transport::connect(&pipe, 2000).expect("connect");
-    let source = SpawnCounterSource::new(
-        crate::build_dynamic_component(COUNTER_SRC, None).expect("build"),
-    );
+    let source =
+        SpawnCounterSource::new(crate::build_dynamic_component(COUNTER_SRC, None).expect("build"));
     let mut app = AppEndpoint::new(source, "counter", "计数器", 480.0, 320.0);
 
     // 握手 → Active；BufferAlloc.shm → 打开共享内存段。
@@ -257,7 +276,10 @@ fn dual_mode_child_body() {
         if let Some(loaded) = app_end.recv_wait(50) {
             let msg = loaded.expect("解码");
             let mut shm_name: Option<String> = None;
-            if let ProtocolMsg::Frame(FrameMsg::BufferAlloc { shm: Some(name), .. }) = &msg {
+            if let ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+                shm: Some(name), ..
+            }) = &msg
+            {
                 shm_name = Some(name.clone());
             }
             for reply in app.on_message(msg).expect("app 状态机") {

@@ -27,10 +27,7 @@ pub(crate) fn locate_app_at() -> Option<PathBuf> {
 /// checkout) or the file is absent — callers degrade to SKIPPED as before.
 pub(crate) fn locate_gallery_file(gallery: &str, rel: &str) -> Option<PathBuf> {
     let base = std::env::var("CARGO_MANIFEST_DIR").ok()?;
-    let g = crate::os_paths::resolve_os_top_dir(
-        &PathBuf::from(base).join("../../.."),
-        gallery,
-    )?;
+    let g = crate::os_paths::resolve_os_top_dir(&PathBuf::from(base).join("../../.."), gallery)?;
     let p = g.join(rel);
     p.exists().then_some(p)
 }
@@ -52,15 +49,15 @@ pub(crate) fn locate_example_app_at(example: &str) -> Option<PathBuf> {
         std::env::var("CARGO_MANIFEST_DIR")
             .ok()
             .map(|d| PathBuf::from(d).join(format!("../../examples/{}/src/front/app.at", example))),
-        Some(PathBuf::from(format!("examples/{}/src/front/app.at", example))),
+        Some(PathBuf::from(format!(
+            "examples/{}/src/front/app.at",
+            example
+        ))),
         // PLAN-590:顶层画廊迁 auto-os 顶层后的新家(解析序定位)。
         std::env::var("CARGO_MANIFEST_DIR")
             .ok()
             .and_then(|d| {
-                crate::os_paths::resolve_os_top_dir(
-                    &PathBuf::from(d).join("../../.."),
-                    example,
-                )
+                crate::os_paths::resolve_os_top_dir(&PathBuf::from(d).join("../../.."), example)
             })
             .map(|g| g.join("src/front/app.at")),
     ];
@@ -117,12 +114,10 @@ pub(crate) fn build_component_from_app_mode(
     // parse 期 name-check（PLAN-607/635）只认注册表配方，缺本步则
     // 029-photo-gallery 语料测试报 "undefined variable: caption_text"
     // （master 预存红实证）。
-    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(
-        &base_dir,
-        &code,
-    )
-    .map_err(|e| e.to_string())
-    .unwrap();
+    let recipe_imports =
+        crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+            .map_err(|e| e.to_string())
+            .unwrap();
 
     // 1. Parse + extract root widget
     let session = CompilerSession::ui();
@@ -218,7 +213,7 @@ pub(crate) fn build_component_from_app_mode(
                                 computed: store_decl.computed.clone(),
                                 setup: None, // Plan 426 field; test support defaults
                                 actions: None,
-            timer: None,
+                                timer: None,
                                 view: None,
                                 named_views: Vec::new(),
                                 on: store_decl.on.clone(),
@@ -244,7 +239,11 @@ pub(crate) fn build_component_from_app_mode(
             &mut import_session,
             None,
         );
-        let module_qualifier = use_stmt.module.split('.').last().unwrap_or(&use_stmt.module);
+        let module_qualifier = use_stmt
+            .module
+            .split('.')
+            .last()
+            .unwrap_or(&use_stmt.module);
         for item in &use_stmt.items {
             let qualified = format!("{}.{}", module_qualifier, item);
             import_aliases.insert(item.clone(), qualified);
@@ -267,10 +266,7 @@ pub(crate) fn build_component_from_app_mode(
             if !seen_dirs.insert(dir.clone()) {
                 continue;
             }
-            let candidates = [
-                base_dir.join(&dir),
-                base_dir.join("pages").join(&dir),
-            ];
+            let candidates = [base_dir.join(&dir), base_dir.join("pages").join(&dir)];
             let first = pkg_reg.load_package(&candidates[0], &base_dir);
             let (loaded, loaded_dir) = match first {
                 Ok(p) => (Ok(p), Some(candidates[0].clone())),
@@ -329,9 +325,9 @@ pub(crate) fn build_component_from_app_mode(
                 messages: store_decl.messages.clone(),
                 model: store_decl.model.clone(),
                 computed: store_decl.computed.clone(),
-                                setup: None, // Plan 426 field; test support defaults
-                                actions: None,
-            timer: None,
+                setup: None, // Plan 426 field; test support defaults
+                actions: None,
+                timer: None,
                 view: None,
                 named_views: Vec::new(),
                 on: store_decl.on.clone(),
@@ -362,7 +358,7 @@ pub(crate) fn build_component_from_app_mode(
                     computed: store_decl.computed.clone(),
                     setup: None,
                     actions: None,
-            timer: None,
+                    timer: None,
                     view: None,
                     named_views: Vec::new(),
                     on: store_decl.on.clone(),

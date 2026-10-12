@@ -1,0 +1,128 @@
+{
+  "stage": "review",
+  "plan_id": "PLAN-738",
+  "plan_revision": 3,
+  "outcome": "needs_fix",
+  "state_policy": "archived remains archived; follow-up repair",
+  "reviewed_commit": "9ff34ae0d0b52959de85949eed279e18ce832d7e",
+  "main_commit_at_recording": "95d5d3297c49042b292cd0ac891b198f62ea0aa1",
+  "r10_reviewed_commit": "41b4d4be52723ec2462e5ab511d3ea8e588dd38e",
+  "dependency_revisions": {
+    "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846"
+  },
+  "root_lock_sha256": "30fdffc6c8d8642b765340ff1238a4e84bcfbf119428e3ed7617579408c5ec06",
+  "root_lock_caveat": "Not tracked; this run is not claimed to reproduce R10 dependency lock.",
+  "spec_inputs": [
+    {
+      "path": "docs/specs/stdlib/project.md",
+      "sha256": "a6b3bdb9be29817813a1b5392d95e879ef1e5aabd894fb193dca8b461a2f838c",
+      "source_commit": "21ad6b77499f68c71ae45aab77420ef53d1ed3fe"
+    },
+    {
+      "path": "docs/specs/stdlib/design/backend-assembly.md",
+      "sha256": "3b0fdf8d3db511375b2292e26632f4e9545651b6ae61e6376168aa2993441096",
+      "source_commit": "21ad6b77499f68c71ae45aab77420ef53d1ed3fe"
+    },
+    {
+      "path": "docs/specs/auto-lang/frontend/design/module-resolution.md",
+      "sha256": "f512f84d740fd1a0231298d62962fc0794fb66968fadab958ca207355e25e273",
+      "source_commit": "21ad6b77499f68c71ae45aab77420ef53d1ed3fe"
+    },
+    {
+      "path": "docs/specs/auto-lang/trans/overview.md",
+      "sha256": "17ec8a50208c0eb69c57caca5718b0e38b68e94f82e3706b5be53aaa98cb27be",
+      "source_commit": "21ad6b77499f68c71ae45aab77420ef53d1ed3fe"
+    },
+    {
+      "path": "docs/specs/auto-lang/runtime/design/networking-stdlib.md",
+      "sha256": "ca7af367b0745b860d02085162c282fc53ec80d1a930ea632279e072d23ff609",
+      "source_commit": "21ad6b77499f68c71ae45aab77420ef53d1ed3fe"
+    },
+    {
+      "path": "docs/specs/auto-man/design/api-generation-integrity.md",
+      "sha256": "a92adaeeb5fb0bd9314bc6927e36847aa73b9d31055db74e8512d5b6953c0631",
+      "source_commit": "21ad6b77499f68c71ae45aab77420ef53d1ed3fe"
+    },
+    {
+      "path": "docs/specs/auto-cli/project.md",
+      "sha256": "b7393417eab4aba0349b8cabd757626100f51f3e250c21af3d4ef0fe5d957b7b",
+      "source_commit": "21ad6b77499f68c71ae45aab77420ef53d1ed3fe"
+    },
+    {
+      "path": "docs/specs/stdlib/design/assembly-manifest.md",
+      "sha256": "71a696ff4aedf1d1f4b8b23fceb69a28620e00762f9761b36b9efe67fca583f8",
+      "source_commit": "21ad6b77499f68c71ae45aab77420ef53d1ed3fe"
+    },
+    {
+      "path": "docs/plans/reports/738-sd-drafts.md",
+      "sha256": "77daac33a388f119201425a82238eb14cd5b2cbc696bbf6be8fe736ddc451953",
+      "source_commit": "920fa3d30ca1276ead5d00f0ddf607c048e45780"
+    }
+  ],
+  "probe": {
+    "command": "cargo test -p auto-man --lib review738_r5_lock_drift_after_first_materialization -- --test-threads=1 --nocapture",
+    "cargo_target_dir": "D:/autostack/auto-lang/target",
+    "execution_cwd": "D:\\autostack\\.wt\\review-738-r11\\auto-lang",
+    "selected": 1,
+    "passed": 0,
+    "failed": 1,
+    "seconds": 1.4,
+    "cargo_exit": 101,
+    "wrapper_exit": 0,
+    "restored_exact_bytes": true,
+    "read_error_matrix": "generator + unbound + bound + recovery PASS before empty-lock assertion",
+    "empty_lock": {
+      "first_fresh": true,
+      "first_receipt": "absent",
+      "regenerated_receipt": "811c9dc5",
+      "regenerated_fresh": false
+    }
+  },
+  "state_machine": {
+    "command": "cargo test -p auto-man --lib review738_r5_lock -- --test-threads=1",
+    "passed": 1,
+    "failed": 0,
+    "seconds": 1.05,
+    "exit": 0
+  },
+  "format": {
+    "command": "rustfmt --edition 2021 --check --config skip_children=true (five touched Rust files)",
+    "version": "1.9.0-stable (88d9e12ae1 2026-08-18)",
+    "exit": 0
+  },
+  "worktree_clean_end": true,
+  "reused_evidence": "R10 historical service 1/1 42.29s; not rerun this turn. Code trees identical, root dependency lock not assumed identical.",
+  "http_pending": {
+    "last_actual_run": "R9",
+    "selected": 102,
+    "completed": 45,
+    "not_run": 57,
+    "batch_receipt_sha256": "7ef740dff2edd062f4a296bf8e7398b5010a2d0476b651a639e9f00e2c4166ac",
+    "new_covering_receipt": false
+  },
+  "evidence": [
+    {
+      "path": "738-review-r11-probe.py",
+      "sha256": "5f724c6ce51c76c7576ef9a930b978a8a2a374467f39518cf99b000b3460aa4e"
+    },
+    {
+      "path": "738-review-r11-evidence.txt",
+      "sha256": "525e96db386a8e887b2fac74b887306ba16051bfc0209ffa5a4a11ec02bc3329",
+      "scope": "Complete test execution segment; preceding compiler warnings omitted"
+    },
+    {
+      "path": "738-review-r11-state-evidence.txt",
+      "sha256": "b0dd21d94665099ede1887ee1c290dd20bb642429352e70eb6ded82ac474757d",
+      "scope": "Complete test execution segment; preceding compiler warnings omitted"
+    }
+  ],
+  "cleanup": {
+    "worktree_guard": "Both verification worktrees clean; Git Bash executed D:/autostack/wt-guard.sh",
+    "removed": [
+      "D:/autostack/.wt/review-738-r11/auto-lang",
+      "D:/autostack/.wt/review-738-r11/auto-down"
+    ],
+    "group_removed_empty": true,
+    "no_code_commit": true
+  }
+}

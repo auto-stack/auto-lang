@@ -45,7 +45,7 @@ badge="双形态"
 </ul>
 <template #visual>
 <div class="shot-stack">
-<img src="/v05/autodown-desktop.png" alt="Jade Garden 桌面形态(iced)" class="shot-main" loading="lazy" />
+<img src="/v05/autodown-desktop.webp" alt="Jade Garden 桌面形态(iced)" class="shot-main" loading="lazy" />
 <div class="shot-pair">
 <img src="/v05/autodown-web.png" alt="Jade Garden Web 形态(Vue)" loading="lazy" />
 </div>

@@ -7,10 +7,7 @@
 //!
 //! 分派矩阵冻结见 `docs/plans/reports/724-client-decision.md`。
 
-use crate::{
-    error::AutoResult,
-    trans::rust::transpile_rust_with_source_dir,
-};
+use crate::{error::AutoResult, trans::rust::transpile_rust_with_source_dir};
 use std::fs::read_to_string;
 use std::path::PathBuf;
 
@@ -57,7 +54,14 @@ fn plan724_golden_http_client_async() {
 }
 
 /// T-06 发射断言（golden 之外的关键形状钉，防 expected 漂移掩盖回归）：
-/// async 上下文两参 post 必须走 post_async，三参认证必须走 _async 内核面。
+/// async 上下文两参 post 必须走 post_async。三参认证面（arity-dispatch
+/// 解构壳）在 PLAN-738 T-10 strict 门下按运行形态分家：producer（3 参
+/// async post）只存在于内嵌镜像（crates/auto-lang/src/a2r_std.rs），故
+/// Standalone 转译不再发射该壳——a2r-std crate 本就无此符号，旧文本
+/// 断言冻结的是一个从未可编译的形状。合法认证用法在 Standalone 下走
+/// post_sync/post_sync_async 侧信道面（golden + e2e 在案）；Embedded
+/// 元数分派的完整证明见 plan738_host::
+/// arity_dispatch_post_proves_only_under_embedded。
 #[test]
 fn plan724_probe_post_arity_dispatch_shapes() {
     let async_src = r#"
@@ -66,7 +70,6 @@ fn fetch(url str) ~str {
     return str.from_bytes(res.body_bytes())
 }
 fn main() {
-    let a = http.post("http://x", "y", "key")
     let b = http.post("http://x", "y")
     let c = fetch("http://x").await
 }
@@ -78,10 +81,25 @@ fn main() {
         code.contains("a2r_std::http::post_async("),
         "2-arg post in async ctx must lower to post_async:\n{code}"
     );
-    // 三参 post → 历史 HttpResponse 认证面（不冲突）
+    // 三参认证面（Standalone）→ strict 门诚实拒绝（a2r-std 无 3 参 post）。
+    let auth_src = r#"
+fn main() {
+    let a = http.post("http://x", "y", "key")
+}
+"#;
+    let rejected = match crate::trans::rust::transpile_rust("probe_auth", auth_src) {
+        Err(e) => e,
+        Ok(_) => panic!("3-arg post under standalone must be rejected, got a product"),
+    };
     assert!(
-        code.contains("a2r_std::http::post("),
-        "3-arg post must keep the auth HttpResponse face:\n{code}"
+        rejected
+            .to_string()
+            .contains("STDASSEMBLY.SIGNATURE_UNVERIFIED"),
+        "3-arg post under standalone must be rejected honestly: {rejected}"
+    );
+    assert!(
+        rejected.to_string().contains("arity-dispatch"),
+        "{rejected}"
     );
 }
 
@@ -98,7 +116,10 @@ fn main() {
     let mut rcode = crate::trans::rust::transpile_rust("probe_sync", sync_src).unwrap();
     let code = String::from_utf8_lossy(rcode.done().unwrap()).into_owned();
     assert!(code.contains(".send()"), "sync builder send:\n{code}");
-    assert!(!code.contains("send_async"), "sync ctx must not emit send_async:\n{code}");
+    assert!(
+        !code.contains("send_async"),
+        "sync ctx must not emit send_async:\n{code}"
+    );
 
     let async_src = r#"
 fn tick() ~str {
@@ -224,8 +245,7 @@ mod e2e {
     /// 复用（同源产物二次运行秒级）。
     fn build_and_run(name: &str, product: &str) -> String {
         let hash = format!("{:x}", md5_compat(product));
-        let proj = std::env::temp_dir()
-            .join(format!("plan724-e2e-{name}-{hash}"));
+        let proj = std::env::temp_dir().join(format!("plan724-e2e-{name}-{hash}"));
         std::fs::create_dir_all(proj.join("src")).unwrap();
         let manifest = format!(
             "[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n\
@@ -284,8 +304,14 @@ mod e2e {
         assert!(stdout.contains("get status: 200"), "stdout: {stdout}");
         assert!(stdout.contains("get header: alpha"), "stdout: {stdout}");
         assert!(stdout.contains("get body: plan724-ok"), "stdout: {stdout}");
-        assert!(stdout.contains("builder body: echo:builder-payload"), "stdout: {stdout}");
-        assert!(stdout.contains("post body: echo:post-payload"), "stdout: {stdout}");
+        assert!(
+            stdout.contains("builder body: echo:builder-payload"),
+            "stdout: {stdout}"
+        );
+        assert!(
+            stdout.contains("post body: echo:post-payload"),
+            "stdout: {stdout}"
+        );
         assert!(stdout.contains("chunk: plan724-ok"), "stdout: {stdout}");
     }
 
@@ -297,11 +323,20 @@ mod e2e {
         let product = transpile_case(ASYNC_CASE_DIR, "http_client_async").unwrap();
         let stdout = build_and_run("plan724_async", &product);
         assert!(stdout.contains("get status: 200"), "stdout: {stdout}");
-        assert!(stdout.contains("helper body: echo:async-post-payload"), "stdout: {stdout}");
-        assert!(stdout.contains("builder body: echo:async-builder-payload"), "stdout: {stdout}");
+        assert!(
+            stdout.contains("helper body: echo:async-post-payload"),
+            "stdout: {stdout}"
+        );
+        assert!(
+            stdout.contains("builder body: echo:async-builder-payload"),
+            "stdout: {stdout}"
+        );
         assert!(stdout.contains("chunk: plan724-ok"), "stdout: {stdout}");
         assert!(stdout.contains("auth status: 200"), "stdout: {stdout}");
-        assert!(stdout.contains("auth body: echo:auth-payload"), "stdout: {stdout}");
+        assert!(
+            stdout.contains("auth body: echo:auth-payload"),
+            "stdout: {stdout}"
+        );
     }
 
     /// 第二 facade 腿（AC-01/AC-05）：`auto_lang::a2r_std::http`（生成服务
@@ -317,7 +352,9 @@ mod e2e {
             use std::io::{Read, Write};
             // 恰好 4 个落线请求（死端口臂不连接）——循环结束线程退出，join 有界。
             for _ in 0..4 {
-                let Ok((mut s, _)) = listener.accept() else { break };
+                let Ok((mut s, _)) = listener.accept() else {
+                    break;
+                };
                 let mut buf = [0u8; 8192];
                 let Ok(n) = s.read(&mut buf) else { break };
                 if n == 0 {
@@ -328,8 +365,7 @@ mod e2e {
                 // 500 臂按 key 值为空判定。
                 let key_empty = req.lines().any(|l| {
                     let ll = l.to_ascii_lowercase();
-                    ll.starts_with("x-api-key:")
-                        && l["x-api-key:".len()..].trim().is_empty()
+                    ll.starts_with("x-api-key:") && l["x-api-key:".len()..].trim().is_empty()
                 });
                 let (status, body) = if key_empty {
                     ("500 Internal Server Error", "no-auth".to_string())
@@ -359,8 +395,7 @@ mod e2e {
 
         // 500 值语义：无认证头 → 500 是错误形状值（kind=error，不 throw，712）。
         let b2 = base.clone();
-        let (status, _body, error, kind) =
-            rt.block_on(async { http::post(&b2, "{}", "").await });
+        let (status, _body, error, kind) = rt.block_on(async { http::post(&b2, "{}", "").await });
         assert_eq!(status, 500);
         assert_eq!(kind, "error");
         assert_eq!(error, "HTTP 500");

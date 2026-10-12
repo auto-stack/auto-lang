@@ -35,7 +35,10 @@ mod plan059_child_emit_probe_tests {
         texts
     }
 
-    fn collect_texts(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+    fn collect_texts(
+        view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+        out: &mut Vec<String>,
+    ) {
         use crate::ui::view::View;
         match view {
             View::Text { content, .. } => out.push(content.clone()),
@@ -50,7 +53,9 @@ mod plan059_child_emit_probe_tests {
                     collect_texts(c, out);
                 }
             }
-            View::Container { child, .. } | View::Scrollable { child, .. } => collect_texts(child, out),
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                collect_texts(child, out)
+            }
             _ => {}
         }
     }

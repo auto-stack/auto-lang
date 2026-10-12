@@ -1,0 +1,30 @@
+{
+  "plan": "PLAN-766",
+  "revision": 2,
+  "deltas": [
+    {
+      "delta_id": "SD-01",
+      "operation": "modify",
+      "target": "docs/specs/website/design/application-introductions.md",
+      "sha256": "84cf49ed3db68f2f8b13a52c0d65d36fbcb71852dc32d246bc488233a24a1d38",
+      "after_rule": "SHOT-04/05 user originals, shared main placements, draft Plan 0/5 and unknown runtime identity; SHOT-06 remains pending",
+      "acceptance_ids": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "delta_id": "SD-02",
+      "operation": "modify",
+      "target": "docs/specs/website/project.md",
+      "sha256": "91d3b669bd979d86430c1f5ea0d531606faec4c3265018901989592e08647b04",
+      "after_rule": "AutoMusk shared main and Plan originals current-state summary",
+      "acceptance_ids": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    }
+  ]
+}

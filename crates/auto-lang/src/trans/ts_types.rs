@@ -1,5 +1,5 @@
-use crate::ast::*;
 use super::TypeScriptTrans;
+use crate::ast::*;
 
 impl TypeScriptTrans {
     /// Convert AutoLang type to TypeScript type
@@ -14,7 +14,9 @@ impl TypeScriptTrans {
             Type::Bool => "boolean".to_string(),
 
             // String types → string
-            Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => "string".to_string(),
+            Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => {
+                "string".to_string()
+            }
 
             // Array types → T[]
             // Element types that are unions (e.g. `int?` → `number | null`) or
@@ -50,9 +52,7 @@ impl TypeScriptTrans {
                 if inst.args.is_empty() {
                     inst.base_name.to_string()
                 } else {
-                    let args: Vec<String> = inst.args.iter()
-                        .map(|t| Self::type_to_ts(t))
-                        .collect();
+                    let args: Vec<String> = inst.args.iter().map(|t| Self::type_to_ts(t)).collect();
                     format!("{}<{}>", inst.base_name, args.join(", "))
                 }
             }
@@ -65,9 +65,7 @@ impl TypeScriptTrans {
 
             // Function type
             Type::Fn(params, ret) => {
-                let param_ts: Vec<String> = params.iter()
-                    .map(|t| Self::type_to_ts(t))
-                    .collect();
+                let param_ts: Vec<String> = params.iter().map(|t| Self::type_to_ts(t)).collect();
                 let ret_ts = Self::type_to_ts(ret);
                 format!("({}) => {}", param_ts.join(", "), ret_ts)
             }

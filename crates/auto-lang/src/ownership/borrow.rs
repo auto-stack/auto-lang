@@ -357,8 +357,7 @@ impl BorrowChecker {
     ///
     /// When a lifetime ends, all borrows with that lifetime are removed.
     pub fn end_borrows_with_lifetime(&mut self, lifetime: Lifetime) {
-        self.borrows
-            .retain(|b| b.lifetime != lifetime);
+        self.borrows.retain(|b| b.lifetime != lifetime);
     }
 
     /// Get all active borrows
@@ -472,32 +471,33 @@ impl Diagnostic for BorrowError {
                 existing_kind,
                 ..
             } => {
-                if matches!(new_kind, BorrowKind::Mut) && matches!(existing_kind, BorrowKind::View) {
+                if matches!(new_kind, BorrowKind::Mut) && matches!(existing_kind, BorrowKind::View)
+                {
                     Some(Box::new(
                         "Mutable borrows cannot coexist with immutable borrows. \
                          Consider ending the immutable borrow before creating a mutable one, \
-                         or use .take to transfer ownership instead."
+                         or use .take to transfer ownership instead.",
                     ))
                 } else if matches!(new_kind, BorrowKind::Take) {
                     Some(Box::new(
                         "You cannot take ownership of a value that is already borrowed. \
-                         Wait for the existing borrow to end first."
+                         Wait for the existing borrow to end first.",
                     ))
                 } else {
                     Some(Box::new(
                         "Borrows must follow Rust's borrowing rules: \
                          multiple immutable borrows (.view) are OK, \
-                         but only one mutable borrow (.mut) is allowed at a time."
+                         but only one mutable borrow (.mut) is allowed at a time.",
                     ))
                 }
             }
             BorrowError::UseAfterMove { .. } => Some(Box::new(
                 "This value has been moved and is no longer valid. \
-                 If you need to use it again, consider using .view or .mut instead of .take."
+                 If you need to use it again, consider using .view or .mut instead of .take.",
             )),
             BorrowError::MutabilityConflict { .. } => Some(Box::new(
                 "Cannot create mutable borrow while immutable borrows are active. \
-                 End all immutable borrows before creating a mutable one."
+                 End all immutable borrows before creating a mutable one.",
             )),
         }
     }
@@ -506,12 +506,9 @@ impl Diagnostic for BorrowError {
         match self {
             BorrowError::Conflict { span, .. }
             | BorrowError::UseAfterMove { span, .. }
-            | BorrowError::MutabilityConflict { span, .. } => {
-                Some(Box::new(std::iter::once(miette::LabeledSpan::new_with_span(
-                    Some(self.label_text()),
-                    *span,
-                ))))
-            }
+            | BorrowError::MutabilityConflict { span, .. } => Some(Box::new(std::iter::once(
+                miette::LabeledSpan::new_with_span(Some(self.label_text()), *span),
+            ))),
         }
     }
 }
@@ -614,7 +611,9 @@ mod tests {
         let expr = Expr::Int(42);
 
         // Create a borrow
-        checker.check_borrow(&expr, BorrowKind::View, Lifetime::new(1)).unwrap();
+        checker
+            .check_borrow(&expr, BorrowKind::View, Lifetime::new(1))
+            .unwrap();
         assert_eq!(checker.active_borrows().len(), 1);
 
         // End it
@@ -627,8 +626,12 @@ mod tests {
         let mut checker = BorrowChecker::new();
         let expr = Expr::Int(42);
 
-        checker.check_borrow(&expr, BorrowKind::View, Lifetime::new(1)).unwrap();
-        checker.check_borrow(&expr, BorrowKind::View, Lifetime::new(2)).unwrap();
+        checker
+            .check_borrow(&expr, BorrowKind::View, Lifetime::new(1))
+            .unwrap();
+        checker
+            .check_borrow(&expr, BorrowKind::View, Lifetime::new(2))
+            .unwrap();
         assert_eq!(checker.active_borrows().len(), 2);
 
         checker.clear();
@@ -667,7 +670,12 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
+            BorrowError::Conflict {
+                new_kind,
+                existing_kind,
+                target,
+                ..
+            } => {
                 assert_eq!(new_kind, BorrowKind::Mut);
                 assert_eq!(existing_kind, BorrowKind::View);
                 assert_eq!(target, Target::Variable("x".to_string()));
@@ -691,7 +699,12 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
+            BorrowError::Conflict {
+                new_kind,
+                existing_kind,
+                target,
+                ..
+            } => {
                 assert_eq!(new_kind, BorrowKind::Take);
                 assert_eq!(existing_kind, BorrowKind::View);
                 assert_eq!(target, Target::Variable("s".to_string()));
@@ -715,7 +728,12 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
+            BorrowError::Conflict {
+                new_kind,
+                existing_kind,
+                target,
+                ..
+            } => {
                 assert_eq!(new_kind, BorrowKind::Take);
                 assert_eq!(existing_kind, BorrowKind::Mut);
                 assert_eq!(target, Target::Variable("s".to_string()));
@@ -740,7 +758,12 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
+            BorrowError::Conflict {
+                new_kind,
+                existing_kind,
+                target,
+                ..
+            } => {
                 assert_eq!(new_kind, BorrowKind::Mut);
                 assert_eq!(existing_kind, BorrowKind::Mut);
                 assert_eq!(target, Target::Variable("data".to_string()));
@@ -764,7 +787,12 @@ mod tests {
 
         let err = result2.unwrap_err();
         match err {
-            BorrowError::Conflict { new_kind, existing_kind, target, .. } => {
+            BorrowError::Conflict {
+                new_kind,
+                existing_kind,
+                target,
+                ..
+            } => {
                 assert_eq!(new_kind, BorrowKind::View);
                 assert_eq!(existing_kind, BorrowKind::Mut);
                 assert_eq!(target, Target::Variable("value".to_string()));
@@ -786,7 +814,10 @@ mod tests {
 
         // Second mut borrow on int (should NOT conflict - different discriminants)
         let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
-        assert!(result2.is_ok(), "Mut borrow of different target should succeed");
+        assert!(
+            result2.is_ok(),
+            "Mut borrow of different target should succeed"
+        );
         assert_eq!(checker.active_borrows().len(), 2);
     }
 
@@ -796,7 +827,9 @@ mod tests {
         let expr = Expr::Ident("s".into());
 
         // Create a view borrow
-        checker.check_borrow(&expr, BorrowKind::View, Lifetime::new(1)).unwrap();
+        checker
+            .check_borrow(&expr, BorrowKind::View, Lifetime::new(1))
+            .unwrap();
         assert_eq!(checker.active_borrows().len(), 1);
 
         // End the borrow
@@ -833,7 +866,10 @@ mod tests {
 
         // Second view borrow on view x - should conflict (same target)
         let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
-        assert!(result2.is_err(), "Mut borrow of view x should conflict with view x");
+        assert!(
+            result2.is_err(),
+            "Mut borrow of view x should conflict with view x"
+        );
     }
 
     #[test]
@@ -848,7 +884,10 @@ mod tests {
 
         // Second mut borrow on y - should NOT conflict (different targets)
         let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
-        assert!(result2.is_ok(), "Mut borrow of different variable should succeed");
+        assert!(
+            result2.is_ok(),
+            "Mut borrow of different variable should succeed"
+        );
         assert_eq!(checker.active_borrows().len(), 2);
     }
 
@@ -871,7 +910,10 @@ mod tests {
             Box::new(Expr::Ident("field".into())),
         )));
         let result2 = checker.check_borrow(&expr2, BorrowKind::View, Lifetime::new(2));
-        assert!(result2.is_err(), "View borrow should conflict with mut borrow of same path");
+        assert!(
+            result2.is_err(),
+            "View borrow should conflict with mut borrow of same path"
+        );
     }
 
     #[test]
@@ -897,7 +939,10 @@ mod tests {
 
         // Second mut borrow on obj.field2 - should NOT conflict (different fields)
         let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
-        assert!(result2.is_ok(), "Mut borrow of different field should succeed");
+        assert!(
+            result2.is_ok(),
+            "Mut borrow of different field should succeed"
+        );
         assert_eq!(checker.active_borrows().len(), 2);
     }
 
@@ -932,7 +977,10 @@ mod tests {
             Box::new(Expr::Ident("field".into())),
         );
         let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
-        assert!(result2.is_err(), "Mut borrow should conflict with view of same nested path");
+        assert!(
+            result2.is_err(),
+            "Mut borrow should conflict with view of same nested path"
+        );
     }
 
     #[test]
@@ -951,11 +999,17 @@ mod tests {
 
         // Mut borrow - should conflict (same target)
         let result2 = checker.check_borrow(&expr2, BorrowKind::Mut, Lifetime::new(2));
-        assert!(result2.is_err(), "Mut should conflict with view of same target");
+        assert!(
+            result2.is_err(),
+            "Mut should conflict with view of same target"
+        );
 
         // Take - should also conflict (same target)
         let result3 = checker.check_borrow(&expr3, BorrowKind::Take, Lifetime::new(3));
-        assert!(result3.is_err(), "Take should conflict with view of same target");
+        assert!(
+            result3.is_err(),
+            "Take should conflict with view of same target"
+        );
     }
 
     #[test]
@@ -992,11 +1046,14 @@ mod tests {
     fn test_borrow_error_from_hold_expression() {
         // Test that we can extract span from Hold expressions
         use crate::ast::Body;
-        let hold_expr = Expr::Hold(Box::new(crate::ast::Hold::new(
-            Expr::Ident("x".into()),
-            "value".into(),
-            Body::new(),
-        )).with_span(100, 50));
+        let hold_expr = Expr::Hold(
+            Box::new(crate::ast::Hold::new(
+                Expr::Ident("x".into()),
+                "value".into(),
+                Body::new(),
+            ))
+            .with_span(100, 50),
+        );
 
         // Verify span is extracted correctly
         let span = expr_span(&hold_expr);

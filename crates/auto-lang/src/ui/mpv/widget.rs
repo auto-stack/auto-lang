@@ -67,6 +67,20 @@ pub fn next_widget_id() -> u64 {
     NEXT_WIDGET_ID.fetch_add(1, Ordering::Relaxed)
 }
 
+/// 媒体引擎稳定键（2026-10-10 小组件独立播放配套）：会话域 ns + 作者声明的
+/// `key:` 合成跨挂载稳定的运行时键——同会话同 key 的 `video`（mini/main
+/// 两个视图面、面板反复开关的卸载/重挂）共享同一个 mpv 引擎，播放无缝
+/// 交接、零双声。哈希值强制最高位为 1，与顺序分配的 `next_widget_id`
+/// （低位空间）天然隔离，杜绝撞号。
+pub fn stable_runtime_key(ns: u64, key: &str) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in ns.to_le_bytes().iter().chain(key.as_bytes()) {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash | (1 << 63)
+}
+
 // ───────────────────────── 线程本地运行时（非 Send 的 mpv 引擎的家） ─────────────────────────
 
 /// 一个 video widget 的播放运行时。
@@ -176,11 +190,28 @@ pub struct VideoWidgetProps {
 #[derive(Debug)]
 pub struct VideoProgram {
     props: VideoWidgetProps,
+    /// 稳定运行时键（`Some` = 跨挂载共享引擎，见 [`stable_runtime_key`]；
+    /// `None` = 旧行为，运行时键 = 每实例分配的 state id）。
+    runtime_key: Option<u64>,
 }
 
 impl VideoProgram {
     pub fn new(props: VideoWidgetProps) -> Self {
-        Self { props }
+        Self {
+            props,
+            runtime_key: None,
+        }
+    }
+
+    /// 挂稳定运行时键（`render_video` 在解析 `key:` 属性后调用）。
+    pub fn with_runtime_key(mut self, key: Option<u64>) -> Self {
+        self.runtime_key = key;
+        self
+    }
+
+    /// 本实例的运行时键：稳定键优先，缺省回落每实例 state id。
+    pub fn resolve_runtime_id(&self, state_id: u64) -> u64 {
+        self.runtime_key.unwrap_or(state_id)
     }
 }
 
@@ -217,7 +248,8 @@ impl<Message: 'static> shader::Program<Message> for VideoProgram {
         _bounds: Rectangle,
     ) -> Self::Primitive {
         VideoPrimitive {
-            id: state.id,
+            // 稳定键优先（跨挂载共享引擎），缺省回落每实例 id（旧行为）。
+            id: self.resolve_runtime_id(state.id),
             down: self.props.down.clone(),
             width: self.props.width,
             height: self.props.height,
@@ -285,7 +317,9 @@ impl iced_wgpu::primitive::Primitive for VideoPrimitive {
                     // 内容（全零=黑），而 mpv 那边完全正常（time-pos 在走）——
                     // T-20 实机验证时就是这么黑了 5 秒才定位到。
                     targets.channel.advance(gen, seq);
-                    let out = targets.channel.with_frame(gen, seq, |t| engine.render_sw_frame(&t));
+                    let out = targets
+                        .channel
+                        .with_frame(gen, seq, |t| engine.render_sw_frame(&t));
                     targets.seq = seq.wrapping_add(1);
                     // 失败不是常态，但也不能静默：只报第一次，避免每帧刷屏。
                     if let super::channel::FrameOutcome::RenderFailed(msg) = &out {

@@ -20,9 +20,7 @@ use iced::keyboard::{self, key, Key, Modifiers};
 use iced::mouse::ScrollDelta;
 use iced::{Background, Color, Element, Font, Length, Point, Rectangle, Size, Theme};
 
-use super::{
-    AutodownEditorCore, DocDrawList, DocInput,
-};
+use super::{AutodownEditorCore, DocDrawList, DocInput};
 use crate::ui::code_editor::core::{EditorButton, EditorClipboard, EditorKey, EditorModifiers};
 use crate::ui::code_editor::draw::{CaretDraw, PreeditDraw, Rect};
 use crate::ui::code_editor::theme::Rgba;
@@ -32,7 +30,9 @@ use crate::ui::code_editor::theme::Rgba;
 /// (first-writer-wins,与 code editor 同源调用).
 fn install_font_system_source() {
     crate::ui::code_editor::core::set_font_system_call(|with| {
-        let mut guard = iced::advanced::graphics::text::font_system().write().unwrap();
+        let mut guard = iced::advanced::graphics::text::font_system()
+            .write()
+            .unwrap();
         with(guard.raw());
     });
 }
@@ -46,7 +46,8 @@ impl EditorClipboard for IcedClipboard<'_> {
         self.inner.read(iced::advanced::clipboard::Kind::Standard)
     }
     fn write(&mut self, text: &str) {
-        self.inner.write(iced::advanced::clipboard::Kind::Standard, text.to_owned());
+        self.inner
+            .write(iced::advanced::clipboard::Kind::Standard, text.to_owned());
     }
 }
 
@@ -57,6 +58,9 @@ pub struct DocEditor<'a, M> {
     /// Plan 044 T2：块聚焦读出——焦点变化现场打包 (block_index, height)
     /// （高度取 core 布局快照，宿主零查询）。
     on_focus: Option<Box<dyn Fn(crate::ui::view::FocusMetrics) -> M + 'a>>,
+    /// PLAN-732：wikilink 激活读出——完整点击门放行的激活现场打包
+    /// [`crate::ui::view::WikiLinkMetrics`]（target/anchor 已归一）。
+    on_link: Option<Box<dyn Fn(crate::ui::view::WikiLinkMetrics) -> M + 'a>>,
     width: Length,
     /// 外层传入的基数前景色（正文基色；渲染器 lowering 由语义主题注入）。
     base_color: Rgba,
@@ -73,6 +77,7 @@ impl<'a, M: Clone> DocEditor<'a, M> {
             core: super::autodown_editor(key),
             on_change: None,
             on_focus: None,
+            on_link: None,
             width: Length::Fill,
             base_color,
             placeholder: None,
@@ -97,6 +102,13 @@ impl<'a, M: Clone> DocEditor<'a, M> {
     /// 载荷 = 焦点块索引 + DocLayout 实测高，ghost 定高单源）。
     pub fn on_focus(mut self, f: impl Fn(crate::ui::view::FocusMetrics) -> M + 'a) -> Self {
         self.on_focus = Some(Box::new(f));
+        self
+    }
+
+    /// PLAN-732：fires when a wikilink full-click activates（载荷 =
+    /// target/anchor 双 string，已按首个 `#` 拆分 trim——契约 C-01）。
+    pub fn on_link(mut self, f: impl Fn(crate::ui::view::WikiLinkMetrics) -> M + 'a) -> Self {
+        self.on_link = Some(Box::new(f));
         self
     }
 
@@ -127,6 +139,16 @@ impl<'a, M: Clone> DocEditor<'a, M> {
                 shell.publish(f(crate::ui::view::FocusMetrics { block, height }));
             }
         }
+        // PLAN-732：链接激活出口——完整点击门放行的激活转发 on_link 回调
+        //（core LinkActivation → view WikiLinkMetrics，契约面类型在 view）。
+        if let Some(act) = &out.link_activated {
+            if let Some(f) = &self.on_link {
+                shell.publish(f(crate::ui::view::WikiLinkMetrics {
+                    target: act.target.clone(),
+                    anchor: act.anchor.clone(),
+                }));
+            }
+        }
     }
 
     fn map_key(key: &Key) -> EditorKey {
@@ -144,22 +166,39 @@ impl<'a, M: Clone> DocEditor<'a, M> {
             Key::Named(key::Named::Delete) => EditorKey::Delete,
             Key::Named(key::Named::Escape) => EditorKey::Escape,
             Key::Named(key::Named::Tab) => EditorKey::Tab,
-            Key::Character(c) => c.chars().next().map(EditorKey::Char).unwrap_or_else(|| EditorKey::Other(c.to_string())),
+            Key::Character(c) => c
+                .chars()
+                .next()
+                .map(EditorKey::Char)
+                .unwrap_or_else(|| EditorKey::Other(c.to_string())),
             other => EditorKey::Other(format!("{other:?}")),
         }
     }
 
     fn map_modifiers(m: &Modifiers) -> EditorModifiers {
-        EditorModifiers { shift: m.shift(), control: m.control(), alt: m.alt(), logo: m.logo() }
+        EditorModifiers {
+            shift: m.shift(),
+            control: m.control(),
+            alt: m.alt(),
+            logo: m.logo(),
+        }
     }
 
-    fn ime_request(&self, last_caret: Option<Rect>, bounds: Rectangle) -> input_method::InputMethod<&'static str> {
+    fn ime_request(
+        &self,
+        last_caret: Option<Rect>,
+        bounds: Rectangle,
+    ) -> input_method::InputMethod<&'static str> {
         let Some(caret) = last_caret else {
             return input_method::InputMethod::Disabled;
         };
         input_method::InputMethod::Enabled {
+            // PLAN-748 T-10：IME 光标锚进内容坐标系（wrapper padding 偏移）。
             cursor: Rectangle::new(
-                Point::new(bounds.x + caret.x, bounds.y + caret.y),
+                Point::new(
+                    bounds.x + caret.x + CONTENT_PAD_X,
+                    bounds.y + caret.y + CONTENT_PAD_Y,
+                ),
                 Size::new(caret.w.max(1.0), caret.h),
             ),
             purpose: input_method::Purpose::Normal,
@@ -170,7 +209,8 @@ impl<'a, M: Clone> DocEditor<'a, M> {
     /// 内容高度实测（layout/draw 共用；整形缓存落在 cosmic 内部）。
     fn measure(&self, viewport_w: f32) -> super::DocFrame {
         crate::ui::code_editor::core::with_font_system(|fs| {
-            self.core.render_frame(fs, viewport_w, self.base_color, self.placeholder.as_deref())
+            self.core
+                .render_frame(fs, viewport_w, self.base_color, self.placeholder.as_deref())
         })
     }
 }
@@ -204,10 +244,14 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         limits: &iced::advanced::layout::Limits,
     ) -> Node {
         // Fill 宽语义下解析（418 修复口径）；高为实测内容高（Shrink）。
+        // PLAN-748 T-10：内容在 wrapper padding 内测量（宽内缩、高外扩）。
         let max = limits.max();
         let width = limits.resolve(self.width, Length::Shrink, max).width;
-        let frame = self.measure(width.max(1.0));
-        Node::new(Size::new(width, frame.height.max(BODY_MIN_H)))
+        let frame = self.measure((width - 2.0 * CONTENT_PAD_X).max(1.0));
+        Node::new(Size::new(
+            width,
+            (frame.height + 2.0 * CONTENT_PAD_Y).max(BODY_MIN_H),
+        ))
     }
 
     fn update(
@@ -229,7 +273,13 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
             }
         }
 
-        let local = |p: Point| (p.x - bounds.x, p.y - bounds.y);
+        // PLAN-748 T-10：鼠标命中坐标进内容坐标系（padding 内缩）。
+        let local = |p: Point| {
+            (
+                p.x - bounds.x - CONTENT_PAD_X,
+                p.y - bounds.y - CONTENT_PAD_Y,
+            )
+        };
         let input = match event {
             Event::Mouse(mouse::Event::ButtonPressed(button)) => {
                 if !cursor.is_over(bounds) {
@@ -256,7 +306,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     mouse::Button::Middle => EditorButton::Middle,
                     _ => EditorButton::Other,
                 };
-                Some(DocInput::MouseReleased { button: b })
+                // PLAN-732：抬起坐标进 DocInput（iced ButtonReleased 本体不
+                // 带位置——取当前 cursor 位置；完整点击门同区间核对用）。
+                cursor.position().map(|p| {
+                    let (x, y) = local(p);
+                    DocInput::MouseReleased { button: b, x, y }
+                })
             }
             Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 // 拖选移动通路（PLAN-048 T3）：core 侧以 drag 状态门控，
@@ -268,13 +323,16 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 Some(DocInput::MouseDragged { x, y })
             }
             Event::Mouse(mouse::Event::WheelScrolled { .. }) => None, // 页面滚动透传
-            Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, text, .. }) => {
-                Some(DocInput::KeyPressed {
-                    key: Self::map_key(key),
-                    text: text.as_ref().map(|t| t.to_string()),
-                    modifiers: Self::map_modifiers(modifiers),
-                })
-            }
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key,
+                modifiers,
+                text,
+                ..
+            }) => Some(DocInput::KeyPressed {
+                key: Self::map_key(key),
+                text: text.as_ref().map(|t| t.to_string()),
+                modifiers: Self::map_modifiers(modifiers),
+            }),
             Event::Keyboard(keyboard::Event::ModifiersChanged(m)) => {
                 Some(DocInput::ModifiersChanged(Self::map_modifiers(m)))
             }
@@ -331,8 +389,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         let bounds = layout.bounds();
         let state = tree.state.downcast_ref::<WidgetState>();
 
-        let frame = self.measure(bounds.width.max(1.0));
+        // PLAN-748 T-10：内容在 padding 内测量/绘制（原点平移见 to_rect
+        // 与下方文本坐标 ox/oy）。
+        let frame = self.measure((bounds.width - 2.0 * CONTENT_PAD_X).max(1.0));
         let list = &frame.list;
+        let ox = bounds.x + CONTENT_PAD_X;
+        let oy = bounds.y + CONTENT_PAD_Y;
 
         *state.last_frame.borrow_mut() = Some(std::sync::Arc::new(list.clone()));
         *state.last_caret.borrow_mut() = list.caret.as_ref().map(|c| c.rect);
@@ -373,25 +435,30 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     wrapping: adv_text::Wrapping::None,
                     shaping: adv_text::Shaping::Advanced,
                 },
-                Point::new(bounds.x + run.x, bounds.y + run.y),
+                Point::new(ox + run.x, oy + run.y),
                 to_color(run.color),
                 bounds,
             );
             if run.strike {
-                let approx_w = run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
+                let approx_w =
+                    run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
                 let mid_y = run.y + run.size * 0.55;
                 fill_quad(
                     renderer,
-                    Rectangle::new(Point::new(bounds.x + run.x, bounds.y + mid_y), Size::new(approx_w, 1.4)),
+                    Rectangle::new(Point::new(ox + run.x, oy + mid_y), Size::new(approx_w, 1.4)),
                     to_color(run.color),
                 );
             }
             if run.underline {
-                let approx_w = run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
+                let approx_w =
+                    run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
                 let base_y = run.y + run.size * 0.88;
                 fill_quad(
                     renderer,
-                    Rectangle::new(Point::new(bounds.x + run.x, bounds.y + base_y), Size::new(approx_w, 1.2)),
+                    Rectangle::new(
+                        Point::new(ox + run.x, oy + base_y),
+                        Size::new(approx_w, 1.2),
+                    ),
                     to_color(run.color),
                 );
             }
@@ -410,7 +477,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 stroke_rect(
                     renderer,
                     bounds,
-                    Rect { x: r.x, y: r.y, w: r.w, h: r.h },
+                    Rect {
+                        x: r.x,
+                        y: r.y,
+                        w: r.w,
+                        h: r.h,
+                    },
                     Color::from_rgba(0.96, 0.62, 0.06, 0.95),
                 );
             }
@@ -424,18 +496,24 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     content: preedit.text.clone(),
                     bounds: Size::new(bounds.width, preedit.font_size * 1.4),
                     size: preedit.font_size.into(),
-                    line_height: adv_text::LineHeight::Absolute((preedit.font_size * 4.0 / 3.0).into()),
+                    line_height: adv_text::LineHeight::Absolute(
+                        (preedit.font_size * 4.0 / 3.0).into(),
+                    ),
                     font: Font::default(),
                     align_x: adv_text::Alignment::Left,
                     align_y: iced::alignment::Vertical::Top,
                     wrapping: adv_text::Wrapping::Word,
                     shaping: adv_text::Shaping::Advanced,
                 },
-                Point::new(bounds.x + preedit.origin.x, bounds.y + preedit.origin.y),
+                Point::new(ox + preedit.origin.x, oy + preedit.origin.y),
                 to_color(preedit.color),
                 bounds,
             );
-            fill_quad(renderer, to_rect(bounds, preedit.underline), to_color(preedit.color));
+            fill_quad(
+                renderer,
+                to_rect(bounds, preedit.underline),
+                to_color(preedit.color),
+            );
         }
         // PLAN-069 T2：slash 弹层浮层（最顶层——preedit 之上；层 rect/选中
         // 项高亮 + 标题/描述双行文本，几何与配色由 core render_frame 单源）。
@@ -459,7 +537,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                         wrapping: adv_text::Wrapping::None,
                         shaping: adv_text::Shaping::Advanced,
                     },
-                    Point::new(bounds.x + item.rect.x + 8.0, bounds.y + item.rect.y + 3.0),
+                    Point::new(ox + item.rect.x + 8.0, oy + item.rect.y + 3.0),
                     to_color(menu.fg),
                     bounds,
                 );
@@ -475,14 +553,17 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                         wrapping: adv_text::Wrapping::None,
                         shaping: adv_text::Shaping::Advanced,
                     },
-                    Point::new(bounds.x + item.rect.x + 8.0, bounds.y + item.rect.y + 18.0),
+                    Point::new(ox + item.rect.x + 8.0, oy + item.rect.y + 18.0),
                     to_color(menu.dim),
                     bounds,
                 );
             }
         }
         // CaretDraw/PreeditDraw 类型再导出用于状态缓存（防未用告警）。
-        let _ = (std::mem::size_of::<CaretDraw>(), std::mem::size_of::<PreeditDraw>());
+        let _ = (
+            std::mem::size_of::<CaretDraw>(),
+            std::mem::size_of::<PreeditDraw>(),
+        );
     }
 
     fn mouse_interaction(
@@ -493,15 +574,33 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         _viewport: &Rectangle,
         _renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        if cursor.is_over(layout.bounds()) {
-            mouse::Interaction::Text
-        } else {
-            mouse::Interaction::default()
+        if !cursor.is_over(layout.bounds()) {
+            return mouse::Interaction::default();
         }
+        // jade 反馈①：wikilink hover 段矩形命中 → Pointer（对齐 vue 轨
+        // `a.autodown-link { cursor: pointer }`）。命中区 = render_frame
+        // 布局快照 links；坐标经 padding 内缩进内容系——与 update 的
+        // local()/点击门（MouseReleased 同区间核对）同口径。
+        if let Some(p) = cursor.position() {
+            let x = p.x - layout.bounds().x - CONTENT_PAD_X;
+            let y = p.y - layout.bounds().y - CONTENT_PAD_Y;
+            if self.core.link_hover_at(x, y) {
+                return mouse::Interaction::Pointer;
+            }
+        }
+        mouse::Interaction::Text
     }
 }
 
 const BODY_MIN_H: f32 = 24.0;
+
+/// PLAN-748 T-10（jade 件四）：内容 wrapper padding——对齐 auto-down 引擎
+/// CSS `autodown/packages/engine/src/editor/styles/autodown-editor.css:103`
+/// `.autodown-editor-content-wrapper { padding: 1rem 1.25rem }`（1rem=16、
+/// 1.25rem=20 逻辑 px）。vue 轨由引擎样式层承担；vm 件内建等值层使双轨
+/// 呈现等值（jade 撤 px-5 py-4 临时层后零改动复验）。单一真源=引擎 CSS。
+const CONTENT_PAD_Y: f32 = 16.0;
+const CONTENT_PAD_X: f32 = 20.0;
 
 fn run_font(mono: bool, bold: bool, italic: bool) -> Font {
     // PLAN-054 复审反馈（两臂同字形）：sans 钉 Inter——只读臂全轨默认
@@ -509,14 +608,24 @@ fn run_font(mono: bool, bold: bool, italic: bool) -> Font {
     // FontSystem（install_font_system_source），buffer 测量侧
     // sans_family()=Name("Inter") 同步。原先 Font::default() 落系统
     // sans，✔/□/•/数字字形与只读臂不同（用户截图①②③根因）。
-    let family = if mono { mono_iced_font() } else { Font::with_name("Inter") };
+    let family = if mono {
+        mono_iced_font()
+    } else {
+        Font::with_name("Inter")
+    };
     let family = if bold {
-        Font { weight: iced::font::Weight::Bold, ..family }
+        Font {
+            weight: iced::font::Weight::Bold,
+            ..family
+        }
     } else {
         family
     };
     if italic {
-        Font { style: iced::font::Style::Italic, ..family }
+        Font {
+            style: iced::font::Style::Italic,
+            ..family
+        }
     } else {
         family
     }
@@ -530,13 +639,24 @@ fn mono_iced_font() -> Font {
     }
 }
 
+/// core 内容坐标 → 屏幕坐标。PLAN-748 T-10：内容原点平移 wrapper padding
+/// （见 CONTENT_PAD_X/Y 头注）。
 fn to_rect(origin: Rectangle, r: Rect) -> Rectangle {
-    Rectangle::new(Point::new(origin.x + r.x, origin.y + r.y), Size::new(r.w, r.h))
+    Rectangle::new(
+        Point::new(
+            origin.x + r.x + CONTENT_PAD_X,
+            origin.y + r.y + CONTENT_PAD_Y,
+        ),
+        Size::new(r.w, r.h),
+    )
 }
 
 fn fill_quad(renderer: &mut iced::Renderer, rect: Rectangle, color: Color) {
     renderer.fill_quad(
-        renderer::Quad { bounds: rect, ..renderer::Quad::default() },
+        renderer::Quad {
+            bounds: rect,
+            ..renderer::Quad::default()
+        },
         Background::Color(color),
     );
 }
@@ -547,9 +667,15 @@ fn stroke_rect(renderer: &mut iced::Renderer, origin: Rectangle, r: Rect, color:
     let abs = to_rect(origin, r);
     let edges = [
         Rectangle::new(abs.position(), Size::new(abs.width, px)),
-        Rectangle::new(Point::new(abs.x, abs.y + abs.height - px), Size::new(abs.width, px)),
+        Rectangle::new(
+            Point::new(abs.x, abs.y + abs.height - px),
+            Size::new(abs.width, px),
+        ),
         Rectangle::new(Point::new(abs.x, abs.y), Size::new(px, abs.height)),
-        Rectangle::new(Point::new(abs.x + abs.width - px, abs.y), Size::new(px, abs.height)),
+        Rectangle::new(
+            Point::new(abs.x + abs.width - px, abs.y),
+            Size::new(px, abs.height),
+        ),
     ];
     for e in edges {
         fill_quad(renderer, e, color);
@@ -567,7 +693,12 @@ mod tests {
     use super::*;
     use crate::ui::autodown_editor::{autodown_editor, storage_key, DocInput};
 
-    const WHITE: Rgba = Rgba { r: 1., g: 1., b: 1., a: 1. };
+    const WHITE: Rgba = Rgba {
+        r: 1.,
+        g: 1.,
+        b: 1.,
+        a: 1.,
+    };
 
     /// PLAN-044 T2：消息可达——模拟点击第一块 → focus_changed →
     /// publish 把 on_focus 消息发进 shell，载荷 (block, height) 与
@@ -579,8 +710,10 @@ mod tests {
         static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
             std::sync::OnceLock::new();
         crate::ui::code_editor::core::set_font_system_call(|with| {
-            let mut guard =
-                FS.get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new())).write().unwrap();
+            let mut guard = FS
+                .get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new()))
+                .write()
+                .unwrap();
             with(&mut guard);
         });
         let sk = storage_key("p044_t2_focus_msg");
@@ -595,7 +728,11 @@ mod tests {
         let out = crate::ui::code_editor::core::with_font_system(|fs| {
             core.handle_input(
                 fs,
-                DocInput::MousePressed { button: EditorButton::Left, x: 10.0, y: 8.0 },
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: 10.0,
+                    y: 8.0,
+                },
                 &mut crate::ui::code_editor::core::NullClipboard,
             )
         });
@@ -608,11 +745,180 @@ mod tests {
         enum FocusMsg {
             F(Option<usize>, f32),
         }
-        let editor = DocEditor::<FocusMsg>::new(&sk, WHITE)
-            .on_focus(|m| FocusMsg::F(m.block, m.height));
+        let editor =
+            DocEditor::<FocusMsg>::new(&sk, WHITE).on_focus(|m| FocusMsg::F(m.block, m.height));
         let mut msgs: Vec<FocusMsg> = Vec::new();
         let mut shell = Shell::new(&mut msgs);
         editor.publish(&out, &mut shell);
         assert_eq!(msgs, vec![FocusMsg::F(Some(0), expected_h)]);
+    }
+
+    /// PLAN-732 R 组（K-04 冻结 seam）：真实 iced 事件注入生产事件泵——
+    /// `UserInterface::build`（widget.layout → measure → render_frame 同生
+    /// 产布局）+ `ui.update`（widget.update 同生产事件臂：ButtonPressed/
+    /// ButtonReleased/cursor.position → DocInput → core → publish → Shell
+    /// 消息）。与生产共一实现，无第二套 hit-test。
+    #[test]
+    fn plan732_real_iced_events_full_click_publishes_on_link() {
+        // 测试字体系统引导（首个 DocEditor::new 的 install_font_system_
+        // source 首写者胜——先装测试 callback）。
+        static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
+            std::sync::OnceLock::new();
+        crate::ui::code_editor::core::set_font_system_call(|with| {
+            let mut guard = FS
+                .get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new()))
+                .write()
+                .unwrap();
+            with(&mut guard);
+        });
+        let sk = storage_key("p732_r_real_event");
+        let core = autodown_editor(&sk);
+        core.sync_external("见 [[目标页#锚点甲]] 与普通文本。", true);
+        // PLAN-748 T-10：预测量与 widget layout 同宽（wrapper padding 内缩），
+        // 点击坐标 = core 坐标 + padding（屏幕系）。
+        crate::ui::code_editor::core::with_font_system(|fs| {
+            let _ = core.render_frame(fs, 400.0 - 2.0 * CONTENT_PAD_X, WHITE, None);
+        });
+        let region = core.link_regions()[0].clone();
+        let (cx, cy) = (
+            region.rect.x + region.rect.w / 2.0 + CONTENT_PAD_X,
+            region.rect.y + region.rect.h / 2.0 + CONTENT_PAD_Y,
+        );
+
+        #[derive(Debug, Clone, PartialEq)]
+        enum LinkMsg {
+            Link(String, String),
+        }
+        let editor =
+            DocEditor::<LinkMsg>::new(&sk, WHITE).on_link(|m| LinkMsg::Link(m.target, m.anchor));
+        let element: iced::Element<'_, LinkMsg> = editor.into();
+        // tiny_skia Secondary 臂：纯 CPU 记录器（iced::Renderer 的合法值，
+        // headless 同款构造）。
+        let mut renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+            crate::ui::iced::renderer::INTER_FONT,
+            iced::Pixels(16.0),
+        ));
+        let mut ui = iced_runtime::user_interface::UserInterface::build(
+            element,
+            iced::Size::new(400.0, 600.0),
+            iced_runtime::user_interface::Cache::default(),
+            &mut renderer,
+        );
+        let mut messages: Vec<LinkMsg> = Vec::new();
+        fn drive(
+            ui: &mut iced_runtime::user_interface::UserInterface<
+                '_,
+                LinkMsg,
+                iced::Theme,
+                iced::Renderer,
+            >,
+            evts: &[iced::event::Event],
+            cursor: iced::mouse::Cursor,
+            renderer: &mut iced::Renderer,
+            messages: &mut Vec<LinkMsg>,
+        ) {
+            let _ = ui.update(
+                evts,
+                cursor,
+                renderer,
+                &mut iced::advanced::clipboard::Null,
+                messages,
+            );
+        }
+
+        // 按下（cursor 在链接段中心）→ 无消息（激活只在完整点击）。
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left),
+            )],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        assert!(messages.is_empty(), "按下零消息：{messages:?}");
+        // 抬起（同点）→ 恰一条激活消息，载荷双 Str 逐值。
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left),
+            )],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        assert_eq!(
+            messages,
+            vec![LinkMsg::Link("目标页".to_string(), "锚点甲".to_string())],
+            "完整点击恰一次激活（Shell.publish 真实路径）"
+        );
+
+        // 负例：越界抬起——按下在链接、抬起点移出 widget 边界（is_over
+        // 门挡在 widget 层）→ 零新消息。
+        messages.clear();
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left),
+            )],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left),
+            )],
+            iced::mouse::Cursor::Available(iced::Point::new(9999.0, 9999.0)),
+            &mut renderer,
+            &mut messages,
+        );
+        assert!(messages.is_empty(), "越界抬起零激活：{messages:?}");
+
+        // 负例：拖选超阈（CursorMoved 走生产 MouseDragged 臂）后抬起 → 零激活。
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left),
+            )],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(iced::mouse::Event::CursorMoved {
+                position: iced::Point::new(cx + 40.0, cy + 8.0),
+            })],
+            iced::mouse::Cursor::Available(iced::Point::new(cx + 40.0, cy + 8.0)),
+            &mut renderer,
+            &mut messages,
+        );
+        drive(
+            &mut ui,
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left),
+            )],
+            iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
+            &mut renderer,
+            &mut messages,
+        );
+        assert!(messages.is_empty(), "拖选零激活：{messages:?}");
+    }
+
+    /// PLAN-748 T-10（jade 件四）：内容 wrapper padding 常量与引擎 CSS 单源
+    /// 等值——autodown-editor.css:103 `padding: 1rem 1.25rem`（1rem=16、
+    /// 1.25rem=20 逻辑 px）。vue 轨由引擎样式承担，vm 件内建等值层——
+    /// 数值漂移即双轨呈现分叉，本测钉死。行为锁见上测（真实 iced 事件
+    /// 全管线点击命中已含 padding 坐标系），双轨像素等值归 jade 撤层
+    /// 复验（AC-14）。
+    #[test]
+    fn p748_content_wrapper_padding_matches_engine_css() {
+        assert_eq!(CONTENT_PAD_Y, 16.0, "上下 padding = 1rem（引擎 css :103）");
+        assert_eq!(
+            CONTENT_PAD_X, 20.0,
+            "左右 padding = 1.25rem（引擎 css :103）"
+        );
     }
 }

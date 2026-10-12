@@ -72,16 +72,36 @@ impl std::fmt::Display for StyleRecipeError {
                 write!(f, "Style recipe '{}' is not defined", name)
             }
             StyleRecipeError::UnknownParameter { recipe, param } => {
-                write!(f, "Unknown parameter '{}' for style recipe '{}'", param, recipe)
+                write!(
+                    f,
+                    "Unknown parameter '{}' for style recipe '{}'",
+                    param, recipe
+                )
             }
             StyleRecipeError::MissingRequiredParameter { recipe, param } => {
-                write!(f, "Missing required parameter '{}' for style recipe '{}'", param, recipe)
+                write!(
+                    f,
+                    "Missing required parameter '{}' for style recipe '{}'",
+                    param, recipe
+                )
             }
-            StyleRecipeError::TooManyArguments { recipe, expected, got } => {
-                write!(f, "Style recipe '{}' expects at most {} arguments, got {}", recipe, expected, got)
+            StyleRecipeError::TooManyArguments {
+                recipe,
+                expected,
+                got,
+            } => {
+                write!(
+                    f,
+                    "Style recipe '{}' expects at most {} arguments, got {}",
+                    recipe, expected, got
+                )
             }
             StyleRecipeError::CircularReference(cycle) => {
-                write!(f, "Circular reference detected in style recipes: {}", cycle.join(" -> "))
+                write!(
+                    f,
+                    "Circular reference detected in style recipes: {}",
+                    cycle.join(" -> ")
+                )
             }
             StyleRecipeError::InvalidExpression(msg) => {
                 write!(f, "Invalid style recipe expression: {}", msg)
@@ -93,7 +113,11 @@ impl std::fmt::Display for StyleRecipeError {
                     recipe, module
                 )
             }
-            StyleRecipeError::RecipeNameCollision { name, first, second } => {
+            StyleRecipeError::RecipeNameCollision {
+                name,
+                first,
+                second,
+            } => {
                 write!(
                     f,
                     "Style recipe '{}' is defined in both {} and {} — rename one or import explicitly",
@@ -101,7 +125,11 @@ impl std::fmt::Display for StyleRecipeError {
                 )
             }
             StyleRecipeError::ImportModuleParse { module, detail } => {
-                write!(f, "Failed to parse use-imported module '{}': {}", module, detail)
+                write!(
+                    f,
+                    "Failed to parse use-imported module '{}': {}",
+                    module, detail
+                )
             }
         }
     }
@@ -129,7 +157,8 @@ pub fn register_style_recipe(decl: &StyleRecipeDecl) {
         source_module: None,
     };
     REGISTRY.with(|r| {
-        r.borrow_mut().insert(decl.name.as_str().to_string(), recipe);
+        r.borrow_mut()
+            .insert(decl.name.as_str().to_string(), recipe);
     });
 }
 
@@ -163,7 +192,8 @@ fn register_style_recipe_checked(
         source_module: source.map(|s| s.to_string()),
     };
     REGISTRY.with(|r| {
-        r.borrow_mut().insert(decl.name.as_str().to_string(), recipe);
+        r.borrow_mut()
+            .insert(decl.name.as_str().to_string(), recipe);
     });
     Ok(())
 }
@@ -184,7 +214,9 @@ pub fn all_style_recipes() -> Vec<StyleRecipe> {
 }
 
 /// Register all style recipes from AST statements, validate them, and return any lint warnings.
-pub fn load_and_validate_style_recipes(stmts: &[crate::ast::Stmt]) -> Result<Vec<String>, StyleRecipeError> {
+pub fn load_and_validate_style_recipes(
+    stmts: &[crate::ast::Stmt],
+) -> Result<Vec<String>, StyleRecipeError> {
     clear_style_recipes();
     for stmt in stmts {
         if let crate::ast::Stmt::StyleRecipeDecl(r) = stmt {
@@ -297,16 +329,15 @@ fn collect_style_recipe_imports(
         if !visited.insert(canon.clone()) {
             continue;
         }
-        let code = std::fs::read_to_string(&module_path).map_err(|e| StyleRecipeError::ImportModuleParse {
-            module: module.clone(),
-            detail: format!("read failed: {}", e),
+        let code = std::fs::read_to_string(&module_path).map_err(|e| {
+            StyleRecipeError::ImportModuleParse {
+                module: module.clone(),
+                detail: format!("read failed: {}", e),
+            }
         })?;
         // Same scenario heuristic as collect_module_imports: back/ modules are
         // core-scenario, everything else UI.
-        let session = if module_path
-            .components()
-            .any(|c| c.as_os_str() == "back")
-        {
+        let session = if module_path.components().any(|c| c.as_os_str() == "back") {
             crate::session::CompilerSession::core()
         } else {
             crate::session::CompilerSession::ui()
@@ -370,7 +401,11 @@ pub fn validate_style_recipes() -> Result<(), StyleRecipeError> {
     let mut adj: HashMap<String, Vec<String>> = HashMap::new();
     for recipe in &recipes {
         let mut deps = Vec::new();
-        let param_names: HashSet<String> = recipe.params.iter().map(|p| p.name.as_str().to_string()).collect();
+        let param_names: HashSet<String> = recipe
+            .params
+            .iter()
+            .map(|p| p.name.as_str().to_string())
+            .collect();
         collect_recipe_dependencies(&recipe.body, &param_names, &recipe_names, &mut deps)?;
         adj.insert(recipe.name.clone(), deps);
     }
@@ -624,7 +659,11 @@ pub fn desugar_style_expr(expr: &Expr) -> Result<Expr, StyleRecipeError> {
             // If both sides are string literals, fold them into a single string literal
             if let (Expr::Str(sl), Expr::Str(sr)) = (&new_l, &new_r) {
                 let mut joined = sl.to_string();
-                if !joined.is_empty() && !sr.is_empty() && !joined.ends_with(' ') && !sr.starts_with(' ') {
+                if !joined.is_empty()
+                    && !sr.is_empty()
+                    && !joined.ends_with(' ')
+                    && !sr.starts_with(' ')
+                {
                     joined.push(' ');
                 }
                 joined.push_str(sr.as_str());
@@ -719,7 +758,10 @@ pub fn expand_recipe_call(name: &str, args: &[Arg]) -> Result<Expr, StyleRecipeE
     substitute_and_expand(&recipe.body, &param_map)
 }
 
-fn substitute_and_expand(body: &Expr, param_map: &HashMap<String, Expr>) -> Result<Expr, StyleRecipeError> {
+fn substitute_and_expand(
+    body: &Expr,
+    param_map: &HashMap<String, Expr>,
+) -> Result<Expr, StyleRecipeError> {
     match body {
         Expr::Str(s) => {
             let text = s.as_str();
@@ -868,15 +910,23 @@ fn substitute_expr(expr: &Expr, param_map: &HashMap<String, Expr>) -> Expr {
 // ============================================================================
 
 const PALETTE_COLORS: &[&str] = &[
-    "slate", "gray", "zinc", "neutral", "stone",
-    "red", "orange", "amber", "yellow", "lime",
-    "green", "emerald", "teal", "cyan", "sky",
-    "blue", "indigo", "violet", "purple", "fuchsia",
+    "slate", "gray", "zinc", "neutral", "stone", "red", "orange", "amber", "yellow", "lime",
+    "green", "emerald", "teal", "cyan", "sky", "blue", "indigo", "violet", "purple", "fuchsia",
     "pink", "rose",
 ];
 
 const COLOR_PREFIXES: &[&str] = &[
-    "bg", "text", "border", "fill", "stroke", "ring", "accent", "from", "to", "via", "placeholder",
+    "bg",
+    "text",
+    "border",
+    "fill",
+    "stroke",
+    "ring",
+    "accent",
+    "from",
+    "to",
+    "via",
+    "placeholder",
 ];
 
 /// Check a style recipe body for hardcoded color palette classes (e.g. `bg-blue-500`).
@@ -974,7 +1024,11 @@ mod tests {
         let err = load_and_validate_style_recipes(&ast.stmts);
         assert!(err.is_err(), "Expected error for circular references");
         let err_str = err.err().unwrap().to_string();
-        assert!(err_str.contains("Circular reference"), "Expected cycle error, got: {}", err_str);
+        assert!(
+            err_str.contains("Circular reference"),
+            "Expected cycle error, got: {}",
+            err_str
+        );
 
         // 2. Unknown parameter in call
         let code_param = r#"
@@ -986,7 +1040,11 @@ mod tests {
         let err = load_and_validate_style_recipes(&ast.stmts);
         assert!(err.is_err(), "Expected error for unknown parameter");
         let err_str = err.err().unwrap().to_string();
-        assert!(err_str.contains("Unknown parameter 'foo'"), "Expected unknown param error, got: {}", err_str);
+        assert!(
+            err_str.contains("Unknown parameter 'foo'"),
+            "Expected unknown param error, got: {}",
+            err_str
+        );
 
         // 3. Missing required parameter
         let code_req = r#"
@@ -996,9 +1054,16 @@ mod tests {
         let mut p = Parser::from(code_req).with_session(CompilerSession::ui());
         let ast = p.parse().unwrap();
         let err = load_and_validate_style_recipes(&ast.stmts);
-        assert!(err.is_err(), "Expected error for missing required parameter");
+        assert!(
+            err.is_err(),
+            "Expected error for missing required parameter"
+        );
         let err_str = err.err().unwrap().to_string();
-        assert!(err_str.contains("Missing required parameter 'bg'"), "Expected missing param error, got: {}", err_str);
+        assert!(
+            err_str.contains("Missing required parameter 'bg'"),
+            "Expected missing param error, got: {}",
+            err_str
+        );
 
         // 4. Undefined recipe reference
         let code_undef = r#"
@@ -1009,7 +1074,11 @@ mod tests {
         let err = load_and_validate_style_recipes(&ast.stmts);
         assert!(err.is_err(), "Expected error for undefined recipe");
         let err_str = err.err().unwrap().to_string();
-        assert!(err_str.contains("is not defined"), "Expected undefined recipe error, got: {}", err_str);
+        assert!(
+            err_str.contains("is not defined"),
+            "Expected undefined recipe error, got: {}",
+            err_str
+        );
     }
 
     #[test]
@@ -1041,7 +1110,10 @@ mod tests {
         let call_defaults = Parser::parse_expr_fragment("pill()").unwrap();
         let desugared = desugar_style_expr(&call_defaults).unwrap();
         if let Expr::Str(s) = desugared {
-            assert_eq!(s.as_str(), "px-4 py-2 bg-primary text-primary-foreground rounded-full");
+            assert_eq!(
+                s.as_str(),
+                "px-4 py-2 bg-primary text-primary-foreground rounded-full"
+            );
         } else {
             panic!("Expected Expr::Str, got: {:?}", desugared);
         }
@@ -1050,7 +1122,10 @@ mod tests {
         let call_override = Parser::parse_expr_fragment("pill(bg: \"bg-red-500\")").unwrap();
         let desugared = desugar_style_expr(&call_override).unwrap();
         if let Expr::Str(s) = desugared {
-            assert_eq!(s.as_str(), "px-4 py-2 bg-red-500 text-primary-foreground rounded-full");
+            assert_eq!(
+                s.as_str(),
+                "px-4 py-2 bg-red-500 text-primary-foreground rounded-full"
+            );
         } else {
             panic!("Expected Expr::Str, got: {:?}", desugared);
         }
@@ -1059,7 +1134,10 @@ mod tests {
         let comp_ident = Expr::Ident("pill_danger".into());
         let desugared = desugar_style_expr(&comp_ident).unwrap();
         if let Expr::Str(s) = desugared {
-            assert_eq!(s.as_str(), "px-4 py-2 bg-destructive text-destructive-foreground rounded-full");
+            assert_eq!(
+                s.as_str(),
+                "px-4 py-2 bg-destructive text-destructive-foreground rounded-full"
+            );
         } else {
             panic!("Expected Expr::Str, got: {:?}", desugared);
         }
@@ -1109,10 +1187,24 @@ mod tests {
         let warnings = load_and_validate_style_recipes(&ast.stmts).unwrap();
 
         // bad_recipe should generate warnings for bg-blue-500, text-zinc-400, hover:bg-red-600/80
-        assert_eq!(warnings.len(), 3, "Expected 3 warnings, got: {:?}", warnings);
-        assert!(warnings.iter().any(|w| w.contains("bg-blue-500")), "Expected bg-blue-500 warning");
-        assert!(warnings.iter().any(|w| w.contains("text-zinc-400")), "Expected text-zinc-400 warning");
-        assert!(warnings.iter().any(|w| w.contains("hover:bg-red-600/80")), "Expected hover:bg-red-600/80 warning");
+        assert_eq!(
+            warnings.len(),
+            3,
+            "Expected 3 warnings, got: {:?}",
+            warnings
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("bg-blue-500")),
+            "Expected bg-blue-500 warning"
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("text-zinc-400")),
+            "Expected text-zinc-400 warning"
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("hover:bg-red-600/80")),
+            "Expected hover:bg-red-600/80 warning"
+        );
     }
 
     #[test]
@@ -1138,12 +1230,23 @@ mod tests {
         let ast = p.parse().unwrap();
         load_and_validate_style_recipes(&ast.stmts).unwrap();
 
-        let widget_decl = ast.stmts.iter().find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(d) = s { Some(d) } else { None }
-        }).unwrap();
+        let widget_decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let crate::ast::Stmt::WidgetDecl(d) = s {
+                    Some(d)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
 
         let aura_widget = crate::aura::extract_widget_from_decl(widget_decl).unwrap();
-        if let crate::aura::AuraNode::Element { props, children, .. } = &aura_widget.view_tree {
+        if let crate::aura::AuraNode::Element {
+            props, children, ..
+        } = &aura_widget.view_tree
+        {
             // The root col should have desugared style
             let root_style = props.get("style").unwrap();
             if let crate::aura::AuraPropValue::Expr(Expr::Str(s)) = root_style {
@@ -1153,7 +1256,10 @@ mod tests {
             }
 
             // The button child should have desugared style
-            if let crate::aura::AuraNode::Element { props: btn_props, .. } = &children[0] {
+            if let crate::aura::AuraNode::Element {
+                props: btn_props, ..
+            } = &children[0]
+            {
                 let btn_style = btn_props.get("style").unwrap();
                 if let crate::aura::AuraPropValue::Expr(Expr::Str(s)) = btn_style {
                     assert_eq!(s.as_str(), "bg-destructive px-4 py-2 rounded-md");
@@ -1161,10 +1267,16 @@ mod tests {
                     panic!("Expected Expr::Str for button style, got: {:?}", btn_style);
                 }
             } else {
-                panic!("Expected AuraNode::Element for child, got: {:?}", children[0]);
+                panic!(
+                    "Expected AuraNode::Element for child, got: {:?}",
+                    children[0]
+                );
             }
         } else {
-            panic!("Expected AuraNode::Element for root view_tree, got: {:?}", aura_widget.view_tree);
+            panic!(
+                "Expected AuraNode::Element for root view_tree, got: {:?}",
+                aura_widget.view_tree
+            );
         }
     }
 
@@ -1191,19 +1303,39 @@ mod tests {
         let ast = p.parse().unwrap();
         load_and_validate_style_recipes(&ast.stmts).unwrap();
 
-        let widget_decl = ast.stmts.iter().find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(d) = s { Some(d) } else { None }
-        }).unwrap();
+        let widget_decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let crate::ast::Stmt::WidgetDecl(d) = s {
+                    Some(d)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
 
         let aura_widget = crate::aura::extract_widget_from_decl(widget_decl).unwrap();
         let mut gen = crate::ui_gen::VueGenerator::new();
         let sfc = gen.generate_sfc(&aura_widget).unwrap();
 
         // Check that Vue template contains the desugared class strings
-        assert!(sfc.contains("bg-card rounded-xl shadow-sm border border-border"), "Vue output should contain desugared card_base: {}", sfc);
-        assert!(sfc.contains("bg-destructive px-4 py-2 rounded-full"), "Vue output should contain desugared pill: {}", sfc);
+        assert!(
+            sfc.contains("bg-card rounded-xl shadow-sm border border-border"),
+            "Vue output should contain desugared card_base: {}",
+            sfc
+        );
+        assert!(
+            sfc.contains("bg-destructive px-4 py-2 rounded-full"),
+            "Vue output should contain desugared pill: {}",
+            sfc
+        );
         // And should NOT contain the raw recipe identifier
-        assert!(!sfc.contains("card_base"), "Vue output should not contain raw recipe symbol 'card_base': {}", sfc);
+        assert!(
+            !sfc.contains("card_base"),
+            "Vue output should not contain raw recipe symbol 'card_base': {}",
+            sfc
+        );
     }
     // ========================================================================
     // PLAN-635: cross-package style recipe imports (use symbol form)
@@ -1237,13 +1369,21 @@ mod tests {
     fn test_plan635_named_import_registers_and_desugars() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path();
-        std::fs::write(base.join("styles.at"), r#"
+        std::fs::write(
+            base.join("styles.at"),
+            r#"
             pub style pill = "rounded-full px-4 py-2"
-        "#).unwrap();
-        std::fs::write(base.join("app.at"), r#"
+        "#,
+        )
+        .unwrap();
+        std::fs::write(
+            base.join("app.at"),
+            r#"
             use styles: pill
             style local_btn = pill
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         plan635_load(base);
 
         let pill = get_style_recipe("pill").expect("imported pub recipe registered");
@@ -1254,7 +1394,11 @@ mod tests {
         let expanded = desugar_style_expr(&crate::ast::Expr::Str("{pill} mt-2".into())).unwrap();
         match expanded {
             crate::ast::Expr::Str(s) => {
-                assert!(s.as_str().contains("rounded-full"), "imported recipe expanded: {}", s.as_str())
+                assert!(
+                    s.as_str().contains("rounded-full"),
+                    "imported recipe expanded: {}",
+                    s.as_str()
+                )
             }
             other => panic!("expected folded string, got {:?}", other),
         }
@@ -1264,9 +1408,13 @@ mod tests {
     fn test_plan635_named_import_non_pub_is_error() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path();
-        std::fs::write(base.join("styles.at"), r#"
+        std::fs::write(
+            base.join("styles.at"),
+            r#"
             style internal_only = "hidden"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         std::fs::write(base.join("app.at"), "use styles: internal_only").unwrap();
         let err = plan635_load_err(base);
         assert!(err.to_string().contains("not pub"), "got: {}", err);
@@ -1276,13 +1424,21 @@ mod tests {
     fn test_plan635_name_collision_is_error() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path();
-        std::fs::write(base.join("styles.at"), r#"
+        std::fs::write(
+            base.join("styles.at"),
+            r#"
             pub style pill = "rounded-full"
-        "#).unwrap();
-        std::fs::write(base.join("app.at"), r#"
+        "#,
+        )
+        .unwrap();
+        std::fs::write(
+            base.join("app.at"),
+            r#"
             use styles: pill
             style pill = "local-pill"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         let err = plan635_load_err(base);
         assert!(err.to_string().contains("defined in both"), "got: {}", err);
     }
@@ -1291,36 +1447,65 @@ mod tests {
     fn test_plan635_wildcard_imports_pub_only() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path();
-        std::fs::write(base.join("styles.at"), r#"
+        std::fs::write(
+            base.join("styles.at"),
+            r#"
             pub style pub_chip = "rounded-full"
             style internal_only = "hidden"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         std::fs::write(base.join("app.at"), "use styles: *").unwrap();
         plan635_load(base);
-        assert!(has_style_recipe("pub_chip"), "pub recipe imported by wildcard");
-        assert!(!has_style_recipe("internal_only"), "non-pub recipe stays private");
+        assert!(
+            has_style_recipe("pub_chip"),
+            "pub recipe imported by wildcard"
+        );
+        assert!(
+            !has_style_recipe("internal_only"),
+            "non-pub recipe stays private"
+        );
     }
 
     #[test]
     fn test_plan635_transitive_import() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path();
-        std::fs::write(base.join("tokens.at"), r#"
+        std::fs::write(
+            base.join("tokens.at"),
+            r#"
             pub style base_border = "border border-border"
-        "#).unwrap();
-        std::fs::write(base.join("styles.at"), r#"
+        "#,
+        )
+        .unwrap();
+        std::fs::write(
+            base.join("styles.at"),
+            r#"
             use tokens: base_border
             pub style card = "{base_border} bg-card rounded-xl"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         std::fs::write(base.join("app.at"), "use styles: card").unwrap();
         plan635_load(base);
-        assert!(has_style_recipe("base_border"), "transitive import registered");
+        assert!(
+            has_style_recipe("base_border"),
+            "transitive import registered"
+        );
 
         let expanded = desugar_style_expr(&crate::ast::Expr::Str("{card}".into())).unwrap();
         match expanded {
             crate::ast::Expr::Str(s) => {
-                assert!(s.as_str().contains("border-border"), "transitive expansion: {}", s.as_str());
-                assert!(s.as_str().contains("bg-card"), "own body expansion: {}", s.as_str());
+                assert!(
+                    s.as_str().contains("border-border"),
+                    "transitive expansion: {}",
+                    s.as_str()
+                );
+                assert!(
+                    s.as_str().contains("bg-card"),
+                    "own body expansion: {}",
+                    s.as_str()
+                );
             }
             other => panic!("expected folded string, got {:?}", other),
         }
@@ -1333,10 +1518,16 @@ mod tests {
         // registration path as the VM track.
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path();
-        std::fs::write(base.join("styles.at"), r#"
+        std::fs::write(
+            base.join("styles.at"),
+            r#"
             pub style pill = "rounded-full px-4 py-2 shadow-sm"
-        "#).unwrap();
-        std::fs::write(base.join("app.at"), r#"
+        "#,
+        )
+        .unwrap();
+        std::fs::write(
+            base.join("app.at"),
+            r#"
             use styles: pill
             widget App {
                 view {
@@ -1345,13 +1536,15 @@ mod tests {
                     }
                 }
             }
-        "#).unwrap();
-        let sfc = crate::ui_build_shadcn(
-            base.join("app.at").to_str().unwrap(),
-            None,
-        ).unwrap();
-        assert!(sfc.contains("rounded-full px-4 py-2 shadow-sm"),
-            "SFC should contain imported recipe classes: {}", sfc);
+        "#,
+        )
+        .unwrap();
+        let sfc = crate::ui_build_shadcn(base.join("app.at").to_str().unwrap(), None).unwrap();
+        assert!(
+            sfc.contains("rounded-full px-4 py-2 shadow-sm"),
+            "SFC should contain imported recipe classes: {}",
+            sfc
+        );
     }
 
     #[test]
@@ -1384,7 +1577,8 @@ mod tests {
             sfc
         );
         assert!(
-            !sfc.lines().any(|l| l.contains("class=\"") && l.contains("card_base")),
+            !sfc.lines()
+                .any(|l| l.contains("class=\"") && l.contains("card_base")),
             "raw recipe symbol must not leak into class bindings: {}",
             sfc
         );
@@ -1396,20 +1590,27 @@ mod tests {
         let base = dir.path();
         let dep_front = base.join("deps").join("common").join("src").join("front");
         std::fs::create_dir_all(&dep_front).unwrap();
-        std::fs::write(dep_front.join("styles.at"), r#"
+        std::fs::write(
+            dep_front.join("styles.at"),
+            r#"
             pub style pill = "rounded-full shadow-sm"
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         // PLAN-635 D4: deps/ probing is declaration-gated.
-        std::fs::write(base.join("pac.at"), "name: \"t\"
+        std::fs::write(
+            base.join("pac.at"),
+            "name: \"t\"
 scene: \"ui\"
 dep common {
     path: \"../common\"
 }
-").unwrap();
+",
+        )
+        .unwrap();
         std::fs::write(base.join("app.at"), "use common.styles: pill").unwrap();
         plan635_load(base);
         let pill = get_style_recipe("pill").expect("deps/<name> layout resolves");
         assert_eq!(pill.source_module.as_deref(), Some("common.styles"));
     }
 }
-

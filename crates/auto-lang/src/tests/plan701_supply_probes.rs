@@ -72,11 +72,7 @@ mod plan701_time_supply {
     #[cfg(feature = "ui-iced")]
     fn vm_time_now_ms_full_width_matches_a2r_std() {
         let bridge = build_probe_bridge(PROBE_SRC);
-        let vm_ms = as_int_i64(
-            bridge
-                .call_vm_fn("probe_ms", &[])
-                .expect("call probe_ms"),
-        );
+        let vm_ms = as_int_i64(bridge.call_vm_fn("probe_ms", &[]).expect("call probe_ms"));
         let a2r_ms = a2r_std::time::now_ms();
         assert!(
             vm_ms >= 1_672_531_200_000,
@@ -119,11 +115,7 @@ mod plan701_time_supply {
         // Host-side 对拍: the a2r leg's clock source vs the VM shim's (both
         // SystemTime epoch — same value class, GOAL-003).
         let bridge = build_probe_bridge(PROBE_SRC);
-        let vm_sec = as_int_i64(
-            bridge
-                .call_vm_fn("probe_sec", &[])
-                .expect("call probe_sec"),
-        );
+        let vm_sec = as_int_i64(bridge.call_vm_fn("probe_sec", &[]).expect("call probe_sec"));
         assert!(
             vm_sec >= 1_672_531_200,
             "time.now_sec() must return a real epoch seconds value, got {vm_sec}"
@@ -148,7 +140,10 @@ mod plan701_time_supply {
             "time.now() must be a decimal epoch-seconds string, got {s:?}"
         );
         let parsed: i64 = s.parse().expect("digits");
-        assert!(parsed >= 1_672_531_200, "time.now() = {s:?} below epoch floor");
+        assert!(
+            parsed >= 1_672_531_200,
+            "time.now() = {s:?} below epoch floor"
+        );
     }
 }
 
@@ -171,7 +166,7 @@ mod plan701_vue_strict_supply {
     /// 下游 regen_vue.py 遮蔽缓解件随之可退役）。
     #[test]
     fn print_emits_globalthis_console_log() {
-        use crate::trans::{Sink, Trans, typescript::TypeScriptTrans};
+        use crate::trans::{typescript::TypeScriptTrans, Sink, Trans};
         let _scope = crate::scope_manager::ScopeManager::new();
         let mut parser = crate::parser::Parser::from("print(\"BENCH x\")\n");
         let ast = parser.parse().expect("parse");

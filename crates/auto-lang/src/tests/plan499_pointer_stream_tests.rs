@@ -32,8 +32,8 @@ widget Chart {
 
     #[test]
     fn plan499_pointer_stream_pipe_delivers_logical_coords() {
-        let mut dc = crate::build_dynamic_component(SRC, None)
-            .expect("pointer-stream widget must build");
+        let mut dc =
+            crate::build_dynamic_component(SRC, None).expect("pointer-stream widget must build");
         dc.fire_init();
 
         // 视图树:on_move handler + 逻辑幅面必须接线(Debug dump 可见)。
@@ -198,10 +198,7 @@ mod plan499_axispointer {
             dump.contains("(560.0, 300.0)"),
             "coords 逻辑幅面 560x300 必须随树下发"
         );
-        assert!(
-            !dump.contains("w-[102px]"),
-            "竖带命中区(w-[slot])必须退役"
-        );
+        assert!(!dump.contains("w-[102px]"), "竖带命中区(w-[slot])必须退役");
     }
 }
 
@@ -274,10 +271,7 @@ mod plan499_donut_sector {
             None,
         );
         let d3 = dump(&mut dc);
-        assert!(
-            !d3.contains("ffffff"),
-            "内孔命中 → 无 emphasis"
-        );
+        assert!(!d3.contains("ffffff"), "内孔命中 → 无 emphasis");
 
         // 环外:离焦
         dc.on_with_input_for(
@@ -286,10 +280,7 @@ mod plan499_donut_sector {
             None,
         );
         let d4 = dump(&mut dc);
-        assert!(
-            !d4.contains("ffffff"),
-            "环外命中 → 无 emphasis"
-        );
+        assert!(!d4.contains("ffffff"), "环外命中 → 无 emphasis");
     }
 }
 

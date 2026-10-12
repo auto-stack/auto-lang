@@ -6,7 +6,9 @@
 
 /// Read the OS clipboard text (None when empty or unavailable).
 pub fn clipboard_get() -> Option<String> {
-    arboard::Clipboard::new().ok().and_then(|mut c| c.get_text().ok())
+    arboard::Clipboard::new()
+        .ok()
+        .and_then(|mut c| c.get_text().ok())
 }
 
 /// Write text to the OS clipboard. Returns false when unavailable.
@@ -35,7 +37,10 @@ mod tests {
         // May be skipped in headless CI where arboard cannot init.
         if let Some(_) = arboard::Clipboard::new().ok() {
             assert!(clipboard_set("plan418-clipboard-roundtrip"));
-            assert_eq!(clipboard_get().as_deref(), Some("plan418-clipboard-roundtrip"));
+            assert_eq!(
+                clipboard_get().as_deref(),
+                Some("plan418-clipboard-roundtrip")
+            );
         }
     }
 }

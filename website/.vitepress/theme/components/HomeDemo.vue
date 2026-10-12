@@ -183,7 +183,7 @@ onUnmounted(() => {
           <span>{{ zh ? ex.descZh : ex.descEn }}</span>
         </button>
       </div>
-      <a class="demo-playground-link" href="/playground">{{ t.tryMore }} →</a>
+      <a class="demo-playground-link" :href="zh ? '/zh/playground' : '/playground'">{{ t.tryMore }} →</a>
     </div>
 
     <div class="demo-window" aria-live="polite">

@@ -67,6 +67,33 @@ use 语句的**符号可见性**语义（区别于上文的路径解析机制）
 
 > 来源: docs/plans/545-use-namespace-semantics.md；代码核对 vm/loader.rs、compile.rs、types.rs、vm/codegen.rs handle_use_stmt
 
+## 装配计划与选层（PLAN-738）
+
+- 解析产物统一进装配计划：公共 .at 在前 + 目标选定层；`AssemblyTarget::
+  context_extension()` 驱动层后缀，不硬编码 .vm.at。
+- 目标层声明命名空间：`c.*` 模块（`stdlib/c/<name>.c.at`）仅 C 目标会话
+  可见；VM/Rust 会话维持 not-found 语义。
+- 源段边界（context_byte_boundary）：公共段可独立解析时，合并源错误
+  归因目标层真实文件行。
+- use 语义不变：545 bare/named/wildcard、635 门控、循环、同名异 root 按
+  resolver 身份区分；用户同名模块/同名函数干净遮蔽 stdlib（fn 遮蔽优先）。
+
+## 核心导入闭包（PLAN-738 T-11）
+
+- 具名 `use auto.<core>: f`：逐项验证绑定+公共签名；纯适配面符号拒绝
+  并指明限定拼写。
+- wildcard：只记台账，不因未引用 unsupported 拒绝；其裸名调用按公共面
+  唯一归属验证（多模块同名=歧义拒绝）。
+- 裸名调用重建限定文本携带真实实参面（AST 序列化）验证元数/async。
+- `auto.<core>.<method>()` 三段形状同走 strict 门——io/net 等无 Rust
+  producer 的模块诚实拒绝，不发射幻影。
+
+## 缓存边界（PLAN-738 T-05）
+
+段级指纹（公共+选定层各自 FNV + absent 台账 + provider schema + 依赖
+闭包）；跨 target 条目共存不串；root/目标热换=SessionTargetMismatch 须
+重建会话；同 mtime 改内容仍失效（内容指纹非时间戳）。
+
 ## 显式非目标
 
 - use_scanner 不做语法校验，不报告非法 use——那是 parser 的职责。

@@ -6,7 +6,7 @@ editLink: false
 ---
 
 <script setup>
-import EvidenceImage from '../../../.vitepress/theme/components/EvidenceImage.vue'
+import ScreenshotSlot from '../../../.vitepress/theme/components/ScreenshotSlot.vue'
 </script>
 
 # AutoEdit：代码与文本工作台
@@ -15,7 +15,7 @@ AutoEdit 是 Auto 生态中的轻量文本编辑器。它把浏览、比较和�
 
 [全部应用](/zh/apps) · [系统应用与示例](/zh/apps#system-apps)
 
-<EvidenceImage src="/apps/autoedit/overview-dark.png" alt="autoedit 原生主界面" caption="AutoEdit 深色原生工作台 · 用户提供的 2026-10-01 主图" :width="1924" :height="1247" :framed="false" loading="eager" zoom-label="放大图片" close-label="关闭" original-label="查看原图" />
+<ScreenshotSlot capture-id="SHOT-01" loading="eager" />
 
 ## 从项目里的一个文件开始
 
@@ -32,7 +32,7 @@ AutoEdit 是 Auto 生态中的轻量文本编辑器。它把浏览、比较和�
 
 大文件有单独的处理模式，用来减少不必要的高亮与全文操作。实际可处理的规模与性能取决于运行形态和具体操作；这里不将开发期测量数值作为通用性能承诺。
 
-<!-- Screenshot slot: project search / find-and-replace using a reproducible source fixture. -->
+<ScreenshotSlot capture-id="SHOT-02" />
 
 ## 比较文件、目录与编辑缓冲区
 
@@ -46,27 +46,27 @@ AutoEdit 的差异比较既服务于阅读，也服务于修改后的复查。
 
 从差异视图可以跳转到对应文件侧编辑，保存后重新比较。这个回路与“直接在差异行中原位编辑”不同，后者仍需另外完善。目录同步操作有确认步骤，应先检查目标和变化范围。
 
-<!-- Screenshot slot: side-by-side diff, followed by the edit/save/recompare operation. -->
+<ScreenshotSlot capture-id="SHOT-03" />
 
 ## 它在 AI 工作流里的角色
 
 AutoEdit 是供人阅读、审阅和精修文本的工具。它的长期方向还包括被 Agent 驱动、被其他应用嵌入，并复用公共编辑组件。Coding Agent 的任务组织由 [AutoMusk](/zh/apps/automusk/) 负责；AutoEdit 自身的介绍不把这些集成方向写成已经完整提供的 Agent 系统。
 
-它与 [JadeEdit](/zh/apps/jadeedit/) 长期并存：前者侧重代码与文本、差异审阅，后者侧重文档之间的知识关系。两者会尽量共用组件，各自的产品用途和能力仍分别说明。
+它与 [AutoJade](/zh/apps/auto-jade/) 长期并存：前者侧重代码与文本、差异审阅，后者侧重文档之间的知识关系。两者会尽量共用组件，各自的产品用途和能力仍分别说明。
 
 ## 当前进展与运行方式
 
-编辑、搜索、文件与目录比较已经有实现和验证资料；原生交付、性能收口与部分体验细节仍在推进，尚不将 Milestone 当作已经完成。
+编辑器核心代码已定型。项目的 M4.4 收口记录中，编辑、搜索、差异比较及当前性能验收已经完成。这些结果对应已测试的配置；发行下载与更广的平台覆盖仍按各自的交付条件说明。
 
-源码工程位于 `auto-edit` 仓的 `specs/auto-edit`。准备匹配的 Auto 工具链与工程依赖后，开发用的 VM 原生窗口入口是：
+源码工程位于 `auto-edit` 仓的 `specs/auto-edit`。准备匹配的 Auto 工具链与兄弟依赖后，以深色模式启动 VM 桌面窗口：
 
 ```sh
 cd specs/auto-edit
-auto run -r vm
+auto run -r vm --theme dark
 ```
 
-工程也保留 Vue 生成通道；桌面与 Web 的运行条件和功能覆盖须分别确认。编译发布路径、安装和性能指标以对应版本的交付说明为准。
+工程也保留 Vue 生成通道和 Rust 便携版构建路径。Rust 界面仍需调试与样式验证，本页截图使用 VM/Iced。桌面与 Web 的运行条件和功能覆盖须分别确认；发布路径、安装和性能指标以对应版本的交付说明为准。
 
-介绍依据项目规范与源码整理，资料时点为 **2026-10-01**。后续截图会以具体运行形态与操作过程配文。
+项目进展已按 M4.4 收口记录于 **2026-10-10** 更新；截图说明标注实际运行形态与拍摄日期。
 
 [了解 AutoUI 桌面运行](/zh/ui-desktop) · [了解 AutoOS 虚拟桌面](/zh/autoos/)

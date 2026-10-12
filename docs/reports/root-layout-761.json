@@ -1,0 +1,322 @@
+[
+  {
+    "sha256": "1032D021B0CC9F07499634DE5E34E4F092090523CC5E4AD130109EDE8869F8BB",
+    "new": "docs/design/examples/flow.at",
+    "old": "flow.at"
+  },
+  {
+    "sha256": "8510D164FC393E0D43D2C7C97C5C28BCED51FF81661C7098394445CBD9F6F546",
+    "new": "docs/plans/DEBTS.md",
+    "old": "DEBTS.md"
+  },
+  {
+    "sha256": "422CA6444D708FC80EA8722D205704B8FA871A2318F1D9D095A5809AA50312CD",
+    "new": "docs/guides/filesystem-safety.md",
+    "old": "SAFETY.md"
+  },
+  {
+    "sha256": "F8B8EBCDCCC4B31060EF63F4470AE4139316A99C36792117232FAD3C3C443288",
+    "new": "docs/plans/evidence/600/vm-600-callout-box.png",
+    "old": "vm-600-callout-box.png"
+  },
+  {
+    "sha256": "3E9DAE332D6FDEA560F1506CA75FBAA3A7368D0C7103D159B6BD148EAA059E40",
+    "new": "scripts/deploy-website.ps1",
+    "old": "deploy-website.ps1"
+  },
+  {
+    "sha256": "66E2CE953400C5913F45320C437742CD231787AA3BC2F225CB4BB5E00F62BE0C",
+    "new": "scripts/kill-vue-dev.bat",
+    "old": "kill-vue-dev.bat"
+  },
+  {
+    "sha256": "BF07F7BDE26312E39F6503A1598F9F222862003D6FDDE3EEB3B903185906269A",
+    "new": "test/runners/a2c_tests.at",
+    "old": "tests/a2c_tests.at"
+  },
+  {
+    "sha256": "AA7D535B3B7BAC74FFBBC7E9BC905A57C070D54EE01B91FA4BE7B07869EBACC9",
+    "new": "test/runners/a2r_tests.at",
+    "old": "tests/a2r_tests.at"
+  },
+  {
+    "sha256": "F1DE4AF301C2EA5E1C85678C6841D61C9263531B309A4F40F84B6E26D8E9E108",
+    "new": "test/runners/a2ts_tests.at",
+    "old": "tests/a2ts_tests.at"
+  },
+  {
+    "sha256": "3B558B28D1B326C2B58CE120FBCE8B12D684C1CAD06A83E1E63124DF80AC64CF",
+    "new": "test/runners/vm_tests.at",
+    "old": "tests/vm_tests.at"
+  },
+  {
+    "sha256": "B16BA45106AFCC807ECA282DFC02947BC0577822764CB606F3D7FF97083FBD14",
+    "new": "test/auto/collections.at",
+    "old": "tests/auto/collections.at"
+  },
+  {
+    "sha256": "DEEE0515CC8F07CE5265BADCE687187CDA72EF6527B4371FC06A18DCED31876D",
+    "new": "test/auto/dstr.at",
+    "old": "tests/auto/dstr.at"
+  },
+  {
+    "sha256": "5421C3B9ABBB5204430DEBF96D493ED7DF680A8CEAAE580F57D8F0C204C99546",
+    "new": "test/auto/field_access.at",
+    "old": "tests/auto/field_access.at"
+  },
+  {
+    "sha256": "D840FFC58BB0F4F4A936F75A699D7D597C3656313DD2FD4F11BBE75F33246E8C",
+    "new": "test/auto/infer.at",
+    "old": "tests/auto/infer.at"
+  },
+  {
+    "sha256": "988E2D404D961D79B8138F4A89FF29E4D61D3AF90B5F28FCE5D28527212D2FC3",
+    "new": "test/auto/list.at",
+    "old": "tests/auto/list.at"
+  },
+  {
+    "sha256": "AD4F9A3D875BD439ACE26139E0F9E2F01F8059DB6CB6B841183588B57EBCBEAC",
+    "new": "test/auto/may.at",
+    "old": "tests/auto/may.at"
+  },
+  {
+    "sha256": "D909CCA4B192106984212EEFF2D2BC84A479842CC47950B1B395669333EA9492",
+    "new": "test/auto/mem.at",
+    "old": "tests/auto/mem.at"
+  },
+  {
+    "sha256": "62318D0561135C6424581F20159069F8CC27BFAD8AD266BA2C518A327F56ECC3",
+    "new": "test/auto/memory.at",
+    "old": "tests/auto/memory.at"
+  },
+  {
+    "sha256": "BCAB95D0D93EE91357E81375FD7E9CBBF17CB33E2A0AE1515762A2E0C023F99A",
+    "new": "test/ui/vue-gen-gap/.gitignore",
+    "old": "tests/vue-gen-gap/.gitignore"
+  },
+  {
+    "sha256": "41A61411D145B68BCBA8B9693E6FA2518DBC105EB54A1224B29CD4A86AC3A449",
+    "new": "test/ui/vue-gen-gap/README.md",
+    "old": "tests/vue-gen-gap/README.md"
+  },
+  {
+    "sha256": "2033EB3721F2F1C9E0E3A6AA09E2EBC7103A616FC1C96A3D8A87CB9724D5014A",
+    "new": "test/ui/vue-gen-gap/specs/gap/pac.at",
+    "old": "tests/vue-gen-gap/specs/gap/pac.at"
+  },
+  {
+    "sha256": "51FD05814D9A822E089D490B17BAD95A105FA5214EEC2949BF3FCA35C7DD381D",
+    "new": "test/ui/vue-gen-gap/specs/gap/src/front/app.at",
+    "old": "tests/vue-gen-gap/specs/gap/src/front/app.at"
+  },
+  {
+    "sha256": "148320673725CBF87096AB86E34BF981E7E2771A63D756DD48D1E16EE747A12E",
+    "new": "test/ui/vue-gen-gap/specs/gap/src/front/gap_store.at",
+    "old": "tests/vue-gen-gap/specs/gap/src/front/gap_store.at"
+  },
+  {
+    "sha256": "F204ADEA8A11765DBC8BCD7C6CE6FD10EF82B32B9845D31156603783B3BC816D",
+    "new": "test/fixtures/plan446/b3check/auto/README.md",
+    "old": "tmp-corpus/b3check/auto/README.md"
+  },
+  {
+    "sha256": "0E5C3A231A7BBB0228F66A98517A0FFF8CAFBF4F94D86538125699B2615880BA",
+    "new": "test/fixtures/plan446/b3check/auto/gen/regen.sh",
+    "old": "tmp-corpus/b3check/auto/gen/regen.sh"
+  },
+  {
+    "sha256": "47A8D4175A8FE59AAC3D6F929B72D30B10FB0630C23681089C753F3B034DCC0C",
+    "new": "test/fixtures/plan446/b3check/auto/pac.at",
+    "old": "tmp-corpus/b3check/auto/pac.at"
+  },
+  {
+    "sha256": "51236EB8CE975EA7020F47AA54867F38F369B862B5D9F625099615BF94548CCD",
+    "new": "test/fixtures/plan446/b3check/auto/src/back/api.at",
+    "old": "tmp-corpus/b3check/auto/src/back/api.at"
+  },
+  {
+    "sha256": "4ACF1CECB8EBA0C39B75686898B3F9030DC6E79E31B8A745DF241B796623FB27",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/app.at",
+    "old": "tmp-corpus/b3check/auto/src/front/app.at"
+  },
+  {
+    "sha256": "0379180CC180317BD88B2B1D37E05E9C86606C517911FDD49277578C4B51D317",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/app_shell.at",
+    "old": "tmp-corpus/b3check/auto/src/front/app_shell.at"
+  },
+  {
+    "sha256": "AA4080F7CE83EC044F68C068C5995B8C6ACC697971C6A09D355195998725CCC9",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/collection_browser.at",
+    "old": "tmp-corpus/b3check/auto/src/front/collection_browser.at"
+  },
+  {
+    "sha256": "8AC5AA882EDFEB1598CC943010FB094BD405E5D46EA4E7DF02811C39F0DC4966",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/collection_store.at",
+    "old": "tmp-corpus/b3check/auto/src/front/collection_store.at"
+  },
+  {
+    "sha256": "9B784F0B7BF56AA251F6763BA33B981103D8FEF0EBAD1A04D1688483EC63107D",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/config_editor.at",
+    "old": "tmp-corpus/b3check/auto/src/front/config_editor.at"
+  },
+  {
+    "sha256": "F2B48B98D84EF04272471F746E037B75C254D851B83BC097B7334CCF915FA8E8",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/daemon_view.at",
+    "old": "tmp-corpus/b3check/auto/src/front/daemon_view.at"
+  },
+  {
+    "sha256": "53F95E481901B78F7B43EBB1C3FDC66E587E38EA18A69E9C15365CA126CD0779",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/modules_store.at",
+    "old": "tmp-corpus/b3check/auto/src/front/modules_store.at"
+  },
+  {
+    "sha256": "1B5A9B3B242A2460FD6CDC9F50313C7305E56325F902742BABC0737BA0DBC10E",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/scalar_fields.at",
+    "old": "tmp-corpus/b3check/auto/src/front/scalar_fields.at"
+  },
+  {
+    "sha256": "2407039139FA8F102CD3D1EE3CEC91E0A034EBB7F275751B914ED53B6FED30B4",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/sidebar.at",
+    "old": "tmp-corpus/b3check/auto/src/front/sidebar.at"
+  },
+  {
+    "sha256": "425447DBDC973672CADA1DEF8C7ADE3813FA7F445B90469A84E49DE001E18ABE",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/table_field.at",
+    "old": "tmp-corpus/b3check/auto/src/front/table_field.at"
+  },
+  {
+    "sha256": "A1E732A424619CC11B23D47B0590DF942EA434DD9FB3C58C44B4BC0F69B6189A",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/theme_picker.at",
+    "old": "tmp-corpus/b3check/auto/src/front/theme_picker.at"
+  },
+  {
+    "sha256": "C070DDD3FD930D3F7C073620BC5F5DF8319045760278E62D67AD814417FA5E63",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/theme_store.at",
+    "old": "tmp-corpus/b3check/auto/src/front/theme_store.at"
+  },
+  {
+    "sha256": "2957915F8CA0FC29620D6AC9C7FFCE2985CC5AB1F6D28744D3DB71DA91824D7B",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/utils/app_shell_ext.ts",
+    "old": "tmp-corpus/b3check/auto/src/front/utils/app_shell_ext.ts"
+  },
+  {
+    "sha256": "34FF567CCFE8C5E4A9F2C6107145D35E314EAE3AE0826C04E27470755CEE50C5",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/utils/collection_store_ext.ts",
+    "old": "tmp-corpus/b3check/auto/src/front/utils/collection_store_ext.ts"
+  },
+  {
+    "sha256": "C91FFDCACDA55A7BE0B7E4076DC755DF34FEA8189CBF433081A003B8754D6AAD",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/utils/controls_ext.ts",
+    "old": "tmp-corpus/b3check/auto/src/front/utils/controls_ext.ts"
+  },
+  {
+    "sha256": "08FEA0C392FEA016B838CB01CEB69E6CB32004F843DA77E2C1AF6F50E564EF02",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/utils/modules_store_ext.ts",
+    "old": "tmp-corpus/b3check/auto/src/front/utils/modules_store_ext.ts"
+  },
+  {
+    "sha256": "7EB08B74B203D3DE90C0F4E5D288087518DA29E189C2D8298FEB0710EBF3E4EF",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/utils/theme_ext.ts",
+    "old": "tmp-corpus/b3check/auto/src/front/utils/theme_ext.ts"
+  },
+  {
+    "sha256": "355F8EC7C65058ABECC49EB00DDB366EE4E69C95AB74421F0E50B951E9C93AE7",
+    "new": "test/fixtures/plan446/b3check/auto/src/front/vm_collection.at",
+    "old": "tmp-corpus/b3check/auto/src/front/vm_collection.at"
+  },
+  {
+    "sha256": "807C35217B9A6EA91AA4179CBF57FA23ED34F51A335C91367F9E3DEC5D500026",
+    "new": "test/fixtures/plan446/j2check/auto/pac.at",
+    "old": "tmp-corpus/j2check/auto/pac.at"
+  },
+  {
+    "sha256": "A2687584826C7B77C7CB12EB1C5AF36876E7131D26CE5E3655DE82C574B0E74C",
+    "new": "test/fixtures/plan446/j2check/auto/src/front/app.at",
+    "old": "tmp-corpus/j2check/auto/src/front/app.at"
+  },
+  {
+    "sha256": "23040FFFBD102130A35580B683E3D5A505A748463C94A40ED367F9AE22C077FE",
+    "new": "scripts/tools/fstr_conv.py",
+    "old": "tools/fstr_conv.py"
+  },
+  {
+    "sha256": "3BA18847CC43D2CC4E45B755B0A399C4DADC94FC26D7779C8479621F91BA0142",
+    "new": "scripts/tools/gen_tailwind_manifest.py",
+    "old": "tools/gen_tailwind_manifest.py"
+  },
+  {
+    "sha256": "BAB91223C8531797F255787081FA38C399ABCA915C12A59BE109D45D12504CB2",
+    "new": "scripts/tools/native-fixture/Cargo.toml",
+    "old": "tools/native-fixture/Cargo.toml"
+  },
+  {
+    "sha256": "62D7A67D94D4E68C04C2AD44B93AEBA17E66B33D1493A913357AF3480FCA17CF",
+    "new": "scripts/tools/native-fixture/README.md",
+    "old": "tools/native-fixture/README.md"
+  },
+  {
+    "sha256": "3F584723C83395265D465863C2A29398FA80906CFB340FA9D3D7EF0573F04343",
+    "new": "scripts/tools/native-fixture/src/main.rs",
+    "old": "tools/native-fixture/src/main.rs"
+  },
+  {
+    "sha256": "2FAED32B2020D51A426BB0F098E830FC4D96B25F63997C74074F4E5913279D93",
+    "new": "scripts/tools/parity_shot_diff.py",
+    "old": "tools/parity_shot_diff.py"
+  },
+  {
+    "sha256": "875A9B6C2D1695B79A1E6E1579F15A859ADD9EA972A40B04473C2CE4F775AC89",
+    "new": "scripts/tools/shadcn-snapshot/snapshot.sh",
+    "old": "tools/shadcn-snapshot/snapshot.sh"
+  },
+  {
+    "sha256": "9AB1DF84C33438BA57841DCBF3048BC6691286707F4FDEDD9B7FB5D3AC88584D",
+    "new": "scripts/deploy/auto-playground.service",
+    "old": "deploy/auto-playground.service"
+  },
+  {
+    "sha256": "B514DC8CC3387E844FD7880B15D4495ADFB105B8E3700009A3E2C8DEFE0EC8CB",
+    "new": "scripts/deploy/http-service/README.md",
+    "old": "deploy/http-service/README.md"
+  },
+  {
+    "sha256": "7E66E8FD26397F7859D593E28905D5DEE66DBC9BC9CFDFCCB17B9ACD09EF90D9",
+    "new": "scripts/deploy/http-service/nginx.conf.example",
+    "old": "deploy/http-service/nginx.conf.example"
+  },
+  {
+    "sha256": "579B17AAE4580B98927B1A5F50F5907F5E977175E6B9BC1453D67592DFD18219",
+    "new": "scripts/deploy/http-service/run_proxy_fixture.py",
+    "old": "deploy/http-service/run_proxy_fixture.py"
+  },
+  {
+    "sha256": "E88E14D316C63CA59AD442C1AE93E9DD8D60F1C82952A2D7BEF4573510D2B5FA",
+    "new": "scripts/deploy/nginx-auto-playground.conf",
+    "old": "deploy/nginx-auto-playground.conf"
+  },
+  {
+    "sha256": "7204B7E9ABE948D53074182CA2F5D79A34B3419BF9F55EF89B4BB1D4864E26B8",
+    "new": "scripts/repro/p446/vm-b3-check.mjs",
+    "old": "tmp-corpus/vm-b3-check.mjs"
+  },
+  {
+    "sha256": "D8E76F13F363D834423EB3D3FB9B945BF90D2E975173EE8B8E756D5EA336D774",
+    "new": "scripts/repro/p446/vm-detail-b3.mjs",
+    "old": "tmp-corpus/vm-detail-b3.mjs"
+  },
+  {
+    "sha256": "50A602DA65374925A83A4ED0C355CD750523D777B904C28D3BBCFE1386812ABF",
+    "new": "scripts/repro/p446/vm-detail-dump.mjs",
+    "old": "tmp-corpus/vm-detail-dump.mjs"
+  },
+  {
+    "sha256": "5E243592A4C478B510176285216FF58CE201CC6266EB19445A9C0A09E65FF154",
+    "new": "scripts/repro/p446/vm-detail-head.mjs",
+    "old": "tmp-corpus/vm-detail-head.mjs"
+  },
+  {
+    "sha256": "CEEFCB2D4E5E32AD5AC5A23FE291666B0A55EED440ED62D9DCF5C25664E393A8",
+    "new": "scripts/repro/p446/vm-detail-head2.mjs",
+    "old": "tmp-corpus/vm-detail-head2.mjs"
+  }
+]

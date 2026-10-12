@@ -3,11 +3,11 @@
 // This module enables automatic reloading of UI components when .at files change,
 // providing a rapid development experience without manual restarts.
 
-use auto_val::Node;
 use super::node_converter::{convert_node, ConversionError};
+use auto_val::Node;
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use notify::{RecommendedWatcher, RecursiveMode, Event, EventKind, Watcher};
 use thiserror::Error;
 
 /// Errors that can occur during hot-reload operations
@@ -113,9 +113,10 @@ impl HotReloadComponent {
     /// * `Ok(view)` - Successfully converted View
     /// * `Err(...)` - Conversion failed
     pub fn view(&self) -> HotReloadResult<crate::View<String>> {
-        let node = self.node.read().map_err(|e| {
-            HotReloadError::Parse(format!("RwLock poisoned: {:?}", e))
-        })?;
+        let node = self
+            .node
+            .read()
+            .map_err(|e| HotReloadError::Parse(format!("RwLock poisoned: {:?}", e)))?;
         let view = convert_node(&*node)?;
         Ok(view)
     }
@@ -184,7 +185,12 @@ impl UIWatcher {
                 Self::handle_event(event);
             }
             Err(e) => {
-                crate::syslog!(crate::ui::syslog::SyslogLevel::Warn, "host", "Watch error: {:?}", e);
+                crate::syslog!(
+                    crate::ui::syslog::SyslogLevel::Warn,
+                    "host",
+                    "Watch error: {:?}",
+                    e
+                );
             }
         })?;
 

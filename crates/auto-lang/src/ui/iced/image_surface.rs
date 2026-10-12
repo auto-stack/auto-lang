@@ -161,10 +161,7 @@ pub struct ImageSurfacePaint {
 /// Select stable loading/error/placeholder visuals without touching media
 /// bytes. A quality of 0–79 requests linear sampling; high quality keeps the
 /// sharper/high filter used for settled renditions.
-pub fn image_surface_paint(
-    quality: u8,
-    resource: ImageSurfaceResource,
-) -> ImageSurfacePaint {
+pub fn image_surface_paint(quality: u8, resource: ImageSurfaceResource) -> ImageSurfacePaint {
     ImageSurfacePaint {
         background: Color::from_rgba(0.08, 0.09, 0.12, 1.0),
         resource,
@@ -199,11 +196,30 @@ pub enum ImageSurfaceInputEvent {
 /// Normalized payload delivered to ImageSurface callbacks.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImageSurfaceEvent {
-    Wheel { delta_y: f32, x: f32, y: f32 },
-    Pan { dx: f32, dy: f32, phase: ImageSurfacePanPhase },
-    DoubleClick { x: f32, y: f32 },
-    Loaded { width: u32, height: u32, revision: u64 },
-    Error { code: String, message: String, revision: u64 },
+    Wheel {
+        delta_y: f32,
+        x: f32,
+        y: f32,
+    },
+    Pan {
+        dx: f32,
+        dy: f32,
+        phase: ImageSurfacePanPhase,
+    },
+    DoubleClick {
+        x: f32,
+        y: f32,
+    },
+    Loaded {
+        width: u32,
+        height: u32,
+        revision: u64,
+    },
+    Error {
+        code: String,
+        message: String,
+        revision: u64,
+    },
 }
 
 /// Per-source input state. Changing the source revision resets pan and the
@@ -448,12 +464,7 @@ mod tests {
             })
         );
         assert!(matches!(
-            normalize_image_surface_event(
-                &mut state,
-                viewport,
-                7,
-                ImageSurfaceInputEvent::PanEnd
-            ),
+            normalize_image_surface_event(&mut state, viewport, 7, ImageSurfaceInputEvent::PanEnd),
             Some(ImageSurfaceEvent::Pan {
                 phase: ImageSurfacePanPhase::End,
                 ..

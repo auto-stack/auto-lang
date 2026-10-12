@@ -124,6 +124,117 @@ widget ChildGeo (data: List, field: str = "v") {
 }
 "##;
 
+    /// PLAN-762 T-02: 多片 Init 夹具——250k 次自旋迭代，实测 ~16.7 VM
+    /// 指令/迭代 ≈ 4.2M 步，> 2×1M 指令片帽 → 必跨 ≥3 片；< 10M 累计
+    /// 护栏（余量约 2.4×）。片内让出点由指令帽绑定，与机器速度/负载
+    /// 无关（快机恰 1M 指令/片封顶，慢机 4ms 墙钟帽只让片更短、片数
+    /// 更多）——确定性复现 761 tt 批量档 flake 的早退机制。
+    /// 250040 = 40 + 自旋计数，marker 本身即"Init 真跑完"的证据。
+    const SRC_SPIN: &str = r##"
+widget ParentSpin {
+    model {
+        spins int = 250000
+    }
+    view {
+        col {
+            child-spin (spins: .spins) {}
+        }
+    }
+}
+
+widget ChildSpin (spins: int = 0) {
+    msg { Init }
+    model {
+        path str = ""
+    }
+    on {
+        .Init -> {
+            var n int = .spins
+            var i int = 0
+            var acc int = 0
+            while i < n {
+                acc = acc + 1
+                i = i + 1
+            }
+            var x float = 40.0 + acc
+            .path = f"M ${x} 260"
+        }
+    }
+    view {
+        svg (viewBox: "0 0 560 300") {
+            path (d: .path, fill: "none", stroke: "#2563eb") {}
+        }
+    }
+}
+"##;
+
+    /// PLAN-762 T-02: 完成态 + 有界截止时间驱动。单次
+    /// `drive_scheduler_to_quiescence` 的 `progressed` 判据只认派发/完成，
+    /// 不计"续跑片让出未完成"——多片 Init 单调用不保证收敛（761 tt
+    /// flake 机制，分诊见 docs/plans/reports/762-chart-init-attribution.md）。
+    /// 本循环驱动到终态（无排队 demand / 无在途 CPU / 无 I/O 凭据）才
+    /// 放行断言；有界超时红并带 pending/CPU/I/O 诊断。循环内重建视图：
+    /// 新落地状态可能登记下一批子件 demand（plan502 完成态驱动同
+    /// precedent，PLAN-759 T-08）。
+    #[cfg(feature = "ui-interpreter")]
+    fn drive_to_completion(
+        dc: &mut crate::ui::dynamic::DynamicComponent,
+        label: &str,
+        deadline: std::time::Duration,
+    ) {
+        let start = std::time::Instant::now();
+        loop {
+            dc.drive_scheduler_to_quiescence(10_000);
+            if !(dc.has_pending_init_work()
+                || dc.has_cpu_continuations()
+                || dc.has_parked_io_tasks())
+            {
+                return;
+            }
+            assert!(
+                start.elapsed() < deadline,
+                "{label}: Init/CPU 续体 {deadline:?} 未收敛（完成态驱动超时；pending_init={} cpu_cont={} parked_total={}）",
+                dc.bridge_mut().pending_init_demand_count(),
+                dc.bridge_mut().cpu_continuation_count(),
+                dc.bridge_mut().parked_count(),
+            );
+            let _ = dc.view_with_debug_gated(true);
+        }
+    }
+
+    /// PLAN-762 T-02: 机制钉子——必跨 ≥3 片的 Init 确定性复现单调用早退
+    /// （续体在途即出循环）；完成态截止时间驱动仍可收敛且几何落地。
+    /// 注：前半断言钉的是 helper 现行 `progressed` 判据（KNOWN-DEBT
+    /// D-762-1）；若日后修复 helper 退出判据，本断言按新语义更新。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn child_init_multi_slice_early_exit_and_completion_driving() {
+        let mut dc = build_inline(SRC_SPIN);
+        dc.fire_init();
+        let (view0, _, _) = dc.view_with_debug_gated(true);
+        let dump0 = format!("{view0:?}");
+        assert!(
+            dump0.contains("Loading…"),
+            "pending Init demand must render the skeleton placeholder; dump head: {}",
+            &dump0[..dump0.len().min(800)]
+        );
+        // 复现：单次驱动对多片 Init 早退（progressed 不计片让出）。
+        dc.drive_scheduler_to_quiescence(10_000);
+        assert!(
+            dc.has_pending_init_work() || dc.has_cpu_continuations(),
+            "多片 Init 单次驱动后仍应在途（早退机制复现）；若本断言翻红，helper 退出判据已变更——按 docs/plans/reports/762-chart-init-attribution.md 更新机制钉子"
+        );
+        // 阻断：完成态截止时间驱动收敛，自旋计数几何落地。
+        drive_to_completion(&mut dc, "multi-slice", std::time::Duration::from_secs(30));
+        let (view, _, _) = dc.view_with_debug_gated(true);
+        let dump = format!("{view:?}");
+        assert!(
+            dump.contains("M 250040 260"),
+            "multi-slice Init geometry must land (250040 = 40 + 250000 spins proves completion); dump head: {}",
+            &dump[..dump.len().min(800)]
+        );
+    }
+
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn child_init_fires_during_render() {
@@ -174,7 +285,10 @@ widget ChildGeo (data: List, field: str = "v") {
             dc.fire_init();
             dc.set_route(route);
             let _ = dc.view_with_debug_gated(true);
-            dc.drive_scheduler_to_quiescence(10_000);
+            // PLAN-762 T-02：完成态截止时间驱动——单次驱动对多片 Init
+            // 早退（progressed 不计片让出，761 tt flake），续体在途不
+            // 提前验收；marker 原断言不动。
+            drive_to_completion(&mut dc, route, std::time::Duration::from_secs(30));
             let (view, _, _) = dc.view_with_debug_gated(true);
             let dump = format!("{:?}", view);
             assert!(

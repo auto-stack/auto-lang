@@ -5,6 +5,10 @@ outline: [2, 3]
 editLink: false
 ---
 
+<script setup>
+import ScreenshotSlot from '../../../.vitepress/theme/components/ScreenshotSlot.vue'
+</script>
+
 # AutoMusk：围绕 Plan 与 Spec 的 Coding Agent
 
 AutoMusk 是 Auto 生态中的 Coding Agent 应用。它把项目对话、工具调用和开发过程放在一个工作台中，用 Plan 组织一次变更，用 Spec 保留项目已有的知识与约束。
@@ -13,13 +17,13 @@ AutoMusk 是 Auto 生态中的 Coding Agent 应用。它把项目对话、工具
 
 [全部应用](/zh/apps) · [AutoAI 架构](/zh/ai)
 
-<!-- Screenshot slot: overview from the agreed sample-project walkthrough, after AutoMusk preparation is complete. -->
+<ScreenshotSlot capture-id="SHOT-04" />
 
 ## 从对话进入项目工作
 
 选择工作目录后，可以先让 Agent 阅读项目并解释结构，再讨论一个具体变更。应用呈现消息、工具事件、计划进度、确认门和报告；用户据此检查发生了什么，并在需要决策的位置继续参与。
 
-一个有代表性的示例应该贯穿同一个小工程：理解项目 → 提出需求 → 检查计划 → 执行改动 → 查看复审与结果。本页先说明这个过程，完整截图将在应用准备好后按该流程补齐。
+本页两张实拍来自同一个本地密码生成器示例：会话中可见读取目录、写入和编辑计划文件的工具活动；计划页面展示 PLAN-001 的目标、设计与 0/5 进度。
 
 ## Plan 与 Spec 各自记录什么
 
@@ -38,7 +42,7 @@ AutoMusk 使用四阶段方法：先形成可检查的计划，再实施变更�
 
 仓库的四个开发技能与应用内 Relay 是两个入口。技能侧的 worktree、复审、合入和沉淀规约，不应被描述为所有应用运行都已自动强制执行。当前复审失败后还需要跟进修复和再次复审；服务重启也不会恢复内存中的活动 Relay 运行。
 
-<!-- Screenshot slot: the same sample project's Plan, confirmation gate, tool activity, and reviewed result. -->
+<ScreenshotSlot capture-id="SHOT-05" />
 
 ## 模型、工具与应用的分工
 
@@ -65,3 +69,9 @@ musk serve
 介绍依据当前 README 与架构资料整理，资料时点为 **2026-10-01**。
 
 [AI 的历史与展望](/zh/articles/auto-ai-history) · [AutoEdit](/zh/apps/autoedit/) · [返回应用总览](/zh/apps)
+
+## 发布候选中的看板与预览
+
+Musk Kanban 与 Canvas 预览的发布范围、操作路径和素材仍需候选验收确认。这里先保留对应场景；已有普通 Kanban 示例不能作为 Musk 的交付证据。
+
+<ScreenshotSlot capture-id="SHOT-06" />

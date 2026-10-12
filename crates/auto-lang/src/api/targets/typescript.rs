@@ -2,8 +2,8 @@
 //!
 //! Plan 102 Phase 5.3: Generate TypeScript types and API client from API definitions
 
-use crate::api::{ApiEndpoint, ApiModule, ApiType};
 use super::TargetGenerator;
+use crate::api::{ApiEndpoint, ApiModule, ApiParam, ApiType};
 
 /// TypeScript code generator
 pub struct TypeScriptGenerator {
@@ -26,10 +26,26 @@ impl Default for TypeScriptGenerator {
 }
 
 impl TypeScriptGenerator {
-
     /// Convert Auto type to TypeScript type
     fn to_ts_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
+
+        // PLAN-729 T-05: 文件端点（FileResponse / Future<FileResponse>）→
+        // 原生 Response（fetch 返回原样交付，不 .json()）。
+        if crate::api::contract::ResponseKind::from_return_string(trimmed)
+            == crate::api::contract::ResponseKind::File
+        {
+            return "Response".to_string();
+        }
+
+        // PLAN-730 T-06: 上传三类型 → 收据 JSON（动态形状；UploadRequest 是
+        // 注入参数——签名侧被 FormData 替换，此映射兜 interface/返回位）。
+        if crate::api::contract::ResponseKind::from_return_string(trimmed)
+            == crate::api::contract::ResponseKind::Upload
+            || crate::api::contract::is_upload_param(trimmed)
+        {
+            return "any".to_string();
+        }
 
         // Handle optional types (prefix ?T, e.g. ?Note, ?int)
         if let Some(inner) = trimmed.strip_prefix('?') {
@@ -77,10 +93,16 @@ impl TypeScriptGenerator {
         // in the store composable (see vue.rs type-driven SSE wiring), not via a fetch
         // call. Render as the inner item type so any incidental reference stays valid.
         // (Plan 043 stream phase.)
-        if let Some(inner) = trimmed.strip_prefix("~Stream<").and_then(|s| s.strip_suffix('>')) {
+        if let Some(inner) = trimmed
+            .strip_prefix("~Stream<")
+            .and_then(|s| s.strip_suffix('>'))
+        {
             return self.to_ts_type(inner);
         }
-        if let Some(inner) = trimmed.strip_prefix("Stream<").and_then(|s| s.strip_suffix('>')) {
+        if let Some(inner) = trimmed
+            .strip_prefix("Stream<")
+            .and_then(|s| s.strip_suffix('>'))
+        {
             return self.to_ts_type(inner);
         }
 
@@ -94,7 +116,8 @@ impl TypeScriptGenerator {
             "null" | "nil" => "null",
             "any" => "any",
             _ => trimmed, // Use as-is for custom types
-        }.to_string()
+        }
+        .to_string()
     }
 
     /// Generate TypeScript interface for a type
@@ -111,7 +134,10 @@ impl TypeScriptGenerator {
         for field in &api_type.fields {
             let ts_type = self.to_ts_type(&field.ty);
             let optional_marker = if field.optional { "?" } else { "" };
-            lines.push(format!("{}{}{}: {};", self.indent, field.name, optional_marker, ts_type));
+            lines.push(format!(
+                "{}{}{}: {};",
+                self.indent, field.name, optional_marker, ts_type
+            ));
         }
 
         lines.push("}".to_string());
@@ -120,15 +146,14 @@ impl TypeScriptGenerator {
 
     /// Generate IApi interface
     fn generate_iapi_interface(&self, endpoints: &[ApiEndpoint]) -> String {
-        let mut lines = vec![
-            "export interface IApi {".to_string(),
-        ];
+        let mut lines = vec!["export interface IApi {".to_string()];
 
         for endpoint in endpoints {
             let name = endpoint.frontend_name();
 
             // Build parameter list
-            let params: Vec<String> = endpoint.params
+            let params: Vec<String> = endpoint
+                .params
                 .iter()
                 .map(|p| {
                     let ts_type = self.to_ts_type(&p.ty);
@@ -144,7 +169,13 @@ impl TypeScriptGenerator {
                 format!("Promise<{}>", return_type)
             };
 
-            lines.push(format!("{}{}({}): {};", self.indent, name, params.join(", "), return_type));
+            lines.push(format!(
+                "{}{}({}): {};",
+                self.indent,
+                name,
+                params.join(", "),
+                return_type
+            ));
         }
 
         lines.push("}".to_string());
@@ -188,12 +219,7 @@ impl TypeScriptGenerator {
 
             let impl_line = format!(
                 "{}{}: ({}) => invoke{}('{}'{}),",
-                self.indent,
-                name,
-                param_list,
-                invoke_return,
-                cmd_name,
-                invoke_args
+                self.indent, name, param_list, invoke_return, cmd_name, invoke_args
             );
 
             lines.push(impl_line);
@@ -280,7 +306,8 @@ export const api: IApi = isTauri ? tauriApi : httpApi;
 // Also export individual implementations for explicit use
 export { tauriApi, httpApi };
 export type { IApi };
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate a single fetch function for an endpoint
@@ -289,9 +316,29 @@ export type { IApi };
         let method = endpoint.method().to_uppercase();
         let path = endpoint.path();
 
-        let params: Vec<String> = endpoint.params.iter()
-            .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
+        // PLAN-730 T-06: 上传端点——注入参数（UploadRequest）从签名删除，
+        // 新增 `body: FormData` 形参（fetch 直传——浏览器生成 multipart
+        // boundary；绝不 JSON.stringify(FormData)）。返回收据 JSON。
+        let upload_param_removed: Vec<&ApiParam> = endpoint
+            .params
+            .iter()
+            .filter(|p| !crate::api::contract::is_upload_param(&p.ty))
             .collect();
+        let is_upload_endpoint = endpoint.params.len() != upload_param_removed.len();
+        let params: Vec<String> = if is_upload_endpoint {
+            let mut sig: Vec<String> = upload_param_removed
+                .iter()
+                .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
+                .collect();
+            sig.push("body: FormData".to_string());
+            sig
+        } else {
+            endpoint
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, self.to_ts_type(&p.ty)))
+                .collect()
+        };
         let param_list = params.join(", ");
 
         let return_type = self.to_ts_type(&endpoint.return_type);
@@ -301,9 +348,10 @@ export type { IApi };
             format!("Promise<{}>", return_type)
         };
 
-        let mut lines = vec![
-            format!("export async function {}({}): {} {{", name, param_list, return_type),
-        ];
+        let mut lines = vec![format!(
+            "export async function {}({}): {} {{",
+            name, param_list, return_type
+        )];
 
         // Separate path params from query params.
         // Plan 022 §7.6: 支持两种路径参数语法 —— `:param`（axum 0.6 / Express）
@@ -311,10 +359,14 @@ export type { IApi };
         let is_path_param = |p_name: &str| {
             path.contains(&format!(":{}", p_name)) || path.contains(&format!("{{{}}}", p_name))
         };
-        let path_params: Vec<_> = endpoint.params.iter()
+        let path_params: Vec<_> = endpoint
+            .params
+            .iter()
             .filter(|p| is_path_param(&p.name))
             .collect();
-        let query_params: Vec<_> = endpoint.params.iter()
+        let query_params: Vec<_> = endpoint
+            .params
+            .iter()
             .filter(|p| !is_path_param(&p.name))
             .collect();
 
@@ -322,17 +374,27 @@ export type { IApi };
         //   - `:param`（axum 0.6 / Express）→ `${param}`
         //   - `{param}`（axum 0.7+ / RFC 6570 URI Template）→ `${param}`
         let has_path_params = path.contains(':')
-            || endpoint.params.iter().any(|p| path.contains(&format!("{{{}}}", p.name)));
+            || endpoint
+                .params
+                .iter()
+                .any(|p| path.contains(&format!("{{{}}}", p.name)));
         let mut url = if has_path_params {
             let mut url_str = path.to_string();
-            let uses_brace = endpoint.params.iter().any(|p| path.contains(&format!("{{{}}}", p.name)));
+            let uses_brace = endpoint
+                .params
+                .iter()
+                .any(|p| path.contains(&format!("{{{}}}", p.name)));
             for param in &path_params {
                 if uses_brace {
                     // `{name}` → `${name}`（一次性，不碰 colon）
-                    url_str = url_str.replace(&format!("{{{}}}", param.name), &format!("${{{}}}", param.name));
+                    url_str = url_str.replace(
+                        &format!("{{{}}}", param.name),
+                        &format!("${{{}}}", param.name),
+                    );
                 } else {
                     // `:name` → `${name}`（colon 路径）
-                    url_str = url_str.replace(&format!(":{}", param.name), &format!("${{{}}}", param.name));
+                    url_str = url_str
+                        .replace(&format!(":{}", param.name), &format!("${{{}}}", param.name));
                 }
             }
             format!("`{}`", url_str)
@@ -349,19 +411,37 @@ export type { IApi };
             // Plan 022 §7.6: query 拼接也要基于已插值的 url（去掉外层反引号再重包），
             // 此前用原始 path 会重新引入 `{param}`/`:param` 字面量。
             let base = url.trim_start_matches('`').trim_end_matches('`');
-            let query_str: Vec<String> = query_params.iter()
+            let query_str: Vec<String> = query_params
+                .iter()
                 .map(|p| format!("{}=${{encodeURIComponent({})}}", p.name, p.name))
                 .collect();
             url = format!("`{}?{}`", base, query_str.join("&"));
         }
 
-        lines.push(format!("{}const response = await fetch({}, {{", self.indent, url));
-        lines.push(format!("{}{}method: '{}',", self.indent, self.indent, method));
-        lines.push(format!("{}{}headers: {{ 'Content-Type': 'application/json' }},", self.indent, self.indent));
+        lines.push(format!(
+            "{}const response = await fetch({}, {{",
+            self.indent, url
+        ));
+        lines.push(format!(
+            "{}{}method: '{}',",
+            self.indent, self.indent, method
+        ));
+        if !is_upload_endpoint {
+            lines.push(format!(
+                "{}{}headers: {{ 'Content-Type': 'application/json' }},",
+                self.indent, self.indent
+            ));
+        }
 
-        if method != "GET" && method != "DELETE" && !endpoint.params.is_empty() {
+        // PLAN-730 T-06: 上传端点 body = FormData 直传（fetch 不设
+        // Content-Type——boundary 由浏览器注入）。
+        if is_upload_endpoint {
+            lines.push(format!("{}{}body,", self.indent, self.indent));
+        } else if method != "GET" && method != "DELETE" && !endpoint.params.is_empty() {
             // Only include non-path params in the JSON body
-            let body_param_names: Vec<&str> = endpoint.params.iter()
+            let body_param_names: Vec<&str> = endpoint
+                .params
+                .iter()
                 .filter(|p| !path.contains(&format!(":{}", p.name)))
                 .map(|p| p.name.as_str())
                 .collect();
@@ -370,13 +450,35 @@ export type { IApi };
             } else {
                 format!("{{ {} }}", body_param_names.join(", "))
             };
-            lines.push(format!("{}{}body: JSON.stringify({}),", self.indent, self.indent, body));
+            lines.push(format!(
+                "{}{}body: JSON.stringify({}),",
+                self.indent, self.indent, body
+            ));
         }
 
         lines.push(format!("{}}});", self.indent));
-        lines.push(format!("{}if (!response.ok) throw new Error(`HTTP ${{response.status}}`);", self.indent));
+        if !is_upload_endpoint {
+            lines.push(format!(
+                "{}if (!response.ok) throw new Error(`HTTP ${{response.status}}`);",
+                self.indent
+            ));
+        } else {
+            // 上传收据：非 2xx 也携带 receipt JSON（状态/错误种类在体内）。
+            lines.push(format!(
+                "{}// upload receipt: non-2xx replies still carry receipt JSON",
+                self.indent
+            ));
+        }
 
-        if return_type != "Promise<void>" {
+        // PLAN-729 T-05: 文件端点返回原生 Response（状态/headers 保留，
+        // 不调 .json()；读盘交给调用方——决策报告 §6）。
+        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == crate::api::contract::ResponseKind::File
+        {
+            lines.push(format!("{}return response;", self.indent));
+        } else if is_upload_endpoint {
+            lines.push(format!("{}return response.json();", self.indent));
+        } else if return_type != "Promise<void>" {
             lines.push(format!("{}return response.json();", self.indent));
         }
         lines.push("}".to_string());
@@ -467,7 +569,8 @@ impl TypeScriptGenerator {
 
         // types.ts - Type definitions
         if !module.types.is_empty() {
-            let types_content = module.types
+            let types_content = module
+                .types
                 .iter()
                 .map(|t| self.generate_interface(t))
                 .collect::<Vec<_>>()
@@ -476,13 +579,22 @@ impl TypeScriptGenerator {
         }
 
         // api-interface.ts - IApi interface
-        files.insert("api-interface.ts".to_string(), self.generate_iapi_interface(&module.endpoints));
+        files.insert(
+            "api-interface.ts".to_string(),
+            self.generate_iapi_interface(&module.endpoints),
+        );
 
         // api-tauri.ts - Tauri IPC implementation
-        files.insert("api-tauri.ts".to_string(), self.generate_tauri_impl(&module.endpoints));
+        files.insert(
+            "api-tauri.ts".to_string(),
+            self.generate_tauri_impl(&module.endpoints),
+        );
 
         // api-http.ts - HTTP implementation
-        files.insert("api-http.ts".to_string(), self.generate_http_impl(&module.endpoints));
+        files.insert(
+            "api-http.ts".to_string(),
+            self.generate_http_impl(&module.endpoints),
+        );
 
         // api.ts - Auto-selecting implementation
         files.insert("api.ts".to_string(), self.generate_api_selector());
@@ -520,6 +632,44 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-729 R1 [G-02]：文件端点 TS 面——类型映射 Response、fetch 返回
+    /// 原生 Response（不调 .json()）。
+    #[test]
+    fn test_plan729_file_endpoint_returns_native_response() {
+        use crate::api::{ApiAttrs, ApiEndpoint};
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some("GET".to_string());
+        attrs.path = Some("/api/files/:name".to_string());
+        let endpoint = ApiEndpoint {
+            fn_name: "download".to_string(),
+            params: vec![crate::api::ApiParam {
+                name: "name".to_string(),
+                ty: "str".to_string(),
+                optional: false,
+                default: None,
+            }],
+            return_type: "FileResponse".to_string(),
+            attrs,
+            body: None,
+            doc: None,
+        };
+        let gen = super::TypeScriptGenerator::default();
+        let ts_type = gen.to_ts_type("FileResponse");
+        assert_eq!(ts_type, "Response");
+        let ts_type_async = gen.to_ts_type("Future<FileResponse>");
+        assert_eq!(ts_type_async, "Response", "异步形态同映射");
+        let fetch = gen.generate_fetch_function(&endpoint);
+        assert!(
+            fetch.contains("): Promise<Response>"),
+            "返回类型 Response: {fetch}"
+        );
+        assert!(
+            fetch.contains("return response;"),
+            "原生 Response 返回: {fetch}"
+        );
+        assert!(!fetch.contains("response.json()"), "不得 .json(): {fetch}");
+    }
+
     use super::*;
     use crate::api::{ApiAttrs, ApiField, ApiParam};
 
@@ -591,20 +741,26 @@ mod tests {
         attrs.method = Some("GET".to_string());
         attrs.path = Some("/api/items/{section_id}/{id}".to_string());
         let mut endpoint = ApiEndpoint::new("get_item".to_string(), attrs);
-        endpoint.params.push(ApiParam::new("section_id".to_string(), "str".to_string()));
-        endpoint.params.push(ApiParam::new("id".to_string(), "str".to_string()));
+        endpoint
+            .params
+            .push(ApiParam::new("section_id".to_string(), "str".to_string()));
+        endpoint
+            .params
+            .push(ApiParam::new("id".to_string(), "str".to_string()));
         endpoint.return_type = "Item".to_string();
 
         let result = gen.generate_fetch_function(&endpoint);
         // 路径参数插值为 JS 模板字符串（注意：`${section_id}` 含大括号是正常的模板语法）
         assert!(
             result.contains("`/api/items/${section_id}/${id}`"),
-            "brace path params 应插值为 `${{section_id}}/${{id}}`，实际:\n{}", result
+            "brace path params 应插值为 `${{section_id}}/${{id}}`，实际:\n{}",
+            result
         );
         // 不应残留原始字面量路径 `/api/items/{section_id}/{id}`（未被反引号模板包裹的形态）
         assert!(
             !result.contains("'/api/items/") && !result.contains("/{section_id}/{id}"),
-            "不应残留原始字面量路径: {}", result
+            "不应残留原始字面量路径: {}",
+            result
         );
     }
 
@@ -616,28 +772,41 @@ mod tests {
         attrs.method = Some("DELETE".to_string());
         attrs.path = Some("/api/users/:id".to_string());
         let mut endpoint = ApiEndpoint::new("delete_user".to_string(), attrs);
-        endpoint.params.push(ApiParam::new("id".to_string(), "str".to_string()));
+        endpoint
+            .params
+            .push(ApiParam::new("id".to_string(), "str".to_string()));
 
         let result = gen.generate_fetch_function(&endpoint);
         assert!(
             result.contains("`/api/users/${id}`"),
-            "colon path params 应插值为 `${{id}}`，实际:\n{}", result
+            "colon path params 应插值为 `${{id}}`，实际:\n{}",
+            result
         );
         // 不应残留原始 `:id` 字面量
-        assert!(!result.contains("/users/:id"), "不应残留 :id 字面量: {}", result);
+        assert!(
+            !result.contains("/users/:id"),
+            "不应残留 :id 字面量: {}",
+            result
+        );
     }
 
     #[test]
     fn test_to_ts_type_tuple_and_stream() {
         let gen = TypeScriptGenerator::new();
         // Plan 043: tuple (a, b) → [a, b]
-        assert_eq!(gen.to_ts_type("(str, RenderedCell)"), "[string, RenderedCell]");
+        assert_eq!(
+            gen.to_ts_type("(str, RenderedCell)"),
+            "[string, RenderedCell]"
+        );
         // Single-element tuple still produces a tuple.
         assert_eq!(gen.to_ts_type("(str)"), "[string]");
         // Nested generics inside tuple must not confuse the splitter.
         assert_eq!(gen.to_ts_type("(str, List<int>)"), "[string, List<int>]");
         // Array of tuple (field type as it arrives from lenient parse_fields).
-        assert_eq!(gen.to_ts_type("[](str, RenderedCell)"), "[string, RenderedCell][]");
+        assert_eq!(
+            gen.to_ts_type("[](str, RenderedCell)"),
+            "[string, RenderedCell][]"
+        );
         // Stream types collapse to inner item type (SSE consumed in store, not via fetch).
         assert_eq!(gen.to_ts_type("~Stream<ShellEvent>"), "ShellEvent");
         assert_eq!(gen.to_ts_type("Stream<ShellEvent>"), "ShellEvent");

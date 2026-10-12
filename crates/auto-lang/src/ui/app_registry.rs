@@ -96,7 +96,13 @@ fn normalize_opens(raw: &str) -> Vec<String> {
     raw.split(',')
         .map(|e| e.trim().to_lowercase())
         .filter(|e| !e.is_empty())
-        .map(|e| if e.starts_with('.') { e } else { format!(".{e}") })
+        .map(|e| {
+            if e.starts_with('.') {
+                e
+            } else {
+                format!(".{e}")
+            }
+        })
         .collect()
 }
 
@@ -165,7 +171,13 @@ pub(crate) fn convention_native_exe(app_dir: &Path, name: Option<&str>) -> Optio
     if let Some(name) = name {
         let snake: String = name
             .chars()
-            .map(|c| if c == '-' || c == ' ' { '_' } else { c.to_ascii_lowercase() })
+            .map(|c| {
+                if c == '-' || c == ' ' {
+                    '_'
+                } else {
+                    c.to_ascii_lowercase()
+                }
+            })
             .collect();
         candidates.push(snake);
         candidates.push(name.to_string());
@@ -270,19 +282,27 @@ fn entry_for_dir(
         title,
         title_zh: fields.get("title_zh").cloned(),
         name: fields.get("name").cloned(),
-        icon: fields.get("icon").cloned().unwrap_or_else(|| "app-window".to_string()),
-        category: fields.get("category").cloned().unwrap_or_else(|| "app".to_string()),
+        icon: fields
+            .get("icon")
+            .cloned()
+            .unwrap_or_else(|| "app-window".to_string()),
+        category: fields
+            .get("category")
+            .cloned()
+            .unwrap_or_else(|| "app".to_string()),
         entry,
         render,
         daemon: fields.get("daemon").cloned(),
         desktop_exe: fields.get("desktop_exe").cloned(),
         desktop_render: fields.get("desktop_render").cloned(),
-        back_root: parse_pac_back_project(pac.as_deref().unwrap_or(""))
-            .map(|rel| dir.join(rel)),
+        back_root: parse_pac_back_project(pac.as_deref().unwrap_or("")).map(|rel| dir.join(rel)),
         fit: fields
             .get("window")
             .is_some_and(|w| w.eq_ignore_ascii_case("fit")),
-        opens: fields.get("opens").map(|v| normalize_opens(v)).unwrap_or_default(),
+        opens: fields
+            .get("opens")
+            .map(|v| normalize_opens(v))
+            .unwrap_or_default(),
         media_root: fields.get("media_root").cloned(),
         photo_root: fields.get("photo_root").cloned(),
         back_entry: {
@@ -328,10 +348,7 @@ pub fn badge_color_for(id: &str) -> &'static str {
 pub fn parse_pac_back_project(pac_source: &str) -> Option<String> {
     for line in pac_source.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
-        let Some(rest) = strip_chain(
-            line,
-            &["back", ":", "{", "project", ":"],
-        ) else {
+        let Some(rest) = strip_chain(line, &["back", ":", "{", "project", ":"]) else {
             continue;
         };
         let mut value = rest.trim_end().trim_end_matches('}').trim();
@@ -437,8 +454,7 @@ fn expand_apps_container(container: &Path, out: &mut Vec<(String, PathBuf)>) {
     let Ok(rd) = std::fs::read_dir(container) else {
         return;
     };
-    let mut subdirs: Vec<std::fs::DirEntry> =
-        rd.flatten().filter(|e| e.path().is_dir()).collect();
+    let mut subdirs: Vec<std::fs::DirEntry> = rd.flatten().filter(|e| e.path().is_dir()).collect();
     subdirs.sort_by_key(|e| e.file_name());
     for entry in subdirs {
         let dir = entry.path();
@@ -489,7 +505,11 @@ pub fn gallery_extra_roots() -> Vec<(String, PathBuf)> {
         Path::new(".."),
     );
     if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
-        eprintln!("[app-registry] gallery roots: {:?} (AUTO_OS_ROOT={:?})", roots, std::env::var("AUTO_OS_ROOT").ok());
+        eprintln!(
+            "[app-registry] gallery roots: {:?} (AUTO_OS_ROOT={:?})",
+            roots,
+            std::env::var("AUTO_OS_ROOT").ok()
+        );
     }
     roots
 }
@@ -520,9 +540,12 @@ pub fn resolve_os_manifest_root(parent: &Path) -> Option<PathBuf> {
         let p = PathBuf::from(root);
         return p.join("apps.manifest").is_file().then_some(p);
     }
-    [parent.join("auto-os"), PathBuf::from("D:/autostack/auto-os")]
-        .into_iter()
-        .find(|root| root.join("apps.manifest").is_file())
+    [
+        parent.join("auto-os"),
+        PathBuf::from("D:/autostack/auto-os"),
+    ]
+    .into_iter()
+    .find(|root| root.join("apps.manifest").is_file())
 }
 
 /// Stage B P-5：解析序定位 auto-os 顶层随迁资产目录（画廊两件等 590 批
@@ -605,9 +628,7 @@ struct OsManifestFile {
 /// `repo` 相对路径，bin 解析用）。宽容纪律同 [`manifest_repo_roots`]：
 /// 坏 JSON 全跳 + 警告。独立读取不与 `manifest_repo_roots` 共享解析——
 /// launch 期一次性的成本，换零回归面。
-pub fn manifest_daemon_defs(
-    manifest_root: &Path,
-) -> Vec<(String, PathBuf, ManifestDaemon)> {
+pub fn manifest_daemon_defs(manifest_root: &Path) -> Vec<(String, PathBuf, ManifestDaemon)> {
     let path = manifest_root.join("apps.manifest");
     let Ok(raw) = std::fs::read_to_string(&path) else {
         return Vec::new();
@@ -615,9 +636,7 @@ pub fn manifest_daemon_defs(
     let parsed: OsManifestFile = match serde_json::from_str(&raw) {
         Ok(v) => v,
         Err(err) => {
-            eprintln!(
-                "[app-registry] apps.manifest parse failed (daemon lookup skipped): {err}"
-            );
+            eprintln!("[app-registry] apps.manifest parse failed (daemon lookup skipped): {err}");
             return Vec::new();
         }
     };
@@ -889,7 +908,9 @@ mod tests {
 
     #[test]
     fn render_filter_keeps_only_matching() {
-        let opts = ScanOptions { render: Some("vm".to_string()) };
+        let opts = ScanOptions {
+            render: Some("vm".to_string()),
+        };
         let apps = scan_apps(&repo_examples_ui(), &opts);
         assert!(!apps.is_empty(), "vm 过滤后应仍有条目（041/024 等）");
         // PLAN-694：render 过滤保留 vm + exe 背书（豁免语义——判定与
@@ -944,7 +965,11 @@ mod tests {
         assert_eq!(fit("c-size"), Some(false));
         assert_eq!(fit("d-none"), Some(false));
         // Plan 504 S7：pac `name:` 透传（os-config 配置查找键）。
-        let name = |id: &str| apps.iter().find(|a| a.id == id).and_then(|a| a.name.clone());
+        let name = |id: &str| {
+            apps.iter()
+                .find(|a| a.id == id)
+                .and_then(|a| a.name.clone())
+        };
         assert_eq!(name("a-fit").as_deref(), Some("a"));
         std::fs::remove_dir_all(&root).ok();
     }
@@ -979,7 +1004,11 @@ mod tests {
         let vis = |id: &str| main.iter().find(|a| a.id == id).map(|a| a.desktop_visible);
         assert_eq!(vis("a-true"), Some(true), "主根显式 true");
         assert_eq!(vis("b-false"), Some(false), "主根显式 false");
-        assert_eq!(vis("c-absent"), Some(false), "主根缺席 → 缺省 false（opt-in）");
+        assert_eq!(
+            vis("c-absent"),
+            Some(false),
+            "主根缺席 → 缺省 false（opt-in）"
+        );
         assert_eq!(vis("d-bad"), Some(false), "坏值回退主根缺省 false");
         assert_eq!(vis("e-TRUE"), Some(true), "大小写不敏感");
         // 外部自含根（os-config 形态）：缺席 → true（opt-out，显式注册即上架）；
@@ -1015,7 +1044,10 @@ mod tests {
             Some("../b".to_string())
         );
         // 无 back 声明 / 坏形态 → None（不 panic）。
-        assert_eq!(parse_pac_back_project("name: \"x\"\nrender: \"vm\"\n"), None);
+        assert_eq!(
+            parse_pac_back_project("name: \"x\"\nrender: \"vm\"\n"),
+            None
+        );
         assert_eq!(parse_pac_back_project("back: { nope: 1 }"), None);
         assert_eq!(parse_pac_back_project("fallback: back"), None);
     }
@@ -1040,7 +1072,11 @@ mod tests {
             "name: \"auto-os-config-front\"\nrender: \"vue\"\ndaemon: \"autoos\"\nback: { project: \"../fake-back\" }\n",
         )
         .unwrap();
-        std::fs::write(extra.join("src").join("front").join("app.at"), "widget App {}").unwrap();
+        std::fs::write(
+            extra.join("src").join("front").join("app.at"),
+            "widget App {}",
+        )
+        .unwrap();
         (main, extra)
     }
 
@@ -1078,9 +1114,7 @@ mod tests {
         // 同属探测族一并受控）。
         assert!(extra_roots_from(None, Some("false"), &extra, &no_container).is_empty());
         // 探测根不存在 → 空表。
-        assert!(
-            extra_roots_from(None, None, Path::new("Z:/nowhere"), &no_container).is_empty()
-        );
+        assert!(extra_roots_from(None, None, Path::new("Z:/nowhere"), &no_container).is_empty());
         // storage 项 + 探测共存；同 id storage 优先。
         let roots = extra_roots_from(Some("os-config=D:/custom"), None, &extra, &no_container);
         assert_eq!(
@@ -1150,7 +1184,11 @@ mod tests {
         // repo 聚合：仅合法 active repo 条目产出（canonicalize 消化 join
         // 保留的 `..` 段）。
         let roots = manifest_repo_roots(&os_root);
-        assert_eq!(roots.len(), 1, "local/非active/未知kind/无pac.at/缺repo 字段全部跳过");
+        assert_eq!(
+            roots.len(),
+            1,
+            "local/非active/未知kind/无pac.at/缺repo 字段全部跳过"
+        );
         assert_eq!(roots[0].0, "kanban");
         assert_eq!(
             std::fs::canonicalize(&roots[0].1).unwrap(),
@@ -1221,7 +1259,9 @@ mod tests {
         // 同 id：storage 项优先（先入表），容器不覆盖。
         let roots = extra_roots_from(Some("alpha=D:/custom"), None, &front, &container);
         assert!(
-            roots.iter().any(|(id, p)| id == "alpha" && p == &PathBuf::from("D:/custom")),
+            roots
+                .iter()
+                .any(|(id, p)| id == "alpha" && p == &PathBuf::from("D:/custom")),
             "同 id 容器不覆盖 storage 项"
         );
         // scan_siblings=false → 容器探测一并关闭。
@@ -1272,16 +1312,28 @@ mod tests {
     #[test]
     fn gallery_extra_roots_scan_galleries_off() {
         std::env::remove_var("AUTO_OS_ROOT");
-        let root = std::env::temp_dir().join(format!("autoui-008-galleries-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("autoui-008-galleries-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("auto-os").join("ui-gallery")).unwrap();
         std::fs::create_dir_all(root.join("auto-os").join("widgets-gallery")).unwrap();
         // 缺省（None）→ 两根产出。
-        assert_eq!(gallery_extra_roots_from(None, &root).len(), 2, "缺省探测两画廊");
+        assert_eq!(
+            gallery_extra_roots_from(None, &root).len(),
+            2,
+            "缺省探测两画廊"
+        );
         // "false" → 整体关闭。
-        assert!(gallery_extra_roots_from(Some("false"), &root).is_empty(), "开关关闭");
+        assert!(
+            gallery_extra_roots_from(Some("false"), &root).is_empty(),
+            "开关关闭"
+        );
         // 非 "false" 值不关（严格等值语义）。
-        assert_eq!(gallery_extra_roots_from(Some("true"), &root).len(), 2, "非 false 值不关");
+        assert_eq!(
+            gallery_extra_roots_from(Some("true"), &root).len(),
+            2,
+            "非 false 值不关"
+        );
         // AUTO_OS_ROOT 指向缺席目录 = env 权威臂关断（解析序不回落）。
         std::env::set_var("AUTO_OS_ROOT", root.join("no-such-os"));
         assert!(
@@ -1306,13 +1358,22 @@ mod tests {
         };
         let opts = ScanOptions::default();
         let ui_entry = scan_app_root(&ui, "ui-gallery", &opts).expect("ui-gallery 条目");
-        assert!(ui_entry.desktop_visible, "外部根缺省 desktop_visible=true（opt-out）");
-        assert_eq!(ui_entry.title, "UI Gallery", "pac title: 上架标题（PLAN-008 T1）");
+        assert!(
+            ui_entry.desktop_visible,
+            "外部根缺省 desktop_visible=true（opt-out）"
+        );
+        assert_eq!(
+            ui_entry.title, "UI Gallery",
+            "pac title: 上架标题（PLAN-008 T1）"
+        );
         assert_eq!(ui_entry.icon, "image", "pac icon: lucide 名（PLAN-008 T1）");
         assert_eq!(ui_entry.render, "vue", "render 声明原样透传");
         let w_entry =
             scan_app_root(&widgets, "widgets-gallery", &opts).expect("widgets-gallery 条目");
-        assert!(w_entry.desktop_visible, "外部根缺省 desktop_visible=true（opt-out）");
+        assert!(
+            w_entry.desktop_visible,
+            "外部根缺省 desktop_visible=true（opt-out）"
+        );
         assert_eq!(w_entry.title, "Widgets Gallery");
         assert_eq!(w_entry.icon, "layout-grid");
         assert_eq!(w_entry.render, "vm");
@@ -1330,7 +1391,9 @@ mod tests {
             eprintln!("gallery matrix: SKIPPED — auto-os 顶层画廊未解析（solo 检出）");
             return;
         };
-        let vue_opts = ScanOptions { render: Some("vue".to_string()) };
+        let vue_opts = ScanOptions {
+            render: Some("vue".to_string()),
+        };
         assert!(
             scan_app_root(&widgets, "widgets-gallery", &vue_opts).is_none(),
             "widgets-gallery render=vm 被 vue 过滤排除（Vue 轨设计行为）"
@@ -1355,7 +1418,10 @@ mod tests {
         let roots = vec![("os-config".to_string(), extra.clone())];
         let apps = aggregate_scan(&main, &roots, &opts);
         assert_eq!(apps.len(), 2, "主根 + 外部仓条目");
-        let osc = apps.iter().find(|a| a.id == "os-config").expect("os-config 条目");
+        let osc = apps
+            .iter()
+            .find(|a| a.id == "os-config")
+            .expect("os-config 条目");
         assert_eq!(osc.title, "auto-os-config-front", "pac name 回退 title");
         assert_eq!(osc.render, "vue", "pac render 透传（boot 不过滤）");
         assert_eq!(osc.daemon.as_deref(), Some("autoos"), "pac daemon 声明透传");
@@ -1373,13 +1439,23 @@ mod tests {
         let apps = aggregate_scan(&main, &clash, &opts);
         assert_eq!(apps.len(), 1);
         assert_eq!(apps[0].id, "demo-app");
-        assert_eq!(apps[0].entry, main.join("demo-app").join("app.at"), "主根条目胜出");
+        assert_eq!(
+            apps[0].entry,
+            main.join("demo-app").join("app.at"),
+            "主根条目胜出"
+        );
         // extra 根无入口 .at → 跳过（无条目）。
         let empty = vec![("ghost".to_string(), main.join("no-such-dir"))];
         assert_eq!(aggregate_scan(&main, &empty, &opts).len(), 1);
         // render 过滤透传到 extra 段（vue 声明被 vm 过滤滤除）。
-        let vm_opts = ScanOptions { render: Some("vm".to_string()) };
-        assert_eq!(aggregate_scan(&main, &roots, &vm_opts).len(), 1, "vue extra 被 vm 过滤滤除");
+        let vm_opts = ScanOptions {
+            render: Some("vm".to_string()),
+        };
+        assert_eq!(
+            aggregate_scan(&main, &roots, &vm_opts).len(),
+            1,
+            "vue extra 被 vm 过滤滤除"
+        );
         let _ = std::fs::remove_dir_all(main.parent().unwrap());
     }
 
@@ -1398,7 +1474,11 @@ mod tests {
         std::fs::write(std_dir.join("app.at"), "widget A {}").unwrap();
         let back_dir = root.join("bare-app");
         std::fs::create_dir_all(back_dir.join("src").join("front")).unwrap();
-        std::fs::write(back_dir.join("src").join("front").join("app.at"), "widget B {}").unwrap();
+        std::fs::write(
+            back_dir.join("src").join("front").join("app.at"),
+            "widget B {}",
+        )
+        .unwrap();
         let empty_dir = root.join("no-entry");
         std::fs::create_dir_all(&empty_dir).unwrap();
 
@@ -1464,8 +1544,12 @@ desktop_exe: \"target/release/native-app.exe\"
         std::fs::write(d.join("app.at"), "widget N {}").unwrap();
         let e = root.join("plain-app");
         std::fs::create_dir_all(&e).unwrap();
-        std::fs::write(e.join("pac.at"), "name: \"plain\"
-").unwrap();
+        std::fs::write(
+            e.join("pac.at"),
+            "name: \"plain\"
+",
+        )
+        .unwrap();
         std::fs::write(e.join("app.at"), "widget P {}").unwrap();
 
         let apps = scan_apps(&root, &ScanOptions::default());
@@ -1515,15 +1599,23 @@ desktop_exe: \"target/release/native-app.exe\"
 
         let apps = scan_apps(
             &root.join("examples").join("ui"),
-            &ScanOptions { render: Some("vm".to_string()) },
+            &ScanOptions {
+                render: Some("vm".to_string()),
+            },
         );
         let ids: Vec<&str> = apps.iter().map(|a| a.id.as_str()).collect();
         assert!(
             ids.contains(&"003-converter"),
             "约定产物背书豁免 render 过滤: {ids:?}"
         );
-        assert!(ids.contains(&"001-declared"), "desktop_exe 声明背书豁免: {ids:?}");
-        assert!(!ids.contains(&"014-weather"), "无背书异 render 照旧滤除: {ids:?}");
+        assert!(
+            ids.contains(&"001-declared"),
+            "desktop_exe 声明背书豁免: {ids:?}"
+        );
+        assert!(
+            !ids.contains(&"014-weather"),
+            "无背书异 render 照旧滤除: {ids:?}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1537,8 +1629,16 @@ desktop_exe: \"target/release/native-app.exe\"
         let with_back = root.join("media-app");
         std::fs::create_dir_all(with_back.join("src").join("back")).unwrap();
         std::fs::create_dir_all(with_back.join("src").join("front")).unwrap();
-        std::fs::write(with_back.join("src").join("back").join("api.at"), "pub fn status() int { return 1 }").unwrap();
-        std::fs::write(with_back.join("src").join("front").join("app.at"), "widget A {}").unwrap();
+        std::fs::write(
+            with_back.join("src").join("back").join("api.at"),
+            "pub fn status() int { return 1 }",
+        )
+        .unwrap();
+        std::fs::write(
+            with_back.join("src").join("front").join("app.at"),
+            "widget A {}",
+        )
+        .unwrap();
         std::fs::write(
             with_back.join("pac.at"),
             "name: \"m\"\nmedia_root: \"E:\\\\Music\\\\\"\nphoto_root: \"C:\\\\Users\\\\zhaop\\\\Pictures\\\\\"\n",
@@ -1598,12 +1698,12 @@ desktop_exe: \"target/release/native-app.exe\"
                         back_root: None,
                         opens: Vec::new(),
                         fit: false,
-        exe: None,
-        render_decl: None,
-        media_root: e.media_root.clone(),
-        photo_root: None,
-        back_entry: e.back_entry.clone(),
-    })
+                        exe: None,
+                        render_decl: None,
+                        media_root: e.media_root.clone(),
+                        photo_root: None,
+                        back_entry: e.back_entry.clone(),
+                    })
                 })
             })
         };
@@ -1639,7 +1739,11 @@ desktop_exe: \"target/release/native-app.exe\"
         // Plan 512 S5：013 pac.at 补 title "Todo"（原缺省小写 id）。
         assert!(titles.contains(&"Todo"), "titles = {titles:?}");
         assert!(titles.contains(&"AutoEdit"), "titles = {titles:?}");
-        assert_eq!(host.wm.focused, Some(crate::ui::session::Wid(3)), "新窗即焦点");
+        assert_eq!(
+            host.wm.focused,
+            Some(crate::ui::session::Wid(3)),
+            "新窗即焦点"
+        );
     }
 
     // ---- PLAN-013 T2：manifest `daemon` 字段查表 ----
@@ -1699,12 +1803,17 @@ desktop_exe: \"target/release/native-app.exe\"
         let (os_root, parent) = daemon_manifest_fixture();
         // 兄弟探测臂（parent/auto-os/apps.manifest）——不触 AUTO_OS_ROOT env
         //（env 权威臂已有 586 测试钉死先例，此处避免 env 污染并行测试）。
-        let (repo_dir, def) =
-            manifest_daemon_lookup(&parent, "auto-musk").expect("兄弟探测命中");
+        let (repo_dir, def) = manifest_daemon_lookup(&parent, "auto-musk").expect("兄弟探测命中");
         assert_eq!(def.port, 17201);
         assert_eq!(repo_dir, os_root.join("../auto-musk"));
-        assert!(manifest_daemon_lookup(&parent, "no-such").is_none(), "未声明名 None");
-        assert!(manifest_daemon_lookup(&parent, "plain").is_none(), "无 daemon 字段 None");
+        assert!(
+            manifest_daemon_lookup(&parent, "no-such").is_none(),
+            "未声明名 None"
+        );
+        assert!(
+            manifest_daemon_lookup(&parent, "plain").is_none(),
+            "无 daemon 字段 None"
+        );
         let _ = std::fs::remove_dir_all(&parent);
     }
 

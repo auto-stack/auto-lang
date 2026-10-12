@@ -1,0 +1,18 @@
+{
+  "plan": "PLAN-764",
+  "revision": 1,
+  "targets": [
+    {
+      "file": "docs/specs/website/design/application-introductions.md",
+      "sha256": "5a310e4e221ed09ba2c9936b16b2834ee084da788cc889a61ecdb0f7dd3755c2"
+    },
+    {
+      "file": "docs/specs/website/project.md",
+      "sha256": "82895843c86fe2b8117c6426d52cb2b1b426a350b044b5332610cb8ba6107aad"
+    },
+    {
+      "file": "docs/specs/website/plans.md",
+      "sha256": "a1808d1a69a2ad4a7469f9a3016a319b75b560d63bc4ad5c81d3de449e68fb1a"
+    }
+  ]
+}

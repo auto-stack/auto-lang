@@ -1,0 +1,58 @@
+{
+  "plan": "PLAN-766",
+  "plan_revision": 2,
+  "diff_base": "c7fc18d56a76210f645bb9646940dcbaddf261d4",
+  "category": "A: website/assets/docs only; no cargo or docs_gen",
+  "build": {
+    "command": "AUTO_BOOK_ROOT=D:/autostack/book npm run build",
+    "exit": 0,
+    "seconds": 152.67,
+    "log_sha256": "6ddea4f1172818f75eb90647363fb3fad6bea2ccd727f4774bbf3cc8409252f1",
+    "warnings": "Existing Auto syntax fallback, stale browsers data and chunk-size notices"
+  },
+  "tests": {
+    "command": "CI=1 AUTO_WEBSITE_TEST_PORT=4266 npx playwright test tests/apps-introduction.spec.ts tests/v05-copy.spec.ts --workers=2",
+    "passed": 23,
+    "failed": 0,
+    "log_sha256": "b9dbe46c06b6c4fdfed719acfbb81f9cc9c5c2a18abcd0a05c569e9abe364c74",
+    "coverage": "EN/ZH SSR/routes/link anchors/outline/locale; home/release/overview/detail main image; original pixels, Enter zoom, original popup, Esc/focus; five widths 360/390/768/1024/1440 x both themes; no business API/errors"
+  },
+  "visual": {
+    "command": "adapted existing p715-shot + shot-common helpers on port4267",
+    "shots": 8,
+    "landing_failures": 0,
+    "overflow_rows": 0,
+    "reviewed_samples": [
+      "ZH 1440 dark workspace",
+      "ZH 390 light Plan"
+    ],
+    "report_sha256": "a8027463295da9b853ec7d4ac122b78fc521a26b7ca4c3344cc4e7e7bfe75fe3"
+  },
+  "asset_verification": "User source equals copied public PNG bytes; dimensions 2560x1600; hashes in p766-automusk-capture-catalog.json",
+  "spec_delta_sha256": "99bc99e10ce8d25d8b38f434fb5658a14d270b26ef4a1218ea475fc15dac1608",
+  "limitations": "Exact screenshot runtime/build identity unknown; draft Plan image is not execution/review acceptance; SHOT-06 stays pending",
+  "reviewed_implementation_commit": "730c33f1d7f5f68631abdff67085a5104d6e1116",
+  "tested_original_commit": "38ef90ade0ba145e4ca03d221d39c9484ec00977",
+  "rebase_equivalence": "git range-diff c7fc18d56..38ef90ade master..plan-766-dev: 38ef90ade = 730c33f1d; no website/dependency changes in intervening master commits",
+  "dependencies": {
+    "book_commit": "d7a71a7fb1fa42ddd26d6cec859715ed98161f7a",
+    "website_package_lock_sha256": "dc7121a2c03d91d0a20cd8c3cb8dc31b68ca235e8fc2364f0837082434f6ff82"
+  },
+  "deployment": {
+    "release": "20261012-38ef90ade",
+    "source_commit": "38ef90ade0ba145e4ca03d221d39c9484ec00977",
+    "archive_sha256": "1276912adb58fcc6f48e6563972891c8b95e61e5167983b49952bcd354375973",
+    "backup": "/home/visus/auto-website-backup-20261012-38ef90ade",
+    "ip_http_routes_verified": 8,
+    "domain_https_routes_verified": 2,
+    "initial_attempt": "Rolled back automatically: localhost default virtual host now returns domain redirect; subsequent activation verified with Host: 112.74.45.241 and domain HTTPS",
+    "online_browser": {
+      "baseURL": "https://auto-lang.cn",
+      "passed": 6,
+      "failed": 0,
+      "seconds_approx": 198,
+      "log_sha256": "57f7953822dcb1475feb7f0ac506dfaaa6182907817d13b0af4c93ee3c0bc18a",
+      "configuration": "Single worker, test timeout180s/navigation90s/launch20s. Original localhost 30s gate passed; production first attempt hit normal large-image network load timeout and was stopped, then retried with appropriate navigation budget."
+    }
+  }
+}

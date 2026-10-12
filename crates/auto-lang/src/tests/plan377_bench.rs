@@ -25,7 +25,10 @@ fn bench_min_us<F: FnMut()>(label: &str, iters: usize, rounds: usize, mut f: F) 
             best = d;
         }
     }
-    println!("  {:32} {} iters × {} rounds = {} μs (min)", label, iters, rounds, best);
+    println!(
+        "  {:32} {} iters × {} rounds = {} μs (min)",
+        label, iters, rounds, best
+    );
     best
 }
 
@@ -43,7 +46,10 @@ fn plan377_bench_push_pop_f64() {
         ram.push_f64(3.14);
         let _ = ram.pop_f64();
     });
-    println!("  → f64 单次往返 = {} ns/op", (t as f64 / 2_000_000.0) * 1000.0);
+    println!(
+        "  → f64 单次往返 = {} ns/op",
+        (t as f64 / 2_000_000.0) * 1000.0
+    );
 }
 
 #[test]
@@ -65,9 +71,11 @@ fn plan377_bench_push_pop_i64_u64() {
         ram.push_u64(99);
         let _ = ram.pop_u64();
     });
-    println!("  → i64 往返 = {:.2} ns/op, u64 往返 = {:.2} ns/op",
+    println!(
+        "  → i64 往返 = {:.2} ns/op, u64 往返 = {:.2} ns/op",
         (ti as f64 / 2_000_000.0) * 1000.0,
-        (tu as f64 / 2_000_000.0) * 1000.0);
+        (tu as f64 / 2_000_000.0) * 1000.0
+    );
 }
 
 #[test]
@@ -95,9 +103,14 @@ fn main() {
         let start = Instant::now();
         let _ = crate::run_with_mode(source, crate::CompileMode::Script);
         let d = start.elapsed().as_micros();
-        if d < best { best = d; }
+        if d < best {
+            best = d;
+        }
     }
-    println!("  end-to-end (compile+run, 1000 次循环 f64+i64+u64 算术) min = {} μs", best);
+    println!(
+        "  end-to-end (compile+run, 1000 次循环 f64+i64+u64 算术) min = {} μs",
+        best
+    );
 }
 
 #[test]
@@ -118,6 +131,10 @@ fn plan377_bench_bigint_overflow_path() {
         debug_assert_eq!(back, big);
     }
     let total = start.elapsed().as_nanos();
-    println!("  u64::MAX round-trip (堆装箱) × {} = {} ns, {:.2} ns/op",
-        rounds, total, total as f64 / rounds as f64);
+    println!(
+        "  u64::MAX round-trip (堆装箱) × {} = {} ns, {:.2} ns/op",
+        rounds,
+        total,
+        total as f64 / rounds as f64
+    );
 }

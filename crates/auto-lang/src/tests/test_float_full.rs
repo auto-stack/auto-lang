@@ -28,7 +28,10 @@ fn main() -> int {
         }
 
         // Verify that float constant opcode was emitted
-        assert!(codegen.code.contains(&0x14), "Expected CONST_F32 opcode (0x14)");
+        assert!(
+            codegen.code.contains(&0x14),
+            "Expected CONST_F32 opcode (0x14)"
+        );
     }
 
     #[test]
@@ -54,7 +57,10 @@ fn main() -> int {
         }
 
         // Verify that double constant opcode was emitted
-        assert!(codegen.code.contains(&0x15), "Expected CONST_F64 opcode (0x15)");
+        assert!(
+            codegen.code.contains(&0x15),
+            "Expected CONST_F64 opcode (0x15)"
+        );
     }
 
     #[test]

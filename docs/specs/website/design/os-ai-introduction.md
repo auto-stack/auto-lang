@@ -14,9 +14,9 @@ AI 按应用/用户界面、Agent 工具、共享客户端、aaid 模型服务�
 
 ## 页面职责与作者源
 
-- `/os`：理念连续性、系统组成、三种形态、进展与长期方向。
+- `/os`：直接展示当前桌面六图、窗口/工作区、应用/Kanban、共享设置/配置图与宿主边界，再衔接理念、系统组成、三种形态、进展和长期方向。
 - `/ai`：共享 AI 的原因、职责分层、已有接入、边界与长期方向。
-- `/autoos/`：当前桌面、窗口/工作区/启动、应用与配置，复用完整真实截图序列。
+- `/autoos/`：同语言兼容入口，canonical 指向 `/os`、noindex；保留已有 hash，默认定位 `#desktop-showcase`。无 JS 时提供主页面链接，不维护第二份正文。
 - `/ui-desktop`：已有 Vue、VM/iced 和编译路径，各路径与平台覆盖分别说明。
 - 首页仅 OS/AI 卡片摘要，v0.5 仅同步相关分层/现状/未来路线，其他发布材料保全。
 - 两篇历史/展望长文：`/articles/autoos-history` 与 `/articles/auto-ai-history`。以上均有 `/zh` 镜像。
@@ -38,3 +38,17 @@ AI 按应用/用户界面、Agent 工具、共享客户端、aaid 模型服务�
 Category A：网站 build 与 scoped website e2e，不跑 Cargo/docs_gen。十二路由覆盖正文、入口、双语切换、目录/SSR/search；五宽度（360/390/768/1024/1440）两主题几何，390/1440 的 48 份真实页面图供人工审读。介绍导航目标至少 44px，表格允许局部滚动，不允许页面级横向溢出。截图前确认实际 URL、locale、非 404 正文，解码可见图片。
 
 来源公开访问核验用 `website/scripts/p719-check-sources.mjs`；几何/图像收据用 `website/scripts/p719-shot.cjs`。证据见 `docs/reports/p719-os-ai-introduction.md`、`p719-public-sources.json` 与截图 manifest。
+
+## 桌面与适配平台口径（PLAN-758 r3，2026-10-11 用户确认）
+
+AutoUI 应用可在 Windows/Linux 上直接原生运行，也可在 Windows/Linux 宿主上的 AutoOS 虚拟桌面中运行。这是两个桌面环境的产品口径；Web、Windows、Linux 为三个适配平台。虚拟桌面继续复用宿主内核/驱动/服务，与独立发行版、OpenHarmony 集成或自有内核的未来路线分别表述。网站当前平台文案同步该口径；截图与自动验证的证据边界仍按各自实际载体标注。
+
+## OS 主页面融合与桌面卡片（PLAN-767）
+
+双语 `/os` 是完整桌面介绍的作者源与阅读入口，主页面直接包含原 AutoOS 专题的实质说明及四张 Kanban/配置历史图，保留与六张 2026-10-01 桌面图不同的来源边界。单一 H1、Markdown H2 目录、SSR/search 和架构/进展/未来区分保持。现行产品入口指向同语言 `/os#desktop-showcase`，历史 AutoOS 地址仅作兼容。
+
+DesktopShowcase 在 OS 与 v0.5 共用六张完整原图，按浅/深桌面、浅/深 Launcher、多窗口游戏、编辑与待办顺序展示为纵向单列卡片：每张图均直接存在且不由 tab 隐藏，图片上方/下方顺序为图片、来源、编号/标题及场景说明。窄屏/宽屏均单列，lazy 图有原始宽高占位。EvidenceImage 的 Enter/Space 放大、原图链接、Esc 返回焦点保持；ScreenshotGallery 在其他场景继续可用。前置的四步骤说明由逐图介绍承接，不再要求读者切换或离页才能看后续场景。
+
+## 网页截图传输（PLAN-769）
+
+六卡保持截图内容、原尺寸/比例与捕获日期，网页图/放大图使用轻量WebP（单图<1MB）；保留PNG原始资产及显式原图下载链接，来源说明中的原图尺寸不表示默认下载PNG。隐藏放大窗口不挂载图片，打开后按需显示压缩图、关闭后卸载；不因提供原图下载而预先请求原图。

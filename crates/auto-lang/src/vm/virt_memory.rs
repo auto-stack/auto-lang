@@ -6,9 +6,10 @@
 /// - VirtualFlash: Read-only code space
 /// - VirtualRAM: Read-write data space (Stack + Heap)
 use crate::vm::codegen::ObjectType;
+use auto_val::{
+    decode_f32, decode_i32, decode_string, encode_f32, encode_i32, encode_string, NanoValue,
+};
 use std::collections::HashMap;
-use auto_val::{NanoValue, encode_i32, decode_i32,
-    encode_f32, decode_f32, encode_string, decode_string};
 
 /// A 32-bit word in the virtual machine
 /// Simplified to just i32 for now to avoid union issues
@@ -27,7 +28,9 @@ impl Word {
     }
 
     pub fn with_f32(val: f32) -> Self {
-        Self { i: unsafe { f32::to_bits(val).cast_signed() } }
+        Self {
+            i: unsafe { f32::to_bits(val).cast_signed() },
+        }
     }
 }
 
@@ -152,7 +155,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_u8(&self, addr: usize) -> u8 {
         if addr >= self.memory.len() {
-            eprintln!("WARNING: Flash read_u8 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_u8 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0; // Return 0 (NOP) as safe default
         }
         self.memory[addr]
@@ -161,7 +168,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_i32(&self, addr: usize) -> i32 {
         if addr + 4 > self.memory.len() {
-            eprintln!("WARNING: Flash read_i32 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_i32 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0; // Return safe default
         }
         let bytes = &self.memory[addr..addr + 4];
@@ -171,7 +182,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_i16(&self, addr: usize) -> i16 {
         if addr + 2 > self.memory.len() {
-            eprintln!("WARNING: Flash read_i16 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_i16 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0; // Return safe default
         }
         let bytes = &self.memory[addr..addr + 2];
@@ -181,7 +196,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_u16(&self, addr: usize) -> u16 {
         if addr + 2 > self.memory.len() {
-            eprintln!("WARNING: Flash read_u16 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_u16 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0; // Return safe default
         }
         let bytes = &self.memory[addr..addr + 2];
@@ -191,7 +210,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_u32(&self, addr: usize) -> u32 {
         if addr + 4 > self.memory.len() {
-            eprintln!("WARNING: Flash read_u32 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_u32 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0; // Return safe default
         }
         let bytes = &self.memory[addr..addr + 4];
@@ -201,7 +224,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_f32(&self, addr: usize) -> f32 {
         if addr + 4 > self.memory.len() {
-            eprintln!("WARNING: Flash read_f32 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_f32 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0.0; // Return safe default
         }
         let bytes = &self.memory[addr..addr + 4];
@@ -212,7 +239,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_f64(&self, addr: usize) -> f64 {
         if addr + 8 > self.memory.len() {
-            eprintln!("WARNING: Flash read_f64 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_f64 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0.0; // Return safe default
         }
         let bytes = &self.memory[addr..addr + 8];
@@ -223,7 +254,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_i64(&self, addr: usize) -> i64 {
         if addr + 8 > self.memory.len() {
-            eprintln!("WARNING: Flash read_i64 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_i64 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0; // Return safe default
         }
         let bytes = &self.memory[addr..addr + 8];
@@ -233,7 +268,11 @@ impl VirtualFlash {
     #[inline(always)]
     pub fn read_u64(&self, addr: usize) -> u64 {
         if addr + 8 > self.memory.len() {
-            eprintln!("WARNING: Flash read_u64 out of bounds: addr={}, len={}", addr, self.memory.len());
+            eprintln!(
+                "WARNING: Flash read_u64 out of bounds: addr={}, len={}",
+                addr,
+                self.memory.len()
+            );
             return 0; // Return safe default
         }
         let bytes = &self.memory[addr..addr + 8];
@@ -287,7 +326,9 @@ impl VirtualRAM {
 
     #[inline(always)]
     pub fn pop_i32(&mut self) -> i32 {
-        if self.sp == 0 { panic!("Stack Underflow"); }
+        if self.sp == 0 {
+            panic!("Stack Underflow");
+        }
         self.sp -= 1;
         decode_i32(self.raw_nv[self.sp])
     }
@@ -300,7 +341,9 @@ impl VirtualRAM {
 
     #[inline(always)]
     pub fn pop_f32(&mut self) -> f32 {
-        if self.sp == 0 { panic!("Stack Underflow"); }
+        if self.sp == 0 {
+            panic!("Stack Underflow");
+        }
         self.sp -= 1;
         // Plan 437: tag 驱动解码——f32 槽位上可能是 f64 值（math.* 等 f64
         // 返回值经 float 声明变量直通存储），按实际 tag 解码而非位重解释。
@@ -348,7 +391,8 @@ impl VirtualRAM {
             Some(nv) => self.push_nv(nv),
             None => panic!(
                 "push_i64({}) 超出 48 位内联范围（[-2^47, 2^47)），本层无法堆装箱；\
-                 engine/native 调用方应改用 AutoVM::push_i64_vm（heap-aware）", val
+                 engine/native 调用方应改用 AutoVM::push_i64_vm（heap-aware）",
+                val
             ),
         }
     }
@@ -362,13 +406,13 @@ impl VirtualRAM {
         // （heap-aware 版本，见 plan 377 §4.3）。
         let nv = self.pop_nv();
         match auto_val::tag_of(nv) {
-            t if t == 8 => auto_val::decode_i64(nv),      // TAG_I64
+            t if t == 8 => auto_val::decode_i64(nv),        // TAG_I64
             t if t == 9 => auto_val::decode_u64(nv) as i64, // TAG_U64（按有符号读）
             t if t == 0xA => panic!(
                 "pop_i64 遇到 TAG_BIGINT（>2^48 堆装箱值），本层无法解引用；\
                  engine/native 调用方应改用 AutoVM::pop_i64_vm（heap-aware）"
             ),
-            _ => auto_val::decode_i32(nv) as i64,         // 兼容 i32 操作数
+            _ => auto_val::decode_i32(nv) as i64, // 兼容 i32 操作数
         }
     }
 
@@ -383,7 +427,8 @@ impl VirtualRAM {
             Some(nv) => self.push_nv(nv),
             None => panic!(
                 "push_u64({}) 超出 48 位内联范围（[0, 2^48)），本层无法堆装箱；\
-                 engine/native 调用方应改用 AutoVM::push_u64_vm（heap-aware）", val
+                 engine/native 调用方应改用 AutoVM::push_u64_vm（heap-aware）",
+                val
             ),
         }
     }
@@ -396,27 +441,35 @@ impl VirtualRAM {
         // （heap-aware 版本，见 plan 377 §4.3）。
         let nv = self.pop_nv();
         match auto_val::tag_of(nv) {
-            t if t == 9 => auto_val::decode_u64(nv),      // TAG_U64
+            t if t == 9 => auto_val::decode_u64(nv),        // TAG_U64
             t if t == 8 => auto_val::decode_i64(nv) as u64, // TAG_I64（按无符号读）
             t if t == 0xA => panic!(
                 "pop_u64 遇到 TAG_BIGINT（>2^48 堆装箱值），本层无法解引用；\
                  engine/native 调用方应改用 AutoVM::pop_u64_vm（heap-aware）"
             ),
-            _ => auto_val::decode_i32(nv) as u32 as u64,  // 兼容 i32 操作数
+            _ => auto_val::decode_i32(nv) as u32 as u64, // 兼容 i32 操作数
         }
     }
 
-    pub fn read_i32(&self, addr: usize) -> i32 { decode_i32(self.raw_nv[addr]) }
+    pub fn read_i32(&self, addr: usize) -> i32 {
+        decode_i32(self.raw_nv[addr])
+    }
 
     pub fn write_i32(&mut self, addr: usize, val: i32) {
         self.raw_nv[addr] = encode_i32(val);
         // PLAN-062 T12: 裸写清影子（同 write_nv 约定）。
-        if addr < self.stake_shadow.len() { self.stake_shadow[addr] = 0; }
+        if addr < self.stake_shadow.len() {
+            self.stake_shadow[addr] = 0;
+        }
     }
 
     // For manual viewing
     pub fn top(&self) -> Option<i32> {
-        if self.sp == 0 { None } else { Some(decode_i32(self.raw_nv[self.sp - 1])) }
+        if self.sp == 0 {
+            None
+        } else {
+            Some(decode_i32(self.raw_nv[self.sp - 1]))
+        }
     }
 
     // ---- Plan 221: NanoValue operations ----
@@ -618,7 +671,11 @@ pub fn nv_py_type_name(nv: NanoValue) -> &'static str {
 
 /// Plan 550 T03: 二元算术 null 守卫的 TypeError 消息（Python 格式，
 /// a=左操作数、b=右操作数，按操作数次序渲染类型名）。
-pub fn null_binop_type_error(op: &str, a: (u64, bool), b: (u64, bool)) -> crate::vm::engine::VMError {
+pub fn null_binop_type_error(
+    op: &str,
+    a: (u64, bool),
+    b: (u64, bool),
+) -> crate::vm::engine::VMError {
     crate::vm::engine::VMError::RuntimeError(format!(
         "TypeError: unsupported operand type(s) for {}: '{}' and '{}'",
         op,

@@ -70,7 +70,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::I8(_) => Type::Int,
         Expr::Uint(_) | Expr::Byte(_) => Type::Uint,
         Expr::U64(_) => Type::U64,
-        Expr::U8(_) => Type::Int,  // U8 arithmetic returns plain int (no 'u' suffix)
+        Expr::U8(_) => Type::Int, // U8 arithmetic returns plain int (no 'u' suffix)
         Expr::Float(_, _) => Type::Float,
         Expr::Double(_, _) => Type::Double,
         Expr::Bool(_) => Type::Bool,
@@ -369,7 +369,8 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
                                 // Example: For Point<T> { x T }, accessing Point<int>.x should return int
                                 let field_ty = member.ty.clone();
                                 // Extract type parameter names (only Type params, not Const params)
-                                let type_param_names: Vec<crate::ast::Name> = base_decl.generic_params
+                                let type_param_names: Vec<crate::ast::Name> = base_decl
+                                    .generic_params
                                     .iter()
                                     .filter_map(|p| match p {
                                         crate::ast::GenericParam::Type(tp) => Some(tp.name.clone()),
@@ -411,15 +412,18 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
         Expr::OptionPattern(_) => Type::Bool,
         Expr::ResultPattern(_) => Type::Bool,
         // Unwrap expressions return the inner type
-        Expr::OptionUncover(_) => Type::Unknown,  // Type depends on Option<T>
-        Expr::ResultUncover(_) => Type::Unknown,  // Type depends on Result<T, E>
+        Expr::OptionUncover(_) => Type::Unknown, // Type depends on Option<T>
+        Expr::ResultUncover(_) => Type::Unknown, // Type depends on Result<T, E>
 
         // Plan 165: Struct destructuring pattern in is statement
         Expr::StructPattern(_) => Type::Bool,
 
         // ========== Plan 124: Async/Future/Await ==========
         // Async block returns Future<T> where T is the return type of the block
-        Expr::AsyncBlock { body: _, return_type } => {
+        Expr::AsyncBlock {
+            body: _,
+            return_type,
+        } => {
             // If explicit return type is provided, use it
             if let Some(ty) = return_type {
                 return ty.clone();
@@ -480,9 +484,7 @@ pub fn infer_expr(ctx: &mut InferenceContext, expr: &Expr) -> Type {
             if let Expr::Call(call) = &hash_brace.expr {
                 if let Expr::Ident(name) = call.name.as_ref() {
                     match name.to_string().as_str() {
-                        "read_text" | "read_to_string" | "include_str" => {
-                            return Type::StrSlice
-                        }
+                        "read_text" | "read_to_string" | "include_str" => return Type::StrSlice,
                         _ => {}
                     }
                 }

@@ -5,6 +5,48 @@ use std::{
     io::{BufRead, Read},
 };
 
+/// Producer-owned logical contracts for VmModule dispatch. Receiver is carried
+/// separately by VmMethod; parameters here are the actual `args` payload.
+pub fn method_contract(method: &str) -> Option<crate::vm::native::NativeContract> {
+    let (parameters, returns): (&[&str], &str) = match method {
+        "read_text" | "read_line" => (&[], "str"),
+        "read_char" => (&[], "int"),
+        // read_buf_method is a stub; it cannot supply a supported contract.
+        "read_buf" => return None,
+        "write_line" => (&["str"], "void"),
+        "flush" | "close" => (&[], "void"),
+        "open" => (&["str"], "File"),
+        _ => return None,
+    };
+    Some(crate::vm::native::NativeContract {
+        parameters: parameters.iter().map(|p| p.to_string()).collect(),
+        returns: returns.into(),
+        producer: format!("vm::io::{method}"),
+        receiver: (method != "open").then(|| "File".into()),
+        is_static: method == "open",
+        generics: Vec::new(),
+        parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
+        error_shape: "Value::Error".into(),
+    })
+}
+
+pub fn selected_method_contract(
+    method: &str,
+    selected: super::VmMethod,
+) -> Option<crate::vm::native::NativeContract> {
+    let producer: super::VmMethod = match method {
+        "read_text" => read_text_method,
+        "read_line" => read_line_method,
+        "read_char" => read_char_method,
+        "write_line" => write_line_method,
+        "flush" => flush_method,
+        "close" => close_method,
+        _ => return None,
+    };
+    std::ptr::fn_addr_eq(producer, selected)
+        .then(|| method_contract(method))
+        .flatten()
+}
 
 pub fn open(ctx: &mut VmContext, path: Value) -> Value {
     match path {

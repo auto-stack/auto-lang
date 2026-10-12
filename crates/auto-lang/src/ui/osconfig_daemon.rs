@@ -55,7 +55,10 @@ pub fn default_daemon_url() -> String {
 /// 从 base url 提取端口（spawn 期 `AUTOOS_BACK_PORT` 用）；
 /// 非法 url 回退 [`DAEMON_PORT`]。
 pub fn port_of(url: &str) -> u16 {
-    url.rsplit(':').next().and_then(|p| p.trim_matches('/').parse().ok()).unwrap_or(DAEMON_PORT)
+    url.rsplit(':')
+        .next()
+        .and_then(|p| p.trim_matches('/').parse().ok())
+        .unwrap_or(DAEMON_PORT)
 }
 
 /// 发现序解析 daemon 可执行文件（G4）：
@@ -119,10 +122,7 @@ pub trait DaemonIo {
 /// url（`http://127.0.0.1:17701`）→ `127.0.0.1:17701` SocketAddr；
 /// 非 loopback http 形态返回 None。
 pub fn socket_addr_of(url: &str) -> Option<std::net::SocketAddr> {
-    let host_port = url
-        .strip_prefix("http://")?
-        .split('/')
-        .next()?;
+    let host_port = url.strip_prefix("http://")?.split('/').next()?;
     use std::net::ToSocketAddrs;
     host_port.to_socket_addrs().ok()?.next()
 }
@@ -149,7 +149,9 @@ pub fn badge_projection(status: &DaemonStatus) -> (&'static str, String) {
 /// std 单依赖、无 tokio TLS 上下文风险；loopback 足够（daemon 恒本地）。
 pub fn tcp_ping(url: &str, timeout: std::time::Duration) -> bool {
     use std::io::{Read, Write};
-    let Some(addr) = socket_addr_of(url) else { return false };
+    let Some(addr) = socket_addr_of(url) else {
+        return false;
+    };
     let Ok(mut stream) = std::net::TcpStream::connect_timeout(&addr, timeout) else {
         return false;
     };
@@ -160,7 +162,9 @@ pub fn tcp_ping(url: &str, timeout: std::time::Duration) -> bool {
         return false;
     }
     let mut buf = [0u8; 128];
-    let Ok(n) = stream.read(&mut buf) else { return false };
+    let Ok(n) = stream.read(&mut buf) else {
+        return false;
+    };
     let head = String::from_utf8_lossy(&buf[..n]);
     head.starts_with("HTTP/1.1 2") || head.starts_with("HTTP/1.0 2")
 }
@@ -409,7 +413,9 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(
-            root.join("auto-os-config-back").join("target").join("release"),
+            root.join("auto-os-config-back")
+                .join("target")
+                .join("release"),
         )
         .unwrap();
         root
@@ -476,7 +482,13 @@ mod tests {
     #[test]
     fn env_injection_shape() {
         let env = env_for("http://127.0.0.1:17708");
-        assert_eq!(env, vec![("AUTOOS_DAEMON".to_string(), "http://127.0.0.1:17708".to_string())]);
+        assert_eq!(
+            env,
+            vec![(
+                "AUTOOS_DAEMON".to_string(),
+                "http://127.0.0.1:17708".to_string()
+            )]
+        );
     }
 
     #[test]
@@ -534,7 +546,10 @@ mod tests {
             &mut io,
             std::time::Duration::from_secs(1),
         );
-        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17701".to_string()));
+        assert_eq!(
+            st,
+            DaemonStatus::Running("http://127.0.0.1:17701".to_string())
+        );
         assert_eq!(io.ping_calls, 1, "ping 通即复用");
         assert!(io.spawn_path.is_none(), "已运行 daemon 零打扰——不 spawn");
     }
@@ -640,7 +655,10 @@ mod tests {
         );
         match st {
             DaemonStatus::Offline(reason) => {
-                assert!(reason.contains("spawn") && reason.contains("拒绝访问"), "{reason}")
+                assert!(
+                    reason.contains("spawn") && reason.contains("拒绝访问"),
+                    "{reason}"
+                )
             }
             other => panic!("应 Offline，实际 {other:?}"),
         }
@@ -662,7 +680,10 @@ mod tests {
             &mut io,
             std::time::Duration::from_secs(5),
         );
-        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17701".to_string()));
+        assert_eq!(
+            st,
+            DaemonStatus::Running("http://127.0.0.1:17701".to_string())
+        );
         // spawn env 只带端口覆盖（生产 17701——daemon 缺省 17901 需显式改）。
         assert_eq!(
             io.spawn_env,
@@ -705,8 +726,14 @@ mod tests {
             &mut io,
             std::time::Duration::from_secs(5),
         );
-        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17708".to_string()));
-        assert_eq!(io.spawn_path, Some(PathBuf::from("D:/tools/custom-daemon.exe")));
+        assert_eq!(
+            st,
+            DaemonStatus::Running("http://127.0.0.1:17708".to_string())
+        );
+        assert_eq!(
+            io.spawn_path,
+            Some(PathBuf::from("D:/tools/custom-daemon.exe"))
+        );
         assert_eq!(
             io.spawn_env,
             vec![(ENV_BACK_PORT.to_string(), "17708".to_string())],
@@ -734,12 +761,18 @@ mod tests {
     #[test]
     fn tcp_ping_real_server_and_dead_port() {
         let url = mini_health_server();
-        assert!(tcp_ping(&url, std::time::Duration::from_secs(2)), "真服务 200 应通");
+        assert!(
+            tcp_ping(&url, std::time::Duration::from_secs(2)),
+            "真服务 200 应通"
+        );
         // 死端口：bind 后立即 drop → connect 拒绝。
         let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let dead_url = format!("http://127.0.0.1:{}", dead.local_addr().unwrap().port());
         drop(dead);
-        assert!(!tcp_ping(&dead_url, std::time::Duration::from_secs(2)), "死端口应不通");
+        assert!(
+            !tcp_ping(&dead_url, std::time::Duration::from_secs(2)),
+            "死端口应不通"
+        );
         // 非 http 形态 → false（不 panic）。
         assert!(!tcp_ping("not-a-url", std::time::Duration::from_secs(1)));
         assert!(socket_addr_of("http://127.0.0.1:17701").is_some());
@@ -777,8 +810,15 @@ mod tests {
     #[test]
     fn ensure_generic_reuses_running() {
         let mut io = FakeIo::new(vec![true]);
-        let st = ensure_generic_io(&generic_def(None), &mut io, std::time::Duration::from_secs(1));
-        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17201".to_string()));
+        let st = ensure_generic_io(
+            &generic_def(None),
+            &mut io,
+            std::time::Duration::from_secs(1),
+        );
+        assert_eq!(
+            st,
+            DaemonStatus::Running("http://127.0.0.1:17201".to_string())
+        );
         assert_eq!(io.ping_calls, 1, "ping 通即复用");
         assert!(io.spawn_path.is_none(), "已运行零打扰——bin 缺席也不影响");
     }
@@ -786,7 +826,11 @@ mod tests {
     #[test]
     fn ensure_generic_offline_when_bin_absent() {
         let mut io = FakeIo::new(vec![false; 5]);
-        let st = ensure_generic_io(&generic_def(None), &mut io, std::time::Duration::from_millis(1));
+        let st = ensure_generic_io(
+            &generic_def(None),
+            &mut io,
+            std::time::Duration::from_millis(1),
+        );
         match st {
             DaemonStatus::Offline(reason) => {
                 assert!(reason.contains("未配置 bin"), "{reason}");
@@ -800,11 +844,19 @@ mod tests {
     #[test]
     fn ensure_generic_spawns_with_port_env() {
         let mut io = FakeIo::new(vec![false, true]);
-        let def = generic_def(Some(PathBuf::from("D:/os/auto-musk/backend/target/release/musk.exe")));
+        let def = generic_def(Some(PathBuf::from(
+            "D:/os/auto-musk/backend/target/release/musk.exe",
+        )));
         let st = ensure_generic_io(&def, &mut io, std::time::Duration::from_secs(1));
-        assert_eq!(st, DaemonStatus::Running("http://127.0.0.1:17201".to_string()));
-        assert_eq!(io.spawn_env, vec![("MUSK_BACK_PORT".to_string(), "17201".to_string())],
-            "spawn env = manifest env_port 键 + url 端口");
+        assert_eq!(
+            st,
+            DaemonStatus::Running("http://127.0.0.1:17201".to_string())
+        );
+        assert_eq!(
+            io.spawn_env,
+            vec![("MUSK_BACK_PORT".to_string(), "17201".to_string())],
+            "spawn env = manifest env_port 键 + url 端口"
+        );
     }
 
     #[test]

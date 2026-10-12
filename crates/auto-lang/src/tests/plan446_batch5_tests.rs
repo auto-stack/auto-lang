@@ -34,24 +34,41 @@ mod plan446_batch5_u7 {
         let g = format!("{:?}", view);
 
         // 链1(对照): 条件位 —— active_id=="b" → 仅 beta 行出条件 text。
-        assert!(g.contains("content: \"beta\""), "cond chain: beta text missing");
+        assert!(
+            g.contains("content: \"beta\""),
+            "cond chain: beta text missing"
+        );
         assert!(
             !g.contains("content: \"alpha\""),
             "cond chain: alpha (inactive) must not render cond text"
         );
 
         // 链2(对照): input value 直取。
-        assert!(g.contains("value: \"va\"") && g.contains("value: \"vb\""),
-            "text-prop chain broken");
+        assert!(
+            g.contains("value: \"va\"") && g.contains("value: \"vb\""),
+            "text-prop chain broken"
+        );
 
         // 链3(U7): button class: m.nav_class —— 用户 tailwind 类并入
         // （Red(500)/Blue(500)），不得回退纯 preset。
-        assert!(g.contains("Red(500)"), "button class chain: user classes lost (preset fallback)");
-        assert!(g.contains("Blue(500)"), "button class chain: second row user class lost");
+        assert!(
+            g.contains("Red(500)"),
+            "button class chain: user classes lost (preset fallback)"
+        );
+        assert!(
+            g.contains("Blue(500)"),
+            "button class chain: second row user class lost"
+        );
 
         // 链4(U7 修复靶): label { text (text: m.label) {} } —— 子元素折叠。
-        assert!(g.contains("\"la\""), "children fold: label text 'la' missing");
-        assert!(g.contains("\"lb\""), "children fold: label text 'lb' missing");
+        assert!(
+            g.contains("\"la\""),
+            "children fold: label text 'la' missing"
+        );
+        assert!(
+            g.contains("\"lb\""),
+            "children fold: label text 'lb' missing"
+        );
     }
 }
 
@@ -86,7 +103,11 @@ mod plan446_batch5_u1 {
         let mut dc = build();
         // fire_init 已由 build 执行: 循环侧栏构建完成,active=home。
         let v0 = active_view(&dc);
-        assert!(v0.contains("HOME-VIEW"), "initial home view missing:\n{}", &v0[..v0.len().min(600)]);
+        assert!(
+            v0.contains("HOME-VIEW"),
+            "initial home view missing:\n{}",
+            &v0[..v0.len().min(600)]
+        );
 
         // press #1: Nav("roles") —— payload 编码与渲染层同构。
         dc.on_with_input_for("App", "Nav\u{1F}s\u{1F}roles", None);

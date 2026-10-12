@@ -137,8 +137,11 @@ impl VmInterpreter {
         // Plan 375: snapshot the injected globals so the async block can seed
         // them into the AutoVM (registering Array/Obj/Node values into the VM
         // heap registries and storing their tagged ids / scalars in vm.globals).
-        let globals_snapshot: Vec<(String, Value)> =
-            self.globals.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let globals_snapshot: Vec<(String, Value)> = self
+            .globals
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
         // Use global runtime to avoid creating/dropping runtimes in async context
         let rt = crate::get_global_runtime();
@@ -182,15 +185,24 @@ impl VmInterpreter {
                                 let id = top_val as u64;
                                 if let Some(obj_arc) = vm.get_heap_object(id) {
                                     let obj = obj_arc.read().unwrap();
-                                    if let Some(od) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                                    if let Some(od) =
+                                        obj.as_any().downcast_ref::<crate::vm::types::ObjectData>()
+                                    {
                                         let mut result_obj = auto_val::Obj::new();
                                         for (key, val) in &od.fields {
                                             result_obj.set(key.clone(), val.clone());
                                         }
                                         result = Some(Value::Obj(Box::new(result_obj)));
-                                    } else if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
-                                        let items: Vec<Value> = list.elems.iter().cloned().collect();
-                                        result = Some(Value::Array(auto_val::Array::from_vec(items)));
+                                    } else if let Some(list) = obj
+                                        .as_any()
+                                        .downcast_ref::<crate::vm::types::ListData<
+                                        auto_val::Value,
+                                    >>(
+                                    ) {
+                                        let items: Vec<Value> =
+                                            list.elems.iter().cloned().collect();
+                                        result =
+                                            Some(Value::Array(auto_val::Array::from_vec(items)));
                                     }
                                 }
                             }

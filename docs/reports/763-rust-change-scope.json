@@ -1,0 +1,287 @@
+[
+  {
+    "file": "crates/auto-lang/src/aura/element_coverage.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/aura/schema.rs",
+    "hunks": 12,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/aura/schema_loader.rs",
+    "hunks": 5,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/aura/validate.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/compile.rs",
+    "hunks": 2,
+    "category": "namespace-preserving package lookup"
+  },
+  {
+    "file": "crates/auto-lang/src/lib.rs",
+    "hunks": 12,
+    "category": "namespace-preserving package lookup"
+  },
+  {
+    "file": "crates/auto-lang/src/tests.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/aavm2_m1.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/aavm2_m2.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/aavm2_m3.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/aavm2_m4.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/aavm_at_mode_tests.rs",
+    "hunks": 3,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/aavm_runner_tests.rs",
+    "hunks": 4,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/conformance_tests.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/plan639_bp_tests.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/plan640_bp_tests.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/plan643_chart_tag_tests.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/plan645_bp_tests.rs",
+    "hunks": 5,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/plan647_bp_version_tests.rs",
+    "hunks": 4,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/plan649_bp_tests.rs",
+    "hunks": 8,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/tests/plan657_bp_admin_tests.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/trans/auto_s2s.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/trans/rust.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui/desktop_protocol/native_projector.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui/handler_codegen.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui/iced/renderer.rs",
+    "hunks": 4,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui/render_support.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui/style/mod.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui_gen/bp/mod.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui_gen/bp/registry.rs",
+    "hunks": 15,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui_gen/docs_gen.rs",
+    "hunks": 3,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui_gen/rust.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui_gen/validators.rs",
+    "hunks": 6,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui_gen/vue.rs",
+    "hunks": 14,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui_gen/widget/component_registry.rs",
+    "hunks": 3,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/ui_gen/widget/registry.rs",
+    "hunks": 18,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/src/util.rs",
+    "hunks": 2,
+    "category": "namespace-preserving package lookup"
+  },
+  {
+    "file": "crates/auto-lang/tests/docs_gen.rs",
+    "hunks": 6,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/tests/schema_drift.rs",
+    "hunks": 25,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lang/tests/vue_capabilities.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-lsp/src/completion.rs",
+    "hunks": 4,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-man/src/wm_assets.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto-playground/src/routes/run.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto/src/cmd_bp.rs",
+    "hunks": 6,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "crates/auto/src/main.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "examples/test_a2r_lexer.rs",
+    "hunks": 2,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/crates/auto-parity/src/aavm.rs",
+    "hunks": 4,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/crates/auto-parity/src/main.rs",
+    "hunks": 4,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/crates/auto-parity/src/runner.rs",
+    "hunks": 4,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/libs/consumer/c_env_app/tests/rust/tests/c_env_app.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/libs/consumer/c_fs_app/tests/rust/tests/c_fs_app.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/libs/consumer/c_process_app/tests/rust/tests/c_process_app.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/libs/consumer/c_text_app/tests/rust/tests/c_text_app.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/libs/consumer/http_client_sync/tests/rust/tests/http_client_sync.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/libs/lang/generators/tests/rust/tests/generators.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/libs/lang/string_utils/tests/rust/tests/string_utils.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  },
+  {
+    "file": "test/parity/libs/rust/serde_json/tests/rust/tests/serde_json.rs",
+    "hunks": 1,
+    "category": "path/diagnostic update"
+  }
+]

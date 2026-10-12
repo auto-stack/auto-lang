@@ -26,8 +26,7 @@ use std::path::{Path, PathBuf};
 /// Chromium, and excluding it would hide the very files the user cares about.
 /// Audio extensions (`.mp3`, `.flac`, `.wav`, etc.) are also supported for music players.
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "mp4", "m4v", "webm", "mkv", "mov", "avi",
-    "mp3", "flac", "wav", "ogg", "m4a", "aac",
+    "mp4", "m4v", "webm", "mkv", "mov", "avi", "mp3", "flac", "wav", "ogg", "m4a", "aac",
 ];
 
 /// Hard cap on directory depth, so a pathological tree cannot spin forever even
@@ -80,7 +79,12 @@ fn is_supported(path: &Path) -> bool {
 /// Recursive collect. **Never follows symlinks** — a junction pointing back up
 /// the tree would otherwise recurse forever, and `git worktree remove` has been
 /// burned by links-through before (Plan 529).
-fn collect_files(root: &Path, dir: &Path, depth: usize, out: &mut Vec<(PathBuf, u64)>) -> io::Result<()> {
+fn collect_files(
+    root: &Path,
+    dir: &Path,
+    depth: usize,
+    out: &mut Vec<(PathBuf, u64)>,
+) -> io::Result<()> {
     if depth > MAX_DEPTH {
         return Ok(());
     }
@@ -122,14 +126,18 @@ fn natural_key(s: &str) -> Vec<NaturalPart> {
             num.push(ch);
         } else {
             if !num.is_empty() {
-                parts.push(NaturalPart::Number(num.parse::<u128>().unwrap_or(u128::MAX)));
+                parts.push(NaturalPart::Number(
+                    num.parse::<u128>().unwrap_or(u128::MAX),
+                ));
                 num.clear();
             }
             txt.push(ch);
         }
     }
     if !num.is_empty() {
-        parts.push(NaturalPart::Number(num.parse::<u128>().unwrap_or(u128::MAX)));
+        parts.push(NaturalPart::Number(
+            num.parse::<u128>().unwrap_or(u128::MAX),
+        ));
     }
     if !txt.is_empty() {
         parts.push(NaturalPart::Text(txt.to_lowercase()));
@@ -167,9 +175,19 @@ pub fn index_directory(root: impl AsRef<Path>) -> io::Result<MediaIndex> {
     let mut files = Vec::new();
     collect_files(root, root, 0, &mut files)?;
     files.sort_by(|(a, _), (b, _)| {
-        let a_rel = a.strip_prefix(root).unwrap_or(a).to_string_lossy().replace('\\', "/");
-        let b_rel = b.strip_prefix(root).unwrap_or(b).to_string_lossy().replace('\\', "/");
-        natural_key(&a_rel).cmp(&natural_key(&b_rel)).then_with(|| a_rel.cmp(&b_rel))
+        let a_rel = a
+            .strip_prefix(root)
+            .unwrap_or(a)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let b_rel = b
+            .strip_prefix(root)
+            .unwrap_or(b)
+            .to_string_lossy()
+            .replace('\\', "/");
+        natural_key(&a_rel)
+            .cmp(&natural_key(&b_rel))
+            .then_with(|| a_rel.cmp(&b_rel))
     });
     let entries = files
         .into_iter()
@@ -194,10 +212,20 @@ pub fn index_directory(root: impl AsRef<Path>) -> io::Result<MediaIndex> {
                 .unwrap_or_default()
                 .to_ascii_lowercase();
             let id = blake3::hash(relative_path.as_bytes()).to_hex().to_string();
-            MediaEntry { id, name, rel_dir, relative_path, extension, bytes }
+            MediaEntry {
+                id,
+                name,
+                rel_dir,
+                relative_path,
+                extension,
+                bytes,
+            }
         })
         .collect();
-    Ok(MediaIndex { root: root.to_string_lossy().to_string(), entries })
+    Ok(MediaIndex {
+        root: root.to_string_lossy().to_string(),
+        entries,
+    })
 }
 
 /// Reverse lookup by token. The request never carries a path, so a client
@@ -285,7 +313,10 @@ pub fn parse_range(header: Option<&str>, file_len: u64) -> StreamPlan {
         // bytes=N-
         ("", "") => StreamPlan::Full,
         (start, "") => match start.parse::<u64>() {
-            Ok(s) if s < file_len => StreamPlan::Partial { start: s, end: file_len - 1 },
+            Ok(s) if s < file_len => StreamPlan::Partial {
+                start: s,
+                end: file_len - 1,
+            },
             Ok(_) => StreamPlan::Unsatisfiable,
             Err(_) => StreamPlan::Full,
         },
@@ -294,14 +325,18 @@ pub fn parse_range(header: Option<&str>, file_len: u64) -> StreamPlan {
             Ok(0) => StreamPlan::Unsatisfiable,
             Ok(n) => {
                 let start = file_len.saturating_sub(n);
-                StreamPlan::Partial { start, end: file_len - 1 }
+                StreamPlan::Partial {
+                    start,
+                    end: file_len - 1,
+                }
             }
             Err(_) => StreamPlan::Full,
         },
         (start, end) => match (start.parse::<u64>(), end.parse::<u64>()) {
-            (Ok(s), Ok(e)) if s <= e && s < file_len => {
-                StreamPlan::Partial { start: s, end: e.min(file_len - 1) }
-            }
+            (Ok(s), Ok(e)) if s <= e && s < file_len => StreamPlan::Partial {
+                start: s,
+                end: e.min(file_len - 1),
+            },
             (Ok(_), Ok(_)) => StreamPlan::Unsatisfiable,
             _ => StreamPlan::Full,
         },
@@ -355,7 +390,8 @@ pub fn parse_artist_and_title(filename: &str) -> (String, String) {
         }
     }
     // Check leading track numbers like "01 粉雪"
-    let trimmed = raw.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == ' ');
+    let trimmed =
+        raw.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == '-' || c == ' ');
     if !trimmed.is_empty() && trimmed.len() < raw.len() {
         return ("精选音乐".to_string(), trimmed.trim().to_string());
     }
@@ -378,8 +414,8 @@ mod tests {
             "TV/Loki/Loki.S01E10.mp4",
             "TV/Loki/Loki.S01E02.mp4",
             "TV/Loki/Loki.S02E01.mkv",
-            "TV/Loki/notes.txt",           // whitelist must reject
-            "TV/Loki/.hidden.md",          // whitelist must reject
+            "TV/Loki/notes.txt",  // whitelist must reject
+            "TV/Loki/.hidden.md", // whitelist must reject
         ] {
             let p = base.join(f);
             if let Some(d) = p.parent() {
@@ -394,9 +430,16 @@ mod tests {
     fn index_is_recursive_and_filtered() {
         let base = tmp_tree();
         let idx = index_directory(&base).unwrap();
-        let names: Vec<_> = idx.entries.iter().map(|e| e.relative_path.clone()).collect();
+        let names: Vec<_> = idx
+            .entries
+            .iter()
+            .map(|e| e.relative_path.clone())
+            .collect();
         // recursion: nested files are present (a flat scan would see only 1)
-        assert!(names.iter().any(|n| n == "TV/Loki/Loki.S01E02.mp4"), "{names:?}");
+        assert!(
+            names.iter().any(|n| n == "TV/Loki/Loki.S01E02.mp4"),
+            "{names:?}"
+        );
         assert!(names.iter().any(|n| n == "TV/龙猫.mp4"), "{names:?}");
         // whitelist
         assert!(!names.iter().any(|n| n.ends_with(".txt")), "{names:?}");
@@ -412,10 +455,21 @@ mod tests {
         let names: Vec<_> = idx.entries.iter().map(|e| e.name.clone()).collect();
         let e02 = names.iter().position(|n| n.contains("S01E02")).unwrap();
         let e10 = names.iter().position(|n| n.contains("S01E10")).unwrap();
-        assert!(e02 < e10, "natural order broken (lexicographic would put E10 first): {names:?}");
-        let loki = idx.entries.iter().find(|e| e.name.contains("S01E02")).unwrap();
+        assert!(
+            e02 < e10,
+            "natural order broken (lexicographic would put E10 first): {names:?}"
+        );
+        let loki = idx
+            .entries
+            .iter()
+            .find(|e| e.name.contains("S01E02"))
+            .unwrap();
         assert_eq!(loki.rel_dir, "TV/Loki");
-        let top = idx.entries.iter().find(|e| e.name == "caelestia.mp4").unwrap();
+        let top = idx
+            .entries
+            .iter()
+            .find(|e| e.name == "caelestia.mp4")
+            .unwrap();
         assert_eq!(top.rel_dir, "");
         let _ = std::fs::remove_dir_all(&base);
     }
@@ -448,20 +502,47 @@ mod tests {
         let len = 1000u64;
         assert_eq!(parse_range(None, len), StreamPlan::Full);
         assert_eq!(parse_range(Some(""), len), StreamPlan::Full);
-        assert_eq!(parse_range(Some("bytes=0-1023"), len), StreamPlan::Partial { start: 0, end: 999 });
-        assert_eq!(parse_range(Some("bytes=0-99"), len), StreamPlan::Partial { start: 0, end: 99 });
-        assert_eq!(parse_range(Some("bytes=100-"), len), StreamPlan::Partial { start: 100, end: 999 });
-        assert_eq!(parse_range(Some("bytes=-100"), len), StreamPlan::Partial { start: 900, end: 999 });
+        assert_eq!(
+            parse_range(Some("bytes=0-1023"), len),
+            StreamPlan::Partial { start: 0, end: 999 }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=0-99"), len),
+            StreamPlan::Partial { start: 0, end: 99 }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=100-"), len),
+            StreamPlan::Partial {
+                start: 100,
+                end: 999
+            }
+        );
+        assert_eq!(
+            parse_range(Some("bytes=-100"), len),
+            StreamPlan::Partial {
+                start: 900,
+                end: 999
+            }
+        );
         // past the end -> 416, not a silent empty 206
-        assert_eq!(parse_range(Some("bytes=1000-1200"), len), StreamPlan::Unsatisfiable);
-        assert_eq!(parse_range(Some("bytes=-0"), len), StreamPlan::Unsatisfiable);
+        assert_eq!(
+            parse_range(Some("bytes=1000-1200"), len),
+            StreamPlan::Unsatisfiable
+        );
+        assert_eq!(
+            parse_range(Some("bytes=-0"), len),
+            StreamPlan::Unsatisfiable
+        );
         assert_eq!(parse_range(Some("bytes=0-0"), 0), StreamPlan::Unsatisfiable);
         // multi-range and junk fall back to a full response rather than mis-serving
         assert_eq!(parse_range(Some("bytes=0-10,20-30"), len), StreamPlan::Full);
         assert_eq!(parse_range(Some("items=0-10"), len), StreamPlan::Full);
         assert_eq!(parse_range(Some("bytes=abc-def"), len), StreamPlan::Full);
         // end beyond EOF is clamped, which is what browsers rely on
-        assert_eq!(parse_range(Some("bytes=0-99999"), len), StreamPlan::Partial { start: 0, end: 999 });
+        assert_eq!(
+            parse_range(Some("bytes=0-99999"), len),
+            StreamPlan::Partial { start: 0, end: 999 }
+        );
     }
 
     #[test]
@@ -470,8 +551,18 @@ mod tests {
         assert_eq!(StreamPlan::Partial { start: 0, end: 99 }.status(), 206);
         assert_eq!(StreamPlan::Unsatisfiable.status(), 416);
         assert_eq!(StreamPlan::Full.content_length(500), 500);
-        assert_eq!(StreamPlan::Partial { start: 100, end: 199 }.content_length(500), 100);
-        assert_eq!(content_range(0, 1023, 2198645361), "bytes 0-1023/2198645361");
+        assert_eq!(
+            StreamPlan::Partial {
+                start: 100,
+                end: 199
+            }
+            .content_length(500),
+            100
+        );
+        assert_eq!(
+            content_range(0, 1023, 2198645361),
+            "bytes 0-1023/2198645361"
+        );
     }
 
     #[test]

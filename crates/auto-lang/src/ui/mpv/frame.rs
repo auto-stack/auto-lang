@@ -130,7 +130,10 @@ impl std::fmt::Debug for FrameBuffer {
         f.debug_struct("FrameBuffer")
             .field("size", &format_args!("{}x{}", self.width, self.height))
             .field("stride", &self.stride)
-            .field("base_mod_64", &(self.as_slice().as_ptr() as usize % REQUIRED_ALIGN))
+            .field(
+                "base_mod_64",
+                &(self.as_slice().as_ptr() as usize % REQUIRED_ALIGN),
+            )
             .finish()
     }
 }

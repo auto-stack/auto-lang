@@ -44,8 +44,7 @@ use crate::ui::style::Color;
 /// 语义 token → Rgba8（resolve 失败兜底黑——registry 内建表由
 /// themes_core_complete 钉死，实战不可达）。
 pub(crate) fn semantic_rgb(c: Color) -> Rgba8 {
-    let (r, g, b) = style_theme::resolve_semantic_rgb(&c)
-        .unwrap_or((0, 0, 0));
+    let (r, g, b) = style_theme::resolve_semantic_rgb(&c).unwrap_or((0, 0, 0));
     Rgba8::new(r, g, b, 255)
 }
 
@@ -182,7 +181,6 @@ pub(crate) struct NodeStyle {
 }
 
 impl NodeStyle {
-
     pub(crate) fn pad_top(&self) -> f32 {
         self.box_layout.padding_top.unwrap_or(0.0)
     }
@@ -372,7 +370,9 @@ pub fn encode_state_snapshot(revision: u64, fields: &[(String, auto_val::Value)]
 }
 
 /// 解码快照载荷 → (revision, 字段表)。未知种类 = Nil 占位。
-pub fn decode_state_snapshot(payload: &[u8]) -> Result<(u64, Vec<(String, auto_val::Value)>), String> {
+pub fn decode_state_snapshot(
+    payload: &[u8],
+) -> Result<(u64, Vec<(String, auto_val::Value)>), String> {
     use crate::ui::desktop_protocol::codec::Reader;
     let mut r = Reader::new(payload);
     let revision = r.u64().map_err(|e| format!("{e:?}"))?;
@@ -576,7 +576,11 @@ impl<S: FrameSource> ClientPump<S> {
             if self.endpoint.is_none() {
                 // 断连重连等待：连接尝试在 step/try_reconnect 内带间隔。
                 std::thread::sleep(std::time::Duration::from_millis(
-                    self.reconnect.as_ref().map(|p| p.interval_ms).unwrap_or(5).max(1) as u64,
+                    self.reconnect
+                        .as_ref()
+                        .map(|p| p.interval_ms)
+                        .unwrap_or(5)
+                        .max(1) as u64,
                 ));
                 continue;
             }
@@ -606,7 +610,9 @@ impl<S: FrameSource> ClientPump<S> {
     /// 周期拍对账（Plan 020 T-04）：`FrameSource::poll_tick` 每轮一调；
     /// revision 前进 = 状态变化 → 产帧同步宿主（Active 才可）。
     fn poll_session_tick(&mut self) {
-        let Some(app) = self.endpoint.as_mut() else { return };
+        let Some(app) = self.endpoint.as_mut() else {
+            return;
+        };
         if app.state != AppState::Active {
             return;
         }
@@ -631,7 +637,9 @@ impl<S: FrameSource> ClientPump<S> {
     /// 无段（宿主 v1.14 前/开段失败）= 观测弃置；超槽 = 观测弃置
     /// （v1 边界：高频流背压 not-yet，canvas 快照级低频）。
     fn drain_bitmap_uploads(&mut self) {
-        let Some(app) = self.endpoint.as_mut() else { return };
+        let Some(app) = self.endpoint.as_mut() else {
+            return;
+        };
         if app.state != AppState::Active {
             return;
         }
@@ -666,7 +674,9 @@ impl<S: FrameSource> ClientPump<S> {
     /// DesktopCommand 解析互通，host.rs）。
     fn drain_desktop_bus(&mut self) {
         let (wid, records) = {
-            let Some(app) = self.endpoint.as_mut() else { return };
+            let Some(app) = self.endpoint.as_mut() else {
+                return;
+            };
             if app.state != AppState::Active {
                 return;
             }
@@ -678,8 +688,12 @@ impl<S: FrameSource> ClientPump<S> {
             (wid, records)
         };
         for record in records {
-            let _ =
-                self.app_end.send(&ProtocolMsg::Control(ControlMsg::DesktopBus { wid, record }));
+            let _ = self
+                .app_end
+                .send(&ProtocolMsg::Control(ControlMsg::DesktopBus {
+                    wid,
+                    record,
+                }));
         }
     }
 
@@ -687,7 +701,9 @@ impl<S: FrameSource> ClientPump<S> {
     /// headless `State::Updated` 截获产物；产帧后读走——截获发生在
     /// render 内，FIFO 序保证 daemon 见帧后见控制）。
     fn drain_window_controls(&mut self) {
-        let Some(app) = self.endpoint.as_mut() else { return };
+        let Some(app) = self.endpoint.as_mut() else {
+            return;
+        };
         if app.state != AppState::Active {
             return;
         }
@@ -723,7 +739,11 @@ impl<S: FrameSource> ClientPump<S> {
                 self.drain_window_controls();
                 None
             }
-            ProtocolMsg::Frame(FrameMsg::BufferAlloc { shm: Some(ref name), bm: ref bm_decl, .. }) => {
+            ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+                shm: Some(ref name),
+                bm: ref bm_decl,
+                ..
+            }) => {
                 let shm_name = name.clone();
                 let bm_decl = bm_decl.clone();
                 let app = self.endpoint.as_mut()?;
@@ -805,7 +825,9 @@ impl<S: FrameSource> ClientPump<S> {
         if self.shm.is_none() {
             return;
         }
-        let Some(app) = self.endpoint.as_mut() else { return };
+        let Some(app) = self.endpoint.as_mut() else {
+            return;
+        };
         let shm = self.shm.as_ref().expect("上方已核");
         // PLAN-683（remote 模式）：v2 位分派——同 shm 槽纪律，载荷种类
         // tag 区分（宿主按槽内首字节分派）；无 shm 段回退内嵌
@@ -937,6 +959,10 @@ pub(crate) mod tests {
 
     const COUNTER_SRC: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
 
+    /// PLAN-759 T-04：显式 default variant（PLAN-571 UA 基线含 border 类）
+    /// ——描边投影覆盖（5-Quad）用源形态。
+    const COUNTER_SRC_VARIANT: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" (variant: \"default\") { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
+
     /// 确定性文本形态（clear + 算子序列；坐标/颜色全精度锁）——parity
     /// 金样共用序列化（001 + 507 矩阵）。
     pub(crate) fn drawlist_to_text(frame: &DrawList) -> String {
@@ -951,16 +977,40 @@ pub(crate) mod tests {
                     "quad {:.1},{:.1} {:.1}x{:.1} {},{},{},{}\n",
                     rect.x, rect.y, rect.w, rect.h, color.r, color.g, color.b, color.a
                 )),
-                DrawOp::Text { x, y, size, line_height, color, text } => out.push_str(&format!(
+                DrawOp::Text {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    text,
+                } => out.push_str(&format!(
                     "text {:.1},{:.1} size={:.1} lh={:.1} {},{},{},{} {:?}\n",
                     x, y, size, line_height, color.r, color.g, color.b, color.a, text
                 )),
-                DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
-                    out.push_str(&format!(
-                        "text-styled {:.1},{:.1} size={:.1} lh={:.1} w={} it={} {},{},{},{} {:?}\n",
-                        x, y, size, line_height, weight, italic, color.r, color.g, color.b, color.a, text
-                    ))
-                }
+                DrawOp::TextStyled {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    weight,
+                    italic,
+                    text,
+                } => out.push_str(&format!(
+                    "text-styled {:.1},{:.1} size={:.1} lh={:.1} w={} it={} {},{},{},{} {:?}\n",
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    weight,
+                    italic,
+                    color.r,
+                    color.g,
+                    color.b,
+                    color.a,
+                    text
+                )),
                 DrawOp::Scissor { rect } => out.push_str(&format!(
                     "scissor {:.1},{:.1} {:.1}x{:.1}\n",
                     rect.x, rect.y, rect.w, rect.h
@@ -968,11 +1018,18 @@ pub(crate) mod tests {
                 DrawOp::ScissorPop => out.push_str("scissor-pop\n"),
                 DrawOp::Image { rect, src, fit } => out.push_str(&format!(
                     "image {:.1},{:.1} {:.1}x{:.1} fit={} {:?}\n",
-                    rect.x, rect.y, rect.w, rect.h,
+                    rect.x,
+                    rect.y,
+                    rect.w,
+                    rect.h,
                     fit.as_u8(),
                     src
                 )),
-                DrawOp::QuadR { rect, color, radius } => out.push_str(&format!(
+                DrawOp::QuadR {
+                    rect,
+                    color,
+                    radius,
+                } => out.push_str(&format!(
                     "quad-r {:.1},{:.1} {:.1}x{:.1} r={:.1} {},{},{},{}\n",
                     rect.x, rect.y, rect.w, rect.h, radius, color.r, color.g, color.b, color.a
                 )),
@@ -983,25 +1040,35 @@ pub(crate) mod tests {
 
     /// PLAN-033 T-04 测试迁移（D5）：VM 源计数器经 RqProjector 装配的
     /// 布局/命中对账（AppProjector 版语义平移——几何按 native 布局重录）。
+    /// PLAN-759 T-04 双形态之一：显式 `variant: "default"`（PLAN-571 UA
+    /// 基线，含 border 类）保「底盒 + 四边描边」5-Quad 投影覆盖——裸按钮
+    /// 自 PLAN-080 T-03（b4c2dc38b）起缺省 chromeless 无描边，另由
+    /// `projector_bare_button_chromeless_single_quad` 锁 1-Quad 契约。
     #[test]
     fn projector_counter_layout_and_hits() {
-        let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
-        let mut p =
-            crate::ui::desktop_protocol::native_projector::RqProjector::new(component, 480.0, 320.0);
+        let component =
+            crate::build_dynamic_component(COUNTER_SRC_VARIANT, None).expect("build");
+        let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
+            component, 480.0, 320.0,
+        );
+        // PLAN-678 同款：几何钉测试钉预居中坐标——variant 档按钮内宽收缩会
+        // 触发根缺省居中，关掉保 MARGIN 基准。
+        p.proj_autocenter_off();
         let frame = p.render_frame();
 
         assert_eq!(frame.clear, Some(bg()));
-        // native 重录：按钮 = 底盒 Quad + 四边描边 Quad（5 面）——AppProjector
-        // 块流的单 Quad 形退役；按钮盒 = 最大面积 Quad。
+        // native 重录：按钮 = 底盒（default 档 rounded-md → QuadR）+ 四边
+        // 描边 Quad = 5 面——AppProjector 块流的单 Quad 形退役；按钮盒 =
+        // 最大面积面。
         let quads: Vec<&WRect> = frame
             .ops
             .iter()
             .filter_map(|op| match op {
-                DrawOp::Quad { rect, .. } => Some(rect),
+                DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } => Some(rect),
                 _ => None,
             })
             .collect();
-        assert_eq!(quads.len(), 5, "按钮 = 底盒 + 四边描边");
+        assert_eq!(quads.len(), 5, "variant=default：按钮 = 底盒 + 四边描边");
         let texts: Vec<&str> = frame
             .ops
             .iter()
@@ -1010,7 +1077,11 @@ pub(crate) mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(texts, vec!["+", "count: 0"], "prop 标签 + 插值模板已代入状态");
+        assert_eq!(
+            texts,
+            vec!["+", "count: 0"],
+            "prop 标签 + 插值模板已代入状态"
+        );
         let quad = quads
             .iter()
             .max_by(|a, b| (a.w * a.h).total_cmp(&(b.w * b.h)))
@@ -1033,7 +1104,36 @@ pub(crate) mod tests {
         let regions = p.hit_regions();
         assert_eq!(regions.len(), 1, "一个交互区: {regions:?}");
         assert_eq!(regions[0].0, **quad, "命中区即绘制矩形");
-        assert_eq!(regions[0].1, "button:__evt_onclick_1", "内联 lambda 的解析 handler");
+        assert_eq!(
+            regions[0].1, "button:__evt_onclick_1",
+            "内联 lambda 的解析 handler"
+        );
+    }
+
+    /// PLAN-759 T-04 双形态之二：裸按钮（无 variant）自 PLAN-080 T-03
+    /// （b4c2dc38b）起缺省 chromeless——投影帧只有底盒 1 Quad，零描边。
+    /// 与 `projector_counter_layout_and_hits`（variant=default 5-Quad）互为
+    /// 双向锁，防两种缺省语义再漂。
+    #[test]
+    fn projector_bare_button_chromeless_single_quad() {
+        let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
+        let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
+            component, 480.0, 320.0,
+        );
+        let frame = p.render_frame();
+        let quads: Vec<&WRect> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            quads.len(),
+            1,
+            "PLAN-080 T-03：裸按钮 chromeless——底盒 1 面、无四边描边"
+        );
     }
 
     /// PLAN-033 T-04 测试迁移（D5）：命中派发——点击 → on() → VM handler
@@ -1041,8 +1141,9 @@ pub(crate) mod tests {
     #[test]
     fn projector_click_dispatches_vm_handler() {
         let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
-        let mut p =
-            crate::ui::desktop_protocol::native_projector::RqProjector::new(component, 480.0, 320.0);
+        let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
+            component, 480.0, 320.0,
+        );
         p.render_frame();
         let (rect, _) = p.hit_regions()[0].clone();
         p.on_input(&InputMsg::PointerPressed {
@@ -1076,10 +1177,17 @@ pub(crate) mod tests {
     /// 具名 handler（`.Inc` 风格）与带参 handler 的取舍。
     #[test]
     fn handler_token_rules() {
-        assert_eq!(handler_token(".__evt_onclick_1").as_deref(), Some("__evt_onclick_1"));
+        assert_eq!(
+            handler_token(".__evt_onclick_1").as_deref(),
+            Some("__evt_onclick_1")
+        );
         assert_eq!(handler_token(".Inc").as_deref(), Some("Inc"));
         assert_eq!(handler_token("Module::Nested::Go").as_deref(), Some("Go"));
-        assert_eq!(handler_token(".Delete(todo.id)"), None, "带参 handler v1 不投影");
+        assert_eq!(
+            handler_token(".Delete(todo.id)"),
+            None,
+            "带参 handler v1 不投影"
+        );
         assert_eq!(handler_token("."), None);
     }
 
@@ -1092,7 +1200,9 @@ pub(crate) mod tests {
         // 从 view 树收集首个 FStr prop 表达式。
         fn find_fstr(node: &AuraNode) -> Option<Expr> {
             match node {
-                AuraNode::Element { props, children, .. } => {
+                AuraNode::Element {
+                    props, children, ..
+                } => {
                     for value in props.values() {
                         if let AuraPropValue::Expr(e @ Expr::FStr(_)) = value {
                             return Some(e.clone());
@@ -1155,10 +1265,11 @@ pub(crate) mod tests {
         fn drive(
             server_end: &mut Box<dyn Transport + Send>,
             ph: &mut ProtocolHost<'_>,
-            client: &mut ClientPump<
-                RqProjector<crate::ui::dynamic::DynamicComponent>,
-            >,
-        ) -> Option<(ClientExit, RqProjector<crate::ui::dynamic::DynamicComponent>)> {
+            client: &mut ClientPump<RqProjector<crate::ui::dynamic::DynamicComponent>>,
+        ) -> Option<(
+            ClientExit,
+            RqProjector<crate::ui::dynamic::DynamicComponent>,
+        )> {
             pump(server_end, ph);
             client.step()
         }
@@ -1182,7 +1293,9 @@ pub(crate) mod tests {
         assert!(ph.composed(wid.0).is_some(), "Active 首帧已合成");
 
         // 协议点击 → shm 帧 count 递增。
-        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected).unwrap();
         let mut count_seen = 0;
         for _ in 0..1000 {
@@ -1190,7 +1303,10 @@ pub(crate) mod tests {
                 panic!("点击阶段意外出口 {exit:?}");
             }
             if let Some(list) = ph.composed(wid.0) {
-                let hit = list.ops.iter().any(|op| matches!(op, DrawOp::Text { text, .. } if text == "count: 1"));
+                let hit = list
+                    .ops
+                    .iter()
+                    .any(|op| matches!(op, DrawOp::Text { text, .. } if text == "count: 1"));
                 if hit {
                     count_seen = 1;
                     break;

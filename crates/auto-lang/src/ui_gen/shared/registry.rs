@@ -277,13 +277,10 @@ impl ComponentRegistry {
             jet: JetMapping {
                 import: "androidx.compose.material3.OutlinedTextField".to_string(),
                 composable: "OutlinedTextField".to_string(),
-                props: vec![
-                    ("placeholder", "placeholder"),
-                    ("value", "value"),
-                ]
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
+                props: vec![("placeholder", "placeholder"), ("value", "value")]
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
                 modifier_props: vec!["class".to_string()],
                 events: vec![("oninput", "onValueChange")]
                     .into_iter()
@@ -299,25 +296,19 @@ impl ComponentRegistry {
             vue: VueMapping {
                 import: Some("@/components/ui/textarea".to_string()),
                 component: "Textarea".to_string(),
-                props: vec![
-                    ("placeholder", "placeholder"),
-                    ("rows", "rows"),
-                ]
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
+                props: vec![("placeholder", "placeholder"), ("rows", "rows")]
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
                 events: HashMap::new(),
             },
             jet: JetMapping {
                 import: "androidx.compose.material3.OutlinedTextField".to_string(),
                 composable: "OutlinedTextField".to_string(),
-                props: vec![
-                    ("placeholder", "placeholder"),
-                    ("value", "value"),
-                ]
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
+                props: vec![("placeholder", "placeholder"), ("value", "value")]
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
                 modifier_props: vec!["class".to_string()],
                 events: vec![("oninput", "onValueChange")]
                     .into_iter()
@@ -480,7 +471,14 @@ impl ComponentRegistry {
         });
 
         // Typography headings
-        for (tag, _size) in [("h1", 36.0), ("h2", 30.0), ("h3", 20.0), ("h4", 18.0), ("h5", 16.0), ("h6", 14.0)] {
+        for (tag, _size) in [
+            ("h1", 36.0),
+            ("h2", 30.0),
+            ("h3", 20.0),
+            ("h4", 18.0),
+            ("h5", 16.0),
+            ("h6", 14.0),
+        ] {
             self.register(ComponentMapping {
                 tag: tag.to_string(),
                 vue: VueMapping {

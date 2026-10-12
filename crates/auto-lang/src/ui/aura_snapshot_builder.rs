@@ -80,7 +80,12 @@ impl<'a> AuraSnapshotBuilder<'a> {
                     auto_val::Value::Null => "null",
                     _ => "val",
                 };
-                out.push_str(&format!("  {}: {} ({})\n", key, Self::format_state_value(val), type_hint));
+                out.push_str(&format!(
+                    "  {}: {} ({})\n",
+                    key,
+                    Self::format_state_value(val),
+                    type_hint
+                ));
             }
         }
 
@@ -138,22 +143,42 @@ impl<'a> AuraSnapshotBuilder<'a> {
                 let bounds_str = debug_id.as_ref().and_then(|id| {
                     let key = format!("aura_{}", id.0);
                     self.layout_bounds.get(&key).map(|(x, y, w, h)| {
-                        format!("@rect({},{},{},{})", x.round() as i32, y.round() as i32, w.round() as i32, h.round() as i32)
+                        format!(
+                            "@rect({},{},{},{})",
+                            x.round() as i32,
+                            y.round() as i32,
+                            w.round() as i32,
+                            h.round() as i32
+                        )
                     })
                 });
 
                 // Build annotation suffix: @rect(...) [layout_info]
-                let rect_part = bounds_str.as_ref().map(|r| format!(" {}", r)).unwrap_or_default();
-                let layout_part = layout_inline.as_ref().map(|l| format!(" [{}]", l)).unwrap_or_default();
+                let rect_part = bounds_str
+                    .as_ref()
+                    .map(|r| format!(" {}", r))
+                    .unwrap_or_default();
+                let layout_part = layout_inline
+                    .as_ref()
+                    .map(|l| format!(" [{}]", l))
+                    .unwrap_or_default();
                 let suffix = format!("{}{}", rect_part, layout_part);
 
                 // Opening tag
-                let has_body = !children.is_empty() || !events.is_empty() || Self::count_display_props(props) > 0;
+                let has_body = !children.is_empty()
+                    || !events.is_empty()
+                    || Self::count_display_props(props) > 0;
                 if let Some(ref lbl) = label {
                     if has_body {
-                        out.push_str(&format!("{}{}{} \"{}\"{} {{\n", pad, display_tag, id_str, lbl, suffix));
+                        out.push_str(&format!(
+                            "{}{}{} \"{}\"{} {{\n",
+                            pad, display_tag, id_str, lbl, suffix
+                        ));
                     } else {
-                        out.push_str(&format!("{}{}{} \"{}\"{}\n", pad, display_tag, id_str, lbl, suffix));
+                        out.push_str(&format!(
+                            "{}{}{} \"{}\"{}\n",
+                            pad, display_tag, id_str, lbl, suffix
+                        ));
                         return;
                     }
                 } else if !has_body {
@@ -245,10 +270,7 @@ impl<'a> AuraSnapshotBuilder<'a> {
                     }
                 } else {
                     // Cannot expand — show the loop header with unevaluated reference
-                    out.push_str(&format!(
-                        "{}for {} in {}{}\n",
-                        pad, var, iterable, id_str
-                    ));
+                    out.push_str(&format!("{}for {} in {}{}\n", pad, var, iterable, id_str));
                     for child in body {
                         self.traverse(child, indent + 1, out);
                     }
@@ -296,7 +318,13 @@ impl<'a> AuraSnapshotBuilder<'a> {
     }
 
     /// Emit properties, evaluating StateRef values.
-    fn emit_props(&self, props: &HashMap<String, AuraPropValue>, indent: usize, out: &mut String, skip_style: bool) {
+    fn emit_props(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        indent: usize,
+        out: &mut String,
+        skip_style: bool,
+    ) {
         let pad = "  ".repeat(indent);
 
         // Collect displayable props in order: class/style last, then others
@@ -322,7 +350,12 @@ impl<'a> AuraSnapshotBuilder<'a> {
         for key in &display_order {
             if let Some(prop_val) = props.get(key) {
                 let val = self.eval_prop_value(prop_val);
-                out.push_str(&format!("{}{}: {}\n", pad, key, Self::format_prop_val(&val)));
+                out.push_str(&format!(
+                    "{}{}: {}\n",
+                    pad,
+                    key,
+                    Self::format_prop_val(&val)
+                ));
             }
         }
 
@@ -493,10 +526,7 @@ impl<'a> AuraSnapshotBuilder<'a> {
         // Bare state ref (with optional leading dot) — truthy check
         let name = cond.trim_start_matches('.');
         let name = Self::flatten_state_path(name);
-        self.state
-            .get(name)
-            .map(|v| v.as_bool())
-            .unwrap_or(false)
+        self.state.get(name).map(|v| v.as_bool()).unwrap_or(false)
     }
 
     /// Split a condition into `(lhs, op, rhs)` at the first comparison operator
@@ -504,8 +534,14 @@ impl<'a> AuraSnapshotBuilder<'a> {
     /// operator is present. Checks two-char operators before one-char ones so
     /// `>=` is not mis-split as `>`.
     fn split_comparison(cond: &str) -> Option<(&str, &str, &str)> {
-        for (op, len) in [(" == ", 4), (" != ", 4), (" >= ", 4), (" <= ", 4), (" > ", 3), (" < ", 3)]
-        {
+        for (op, len) in [
+            (" == ", 4),
+            (" != ", 4),
+            (" >= ", 4),
+            (" <= ", 4),
+            (" > ", 3),
+            (" < ", 3),
+        ] {
             if let Some(pos) = cond.find(op) {
                 return Some((&cond[..pos], op.trim(), &cond[pos + len..]));
             }
@@ -517,7 +553,10 @@ impl<'a> AuraSnapshotBuilder<'a> {
     /// to its display string, flattening `.store.` and evaluating `.len()`.
     fn state_value_string(&self, lhs: &str) -> String {
         // Normalize spaces the parser may insert inside the call parens.
-        let normalized = lhs.replace(" ( ", "(").replace("( ", "(").replace(" )", ")");
+        let normalized = lhs
+            .replace(" ( ", "(")
+            .replace("( ", "(")
+            .replace(" )", ")");
         let (field_expr, want_len) = if let Some(stripped) = normalized.strip_suffix(".len()") {
             (stripped, true)
         } else {
@@ -665,12 +704,14 @@ impl<'a> AuraSnapshotBuilder<'a> {
     /// Extract box layout inline string from style/class props (Plan 281).
     fn extract_layout_inline(&self, props: &HashMap<String, AuraPropValue>) -> Option<String> {
         // Get style string from "class" or "style" prop
-        let style_str = props.get("class")
-            .or_else(|| props.get("style"))
-            .and_then(|pv| match pv {
-                AuraPropValue::Expr(Expr::Str(s)) => Some(s.to_string()),
-                _ => None,
-            })?;
+        let style_str =
+            props
+                .get("class")
+                .or_else(|| props.get("style"))
+                .and_then(|pv| match pv {
+                    AuraPropValue::Expr(Expr::Str(s)) => Some(s.to_string()),
+                    _ => None,
+                })?;
 
         let layout = BoxLayout::from_class_string(&style_str);
         layout.format_inline(self.viewport)

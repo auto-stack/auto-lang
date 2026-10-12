@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useData } from 'vitepress'
 import { applicationCopy } from '../data/applications'
 import EvidenceImage from './EvidenceImage.vue'
+import ScreenshotSlot from './ScreenshotSlot.vue'
 import DemoCatalog from './DemoCatalog.vue'
 const { lang } = useData()
 const zh = computed(() => lang.value.startsWith('zh'))
@@ -26,10 +27,13 @@ const href = (path: string) => (zh.value ? '/zh' : '') + path
       <p class="section-lead">{{ c.mainLead }}</p>
       <div class="main-app-grid">
         <article v-for="(app, index) in c.apps" :key="app.key" class="main-app-card">
-          <EvidenceImage v-if="app.key === 'autoedit' || app.key === 'autoshell'"
-            :src="app.key === 'autoedit' ? '/apps/autoedit/overview-dark.png' : '/apps/autoshell/ash-01.png'"
+          <ScreenshotSlot v-if="app.key === 'auto-jade'" capture-id="SHOT-07" loading="eager" />
+          <ScreenshotSlot v-else-if="app.key === 'autoedit'" capture-id="SHOT-01" loading="eager" />
+          <ScreenshotSlot v-else-if="app.key === 'automusk'" capture-id="SHOT-04" loading="eager" />
+          <EvidenceImage v-else-if="app.key === 'autoshell'"
+            src="/apps/autoshell/ash-01.png"
             :alt="app.name + (zh ? '原生主界面' : ' native main interface')"
-            :caption="app.key === 'autoedit' ? (zh ? 'AutoEdit · 深色原生工作台' : 'AutoEdit · dark native workspace') : (zh ? 'AutoShell · ls 的彩色目录结果' : 'AutoShell · colored ls directory results')"
+            :caption="zh ? 'AutoShell · ls 的彩色目录结果' : 'AutoShell · colored ls directory results'"
             :zoom-label="zh ? '放大图片' : 'Enlarge image'" :close-label="zh ? '关闭' : 'Close'" :original-label="zh ? '查看原图' : 'View original'" :framed="false" />
           <div class="app-role"><span>{{ String(index + 1).padStart(2, '0') }}</span>{{ app.role }}</div>
           <h3>{{ app.name }}</h3>

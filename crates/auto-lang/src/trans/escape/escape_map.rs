@@ -127,7 +127,11 @@ impl EscapeMap {
 
     /// Plan 419 §4.5: 标记写捕获绑定(同时升级 tier 为 RcRefCell)。
     pub fn record_write_capture(&mut self, id: BindingId) {
-        self.record(id.clone(), OwnershipTier::RcRefCell, "closure write-capture (plan 419)");
+        self.record(
+            id.clone(),
+            OwnershipTier::RcRefCell,
+            "closure write-capture (plan 419)",
+        );
         self.write_captures.insert(id);
     }
 
@@ -138,14 +142,15 @@ impl EscapeMap {
 
     /// Plan 419 §4.5: 全部写捕获绑定名。
     pub fn write_capture_names(&self) -> Vec<Name> {
-        self.write_captures.iter().map(|id| id.name.clone()).collect()
+        self.write_captures
+            .iter()
+            .map(|id| id.name.clone())
+            .collect()
     }
 
     /// Plan 419 §4.5: name 是否为写捕获绑定(任一深度,供闭包体内查询)。
     pub fn is_write_capture(&self, name: &Name) -> bool {
-        self.write_captures
-            .iter()
-            .any(|id| id.name == *name)
+        self.write_captures.iter().any(|id| id.name == *name)
     }
 
     /// Query the decision for a binding visible at the given scope depth.
@@ -153,10 +158,10 @@ impl EscapeMap {
     /// scoping: a binding shadows same-named outer bindings).
     pub fn lookup(&self, scope_depth: usize, name: &Name) -> Option<OwnershipTier> {
         for depth in (0..=scope_depth).rev() {
-            if let Some(tier) = self
-                .decisions
-                .get(&BindingId { scope_depth: depth, name: name.clone() })
-            {
+            if let Some(tier) = self.decisions.get(&BindingId {
+                scope_depth: depth,
+                name: name.clone(),
+            }) {
                 return Some(*tier);
             }
         }
@@ -166,10 +171,10 @@ impl EscapeMap {
     /// Reason text for a binding (for W0007). Same shadowing as [`lookup`].
     pub fn reason_for(&self, scope_depth: usize, name: &Name) -> Option<&str> {
         for depth in (0..=scope_depth).rev() {
-            if let Some(r) = self
-                .reasons
-                .get(&BindingId { scope_depth: depth, name: name.clone() })
-            {
+            if let Some(r) = self.reasons.get(&BindingId {
+                scope_depth: depth,
+                name: name.clone(),
+            }) {
                 return Some(r.as_str());
             }
         }
@@ -194,7 +199,13 @@ impl EscapeMap {
         let entries: Vec<(BindingId, OwnershipTier, String)> = self
             .decisions
             .iter()
-            .map(|(id, t)| (id.clone(), *t, self.reasons.get(id).cloned().unwrap_or_default()))
+            .map(|(id, t)| {
+                (
+                    id.clone(),
+                    *t,
+                    self.reasons.get(id).cloned().unwrap_or_default(),
+                )
+            })
             .collect();
         for (id, tier, reason) in entries {
             // 根条目与嵌套条目同走 max-ordinal 合并——fold 前根条目可能已被
@@ -215,7 +226,10 @@ impl EscapeMap {
         self.decisions.clear();
         self.reasons.clear();
         for (name, (tier, reason)) in root {
-            let id = BindingId { scope_depth: 0, name };
+            let id = BindingId {
+                scope_depth: 0,
+                name,
+            };
             self.decisions.insert(id.clone(), tier);
             self.reasons.insert(id, reason);
         }
@@ -223,7 +237,10 @@ impl EscapeMap {
         let wcs: Vec<BindingId> = self.write_captures.iter().cloned().collect();
         self.write_captures.clear();
         for id in wcs {
-            self.write_captures.insert(BindingId { scope_depth: 0, name: id.name });
+            self.write_captures.insert(BindingId {
+                scope_depth: 0,
+                name: id.name,
+            });
         }
     }
 
@@ -260,7 +277,10 @@ mod tests {
     #[test]
     fn test_record_and_lookup() {
         let mut m = EscapeMap::new();
-        let id = BindingId { scope_depth: 0, name: "x".into() };
+        let id = BindingId {
+            scope_depth: 0,
+            name: "x".into(),
+        };
         m.record(id.clone(), OwnershipTier::BorrowView, "local use only");
         assert_eq!(m.lookup(0, &"x".into()), Some(OwnershipTier::BorrowView));
         assert_eq!(m.reason_for(0, &"x".into()), Some("local use only"));
@@ -270,12 +290,18 @@ mod tests {
     fn test_shadowing_lookup() {
         let mut m = EscapeMap::new();
         m.record(
-            BindingId { scope_depth: 0, name: "x".into() },
+            BindingId {
+                scope_depth: 0,
+                name: "x".into(),
+            },
             OwnershipTier::Owned,
             "outer",
         );
         m.record(
-            BindingId { scope_depth: 2, name: "x".into() },
+            BindingId {
+                scope_depth: 2,
+                name: "x".into(),
+            },
             OwnershipTier::BorrowView,
             "inner",
         );
@@ -290,7 +316,10 @@ mod tests {
     #[test]
     fn test_conservative_merge_keeps_higher_tier() {
         let mut m = EscapeMap::new();
-        let id = BindingId { scope_depth: 0, name: "x".into() };
+        let id = BindingId {
+            scope_depth: 0,
+            name: "x".into(),
+        };
         m.record(id.clone(), OwnershipTier::BorrowView, "branch A: local");
         m.record(id.clone(), OwnershipTier::RcRefCell, "branch B: escapes");
         // The more restrictive tier wins (conservative across branches).

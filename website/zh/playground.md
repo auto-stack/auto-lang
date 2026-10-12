@@ -9,7 +9,7 @@ sidebar: false
     <p>浏览仓内语料笔记——VM 金样、书页围栏、Demo 示例；运行与转译需本地后端。</p>
   </div>
 
-  <NotesExplorer />
+  <PlaygroundIDEPage />
 
   <div id="backend" class="playground-note">
     <p>

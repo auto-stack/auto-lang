@@ -47,7 +47,9 @@ mod plan536_t1_reactive_probe_tests {
                     collect_texts(c, out);
                 }
             }
-            View::Container { child, .. } | View::Scrollable { child, .. } => collect_texts(child, out),
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                collect_texts(child, out)
+            }
             View::Overlay { base, content, .. } => {
                 collect_texts(base, out);
                 collect_texts(content, out);
@@ -92,9 +94,15 @@ mod plan536_t1_reactive_probe_tests {
 
         // renderer update 周期契约：清 dirty → 派发 timer 拍
         dc.clear_dirty();
-        assert!(dc.is_timer_entry("App", "LocalTick"), "timer entry registered");
+        assert!(
+            dc.is_timer_entry("App", "LocalTick"),
+            "timer entry registered"
+        );
         assert!(dc.fire_timer("App", "LocalTick"), "ungated tick dispatches");
-        assert!(dc.is_dirty(), "ARM-1 失效广播: timer handler 写 state 后 dirty 必须置位");
+        assert!(
+            dc.is_dirty(),
+            "ARM-1 失效广播: timer handler 写 state 后 dirty 必须置位"
+        );
         assert_eq!(dc.read_state("local_count"), Ok(auto_val::Value::Int(1)));
 
         // 消费臂：按 dirty 重建的视图文本必须更新
@@ -122,8 +130,14 @@ mod plan536_t1_reactive_probe_tests {
 
         dc.clear_dirty();
         dc.on_with_input_for("TickerStore", "SetGate", Some("true".to_string()));
-        assert!(dc.fire_timer("TickerStore", "PollTick"), "gated tick dispatches after SetGate");
-        assert!(dc.is_dirty(), "ARM-1 失效广播: store timer handler 写 state 后 dirty 必须置位");
+        assert!(
+            dc.fire_timer("TickerStore", "PollTick"),
+            "gated tick dispatches after SetGate"
+        );
+        assert!(
+            dc.is_dirty(),
+            "ARM-1 失效广播: store timer handler 写 state 后 dirty 必须置位"
+        );
         assert_eq!(dc.read_state("poll_count"), Ok(auto_val::Value::Int(1)));
 
         let after = rendered_texts(&dc);
@@ -150,9 +164,15 @@ mod plan536_t1_reactive_probe_tests {
             .expect("build plan051_timer component");
 
         // 门关：条目在表（订阅在发、消息可达 update），但 fire_timer 丢弃本拍
-        assert!(dc.is_timer_entry("TickerStore", "PollTick"), "entry 在表=订阅层照发");
+        assert!(
+            dc.is_timer_entry("TickerStore", "PollTick"),
+            "entry 在表=订阅层照发"
+        );
         dc.clear_dirty();
-        assert!(!dc.fire_timer("TickerStore", "PollTick"), "gate closed must drop tick");
+        assert!(
+            !dc.fire_timer("TickerStore", "PollTick"),
+            "gate closed must drop tick"
+        );
         assert!(!dc.is_dirty(), "被门拦的拍不得置 dirty");
         assert_eq!(dc.read_state("poll_count"), Ok(auto_val::Value::Int(0)));
     }
@@ -243,7 +263,10 @@ mod plan536_t1_reactive_probe_tests {
 
         // store 计时器一拍：title → poll-1
         dc.clear_dirty();
-        assert!(dc.fire_timer("ChatStore", "PollTick"), "store tick dispatches");
+        assert!(
+            dc.fire_timer("ChatStore", "PollTick"),
+            "store tick dispatches"
+        );
         assert!(dc.is_dirty(), "store handler write must dirty");
         assert_eq!(dc.read_state("title"), Ok(auto_val::Value::str("poll-1")));
 
@@ -291,7 +314,10 @@ mod plan536_t1_reactive_probe_tests {
         // 对照组：handler 缺失（HandlerNotFound,无副作用）不置 dirty
         dc.clear_dirty();
         dc.on_with_input_for("ChatStore", "NoSuchHandler", None);
-        assert!(!dc.is_dirty(), "HandlerNotFound (no side effects) must not dirty");
+        assert!(
+            !dc.is_dirty(),
+            "HandlerNotFound (no side effects) must not dirty"
+        );
     }
 
     /// T3 Init 重入收敛（题 2）：子件 Init=挂载语义,只随首渲染执行一次,
@@ -358,12 +384,16 @@ mod plan536_t1_reactive_probe_tests {
                     collect_views(c, out);
                 }
             }
-            View::Container { child, .. } | View::Scrollable { child, .. } => collect_views(child, out),
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                collect_views(child, out)
+            }
             View::Overlay { base, content, .. } => {
                 collect_views(base, out);
                 collect_views(content, out);
             }
-            View::Button { content: Some(c), .. } => collect_views(c, out),
+            View::Button {
+                content: Some(c), ..
+            } => collect_views(c, out),
             _ => {}
         }
     }
@@ -387,10 +417,17 @@ mod plan536_t1_reactive_probe_tests {
 
         let mut all = Vec::new();
         collect_views(&view, &mut all);
-        let overlays: Vec<_> = all.iter().filter_map(|v| match v {
-            View::Overlay { base, content, position } => Some((base, content, position)),
-            _ => None,
-        }).collect();
+        let overlays: Vec<_> = all
+            .iter()
+            .filter_map(|v| match v {
+                View::Overlay {
+                    base,
+                    content,
+                    position,
+                } => Some((base, content, position)),
+                _ => None,
+            })
+            .collect();
 
         assert!(
             overlays.iter().any(|(base, content, pos)| {
@@ -404,8 +441,14 @@ mod plan536_t1_reactive_probe_tests {
         );
         // 悬浮层文本在树上仍可见(MCP 快照口径)
         let texts = rendered_texts(&dc);
-        assert!(texts.iter().any(|t| t.contains("float-from-row")), "float text must render; got {texts:?}");
-        assert!(texts.iter().any(|t| t.contains("flow-text")), "flow sibling must stay; got {texts:?}");
+        assert!(
+            texts.iter().any(|t| t.contains("float-from-row")),
+            "float text must render; got {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.contains("flow-text")),
+            "flow sibling must stay; got {texts:?}"
+        );
     }
 
     /// T6②: absolute 载体不止 col/row——button(× 删除钮)/container 一类
@@ -426,10 +469,17 @@ mod plan536_t1_reactive_probe_tests {
 
         let mut all = Vec::new();
         collect_views(&view, &mut all);
-        let overlays: Vec<_> = all.iter().filter_map(|v| match v {
-            View::Overlay { base, content, position } => Some((base, content, position)),
-            _ => None,
-        }).collect();
+        let overlays: Vec<_> = all
+            .iter()
+            .filter_map(|v| match v {
+                View::Overlay {
+                    base,
+                    content,
+                    position,
+                } => Some((base, content, position)),
+                _ => None,
+            })
+            .collect();
 
         assert!(
             overlays.iter().any(|(_base, content, pos)| {
@@ -469,7 +519,11 @@ mod plan536_t1_reactive_probe_tests {
         // 该形态画布空壳(musk 会话列表实测),button 臂已撤销。
         // 注:col 下的 ×(第一个结构)由 col 臂合法 hoist,不受此限。
         let card_content_is_overlay = all.iter().any(|v| match v {
-            View::Button { label, content: Some(c), .. } if label.is_empty() => {
+            View::Button {
+                label,
+                content: Some(c),
+                ..
+            } if label.is_empty() => {
                 matches!(c.as_ref(), View::Overlay { .. })
             }
             _ => false,
@@ -499,8 +553,10 @@ mod plan536_t1_reactive_probe_tests {
         let mut all = Vec::new();
         collect_views(&view, &mut all);
         // layer-text(inset-0 无 z)必须仍作为 col 的流内子件存在
-        let flow_layer = all.iter().any(|v| matches!(v,
-            View::Text { content, .. } if content.contains("layer-text")));
+        let flow_layer = all.iter().any(|v| {
+            matches!(v,
+            View::Text { content, .. } if content.contains("layer-text"))
+        });
         assert!(flow_layer, "无 z 的 absolute 分层文本必须留在流内");
         // 且不在任何 Overlay 的 content 侧
         let in_overlay = all.iter().any(|v| match v {
@@ -541,7 +597,10 @@ mod plan536_t1_reactive_probe_tests {
                 ),
                 _ => false,
             });
-            assert!(hoisted, "浮层 {wanted} 必须保留在 Overlay content 侧(不得被 .next() 丢弃)");
+            assert!(
+                hoisted,
+                "浮层 {wanted} 必须保留在 Overlay content 侧(不得被 .next() 丢弃)"
+            );
         }
     }
 
@@ -600,138 +659,154 @@ mod plan536_t1_reactive_probe_tests {
         find_parent_children(&view, &mut sibling_slices);
         let noz_partitioned = sibling_slices.iter().any(|slice| {
             let (_, floating) = column_layer_partition(slice);
-            floating.iter().any(|&i| matches!(
-                &slice[i],
-                View::Button { label, .. } if label == "noz-x"
-            ))
+            floating.iter().any(|&i| {
+                matches!(
+                    &slice[i],
+                    View::Button { label, .. } if label == "noz-x"
+                )
+            })
         });
-        assert!(noz_partitioned, "动态路径分区必须把无 z 偏移浮层(noz-x)判入 floating");
+        assert!(
+            noz_partitioned,
+            "动态路径分区必须把无 z 偏移浮层(noz-x)判入 floating"
+        );
 
         // 偏移消费判定: noz-x(right-[6px] top-2, 无 z)→ Some(right=6, top=8);
         // layer-text(inset-0 全零偏移)→ None(落原点满铺语义保持)。
-        let noz = all.iter().find_map(|v| match v {
-            View::Button { label, .. } if label == "noz-x" => Some(v.clone()),
-            _ => None,
-        }).expect("noz-x in tree");
+        let noz = all
+            .iter()
+            .find_map(|v| match v {
+                View::Button { label, .. } if label == "noz-x" => Some(v.clone()),
+                _ => None,
+            })
+            .expect("noz-x in tree");
         let pos = dynamic_abs_layer_position(&noz).expect("无 z 偏移浮层必须产出定位");
         assert_eq!(pos.right, Some(crate::ui::view::OverlayLength::Px(6.0)));
         assert_eq!(pos.top, Some(crate::ui::view::OverlayLength::Px(8.0)));
 
-        let ghost = all.iter().find(|v| matches!(v,
-            View::Text { content, .. } if content.contains("layer-text"))).expect("ghost in tree");
+        let ghost = all
+            .iter()
+            .find(|v| {
+                matches!(v,
+            View::Text { content, .. } if content.contains("layer-text"))
+            })
+            .expect("ghost in tree");
         assert!(
             dynamic_abs_layer_position(ghost).is_none(),
             "inset-0 零偏移(ghost 叠加族)必须保持落原点(None)"
         );
     }
 
-
-fn locate_modal_corpus() -> Option<std::path::PathBuf> {
-    let rel = "test/ui/plan536_modal/src/front/app.at";
-    [
-        std::env::var("CARGO_MANIFEST_DIR")
-            .ok()
-            .map(|d| std::path::PathBuf::from(d).join(format!("../../{}", rel))),
-        Some(std::path::PathBuf::from(rel)),
-        Some(std::path::PathBuf::from(format!("../../{}", rel))),
-    ]
-    .into_iter()
-    .flatten()
-    .find(|p| p.exists())
-}
-
-fn find_modal(
-    view: &View<crate::ui::interpreter::DynamicMessage>,
-    out: &mut Vec<bool>,
-) {
-    if let View::Popover { open, placement, .. } = view {
-        if matches!(placement, crate::ui::view::PopoverPlacement::Modal) {
-            out.push(*open);
-        }
+    fn locate_modal_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan536_modal/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(format!("../../{}", rel))),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
     }
-    match view {
-        View::Row { children, .. } | View::Column { children, .. } => {
-            for c in children {
-                find_modal(c, out);
+
+    fn find_modal(view: &View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<bool>) {
+        if let View::Popover {
+            open, placement, ..
+        } = view
+        {
+            if matches!(placement, crate::ui::view::PopoverPlacement::Modal) {
+                out.push(*open);
             }
         }
-        View::Container { child, .. } | View::Scrollable { child, .. } => find_modal(child, out),
-        View::Overlay { base, content, .. } => {
-            find_modal(base, out);
-            find_modal(content, out);
+        match view {
+            View::Row { children, .. } | View::Column { children, .. } => {
+                for c in children {
+                    find_modal(c, out);
+                }
+            }
+            View::Container { child, .. } | View::Scrollable { child, .. } => {
+                find_modal(child, out)
+            }
+            View::Overlay { base, content, .. } => {
+                find_modal(base, out);
+                find_modal(content, out);
+            }
+            View::Button {
+                content: Some(c), ..
+            } => find_modal(c, out),
+            _ => {}
         }
-        View::Button { content: Some(c), .. } => find_modal(c, out),
-        _ => {}
     }
-}
 
-/// T8(题6)：unknown-tag 子件（fallback Column 路径）包 alert-dialog 家族根,
-/// `open` 绑定根态——翻转后渲染树必须出 open=true 的 Modal。
-/// 勘误:此前误报"引擎缺陷"实为测试派发名错位（语料 msg=FlipRoot 而测试
-/// 派发 "Flip"→HandlerNotFound→写入不发生）;修正后本测试锁定 fallback
-/// 路径 open 绑定在带子件工程中依然成立。
-#[cfg(feature = "ui-interpreter")]
-#[test]
-fn p536_t8_unknown_tag_fallback_resolves_open_binding() {
-    let corpus = match locate_modal_corpus() {
-        Some(p) => p,
-        None => {
-            eprintln!("p536 T8: SKIPPED — modal corpus not found");
-            return;
-        }
-    };
-    let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
-        .expect("build plan536_modal component");
+    /// T8(题6)：unknown-tag 子件（fallback Column 路径）包 alert-dialog 家族根,
+    /// `open` 绑定根态——翻转后渲染树必须出 open=true 的 Modal。
+    /// 勘误:此前误报"引擎缺陷"实为测试派发名错位（语料 msg=FlipRoot 而测试
+    /// 派发 "Flip"→HandlerNotFound→写入不发生）;修正后本测试锁定 fallback
+    /// 路径 open 绑定在带子件工程中依然成立。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t8_unknown_tag_fallback_resolves_open_binding() {
+        let corpus = match locate_modal_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T8: SKIPPED — modal corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_modal component");
 
-    // 初渲染：Modal 在树但 open=false（受控闭合态）
-    let (view, _, _) = dc.view_with_debug_gated(false);
-    let mut modals = Vec::new();
-    find_modal(&view, &mut modals);
-    assert!(
-        modals.contains(&false),
-        "closed alert-dialog must render as Modal(open=false); modals={modals:?}"
-    );
+        // 初渲染：Modal 在树但 open=false（受控闭合态）
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        let mut modals = Vec::new();
+        find_modal(&view, &mut modals);
+        assert!(
+            modals.contains(&false),
+            "closed alert-dialog must render as Modal(open=false); modals={modals:?}"
+        );
 
-    // 翻转 open → 重建 → Modal open=true
-    dc.on_with_input_for("App", "FlipRoot", None);
-    assert_eq!(
-        dc.read_state("root_open"),
-        Ok(auto_val::Value::Bool(true)),
-        "flip write must land on root state"
-    );
-    let (view2, _, _) = dc.view_with_debug_gated(false);
-    let mut modals2 = Vec::new();
-    find_modal(&view2, &mut modals2);
-    assert!(
-        modals2.contains(&true),
-        "open 翻转后 fallback 路径必须解析 open 绑定出 Modal(open=true); modals={modals2:?}"
-    );
-}
+        // 翻转 open → 重建 → Modal open=true
+        dc.on_with_input_for("App", "FlipRoot", None);
+        assert_eq!(
+            dc.read_state("root_open"),
+            Ok(auto_val::Value::Bool(true)),
+            "flip write must land on root state"
+        );
+        let (view2, _, _) = dc.view_with_debug_gated(false);
+        let mut modals2 = Vec::new();
+        find_modal(&view2, &mut modals2);
+        assert!(
+            modals2.contains(&true),
+            "open 翻转后 fallback 路径必须解析 open 绑定出 Modal(open=true); modals={modals2:?}"
+        );
+    }
 
-/// T8(musk chats_view 同形)：alert-dialog 在**子件视图根部**,open 绑定
-/// 子件模型字段（统一根态播种）——翻转后 Modal(open=true) 须在树。
-#[cfg(feature = "ui-interpreter")]
-#[test]
-fn p536_t8_child_widget_root_alert_dialog_resolves_open() {
-    let corpus = match locate_modal_corpus() {
-        Some(p) => p,
-        None => {
-            eprintln!("p536 T8: SKIPPED — modal corpus not found");
-            return;
-        }
-    };
-    let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
-        .expect("build plan536_modal component");
+    /// T8(musk chats_view 同形)：alert-dialog 在**子件视图根部**,open 绑定
+    /// 子件模型字段（统一根态播种）——翻转后 Modal(open=true) 须在树。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn p536_t8_child_widget_root_alert_dialog_resolves_open() {
+        let corpus = match locate_modal_corpus() {
+            Some(p) => p,
+            None => {
+                eprintln!("p536 T8: SKIPPED — modal corpus not found");
+                return;
+            }
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&corpus)
+            .expect("build plan536_modal component");
 
-    dc.on_with_input_for("ChatsLike", "Flip", None);
-    let (view, _, _) = dc.view_with_debug_gated(false);
-    let mut modals = Vec::new();
-    find_modal(&view, &mut modals);
-    assert!(
-        modals.contains(&true),
-        "子件视图根部的 alert-dialog 翻转后必须出 Modal(open=true); modals={modals:?}"
-    );
-}
+        dc.on_with_input_for("ChatsLike", "Flip", None);
+        let (view, _, _) = dc.view_with_debug_gated(false);
+        let mut modals = Vec::new();
+        find_modal(&view, &mut modals);
+        assert!(
+            modals.contains(&true),
+            "子件视图根部的 alert-dialog 翻转后必须出 Modal(open=true); modals={modals:?}"
+        );
+    }
 }
 
 /// PLAN-534 集成探针：sheet/drawer/hovercard 语料
@@ -771,7 +846,10 @@ mod plan534_side_panel_probe_tests {
         view: &View<crate::ui::interpreter::DynamicMessage>,
         out: &mut Vec<(PopoverPlacement, bool)>,
     ) {
-        if let View::Popover { placement, open, .. } = view {
+        if let View::Popover {
+            placement, open, ..
+        } = view
+        {
             out.push((*placement, *open));
         }
         match view {
@@ -787,7 +865,9 @@ mod plan534_side_panel_probe_tests {
                 collect_popovers(base, out);
                 collect_popovers(content, out);
             }
-            View::Button { content: Some(c), .. } => collect_popovers(c, out),
+            View::Button {
+                content: Some(c), ..
+            } => collect_popovers(c, out),
             View::MouseArea { content: c, .. } => collect_popovers(c, out),
             _ => {}
         }
@@ -803,13 +883,32 @@ mod plan534_side_panel_probe_tests {
         let mut pops = Vec::new();
         collect_popovers(&view, &mut pops);
         let has = |p: PopoverPlacement| pops.iter().any(|(q, _)| *q == p);
-        assert!(has(PopoverPlacement::EdgeRight), "sheet right + drawer right → EdgeRight: {pops:?}");
-        assert!(has(PopoverPlacement::EdgeLeft), "sheet left → EdgeLeft: {pops:?}");
-        assert!(has(PopoverPlacement::EdgeTop), "sheet top → EdgeTop: {pops:?}");
-        assert!(has(PopoverPlacement::EdgeBottom), "sheet/drawer bottom → EdgeBottom: {pops:?}");
-        assert!(has(PopoverPlacement::Bottom), "hovercard → Bottom: {pops:?}");
+        assert!(
+            has(PopoverPlacement::EdgeRight),
+            "sheet right + drawer right → EdgeRight: {pops:?}"
+        );
+        assert!(
+            has(PopoverPlacement::EdgeLeft),
+            "sheet left → EdgeLeft: {pops:?}"
+        );
+        assert!(
+            has(PopoverPlacement::EdgeTop),
+            "sheet top → EdgeTop: {pops:?}"
+        );
+        assert!(
+            has(PopoverPlacement::EdgeBottom),
+            "sheet/drawer bottom → EdgeBottom: {pops:?}"
+        );
+        assert!(
+            has(PopoverPlacement::Bottom),
+            "hovercard → Bottom: {pops:?}"
+        );
         assert!(pops.iter().all(|(_, open)| !open), "初渲染全闭合: {pops:?}");
-        assert_eq!(pops.len(), 7, "四向 sheet + 两向 drawer + hovercard: {pops:?}");
+        assert_eq!(
+            pops.len(),
+            7,
+            "四向 sheet + 两向 drawer + hovercard: {pops:?}"
+        );
     }
 
     /// open 直驱（Flip* handler 翻转显式绑定）+ 铸造 toggle（drawer right
@@ -847,7 +946,11 @@ mod plan534_side_panel_probe_tests {
         let mut pops2 = Vec::new();
         collect_popovers(&view2, &mut pops2);
         assert!(
-            pops2.iter().filter(|(p, open)| *p == PopoverPlacement::EdgeRight && *open).count() >= 2,
+            pops2
+                .iter()
+                .filter(|(p, open)| *p == PopoverPlacement::EdgeRight && *open)
+                .count()
+                >= 2,
             "显式 right + 铸造 right 两面板均开: {pops2:?}"
         );
     }
@@ -886,7 +989,9 @@ mod plan534_side_panel_probe_tests {
         let mut pops2 = Vec::new();
         collect_popovers(&view2, &mut pops2);
         assert!(
-            !pops2.iter().any(|(p, open)| *p == PopoverPlacement::Bottom && *open),
+            !pops2
+                .iter()
+                .any(|(p, open)| *p == PopoverPlacement::Bottom && *open),
             "leave 后 Bottom 面板关闭: {pops2:?}"
         );
     }

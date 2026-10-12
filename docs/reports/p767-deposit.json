@@ -1,0 +1,34 @@
+{
+  "plan": "PLAN-767",
+  "revision": 2,
+  "channel": "guarded offline projection, no store writer reachable (localhost8080 probe)",
+  "schema_source": "auto-musk/backend/crates/musk/src/specs.rs SpecItem::new",
+  "baseline_sha256": "60b4115a6af43ea0c0ad42c9460e317d8da49cfcc707b8b2f4c409c425e50cbd",
+  "result_sha256": "7a1416f7906536f14f81a5283bca8f5ef41c87998fbb9ee2509054a05b0ecc89",
+  "version": "legacy document has no version; unrelated top-level shape preserved",
+  "preexisting_items": 849,
+  "items": [
+    [
+      "designs",
+      "P719-1"
+    ],
+    [
+      "designs",
+      "P720-1"
+    ],
+    [
+      "tests",
+      "P767-T"
+    ],
+    [
+      "reviews",
+      "P767-R"
+    ],
+    [
+      "reports",
+      "P767-Report"
+    ]
+  ],
+  "unrelated_guard": "Undo the two affected updates and remove three scoped additions; serialization equals byte-exact backup",
+  "backup": "D:\\autostack\\auto-lang\\scratch\\website-os-767\\specs-before-767.json"
+}

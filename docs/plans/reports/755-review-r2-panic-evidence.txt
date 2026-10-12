@@ -1,0 +1,34 @@
+Test execution output; compiler warnings omitted.
+────────────
+ Nextest run ID bcd1d3e5-9192-4012-899a-ce4253f4eb11 with nextest profile: default
+    Starting 1 test across 1 binary (6853 tests skipped)
+        FAIL [   2.153s] (1/1) auto-lang tests::plan730_http_upload_tests::review755_panic_payload_is_forwarded
+  stdout ───
+
+    running 1 test
+    test tests::plan730_http_upload_tests::review755_panic_payload_is_forwarded ... FAILED
+
+    failures:
+
+    failures:
+        tests::plan730_http_upload_tests::review755_panic_payload_is_forwarded
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6863 filtered out; finished in 2.06s
+
+  stderr ───
+
+    thread '<unnamed>' (44152) panicked at crates\auto-lang\src\tests\plan730_http_upload_tests.rs:270:29:
+    REVIEW755_ORIGINAL_PANIC_PAYLOAD
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+    thread 'tests::plan730_http_upload_tests::review755_panic_payload_is_forwarded' (22860) panicked at crates\auto-lang\src\tests\plan730_http_upload_tests.rs:289:17:
+    test server failed to start on port 2500: crate::run panicked: Any { .. }
+    REVIEW755_PARENT_FAILURE=test server failed to start on port 2500: crate::run panicked: Any { .. }
+
+    thread 'tests::plan730_http_upload_tests::review755_panic_payload_is_forwarded' (22860) panicked at crates\auto-lang\src\tests\plan730_http_upload_tests.rs:1140:5:
+    startup helper discarded the original panic payload: test server failed to start on port 2500: crate::run panicked: Any { .. }
+
+────────────
+     Summary [   2.195s] 1 test run: 0 passed, 1 failed, 6853 skipped
+        FAIL [   2.153s] (1/1) auto-lang tests::plan730_http_upload_tests::review755_panic_payload_is_forwarded
+error: test run failed

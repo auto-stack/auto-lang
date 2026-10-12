@@ -2,7 +2,7 @@
 
 基线 `b3bd64f5`；行数取基线快照（429-C1 表）。topo 顺序即移植顺序（B2）：
 
-| # | Rust 文件（基线行数） | .at 文件（auto/lib/） | 优先级 | 备注 |
+| # | Rust 文件（基线行数） | .at 文件（packages/aavm/lib/） | 优先级 | 备注 |
 |---|---|---|---|---|
 | 1 | src/token.rs (516) | token.at | P0 | 全量直译（~140 TokenKind） |
 | 2 | src/error.rs + pos (1,299) | error.at | P0 | 真实行列追踪（v1 Pos.line 恒 1 的教训） |

@@ -1,0 +1,36 @@
+{
+  "before_items": 825,
+  "after_items": 829,
+  "unrelated_items_preserved": 825,
+  "before_sha256": "8e8a57defb0934d3950969f0462da16288cbfa07c5c7a13f9a017f79086a48cf",
+  "after_sha256": "38b95da56ff334389d3366eb957fcbfaf782ab61bef8d01df6abe66afaf1495f",
+  "source_commit": "35f77e41c4c8d9f1054233c8929fe2faf8bde595",
+  "writer": "repository-compatible offline projection; no schema migration",
+  "targets": [
+    {
+      "section": "designs",
+      "id": "repo-layout",
+      "file": "docs/specs/design/repository-layout.md",
+      "sha256": "de55aabb45e0294b197902db59341f82be7fbf6378ce594b513632e170716a19"
+    },
+    {
+      "section": "tests",
+      "id": "repo-layout-verification",
+      "file": "docs/plans/reports/761-root-directory-review.md",
+      "sha256": "c10c302d05bc9ef591a47d2196236abefd3553862e908ae2bf3fe4ea1023de96"
+    },
+    {
+      "section": "reviews",
+      "id": "PLAN-761-review",
+      "file": "docs/plans/reports/761-root-directory-review.md",
+      "sha256": "c10c302d05bc9ef591a47d2196236abefd3553862e908ae2bf3fe4ea1023de96"
+    },
+    {
+      "section": "reports",
+      "id": "PLAN-761-deposit",
+      "file": "docs/specs/design/repository-layout.md",
+      "sha256": "de55aabb45e0294b197902db59341f82be7fbf6378ce594b513632e170716a19"
+    }
+  ],
+  "format_preservation": "All existing bytes preserved; four appended item blocks only"
+}

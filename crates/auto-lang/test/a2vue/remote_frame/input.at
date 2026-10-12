@@ -1,0 +1,12 @@
+// a2vue golden case (PLAN-760 T-04) — remote-frame host placeholder leaf.
+// Verifies: div passthrough with data-remote-frame marker + url carried via
+// data-remote-frame-url (host frontend adopts via querySelector; this repo
+// ships no JS renderer) + class passthrough on the leaf.
+widget FrameDemo {
+    view {
+        col {
+            style: "w-full h-full"
+            remote-frame (url: "ws://127.0.0.1:17800/?token=t&app=musk-canvas-embed") { class: "flex-1 min-h-0 border rounded" }
+        }
+    }
+}

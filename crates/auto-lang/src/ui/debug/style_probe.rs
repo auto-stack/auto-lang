@@ -159,7 +159,10 @@ mod tests {
             !r.iter().any(|(k, _)| k == "width"),
             "unknown class should not produce a width entry: {r:?}"
         );
-        assert!(r.is_empty(), "fully unknown input should map to nothing: {r:?}");
+        assert!(
+            r.is_empty(),
+            "fully unknown input should map to nothing: {r:?}"
+        );
     }
 
     #[test]

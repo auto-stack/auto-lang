@@ -12,7 +12,7 @@
 
 > **plan-563 修订（2026-09-07）**：canvas v2 桥接已由 PLAN-563 落地（§7/§104/§177 的「后置」
 > 表述作废）——形态自「Auto 图元列表→iced canvas」修订为「scene 前缀双表契约→vue/iced
-> 双端独立渲染」；对拍锁定 IoU 0.9793/RGB 距 3.0。详规：schema/aura.at canvas 条目 +
+> 双端独立渲染」；对拍锁定 IoU 0.9793/RGB 距 3.0。详规：docs/schema/aura.at canvas 条目 +
 > examples/capability-tests/043-canvas-paint/SPEC.md。
 > **PLAN-661（2026-09-19）**：canvas 场景契约扩容（图元三表族 nodes/edges/labels +
 > onhit 命中）已落地——详规转 `docs/specs/auto-lang/ui/design/canvas-scene.md`
@@ -53,7 +53,7 @@
   DonutChart`，标签 `line-chart/bar-chart/area-chart/donut-chart`；`auto-*` 旧名
   全仓退役（widgets-gallery 四页、024-charts、437 测试钉同步迁移）。
 - **registry 退役**：内置 `AreaChart/BarChart/LineChart/DonutChart/Chart` 五注册
-  （shadcn 发射路线）及其 schema/aura.at 七元素 props overlay、
+  （shadcn 发射路线）及其 docs/schema/aura.at 七元素 props overlay、
   `emit_chart_family_attrs`、CurveType 映射全部退役；`render_support.rs` 的
   `chart|canvas` fallback 保留（`chart` 裸 tag 依旧无引擎实现——组件解析在包层）。
 - **shadcn 资产退役**：`crates/auto-man/assets/shadcn-ui/chart*`（ChartTooltip/
@@ -66,7 +66,7 @@
 
 chart 四裸名 tag 的"归属"分两个正交的面，缺一即出压制事故（P642-D1）：
 
-- **声明面（schema）**：`schema/aura.at` 中 `area-chart`/`bar-chart`/`line-chart`/
+- **声明面（schema）**：`docs/schema/aura.at` 中 `area-chart`/`bar-chart`/`line-chart`/
   `donut-chart` 四元素分类为 **`tier: "package_origin"`**——语义是"此 tag 的实现
   由 official 组件包提供，schema 只登记名与契约（palette 词汇面/lsp 补全/
   文档参考表），**不参与 builtin 压制**"。历史形态是 `tier: "unclassified"` +

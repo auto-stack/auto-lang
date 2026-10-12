@@ -128,17 +128,11 @@ where
     Message: Clone + 'static,
 {
     fn children(&self) -> Vec<Tree> {
-        vec![
-            Tree::new(&self.anchor),
-            Tree::new(&self.content),
-        ]
+        vec![Tree::new(&self.anchor), Tree::new(&self.content)]
     }
 
     fn diff(&self, tree: &mut Tree) {
-        tree.diff_children(&[
-            self.anchor.as_widget(),
-            self.content.as_widget(),
-        ]);
+        tree.diff_children(&[self.anchor.as_widget(), self.content.as_widget()]);
     }
 
     fn size(&self) -> Size<iced::Length> {
@@ -167,11 +161,10 @@ where
         renderer: &iced::Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
-        let anchor_layout = self.anchor.as_widget_mut().layout(
-            &mut tree.children[0],
-            renderer,
-            limits,
-        );
+        let anchor_layout =
+            self.anchor
+                .as_widget_mut()
+                .layout(&mut tree.children[0], renderer, limits);
 
         // An alert-dialog has no trigger, so the builder supplies an Empty
         // anchor. Iced drops zero-sized flex children before asking them for
@@ -184,10 +177,7 @@ where
             && anchor_layout.bounds().width <= 0.0
             && anchor_layout.bounds().height <= 0.0
         {
-            layout::Node::with_children(
-                Size::new(1.0, 1.0),
-                vec![anchor_layout],
-            )
+            layout::Node::with_children(Size::new(1.0, 1.0), vec![anchor_layout])
         } else {
             anchor_layout
         }
@@ -290,6 +280,7 @@ where
                 snap_within_viewport: self.snap_within_viewport,
                 on_dismiss: self.on_dismiss.clone(),
                 modal: self.modal,
+                clip_viewport: *viewport,
                 viewport: std::cell::Cell::new(*viewport),
             })))
         } else {
@@ -309,12 +300,9 @@ where
     ) {
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
-            self.anchor.as_widget_mut().operate(
-                &mut tree.children[0],
-                layout,
-                renderer,
-                operation,
-            );
+            self.anchor
+                .as_widget_mut()
+                .operate(&mut tree.children[0], layout, renderer, operation);
         });
     }
 }
@@ -373,8 +361,12 @@ where
     on_dismiss: Option<Message>,
     /// PLAN-530 步骤8（W13）：模态形态（遮罩 + 面板外点击整吞）。
     modal: bool,
-    /// 遮罩铺满的视口矩形。overlay() 入参 viewport 是基础树可见裁剪区
-    /// （锚周边），非整窗——全屏尺寸以 layout() 入参为准（运行时回填）。
+    /// overlay() 入参的裁剪视口（窗内绝对坐标）——container clip /
+    /// scrollable 等收窄后的可见区。独立 App 无 clip 时 ≈ 整窗。
+    clip_viewport: Rectangle,
+    /// 宿主视口（遮罩铺满 / Modal 居中 / Edge 贴边 / snap 钳制的坐标系）。
+    /// layout() 时取 `clip_viewport ∩ 整窗` 回填——虚拟小窗内弹层不得
+    /// 飘出自身窗，独立 App 仍整窗居中（原行为）。
     viewport: std::cell::Cell<Rectangle>,
 }
 
@@ -383,9 +375,10 @@ where
     Message: Clone + 'static,
 {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
-        let viewport = Rectangle::with_size(bounds);
-        // PLAN-530 步骤8（W13）：遮罩按整窗尺寸铺（draw 无 viewport 入参,
-        // 这里缓存全屏 bounds）。
+        let full = Rectangle::with_size(bounds);
+        // 宿主视口 = 裁剪链可见区 ∩ 整窗。无 clip 时 ≈ 整窗（独立 App
+        // 原行为）；虚拟小窗内 = 窗内容区（Modal/Edge/遮罩不得飘出自身窗）。
+        let viewport = self.clip_viewport.intersection(&full).unwrap_or(full);
         self.viewport.set(viewport);
 
         let (position, anchor_bounds) = match self.at_point {
@@ -450,28 +443,21 @@ where
                 Point::new(x_start, position.y - size.height - self.gap),
                 size,
             ),
-            PopoverPlacement::TopEnd => Rectangle::new(
-                Point::new(x_end, position.y - size.height - self.gap),
-                size,
-            ),
+            PopoverPlacement::TopEnd => {
+                Rectangle::new(Point::new(x_end, position.y - size.height - self.gap), size)
+            }
             PopoverPlacement::Left => Rectangle::new(
                 Point::new(position.x - size.width - self.gap, y_center),
                 size,
             ),
             PopoverPlacement::Right => Rectangle::new(
-                Point::new(
-                    position.x + anchor_bounds.width + self.gap,
-                    y_center,
-                ),
+                Point::new(position.x + anchor_bounds.width + self.gap, y_center),
                 size,
             ),
             // PLAN-695 T-06: submenu 顶对齐右弹——面板左上角 = 锚右上角
             //（顶缘平齐，长面板向下生长不上溢）。
             PopoverPlacement::RightTop => Rectangle::new(
-                Point::new(
-                    position.x + anchor_bounds.width + self.gap,
-                    position.y,
-                ),
+                Point::new(position.x + anchor_bounds.width + self.gap, position.y),
                 size,
             ),
             // PLAN-530 步骤8（W13）：模态对话框——面板视口居中，与锚位无关。
@@ -490,10 +476,7 @@ where
                 Size::new(size.width, viewport.height),
             ),
             PopoverPlacement::EdgeRight => Rectangle::new(
-                Point::new(
-                    viewport.x + viewport.width - size.width,
-                    viewport.y,
-                ),
+                Point::new(viewport.x + viewport.width - size.width, viewport.y),
                 Size::new(size.width, viewport.height),
             ),
             PopoverPlacement::EdgeTop => Rectangle::new(
@@ -501,10 +484,7 @@ where
                 Size::new(viewport.width, size.height),
             ),
             PopoverPlacement::EdgeBottom => Rectangle::new(
-                Point::new(
-                    viewport.x,
-                    viewport.y + viewport.height - size.height,
-                ),
+                Point::new(viewport.x, viewport.y + viewport.height - size.height),
                 Size::new(viewport.width, size.height),
             ),
             // PLAN-631 F-7: 指针定位（上方归一化已把 position 置为右键指针
@@ -520,12 +500,12 @@ where
             // 交给下方 snap 钳制。
             let bottom_y = position.y + anchor_bounds.height + self.gap;
             let top_y = position.y - panel_bounds.height - self.gap;
-            let over_bottom =
-                panel_bounds.y + panel_bounds.height > viewport.y + viewport.height;
+            let over_bottom = panel_bounds.y + panel_bounds.height > viewport.y + viewport.height;
             let over_top = panel_bounds.y < viewport.y;
             if over_bottom && !over_top && top_y >= viewport.y {
                 panel_bounds.y = top_y;
-            } else if over_top && !over_bottom
+            } else if over_top
+                && !over_bottom
                 && bottom_y + panel_bounds.height <= viewport.y + viewport.height
             {
                 panel_bounds.y = bottom_y;
@@ -533,19 +513,14 @@ where
 
             if panel_bounds.x < viewport.x {
                 panel_bounds.x = viewport.x;
-            } else if viewport.x + viewport.width
-                < panel_bounds.x + panel_bounds.width
-            {
+            } else if viewport.x + viewport.width < panel_bounds.x + panel_bounds.width {
                 panel_bounds.x = viewport.x + viewport.width - panel_bounds.width;
             }
 
             if panel_bounds.y < viewport.y {
                 panel_bounds.y = viewport.y;
-            } else if viewport.y + viewport.height
-                < panel_bounds.y + panel_bounds.height
-            {
-                panel_bounds.y =
-                    viewport.y + viewport.height - panel_bounds.height;
+            } else if viewport.y + viewport.height < panel_bounds.y + panel_bounds.height {
+                panel_bounds.y = viewport.y + viewport.height - panel_bounds.height;
             }
         }
 
@@ -571,9 +546,7 @@ where
             eprintln!(
                 "[popover-debug] placement={:?} at_point={:?} anchor_bounds={:?} content={size:?} \
                  hint={hint:?} panel={panel_bounds:?}",
-                placement,
-                self.at_point,
-                self.anchor_bounds,
+                placement, self.at_point, self.anchor_bounds,
             );
         }
         node
@@ -622,11 +595,26 @@ where
                     dismiss(shell, &self.on_dismiss);
                 }
                 if !over_panel && !over_anchor {
+                    // 宿主视口外（虚拟窗标题栏/缩放把手等 chrome）——整段
+                    // 放行：不 dismiss 不捕获，窗体拖拽/缩放照常。
+                    let host = self.viewport.get();
+                    let over_host = cursor.is_over(host);
+                    if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                        eprintln!(
+                            "[pv-outside] host={host:?} over_host={over_host} modal={} cursor={:?}",
+                            self.modal,
+                            cursor.position(),
+                        );
+                    }
+                    if self.modal && !over_host {
+                        return;
+                    }
                     // 面板/锚之外的点击:dismiss 但放行给基础树 —— 别的
                     // menubar 触发器可以直接切换菜单。
                     dismiss(shell, &self.on_dismiss);
                     // PLAN-530 步骤8（W13）：模态形态整吞外点——遮罩语义，
                     // 基础树收不到（alert-dialog：外点不关闭不透传）。
+                    // 仅宿主视口内（真遮罩区）；chrome 区已上方放行。
                     if self.modal {
                         shell.capture_event();
                     }
@@ -753,12 +741,9 @@ where
         operation.container(None, layout.bounds());
         operation.traverse(&mut |operation| {
             let content_layout = layout.children().next().expect("panel has content child");
-            self.content.as_widget_mut().operate(
-                self.tree,
-                content_layout,
-                renderer,
-                operation,
-            );
+            self.content
+                .as_widget_mut()
+                .operate(self.tree, content_layout, renderer, operation);
         });
     }
 
@@ -816,7 +801,10 @@ mod tests {
     fn panel_degenerate_zero_content() {
         assert!(panel_is_degenerate(Size::new(0.0, 0.0), &[]));
         assert!(panel_is_degenerate(Size::new(0.0, 7.0), &[]));
-        assert!(panel_is_degenerate(Size::new(9.0, 0.0), &[Size::new(0.0, 0.0)]));
+        assert!(panel_is_degenerate(
+            Size::new(9.0, 0.0),
+            &[Size::new(0.0, 0.0)]
+        ));
     }
 
     /// 真实内容（缩略 176×104 / 菜单列）不误判。

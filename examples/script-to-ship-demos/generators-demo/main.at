@@ -3,7 +3,7 @@
 // Dev:  auto main.at                     (VM 脚本秒级跑,跳过编译)
 // Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
 //
-// 对应 parity 用例: parity/libs/generators/ (L1 ✓ 三向一致)
+// 对应 parity 用例: test/parity/libs/generators/ (L1 ✓ 三向一致)
 // 覆盖特性:
 //   * ~Iter<T> 返回的 yield 生成器 (a2r 降级为 Rust 的 Stream/迭代形态)
 //   * for-in 消费生成器

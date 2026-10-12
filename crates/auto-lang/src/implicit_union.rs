@@ -212,11 +212,7 @@ pub struct {}Message {{
         let offset = self.literals.len();
         for (i, (name, _type_expr)) in self.type_bindings.iter().enumerate() {
             let variant_name = Self::type_binding_to_variant_name(name);
-            code.push_str(&format!(
-                "    _{}_Tag = {},\n",
-                variant_name,
-                offset + i
-            ));
+            code.push_str(&format!("    _{}_Tag = {},\n", variant_name, offset + i));
         }
 
         code.push_str(&format!("}} {}_tag;\n\n", self.envelope_name));
@@ -226,7 +222,11 @@ pub struct {}Message {{
         for (name, type_expr) in &self.type_bindings {
             let variant_name = Self::type_binding_to_variant_name(name);
             let c_type = type_to_c_type(type_expr);
-            code.push_str(&format!("    {} {}_value;\n", c_type, variant_name.to_lowercase()));
+            code.push_str(&format!(
+                "    {} {}_value;\n",
+                c_type,
+                variant_name.to_lowercase()
+            ));
         }
         code.push_str(&format!("}} {}_payload;\n\n", self.envelope_name));
 
@@ -236,9 +236,7 @@ pub struct {}Message {{
              {}_tag tag;\n\
              {}_payload payload;\n\
              }} {};\n",
-            self.envelope_name,
-            self.envelope_name,
-            self.envelope_name
+            self.envelope_name, self.envelope_name, self.envelope_name
         ));
 
         code
@@ -305,7 +303,11 @@ fn type_to_rust_type(ty: &Type) -> String {
             format!("Vec<{}>", elem_type)
         }
         Type::Map(k, v) => {
-            format!("std::collections::HashMap<{}, {}>", type_to_rust_type(k), type_to_rust_type(v))
+            format!(
+                "std::collections::HashMap<{}, {}>",
+                type_to_rust_type(k),
+                type_to_rust_type(v)
+            )
         }
         Type::Option(inner) => {
             let inner_type = type_to_rust_type(inner);
@@ -449,7 +451,12 @@ mod tests {
         use crate::token::Pos;
         use auto_val::Op;
 
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let mut on_block = crate::ast::TaskOnBlock::new(pos);
 
         // Add literal pattern
@@ -507,6 +514,8 @@ mod tests {
     fn test_empty_union() {
         let info = ImplicitUnionInfo::new("EmptyTask");
         assert!(info.is_empty());
-        assert!(info.generate_rust_enum().contains("No implicit union needed"));
+        assert!(info
+            .generate_rust_enum()
+            .contains("No implicit union needed"));
     }
 }

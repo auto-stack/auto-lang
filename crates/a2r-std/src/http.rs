@@ -11,9 +11,46 @@
 //! ureq，不为删除依赖扩展范围。
 
 pub mod client;
+pub mod server_file;
+pub mod server_upload;
+pub mod transfer;
+
+// PLAN-729 T-02：服务端文件响应公共面再导出（描述符 + 纯协议决策；
+// 宿主执行在消费端 auto_lang::http_file_service）。
+pub use crate::http::server_file::{
+    build_file_headers, decide_file_protocol, evaluate_if_range, evaluate_preconditions,
+    extract_request_conditions, file_response, format_http_date, parse_http_date,
+    parse_range_header, validate_relative_path, Disposition, FileInitError, FileInitErrorKind,
+    FileProtocolDecision, FileRangePlan, FileRequestConditions, FileResponse, FileResponseOptions,
+    IfRangeOutcome, PreconditionOutcome, RepresentationValidators,
+};
+
+// PLAN-730 T-02：服务端上传公共面再导出（owned 类型 + async facade；
+// 接收/落盘/发布执行经 install_upload_executor 注入的宿主 hook——
+// `auto_lang::http_upload_service`，依赖方向不变）。
+pub use crate::http::server_upload::{
+    cancel_upload_session, failed_session, install_upload_executor, parse_upload_receive_options,
+    upload_commit, upload_error, upload_metadata, upload_metadata_json, upload_receive,
+    upload_reject, upload_request_from_parts, UploadBodyStream, UploadErrorKind, UploadExecutor,
+    UploadPhase, UploadPhaseHook, UploadReceipt, UploadReceiveMode, UploadReceiveOptions,
+    UploadReceivedMeta, UploadRequest, UploadServeLimits, UploadSession, UploadSessionState,
+};
 
 // 内核 typed 类型的一等再导出（原生 Rust 消费者面）。
-pub use crate::http::client::{ClientError, HttpRequest, HttpResponse, StreamItem, StreamMode, StreamSpec};
+pub use crate::http::client::{
+    ClientError, HttpRequest, HttpResponse, StreamItem, StreamMode, StreamSpec,
+};
+
+// PLAN-727：文件传输公共面再导出（VM/a2r/原生 Rust 同词汇自由函数）。
+#[doc(hidden)]
+pub use crate::http::transfer::{active_transfer_len, in_flight_target_len};
+pub use crate::http::transfer::{
+    cancel_transfer_by_id, transfer_cancel, transfer_download, transfer_error,
+    transfer_next_progress, transfer_upload, transfer_wait, transfer_wait_async,
+    transfer_wait_typed, DownloadOptions, FileTransfer, OnExists, TransferError, TransferErrorKind,
+    TransferHooks, TransferKind, TransferLimits, TransferObserver, TransferOutcome, TransferPhase,
+    TransferProgress, TransferReceipt, UploadMode, UploadOptions, Validator,
+};
 
 use crate::http::client::HttpClientStream;
 use crate::http::client::HttpResponse as KernelResponse;
@@ -61,7 +98,10 @@ pub fn post_sync(url: &str, body: &str, api_key: &str) -> (u32, String) {
     match client::execute_blocking(req) {
         Ok(resp) => {
             set_last_status(resp.status as u32);
-            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+            (
+                resp.status as u32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            )
         }
         Err(e) => {
             set_last_status(0);
@@ -89,7 +129,10 @@ pub fn post_bearer_sync(url: &str, body: &str, api_key: &str) -> (u32, String) {
     match client::execute_blocking(req) {
         Ok(resp) => {
             set_last_status(resp.status as u32);
-            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+            (
+                resp.status as u32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            )
         }
         Err(e) => {
             set_last_status(0);
@@ -127,12 +170,20 @@ pub fn get(url: &str) -> Response {
 /// Perform a POST request (two-arg normal form). Mirrors Auto's
 /// `http.post(url, body) -> Response`。与三参认证 [`post_sync`] 按元数分派。
 pub fn post(url: &str, body: &str) -> Response {
-    verb_response(client::execute_blocking(verb_request("POST", url, Some(body))))
+    verb_response(client::execute_blocking(verb_request(
+        "POST",
+        url,
+        Some(body),
+    )))
 }
 
 /// Perform a PUT request. Mirrors Auto's `http.put(url, body) -> Response`.
 pub fn put(url: &str, body: &str) -> Response {
-    verb_response(client::execute_blocking(verb_request("PUT", url, Some(body))))
+    verb_response(client::execute_blocking(verb_request(
+        "PUT",
+        url,
+        Some(body),
+    )))
 }
 
 /// Perform a DELETE request. Mirrors Auto's `http.delete(url) -> Response`.
@@ -163,13 +214,19 @@ pub async fn delete_async(url: &str) -> Response {
 /// Legacy `http.get_sync`（历史发射面引用）：返回 (status, body 文本)。
 pub fn get_sync(url: &str) -> (u32, String) {
     let resp = get(url);
-    (resp.status_code(), String::from_utf8_lossy(&resp.body_bytes()).into_owned())
+    (
+        resp.status_code(),
+        String::from_utf8_lossy(&resp.body_bytes()).into_owned(),
+    )
 }
 
 /// [`get_sync`] 的 async 面（async 上下文专用）。
 pub async fn get_sync_async(url: &str) -> (u32, String) {
     let resp = get_async(url).await;
-    (resp.status_code(), String::from_utf8_lossy(&resp.body_bytes()).into_owned())
+    (
+        resp.status_code(),
+        String::from_utf8_lossy(&resp.body_bytes()).into_owned(),
+    )
 }
 
 /// [`post_sync`] 的 async 面（tuple 形状不变；async 上下文专用）。
@@ -188,7 +245,10 @@ pub async fn post_sync_async(url: &str, body: &str, api_key: &str) -> (u32, Stri
     match client::execute(req).await {
         Ok(resp) => {
             set_last_status(resp.status as u32);
-            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+            (
+                resp.status as u32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            )
         }
         Err(e) => {
             set_last_status(0);
@@ -212,7 +272,10 @@ pub async fn post_bearer_sync_async(url: &str, body: &str, api_key: &str) -> (u3
     match client::execute(req).await {
         Ok(resp) => {
             set_last_status(resp.status as u32);
-            (resp.status as u32, String::from_utf8_lossy(&resp.body).into_owned())
+            (
+                resp.status as u32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            )
         }
         Err(e) => {
             set_last_status(0);
@@ -241,7 +304,19 @@ pub struct RequestBuilder {
     headers: Vec<(String, String)>,
     body: Option<String>,
     timeout_ms: Option<u64>,
+    /// PLAN-727 T-06：multipart 描述（(field, path)，**路径描述直到发送**，
+    /// 不预读为 Vec）。
+    multipart_files: Vec<(String, String)>,
+    multipart_texts: Vec<(String, String)>,
+    /// 预算越界（builder 期记录；send 终结性失败，坏请求不发出）。
+    build_error: Option<String>,
 }
+
+/// PLAN-727 T-06：multipart 预算（与 VM 桥同值，见 727-transfer-decision §7）。
+const BUILDER_MAX_FILES: usize = 16;
+const BUILDER_MAX_TEXT_FIELDS: usize = 64;
+const BUILDER_MAX_TEXT_VALUE: usize = 64 * 1024;
+const BUILDER_MAX_TEXT_TOTAL: usize = 1024 * 1024;
 
 impl RequestBuilder {
     fn into_request(self) -> HttpRequest {
@@ -284,6 +359,9 @@ pub fn request(method: &str, url: &str) -> RequestBuilder {
         headers: Vec::new(),
         body: None,
         timeout_ms: None,
+        multipart_files: Vec::new(),
+        multipart_texts: Vec::new(),
+        build_error: None,
     }
 }
 
@@ -308,20 +386,221 @@ impl RequestBuilder {
         self
     }
 
+    /// Attach a file part（PLAN-727：路径描述到发送，不预读）。
+    /// 预算：文件 part ≤ 16；越界 = send 终结性失败。
+    pub fn multipart_file(mut self, field: &str, path: &str) -> RequestBuilder {
+        if self.multipart_files.len() >= BUILDER_MAX_FILES {
+            self.build_error = Some(format!(
+                "multipart file parts exceed budget {BUILDER_MAX_FILES}"
+            ));
+            return self;
+        }
+        self.multipart_files
+            .push((field.to_string(), path.to_string()));
+        self
+    }
+
+    /// Attach a text field。预算：字段 ≤ 64、单值 ≤ 64KiB、总量 ≤ 1MiB。
+    pub fn multipart_text(mut self, field: &str, value: &str) -> RequestBuilder {
+        if self.multipart_texts.len() >= BUILDER_MAX_TEXT_FIELDS {
+            self.build_error = Some(format!(
+                "multipart text fields exceed budget {BUILDER_MAX_TEXT_FIELDS}"
+            ));
+        } else if value.len() > BUILDER_MAX_TEXT_VALUE {
+            self.build_error = Some(format!(
+                "multipart text value {} exceeds budget {BUILDER_MAX_TEXT_VALUE}",
+                value.len()
+            ));
+        } else {
+            let total: usize = self.multipart_texts.iter().map(|(_, v)| v.len()).sum();
+            if total + value.len() > BUILDER_MAX_TEXT_TOTAL {
+                self.build_error = Some(format!(
+                    "multipart text total {} exceeds budget {BUILDER_MAX_TEXT_TOTAL}",
+                    total + value.len()
+                ));
+            } else {
+                self.multipart_texts
+                    .push((field.to_string(), value.to_string()));
+            }
+        }
+        self
+    }
+
+    fn is_multipart(&self) -> bool {
+        !self.multipart_files.is_empty() || !self.multipart_texts.is_empty()
+    }
+
     /// Send the request. Mirrors `RequestBuilder.send(self) -> Response`.
     ///
     /// 同步桥接：走内核同步入口。仅供同步（非 async）上下文使用——async
     /// 上下文须用 [`RequestBuilder::send_async`]（内核 async 路径，不阻塞
-    /// 执行线程）。
+    /// 执行线程）。multipart 面（PLAN-727）：发送时开文件流式 part，
+    /// 缺失/读失败 = 终结性失败（status 0 Response，不跳过 part）。
     pub fn send(self) -> Response {
+        if self.is_multipart() {
+            return Self::from_kernel(
+                client::kernel_handle().block_on(Self::execute_multipart(self)),
+            );
+        }
         Self::from_kernel(client::execute_blocking(self.into_request()))
     }
 
     /// Async send：内核 async 执行（排队/建立/读体全程让出执行线程）。
     /// async fn / tokio runtime 内的正确入口（Plan 024 语义、PLAN-724 实现）。
     pub async fn send_async(self) -> Response {
+        if self.is_multipart() {
+            return Self::from_kernel(Self::execute_multipart(self).await);
+        }
         Self::from_kernel(client::execute(self.into_request()).await)
     }
+
+    /// multipart 执行：共享内核 client + 流式文件 part + 有界响应体。
+    async fn execute_multipart(self) -> Result<KernelResponse, ClientError> {
+        use futures::StreamExt;
+        if let Some(err) = &self.build_error {
+            return Err(ClientError::Transport(format!("invalid request: {err}")));
+        }
+        let file_errors: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let method = reqwest::Method::from_bytes(self.method.to_ascii_uppercase().as_bytes())
+            .map_err(|e| ClientError::Transport(format!("invalid method: {e}")))?;
+        let mut builder = client::shared_http_client()
+            .request(method, &self.url)
+            .timeout(
+                self.timeout_ms
+                    .map(std::time::Duration::from_millis)
+                    .unwrap_or(std::time::Duration::from_secs(600)),
+            );
+        for (k, v) in &self.headers {
+            builder = builder.header(k.as_str(), v.as_str());
+        }
+        let mut form = reqwest::multipart::Form::new();
+        for (name, value) in &self.multipart_texts {
+            form = form.text(name.clone(), value.clone());
+        }
+        for (name, path) in &self.multipart_files {
+            let part = stream_builder_file_part(path, &file_errors);
+            form = form.part(name.clone(), part);
+        }
+        builder = builder.multipart(form);
+        let resp = builder.send().await.map_err(|e| {
+            // 文件读错误（in-band body error）优先呈现为类型化消息。
+            let errs = file_errors.lock().unwrap().join("; ");
+            if errs.is_empty() {
+                if e.is_timeout() {
+                    ClientError::Timeout
+                } else {
+                    ClientError::Transport(format!("multipart send: {e}"))
+                }
+            } else {
+                ClientError::Transport(format!("multipart send: {e}; file errors: {errs}"))
+            }
+        })?;
+        let status = resp.status().as_u16();
+        let headers: Vec<(String, String)> = resp
+            .headers()
+            .iter()
+            .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
+            .collect();
+        let mut body: Vec<u8> = Vec::new();
+        let mut upstream = resp.bytes_stream();
+        while let Some(chunk) = upstream.next().await {
+            let chunk = chunk.map_err(|e| ClientError::Transport(format!("body read: {e}")))?;
+            let cap = client::kernel_response_body_limit();
+            if body.len() + chunk.len() > cap {
+                return Err(ClientError::BodyTooLarge { limit: cap });
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok(KernelResponse {
+            status,
+            headers,
+            body,
+        })
+    }
+}
+
+/// 流式文件 part（发送时开文件；缺失/读失败 = 立即出错的流 + 消息登记，
+/// 绝不产生空 part 假成功）。
+fn stream_builder_file_part(
+    path: &str,
+    file_errors: &std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+) -> reqwest::multipart::Part {
+    struct PartStream {
+        rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    }
+    impl futures::Stream for PartStream {
+        type Item = Result<Vec<u8>, std::io::Error>;
+        fn poll_next(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Self::Item>> {
+            match self.rx.poll_recv(cx) {
+                std::task::Poll::Ready(Some(v)) => std::task::Poll::Ready(Some(Ok(v))),
+                std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
+                std::task::Poll::Pending => std::task::Poll::Pending,
+            }
+        }
+    }
+    fn erroring_part(msg: String) -> reqwest::multipart::Part {
+        let stream = futures::stream::once(async move {
+            Err::<Vec<u8>, std::io::Error>(std::io::Error::other(msg))
+        });
+        reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(stream))
+    }
+    let len = match std::fs::metadata(path) {
+        Ok(m) if m.is_file() => m.len(),
+        Ok(_) => {
+            let msg = format!("multipart file is not a regular file: {path}");
+            file_errors.lock().unwrap().push(msg.clone());
+            return erroring_part(msg);
+        }
+        Err(e) => {
+            let msg = format!("multipart file open failed: {path}: {e}");
+            file_errors.lock().unwrap().push(msg.clone());
+            return erroring_part(msg);
+        }
+    };
+    let (tx, rx) = tokio::sync::mpsc::channel::<Vec<u8>>(2);
+    let errors = std::sync::Arc::clone(file_errors);
+    let path_owned = path.to_string();
+    client::kernel_handle().spawn(async move {
+        let _permit = client::fs_ops().acquire().await.ok();
+        let mut file = match tokio::fs::File::open(&path_owned).await {
+            Ok(f) => f,
+            Err(e) => {
+                errors
+                    .lock()
+                    .unwrap()
+                    .push(format!("multipart file open failed: {path_owned}: {e}"));
+                return;
+            }
+        };
+        use tokio::io::AsyncReadExt;
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            match file.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    if tx.send(buf[..n].to_vec()).await.is_err() {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    errors
+                        .lock()
+                        .unwrap()
+                        .push(format!("multipart file read failed: {path_owned}: {e}"));
+                    return;
+                }
+            }
+        }
+    });
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    reqwest::multipart::Part::stream_with_length(reqwest::Body::wrap_stream(PartStream { rx }), len)
+        .file_name(filename)
 }
 
 /// An HTTP response. Mirrors Auto's `http.Response`.
@@ -626,96 +905,66 @@ pub fn stream_close_async(s: &AsyncHTTPStream) {
 
 // ===========================================================================
 // Plan 349: File download + multipart upload (parity with VM http module).
-// 文件 helper 仍走 ureq（PLAN-724 §3 边界，不改返回形状）。
-// ===========================================================================
+// PLAN-727 T-03/T-04：旧三 helper 迁移至共享传输核心 [`transfer`]——
+// 增量落盘、staging 原子提交、失败保留原目标、写盘失败不再假成功。
+// 返回形状逐字节保留（`-> u32` status/0），差异登记为 legacy adapter：
+//   - download：成功 = 收据 kind==success（status 可信）；写盘失败 → 0
+//     （旧代码 create 成功后 copy 失败仍返回状态 = 假成功，已纠正）。
+//   - download_resume：严格字节对齐续传（offset 必须等于本地长度）；206 需
+//     合法 Content-Range；200 = 完整重启（旧代码盲目 append 已纠正）。
+//     无 validator：不能证明远端版本一致（legacy 限制，明示不承诺）。
+//   - upload：raw POST（旧形状保留；新可移植 multipart 面用 transfer_upload）。
+// ============================================================================
+
+/// legacy 三 helper 的共享收据 → (status|0) 映射：
+/// 成功 / HTTP 状态失败 → status；传输/文件/options/取消 → 0（可观察失败）。
+fn legacy_status_from(receipt: &transfer::TransferReceipt) -> u32 {
+    match receipt.kind {
+        transfer::TransferOutcome::Success => receipt.status.unwrap_or(0) as u32,
+        transfer::TransferOutcome::Failed => receipt.status.unwrap_or(0) as u32,
+        transfer::TransferOutcome::Cancelled => 0,
+    }
+}
+
+fn legacy_set_last_status(receipt: &transfer::TransferReceipt) {
+    set_last_status(legacy_status_from(receipt));
+}
 
 /// Download a file from `url` and save it to `file_path`.
 ///
-/// Returns the HTTP status code (200 on success, 0 on transport error).
+/// Returns the HTTP status code (200 on success, 0 on transport/file error).
 /// Mirrors Auto's `http.download(url, file_path) -> int`.
+/// PLAN-727：共享传输核心执行——staging 原子提交，任何失败保留原目标。
 pub fn download(url: &str, file_path: &str) -> u32 {
-    let resp = ureq::get(url).call();
-    match resp {
-        Ok(response) => {
-            let status = response.status() as u32;
-            if let Ok(mut file) = std::fs::File::create(file_path) {
-                let _ = std::io::copy(&mut response.into_reader(), &mut file);
-            }
-            set_last_status(status);
-            status
-        }
-        Err(ureq::Error::Status(code, _)) => {
-            set_last_status(code as u32);
-            code as u32
-        }
-        Err(ureq::Error::Transport(_)) => {
-            set_last_status(0);
-            0
-        }
-    }
+    let t = transfer::transfer_download(url, file_path, "{}");
+    let receipt = transfer::transfer_wait_typed(&t);
+    legacy_set_last_status(&receipt);
+    legacy_status_from(&receipt)
 }
 
 /// Upload a single file to `url` via raw POST body.
 ///
 /// Returns the HTTP status code. The file contents are sent as the request
-/// body with `Content-Type: application/octet-stream`.
+/// body with `Content-Type: application/octet-stream`（流式读取；缺失/读
+/// 失败 = 0，不再吞错）。
 /// Mirrors Auto's `http.upload(url, file_path) -> int`.
 pub fn upload(url: &str, file_path: &str) -> u32 {
-    let data = match std::fs::read(file_path) {
-        Ok(d) => d,
-        Err(_) => {
-            set_last_status(0);
-            return 0;
-        }
-    };
-    let resp = ureq::post(url)
-        .set("Content-Type", "application/octet-stream")
-        .send_bytes(&data);
-    match resp {
-        Ok(response) => {
-            let status = response.status() as u32;
-            set_last_status(status);
-            status
-        }
-        Err(ureq::Error::Status(code, _)) => {
-            set_last_status(code as u32);
-            code as u32
-        }
-        Err(ureq::Error::Transport(_)) => {
-            set_last_status(0);
-            0
-        }
-    }
+    let t = transfer::transfer_upload(url, file_path, r#"{"mode":"raw"}"#);
+    let receipt = transfer::transfer_wait_typed(&t);
+    legacy_set_last_status(&receipt);
+    legacy_status_from(&receipt)
 }
 
 /// Download with resume support — sends a Range header for `offset` bytes.
 ///
-/// If the server supports range requests (206), appends to the existing file.
-/// Otherwise (200), overwrites from the beginning.
+/// 严格续传：offset 必须等于本地文件长度；206 需合法 Content-Range 且起点
+/// 一致；200（上游忽略 Range）= 从零完整重启，绝不盲目 append。文件/范围
+/// 错误保留原目标并返回 0。
 /// Mirrors Auto's `http.download_resume(url, file_path, offset) -> int`.
 pub fn download_resume(url: &str, file_path: &str, offset: u64) -> u32 {
-    let req = ureq::get(url).set("Range", &format!("bytes={offset}-"));
-    match req.call() {
-        Ok(response) => {
-            let status = response.status() as u32;
-            let file_result = if status == 206 {
-                std::fs::OpenOptions::new().append(true).open(file_path)
-            } else {
-                std::fs::File::create(file_path)
-            };
-            if let Ok(mut file) = file_result {
-                let _ = std::io::copy(&mut response.into_reader(), &mut file);
-            }
-            set_last_status(status);
-            status
-        }
-        Err(ureq::Error::Status(code, _)) => {
-            set_last_status(code as u32);
-            code as u32
-        }
-        Err(ureq::Error::Transport(_)) => {
-            set_last_status(0);
-            0
-        }
-    }
+    let options = format!("{{\"offset\":{offset}}}");
+    let t = transfer::transfer_download(url, file_path, &options);
+    let receipt = transfer::transfer_wait_typed(&t);
+    legacy_set_last_status(&receipt);
+    legacy_status_from(&receipt)
 }

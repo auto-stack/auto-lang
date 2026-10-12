@@ -47,7 +47,7 @@ fi
 # 新于 codegen.at 的目录——旧 find|head-1 按目录遍历序取首个,不确定,
 # 曾取到修复前旧版致固定点误判;ls -t 确定取最新构建)。
 SYS_TMP="$(dirname "$TMP")"
-EXE1="$(find "$SYS_TMP" -maxdepth 4 -path '*aavm2-bin-*' -name 'aavm2_bin.exe' -newer "$ROOT/auto/lib/codegen.at" 2>/dev/null | xargs ls -t 2>/dev/null | head -1)"
+EXE1="$(find "$SYS_TMP" -maxdepth 4 -path '*aavm2-bin-*' -name 'aavm2_bin.exe' -newer "$ROOT/packages/aavm/lib/codegen.at" 2>/dev/null | xargs ls -t 2>/dev/null | head -1)"
 [ -n "$EXE1" ] || EXE1="$(find "$SYS_TMP" -maxdepth 4 -path '*aavm2-bin-*' -name 'aavm2_bin.exe' 2>/dev/null | xargs ls -t 2>/dev/null | head -1)"
 [ -n "$EXE1" ] && [ -f "$EXE1" ] || { echo "[gen] exe1 (aavm2_bin) not found — run leg-5 first"; exit 2; }
 echo "[gen] exe1 = $EXE1"
@@ -93,7 +93,7 @@ root, tmp = sys.argv[1], sys.argv[2]
 files = ['token','lexer','parser','typeinfo','codegen','engine','a2r']
 out = []
 for f in files:
-    for line in open(os.path.join(root, 'auto/lib', f + '.at'), encoding='utf-8'):
+    for line in open(os.path.join(root, 'packages/aavm/lib', f + '.at'), encoding='utf-8'):
         if line.lstrip().startswith('use auto.lib.'):
             continue
         out.append(line)

@@ -39,13 +39,23 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
             if !cat_entry.path().is_dir() {
                 continue;
             }
-            let category = cat_entry.path().file_name().unwrap().to_string_lossy().into_owned();
+            let category = cat_entry
+                .path()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
             if let Ok(case_entries) = std::fs::read_dir(cat_entry.path()) {
                 for case_entry in case_entries.flatten() {
                     if !case_entry.path().is_dir() {
                         continue;
                     }
-                    let case_dir_name = case_entry.path().file_name().unwrap().to_string_lossy().into_owned();
+                    let case_dir_name = case_entry
+                        .path()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned();
                     // Parse "001_hello" -> name = "hello"
                     let parts: Vec<&str> = case_dir_name.splitn(2, '_').collect();
                     if parts.len() < 2 {
@@ -69,24 +79,35 @@ fn load_vm_test_cache() -> HashMap<String, VmTestData> {
                     let source = read_to_string(&src_path).unwrap_or_default();
                     let expected_out = {
                         let p = case_entry.path().join(format!("{}.expected.out", name));
-                        if p.is_file() { read_to_string(&p).ok() } else { None }
+                        if p.is_file() {
+                            read_to_string(&p).ok()
+                        } else {
+                            None
+                        }
                     };
                     let expected_result = {
                         let p = case_entry.path().join(format!("{}.expected.result", name));
-                        if p.is_file() { read_to_string(&p).ok() } else { None }
+                        if p.is_file() {
+                            read_to_string(&p).ok()
+                        } else {
+                            None
+                        }
                     };
                     let expected_error = {
                         let p = case_entry.path().join(format!("{}.expected.error", name));
                         p.is_file()
                     };
 
-                    cache.insert(case, VmTestData {
-                        source,
-                        expected_out,
-                        expected_result,
-                        expected_error,
-                        is_script,
-                    });
+                    cache.insert(
+                        case,
+                        VmTestData {
+                            source,
+                            expected_out,
+                            expected_result,
+                            expected_error,
+                            is_script,
+                        },
+                    );
                 }
             }
         }
@@ -102,8 +123,12 @@ pub(crate) fn get_cached_test(case: &str) -> Option<&VmTestData> {
 }
 
 fn test_vm(case: &str) -> AutoResult<()> {
-    let data = get_cached_test(case)
-        .unwrap_or_else(|| panic!("Test case '{}' not found in cache. Check test/vm/ directory.", case));
+    let data = get_cached_test(case).unwrap_or_else(|| {
+        panic!(
+            "Test case '{}' not found in cache. Check test/vm/ directory.",
+            case
+        )
+    });
 
     // Plan 567 T10: `.as` 语料先过 s2s lower（与 CLI 的 .as 路径同构）。
     let source = if data.is_script {
@@ -115,11 +140,7 @@ fn test_vm(case: &str) -> AutoResult<()> {
     // Check .expected.error — expect runtime error
     if data.expected_error {
         let result = run(&source);
-        assert!(
-            result.is_err(),
-            "Expected error but got: {:?}",
-            result
-        );
+        assert!(result.is_err(), "Expected error but got: {:?}", result);
         return Ok(());
     }
 
@@ -156,120 +177,499 @@ fn test_vm(case: &str) -> AutoResult<()> {
 }
 
 // === 01_basics ===
-#[test] #[ignore] fn test_01_basics_001_hello() { test_vm("01_basics/001_hello").unwrap(); }
-#[test] #[ignore] fn test_01_basics_002_arithmetic() { test_vm("01_basics/002_arithmetic").unwrap(); }
-#[test] #[ignore] fn test_01_basics_003_str_upper() { test_vm("01_basics/003_str_upper").unwrap(); }
+#[test]
+#[ignore]
+fn test_01_basics_001_hello() {
+    test_vm("01_basics/001_hello").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_002_arithmetic() {
+    test_vm("01_basics/002_arithmetic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_003_str_upper() {
+    test_vm("01_basics/003_str_upper").unwrap();
+}
 
 // === 01_basics (continued) ===
-#[test] #[ignore] fn test_01_basics_004_uint() { test_vm("01_basics/004_uint").unwrap(); }
-#[test] #[ignore] fn test_01_basics_005_byte() { test_vm("01_basics/005_byte").unwrap(); }
-#[test] #[ignore] fn test_01_basics_006_unary() { test_vm("01_basics/006_unary").unwrap(); }
-#[test] #[ignore] fn test_01_basics_007_group() { test_vm("01_basics/007_group").unwrap(); }
-#[test] #[ignore] fn test_01_basics_008_comp() { test_vm("01_basics/008_comp").unwrap(); }
-#[test] #[ignore] fn test_01_basics_009_comp_false() { test_vm("01_basics/009_comp_false").unwrap(); }
-#[test] #[ignore] fn test_01_basics_010_eq() { test_vm("01_basics/010_eq").unwrap(); }
-#[test] #[ignore] fn test_01_basics_011_eq_false() { test_vm("01_basics/011_eq_false").unwrap(); }
+#[test]
+#[ignore]
+fn test_01_basics_004_uint() {
+    test_vm("01_basics/004_uint").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_005_byte() {
+    test_vm("01_basics/005_byte").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_006_unary() {
+    test_vm("01_basics/006_unary").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_007_group() {
+    test_vm("01_basics/007_group").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_008_comp() {
+    test_vm("01_basics/008_comp").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_009_comp_false() {
+    test_vm("01_basics/009_comp_false").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_010_eq() {
+    test_vm("01_basics/010_eq").unwrap();
+}
+#[test]
+#[ignore]
+fn test_01_basics_011_eq_false() {
+    test_vm("01_basics/011_eq_false").unwrap();
+}
 
 // === 02_bit_ops ===
-#[test] #[ignore] fn test_02_bit_ops_001_binary_literal() { test_vm("02_bit_ops/001_binary_literal").unwrap(); }
-#[test] #[ignore] fn test_02_bit_ops_002_bitwise_ops() { test_vm("02_bit_ops/002_bitwise_ops").unwrap(); }
-#[test] #[ignore] fn test_02_bit_ops_003_bit_scan() { test_vm("02_bit_ops/003_bit_scan").unwrap(); }
-#[test] #[ignore] fn test_02_bit_ops_004_not_flip() { test_vm("02_bit_ops/004_not_flip").unwrap(); }
-#[test] #[ignore] fn test_02_bit_ops_005_bitfield() { test_vm("02_bit_ops/005_bitfield").unwrap(); }
+#[test]
+#[ignore]
+fn test_02_bit_ops_001_binary_literal() {
+    test_vm("02_bit_ops/001_binary_literal").unwrap();
+}
+#[test]
+#[ignore]
+fn test_02_bit_ops_002_bitwise_ops() {
+    test_vm("02_bit_ops/002_bitwise_ops").unwrap();
+}
+#[test]
+#[ignore]
+fn test_02_bit_ops_003_bit_scan() {
+    test_vm("02_bit_ops/003_bit_scan").unwrap();
+}
+#[test]
+#[ignore]
+fn test_02_bit_ops_004_not_flip() {
+    test_vm("02_bit_ops/004_not_flip").unwrap();
+}
+#[test]
+#[ignore]
+fn test_02_bit_ops_005_bitfield() {
+    test_vm("02_bit_ops/005_bitfield").unwrap();
+}
 
 // === 03_variables ===
-#[test] #[ignore] fn test_03_variables_001_var() { test_vm("03_variables/001_var").unwrap(); }
-#[test] #[ignore] fn test_03_variables_002_var_assign() { test_vm("03_variables/002_var_assign").unwrap(); }
-#[test] #[ignore] fn test_03_variables_003_var_mut() { test_vm("03_variables/003_var_mut").unwrap(); }
-#[test] #[ignore] fn test_03_variables_004_var_if() { test_vm("03_variables/004_var_if").unwrap(); }
-#[test] #[ignore] fn test_03_variables_005_let_binding() { test_vm("03_variables/005_let_binding").unwrap(); }
-#[test] #[ignore] fn test_03_variables_006_let_asn_error() { test_vm("03_variables/006_let_asn_error").unwrap(); }
-#[test] #[ignore] fn test_03_variables_007_var_reassignment() { test_vm("03_variables/007_var_reassignment").unwrap(); }
-#[test] #[ignore] fn test_03_variables_008_simple_block() { test_vm("03_variables/008_simple_block").unwrap(); }
+#[test]
+#[ignore]
+fn test_03_variables_001_var() {
+    test_vm("03_variables/001_var").unwrap();
+}
+#[test]
+#[ignore]
+fn test_03_variables_002_var_assign() {
+    test_vm("03_variables/002_var_assign").unwrap();
+}
+#[test]
+#[ignore]
+fn test_03_variables_003_var_mut() {
+    test_vm("03_variables/003_var_mut").unwrap();
+}
+#[test]
+#[ignore]
+fn test_03_variables_004_var_if() {
+    test_vm("03_variables/004_var_if").unwrap();
+}
+#[test]
+#[ignore]
+fn test_03_variables_005_let_binding() {
+    test_vm("03_variables/005_let_binding").unwrap();
+}
+#[test]
+#[ignore]
+fn test_03_variables_006_let_asn_error() {
+    test_vm("03_variables/006_let_asn_error").unwrap();
+}
+#[test]
+#[ignore]
+fn test_03_variables_007_var_reassignment() {
+    test_vm("03_variables/007_var_reassignment").unwrap();
+}
+#[test]
+#[ignore]
+fn test_03_variables_008_simple_block() {
+    test_vm("03_variables/008_simple_block").unwrap();
+}
 
 // === 04_control_flow ===
-#[test] #[ignore] fn test_04_control_flow_001_if_true() { test_vm("04_control_flow/001_if_true").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_002_if_false() { test_vm("04_control_flow/002_if_false").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_003_if_else_if() { test_vm("04_control_flow/003_if_else_if").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_004_if_with_bool() { test_vm("04_control_flow/004_if_with_bool").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_005_if_in_array() { test_vm("04_control_flow/005_if_in_array").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_006_is_stmt() { test_vm("04_control_flow/006_is_stmt").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_007_asn_upper() { test_vm("04_control_flow/007_asn_upper").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_008_is_or_pattern() { test_vm("04_control_flow/008_is_or_pattern").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_009_is_or_groups() { test_vm("04_control_flow/009_is_or_groups").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_010_as_int_to_float() { test_vm("04_control_flow/010_as_int_to_float").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_011_as_float_to_int() { test_vm("04_control_flow/011_as_float_to_int").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_012_to_str() { test_vm("04_control_flow/012_to_str").unwrap(); }
-#[test] #[ignore] fn test_04_control_flow_013_to_int_from_str() { test_vm("04_control_flow/013_to_int_from_str").unwrap(); }
+#[test]
+#[ignore]
+fn test_04_control_flow_001_if_true() {
+    test_vm("04_control_flow/001_if_true").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_002_if_false() {
+    test_vm("04_control_flow/002_if_false").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_003_if_else_if() {
+    test_vm("04_control_flow/003_if_else_if").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_004_if_with_bool() {
+    test_vm("04_control_flow/004_if_with_bool").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_005_if_in_array() {
+    test_vm("04_control_flow/005_if_in_array").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_006_is_stmt() {
+    test_vm("04_control_flow/006_is_stmt").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_007_asn_upper() {
+    test_vm("04_control_flow/007_asn_upper").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_008_is_or_pattern() {
+    test_vm("04_control_flow/008_is_or_pattern").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_009_is_or_groups() {
+    test_vm("04_control_flow/009_is_or_groups").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_010_as_int_to_float() {
+    test_vm("04_control_flow/010_as_int_to_float").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_011_as_float_to_int() {
+    test_vm("04_control_flow/011_as_float_to_int").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_012_to_str() {
+    test_vm("04_control_flow/012_to_str").unwrap();
+}
+#[test]
+#[ignore]
+fn test_04_control_flow_013_to_int_from_str() {
+    test_vm("04_control_flow/013_to_int_from_str").unwrap();
+}
 
 // === 05_loops ===
-#[test] #[ignore] fn test_05_loops_001_for_range() { test_vm("05_loops/001_for_range").unwrap(); }
-#[test] #[ignore] fn test_05_loops_002_range_inclusive() { test_vm("05_loops/002_range_inclusive").unwrap(); }
-#[test] #[ignore] fn test_05_loops_003_range_literal() { test_vm("05_loops/003_range_literal").unwrap(); }
-#[test] #[ignore] fn test_05_loops_004_for_each_object() { test_vm("05_loops/004_for_each_object").unwrap(); }
-#[test] #[ignore] fn test_05_loops_005_loop_keyword() { test_vm("05_loops/005_loop_keyword").unwrap(); }
+#[test]
+#[ignore]
+fn test_05_loops_001_for_range() {
+    test_vm("05_loops/001_for_range").unwrap();
+}
+#[test]
+#[ignore]
+fn test_05_loops_002_range_inclusive() {
+    test_vm("05_loops/002_range_inclusive").unwrap();
+}
+#[test]
+#[ignore]
+fn test_05_loops_003_range_literal() {
+    test_vm("05_loops/003_range_literal").unwrap();
+}
+#[test]
+#[ignore]
+fn test_05_loops_004_for_each_object() {
+    test_vm("05_loops/004_for_each_object").unwrap();
+}
+#[test]
+#[ignore]
+fn test_05_loops_005_loop_keyword() {
+    test_vm("05_loops/005_loop_keyword").unwrap();
+}
 
 // === 06_arrays ===
-#[test] #[ignore] fn test_06_arrays_001_array_literal() { test_vm("06_arrays/001_array_literal").unwrap(); }
-#[test] #[ignore] fn test_06_arrays_002_array_index() { test_vm("06_arrays/002_array_index").unwrap(); }
-#[test] #[ignore] fn test_06_arrays_003_array_update() { test_vm("06_arrays/003_array_update").unwrap(); }
-#[test] #[ignore] fn test_06_arrays_004_array_of_objects() { test_vm("06_arrays/004_array_of_objects").unwrap(); }
-#[test] #[ignore] fn test_06_arrays_005_array_multiple_mutations() { test_vm("06_arrays/005_array_multiple_mutations").unwrap(); }
-#[test] #[ignore] fn test_06_arrays_010_tuple() { test_vm("06_arrays/010_tuple").unwrap(); }
+#[test]
+#[ignore]
+fn test_06_arrays_001_array_literal() {
+    test_vm("06_arrays/001_array_literal").unwrap();
+}
+#[test]
+#[ignore]
+fn test_06_arrays_002_array_index() {
+    test_vm("06_arrays/002_array_index").unwrap();
+}
+#[test]
+#[ignore]
+fn test_06_arrays_003_array_update() {
+    test_vm("06_arrays/003_array_update").unwrap();
+}
+#[test]
+#[ignore]
+fn test_06_arrays_004_array_of_objects() {
+    test_vm("06_arrays/004_array_of_objects").unwrap();
+}
+#[test]
+#[ignore]
+fn test_06_arrays_005_array_multiple_mutations() {
+    test_vm("06_arrays/005_array_multiple_mutations").unwrap();
+}
+#[test]
+#[ignore]
+fn test_06_arrays_010_tuple() {
+    test_vm("06_arrays/010_tuple").unwrap();
+}
 
 // === 07_objects ===
-#[test] #[ignore] fn test_07_objects_001_object_field() { test_vm("07_objects/001_object_field").unwrap(); }
-#[test] #[ignore] fn test_07_objects_006_inline_map() { test_vm("07_objects/006_inline_map").unwrap(); }
-#[test] #[ignore] fn test_07_objects_002_object_field_int_key() { test_vm("07_objects/002_object_field_int_key").unwrap(); }
-#[test] #[ignore] fn test_07_objects_003_object_field_bool_key() { test_vm("07_objects/003_object_field_bool_key").unwrap(); }
-#[test] #[ignore] fn test_07_objects_004_obj_set() { test_vm("07_objects/004_obj_set").unwrap(); }
-#[test] #[ignore] fn test_07_objects_005_nested_object() { test_vm("07_objects/005_nested_object").unwrap(); }
-#[test] #[ignore] fn test_07_objects_006_nested_object_y() { test_vm("07_objects/006_nested_object_y").unwrap(); }
-#[test] #[ignore] fn test_07_objects_007_json() { test_vm("07_objects/007_json").unwrap(); }
-#[test] #[ignore] fn test_07_objects_008_last_block_or_object() { test_vm("07_objects/008_last_block_or_object").unwrap(); }
-#[test] #[ignore] fn test_07_objects_009_multiple_field_mutations() { test_vm("07_objects/009_multiple_field_mutations").unwrap(); }
+#[test]
+#[ignore]
+fn test_07_objects_001_object_field() {
+    test_vm("07_objects/001_object_field").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_006_inline_map() {
+    test_vm("07_objects/006_inline_map").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_002_object_field_int_key() {
+    test_vm("07_objects/002_object_field_int_key").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_003_object_field_bool_key() {
+    test_vm("07_objects/003_object_field_bool_key").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_004_obj_set() {
+    test_vm("07_objects/004_obj_set").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_005_nested_object() {
+    test_vm("07_objects/005_nested_object").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_006_nested_object_y() {
+    test_vm("07_objects/006_nested_object_y").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_007_json() {
+    test_vm("07_objects/007_json").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_008_last_block_or_object() {
+    test_vm("07_objects/008_last_block_or_object").unwrap();
+}
+#[test]
+#[ignore]
+fn test_07_objects_009_multiple_field_mutations() {
+    test_vm("07_objects/009_multiple_field_mutations").unwrap();
+}
 // PLAN-661 T-01: map bracket write（写/读对称，078 复现收编）——非 ignore 注册进 tv 档。
-#[test] fn test_07_objects_010_map_bracket_write() { test_vm("07_objects/010_map_bracket_write").unwrap(); }
+#[test]
+fn test_07_objects_010_map_bracket_write() {
+    test_vm("07_objects/010_map_bracket_write").unwrap();
+}
 
 // === 08_strings ===
-#[test] #[ignore] fn test_08_strings_016_heaprc_string_pool() { test_vm("08_strings/016_heaprc_string_pool").unwrap(); }
-#[test] #[ignore] fn test_08_strings_017_sub_semantics() { test_vm("08_strings/017_sub_semantics").unwrap(); }
-#[test] #[ignore] fn test_08_strings_001_fstr() { test_vm("08_strings/001_fstr").unwrap(); }
-#[test] #[ignore] fn test_08_strings_002_fstr_expr() { test_vm("08_strings/002_fstr_expr").unwrap(); }
-#[test] #[ignore] fn test_08_strings_003_str_index() { test_vm("08_strings/003_str_index").unwrap(); }
-#[test] #[ignore] fn test_08_strings_004_int_to_str() { test_vm("08_strings/004_int_to_str").unwrap(); }
-#[test] #[ignore] fn test_08_strings_005_str_import_basic() { test_vm("08_strings/005_str_import_basic").unwrap(); }
-#[test] #[ignore] fn test_08_strings_006_str_import_case() { test_vm("08_strings/006_str_import_case").unwrap(); }
-#[test] #[ignore] fn test_08_strings_007_str_import_search() { test_vm("08_strings/007_str_import_search").unwrap(); }
-#[test] #[ignore] fn test_08_strings_008_str_import_transform() { test_vm("08_strings/008_str_import_transform").unwrap(); }
-#[test] #[ignore] fn test_08_strings_009_char_at() { test_vm("08_strings/009_char_at").unwrap(); }
-#[test] #[ignore] fn test_08_strings_010_str_ext_import() { test_vm("08_strings/010_str_ext_import").unwrap(); }
-#[test] #[ignore] fn test_08_strings_011_vm_stub_panic() { test_vm("08_strings/011_vm_stub_panic").unwrap(); }
-#[test] #[ignore] fn test_08_strings_012_str_eq() { test_vm("08_strings/012_str_eq").unwrap(); }
-#[test] #[ignore] fn test_08_strings_013_str_param() { test_vm("08_strings/013_str_param").unwrap(); }
-#[test] #[ignore] fn test_08_strings_014_raw_str() { test_vm("08_strings/014_raw_str").unwrap(); }
-#[test] #[ignore] fn test_08_strings_015_multi_fstr() { test_vm("08_strings/015_multi_fstr").unwrap(); }
+#[test]
+#[ignore]
+fn test_08_strings_016_heaprc_string_pool() {
+    test_vm("08_strings/016_heaprc_string_pool").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_017_sub_semantics() {
+    test_vm("08_strings/017_sub_semantics").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_001_fstr() {
+    test_vm("08_strings/001_fstr").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_002_fstr_expr() {
+    test_vm("08_strings/002_fstr_expr").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_003_str_index() {
+    test_vm("08_strings/003_str_index").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_004_int_to_str() {
+    test_vm("08_strings/004_int_to_str").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_005_str_import_basic() {
+    test_vm("08_strings/005_str_import_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_006_str_import_case() {
+    test_vm("08_strings/006_str_import_case").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_007_str_import_search() {
+    test_vm("08_strings/007_str_import_search").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_008_str_import_transform() {
+    test_vm("08_strings/008_str_import_transform").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_009_char_at() {
+    test_vm("08_strings/009_char_at").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_010_str_ext_import() {
+    test_vm("08_strings/010_str_ext_import").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_011_vm_stub_panic() {
+    test_vm("08_strings/011_vm_stub_panic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_012_str_eq() {
+    test_vm("08_strings/012_str_eq").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_013_str_param() {
+    test_vm("08_strings/013_str_param").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_014_raw_str() {
+    test_vm("08_strings/014_raw_str").unwrap();
+}
+#[test]
+#[ignore]
+fn test_08_strings_015_multi_fstr() {
+    test_vm("08_strings/015_multi_fstr").unwrap();
+}
 
 // === 09_functions ===
-#[test] #[ignore] fn test_09_functions_001_fn_simple() { test_vm("09_functions/001_fn_simple").unwrap(); }
-#[test] #[ignore] fn test_09_functions_002_fn_named_args() { test_vm("09_functions/002_fn_named_args").unwrap(); }
-#[test] #[ignore] fn test_09_functions_003_fn_multiple() { test_vm("09_functions/003_fn_multiple").unwrap(); }
-#[test] #[ignore] fn test_09_functions_004_fn_nested() { test_vm("09_functions/004_fn_nested").unwrap(); }
-#[test] #[ignore] fn test_09_functions_005_fn_in_expr() { test_vm("09_functions/005_fn_in_expr").unwrap(); }
-#[test] #[ignore] fn test_09_functions_006_fn_local_var() { test_vm("09_functions/006_fn_local_var").unwrap(); }
-#[test] #[ignore] fn test_09_functions_007_closure() { test_vm("09_functions/007_closure").unwrap(); }
-#[test] #[ignore] fn test_09_functions_008_closure_typed() { test_vm("09_functions/008_closure_typed").unwrap(); }
-#[test] #[ignore] fn test_09_functions_009_forward_decl() { test_vm("09_functions/009_forward_decl").unwrap(); }
-#[test] #[ignore] fn test_09_functions_010_closure_hof_map() { test_vm("09_functions/010_closure_hof_map").unwrap(); }
-#[test] #[ignore] fn test_09_functions_011_list_map_filter() { test_vm("09_functions/011_list_map_filter").unwrap(); }
-#[test] #[ignore] fn test_09_functions_012_list_reduce_find_any_all() { test_vm("09_functions/012_list_reduce_find_any_all").unwrap(); }
-#[test] #[ignore] fn test_09_functions_013_closure_capture_hof() { test_vm("09_functions/013_closure_capture_hof").unwrap(); }
-#[test] #[ignore] fn test_09_functions_014_list_for_each_edge() { test_vm("09_functions/014_list_for_each_edge").unwrap(); }
-#[test] #[ignore] fn test_09_functions_015_list_chain_pipeline() { test_vm("09_functions/015_list_chain_pipeline").unwrap(); }
-#[test] #[ignore] fn test_09_functions_016_enum_multi_destruct() { test_vm("09_functions/016_enum_multi_destruct").unwrap(); }
-#[test] #[ignore] fn test_09_functions_017_enum_named_construct() { test_vm("09_functions/017_enum_named_construct").unwrap(); }
-#[test] #[ignore] fn test_09_functions_018_enum_destruct_edge() { test_vm("09_functions/018_enum_destruct_edge").unwrap(); }
-#[test] #[ignore] fn test_09_functions_019_enum_tuple_payload() { test_vm("09_functions/019_enum_tuple_payload").unwrap(); }
+#[test]
+#[ignore]
+fn test_09_functions_001_fn_simple() {
+    test_vm("09_functions/001_fn_simple").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_002_fn_named_args() {
+    test_vm("09_functions/002_fn_named_args").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_003_fn_multiple() {
+    test_vm("09_functions/003_fn_multiple").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_004_fn_nested() {
+    test_vm("09_functions/004_fn_nested").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_005_fn_in_expr() {
+    test_vm("09_functions/005_fn_in_expr").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_006_fn_local_var() {
+    test_vm("09_functions/006_fn_local_var").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_007_closure() {
+    test_vm("09_functions/007_closure").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_008_closure_typed() {
+    test_vm("09_functions/008_closure_typed").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_009_forward_decl() {
+    test_vm("09_functions/009_forward_decl").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_010_closure_hof_map() {
+    test_vm("09_functions/010_closure_hof_map").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_011_list_map_filter() {
+    test_vm("09_functions/011_list_map_filter").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_012_list_reduce_find_any_all() {
+    test_vm("09_functions/012_list_reduce_find_any_all").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_013_closure_capture_hof() {
+    test_vm("09_functions/013_closure_capture_hof").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_014_list_for_each_edge() {
+    test_vm("09_functions/014_list_for_each_edge").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_015_list_chain_pipeline() {
+    test_vm("09_functions/015_list_chain_pipeline").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_016_enum_multi_destruct() {
+    test_vm("09_functions/016_enum_multi_destruct").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_017_enum_named_construct() {
+    test_vm("09_functions/017_enum_named_construct").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_018_enum_destruct_edge() {
+    test_vm("09_functions/018_enum_destruct_edge").unwrap();
+}
+#[test]
+#[ignore]
+fn test_09_functions_019_enum_tuple_payload() {
+    test_vm("09_functions/019_enum_tuple_payload").unwrap();
+}
 
 #[test]
 #[ignore]
@@ -304,293 +704,1106 @@ is s {
 }
 
 // === 10_types ===
-#[test] #[ignore] fn test_10_types_001_type_compose() { test_vm("10_types/001_type_compose").unwrap(); }
-#[test] #[ignore] fn test_10_types_002_int_enum() { test_vm("10_types/002_int_enum").unwrap(); }
-#[test] #[ignore] fn test_10_types_003_generic_instantiation() { test_vm("10_types/003_generic_instantiation").unwrap(); }
-#[test] #[ignore] fn test_10_types_004_generic_field_x() { test_vm("10_types/004_generic_field_x").unwrap(); }
-#[test] #[ignore] fn test_10_types_005_generic_field_y() { test_vm("10_types/005_generic_field_y").unwrap(); }
-#[test] #[ignore] fn test_10_types_006_field_addition() { test_vm("10_types/006_field_addition").unwrap(); }
-#[test] #[ignore] fn test_10_types_007_type_instance_prop() { test_vm("10_types/007_type_instance_prop").unwrap(); }
-#[test] #[ignore] fn test_10_types_008_nested_type_instance() { test_vm("10_types/008_nested_type_instance").unwrap(); }
-#[test] #[ignore] fn test_10_types_009_access_fields_in_method() { test_vm("10_types/009_access_fields_in_method").unwrap(); }
-#[test] #[ignore] fn test_10_types_010_ext_method() { test_vm("10_types/010_ext_method").unwrap(); }
-#[test] #[ignore] fn test_10_types_011_enum_multi_field() { test_vm("10_types/011_enum_multi_field").unwrap(); }
-#[test] #[ignore] fn test_10_types_011_enum_is_match() { test_vm("10_types/011_enum_is_match").unwrap(); }
-#[test] #[ignore] fn test_10_types_012_enum_dot_match() { test_vm("10_types/012_enum_dot_match").unwrap(); }
-#[test] #[ignore] fn test_10_types_013_fn_return_obj() { test_vm("10_types/013_fn_return_obj").unwrap(); }
+#[test]
+#[ignore]
+fn test_10_types_001_type_compose() {
+    test_vm("10_types/001_type_compose").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_002_int_enum() {
+    test_vm("10_types/002_int_enum").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_003_generic_instantiation() {
+    test_vm("10_types/003_generic_instantiation").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_004_generic_field_x() {
+    test_vm("10_types/004_generic_field_x").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_005_generic_field_y() {
+    test_vm("10_types/005_generic_field_y").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_006_field_addition() {
+    test_vm("10_types/006_field_addition").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_007_type_instance_prop() {
+    test_vm("10_types/007_type_instance_prop").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_008_nested_type_instance() {
+    test_vm("10_types/008_nested_type_instance").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_009_access_fields_in_method() {
+    test_vm("10_types/009_access_fields_in_method").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_010_ext_method() {
+    test_vm("10_types/010_ext_method").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_011_enum_multi_field() {
+    test_vm("10_types/011_enum_multi_field").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_011_enum_is_match() {
+    test_vm("10_types/011_enum_is_match").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_012_enum_dot_match() {
+    test_vm("10_types/012_enum_dot_match").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_013_fn_return_obj() {
+    test_vm("10_types/013_fn_return_obj").unwrap();
+}
 
 // === 11_compound_ops ===
-#[test] #[ignore] fn test_11_compound_ops_001_add_eq() { test_vm("11_compound_ops/001_add_eq").unwrap(); }
-#[test] #[ignore] fn test_11_compound_ops_002_sub_eq() { test_vm("11_compound_ops/002_sub_eq").unwrap(); }
-#[test] #[ignore] fn test_11_compound_ops_003_mul_eq() { test_vm("11_compound_ops/003_mul_eq").unwrap(); }
-#[test] #[ignore] fn test_11_compound_ops_004_div_eq() { test_vm("11_compound_ops/004_div_eq").unwrap(); }
-#[test] #[ignore] fn test_11_compound_ops_005_chained() { test_vm("11_compound_ops/005_chained").unwrap(); }
-#[test] #[ignore] fn test_11_compound_ops_006_div_eq_oneline() { test_vm("11_compound_ops/006_div_eq_oneline").unwrap(); }
+#[test]
+#[ignore]
+fn test_11_compound_ops_001_add_eq() {
+    test_vm("11_compound_ops/001_add_eq").unwrap();
+}
+#[test]
+#[ignore]
+fn test_11_compound_ops_002_sub_eq() {
+    test_vm("11_compound_ops/002_sub_eq").unwrap();
+}
+#[test]
+#[ignore]
+fn test_11_compound_ops_003_mul_eq() {
+    test_vm("11_compound_ops/003_mul_eq").unwrap();
+}
+#[test]
+#[ignore]
+fn test_11_compound_ops_004_div_eq() {
+    test_vm("11_compound_ops/004_div_eq").unwrap();
+}
+#[test]
+#[ignore]
+fn test_11_compound_ops_005_chained() {
+    test_vm("11_compound_ops/005_chained").unwrap();
+}
+#[test]
+#[ignore]
+fn test_11_compound_ops_006_div_eq_oneline() {
+    test_vm("11_compound_ops/006_div_eq_oneline").unwrap();
+}
 
 // === 12_type_coercion ===
-#[test] #[ignore] fn test_12_type_coercion_001_int_plus_float() { test_vm("12_type_coercion/001_int_plus_float").unwrap(); }
-#[test] #[ignore] fn test_12_type_coercion_002_float_plus_int() { test_vm("12_type_coercion/002_float_plus_int").unwrap(); }
-#[test] #[ignore] fn test_12_type_coercion_003_int_times_float() { test_vm("12_type_coercion/003_int_times_float").unwrap(); }
-#[test] #[ignore] fn test_12_type_coercion_004_float_times_int() { test_vm("12_type_coercion/004_float_times_int").unwrap(); }
-#[test] #[ignore] fn test_12_type_coercion_005_complex() { test_vm("12_type_coercion/005_complex").unwrap(); }
-#[test] #[ignore] fn test_12_type_coercion_006_with_variable() { test_vm("12_type_coercion/006_with_variable").unwrap(); }
+#[test]
+#[ignore]
+fn test_12_type_coercion_001_int_plus_float() {
+    test_vm("12_type_coercion/001_int_plus_float").unwrap();
+}
+#[test]
+#[ignore]
+fn test_12_type_coercion_002_float_plus_int() {
+    test_vm("12_type_coercion/002_float_plus_int").unwrap();
+}
+#[test]
+#[ignore]
+fn test_12_type_coercion_003_int_times_float() {
+    test_vm("12_type_coercion/003_int_times_float").unwrap();
+}
+#[test]
+#[ignore]
+fn test_12_type_coercion_004_float_times_int() {
+    test_vm("12_type_coercion/004_float_times_int").unwrap();
+}
+#[test]
+#[ignore]
+fn test_12_type_coercion_005_complex() {
+    test_vm("12_type_coercion/005_complex").unwrap();
+}
+#[test]
+#[ignore]
+fn test_12_type_coercion_006_with_variable() {
+    test_vm("12_type_coercion/006_with_variable").unwrap();
+}
 
 // === 13_collections ===
-#[test] #[ignore] fn test_13_collections_001_hashmap_new() { test_vm("13_collections/001_hashmap_new").unwrap(); }
-#[test] #[ignore] fn test_13_collections_002_hashmap_insert_str() { test_vm("13_collections/002_hashmap_insert_str").unwrap(); }
-#[test] #[ignore] fn test_13_collections_003_hashmap_insert_int() { test_vm("13_collections/003_hashmap_insert_int").unwrap(); }
-#[test] #[ignore] fn test_13_collections_004_hashmap_contains() { test_vm("13_collections/004_hashmap_contains").unwrap(); }
-#[test] #[ignore] fn test_13_collections_005_hashmap_size() { test_vm("13_collections/005_hashmap_size").unwrap(); }
-#[test] #[ignore] fn test_13_collections_006_hashmap_remove() { test_vm("13_collections/006_hashmap_remove").unwrap(); }
-#[test] #[ignore] fn test_13_collections_007_hashmap_clear() { test_vm("13_collections/007_hashmap_clear").unwrap(); }
-#[test] #[ignore] fn test_13_collections_008_hashset_new() { test_vm("13_collections/008_hashset_new").unwrap(); }
-#[test] #[ignore] fn test_13_collections_009_hashset_insert() { test_vm("13_collections/009_hashset_insert").unwrap(); }
-#[test] #[ignore] fn test_13_collections_010_hashset_duplicate() { test_vm("13_collections/010_hashset_duplicate").unwrap(); }
-#[test] #[ignore] fn test_13_collections_011_hashset_remove() { test_vm("13_collections/011_hashset_remove").unwrap(); }
-#[test] #[ignore] fn test_13_collections_012_hashset_size() { test_vm("13_collections/012_hashset_size").unwrap(); }
-#[test] #[ignore] fn test_13_collections_013_hashset_clear() { test_vm("13_collections/013_hashset_clear").unwrap(); }
-#[test] #[ignore] fn test_13_collections_014_sb_new() { test_vm("13_collections/014_sb_new").unwrap(); }
-#[test] #[ignore] fn test_13_collections_015_sb_append() { test_vm("13_collections/015_sb_append").unwrap(); }
-#[test] #[ignore] fn test_13_collections_016_sb_append_char() { test_vm("13_collections/016_sb_append_char").unwrap(); }
-#[test] #[ignore] fn test_13_collections_017_sb_append_int() { test_vm("13_collections/017_sb_append_int").unwrap(); }
-#[test] #[ignore] fn test_13_collections_018_sb_len() { test_vm("13_collections/018_sb_len").unwrap(); }
-#[test] #[ignore] fn test_13_collections_019_sb_clear() { test_vm("13_collections/019_sb_clear").unwrap(); }
-#[test] #[ignore] fn test_13_collections_020_list_new() { test_vm("13_collections/020_list_new").unwrap(); }
-#[test] #[ignore] fn test_13_collections_021_list_push_pop() { test_vm("13_collections/021_list_push_pop").unwrap(); }
-#[test] #[ignore] fn test_13_collections_022_list_push_pop_multi() { test_vm("13_collections/022_list_push_pop_multi").unwrap(); }
-#[test] #[ignore] fn test_13_collections_023_list_len() { test_vm("13_collections/023_list_len").unwrap(); }
-#[test] #[ignore] fn test_13_collections_024_list_is_empty() { test_vm("13_collections/024_list_is_empty").unwrap(); }
-#[test] #[ignore] fn test_13_collections_025_list_clear() { test_vm("13_collections/025_list_clear").unwrap(); }
-#[test] #[ignore] fn test_13_collections_026_list_get_set() { test_vm("13_collections/026_list_get_set").unwrap(); }
-#[test] #[ignore] fn test_13_collections_027_list_insert_remove() { test_vm("13_collections/027_list_insert_remove").unwrap(); }
-#[test] #[ignore] fn test_13_collections_028_list_reserve() { test_vm("13_collections/028_list_reserve").unwrap(); }
-#[test] #[ignore] fn test_13_collections_029_list_comprehensive() { test_vm("13_collections/029_list_comprehensive").unwrap(); }
-#[test] #[ignore] fn test_13_collections_030_list_multi_ops() { test_vm("13_collections/030_list_multi_ops").unwrap(); }
-#[test] #[ignore] fn test_13_collections_031_list_index() { test_vm("13_collections/031_list_index").unwrap(); }
-#[test] #[ignore] fn test_13_collections_032_list_varargs() { test_vm("13_collections/032_list_varargs").unwrap(); }
-#[test] #[ignore] fn test_13_collections_033_list_varargs_empty() { test_vm("13_collections/033_list_varargs_empty").unwrap(); }
-#[test] #[ignore] fn test_13_collections_034_list_for_iteration() { test_vm("13_collections/034_list_for_iteration").unwrap(); }
-#[test] #[ignore] fn test_13_collections_035_list_for_empty() { test_vm("13_collections/035_list_for_empty").unwrap(); }
+#[test]
+#[ignore]
+fn test_13_collections_001_hashmap_new() {
+    test_vm("13_collections/001_hashmap_new").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_002_hashmap_insert_str() {
+    test_vm("13_collections/002_hashmap_insert_str").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_003_hashmap_insert_int() {
+    test_vm("13_collections/003_hashmap_insert_int").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_004_hashmap_contains() {
+    test_vm("13_collections/004_hashmap_contains").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_005_hashmap_size() {
+    test_vm("13_collections/005_hashmap_size").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_006_hashmap_remove() {
+    test_vm("13_collections/006_hashmap_remove").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_007_hashmap_clear() {
+    test_vm("13_collections/007_hashmap_clear").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_008_hashset_new() {
+    test_vm("13_collections/008_hashset_new").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_009_hashset_insert() {
+    test_vm("13_collections/009_hashset_insert").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_010_hashset_duplicate() {
+    test_vm("13_collections/010_hashset_duplicate").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_011_hashset_remove() {
+    test_vm("13_collections/011_hashset_remove").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_012_hashset_size() {
+    test_vm("13_collections/012_hashset_size").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_013_hashset_clear() {
+    test_vm("13_collections/013_hashset_clear").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_014_sb_new() {
+    test_vm("13_collections/014_sb_new").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_015_sb_append() {
+    test_vm("13_collections/015_sb_append").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_016_sb_append_char() {
+    test_vm("13_collections/016_sb_append_char").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_017_sb_append_int() {
+    test_vm("13_collections/017_sb_append_int").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_018_sb_len() {
+    test_vm("13_collections/018_sb_len").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_019_sb_clear() {
+    test_vm("13_collections/019_sb_clear").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_020_list_new() {
+    test_vm("13_collections/020_list_new").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_021_list_push_pop() {
+    test_vm("13_collections/021_list_push_pop").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_022_list_push_pop_multi() {
+    test_vm("13_collections/022_list_push_pop_multi").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_023_list_len() {
+    test_vm("13_collections/023_list_len").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_024_list_is_empty() {
+    test_vm("13_collections/024_list_is_empty").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_025_list_clear() {
+    test_vm("13_collections/025_list_clear").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_026_list_get_set() {
+    test_vm("13_collections/026_list_get_set").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_027_list_insert_remove() {
+    test_vm("13_collections/027_list_insert_remove").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_028_list_reserve() {
+    test_vm("13_collections/028_list_reserve").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_029_list_comprehensive() {
+    test_vm("13_collections/029_list_comprehensive").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_030_list_multi_ops() {
+    test_vm("13_collections/030_list_multi_ops").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_031_list_index() {
+    test_vm("13_collections/031_list_index").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_032_list_varargs() {
+    test_vm("13_collections/032_list_varargs").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_033_list_varargs_empty() {
+    test_vm("13_collections/033_list_varargs_empty").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_034_list_for_iteration() {
+    test_vm("13_collections/034_list_for_iteration").unwrap();
+}
+#[test]
+#[ignore]
+fn test_13_collections_035_list_for_empty() {
+    test_vm("13_collections/035_list_for_empty").unwrap();
+}
 
 // === 14_borrow ===
-#[test] #[ignore] fn test_14_borrow_001_view_basic() { test_vm("14_borrow/001_view_basic").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_002_view_multiple() { test_vm("14_borrow/002_view_multiple").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_003_mut_basic() { test_vm("14_borrow/003_mut_basic").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_004_move_basic() { test_vm("14_borrow/004_move_basic").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_005_view_preserves() { test_vm("14_borrow/005_view_preserves").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_006_nested_view() { test_vm("14_borrow/006_nested_view").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_007_borrow_arithmetic() { test_vm("14_borrow/007_borrow_arithmetic").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_008_view_in_array() { test_vm("14_borrow/008_view_in_array").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_009_view_in_expr() { test_vm("14_borrow/009_view_in_expr").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_010_borrow_diff_types() { test_vm("14_borrow/010_borrow_diff_types").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_011_move_chaining() { test_vm("14_borrow/011_move_chaining").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_012_str_sliceview() { test_vm("14_borrow/012_str_sliceview").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_013_str_slice_multi() { test_vm("14_borrow/013_str_slice_multi").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_014_str_slice_nested() { test_vm("14_borrow/014_str_slice_nested").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_015_str_slice_in_array() { test_vm("14_borrow/015_str_slice_in_array").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_016_str_slice_take() { test_vm("14_borrow/016_str_slice_take").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_017_str_slice_mixed() { test_vm("14_borrow/017_str_slice_mixed").unwrap(); }
-#[test] #[ignore] fn test_14_borrow_018_str_slice_preserves() { test_vm("14_borrow/018_str_slice_preserves").unwrap(); }
+#[test]
+#[ignore]
+fn test_14_borrow_001_view_basic() {
+    test_vm("14_borrow/001_view_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_002_view_multiple() {
+    test_vm("14_borrow/002_view_multiple").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_003_mut_basic() {
+    test_vm("14_borrow/003_mut_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_004_move_basic() {
+    test_vm("14_borrow/004_move_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_005_view_preserves() {
+    test_vm("14_borrow/005_view_preserves").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_006_nested_view() {
+    test_vm("14_borrow/006_nested_view").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_007_borrow_arithmetic() {
+    test_vm("14_borrow/007_borrow_arithmetic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_008_view_in_array() {
+    test_vm("14_borrow/008_view_in_array").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_009_view_in_expr() {
+    test_vm("14_borrow/009_view_in_expr").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_010_borrow_diff_types() {
+    test_vm("14_borrow/010_borrow_diff_types").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_011_move_chaining() {
+    test_vm("14_borrow/011_move_chaining").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_012_str_sliceview() {
+    test_vm("14_borrow/012_str_sliceview").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_013_str_slice_multi() {
+    test_vm("14_borrow/013_str_slice_multi").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_014_str_slice_nested() {
+    test_vm("14_borrow/014_str_slice_nested").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_015_str_slice_in_array() {
+    test_vm("14_borrow/015_str_slice_in_array").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_016_str_slice_take() {
+    test_vm("14_borrow/016_str_slice_take").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_017_str_slice_mixed() {
+    test_vm("14_borrow/017_str_slice_mixed").unwrap();
+}
+#[test]
+#[ignore]
+fn test_14_borrow_018_str_slice_preserves() {
+    test_vm("14_borrow/018_str_slice_preserves").unwrap();
+}
 
 // === 15_nested_mutation ===
-#[test] #[ignore] fn test_15_nested_mutation_001_object_field() { test_vm("15_nested_mutation/001_object_field").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_002_array_element() { test_vm("15_nested_mutation/002_array_element").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_003_multiple_fields() { test_vm("15_nested_mutation/003_multiple_fields").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_004_multiple_array() { test_vm("15_nested_mutation/004_multiple_array").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_005_type_field() { test_vm("15_nested_mutation/005_type_field").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_006_nested_object() { test_vm("15_nested_mutation/006_nested_object").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_007_array_of_obj_field() { test_vm("15_nested_mutation/007_array_of_obj_field").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_008_obj_array_element() { test_vm("15_nested_mutation/008_obj_array_element").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_009_nested_array() { test_vm("15_nested_mutation/009_nested_array").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_010_type_nested_field() { test_vm("15_nested_mutation/010_type_nested_field").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_011_three_level() { test_vm("15_nested_mutation/011_three_level").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_012_deep_array_obj() { test_vm("15_nested_mutation/012_deep_array_obj").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_013_structure_preserve() { test_vm("15_nested_mutation/013_structure_preserve").unwrap(); }
-#[test] #[ignore] fn test_15_nested_mutation_014_out_of_bounds_error() { test_vm("15_nested_mutation/014_out_of_bounds_error").unwrap(); }
+#[test]
+#[ignore]
+fn test_15_nested_mutation_001_object_field() {
+    test_vm("15_nested_mutation/001_object_field").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_002_array_element() {
+    test_vm("15_nested_mutation/002_array_element").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_003_multiple_fields() {
+    test_vm("15_nested_mutation/003_multiple_fields").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_004_multiple_array() {
+    test_vm("15_nested_mutation/004_multiple_array").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_005_type_field() {
+    test_vm("15_nested_mutation/005_type_field").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_006_nested_object() {
+    test_vm("15_nested_mutation/006_nested_object").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_007_array_of_obj_field() {
+    test_vm("15_nested_mutation/007_array_of_obj_field").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_008_obj_array_element() {
+    test_vm("15_nested_mutation/008_obj_array_element").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_009_nested_array() {
+    test_vm("15_nested_mutation/009_nested_array").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_010_type_nested_field() {
+    test_vm("15_nested_mutation/010_type_nested_field").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_011_three_level() {
+    test_vm("15_nested_mutation/011_three_level").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_012_deep_array_obj() {
+    test_vm("15_nested_mutation/012_deep_array_obj").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_013_structure_preserve() {
+    test_vm("15_nested_mutation/013_structure_preserve").unwrap();
+}
+#[test]
+#[ignore]
+fn test_15_nested_mutation_014_out_of_bounds_error() {
+    test_vm("15_nested_mutation/014_out_of_bounds_error").unwrap();
+}
 // EDGE-16: type self 字段 List push(纯逻辑层,对照 store 层的 push 持久化 bug)。
 // 不 ignore:持续守护"VM 纯逻辑层 self.list.push 正常"这一基准,把 store 层 bug 隔离出来。
-#[test] fn test_15_nested_mutation_015_self_list_push() { test_vm("15_nested_mutation/015_self_list_push").unwrap(); }
+#[test]
+fn test_15_nested_mutation_015_self_list_push() {
+    test_vm("15_nested_mutation/015_self_list_push").unwrap();
+}
 
 // === 16_option_result ===
-#[test] #[ignore] fn test_16_option_result_001_option_type() { test_vm("16_option_result/001_option_type").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_002_result_type() { test_vm("16_option_result/002_result_type").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_003_none_literal() { test_vm("16_option_result/003_none_literal").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_004_some_ctor() { test_vm("16_option_result/004_some_ctor").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_005_ok_ctor() { test_vm("16_option_result/005_ok_ctor").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_006_err_ctor() { test_vm("16_option_result/006_err_ctor").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_007_propagate_some() { test_vm("16_option_result/007_propagate_some").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_008_propagate_none() { test_vm("16_option_result/008_propagate_none").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_009_propagate_ok() { test_vm("16_option_result/009_propagate_ok").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_010_propagate_err() { test_vm("16_option_result/010_propagate_err").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_011_coalesce_some() { test_vm("16_option_result/011_coalesce_some").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_012_coalesce_none() { test_vm("16_option_result/012_coalesce_none").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_013_is_some_binding() { test_vm("16_option_result/013_is_some_binding").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_014_is_none_match() { test_vm("16_option_result/014_is_none_match").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_015_is_ok_binding() { test_vm("16_option_result/015_is_ok_binding").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_016_is_err_match() { test_vm("16_option_result/016_is_err_match").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_017_unwrap_or() { test_vm("16_option_result/017_unwrap_or").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_018_option_or() { test_vm("16_option_result/018_option_or").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_019_result_heap() { test_vm("16_option_result/019_result_heap").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_020_result_propagate() { test_vm("16_option_result/020_result_propagate").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_021_result_enum_error() { test_vm("16_option_result/021_result_enum_error").unwrap(); }
-#[test] #[ignore] fn test_16_option_result_022_result_multi_error() { test_vm("16_option_result/022_result_multi_error").unwrap(); }
+#[test]
+#[ignore]
+fn test_16_option_result_001_option_type() {
+    test_vm("16_option_result/001_option_type").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_002_result_type() {
+    test_vm("16_option_result/002_result_type").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_003_none_literal() {
+    test_vm("16_option_result/003_none_literal").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_004_some_ctor() {
+    test_vm("16_option_result/004_some_ctor").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_005_ok_ctor() {
+    test_vm("16_option_result/005_ok_ctor").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_006_err_ctor() {
+    test_vm("16_option_result/006_err_ctor").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_007_propagate_some() {
+    test_vm("16_option_result/007_propagate_some").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_008_propagate_none() {
+    test_vm("16_option_result/008_propagate_none").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_009_propagate_ok() {
+    test_vm("16_option_result/009_propagate_ok").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_010_propagate_err() {
+    test_vm("16_option_result/010_propagate_err").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_011_coalesce_some() {
+    test_vm("16_option_result/011_coalesce_some").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_012_coalesce_none() {
+    test_vm("16_option_result/012_coalesce_none").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_013_is_some_binding() {
+    test_vm("16_option_result/013_is_some_binding").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_014_is_none_match() {
+    test_vm("16_option_result/014_is_none_match").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_015_is_ok_binding() {
+    test_vm("16_option_result/015_is_ok_binding").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_016_is_err_match() {
+    test_vm("16_option_result/016_is_err_match").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_017_unwrap_or() {
+    test_vm("16_option_result/017_unwrap_or").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_018_option_or() {
+    test_vm("16_option_result/018_option_or").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_019_result_heap() {
+    test_vm("16_option_result/019_result_heap").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_020_result_propagate() {
+    test_vm("16_option_result/020_result_propagate").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_021_result_enum_error() {
+    test_vm("16_option_result/021_result_enum_error").unwrap();
+}
+#[test]
+#[ignore]
+fn test_16_option_result_022_result_multi_error() {
+    test_vm("16_option_result/022_result_multi_error").unwrap();
+}
 
 // === 17_modules ===
-#[test] #[ignore] fn test_17_modules_001_use_fn() { test_vm("17_modules/001_use_fn").unwrap(); }
+#[test]
+#[ignore]
+fn test_17_modules_001_use_fn() {
+    test_vm("17_modules/001_use_fn").unwrap();
+}
 
 // === 18_ffi ===
-#[test] #[ignore] fn test_18_ffi_001_file_exists() { test_vm("18_ffi/001_file_exists").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_003_file_is_dir() { test_vm("18_ffi/003_file_is_dir").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_006_string_len() { test_vm("18_ffi/006_string_len").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_007_string_is_empty() { test_vm("18_ffi/007_string_is_empty").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_008_string_contains() { test_vm("18_ffi/008_string_contains").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_009_string_starts_with() { test_vm("18_ffi/009_string_starts_with").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_010_string_ends_with() { test_vm("18_ffi/010_string_ends_with").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_012_char_is_alpha() { test_vm("18_ffi/012_char_is_alpha").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_013_char_is_digit() { test_vm("18_ffi/013_char_is_digit").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_014_json_is_valid() { test_vm("18_ffi/014_json_is_valid").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_015_json_len() { test_vm("18_ffi/015_json_len").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_016_json_is_null() { test_vm("18_ffi/016_json_is_null").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_017_json_as_bool() { test_vm("18_ffi/017_json_as_bool").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_018_json_has_key() { test_vm("18_ffi/018_json_has_key").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_001_file_exists() {
+    test_vm("18_ffi/001_file_exists").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_003_file_is_dir() {
+    test_vm("18_ffi/003_file_is_dir").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_006_string_len() {
+    test_vm("18_ffi/006_string_len").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_007_string_is_empty() {
+    test_vm("18_ffi/007_string_is_empty").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_008_string_contains() {
+    test_vm("18_ffi/008_string_contains").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_009_string_starts_with() {
+    test_vm("18_ffi/009_string_starts_with").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_010_string_ends_with() {
+    test_vm("18_ffi/010_string_ends_with").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_012_char_is_alpha() {
+    test_vm("18_ffi/012_char_is_alpha").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_013_char_is_digit() {
+    test_vm("18_ffi/013_char_is_digit").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_014_json_is_valid() {
+    test_vm("18_ffi/014_json_is_valid").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_015_json_len() {
+    test_vm("18_ffi/015_json_len").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_016_json_is_null() {
+    test_vm("18_ffi/016_json_is_null").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_017_json_as_bool() {
+    test_vm("18_ffi/017_json_as_bool").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_018_json_has_key() {
+    test_vm("18_ffi/018_json_has_key").unwrap();
+}
 
 // === 19_rust_std ===
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_001_time() { test_vm("19_rust_std/001_time").unwrap(); }
+fn test_19_rust_std_001_time() {
+    test_vm("19_rust_std/001_time").unwrap();
+}
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_002_duration() { test_vm("19_rust_std/002_duration").unwrap(); }
+fn test_19_rust_std_002_duration() {
+    test_vm("19_rust_std/002_duration").unwrap();
+}
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_003_pathbuf() { test_vm("19_rust_std/003_pathbuf").unwrap(); }
+fn test_19_rust_std_003_pathbuf() {
+    test_vm("19_rust_std/003_pathbuf").unwrap();
+}
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_004_duration_print() { test_vm("19_rust_std/004_duration_print").unwrap(); }
+fn test_19_rust_std_004_duration_print() {
+    test_vm("19_rust_std/004_duration_print").unwrap();
+}
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_005_instant_duration() { test_vm("19_rust_std/005_instant_duration").unwrap(); }
+fn test_19_rust_std_005_instant_duration() {
+    test_vm("19_rust_std/005_instant_duration").unwrap();
+}
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_006_sync() { test_vm("19_rust_std/006_sync").unwrap(); }
+fn test_19_rust_std_006_sync() {
+    test_vm("19_rust_std/006_sync").unwrap();
+}
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_007_pathbuf() { test_vm("19_rust_std/007_pathbuf").unwrap(); }
+fn test_19_rust_std_007_pathbuf() {
+    test_vm("19_rust_std/007_pathbuf").unwrap();
+}
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_008_box_cell() { test_vm("19_rust_std/008_box_cell").unwrap(); }
+fn test_19_rust_std_008_box_cell() {
+    test_vm("19_rust_std/008_box_cell").unwrap();
+}
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_009_duration_f64() { test_vm("19_rust_std/009_duration_f64").unwrap(); }
+fn test_19_rust_std_009_duration_f64() {
+    test_vm("19_rust_std/009_duration_f64").unwrap();
+}
 // EDGE-16: VM 模式 std::process::Command FFI(shell.at 真实执行命令的基础)。
 #[test] // 430 复审:陈旧 ignore 解除(实测过,补 std 臂 VM 守护)
-fn test_19_rust_std_010_process_command() { test_vm("19_rust_std/010_process_command").unwrap(); }
+fn test_19_rust_std_010_process_command() {
+    test_vm("19_rust_std/010_process_command").unwrap();
+}
 
 // === 20_permission ===
-#[test] #[ignore] fn test_20_permission_001_scalar_mode() { test_vm("20_permission/001_scalar_mode").unwrap(); }
-#[test] #[ignore] fn test_20_permission_002_ext_policy() { test_vm("20_permission/002_ext_policy").unwrap(); }
+#[test]
+#[ignore]
+fn test_20_permission_001_scalar_mode() {
+    test_vm("20_permission/001_scalar_mode").unwrap();
+}
+#[test]
+#[ignore]
+fn test_20_permission_002_ext_policy() {
+    test_vm("20_permission/002_ext_policy").unwrap();
+}
 
 // === 21_conv (Plan 193: type conversion bugs) ===
 // BUG: negative integer .to(String) — TYPE_TO_STR treats negative i32 as tagged string pointer
-#[test] #[ignore] #[ignore = "BUG: (-1).to(String) outputs '<invalid string index: 0>' — TYPE_TO_STR misidentifies negative integers as string pool indices"]
-fn test_21_conv_002_neg_i32_to_str() { test_vm("21_conv/002_neg_i32_to_str").unwrap(); }
+#[test]
+#[ignore]
+#[ignore = "BUG: (-1).to(String) outputs '<invalid string index: 0>' — TYPE_TO_STR misidentifies negative integers as string pool indices"]
+fn test_21_conv_002_neg_i32_to_str() {
+    test_vm("21_conv/002_neg_i32_to_str").unwrap();
+}
 
 // === 21_conv (Plan 194: monomorphic dispatch tests) ===
-#[test] #[ignore] fn test_21_conv_003_hashmap_mono_insert() { test_vm("21_conv/003_hashmap_mono_insert").unwrap(); }
-#[test] #[ignore] fn test_21_conv_004_hashset_mono_insert() { test_vm("21_conv/004_hashset_mono_insert").unwrap(); }
+#[test]
+#[ignore]
+fn test_21_conv_003_hashmap_mono_insert() {
+    test_vm("21_conv/003_hashmap_mono_insert").unwrap();
+}
+#[test]
+#[ignore]
+fn test_21_conv_004_hashset_mono_insert() {
+    test_vm("21_conv/004_hashset_mono_insert").unwrap();
+}
 
 // === 99_spec_dispatch (Plan 200: spec dynamic dispatch) ===
-#[test] #[ignore] fn test_99_spec_dispatch_000_spec_basic() { test_vm("99_spec_dispatch/000_spec_basic").unwrap(); }
-#[test] #[ignore] fn test_99_spec_dispatch_020_tool_registry() { test_vm("99_spec_dispatch/20_tool_registry").unwrap(); }
-#[test] #[ignore] fn test_99_spec_dispatch_031_tool_exec_with_perm() { test_vm("99_spec_dispatch/31_tool_exec_with_perm").unwrap(); }
+#[test]
+#[ignore]
+fn test_99_spec_dispatch_000_spec_basic() {
+    test_vm("99_spec_dispatch/000_spec_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_spec_dispatch_020_tool_registry() {
+    test_vm("99_spec_dispatch/20_tool_registry").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_spec_dispatch_031_tool_exec_with_perm() {
+    test_vm("99_spec_dispatch/31_tool_exec_with_perm").unwrap();
+}
 
 // === 18_ffi (continued: Plan 211 stdlib test coverage) ===
-#[test] #[ignore] fn test_18_ffi_019_math_abs_f() { test_vm("18_ffi/019_math_abs_f").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_020_str_char_at() { test_vm("18_ffi/020_str_char_at").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_021_str_substr() { test_vm("18_ffi/021_str_substr").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_022_str_trim() { test_vm("18_ffi/022_str_trim").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_023_str_repeat() { test_vm("18_ffi/023_str_repeat").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_024_str_replace() { test_vm("18_ffi/024_str_replace").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_025_str_case() { test_vm("18_ffi/025_str_case").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_026_str_reverse_find() { test_vm("18_ffi/026_str_reverse_find").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_027_str_find() { test_vm("18_ffi/027_str_find").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_028_str_replace_first() { test_vm("18_ffi/028_str_replace_first").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_029_str_match_count() { test_vm("18_ffi/029_str_match_count").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_030_str_contains() { test_vm("18_ffi/030_str_contains").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_031_str_starts_ends() { test_vm("18_ffi/031_str_starts_ends").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_032_char_is_alpha() { test_vm("18_ffi/032_char_is_alpha").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_033_char_is_digit() { test_vm("18_ffi/033_char_is_digit").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_034_char_is_alphanum() { test_vm("18_ffi/034_char_is_alphanum").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_035_char_is_whitespace() { test_vm("18_ffi/035_char_is_whitespace").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_036_char_to_lower() { test_vm("18_ffi/036_char_to_lower").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_037_char_to_upper() { test_vm("18_ffi/037_char_to_upper").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_019_math_abs_f() {
+    test_vm("18_ffi/019_math_abs_f").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_020_str_char_at() {
+    test_vm("18_ffi/020_str_char_at").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_021_str_substr() {
+    test_vm("18_ffi/021_str_substr").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_022_str_trim() {
+    test_vm("18_ffi/022_str_trim").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_023_str_repeat() {
+    test_vm("18_ffi/023_str_repeat").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_024_str_replace() {
+    test_vm("18_ffi/024_str_replace").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_025_str_case() {
+    test_vm("18_ffi/025_str_case").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_026_str_reverse_find() {
+    test_vm("18_ffi/026_str_reverse_find").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_027_str_find() {
+    test_vm("18_ffi/027_str_find").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_028_str_replace_first() {
+    test_vm("18_ffi/028_str_replace_first").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_029_str_match_count() {
+    test_vm("18_ffi/029_str_match_count").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_030_str_contains() {
+    test_vm("18_ffi/030_str_contains").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_031_str_starts_ends() {
+    test_vm("18_ffi/031_str_starts_ends").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_032_char_is_alpha() {
+    test_vm("18_ffi/032_char_is_alpha").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_033_char_is_digit() {
+    test_vm("18_ffi/033_char_is_digit").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_034_char_is_alphanum() {
+    test_vm("18_ffi/034_char_is_alphanum").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_035_char_is_whitespace() {
+    test_vm("18_ffi/035_char_is_whitespace").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_036_char_to_lower() {
+    test_vm("18_ffi/036_char_to_lower").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_037_char_to_upper() {
+    test_vm("18_ffi/037_char_to_upper").unwrap();
+}
 
 // === 18_ffi (Plan 211 Task 4: JSON stdlib) ===
-#[test] #[ignore] fn test_18_ffi_038_json_encode_parse() { test_vm("18_ffi/038_json_encode_parse").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_039_json_get() { test_vm("18_ffi/039_json_get").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_040_json_array() { test_vm("18_ffi/040_json_array").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_041_json_keys() { test_vm("18_ffi/041_json_keys").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_042_json_type_as() { test_vm("18_ffi/042_json_type_as").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_038_json_encode_parse() {
+    test_vm("18_ffi/038_json_encode_parse").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_039_json_get() {
+    test_vm("18_ffi/039_json_get").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_040_json_array() {
+    test_vm("18_ffi/040_json_array").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_041_json_keys() {
+    test_vm("18_ffi/041_json_keys").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_042_json_type_as() {
+    test_vm("18_ffi/042_json_type_as").unwrap();
+}
 
 // === 18_ffi (Plan 211 Task 5: Path stdlib) ===
-#[test] #[ignore] fn test_18_ffi_043_path_parent() { test_vm("18_ffi/043_path_parent").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_044_path_ext_filename() { test_vm("18_ffi/044_path_ext_filename").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_045_path_join() { test_vm("18_ffi/045_path_join").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_043_path_parent() {
+    test_vm("18_ffi/043_path_parent").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_044_path_ext_filename() {
+    test_vm("18_ffi/044_path_ext_filename").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_045_path_join() {
+    test_vm("18_ffi/045_path_join").unwrap();
+}
 
 // === 18_ffi (Plan 211 Task 6: Env stdlib) ===
-#[test] #[ignore] fn test_18_ffi_046_env_get_set() { test_vm("18_ffi/046_env_get_set").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_046_env_get_set() {
+    test_vm("18_ffi/046_env_get_set").unwrap();
+}
 
 // === 18_ffi (Plan 211 Task 7: Time stdlib) ===
-#[test] #[ignore] fn test_18_ffi_047_time_now() { test_vm("18_ffi/047_time_now").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_047_time_now() {
+    test_vm("18_ffi/047_time_now").unwrap();
+}
 
 // === 18_ffi (Plan 211 Task 8: URL stdlib) ===
-#[test] #[ignore] fn test_18_ffi_048_url_encode_decode() { test_vm("18_ffi/048_url_encode_decode").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_049_url_parts() { test_vm("18_ffi/049_url_parts").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_048_url_encode_decode() {
+    test_vm("18_ffi/048_url_encode_decode").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_049_url_parts() {
+    test_vm("18_ffi/049_url_parts").unwrap();
+}
 
 // === 18_ffi (Plan 211 Task 9: Regex stdlib) ===
-#[test] #[ignore] fn test_18_ffi_050_regex_is_match() { test_vm("18_ffi/050_regex_is_match").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_050_regex_is_match() {
+    test_vm("18_ffi/050_regex_is_match").unwrap();
+}
 
 // === 18_ffi (Plan 211 Task 11: File stdlib) ===
-#[test] #[ignore] fn test_18_ffi_051_file_write_read() { test_vm("18_ffi/051_file_write_read").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_052_file_copy_append() { test_vm("18_ffi/052_file_copy_append").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_053_file_dir_ops() { test_vm("18_ffi/053_file_dir_ops").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_051_file_write_read() {
+    test_vm("18_ffi/051_file_write_read").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_052_file_copy_append() {
+    test_vm("18_ffi/052_file_copy_append").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_053_file_dir_ops() {
+    test_vm("18_ffi/053_file_dir_ops").unwrap();
+}
 
 // === 18_ffi (Plan 211 Task 12: Process stdlib) ===
-#[test] #[ignore] fn test_18_ffi_054_process_current_dir() { test_vm("18_ffi/054_process_current_dir").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_055_process_args() { test_vm("18_ffi/055_process_args").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_054_process_current_dir() {
+    test_vm("18_ffi/054_process_current_dir").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_055_process_args() {
+    test_vm("18_ffi/055_process_args").unwrap();
+}
 
 // === 18_ffi (Plan 504: 静态分发补齐——math.pow / str.is_digit) ===
-#[test] #[ignore] fn test_18_ffi_056_math_pow() { test_vm("18_ffi/056_math_pow").unwrap(); }
-#[test] #[ignore] fn test_18_ffi_057_str_is_digit() { test_vm("18_ffi/057_str_is_digit").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_056_math_pow() {
+    test_vm("18_ffi/056_math_pow").unwrap();
+}
+#[test]
+#[ignore]
+fn test_18_ffi_057_str_is_digit() {
+    test_vm("18_ffi/057_str_is_digit").unwrap();
+}
 
 // === 18_ffi (Plan 673 T-03: 分块读内建——File.read_text_range 边界矩阵) ===
-#[test] #[ignore] fn test_18_ffi_058_read_text_range() { test_vm("18_ffi/058_read_text_range").unwrap(); }
+#[test]
+#[ignore]
+fn test_18_ffi_058_read_text_range() {
+    test_vm("18_ffi/058_read_text_range").unwrap();
+}
 
 // === 20_rust_ffi (Plan 212b: E2E Rust FFI) ===
 // NOTE: These tests require network access (cargo download) and are #[ignore]d by default.
 // Run with: cargo test -p auto-lang test_20_rust_ffi -- --ignored
 #[test]
 #[ignore]
-fn test_20_rust_ffi_001_serde_json() { test_vm("20_rust_ffi/001_serde_json").unwrap(); }
+fn test_20_rust_ffi_001_serde_json() {
+    test_vm("20_rust_ffi/001_serde_json").unwrap();
+}
 
 // === 99_slice ===
-#[test] #[ignore] fn test_99_slice_001_slice() { test_vm("99_slice/001_slice").unwrap(); }
+#[test]
+#[ignore]
+fn test_99_slice_001_slice() {
+    test_vm("99_slice/001_slice").unwrap();
+}
 
 // === 99_plan231 (nested mut fn + for loop) ===
 // 001 & 002: VM infinite loop in mut fn + for cond — mut fn state update not reflected in loop condition
-#[test] #[ignore] fn test_99_plan231_001_nested_mutfn() { test_vm("99_plan231/001_nested_mutfn").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_002_direct_drain() { test_vm("99_plan231/002_direct_drain").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_003_simple_for_option() { test_vm("99_plan231/003_simple_for_option").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_004_for_option_no_is() { test_vm("99_plan231/004_for_option_no_is").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_005_mutfn_no_loop() { test_vm("99_plan231/005_mutfn_no_loop").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_006_mutfn_int_return() { test_vm("99_plan231/006_mutfn_int_return").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_007_mutfn_void_return() { test_vm("99_plan231/007_mutfn_void_return").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_008_like_vmtest09() { test_vm("99_plan231/008_like_vmtest09").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_009_mutfn_print_direct() { test_vm("99_plan231/009_mutfn_print_direct").unwrap(); }
-#[test] #[ignore] fn test_99_plan231_010_mutfn_int_no_fstr() { test_vm("99_plan231/010_mutfn_int_no_fstr").unwrap(); }
+#[test]
+#[ignore]
+fn test_99_plan231_001_nested_mutfn() {
+    test_vm("99_plan231/001_nested_mutfn").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_002_direct_drain() {
+    test_vm("99_plan231/002_direct_drain").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_003_simple_for_option() {
+    test_vm("99_plan231/003_simple_for_option").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_004_for_option_no_is() {
+    test_vm("99_plan231/004_for_option_no_is").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_005_mutfn_no_loop() {
+    test_vm("99_plan231/005_mutfn_no_loop").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_006_mutfn_int_return() {
+    test_vm("99_plan231/006_mutfn_int_return").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_007_mutfn_void_return() {
+    test_vm("99_plan231/007_mutfn_void_return").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_008_like_vmtest09() {
+    test_vm("99_plan231/008_like_vmtest09").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_009_mutfn_print_direct() {
+    test_vm("99_plan231/009_mutfn_print_direct").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_plan231_010_mutfn_int_no_fstr() {
+    test_vm("99_plan231/010_mutfn_int_no_fstr").unwrap();
+}
 
 // === 99_plan230 ===
-#[test] #[ignore] fn test_99_plan230_001_struct_f64() { test_vm("99_plan230/001_struct_f64").unwrap(); }
+#[test]
+#[ignore]
+fn test_99_plan230_001_struct_f64() {
+    test_vm("99_plan230/001_struct_f64").unwrap();
+}
 
 // === 99_bootstrap (Plan 229b: self-hosting compiler) ===
-#[test] #[ignore] fn test_99_bootstrap_001_token_enum() { test_vm("99_bootstrap/001_token_enum").unwrap(); }
-#[test] #[ignore] fn test_99_bootstrap_002_keyword_map() { test_vm("99_bootstrap/002_keyword_map").unwrap(); }
-#[test] #[ignore] fn test_99_bootstrap_003_lexer_basic() { test_vm("99_bootstrap/003_lexer_basic").unwrap(); }
-#[test] #[ignore] fn test_99_bootstrap_004_str_slice_let() { test_vm("99_bootstrap/004_str_slice_let").unwrap(); }
-#[test] #[ignore] fn test_99_bootstrap_005_str_slice_concat() { test_vm("99_bootstrap/005_str_slice_concat").unwrap(); }
-#[test] #[ignore] fn test_99_bootstrap_006_bool_compare() { test_vm("99_bootstrap/006_bool_compare").unwrap(); }
-#[test] #[ignore] fn test_99_bootstrap_007_nested_control_flow() { test_vm("99_bootstrap/007_nested_control_flow").unwrap(); }
+#[test]
+#[ignore]
+fn test_99_bootstrap_001_token_enum() {
+    test_vm("99_bootstrap/001_token_enum").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_bootstrap_002_keyword_map() {
+    test_vm("99_bootstrap/002_keyword_map").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_bootstrap_003_lexer_basic() {
+    test_vm("99_bootstrap/003_lexer_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_bootstrap_004_str_slice_let() {
+    test_vm("99_bootstrap/004_str_slice_let").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_bootstrap_005_str_slice_concat() {
+    test_vm("99_bootstrap/005_str_slice_concat").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_bootstrap_006_bool_compare() {
+    test_vm("99_bootstrap/006_bool_compare").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_bootstrap_007_nested_control_flow() {
+    test_vm("99_bootstrap/007_nested_control_flow").unwrap();
+}
 
 // =============================================================================
 // Plan 233 Phase 2: Shared File-Based Parser Tests (Rust + AAVM)
@@ -622,14 +1835,16 @@ fn extract_source_string(test_src: &str) -> AutoResult<String> {
             }
         }
     }
-    Err(crate::error::AutoError::Msg("No source string found in parser test file".into()))
+    Err(crate::error::AutoError::Msg(
+        "No source string found in parser test file".into(),
+    ))
 }
 
 /// Rust parser test runner: reads cached .at, extracts source, parses with Rust parser,
 /// compares to .expected.rust_ast
 fn test_rust_parser(case: &str) -> AutoResult<()> {
-    let data = get_cached_test(case)
-        .expect(&format!("Parser test case '{}' not found in cache.", case));
+    let data =
+        get_cached_test(case).expect(&format!("Parser test case '{}' not found in cache.", case));
 
     // Extract source string from cached test data
     let source = extract_source_string(&data.source)?;
@@ -658,86 +1873,254 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 }
 
 // === 009-027: Shared parser tests (Rust + AAVM) ===
-#[test] #[ignore] fn test_rust_99_bootstrap_009_parser_arithmetic() { test_rust_parser("99_bootstrap/009_parser_arithmetic").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_009_parser_arithmetic() {
+    test_rust_parser("99_bootstrap/009_parser_arithmetic").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_010_parser_precedence() { test_rust_parser("99_bootstrap/010_parser_precedence").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_010_parser_precedence() {
+    test_rust_parser("99_bootstrap/010_parser_precedence").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_011_parser_unary() { test_rust_parser("99_bootstrap/011_parser_unary").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_011_parser_unary() {
+    test_rust_parser("99_bootstrap/011_parser_unary").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_012_parser_not() { test_rust_parser("99_bootstrap/012_parser_not").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_012_parser_not() {
+    test_rust_parser("99_bootstrap/012_parser_not").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_013_parser_comparison() { test_rust_parser("99_bootstrap/013_parser_comparison").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_013_parser_comparison() {
+    test_rust_parser("99_bootstrap/013_parser_comparison").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_014_parser_equality() { test_rust_parser("99_bootstrap/014_parser_equality").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_014_parser_equality() {
+    test_rust_parser("99_bootstrap/014_parser_equality").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_015_parser_logical() { test_rust_parser("99_bootstrap/015_parser_logical").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_015_parser_logical() {
+    test_rust_parser("99_bootstrap/015_parser_logical").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_016_parser_let() { test_rust_parser("99_bootstrap/016_parser_let").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_016_parser_let() {
+    test_rust_parser("99_bootstrap/016_parser_let").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_017_parser_var() { test_rust_parser("99_bootstrap/017_parser_var").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_017_parser_var() {
+    test_rust_parser("99_bootstrap/017_parser_var").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_018_parser_fn_decl() { test_rust_parser("99_bootstrap/018_parser_fn_decl").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_018_parser_fn_decl() {
+    test_rust_parser("99_bootstrap/018_parser_fn_decl").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_019_parser_fn_call() { test_rust_parser("99_bootstrap/019_parser_fn_call").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_019_parser_fn_call() {
+    test_rust_parser("99_bootstrap/019_parser_fn_call").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_020_parser_if_else() { test_rust_parser("99_bootstrap/020_parser_if_else").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_020_parser_if_else() {
+    test_rust_parser("99_bootstrap/020_parser_if_else").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_021_parser_for_in() { test_rust_parser("99_bootstrap/021_parser_for_in").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_021_parser_for_in() {
+    test_rust_parser("99_bootstrap/021_parser_for_in").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_022_parser_return() { test_rust_parser("99_bootstrap/022_parser_return").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_022_parser_return() {
+    test_rust_parser("99_bootstrap/022_parser_return").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_023_parser_dot() { test_rust_parser("99_bootstrap/023_parser_dot").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_023_parser_dot() {
+    test_rust_parser("99_bootstrap/023_parser_dot").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_024_parser_assign() { test_rust_parser("99_bootstrap/024_parser_assign").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_024_parser_assign() {
+    test_rust_parser("99_bootstrap/024_parser_assign").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_025_parser_range() { test_rust_parser("99_bootstrap/025_parser_range").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_025_parser_range() {
+    test_rust_parser("99_bootstrap/025_parser_range").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_026_parser_string() { test_rust_parser("99_bootstrap/026_parser_string").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_026_parser_string() {
+    test_rust_parser("99_bootstrap/026_parser_string").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_027_parser_multi() { test_rust_parser("99_bootstrap/027_parser_multi").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_027_parser_multi() {
+    test_rust_parser("99_bootstrap/027_parser_multi").unwrap();
+}
 
 // === 028-037: P1 parser tests (Plan 234) ===
-#[test] #[ignore] fn test_rust_99_bootstrap_028_parser_alias() { test_rust_parser("99_bootstrap/028_parser_alias").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_028_parser_alias() {
+    test_rust_parser("99_bootstrap/028_parser_alias").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_029_parser_enum() { test_rust_parser("99_bootstrap/029_parser_enum").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_029_parser_enum() {
+    test_rust_parser("99_bootstrap/029_parser_enum").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_030_parser_use() { test_rust_parser("99_bootstrap/030_parser_use").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_030_parser_use() {
+    test_rust_parser("99_bootstrap/030_parser_use").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_031_parser_spec() { test_rust_parser("99_bootstrap/031_parser_spec").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_031_parser_spec() {
+    test_rust_parser("99_bootstrap/031_parser_spec").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_032_parser_ext() { test_rust_parser("99_bootstrap/032_parser_ext").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_032_parser_ext() {
+    test_rust_parser("99_bootstrap/032_parser_ext").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_033_parser_closure() { test_rust_parser("99_bootstrap/033_parser_closure").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_033_parser_closure() {
+    test_rust_parser("99_bootstrap/033_parser_closure").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_034_parser_closure_multi() { test_rust_parser("99_bootstrap/034_parser_closure_multi").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_034_parser_closure_multi() {
+    test_rust_parser("99_bootstrap/034_parser_closure_multi").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_035_parser_fstr() { test_rust_parser("99_bootstrap/035_parser_fstr").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_035_parser_fstr() {
+    test_rust_parser("99_bootstrap/035_parser_fstr").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_036_parser_is() { test_rust_parser("99_bootstrap/036_parser_is").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_036_parser_is() {
+    test_rust_parser("99_bootstrap/036_parser_is").unwrap();
+}
 
-#[test] #[ignore] fn test_rust_99_bootstrap_037_parser_object() { test_rust_parser("99_bootstrap/037_parser_object").unwrap(); }
+#[test]
+#[ignore]
+fn test_rust_99_bootstrap_037_parser_object() {
+    test_rust_parser("99_bootstrap/037_parser_object").unwrap();
+}
 
 // Plan 237 Phase B: Type inference
 // Plan 237 Phase C: Bytecode compilation + execution
 
 // === 10_types (Plan 326: struct field access) ===
-#[test] #[ignore] fn test_10_types_034_struct_str_field() { test_vm("10_types/034_struct_str_field").unwrap(); }
-#[test] #[ignore] fn test_10_types_035_struct_from_fn() { test_vm("10_types/035_struct_from_fn").unwrap(); }
-#[test] #[ignore] fn test_10_types_036_struct_in_array() { test_vm("10_types/036_struct_in_array").unwrap(); }
+#[test]
+#[ignore]
+fn test_10_types_034_struct_str_field() {
+    test_vm("10_types/034_struct_str_field").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_035_struct_from_fn() {
+    test_vm("10_types/035_struct_from_fn").unwrap();
+}
+#[test]
+#[ignore]
+fn test_10_types_036_struct_in_array() {
+    test_vm("10_types/036_struct_in_array").unwrap();
+}
 
 // === 22_generator (Plan 321/326/327: yield + lazy) ===
-#[test] #[ignore] fn test_22_generator_001_sum() { test_vm("22_generator/001_sum").unwrap(); }
-#[test] #[ignore] fn test_22_generator_002_no_dup() { test_vm("22_generator/002_no_dup").unwrap(); }
-#[test] #[ignore] fn test_22_generator_003_string_yields() { test_vm("22_generator/003_string_yields").unwrap(); }
-#[test] #[ignore] fn test_22_generator_004_indirect_return() { test_vm("22_generator/004_indirect_return").unwrap(); }
+#[test]
+#[ignore]
+fn test_22_generator_001_sum() {
+    test_vm("22_generator/001_sum").unwrap();
+}
+#[test]
+#[ignore]
+fn test_22_generator_002_no_dup() {
+    test_vm("22_generator/002_no_dup").unwrap();
+}
+#[test]
+#[ignore]
+fn test_22_generator_003_string_yields() {
+    test_vm("22_generator/003_string_yields").unwrap();
+}
+#[test]
+#[ignore]
+fn test_22_generator_004_indirect_return() {
+    test_vm("22_generator/004_indirect_return").unwrap();
+}
 
 // === 23_actor (Plan 317: Task/Msg actor handler execution + state) ===
-#[test] #[ignore] fn test_23_actor_001_start_hook() { test_vm("23_actor/001_start_hook").unwrap(); }
-#[test] #[ignore] fn test_23_actor_002_message_handler() { test_vm("23_actor/002_message_handler").unwrap(); }
-#[test] #[ignore] fn test_23_actor_003_multi_message() { test_vm("23_actor/003_multi_message").unwrap(); }
-#[test] #[ignore] fn test_23_actor_004_else_handler() { test_vm("23_actor/004_else_handler").unwrap(); }
-#[test] #[ignore] fn test_23_actor_005_state_write() { test_vm("23_actor/005_state_write").unwrap(); }
-#[test] #[ignore] fn test_23_actor_006_state_increment() { test_vm("23_actor/006_state_increment").unwrap(); }
+#[test]
+#[ignore]
+fn test_23_actor_001_start_hook() {
+    test_vm("23_actor/001_start_hook").unwrap();
+}
+#[test]
+#[ignore]
+fn test_23_actor_002_message_handler() {
+    test_vm("23_actor/002_message_handler").unwrap();
+}
+#[test]
+#[ignore]
+fn test_23_actor_003_multi_message() {
+    test_vm("23_actor/003_multi_message").unwrap();
+}
+#[test]
+#[ignore]
+fn test_23_actor_004_else_handler() {
+    test_vm("23_actor/004_else_handler").unwrap();
+}
+#[test]
+#[ignore]
+fn test_23_actor_005_state_write() {
+    test_vm("23_actor/005_state_write").unwrap();
+}
+#[test]
+#[ignore]
+fn test_23_actor_006_state_increment() {
+    test_vm("23_actor/006_state_increment").unwrap();
+}
 // NOTE (Plan 387 audit): 007_named_variants / 008_string_pattern / 009_stop_hook
 // exist under test/vm/23_actor/ but are INTENTIONALLY NOT registered here. The
 // VM's live send shim coerces messages to Value::Int (stdlib.rs shim_task_send_vm)
@@ -747,73 +2130,246 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 // transpiled Rust). Do NOT add test_23_actor_007/008/009 registrations here.
 
 // === 24_generics (Plan 317: List<T> with custom struct elements) ===
-#[test] #[ignore] fn test_24_generics_001_list_struct() { test_vm("24_generics/001_list_struct").unwrap(); }
-#[test] #[ignore] fn test_24_generics_002_to_array() { test_vm("24_generics/002_to_array").unwrap(); }
-#[test] #[ignore] fn test_24_generics_003_filter() { test_vm("24_generics/003_filter").unwrap(); }
+#[test]
+#[ignore]
+fn test_24_generics_001_list_struct() {
+    test_vm("24_generics/001_list_struct").unwrap();
+}
+#[test]
+#[ignore]
+fn test_24_generics_002_to_array() {
+    test_vm("24_generics/002_to_array").unwrap();
+}
+#[test]
+#[ignore]
+fn test_24_generics_003_filter() {
+    test_vm("24_generics/003_filter").unwrap();
+}
 
 // === 25_method_u64 (Plan 378: I64/U64 method-call return-type recognition) ===
-#[test] #[ignore] fn test_25_method_u64_001_to_uint_basic() { test_vm("25_method_u64/001_to_uint_basic").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_002_to_uint_double_promote() { test_vm("25_method_u64/002_to_uint_double_promote").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_003_let_u64_from_method() { test_vm("25_method_u64/003_let_u64_from_method").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_004_assign_u64() { test_vm("25_method_u64/004_assign_u64").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_005_two_methods_arith() { test_vm("25_method_u64/005_two_methods_arith").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_006_fstring_u64() { test_vm("25_method_u64/006_fstring_u64").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_007_other_i64_methods() { test_vm("25_method_u64/007_other_i64_methods").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_008_i32_unaffected() { test_vm("25_method_u64/008_i32_unaffected").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_009_large_value() { test_vm("25_method_u64/009_large_value").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_010_global_u64_large() { test_vm("25_method_u64/010_global_u64_large").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_011_bigint_overflow() { test_vm("25_method_u64/011_bigint_overflow").unwrap(); }
-#[test] #[ignore] fn test_25_method_u64_012_list_hof_value() { test_vm("25_method_u64/012_list_hof_value").unwrap(); }
-#[test] #[ignore] fn test_99_closure_by_ref() { test_vm("99_misc/002_closure_by_ref").unwrap(); }
+#[test]
+#[ignore]
+fn test_25_method_u64_001_to_uint_basic() {
+    test_vm("25_method_u64/001_to_uint_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_002_to_uint_double_promote() {
+    test_vm("25_method_u64/002_to_uint_double_promote").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_003_let_u64_from_method() {
+    test_vm("25_method_u64/003_let_u64_from_method").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_004_assign_u64() {
+    test_vm("25_method_u64/004_assign_u64").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_005_two_methods_arith() {
+    test_vm("25_method_u64/005_two_methods_arith").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_006_fstring_u64() {
+    test_vm("25_method_u64/006_fstring_u64").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_007_other_i64_methods() {
+    test_vm("25_method_u64/007_other_i64_methods").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_008_i32_unaffected() {
+    test_vm("25_method_u64/008_i32_unaffected").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_009_large_value() {
+    test_vm("25_method_u64/009_large_value").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_010_global_u64_large() {
+    test_vm("25_method_u64/010_global_u64_large").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_011_bigint_overflow() {
+    test_vm("25_method_u64/011_bigint_overflow").unwrap();
+}
+#[test]
+#[ignore]
+fn test_25_method_u64_012_list_hof_value() {
+    test_vm("25_method_u64/012_list_hof_value").unwrap();
+}
+#[test]
+#[ignore]
+fn test_99_closure_by_ref() {
+    test_vm("99_misc/002_closure_by_ref").unwrap();
+}
 
 // PLAN-588（Stage B P-4，583 残留债①）：CALL 内联实参形态跨迭代退化回归锚。
-#[test] fn test_99_p588debt_001_inline_arg_accum() { test_vm("99_p588debt/001_inline_arg_accum").unwrap(); }
-#[test] fn test_99_p588debt_002_str_return_fn() { test_vm("99_p588debt/002_str_return_fn").unwrap(); }
-#[test] fn test_99_p588debt_003_operand_shapes() { test_vm("99_p588debt/003_operand_shapes").unwrap(); }
+#[test]
+fn test_99_p588debt_001_inline_arg_accum() {
+    test_vm("99_p588debt/001_inline_arg_accum").unwrap();
+}
+#[test]
+fn test_99_p588debt_002_str_return_fn() {
+    test_vm("99_p588debt/002_str_return_fn").unwrap();
+}
+#[test]
+fn test_99_p588debt_003_operand_shapes() {
+    test_vm("99_p588debt/003_operand_shapes").unwrap();
+}
 
 // === 26_str_method_on_heap (Plan 378 follow-up: str methods on heap strings) ===
 // str.lower() returns garbage (-2147483647) when called on a string produced
 // by split()/lines() (heap-based), while .upper() works. Literals are fine.
-#[test] #[ignore] fn test_26_str_method_on_heap_001_lower_on_split() { test_vm("26_str_method_on_heap/001_lower_on_split").unwrap(); }
+#[test]
+#[ignore]
+fn test_26_str_method_on_heap_001_lower_on_split() {
+    test_vm("26_str_method_on_heap/001_lower_on_split").unwrap();
+}
 // Plan 378 §10.5: 字面量 .lower()/.upper() 守护（CALL_NAT 路径，不走 inline 分发）
-#[test] #[ignore] fn test_26_str_method_on_heap_002_lower_literal() { test_vm("26_str_method_on_heap/002_lower_literal").unwrap(); }
+#[test]
+#[ignore]
+fn test_26_str_method_on_heap_002_lower_literal() {
+    test_vm("26_str_method_on_heap/002_lower_literal").unwrap();
+}
 
 // === 27_function_reference (Plan 383: 命名函数引用作为值) ===
-#[test] #[ignore] fn test_27_function_reference_001_basic_ref() { test_vm("27_function_reference/001_basic_ref").unwrap(); }
-#[test] #[ignore] fn test_27_function_reference_002_pass_as_arg() { test_vm("27_function_reference/002_pass_as_arg").unwrap(); }
-#[test] #[ignore] fn test_27_function_reference_004_call_unchanged() { test_vm("27_function_reference/004_call_unchanged").unwrap(); }
+#[test]
+#[ignore]
+fn test_27_function_reference_001_basic_ref() {
+    test_vm("27_function_reference/001_basic_ref").unwrap();
+}
+#[test]
+#[ignore]
+fn test_27_function_reference_002_pass_as_arg() {
+    test_vm("27_function_reference/002_pass_as_arg").unwrap();
+}
+#[test]
+#[ignore]
+fn test_27_function_reference_004_call_unchanged() {
+    test_vm("27_function_reference/004_call_unchanged").unwrap();
+}
 
 // === 28_enum_methods (Plan 325 缺陷 1: enum 实例方法) ===
-#[test] #[ignore] fn test_28_enum_methods_001_basic() { test_vm("28_enum_methods/001_basic").unwrap(); }
-#[test] #[ignore] fn test_28_enum_methods_002_is_match() { test_vm("28_enum_methods/002_is_match").unwrap(); }
-#[test] #[ignore] fn test_28_enum_methods_003_payload_method() { test_vm("28_enum_methods/003_payload_method").unwrap(); }
-#[test] #[ignore] fn test_28_enum_methods_004_wildcard() { test_vm("28_enum_methods/004_wildcard").unwrap(); }
-#[test] #[ignore] fn test_28_enum_methods_005_generic_enum_method() { test_vm("28_enum_methods/005_generic_enum_method").unwrap(); }
-#[test] #[ignore] fn test_28_enum_methods_006_stdlib_result() { test_vm("28_enum_methods/006_stdlib_result").unwrap(); }
+#[test]
+#[ignore]
+fn test_28_enum_methods_001_basic() {
+    test_vm("28_enum_methods/001_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_28_enum_methods_002_is_match() {
+    test_vm("28_enum_methods/002_is_match").unwrap();
+}
+#[test]
+#[ignore]
+fn test_28_enum_methods_003_payload_method() {
+    test_vm("28_enum_methods/003_payload_method").unwrap();
+}
+#[test]
+#[ignore]
+fn test_28_enum_methods_004_wildcard() {
+    test_vm("28_enum_methods/004_wildcard").unwrap();
+}
+#[test]
+#[ignore]
+fn test_28_enum_methods_005_generic_enum_method() {
+    test_vm("28_enum_methods/005_generic_enum_method").unwrap();
+}
+#[test]
+#[ignore]
+fn test_28_enum_methods_006_stdlib_result() {
+    test_vm("28_enum_methods/006_stdlib_result").unwrap();
+}
 
 // === 29_list_shims (Plan 335: List<T> 全 shim 双查修复) ===
-#[test] #[ignore] fn test_29_list_shims_001_int_list() { test_vm("29_list_shims/001_int_list").unwrap(); }
-#[test] #[ignore] fn test_29_list_shims_002_struct_list() { test_vm("29_list_shims/002_struct_list").unwrap(); }
+#[test]
+#[ignore]
+fn test_29_list_shims_001_int_list() {
+    test_vm("29_list_shims/001_int_list").unwrap();
+}
+#[test]
+#[ignore]
+fn test_29_list_shims_002_struct_list() {
+    test_vm("29_list_shims/002_struct_list").unwrap();
+}
 
 // === 99_idiom_probe (Plan 447 部分①: is-match/枚举/continue 惯用法探针常驻回归) ===
 // 绿件 + H 项复现件全量常驻(非 ignore):H1 or-臂/H2 continue/H3 内联载荷位
 // (当前基线已由 plan-442 RC 修复转绿)任何回退都会在此立即报警。
-#[test] fn test_99_idiom_probe_p01_is_string() { test_vm("99_idiom_probe/p01_is_string").unwrap(); }
-#[test] fn test_99_idiom_probe_p02b_enum_or_arm() { test_vm("99_idiom_probe/p02b_enum_or_arm").unwrap(); }
-#[test] fn test_99_idiom_probe_p03_enum_payload() { test_vm("99_idiom_probe/p03_enum_payload").unwrap(); }
-#[test] fn test_99_idiom_probe_p04_runtime_concat_payload() { test_vm("99_idiom_probe/p04_runtime_concat_payload").unwrap(); }
-#[test] fn test_99_idiom_probe_p05_double_match() { test_vm("99_idiom_probe/p05_double_match").unwrap(); }
-#[test] fn test_99_idiom_probe_p06_while_continue() { test_vm("99_idiom_probe/p06_while_continue").unwrap(); }
-#[test] fn test_99_idiom_probe_p07_cond_for_continue() { test_vm("99_idiom_probe/p07_cond_for_continue").unwrap(); }
-#[test] fn test_99_idiom_probe_p08_guard_arm() { test_vm("99_idiom_probe/p08_guard_arm").unwrap(); }
-#[test] fn test_99_idiom_probe_p09g_local_var_workaround() { test_vm("99_idiom_probe/p09g_local_var_workaround").unwrap(); }
-#[test] fn test_99_idiom_probe_p09h_inline_enum_payload() { test_vm("99_idiom_probe/p09h_inline_enum_payload").unwrap(); }
-#[test] fn test_99_idiom_probe_p10_enum_reassign_eq() { test_vm("99_idiom_probe/p10_enum_reassign_eq").unwrap(); }
-#[test] fn test_99_idiom_probe_p11_is_char() { test_vm("99_idiom_probe/p11_is_char").unwrap(); }
-#[test] fn test_99_idiom_probe_p12_is_binding_types() { test_vm("99_idiom_probe/p12_is_binding_types").unwrap(); }
-#[test] fn test_99_idiom_probe_p13a_struct_field_enum() { test_vm("99_idiom_probe/p13a_struct_field_enum").unwrap(); }
-#[test] fn test_99_idiom_probe_p13b_struct_literal_field() { test_vm("99_idiom_probe/p13b_struct_literal_field").unwrap(); }
-#[test] fn test_99_idiom_probe_p13c_struct_literal_literal_payload() { test_vm("99_idiom_probe/p13c_struct_literal_literal_payload").unwrap(); }
+#[test]
+fn test_99_idiom_probe_p01_is_string() {
+    test_vm("99_idiom_probe/p01_is_string").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p02b_enum_or_arm() {
+    test_vm("99_idiom_probe/p02b_enum_or_arm").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p03_enum_payload() {
+    test_vm("99_idiom_probe/p03_enum_payload").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p04_runtime_concat_payload() {
+    test_vm("99_idiom_probe/p04_runtime_concat_payload").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p05_double_match() {
+    test_vm("99_idiom_probe/p05_double_match").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p06_while_continue() {
+    test_vm("99_idiom_probe/p06_while_continue").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p07_cond_for_continue() {
+    test_vm("99_idiom_probe/p07_cond_for_continue").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p08_guard_arm() {
+    test_vm("99_idiom_probe/p08_guard_arm").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p09g_local_var_workaround() {
+    test_vm("99_idiom_probe/p09g_local_var_workaround").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p09h_inline_enum_payload() {
+    test_vm("99_idiom_probe/p09h_inline_enum_payload").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p10_enum_reassign_eq() {
+    test_vm("99_idiom_probe/p10_enum_reassign_eq").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p11_is_char() {
+    test_vm("99_idiom_probe/p11_is_char").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p12_is_binding_types() {
+    test_vm("99_idiom_probe/p12_is_binding_types").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p13a_struct_field_enum() {
+    test_vm("99_idiom_probe/p13a_struct_field_enum").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p13b_struct_literal_field() {
+    test_vm("99_idiom_probe/p13b_struct_literal_field").unwrap();
+}
+#[test]
+fn test_99_idiom_probe_p13c_struct_literal_literal_payload() {
+    test_vm("99_idiom_probe/p13c_struct_literal_literal_payload").unwrap();
+}
 
 // === 99_idiom2 (Plan 514 W1-2: type 方法族探针常驻回归) ===
 // m 系绿件：字段读写/&mut、方法内调方法、static 链、位置构造、List 元素方法、
@@ -821,41 +2377,113 @@ fn test_rust_parser(case: &str) -> AutoResult<()> {
 // d 系债务复现件：d01 plain 嵌套 fn（已绿，守卫）；d01b 捕获位静默失效
 // （#[ignore] 至 W1-4：嵌套 fn 引用外层局部应报错而非静默 0）；
 // d02 struct 误用守卫（.expected.error：修复前后都必须报错，错误类别 W1-4 验证）。
-#[test] fn test_99_idiom2_m01_field_rw() { test_vm("99_idiom2/m01_field_rw").unwrap(); }
-#[test] fn test_99_idiom2_m02_method_calls_method() { test_vm("99_idiom2/m02_method_calls_method").unwrap(); }
-#[test] fn test_99_idiom2_m03_static_new_chain() { test_vm("99_idiom2/m03_static_new_chain").unwrap(); }
-#[test] fn test_99_idiom2_m04_positional_ctor() { test_vm("99_idiom2/m04_positional_ctor").unwrap(); }
-#[test] fn test_99_idiom2_m05_list_elem_method() { test_vm("99_idiom2/m05_list_elem_method").unwrap(); }
-#[test] fn test_99_idiom2_m06_method_value() { test_vm("99_idiom2/m06_method_value").unwrap(); }
-#[test] fn test_99_idiom2_m07_ext_method() { test_vm("99_idiom2/m07_ext_method").unwrap(); }
-#[test] fn test_99_idiom2_m08_receiver_forms() { test_vm("99_idiom2/m08_receiver_forms").unwrap(); }
-#[test] fn test_99_idiom2_m09_method_name_set() { test_vm("99_idiom2/m09_method_name_set").unwrap(); }
-#[test] fn test_99_idiom2_d01_nested_fn_void() { test_vm("99_idiom2/d01_nested_fn_void").unwrap(); }
-#[test] fn test_99_idiom2_d01b_nested_fn_capture() { test_vm("99_idiom2/d01b_nested_fn_capture").unwrap(); }
-#[test] fn test_99_idiom2_d02_struct_misuse() { test_vm("99_idiom2/d02_struct_misuse").unwrap(); }
-#[test] fn test_99_idiom2_m10_pipe() { test_vm("99_idiom2/m10_pipe").unwrap(); }
+#[test]
+fn test_99_idiom2_m01_field_rw() {
+    test_vm("99_idiom2/m01_field_rw").unwrap();
+}
+#[test]
+fn test_99_idiom2_m02_method_calls_method() {
+    test_vm("99_idiom2/m02_method_calls_method").unwrap();
+}
+#[test]
+fn test_99_idiom2_m03_static_new_chain() {
+    test_vm("99_idiom2/m03_static_new_chain").unwrap();
+}
+#[test]
+fn test_99_idiom2_m04_positional_ctor() {
+    test_vm("99_idiom2/m04_positional_ctor").unwrap();
+}
+#[test]
+fn test_99_idiom2_m05_list_elem_method() {
+    test_vm("99_idiom2/m05_list_elem_method").unwrap();
+}
+#[test]
+fn test_99_idiom2_m06_method_value() {
+    test_vm("99_idiom2/m06_method_value").unwrap();
+}
+#[test]
+fn test_99_idiom2_m07_ext_method() {
+    test_vm("99_idiom2/m07_ext_method").unwrap();
+}
+#[test]
+fn test_99_idiom2_m08_receiver_forms() {
+    test_vm("99_idiom2/m08_receiver_forms").unwrap();
+}
+#[test]
+fn test_99_idiom2_m09_method_name_set() {
+    test_vm("99_idiom2/m09_method_name_set").unwrap();
+}
+#[test]
+fn test_99_idiom2_d01_nested_fn_void() {
+    test_vm("99_idiom2/d01_nested_fn_void").unwrap();
+}
+#[test]
+fn test_99_idiom2_d01b_nested_fn_capture() {
+    test_vm("99_idiom2/d01b_nested_fn_capture").unwrap();
+}
+#[test]
+fn test_99_idiom2_d02_struct_misuse() {
+    test_vm("99_idiom2/d02_struct_misuse").unwrap();
+}
+#[test]
+fn test_99_idiom2_m10_pipe() {
+    test_vm("99_idiom2/m10_pipe").unwrap();
+}
 // === 99_script_err（Plan 567 T10：.as 隐式传播语料——py feature 门控） ===
 #[cfg(feature = "python")]
-#[test] fn test_99_script_err_01_propagate() { test_vm("99_script_err/01_propagate").unwrap(); }
+#[test]
+fn test_99_script_err_01_propagate() {
+    test_vm("99_script_err/01_propagate").unwrap();
+}
 #[cfg(feature = "python")]
-#[test] fn test_99_script_err_02_catch_value() { test_vm("99_script_err/02_catch_value").unwrap(); }
+#[test]
+fn test_99_script_err_02_catch_value() {
+    test_vm("99_script_err/02_catch_value").unwrap();
+}
 #[cfg(feature = "python")]
-#[test] fn test_99_script_err_03_uncaught() { test_vm("99_script_err/03_uncaught").unwrap(); }
+#[test]
+fn test_99_script_err_03_uncaught() {
+    test_vm("99_script_err/03_uncaught").unwrap();
+}
 #[cfg(feature = "python")]
-#[test] fn test_99_script_err_04_with_as_propagate() { test_vm("99_script_err/04_with_as_propagate").unwrap(); }
+#[test]
+fn test_99_script_err_04_with_as_propagate() {
+    test_vm("99_script_err/04_with_as_propagate").unwrap();
+}
 #[cfg(feature = "python")]
-#[test] fn test_99_script_err_05_obj_call_auto_catch() { test_vm("99_script_err/05_obj_call_auto_catch").unwrap(); }
+#[test]
+fn test_99_script_err_05_obj_call_auto_catch() {
+    test_vm("99_script_err/05_obj_call_auto_catch").unwrap();
+}
 // === 99_py_dispatch（Plan 569 D2：py 返回值方法分派动态化——py feature 门控） ===
 #[cfg(feature = "python")]
-#[test] fn test_99_py_dispatch_01_dual_len() { test_vm("99_py_dispatch/01_dual_len").unwrap(); }
-#[test] fn test_99_py_dispatch_02_auto_str_unchanged() { test_vm("99_py_dispatch/02_auto_str_unchanged").unwrap(); }
+#[test]
+fn test_99_py_dispatch_01_dual_len() {
+    test_vm("99_py_dispatch/01_dual_len").unwrap();
+}
+#[test]
+fn test_99_py_dispatch_02_auto_str_unchanged() {
+    test_vm("99_py_dispatch/02_auto_str_unchanged").unwrap();
+}
 // === 99_short_circuit（PLAN-615 T-02：&& / || 短路求值常驻回归）===
 // 真值要求：LHS 已定真值时 RHS 不得求值（副作用计数）、索引守卫空容器可达性
 // 消除（calc 011 Equals 回归根因）、结果归一化 bool、Plan 550 负索引合法语义共存。
-#[test] fn test_99_short_circuit_001_and_or() { test_vm("99_short_circuit/001_and_or_short_circuit").unwrap(); }
-#[test] fn test_99_short_circuit_002_calc_eval_expr() { test_vm("99_short_circuit/002_calc_eval_expr").unwrap(); }
-#[test] fn test_99_short_circuit_003_negative_index_guard() { test_vm("99_short_circuit/003_negative_index_guard").unwrap(); }
+#[test]
+fn test_99_short_circuit_001_and_or() {
+    test_vm("99_short_circuit/001_and_or_short_circuit").unwrap();
+}
+#[test]
+fn test_99_short_circuit_002_calc_eval_expr() {
+    test_vm("99_short_circuit/002_calc_eval_expr").unwrap();
+}
+#[test]
+fn test_99_short_circuit_003_negative_index_guard() {
+    test_vm("99_short_circuit/003_negative_index_guard").unwrap();
+}
 // === 99_plan664（PLAN-664 U-2/U-3：jade 消费侧值域/strict 域词位锚定——
 // D-11 typeof 值域分派组合词位 + Array.isArray 全域；D-12 session KV
 // str 域读回链 storage.set→get→Json.parse→字段直读）===
-#[test] fn test_99_plan664_001_value_lexemes() { test_vm("99_plan664/001_value_lexemes").unwrap(); }
+#[test]
+fn test_99_plan664_001_value_lexemes() {
+    test_vm("99_plan664/001_value_lexemes").unwrap();
+}

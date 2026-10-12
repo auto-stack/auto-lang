@@ -1,11 +1,11 @@
 // Plan 075 Phase 2: TemplateCodegen Implementation
 // Compiles template files to bytecode that builds concatenated strings
 
-use crate::ast::{Code, Stmt, Expr};
+use crate::ast::{Code, Expr, Stmt};
+use crate::error::{AutoError, AutoResult};
 use crate::vm::codegen::Codegen;
-use crate::vm::opcode::OpCode;
 use crate::vm::loader::Module;
-use crate::error::{AutoResult, AutoError};
+use crate::vm::opcode::OpCode;
 
 /// TemplateCodegen transforms template files into bytecode that builds
 /// strings by concatenating evaluated expressions.
@@ -103,9 +103,10 @@ impl TemplateCodegen {
                 self.compile_expr_to_string(&store.expr)?;
             }
             _ => {
-                return Err(AutoError::Msg(
-                    format!("Template mode does not support statement: {:?}", stmt)
-                ));
+                return Err(AutoError::Msg(format!(
+                    "Template mode does not support statement: {:?}",
+                    stmt
+                )));
             }
         }
         Ok(())

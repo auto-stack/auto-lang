@@ -16,6 +16,10 @@ pub mod component;
 // VM 内建 9918/9919 + a2r 臂同源，SD-B 契约）。
 pub mod frame_bench;
 
+// PLAN-725 T-00: 键入帧五段成本链分段探针（S1..S4+孤儿帧——AUTO_FRAME_BENCH
+// 同门复用，[P725-FRAME] 行随帧吐出，阶梯谱脚本消费）。
+pub mod frame_segments;
+
 // PLAN-721 T-1: 桌面轨更新路径家族诊断通道（AUTO_SCHED_DIAG 门控——泵/
 // 恢复链路订阅装配/消息到达/泵臂消费/置脏传播的统一 trace 面）。
 pub mod sched_diag;
@@ -78,19 +82,19 @@ pub mod view;
 // PLAN-063 T-04d-2: 右栏块锚定坐标槽（iced 布局期记录 + 同步目标消费）。
 #[cfg(feature = "ui-iced")]
 pub mod anchor_slot;
+pub mod app;
+pub mod debug;
+pub mod node_converter;
+pub mod style;
 pub mod vnode;
 pub mod vnode_converter;
-pub mod node_converter;
-pub mod app;
 pub mod widget;
-pub mod style;
-pub mod debug;
 // PLAN-646 Select Anything——框选语义纯函数 + 结果信封。依赖
 // mcp_server/vtree_atom（StyledNodeSnapshot/VTreeAtomBuilder），同门控。
+pub mod handler_codegen;
 #[cfg(feature = "ui-interpreter")]
 pub mod selection;
 pub mod vm_bridge;
-pub mod handler_codegen;
 // PLAN-045：VM 渲染组件级 memo（菜单族四件 + sidebar nav 块；opt-in，
 // 缺省原始路径逐字节不变）。类型面依赖 interpreter 的 View/DynamicMessage，
 // 同门控。
@@ -236,11 +240,11 @@ pub mod iced;
 pub mod host;
 
 // Re-exports
-pub use component::Component;
-pub use view::{View, ViewBuilder};
-pub use vnode::{VNodeId, VNodeKind, VNode, VNodeProps, VTree};
-pub use vnode_converter::view_to_vtree;
 pub use app::{App, AppResult};
+pub use component::Component;
+pub use debug::{DebugLayer, DebugState, LayoutReporter, Rect};
 pub use host::HostBackend;
 pub use style::Style;
-pub use debug::{DebugLayer, DebugState, Rect, LayoutReporter};
+pub use view::{View, ViewBuilder};
+pub use vnode::{VNode, VNodeId, VNodeKind, VNodeProps, VTree};
+pub use vnode_converter::view_to_vtree;

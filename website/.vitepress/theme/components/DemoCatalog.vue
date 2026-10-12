@@ -47,7 +47,7 @@ watch(() => route.path, () => { nextTick(revealHash) })
       <h2 id="system-apps-title">{{ zh ? '系统应用与 Demo' : 'System applications and demos' }}</h2>
       <p class="lead">{{ zh ? '从日常工具认识 Auto 应用：先看真实界面，再了解用途、操作和运行条件。这份目录收录 28 个应用与示例，它们的系统集成和完成度分别说明。' : 'Explore Auto applications through real interfaces, then learn their purpose, operations, and runtime requirements. This catalog covers 28 applications and examples, with integration and readiness described individually.' }}</p>
       <nav :aria-label="zh ? '相关介绍' : 'Related introductions'">
-        <a :href="href('/autoos/')">{{ zh ? 'AutoOS 虚拟桌面' : 'AutoOS virtual desktop' }} →</a>
+        <a :href="href('/os#desktop-showcase')">{{ zh ? 'AutoOS 虚拟桌面' : 'AutoOS virtual desktop' }} →</a>
       </nav>
     </header>
     <div class="demo-filters" role="group" :aria-label="zh ? '按用途筛选' : 'Filter by purpose'">

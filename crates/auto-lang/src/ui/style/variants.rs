@@ -98,7 +98,10 @@ mod tests {
         assert!(p.contains("border"), "default 必须有发丝描边(UA 等价): {p}");
         assert!(p.contains("rounded-md"), "default 圆角: {p}");
         assert!(!p.contains("bg-primary"), "default 不得再用主题色填充: {p}");
-        assert!(!p.contains("bg-secondary"), "default 不借 secondary 皮: {p}");
+        assert!(
+            !p.contains("bg-secondary"),
+            "default 不借 secondary 皮: {p}"
+        );
     }
 
     #[test]
@@ -116,9 +119,15 @@ mod tests {
     fn secondary_is_deeper_fill_without_border() {
         let p = button_variant_preset("secondary");
         assert!(p.contains("bg-secondary"), "secondary 纯填充: {p}");
-        assert!(p.contains("text-secondary-foreground"), "secondary 前景: {p}");
+        assert!(
+            p.contains("text-secondary-foreground"),
+            "secondary 前景: {p}"
+        );
         // 无边框——"有边框"归 outline 专属，default 的 border 不得出现。
-        assert!(!p.contains("border "), "secondary 无边框（outline 专属）: {p}");
+        assert!(
+            !p.contains("border "),
+            "secondary 无边框（outline 专属）: {p}"
+        );
     }
 
     #[test]
@@ -142,7 +151,11 @@ mod tests {
     #[test]
     fn text_and_unknown_are_chromeless() {
         for v in ["", "text", "nonsense"] {
-            assert_eq!(button_variant_preset(v), "", "{v:?} 无 preset（chromeless）");
+            assert_eq!(
+                button_variant_preset(v),
+                "",
+                "{v:?} 无 preset（chromeless）"
+            );
         }
     }
 

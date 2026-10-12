@@ -26,7 +26,7 @@ pub struct TagUncover {
 #[derive(Debug, Clone)]
 pub struct OptionCover {
     pub variant: OptionVariant,
-    pub binding: Option<AutoStr>,  // Variable name to bind (Some(x) => x)
+    pub binding: Option<AutoStr>, // Variable name to bind (Some(x) => x)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,7 +39,7 @@ pub enum OptionVariant {
 #[derive(Debug, Clone)]
 pub struct ResultCover {
     pub variant: ResultVariant,
-    pub binding: Option<AutoStr>,  // Variable name to bind (Ok(x) => x, Err(e) => e)
+    pub binding: Option<AutoStr>, // Variable name to bind (Ok(x) => x, Err(e) => e)
     /// Plan 396/B11(b): nested pattern inside the parens, e.g.
     /// `Err(ToolError.SecurityDenied { kind, path })`. When set, `binding`
     /// is None and the nested Expr (StructPattern / Cover::Tag / Ident)
@@ -59,16 +59,16 @@ pub enum ResultVariant {
 /// A single field binding in a struct destructuring pattern
 #[derive(Debug, Clone)]
 pub struct FieldBinding {
-    pub field: AutoStr,       // Field name
-    pub binding: AutoStr,     // Binding name (same as field when using shorthand)
+    pub field: AutoStr,   // Field name
+    pub binding: AutoStr, // Binding name (same as field when using shorthand)
 }
 
 /// Struct destructuring pattern: Type { field1, field2: alias }
 #[derive(Debug, Clone)]
 pub struct StructCover {
-    pub type_name: AutoStr,           // "Point" or "Message"
-    pub variant: Option<AutoStr>,     // Some("User") for enum variant, None for plain struct
-    pub fields: Vec<FieldBinding>,    // field bindings
+    pub type_name: AutoStr,        // "Point" or "Message"
+    pub variant: Option<AutoStr>,  // Some("User") for enum variant, None for plain struct
+    pub fields: Vec<FieldBinding>, // field bindings
 }
 
 // Unwrap expressions for is statement pattern matching
@@ -177,7 +177,9 @@ impl fmt::Display for StructCover {
             None => write!(f, "(struct-cover {} {{", self.type_name)?,
         }
         for (i, fb) in self.fields.iter().enumerate() {
-            if i > 0 { write!(f, " ")?; }
+            if i > 0 {
+                write!(f, " ")?;
+            }
             write!(f, "{}", fb)?;
         }
         write!(f, "}})")

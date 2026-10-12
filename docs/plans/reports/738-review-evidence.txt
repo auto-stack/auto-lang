@@ -1,0 +1,173 @@
+--- probe ---
+SAME_SESSION result=Ok(1) names=["answer", "old_layer"]
+ROOT_SWITCH result=Ok(1) names=["answer", "old_layer"] selected=C:\Users\zhaop\AppData\Local\Temp\.tmpPTVQPE\proto.at
+DUPLICATE_BODIES result=Ok(1)
+SIGNATURE before=Some(CoreSymbolValidation { module: "net", symbol: "tcp_bind", native_name: "auto.net.tcp_bind", resolved: true, bound: true, arity: 1, verification: Bound, status: Supported, reason: None }) after=Some(CoreSymbolValidation { module: "net", symbol: "tcp_bind", native_name: "auto.net.tcp_bind", resolved: true, bound: true, arity: 999, verification: Bound, status: Supported, reason: None })
+RUST_UNSUPPORTED result=Ok("[trans] C:\\Users\\zhaop\\AppData\\Local\\Temp\\.tmpc1RFSz\\main.at -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\.tmpc1RFSz\\main.a2r.rs (1 fragments tracked)")
+RUST_MANIFEST count=0 emits_missing_provider=true
+C_UNSUPPORTED result=Ok("[trans] C:\\Users\\zhaop\\AppData\\Local\\Temp\\.tmpc1RFSz\\main.at -> C:\\Users\\zhaop\\AppData\\Local\\Temp\\.tmpc1RFSz\\main.c (1 fragments, 1 dirty, 1 transpiled)")
+C_MANIFEST count=0
+--- probe2 ---
+SAME_SESSION result=Ok(1) names=["answer", "old_layer"]
+ROOT_SWITCH result=Ok(1) names=["answer", "old_layer"] selected=C:\Users\zhaop\AppData\Local\Temp\.tmpAdUJOL\proto.at
+DUPLICATE_BODIES result=Ok(1)
+SIGNATURE before=Some(CoreSymbolValidation { module: "net", symbol: "tcp_listener_close", native_name: "auto.net.tcp_listener_close", resolved: true, bound: true, arity: 1, verification: SignatureChecked, status: Supported, reason: None }) after=Some(CoreSymbolValidation { module: "net", symbol: "tcp_listener_close", native_name: "auto.net.tcp_listener_close", resolved: true, bound: true, arity: 999, verification: SignatureChecked, status: Supported, reason: None })
+FINGERPRINT_LAYER_KIND before=b6e5ba81f6cbbcc4 after=b6e5ba81f6cbbcc4 equal=true
+UNREADABLE_INVENTORY files_total=1 modules=0 diagnostics=[AssemblyDiagnostic { code: "STDINV.READ_FAIL", module: "bad", file: Some("stdlib/auto/bad.at"), message: "read failed: stream did not contain valid UTF-8" }]
+SOURCE_ERROR result=Err(Msg("syntax error in target layer `C:\\Users\\zhaop\\AppData\\Local\\Temp\\.tmpgtSqZM\\proto.vm.at` (module `proto`): aborting due to 2 previous errors\n  error[1]: unexpected token\n  error[2]: Expected term, got Newline"))
+--- gate t ---
+        FAIL [   0.081s] (1496/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_passthrough_survives_reeval
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.01s
+        FAIL [   0.095s] (1499/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_store_arg_helper_chain
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.01s
+        FAIL [   0.094s] (1504/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.00s
+        FAIL [   0.079s] (1516/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_6_widget_content::widget_obj_arg_field_read_in_helper
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.01s
+        FAIL [   0.094s] (1528/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t1_title_content_subtree::icon_component_child_renders_in_button_content_subtree
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.00s
+        FAIL [   0.079s] (1537/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t4_styles::icon_component_class_prop_carries_ml_auto_and_tint
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.01s
+        FAIL [  10.134s] (2739/5146) auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 10.05s
+        FAIL [   0.127s] (3369/5146) auto-lang ui::desktop_protocol::client_runtime::tests::projector_counter_layout_and_hits
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.01s
+        FAIL [   0.216s] (3735/5146) auto-lang ui::iced::renderer::tests::desktop_bus_inbox_drains_through_real_arms
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.13s
+        FAIL [   0.460s] (3747/5146) auto-lang ui::iced::renderer::tests::desktop_surface_merge_dedupe_and_injection
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.37s
+        FAIL [   0.096s] (4796/5146) auto-lang vm::ffi::term_engine::ash_leak_probe::ash_stream_leak_probe
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 0.00s
+        FAIL [   0.041s] (5131/5146) auto-lang::schema_drift queue_coverage_drift_fence
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.02s
+        FAIL [   0.059s] (5132/5146) auto-lang::docs_gen kitchen_sink_page_in_sync
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.04s
+        FAIL [   8.176s] (5143/5146) auto-lang::schema_drift schema_drift_fence
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 8.16s
+     Summary [  62.362s] 5146 tests run: 5132 passed, 14 failed, 1537 skipped
+        FAIL [   0.081s] (1496/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_passthrough_survives_reeval
+        FAIL [   0.095s] (1499/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_store_arg_helper_chain
+        FAIL [   0.094s] (1504/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode
+        FAIL [   0.079s] (1516/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_6_widget_content::widget_obj_arg_field_read_in_helper
+        FAIL [   0.094s] (1528/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t1_title_content_subtree::icon_component_child_renders_in_button_content_subtree
+        FAIL [   0.079s] (1537/5146) auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t4_styles::icon_component_class_prop_carries_ml_auto_and_tint
+        FAIL [  10.134s] (2739/5146) auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit
+        FAIL [   0.127s] (3369/5146) auto-lang ui::desktop_protocol::client_runtime::tests::projector_counter_layout_and_hits
+        FAIL [   0.216s] (3735/5146) auto-lang ui::iced::renderer::tests::desktop_bus_inbox_drains_through_real_arms
+        FAIL [   0.460s] (3747/5146) auto-lang ui::iced::renderer::tests::desktop_surface_merge_dedupe_and_injection
+        FAIL [   0.096s] (4796/5146) auto-lang vm::ffi::term_engine::ash_leak_probe::ash_stream_leak_probe
+        FAIL [   0.041s] (5131/5146) auto-lang::schema_drift queue_coverage_drift_fence
+        FAIL [   0.059s] (5132/5146) auto-lang::docs_gen kitchen_sink_page_in_sync
+        FAIL [   8.176s] (5143/5146) auto-lang::schema_drift schema_drift_fence
+--- gate tv ---
+     Summary [   1.863s] 162 tests run: 162 passed, 6507 skipped
+--- gate tt ---
+        FAIL [   0.093s] (1883/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_passthrough_survives_reeval
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.01s
+        FAIL [   0.110s] (1886/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_store_arg_helper_chain
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.01s
+        FAIL [   0.096s] (1889/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.01s
+        FAIL [   0.108s] (1901/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_6_widget_content::widget_obj_arg_field_read_in_helper
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.01s
+        FAIL [   0.127s] (1916/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t1_title_content_subtree::icon_component_child_renders_in_button_content_subtree
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.01s
+        FAIL [   0.095s] (1922/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t4_styles::icon_component_class_prop_carries_ml_auto_and_tint
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.01s
+        FAIL [   0.290s] (2333/5517) auto-lang tests::plan502_diagram_tests::plan502_m3_layout_geometry_e2e
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.20s
+        FAIL [  10.143s] (3007/5517) auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 10.04s
+        FAIL [   0.109s] (3501/5517) auto-lang ui::back_provision::tests::launch_provision_lifecycle_via_resolver
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.01s
+        FAIL [   0.108s] (3751/5517) auto-lang ui::desktop_protocol::client_runtime::tests::projector_counter_layout_and_hits
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.01s
+        FAIL [   0.188s] (4122/5517) auto-lang ui::iced::renderer::tests::desktop_bus_inbox_drains_through_real_arms
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.10s
+        FAIL [   0.377s] (4133/5517) auto-lang ui::iced::renderer::tests::desktop_surface_merge_dedupe_and_injection
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.28s
+        FAIL [   0.078s] (5181/5517) auto-lang vm::ffi::term_engine::ash_leak_probe::ash_stream_leak_probe
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7311 filtered out; finished in 0.00s
+     TIMEOUT [ 120.084s] (5517/5517) auto-lang tests::ffi_dep_parity_tests::dep_parity_018_dep_fields
+     Summary [ 160.430s] 5517 tests run: 5503 passed, 13 failed, 1 timed out, 1785 skipped
+        FAIL [   0.093s] (1883/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_passthrough_survives_reeval
+        FAIL [   0.110s] (1886/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_1_widget_computed::widget_computed_store_arg_helper_chain
+        FAIL [   0.096s] (1889/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode
+        FAIL [   0.108s] (1901/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_6_widget_content::widget_obj_arg_field_read_in_helper
+        FAIL [   0.127s] (1916/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t1_title_content_subtree::icon_component_child_renders_in_button_content_subtree
+        FAIL [   0.095s] (1922/5517) auto-lang tests::musk_vm_track_tests::musk_vm_track_p054_t4_styles::icon_component_class_prop_carries_ml_auto_and_tint
+        FAIL [   0.290s] (2333/5517) auto-lang tests::plan502_diagram_tests::plan502_m3_layout_geometry_e2e
+        FAIL [  10.143s] (3007/5517) auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit
+        FAIL [   0.109s] (3501/5517) auto-lang ui::back_provision::tests::launch_provision_lifecycle_via_resolver
+        FAIL [   0.108s] (3751/5517) auto-lang ui::desktop_protocol::client_runtime::tests::projector_counter_layout_and_hits
+        FAIL [   0.188s] (4122/5517) auto-lang ui::iced::renderer::tests::desktop_bus_inbox_drains_through_real_arms
+        FAIL [   0.377s] (4133/5517) auto-lang ui::iced::renderer::tests::desktop_surface_merge_dedupe_and_injection
+        FAIL [   0.078s] (5181/5517) auto-lang vm::ffi::term_engine::ash_leak_probe::ash_stream_leak_probe
+     TIMEOUT [ 120.084s] (5517/5517) auto-lang tests::ffi_dep_parity_tests::dep_parity_018_dep_fields
+--- gate th ---
+        FAIL [   0.098s] ( 15/102) auto-lang back_proxy_tests::http_e2e_back_proxy_real_031_native_ns_session
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6779 filtered out; finished in 0.02s
+        FAIL [   0.108s] ( 16/102) auto-lang back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6779 filtered out; finished in 0.03s
+     Summary [ 190.847s] 102 tests run: 100 passed, 2 failed, 6668 skipped
+        FAIL [   0.098s] ( 15/102) auto-lang back_proxy_tests::http_e2e_back_proxy_real_031_native_ns_session
+        FAIL [   0.108s] ( 16/102) auto-lang back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face
+--- gate witness ---
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6678 filtered out; finished in 2.41s
+--- gate cli ---
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.38s
+--- gate freshness ---
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 358 filtered out; finished in 0.00s
+--- gate provision ---
+     Summary [   0.115s] 1 test run: 1 passed, 7301 skipped
+--- gate dep ---
+     Summary [   0.934s] 1 test run: 1 passed, 7301 skipped
+--- CLI net-rust ---
+{"mode": "check", "target": null, "status": "pass", "checked_modules": ["net"]}
+violations=0 inventory_diagnostics=40
+--- CLI async-vm ---
+{"mode": "check", "target": null, "status": "pass", "checked_modules": ["async"]}
+violations=0 inventory_diagnostics=40
+--- CLI actual-check ---
+{"mode": "actual+check", "target": "vm", "status": "fail", "checked_modules": ["io", "net", "async", "http", "json", "sse"]}
+violations=72 inventory_diagnostics=0
+--- rustfmt new files ---
+Diff in \\?\D:\autostack\.wt\lang-738\auto-lang\crates\auto-lang\src\stdlib_assembly\model.rs:106:
+ #[derive(Debug, Clone, Serialize)]
+ #[serde(tag = "status", rename_all = "snake_case")]
+ pub enum ParseStatus {
+-    Parsed {
+-        symbol_count: usize,
+-    },
+-    Failed {
+-        error: String,
+-    },
++    Parsed { symbol_count: usize },
++    Failed { error: String },
+ }
+
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, Serialize)]
+Diff in \\?\D:\autostack\.wt\lang-738\auto-lang\crates\auto-lang\src\stdlib_assembly\model.rs:196:
+                 );
+             }
+         }
+-        assert!(self.diagnostics.windows(2).all(|w| diag_key(&w[0]) <= diag_key(&w[1])));
++        assert!(self
++            .diagnostics
++            .windows(2)
++            .all(|w| diag_key(&w[0]) <= diag_key(&w[1])));
+     }
+ }
+
+Diff in \\?\D:\autostack\.wt\lang-738\auto-lang\crates\auto-lang\src\stdlib_assembly\model.rs:203:
+ fn diag_key(d: &AssemblyDiagnostic) -> String {
+-    format!("{}|{}|{}", d.code, d.module, d.file.as_deref().unwrap_or(""))
++    format!(
++        "{}|{}|{}",
++        d.code,
++        d.module,
++        d.file.as_deref().unwrap_or("")
++    )
+ }
+
+ /// FNV-1a 64（与 crates/auto-man api_gen 指纹同族，跨面可对照）。

@@ -1,0 +1,126 @@
+{
+  "plan": "PLAN-769",
+  "revision": 1,
+  "base": "8f8ca8047",
+  "scope": "Category A, no Rust; no Cargo/docs_gen",
+  "catalog": "docs/reports/p769-image-catalog.json",
+  "catalog_sha256": "b18ace94957aba09ef78211d76550e9b45d485a2e63507253d81377dc2317b79",
+  "variants": 35,
+  "original_bytes": 39521546,
+  "delivery_bytes": 6993620,
+  "largest_bytes": 701534,
+  "provenance": "All 35 original captures equal git base bytes; original dimensions retained; lossy WebP quality95/method6, repeat encoding byte-identical.",
+  "build": {
+    "exit": 0,
+    "seconds": 141.27,
+    "log_sha256": "313f06305a321e47a32f4da80dc61cc50e63d9e98d5651fcb695ba1889c03b0e"
+  },
+  "local_tests": {
+    "distinct_passed": 62,
+    "initial_passed": 46,
+    "initial_failed": 10,
+    "failure_correction": "Legacy image counts included eager hidden dialogs; updated counts to thumbnail images and assert zero hidden dialog imgs; all ten failed tests pass on correction.",
+    "recheck_passed": 17,
+    "logs": {
+      "tests.log": "83bd9a93d07fe0127a66e61ff79be2e945b22f90f210bb1b90d4d657a6ea5b6c",
+      "recheck.log": "5dbafb1fa75f1165a7387c6756f74febdddd993482d087c66743046c179f06c4"
+    },
+    "routes": "EN/ZH OS, v05, Apps and four topics; AutoJade gallery tab/keyboard, Shell guide, demo filters/28 decodes, compressed modal lifecycle + source provenance",
+    "widths": [
+      360,
+      390,
+      768,
+      1024,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "os_release_matrix_visits": 40,
+    "visual_captures": {
+      "os-1440-dark-first.png": "82766752230b765078c1ba98968cf396dc9356ca7bd41b3ef03c371c07182759",
+      "os-1440-dark.png": "26f73371ba65460d22ee290e1b79c9b0560ddefc8637e808416121a9240b2cda",
+      "os-1440-light-first.png": "1fabdccfe525ca74e074271f17063cd1242c42ef6308287ef04a35ad88c8b89a",
+      "os-1440-light.png": "8104a228fdad33bf9391d1d415f17423b305d1578f0a1c620d3206cec0f8dbe7",
+      "os-390-dark-first.png": "7ff80e35679fc2362a6916c8d8ade8889e5d493cde3a4a2e81d07ac474732567",
+      "os-390-dark.png": "8a39d0dcd34a3a02e30b6e1dcd22467b87ce289752ab34e1871bad928fddeecb",
+      "os-390-light-first.png": "434fbb40c017478804a746055766da215fd7bdb3c0c2f3b20fb439544c2b9ffc",
+      "os-390-light.png": "e4fe58ca322996f880faea2d5923e85fa5e3f38af4f2b910823e0ba224ab6181",
+      "v05--1440-dark-first.png": "e2759a0d50f6be3af7448642a2850a9881918b321169c672c89cee65c35d2bf8",
+      "v05--1440-dark.png": "c427a6238f3adbd333eb08719092531ba87d42a1620de749194f9937e99608b2",
+      "v05--1440-light-first.png": "359ab947d304c8988cae1705dcb29f3da4f309ca3009194c64b2d8fb87ed8a18",
+      "v05--1440-light.png": "79439c94d9c9b3243e5c8119f48570ed9820e919338d32fe409601f29b47dfaa",
+      "v05--390-dark-first.png": "4d255b7aea59dff2b0197fd249d41b08d74f1f96515649a833813e100a88d55c",
+      "v05--390-dark.png": "948f35acd88b0d1dac1a5e5270d792bc0471b4a32934fe35799f49b33cb2846b",
+      "v05--390-light-first.png": "2b9d9c1ba7a45257902f79a18b10a32c6075f3161e97d237340fe4832ba99d9a",
+      "v05--390-light.png": "9f791e4eeac4a7230c7a7e275bea2333a71c80d3583f49833bc726049d3e45ef",
+      "zh-os-1440-dark-first.png": "962bf176ce46fda8387df124d48de2ab4a9678135396b278f95db1323a60108d",
+      "zh-os-1440-dark.png": "cd1650dab6fab613f656ad34b3a0962e5e62627e419c5afd1afe7b13e5748bfe",
+      "zh-os-1440-light-first.png": "b16ea4d3329d1dd07037eeeb4b182e4ab55b98e775b8f94946e43110343a6a1f",
+      "zh-os-1440-light.png": "757e650ddce2a7398d8dea5fda5741cd256174e35897c5769d1e64940a9e92aa",
+      "zh-os-390-dark-first.png": "e8b911a47438bc47f243b4a83211f8fe18b0db118929d4c08d80775b4b4b8a7b",
+      "zh-os-390-dark.png": "8a74af5a55148ed308760c45df355ed4c9737b7eeb3b3e1c7a84403d93ae1a60",
+      "zh-os-390-light-first.png": "53766891d958ba1865a1dfd3aad8efda8384934a7fffa1cf34c96429182d7373",
+      "zh-os-390-light.png": "16fad6f444cf88268cb6096b7f47024931ab5c8746811b1c083b11de55706409",
+      "zh-v05--1440-dark-first.png": "e59769e7f93fdeae4e367db8d81c8aea11c6e1353d06c6e1020e497f5a2adc9c",
+      "zh-v05--1440-dark.png": "9ccc0720cffbabdc5586596a00cef0ffd6373c55de4d9ab769c411d4918f9e4c",
+      "zh-v05--1440-light-first.png": "7bf01608347b0ac847ab3a1e07096ab009bfec89a0d9bb010f837519c7f0af05",
+      "zh-v05--1440-light.png": "6f4ddc17cf5c3934337375ac7b25bba344437276cd6e6661e6ea5f4b40491c2f",
+      "zh-v05--390-dark-first.png": "b76e720838c751a3149fc5662923cb21a6cc40393a5f8f0ce0eed78922bfb3c9",
+      "zh-v05--390-dark.png": "8576b3f5fe4eccddf3f0eec8d90b7f491a88d232dd0e2e4dd77ed7549e272993",
+      "zh-v05--390-light-first.png": "07b07ee149b21e773e302184ec29840e0d2c62fccdcfcc12839c96925a94550b",
+      "zh-v05--390-light.png": "652fd7f49adcf68a9729adb7d443a943da1e066a2d34a7138f9de9567d32ddcb"
+    }
+  },
+  "visual_review": [
+    "desktop-showcase/01-desktop-light.webp",
+    "desktop-showcase/03-launcher-light.webp",
+    "desktop-showcase/06-productivity-dark.webp",
+    "shots/zh-os-390-light-first.png",
+    "shots/os-1440-dark-first.png"
+  ],
+  "spec_delta": {
+    "docs/specs/website/project.md": "6905a0f37c7b72bd6d523b312c6ee024ae059ea731e36f65b1a96a38bbe54b91",
+    "docs/specs/website/design/os-ai-introduction.md": "3b343e43c559a37c608ee2fa5a49c98b5ab4850cb5c0e79dcfd5414f12cf8805"
+  },
+  "dependencies": {
+    "package_lock_sha256": "dc7121a2c03d91d0a20cd8c3cb8dc31b68ca235e8fc2364f0837082434f6ff82",
+    "book_head": "d7a71a7fb1fa42ddd26d6cec859715ed98161f7a"
+  },
+  "limitations": "Original PNG remains available only by explicit link; original capture quality preserved as separate provenance, displayed WebP is lossy. No claimed timing benchmark.",
+  "implementation_commit": "ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+  "online_tests": {
+    "passed": 5,
+    "seconds": 39.6,
+    "log_sha256": "10f6b6ed118a8305110680f85a7386aa022503ed74ba4404d00e16d638e9603a",
+    "probe_sha256": "54a12d915cf3459adc8eee86453f731bc0df1a42e72cff797a8845cfef95bab1",
+    "asset_downloads": 35,
+    "asset_bytes_receipt_sha256": "b3588208d5dc76dadb6667c3002ef9061ba201c930752eaaf711e4d9c72d87ea",
+    "desktop_visits": 4,
+    "locales": [
+      "en",
+      "zh"
+    ],
+    "widths": [
+      390,
+      1440
+    ],
+    "first_card_captures": {
+      "online-en-1440.png": "45f7d075a6fddbe3036f7a8125132169881ec91e7a99b517c9576b34a31d391d",
+      "online-en-390.png": "48b75580c83d16a70c158860ff3def816e7996f58f355dc97acb6bf06fac6284",
+      "online-zh-1440.png": "4fc3fefe92f88b4b851a13f73a98f974bb00ccc4fa032dd30443a7776f58b4b1",
+      "online-zh-390.png": "83e7957f1ad5293c866e0efd3d484f1c5f143d8ef33e69ebee1be459ae41cf43"
+    },
+    "no_original_requests": true
+  },
+  "deployment": {
+    "release": "20261012-ac2ac217a",
+    "revision": "ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+    "archive_sha256": "9a4928bb02b506101e4f06d027ee83a52072cbe34ce068ca8faaefaa167b75f9",
+    "script_sha256": "c6f42fb0afc3c6ecedd0f6d6e319f18e0d6fa9bb126fb6d79fa389e768e26db9",
+    "log_sha256": "76643af08de43fad88cea7050a621ebbdc8d8f8144633929ab41eec57e115892",
+    "backup": "/home/visus/auto-website-backup-20261012-ac2ac217a",
+    "validation": "Stage validates all35 original and WebP checksums, WebP<1MB; HTTPS/HTTP HTML exact bytes plus HTTPS default WebP; live35 images HTTPS exact hashes/budgets; retained previous hashed assets and backup."
+  }
+}

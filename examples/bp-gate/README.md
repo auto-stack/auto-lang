@@ -1,7 +1,7 @@
 # bp-gate — 蓝图级双端 gate（PLAN-075 T-03 首证）
 
 L2 Blueprint 层的 parity 门（auto-lang design 30 §2「每单元双端 gate」的
-第一次落地）：对 `blueprints/` 包库的消费做**自动化构建渲染断言**——
+第一次落地）：对 `packages/blueprints/` 包库的消费做**自动化构建渲染断言**——
 vue 臂（构建+渲染+截图基线）× VM 臂（boot+state/snapshot 断言）。
 
 ## 跑法
@@ -23,7 +23,7 @@ pnpm gate --update-snapshots             # 刷截图基线（e2e/baselines/）
 
 - **R-B 沙箱构建**：`auto build` 在 `dep bps` 工程内物化 `deps/bps`
   junction（pac.rs materialize_local_dep；Plan 529 worktree 红线）——
-  gate.mjs 把 `blueprints/` + `host/` 复制到仓库外临时沙箱再构建，
+  gate.mjs 把 `packages/blueprints/` + `host/` 复制到仓库外临时沙箱再构建，
   退出路径先摘 `deps/` 链接再整树删除。**严禁在仓库内直接 build host/**。
 - **G-7 补件**：gen 腿不落 `vite-env.d.ts`/`auto-sources.ts`（074-sink-mode
   G-7 环境缺口），gate.mjs 在 vue-tsc 前补最小 shim。

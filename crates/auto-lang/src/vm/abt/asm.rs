@@ -19,8 +19,7 @@ pub fn assemble(program: &AbtProgram) -> Result<CompiledPackage, String> {
         offsets.push(current_offset);
 
         // Check if there's a label for this instruction
-        for _ in &program.labels {
-        }
+        for _ in &program.labels {}
 
         let size = instruction_size(instr);
         current_offset += size;
@@ -65,7 +64,8 @@ pub fn assemble(program: &AbtProgram) -> Result<CompiledPackage, String> {
     let mut exports = HashMap::new();
     for (name, target) in &program.exports {
         let addr = if target.starts_with("0x") {
-            u32::from_str_radix(&target[2..], 16).map_err(|e| format!("Invalid export target: {}", e))?
+            u32::from_str_radix(&target[2..], 16)
+                .map_err(|e| format!("Invalid export target: {}", e))?
         } else if let Some(&off) = label_offsets.get(target) {
             off as u32
         } else {
@@ -78,12 +78,20 @@ pub fn assemble(program: &AbtProgram) -> Result<CompiledPackage, String> {
     let object_keys: Vec<Vec<auto_val::ValueKey>> = program
         .object_keys
         .iter()
-        .map(|keys| keys.iter().map(|k| auto_val::ValueKey::Str(k.clone().into())).collect())
+        .map(|keys| {
+            keys.iter()
+                .map(|k| auto_val::ValueKey::Str(k.clone().into()))
+                .collect()
+        })
         .collect();
 
     Ok(CompiledPackage {
         bytecode,
-        string_pool: program.strings.iter().map(|s| s.as_bytes().to_vec()).collect(),
+        string_pool: program
+            .strings
+            .iter()
+            .map(|s| s.as_bytes().to_vec())
+            .collect(),
         object_keys,
         object_types: program.object_types.clone(),
         exports,
@@ -96,94 +104,204 @@ pub fn assemble(program: &AbtProgram) -> Result<CompiledPackage, String> {
 fn instruction_size(instr: &AbtInstruction) -> usize {
     let operand_size = match instr.opcode {
         // No operands
-        OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
-        | OpCode::CONST_0 | OpCode::CONST_1 | OpCode::HALT | OpCode::PRINT
-        | OpCode::YIELD_TASK | OpCode::YIELD_VAL | OpCode::CREATE_NONE
-        | OpCode::IS_SOME | OpCode::IS_OK | OpCode::UNWRAP_SOME | OpCode::UNWRAP_OK
-        | OpCode::UNWRAP_ERR | OpCode::IS_NIL | OpCode::NEG | OpCode::NEG_F
-        | OpCode::NEG_D | OpCode::NOT | OpCode::TO_STR | OpCode::STR_CAT
-        | OpCode::ADD | OpCode::SUB | OpCode::MUL | OpCode::DIV | OpCode::MOD
-        | OpCode::ADD_F | OpCode::SUB_F | OpCode::MUL_F | OpCode::DIV_F
-        | OpCode::ADD_D | OpCode::SUB_D | OpCode::MUL_D | OpCode::DIV_D
-        | OpCode::ADD_U64 | OpCode::SUB_U64 | OpCode::MUL_U64 | OpCode::DIV_U64
-        | OpCode::MOD_U64 | OpCode::AND | OpCode::OR | OpCode::XOR
-        | OpCode::SHL | OpCode::SHR | OpCode::EQ | OpCode::NE | OpCode::LT
-        | OpCode::GT | OpCode::LE | OpCode::GE | OpCode::EQ_D | OpCode::NE_D
-        | OpCode::LT_D | OpCode::GT_D | OpCode::LE_D | OpCode::GE_D
-            | OpCode::EQ_U64 | OpCode::NE_U64 | OpCode::LT_U64 | OpCode::GT_U64
-            | OpCode::LE_U64 | OpCode::GE_U64
-            | OpCode::EQ_F | OpCode::NE_F | OpCode::LT_F | OpCode::GT_F
-            | OpCode::LE_F | OpCode::GE_F
-        | OpCode::I32_TO_F32 | OpCode::I64_TO_F64 | OpCode::U64_TO_F64
-        | OpCode::PROMOTE_F64 | OpCode::NULL_COALESCE
-        | OpCode::TASK_ID | OpCode::SPAWN_GO | OpCode::REPLY | OpCode::HANDLE_MSG
-        | OpCode::CALL_CLOSURE | OpCode::TYPE_F64_TO_I32 | OpCode::TYPE_STR_TO_I64
-        | OpCode::TYPE_F32_TO_I32 | OpCode::TYPE_CAST_PTR | OpCode::ARRAY_LEN
-        | OpCode::MOD_F | OpCode::MOD_D
-        | OpCode::CREATE_SOME | OpCode::CREATE_ERR
-        | OpCode::CREATE_RANGE | OpCode::CREATE_RANGE_EQ
-        | OpCode::CHAN_NEW | OpCode::RECV | OpCode::TRY_RECV
-        | OpCode::TASK_LOOP | OpCode::AWAIT_FUTURE | OpCode::POLL_FUTURE
+        OpCode::NOP
+        | OpCode::POP
+        | OpCode::DUP
+        | OpCode::SWAP
+        | OpCode::DROP
+        | OpCode::CONST_0
+        | OpCode::CONST_1
+        | OpCode::HALT
+        | OpCode::PRINT
+        | OpCode::YIELD_TASK
+        | OpCode::YIELD_VAL
+        | OpCode::CREATE_NONE
+        | OpCode::IS_SOME
+        | OpCode::IS_OK
+        | OpCode::UNWRAP_SOME
+        | OpCode::UNWRAP_OK
+        | OpCode::UNWRAP_ERR
+        | OpCode::IS_NIL
+        | OpCode::NEG
+        | OpCode::NEG_F
+        | OpCode::NEG_D
+        | OpCode::NOT
+        | OpCode::TO_STR
+        | OpCode::STR_CAT
+        | OpCode::ADD
+        | OpCode::SUB
+        | OpCode::MUL
+        | OpCode::DIV
+        | OpCode::MOD
+        | OpCode::ADD_F
+        | OpCode::SUB_F
+        | OpCode::MUL_F
+        | OpCode::DIV_F
+        | OpCode::ADD_D
+        | OpCode::SUB_D
+        | OpCode::MUL_D
+        | OpCode::DIV_D
+        | OpCode::ADD_U64
+        | OpCode::SUB_U64
+        | OpCode::MUL_U64
+        | OpCode::DIV_U64
+        | OpCode::MOD_U64
+        | OpCode::AND
+        | OpCode::OR
+        | OpCode::XOR
+        | OpCode::SHL
+        | OpCode::SHR
+        | OpCode::EQ
+        | OpCode::NE
+        | OpCode::LT
+        | OpCode::GT
+        | OpCode::LE
+        | OpCode::GE
+        | OpCode::EQ_D
+        | OpCode::NE_D
+        | OpCode::LT_D
+        | OpCode::GT_D
+        | OpCode::LE_D
+        | OpCode::GE_D
+        | OpCode::EQ_U64
+        | OpCode::NE_U64
+        | OpCode::LT_U64
+        | OpCode::GT_U64
+        | OpCode::LE_U64
+        | OpCode::GE_U64
+        | OpCode::EQ_F
+        | OpCode::NE_F
+        | OpCode::LT_F
+        | OpCode::GT_F
+        | OpCode::LE_F
+        | OpCode::GE_F
+        | OpCode::I32_TO_F32
+        | OpCode::I64_TO_F64
+        | OpCode::U64_TO_F64
+        | OpCode::PROMOTE_F64
+        | OpCode::NULL_COALESCE
+        | OpCode::TASK_ID
+        | OpCode::SPAWN_GO
+        | OpCode::REPLY
+        | OpCode::HANDLE_MSG
+        | OpCode::CALL_CLOSURE
+        | OpCode::TYPE_F64_TO_I32
+        | OpCode::TYPE_STR_TO_I64
+        | OpCode::TYPE_F32_TO_I32
+        | OpCode::TYPE_CAST_PTR
+        | OpCode::ARRAY_LEN
+        | OpCode::MOD_F
+        | OpCode::MOD_D
+        | OpCode::CREATE_SOME
+        | OpCode::CREATE_ERR
+        | OpCode::CREATE_RANGE
+        | OpCode::CREATE_RANGE_EQ
+        | OpCode::CHAN_NEW
+        | OpCode::RECV
+        | OpCode::TRY_RECV
+        | OpCode::TASK_LOOP
+        | OpCode::AWAIT_FUTURE
+        | OpCode::POLL_FUTURE
         | OpCode::CONSTRUCT_INSTANCE
-        | OpCode::CREATE_LIST_INT | OpCode::CREATE_LIST_STR | OpCode::CREATE_LIST_BOOL
-        | OpCode::CREATE_LIST_INT_INLINE | OpCode::CREATE_LIST_STR_INLINE
-        | OpCode::CREATE_LIST_BOOL_INLINE | OpCode::LIST_PUSH_INT
-        | OpCode::LIST_POP_INT | OpCode::LIST_GET_INT | OpCode::LIST_SET_INT
-        | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
+        | OpCode::CREATE_LIST_INT
+        | OpCode::CREATE_LIST_STR
+        | OpCode::CREATE_LIST_BOOL
+        | OpCode::CREATE_LIST_INT_INLINE
+        | OpCode::CREATE_LIST_STR_INLINE
+        | OpCode::CREATE_LIST_BOOL_INLINE
+        | OpCode::LIST_PUSH_INT
+        | OpCode::LIST_POP_INT
+        | OpCode::LIST_GET_INT
+        | OpCode::LIST_SET_INT
+        | OpCode::GET_ELEM
+        | OpCode::SET_ELEM
+        | OpCode::SET_FIELD
+        | OpCode::SLICE
         | OpCode::PUSH_NIL
-        | OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
-        | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1
-        | OpCode::TYPE_CAST_I32 | OpCode::TYPE_CAST_U32 | OpCode::TYPE_CAST_I64
-        | OpCode::TYPE_CAST_U64 | OpCode::TYPE_CAST_F64
-        | OpCode::TYPE_TO_STR | OpCode::TYPE_TO_I32 | OpCode::TYPE_TO_F64
-        | OpCode::TYPE_F64_TO_STR | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR
-        | OpCode::TYPE_BOOL_TO_STR | OpCode::TYPE_F32_TO_STR
+        | OpCode::LOAD_LOC_0
+        | OpCode::LOAD_LOC_1
+        | OpCode::LOAD_LOC_2
+        | OpCode::STORE_LOC_0
+        | OpCode::STORE_LOC_1
+        | OpCode::TYPE_CAST_I32
+        | OpCode::TYPE_CAST_U32
+        | OpCode::TYPE_CAST_I64
+        | OpCode::TYPE_CAST_U64
+        | OpCode::TYPE_CAST_F64
+        | OpCode::TYPE_TO_STR
+        | OpCode::TYPE_TO_I32
+        | OpCode::TYPE_TO_F64
+        | OpCode::TYPE_F64_TO_STR
+        | OpCode::TYPE_I64_TO_STR
+        | OpCode::TYPE_U64_TO_STR
+        | OpCode::TYPE_BOOL_TO_STR
+        | OpCode::TYPE_F32_TO_STR
         | OpCode::POP_HANDLER
-        | OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM
-            => 0,
+        | OpCode::ACCUM_NODE
+        | OpCode::ACCUM_MERGE
+        | OpCode::POP_ACCUM => 0,
 
-        OpCode::CONST_U8 | OpCode::POP_N | OpCode::RESERVE_STACK | OpCode::RET
-        | OpCode::ERROR_PROPAGATE | OpCode::CREATE_OK | OpCode::GET_GENERIC_FIELD
-        | OpCode::SET_GENERIC_FIELD | OpCode::GET_TUPLE_FIELD
-        | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE
-        | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
-        | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
-            => 1,
+        OpCode::CONST_U8
+        | OpCode::POP_N
+        | OpCode::RESERVE_STACK
+        | OpCode::RET
+        | OpCode::ERROR_PROPAGATE
+        | OpCode::CREATE_OK
+        | OpCode::GET_GENERIC_FIELD
+        | OpCode::SET_GENERIC_FIELD
+        | OpCode::GET_TUPLE_FIELD
+        | OpCode::CREATE_ARRAY
+        | OpCode::CREATE_TUPLE
+        | OpCode::LOAD_LOCAL
+        | OpCode::STORE_LOCAL
+        | OpCode::LOAD_STATE_FIELD
+        | OpCode::STORE_STATE_FIELD
+        | OpCode::LOAD_GLOBAL
+        | OpCode::STORE_GLOBAL => 1,
 
         OpCode::FN_PROLOG => 2,
 
-        OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::CALL | OpCode::CLOSURE
-        | OpCode::SLEEP | OpCode::JOIN | OpCode::SEND | OpCode::CREATE_FUTURE
-        | OpCode::LOAD_REF | OpCode::STORE_REF | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF
-            => 4,
+        OpCode::CONST_I32
+        | OpCode::CONST_F32
+        | OpCode::CALL
+        | OpCode::CLOSURE
+        | OpCode::SLEEP
+        | OpCode::JOIN
+        | OpCode::SEND
+        | OpCode::CREATE_FUTURE
+        | OpCode::LOAD_REF
+        | OpCode::STORE_REF
+        | OpCode::LOAD_MUT_REF
+        | OpCode::STORE_MUT_REF => 4,
 
         // Plan 321: CREATE_GENERATOR has 5 operand bytes (u32 func_addr + u8 n_args)
         OpCode::CREATE_GENERATOR => 5,
 
         OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => 8,
 
-        OpCode::CALL_NAT | OpCode::JMP | OpCode::JMP_IF_Z
+        OpCode::CALL_NAT
+        | OpCode::JMP
+        | OpCode::JMP_IF_Z
         | OpCode::JMP_IF_NZ
-        | OpCode::PUSH_HANDLER
-            => 2,
+        | OpCode::PUSH_HANDLER => 2,
 
         // 2026-08-22(池 u32 化):池索引操作数 2B→4B,与 engine/disasm 对齐。
-        OpCode::LOAD_STR | OpCode::CAPTURE_VAR | OpCode::LOAD_CAPTURED
-        | OpCode::STORE_CAPTURED | OpCode::GET_FIELD
+        OpCode::LOAD_STR
+        | OpCode::CAPTURE_VAR
+        | OpCode::LOAD_CAPTURED
+        | OpCode::STORE_CAPTURED
+        | OpCode::GET_FIELD
         | OpCode::ACCUM_PAIR
-        | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
-            => 4,
+        | OpCode::LOAD_GLOBAL
+        | OpCode::STORE_GLOBAL => 4,
 
         // Plan 364: PUSH_ACCUM(池 u32 化后 8 字节:name + id 两枚 u32)
         OpCode::PUSH_ACCUM => 8,
 
-        OpCode::IS_VARIANT => {
-            match instr.operands.first() {
-                Some(AbtOperand::Bytes(b)) => 2 + b.len(),
-                _ => 2,
-            }
-        }
+        OpCode::IS_VARIANT => match instr.operands.first() {
+            Some(AbtOperand::Bytes(b)) => 2 + b.len(),
+            _ => 2,
+        },
 
         OpCode::JMP_L | OpCode::JMP_FAR => 4,
 
@@ -211,12 +329,10 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
             1 + part_count
         }
 
-        OpCode::NEW_INSTANCE => {
-            match instr.operands.first() {
-                Some(AbtOperand::Bytes(b)) => b.len(),
-                _ => 0,
-            }
-        }
+        OpCode::NEW_INSTANCE => match instr.operands.first() {
+            Some(AbtOperand::Bytes(b)) => b.len(),
+            _ => 0,
+        },
 
         OpCode::SOURCE_LINE => 2,
         // Plan 318: PUSH_BOOL has 1 byte operand (0|1)
@@ -232,7 +348,6 @@ fn emit_operands(
     label_offsets: &HashMap<String, usize>,
     bytecode: &mut Vec<u8>,
 ) -> Result<(), String> {
-
     match instr.opcode {
         // No operands
         OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
@@ -525,10 +640,14 @@ fn operand_label_or_u32(
     label_offsets: &HashMap<String, usize>,
     resolve: ResolveType,
 ) -> Result<u32, String> {
-    let op = operands.get(idx).ok_or_else(|| format!("Missing operand {}", idx))?;
+    let op = operands
+        .get(idx)
+        .ok_or_else(|| format!("Missing operand {}", idx))?;
     let value = match op {
         AbtOperand::Label(name) => {
-            let target = label_offsets.get(name).copied()
+            let target = label_offsets
+                .get(name)
+                .copied()
                 .ok_or_else(|| format!("Undefined label: {}", name))?;
             match resolve {
                 ResolveType::Absolute => target as u32,
@@ -635,6 +754,9 @@ fn operand_f64(operands: &[AbtOperand], idx: usize) -> Result<f64, String> {
 fn operand_bytes(operands: &[AbtOperand], idx: usize) -> Result<&[u8], String> {
     match operands.get(idx) {
         Some(AbtOperand::Bytes(v)) => Ok(v.as_slice()),
-        other => Err(format!("Expected bytes operand at {}, got {:?}", idx, other)),
+        other => Err(format!(
+            "Expected bytes operand at {}, got {:?}",
+            idx, other
+        )),
     }
 }

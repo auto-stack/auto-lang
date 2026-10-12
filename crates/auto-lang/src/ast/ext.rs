@@ -279,11 +279,11 @@ impl ToNode for Ext {
         }
 
         // Add metadata
-        node.set_prop("module_path", auto_val::Value::Str(self.module_path.clone()));
         node.set_prop(
-            "is_same_module",
-            auto_val::Value::Bool(self.is_same_module),
+            "module_path",
+            auto_val::Value::Str(self.module_path.clone()),
         );
+        node.set_prop("is_same_module", auto_val::Value::Bool(self.is_same_module));
 
         node
     }
@@ -330,13 +330,7 @@ mod tests {
     #[test]
     fn test_ext_with_fields() {
         let field = Member::new("_fp".into(), Type::Unknown, None);
-        let ext = Ext::with_fields(
-            "File".into(),
-            vec![field],
-            vec![],
-            "auto.io".into(),
-            true,
-        );
+        let ext = Ext::with_fields("File".into(), vec![field], vec![], "auto.io".into(), true);
 
         assert_eq!(ext.target, "File");
         assert_eq!(ext.fields.len(), 1);
@@ -348,13 +342,7 @@ mod tests {
     #[test]
     fn test_ext_display_with_fields() {
         let field = Member::new("_fp".into(), Type::Unknown, None);
-        let ext = Ext::with_fields(
-            "File".into(),
-            vec![field],
-            vec![],
-            "auto.io".into(),
-            true,
-        );
+        let ext = Ext::with_fields("File".into(), vec![field], vec![], "auto.io".into(), true);
 
         let display = format!("{}", ext);
         assert!(display.contains("ext"));
@@ -365,13 +353,7 @@ mod tests {
     #[test]
     fn test_ext_to_node_with_fields() {
         let field = Member::new("_fp".into(), Type::Unknown, None);
-        let ext = Ext::with_fields(
-            "File".into(),
-            vec![field],
-            vec![],
-            "auto.io".into(),
-            true,
-        );
+        let ext = Ext::with_fields("File".into(), vec![field], vec![], "auto.io".into(), true);
 
         let node = ext.to_node();
         let target_value = node.get_prop("target");

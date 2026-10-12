@@ -25,108 +25,177 @@ impl Material3Registry {
         let mut components = HashMap::new();
 
         // === Layout Elements ===
-        components.insert("col",
-            ("androidx.compose.foundation.layout", vec!["Column", "Arrangement"]));
-        components.insert("row",
-            ("androidx.compose.foundation.layout", vec!["Row", "Arrangement"]));
-        components.insert("box",
-            ("androidx.compose.foundation.layout", vec!["Box"]));
-        components.insert("container",
-            ("androidx.compose.foundation.layout", vec!["Box"]));
-        components.insert("grid",
-            ("androidx.compose.foundation.lazy.grid", vec!["LazyVerticalGrid", "GridCells"]));
-        components.insert("scroll",
-            ("androidx.compose.foundation", vec!["verticalScroll", "ScrollState"]));
+        components.insert(
+            "col",
+            (
+                "androidx.compose.foundation.layout",
+                vec!["Column", "Arrangement"],
+            ),
+        );
+        components.insert(
+            "row",
+            (
+                "androidx.compose.foundation.layout",
+                vec!["Row", "Arrangement"],
+            ),
+        );
+        components.insert("box", ("androidx.compose.foundation.layout", vec!["Box"]));
+        components.insert(
+            "container",
+            ("androidx.compose.foundation.layout", vec!["Box"]),
+        );
+        components.insert(
+            "grid",
+            (
+                "androidx.compose.foundation.lazy.grid",
+                vec!["LazyVerticalGrid", "GridCells"],
+            ),
+        );
+        components.insert(
+            "scroll",
+            (
+                "androidx.compose.foundation",
+                vec!["verticalScroll", "ScrollState"],
+            ),
+        );
 
         // === Content Elements ===
-        components.insert("button",
-            ("androidx.compose.material3", vec!["Button", "OutlinedButton", "TextButton"]));
-        components.insert("input",
-            ("androidx.compose.material3", vec!["TextField", "OutlinedTextField"]));
-        components.insert("textarea",
-            ("androidx.compose.material3", vec!["TextField"]));
-        components.insert("checkbox",
-            ("androidx.compose.material3", vec!["Checkbox"]));
-        components.insert("toggle",
-            ("androidx.compose.material3", vec!["Switch"]));
-        components.insert("switch",
-            ("androidx.compose.material3", vec!["Switch"]));
-        components.insert("select",
-            ("androidx.compose.material3", vec!["ExposedDropdownMenuBox"]));
+        components.insert(
+            "button",
+            (
+                "androidx.compose.material3",
+                vec!["Button", "OutlinedButton", "TextButton"],
+            ),
+        );
+        components.insert(
+            "input",
+            (
+                "androidx.compose.material3",
+                vec!["TextField", "OutlinedTextField"],
+            ),
+        );
+        components.insert(
+            "textarea",
+            ("androidx.compose.material3", vec!["TextField"]),
+        );
+        components.insert("checkbox", ("androidx.compose.material3", vec!["Checkbox"]));
+        components.insert("toggle", ("androidx.compose.material3", vec!["Switch"]));
+        components.insert("switch", ("androidx.compose.material3", vec!["Switch"]));
+        components.insert(
+            "select",
+            ("androidx.compose.material3", vec!["ExposedDropdownMenuBox"]),
+        );
 
         // === Typography Elements ===
-        components.insert("text",
-            ("androidx.compose.material3", vec!["Text"]));
-        components.insert("span",
-            ("androidx.compose.material3", vec!["Text"]));
-        components.insert("p",
-            ("androidx.compose.material3", vec!["Text"]));
-        components.insert("h1",
-            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]));
-        components.insert("h2",
-            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]));
-        components.insert("h3",
-            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]));
-        components.insert("h4",
-            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]));
-        components.insert("h5",
-            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]));
-        components.insert("h6",
-            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]));
+        components.insert("text", ("androidx.compose.material3", vec!["Text"]));
+        components.insert("span", ("androidx.compose.material3", vec!["Text"]));
+        components.insert("p", ("androidx.compose.material3", vec!["Text"]));
+        components.insert(
+            "h1",
+            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]),
+        );
+        components.insert(
+            "h2",
+            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]),
+        );
+        components.insert(
+            "h3",
+            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]),
+        );
+        components.insert(
+            "h4",
+            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]),
+        );
+        components.insert(
+            "h5",
+            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]),
+        );
+        components.insert(
+            "h6",
+            ("androidx.compose.material3", vec!["Text", "MaterialTheme"]),
+        );
 
         // === Navigation Elements ===
-        components.insert("tabs",
-            ("androidx.compose.material3", vec!["TabRow", "Tab"]));
-        components.insert("tab",
-            ("androidx.compose.material3", vec!["Tab", "TabRow"]));
+        components.insert(
+            "tabs",
+            ("androidx.compose.material3", vec!["TabRow", "Tab"]),
+        );
+        components.insert("tab", ("androidx.compose.material3", vec!["Tab", "TabRow"]));
 
         // === Overlay Elements ===
-        components.insert("modal",
-            ("androidx.compose.material3", vec!["AlertDialog"]));
-        components.insert("tooltip",
-            ("androidx.compose.material3", vec!["TooltipBox", "PlainTooltip"]));
-        components.insert("dialog",
-            ("androidx.compose.material3", vec!["AlertDialog"]));
+        components.insert("modal", ("androidx.compose.material3", vec!["AlertDialog"]));
+        components.insert(
+            "tooltip",
+            (
+                "androidx.compose.material3",
+                vec!["TooltipBox", "PlainTooltip"],
+            ),
+        );
+        components.insert(
+            "dialog",
+            ("androidx.compose.material3", vec!["AlertDialog"]),
+        );
 
         // === Feedback Elements ===
-        components.insert("progress",
-            ("androidx.compose.material3", vec!["LinearProgressIndicator", "CircularProgressIndicator"]));
-        components.insert("badge",
-            ("androidx.compose.material3", vec!["Badge"]));
-        components.insert("spinner",
-            ("androidx.compose.material3", vec!["CircularProgressIndicator"]));
+        components.insert(
+            "progress",
+            (
+                "androidx.compose.material3",
+                vec!["LinearProgressIndicator", "CircularProgressIndicator"],
+            ),
+        );
+        components.insert("badge", ("androidx.compose.material3", vec!["Badge"]));
+        components.insert(
+            "spinner",
+            (
+                "androidx.compose.material3",
+                vec!["CircularProgressIndicator"],
+            ),
+        );
 
         // === Display Elements ===
-        components.insert("card",
-            ("androidx.compose.material3", vec!["Card", "ElevatedCard", "OutlinedCard"]));
-        components.insert("avatar",
-            ("androidx.compose.foundation", vec!["Image"]));
-        components.insert("image",
-            ("androidx.compose.foundation", vec!["Image"]));
-        components.insert("icon",
-            ("androidx.compose.material.icons", vec!["Icons"]));
-        components.insert("divider",
-            ("androidx.compose.material3", vec!["HorizontalDivider"]));
-        components.insert("separator",
-            ("androidx.compose.material3", vec!["HorizontalDivider"]));
+        components.insert(
+            "card",
+            (
+                "androidx.compose.material3",
+                vec!["Card", "ElevatedCard", "OutlinedCard"],
+            ),
+        );
+        components.insert("avatar", ("androidx.compose.foundation", vec!["Image"]));
+        components.insert("image", ("androidx.compose.foundation", vec!["Image"]));
+        components.insert("icon", ("androidx.compose.material.icons", vec!["Icons"]));
+        components.insert(
+            "divider",
+            ("androidx.compose.material3", vec!["HorizontalDivider"]),
+        );
+        components.insert(
+            "separator",
+            ("androidx.compose.material3", vec!["HorizontalDivider"]),
+        );
 
         // === Form Elements ===
-        components.insert("slider",
-            ("androidx.compose.material3", vec!["Slider"]));
-        components.insert("radio",
-            ("androidx.compose.material3", vec!["RadioButton"]));
-        components.insert("radiogroup",
-            ("androidx.compose.material3", vec!["RadioButton"]));
+        components.insert("slider", ("androidx.compose.material3", vec!["Slider"]));
+        components.insert("radio", ("androidx.compose.material3", vec!["RadioButton"]));
+        components.insert(
+            "radiogroup",
+            ("androidx.compose.material3", vec!["RadioButton"]),
+        );
 
         // === List Elements ===
-        components.insert("list",
-            ("androidx.compose.foundation.lazy", vec!["LazyColumn"]));
-        components.insert("list_item",
-            ("androidx.compose.material3", vec!["ListItem"]));
+        components.insert(
+            "list",
+            ("androidx.compose.foundation.lazy", vec!["LazyColumn"]),
+        );
+        components.insert(
+            "list_item",
+            ("androidx.compose.material3", vec!["ListItem"]),
+        );
 
         // === Table Elements (using LazyColumn) ===
-        components.insert("table",
-            ("androidx.compose.foundation.lazy", vec!["LazyColumn"]));
+        components.insert(
+            "table",
+            ("androidx.compose.foundation.lazy", vec!["LazyColumn"]),
+        );
 
         Self { components }
     }
@@ -138,7 +207,9 @@ impl Material3Registry {
 
     /// Get the primary component name for a tag
     pub fn primary_component(&self, tag: &str) -> Option<&'static str> {
-        self.components.get(tag).and_then(|(_, comps)| comps.first().copied())
+        self.components
+            .get(tag)
+            .and_then(|(_, comps)| comps.first().copied())
     }
 
     /// Get all component names for a tag

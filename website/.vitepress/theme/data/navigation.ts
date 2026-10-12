@@ -66,7 +66,6 @@ export const NAV_GROUPS: NavGroup[] = [
       leaf('rust', 'Rust', 'Rust', '/rust'),
       leaf('python', 'Python', 'Python', '/python'),
       leaf('ai', 'AI', 'AI', '/ai'),
-      leaf('os', 'OS', 'OS', '/os'),
     ],
   },
   {
@@ -89,6 +88,7 @@ export const NAV_GROUPS: NavGroup[] = [
 
 export const NAV_TOP_LEAVES: NavLeaf[] = [
   leaf('v05', 'v0.5 Release', 'v0.5 发布', '/v05'),
+  leaf('os', 'OS', 'OS', '/os'),
   leaf('apps', 'Apps', '应用', '/apps'),
   leaf('docs', 'Docs', '文档', '/docs/'),
   leaf('books', 'Tutorials', '教程', '/books/'),

@@ -65,9 +65,21 @@ print("done")
         assert!(result.is_ok(), "sse stream should run: {:?}", result.err());
         let (_, stdout) = result.unwrap();
         eprintln!("plan341 sse stdout = [{}]", stdout);
-        assert!(stdout.contains("first"), "missing first frame: [{}]", stdout);
-        assert!(stdout.contains("second"), "missing second frame: [{}]", stdout);
-        assert!(stdout.contains("third"), "missing third frame: [{}]", stdout);
+        assert!(
+            stdout.contains("first"),
+            "missing first frame: [{}]",
+            stdout
+        );
+        assert!(
+            stdout.contains("second"),
+            "missing second frame: [{}]",
+            stdout
+        );
+        assert!(
+            stdout.contains("third"),
+            "missing third frame: [{}]",
+            stdout
+        );
         assert!(stdout.contains("done"), "missing done: [{}]", stdout);
     }
 

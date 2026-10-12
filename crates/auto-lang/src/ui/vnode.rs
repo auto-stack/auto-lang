@@ -207,22 +207,13 @@ pub enum VNodeProps {
     },
 
     /// 多行文本输入框属性
-    Textarea {
-        placeholder: String,
-        value: String,
-    },
+    Textarea { placeholder: String, value: String },
 
     /// 复选框属性
-    Checkbox {
-        label: String,
-        is_checked: bool,
-    },
+    Checkbox { label: String, is_checked: bool },
 
     /// 单选框属性
-    Radio {
-        label: String,
-        is_selected: bool,
-    },
+    Radio { label: String, is_selected: bool },
 
     /// 下拉选择框属性
     Select {
@@ -231,10 +222,7 @@ pub enum VNodeProps {
     },
 
     /// 布局属性（用于 Column, Row）
-    Layout {
-        spacing: u16,
-        padding: u16,
-    },
+    Layout { spacing: u16, padding: u16 },
 
     /// 容器属性
     Container {
@@ -256,14 +244,10 @@ pub enum VNodeProps {
     },
 
     /// 进度条属性
-    ProgressBar {
-        progress: f32,
-    },
+    ProgressBar { progress: f32 },
 
     /// 列表属性
-    List {
-        spacing: u16,
-    },
+    List { spacing: u16 },
 
     /// 表格属性
     Table {
@@ -747,10 +731,14 @@ mod tests {
     fn test_vtree_add_root() {
         let mut tree = VTree::new();
         let id = tree.next_id();
-        let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Hello".to_string(),
-            selectable: false,
-        });
+        let node = VNode::new(
+            id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Hello".to_string(),
+                selectable: false,
+            },
+        );
 
         tree.set_root(node);
 
@@ -763,10 +751,14 @@ mod tests {
     fn test_vtree_add_node() {
         let mut tree = VTree::new();
         let id = tree.next_id();
-        let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Test".to_string(),
-            selectable: false,
-        });
+        let node = VNode::new(
+            id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Test".to_string(),
+                selectable: false,
+            },
+        );
 
         tree.add_node(node);
 
@@ -778,10 +770,14 @@ mod tests {
     fn test_vtree_get() {
         let mut tree = VTree::new();
         let id = tree.next_id();
-        let node = VNode::new(id, VNodeKind::Button, VNodeProps::Button {
-            label: "Click".to_string(),
-            disabled: false
-        });
+        let node = VNode::new(
+            id,
+            VNodeKind::Button,
+            VNodeProps::Button {
+                label: "Click".to_string(),
+                disabled: false,
+            },
+        );
 
         tree.set_root(node);
 
@@ -796,10 +792,14 @@ mod tests {
     fn test_vtree_get_mut() {
         let mut tree = VTree::new();
         let id = tree.next_id();
-        let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Original".to_string(),
-            selectable: false,
-        });
+        let node = VNode::new(
+            id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Original".to_string(),
+                selectable: false,
+            },
+        );
 
         tree.set_root(node);
 
@@ -821,17 +821,25 @@ mod tests {
 
         // 创建根节点
         let root_id = tree.next_id();
-        let mut root = VNode::new(root_id, VNodeKind::Column, VNodeProps::Layout {
-            spacing: 10,
-            padding: 0
-        });
+        let mut root = VNode::new(
+            root_id,
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: 10,
+                padding: 0,
+            },
+        );
 
         // 创建子节点
         let child_id = tree.next_id();
-        let child = VNode::new(child_id, VNodeKind::Text, VNodeProps::Text {
-            content: "Child".to_string(),
-            selectable: false,
-        })
+        let child = VNode::new(
+            child_id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Child".to_string(),
+                selectable: false,
+            },
+        )
         .with_parent(root_id);
 
         root.add_child(child_id);
@@ -857,10 +865,14 @@ mod tests {
         let mut tree = VTree::new();
 
         let root_id = tree.next_id();
-        let mut root = VNode::new(root_id, VNodeKind::Row, VNodeProps::Layout {
-            spacing: 5,
-            padding: 0
-        });
+        let mut root = VNode::new(
+            root_id,
+            VNodeKind::Row,
+            VNodeProps::Layout {
+                spacing: 5,
+                padding: 0,
+            },
+        );
 
         // 添加多个子节点
         for i in 1..=3 {
@@ -891,16 +903,24 @@ mod tests {
         let mut tree = VTree::new();
 
         let root_id = tree.next_id();
-        let mut root = VNode::new(root_id, VNodeKind::Column, VNodeProps::Layout {
-            spacing: 10,
-            padding: 0,
-        });
+        let mut root = VNode::new(
+            root_id,
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: 10,
+                padding: 0,
+            },
+        );
 
         let child_id = tree.next_id();
-        let child = VNode::new(child_id, VNodeKind::Text, VNodeProps::Text {
-            content: "Child".to_string(),
-            selectable: false,
-        })
+        let child = VNode::new(
+            child_id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Child".to_string(),
+                selectable: false,
+            },
+        )
         .with_parent(root_id);
 
         root.add_child(child_id);
@@ -916,10 +936,14 @@ mod tests {
         let mut tree = VTree::new();
 
         let id = tree.next_id();
-        let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Orphan".to_string(),
-            selectable: false,
-        })
+        let node = VNode::new(
+            id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Orphan".to_string(),
+                selectable: false,
+            },
+        )
         .with_parent(VNodeId(999)); // 不存在的父节点
 
         tree.add_node(node);
@@ -934,16 +958,24 @@ mod tests {
 
         // 构建三层结构: Root -> Child -> Grandchild
         let root_id = tree.next_id();
-        let mut root = VNode::new(root_id, VNodeKind::Column, VNodeProps::Layout {
-            spacing: 10,
-            padding: 0,
-        });
+        let mut root = VNode::new(
+            root_id,
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: 10,
+                padding: 0,
+            },
+        );
 
         let child_id = tree.next_id();
-        let mut child = VNode::new(child_id, VNodeKind::Row, VNodeProps::Layout {
-            spacing: 5,
-            padding: 0,
-        })
+        let mut child = VNode::new(
+            child_id,
+            VNodeKind::Row,
+            VNodeProps::Layout {
+                spacing: 5,
+                padding: 0,
+            },
+        )
         .with_parent(root_id);
 
         let grandchild_id = tree.next_id();
@@ -953,7 +985,7 @@ mod tests {
             VNodeProps::Text {
                 content: "Grandchild".to_string(),
                 selectable: false,
-            }
+            },
         )
         .with_parent(child_id);
 
@@ -972,10 +1004,14 @@ mod tests {
         let mut tree = VTree::new();
 
         let root_id = tree.next_id();
-        let mut root = VNode::new(root_id, VNodeKind::Column, VNodeProps::Layout {
-            spacing: 10,
-            padding: 0,
-        });
+        let mut root = VNode::new(
+            root_id,
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: 10,
+                padding: 0,
+            },
+        );
 
         // 添加文本节点
         let text_id = tree.next_id();
@@ -985,7 +1021,7 @@ mod tests {
             VNodeProps::Text {
                 content: "Hello".to_string(),
                 selectable: false,
-            }
+            },
         )
         .with_parent(root_id);
 
@@ -996,8 +1032,8 @@ mod tests {
             VNodeKind::Button,
             VNodeProps::Button {
                 label: "Click".to_string(),
-                disabled: false
-            }
+                disabled: false,
+            },
         )
         .with_parent(root_id);
 
@@ -1022,10 +1058,14 @@ mod tests {
         let mut tree = VTree::new();
 
         let id = tree.next_id();
-        let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Test".to_string(),
-            selectable: false,
-        });
+        let node = VNode::new(
+            id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Test".to_string(),
+                selectable: false,
+            },
+        );
 
         tree.set_root(node);
         assert_eq!(tree.node_count(), 1);
@@ -1046,10 +1086,14 @@ mod tests {
     #[test]
     fn test_vnode_with_label() {
         let id = VNodeId::new(1);
-        let node = VNode::new(id, VNodeKind::Text, VNodeProps::Text {
-            content: "Test".to_string(),
-            selectable: false,
-        })
+        let node = VNode::new(
+            id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Test".to_string(),
+                selectable: false,
+            },
+        )
         .with_label("MyTextNode");
 
         assert_eq!(node.label, "MyTextNode");
@@ -1058,7 +1102,14 @@ mod tests {
     #[test]
     fn vnode_has_path_and_source_span() {
         let id = VNodeId::new(1);
-        let mut node = VNode::new(id, VNodeKind::Text, VNodeProps::Text { content: "x".into(), selectable: false });
+        let mut node = VNode::new(
+            id,
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "x".into(),
+                selectable: false,
+            },
+        );
         assert!(node.path.is_empty());
         assert!(node.source_span.is_none());
 
@@ -1084,7 +1135,11 @@ mod tests {
     fn vnode_id_from_path_distinguishes_for_iterations() {
         use crate::ui::vnode::id_from_path;
         // for 展开第 0、1、2 项应有不同 id
-        let a = id_from_path(&[0, 0]); let b = id_from_path(&[0, 1]); let c = id_from_path(&[0, 2]);
-        assert_ne!(a, b); assert_ne!(b, c); assert_ne!(a, c);
+        let a = id_from_path(&[0, 0]);
+        let b = id_from_path(&[0, 1]);
+        let c = id_from_path(&[0, 2]);
+        assert_ne!(a, b);
+        assert_ne!(b, c);
+        assert_ne!(a, c);
     }
 }

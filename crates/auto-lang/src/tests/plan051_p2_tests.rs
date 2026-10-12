@@ -105,7 +105,10 @@ mod plan051_p2_tests {
             &[("count".to_string(), "3".to_string())],
         );
         assert_eq!(out, "已加载 3 条");
-        let miss = crate::ui::i18n_lookup::substitute_params("{a}/{b}", &[("a".to_string(), "x".to_string())]);
+        let miss = crate::ui::i18n_lookup::substitute_params(
+            "{a}/{b}",
+            &[("a".to_string(), "x".to_string())],
+        );
         assert_eq!(miss, "x/{b}", "未提供的参数原样保留");
     }
 }

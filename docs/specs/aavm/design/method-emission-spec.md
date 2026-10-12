@@ -44,7 +44,7 @@
 ### 洞 A（P511-5）：独立二进制转译 `File::read_text` 缺映射
 
 - **现象**：五方矩阵②腿（aavm2_bin）编译红，`error[E0433]: cannot find type File`×3
-  （merged.rs:5874/5921/5946，源自 `auto/lib/codegen.at:2487/2534/2561`）。
+  （merged.rs:5874/5921/5946，源自 `packages/aavm/lib/codegen.at:2487/2534/2561`）。
 - **根因**：`trans/rust.rs` 的 `(Ident(obj), Ident(method))` stdlib 模块分派
   （`"env"`/`"fs"`/`"json"`... 臂，~:5300）没有 `"File"` 模块臂；
   `fs.read_text` 有 `a2r_std::fs::read_text` 映射而 `File.read_text` 直落。

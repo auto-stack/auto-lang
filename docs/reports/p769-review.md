@@ -1,0 +1,19 @@
+# PLAN-769 r1 review
+
+Outcome: pass. Reviewed commit: 97a0f6f872edc91f5d345edb8d2eb9ad312b8862; implementation/deployed source: ac2ac217aa2e38fab623ad076f549b80c6cb1eed; base: 8f8ca80477be48005dae75889aa80933a344a24d. Same implementation-session review, not a separate independent context: verdict reconstructed from committed diff, source/variant bytes, mapping, assertions, identified logs and local/production captures. No implementation dirt; later projection/review descendants do not change website or dependencies.
+
+| Acceptance | Tasks | Evidence | Verdict |
+|---|---|---|---|
+| AC-01 | T-01/T-02 | 35 committed local WebP variants all <1,000,000bytes, 39,521,546→6,993,620bytes, maximum701,534; source35 hashes equal base, original dimensions retained, desktop/launcher/editor text and wallpaper inspected; catalog/mapping exact | pass |
+| AC-02 | T-01/T-02 | 141.27s build; 62 distinct local tests; EN/ZH five-width both-theme OS/v05/Apps matrices, six-image and AutoJade gallery decode/keyboard/zoom, demo filters/28 decodes and Shell guide; default/open modal no original requests, Esc/close unload imgs and return focus; original href retained | pass |
+| AC-03 delivery gates | T-03 | Committed source, checksum/archive guarded staged atomic deployment with backup/rollback, source+variant35 stage verification; five production tests/35 HTTPS byte+hash checks plus EN/ZH390/1440 six desktop image decodes/zoom and v05/apps no original preloads; HTTP/HTTPS HTML bytes match | pass |
+
+Lifecycle ordering: review permits the subsequent merge; actual landing/ledger/archive/guarded cleanup are separate completion checkpoints, recorded only after they happen. T-03 delivery checkbox is normalized to implementation/deployment; its unchanged lifecycle requirements remain in §9 receipts.
+
+SD-01/02 match committed UTF-8/LF canonical source hashes frozen in docs/reports/p769-verification.json. Latest explicit PLAN-769 transport text clarifies historical original-image clauses: original provenance and full-resolution source remain; default screenshot/zoom use compressed derivative. No new architecture/goals. OriginalPNG downloads are intentionally available only on explicit request. Lossy WebP quality95 does not promise pixel-identical display, and no unmeasured timing improvement is claimed. Candidate assets already below1MB retain their source path; the shared modal now also avoids hidden candidate loads.
+
+Omission/deferral/workaround scan: no dropped in-scope item, no unapproved deferral, zero new debt candidates. Public large-image scan found no remaining >1MB image outside the covered original-capture directories; candidate originals are below1MB. Negative assertions verify no hidden image nodes or original requests, not merely display src metadata. Global JSON ignore caught and narrowed with a runtime-mapping exception; mapping is committed. Existing count assertions were corrected because hidden image removal is the required behavior, with explicit zero-hidden-img assertions. No new debug/TODO/dependency warning; pre-existing Auto fence fallback/browser-data/chunk notices remain baseline. Category A: Cargo/docs_gen forbidden, not run. Screenshot resolution remains unchanged; no scene/crop edit. Report repository paths normalized to slashes after a Windows Git-show path probe correction.
+
+Reused runtime evidence belongs to this exact website/spec/lockfile tree; source/evidence commits differ only in report metadata. Independent reconstruction checked committed source hashes, immutable originals and mapping completeness. Review limitations are candid above. Durable counts/hashes and source references are in docs/reports/p769-verification.json and p769-image-catalog.json.
+
+Batch due:769%5!=0; covered766 receipt dated2026-10-12T04:08Z is <48h, no batch due. Source review includes both Spec deltas; no Rust changed.

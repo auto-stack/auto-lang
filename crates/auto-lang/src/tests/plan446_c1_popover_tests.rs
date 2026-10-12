@@ -10,16 +10,30 @@ mod c1_popover {
     fn popover_form_builds_and_renders() {
         let rel = "test/ui/plan446_c1_popover/src/front/app.at";
         let candidates = [
-            std::env::var("CARGO_MANIFEST_DIR").ok().map(|d| std::path::PathBuf::from(d).join(rel)),
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
             Some(std::path::PathBuf::from(rel)),
             Some(std::path::PathBuf::from(format!("../../{}", rel))),
         ];
-        let path = candidates.into_iter().flatten().find(|p| p.exists()).expect("corpus");
+        let path = candidates
+            .into_iter()
+            .flatten()
+            .find(|p| p.exists())
+            .expect("corpus");
         let dc = crate::plan370_test_support::build_component_from_app(&path)
             .expect("C1: popover form must build (parse + codegen + link)");
         let (view, _, _) = dc.view_with_debug();
         let g = format!("{:?}", view);
-        assert!(g.contains("outer"), "view must render around popover: {}", &g[..g.len().min(500)]);
-        eprintln!("C1 popover view len={} has_confirm={}", g.len(), g.contains("confirm"));
+        assert!(
+            g.contains("outer"),
+            "view must render around popover: {}",
+            &g[..g.len().min(500)]
+        );
+        eprintln!(
+            "C1 popover view len={} has_confirm={}",
+            g.len(),
+            g.contains("confirm")
+        );
     }
 }

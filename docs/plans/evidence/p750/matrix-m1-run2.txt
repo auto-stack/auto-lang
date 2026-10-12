@@ -1,0 +1,188 @@
+
+Running 1 test using 1 worker
+
+    [api] 200 GET …http://127.0.0.1:4443/api/ws_root
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/tags_index?path=&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/recent_paths_get
+    [api] 200 GET …ade-edit%5Ce2e%5C.runtime%5Cworkspace&depth=8
+[1 boot] PASS
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/draft_pending
+[2 tree] PASS — 5 档全数列出（显示名面——dtitle 覆盖）
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+[3 open] PASS — 编辑器渲染内容可见
+    [api] 200 GET …http://127.0.0.1:4443/api/draft_begin
+    [api] 200 GET …http://127.0.0.1:4443/api/draft_alloc
+    [api] 200 POST …http://127.0.0.1:4443/api/draft_checkpoint
+[4 edit] PASS — 追加输入 → StatusBar 未保存（blur 冲刷后 store 落定，规避保存点击 blur-flush 与 Save 竞态）
+    [api] 200 POST …http://127.0.0.1:4443/api/write_wiki
+    [api] 200 GET …http://127.0.0.1:4443/api/ws_root
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/tags_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+    [api] 200 GET …ade-edit%5Ce2e%5C.runtime%5Cworkspace&depth=8
+[5 save] PASS — 落盘三验（原文/标记/frontmatter）+ updated_at 维护（当日形）
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/draft_settle
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+[6 reload] PASS — 磁盘外改 → 重载可见
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+[7 tab] 开两档 — Tasks.ad 激活，编辑器内容互换到位
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+[7 tab] 切换互换 — 双向 active 断言过（D-03 切换面同步在测）
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 GET …http://127.0.0.1:4443/api/draft_alloc
+    [api] 200 POST …http://127.0.0.1:4443/api/draft_checkpoint
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+[7 tab] 脏标跨后台还原 — TabActivate 投影断言过
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+[7 tab] 确认弹层取消路 — 档留 + 脏标保
+    [api] 200 POST …http://127.0.0.1:4443/api/draft_settle
+[7 tab] PASS — 双档切换互换 + dirty 关闭确认两路（取消档留/放弃修改并关闭[结算式]，磁盘零写入；保留草稿弧=PLAN-031 T-06）
+    [api] 200 POST …http://127.0.0.1:4443/api/draft_checkpoint
+[8 editops] 文档尾插入 — store 收字 + 脏标置真（blur 冲刷）
+    [api] 200 POST …http://127.0.0.1:4443/api/draft_settle
+[8 editops] PASS — 插入/退格复原 + 脏标重算（C-5 同语义弧线）
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+[10 link] PASS — 面板开 + 反链三源显示名行（首页/CAP 定理/Tasks）+ 出链段恒 target 文本（CAP 定理钮/首页悬空文本）
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+[10 link] PASS — 反链行开 index.ad（空态文本）+ 出链行开 Hello World.ad
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+[10 link] PASS — untitled 空态双文本 + 重开行恢复
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …http://127.0.0.1:4443/api/ws_root
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/tags_index?path=&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/recent_paths_get
+    [api] 200 GET …ade-edit%5Ce2e%5C.runtime%5Cworkspace&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/draft_pending
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/create_page
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/ws_root
+    [api] 200 GET …//127.0.0.1:4443/api/tags_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+    [api] 200 GET …ade-edit%5Ce2e%5C.runtime%5Cworkspace&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+[10c create] PASS — 建页弧线（取消零落盘/创建→开档 # NewPage/树新行/面板翻转/模板逐字节；ASCII 源档测试内造）
+    [api] 200 GET …http://127.0.0.1:4443/api/ws_root
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/recent_paths_get
+    [api] 200 GET …//127.0.0.1:4443/api/tags_index?path=&depth=8
+    [api] 200 GET …ade-edit%5Ce2e%5C.runtime%5Cworkspace&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/draft_pending
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/lc_plan_b
+    [api] 200 POST …http://127.0.0.1:4443/api/lc_commit_b
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/exists
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/read_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/recent_paths_set
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 POST …http://127.0.0.1:4443/api/lc_plan_b
+    [api] 200 POST …http://127.0.0.1:4443/api/lc_commit_b
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 POST …http://127.0.0.1:4443/api/search_wiki
+[10m mentions] PASS — 三段标题 + 提及行 + snippet + linkify + aliases（全臂）+ PLAN-017 四级解析导航 + 提及转链词边界
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/tags_index?path=&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/ws_root
+    [api] 200 GET …http://127.0.0.1:4443/api/recent_paths_get
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …ade-edit%5Ce2e%5C.runtime%5Cworkspace&depth=8
+    [api] 200 GET …http://127.0.0.1:4443/api/draft_pending
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+    [api] 200 GET …//127.0.0.1:4443/api/link_index?path=&depth=8
+  x  1 e2e\matrix.spec.ts:151:1 › vue 六检查（vm 矩阵同单） (23.1s)
+
+
+  1) e2e\matrix.spec.ts:151:1 › vue 六检查（vm 矩阵同单） ───────────────────────────────────────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('（无孤页）', { exact: true })
+    Expected: visible
+    Timeout: 10000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByText('（无孤页）', { exact: true }) with timeout 10000ms
+      - waiting for getByText('（无孤页）', { exact: true })
+
+
+      546 |   await page.getByText('视图', { exact: true }).click()
+      547 |   await page.getByText('孤页清单', { exact: true }).click()
+    > 548 |   await expect(page.getByText('（无孤页）', { exact: true })).toBeVisible({ timeout: 10_000 })
+          |                                                          ^
+      549 |   console.log('[11 find] PASS — orphans 第五模式空态（pristine 全连接——T-01 首锁）')
+      550 |   // 快开子步：开弹层 → **空 q「最近」段（PLAN-021 修订——10m goto 重载
+      551 |   // = 新 Init，recents 自 .auto-jade/recents.txt 跨会话载入[020「会话域复位
+        at D:\autostack\jade-edit\e2e\matrix.spec.ts:548:58
+
+    Error Context: test-results\matrix-vue-六检查（vm-矩阵同单）\error-context.md
+
+  1 failed
+    e2e\matrix.spec.ts:151:1 › vue 六检查（vm 矩阵同单） ────────────────────────────────────────────────────

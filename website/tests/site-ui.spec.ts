@@ -223,24 +223,49 @@ test.describe('viewports', () => {
   })
 })
 
-// ---------- AC-09 v0.5 首图早见 + 章节导航 ----------
+// ---------- AC-09 v0.5 版本成果先见 + 章节导航（PLAN-758 r2） ----------
 
 test.describe('v05 release page', () => {
   for (const vp of [{ width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
     for (const url of ['/v05/', '/zh/v05/']) {
-      test(`hero image top < 1.5 viewport at ${vp.width} (${url})`, async ({ page }) => {
+      test(`release progress precedes imagery at ${vp.width} (${url})`, async ({ page }, testInfo) => {
         await page.setViewportSize(vp)
         await page.goto(url)
-        const img = page.locator('figure.hero-shot img').first()
-        await expect(img).toBeVisible()
-        const box = await img.boundingBox()
-        expect(box, 'hero image bbox').toBeTruthy()
-        expect(box!.y, 'hero top within 1.5x viewport').toBeLessThan(1.5 * vp.height)
+        const heading = page.locator('#journey h2')
+        await expect(heading).toHaveText(url.startsWith('/zh') ? '六个月，三大步' : 'Six Months, Three Major Steps')
+        await page.screenshot({ path: testInfo.outputPath('release-summary.png') })
+        const box = await heading.boundingBox()
+        expect(box, 'version progress heading').toBeTruthy()
+        expect(box!.y, 'version progress early in page').toBeLessThan(1.5 * vp.height)
+        await expect(page.locator('#journey .section-desc')).toContainText('AutoUI')
+        await expect(page.locator('#journey .section-desc')).toContainText('AutoOS')
+        await expect(page.locator('#journey .timeline-version')).toHaveText(['v0.3', 'v0.4', 'v0.5'])
+        const order = ['journey', 'highlights', 'desktop', 'autoui', 'flagship', 'ecosystem', 'philosophy', 'roadmap', 'get-started']
+        expect(await page.locator('.release-landing > section[id]').evaluateAll(els => els.map(el => el.id))).toEqual(order)
+        expect(await page.locator('.section-nav-link').evaluateAll(els => els.map(el => el.getAttribute('href')))).toEqual(order.map(id => '#' + id))
+        const positions = await page.evaluate(() => ({
+          timelineEnd: document.querySelector('#journey')!.getBoundingClientRect().bottom,
+          imageStart: document.querySelector('.hero-shot')!.getBoundingClientRect().top,
+          statsStart: document.querySelector('.stats-row')!.getBoundingClientRect().top,
+        }))
+        expect(positions.timelineEnd).toBeLessThan(positions.imageStart)
+        expect(positions.imageStart).toBeLessThan(positions.statsStart)
+        if (vp.width < 768) {
+          const before = await page.locator('.section-nav').boundingBox()
+          await page.locator('.section-nav-toggle').click()
+          const expanded = await page.locator('.section-nav').boundingBox()
+          expect(expanded!.height, 'opening the directory must not move the content').toBe(before!.height)
+        }
+        await page.locator('.section-nav-link[href="#journey"]').click()
+        await expect(page).toHaveURL(url + '#journey')
+        if (vp.width < 768) await expect(page.locator('.section-nav-toggle')).toHaveAttribute('aria-expanded', 'false')
+        await expect(heading).toBeInViewport()
+        await page.screenshot({ path: testInfo.outputPath('release-progress.png') })
       })
     }
   }
 
-  test('stats moved to journey: desktop section precedes stats', async ({ page }) => {
+  test('scale figures remain after product details: desktop section precedes stats', async ({ page }) => {
     await page.goto('/v05/')
     const desktopY = await page.locator('#desktop').evaluate((el) => el.getBoundingClientRect().top + window.scrollY)
     const statsY = await page.locator('.stats-row').first().evaluate((el) => el.getBoundingClientRect().top + window.scrollY)
@@ -265,16 +290,12 @@ test.describe('v05 release page', () => {
     await expect(page.locator('.section-nav-link.current')).toContainText(/Apps|旗舰应用/)
   })
 
-  test('screenshot gallery: tabs switch main image', async ({ page }) => {
+  test('desktop cards expose the full sequence without tabs', async ({ page }) => {
     await page.goto('/v05/')
-    const tabs = page.locator('.shot-tabs [role="tab"]')
-    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true')
-    const shotImg = page.locator('#shot-panel .evidence-image img')
-    const firstSrc = await shotImg.getAttribute('src')
-    await tabs.nth(1).click()
-    const secondSrc = await shotImg.getAttribute('src')
-    expect(secondSrc).not.toBe(firstSrc)
-    await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true')
+    const story = page.locator('#desktop-showcase')
+    await expect(story.getByRole('tab')).toHaveCount(0)
+    await expect(story.locator('.desktop-card')).toHaveCount(6)
+    await expect(story.locator('.desktop-card').last().getByRole('heading')).toHaveText('Work · Editor and tasks')
   })
 
   test('start menu uses real launcher image; no TODO placeholders', async ({ page }) => {
@@ -283,8 +304,9 @@ test.describe('v05 release page', () => {
     expect(html).not.toContain('TODO screenshot')
     expect(html).not.toContain('shot-placeholder')
     // PLAN-720：实际 Launcher 图标网格；保留“真实启动器图、非占位”回归。
-    await page.locator('.shot-tabs').getByRole('tab', { name: 'Launcher · Light', exact: true }).click()
-    await expect(page.locator('#shot-panel .evidence-image img[src="/desktop-showcase/03-launcher-light.png"]')).toHaveCount(1)
+    const launcher = page.locator('.desktop-card[data-desktop-shot="/desktop-showcase/03-launcher-light.png"]')
+    await launcher.scrollIntoViewIfNeeded()
+    await expect(launcher.locator('.evidence-image img')).toBeVisible()
   })
 
   test('philosophy details expandable and locatable', async ({ page }) => {
@@ -297,10 +319,10 @@ test.describe('v05 release page', () => {
     await expect(details).toHaveAttribute('open')
   })
 
-  test('kanban comparison present with both arms', async ({ page }) => {
+  test('kanban comparison reserves both verified-candidate captures', async ({ page }) => {
     await page.goto('/zh/v05/')
-    await expect(page.locator('.kanban-pair .evidence-image img[src="/v05/kanban-web.png"]')).toHaveCount(1)
-    await expect(page.locator('.kanban-pair .evidence-image img[src="/v05/kanban-desktop.png"]')).toHaveCount(1)
+    await expect(page.locator('.kanban-pair [data-capture-id="SHOT-11"]')).toHaveCount(1)
+    await expect(page.locator('.kanban-pair [data-capture-id="SHOT-12"]')).toHaveCount(1)
   })
 })
 
@@ -326,7 +348,7 @@ test.describe('image dialog keyboard', () => {
 test.describe('autoshell regression', () => {
   test('native overview, F1/F2/F3 sections and script tabs intact', async ({ page }) => {
     await page.goto('/apps/autoshell/guide/')
-    await expect(page.locator('img[src="/apps/autoshell/ash-01.png"]').first()).toBeVisible()
+    await expect(page.locator('img[data-original-src="/apps/autoshell/ash-01.png"]').first()).toBeVisible()
     for (const id of ['interface-overview', 'daily-shell', 'data-pipelines', 'scripts', 'automation', 'quick-start']) {
       await expect(page.locator('#' + id)).toBeAttached()
     }

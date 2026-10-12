@@ -24,7 +24,11 @@ fn main() {
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // Should not have compilation errors
-    assert!(!result.contains("Error"), "Pointer type declaration should work, got: {}", result);
+    assert!(
+        !result.contains("Error"),
+        "Pointer type declaration should work, got: {}",
+        result
+    );
 }
 
 /// Test address-of operator transpilation to C
@@ -44,8 +48,11 @@ fn main() {
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // C transpiler should generate &p.x
-    assert!(result.contains("&") || result.contains("Error"),
-        "Address-of operator should transpile to & in C, got: {}", result);
+    assert!(
+        result.contains("&") || result.contains("Error"),
+        "Address-of operator should transpile to & in C, got: {}",
+        result
+    );
 }
 
 /// Test pointer dereference operator
@@ -61,8 +68,11 @@ fn main() {
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // C transpiler should generate *ptr
-    assert!(result.contains("*") || result.contains("Error"),
-        "Dereference operator should transpile to * in C, got: {}", result);
+    assert!(
+        result.contains("*") || result.contains("Error"),
+        "Dereference operator should transpile to * in C, got: {}",
+        result
+    );
 }
 
 /// Test pointer type with different element types
@@ -77,8 +87,11 @@ fn main() {
 }
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(!result.contains("Error"),
-        "Pointer to different types should work, got: {}", result);
+    assert!(
+        !result.contains("Error"),
+        "Pointer to different types should work, got: {}",
+        result
+    );
 }
 
 /// Test nil pointer
@@ -91,5 +104,9 @@ fn main() {
 }
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(!result.contains("Error"), "Nil pointer should work, got: {}", result);
+    assert!(
+        !result.contains("Error"),
+        "Nil pointer should work, got: {}",
+        result
+    );
 }

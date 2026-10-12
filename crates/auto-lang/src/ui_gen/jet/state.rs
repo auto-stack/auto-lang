@@ -49,7 +49,10 @@ impl StateConverter {
     /// Convert a model field to Compose state declaration
     pub fn convert_model(&self, name: &str, type_: &str, default: &str) -> String {
         let kotlin_default = self.convert_default(default, type_);
-        format!("var {} by remember {{ mutableStateOf({}) }}", name, kotlin_default)
+        format!(
+            "var {} by remember {{ mutableStateOf({}) }}",
+            name, kotlin_default
+        )
     }
 
     /// Convert default value to Kotlin
@@ -100,9 +103,17 @@ impl StateConverter {
     }
 
     /// Generate handler with parameter
-    pub fn generate_handler_with_param(name: &str, param_name: &str, param_type: &str, body: &str) -> String {
+    pub fn generate_handler_with_param(
+        name: &str,
+        param_name: &str,
+        param_type: &str,
+        body: &str,
+    ) -> String {
         let kotlin_type = Self::map_type(param_type);
-        format!("fun {}({}: {}) {{ {} }}", name, param_name, kotlin_type, body)
+        format!(
+            "fun {}({}: {}) {{ {} }}",
+            name, param_name, kotlin_type, body
+        )
     }
 
     /// Generate handler with multiple parameters
@@ -151,7 +162,7 @@ mod tests {
         let converter = StateConverter::new();
         let result = converter.convert_model("price", "float", "0.0");
         assert!(result.contains("var price by remember"));
-        assert!(result.contains("mutableStateOf(0.0f)"));  // Kotlin Float requires 'f' suffix
+        assert!(result.contains("mutableStateOf(0.0f)")); // Kotlin Float requires 'f' suffix
     }
 
     #[test]
@@ -175,7 +186,12 @@ mod tests {
 
     #[test]
     fn test_handler_with_param() {
-        let result = StateConverter::generate_handler_with_param("updateValue", "value", "int", "this.value = value");
+        let result = StateConverter::generate_handler_with_param(
+            "updateValue",
+            "value",
+            "int",
+            "this.value = value",
+        );
         assert!(result.contains("fun updateValue(value: Int)"));
         assert!(result.contains("this.value = value"));
     }

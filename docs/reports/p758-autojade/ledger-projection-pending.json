@@ -1,0 +1,76 @@
+{
+  "state": "blocked",
+  "workspace": "D:/autostack/auto-lang",
+  "ledger_sha256_at_prepare": "ea2ecf90cd5572bf8c8cead0c8bf5ccd84b40b26aca7beab07890f74e58c6f35",
+  "affected_legacy_entries": [
+    {
+      "id": "P732-1",
+      "title": "autodown-wikilink — 编辑壳正文内链激活供给契约（语义/命中/点击门/载荷/origin/兼容/验证面）",
+      "file": "docs/specs/auto-lang/ui/design/autodown-wikilink.md",
+      "status": "stable",
+      "section": "designs"
+    },
+    {
+      "id": "P722-1",
+      "title": "四主应用介绍契约：AutoEdit/AutoShell/AutoMusk/JadeEdit 双语专题与系统应用分组（PLAN-722）",
+      "file": "docs/specs/website/design/application-introductions.md",
+      "status": null,
+      "section": "designs"
+    }
+  ],
+  "canonical_targets": [
+    {
+      "path": "docs/specs/auto-lang/ui/architecture.md",
+      "input_sha256": "772debe90fd269f145b4334bebc1a64ff9d6ba4c7d487bfe77ae4a10bbdf75e5",
+      "output_sha256": "772debe90fd269f145b4334bebc1a64ff9d6ba4c7d487bfe77ae4a10bbdf75e5"
+    },
+    {
+      "path": "docs/specs/auto-lang/ui/design/autodown-wikilink.md",
+      "input_sha256": "4adb16a11ee0a7a73b465c12c7c273130b941940f89b1deda0ad7f3ee5fba88c",
+      "output_sha256": "4adb16a11ee0a7a73b465c12c7c273130b941940f89b1deda0ad7f3ee5fba88c"
+    },
+    {
+      "path": "docs/specs/auto-lang/ui/overview.md",
+      "input_sha256": "3b49d0167afa90be7c577bef38949d20b84e5bc80a5c95c4b5f68141894531a8",
+      "output_sha256": "3b49d0167afa90be7c577bef38949d20b84e5bc80a5c95c4b5f68141894531a8"
+    },
+    {
+      "path": "docs/specs/auto-lang/ui/plans.md",
+      "input_sha256": "0b97691fccc8cfa564aecf2105c9e465d5fd2ecd3982be7b7fe14f25a2dc1081",
+      "output_sha256": "0b97691fccc8cfa564aecf2105c9e465d5fd2ecd3982be7b7fe14f25a2dc1081"
+    },
+    {
+      "path": "docs/specs/website/design/application-introductions.md",
+      "input_sha256": "6a90d8c3029b1edf2ab03ec3e648188f0cf2082fb92f1531db396eb1768675e6",
+      "output_sha256": "6a90d8c3029b1edf2ab03ec3e648188f0cf2082fb92f1531db396eb1768675e6"
+    },
+    {
+      "path": "docs/specs/website/design/ecosystem-readme.md",
+      "input_sha256": "2522a72474f44e5ef224d3fa15ebcfb2c834e1814e8688253d37f1732c6af147",
+      "output_sha256": "2522a72474f44e5ef224d3fa15ebcfb2c834e1814e8688253d37f1732c6af147"
+    },
+    {
+      "path": "docs/specs/website/design/ui-presentation.md",
+      "input_sha256": "0a5ece7849256626497297c6b13a5b677cac36288aa388c936166b17d320b66e",
+      "output_sha256": "1e2817dce9cee1b593122d8d433f238943529adba53643aa55b38d568e6cd92d"
+    },
+    {
+      "path": "docs/specs/website/project.md",
+      "input_sha256": "5b2298c606c2061bd3037f9d16552c63da8f8880bd3624df29aa71b69a9b910f",
+      "output_sha256": "840f33f4a52e459258832a09da6fa2d09571513c8a5a7521c57103e0e2b6d36a"
+    },
+    {
+      "path": "docs/specs/website/design/os-ai-introduction.md",
+      "input_sha256": "93e021ec16ac2fed2e78876eb5aeccba9d563d2ad6ee37a02a0972256ed46fae",
+      "output_sha256": "b013f042a0141ddf2af2949dd53def78d5c9f3b807c06122c2d3360ac0558d1d"
+    }
+  ],
+  "reason": "No registered spec writers and no existing listeners on checked ports. Temporary AutoMusk serve/read probe was rejected by automatic approval with blocked by policy; no further reason supplied. No direct ledger writes. Draft descriptors only; application store owns projection schema.",
+  "revision": 3,
+  "previous_landed_revision": 2,
+  "canonical_base": "ada443b9cd753f233317c5045e47cea29f4fc643",
+  "hash_normalization": "Spec text SHA256 after CRLF to LF; patch and binary/log hashes raw bytes",
+  "reviewed_delta": "docs/reports/p758-release-summary-r3/spec-delta.json",
+  "additional_title_correction_review": "docs/reports/v05-six-months-correction.md",
+  "additional_title_correction_commit": "af021ed7a6bcf2f8f907e9520cf80bcc099a62e8"
+}

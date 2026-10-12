@@ -42,15 +42,13 @@ pub fn adjudicate(args: &[String], broker_probe_timeout_ms: u32) -> EntryPoint {
 /// ——测试用 pid 后缀管道探测，摆脱对生产固定管道全局命名空间状态的依赖
 /// （本机任何桌面宿主 listen 固定管道时，原测试步骤③ 的 Standalone
 /// 断言被打穿——P487-2 间歇红根因）。生产行为零变化。
-pub fn adjudicate_on(
-    pipe: &str,
-    args: &[String],
-    broker_probe_timeout_ms: u32,
-) -> EntryPoint {
+pub fn adjudicate_on(pipe: &str, args: &[String], broker_probe_timeout_ms: u32) -> EntryPoint {
     // ① 孵化标记。
     for arg in args {
         if let Some(pipe) = arg.strip_prefix("--autodesk-client=") {
-            return EntryPoint::Client { pipe: pipe.to_string() };
+            return EntryPoint::Client {
+                pipe: pipe.to_string(),
+            };
         }
     }
     // ② broker 探测（连上即关 = ping；broker 侧吞空连接）。
@@ -76,7 +74,11 @@ impl Broker {
 
     /// 指定管道名构造（测试 pid 后缀防串扰）。
     pub fn on_pipe(pipe_name: String) -> Self {
-        Self { pipe_name, next_id: AtomicU64::new(0), stopped: Arc::new(AtomicBool::new(false)) }
+        Self {
+            pipe_name,
+            next_id: AtomicU64::new(0),
+            stopped: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     pub fn stop_flag(&self) -> Arc<AtomicBool> {
@@ -112,7 +114,11 @@ impl Broker {
             (Some(v @ ("adopt" | "incubate")), Some(name)) if !name.is_empty() => v,
             _ => return Err(TransportError::Io("bad incubate record".into())),
         };
-        let render = record.split('\u{1f}').nth(2).map(RequestedRender::parse).unwrap_or_default();
+        let render = record
+            .split('\u{1f}')
+            .nth(2)
+            .map(RequestedRender::parse)
+            .unwrap_or_default();
         let n = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
         let pipe_name = format!("{}-app-{n}", self.pipe_name);
         let app_listener = transport::listen(&pipe_name)?;
@@ -122,7 +128,11 @@ impl Broker {
         });
         client.send(&reply)?;
         let end = app_listener.wait_connect()?;
-        Ok(Some(Incubation { pipe_name, end, render }))
+        Ok(Some(Incubation {
+            pipe_name,
+            end,
+            render,
+        }))
     }
 }
 
@@ -145,9 +155,15 @@ impl RequestedRender {
     fn parse(field: &str) -> Self {
         let field = field.trim();
         if let Some(base) = field.strip_suffix(":auto") {
-            return Self { mode: parse_mode_name(base), auto_downgraded: true };
+            return Self {
+                mode: parse_mode_name(base),
+                auto_downgraded: true,
+            };
         }
-        Self { mode: parse_mode_name(field), auto_downgraded: false }
+        Self {
+            mode: parse_mode_name(field),
+            auto_downgraded: false,
+        }
     }
 
     /// 编码为请求记录第三字段值。
@@ -178,7 +194,12 @@ pub fn request_incubation(
     app_name: &str,
     timeout_ms: u32,
 ) -> Result<(String, Box<dyn Transport + Send>), TransportError> {
-    request_incubation_render(broker_pipe, app_name, RequestedRender::default(), timeout_ms)
+    request_incubation_render(
+        broker_pipe,
+        app_name,
+        RequestedRender::default(),
+        timeout_ms,
+    )
 }
 
 /// Plan 500：带帧模式位的孵化请求（`--render` 裁决链的落点——child 把
@@ -249,7 +270,13 @@ mod tests {
             DrawList::default()
         }
         fn on_input(&mut self, input: &InputMsg) {
-            if matches!(input, InputMsg::PointerPressed { button: MouseButton::Left, .. }) {
+            if matches!(
+                input,
+                InputMsg::PointerPressed {
+                    button: MouseButton::Left,
+                    ..
+                }
+            ) {
                 self.component.on_with_input("__evt_onclick_1", None);
                 self.rev += 1;
             }
@@ -312,7 +339,9 @@ mod tests {
         let args = vec!["--autodesk-client=autodesk-app-7".to_string()];
         assert_eq!(
             adjudicate_on(&pipe, &args, 10),
-            EntryPoint::Client { pipe: "autodesk-app-7".into() }
+            EntryPoint::Client {
+                pipe: "autodesk-app-7".into()
+            }
         );
         // ③ 无标记无 broker → Standalone（pid 管道无人 listen → 秒失败）。
         assert_eq!(adjudicate_on(&pipe, &[], 30), EntryPoint::Standalone);
@@ -337,9 +366,7 @@ mod tests {
         // broker 管道名 pid 后缀：防并行测试进程串扰。
         let broker_pipe = format!("autodesk-broker-test-{}", std::process::id());
         let mut broker = Broker::on_pipe(broker_pipe.clone());
-        let host_side = std::thread::spawn(move || {
-            broker.serve_once().unwrap().expect("孵化连接")
-        });
+        let host_side = std::thread::spawn(move || broker.serve_once().unwrap().expect("孵化连接"));
 
         // app 侧：经 broker 请求孵化 → per-app 管道双端。
         let (pipe_name, mut app_end) = request_incubation(&broker_pipe, "counter", 2000).unwrap();
@@ -355,8 +382,7 @@ mod tests {
         let mut ph = ProtocolHost::new(&mut session, resolver());
 
         // app 端点（真实组件 + 计数器 FrameSource）。
-        let source =
-            CounterSource::new(crate::build_dynamic_component(SRC, None).expect("build"));
+        let source = CounterSource::new(crate::build_dynamic_component(SRC, None).expect("build"));
         let mut app = AppEndpoint::new(source, "counter", "计数器", 480.0, 320.0);
 
         // 孵化握手：Hello → Welcome/BufferAlloc → Ready → Active
@@ -371,11 +397,7 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert_eq!(app.state, AppState::Active);
-        assert_eq!(
-            ph.session.apps.len(),
-            1,
-            "真实 462 AppSession 已登记"
-        );
+        assert_eq!(ph.session.apps.len(), 1, "真实 462 AppSession 已登记");
         assert!(ph
             .session
             .host
@@ -396,7 +418,13 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert_eq!(app.session.count(), 1, "broker 孵化的 app 可输入");
-        let _ = (FrameMsg::CacheControl { wid: 0, drop_keys: vec![] }, HandshakeMsg::Ready);
+        let _ = (
+            FrameMsg::CacheControl {
+                wid: 0,
+                drop_keys: vec![],
+            },
+            HandshakeMsg::Ready,
+        );
     }
 
     /// PLAN-694 T-01：serve_once 双动词——`adopt␟<name>`（desktop 模式 exe
@@ -407,9 +435,8 @@ mod tests {
     fn serve_once_adopts_adopt_record() {
         let pipe = format!("autodesk-broker-adopt-{}", std::process::id());
         let mut broker = Broker::on_pipe(pipe.clone());
-        let host_side = std::thread::spawn(move || {
-            broker.serve_once().unwrap().expect("adopt 连接")
-        });
+        let host_side =
+            std::thread::spawn(move || broker.serve_once().unwrap().expect("adopt 连接"));
         // 客户端侧：rqhost::adopt 同形——连上 → `adopt␟<name>` → 认 adopt
         // 应答 → 转连 per-app 管道。
         let mut client = transport::connect(&pipe, 2000).unwrap();
@@ -452,41 +479,41 @@ mod tests {
         use crate::ui::session::{AppId, DesktopSession};
         use std::sync::atomic::AtomicBool;
 
-        const SRC: &str = "widget Broker386 { model { var count int = 0 } view { text `c: ${.count}` } }\n";
+        const SRC: &str =
+            "widget Broker386 { model { var count int = 0 } view { text `c: ${.count}` } }\n";
         let broker_pipe = format!("autodesk-broker-s3-{}", std::process::id());
 
         // 桌面侧：真实 462 会话 + 注册表 resolver + enable_broker。
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
         let code = SRC.to_string();
-        session.desktop.app_resolver =
-            Some(std::sync::Arc::new(move |name: &str| {
-                if name == "broker386" {
-                    Some(crate::ui::session::LaunchSpec {
-                        media_root: None,
-                        photo_root: None,
-                        back_entry: None,
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            if name == "broker386" {
+                Some(crate::ui::session::LaunchSpec {
+                    media_root: None,
+                    photo_root: None,
+                    back_entry: None,
 
-                        code: code.clone(),
-                        source_path: None,
-                        title: Some("Broker386".into()),
-                        name: None,
-                        daemon: None,
-                        back_root: None,
-                        fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
-                } else {
-                    None
-                }
-            }));
+                    code: code.clone(),
+                    source_path: None,
+                    title: Some("Broker386".into()),
+                    name: None,
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: None,
+                })
+            } else {
+                None
+            }
+        }));
         let stop = Arc::new(AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
         // app 侧（同进程模拟 child）：request_incubation 双端连通。
-        let (pipe_name, mut app_end) =
-            request_incubation(&broker_pipe, "broker386", 5000).unwrap();
+        let (pipe_name, mut app_end) = request_incubation(&broker_pipe, "broker386", 5000).unwrap();
         assert!(pipe_name.contains("-app-"), "per-app 管道名 {pipe_name}");
 
         // 端点握手材料：Hello 发出后，attach 泵宿主侧到 Active。

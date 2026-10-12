@@ -152,3 +152,11 @@ spawning**：spec 入只读目录表（catalog）。首个命中某 app 的请�
   launch 生命周期集成）。
 - 计划：[PLAN-658](../../../plans/archive/)（归档后）；设计裁定全文见
   计划 §5。
+
+## 契约化守卫与 meta 源（PLAN-734）
+
+- 守卫按 ResponseKind 身份分类：fn_meta 是 `primary|display` 拼串——分类取
+  primary 半段 + 参数面 UploadRequest 补充检测（拼串整体永不等于裸类型名）。
+- 参数绑定补 meta 源：ProxyRequest.headers → cookies/auth JSON（与 standalone
+  build_meta_json 单源同形）——meta 端点不再恒 400。参数身份用
+  is_upload_param（s-expr 双族）。多 session 路由/签名隔离语义不变。

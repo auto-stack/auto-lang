@@ -4,11 +4,11 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::api::targets::TargetGenerator;
     use crate::api::{
         ApiAnnotationParser, ApiAttrs, ApiEndpoint, ApiExtractor, ApiField, ApiModule, ApiParam,
-        ApiType, Target, TypeScriptGenerator, TauriGenerator, AxumGenerator,
+        ApiType, AxumGenerator, Target, TauriGenerator, TypeScriptGenerator,
     };
-    use crate::api::targets::TargetGenerator;
 
     /// Create a test API module with sample endpoints
     fn create_test_api_module() -> ApiModule {
@@ -35,9 +35,7 @@ mod tests {
         let get_user = ApiEndpoint {
             fn_name: "get_user".to_string(),
             attrs: ApiAnnotationParser::parse(r#"method = "GET", path = "/users/:id""#),
-            params: vec![
-                ApiParam::new("id".to_string(), "int".to_string()),
-            ],
+            params: vec![ApiParam::new("id".to_string(), "int".to_string())],
             return_type: "User".to_string(),
             doc: Some("Get user by ID".to_string()),
             body: None,
@@ -73,9 +71,7 @@ mod tests {
         let delete_user = ApiEndpoint {
             fn_name: "delete_user".to_string(),
             attrs: ApiAttrs::new(),
-            params: vec![
-                ApiParam::new("id".to_string(), "int".to_string()),
-            ],
+            params: vec![ApiParam::new("id".to_string(), "int".to_string())],
             return_type: "bool".to_string(),
             doc: Some("Delete a user".to_string()),
             body: None,
@@ -172,7 +168,7 @@ mod tests {
         // Verify api-http.ts
         let api_http = &files["api-http.ts"];
         // Check that HTTP methods are correct
-        assert!(api_http.contains("axios.get"));  // get_user uses GET
+        assert!(api_http.contains("axios.get")); // get_user uses GET
         assert!(api_http.contains("axios.post")); // create_user uses POST
         assert!(api_http.contains("BASE_URL"));
 
@@ -187,22 +183,38 @@ mod tests {
         let module = create_test_api_module();
 
         // get_user has explicit GET method
-        let get_user = module.endpoints.iter().find(|e| e.fn_name == "get_user").unwrap();
+        let get_user = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "get_user")
+            .unwrap();
         assert_eq!(get_user.method(), "GET");
         assert_eq!(get_user.path(), "/users/:id");
 
         // list_users uses inference - should be GET
-        let list_users = module.endpoints.iter().find(|e| e.fn_name == "list_users").unwrap();
+        let list_users = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "list_users")
+            .unwrap();
         assert_eq!(list_users.method(), "GET");
         assert_eq!(list_users.path(), "/users"); // list_users -> /users (plural)
 
         // create_user has explicit POST method
-        let create_user = module.endpoints.iter().find(|e| e.fn_name == "create_user").unwrap();
+        let create_user = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "create_user")
+            .unwrap();
         assert_eq!(create_user.method(), "POST");
         assert_eq!(create_user.path(), "/users");
 
         // delete_user uses inference - should be DELETE
-        let delete_user = module.endpoints.iter().find(|e| e.fn_name == "delete_user").unwrap();
+        let delete_user = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "delete_user")
+            .unwrap();
         assert_eq!(delete_user.method(), "DELETE");
     }
 
@@ -210,16 +222,32 @@ mod tests {
     fn test_frontend_name_generation() {
         let module = create_test_api_module();
 
-        let get_user = module.endpoints.iter().find(|e| e.fn_name == "get_user").unwrap();
+        let get_user = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "get_user")
+            .unwrap();
         assert_eq!(get_user.frontend_name(), "getUser");
 
-        let list_users = module.endpoints.iter().find(|e| e.fn_name == "list_users").unwrap();
+        let list_users = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "list_users")
+            .unwrap();
         assert_eq!(list_users.frontend_name(), "listUsers");
 
-        let create_user = module.endpoints.iter().find(|e| e.fn_name == "create_user").unwrap();
+        let create_user = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "create_user")
+            .unwrap();
         assert_eq!(create_user.frontend_name(), "createUser");
 
-        let delete_user = module.endpoints.iter().find(|e| e.fn_name == "delete_user").unwrap();
+        let delete_user = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "delete_user")
+            .unwrap();
         assert_eq!(delete_user.frontend_name(), "deleteUser");
     }
 
@@ -250,12 +278,16 @@ mod tests {
         // Test TypeScript generation with complex types
         let ts_gen = TypeScriptGenerator::new();
         let ts_output = ts_gen.generate(&module);
-        assert!(ts_output.contains("searchUsers(query: string, limit: number, offset?: number): Promise<User[]>"));
+        assert!(ts_output.contains(
+            "searchUsers(query: string, limit: number, offset?: number): Promise<User[]>"
+        ));
 
         // Test Tauri generation with complex types
         let tauri_gen = TauriGenerator::new();
         let tauri_output = tauri_gen.generate(&module);
-        assert!(tauri_output.contains("pub fn search_users(query: String, limit: i32, offset: Option<i32>) -> Vec<User>"));
+        assert!(tauri_output.contains(
+            "pub fn search_users(query: String, limit: i32, offset: Option<i32>) -> Vec<User>"
+        ));
     }
 
     #[test]

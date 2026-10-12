@@ -1,6 +1,6 @@
-# VM 渲染加载响应性（PLAN-708 S 档 + PLAN-711 已交付面 + 目标态链接）
+# VM 渲染加载响应性（PLAN-708 S 档 + PLAN-711 已交付面 + PLAN-762 测试驱动契约 + 目标态链接）
 
-> 状态：current-state 为已交付行为（PLAN-708 S 档 + PLAN-711，2026-09-30）；目标态（§2 worker 线程边界）为 **proposed**（另立 Plan，未实施）。两态严格分离，proposed 面不构成现行契约。
+> 状态：current-state 为已交付行为（PLAN-708 S 档 + PLAN-711，2026-09-30；PLAN-762 测试载体驱动契约，2026-10-11）；目标态（§2 worker 线程边界）为 **proposed**（另立 Plan，未实施）。两态严格分离，proposed 面不构成现行契约。
 
 ## 1. 已交付面（PLAN-708 S 档，实测锚定）
 
@@ -32,6 +32,17 @@
 - **骨架/失败占位**：pending→`Loading… (Widget)`、Failed→可诊断错误占位（不无限 Loading）。
 - **computed/冷构建残面**：outlet 扫描穿入 MemoBlock/Conditional（DataTable memo 生效）；memo_slots_fp 不可展开槽标记回退+dyn_deps 防护（FileTree 破恒 FILL）——两病灶页实机 memo 命中。
 - 实测：`docs/plans/reports/711-runtime.md`（长 CPU 20 样本+泵占用 4ms 恒+gallery HIT 序列）；单测族 plan711_cpu_slice（8）+ plan711_init_demand（6）。
+- **测试载体完成态驱动契约（PLAN-762）**：`drive_scheduler_to_quiescence` 的
+  `progressed` 判据只认派发/完成，**不计"续跑片让出未完成"**（`cpu.slices_run` 缺位）
+  ——多片 Init 单调用不保证收敛（761 tt 批量档 gallery 四路由 flake 在案；确定性复现
+  与裁定见 `docs/plans/reports/762-chart-init-attribution.md`，机制钉子
+  plan437_child_init_tests::child_init_multi_slice_early_exit_and_completion_driving）。
+  消费 Init/CPU 续体的**测试载体必须以完成态 + 有界截止时间循环驱动**（无排队
+  demand / 无在途 CPU / 无 I/O 凭据才放行断言；超时红带 pending/CPU/I/O 诊断；
+  precedent plan502，PLAN-759 T-08），**续体在途不得提前验收，不以单轮无 completed
+  推断完成**。生产帧泵（`poll_frame_pump`）不受此影响——每帧重入天然推进让出片，
+  该缺陷只存在于"一次性驱动到静默"的载体语义。helper 判据本体修复为独立遗留面
+  （KNOWN-DEBT D-762-1，须另行授权修订）。
 
 ## 2. 目标态（proposed — worker 线程边界，另立 Plan 未实施）
 

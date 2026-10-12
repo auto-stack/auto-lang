@@ -18,7 +18,7 @@ mod style_probe;
 
 use std::collections::HashMap;
 
-use crate::ui::vnode::{VNodeKind, VNodeId};
+use crate::ui::vnode::{VNodeId, VNodeKind};
 
 pub use build_probe::*;
 pub use edit_sink::DebugEditSink;
@@ -380,12 +380,7 @@ impl DebugLayer {
 
         // Build NodeInfo with a generic widget type.
         // In a fully wired system the VNodeKind would come from the VTree.
-        let info = inspect_node(
-            id,
-            VNodeKind::Container,
-            bounds,
-            HashMap::new(),
-        );
+        let info = inspect_node(id, VNodeKind::Container, bounds, HashMap::new());
 
         let source = self.source_map.get_location(id).cloned();
         self.panel.set_selection(info, box_model, source);

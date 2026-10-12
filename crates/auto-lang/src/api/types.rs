@@ -51,11 +51,21 @@ impl ApiAttrs {
         }
 
         let lower = fn_name.to_lowercase();
-        if lower.starts_with("get") || lower.starts_with("list") || lower.starts_with("find") || lower.starts_with("search") {
+        if lower.starts_with("get")
+            || lower.starts_with("list")
+            || lower.starts_with("find")
+            || lower.starts_with("search")
+        {
             "GET".to_string()
-        } else if lower.starts_with("create") || lower.starts_with("add") || lower.starts_with("save") {
+        } else if lower.starts_with("create")
+            || lower.starts_with("add")
+            || lower.starts_with("save")
+        {
             "POST".to_string()
-        } else if lower.starts_with("update") || lower.starts_with("modify") || lower.starts_with("set") {
+        } else if lower.starts_with("update")
+            || lower.starts_with("modify")
+            || lower.starts_with("set")
+        {
             "PUT".to_string()
         } else if lower.starts_with("delete") || lower.starts_with("remove") {
             "DELETE".to_string()
@@ -146,12 +156,10 @@ pub struct ApiEndpoint {
     /// Documentation comment
     pub doc: Option<String>,
 
-    /// Function body AST. Captured by `extract_endpoint` (Plan musk-022 CRUD
-    /// 智能扩展 第1步) for a future "route A" that transpiles the body into the
-    /// handler via a2r. **Currently unused in production** — Plan 399 第4-5 步
-    /// shipped "route B" (db-delegation pattern matching in `api_gen.rs`),
-    /// which does not read this field. Only `test_extract_endpoint_captures_body`
-    /// reads it. Do not rely on it being populated unless route A is implemented.
+    /// Function body AST. Captured by `extract_endpoint` (Plan musk-022) and
+    /// consumed in production since PLAN-681 route A: auto-man `try_transpile_body`
+    /// transpiles this body into the generated handler via a2r (PLAN-734 makes
+    /// that the strict default implementation source).
     pub body: Option<Body>,
 }
 

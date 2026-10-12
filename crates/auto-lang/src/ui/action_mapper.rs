@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use crate::aura::AuraNodeId;
 use crate::ui::interpreter::DynamicMessage;
-use crate::ui::mcp_types::{ActionResult, UiActionType, UiNode, format_value};
+use crate::ui::mcp_types::{format_value, ActionResult, UiActionType, UiNode};
 use crate::ui::view::View;
 
 /// Error returned when an action cannot be performed.
@@ -47,11 +47,22 @@ impl std::fmt::Display for ActionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ActionError::ElementNotFound(id) => write!(f, "Element not found: #{}", id),
-            ActionError::InvalidAction { action, component_kind } => {
-                write!(f, "Action '{}' is not valid for component type '{}'", action, component_kind)
+            ActionError::InvalidAction {
+                action,
+                component_kind,
+            } => {
+                write!(
+                    f,
+                    "Action '{}' is not valid for component type '{}'",
+                    action, component_kind
+                )
             }
             ActionError::NoHandler { action, element_id } => {
-                write!(f, "No handler for action '{}' on element #{}", action, element_id)
+                write!(
+                    f,
+                    "No handler for action '{}' on element #{}",
+                    action, element_id
+                )
             }
             ActionError::MissingValue(action) => {
                 write!(f, "Action '{}' requires a value parameter", action)
@@ -113,11 +124,12 @@ pub fn execute_action(
     let before_state = ctx.read_all_state();
 
     // 2. Find the target node in the snapshot tree
-    let target_node = find_node(_snapshot_tree, element_id)
-        .ok_or(ActionError::ElementNotFound(element_id))?;
+    let target_node =
+        find_node(_snapshot_tree, element_id).ok_or(ActionError::ElementNotFound(element_id))?;
 
     // 3. Find the corresponding View node and resolve the action
-    let resolved = resolve_action_from_view(view, target_node, &action, value, ctx.input_state_map())?;
+    let resolved =
+        resolve_action_from_view(view, target_node, &action, value, ctx.input_state_map())?;
 
     // 4. Execute the action
     if resolved.needs_state_write {
@@ -193,7 +205,9 @@ fn resolve_action_from_view(
                 });
             }
             // Find the onclick handler from actions list
-            let handler = target.actions.iter()
+            let handler = target
+                .actions
+                .iter()
                 .find(|a| a.name == "press")
                 .map(|a| a.handler.trim_start_matches('.').to_string())
                 .ok_or(ActionError::NoHandler {
@@ -225,7 +239,9 @@ fn resolve_action_from_view(
             };
 
             // Find the handler
-            let handler = target.actions.iter()
+            let handler = target
+                .actions
+                .iter()
                 .find(|a| a.name == "type")
                 .map(|a| a.handler.trim_start_matches('.').to_string())
                 .ok_or(ActionError::NoHandler {
@@ -253,7 +269,9 @@ fn resolve_action_from_view(
                 });
             }
 
-            let handler = target.actions.iter()
+            let handler = target
+                .actions
+                .iter()
                 .find(|a| a.name == "toggle")
                 .map(|a| a.handler.trim_start_matches('.').to_string())
                 .ok_or(ActionError::NoHandler {
@@ -303,9 +321,10 @@ fn resolve_action_from_view(
                 auto_val::Value::Int(i) => i as f32,
                 auto_val::Value::Float(f) => f as f32,
                 other => {
-                    return Err(ActionError::InvalidValue(
-                        format!("expected number, got {:?}", other)
-                    ));
+                    return Err(ActionError::InvalidValue(format!(
+                        "expected number, got {:?}",
+                        other
+                    )));
                 }
             };
 
@@ -328,7 +347,9 @@ fn resolve_action_from_view(
                 });
             }
 
-            let handler = target.actions.iter()
+            let handler = target
+                .actions
+                .iter()
                 .find(|a| a.name == "type")
                 .map(|a| a.handler.trim_start_matches('.').to_string())
                 .ok_or(ActionError::NoHandler {
@@ -356,7 +377,9 @@ fn resolve_action_from_view(
                 });
             }
 
-            let handler = target.actions.iter()
+            let handler = target
+                .actions
+                .iter()
                 .find(|a| a.name == "submit")
                 .map(|a| a.handler.trim_start_matches('.').to_string())
                 .ok_or(ActionError::NoHandler {

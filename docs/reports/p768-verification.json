@@ -1,0 +1,99 @@
+{
+  "plan": "PLAN-768",
+  "revision": 1,
+  "base": "1c7b99d37",
+  "build": {
+    "exit": 0,
+    "seconds": 141.02,
+    "log_sha256": "3cb8cb2bec0723a4e604f99517c927ae9db79ee7653659e2054aa61bd7ccc01a"
+  },
+  "local_tests": {
+    "regression_passed": 12,
+    "regression_log_sha256": "0e1e60a19f2355995d277c692aca81cbea479f8fffea509f571d4e1e44826d38",
+    "matrix_test_passed": 1,
+    "matrix_log_sha256": "976156d00fc273433e451668399036f4d4ae95e56f6f7e2c082aa33e36c20121",
+    "probe_sha256": "75ac7d63c8ed13d33cf12541d009db264da3a28ffa8c88180337f9975abb859c",
+    "matrix_visits": 24,
+    "widths": [
+      360,
+      390,
+      768,
+      1024,
+      1200,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "routes": [
+      "/",
+      "/zh/"
+    ],
+    "ssr_routes": [
+      "/",
+      "/zh/",
+      "/os",
+      "/zh/apps"
+    ],
+    "actual_keyboard_popups": "Both exact URLs intercepted in isolated browser contexts; Enter opened correct new tabs"
+  },
+  "captures": {
+    "nav-1440-dark.png": "b759bd9ba0294e46cc79e5779c93d5627171a62a781e9b82dc87a98817c0bc57",
+    "nav-1440-light.png": "34e343f324cb606c724f220a58b865c2e38950728a76a37a2867db5147d880a1",
+    "nav-360-dark.png": "f0400c76c146e3f76ae1f368de05b0715629296160797b308d566262b35eba75",
+    "nav-360-light.png": "e7214f3fcdd90f0cb0b5c7620b66d4fbca776ce59c8fc5c654268a40015e8934"
+  },
+  "visual_review": [
+    "nav-360-light.png",
+    "nav-1440-dark.png"
+  ],
+  "icons": {
+    "source": "Simple Icons (CC0)",
+    "urls": [
+      "https://github.com/simple-icons/simple-icons/blob/master/icons/github.svg",
+      "https://github.com/simple-icons/simple-icons/blob/master/icons/gitcode.svg"
+    ],
+    "transport": "GitHub connector fetch; raw HTTP endpoints reset, no remote asset runtime dependency"
+  },
+  "spec_delta": {
+    "id": "SD-01",
+    "target": "docs/specs/website/project.md",
+    "sha256": "91259a4e18e5786b406c4fb0ae05aa6145c16672ed842ea61d2a3190629f5f91"
+  },
+  "dependencies": {
+    "package_lock_sha256": "dc7121a2c03d91d0a20cd8c3cb8dc31b68ca235e8fc2364f0837082434f6ff82",
+    "book_head": "d7a71a7fb1fa42ddd26d6cec859715ed98161f7a"
+  },
+  "scope": "Category A; no Cargo/docs_gen",
+  "probe_correction": "Scratch config originally resolved preview cwd to scratch; corrected to explicit worktree website before functional verification.",
+  "implementation_commit": "8f959f3fc023d621325e3a4146ab07c338f889d9",
+  "online_tests": {
+    "passed": 4,
+    "log_sha256": "f00cbfcae8492ae1209718284b0be23950fd59e3f37087eac8a8c3ca6aabf30e",
+    "probe_sha256": "b103e8a5ee4a58eca2ba61169bc7b31f7b074bfa6fb86903b7021fde70ed5961",
+    "captures": {
+      "online-en-1440.png": "b75f9cda72c491c18dda246717faa0ab0eb6a13ebcc2730d60a087ef97f4c587",
+      "online-en-360.png": "c3feb1b63c8cebaff220df0a467249d7870f0ef75dc180467acc20a13ef9f617",
+      "online-zh-1440.png": "b759bd9ba0294e46cc79e5779c93d5627171a62a781e9b82dc87a98817c0bc57",
+      "online-zh-360.png": "f0400c76c146e3f76ae1f368de05b0715629296160797b308d566262b35eba75"
+    }
+  },
+  "deployment": {
+    "release": "20261012-8f959f3fc",
+    "revision": "8f959f3fc",
+    "archive_sha256": "b0a691b8481fea8bc0d30cf2fd8b092db2c8c971b63e0a617e14e395cca1d629",
+    "backup": "/home/visus/auto-website-backup-20261012-8f959f3fc",
+    "clean_url_aliases": 926,
+    "preserved_cached_assets": 1905
+  },
+  "landing_equivalence": {
+    "source": "72c20c4bd6157e028a14e9d520a99747880f4b70",
+    "old_implementation": "8f959f3fc023d621325e3a4146ab07c338f889d9",
+    "old_metadata": "f6be5b751",
+    "rebased_metadata": "5b2170aa1",
+    "rebase_base": "966118691",
+    "range_diff": "1:  8f959f3fc = 1:  72c20c4bd feat(website): add GitHub and GitCode navbar icons (Plan 768)\n2:  f6be5b751 = 2:  5b2170aa1 docs(website): record repository links review and deployment (Plan 768)\n",
+    "verification_reuse": "Identical website tree, lock, canonical source; concurrent Rust-only widget fix changes no website source inputs."
+  }
+}

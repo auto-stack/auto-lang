@@ -1,18 +1,25 @@
 <script setup lang="ts">
 // PLAN-715 T-06：v0.5 发布页共享落地组件（EN/ZH 同构渲染）。
-// 顺序：主视觉 → 三项亮点 → 桌面 → AutoUI 双端 → 旗舰应用 →
-//       系统应用/语言工具链/Playground → 理念及历程 → 展望 → 开始使用。
+// 顺序：简介 → 版本进展 → 三项亮点 → 桌面 → AutoUI 双端 → 旗舰应用 →
+//       系统应用/语言工具链/Playground → 理念与规模 → 展望 → 开始使用。
 // 章节导航 SectionNav 吸顶；首图 eager+尺寸占位，其余图 lazy；
 // 理念完整论述用原生 details（键盘可开合、hash 可定位）。
 import { computed } from 'vue'
 import { useRoute } from 'vitepress'
 import { RELEASE_V05, releaseNavSections } from '../data/release-v05'
+import { screenshotSrc } from '../data/optimized-image'
 import EvidenceImage from './EvidenceImage.vue'
 import DesktopShowcase from './DesktopShowcase.vue'
 import AutoShellPreview from './AutoShellPreview.vue'
 import FeatureCard from './FeatureCard.vue'
 import StatCard from './StatCard.vue'
 import SectionNav from './SectionNav.vue'
+import ScreenshotSlot from './ScreenshotSlot.vue'
+
+function splitPoint(point: string) {
+  const parts = point.split(/\s+—{1,2}\s+/)
+  return { label: parts[0], body: parts.slice(1).join(' — ') }
+}
 
 const route = useRoute()
 const zh = computed(() => route.path === '/zh' || route.path.startsWith('/zh/'))
@@ -21,11 +28,11 @@ const navSections = computed(() => releaseNavSections(zh.value))
 const prefix = computed(() => (zh.value ? '/zh' : ''))
 const t = computed(() => zh.value ? {
   zoom: '放大查看', close: '关闭', original: '打开原图', gallery: '桌面视图',
-  detailsHint: '展开完整论述', arch: 'AutoUI 架构', compare: '同一示例的两端',
+  detailsHint: '阅读理念详情', arch: 'AutoUI 架构', compare: '同一示例的两端',
   launchCompare: '一源两端对照', flagshipLink: '专题页 →',
 } : {
   zoom: 'View full size', close: 'Close', original: 'Open original', gallery: 'Desktop views',
-  detailsHint: 'Expand full story', arch: 'AutoUI architecture', compare: 'One example, two ends',
+  detailsHint: 'Read the full story', arch: 'AutoUI architecture', compare: 'One example, two ends',
   launchCompare: 'One source, two arms', flagshipLink: 'Landing page →',
 })
 </script>
@@ -33,31 +40,57 @@ const t = computed(() => zh.value ? {
 <template>
   <div class="release-landing landing-page" style="--page-accent-1: #6366f1; --page-accent-2: #a855f7">
 
-    <!-- 1. 主视觉：短简介 + 双按钮 + 真实桌面主图（eager） -->
+    <!-- 1. 开篇：短简介 + 双按钮；版本进展在大图之前 -->
     <section class="rel-hero">
       <div class="badge">{{ c.hero.badge }}</div>
       <h1 class="title"><span class="accent">{{ c.hero.titlePre }}</span>{{ c.hero.title }}</h1>
       <p class="description">{{ c.hero.description }}</p>
+      <div class="release-summary">
+        <div class="summary-group summary-effort">
+          <h2>{{ c.hero.effortTitle }}</h2>
+          <ul>
+            <li v-for="stat in c.philosophy.stats" :key="stat.label">
+              <strong>{{ stat.value }}</strong><span>{{ stat.label }}</span>
+            </li>
+          </ul>
+        </div>
+        <div class="summary-group summary-products">
+          <h2>{{ c.hero.productsTitle }}</h2>
+          <ul>
+            <li v-for="product in c.hero.products" :key="product.label">
+              <div><strong>{{ product.value }}</strong><span>{{ product.label }}</span></div>
+              <small>{{ product.detail }}</small>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <p class="summary-source">{{ c.philosophy.statsNote }}</p>
+      <p class="section-desc">{{ c.hero.status }}</p>
       <div class="actions">
         <a :href="c.hero.primaryLink" class="btn btn-primary">{{ c.hero.primaryText }}</a>
         <a :href="c.hero.secondaryLink" class="btn btn-secondary">{{ c.hero.secondaryText }}</a>
       </div>
-      <figure class="hero-shot">
-        <EvidenceImage
-          :src="c.hero.heroShot.src"
-          :alt="c.hero.heroShot.alt"
-          :caption="c.hero.heroShot.caption"
-          :zoom-label="t.zoom"
-          :close-label="t.close"
-          :original-label="t.original"
-          loading="eager"
-          :width="c.hero.heroShot.width"
-          :height="c.hero.heroShot.height"
-        />
-      </figure>
     </section>
 
     <SectionNav :items="navSections" :label="zh ? '本页章节' : 'On this page'" />
+
+    <!-- 版本进展：先说明本版本成果，再看产品实图与理念 -->
+    <section id="journey" class="rel-section rel-alt">
+      <h2 class="section-title">{{ c.philosophy.journeyTitle }}</h2>
+      <p class="section-desc">{{ c.philosophy.journeyDesc }}</p>
+      <div class="journey">
+        <p v-for="(lead, i) in c.philosophy.leads" :key="i" class="journey-lead">{{ lead }}</p>
+        <div class="timeline">
+          <div v-for="step in c.philosophy.timeline" :key="step.version" class="timeline-item">
+            <span class="timeline-version">{{ step.version }}</span>
+            <div class="timeline-card">
+              <h4>{{ step.title }}</h4>
+              <p>{{ step.text }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- 2. 三项亮点（一句话 + 例子；完整论述在理念区） -->
     <section id="highlights" class="rel-section">
@@ -85,12 +118,26 @@ const t = computed(() => zh.value ? {
       <span class="kicker">{{ c.desktop.kicker }}</span>
       <h2 class="section-title">{{ c.desktop.title }}</h2>
       <p class="section-desc">{{ c.desktop.desc }}</p>
+      <figure class="hero-shot">
+        <EvidenceImage
+          :src="c.hero.heroShot.src"
+          :alt="c.hero.heroShot.alt"
+          :caption="c.hero.heroShot.caption"
+          :zoom-label="t.zoom"
+          :close-label="t.close"
+          :original-label="t.original"
+          loading="eager"
+          :width="c.hero.heroShot.width"
+          :height="c.hero.heroShot.height"
+        />
+      </figure>
       <div class="desktop-body">
         <p class="narrative">{{ c.desktop.narrative }}</p>
         <ul class="rel-points">
-          <li v-for="(p, i) in c.desktop.points" :key="i"><strong>{{ p.split(' — ')[0] }}</strong><span> — {{ p.split(' — ').slice(1).join(' — ') }}</span></li>
+          <li v-for="(p, i) in c.desktop.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
         </ul>
       </div>
+      <p><a :href="prefix + '/os#desktop-showcase'" class="inline-link">{{ zh ? '了解 AutoOS 与运行条件 →' : 'Explore AutoOS and its runtime conditions →' }}</a></p>
       <div class="desktop-gallery">
         <DesktopShowcase embedded />
       </div>
@@ -105,7 +152,7 @@ const t = computed(() => zh.value ? {
           <p class="autoui-desc">{{ c.autoui.desc }}</p>
           <p class="narrative">{{ c.autoui.narrative }}</p>
           <ul class="rel-points">
-            <li v-for="(p, i) in c.autoui.points" :key="i"><strong>{{ p.split(' — ')[0] }}</strong><span> — {{ p.split(' — ').slice(1).join(' — ') }}</span></li>
+            <li v-for="(p, i) in c.autoui.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
           </ul>
           <div class="arch-diagram" :aria-label="t.arch">
             <div class="arch-node arch-src"><strong>{{ c.autoui.arch.src }}</strong><span>{{ c.autoui.arch.srcSub }}</span></div>
@@ -127,26 +174,8 @@ const t = computed(() => zh.value ? {
           <h3 class="visual-caption">{{ t.launchCompare }}</h3>
           <p class="visual-note">{{ c.autoui.compareDesc }}</p>
           <div class="kanban-pair">
-            <figure>
-              <EvidenceImage
-                :src="c.autoui.kanbanWeb.src"
-                :alt="c.autoui.kanbanWeb.alt"
-                :caption="c.autoui.kanbanWeb.caption"
-                :zoom-label="t.zoom" :close-label="t.close" :original-label="t.original"
-                :width="c.autoui.kanbanWeb.width" :height="c.autoui.kanbanWeb.height"
-              />
-              <figcaption>{{ c.autoui.kanbanWeb.label }}</figcaption>
-            </figure>
-            <figure>
-              <EvidenceImage
-                :src="c.autoui.kanbanDesktop.src"
-                :alt="c.autoui.kanbanDesktop.alt"
-                :caption="c.autoui.kanbanDesktop.caption"
-                :zoom-label="t.zoom" :close-label="t.close" :original-label="t.original"
-                :width="c.autoui.kanbanDesktop.width" :height="c.autoui.kanbanDesktop.height"
-              />
-              <figcaption>{{ c.autoui.kanbanDesktop.label }}</figcaption>
-            </figure>
+            <ScreenshotSlot capture-id="SHOT-11" />
+            <ScreenshotSlot capture-id="SHOT-12" />
           </div>
         </div>
       </div>
@@ -165,12 +194,13 @@ const t = computed(() => zh.value ? {
           </div>
           <div class="flagship-visual">
             <AutoShellPreview v-if="item.kind === 'autoshell'" :lang="zh ? 'zh' : 'en'" />
-            <img v-else-if="item.kind === 'image' && item.image" :src="item.image.src" :alt="item.image.alt" loading="lazy"
+            <img v-else-if="item.kind === 'image' && item.image" :src="screenshotSrc(item.image.src)" :alt="item.image.alt" loading="lazy"
               :width="item.image.width" :height="item.image.height" />
-            <p v-else class="flagship-noimage">{{ zh ? '（专题页与截图待补齐——不放置占位空图。）' : '(Dedicated page and screenshots pending — no placeholder image.)' }}</p>
+            <ScreenshotSlot v-else-if="item.captureId" :capture-id="item.captureId" />
           </div>
         </article>
       </div>
+      <p class="section-desc">{{ zh ? 'AutoDown 提供文档与编辑器基础，Jade Garden 是已有知识库工程，与 AutoJade 分别介绍。' : 'AutoDown supplies document and editor foundations. Jade Garden is an existing knowledge-base project, described separately from AutoJade.' }} <a :href="prefix + '/apps/autodown/'" class="inline-link">{{ zh ? '相关资料 →' : 'Related resources →' }}</a></p>
     </section>
 
     <!-- 6. 系统应用 / 语言工具链 / Playground -->
@@ -188,11 +218,13 @@ const t = computed(() => zh.value ? {
           <p class="sub-desc">{{ c.playground.desc }}</p>
           <p class="narrative">{{ c.playground.narrative }}</p>
           <ul class="rel-points">
-            <li v-for="(p, i) in c.playground.points" :key="i"><strong>{{ p.split(' — ')[0] }}</strong><span> — {{ p.split(' — ').slice(1).join(' — ') }}</span></li>
+            <li v-for="(p, i) in c.playground.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
           </ul>
           <div class="rel-cards rel-cards-tight">
             <StatCard v-for="s in c.playground.stats" :key="s.label" v-bind="s" />
           </div>
+          <p><a :href="prefix + '/playground'" class="inline-link">{{ zh ? '浏览 Playground 与后端说明 →' : 'Browse Playground and backend setup →' }}</a></p>
+          <ScreenshotSlot capture-id="SHOT-10" />
         </div>
       </div>
 
@@ -203,7 +235,7 @@ const t = computed(() => zh.value ? {
           <p class="sub-desc">{{ c.language.desc }}</p>
           <p class="narrative">{{ c.language.narrative }}</p>
           <ul class="rel-points">
-            <li v-for="(p, i) in c.language.points" :key="i"><strong>{{ p.split(' — ')[0] }}</strong><span> — {{ p.split(' — ').slice(1).join(' — ') }}</span></li>
+            <li v-for="(p, i) in c.language.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
           </ul>
         </div>
         <div class="matrix" aria-label="bootstrap matrix">
@@ -225,7 +257,7 @@ const t = computed(() => zh.value ? {
       <p class="section-desc"><a :href="c.toolchain.notesHref" class="inline-link">{{ c.toolchain.notesLabel }}</a></p>
     </section>
 
-    <!-- 7. 理念及历程（统计后移至此；完整论述 details 展开） -->
+    <!-- 7. 理念与规模（完整论述 details 展开，统计及来源在此保留） -->
     <section id="philosophy" class="rel-section rel-alt">
       <h2 class="section-title">{{ c.philosophy.title }}</h2>
       <p class="section-desc">{{ c.philosophy.desc }}</p>
@@ -241,24 +273,11 @@ const t = computed(() => zh.value ? {
         </details>
       </div>
 
-      <h3 class="sub-title journey-title">{{ c.philosophy.journeyTitle }}</h3>
-      <p class="sub-desc">{{ c.philosophy.journeyDesc }}</p>
-      <div class="journey">
-        <p v-for="(lead, i) in c.philosophy.leads" :key="i" class="journey-lead">{{ lead }}</p>
+      <h3 class="sub-title scale-title">{{ zh ? '研发规模与数据来源' : 'Development Scale and Sources' }}</h3>
         <div class="rel-cards rel-cards-tight stats-row">
           <StatCard v-for="s in c.philosophy.stats" :key="s.label" v-bind="s" />
         </div>
         <p class="hero-stats-note">{{ c.philosophy.statsNote }}</p>
-        <div class="timeline">
-          <div v-for="step in c.philosophy.timeline" :key="step.version" class="timeline-item">
-            <span class="timeline-version">{{ step.version }}</span>
-            <div class="timeline-card">
-              <h4>{{ step.title }}</h4>
-              <p>{{ step.text }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </section>
 
     <!-- 8. 展望 -->
@@ -325,6 +344,28 @@ const t = computed(() => zh.value ? {
   margin: 2.5rem auto 0;
   max-width: 1080px;
   text-align: left;
+}
+
+.release-summary { max-width: 1120px; margin: 1.8rem auto 0; display: grid; gap: 1rem; }
+.summary-group { padding: 1rem 1.1rem; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card) / 0.6); }
+.summary-group h2 { padding: 0; border: 0; margin: 0 0 0.8rem; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; color: hsl(var(--muted-foreground)); }
+.summary-group ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem 2rem; }
+.summary-group li { min-width: 0; margin: 0; line-height: 1.45; }
+.summary-effort strong, .summary-effort span { display: block; }
+.summary-effort span { margin-left: 0; }
+.rel-hero > .section-desc { max-width: 960px; margin: 0.75rem auto; font-size: 0.8rem; line-height: 1.6; }
+.summary-group strong { font-size: clamp(1.25rem, 2.2vw, 1.8rem); font-weight: 750; color: var(--vp-c-brand-1); }
+.summary-group span { margin-left: 0.4rem; font-size: 0.9rem; }
+.summary-group small { display: block; max-width: 240px; margin: 0.3rem auto 0; font-size: 0.7rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+.summary-source { max-width: 960px; margin: 0.8rem auto 1.25rem; font-size: 0.75rem; line-height: 1.6; color: hsl(var(--muted-foreground)); }
+@media (max-width: 640px) {
+  .rel-hero { padding: 2rem 1.25rem 1.5rem; }
+  .release-summary { margin-top: 1.2rem; gap: 0.8rem; }
+  .summary-source { margin-bottom: 0.6rem; }
+  .summary-group ul { gap: 0.8rem 1.2rem; }
+  .summary-group li { flex: 1 1 40%; }
+  .summary-group span { font-size: 0.75rem; }
+  .summary-products li:nth-child(4) small, .summary-products li:nth-child(5) small { display: none; }
 }
 
 /* highlights */
@@ -700,7 +741,7 @@ const t = computed(() => zh.value ? {
 /* journey */
 .journey { max-width: 820px; margin: 1.5rem auto 0; }
 
-.journey-title { margin-top: 3rem; }
+.scale-title { margin-top: 3rem; }
 
 .journey-lead {
   margin: 0 0 1.1rem;

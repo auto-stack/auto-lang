@@ -1,0 +1,8 @@
+Test execution output; compiler warnings omitted.
+────────────
+ Nextest run ID bf0cf8f8-281d-4561-ae3e-cf75a94f6203 with nextest profile: default
+    Starting 2 tests across 1 binary (6750 tests skipped)
+        PASS [   0.109s] (1/2) auto-lang tests::plan755_http_contract_tests::plan755_http_contracts_survive_cffi_merge
+        PASS [   0.093s] (2/2) auto-lang tests::plan755_http_contract_tests::plan755_http_public_face_contract_coverage
+────────────
+     Summary [   0.223s] 2 tests run: 2 passed, 6750 skipped

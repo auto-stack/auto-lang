@@ -18,7 +18,7 @@
 #                      per-test WidgetRegistry rebuild tax (~1.2s) is paid once
 #                      for the whole tier instead of per nextest process
 #                      (fix-ui-tier 2026-09-30; daily tier excludes ui_gen::)
-#   cargo taa        - AAVM/AA2R self-hosting tier (auto/lib + aavm2 + a2r).
+#   cargo taa        - AAVM/AA2R self-hosting tier (packages/aavm/lib + aavm2 + a2r).
 #                      Run ONLY when aavm code changed - trigger conditions &
 #                      scope map in AGENTS.md. Bare = full set; append a filter
 #                      to scope down (e.g. cargo taa aavm2_m5)
@@ -79,7 +79,7 @@ tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test 
 # Plan 568: tv = 纯 .at 语料 golden 档(改 VM/编译器后的回归)。AAVM/AA2R
 # 自举测试已迁出(test-aavm feature)——"改 VM/编译器的回归"与"AAVM 展示"
 # 不是同一概念,aavm 无实用面,反射性 tv 不再触发三重解释/现场 cargo build
-# 重测试(实测 21 测 Σ≈1163s、单测峰值 0.8-1.2GB)。aavm 系守护=taa+CI+ta。
+# 重测试(实测 21 测 Σ≈1163s、单测峰值 0.8-1.2GB)。aavm 系守护=taa+ta（PLAN-763 删除旧 CI）。
 # PLAN-700: tv 降为纯 nextest filter 档(--profile tv,default-filter 筛
 # 语料三族,定义见 .config/nextest.toml [profile.tv]),与 t/tf 同一测试
 # 二进制——三档切换零重编。不用 -E 内联表达式:cargo 在 Windows 下对

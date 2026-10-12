@@ -16,8 +16,8 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use crate::ui::scroll::intent::{ScrollIntent, ScrollSource};
 use crate::ui::scroll::state::{Axis, ScrollAxisState, ScrollState};
@@ -48,6 +48,12 @@ pub struct ControllerPaneSnapshot {
     pub viewport_h: f64,
     pub content_w: f64,
     pub content_h: f64,
+    /// L0 fix(2026-10-11)：offset 来源标记——true=on_scroll 读出臂实测值
+    /// （用户滚动/拖拽落点，注册表已是真源），false=写臂投影值（F-2 命令
+    /// 投影，需重建后回显补落）。F-4 回显只发写臂投影：回显读臂值会把
+    /// 「滚动期间快照滞后/夹取竞态」的 stale 值强行 scroll_to 回去——
+    /// auto-edit diff 视图大幅滚轮后滚动条来回抖动的格斗源。
+    pub offset_from_measure: bool,
 }
 
 impl ControllerPaneSnapshot {
@@ -113,6 +119,7 @@ pub fn note_controller_state(
     entry.viewport_h = viewport.1;
     entry.content_w = content.0;
     entry.content_h = content.1;
+    entry.offset_from_measure = true;
 }
 
 /// natives 侧：controller 方法 → pending intent 入队（axis 缺省 Y——
@@ -244,6 +251,7 @@ pub fn note_controller_offset(handle: &str, offset_x: f64, offset_y: f64) {
     if let Some(entry) = reg.panes.get_mut(handle) {
         entry.offset_x = offset_x;
         entry.offset_y = offset_y;
+        entry.offset_from_measure = false;
     }
 }
 
@@ -280,8 +288,14 @@ mod tests {
         let h = next_controller_handle();
         bind_controller(&h, "pane_a");
         // F-4：未预热（无测量基线）→ intent 留队 + prime 名单（不再解析为 0）。
-        assert!(!take_prime_requests().is_empty(), "new binding requests priming");
-        assert!(take_prime_requests().is_empty(), "stable rebuild does not re-request");
+        assert!(
+            !take_prime_requests().is_empty(),
+            "new binding requests priming"
+        );
+        assert!(
+            take_prime_requests().is_empty(),
+            "stable rebuild does not re-request"
+        );
         enqueue_intent(
             &h,
             ScrollIntent::ToEnd {

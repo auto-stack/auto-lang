@@ -190,17 +190,25 @@ impl FilesystemResolver {
                              Use 'pac.' prefix to import from the package root instead:\n\
                              \n\
                              use pac.{}",
-                            i + 1, count,
+                            i + 1,
+                            count,
                             current_dir.display(),
-                            segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(".")
+                            segments
+                                .iter()
+                                .map(|s| s.as_str())
+                                .collect::<Vec<_>>()
+                                .join(".")
                         ));
                     }
 
-                    current_dir = current_dir.parent()
-                        .ok_or_else(|| format!(
-                            "Cannot resolve super: no parent directory above '{}'",
-                            current_dir.display()
-                        ))?
+                    current_dir = current_dir
+                        .parent()
+                        .ok_or_else(|| {
+                            format!(
+                                "Cannot resolve super: no parent directory above '{}'",
+                                current_dir.display()
+                            )
+                        })?
                         .to_path_buf();
                 }
 
@@ -243,7 +251,11 @@ impl FilesystemResolver {
             if dir_module.exists() {
                 return Err(format!(
                     "Ambiguous module '{}' - both '{}' and '{}' exist",
-                    segments.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("."),
+                    segments
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join("."),
                     file_module.display(),
                     dir_module.display()
                 ));
@@ -392,8 +404,7 @@ mod plan131_tests {
     #[test]
     fn test_resolve_pac_from_root() {
         let tmp = setup_test_project();
-        let resolver =
-            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+        let resolver = FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
 
         let path = ModulePath::pac(vec![AutoStr::from("db")]);
         let current = tmp.path().join("src").join("main.at");
@@ -406,8 +417,7 @@ mod plan131_tests {
     #[test]
     fn test_resolve_super_from_nested() {
         let tmp = setup_test_project();
-        let resolver =
-            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+        let resolver = FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
 
         let path = ModulePath::super_path(vec![AutoStr::from("db")]);
         let current = tmp.path().join("src").join("api").join("handlers.at");
@@ -420,8 +430,7 @@ mod plan131_tests {
     #[test]
     fn test_resolve_local_in_same_dir() {
         let tmp = setup_test_project();
-        let resolver =
-            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+        let resolver = FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
 
         let path = ModulePath::local(vec![AutoStr::from("handlers")]);
         let current = tmp.path().join("src").join("api").join("mod.at");
@@ -437,32 +446,30 @@ mod plan131_tests {
     #[test]
     fn test_resolve_pac_directory_module() {
         let tmp = setup_test_project();
-        let resolver =
-            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+        let resolver = FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
 
         let path = ModulePath::pac(vec![AutoStr::from("api")]);
         let current = tmp.path().join("src").join("main.at");
 
         let result = resolver.resolve_with_prefix(&path, current);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), tmp.path().join("src").join("api").join("mod.at"));
+        assert_eq!(
+            result.unwrap(),
+            tmp.path().join("src").join("api").join("mod.at")
+        );
     }
 
     #[test]
     fn test_resolve_pac_deep_path() {
         let tmp = setup_test_project();
-        let resolver =
-            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+        let resolver = FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
 
         // Create api/v1/mod.at
         let api_v1 = tmp.path().join("src").join("api").join("v1");
         fs::create_dir_all(&api_v1).unwrap();
         fs::write(api_v1.join("mod.at"), "fn endpoint() {}").unwrap();
 
-        let path = ModulePath::pac(vec![
-            AutoStr::from("api"),
-            AutoStr::from("v1"),
-        ]);
+        let path = ModulePath::pac(vec![AutoStr::from("api"), AutoStr::from("v1")]);
         let current = tmp.path().join("src").join("main.at");
 
         let result = resolver.resolve_with_prefix(&path, current);
@@ -476,8 +483,7 @@ mod plan131_tests {
     #[test]
     fn test_resolve_module_not_found() {
         let tmp = setup_test_project();
-        let resolver =
-            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+        let resolver = FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
 
         let path = ModulePath::pac(vec![AutoStr::from("nonexistent")]);
         let current = tmp.path().join("src").join("main.at");
@@ -490,15 +496,16 @@ mod plan131_tests {
     #[test]
     fn test_resolve_dep_not_implemented() {
         let tmp = setup_test_project();
-        let resolver =
-            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+        let resolver = FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
 
         let path = ModulePath::dep(AutoStr::from("database"), vec![AutoStr::from("connection")]);
         let current = tmp.path().join("src").join("main.at");
 
         let result = resolver.resolve_with_prefix(&path, current);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Dependency resolution not yet implemented"));
+        assert!(result
+            .unwrap_err()
+            .contains("Dependency resolution not yet implemented"));
     }
 
     // Plan 131 Task 9: Enhanced Error Message Tests
@@ -518,16 +525,23 @@ mod plan131_tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         // Error should mention package root
-        assert!(err.contains("package root"), "Error should mention 'package root', got: {}", err);
+        assert!(
+            err.contains("package root"),
+            "Error should mention 'package root', got: {}",
+            err
+        );
         // Error should suggest using pac.
-        assert!(err.contains("use pac.utils"), "Error should suggest 'use pac.utils', got: {}", err);
+        assert!(
+            err.contains("use pac.utils"),
+            "Error should suggest 'use pac.utils', got: {}",
+            err
+        );
     }
 
     #[test]
     fn test_error_module_not_found_shows_searched_paths() {
         let tmp = setup_test_project();
-        let resolver =
-            FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
+        let resolver = FilesystemResolver::with_package_root(tmp.path().join("src").to_path_buf());
 
         let path = ModulePath::pac(vec![AutoStr::from("nonexistent")]);
         let current = tmp.path().join("src").join("main.at");
@@ -536,11 +550,23 @@ mod plan131_tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         // Error should show searched locations
-        assert!(err.contains("Searched locations"), "Error should mention 'Searched locations', got: {}", err);
+        assert!(
+            err.contains("Searched locations"),
+            "Error should mention 'Searched locations', got: {}",
+            err
+        );
         // Error should show file module path
-        assert!(err.contains("nonexistent.at"), "Error should mention 'nonexistent.at', got: {}", err);
+        assert!(
+            err.contains("nonexistent.at"),
+            "Error should mention 'nonexistent.at', got: {}",
+            err
+        );
         // Error should show directory module path (may use backslash on Windows)
-        assert!(err.contains("nonexistent") && err.contains("mod.at"), "Error should mention 'nonexistent/mod.at', got: {}", err);
+        assert!(
+            err.contains("nonexistent") && err.contains("mod.at"),
+            "Error should mention 'nonexistent/mod.at', got: {}",
+            err
+        );
     }
 
     #[test]
@@ -566,11 +592,22 @@ mod plan131_tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         // Error should mention ambiguity
-        assert!(err.contains("Ambiguous"), "Error should mention 'Ambiguous', got: {}", err);
+        assert!(
+            err.contains("Ambiguous"),
+            "Error should mention 'Ambiguous', got: {}",
+            err
+        );
         // Error should show both file paths
-        assert!(err.contains("db.at"), "Error should mention 'db.at', got: {}", err);
+        assert!(
+            err.contains("db.at"),
+            "Error should mention 'db.at', got: {}",
+            err
+        );
         // Path separator varies by OS (backslash on Windows)
-        assert!(err.contains("db") && err.contains("mod.at"), "Error should mention 'db/mod.at', got: {}", err);
+        assert!(
+            err.contains("db") && err.contains("mod.at"),
+            "Error should mention 'db/mod.at', got: {}",
+            err
+        );
     }
-
 }

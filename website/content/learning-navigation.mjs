@@ -24,6 +24,8 @@
 
 /** locale 前缀规则：zh 变体 = '/zh' + path（'/' 例外）。与 theme/data/navigation.ts switchLocaleHref 同口径。 */
 export function localeHref(path, zh) {
+  // Public SPA resources are shared by both languages.
+  if (path.startsWith('/ui/') && (path.endsWith('.html') || path.startsWith('/ui/demos/'))) return path
   if (!zh) return path
   if (path === '/') return '/zh/'
   return '/zh' + path
@@ -59,6 +61,15 @@ export const DOCS_HUB = {
     },
   ],
   cards: [
+    {
+      key: 'language-overview',
+      title: { en: 'The language today', zh: '当前语言概览' },
+      desc: {
+        en: 'AutoVM, Rust shipping, syntax examples, ecosystem bridges, and current support boundaries.',
+        zh: 'AutoVM、Rust 发布、语法示例、生态互操作与当前支持范围。',
+      },
+      href: '/docs/language/overview',
+    },
     {
       key: 'spec',
       title: { en: 'Language specification', zh: '语言规范' },

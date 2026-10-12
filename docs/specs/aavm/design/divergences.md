@@ -53,14 +53,14 @@
   参数枚举化 + is 臂)。token.at 增 `Unknown` 第 140 变体(未收编字符哨兵,
   kind_name 经 else 回 "Unknown" 对齐基线 str 载体行为;aavm 侧补充,Rust 无)。
 
-## auto/lib/token.at(S1)
+## packages/aavm/lib/token.at(S1)
 
 - **D11**(×1):`Option<TokenKind>` 返回 → `Ident` 哨兵(keyword_kind 的 None 语义
   折叠进 Ident 分支;调用方以 != Ident 判定)。
 - **D11b**(×1):match 语句 → if 链(VM 对 match-on-string/enum 的支持未验证,
   v1 全程 if 链是已证路径;kind_name 139 臂同)。
 
-## auto/lib/lexer.at(S1)
+## packages/aavm/lib/lexer.at(S1)
 
 - **D12**: `Peekable<Chars>` → `char_at(i)` + p/at 游标(431 D1 的变体:
   免 Vec 构造,char_at 返回 UTF-32 码点,a2r 侧映射 `.chars().nth()`)。
@@ -93,7 +93,7 @@
 | 合计 | 10 |
 
 
-## auto/lib/parser.at(S2)
+## packages/aavm/lib/parser.at(S2)
 
 - **D20**: AST 结构(Stmt/Expr 枚举 + Box 树)→ `parse_dump(source) -> str`
   S-expr 直出(判据层;真实 AST 推迟到 S4 codegen 需要时定)。dump 由各
@@ -149,7 +149,7 @@
 | parser.at | 7 |
 | 合计 | 17 |
 
-## auto/lib/typeinfo.at(S3)
+## packages/aavm/lib/typeinfo.at(S3)
 
 - **D27**: infer/expr.rs + codegen `.type` 属性 → `typecheck_dump(source) -> str`
   行式输出(判据层)。AAVM 不建 AST:自带语句级走查 + 优先级爬升型推断器
@@ -177,7 +177,7 @@
 | typeinfo.at | 1(+D23/D22 复用) |
 | 合计 | 18 |
 
-## auto/lib/codegen.at(S4)
+## packages/aavm/lib/codegen.at(S4)
 
 - **D28**: Vec<u8> 字节码 + 链接器重定位(loader.rs)→ 指令 List
   (I{op,s,n})+ codegen_dump 序列化直出 —— 发射顺序/操作数逐字对齐
@@ -191,7 +191,7 @@
   str.cat 字符串加法、load.loc.2 快操作码、for-range 的 start 以
   min=18 界定不吞 `..`、I.n 载荷补齐(const/ret/prolog/local 编址)。
 
-## auto/lib/engine.at(S5)
+## packages/aavm/lib/engine.at(S5)
 
 - **D29**: 字节码 Flash + ip 解码 + 任务调度 → 指令 List 直译
   (ip=指令索引;jmp/call 目标即索引);print 输出 → out 字符串收集

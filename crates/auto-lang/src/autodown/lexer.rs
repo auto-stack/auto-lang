@@ -47,7 +47,7 @@ impl AdToken {
             column,
         }
     }
-    
+
     /// Create a simple token
     pub fn simple(kind: AdTokenKind, line: usize, column: usize) -> Self {
         Self {
@@ -65,27 +65,27 @@ pub enum AdTokenKind {
     // Special
     EOF,
     Error,
-    
+
     // Text tokens
-    Text,           // Plain text content
-    Newline,        // Line break
-    BlankLine,      // Paragraph separator (empty line)
-    
+    Text,      // Plain text content
+    Newline,   // Line break
+    BlankLine, // Paragraph separator (empty line)
+
     // Headers
     Header { level: u8 },
-    
+
     // Logic domain tokens (after $)
-    Dollar,         // $
-    LBrace,         // {
-    RBrace,         // }
-    LParen,         // (
-    RParen,         // )
-    LBracket,       // [
-    RBracket,       // ]
-    Colon,          // :
-    Comma,          // ,
-    Dot,            // .
-    
+    Dollar,   // $
+    LBrace,   // {
+    RBrace,   // }
+    LParen,   // (
+    RParen,   // )
+    LBracket, // [
+    RBracket, // ]
+    Colon,    // :
+    Comma,    // ,
+    Dot,      // .
+
     // Keywords
     If,
     Else,
@@ -98,60 +98,60 @@ pub enum AdTokenKind {
     True,
     False,
     Nil,
-    
+
     // Literals
-    Ident,          // identifier
-    String,         // "string"
-    FString,        // f"string"
-    Number,         // 123 or 3.14
-    
+    Ident,   // identifier
+    String,  // "string"
+    FString, // f"string"
+    Number,  // 123 or 3.14
+
     // Operators
-    Plus,           // +
-    Minus,          // -
-    Star,           // *
-    Slash,          // /
-    Percent,        // %
-    Caret,          // ^
-    Eq,             // ==
-    Ne,             // !=
-    Lt,             // <
-    Le,             // <=
-    Gt,             // >
-    Ge,             // >=
-    And,            // &&
-    Or,             // ||
-    Assign,         // =
-    
+    Plus,    // +
+    Minus,   // -
+    Star,    // *
+    Slash,   // /
+    Percent, // %
+    Caret,   // ^
+    Eq,      // ==
+    Ne,      // !=
+    Lt,      // <
+    Le,      // <=
+    Gt,      // >
+    Ge,      // >=
+    And,     // &&
+    Or,      // ||
+    Assign,  // =
+
     // Math domain
-    MathStart,      // %{
-    MathEnd,        // }
-    MathContent,    // Raw math content
-    
+    MathStart,   // %{
+    MathEnd,     // }
+    MathContent, // Raw math content
+
     // Interpolation
     InterpolateStart, // ${
     InterpolateEnd,   // }
-    
+
     // Inline markup
-    StarStar,        // ** (bold)
-    Underscore,      // _ (italic)
-    Underscore2,     // __ (underline - future)
-    Backtick,        // ` (inline code)
-    
+    StarStar,    // ** (bold)
+    Underscore,  // _ (italic)
+    Underscore2, // __ (underline - future)
+    Backtick,    // ` (inline code)
+
     // Links
-    LinkStart,       // [
-    LinkText,        // link text
-    LinkUrl,         // (url)
-    ImageStart,      // ![
-    
+    LinkStart,  // [
+    LinkText,   // link text
+    LinkUrl,    // (url)
+    ImageStart, // ![
+
     // Lists
-    ListItem,        // - or * or +
-    NumberedList,    // 1. or 2)
-    
+    ListItem,     // - or * or +
+    NumberedList, // 1. or 2)
+
     // Blocks
-    CodeFence,       // ```
-    Blockquote,      // >
-    HorizontalRule,  // --- or ***
-    
+    CodeFence,      // ```
+    Blockquote,     // >
+    HorizontalRule, // --- or ***
+
     // Code content (raw code)
     CodeContent,
 }
@@ -165,34 +165,34 @@ pub enum AdTokenKind {
 pub struct AdocLexer<'a> {
     /// Source code being lexed
     source: &'a str,
-    
+
     /// Character iterator with lookahead
     chars: Peekable<Chars<'a>>,
-    
+
     /// Current lexer mode
     mode: LexerMode,
-    
+
     /// Token buffer for multi-token emission
     buffer: VecDeque<AdToken>,
-    
+
     /// Current line number (1-based)
     line: usize,
-    
+
     /// Current column number (1-based)
     column: usize,
-    
+
     /// Current character position
     pos: usize,
-    
+
     /// Start position of current token
     token_start: usize,
-    
+
     /// Brace level for nested structures
     brace_level: usize,
-    
+
     /// Code fence language (if in code block)
     code_fence_lang: Option<String>,
-    
+
     /// Code fence delimiter (``` or ~~~)
     code_fence_delim: String,
 }
@@ -216,26 +216,26 @@ impl<'a> AdocLexer<'a> {
             code_fence_delim: String::new(),
         }
     }
-    
+
     /// Get the next token
     pub fn next_token(&mut self) -> AdocResult<AdToken> {
         // If we have buffered tokens, return those first
         if let Some(token) = self.buffer.pop_front() {
             return Ok(token);
         }
-        
+
         // Skip whitespace based on mode
         match self.mode {
             LexerMode::Text => self.skip_whitespace_text(),
             LexerMode::Code => self.skip_whitespace_code(),
             LexerMode::Math => {} // Don't skip in math mode
         }
-        
+
         // Check for EOF
         if self.is_eof() {
             return Ok(AdToken::simple(AdTokenKind::EOF, self.line, self.column));
         }
-        
+
         // Tokenize based on mode
         match self.mode {
             LexerMode::Text => self.tokenize_text(),
@@ -243,12 +243,12 @@ impl<'a> AdocLexer<'a> {
             LexerMode::Math => self.tokenize_math(),
         }
     }
-    
+
     /// Check if at end of source
     fn is_eof(&mut self) -> bool {
         self.chars.peek().is_none()
     }
-    
+
     /// Peek at the next character without consuming
     fn peek(&mut self) -> Option<char> {
         self.chars.peek().copied()
@@ -261,7 +261,7 @@ impl<'a> AdocLexer<'a> {
         // A better approach would use a peekable buffer
         None // TODO: implement properly
     }
-    
+
     /// Consume and return the next character
     fn advance(&mut self) -> Option<char> {
         let c = self.chars.next();
@@ -276,7 +276,7 @@ impl<'a> AdocLexer<'a> {
         }
         c
     }
-    
+
     /// Skip whitespace in text mode (preserve newlines for structure)
     fn skip_whitespace_text(&mut self) {
         while let Some(&c) = self.chars.peek() {
@@ -287,7 +287,7 @@ impl<'a> AdocLexer<'a> {
             }
         }
     }
-    
+
     /// Skip whitespace in code mode
     fn skip_whitespace_code(&mut self) {
         while let Some(&c) = self.chars.peek() {
@@ -298,7 +298,7 @@ impl<'a> AdocLexer<'a> {
             }
         }
     }
-    
+
     /// Record token start position
     fn start_token(&mut self) {
         self.token_start = self.pos;
@@ -309,12 +309,12 @@ impl<'a> AdocLexer<'a> {
     fn token_text(&self) -> String {
         self.source[self.token_start..self.pos].to_string()
     }
-    
+
     /// Tokenize in text mode
     fn tokenize_text(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let column = self.column;
-        
+
         match self.peek() {
             Some('\n') => {
                 self.advance();
@@ -325,11 +325,9 @@ impl<'a> AdocLexer<'a> {
                 }
                 return Ok(AdToken::simple(AdTokenKind::Newline, line, column));
             }
-            
-            Some('#') => {
-                self.tokenize_header()
-            }
-            
+
+            Some('#') => self.tokenize_header(),
+
             Some('$') => {
                 self.advance();
                 // Check for interpolation ${ ... }
@@ -342,10 +340,10 @@ impl<'a> AdocLexer<'a> {
                 self.mode = LexerMode::Code;
                 Ok(AdToken::simple(AdTokenKind::Dollar, line, column))
             }
-            
+
             Some('%') => {
                 self.advance(); // consume %
-                // Check for math start %{
+                                // Check for math start %{
                 if self.peek() == Some('{') {
                     self.advance(); // consume {
                     self.mode = LexerMode::Math;
@@ -354,7 +352,7 @@ impl<'a> AdocLexer<'a> {
                 // Just a percent sign in text - return as text token
                 Ok(AdToken::new(AdTokenKind::Text, "%", line, column))
             }
-            
+
             Some('*') => {
                 // Check for bold ** or horizontal rule ***
                 let line = self.line;
@@ -372,7 +370,7 @@ impl<'a> AdocLexer<'a> {
                 // Just italic
                 Ok(AdToken::simple(AdTokenKind::Underscore, line, col))
             }
-            
+
             Some('_') => {
                 let line = self.line;
                 let col = self.column;
@@ -383,7 +381,7 @@ impl<'a> AdocLexer<'a> {
                 }
                 Ok(AdToken::simple(AdTokenKind::Underscore, line, col))
             }
-            
+
             Some('`') => {
                 // Check for code fence
                 let line = self.line;
@@ -399,18 +397,16 @@ impl<'a> AdocLexer<'a> {
                 // Inline code
                 Ok(AdToken::simple(AdTokenKind::Backtick, line, col))
             }
-            
-            Some('-') => {
-                self.tokenize_dash_or_list()
-            }
-            
+
+            Some('-') => self.tokenize_dash_or_list(),
+
             Some('>') => {
                 let line = self.line;
                 let col = self.column;
                 self.advance();
                 Ok(AdToken::simple(AdTokenKind::Blockquote, line, col))
             }
-            
+
             Some('/') => {
                 let line = self.line;
                 let col = self.column;
@@ -430,7 +426,7 @@ impl<'a> AdocLexer<'a> {
                     Ok(AdToken::new(AdTokenKind::Text, "/", line, col))
                 }
             }
-            
+
             Some('!') => {
                 // Check for image ![...](...)
                 let line = self.line;
@@ -443,19 +439,19 @@ impl<'a> AdocLexer<'a> {
                 // Just a ! in text - return as text token
                 Ok(AdToken::new(AdTokenKind::Text, "!", line, col))
             }
-            
+
             Some('[') => {
                 let line = self.line;
                 let col = self.column;
                 self.advance();
                 Ok(AdToken::simple(AdTokenKind::LinkStart, line, col))
             }
-            
+
             Some(c) if c.is_ascii_digit() => {
                 // Check for numbered list
                 self.tokenize_number_or_list()
             }
-            
+
             _ => {
                 // Regular text content
                 self.start_token();
@@ -463,65 +459,70 @@ impl<'a> AdocLexer<'a> {
             }
         }
     }
-    
+
     /// Tokenize header (# ## ### etc.)
     fn tokenize_header(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let column = self.column;
-        
+
         self.start_token();
         let mut level = 0u8;
-        
+
         while self.peek() == Some('#') && level < 6 {
             self.advance();
             level += 1;
         }
-        
+
         // Skip space after header
         if self.peek() == Some(' ') {
             self.advance();
         }
-        
-        Ok(AdToken::new(AdTokenKind::Header { level }, "#".repeat(level as usize), line, column))
+
+        Ok(AdToken::new(
+            AdTokenKind::Header { level },
+            "#".repeat(level as usize),
+            line,
+            column,
+        ))
     }
-    
+
     /// Tokenize dash or list item
     fn tokenize_dash_or_list(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let col = self.column;
-        
+
         self.start_token();
         self.advance(); // consume -
-        
+
         // Check for horizontal rule ---
         let mut dash_count = 1;
         while self.peek() == Some('-') {
             self.advance();
             dash_count += 1;
         }
-        
+
         if dash_count >= 3 {
             return Ok(AdToken::simple(AdTokenKind::HorizontalRule, line, col));
         }
-        
+
         // Check for list item (must be followed by space)
         if self.peek() == Some(' ') {
             self.advance();
             return Ok(AdToken::new(AdTokenKind::ListItem, "-", line, col));
         }
-        
+
         // Just text
         self.tokenize_text_content()
     }
-    
+
     /// Tokenize number or numbered list
     fn tokenize_number_or_list(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let col = self.column;
-        
+
         self.start_token();
         let mut num_str = String::new();
-        
+
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() {
                 num_str.push(c as char);
@@ -530,7 +531,7 @@ impl<'a> AdocLexer<'a> {
                 break;
             }
         }
-        
+
         // Check for numbered list (1. or 1))
         if self.peek() == Some('.') || self.peek() == Some(')') {
             let _delim = self.peek().unwrap();
@@ -540,24 +541,23 @@ impl<'a> AdocLexer<'a> {
                 return Ok(AdToken::new(AdTokenKind::NumberedList, num_str, line, col));
             }
         }
-        
+
         // Just a number in text
         Ok(AdToken::new(AdTokenKind::Text, num_str, line, col))
     }
-    
+
     /// Tokenize text content until special character
     fn tokenize_text_content(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let column = self.column;
-        
+
         self.start_token();
         let mut text = String::new();
-        
+
         while let Some(c) = self.peek() {
             // Stop at special characters
             match c {
-                '\n' | '#' | '$' | '%' | '*' | '_' | '`' | '-' 
-                | '>' | '!' | '[' | '/' => break,
+                '\n' | '#' | '$' | '%' | '*' | '_' | '`' | '-' | '>' | '!' | '[' | '/' => break,
                 ' ' | '\t' => {
                     text.push(c);
                     self.advance();
@@ -567,12 +567,12 @@ impl<'a> AdocLexer<'a> {
                     self.advance();
                 }
             }
-            
+
             if text.len() > 10000 {
                 return Err(AdocError::lexer("Text content too long"));
             }
         }
-        
+
         if text.is_empty() {
             // Single character token
             let c = self.advance().unwrap() as char;
@@ -581,12 +581,12 @@ impl<'a> AdocLexer<'a> {
             Ok(AdToken::new(AdTokenKind::Text, text, line, column))
         }
     }
-    
+
     /// Tokenize in code mode (after $)
     fn tokenize_code(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let column = self.column;
-        
+
         match self.peek() {
             Some('{') => {
                 self.advance();
@@ -711,31 +711,25 @@ impl<'a> AdocLexer<'a> {
                     Err(AdocError::lexer("Unexpected '|' in code mode"))
                 }
             }
-            Some('"') => {
-                self.tokenize_string()
-            }
-            Some(c) if c.is_ascii_digit() => {
-                self.tokenize_number()
-            }
-            Some(c) if c.is_ascii_alphabetic() || c == '_' => {
-                self.tokenize_identifier()
-            }
+            Some('"') => self.tokenize_string(),
+            Some(c) if c.is_ascii_digit() => self.tokenize_number(),
+            Some(c) if c.is_ascii_alphabetic() || c == '_' => self.tokenize_identifier(),
             _ => Err(AdocError::unexpected_token(
                 "valid code token",
                 format!("'{}'", self.peek().unwrap_or('\0')),
             )),
         }
     }
-    
+
     /// Tokenize string literal
     fn tokenize_string(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let column = self.column;
-        
+
         self.advance(); // consume opening "
         self.start_token();
         let mut content = String::new();
-        
+
         loop {
             match self.peek() {
                 Some('"') => {
@@ -765,15 +759,15 @@ impl<'a> AdocLexer<'a> {
             }
         }
     }
-    
+
     /// Tokenize number literal
     fn tokenize_number(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let column = self.column;
-        
+
         self.start_token();
         let mut num_str = String::new();
-        
+
         // Integer part
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() {
@@ -783,13 +777,13 @@ impl<'a> AdocLexer<'a> {
                 break;
             }
         }
-        
+
         // Decimal part
         if self.peek() == Some('.') {
             // Peek ahead to make sure it's not a method call
             num_str.push('.');
             self.advance();
-            
+
             while let Some(c) = self.peek() {
                 if c.is_ascii_digit() {
                     num_str.push(c as char);
@@ -799,18 +793,18 @@ impl<'a> AdocLexer<'a> {
                 }
             }
         }
-        
+
         Ok(AdToken::new(AdTokenKind::Number, num_str, line, column))
     }
-    
+
     /// Tokenize identifier or keyword
     fn tokenize_identifier(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let column = self.column;
-        
+
         self.start_token();
         let mut ident = String::new();
-        
+
         while let Some(c) = self.peek() {
             if c.is_ascii_alphanumeric() || c == '_' {
                 ident.push(c as char);
@@ -819,7 +813,7 @@ impl<'a> AdocLexer<'a> {
                 break;
             }
         }
-        
+
         // Check for keywords
         let kind = match ident.as_str() {
             "if" => AdTokenKind::If,
@@ -835,19 +829,19 @@ impl<'a> AdocLexer<'a> {
             "nil" => AdTokenKind::Nil,
             _ => AdTokenKind::Ident,
         };
-        
+
         Ok(AdToken::new(kind, ident, line, column))
     }
-    
+
     /// Tokenize in math mode (inside %{ ... })
     fn tokenize_math(&mut self) -> AdocResult<AdToken> {
         let line = self.line;
         let column = self.column;
-        
+
         self.start_token();
         let mut content = String::new();
         let mut brace_level = 1;
-        
+
         loop {
             match self.peek() {
                 Some('}') => {
@@ -855,16 +849,21 @@ impl<'a> AdocLexer<'a> {
                     if brace_level == 0 {
                         self.advance();
                         self.mode = LexerMode::Text;
-                        
+
                         // Return math content
                         if !content.is_empty() {
                             self.buffer.push_back(AdToken::new(
                                 AdTokenKind::MathEnd,
                                 "}",
                                 self.line,
-                                self.column
+                                self.column,
                             ));
-                            return Ok(AdToken::new(AdTokenKind::MathContent, content, line, column));
+                            return Ok(AdToken::new(
+                                AdTokenKind::MathContent,
+                                content,
+                                line,
+                                column,
+                            ));
                         }
                         return Ok(AdToken::simple(AdTokenKind::MathEnd, line, column));
                     } else {
@@ -887,21 +886,21 @@ impl<'a> AdocLexer<'a> {
             }
         }
     }
-    
+
     /// Switch to a different lexer mode
     pub fn set_mode(&mut self, mode: LexerMode) {
         self.mode = mode;
     }
-    
+
     /// Get current lexer mode
     pub fn mode(&self) -> LexerMode {
         self.mode.clone()
     }
-    
+
     /// Tokenize entire source into a vector
     pub fn tokenize_all(&mut self) -> AdocResult<Vec<AdToken>> {
         let mut tokens = Vec::new();
-        
+
         loop {
             let token = self.next_token()?;
             if token.kind == AdTokenKind::EOF {
@@ -910,7 +909,7 @@ impl<'a> AdocLexer<'a> {
             }
             tokens.push(token);
         }
-        
+
         Ok(tokens)
     }
 }
@@ -943,16 +942,16 @@ mod tests {
     fn test_lexer_header() {
         let source = "# Title\n## Section";
         let mut lexer = AdocLexer::new(source);
-        
+
         let token = lexer.next_token().unwrap();
         assert!(matches!(token.kind, AdTokenKind::Header { level: 1 }));
-        
+
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::Text);
-        
+
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::Newline);
-        
+
         let token = lexer.next_token().unwrap();
         assert!(matches!(token.kind, AdTokenKind::Header { level: 2 }));
     }
@@ -961,20 +960,20 @@ mod tests {
     fn test_lexer_math() {
         let source = "Math: %{ E = mc^2 } here";
         let mut lexer = AdocLexer::new(source);
-        
+
         // "Math:"
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::Text);
-        
+
         // MathStart
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::MathStart);
-        
+
         // MathContent
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::MathContent);
         assert!(token.text.contains("E = mc^2"));
-        
+
         // MathEnd
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::MathEnd);
@@ -984,20 +983,20 @@ mod tests {
     fn test_lexer_interpolation() {
         let source = "Hello, ${name}!";
         let mut lexer = AdocLexer::new(source);
-        
+
         // "Hello,"
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::Text);
-        
+
         // ${
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::InterpolateStart);
-        
+
         // name (identifier in code mode)
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::Ident);
         assert_eq!(token.text, "name");
-        
+
         // }
         let token = lexer.next_token().unwrap();
         assert_eq!(token.kind, AdTokenKind::RBrace);

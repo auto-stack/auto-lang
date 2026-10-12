@@ -1,0 +1,926 @@
+{
+  "plan": 763,
+  "checked_at": "2026-10-11",
+  "author_caveat": "Git commit attribution does not establish whether an AI generated a workflow",
+  "workflows": [
+    {
+      "file": ".github/workflows/auto-lsp-ci.yml",
+      "added": "8b6bc1d383d5611fd2741259d8361a0c575ca0bc|2026-05-11T16:45:20+08:00|ci: add GitHub Actions workflow for auto-lsp",
+      "sha256": "7a03611abf8efe9a020c0d8c42ca4e5f64caf975c2eb627d2595a77ed646fac3",
+      "definition": "name: Auto LSP CI\n\n# Plan 416 6-A (2026-08-22): push triggers RESTORED, scoped to the LSP\n# crates via `paths` (the old always-red state came from the fmt job checking\n# the ENTIRE workspace — 9000+ files are not rustfmt-clean and mass-reformat\n# is a separate decision; the job now checks `cargo fmt -p auto-lsp` only).\n# Local gate before re-enabling: cargo check/test/fmt -p auto-lsp all green.\non:\n  push:\n    branches: [master]\n    paths:\n      - \"crates/auto-lsp/**\"\n      - \"crates/a2r-std/**\"\n      - \".github/workflows/auto-lsp-ci.yml\"\n  pull_request:\n    paths:\n      - \"crates/auto-lsp/**\"\n      - \"crates/a2r-std/**\"\n      - \".github/workflows/auto-lsp-ci.yml\"\n  workflow_dispatch:\n\nenv:\n  CARGO_TERM_COLOR: always\n\njobs:\n  check:\n    name: Check\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Install Rust\n        uses: dtolnay/rust-toolchain@stable\n      - name: Cache cargo registry\n        uses: actions/cache@v4\n        with:\n          path: ~/.cargo/registry\n          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('Cargo.lock') }}\n      - name: Cache cargo index\n        uses: actions/cache@v4\n        with:\n          path: ~/.cargo/git\n          key: ${{ runner.os }}-cargo-index-${{ hashFiles('Cargo.lock') }}\n      - name: Cache cargo build\n        uses: actions/cache@v4\n        with:\n          path: target\n          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('Cargo.lock') }}\n      - name: Check auto-lsp\n        run: cargo check -p auto-lsp\n\n  test:\n    name: Test\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Install Rust\n        uses: dtolnay/rust-toolchain@stable\n      - name: Cache cargo\n        uses: actions/cache@v4\n        with:\n          path: |\n            ~/.cargo/registry\n            ~/.cargo/git\n            target\n          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}\n      - name: Run auto-lsp tests\n        run: cargo test -p auto-lsp\n\n  fmt:\n    name: Rustfmt\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Install Rust\n        uses: dtolnay/rust-toolchain@stable\n        with:\n          components: rustfmt\n      - name: Check formatting (fmt-clean packages: auto-lsp, a2r-std)\n        run: |\n          cargo fmt -p auto-lsp -- --check\n          cargo fmt -p a2r-std -- --check\n",
+      "total_runs": 156,
+      "recent_runs": [
+        {
+          "id": 38122718160,
+          "created_at": "2026-10-11T07:50:17Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122718160"
+        },
+        {
+          "id": 38122677887,
+          "created_at": "2026-10-11T07:49:35Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122677887"
+        },
+        {
+          "id": 38043360630,
+          "created_at": "2026-10-10T10:00:03Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38043360630"
+        },
+        {
+          "id": 38037505561,
+          "created_at": "2026-10-10T08:20:01Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38037505561"
+        },
+        {
+          "id": 37916496545,
+          "created_at": "2026-10-09T10:15:39Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37916496545"
+        }
+      ],
+      "latest_jobs": [],
+      "decision": "remove: unused deployment or consistently failing unmaintained checks; local gates preserved"
+    },
+    {
+      "file": ".github/workflows/build-bps-gallery.yml",
+      "added": "7da53b1a9afe676774c4c75f3b6c6e57a013ce18|2026-09-18T02:34:53+08:00|feat(bps-gallery): PLAN-640 T-08 —— glob 磁盘自动发现 + 术语卫生 + CI 门禁",
+      "sha256": "9a347fa221efa5587cd655a87434f181e4adaae24e999a6c23ceeec5d847c327",
+      "definition": "# Build + registry drift regression for examples/bps-gallery — the blueprint\n# catalog browser (PLAN-676 Auto 化: 壳消费 layout/gallery-shell BP via L1,\n# 目录发现数据源 = 生成的 src/front/registry.at; SD-01 取代 PLAN-640 的\n# import.meta.glob 零产物裁定——Auto 化后 VM 臂无法读盘, 双臂同源要求\n# 静态表). blueprints/** 或发射器变更经两道闸:\n#   ① registry 漂移校验 — 重跑 `auto bp list --format at` 与提交产物 diff,\n#     非空即红 (防手改 registry.at / 漏提交再生物);\n#   ② `auto build` — gen + vue-tsc + vite 全链 (壳 SFC + 蓝图引用编译).\n\nname: Build bps-gallery\n\non:\n  push:\n    branches: [master, main]\n    paths:\n      - 'examples/bps-gallery/**'\n      - 'blueprints/**'\n      - 'crates/auto/**'\n      - 'crates/auto-lang/**'\n      - '.github/workflows/build-bps-gallery.yml'\n  pull_request:\n    paths:\n      - 'examples/bps-gallery/**'\n      - 'blueprints/**'\n      - 'crates/auto/**'\n      - 'crates/auto-lang/**'\n      - '.github/workflows/build-bps-gallery.yml'\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n\n      - uses: dtolnay/rust-toolchain@stable\n      - uses: Swatinem/rust-cache@v2\n\n      - name: Build auto CLI\n        run: cargo build -p auto\n\n      - name: Registry drift check (PLAN-676 SD-01)\n        run: |\n          ./target/debug/auto bp list --format at > /tmp/registry.at\n          if ! diff -u examples/bps-gallery/src/front/registry.at /tmp/registry.at; then\n            echo \"::error::registry.at drifted from blueprints/** — rerun \\`auto bp list --format at > examples/bps-gallery/src/front/registry.at\\` and commit the regenerated artifact\"\n            exit 1\n          fi\n\n      - uses: pnpm/action-setup@v4\n        with:\n          version: 11\n\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n\n      - name: Build (auto build — vue arm full chain)\n        working-directory: examples/bps-gallery\n        run: ../../target/debug/auto build\n",
+      "total_runs": 16,
+      "recent_runs": [
+        {
+          "id": 38122678554,
+          "created_at": "2026-10-11T07:49:36Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122678554"
+        },
+        {
+          "id": 38037506336,
+          "created_at": "2026-10-10T08:20:01Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38037506336"
+        },
+        {
+          "id": 37916498279,
+          "created_at": "2026-10-09T10:15:40Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37916498279"
+        },
+        {
+          "id": 37751656432,
+          "created_at": "2026-10-08T08:42:46Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37751656432"
+        },
+        {
+          "id": 36963561809,
+          "created_at": "2026-10-02T04:12:58Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/36963561809"
+        }
+      ],
+      "latest_jobs": [
+        {
+          "name": "build",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build auto CLI",
+              "conclusion": "failure"
+            },
+            {
+              "name": "Registry drift check (PLAN-676 SD-01)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Run pnpm/action-setup@v4",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Build (auto build — vue arm full chain)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "decision": "remove: unused deployment or consistently failing unmaintained checks; local gates preserved"
+    },
+    {
+      "file": ".github/workflows/build-ui-examples.yml",
+      "added": "c11495447aebf6cd69e94d012f9aaf04c72cc441|2026-07-29T19:50:29+08:00|ci: add build-ui-examples workflow gating examples/ui generation",
+      "sha256": "c2662f2f65b6639037003bdae1ddb68e083119dc078864d92d5745b879855a24",
+      "definition": "# Build regression for examples/ui — runs `auto build --gen-only` on a\n# representative set of UI examples so generator/parser breakage shows up in\n# CI instead of only on local machines.\n#\n# Scope note: this gates the .at → Vue SFC generation pipeline (parse,\n# ui_gen, post-generation validators). It deliberately skips the npm\n# install + vite build phase: per-example npm installs are too heavy for\n# this matrix, and 015-notes declares `npm_deps` with `link:` entries\n# pointing at absolute local paths (D:/autostack/...) that cannot resolve\n# on a CI runner. Full npm-level verification stays a local workflow.\n\nname: Build UI examples\n\non:\n  push:\n    branches: [master, main]\n    paths:\n      - 'crates/auto-lang/**'\n      - 'crates/auto-man/**'\n      - 'crates/auto/**'\n      - 'examples/ui/**'\n      - 'examples/bp-admin/**'\n      - '.github/workflows/build-ui-examples.yml'\n  pull_request:\n    paths:\n      - 'crates/auto-lang/**'\n      - 'crates/auto-man/**'\n      - 'crates/auto/**'\n      - 'examples/ui/**'\n      - 'examples/bp-admin/**'\n      - '.github/workflows/build-ui-examples.yml'\n\njobs:\n  gen-only:\n    runs-on: ubuntu-latest\n    timeout-minutes: 30\n    strategy:\n      fail-fast: false\n      # PLAN-689：matrix 项为仓根相对全路径（examples/ui/… +\n      # examples/bp-admin），working-directory 直接取 ${{ matrix.example }}\n      # ——047 迁出后若沿用 \"examples/ui/${{…}}\" 前缀会复刻 PLAN-657 T-04\n      # 清掉的四条同型死目录项。\n      matrix:\n        example:\n          # Baseline smoke coverage\n          - examples/ui/001-helloworld\n          - examples/ui/002-counter\n          # Classic CRUD\n          - examples/ui/013-todo\n          # Most complete app; link: npm_deps are fine here because\n          # --gen-only never reaches the npm install phase\n          - examples/ui/015-notes\n          # PLAN-657: L1 multi-package blueprint assembly sample (four bp\n          # packages, zero copy) — keeps the bps dep-scan + back #[api]\n          # generation under CI. PLAN-689: migrated to a standalone\n          # examples/bp-admin (no longer under examples/ui).\n          - examples/bp-admin\n          # NOTE (PLAN-657 T-04 hygiene): entries 026-keyboard-mouse-events /\n          # 027-native-css / 028-dom-escape / 029-external-imports were removed\n          # — those examples moved to examples/capability-tests/ in the\n          # 021-040 reorg (cfc1bfe23) and the matrix kept pointing at dead\n          # dirs. capability-tests gen coverage is a separate debt.\n    steps:\n      - uses: actions/checkout@v4\n      - uses: dtolnay/rust-toolchain@stable\n      - uses: Swatinem/rust-cache@v2\n      - name: Build auto CLI\n        run: cargo build -p auto\n      - name: auto build --gen-only (${{ matrix.example }})\n        working-directory: ${{ matrix.example }}\n        # PLAN-689：matrix 项现为不同深度的仓根相对路径（examples/ui/X\n        # 两层 / examples/bp-admin 一层），exe 路径用 $GITHUB_WORKSPACE\n        # 绝对形态，不再依赖固定层级数的 ../ 回退。\n        run: $GITHUB_WORKSPACE/target/debug/auto build --gen-only\n",
+      "total_runs": 290,
+      "recent_runs": [
+        {
+          "id": 38122678591,
+          "created_at": "2026-10-11T07:49:36Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122678591"
+        },
+        {
+          "id": 38043361870,
+          "created_at": "2026-10-10T10:00:04Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38043361870"
+        },
+        {
+          "id": 38037506347,
+          "created_at": "2026-10-10T08:20:01Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38037506347"
+        },
+        {
+          "id": 37916498257,
+          "created_at": "2026-10-09T10:15:40Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37916498257"
+        },
+        {
+          "id": 37751656399,
+          "created_at": "2026-10-08T08:42:46Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37751656399"
+        }
+      ],
+      "latest_jobs": [
+        {
+          "name": "gen-only (examples/ui/013-todo)",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build auto CLI",
+              "conclusion": "failure"
+            },
+            {
+              "name": "auto build --gen-only (examples/ui/013-todo)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "gen-only (examples/ui/001-helloworld)",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build auto CLI",
+              "conclusion": "failure"
+            },
+            {
+              "name": "auto build --gen-only (examples/ui/001-helloworld)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "gen-only (examples/ui/002-counter)",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build auto CLI",
+              "conclusion": "failure"
+            },
+            {
+              "name": "auto build --gen-only (examples/ui/002-counter)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "gen-only (examples/ui/015-notes)",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build auto CLI",
+              "conclusion": "failure"
+            },
+            {
+              "name": "auto build --gen-only (examples/ui/015-notes)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "gen-only (examples/bp-admin)",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build auto CLI",
+              "conclusion": "failure"
+            },
+            {
+              "name": "auto build --gen-only (examples/bp-admin)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "decision": "remove: unused deployment or consistently failing unmaintained checks; local gates preserved"
+    },
+    {
+      "file": ".github/workflows/build-vue-gallery.yml",
+      "added": "0c0bed22ece77f48813380995f4b13f8a51f915f|2026-06-26T11:56:22+08:00|ci(vue-gallery): build regression on package/example changes (Phase 5)",
+      "sha256": "61ea5f9a979420dabd9cfea7407eebef741956fcd23cd138bc560ac7c8eb5bad",
+      "definition": "# Build regression for examples/vue-gallery — the @auto-ui/widgets dogfood\n# consumer. Type-checks + bundles the showcase so package/example breakage\n# shows up here instead of in a downstream Vue project.\n#\n# Triggers on changes to the showcase or to the package's committed registry.\n\nname: Build vue-gallery\n\non:\n  push:\n    branches: [master, main]\n    paths:\n      - 'examples/vue-gallery/**'\n      - 'packages/widgets/registry/**'\n      - 'packages/widgets/package.json'\n      - '.github/workflows/build-vue-gallery.yml'\n  pull_request:\n    paths:\n      - 'examples/vue-gallery/**'\n      - 'packages/widgets/registry/**'\n      - 'packages/widgets/package.json'\n      - '.github/workflows/build-vue-gallery.yml'\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n\n      - uses: pnpm/action-setup@v4\n        with:\n          version: 11\n\n      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n          cache: 'pnpm'\n          cache-dependency-path: examples/vue-gallery/pnpm-lock.yaml\n\n      - name: Install\n        working-directory: examples/vue-gallery\n        run: pnpm install --frozen-lockfile\n\n      - name: Build (vue-tsc --noEmit && vite build)\n        working-directory: examples/vue-gallery\n        run: pnpm build\n",
+      "total_runs": 8,
+      "recent_runs": [
+        {
+          "id": 35332729266,
+          "created_at": "2026-09-18T10:03:25Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/35332729266"
+        },
+        {
+          "id": 32813042832,
+          "created_at": "2026-08-25T05:29:32Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/32813042832"
+        },
+        {
+          "id": 30972509368,
+          "created_at": "2026-08-05T03:31:33Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/30972509368"
+        },
+        {
+          "id": 28222346424,
+          "created_at": "2026-06-26T06:53:13Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/28222346424"
+        },
+        {
+          "id": 28220577588,
+          "created_at": "2026-06-26T06:08:14Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/28220577588"
+        }
+      ],
+      "latest_jobs": [
+        {
+          "name": "build",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run pnpm/action-setup@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/setup-node@v4",
+              "conclusion": "failure"
+            },
+            {
+              "name": "Install",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Build (vue-tsc --noEmit && vite build)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/setup-node@v4",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run pnpm/action-setup@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "decision": "remove: unused deployment or consistently failing unmaintained checks; local gates preserved"
+    },
+    {
+      "file": ".github/workflows/deploy-website.yml",
+      "added": "68e6c14f2e3ff2032f8334627d3b0a3114224b24|2026-04-22T11:22:20+08:00|feat(website): add VitePress static site for Auto Language",
+      "sha256": "de7539c994668ed8cebea1981233238d875d0cdfaf8417e2b0a658f6310fd866",
+      "definition": "# Deploy Auto Language Website to GitHub Pages\n#\n# This workflow builds the Auto Language documentation website\n# and deploys it to GitHub Pages.\n#\n# PLAN-590 (Stage B P-5): widgets-gallery 物理迁 auto-os 顶层——画廊构建\n# 段改为 checkout auto-os(auto-stack/auto-os)并从 auto-os/widgets-gallery\n# 构建(auto CLI 仍由本仓框架构建)。画廊源变更在 auto-os 仓发生,本仓\n# push 触发器看不见——手动/workflow_dispatch 的 `gallery` 输入强制重建\n# 画廊快照;auto-os 侧自动触发(repository_dispatch)随 P-6/auto-os CI 立起。\n# 构建产物同步 website/public/ui/gallery,站点在 /ui/gallery/ 服务该快照。\n\nname: Deploy Website\n\non:\n  push:\n    branches: [main]\n    paths:\n      - 'website/**'\n      - 'docs/**'\n      - '.github/workflows/deploy-website.yml'\n  workflow_dispatch:\n    inputs:\n      gallery:\n        description: 'Rebuild the widgets-gallery snapshot from auto-os'\n        type: boolean\n        default: false\n  # Stage B P-6（PLAN-009 T7）：auto-os 侧画廊/app 变更经 repository_dispatch\n  # 触发（event_type=deploy-website）——等价 gallery=true 手动 dispatch。\n  repository_dispatch:\n    types: [deploy-website]\n\n# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages\npermissions:\n  contents: read\n  pages: write\n  id-token: write\n\n# Allow only one concurrent deployment\nconcurrency:\n  group: \"pages\"\n  cancel-in-progress: false\n\njobs:\n  # Build job\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout auto-lang\n        uses: actions/checkout@v4\n        with:\n          path: auto-lang\n\n      - name: Checkout book repo\n        uses: actions/checkout@v4\n        with:\n          repository: autostack/book\n          path: book\n          # If the book repo is private, you may need a token:\n          # token: ${{ secrets.BOOK_REPO_TOKEN }}\n\n      # PLAN-590: widgets-gallery 随 Stage B P-5 迁 auto-os 顶层。\n      - name: Checkout auto-os repo\n        uses: actions/checkout@v4\n        with:\n          repository: auto-stack/auto-os\n          path: auto-os\n\n      - name: Setup Bun\n        uses: oven-sh/setup-bun@v2\n        with:\n          bun-version: latest\n\n      # --- widgets-gallery build (PLAN-590: source now in auto-os; manual\n      #     dispatch input forces rebuild — auto-os-side auto trigger lands\n      #     with P-6 / auto-os CI) ---\n      - name: Setup Node\n        if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.gallery == true)\n        uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n\n      - name: Setup pnpm\n        if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.gallery == true)\n        uses: pnpm/action-setup@v4\n        with:\n          version: '9'\n\n      - name: Setup Rust\n        if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.gallery == true)\n        uses: dtolnay/rust-toolchain@stable\n\n      - name: Build auto CLI\n        if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.gallery == true)\n        run: cargo build --release -p auto\n        working-directory: auto-lang\n\n      - name: Build widgets-gallery\n        if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.gallery == true)\n        run: |\n          ../../auto-lang/target/release/auto build\n          rm -rf ../../auto-lang/website/public/ui/gallery\n          mkdir -p ../../auto-lang/website/public/ui/gallery\n          cp -r gen/front/vue/dist/* ../../auto-lang/website/public/ui/gallery/\n        working-directory: auto-os/widgets-gallery\n        env:\n          # shadcn-vue add / pnpm install run inside `auto build`\n          PNPM_HOME: /home/runner/.local/share/pnpm\n\n      - name: Install Dependencies\n        run: |\n          cd auto-lang/website\n          bun install --frozen-lockfile\n\n      - name: Prepare Content\n        run: |\n          cd auto-lang/website\n          node scripts/prepare-content.js\n\n      - name: Build Website\n        run: |\n          cd auto-lang/website\n          bun run build\n\n      - name: Setup Pages\n        uses: actions/configure-pages@v4\n\n      - name: Upload artifact\n        uses: actions/upload-pages-artifact@v3\n        with:\n          path: ./auto-lang/website/.vitepress/dist\n\n  # Deployment job\n  deploy:\n    environment:\n      name: github-pages\n      url: ${{ steps.deployment.outputs.page_url }}\n    runs-on: ubuntu-latest\n    needs: build\n    steps:\n      - name: Deploy to GitHub Pages\n        id: deployment\n        uses: actions/deploy-pages@v4\n",
+      "total_runs": 0,
+      "recent_runs": [],
+      "latest_jobs": [],
+      "decision": "remove: unused deployment or consistently failing unmaintained checks; local gates preserved"
+    },
+    {
+      "file": ".github/workflows/http-e2e-ci.yml",
+      "added": "999f9aa55da730aced0e324e51ca547b81f22b23|2026-08-07T02:04:28+08:00|feat(plan-317): §11 Phase 11 — HTTP e2e 测试 CI 基建 + flaky 缓解",
+      "sha256": "ad30c87c7d3ef5dfdb6be38849f5dd5d013ed744b3914786d49a142324c8a2e8",
+      "definition": "name: http-e2e\n\n# Plan 317 §11 Phase 11: HTTP e2e regression gate.\n#\n# Runs the 7 HTTP e2e tests (formerly #[ignore]) that start a real TCP HTTP\n# server and validate the full #[api] → serve_async → handler → response\n# pipeline (struct JSON, path params, SSE, concurrent SSE, CRUD). Gated behind\n# the `test-http-e2e` feature. Run via `cargo th` locally (nextest alias).\n#\n# IMPORTANT — known flakiness profile:\n#   - The 4 non-SSE tests (struct/int-path/notes-crud/notes-list) are 100%\n#     stable in isolation and in-suite.\n#   - The 3 SSE tests (generator/indirect/concurrent) expose a scheduling\n#     sensitivity in serve_async's spawn_local + yield_now path: under heavy\n#     machine load (many concurrent processes / loaded CI runner), a connection\n#     can hit the 5s read-timeout before all SSE frames flush. This is a real\n#     nondeterminism in the cooperative schedule, NOT a server correctness bug.\n#   - Mitigation: nextest runs each test in its OWN process (full isolation,\n#     no detached-server-thread accumulation across tests), serially\n#     (--test-threads 1), and we retry transient flakes (--retries 2). An\n#     isolated CI runner with no competing load makes the flakes vanishingly\n#     rare. If this job flakes repeatedly, the deeper fix is a controlled\n#     serve_async shutdown (see plan-317 §11 Phase 11 \"follow-up\").\n#\n# Kept separate from auto-lsp-ci.yml (which only tests auto-lsp) so SSE\n# scheduling sensitivity can't break the core build.\n\non:\n  pull_request:\n    paths:\n      - 'crates/auto-lang/src/vm/ffi/http_server.rs'\n      - 'crates/auto-lang/src/vm/ffi/stdlib.rs'\n      - 'crates/auto-lang/src/vm/engine.rs'\n      - 'crates/auto-lang/src/lib.rs'\n      - 'crates/auto-lang/Cargo.toml'\n      - '.github/workflows/http-e2e-ci.yml'\n  push:\n    branches: [master]\n\njobs:\n  http-e2e:\n    runs-on: ubuntu-latest\n    timeout-minutes: 15\n    steps:\n      - uses: actions/checkout@v4\n      - uses: dtolnay/rust-toolchain@stable\n      - uses: Swatinem/rust-cache@v2\n      - name: Install nextest\n        run: cargo install cargo-nextest --locked || true\n      - name: Run HTTP e2e tests (serial, process-isolated, retry flakes)\n        # PLAN-658: +ui-iced — back_proxy media/031/media-uri e2e 挂此档\n        #（cfg ui-iced 门）；既有 7 例语义与 feature 无关，仅编译面变大。\n        run: cargo nextest run -p auto-lang --lib --features test-http-e2e,ui-iced http_e2e --test-threads 1 --retries 2\n",
+      "total_runs": 265,
+      "recent_runs": [
+        {
+          "id": 38122718797,
+          "created_at": "2026-10-11T07:50:17Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122718797"
+        },
+        {
+          "id": 38122678550,
+          "created_at": "2026-10-11T07:49:36Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122678550"
+        },
+        {
+          "id": 38043361857,
+          "created_at": "2026-10-10T10:00:04Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38043361857"
+        },
+        {
+          "id": 38037506363,
+          "created_at": "2026-10-10T08:20:01Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38037506363"
+        },
+        {
+          "id": 37916498314,
+          "created_at": "2026-10-09T10:15:40Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37916498314"
+        }
+      ],
+      "latest_jobs": [
+        {
+          "name": "http-e2e",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Install nextest",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run HTTP e2e tests (serial, process-isolated, retry flakes)",
+              "conclusion": "failure"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "decision": "remove: unused deployment or consistently failing unmaintained checks; local gates preserved"
+    },
+    {
+      "file": ".github/workflows/parity-ci.yml",
+      "added": "688857fdba13ecc8370de92d3f8d7d324391ac7b|2026-07-17T14:23:05+08:00|ci: add parity p1/p2 gate on PRs touching a2r/auto-lang/parity (Plan 358 C2)",
+      "sha256": "979006d87c84ad46d06fc3584426a62ee66c90eb9b677358f31a31e601c0e401",
+      "definition": "name: parity\n\non:\n  pull_request:\n    paths:\n      - 'crates/auto-lang/**'\n      - 'crates/a2r-std/**'\n      - 'crates/auto/**'\n      - 'parity/**'\n      - '.github/workflows/parity-ci.yml'\n  push:\n    branches: [master]\n\njobs:\n  parity-p1-p2:\n    runs-on: ubuntu-latest\n    timeout-minutes: 40\n    steps:\n      - uses: actions/checkout@v4\n      - uses: dtolnay/rust-toolchain@stable\n      - uses: Swatinem/rust-cache@v2\n        with:\n          workspaces: \". -> target\\nparity -> parity/target\"\n      - name: Build auto binary\n        run: cargo build -p auto --release\n      - name: Run parity p1 (base64, url)\n        working-directory: parity\n        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto phase p1\n      - name: Run parity p2 (serde_json, regex)\n        working-directory: parity\n        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto phase p2\n      - name: Generate parity dashboard\n        working-directory: parity\n        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto report --output docs/parity-dashboard.html\n      - name: Upload parity dashboard\n        uses: actions/upload-artifact@v4\n        with:\n          name: parity-dashboard\n          path: parity/docs/parity-dashboard.html\n      - name: Upload parity artifacts on failure\n        if: failure()\n        uses: actions/upload-artifact@v4\n        with:\n          name: parity-failure\n          path: parity/\n\n  parity-dep-real-crates:\n    # PLAN-594: 真三方 crates.io 库三轨对拍（libs/dep/*_real；base64 为全红\n    # 样本不注册）。网络档——AUTO_LANG_PARITY_NET=1 允许拉取/构建三方 crate\n    # （VM methods pack、a2r 测试 crate、oracle tests/rust 三处消费）。\n    runs-on: ubuntu-latest\n    timeout-minutes: 40\n    steps:\n      - uses: actions/checkout@v4\n      - uses: dtolnay/rust-toolchain@stable\n      # VM 腿自由函数面（430/212 methods pack）依赖 nightly rustdoc。\n      - uses: dtolnay/rust-toolchain@nightly\n      - uses: Swatinem/rust-cache@v2\n        with:\n          workspaces: \". -> target\\nparity -> parity/target\"\n      # 产物缓存：a2r 测试 crate 的 target（runner 硬编码 bin_dir/target，\n      # 无法用 CARGO_TARGET_DIR 共享）与 oracle tests/rust/target。键挂\n      # parity 工具+dep 语料 hash——语料或工具不变时免付 auto-lang 冷构建。\n      - name: Restore dep-parity build artifacts\n        uses: actions/cache@v4\n        with:\n          path: |\n            parity/libs/dep/*/build_a2r/*/target\n            parity/libs/dep/*/tests/rust/target\n          key: parity-dep-${{ runner.os }}-${{ hashFiles('parity/crates/auto-parity/**', 'parity/libs/dep/**') }}\n      - name: Build auto binary\n        run: cargo build -p auto --release\n      - name: Run parity p10 (dep real-crate corpora, network tier)\n        working-directory: parity\n        env:\n          AUTO_LANG_PARITY_NET: \"1\"\n        run: cargo run -p auto-parity -- --auto-binary ../target/release/auto phase p10\n      - name: Upload parity artifacts on failure\n        if: failure()\n        uses: actions/upload-artifact@v4\n        with:\n          name: parity-dep-failure\n          path: parity/\n",
+      "total_runs": 400,
+      "recent_runs": [
+        {
+          "id": 38122718799,
+          "created_at": "2026-10-11T07:50:17Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122718799"
+        },
+        {
+          "id": 38122678578,
+          "created_at": "2026-10-11T07:49:36Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122678578"
+        },
+        {
+          "id": 38043361866,
+          "created_at": "2026-10-10T10:00:04Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38043361866"
+        },
+        {
+          "id": 38037506325,
+          "created_at": "2026-10-10T08:20:01Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38037506325"
+        },
+        {
+          "id": 37916498188,
+          "created_at": "2026-10-09T10:15:40Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37916498188"
+        }
+      ],
+      "latest_jobs": [
+        {
+          "name": "parity-p1-p2",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build auto binary",
+              "conclusion": "failure"
+            },
+            {
+              "name": "Run parity p1 (base64, url)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Run parity p2 (serde_json, regex)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Generate parity dashboard",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Upload parity dashboard",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Upload parity artifacts on failure",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        },
+        {
+          "name": "parity-dep-real-crates",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@nightly",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Restore dep-parity build artifacts",
+              "conclusion": "success"
+            },
+            {
+              "name": "Build auto binary",
+              "conclusion": "failure"
+            },
+            {
+              "name": "Run parity p10 (dep real-crate corpora, network tier)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Upload parity artifacts on failure",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Restore dep-parity build artifacts",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "decision": "remove: unused deployment or consistently failing unmaintained checks; local gates preserved"
+    },
+    {
+      "file": ".github/workflows/vm-files-ci.yml",
+      "added": "2a2e40d753ce75c5a86fe7bb110a9f3f8600c576|2026-08-25T03:44:22+08:00|ci: vm-files-ci.yml —— test-vm-files 门控测试接入 CI(430 复审补网收尾)",
+      "sha256": "891bab51bdf9cbe5857c36426c07af484d44539f991c74920a081e700373d480",
+      "definition": "name: VM corpus and aavm tier tests\n\n# 430 复审补网(2026-08-25):aavm2 六道闸门(M1 lexer/M2 AST/M3 .type/M4 字节码/\n# M5 行为/主里程碑)与 vm 文件级 golden 原挂在独立语料档 cargo feature 后\n# 接入 CI 守护(默认 `cargo test` 此前不执行)。PLAN-700(2026-09-24):该 feature\n# 随语料三族常驻化退役——语料族(goldens/conformance/cookbook/gallery fence)\n# 模块常驻,用测试名筛选即可;aavm2 闸门保持 `test-aavm` feature(已独立化)。\n#\n# 分层策略:\n#   - gates / goldens / ffi_dual / conformance:必须绿(确定性 golden 级断言);\n#   - cookbook:非阻断(continue-on-error)——其中 4-5 例为环境相关的既有失败\n#     (本地 Windows 与 CI ubuntu 均有波动),先收集信号不动基线;\n#   - nightly 工具链供 ffi_dual_013 的方法 shim 包管线真实执行\n#     (缺失时该用例自身会优雅跳过)。\n\non:\n  push:\n    branches: [master]\n    paths:\n      - 'crates/auto-lang/**'\n      - 'auto/lib/**'\n      - 'crates/auto-cache/**'\n      - 'crates/shim-metadata/**'\n      - '.github/workflows/vm-files-ci.yml'\n  pull_request:\n    paths:\n      - 'crates/auto-lang/**'\n      - 'auto/lib/**'\n      - 'crates/auto-cache/**'\n      - 'crates/shim-metadata/**'\n      - '.github/workflows/vm-files-ci.yml'\n  workflow_dispatch:\n\nenv:\n  CARGO_TERM_COLOR: always\n  # Stage B P-6（PLAN-009 T6 / 590-R4）：画廊语料围栏（gallery_pages_compile\n  # 等）经 resolve_os_top_dir 解析序定位 auto-os/widgets-gallery——CI 缺\n  # auto-os 时整体静默 SKIP（solo-skip 语义），checkout 兄弟仓 + env 权威臂\n  # 使围栏在 CI 激活。\n  AUTO_OS_ROOT: ${{ github.workspace }}/auto-os\n\njobs:\n  vm-files:\n    runs-on: ubuntu-latest\n    timeout-minutes: 40\n    steps:\n      - uses: actions/checkout@v4\n      # Stage B P-6：画廊语料仓（widgets-gallery 迁 auto-os，PLAN-590）——\n      # 语料围栏激活依赖；sparse 只读 checkout，无构建。\n      - name: Checkout auto-os (gallery corpus)\n        uses: actions/checkout@v4\n        with:\n          repository: auto-stack/auto-os\n          path: auto-os\n          sparse-checkout: |\n            widgets-gallery\n      - uses: dtolnay/rust-toolchain@stable\n      - uses: dtolnay/rust-toolchain@nightly\n      - uses: Swatinem/rust-cache@v2\n\n      # PLAN-639 T-08：Block→Blueprint 重命名完整性门（复活模式封禁）\n      - name: Blueprint rename guard (no Block-tier resurrection)\n        run: python scripts/blueprint_rename_guard.py\n\n      - name: Gallery corpus fences active (not SKIPPED)\n        run: |\n          test -f \"$AUTO_OS_ROOT/widgets-gallery/pac.at\" || { echo \"auto-os checkout 缺 widgets-gallery\"; exit 1; }\n          echo \"auto-os gallery corpus present: $AUTO_OS_ROOT/widgets-gallery\"\n\n      # Stage B P-6：画廊全页编译围栏（本地 cargo t/tf 门禁面，PLAN-590 起\n      # 语料在 auto-os——CI 此前 solo-skip 静默跳过，本步骤使其在 CI 真跑；\n      # schema_drift/docs_gen 集成档仍留本地 t/tf 门禁）。\n      - name: Gallery pages compile fence (corpus from auto-os)\n        run: >\n          cargo test -p auto-lang --lib --\n          gallery_pages_compile --test-threads=1\n\n      - name: aavm2 six gates (M1-M5 + milestone + compile corpus)\n        # Plan 514 W2 (P511-2 口径收窄清偿): compile corpus 腿已去 ignore,\n        # 常规口径即覆盖;--include-ignored 移除(按需 rustc 探针保持 ignored)。\n        # Plan 568: aavm 系测试迁入 test-aavm feature。PLAN-700: 语料三族\n        # 常驻化后该 feature 独立(不再 imply 语料档),本步骤命令形态不变。\n        run: >\n          cargo test -p auto-lang --lib --features test-aavm --\n          test_aavm2 --test-threads=1\n\n      - name: VM goldens + ffi_dual (incl. 014 std generated segment)\n        run: >\n          cargo test -p auto-lang --lib --\n          vm_file_tests ffi_dual --test-threads=1\n\n      # PLAN-592: dep 三轨行为对拍——VM/oracle 腿 + a2r 全量档(env 门控,\n      # CI 侧打开;冷构建 ~2-3min/腿,产物按内容 hash marker 缓存)\n      - name: dep three-leg parity (VM/oracle/a2r, PLAN-592)\n        env:\n          AUTO_LANG_DEP_PARITY_A2R: \"1\"\n        run: >\n          cargo test -p auto-lang --lib --\n          ffi_dep_parity_tests --test-threads=1\n\n      - name: Conformance goldens\n        run: >\n          cargo test -p auto-lang --lib --\n          conformance_tests --test-threads=1\n\n      # 非阻断:收集 ubuntu 侧 cookbook 信号(既有环境相关失败不动基线)\n      - name: Cookbook VM (non-blocking signal)\n        continue-on-error: true\n        run: >\n          cargo test -p auto-lang --lib --\n          cookbook_vm_tests --test-threads=1\n",
+      "total_runs": 73,
+      "recent_runs": [
+        {
+          "id": 38122678544,
+          "created_at": "2026-10-11T07:49:36Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38122678544"
+        },
+        {
+          "id": 38037506332,
+          "created_at": "2026-10-10T08:20:01Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/38037506332"
+        },
+        {
+          "id": 37916498205,
+          "created_at": "2026-10-09T10:15:40Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37916498205"
+        },
+        {
+          "id": 37751656506,
+          "created_at": "2026-10-08T08:42:47Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/37751656506"
+        },
+        {
+          "id": 36963561825,
+          "created_at": "2026-10-02T04:12:58Z",
+          "event": "push",
+          "head_branch": "master",
+          "conclusion": "failure",
+          "html_url": "https://github.com/auto-stack/auto-lang/actions/runs/36963561825"
+        }
+      ],
+      "latest_jobs": [
+        {
+          "name": "vm-files",
+          "conclusion": "failure",
+          "steps": [
+            {
+              "name": "Set up job",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Checkout auto-os (gallery corpus)",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@stable",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run dtolnay/rust-toolchain@nightly",
+              "conclusion": "success"
+            },
+            {
+              "name": "Run Swatinem/rust-cache@v2",
+              "conclusion": "success"
+            },
+            {
+              "name": "Blueprint rename guard (no Block-tier resurrection)",
+              "conclusion": "success"
+            },
+            {
+              "name": "Gallery corpus fences active (not SKIPPED)",
+              "conclusion": "success"
+            },
+            {
+              "name": "Gallery pages compile fence (corpus from auto-os)",
+              "conclusion": "failure"
+            },
+            {
+              "name": "aavm2 six gates (M1-M5 + milestone + compile corpus)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "VM goldens + ffi_dual (incl. 014 std generated segment)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "dep three-leg parity (VM/oracle/a2r, PLAN-592)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Conformance goldens",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Cookbook VM (non-blocking signal)",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Run Swatinem/rust-cache@v2",
+              "conclusion": "skipped"
+            },
+            {
+              "name": "Post Checkout auto-os (gallery corpus)",
+              "conclusion": "success"
+            },
+            {
+              "name": "Post Run actions/checkout@v4",
+              "conclusion": "success"
+            },
+            {
+              "name": "Complete job",
+              "conclusion": "success"
+            }
+          ]
+        }
+      ],
+      "decision": "remove: unused deployment or consistently failing unmaintained checks; local gates preserved"
+    }
+  ]
+}

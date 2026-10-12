@@ -381,13 +381,13 @@ mod tests {
     fn test_hash_is_display() {
         let hash_is = HashIs {
             target: Expr::Ident("T".into()),
-            branches: vec![HashIsBranch::EqBranch(
-                Expr::Str("int".into()),
-                Body::new(),
-            )],
+            branches: vec![HashIsBranch::EqBranch(Expr::Str("int".into()), Body::new())],
         };
         // Expr::Str displays with quotes: (str "int")
-        assert_eq!(format!("{}", hash_is), "(#is (name T) (eq (str \"int\") (body )))");
+        assert_eq!(
+            format!("{}", hash_is),
+            "(#is (name T) (eq (str \"int\") (body )))"
+        );
     }
 
     #[test]

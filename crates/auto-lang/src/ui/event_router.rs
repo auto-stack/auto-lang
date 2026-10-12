@@ -338,7 +338,9 @@ mod tests {
         let mut router = EventRouter::new();
         let node_id = VNodeId::new(1);
 
-        router.register_click(node_id, |_ctx| DynamicMessage::String("clicked".to_string()));
+        router.register_click(node_id, |_ctx| {
+            DynamicMessage::String("clicked".to_string())
+        });
 
         let result = router.on_click(node_id);
         assert!(result.is_some());

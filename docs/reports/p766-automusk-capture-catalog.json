@@ -1,0 +1,37 @@
+{
+  "plan": "PLAN-766",
+  "captures": [
+    {
+      "id": "SHOT-04",
+      "source_path": "C:\\Users\\zhaop\\Pictures\\PixPin\\PixPin_2026-10-11_17-13-23.png",
+      "asset_path": "website/public/v05/candidate/musk-workspace.png",
+      "sha256": "b9cc9a86e94f30c36d4f0f3d5a43238ccfcb1d03f66c42732299d316546bc3e4",
+      "width": 2560,
+      "height": 1600,
+      "provided_on": "2026-10-12",
+      "capture_date_from_filename": "2026-10-11",
+      "theme": "dark",
+      "visible_scene": "Conversation and directory/write/edit tool activity for the local password-generator Plan",
+      "runtime_backend": null,
+      "build_commit": null,
+      "processing": "none; original PNG bytes",
+      "acceptance": "User-authorized website imagery; not runtime or release verification"
+    },
+    {
+      "id": "SHOT-05",
+      "source_path": "C:\\Users\\zhaop\\Pictures\\PixPin\\PixPin_2026-10-11_17-13-32.png",
+      "asset_path": "website/public/v05/candidate/musk-plan.png",
+      "sha256": "679b7cf56fa8612cc9630cad882708dac71939bfcb55ada145fb75eb303b6ed8",
+      "width": 2560,
+      "height": 1600,
+      "provided_on": "2026-10-12",
+      "capture_date_from_filename": "2026-10-11",
+      "theme": "dark",
+      "visible_scene": "PLAN-001 password generator goals/design; visible progress 0/5",
+      "runtime_backend": null,
+      "build_commit": null,
+      "processing": "none; original PNG bytes",
+      "acceptance": "User-authorized website imagery; not runtime or release verification"
+    }
+  ]
+}

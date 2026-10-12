@@ -76,7 +76,11 @@ mod native_css_tests {
         );
         let css = w.style.expect("style block missing");
         assert!(css.contains(".autodown-editor:hover"), "css: {:?}", css);
-        assert!(css.contains("@media (max-width: 768px) {"), "css: {:?}", css);
+        assert!(
+            css.contains("@media (max-width: 768px) {"),
+            "css: {:?}",
+            css
+        );
         assert!(css.contains("--ad-border: #333;"), "css: {:?}", css);
         assert!(css.contains("font-size: 12px;"), "css: {:?}", css);
         // The view block after the style block must still parse.
@@ -103,7 +107,11 @@ mod native_css_tests {
 "#,
         );
         let css = w.style.expect("style block missing");
-        assert!(css.contains("/* a comment with a } brace and { another */"), "css: {:?}", css);
+        assert!(
+            css.contains("/* a comment with a } brace and { another */"),
+            "css: {:?}",
+            css
+        );
         assert!(css.contains(r#"content: "}";"#), "css: {:?}", css);
         assert!(css.contains("content: '}';"), "css: {:?}", css);
         assert!(w.view.is_some());

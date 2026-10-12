@@ -23,8 +23,11 @@ pub fn resolve_os_top_dir(parent: &Path, name: &str) -> Option<PathBuf> {
         let p = PathBuf::from(root).join(name);
         return p.is_dir().then_some(p);
     }
-    [parent.join("auto-os"), PathBuf::from("D:/autostack/auto-os")]
-        .into_iter()
-        .map(|root| root.join(name))
-        .find(|p| p.is_dir())
+    [
+        parent.join("auto-os"),
+        PathBuf::from("D:/autostack/auto-os"),
+    ]
+    .into_iter()
+    .map(|root| root.join(name))
+    .find(|p| p.is_dir())
 }

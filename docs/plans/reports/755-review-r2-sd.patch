@@ -1,0 +1,28 @@
+diff --git a/docs/specs/stdlib/design/assembly-manifest.md b/docs/specs/stdlib/design/assembly-manifest.md
+index 2e42a1f30..383d2dabe 100644
+--- a/docs/specs/stdlib/design/assembly-manifest.md
++++ b/docs/specs/stdlib/design/assembly-manifest.md
+@@ -61,3 +61,23 @@ io/net/async/http/json/sse 的**被引用闭包** strict：缺实现/冲突/未
+ =拒绝（SIGNATURE_DRIFT=已证漂移、SIGNATURE_UNVERIFIED=无证明），不产出
+ 成功产物；未引用的 unsupported 声明不拒绝模块导入；同名用户符号干净
+ 遮蔽 stdlib。
++
++## 公共面契约覆盖完整性（PLAN-755）
++
++strict 门的拒绝语义（上节）之外，**契约声明面必须覆盖公共层全部被选中
++callee**：stdlib 公共层（如 `stdlib/auto/http.at` pub 面）每个「解析成功且
++shim 已绑定」的符号——即真实程序引用时走 `verify_core_reference` 的
++callee——必须在 `NativeInterface::production()` 最终身份声明（注册/inventory
++推导/覆盖全部之后）有独立适配契约，且 `signature_matches` 对公共声明逐字
++核对。缺声明（callee 有实现但无契约）与声明漂移（如 inventory 按 Rust 栈
++载荷推导返回 int、而公共面身份为 Response）都是缺陷，不是降级路径；句柄类
++返回一律按公共身份声明（显式身份最后落位，覆盖 inventory 推导与 merge 撤
++销语义）。
++
++- 新增公共 native 的改动必须同步补契约；验收物含契约覆盖清单对账表。
++- 常驻守卫：`plan755_http_public_face_contract_coverage` 走查（缺契约/漂移
++  即红，含走查空转守卫）+ `plan755_http_contracts_survive_cffi_merge`
++  （`AutoVM::new` 同款 CFFI merge 后契约存活）。
++- resolved-but-unbound 符号（公共名解析到 registry id 但接口无绑定）属
++  shim 缺口，走 PROVIDER_CLAIM_NO_CALLEE 分诊，不在契约侧补（无 producer
++  可证）。

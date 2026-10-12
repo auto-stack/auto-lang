@@ -1,8 +1,7 @@
+use crate::error::AutoResult;
 /// Memory allocation tests
 /// Tests for Plan 052: Runtime Array Allocation
-
 use crate::run;
-use crate::error::AutoResult;
 
 /// Run a code string and return the result as a string
 fn run_code(code: &str) -> AutoResult<String> {

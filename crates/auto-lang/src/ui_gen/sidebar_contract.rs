@@ -66,8 +66,7 @@ pub const MENU_BUTTON_OUTLINE_VM: &str = "bg-background border border-sidebar-bo
 pub const MENU_BUTTON_HOVER: &str = "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
 /// active 选中态（cva `data-[active=true]:*` 三件的 VM 等价——builder 按 active
 /// 状态直接挂裸类，同 nav ITEM_ACTIVE 模式）。
-pub const MENU_BUTTON_ACTIVE: &str =
-    "bg-sidebar-accent text-sidebar-accent-foreground font-medium";
+pub const MENU_BUTTON_ACTIVE: &str = "bg-sidebar-accent text-sidebar-accent-foreground font-medium";
 /// disabled（cva `disabled:opacity-50` 的裸类等价；pointer-events 为 web-only）。
 pub const MENU_BUTTON_DISABLED: &str = "opacity-50";
 /// sidebar_menu_action（行内动作槽；去 peer/after/focus/`[&>svg]`/icon-collapse 串，
@@ -89,7 +88,14 @@ pub const MENU_SUB_BUTTON_SIZE_SM: &str = "text-xs";
 /// VM 专适配 token（web 端由 scaffold 资产的 var/shadow 机制表达，资产里找不到
 /// 对应逐字串——资产锚测试跳过这些常量）。
 #[cfg(test)]
-const VM_ADAPTED: &[&str] = &["w-64", "rounded-lg", "border", "border-sidebar-border", "bg-background", "h-5"];
+const VM_ADAPTED: &[&str] = &[
+    "w-64",
+    "rounded-lg",
+    "border",
+    "border-sidebar-border",
+    "bg-background",
+    "h-5",
+];
 
 /// hover:/active 等状态变体前缀在 parity 提取时剥壳（Style::parse 自行分流）。
 const STATE_PREFIXES: &[&str] = &["hover:"];
@@ -126,16 +132,40 @@ const ASSET_ANCHORS: &[(&str, &[&str])] = &[
     ("SidebarMenuAction.vue", &[MENU_ACTION]),
     ("SidebarMenuBadge.vue", &[MENU_BADGE]),
     ("SidebarMenuSub.vue", &[MENU_SUB]),
-    ("SidebarMenuSubButton.vue", &[MENU_SUB_BUTTON_BASE, MENU_SUB_BUTTON_SIZE_SM]),
+    (
+        "SidebarMenuSubButton.vue",
+        &[MENU_SUB_BUTTON_BASE, MENU_SUB_BUTTON_SIZE_SM],
+    ),
 ];
 
 /// 全部契约常量（parity 提取源）。
 const ALL: &[&str] = &[
-    SIDEBAR_BASE, WIDTH_VM, VARIANT_FLOATING_VM, HEADER_BASE, FOOTER_BASE, CONTENT_BASE,
-    SEPARATOR, INSET_BASE, GROUP_BASE, GROUP_LABEL, GROUP_CONTENT, GROUP_ACTION, MENU_BASE,
-    MENU_ITEM, MENU_BUTTON_BASE, MENU_BUTTON_SIZE_DEFAULT, MENU_BUTTON_SIZE_SM,
-    MENU_BUTTON_SIZE_LG, MENU_BUTTON_OUTLINE_VM, MENU_BUTTON_HOVER, MENU_BUTTON_ACTIVE,
-    MENU_BUTTON_DISABLED, MENU_ACTION, MENU_BADGE, MENU_SUB, MENU_SUB_BUTTON_BASE,
+    SIDEBAR_BASE,
+    WIDTH_VM,
+    VARIANT_FLOATING_VM,
+    HEADER_BASE,
+    FOOTER_BASE,
+    CONTENT_BASE,
+    SEPARATOR,
+    INSET_BASE,
+    GROUP_BASE,
+    GROUP_LABEL,
+    GROUP_CONTENT,
+    GROUP_ACTION,
+    MENU_BASE,
+    MENU_ITEM,
+    MENU_BUTTON_BASE,
+    MENU_BUTTON_SIZE_DEFAULT,
+    MENU_BUTTON_SIZE_SM,
+    MENU_BUTTON_SIZE_LG,
+    MENU_BUTTON_OUTLINE_VM,
+    MENU_BUTTON_HOVER,
+    MENU_BUTTON_ACTIVE,
+    MENU_BUTTON_DISABLED,
+    MENU_ACTION,
+    MENU_BADGE,
+    MENU_SUB,
+    MENU_SUB_BUTTON_BASE,
     MENU_SUB_BUTTON_SIZE_SM,
 ];
 
@@ -204,8 +234,12 @@ mod tests {
         let dir = std::path::Path::new(manifest).join("../auto-man/assets/shadcn-ui/sidebar");
         for (file, consts) in ASSET_ANCHORS {
             let path = dir.join(file);
-            let content = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("scaffold asset {} missing ({e}) — Vue/VM contract drift", path.display()));
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "scaffold asset {} missing ({e}) — Vue/VM contract drift",
+                    path.display()
+                )
+            });
             for c in *consts {
                 for token in c.split_whitespace() {
                     let mut bare = token;

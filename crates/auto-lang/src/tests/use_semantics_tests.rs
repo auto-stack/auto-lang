@@ -23,7 +23,10 @@ fn fixture(db_src: &str, main_src: &str) -> ModuleFixture {
     std::fs::write(dir.path().join("db.at"), db_src).unwrap();
     let main_path = dir.path().join("main.at");
     std::fs::write(&main_path, main_src).unwrap();
-    ModuleFixture { _dir: dir, main_path }
+    ModuleFixture {
+        _dir: dir,
+        main_path,
+    }
 }
 
 fn run(fixture: &ModuleFixture, code: &str) -> Result<(String, String), String> {
@@ -38,11 +41,8 @@ const DB: &str = "pub fn add(a int, b int) int {\n    a + b\n}\n";
 #[test]
 fn a_bare_use_qualified_call() {
     let fx = fixture(DB, "");
-    let (_, out) = run(
-        &fx,
-        "use db\nfn main() {\n    print(db.add(2, 3))\n}\n",
-    )
-    .expect("qualified call should work today");
+    let (_, out) = run(&fx, "use db\nfn main() {\n    print(db.add(2, 3))\n}\n")
+        .expect("qualified call should work today");
     assert_eq!(out, "5\n");
 }
 
@@ -52,11 +52,8 @@ fn a_bare_use_qualified_call() {
 #[test]
 fn b_bare_use_flat_call_is_error_with_hint() {
     let fx = fixture(DB, "");
-    let err = run(
-        &fx,
-        "use db\nfn main() {\n    print(add(2, 3))\n}\n",
-    )
-    .expect_err("flat call must not resolve after bare use (Plan 545)");
+    let err = run(&fx, "use db\nfn main() {\n    print(add(2, 3))\n}\n")
+        .expect_err("flat call must not resolve after bare use (Plan 545)");
     let msg = format!("{err:?}");
     assert!(
         msg.contains("db.add") && msg.contains("use db: *"),
@@ -68,11 +65,8 @@ fn b_bare_use_flat_call_is_error_with_hint() {
 #[test]
 fn c_named_import() {
     let fx = fixture(DB, "");
-    let (_, out) = run(
-        &fx,
-        "use db: add\nfn main() {\n    print(add(2, 3))\n}\n",
-    )
-    .expect("named import works");
+    let (_, out) = run(&fx, "use db: add\nfn main() {\n    print(add(2, 3))\n}\n")
+        .expect("named import works");
     assert_eq!(out, "5\n");
 }
 
@@ -80,11 +74,8 @@ fn c_named_import() {
 #[test]
 fn d_wildcard_import() {
     let fx = fixture(DB, "");
-    let (_, out) = run(
-        &fx,
-        "use db: *\nfn main() {\n    print(add(2, 3))\n}\n",
-    )
-    .expect("wildcard import works");
+    let (_, out) = run(&fx, "use db: *\nfn main() {\n    print(add(2, 3))\n}\n")
+        .expect("wildcard import works");
     assert_eq!(out, "5\n");
 }
 
@@ -93,11 +84,7 @@ fn d_wildcard_import() {
 #[test]
 fn e_wildcard_conflict_same_name_different_def_is_error() {
     let dir = tempfile::TempDir::new().unwrap();
-    std::fs::write(
-        dir.path().join("db.at"),
-        "pub fn load() int {\n    1\n}\n",
-    )
-    .unwrap();
+    std::fs::write(dir.path().join("db.at"), "pub fn load() int {\n    1\n}\n").unwrap();
     std::fs::write(
         dir.path().join("helpers.at"),
         "pub fn load() int {\n    2\n}\n",
@@ -123,11 +110,7 @@ fn e_wildcard_conflict_same_name_different_def_is_error() {
 #[test]
 fn f_wildcard_same_def_reexport_is_not_error() {
     let dir = tempfile::TempDir::new().unwrap();
-    std::fs::write(
-        dir.path().join("db.at"),
-        "pub fn load() int {\n    1\n}\n",
-    )
-    .unwrap();
+    std::fs::write(dir.path().join("db.at"), "pub fn load() int {\n    1\n}\n").unwrap();
     // helpers re-exports the identical signature+body shape of `load`
     std::fs::write(
         dir.path().join("helpers.at"),
@@ -165,11 +148,9 @@ fn g_bare_use_does_not_leak_transitive_bare_symbols() {
     std::fs::write(&main_path, "").unwrap();
     let path = main_path.to_string_lossy().to_string();
     // `magic()` (from db's own bare use of tools) must NOT resolve in main.
-    let err = crate::run_with_capture_and_path(
-        "use db\nfn main() {\n    print(magic())\n}\n",
-        &path,
-    )
-    .expect_err("transitive bare symbols must not leak into importer");
+    let err =
+        crate::run_with_capture_and_path("use db\nfn main() {\n    print(magic())\n}\n", &path)
+            .expect_err("transitive bare symbols must not leak into importer");
     let msg = format!("{err:?}");
     assert!(
         msg.contains("magic"),

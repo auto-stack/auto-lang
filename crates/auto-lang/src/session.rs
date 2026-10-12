@@ -151,11 +151,13 @@ impl CompilerSession {
 
     /// Get the backend, or a default based on scenario
     pub fn backend_or_default(&self) -> &str {
-        self.backend.as_deref().unwrap_or_else(|| match self.scenario {
-            Scenario::Core => "a2r",
-            Scenario::UI => "gpui",
-            Scenario::Shell => "vm",
-        })
+        self.backend
+            .as_deref()
+            .unwrap_or_else(|| match self.scenario {
+                Scenario::Core => "a2r",
+                Scenario::UI => "gpui",
+                Scenario::Shell => "vm",
+            })
     }
 }
 
@@ -188,9 +190,7 @@ mod tests {
 
     #[test]
     fn test_session_builder() {
-        let session = CompilerSession::ui()
-            .with_backend("react")
-            .with_debug(true);
+        let session = CompilerSession::ui().with_backend("react").with_debug(true);
 
         assert!(session.is_ui());
         assert_eq!(session.backend, Some("react".to_string()));

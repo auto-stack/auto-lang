@@ -47,10 +47,14 @@ widget Clock {
 }
 "#;
         let ast = parse_ui(code).expect("parse ok");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let timer = decl.timer.as_ref().expect("timer block present");
         assert_eq!(timer.entries.len(), 2);
         assert_eq!(timer.entries[0].event.as_str(), "Tick");
@@ -73,10 +77,14 @@ store TickerStore {
 }
 "#;
         let ast = parse_ui(code).expect("parse ok");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::StoreDecl(d) => Some(d),
-            _ => None,
-        }).expect("store decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::StoreDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("store decl");
         let timer = decl.timer.as_ref().expect("timer block present");
         assert_eq!(timer.entries.len(), 1);
         assert_eq!(timer.entries[0].event.as_str(), "PollTick");
@@ -122,18 +130,20 @@ widget Clock {
     #[cfg(feature = "ui")]
     #[test]
     fn plan051_timer_vue_emits_interval_and_cleanup() {
-        let path = locate_corpus("test/ui/plan051_timer/src/front/app.at")
-            .expect("corpus app.at");
+        let path = locate_corpus("test/ui/plan051_timer/src/front/app.at").expect("corpus app.at");
         let code = std::fs::read_to_string(&path).unwrap();
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
-            _ => None,
-        }).expect("widget decl");
-        let widget = crate::aura::extract::extract_widget_from_decl(&decl)
-            .expect("extract");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(&decl).expect("extract");
         assert_eq!(widget.timers.len(), 1, "root timer extracted");
         let mut gen = crate::ui_gen::vue::VueGenerator::new();
         let sfc = gen.generate_sfc(&widget).expect("generate SFC");
@@ -165,14 +175,20 @@ widget App {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(at).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
-            _ => None,
-        }).expect("widget decl");
-        let widget = crate::aura::extract::extract_widget_from_decl(&decl)
-            .expect("extract");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract::extract_widget_from_decl(&decl).expect("extract");
         assert!(!widget.timers.is_empty(), "timer block ⇒ timers 臂");
-        assert!(widget.tick_interval.is_some(), ".Tick 处理器 ⇒ tick_interval 臂");
+        assert!(
+            widget.tick_interval.is_some(),
+            ".Tick 处理器 ⇒ tick_interval 臂"
+        );
         let mut gen = crate::ui_gen::vue::VueGenerator::new();
         let sfc = gen.generate_sfc(&widget).expect("generate SFC");
         let import_line = sfc
@@ -191,18 +207,21 @@ widget App {
     #[cfg(feature = "ui")]
     #[test]
     fn plan051_timer_vue_store_composable_emits_interval() {
-        let path = locate_corpus("test/ui/plan051_timer/src/front/ticker_store.at")
-            .expect("corpus store");
+        let path =
+            locate_corpus("test/ui/plan051_timer/src/front/ticker_store.at").expect("corpus store");
         let code = std::fs::read_to_string(&path).unwrap();
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::StoreDecl(d) => Some(d.clone()),
-            _ => None,
-        }).expect("store decl");
-        let store = crate::aura::extract::extract_store_from_decl(&decl)
-            .expect("extract store");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::StoreDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("store decl");
+        let store = crate::aura::extract::extract_store_from_decl(&decl).expect("extract store");
         assert_eq!(store.timers.len(), 1, "store timer extracted");
         assert_eq!(store.timers[0].every_ms, 50);
         let out = crate::ui_gen::vue::VueGenerator::generate_store_composable(&store);
@@ -216,8 +235,7 @@ widget App {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn plan051_timer_vm_collects_entries() {
-        let corpus = locate_corpus("test/ui/plan051_timer/pac.at")
-            .expect("corpus pac.at");
+        let corpus = locate_corpus("test/ui/plan051_timer/pac.at").expect("corpus pac.at");
         let dc = match crate::plan370_test_support::build_component_from_app(&corpus) {
             Some(c) => c,
             None => {
@@ -227,21 +245,31 @@ widget App {
         };
         let entries = dc.timer_entries();
         let has = |w: &str, e: &str, ms: u64| {
-            entries.iter().any(|t| t.widget == w && t.event == e && t.every_ms == ms)
+            entries
+                .iter()
+                .any(|t| t.widget == w && t.event == e && t.every_ms == ms)
         };
-        assert!(has("App", "LocalTick", 40), "root widget entry: {entries:?}");
-        assert!(has("TickerStore", "PollTick", 50), "store entry: {entries:?}");
+        assert!(
+            has("App", "LocalTick", 40),
+            "root widget entry: {entries:?}"
+        );
+        assert!(
+            has("TickerStore", "PollTick", 50),
+            "store entry: {entries:?}"
+        );
     }
 
     /// 派发：timer 事件经既有 handler 泉触发（root widget + store 各一）。
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn plan051_timer_vm_dispatch_fires_handlers() {
-        let corpus = locate_corpus("test/ui/plan051_timer/pac.at")
-            .expect("corpus pac.at");
+        let corpus = locate_corpus("test/ui/plan051_timer/pac.at").expect("corpus pac.at");
         let mut dc = match crate::plan370_test_support::build_component_from_app(&corpus) {
             Some(c) => c,
-            None => { eprintln!("plan051: SKIPPED"); return; }
+            None => {
+                eprintln!("plan051: SKIPPED");
+                return;
+            }
         };
         // root widget 计时器
         dc.on_with_input_for("App", "LocalTick", None);
@@ -257,11 +285,13 @@ widget App {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn plan051_timer_vm_when_guard_blocks_and_passes() {
-        let corpus = locate_corpus("test/ui/plan051_timer/pac.at")
-            .expect("corpus pac.at");
+        let corpus = locate_corpus("test/ui/plan051_timer/pac.at").expect("corpus pac.at");
         let mut dc = match crate::plan370_test_support::build_component_from_app(&corpus) {
             Some(c) => c,
-            None => { eprintln!("plan051: SKIPPED"); return; }
+            None => {
+                eprintln!("plan051: SKIPPED");
+                return;
+            }
         };
         // gate_open 默认 false → 门控拦截
         assert!(!dc.fire_timer("TickerStore", "PollTick"), "guard blocks");

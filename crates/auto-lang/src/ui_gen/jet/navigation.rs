@@ -180,7 +180,7 @@ impl NavigationGenerator {
         let routes_block = route_composables.join("\n");
 
         Ok(format!(
-r#"@Composable
+            r#"@Composable
 fun AppNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier
@@ -206,7 +206,7 @@ fun AppNavHost(
         let nav_host = self.generate_nav_host(start_destination)?;
 
         Ok(format!(
-r#"@Composable
+            r#"@Composable
 fun App() {{
     val navController = rememberNavController()
 
@@ -228,7 +228,12 @@ fun App() {{
     }
 
     /// Generate a navigate with argument call
-    pub fn generate_navigate_with_arg(&self, route: &str, _arg_name: &str, arg_value: &str) -> String {
+    pub fn generate_navigate_with_arg(
+        &self,
+        route: &str,
+        _arg_name: &str,
+        arg_value: &str,
+    ) -> String {
         format!(
             "navController.navigate(\"{}/{{$}}\".format({}))",
             route, arg_value
@@ -280,7 +285,12 @@ fun App() {{
     ///
     /// # Returns
     /// Complete Kotlin code for a Tabs component with TabRow and content switching
-    pub fn generate_tabs(&mut self, tab_ids: &[&str], tab_labels: &[&str], content_blocks: &[&str]) -> GenResult<String> {
+    pub fn generate_tabs(
+        &mut self,
+        tab_ids: &[&str],
+        tab_labels: &[&str],
+        content_blocks: &[&str],
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.material3.TabRow");
         self.add_import("androidx.compose.material3.Tab");
         self.add_import("androidx.compose.material3.Text");
@@ -290,7 +300,10 @@ fun App() {{
         self.add_import("androidx.compose.runtime.getValue");
         self.add_import("androidx.compose.runtime.setValue");
 
-        let tabs_list = tab_ids.iter().zip(tab_labels.iter()).enumerate()
+        let tabs_list = tab_ids
+            .iter()
+            .zip(tab_labels.iter())
+            .enumerate()
             .map(|(i, (_id, label))| {
                 format!(
                     r#"Tab(
@@ -304,9 +317,14 @@ fun App() {{
             .collect::<Vec<_>>()
             .join("\n        ");
 
-        let content_switch = tab_ids.iter().enumerate()
+        let content_switch = tab_ids
+            .iter()
+            .enumerate()
             .map(|(i, _)| {
-                let content = content_blocks.get(i).copied().unwrap_or("Text(\"Content\")");
+                let content = content_blocks
+                    .get(i)
+                    .copied()
+                    .unwrap_or("Text(\"Content\")");
                 format!("{} -> {{\n            {}\n        }}", i, content)
             })
             .collect::<Vec<_>>()
@@ -331,12 +349,18 @@ fun App() {{
     /// Generate just the TabRow component (without state management)
     ///
     /// Use this when you want to manage the activeTab state yourself.
-    pub fn generate_tab_row(&mut self, tab_labels: &[&str], active_index: usize) -> GenResult<String> {
+    pub fn generate_tab_row(
+        &mut self,
+        tab_labels: &[&str],
+        active_index: usize,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.material3.TabRow");
         self.add_import("androidx.compose.material3.Tab");
         self.add_import("androidx.compose.material3.Text");
 
-        let tabs = tab_labels.iter().enumerate()
+        let tabs = tab_labels
+            .iter()
+            .enumerate()
             .map(|(i, label)| {
                 format!(
                     r#"Tab(
@@ -377,10 +401,9 @@ fun App() {{
     /// - `active_tab`: The currently active tab index
     /// - `contents`: List of (tab_index, content) pairs
     pub fn generate_tabs_content(&mut self, contents: &[(usize, &str)]) -> GenResult<String> {
-        let cases = contents.iter()
-            .map(|(idx, content)| {
-                format!("{} -> {{\n        {}\n    }}", idx, content)
-            })
+        let cases = contents
+            .iter()
+            .map(|(idx, content)| format!("{} -> {{\n        {}\n    }}", idx, content))
             .collect::<Vec<_>>()
             .join("\n    ");
 
@@ -426,9 +449,7 @@ fn path_to_screen_name(path: &str) -> String {
                     let mut chars = word.chars();
                     match chars.next() {
                         None => String::new(),
-                        Some(first) => {
-                            first.to_uppercase().collect::<String>() + chars.as_str()
-                        }
+                        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
                     }
                 })
                 .collect::<String>()
@@ -459,11 +480,7 @@ mod tests {
     fn test_add_route_with_params() {
         let mut gen = NavigationGenerator::new();
 
-        gen.add_route_with_params(
-            "detail",
-            "DetailPage",
-            vec!["id".to_string()]
-        );
+        gen.add_route_with_params("detail", "DetailPage", vec!["id".to_string()]);
 
         let routes = gen.get_routes();
         assert_eq!(routes.len(), 1);
@@ -606,7 +623,11 @@ mod tests {
 
         let tab_ids = vec!["preview", "code", "notes"];
         let tab_labels = vec!["Preview", "Code", "Notes"];
-        let contents = vec!["Text(\"Preview content\")", "Text(\"Code content\")", "Text(\"Notes content\")"];
+        let contents = vec![
+            "Text(\"Preview content\")",
+            "Text(\"Code content\")",
+            "Text(\"Notes content\")",
+        ];
 
         let result = gen.generate_tabs(&tab_ids, &tab_labels, &contents);
         assert!(result.is_ok());
@@ -642,7 +663,11 @@ mod tests {
 
         let tab_ids = vec!["a", "b", "c"];
         let tab_labels = vec!["A", "B", "C"];
-        let contents = vec!["Text(\"A content\")", "Text(\"B content\")", "Text(\"C content\")"];
+        let contents = vec![
+            "Text(\"A content\")",
+            "Text(\"B content\")",
+            "Text(\"C content\")",
+        ];
 
         let result = gen.generate_tabs(&tab_ids, &tab_labels, &contents);
         assert!(result.is_ok());

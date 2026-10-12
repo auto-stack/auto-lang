@@ -16,8 +16,8 @@ impl ListStorage {
     /// Get the fixed capacity for this storage type
     pub fn capacity(&self) -> Option<usize> {
         match self {
-            ListStorage::Heap => None,  // Unlimited (growable)
-            ListStorage::InlineInt64 => Some(64),  // Fixed 64 elements
+            ListStorage::Heap => None,            // Unlimited (growable)
+            ListStorage::InlineInt64 => Some(64), // Fixed 64 elements
         }
     }
 
@@ -51,9 +51,7 @@ pub struct HeapStorage {
 
 impl HeapStorage {
     pub fn new() -> Self {
-        Self {
-            elems: Vec::new(),
-        }
+        Self { elems: Vec::new() }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
@@ -179,7 +177,7 @@ impl InlineInt64Storage {
             self.len += 1;
             true
         } else {
-            false  // Capacity exceeded
+            false // Capacity exceeded
         }
     }
 
@@ -378,8 +376,8 @@ mod tests {
     fn test_inline_storage_try_grow() {
         let mut storage = InlineInt64Storage::new();
 
-        assert!(storage.try_grow(32));  // <= 64, should succeed
-        assert!(storage.try_grow(64));  // == 64, should succeed
+        assert!(storage.try_grow(32)); // <= 64, should succeed
+        assert!(storage.try_grow(64)); // == 64, should succeed
         assert!(!storage.try_grow(65)); // > 64, should fail
     }
 

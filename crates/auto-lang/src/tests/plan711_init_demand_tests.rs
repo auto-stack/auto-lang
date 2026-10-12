@@ -138,7 +138,10 @@ fn plan711_init_demand_registers_once_per_generation() {
     // 派发：短 Init 同步完成；相位 Done；副作用落地。
     let report = bridge.dispatch_pending_inits(budget);
     assert_eq!(report.completed, 1, "short init completes inline");
-    assert_eq!(bridge.init_demand_phase("Flow"), Some(InitDemandPhase::Done));
+    assert_eq!(
+        bridge.init_demand_phase("Flow"),
+        Some(InitDemandPhase::Done)
+    );
     let inited = bridge.read_state("inited").expect("read state");
     assert!(matches!(inited, auto_val::Value::Bool(true)), "Init ran");
 
@@ -239,7 +242,10 @@ fn plan711_init_dependency_order_child_waits_for_parent() {
         Some(InitDemandPhase::InFlight)
     );
     assert_eq!(bridge.pending_init_demand_count(), 1, "child still queued");
-    assert_eq!(bridge.init_demand_phase("Tick"), Some(InitDemandPhase::Queued));
+    assert_eq!(
+        bridge.init_demand_phase("Tick"),
+        Some(InitDemandPhase::Queued)
+    );
 
     // 页推进到终态 → 下一轮驱动：InFlight 探测收敛 → child 派发完成。
     let mut rounds = 0;
@@ -249,8 +255,14 @@ fn plan711_init_dependency_order_child_waits_for_parent() {
         bridge.resume_cpu_slices(budget);
     }
     let report = bridge.dispatch_pending_inits(budget);
-    assert_eq!(report.completed, 1, "child dispatches after parent terminal");
-    assert_eq!(bridge.init_demand_phase("Tick"), Some(InitDemandPhase::Done));
+    assert_eq!(
+        report.completed, 1,
+        "child dispatches after parent terminal"
+    );
+    assert_eq!(
+        bridge.init_demand_phase("Tick"),
+        Some(InitDemandPhase::Done)
+    );
     assert_eq!(bridge.pending_init_demand_count(), 0);
 }
 
@@ -302,7 +314,12 @@ widget Boom {
 
     bridge.register_init_demand("Boom", "Boom", state_id, Vec::new());
     let report = bridge.dispatch_pending_inits(budget);
-    assert_eq!(report.failed.len(), 1, "dispatch error recorded: {:?}", report.failed);
+    assert_eq!(
+        report.failed.len(),
+        1,
+        "dispatch error recorded: {:?}",
+        report.failed
+    );
     assert_eq!(
         bridge.init_demand_phase("Boom"),
         Some(InitDemandPhase::Failed),
@@ -338,5 +355,8 @@ widget P {
         msg.contains("outlet 头参只接受"),
         "error should name the outlet head-param contract, got: {msg}"
     );
-    assert!(msg.contains("foo"), "error should echo the illegal key, got: {msg}");
+    assert!(
+        msg.contains("foo"),
+        "error should echo the illegal key, got: {msg}"
+    );
 }

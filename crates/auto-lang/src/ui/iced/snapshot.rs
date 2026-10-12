@@ -290,11 +290,25 @@ mod tests {
         request_capture(wid);
         assert!(!take_capture_requests().contains(&wid), "冻结窗不得入队");
         // cache_put 拒收（末帧不被裁剪像素污染）。
-        cache_put(wid, WindowSnapshot { rgba: vec![0; 4], w: 1, h: 1 });
+        cache_put(
+            wid,
+            WindowSnapshot {
+                rgba: vec![0; 4],
+                w: 1,
+                h: 1,
+            },
+        );
         assert!(snapshot_window_stale(wid).is_none(), "冻结期不得入库");
         // 先留一帧真末帧 → 冻结 → SWR 恒可绘且 TTL 过期仍上报。
         set_frozen(wid, false);
-        cache_put(wid, WindowSnapshot { rgba: vec![9; 4], w: 1, h: 1 });
+        cache_put(
+            wid,
+            WindowSnapshot {
+                rgba: vec![9; 4],
+                w: 1,
+                h: 1,
+            },
+        );
         set_frozen(wid, true);
         __test_backdate(wid);
         let (snap, fresh) = snapshot_window_stale(wid).expect("冻结末帧可绘");

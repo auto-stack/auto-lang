@@ -81,8 +81,8 @@ pub fn shim_autodown_insert_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let _stake_off = crate::vm::native::StakeGuard::new(vm, offset as i64 as u64);
     let block_id = pop_string_arg(task, vm);
     let json = pop_string_arg(task, vm);
-    let out = insert_text_json(&json, &block_id, offset as i64, &text)
-        .map_err(VMError::RuntimeError)?;
+    let out =
+        insert_text_json(&json, &block_id, offset as i64, &text).map_err(VMError::RuntimeError)?;
     push_string(task, vm, &out)
 }
 
@@ -121,8 +121,8 @@ mod impls {
         applyOp, blockFull, collapsedSel, findBlock, rng, spansText, Attr, BlockNode, BlockType,
         InlineSpan, Mark, Value,
     };
-    use autodown_core::serializer::serialize;
     use autodown_core::markdown_parser::parse_blocks;
+    use autodown_core::serializer::serialize;
     use serde_json::{json, Value as J};
 
     pub fn parse_to_json(src: &str, is_final: bool) -> Result<String, String> {
@@ -156,17 +156,18 @@ mod impls {
     ) -> Result<String, String> {
         let root = block_from_doc(doc)?;
         if findBlock(root.clone(), block_id).is_none() {
-            return Err(format!("autodown_insert_text: block '{block_id}' not found"));
+            return Err(format!(
+                "autodown_insert_text: block '{block_id}' not found"
+            ));
         }
-        let op = autodown_core::block_model::Op::InsertText(
-            autodown_core::block_model::InsertTextOp {
+        let op =
+            autodown_core::block_model::Op::InsertText(autodown_core::block_model::InsertTextOp {
                 pos: autodown_core::block_model::BlockPos {
                     blockId: block_id.to_string(),
                     offset,
                 },
                 text: text.to_string(),
-            },
-        );
+            });
         let result = applyOp(root, collapsedSel(block_id, offset), op);
         serde_json::to_string(&block_to_json(&result.tree)).map_err(|e| e.to_string())
     }
@@ -213,11 +214,13 @@ mod impls {
     }
 
     fn block_from_doc(doc: &str) -> Result<BlockNode, String> {
-    let j: J = serde_json::from_str(doc).map_err(|e| format!("autodown: bad document json: {e}"))?;
-    block_from_json(&j).ok_or_else(|| "autodown: malformed document json (block shape)".to_string())
-}
+        let j: J =
+            serde_json::from_str(doc).map_err(|e| format!("autodown: bad document json: {e}"))?;
+        block_from_json(&j)
+            .ok_or_else(|| "autodown: malformed document json (block shape)".to_string())
+    }
 
-fn parse_json(doc: &str) -> Result<J, String> {
+    fn parse_json(doc: &str) -> Result<J, String> {
         serde_json::from_str(doc).map_err(|e| format!("autodown: bad document json: {e}"))
     }
 
@@ -378,7 +381,10 @@ fn parse_json(doc: &str) -> Result<J, String> {
         let o = j.as_object()?;
         let id = o.get("id")?.as_str()?.to_string();
         let kind = kind_from_name(o.get("kind")?.as_str()?)?;
-        let attrs = o.get("attrs").and_then(attrs_vec_from_json).unwrap_or_default();
+        let attrs = o
+            .get("attrs")
+            .and_then(attrs_vec_from_json)
+            .unwrap_or_default();
         let mut inlines = Vec::new();
         if let Some(arr) = o.get("inlines").and_then(|v| v.as_array()) {
             for s in arr {
@@ -439,7 +445,10 @@ mod tests {
         let out = serialize_from_json(&doc, false).unwrap();
         let direct = {
             use autodown_core::serializer::serialize;
-            serialize(autodown_core::markdown_parser::parse_blocks(src, true), false)
+            serialize(
+                autodown_core::markdown_parser::parse_blocks(src, true),
+                false,
+            )
         };
         assert_eq!(out, direct);
         assert_eq!(out, src);
@@ -473,7 +482,9 @@ mod tests {
         assert_eq!(ser, "# 头\n\n## 中甲\n\n## 中乙\n\n尾\n");
         // 追加（index = -1）+ 不存在父块报错
         let out2 = insert_template_json(&out, "尾二\n", "", -1).unwrap();
-        assert!(serialize_from_json(&out2, false).unwrap().ends_with("尾二\n"));
+        assert!(serialize_from_json(&out2, false)
+            .unwrap()
+            .ends_with("尾二\n"));
         assert!(insert_template_json(&out, "x\n", "nope", 0).is_err());
     }
 }

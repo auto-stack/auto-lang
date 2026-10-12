@@ -1,0 +1,199 @@
+[
+  {
+    "gate": "t",
+    "command": [
+      "cargo",
+      "t",
+      "--no-fail-fast"
+    ],
+    "exit": 100,
+    "seconds": 166.91,
+    "log_sha256": "ade5366f257775ba88d773e26fd29fa27dfa57ad51290512e367b2db46700c5d",
+    "tail": [
+      "        PASS [   0.045s] (5230/5244) auto-lang::docs_gen gallery_properties_conform_to_schema",
+      "        PASS [   0.045s] (5231/5244) auto-lang::docs_gen kitchen_sink_page_in_sync",
+      "        PASS [   0.207s] (5232/5244) auto-lang vm::tests_string_pool::string_pool_survives_u16_boundary",
+      "        PASS [   0.140s] (5233/5244) auto-lang::component_registry_test desktop_registry_bridges_package_components",
+      "        PASS [   0.126s] (5234/5244) auto-lang::component_registry_test package_families_modeled",
+      "        PASS [   0.136s] (5235/5244) auto-lang::component_registry_test official_package_bootstrap_via_unified_mechanism",
+      "        PASS [   0.120s] (5236/5244) auto-lang::component_registry_test resolution_priority_builtin_local_package",
+      "        PASS [   0.275s] (5237/5244) auto-lang::component_registry_test e2e_use_package_generates_component",
+      "        PASS [   6.380s] (5238/5244) auto-lang ui::vm_bridge::tests::plan423_p5_runaway_guard_halts_unbounded_growth",
+      "        PASS [   1.408s] (5239/5244) auto-lang vm::tests_rc_lifecycle::str_churn_bounded",
+      "        PASS [   2.319s] (5240/5244) auto-lang vm::tests_rc_lifecycle::churn_returns_to_baseline",
+      "        PASS [  30.505s] (5241/5244) auto-lang ui::desktop_protocol::stage3::tests::stage3_multi_app_stress_n3",
+      "        PASS [  30.633s] (5242/5244) auto-lang ui::desktop_protocol::stage3::tests::stage3_multi_app_stress_n5",
+      "        PASS [  17.728s] (5243/5244) auto-lang::schema_drift schema_drift_fence",
+      "        SLOW [> 60.000s] (─────────) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+      "        PASS [  79.286s] (5244/5244) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+      "────────────",
+      "     Summary [ 105.896s] 5244 tests run: 5243 passed (1 slow), 1 failed, 1542 skipped",
+      "        FAIL [   0.185s] (4327/5244) auto-lang ui::shell::p7_loader_tests::shell_pack_hash_parity_with_embedded_snapshot",
+      "error: test run failed"
+    ]
+  },
+  {
+    "gate": "tv",
+    "command": [
+      "cargo",
+      "tv",
+      "--no-fail-fast"
+    ],
+    "exit": 0,
+    "seconds": 90.02,
+    "log_sha256": "c6e16edee0eb23b53c26e83aca2cdab232cafbd7e8b6f95d9e9c3253a058a2e3",
+    "tail": [
+      "        PASS [   0.211s] (145/162) auto-lang tests::vm_file_tests::test_99_idiom_probe_p09h_inline_enum_payload",
+      "        PASS [   0.215s] (146/162) auto-lang tests::vm_file_tests::test_99_idiom_probe_p10_enum_reassign_eq",
+      "        PASS [   0.244s] (147/162) auto-lang tests::vm_file_tests::test_99_idiom_probe_p09g_local_var_workaround",
+      "        PASS [   2.129s] (148/162) auto-lang tests::conformance_tests::conformance_differential_stability",
+      "        PASS [   0.233s] (149/162) auto-lang tests::vm_file_tests::test_99_idiom_probe_p12_is_binding_types",
+      "        PASS [   0.234s] (150/162) auto-lang tests::vm_file_tests::test_99_idiom_probe_p11_is_char",
+      "        PASS [   0.232s] (151/162) auto-lang tests::vm_file_tests::test_99_idiom_probe_p13a_struct_field_enum",
+      "        PASS [   0.233s] (152/162) auto-lang tests::vm_file_tests::test_99_idiom_probe_p13c_struct_literal_literal_payload",
+      "        PASS [   0.233s] (153/162) auto-lang tests::vm_file_tests::test_99_idiom_probe_p13b_struct_literal_field",
+      "        PASS [   0.234s] (154/162) auto-lang tests::vm_file_tests::test_99_py_dispatch_02_auto_str_unchanged",
+      "        PASS [   0.210s] (155/162) auto-lang tests::vm_file_tests::test_99_short_circuit_003_negative_index_guard",
+      "        PASS [   0.250s] (156/162) auto-lang tests::vm_file_tests::test_99_p588debt_002_str_return_fn",
+      "        PASS [   0.249s] (157/162) auto-lang tests::vm_file_tests::test_99_short_circuit_002_calc_eval_expr",
+      "        PASS [   0.265s] (158/162) auto-lang tests::vm_file_tests::test_99_p588debt_001_inline_arg_accum",
+      "        PASS [   1.232s] (159/162) auto-lang tests::cookbook_vm_tests::cb_web_mime",
+      "        PASS [   0.265s] (160/162) auto-lang tests::vm_file_tests::test_99_short_circuit_001_and_or",
+      "        PASS [   0.265s] (161/162) auto-lang tests::vm_file_tests::test_99_plan664_001_value_lexemes",
+      "        PASS [   0.267s] (162/162) auto-lang tests::vm_file_tests::test_99_p588debt_003_operand_shapes",
+      "────────────",
+      "     Summary [   2.466s] 162 tests run: 162 passed, 6610 skipped"
+    ]
+  },
+  {
+    "gate": "tu",
+    "command": [
+      "cargo",
+      "tu"
+    ],
+    "exit": 0,
+    "seconds": 2.13,
+    "log_sha256": "e8616fa14a90db6486d81940767c4315070c0c86e7ab527b37d88174a8dccd87",
+    "tail": [
+      "test ui_gen::widget::spec::tests::test_widget_spec_creation ... ok",
+      "test ui_gen::widget::spec::tests::test_widget_spec_new ... ok",
+      "test ui_gen::widget::spec::tests::test_widget_spec_with_alias ... ok",
+      "test ui_gen::vue::tests::test_vmodel_contract_parent_manual_wiring ... ok",
+      "test ui_gen::widget::registry::tests::test_default_widgets_image ... ok",
+      "test ui_gen::widget::registry::tests::test_semantic_widgets_map_to_column ... ok",
+      "test ui_gen::widget::registry::tests::test_default_widgets_text ... ok",
+      "test ui_gen::widget::registry::tests::test_document_panel_widgets_registered ... ok",
+      "test ui_gen::vue::tests::test_watch_computed_source ... ok",
+      "test ui_gen::vue::tests::test_widget_style_css_scoped_passthrough ... ok",
+      "test ui_gen::vue::tests::test_watch_prop_source_and_modifiers ... ok",
+      "test ui_gen::vue::tests::test_widget_theme_runtime_absent_without_accent ... ok",
+      "test ui_gen::vue::tests::test_plan522_016_corpus_helpers_emitted ... ok",
+      "test ui_gen::vue::tests::test_widget_accent_color_injects_apply_accent ... ok",
+      "test ui_gen::vue::tests::zzz_probe_icon_size_in_button_child ... ok",
+      "test ui_gen::vue::tests::test_widget_theme_runtime_injected_with_accent ... ok",
+      "test ui_gen::vue::tests::test_plan425_component_fn_widget_equivalence ... ok",
+      "",
+      "test result: ok. 861 passed; 0 failed; 2 ignored; 0 measured; 5919 filtered out; finished in 0.98s",
+      ""
+    ]
+  },
+  {
+    "gate": "tt",
+    "command": [
+      "cargo",
+      "tt",
+      "--no-fail-fast"
+    ],
+    "exit": 0,
+    "seconds": 246.6,
+    "log_sha256": "1513d741035780f38b4a2a5cd15a688770cacf483addb4965c734f152202cd37",
+    "tail": [
+      "        PASS [   0.169s] (5599/5615) auto-lang vm::tests_rc_lifecycle::str_cat_temp_freed",
+      "        PASS [   0.173s] (5600/5615) auto-lang vm::tests_rc_lifecycle::str_field_cycle_bounded",
+      "        PASS [   0.093s] (5601/5615) auto-lang vm::ui_console::tests::ring_caps_and_orders_newest_first",
+      "        PASS [   0.139s] (5602/5615) auto-lang vm::tests_tag::tag_as_param_and_field",
+      "        PASS [   0.124s] (5603/5615) auto-lang vm::tests_tag::tag_as_type_field_name",
+      "        PASS [   0.093s] (5604/5615) auto-lang vm::ui_console::tests::clear_empties",
+      "        PASS [   0.122s] (5605/5615) auto-lang vm::tests_tag::tag_enum_alias_still_parses",
+      "        PASS [   0.138s] (5606/5615) auto-lang vm::tests_tag::tag_in_struct_literal",
+      "        PASS [   0.200s] (5607/5615) auto-lang vm::tests_string_pool::string_pool_survives_u16_boundary",
+      "        PASS [   6.311s] (5608/5615) auto-lang ui::vm_bridge::tests::plan423_p5_runaway_guard_halts_unbounded_growth",
+      "        PASS [  29.959s] (5609/5615) auto-lang tests::plan738_stdlib_assembly_tests::t03_assembly_wiring::trans_entries_declare_assembly_target",
+      "        PASS [   1.438s] (5610/5615) auto-lang vm::tests_rc_lifecycle::str_churn_bounded",
+      "        PASS [  30.183s] (5611/5615) auto-lang tests::plan738_stdlib_assembly_tests::t12_manifest_identity::triangle_consumers_share_assembly_identity_not_receipt_identity",
+      "        PASS [   2.351s] (5612/5615) auto-lang vm::tests_rc_lifecycle::churn_returns_to_baseline",
+      "        PASS [  30.489s] (5613/5615) auto-lang ui::desktop_protocol::stage3::tests::stage3_multi_app_stress_n3",
+      "        PASS [  30.570s] (5614/5615) auto-lang ui::desktop_protocol::stage3::tests::stage3_multi_app_stress_n5",
+      "        SLOW [> 60.000s] (─────────) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+      "        PASS [  78.229s] (5615/5615) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+      "────────────",
+      "     Summary [ 133.396s] 5615 tests run: 5615 passed (1 slow), 1790 skipped"
+    ]
+  },
+  {
+    "gate": "tb",
+    "command": [
+      "cargo",
+      "tb",
+      "--no-fail-fast"
+    ],
+    "exit": 0,
+    "seconds": 246.8,
+    "log_sha256": "1e75e8d6bc688e917a5453537ee0442f13b42fc4e64ceaa5f28a79f600095d0d",
+    "tail": [
+      "        PASS [   0.110s] (5283/5299) auto-lang vm::tests_string_pool::engine_load_str_decode_width_matches_codegen",
+      "        PASS [   0.173s] (5284/5299) auto-lang vm::tests_rc_lifecycle::str_field_cycle_bounded",
+      "        PASS [   0.079s] (5285/5299) auto-lang vm::ui_console::tests::clear_empties",
+      "        PASS [   0.141s] (5286/5299) auto-lang vm::tests_tag::tag_as_param_and_field",
+      "        PASS [   0.094s] (5287/5299) auto-lang vm::ui_console::tests::ring_caps_and_orders_newest_first",
+      "        PASS [   0.125s] (5288/5299) auto-lang vm::tests_tag::tag_enum_alias_still_parses",
+      "        PASS [   0.141s] (5289/5299) auto-lang vm::tests_tag::tag_as_type_field_name",
+      "        PASS [   0.126s] (5290/5299) auto-lang vm::tests_tag::tag_in_struct_literal",
+      "        PASS [   0.188s] (5291/5299) auto-lang vm::tests_string_pool::string_pool_survives_u16_boundary",
+      "        PASS [   5.982s] (5292/5299) auto-lang ui::vm_bridge::tests::plan423_p5_runaway_guard_halts_unbounded_growth",
+      "        PASS [   1.343s] (5293/5299) auto-lang vm::tests_rc_lifecycle::str_churn_bounded",
+      "        PASS [   2.202s] (5294/5299) auto-lang vm::tests_rc_lifecycle::churn_returns_to_baseline",
+      "        PASS [  32.856s] (5295/5299) auto-lang tests::plan738_stdlib_assembly_tests::t03_assembly_wiring::trans_entries_declare_assembly_target",
+      "        PASS [  32.766s] (5296/5299) auto-lang tests::plan738_stdlib_assembly_tests::t12_manifest_identity::triangle_consumers_share_assembly_identity_not_receipt_identity",
+      "        PASS [  30.448s] (5297/5299) auto-lang ui::desktop_protocol::stage3::tests::stage3_multi_app_stress_n3",
+      "        PASS [  30.514s] (5298/5299) auto-lang ui::desktop_protocol::stage3::tests::stage3_multi_app_stress_n5",
+      "        SLOW [> 60.000s] (─────────) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+      "        PASS [  81.464s] (5299/5299) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+      "────────────",
+      "     Summary [ 101.336s] 5299 tests run: 5299 passed (1 slow), 1542 skipped"
+    ]
+  },
+  {
+    "gate": "taa",
+    "command": [
+      "cargo",
+      "taa",
+      "--no-fail-fast"
+    ],
+    "exit": 100,
+    "seconds": 327.77,
+    "log_sha256": "5186e6244c32f562054f2dfd08dbc951da6e28fb6cbecb8d8e4fcfd24a15d8db",
+    "tail": [
+      "    13613 | ...   let mut fr1016 = auto_lang::a2r_std::fs::read_text_range(&(fp1016.as_str()), ((off1016).max(0) as u64 as usize), ((lim1016)...",
+      "          |                        ^^^^^^^^^ use of unresolved module or unlinked crate `auto_lang`",
+      "          |",
+      "          = help: if you wanted to use a crate named `auto_lang`, use `cargo add auto_lang` to add it to your `Cargo.toml`",
+      "",
+      "    For more information about this error, try `rustc --explain E0433`.",
+      "    error: could not compile `aavm2_bin` (bin \"aavm2_bin\") due to 1 previous error",
+      "",
+      "    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace",
+      "",
+      "        PASS [  33.648s] (6262/6263) auto-lang vm::tests_rc_lifecycle::str_churn_bounded_large",
+      "        PASS [ 134.719s] (6263/6263) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+      "────────────",
+      "     Summary [ 162.898s] 6263 tests run: 6258 passed, 5 failed, 640 skipped",
+      "        FAIL [   0.128s] ( 415/6263) auto-lang http_upload_service::tests::plan730_commit_target_matrix",
+      "        FAIL [   2.404s] (1288/6263) auto-lang tests::aavm2_a2r::test_aavm2_goldens_check",
+      "        FAIL [   2.645s] (1582/6263) auto-lang tests::ffi_dual_tests::ffi_dual_019_dep_layout_invariants",
+      "        FAIL [  54.437s] (4491/6263) auto-lang tests::aavm_runner_tests::test_aavm2_compile_corpus",
+      "        FAIL [  63.132s] (6261/6263) auto-lang tests::aavm_runner_tests::test_aavm2_compile_use_corpus",
+      "error: test run failed"
+    ]
+  }
+]

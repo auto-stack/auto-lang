@@ -1,0 +1,24 @@
+// Capture contracts and completed originals: docs/reports/website-v05-capture-guide.md.
+export const CAPTURE_IMAGES: Record<string, { src: string; width: number; height: number; caption: [string, string] }> = {
+  'SHOT-04': { src: '/v05/candidate/musk-workspace.png', width: 2560, height: 1600, caption: ['AutoMusk conversation and tool activity · password-generator example · dark · provided 2026-10-12', 'AutoMusk 会话与工具活动 · 密码生成器示例 · 深色 · 用户提供 2026-10-12'] },
+  'SHOT-05': { src: '/v05/candidate/musk-plan.png', width: 2560, height: 1600, caption: ['AutoMusk Plan page · PLAN-001 password generator · 0/5 progress · provided 2026-10-12', 'AutoMusk 计划页面 · PLAN-001 密码生成器 · 进度 0/5 · 用户提供 2026-10-12'] },
+  'SHOT-03': { src: '/v05/candidate/autoedit-comparison.png', width: 3840, height: 2419, caption: ['Side-by-side file comparison: status-before.at ↔ status-after.at · dark · provided 2026-10-11', '文件并排对比：status-before.at ↔ status-after.at · 深色 · 用户提供 2026-10-11'] },
+  'SHOT-01': { src: '/v05/candidate/autoedit-workspace.png', width: 2560, height: 1600, caption: ['AutoEdit own-source workspace · VM/Iced, dark · Windows · 2026-10-10 · f9ae2a64', 'AutoEdit 自仓源码工作区 · VM/Iced 深色 · Windows · 2026-10-10 · f9ae2a64'] },
+  'SHOT-02': { src: '/v05/candidate/autoedit-search.png', width: 2560, height: 1600, caption: ['Search across source and a session test module · VM/Iced, dark · Windows · 2026-10-10 · f9ae2a64', '源码与会话测试模块的跨文件搜索 · VM/Iced 深色 · Windows · 2026-10-10 · f9ae2a64'] },
+  'SHOT-07': { src: '/apps/auto-jade/p1-main-dark.png', width: 1933, height: 1245, caption: ['AutoJade workspace · dark · product manual sample · provided 2026-10-10 · release preparation', 'AutoJade 文档工作台 · 深色 · 产品手册示例库 · 用户提供 2026-10-10 · 发布准备态'] },
+}
+
+export const CAPTURE_SLOTS: Record<string, { title: [string, string]; scene: [string, string] }> = {
+  'SHOT-01': { title: ['AutoEdit workspace', 'AutoEdit 工作台'], scene: ['Project tree, open code tabs and an active editing area.', '项目文件树、代码标签页与活动编辑区。'] },
+  'SHOT-02': { title: ['AutoEdit search', 'AutoEdit 搜索'], scene: ['A reproducible project search with matching file and text visible.', '同一示例项目的搜索词、结果与对应文件。'] },
+  'SHOT-03': { title: ['AutoEdit comparison', 'AutoEdit 差异比较'], scene: ['Two versions of one file, with a readable change and comparison controls.', '同一文件的两个版本、清晰的差异块与比较操作。'] },
+  'SHOT-04': { title: ['AutoMusk project workspace', 'AutoMusk 项目工作台'], scene: ['A sample project, a real conversation and its observed tool activity.', '示例项目、真实对话与实际工具活动。'] },
+  'SHOT-05': { title: ['AutoMusk Plan page', 'AutoMusk 计划页面'], scene: ['The same sample project’s Plan, with its goals, design and current progress.', '同一示例项目的计划、目标、设计与当前进度。'] },
+  'SHOT-06': { title: ['Musk Kanban and Canvas preview', 'Musk Kanban 与 Canvas 预览'], scene: ['Capture only after the release scope and this workflow are verified.', '待发布集合与该操作流程验收确认后，展示真实任务和预览。'] },
+  'SHOT-07': { title: ['AutoJade document workspace', 'AutoJade 文档工作台'], scene: ['A coherent knowledge base, document tabs and an edited page.', '同一知识库的目录、文档标签与编辑页面。'] },
+  'SHOT-08': { title: ['AutoJade knowledge links', 'AutoJade 知识关系'], scene: ['Related pages, a backlink and a real search result.', '相关页面、反链与实际检索结果。'] },
+  'SHOT-09': { title: ['AutoJade draft recovery', 'AutoJade 草稿恢复'], scene: ['An unsaved draft restored as a separate copy, without replacing the original.', '未保存草稿恢复为独立副本，保留原文档。'] },
+  'SHOT-10': { title: ['Playground source and result', 'Playground 源码与结果'], scene: ['A supported snippet and its actual backend result, with the connection state visible.', '受支持示例与实际后端结果，同时显示连接状态。'] },
+  'SHOT-11': { title: ['AutoUI Web view', 'AutoUI Web 端'], scene: ['The same kanban fixture and source revision as the desktop capture.', '与桌面图相同的看板数据、源码版本与状态。'] },
+  'SHOT-12': { title: ['AutoUI desktop view', 'AutoUI 桌面端'], scene: ['The matching kanban fixture rendered through the native VM path.', '使用原生 VM 路径渲染同一看板数据与状态。'] },
+}

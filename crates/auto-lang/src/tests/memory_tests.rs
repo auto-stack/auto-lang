@@ -14,8 +14,11 @@ fn test_alloc_array_basic() {
     let result = run(code).unwrap();
     // alloc_array should return an Array value
     eprintln!("alloc_array(10) result: {}", result.trim());
-    assert!(result.contains("Array") || result.contains("["),
-            "alloc_array(10) should return an Array, got: {}", result);
+    assert!(
+        result.contains("Array") || result.contains("["),
+        "alloc_array(10) should return an Array, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -26,8 +29,10 @@ fn test_alloc_array_empty() {
 
     let result = run(code).unwrap();
     eprintln!("alloc_array(0) result: {}", result.trim());
-    assert!(result.contains("Array") || result.contains("["),
-            "alloc_array(0) should return an empty Array");
+    assert!(
+        result.contains("Array") || result.contains("["),
+        "alloc_array(0) should return an empty Array"
+    );
 }
 
 #[test]
@@ -39,8 +44,10 @@ fn test_realloc_array_growth() {
 
     let result = run(code).unwrap();
     eprintln!("realloc_array result: {}", result.trim());
-    assert!(result.contains("Array") || result.contains("["),
-            "realloc_array should return an Array");
+    assert!(
+        result.contains("Array") || result.contains("["),
+        "realloc_array should return an Array"
+    );
 }
 
 #[test]
@@ -52,8 +59,10 @@ fn test_realloc_array_preserves_data() {
 
     let result = run(code).unwrap();
     eprintln!("realloc_array with data result: {}", result.trim());
-    assert!(result.contains("Array") || result.contains("["),
-            "realloc_array should preserve data");
+    assert!(
+        result.contains("Array") || result.contains("["),
+        "realloc_array should preserve data"
+    );
 }
 
 #[test]
@@ -66,8 +75,14 @@ fn test_free_array_returns_nil() {
     let result = run(code).unwrap();
     // free_array returns a void-like result (empty string or false in VM encoding)
     eprintln!("free_array result: '{}'", result.trim());
-    assert!(result.trim().is_empty() || result.trim() == "nil" || result.trim() == "Nil" || result.trim() == "false",
-            "free_array should return Nil or void, got: {}", result.trim());
+    assert!(
+        result.trim().is_empty()
+            || result.trim() == "nil"
+            || result.trim() == "Nil"
+            || result.trim() == "false",
+        "free_array should return Nil or void, got: {}",
+        result.trim()
+    );
 }
 
 #[test]
@@ -79,8 +94,10 @@ fn test_alloc_invalid_size() {
 
     let result = run(code);
     // Should return an error
-    assert!(result.is_err() || result.unwrap().contains("Error"),
-            "alloc_array with negative size should error");
+    assert!(
+        result.is_err() || result.unwrap().contains("Error"),
+        "alloc_array with negative size should error"
+    );
 }
 
 #[test]
@@ -95,6 +112,8 @@ fn test_vm_functions_integration() {
 
     let result = run(code).unwrap();
     eprintln!("VM functions integration result: {}", result.trim());
-    assert!(result.contains("Array") || result.contains("["),
-            "Should return the second array");
+    assert!(
+        result.contains("Array") || result.contains("["),
+        "Should return the second array"
+    );
 }

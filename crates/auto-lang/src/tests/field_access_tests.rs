@@ -21,7 +21,11 @@ let p = Point(10, 20)
 p.x
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(result.contains("10"), "Expected result to contain '10', got: {}", result);
+    assert!(
+        result.contains("10"),
+        "Expected result to contain '10', got: {}",
+        result
+    );
 }
 
 /// Test field access doesn't move the object
@@ -39,8 +43,14 @@ p.y
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // Should not get "Use after move" error
-    assert!(!result.contains("Use after move"), "Field access should not move object");
-    assert!(result.contains("1") || result.contains("2"), "Should access both fields");
+    assert!(
+        !result.contains("Use after move"),
+        "Field access should not move object"
+    );
+    assert!(
+        result.contains("1") || result.contains("2"),
+        "Should access both fields"
+    );
 }
 
 /// Test multiple field accesses from same object
@@ -60,8 +70,14 @@ d.c
 d.a  // Access a again - last expr determines result
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(!result.contains("Use after move"), "Multiple field accesses should not fail");
-    assert!(result.contains("1") || result.contains("2") || result.contains("3"), "Should access fields");
+    assert!(
+        !result.contains("Use after move"),
+        "Multiple field accesses should not fail"
+    );
+    assert!(
+        result.contains("1") || result.contains("2") || result.contains("3"),
+        "Should access fields"
+    );
 }
 
 /// Test field assignment and access
@@ -79,7 +95,11 @@ p.y = 20
 p.x  // Return x
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(result.contains("10"), "Should access updated x field, got: {}", result);
+    assert!(
+        result.contains("10"),
+        "Should access updated x field, got: {}",
+        result
+    );
 }
 
 /// Test nested field access (when we have nested types)
@@ -98,7 +118,11 @@ let outer = Outer(Inner(42))
 outer.inner.value
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(result.contains("42"), "Should access nested field value, got: {}", result);
+    assert!(
+        result.contains("42"),
+        "Should access nested field value, got: {}",
+        result
+    );
 }
 
 /// Test field access on type instances created with positional args
@@ -114,7 +138,11 @@ let p = Point(1, 2)
 p.x
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(result.contains("1"), "Should access x from positional arg, got: {}", result);
+    assert!(
+        result.contains("1"),
+        "Should access x from positional arg, got: {}",
+        result
+    );
 }
 
 /// Test field access returns correct type
@@ -131,7 +159,11 @@ let d = Data("test", 42, true)
 d.name
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(result.contains("test"), "Should access str field, got: {}", result);
+    assert!(
+        result.contains("test"),
+        "Should access str field, got: {}",
+        result
+    );
 }
 
 /// Test field access with int type
@@ -146,7 +178,11 @@ let d = Data(42)
 d.value
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(result.contains("42"), "Should access int field, got: {}", result);
+    assert!(
+        result.contains("42"),
+        "Should access int field, got: {}",
+        result
+    );
 }
 
 /// Test field access with bool type
@@ -161,7 +197,11 @@ let d = Data(true)
 d.active
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(result.contains("true"), "Should access bool field, got: {}", result);
+    assert!(
+        result.contains("true"),
+        "Should access bool field, got: {}",
+        result
+    );
 }
 
 // =============================================================================
@@ -177,7 +217,12 @@ let n = Note { id: 1, title: "hello" }
 n.title
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert_eq!(result.trim(), "hello", "str field via literal: got {:?}", result);
+    assert_eq!(
+        result.trim(),
+        "hello",
+        "str field via literal: got {:?}",
+        result
+    );
 }
 
 /// Plan 326: struct created inside fn, returned, then field accessed
@@ -192,7 +237,12 @@ let n = make_note(42, "world")
 n.title
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert_eq!(result.trim(), "world", "str field from fn: got {:?}", result);
+    assert_eq!(
+        result.trim(),
+        "world",
+        "str field from fn: got {:?}",
+        result
+    );
 }
 
 /// Plan 326: struct from fn, int field
@@ -224,9 +274,20 @@ fn main() {
     print(f"id=${n.id} title=${n.title}")
 }
 "#;
-    let (result, stdout) = run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
-    assert!(stdout.contains("id=7"), "int field print: got {:?} / result {:?}", stdout, result);
-    assert!(stdout.contains("title=done"), "str field print: got {:?} / result {:?}", stdout, result);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
+    assert!(
+        stdout.contains("id=7"),
+        "int field print: got {:?} / result {:?}",
+        stdout,
+        result
+    );
+    assert!(
+        stdout.contains("title=done"),
+        "str field print: got {:?} / result {:?}",
+        stdout,
+        result
+    );
 }
 
 /// Plan 326: struct stored in array, then field accessed (015-notes db.at scenario)
@@ -242,7 +303,12 @@ let n = notes[0]
 n.title
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert_eq!(result.trim(), "Welcome", "struct in array field: got {:?}", result);
+    assert_eq!(
+        result.trim(),
+        "Welcome",
+        "struct in array field: got {:?}",
+        result
+    );
 }
 
 /// Plan 326: for-loop over array of structs, field access (db.find_note scenario)
@@ -268,8 +334,14 @@ fn main() {
     print(f"found: $t")
 }
 "#;
-    let (result, stdout) = run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
-    assert!(stdout.contains("found: Shopping"), "for-over-struct-array: got {:?} / result {:?}", stdout, result);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
+    assert!(
+        stdout.contains("found: Shopping"),
+        "for-over-struct-array: got {:?} / result {:?}",
+        stdout,
+        result
+    );
 }
 
 /// Plan 326 Phase 4: array-of-struct mutation + re-access (db.update_note scenario).
@@ -294,9 +366,20 @@ fn main() {
     print(f"${first.id}:${first.title} ${second.id}:${second.title}")
 }
 "#;
-    let (result, stdout) = run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
-    assert!(stdout.contains("0:Welcome"), "struct array mutation: got stdout={:?} result={:?}", stdout, result);
-    assert!(stdout.contains("1:Shopping"), "struct array mutation: got stdout={:?} result={:?}", stdout, result);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
+    assert!(
+        stdout.contains("0:Welcome"),
+        "struct array mutation: got stdout={:?} result={:?}",
+        stdout,
+        result
+    );
+    assert!(
+        stdout.contains("1:Shopping"),
+        "struct array mutation: got stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// Plan 326 Phase 3: observe raw repr of struct return value (HTTP serialization root cause)
@@ -314,7 +397,12 @@ get_note()
     // Root cause confirmed: handler returns heap object ID (4000000+) as i32.
     // http_server's is_i32 branch would serialize this as the bare number "4000000".
     // After Phase 3 fix, nv_to_json should recognize >=4000000 as a heap object.
-    assert_eq!(result.trim(), "4000000", "struct return raw repr: got {:?}", result);
+    assert_eq!(
+        result.trim(),
+        "4000000",
+        "struct return raw repr: got {:?}",
+        result
+    );
 }
 
 /// Plan 326 Phase 3: observe raw repr of array-of-struct return value
@@ -336,7 +424,12 @@ list_notes()
     // bare number like 4000000. This is the intended H2 outcome — the old
     // `Value::Int(4000000+)` raw repr was the very ambiguity that broke HTTP
     // serialization (Plan 326) and WithBindings matching (Plan 390 L3).
-    assert_eq!(result.trim(), "[<vmref>, <vmref>]", "array struct return raw repr: got {:?}", result);
+    assert_eq!(
+        result.trim(),
+        "[<vmref>, <vmref>]",
+        "array struct return raw repr: got {:?}",
+        result
+    );
 }
 
 // =============================================================================
@@ -349,7 +442,7 @@ list_notes()
 /// `(key, cell)` tuple arrays: `field.0`/`field.1`).
 #[test]
 fn plan043_numeric_dot_field_parses() {
-    use crate::{Parser, session::CompilerSession};
+    use crate::{session::CompilerSession, Parser};
     let code = "fn f() {\n    x.0\n    x.1\n}\n";
     let mut parser = Parser::from(code).with_session(CompilerSession::default());
     let ast = parser.parse().expect("numeric dot-field should parse");
@@ -360,8 +453,12 @@ fn plan043_numeric_dot_field_parses() {
         if let crate::ast::Stmt::Fn(fd) = stmt {
             for s in &fd.body.stmts {
                 if let crate::ast::Stmt::Expr(crate::ast::Expr::Dot(_, field)) = s {
-                    if field.as_str() == "0" { found_0 = true; }
-                    if field.as_str() == "1" { found_1 = true; }
+                    if field.as_str() == "0" {
+                        found_0 = true;
+                    }
+                    if field.as_str() == "1" {
+                        found_1 = true;
+                    }
                 }
             }
         }

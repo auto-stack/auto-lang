@@ -1,0 +1,27 @@
+{
+  "plan": "PLAN-768",
+  "revision": 1,
+  "channel": "guarded offline projection, no store writer reachable (localhost8080 probe)",
+  "baseline_sha256": "7a1416f7906536f14f81a5283bca8f5ef41c87998fbb9ee2509054a05b0ecc89",
+  "result_sha256": "9a80b80c700b1aea290056a6fb8027c7e2f6aa74a56309c20f3feff7d05fbb3c",
+  "version": "legacy unversioned document preserved",
+  "preexisting_items": 852,
+  "items": [
+    [
+      "designs",
+      "P768-1"
+    ],
+    [
+      "reviews",
+      "P768-R"
+    ],
+    [
+      "reports",
+      "P768-Report"
+    ]
+  ],
+  "unrelated_guard": "Remove three additions; serialization equals exact byte backup",
+  "backup": "D:\\autostack\\auto-lang\\scratch\\website-nav-768\\specs-before-768.json",
+  "landing_equivalence_commit": "72c20c4bd6157e028a14e9d520a99747880f4b70",
+  "recovery": "guarded scoped refresh of source hashes/landing tags after fully equal rebase; 852 preexisting items remain byte-identical"
+}

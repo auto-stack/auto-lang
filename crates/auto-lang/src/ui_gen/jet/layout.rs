@@ -124,8 +124,8 @@ impl LayoutGenerator {
         let vertical_arrange = Self::extract_string(props, "arrange")
             .or_else(|| Self::extract_string(props, "vertical_arrange"));
         // Support both 'style' (new) and 'class' (legacy) for backwards compatibility
-        let style = Self::extract_string(props, "style")
-            .or_else(|| Self::extract_string(props, "class"));
+        let style =
+            Self::extract_string(props, "style").or_else(|| Self::extract_string(props, "class"));
 
         LayoutProps {
             gap,
@@ -139,7 +139,11 @@ impl LayoutGenerator {
     }
 
     /// Generate Column component
-    pub fn generate_column(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
+    pub fn generate_column(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &str,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.Column");
         self.add_import("androidx.compose.foundation.layout.Arrangement");
         self.add_import("androidx.compose.foundation.layout.padding");
@@ -189,9 +193,16 @@ impl LayoutGenerator {
         let arrangement = if let Some(gap) = layout_props.gap {
             let dp = gap * 4; // Tailwind to Dp multiplier
             match layout_props.vertical_arrange.as_deref() {
-                Some("center") => format!("Arrangement.spacedBy({}.dp, Alignment.CenterVertically)", dp),
-                Some("bottom" | "end") => format!("Arrangement.spacedBy({}.dp, Alignment.Bottom)", dp),
-                Some("between") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceBetween)", dp),
+                Some("center") => format!(
+                    "Arrangement.spacedBy({}.dp, Alignment.CenterVertically)",
+                    dp
+                ),
+                Some("bottom" | "end") => {
+                    format!("Arrangement.spacedBy({}.dp, Alignment.Bottom)", dp)
+                }
+                Some("between") => {
+                    format!("Arrangement.spacedBy({}.dp, Alignment.SpaceBetween)", dp)
+                }
                 Some("around") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceAround)", dp),
                 Some("evenly") => format!("Arrangement.spacedBy({}.dp, Alignment.SpaceEvenly)", dp),
                 _ => format!("Arrangement.spacedBy({}.dp)", dp),
@@ -235,7 +246,11 @@ impl LayoutGenerator {
     }
 
     /// Generate Row component
-    pub fn generate_row(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
+    pub fn generate_row(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &str,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.Row");
         self.add_import("androidx.compose.foundation.layout.Arrangement");
         self.add_import("androidx.compose.foundation.layout.padding");
@@ -333,7 +348,11 @@ impl LayoutGenerator {
     /// # Props
     /// - `style`: Tailwind classes (gap-X, etc.)
     /// - `gap`: Explicit gap value (overrides style)
-    pub fn generate_flow_row(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
+    pub fn generate_flow_row(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &str,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.ExperimentalLayoutApi");
         self.add_import("androidx.compose.foundation.layout.FlowRow");
         self.add_import("androidx.compose.foundation.layout.Arrangement");
@@ -379,15 +398,23 @@ impl LayoutGenerator {
         }
 
         // Determine gap: explicit gap prop > style-based gap > 0
-        let gap_dp = layout_props.gap.map(|g| g * 4)
+        let gap_dp = layout_props
+            .gap
+            .map(|g| g * 4)
             .or(style_gap_dp)
             .unwrap_or(0);
 
         // Horizontal arrangement (spacing between items in a row)
-        params.push(format!("horizontalArrangement = Arrangement.spacedBy({}.dp)", gap_dp));
+        params.push(format!(
+            "horizontalArrangement = Arrangement.spacedBy({}.dp)",
+            gap_dp
+        ));
 
         // Vertical arrangement (spacing between rows)
-        params.push(format!("verticalArrangement = Arrangement.spacedBy({}.dp)", gap_dp));
+        params.push(format!(
+            "verticalArrangement = Arrangement.spacedBy({}.dp)",
+            gap_dp
+        ));
 
         Ok(format!(
             "FlowRow(\n        {}\n    ) {{\n        {}\n    }}",
@@ -397,7 +424,11 @@ impl LayoutGenerator {
     }
 
     /// Generate Box component
-    pub fn generate_box(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
+    pub fn generate_box(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &str,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.Box");
         self.add_import("androidx.compose.foundation.layout.padding");
         self.add_import("androidx.compose.ui.Alignment");
@@ -461,10 +492,14 @@ impl LayoutGenerator {
     /// - `"filled"` (default) → `Card`
     /// - `"elevated"` → `ElevatedCard`
     /// - `"outlined"` → `OutlinedCard`
-    pub fn generate_card(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
+    pub fn generate_card(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &str,
+    ) -> GenResult<String> {
         // Extract variant prop (default: "filled")
-        let variant = Self::extract_string(props, "variant")
-            .unwrap_or_else(|| "filled".to_string());
+        let variant =
+            Self::extract_string(props, "variant").unwrap_or_else(|| "filled".to_string());
 
         // Add imports based on variant
         match variant.as_str() {
@@ -486,8 +521,8 @@ impl LayoutGenerator {
         self.add_import("androidx.compose.ui.graphics.Color");
 
         // Support both 'style' (new) and 'class' (legacy) for backwards compatibility
-        let class = Self::extract_string(props, "style")
-            .or_else(|| Self::extract_string(props, "class"));
+        let class =
+            Self::extract_string(props, "style").or_else(|| Self::extract_string(props, "class"));
 
         // Separate modifiers: external (clip, shadow) vs internal (padding)
         let mut external_mods = Vec::new();
@@ -525,7 +560,10 @@ impl LayoutGenerator {
         let wrapped_children = if internal_mods.is_empty() {
             children.to_string()
         } else {
-            format!("Box(modifier = {}) {{\n        {}\n    }}", internal_modifier, children)
+            format!(
+                "Box(modifier = {}) {{\n        {}\n    }}",
+                internal_modifier, children
+            )
         };
 
         // Select component name based on variant
@@ -542,15 +580,19 @@ impl LayoutGenerator {
     }
 
     /// Generate Scroll component (scrollable Column)
-    pub fn generate_scroll(&mut self, props: &HashMap<String, AuraPropValue>, children: &str) -> GenResult<String> {
+    pub fn generate_scroll(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        children: &str,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.foundation.layout.Column");
         self.add_import("androidx.compose.foundation.verticalScroll");
         self.add_import("androidx.compose.foundation.rememberScrollState");
         self.add_import("androidx.compose.ui.Modifier");
 
         // Support both 'style' (new) and 'class' (legacy) for backwards compatibility
-        let class = Self::extract_string(props, "style")
-            .or_else(|| Self::extract_string(props, "class"));
+        let class =
+            Self::extract_string(props, "style").or_else(|| Self::extract_string(props, "class"));
 
         let mut modifier_parts = vec!["verticalScroll(rememberScrollState())".to_string()];
 
@@ -584,7 +626,10 @@ impl LayoutGenerator {
     }
 
     /// Convert Tailwind class string to full ModifierResult (includes arrangement for gap)
-    fn class_to_modifier_result(&self, class: &str) -> crate::ui_gen::jet::modifier::ModifierResult {
+    fn class_to_modifier_result(
+        &self,
+        class: &str,
+    ) -> crate::ui_gen::jet::modifier::ModifierResult {
         self.modifier_dsl.convert_class(class)
     }
 
@@ -653,7 +698,10 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(4)));
+        props.insert(
+            "gap".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(4)),
+        );
 
         let result = gen.generate_column(&props, "Text(\"Hello\")");
         assert!(result.is_ok());
@@ -666,7 +714,10 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("align".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
+        props.insert(
+            "align".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("center".into())),
+        );
 
         let result = gen.generate_column(&props, "Text(\"Hello\")");
         assert!(result.is_ok());
@@ -690,7 +741,10 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("justify".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("between".into())));
+        props.insert(
+            "justify".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("between".into())),
+        );
 
         let result = gen.generate_row(&props, "Text(\"A\")\n        Text(\"B\")");
         assert!(result.is_ok());
@@ -725,7 +779,10 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())));
+        props.insert(
+            "class".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())),
+        );
 
         let result = gen.generate_card(&props, "Text(\"Card\")");
         assert!(result.is_ok());
@@ -774,10 +831,22 @@ mod tests {
     fn test_tailwind_color_to_hex() {
         let gen = LayoutGenerator::new();
 
-        assert_eq!(gen.tailwind_color_to_hex("white"), Some("0xFFFFFFFF".to_string()));
-        assert_eq!(gen.tailwind_color_to_hex("black"), Some("0xFF000000".to_string()));
-        assert_eq!(gen.tailwind_color_to_hex("blue-500"), Some("0xFF3B82F6".to_string()));
-        assert_eq!(gen.tailwind_color_to_hex("#FF5733"), Some("0xFFFF5733".to_string()));
+        assert_eq!(
+            gen.tailwind_color_to_hex("white"),
+            Some("0xFFFFFFFF".to_string())
+        );
+        assert_eq!(
+            gen.tailwind_color_to_hex("black"),
+            Some("0xFF000000".to_string())
+        );
+        assert_eq!(
+            gen.tailwind_color_to_hex("blue-500"),
+            Some("0xFF3B82F6".to_string())
+        );
+        assert_eq!(
+            gen.tailwind_color_to_hex("#FF5733"),
+            Some("0xFFFF5733".to_string())
+        );
         assert_eq!(gen.tailwind_color_to_hex("unknown"), None);
     }
 
@@ -802,12 +871,18 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())),
+        );
 
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
         let code = result.unwrap();
-        assert!(code.contains("ElevatedCard"), "Should generate ElevatedCard for variant='elevated'");
+        assert!(
+            code.contains("ElevatedCard"),
+            "Should generate ElevatedCard for variant='elevated'"
+        );
         assert!(!code.contains("OutlinedCard"));
         assert!(!code.contains("\nCard("));
     }
@@ -817,12 +892,18 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())),
+        );
 
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
         let code = result.unwrap();
-        assert!(code.contains("OutlinedCard"), "Should generate OutlinedCard for variant='outlined'");
+        assert!(
+            code.contains("OutlinedCard"),
+            "Should generate OutlinedCard for variant='outlined'"
+        );
         assert!(!code.contains("ElevatedCard"));
         assert!(!code.contains("\nCard("));
     }
@@ -836,7 +917,10 @@ mod tests {
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
         let code = result.unwrap();
-        assert!(code.contains("Card("), "Should generate Card for default/filled variant");
+        assert!(
+            code.contains("Card("),
+            "Should generate Card for default/filled variant"
+        );
         assert!(!code.contains("ElevatedCard"));
         assert!(!code.contains("OutlinedCard"));
     }
@@ -846,12 +930,18 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("filled".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("filled".into())),
+        );
 
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
         let code = result.unwrap();
-        assert!(code.contains("Card("), "Should generate Card for variant='filled'");
+        assert!(
+            code.contains("Card("),
+            "Should generate Card for variant='filled'"
+        );
         assert!(!code.contains("ElevatedCard"));
         assert!(!code.contains("OutlinedCard"));
     }
@@ -861,8 +951,14 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())));
-        props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("rounded-2xl".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())),
+        );
+        props.insert(
+            "style".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("rounded-2xl".into())),
+        );
 
         let result = gen.generate_card(&props, "Text(\"Content\")");
         assert!(result.is_ok());
@@ -886,7 +982,10 @@ mod tests {
         assert!(code.contains("FlowRow"), "Should generate FlowRow");
         // ExperimentalLayoutApi is added to imports, not to generated code
         let imports = gen.get_imports();
-        assert!(imports.iter().any(|i| i.contains("ExperimentalLayoutApi")), "Should import ExperimentalLayoutApi");
+        assert!(
+            imports.iter().any(|i| i.contains("ExperimentalLayoutApi")),
+            "Should import ExperimentalLayoutApi"
+        );
     }
 
     #[test]
@@ -894,13 +993,19 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("gap-2".into())));
+        props.insert(
+            "style".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("gap-2".into())),
+        );
 
         let result = gen.generate_flow_row(&props, "Text(\"Item\")");
         assert!(result.is_ok());
         let code = result.unwrap();
         assert!(code.contains("FlowRow"));
-        assert!(code.contains("spacedBy(8.dp)"), "gap-2 should convert to 8.dp spacing");
+        assert!(
+            code.contains("spacedBy(8.dp)"),
+            "gap-2 should convert to 8.dp spacing"
+        );
     }
 
     #[test]
@@ -934,7 +1039,10 @@ mod tests {
         let mut gen = LayoutGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4 gap-2".into())));
+        props.insert(
+            "style".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("p-4 gap-2".into())),
+        );
 
         let result = gen.generate_flow_row(&props, "Text(\"Item\")");
         assert!(result.is_ok());

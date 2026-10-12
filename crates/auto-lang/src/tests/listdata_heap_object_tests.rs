@@ -1,8 +1,8 @@
 // Plan 077 Phase 3: ListData HeapObject Implementation Tests
 // Tests for HeapObject trait implementations for generic ListData<T>
 
+use crate::vm::heap_object::{downcast, downcast_mut, is_type, type_name, HeapObject, TypeTag};
 use crate::vm::types::ListData;
-use crate::vm::heap_object::{HeapObject, TypeTag, downcast, downcast_mut, is_type, type_name};
 use auto_val::Value;
 use std::sync::{Arc, RwLock};
 
@@ -336,7 +336,10 @@ fn test_listdata_string_in_registry() {
 
     let list_ref = downcast::<ListData<String>>(&*guard).unwrap();
     assert_eq!(list_ref.len(), 2);
-    assert_eq!(list_ref.elems, vec!["hello".to_string(), "world".to_string()]);
+    assert_eq!(
+        list_ref.elems,
+        vec!["hello".to_string(), "world".to_string()]
+    );
 }
 
 #[test]

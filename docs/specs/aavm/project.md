@@ -2,7 +2,7 @@
 
 > **Status**: experimental
 > 备注：v2；Plan 429-434 系列收口
-> 路径:`auto/lib`(v1 已封存于 `auto/lib-legacy/`)| 转译:`auto build`(pac.at)/ `auto trans`
+> 路径:`packages/aavm/lib`(v1 已封存于 `packages/aavm/lib-legacy/`)| 转译:`auto build`(pac.at)/ `auto trans`
 
 Auto 自举编译器实验(AAVM v2):用 Auto 语言写的编译器前端 + 字节码 VM +
 Rust 转译器(AA2R),验证 Auto 的自举能力。Plan 432 起 v2 六文件按依赖序
@@ -64,7 +64,7 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
   `.line` 发射语义已定案(Plan 495,2026-08-31:P485-2 清偿——rust 为规范:
   语句边界+同线去重+is 单表达式 arm 体行发射;b14_line_dedup 回归钉;
   规格 `design/m4-bytecode-format.md` §发射模式考古)。
-- 五方对比矩阵(Plan 433 四方 + 434 ⑤ aa2r;`parity/` 下
+- 五方对比矩阵(Plan 433 四方 + 434 ⑤ aa2r;`test/parity/` 下
   `cargo run -- --root . --auto-binary ../target/debug/auto.exe aavm`):
   ① reference ② aavm_rust(六文件,见 divergences.md D38 主 a2r 缺口注)
   ③ aavm_vm ④ golden ⑤ aa2r —— 稳定集 corpus_m4 全绿。
@@ -118,8 +118,8 @@ token.at ── lexer.at ── parser.at ── typeinfo.at ── codegen.at �
 lib 七文件依赖 DAG:`token←lexer←parser←{typeinfo←codegen←engine}`+
 `a2r→{token,lexer,parser,typeinfo}`(engine 纯解释器层仅依赖 codegen);
 互引 use(auto.lib.* 点路径定向)+pub 契约标注;拼接消费面由双轨剥离消化
-(`aavm2_lib_source` 规则单一事实源);CLI 入口 `auto/aavm.at`(真模块
-use 形态,行数协议 stdin,见 auto/lib/README.md);AA2R use 发射(g18)。
+(`aavm2_lib_source` 规则单一事实源);CLI 入口 `packages/aavm/aavm.at`(真模块
+use 形态,行数协议 stdin,见 packages/aavm/lib/README.md);AA2R use 发射(g18)。
 规格:`design/lib-modularization-map.md`(含执行期定案四条)。
 
 ## 收官口径(2026-09-03,532 开工后注记)
@@ -276,3 +276,5 @@ runner 层,以 manifest 解决。markdown 单文件(ast.rs markdown_tests
    剩余=其他语言目标(a2ts/a2js/a2py…)的 Auto 版。缓议理由:在 Auto 写
    工具链能重建自身之前,新转译器仍由 Rust 宿主编译,自举边际价值低;
    与 GOAL-003(Auto as Rust script layer)合流点在塔顶。
+
+PLAN-763：资产迁至 packages/aavm，保留 auto.lib 命名空间与本地门禁；未维护的 vm-files-ci.yml 已删除，当前无 Actions 守护。

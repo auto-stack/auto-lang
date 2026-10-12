@@ -12,7 +12,7 @@
 //! - 非 Windows:private_mb 恒 0,护栏自动失效(当前产品 Windows 优先)。
 
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
-use std::sync::{OnceLock, Mutex};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 static FROZEN: AtomicBool = AtomicBool::new(false);
@@ -102,7 +102,13 @@ unsafe impl std::alloc::GlobalAlloc for GuardAlloc {
                     bt
                 };
                 if let Ok(mut map) = big_live().lock() {
-                    map.insert(ptr as usize, BigBlock { size: layout.size(), backtrace: bt });
+                    map.insert(
+                        ptr as usize,
+                        BigBlock {
+                            size: layout.size(),
+                            backtrace: bt,
+                        },
+                    );
                 }
             }
             PEAK_LIVE_BYTES.fetch_max(live as u64, Ordering::Relaxed);
@@ -146,7 +152,10 @@ pub fn dump_alloc_report() -> Option<std::path::PathBuf> {
         is_frozen()
     ));
     let big = big_live().lock().ok()?;
-    lines.push(format!("big_live_count={} (>= {BIG_ALLOC_THRESHOLD} bytes each)", big.len()));
+    lines.push(format!(
+        "big_live_count={} (>= {BIG_ALLOC_THRESHOLD} bytes each)",
+        big.len()
+    ));
     let mut blocks: Vec<(usize, usize, String)> = big
         .iter()
         .map(|(ptr, b)| (*ptr, b.size, format!("{}", b.backtrace)))
@@ -154,7 +163,10 @@ pub fn dump_alloc_report() -> Option<std::path::PathBuf> {
     drop(big);
     blocks.sort_by_key(|(_, size, _)| std::cmp::Reverse(*size));
     let total_big: usize = blocks.iter().map(|(_, s, _)| *s).sum();
-    lines.push(format!("big_live_total={:.1} MB", total_big as f64 / 1048576.0));
+    lines.push(format!(
+        "big_live_total={:.1} MB",
+        total_big as f64 / 1048576.0
+    ));
     for (ptr, size, bt) in blocks.iter().take(40) {
         lines.push(format!("--- block {:#x} {} bytes ---", ptr, size));
         for (i, frame_line) in bt.lines().take(8).enumerate() {
@@ -164,8 +176,16 @@ pub fn dump_alloc_report() -> Option<std::path::PathBuf> {
     let text = lines.join("\n");
     let path = std::env::temp_dir().join("auto-term-mem-report.txt");
     let write_ok = std::fs::write(&path, &text).is_ok();
-    eprintln!("[mem-guard] 分配报告({} 块, 存活 {:.1} MB):{}", big_count(), total_big as f64 / 1048576.0,
-        if write_ok { format!("{}", path.display()) } else { "写入失败,见 stderr".to_string() });
+    eprintln!(
+        "[mem-guard] 分配报告({} 块, 存活 {:.1} MB):{}",
+        big_count(),
+        total_big as f64 / 1048576.0,
+        if write_ok {
+            format!("{}", path.display())
+        } else {
+            "写入失败,见 stderr".to_string()
+        }
+    );
     eprintln!("{text}");
     Some(path)
 }
@@ -199,9 +219,7 @@ pub fn sample_and_guard() -> bool {
     *LAST_LOG.lock().unwrap() = Some(note.clone());
     if mb > limit {
         FROZEN.store(true, Ordering::Relaxed);
-        eprintln!(
-            "[mem-guard] 提交内存 {mb}MB 超过阈值 {limit}MB —— 冻结消息循环;按 F12 退出进程"
-        );
+        eprintln!("[mem-guard] 提交内存 {mb}MB 超过阈值 {limit}MB —— 冻结消息循环;按 F12 退出进程");
         // 冻结即出报告:活字节 + 存活大块(含分配点回溯)→ 泄漏点定位。
         let _ = dump_alloc_report();
         // 宿主 hook(如挂起子 shell——只丢消息拦不住非消息线程的增长)。

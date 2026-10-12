@@ -181,10 +181,7 @@ impl InspectorCache {
 /// directly.
 ///
 /// (Plan 307, Task 13; refined in Plan 309, Phase 3.2.)
-pub fn backfill_bounds(
-    cache: &mut InspectorCache,
-    bounds: &HashMap<String, (f32, f32, f32, f32)>,
-) {
+pub fn backfill_bounds(cache: &mut InspectorCache, bounds: &HashMap<String, (f32, f32, f32, f32)>) {
     for (id_str, (x, y, w, h)) in bounds {
         if let Some(vnid) = cache.iced_to_vnode(id_str) {
             let node = cache.get_mut_or_default(vnid);
@@ -311,7 +308,10 @@ mod tests {
     #[test]
     fn iced_to_vnode_parses_vnode_hash_ids() {
         let cache = InspectorCache::default();
-        assert_eq!(cache.iced_to_vnode("vnode_12345"), Some(VNodeId::new(12345)));
+        assert_eq!(
+            cache.iced_to_vnode("vnode_12345"),
+            Some(VNodeId::new(12345))
+        );
         assert_eq!(cache.iced_to_vnode("vnode_notanumber"), None);
         assert_eq!(cache.iced_to_vnode("aura_3"), None); // unregistered aura id
     }

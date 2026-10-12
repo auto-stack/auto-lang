@@ -2,7 +2,7 @@
 
 ## 范围
 
-widget / blueprint / app 三层中的中间层：组合卡（LoginForm/DataTable/KanbanColumn）作为一等公民的定义、生成与消费机制。落地代码 `ui_gen/bp/`（registry/spec）+ 顶层 `blueprints/` 包目录。
+widget / blueprint / app 三层中的中间层：组合卡（LoginForm/DataTable/KanbanColumn）作为一等公民的定义、生成与消费机制。落地代码 `ui_gen/bp/`（registry/spec）+ 顶层 `packages/blueprints/` 包目录。
 
 ## 核心论点
 
@@ -20,7 +20,7 @@ blueprint 不是预烘焙代码库，而是**自然语言 spec + 结构化契约
 外加 **gotchas.md**：负样本教学，结构为 {错误做法, 为什么错, 正确做法}，随 AI 实际失败模式累积（自增强闭环）。
 
 ```
-blueprints/form/login/
+packages/blueprints/form/login/
   spec.md  reference/{minimal,with_sso,magic_link}.at  gotchas.md
 ```
 
@@ -38,7 +38,7 @@ blueprint 不绑死端点（不知道 `/api/notes`），接 typed fetcher `dataS
 
 ## 现状
 
-`ui_gen/bp/spec.rs:BlueprintSpec`（frontmatter 解析）与 `registry.rs:BlueprintRegistry`（`scan_dir`/`palette_drift`）已实现；`blueprints/` 下有 form/data-display/editor/navigation 四类包。plan-342/343 自述"未开始"，代码已先行（分歧，以代码为准）。`auto bp add/list` CLI 已实现（Plan 343）；PLAN-639 增 `--bind`（L1）。
+`ui_gen/bp/spec.rs:BlueprintSpec`（frontmatter 解析）与 `registry.rs:BlueprintRegistry`（`scan_dir`/`palette_drift`）已实现；`packages/blueprints/` 下有 form/data-display/editor/navigation 四类包。plan-342/343 自述"未开始"，代码已先行（分歧，以代码为准）。`auto bp add/list` CLI 已实现（Plan 343）；PLAN-639 增 `--bind`（L1）。
 
 ## 显式非目标
 
@@ -48,4 +48,4 @@ blueprint 不绑死端点（不知道 `/api/notes`），接 typed fetcher `dataS
 - eject 后的 spec 升级回流短期不做。
 - 开放：AI 生成可复现性（acceptance + reference 锚定收敛，是否需确定性种子留 Phase B）；blueprint 泛型（`DataTableBlueprint[T]`）取决于 Auto 泛型在 UI 场景的成熟度。
 
-> 来源: docs/design/blueprints/blueprints-first-class.md；crates/auto-lang/src/ui_gen/bp/{spec,registry}.rs；blueprints/
+> 来源: docs/design/blueprints/blueprints-first-class.md；crates/auto-lang/src/ui_gen/bp/{spec,registry}.rs；packages/blueprints/

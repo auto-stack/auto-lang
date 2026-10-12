@@ -25,7 +25,7 @@ import subprocess
 import sys
 import time
 
-CODEGEN_AT = 'auto/lib/codegen.at'
+CODEGEN_AT = 'packages/aavm/lib/codegen.at'
 
 # type CG 方法起始行(2026-09-06 快照,worktree 校验防漂移;行号 1-based)
 # starts[0]=static new(168);starts[1..28]=前 28 方法,第 28 个=emit_store(677)

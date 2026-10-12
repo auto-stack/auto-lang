@@ -1,0 +1,17 @@
+Command: npm run build
+Worktree: D:/autostack/.wt/lang-756/auto-lang/website
+Code: e516408212f35893e63438ae20df41adda8daf2a (only a source comment changed after this build; no served content changed)
+Result: exit 0
+The language 'auto' is not loaded, falling back to 'txt' for syntax highlighting.
+
+The language 'auto' is not loaded, falling back to 'txt' for syntax highlighting.
+
+The language 'auto' is not loaded, falling back to 'txt' for syntax highlighting.
+
+The language 'auto' is not loaded, falling back to 'txt' for syntax highlighting.
+
+The language 'auto' is not loaded, falling back to 'txt' for syntax highlighting.
+✓ building client + server bundles...
+- rendering pages...
+✓ rendering pages...
+build complete in 156.77s.

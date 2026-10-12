@@ -179,6 +179,35 @@ impl VMConvertible for String {
             return Ok(val.to_string());
         }
 
+        // PLAN-734 T-07（E2 根修）：i64/bigint 值按数值转十进制——此前落
+        // `format!("{:?}", nv)` 输出原始 NV 位型十进制（json.encode 大整数
+        // 损坏的编组层根因；48 位内联 + 堆装箱两态）。
+        if auto_val::is_i64(nv) {
+            return Ok(auto_val::decode_i64(nv).to_string());
+        }
+        // 算术 lane 可能产出 U64 形态（如 5000000000+1）——同按数值转十进制。
+        if auto_val::is_u64(nv) {
+            return Ok(auto_val::decode_u64(nv).to_string());
+        }
+        if auto_val::is_bigint(nv) {
+            let id = auto_val::decode_bigint_handle(nv) as u64;
+            if let Some(obj) = vm.get_heap_object(id) {
+                if let Ok(g) = obj.read() {
+                    if let Some(b) = g
+                        .as_any()
+                        .downcast_ref::<crate::vm::heap_object::BigIntData>()
+                    {
+                        return Ok(if b.is_unsigned {
+                            format!("{}", b.as_u64())
+                        } else {
+                            format!("{}", b.as_i64())
+                        });
+                    }
+                }
+            }
+            return Ok("0".to_string());
+        }
+
         Ok(format!("{:?}", nv))
     }
 
@@ -425,10 +454,11 @@ impl<T1: VMConvertible, T2: VMConvertible, T3: VMConvertible> VMConvertible for 
 // Plan 377: BigInt 堆装箱辅助函数（>2^48 的 i64/u64 完整范围兜底）
 // ============================================================================
 
-use auto_val::{NanoValue, try_encode_i64, try_encode_u64, decode_i64, decode_u64,
-    decode_i32, encode_bigint, is_bigint, decode_bigint_handle, tag_of,
-    is_nanboxed, decode_f32, decode_f64};
-use crate::vm::heap_object::{BigIntData, downcast};
+use crate::vm::heap_object::{downcast, BigIntData};
+use auto_val::{
+    decode_bigint_handle, decode_f32, decode_f64, decode_i32, decode_i64, decode_u64,
+    encode_bigint, is_bigint, is_nanboxed, tag_of, try_encode_i64, try_encode_u64, NanoValue,
+};
 
 /// 将 i64 编码为单槽 NanoValue：48 位内联，否则堆装箱（TAG_BIGINT handle）。
 pub fn encode_i64_with_heap(vm: &AutoVM, val: i64) -> NanoValue {
@@ -461,9 +491,10 @@ pub fn encode_u64_with_heap(vm: &AutoVM, val: u64) -> NanoValue {
 /// I64_TO_F64 即得位模式垃圾），按数值截断。
 pub fn decode_i64_full(vm: &AutoVM, nv: NanoValue) -> i64 {
     match tag_of(nv) {
-        t if t == 8 => decode_i64(nv),       // TAG_I64
+        t if t == 8 => decode_i64(nv),        // TAG_I64
         t if t == 9 => decode_u64(nv) as i64, // TAG_U64
-        t if t == 0xA => {                    // TAG_BIGINT
+        t if t == 0xA => {
+            // TAG_BIGINT
             let id = decode_bigint_handle(nv) as u64;
             if let Some(obj) = vm.get_heap_object(id) {
                 if let Some(guard) = obj.read().ok() {
@@ -493,7 +524,8 @@ pub fn decode_u64_full(vm: &AutoVM, nv: NanoValue) -> u64 {
     match tag_of(nv) {
         t if t == 9 => decode_u64(nv),        // TAG_U64
         t if t == 8 => decode_i64(nv) as u64, // TAG_I64
-        t if t == 0xA => {                    // TAG_BIGINT
+        t if t == 0xA => {
+            // TAG_BIGINT
             let id = decode_bigint_handle(nv) as u64;
             if let Some(obj) = vm.get_heap_object(id) {
                 if let Some(guard) = obj.read().ok() {
@@ -519,4 +551,6 @@ pub fn decode_u64_full(vm: &AutoVM, nv: NanoValue) -> u64 {
 
 /// 判定 NanoValue 是否为 BIGINT（供算术 opcode 慢路径检测用）。
 #[allow(dead_code)]
-pub fn nv_is_bigint(nv: NanoValue) -> bool { is_bigint(nv) }
+pub fn nv_is_bigint(nv: NanoValue) -> bool {
+    is_bigint(nv)
+}

@@ -46,7 +46,7 @@ const heroAuto = [
 
 **发布（Ship）** —— `a2r` 把同一份源码转成你本会手写的 Rust：真正的 `trait` / `impl` / `Box<dyn>`、泛型、所有权、`Result` + `?`。链 `a2r-std`，`cargo build --release`，部署。
 
-**桥梁（Bridge）** —— 转译器为"行为一致"负责。AutoVM 输出 == 转译 Rust 输出。这不是口号：[由 260 个三向 parity 测试验证](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)，覆盖十个核心真实库（另有 consumer-mode 用例，见仪表盘）。
+**桥梁（Bridge）** —— 转译器为"行为一致"负责。AutoVM 输出 == 转译 Rust 输出。这不是口号：[由 260 个三向 parity 测试验证](https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/parity-dashboard.html)，覆盖十个核心真实库（另有 consumer-mode 用例，见仪表盘）。
 
 ## 为什么这胜过"先用 Python，再重写成 Rust"
 
@@ -79,11 +79,11 @@ Auto"VM 与 Rust 行为一致"的声明，由自动化三向 parity 框架支撑
 | generators | 6/6 | yield 生成器、惰性序列 |
 | http_client_sync | 5/5 | 同步 HTTP（mock server） |
 
-完整矩阵和每库详情见 [parity 仪表盘](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)。
+完整矩阵和每库详情见 [parity 仪表盘](https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/parity-dashboard.html)。
 
 **诚实的边界（L3 —— 路线图，尚未验证）：**
 
-此前列出的全部 trait 分歧均已修复并三向验证（关联类型、返回值的默认方法、泛型 spec 实现、有界泛型函数、http_client_sync 测试框架）。仍开放的项目在 [known-divergences](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/known-divergences.md) 中公开记录，不隐瞒：
+此前列出的全部 trait 分歧均已修复并三向验证（关联类型、返回值的默认方法、泛型 spec 实现、有界泛型函数、http_client_sync 测试框架）。仍开放的项目在 [known-divergences](https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/known-divergences.md) 中公开记录，不隐瞒：
 
 - **sha2 / rusqlite / reqwest parity 库** —— 已规划，尚未验证。
 - **生成器惰性链**（`~Iter` 上的 range → map → filter）—— Auto 尚无此语法，语言路线图项。
@@ -96,7 +96,7 @@ Auto 不会在未完成的地方假装已完成。L1 列表是已验证的；L3 
 → **[从脚本到发布 —— 互动教程](/zh/docs/script-to-ship/README)** ——
 六章，每个代码块都可在浏览器中运行。
 
-→ **[Parity 仪表盘](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)** —— 证据。
+→ **[Parity 仪表盘](https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/parity-dashboard.html)** —— 证据。
 
 → **[Script-to-Ship 示例](https://github.com/zhaopuming/auto-lang/tree/master/examples/script-to-ship-demos/)** ——
 可运行的单文件示例（serde_json、regex、wc），可克隆并发布。

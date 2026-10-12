@@ -45,11 +45,7 @@ pub trait ForeignObject: Send + Sync + 'static {
     ) -> Result<(), VMError>;
 
     /// `obj_len(recv)` 外对象臂——宿主 len()（py: GIL len）。
-    fn obj_len(
-        &self,
-        task: &mut AutoTask,
-        vm: &crate::vm::engine::AutoVM,
-    ) -> Result<(), VMError>;
+    fn obj_len(&self, task: &mut AutoTask, vm: &crate::vm::engine::AutoVM) -> Result<(), VMError>;
 
     /// `obj_type_name(recv)` 外对象臂——宿主类型名（py: type(x).__name__）。
     fn obj_type_name(
@@ -62,19 +58,11 @@ pub trait ForeignObject: Send + Sync + 'static {
     /// call_method）。receiver 已由组合子消费；方法名与实参仍在栈上
     /// （pending_native_arg_count = 方法名 + 实参数），实现方按 shim
     /// 约定弹出消费，结果推栈。
-    fn obj_call(
-        &self,
-        task: &mut AutoTask,
-        vm: &crate::vm::engine::AutoVM,
-    ) -> Result<(), VMError>;
+    fn obj_call(&self, task: &mut AutoTask, vm: &crate::vm::engine::AutoVM) -> Result<(), VMError>;
 
     /// `obj_iter(recv)` 外对象臂——迭代器物化（py: iter() → 迭代器
     /// 句柄推栈）。
-    fn obj_iter(
-        &self,
-        task: &mut AutoTask,
-        vm: &crate::vm::engine::AutoVM,
-    ) -> Result<(), VMError>;
+    fn obj_iter(&self, task: &mut AutoTask, vm: &crate::vm::engine::AutoVM) -> Result<(), VMError>;
 
     // ---- 协议位预留（跨语言矩阵 §8，W2 挂 B7/C 族时定签名）----
     // fn obj_send(&self, msg, task, vm) -> Result<(), VMError>;
@@ -162,7 +150,9 @@ fn nv_to_value(vm: &crate::vm::engine::AutoVM, nv: NanoValue) -> auto_val::Value
     } else if auto_val::is_null(nv) {
         Value::Nil
     } else if auto_val::is_object(nv) {
-        Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
+        Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_object(nv) as usize,
+        })
     } else {
         Value::Int(auto_val::decode_i32(nv))
     }
@@ -186,230 +176,249 @@ pub fn register_interop_natives(ni: &mut crate::vm::native::NativeInterface) {
     use crate::vm::engine::AutoVM;
 
     // ---- obj_get(x, key) ----
-    ni.register(NATIVE_INTEROP_OBJ_GET, |task: &mut AutoTask, vm: &AutoVM| {
-        let n = task.pending_native_arg_count as usize;
-        if n != 2 {
-            return Err(VMError::RuntimeError(format!(
-                "obj_get needs 2 args (obj, key), got {}",
-                n
-            )));
-        }
-        let key_nv = task.ram.pop_nv();
-        let recv_nv = task.ram.pop_nv();
-        // 外对象臂：协议分派（py_getattr 等宿主语义）。
-        if let Some(r) = dispatch_foreign(vm, recv_nv, |fo| fo.obj_get(key_nv, task, vm)) {
-            return r;
-        }
-        // Auto 臂：str[i] 字符码点 / list[i] 元素 / map["k"] 字段。
-        if let Some(r) = auto_get(vm, task, recv_nv, key_nv) {
-            return r;
-        }
-        Err(VMError::RuntimeError(
-            "obj_get: unsupported receiver".to_string(),
-        ))
-    });
+    ni.register(
+        NATIVE_INTEROP_OBJ_GET,
+        |task: &mut AutoTask, vm: &AutoVM| {
+            let n = task.pending_native_arg_count as usize;
+            if n != 2 {
+                return Err(VMError::RuntimeError(format!(
+                    "obj_get needs 2 args (obj, key), got {}",
+                    n
+                )));
+            }
+            let key_nv = task.ram.pop_nv();
+            let recv_nv = task.ram.pop_nv();
+            // 外对象臂：协议分派（py_getattr 等宿主语义）。
+            if let Some(r) = dispatch_foreign(vm, recv_nv, |fo| fo.obj_get(key_nv, task, vm)) {
+                return r;
+            }
+            // Auto 臂：str[i] 字符码点 / list[i] 元素 / map["k"] 字段。
+            if let Some(r) = auto_get(vm, task, recv_nv, key_nv) {
+                return r;
+            }
+            Err(VMError::RuntimeError(
+                "obj_get: unsupported receiver".to_string(),
+            ))
+        },
+    );
 
     // ---- obj_set(x, key, value) ----
-    ni.register(NATIVE_INTEROP_OBJ_SET, |task: &mut AutoTask, vm: &AutoVM| {
-        let n = task.pending_native_arg_count as usize;
-        if n != 3 {
-            return Err(VMError::RuntimeError(format!(
-                "obj_set needs 3 args (obj, key, value), got {}",
-                n
-            )));
-        }
-        let value_nv = task.ram.pop_nv();
-        let key_nv = task.ram.pop_nv();
-        let recv_nv = task.ram.pop_nv();
-        if let Some(r) =
-            dispatch_foreign(vm, recv_nv, |fo| fo.obj_set(key_nv, value_nv, task, vm))
-        {
-            return r;
-        }
-        if let Some(r) = auto_set(vm, task, recv_nv, key_nv, value_nv) {
-            return r;
-        }
-        Err(VMError::RuntimeError(
-            "obj_set: unsupported receiver".to_string(),
-        ))
-    });
+    ni.register(
+        NATIVE_INTEROP_OBJ_SET,
+        |task: &mut AutoTask, vm: &AutoVM| {
+            let n = task.pending_native_arg_count as usize;
+            if n != 3 {
+                return Err(VMError::RuntimeError(format!(
+                    "obj_set needs 3 args (obj, key, value), got {}",
+                    n
+                )));
+            }
+            let value_nv = task.ram.pop_nv();
+            let key_nv = task.ram.pop_nv();
+            let recv_nv = task.ram.pop_nv();
+            if let Some(r) =
+                dispatch_foreign(vm, recv_nv, |fo| fo.obj_set(key_nv, value_nv, task, vm))
+            {
+                return r;
+            }
+            if let Some(r) = auto_set(vm, task, recv_nv, key_nv, value_nv) {
+                return r;
+            }
+            Err(VMError::RuntimeError(
+                "obj_set: unsupported receiver".to_string(),
+            ))
+        },
+    );
 
     // ---- obj_call(x, method, args...) ----
-    ni.register(NATIVE_INTEROP_OBJ_CALL, |task: &mut AutoTask, vm: &AutoVM| {
-        let n = task.pending_native_arg_count as usize;
-        if n < 2 {
-            return Err(VMError::RuntimeError(format!(
-                "obj_call needs at least 2 args (obj, method), got {}",
-                n
-            )));
-        }
-        // receiver 在栈底；外对象臂：倒装弹出 receiver 后，协议臂按
-        // shim 约定弹方法名+实参。
-        let recv_nv = task.ram.peek_nv(n - 1);
-        if let Some(id) = heap_id_of(recv_nv) {
-            if let Some(obj) = vm.get_heap_object(id) {
-                let is_foreign = {
-                    let guard = obj.read().unwrap();
-                    guard.as_foreign_object().is_some()
-                };
-                if is_foreign {
-                    let mut saved = Vec::with_capacity(n - 1);
-                    for _ in 0..(n - 1) {
-                        saved.push(task.ram.pop_nv());
+    ni.register(
+        NATIVE_INTEROP_OBJ_CALL,
+        |task: &mut AutoTask, vm: &AutoVM| {
+            let n = task.pending_native_arg_count as usize;
+            if n < 2 {
+                return Err(VMError::RuntimeError(format!(
+                    "obj_call needs at least 2 args (obj, method), got {}",
+                    n
+                )));
+            }
+            // receiver 在栈底；外对象臂：倒装弹出 receiver 后，协议臂按
+            // shim 约定弹方法名+实参。
+            let recv_nv = task.ram.peek_nv(n - 1);
+            if let Some(id) = heap_id_of(recv_nv) {
+                if let Some(obj) = vm.get_heap_object(id) {
+                    let is_foreign = {
+                        let guard = obj.read().unwrap();
+                        guard.as_foreign_object().is_some()
+                    };
+                    if is_foreign {
+                        let mut saved = Vec::with_capacity(n - 1);
+                        for _ in 0..(n - 1) {
+                            saved.push(task.ram.pop_nv());
+                        }
+                        let _recv = task.ram.pop_nv(); // 已消费（协议臂以 self 为 receiver）
+                        for nv in saved.into_iter().rev() {
+                            task.ram.push_nv(nv);
+                        }
+                        let guard = obj.read().unwrap();
+                        let fo = guard.as_foreign_object().unwrap();
+                        return fo.obj_call(task, vm);
                     }
-                    let _recv = task.ram.pop_nv(); // 已消费（协议臂以 self 为 receiver）
-                    for nv in saved.into_iter().rev() {
-                        task.ram.push_nv(nv);
-                    }
-                    let guard = obj.read().unwrap();
-                    let fo = guard.as_foreign_object().unwrap();
-                    return fo.obj_call(task, vm);
                 }
             }
-        }
-        // Auto 臂：非外对象不可调用（对标 550 callable 守卫语义；Auto
-        // 闭包经组合子的动态调用面归 W2 糖批）。
-        Err(VMError::RuntimeError(
-            "TypeError: object is not callable".to_string(),
-        ))
-    });
+            // Auto 臂：非外对象不可调用（对标 550 callable 守卫语义；Auto
+            // 闭包经组合子的动态调用面归 W2 糖批）。
+            Err(VMError::RuntimeError(
+                "TypeError: object is not callable".to_string(),
+            ))
+        },
+    );
 
     // ---- obj_len(x) ----
-    ni.register(NATIVE_INTEROP_OBJ_LEN, |task: &mut AutoTask, vm: &AutoVM| {
-        let n = task.pending_native_arg_count as usize;
-        if n != 1 {
-            return Err(VMError::RuntimeError(format!(
-                "obj_len needs 1 arg, got {}",
-                n
-            )));
-        }
-        let recv_nv = task.ram.pop_nv();
-        if let Some(r) = dispatch_foreign(vm, recv_nv, |fo| fo.obj_len(task, vm)) {
-            return r;
-        }
-        // Auto 臂：ARRAY_LEN 语义（str 字符数 / ListData 长度 / ObjectData 字段数）。
-        if auto_val::is_string(recv_nv) {
-            let idx = auto_val::decode_string(recv_nv) as usize;
-            let len = vm
-                .strings
-                .read()
-                .unwrap()
-                .get(idx)
-                .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
-                .unwrap_or(0);
-            task.ram.push_i32(len);
-            return Ok(());
-        }
-        match heap_id_of(recv_nv) {
-            Some(id) => {
-                if let Some(obj) = vm.get_heap_object(id) {
-                    let guard = obj.read().unwrap();
-                    use crate::vm::types::ListData;
-                    let len = if let Some(l) = guard.as_any().downcast_ref::<ListData<i32>>() {
-                        l.elems.len() as i32
-                    } else if let Some(l) = guard.as_any().downcast_ref::<ListData<String>>() {
-                        l.elems.len() as i32
-                    } else if let Some(l) = guard.as_any().downcast_ref::<ListData<bool>>() {
-                        l.elems.len() as i32
-                    } else if let Some(l) = guard
-                        .as_any()
-                        .downcast_ref::<ListData<auto_val::Value>>()
-                    {
-                        l.elems.len() as i32
-                    } else if let Some(o) = guard
-                        .as_any()
-                        .downcast_ref::<crate::vm::types::ObjectData>()
-                    {
-                        o.fields.len() as i32
-                    } else {
-                        0
-                    };
-                    drop(guard);
-                    task.ram.push_i32(len);
-                    return Ok(());
+    ni.register(
+        NATIVE_INTEROP_OBJ_LEN,
+        |task: &mut AutoTask, vm: &AutoVM| {
+            let n = task.pending_native_arg_count as usize;
+            if n != 1 {
+                return Err(VMError::RuntimeError(format!(
+                    "obj_len needs 1 arg, got {}",
+                    n
+                )));
+            }
+            let recv_nv = task.ram.pop_nv();
+            if let Some(r) = dispatch_foreign(vm, recv_nv, |fo| fo.obj_len(task, vm)) {
+                return r;
+            }
+            // Auto 臂：ARRAY_LEN 语义（str 字符数 / ListData 长度 / ObjectData 字段数）。
+            if auto_val::is_string(recv_nv) {
+                let idx = auto_val::decode_string(recv_nv) as usize;
+                let len = vm
+                    .strings
+                    .read()
+                    .unwrap()
+                    .get(idx)
+                    .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
+                    .unwrap_or(0);
+                task.ram.push_i32(len);
+                return Ok(());
+            }
+            match heap_id_of(recv_nv) {
+                Some(id) => {
+                    if let Some(obj) = vm.get_heap_object(id) {
+                        let guard = obj.read().unwrap();
+                        use crate::vm::types::ListData;
+                        let len = if let Some(l) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                            l.elems.len() as i32
+                        } else if let Some(l) = guard.as_any().downcast_ref::<ListData<String>>() {
+                            l.elems.len() as i32
+                        } else if let Some(l) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                            l.elems.len() as i32
+                        } else if let Some(l) =
+                            guard.as_any().downcast_ref::<ListData<auto_val::Value>>()
+                        {
+                            l.elems.len() as i32
+                        } else if let Some(o) = guard
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ObjectData>()
+                        {
+                            o.fields.len() as i32
+                        } else {
+                            0
+                        };
+                        drop(guard);
+                        task.ram.push_i32(len);
+                        return Ok(());
+                    }
+                    task.ram.push_i32(0);
+                    Ok(())
                 }
-                task.ram.push_i32(0);
-                Ok(())
+                None => {
+                    task.ram.push_i32(0);
+                    Ok(())
+                }
             }
-            None => {
-                task.ram.push_i32(0);
-                Ok(())
-            }
-        }
-    });
+        },
+    );
 
     // ---- obj_iter(x) ----
-    ni.register(NATIVE_INTEROP_OBJ_ITER, |task: &mut AutoTask, vm: &AutoVM| {
-        let n = task.pending_native_arg_count as usize;
-        if n != 1 {
-            return Err(VMError::RuntimeError(format!(
-                "obj_iter needs 1 arg, got {}",
-                n
-            )));
-        }
-        let recv_nv = task.ram.pop_nv();
-        if let Some(r) = dispatch_foreign(vm, recv_nv, |fo| fo.obj_iter(task, vm)) {
-            return r;
-        }
-        // Auto 臂：list/str 原样回推（array 通道 for-in 直接消费——
-        // ARRAY_LEN+GET_ELEM 索引循环，设计 E3 双通道的 Auto 侧）。
-        if auto_val::is_string(recv_nv) || auto_val::is_list(recv_nv) || auto_val::is_object(recv_nv)
-        {
-            task.ram.push_nv(recv_nv);
-            return Ok(());
-        }
-        Err(VMError::RuntimeError(
-            "TypeError: object is not iterable".to_string(),
-        ))
-    });
+    ni.register(
+        NATIVE_INTEROP_OBJ_ITER,
+        |task: &mut AutoTask, vm: &AutoVM| {
+            let n = task.pending_native_arg_count as usize;
+            if n != 1 {
+                return Err(VMError::RuntimeError(format!(
+                    "obj_iter needs 1 arg, got {}",
+                    n
+                )));
+            }
+            let recv_nv = task.ram.pop_nv();
+            if let Some(r) = dispatch_foreign(vm, recv_nv, |fo| fo.obj_iter(task, vm)) {
+                return r;
+            }
+            // Auto 臂：list/str 原样回推（array 通道 for-in 直接消费——
+            // ARRAY_LEN+GET_ELEM 索引循环，设计 E3 双通道的 Auto 侧）。
+            if auto_val::is_string(recv_nv)
+                || auto_val::is_list(recv_nv)
+                || auto_val::is_object(recv_nv)
+            {
+                task.ram.push_nv(recv_nv);
+                return Ok(());
+            }
+            Err(VMError::RuntimeError(
+                "TypeError: object is not iterable".to_string(),
+            ))
+        },
+    );
 
     // ---- obj_type_name(x) ----
-    ni.register(NATIVE_INTEROP_OBJ_TYPE_NAME, |task: &mut AutoTask, vm: &AutoVM| {
-        let n = task.pending_native_arg_count as usize;
-        if n != 1 {
-            return Err(VMError::RuntimeError(format!(
-                "obj_type_name needs 1 arg, got {}",
-                n
-            )));
-        }
-        let recv_nv = task.ram.pop_nv();
-        if let Some(r) = dispatch_foreign(vm, recv_nv, |fo| fo.obj_type_name(task, vm)) {
-            return r;
-        }
-        // Auto 臂：nv_py_type_name 家族（550）+ 容器具体名。
-        let name = if auto_val::is_string(recv_nv) {
-            "str"
-        } else if auto_val::is_list(recv_nv) {
-            "list"
-        } else if auto_val::is_object(recv_nv) {
-            match heap_id_of(recv_nv).and_then(|id| vm.get_heap_object(id)) {
-                Some(obj) => {
-                    let guard = obj.read().unwrap();
-                    if guard
-                        .as_any()
-                        .downcast_ref::<crate::vm::types::ObjectData>()
-                        .is_some()
-                    {
-                        "map"
-                    } else if guard
-                        .as_any()
-                        .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
-                        .is_some()
-                    {
-                        "list"
-                    } else {
-                        "object"
-                    }
-                }
-                None => "object",
+    ni.register(
+        NATIVE_INTEROP_OBJ_TYPE_NAME,
+        |task: &mut AutoTask, vm: &AutoVM| {
+            let n = task.pending_native_arg_count as usize;
+            if n != 1 {
+                return Err(VMError::RuntimeError(format!(
+                    "obj_type_name needs 1 arg, got {}",
+                    n
+                )));
             }
-        } else {
-            crate::vm::virt_memory::nv_py_type_name(recv_nv)
-        };
-        let idx = vm.add_string(name.as_bytes().to_vec());
-        vm.rc_push_str_idx(task, idx);
-        Ok(())
-    });
+            let recv_nv = task.ram.pop_nv();
+            if let Some(r) = dispatch_foreign(vm, recv_nv, |fo| fo.obj_type_name(task, vm)) {
+                return r;
+            }
+            // Auto 臂：nv_py_type_name 家族（550）+ 容器具体名。
+            let name = if auto_val::is_string(recv_nv) {
+                "str"
+            } else if auto_val::is_list(recv_nv) {
+                "list"
+            } else if auto_val::is_object(recv_nv) {
+                match heap_id_of(recv_nv).and_then(|id| vm.get_heap_object(id)) {
+                    Some(obj) => {
+                        let guard = obj.read().unwrap();
+                        if guard
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ObjectData>()
+                            .is_some()
+                        {
+                            "map"
+                        } else if guard
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                            .is_some()
+                        {
+                            "list"
+                        } else {
+                            "object"
+                        }
+                    }
+                    None => "object",
+                }
+            } else {
+                crate::vm::virt_memory::nv_py_type_name(recv_nv)
+            };
+            let idx = vm.add_string(name.as_bytes().to_vec());
+            vm.rc_push_str_idx(task, idx);
+            Ok(())
+        },
+    );
 }
 
 /// receiver nv 的堆 id（object/list tag；历史裸 i32 id 亦认）。

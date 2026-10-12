@@ -21,7 +21,9 @@ struct QueryHost {
 
 impl QueryHost {
     fn new() -> Self {
-        QueryHost { runs: Mutex::new(Vec::new()) }
+        QueryHost {
+            runs: Mutex::new(Vec::new()),
+        }
     }
 }
 

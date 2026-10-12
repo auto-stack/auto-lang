@@ -43,8 +43,7 @@ fn pick_data() str {
 }
 "#
     .replace("7050", &port.to_string());
-    let (vm, _stdout, _entry, _object_type) =
-        crate::create_vm_from_source(&code).expect("compile");
+    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(&code).expect("compile");
 
     let mut task = AutoTask::new(0, 65536, 0);
     let outcome = vm.call_fn_by_name_segment(&mut task, "pick_data", 0);
@@ -164,8 +163,14 @@ fn plan705_spike_cancel_and_late_completion_single_finalization() {
     // -- 重复完成（未取消）：单次终结——首胜，次弃。
     let req_id3 = crate::vm::ffi::stdlib::alloc_async_id();
     reg::register_live_op(req_id3);
-    assert!(reg::complete_live_op(req_id3, Ok(AsyncResult::Body("first".to_string()))));
-    assert!(!reg::complete_live_op(req_id3, Ok(AsyncResult::Body("second".to_string()))));
+    assert!(reg::complete_live_op(
+        req_id3,
+        Ok(AsyncResult::Body("first".to_string()))
+    ));
+    assert!(!reg::complete_live_op(
+        req_id3,
+        Ok(AsyncResult::Body("second".to_string()))
+    ));
     match reg::take_live_op(req_id3) {
         Some(Ok(AsyncResult::Body(s))) => assert_eq!(s, "first", "首完成胜出"),
         Some(Ok(_)) => panic!("首完成应胜出，得到非 Body 变体"),
@@ -174,7 +179,11 @@ fn plan705_spike_cancel_and_late_completion_single_finalization() {
     }
     crate::vm::ffi::stdlib::drop_async_result(req_id3); // 幂等（已移除）
 
-    assert_eq!(reg::live_op_count(), count_before, "全部终结后登记表必须回基线");
+    assert_eq!(
+        reg::live_op_count(),
+        count_before,
+        "全部终结后登记表必须回基线"
+    );
 }
 
 // ============================================================================
@@ -255,10 +264,7 @@ fn plan705_client_queue_full_terminal_error_no_thread_fallback() {
     );
     // 第二个 job 已终结性完成（既有 JSON 错误形态）。
     match wait_completed(id2) {
-        Some(Err(msg)) => assert!(
-            msg.contains("queue full"),
-            "队满错误应可消费，得到 {msg}"
-        ),
+        Some(Err(msg)) => assert!(msg.contains("queue full"), "队满错误应可消费，得到 {msg}"),
         other => panic!("队满应终结为 Err，得到 {:?}", other.is_some()),
     }
     server.join().expect("server thread");
@@ -335,10 +341,7 @@ fn plan705_client_total_deadline_terminal_error() {
     );
     let started = std::time::Instant::now();
     match wait_completed(id) {
-        Some(Err(msg)) => assert!(
-            msg.contains("timed out"),
-            "总期限错误应可消费，得到 {msg}"
-        ),
+        Some(Err(msg)) => assert!(msg.contains("timed out"), "总期限错误应可消费，得到 {msg}"),
         other => panic!("总期限应终结为 Err，得到 {:?}", other.is_some()),
     }
     assert!(
@@ -378,8 +381,7 @@ fn grab() str {
 }
 "#
     .replace("7051", &port.to_string());
-    let (vm, _stdout, _entry, _object_type) =
-        crate::create_vm_from_source(&code).expect("compile");
+    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(&code).expect("compile");
 
     let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
     let started = std::time::Instant::now();
@@ -390,9 +392,9 @@ fn grab() str {
             wait: crate::vm::engine::ParkedWait::HttpRequest(id),
             seg,
         } => (*id, seg.clone()),
-        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => panic!(
-            "builder send 应 park 而非同步跑完——server 延迟 400ms 下跑完=同步 drain 回归"
-        ),
+        crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {
+            panic!("builder send 应 park 而非同步跑完——server 延迟 400ms 下跑完=同步 drain 回归")
+        }
         other => panic!("预期 Parked(HttpRequest)，得到 {:?}", other),
     };
     assert!(
@@ -544,15 +546,27 @@ fn health() str {
         health_started.elapsed() < std::time::Duration::from_secs(3),
         "health 在 gate park 期间被阻塞——owner 未交还"
     );
-    assert_eq!((hstatus, hbody.as_str()), (200, "\"ok\""), "health 响应（str 经 JSON 编组带引号）");
+    assert_eq!(
+        (hstatus, hbody.as_str()),
+        (200, "\"ok\""),
+        "health 响应（str 经 JSON 编组带引号）"
+    );
 
     // 解除上游：两个 gate 请求各自拿到自己的 body。
     release.store(true, std::sync::atomic::Ordering::SeqCst);
     let (s1, b1) = gate1.join().expect("gate1 client");
     let (s2, b2) = gate2.join().expect("gate2 client");
     up.join().expect("upstream thread");
-    assert_eq!((s1, b1.as_str()), (200, "\"upstream-1\""), "gate1 最终值（body 串 JSON 编组带引号）");
-    assert_eq!((s2, b2.as_str()), (200, "\"upstream-2\""), "gate2 最终值（body 串 JSON 编组带引号）");
+    assert_eq!(
+        (s1, b1.as_str()),
+        (200, "\"upstream-1\""),
+        "gate1 最终值（body 串 JSON 编组带引号）"
+    );
+    assert_eq!(
+        (s2, b2.as_str()),
+        (200, "\"upstream-2\""),
+        "gate2 最终值（body 串 JSON 编组带引号）"
+    );
 }
 
 /// T-04 E2E (2) `~T` 最终值 + 普通 int 反例：声明 ~T 的 handler 返回
@@ -577,7 +591,10 @@ fn plain_int() int {
     );
     let (s1, b1) = http_get_raw(server_port, "/api/async-later");
     assert_eq!(s1, 200, "async 返回应 200");
-    assert_eq!(b1, "150", "~T 应解析为最终 T（150ms），非 future 位模式: {b1}");
+    assert_eq!(
+        b1, "150",
+        "~T 应解析为最终 T（150ms），非 future 位模式: {b1}"
+    );
     let (s2, b2) = http_get_raw(server_port, "/api/plain-int");
     assert_eq!(s2, 200);
     assert_eq!(b2, "240", "普通 int 240 不得被猜成 future: {b2}");
@@ -704,8 +721,13 @@ fn guarded() str {
     match resumed {
         crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {
             let nv = task.ram.pop_nv();
-            let got = vm.get_string(auto_val::decode_string(nv) as u32).expect("str");
-            eprintln!("[probe] engine two-frame resume → {:?}", String::from_utf8_lossy(&got));
+            let got = vm
+                .get_string(auto_val::decode_string(nv) as u32)
+                .expect("str");
+            eprintln!(
+                "[probe] engine two-frame resume → {:?}",
+                String::from_utf8_lossy(&got)
+            );
             assert_eq!(String::from_utf8_lossy(&got), "caught", "深帧 try 恢复");
         }
         other => panic!("resume 应 Completed(Ok)，得到 {:?}", other),
@@ -764,7 +786,11 @@ fn slow() str {
         op_baseline,
         "live-op 未回基线——parked 等待未回收"
     );
-    assert_eq!(crate::vm::ffi::http_server::live_scope_count(), 0, "scope 未回基线");
+    assert_eq!(
+        crate::vm::ffi::http_server::live_scope_count(),
+        0,
+        "scope 未回基线"
+    );
 }
 
 /// T-05 (2) 失效队列不执行：scope 已取消的排队请求在 owner 出队时被
@@ -808,9 +834,17 @@ fn touch() str {
         }
         _ => panic!("应 Full 503"),
     }
-    assert_eq!(vm.tasks.len(), tasks_before, "失效请求不得派发 handler 任务");
+    assert_eq!(
+        vm.tasks.len(),
+        tasks_before,
+        "失效请求不得派发 handler 任务"
+    );
     assert!(parked.is_empty(), "失效请求不得挂表");
-    assert_eq!(crate::vm::ffi::http_server::live_scope_count(), 0, "取消后 scope 回基线");
+    assert_eq!(
+        crate::vm::ffi::http_server::live_scope_count(),
+        0,
+        "取消后 scope 回基线"
+    );
 }
 
 /// T-05 (3) 关闭排空：优雅关停取消 parked 等待（503 + 资源回收），许可
@@ -857,7 +891,10 @@ fn hits_fn() int {
     let (_, hits_now) = http_get_raw(server_port, "/api/hits");
     assert_eq!(hits_now, "1", "await 前副作用应可见: {hits_now}");
     // 优雅关停：parked 请求废弃、503、资源回收。
-    assert!(crate::vm::ffi::http_server::test_trigger_shutdown(), "关停触发");
+    assert!(
+        crate::vm::ffi::http_server::test_trigger_shutdown(),
+        "关停触发"
+    );
     let (status, body) = client.join().expect("client");
     eprintln!("[probe] side after shutdown → {status} {body:?}");
     // 关停的客户端可见形态：503 终态或连接终结（net 侧排水力关与 503
@@ -874,7 +911,11 @@ fn hits_fn() int {
         op_baseline,
         "live-op 未回基线"
     );
-    assert_eq!(crate::vm::ffi::http_server::live_scope_count(), 0, "scope 未回基线");
+    assert_eq!(
+        crate::vm::ffi::http_server::live_scope_count(),
+        0,
+        "scope 未回基线"
+    );
 }
 
 /// T-05 (4) 半关闭：请求写端关闭（shutdown(Write)）但读端保留——服务端
@@ -897,10 +938,15 @@ fn ping() int {
     stream.write_all(req.as_bytes()).expect("write");
     stream.flush().expect("flush");
     // 半关闭写端：服务端不得据此判取消。
-    stream.shutdown(std::net::Shutdown::Write).expect("half close");
+    stream
+        .shutdown(std::net::Shutdown::Write)
+        .expect("half close");
     let mut resp = String::new();
     stream.read_to_string(&mut resp).expect("read");
-    assert!(resp.starts_with("HTTP/1.1 200"), "半关闭后应正常响应: {resp:?}");
+    assert!(
+        resp.starts_with("HTTP/1.1 200"),
+        "半关闭后应正常响应: {resp:?}"
+    );
     assert!(resp.contains("42"), "半关闭响应体: {resp:?}");
 }
 
@@ -951,7 +997,10 @@ fn after_mw() str {
     // middleware 经 main 面注册不可行（run() 已进 server），改由诊断：
     // 直接驱动 MIDDLEWARE_CHAIN 等价于 http.server.middleware 调用效果。
     drop(stream);
-    crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN.lock().unwrap().clear();
+    crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
+        .lock()
+        .unwrap()
+        .clear();
     let code_reg = r#"
 fn gate_mw(info) {
     var verdict = Http.post_json("http://127.0.0.1:UPREG/gate", "q=1")
@@ -973,7 +1022,10 @@ fn gate_mw(info) {
     let (status, body) = http_get_raw(server_port, "/api/after-mw");
     up.join().expect("upstream");
     assert_eq!(status, 200, "middleware 续跑后应 200: {body:?}");
-    assert_eq!(body, "\"reached\"", "handler 应在 middleware 恢复后到达: {body:?}");
+    assert_eq!(
+        body, "\"reached\"",
+        "handler 应在 middleware 恢复后到达: {body:?}"
+    );
     assert!(
         started.elapsed() >= std::time::Duration::from_millis(200),
         "middleware 等待未发生（提前返回）——park 面未覆盖"
@@ -1017,7 +1069,9 @@ fn closure_target() str {
         .find(|(n, _)| n.contains("closure_target"))
         .map(|(n, a)| (*a, n.clone()))
         .expect("export closure_target");
-    let closure_id = vm.closure_id_gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let closure_id = vm
+        .closure_id_gen
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     vm.closures.insert(
         closure_id,
         crate::vm::engine::Closure {
@@ -1138,7 +1192,9 @@ fn plan705_e2e_cancel_storm_reclaims_deterministically() {
     let up = std::thread::spawn(move || {
         // 接受 storm+loop×1 个连接（deadline 先收口，上游应答全部迟到）。
         for _ in 0..6 {
-            let Ok((mut stream, _)) = listener.accept() else { break };
+            let Ok((mut stream, _)) = listener.accept() else {
+                break;
+            };
             let mut buf = [0u8; 4096];
             let _ = std::io::Read::read(&mut stream, &mut buf);
             std::thread::sleep(std::time::Duration::from_millis(400));
@@ -1166,7 +1222,10 @@ fn slow() str {
         }
         for c in clients {
             let (status, body) = c.join().expect("client");
-            assert_eq!(status, 503, "风暴应全部 deadline 503，得到 {status} {body:?}");
+            assert_eq!(
+                status, 503,
+                "风暴应全部 deadline 503，得到 {status} {body:?}"
+            );
         }
         // 上游迟到应答落地后：无复活、无泄漏（逐轮基线）。
         std::thread::sleep(std::time::Duration::from_millis(500));
@@ -1175,7 +1234,11 @@ fn slow() str {
             op_baseline,
             "round {round}: live-op 未回基线"
         );
-        assert_eq!(crate::vm::ffi::http_server::live_scope_count(), 0, "round {round}: scope 未回基线");
+        assert_eq!(
+            crate::vm::ffi::http_server::live_scope_count(),
+            0,
+            "round {round}: scope 未回基线"
+        );
     }
     up.join().expect("upstream");
 }
@@ -1233,7 +1296,8 @@ fn plan705_client_thread_count_stable_under_load() {
                 Ok((mut stream, _)) => {
                     read_request_head_blocking(&mut stream);
                     std::thread::sleep(std::time::Duration::from_millis(40));
-                    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+                    let resp =
+                        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
                     let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
                 }
                 Err(_) => {
@@ -1293,9 +1357,9 @@ fn fast() str {
 #[test]
 fn plan705_gate_default_callgraph_no_busy_wait() {
     let manifest = env!("CARGO_MANIFEST_DIR");
-    let src = std::fs::read_to_string(std::path::Path::new(manifest)
-        .join("src/vm/ffi/http_server.rs"))
-        .expect("read http_server.rs");
+    let src =
+        std::fs::read_to_string(std::path::Path::new(manifest).join("src/vm/ffi/http_server.rs"))
+            .expect("read http_server.rs");
     let mut unmarked: Vec<String> = Vec::new();
     let mut legacy = 0usize;
     let lines: Vec<&str> = src.lines().collect();
@@ -1312,7 +1376,10 @@ fn plan705_gate_default_callgraph_no_busy_wait() {
             .iter()
             .any(|l| l.contains("legacy 同步驱动保留位"));
         if line.contains(".call_closure(") {
-            unmarked.push(format!("line {}: 同步 call_closure 出现（应走段入口）", i + 1));
+            unmarked.push(format!(
+                "line {}: 同步 call_closure 出现（应走段入口）",
+                i + 1
+            ));
         } else if is_legacy {
             legacy += 1;
         } else {
@@ -1323,5 +1390,8 @@ fn plan705_gate_default_callgraph_no_busy_wait() {
         unmarked.is_empty(),
         "默认 HTTP 调用图发现同步忙等派发点: {unmarked:?}"
     );
-    assert_eq!(legacy, 1, "legacy 保留位应恰 1 处（serve_blocking_stdnet），现 {legacy}");
+    assert_eq!(
+        legacy, 1,
+        "legacy 保留位应恰 1 处（serve_blocking_stdnet），现 {legacy}"
+    );
 }

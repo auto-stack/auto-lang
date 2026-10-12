@@ -148,7 +148,9 @@ mod plan442_ext_link_tests {
                         collect_texts(c, out);
                     }
                 }
-                View::Container { child, .. } | View::Scrollable { child, .. } => collect_texts(child, out),
+                View::Container { child, .. } | View::Scrollable { child, .. } => {
+                    collect_texts(child, out)
+                }
                 View::Grid { cells, .. } => {
                     for c in cells {
                         collect_texts(c, out);
@@ -166,14 +168,34 @@ mod plan442_ext_link_tests {
             Some(std::path::PathBuf::from(rel)),
             Some(std::path::PathBuf::from(format!("../../{}", rel))),
         ];
-        let path = candidates.into_iter().flatten().find(|p| p.exists()).expect("corpus app.at");
-        let dc = crate::plan370_test_support::build_component_from_app(&path).expect("build component");
+        let path = candidates
+            .into_iter()
+            .flatten()
+            .find(|p| p.exists())
+            .expect("corpus app.at");
+        let dc =
+            crate::plan370_test_support::build_component_from_app(&path).expect("build component");
 
         // stub 赋值结果必须读作 Nil（此前为 Int(0) void 哨兵）。
         eprintln!("DEBUG state[current] = {:?}", dc.read_state("current"));
-        eprintln!("DEBUG fn_table has ws_load_current = {:?}", dc.debug_fn_table().iter().any(|(n, _)| n.contains("ws_load_current")));
-        eprintln!("DEBUG fn names: {:?}", dc.debug_fn_table().iter().map(|(n, _)| n.clone()).collect::<Vec<_>>());
-        assert_eq!(dc.read_state("current").unwrap(), Value::Nil, "void stub assignment must yield Nil");
+        eprintln!(
+            "DEBUG fn_table has ws_load_current = {:?}",
+            dc.debug_fn_table()
+                .iter()
+                .any(|(n, _)| n.contains("ws_load_current"))
+        );
+        eprintln!(
+            "DEBUG fn names: {:?}",
+            dc.debug_fn_table()
+                .iter()
+                .map(|(n, _)| n.clone())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            dc.read_state("current").unwrap(),
+            Value::Nil,
+            "void stub assignment must yield Nil"
+        );
 
         let (view, _, _) = dc.view_with_debug_gated(false);
         let mut texts = Vec::new();

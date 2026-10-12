@@ -1,5 +1,5 @@
-use crate::parse_preserve_error;
 use crate::error::attach_source;
+use crate::parse_preserve_error;
 
 /// Test that recommended PC pattern (List with Heap storage) can be parsed
 #[test]
@@ -134,7 +134,10 @@ fn test_explicit_generic_type_parses() {
         Ok(_) => println!("✓ Explicit generic type annotation parses successfully"),
         Err(e) => {
             let err_with_src = attach_source(e, "test.at".to_string(), code.to_string());
-            eprintln!("✗ Explicit generic type failed to parse:\n{}\n", err_with_src);
+            eprintln!(
+                "✗ Explicit generic type failed to parse:\n{}\n",
+                err_with_src
+            );
             panic!("Failed to parse explicit generic type");
         }
     }

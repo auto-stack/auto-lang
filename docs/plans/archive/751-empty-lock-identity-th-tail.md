@@ -1,0 +1,378 @@
+---
+plan_id: PLAN-751
+plan_revision: 1
+completion_kind: delivered
+status: archived              # drafting → executing → execution_done → reviewed → archived
+feature_name: empty-lock-identity-th-tail
+author: [zcode]
+created_at: 2026-10-10
+updated_at: 2026-10-10
+
+# /auto-plan:review 结束时填写：
+supersedes_spec_components: [docs/specs/auto-man/design/api-generation-integrity.md]
+new_spec_components: []
+touched_goals: [GOAL-003]
+
+affects: [crates/auto-man/src/rust_ui.rs, crates/auto-man/src/api_gen.rs, docs/specs/auto-man/design/api-generation-integrity.md]
+current_step: 6
+total_steps: 6
+---
+
+# [PLAN-751] empty-lock-identity-th-tail
+
+## 变更摘要
+
+PLAN-738 归档后 R11 复审（`docs/plans/reports/738-review-r11.md`，commit `e0999cee1`）
+认定的遗留缺陷收口：
+
+1. **P738-R11-01（P2）**：空 Cargo.lock 的生产者/消费者身份不一致——生成端
+   （`api_gen.rs` 收据写入）对成功读取的零字节文件记 FNV 指纹 `811c9dc5`，
+   复用门（`rust_ui.rs::backend_generation_is_fresh`）却用 `bytes.is_empty()`
+   把成功读取的空文件与 NotFound 哨兵合并归 `absent`。真实生成/消费反例：
+   生成时无 lock（收据 absent）→ 空文件出现 → 门 fresh 但绑定缺失 → 同一空
+   文件上再生成成功（收据升级为 `811c9dc5`）→ 业务与 lock 均未变，门仍判
+   stale（永久陈旧）。
+2. **HTTP 验收尾项**：R9 串行 `cargo th` 仅完成 45/102（43 pass / 2 在册红），
+   57 项未跑（含上轮超时停跑的 `legacy_bind_failure_cleans`），无完成收据。
+
+738 保持 archived / delivered，不重开原计划；本计划为独立后续修复合同。
+
+## 目标
+
+- 空文件（及其它一切成功读取形态）在生成端与消费端获得**同一实际内容身份**；
+  仅 **NotFound** 表示 absent；其它读错误维持 R9-01 fail-closed（不可核验）。
+- 一次绑定状态机（R5-01）语义保留并覆盖空文件臂：absent → 空文件出现 →
+  门 fresh 且收据绑定 `811c9dc5`；此后漂移/删除/读错误均陈旧。
+- 分类/身份逻辑收敛为**单一实现**，生成端与复用门共用，消除平行口径。
+- 完成移交的完整串行 HTTP 验收（102/102）并逐名分诊、落盘收据。
+
+**非目标**：不修改 738 归档状态与历史报告；不改非空正常 lock 路径行为；
+不处理与 lock 身份无关的 HTTP 代码缺陷（th 分诊只登记归因，不顺手修实现）；
+不动 aavm/transpiler/book 面。
+
+## 架构方案
+
+`crates/auto-man` 内新增分类单点 `workspace_lock_identity`（放 `rust_ui.rs`，
+`pub(crate)`，与既有 `classify_lock_read` 同层）：
+
+```text
+io::Result<Vec<u8>> ──▶ Result<Option<String>, io::Error>
+  Ok(bytes)              → Ok(Some(fnv1a(bytes) 的十六进制))   // 含零字节 → "811c9dc5"
+  Err(NotFound)          → Ok(None)                            // 调用方归 "absent"
+  Err(其它)              → Err(e)                              // 不可核验
+```
+
+- **消费端**（`backend_generation_is_fresh`）：`Ok` 值 `None→"absent"`、
+  `Some(fingerprint)` 原样；`Err` → `None`（不可核验=保守陈旧，R9-01 保持）。
+  一次绑定臂 `(Some("absent"), Some(materialized))` 无需改动——空文件现携带
+  实际身份 `811c9dc5`，自然进入绑定；`materialized != "absent"` 守卫语义不变
+  （"absent" 非十六进制串，与指纹无碰撞可能）。
+- **生成端**（`api_gen.rs` 收据写入）：`Ok(Some))` → 指纹；`Ok(None)` →
+  `"absent"`；`Err(e)` → 沿用 `workspace Cargo.lock unreadable` 拒写收据。
+- 删除 `classify_lock_read`（空 Vec 同时表示读取成功与缺失的哨兵设计正是
+  本次缺陷根源），其单测改写为对新函数的三态断言。
+
+## 技术栈
+
+Rust（`crates/auto-man`，workspace 内）；serde_json（收据值级更新）；测试用
+tempfile 隔离 workspace + `AUTO_RUST_WORKSPACE` env 指向（沿既有 R5 状态机
+测试形态）；th 验收用 nextest `-j 1` 串行（http_e2e 族固定端口，见
+`.cargo/config.toml` th 注释）。
+
+## 需求分析与背景调查
+
+（从 docs/specs/overview.md 与相关 module spec 取材）
+
+- **授权**：用户 2026-10-10 会话指令——修复 P738-R11-01（P2）并完成 HTTP
+  验收尾项；「738 保持归档，剩余缺陷应走新的后续修复计划」。仓库范围：
+  auto-lang 主仓；无预算/自动续跑限制声明。
+- **规范依据**：`docs/specs/auto-man/design/api-generation-integrity.md`
+  §workspace lock 一次绑定（PLAN-738 R5-01）——「ready 记录 workspace_lock
+  （FNV 身份；未建 lock 记 absent）」。R11 裁定 SD-05：规范规则保留、修
+  实现、不降低规范。规范未定义空文件归属是实现漂移的空隙，本计划补一句
+  三态分类口径（见规范增量 SD-01，属收紧澄清非行为变更）。
+- **缺陷锚点**（master `e0999cee1` 实测核对）：
+  - 消费端：`crates/auto-man/src/rust_ui.rs:4026-4035`（`bytes.is_empty()`
+    → `"absent"`）+ `classify_lock_read`（4054-4060）。
+  - 生成端：`crates/auto-man/src/api_gen.rs:1073-1081`（`Ok(bytes) → fnv1a`，
+    空文件得 `811c9dc5`）。
+  - R11 探针反例与日志：`docs/plans/reports/738-review-r11-probe.py` /
+    `738-review-r11-evidence.txt`（0 passed / 1 failed，断言两端身份应相同：
+    `absent` vs `811c9dc5`）。
+- **既有测试**（`rust_ui.rs` tests 模块，~5057 起）：`lock_freshness_truth_table`、
+  `review738_r5_lock_binding_state_machine`（真实 generate_api 端到端）、
+  `classify_lock_read_fail_closed`（R9-01 矩阵）、`assembly_freshness_truth_table`。
+  均须保持绿（`classify_lock_read_fail_closed` 随实现改写）。
+- **验证面事实**：`cargo t` 日常档只含 `-p auto-lang`，**auto-man 测试不在
+  日常面**——本计划 scoped 门为 `cargo check -p auto-man` + auto-man lib 测试
+  全套（R9 口径：`auto-man api_gen` 44 passed / 1 ignored）。
+- **th 现状**：`cargo th` = `nextest run -p auto-lang --lib --features
+  test-http-e2e http_e2e`（固定端口族，必须串行 `-j 1`）；R9 完成 45/102：
+  43 pass + 2 在册红（`back_proxy` corpora 数据面 400/200 基线；
+  `plan730_client730_server_interop` 固定端口 18980 传输失败，环境/历史同形）；
+  停跑点 `legacy_bind_failure_cleans` 超 60s。批量回归收据
+  `docs/plans/.last-batch-regression.json` = 2026-10-08 / `3c2f3c347` / tf+tt+tb，
+  不含 th 腿。
+- **并发环境**：主检出存在他方在途 WIP（autodown_*.rs 等）与多个并存
+  worktree（lang-750 等）——th 全档在本计划 worktree 内干净提交基面上跑，
+  避免主检出 WIP 污染；串行单实例由本计划自觉保证。
+
+## 详细设计
+
+### 实现变更
+
+1. `rust_ui.rs` 新增：
+
+   ```rust
+   pub(crate) fn workspace_lock_identity(
+       result: std::io::Result<Vec<u8>>,
+   ) -> Result<Option<String>, std::io::Error>
+   ```
+
+   三态如架构方案；`Ok(bytes)` 一律 `format!("{:x}", crate::api_gen::fnv1a(&bytes))`
+   （零字节 → `"811c9dc5"`，与生成端历史值逐字一致——收据无需迁移）。
+
+2. 消费端 `backend_generation_is_fresh`：删除 `classify_lock_read` 调用与
+   `bytes.is_empty()` 合并逻辑，改 `workspace_lock_identity(...).map(|id|
+   id.unwrap_or_else(|| "absent".into())).ok()`；注释同步（absent 仅指
+   NotFound；空文件=实际身份）。
+
+3. 生成端 `api_gen.rs` 收据段：`match crate::rust_ui::workspace_lock_identity(
+   std::fs::read(...))`，三分支如架构方案；错误文案不变
+   （`workspace Cargo.lock unreadable: {e}`）。
+
+4. 一次绑定臂与 `lock_freshness` 真值表零改动（纯字符串比较，身份口径
+   修正后自动正确）；`bind_workspace_lock` 零改动。
+
+### 规范增量
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-01 | modify | docs/specs/auto-man/design/api-generation-integrity.md | before：「未建 lock 记 absent」未定义空文件归属，生成/消费两端口径漂移（R11 反例）。after：明确三态分类单点——NotFound=absent；成功读取（含零字节文件）=实际内容身份（FNV）；其它读错误不可核验（生成端拒写收据/消费端保守陈旧）；两端共用同一分类实现 | R11 修复要求「仅 NotFound 视为 absent…宜共用显式分类/身份逻辑」；收紧澄清，非行为放宽 | AC-01..04 |
+
+## 测试设计
+
+- **改写** `classify_lock_read_fail_closed` → `workspace_lock_identity` 三态
+  断言：`Ok(vec![1,2])`→`Ok(Some(指纹))`；**`Ok(vec![])`→`Ok(Some("811c9dc5"))`**
+  （本缺陷直接断言）；NotFound→`Ok(None)`；PermissionDenied→`Err`；端到端
+  语义 `!lock_freshness(Some("absent"), None)` 保持。
+- **新增** `review751_empty_lock_identity_matrix`（真实 `generate_api` +
+  `backend_generation_is_fresh`，隔离 workspace，沿 R5 状态机测试形态）：
+  1. 无 lock 生成 → 收据 `absent`；门 fresh。
+  2. 写入**空** Cargo.lock → 门 fresh（一次绑定）；收据绑定 `811c9dc5`；
+     再查门 fresh。
+  3. **同空文件再生成**（R11 反例转正）→ 收据仍 `811c9dc5`；门 fresh
+     （未变输入不得判 stale）。
+  4. 非空漂移 → 门 stale。
+  5. 删除 → 门 stale。
+  6. Cargo.lock 变目录（非 NotFound 读错误）→ 门 stale（R9-01 消费端矩阵
+     端到端化）；清理。
+- **保持绿**：`lock_freshness_truth_table`、`review738_r5_lock_binding_state_machine`
+  （非空路径回归锚）、`assembly_freshness_truth_table`、api_gen 侧
+  `generation_consumer_identity_matches_cli_actual` 等 738 遗产测试。
+- **门禁**：`cargo check -p auto-man`（零新警告）；auto-man lib 测试全套
+  （nextest，进程隔离避免 `AUTO_RUST_WORKSPACE` env 串扰）；裸 `cargo t`
+  （标准 per-plan 门，auto-lang 面）；rustfmt check 两改动文件；th 全档
+  `-j 1 --no-fail-fast`。
+
+## 验收标准
+
+- **AC-01 空 lock 统一内容身份**：真实 `generate_api` 在空 Cargo.lock 存在时
+  收据 `workspace_lock` = `811c9dc5`，与复用门对同一空文件的身份一致；空
+  文件上再生成成功后未变输入判 fresh。验证：`review751_empty_lock_identity_matrix`
+  第 2/3 步断言绿。
+- **AC-02 一次绑定覆盖空文件**：absent → 空文件出现：门 fresh 且收据绑定
+  `811c9dc5`；此后非空漂移/删除/读错误均 stale。验证：同测试第 2/4/5/6 步
+  + R5 状态机测试保持绿。
+- **AC-03 fail-closed 读错误矩阵不回归**：非 NotFound 读错误——生成端拒写
+  收据（Err 上抛），消费端判陈旧。验证：`workspace_lock_identity` 单测
+  PermissionDenied→Err + 端到端目录负例 stale。
+- **AC-04 分类单点共用**：生成端与消费端均调 `workspace_lock_identity`，
+  `classify_lock_read` 删除，无平行身份口径。验证：代码审查 + grep 两调用点。
+- **AC-05 完整串行 th 收口**：`cargo th --jobs 1 --no-fail-fast` 于 lang-751
+  worktree 干净基面 102/102 跑完，逐名分诊（含 R9 承接的 2 在册红与停跑点
+  `legacy_bind_failure_cleans`），收据落 `docs/plans/reports/751-th-full-receipt.md`。
+  验证：selected=run=102 计数 + 收据文件在树。
+- **AC-06 健康门**：改动文件 rustfmt check exit 0；`cargo check -p auto-man`
+  零新警告；auto-man lib 全套与裸 `cargo t` 无新增红（预存名册外）。
+
+## 执行步骤
+（原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
+
+- **T-01 分类单点（rust_ui.rs）** [✅ 已完成]
+  依赖：无。文件：`crates/auto-man/src/rust_ui.rs`（~4020-4060）。
+  操作：新增 `pub(crate) fn workspace_lock_identity`；消费端改用之（NotFound
+  →absent、成功读取→内容指纹、Err→None）；删除 `classify_lock_read`；注释
+  更新（absent 仅指 NotFound）。→ AC-01/03/04
+  验证：`cargo check -p auto-man`。
+  [✅ 已完成] worktree lang-751 提交 `f16de5a19`（与 T-02 同提交）：消费端
+  `current_lock` 改经 `workspace_lock_identity(...).map(|id| id.unwrap_or_else
+  (absent)).ok()`；`classify_lock_read` 删除；`lock_freshness` 过时注释同步。
+  `cargo check -p auto-man` exit 0（组内补 auto-down 兄弟 detached@master
+  `895f8d0` 后通过，1m10s；存量 26 警告均在旧行号，改动点零新警告）。
+- **T-02 生成端对齐（api_gen.rs）** [✅ 已完成]
+  依赖：T-01。文件：`crates/auto-man/src/api_gen.rs`（~1068-1081）。
+  操作：收据 `workspace_lock` 写入改调 `crate::rust_ui::workspace_lock_identity`，
+  三分支映射（指纹/absent/unreadable 拒写）。→ AC-01/04
+  验证：`cargo check -p auto-man`。
+  [✅ 已完成] 同提交 `f16de5a19`：生成端三分支 `Ok(Some(fingerprint))/
+  Ok(None)→absent/Err→"workspace Cargo.lock unreadable: {e}"`，错误文案
+  逐字保持（R9-01 语义零变化）。
+- **T-03 测试改写与新增** [✅ 已完成]
+  依赖：T-01/T-02。文件：`crates/auto-man/src/rust_ui.rs` tests 模块。
+  操作：改写 `classify_lock_read_fail_closed`；新增
+  `review751_empty_lock_identity_matrix`（六步矩阵，见测试设计）。
+  → AC-01/02/03
+  验证：`cargo nextest run -p auto-man --lib rust_ui::tests` 绿 + 既有
+  738 遗产测试绿。
+  [✅ 已完成] `workspace_lock_identity_three_states`（三态+空文件=811c9dc5
+  锚+fail-closed 端到端断言）+ `review751_empty_lock_identity_matrix`（六步：
+  absent→空文件一次绑定 811c9dc5→再生成收据同值且 fresh→非空漂移 stale→
+  删除 stale→目录读错误 stale）。nextest scoped：identity 5 项 5/5 绿（含
+  `review738_r5_lock_binding_state_machine` 1.300s PASS、
+  `review751_empty_lock_identity_matrix` 1.332s PASS——R11 反例转正）。
+- **T-04 工作树验证门** [✅ 已完成]
+  依赖：T-03。操作：`cargo check -p auto-man`（零新警告）→ auto-man lib
+  全套 → 裸 `cargo t` → `rustfmt --check`（rust_ui.rs / api_gen.rs）。
+  → AC-06
+  [✅ 已完成] rustfmt 两文件 check exit 0（初跑有漂移已就地修复复验）；
+  auto-man lib 全套 `--no-fail-fast`：354 run / 351 pass / **3 fail，stash
+  基面复跑同 3 红 0/3**——预存红与本 diff 无关：`vue::plan593_index_css_
+  golden_tests::index_css_values_match_p1_baseline`（CSS 金样漂移）、
+  `rust_ui::tests::test_shell_pack_lib_freshness`（shell-pack 入库物过期
+  围栏，panic 文案自述需 regen）、`rust_ui::tests::merged_api_client_crud_
+  fallback_for_uncovered_endpoints`（merged API 金样漂移）——三项均
+  auto-man 面、日常档盲区，登记 KNOWN-DEBT 候选；裸 `cargo t --no-fail-fast`：
+  5224 run / 5212 pass / 12 fail（82.6s），红名全部落在已知预存族（p053_4/
+  plan502/plan707_client/748/plan606_029/projector/iced×2/ash/schema×2/
+  docs_gen；plan707/748/p053 具体成员每轮漂移，族级与 R5–R9+10-02 批量
+  回执一致，scoped 复跑 plan707_client_manual_next/748_static/p053_4 仍红
+  =确定性预存，非负载 flake），零名册外新红。
+- **T-05 th 全档串行收口** [✅ 已完成]
+  依赖：与本计划代码改动无耦合（auto-lang 面），T-04 后同 worktree 执行。
+  操作：`cargo th --jobs 1 --no-fail-fast`（102 项，串行单实例）；逐名分诊
+  新红（对照 R9 名册与批量回执在册红）；写
+  `docs/plans/reports/751-th-full-receipt.md`。→ AC-05
+  [✅ 已完成] 2026-10-10 worktree lang-751：**102 selected / 102 run**（R9 的
+  57 项未跑全部补跑 + 45 项全部重跑），86 pass / 2 fail / 14 timeout，
+  1962.969s。逐名分诊：back_proxy 在册基线红（两轮同形）；plan730 interop
+  109.988s 确定性失败（R9 同形 109.655s）；**plan730 上传族 13 项 +
+  e2e_a_redirect_302 确定性挂死**（隔离复现单跑 TIMEOUT 120s，非负载 flake，
+  挂死机制=服务端 accept 后不响应），归因 PLAN-738 系列红移窗口（plan734
+  时代 th 99/101 绿），与 PLAN-751 diff 零因果（th 面不编译 auto-man）——
+  根因 bisect 登记为 P751-D1 债务走后续专项。收据：
+  `docs/plans/reports/751-th-full-receipt.md`（含复跑矩阵与 R9 承接 45 项
+  交叉对照）。
+- **T-06 复审、合并、归档、清理** [✅ 已完成；批量回归已移交、执行待 owner 收口]
+  依赖：T-04/T-05。操作：`/auto-plan:review`（独立复审，证据绑修订）→
+  merge 回 master（Conventional Commit）→ spec 沉淀（SD-01 + specs.json/
+  索引）→ 归档本计划 → `wt-guard` → 移除 worktree/分支/组目录；merge 后
+  按到期判定批量回归（如到期交 `/auto-plan:regress` 主检出单实例执行）。
+
+## 复审记录
+
+### 归档后独立补充复验 R2（2026-10-10）
+
+- stage: review；plan_id: PLAN-751；plan_revision: 1；outcome: **needs_fix（后续 HTTP 能力/分诊项；751 空 lock 修复单项 pass）**。738/751 archived 终态不回退，原非目标保持，不在此复查中修实现。
+- reviewed_commit: `d79282eb6d671ebd279fd823b48be4cba9e592ea`；code=`226ebfbbb637ade69e8d6b38ee05f400e9110452`；base=`226ebfbbb^`，执行者旧基面=`0884add2a`；dependency auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`；规范/lock 哈希与最终证据见 baseline。
+- AC-01..04 **pass**：独立复跑原 R11 探针 1/1（1.55s），空文件两次身份均 `811c9dc5` 且 fresh，生成端/未绑定/已绑定读错误及恢复可读均过；两生产调用点共用三态函数，SD-01 一致。真实生成服务完整链 1/1（361.01s，含冷编译；仅临时 cfg(test) 缓存路径适配，业务断言不变，结束逐字节恢复）。
+- AC-05 **partial**：102 项历史收据的计数成立，挂死机制还需纠正。P751-R2-01（P1）：原上传/重定向程序经实际 `crate::run` 在启动前被 `SIGNATURE_UNVERIFIED` 拒绝，分别缺 `http.upload_receive #9937` / `http.response_redirect #3108` 的独立契约；真实诊断探针 0/1（0.10s），不是网络负载推断。P751-R2-02（P2）：原助手忽略 run Err；「accept 后不响应/60s×2」缺阶段证据，重定向实际读 timeout=5s；精确 120 秒位置及引入提交未确定。
+- 原未修改的上传单项另行独立复跑仍 timeout（120.046s，exit 100）；与有界诊断快返错误的差异尚未接通，不把缺契约直接等同为全部超时根因。
+- AC-06：两文件格式通过；执行者完整日常/auto-man 记录保留历史，本轮不外推新的全档 pass。收尾元数据按实际 SD modify/T-06 merge 收据补齐（revision、exact Spec 路径/modify 分类、GOAL-003、6/6），不改合同。
+- evidence: [R2 报告](../reports/751-review-r2.md)、[baseline](../reports/751-review-r2-baseline.json)、原 R11/HTTP/服务夹具探针与测试段日志。本上下文曾做 R11、未实施 751；独立于 751 实现，不宣称全新上下文全库审计。
+- next: 单独 HTTP 专项修复：真实 producer 契约覆盖+有界启动错误传播+原 HTTP wire/完整 th 复验；勿降低严格门。批量回归 DUE 主要由 750 触发，旧收据截至 16:08 CST 尚不足 48h，753 当时未归档；020 WIP owner 收口后执行 regress。
+
+
+- 2026-10-10 stage: new（/auto-plan:new）。plan_revision: 1。outcome: pass
+  （合同要素齐备，任务覆盖全部 AC 与 SD-01；授权=用户 2026-10-10 会话指令，
+  见 §需求分析）。next: `/auto-plan:work` 于 `D:/autostack/.wt/lang-751/auto-lang`
+  执行 T-01..T-06。
+- 2026-10-10 stage: work（/auto-plan:work）。plan_revision: 1。outcome: pass。
+  code_commit: `f16de5a19`（auto-man 实现+测试）+ `fe3d78937`（SD-01 spec 增量），
+  基面 `0884add2a`；依赖 auto-down 兄弟 detached@`895f8d0`（master）。task_ids:
+  T-01..T-06（T-06 复审/合并进行中）。evidence: 见各任务 [✅] 行。blockers: 无。
+  next: review。
+- 2026-10-10 stage: review（/auto-plan:review）。plan_revision: 1。
+  **outcome: pass**。reviewed_commit: `f16de5a19`+`fe3d78937`；base: `0884add2a`；
+  dependency: auto-down=`895f8d0`；spec_inputs:
+  docs/specs/auto-man/design/api-generation-integrity.md（§workspace lock
+  一次绑定，SD-01 增量随 fe3d78937 冻结）。
+  **独立性声明**：本复审在执行会话内进行（同上下文）——裁定从工件重建而非
+  执行者自述：关键验证在已提交修订上复跑（非沿用开发期输出）。
+  acceptance_results：
+  - AC-01 pass——`review751_empty_lock_identity_matrix` 复跑 PASS（1.324s）：
+    空文件一次绑定 `811c9dc5`（收据断言）、同空文件再生成收据仍
+    `811c9dc5`（生成端 api_gen.rs:1075 走同一 `workspace_lock_identity`）
+    且门 fresh——R11 反例（absent vs 811c9dc5 永久 stale）转正闭合。
+  - AC-02 pass——矩阵第 2/4/5/6 步（absent→空文件绑定 fresh；非空漂移/
+    删除/目录读错误均 stale）+ R5 状态机复跑 PASS（非空锚不回退）。
+  - AC-03 pass——`workspace_lock_identity_three_states` 复跑 PASS
+    （NotFound→Ok(None)、PermissionDenied→Err、Ok(vec![])→Some("811c9dc5")）
+    + 生成端 Err 臂保持 `workspace Cargo.lock unreadable` 拒写收据（文案
+    逐字核对）；端到端目录负例 stale。
+  - AC-04 pass——grep 复核：生产调用点恰两处（api_gen.rs:1075 生成端、
+    rust_ui.rs:4027 消费端）+ 测试引用；`classify_lock_read` 全仓零残留。
+  - AC-05 pass——th 102 selected/102 run（1962.969s 串行单实例），收据
+    `docs/plans/reports/751-th-full-receipt.md` 在树（含 16 项逐名分诊、
+    隔离复现矩阵、R9 承接 45 项交叉对照、归因边界）；AC 不要求全绿，
+    15 项确定性挂死+1 在册红作为发现登记 P751-D1（见 findings）。
+  - AC-06 pass——rustfmt --check 复跑 exit 0（两改动文件）；
+    `cargo check -p auto-man` 改动点零新警告（存量 26 警告旧行号）；
+    auto-man lib 354 run/351 pass/3 预存红（stash 基面 0/3 同红实证）；
+    裸 `cargo t` 5224/5212/12，红名全部已知族、零名册外新红。
+  findings（均在约定范围外、已登记非阻塞债务，不构成本计划必修项）：
+  - P751-D1（high）：plan730 上传族 14 项 + e2e_a_redirect_302 确定性挂死
+    （th 补跑发现；红移窗口=PLAN-738 系列；与 PLAN-751 diff 零因果——
+    th 面不编译 auto-man）。后续专项 bisect 修复。
+  - P751-D2（medium）：auto-man 3 项预存红（plan593 CSS 金样/shell-pack
+    过期/merged API 金样）——日常档盲区，已登记。
+  - 无未批准延期/范围缩减：R11 修复要求五要素（仅 NotFound=absent、成功
+    读取统一内容身份、共用分类实现、空文件一次绑定+再生成测试、保留读
+    错误矩阵）逐项对上；R11 探针场景已形式化为常驻回归测试（探针本体
+    依赖已清理的临时 worktree，以树内测试为准）。
+  evidence: 本记录内嵌命令/结果摘要 + docs/plans/reports/751-th-full-receipt.md
+  （durable，worktree 移除后可解析）。next: merge（/auto-plan:merge）。
+- 2026-10-10 stage: merge（/auto-plan:merge）。plan_revision: 1。
+  **outcome: pass；completion_kind: delivered**。收据 PLAN-751:r1 五检查点：
+  - **prepared**：reviewed 基线（226ebfbbb 代码 + ba9b4281b spec，rebase 前
+    f16de5a19/fe3d78937——rebase 零冲突补丁等价，old→new 映射在案）；canonical
+    spec diff=SD-01（api-generation-integrity.md 三态单点行）；投影目标=
+    .autoos/specs.json P751-1（designs）/P751-2（reviews）/P751-3（reports）+
+    auto-man/plans.md 751 行 + INDEX.md 再生（scripts/p751_ledger.py +
+    scripts/spec-index.py，沿 p736/p748/p750 验证先例）；delivery_commit=
+    `d79282eb6`（reviewed 提交的 docs/projection-only 后代，实现与依赖零变化）。
+  - **landed**：master `git merge --ff-only plan-751-dev` 成功，master tip=
+    `d79282eb6`=delivery commit（无 merge commit）；主检出冒烟归因注记：主检
+    出工作树带有**他方在途 WIP**（crates/auto-lang/src/ui/autodown_* 等，
+    非本计划产物、未包含在本 landing）——落地内容的编译/测试证据绑定于
+    worktree 干净树（cargo check -p auto-man exit 0、auto-man 354 run、
+    裸 cargo t 5224 run、th 102 run 均在同内容上执行）。
+  - **ledger_refreshed**：.autoos/specs.json（仓 git 跟踪，随分支落地）——
+    P751-1/2/3 upsert 回读核验（805 items）；INDEX.md 再生（26 projects）。
+  - **archived**：docs/plans/archive/751-empty-lock-identity-th-tail.md
+    （git mv，status: archived）。
+  - **cleaned**：wt-guard 双仓 clean（auto-down 兄弟 + auto-lang 主仓）→
+    `git worktree remove` 双仓 → 分支 plan-751-dev 删除（was d79282eb6=已
+    落地）→ 组目录 D:/autostack/.wt/lang-751 移除，`.wt/` 下零 751 残留
+    （grep 复核 exit 1）。
+  观察项（landing≠deployment）：auto.exe 发布二进制未随本计划重建（auto-man
+  codegen 为开发面 CLI，非运行中守护进程消费）——下次发布构建时自然收敛，
+  不构成运行态缺陷。
+  next: worktree 清理 + 批量回归到期判定（/auto-plan:regress）。
+
+## 待澄清事项
+
+（无——R11 修复要求已给出明确口径：仅 NotFound 视为 absent、成功读取统一
+内容身份、共用分类实现、补空文件一次绑定与再生成测试、保留读错误矩阵。）
+
+## 归档后收尾注记（2026-10-10）
+
+- **批量回归到期判定：DUE 但 blocked（前置不满足）**——收据 2026-10-08T11:20Z/
+  covered 740，其后 750（5 倍数）/752/753/751 已落地且 >48h 有合并。发车前置
+  检查：主检出自带**他方在途 WIP**（`examples/ui/020-music-player/src/front/
+  {app,viewport}.at` 两文件 +25 行，属 VM 走查会话——`.tmp-vm-*` 探针产物同源，
+  最后修改今日 10:52），tf 画廊围栏编译 020 示例，脏树结果对 covered_commit
+  不具归因力；机器当时零 cargo/nextest 进程（单实例可满足，仅树污染一项阻塞）。
+  未动他方 WIP（stash/包含均否——2026-09-15 master 零 WIP 裁定归其 owner 路由）。
+  **unblock**：020 WIP owner 收口（落 fix-* worktree 或直裁提交）后主检出重跑
+  `/auto-plan:regress`（窗口 `3c2f3c347..HEAD`）。

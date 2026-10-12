@@ -55,9 +55,32 @@ helper 被 async 路径调用属**不支持组合**：运行期由内核同步�
 `http_e2e_plan724_qualified_facade_kernel` 真 TCP 腿覆盖；任意
 `#[api] ~Stream` handler 的 Rust 生成不在本契约（另案）。
 
+## 文件传输发射（PLAN-727 SD-04）
+
+`http.transfer_*` 面的发射规则（`trans/rust.rs` 的 `("http", m)` 臂）：
+
+| Auto 源 | sync 发射 | async 发射 |
+|---|---|---|
+| `transfer_download(url,path,opts)` / `transfer_upload(...)` | `a2r_std::http::transfer_{m}(<args as str>)` | **同形**（非阻塞提交，无 async 变体） |
+| `transfer_wait(t)` | `a2r_std::http::transfer_wait(&t)` | `a2r_std::http::transfer_wait_async(&t).await` |
+| `transfer_next_progress/cancel/error(t)` | `a2r_std::http::{m}(&t)` | **同形**（非阻塞观察） |
+
+- 句柄实参以 `&` 借用形发射（`FileTransfer` 为 typed Rust 值，`use a2r_std::*`
+  下解析）；options 按字符串形直传（严格 JSON，坏值在核心侧终结）。
+- builder `.multipart_file(field, path)` / `.multipart_text(field, value)`：
+  builder 变量/链根识别后**方法直发**（`impl AsRef<str>` 面），路径描述到发送，
+  预算/流式语义在 facade 内。
+- legacy 三 helper（`http.download/upload/download_resume`）发射逐字节不变
+  （直发 `a2r_std::http::{m}`，u32 面），不重定为新面。
+- 金样：`test/a2r/31_plan727/00{1,2}_http_transfer_{sync,async}`；编译运行腿
+  `http_e2e_plan727_*`（sync 矩阵含 wire 断言与 404 保旧目标）。
+
 ## 关联
 
 - [http-client-runtime](../../../a2r-std/design/http-client-runtime.md)
   （运行时契约：预算/取消/错误分层）
+- [http-file-transfer](../../../stdlib/design/http-file-transfer.md)
+  （文件传输公共面/收据/取消收口契约）
 - [test-convention](test-convention.md)（golden 与编译运行腿的分工）
 - PLAN-724（reports/724-client-decision.md §1 矩阵冻结 + verification）
+- PLAN-727（reports/727-transfer-decision.md 契约冻结 + verification）

@@ -73,7 +73,11 @@ pub struct TermCell {
 
 impl TermCell {
     pub fn plain(ch: char) -> Self {
-        Self { ch, fg: TermColor::Default, bg: TermColor::Default }
+        Self {
+            ch,
+            fg: TermColor::Default,
+            bg: TermColor::Default,
+        }
     }
 }
 
@@ -128,7 +132,12 @@ pub struct CursorState {
 
 impl Default for CursorState {
     fn default() -> Self {
-        Self { row: 0, col: 0, shape: TermCursorShape::Block, on: true }
+        Self {
+            row: 0,
+            col: 0,
+            shape: TermCursorShape::Block,
+            on: true,
+        }
     }
 }
 
@@ -323,13 +332,19 @@ impl TerminalCore {
     /// this once per frame (same per-frame clone cost class as the auto-term
     /// App passing `lines` into the widget by value).
     pub fn snapshot(&self) -> (Vec<Vec<TermCell>>, Vec<u64>) {
-        (self.cells.lock().unwrap().clone(), self.digests.lock().unwrap().clone())
+        (
+            self.cells.lock().unwrap().clone(),
+            self.digests.lock().unwrap().clone(),
+        )
     }
 
     /// Snapshot the full text buffer (tests).
     pub fn lines(&self) -> Vec<String> {
         let cells = self.cells.lock().unwrap();
-        cells.iter().map(|row| row.iter().map(|c| c.ch).collect()).collect()
+        cells
+            .iter()
+            .map(|row| row.iter().map(|c| c.ch).collect())
+            .collect()
     }
 
     /// Cursor snapshot (iced draw + headless assertions).
@@ -388,13 +403,18 @@ impl TerminalCore {
         self.bind_gen
             .store(self.wheel_gen.load(Ordering::Relaxed), Ordering::Relaxed);
         if self.bind_echo_seen() {
-            self.bind_prev_echo_y_px
-                .store(self.bind_echo_y_px.load(Ordering::Relaxed), Ordering::Relaxed);
-            self.bind_prev_echo_offset
-                .store(self.bind_echo_offset.load(Ordering::Relaxed), Ordering::Relaxed);
+            self.bind_prev_echo_y_px.store(
+                self.bind_echo_y_px.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+            self.bind_prev_echo_offset.store(
+                self.bind_echo_offset.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
             self.bind_prev_echo_valid.store(true, Ordering::Relaxed);
         }
-        self.bind_echo_y_px.store(y_px.round() as i32, Ordering::Relaxed);
+        self.bind_echo_y_px
+            .store(y_px.round() as i32, Ordering::Relaxed);
         self.bind_echo_offset.store(offset, Ordering::Relaxed);
         self.bind_echo_seen_flag.store(true, Ordering::Relaxed);
     }
@@ -493,15 +513,20 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
                     fresh_digests[i] = *digest;
                 }
             }
-            fresh.cursor.lock().unwrap().clone_from(&core.cursor.lock().unwrap());
+            fresh
+                .cursor
+                .lock()
+                .unwrap()
+                .clone_from(&core.cursor.lock().unwrap());
             *fresh.blink_ms.lock().unwrap() = *core.blink_ms.lock().unwrap();
             *fresh.selection.lock().unwrap() = core.selection.lock().unwrap().clone();
             *fresh.pending_input.lock().unwrap() = core.pending_input.lock().unwrap().clone();
             *fresh.pending_resize.lock().unwrap() = *core.pending_resize.lock().unwrap();
             fresh.set_scheme(core.scheme());
-            fresh
-                .scroll_offset
-                .store(core.scroll_offset.load(Ordering::Relaxed), Ordering::Relaxed);
+            fresh.scroll_offset.store(
+                core.scroll_offset.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
             fresh.scroll_view_target.store(
                 core.scroll_view_target.load(Ordering::Relaxed),
                 Ordering::Relaxed,
@@ -514,10 +539,13 @@ pub fn terminal(key: &str, cols: u16, rows: u16) -> &'static TerminalCore {
                 core.scroll_bind_suppress.load(Ordering::Relaxed),
                 Ordering::Relaxed,
             );
+            fresh.window_anchor.store(
+                core.window_anchor.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
             fresh
-                .window_anchor
-                .store(core.window_anchor.load(Ordering::Relaxed), Ordering::Relaxed);
-            fresh.generation.store(core.generation() + 1, Ordering::Relaxed);
+                .generation
+                .store(core.generation() + 1, Ordering::Relaxed);
             *fresh.pending.lock().unwrap() = TerminalDamage::Full;
             map.insert(key.to_owned(), fresh);
             return fresh;
@@ -573,7 +601,11 @@ pub fn terminal_feed(core: &TerminalCore, lines: &[String]) {
                 width += char_width(ch);
                 let styled = prev.and_then(|p| p.get(ci)).filter(|pc| pc.ch == ch);
                 match styled {
-                    Some(pc) => cells.push(TermCell { ch, fg: pc.fg, bg: pc.bg }),
+                    Some(pc) => cells.push(TermCell {
+                        ch,
+                        fg: pc.fg,
+                        bg: pc.bg,
+                    }),
                     None => cells.push(TermCell::plain(ch)),
                 }
             }
@@ -595,7 +627,10 @@ pub fn terminal_feed_cells(core: &TerminalCore, row: usize, cells: Vec<TermCell>
     all[row] = capped;
     drop(all);
     recompute_digest(core, row);
-    core.pending.lock().unwrap().absorb(TerminalDamage::Lines(vec![row]));
+    core.pending
+        .lock()
+        .unwrap()
+        .absorb(TerminalDamage::Lines(vec![row]));
     core.generation.fetch_add(1, Ordering::Relaxed);
 }
 
@@ -648,7 +683,10 @@ fn apply_cells(core: &TerminalCore, incoming: Vec<Vec<TermCell>>) {
     drop(cells);
     drop(digests);
     if !dirty.is_empty() {
-        core.pending.lock().unwrap().absorb(TerminalDamage::Lines(dirty));
+        core.pending
+            .lock()
+            .unwrap()
+            .absorb(TerminalDamage::Lines(dirty));
         core.generation.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -712,7 +750,11 @@ pub fn terminal_selection_extend(core: &TerminalCore, row: usize, col: usize) {
     if let Some(sel) = sel.as_mut() {
         let (sr, sc) = sel.start;
         let forward = (row, col) >= (sr, sc);
-        let (start, end) = if forward { ((sr, sc), (row, col)) } else { ((row, col), (sr, sc)) };
+        let (start, end) = if forward {
+            ((sr, sc), (row, col))
+        } else {
+            ((row, col), (sr, sc))
+        };
         sel.start = start;
         sel.end = end;
     }
@@ -779,7 +821,10 @@ pub fn terminal_selected_text(core: &TerminalCore) -> Option<String> {
     let sel = sel?;
     let cells = core.cells.lock().unwrap();
     let row_text = |r: usize| -> String {
-        cells.get(r).map(|row| row.iter().map(|c| c.ch).collect()).unwrap_or_default()
+        cells
+            .get(r)
+            .map(|row| row.iter().map(|c| c.ch).collect())
+            .unwrap_or_default()
     };
     let (start, end) = (sel.start, sel.end);
     let text = match sel.kind {
@@ -796,9 +841,10 @@ pub fn terminal_selected_text(core: &TerminalCore) -> Option<String> {
             }
             out.join("\n")
         }
-        TermSelectionType::Lines => {
-            (start.0..=end.0).map(row_text).collect::<Vec<_>>().join("\n")
-        }
+        TermSelectionType::Lines => (start.0..=end.0)
+            .map(row_text)
+            .collect::<Vec<_>>()
+            .join("\n"),
         TermSelectionType::Semantic => {
             // 词选锚点已在 expand 阶段写入 start;此处按 Simple 截段。
             let line = row_text(end.0);
@@ -921,12 +967,20 @@ pub struct WindowRow {
 /// 重复喂同 id = 覆盖(digest 变则 widget 重建)。溢出护栏:总量超
 /// [`WINDOW_STORE_CAP`] 时按距 base 的距离逐远逐出。
 pub fn terminal_feed_window_for(key: &str, base: i64, rows: &[Vec<TermCell>]) {
-    let Some(core) = terminal_core(key) else { return };
+    let Some(core) = terminal_core(key) else {
+        return;
+    };
     let mut store = core.window_store.lock().unwrap();
     for (i, cells) in rows.iter().enumerate() {
         let id = base + i as i64;
         let digest = row_digest(cells);
-        store.insert(id, WindowRow { cells: cells.clone(), digest });
+        store.insert(
+            id,
+            WindowRow {
+                cells: cells.clone(),
+                digest,
+            },
+        );
     }
     // 溢出逐出:距 base 最远的条目先行(泵窗滚动方向不定,双侧余量)。
     while store.len() > WINDOW_STORE_CAP {
@@ -948,7 +1002,10 @@ pub fn terminal_window_row(core: &TerminalCore, id: i64) -> Option<WindowRow> {
         .lock()
         .unwrap()
         .get(&id)
-        .map(|r| WindowRow { cells: r.cells.clone(), digest: r.digest })
+        .map(|r| WindowRow {
+            cells: r.cells.clone(),
+            digest: r.digest,
+        })
 }
 
 /// PLAN-024:虚拟画布总高(px;widget canvas_height 的 glue 侧镜像,
@@ -1065,7 +1122,9 @@ pub fn terminal_drain_input(core: &TerminalCore) -> Option<String> {
 /// terminal keyed it (single-terminal apps are the current consumer shape).
 pub fn terminal_drain_all_inputs() -> Vec<String> {
     let mut map = TERMINALS.lock().unwrap();
-    let Some(map) = map.as_mut() else { return Vec::new() };
+    let Some(map) = map.as_mut() else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for core in map.values() {
         out.append(&mut core.pending_input.lock().unwrap());
@@ -1246,7 +1305,8 @@ pub fn char_width(ch: char) -> usize {
         || (0xFFE0..=0xFFE6).contains(&c)
         || (0x1F300..=0x1F64F).contains(&c) // Emoji pictographs
         || (0x1F900..=0x1F9FF).contains(&c) // Supplemental Symbols
-        || (0x20000..=0x2FFFD).contains(&c) // CJK Ext B..
+        || (0x20000..=0x2FFFD).contains(&c)
+    // CJK Ext B..
     {
         return 2;
     }
@@ -1288,7 +1348,11 @@ mod tests {
         assert_eq!(core.line(2).as_deref(), Some(""));
         assert!(core.generation() > gen0);
         let damage = terminal_take_damage(core);
-        assert_eq!(damage, TerminalDamage::Lines(vec![0, 1]), "only the two fed rows are dirty");
+        assert_eq!(
+            damage,
+            TerminalDamage::Lines(vec![0, 1]),
+            "only the two fed rows are dirty"
+        );
 
         // Identical feed is a no-op (generation stable — no frame churn).
         let gen1 = core.generation();
@@ -1304,7 +1368,10 @@ mod tests {
         terminal_dispose("t2-core-2");
         let core = terminal("t2-core-2", 40, 4);
         terminal_feed(core, &["a".into(), "b".into(), "c".into(), "d".into()]);
-        assert_eq!(terminal_take_damage(core), TerminalDamage::Lines(vec![0, 1, 2, 3]));
+        assert_eq!(
+            terminal_take_damage(core),
+            TerminalDamage::Lines(vec![0, 1, 2, 3])
+        );
         let core2 = terminal("t2-core-2", 40, 6);
         assert_eq!(core2.rows, 6);
         assert_eq!(core2.line(0).as_deref(), Some("a"));
@@ -1320,7 +1387,10 @@ mod tests {
         terminal_dispose("t2-damage-1");
         let core = terminal("t2-damage-1", 20, 4);
         terminal_feed(core, &["one".into(), "two".into()]);
-        assert_eq!(terminal_take_damage(core), TerminalDamage::Lines(vec![0, 1]));
+        assert_eq!(
+            terminal_take_damage(core),
+            TerminalDamage::Lines(vec![0, 1])
+        );
 
         // Feed 2: row 0 changes, row 1 identical, row 2 newly written.
         terminal_feed(core, &["ONE".into(), "two".into(), "three".into()]);
@@ -1352,8 +1422,16 @@ mod tests {
             core,
             0,
             vec![
-                TermCell { ch: 'x', fg: TermColor::Indexed(1), bg: TermColor::Default },
-                TermCell { ch: 'y', fg: TermColor::Rgb(10, 20, 30), bg: TermColor::Indexed(4) },
+                TermCell {
+                    ch: 'x',
+                    fg: TermColor::Indexed(1),
+                    bg: TermColor::Default,
+                },
+                TermCell {
+                    ch: 'y',
+                    fg: TermColor::Rgb(10, 20, 30),
+                    bg: TermColor::Indexed(4),
+                },
             ],
         );
         assert_eq!(core.line(0).as_deref(), Some("xy"));
@@ -1540,8 +1618,15 @@ mod tests {
 
         // drain_all:两个终端的余量一次取走(键序稳定,单端内 FIFO)。
         terminal_push_input(a, "x");
-        assert_eq!(terminal_drain_all_inputs(), vec!["x".to_owned(), "\u{1b}[A".to_owned()]);
-        assert_eq!(terminal_drain_all_inputs(), Vec::<String>::new(), "排空后为空");
+        assert_eq!(
+            terminal_drain_all_inputs(),
+            vec!["x".to_owned(), "\u{1b}[A".to_owned()]
+        );
+        assert_eq!(
+            terminal_drain_all_inputs(),
+            Vec::<String>::new(),
+            "排空后为空"
+        );
         terminal_dispose("t4-in-1");
         terminal_dispose("t4-in-2");
     }
@@ -1560,7 +1645,10 @@ mod tests {
         assert_eq!(terminal_take_any_resize(), None, "取走即清");
         // 钳位(014 护栏:列数下限 2——1 列触发引擎重排病理,DEBTS #15)。
         terminal_request_resize(core, 0, u16::MAX);
-        assert_eq!(terminal_take_any_resize(), Some((MIN_RESIZE_COLS, MAX_RESIZE_ROWS)));
+        assert_eq!(
+            terminal_take_any_resize(),
+            Some((MIN_RESIZE_COLS, MAX_RESIZE_ROWS))
+        );
         terminal_dispose("t4-rs-1");
     }
 
@@ -1589,7 +1677,10 @@ mod tests {
         let mut loaded = PALETTE_LIGHT;
         loaded[1] = 0x11_22_33;
         terminal_palette_load(TERMINAL_SCHEME_LIGHT, loaded);
-        assert_eq!(terminal_effective_palette(TERMINAL_SCHEME_LIGHT)[1], 0x11_22_33);
+        assert_eq!(
+            terminal_effective_palette(TERMINAL_SCHEME_LIGHT)[1],
+            0x11_22_33
+        );
         // 未知 scheme 回落 classic-dark(渲染不中断)。
         assert_eq!(terminal_effective_palette(99), PALETTE_CLASSIC_DARK);
         core.set_scheme(TERMINAL_SCHEME_FOLLOW_THEME);
@@ -1602,7 +1693,11 @@ mod tests {
         terminal_dispose("p18-feed-b");
         let a = terminal("p18-feed-a", 20, 4);
         let _b = terminal("p18-feed-b", 20, 4);
-        let cells = vec![TermCell { ch: 'x', fg: TermColor::Indexed(1), bg: TermColor::Default }];
+        let cells = vec![TermCell {
+            ch: 'x',
+            fg: TermColor::Indexed(1),
+            bg: TermColor::Default,
+        }];
 
         // 缺 key:no-op(不 panic、不投喂任何端)。
         terminal_feed_cells_for("p18-missing", 0, cells.clone());
@@ -1630,15 +1725,30 @@ mod tests {
         terminal_push_input(a, "a1");
         terminal_push_input(a, "a2");
         terminal_push_input(b, "b1");
-        assert_eq!(terminal_drain_inputs_for(a), vec!["a1".to_owned(), "a2".to_owned()]);
-        assert_eq!(terminal_drain_inputs_for(a), Vec::<String>::new(), "排空即净");
-        assert_eq!(terminal_drain_inputs_for(b), vec!["b1".to_owned()], "A 的排空不得带走 B 的载荷");
+        assert_eq!(
+            terminal_drain_inputs_for(a),
+            vec!["a1".to_owned(), "a2".to_owned()]
+        );
+        assert_eq!(
+            terminal_drain_inputs_for(a),
+            Vec::<String>::new(),
+            "排空即净"
+        );
+        assert_eq!(
+            terminal_drain_inputs_for(b),
+            vec!["b1".to_owned()],
+            "A 的排空不得带走 B 的载荷"
+        );
         // 广播旧件兼容面仍在(此处两端皆空 → 空)。
         assert_eq!(terminal_drain_all_inputs(), Vec::<String>::new());
 
         // 几何:A 落请求,定向取只动 A,B 的 None 不受扰。
         terminal_request_resize(a, 60, 20);
-        assert_eq!(terminal_take_resize_for(b), None, "A 的请求不得被 B 的定向泵取走");
+        assert_eq!(
+            terminal_take_resize_for(b),
+            None,
+            "A 的请求不得被 B 的定向泵取走"
+        );
         assert_eq!(terminal_take_resize_for(a), Some((60, 20)));
         assert_eq!(terminal_take_resize_for(a), None, "取走即清");
         terminal_dispose("p18-pump-a");
@@ -1654,14 +1764,21 @@ mod tests {
             terminal_core("p028-bridge").is_none(),
             "前置:注册表无核(terminal_core 只读不建)"
         );
-        assert!(terminal_pend_resize("p028-bridge", 100, 30), "首次请求应落位");
+        assert!(
+            terminal_pend_resize("p028-bridge", 100, 30),
+            "首次请求应落位"
+        );
         let core = terminal_core("p028-bridge").expect("桥写应惰性建核");
         assert_eq!(terminal_take_resize_for(core), Some((100, 30)));
         assert_eq!(terminal_take_resize_for(core), None, "取走即清");
         // 覆盖旧请求语义:未消费前重推,泵只取最新值。
         assert!(terminal_pend_resize("p028-bridge", 80, 24));
         assert!(terminal_pend_resize("p028-bridge", 120, 40));
-        assert_eq!(terminal_take_resize_for(core), Some((120, 40)), "只关心最新值");
+        assert_eq!(
+            terminal_take_resize_for(core),
+            Some((120, 40)),
+            "只关心最新值"
+        );
         // clamp 面:退化 (0,0) 在本层 clamp 为 (2,1) 落位——退化**拒收**
         // 在 geom 解析层(term_engine p028 测试),本层只负责钳位与
         // 同值 no-op(重推同值:core 占位 (0,0)≠(2,1) 仍落位,去重归
@@ -1682,11 +1799,31 @@ mod tests {
             core,
             0,
             vec![
-                TermCell { ch: 'h', fg: TermColor::Indexed(1), bg: TermColor::Default },
-                TermCell { ch: 'e', fg: TermColor::Indexed(2), bg: TermColor::Default },
-                TermCell { ch: 'l', fg: TermColor::Default, bg: TermColor::Indexed(4) },
-                TermCell { ch: 'l', fg: TermColor::Indexed(3), bg: TermColor::Default },
-                TermCell { ch: 'o', fg: TermColor::Indexed(5), bg: TermColor::Default },
+                TermCell {
+                    ch: 'h',
+                    fg: TermColor::Indexed(1),
+                    bg: TermColor::Default,
+                },
+                TermCell {
+                    ch: 'e',
+                    fg: TermColor::Indexed(2),
+                    bg: TermColor::Default,
+                },
+                TermCell {
+                    ch: 'l',
+                    fg: TermColor::Default,
+                    bg: TermColor::Indexed(4),
+                },
+                TermCell {
+                    ch: 'l',
+                    fg: TermColor::Indexed(3),
+                    bg: TermColor::Default,
+                },
+                TermCell {
+                    ch: 'o',
+                    fg: TermColor::Indexed(5),
+                    bg: TermColor::Default,
+                },
             ],
         );
         assert_eq!(terminal_take_damage(core), TerminalDamage::Lines(vec![0]));
@@ -1715,7 +1852,17 @@ mod tests {
         // cells/digests 与新几何等长。
         terminal_dispose("t4-geo-shrink");
         let core = terminal("t4-geo-shrink", 40, 6);
-        terminal_feed(core, &["a".into(), "b".into(), "c".into(), "d".into(), "e".into(), "f".into()]);
+        terminal_feed(
+            core,
+            &[
+                "a".into(),
+                "b".into(),
+                "c".into(),
+                "d".into(),
+                "e".into(),
+                "f".into(),
+            ],
+        );
         // 收缩 6 → 3。
         let core2 = terminal("t4-geo-shrink", 40, 3);
         assert_eq!(core2.rows, 3);
@@ -1723,7 +1870,10 @@ mod tests {
         assert_eq!(core2.line(2).as_deref(), Some("c"));
         // 增长 3 → 5(feed 5 行不再越界)。
         let core3 = terminal("t4-geo-shrink", 40, 5);
-        terminal_feed(core3, &["1".into(), "2".into(), "3".into(), "4".into(), "5".into()]);
+        terminal_feed(
+            core3,
+            &["1".into(), "2".into(), "3".into(), "4".into(), "5".into()],
+        );
         assert_eq!(core3.line(4).as_deref(), Some("5"));
         terminal_dispose("t4-geo-shrink");
     }
@@ -1736,8 +1886,8 @@ mod tests {
     /// 节点存在(几何/键入 prop 可见)。
     #[test]
     fn minimal_at_example_mounts_terminal_placeholder() {
-        use crate::aura::extract::extract_widget_from_decl;
         use crate::ast::Stmt;
+        use crate::aura::extract::extract_widget_from_decl;
         use crate::parser::Parser;
         use crate::session::CompilerSession;
         use crate::ui::aura_view_builder::AuraViewBuilder;
@@ -1770,14 +1920,21 @@ mod tests {
         // The tree must carry the terminal element with its geometry.
         fn find_terminal<M: Clone + std::fmt::Debug>(v: &View<M>) -> Option<String> {
             match v {
-                View::Terminal { key, cols, rows, lines, .. } => {
-                    Some(format!("{key}/{cols}/{rows}/{}", lines.len()))
-                }
+                View::Terminal {
+                    key,
+                    cols,
+                    rows,
+                    lines,
+                    ..
+                } => Some(format!("{key}/{cols}/{rows}/{}", lines.len())),
                 _ => None,
             }
         }
         let hit = find_terminal(&view).expect("View::Terminal missing from built view tree");
-        assert_eq!(hit, "main/40/10/0", "terminal geometry props must round-trip");
+        assert_eq!(
+            hit, "main/40/10/0",
+            "terminal geometry props must round-trip"
+        );
 
         // Headless: the placeholder node exists in the VTree (占位矩形在案)。
         let vtree = view_to_vtree(view);
@@ -1796,7 +1953,9 @@ mod tests {
         terminal_dispose("t3-bench-1");
         let rows = 2000usize;
         let core = terminal("t3-bench-1", 80, rows as u16);
-        let batch: Vec<String> = (0..rows).map(|i| format!("line {i:04}: the quick brown fox")).collect();
+        let batch: Vec<String> = (0..rows)
+            .map(|i| format!("line {i:04}: the quick brown fox"))
+            .collect();
 
         let started = std::time::Instant::now();
         terminal_feed(core, &batch);
@@ -1810,7 +1969,11 @@ mod tests {
         }
         terminal_feed(core, &next);
         let damage = terminal_take_damage(core);
-        assert_eq!(damage.dirty_count(), 5, "streaming tick dirties only the changed tail");
+        assert_eq!(
+            damage.dirty_count(),
+            5,
+            "streaming tick dirties only the changed tail"
+        );
 
         let full_snapshot = core.lines();
         assert_eq!(full_snapshot.len(), rows);

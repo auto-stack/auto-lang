@@ -1,0 +1,29 @@
+{
+  "plan": "PLAN-767",
+  "revision": 2,
+  "deltas": [
+    {
+      "id": "SD-01",
+      "operation": "modify",
+      "target": "docs/specs/website/design/os-ai-introduction.md",
+      "sha256": "7ac4aea3b9a5fbc209026b7f6edf5afe2082f947d36af7f4bf74155a9002c2b9",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "id": "SD-02",
+      "operation": "modify",
+      "target": "docs/specs/website/project.md",
+      "sha256": "4f68a7bd4cf4cf356be8c3b3a5f1a85331cf63fe775b9e38aecfd6317914b86f",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    }
+  ],
+  "hash_encoding": "committed UTF-8/LF; normalized from working copy CRLF, no semantic delta"
+}

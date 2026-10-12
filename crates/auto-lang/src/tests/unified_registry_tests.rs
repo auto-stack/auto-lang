@@ -1,9 +1,9 @@
 // Plan 077 Phase 4: Unified Object Registry Integration Tests
 // Tests for the unified object registry in AutoVM Engine
 
-use crate::vm::types::{ListData, ListStorage};
 use crate::vm::engine::AutoVM;
-use crate::vm::heap_object::{TypeTag, downcast, downcast_mut, is_type};
+use crate::vm::heap_object::{downcast, downcast_mut, is_type, TypeTag};
+use crate::vm::types::{ListData, ListStorage};
 use crate::vm::virt_memory::VirtualFlash;
 use std::sync::Arc;
 
@@ -513,8 +513,17 @@ fn test_engine_registry_performance() {
     let retrieve_duration = start.elapsed();
 
     // Performance should be reasonable (these are loose checks)
-    assert!(insert_duration.as_millis() < 1000, "Insertion took too long");
-    assert!(retrieve_duration.as_millis() < 500, "Retrieval took too long");
+    assert!(
+        insert_duration.as_millis() < 1000,
+        "Insertion took too long"
+    );
+    assert!(
+        retrieve_duration.as_millis() < 500,
+        "Retrieval took too long"
+    );
 
-    println!("Insert: {:?}, Retrieve: {:?}", insert_duration, retrieve_duration);
+    println!(
+        "Insert: {:?}, Retrieve: {:?}",
+        insert_duration, retrieve_duration
+    );
 }

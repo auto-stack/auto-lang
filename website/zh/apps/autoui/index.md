@@ -64,7 +64,7 @@ reverse
 </ul>
 <template #visual>
 <div class="shot-pair">
-<img src="/v05/gallery-home.png" alt="Widgets Gallery 桌面形态(VM)" />
+<img src="/v05/gallery-home.webp" alt="Widgets Gallery 桌面形态(VM)" />
 <div class="demo-list">
 <div>006 Hero Section</div>
 <div>008 Pricing Table</div>

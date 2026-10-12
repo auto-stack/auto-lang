@@ -15,21 +15,30 @@ use crate::{ast, run};
 #[test]
 fn test_vm_ret_constant() {
     // Direct bytecode test: FN_PROLOG(0,0), CONST_I32(42), RET(0)
-    use crate::vm::opcode::OpCode;
     use crate::vm::engine::AutoVM;
+    use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
 
     let bytecode = vec![
-        OpCode::FN_PROLOG as u8, 0, 0,      // FN_PROLOG with n_args=0
-        OpCode::CONST_I32 as u8, 42, 0, 0, 0,  // CONST_I32(42)
-        OpCode::RET as u8, 0,                   // RET with n_args=0
+        OpCode::FN_PROLOG as u8,
+        0,
+        0, // FN_PROLOG with n_args=0
+        OpCode::CONST_I32 as u8,
+        42,
+        0,
+        0,
+        0, // CONST_I32(42)
+        OpCode::RET as u8,
+        0, // RET with n_args=0
     ];
 
     let flash = VirtualFlash::new_with_code(bytecode);
     let vm = AutoVM::new(flash, 1024);
     let rt = tokio::runtime::Runtime::new().unwrap();
     let task_id = vm.spawn_task(0, 1024);
-    rt.block_on(async { vm.run_task_loop().await; });
+    rt.block_on(async {
+        vm.run_task_loop().await;
+    });
 
     if let Some(task_arc) = vm.tasks.get(&task_id).map(|r| r.value().clone()) {
         let mut task = task_arc.blocking_lock();
@@ -41,23 +50,36 @@ fn test_vm_ret_constant() {
 #[test]
 fn test_vm_const_i32_add() {
     // Direct bytecode test: FN_PROLOG(0,0), CONST_I32(10), CONST_I32(20), ADD, RET(0)
-    use crate::vm::opcode::OpCode;
     use crate::vm::engine::AutoVM;
+    use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
 
     let bytecode = vec![
-        OpCode::FN_PROLOG as u8, 0, 0,      // FN_PROLOG
-        OpCode::CONST_I32 as u8, 10, 0, 0, 0,   // 10
-        OpCode::CONST_I32 as u8, 20, 0, 0, 0,  // 20
-        OpCode::ADD as u8,                        // 10 + 20
-        OpCode::RET as u8, 0,                   // RET
+        OpCode::FN_PROLOG as u8,
+        0,
+        0, // FN_PROLOG
+        OpCode::CONST_I32 as u8,
+        10,
+        0,
+        0,
+        0, // 10
+        OpCode::CONST_I32 as u8,
+        20,
+        0,
+        0,
+        0,                 // 20
+        OpCode::ADD as u8, // 10 + 20
+        OpCode::RET as u8,
+        0, // RET
     ];
 
     let flash = VirtualFlash::new_with_code(bytecode);
     let vm = AutoVM::new(flash, 1024);
     let rt = tokio::runtime::Runtime::new().unwrap();
     let task_id = vm.spawn_task(0, 1024);
-    rt.block_on(async { vm.run_task_loop().await; });
+    rt.block_on(async {
+        vm.run_task_loop().await;
+    });
 
     if let Some(task_arc) = vm.tasks.get(&task_id).map(|r| r.value().clone()) {
         let mut task = task_arc.blocking_lock();
@@ -231,7 +253,11 @@ fn test_node_arg_ident() {
             lib (id: myname) {}
         "#;
     let result = run(code);
-    assert!(result.is_ok(), "Node with ident arg should parse, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Node with ident arg should parse, got: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -473,7 +499,11 @@ fn main() {
 }
 "#;
     let result = run(code);
-    assert!(result.is_ok(), "for loop outer var assignment should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "for loop outer var assignment should work: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -493,7 +523,8 @@ fn main() {
     simple_hash()
     print("hello")
 }
-"#.to_string();
+"#
+    .to_string();
 
     let handle = thread::Builder::new()
         .stack_size(1024 * 1024)
@@ -501,7 +532,7 @@ fn main() {
         .expect("Failed to spawn thread");
 
     match handle.join() {
-        Ok(Ok(_)) => {},
+        Ok(Ok(_)) => {}
         Ok(Err(e)) => panic!("run() failed on 1MB stack: {:?}", e),
         Err(_) => panic!("thread panicked on 1MB stack (stack overflow?)"),
     }
@@ -516,7 +547,11 @@ let v = s.view
 v
 "#;
     let result = run(code);
-    assert!(result.is_ok(), "str_slice type lookup should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "str_slice type lookup should work: {:?}",
+        result
+    );
 }
 #[test]
 // Iterator is not recognized as a type name in codegen, so Iterator.next(it)

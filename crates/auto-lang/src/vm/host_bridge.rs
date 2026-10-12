@@ -24,10 +24,7 @@ lazy_static::lazy_static! {
 
 /// 注册一个宿主桥函数(ash-runner 启动时调用;同名覆盖便于测试)。
 pub fn register_host_call(name: &str, f: HostCallFn) {
-    HOST_CALLS
-        .lock()
-        .unwrap()
-        .insert(name.to_string(), f);
+    HOST_CALLS.lock().unwrap().insert(name.to_string(), f);
 }
 
 /// 调用已注册的宿主桥函数(VM native 侧进入)。

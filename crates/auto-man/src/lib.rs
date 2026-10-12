@@ -69,6 +69,9 @@ pub mod rust_ui;
 // Phase 9: API code generation (Plan 130)
 pub mod api_gen;
 
+// PLAN-736: 工程级 HTTP 服务独立启动（`auto serve`；vm/rust 双轨）
+pub mod http_service;
+
 // Plan 547: deterministic image-viewer directory/index primitives.
 pub mod image_viewer;
 

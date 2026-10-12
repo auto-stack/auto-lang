@@ -35,11 +35,12 @@ pub struct CallFrame {
 /// Represents a single concurrent task in the AutoVM
 /// Holds its own stack, instruction pointer, and execution state.
 pub struct AutoTask {
+    pub(crate) assembly_checked: Option<(usize, u64)>,
     pub id: TaskId,
     pub ram: VirtualRAM,
     pub ip: usize,
-    pub bp: usize, // Base Pointer
-    pub prev_sp: usize, // Debug: previous sp for tracking drift
+    pub bp: usize,         // Base Pointer
+    pub prev_sp: usize,    // Debug: previous sp for tracking drift
     pub num_locals: usize, // Number of local variables in current stack frame
     pub status: TaskStatus,
     pub wake_time: Option<Instant>, // For SLEEP opcode
@@ -97,6 +98,9 @@ pub struct AutoTask {
     // 发生在 SSE serve 循环，thread-local scope 已退出）。清理点：
     // cleanup_sse_iterator（SSE 输出终结）、abort_parked_request（请求废弃）。
     pub owned_stream_ids: Vec<u64>,
+    // PLAN-093 (G-9 系加固): 段模式等待计时起点（首次置位时打点）——重入臂
+    // 超时判定用，对齐忙等臂 30s 上限；结果丢失时不再无限 rewind+re-park。
+    pub waiting_http_since: Option<std::time::Instant>,
     // Plan 010 (MS3-A): try/catch exception handler stack. Each frame records
     // the catch handler's absolute instruction pointer; when a runtime error
     // is raised, the top frame is popped and execution jumps to its pc.
@@ -225,6 +229,7 @@ impl AccumContainer {
 impl AutoTask {
     pub fn new(id: TaskId, ram_size: usize, start_ip: usize) -> Self {
         Self {
+            assembly_checked: None,
             id,
             ram: VirtualRAM::new(ram_size),
             ip: start_ip,
@@ -236,10 +241,10 @@ impl AutoTask {
             cooperative_http_sleep: false,
             current_closure_id: None,
             saved_closure_id: None,
-            current_fn_n_args: 0, // Plan 088 Phase 4: Initialize to 0
+            current_fn_n_args: 0,   // Plan 088 Phase 4: Initialize to 0
             current_fn_n_locals: 0, // Plan 088 Phase 4: Initialize to 0
             last_result_type: ResultType::default(), // Plan 118: Initialize to Int
-            last_error: None, // Plan 118: Initialize to None
+            last_error: None,       // Plan 118: Initialize to None
             in_message_loop: false,
             task_type_name: None,
             current_handler_has_context: false,
@@ -254,17 +259,18 @@ impl AutoTask {
             waiting_http_request_id: None,
             waiting_http_stream_id: None,
             owned_stream_ids: Vec::new(),
+            waiting_http_since: None,
             handler_stack: Vec::new(),
             pending_native_arg_count: 0, // Plan 369 Task 10: runtime arg count for py-FFI shims
             accum_stack: Vec::new(),
             waiting_future_id: None,
             async_frames: Vec::new(),
-            frame_ids: Vec::new(),      // PLAN-667: 帧身份表
-            frame_uid_gen: 0,           // PLAN-667: 首个真帧 uid 从 1 起
+            frame_ids: Vec::new(),       // PLAN-667: 帧身份表
+            frame_uid_gen: 0,            // PLAN-667: 首个真帧 uid 从 1 起
             segment_no_busy_wait: false, // PLAN-705 T-03: 段驱动模式标志
-            cpu_steps_total: 0,         // PLAN-711 T-11: 跨片累计指令数
-            cpu_baseline_strings: None, // PLAN-711 T-11: 跨片 runaway 基线
-            cpu_baseline_heap: None,    // PLAN-711 T-11: 跨片 runaway 基线
+            cpu_steps_total: 0,          // PLAN-711 T-11: 跨片累计指令数
+            cpu_baseline_strings: None,  // PLAN-711 T-11: 跨片 runaway 基线
+            cpu_baseline_heap: None,     // PLAN-711 T-11: 跨片 runaway 基线
         }
     }
 }

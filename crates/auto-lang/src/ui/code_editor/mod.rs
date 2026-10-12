@@ -18,20 +18,21 @@ pub mod theme;
 pub mod iced;
 
 pub use core::{
-    code_editor, code_editor_count, code_editor_cursor, code_editor_delta, code_editor_dispose,
-    code_editor_edit, code_editor_find, code_editor_load_file,
-    code_editor_caret_offset_y, code_editor_redo, code_editor_select_all,
-    code_editor_save, code_editor_set_cursor, code_editor_set_text, code_editor_text,
-    code_editor_undo, code_editor_with, editor_scroll_handle, ensure_font_system_call,
-    set_font_system_call, storage_key,
-    with_font_system, CodeEditorConfig,
-    CodeEditorCore, CoreOutput, EditorButton, EditorClipboard, EditorInput, EditorKey,
-    EditorModifiers, NullClipboard, TextDelta,
+    code_editor, code_editor_caret_offset_y, code_editor_count, code_editor_cursor,
+    code_editor_delta, code_editor_dispose, code_editor_edit, code_editor_find,
+    code_editor_load_file, code_editor_redo, code_editor_save, code_editor_select_all,
+    code_editor_set_cursor, code_editor_set_text, code_editor_text, code_editor_undo,
+    code_editor_with, editor_scroll_handle, ensure_font_system_call, set_font_system_call,
+    storage_key, with_font_system, CodeEditorConfig, CodeEditorCore, CoreOutput, EditorButton,
+    EditorClipboard, EditorInput, EditorKey, EditorModifiers, NullClipboard, TextDelta,
 };
 // Plan 418: menu-driven clipboard ops (requires the arboard bridge).
 #[cfg(feature = "ui-clipboard")]
 pub use core::{code_editor_clipboard_op, ClipboardOp};
-pub use diff::{diff_lines, diff_lines_parallel, diff_lines_windowed, diff_snapshots, refine_inline, DiffOpts, DiffOut, Hunk, Refinement};
+pub use diff::{
+    diff_lines, diff_lines_parallel, diff_lines_windowed, diff_snapshots, refine_inline, DiffOpts,
+    DiffOut, Hunk, Refinement,
+};
 pub use draw::EditorDrawList;
 pub use theme::{current_theme, set_theme_source, CodeEditorTheme, Rgba};
 

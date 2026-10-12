@@ -36,7 +36,9 @@ impl MatchResult {
 
     /// Create an empty match result (for patterns without bindings)
     pub fn empty() -> Self {
-        Self { bindings: Vec::new() }
+        Self {
+            bindings: Vec::new(),
+        }
     }
 
     /// Check if there are any bindings
@@ -100,7 +102,11 @@ impl PatternMatcher {
     }
 
     /// Match a type binding pattern
-    fn match_type_binding(name: &str, type_expr: &crate::ast::Type, message: &Value) -> Option<MatchResult> {
+    fn match_type_binding(
+        name: &str,
+        type_expr: &crate::ast::Type,
+        message: &Value,
+    ) -> Option<MatchResult> {
         use crate::ast::Type;
 
         // Check if the message matches the expected type
@@ -119,7 +125,7 @@ impl PatternMatcher {
 
             // Unsigned integer types (Value has Uint(u32), no U64)
             (Type::Uint, Value::Uint(_)) => true,
-            (Type::U64, Value::Uint(_)) => true,  // U64 type matches Uint value
+            (Type::U64, Value::Uint(_)) => true, // U64 type matches Uint value
             (Type::Byte, Value::Byte(_)) => true,
             (Type::Byte, Value::U8(_)) => true,
 
@@ -146,7 +152,7 @@ impl PatternMatcher {
             // Array types
             (Type::Array(_), Value::Array(_)) => true,
             (Type::List(_), Value::Array(_)) => true,
-            (Type::Map(_, _), Value::Obj(_)) => true,  // Plan 160: Map matches Obj
+            (Type::Map(_, _), Value::Obj(_)) => true, // Plan 160: Map matches Obj
 
             // Option types
             (Type::Option(_), Value::Nil) => true,
@@ -420,17 +426,38 @@ mod tests {
     #[test]
     fn test_values_equal() {
         assert!(PatternMatcher::values_equal(&Value::Int(1), &Value::Int(1)));
-        assert!(PatternMatcher::values_equal(&Value::Bool(true), &Value::Bool(true)));
-        assert!(PatternMatcher::values_equal(&Value::str("a"), &Value::str("a")));
-        assert!(!PatternMatcher::values_equal(&Value::Int(1), &Value::Int(2)));
+        assert!(PatternMatcher::values_equal(
+            &Value::Bool(true),
+            &Value::Bool(true)
+        ));
+        assert!(PatternMatcher::values_equal(
+            &Value::str("a"),
+            &Value::str("a")
+        ));
+        assert!(!PatternMatcher::values_equal(
+            &Value::Int(1),
+            &Value::Int(2)
+        ));
     }
 
     #[test]
     fn test_compare_ordered() {
-        assert!(PatternMatcher::compare_values(&Value::Int(10), &auto_val::Op::Gt, &Value::Int(5)).unwrap());
-        assert!(PatternMatcher::compare_values(&Value::Int(5), &auto_val::Op::Lt, &Value::Int(10)).unwrap());
-        assert!(PatternMatcher::compare_values(&Value::Int(5), &auto_val::Op::Le, &Value::Int(5)).unwrap());
-        assert!(PatternMatcher::compare_values(&Value::Int(5), &auto_val::Op::Ge, &Value::Int(5)).unwrap());
+        assert!(
+            PatternMatcher::compare_values(&Value::Int(10), &auto_val::Op::Gt, &Value::Int(5))
+                .unwrap()
+        );
+        assert!(
+            PatternMatcher::compare_values(&Value::Int(5), &auto_val::Op::Lt, &Value::Int(10))
+                .unwrap()
+        );
+        assert!(
+            PatternMatcher::compare_values(&Value::Int(5), &auto_val::Op::Le, &Value::Int(5))
+                .unwrap()
+        );
+        assert!(
+            PatternMatcher::compare_values(&Value::Int(5), &auto_val::Op::Ge, &Value::Int(5))
+                .unwrap()
+        );
     }
 
     #[test]

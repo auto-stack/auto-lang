@@ -35,8 +35,7 @@ fn guarded() str {{
 "#
     );
 
-    let (vm, _stdout, _entry, _object_type) =
-        crate::create_vm_from_source(&code).expect("compile");
+    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(&code).expect("compile");
     let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
     let (req_id, seg) = match vm.call_fn_by_name_segment(&mut task, "guarded", 0) {
         crate::vm::engine::SegmentOutcome::Parked {
@@ -82,7 +81,8 @@ fn http_error_status_still_returns_value_not_throw() {
         let (mut stream, _) = listener.accept().expect("accept");
         let mut buf = [0u8; 4096];
         let _ = std::io::Read::read(&mut stream, &mut buf);
-        let resp = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        let resp =
+            "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
         let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
     });
 
@@ -99,8 +99,7 @@ fn guarded() str {{
 "#
     );
 
-    let (vm, _stdout, _entry, _object_type) =
-        crate::create_vm_from_source(&code).expect("compile");
+    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(&code).expect("compile");
     let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
     let (req_id, seg) = match vm.call_fn_by_name_segment(&mut task, "guarded", 0) {
         crate::vm::engine::SegmentOutcome::Parked {

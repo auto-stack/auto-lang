@@ -1,7 +1,7 @@
-use crate::ast::{Param, GenericParam, ToAtom, ToAtomStr, ToNode, Type};
 use crate::ast::{AtomWriter, Name};
-use auto_val::{Node as AutoNode, Value};
+use crate::ast::{GenericParam, Param, ToAtom, ToAtomStr, ToNode, Type};
 use auto_val::AutoStr;
+use auto_val::{Node as AutoNode, Value};
 use std::{fmt, io as stdio};
 
 /// Spec implementation with type arguments
@@ -19,7 +19,11 @@ pub struct SpecImpl {
 
 impl SpecImpl {
     pub fn new(spec_name: Name, type_args: Vec<Type>) -> Self {
-        Self { spec_name, type_args, assoc_bindings: Vec::new() }
+        Self {
+            spec_name,
+            type_args,
+            assoc_bindings: Vec::new(),
+        }
     }
 }
 
@@ -40,7 +44,7 @@ pub struct AssociatedType {
 #[derive(Debug, Clone)]
 pub struct SpecDecl {
     pub name: Name,
-    pub generic_params: Vec<GenericParam>,  // Plan 057: Generic parameters
+    pub generic_params: Vec<GenericParam>, // Plan 057: Generic parameters
     pub methods: Vec<SpecMethod>,
     pub is_pub: bool,
     /// Plan 397: supertrait bounds, e.g. `spec Tool: Send + Sync { }` → ["Send", "Sync"].
@@ -64,7 +68,11 @@ impl SpecDecl {
         }
     }
 
-    pub fn with_generic_params(name: Name, generic_params: Vec<GenericParam>, methods: Vec<SpecMethod>) -> Self {
+    pub fn with_generic_params(
+        name: Name,
+        generic_params: Vec<GenericParam>,
+        methods: Vec<SpecMethod>,
+    ) -> Self {
         Self {
             name,
             generic_params,
@@ -85,7 +93,9 @@ impl SpecDecl {
 
     /// Plan 417-E2: does the spec declare an associated type with this name?
     pub fn has_associated_type(&self, name: &str) -> bool {
-        self.associated_types.iter().any(|at| at.name.as_str() == name)
+        self.associated_types
+            .iter()
+            .any(|at| at.name.as_str() == name)
     }
 }
 
@@ -95,16 +105,26 @@ pub struct SpecMethod {
     pub name: Name,
     pub params: Vec<Param>,
     pub ret: Type,
-    pub body: Option<Box<crate::ast::Expr>>,  // Plan 019 Stage 8.5: Default method implementation
+    pub body: Option<Box<crate::ast::Expr>>, // Plan 019 Stage 8.5: Default method implementation
 }
 
 impl SpecMethod {
     pub fn new(name: Name, params: Vec<Param>, ret: Type) -> Self {
-        Self { name, params, ret, body: None }
+        Self {
+            name,
+            params,
+            ret,
+            body: None,
+        }
     }
 
     pub fn with_body(name: Name, params: Vec<Param>, ret: Type, body: crate::ast::Expr) -> Self {
-        Self { name, params, ret, body: Some(Box::new(body)) }
+        Self {
+            name,
+            params,
+            ret,
+            body: Some(Box::new(body)),
+        }
     }
 }
 
@@ -188,7 +208,12 @@ impl AtomWriter for SpecDecl {
                     write!(f, "type(name(\"{}\"))", tp.name)?;
                 }
                 GenericParam::Const(cp) => {
-                    write!(f, "const(name(\"{}\"), type({}))", cp.name, cp.typ.to_atom_str())?;
+                    write!(
+                        f,
+                        "const(name(\"{}\"), type({}))",
+                        cp.name,
+                        cp.typ.to_atom_str()
+                    )?;
                 }
             }
         }
@@ -312,11 +337,7 @@ mod tests {
     #[test]
     fn test_spec_decl_display() {
         let name = Name::from("Flyer");
-        let method = SpecMethod::new(
-            Name::from("fly"),
-            vec![],
-            Type::Void,
-        );
+        let method = SpecMethod::new(Name::from("fly"), vec![], Type::Void);
         let spec = SpecDecl::new(name, vec![method]);
 
         let display = format!("{}", spec);
@@ -328,11 +349,7 @@ mod tests {
     fn test_spec_decl_with_generic_params() {
         use crate::ast::{GenericParam, TypeParam};
         let name = Name::from("Storage");
-        let method = SpecMethod::new(
-            Name::from("data"),
-            vec![],
-            Type::Unknown,
-        );
+        let method = SpecMethod::new(Name::from("data"), vec![], Type::Unknown);
         let params = vec![GenericParam::Type(TypeParam {
             name: Name::from("T"),
             constraint: Vec::new(),
@@ -348,15 +365,13 @@ mod tests {
     fn test_spec_method_with_params() {
         let method = SpecMethod::new(
             Name::from("ride"),
-            vec![
-                Param {
-                    name: Name::from("vehicle"),
-                    ty: Type::Unknown,
-                    default: None,
-                    mode: Default::default(),
-                    destructure: None,
-                },
-            ],
+            vec![Param {
+                name: Name::from("vehicle"),
+                ty: Type::Unknown,
+                default: None,
+                mode: Default::default(),
+                destructure: None,
+            }],
             Type::Void,
         );
 
@@ -368,11 +383,7 @@ mod tests {
     #[test]
     fn test_spec_has_method() {
         let name = Name::from("Flyer");
-        let method = SpecMethod::new(
-            Name::from("fly"),
-            vec![],
-            Type::Void,
-        );
+        let method = SpecMethod::new(Name::from("fly"), vec![], Type::Void);
         let spec = SpecDecl::new(name, vec![method]);
 
         assert!(spec.has_method(&Name::from("fly")));
@@ -382,11 +393,7 @@ mod tests {
     #[test]
     fn test_spec_get_method() {
         let name = Name::from("Flyer");
-        let method = SpecMethod::new(
-            Name::from("fly"),
-            vec![],
-            Type::Void,
-        );
+        let method = SpecMethod::new(Name::from("fly"), vec![], Type::Void);
         let spec = SpecDecl::new(name, vec![method.clone()]);
 
         let retrieved = spec.get_method(&Name::from("fly"));
@@ -437,5 +444,4 @@ mod tests {
         let display = format!("{}", spec);
         assert!(display.contains("type Item"));
     }
-
 }

@@ -1,0 +1,33 @@
+{
+  "reviewed_commit": "212f222fbe9f07588ff3830a3792a4b9935c7955",
+  "base_commit": "716ca62db",
+  "roots": [
+    ".agents",
+    ".autoos",
+    ".cargo",
+    ".config",
+    ".gitattributes",
+    ".gitignore",
+    ".zcodeignore",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "Cargo.toml",
+    "LICENSE",
+    "README.cn.md",
+    "README.md",
+    "crates",
+    "docs",
+    "examples",
+    "package-lock.json",
+    "package.json",
+    "packages",
+    "pnpm-lock.yaml",
+    "scripts",
+    "stdlib",
+    "test",
+    "website"
+  ],
+  "count": 24,
+  "immutable_git_blobs_verified": 343,
+  "debug_or_deferral_added": false
+}

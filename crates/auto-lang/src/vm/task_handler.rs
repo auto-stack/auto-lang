@@ -424,7 +424,10 @@ mod tests {
         assert_eq!(table.handler_count(), 1);
 
         let serialized = table.get_pattern(idx).unwrap();
-        assert_eq!(serialized.pattern_type as u8, PatternType::WithBindings as u8);
+        assert_eq!(
+            serialized.pattern_type as u8,
+            PatternType::WithBindings as u8
+        );
     }
 
     #[test]
@@ -457,18 +460,10 @@ mod tests {
         let mut registry = TaskHandlerRegistry::new();
 
         let mut table1 = TaskHandlerTable::new("Task1".to_string());
-        table1.add_handler(
-            &TaskMsgPattern::Simple("A".into()),
-            100,
-            false,
-        );
+        table1.add_handler(&TaskMsgPattern::Simple("A".into()), 100, false);
 
         let mut table2 = TaskHandlerTable::new("Task2".to_string());
-        table2.add_handler(
-            &TaskMsgPattern::Simple("B".into()),
-            200,
-            false,
-        );
+        table2.add_handler(&TaskMsgPattern::Simple("B".into()), 200, false);
 
         registry.register(table1);
         registry.register(table2);

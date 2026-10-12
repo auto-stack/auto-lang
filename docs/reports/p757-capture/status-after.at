@@ -1,0 +1,80 @@
+// status_bar.at — StatusBar 组件（Plan 449；状态栏，原 app.at 159-187 行）。
+//
+// 013-todo 的 TodoList 形态：无 props（标量状态经 `use editor_store` 直读
+// .store.*），自有 msg，handler 直调 store（vm 已验证模式）。
+// 原顶部分隔线随组件内聚；terminal 切换按钮保持双分支（括号属性内多行
+// if 不解析，图标着色差异是唯一分支差异）。
+// 注：组件子树对 MCP 快照不可见（vm 已知边界）——测试对状态栏断言走
+// autoui_state（line/col/sel/fold_hidden），无快照定位依赖。
+
+use editor_store: EditorStore
+
+style status_text = "text-[11px] text-muted-foreground"   // Phase B: zinc-400 → muted-foreground
+style status_alt = "text-[11px] text-muted-foreground"   // Phase B: zinc-300 → muted-foreground
+style mini_btn = "h-6 w-9 px-0 py-0"
+widget StatusBar {
+    msg { ToggleConsole }
+
+    view {
+        col (style: "w-full shrink-0") {
+            col (style: "h-px w-full bg-border")
+            row (style: "h-6 items-center bg-muted/30 shrink-0 w-full gap-3 px-2") {
+                text "Auto" { style: status_text }
+                text "UTF-8" { style: status_text }
+                // PLAN-008 T-03: 字节保真显示位（激活 tab 派生标量，
+                // SyncByteMeta 重算——编码面三标记 + 行尾形态）。
+                if .store.bom_active {
+                    text "BOM" { style: status_text }
+                }
+                // PLAN-013 T-01: 大文件模式标注（激活 tab big 态——
+                // big_active 派生标量，SyncByteMeta 重算；矩阵断言面=
+                // autoui_state big_active）。
+                if .store.big_active {
+                    text "大文件" { style: status_text }
+                }
+                // PLAN-013 T-01: 只读原因标签派生化（编码错误形——
+                // PLAN-025 超大拒绝形退役；readonly_label，SyncByteMeta
+                // 重算）。
+                if .store.readonly_active {
+                    text .store.readonly_label { style: status_text }
+                }
+                text "EOL ${.store.eol_label}" { style: status_text }
+                text "Spaces: 4" { style: status_text }
+                // PLAN-013 T-03: 大文件命令护栏提示位（三命令拦截位写入
+                // big_hint；SyncByteMeta 清零=切 tab 自然消退——绝不
+                // 静默纪律的显示面）。
+                if .store.big_hint != "" {
+                    text .store.big_hint { style: "text-[11px] text-amber-400" }
+                }
+
+                text "${.store.line}:${.store.col}" {
+                    style: "text-[11px] text-muted-foreground ml-auto"
+                }
+                if .store.sel > 0 {
+                    text "Sel ${.store.sel}" { style: status_alt }
+                }
+                if .store.fold_hidden > 0 {
+                    text "Fold ${.store.fold_hidden}" { style: status_alt }
+                }
+                if .store.console_open == false {
+                    button (variant: "text") {
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-muted-foreground") {}
+                        onclick: .ToggleConsole
+                        style: mini_btn
+                    }
+                }
+                if .store.console_open == true {
+                    button (variant: "text") {
+                        icon (name: "terminal", style: "h-3.5 w-3.5 text-foreground") {}
+                        onclick: .ToggleConsole
+                        style: mini_btn
+                    }
+                }
+            }
+        }
+    }
+
+    on {
+        .ToggleConsole -> { store.ActConsole() }
+    }
+}

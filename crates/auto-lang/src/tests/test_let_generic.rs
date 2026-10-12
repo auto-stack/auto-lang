@@ -1,5 +1,5 @@
+use crate::error::{attach_source, AutoError};
 use crate::parse_preserve_error;
-use crate::error::{AutoError, attach_source};
 
 #[test]
 fn test_let_with_just_type() {

@@ -19,13 +19,16 @@ pub mod unification;
 // Re-export public API
 pub use constraints::TypeConstraint;
 pub use context::InferenceContext;
-pub use errors::{suggest_primitive_type, suggest_type, suggest_type_mismatch_fix, suggest_variable, should_continue};
+pub use errors::{
+    should_continue, suggest_primitive_type, suggest_type, suggest_type_mismatch_fix,
+    suggest_variable,
+};
 pub use expr::infer_expr;
 pub use functions::check_fn;
 pub use registry::TypeRegistry;
 pub use stmt::check_stmt;
 // Plan 125 Phase 3.6: Task type checking
-pub use task_types::{EnvelopeInfo, TaskTypeChecker, literal_to_type};
+pub use task_types::{literal_to_type, EnvelopeInfo, TaskTypeChecker};
 
 use crate::ast::{Member, Type};
 use crate::error::{AutoError, TypeError};

@@ -70,13 +70,19 @@ fn keyboard_capture_gated_by_focus_then_queues_and_publishes() {
 
     // 聚焦后逐键入队 + 每键一次 on_input 消息。
     ui.typewrite("dir");
-    assert_eq!(terminal_drain_input(core).as_deref(), Some("d"), "FIFO 首键");
+    assert_eq!(
+        terminal_drain_input(core).as_deref(),
+        Some("d"),
+        "FIFO 首键"
+    );
     assert_eq!(terminal_drain_input(core).as_deref(), Some("i"));
     assert_eq!(terminal_drain_input(core).as_deref(), Some("r"));
     assert_eq!(terminal_drain_input(core), None, "恰好三键");
 
     // Enter → CR(VT 串,引擎泵裸写的回车载荷)。
-    ui.tap_key(iced::keyboard::Key::Named(iced::keyboard::key::Named::Enter));
+    ui.tap_key(iced::keyboard::Key::Named(
+        iced::keyboard::key::Named::Enter,
+    ));
     assert_eq!(terminal_drain_input(core).as_deref(), Some("\r"));
 
     let msgs: Vec<KeyMsg> = ui.into_messages().collect();

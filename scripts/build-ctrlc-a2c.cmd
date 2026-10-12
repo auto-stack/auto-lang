@@ -1,7 +1,7 @@
 @echo off
 rem Plan 595 (004 SS5-2): build the a2c autoterm-ctrlc replica from its
 rem snapshot. The snapshot pair (autoterm_ctrlc.expected.c/.h) is gated
-rem byte-exact by tests/a2c_tests.at, so compiling it directly is building
+rem byte-exact by test/runners/a2c_tests.at, so compiling it directly is building
 rem the transpiler output -- regenerate happens via the test suite.
 rem
 rem Usage: scripts\build-ctrlc-a2c.cmd [out-dir]

@@ -9,7 +9,7 @@
 //!   5. `src/parser.rs`                      tag 特判(get_primary_prop 归类表)
 //!   6. `src/a2ui/export.rs`                 tag → A2UI 互操作映射
 //!   7. `src/a2ui/import.rs`                 A2UI → tag 反向映射(tag: "..." 字面量)
-//! 另带 `schema/aura.at`(Plan 098 冻结孤儿,P1 重建)的对照维度。
+//! 另带 `docs/schema/aura.at`(Plan 098 冻结孤儿,P1 重建)的对照维度。
 //!
 //! 围栏语义:**只拦新增漂移**。审计当日已知漂移冻结在
 //! `tests/fixtures/schema_drift_baseline.txt`;出现 baseline 之外的新孤立项即红;
@@ -262,7 +262,7 @@ fn scan_tag_literals(src: &str) -> BTreeSet<String> {
     out
 }
 
-/// 提取 `schema/aura.at` 的 `element NAME {` 声明名表。
+/// 提取 `docs/schema/aura.at` 的 `element NAME {` 声明名表。
 fn scan_aura_at(src: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for line in src.lines() {
@@ -276,7 +276,7 @@ fn scan_aura_at(src: &str) -> BTreeSet<String> {
     out
 }
 
-/// 提取 `schema/aura.at` 各元素 `aliases: ["a", "b"]` 行的全部别名。
+/// 提取 `docs/schema/aura.at` 各元素 `aliases: ["a", "b"]` 行的全部别名。
 fn scan_aura_at_aliases(src: &str) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for line in src.lines() {
@@ -295,7 +295,7 @@ fn scan_aura_at_aliases(src: &str) -> BTreeSet<String> {
 type Drift = BTreeMap<&'static str, BTreeSet<String>>;
 
 // ============================================================================
-// P1:schema/aura.at 生成器(生产代码提取,一次性基准 + 可再生)
+// P1:docs/schema/aura.at 生成器(生产代码提取,一次性基准 + 可再生)
 // 触发:SCHEMA_DRIFT_GENERATE_AT=1 cargo test -p auto-lang --test schema_drift
 // 生成后 panic 强制人工复核 diff;围栏常驻断言"生产 ⊆ schema(tags ∪ aliases)"。
 // ============================================================================
@@ -880,7 +880,7 @@ fn scan_gallery_props() -> BTreeMap<String, Vec<(String, String, Option<String>,
     out
 }
 
-/// Plan 435 P4-4:解析既有 schema/aura.at 的 vue: { .. } 行(按元素折叠键)。
+/// Plan 435 P4-4:解析既有 docs/schema/aura.at 的 vue: { .. } 行(按元素折叠键)。
 /// 手写 vue insert 退役后,再生成时以此**保留**存量数据(手写源已删)。
 fn scan_aura_at_vue(src: &str) -> BTreeMap<String, RegistryVue> {
     let mut out: BTreeMap<String, RegistryVue> = BTreeMap::new();
@@ -1679,7 +1679,7 @@ fn schema_drift_fence() {
     let vue_rs = read("src/ui_gen/vue.rs");
     let vb_rs = read("src/ui/aura_view_builder.rs");
     let render_rs = read("src/ui/render_support.rs");
-    let aura_at = read("../../schema/aura.at");
+    let aura_at = read("../../docs/schema/aura.at");
 
     // ---- 提取四表 + 结构断言 ----
     let rs_seq = scan_insert_tags(&schema_rs, "elements");
@@ -1900,10 +1900,10 @@ fn schema_drift_fence() {
     if std::env::var("SCHEMA_DRIFT_GENERATE_AT").is_ok() {
         let text = generate_aura_at(&inp);
         let at_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schema/aura.at");
-        fs::write(&at_path, &text).expect("write schema/aura.at");
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/schema/aura.at");
+        fs::write(&at_path, &text).expect("write docs/schema/aura.at");
         panic!(
-            "schema/aura.at 已重生成({} bytes,{} 元素)—— 复核 diff 后重跑(不带环境变量)确认绿",
+            "docs/schema/aura.at 已重生成({} bytes,{} 元素)—— 复核 diff 后重跑(不带环境变量)确认绿",
             text.len(),
             inp.canonical_of.values().collect::<BTreeSet<_>>().len()
         );
@@ -1935,7 +1935,7 @@ fn schema_drift_fence() {
     }
     if !missing.is_empty() {
         let mut msg = String::from(
-            "Plan 435 P1:生产表的 tag 未被 schema/aura.at 覆盖(tags ∪ aliases)。\n\
+            "Plan 435 P1:生产表的 tag 未被 docs/schema/aura.at 覆盖(tags ∪ aliases)。\n\
              修复:改完生产表后重生成 schema:\n\
              SCHEMA_DRIFT_GENERATE_AT=1 cargo test -p auto-lang --test schema_drift\n\
              (复核 diff 后不带环境变量重跑确认绿)\n\n",
@@ -1954,7 +1954,7 @@ fn schema_drift_fence() {
         let schema = auto_lang::aura::default_schema_cached().expect("schema");
         assert_eq!(
             _vue_mappings, 0,
-            "手写 vue insert 应已退役(P4-4 overlay);新映射请走 schema/aura.at"
+            "手写 vue insert 应已退役(P4-4 overlay);新映射请走 docs/schema/aura.at"
         );
         // 数据不回退:schema 的 vue 声明量守恒(手写退役后由 carried_vue 保留)
         let vue_count = schema
@@ -2015,7 +2015,7 @@ fn schema_drift_fence() {
         .collect();
     assert!(
         phantom.is_empty(),
-        "Plan 435 P1:schema/aura.at 存在生产表与 schema.rs 之外的幻影条目(手改漂移?):\n  {}",
+        "Plan 435 P1:docs/schema/aura.at 存在生产表与 schema.rs 之外的幻影条目(手改漂移?):\n  {}",
         phantom.join(", ")
     );
 
@@ -2025,7 +2025,7 @@ fn schema_drift_fence() {
         let mut loader = SchemaLoader::new();
         let parsed = loader
             .load(&aura_at)
-            .expect("schema_loader 应能解析 schema/aura.at(生成格式回归?)");
+            .expect("schema_loader 应能解析 docs/schema/aura.at(生成格式回归?)");
         assert!(
             parsed.get_element("button").is_some(),
             "aura.at 解析结果缺 button"
@@ -2257,7 +2257,7 @@ fn schema_drift_fence() {
 // ============================================================================
 // Plan 507 T2 —— queue 臂元素级覆盖漂移围栏（第三端 parity 债闸门）。
 //
-// `schema/aura.at` element 全集 ↔ `ui::desktop_protocol::element_coverage`
+// `docs/schema/aura.at` element 全集 ↔ `ui::desktop_protocol::element_coverage`
 // 登记表**双向**同步：
 //   - aura.at 新增 element 未登记 → 红（新 widget 默认 not-yet 必须显式
 //     登记——防"第三端 parity 债"静默烂尾）；
@@ -2272,7 +2272,7 @@ fn queue_coverage_drift_fence() {
         element_counts, element_table, QueueStatus,
     };
 
-    let aura_at = read("../../schema/aura.at");
+    let aura_at = read("../../docs/schema/aura.at");
     let declared = scan_aura_at(&aura_at);
     let registered: BTreeSet<String> =
         element_table().iter().map(|(tag, _)| tag.to_string()).collect();

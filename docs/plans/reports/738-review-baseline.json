@@ -1,0 +1,74 @@
+{
+  "stage": "review",
+  "plan_id": "PLAN-738",
+  "plan_revision": 1,
+  "outcome": "needs_fix",
+  "reviewed_commit": "e4425b673eec46fabc25b4534084c19f2738a38f",
+  "base_commit": "4262f761c5f7a0608fbfc5061ad6afa1b31cc574",
+  "observed_master": "9bdd04ffeb1a4178ed7ce754c3ddff54fd60eba2",
+  "dependency_revisions": {
+    "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846"
+  },
+  "cargo_lock_sha256": "8b2b3290edb132afaf533f7a27d927ae916d0e4e6603416223cd038093b37ba4",
+  "spec_inputs": [
+    {
+      "path": "docs/specs/stdlib/project.md",
+      "sha256": "cd3d00bac3b2c7df1ac0320321c69fee37965fa40395d725656f7bc07114e26c",
+      "last_commit": "a80f3598407e38c856eada040d657374737919e5"
+    },
+    {
+      "path": "docs/specs/stdlib/design/backend-assembly.md",
+      "sha256": "8c25d12cae4ed3a4f1d5a83a1fdbf70c4f6424528b4cbf7bc1c18b5f8054c9ea",
+      "last_commit": "ec0eae41fbee05c2dee09445006114a4e9e95242"
+    },
+    {
+      "path": "docs/specs/auto-lang/frontend/design/module-resolution.md",
+      "sha256": "fd110c6fb836795893b76c0709d280262362dc66be3b9a56b2ba3fdf2aa50d7f",
+      "last_commit": "866772379c2923d54675e8375897ca7c360003b7"
+    },
+    {
+      "path": "docs/specs/auto-lang/trans/overview.md",
+      "sha256": "aabb0e631519721d4f5bb6def129d747177d5406bb4105f1bfea3f427ae323cb",
+      "last_commit": "ec0eae41fbee05c2dee09445006114a4e9e95242"
+    },
+    {
+      "path": "docs/specs/auto-lang/runtime/design/networking-stdlib.md",
+      "sha256": "356436040c868450c6a73a49f27b9f0dd5af29342a3e93395fcd10f19529279e",
+      "last_commit": "6eb396e5a0c14c653807d61f4c6650fba06052ae"
+    },
+    {
+      "path": "docs/specs/auto-man/design/api-generation-integrity.md",
+      "sha256": "b66721c99150e39f2b86c4689c976a77c4ed934cf1ff1aef98667ded91fc225a",
+      "last_commit": "ec0eae41fbee05c2dee09445006114a4e9e95242"
+    },
+    {
+      "path": "docs/specs/auto-cli/project.md",
+      "sha256": "7af13cc3e86b0df2397fad6b7d0136ae7503b058f2f2853fc86f771889e1a0ad",
+      "last_commit": "a80f3598407e38c856eada040d657374737919e5"
+    }
+  ],
+  "reviewed_delta_text": "起草只提出增量，不修改canonical。736落地后再对最终服务Spec兼容。\n\n| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |\n|---|---|---|---|---|---|\n| SD-01 | add | `docs/specs/stdlib/design/assembly-manifest.md` | 文件存在覆盖 → actual plan/manifest、源段/目标/环境、验证等级、provider与核心门 | 明确装配合同 | AC-01..08 |\n| SD-02 | modify | `docs/specs/stdlib/design/backend-assembly.md` | VM路径/宿主覆盖分散 → actual provider索引与核心能力；修正旧HTTP矩阵，区分inventory与执行 | 原始多后台诉求 | AC-01/03/05/08 |\n| SD-03 | modify | `docs/specs/auto-lang/frontend/design/module-resolution.md` | 解析与两loader分叉 → 解析后统一装配、源位置、原use隔离/循环语义和cache边界 | 保持模块语义 | AC-02/04/06 |\n| SD-04 | modify | `docs/specs/auto-lang/trans/overview.md` | Rust/C实现来源不透明 → selected target/provider和真实emit证据/unsupported诊断 | 不把VM preparse当Rust实现 | AC-02/03/05/07 |\n| SD-05 | modify | `docs/specs/auto-man/design/api-generation-integrity.md` | body/source指纹 → 额外assembly/provider依赖闭包与新鲜度门 | 防改stdlib仍用旧服务 | AC-06/07 |\n| SD-06 | modify | `docs/specs/auto-cli/project.md` | 无inspect → inventory/actual manifest JSON及check退出码 | 可检查交付 | AC-01/07/08 |\n| SD-07 | modify | `docs/specs/stdlib/project.md`、`docs/specs/auto-lang/runtime/design/networking-stdlib.md` | 后台/物理填充草案不清 → 新合同入口、六模块能力与D3a/D3b边界 | 不声称补齐全部后台 | AC-05/08 |",
+  "reviewed_delta_sha256": "b030984624255a902b929fe335ece472e4b917232ee0ef8e2ce1dcf23aca8450",
+  "delta_status": "not_approved",
+  "acceptance_results": {
+    "AC-01": "partial",
+    "AC-02": "fail",
+    "AC-03": "fail",
+    "AC-04": "partial",
+    "AC-05": "fail",
+    "AC-06": "fail",
+    "AC-07": "fail",
+    "AC-08": "partial"
+  },
+  "findings": [
+    "P738-R1",
+    "P738-R2",
+    "P738-R3",
+    "P738-R4",
+    "P738-R5",
+    "P738-R6",
+    "P738-R7",
+    "P738-R8",
+    "P738-R9"
+  ]
+}

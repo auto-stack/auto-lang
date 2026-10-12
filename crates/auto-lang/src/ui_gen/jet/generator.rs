@@ -176,9 +176,15 @@ impl JetGenerator {
             crate::aura::AuraNode::ForLoop { body, .. } => {
                 body.iter().any(|c| Self::has_link_node(c))
             }
-            crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+            crate::aura::AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 then_body.iter().any(|c| Self::has_link_node(c))
-                    || else_body.as_ref().map_or(false, |e| e.iter().any(|c| Self::has_link_node(c)))
+                    || else_body
+                        .as_ref()
+                        .map_or(false, |e| e.iter().any(|c| Self::has_link_node(c)))
             }
             _ => false,
         }
@@ -305,7 +311,8 @@ fun {}Preview() {{
                 let name = &state_def.name;
                 let type_str = Self::type_to_string(&state_def.type_info);
                 let default = Self::expr_to_default(&state_def.initial);
-                self.state_converter.convert_model(name, &type_str, &default)
+                self.state_converter
+                    .convert_model(name, &type_str, &default)
             })
             .collect::<Vec<_>>()
             .join("\n    ")
@@ -331,11 +338,16 @@ fun {}Preview() {{
                         crate::ast::Type::Float => "Float".to_string(),
                         crate::ast::Type::Double => "Double".to_string(),
                         crate::ast::Type::Bool => "Boolean".to_string(),
-                        crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned => "String".to_string(),
+                        crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned => {
+                            "String".to_string()
+                        }
                         crate::ast::Type::User(decl) => decl.name.as_str().to_string(),
                         _ => "Any".to_string(),
                     };
-                    variants.push(format!("    data class {}(val value: {}) : Msg()", variant.name, kotlin_type));
+                    variants.push(format!(
+                        "    data class {}(val value: {}) : Msg()",
+                        variant.name, kotlin_type
+                    ));
                 } else {
                     // Simple variant without payload
                     variants.push(format!("    object {} : Msg()", variant.name));
@@ -371,7 +383,10 @@ fun {}Preview() {{
                 LogicPayload::Bytecode(_) => "// Bytecode execution not supported".to_string(),
             };
 
-            cases.push(format!("            is Msg.{} -> {{\n                {}\n            }}", variant_name, body));
+            cases.push(format!(
+                "            is Msg.{} -> {{\n                {}\n            }}",
+                variant_name, body
+            ));
         }
 
         if cases.is_empty() {
@@ -410,26 +425,41 @@ fun {}Preview() {{
         let ind = "    ".repeat(indent);
 
         match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
-                self.element_to_compose(tag, props, events, children, indent)
-            }
-            AuraNode::Text(content) => {
-                self.text_to_compose(content, indent)
-            }
-            AuraNode::ForLoop { var, index, iterable, body, .. } => {
-                self.for_loop_to_compose(var, index, iterable, body, indent)
-            }
-            AuraNode::Conditional { condition, then_body, else_body, .. } => {
-                self.conditional_to_compose(condition, then_body, else_body, indent)
-            }
-            AuraNode::Component { name, props, events, .. } => {
-                self.component_to_compose(name, props, events, indent)
-            }
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                ..
+            } => self.element_to_compose(tag, props, events, children, indent),
+            AuraNode::Text(content) => self.text_to_compose(content, indent),
+            AuraNode::ForLoop {
+                var,
+                index,
+                iterable,
+                body,
+                ..
+            } => self.for_loop_to_compose(var, index, iterable, body, indent),
+            AuraNode::Conditional {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => self.conditional_to_compose(condition, then_body, else_body, indent),
+            AuraNode::Component {
+                name,
+                props,
+                events,
+                ..
+            } => self.component_to_compose(name, props, events, indent),
             AuraNode::Outlet { .. } => {
                 // outlet should render the NavHost with current navController
                 // Use weight(1f) to fill remaining space in Column
                 // Note: weight is available via .* import from androidx.compose.foundation.layout
-                Ok(format!("{}AppNavHost(navController, modifier = Modifier.weight(1f))\n", ind))
+                Ok(format!(
+                    "{}AppNavHost(navController, modifier = Modifier.weight(1f))\n",
+                    ind
+                ))
             }
             // PLAN-046: memo block — VM-track boundary; emit children.
             AuraNode::MemoBlock { body, .. } => {
@@ -439,9 +469,13 @@ fun {}Preview() {{
                 }
                 Ok(out)
             }
-            AuraNode::Link { to, text, href, children, .. } => {
-                self.link_to_compose(to, text, href, children, indent)
-            }
+            AuraNode::Link {
+                to,
+                text,
+                href,
+                children,
+                ..
+            } => self.link_to_compose(to, text, href, children, indent),
         }
     }
 
@@ -450,9 +484,7 @@ fun {}Preview() {{
         let ind = "    ".repeat(indent);
 
         match content {
-            AuraTextContent::Literal(s) => {
-                Ok(format!("{}Text(\"{}\")\n", ind, s))
-            }
+            AuraTextContent::Literal(s) => Ok(format!("{}Text(\"{}\")\n", ind, s)),
             AuraTextContent::Interpolated { template, bindings } => {
                 // Convert template to Kotlin string interpolation
                 let mut kotlin_text = template.clone();
@@ -460,13 +492,11 @@ fun {}Preview() {{
                     // Replace ${.binding} with $binding (state reference)
                     kotlin_text = kotlin_text.replace(
                         &format!("${{{}.{}}}", ".", binding),
-                        &format!("${}", binding)
+                        &format!("${}", binding),
                     );
                     // Replace ${binding} with $binding (variable reference)
-                    kotlin_text = kotlin_text.replace(
-                        &format!("${{{}}}", binding),
-                        &format!("${}", binding)
-                    );
+                    kotlin_text =
+                        kotlin_text.replace(&format!("${{{}}}", binding), &format!("${}", binding));
                 }
                 Ok(format!("{}Text(\"{}\")\n", ind, kotlin_text))
             }
@@ -563,19 +593,50 @@ fun {}Preview() {{
     /// Check if tag is a layout element
     fn is_layout_tag(tag: &str) -> bool {
         let normalized = Self::normalize_tag(tag);
-        matches!(normalized, "col" | "column" | "row" | "box" | "container" | "card" | "scroll" | "center")
+        matches!(
+            normalized,
+            "col" | "column" | "row" | "box" | "container" | "card" | "scroll" | "center"
+        )
     }
 
     /// Check if tag is a form element
     fn is_form_tag(tag: &str) -> bool {
         let normalized = Self::normalize_tag(tag);
-        matches!(normalized, "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "button" | "chip" | "progress" | "image" | "img" | "badge" | "radio" | "radiobutton" | "listitem")
+        matches!(
+            normalized,
+            "input"
+                | "textarea"
+                | "checkbox"
+                | "switch"
+                | "toggle"
+                | "slider"
+                | "button"
+                | "chip"
+                | "progress"
+                | "image"
+                | "img"
+                | "badge"
+                | "radio"
+                | "radiobutton"
+                | "listitem"
+        )
     }
 
     /// Check if tag is a list element
     fn is_list_tag(tag: &str) -> bool {
         let normalized = Self::normalize_tag(tag);
-        matches!(normalized, "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column")
+        matches!(
+            normalized,
+            "list"
+                | "lazy-column"
+                | "list-row"
+                | "lazy-row"
+                | "grid"
+                | "lazy-grid"
+                | "flow-row"
+                | "flow-col"
+                | "flow-column"
+        )
     }
 
     /// Check if tag is a tabs element
@@ -604,23 +665,39 @@ fun {}Preview() {{
 
         // Use LayoutGenerator for the actual generation
         let result = match normalized {
-            "col" | "column" => self.layout_generator.generate_column(props, &children_content),
+            "col" | "column" => self
+                .layout_generator
+                .generate_column(props, &children_content),
             "center" => {
                 // Center is syntax sugar for Column with center alignment
                 let mut merged_props = props.clone();
                 if !merged_props.contains_key("align") {
-                    merged_props.insert("align".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
+                    merged_props.insert(
+                        "align".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str("center".into())),
+                    );
                 }
                 if !merged_props.contains_key("arrange") {
-                    merged_props.insert("arrange".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
+                    merged_props.insert(
+                        "arrange".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str("center".into())),
+                    );
                 }
-                self.layout_generator.generate_column(&merged_props, &children_content)
+                self.layout_generator
+                    .generate_column(&merged_props, &children_content)
             }
             "row" => self.layout_generator.generate_row(props, &children_content),
             "box" | "container" => self.layout_generator.generate_box(props, &children_content),
-            "card" => self.layout_generator.generate_card(props, &children_content),
-            "scroll" => self.layout_generator.generate_scroll(props, &children_content),
-            _ => Err(GenError::UnsupportedExpr(format!("Unknown layout tag: {}", tag))),
+            "card" => self
+                .layout_generator
+                .generate_card(props, &children_content),
+            "scroll" => self
+                .layout_generator
+                .generate_scroll(props, &children_content),
+            _ => Err(GenError::UnsupportedExpr(format!(
+                "Unknown layout tag: {}",
+                tag
+            ))),
         };
 
         // Collect imports from LayoutGenerator (clone to avoid borrow issues)
@@ -632,7 +709,8 @@ fun {}Preview() {{
         // Prepend proper indentation
         result.map(|s| {
             let lines: Vec<&str> = s.lines().collect();
-            lines.iter()
+            lines
+                .iter()
                 .map(|line| format!("{}{}", ind, line))
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -656,33 +734,56 @@ fun {}Preview() {{
             "button" => self.button_to_compose(props, events, children, indent),
             "input" => {
                 // Generate input with state binding
-                self.form_generator.generate_input(props)
+                self.form_generator
+                    .generate_input(props)
                     .map(|s| format!("{}{}\n", ind, s.trim()))
             }
             "textarea" => {
                 // Generate textarea (multi-line input)
-                self.form_generator.generate_textarea(props)
+                self.form_generator
+                    .generate_textarea(props)
                     .map(|s| format!("{}{}\n", ind, s.trim()))
             }
-            "checkbox" => self.form_generator.generate_checkbox(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            "switch" | "toggle" => self.form_generator.generate_switch(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            "slider" => self.form_generator.generate_slider(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            "progress" => self.form_generator.generate_progress(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            "image" | "img" => self.form_generator.generate_image(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            "badge" => self.form_generator.generate_badge(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            "radio" | "radiobutton" => self.form_generator.generate_radio(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            "listitem" => self.form_generator.generate_list_item(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            "chip" => self.form_generator.generate_chip(props)
-                    .map(|s| format!("{}{}\n", ind, s.trim())),
-            _ => Err(GenError::UnsupportedExpr(format!("Unknown form tag: {}", tag))),
+            "checkbox" => self
+                .form_generator
+                .generate_checkbox(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            "switch" | "toggle" => self
+                .form_generator
+                .generate_switch(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            "slider" => self
+                .form_generator
+                .generate_slider(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            "progress" => self
+                .form_generator
+                .generate_progress(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            "image" | "img" => self
+                .form_generator
+                .generate_image(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            "badge" => self
+                .form_generator
+                .generate_badge(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            "radio" | "radiobutton" => self
+                .form_generator
+                .generate_radio(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            "listitem" => self
+                .form_generator
+                .generate_list_item(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            "chip" => self
+                .form_generator
+                .generate_chip(props)
+                .map(|s| format!("{}{}\n", ind, s.trim())),
+            _ => Err(GenError::UnsupportedExpr(format!(
+                "Unknown form tag: {}",
+                tag
+            ))),
         };
 
         // Collect imports from FormGenerator (clone to avoid borrow issues)
@@ -721,7 +822,8 @@ fun {}Preview() {{
         };
 
         // Get button text
-        let text = props.get("text")
+        let text = props
+            .get("text")
             .and_then(|p| self.extract_string_value(p))
             .unwrap_or_default();
 
@@ -753,9 +855,7 @@ fun {}Preview() {{
                     stmts, &ctx,
                 ))
             }
-            LogicPayload::Bytecode(_) => {
-                Ok("// Bytecode execution not supported".to_string())
-            }
+            LogicPayload::Bytecode(_) => Ok("// Bytecode execution not supported".to_string()),
         }
     }
 
@@ -777,7 +877,8 @@ fun {}Preview() {{
     /// Extract string value from AuraPropValue
     fn extract_string_value(&self, value: &AuraPropValue) -> Option<String> {
         match value {
-            AuraPropValue::Expr(crate::ast::Expr::Str(s)) | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => Some(s.to_string()),
+            AuraPropValue::Expr(crate::ast::Expr::Str(s))
+            | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => Some(s.to_string()),
             AuraPropValue::Expr(crate::ast::Expr::Ident(s)) => Some(s.to_string()),
             _ => None,
         }
@@ -799,7 +900,9 @@ fun {}Preview() {{
                     let chain = &caps[1];
                     // Split by "." and add () to each non-first part (methods)
                     let parts: Vec<&str> = chain.split('.').collect();
-                    let transformed = parts.iter().enumerate()
+                    let transformed = parts
+                        .iter()
+                        .enumerate()
                         .map(|(i, part)| {
                             if i == 0 {
                                 // First part is the field name
@@ -823,7 +926,9 @@ fun {}Preview() {{
                 re.replace_all(&result, |caps: &regex::Captures| {
                     let chain = &caps[1];
                     let parts: Vec<&str> = chain.split('.').collect();
-                    let transformed = parts.iter().enumerate()
+                    let transformed = parts
+                        .iter()
+                        .enumerate()
                         .map(|(i, part)| {
                             if i == 0 {
                                 part.to_string()
@@ -933,7 +1038,11 @@ fun {}Preview() {{
             Expr::Float(f, _) | Expr::Double(f, _) => f.to_string(),
             Expr::Bool(b) => b.to_string(),
             Expr::Ident(s) => {
-                if s.starts_with('.') { s[1..].to_string() } else { s.to_string() }
+                if s.starts_with('.') {
+                    s[1..].to_string()
+                } else {
+                    s.to_string()
+                }
             }
             Expr::Bina(left, op, right) => {
                 let left_str = self.expr_to_kotlin(left);
@@ -970,14 +1079,20 @@ fun {}Preview() {{
             Expr::Call(call) => {
                 if let Expr::Dot(object, method) = call.name.as_ref() {
                     let obj_str = self.expr_to_kotlin(object);
-                    let args_str = call.args.args.iter()
+                    let args_str = call
+                        .args
+                        .args
+                        .iter()
                         .map(|a| self.expr_to_kotlin(&a.get_expr()))
                         .collect::<Vec<_>>()
                         .join(", ");
                     format!("{}.{}({})", obj_str, method, args_str)
                 } else {
                     let name_str = self.expr_to_kotlin(&call.name);
-                    let args_str = call.args.args.iter()
+                    let args_str = call
+                        .args
+                        .args
+                        .iter()
                         .map(|a| self.expr_to_kotlin(&a.get_expr()))
                         .collect::<Vec<_>>()
                         .join(", ");
@@ -1061,7 +1176,16 @@ fun {}Preview() {{
             let compose_event = if event == "click" {
                 "onClick".to_string()
             } else {
-                format!("on{}", event.chars().next().unwrap().to_uppercase().collect::<String>() + &event[1..])
+                format!(
+                    "on{}",
+                    event
+                        .chars()
+                        .next()
+                        .unwrap()
+                        .to_uppercase()
+                        .collect::<String>()
+                        + &event[1..]
+                )
             };
             props_parts.push(format!("{} = {{ {} }}", compose_event, handler));
         }
@@ -1069,7 +1193,11 @@ fun {}Preview() {{
         let props_str = if props_parts.is_empty() {
             String::new()
         } else {
-            format!("\n{}    {}", ind, props_parts.join(&format!(",\n{}    ", ind)))
+            format!(
+                "\n{}    {}",
+                ind,
+                props_parts.join(&format!(",\n{}    ", ind))
+            )
         };
 
         Ok(format!("{}{}({})\n", ind, compose_name, props_str))
@@ -1097,7 +1225,9 @@ fun {}Preview() {{
         };
 
         // Check if link has non-text children (like Card)
-        let has_element_children = children.iter().any(|c| matches!(c, AuraNode::Element { .. } | AuraNode::Component { .. }));
+        let has_element_children = children
+            .iter()
+            .any(|c| matches!(c, AuraNode::Element { .. } | AuraNode::Component { .. }));
 
         if has_element_children {
             // Link wraps an element (e.g., Card) - generate a Box with clickable modifier
@@ -1155,16 +1285,20 @@ fun {}Preview() {{
 
         // Check if this is a static grid (no items/data prop, but has element children)
         let has_data_source = props.contains_key("items") || props.contains_key("data");
-        let is_static_grid = (normalized == "grid" || normalized == "lazy-grid") && !has_data_source;
+        let is_static_grid =
+            (normalized == "grid" || normalized == "lazy-grid") && !has_data_source;
 
         // Use ListGenerator for the actual generation
         let result = match normalized {
-            "list" | "lazy-column" => self.list_generator.generate_lazy_column(props, &item_content),
+            "list" | "lazy-column" => self
+                .list_generator
+                .generate_lazy_column(props, &item_content),
             "list-row" | "lazy-row" => self.list_generator.generate_lazy_row(props, &item_content),
             "grid" | "lazy-grid" => {
                 if is_static_grid {
                     // Static grid with FlowRow for responsive layout
-                    self.list_generator.generate_static_grid(props, &item_content)
+                    self.list_generator
+                        .generate_static_grid(props, &item_content)
                 } else {
                     // Dynamic grid with LazyVerticalGrid
                     self.list_generator.generate_lazy_grid(props, &item_content)
@@ -1177,26 +1311,33 @@ fun {}Preview() {{
                     self.list_generator.generate_flow_row(props, &item_content)
                 } else {
                     // Static FlowRow - just render children directly
-                    self.list_generator.generate_static_grid(props, &item_content)
+                    self.list_generator
+                        .generate_static_grid(props, &item_content)
                 }
             }
             "flow-col" | "flow-column" => {
                 // Check if FlowColumn has a data source
                 let has_data_source = props.contains_key("items") || props.contains_key("data");
                 if has_data_source {
-                    self.list_generator.generate_flow_column(props, &item_content)
+                    self.list_generator
+                        .generate_flow_column(props, &item_content)
                 } else {
                     // Static FlowColumn - just render children directly
-                    self.list_generator.generate_static_grid(props, &item_content)
+                    self.list_generator
+                        .generate_static_grid(props, &item_content)
                 }
             }
-            _ => Err(GenError::UnsupportedExpr(format!("Unknown list tag: {}", tag))),
+            _ => Err(GenError::UnsupportedExpr(format!(
+                "Unknown list tag: {}",
+                tag
+            ))),
         };
 
         // Prepend proper indentation
         result.map(|s| {
             let lines: Vec<&str> = s.lines().collect();
-            lines.iter()
+            lines
+                .iter()
                 .map(|line| format!("{}{}", ind, line))
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -1219,7 +1360,8 @@ fun {}Preview() {{
         match normalized {
             "tabs" => {
                 // Get selectedIndex from props
-                let selected_index = props.get("selectedIndex")
+                let selected_index = props
+                    .get("selectedIndex")
                     .and_then(|p| self.extract_string_value(p))
                     .unwrap_or_else(|| "activeTab".to_string());
 
@@ -1228,22 +1370,37 @@ fun {}Preview() {{
                 let mut tab_contents: Vec<String> = Vec::new();
 
                 for child in children {
-                    if let AuraNode::Element { tag: child_tag, children: inner_children, .. } = child {
+                    if let AuraNode::Element {
+                        tag: child_tag,
+                        children: inner_children,
+                        ..
+                    } = child
+                    {
                         let child_normalized = Self::normalize_tag(child_tag);
                         if child_normalized == "tab-row" {
                             // Extract tab labels from TabRow
                             for tab in inner_children {
-                                if let AuraNode::Element { tag: tab_tag, props: tab_props, children: tab_children, .. } = tab {
+                                if let AuraNode::Element {
+                                    tag: tab_tag,
+                                    props: tab_props,
+                                    children: tab_children,
+                                    ..
+                                } = tab
+                                {
                                     if Self::normalize_tag(tab_tag) == "tab" {
                                         // First try to get text from props
-                                        let label = tab_props.get("text")
+                                        let label = tab_props
+                                            .get("text")
                                             .and_then(|p| self.extract_string_value(p))
                                             .unwrap_or_else(|| {
                                                 // If no text prop, get from children (Tab "Preview" syntax)
-                                                tab_children.iter()
+                                                tab_children
+                                                    .iter()
                                                     .find_map(|c| {
                                                         if let AuraNode::Text(content) = c {
-                                                            if let AuraTextContent::Literal(s) = content {
+                                                            if let AuraTextContent::Literal(s) =
+                                                                content
+                                                            {
                                                                 return Some(s.clone());
                                                             }
                                                         }
@@ -1259,23 +1416,40 @@ fun {}Preview() {{
                             // Extract content from TabsContent (with when expression)
                             for content_child in inner_children {
                                 // Handle "when" as an element (AURA parser doesn't have special when handling)
-                                if let AuraNode::Element { tag: when_tag, props: when_props, children: when_children, .. } = content_child {
+                                if let AuraNode::Element {
+                                    tag: when_tag,
+                                    props: when_props,
+                                    children: when_children,
+                                    ..
+                                } = content_child
+                                {
                                     if Self::normalize_tag(when_tag) == "when" {
                                         // Get the condition from props (e.g., ".activeTab")
                                         #[allow(dead_code)]
-                                        let _condition = when_props.get("condition")
+                                        let _condition = when_props
+                                            .get("condition")
                                             .and_then(|p| self.extract_string_value(p))
                                             .unwrap_or_default();
 
                                         // Parse each case in when body (e.g., "0: Col {...}")
                                         for case_child in when_children {
-                                            if let AuraNode::Element { tag: case_tag, props: case_props, children: case_children, .. } = case_child {
+                                            if let AuraNode::Element {
+                                                tag: case_tag,
+                                                props: case_props,
+                                                children: case_children,
+                                                ..
+                                            } = case_child
+                                            {
                                                 // The tag might be the case index (e.g., "0", "1", "2")
-                                                let idx = if case_tag.chars().all(|c| c.is_numeric()) {
+                                                let idx = if case_tag
+                                                    .chars()
+                                                    .all(|c| c.is_numeric())
+                                                {
                                                     case_tag.clone()
                                                 } else {
                                                     // Try to get from props
-                                                    case_props.get("index")
+                                                    case_props
+                                                        .get("index")
                                                         .and_then(|p| self.extract_string_value(p))
                                                         .unwrap_or_else(|| case_tag.clone())
                                                 };
@@ -1283,16 +1457,27 @@ fun {}Preview() {{
                                                 // Generate content for this case
                                                 let mut content_str = String::new();
                                                 for node in case_children {
-                                                    content_str.push_str(&self.node_to_compose(node, indent + 2)?);
+                                                    content_str.push_str(
+                                                        &self.node_to_compose(node, indent + 2)?,
+                                                    );
                                                 }
-                                                tab_contents.push(format!("{} -> {{\n        {}\n    }}", idx, content_str.trim()));
+                                                tab_contents.push(format!(
+                                                    "{} -> {{\n        {}\n    }}",
+                                                    idx,
+                                                    content_str.trim()
+                                                ));
                                             }
                                         }
                                     }
                                 }
 
                                 // Also handle AuraNode::Conditional for if-style when expressions
-                                if let AuraNode::Conditional { condition, then_body, .. } = content_child {
+                                if let AuraNode::Conditional {
+                                    condition,
+                                    then_body,
+                                    ..
+                                } = content_child
+                                {
                                     // Parse condition like ".activeTab == 0" or just "0"
                                     let cond = condition.trim();
                                     let idx = if cond.starts_with('.') {
@@ -1308,9 +1493,14 @@ fun {}Preview() {{
                                     // Generate content for this case
                                     let mut content_str = String::new();
                                     for node in then_body {
-                                        content_str.push_str(&self.node_to_compose(node, indent + 2)?);
+                                        content_str
+                                            .push_str(&self.node_to_compose(node, indent + 2)?);
                                     }
-                                    tab_contents.push(format!("{} -> {{\n        {}\n    }}", idx, content_str.trim()));
+                                    tab_contents.push(format!(
+                                        "{} -> {{\n        {}\n    }}",
+                                        idx,
+                                        content_str.trim()
+                                    ));
                                 }
                             }
                         }
@@ -1323,7 +1513,11 @@ fun {}Preview() {{
                 let content_refs: Vec<&str> = tab_contents.iter().map(|s| s.as_str()).collect();
 
                 // Generate TabRow with tabs
-                let _tabs_code = self.navigation_generator.generate_tabs(&tab_ids, &tab_label_refs, &content_refs)?;
+                let _tabs_code = self.navigation_generator.generate_tabs(
+                    &tab_ids,
+                    &tab_label_refs,
+                    &content_refs,
+                )?;
 
                 // Collect imports from NavigationGenerator
                 for import in self.navigation_generator.get_imports().to_vec() {
@@ -1336,7 +1530,9 @@ fun {}Preview() {{
                 if has_state {
                     // State is managed externally (by widget model)
                     // Generate TabRow that uses the external state
-                    let tab_items: Vec<String> = tab_labels.iter().enumerate()
+                    let tab_items: Vec<String> = tab_labels
+                        .iter()
+                        .enumerate()
                         .map(|(i, label)| {
                             format!(
                                 r#"{}Tab(
@@ -1375,9 +1571,15 @@ fun {}Preview() {{
                 // Standalone TabRow - just generate the tabs
                 let mut tabs = Vec::new();
                 for child in children {
-                    if let AuraNode::Element { tag: tab_tag, props: tab_props, .. } = child {
+                    if let AuraNode::Element {
+                        tag: tab_tag,
+                        props: tab_props,
+                        ..
+                    } = child
+                    {
                         if Self::normalize_tag(tab_tag) == "tab" {
-                            let label = tab_props.get("text")
+                            let label = tab_props
+                                .get("text")
                                 .and_then(|p| self.extract_string_value(p))
                                 .unwrap_or_default();
                             let idx = tabs.len();
@@ -1409,11 +1611,17 @@ fun {}Preview() {{
                 self.add_import("androidx.compose.material3.Tab");
                 self.add_import("androidx.compose.material3.Text");
 
-                Ok(format!("{}TabRow(selectedTabIndex = activeTab) {{\n{}\n{}}}\n", ind, tabs.join("\n"), ind))
+                Ok(format!(
+                    "{}TabRow(selectedTabIndex = activeTab) {{\n{}\n{}}}\n",
+                    ind,
+                    tabs.join("\n"),
+                    ind
+                ))
             }
             "tab" => {
                 // Single Tab component
-                let label = props.get("text")
+                let label = props
+                    .get("text")
                     .and_then(|p| self.extract_string_value(p))
                     .unwrap_or_default();
 
@@ -1435,7 +1643,12 @@ fun {}Preview() {{
                 let mut cases = Vec::new();
 
                 for child in children {
-                    if let AuraNode::Conditional { condition, then_body, .. } = child {
+                    if let AuraNode::Conditional {
+                        condition,
+                        then_body,
+                        ..
+                    } = child
+                    {
                         let cond = condition.trim();
                         let idx = if cond.starts_with('.') {
                             cond.split("==")
@@ -1454,9 +1667,17 @@ fun {}Preview() {{
                     }
                 }
 
-                Ok(format!("{}when (activeTab) {{\n{}\n{}}}\n", ind, cases.join("\n"), ind))
+                Ok(format!(
+                    "{}when (activeTab) {{\n{}\n{}}}\n",
+                    ind,
+                    cases.join("\n"),
+                    ind
+                ))
             }
-            _ => Err(GenError::UnsupportedExpr(format!("Unknown tabs tag: {}", tag))),
+            _ => Err(GenError::UnsupportedExpr(format!(
+                "Unknown tabs tag: {}",
+                tag
+            ))),
         }
     }
 
@@ -1478,10 +1699,13 @@ fun {}Preview() {{
             "col" | "column" | "row" | "box" | "container" | "card" | "scroll" | "center" => {
                 return self.layout_element_to_compose(tag, props, events, children, indent);
             }
-            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider" | "chip" | "progress" | "image" | "img" | "badge" | "radio" | "radiobutton" | "listitem" => {
+            "button" | "input" | "textarea" | "checkbox" | "switch" | "toggle" | "slider"
+            | "chip" | "progress" | "image" | "img" | "badge" | "radio" | "radiobutton"
+            | "listitem" => {
                 return self.form_element_to_compose(tag, props, events, children, indent);
             }
-            "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid" | "flow-row" | "flow-col" | "flow-column" => {
+            "list" | "lazy-column" | "list-row" | "lazy-row" | "grid" | "lazy-grid"
+            | "flow-row" | "flow-col" | "flow-column" => {
                 return self.list_element_to_compose(tag, props, events, children, indent);
             }
             _ => {}
@@ -1491,13 +1715,17 @@ fun {}Preview() {{
         let (compose_name, is_text_like) = self.map_tag_to_compose(tag);
 
         // Check for text prop
-        let text_prop = props.get("text")
-            .and_then(|p| self.extract_string_value(p));
+        let text_prop = props.get("text").and_then(|p| self.extract_string_value(p));
 
         // Get class/style prop for Tailwind styling (support both "class" and "style")
-        let class_prop = props.get("class")
+        let class_prop = props
+            .get("class")
             .and_then(|p| self.extract_string_value(p))
-            .or_else(|| props.get("style").and_then(|p| self.extract_string_value(p)));
+            .or_else(|| {
+                props
+                    .get("style")
+                    .and_then(|p| self.extract_string_value(p))
+            });
 
         // Add imports for TextStyle if we have class-based styling
         if class_prop.is_some() && is_text_like {
@@ -1574,7 +1802,8 @@ fun {}Preview() {{
             let style_param = if let Some(class) = &class_prop {
                 // Get text style from Tailwind classes (without base style - we'll handle merge separately)
                 let text_style_only = self.modifier_dsl.generate_text_style(class, None);
-                let base_style = typography_style.map(|s| format!("MaterialTheme.typography.{}", s));
+                let base_style =
+                    typography_style.map(|s| format!("MaterialTheme.typography.{}", s));
 
                 if let Some(text_style) = text_style_only {
                     if let Some(base) = &base_style {
@@ -1598,10 +1827,20 @@ fun {}Preview() {{
             if children.is_empty() {
                 // Convert f-string interpolation to Kotlin format
                 let kotlin_text = self.convert_to_kotlin_interpolation(&text);
-                Ok(format!("{}{}(\"{}\"{}{})\n", ind, compose_name, kotlin_text, modifier_param, style_param))
+                Ok(format!(
+                    "{}{}(\"{}\"{}{})\n",
+                    ind, compose_name, kotlin_text, modifier_param, style_param
+                ))
             } else {
                 // Has children - use them as content
-                Ok(format!("{}{}(\"{}\"{}{})\n", ind, compose_name, children_content.trim(), modifier_param, style_param))
+                Ok(format!(
+                    "{}{}(\"{}\"{}{})\n",
+                    ind,
+                    compose_name,
+                    children_content.trim(),
+                    modifier_param,
+                    style_param
+                ))
             }
         } else {
             // Container-like components: Column(modifier = Modifier) { ... }
@@ -1616,7 +1855,10 @@ fun {}Preview() {{
             if children_content.is_empty() {
                 Ok(format!("{}{}({})\n", ind, compose_name, modifier_param))
             } else {
-                Ok(format!("{}{}({}) {{\n{}}}\n", ind, compose_name, modifier_param, children_content))
+                Ok(format!(
+                    "{}{}({}) {{\n{}}}\n",
+                    ind, compose_name, modifier_param, children_content
+                ))
             }
         }
     }
@@ -1628,7 +1870,9 @@ fun {}Preview() {{
         let normalized = Self::normalize_tag(tag);
         match normalized {
             "text" | "span" | "p" => ("Text".to_string(), true),
-            "div" | "section" | "article" | "header" | "footer" | "nav" | "main" | "aside" => ("Column".to_string(), false),
+            "div" | "section" | "article" | "header" | "footer" | "nav" | "main" | "aside" => {
+                ("Column".to_string(), false)
+            }
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => ("Text".to_string(), true),
             "img" | "image" => ("Image".to_string(), true),
             "icon" => ("Icon".to_string(), true),
@@ -1670,7 +1914,10 @@ fun {}Preview() {{
             "checkbox" => self.form_generator.generate_checkbox(props),
             "switch" | "toggle" => self.form_generator.generate_switch(props),
             "slider" => self.form_generator.generate_slider(props),
-            _ => Err(GenError::UnsupportedExpr(format!("Unknown form element: {}", tag))),
+            _ => Err(GenError::UnsupportedExpr(format!(
+                "Unknown form element: {}",
+                tag
+            ))),
         }
     }
 
@@ -1692,18 +1939,28 @@ fun {}Preview() {{
                 // Center is syntax sugar for Column with center alignment
                 let mut merged_props = props.clone();
                 if !merged_props.contains_key("align") {
-                    merged_props.insert("align".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
+                    merged_props.insert(
+                        "align".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str("center".into())),
+                    );
                 }
                 if !merged_props.contains_key("arrange") {
-                    merged_props.insert("arrange".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
+                    merged_props.insert(
+                        "arrange".to_string(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str("center".into())),
+                    );
                 }
-                self.layout_generator.generate_column(&merged_props, children)
+                self.layout_generator
+                    .generate_column(&merged_props, children)
             }
             "row" => self.layout_generator.generate_row(props, children),
             "box" | "container" => self.layout_generator.generate_box(props, children),
             "card" => self.layout_generator.generate_card(props, children),
             "scroll" => self.layout_generator.generate_scroll(props, children),
-            _ => Err(GenError::UnsupportedExpr(format!("Unknown layout element: {}", tag))),
+            _ => Err(GenError::UnsupportedExpr(format!(
+                "Unknown layout element: {}",
+                tag
+            ))),
         }
     }
 
@@ -1720,12 +1977,19 @@ fun {}Preview() {{
         item_content: &str,
     ) -> GenResult<String> {
         match tag {
-            "list" | "lazy-column" => self.list_generator.generate_lazy_column(props, item_content),
+            "list" | "lazy-column" => self
+                .list_generator
+                .generate_lazy_column(props, item_content),
             "list-row" | "lazy-row" => self.list_generator.generate_lazy_row(props, item_content),
             "grid" | "lazy-grid" => self.list_generator.generate_lazy_grid(props, item_content),
             "flow-row" => self.list_generator.generate_flow_row(props, item_content),
-            "flow-col" | "flow-column" => self.list_generator.generate_flow_column(props, item_content),
-            _ => Err(GenError::UnsupportedExpr(format!("Unknown list element: {}", tag))),
+            "flow-col" | "flow-column" => self
+                .list_generator
+                .generate_flow_column(props, item_content),
+            _ => Err(GenError::UnsupportedExpr(format!(
+                "Unknown list element: {}",
+                tag
+            ))),
         }
     }
 
@@ -1741,17 +2005,20 @@ fun {}Preview() {{
 
     /// Add a navigation route with parameters
     pub fn add_nav_route_with_params(&mut self, name: &str, screen: &str, params: Vec<String>) {
-        self.navigation_generator.add_route_with_params(name, screen, params);
+        self.navigation_generator
+            .add_route_with_params(name, screen, params);
     }
 
     /// Generate navigation host
     pub fn generate_nav_host(&mut self, start_destination: &str) -> GenResult<String> {
-        self.navigation_generator.generate_nav_host(start_destination)
+        self.navigation_generator
+            .generate_nav_host(start_destination)
     }
 
     /// Generate app with navigation
     pub fn generate_app_with_nav(&mut self, start_destination: &str) -> GenResult<String> {
-        self.navigation_generator.generate_app_with_nav(start_destination)
+        self.navigation_generator
+            .generate_app_with_nav(start_destination)
     }
 
     /// Generate navigate call
@@ -1866,8 +2133,8 @@ fun {}Preview() {{
         name: &str,
         application_id: &str,
     ) -> HashMap<String, String> {
-        let config = super::project::JetProjectConfig::new(name)
-            .with_application_id(application_id);
+        let config =
+            super::project::JetProjectConfig::new(name).with_application_id(application_id);
         self.generate_project(config)
     }
 
@@ -1944,7 +2211,8 @@ impl BackendGenerator for JetGenerator {
 
             // Add routes to navigation generator
             self.navigation_generator.clear_routes();
-            self.navigation_generator.add_routes_from_aura(&routes.routes);
+            self.navigation_generator
+                .add_routes_from_aura(&routes.routes);
         }
 
         // Generate Msg sealed class (ELM architecture)
@@ -2034,7 +2302,10 @@ impl BackendGenerator for JetGenerator {
         // - Plain widgets: no navController at all
         if has_routes {
             // Router widget (like App) - creates its own navController
-            code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
+            code.push_str(&format!(
+                "@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n",
+                composable_name
+            ));
             code.push_str("    val navController = rememberNavController()\n\n");
         } else if has_link || is_page_widget {
             // Page widget - receives navController from NavHost
@@ -2042,7 +2313,10 @@ impl BackendGenerator for JetGenerator {
             code.push_str(&format!("@Composable\nfun {}(\n    navController: NavHostController,\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
         } else {
             // Plain widget - no navController
-            code.push_str(&format!("@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n", composable_name));
+            code.push_str(&format!(
+                "@Composable\nfun {}(\n    modifier: Modifier = Modifier\n) {{\n",
+                composable_name
+            ));
         }
 
         // State declarations
@@ -2130,10 +2404,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = JetGenerator::new();
@@ -2224,8 +2502,8 @@ mod tests {
 
     #[test]
     fn test_full_generation_workflow() {
-        use crate::aura::{AuraWidget, AuraStateDef, AuraNode};
         use crate::ast::Type;
+        use crate::aura::{AuraNode, AuraStateDef, AuraWidget};
 
         // Create a simple Counter widget
         let widget = AuraWidget {
@@ -2256,8 +2534,7 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
-        }
-;
+        };
 
         let mut gen = JetGenerator::new();
         let result = gen.generate(&widget);
@@ -2274,8 +2551,8 @@ mod tests {
 
     #[test]
     fn test_full_generation_with_multiple_states() {
-        use crate::aura::{AuraWidget, AuraStateDef, AuraNode};
         use crate::ast::Type;
+        use crate::aura::{AuraNode, AuraStateDef, AuraWidget};
 
         // Create a widget with multiple state variables
         let widget = AuraWidget {
@@ -2337,7 +2614,7 @@ mod tests {
 
     #[test]
     fn test_full_generation_no_state() {
-        use crate::aura::{AuraWidget, AuraNode};
+        use crate::aura::{AuraNode, AuraWidget};
 
         // Create a stateless widget
         let widget = AuraWidget {
@@ -2389,7 +2666,9 @@ mod tests {
         assert!(gen.widget_registry.is_backend_supported("jet", "card"));
 
         // Verify unsupported element
-        assert!(!gen.widget_registry.is_backend_supported("jet", "nonexistent_element"));
+        assert!(!gen
+            .widget_registry
+            .is_backend_supported("jet", "nonexistent_element"));
     }
 
     #[test]
@@ -2397,11 +2676,26 @@ mod tests {
         let gen = JetGenerator::new();
 
         // Test primary component mappings
-        assert_eq!(gen.widget_registry.get_primary_component("jet", "button"), Some("Button".to_string()));
-        assert_eq!(gen.widget_registry.get_primary_component("jet", "text"), Some("Text".to_string()));
-        assert_eq!(gen.widget_registry.get_primary_component("jet", "col"), Some("Column".to_string()));
-        assert_eq!(gen.widget_registry.get_primary_component("jet", "row"), Some("Row".to_string()));
-        assert_eq!(gen.widget_registry.get_primary_component("jet", "input"), Some("OutlinedTextField".to_string()));
+        assert_eq!(
+            gen.widget_registry.get_primary_component("jet", "button"),
+            Some("Button".to_string())
+        );
+        assert_eq!(
+            gen.widget_registry.get_primary_component("jet", "text"),
+            Some("Text".to_string())
+        );
+        assert_eq!(
+            gen.widget_registry.get_primary_component("jet", "col"),
+            Some("Column".to_string())
+        );
+        assert_eq!(
+            gen.widget_registry.get_primary_component("jet", "row"),
+            Some("Row".to_string())
+        );
+        assert_eq!(
+            gen.widget_registry.get_primary_component("jet", "input"),
+            Some("OutlinedTextField".to_string())
+        );
     }
 
     #[test]
@@ -2428,7 +2722,9 @@ mod tests {
         assert!(int_state.contains("mutableStateOf(0)"));
 
         // Test string state
-        let str_state = gen.state_converter.convert_model("name", "str", "\"Hello\"");
+        let str_state = gen
+            .state_converter
+            .convert_model("name", "str", "\"Hello\"");
         assert!(str_state.contains("var name by remember"));
         assert!(str_state.contains("mutableStateOf(\"Hello\")"));
 
@@ -2454,7 +2750,7 @@ mod tests {
 
     #[test]
     fn test_standard_imports() {
-        use crate::aura::{AuraWidget, AuraNode};
+        use crate::aura::{AuraNode, AuraWidget};
 
         let widget = AuraWidget {
             named_views: Vec::new(),
@@ -2508,20 +2804,37 @@ mod tests {
 
     #[test]
     fn test_expr_to_default_conversion() {
-
         // Test expression conversion
-        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Int(42)), "42");
-        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Bool(true)), "true");
-        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Bool(false)), "false");
-        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Str("hello".into())), "\"hello\"");
-        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Float(3.14, "".into())), "3.14");
-        assert_eq!(JetGenerator::expr_to_default(&crate::ast::Expr::Float(5.0, "".into())), "5.0");
+        assert_eq!(
+            JetGenerator::expr_to_default(&crate::ast::Expr::Int(42)),
+            "42"
+        );
+        assert_eq!(
+            JetGenerator::expr_to_default(&crate::ast::Expr::Bool(true)),
+            "true"
+        );
+        assert_eq!(
+            JetGenerator::expr_to_default(&crate::ast::Expr::Bool(false)),
+            "false"
+        );
+        assert_eq!(
+            JetGenerator::expr_to_default(&crate::ast::Expr::Str("hello".into())),
+            "\"hello\""
+        );
+        assert_eq!(
+            JetGenerator::expr_to_default(&crate::ast::Expr::Float(3.14, "".into())),
+            "3.14"
+        );
+        assert_eq!(
+            JetGenerator::expr_to_default(&crate::ast::Expr::Float(5.0, "".into())),
+            "5.0"
+        );
     }
 
     #[test]
     fn test_backend_generator_trait() {
+        use crate::aura::{AuraNode, AuraWidget};
         use crate::ui_gen::BackendGenerator;
-        use crate::aura::{AuraWidget, AuraNode};
 
         let widget = AuraWidget {
             named_views: Vec::new(),
@@ -2565,9 +2878,18 @@ mod tests {
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())));
-        props.insert("placeholder".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enter email".into())));
-        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Email".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())),
+        );
+        props.insert(
+            "placeholder".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Enter email".into())),
+        );
+        props.insert(
+            "label".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Email".into())),
+        );
 
         let result = gen.generate_form_element("input", &props);
         assert!(result.is_ok());
@@ -2590,8 +2912,14 @@ mod tests {
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("agree".into())));
-        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("I agree".into())));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("agree".into())),
+        );
+        props.insert(
+            "label".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("I agree".into())),
+        );
 
         let result = gen.generate_form_element("checkbox", &props);
         assert!(result.is_ok());
@@ -2608,8 +2936,14 @@ mod tests {
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())));
-        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enable feature".into())));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())),
+        );
+        props.insert(
+            "label".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Enable feature".into())),
+        );
 
         let result = gen.generate_form_element("switch", &props);
         assert!(result.is_ok());
@@ -2626,9 +2960,18 @@ mod tests {
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("volume".into())));
-        props.insert("min".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(0)));
-        props.insert("max".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(100)));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("volume".into())),
+        );
+        props.insert(
+            "min".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(0)),
+        );
+        props.insert(
+            "max".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(100)),
+        );
 
         let result = gen.generate_form_element("slider", &props);
         assert!(result.is_ok());
@@ -2644,7 +2987,10 @@ mod tests {
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("toggle".into())));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("toggle".into())),
+        );
 
         // Test that "toggle" is an alias for "switch"
         let result = gen.generate_form_element("toggle", &props);
@@ -2817,11 +3163,26 @@ mod tests {
 
         // Test input with all properties
         let mut input_props = HashMap::new();
-        input_props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
-        input_props.insert("placeholder".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enter text".into())));
-        input_props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Text Field".into())));
-        input_props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("email".into())));
-        input_props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        input_props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())),
+        );
+        input_props.insert(
+            "placeholder".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Enter text".into())),
+        );
+        input_props.insert(
+            "label".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Text Field".into())),
+        );
+        input_props.insert(
+            "type".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("email".into())),
+        );
+        input_props.insert(
+            "disabled".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
 
         let result = gen.generate_form_element("input", &input_props);
         assert!(result.is_ok());
@@ -2862,9 +3223,20 @@ mod tests {
         let mut props = HashMap::new();
 
         // gap: 4 means 4 Tailwind units = 16dp (4 * 4 = 16)
-        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(4)));
-        props.insert("align".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("center".into())));
-        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("px-4 py-2 bg-white rounded-lg".into())));
+        props.insert(
+            "gap".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(4)),
+        );
+        props.insert(
+            "align".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("center".into())),
+        );
+        props.insert(
+            "class".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str(
+                "px-4 py-2 bg-white rounded-lg".into(),
+            )),
+        );
 
         let result = gen.generate_layout_element("col", &props, "// children here");
         assert!(result.is_ok());
@@ -2882,9 +3254,18 @@ mod tests {
         let mut gen = JetGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("items".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("users".into())));
-        props.insert("key".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("{item.id}".into())));
-        props.insert("columns".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(2)));
+        props.insert(
+            "items".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("users".into())),
+        );
+        props.insert(
+            "key".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("{item.id}".into())),
+        );
+        props.insert(
+            "columns".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(2)),
+        );
 
         let result = gen.generate_list_element("grid", &props, "UserCard(user = item)");
         assert!(result.is_ok());
@@ -2902,13 +3283,19 @@ mod tests {
         let files = gen.generate_project_default("FileCountTest");
 
         // Verify minimum file count for a complete project
-        assert!(files.len() >= 15, "Expected at least 15 files, got {}", files.len());
+        assert!(
+            files.len() >= 15,
+            "Expected at least 15 files, got {}",
+            files.len()
+        );
 
         // Verify all essential file categories
         let has_manifest = files.keys().any(|k| k.contains("AndroidManifest.xml"));
         let has_gradle = files.keys().any(|k| k.ends_with(".gradle.kts"));
         let has_kotlin = files.keys().any(|k| k.ends_with(".kt"));
-        let has_xml = files.keys().any(|k| k.ends_with(".xml") && !k.contains("Manifest"));
+        let has_xml = files
+            .keys()
+            .any(|k| k.ends_with(".xml") && !k.contains("Manifest"));
         let has_toml = files.keys().any(|k| k.ends_with(".toml"));
 
         assert!(has_manifest, "Missing AndroidManifest.xml");
@@ -2925,10 +3312,17 @@ mod tests {
 
         // Find Color.kt by looking for the file that contains Color(0x definitions
         let color_kt = files.iter().find(|(path, _)| path.contains("Color.kt"));
-        assert!(color_kt.is_some(), "Color.kt file not found in generated files");
+        assert!(
+            color_kt.is_some(),
+            "Color.kt file not found in generated files"
+        );
 
         let color_content = color_kt.unwrap().1;
-        assert!(color_content.contains("Color(0x"), "Missing Color(0x in:\n{}", color_content);
+        assert!(
+            color_content.contains("Color(0x"),
+            "Missing Color(0x in:\n{}",
+            color_content
+        );
         assert!(color_content.contains("import androidx.compose.ui.graphics.Color"));
     }
 
@@ -2937,9 +3331,18 @@ mod tests {
         let mut gen = JetGenerator::new();
 
         // Test that Col is recognized as layout tag
-        assert!(JetGenerator::is_layout_tag("Col"), "Col should be a layout tag");
-        assert!(JetGenerator::is_layout_tag("col"), "col should be a layout tag");
-        assert!(JetGenerator::is_layout_tag("Column"), "Column should be a layout tag");
+        assert!(
+            JetGenerator::is_layout_tag("Col"),
+            "Col should be a layout tag"
+        );
+        assert!(
+            JetGenerator::is_layout_tag("col"),
+            "col should be a layout tag"
+        );
+        assert!(
+            JetGenerator::is_layout_tag("Column"),
+            "Column should be a layout tag"
+        );
 
         // Test normalize_tag
         // Plan 435 P7-4(D5):统一入口 —— Col/Column 归一为 schema canonical
@@ -2949,7 +3352,10 @@ mod tests {
         assert_eq!(JetGenerator::normalize_tag("Column"), "col");
 
         // Test H1 is NOT a layout tag (it's a text tag)
-        assert!(!JetGenerator::is_layout_tag("H1"), "H1 should not be a layout tag");
+        assert!(
+            !JetGenerator::is_layout_tag("H1"),
+            "H1 should not be a layout tag"
+        );
     }
 
     // =========================================================================
@@ -2958,18 +3364,26 @@ mod tests {
 
     #[test]
     fn test_card_variant_e2e_elevated() {
-        use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
+        use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraWidget};
 
         // Create a widget with Card (variant: "elevated")
         let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        card_props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())));
-        card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())));
+        card_props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())),
+        );
+        card_props.insert(
+            "style".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())),
+        );
 
         let card_node = AuraNode::Element {
             tag: "Card".to_string(),
             props: card_props,
             events: HashMap::new(),
-            children: vec![AuraNode::Text(AuraTextContent::Literal("Elevated Card".to_string()))],
+            children: vec![AuraNode::Text(AuraTextContent::Literal(
+                "Elevated Card".to_string(),
+            ))],
             span: None,
             debug_id: None,
         };
@@ -3008,23 +3422,35 @@ mod tests {
         eprintln!("Generated code:\n{}", code);
 
         // Verify ElevatedCard is generated
-        assert!(code.contains("ElevatedCard"), "Should generate ElevatedCard for variant='elevated', but got:\n{}", code);
+        assert!(
+            code.contains("ElevatedCard"),
+            "Should generate ElevatedCard for variant='elevated', but got:\n{}",
+            code
+        );
     }
 
     #[test]
     fn test_card_variant_e2e_outlined() {
-        use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
+        use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraWidget};
 
         // Create a widget with Card (variant: "outlined")
         let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        card_props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())));
-        card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())));
+        card_props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())),
+        );
+        card_props.insert(
+            "style".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())),
+        );
 
         let card_node = AuraNode::Element {
             tag: "Card".to_string(),
             props: card_props,
             events: HashMap::new(),
-            children: vec![AuraNode::Text(AuraTextContent::Literal("Outlined Card".to_string()))],
+            children: vec![AuraNode::Text(AuraTextContent::Literal(
+                "Outlined Card".to_string(),
+            ))],
             span: None,
             debug_id: None,
         };
@@ -3060,22 +3486,31 @@ mod tests {
         let code = result.unwrap();
 
         // Verify OutlinedCard is generated
-        assert!(code.contains("OutlinedCard"), "Should generate OutlinedCard for variant='outlined', but got:\n{}", code);
+        assert!(
+            code.contains("OutlinedCard"),
+            "Should generate OutlinedCard for variant='outlined', but got:\n{}",
+            code
+        );
     }
 
     #[test]
     fn test_card_variant_e2e_default() {
-        use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
+        use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraWidget};
 
         // Create a widget with Card (no variant - should default to Card)
         let mut card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())));
+        card_props.insert(
+            "style".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("p-4".into())),
+        );
 
         let card_node = AuraNode::Element {
             tag: "Card".to_string(),
             props: card_props,
             events: HashMap::new(),
-            children: vec![AuraNode::Text(AuraTextContent::Literal("Default Card".to_string()))],
+            children: vec![AuraNode::Text(AuraTextContent::Literal(
+                "Default Card".to_string(),
+            ))],
             span: None,
             debug_id: None,
         };
@@ -3111,9 +3546,19 @@ mod tests {
         let code = result.unwrap();
 
         // Verify Card is generated (not ElevatedCard or OutlinedCard)
-        assert!(code.contains("Card("), "Should generate Card for default variant, but got:\n{}", code);
-        assert!(!code.contains("ElevatedCard"), "Should NOT contain ElevatedCard");
-        assert!(!code.contains("OutlinedCard"), "Should NOT contain OutlinedCard");
+        assert!(
+            code.contains("Card("),
+            "Should generate Card for default variant, but got:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("ElevatedCard"),
+            "Should NOT contain ElevatedCard"
+        );
+        assert!(
+            !code.contains("OutlinedCard"),
+            "Should NOT contain OutlinedCard"
+        );
     }
 
     // =========================================================================
@@ -3122,9 +3567,9 @@ mod tests {
 
     #[test]
     fn test_card_variant_full_e2e_from_source() {
-        use crate::Parser;
-        use crate::session::CompilerSession;
         use crate::aura::extract_widget_from_decl;
+        use crate::session::CompilerSession;
+        use crate::Parser;
 
         // AURA source code with Card variant
         let source = r#"
@@ -3158,7 +3603,8 @@ widget TestCardVariant {
         let mut widgets = Vec::new();
         for stmt in &ast.stmts {
             if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-                let aura_widget = extract_widget_from_decl(widget_decl).expect("Extract should succeed");
+                let aura_widget =
+                    extract_widget_from_decl(widget_decl).expect("Extract should succeed");
                 widgets.push(aura_widget);
             }
         }
@@ -3178,39 +3624,64 @@ widget TestCardVariant {
         eprintln!("Generated Kotlin:\n{}", result);
 
         // Verify variants
-        assert!(result.contains("ElevatedCard"), "Should contain ElevatedCard, got:\n{}", result);
-        assert!(result.contains("OutlinedCard"), "Should contain OutlinedCard, got:\n{}", result);
+        assert!(
+            result.contains("ElevatedCard"),
+            "Should contain ElevatedCard, got:\n{}",
+            result
+        );
+        assert!(
+            result.contains("OutlinedCard"),
+            "Should contain OutlinedCard, got:\n{}",
+            result
+        );
         // Default Card is trickier - it's just "Card" but we want to make sure it's there too
     }
 
     #[test]
     fn test_nested_card_variant_e2e() {
         // Test nested Card with variant - matching the actual card.at structure
-        use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
+        use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraWidget};
 
         // Outer Card with elevated variant
         let mut outer_card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        outer_card_props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())));
-        outer_card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("rounded-2xl w-full p-5".into())));
+        outer_card_props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("elevated".into())),
+        );
+        outer_card_props.insert(
+            "style".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("rounded-2xl w-full p-5".into())),
+        );
 
         // Inner Card (default)
         let inner_card_props: HashMap<String, AuraPropValue> = {
             let mut props = HashMap::new();
-            props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())));
+            props.insert(
+                "style".to_string(),
+                AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())),
+            );
             props
         };
 
         // Inner Card with outlined variant
         let mut outlined_card_props: HashMap<String, AuraPropValue> = HashMap::new();
-        outlined_card_props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())));
-        outlined_card_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())));
+        outlined_card_props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("outlined".into())),
+        );
+        outlined_card_props.insert(
+            "style".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("p-4 rounded-lg".into())),
+        );
 
         // Build nested structure: Outer Card > Col > [Inner Cards]
         let inner_card1 = AuraNode::Element {
             tag: "Card".to_string(),
             props: inner_card_props,
             events: HashMap::new(),
-            children: vec![AuraNode::Text(AuraTextContent::Literal("Default Card".to_string()))],
+            children: vec![AuraNode::Text(AuraTextContent::Literal(
+                "Default Card".to_string(),
+            ))],
             span: None,
             debug_id: None,
         };
@@ -3219,7 +3690,9 @@ widget TestCardVariant {
             tag: "Card".to_string(),
             props: outlined_card_props,
             events: HashMap::new(),
-            children: vec![AuraNode::Text(AuraTextContent::Literal("Outlined Card".to_string()))],
+            children: vec![AuraNode::Text(AuraTextContent::Literal(
+                "Outlined Card".to_string(),
+            ))],
             span: None,
             debug_id: None,
         };
@@ -3275,11 +3748,23 @@ widget TestCardVariant {
         eprintln!("Generated code:\n{}", code);
 
         // Verify outer ElevatedCard
-        assert!(code.contains("ElevatedCard"), "Should contain ElevatedCard for outer card, got:\n{}", code);
+        assert!(
+            code.contains("ElevatedCard"),
+            "Should contain ElevatedCard for outer card, got:\n{}",
+            code
+        );
         // Verify OutlinedCard
-        assert!(code.contains("OutlinedCard"), "Should contain OutlinedCard, got:\n{}", code);
+        assert!(
+            code.contains("OutlinedCard"),
+            "Should contain OutlinedCard, got:\n{}",
+            code
+        );
         // Verify default Card
-        assert!(code.contains("Card("), "Should contain Card for default, got:\n{}", code);
+        assert!(
+            code.contains("Card("),
+            "Should contain Card for default, got:\n{}",
+            code
+        );
     }
 }
 
@@ -3301,17 +3786,22 @@ fn test_image_tag_normalization() {
 
 #[test]
 fn test_text_with_flex_style() {
-    use crate::aura::{AuraWidget, AuraNode, AuraPropValue, AuraTextContent};
+    use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraWidget};
 
     // Create a widget with Text that has style: "flex-1"
     let mut text_props: HashMap<String, AuraPropValue> = HashMap::new();
-    text_props.insert("style".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("flex-1".into())));
+    text_props.insert(
+        "style".to_string(),
+        AuraPropValue::Expr(crate::ast::Expr::Str("flex-1".into())),
+    );
 
     let text_node = AuraNode::Element {
         tag: "Text".to_string(),
         props: text_props,
         events: HashMap::new(),
-        children: vec![AuraNode::Text(AuraTextContent::Literal("Hello".to_string()))],
+        children: vec![AuraNode::Text(AuraTextContent::Literal(
+            "Hello".to_string(),
+        ))],
         span: None,
         debug_id: None,
     };
@@ -3329,16 +3819,16 @@ fn test_text_with_flex_style() {
         props: vec![],
         routes: None,
         lifecycle: vec![],
-            tick_interval: None,
-            handler_params: HashMap::new(),
-            span_map: HashMap::new(),
-            key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-            setup: None,
+        tick_interval: None,
+        handler_params: HashMap::new(),
+        span_map: HashMap::new(),
+        key_bindings: HashMap::new(),
+        api_imports: vec![],
+        style_css: None,
+        ext_imports: Vec::new(),
+        watchers: Vec::new(),
+        exposes: Vec::new(),
+        setup: None,
     };
 
     let mut gen = JetGenerator::new();
@@ -3349,14 +3839,18 @@ fn test_text_with_flex_style() {
     eprintln!("Generated code:\n{}", code);
 
     // Verify Text has weight(1f) modifier
-    assert!(code.contains("weight(1f)"), "Should generate weight(1f) for flex-1 style, but got:\n{}", code);
+    assert!(
+        code.contains("weight(1f)"),
+        "Should generate weight(1f) for flex-1 style, but got:\n{}",
+        code
+    );
 }
 
 #[test]
 fn test_text_with_flex_style_e2e() {
-    use crate::Parser;
-    use crate::session::CompilerSession;
     use crate::aura::extract_widget_from_decl;
+    use crate::session::CompilerSession;
+    use crate::Parser;
 
     // Parse from source - correct syntax: Text "content" (style: "flex-1")
     let source = r#"
@@ -3381,7 +3875,8 @@ widget TestTextFlex {
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let aura_widget = extract_widget_from_decl(widget_decl).expect("Extract should succeed");
+            let aura_widget =
+                extract_widget_from_decl(widget_decl).expect("Extract should succeed");
             widgets.push(aura_widget);
         }
     }
@@ -3400,7 +3895,15 @@ widget TestTextFlex {
     eprintln!("Generated Kotlin:\n{}", result);
 
     // Verify Text has weight(1f) modifier
-    assert!(result.contains("weight(1f)"), "Should generate weight(1f) for flex-1 style, but got:\n{}", result);
+    assert!(
+        result.contains("weight(1f)"),
+        "Should generate weight(1f) for flex-1 style, but got:\n{}",
+        result
+    );
     // Verify gap is converted to spacedBy
-    assert!(result.contains("spacedBy(16.dp)"), "Should generate spacedBy(16.dp) for gap-4, but got:\n{}", result);
+    assert!(
+        result.contains("spacedBy(16.dp)"),
+        "Should generate spacedBy(16.dp) for gap-4, but got:\n{}",
+        result
+    );
 }

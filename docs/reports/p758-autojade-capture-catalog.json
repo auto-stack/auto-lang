@@ -1,0 +1,91 @@
+{
+  "plan": "PLAN-758",
+  "provided_at": "2026-10-10",
+  "product": "AutoJade",
+  "project_identifier": "auto-jade",
+  "physical_repository": "D:/autostack/jade-edit",
+  "repository_head_when_inspected": "28e67b21414a26aac2414d7e3b457f3121ed418d",
+  "capture_commit": null,
+  "toolchain_commit": null,
+  "source_note": "promo/README.md describes the corresponding earlier promo batch, not a dark-specific manifest. Current HEAD and older promo source_commit are not asserted as exact dark capture identities. User-provided preparation screenshots; not final RC acceptance.",
+  "shots": [
+    {
+      "file": "p1-main-dark.png",
+      "source_path": "D:\\autostack\\jade-edit\\docs\\releases\\v0.1.0-rc\\promo-dark\\p1-main-dark.png",
+      "destination": "website/public/apps/auto-jade/p1-main-dark.png",
+      "width": 1933,
+      "height": 1245,
+      "bytes": 228325,
+      "sha256": "eef9c9138f6ebd4d4fbbdc90139616ed9cf6a57c704cf3ce6a785a79a1eeb076",
+      "status": "user_provided_preparation",
+      "note": "Full original bytes; provided by user; dark-specific toolchain identity not independently supplied"
+    },
+    {
+      "file": "p2-backlinks-dark.png",
+      "source_path": "D:\\autostack\\jade-edit\\docs\\releases\\v0.1.0-rc\\promo-dark\\p2-backlinks-dark.png",
+      "destination": "website/public/apps/auto-jade/p2-backlinks-dark.png",
+      "width": 1440,
+      "height": 900,
+      "bytes": 101969,
+      "sha256": "c823ad57c7259cdbac582ea6a1a1fd3f10aef766e205e350df3fa57f2b5e0b86",
+      "status": "user_provided_preparation",
+      "note": "Full original bytes; provided by user; dark-specific toolchain identity not independently supplied"
+    },
+    {
+      "file": "p3-wikilink-dark.png",
+      "source_path": "D:\\autostack\\jade-edit\\docs\\releases\\v0.1.0-rc\\promo-dark\\p3-wikilink-dark.png",
+      "destination": "website/public/apps/auto-jade/p3-wikilink-dark.png",
+      "width": 1440,
+      "height": 900,
+      "bytes": 86388,
+      "sha256": "67033c746d6c168257cd383feef1ddf6adf87035533063bb55ee0c0684ba1000",
+      "status": "user_provided_preparation",
+      "note": "Full original bytes; provided by user; dark-specific toolchain identity not independently supplied"
+    },
+    {
+      "file": "p4-tags-dark.png",
+      "source_path": "D:\\autostack\\jade-edit\\docs\\releases\\v0.1.0-rc\\promo-dark\\p4-tags-dark.png",
+      "destination": null,
+      "width": 1440,
+      "height": 900,
+      "bytes": 89513,
+      "sha256": "c6d1a853453ada3e51ea027e679112391aa59ebdea4c11a80dee3510c8ea634d",
+      "status": "rejected_scene_mismatch",
+      "note": "Actual right panel shows trash/find, not tags"
+    },
+    {
+      "file": "p5-quick-open-dark.png",
+      "source_path": "D:\\autostack\\jade-edit\\docs\\releases\\v0.1.0-rc\\promo-dark\\p5-quick-open-dark.png",
+      "destination": "website/public/apps/auto-jade/p5-quick-open-dark.png",
+      "width": 1440,
+      "height": 900,
+      "bytes": 84420,
+      "sha256": "2cac91b630e412fcfaf7700d50611b5ee66a8b62c152077c7be8acbfa9403619",
+      "status": "user_provided_preparation",
+      "note": "Full original bytes; provided by user; dark-specific toolchain identity not independently supplied"
+    },
+    {
+      "file": "p6-dangling-create-dark.png",
+      "source_path": "D:\\autostack\\jade-edit\\docs\\releases\\v0.1.0-rc\\promo-dark\\p6-dangling-create-dark.png",
+      "destination": "website/public/apps/auto-jade/p6-dangling-create-dark.png",
+      "width": 1440,
+      "height": 900,
+      "bytes": 92822,
+      "sha256": "c66dc8ed1e74acde44a6a823b9e8a138cd5d4353576fd638f9a4b9a394d7bb40",
+      "status": "user_provided_preparation",
+      "note": "Full original bytes; provided by user; dark-specific toolchain identity not independently supplied"
+    },
+    {
+      "file": "p7-filetree-dark.png",
+      "source_path": "D:\\autostack\\jade-edit\\docs\\releases\\v0.1.0-rc\\promo-dark\\p7-filetree-dark.png",
+      "destination": "website/public/apps/auto-jade/p7-filetree-dark.png",
+      "width": 1933,
+      "height": 1245,
+      "bytes": 231143,
+      "sha256": "e53d0f7f24b04c0474bf32aca8bce47c6ffa7fbb2ba9775b973d02c8924049c1",
+      "status": "user_provided_preparation",
+      "note": "Full original bytes; provided by user; dark-specific toolchain identity not independently supplied"
+    }
+  ],
+  "reference_audit": "docs/reports/p758-reference-audit.json"
+}

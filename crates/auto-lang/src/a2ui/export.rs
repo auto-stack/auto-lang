@@ -3,8 +3,8 @@
 //! Converts AutoUI's AURA intermediate representation into Google's A2UI v0.8 JSON.
 
 use super::{
-    A2UIAction, A2UIComponent, A2UIComponentBody, A2UIContextBinding, A2UIMessage, A2UISurfaceUpdate,
-    A2UIValue, A2UIError,
+    A2UIAction, A2UIComponent, A2UIComponentBody, A2UIContextBinding, A2UIError, A2UIMessage,
+    A2UISurfaceUpdate, A2UIValue,
 };
 use crate::ast::Expr;
 use crate::aura::{
@@ -23,12 +23,10 @@ use std::collections::HashMap;
 pub fn export_widget(widget: &AuraWidget) -> Result<A2UIMessage, A2UIError> {
     let components = export_node_children(&widget.view_tree, &mut IdGen::new(&widget.name))?;
 
-    Ok(A2UIMessage::SurfaceUpdate(
-        A2UISurfaceUpdate {
-            surface_id: widget.name.clone(),
-            components,
-        },
-    ))
+    Ok(A2UIMessage::SurfaceUpdate(A2UISurfaceUpdate {
+        surface_id: widget.name.clone(),
+        components,
+    }))
 }
 
 // ============================================================================
@@ -53,7 +51,10 @@ impl IdGen {
         let path_str = if path.is_empty() {
             "root".to_string()
         } else {
-            path.iter().map(|i| i.to_string()).collect::<Vec<_>>().join("_")
+            path.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join("_")
         };
         let key = format!("{}_{}", tag, path_str);
         let count = self.counter.entry(key.clone()).or_insert(0);
@@ -163,7 +164,12 @@ fn export_node(
             }
             Ok(result)
         }
-        AuraNode::Component { name, props, events, .. } => {
+        AuraNode::Component {
+            name,
+            props,
+            events,
+            ..
+        } => {
             let id = id_gen.next(&name.to_lowercase(), path);
             let body = export_component(name, props, events)?;
             Ok(vec![A2UIComponent::new(id, body)])
@@ -278,8 +284,12 @@ fn export_element(
 
         // Form
         "button" | "btn" => Ok(A2UIComponentBody::Button {
-            child: get_prop("text").or_else(|| get_prop("label")).unwrap_or_else(|| A2UIValue::string("Button")),
-            action: get_event("onclick").or_else(|| get_event("click")).or_else(|| get_event("tap")),
+            child: get_prop("text")
+                .or_else(|| get_prop("label"))
+                .unwrap_or_else(|| A2UIValue::string("Button")),
+            action: get_event("onclick")
+                .or_else(|| get_event("click"))
+                .or_else(|| get_event("tap")),
         }),
         "input" | "textinput" | "text_input" => Ok(A2UIComponentBody::TextInput {
             value: get_prop("value").unwrap_or_else(|| A2UIValue::string("")),
@@ -294,11 +304,15 @@ fn export_element(
             value: get_prop("value").unwrap_or_else(|| A2UIValue::string("")),
         }),
         "checkbox" | "check" => Ok(A2UIComponentBody::Checkbox {
-            value: get_prop("checked").or_else(|| get_prop("value")).unwrap_or_else(|| A2UIValue::bool(false)),
+            value: get_prop("checked")
+                .or_else(|| get_prop("value"))
+                .unwrap_or_else(|| A2UIValue::bool(false)),
             label: get_prop("label"),
         }),
         "radio" => Ok(A2UIComponentBody::Radio {
-            value: get_prop("selected").or_else(|| get_prop("value")).unwrap_or_else(|| A2UIValue::bool(false)),
+            value: get_prop("selected")
+                .or_else(|| get_prop("value"))
+                .unwrap_or_else(|| A2UIValue::bool(false)),
             label: get_prop("label"),
         }),
         "select" | "dropdown" => {
@@ -325,10 +339,14 @@ fn export_element(
             Ok(A2UIComponentBody::Text { text: value })
         }
         "image" | "img" => Ok(A2UIComponentBody::Image {
-            src: get_prop("src").or_else(|| get_prop("source")).unwrap_or_else(|| A2UIValue::string("")),
+            src: get_prop("src")
+                .or_else(|| get_prop("source"))
+                .unwrap_or_else(|| A2UIValue::string("")),
         }),
         "icon" => Ok(A2UIComponentBody::Icon {
-            name: get_prop("name").or_else(|| get_prop("icon")).unwrap_or_else(|| A2UIValue::string("")),
+            name: get_prop("name")
+                .or_else(|| get_prop("icon"))
+                .unwrap_or_else(|| A2UIValue::string("")),
         }),
         "divider" | "hr" | "separator" => Ok(A2UIComponentBody::Divider {}),
         "spacer" => Ok(A2UIComponentBody::Spacer {}),
@@ -338,7 +356,10 @@ fn export_element(
             let items = get_prop("items")
                 .or_else(|| get_prop("data"))
                 .unwrap_or_else(|| A2UIValue::path("/items"));
-            Ok(A2UIComponentBody::List { items, template: None })
+            Ok(A2UIComponentBody::List {
+                items,
+                template: None,
+            })
         }
         "table" => {
             let items = get_prop("items")
@@ -352,7 +373,12 @@ fn export_element(
         "tabs" => {
             let mut tabs = Vec::new();
             for (i, child) in children.iter().enumerate() {
-                if let AuraNode::Element { tag, children: tab_children, .. } = child {
+                if let AuraNode::Element {
+                    tag,
+                    children: tab_children,
+                    ..
+                } = child
+                {
                     if tag == "tab" {
                         let label = A2UIValue::string(format!("Tab {}", i + 1));
                         let tab_body = if tab_children.len() == 1 {
@@ -369,20 +395,22 @@ fn export_element(
                                 tp.push(j);
                                 tab_comps.extend(export_node(tc, id_gen, &tp)?);
                             }
-                            Box::new(A2UIComponentBody::Container { children: tab_comps })
+                            Box::new(A2UIComponentBody::Container {
+                                children: tab_comps,
+                            })
                         };
-                        tabs.push(super::A2UITab { label, child: tab_body });
+                        tabs.push(super::A2UITab {
+                            label,
+                            child: tab_body,
+                        });
                     }
                 }
             }
             // PLAN-641：variant prop round-trip（缺省 → None，JSON 面省略）。
-            let variant = get_prop("variant")
-                .and_then(|v| match &v {
-                    A2UIValue::LiteralString { literal_string } => {
-                        Some(literal_string.clone())
-                    }
-                    _ => None,
-                });
+            let variant = get_prop("variant").and_then(|v| match &v {
+                A2UIValue::LiteralString { literal_string } => Some(literal_string.clone()),
+                _ => None,
+            });
             Ok(A2UIComponentBody::Tabs { tabs, variant })
         }
 
@@ -465,7 +493,10 @@ mod tests {
                     tag: "text".to_string(),
                     props: {
                         let mut m = HashMap::new();
-                        m.insert("text".to_string(), AuraPropValue::Expr(Expr::Str("Counter".into())));
+                        m.insert(
+                            "text".to_string(),
+                            AuraPropValue::Expr(Expr::Str("Counter".into())),
+                        );
                         m
                     },
                     events: HashMap::new(),
@@ -477,12 +508,21 @@ mod tests {
                     tag: "button".to_string(),
                     props: {
                         let mut m = HashMap::new();
-                        m.insert("text".to_string(), AuraPropValue::Expr(Expr::Str("Increment".into())));
+                        m.insert(
+                            "text".to_string(),
+                            AuraPropValue::Expr(Expr::Str("Increment".into())),
+                        );
                         m
                     },
                     events: {
                         let mut m = HashMap::new();
-                        m.insert("onclick".to_string(), AuraEvent { handler: ".Inc".to_string(), params: vec![] });
+                        m.insert(
+                            "onclick".to_string(),
+                            AuraEvent {
+                                handler: ".Inc".to_string(),
+                                params: vec![],
+                            },
+                        );
                         m
                     },
                     children: vec![],
@@ -522,8 +562,7 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
-}
-
+        }
     }
 
     #[test]
@@ -598,7 +637,7 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
-};
+        };
 
         let result = export_widget(&widget);
         assert!(result.is_err());

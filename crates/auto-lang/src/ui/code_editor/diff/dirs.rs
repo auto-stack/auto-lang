@@ -30,7 +30,10 @@ use super::{diff_lines, DiffOpts, DiffOut};
 /// segment starting with '.' plus the six build-artifact directories.
 fn segment_skipped(name: &str) -> bool {
     name.starts_with('.')
-        || matches!(name, "target" | "node_modules" | "gen" | "dist" | "build" | "__pycache__")
+        || matches!(
+            name,
+            "target" | "node_modules" | "gen" | "dist" | "build" | "__pycache__"
+        )
 }
 
 /// ≤2MB content-compare domain (downstream `ccap`).
@@ -48,7 +51,9 @@ pub struct DirDiffOptions {
 
 impl Default for DirDiffOptions {
     fn default() -> Self {
-        DirDiffOptions { mtime_fast_path: false }
+        DirDiffOptions {
+            mtime_fast_path: false,
+        }
     }
 }
 
@@ -132,10 +137,18 @@ struct MergedRel {
 /// entries are listed too (they participate in existence/kind checks); a
 /// directory's size records 0 (downstream shape). Metadata races (delete
 /// mid-walk) skip the entry instead of failing the walk.
-fn walk_tree(root: &Path, out: &mut Vec<(String, u64, bool, Option<std::time::SystemTime>)>) -> std::io::Result<()> {
+fn walk_tree(
+    root: &Path,
+    out: &mut Vec<(String, u64, bool, Option<std::time::SystemTime>)>,
+) -> std::io::Result<()> {
     let mut entries: Vec<_> = match fs::read_dir(root) {
         Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotADirectory || e.kind() == std::io::ErrorKind::PermissionDenied => return Ok(()),
+        Err(e)
+            if e.kind() == std::io::ErrorKind::NotADirectory
+                || e.kind() == std::io::ErrorKind::PermissionDenied =>
+        {
+            return Ok(())
+        }
         Err(e) => return Err(e),
     };
     entries.sort_by_key(|e| e.file_name());
@@ -151,7 +164,12 @@ fn walk_tree(root: &Path, out: &mut Vec<(String, u64, bool, Option<std::time::Sy
         };
         let is_dir = meta.is_dir();
         let rel = name;
-        out.push((rel.clone(), if is_dir { 0 } else { meta.len() }, is_dir, meta.modified().ok()));
+        out.push((
+            rel.clone(),
+            if is_dir { 0 } else { meta.len() },
+            is_dir,
+            meta.modified().ok(),
+        ));
         if is_dir {
             let sub = out.len();
             walk_tree(&path, out)?;
@@ -178,15 +196,21 @@ impl DirDiffIter {
     /// (existence on either side keeps the entry).
     pub fn new(a_root: &Path, b_root: &Path, opts: DirDiffOptions) -> Result<Self, DirDiffError> {
         if !a_root.is_dir() {
-            return Err(DirDiffError::RootMissing(a_root.to_string_lossy().to_string()));
+            return Err(DirDiffError::RootMissing(
+                a_root.to_string_lossy().to_string(),
+            ));
         }
         if !b_root.is_dir() {
-            return Err(DirDiffError::RootMissing(b_root.to_string_lossy().to_string()));
+            return Err(DirDiffError::RootMissing(
+                b_root.to_string_lossy().to_string(),
+            ));
         }
         let mut la = Vec::new();
         let mut lb = Vec::new();
-        walk_tree(a_root, &mut la).map_err(|_| DirDiffError::RootMissing(a_root.to_string_lossy().to_string()))?;
-        walk_tree(b_root, &mut lb).map_err(|_| DirDiffError::RootMissing(b_root.to_string_lossy().to_string()))?;
+        walk_tree(a_root, &mut la)
+            .map_err(|_| DirDiffError::RootMissing(a_root.to_string_lossy().to_string()))?;
+        walk_tree(b_root, &mut lb)
+            .map_err(|_| DirDiffError::RootMissing(b_root.to_string_lossy().to_string()))?;
         let ma: std::collections::BTreeMap<String, (u64, bool, Option<std::time::SystemTime>)> =
             la.into_iter().map(|(r, s, d, m)| (r, (s, d, m))).collect();
         let mb: std::collections::BTreeMap<String, (u64, bool, Option<std::time::SystemTime>)> =
@@ -203,7 +227,12 @@ impl DirDiffIter {
                 rel,
             })
             .collect();
-        Ok(DirDiffIter { merged, idx: 0, opts, counts: DirCounts::default() })
+        Ok(DirDiffIter {
+            merged,
+            idx: 0,
+            opts,
+            counts: DirCounts::default(),
+        })
     }
 
     /// Counts over the entries classified so far (same domain as the
@@ -269,25 +298,40 @@ impl DirDiffIter {
                 if da != db {
                     // ② kind conflict.
                     counts.modified += 1;
-                    DirEntryDiff { status: DirStatus::Modified, ..base }
+                    DirEntryDiff {
+                        status: DirStatus::Modified,
+                        ..base
+                    }
                 } else if da {
                     counts.same += 1;
                     base // ② same kind dir → same
                 } else if self.opts.mtime_fast_path && sa == sb && ma.is_some() && ma == mb {
                     counts.same += 1;
-                    DirEntryDiff { note: "uncompared".to_string(), ..base }
+                    DirEntryDiff {
+                        note: "uncompared".to_string(),
+                        ..base
+                    }
                 } else if Self::reads_binary(&m.path_a, sa) || Self::reads_binary(&m.path_b, sb) {
                     // ③ binary heuristic (any side hit → whole entry binary).
                     counts.binary += 1;
-                    DirEntryDiff { status: DirStatus::Binary, ..base }
+                    DirEntryDiff {
+                        status: DirStatus::Binary,
+                        ..base
+                    }
                 } else if sa != sb {
                     // ④ size difference.
                     counts.modified += 1;
-                    DirEntryDiff { status: DirStatus::Modified, ..base }
+                    DirEntryDiff {
+                        status: DirStatus::Modified,
+                        ..base
+                    }
                 } else if sa > CONTENT_COMPARE_CAP {
                     // ⑤ >2MB same size: downstream-visible uncompared state.
                     counts.same += 1;
-                    DirEntryDiff { note: "uncompared".to_string(), ..base }
+                    DirEntryDiff {
+                        note: "uncompared".to_string(),
+                        ..base
+                    }
                 } else {
                     // ⑤ ≤2MB byte equality.
                     match (fs::read(&m.path_a), fs::read(&m.path_b)) {
@@ -297,7 +341,10 @@ impl DirDiffIter {
                         }
                         _ => {
                             counts.modified += 1;
-                            DirEntryDiff { status: DirStatus::Modified, ..base }
+                            DirEntryDiff {
+                                status: DirStatus::Modified,
+                                ..base
+                            }
                         }
                     }
                 }
@@ -384,7 +431,11 @@ mod tests {
         assert_eq!(find("same.txt").status, DirStatus::Same);
         assert_eq!(find("dir_a").status, DirStatus::Deleted);
         assert!(find("dir_a").is_dir);
-        assert_eq!(find("dir_both").status, DirStatus::Added, "dir exists only on b");
+        assert_eq!(
+            find("dir_both").status,
+            DirStatus::Added,
+            "dir exists only on b"
+        );
         assert_eq!(find("dir_both/inner.txt").status, DirStatus::Added);
         assert_eq!((counts.added, counts.deleted, counts.same), (3, 2, 1));
     }
@@ -439,7 +490,12 @@ mod tests {
         b.write("visible.txt", b"v");
         let mut it = DirDiffIter::new(&a.0, &b.0, DirDiffOptions::default()).unwrap();
         let entries = collect(&mut it);
-        assert_eq!(entries.len(), 1, "only visible.txt survives the skip-list: {:?}", entries);
+        assert_eq!(
+            entries.len(),
+            1,
+            "only visible.txt survives the skip-list: {:?}",
+            entries
+        );
         assert_eq!(entries[0].rel, "visible.txt");
         assert_eq!(entries[0].status, DirStatus::Same);
     }
@@ -481,7 +537,9 @@ mod tests {
         let mut it = DirDiffIter::new(&a.0, &b.0, DirDiffOptions::default()).unwrap();
         let e = it.next().unwrap();
         assert_eq!(e.status, DirStatus::Modified);
-        let hunks = e.hunks(DiffOpts::default()).expect("modified file yields hunks");
+        let hunks = e
+            .hunks(DiffOpts::default())
+            .expect("modified file yields hunks");
         assert_eq!(hunks.dels, 1);
         assert_eq!(hunks.adds, 1);
     }

@@ -1,6 +1,6 @@
 # bps-gallery
 
-Browses the AutoUI **bp** catalog (`blueprints/<kind>/<name>/`) as-authored:
+Browses the AutoUI **bp** catalog (`packages/blueprints/<kind>/<name>/`) as-authored:
 the spec, each variant's reference implementation source, and the gotchas.
 
 A bp is a *Skill-tier* unit (Design 17): a natural-language spec + structured
@@ -15,7 +15,7 @@ Prism）已退役。
 ## How the catalog is discovered (PLAN-676 SD-01)
 
 `src/front/registry.at` is a **generated artifact**: `auto bp list --format at`
-scans `blueprints/**` and materializes the catalog as a `.at` static table
+scans `packages/blueprints/**` and materializes the catalog as a `.at` static table
 (`pub fn all_bps() List`) — committed, dual-arm same-source, drift-checked in
 CI (the workflow re-runs the emitter and diffs against the committed file).
 This replaces PLAN-640's zero-artifact `import.meta.glob` ruling: the VM arm
@@ -23,7 +23,7 @@ cannot glob the disk, so dual-arm parity requires a static table (PLAN-625
 ui-gallery registry.at precedent). `auto bp list` remains the authoritative
 registry view; the file is a read-only materialization of it.
 
-When a bp package is added/removed/edited under `blueprints/`, regenerate:
+When a bp package is added/removed/edited under `packages/blueprints/`, regenerate:
 
 ```bash
 auto bp list --format at > examples/bps-gallery/src/front/registry.at
@@ -40,7 +40,7 @@ auto run -r vm    # VM / iced desktop arm
 
 Builds and the registry drift check are gated in CI
 (`.github/workflows/build-bps-gallery.yml`) on changes to the gallery, to
-`blueprints/**`, or to the emitter (`crates/auto`, `crates/auto-lang`).
+`packages/blueprints/**`, or to the emitter (`crates/auto`, `crates/auto-lang`).
 
 ## What it shows
 

@@ -1,0 +1,26 @@
+---
+source: crates/auto-lang/tests/ui_snapshots.rs
+assertion_line: 84
+expression: out
+---
+File: examples/ui/015-notes/src/front/editor.at
+Widget count: 1
+Widget: EditorPanel | props: 0 | state: 2 | handlers: 11 | messages: 1
+  state: tag_input (StrSlice)
+  state: show_tag_input (Bool)
+  handler: .AddTag
+  handler: .DeleteArmed
+  handler: .DeleteCancelled
+  handler: .DeleteConfirmed
+  handler: .EditBody(v)
+  handler: .EditTitle(v)
+  handler: .RemoveTag(t)
+  handler: .SaveDraft
+  handler: .ShowTagInput
+  handler: .TagInputChanged(v)
+  handler: .TogglePinActive
+API imports: []
+Store deps: ["NotesStore"]
+Store composables: 0
+Validation warnings: 0
+SFC 'EditorPanel': 7132 bytes, has template: true, has script: true, has style: true

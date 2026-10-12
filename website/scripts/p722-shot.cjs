@@ -2,7 +2,7 @@ const { chromium } = require('@playwright/test')
 const fs = require('node:fs')
 const path = require('node:path')
 const assert = require('node:assert/strict')
-const routes = ['/apps', '/apps/autoedit/', '/apps/autoshell/', '/apps/automusk/', '/apps/jadeedit/', '/apps/demos/', '/apps/autoshell/guide/'].flatMap(route => [route, '/zh' + route])
+const routes = ['/apps', '/apps/autoedit/', '/apps/autoshell/', '/apps/automusk/', '/apps/auto-jade/', '/apps/demos/', '/apps/autoshell/guide/'].flatMap(route => [route, '/zh' + route])
 const dir = path.resolve(__dirname, '../../docs/reports/p722-apps-introduction')
 const base = process.env.AUTO_WEBSITE_SHOT_URL || 'http://127.0.0.1:4227'
 ;(async () => {

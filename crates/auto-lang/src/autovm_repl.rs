@@ -35,19 +35,34 @@ impl AutovmRepl {
             // Windows: %APPDATA%\autolang\autovm_history.txt
             std::env::var("APPDATA")
                 .ok()
-                .map(|path| std::path::PathBuf::from(path).join("autolang").join("autovm_history.txt"))
+                .map(|path| {
+                    std::path::PathBuf::from(path)
+                        .join("autolang")
+                        .join("autovm_history.txt")
+                })
                 .and_then(|path| path.to_str().map(|s| s.to_string()))
         } else if cfg!(target_os = "macos") {
             // macOS: ~/Library/Application Support/autolang/autovm_history.txt
             std::env::var("HOME")
                 .ok()
-                .map(|path| std::path::PathBuf::from(path).join("Library").join("Application Support").join("autolang").join("autovm_history.txt"))
+                .map(|path| {
+                    std::path::PathBuf::from(path)
+                        .join("Library")
+                        .join("Application Support")
+                        .join("autolang")
+                        .join("autovm_history.txt")
+                })
                 .and_then(|path| path.to_str().map(|s| s.to_string()))
         } else {
             // Linux/Unix: ~/.cache/autolang/autovm_history.txt
             std::env::var("HOME")
                 .ok()
-                .map(|path| std::path::PathBuf::from(path).join(".cache").join("autolang").join("autovm_history.txt"))
+                .map(|path| {
+                    std::path::PathBuf::from(path)
+                        .join(".cache")
+                        .join("autolang")
+                        .join("autovm_history.txt")
+                })
                 .and_then(|path| path.to_str().map(|s| s.to_string()))
         };
 
@@ -59,9 +74,8 @@ impl AutovmRepl {
 
     /// Run the REPL main loop
     pub fn run(&mut self) -> AutoResult<()> {
-        let mut editor = DefaultEditor::new().map_err(|e| {
-            AutoError::Msg(format!("Failed to initialize REPL: {}", e))
-        })?;
+        let mut editor = DefaultEditor::new()
+            .map_err(|e| AutoError::Msg(format!("Failed to initialize REPL: {}", e)))?;
 
         // Load history if available
         if let Some(ref path) = self.history_path {
@@ -197,7 +211,10 @@ impl AutovmRepl {
                 Some(ReplCommand::Exit)
             }
             _ => {
-                println!("Unknown command: {}. Type ':help' for available commands.", cmd);
+                println!(
+                    "Unknown command: {}. Type ':help' for available commands.",
+                    cmd
+                );
                 Some(ReplCommand::Continue)
             }
         }
@@ -235,7 +252,10 @@ mod tests {
         // history_path is set based on platform environment variables
         // It should be Some(...) on systems with APPDATA/HOME set
         #[cfg(windows)]
-        assert!(repl.history_path.is_some(), "history_path should be set on Windows with APPDATA");
+        assert!(
+            repl.history_path.is_some(),
+            "history_path should be set on Windows with APPDATA"
+        );
         #[cfg(not(windows))]
         {
             // On CI or systems without HOME, it may be None
@@ -248,7 +268,10 @@ mod tests {
     fn test_autovm_repl_default() {
         let repl = AutovmRepl::default();
         #[cfg(windows)]
-        assert!(repl.history_path.is_some(), "history_path should be set on Windows with APPDATA");
+        assert!(
+            repl.history_path.is_some(),
+            "history_path should be set on Windows with APPDATA"
+        );
         #[cfg(not(windows))]
         {
             let _ = &repl.history_path;

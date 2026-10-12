@@ -1,9 +1,9 @@
+use super::super::escape_str;
+use super::{Sink, ToStrError, TypeScriptTrans};
 use crate::ast::*;
 use crate::AutoResult;
-use std::io::Write;
 use auto_val::AutoStr;
-use super::{Sink, TypeScriptTrans, ToStrError};
-use super::super::escape_str;
+use std::io::Write;
 
 #[allow(unused_variables)]
 impl TypeScriptTrans {
@@ -31,7 +31,8 @@ impl TypeScriptTrans {
                 // Add type annotation if type is known
                 if !matches!(store.ty, Type::Unknown) {
                     sink.body.write(b": ")?;
-                    sink.body.write_all(Self::type_to_ts(&store.ty).as_bytes())?; // Uses ts_types
+                    sink.body
+                        .write_all(Self::type_to_ts(&store.ty).as_bytes())?; // Uses ts_types
                 }
 
                 sink.body.write(b" = ")?;
@@ -162,7 +163,6 @@ impl TypeScriptTrans {
     }
 
     pub fn fn_decl(&mut self, func: &Fn, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         if self.emit_export {
             sink.body.write(b"export ")?;
@@ -189,7 +189,8 @@ impl TypeScriptTrans {
             // Add type annotation
             if !matches!(param.ty, Type::Unknown) {
                 sink.body.write(b": ")?;
-                sink.body.write_all(Self::type_to_ts(&param.ty).as_bytes())?;
+                sink.body
+                    .write_all(Self::type_to_ts(&param.ty).as_bytes())?;
             }
         }
 
@@ -198,7 +199,8 @@ impl TypeScriptTrans {
         // Return type annotation
         if !matches!(func.ret, Type::Unknown | Type::Void) {
             sink.body.write(b": ")?;
-            sink.body.write_all(Self::type_to_ts(&func.ret).as_bytes())?;
+            sink.body
+                .write_all(Self::type_to_ts(&func.ret).as_bytes())?;
         } else if matches!(func.ret, Type::Void) {
             sink.body.write(b": void")?;
         }
@@ -236,7 +238,6 @@ impl TypeScriptTrans {
     }
 
     pub fn body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         self.open_block(sink)?;
         for (i, stmt) in body.stmts.iter().enumerate() {
@@ -251,7 +252,6 @@ impl TypeScriptTrans {
     }
 
     pub fn if_stmt(&mut self, if_stmt: &If, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         // Process first branch as "if"
         if let Some(first_branch) = if_stmt.branches.first() {
@@ -279,7 +279,6 @@ impl TypeScriptTrans {
     }
 
     pub fn for_loop(&mut self, for_loop: &For, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         match &for_loop.iter {
             Iter::Cond => {
@@ -333,7 +332,11 @@ impl TypeScriptTrans {
                     self.expr(&range.start, sink)?;
                     sink.body.write(b"; ")?;
                     sink.body.write_all(name.as_bytes())?;
-                    if range.eq { sink.body.write(b" <= ")?; } else { sink.body.write(b" < ")?; }
+                    if range.eq {
+                        sink.body.write(b" <= ")?;
+                    } else {
+                        sink.body.write(b" < ")?;
+                    }
                     self.expr(&range.end, sink)?;
                     sink.body.write(b"; ")?;
                     sink.body.write_all(index.as_bytes())?;
@@ -365,7 +368,9 @@ impl TypeScriptTrans {
 
                     for (i, stmt) in for_loop.body.stmts.iter().enumerate() {
                         sink.record();
-                        sink.set_source_line(for_loop.body.source_lines.get(i).copied().unwrap_or(0));
+                        sink.set_source_line(
+                            for_loop.body.source_lines.get(i).copied().unwrap_or(0),
+                        );
                         sink.body.write(b"\n")?;
                         self.print_indent(sink)?;
                         self.stmt(stmt, sink)?;
@@ -387,17 +392,17 @@ impl TypeScriptTrans {
                 self.if_body(&for_loop.body, sink)?;
             }
             _ => {
-                return Err(format!("TypeScript Transpiler: unsupported for loop iteration: {:?}", for_loop.iter).into());
+                return Err(format!(
+                    "TypeScript Transpiler: unsupported for loop iteration: {:?}",
+                    for_loop.iter
+                )
+                .into());
             }
         }
         Ok(())
     }
 
-    pub fn is_stmt(
-        &mut self,
-        is_stmt: &Is,
-        sink: &mut Sink,
-    ) -> AutoResult<()> {
+    pub fn is_stmt(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         if self.can_use_switch_is(is_stmt) {
             self.emit_switch_is(is_stmt, sink)?;
@@ -407,10 +412,7 @@ impl TypeScriptTrans {
         Ok(())
     }
 
-    fn can_use_switch_is(
-        &self,
-        is_stmt: &Is,
-    ) -> bool {
+    fn can_use_switch_is(&self, is_stmt: &Is) -> bool {
         for branch in &is_stmt.branches {
             match branch {
                 IsBranch::EqBranch(patterns, _) => {
@@ -427,29 +429,31 @@ impl TypeScriptTrans {
         true
     }
 
-    fn is_switchable_pattern(
-        &self,
-        pat: &Expr,
-    ) -> bool {
+    fn is_switchable_pattern(&self, pat: &Expr) -> bool {
         match pat {
             Expr::Cover(cover) => match cover {
                 crate::ast::Cover::Tag(tag_cover) => {
-                    let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
+                    let real_bindings: Vec<&AutoStr> = tag_cover
+                        .bindings
+                        .iter()
                         .filter(|b| b.as_str() != "_")
                         .collect();
                     self.scalar_enums.contains(&tag_cover.kind) && real_bindings.is_empty()
                 }
-            }
-            Expr::Int(_) | Expr::Uint(_) | Expr::Float(_, _) | Expr::Bool(_) | Expr::Str(_) | Expr::Ident(_) | Expr::Nil | Expr::Null => true,
+            },
+            Expr::Int(_)
+            | Expr::Uint(_)
+            | Expr::Float(_, _)
+            | Expr::Bool(_)
+            | Expr::Str(_)
+            | Expr::Ident(_)
+            | Expr::Nil
+            | Expr::Null => true,
             _ => false,
         }
     }
 
-    fn emit_switch_is(
-        &mut self,
-        is_stmt: &Is,
-        sink: &mut Sink,
-    ) -> AutoResult<()> {
+    fn emit_switch_is(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         sink.body.write(b"switch (")?;
         self.expr(&is_stmt.target, sink)?;
@@ -481,11 +485,7 @@ impl TypeScriptTrans {
         self.close_block(sink)
     }
 
-    fn emit_switch_case_value(
-        &mut self,
-        pat: &Expr,
-        sink: &mut Sink,
-    ) -> AutoResult<()> {
+    fn emit_switch_case_value(&mut self, pat: &Expr, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         match pat {
             Expr::Cover(cover) => match cover {
@@ -494,7 +494,7 @@ impl TypeScriptTrans {
                     sink.body.write(b".")?;
                     sink.body.write_all(tag_cover.tag.as_bytes())?;
                 }
-            }
+            },
             Expr::Int(i) => {
                 write!(&mut sink.body, "{}", i)?;
             }
@@ -525,11 +525,7 @@ impl TypeScriptTrans {
         Ok(())
     }
 
-    fn emit_switch_body(
-        &mut self,
-        body: &Body,
-        sink: &mut Sink,
-    ) -> AutoResult<()> {
+    fn emit_switch_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         self.indent();
         for (i, stmt) in body.stmts.iter().enumerate() {
@@ -549,11 +545,7 @@ impl TypeScriptTrans {
         Ok(())
     }
 
-    fn emit_if_is(
-        &mut self,
-        is_stmt: &Is,
-        sink: &mut Sink,
-    ) -> AutoResult<()> {
+    fn emit_if_is(&mut self, is_stmt: &Is, sink: &mut Sink) -> AutoResult<()> {
         let out = &mut sink.body;
         // TypeScript has no pattern matching; use a chain of if/else if with _tag checks.
         let target_var = format!("__auto_is_{}", self.is_counter);
@@ -589,7 +581,9 @@ impl TypeScriptTrans {
             match branch {
                 IsBranch::EqBranch(patterns, _) => {
                     for (j, pat) in patterns.iter().enumerate() {
-                        if j > 0 { sink.body.write(b" || ")?; }
+                        if j > 0 {
+                            sink.body.write(b" || ")?;
+                        }
                         self.emit_is_condition(&target_var, pat, sink)?;
                     }
                 }
@@ -632,7 +626,11 @@ impl TypeScriptTrans {
         }
 
         // Handle else/default branch
-        if let Some(else_branch) = is_stmt.branches.iter().find(|b| matches!(b, IsBranch::ElseBranch(_))) {
+        if let Some(else_branch) = is_stmt
+            .branches
+            .iter()
+            .find(|b| matches!(b, IsBranch::ElseBranch(_)))
+        {
             sink.body.write(b"\n")?;
             self.print_indent(sink)?;
             sink.body.write(b"else")?;
@@ -661,27 +659,27 @@ impl TypeScriptTrans {
     ) -> AutoResult<()> {
         let out = &mut sink.body;
         match pat {
-            Expr::Cover(cover) => {
-                match cover {
-                    crate::ast::Cover::Tag(tag_cover) => {
-                        let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
-                            .filter(|b| b.as_str() != "_")
-                            .collect();
-                        if self.scalar_enums.contains(&tag_cover.kind) && real_bindings.is_empty() {
-                            sink.body.write(target_var.as_bytes())?;
-                            sink.body.write(b" === ")?;
-                            sink.body.write_all(tag_cover.kind.as_bytes())?;
-                            sink.body.write(b".")?;
-                            sink.body.write_all(tag_cover.tag.as_bytes())?;
-                        } else {
-                            sink.body.write(target_var.as_bytes())?;
-                            sink.body.write(b"._tag === \"")?;
-                            sink.body.write_all(tag_cover.tag.as_bytes())?;
-                            sink.body.write(b"\"")?;
-                        }
+            Expr::Cover(cover) => match cover {
+                crate::ast::Cover::Tag(tag_cover) => {
+                    let real_bindings: Vec<&AutoStr> = tag_cover
+                        .bindings
+                        .iter()
+                        .filter(|b| b.as_str() != "_")
+                        .collect();
+                    if self.scalar_enums.contains(&tag_cover.kind) && real_bindings.is_empty() {
+                        sink.body.write(target_var.as_bytes())?;
+                        sink.body.write(b" === ")?;
+                        sink.body.write_all(tag_cover.kind.as_bytes())?;
+                        sink.body.write(b".")?;
+                        sink.body.write_all(tag_cover.tag.as_bytes())?;
+                    } else {
+                        sink.body.write(target_var.as_bytes())?;
+                        sink.body.write(b"._tag === \"")?;
+                        sink.body.write_all(tag_cover.tag.as_bytes())?;
+                        sink.body.write(b"\"")?;
                     }
                 }
-            }
+            },
             Expr::Int(i) => {
                 sink.body.write(target_var.as_bytes())?;
                 sink.body.write(b" === ")?;
@@ -770,7 +768,9 @@ impl TypeScriptTrans {
         };
         match cover {
             crate::ast::Cover::Tag(tag_cover) => {
-                let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
+                let real_bindings: Vec<&AutoStr> = tag_cover
+                    .bindings
+                    .iter()
                     .filter(|b| b.as_str() != "_")
                     .collect();
                 if real_bindings.is_empty() {
@@ -787,7 +787,9 @@ impl TypeScriptTrans {
                 } else {
                     sink.body.write(b"const [")?;
                     for (i, b) in real_bindings.iter().enumerate() {
-                        if i > 0 { sink.body.write(b", ")?; }
+                        if i > 0 {
+                            sink.body.write(b", ")?;
+                        }
                         sink.body.write_all(b.as_bytes())?;
                     }
                     sink.body.write(b"] = ")?;
@@ -800,7 +802,6 @@ impl TypeScriptTrans {
     }
 
     pub fn if_body(&mut self, body: &Body, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         if body.stmts.is_empty() {
             sink.body.write(b" {}")?;
@@ -834,7 +835,9 @@ impl TypeScriptTrans {
         if !type_decl.generic_params.is_empty() {
             sink.body.write(b"<")?;
             for (i, param) in type_decl.generic_params.iter().enumerate() {
-                if i > 0 { sink.body.write(b", ")?; }
+                if i > 0 {
+                    sink.body.write(b", ")?;
+                }
                 match param {
                     GenericParam::Type(tp) => sink.body.write_all(tp.name.as_bytes())?,
                     GenericParam::Const(cp) => sink.body.write_all(cp.name.as_bytes())?,
@@ -853,7 +856,9 @@ impl TypeScriptTrans {
         if !type_decl.specs.is_empty() {
             sink.body.write(b" implements ")?;
             for (i, spec) in type_decl.specs.iter().enumerate() {
-                if i > 0 { sink.body.write(b", ")?; }
+                if i > 0 {
+                    sink.body.write(b", ")?;
+                }
                 sink.body.write_all(spec.as_bytes())?;
             }
         }
@@ -888,7 +893,8 @@ impl TypeScriptTrans {
                 sink.body.write_all(member.name.as_bytes())?;
                 if !matches!(member.ty, Type::Unknown) {
                     sink.body.write(b": ")?;
-                    sink.body.write_all(Self::type_to_ts(&member.ty).as_bytes())?;
+                    sink.body
+                        .write_all(Self::type_to_ts(&member.ty).as_bytes())?;
                 }
             }
             sink.body.write(b")")?;
@@ -925,7 +931,8 @@ impl TypeScriptTrans {
                 sink.body.write_all(param.name.as_bytes())?;
                 if !matches!(param.ty, Type::Unknown) {
                     sink.body.write(b": ")?;
-                    sink.body.write_all(Self::type_to_ts(&param.ty).as_bytes())?;
+                    sink.body
+                        .write_all(Self::type_to_ts(&param.ty).as_bytes())?;
                 }
             }
 
@@ -934,7 +941,8 @@ impl TypeScriptTrans {
             // Return type
             if !matches!(method.ret, Type::Unknown | Type::Void) {
                 sink.body.write(b": ")?;
-                sink.body.write_all(Self::type_to_ts(&method.ret).as_bytes())?;
+                sink.body
+                    .write_all(Self::type_to_ts(&method.ret).as_bytes())?;
             } else if matches!(method.ret, Type::Void) {
                 sink.body.write(b": void")?;
             }
@@ -982,7 +990,9 @@ impl TypeScriptTrans {
         if !spec_decl.generic_params.is_empty() {
             sink.body.write(b"<")?;
             for (i, param) in spec_decl.generic_params.iter().enumerate() {
-                if i > 0 { sink.body.write(b", ")?; }
+                if i > 0 {
+                    sink.body.write(b", ")?;
+                }
                 match param {
                     GenericParam::Type(tp) => sink.body.write_all(tp.name.as_bytes())?,
                     GenericParam::Const(cp) => sink.body.write_all(cp.name.as_bytes())?,
@@ -1000,17 +1010,21 @@ impl TypeScriptTrans {
             sink.body.write_all(method.name.as_bytes())?;
             sink.body.write(b"(")?;
             for (i, param) in method.params.iter().enumerate() {
-                if i > 0 { sink.body.write(b", ")?; }
+                if i > 0 {
+                    sink.body.write(b", ")?;
+                }
                 sink.body.write_all(param.name.as_bytes())?;
                 if !matches!(param.ty, Type::Unknown) {
                     sink.body.write(b": ")?;
-                    sink.body.write_all(Self::type_to_ts(&param.ty).as_bytes())?;
+                    sink.body
+                        .write_all(Self::type_to_ts(&param.ty).as_bytes())?;
                 }
             }
             sink.body.write(b")")?;
             if !matches!(method.ret, Type::Unknown | Type::Void) {
                 sink.body.write(b": ")?;
-                sink.body.write_all(Self::type_to_ts(&method.ret).as_bytes())?;
+                sink.body
+                    .write_all(Self::type_to_ts(&method.ret).as_bytes())?;
             } else if matches!(method.ret, Type::Void) {
                 sink.body.write(b": void")?;
             }
@@ -1025,12 +1039,19 @@ impl TypeScriptTrans {
     /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
     #[allow(dead_code)]
     fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
-        let fields: Vec<TagField> = enum_decl.items.iter().map(|item| TagField {
-            name: item.name.clone().into(),
-            ty: item.payload_type.clone().unwrap_or(Type::Void),
-        }).collect();
+        let fields: Vec<TagField> = enum_decl
+            .items
+            .iter()
+            .map(|item| TagField {
+                name: item.name.clone().into(),
+                ty: item.payload_type.clone().unwrap_or(Type::Void),
+            })
+            .collect();
         let (generic_params, methods) = match &enum_decl.kind {
-            EnumKind::Heterogeneous { generic_params, methods } => (generic_params.clone(), methods.clone()),
+            EnumKind::Heterogeneous {
+                generic_params,
+                methods,
+            } => (generic_params.clone(), methods.clone()),
             _ => (vec![], vec![]),
         };
         Tag {
@@ -1043,7 +1064,9 @@ impl TypeScriptTrans {
 
     fn enum_item_payload_type(item: &EnumItem) -> Option<AutoStr> {
         if item.has_tuple_payload() {
-            let parts: Vec<String> = item.payload_types.iter()
+            let parts: Vec<String> = item
+                .payload_types
+                .iter()
                 .map(|t| Self::type_to_ts(t))
                 .collect();
             Some(format!("[{}]", parts.join(", ")).into())
@@ -1057,7 +1080,6 @@ impl TypeScriptTrans {
     }
 
     pub fn enum_decl(&mut self, enum_decl: &EnumDecl, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         let export: &[u8] = if self.emit_export { b"export " } else { b"" };
         match &enum_decl.kind {
@@ -1092,13 +1114,17 @@ impl TypeScriptTrans {
             EnumKind::Homogeneous { .. } | EnumKind::Heterogeneous { .. } => {
                 // Plan 577 T1 rider: record zero-payload variants so bare
                 // references `Op.Nil` emit as factory invocations `Op.Nil()`.
-                let units: Vec<AutoStr> = enum_decl.items.iter()
-                    .filter(|it| !it.has_tuple_payload()
-                        && it.payload_type.is_none() && !it.has_fields())
+                let units: Vec<AutoStr> = enum_decl
+                    .items
+                    .iter()
+                    .filter(|it| {
+                        !it.has_tuple_payload() && it.payload_type.is_none() && !it.has_fields()
+                    })
                     .map(|it| it.name.clone().into())
                     .collect();
                 if !units.is_empty() {
-                    self.enum_unit_variants.insert(enum_decl.name.clone().into(), units);
+                    self.enum_unit_variants
+                        .insert(enum_decl.name.clone().into(), units);
                 }
                 // Generate TS discriminated union: type Name = { _tag: "V1", value: T } | ...
                 sink.body.write(export)?;
@@ -1107,7 +1133,11 @@ impl TypeScriptTrans {
                 sink.body.write(b" =\n")?;
 
                 for (i, item) in enum_decl.items.iter().enumerate() {
-                    if i > 0 { sink.body.write(b"\n    | ")?; } else { sink.body.write(b"    ")?; }
+                    if i > 0 {
+                        sink.body.write(b"\n    | ")?;
+                    } else {
+                        sink.body.write(b"    ")?;
+                    }
                     sink.body.write(b"{ _tag: \"")?;
                     sink.body.write_all(item.name.as_bytes())?;
                     sink.body.write(b"\"")?;
@@ -1126,7 +1156,9 @@ impl TypeScriptTrans {
                 sink.body.write(b" =")?;
                 self.open_block(sink)?;
                 for (i, item) in enum_decl.items.iter().enumerate() {
-                    if i > 0 { sink.body.write(b",")?; }
+                    if i > 0 {
+                        sink.body.write(b",")?;
+                    }
                     sink.body.write(b"\n")?;
                     self.print_indent(sink)?;
                     sink.body.write_all(item.name.as_bytes())?;
@@ -1163,31 +1195,32 @@ impl TypeScriptTrans {
     }
 
     pub fn type_alias(&mut self, type_alias: &TypeAlias, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         if self.emit_export {
             sink.body.write(b"export ")?;
         }
         sink.body.write(b"type ")?;
         sink.body.write_all(type_alias.name.as_bytes())?;
-        
+
         if !type_alias.params.is_empty() {
             sink.body.write(b"<")?;
             for (i, param) in type_alias.params.iter().enumerate() {
-                if i > 0 { sink.body.write(b", ")?; }
+                if i > 0 {
+                    sink.body.write(b", ")?;
+                }
                 sink.body.write_all(param.as_bytes())?;
             }
             sink.body.write(b">")?;
         }
 
         sink.body.write(b" = ")?;
-        sink.body.write_all(Self::type_to_ts(&type_alias.target).as_bytes())?;
+        sink.body
+            .write_all(Self::type_to_ts(&type_alias.target).as_bytes())?;
         sink.body.write(b";\n")?;
         Ok(())
     }
 
     pub fn union_decl(&mut self, union: &Union, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         if self.emit_export {
             sink.body.write(b"export ")?;
@@ -1202,7 +1235,8 @@ impl TypeScriptTrans {
             self.print_indent(sink)?;
             sink.body.write_all(member.name.as_bytes())?;
             sink.body.write(b"?: ")?;
-            sink.body.write_all(Self::type_to_ts(&member.ty).as_bytes())?;
+            sink.body
+                .write_all(Self::type_to_ts(&member.ty).as_bytes())?;
             sink.body.write(b";")?;
         }
 
@@ -1212,7 +1246,6 @@ impl TypeScriptTrans {
     }
 
     pub fn tag_decl(&mut self, tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         let export: &[u8] = if self.emit_export { b"export " } else { b"" };
         // TS algebraic data types: type Name = { type: "Option1", value: T } | ...
@@ -1223,7 +1256,9 @@ impl TypeScriptTrans {
         if !tag.generic_params.is_empty() {
             sink.body.write(b"<")?;
             for (i, param) in tag.generic_params.iter().enumerate() {
-                if i > 0 { sink.body.write(b", ")?; }
+                if i > 0 {
+                    sink.body.write(b", ")?;
+                }
                 match param {
                     GenericParam::Type(tp) => sink.body.write_all(tp.name.as_bytes())?,
                     GenericParam::Const(cp) => {
@@ -1238,11 +1273,16 @@ impl TypeScriptTrans {
         sink.body.write(b" =\n")?;
 
         for (i, field) in tag.fields.iter().enumerate() {
-            if i > 0 { sink.body.write(b"\n    | ")?; } else { sink.body.write(b"    ")?; }
+            if i > 0 {
+                sink.body.write(b"\n    | ")?;
+            } else {
+                sink.body.write(b"    ")?;
+            }
             sink.body.write(b"{ _tag: \"")?;
             sink.body.write_all(field.name.as_bytes())?;
             sink.body.write(b"\", value: ")?;
-            sink.body.write_all(Self::type_to_ts(&field.ty).as_bytes())?;
+            sink.body
+                .write_all(Self::type_to_ts(&field.ty).as_bytes())?;
             sink.body.write(b" }")?;
         }
         sink.body.write(b";\n\n")?;
@@ -1254,17 +1294,21 @@ impl TypeScriptTrans {
         sink.body.write(b" =")?;
         self.open_block(sink)?;
         for (i, field) in tag.fields.iter().enumerate() {
-            if i > 0 { sink.body.write(b",")?; }
+            if i > 0 {
+                sink.body.write(b",")?;
+            }
             sink.body.write(b"\n")?;
             self.print_indent(sink)?;
             sink.body.write_all(field.name.as_bytes())?;
             sink.body.write(b": ")?;
-            
+
             // Generic params for factory function
             if !tag.generic_params.is_empty() {
                 sink.body.write(b"<")?;
                 for (j, param) in tag.generic_params.iter().enumerate() {
-                    if j > 0 { sink.body.write(b", ")?; }
+                    if j > 0 {
+                        sink.body.write(b", ")?;
+                    }
                     match param {
                         GenericParam::Type(tp) => sink.body.write_all(tp.name.as_bytes())?,
                         GenericParam::Const(cp) => {
@@ -1277,7 +1321,8 @@ impl TypeScriptTrans {
                 sink.body.write(b">")?;
             }
             sink.body.write(b"(value: ")?;
-            sink.body.write_all(Self::type_to_ts(&field.ty).as_bytes())?;
+            sink.body
+                .write_all(Self::type_to_ts(&field.ty).as_bytes())?;
             sink.body.write(b") => ({ _tag: \"")?;
             sink.body.write_all(field.name.as_bytes())?;
             sink.body.write(b"\", value })")?;
@@ -1289,7 +1334,6 @@ impl TypeScriptTrans {
     }
 
     pub fn ext_decl(&mut self, ext: &Ext, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         for method in &ext.methods {
             sink.body.write_all(ext.target.as_bytes())?;
@@ -1303,19 +1347,23 @@ impl TypeScriptTrans {
                 if param.name == "self" {
                     continue;
                 }
-                if !first { sink.body.write(b", ")?; }
+                if !first {
+                    sink.body.write(b", ")?;
+                }
                 first = false;
                 sink.body.write_all(param.name.as_bytes())?;
                 if !matches!(param.ty, Type::Unknown) {
                     sink.body.write(b": ")?;
-                    sink.body.write_all(Self::type_to_ts(&param.ty).as_bytes())?;
+                    sink.body
+                        .write_all(Self::type_to_ts(&param.ty).as_bytes())?;
                 }
             }
             sink.body.write(b")")?;
 
             if !matches!(method.ret, Type::Unknown | Type::Void) {
                 sink.body.write(b": ")?;
-                sink.body.write_all(Self::type_to_ts(&method.ret).as_bytes())?;
+                sink.body
+                    .write_all(Self::type_to_ts(&method.ret).as_bytes())?;
             } else if matches!(method.ret, Type::Void) {
                 sink.body.write(b": void")?;
             }
@@ -1351,11 +1399,11 @@ impl TypeScriptTrans {
     }
 
     pub fn use_stmt(&mut self, use_stmt: &Use, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         // Convert Auto use to TypeScript import
         let module_name = if let Some(ref mp) = use_stmt.module_path {
-            mp.display().to_string()
+            mp.display()
+                .to_string()
                 .replace("pac.", "./")
                 .replace("super.", "../")
         } else if !use_stmt.paths.is_empty() {
@@ -1369,8 +1417,12 @@ impl TypeScriptTrans {
         } else if use_stmt.items.is_empty() {
             write!(&mut sink.body, "import \"{}\";", module_name)?;
         } else {
-            write!(&mut sink.body, "import {{ {} }} from \"{}\";",
-                use_stmt.items.join(", "), module_name)?;
+            write!(
+                &mut sink.body,
+                "import {{ {} }} from \"{}\";",
+                use_stmt.items.join(", "),
+                module_name
+            )?;
         }
         Ok(())
     }
@@ -1430,8 +1482,8 @@ impl TypeScriptTrans {
         match expr {
             Expr::Await { .. } => true,
             Expr::Call(call) => {
-                Self::expr_has_await(&call.name) ||
-                    call.args.args.iter().any(|arg| match arg {
+                Self::expr_has_await(&call.name)
+                    || call.args.args.iter().any(|arg| match arg {
                         Arg::Pos(e) => Self::expr_has_await(e),
                         Arg::Pair(_, e) => Self::expr_has_await(e),
                         Arg::Name(_) => false,

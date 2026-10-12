@@ -204,7 +204,10 @@ widget App {{
             out.contains("no editor registered"),
             "catch binds the error message (VM STORE_LOCAL 同源): {out}"
         );
-        assert!(out.contains("p710-no-such-editor"), "message carries the key: {out}");
+        assert!(
+            out.contains("p710-no-such-editor"),
+            "message carries the key: {out}"
+        );
     }
 
     // ---- G-C: code_editor_delta — VM track vs core (envelope + error form) ----
@@ -213,11 +216,11 @@ widget App {{
     #[cfg(feature = "ui-iced")]
     #[cfg(feature = "code-editor")]
     fn vm_delta_registered_envelope_and_unregistered_error() {
+        use crate::ui::code_editor::core::REGISTRY_TEST_LOCK;
         use crate::ui::code_editor::{
             code_editor, code_editor_delta, code_editor_dispose, code_editor_set_text,
             set_font_system_call, storage_key, CodeEditorConfig,
         };
-        use crate::ui::code_editor::core::REGISTRY_TEST_LOCK;
         let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
         set_font_system_call(probe_font_system);
         // registry 以 `__code_editor_{key}` 存取（storage_key 归一）；.at/shim
@@ -225,9 +228,14 @@ widget App {{
         // 用裸名。
         let key = storage_key("p710-probe-editor");
         code_editor_dispose(&key);
-        let config = CodeEditorConfig { ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            ..CodeEditorConfig::default()
+        };
         let _core = code_editor(&key, &config);
-        assert!(code_editor_set_text(&key, "hello"), "set_text queues delta 1");
+        assert!(
+            code_editor_set_text(&key, "hello"),
+            "set_text queues delta 1"
+        );
 
         // Registered: envelope JSON（revision/deltas 形——core 直读同源）。
         let bridge = probe_bridge_with(
@@ -235,12 +243,21 @@ widget App {{
         );
         let json = call_str(&bridge, "probe_delta");
         let v: serde_json::Value = serde_json::from_str(&json).expect("envelope json");
-        assert!(v.get("revision").is_some(), "envelope field revision: {json}");
+        assert!(
+            v.get("revision").is_some(),
+            "envelope field revision: {json}"
+        );
         assert!(v.get("deltas").is_some(), "envelope field deltas: {json}");
         // 同源对拍：core 直读（destructive）与 VM shim 轨返回同一 watermark 形。
         let direct = code_editor_delta(&key).expect("core direct read");
-        assert_eq!(direct, r#"{"revision":1,"deltas":[]}"#, "destructive watermark form");
-        assert_eq!(direct, r#"{"revision":1,"deltas":[]}"#, "destructive watermark form");
+        assert_eq!(
+            direct, r#"{"revision":1,"deltas":[]}"#,
+            "destructive watermark form"
+        );
+        assert_eq!(
+            direct, r#"{"revision":1,"deltas":[]}"#,
+            "destructive watermark form"
+        );
 
         // Unregistered: VM shim 错误形（RuntimeError + 同消息）。
         let bridge2 = probe_bridge_with(
@@ -340,7 +357,10 @@ widget App {{
         let code = gen_rust(
             ".Init -> {\n            let w = \"x\"\n            let c = w.char_at(0)\n            let s = w.substr(0, 1)\n            let n = w.to_int()\n        }",
         );
-        assert!(code.contains("chars().nth("), "D-8 char_at 字符语义: {code}");
+        assert!(
+            code.contains("chars().nth("),
+            "D-8 char_at 字符语义: {code}"
+        );
         assert!(
             code.contains("chars().skip(") && code.contains("collect::<String>()"),
             "D-8 substr 字符窗: {code}"
@@ -487,14 +507,16 @@ widget App {
         // store 装载探测门 code_editor_edit("__code_editor_tab-N",0,0,"")
         // 必须命中（供料档 §7 永假门反转绿）；脱节旧形（注册在
         // __code_editor_editor 下）保持 false——钉住 §7 脱节形态本身。
-        use crate::ui::code_editor::{
-            code_editor, code_editor_dispose, code_editor_edit, set_font_system_call,
-            storage_key, CodeEditorConfig,
-        };
         use crate::ui::code_editor::core::REGISTRY_TEST_LOCK;
+        use crate::ui::code_editor::{
+            code_editor, code_editor_dispose, code_editor_edit, set_font_system_call, storage_key,
+            CodeEditorConfig,
+        };
         let _guard = REGISTRY_TEST_LOCK.lock().unwrap();
         set_font_system_call(probe_font_system);
-        let config = CodeEditorConfig { ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            ..CodeEditorConfig::default()
+        };
 
         // 修复形：注册键 = storage_key(t.key 运行时值)。
         let fixed = storage_key("tab-3");
@@ -518,11 +540,11 @@ widget App {
     }
 }
 
-    // ---- PLAN-714 r2: back-path Stmt::Try arm (trans/rust.rs emission) ----
+// ---- PLAN-714 r2: back-path Stmt::Try arm (trans/rust.rs emission) ----
 
-    #[test]
-    fn plan714_back_try_arm_catch_unwind_fsys_shape() {
-        let src = "pub fn find_in_files(fpath str) {
+#[test]
+fn plan714_back_try_arm_catch_unwind_fsys_shape() {
+    let src = "pub fn find_in_files(fpath str) {
     var n int = 0
     try {
         let content str = File.read_text(fpath)
@@ -536,22 +558,22 @@ widget App {
     }
 }
 ";
-        let mut rcode = crate::trans::rust::transpile_rust("find_in_files", src)
-            .expect("transpile failed");
-        let rs_bytes = rcode.done().expect("done failed");
-        let rs = String::from_utf8_lossy(rs_bytes);
-        assert!(
-            rs.contains("std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {"),
-            "try 臂 catch_unwind 形: {rs}"
-        );
-        assert!(rs.contains("Ok(_) => {}"), "成功臂零扰动: {rs}");
-        assert!(rs.contains("Err(_p714) => {}"), "空 catch 载荷弃: {rs}");
-        assert!(rs.contains("break;"), "for{{if break}} 体保留: {rs}");
-    }
+    let mut rcode =
+        crate::trans::rust::transpile_rust("find_in_files", src).expect("transpile failed");
+    let rs_bytes = rcode.done().expect("done failed");
+    let rs = String::from_utf8_lossy(rs_bytes);
+    assert!(
+        rs.contains("std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {"),
+        "try 臂 catch_unwind 形: {rs}"
+    );
+    assert!(rs.contains("Ok(_) => {}"), "成功臂零扰动: {rs}");
+    assert!(rs.contains("Err(_p714) => {}"), "空 catch 载荷弃: {rs}");
+    assert!(rs.contains("break;"), "for{{if break}} 体保留: {rs}");
+}
 
-    #[test]
-    fn plan714_back_try_arm_catch_binding_panic_message() {
-        let src = "pub fn probe() {
+#[test]
+fn plan714_back_try_arm_catch_binding_panic_message() {
+    let src = "pub fn probe() {
     var r str = \"untouched\"
     try {
         let d = File.read_text(\"no-such-file\")
@@ -561,20 +583,19 @@ widget App {
     }
 }
 ";
-        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
-            .expect("transpile failed");
-        let rs_bytes = rcode.done().expect("done failed");
-        let rs = String::from_utf8_lossy(rs_bytes);
-        assert!(
-            rs.contains("let err = auto_lang::a2r_std::panic_message(&__p);"),
-            "catch 绑定形 = panic_message 载荷串: {rs}"
-        );
-        assert!(rs.contains("Err(__p) => {"), "异常臂非空 catch 体: {rs}");
-    }
+    let mut rcode = crate::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let rs_bytes = rcode.done().expect("done failed");
+    let rs = String::from_utf8_lossy(rs_bytes);
+    assert!(
+        rs.contains("let err = auto_lang::a2r_std::panic_message(&__p);"),
+        "catch 绑定形 = panic_message 载荷串: {rs}"
+    );
+    assert!(rs.contains("Err(__p) => {"), "异常臂非空 catch 体: {rs}");
+}
 
-    #[test]
-    fn plan714_back_try_arm_finally_follows_match() {
-        let src = "pub fn probe() {
+#[test]
+fn plan714_back_try_arm_finally_follows_match() {
+    let src = "pub fn probe() {
     try {
         let d = File.read_text(\"x\")
     } catch {
@@ -583,20 +604,22 @@ widget App {
     }
 }
 ";
-        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
-            .expect("transpile failed");
-        let rs_bytes = rcode.done().expect("done failed");
-        let rs = String::from_utf8_lossy(rs_bytes);
-        assert!(rs.contains("Err(_p714) => {} }; {"), "finally 跟发于 match 后: {rs}");
-        assert!(rs.contains("let mut done"), "finally 体语句发射: {rs}");
-    }
+    let mut rcode = crate::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let rs_bytes = rcode.done().expect("done failed");
+    let rs = String::from_utf8_lossy(rs_bytes);
+    assert!(
+        rs.contains("Err(_p714) => {} }; {"),
+        "finally 跟发于 match 后: {rs}"
+    );
+    assert!(rs.contains("let mut done"), "finally 体语句发射: {rs}");
+}
 
-    #[test]
-    fn plan714_back_try_arm_return_propagation() {
-        // r3 R3-T3: return-in-try 传播形——fn bool 体含 return → 闭包
-        // Option<bool>+Some 包装+Ok(Some(v))=>return v（VM return-in-try
-        // =从 fn 返回同源；710 边界条款的 corpus 实实例收口）。
-        let src = "pub fn probe() bool {
+#[test]
+fn plan714_back_try_arm_return_propagation() {
+    // r3 R3-T3: return-in-try 传播形——fn bool 体含 return → 闭包
+    // Option<bool>+Some 包装+Ok(Some(v))=>return v（VM return-in-try
+    // =从 fn 返回同源；710 边界条款的 corpus 实实例收口）。
+    let src = "pub fn probe() bool {
     try {
         let d = File.read_text(\"x\")
         return true
@@ -605,41 +628,45 @@ widget App {
     }
 }
 ";
-        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
-            .expect("transpile failed");
-        let rs_bytes = rcode.done().expect("done failed");
-        let rs = String::from_utf8_lossy(rs_bytes);
-        assert!(rs.contains("|| -> Option<bool> {"), "闭包标注 Option<Ret>: {rs}");
-        assert!(rs.contains("Ok(Some(__v)) => return __v"), "Some 传播臂: {rs}");
-        assert!(
-            rs.contains("Ok(None) => return Default::default()"),
-            "None 尾臂（体必 return 形不可达）: {rs}"
-        );
-        assert!(rs.contains("return Some(true)"), "体 return 包 Some: {rs}");
-    }
+    let mut rcode = crate::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let rs_bytes = rcode.done().expect("done failed");
+    let rs = String::from_utf8_lossy(rs_bytes);
+    assert!(
+        rs.contains("|| -> Option<bool> {"),
+        "闭包标注 Option<Ret>: {rs}"
+    );
+    assert!(
+        rs.contains("Ok(Some(__v)) => return __v"),
+        "Some 传播臂: {rs}"
+    );
+    assert!(
+        rs.contains("Ok(None) => return Default::default()"),
+        "None 尾臂（体必 return 形不可达）: {rs}"
+    );
+    assert!(rs.contains("return Some(true)"), "体 return 包 Some: {rs}");
+}
 
-    #[test]
-    fn plan714_back_try_unit_fn_unchanged() {
-        // unit fn 的 try 保持 r2 形（无 Option 传播——门控条件）。
-        let src = "pub fn probe() {
+#[test]
+fn plan714_back_try_unit_fn_unchanged() {
+    // unit fn 的 try 保持 r2 形（无 Option 传播——门控条件）。
+    let src = "pub fn probe() {
     try {
         let d = File.read_text(\"x\")
     } catch {
     }
 }
 ";
-        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
-            .expect("transpile failed");
-        let rs_bytes = rcode.done().expect("done failed");
-        let rs = String::from_utf8_lossy(rs_bytes);
-        assert!(!rs.contains("-> Option<"), "unit fn 不传播: {rs}");
-        assert!(rs.contains("Ok(_) => {}"), "r2 形保持: {rs}");
-    }
+    let mut rcode = crate::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let rs_bytes = rcode.done().expect("done failed");
+    let rs = String::from_utf8_lossy(rs_bytes);
+    assert!(!rs.contains("-> Option<"), "unit fn 不传播: {rs}");
+    assert!(rs.contains("Ok(_) => {}"), "r2 形保持: {rs}");
+}
 
-    #[test]
-    fn plan714_back_try_borrow_iter_clone() {
-        // r3 R3-T3: 借位迭代变量的闭包体内绑定 → .clone()（preview=ln 株）。
-        let src = "pub fn probe(path str) {
+#[test]
+fn plan714_back_try_borrow_iter_clone() {
+    // r3 R3-T3: 借位迭代变量的闭包体内绑定 → .clone()（preview=ln 株）。
+    let src = "pub fn probe(path str) {
     try {
         let content str = File.read_text(path)
         let lines = content.split(\"\\n\")
@@ -651,38 +678,59 @@ widget App {
     }
 }
 ";
-        let mut rcode = crate::trans::rust::transpile_rust("probe", src)
-            .expect("transpile failed");
-        let rs_bytes = rcode.done().expect("done failed");
-        let rs = String::from_utf8_lossy(rs_bytes);
-        assert!(
-            rs.contains("= ln.clone()"),
-            "借位迭代变量绑定 .clone(): {rs}"
-        );
-    }
+    let mut rcode = crate::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let rs_bytes = rcode.done().expect("done failed");
+    let rs = String::from_utf8_lossy(rs_bytes);
+    assert!(
+        rs.contains("= ln.clone()"),
+        "借位迭代变量绑定 .clone(): {rs}"
+    );
+}
 
-    #[test]
-    fn plan714_r3_fsys_at_full_transpile_qualified() {
-        // r3 R3-T4 前哨：corpus fsys.at 全文直转——fs.metadata→file_size、
-        // copy_recursive、json.from_value、diff 裸名映射、Regex.test 全部
-        // 限定形（掩蔽层清单的发射面收口验证）。fixture 路径=组内 tmp
-        // corpus（不在 git——缺文件时跳过断言并打印 SKIP 标记）。
-        let path = "D:/autostack/.wt/lang-714/tmp-corpus/specs/auto-edit/src/back/fsys.at";
-        let Ok(src) = std::fs::read_to_string(path) else {
-            println!("SKIP: corpus fixture absent ({path})");
-            return;
-        };
-        let mut rcode = crate::trans::rust::transpile_rust("fsys", &src)
-            .expect("fsys.at transpile failed");
-        let rs_bytes = rcode.done().expect("done failed");
-        let rs = String::from_utf8_lossy(rs_bytes);
-        std::fs::write("D:/autostack/.wt/lang-714/tmp-corpus/fsys-transpiled.rs", rs.as_bytes()).unwrap();
-        assert!(!rs.contains("= fs.metadata("), "fs.metadata 裸名残留(赋值位)");
-        assert!(!rs.contains("return fs.metadata("), "fs.metadata 裸名残留(返回位)");
-        assert!(rs.contains("a2r_std::fs::file_size"), "file_size 限定: {rs}");
-        assert!(rs.contains("a2r_std::fs::copy_recursive"), "copy_recursive 限定");
-        assert!(rs.contains("a2r_std::json::from_value(a2r_std::json!("), "from_value json! 形");
-        assert!(rs.contains("a2r_std::re::test("), "Regex.test 限定");
-        assert!(rs.contains("a2r_std::diff::diff_files("), "diff 裸名限定");
-        assert!(rs.contains("a2r_std::fs::read_bytes_list"), "read_bytes list 形");
-    }
+#[test]
+fn plan714_r3_fsys_at_full_transpile_qualified() {
+    // r3 R3-T4 前哨：corpus fsys.at 全文直转——fs.metadata→file_size、
+    // copy_recursive、json.from_value、diff 裸名映射、Regex.test 全部
+    // 限定形（掩蔽层清单的发射面收口验证）。fixture 路径=组内 tmp
+    // corpus（不在 git——缺文件时跳过断言并打印 SKIP 标记）。
+    let path = "D:/autostack/.wt/lang-714/tmp-corpus/specs/auto-edit/src/back/fsys.at";
+    let Ok(src) = std::fs::read_to_string(path) else {
+        println!("SKIP: corpus fixture absent ({path})");
+        return;
+    };
+    let mut rcode =
+        crate::trans::rust::transpile_rust("fsys", &src).expect("fsys.at transpile failed");
+    let rs_bytes = rcode.done().expect("done failed");
+    let rs = String::from_utf8_lossy(rs_bytes);
+    std::fs::write(
+        "D:/autostack/.wt/lang-714/tmp-corpus/fsys-transpiled.rs",
+        rs.as_bytes(),
+    )
+    .unwrap();
+    assert!(
+        !rs.contains("= fs.metadata("),
+        "fs.metadata 裸名残留(赋值位)"
+    );
+    assert!(
+        !rs.contains("return fs.metadata("),
+        "fs.metadata 裸名残留(返回位)"
+    );
+    assert!(
+        rs.contains("a2r_std::fs::file_size"),
+        "file_size 限定: {rs}"
+    );
+    assert!(
+        rs.contains("a2r_std::fs::copy_recursive"),
+        "copy_recursive 限定"
+    );
+    assert!(
+        rs.contains("a2r_std::json::from_value(a2r_std::json!("),
+        "from_value json! 形"
+    );
+    assert!(rs.contains("a2r_std::re::test("), "Regex.test 限定");
+    assert!(rs.contains("a2r_std::diff::diff_files("), "diff 裸名限定");
+    assert!(
+        rs.contains("a2r_std::fs::read_bytes_list"),
+        "read_bytes list 形"
+    );
+}

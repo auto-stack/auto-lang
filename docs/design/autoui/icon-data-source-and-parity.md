@@ -38,7 +38,7 @@ renderer.rs::lucide_svg → lucide_fragment(name) → lucide_svg_doc_with(name, 
 - **几何**：双端消费同一份 path 数据（Web=浏览器 SVG 引擎渲染 lucide-vue-next
   组件；VM=iced `svg` widget 经 resvg/tiny-skia 光栅化同一 markup）——几何由
   构造成立一致；抗锯齿亚像素差异不可归零，验收用阈值化 diff（同 619 ink 锚、
-  `tools/parity_shot_diff.py` 预算），不承诺逐字节像素相等。
+  `scripts/tools/parity_shot_diff.py` 预算），不承诺逐字节像素相等。
 - **尺寸**：显式 `w-*`/`h-*`/`size-*` 类 > `size:` prop > 默认 20px（PLAN-619/617
   双端口径，见 `with_icon_size` 与 `vue.rs` icon 臂的镜像实现）。
 - **颜色**：`stroke="currentColor"` ↔ `svg::Style.color` 单色 tint 通道同构

@@ -701,11 +701,29 @@ pub fn lookup_opaque_dispatch_by_type(type_name: &str, method: &str) -> Option<&
     let entries: &[(&[&str], &[(&str, &str)])] = &[
         (&["regex::Regex", "Regex"], &OPAQUE_DISPATCH_REGEX_METHODS),
         (&["url::Url", "Url"], &OPAQUE_DISPATCH_URL_METHODS),
-        (&["semver::Version", "Version"], &OPAQUE_DISPATCH_SEMVER_METHODS),
-        (&["semver::VersionReq", "VersionReq"], &OPAQUE_DISPATCH_VERSIONREQ_METHODS),
-        (&["Instant", "std::time::Instant"], &[("elapsed", "auto.time.instant_elapsed")]),
-        (&["OnceCell", "std::cell::OnceCell"], &[("get", "auto.cell.once_get"), ("set", "auto.cell.once_set")]),
-        (&["std::fs::File", "FileWriter"], &[("write", "auto.file.write_handle"), ("try_clone", "auto.file.try_clone")]),
+        (
+            &["semver::Version", "Version"],
+            &OPAQUE_DISPATCH_SEMVER_METHODS,
+        ),
+        (
+            &["semver::VersionReq", "VersionReq"],
+            &OPAQUE_DISPATCH_VERSIONREQ_METHODS,
+        ),
+        (
+            &["Instant", "std::time::Instant"],
+            &[("elapsed", "auto.time.instant_elapsed")],
+        ),
+        (
+            &["OnceCell", "std::cell::OnceCell"],
+            &[("get", "auto.cell.once_get"), ("set", "auto.cell.once_set")],
+        ),
+        (
+            &["std::fs::File", "FileWriter"],
+            &[
+                ("write", "auto.file.write_handle"),
+                ("try_clone", "auto.file.try_clone"),
+            ],
+        ),
     ];
     for &(type_patterns, methods) in entries {
         if type_patterns.iter().any(|p| type_name.contains(p)) {
@@ -816,10 +834,8 @@ const OPAQUE_DISPATCH_BASE64: &[(&str, &str)] = &[
     ("decode", "auto.base64.decode"),
 ];
 
-const OPAQUE_DISPATCH_HEX: &[(&str, &str)] = &[
-    ("encode", "auto.hex.encode"),
-    ("decode", "auto.hex.decode"),
-];
+const OPAQUE_DISPATCH_HEX: &[(&str, &str)] =
+    &[("encode", "auto.hex.encode"), ("decode", "auto.hex.decode")];
 
 const OPAQUE_DISPATCH_SHA2: &[(&str, &str)] = &[
     ("new", "auto.sha2_opaque.sha256_new"),
@@ -827,9 +843,7 @@ const OPAQUE_DISPATCH_SHA2: &[(&str, &str)] = &[
     ("finalize", "auto.sha2_opaque.finalize"),
 ];
 
-const OPAQUE_DISPATCH_MIME: &[(&str, &str)] = &[
-    ("from_path", "auto.mime.from_path"),
-];
+const OPAQUE_DISPATCH_MIME: &[(&str, &str)] = &[("from_path", "auto.mime.from_path")];
 
 // Plan 249 Phase 3: BIGVM native registry entries — single source of truth.
 // Each entry: (canonical_name, numeric_id, return_type_tag).
@@ -1603,6 +1617,37 @@ macro_rules! for_each_bigvm_native {
             ("RequestBuilder.retry", 3111, Void),
             ("RequestBuilder.gzip", 3112, Void),
             ("RequestBuilder.brotli", 3113, Void),
+            // PLAN-727 T-05: 可取消文件传输公共面（RetType 与实际返回形状一致；
+            // 9930+ 高段——3114..3119 已被 *_response 族占用，撞号教训见
+            // 2270..2273 注）。
+            ("auto.http.transfer_download", 9930, Int),
+            ("http.transfer_download", 9930, Int),
+            ("auto.http.transfer_upload", 9931, Int),
+            ("http.transfer_upload", 9931, Int),
+            ("auto.http.transfer_wait", 9932, String),
+            ("http.transfer_wait", 9932, String),
+            ("auto.http.transfer_next_progress", 9933, String),
+            ("http.transfer_next_progress", 9933, String),
+            ("auto.http.transfer_cancel", 9934, Void),
+            ("http.transfer_cancel", 9934, Void),
+            ("auto.http.transfer_error", 9935, String),
+            ("http.transfer_error", 9935, String),
+            // PLAN-729 T-04: 服务端文件响应描述符构造（Int = 描述符句柄；
+            // 编组由声明返回类型门+登记命中共同识别，普通 int 不误判）。
+            ("auto.http.file_response", 9936, Int),
+            ("http.file_response", 9936, Int),
+            // PLAN-730 T-02/T-05: 服务端上传公共面（receive/commit/reject
+            // 返回句柄 Int；park 经 live-op；编组门同 9936 三重命中形态）。
+            ("auto.http.upload_receive", 9937, Int),
+            ("http.upload_receive", 9937, Int),
+            ("auto.http.upload_metadata", 9938, String),
+            ("http.upload_metadata", 9938, String),
+            ("auto.http.upload_commit", 9939, Int),
+            ("http.upload_commit", 9939, Int),
+            ("auto.http.upload_reject", 9940, Int),
+            ("http.upload_reject", 9940, Int),
+            ("auto.http.upload_error", 9941, Int),
+            ("http.upload_error", 9941, Int),
             // Plan 350: WebSocket client
             ("auto.ws.connect", 2280, Void),
             ("ws.connect", 2280, Void),
@@ -1971,14 +2016,30 @@ macro_rules! register_bigvm {
 // return type available to codegen type inference. This table restores them.
 #[macro_export]
 macro_rules! native_ret_tag {
-    (Void) => { $crate::vm::native_registry::NativeRetType::Void };
-    (List) => { $crate::vm::native_registry::NativeRetType::List };
-    (Bool) => { $crate::vm::native_registry::NativeRetType::Bool };
-    (Int) => { $crate::vm::native_registry::NativeRetType::Int };
-    (I64) => { $crate::vm::native_registry::NativeRetType::I64 };
-    (String) => { $crate::vm::native_registry::NativeRetType::String };
-    (Float) => { $crate::vm::native_registry::NativeRetType::Float };
-    (Map) => { $crate::vm::native_registry::NativeRetType::Map };
+    (Void) => {
+        $crate::vm::native_registry::NativeRetType::Void
+    };
+    (List) => {
+        $crate::vm::native_registry::NativeRetType::List
+    };
+    (Bool) => {
+        $crate::vm::native_registry::NativeRetType::Bool
+    };
+    (Int) => {
+        $crate::vm::native_registry::NativeRetType::Int
+    };
+    (I64) => {
+        $crate::vm::native_registry::NativeRetType::I64
+    };
+    (String) => {
+        $crate::vm::native_registry::NativeRetType::String
+    };
+    (Float) => {
+        $crate::vm::native_registry::NativeRetType::Float
+    };
+    (Map) => {
+        $crate::vm::native_registry::NativeRetType::Map
+    };
 }
 
 #[macro_export]
@@ -2502,6 +2563,32 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("RequestBuilder.retry", 3111),
     ("RequestBuilder.gzip", 3112),
     ("RequestBuilder.brotli", 3113),
+    // PLAN-727 T-05: 可取消文件传输公共面。
+    ("auto.http.transfer_download", 9930),
+    ("http.transfer_download", 9930),
+    ("auto.http.transfer_upload", 9931),
+    ("http.transfer_upload", 9931),
+    ("auto.http.transfer_wait", 9932),
+    ("http.transfer_wait", 9932),
+    ("auto.http.transfer_next_progress", 9933),
+    ("http.transfer_next_progress", 9933),
+    ("auto.http.transfer_cancel", 9934),
+    ("http.transfer_cancel", 9934),
+    ("auto.http.transfer_error", 9935),
+    ("http.transfer_error", 9935),
+    ("auto.http.file_response", 9936),
+    ("http.file_response", 9936),
+    // PLAN-730 T-02: 服务端上传公共面。
+    ("auto.http.upload_receive", 9937),
+    ("http.upload_receive", 9937),
+    ("auto.http.upload_metadata", 9938),
+    ("http.upload_metadata", 9938),
+    ("auto.http.upload_commit", 9939),
+    ("http.upload_commit", 9939),
+    ("auto.http.upload_reject", 9940),
+    ("http.upload_reject", 9940),
+    ("auto.http.upload_error", 9941),
+    ("http.upload_error", 9941),
     ("auto.ws.connect", 2280),
     ("ws.connect", 2280),
     ("auto.ws.send", 2281),
@@ -2758,15 +2845,12 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("str.uuid", 1521),
     ("str.from_uint", 1522),
     ("str.to_uint", 1523),
-
     // === Time (1200-1205) ===
     ("auto.time.now", 1205),
     ("Time.now", 1205),
-
     // === Scheduler (1206-1207) — Plan 442 A5 ===
     ("auto.sched.set_timeout", 1206),
     ("auto.sched.clear_timeout", 1207),
-
     // === Plan 442 B-support: web-platform globals ===
     ("auto.localstorage.get_item", 2771),
     ("auto.localstorage.set_item", 2772),
@@ -2775,7 +2859,6 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("localStorage.setItem", 2772),
     ("localStorage.removeItem", 2773),
     ("auto.env.var", 2795),
-
     // === Plan 442 Phase B: dom/location web globals ===
     ("auto.dom.set_dark", 2774),
     ("auto.dom.prefers_dark", 2775),
@@ -2793,12 +2876,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("dom.open_url", 2779),
     ("dom.copy_text", 2926),
     ("location.reload", 2784),
-
     // === IO (1150) ===
     ("auto.io.read_line", 1150),
     ("IO.read_line", 1150),
     ("io.read_line", 1150),
-
     // === FS extended (2860-2866) ===
     // 2026-09-14(PLAN-016 T-05):rename/canonical/ext 补登记（id 2983/2984/2985）。
     ("auto.fs.rename", 2994),
@@ -2859,7 +2940,6 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.term.engine_history", 3003),
     ("auto.term.window_width", 2998),
     ("auto.term.window_height", 2999),
-
     // === Plan 489 / Plan 541: Image native pipeline (2960-2975) ===
     ("auto.image.queue", 2960),
     ("auto.image.open", 2961),
@@ -2877,25 +2957,20 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.image.request_view", 2973),
     ("auto.image.close_session", 2974),
     ("auto.image.session_stats", 2975),
-
     // === Hash extended (2814-2816) ===
     ("auto.hash.hmac_sha256", 2814),
     ("auto.hash.file_md5", 2815),
     ("auto.hash.file_sha256", 2816),
-
     // === Random type (2870-2874) ===
     ("auto.random._vm_new", 2870),
     ("auto.random._vm_seeded", 2871),
     ("auto.random.int", 2872),
     ("auto.random.float", 2873),
     ("auto.random.bool", 2874),
-
     // === Fmt (2752) ===
     ("auto.fmt.f64_debug", 2752),
-
     // === Cmp (2880) ===
     ("auto.cmp.str_cmp", 2880),
-
     // === DateTime cmp (2794) ===
     ("auto.datetime.cmp", 2794),
 ];
@@ -2930,11 +3005,7 @@ mod catalog_integrity_tests {
                 "catalog ID 撞号: {} ({} 与既有条目重复 —— bind_shims 后注册覆盖先注册,native_interface 表派发将错位)",
                 id, name
             );
-            assert!(
-                seen_names.insert(*name),
-                "catalog 名字重复登记: {}",
-                name
-            );
+            assert!(seen_names.insert(*name), "catalog 名字重复登记: {}", name);
         }
         // bigvm 表:同名字下 ID 必须与 catalog 一致。
         let bigvm: Vec<(&str, u16)> = crate::for_each_bigvm_native!(collect_bigvm_ids);
@@ -3033,16 +3104,34 @@ mod catalog_integrity_tests {
     #[test]
     fn image_native_ids_unique_and_match_catalog() {
         let image_names = [
-            "auto.image.queue", "auto.image.open", "auto.image.scan", "auto.image.request",
-            "auto.image.retain", "auto.image.release", "auto.image.close", "auto.image.stats",
-            "auto.image.open_session", "auto.image.snapshot", "auto.image.current_uri", "auto.image.names", "auto.image.navigate",
-            "auto.image.request_view", "auto.image.close_session", "auto.image.session_stats",
+            "auto.image.queue",
+            "auto.image.open",
+            "auto.image.scan",
+            "auto.image.request",
+            "auto.image.retain",
+            "auto.image.release",
+            "auto.image.close",
+            "auto.image.stats",
+            "auto.image.open_session",
+            "auto.image.snapshot",
+            "auto.image.current_uri",
+            "auto.image.names",
+            "auto.image.navigate",
+            "auto.image.request_view",
+            "auto.image.close_session",
+            "auto.image.session_stats",
         ];
         let mut seen = std::collections::HashSet::new();
         for name in image_names {
-            let id = crate::vm::native_registry::NATIVE_ID_MAP.get(name)
+            let id = crate::vm::native_registry::NATIVE_ID_MAP
+                .get(name)
                 .unwrap_or_else(|| panic!("missing {} from NATIVE_ID_MAP", name));
-            assert!(seen.insert(*id), "duplicate image native id {} for {}", id, name);
+            assert!(
+                seen.insert(*id),
+                "duplicate image native id {} for {}",
+                id,
+                name
+            );
             // Ensure image native IDs do not collide with auto.sys.* IDs (2421..2438)
             assert!(
                 *id < 2420 || *id > 2440,

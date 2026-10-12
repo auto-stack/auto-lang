@@ -68,7 +68,10 @@ impl FrameSource for CounterFrameSource {
         DrawList {
             clear: Some(Rgba8::new(24, 24, 28, 255)),
             ops: vec![
-                DrawOp::Quad { rect: b, color: Rgba8::new(48, 96, 200, 255) },
+                DrawOp::Quad {
+                    rect: b,
+                    color: Rgba8::new(48, 96, 200, 255),
+                },
                 DrawOp::Text {
                     x: b.x + 50.0,
                     y: b.y + 10.0,
@@ -90,7 +93,13 @@ impl FrameSource for CounterFrameSource {
     }
 
     fn on_input(&mut self, input: &InputMsg) {
-        if let InputMsg::PointerPressed { x, y, button: MouseButton::Left, .. } = input {
+        if let InputMsg::PointerPressed {
+            x,
+            y,
+            button: MouseButton::Left,
+            ..
+        } = input
+        {
             let b = self.button;
             if *x >= b.x && *x < b.x + b.w && *y >= b.y && *y < b.y + b.h {
                 // 与直挂完全同一调用点：DynamicComponent::on_with_input。
@@ -195,7 +204,9 @@ pub fn run_counter_loopback(clicks: usize) -> CounterDemoReport {
     // ③ 协议点击 ×N：桌面 hit_test → (Wid,event) → VM handler → 新帧。
     for _ in 0..clicks {
         // 点击窗内 (60, 40)（全局）→ 本地 (44, 24)，落在按钮区 (10,10,120,36)。
-        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
         host_sock.send(&injected);
         pump_app(&mut app_sock, &mut app);
         let frame = app.produce_frame(None).expect("输入后产帧");
@@ -209,7 +220,10 @@ pub fn run_counter_loopback(clicks: usize) -> CounterDemoReport {
     }
 
     // ④ 观测：宿主接汇 → app 上行一条日志。
-    let attach = ProtocolMsg::Observe(ObserveMsg::Attach { wid, sink: "mcp://desktop/app-1".into() });
+    let attach = ProtocolMsg::Observe(ObserveMsg::Attach {
+        wid,
+        sink: "mcp://desktop/app-1".into(),
+    });
     host_sock.send(&attach);
     pump_app(&mut app_sock, &mut app);
     let log = ProtocolMsg::Observe(ObserveMsg::Log {
@@ -235,7 +249,14 @@ pub fn run_counter_loopback(clicks: usize) -> CounterDemoReport {
     pump_host(&mut host_sock, &mut ph);
     pump_app(&mut app_sock, &mut app);
     let reclaimed = ph.session.apps.is_empty()
-        && ph.session.host.as_ref().expect("desktop 模式").wm.wins.is_empty()
+        && ph
+            .session
+            .host
+            .as_ref()
+            .expect("desktop 模式")
+            .wm
+            .wins
+            .is_empty()
         && ph.surfaces.is_empty();
 
     // --- 无差判据 ---
@@ -295,9 +316,7 @@ mod tests {
         let text_of = |ops: &[DrawOp]| -> String {
             ops.iter()
                 .find_map(|op| match op {
-                    DrawOp::Text { text, .. } if text.starts_with("count:") => {
-                        Some(text.clone())
-                    }
+                    DrawOp::Text { text, .. } if text.starts_with("count:") => Some(text.clone()),
                     _ => None,
                 })
                 .expect("count 文本存在")
@@ -323,7 +342,10 @@ mod tests {
 
         // 观测与 DesktopBus 上行到达宿主。
         assert_eq!(report.observed_logs, vec!["count=3".to_string()]);
-        assert_eq!(report.desktop_bus_records, vec!["launch\u{1f}counter".to_string()]);
+        assert_eq!(
+            report.desktop_bus_records,
+            vec!["launch\u{1f}counter".to_string()]
+        );
     }
 
     /// 零点击退化路径：握手 + 帧 0 + 回收照常。
@@ -336,4 +358,3 @@ mod tests {
         assert!(report.state_parity && report.frame_parity && report.reclaimed);
     }
 }
-

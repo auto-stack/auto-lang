@@ -21,8 +21,16 @@ print(data)
         assert!(result.is_ok(), "session should run: {:?}", result.err());
         let (_, stdout) = result.unwrap();
         eprintln!("plan352 session stdout = [{}]", stdout);
-        assert!(stdout.contains("sess_"), "expected session ID: [{}]", stdout);
-        assert!(stdout.contains("alice"), "expected session data: [{}]", stdout);
+        assert!(
+            stdout.contains("sess_"),
+            "expected session ID: [{}]",
+            stdout
+        );
+        assert!(
+            stdout.contains("alice"),
+            "expected session data: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -37,7 +45,11 @@ print(data)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("1"), "expected set success + updated data: [{}]", stdout);
+        assert!(
+            stdout.contains("1"),
+            "expected set success + updated data: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -52,8 +64,16 @@ print(data)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("true"), "destroy should return true: [{}]", stdout); // Plan 474 待澄清#3: bool 显示形态 true/false
-        assert!(stdout.contains("null"), "get after destroy should be null: [{}]", stdout);
+        assert!(
+            stdout.contains("true"),
+            "destroy should return true: [{}]",
+            stdout
+        ); // Plan 474 待澄清#3: bool 显示形态 true/false
+        assert!(
+            stdout.contains("null"),
+            "get after destroy should be null: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -65,7 +85,11 @@ print(data)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("null"), "nonexistent session should be null: [{}]", stdout);
+        assert!(
+            stdout.contains("null"),
+            "nonexistent session should be null: [{}]",
+            stdout
+        );
     }
 
     // ── Template engine ──────────────────────────────────────────────
@@ -80,7 +104,11 @@ print(html)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("Hello, World!"), "expected rendered template: [{}]", stdout);
+        assert!(
+            stdout.contains("Hello, World!"),
+            "expected rendered template: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -106,8 +134,16 @@ print(html)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(!stdout.contains("visible"), "should not contain visible: [{}]", stdout);
-        assert!(stdout.contains("hidden"), "should contain hidden: [{}]", stdout);
+        assert!(
+            !stdout.contains("visible"),
+            "should not contain visible: [{}]",
+            stdout
+        );
+        assert!(
+            stdout.contains("hidden"),
+            "should contain hidden: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -161,8 +197,16 @@ print(doc)
         let result = run_with_capture(code);
         assert!(result.is_ok(), "openapi should run: {:?}", result.err());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("openapi"), "expected openapi key: [{}]", stdout);
-        assert!(stdout.contains("3.0.0"), "expected version 3.0.0: [{}]", stdout);
+        assert!(
+            stdout.contains("openapi"),
+            "expected openapi key: [{}]",
+            stdout
+        );
+        assert!(
+            stdout.contains("3.0.0"),
+            "expected version 3.0.0: [{}]",
+            stdout
+        );
     }
 
     // ── Cookie/Auth redirect (native existence) ──────────────────────
@@ -191,7 +235,11 @@ http.server.middleware("dummy_middleware")
 print("ok")
 "#;
         let result = run_with_capture(code);
-        assert!(result.is_ok(), "server.use should not crash: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "server.use should not crash: {:?}",
+            result.err()
+        );
         let (_, stdout) = result.unwrap();
         assert!(stdout.contains("ok"), "expected ok: [{}]", stdout);
     }
@@ -270,8 +318,16 @@ print(html)
         let (_, stdout) = result.unwrap();
         assert!(stdout.contains("My Page"), "expected title: [{}]", stdout);
         assert!(stdout.contains("Alice"), "expected user name: [{}]", stdout);
-        assert!(stdout.contains("<li>a</li>"), "expected list item a: [{}]", stdout);
-        assert!(stdout.contains("<li>c</li>"), "expected list item c: [{}]", stdout);
+        assert!(
+            stdout.contains("<li>a</li>"),
+            "expected list item a: [{}]",
+            stdout
+        );
+        assert!(
+            stdout.contains("<li>c</li>"),
+            "expected list item c: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -286,7 +342,11 @@ print(html)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("version2"), "expected latest template: [{}]", stdout);
+        assert!(
+            stdout.contains("version2"),
+            "expected latest template: [{}]",
+            stdout
+        );
     }
 
     // ── Session advanced ─────────────────────────────────────────────
@@ -305,8 +365,16 @@ print(d2)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("\"id\":1"), "expected session 1: [{}]", stdout);
-        assert!(stdout.contains("\"id\":2"), "expected session 2: [{}]", stdout);
+        assert!(
+            stdout.contains("\"id\":1"),
+            "expected session 1: [{}]",
+            stdout
+        );
+        assert!(
+            stdout.contains("\"id\":2"),
+            "expected session 2: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -318,7 +386,11 @@ print(ok)
         let result = run_with_capture(code);
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("false"), "set nonexistent should fail: [{}]", stdout); // Plan 474 待澄清#3: bool 显示形态
+        assert!(
+            stdout.contains("false"),
+            "set nonexistent should fail: [{}]",
+            stdout
+        ); // Plan 474 待澄清#3: bool 显示形态
     }
 
     // ── tls_client_cert native ───────────────────────────────────────
@@ -336,4 +408,3 @@ print("ok")
         assert!(stdout.contains("ok"), "expected ok: [{}]", stdout);
     }
 }
-

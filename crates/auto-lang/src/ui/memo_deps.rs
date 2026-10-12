@@ -472,7 +472,13 @@ fn scan_node_registry(
     registry: Option<&crate::ui::widget_registry::WidgetRegistry>,
     visited: &mut std::collections::HashSet<String>,
 ) -> Result<(), &'static str> {
-    if let AuraNode::Component { name, props, children, .. } = node {
+    if let AuraNode::Component {
+        name,
+        props,
+        children,
+        ..
+    } = node
+    {
         // Component props = Vec<(String, Expr)>（Element 的 HashMap 形态不同）。
         for (_k, e) in props.iter() {
             scan_expr(e, slots)?;
@@ -533,20 +539,34 @@ pub fn scan_for_item_body(
 /// PLAN-046 T-06：项级 prop 表达式扫描——FStr（f-string prop，如
 /// `class: f"... ${r.state}"`）的插值根段全 ∈ 循环变量 → 项值覆盖（安全，
 /// 不入槽——值随项值指纹翻面）；其余形态按 [`scan_expr`] 分级。
-fn scan_item_expr(e: &Expr, slots: &mut Vec<Expr>, loop_vars: &std::collections::HashSet<String>) -> Result<(), &'static str> {
+fn scan_item_expr(
+    e: &Expr,
+    slots: &mut Vec<Expr>,
+    loop_vars: &std::collections::HashSet<String>,
+) -> Result<(), &'static str> {
     if let Expr::FStr(f) = e {
         for part in &f.parts {
             match part {
                 Expr::Str(_) => {}
                 Expr::Ident(name) => {
-                    let root = name.as_str().trim_start_matches('.').split('.').next().unwrap_or("");
+                    let root = name
+                        .as_str()
+                        .trim_start_matches('.')
+                        .split('.')
+                        .next()
+                        .unwrap_or("");
                     if !loop_vars.contains(root) {
                         return Err("fstr_external");
                     }
                 }
                 Expr::Dot(obj, _) => {
                     let root = match obj.as_ref() {
-                        Expr::Ident(n) => n.as_str().trim_start_matches('.').split('.').next().unwrap_or(""),
+                        Expr::Ident(n) => n
+                            .as_str()
+                            .trim_start_matches('.')
+                            .split('.')
+                            .next()
+                            .unwrap_or(""),
                         _ => "",
                     };
                     if root.is_empty() || !loop_vars.contains(root) {
@@ -569,7 +589,9 @@ fn scan_item_node(
     visited: &mut std::collections::HashSet<String>,
 ) -> Result<(), &'static str> {
     match node {
-        AuraNode::Element { props, children, .. } => {
+        AuraNode::Element {
+            props, children, ..
+        } => {
             for (_k, prop) in props.iter() {
                 match prop {
                     crate::aura::AuraPropValue::Expr(e) => scan_item_expr(e, slots, loop_vars)?,
@@ -595,7 +617,12 @@ fn scan_item_node(
             }
             Ok(())
         }
-        AuraNode::Conditional { condition, then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            condition,
+            then_body,
+            else_body,
+            ..
+        } => {
             match crate::parser::Parser::parse_expr_fragment(condition) {
                 Some(e) => scan_expr(&e, slots)?,
                 None => return Err("conditional_unprovable"),
@@ -610,12 +637,22 @@ fn scan_item_node(
             }
             Ok(())
         }
-        AuraNode::ForLoop { iterable, var, index, body, .. } => {
+        AuraNode::ForLoop {
+            iterable,
+            var,
+            index,
+            body,
+            ..
+        } => {
             // PLAN-046 T-06 扩展：嵌套 for 的 iterable **根段 ∈ 循环变量**
             //（如 filetree 的 `for g in r.guides`）→ 其求值面是项值的纯
             // 函数（项变即失效）→ 递归体（内层 var/index 并入循环变量集）；
             // iterable 根是状态（`.` 前缀或外部名）→ 降级（保守不变）。
-            let root = iterable.trim_start_matches('.').split('.').next().unwrap_or("");
+            let root = iterable
+                .trim_start_matches('.')
+                .split('.')
+                .next()
+                .unwrap_or("");
             if iterable.starts_with('.') || !loop_vars.contains(root) {
                 return Err("for_loop");
             }
@@ -642,7 +679,12 @@ fn scan_item_node(
             }
             Ok(())
         }
-        AuraNode::Component { name, props, children, .. } => {
+        AuraNode::Component {
+            name,
+            props,
+            children,
+            ..
+        } => {
             let Some(reg) = registry else {
                 return Err("component");
             };
@@ -708,7 +750,9 @@ fn scan_node(
     visited: &mut std::collections::HashSet<String>,
 ) -> Result<(), &'static str> {
     match node {
-        AuraNode::Element { props, children, .. } => {
+        AuraNode::Element {
+            props, children, ..
+        } => {
             for (_k, prop) in props.iter() {
                 match prop {
                     crate::aura::AuraPropValue::Expr(e) => scan_expr(e, slots)?,
@@ -731,7 +775,12 @@ fn scan_node(
         // parse_expr_fragment 入槽（check 时同通道重解析；解析失败仍降级），
         // 双臂递归（镜像 scan_block_node 的已验证形态）。DataTable 页排序
         // 指示条件渲染实录。
-        AuraNode::Conditional { condition, then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            condition,
+            then_body,
+            else_body,
+            ..
+        } => {
             match crate::parser::Parser::parse_expr_fragment(condition) {
                 Some(e) => scan_expr(&e, slots)?,
                 None => return Err("conditional"),
@@ -851,7 +900,13 @@ fn skeleton_children_registry(
 ) {
     children.len().hash(h);
     for c in children {
-        if let AuraNode::Component { name, props, children, .. } = c {
+        if let AuraNode::Component {
+            name,
+            props,
+            children,
+            ..
+        } = c
+        {
             "comp".hash(h);
             name.hash(h);
             props.len().hash(h);
@@ -875,7 +930,12 @@ fn skeleton_children_registry(
             continue;
         }
         match c {
-            AuraNode::Element { tag, props, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } => {
                 "el".hash(h);
                 tag.hash(h);
                 skeleton_props(props, h);
@@ -893,7 +953,10 @@ fn skeleton_children_registry(
     }
 }
 
-fn skeleton_props(props: &HashMap<String, crate::aura::AuraPropValue>, h: &mut std::collections::hash_map::DefaultHasher) {
+fn skeleton_props(
+    props: &HashMap<String, crate::aura::AuraPropValue>,
+    h: &mut std::collections::hash_map::DefaultHasher,
+) {
     // 键序稳定化：HashMap 序不定，按键排序后哈希。
     let mut keys: Vec<&String> = props.keys().collect();
     keys.sort();
@@ -942,7 +1005,12 @@ fn skeleton_children(children: &[AuraNode], h: &mut std::collections::hash_map::
     children.len().hash(h);
     for c in children {
         match c {
-            AuraNode::Element { tag, props, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } => {
                 "el".hash(h);
                 tag.hash(h);
                 skeleton_props(props, h);
@@ -989,7 +1057,9 @@ fn scan_block_node(
     visited: &mut std::collections::HashSet<String>,
 ) -> Result<(), &'static str> {
     match node {
-        AuraNode::Element { props, children, .. } => {
+        AuraNode::Element {
+            props, children, ..
+        } => {
             for (_k, prop) in props.iter() {
                 match prop {
                     // 容忍：可证形态入槽，VM 代码形态跳过（deps 覆盖）。
@@ -1015,7 +1085,12 @@ fn scan_block_node(
             }
             Ok(())
         }
-        AuraNode::Conditional { condition, then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            condition,
+            then_body,
+            else_body,
+            ..
+        } => {
             if let Some(e) = crate::parser::Parser::parse_expr_fragment(condition) {
                 let _ = scan_expr(&e, slots);
             }
@@ -1033,7 +1108,12 @@ fn scan_block_node(
         AuraNode::ForLoop { .. } => Err("for_loop"),
         AuraNode::Outlet { .. } => Err("outlet"),
         AuraNode::MemoBlock { .. } => Err("memo_block"),
-        AuraNode::Component { name, props, children, .. } => {
+        AuraNode::Component {
+            name,
+            props,
+            children,
+            ..
+        } => {
             for (_k, e) in props.iter() {
                 let _ = scan_expr(e, slots);
             }
@@ -1241,7 +1321,10 @@ mod tests {
             Value::VmRef(r) if r.id == 7 || r.id == 9 => Value::Str(AutoStr::from("same")),
             other => other.clone(),
         };
-        assert_eq!(fingerprint_value(&r1, &expand), fingerprint_value(&r2, &expand));
+        assert_eq!(
+            fingerprint_value(&r1, &expand),
+            fingerprint_value(&r2, &expand)
+        );
         // 不可展开的堆引用：指纹 None（调用方据此整条目降级——原地突变
         // 检不出的形态绝不入缓存）。
         assert_eq!(
@@ -1252,9 +1335,11 @@ mod tests {
 
     #[test]
     fn fingerprint_value_detects_array_content_change() {
-        let mk = |n: i32| Value::Array(Array {
-            values: (0..n).map(Value::Int).collect(),
-        });
+        let mk = |n: i32| {
+            Value::Array(Array {
+                values: (0..n).map(Value::Int).collect(),
+            })
+        };
         assert_ne!(
             fingerprint_value(&mk(3), &passthrough),
             fingerprint_value(&mk(4), &passthrough)
@@ -1267,7 +1352,11 @@ mod tests {
             "menubar",
             vec![("class", Expr::Str(AutoStr::from("flex")))],
             vec![
-                elem("menubar-trigger", vec![("text", Expr::Str(AutoStr::from("File")))], vec![]),
+                elem(
+                    "menubar-trigger",
+                    vec![("text", Expr::Str(AutoStr::from("File")))],
+                    vec![],
+                ),
                 text_lit("body"),
             ],
         );
@@ -1381,11 +1470,25 @@ mod tests {
         }
         assert_eq!(c.len(), MEMO_CACHE_CAP, "LRU 上限逐出");
         assert_eq!(c.evictions, 8);
-        let hit_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: (MEMO_CACHE_CAP + 7) as u64, probe_on: false, item_key: None, ui_epoch: 0 };
+        let hit_key = MemoKey {
+            ctx_state_obj: 1,
+            site: 0,
+            skeleton_fp: (MEMO_CACHE_CAP + 7) as u64,
+            probe_on: false,
+            item_key: None,
+            ui_epoch: 0,
+        };
         assert!(c.lookup(&hit_key).is_some());
         c.note_hit();
         assert_eq!(c.hits, 1);
-        let miss_key = MemoKey { ctx_state_obj: 1, site: 0, skeleton_fp: 999_999, probe_on: false, item_key: None, ui_epoch: 0 };
+        let miss_key = MemoKey {
+            ctx_state_obj: 1,
+            site: 0,
+            skeleton_fp: 999_999,
+            probe_on: false,
+            item_key: None,
+            ui_epoch: 0,
+        };
         assert!(c.lookup(&miss_key).is_none());
         c.note_miss();
         assert_eq!(c.misses, 1);
@@ -1424,7 +1527,14 @@ mod tests {
         // 硬顶封口：超过 MAX 的抬升请求被截断（cap ≤ MAX，溢出走 LRU 逐出）。
         c.ensure_capacity(usize::MAX);
         for i in 0..(MEMO_CACHE_CAP_MAX + 8) {
-            let key = MemoKey { ctx_state_obj: 2, site: 9, skeleton_fp: i as u64, probe_on: false, item_key: None, ui_epoch: 0 };
+            let key = MemoKey {
+                ctx_state_obj: 2,
+                site: 9,
+                skeleton_fp: i as u64,
+                probe_on: false,
+                item_key: None,
+                ui_epoch: 0,
+            };
             c.insert(key, mk_entry(0));
         }
         assert!(c.evictions > 0, "溢出硬顶走 LRU 逐出");
@@ -1434,24 +1544,55 @@ mod tests {
     #[test]
     fn skeleton_fingerprint_structural_identity() {
         // 同骨架（tag/字面量/结构同，表达式值不同）→ 同指纹。
-        let a = elem("menubar-item", vec![("checked", ident_dot("show_urls"))], vec![]);
-        let b = elem("menubar-item", vec![("checked", ident_dot("other_field"))], vec![]);
+        let a = elem(
+            "menubar-item",
+            vec![("checked", ident_dot("show_urls"))],
+            vec![],
+        );
+        let b = elem(
+            "menubar-item",
+            vec![("checked", ident_dot("other_field"))],
+            vec![],
+        );
         let (fa, fb) = match (scan_subtree_static(&a), scan_subtree_static(&b)) {
             (ScanVerdict::Slots(_), ScanVerdict::Slots(_)) => {
                 use crate::aura::AuraPropValue;
-                let pa = std::collections::HashMap::from([("checked".to_string(), AuraPropValue::Expr(ident_dot("show_urls")))]);
-                let pb = std::collections::HashMap::from([("checked".to_string(), AuraPropValue::Expr(ident_dot("other_field")))]);
-                (skeleton_fingerprint(&pa, &[]), skeleton_fingerprint(&pb, &[]))
+                let pa = std::collections::HashMap::from([(
+                    "checked".to_string(),
+                    AuraPropValue::Expr(ident_dot("show_urls")),
+                )]);
+                let pb = std::collections::HashMap::from([(
+                    "checked".to_string(),
+                    AuraPropValue::Expr(ident_dot("other_field")),
+                )]);
+                (
+                    skeleton_fingerprint(&pa, &[]),
+                    skeleton_fingerprint(&pb, &[]),
+                )
             }
             _ => panic!("两个绑定形态都应可证"),
         };
         assert_eq!(fa, fb, "表达式值差异不进骨架（由 dyn_fp 承担）");
         // 字面量值/结构差异 → 指纹翻面。
-        let c = elem("menubar-item", vec![("text", Expr::Str(AutoStr::from("File")))], vec![]);
-        let d = elem("menubar-item", vec![("text", Expr::Str(AutoStr::from("Edit")))], vec![]);
+        let c = elem(
+            "menubar-item",
+            vec![("text", Expr::Str(AutoStr::from("File")))],
+            vec![],
+        );
+        let d = elem(
+            "menubar-item",
+            vec![("text", Expr::Str(AutoStr::from("Edit")))],
+            vec![],
+        );
         use crate::aura::AuraPropValue;
-        let pc = std::collections::HashMap::from([("text".to_string(), AuraPropValue::Expr(Expr::Str(AutoStr::from("File"))))]);
-        let pd = std::collections::HashMap::from([("text".to_string(), AuraPropValue::Expr(Expr::Str(AutoStr::from("Edit"))))]);
+        let pc = std::collections::HashMap::from([(
+            "text".to_string(),
+            AuraPropValue::Expr(Expr::Str(AutoStr::from("File"))),
+        )]);
+        let pd = std::collections::HashMap::from([(
+            "text".to_string(),
+            AuraPropValue::Expr(Expr::Str(AutoStr::from("Edit"))),
+        )]);
         assert_ne!(
             skeleton_fingerprint(&pc, &[]),
             skeleton_fingerprint(&pd, &[]),
@@ -1461,7 +1602,10 @@ mod tests {
         // children 数差异 → 翻面。
         let e1 = elem("row", vec![], vec![text_lit("a")]);
         let e2 = elem("row", vec![], vec![text_lit("a"), text_lit("b")]);
-        let (s1, s2) = (skeleton_fingerprint(&HashMap::new(), &[e1]), skeleton_fingerprint(&HashMap::new(), &[e2]));
+        let (s1, s2) = (
+            skeleton_fingerprint(&HashMap::new(), &[e1]),
+            skeleton_fingerprint(&HashMap::new(), &[e2]),
+        );
         assert_ne!(s1, s2);
     }
 
@@ -1591,7 +1735,11 @@ mod tests {
             ScanVerdict::Degrade("for_loop")
         ));
         assert!(matches!(
-            scan_for_item_body(&[AuraNode::Outlet { memo: Some(false) }], None, &loop_vars_of(&["r"])),
+            scan_for_item_body(
+                &[AuraNode::Outlet { memo: Some(false) }],
+                None,
+                &loop_vars_of(&["r"])
+            ),
             ScanVerdict::Degrade("outlet")
         ));
     }
@@ -1599,8 +1747,14 @@ mod tests {
     /// 站点指纹：同站恒同；头差异（key 形态/iterable/var）或体结构差异拆键。
     #[test]
     fn for_site_fingerprint_distinguishes_sites() {
-        let key_a = Expr::Dot(Box::new(Expr::Ident(AutoStr::from("r"))), AutoStr::from("id"));
-        let key_b = Expr::Dot(Box::new(Expr::Ident(AutoStr::from("r"))), AutoStr::from("name"));
+        let key_a = Expr::Dot(
+            Box::new(Expr::Ident(AutoStr::from("r"))),
+            AutoStr::from("id"),
+        );
+        let key_b = Expr::Dot(
+            Box::new(Expr::Ident(AutoStr::from("r"))),
+            AutoStr::from("name"),
+        );
         let body = vec![item_elem("text", vec![("value", ident_dot("x"))])];
         let slots_a = match scan_for_item_body(&body, None, &loop_vars_of(&["r"])) {
             ScanVerdict::Slots(s) => s,

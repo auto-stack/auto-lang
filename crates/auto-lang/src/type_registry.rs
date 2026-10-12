@@ -23,9 +23,9 @@
 //! **Plan 087**: This is a temporary solution for REPL type persistence.
 //! Long-term, this should be integrated with Plan 064's Database.
 use crate::ast::Type;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// Type Registry for REPL
 ///

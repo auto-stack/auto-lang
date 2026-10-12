@@ -4,11 +4,19 @@
 > **范围**: `stdlib/auto/` 的公共 `.at` API、目标文件、VM native、a2r Rust runtime、生成服务与 AutoUI 消费路径。
 > **关联**: [stdlib 项目卡](../project.md)、[HTTP Server Spec](http-server.md)、[网络标准库 Spec](../../auto-lang/runtime/design/networking-stdlib.md)
 
-## 装配规则
+## 装配规则（PLAN-738 实际 provider 索引）
 
-- `stdlib/auto/` 中的公共 `.at` 声明与 `.vm.at`、`.rs.at`、`.c.at` 目标文件是不同层。目标文件缺失必须按缺口记录；相同 API 名称不自动代表行为一致。
-- 编译装载以 `crates/auto-lang/src/compile.rs` 的实际路径为准：公共 `.at` 先进入编译上下文，再按目标装载相应变体；`autovm_persistent.rs` 有独立的 VM 目标装载路径。`parser.rs::get_file_extensions` 是未使用的 helper，不作为装载事实来源。
-- AutoVM native shim、`a2r-std` 宿主库、由 `auto-man` 从 `back/api.at` 生成的 Axum 服务、Vue/AutoUI 适配器是不同后台路径；不存在一个跨所有路径自动共享的实现层。
+- **VM** = 名称/ID + 真实 shim 绑定双面成立才 Supported；ID 别名限明确
+  同 callee，两不同 callee 争 ID 报错。
+- **Rust** = producer 文件（含 `pub use` 转发链解析到定义文件，producer
+  身份=定义处）+ 独立逻辑签名。producer 面按运行形态分家：Standalone
+  =crates/a2r-std crate、Embedded=crates/auto-lang/src/a2r_std.rs 内嵌
+  镜像（如 3 参 post 认证面只在内嵌镜像存在——Standalone 诚实拒绝，
+  不冒称 Both）。
+- **C** = c.* 声明模块（`stdlib/c/*.c.at`，README 记载的 `use c.stdio`
+  合同）+ libc；stdlib auto.* ext 面（File.open 等）在 C 目标无发射
+  ——构建期 `STDASSEMBLY.TARGET_UNSUPPORTED` 诊断指引直连 c.* provider，
+  不产坏 C。
 
 ## 能力覆盖
 
@@ -17,7 +25,7 @@
 | `io` | `io.at`、`io.vm.at`、`io.c.at`；没有 `io.rs.at` | `io.vm.at` 与 `vm/ffi/stdlib.rs` 中的标准库 shim | `io.c.at` 是 C 目标实现；没有对称的 a2r `io` 模块 | 不能从 C/VM 文件推断 Rust 后端存在 |
 | `net` | `net.at`、`net.vm.at`；没有 `net.rs.at` | `vm/ffi/stdlib.rs` 注册 `auto.net.*` TCP native | `crates/a2r-std/src/` 没有对称的 `net` 模块 | 供 VM `.at` 调用；没有通用跨目标网络层 |
 | `async` / task | `async.at`、`async.vm.at` | VM 目标声明 spawn、yield、sleep、channel、recv 等调用 | `crates/a2r-std/src/task.rs` 是 Tokio actor mailbox 与 drain | 名称或用途相近不表示调度和生命周期相同 |
-| `http` | `http.at`、`http_stream.at`、`http.vm.at`；没有 `http.rs.at` | `vm/ffi/http_transport.rs` 以 Axum/Hyper 承载 `#[api]` 服务的 HTTP/1.1 传输（PLAN-699），`vm/ffi/http_server.rs::dispatch_api_request` 在 VM owner 线程做路由/绑定/中间件/handler（owned 桥）；`vm/ffi/stdlib.rs` 注册 HTTP shim；`vm/ffi/http_stream.rs`（PLAN-707）承载外部流统一资源表/生产者/取消，`vm/ffi/async_http.rs` 承载 managed 取消执行体（JOB_ABORTS） | `auto-man/src/api_gen.rs` 从 `back/api.at` 生成 Axum 服务；`a2r-std/src/http.rs` 与 `auto_lang::a2r_std::http` 客户端面已收敛到**共享 async 内核**（PLAN-724：reqwest async + 有界准入 + typed 结果 + 真取消，见 [http-client-runtime](../../a2r-std/design/http-client-runtime.md)；文件 helper 仍 ureq） | VM 与生成 Axum 都依赖 Axum 但为**两套独立服务实现**（各自的路由/handler 装配，不共享代码）；[HTTP Server Spec](http-server.md) 与 [http-stream-lifecycle](http-stream-lifecycle.md) 记录当前支持范围。**客户端面已收敛（724）**：两 Rust facade 单内核、`auto_lang::a2r_std` 限定名消费有真 TCP 腿；**仍不同的后台面**：VM 流的 park/resume 与 Rust await/通知等待协议独立；生成服务的任意外部流 handler、文件传输 API、装配 manifest 未收敛（另案分期） |
+| `http` | `http.at`、`http_stream.at`、`http.vm.at`；没有 `http.rs.at` | `vm/ffi/http_transport.rs` 以 Axum/Hyper 承载 `#[api]` 服务的 HTTP/1.1 传输（PLAN-699），`vm/ffi/http_server.rs::dispatch_api_request` 在 VM owner 线程做路由/绑定/中间件/handler（owned 桥）；`vm/ffi/stdlib.rs` 注册 HTTP shim；`vm/ffi/http_stream.rs`（PLAN-707）承载外部流统一资源表/生产者/取消，`vm/ffi/async_http.rs` 承载 managed 取消执行体（JOB_ABORTS） | `auto-man/src/api_gen.rs` 从 `back/api.at` 生成 Axum 服务；`a2r-std/src/http.rs` 与 `auto_lang::a2r_std::http` 客户端面已收敛到**共享 async 内核**（PLAN-724：reqwest async + 有界准入 + typed 结果 + 真取消，见 [http-client-runtime](../../a2r-std/design/http-client-runtime.md)）；**文件传输面已收敛（PLAN-727）**——`http::transfer` 共享核心（VM `vm/ffi/http_transfer.rs` 桥 + a2r/原生同词汇，独立传输配额，契约见 [http-file-transfer](http-file-transfer.md)） | VM 与生成 Axum 都依赖 Axum 但为**两套独立服务实现**（各自的路由/handler 装配，不共享代码）；[HTTP Server Spec](http-server.md) 与 [http-stream-lifecycle](http-stream-lifecycle.md) 记录当前支持范围。**客户端面已收敛（724）**：两 Rust facade 单内核、`auto_lang::a2r_std` 限定名消费有真 TCP 腿；**仍不同的后台面**：VM 流的 park/resume 与 Rust await/通知等待协议独立；生成服务的任意外部流 handler、装配 manifest 未收敛（另案分期）——**服务端**文件上传路由/Range 响应仍另案（客户端文件传输已交付，727） |
 | `json` | `json.at`、`json.vm.at`、`json.rs.at`；没有 `json.c.at` | `json.vm.at` 映射 VM JSON native | `.rs.at` 转译实现与 `crates/a2r-std/src/json.rs` 宿主实现 | 只覆盖各自已实现的符号，不推断完整 parity |
 | `sse` | `sse.at` 公开 `parse_sse(chunk)`；没有 `sse.vm.at`、`sse.rs.at`、`sse.c.at` | `shim_sse_parse` 调用 `auto-lang/src/sse/parser.rs::parse_sse_chunk`（legacy helper 原样保留）；live 流路径用 `auto-lang/src/sse/decoder.rs` 增量解码器（PLAN-707：跨 chunk UTF-8/CRLF·CR/预算， WHATWG 子集）；VM `#[api]` server 经 `dispatch_api_request` 独立驱动 generator | `api_gen.rs` 为生成 Axum handler 装配 SSE；a2r HTTP stream 是客户端流读取 | 017-chat 的 publisher SSE 依赖宿主事件总线；VM `auto.bus.subscribe()` 自 PLAN-698 起为真实执行面（进程内广播总线+转发线程，见 [http-server §8.1](http-server.md)），但 VM 总线与生成 Axum 的 publisher 事件互不相通，不构成跨后台对齐 |
 
@@ -39,3 +47,50 @@ VM HTTP/SSE 的请求绑定、所有权、取消和错误行为详见 [HTTP Serv
 - `AutoVM` 是 `!Send`；VM owner 循环独占 VM（单线程 `LocalSet`），网络层与 owner 之间只传 owned `Send` 的 `ApiRequest`/`ApiReply`（有界队列 + oneshot）。禁止把 VM 引用编码成整数跨线程转运、禁止 `spawn_blocking` 调 VM。
 - SSE generator 以有界指令批次执行并让出 LocalSet；帧通道容量 1 背压，断连/关闭经 `FrameStream` 收流并在 owner 线程回收 iterator/task/订阅。服务有优雅关闭（§7.3 引 [http-server](http-server.md)）。
 - VM 与生成 Axum 的 CRUD、SSE 事件和认证样本有独立 live 验证；VM `auto.bus.subscribe()` publisher 面（PLAN-698）在 017-chat 有全环实测，但 VM 总线与生成侧事件互不相通。`https`、TLS、HTTP/2/3、通用 WebSocket（现有为简化 echo）与统一 Axum server 仍不属于当前支持面。
+
+
+## PLAN-729 锁定的文件响应单源
+
+- 文件宿主执行单源：受限打开/准入/有界 pump/收口只在
+  `auto_lang::http_file_service`（**不含 axum 类型**——版本无关 `FileReply` 投影）；
+  VM 默认 HTTP（本仓 axum 0.8）与 auto-man 生成服务（生成 workspace axum 0.7）
+  各自组装 Response，协议决策单源在 `a2r_std::http::server_file`。
+- IPC（Tauri）/进程内 back-proxy 对文件端点明确拒绝（Unsupported/501 + 改走 HTTP
+  URL 指引）；legacy stdnet 500 诊断。支持矩阵见
+  [http-server-files §6](http-server-files.md)。
+
+## 服务端上传（PLAN-730）
+
+- `#[api]` POST/PUT 端点声明 `UploadRequest` 参数 + `UploadReceipt`/`~UploadReceipt`
+  返回时，VM 默认 HTTP 与生成 Rust/Axum 服务以**同一宿主执行**（a2r-std facade →
+  `auto_lang::http_upload_service` executor hook）提供流式接收/提交；Builder/stdnet
+  路径不获得该能力（无注入面，绑定诊断）；Tauri IPC/back-proxy 明确拒绝
+  （Unsupported/501 + HTTP URL 指引）。契约见 [http-server-uploads](http-server-uploads.md)。
+
+## API 契约消费者（PLAN-734）
+
+- VM HTTP、生成 Rust/Axum、back-proxy、merged、Tauri IPC 五形态消费同一
+  `api/contract.rs` 类型身份分类（ResponseKind/ParamKind/ParamSource）——
+  不各用 contains 字符串猜类型。文件（729）/上传（730）/SSE 保持专属协议
+  边界：HTTP 专属种类在 Tauri 命令生成前被矩阵拒绝；merged 缺实现可定位
+  失败（不再 warn+null）。back-proxy fn_meta 拼串分类取 primary 半段 +
+  参数面补充。契约见 [api-transport-contract](api-transport-contract.md)。
+
+## 适配契约注册表（PLAN-738 T-10/R5-R7）
+
+发射侧适配（状态侧信道包装/数值 cast/三参元数分派/async 流 facade/
+bool→int if 壳/宽度归一）必须命中**独立声明的契约表**（ADAPTER_RULES），
+发射结构/producer 实形/公共投影一致才 signature_checked；类型名 pattern
+与公共 AST 复制不构成证明。纯适配面符号无裸名拼写（具名导入拒绝并指明
+限定拼写）。方法符号的 receiver/is_static 证据来自公共声明事实；序列面
+Vec<T>→[]T 按名身份；Null 哨兵返回族（parse/get/get_at 的 JsonValue? 面）
+与 producer 的 &Value 表示是登记的适配。
+
+签名证据显式含 mode：async producer 与调用点 `.await` 双向核对为证据，
+错配=漂移；`impl AsRef<str>` 视图适配与不透明资源类型（FileResponse/
+Upload*/Response/HTTPStream）按名身份，适配变体写入证明单独记录。
+
+## 已证漂移面（如实上报，不擅改公开 ABI）
+
+json.is_valid/is_null/as_bool：公共声明 int，Rust producer bool——跨
+拼写一致拒绝（VM 面 int 在案）；json.len 宽度归一经 cast 壳契约证明。

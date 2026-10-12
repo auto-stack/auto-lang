@@ -1,9 +1,9 @@
+use super::super::escape_str;
+use super::{Sink, ToStrError, TypeScriptTrans};
 use crate::ast::*;
 use crate::AutoResult;
-use auto_val::{Op, AutoStr};
+use auto_val::{AutoStr, Op};
 use std::io::Write;
-use super::{Sink, TypeScriptTrans, ToStrError};
-use super::super::escape_str;
 
 #[allow(unused_variables)]
 impl TypeScriptTrans {
@@ -36,16 +36,14 @@ impl TypeScriptTrans {
                 }
                 Ok(())
             } // Binary operations
-            Expr::Bina(lhs, op, rhs) => {
-                match op {
-                    Op::Dot => self.dot(lhs, rhs, sink),
-                    _ => {
-                        self.expr(lhs, sink)?;
-                        sink.body.write(format!(" {} ", op.op()).as_bytes()).to()?;
-                        self.expr(rhs, sink)
-                    }
+            Expr::Bina(lhs, op, rhs) => match op {
+                Op::Dot => self.dot(lhs, rhs, sink),
+                _ => {
+                    self.expr(lhs, sink)?;
+                    sink.body.write(format!(" {} ", op.op()).as_bytes()).to()?;
+                    self.expr(rhs, sink)
                 }
-            }
+            },
 
             // Plan 056: Dot expression for field access
             Expr::Dot(object, field) => {
@@ -117,7 +115,9 @@ impl TypeScriptTrans {
                     sink.body.write_all(node.name.as_bytes())?;
                     sink.body.write(b"(")?;
                     for (i, arg) in node.args.args.iter().enumerate() {
-                        if i > 0 { sink.body.write(b", ")?; }
+                        if i > 0 {
+                            sink.body.write(b", ")?;
+                        }
                         match arg {
                             Arg::Pos(expr) => self.expr(expr, sink)?,
                             Arg::Name(name) => sink.body.write_all(name.as_bytes())?,
@@ -163,7 +163,6 @@ impl TypeScriptTrans {
                 Ok(())
             }
 
-
             // Lambda expression
             Expr::Lambda(lambda) => {
                 sink.body.write(b"(")?;
@@ -174,14 +173,16 @@ impl TypeScriptTrans {
                     sink.body.write_all(param.name.as_bytes())?;
                     if !matches!(param.ty, Type::Unknown) {
                         sink.body.write(b": ")?;
-                        sink.body.write_all(Self::type_to_ts(&param.ty).as_bytes())?;
+                        sink.body
+                            .write_all(Self::type_to_ts(&param.ty).as_bytes())?;
                     }
                 }
                 sink.body.write(b")")?;
 
                 if !matches!(lambda.ret, Type::Unknown | Type::Void) {
                     sink.body.write(b": ")?;
-                    sink.body.write_all(Self::type_to_ts(&lambda.ret).as_bytes())?;
+                    sink.body
+                        .write_all(Self::type_to_ts(&lambda.ret).as_bytes())?;
                 } else if matches!(lambda.ret, Type::Void) {
                     sink.body.write(b": void")?;
                 }
@@ -227,19 +228,24 @@ impl TypeScriptTrans {
                         sink.body.write(b".")?;
                         sink.body.write_all(tag_cover.tag.as_bytes())?;
 
-                        let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
+                        let real_bindings: Vec<&AutoStr> = tag_cover
+                            .bindings
+                            .iter()
                             .filter(|b| b.as_str() != "_")
                             .collect();
 
                         // Scalar enum members are used directly; payload enums use factory functions.
-                        let is_scalar = self.scalar_enums.contains(&tag_cover.kind) && real_bindings.is_empty();
+                        let is_scalar =
+                            self.scalar_enums.contains(&tag_cover.kind) && real_bindings.is_empty();
                         if !is_scalar {
                             sink.body.write(b"(")?;
                             if real_bindings.len() == 1 {
                                 sink.body.write_all(real_bindings[0].as_bytes())?;
                             } else if real_bindings.len() > 1 {
                                 for (i, b) in real_bindings.iter().enumerate() {
-                                    if i > 0 { sink.body.write(b", ")?; }
+                                    if i > 0 {
+                                        sink.body.write(b", ")?;
+                                    }
                                     sink.body.write_all(b.as_bytes())?;
                                 }
                             }
@@ -283,9 +289,14 @@ impl TypeScriptTrans {
             // Type cast / conversion
             Expr::Cast { expr, target_type } | Expr::To { expr, target_type } => {
                 match target_type {
-                    Type::Int | Type::Uint | Type::USize
-                    | Type::I64 | Type::U64 | Type::Byte
-                    | Type::Float | Type::Double => {
+                    Type::Int
+                    | Type::Uint
+                    | Type::USize
+                    | Type::I64
+                    | Type::U64
+                    | Type::Byte
+                    | Type::Float
+                    | Type::Double => {
                         write!(&mut sink.body, "Number(")?;
                         self.expr(expr, sink)?;
                         sink.body.write(b")")?;
@@ -427,7 +438,9 @@ impl TypeScriptTrans {
             Expr::Tuple(elems) => {
                 sink.body.write(b"[")?;
                 for (i, elem) in elems.iter().enumerate() {
-                    if i > 0 { sink.body.write(b", ")?; }
+                    if i > 0 {
+                        sink.body.write(b", ")?;
+                    }
                     self.expr(elem, sink)?;
                 }
                 sink.body.write(b"]")?;
@@ -440,7 +453,6 @@ impl TypeScriptTrans {
     }
 
     pub fn fstr(&mut self, fstr: &FStr, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         sink.body.write(b"`")?;
         for part in &fstr.parts {
@@ -464,7 +476,6 @@ impl TypeScriptTrans {
     }
 
     pub fn call(&mut self, call: &Call, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         // Check if this is a print call and convert to console.log
         let is_print = matches!(&*call.name, Expr::Ident(name) if name == "print");
@@ -500,7 +511,6 @@ impl TypeScriptTrans {
     }
 
     pub fn arg(&mut self, arg: &Arg, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         match arg {
             Arg::Pos(expr) => self.expr(expr, sink),
@@ -515,7 +525,6 @@ impl TypeScriptTrans {
     }
 
     pub fn array(&mut self, elems: &[Expr], sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         sink.body.write(b"[")?;
 
@@ -531,7 +540,6 @@ impl TypeScriptTrans {
     }
 
     pub fn index(&mut self, arr: &Box<Expr>, idx: &Box<Expr>, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         self.expr(arr, sink)?;
         sink.body.write(b"[")?;
@@ -541,7 +549,6 @@ impl TypeScriptTrans {
     }
 
     pub fn dot(&mut self, lhs: &Expr, rhs: &Expr, sink: &mut Sink) -> AutoResult<()> {
-
         let out = &mut sink.body;
         self.expr(lhs, sink)?;
         sink.body.write(b".")?;

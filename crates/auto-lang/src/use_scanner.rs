@@ -208,17 +208,17 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
     // Plan 092: Rust crate 导入: use.rust serde::json::{from_str, to_string}
     // Plan 470: `use.rs` 为现行拼写（与 use.py 对齐）；use.rust 旧拼写仍识别
     if line.starts_with(".rs ") || line.starts_with(".rs\t") {
-        let rest = line[3..].trim();  // Skip ".rs "
+        let rest = line[3..].trim(); // Skip ".rs "
         return parse_rust_import(rest);
     }
     if line.starts_with(".rust ") || line.starts_with(".rust\t") {
-        let rest = line[5..].trim();  // Skip ".rust "
+        let rest = line[5..].trim(); // Skip ".rust "
         return parse_rust_import(rest);
     }
 
     // Plan 214: Python module 导入: use.py json5::{dumps, loads}
     if line.starts_with(".py ") || line.starts_with(".py\t") {
-        let rest = line[3..].trim();  // Skip ".py "
+        let rest = line[3..].trim(); // Skip ".py "
         return parse_python_import(rest);
     }
 
@@ -246,7 +246,7 @@ fn parse_use_line(line: &str) -> Option<UseStatement> {
     // found（Plan 216 潜伏缺口，Plan 597 实测坐实）。`use.c "x.json"`
     // 引号形态为文件 manifest（load_manifest_file），一并放行。
     if line.starts_with(".c ") || line.starts_with(".c\t") {
-        let rest = line[2..].trim();  // Skip ".c "
+        let rest = line[2..].trim(); // Skip ".c "
         if rest.is_empty() {
             return None;
         }
@@ -421,15 +421,19 @@ mod tests {
     /// module resolution (latent Plan 216 breakage).
     #[test]
     fn dot_form_c_import_scans_as_c_import() {
-        let stmts = scan_use_statements("use.c <math.h>
+        let stmts = scan_use_statements(
+            "use.c <math.h>
 fn main() {}
-");
+",
+        );
         assert_eq!(stmts.len(), 1);
         assert!(stmts[0].is_c_import);
         assert_eq!(stmts[0].c_header.as_deref(), Some("math.h"));
 
-        let stmts2 = scan_use_statements("use.c \"engine_face.json\"
-");
+        let stmts2 = scan_use_statements(
+            "use.c \"engine_face.json\"
+",
+        );
         assert_eq!(stmts2.len(), 1);
         assert!(stmts2[0].is_c_import);
         assert_eq!(stmts2[0].c_header.as_deref(), Some("engine_face.json"));

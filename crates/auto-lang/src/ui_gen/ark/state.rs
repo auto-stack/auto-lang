@@ -2,8 +2,8 @@
 //!
 //! Generates @State declarations and dispatch functions.
 
-use crate::aura::{AuraWidget, LogicPayload};
 use crate::ast::Type;
+use crate::aura::{AuraWidget, LogicPayload};
 use std::collections::HashMap;
 
 /// Extracted interface definition for array of objects
@@ -45,7 +45,11 @@ pub fn extract_interface_from_array(name: &str, expr: &crate::ast::Expr) -> Opti
 
 /// Extract all interfaces from an array expression, including nested arrays
 /// Returns a vector of (interface_name, InterfaceDef) pairs
-pub fn extract_all_interfaces_from_array(parent_name: &str, name: &str, expr: &crate::ast::Expr) -> Vec<InterfaceDef> {
+pub fn extract_all_interfaces_from_array(
+    parent_name: &str,
+    name: &str,
+    expr: &crate::ast::Expr,
+) -> Vec<InterfaceDef> {
     let mut interfaces = Vec::new();
 
     if let crate::ast::Expr::Array(elems) = expr {
@@ -64,14 +68,18 @@ pub fn extract_all_interfaces_from_array(parent_name: &str, name: &str, expr: &c
                     // Check if this field is an array of objects (nested)
                     if let crate::ast::Expr::Array(nested_elems) = value.as_ref() {
                         // Check if array contains objects
-                        let has_objects = nested_elems.iter().any(|e| matches!(e, crate::ast::Expr::Object(_)));
+                        let has_objects = nested_elems
+                            .iter()
+                            .any(|e| matches!(e, crate::ast::Expr::Object(_)));
                         if has_objects {
                             // Generate nested interface name
                             let nested_interface_name = format!("{}Item", interface_name);
-                            interface_fields.insert(key.clone(), format!("{}[]", nested_interface_name));
+                            interface_fields
+                                .insert(key.clone(), format!("{}[]", nested_interface_name));
 
                             // Recursively extract nested interface
-                            let nested_interfaces = extract_all_interfaces_from_array(&interface_name, &key, value);
+                            let nested_interfaces =
+                                extract_all_interfaces_from_array(&interface_name, &key, value);
                             interfaces.extend(nested_interfaces);
                         } else {
                             let field_type = infer_arkts_type_from_expr(value);
@@ -132,7 +140,9 @@ fn infer_arkts_type_from_expr(expr: &crate::ast::Expr) -> String {
                 "string".to_string()
             }
         }
-        crate::ast::Expr::Int(_) | crate::ast::Expr::Float(_, _) | crate::ast::Expr::Double(_, _) => "number".to_string(),
+        crate::ast::Expr::Int(_)
+        | crate::ast::Expr::Float(_, _)
+        | crate::ast::Expr::Double(_, _) => "number".to_string(),
         crate::ast::Expr::Bool(_) => "boolean".to_string(),
         crate::ast::Expr::Array(_) => "Object[]".to_string(),
         crate::ast::Expr::Object(_) => "Object".to_string(),
@@ -175,12 +185,16 @@ pub fn generate_interfaces(widget: &AuraWidget) -> Vec<InterfaceDef> {
 /// This generates interface names like "EnablementViewItem" instead of just "Item"
 /// to avoid naming conflicts when multiple widgets have similar state variable names.
 /// Also generates nested interfaces for arrays within objects.
-pub fn generate_interfaces_with_prefix(widget: &AuraWidget, widget_name: &str) -> Vec<InterfaceDef> {
+pub fn generate_interfaces_with_prefix(
+    widget: &AuraWidget,
+    widget_name: &str,
+) -> Vec<InterfaceDef> {
     let mut interfaces = Vec::new();
 
     for state_var in &widget.state_vars {
         // Use the new function that extracts all interfaces including nested ones
-        let all_interfaces = extract_all_interfaces_from_array(widget_name, &state_var.name, &state_var.initial);
+        let all_interfaces =
+            extract_all_interfaces_from_array(widget_name, &state_var.name, &state_var.initial);
         interfaces.extend(all_interfaces);
     }
 
@@ -237,28 +251,37 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
             crate::ast::Expr::Array(elems) => {
                 // Check if this array has an interface (array of objects)
                 let has_interface = interfaces.iter().any(|i| i.name == prefixed_interface_name);
-                let elems_code: Vec<String> = elems.iter().enumerate().map(|(idx, e)| {
-                    if has_interface {
-                        // Add id field to objects
-                        if let crate::ast::Expr::Object(pairs) = e {
-                            let mut pairs_sorted: Vec<_> = pairs.iter().collect();
-                            pairs_sorted.sort_by_key(|p| p.key.to_astr().to_string());
-                            let mut pairs_code: Vec<String> = vec![format!("id: '{}'", idx)];
-                            for p in pairs_sorted {
-                                pairs_code.push(format!("{}: {}", p.key.to_astr(), expr_to_arkts(&p.value)));
+                let elems_code: Vec<String> = elems
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, e)| {
+                        if has_interface {
+                            // Add id field to objects
+                            if let crate::ast::Expr::Object(pairs) = e {
+                                let mut pairs_sorted: Vec<_> = pairs.iter().collect();
+                                pairs_sorted.sort_by_key(|p| p.key.to_astr().to_string());
+                                let mut pairs_code: Vec<String> = vec![format!("id: '{}'", idx)];
+                                for p in pairs_sorted {
+                                    pairs_code.push(format!(
+                                        "{}: {}",
+                                        p.key.to_astr(),
+                                        expr_to_arkts(&p.value)
+                                    ));
+                                }
+                                format!("{{{}}}", pairs_code.join(", "))
+                            } else {
+                                expr_to_arkts(e)
                             }
-                            format!("{{{}}}", pairs_code.join(", "))
                         } else {
                             expr_to_arkts(e)
                         }
-                    } else {
-                        expr_to_arkts(e)
-                    }
-                }).collect();
+                    })
+                    .collect();
                 format!("[{}]", elems_code.join(", "))
             }
             crate::ast::Expr::Object(pairs) => {
-                let pairs: Vec<String> = pairs.iter()
+                let pairs: Vec<String> = pairs
+                    .iter()
                     .map(|p| format!("{}: {}", p.key.to_astr(), expr_to_arkts(&p.value)))
                     .collect();
                 format!("{{{}}}", pairs.join(", "))
@@ -280,7 +303,12 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
             crate::ast::Expr::Call(call) => {
                 // Constructor call: TypeName(args) -> new TypeName(args)
                 let type_name = call.name.repr().to_string();
-                let args_code: Vec<String> = call.args.args.iter().map(|a| expr_to_arkts(&a.get_expr())).collect();
+                let args_code: Vec<String> = call
+                    .args
+                    .args
+                    .iter()
+                    .map(|a| expr_to_arkts(&a.get_expr()))
+                    .collect();
                 format!("new {}({})", type_name, args_code.join(", "))
             }
             _ => generate_default_value(&state_var.type_info),
@@ -288,14 +316,17 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
 
         // Determine decorator based on AURA decorators, props, or default to @State
         // Priority: @Consume > @Provide > @Prop > @State
-        let decorator = if let Some(consume_dec) = state_var.decorators.iter().find(|d| d.name == "Consume") {
+        let decorator = if let Some(consume_dec) =
+            state_var.decorators.iter().find(|d| d.name == "Consume")
+        {
             // @Consume decorator - consumes value from ancestor
             if let Some(key) = consume_dec.args.first() {
                 format!("@Consume(\"{}\")", key)
             } else {
                 "@Consume".to_string()
             }
-        } else if let Some(provide_dec) = state_var.decorators.iter().find(|d| d.name == "Provide") {
+        } else if let Some(provide_dec) = state_var.decorators.iter().find(|d| d.name == "Provide")
+        {
             // @Provide decorator - provides value to descendants
             if let Some(key) = provide_dec.args.first() {
                 format!("@Provide(\"{}\")", key)
@@ -314,7 +345,10 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
         if state_var.decorators.iter().any(|d| d.name == "Consume") {
             lines.push(format!("  {} {}: {}", decorator, name, arkts_type));
         } else {
-            lines.push(format!("  {} {}: {} = {}", decorator, name, arkts_type, default_value));
+            lines.push(format!(
+                "  {} {}: {} = {}",
+                decorator, name, arkts_type, default_value
+            ));
         }
     }
 
@@ -324,7 +358,11 @@ pub fn generate_state_declarations_with_prefix(widget: &AuraWidget, widget_name:
 /// Check if a property is likely an image source (used with Image component)
 fn is_image_source_prop(name: &str, ty: &Type) -> bool {
     // Common naming patterns for image sources
-    let is_image_name = name.ends_with("Src") || name.ends_with("Image") || name == "imageSrc" || name == "src" || name == "image";
+    let is_image_name = name.ends_with("Src")
+        || name.ends_with("Image")
+        || name == "imageSrc"
+        || name == "src"
+        || name == "image";
     // Must be a string type (would be converted to ResourceStr)
     let is_str_type = matches!(ty, Type::StrFixed(_) | Type::StrOwned);
     is_image_name && is_str_type
@@ -414,7 +452,11 @@ fn auto_type_to_arkts(ty: &Type, interfaces: &[InterfaceDef]) -> String {
         Type::StrFixed(_) | Type::StrOwned => "string".to_string(),
         Type::Array(arr) => format!("{}[]", auto_type_to_arkts(&arr.elem, interfaces)),
         Type::List(elem) => format!("{}[]", auto_type_to_arkts(elem, interfaces)),
-        Type::Map(k, v) => format!("HashMap<{}, {}>", auto_type_to_arkts(k, interfaces), auto_type_to_arkts(v, interfaces)),
+        Type::Map(k, v) => format!(
+            "HashMap<{}, {}>",
+            auto_type_to_arkts(k, interfaces),
+            auto_type_to_arkts(v, interfaces)
+        ),
         Type::User(decl) => decl.name.as_str().to_string(),
         Type::Tag(tag) => tag.borrow().name.as_str().to_string(),
         Type::Enum(enum_decl) => enum_decl.borrow().name.as_str().to_string(),
@@ -482,7 +524,11 @@ fn expr_to_arkts(expr: &crate::ast::Expr) -> String {
         Expr::Float(n, _) | Expr::Double(n, _) => n.to_string(),
         Expr::Bool(b) => b.to_string(),
         Expr::Ident(name) => {
-            let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+            let resolved = if name.starts_with('.') {
+                &name[1..]
+            } else {
+                name.as_str()
+            };
             format!("this.{}", resolved)
         }
         Expr::Bina(left, op, right) => {
@@ -516,11 +562,21 @@ fn expr_to_arkts(expr: &crate::ast::Expr) -> String {
         Expr::Call(call) => {
             if let Expr::Dot(object, method) = call.name.as_ref() {
                 let obj_code = expr_to_arkts(object);
-                let args_code: Vec<String> = call.args.args.iter().map(|a| expr_to_arkts(&a.get_expr())).collect();
+                let args_code: Vec<String> = call
+                    .args
+                    .args
+                    .iter()
+                    .map(|a| expr_to_arkts(&a.get_expr()))
+                    .collect();
                 format!("{}.{}({})", obj_code, method, args_code.join(", "))
             } else {
                 let name_code = expr_to_arkts(&call.name);
-                let args_code: Vec<String> = call.args.args.iter().map(|a| expr_to_arkts(&a.get_expr())).collect();
+                let args_code: Vec<String> = call
+                    .args
+                    .args
+                    .iter()
+                    .map(|a| expr_to_arkts(&a.get_expr()))
+                    .collect();
                 format!("{}({})", name_code, args_code.join(", "))
             }
         }
@@ -529,7 +585,8 @@ fn expr_to_arkts(expr: &crate::ast::Expr) -> String {
             format!("[{}]", elems_code.join(", "))
         }
         Expr::Object(pairs) => {
-            let pairs: Vec<String> = pairs.iter()
+            let pairs: Vec<String> = pairs
+                .iter()
                 .map(|p| format!("{}: {}", p.key.to_astr(), expr_to_arkts(&p.value)))
                 .collect();
             format!("{{{}}}", pairs.join(", "))
@@ -567,7 +624,10 @@ mod tests {
         let interfaces = vec![];
         assert_eq!(auto_type_to_arkts(&Type::Int, &interfaces), "number");
         assert_eq!(auto_type_to_arkts(&Type::Bool, &interfaces), "boolean");
-        assert_eq!(auto_type_to_arkts(&Type::StrFixed(0), &interfaces), "string");
+        assert_eq!(
+            auto_type_to_arkts(&Type::StrFixed(0), &interfaces),
+            "string"
+        );
     }
 
     #[test]
@@ -579,7 +639,10 @@ mod tests {
 
     #[test]
     fn test_generate_default_value_for_list() {
-        assert_eq!(generate_default_value(&Type::List(Box::new(Type::Int))), "[]");
+        assert_eq!(
+            generate_default_value(&Type::List(Box::new(Type::Int))),
+            "[]"
+        );
     }
 
     #[test]
@@ -595,8 +658,18 @@ mod tests {
             computed: vec![],
             messages: vec![AuraMessage {
                 variants: vec![
-                    AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] },
-                    AuraMsgVariant { payload_names: vec![], name: "Dec".to_string(), quoted: false, payload: vec![] },
+                    AuraMsgVariant {
+                        payload_names: vec![],
+                        name: "Inc".to_string(),
+                        quoted: false,
+                        payload: vec![],
+                    },
+                    AuraMsgVariant {
+                        payload_names: vec![],
+                        name: "Dec".to_string(),
+                        quoted: false,
+                        payload: vec![],
+                    },
                 ],
             }],
             view_tree: AuraNode::Element {
@@ -622,15 +695,20 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
-        }
-;
+        };
 
         let result = generate_msg_enum(&widget);
 
         // Should produce TypeScript enum, not Kotlin sealed class
         assert!(result.contains("enum Msg {"), "Should use 'enum' keyword");
-        assert!(!result.contains("sealed class"), "Should not contain 'sealed class'");
-        assert!(!result.contains("object"), "Should not contain 'object' keyword");
+        assert!(
+            !result.contains("sealed class"),
+            "Should not contain 'sealed class'"
+        );
+        assert!(
+            !result.contains("object"),
+            "Should not contain 'object' keyword"
+        );
         assert!(result.contains("Inc,"), "Should contain 'Inc,' variant");
         assert!(result.contains("Dec,"), "Should contain 'Dec,' variant");
     }
@@ -640,12 +718,16 @@ mod tests {
         use crate::ast::{Expr, Key, Pair};
 
         // Test with array of objects
-        let array_expr = Expr::Array(vec![
-            Expr::Object(vec![
-                Pair { key: Key::StrKey("title".into()), value: Box::new(Expr::Str("A".into())) },
-                Pair { key: Key::StrKey("count".into()), value: Box::new(Expr::Int(1)) },
-            ]),
-        ]);
+        let array_expr = Expr::Array(vec![Expr::Object(vec![
+            Pair {
+                key: Key::StrKey("title".into()),
+                value: Box::new(Expr::Str("A".into())),
+            },
+            Pair {
+                key: Key::StrKey("count".into()),
+                value: Box::new(Expr::Int(1)),
+            },
+        ])]);
 
         let interface = extract_interface_from_array("items", &array_expr);
         assert!(interface.is_some());

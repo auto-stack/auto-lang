@@ -1,7 +1,7 @@
 // Plan 088 Phase 6: Parameter immutability checking
 // Ensures that view (immutable) parameters cannot be modified
 
-use crate::ast::{Fn, Stmt, Expr, Name, ParamMode, Body};
+use crate::ast::{Body, Expr, Fn, Name, ParamMode, Stmt};
 use crate::error::{AutoError, TypeError};
 use miette::SourceSpan;
 use std::collections::HashSet;
@@ -21,7 +21,9 @@ impl ParamChecker {
         let mut errors = Vec::new();
 
         // Collect all view parameters
-        let view_params: HashSet<Name> = fn_decl.params.iter()
+        let view_params: HashSet<Name> = fn_decl
+            .params
+            .iter()
             .filter(|p| p.mode == ParamMode::View)
             .map(|p| p.name.clone())
             .collect();
@@ -42,32 +44,27 @@ impl ParamChecker {
     }
 
     /// Check a body (block of statements) for view parameter modifications
-    fn check_body_immutable(
-        body: &Body,
-        view_params: &HashSet<Name>,
-        errors: &mut Vec<AutoError>,
-    ) {
+    fn check_body_immutable(body: &Body, view_params: &HashSet<Name>, errors: &mut Vec<AutoError>) {
         for stmt in &body.stmts {
             Self::check_stmt(stmt, view_params, errors);
         }
     }
 
     /// Check a statement for view parameter modifications
-    fn check_stmt(
-        stmt: &Stmt,
-        view_params: &HashSet<Name>,
-        errors: &mut Vec<AutoError>,
-    ) {
+    fn check_stmt(stmt: &Stmt, view_params: &HashSet<Name>, errors: &mut Vec<AutoError>) {
         match stmt {
             // Store statement: check if we're assigning to a view parameter
             Stmt::Store(store) => {
                 if view_params.contains(&store.name) {
                     // Found a modification of a view parameter
                     let span = SourceSpan::new(0_usize.into(), 0_usize.into());
-                    errors.push(TypeError::CannotModifyViewParam {
-                        param: store.name.clone(),
-                        span,
-                    }.into());
+                    errors.push(
+                        TypeError::CannotModifyViewParam {
+                            param: store.name.clone(),
+                            span,
+                        }
+                        .into(),
+                    );
                 }
 
                 // Also check the expression being assigned
@@ -111,11 +108,7 @@ impl ParamChecker {
     }
 
     /// Check an expression for view parameter modifications
-    fn check_expr(
-        expr: &Expr,
-        _view_params: &HashSet<Name>,
-        _errors: &mut Vec<AutoError>,
-    ) {
+    fn check_expr(expr: &Expr, _view_params: &HashSet<Name>, _errors: &mut Vec<AutoError>) {
         match expr {
             // Identifier: no check needed (just reading)
             Expr::Ident(_) => {}

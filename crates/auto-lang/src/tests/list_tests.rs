@@ -32,7 +32,11 @@ fn test_list_new_and_len() {
         list.len()
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("3"), "List should have 3 elements, got: {}", result);
+    assert!(
+        result.contains("3"),
+        "List should have 3 elements, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -49,9 +53,21 @@ fn test_list_push_and_pop() {
         [first, second, length]
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("20"), "First pop should return 20, got: {}", result);
-    assert!(result.contains("10"), "Second pop should return 10, got: {}", result);
-    assert!(result.contains("0"), "List should be empty after pops, got: {}", result);
+    assert!(
+        result.contains("20"),
+        "First pop should return 20, got: {}",
+        result
+    );
+    assert!(
+        result.contains("10"),
+        "Second pop should return 10, got: {}",
+        result
+    );
+    assert!(
+        result.contains("0"),
+        "List should be empty after pops, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -70,8 +86,11 @@ fn test_list_is_empty() {
     "#;
     let result = run(code).unwrap();
     // is_empty() returns a bool; empty lists render as true, non-empty as false.
-    assert!(result.contains("true") && result.contains("false"),
-            "Should have true and false values, got: {}", result);
+    assert!(
+        result.contains("true") && result.contains("false"),
+        "Should have true and false values, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -235,9 +254,21 @@ fn test_list_map_square() {
         [mapped[0], mapped[1], mapped[2]]
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("100"), "Doubled 10 should be 20, got: {}", result);
-    assert!(result.contains("400"), "Doubled 20 should be 40, got: {}", result);
-    assert!(result.contains("900"), "Doubled 30 should be 60, got: {}", result);
+    assert!(
+        result.contains("100"),
+        "Doubled 10 should be 20, got: {}",
+        result
+    );
+    assert!(
+        result.contains("400"),
+        "Doubled 20 should be 40, got: {}",
+        result
+    );
+    assert!(
+        result.contains("900"),
+        "Doubled 30 should be 60, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -262,9 +293,21 @@ fn test_list_map_triple() {
         [first, second, third]
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("3"), "Tripled 1 should be 3, got: {}", result);
-    assert!(result.contains("6"), "Tripled 2 should be 6, got: {}", result);
-    assert!(result.contains("9"), "Tripled 3 should be 9, got: {}", result);
+    assert!(
+        result.contains("3"),
+        "Tripled 1 should be 3, got: {}",
+        result
+    );
+    assert!(
+        result.contains("6"),
+        "Tripled 2 should be 6, got: {}",
+        result
+    );
+    assert!(
+        result.contains("9"),
+        "Tripled 3 should be 9, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -454,7 +497,10 @@ fn test_list_collect() {
         new_list.len()
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("3"), "Collected list should have 3 elements");
+    assert!(
+        result.contains("3"),
+        "Collected list should have 3 elements"
+    );
 }
 
 #[test]
@@ -497,7 +543,10 @@ fn test_list_bang_operator() {
         collected.len()
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("3"), "Bang operator should collect 3 elements");
+    assert!(
+        result.contains("3"),
+        "Bang operator should collect 3 elements"
+    );
 }
 
 #[test]
@@ -519,7 +568,10 @@ fn test_list_bang_operator_with_map() {
         mapped.len()
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("3"), "Bang operator should collect 3 mapped elements");
+    assert!(
+        result.contains("3"),
+        "Bang operator should collect 3 mapped elements"
+    );
 }
 
 // ============================================================================
@@ -546,8 +598,10 @@ fn test_list_any() {
         has_even
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("0") || result.contains("false"),
-           "Should not have any even numbers");
+    assert!(
+        result.contains("0") || result.contains("false"),
+        "Should not have any even numbers"
+    );
 }
 
 #[test]
@@ -569,8 +623,10 @@ fn test_list_any_true() {
         has_even
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("1") || result.contains("true"),
-           "Should have at least one even number");
+    assert!(
+        result.contains("1") || result.contains("true"),
+        "Should have at least one even number"
+    );
 }
 
 #[test]
@@ -592,8 +648,10 @@ fn test_list_all() {
         all_even
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("1") || result.contains("true"),
-           "All numbers should be even");
+    assert!(
+        result.contains("1") || result.contains("true"),
+        "All numbers should be even"
+    );
 }
 
 #[test]
@@ -615,8 +673,10 @@ fn test_list_all_false() {
         all_even
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("0") || result.contains("false"),
-           "Not all numbers should be even");
+    assert!(
+        result.contains("0") || result.contains("false"),
+        "Not all numbers should be even"
+    );
 }
 
 // ============================================================================
@@ -644,8 +704,10 @@ fn test_list_find_found() {
         found
     "#;
     let result = run(code).unwrap();
-    assert!(result.contains("7") || result.contains("9"),
-           "Should find first element > 5");
+    assert!(
+        result.contains("7") || result.contains("9"),
+        "Should find first element > 5"
+    );
 }
 
 #[test]
@@ -669,8 +731,11 @@ fn test_list_find_not_found() {
     "#;
     let result = run(code).unwrap();
     // Result should contain "nil" or be empty
-    assert!(result.contains("nil") || !result.contains("1") && !result.contains("2") && !result.contains("3"),
-           "Should not find any element > 10");
+    assert!(
+        result.contains("nil")
+            || !result.contains("1") && !result.contains("2") && !result.contains("3"),
+        "Should not find any element > 10"
+    );
 }
 
 // ============================================================================
@@ -819,9 +884,21 @@ fn test_list_map_direct_via_spec() {
     "#;
 
     let result = run(code).unwrap();
-    assert!(result.contains("30"), "Tripled 10 should be 30, got: {}", result);
-    assert!(result.contains("60"), "Tripled 20 should be 60, got: {}", result);
-    assert!(result.contains("90"), "Tripled 30 should be 90, got: {}", result);
+    assert!(
+        result.contains("30"),
+        "Tripled 10 should be 30, got: {}",
+        result
+    );
+    assert!(
+        result.contains("60"),
+        "Tripled 20 should be 60, got: {}",
+        result
+    );
+    assert!(
+        result.contains("90"),
+        "Tripled 30 should be 90, got: {}",
+        result
+    );
 }
 
 #[test]
@@ -850,8 +927,16 @@ fn test_list_filter_direct_via_spec() {
     "#;
 
     let result = run(code).unwrap();
-    assert!(result.contains("2"), "First even should be 2, got: {}", result);
-    assert!(result.contains("4"), "Second even should be 4, got: {}", result);
+    assert!(
+        result.contains("2"),
+        "First even should be 2, got: {}",
+        result
+    );
+    assert!(
+        result.contains("4"),
+        "Second even should be 4, got: {}",
+        result
+    );
     assert!(result.contains("nil"), "Done should be nil");
 }
 
@@ -876,7 +961,8 @@ fn main() {
     assert!(
         s.trim().contains("true"),
         "flags[0].to_string() should be 'true', got stdout={:?} result={:?}",
-        s, r
+        s,
+        r
     );
 }
 
@@ -893,7 +979,8 @@ fn main() {
     assert!(
         s.trim().contains("false"),
         "flags[1].to_string() should be 'false', got stdout={:?} result={:?}",
-        s, r
+        s,
+        r
     );
 }
 
@@ -963,10 +1050,23 @@ fn main() {
 }
 "#;
     let (r, s) = crate::run_with_capture(code).unwrap();
-    assert!(s.contains("and-tt"), "true && true: stdout={:?} result={:?}", s, r);
-    assert!(!s.contains("and-tf"), "true && false must not fire: {:?}", s);
+    assert!(
+        s.contains("and-tt"),
+        "true && true: stdout={:?} result={:?}",
+        s,
+        r
+    );
+    assert!(
+        !s.contains("and-tf"),
+        "true && false must not fire: {:?}",
+        s
+    );
     assert!(s.contains("or-ft"), "false || true: {:?}", s);
-    assert!(!s.contains("or-ff"), "false || false must not fire: {:?}", s);
+    assert!(
+        !s.contains("or-ff"),
+        "false || false must not fire: {:?}",
+        s
+    );
 }
 
 /// `!x` negation with bools (tagged) and with the bool from a List<bool>.
@@ -984,7 +1084,12 @@ fn main() {
 }
 "#;
     let (r, s) = crate::run_with_capture(code).unwrap();
-    assert!(s.contains("not-false"), "!false: stdout={:?} result={:?}", s, r);
+    assert!(
+        s.contains("not-false"),
+        "!false: stdout={:?} result={:?}",
+        s,
+        r
+    );
     assert!(!s.contains("not-true"), "!true must not fire: {:?}", s);
 }
 

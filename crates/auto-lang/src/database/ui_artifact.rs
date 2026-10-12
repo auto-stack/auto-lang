@@ -2,8 +2,8 @@
 //!
 //! Tracks generated UI files (.vue, .kt) for incremental compilation.
 
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// A generated UI artifact
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -153,7 +153,7 @@ fn test_list_data_set() {
     list.push(3);
 
     assert!(list.set(1, 20));
-    assert!(!list.set(5, 50));  // Out of bounds
+    assert!(!list.set(5, 50)); // Out of bounds
 
     assert_eq!(list.elems, vec![1, 20, 3]);
 }
@@ -208,7 +208,7 @@ fn test_list_data_insert_out_of_bounds() {
     list.push(1);
     list.push(2);
 
-    assert!(!list.insert(5, 3));  // Beyond length
+    assert!(!list.insert(5, 3)); // Beyond length
     assert_eq!(list.elems, vec![1, 2]);
 }
 
@@ -274,7 +274,7 @@ fn test_list_data_reserve() {
 #[test]
 fn test_list_data_reserve_inline() {
     let mut list: ListData<i32> = ListData::with_storage(ListStorage::InlineInt64);
-    list.reserve(100);  // Should be ignored for InlineInt64
+    list.reserve(100); // Should be ignored for InlineInt64
 
     // Capacity is fixed for InlineInt64
     assert_eq!(list.len(), 0);
@@ -317,7 +317,7 @@ fn test_list_data_can_grow_inline() {
 #[test]
 fn test_list_data_max_capacity_heap() {
     let list: ListData<i32> = ListData::new();
-    assert_eq!(list.max_capacity(), None);  // Unlimited
+    assert_eq!(list.max_capacity(), None); // Unlimited
 }
 
 #[test]
@@ -338,9 +338,9 @@ fn test_list_data_try_grow_heap() {
 fn test_list_data_try_grow_inline() {
     let mut list: ListData<i32> = ListData::with_storage(ListStorage::InlineInt64);
 
-    assert!(list.try_grow(32));   // <= 64, should succeed
-    assert!(list.try_grow(64));   // == 64, should succeed
-    assert!(!list.try_grow(65));  // > 64, should fail
+    assert!(list.try_grow(32)); // <= 64, should succeed
+    assert!(list.try_grow(64)); // == 64, should succeed
+    assert!(!list.try_grow(65)); // > 64, should fail
 }
 
 // ============================================================================
@@ -359,7 +359,10 @@ fn test_list_data_memory_efficiency_int() {
     // Memory usage should be 3 × 4 bytes = 12 bytes for the elements
     // Plus Vec overhead (24 bytes) = ~36 bytes total
     // This is 6x better than Vec<Value> which would be 3 × 24 = 72 bytes for elements
-    assert_eq!(list.elems.capacity() * size_of::<i32>(), list.elems.capacity() * 4);
+    assert_eq!(
+        list.elems.capacity() * size_of::<i32>(),
+        list.elems.capacity() * 4
+    );
 }
 
 #[test]
@@ -694,7 +697,7 @@ fn test_list_data_inline_behavior() {
 
     // Remove should free up space for new elements
     assert_eq!(list.pop(), Some(63));
-    assert!(list.push(64));  // Now this should work
+    assert!(list.push(64)); // Now this should work
 }
 
 #[test]

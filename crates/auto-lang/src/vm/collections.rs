@@ -1,7 +1,7 @@
 use super::context::VmContext;
 use auto_val::{Instance, Obj, Type, Value};
-use std::collections::{BTreeMap, HashMap as StdHashMap, VecDeque};
 use std::any::Any;
+use std::collections::{BTreeMap, HashMap as StdHashMap, VecDeque};
 
 use crate::vm::heap_object::{HeapObject, TypeTag};
 
@@ -79,21 +79,13 @@ impl SpecializedHashMap {
     /// Get a value by key
     pub fn get(&self, key: &str) -> Option<Value> {
         match self {
-            SpecializedHashMap::StringInt(map) => {
-                map.get(key).map(|&v| Value::Int(v))
-            }
-            SpecializedHashMap::StringBool(map) => {
-                map.get(key).map(|&v| Value::Bool(v))
-            }
+            SpecializedHashMap::StringInt(map) => map.get(key).map(|&v| Value::Int(v)),
+            SpecializedHashMap::StringBool(map) => map.get(key).map(|&v| Value::Bool(v)),
             SpecializedHashMap::StringString(map) => {
                 map.get(key).map(|v| Value::Str(v.as_str().into()))
             }
-            SpecializedHashMap::StringDouble(map) => {
-                map.get(key).map(|&v| Value::Double(v))
-            }
-            SpecializedHashMap::StringValue(map) => {
-                map.get(key).cloned()
-            }
+            SpecializedHashMap::StringDouble(map) => map.get(key).map(|&v| Value::Double(v)),
+            SpecializedHashMap::StringValue(map) => map.get(key).cloned(),
         }
     }
 
@@ -116,8 +108,9 @@ impl SpecializedHashMap {
             for v in map.values() {
                 match v {
                     Value::VmRef(r) => out.push(r.id as u64),
-                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 =>
-                        out.push(*i as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                        out.push(*i as u64)
+                    }
                     _ => {}
                 }
             }
@@ -128,21 +121,13 @@ impl SpecializedHashMap {
     /// Remove a key-value pair
     pub fn remove(&mut self, key: &str) -> Option<Value> {
         match self {
-            SpecializedHashMap::StringInt(map) => {
-                map.remove(key).map(|v| Value::Int(v))
-            }
-            SpecializedHashMap::StringBool(map) => {
-                map.remove(key).map(|v| Value::Bool(v))
-            }
+            SpecializedHashMap::StringInt(map) => map.remove(key).map(|v| Value::Int(v)),
+            SpecializedHashMap::StringBool(map) => map.remove(key).map(|v| Value::Bool(v)),
             SpecializedHashMap::StringString(map) => {
                 map.remove(key).map(|v| Value::Str(v.as_str().into()))
             }
-            SpecializedHashMap::StringDouble(map) => {
-                map.remove(key).map(|v| Value::Double(v))
-            }
-            SpecializedHashMap::StringValue(map) => {
-                map.remove(key)
-            }
+            SpecializedHashMap::StringDouble(map) => map.remove(key).map(|v| Value::Double(v)),
+            SpecializedHashMap::StringValue(map) => map.remove(key),
         }
     }
 
@@ -198,7 +183,9 @@ impl HeapObject for SpecializedHashMap {
             SpecializedHashMap::StringInt(_) => TypeTag::HashMapInt,
             SpecializedHashMap::StringBool(_) => TypeTag::HashMapBool,
             SpecializedHashMap::StringString(_) => TypeTag::HashMapString,
-            SpecializedHashMap::StringDouble(_) => TypeTag::SpecializedPair("HashMap_String_double".to_string()),
+            SpecializedHashMap::StringDouble(_) => {
+                TypeTag::SpecializedPair("HashMap_String_double".to_string())
+            }
             SpecializedHashMap::StringValue(_) => TypeTag::HashMapValue,
         }
     }
@@ -261,11 +248,15 @@ pub struct SpecializedStringBuilder {
 
 impl SpecializedStringBuilder {
     pub fn new() -> Self {
-        Self { buffer: String::new() }
+        Self {
+            buffer: String::new(),
+        }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { buffer: String::with_capacity(capacity) }
+        Self {
+            buffer: String::with_capacity(capacity),
+        }
     }
 }
 
@@ -295,7 +286,9 @@ pub struct SpecializedVecDeque {
 
 impl SpecializedVecDeque {
     pub fn new() -> Self {
-        Self { data: std::collections::VecDeque::new() }
+        Self {
+            data: std::collections::VecDeque::new(),
+        }
     }
 }
 
@@ -325,7 +318,9 @@ pub struct SpecializedBTreeMap {
 
 impl SpecializedBTreeMap {
     pub fn new() -> Self {
-        Self { data: std::collections::BTreeMap::new() }
+        Self {
+            data: std::collections::BTreeMap::new(),
+        }
     }
 }
 
@@ -1210,11 +1205,17 @@ impl AutoVMHashMap {
 }
 
 impl HeapObject for AutoVMHashMap {
-    fn type_tag(&self) -> TypeTag { TypeTag::HashMapInt }
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::HashMapInt
+    }
 
-    fn as_any(&self) -> &dyn Any { self }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 // ============================================================================
@@ -1297,8 +1298,10 @@ mod specialized_hashmap_tests {
     #[test]
     fn test_specialized_hash_map_insert_string() {
         let mut map = SpecializedHashMap::new("string");
-        map.insert("name".to_string(), Value::Str(AutoStr::from("Alice"))).unwrap();
-        map.insert("city".to_string(), Value::Str(AutoStr::from("Bob"))).unwrap();
+        map.insert("name".to_string(), Value::Str(AutoStr::from("Alice")))
+            .unwrap();
+        map.insert("city".to_string(), Value::Str(AutoStr::from("Bob")))
+            .unwrap();
 
         assert_eq!(map.len(), 2);
         assert_eq!(map.get("name"), Some(Value::Str(AutoStr::from("Alice"))));
@@ -1308,7 +1311,8 @@ mod specialized_hashmap_tests {
     #[test]
     fn test_specialized_hash_map_insert_double() {
         let mut map = SpecializedHashMap::new("double");
-        map.insert("pi".to_string(), Value::Double(3.14159)).unwrap();
+        map.insert("pi".to_string(), Value::Double(3.14159))
+            .unwrap();
         map.insert("e".to_string(), Value::Double(2.71828)).unwrap();
 
         assert_eq!(map.len(), 2);
@@ -1320,8 +1324,10 @@ mod specialized_hashmap_tests {
     fn test_specialized_hash_map_insert_value() {
         let mut map = SpecializedHashMap::new("unknown");
         map.insert("int_val".to_string(), Value::Int(42)).unwrap();
-        map.insert("bool_val".to_string(), Value::Bool(true)).unwrap();
-        map.insert("str_val".to_string(), Value::Str(AutoStr::from("hello"))).unwrap();
+        map.insert("bool_val".to_string(), Value::Bool(true))
+            .unwrap();
+        map.insert("str_val".to_string(), Value::Str(AutoStr::from("hello")))
+            .unwrap();
 
         assert_eq!(map.len(), 3);
         assert_eq!(map.get("int_val"), Some(Value::Int(42)));

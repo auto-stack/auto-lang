@@ -18,6 +18,9 @@ total_steps: 2
 
 # [PLAN-600] callout 编辑臂盒式 chrome 对齐只读臂
 
+> PLAN-761（2026-10-11）路径归位：本文验收所述同名截图现保存在
+> [vm-600-callout-box.png](../evidence/600/vm-600-callout-box.png)，原图字节保持。
+
 ## 变更摘要
 
 用户 2026-09-09 实机复核报告（截图在案）：VM demo 双臂的 `$callout` 样式差很远

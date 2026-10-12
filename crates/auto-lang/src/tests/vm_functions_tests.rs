@@ -23,12 +23,14 @@ fn cleanup_test_file(path: &PathBuf) {
 fn test_vm_function_open() {
     let test_file = create_test_file("test_vm_open.at", "Hello from VM!");
 
-    let code = format!(r#"
+    let code = format!(
+        r#"
 use auto.io: open
 
 let file = open("test_vm_open.at")
 file
-"#);
+"#
+    );
     let result = run(&code);
     cleanup_test_file(&test_file);
 
@@ -37,7 +39,11 @@ file
     }
     assert!(result.is_ok());
     let output = result.unwrap();
-    assert!(output.contains("File"), "Expected File instance, got: {}", output);
+    assert!(
+        output.contains("File"),
+        "Expected File instance, got: {}",
+        output
+    );
 }
 
 #[test]
@@ -46,12 +52,14 @@ fn test_vm_method_read_text() {
     let test_content = "Hello from VM read_text!";
     let test_file = create_test_file("test_vm_read.at", test_content);
 
-    let code = format!(r#"
+    let code = format!(
+        r#"
 use auto.io: open
 
 let file = open("test_vm_read.at")
 file.read_text()
-"#);
+"#
+    );
     let result = run(&code);
     cleanup_test_file(&test_file);
 
@@ -60,8 +68,11 @@ file.read_text()
     }
     assert!(result.is_ok());
     let output = result.unwrap();
-    assert!(output.contains(test_content) || output.contains("Hello"),
-            "Expected file content, got: {}", output);
+    assert!(
+        output.contains(test_content) || output.contains("Hello"),
+        "Expected file content, got: {}",
+        output
+    );
 }
 
 #[test]
@@ -69,12 +80,14 @@ file.read_text()
 fn test_vm_method_close() {
     let test_file = create_test_file("test_vm_close.at", "Hello from VM close!");
 
-    let code = format!(r#"
+    let code = format!(
+        r#"
 use auto.io: open
 
 let file = open("test_vm_close.at")
 file.close()
-"#);
+"#
+    );
     let result = run(&code);
     cleanup_test_file(&test_file);
 
@@ -92,9 +105,16 @@ file
 "#;
     let result = run(code);
     // Evaluation errors are returned as Err, not Ok with error message
-    assert!(result.is_err(), "Expected error for nonexistent file, got: {:?}", result);
+    assert!(
+        result.is_err(),
+        "Expected error for nonexistent file, got: {:?}",
+        result
+    );
     let err = result.unwrap_err();
     let err_msg = format!("{}", err);
-    assert!(err_msg.contains("Error") || err_msg.contains("not found") || err_msg.contains("找不到"),
-            "Expected error message to contain 'Error' or 'not found', got: {}", err_msg);
+    assert!(
+        err_msg.contains("Error") || err_msg.contains("not found") || err_msg.contains("找不到"),
+        "Expected error message to contain 'Error' or 'not found', got: {}",
+        err_msg
+    );
 }

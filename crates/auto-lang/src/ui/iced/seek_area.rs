@@ -131,10 +131,7 @@ where
                 // 会让拖到条外的操作忽然断流）。
                 Event::Mouse(mouse::Event::CursorMoved { .. }) if state.pressed => {
                     if let Some(p) = cursor.position() {
-                        shell.publish((on_seek)(Self::fraction(
-                            p.x - bounds.x,
-                            bounds.width,
-                        )));
+                        shell.publish((on_seek)(Self::fraction(p.x - bounds.x, bounds.width)));
                     }
                 }
                 _ => {}

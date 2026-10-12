@@ -33,14 +33,15 @@ fn engine_segment_parks_on_async_http_then_resumes_with_result() {
         loop {
             let n = std::io::Read::read(&mut stream, &mut buf).unwrap_or(0);
             read_total += n;
-            let head_end = buf[..read_total]
-                .windows(4)
-                .position(|w| w == b"\r\n\r\n");
+            let head_end = buf[..read_total].windows(4).position(|w| w == b"\r\n\r\n");
             if let Some(pos) = head_end {
                 let headers = String::from_utf8_lossy(&buf[..pos]).to_lowercase();
                 let content_length: usize = headers
                     .lines()
-                    .find_map(|l| l.strip_prefix("content-length:").map(|v| v.trim().parse().unwrap_or(0)))
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .map(|v| v.trim().parse().unwrap_or(0))
+                    })
                     .unwrap_or(0);
                 let have = read_total.saturating_sub(pos + 4);
                 if have < content_length {
@@ -81,7 +82,10 @@ fn pick_data() str {
 
     // (a) 首段 = Parked{HttpRequest}，且返回发生在 server 应答之前（零忙等）。
     let (req_id, seg) = match &outcome {
-        SegmentOutcome::Parked { wait: ParkedWait::HttpRequest(id), seg } => (*id, seg.clone()),
+        SegmentOutcome::Parked {
+            wait: ParkedWait::HttpRequest(id),
+            seg,
+        } => (*id, seg.clone()),
         SegmentOutcome::Completed(Ok(())) => {
             panic!("handler 应 park 而非同步跑完——server 延迟 400ms 下同步跑完=忙等回归")
         }
@@ -137,7 +141,8 @@ fn add_things(a int, b int) int {
         let mut task = AutoTask::new(0, 65536, 0);
         task.ram.push_i32(20);
         task.ram.push_i32(11);
-        vm.call_fn_by_name(&mut task, "add_things", 2).expect("sync call");
+        vm.call_fn_by_name(&mut task, "add_things", 2)
+            .expect("sync call");
         task.ram.pop_i32()
     };
     let run_segment = |vm: &AutoVM| -> i32 {
@@ -191,7 +196,10 @@ fn guarded() str {
     let mut task = AutoTask::new(0, 65536, 0);
     let outcome = vm.call_fn_by_name_segment(&mut task, "guarded", 0);
     let (req_id, seg) = match outcome {
-        SegmentOutcome::Parked { wait: ParkedWait::HttpRequest(id), seg } => (id, seg),
+        SegmentOutcome::Parked {
+            wait: ParkedWait::HttpRequest(id),
+            seg,
+        } => (id, seg),
         other => panic!("预期 park，得到 {:?}", other),
     };
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);

@@ -108,10 +108,7 @@ widget GoodWidget {
             msg.contains("undefined_fn_xyz"),
             "error must name the offending symbol: {msg}"
         );
-        assert!(
-            msg.contains("App"),
-            "error must name the module: {msg}"
-        );
+        assert!(msg.contains("App"), "error must name the module: {msg}");
         // synth 层诊断通道可取走(此向量死在 link 层,应为空)。
         let failures = crate::ui::handler_codegen::take_synth_failures();
         assert!(

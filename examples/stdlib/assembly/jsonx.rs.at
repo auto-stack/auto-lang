@@ -1,0 +1,5 @@
+// Rust 层：本层是 Rust 装配的 candidate（当前 Rust 发射零模块装载面——
+// 走 a2r-std crate 宿主 provider）。本文件存在不改变 VM/C 装配。
+pub fn val() int {
+    return 2000
+}

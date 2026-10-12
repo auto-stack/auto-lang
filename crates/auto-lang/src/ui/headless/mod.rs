@@ -6,4 +6,4 @@
 
 mod renderer;
 
-pub use renderer::{HeadlessRenderer, run_headless};
+pub use renderer::{run_headless, HeadlessRenderer};

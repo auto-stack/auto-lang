@@ -186,7 +186,7 @@ mod plan622_store_facade_gap_tests {
 
     // ─────────────────────────────────────────────────────────────────────
     // (c) #[api] call inside the store module — split-mode rewrite
-     // ─────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────
 
     /// (c-runtime) end-to-end split-mode arm: build the corpus app with
     /// `api_over_http = true`, point AUTO_BACKEND at a local mock server,
@@ -213,9 +213,7 @@ mod plan622_store_facade_gap_tests {
         let cap = captured.clone();
         let stop_flag = stop.clone();
         let server = std::thread::spawn(move || {
-            listener
-                .set_nonblocking(false)
-                .ok();
+            listener.set_nonblocking(false).ok();
             while !stop_flag.load(Ordering::SeqCst) {
                 let (mut stream, _) = match listener.accept() {
                     Ok(s) => s,
@@ -240,10 +238,7 @@ mod plan622_store_facade_gap_tests {
             eprintln!("plan622: SKIPPED — corpus app.at not found");
             return;
         };
-        let build = crate::plan370_test_support::build_component_from_app_mode(
-            &manifest,
-            true,
-        );
+        let build = crate::plan370_test_support::build_component_from_app_mode(&manifest, true);
         let mut dc = match build {
             Some(c) => c,
             None => {
@@ -265,14 +260,18 @@ mod plan622_store_facade_gap_tests {
         // PLAN-702 段驱动适配：StoreSave 内含 #[api] 调用即 park——驱动
         // 恢复泵至后端命中（生产 = __parked_resume_tick 泵）。
         let hit_for_pump = captured.clone();
-        crate::plan370_test_support::drive_parked_segments(&mut dc, |_| {
-            hit_for_pump
-                .lock()
-                .unwrap()
-                .as_deref()
-                .map(|l| l.contains("POST /api/notes/save"))
-                .unwrap_or(false)
-        }, "plan622 c-runtime StoreSave backend hit");
+        crate::plan370_test_support::drive_parked_segments(
+            &mut dc,
+            |_| {
+                hit_for_pump
+                    .lock()
+                    .unwrap()
+                    .as_deref()
+                    .map(|l| l.contains("POST /api/notes/save"))
+                    .unwrap_or(false)
+            },
+            "plan622 c-runtime StoreSave backend hit",
+        );
 
         // 4. Restore env, stop the mock.
         if let Some(v) = old_backend {
@@ -291,7 +290,9 @@ mod plan622_store_facade_gap_tests {
             hit, save_result
         );
         assert!(
-            hit.as_deref().map(|l| l.contains("POST /api/notes/save")).unwrap_or(false),
+            hit.as_deref()
+                .map(|l| l.contains("POST /api/notes/save"))
+                .unwrap_or(false),
             "(c-runtime) the store-module #[api] call must reach the backend \
              in split mode; captured = {:?} (None means the call executed the \
              in-module stub without HTTP)",
@@ -321,7 +322,9 @@ mod plan622_store_facade_gap_tests {
             .unwrap_or_default();
         eprintln!("plan622(d) items after splice = {}", items_raw);
         assert!(
-            items_raw.contains("\"b\"") && items_raw.contains("\"c\"") && !items_raw.contains("\"a\""),
+            items_raw.contains("\"b\"")
+                && items_raw.contains("\"c\"")
+                && !items_raw.contains("\"a\""),
             "(d) splice(0, 1) on widget-model array must drop the first item; \
              got {} (unchanged means the mutation never wrote back)",
             items_raw

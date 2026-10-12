@@ -11,7 +11,9 @@
 - 书籍：byte-of-python / little-c / modern-c / rust / tapl / think-python / typescript / typescript-deepdive。
 - 应用实跑指南：`/apps/autoshell/guide/` 与 ZH 镜像共用 `AutoShellLanding.vue`，按日常会话、数据管道、多行脚本、自动化和快速开始组织；保留原生终端总览图与 F1/F2/F3 常见形式图示，分别说明原图和 PTY 记录重绘的来源；版本、验证平台/日期随示例标注。使用指南与 v0.5 发布的双语页面共用 `AutoShellPreview.vue`，通过 CSS 视窗展示 ash-01 原生彩色 ls 命令/表格，放大保留完整原图，禁止用模拟终端输出代替该主图。`EvidenceImage.vue` 提供可键盘操作的截图放大；脚本标签支持方向键/Home/End、代码复制及样例下载，布局适配窄屏与深浅色主题（plan-713）。
 - 应用介绍（PLAN-722/723）：AppsOverview / applications.ts 双语SSR区分四主产品与系统Demo；AutoEdit/Shell获批准原生主图进入总览与阅读专题，Musk/Jade按既定准备条件保持无图文字。AutoShell guide交互/原图与v05展示保留。/apps内嵌六类28项真实图卡片，本地筛选/键盘放大，原生details就地说明操作、运行条件、内置/真实数据与版本；四主产品详情独立。demos.json单源，generate-demo-pages.mjs生成58个旧路由兼容跳转到概览锚点并校验；无iframe/业务API/本轮新增运行入口，v0.5.1网页体验独立推进。28是这批介绍集合，不是统一发布数量或端间全功能验收。规则见 [application introductions](design/application-introductions.md)、[application demos](design/application-demos.md)、[demo capture catalog](design/demo-capture-catalog.md)。
+- 首页/v0.5 文案与待拍位置（PLAN-756）：四主应用统一从 applicationCopy 取数，明示里程碑、发行工件待冻结与 Playground 后端条件；28 项介绍与在线体验覆盖分述。用户批准的文字待拍槽按 SHOT-01..12 绑定逐图拍摄合同，保留已批准桌面/Shell/AutoEdit 原图；Musk Kanban/Canvas 和 AutoJade 新图仍需候选验收。中文共享画廊链接不拼 /zh，快速开始直达运行与构建。
 - 全站导航（plan-715）：`.vitepress/theme/data/navigation.ts` 是中英导航单一来源——UnifiedNavbar（实际可见顶栏）与 en.ts/zh.ts 的默认主题 nav 都取数于此；每项带 en/zh 链接，缺省按 `/` 前缀规则换 locale（docs/books 双语 1:1、手工专题页全镜像，未译文档在 ZH URL 下呈现 EN 内容为既定行为），共享 SPA（`/ui/gallery|blocks|charts|a2ui|demos`）双语同 URL 并在菜单标注"共享"，禁止拼造 `/zh/ui/gallery` 之类不存在的镜像路由。共享 SPA 的规范入口是 `index.html` 全路径（sirv 对目录 URL 的 extensions 解析会让 `/ui/a2ui/` 优先命中 VitePress 专题页 `a2ui.html`，为静态服务既定行为）。当前项用 `aria-current="page"`、父组触发器 `aria-current="true"`；菜单/下拉有名称与 `aria-expanded`，Esc 收起并回焦触发器，路由变更后自动收起；触控目标 ≥44px。主题态统一走 VitePress `useData().isDark`（storageKey `vitepress-theme-appearance`），组件不得自建第二主题源。
+- 顶栏源码入口（PLAN-768）：UnifiedNavbar 直接提供 GitHub/GitCode 两个图标外链，固定指向用户指定 auto-stack/auto-lang 仓库，不按语言改写；中英/深浅/桌面手机共用，SVG 本地行内 currentColor，可键盘焦点及带仓库名称；新标签页打开，noopener noreferrer。
 - 站内搜索（plan-715）：VitePress local provider（`themeConfig.search.provider='local'`，按 locale 分库，覆盖专题正文/docs/books；不含图片文字、独立 SPA 与 Playground 全语料）。主题层 `SiteSearch.vue` 以合成 Ctrl/Cmd+K 热键事件打开官方弹窗（同 VitePress 自用 poll 机制；弹窗 Teleport 到 body，不受 VPNav 的 `display:none` 影响）；CodeMirror 编辑器内的 Ctrl/Cmd+K 由 document 捕获相守卫拦截，不抢编辑器输入。依赖 vitepress 1.6.x 的 local search 行为，升级需回归 site-ui 搜索用例。
 - 首页演示（plan-715）：`HomeDemo.vue` + `theme/data/home-demo.ts` 提供轻量三视图（Auto 源码/输出/Rust），初始为标明来源的预置示例——纯 `<pre>` 渲染，不加载 CodeMirror、不发任何请求；点击运行才发**同源** `/api/run`（dev 由 vite 代理到本地后端；静态部署下无后端时诚实报错并保留预置示例），10 秒超时可取消、离页清理，stdout/stderr 分列展示（HTTP 200 携 stderr 也是合法响应）。预置输出必须标注来源（仓内金样/实跑记录），永远不得显示为实时成功。Rust 视图仅在有真实 a2r 产物的示例上出现（如 cookbook `*.expected.rs` 金样），禁止手写假转译。
 - 内嵌 playground 页面（playground.md，CodeMirror 6），blocks/charts/ui/os 等专题页。
@@ -23,7 +25,16 @@
 - 不做：不实现 playground 后端（crates/auto-playground）与可复用组件库（packages/auto-playground-vue）。
 - OS/AI 介绍（PLAN-719）：LaOS 实现理念、OS over OS 当前形态与 AI + Lang + OS 长期人本方向连续说明；宿主/现有内核独立系统/自有内核分清现状。OS、AI、AutoOS、ui-desktop 双语采用默认阅读布局及同源概要/架构关系，首页与 v0.5 同步相关摘要；两篇双语独立历史文章提供总览互链、资料时点与公开来源。规则见 [os-ai-introduction](design/os-ai-introduction.md)。
 
+PLAN-767：双语 OS 主页面直接融合桌面/窗口/应用/Kanban/共享设置及宿主说明；AutoOS 旧地址同语言/hash 兼容，现行入口直达 /os。OS/v0.5 六张原图改为纵向单列图文卡片，图片上、介绍下，全序列直接可读且保留原图/键盘放大；其他图集保全。规范见 design/os-ai-introduction.md。
+
 ## 模块架构
+
+PLAN-766：AutoMusk 会话主图 SHOT-04 共享于双语首页、v0.5、应用总览与专题；计划页 SHOT-05 展示同一密码生成器示例的 PLAN-001（0/5），不代表执行/复审已完成。两张用户提供的原始 2560×1600 PNG 保留原图/键盘放大，来源与 hash 见 docs/reports/p766-automusk-capture-catalog.json；SHOT-06 仍待拍。
+
+仓库落地页（PLAN-753）：README.md / README.cn.md 概述 AutoLang、AutoUI、AutoOS、AutoAI
+及四主应用，直接共享 website/public 的桌面、AutoEdit 与 AutoShell 原图；当前语言介绍位于
+docs/language/overview.md / overview.cn.md，生成 EN/ZH 同路径概览并由学习入口取数。
+内容分层、事实来源与双上下文链接规则见 [ecosystem README](design/ecosystem-readme.md)。
 
 ```mermaid
 graph LR
@@ -57,4 +68,25 @@ graph LR
 
 > **Plan 582（2026-09-07，archived）**：/playground（EN/ZH）换 Notes Explorer；旧 /playground/ SPA 退役为 meta-refresh 重定向；prepare-content 裸尖括号通用转义器（P581-D1 清偿）；AutoFence 书页围栏 ▶ Run（§12 迁移路线同期入档）；playground-notes e2e + playwright.config。
 
+> **PLAN-754（2026-10-10，executing）**：/playground（EN/ZH）换 `PlaygroundIDEPage`
+> （theme 组件）：apiBase 探测——同源 `/api`（fetch `<base>/examples`，content-type+
+> JSON 结构双校验防 VitePress SPA 回退 200+HTML 假阳）失败 fallback
+> `http://127.0.0.1:3030/api`（本地后端约定），先探测后渲染门控（setup 期固化
+> apiBase）；双探失败 backendDown 提示（浏览可用，Run 需本地后端）。页形态=
+> `<PlaygroundIDEApp>` sidebar+IDE（与独立版同形，SD-02 契约）；Notes Explorer/
+> PlaygroundCard 降级为书页内嵌宿主（/playground 页不再用）。website 构建依赖
+> 入册规则（SD-03）：dedupe 契约包（highlight.js/@codemirror/*/
+> lucide-vue-next/@lezer/highlight 等）必须进 website/package.json dependencies
+> （PLAN-718 dedupe 强制根解析的入册要求）。
+
 > **Plan 715（2026-09-30，archived）**：全站 UI 刷新——navigation.ts 单源双语导航/当前位置/共享 SPA 例外；VitePress local search 接线（合成热键法+CodeMirror 捕获守卫）；全站设计令牌与断点矩阵（360/390/768/1024/1440 无溢出）；HomeDemo 轻量三视图（预置/实时/降级诚实契约）；v0.5 发布页 ReleaseLanding 数据驱动重建（产品前置/理念 details 展开/统计后移/launcher 实图换 TODO 占位）；EvidenceImage/ScreenshotGallery/AppLandingLayout 统一图片与骨架；e2e 64 例 + 五断点×双语×深浅截图矩阵；site-ui/home-demo 双测试族。证据：docs/reports/p715-website-ui-{baseline,review}.md。
+
+PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。
+
+> **PLAN-758 r3（2026-10-11）**：v0.5 开篇采用作者批准的最大更新/语言跨向生态里程碑宣传句，投入（1500 亿 Token、100 万 Rust 行、40 万 Auto 行、1w+ 提交）与成果（1 UI 框架、2 桌面环境、3 平台、4 主应用、28 演示）两组概要。当前数据以作者 2026-10-11 生态累计口径为准，开篇/后部规模单源，历史审计快照保留原身份；2 桌面指 Windows/Linux 原生应用桌面和 AutoOS 虚拟桌面，3 平台指 Web/Windows/Linux，保持个别产品运行条件及独立系统路线说明。
+
+PLAN-763：删除从未执行过的 deploy-website.yml（push main、手动和跨仓 dispatch 三入口）。当前网站发布通过显式手动脚本操作，没有仓内 Actions 自动发布。
+
+PLAN-764：AutoEdit 文件对比 SHOT-03 接入用户于 2026-10-11 提供的完整深色原图（3840×2419）；双语说明、原图和键盘放大沿用共用组件，来源/hash 独立登记，不套用旧工具链身份，历史诊断不覆盖。
+
+PLAN-769：网页截图使用本地 WebP 派生物（原尺寸、质量95优先、单图<1,000,000bytes），不改原始截图hash；EvidenceImage/ScreenshotGallery 的默认展示和放大使用压缩图，隐藏dialog不挂载图片，打开时按需加载、关闭/Esc卸载，原图PNG仅显式下载。原图尺寸/日期说明描述来源，非当前传输格式；35幅派生物/预算与来源见p769-image-catalog.json，脚本website/scripts/optimize-screenshots.py，直接img相应使用派生路径。

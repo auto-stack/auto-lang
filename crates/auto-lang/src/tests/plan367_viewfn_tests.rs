@@ -80,7 +80,9 @@ view fn NoteRow(note: Note, active: bool, indent: str) {
     /// view fn with no params + an if still works (regression guard).
     #[test]
     fn view_fn_no_params_if() {
-        assert!(parse_ok(r#"view fn R() { button { style: if true { "on" } else { "off" } } }"#));
+        assert!(parse_ok(
+            r#"view fn R() { button { style: if true { "on" } else { "off" } } }"#
+        ));
     }
 
     /// Two consecutive view fns + a widget (the real sidebar.at shape).
@@ -103,10 +105,9 @@ widget W(a: str) {
     #[test]
     fn real_sidebar_at_parses_with_navtree() {
         let path = [
-            std::env::var("CARGO_MANIFEST_DIR")
-                .ok()
-                .map(|d| std::path::PathBuf::from(d)
-                    .join("../../examples/ui/015-notes/src/front/sidebar.at")),
+            std::env::var("CARGO_MANIFEST_DIR").ok().map(|d| {
+                std::path::PathBuf::from(d).join("../../examples/ui/015-notes/src/front/sidebar.at")
+            }),
             Some(std::path::PathBuf::from(
                 "examples/ui/015-notes/src/front/sidebar.at",
             )),
@@ -134,9 +135,9 @@ widget W(a: str) {
             &recipe_imports,
             &ast.stmts,
         );
-        let has_navtree = ast.stmts.iter().any(|s| {
-            matches!(s, crate::ast::Stmt::WidgetDecl(d) if d.name.to_string() == "NavTree")
-        });
+        let has_navtree = ast.stmts.iter().any(
+            |s| matches!(s, crate::ast::Stmt::WidgetDecl(d) if d.name.to_string() == "NavTree"),
+        );
         assert!(has_navtree, "sidebar.at must declare the NavTree widget");
     }
 }

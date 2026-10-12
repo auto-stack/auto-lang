@@ -1,7 +1,7 @@
 # a2r-std
 
 > **Status**: active
-> 路径：`crates/a2r-std`  | 技术栈：Rust（serde_json / reqwest async / ureq / rusqlite / redis）
+> 路径：`crates/a2r-std`  | 技术栈：Rust（serde_json / reqwest async / rusqlite / redis；PLAN-727 起 ureq 退役——文件传输并入共享核心）
 
 a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代码有与 Auto 语义对齐的 std 实现。
 
@@ -18,7 +18,7 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 | list / hashmap / string_builder | 集合与字符串构建 | active |
 | str | 字符串函数 | active |
 | json | JSON 读写（serde_json） | active |
-| http | HTTP 客户端（**共享 async 内核** `http::client`：reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消；PLAN-724。设计契约见 [http-client-runtime](design/http-client-runtime.md)。文件 helper download/upload/download_resume 仍走 ureq——登记的剩余差异，不为删除依赖扩展范围） | active |
+| http | HTTP 客户端（**共享 async 内核** `http::client`：reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消；PLAN-724。设计契约见 [http-client-runtime](design/http-client-runtime.md)）+ **文件传输共享核心** `http::transfer`（增量/staging 原子提交/严格续传/可取消；PLAN-727，契约见 stdlib [http-file-transfer](../../stdlib/design/http-file-transfer.md)）；legacy download/upload/download_resume 已迁移共享核心（ ureq 依赖退役） | active |
 | fs / env / math / time | 文件系统、环境、数学、时间 | active |
 | sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
 | redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
@@ -81,3 +81,20 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 `stdlib/auto/*.rs.at` 与 `crates/a2r-std/src/*.rs` 的 `pub fn` 名称集与元数
 （json 分派改名表 / list 型块隐式 self 归一化；遗留漂移入显式允许清单）。
 类型级比对（int↔i32/i64 类映射不可机械反转）与生成路线仍属 396 原始债面。
+
+- `http::server_file`（PLAN-729）：服务端文件响应的**可移植构造面与纯协议决策**
+  （描述符/严格 options/Range/前置条件/If-Range/HTTP 日期/响应头策略）；宿主执行
+  （打开/发送/收口）在消费端 `auto_lang::http_file_service`——本 crate 不启动服务器。
+  契约见 stdlib [http-server-files](../stdlib/design/http-server-files.md)。
+
+## 服务端上传 owned 类型与宿主 hook（PLAN-730）
+
+- `a2r_std::http::server_upload`：`UploadRequest`（宿主构造：`upload_request_from_parts`
+  + 版本无关 `UploadBodyStream`）、`UploadSession`/`UploadReceipt`（owned 快照，
+  拷贝不复制资源）、严格 options 与限额表（`AUTO_HTTP_UPLOAD_*`）、错误种类→status
+  纯映射、async facade（`upload_receive/commit/reject` + 同步 `upload_metadata/
+  upload_error`）。
+- 执行经 `install_upload_executor` 注入的宿主 hook（`auto_lang::http_upload_service`），
+  a2r-std 不反向依赖 auto-lang、不自行监听网络；executor 未安装 → facade 返回确定性
+  诊断失败（非 HTTP 形态滥用不假成功）。契约见
+  [stdlib/design/http-server-uploads.md](../stdlib/design/http-server-uploads.md)。

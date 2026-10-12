@@ -47,11 +47,17 @@ pub struct TestResult {
 
 impl TestResult {
     pub fn passed(&self) -> usize {
-        self.reports.iter().filter(|r| matches!(r.outcome, TestOutcome::Passed)).count()
+        self.reports
+            .iter()
+            .filter(|r| matches!(r.outcome, TestOutcome::Passed))
+            .count()
     }
 
     pub fn failed(&self) -> usize {
-        self.reports.iter().filter(|r| matches!(r.outcome, TestOutcome::Failed(_))).count()
+        self.reports
+            .iter()
+            .filter(|r| matches!(r.outcome, TestOutcome::Failed(_)))
+            .count()
     }
 
     pub fn has_failures(&self) -> bool {
@@ -100,7 +106,9 @@ pub fn format_test_report(result: &TestResult, elapsed: u128) -> String {
     }
 
     // Print failure summary
-    let failures: Vec<_> = result.reports.iter()
+    let failures: Vec<_> = result
+        .reports
+        .iter()
         .filter(|r| matches!(r.outcome, TestOutcome::Failed(_)))
         .collect();
 
@@ -137,7 +145,8 @@ pub async fn run_test_in_vm(
 
     // Look up the test function address
     // Try both plain name and qualified name
-    let addr = global_symbols.get(&test.name)
+    let addr = global_symbols
+        .get(&test.name)
         .or_else(|| global_symbols.get(&qualified_name));
 
     let addr = match addr {
@@ -146,7 +155,10 @@ pub async fn run_test_in_vm(
             return TestReport {
                 name: test.name.clone(),
                 qualified_name,
-                outcome: TestOutcome::Failed(format!("test function '{}' not found in compiled code", test.name)),
+                outcome: TestOutcome::Failed(format!(
+                    "test function '{}' not found in compiled code",
+                    test.name
+                )),
                 duration_ms: 0,
                 stdout: String::new(),
             };
@@ -169,8 +181,7 @@ pub async fn run_test_in_vm(
     let duration_ms = start.elapsed().as_millis();
 
     // Check task result
-    let task_arc = vm.tasks.get(&task_id)
-        .map(|r| r.value().clone());
+    let task_arc = vm.tasks.get(&task_id).map(|r| r.value().clone());
 
     let outcome = match task_arc {
         Some(task_mutex) => {
@@ -188,7 +199,8 @@ pub async fn run_test_in_vm(
     vm.tasks.remove(&task_id);
 
     // Capture stdout
-    let stdout = vm.output_buffer
+    let stdout = vm
+        .output_buffer
         .as_ref()
         .map(|buf| buf.read().unwrap().clone())
         .unwrap_or_default();
@@ -275,25 +287,44 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
                         source_file
                     } else {
                         let alt = case_path.join(format!("{}.as", stem));
-                        if alt.is_file() { alt } else { continue; }
+                        if alt.is_file() {
+                            alt
+                        } else {
+                            continue;
+                        }
                     };
 
                     // Look for expected files
                     let expected_out = {
                         let p = case_path.join(format!("{}.expected.out", stem));
-                        if p.is_file() { Some(p) } else { None }
+                        if p.is_file() {
+                            Some(p)
+                        } else {
+                            None
+                        }
                     };
                     let expected_result = {
                         let p = case_path.join(format!("{}.expected.result", stem));
-                        if p.is_file() { Some(p) } else { None }
+                        if p.is_file() {
+                            Some(p)
+                        } else {
+                            None
+                        }
                     };
                     let expected_error = {
                         let p = case_path.join(format!("{}.expected.error", stem));
-                        if p.is_file() { Some(p) } else { None }
+                        if p.is_file() {
+                            Some(p)
+                        } else {
+                            None
+                        }
                     };
 
                     // Must have at least one expected file
-                    if expected_out.is_none() && expected_result.is_none() && expected_error.is_none() {
+                    if expected_out.is_none()
+                        && expected_result.is_none()
+                        && expected_error.is_none()
+                    {
                         continue;
                     }
 
@@ -323,7 +354,7 @@ pub fn discover_vm_tests(test_vm_dir: &Path) -> Vec<FileTestCase> {
 /// A single a2r transpiler test case (directory with .at source + .expected.rs).
 #[derive(Debug, Clone)]
 pub struct A2rTestCase {
-    pub name: String,           // "a2r/01_basics/001_hello"
+    pub name: String, // "a2r/01_basics/001_hello"
     pub dir: PathBuf,
     pub source_file: PathBuf,   // hello.at
     pub expected_file: PathBuf, // hello.expected.rs
@@ -405,8 +436,14 @@ pub fn format_file_test_report(reports: &[FileTestReport], elapsed: u128) -> Str
         }
     }
 
-    let passed = reports.iter().filter(|r| matches!(r.outcome, TestOutcome::Passed)).count();
-    let failed = reports.iter().filter(|r| matches!(r.outcome, TestOutcome::Failed(_))).count();
+    let passed = reports
+        .iter()
+        .filter(|r| matches!(r.outcome, TestOutcome::Passed))
+        .count();
+    let failed = reports
+        .iter()
+        .filter(|r| matches!(r.outcome, TestOutcome::Failed(_)))
+        .count();
 
     if failed > 0 {
         output.push_str("\nfailures:\n");
@@ -483,7 +520,11 @@ pub fn discover_a2c_tests(test_dir: &Path) -> Vec<A2cTestCase> {
                     let expected_h = case_path.join(format!("{}.expected.h", stem));
                     let expected_error = {
                         let p = case_path.join(format!("{}.expected.error.log", stem));
-                        if p.is_file() { Some(p) } else { None }
+                        if p.is_file() {
+                            Some(p)
+                        } else {
+                            None
+                        }
                     };
 
                     // Must have at least .expected.c or .expected.error.log

@@ -140,8 +140,8 @@ impl Target {
     /// ```
     pub fn default_storage_capacity(&self) -> Option<usize> {
         match self {
-            Target::Mcu => Some(64),  // 默认 MCU 固定容量为 64
-            Target::Pc => None,       // PC 使用动态存储
+            Target::Mcu => Some(64), // 默认 MCU 固定容量为 64
+            Target::Pc => None,      // PC 使用动态存储
         }
     }
 

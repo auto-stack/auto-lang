@@ -63,7 +63,7 @@ R-23 038 store 名未解析 + 013 负标量随检（vue.rs:17979-17988 `store_in
 
 - **不做 vue 轨运行期内建实现**——dialog_open/console_*/code_editor_* 读回
   族的运行期缺口（vm 宿主无 vue 运行时）维持 auto-edit README 登记限制，
-  归深度双轨（jade-edit 换基承接）。本计划只管**生成面自完备**（构建绿 +
+  归深度双轨（auto-jade 换基承接）。本计划只管**生成面自完备**（构建绿 +
   工程完整 + 转译保真）。
 - 不动 auto-edit 仓代码（auto-edit 是发现方与复跑验收方；补件摘除归其
   复跑小改）。
@@ -117,7 +117,7 @@ editor_store.at:14/423 bp `toggle_id` store 文件消费等）。
 
 （auto-edit 侧另有 StatusBar 多段插值补件，脚本内编号 5b，即本表附a。）
 
-**先例与交集**：626（vm 侧同型已修，vue 侧漏）；646（jade-edit 跨项目同款
+**先例与交集**：626（vm 侧同型已修，vue 侧漏）；646（auto-jade 跨项目同款
 补件——gen-only 工程完整性缺口第二消费方）；668 R-21/R-22/R-23（同型已修
 但按 038/013 项目清仓形态，auto-edit 2026-09-21 复验工具链含 669 时补件
 链仍需跑——是否机制级修透即 T-00 核心问题）；669 §10-4（消费方交接模式）。
@@ -326,7 +326,7 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
   store 别名/toggle_id 内联/null→-1/EditorCtx 签名/button text variant/
   auto-sources+env.d.ts 均已上游自备；注意 vue 轨运行期内建缺口仍按 README
   登记——natives.ts 为抛错桩非实现）；③ 存量树脚手架资产 write-if-missing
-  （PLAN-457 契约）——冷重生成是取新 button cva 的必要条件；④ jade-edit
+  （PLAN-457 契约）——冷重生成是取新 button cva 的必要条件；④ auto-jade
   同款补件链（646 同型）同受惠，复验窗口同开；⑤ auto-os 侧 kitchen-sink
   再生成（d21bee3）若画廊 golden 快照受 text 样例行影响，按其围栏提示
   同步重采样。
@@ -372,7 +372,7 @@ menubar_item 发射为裸 `<div :title=...>`（仅外层 Menubar 组件，:15046
      TS2300；摘除后 regen 退化 no-op 一并验证。
   3. vue 轨运行期内建缺口仍按 README 登记限制（natives.ts/Proxy 为抛错
      桩非实现）；存量树脚手架资产 write-if-missing（PLAN-457 契约）。
-  4. jade-edit 同款补件链（646 同型）同受惠；auto-os 侧 kitchen-sink
+  4. auto-jade 同款补件链（646 同型）同受惠；auto-os 侧 kitchen-sink
      再生成（d21bee3）golden 如受影响按围栏提示重采样。
   冷重生成等价收据（供料 §8 复验条形态）：本计划 T-12 已以 worktree
   二进制冷重生成 + build 退出码 0 实证；消费方正式复跑窗口 = merge 后。

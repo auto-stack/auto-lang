@@ -61,7 +61,7 @@
 | list / hashmap / string_builder | 集合与字符串构建 | active |
 | str | 字符串函数 | active |
 | json | JSON 读写（serde_json） | active |
-| http | HTTP 客户端（**共享 async 内核** `http::client`：reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消；PLAN-724。设计契约见 [http-client-runtime](design/http-client-runtime.md)。文件 helper download/upload/download_resume 仍走 ureq——登记的剩余差异，不为删除依赖扩展范围） | active |
+| http | HTTP 客户端（**共享 async 内核** `http::client`：reqwest async + 固定 runtime + 有界准入 + typed 结果 + 真取消；PLAN-724。设计契约见 [http-client-runtime](design/http-client-runtime.md)）+ **文件传输共享核心** `http::transfer`（增量/staging 原子提交/严格续传/可取消；PLAN-727，契约见 stdlib [http-file-transfer](../../stdlib/design/http-file-transfer.md)）；legacy download/upload/download_resume 已迁移共享核心（ ureq 依赖退役） | active |
 | fs / env / math / time | 文件系统、环境、数学、时间 | active |
 | sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
 | redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
@@ -114,7 +114,7 @@
 
 | Project | 状态 | 模块数 | 项目卡 |
 |---|---|---|---|
-| auto-cli | active | 5 | [auto-cli/project.md](auto-cli/project.md) |
+| auto-cli | active | 6 | [auto-cli/project.md](auto-cli/project.md) |
 | auto-man | active | 16 | [auto-man/project.md](auto-man/project.md) |
 | auto-gen | active | 6 | [auto-gen/project.md](auto-gen/project.md) |
 | auto-lsp | active | 9 | [auto-lsp/project.md](auto-lsp/project.md) |
@@ -132,6 +132,7 @@
 | cmd_ui | `auto ui` 系列（list/select/install 等 UI 工程命令） | active |
 | cmd_bp | `auto bp list/show/add/check`：blueprints 目录浏览、参考实现拷贝、`--bind` L1 绑定工件、校验（`auto block` 为弃用别名） | active |
 | cmd_a2c_stdlib | `auto a2c-stdlib`：生成 a2c 标准库 | active |
+| cmd_service | `auto service`：server-only 服务入口（配置解析 + auto-man 进程托管；PLAN-736） | active |
 | cmd_vue / cmd_tauri | Vue/Tauri 工程脚手架源码 | orphan（文件存在但未被 main.rs 挂接） |
 
 </details>
@@ -248,7 +249,7 @@
 | widgets | active | 8 | [widgets/project.md](widgets/project.md) |
 | forge-ui | active | 4 | [forge-ui/project.md](forge-ui/project.md) |
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
-| playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
+| playground-vue | active | 6 | [playground-vue/project.md](playground-vue/project.md) |
 | website | active | 8 | [website/project.md](website/project.md) |
 | blueprint | active | 16 | [blueprint/project.md](blueprint/project.md) |
 | autoui-skill | active | 2 | [autoui-skill/project.md](autoui-skill/project.md) |
@@ -312,6 +313,7 @@
 |---|---|---|
 | SnippetRunner / PlaygroundCard | 分层入口（Plan 581）：拼图层（autorun/内联输出/单动作位）与卡片层（toolbar 四开关/输出 tabs/调试面板，#output 插槽+defineExpose 驱动内嵌 Runner） | active |
 | AutoPlayground / AutoPlaygroundFull | 兼容别名（@deprecated 薄包装）/ IDE 层入口（index.ts 导出） | active |
+| PlaygroundIDEApp | 双端同形宿主（Plan 754）：NotesSidebar + AutoPlaygroundFull 聚合，apiBase/manifestBase props，`?note=` 深链，组运行契约内聚 | active |
 | components | 编辑器/控制台/字节码/调试/回放/文件树等面板 | active |
 | composables | usePlayground / useDebugger / useReplayPlayer 等 | active |
 | lang | CodeMirror 6 语言支持（auto / abt）、暗色模式 | active |

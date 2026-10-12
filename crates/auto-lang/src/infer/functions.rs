@@ -160,7 +160,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -208,7 +208,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -255,7 +255,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -289,7 +289,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -346,7 +346,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -386,7 +386,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -432,7 +432,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -473,7 +473,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -506,7 +506,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -545,7 +545,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -590,7 +590,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -647,7 +647,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -693,7 +693,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -726,7 +726,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -750,7 +750,11 @@ mod tests {
             parent: None,
             params: vec![],
             body: Body {
-                stmts: vec![Stmt::Expr(Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3)]))],
+                stmts: vec![Stmt::Expr(Expr::Array(vec![
+                    Expr::Int(1),
+                    Expr::Int(2),
+                    Expr::Int(3),
+                ]))],
                 has_new_line: false,
                 source_lines: Vec::new(),
             },
@@ -766,7 +770,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);
@@ -793,7 +797,7 @@ mod tests {
                 has_new_line: false,
                 source_lines: Vec::new(),
             },
-            ret: Type::Int,  // Declared return type but no body
+            ret: Type::Int, // Declared return type but no body
             ret_name: None,
             is_static: false,
             type_params: vec![],
@@ -805,7 +809,7 @@ mod tests {
             is_pub: false,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
 
         let result = check_fn(&mut ctx, &fn_decl);

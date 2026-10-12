@@ -44,7 +44,10 @@ mod plan349_tests {
                 let request = String::from_utf8_lossy(&buf[..n]);
 
                 // Parse Range header
-                let (start, data) = if let Some(range_line) = request.lines().find(|l| l.to_lowercase().starts_with("range:")) {
+                let (start, data) = if let Some(range_line) = request
+                    .lines()
+                    .find(|l| l.to_lowercase().starts_with("range:"))
+                {
                     let range_val = range_line.split(':').nth(1).unwrap_or("").trim();
                     let start: usize = range_val
                         .strip_prefix("bytes=")
@@ -91,7 +94,11 @@ print(ok)
         assert!(result.is_ok(), "download should run: {:?}", result.err());
         let (_, stdout) = result.unwrap();
         eprintln!("plan349 download stdout = [{}]", stdout);
-        assert!(stdout.contains("true"), "expected success, got: [{}]", stdout); // Plan 474 待澄清#3: bool 显示形态
+        assert!(
+            stdout.contains("true"),
+            "expected success, got: [{}]",
+            stdout
+        ); // Plan 474 待澄清#3: bool 显示形态
 
         // Verify file content
         let content = std::fs::read_to_string(&file_path).unwrap_or_default();
@@ -124,11 +131,18 @@ print(ok)
         assert!(result.is_ok());
         let (_, stdout) = result.unwrap();
         eprintln!("plan349 resume stdout = [{}]", stdout);
-        assert!(stdout.contains("true"), "expected success, got: [{}]", stdout); // Plan 474 待澄清#3: bool 显示形态
+        assert!(
+            stdout.contains("true"),
+            "expected success, got: [{}]",
+            stdout
+        ); // Plan 474 待澄清#3: bool 显示形态
 
         // Verify file: first 10 bytes + rest.
         let content = std::fs::read(&file_path).unwrap_or_default();
-        assert_eq!(content, full_data, "file should contain full data after resume");
+        assert_eq!(
+            content, full_data,
+            "file should contain full data after resume"
+        );
         let _ = std::fs::remove_file(&file_path);
     }
 
@@ -147,7 +161,11 @@ print("got_response")
         let result = run_with_capture(&code);
         assert!(result.is_ok(), "get should run: {:?}", result.err());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("got_response"), "expected response: [{}]", stdout);
+        assert!(
+            stdout.contains("got_response"),
+            "expected response: [{}]",
+            stdout
+        );
     }
 
     /// Test http.upload: multipart upload via mock server.
@@ -181,7 +199,11 @@ print("uploaded")
         let result = run_with_capture(&code);
         assert!(result.is_ok(), "upload should run: {:?}", result.err());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("uploaded"), "expected uploaded: [{}]", stdout);
+        assert!(
+            stdout.contains("uploaded"),
+            "expected uploaded: [{}]",
+            stdout
+        );
         let _ = std::fs::remove_file(&temp);
     }
 
@@ -227,8 +249,10 @@ print("uploaded")
         );
         let result = run_with_capture(&code);
         assert!(result.is_ok(), "upload should run: {:?}", result.err());
-        assert!(received.load(std::sync::atomic::Ordering::SeqCst),
-            "mock server should have received multipart data");
+        assert!(
+            received.load(std::sync::atomic::Ordering::SeqCst),
+            "mock server should have received multipart data"
+        );
         let _ = std::fs::remove_file(&temp);
     }
 
@@ -246,7 +270,11 @@ print("configured")
         let result = run_with_capture(code);
         assert!(result.is_ok(), "should run: {:?}", result.err());
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("configured"), "expected configured: [{}]", stdout);
+        assert!(
+            stdout.contains("configured"),
+            "expected configured: [{}]",
+            stdout
+        );
     }
 
     /// Test tls_ca_cert native existence + chaining.
@@ -279,7 +307,11 @@ print("ok")
         // This may fail at .send() (connection refused), but shouldn't panic
         // on .tls_skip_verify() registration.
         let result = run_with_capture(code);
-        assert!(result.is_ok(), "tls_skip_verify should not crash: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "tls_skip_verify should not crash: {:?}",
+            result.err()
+        );
         let (_, stdout) = result.unwrap();
         assert!(stdout.contains("ok"), "expected ok, got: [{}]", stdout);
     }
@@ -321,7 +353,12 @@ print("ok")
         let download_resume = reg.resolve_qualified("http.download_resume");
         let download_progress = reg.resolve_qualified("http.download_with_progress");
 
-        let (cookie, retry, gzip, brotli) = (cookie.unwrap(), retry.unwrap(), gzip.unwrap(), brotli.unwrap());
+        let (cookie, retry, gzip, brotli) = (
+            cookie.unwrap(),
+            retry.unwrap(),
+            gzip.unwrap(),
+            brotli.unwrap(),
+        );
         let (download_resume, download_progress) =
             (download_resume.unwrap(), download_progress.unwrap());
 
@@ -332,10 +369,19 @@ print("ok")
         assert_eq!(brotli, 3113, "brotli should be 3113");
         // Download family stays in 2270-2273 and does not collide.
         assert_eq!(download_resume, 2272, "download_resume should be 2272");
-        assert_eq!(download_progress, 2273, "download_with_progress should be 2273");
+        assert_eq!(
+            download_progress, 2273,
+            "download_with_progress should be 2273"
+        );
         // The critical assertion: none of the RequestBuilder ids equal a download id.
-        assert_ne!(cookie, download_resume, "cookie_store must not alias download_resume");
-        assert_ne!(retry, download_progress, "retry must not alias download_with_progress");
+        assert_ne!(
+            cookie, download_resume,
+            "cookie_store must not alias download_resume"
+        );
+        assert_ne!(
+            retry, download_progress,
+            "retry must not alias download_with_progress"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -366,9 +412,16 @@ print("ok")
     #[test]
     fn test_cors_preflight_shape() {
         let preflight = crate::vm::ffi::http_server::handle_cors_preflight("OPTIONS");
-        assert!(preflight.is_some(), "OPTIONS must produce a preflight response");
+        assert!(
+            preflight.is_some(),
+            "OPTIONS must produce a preflight response"
+        );
         let resp = preflight.unwrap();
-        assert!(resp.contains("204 No Content"), "preflight must be 204: [{}]", resp);
+        assert!(
+            resp.contains("204 No Content"),
+            "preflight must be 204: [{}]",
+            resp
+        );
         assert!(
             resp.contains("Access-Control-Allow-Origin"),
             "preflight must carry CORS origin header: [{}]",
@@ -404,12 +457,27 @@ print("ok")
     #[test]
     fn test_cors_headers_content() {
         let h = crate::vm::ffi::http_server::cors_headers();
-        assert!(h.contains("Access-Control-Allow-Origin"), "missing origin: [{}]", h);
-        assert!(h.contains("Access-Control-Allow-Methods"), "missing methods: [{}]", h);
-        assert!(h.contains("Access-Control-Allow-Headers"), "missing headers: [{}]", h);
+        assert!(
+            h.contains("Access-Control-Allow-Origin"),
+            "missing origin: [{}]",
+            h
+        );
+        assert!(
+            h.contains("Access-Control-Allow-Methods"),
+            "missing methods: [{}]",
+            h
+        );
+        assert!(
+            h.contains("Access-Control-Allow-Headers"),
+            "missing headers: [{}]",
+            h
+        );
         // Default origin is `*` when AUTO_CORS_ORIGIN is unset.
-        assert!(h.contains("*") || std::env::var("AUTO_CORS_ORIGIN").is_ok(),
-            "default origin should be '*': [{}]", h);
+        assert!(
+            h.contains("*") || std::env::var("AUTO_CORS_ORIGIN").is_ok(),
+            "default origin should be '*': [{}]",
+            h
+        );
     }
 
     /// Lightweight integration: a mock that mirrors the AutoVM response shape
@@ -471,7 +539,11 @@ print("handle_reentry_ok")
             url
         );
         let result = run_with_capture(&code);
-        assert!(result.is_ok(), "get should run via consolidated table: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "get should run via consolidated table: {:?}",
+            result.err()
+        );
         let (_, stdout) = result.unwrap();
         assert!(
             stdout.contains("handle_reentry_ok"),

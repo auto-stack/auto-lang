@@ -1,12 +1,12 @@
 // Plan 507 T2 —— 元素级覆盖登记（单一事实源）。
 //
-// `schema/aura.at` 全量 element ↔ queue 臂（RenderQueue/命令帧）状态表：
+// `docs/schema/aura.at` 全量 element ↔ queue 臂（RenderQueue/命令帧）状态表：
 // **covered** = 投影器有臂且 auto 探测可上 queue；**not-yet** = queue 臂
 // 目标未实现（理由随行，auto 降级 independent + 观测行——禁止静默错绘）；
 // **not-consumed** = web_component（shadcn 长尾）不由 queue 臂消费，升格
 // 需显式登记。
 //
-// 本表属 `aura` 域（描述 schema/aura.at 元素；无 feature 门——日常档
+// 本表属 `aura` 域（描述 docs/schema/aura.at 元素；无 feature 门——日常档
 // 漂移围栏可读）。漂移闸门（`tests/schema_drift.rs::
 // queue_coverage_drift_fence`）：aura.at element 集与本表**双向**同步
 // ——新增未登记即红；本表现状与 `Coverage::target_set()`
@@ -175,6 +175,14 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("cardfooter", QueueStatus::Covered),
         ("cardheader", QueueStatus::Covered),
         ("cardtitle", QueueStatus::Covered),
+        // PLAN-759 T-01:carousel 族（Plan 717 入 aura.at，围栏登记欠账补齐）
+        // ——D4 裁定退役族：官方 .at 组件实现（widgets-gallery components/
+        // carousel.at）承接，不经 queue 臂。
+        ("carousel", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
+        ("carousel_content", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
+        ("carousel_item", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
+        ("carousel_next", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
+        ("carousel_previous", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
         ("category-section", QueueStatus::NotYet("长尾——按需升格（登记即过，未登记即红）")),
         ("chatmessage", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("checkbox", QueueStatus::Covered),
@@ -389,6 +397,10 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("radioitem", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("range", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("range_calendar", QueueStatus::NotYet("长尾——按需升格（登记即过，未登记即红）")),
+        // PLAN-760：宿主侧远程帧消费面——iced 渲染臂直接消费注册表最新
+        // DisplayList（displaylist_element），帧不进 VM 状态、不经 queue
+        // 投影器；queue 臂不消费（同 window_thumbnail 宿主数据叶先例）。
+        ("remote-frame", QueueStatus::NotYet("宿主数据叶——remote_frame_registry 最新帧直绘（PLAN-760），queue 投影臂不消费")),
         ("rect", QueueStatus::NotYet("chart/diagram SVG/canvas 独立渲染面（499 已对表：canvas/svgdoc 自有管线）——queue 臂永久 not-yet（T7 裁定）")),
         ("resizable", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("resizable_handle", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
@@ -533,7 +545,10 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
 
 /// 单元素查询（tag 精确匹配；归一由调用方处理——coverage.rs normalize_kind）。
 pub fn element_status(tag: &str) -> Option<QueueStatus> {
-    element_table().iter().find(|(t, _)| *t == tag).map(|(_, s)| *s)
+    element_table()
+        .iter()
+        .find(|(t, _)| *t == tag)
+        .map(|(_, s)| *s)
 }
 
 /// 覆盖率数字（T6 门禁输出用）：`(covered, not_yet, not_consumed, total)`。

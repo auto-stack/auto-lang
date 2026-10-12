@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "stage": "work",
+  "plan_id": "PLAN-738",
+  "plan_revision": 1,
+  "outcome": "needs_replan",
+  "status": "executing",
+  "current_step": 1,
+  "total_steps": 8,
+  "code_commit": "4089b84183c6044ee68f1b6962752d4cb54da821",
+  "code_tree": "1d8cef4cdcd6f829d51548f8478508fc4d662f1f",
+  "implementation_commits": [
+    "4fbcfe9685bdf8b82266f0b95a5b0b44037be891",
+    "4089b84183c6044ee68f1b6962752d4cb54da821"
+  ],
+  "base_commit": "e4425b673eec46fabc25b4534084c19f2738a38f",
+  "bookkeeping_entry_master": "7e4adec4bc463ef1099b2afd3d1505cc5e3d6609",
+  "worktree": "D:/autostack/.wt/lang-738/auto-lang",
+  "branch": "plan-738-dev",
+  "worktree_clean": true,
+  "dependency_revisions": {
+    "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846"
+  },
+  "cargo_lock_sha256": "8b2b3290edb132afaf533f7a27d927ae916d0e4e6603416223cd038093b37ba4",
+  "acceptance_unchanged": true,
+  "independent_review_pass": false,
+  "merged": false,
+  "archived": false,
+  "checks": [
+    {
+      "command": "cargo t plan738",
+      "passed": 41,
+      "run": 41,
+      "seconds": 23.622,
+      "log": ".repair738-tests5.log",
+      "phase": "initial foundation; final scoped run below supersedes"
+    },
+    {
+      "command": "cargo t --no-fail-fast",
+      "passed": 5139,
+      "run": 5155,
+      "failed": 16,
+      "skipped": 1537,
+      "seconds": 61.463,
+      "log": ".repair738-daily.log",
+      "phase": "before two registry test assertion corrections and callee order restoration",
+      "triage": "14 existing recorded reds; 2 hardcoded dynamic ID expectations corrected and registry scoped passed; no second full daily rerun"
+    },
+    {
+      "command": "cargo t native_registry",
+      "passed": 13,
+      "run": 13,
+      "seconds": 0.16,
+      "log": ".repair738-registry.log"
+    },
+    {
+      "command": "cargo tv",
+      "passed": 162,
+      "run": 162,
+      "seconds": 2.03,
+      "log": ".repair738-tv.log",
+      "phase": "before callee order restoration"
+    },
+    {
+      "command": "cargo tt --no-fail-fast",
+      "passed": 5515,
+      "run": 5526,
+      "failed": 11,
+      "skipped": 1785,
+      "seconds": 91.039,
+      "log": ".repair738-tt.log",
+      "phase": "before callee order restoration",
+      "triage": "11 existing recorded reds; no new baseline worktree run"
+    },
+    {
+      "command": "cargo test -p auto --bin auto stdlib -- --test-threads=1",
+      "passed": 10,
+      "run": 10,
+      "seconds": 0.62,
+      "log": ".repair738-cli3.log",
+      "phase": "before callee order restoration"
+    },
+    {
+      "command": "cargo test -p auto-man --lib assembly_freshness_truth_table",
+      "passed": 1,
+      "run": 1,
+      "log": ".repair738-freshness.log",
+      "phase": "before callee order restoration"
+    },
+    {
+      "command": "cargo th --test-threads=1 --no-fail-fast",
+      "passed": 100,
+      "run": 102,
+      "failed": 2,
+      "skipped": 6677,
+      "seconds": 191.445,
+      "log": ".repair738-th.log",
+      "phase": "before callee order restoration"
+    },
+    {
+      "command": "cargo nextest run -p auto-lang --lib --features test-http-e2e -E test(http_e2e_plan707_relay_frames_timed_single_termination) --test-threads=1",
+      "passed": 0,
+      "run": 1,
+      "failed": 1,
+      "seconds": 1.625,
+      "log": ".repair738-th707.log",
+      "phase": "before callee order restoration"
+    },
+    {
+      "command": "cargo nextest run -p auto-lang --lib --features test-http-e2e -E test(http_e2e_plan707_relay_frames_timed_single_termination) --test-threads=1",
+      "passed": 0,
+      "run": 1,
+      "failed": 1,
+      "seconds": 1.639,
+      "log": ".repair738-th707-order.log",
+      "phase": "final code"
+    },
+    {
+      "command": "cargo nextest run -p auto-lang --lib --features test-http-e2e -E 'test(plan738) | test(native_registry)' --no-fail-fast",
+      "passed": 54,
+      "run": 54,
+      "skipped": 6725,
+      "seconds": 23.669,
+      "log": ".repair738-final-scoped.log",
+      "phase": "final code"
+    },
+    {
+      "command": "cargo check -p auto-lang -p auto -p auto-man",
+      "result": "passed",
+      "seconds": 9.53,
+      "log": ".repair738-final-check2.log",
+      "phase": "final code"
+    },
+    {
+      "command": "rustfmt --check --edition 2021 --config skip_children=true [stdlib_assembly new/changed standalone files + cmd_stdlib.rs]",
+      "result": "passed"
+    },
+    {
+      "command": "git diff e4425b673..HEAD --check",
+      "result": "passed"
+    }
+  ],
+  "http_failures": [
+    {
+      "test": "back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face",
+      "classification": "same :id / expected 200 got 400 assertion as stored .review738-th.log"
+    },
+    {
+      "test": "plan707_stream_e2e_tests::http_e2e_plan707_relay_frames_timed_single_termination",
+      "classification": "unresolved observation; repeated failure even after reverting new registration priority; original review log passed; known family flake does not prove current cause; no fresh baseline comparison"
+    }
+  ],
+  "logs": [
+    {
+      "log": ".repair738-tests5.log",
+      "sha256": "34c11906c59b7a1582463a52bac98c4b7bfd32ce59a49173ad261d30af12cdcc"
+    },
+    {
+      "log": ".repair738-daily.log",
+      "sha256": "552916de7b2bfe1d0e80aa7ee569efd301b0456792f76e751ae3750792e6546a"
+    },
+    {
+      "log": ".repair738-registry.log",
+      "sha256": "dfef4d7dd713dc3c28d5592addeae67e986a8a57efd83f443c135dde00121b2c"
+    },
+    {
+      "log": ".repair738-tv.log",
+      "sha256": "24705fa0eebff330d6d95d4818bcc87420727e7c40e1b1789b37ada568d73547"
+    },
+    {
+      "log": ".repair738-tt.log",
+      "sha256": "efd354247583de17f3e6cde6c3b9a8954f5f32bd50c735ad463545c88a7b8fd5"
+    },
+    {
+      "log": ".repair738-cli3.log",
+      "sha256": "e9b8b945eb9d4731df8fbe424f39b7ee0b11cc0cb14f461f73d71755e6db17c5"
+    },
+    {
+      "log": ".repair738-freshness.log",
+      "sha256": "a91e5eefc501d31103fa4926836561ec716e250c3eef1baf6ccb3ce101abeaeb"
+    },
+    {
+      "log": ".repair738-th.log",
+      "sha256": "6a2033b8f631b1d890f91ddd2674a64d5668e60083ae55c1c1bd97b5c7141d90"
+    },
+    {
+      "log": ".repair738-th707.log",
+      "sha256": "af1dff349254d71b8d70df7fcdaeccede7095ad60192e94b77fd7f48e66eba25"
+    },
+    {
+      "log": ".repair738-th707-order.log",
+      "sha256": "7b65257b862bbb0dd7316079949ee61378b277fd3a65bb343bef8d97c9c902b6"
+    },
+    {
+      "log": ".repair738-final-scoped.log",
+      "sha256": "e71c2dc446206fb108e57f6f9f9277f6b52c81b2a155220461e5da47d91625b5"
+    },
+    {
+      "log": ".repair738-final-check2.log",
+      "sha256": "9610c6b7fbef304cde790e6a54bf4fe6692c70c1393d027b5f0c5ca4f278d271"
+    }
+  ],
+  "log_location": "original worktree; local SHA256 receipts, logs retained",
+  "remaining_findings": [
+    "P738-R1",
+    "P738-R2",
+    "P738-R3",
+    "P738-R4",
+    "P738-R5",
+    "P738-R6",
+    "P738-R7",
+    "P738-R8",
+    "P738-R9"
+  ],
+  "blockers": [
+    "production init trio is not the final callee: AutoVM overrides JSON inventory producer afterwards",
+    "TCP read public buffer/single return versus VM size/two outputs has no independent adapter contract",
+    "HTTP timed frames observation remains unclassified"
+  ],
+  "next": "bounded Plan 738 design revision without weakening AC; continue work then independent review"
+}

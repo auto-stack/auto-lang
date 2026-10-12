@@ -2,11 +2,11 @@
 //!
 //! Converts Google's A2UI v0.8 JSON into AutoUI's AURA intermediate representation.
 
-use super::{A2UIComponent, A2UIComponentBody, A2UIMessage, A2UIValue, A2UIError};
+use super::{A2UIComponent, A2UIComponentBody, A2UIError, A2UIMessage, A2UIValue};
 use crate::ast::Expr;
 use crate::aura::{
-    AuraEvent, AuraNode, AuraPropValue, AuraStateDef,
-    AuraTextContent, AuraWidget, LogicPayload, Type,
+    AuraEvent, AuraNode, AuraPropValue, AuraStateDef, AuraTextContent, AuraWidget, LogicPayload,
+    Type,
 };
 use std::collections::HashMap;
 
@@ -26,12 +26,11 @@ pub fn import_message(msg: &A2UIMessage) -> Result<AuraWidget, A2UIError> {
     }
 }
 
-fn import_surface_update(
-    update: &super::A2UISurfaceUpdate,
-) -> Result<AuraWidget, A2UIError> {
+fn import_surface_update(update: &super::A2UISurfaceUpdate) -> Result<AuraWidget, A2UIError> {
     let mut nodes = Vec::new();
     let mut state_vars = Vec::new();
-    let mut handlers: std::collections::BTreeMap<String, LogicPayload> = std::collections::BTreeMap::new();
+    let mut handlers: std::collections::BTreeMap<String, LogicPayload> =
+        std::collections::BTreeMap::new();
 
     for comp in &update.components {
         let (node, comp_state, comp_handlers) = import_component(comp)?;
@@ -88,8 +87,8 @@ fn import_surface_update(
         ext_imports: Vec::new(),
         watchers: Vec::new(),
         exposes: Vec::new(),
-            setup: None,
-            actions: None,
+        setup: None,
+        actions: None,
     })
 }
 
@@ -122,8 +121,7 @@ fn import_component_body(
 
     let node = match body {
         A2UIComponentBody::Container { children } => {
-            let (child_nodes, child_states, child_handlers) =
-                import_components(children)?;
+            let (child_nodes, child_states, child_handlers) = import_components(children)?;
             state_vars.extend(child_states);
             handlers.extend(child_handlers);
             AuraNode::Element {
@@ -136,8 +134,7 @@ fn import_component_body(
             }
         }
         A2UIComponentBody::Row { children } => {
-            let (child_nodes, child_states, child_handlers) =
-                import_components(children)?;
+            let (child_nodes, child_states, child_handlers) = import_components(children)?;
             state_vars.extend(child_states);
             handlers.extend(child_handlers);
             AuraNode::Element {
@@ -150,8 +147,7 @@ fn import_component_body(
             }
         }
         A2UIComponentBody::Column { children } => {
-            let (child_nodes, child_states, child_handlers) =
-                import_components(children)?;
+            let (child_nodes, child_states, child_handlers) = import_components(children)?;
             state_vars.extend(child_states);
             handlers.extend(child_handlers);
             AuraNode::Element {
@@ -215,10 +211,7 @@ fn import_component_body(
                     },
                 );
                 // Create stub handler
-                handlers.insert(
-                    action.name.clone(),
-                    LogicPayload::AstStmts(vec![]),
-                );
+                handlers.insert(action.name.clone(), LogicPayload::AstStmts(vec![]));
             }
 
             AuraNode::Element {
@@ -355,7 +348,12 @@ fn import_component_body(
                 debug_id: None,
             }
         }
-        A2UIComponentBody::Slider { value, min, max, step } => {
+        A2UIComponentBody::Slider {
+            value,
+            min,
+            max,
+            step,
+        } => {
             let (val_expr, mut sv) = import_value(value);
             state_vars.append(&mut sv);
 
@@ -450,14 +448,8 @@ fn import_component_body(
                 AuraPropValue::Expr(Expr::Int(*rows as i32)),
             );
             if !lines.is_empty() {
-                let items: Vec<Expr> = lines
-                    .iter()
-                    .map(|l| Expr::Str(l.clone().into()))
-                    .collect();
-                props.insert(
-                    "lines".to_string(),
-                    AuraPropValue::Expr(Expr::Array(items)),
-                );
+                let items: Vec<Expr> = lines.iter().map(|l| Expr::Str(l.clone().into())).collect();
+                props.insert("lines".to_string(), AuraPropValue::Expr(Expr::Array(items)));
             }
             AuraNode::Element {
                 tag: "terminal".to_string(),
@@ -467,7 +459,7 @@ fn import_component_body(
                 span: None,
                 debug_id: None,
             }
-        },
+        }
         A2UIComponentBody::List { items, template } => {
             let (items_expr, mut sv) = import_value(items);
             state_vars.append(&mut sv);
@@ -512,10 +504,8 @@ fn import_component_body(
         A2UIComponentBody::Tabs { tabs, variant } => {
             let mut children = Vec::new();
             for (i, tab) in tabs.iter().enumerate() {
-                let (tab_node, tab_s, tab_h) = import_component_body(
-                    &format!("{}_tab_{}", id, i),
-                    &tab.child,
-                )?;
+                let (tab_node, tab_s, tab_h) =
+                    import_component_body(&format!("{}_tab_{}", id, i), &tab.child)?;
                 children.push(AuraNode::Element {
                     tag: "tab".to_string(),
                     props: {
@@ -718,27 +708,25 @@ mod tests {
                 super::super::A2UIComponent::new(
                     "root",
                     A2UIComponentBody::Column {
-                        children: vec![
-                            super::super::A2UIComponent::new(
-                                "row1",
-                                A2UIComponentBody::Row {
-                                    children: vec![
-                                        super::super::A2UIComponent::new(
-                                            "t1",
-                                            A2UIComponentBody::Text {
-                                                text: A2UIValue::string("A"),
-                                            },
-                                        ),
-                                        super::super::A2UIComponent::new(
-                                            "t2",
-                                            A2UIComponentBody::Text {
-                                                text: A2UIValue::string("B"),
-                                            },
-                                        ),
-                                    ],
-                                },
-                            ),
-                        ],
+                        children: vec![super::super::A2UIComponent::new(
+                            "row1",
+                            A2UIComponentBody::Row {
+                                children: vec![
+                                    super::super::A2UIComponent::new(
+                                        "t1",
+                                        A2UIComponentBody::Text {
+                                            text: A2UIValue::string("A"),
+                                        },
+                                    ),
+                                    super::super::A2UIComponent::new(
+                                        "t2",
+                                        A2UIComponentBody::Text {
+                                            text: A2UIValue::string("B"),
+                                        },
+                                    ),
+                                ],
+                            },
+                        )],
                     },
                 ),
             ]),
@@ -748,7 +736,12 @@ mod tests {
         if let AuraNode::Element { tag, children, .. } = &widget.view_tree {
             assert_eq!(tag, "col");
             assert_eq!(children.len(), 1);
-            if let AuraNode::Element { tag: row_tag, children: row_children, .. } = &children[0] {
+            if let AuraNode::Element {
+                tag: row_tag,
+                children: row_children,
+                ..
+            } = &children[0]
+            {
                 assert_eq!(row_tag, "row");
                 assert_eq!(row_children.len(), 2);
             } else {
@@ -789,10 +782,7 @@ mod tests {
 
         // Both should be surface updates with the same surface ID
         match (original, exported) {
-            (
-                A2UIMessage::SurfaceUpdate(orig),
-                A2UIMessage::SurfaceUpdate(exported),
-            ) => {
+            (A2UIMessage::SurfaceUpdate(orig), A2UIMessage::SurfaceUpdate(exported)) => {
                 assert_eq!(orig.surface_id, exported.surface_id);
                 // Original has 2 top-level comps; round-trip wraps them in a Column
                 assert_eq!(exported.components.len(), 1);

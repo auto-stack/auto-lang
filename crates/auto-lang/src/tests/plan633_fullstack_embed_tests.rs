@@ -34,8 +34,8 @@ fn build_embedded(files: &[(&str, &str)]) -> (crate::ui::dynamic::DynamicCompone
     let host_path = dir.path().join("host.at");
     let path_str = host_path.to_string_lossy().to_string();
     let host_src = std::fs::read_to_string(&host_path).unwrap();
-    let comp = crate::build_dynamic_component(&host_src, Some(&path_str))
-        .expect("内嵌全栈 demo 宿主编译");
+    let comp =
+        crate::build_dynamic_component(&host_src, Some(&path_str)).expect("内嵌全栈 demo 宿主编译");
     (comp, host_path)
 }
 

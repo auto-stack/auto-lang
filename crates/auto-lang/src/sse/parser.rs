@@ -4,7 +4,7 @@
 
 use std::io::{BufRead, BufReader};
 
-use crate::sse::types::{SSEEvent, SSEError};
+use crate::sse::types::{SSEError, SSEEvent};
 
 /// 解析 SSE 文本块
 ///

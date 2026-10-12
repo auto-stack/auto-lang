@@ -20,8 +20,8 @@
 
 use crate::interpreter::AutoInterpreter;
 use auto_val::{Node, Value};
-use std::path::Path;
 use std::collections::HashMap;
+use std::path::Path;
 
 // 结果类型别名
 pub type Result<T> = std::result::Result<T, BridgeError>;
@@ -47,9 +47,9 @@ pub enum DynamicMessage {
 
     /// 类型化事件
     Typed {
-        widget_name: String,     // Widget 名称
-        event_name: String,      // 事件名（如 "Inc"）
-        args: Vec<Value>,        // 事件参数
+        widget_name: String, // Widget 名称
+        event_name: String,  // 事件名（如 "Inc"）
+        args: Vec<Value>,    // 事件参数
     },
 }
 
@@ -225,7 +225,9 @@ impl InterpreterBridge {
     /// 3. 返回求值后的 Node
     pub fn get_main_view(&mut self) -> Result<Node> {
         // Evaluate main() or the last expression
-        let result = self.interpreter.eval("main()")
+        let result = self
+            .interpreter
+            .eval("main()")
             .map_err(|e| BridgeError::AutoLang(e.to_string()))?;
 
         if let Value::Node(node) = &result {
@@ -243,7 +245,11 @@ impl InterpreterBridge {
                 // 解析事件字符串并调用相应的 on() 方法
                 self.handle_string_event(&event)
             }
-            DynamicMessage::Typed { widget_name, event_name, args } => {
+            DynamicMessage::Typed {
+                widget_name,
+                event_name,
+                args,
+            } => {
                 // 调用特定 Widget 的 on() 方法
                 self.handle_typed_event(&widget_name, &event_name, &args)
             }
@@ -265,7 +271,12 @@ impl InterpreterBridge {
     }
 
     /// 处理类型化事件
-    fn handle_typed_event(&mut self, widget_name: &str, _event_name: &str, _args: &[Value]) -> Result<()> {
+    fn handle_typed_event(
+        &mut self,
+        widget_name: &str,
+        _event_name: &str,
+        _args: &[Value],
+    ) -> Result<()> {
         // 查找 Widget 状态
         if let Some(state) = self.widget_states.get_mut(widget_name) {
             // 标记视图为脏（需要重建）
@@ -385,7 +396,9 @@ widget W {
     #[test]
     fn test_plain_script_and_setupless_widget() {
         let mut bridge = InterpreterBridge::new();
-        bridge.interpret("fn main() { 1 }").expect("plain script loads");
+        bridge
+            .interpret("fn main() { 1 }")
+            .expect("plain script loads");
         assert!(bridge.widget_state("main").is_none());
 
         bridge

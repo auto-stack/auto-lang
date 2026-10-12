@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # 活跃层路径集（archive/历史归档不在内）
 SCAN_PATHS = [
     "crates",
-    "blueprints",
+    "packages/blueprints",
     "examples",
     "docs/design",
     "docs/specs",

@@ -1,0 +1,42 @@
+{
+  "plan": "PLAN-769",
+  "revision": 1,
+  "channel": "guarded offline projection, no store writer reachable (localhost8080 timeout)",
+  "baseline_sha256": "9a80b80c700b1aea290056a6fb8027c7e2f6aa74a56309c20f3feff7d05fbb3c",
+  "result_sha256": "7956aec5333cdd2cc52c8b200f5ea519edc03782c10c763305e38124a1a768e4",
+  "version": "legacy unversioned document preserved",
+  "preexisting_items": 855,
+  "total_items": 859,
+  "updated": [
+    [
+      "designs",
+      "P720-1"
+    ],
+    [
+      "designs",
+      "P719-1"
+    ]
+  ],
+  "added": [
+    [
+      "designs",
+      "P769-1"
+    ],
+    [
+      "tests",
+      "P769-T"
+    ],
+    [
+      "reviews",
+      "P769-R"
+    ],
+    [
+      "reports",
+      "P769-Report"
+    ]
+  ],
+  "unrelated_guard": "Revert two updates and remove four additions; serialization equals exact byte backup. Preserve six-section existing order, unique IDs within each, factory-complete new items, canonical/test/evidence file+tags readback.",
+  "backup": "D:/autostack/auto-lang/scratch/website-images-769/specs-before-769.json",
+  "implementation_commit": "ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+  "source_hash_encoding": "Git UTF-8/LF canonical bytes (including new review artifact)"
+}

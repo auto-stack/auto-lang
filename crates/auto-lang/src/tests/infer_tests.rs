@@ -76,7 +76,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "variable int.type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "variable int.type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "int", "Should return 'int'");
 }
 
@@ -90,7 +94,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "variable float.type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "variable float.type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "float", "Should return 'float'");
 }
 
@@ -104,7 +112,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "variable str.type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "variable str.type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "str", "Should return 'str'");
 }
 
@@ -118,7 +130,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "variable bool.type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "variable bool.type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "bool", "Should return 'bool'");
 }
 
@@ -138,7 +154,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "function return .type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "function return .type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "int", "Should return 'int'");
 }
 
@@ -156,7 +176,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "function return str .type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "function return str .type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "str", "Should return 'str'");
 }
 
@@ -174,7 +198,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "function param .type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "function param .type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "int", "Should return 'int'");
 }
 
@@ -190,7 +218,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "array element .type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "array element .type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "int", "Should return 'int'");
 }
 
@@ -204,7 +236,11 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "string array element .type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "string array element .type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "str", "Should return 'str'");
 }
 
@@ -239,6 +275,10 @@ fn main() str {
 }
 "#;
     let result = run_autovm(code);
-    assert!(result.is_ok(), "binary multiply .type should work: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "binary multiply .type should work: {:?}",
+        result
+    );
     assert_eq!(result.unwrap(), "int", "Should return 'int'");
 }

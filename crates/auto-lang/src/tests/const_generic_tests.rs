@@ -26,10 +26,15 @@ fn main() {
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // The parsing should succeed (no "syntax error")
     // Evaluation might fail because [N]T with const N is not yet supported
-    assert!(!result.contains("syntax error"),
-        "Const generic parsing should succeed, got: {}", result);
-    assert!(result.contains("Error") || !result.contains("syntax error"),
-        "May have evaluation errors (expected), but parsing should work");
+    assert!(
+        !result.contains("syntax error"),
+        "Const generic parsing should succeed, got: {}",
+        result
+    );
+    assert!(
+        result.contains("Error") || !result.contains("syntax error"),
+        "May have evaluation errors (expected), but parsing should work"
+    );
 }
 
 /// Test that const keyword is tokenized
@@ -70,7 +75,7 @@ fn test_type_param_still_works() {
 /// Test GenericParam Display implementation
 #[test]
 fn test_generic_param_display() {
-    use crate::ast::{GenericParam, TypeParam, ConstParam, Type};
+    use crate::ast::{ConstParam, GenericParam, Type, TypeParam};
 
     // Type parameter
     let type_param = GenericParam::Type(TypeParam {

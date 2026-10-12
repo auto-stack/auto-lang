@@ -15,12 +15,14 @@
 //! Run: cargo test -p auto-lang --features ui-iced,iced-layout-tests --lib p025 -- --nocapture
 #![cfg(all(test, feature = "iced-layout-tests"))]
 
-use crate::ui::terminal::iced::widget::{refresh_row_cache, row_rebuilds_reset, VisibleRow, CELL_H};
+use crate::ui::terminal::iced::widget::{
+    refresh_row_cache, row_rebuilds_reset, VisibleRow, CELL_H,
+};
 use crate::ui::terminal::{
     terminal, terminal_dispose, terminal_feed_cells_for, terminal_feed_window_for,
-    terminal_mark_view_bound, terminal_queue_scroll_delta, terminal_set_history,
-    terminal_set_scroll_offset, terminal_set_window_anchor, terminal_take_scroll_delta,
-    terminal_window_anchor, terminal_window_row, terminal_scroll_delta_pending, TermCell,
+    terminal_mark_view_bound, terminal_queue_scroll_delta, terminal_scroll_delta_pending,
+    terminal_set_history, terminal_set_scroll_offset, terminal_set_window_anchor,
+    terminal_take_scroll_delta, terminal_window_anchor, terminal_window_row, TermCell,
     TerminalCore, WINDOW_ANCHOR_UNSET,
 };
 
@@ -35,7 +37,15 @@ fn fake_line_cells(id: i64, cols: usize) -> Vec<TermCell> {
 /// (offset/history/T-02 绝对行锚)+ 视口行入 window_store(T-03)。
 /// `prefetch_above`:额外把 [h-o-N, h-o) 预取行入 store(泵瞬态 scroll
 /// 采样的同构面;0 = 关)。
-fn pump(core: &TerminalCore, key: &str, o: usize, h: usize, rows: usize, cols: usize, prefetch_above: usize) {
+fn pump(
+    core: &TerminalCore,
+    key: &str,
+    o: usize,
+    h: usize,
+    rows: usize,
+    cols: usize,
+    prefetch_above: usize,
+) {
     let anchor = h as i64 - o as i64;
     let mut window = Vec::with_capacity(rows);
     for y in 0..rows {
@@ -119,7 +129,11 @@ fn p025_static_frame_zero_rebuild() {
     let first = draw_step("p025-static", core, rows, Some(h as i64));
     assert_eq!(first, rows, "首帧整窗成形");
     pump(core, "p025-static", 0, h, rows, cols, 0);
-    assert_eq!(draw_step("p025-static", core, rows, Some(h as i64)), 0, "静止帧零重排");
+    assert_eq!(
+        draw_step("p025-static", core, rows, Some(h as i64)),
+        0,
+        "静止帧零重排"
+    );
     terminal_dispose("p025-static");
 }
 
@@ -211,16 +225,36 @@ fn p025_unanchored_fallback_slot_semantics() {
     let (rows, cols, h) = (30usize, 80usize, 500usize);
     // vm 臂泵:只喂槽位 + 回写 offset/history,不写锚(T-02 未覆盖面)。
     for y in 0..rows {
-        terminal_feed_cells_for("p025-fallback", y, fake_line_cells(h as i64 + y as i64, cols));
+        terminal_feed_cells_for(
+            "p025-fallback",
+            y,
+            fake_line_cells(h as i64 + y as i64, cols),
+        );
     }
     terminal_set_scroll_offset(core, 0);
     terminal_set_history(core, h);
-    assert_eq!(terminal_window_anchor(core), WINDOW_ANCHOR_UNSET, "泵未写锚 = 未锚");
-    assert_eq!(draw_step("p025-fallback", core, rows, None), rows, "首帧整窗成形(槽位臂)");
-    assert_eq!(draw_step("p025-fallback", core, rows, None), 0, "静止零重排");
+    assert_eq!(
+        terminal_window_anchor(core),
+        WINDOW_ANCHOR_UNSET,
+        "泵未写锚 = 未锚"
+    );
+    assert_eq!(
+        draw_step("p025-fallback", core, rows, None),
+        rows,
+        "首帧整窗成形(槽位臂)"
+    );
+    assert_eq!(
+        draw_step("p025-fallback", core, rows, None),
+        0,
+        "静止零重排"
+    );
     // 内容变化按槽重建(槽位语义面仍在)。
     terminal_feed_cells_for("p025-fallback", 3, fake_line_cells(9_999_999, cols));
-    assert_eq!(draw_step("p025-fallback", core, rows, None), 1, "单槽变化单槽重建");
+    assert_eq!(
+        draw_step("p025-fallback", core, rows, None),
+        1,
+        "单槽变化单槽重建"
+    );
     terminal_dispose("p025-fallback");
 }
 
@@ -237,7 +271,10 @@ fn p025_anchor_and_store_roundtrip() {
     terminal_feed_window_for("p025-glue", 4711, &[cells.clone()]);
     let got = terminal_window_row(core, 4711).expect("store 命中");
     assert_eq!(got.cells.len(), cells.len());
-    assert_eq!(got.cells.iter().map(|c| c.ch).collect::<String>().len(), cells.len());
+    assert_eq!(
+        got.cells.iter().map(|c| c.ch).collect::<String>().len(),
+        cells.len()
+    );
     assert!(terminal_window_row(core, 9999).is_none(), "未喂 id = None");
     // 几何替换(terminal() 同 key 新几何)承载锚(泵回写不丢)。
     let core2 = terminal("p025-glue", 100, 40);
@@ -336,16 +373,27 @@ fn p025_pump_lag_model_blank_band_extent() {
     );
     // 判决断言(基线):常规速率即达 1 notch 空白带且跨多帧;快速速率
     // 达 ≥2 notch(6 行)——顶/底缘空白带 + 窗口回中跳变的量级证据。
-    assert!(slow.0 >= NOTCH, "常规速率基线空白带 ≥1 notch,got {}", slow.0);
+    assert!(
+        slow.0 >= NOTCH,
+        "常规速率基线空白带 ≥1 notch,got {}",
+        slow.0
+    );
     assert!(slow.1 > 0, "常规速率基线存在滞后帧");
-    assert!(fast.0 >= 2 * NOTCH, "快速速率基线空白带 ≥2 notch,got {}", fast.0);
+    assert!(
+        fast.0 >= 2 * NOTCH,
+        "快速速率基线空白带 ≥2 notch,got {}",
+        fast.0
+    );
     // 预取 N=8:常规速率清零;快速速率显著收窄(极值仍可能余薄带,
     // 由泵周期兜底——T-04 即时泵豁免的取舍依据)。
     assert_eq!((slow.2, slow.3), (0, 0), "预取 8 行覆盖常规速率泵滞后窗口");
     assert!(
         fast.2 < fast.0 && fast.3 < fast.1,
         "预取 8 行对快速速率严格收窄: {}→{} 行,{}→{} 帧",
-        fast.0, fast.2, fast.1, fast.3
+        fast.0,
+        fast.2,
+        fast.1,
+        fast.3
     );
     // 终态(2026-09-20 三轮修正:分离轨 16ms 计时器=每拍 HTTP 同步
     // 往返,占死 VM 前端 UI 线程 → 回 50ms 节拍;快滚覆盖由预取 N=24
@@ -356,8 +404,16 @@ fn p025_pump_lag_model_blank_band_extent() {
         "[P025-LAG] 50ms 泵 + N=24:常规 {}行 {}帧 / 快速 {}行 {}帧",
         fixed_slow.2, fixed_slow.3, fixed_fast.2, fixed_fast.3
     );
-    assert_eq!((fixed_slow.2, fixed_slow.3), (0, 0), "50ms+预取 24:常规速率零空白");
-    assert_eq!((fixed_fast.2, fixed_fast.3), (0, 0), "50ms+预取 24:快速速率零空白");
+    assert_eq!(
+        (fixed_slow.2, fixed_slow.3),
+        (0, 0),
+        "50ms+预取 24:常规速率零空白"
+    );
+    assert_eq!(
+        (fixed_fast.2, fixed_fast.3),
+        (0, 0),
+        "50ms+预取 24:快速速率零空白"
+    );
 }
 
 /// T-04 即时泵探针:queue 后 pending ≠ 0(peek 不排空);drain 后归零。

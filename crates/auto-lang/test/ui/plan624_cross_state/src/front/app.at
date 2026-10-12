@@ -47,7 +47,7 @@ widget App {
         }
 
         // P2 shape: map-literal arg carrying a cross-state ?str read — the
-        // jade Edit arm crashed here with Invalid object ID (p2 variant).
+        // AutoJade edit arm crashed here with Invalid object ID (p2 variant).
         .Edit -> {
             TabStore.SetBody({ path: .active_path, body: .view_body })
             var t = .tabs.find(tt => tt.path == .active_path)

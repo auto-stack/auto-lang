@@ -14,13 +14,13 @@ mod plan_088_parser_tests {
     /// Helper function to parse function parameters from source code
     /// Note: fn_params() expects the source to end with ')' or other terminator
     fn parse_params(source: &str) -> Vec<Param> {
-        use std::rc::Rc;
         use std::cell::RefCell;
+        use std::rc::Rc;
         // Plan 091: Universe removed
 
         // Plan 091: Universe removed
-    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
-        let full_source = format!("{})", source);  // Add closing parenthesis
+        let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+        let full_source = format!("{})", source); // Add closing parenthesis
         let mut parser = Parser::from(&full_source);
         parser.fn_params().unwrap()
     }
@@ -160,9 +160,8 @@ mod plan_088_parser_tests {
     #[test]
     fn test_complex_function_signature() {
         // Plan 122: Complex function signature with mixed modes
-        let params = parse_params(
-            "mut self Point, move x int, view y float, move s str, flag bool"
-        );
+        let params =
+            parse_params("mut self Point, move x int, view y float, move s str, flag bool");
         assert_eq!(params.len(), 5);
         assert_eq!(params[0].name.as_str(), "self");
         assert_eq!(params[0].mode, ParamMode::Mut);

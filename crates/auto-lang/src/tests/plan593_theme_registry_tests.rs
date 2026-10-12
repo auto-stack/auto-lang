@@ -31,10 +31,10 @@ fn zero_drift_semantic_table_light() {
     assert_static_arms(
         false,
         &[
-            (Color::Secondary, (227, 221, 209)),   // #e3ddd1 暖灰一档深
-            (Color::Background, (245, 241, 232)),  // #f5f1e8 暖纸
-            (Color::Surface, (251, 248, 242)),     // #fbf8f2 卡片微浮
-            (Color::Muted, (240, 235, 226)),       // #f0ebe2 暖 muted
+            (Color::Secondary, (227, 221, 209)),  // #e3ddd1 暖灰一档深
+            (Color::Background, (245, 241, 232)), // #f5f1e8 暖纸
+            (Color::Surface, (251, 248, 242)),    // #fbf8f2 卡片微浮
+            (Color::Muted, (240, 235, 226)),      // #f0ebe2 暖 muted
             (Color::Error, (239, 68, 68)),
             (Color::Warning, (234, 179, 8)),
             (Color::Success, (34, 197, 94)),
@@ -55,20 +55,20 @@ fn zero_drift_semantic_table_dark() {
     assert_static_arms(
         true,
         &[
-            (Color::Secondary, (51, 65, 85)),      // #334155 slate-700
-            (Color::Background, (20, 26, 41)),     // #141a29 深蓝黑
-            (Color::Surface, (26, 34, 53)),        // #1a2235 面板
-            (Color::Muted, (30, 41, 59)),          // slate-800
+            (Color::Secondary, (51, 65, 85)),  // #334155 slate-700
+            (Color::Background, (20, 26, 41)), // #141a29 深蓝黑
+            (Color::Surface, (26, 34, 53)),    // #1a2235 面板
+            (Color::Muted, (30, 41, 59)),      // slate-800
             (Color::Error, (239, 68, 68)),
             (Color::Warning, (234, 179, 8)),
             (Color::Success, (34, 197, 94)),
             (Color::Info, (59, 130, 246)),
-            (Color::OnPrimary, (15, 23, 42)),      // #0f172a 黑字
+            (Color::OnPrimary, (15, 23, 42)), // #0f172a 黑字
             (Color::OnSecondary, (248, 250, 252)),
             (Color::OnDestructive, (248, 250, 252)),
             (Color::OnBackground, (248, 250, 252)),
             (Color::OnSurface, (151, 163, 181)),
-            (Color::Border, (40, 49, 70)),         // #283146
+            (Color::Border, (40, 49, 70)), // #283146
         ],
     );
     assert_eq!(theme::resolve_border_rgb(), (40, 49, 70));
@@ -80,9 +80,15 @@ fn zero_drift_primary_indigo() {
     assert!(theme::set_theme("stella"), "stella 恒在");
     theme::set_accent_name("indigo");
     theme::set_dark_mode(false);
-    assert_eq!(theme::resolve_semantic_rgb(&Color::Primary), Some((100, 102, 241)));
+    assert_eq!(
+        theme::resolve_semantic_rgb(&Color::Primary),
+        Some((100, 102, 241))
+    );
     theme::set_dark_mode(true);
-    assert_eq!(theme::resolve_semantic_rgb(&Color::Primary), Some((147, 148, 245)));
+    assert_eq!(
+        theme::resolve_semantic_rgb(&Color::Primary),
+        Some((147, 148, 245))
+    );
     theme::set_accent_name("indigo"); // 还原默认，防污染其他用例
 }
 
@@ -113,33 +119,50 @@ fn zero_drift_accent_presets() {
 /// T-b：base_css 金样随 PLAN-601 T-09/D3（E2 退役）一并退役——
 /// 值基线参照 fixtures/plan593/base_css.golden 留档，zinc 主题表
 /// 存续于 registry（render_fingerprint 钉）。
-
-
 // ── S8 T-c：词表封闭性/投影完备性 ─────────────────────────────────────
-
 use crate::ui::style::theme::registry;
 
 /// 词表 31 键的 css_var 名两两互异（闭集无碰撞）。
 #[test]
 fn t_c_token_css_vars_unique() {
     let vars = [
-        registry::TokenName::Background, registry::TokenName::Foreground,
-        registry::TokenName::Card, registry::TokenName::CardForeground,
-        registry::TokenName::Popover, registry::TokenName::PopoverForeground,
-        registry::TokenName::Primary, registry::TokenName::PrimaryForeground,
-        registry::TokenName::Secondary, registry::TokenName::SecondaryForeground,
-        registry::TokenName::Muted, registry::TokenName::MutedForeground,
-        registry::TokenName::Accent, registry::TokenName::AccentForeground,
-        registry::TokenName::Destructive, registry::TokenName::DestructiveForeground,
-        registry::TokenName::Border, registry::TokenName::Input, registry::TokenName::Ring,
-        registry::TokenName::SidebarBackground, registry::TokenName::SidebarForeground,
-        registry::TokenName::SidebarPrimary, registry::TokenName::SidebarPrimaryForeground,
-        registry::TokenName::SidebarAccent, registry::TokenName::SidebarAccentForeground,
-        registry::TokenName::SidebarBorder, registry::TokenName::SidebarRing,
-        registry::TokenName::Success, registry::TokenName::Warning,
-        registry::TokenName::Info, registry::TokenName::Error,
+        registry::TokenName::Background,
+        registry::TokenName::Foreground,
+        registry::TokenName::Card,
+        registry::TokenName::CardForeground,
+        registry::TokenName::Popover,
+        registry::TokenName::PopoverForeground,
+        registry::TokenName::Primary,
+        registry::TokenName::PrimaryForeground,
+        registry::TokenName::Secondary,
+        registry::TokenName::SecondaryForeground,
+        registry::TokenName::Muted,
+        registry::TokenName::MutedForeground,
+        registry::TokenName::Accent,
+        registry::TokenName::AccentForeground,
+        registry::TokenName::Destructive,
+        registry::TokenName::DestructiveForeground,
+        registry::TokenName::Border,
+        registry::TokenName::Input,
+        registry::TokenName::Ring,
+        registry::TokenName::SidebarBackground,
+        registry::TokenName::SidebarForeground,
+        registry::TokenName::SidebarPrimary,
+        registry::TokenName::SidebarPrimaryForeground,
+        registry::TokenName::SidebarAccent,
+        registry::TokenName::SidebarAccentForeground,
+        registry::TokenName::SidebarBorder,
+        registry::TokenName::SidebarRing,
+        registry::TokenName::Success,
+        registry::TokenName::Warning,
+        registry::TokenName::Info,
+        registry::TokenName::Error,
     ];
-    assert_eq!(vars.len(), 31, "词表基数为 31（19 shadcn+8 sidebar+4 扩展）");
+    assert_eq!(
+        vars.len(),
+        31,
+        "词表基数为 31（19 shadcn+8 sidebar+4 扩展）"
+    );
     let mut names: Vec<&str> = vars.iter().map(|t| t.css_var()).collect();
     names.sort_unstable();
     let n = names.len();
@@ -154,14 +177,26 @@ fn t_c_projection_complete_in_stella() {
     // PLAN-619 T-03：被测面是 stella 表的完备性 → 显式钉住（轨缺省已改 scaffold）。
     assert!(theme::set_theme("stella"), "stella 恒在");
     let projected = [
-        Color::Secondary, Color::Background, Color::Surface, Color::Muted,
-        Color::Error, Color::Warning, Color::Success, Color::Info,
-        Color::OnPrimary, Color::OnSecondary, Color::OnDestructive,
-        Color::OnBackground, Color::OnSurface, Color::Border,
+        Color::Secondary,
+        Color::Background,
+        Color::Surface,
+        Color::Muted,
+        Color::Error,
+        Color::Warning,
+        Color::Success,
+        Color::Info,
+        Color::OnPrimary,
+        Color::OnSecondary,
+        Color::OnDestructive,
+        Color::OnBackground,
+        Color::OnSurface,
+        Color::Border,
         // PLAN-601 T-08（P593-D1 收口）：accent 独立投影入完备集。
-        Color::Accent, Color::OnAccent,
+        Color::Accent,
+        Color::OnAccent,
         // PLAN-695 T-04：popover 独立投影（不再折 Card——弹层面板双盘 token）。
-        Color::Popover, Color::PopoverForeground,
+        Color::Popover,
+        Color::PopoverForeground,
     ];
     for dark in [false, true] {
         theme::set_dark_mode(dark);
@@ -173,7 +208,12 @@ fn t_c_projection_complete_in_stella() {
         }
     }
     // 非语义域：调色板/字面量变体不解析（封闭词表边界）
-    for c in [Color::Slate(500), Color::Blue(500), Color::White, Color::Black] {
+    for c in [
+        Color::Slate(500),
+        Color::Blue(500),
+        Color::White,
+        Color::Black,
+    ] {
         assert_eq!(theme::resolve_semantic_rgb(&c), None, "{c:?} 不在语义域");
     }
 }

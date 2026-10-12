@@ -72,7 +72,10 @@ pub fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
 
     let dir = path.parent().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidInput, "atomic_write: no parent dir")
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "atomic_write: no parent dir",
+        )
     })?;
     std::fs::create_dir_all(dir)?;
     let name = path
@@ -124,7 +127,7 @@ fn mtime_age_ms(path: &Path) -> u128 {
         .map(|d| d.as_millis())
         .map(|mtime| epoch_ms_now().saturating_sub(mtime))
         .unwrap_or(0) // stat 失败（如正在被删除的锁）不判 stale——
-                     // 活锁误删比 stale 泄漏代价高（stale 有超时降级兜底）
+                      // 活锁误删比 stale 泄漏代价高（stale 有超时降级兜底）
 }
 
 /// 锁龄（ms）= max(mtime 龄, 锁体 epoch 龄)——两者任一超龄即可判定 stale，
@@ -258,7 +261,11 @@ mod tests {
         let reader = std::thread::spawn(move || {
             for _ in 0..200 {
                 if let Ok(raw) = std::fs::read_to_string(&rp) {
-                    assert!(raw.starts_with('{') && raw.ends_with('}'), "torn: {:?}", raw);
+                    assert!(
+                        raw.starts_with('{') && raw.ends_with('}'),
+                        "torn: {:?}",
+                        raw
+                    );
                 }
                 std::thread::sleep(Duration::from_millis(1));
             }

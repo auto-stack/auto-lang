@@ -12,5 +12,5 @@ desktop: "true"
 // 647 裁定：纯 path，无版本键）。PLAN-689: 迁出 examples/ui 升格独立示例
 // examples/bp-admin，层级减一层，path 相应 ../../../ → ../../。
 dep bps {
-    path: "../../blueprints"
+    path: "../../packages/blueprints"
 }

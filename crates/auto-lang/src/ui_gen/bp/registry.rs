@@ -1,4 +1,4 @@
-//! [`BlueprintRegistry`] — scans `blueprints/` and indexes blueprint packages (Plan 342).
+//! [`BlueprintRegistry`] — scans `packages/blueprints/` and indexes blueprint packages (Plan 342).
 
 use std::collections::HashMap;
 use std::fs;
@@ -11,7 +11,7 @@ use crate::ui_gen::WidgetRegistry;
 #[derive(Debug, Clone)]
 pub struct BlueprintPackage {
     pub spec: BlueprintSpec,
-    /// `<repo>/blueprints/<kind>/<name>` directory.
+    /// `<repo>/packages/blueprints/<kind>/<name>` directory.
     pub dir: PathBuf,
     /// variant -> `<dir>/reference/<variant>.at` (validated to exist).
     pub references: HashMap<String, PathBuf>,
@@ -41,7 +41,9 @@ impl Default for BlueprintRegistry {
 impl BlueprintRegistry {
     /// Empty registry.
     pub fn new() -> Self {
-        Self { packages: Vec::new() }
+        Self {
+            packages: Vec::new(),
+        }
     }
 
     /// Discover packages under `root` (each child dir of `root/<kind>/<name>/`
@@ -123,7 +125,10 @@ impl BlueprintRegistry {
             .find(|p| p.spec.kind == kind && p.spec.name == name)
     }
 
-    pub fn list_by_kind<'a>(&'a self, kind: &'a str) -> impl Iterator<Item = &'a BlueprintPackage> + 'a {
+    pub fn list_by_kind<'a>(
+        &'a self,
+        kind: &'a str,
+    ) -> impl Iterator<Item = &'a BlueprintPackage> + 'a {
         self.packages.iter().filter(move |p| p.spec.kind == kind)
     }
 
@@ -134,8 +139,11 @@ impl BlueprintRegistry {
     /// 只以包形态存在,palette 经 schema 分类认识它,不注册回 WidgetRegistry).
     /// Returns the list of violations (empty = clean).
     pub fn palette_drift(&self, widgets: &WidgetRegistry) -> Vec<String> {
-        let mut tags: std::collections::HashSet<String> =
-            widgets.all_widgets().keys().map(|s| s.to_string()).collect();
+        let mut tags: std::collections::HashSet<String> = widgets
+            .all_widgets()
+            .keys()
+            .map(|s| s.to_string())
+            .collect();
         if let Some(schema) = crate::aura::default_schema_cached() {
             for (tag, meta) in schema.meta.iter() {
                 if meta.tier == crate::aura::schema::ElementTier::PackageOrigin {
@@ -146,10 +154,14 @@ impl BlueprintRegistry {
         let mut drift = Vec::new();
         for pkg in &self.packages {
             for w in &pkg.spec.palette {
-                let known = tags.contains(w)
-                    || tags.iter().any(|t| t.starts_with(&format!("{w}-")));
+                let known =
+                    tags.contains(w) || tags.iter().any(|t| t.starts_with(&format!("{w}-")));
                 if !known {
-                    drift.push(format!("{}: palette widget '{}' not in AURA registry", pkg.key(), w));
+                    drift.push(format!(
+                        "{}: palette widget '{}' not in AURA registry",
+                        pkg.key(),
+                        w
+                    ));
                 }
             }
         }
@@ -160,7 +172,7 @@ impl BlueprintRegistry {
 /// PLAN-645 T-01: runtime blueprints-root resolution, three-tier order:
 /// 1. `AUTO_BLUEPRINTS_ROOT` env — used as-is (must point at the blueprints
 ///    library dir itself).
-/// 2. Walk up from `cwd` for the nearest dir with a `blueprints/` subdir —
+/// 2. Walk up from `cwd` for the nearest dir with a `packages/blueprints/` subdir —
 ///    the `<repo>/blueprints` layout shared by git checkouts, worktrees
 ///    (`.git` file, not dir), and plain fixture dirs.
 /// 3. Compile-time `CARGO_MANIFEST_DIR` ancestors (`crates/auto-lang` →
@@ -173,7 +185,7 @@ pub fn resolve_blueprints_root(cwd: &Path) -> PathBuf {
         }
     }
     for dir in cwd.ancestors() {
-        let candidate = dir.join("blueprints");
+        let candidate = dir.join("packages/blueprints");
         if candidate.is_dir() {
             return candidate;
         }
@@ -181,8 +193,8 @@ pub fn resolve_blueprints_root(cwd: &Path) -> PathBuf {
     let compile_time = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2) // crates/auto-lang -> crates -> <repo>
-        .map(|repo| repo.join("blueprints"))
-        .unwrap_or_else(|| PathBuf::from("blueprints"));
+        .map(|repo| repo.join("packages/blueprints"))
+        .unwrap_or_else(|| PathBuf::from("packages/blueprints"));
     compile_time
 }
 
@@ -245,6 +257,24 @@ fn load_package(dir: &Path) -> Result<BlueprintPackage, String> {
     })
 }
 
+/// tu 档单进程并行下 `AUTO_BLUEPRINTS_ROOT` 的测试串行锁（F-759-R2
+/// `HTTP_BASE_TEST_SERIALIZER` 同构）：`EnvGuard` 只保 panic 后恢复现场，
+/// 不保 setter 窗口内 reader 互斥。本 crate 内该 env 的全部测试触点必须
+/// 持本锁——setter=root_resolution_tests 四测；reader=scan_tests 与
+/// plan640/643/649/657 的 `with_defaults()` 构造。crates/auto 的 cmd_bp
+/// 测试不在 `-p auto-lang` 门禁面且跨 crate 不共享本锁。
+#[cfg(test)]
+static BLUEPRINTS_ROOT_TEST_SERIALIZER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 取 `AUTO_BLUEPRINTS_ROOT` 测试串行锁（持有至返回的 guard 亡；poison 接管）。
+#[cfg(test)]
+pub(crate) fn lock_blueprints_root_for_test() -> std::sync::MutexGuard<'static, ()> {
+    match BLUEPRINTS_ROOT_TEST_SERIALIZER.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +293,9 @@ mod scan_tests {
 
     #[test]
     fn scans_default_packages() {
+        // with_defaults() 经 resolve_blueprints_root 读 env——与 root_resolution
+        // 的 setter 窗口互斥（tu 档单进程并行面）。
+        let _ser = lock_blueprints_root_for_test();
         let reg = BlueprintRegistry::with_defaults();
         let keys: Vec<String> = reg.iter().map(|p| p.key()).collect();
         // PLAN-640 Tier-0 catalog: all 13 official packages must scan clean.
@@ -283,12 +316,16 @@ mod scan_tests {
             "navigation/sidebar-nav",
             "navigation/sidebar-shell",
         ] {
-            assert!(keys.contains(&key.to_string()), "missing {key}; keys: {keys:?}");
+            assert!(
+                keys.contains(&key.to_string()),
+                "missing {key}; keys: {keys:?}"
+            );
         }
     }
 
     #[test]
     fn login_has_three_references() {
+        let _ser = lock_blueprints_root_for_test();
         let reg = BlueprintRegistry::with_defaults();
         let pkg = reg.get("form", "login").unwrap();
         assert_eq!(pkg.spec.variants, vec!["minimal", "two_column", "with_sso"]);
@@ -300,6 +337,7 @@ mod scan_tests {
 
     #[test]
     fn palette_has_no_drift() {
+        let _ser = lock_blueprints_root_for_test();
         let reg = BlueprintRegistry::with_defaults();
         let widgets = WidgetRegistry::with_defaults();
         let drift = reg.palette_drift(&widgets);
@@ -310,6 +348,7 @@ mod scan_tests {
     /// 零漂移;负断言:词表外未知名(pie-chart)与未移交名(data-table)仍报漂移。
     #[test]
     fn palette_accepts_package_origin_tags_but_rejects_unknown() {
+        let _ser = lock_blueprints_root_for_test();
         let mut reg = BlueprintRegistry::with_defaults();
         let widgets = WidgetRegistry::with_defaults();
         // 合成包直接注入(测试构造,不走磁盘扫描)。
@@ -335,7 +374,10 @@ mod scan_tests {
             gotchas: None,
         });
         let drift = reg.palette_drift(&widgets);
-        assert!(drift.is_empty(), "chart package-origin tags must pass: {drift:?}");
+        assert!(
+            drift.is_empty(),
+            "chart package-origin tags must pass: {drift:?}"
+        );
 
         let mut reg2 = BlueprintRegistry::with_defaults();
         reg2.packages.push(BlueprintPackage {
@@ -358,30 +400,39 @@ mod scan_tests {
         assert_eq!(drift2.len(), 1, "unknown tags must still drift: {drift2:?}");
         assert!(drift2.iter().any(|d| d.contains("pie-chart")));
     }
-
 }
 
-/// PLAN-645 T-01: with_defaults 三级解析根（env → cwd 向上找 blueprints/ →
+/// PLAN-645 T-01: with_defaults 三级解析根（env → cwd 向上找 packages/blueprints/ →
 /// 编译期兜底）。env 断言依赖进程级环境变量——nextest 每测试独立进程天然
-/// 隔离；守卫结构保证 bare cargo test 下也恢复现场。
+/// 隔离；bare cargo test（tu 档）单进程并行下,本模块全部测试持
+/// [`lock_blueprints_root_for_test`] 串行,EnvGuard 保 panic 后恢复窗口前值。
 mod root_resolution_tests {
     use super::*;
 
-    struct EnvGuard(&'static str);
+    struct EnvGuard {
+        var: &'static str,
+        prev: Option<std::ffi::OsString>,
+    }
     impl EnvGuard {
         fn set(var: &'static str, value: &std::ffi::OsStr) -> Self {
+            let prev = std::env::var_os(var);
             std::env::set_var(var, value);
-            EnvGuard(var)
+            EnvGuard { var, prev }
         }
     }
     impl Drop for EnvGuard {
         fn drop(&mut self) {
-            std::env::remove_var(self.0);
+            // 恢复窗口前值(而非恒删)——panic 安全,且不吞外层进程既有设置。
+            match self.prev.take() {
+                Some(v) => std::env::set_var(self.var, v),
+                None => std::env::remove_var(self.var),
+            }
         }
     }
 
     #[test]
     fn env_override_wins_and_is_used_as_is() {
+        let _ser = lock_blueprints_root_for_test();
         let tmp = std::env::temp_dir().join(format!("plan645-env-root-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
@@ -393,9 +444,10 @@ mod root_resolution_tests {
 
     #[test]
     fn walks_up_from_cwd_to_nearest_blueprints_dir() {
+        let _ser = lock_blueprints_root_for_test();
         let tmp = std::env::temp_dir().join(format!("plan645-walk-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
-        let lib = tmp.join("repo").join("blueprints");
+        let lib = tmp.join("repo").join("packages/blueprints");
         std::fs::create_dir_all(&lib).unwrap();
         std::fs::create_dir_all(tmp.join("repo").join("src").join("front").join("pages")).unwrap();
         let cwd = tmp.join("repo").join("src").join("front").join("pages");
@@ -404,6 +456,7 @@ mod root_resolution_tests {
 
     #[test]
     fn falls_back_to_compile_time_root_when_no_blueprints_upwards() {
+        let _ser = lock_blueprints_root_for_test();
         let tmp = std::env::temp_dir().join(format!("plan645-fallback-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
@@ -411,7 +464,7 @@ mod root_resolution_tests {
             .ancestors()
             .nth(2)
             .unwrap()
-            .join("blueprints");
+            .join("packages/blueprints");
         assert_eq!(resolve_blueprints_root(&tmp), expected);
     }
 
@@ -419,6 +472,7 @@ mod root_resolution_tests {
     /// scan 全链);负断言:env 指向空目录 → 空 registry(不回退、不炸)。
     #[test]
     fn with_defaults_follows_env_override() {
+        let _ser = lock_blueprints_root_for_test();
         let tmp = std::env::temp_dir().join(format!("plan645-scan-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         let pkg = tmp.join("form").join("tiny");
@@ -428,18 +482,60 @@ mod root_resolution_tests {
             "+++\nkind = \"form\"\nname = \"tiny\"\npalette = []\nextension_points = []\nvariants = [\"default\"]\n\n+++\n\n# Tiny\n",
         )
         .unwrap();
-        std::fs::write(pkg.join("reference").join("default.at"), "widget Tiny {\n    view {\n        text \"t\"\n    }\n}\n").unwrap();
+        std::fs::write(
+            pkg.join("reference").join("default.at"),
+            "widget Tiny {\n    view {\n        text \"t\"\n    }\n}\n",
+        )
+        .unwrap();
 
         let _guard = EnvGuard::set("AUTO_BLUEPRINTS_ROOT", tmp.as_os_str());
         let reg = BlueprintRegistry::with_defaults();
         let keys: Vec<String> = reg.iter().map(|p| p.key()).collect();
-        assert!(keys.contains(&"form/tiny".to_string()), "env-rooted scan must list form/tiny; keys: {keys:?}");
+        assert!(
+            keys.contains(&"form/tiny".to_string()),
+            "env-rooted scan must list form/tiny; keys: {keys:?}"
+        );
 
         let empty = std::env::temp_dir().join(format!("plan645-empty-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&empty);
         std::fs::create_dir_all(&empty).unwrap();
-        std::env::set_var("AUTO_BLUEPRINTS_ROOT", empty.as_os_str());
+        let _guard_empty = EnvGuard::set("AUTO_BLUEPRINTS_ROOT", empty.as_os_str());
         let reg2 = BlueprintRegistry::with_defaults();
-        assert!(reg2.packages().is_empty(), "empty override yields empty registry");
+        assert!(
+            reg2.packages().is_empty(),
+            "empty override yields empty registry"
+        );
+    }
+
+    /// F-759-R2 同构回归:持锁窗口内 panic 后,锁 poison 由接管臂恢复、EnvGuard
+    /// panic-safe 恢复窗口前值。子线程真实持锁 panic(759-r2 对 F-759-R2 原测
+    /// 的补强批评点:父持锁/子仅守卫验不到 poison 接管)。env 断言用本测试
+    /// 私有 scratch 变量——blueprints 根 env 的非常态值必须始终处于持锁
+    /// 窗口内,本测试不得在锁外对其置哨兵(首版教训:父置哨兵后放锁等子,
+    /// 窗口内读者读到哨兵两测翻红)。
+    #[test]
+    fn blueprints_root_lock_survives_panicked_holder() {
+        const SCRATCH: &str = "AUTO_BP_TEST_SCRATCH_ROOT";
+        let prev = std::env::var_os(SCRATCH);
+        std::env::set_var(SCRATCH, "/bp-lock-test-pre-window");
+        let h = std::thread::spawn(|| {
+            let _ser = lock_blueprints_root_for_test();
+            let _g = EnvGuard::set(
+                SCRATCH,
+                std::path::Path::new("/bp-lock-test-in-window").as_os_str(),
+            );
+            panic!("窗口内 panic");
+        });
+        let _ = h.join();
+        // poison 接管:持锁 panic 后锁仍可获取,守卫已恢复窗口前值。
+        let _ser = lock_blueprints_root_for_test();
+        assert_eq!(
+            std::env::var_os(SCRATCH).as_deref(),
+            Some(std::ffi::OsStr::new("/bp-lock-test-pre-window"))
+        );
+        match prev {
+            Some(v) => std::env::set_var(SCRATCH, v),
+            None => std::env::remove_var(SCRATCH),
+        }
     }
 }

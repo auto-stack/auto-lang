@@ -102,7 +102,11 @@ PLAN-707 的增量 decoder **原样提取**至 `a2r_std::sse`
   编译运行证据 = `test/a2r/30_plan724/` 金样 + `http_e2e_plan724_*`
   （含 `auto_lang::a2r_std` 限定名腿）+ `crates/a2r-std/tests/http_client.rs`
   原生矩阵。
-- **非目标**：文件 helper（download/upload/download_resume）仍走 ureq
+- **文件传输（PLAN-727 更新）**：文件 helper 与新 FileTransfer 面已迁入共享传输核心
+  `http::transfer`（复用本内核 runtime/Client + 独立传输配额；契约见 stdlib
+  [http-file-transfer](../../stdlib/design/http-file-transfer.md)）；本篇的排队取消/总期限自
+  提交起覆盖准入等待（PLAN-727 T-02 闭合：`execute` 的 active 许可等待纳入
+  `tx.closed()`/总期限 select）。
   （不为删除依赖扩展范围）；`sse_open/sse_poll/sse_close`（VM int id 族）
   不在 a2r 支持集；`stream_iter` 仅 for-in 位置有语义；TLS 服务端/
   HTTP/2/3/自动重连/WebSocket 不变（707 边界沿用）；任意 `#[api] ~Stream`

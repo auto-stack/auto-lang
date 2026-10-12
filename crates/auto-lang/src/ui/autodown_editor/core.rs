@@ -44,6 +44,28 @@ use crate::ui::code_editor::core::{
 use crate::ui::code_editor::draw::{CaretDraw, PreeditDraw, Pt, Rect};
 use crate::ui::code_editor::theme::Rgba;
 
+/// PLAN-737 诊断观测（AUTO_ADE_TRACE=1 启用；门关一次性检查零开销）。
+pub(crate) fn ade_trace(msg: &str) {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static ON: AtomicU8 = AtomicU8::new(0);
+    static T0: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    match ON.load(Ordering::Relaxed) {
+        0 => {
+            let on = std::env::var("AUTO_ADE_TRACE").is_ok();
+            ON.store(if on { 2 } else { 1 }, Ordering::Relaxed);
+            if on {
+                let t0 = T0.get_or_init(Instant::now);
+                eprintln!("[ade-trace] +{:.3}s {}", t0.elapsed().as_secs_f32(), msg);
+            }
+        }
+        2 => {
+            let t0 = T0.get_or_init(Instant::now);
+            eprintln!("[ade-trace] +{:.3}s {}", t0.elapsed().as_secs_f32(), msg);
+        }
+        _ => {}
+    }
+}
+
 /// 正文字号（逻辑 px）。PLAN-041 T3：字号表单源于块家族注册表
 /// （autodown_blocks）——两臂同源；fence 叶随之对齐家族 FENCE_SIZE（14，
 /// 与只读轨 text-sm 一致，编辑壳 16→14 的观感统一）。
@@ -65,11 +87,24 @@ pub const BLOCK_GAP: f32 = 8.0; // PLAN-053 T15：与只读臂文档列 spacing 
 pub const CARET_WIDTH: f32 = 2.0;
 /// 多击窗口（对齐 413 CLICK_TIMING）。
 const CLICK_TIMING: Duration = Duration::from_millis(400);
+/// PLAN-732：完整点击门的拖动容差（px，按下点起算的累计位移）——超阈
+/// 即判拖选、取消激活（契约 U-02 拖选零激活；413 同量级 slob）。
+const LINK_DRAG_SLOP: f32 = 4.0;
 /// 链接色（v1 固定蓝；主题变量接线登记余量）。
-const LINK_COLOR: Rgba = Rgba { r: 0.30, g: 0.56, b: 1.0, a: 1.0 };
+const LINK_COLOR: Rgba = Rgba {
+    r: 0.30,
+    g: 0.56,
+    b: 1.0,
+    a: 1.0,
+};
 
 fn rgb8(c: (u8, u8, u8)) -> Rgba {
-    Rgba { r: c.0 as f32 / 255.0, g: c.1 as f32 / 255.0, b: c.2 as f32 / 255.0, a: 1.0 }
+    Rgba {
+        r: c.0 as f32 / 255.0,
+        g: c.1 as f32 / 255.0,
+        b: c.2 as f32 / 255.0,
+        a: 1.0,
+    }
 }
 
 fn kind_font_size(kind: LeafKind) -> f32 {
@@ -114,6 +149,19 @@ struct MarkInterval {
     style: SpanStyle,
 }
 
+/// PLAN-732：wikilink 链接区间（全块字节坐标）。target 为引擎已 trim 的
+/// inner 原文（`target#anchor` 或 `target`——锚点拆分在激活载荷构造处归
+/// 一，jade 契约 C-01）。autodown-core parser 对 `[[inner]]` 产带
+/// `attr "wikilink" = inner` 的 InlineSpan（markdown_parser.rs convertInlines
+/// wikilink 臂）；代码块/行内代码内 `[[` 不产该 span（负例由 parser 层
+/// 保证）。
+#[derive(Debug, Clone, PartialEq)]
+struct LinkInterval {
+    lo: usize,
+    hi: usize,
+    target: String,
+}
+
 /// 合并相邻同款样式、剔除空区间。
 fn normalize(mut ivs: Vec<MarkInterval>) -> Vec<MarkInterval> {
     ivs.retain(|iv| iv.hi > iv.lo);
@@ -128,10 +176,14 @@ fn normalize(mut ivs: Vec<MarkInterval>) -> Vec<MarkInterval> {
     out
 }
 
-/// 行内 span 序列 → 扁平文本 + mark byte 区间表。
-fn flatten_inlines(inlines: &[InlineSpan]) -> (String, Vec<MarkInterval>) {
+/// 行内 span 序列 → 扁平文本 + mark byte 区间表 + wikilink 区间表。
+/// PLAN-732：`attrGetStr(attrs,"wikilink")` 命中即链接 span——
+/// `style.link = true`（VM 轨样式补齐：wikilink span 无 `Mark::Link`，
+/// 原先渲染为纯文本）+ `LinkInterval`（target 原文随区间保留）。
+fn flatten_inlines(inlines: &[InlineSpan]) -> (String, Vec<MarkInterval>, Vec<LinkInterval>) {
     let mut text = String::new();
     let mut ivs: Vec<MarkInterval> = Vec::new();
+    let mut links: Vec<LinkInterval> = Vec::new();
     for s in inlines {
         let mut style = SpanStyle::default();
         for m in &s.marks {
@@ -144,14 +196,27 @@ fn flatten_inlines(inlines: &[InlineSpan]) -> (String, Vec<MarkInterval>) {
                 Mark::Underline => style.underline = true,
             }
         }
+        let wiki = attrGetStr(s.attrs.clone(), "wikilink", "");
+        if !wiki.is_empty() {
+            style.link = true;
+        }
         let lo = text.len();
         text.push_str(&s.text);
         let hi = text.len();
-        if hi > lo && style.any() {
-            ivs.push(MarkInterval { lo, hi, style });
+        if hi > lo {
+            if style.any() {
+                ivs.push(MarkInterval { lo, hi, style });
+            }
+            if !wiki.is_empty() {
+                links.push(LinkInterval {
+                    lo,
+                    hi,
+                    target: wiki,
+                });
+            }
         }
     }
-    (text, normalize(ivs))
+    (text, normalize(ivs), links)
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +277,9 @@ struct BlockBuf {
     /// 解析期扁平文本；渲染期与实时 buffer 文本比对——相等才启用区间切片。
     snapshot: String,
     intervals: Vec<MarkInterval>,
+    /// PLAN-732：wikilink 区间（与 intervals 同快照口径——本地编辑后
+    /// snapshot 失配即整块失活，直到外部回写重建恢复）。
+    links: Vec<LinkInterval>,
     /// PLAN-651 T-01 R-ANCH：块锚（parser extractAnchorBlock 收 ` ^id` 进
     /// anchor attr；emit 侧 serializer withIdSuffix 同形尾补往返）。拆分
     /// 随头块（头块字段不动）、尾块新缓冲空锚；合并保头锚（尾块消亡，
@@ -262,8 +330,11 @@ fn ensure_code_family_spans(
     ed: &mut ViEditor<'static, 'static>,
     intervals: &[MarkInterval],
 ) -> bool {
-    let code: Vec<(usize, usize)> =
-        intervals.iter().filter(|iv| iv.style.code).map(|iv| (iv.lo, iv.hi)).collect();
+    let code: Vec<(usize, usize)> = intervals
+        .iter()
+        .filter(|iv| iv.style.code)
+        .map(|iv| (iv.lo, iv.hi))
+        .collect();
     ed.with_buffer_mut(|buf| {
         let mut bases: Vec<usize> = Vec::with_capacity(buf.lines.len());
         let mut acc = 0usize;
@@ -288,7 +359,9 @@ fn ensure_code_family_spans(
             }
             let already = line.attrs_list().spans_iter().any(|(sp, a)| {
                 a.as_attrs().family != sans_family()
-                    && locals.iter().any(|r| sp.start <= r.start && r.start < sp.end)
+                    && locals
+                        .iter()
+                        .any(|r| sp.start <= r.start && r.start < sp.end)
             });
             if already {
                 continue;
@@ -337,8 +410,7 @@ fn new_leaf_buffer(
     // 档下 plain fence 文字不可读；有/无语言主题档同源后浅档默认前景
     // 转深色可读（无语言仍不染色：syntax_by_extension 只对 Some(lang)）。
     let theme = ce_highlight::hljs_theme_name(crate::ui::style::theme::dark_mode());
-    let mut se = SyntaxEditor::new(arc, system, &theme)
-        .expect("bootstrap syntax theme must exist");
+    let mut se = SyntaxEditor::new(arc, system, &theme).expect("bootstrap syntax theme must exist");
     if let Some(lang) = lang {
         if let Some(ext) = ce_highlight::lang_to_extension(lang) {
             se.syntax_by_extension(ext);
@@ -382,6 +454,11 @@ pub enum DocInput {
     },
     MouseReleased {
         button: EditorButton,
+        /// PLAN-732：抬起点坐标（widget 本地）——完整点击门第二腿的
+        /// 同区间核对用（iced ButtonReleased 本体不带位置，widget 层取
+        /// 当前 cursor.position）。
+        x: f32,
+        y: f32,
     },
     ImePreedit(String),
     ImeCommit(String),
@@ -389,13 +466,41 @@ pub enum DocInput {
 }
 
 /// 输出变化位：驱动消息发布与重绘请求。
-#[derive(Debug, Clone, Copy, Default)]
+/// PLAN-732：`link_activated` 携 wikilink 完整点击激活载荷（Option 使
+/// DocOutput 退 Copy——各臂均为单次消费，无隐式拷贝依赖）。
+#[derive(Debug, Clone, Default)]
 pub struct DocOutput {
     pub text_changed: bool,
     pub cursor_changed: bool,
     pub focus_changed: bool,
     pub request_redraw: bool,
     pub captured: bool,
+    pub link_activated: Option<LinkActivation>,
+}
+
+/// PLAN-732：wikilink 激活载荷。target/anchor 已按首个 `#` 拆分并两侧
+/// trim（[`split_wikilink_target`]）；无锚 = 空串（契约 C-01：明确空值，
+/// 不以 undefined/null 字面泄漏）。第二参不是源块身份。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct LinkActivation {
+    pub target: String,
+    pub anchor: String,
+}
+
+/// PLAN-732：载荷归一——inner 原文按首个 `#` 拆分、两侧 trim（jade spec
+/// wiki-link-navigation §1 同语义；`[[ t # a ]]` 双侧空白已由 parser trim
+/// inner 整体、此处按段再 trim 与 Vue 消费逐值一致）。
+pub fn split_wikilink_target(raw: &str) -> LinkActivation {
+    match raw.split_once('#') {
+        Some((t, a)) => LinkActivation {
+            target: t.trim().to_string(),
+            anchor: a.trim().to_string(),
+        },
+        None => LinkActivation {
+            target: raw.trim().to_string(),
+            anchor: String::new(),
+        },
+    }
 }
 
 impl DocOutput {
@@ -409,6 +514,20 @@ impl DocOutput {
 #[derive(Debug, Clone, Default)]
 pub struct DocLayout {
     pub blocks: Vec<BlockLayout>,
+    /// PLAN-732：wikilink 命中区（单 layout-run 段矩形——折行链接每 run
+    /// 一段、各段独立命中；整块矩形禁用，契约 U-01）。
+    pub links: Vec<LinkRegion>,
+}
+
+/// PLAN-732：单段链接命中区。block+lo/hi+target 三重同一 = 链接身份
+///（完整点击门按下/抬起同区间的核对口径）；rect 为 widget 本地像素。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkRegion {
+    pub block: usize,
+    pub lo: usize,
+    pub hi: usize,
+    pub target: String,
+    pub rect: Rect,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -511,28 +630,108 @@ macro_rules! slash_item {
 
 const SLASH_ITEMS: [SlashItem; 23] = [
     slash_item!("Text", "Plain text", ["p"], SlashOp::Paragraph),
-    slash_item!("Heading 1", "Big section heading", ["h1"], SlashOp::Heading(1)),
-    slash_item!("Heading 2", "Medium section heading", ["h2"], SlashOp::Heading(2)),
-    slash_item!("Heading 3", "Small section heading", ["h3"], SlashOp::Heading(3)),
-    slash_item!("Heading 4", "Fourth level heading", ["h4"], SlashOp::Heading(4)),
-    slash_item!("Heading 5", "Fifth level heading", ["h5"], SlashOp::Heading(5)),
-    slash_item!("Heading 6", "Sixth level heading", ["h6"], SlashOp::Heading(6)),
+    slash_item!(
+        "Heading 1",
+        "Big section heading",
+        ["h1"],
+        SlashOp::Heading(1)
+    ),
+    slash_item!(
+        "Heading 2",
+        "Medium section heading",
+        ["h2"],
+        SlashOp::Heading(2)
+    ),
+    slash_item!(
+        "Heading 3",
+        "Small section heading",
+        ["h3"],
+        SlashOp::Heading(3)
+    ),
+    slash_item!(
+        "Heading 4",
+        "Fourth level heading",
+        ["h4"],
+        SlashOp::Heading(4)
+    ),
+    slash_item!(
+        "Heading 5",
+        "Fifth level heading",
+        ["h5"],
+        SlashOp::Heading(5)
+    ),
+    slash_item!(
+        "Heading 6",
+        "Sixth level heading",
+        ["h6"],
+        SlashOp::Heading(6)
+    ),
     slash_item!("Bullet List", "Bullet list", ["ul"], SlashOp::Bullet),
     slash_item!("Numbered List", "Numbered list", ["ol"], SlashOp::Ordered),
     slash_item!("Quote", "Quote", ["blockquote"], SlashOp::Quote),
     slash_item!("Code Block", "Code snippet", ["code"], SlashOp::CodeBlock),
-    slash_item!("TODO", "Insert a TODO task", ["todo", "task"], SlashOp::InsertText("- TODO ")),
-    slash_item!("DOING", "Insert a DOING task", ["doing", "task"], SlashOp::InsertText("- DOING ")),
-    slash_item!("DONE", "Insert a DONE task", ["done", "task"], SlashOp::InsertText("- DONE ")),
-    slash_item!("NOW", "Insert a NOW task", ["now", "task"], SlashOp::InsertText("- NOW ")),
-    slash_item!("LATER", "Insert a LATER task", ["later", "task"], SlashOp::InsertText("- LATER ")),
-    slash_item!("Priority A", "Insert [#A] priority", ["priority", "a"], SlashOp::InsertText("[#A] ")),
-    slash_item!("Priority B", "Insert [#B] priority", ["priority", "b"], SlashOp::InsertText("[#B] ")),
-    slash_item!("Priority C", "Insert [#C] priority", ["priority", "c"], SlashOp::InsertText("[#C] ")),
+    slash_item!(
+        "TODO",
+        "Insert a TODO task",
+        ["todo", "task"],
+        SlashOp::InsertText("- TODO ")
+    ),
+    slash_item!(
+        "DOING",
+        "Insert a DOING task",
+        ["doing", "task"],
+        SlashOp::InsertText("- DOING ")
+    ),
+    slash_item!(
+        "DONE",
+        "Insert a DONE task",
+        ["done", "task"],
+        SlashOp::InsertText("- DONE ")
+    ),
+    slash_item!(
+        "NOW",
+        "Insert a NOW task",
+        ["now", "task"],
+        SlashOp::InsertText("- NOW ")
+    ),
+    slash_item!(
+        "LATER",
+        "Insert a LATER task",
+        ["later", "task"],
+        SlashOp::InsertText("- LATER ")
+    ),
+    slash_item!(
+        "Priority A",
+        "Insert [#A] priority",
+        ["priority", "a"],
+        SlashOp::InsertText("[#A] ")
+    ),
+    slash_item!(
+        "Priority B",
+        "Insert [#B] priority",
+        ["priority", "b"],
+        SlashOp::InsertText("[#B] ")
+    ),
+    slash_item!(
+        "Priority C",
+        "Insert [#C] priority",
+        ["priority", "c"],
+        SlashOp::InsertText("[#C] ")
+    ),
     slash_item!("Divider", "Horizontal rule", ["hr"], SlashOp::Divider),
     slash_item!("Table", "Add table", ["table"], SlashOp::Table33),
-    slash_item!("Callout", "Admonition / callout box", ["callout", "admonition", "note"], SlashOp::Callout),
-    slash_item!("Details", "Collapsible details block", ["details", "toggle"], SlashOp::Details),
+    slash_item!(
+        "Callout",
+        "Admonition / callout box",
+        ["callout", "admonition", "note"],
+        SlashOp::Callout
+    ),
+    slash_item!(
+        "Details",
+        "Collapsible details block",
+        ["details", "toggle"],
+        SlashOp::Details
+    ),
 ];
 
 /// 弹层几何（px，widget 本地；render_frame 布局期写、命中测试读——
@@ -571,6 +770,21 @@ enum ClickKind {
 enum Drag {
     None,
     Buffer,
+}
+
+/// PLAN-732：完整点击门的按下登记。`single` = 按下即单击节律（多击第
+/// 二/三击不起激活——双击词选不重复发链接）；`plain` = 按下时无任何
+/// 修饰键（shift 扩选/ctrl/alt/logo 不激活，契约 U-02 普通左键）。
+#[derive(Debug, Clone, PartialEq)]
+struct PendingLink {
+    block: usize,
+    lo: usize,
+    hi: usize,
+    target: String,
+    press_x: f32,
+    press_y: f32,
+    single: bool,
+    plain: bool,
 }
 
 /// 跨块选区端点（PLAN-048 T2）：块下标 + 块内字节偏移（`SendEdit::text`
@@ -617,6 +831,9 @@ pub struct AutodownEditorCore {
     /// 读全文即记录）——逐键连发时中途落地的旧自回显据此甄别（回声绝
     /// 不 rebuild，见 sync_external 回声守卫）。有界环形，容量 32。
     emitted_echo: Mutex<std::collections::VecDeque<String>>,
+    /// PLAN-732：完整点击门第一腿——按下命中的链接区间（抬起同区间才
+    /// 激活）。drag 超阈/FocusLost/rebuild/多击第二击/修饰键按下时清空。
+    link_pending: Mutex<Option<PendingLink>>,
     layout: Mutex<DocLayout>,
     revision: AtomicU64,
     external_dirty: AtomicBool,
@@ -657,7 +874,11 @@ impl AutodownEditorCore {
             table_geom: Mutex::new(HashMap::new()),
             details_geom: Mutex::new(Vec::new()),
             emitted_echo: Mutex::new(std::collections::VecDeque::new()),
-            layout: Mutex::new(DocLayout { blocks: Vec::new() }),
+            link_pending: Mutex::new(None),
+            layout: Mutex::new(DocLayout {
+                blocks: Vec::new(),
+                links: Vec::new(),
+            }),
             revision: AtomicU64::new(0),
             anchor_block: AtomicI32::new(-1),
             external_dirty: AtomicBool::new(false),
@@ -676,7 +897,8 @@ impl AutodownEditorCore {
     /// 单一事实源——输入不路由（不建 undo、无光标状态）、渲染不发射
     /// chrome（只读臂 View 树自家族装配外壳）。
     pub fn is_view_instance(&self) -> bool {
-        self.key.starts_with(&format!("__autodown_editor_{}", VIEW_FENCE_PREFIX))
+        self.key
+            .starts_with(&format!("__autodown_editor_{}", VIEW_FENCE_PREFIX))
     }
 
     pub fn focused_block(&self) -> Option<usize> {
@@ -701,7 +923,31 @@ impl AutodownEditorCore {
     /// 消息在焦点变化现场取 `block_rects()[focus].h` 作为 ghost 定高；
     /// widget 内部消费 + 单测锚定，不对 DSL 开放查询面。
     pub fn block_rects(&self) -> Vec<Rect> {
-        self.layout.lock().unwrap().blocks.iter().map(|b| b.rect).collect()
+        self.layout
+            .lock()
+            .unwrap()
+            .blocks
+            .iter()
+            .map(|b| b.rect)
+            .collect()
+    }
+
+    /// PLAN-732：链接命中区快照（`render_frame` 布局写回的读出；测试/
+    /// 观察面——widget 激活出口走 DocOutput 载荷，不读此口）。
+    pub fn link_regions(&self) -> Vec<LinkRegion> {
+        self.layout.lock().unwrap().links.clone()
+    }
+
+    /// jade 反馈①（链接 hover 指针）：内容坐标 (x,y) 是否落在链接段矩形
+    /// 内——widget `mouse_interaction` 的 hover 门。与点击门（MouseReleased
+    /// 完整点击第二腿）同一布局快照、同一内容坐标系，命中口径一致。
+    pub fn link_hover_at(&self, x: f32, y: f32) -> bool {
+        self.layout
+            .lock()
+            .unwrap()
+            .links
+            .iter()
+            .any(|r| r.rect.contains(Pt::new(x, y)))
     }
 
     /// PLAN-063 T-04d: 锚块索引读写（scroll 回调写，draw 臂读）。
@@ -772,7 +1018,9 @@ impl AutodownEditorCore {
             *self.last_external.lock().unwrap() = Some(content.to_owned());
             return false;
         }
-        crate::ui::code_editor::core::with_font_system(|fs| self.rebuild_with(content, fs, is_final))
+        crate::ui::code_editor::core::with_font_system(|fs| {
+            self.rebuild_with(content, fs, is_final)
+        })
     }
 
     /// 强制重建（MCP 编程路径等绕过差分时）。解析恒按 final（编辑模型
@@ -789,15 +1037,28 @@ impl AutodownEditorCore {
         let root = autodown_core::markdown_parser::parse_blocks(content, parse_final);
         let mut segs: Vec<Seg> = Vec::new();
         let mut blocks: Vec<BlockBuf> = Vec::new();
-        build_walk(&root.children.iter().collect::<Vec<_>>(), &mut segs, &mut blocks, font_system);
+        build_walk(
+            &root.children.iter().collect::<Vec<_>>(),
+            &mut segs,
+            &mut blocks,
+            font_system,
+        );
         reindex_table_keys(&mut segs);
         if segs.is_empty() {
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE, None, LINE_H_PARA)),
+                editor: SendEditor(new_leaf_buffer(
+                    font_system,
+                    "",
+                    false,
+                    BODY_SIZE,
+                    None,
+                    LINE_H_PARA,
+                )),
                 kind: LeafKind::Paragraph,
                 syntax: None,
                 snapshot: String::new(),
                 intervals: Vec::new(),
+                links: Vec::new(),
                 anchor: String::new(),
             });
             segs.push(Seg::Leaf(0));
@@ -809,6 +1070,9 @@ impl AutodownEditorCore {
         *self.nav_goal_x.lock().unwrap() = None;
         *self.doc_sel.lock().unwrap() = None;
         *self.drag_anchor.lock().unwrap() = None;
+        // PLAN-732：整树重建（外部真变化/换内容）——按下期链接区间失效，
+        // 排队旧激活清空（契约 C-04：换内容后零冒领）。
+        *self.link_pending.lock().unwrap() = None;
         // PLAN-069：文档整体重建（外部真变化）——弹层锚块失效，随重建关闭。
         *self.slash.lock().unwrap() = None;
         *self.slash_geom.lock().unwrap() = None;
@@ -822,7 +1086,10 @@ impl AutodownEditorCore {
 
     fn live_text(&self, i: usize) -> String {
         let blocks = self.blocks.lock().unwrap();
-        blocks.get(i).map(|b| SendEdit::of(b).text()).unwrap_or_default()
+        blocks
+            .get(i)
+            .map(|b| SendEdit::of(b).text())
+            .unwrap_or_default()
     }
 
     /// PLAN-051 T10：本核的 fence 叶 buffer 换到当前 dark_mode 档的 hljs
@@ -887,14 +1154,22 @@ impl AutodownEditorCore {
             return DocOutput::default();
         }
         match input {
-            DocInput::FocusGained => DocOutput { request_redraw: true, ..Default::default() },
+            DocInput::FocusGained => DocOutput {
+                request_redraw: true,
+                ..Default::default()
+            },
             DocInput::FocusLost => {
                 *self.preedit.lock().unwrap() = None;
                 *self.drag.lock().unwrap() = Drag::None;
                 *self.drag_anchor.lock().unwrap() = None;
+                // PLAN-732：失焦取消链接激活（契约 U-02 失焦零激活）。
+                *self.link_pending.lock().unwrap() = None;
                 // PLAN-069：失焦关层（web 编辑器 blur 同语义）。
                 *self.slash.lock().unwrap() = None;
-                DocOutput { request_redraw: true, ..Default::default() }
+                DocOutput {
+                    request_redraw: true,
+                    ..Default::default()
+                }
             }
             DocInput::ModifiersChanged(m) => {
                 // shift 锚：按下瞬间锁定当前焦点块光标；松开清除（对齐 413）。
@@ -908,25 +1183,60 @@ impl AutodownEditorCore {
                 *self.modifiers.lock().unwrap() = m;
                 DocOutput::default()
             }
-            DocInput::KeyPressed { key, text, modifiers } => {
+            DocInput::KeyPressed {
+                key,
+                text,
+                modifiers,
+            } => {
                 *self.modifiers.lock().unwrap() = modifiers;
                 if self.focused_block().is_none() {
                     return DocOutput::default();
                 }
                 self.handle_key(font_system, key, text, clipboard)
             }
-            DocInput::MousePressed { button, x, y } => self.handle_mouse_press(font_system, button, x, y),
+            DocInput::MousePressed { button, x, y } => {
+                self.handle_mouse_press(font_system, button, x, y)
+            }
             DocInput::MouseDragged { x, y } => self.handle_mouse_drag(font_system, x, y),
-            DocInput::MouseReleased { button } => {
+            DocInput::MouseReleased { button, x, y } => {
                 *self.drag.lock().unwrap() = Drag::None;
                 *self.drag_anchor.lock().unwrap() = None;
                 // PLAN-055 T6：列宽拖拽落定（宽度已在拖拽中写 table_widths
                 // ——状态持久于 core，落定即保留）。
                 *self.col_drag.lock().unwrap() = None;
-                if matches!(button, EditorButton::Left | EditorButton::Right) {
-                    DocOutput::default().captured()
+                let mut out = DocOutput::default();
+                // PLAN-732：完整点击门第二腿——抬起点命中**同一链接区间**
+                //（block + byte 区间 + target 三重同一）才激活；拖选超阈/
+                // 修饰键/多击第二击（按下期已清或不登记）、越界抬起（widget
+                // is_over 门已挡）、换内容（rebuild 已清 pending）零冒领。
+                if button == EditorButton::Left {
+                    if let Some(pl) = self.link_pending.lock().unwrap().take() {
+                        if pl.single && pl.plain {
+                            let same = self.layout.lock().unwrap().links.iter().any(|r| {
+                                r.block == pl.block
+                                    && r.lo == pl.lo
+                                    && r.hi == pl.hi
+                                    && r.target == pl.target
+                                    && r.rect.contains(Pt::new(x, y))
+                            });
+                            // PLAN-737：点击门观测面（AUTO_ADE_TRACE=1；合成
+                            // 通道 wikilink 断链家族的定位锚——门核对结果）
+                            ade_trace(&format!(
+                                "RELEASE gate ({x:.0},{y:.0}) pend=({},{},{},{:?}) same={same}",
+                                pl.block, pl.lo, pl.hi, pl.target,
+                            ));
+                            if same {
+                                out.link_activated = Some(split_wikilink_target(&pl.target));
+                            }
+                        }
+                    }
                 } else {
-                    DocOutput::default()
+                    *self.link_pending.lock().unwrap() = None;
+                }
+                if matches!(button, EditorButton::Left | EditorButton::Right) {
+                    out.captured()
+                } else {
+                    out
                 }
             }
             DocInput::ImePreedit(p) => {
@@ -934,7 +1244,11 @@ impl AutodownEditorCore {
                 // PLAN-069：IME 组合期关层（v1 差异登记——web 查询串支持
                 // 组合输入，VM 侧 query 仅直打字符）。
                 *self.slash.lock().unwrap() = None;
-                DocOutput { request_redraw: true, ..Default::default() }.captured()
+                DocOutput {
+                    request_redraw: true,
+                    ..Default::default()
+                }
+                .captured()
             }
             DocInput::ImeCommit(content) => {
                 *self.preedit.lock().unwrap() = None;
@@ -944,7 +1258,9 @@ impl AutodownEditorCore {
                 if let Some(bi) = bi {
                     let mut blocks = self.blocks.lock().unwrap();
                     if let Some(b) = blocks.get_mut(bi) {
-                        b.editor.ed_mut().insert_string(&content.replace("\r\n", "\n"), None);
+                        b.editor
+                            .ed_mut()
+                            .insert_string(&content.replace("\r\n", "\n"), None);
                         out.text_changed = true;
                         out.cursor_changed = true;
                         out.captured = true;
@@ -954,7 +1270,11 @@ impl AutodownEditorCore {
             }
             DocInput::ImeClosed => {
                 *self.preedit.lock().unwrap() = None;
-                DocOutput { request_redraw: true, ..Default::default() }.captured()
+                DocOutput {
+                    request_redraw: true,
+                    ..Default::default()
+                }
+                .captured()
             }
         }
     }
@@ -968,13 +1288,19 @@ impl AutodownEditorCore {
     /// 光标是否处于软首（line 0 index 0）且无选区。
     fn caret_at_soft_start(&self, bi: usize) -> bool {
         let blocks = self.blocks.lock().unwrap();
-        blocks.get(bi).map(|b| SendEdit::of(b).at_soft_start()).unwrap_or(false)
+        blocks
+            .get(bi)
+            .map(|b| SendEdit::of(b).at_soft_start())
+            .unwrap_or(false)
     }
 
     /// 光标是否已在软尾（无选区）。
     fn caret_at_soft_end(&self, bi: usize) -> bool {
         let blocks = self.blocks.lock().unwrap();
-        blocks.get(bi).map(|b| SendEdit::of(b).at_soft_end()).unwrap_or(false)
+        blocks
+            .get(bi)
+            .map(|b| SendEdit::of(b).at_soft_end())
+            .unwrap_or(false)
     }
 
     fn handle_key(
@@ -984,7 +1310,9 @@ impl AutodownEditorCore {
         text: Option<String>,
         clipboard: &mut dyn EditorClipboard,
     ) -> DocOutput {
-        let Some(bi) = self.focused_block() else { return DocOutput::default() };
+        let Some(bi) = self.focused_block() else {
+            return DocOutput::default();
+        };
         let mods = *self.modifiers.lock().unwrap();
 
         // ── PLAN-069 T1：弹层开启期键位路由优先于编辑路径 ───────────────
@@ -1013,15 +1341,21 @@ impl AutodownEditorCore {
         //    跨块选区感知）─────────────────────────────────────────────────
         if ctrl && plain_char('a') {
             let segs = self.segs.lock().unwrap();
-        // PLAN-053 T17：quote 块归属（骨架 Quote 段的叶子 id 集）。
+            // PLAN-053 T17：quote 块归属（骨架 Quote 段的叶子 id 集）。
             let mut order = Vec::new();
             dfs_leaf_order(&segs, &mut order);
             drop(segs);
             if let (Some(&first), Some(&last)) = (order.first(), order.last()) {
                 let len = self.live_text(last).len();
                 self.set_doc_selection(
-                    SelAnchor { block: first, offset: 0 },
-                    SelAnchor { block: last, offset: len },
+                    SelAnchor {
+                        block: first,
+                        offset: 0,
+                    },
+                    SelAnchor {
+                        block: last,
+                        offset: len,
+                    },
                 );
                 // 端点块原生选区清零（渲染单源 doc_sel）。
                 let mut blocks = self.blocks.lock().unwrap();
@@ -1071,7 +1405,9 @@ impl AutodownEditorCore {
                 let bi = self.focused_block().unwrap_or(bi);
                 let mut blocks = self.blocks.lock().unwrap();
                 if let Some(b) = blocks.get_mut(bi) {
-                    b.editor.ed_mut().insert_string(&t.replace("\r\n", "\n"), None);
+                    b.editor
+                        .ed_mut()
+                        .insert_string(&t.replace("\r\n", "\n"), None);
                 }
                 drop(blocks);
                 out.text_changed = true;
@@ -1186,8 +1522,10 @@ impl AutodownEditorCore {
                 // 态不触发）。触发字符不落入文档（web 触发 range 被命令
                 // deleteRange 消化的同端语义）。
                 if c == '/' && !sel_at_entry && self.slash_should_trigger(bi) {
-                    *self.slash.lock().unwrap() =
-                        Some(SlashState { query: String::new(), selected: 0 });
+                    *self.slash.lock().unwrap() = Some(SlashState {
+                        query: String::new(),
+                        selected: 0,
+                    });
                     out.request_redraw = true;
                     return out.captured();
                 }
@@ -1245,18 +1583,17 @@ impl AutodownEditorCore {
 
     fn edit_copy(&self, fs: &mut FontSystem, bi: usize) -> Option<Option<String>> {
         let mut blocks = self.blocks.lock().unwrap();
-        blocks.get_mut(bi).map(|b| b.editor.ed_mut().copy_selection())
+        blocks
+            .get_mut(bi)
+            .map(|b| b.editor.ed_mut().copy_selection())
     }
-
-
-
-
-
 
     /// 焦点块光标几何：(光标行, 块总行数)。
     fn cursor_geometry(&self, bi: usize) -> (usize, usize) {
         let blocks = self.blocks.lock().unwrap();
-        let Some(b) = blocks.get(bi) else { return (0, 1) };
+        let Some(b) = blocks.get(bi) else {
+            return (0, 1);
+        };
         let cur_line = SendEdit::of(b).cursor().line;
         b.editor.ed().with_buffer(|buf| {
             let lines = buf.lines.len().max(1);
@@ -1275,7 +1612,11 @@ impl AutodownEditorCore {
         // **末物理行**按 ↓ 即迁焦邻块（水平落点保留登记余量）；否则交给
         // 原生步进在块内多行间走行。
         let (cur_line, line_total) = self.cursor_geometry(bi);
-        let edge = if up { cur_line == 0 } else { cur_line + 1 >= line_total.max(1) };
+        let edge = if up {
+            cur_line == 0
+        } else {
+            cur_line + 1 >= line_total.max(1)
+        };
         let boundary = edge;
         // PLAN-048 T3：shift 跨块扩展的起点端点（迁焦前捕获）。
         let origin_anchor = {
@@ -1283,11 +1624,18 @@ impl AutodownEditorCore {
             blocks
                 .get(bi)
                 .and_then(Self::cursor_byte_offset)
-                .map(|o| SelAnchor { block: bi, offset: o })
+                .map(|o| SelAnchor {
+                    block: bi,
+                    offset: o,
+                })
         };
         let n = self.block_count();
         let target = if up {
-            if bi == 0 { None } else { Some(bi - 1) }
+            if bi == 0 {
+                None
+            } else {
+                Some(bi - 1)
+            }
         } else if bi + 1 >= n {
             None
         } else {
@@ -1326,7 +1674,10 @@ impl AutodownEditorCore {
                     let y_target: i32 = if up { i32::MAX } else { i32::MIN };
                     ed.action(
                         font_system,
-                        Action::Click { x: goal_x.max(0.0) as i32, y: y_target },
+                        Action::Click {
+                            x: goal_x.max(0.0) as i32,
+                            y: y_target,
+                        },
                     );
                 }
                 drop(blocks);
@@ -1340,7 +1691,13 @@ impl AutodownEditorCore {
                     };
                     let anchor = self.doc_selection().map(|(a, _)| a).or(origin_anchor);
                     if let (Some(a), Some(d)) = (anchor, dest) {
-                        self.set_doc_selection(a, SelAnchor { block: t, offset: d });
+                        self.set_doc_selection(
+                            a,
+                            SelAnchor {
+                                block: t,
+                                offset: d,
+                            },
+                        );
                     }
                     *self.shift_anchor.lock().unwrap() = None;
                 } else {
@@ -1355,7 +1712,11 @@ impl AutodownEditorCore {
                 };
             }
         }
-        DocOutput { cursor_changed: true, request_redraw: true, ..Default::default() }
+        DocOutput {
+            cursor_changed: true,
+            request_redraw: true,
+            ..Default::default()
+        }
     }
 
     fn handle_mouse_press(
@@ -1366,6 +1727,8 @@ impl AutodownEditorCore {
         y: f32,
     ) -> DocOutput {
         if !matches!(button, EditorButton::Left) {
+            // PLAN-732：非左键按下即弃链接激活（右/中键零激活）。
+            *self.link_pending.lock().unwrap() = None;
             return DocOutput::default();
         }
         // PLAN-069 T2：弹层命中优先（项点击执行；层外点击关闭且不落文档
@@ -1377,7 +1740,11 @@ impl AutodownEditorCore {
         // 优先；命中即捕获，不建焦点不改 caret）。
         if let Some((key, col)) = self.table_boundary_hit(x, y) {
             *self.col_drag.lock().unwrap() = Some((key, col));
-            return DocOutput { request_redraw: true, captured: true, ..Default::default() };
+            return DocOutput {
+                request_redraw: true,
+                captured: true,
+                ..Default::default()
+            };
         }
         // PLAN-651 T-02 R5：details 摘要条命中 → 折叠翻转（先于文本命中
         // ——摘要行非编辑面；web marker 翻转同语义）。
@@ -1424,6 +1791,28 @@ impl AutodownEditorCore {
             k
         };
 
+        // PLAN-732：完整点击门第一腿——按下命中链接区间即登记（纯观察：
+        // 建焦/caret 正常流程不变；激活与否在抬起腿核对）。多击第二/三
+        // 击不起激活；修饰键按下（shift 扩选等）不登记 plain。
+        {
+            let mods = *self.modifiers.lock().unwrap();
+            let plain = !(mods.shift || mods.control || mods.alt || mods.logo);
+            *self.link_pending.lock().unwrap() = layout
+                .links
+                .iter()
+                .find(|r| r.rect.contains(Pt::new(x, y)))
+                .map(|r| PendingLink {
+                    block: r.block,
+                    lo: r.lo,
+                    hi: r.hi,
+                    target: r.target.clone(),
+                    press_x: x,
+                    press_y: y,
+                    single: kind == ClickKind::Single,
+                    plain,
+                });
+        }
+
         let bl = layout.blocks[hit];
         let bx = ((x - bl.origin.x).max(0.0)) as i32;
         let by = ((y - bl.origin.y).max(0.0)) as i32;
@@ -1450,8 +1839,10 @@ impl AutodownEditorCore {
             let blocks = self.blocks.lock().unwrap();
             blocks.get(hit).and_then(Self::cursor_byte_offset)
         };
-        *self.drag_anchor.lock().unwrap() =
-            press_off.map(|o| SelAnchor { block: hit, offset: o });
+        *self.drag_anchor.lock().unwrap() = press_off.map(|o| SelAnchor {
+            block: hit,
+            offset: o,
+        });
         *self.drag.lock().unwrap() = Drag::Buffer;
         out.captured()
     }
@@ -1483,7 +1874,8 @@ impl AutodownEditorCore {
     /// PLAN-055 T6：列边界命中（±TABLE_HIT_BAND 带，y ∈ 表格行区）。复用
     /// 只读臂 `view::col_boundary_hit`（右边界带命中、多命中取最近——两臂
     /// 拖拽手感同源）；x 换表局部坐标后按带宽 2×（±band/2 语义）判定。
-    fn table_boundary_hit(&self, x: f32, y: f32) -> Option<(u64, usize)> {        let geom = self.table_geom.lock().unwrap();
+    fn table_boundary_hit(&self, x: f32, y: f32) -> Option<(u64, usize)> {
+        let geom = self.table_geom.lock().unwrap();
         for (key, g) in geom.iter() {
             if y < g.y0 || y > g.y1 {
                 continue;
@@ -1505,8 +1897,7 @@ impl AutodownEditorCore {
     /// CONT_SUMMARY_H；返回可见序 index）。
     fn details_summary_hit(&self, x: f32, y: f32) -> Option<usize> {
         let geom = self.details_geom.lock().unwrap();
-        geom.iter()
-            .position(|(r, _)| r.contains(Pt::new(x, y)))
+        geom.iter().position(|(r, _)| r.contains(Pt::new(x, y)))
     }
 
     /// PLAN-651 T-02 R5：折叠翻转——可见序定位 details seg，open 取反
@@ -1526,12 +1917,18 @@ impl AutodownEditorCore {
         *open = !*open;
         drop(segs);
         if collapsing
-            && self.focused_block().map(|f| hidden_leaves.contains(&f)).unwrap_or(false)
+            && self
+                .focused_block()
+                .map(|f| hidden_leaves.contains(&f))
+                .unwrap_or(false)
         {
             *self.focus.lock().unwrap() = None;
         }
         self.revision.fetch_add(1, Ordering::Relaxed);
-        DocOutput { request_redraw: true, ..Default::default() }
+        DocOutput {
+            request_redraw: true,
+            ..Default::default()
+        }
     }
 
     /// PLAN-055 T6：拖拽改宽——新宽 = 拖点 x − 被拖列左缘（min 48px 钳
@@ -1560,13 +1957,29 @@ impl AutodownEditorCore {
             }
             entry[col] = new_w;
         }
-        DocOutput { request_redraw: true, captured: true, ..Default::default() }
+        DocOutput {
+            request_redraw: true,
+            captured: true,
+            ..Default::default()
+        }
     }
 
     /// 拖选移动（PLAN-048 T3）：同叶保持块内原生拖选（cosmic Action::Drag）；
     /// 越叶（或已入跨块模式）→ 目标块定位字节偏移，doc_sel 端点推进 +
     /// 焦点随动。非拖选零操作。
     fn handle_mouse_drag(&self, fs: &mut FontSystem, x: f32, y: f32) -> DocOutput {
+        // PLAN-732：拖动超阈取消链接激活（拖选不激活，契约 U-02——按下
+        // 点起算的累计位移超 LINK_DRAG_SLOP 即判拖选意图）。
+        {
+            let mut pending = self.link_pending.lock().unwrap();
+            if let Some(pl) = pending.as_ref() {
+                let dx = x - pl.press_x;
+                let dy = y - pl.press_y;
+                if dx * dx + dy * dy > LINK_DRAG_SLOP * LINK_DRAG_SLOP {
+                    *pending = None;
+                }
+            }
+        }
         // PLAN-055 T6：列宽拖拽——实时改宽写 table_widths（下一帧
         // relayout），优先于拖选路径。
         if matches!(*self.col_drag.lock().unwrap(), Some(_)) {
@@ -1576,7 +1989,9 @@ impl AutodownEditorCore {
             return DocOutput::default();
         }
         let layout = self.layout.lock().unwrap().clone();
-        let Some(tb) = hit_test(&layout, x, y) else { return DocOutput::default() };
+        let Some(tb) = hit_test(&layout, x, y) else {
+            return DocOutput::default();
+        };
         let Some(anchor) = *self.drag_anchor.lock().unwrap() else {
             return DocOutput::default();
         };
@@ -1591,12 +2006,18 @@ impl AutodownEditorCore {
                     y: ((y - bl.origin.y).max(0.0)) as i32,
                 },
             );
-            return DocOutput { cursor_changed: true, request_redraw: true, ..Default::default() };
+            return DocOutput {
+                cursor_changed: true,
+                request_redraw: true,
+                ..Default::default()
+            };
         }
         // 跨块：目标块 Click 定位 → 字节偏移 → doc_sel 推进。
         let offset = {
             let mut blocks = self.blocks.lock().unwrap();
-            let Some(b) = blocks.get_mut(tb) else { return DocOutput::default() };
+            let Some(b) = blocks.get_mut(tb) else {
+                return DocOutput::default();
+            };
             let ed = b.editor.ed_mut();
             ed.shape_as_needed(fs, true);
             let bl = layout.blocks[tb];
@@ -1620,11 +2041,21 @@ impl AutodownEditorCore {
             }
         }
         if let Some(off) = offset {
-            self.set_doc_selection(anchor, SelAnchor { block: tb, offset: off });
+            self.set_doc_selection(
+                anchor,
+                SelAnchor {
+                    block: tb,
+                    offset: off,
+                },
+            );
             *self.focus.lock().unwrap() = Some(tb);
             *self.shift_anchor.lock().unwrap() = None;
         }
-        DocOutput { cursor_changed: true, request_redraw: true, ..Default::default() }
+        DocOutput {
+            cursor_changed: true,
+            request_redraw: true,
+            ..Default::default()
+        }
     }
 
     // ── 绘制抽取 ──────────────────────────────────────────────────────
@@ -1642,12 +2073,30 @@ impl AutodownEditorCore {
         base: Rgba,
         placeholder: Option<&str>,
     ) -> DocFrame {
-        let mut list = DocDrawList { revision: self.revision(), ..Default::default() };
+        let mut list = DocDrawList {
+            revision: self.revision(),
+            ..Default::default()
+        };
         let mut layouts: Vec<BlockLayout> = Vec::new();
         let focus = self.focused_block();
-        let caret_color = Rgba { r: 1.0, g: 1.0, b: 1.0, a: 0.95 };
-        let sel_color = Rgba { r: 0.34, g: 0.51, b: 1.0, a: 0.35 };
-        let frame_color = Rgba { r: 0.35, g: 0.55, b: 1.0, a: 0.55 };
+        let caret_color = Rgba {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 0.95,
+        };
+        let sel_color = Rgba {
+            r: 0.34,
+            g: 0.51,
+            b: 1.0,
+            a: 0.35,
+        };
+        let frame_color = Rgba {
+            r: 0.35,
+            g: 0.55,
+            b: 1.0,
+            a: 0.55,
+        };
 
         let view_inst = self.is_view_instance();
         let mut blocks = self.blocks.lock().unwrap();
@@ -1667,8 +2116,15 @@ impl AutodownEditorCore {
         {
             let segs = self.segs.lock().unwrap();
             walk_skeleton_attribution(
-                &segs, false, 0.0, BLOCK_GAP, font_system, viewport_w, &widths_snap,
-                &mut attrib, &mut render_items,
+                &segs,
+                false,
+                0.0,
+                BLOCK_GAP,
+                font_system,
+                viewport_w,
+                &widths_snap,
+                &mut attrib,
+                &mut render_items,
             );
         }
         {
@@ -1699,18 +2155,26 @@ impl AutodownEditorCore {
         if let Some((fb, _, lb, _)) = self.doc_sel_range() {
             for (bi, lo, hi) in self.doc_sel_spans_in(&blocks) {
                 let interior = bi != fb && bi != lb;
-                let len = blocks.get(bi).map(|b| SendEdit::of(b).text().len()).unwrap_or(0);
-                let seg = if interior && len == 0 { (0, 1) } else { (lo, hi) };
+                let len = blocks
+                    .get(bi)
+                    .map(|b| SendEdit::of(b).text().len())
+                    .unwrap_or(0);
+                let seg = if interior && len == 0 {
+                    (0, 1)
+                } else {
+                    (lo, hi)
+                };
                 doc_segs.insert(bi, seg);
             }
         }
         let mut layouts: Vec<Option<BlockLayout>> = vec![None; blocks.len()];
+        // PLAN-732：链接命中区累计（两叶臂写入；DocLayout.links 落布局）。
+        let mut link_regions: Vec<LinkRegion> = Vec::new();
         // PLAN-054 T5/T6：task done 态 accent 色（theme 语义 primary，双档
         // 感知）——帧内一次解析。
-        let accent_rgb = crate::ui::style::theme::resolve_semantic_rgb(
-            &crate::ui::style::Color::Primary,
-        )
-        .unwrap_or((59, 130, 246));
+        let accent_rgb =
+            crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Primary)
+                .unwrap_or((59, 130, 246));
         let mut y = 0.0f32;
         // PLAN-055 T3/T4：表格行分组累计器——同 (key,row) 的 cell 叶先量
         // 后摆（行末统一结算 chrome fills/布局矩形/推进），行高 = 行内最
@@ -1749,7 +2213,12 @@ impl AutodownEditorCore {
                 .fold(0.0f32, f32::max);
             let row_h = (content_bottom + pad_y - ra.y_top).max(2.0 * pad_y + line_h);
             let (br, bg_, bb) = crate::ui::style::theme::resolve_border_rgb();
-            let border = Rgba { r: br as f32 / 255.0, g: bg_ as f32 / 255.0, b: bb as f32 / 255.0, a: 1.0 };
+            let border = Rgba {
+                r: br as f32 / 255.0,
+                g: bg_ as f32 / 255.0,
+                b: bb as f32 / 255.0,
+                a: 1.0,
+            };
             let x0 = ra.cells.first().map(|c| c.x).unwrap_or(0.0);
             let x1 = ra.cells.last().map(|c| c.x + c.w).unwrap_or(x0);
             let total_w = (x1 - x0).max(1.0);
@@ -1758,16 +2227,26 @@ impl AutodownEditorCore {
                 let (hr, hg, hb) = autodown_blocks::table_header_rgb();
                 list.fills.push((
                     Rect::new(x0, ra.y_top, total_w, row_h),
-                    Rgba { r: hr as f32 / 255.0, g: hg as f32 / 255.0, b: hb as f32 / 255.0, a: 1.0 },
+                    Rgba {
+                        r: hr as f32 / 255.0,
+                        g: hg as f32 / 255.0,
+                        b: hb as f32 / 255.0,
+                        a: 1.0,
+                    },
                 ));
             }
             // 列分隔线（列间 + 末列右缘）。
             for c in ra.cells.iter().skip(1) {
-                list.fills.push((Rect::new(c.x, ra.y_top, rule, row_h), border));
+                list.fills
+                    .push((Rect::new(c.x, ra.y_top, rule, row_h), border));
             }
-            list.fills.push((Rect::new(x1 - rule, ra.y_top, rule, row_h), border));
+            list.fills
+                .push((Rect::new(x1 - rule, ra.y_top, rule, row_h), border));
             // 行底线（每行 border-b 语义）。
-            list.fills.push((Rect::new(x0, ra.y_top + row_h - rule, total_w, rule), border));
+            list.fills.push((
+                Rect::new(x0, ra.y_top + row_h - rule, total_w, rule),
+                border,
+            ));
             // 布局矩形：rect = cell 全格（命中域），origin = 文字原点。
             for c in &ra.cells {
                 for (bi, ty, _) in &c.leaves {
@@ -1809,15 +2288,18 @@ impl AutodownEditorCore {
             // 表格行结算时机：当前 item 非 cell 叶（含 Raw/防御补尾叶）时，
             // 先以表尾间距结算未闭合行。
             let is_cell_item = match draw {
-                DrawItem::Leaf(bi) => {
-                    attrib.get(bi).map(|a| a.cell.is_some()).unwrap_or(false)
-                }
+                DrawItem::Leaf(bi) => attrib.get(bi).map(|a| a.cell.is_some()).unwrap_or(false),
                 _ => false,
             };
             if !is_cell_item {
                 if let Some(ra) = row_acc.take() {
                     finalize_table_row(
-                        ra, BLOCK_GAP, &mut list, &mut layouts, &mut y, &mut geom_acc,
+                        ra,
+                        BLOCK_GAP,
+                        &mut list,
+                        &mut layouts,
+                        &mut y,
+                        &mut geom_acc,
                     );
                 }
             }
@@ -1852,7 +2334,12 @@ impl AutodownEditorCore {
                     let (br, bg_, bb) = crate::ui::style::theme::resolve_border_rgb();
                     list.fills.push((
                         Rect::new(0.0, y + h / 2.0, viewport_w.max(1.0), 1.0),
-                        Rgba { r: br as f32 / 255.0, g: bg_ as f32 / 255.0, b: bb as f32 / 255.0, a: 1.0 },
+                        Rgba {
+                            r: br as f32 / 255.0,
+                            g: bg_ as f32 / 255.0,
+                            b: bb as f32 / 255.0,
+                            a: 1.0,
+                        },
                     ));
                     y += h + BLOCK_GAP;
                     continue;
@@ -1868,7 +2355,12 @@ impl AutodownEditorCore {
                         y,
                         size: BODY_SIZE,
                         line_height: h,
-                        color: Rgba { r: mr as f32 / 255.0, g: mg as f32 / 255.0, b: mb as f32 / 255.0, a: 1.0 },
+                        color: Rgba {
+                            r: mr as f32 / 255.0,
+                            g: mg as f32 / 255.0,
+                            b: mb as f32 / 255.0,
+                            a: 1.0,
+                        },
                         bold: false,
                         italic: false,
                         mono: false,
@@ -1896,7 +2388,12 @@ impl AutodownEditorCore {
                     finalize_table_row(ra, gap, &mut list, &mut layouts, &mut y, &mut geom_acc);
                 }
                 if row_acc.is_none() {
-                    row_acc = Some(RowAcc { key: cell.key, row: cell.row, y_top: y, cells: Vec::new() });
+                    row_acc = Some(RowAcc {
+                        key: cell.key,
+                        row: cell.row,
+                        y_top: y,
+                        cells: Vec::new(),
+                    });
                 }
                 let row_y_top = row_acc.as_ref().unwrap().y_top;
                 let b = &mut blocks[bi];
@@ -1945,8 +2442,25 @@ impl AutodownEditorCore {
                     quote_color: base,
                 };
                 let run_base = list.runs.len();
-                let block_h = ed
-                    .with_buffer(|buf| buffer_block_runs(buf, text_x, text_y, size, line_h, &ctx, &mut list.runs));
+                let block_h = ed.with_buffer(|buf| {
+                    buffer_block_runs(
+                        buf,
+                        text_x,
+                        text_y,
+                        size,
+                        line_h,
+                        &ctx,
+                        &mut list.runs,
+                        &mut list.fills,
+                    )
+                });
+                // PLAN-732：cell 叶链接命中区（快照匹配期才产——本地编辑
+                // 暂态失活，与 mark 区间同口径）。
+                if styled_ok && !b.links.is_empty() {
+                    ed.with_buffer(|buf| {
+                        push_link_regions(buf, &b.links, bi, text_x, text_y, &mut link_regions)
+                    });
+                }
                 // T4：表头行文字加粗（加粗经 run.bold → iced Bold 字重）。
                 if cell.row == 0 {
                     for r in &mut list.runs[run_base..] {
@@ -1958,7 +2472,15 @@ impl AutodownEditorCore {
                     // 选区（跨块段矩形）与焦点 caret——坐标同顶层叶路径。
                     if let Some(&(lo, hi)) = doc_segs.get(&bi) {
                         ed.with_buffer(|buf| {
-                            push_byte_range_rects(buf, text_x, text_y, lo, hi, sel_color, &mut list.selection);
+                            push_byte_range_rects(
+                                buf,
+                                text_x,
+                                text_y,
+                                lo,
+                                hi,
+                                sel_color,
+                                &mut list.selection,
+                            );
                         });
                     } else if focus == Some(bi) {
                         if let Some((start, end)) = ed.selection_bounds() {
@@ -1967,14 +2489,29 @@ impl AutodownEditorCore {
                                     if run.line_i < start.line || run.line_i > end.line {
                                         continue;
                                     }
-                                    let lo = if run.line_i == start.line { start.index } else { 0 };
-                                    let hi = if run.line_i == end.line { end.index } else { run.text.len() };
+                                    let lo = if run.line_i == start.line {
+                                        start.index
+                                    } else {
+                                        0
+                                    };
+                                    let hi = if run.line_i == end.line {
+                                        end.index
+                                    } else {
+                                        run.text.len()
+                                    };
                                     if hi <= lo {
                                         continue;
                                     }
-                                    if let (Some(x0), Some(x1)) = (index_x(&run, lo), index_x(&run, hi)) {
+                                    if let (Some(x0), Some(x1)) =
+                                        (index_x(&run, lo), index_x(&run, hi))
+                                    {
                                         list.selection.push((
-                                            Rect::new(text_x + x0.min(x1), text_y + run.line_top, (x1 - x0).abs().max(2.0), run.line_height),
+                                            Rect::new(
+                                                text_x + x0.min(x1),
+                                                text_y + run.line_top,
+                                                (x1 - x0).abs().max(2.0),
+                                                run.line_height,
+                                            ),
                                             sel_color,
                                         ));
                                     }
@@ -1985,7 +2522,12 @@ impl AutodownEditorCore {
                     if focus == Some(bi) {
                         if let Some((cx, cy)) = ed.cursor_position() {
                             list.caret = Some(CaretDraw {
-                                rect: Rect::new(text_x + cx as f32, text_y + cy as f32, CARET_WIDTH, size * 1.15),
+                                rect: Rect::new(
+                                    text_x + cx as f32,
+                                    text_y + cy as f32,
+                                    CARET_WIDTH,
+                                    size * 1.15,
+                                ),
                                 color: caret_color,
                             });
                             let preedit = self.preedit.lock().unwrap().clone();
@@ -2065,7 +2607,13 @@ impl AutodownEditorCore {
             } else {
                 (viewport_w.max(1.0) - x_off).max(1.0)
             };
-            let text_y = y + extra_top + if fenced_chrome { fam.chrome.header_h + pad } else { 0.0 };
+            let text_y = y
+                + extra_top
+                + if fenced_chrome {
+                    fam.chrome.header_h + pad
+                } else {
+                    0.0
+                };
             let ed = &mut b.editor.0;
 
             ed.with_buffer_mut(|buf| {
@@ -2098,12 +2646,40 @@ impl AutodownEditorCore {
                 syntax: fenced,
                 base,
                 heading,
-                heading_color: Rgba { r: sr as f32 / 255.0, g: sg as f32 / 255.0, b: sb as f32 / 255.0, a: 1.0 },
+                heading_color: Rgba {
+                    r: sr as f32 / 255.0,
+                    g: sg as f32 / 255.0,
+                    b: sb as f32 / 255.0,
+                    a: 1.0,
+                },
                 quote: in_quote,
-                quote_color: Rgba { r: mr as f32 / 255.0, g: mg as f32 / 255.0, b: mb as f32 / 255.0, a: 1.0 },
+                quote_color: Rgba {
+                    r: mr as f32 / 255.0,
+                    g: mg as f32 / 255.0,
+                    b: mb as f32 / 255.0,
+                    a: 1.0,
+                },
             };
-            let block_h =
-                ed.with_buffer(|buf| buffer_block_runs(buf, x_off, text_y, size, line_h, &ctx, &mut list.runs));
+            let block_h = ed.with_buffer(|buf| {
+                buffer_block_runs(
+                    buf,
+                    x_off,
+                    text_y,
+                    size,
+                    line_h,
+                    &ctx,
+                    &mut list.runs,
+                    &mut list.fills,
+                )
+            });
+
+            // PLAN-732：顶层/容器叶链接命中区（快照匹配期才产；折行链接
+            // 每 run 一段，各段独立命中——整块矩形禁用）。
+            if styled_ok && !b.links.is_empty() {
+                ed.with_buffer(|buf| {
+                    push_link_regions(buf, &b.links, bi, x_off, text_y, &mut link_regions)
+                });
+            }
 
             // PLAN-054 T5/T6：列表 marker（项首叶独立 run，画在 gutter 左
             // 缘；task done 态 accent 色——五截图根因③④）。
@@ -2117,7 +2693,12 @@ impl AutodownEditorCore {
                             a: 1.0,
                         }
                     } else {
-                        Rgba { r: mr as f32 / 255.0, g: mg as f32 / 255.0, b: mb as f32 / 255.0, a: 1.0 }
+                        Rgba {
+                            r: mr as f32 / 255.0,
+                            g: mg as f32 / 255.0,
+                            b: mb as f32 / 255.0,
+                            a: 1.0,
+                        }
                     };
                     list.runs.push(DocRun {
                         text: mtext.clone(),
@@ -2136,12 +2717,14 @@ impl AutodownEditorCore {
                 // PLAN-054 T8：callout/details 容器 chrome——首叶上方标题/
                 // 摘要行（五截图根因⑥）。
                 if let Some((ttext, tcolor)) = &at.cont_title {
-                    let t_rgb = tcolor.map(|(r, g, b)| Rgba {
-                        r: r as f32 / 255.0,
-                        g: g as f32 / 255.0,
-                        b: b as f32 / 255.0,
-                        a: 1.0,
-                    }).unwrap_or(base);
+                    let t_rgb = tcolor
+                        .map(|(r, g, b)| Rgba {
+                            r: r as f32 / 255.0,
+                            g: g as f32 / 255.0,
+                            b: b as f32 / 255.0,
+                            a: 1.0,
+                        })
+                        .unwrap_or(base);
                     list.runs.push(DocRun {
                         text: ttext.clone(),
                         x: at.x,
@@ -2163,9 +2746,16 @@ impl AutodownEditorCore {
                 // PLAN-050 F2：配色随主题取用（与 family_of(Fence) 的 chrome
                 // 类串同读 dark_mode——修复浅色 hljs 标点画 zinc 暗底不可见）。
                 let (bg, header_bg, header_fg, border) = autodown_blocks::fence_palette();
-                let full = Rect::new(0.0, y, viewport_w.max(1.0), h_h + pad + block_h.max(line_h) + pad);
-                list.fills.push((Rect::new(full.x, full.y, full.w, full.h), rgb8(bg)));
-                list.fills.push((Rect::new(full.x, full.y, full.w, h_h), rgb8(header_bg)));
+                let full = Rect::new(
+                    0.0,
+                    y,
+                    viewport_w.max(1.0),
+                    h_h + pad + block_h.max(line_h) + pad,
+                );
+                list.fills
+                    .push((Rect::new(full.x, full.y, full.w, full.h), rgb8(bg)));
+                list.fills
+                    .push((Rect::new(full.x, full.y, full.w, h_h), rgb8(header_bg)));
                 let px = 1.0;
                 for e in [
                     Rect::new(full.x, full.y, full.w, px),
@@ -2177,7 +2767,11 @@ impl AutodownEditorCore {
                 }
                 // 语言标签（家族 header_label 位；lang 缺省 "code"，与只读
                 // 轨同口径）。
-                let label = b.syntax.as_deref().filter(|s| !s.is_empty()).unwrap_or("code");
+                let label = b
+                    .syntax
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("code");
                 list.runs.push(DocRun {
                     text: label.to_owned(),
                     x: pad,
@@ -2201,7 +2795,12 @@ impl AutodownEditorCore {
                 let (br, bg_, bb) = crate::ui::style::theme::resolve_border_rgb();
                 list.fills.push((
                     Rect::new(0.0, y, 3.0, total_h),
-                    Rgba { r: br as f32 / 255.0, g: bg_ as f32 / 255.0, b: bb as f32 / 255.0, a: 1.0 },
+                    Rgba {
+                        r: br as f32 / 255.0,
+                        g: bg_ as f32 / 255.0,
+                        b: bb as f32 / 255.0,
+                        a: 1.0,
+                    },
                 ));
             }
 
@@ -2212,7 +2811,8 @@ impl AutodownEditorCore {
             // 1px 边 @0.50」（矩形近似圆角，fence 盒同款原语）。替代
             // PLAN-054 T8 的 per-叶 3px 左条（引语式残段，撤）。
             if let Some((cr, cg, cb)) = at.cont_strip {
-                let same_run = matches!(&callout_run, Some((r, g, b, _, _)) if (*r, *g, *b) == (cr, cg, cb));
+                let same_run =
+                    matches!(&callout_run, Some((r, g, b, _, _)) if (*r, *g, *b) == (cr, cg, cb));
                 if at.cont_title.is_some() || !same_run {
                     push_callout_box(&mut list.fills, callout_run.take(), viewport_w);
                     callout_run = Some((cr, cg, cb, y, y + total_h));
@@ -2229,7 +2829,15 @@ impl AutodownEditorCore {
                 // 单一事实源在 doc_sel，命中段时块内 cosmic 选区路径让位。
                 if let Some(&(lo, hi)) = doc_segs.get(&bi) {
                     ed.with_buffer(|buf| {
-                        push_byte_range_rects(buf, x_off, text_y, lo, hi, sel_color, &mut list.selection);
+                        push_byte_range_rects(
+                            buf,
+                            x_off,
+                            text_y,
+                            lo,
+                            hi,
+                            sel_color,
+                            &mut list.selection,
+                        );
                     });
                 } else if focus == Some(bi) {
                     if let Some((start, end)) = ed.selection_bounds() {
@@ -2238,14 +2846,28 @@ impl AutodownEditorCore {
                                 if run.line_i < start.line || run.line_i > end.line {
                                     continue;
                                 }
-                                let lo = if run.line_i == start.line { start.index } else { 0 };
-                                let hi = if run.line_i == end.line { end.index } else { run.text.len() };
+                                let lo = if run.line_i == start.line {
+                                    start.index
+                                } else {
+                                    0
+                                };
+                                let hi = if run.line_i == end.line {
+                                    end.index
+                                } else {
+                                    run.text.len()
+                                };
                                 if hi <= lo {
                                     continue;
                                 }
-                                if let (Some(x0), Some(x1)) = (index_x(&run, lo), index_x(&run, hi)) {
+                                if let (Some(x0), Some(x1)) = (index_x(&run, lo), index_x(&run, hi))
+                                {
                                     list.selection.push((
-                                        Rect::new(x_off + x0.min(x1), text_y + run.line_top, (x1 - x0).abs().max(2.0), run.line_height),
+                                        Rect::new(
+                                            x_off + x0.min(x1),
+                                            text_y + run.line_top,
+                                            (x1 - x0).abs().max(2.0),
+                                            run.line_height,
+                                        ),
                                         sel_color,
                                     ));
                                 }
@@ -2255,8 +2877,16 @@ impl AutodownEditorCore {
                 }
                 if focus == Some(bi) {
                     if let Some((cx, cy)) = ed.cursor_position() {
-                        let rect = Rect::new(x_off + cx as f32, text_y + cy as f32, CARET_WIDTH, size * 1.15);
-                        list.caret = Some(CaretDraw { rect, color: caret_color });
+                        let rect = Rect::new(
+                            x_off + cx as f32,
+                            text_y + cy as f32,
+                            CARET_WIDTH,
+                            size * 1.15,
+                        );
+                        list.caret = Some(CaretDraw {
+                            rect,
+                            color: caret_color,
+                        });
                         let preedit = self.preedit.lock().unwrap().clone();
                         if let Some(ptext) = preedit.filter(|p| !p.is_empty()) {
                             list.preedit = Some(PreeditDraw {
@@ -2292,7 +2922,14 @@ impl AutodownEditorCore {
         // PLAN-055：循环尾未闭合表格行以表尾间距结算；几何快照整体换帧
         // （表被外部重建移除时旧快照自愈清退）。
         if let Some(ra) = row_acc.take() {
-            finalize_table_row(ra, BLOCK_GAP, &mut list, &mut layouts, &mut y, &mut geom_acc);
+            finalize_table_row(
+                ra,
+                BLOCK_GAP,
+                &mut list,
+                &mut layouts,
+                &mut y,
+                &mut geom_acc,
+            );
         }
         *self.table_geom.lock().unwrap() = geom_acc;
         *self.details_geom.lock().unwrap() = details_acc;
@@ -2338,7 +2975,12 @@ impl AutodownEditorCore {
             let top = (y - BLOCK_GAP).max(0.0) + BAR_PAD;
             list.fills.push((
                 Rect::new(0.0, top, viewport_w, BAR_H),
-                Rgba { r: 0.35, g: 0.55, b: 1.0, a: 0.16 },
+                Rgba {
+                    r: 0.35,
+                    g: 0.55,
+                    b: 1.0,
+                    a: 0.16,
+                },
             ));
             list.runs.push(DocRun {
                 text: "流式生成中…（只读，完成后解锁）".to_owned(),
@@ -2346,7 +2988,12 @@ impl AutodownEditorCore {
                 y: top + 3.0,
                 size: BODY_SIZE,
                 line_height: BODY_SIZE * LINE_H_PARA,
-                color: Rgba { r: 0.55, g: 0.7, b: 1.0, a: 0.92 },
+                color: Rgba {
+                    r: 0.55,
+                    g: 0.7,
+                    b: 1.0,
+                    a: 0.92,
+                },
                 bold: false,
                 italic: false,
                 mono: false,
@@ -2361,7 +3008,12 @@ impl AutodownEditorCore {
         // 可达）。视图实例门控不开层（防御臂）。过滤空集不画层（开启态保
         // 留供删字符回显；web 空态文案 v1 不做，登记）。
         let mut menu_h = 0.0f32;
-        let slash_open = self.slash.lock().unwrap().as_ref().map(|s| (s.query.clone(), s.selected));
+        let slash_open = self
+            .slash
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|s| (s.query.clone(), s.selected));
         if let Some((query, selected)) = slash_open {
             if !view_inst {
                 let filtered = Self::slash_filtered_static(&query);
@@ -2384,7 +3036,11 @@ impl AutodownEditorCore {
                     let height = SLASH_MENU_PAD * 2.0 + SLASH_ITEM_H * n as f32;
                     let below = ay + SLASH_MENU_GAP;
                     let flip = below + height > content_total + banner_h + 2.0;
-                    let top = if flip { (ay - SLASH_MENU_GAP - height).max(0.0) } else { below };
+                    let top = if flip {
+                        (ay - SLASH_MENU_GAP - height).max(0.0)
+                    } else {
+                        below
+                    };
                     let mx = ax.min((viewport_w - width - 1.0).max(0.0)).max(0.0);
                     let dark = crate::ui::style::theme::dark_mode();
                     let (br, bg_, bb) = crate::ui::style::theme::resolve_border_rgb();
@@ -2393,9 +3049,19 @@ impl AutodownEditorCore {
                         selected: selected.min(n - 1),
                         items: Vec::with_capacity(n),
                         bg: if dark {
-                            Rgba { r: 24.0 / 255.0, g: 24.0 / 255.0, b: 27.0 / 255.0, a: 1.0 }
+                            Rgba {
+                                r: 24.0 / 255.0,
+                                g: 24.0 / 255.0,
+                                b: 27.0 / 255.0,
+                                a: 1.0,
+                            }
                         } else {
-                            Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }
+                            Rgba {
+                                r: 1.0,
+                                g: 1.0,
+                                b: 1.0,
+                                a: 1.0,
+                            }
                         },
                         border: Rgba {
                             r: br as f32 / 255.0,
@@ -2404,12 +3070,27 @@ impl AutodownEditorCore {
                             a: 1.0,
                         },
                         hover: if dark {
-                            Rgba { r: 39.0 / 255.0, g: 39.0 / 255.0, b: 42.0 / 255.0, a: 1.0 }
+                            Rgba {
+                                r: 39.0 / 255.0,
+                                g: 39.0 / 255.0,
+                                b: 42.0 / 255.0,
+                                a: 1.0,
+                            }
                         } else {
-                            Rgba { r: 244.0 / 255.0, g: 244.0 / 255.0, b: 245.0 / 255.0, a: 1.0 }
+                            Rgba {
+                                r: 244.0 / 255.0,
+                                g: 244.0 / 255.0,
+                                b: 245.0 / 255.0,
+                                a: 1.0,
+                            }
                         },
                         fg: base,
-                        dim: Rgba { r: base.r * 0.55, g: base.g * 0.55, b: base.b * 0.55, a: base.a },
+                        dim: Rgba {
+                            r: base.r * 0.55,
+                            g: base.g * 0.55,
+                            b: base.b * 0.55,
+                            a: base.a,
+                        },
                     };
                     let mut geom_items: Vec<(usize, Rect)> = Vec::with_capacity(n);
                     for (i, &manifest_idx) in filtered.iter().enumerate() {
@@ -2456,8 +3137,12 @@ impl AutodownEditorCore {
                     None => panic!("render covers every block"),
                 })
                 .collect(),
+            links: link_regions,
         };
-        DocFrame { list, height: (y - BLOCK_GAP).max(0.0) + banner_h + menu_h }
+        DocFrame {
+            list,
+            height: (y - BLOCK_GAP).max(0.0) + banner_h + menu_h,
+        }
     }
 }
 
@@ -2465,7 +3150,10 @@ impl AutodownEditorCore {
 /// PLAN-603 T-1：点击严格口径——仅矩形包含，未命中 None（无最近块
 /// 回落）。handle_mouse_press 消费；拖选路径沿用宽松 hit_test。
 fn hit_test_strict(layout: &DocLayout, x: f32, y: f32) -> Option<usize> {
-    layout.blocks.iter().position(|bl| bl.rect.contains(Pt::new(x, y)))
+    layout
+        .blocks
+        .iter()
+        .position(|bl| bl.rect.contains(Pt::new(x, y)))
 }
 
 /// 宽松口径（拖选续段）：矩形包含未命中回落最近块中心 y。仅
@@ -2517,6 +3205,9 @@ pub struct BlockDrawCtx<'a> {
 /// 单个已布局 Buffer → 样式化 DocRun 段。**纯函数**：只读 layout_runs，
 /// 不整形、不触状态——编辑壳（render_frame）与只读臂 fence 正文（T4）
 /// 共用，「同一 Buffer + 同一绘制路径」的结构基座。返回块内容高（px）。
+/// jade 反馈②：行内 code 段同步发芯片底色矩形进 `fills`（先于选区绘制
+/// ——选区盖芯片；`mono` family 已由 ensure_code_family_spans 承担）。
+#[allow(clippy::too_many_arguments)]
 pub fn buffer_block_runs(
     buf: &Buffer,
     x_origin: f32,
@@ -2525,6 +3216,7 @@ pub fn buffer_block_runs(
     line_h: f32,
     ctx: &BlockDrawCtx,
     out: &mut Vec<DocRun>,
+    fills: &mut Vec<(Rect, Rgba)>,
 ) -> f32 {
     // 行前缀偏移表：mark 区间是全块字节坐标，layout run 的 glyph 偏移是
     // 行内坐标——求交前先平移。cosmic 行文本不含行尾符，故 +1 为换行宽。
@@ -2546,7 +3238,9 @@ pub fn buffer_block_runs(
         } else {
             None
         };
-        push_styled_pieces(&run, attrs, ctx, base_off, x_origin, top, size, line_h, out);
+        push_styled_pieces(
+            &run, attrs, ctx, base_off, x_origin, top, size, line_h, out, fills,
+        );
     }
     block_h
 }
@@ -2555,6 +3249,10 @@ pub fn buffer_block_runs(
 /// 取并集成格，逐格取覆盖的语法色 + mark 样式。styled_ok=false 时 mark
 /// 退化基础样式（本地编辑后、回写重建前的暂态）；无 attrs 时语法色缺席。
 /// 区间偏移先加行前缀（Plan 428 P2 + code_editor push_run_pieces 同路）。
+/// jade 反馈②：st.code 格同步发芯片底色（autodown_blocks::inline_code_bg_rgba
+/// ——vue 轨引擎 CSS 8% muted 同源；几何 = 字形 x 段 ±4px、行高内居中，
+/// 圆角由绘制侧 quad radius 承担）。
+#[allow(clippy::too_many_arguments)]
 fn push_styled_pieces(
     run: &cosmic_text::LayoutRun,
     attrs: Option<&cosmic_text::AttrsList>,
@@ -2565,6 +3263,7 @@ fn push_styled_pieces(
     size: f32,
     line_h: f32,
     out: &mut Vec<DocRun>,
+    fills: &mut Vec<(Rect, Rgba)>,
 ) {
     let (Some(first), Some(last)) = (run.glyphs.first(), run.glyphs.last()) else {
         return;
@@ -2617,7 +3316,9 @@ fn push_styled_pieces(
             .unwrap_or_default()
     };
     let syn_at = |pos: usize| -> Option<cosmic_text::Color> {
-        syn.iter().find(|(s, e, _)| *s <= pos && pos < *e).and_then(|(_, _, c)| *c)
+        syn.iter()
+            .find(|(s, e, _)| *s <= pos && pos < *e)
+            .and_then(|(_, _, c)| *c)
     };
 
     let mut edges: Vec<usize> = vec![run_lo];
@@ -2643,6 +3344,30 @@ fn push_styled_pieces(
             continue;
         }
         let Some(x0) = index_x(run, s) else { continue };
+        // jade 反馈②：行内 code 芯片底色（文字基色不动——vue 轨引擎 CSS
+        // `color: var(--ad-fg)` 同语义；mono family 由
+        // ensure_code_family_spans 承担，芯片补齐第三轨缺的底色件）。
+        if st.code {
+            if let Some(x1) = index_x(run, e) {
+                let (cr, cg, cb, ca) = autodown_blocks::inline_code_bg_rgba();
+                let pad_x = 4.0;
+                let chip_h = (size * 1.45).min(line_h);
+                fills.push((
+                    Rect::new(
+                        x_origin + x0 - pad_x,
+                        y_top + (line_h - chip_h) / 2.0,
+                        (x1 - x0).abs() + 2.0 * pad_x,
+                        chip_h,
+                    ),
+                    Rgba {
+                        r: cr as f32 / 255.0,
+                        g: cg as f32 / 255.0,
+                        b: cb as f32 / 255.0,
+                        a: ca,
+                    },
+                ));
+            }
+        }
         let color = match color {
             Some(c) => Rgba {
                 r: c.r() as f32 / 255.0,
@@ -2668,6 +3393,63 @@ fn push_styled_pieces(
             strike: st.del,
             underline: st.underline,
         });
+    }
+}
+
+/// PLAN-732：链接 byte 区间 → 命中区段矩形（`push_byte_range_rects`
+/// 选区同路的字节→像素映射：行前缀偏移平移 + run 内钳制 + `index_x`）。
+/// 折行链接每 layout-run 一段、各段独立命中——整块矩形禁用（契约
+/// U-01）。纯函数：只读已整形 buffer。
+fn push_link_regions(
+    buf: &Buffer,
+    links: &[LinkInterval],
+    block: usize,
+    x_off: f32,
+    y_top: f32,
+    out: &mut Vec<LinkRegion>,
+) {
+    if links.is_empty() {
+        return;
+    }
+    let mut line_bases: Vec<usize> = Vec::with_capacity(buf.lines.len());
+    {
+        let mut acc = 0usize;
+        for l in buf.lines.iter() {
+            line_bases.push(acc);
+            acc += l.text().len() + 1;
+        }
+    }
+    for run in buf.layout_runs() {
+        let (Some(first), Some(last)) = (run.glyphs.first(), run.glyphs.last()) else {
+            continue;
+        };
+        let run_lo = first.start;
+        let run_hi = last.end;
+        if run_hi <= run_lo {
+            continue;
+        }
+        let base_off = line_bases.get(run.line_i).copied().unwrap_or(0);
+        for l in links {
+            let s = l.lo.saturating_sub(base_off).max(run_lo);
+            let e = l.hi.saturating_sub(base_off).min(run_hi);
+            if e <= s {
+                continue;
+            }
+            if let (Some(x0), Some(x1)) = (index_x(&run, s), index_x(&run, e)) {
+                out.push(LinkRegion {
+                    block,
+                    lo: l.lo,
+                    hi: l.hi,
+                    target: l.target.clone(),
+                    rect: Rect::new(
+                        x_off + x0.min(x1),
+                        y_top + run.line_top,
+                        (x1 - x0).abs().max(2.0),
+                        run.line_height,
+                    ),
+                });
+            }
+        }
     }
 }
 
@@ -2717,7 +3499,10 @@ fn push_byte_range_rects(
             _ => {
                 // 空行（无字形）：整行落在区间内 → 窄条。
                 if base >= lo && base <= hi {
-                    out.push((Rect::new(x_off, y_top + run.line_top, 2.0, run.line_height), color));
+                    out.push((
+                        Rect::new(x_off, y_top + run.line_top, 2.0, run.line_height),
+                        color,
+                    ));
                 }
                 continue;
             }
@@ -2745,7 +3530,12 @@ fn push_byte_range_rects(
 // 建树 & 发射
 // ---------------------------------------------------------------------------
 
-fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockBuf>, fs: &mut FontSystem) {
+fn build_walk(
+    nodes: &[&BlockNode],
+    segs: &mut Vec<Seg>,
+    blocks: &mut Vec<BlockBuf>,
+    fs: &mut FontSystem,
+) {
     for node in nodes {
         match node.kind {
             BlockType::Paragraph | BlockType::Heading => {
@@ -2755,16 +3545,24 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 } else {
                     LeafKind::Paragraph
                 };
-                let (text, ivs) = flatten_inlines(&node.inlines);
+                let (text, ivs, links) = flatten_inlines(&node.inlines);
                 // PLAN-651 T-01 R-ANCH：块锚随骨架保形（emit withIdSuffix
                 // 往返；serializer headingMd/默认路径同源）。
                 let anchor = attrGetStr(node.attrs.clone(), "anchor", "");
                 blocks.push(BlockBuf {
-                    editor: SendEditor(new_leaf_buffer(fs, &text, false, leaf_size(kind), None, line_h_mult(kind))),
+                    editor: SendEditor(new_leaf_buffer(
+                        fs,
+                        &text,
+                        false,
+                        leaf_size(kind),
+                        None,
+                        line_h_mult(kind),
+                    )),
                     kind,
                     syntax: None,
                     snapshot: text,
                     intervals: ivs,
+                    links,
                     anchor,
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2772,7 +3570,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
             BlockType::Fence => {
                 // 建缓冲前剥尾随换行（发射侧补围栏；cosmic 光标为字符
                 // 索引，尾随空行会干扰软尾判定）。
-                let (raw, _) = flatten_inlines(&node.inlines);
+                let (raw, _, _) = flatten_inlines(&node.inlines);
                 let text = raw.trim_end_matches('\n').to_owned();
                 // 家族 header 标签 + T4 语法着色的语言 token（只读轨同源）。
                 let lang = attrGetStr(node.attrs.clone(), "language", "");
@@ -2794,6 +3592,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax,
                     snapshot: text,
                     intervals: Vec::new(),
+                    links: Vec::new(),
                     anchor: String::new(),
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2804,7 +3603,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 // 编辑面 mono 源码（对齐 TS edit=源码编辑器）；图形预览维持
                 // web-only 豁免（PARITY #9）。语言随 syntax 进发射（R1 通道，
                 // serializer mermaidMd ` ```mermaid ` 同形）。
-                let (raw, _) = flatten_inlines(&node.inlines);
+                let (raw, _, _) = flatten_inlines(&node.inlines);
                 let text = raw.trim_end_matches('\n').to_owned();
                 blocks.push(BlockBuf {
                     editor: SendEditor(new_leaf_buffer(
@@ -2819,6 +3618,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax: Some("mermaid".to_string()),
                     snapshot: text,
                     intervals: Vec::new(),
+                    links: Vec::new(),
                     anchor: String::new(),
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2828,7 +3628,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 // `%{ }%` 回写降级段落）。mono 源码可编辑（对齐 TS edit=源码
                 // 编辑器）；katex 预览维持 web-only 豁免。Enter/合并/slash/
                 // 行首规则随 Fence 守卫（构造不拆）。
-                let (raw, _) = flatten_inlines(&node.inlines);
+                let (raw, _, _) = flatten_inlines(&node.inlines);
                 let text = raw.trim_end_matches('\n').to_owned();
                 blocks.push(BlockBuf {
                     editor: SendEditor(new_leaf_buffer(
@@ -2843,6 +3643,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     syntax: None,
                     snapshot: text,
                     intervals: Vec::new(),
+                    links: Vec::new(),
                     anchor: String::new(),
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2856,7 +3657,10 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 let line = if node.kind == BlockType::QueryBlock {
                     format!("$query({})", attrGetStr(node.attrs.clone(), "query", ""))
                 } else {
-                    format!("$embed(src: \"{}\")", attrGetStr(node.attrs.clone(), "src", ""))
+                    format!(
+                        "$embed(src: \"{}\")",
+                        attrGetStr(node.attrs.clone(), "src", "")
+                    )
                 };
                 segs.push(Seg::Raw(line));
             }
@@ -2883,7 +3687,12 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                     build_walk(&kids, &mut item_segs, blocks, fs);
                     items.push(item_segs);
                 }
-                segs.push(Seg::List { ordered, start, checked, items });
+                segs.push(Seg::List {
+                    ordered,
+                    start,
+                    checked,
+                    items,
+                });
             }
             BlockType::Callout => {
                 // PLAN-054 T8（五截图根因⑥）：callout 进骨架（原 catch-all
@@ -2902,7 +3711,11 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                 let children: Vec<&BlockNode> = node.children.iter().collect();
                 let mut inner: Vec<Seg> = Vec::new();
                 build_walk(&children, &mut inner, blocks, fs);
-                segs.push(Seg::Details { summary, open, inner });
+                segs.push(Seg::Details {
+                    summary,
+                    open,
+                    inner,
+                });
             }
             BlockType::ThematicBreak => segs.push(Seg::Raw("---".into())),
             BlockType::Table => {
@@ -2922,19 +3735,24 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                             .map(|c| attrGetStr(c.attrs.clone(), "align", ""))
                             .collect()
                     })
-                    .unwrap_or_default();                let ial = match attrGet(node.attrs.clone(), "ial") {
+                    .unwrap_or_default();
+                let ial = match attrGet(node.attrs.clone(), "ial") {
                     Some(v) => {
                         let body = autodown_core::serializer::ialText(
                             autodown_core::serializer::attrsOfValue(v),
                         );
-                        if body.is_empty() { String::new() } else { format!("{{{body}}}") }
+                        if body.is_empty() {
+                            String::new()
+                        } else {
+                            format!("{{{body}}}")
+                        }
                     }
                     None => String::new(),
                 };
                 for row in &node.children {
                     let mut cells: Vec<Vec<Seg>> = Vec::new();
                     for cell in &row.children {
-                        let (text, ivs) = flatten_inlines(&cell.inlines);
+                        let (text, ivs, links) = flatten_inlines(&cell.inlines);
                         blocks.push(BlockBuf {
                             editor: SendEditor(new_leaf_buffer(
                                 fs,
@@ -2948,6 +3766,7 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                             syntax: None,
                             snapshot: text,
                             intervals: ivs,
+                            links,
                             anchor: String::new(),
                         });
                         cells.push(vec![Seg::Leaf(blocks.len() - 1)]);
@@ -2956,20 +3775,33 @@ fn build_walk(nodes: &[&BlockNode], segs: &mut Vec<Seg>, blocks: &mut Vec<BlockB
                         rows.push(cells);
                     }
                 }
-                segs.push(Seg::Table { key: 0, rows, align, ial });
+                segs.push(Seg::Table {
+                    key: 0,
+                    rows,
+                    align,
+                    ial,
+                });
             }
             // TableRow/TableCell 顶层不出现；未知种类降级段落叶子。
             // PLAN-651 T-01 R-ANCH：降级叶仍携带块锚（serializer 默认路径
             // withIdSuffix 同源——wikilink 等手工模型块的锚不因降级丢失）。
             _ => {
-                let (text, ivs) = flatten_inlines(&node.inlines);
+                let (text, ivs, links) = flatten_inlines(&node.inlines);
                 let anchor = attrGetStr(node.attrs.clone(), "anchor", "");
                 blocks.push(BlockBuf {
-                    editor: SendEditor(new_leaf_buffer(fs, &text, false, BODY_SIZE, None, LINE_H_PARA)),
+                    editor: SendEditor(new_leaf_buffer(
+                        fs,
+                        &text,
+                        false,
+                        BODY_SIZE,
+                        None,
+                        LINE_H_PARA,
+                    )),
                     kind: LeafKind::Paragraph,
                     syntax: None,
                     snapshot: text,
                     intervals: ivs,
+                    links,
                     anchor,
                 });
                 segs.push(Seg::Leaf(blocks.len() - 1));
@@ -2994,9 +3826,9 @@ fn reindex_table_keys(segs: &mut [Seg]) {
                         }
                     }
                 }
-                Seg::Quote(inner)
-                | Seg::Callout { inner, .. }
-                | Seg::Details { inner, .. } => walk(inner, next),
+                Seg::Quote(inner) | Seg::Callout { inner, .. } | Seg::Details { inner, .. } => {
+                    walk(inner, next)
+                }
                 Seg::List { items, .. } => {
                     for item in items {
                         walk(item, next);
@@ -3090,7 +3922,12 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 }
             }
         }
-        Seg::List { ordered, start, checked, items } => {
+        Seg::List {
+            ordered,
+            start,
+            checked,
+            items,
+        } => {
             for (ii, item) in items.iter().enumerate() {
                 if ii > 0 {
                     out.push_str("\n\n");
@@ -3099,8 +3936,20 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
                 // 与 parser 消费同源）。
                 let task = checked.get(ii).copied().flatten();
                 let lead = match task {
-                    Some(true) => if *ordered { format!("{}. [x] ", start + ii as i64) } else { "- [x] ".to_string() },
-                    Some(false) => if *ordered { format!("{}. [ ] ", start + ii as i64) } else { "- [ ] ".to_string() },
+                    Some(true) => {
+                        if *ordered {
+                            format!("{}. [x] ", start + ii as i64)
+                        } else {
+                            "- [x] ".to_string()
+                        }
+                    }
+                    Some(false) => {
+                        if *ordered {
+                            format!("{}. [ ] ", start + ii as i64)
+                        } else {
+                            "- [ ] ".to_string()
+                        }
+                    }
                     None if *ordered => format!("{}. ", start + ii as i64),
                     None => "- ".to_string(),
                 };
@@ -3132,7 +3981,11 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
             emit_inner_joined(inner, blocks, out);
             out.push_str("\n}");
         }
-        Seg::Details { summary, open, inner } => {
+        Seg::Details {
+            summary,
+            open,
+            inner,
+        } => {
             let mut attrs = vec![format!("summary:\"{summary}\"")];
             if *open {
                 attrs.push("open:true".to_string());
@@ -3141,7 +3994,9 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
             emit_inner_joined(inner, blocks, out);
             out.push_str("\n}");
         }
-        Seg::Table { rows, align, ial, .. } => {
+        Seg::Table {
+            rows, align, ial, ..
+        } => {
             // PLAN-055 T2：管道行发射（cell live text；首行后补分隔行；
             // `\|` 转义沿用 cell_live_text 口径）。表键不进发射面。
             // PLAN-651 T-02 R7：分隔行按列对齐还原（tableDelimMd/alignMarker
@@ -3149,13 +4004,15 @@ fn emit_seg(seg: &Seg, blocks: &[BlockBuf], out: &mut String) {
             let pipe_join = |cells: &[String]| format!("| {} |", cells.join(" | "));
             let mut body = String::new();
             for (ri, row) in rows.iter().enumerate() {
-                let cells: Vec<String> =
-                    row.iter().map(|c| cell_live_text(c, blocks)).collect();
+                let cells: Vec<String> = row.iter().map(|c| cell_live_text(c, blocks)).collect();
                 body.push_str(&pipe_join(&cells));
                 body.push('\n');
                 if ri == 0 {
                     let seps: Vec<String> = (0..cells.len())
-                        .map(|ci| align_marker(align.get(ci).map(String::as_str).unwrap_or("")).to_string())
+                        .map(|ci| {
+                            align_marker(align.get(ci).map(String::as_str).unwrap_or(""))
+                                .to_string()
+                        })
                         .collect();
                     body.push_str(&pipe_join(&seps));
                     body.push('\n');
@@ -3236,7 +4093,8 @@ fn align_marker(align: &str) -> &'static str {
 
 /// PLAN-651 T-01 R-ANCH：块锚发射（serializer withIdSuffix 同形——文本尾
 /// 已带 token 时不再追加，锚 attr 为空零开销）。
-fn emit_anchor_suffix(out: &mut String, anchor: &str, live: &str) {    if anchor.is_empty() {
+fn emit_anchor_suffix(out: &mut String, anchor: &str, live: &str) {
+    if anchor.is_empty() {
         return;
     }
     let tok = format!("^{anchor}");
@@ -3274,8 +4132,9 @@ fn emit_inner_joined(inner: &[Seg], blocks: &[BlockBuf], out: &mut String) {
 /// PLAN-651 T-02 R6：规则表对齐 TS 基线 10 条（editor/engine/input-rules.ts
 /// INPUT_RULES）——VM 原 7 条补 `---`/`***`（ThematicBreak）与 "``` "
 /// （Fence）。`1. ` 有序与 h4-h6 双侧均无（冻结面一致，t651 矩阵注记）。
-const LINE_START_RULES: [&str; 10] =
-    ["# ", "## ", "### ", "- ", "* ", "+ ", "> ", "``` ", "---", "***"];
+const LINE_START_RULES: [&str; 10] = [
+    "# ", "## ", "### ", "- ", "* ", "+ ", "> ", "``` ", "---", "***",
+];
 
 /// 骨架树内把叶子槽位原位替换为包装段（quote/list wrap 用；递归定位；
 /// wrap 以工厂闭包构造——Seg 非 Clone，递归多臂各建一次；闭包仅捕获
@@ -3313,10 +4172,18 @@ enum LeafSlot {
     /// 某 Quote 的 inner 段列表中的下标。
     QuoteInner { quote_pos: usize, inner_pos: usize },
     /// 某 List 第 item_idx 项的 inner 段列表中的下标。
-    ListItem { list_pos: usize, item_idx: usize, inner_pos: usize },
+    ListItem {
+        list_pos: usize,
+        item_idx: usize,
+        inner_pos: usize,
+    },
     /// PLAN-055 T5：表格 cell 槽（table 段下标 + 网格定位）。Enter/Backspace
     /// 在此宿主降级（软换行/禁合并——固定结构，待澄清①）。
-    TableSlot { table_pos: usize, row: usize, col: usize },
+    TableSlot {
+        table_pos: usize,
+        row: usize,
+        col: usize,
+    },
 }
 
 /// 在 segs 树中定位叶子 id 的宿主槽（首个命中即返回；叶子 id 全树唯一）。
@@ -3327,7 +4194,10 @@ fn locate_leaf(segs: &[Seg], leaf: usize) -> Option<LeafSlot> {
             Seg::Quote(inner) => {
                 for (ip, s) in inner.iter().enumerate() {
                     if matches!(s, Seg::Leaf(i) if *i == leaf) {
-                        return Some(LeafSlot::QuoteInner { quote_pos: pos, inner_pos: ip });
+                        return Some(LeafSlot::QuoteInner {
+                            quote_pos: pos,
+                            inner_pos: ip,
+                        });
                     }
                 }
             }
@@ -3377,9 +4247,7 @@ fn dfs_leaf_order(segs: &[Seg], out: &mut Vec<usize>) {
                 }
             }
             // PLAN-054 T8：容器段叶子同入全序（发射/渲染/布局同源）。
-            Seg::Callout { inner, .. } | Seg::Details { inner, .. } => {
-                dfs_leaf_order(inner, out)
-            }
+            Seg::Callout { inner, .. } | Seg::Details { inner, .. } => dfs_leaf_order(inner, out),
             // PLAN-055 T1：cell 叶入全序（行主序；ctrl+a/合并邻接/布局序
             // 同源）。
             Seg::Table { rows, .. } => {
@@ -3426,7 +4294,8 @@ fn marker_slot_width(fs: &mut FontSystem, marker: &str) -> f32 {
             w = w.max(g.x + g.w);
         }
     }
-    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    CACHE
+        .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap()
         .insert(marker.to_string(), w);
@@ -3442,7 +4311,9 @@ const CONT_PAD_B_CALLOUT: f32 = 12.0; // callout 底 pad（py-3）
 /// `border-*-500/50`）。矩形近似圆角（编辑臂绘制原语为纯矩形填充，
 /// fence 盒同款）。运行段 = (rgb, top, bottom) widget 本地 px。
 fn push_callout_box(fills: &mut Vec<(Rect, Rgba)>, run: Option<(u8, u8, u8, f32, f32)>, w: f32) {
-    let Some((r, g, b, top, bottom)) = run else { return };
+    let Some((r, g, b, top, bottom)) = run else {
+        return;
+    };
     let h = (bottom - top).max(1.0);
     let width = w.max(1.0);
     let col = |a: f32| Rgba {
@@ -3472,7 +4343,10 @@ enum DrawItem {
     RawBreak,
     /// PLAN-651 T-02 R5：details 摘要行（▸/▾ 随 open；几何入 details_geom
     /// ——点击翻转折叠，serializer open 往返同源）。可见序 = items 序。
-    DetailsSummary { text: String, open: bool },
+    DetailsSummary {
+        text: String,
+        open: bool,
+    },
 }
 
 /// PLAN-055 T3：表格 cell 槽（网格定位 + 几何；LeafAttrib.cell）。x 为
@@ -3525,11 +4399,11 @@ struct LeafAttrib {
 /// callout 图标（与只读臂 autodown_render 同表——T4 统一对）。
 fn callout_icon(kind: &str) -> &'static str {
     match kind {
-        "info" => "\u{2139}",      // ℹ
-        "tip" | "success" => "\u{2714}", // ✔
+        "info" => "\u{2139}",                         // ℹ
+        "tip" | "success" => "\u{2714}",              // ✔
         "warning" | "warn" | "caution" => "\u{26A0}", // ⚠
-        "danger" | "error" => "\u{2716}", // ✖
-        _ => "\u{270E}",           // ✎ (note/未知)
+        "danger" | "error" => "\u{2716}",             // ✖
+        _ => "\u{270E}",                              // ✎ (note/未知)
     }
 }
 
@@ -3608,9 +4482,22 @@ fn walk_seg(
             Some(*i)
         }
         Seg::Quote(inner) => walk_skeleton_attribution(
-            inner, true, x_base + QUOTE_X, 4.0, fs, frame_w, widths, attrib, items,
+            inner,
+            true,
+            x_base + QUOTE_X,
+            4.0,
+            fs,
+            frame_w,
+            widths,
+            attrib,
+            items,
         ),
-        Seg::List { ordered, start, checked, items: list_items } => {
+        Seg::List {
+            ordered,
+            start,
+            checked,
+            items: list_items,
+        } => {
             let mut last = None;
             let mut prev_item_leaf: Option<usize> = None;
             for (ii, item) in list_items.iter().enumerate() {
@@ -3619,7 +4506,7 @@ fn walk_seg(
                 // 宽 + 2；嵌套列表挂在 body 列 → 子级 marker 落父级文字 x。
                 // 本层 marker 列即 x_base，弃固定 gutter/深度缩进档。
                 let marker = match checked.get(ii).copied().flatten() {
-                    Some(true) => ("\u{2714} ".to_string(), true), // ✔
+                    Some(true) => ("\u{2714} ".to_string(), true),   // ✔
                     Some(false) => ("\u{25A1} ".to_string(), false), // □
                     None if *ordered => (format!("{}. ", start + ii as i64), false),
                     None => ("\u{2022} ".to_string(), false), // •
@@ -3681,10 +4568,23 @@ fn walk_seg(
                 }
             }
             walk_skeleton_attribution(
-                inner, in_quote, x_base + CONT_PAD_X, 4.0, fs, frame_w, widths, attrib, items,
+                inner,
+                in_quote,
+                x_base + CONT_PAD_X,
+                4.0,
+                fs,
+                frame_w,
+                widths,
+                attrib,
+                items,
             )
         }
-        Seg::Details { summary, open, inner, .. } => {
+        Seg::Details {
+            summary,
+            open,
+            inner,
+            ..
+        } => {
             // PLAN-651 T-02 R5：折叠交互——摘要行独立 DrawItem（▸/▾ 随
             // open，点击翻转）；闭合态内容不入 items（不可见/不可聚焦，
             // TS 折叠同语义）；open 往返发射已有（PLAN-054 T8）。
@@ -3711,7 +4611,15 @@ fn walk_seg(
                 }
             }
             walk_skeleton_attribution(
-                inner, in_quote, x_base + CONT_PAD_X, 4.0, fs, frame_w, widths, attrib, items,
+                inner,
+                in_quote,
+                x_base + CONT_PAD_X,
+                4.0,
+                fs,
+                frame_w,
+                widths,
+                attrib,
+                items,
             )
         }
         Seg::Table { key, rows, .. } => {
@@ -3731,7 +4639,13 @@ fn walk_seg(
                 for (ci, cell) in row.iter().enumerate() {
                     let mut leaves = Vec::new();
                     dfs_leaf_order(cell, &mut leaves);
-                    let (cx, cw) = (col_x, col_ws.get(ci).copied().unwrap_or(autodown_blocks::TABLE_MIN_COL_W));
+                    let (cx, cw) = (
+                        col_x,
+                        col_ws
+                            .get(ci)
+                            .copied()
+                            .unwrap_or(autodown_blocks::TABLE_MIN_COL_W),
+                    );
                     for leaf in leaves {
                         let a = attrib.entry(leaf).or_default();
                         a.x = cx + autodown_blocks::TABLE_PAD_X;
@@ -3804,7 +4718,10 @@ impl AutodownEditorCore {
         };
         let mut out = Vec::new();
         for &bi in &order[s0..=e0] {
-            let len = blocks.get(bi).map(|b| SendEdit::of(b).text().len()).unwrap_or(0);
+            let len = blocks
+                .get(bi)
+                .map(|b| SendEdit::of(b).text().len())
+                .unwrap_or(0);
             let lo = if bi == fb { flo.min(len) } else { 0 };
             let hi = if bi == lb { lhi.min(len) } else { len };
             out.push((bi, lo, hi.max(lo)));
@@ -3851,7 +4768,9 @@ impl AutodownEditorCore {
     /// 只读 Raw 段（表格/分隔线）保留——登记余量。返回是否发生了删除。
     fn delete_doc_selection(&self, fs: &mut FontSystem) -> bool {
         let spans = self.doc_sel_spans();
-        let Some(&(fb, flo, _)) = spans.first() else { return false };
+        let Some(&(fb, flo, _)) = spans.first() else {
+            return false;
+        };
         let (lb, _, lhi) = spans[spans.len() - 1];
         if fb == lb && flo >= lhi {
             return false; // 折叠空域
@@ -3869,11 +4788,17 @@ impl AutodownEditorCore {
         let (head, tail) = {
             let blocks = self.blocks.lock().unwrap();
             let t_of = |i: usize| {
-                blocks.get(i).map(|b| SendEdit::of(b).text()).unwrap_or_default()
+                blocks
+                    .get(i)
+                    .map(|b| SendEdit::of(b).text())
+                    .unwrap_or_default()
             };
             let ft = t_of(fb);
             let lt = t_of(lb);
-            (ft[..flo.min(ft.len())].to_owned(), lt[lhi.min(lt.len())..].to_owned())
+            (
+                ft[..flo.min(ft.len())].to_owned(),
+                lt[lhi.min(lt.len())..].to_owned(),
+            )
         };
         let mut dead: Vec<usize> = spans[1..].iter().map(|&(bi, _, _)| bi).collect();
         if lb != fb {
@@ -4017,10 +4942,17 @@ impl AutodownEditorCore {
         ));
         buf.snapshot = text;
         buf.intervals.clear();
+        // PLAN-732：链接区间随快照同口径保守清空（结构操作后字节坐标失配）。
+        buf.links.clear();
     }
 
     fn block_kind_of(&self, bi: usize) -> LeafKind {
-        self.blocks.lock().unwrap().get(bi).map(|b| b.kind).unwrap_or(LeafKind::Paragraph)
+        self.blocks
+            .lock()
+            .unwrap()
+            .get(bi)
+            .map(|b| b.kind)
+            .unwrap_or(LeafKind::Paragraph)
     }
 
     /// 光标的字节流偏移（跨行累计，行间计 1 个换行字节）。
@@ -4088,8 +5020,11 @@ impl AutodownEditorCore {
             }
             "- " | "* " | "+ " => {
                 let mut segs = self.segs.lock().unwrap();
-                replace_leaf_seg(&mut segs, bi, || {
-                    Seg::List { ordered: false, start: 1, checked: vec![None], items: vec![vec![Seg::Leaf(bi)]] }
+                replace_leaf_seg(&mut segs, bi, || Seg::List {
+                    ordered: false,
+                    start: 1,
+                    checked: vec![None],
+                    items: vec![vec![Seg::Leaf(bi)]],
                 });
             }
             // PLAN-651 T-02 R6：`---`/`***` → ThematicBreak（TS 规则同款；
@@ -4175,7 +5110,10 @@ impl AutodownEditorCore {
         // 空项退列：空内容上按 Enter 且宿主是 List 项 —— 摘除该项，
         // 焦点落到列表后的新段落。
         let text_bytes = live.len();
-        if let LeafSlot::ListItem { list_pos, item_idx, .. } = slot {
+        if let LeafSlot::ListItem {
+            list_pos, item_idx, ..
+        } = slot
+        {
             if text_bytes == 0 {
                 return self.exit_empty_list_item(font_system, bi, list_pos, item_idx);
             }
@@ -4215,11 +5153,19 @@ impl AutodownEditorCore {
             let mono = matches!(kind, LeafKind::Fence | LeafKind::Math);
             let size = leaf_size(kind);
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, &right, mono, size, None, if mono { LINE_H_FENCE } else { LINE_H_PARA })),
+                editor: SendEditor(new_leaf_buffer(
+                    font_system,
+                    &right,
+                    mono,
+                    size,
+                    None,
+                    if mono { LINE_H_FENCE } else { LINE_H_PARA },
+                )),
                 kind,
                 syntax: None,
                 snapshot: right,
                 intervals: Vec::new(),
+                links: Vec::new(),
                 // PLAN-651 T-01 R-ANCH：拆分尾块空锚（锚随头块——头块字段
                 // 不动即自然保锚；TS 模型 op 同语义）。
                 anchor: String::new(),
@@ -4231,7 +5177,10 @@ impl AutodownEditorCore {
         {
             let mut segs = self.segs.lock().unwrap();
             if new_item_continuation {
-                if let LeafSlot::ListItem { list_pos, item_idx, .. } = slot {
+                if let LeafSlot::ListItem {
+                    list_pos, item_idx, ..
+                } = slot
+                {
                     if let Some(Seg::List { items, checked, .. }) = segs.get_mut(list_pos) {
                         items.insert(item_idx + 1, vec![Seg::Leaf(new_id)]);
                         checked.insert(item_idx + 1, None);
@@ -4240,12 +5189,19 @@ impl AutodownEditorCore {
             } else {
                 match slot {
                     LeafSlot::TopLevel(pos) => segs.insert(pos + 1, Seg::Leaf(new_id)),
-                    LeafSlot::QuoteInner { quote_pos, inner_pos } => {
+                    LeafSlot::QuoteInner {
+                        quote_pos,
+                        inner_pos,
+                    } => {
                         if let Some(Seg::Quote(inner)) = segs.get_mut(quote_pos) {
                             inner.insert(inner_pos + 1, Seg::Leaf(new_id));
                         }
                     }
-                    LeafSlot::ListItem { list_pos, item_idx, inner_pos } => {
+                    LeafSlot::ListItem {
+                        list_pos,
+                        item_idx,
+                        inner_pos,
+                    } => {
                         if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
                             if let Some(item) = items.get_mut(item_idx) {
                                 item.insert(inner_pos + 1, Seg::Leaf(new_id));
@@ -4277,7 +5233,11 @@ impl AutodownEditorCore {
             return false;
         }
         let segs = self.segs.lock().unwrap();
-        let Some(LeafSlot::ListItem { list_pos, item_idx, inner_pos }) = locate_leaf(&segs, bi)
+        let Some(LeafSlot::ListItem {
+            list_pos,
+            item_idx,
+            inner_pos,
+        }) = locate_leaf(&segs, bi)
         else {
             return false;
         };
@@ -4304,11 +5264,19 @@ impl AutodownEditorCore {
             let mut blocks = self.blocks.lock().unwrap();
             let id = blocks.len();
             blocks.push(BlockBuf {
-                editor: SendEditor(new_leaf_buffer(font_system, "", false, BODY_SIZE, None, LINE_H_PARA)),
+                editor: SendEditor(new_leaf_buffer(
+                    font_system,
+                    "",
+                    false,
+                    BODY_SIZE,
+                    None,
+                    LINE_H_PARA,
+                )),
                 kind: LeafKind::Paragraph,
                 syntax: None,
                 snapshot: String::new(),
                 intervals: Vec::new(),
+                links: Vec::new(),
                 anchor: String::new(),
             });
             id
@@ -4327,7 +5295,10 @@ impl AutodownEditorCore {
                 _ => list_pos + 1,
             }
         };
-        self.segs.lock().unwrap().insert(insert_at, Seg::Leaf(para_tmp));
+        self.segs
+            .lock()
+            .unwrap()
+            .insert(insert_at, Seg::Leaf(para_tmp));
         remove_leaves_compact(
             &mut self.blocks.lock().unwrap(),
             &mut self.segs.lock().unwrap(),
@@ -4367,8 +5338,10 @@ impl AutodownEditorCore {
             let prev = order[pos - 1];
             (prev, locate_leaf(&segs, bi), locate_leaf(&segs, prev))
         };
-        if matches!(self.block_kind_of(prev_bi), LeafKind::Fence | LeafKind::Math)
-            || matches!(self.block_kind_of(bi), LeafKind::Fence | LeafKind::Math)
+        if matches!(
+            self.block_kind_of(prev_bi),
+            LeafKind::Fence | LeafKind::Math
+        ) || matches!(self.block_kind_of(bi), LeafKind::Fence | LeafKind::Math)
         {
             return false;
         }
@@ -4381,7 +5354,12 @@ impl AutodownEditorCore {
         }
         // 余段约束（防御性；v1 嵌套列表不可达）。
         let mut move_remainder = false;
-        if let Some(LeafSlot::ListItem { list_pos, item_idx, inner_pos }) = cur_slot {
+        if let Some(LeafSlot::ListItem {
+            list_pos,
+            item_idx,
+            inner_pos,
+        }) = cur_slot
+        {
             if inner_pos == 0 {
                 let prev_same_list_prev_item = matches!(prev_slot,
                     Some(LeafSlot::ListItem { list_pos: p, item_idx: pi, .. })
@@ -4404,7 +5382,10 @@ impl AutodownEditorCore {
             }
         }
         if move_remainder {
-            if let Some(LeafSlot::ListItem { list_pos, item_idx, .. }) = cur_slot {
+            if let Some(LeafSlot::ListItem {
+                list_pos, item_idx, ..
+            }) = cur_slot
+            {
                 let mut segs = self.segs.lock().unwrap();
                 if let Some(Seg::List { items, .. }) = segs.get_mut(list_pos) {
                     let rem: Vec<Seg> = items[item_idx].drain(1..).collect();
@@ -4520,8 +5501,12 @@ impl AutodownEditorCore {
             }
         }
         let blocks = self.blocks.lock().unwrap();
-        let Some(b) = blocks.get(bi) else { return false };
-        let Some(off) = Self::cursor_byte_offset(b) else { return false };
+        let Some(b) = blocks.get(bi) else {
+            return false;
+        };
+        let Some(off) = Self::cursor_byte_offset(b) else {
+            return false;
+        };
         let text = SendEdit::of(b).text();
         if off == 0 {
             return true;
@@ -4530,17 +5515,30 @@ impl AutodownEditorCore {
         if !text.is_char_boundary(off) {
             return false;
         }
-        text[..off].chars().next_back().map(|c| c.is_whitespace()).unwrap_or(false)
+        text[..off]
+            .chars()
+            .next_back()
+            .map(|c| c.is_whitespace())
+            .unwrap_or(false)
     }
 
     /// 弹层开启期的键位路由。Some = 已消费（调用方直接返回）；None = 未
     /// 消费（调用方关层放行到编辑路径）。
-    fn slash_route_key(&self, font_system: &mut FontSystem, key: EditorKey, mods: EditorModifiers) -> Option<DocOutput> {
+    fn slash_route_key(
+        &self,
+        font_system: &mut FontSystem,
+        key: EditorKey,
+        mods: EditorModifiers,
+    ) -> Option<DocOutput> {
         // 组合键不进路由（关层放行——复制/撤销等组合优先）。
         if mods.control || mods.logo || mods.alt {
             return None;
         }
-        let redraw = DocOutput { request_redraw: true, captured: true, ..Default::default() };
+        let redraw = DocOutput {
+            request_redraw: true,
+            captured: true,
+            ..Default::default()
+        };
         match key {
             EditorKey::Up | EditorKey::Down => {
                 let len = self.slash_filtered().len();
@@ -4553,7 +5551,13 @@ impl AutodownEditorCore {
                 Some(redraw)
             }
             EditorKey::Enter => {
-                let pick = self.slash.lock().unwrap().as_ref().map(|s| s.selected).unwrap_or(0);
+                let pick = self
+                    .slash
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .map(|s| s.selected)
+                    .unwrap_or(0);
                 let Some(&item_idx) = self.slash_filtered().get(pick) else {
                     // 过滤空集：Enter 无目标（web item null 早退同形）。
                     return Some(redraw);
@@ -4569,6 +5573,7 @@ impl AutodownEditorCore {
                     focus_changed,
                     request_redraw: true,
                     captured: true,
+                    link_activated: None,
                 })
             }
             EditorKey::Escape => {
@@ -4617,7 +5622,11 @@ impl AutodownEditorCore {
         let Some((menu_rect, items)) = geom else {
             // 开着但几何未就绪（触发后尚无渲染帧）——关层防呆。
             *self.slash.lock().unwrap() = None;
-            return Some(DocOutput { request_redraw: true, captured: true, ..Default::default() });
+            return Some(DocOutput {
+                request_redraw: true,
+                captured: true,
+                ..Default::default()
+            });
         };
         let inside = x >= menu_rect.x
             && x <= menu_rect.x + menu_rect.w
@@ -4626,14 +5635,22 @@ impl AutodownEditorCore {
         if !inside {
             *self.slash.lock().unwrap() = None;
             *self.slash_geom.lock().unwrap() = None;
-            return Some(DocOutput { request_redraw: true, captured: true, ..Default::default() });
+            return Some(DocOutput {
+                request_redraw: true,
+                captured: true,
+                ..Default::default()
+            });
         }
         let hit = items
             .iter()
             .find(|(_, r)| x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h)
             .map(|(i, _)| *i);
         let Some(item_idx) = hit else {
-            return Some(DocOutput { request_redraw: true, captured: true, ..Default::default() });
+            return Some(DocOutput {
+                request_redraw: true,
+                captured: true,
+                ..Default::default()
+            });
         };
         let prev_focus = self.focused_block();
         *self.slash.lock().unwrap() = None;
@@ -4646,6 +5663,7 @@ impl AutodownEditorCore {
             focus_changed,
             request_redraw: true,
             captured: true,
+            link_activated: None,
         })
     }
 
@@ -4653,8 +5671,12 @@ impl AutodownEditorCore {
     /// （PLAN-048 T6 裁定口径：结构变换整换新缓冲，与 enter_split/合并/
     /// 输入规则同不入栈）。
     fn slash_execute(&self, font_system: &mut FontSystem, item_idx: usize) -> bool {
-        let Some(bi) = self.focused_block() else { return false };
-        let Some(item) = SLASH_ITEMS.get(item_idx) else { return false };
+        let Some(bi) = self.focused_block() else {
+            return false;
+        };
+        let Some(item) = SLASH_ITEMS.get(item_idx) else {
+            return false;
+        };
         let changed = self.slash_apply_op(font_system, bi, item.op);
         if changed {
             self.revision.fetch_add(1, Ordering::Relaxed);
@@ -4709,9 +5731,7 @@ impl AutodownEditorCore {
                     None => false,
                 }
             }
-            SlashOp::Divider => {
-                self.slash_insert_sibling_seg(bi, |_| Seg::Raw("---".to_string()))
-            }
+            SlashOp::Divider => self.slash_insert_sibling_seg(bi, |_| Seg::Raw("---".to_string())),
             SlashOp::Table33 => self.slash_insert_table(font_system, bi),
         }
     }
@@ -4721,7 +5741,9 @@ impl AutodownEditorCore {
     /// 口径，undo 历史随之作废）。
     fn slash_migrate_kind(&self, font_system: &mut FontSystem, bi: usize, kind: LeafKind) -> bool {
         let mut blocks = self.blocks.lock().unwrap();
-        let Some(b) = blocks.get_mut(bi) else { return false };
+        let Some(b) = blocks.get_mut(bi) else {
+            return false;
+        };
         if b.kind == kind {
             return false;
         }
@@ -4752,27 +5774,30 @@ impl AutodownEditorCore {
                 segs.insert(pos + 1, make(bi));
                 true
             }
-            LeafSlot::QuoteInner { quote_pos, inner_pos } => {
-                match segs.get_mut(quote_pos) {
-                    Some(Seg::Quote(inner)) => {
-                        inner.insert(inner_pos + 1, make(bi));
+            LeafSlot::QuoteInner {
+                quote_pos,
+                inner_pos,
+            } => match segs.get_mut(quote_pos) {
+                Some(Seg::Quote(inner)) => {
+                    inner.insert(inner_pos + 1, make(bi));
+                    true
+                }
+                _ => false,
+            },
+            LeafSlot::ListItem {
+                list_pos,
+                item_idx,
+                inner_pos,
+            } => match segs.get_mut(list_pos) {
+                Some(Seg::List { items, .. }) => match items.get_mut(item_idx) {
+                    Some(item) => {
+                        item.insert(inner_pos + 1, make(bi));
                         true
                     }
-                    _ => false,
-                }
-            }
-            LeafSlot::ListItem { list_pos, item_idx, inner_pos } => {
-                match segs.get_mut(list_pos) {
-                    Some(Seg::List { items, .. }) => match items.get_mut(item_idx) {
-                        Some(item) => {
-                            item.insert(inner_pos + 1, make(bi));
-                            true
-                        }
-                        None => false,
-                    },
-                    _ => false,
-                }
-            }
+                    None => false,
+                },
+                _ => false,
+            },
             LeafSlot::TableSlot { .. } => false,
         }
     }
@@ -4807,6 +5832,7 @@ impl AutodownEditorCore {
                         syntax: None,
                         snapshot: String::new(),
                         intervals: Vec::new(),
+                        links: Vec::new(),
                         anchor: String::new(),
                     });
                     cell_ids[r][c] = id;
@@ -4820,30 +5846,57 @@ impl AutodownEditorCore {
             let mut segs = self.segs.lock().unwrap();
             let ok = match slot {
                 LeafSlot::TopLevel(pos) => {
-                    segs.insert(pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
+                    segs.insert(
+                        pos + 1,
+                        Seg::Table {
+                            key: u64::MAX,
+                            rows,
+                            align: Vec::new(),
+                            ial: String::new(),
+                        },
+                    );
                     true
                 }
-                LeafSlot::QuoteInner { quote_pos, inner_pos } => {
-                    match segs.get_mut(quote_pos) {
-                        Some(Seg::Quote(inner)) => {
-                            inner.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
+                LeafSlot::QuoteInner {
+                    quote_pos,
+                    inner_pos,
+                } => match segs.get_mut(quote_pos) {
+                    Some(Seg::Quote(inner)) => {
+                        inner.insert(
+                            inner_pos + 1,
+                            Seg::Table {
+                                key: u64::MAX,
+                                rows,
+                                align: Vec::new(),
+                                ial: String::new(),
+                            },
+                        );
+                        true
+                    }
+                    _ => false,
+                },
+                LeafSlot::ListItem {
+                    list_pos,
+                    item_idx,
+                    inner_pos,
+                } => match segs.get_mut(list_pos) {
+                    Some(Seg::List { items, .. }) => match items.get_mut(item_idx) {
+                        Some(item) => {
+                            item.insert(
+                                inner_pos + 1,
+                                Seg::Table {
+                                    key: u64::MAX,
+                                    rows,
+                                    align: Vec::new(),
+                                    ial: String::new(),
+                                },
+                            );
                             true
                         }
-                        _ => false,
-                    }
-                }
-                LeafSlot::ListItem { list_pos, item_idx, inner_pos } => {
-                    match segs.get_mut(list_pos) {
-                        Some(Seg::List { items, .. }) => match items.get_mut(item_idx) {
-                            Some(item) => {
-                                item.insert(inner_pos + 1, Seg::Table { key: u64::MAX, rows, align: Vec::new(), ial: String::new() });
-                                true
-                            }
-                            None => false,
-                        },
-                        _ => false,
-                    }
-                }
+                        None => false,
+                    },
+                    _ => false,
+                },
                 LeafSlot::TableSlot { .. } => false,
             };
             if ok {
@@ -4872,7 +5925,9 @@ pub fn storage_key(widget: &str) -> String {
     format!("__autodown_editor_{widget}")
 }
 
-fn normalize_payload_key(key: &str) -> String {
+/// PLAN-737：编辑壳键幂等归一（裸键补 `__autodown_editor_` 前缀、已归一
+/// 透传）——合成通道派发表（renderer 层）与 core 注册表同键域的换算口。
+pub(crate) fn normalize_payload_key(key: &str) -> String {
     if key.starts_with("__autodown_editor_") {
         key.to_string()
     } else {
@@ -4900,7 +5955,8 @@ pub fn autodown_editor(key: &str) -> &'static AutodownEditorCore {
             map.remove(&k);
         }
     }
-    let core: &'static AutodownEditorCore = Box::leak(Box::new(AutodownEditorCore::new(norm.clone())));
+    let core: &'static AutodownEditorCore =
+        Box::leak(Box::new(AutodownEditorCore::new(norm.clone())));
     core.last_used.store(lru_tick(), Ordering::Relaxed);
     map.insert(norm.clone(), core);
     core
@@ -4989,7 +6045,13 @@ impl<'a> SendEdit<'a> {
         SendEdit(&b.editor.0)
     }
     fn text(&self) -> String {
-        self.0.with_buffer(|b| b.lines.iter().map(|l| l.text()).collect::<Vec<_>>().join("\n"))
+        self.0.with_buffer(|b| {
+            b.lines
+                .iter()
+                .map(|l| l.text())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
     }
     fn cursor(&self) -> Cursor {
         self.0.cursor()
@@ -5034,7 +6096,12 @@ mod tests {
     use super::*;
     use crate::ui::code_editor::core::NullClipboard;
 
-    const WHITE: Rgba = Rgba { r: 1., g: 1., b: 1., a: 1. };
+    const WHITE: Rgba = Rgba {
+        r: 1.,
+        g: 1.,
+        b: 1.,
+        a: 1.,
+    };
 
     /// 主题全局档测试互斥：set_dark_mode 写的是进程级全局（读方遍布
     /// render_frame 家族/配色解算），三个改档测试与并发读档测试之间存在
@@ -5051,8 +6118,10 @@ mod tests {
     fn run_fs<R>(f: impl FnOnce(&mut FontSystem) -> R) -> R {
         static FS: std::sync::OnceLock<std::sync::RwLock<FontSystem>> = std::sync::OnceLock::new();
         crate::ui::code_editor::core::set_font_system_call(|with| {
-            let mut guard =
-                FS.get_or_init(|| std::sync::RwLock::new(FontSystem::new())).write().unwrap();
+            let mut guard = FS
+                .get_or_init(|| std::sync::RwLock::new(FontSystem::new()))
+                .write()
+                .unwrap();
             with(&mut guard);
         });
         crate::ui::code_editor::core::with_font_system(f)
@@ -5072,7 +6141,11 @@ mod tests {
         run_fs(|fs| {
             core.handle_input(
                 fs,
-                DocInput::KeyPressed { key, text: None, modifiers: EditorModifiers::none() },
+                DocInput::KeyPressed {
+                    key,
+                    text: None,
+                    modifiers: EditorModifiers::none(),
+                },
                 &mut NullClipboard,
             )
         })
@@ -5089,9 +6162,16 @@ mod tests {
         press(c, EditorKey::Char('a')); // core "k9a"
         let _ = c.emit_document(); // "k9a" 进回声集（发布链读全文口径）
         press(c, EditorKey::Char('b')); // core "k9ab"（领先于外部）
-        // 旧自回显 "k9a" 此刻才落地 sync —— 回声：不重建（rebuild=true 是红）
-        assert!(!c.sync_external("k9a", true), "stale self-echo must not rebuild");
-        assert_eq!(c.focused_block(), Some(0), "echo sync must keep block focus");
+                                        // 旧自回显 "k9a" 此刻才落地 sync —— 回声：不重建（rebuild=true 是红）
+        assert!(
+            !c.sync_external("k9a", true),
+            "stale self-echo must not rebuild"
+        );
+        assert_eq!(
+            c.focused_block(),
+            Some(0),
+            "echo sync must keep block focus"
+        );
         press(c, EditorKey::Char('c'));
         assert_eq!(c.emit_document(), "k9abc");
     }
@@ -5114,7 +6194,10 @@ mod tests {
                 DocInput::KeyPressed {
                     key: EditorKey::Char(c),
                     text: None,
-                    modifiers: EditorModifiers { control: true, ..Default::default() },
+                    modifiers: EditorModifiers {
+                        control: true,
+                        ..Default::default()
+                    },
                 },
                 &mut NullClipboard,
             )
@@ -5123,7 +6206,10 @@ mod tests {
 
     #[test]
     fn builds_leaves_from_markdown() {
-        let c = core_for("t1", "# 大标题\n\n第一段 **粗**。\n\n```rust\nlet a = 1;\n```\n");
+        let c = core_for(
+            "t1",
+            "# 大标题\n\n第一段 **粗**。\n\n```rust\nlet a = 1;\n```\n",
+        );
         assert_eq!(c.block_count(), 3);
         assert_eq!(c.live_text(0), "大标题");
         // 快照为扁平化行内文本（** 是解析标记，不入 span 文本）。
@@ -5199,7 +6285,11 @@ mod tests {
         assert!(rects.windows(2).all(|w| w[1].y > w[0].y), "{rects:?}");
         assert!(rects.iter().all(|r| r.h > 0.0), "{rects:?}");
         let last_bottom = rects[2].y + rects[2].h;
-        assert!((last_bottom - frame.height).abs() < 0.5, "bottom={last_bottom} frame={}", frame.height);
+        assert!(
+            (last_bottom - frame.height).abs() < 0.5,
+            "bottom={last_bottom} frame={}",
+            frame.height
+        );
     }
 
     #[test]
@@ -5223,7 +6313,7 @@ mod tests {
         assert_eq!(c.focused_block(), Some(0));
     }
 
-        /// 批次十③：同宿主相邻叶块首退格 → 合并入上一叶，焦点驻接缝。
+    /// 批次十③：同宿主相邻叶块首退格 → 合并入上一叶，焦点驻接缝。
     #[test]
     fn backspace_block_start_merges_same_host() {
         let c = core_for("mg", "甲块。\n\n乙块。\n");
@@ -5301,7 +6391,11 @@ mod tests {
         *c.focus.lock().unwrap() = Some(0);
         press(c, EditorKey::Char('#'));
         press(c, EditorKey::Char(' '));
-        assert_eq!(c.block_kind_of(0), LeafKind::Fence, "fence must not convert");
+        assert_eq!(
+            c.block_kind_of(0),
+            LeafKind::Fence,
+            "fence must not convert"
+        );
     }
 
     /// 非整块精确命中不触发（段中打空格/前导文本）。
@@ -5368,7 +6462,16 @@ mod tests {
         // 跨块选区态（doc_sel 在场；offset 3 = '乙' 后字符边界）。
         let s = core_for("sl3b", "甲段。\n\n乙段。\n");
         *s.focus.lock().unwrap() = Some(0);
-        s.set_doc_selection(SelAnchor { block: 0, offset: 0 }, SelAnchor { block: 1, offset: 3 });
+        s.set_doc_selection(
+            SelAnchor {
+                block: 0,
+                offset: 0,
+            },
+            SelAnchor {
+                block: 1,
+                offset: 3,
+            },
+        );
         let out = press(s, EditorKey::Char('/'));
         assert!(!out.captured, "选区态 '/' 不触发");
         assert!(!s.slash_menu_visible());
@@ -5447,9 +6550,15 @@ mod tests {
         press(c, EditorKey::Char('/'));
         press(c, EditorKey::Char('a'));
         press(c, EditorKey::Char('b'));
-        assert_eq!(c.slash_state_snapshot().map(|(q, _, _)| q), Some("ab".into()));
+        assert_eq!(
+            c.slash_state_snapshot().map(|(q, _, _)| q),
+            Some("ab".into())
+        );
         press(c, EditorKey::Backspace);
-        assert_eq!(c.slash_state_snapshot().map(|(q, _, _)| q), Some("a".into()));
+        assert_eq!(
+            c.slash_state_snapshot().map(|(q, _, _)| q),
+            Some("a".into())
+        );
         assert!(c.slash_menu_visible());
         press(c, EditorKey::Backspace);
         assert_eq!(c.slash_state_snapshot().map(|(q, _, _)| q), Some("".into()));
@@ -5496,10 +6605,16 @@ mod tests {
         assert_eq!(rect, menu.rect);
         assert_eq!(items.len(), 23);
         assert_eq!(items[0].0, 0, "空 query 过滤集 = 全 manifest 序");
-        assert!(frame.height >= menu.rect.y + menu.rect.h - 0.5, "帧高容纳浮层");
+        assert!(
+            frame.height >= menu.rect.y + menu.rect.h - 0.5,
+            "帧高容纳浮层"
+        );
         // 次帧（无渲染也）命中可用——几何缓存单源。
         let second = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
-        assert_eq!(second.list.slash_menu.as_ref().map(|m| m.rect), Some(menu.rect));
+        assert_eq!(
+            second.list.slash_menu.as_ref().map(|m| m.rect),
+            Some(menu.rect)
+        );
     }
 
     /// T-02：点选执行——首项几何中心命中 → Heading 1 迁移 + 关层。
@@ -5528,7 +6643,8 @@ mod tests {
         run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let (rect, _) = c.slash_geom.lock().unwrap().clone().expect("geom");
         // 层外（下方远处）。
-        let out = run_fs(|fs| c.slash_mouse_press(fs, rect.x + 1.0, rect.y + rect.h + 40.0)).unwrap();
+        let out =
+            run_fs(|fs| c.slash_mouse_press(fs, rect.x + 1.0, rect.y + rect.h + 40.0)).unwrap();
         assert!(out.captured, "层外点击捕获（不落文档命中链）");
         assert!(!out.text_changed, "层外点击零文档效果");
         assert!(!c.slash_menu_visible());
@@ -5565,7 +6681,10 @@ mod tests {
             *h.focus.lock().unwrap() = Some(0);
             assert!(run_fs(|fs| h.slash_execute(fs, level as usize)), "H{level}");
             assert_eq!(h.block_kind_of(0), LeafKind::Heading(level));
-            assert_eq!(h.emit_document(), format!("{} 正文", "#".repeat(level as usize)));
+            assert_eq!(
+                h.emit_document(),
+                format!("{} 正文", "#".repeat(level as usize))
+            );
         }
     }
 
@@ -5602,7 +6721,9 @@ mod tests {
     #[test]
     fn slash_ops_insert_text_family() {
         let cases: [usize; 8] = [11, 12, 13, 14, 15, 16, 17, 18];
-        let expects = ["- TODO ", "- DOING ", "- DONE ", "- NOW ", "- LATER ", "[#A] ", "[#B] ", "[#C] "];
+        let expects = [
+            "- TODO ", "- DOING ", "- DONE ", "- NOW ", "- LATER ", "[#A] ", "[#B] ", "[#C] ",
+        ];
         for (i, &idx) in cases.iter().enumerate() {
             let key = format!("slot{i}");
             let c = core_empty(&key);
@@ -5668,14 +6789,20 @@ mod tests {
         let c = core_for("slt3", "提示内容\n");
         *c.focus.lock().unwrap() = Some(0);
         assert!(run_fs(|fs| c.slash_execute(fs, 21)));
-        assert_eq!(c.emit_document(), "$callout(type:\"note\", title:\"Note\") {\n提示内容\n}");
+        assert_eq!(
+            c.emit_document(),
+            "$callout(type:\"note\", title:\"Note\") {\n提示内容\n}"
+        );
         let doc = c.emit_document();
         run_fs(|fs| c.rebuild(&doc, fs));
         assert_eq!(c.emit_document(), doc, "callout reparse 往返");
         let d = core_for("slt4", "折叠内容\n");
         *d.focus.lock().unwrap() = Some(0);
         assert!(run_fs(|fs| d.slash_execute(fs, 22)));
-        assert_eq!(d.emit_document(), "$details(summary:\"Details\") {\n折叠内容\n}");
+        assert_eq!(
+            d.emit_document(),
+            "$details(summary:\"Details\") {\n折叠内容\n}"
+        );
     }
 
     /// T-04：结构操作不入 undo（PLAN-048 T6 裁定口径）——命令后 Ctrl+Z
@@ -5755,7 +6882,11 @@ mod tests {
         press(c, EditorKey::Backspace);
         assert_eq!(c.emit_document(), "甲。X乙。");
         ctrl(c, 'z'); // 块0 新缓冲空历史 → 无操作。
-        assert_eq!(c.emit_document(), "甲。X乙。", "stale history must be cleared");
+        assert_eq!(
+            c.emit_document(),
+            "甲。X乙。",
+            "stale history must be cleared"
+        );
     }
 
     // ── PLAN-048 T7（W4）：空态 placeholder ─────────────────────────────
@@ -5771,7 +6902,11 @@ mod tests {
             .iter()
             .find(|r| r.text == "写点什么…")
             .expect("placeholder run on empty doc");
-        assert!((ph.color.r - 0.55).abs() < 1e-6, "dimmed vs base: {:?}", ph.color);
+        assert!(
+            (ph.color.r - 0.55).abs() < 1e-6,
+            "dimmed vs base: {:?}",
+            ph.color
+        );
         // 聚焦后隐。
         *c.focus.lock().unwrap() = Some(0);
         let frame2 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("写点什么…")));
@@ -5794,7 +6929,10 @@ mod tests {
     fn placeholder_guards() {
         let c = core_empty("ph3");
         let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, Some("  ")));
-        assert!(!frame.list.runs.iter().any(|r| r.text == "  "), "blank placeholder skipped");
+        assert!(
+            !frame.list.runs.iter().any(|r| r.text == "  "),
+            "blank placeholder skipped"
+        );
         // 视图实例（只读轨）豁免。
         let sk = storage_key("view_fence_ph0000000000");
         registry().lock().unwrap().remove(&sk);
@@ -5888,12 +7026,16 @@ mod tests {
         *c.focus.lock().unwrap() = Some(0);
         run_fs(|fs| c.block_motion(fs, 0, Motion::End));
         press(c, EditorKey::Enter); // 空叶 id3 落文档位次 1：dfs [0,3,1,2]
-        // 焦点移到 乙（id1）块首退格 → 并入空叶 id3 → 压缩后 id3→2。
+                                    // 焦点移到 乙（id1）块首退格 → 并入空叶 id3 → 压缩后 id3→2。
         *c.focus.lock().unwrap() = Some(1);
         let out = press(c, EditorKey::Backspace);
         assert!(out.text_changed);
         assert_eq!(c.block_count(), 3);
-        assert_eq!(c.focused_block(), Some(2), "focus follows renumbered merge target");
+        assert_eq!(
+            c.focused_block(),
+            Some(2),
+            "focus follows renumbered merge target"
+        );
         assert_eq!(c.live_text(2), "乙");
         assert_eq!(c.emit_document(), "甲\n\n乙\n\n丙");
     }
@@ -6011,7 +7153,11 @@ mod tests {
             let _ = run_fs(|fs| {
                 c.handle_input(
                     fs,
-                    DocInput::MousePressed { button: EditorButton::Left, x, y: rects[0].y + 4.0 },
+                    DocInput::MousePressed {
+                        button: EditorButton::Left,
+                        x,
+                        y: rects[0].y + 4.0,
+                    },
                     &mut NullClipboard,
                 )
             });
@@ -6019,7 +7165,10 @@ mod tests {
             let blocks = c.blocks.lock().unwrap();
             AutodownEditorCore::cursor_byte_offset(&blocks[0])
         };
-        assert!(c.focused_block().is_none(), "click 前无焦点（首击语义前置）");
+        assert!(
+            c.focused_block().is_none(),
+            "click 前无焦点（首击语义前置）"
+        );
         let off1 = click(20.0).unwrap_or(0);
         assert_eq!(c.focused_block(), Some(0), "首击建焦点");
         let off2 = click(100.0).unwrap_or(usize::MAX);
@@ -6040,14 +7189,26 @@ mod tests {
         let out = run_fs(|fs| {
             c.handle_input(
                 fs,
-                DocInput::MousePressed { button: EditorButton::Left, x: 30.0, y: rects[1].y + 4.0 },
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: 30.0,
+                    y: rects[1].y + 4.0,
+                },
                 &mut NullClipboard,
             )
         });
         assert!(out.focus_changed, "首击建焦点：{out:?}");
-        assert_eq!(c.focused_block(), Some(1), "点第 2 项 → 聚焦第 2 项叶（非首项）");
+        assert_eq!(
+            c.focused_block(),
+            Some(1),
+            "点第 2 项 → 聚焦第 2 项叶（非首项）"
+        );
         press(c, EditorKey::Char('叉'));
-        assert!(c.live_text(1).contains('叉'), "键入落第 2 项：{:?}", c.live_text(1));
+        assert!(
+            c.live_text(1).contains('叉'),
+            "键入落第 2 项：{:?}",
+            c.live_text(1)
+        );
         assert_eq!(c.live_text(0), "甲项", "第 1 项不受扰");
     }
 
@@ -6072,10 +7233,18 @@ mod tests {
             )
         });
         assert!(out.focus_changed, "首击建焦点：{out:?}");
-        assert_eq!(c.focused_block(), Some(3), "命中 r1c1 叶（行主序叶 0..3=cells，非首个 cell）");
+        assert_eq!(
+            c.focused_block(),
+            Some(3),
+            "命中 r1c1 叶（行主序叶 0..3=cells，非首个 cell）"
+        );
         press(c, EditorKey::End);
         press(c, EditorKey::Char('叉'));
-        assert!(c.live_text(3).contains("2叉"), "键入落 r1c1：{:?}", c.live_text(3));
+        assert!(
+            c.live_text(3).contains("2叉"),
+            "键入落 r1c1：{:?}",
+            c.live_text(3)
+        );
         assert_eq!(c.live_text(2), "1", "r1c0 不受扰");
     }
 
@@ -6154,10 +7323,13 @@ $callout(type: \"info\", title: \"B\") {
     /// 点击同样无效果。
     #[test]
     fn mouse_click_blank_outside_blocks_is_noop() {
-        let c = core_for("t603a", "甲块。
+        let c = core_for(
+            "t603a",
+            "甲块。
 
 乙块。
-");
+",
+        );
         let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let rects = c.block_rects();
         let last_bottom = rects.last().map(|r| r.y + r.h).unwrap_or(0.0);
@@ -6172,11 +7344,18 @@ $callout(type: \"info\", title: \"B\") {
         let out = run_fs(|fs| {
             c.handle_input(
                 fs,
-                DocInput::MousePressed { button: EditorButton::Left, x: 30.0, y: last_bottom + 30.0 },
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: 30.0,
+                    y: last_bottom + 30.0,
+                },
                 &mut NullClipboard,
             )
         });
-        assert!(!out.focus_changed && !out.cursor_changed, "空白点击无效果：{out:?}");
+        assert!(
+            !out.focus_changed && !out.cursor_changed,
+            "空白点击无效果：{out:?}"
+        );
         assert_eq!(c.focused_block(), Some(0), "焦点不被搬移");
         let off_after = {
             let blocks = c.blocks.lock().unwrap();
@@ -6198,7 +7377,10 @@ $callout(type: \"info\", title: \"B\") {
                     &mut NullClipboard,
                 )
             });
-            assert!(!out2.focus_changed && !out2.cursor_changed, "gap 点击无效果：{out2:?}");
+            assert!(
+                !out2.focus_changed && !out2.cursor_changed,
+                "gap 点击无效果：{out2:?}"
+            );
             assert_eq!(c.focused_block(), Some(0));
         }
     }
@@ -6422,12 +7604,18 @@ $callout(type: \"info\", title: \"B\") {
                     line_h,
                     &ctx,
                     &mut replay,
+                    &mut Vec::new(),
                 )
             });
         }
-        let text_runs: Vec<&DocRun> =
-            frame.list.runs.iter().filter(|r| r.size != 12.0).collect();
-        let replay_norm: Vec<DocRun> = replay.into_iter().map(|mut r| { r.y = 0.0; r }).collect();
+        let text_runs: Vec<&DocRun> = frame.list.runs.iter().filter(|r| r.size != 12.0).collect();
+        let replay_norm: Vec<DocRun> = replay
+            .into_iter()
+            .map(|mut r| {
+                r.y = 0.0;
+                r
+            })
+            .collect();
         assert_eq!(text_runs.len(), replay_norm.len(), "段数一致");
         for (a, b) in text_runs.iter().zip(replay_norm.iter()) {
             assert_eq!(a.text, b.text);
@@ -6450,18 +7638,19 @@ $callout(type: \"info\", title: \"B\") {
             frame.list.fills.len()
         );
         // 语言标签 run（size 12、色 = 家族 FENCE_HEADER_FG）
-        let label = frame.list.runs.iter().find(|r| r.size == 12.0).expect("header label run");
+        let label = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.size == 12.0)
+            .expect("header label run");
         assert_eq!(label.text, "rust");
         let fg = rgb8(autodown_blocks::FENCE_HEADER_FG);
         assert!((label.color.r - fg.r).abs() < 1e-6);
         // fence 正文段为家族字号（14）且 mono
-        assert!(frame
-            .list
-            .runs
-            .iter()
-            .any(|r| r.mono
-                && (r.size - autodown_blocks::FENCE_SIZE).abs() < 1e-6
-                && r.text.contains("let")));
+        assert!(frame.list.runs.iter().any(|r| r.mono
+            && (r.size - autodown_blocks::FENCE_SIZE).abs() < 1e-6
+            && r.text.contains("let")));
     }
 
     /// PLAN-041 T4：只读 fence 视图实例——readonly 门控（输入不路由/
@@ -6474,13 +7663,24 @@ $callout(type: \"info\", title: \"B\") {
         registry().lock().unwrap().remove(&sk);
         let c = autodown_editor(raw);
         assert!(c.is_view_instance(), "view_fence_* 键应识别为视图实例");
-        assert!(c.sync_external("```rust
+        assert!(c.sync_external(
+            "```rust
 fn main() { let s = \"hi\"; }
 ```
-", true));
+",
+            true
+        ));
         // 输入不路由：点击/按键零捕获零焦点。
         let out = run_fs(|fs| {
-            c.handle_input(fs, DocInput::MousePressed { button: EditorButton::Left, x: 3.0, y: 3.0 }, &mut NullClipboard)
+            c.handle_input(
+                fs,
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: 3.0,
+                    y: 3.0,
+                },
+                &mut NullClipboard,
+            )
         });
         assert!(!out.captured, "视图实例不捕获输入");
         assert_eq!(c.focused_block(), None, "视图实例无焦点");
@@ -6494,9 +7694,17 @@ fn main() { let s = \"hi\"; }
         assert!(
             frame.list.runs.iter().any(|r| r.color != WHITE),
             "hljs 语法着色生效: {:?}",
-            frame.list.runs.iter().map(|r| (r.text.as_str(), r.color)).collect::<Vec<_>>()
+            frame
+                .list
+                .runs
+                .iter()
+                .map(|r| (r.text.as_str(), r.color))
+                .collect::<Vec<_>>()
         );
-        assert!(frame.list.runs.iter().all(|r| r.mono), "fence 正文整块 mono");
+        assert!(
+            frame.list.runs.iter().all(|r| r.mono),
+            "fence 正文整块 mono"
+        );
     }
 
     /// PLAN-041 T3：fence 语言 attr 进 BlockBuf.syntax；无语言 fence 标签
@@ -6509,7 +7717,12 @@ fn main() { let s = \"hi\"; }
             assert_eq!(blocks[0].syntax, None);
         }
         let frame = run_fs(|fs| c.render_frame(fs, 600.0, WHITE, None));
-        let label = frame.list.runs.iter().find(|r| r.size == 12.0).expect("label");
+        let label = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.size == 12.0)
+            .expect("label");
         assert_eq!(label.text, "code");
     }
 
@@ -6524,11 +7737,21 @@ fn main() { let s = \"hi\"; }
         let rects = c.block_rects();
         assert_eq!(rects.len(), 3);
         c.set_doc_selection(
-            SelAnchor { block: 0, offset: 3 },
-            SelAnchor { block: 2, offset: 6 },
+            SelAnchor {
+                block: 0,
+                offset: 3,
+            },
+            SelAnchor {
+                block: 2,
+                offset: 6,
+            },
         );
         let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
-        assert!(frame.list.selection.len() >= 3, "{:?}", frame.list.selection);
+        assert!(
+            frame.list.selection.len() >= 3,
+            "{:?}",
+            frame.list.selection
+        );
         for (i, r) in rects.iter().enumerate() {
             let hit = frame
                 .list
@@ -6543,7 +7766,11 @@ fn main() { let s = \"hi\"; }
             .iter()
             .find(|(s, _)| s.y < rects[0].y + rects[0].h)
             .unwrap();
-        assert!(first.0.x > 0.0, "first leaf rect must start past anchor char: {:?}", first.0);
+        assert!(
+            first.0.x > 0.0,
+            "first leaf rect must start past anchor char: {:?}",
+            first.0
+        );
     }
 
     /// 倒锚（焦点在锚前）与正锚渲染出同一矩形集（dfs 序规范化）。
@@ -6552,13 +7779,25 @@ fn main() { let s = \"hi\"; }
         let c = core_for("sel2", "甲块。\n\n乙块。\n");
         run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         c.set_doc_selection(
-            SelAnchor { block: 1, offset: 3 },
-            SelAnchor { block: 0, offset: 3 },
+            SelAnchor {
+                block: 1,
+                offset: 3,
+            },
+            SelAnchor {
+                block: 0,
+                offset: 3,
+            },
         );
         let fwd = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         c.set_doc_selection(
-            SelAnchor { block: 0, offset: 3 },
-            SelAnchor { block: 1, offset: 3 },
+            SelAnchor {
+                block: 0,
+                offset: 3,
+            },
+            SelAnchor {
+                block: 1,
+                offset: 3,
+            },
         );
         let rev = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let norm = |f: &DocFrame| {
@@ -6572,7 +7811,11 @@ fn main() { let s = \"hi\"; }
             v
         };
         assert!(!fwd.list.selection.is_empty());
-        assert_eq!(norm(&fwd), norm(&rev), "reversed endpoints must render identically");
+        assert_eq!(
+            norm(&fwd),
+            norm(&rev),
+            "reversed endpoints must render identically"
+        );
     }
 
     /// 外部重建清跨块选区（与 shift_anchor 同重置口径）。
@@ -6580,8 +7823,14 @@ fn main() { let s = \"hi\"; }
     fn rebuild_resets_doc_selection() {
         let c = core_for("sel3", "甲块。\n\n乙块。\n");
         c.set_doc_selection(
-            SelAnchor { block: 0, offset: 0 },
-            SelAnchor { block: 1, offset: 1 },
+            SelAnchor {
+                block: 0,
+                offset: 0,
+            },
+            SelAnchor {
+                block: 1,
+                offset: 1,
+            },
         );
         assert!(c.doc_selection().is_some());
         assert!(c.sync_external("换内容。\n", true));
@@ -6595,10 +7844,16 @@ fn main() { let s = \"hi\"; }
         *c.focus.lock().unwrap() = Some(0);
         run_fs(|fs| c.block_motion(fs, 0, Motion::End));
         press(c, EditorKey::Enter); // 块0 末端拆块 → 空叶插中（blocks 追加 id2）
-        // segs: [Leaf0, Leaf2(""), Leaf1]；选区跨 空 叶。
+                                    // segs: [Leaf0, Leaf2(""), Leaf1]；选区跨 空 叶。
         c.set_doc_selection(
-            SelAnchor { block: 0, offset: 3 },
-            SelAnchor { block: 1, offset: 0 },
+            SelAnchor {
+                block: 0,
+                offset: 3,
+            },
+            SelAnchor {
+                block: 1,
+                offset: 0,
+            },
         );
         let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let rects = c.block_rects();
@@ -6611,7 +7866,11 @@ fn main() { let s = \"hi\"; }
             .iter()
             .find(|(r, _)| r.y >= band.y && r.y < band.y + band.h);
         assert!(thin.is_some(), "empty middle leaf needs a visible rect");
-        assert!(thin.unwrap().0.w <= 4.0, "thin rect, got {:?}", thin.unwrap().0);
+        assert!(
+            thin.unwrap().0.w <= 4.0,
+            "thin rect, got {:?}",
+            thin.unwrap().0
+        );
     }
 
     /// T2 执行期发现修复：中部拆块后渲染栈须按文档（dfs）序——新叶
@@ -6626,7 +7885,10 @@ fn main() { let s = \"hi\"; }
         let rects = c.block_rects();
         // 视觉序 = dfs 序 [0,3,1,2]：空叶 id3 的纵带夹在块0 与块1 之间。
         assert!(rects[3].y > rects[0].y, "new leaf below first");
-        assert!(rects[1].y > rects[3].y, "block1 (二) must render BELOW the new empty leaf");
+        assert!(
+            rects[1].y > rects[3].y,
+            "block1 (二) must render BELOW the new empty leaf"
+        );
         assert!(rects[2].y > rects[1].y);
     }
 
@@ -6647,7 +7909,11 @@ fn main() { let s = \"hi\"; }
         run_fs(|fs| {
             core.handle_input(
                 fs,
-                DocInput::KeyPressed { key, text: None, modifiers: mods },
+                DocInput::KeyPressed {
+                    key,
+                    text: None,
+                    modifiers: mods,
+                },
                 &mut NullClipboard,
             )
         })
@@ -6659,8 +7925,14 @@ fn main() { let s = \"hi\"; }
         let c = core_for("cp1", "甲块。\n\n乙块。\n\n丙块。\n");
         *c.focus.lock().unwrap() = Some(0);
         c.set_doc_selection(
-            SelAnchor { block: 0, offset: 3 },
-            SelAnchor { block: 2, offset: 3 },
+            SelAnchor {
+                block: 0,
+                offset: 3,
+            },
+            SelAnchor {
+                block: 2,
+                offset: 3,
+            },
         );
         let mut clip = ClipRecorder(std::cell::RefCell::new(None));
         run_fs(|fs| {
@@ -6669,7 +7941,10 @@ fn main() { let s = \"hi\"; }
                 DocInput::KeyPressed {
                     key: EditorKey::Char('c'),
                     text: None,
-                    modifiers: EditorModifiers { control: true, ..Default::default() },
+                    modifiers: EditorModifiers {
+                        control: true,
+                        ..Default::default()
+                    },
                 },
                 &mut clip,
             )
@@ -6683,8 +7958,14 @@ fn main() { let s = \"hi\"; }
         let c = core_for("dl1", "甲块。\n\n乙块。\n\n丙块。\n");
         *c.focus.lock().unwrap() = Some(2);
         c.set_doc_selection(
-            SelAnchor { block: 0, offset: 3 },
-            SelAnchor { block: 2, offset: 3 },
+            SelAnchor {
+                block: 0,
+                offset: 3,
+            },
+            SelAnchor {
+                block: 2,
+                offset: 3,
+            },
         );
         let out = press(c, EditorKey::Backspace);
         assert!(out.text_changed);
@@ -6705,8 +7986,14 @@ fn main() { let s = \"hi\"; }
         let c = core_for("dl2", "甲块。\n\n乙块。\n\n丙块。\n");
         *c.focus.lock().unwrap() = Some(2);
         c.set_doc_selection(
-            SelAnchor { block: 0, offset: 3 },
-            SelAnchor { block: 2, offset: 3 },
+            SelAnchor {
+                block: 0,
+                offset: 3,
+            },
+            SelAnchor {
+                block: 2,
+                offset: 3,
+            },
         );
         let out = press(c, EditorKey::Delete);
         assert!(out.text_changed);
@@ -6721,8 +8008,21 @@ fn main() { let s = \"hi\"; }
         *c.focus.lock().unwrap() = Some(0);
         ctrl(c, 'a');
         let sel = c.doc_selection().expect("ctrl+a sets doc selection");
-        assert_eq!(sel.0, SelAnchor { block: 0, offset: 0 });
-        assert_eq!(sel.1, SelAnchor { block: 1, offset: 9 }, "tail leaf fully covered");
+        assert_eq!(
+            sel.0,
+            SelAnchor {
+                block: 0,
+                offset: 0
+            }
+        );
+        assert_eq!(
+            sel.1,
+            SelAnchor {
+                block: 1,
+                offset: 9
+            },
+            "tail leaf fully covered"
+        );
         press(c, EditorKey::Char('替'));
         assert_eq!(c.block_count(), 1);
         assert_eq!(c.emit_document(), "替");
@@ -6739,7 +8039,11 @@ fn main() { let s = \"hi\"; }
         let press_out = run_fs(|fs| {
             c.handle_input(
                 fs,
-                DocInput::MousePressed { button: EditorButton::Left, x: 2.0, y: rects[0].y + 4.0 },
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: 2.0,
+                    y: rects[0].y + 4.0,
+                },
                 &mut NullClipboard,
             )
         });
@@ -6749,18 +8053,27 @@ fn main() { let s = \"hi\"; }
         run_fs(|fs| {
             c.handle_input(
                 fs,
-                DocInput::MouseDragged { x: 60.0, y: rects[2].y + 4.0 },
+                DocInput::MouseDragged {
+                    x: 60.0,
+                    y: rects[2].y + 4.0,
+                },
                 &mut NullClipboard,
             )
         });
-        let sel = c.doc_selection().expect("cross-block drag sets doc selection");
+        let sel = c
+            .doc_selection()
+            .expect("cross-block drag sets doc selection");
         assert_eq!(sel.0.block, 0);
         assert_eq!(sel.1.block, 2);
         assert_eq!(c.focused_block(), Some(2), "caret follows drag head");
         let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         for (i, r) in rects.iter().enumerate() {
             assert!(
-                frame.list.selection.iter().any(|(s, _)| s.y >= r.y && s.y < r.y + r.h),
+                frame
+                    .list
+                    .selection
+                    .iter()
+                    .any(|(s, _)| s.y >= r.y && s.y < r.y + r.h),
                 "drag band {i} must highlight"
             );
         }
@@ -6771,29 +8084,51 @@ fn main() { let s = \"hi\"; }
     fn shift_down_across_boundary_extends_selection() {
         let c = core_for("sh1", "甲块。\n\n乙块。\n");
         *c.focus.lock().unwrap() = Some(0);
-        let shift = EditorModifiers { shift: true, ..Default::default() };
-        run_fs(|fs| {
-            c.handle_input(fs, DocInput::ModifiersChanged(shift), &mut NullClipboard)
-        });
+        let shift = EditorModifiers {
+            shift: true,
+            ..Default::default()
+        };
+        run_fs(|fs| c.handle_input(fs, DocInput::ModifiersChanged(shift), &mut NullClipboard));
         let out = press_key(c, EditorKey::Down, shift);
         assert!(out.focus_changed);
         assert_eq!(c.focused_block(), Some(1));
         let sel = c.doc_selection().expect("shift+Down extends across blocks");
-        assert_eq!(sel.0, SelAnchor { block: 0, offset: 0 }, "anchor stays at origin");
+        assert_eq!(
+            sel.0,
+            SelAnchor {
+                block: 0,
+                offset: 0
+            },
+            "anchor stays at origin"
+        );
         assert_eq!(sel.1.block, 1);
         // 反向收拢回块0：锚端保持，焦点端随 nav 落位回到原块（块内
         // 选区 {0,0}→{0,尾}，nav 上行落末行尾为既有惯例）。
         press_key(c, EditorKey::Up, shift);
         assert_eq!(c.focused_block(), Some(0));
         let sel2 = c.doc_selection().unwrap();
-        assert_eq!(sel2.0, SelAnchor { block: 0, offset: 0 }, "anchor stays at origin");
+        assert_eq!(
+            sel2.0,
+            SelAnchor {
+                block: 0,
+                offset: 0
+            },
+            "anchor stays at origin"
+        );
         assert_eq!(sel2.1.block, 0, "focus endpoint back in origin block");
         // 无 shift 迁移清选区。
         run_fs(|fs| {
-            c.handle_input(fs, DocInput::ModifiersChanged(EditorModifiers::none()), &mut NullClipboard)
+            c.handle_input(
+                fs,
+                DocInput::ModifiersChanged(EditorModifiers::none()),
+                &mut NullClipboard,
+            )
         });
         press_key(c, EditorKey::Down, EditorModifiers::none());
-        assert!(c.doc_selection().is_none(), "plain navigation clears selection");
+        assert!(
+            c.doc_selection().is_none(),
+            "plain navigation clears selection"
+        );
     }
 
     /// PLAN-050 F1/F2：浅色主题下 fence chrome 与正文基色同源——chrome 填充
@@ -6851,7 +8186,13 @@ fn main() { let s = \"hi\"; }
         retheme_all_fence_buffers();
         {
             let blocks = c.blocks.lock().unwrap();
-            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("dark fg");
+            let fg = blocks[0]
+                .editor
+                .ed()
+                .theme()
+                .settings
+                .foreground
+                .expect("dark fg");
             assert_eq!((fg.r, fg.g, fg.b), (250, 250, 250), "dark retheme base fg");
         }
         // 回浅 + 重着色：基色前景回 zinc-950。
@@ -6859,7 +8200,13 @@ fn main() { let s = \"hi\"; }
         retheme_all_fence_buffers();
         {
             let blocks = c.blocks.lock().unwrap();
-            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("light fg");
+            let fg = blocks[0]
+                .editor
+                .ed()
+                .theme()
+                .settings
+                .foreground
+                .expect("light fg");
             assert_eq!((fg.r, fg.g, fg.b), (9, 9, 11), "light retheme base fg");
         }
     }
@@ -6875,7 +8222,13 @@ fn main() { let s = \"hi\"; }
         let c = core_for("t054a", "```\nplain text\n```\n");
         {
             let blocks = c.blocks.lock().unwrap();
-            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("light no-lang fg");
+            let fg = blocks[0]
+                .editor
+                .ed()
+                .theme()
+                .settings
+                .foreground
+                .expect("light no-lang fg");
             assert_eq!(
                 (fg.r, fg.g, fg.b),
                 (9, 9, 11),
@@ -6887,8 +8240,18 @@ fn main() { let s = \"hi\"; }
         retheme_all_fence_buffers();
         {
             let blocks = c.blocks.lock().unwrap();
-            let fg = blocks[0].editor.ed().theme().settings.foreground.expect("dark no-lang fg");
-            assert_eq!((fg.r, fg.g, fg.b), (250, 250, 250), "dark no-lang fence base fg");
+            let fg = blocks[0]
+                .editor
+                .ed()
+                .theme()
+                .settings
+                .foreground
+                .expect("dark no-lang fg");
+            assert_eq!(
+                (fg.r, fg.g, fg.b),
+                (250, 250, 250),
+                "dark no-lang fence base fg"
+            );
         }
         crate::ui::style::theme::set_dark_mode(false); // 还原默认档
     }
@@ -6904,13 +8267,20 @@ fn main() { let s = \"hi\"; }
         let blocks = c.blocks.lock().unwrap();
         let b = &blocks[0];
         let found = b.editor.ed().with_buffer(|buf| {
-            let Some(line) = buf.lines.first() else { return false };
-            let Some(lo) = line.text().find("code") else { return false };
-            line.attrs_list()
-                .spans_iter()
-                .any(|(range, a)| range.start <= lo && lo < range.end && a.as_attrs().family != sans_family())
+            let Some(line) = buf.lines.first() else {
+                return false;
+            };
+            let Some(lo) = line.text().find("code") else {
+                return false;
+            };
+            line.attrs_list().spans_iter().any(|(range, a)| {
+                range.start <= lo && lo < range.end && a.as_attrs().family != sans_family()
+            })
         });
-        assert!(found, "inline code span must carry non-sans family for width measurement");
+        assert!(
+            found,
+            "inline code span must carry non-sans family for width measurement"
+        );
     }
 
     // ── PLAN-054 W2：编辑壳块家族可见化 ──
@@ -6923,19 +8293,44 @@ fn main() { let s = \"hi\"; }
         let c = core_for("t054l", "- 甲\n- 乙\n\n2. 一\n3. 二\n");
         let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let texts: Vec<&str> = frame.list.runs.iter().map(|r| r.text.as_str()).collect();
-        assert_eq!(texts.iter().filter(|t| **t == "\u{2022} ").count(), 2, "两个圆点 marker：{texts:?}");
+        assert_eq!(
+            texts.iter().filter(|t| **t == "\u{2022} ").count(),
+            2,
+            "两个圆点 marker：{texts:?}"
+        );
         assert!(texts.contains(&"2. "), "有序 marker 按start：{texts:?}");
         assert!(texts.contains(&"3. "), "有序 marker 递增：{texts:?}");
         // 项内容 x = marker 槽流宽 + 2；marker x = 0。
         let slot = run_fs(|fs| marker_slot_width(fs, "\u{2022} ")) + 2.0;
-        let body = frame.list.runs.iter().find(|r| r.text == "甲").expect("item body run");
-        assert!((body.x - slot).abs() < 0.5, "项内容 x = marker 槽流宽+2（{} vs {slot}）", body.x);
-        let marker = frame.list.runs.iter().find(|r| r.text == "\u{2022} ").expect("bullet marker");
-        assert!((marker.x - (body.x - slot)).abs() < 0.5, "marker 对齐槽左缘");
+        let body = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "甲")
+            .expect("item body run");
+        assert!(
+            (body.x - slot).abs() < 0.5,
+            "项内容 x = marker 槽流宽+2（{} vs {slot}）",
+            body.x
+        );
+        let marker = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "\u{2022} ")
+            .expect("bullet marker");
+        assert!(
+            (marker.x - (body.x - slot)).abs() < 0.5,
+            "marker 对齐槽左缘"
+        );
         // PLAN-054 复审反馈④：列表内相邻叶间距 = 只读臂 spacing 2（非
         // BLOCK_GAP 8）——两 marker y 差 = 行高 24.32 + 2。
-        let bullets: Vec<&DocRun> =
-            frame.list.runs.iter().filter(|r| r.text == "\u{2022} ").collect();
+        let bullets: Vec<&DocRun> = frame
+            .list
+            .runs
+            .iter()
+            .filter(|r| r.text == "\u{2022} ")
+            .collect();
         let pitch = bullets[1].y - bullets[0].y;
         let expect = BODY_SIZE * LINE_H_PARA + 2.0;
         assert!(
@@ -6959,7 +8354,12 @@ fn main() { let s = \"hi\"; }
         let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
         let slot_bullet = run_fs(|fs| marker_slot_width(fs, "\u{2022} ")) + 2.0;
         // 父级（顶层）文字 x = 圆点槽；子级 marker x = 父级文字 x。
-        let jia = frame.list.runs.iter().find(|r| r.text == "甲").expect("顶层 body");
+        let jia = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "甲")
+            .expect("顶层 body");
         let sub_marker = frame
             .list
             .runs
@@ -6974,7 +8374,12 @@ fn main() { let s = \"hi\"; }
             jia.x
         );
         // 子级文字 x = 子级 marker + 槽宽。
-        let sub_body = frame.list.runs.iter().find(|r| r.text == "子一").expect("子级 body");
+        let sub_body = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "子一")
+            .expect("子级 body");
         assert!(
             (sub_body.x - (sub_marker.x + slot_bullet)).abs() < 0.5,
             "子级文字 = 子级 marker + 槽宽（{} vs {}）",
@@ -6982,12 +8387,26 @@ fn main() { let s = \"hi\"; }
             sub_marker.x + slot_bullet
         );
         // 顶层 marker x 恒 0（槽随层基不随项宽）。
-        let first_marker = frame.list.runs.iter().find(|r| r.text == "\u{2022} ").expect("首圆点");
+        let first_marker = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "\u{2022} ")
+            .expect("首圆点");
         assert!(first_marker.x.abs() < 0.5, "顶层 marker x = 0");
         // 宽序号项：body x = "10. " 槽流宽（逐项流式，非固定 gutter）。
         let slot_10 = run_fs(|fs| marker_slot_width(fs, "10. ")) + 2.0;
-        let shi = frame.list.runs.iter().find(|r| r.text == "拾").expect("宽序号 body");
-        assert!((shi.x - slot_10).abs() < 0.5, "宽序号 body x = 其槽流宽（{} vs {slot_10}）", shi.x);
+        let shi = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "拾")
+            .expect("宽序号 body");
+        assert!(
+            (shi.x - slot_10).abs() < 0.5,
+            "宽序号 body x = 其槽流宽（{} vs {slot_10}）",
+            shi.x
+        );
     }
 
     /// PLAN-054 T6：task 两态编辑臂呈现——✔(accent)/□(muted)，emit 往返
@@ -6997,8 +8416,18 @@ fn main() { let s = \"hi\"; }
         let src = "- [x] 完成\n- [ ] 待办\n";
         let c = core_for("t054t", src);
         let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
-        let done = frame.list.runs.iter().find(|r| r.text == "\u{2714} ").expect("✔ marker");
-        let todo = frame.list.runs.iter().find(|r| r.text == "\u{25A1} ").expect("□ marker");
+        let done = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "\u{2714} ")
+            .expect("✔ marker");
+        let todo = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "\u{25A1} ")
+            .expect("□ marker");
         // accent = theme 语义 primary（蓝族饱和）；muted = 中性灰（近无色）。
         assert!(
             done.color.b - done.color.r > 0.2,
@@ -7025,7 +8454,13 @@ fn main() { let s = \"hi\"; }
         let c = core_for("t055tb", src);
         let frame = run_fs(|fs| c.render_frame(fs, 990.0, WHITE, None));
         // cell 文本 run 在册；管道行 run 退役。
-        let joined: String = frame.list.runs.iter().map(|r| r.text.as_str()).collect::<Vec<_>>().join("");
+        let joined: String = frame
+            .list
+            .runs
+            .iter()
+            .map(|r| r.text.as_str())
+            .collect::<Vec<_>>()
+            .join("");
         for cell in ["Name", "Value", "Note", "Foo"] {
             assert!(joined.contains(cell), "cell run 含 {cell:?}：{joined:?}");
         }
@@ -7035,36 +8470,68 @@ fn main() { let s = \"hi\"; }
             frame.list.runs.iter().map(|r| &r.text).collect::<Vec<_>>()
         );
         // 表头加粗。
-        let name = frame.list.runs.iter().find(|r| r.text == "Name").expect("表头 run");
+        let name = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "Name")
+            .expect("表头 run");
         assert!(name.bold, "表头行加粗");
-        let foo = frame.list.runs.iter().find(|r| r.text == "Foo").expect("数据 run");
+        let foo = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "Foo")
+            .expect("数据 run");
         assert!(!foo.bold, "数据行不加粗");
         // chrome fills：表头底色（muted 档随主题）。
         let (hr, hg, hb) = autodown_blocks::table_header_rgb();
-        let header_fill = frame.list.fills.iter().find(|(r, col)| {
-            r.h > 20.0 && (col.r * 255.0).round() as i32 == hr as i32
-        });
-        assert!(header_fill.is_some(), "表头底色 fill 在册：{:?}", frame.list.fills);
+        let header_fill = frame
+            .list
+            .fills
+            .iter()
+            .find(|(r, col)| r.h > 20.0 && (col.r * 255.0).round() as i32 == hr as i32);
+        assert!(
+            header_fill.is_some(),
+            "表头底色 fill 在册：{:?}",
+            frame.list.fills
+        );
         // 行底线（1px，横贯表宽）与列分隔线（1px 竖线）。
         let row_rule = frame
             .list
             .fills
             .iter()
             .find(|(r, _)| (r.h - autodown_blocks::TABLE_RULE).abs() < 0.2 && r.w > 900.0);
-        assert!(row_rule.is_some(), "行分隔线 1px 在册：{:?}", frame.list.fills);
+        assert!(
+            row_rule.is_some(),
+            "行分隔线 1px 在册：{:?}",
+            frame.list.fills
+        );
         let col_rules = frame
             .list
             .fills
             .iter()
             .filter(|(r, _)| (r.w - autodown_blocks::TABLE_RULE).abs() < 0.2 && r.h > 20.0)
             .count();
-        assert!(col_rules >= 3, "列分隔线在册（列间+右缘×2 行）：{col_rules}");
+        assert!(
+            col_rules >= 3,
+            "列分隔线在册（列间+右缘×2 行）：{col_rules}"
+        );
         // emit 往返：管道行结构保留。分隔行 canonical `:---`（PLAN-651
         // T-02 R7：parser align=left 默认 → alignMarker）。
         let out = c.emit_document();
-        assert!(out.contains("| Name | Value | Note |"), "emit 往返保留表头：{out:?}");
-        assert!(out.contains("| :--- | :--- | :--- |"), "emit 保留分隔行：{out:?}");
-        assert!(out.contains("| Foo | 1 | A |"), "emit 往返保留数据行：{out:?}");
+        assert!(
+            out.contains("| Name | Value | Note |"),
+            "emit 往返保留表头：{out:?}"
+        );
+        assert!(
+            out.contains("| :--- | :--- | :--- |"),
+            "emit 保留分隔行：{out:?}"
+        );
+        assert!(
+            out.contains("| Foo | 1 | A |"),
+            "emit 往返保留数据行：{out:?}"
+        );
     }
 
     /// PLAN-055 T2：cell 编辑后 emit 往返——live text 进管道行，`\|`
@@ -7078,7 +8545,10 @@ fn main() { let s = \"hi\"; }
         press(c, EditorKey::End);
         press(c, EditorKey::Char('s'));
         let out = c.emit_document();
-        assert!(out.contains("| Foos | 1 |"), "编辑后 emit 反映 cell live text：{out:?}");
+        assert!(
+            out.contains("| Foos | 1 |"),
+            "编辑后 emit 反映 cell live text：{out:?}"
+        );
         // cell 内竖线转义：改写 cell 文本为 "a|b" → emit "a\|b"（spans_flat
         // 口径，与只读臂管道行发射同源）。
         run_fs(|fs| {
@@ -7088,7 +8558,10 @@ fn main() { let s = \"hi\"; }
             }
         });
         let out = c.emit_document();
-        assert!(out.contains("| a\\|b | 1 |"), "cell 竖线 emit 转义：{out:?}");
+        assert!(
+            out.contains("| a\\|b | 1 |"),
+            "cell 竖线 emit 转义：{out:?}"
+        );
         // PLAN-056：重解析闭环——转义 cell 经 parser 反转义回 `a|b`，结构
         // +文本双稳定（055 期因 parser 无转义感知收敛掉，D1 清偿后回桩）。
         let c2 = core_for("t055te2", &out);
@@ -7102,7 +8575,10 @@ fn main() { let s = \"hi\"; }
             }
         });
         let out3 = c.emit_document();
-        assert!(out3.contains("| a\\\\b | 1 |"), "cell 反斜杠 emit 转义：{out3:?}");
+        assert!(
+            out3.contains("| a\\\\b | 1 |"),
+            "cell 反斜杠 emit 转义：{out3:?}"
+        );
         let c3 = core_for("t055te3", &out3);
         assert_eq!(c3.emit_document(), out3, "反斜杠 cell 重解析往返恒等");
     }
@@ -7114,17 +8590,45 @@ fn main() { let s = \"hi\"; }
         let src = "| Name | Value | Note |\n| --- | --- | --- |\n| Foo | 1 | A |\n";
         let c = core_for("t055tg", src);
         let frame = run_fs(|fs| c.render_frame(fs, 990.0, WHITE, None));
-        let name = frame.list.runs.iter().find(|r| r.text == "Name").expect("表头 c0");
-        let value = frame.list.runs.iter().find(|r| r.text == "Value").expect("表头 c1");
-        let foo = frame.list.runs.iter().find(|r| r.text == "Foo").expect("数据 r1c0");
+        let name = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "Name")
+            .expect("表头 c0");
+        let value = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "Value")
+            .expect("表头 c1");
+        let foo = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "Foo")
+            .expect("数据 r1c0");
         // 等分缺省：990/3 = 330 列宽；文字 x = cell.x + 12。
         let col_w = 990.0 / 3.0;
-        assert!((value.x - name.x - col_w).abs() < 0.5, "列 x 偏移 = 列宽（等分）：{} vs {}", value.x - name.x, col_w);
-        assert!((name.x - autodown_blocks::TABLE_PAD_X).abs() < 0.5, "首列文字 x = pad");
+        assert!(
+            (value.x - name.x - col_w).abs() < 0.5,
+            "列 x 偏移 = 列宽（等分）：{} vs {}",
+            value.x - name.x,
+            col_w
+        );
+        assert!(
+            (name.x - autodown_blocks::TABLE_PAD_X).abs() < 0.5,
+            "首列文字 x = pad"
+        );
         // 同行 y 对齐；行距 = 行高（2×pad + 行盒）。
         assert!((value.y - name.y).abs() < 0.5, "同行 cell y 对齐");
         let expect_row_h = 2.0 * autodown_blocks::TABLE_PAD_Y + BODY_SIZE * LINE_H_PARA;
-        assert!((foo.y - name.y - expect_row_h).abs() < 1.0, "行 pitch = pad×2 + 行盒：{} vs {}", foo.y - name.y, expect_row_h);
+        assert!(
+            (foo.y - name.y - expect_row_h).abs() < 1.0,
+            "行 pitch = pad×2 + 行盒：{} vs {}",
+            foo.y - name.y,
+            expect_row_h
+        );
     }
 
     /// PLAN-055 T5：cell 编辑接线与结构降级——点击聚焦、键入即时生效；
@@ -7143,7 +8647,11 @@ fn main() { let s = \"hi\"; }
         let out = run_fs(|fs| {
             c.handle_input(
                 fs,
-                DocInput::MousePressed { button: EditorButton::Left, x: 20.0, y: 48.0 + 12.0 },
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: 20.0,
+                    y: 48.0 + 12.0,
+                },
                 &mut NullClipboard,
             )
         });
@@ -7152,7 +8660,11 @@ fn main() { let s = \"hi\"; }
         // 键入即时生效。
         press(c, EditorKey::End);
         press(c, EditorKey::Char('x'));
-        assert!(c.live_text(2).contains("1x"), "键入生效：{:?}", c.live_text(2));
+        assert!(
+            c.live_text(2).contains("1x"),
+            "键入生效：{:?}",
+            c.live_text(2)
+        );
         // Enter 降级：软换行（块数不变，无拆块；叶序不变）。
         let leaves_before = {
             let segs = c.segs.lock().unwrap();
@@ -7175,7 +8687,10 @@ fn main() { let s = \"hi\"; }
         let out = press(c, EditorKey::Backspace);
         let n2 = { c.blocks.lock().unwrap().len() };
         assert_eq!(n2, n0, "块首 Backspace 禁合并：{n2}");
-        assert!(!out.text_changed || c.live_text(2).starts_with('1'), "cell 文本不并入前叶");
+        assert!(
+            !out.text_changed || c.live_text(2).starts_with('1'),
+            "cell 文本不并入前叶"
+        );
         // emit 往返：表格结构保留（软换行折叠空格）。分隔行 canonical
         // `:---`（PLAN-651 T-02 R7：parser align=left 默认 → alignMarker）。
         let md = c.emit_document();
@@ -7195,7 +8710,11 @@ fn main() { let s = \"hi\"; }
             run_fs(|fs| c.handle_input(fs, input(x, y), &mut NullClipboard))
         };
         // 列 0 右边界在 x=200（400 等分）；命中带内按压 → 进入拖拽。
-        let out = send(200.0, 20.0, |x, y| DocInput::MousePressed { button: EditorButton::Left, x, y });
+        let out = send(200.0, 20.0, |x, y| DocInput::MousePressed {
+            button: EditorButton::Left,
+            x,
+            y,
+        });
         assert!(out.captured, "边界按压捕获：{out:?}");
         assert_eq!(c.focused_block(), None, "拖拽按压不建焦点");
         // 拖到 260 → 列 0 宽 260（写 table_widths，下一帧 relayout）。
@@ -7206,20 +8725,36 @@ fn main() { let s = \"hi\"; }
             assert!((w[0] - 260.0).abs() < 0.5, "拖拽改宽落状态：{w:?}");
         }
         let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
-        let b = frame.list.runs.iter().find(|r| r.text == "B").expect("表头 c1");
-        assert!((b.x - (260.0 + autodown_blocks::TABLE_PAD_X)).abs() < 0.5, "列 1 x 随拖拽重排：{}", b.x);
+        let b = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "B")
+            .expect("表头 c1");
+        assert!(
+            (b.x - (260.0 + autodown_blocks::TABLE_PAD_X)).abs() < 0.5,
+            "列 1 x 随拖拽重排：{}",
+            b.x
+        );
         // min 钳制：拖到 x=10 → 列 0 宽 = 48。
         let _ = send(10.0, 20.0, |x, y| DocInput::MouseDragged { x, y });
         {
             let map = c.table_widths.lock().unwrap();
             let w = map.get(&0).unwrap();
-            assert!((w[0] - autodown_blocks::TABLE_MIN_COL_W).abs() < 0.5, "min 48 钳制：{w:?}");
+            assert!(
+                (w[0] - autodown_blocks::TABLE_MIN_COL_W).abs() < 0.5,
+                "min 48 钳制：{w:?}"
+            );
         }
         // 松手落定：状态保留（重渲染不回退等分）。
         let _ = run_fs(|fs| {
             c.handle_input(
                 fs,
-                DocInput::MouseReleased { button: EditorButton::Left },
+                DocInput::MouseReleased {
+                    button: EditorButton::Left,
+                    x: 10.0,
+                    y: 20.0,
+                },
                 &mut NullClipboard,
             )
         });
@@ -7227,11 +8762,21 @@ fn main() { let s = \"hi\"; }
         {
             let map = c.table_widths.lock().unwrap();
             let w = map.get(&0).unwrap();
-            assert!((w[0] - autodown_blocks::TABLE_MIN_COL_W).abs() < 0.5, "落定保留：{w:?}");
+            assert!(
+                (w[0] - autodown_blocks::TABLE_MIN_COL_W).abs() < 0.5,
+                "落定保留：{w:?}"
+            );
         }
         // 命中带外按压不进拖拽（正常 caret 路径）。
-        let out = send(100.0, 20.0, |x, y| DocInput::MousePressed { button: EditorButton::Left, x, y });
-        assert!(!out.captured || c.focused_block().is_some(), "带外按压走 caret 路径：{out:?}");
+        let out = send(100.0, 20.0, |x, y| DocInput::MousePressed {
+            button: EditorButton::Left,
+            x,
+            y,
+        });
+        assert!(
+            !out.captured || c.focused_block().is_some(),
+            "带外按压走 caret 路径：{out:?}"
+        );
     }
 
     /// PLAN-055 T5：cell 内行首标记转换禁用——"# "/"- " 原样保留为文本
@@ -7264,8 +8809,17 @@ fn main() { let s = \"hi\"; }
         let c = core_for("t054c", src);
         let frame = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
         // 标题行 run（icon + label，kind 色）。
-        let title = frame.list.runs.iter().find(|r| r.text.contains("Info")).expect("callout 标题行");
-        assert!(title.text.starts_with('\u{2139}'), "info 图标：{:?}", title.text);
+        let title = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text.contains("Info"))
+            .expect("callout 标题行");
+        assert!(
+            title.text.starts_with('\u{2139}'),
+            "info 图标：{:?}",
+            title.text
+        );
         assert!(title.color.b > title.color.r, "kind 配色（blue 族 title）");
         // PLAN-600 T-1：盒式 chrome 替代左条——kind -500 底（α≈0.10，
         // 宽=视口宽）+ 四条 1px 边（α≈0.50）。
@@ -7283,272 +8837,299 @@ fn main() { let s = \"hi\"; }
             .find(|(r, c)| is_blue(*c, 0.10) && r.w > 400.0)
             .expect("callout 盒底 fill 在册（替代左条）：{:?}");
         assert!(box_bg.0.h > 20.0, "盒底覆盖标题+正文带：{:?}", box_bg);
-        let edges = frame.list.fills.iter().filter(|(_, c)| is_blue(*c, 0.50)).count();
+        let edges = frame
+            .list
+            .fills
+            .iter()
+            .filter(|(_, c)| is_blue(*c, 0.50))
+            .count();
         assert!(edges >= 4, "盒四边 1px fill 在册：{edges}");
         // details 摘要行。
         assert!(
-            frame.list.runs.iter().any(|r| r.text.contains("\u{25B8} 展开")),
+            frame
+                .list
+                .runs
+                .iter()
+                .any(|r| r.text.contains("\u{25B8} 展开")),
             "details 摘要行 ▸ 在册：{:?}",
             frame.list.runs.iter().map(|r| &r.text).collect::<Vec<_>>()
         );
         // emit 往返。
         let out = c.emit_document();
-        assert!(out.contains("$callout(type:\"info\", title:\"Info\")"), "callout 往返：{out:?}");
-        assert!(out.contains("$details(summary:\"展开\")"), "details 往返：{out:?}");
+        assert!(
+            out.contains("$callout(type:\"info\", title:\"Info\")"),
+            "callout 往返：{out:?}"
+        );
+        assert!(
+            out.contains("$details(summary:\"展开\")"),
+            "details 往返：{out:?}"
+        );
         assert!(out.contains("藏文。"), "details 内容往返：{out:?}");
     }
 
-// ── PLAN-066 T3: stream→edit v1（流式只读门 + parse flag 直通 + 状态条）──
-// TS 裁定对齐：engine ARCHITECTURE §6「BlockEditCtx.readonly = streaming—
-// 流式进行中编辑面只读，流结束自动解锁」。原生面 = core 流式位 + handle_input
-// 全门控 + 尾部状态条；parse flag 直通 parse_blocks（032 单源语义）。
+    // ── PLAN-066 T3: stream→edit v1（流式只读门 + parse flag 直通 + 状态条）──
+    // TS 裁定对齐：engine ARCHITECTURE §6「BlockEditCtx.readonly = streaming—
+    // 流式进行中编辑面只读，流结束自动解锁」。原生面 = core 流式位 + handle_input
+    // 全门控 + 尾部状态条；parse flag 直通 parse_blocks（032 单源语义）。
 
-/// 流式位往返：is_final=false 置位、true 解锁；内容不变仅翻 final 也解锁
-/// （流式位先于差分快路写——生成收尾无新字符的帧也要解锁）。
-#[test]
-fn plan066_streaming_flag_round_trip() {
-    let c = core_for("p66s", "# 标题\n\n段落。");
-    assert!(!c.streaming());
-    assert!(c.sync_external("# 标题\n\n段落一。", false), "streaming push rebuilds");
-    assert!(c.streaming());
-    assert!(!c.sync_external("# 标题\n\n段落一。", true), "same-content final: no rebuild");
-    assert!(!c.streaming(), "final flip unlocks even without rebuild");
-}
-
-/// 流式只读门：streaming 中按键全哑（不核入不改文本），final 解锁后同键
-/// 入核。
-#[test]
-fn plan066_streaming_gates_input_until_final() {
-    let c = core_for("p66g", "abc");
-    assert!(c.sync_external("abc2", false));
-    assert!(c.streaming());
-    *c.focus.lock().unwrap() = Some(0);
-    let out = press(c, EditorKey::Char('x'));
-    assert!(!out.request_redraw, "streaming: key inert");
-    assert!(
-        c.emit_document().starts_with("abc2"),
-        "no mutation while streaming: {:?}",
-        c.emit_document()
-    );
-    assert!(!c.sync_external("abc2", true));
-    let _ = press(c, EditorKey::End);
-    let _ = press(c, EditorKey::Char('x'));
-    assert!(
-        c.emit_document().starts_with("abc2x"),
-        "unlocked: key lands: {:?}",
-        c.emit_document()
-    );
-}
-
-/// parse flag 直通重建：流式期悬空列表标记被单源剥离（emit 无列表项行），
-/// final 解析产出列表项（emit 带 `- ` 行）——parse_blocks 的 final 语义
-/// （032 行构造即刻完整 / loading 标记）经编辑臂 rebuild 生效。
-#[test]
-fn plan066_parse_final_flag_reaches_rebuild() {
-    let c = core_for("p66f", "seed");
-    assert!(c.sync_external("abc\n\n- ", false));
-    assert!(
-        !c.emit_document().contains("\n- "),
-        "streaming: dangling list-marker tail stripped: {:?}",
-        c.emit_document()
-    );
-    run_fs(|fs| {
-        c.rebuild_with("abc\n\n- ", fs, true);
-    });
-    assert!(
-        c.emit_document().contains("\n- "),
-        "final: list item materialized: {:?}",
-        c.emit_document()
-    );
-}
-
-/// 状态条：streaming 中 render_frame 尾部横幅在册（fill 条 + 文案 run）且
-/// 高度计入 DocFrame.height；final 帧无横幅。
-#[test]
-fn plan066_streaming_banner_in_draw_list() {
-    let c = core_for("p66b", "正文。");
-    let f0 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
-    assert!(!c.streaming());
-    assert!(
-        f0.list.runs.iter().all(|r| !r.text.contains("流式生成中")),
-        "final frame: no banner"
-    );
-    assert!(c.sync_external("正文更新。", false));
-    assert!(c.streaming());
-    let f1 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
-    assert!(
-        f1.list.runs.iter().any(|r| r.text.contains("流式生成中")),
-        "banner run present: {:?}",
-        f1.list.runs.iter().map(|r| &r.text).collect::<Vec<_>>()
-    );
-    assert!(
-        f1.list.fills.iter().any(|(r, _)| r.h >= 20.0),
-        "banner strip fill present"
-    );
-    assert!(
-        f1.height > f0.height + 20.0,
-        "banner height accounted: stream={} final={}",
-        f1.height,
-        f0.height
-    );
-}
-
-// ── PLAN-651 T-01：红项闭合第一批（attachments/651-matrix.md §3；行为锚 +
-// closure corpus 幂等锚；TS 基线=既有 serializer-roundtrip/stream-tri-state
-// 全绿，本组只钉 VM 臂）─────────────────────────────────────────────────
-
-fn type_str(core: &AutodownEditorCore, s: &str) {
-    for ch in s.chars() {
-        press(core, EditorKey::Char(ch));
+    /// 流式位往返：is_final=false 置位、true 解锁；内容不变仅翻 final 也解锁
+    /// （流式位先于差分快路写——生成收尾无新字符的帧也要解锁）。
+    #[test]
+    fn plan066_streaming_flag_round_trip() {
+        let c = core_for("p66s", "# 标题\n\n段落。");
+        assert!(!c.streaming());
+        assert!(
+            c.sync_external("# 标题\n\n段落一。", false),
+            "streaming push rebuilds"
+        );
+        assert!(c.streaming());
+        assert!(
+            !c.sync_external("# 标题\n\n段落一。", true),
+            "same-content final: no rebuild"
+        );
+        assert!(!c.streaming(), "final flip unlocks even without rebuild");
     }
-}
 
-/// R1：fence 语言随发射保形（原裸 ``` 回写丢 ```rust 标注；serializer
-/// fenceMd ` ```{lang} ` 同形）。
-#[test]
-fn t651_fence_language_survives_edit_roundtrip() {
-    let c = core_for("t651f", "```rust\nlet a = 1;\n```\n");
-    assert_eq!(c.block_count(), 1);
-    {
-        let blocks = c.blocks.lock().unwrap();
-        assert_eq!(blocks[0].kind, LeafKind::Fence);
-        assert_eq!(blocks[0].syntax.as_deref(), Some("rust"));
+    /// 流式只读门：streaming 中按键全哑（不核入不改文本），final 解锁后同键
+    /// 入核。
+    #[test]
+    fn plan066_streaming_gates_input_until_final() {
+        let c = core_for("p66g", "abc");
+        assert!(c.sync_external("abc2", false));
+        assert!(c.streaming());
+        *c.focus.lock().unwrap() = Some(0);
+        let out = press(c, EditorKey::Char('x'));
+        assert!(!out.request_redraw, "streaming: key inert");
+        assert!(
+            c.emit_document().starts_with("abc2"),
+            "no mutation while streaming: {:?}",
+            c.emit_document()
+        );
+        assert!(!c.sync_external("abc2", true));
+        let _ = press(c, EditorKey::End);
+        let _ = press(c, EditorKey::Char('x'));
+        assert!(
+            c.emit_document().starts_with("abc2x"),
+            "unlocked: key lands: {:?}",
+            c.emit_document()
+        );
     }
-    // 编辑代码文本后发射仍带语言标注。
-    *c.focus.lock().unwrap() = Some(0);
-    press(c, EditorKey::End);
-    type_str(c, "  // tail");
-    let doc = c.emit_document();
-    assert!(doc.starts_with("```rust\nlet a = 1;  // tail\n```"), "{doc}");
-    // 无语言 fence 维持裸发射。
-    let c2 = core_for("t651f2", "```\nplain\n```\n");
-    assert_eq!(c2.emit_document(), "```\nplain\n```");
-}
 
-/// R3：闭合 mermaid 进 fence 族叶（原 catch-all 拍平段落——emit 丢
-/// ```mermaid 围栏回写降级）。编辑面=mono 源码（TS 编辑=源码编辑器同形）。
-#[test]
-fn t651_mermaid_closed_fence_keeps_structure() {
-    let c = core_for("t651mm", "```mermaid\ngraph TD; A-->B;\n```\n");
-    assert_eq!(c.block_count(), 1);
-    {
-        let blocks = c.blocks.lock().unwrap();
-        assert_eq!(blocks[0].kind, LeafKind::Fence);
-        assert_eq!(blocks[0].syntax.as_deref(), Some("mermaid"));
+    /// parse flag 直通重建：流式期悬空列表标记被单源剥离（emit 无列表项行），
+    /// final 解析产出列表项（emit 带 `- ` 行）——parse_blocks 的 final 语义
+    /// （032 行构造即刻完整 / loading 标记）经编辑臂 rebuild 生效。
+    #[test]
+    fn plan066_parse_final_flag_reaches_rebuild() {
+        let c = core_for("p66f", "seed");
+        assert!(c.sync_external("abc\n\n- ", false));
+        assert!(
+            !c.emit_document().contains("\n- "),
+            "streaming: dangling list-marker tail stripped: {:?}",
+            c.emit_document()
+        );
+        run_fs(|fs| {
+            c.rebuild_with("abc\n\n- ", fs, true);
+        });
+        assert!(
+            c.emit_document().contains("\n- "),
+            "final: list item materialized: {:?}",
+            c.emit_document()
+        );
     }
-    *c.focus.lock().unwrap() = Some(0);
-    press(c, EditorKey::End);
-    type_str(c, " C;");
-    let doc = c.emit_document();
-    assert!(doc.starts_with("```mermaid\ngraph TD; A-->B; C;\n```"), "{doc}");
-    // 流式开 fence（未闭合→Fence loading, language=mermaid）同通道保形。
-    let c2 = core_for("t651mm2", "```mermaid\ngraph TD\n");
-    {
-        let blocks = c2.blocks.lock().unwrap();
-        assert_eq!(blocks[0].kind, LeafKind::Fence);
-        assert_eq!(blocks[0].syntax.as_deref(), Some("mermaid"));
-    }
-    assert!(c2.emit_document().starts_with("```mermaid\ngraph TD\n```"));
-}
 
-/// R4：math 块源码叶（mono）+ `%{ }%` 往返（原 catch-all 拍平丢构造）。
-#[test]
-fn t651_math_block_source_edit_and_wrap_roundtrip() {
-    let c = core_for("t651m", "%{\nE = mc^2\n}%\n");
-    assert_eq!(c.block_count(), 1);
-    {
-        let blocks = c.blocks.lock().unwrap();
-        assert_eq!(blocks[0].kind, LeafKind::Math);
+    /// 状态条：streaming 中 render_frame 尾部横幅在册（fill 条 + 文案 run）且
+    /// 高度计入 DocFrame.height；final 帧无横幅。
+    #[test]
+    fn plan066_streaming_banner_in_draw_list() {
+        let c = core_for("p66b", "正文。");
+        let f0 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(!c.streaming());
+        assert!(
+            f0.list.runs.iter().all(|r| !r.text.contains("流式生成中")),
+            "final frame: no banner"
+        );
+        assert!(c.sync_external("正文更新。", false));
+        assert!(c.streaming());
+        let f1 = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(
+            f1.list.runs.iter().any(|r| r.text.contains("流式生成中")),
+            "banner run present: {:?}",
+            f1.list.runs.iter().map(|r| &r.text).collect::<Vec<_>>()
+        );
+        assert!(
+            f1.list.fills.iter().any(|(r, _)| r.h >= 20.0),
+            "banner strip fill present"
+        );
+        assert!(
+            f1.height > f0.height + 20.0,
+            "banner height accounted: stream={} final={}",
+            f1.height,
+            f0.height
+        );
     }
-    assert_eq!(c.live_text(0), "E = mc^2");
-    *c.focus.lock().unwrap() = Some(0);
-    press(c, EditorKey::End);
-    type_str(c, "+1");
-    let doc = c.emit_document();
-    assert!(doc.contains("%{\nE = mc^2+1\n}%"), "{doc}");
-    // 发射幂等：再解析再发射同形（不降级段落、不丢包裹）。
-    let c2 = core_for("t651m2", &doc);
-    assert_eq!(c2.block_count(), 1);
-    {
-        let blocks = c2.blocks.lock().unwrap();
-        assert_eq!(blocks[0].kind, LeafKind::Math);
+
+    // ── PLAN-651 T-01：红项闭合第一批（attachments/651-matrix.md §3；行为锚 +
+    // closure corpus 幂等锚；TS 基线=既有 serializer-roundtrip/stream-tri-state
+    // 全绿，本组只钉 VM 臂）─────────────────────────────────────────────────
+
+    fn type_str(core: &AutodownEditorCore, s: &str) {
+        for ch in s.chars() {
+            press(core, EditorKey::Char(ch));
+        }
     }
-    assert_eq!(c2.emit_document(), doc);
-    // math 源码叶 Enter 软换行不拆块（fence 同守卫）。
-    *c.focus.lock().unwrap() = Some(0);
-    press(c, EditorKey::End);
-    press(c, EditorKey::Enter);
-    assert_eq!(c.block_count(), 1, "math leaf must soft-wrap, not split");
-}
 
-/// R2：query/embed 冻结源行——attr 文本可见、不进可聚焦块表、emit 原文
-/// 保形（原 catch-all 空段回写丢数据；TS 基线=冻结预览 v1 裁定对齐）。
-#[test]
-fn t651_query_embed_frozen_lines_preserved() {
-    let src = "前置段。\n\n$query(status = \"done\")\n\n$embed(src: \"^abc\")\n\n尾段。\n";
-    let c = core_for("t651q", src);
-    // 仅两个可聚焦叶；query/embed 为 Raw 冻结行不建缓冲。
-    assert_eq!(c.block_count(), 2);
-    assert_eq!(c.live_text(0), "前置段。");
-    assert_eq!(c.live_text(1), "尾段。");
-    let doc = c.emit_document();
-    assert!(doc.contains("$query(status = \"done\")"), "{doc}");
-    assert!(doc.contains("$embed(src: \"^abc\")"), "{doc}");
-    // 幂等：冻结行再解析再发射原文不动。
-    let c2 = core_for("t651q2", &doc);
-    assert_eq!(c2.emit_document(), doc);
-}
-
-/// R-ANCH：块锚随骨架往返（原 emit 丢 ` ^id`——jade 块引用断链）。
-/// 拆分锚随头块（尾块空锚）；合并保头锚；serializer withIdSuffix 同形。
-#[test]
-fn t651_block_anchor_roundtrip_split_and_merge() {
-    let c = core_for("t651a", "见此段 ^abc123\n\n## 标题 ^hdr9\n");
-    {
-        let blocks = c.blocks.lock().unwrap();
-        assert_eq!(blocks[0].kind, LeafKind::Paragraph);
-        assert_eq!(blocks[0].anchor, "abc123");
-        assert_eq!(blocks[1].kind, LeafKind::Heading(2));
-        assert_eq!(blocks[1].anchor, "hdr9");
+    /// R1：fence 语言随发射保形（原裸 ``` 回写丢 ```rust 标注；serializer
+    /// fenceMd ` ```{lang} ` 同形）。
+    #[test]
+    fn t651_fence_language_survives_edit_roundtrip() {
+        let c = core_for("t651f", "```rust\nlet a = 1;\n```\n");
+        assert_eq!(c.block_count(), 1);
+        {
+            let blocks = c.blocks.lock().unwrap();
+            assert_eq!(blocks[0].kind, LeafKind::Fence);
+            assert_eq!(blocks[0].syntax.as_deref(), Some("rust"));
+        }
+        // 编辑代码文本后发射仍带语言标注。
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::End);
+        type_str(c, "  // tail");
+        let doc = c.emit_document();
+        assert!(
+            doc.starts_with("```rust\nlet a = 1;  // tail\n```"),
+            "{doc}"
+        );
+        // 无语言 fence 维持裸发射。
+        let c2 = core_for("t651f2", "```\nplain\n```\n");
+        assert_eq!(c2.emit_document(), "```\nplain\n```");
     }
-    let doc = c.emit_document();
-    assert!(doc.contains("见此段 ^abc123"), "{doc}");
-    assert!(doc.contains("## 标题 ^hdr9"), "{doc}");
 
-    // 拆分：头块保锚，尾块空锚（新缓冲 append 在 blocks Vec 尾部——
-    // 创建序 ≠ dfs 序，seg 位置由骨架插入决定）。
-    *c.focus.lock().unwrap() = Some(0);
-    press(c, EditorKey::Home);
-    press(c, EditorKey::Right);
-    press(c, EditorKey::Right);
-    press(c, EditorKey::Enter);
-    assert_eq!(c.block_count(), 3);
-    {
-        let blocks = c.blocks.lock().unwrap();
-        assert_eq!(blocks[0].anchor, "abc123", "anchor stays with head block");
-        assert_eq!(blocks[2].anchor, "", "tail block carries no anchor");
+    /// R3：闭合 mermaid 进 fence 族叶（原 catch-all 拍平段落——emit 丢
+    /// ```mermaid 围栏回写降级）。编辑面=mono 源码（TS 编辑=源码编辑器同形）。
+    #[test]
+    fn t651_mermaid_closed_fence_keeps_structure() {
+        let c = core_for("t651mm", "```mermaid\ngraph TD; A-->B;\n```\n");
+        assert_eq!(c.block_count(), 1);
+        {
+            let blocks = c.blocks.lock().unwrap();
+            assert_eq!(blocks[0].kind, LeafKind::Fence);
+            assert_eq!(blocks[0].syntax.as_deref(), Some("mermaid"));
+        }
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::End);
+        type_str(c, " C;");
+        let doc = c.emit_document();
+        assert!(
+            doc.starts_with("```mermaid\ngraph TD; A-->B; C;\n```"),
+            "{doc}"
+        );
+        // 流式开 fence（未闭合→Fence loading, language=mermaid）同通道保形。
+        let c2 = core_for("t651mm2", "```mermaid\ngraph TD\n");
+        {
+            let blocks = c2.blocks.lock().unwrap();
+            assert_eq!(blocks[0].kind, LeafKind::Fence);
+            assert_eq!(blocks[0].syntax.as_deref(), Some("mermaid"));
+        }
+        assert!(c2.emit_document().starts_with("```mermaid\ngraph TD\n```"));
     }
-    let doc2 = c.emit_document();
-    assert!(doc2.contains("见此 ^abc123"), "{doc2}");
 
-    // 合并：尾块（dfs 序在头块之后）并回头块，头锚保留（尾块消亡，与
-    // TS 模型 op 同语义）。注意 live_text 不得在 blocks 锁块内调用
-    // （Mutex 不可重入）。
-    *c.focus.lock().unwrap() = Some(2);
-    press(c, EditorKey::Backspace);
-    assert_eq!(c.block_count(), 2);
-    {
-        let blocks = c.blocks.lock().unwrap();
-        assert_eq!(blocks[0].anchor, "abc123", "head anchor survives merge");
+    /// R4：math 块源码叶（mono）+ `%{ }%` 往返（原 catch-all 拍平丢构造）。
+    #[test]
+    fn t651_math_block_source_edit_and_wrap_roundtrip() {
+        let c = core_for("t651m", "%{\nE = mc^2\n}%\n");
+        assert_eq!(c.block_count(), 1);
+        {
+            let blocks = c.blocks.lock().unwrap();
+            assert_eq!(blocks[0].kind, LeafKind::Math);
+        }
+        assert_eq!(c.live_text(0), "E = mc^2");
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::End);
+        type_str(c, "+1");
+        let doc = c.emit_document();
+        assert!(doc.contains("%{\nE = mc^2+1\n}%"), "{doc}");
+        // 发射幂等：再解析再发射同形（不降级段落、不丢包裹）。
+        let c2 = core_for("t651m2", &doc);
+        assert_eq!(c2.block_count(), 1);
+        {
+            let blocks = c2.blocks.lock().unwrap();
+            assert_eq!(blocks[0].kind, LeafKind::Math);
+        }
+        assert_eq!(c2.emit_document(), doc);
+        // math 源码叶 Enter 软换行不拆块（fence 同守卫）。
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::End);
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 1, "math leaf must soft-wrap, not split");
     }
-    assert_eq!(c.live_text(0), "见此段");
-}
 
-/// closure corpus 幂等锚（T-01 全类型一网）：parse→emit→parse→emit 稳定，
-/// 结构锚逐类型断言。T-02 批次随其闭合面扩表（align/IAL 等）。
-#[test]
-fn t651_closure_corpus_emit_idempotent() {
-    let corpus = "\
+    /// R2：query/embed 冻结源行——attr 文本可见、不进可聚焦块表、emit 原文
+    /// 保形（原 catch-all 空段回写丢数据；TS 基线=冻结预览 v1 裁定对齐）。
+    #[test]
+    fn t651_query_embed_frozen_lines_preserved() {
+        let src = "前置段。\n\n$query(status = \"done\")\n\n$embed(src: \"^abc\")\n\n尾段。\n";
+        let c = core_for("t651q", src);
+        // 仅两个可聚焦叶；query/embed 为 Raw 冻结行不建缓冲。
+        assert_eq!(c.block_count(), 2);
+        assert_eq!(c.live_text(0), "前置段。");
+        assert_eq!(c.live_text(1), "尾段。");
+        let doc = c.emit_document();
+        assert!(doc.contains("$query(status = \"done\")"), "{doc}");
+        assert!(doc.contains("$embed(src: \"^abc\")"), "{doc}");
+        // 幂等：冻结行再解析再发射原文不动。
+        let c2 = core_for("t651q2", &doc);
+        assert_eq!(c2.emit_document(), doc);
+    }
+
+    /// R-ANCH：块锚随骨架往返（原 emit 丢 ` ^id`——jade 块引用断链）。
+    /// 拆分锚随头块（尾块空锚）；合并保头锚；serializer withIdSuffix 同形。
+    #[test]
+    fn t651_block_anchor_roundtrip_split_and_merge() {
+        let c = core_for("t651a", "见此段 ^abc123\n\n## 标题 ^hdr9\n");
+        {
+            let blocks = c.blocks.lock().unwrap();
+            assert_eq!(blocks[0].kind, LeafKind::Paragraph);
+            assert_eq!(blocks[0].anchor, "abc123");
+            assert_eq!(blocks[1].kind, LeafKind::Heading(2));
+            assert_eq!(blocks[1].anchor, "hdr9");
+        }
+        let doc = c.emit_document();
+        assert!(doc.contains("见此段 ^abc123"), "{doc}");
+        assert!(doc.contains("## 标题 ^hdr9"), "{doc}");
+
+        // 拆分：头块保锚，尾块空锚（新缓冲 append 在 blocks Vec 尾部——
+        // 创建序 ≠ dfs 序，seg 位置由骨架插入决定）。
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::Home);
+        press(c, EditorKey::Right);
+        press(c, EditorKey::Right);
+        press(c, EditorKey::Enter);
+        assert_eq!(c.block_count(), 3);
+        {
+            let blocks = c.blocks.lock().unwrap();
+            assert_eq!(blocks[0].anchor, "abc123", "anchor stays with head block");
+            assert_eq!(blocks[2].anchor, "", "tail block carries no anchor");
+        }
+        let doc2 = c.emit_document();
+        assert!(doc2.contains("见此 ^abc123"), "{doc2}");
+
+        // 合并：尾块（dfs 序在头块之后）并回头块，头锚保留（尾块消亡，与
+        // TS 模型 op 同语义）。注意 live_text 不得在 blocks 锁块内调用
+        // （Mutex 不可重入）。
+        *c.focus.lock().unwrap() = Some(2);
+        press(c, EditorKey::Backspace);
+        assert_eq!(c.block_count(), 2);
+        {
+            let blocks = c.blocks.lock().unwrap();
+            assert_eq!(blocks[0].anchor, "abc123", "head anchor survives merge");
+        }
+        assert_eq!(c.live_text(0), "见此段");
+    }
+
+    /// closure corpus 幂等锚（T-01 全类型一网）：parse→emit→parse→emit 稳定，
+    /// 结构锚逐类型断言。T-02 批次随其闭合面扩表（align/IAL 等）。
+    #[test]
+    fn t651_closure_corpus_emit_idempotent() {
+        let corpus = "\
 # 计划 ^plan-root
 
 开场段，带 **粗体** 与 [[首页]] 行内链。 ^intro-anchor
@@ -7598,135 +9179,694 @@ $details(summary: \"收起项\") {
 | 写作 | 进行 | 80 |
 {cols:[120,\"auto\",\"auto\"]}
 ";
-    let c = core_for("t651c", corpus);
-    let e1 = c.emit_document();
-    let c2 = core_for("t651c2", &e1);
-    let e2 = c2.emit_document();
-    assert_eq!(e1, e2, "emit must be idempotent over closure corpus");
-    // 结构锚：逐类型不降级（红项闭合前 mermaid/math 降级段落、query/embed
-    // 变空段、锚丢失——本测试即对拍 gate 的 Rust 臂）。
-    assert!(e1.contains("# 计划 ^plan-root"), "{e1}");
-    assert!(e1.contains(" ^intro-anchor"), "{e1}");
-    assert!(e1.contains(" ^bg-anchor"), "{e1}");
-    assert!(e1.contains("- 任务项 ^task-anchor"), "{e1}");
-    assert!(e1.contains("> 引用内的锚段 ^quote-anchor"), "{e1}");
-    assert!(e1.contains("```rust\nfn main() {}\n```"), "{e1}");
-    assert!(e1.contains("```mermaid\ngraph TD; A-->B;\n```"), "{e1}");
-    assert!(e1.contains("%{\nL = mc^2\n}%"), "{e1}");
-    assert!(e1.contains("$query(status = \"done\")"), "{e1}");
-    assert!(e1.contains("$embed(src: \"^emb\")"), "{e1}");
-    assert!(e1.contains("$callout(type:\"warning\", title:\"注意\") {"), "{e1}");
-    assert!(e1.contains("$details(summary:\"展开\", open:true) {"), "{e1}");
-    // T-02 扩面：align/IAL 表格 + 闭合 details。
-    assert!(e1.contains("| :--- | ---: | :---: |"), "{e1}");
-    assert!(e1.contains("{cols:[120,\"auto\",\"auto\"]}"), "{e1}");
-    assert!(e1.contains("$details(summary:\"收起项\") {"), "{e1}");
-    assert!(e1.contains("折叠正文。"), "{e1}");
-}
-
-// ── PLAN-651 T-02：红项闭合第二批 ─────────────────────────────────────
-
-/// R6：`---`/`***` → thematic break、'``` ' → Fence（TS INPUT_RULES 同款
-/// 三条补齐；`1. `/h4-6 维持双侧冻结面）。
-#[test]
-fn t651_input_rules_hr_and_fence_align_ts() {
-    let c = core_empty("t651hr");
-    *c.focus.lock().unwrap() = Some(0);
-    for k in ['-', '-', '-'] {
-        press(c, EditorKey::Char(k));
+        let c = core_for("t651c", corpus);
+        let e1 = c.emit_document();
+        let c2 = core_for("t651c2", &e1);
+        let e2 = c2.emit_document();
+        assert_eq!(e1, e2, "emit must be idempotent over closure corpus");
+        // 结构锚：逐类型不降级（红项闭合前 mermaid/math 降级段落、query/embed
+        // 变空段、锚丢失——本测试即对拍 gate 的 Rust 臂）。
+        assert!(e1.contains("# 计划 ^plan-root"), "{e1}");
+        assert!(e1.contains(" ^intro-anchor"), "{e1}");
+        assert!(e1.contains(" ^bg-anchor"), "{e1}");
+        assert!(e1.contains("- 任务项 ^task-anchor"), "{e1}");
+        assert!(e1.contains("> 引用内的锚段 ^quote-anchor"), "{e1}");
+        assert!(e1.contains("```rust\nfn main() {}\n```"), "{e1}");
+        assert!(e1.contains("```mermaid\ngraph TD; A-->B;\n```"), "{e1}");
+        assert!(e1.contains("%{\nL = mc^2\n}%"), "{e1}");
+        assert!(e1.contains("$query(status = \"done\")"), "{e1}");
+        assert!(e1.contains("$embed(src: \"^emb\")"), "{e1}");
+        assert!(
+            e1.contains("$callout(type:\"warning\", title:\"注意\") {"),
+            "{e1}"
+        );
+        assert!(
+            e1.contains("$details(summary:\"展开\", open:true) {"),
+            "{e1}"
+        );
+        // T-02 扩面：align/IAL 表格 + 闭合 details。
+        assert!(e1.contains("| :--- | ---: | :---: |"), "{e1}");
+        assert!(e1.contains("{cols:[120,\"auto\",\"auto\"]}"), "{e1}");
+        assert!(e1.contains("$details(summary:\"收起项\") {"), "{e1}");
+        assert!(e1.contains("折叠正文。"), "{e1}");
     }
-    assert_eq!(c.emit_document(), "---", "--- converts to thematic break");
-    let c2 = core_empty("t651hr2");
-    *c2.focus.lock().unwrap() = Some(0);
-    for k in ['*', '*', '*'] {
-        press(c2, EditorKey::Char(k));
+
+    // ── PLAN-651 T-02：红项闭合第二批 ─────────────────────────────────────
+
+    /// R6：`---`/`***` → thematic break、'``` ' → Fence（TS INPUT_RULES 同款
+    /// 三条补齐；`1. `/h4-6 维持双侧冻结面）。
+    #[test]
+    fn t651_input_rules_hr_and_fence_align_ts() {
+        let c = core_empty("t651hr");
+        *c.focus.lock().unwrap() = Some(0);
+        for k in ['-', '-', '-'] {
+            press(c, EditorKey::Char(k));
+        }
+        assert_eq!(c.emit_document(), "---", "--- converts to thematic break");
+        let c2 = core_empty("t651hr2");
+        *c2.focus.lock().unwrap() = Some(0);
+        for k in ['*', '*', '*'] {
+            press(c2, EditorKey::Char(k));
+        }
+        assert_eq!(
+            c2.emit_document(),
+            "---",
+            "*** also converts to thematic break"
+        );
+        let c3 = core_empty("t651hr3");
+        *c3.focus.lock().unwrap() = Some(0);
+        for k in ['`', '`', '`', ' '] {
+            press(c3, EditorKey::Char(k));
+        }
+        assert_eq!(
+            c3.block_kind_of(0),
+            LeafKind::Fence,
+            "'``` ' converts to fence"
+        );
+        // 空体 fence 发射恒带体行（既有 fence emit 口径）。
+        assert_eq!(c3.emit_document(), "```\n\n```");
     }
-    assert_eq!(c2.emit_document(), "---", "*** also converts to thematic break");
-    let c3 = core_empty("t651hr3");
-    *c3.focus.lock().unwrap() = Some(0);
-    for k in ['`', '`', '`', ' '] {
-        press(c3, EditorKey::Char(k));
+
+    /// R7：表格列对齐 + IAL 随发射还原（原恒 `---`/丢 cols/rows——回写降级）。
+    #[test]
+    fn t651_table_align_ial_roundtrip() {
+        let src = "| a | b | c |\n| :--- | ---: | :---: |\n| 1 | 2 | 3 |\n{cols:[120,\"auto\"], rows:[40,\"auto\"]}\n";
+        let c = core_for("t651tbl", src);
+        let e1 = c.emit_document();
+        assert!(e1.contains("| :--- | ---: | :---: |"), "{e1}");
+        assert!(e1.contains("{cols:"), "{e1}");
+        assert!(e1.contains("\"auto\""), "{e1}");
+        // 幂等：再解析再发射同形（IAL 重挂 + align 重收）。
+        let c2 = core_for("t651tbl2", &e1);
+        assert_eq!(c2.emit_document(), e1, "align/IAL must roundtrip stably");
+        // cell 编辑后 align/IAL 仍随行发射。
+        *c.focus.lock().unwrap() = Some(0);
+        press(c, EditorKey::End);
+        type_str(c, "!");
+        assert!(
+            c.emit_document().contains("| a! | b | c |"),
+            "{:?}",
+            c.emit_document()
+        );
     }
-    assert_eq!(c3.block_kind_of(0), LeafKind::Fence, "'``` ' converts to fence");
-    // 空体 fence 发射恒带体行（既有 fence emit 口径）。
-    assert_eq!(c3.emit_document(), "```\n\n```");
-}
 
-/// R7：表格列对齐 + IAL 随发射还原（原恒 `---`/丢 cols/rows——回写降级）。
-#[test]
-fn t651_table_align_ial_roundtrip() {
-    let src = "| a | b | c |\n| :--- | ---: | :---: |\n| 1 | 2 | 3 |\n{cols:[120,\"auto\"], rows:[40,\"auto\"]}\n";
-    let c = core_for("t651tbl", src);
-    let e1 = c.emit_document();
-    assert!(e1.contains("| :--- | ---: | :---: |"), "{e1}");
-    assert!(e1.contains("{cols:"), "{e1}");
-    assert!(e1.contains("\"auto\""), "{e1}");
-    // 幂等：再解析再发射同形（IAL 重挂 + align 重收）。
-    let c2 = core_for("t651tbl2", &e1);
-    assert_eq!(c2.emit_document(), e1, "align/IAL must roundtrip stably");
-    // cell 编辑后 align/IAL 仍随行发射。
-    *c.focus.lock().unwrap() = Some(0);
-    press(c, EditorKey::End);
-    type_str(c, "!");
-    assert!(c.emit_document().contains("| a! | b | c |"), "{:?}", c.emit_document());
-}
+    /// R5：details 折叠交互——摘要条点击翻转 open（▸/▾ 随态），闭合内容
+    /// 不可见，emit 往返保形；折叠隐藏内容内焦点清退。
+    #[test]
+    fn t651_details_fold_toggle_roundtrip() {
+        let src = "$details(summary:\"展开\", open: true) {\n内容甲。\n}\n\n尾段。\n";
+        let c = core_for("t651det", src);
+        let f0 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+        assert!(
+            f0.list.runs.iter().any(|r| r.text.contains("▾ 展开")),
+            "open summary ▾"
+        );
+        assert!(
+            f0.list.runs.iter().any(|r| r.text.contains("内容甲")),
+            "open content drawn"
+        );
 
-/// R5：details 折叠交互——摘要条点击翻转 open（▸/▾ 随态），闭合内容
-/// 不可见，emit 往返保形；折叠隐藏内容内焦点清退。
-#[test]
-fn t651_details_fold_toggle_roundtrip() {
-    let src = "$details(summary:\"展开\", open: true) {\n内容甲。\n}\n\n尾段。\n";
-    let c = core_for("t651det", src);
-    let f0 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
-    assert!(f0.list.runs.iter().any(|r| r.text.contains("▾ 展开")), "open summary ▾");
-    assert!(f0.list.runs.iter().any(|r| r.text.contains("内容甲")), "open content drawn");
+        // 聚焦内容叶（块 0）后点击摘要条 → 折叠 + 焦点清退。
+        *c.focus.lock().unwrap() = Some(0);
+        let (rect, open0) = c.details_geom.lock().unwrap()[0];
+        assert!(open0);
+        let out = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: rect.x + 5.0,
+                    y: rect.y + 5.0,
+                },
+                &mut NullClipboard,
+            )
+        });
+        assert!(out.request_redraw, "toggle requests redraw");
+        assert_eq!(
+            c.focused_block(),
+            None,
+            "focus inside collapsed content clears"
+        );
+        let f1 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+        assert!(
+            f1.list.runs.iter().any(|r| r.text.contains("▸ 展开")),
+            "folded summary ▸"
+        );
+        assert!(
+            !f1.list.runs.iter().any(|r| r.text.contains("内容甲")),
+            "folded content hidden"
+        );
+        // emit 往返：open 翻转落发射（open:true → 摘除）。
+        let doc = c.emit_document();
+        assert!(doc.contains("$details(summary:\"展开\") {"), "{doc}");
+        assert!(!doc.contains("open:true"), "{doc}");
+        assert!(doc.contains("内容甲。"), "emit keeps inner content");
 
-    // 聚焦内容叶（块 0）后点击摘要条 → 折叠 + 焦点清退。
-    *c.focus.lock().unwrap() = Some(0);
-    let (rect, open0) = c.details_geom.lock().unwrap()[0];
-    assert!(open0);
-    let out = run_fs(|fs| {
-        c.handle_input(
-            fs,
-            DocInput::MousePressed {
-                button: EditorButton::Left,
-                x: rect.x + 5.0,
-                y: rect.y + 5.0,
+        // 再点击 → 展开，内容复显。
+        let (rect2, open1) = c.details_geom.lock().unwrap()[0];
+        assert!(!open1);
+        let _ = run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: rect2.x + 5.0,
+                    y: rect2.y + 5.0,
+                },
+                &mut NullClipboard,
+            )
+        });
+        let f2 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
+        assert!(
+            f2.list.runs.iter().any(|r| r.text.contains("内容甲")),
+            "re-expanded"
+        );
+        assert!(
+            c.emit_document().contains("open:true"),
+            "re-open roundtrips"
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // PLAN-732：wikilink 供给——C 语义/命中、W 点击门、L 载荷、O 来源。
+    // 命中点一律取 link_regions() 段矩形中心（真实布局产物，不猜坐标——
+    // 契约 U-01「Jade 不猜坐标」的同侧实现）。
+    // ------------------------------------------------------------------
+
+    /// 链接段矩形中心（命中测试用点击点）。
+    fn region_center(r: &LinkRegion) -> (f32, f32) {
+        (r.rect.x + r.rect.w / 2.0, r.rect.y + r.rect.h / 2.0)
+    }
+
+    fn click_at(core: &AutodownEditorCore, x: f32, y: f32) -> DocOutput {
+        run_fs(|fs| {
+            core.handle_input(
+                fs,
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x,
+                    y,
+                },
+                &mut NullClipboard,
+            )
+        })
+    }
+    fn release_at(core: &AutodownEditorCore, x: f32, y: f32) -> DocOutput {
+        run_fs(|fs| {
+            core.handle_input(
+                fs,
+                DocInput::MouseReleased {
+                    button: EditorButton::Left,
+                    x,
+                    y,
+                },
+                &mut NullClipboard,
+            )
+        })
+    }
+
+    /// 测试辅助：重置多击节律（模拟两次点击间隔 > CLICK_TIMING 的真
+    /// 用户节奏——测试进程内连续 click_at 会恒落 Double/Triple 而吃掉
+    /// 激活的 single 判定）。
+    fn reset_click_kind(core: &AutodownEditorCore) {
+        *core.click.lock().unwrap() = None;
+    }
+
+    /// C 组：加载期语义保留——英文/中文/别名/带锚链接的目标逐值 + 行内
+    /// 前后文 + 首块 + 标题/列表/引用域；VM 样式补齐（link run 上色）；
+    /// 命中区非整块矩形。
+    #[test]
+    fn plan732_wikilink_regions_semantics() {
+        let src = "前 [[Alpha]] 后\n\n# 标题 [[标题页#节]] 尾\n\n- 项 [[列表页]] 文\n\n> 引 [[引用页#锚]] 文\n";
+        let c = core_for("p732_c_sem", src);
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let regions = c.link_regions();
+        let targets: Vec<&str> = regions.iter().map(|r| r.target.as_str()).collect();
+        assert_eq!(
+            targets,
+            vec!["Alpha", "标题页#节", "列表页", "引用页#锚"],
+            "target 原文逐值（含中文/锚点）"
+        );
+        // 首块（块 0）+ 标题（块 1）+ 列表（块 2）+ 引用（块 3）全覆盖。
+        let blocks: Vec<usize> = regions.iter().map(|r| r.block).collect();
+        assert_eq!(blocks, vec![0, 1, 2, 3], "段落/标题/列表/引用文本域");
+        // 命中区非整块矩形：宽度显著小于块宽、矩形严格内含于块域
+        //（单行块高度=行高属正常——判据在宽度与内含性）。
+        let r0 = &regions[0];
+        let b0 = c.block_rects()[0];
+        assert!(
+            r0.rect.w < b0.w * 0.6,
+            "首块链接命中区非整块宽：{:?} vs {:?}",
+            r0.rect,
+            b0
+        );
+        assert!(
+            r0.rect.h <= b0.h + 1e-3,
+            "命中区高（{}）≤ 块高（{}）",
+            r0.rect.h,
+            b0.h
+        );
+        // VM 轨样式补齐：链接文本 run 携 LINK_COLOR（style.link）。
+        let link_run = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text == "Alpha")
+            .expect("链接文本 run 在册");
+        assert_eq!(
+            link_run.color, LINK_COLOR,
+            "wikilink span 获链接样式（D-03 补齐）"
+        );
+        // 行内前后文保留（同块文本完整——链接边界切片后前后文各成段）。
+        assert!(
+            frame.list.runs.iter().any(|r| r.text.contains("前"))
+                && frame.list.runs.iter().any(|r| r.text.contains("后")),
+            "行内前后文保留"
+        );
+    }
+
+    /// C 组负例：代码块/行内代码字面 `[[x]]` 与 Markdown 外链 href 均零
+    /// wiki 区间（parser 层保证——本测试锁定回归）。
+    #[test]
+    fn plan732_wikilink_negative_code_and_href() {
+        let src = "行内 `[[NotLink]]` 代码。\n\n```text\n[[BlockNotLink]]\n```\n\n[外链](https://example.com/a) 文。\n";
+        let c = core_for("p732_c_neg", src);
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(
+            c.link_regions().is_empty(),
+            "代码块/行内代码/外链零 wiki 区间"
+        );
+    }
+
+    /// jade 反馈①：hover 命中门——链接段矩形中心命中 `link_hover_at`
+    ///（widget mouse_interaction 的 Pointer 门数据源）；矩形外零命中。
+    /// 命中点取真实布局产物中心（同 plan732 口径，不猜坐标）。
+    #[test]
+    fn jade_feedback_link_hover_gate() {
+        let c = core_for("jade_hover", "跳转到：[[欢迎页]] 与 [[嵌套页]]。\n");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let regions = c.link_regions();
+        assert!(regions.len() >= 2, "两链接区在册");
+        let (cx, cy) = region_center(&regions[0]);
+        assert!(c.link_hover_at(cx, cy), "段矩形中心必命中");
+        assert!(!c.link_hover_at(9999.0, 9999.0), "界外零命中");
+        // 负例联动：行内代码字面 `[[..]]` 不产 hover 区（parser 层负例的
+        // hover 面同锁）。
+        let neg = core_for("jade_hover_neg", "行内 `[[NotLink]]` 代码。\n");
+        let _ = run_fs(|fs| neg.render_frame(fs, 400.0, WHITE, None));
+        assert!(!neg.link_hover_at(10.0, 10.0), "无链接区即全页零 hover 命中");
+    }
+
+    /// jade 反馈②：行内 code 芯片底色——含行内 code 的段落发 8% muted
+    /// 芯片 fill（autodown_blocks::inline_code_bg_rgba 同值），纯文本段
+    /// 零芯片；fence chrome fill 不受影响。
+    #[test]
+    fn jade_feedback_inline_code_chip_fill() {
+        let (cr, cg, cb, ca) = autodown_blocks::inline_code_bg_rgba();
+        let chip = Rgba {
+            r: cr as f32 / 255.0,
+            g: cg as f32 / 255.0,
+            b: cb as f32 / 255.0,
+            a: ca,
+        };
+        let c = core_for("jade_chip", "输入 `[[写作示例]]` 形式的链接。\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(
+            frame.list.fills.iter().any(|(_, col)| *col == chip),
+            "行内 code 段发芯片底色 fill"
+        );
+        let plain = core_for("jade_chip_plain", "纯文本无代码。\n");
+        let frame_plain = run_fs(|fs| plain.render_frame(fs, 400.0, WHITE, None));
+        assert!(
+            frame_plain.list.fills.iter().all(|(_, col)| *col != chip),
+            "纯文本段零芯片"
+        );
+        // 文字色不动（基色白）——vue 轨引擎 CSS `color: var(--ad-fg)` 同语义。
+        let code_run = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text.contains("写作示例"))
+            .expect("code 文本 run 在册");
+        assert_eq!(code_run.color, WHITE, "code 文字保持基色");
+        assert!(code_run.mono, "code 文本 mono family（PLAN-050 F4 原语义不变）");
+    }
+
+    /// C 组：折行链接分段——长链接在窄视口折行后每 run 一段、各段独立
+    /// 命中（同一下半段点击可激活）。
+    #[test]
+    fn plan732_wikilink_wrapped_regions_split() {
+        let long = "很长的中文链接页面名".repeat(6);
+        let src = format!("前 [[{long}]] 后");
+        let c = core_for("p732_c_wrap", &src);
+        let _ = run_fs(|fs| c.render_frame(fs, 120.0, WHITE, None));
+        let regions = c.link_regions();
+        assert!(regions.len() >= 2, "折行链接分段：{:?}", regions);
+        assert!(
+            regions.windows(2).all(|w| w[0].rect.y < w[1].rect.y),
+            "各段行位单调下移"
+        );
+        // 末段独立命中激活（W 组口径在折行末段上复验）。
+        let (x, y) = region_center(regions.last().unwrap());
+        let _ = click_at(c, x, y);
+        let out = release_at(c, x, y);
+        assert_eq!(
+            out.link_activated,
+            Some(LinkActivation {
+                target: long.clone(),
+                anchor: String::new()
+            }),
+            "末段完整点击激活"
+        );
+    }
+
+    /// L 组：载荷归一 known-answer——首个 `#` 拆分 + 两侧 trim + 无锚空串。
+    #[test]
+    fn plan732_split_wikilink_target_known_answers() {
+        let f = split_wikilink_target;
+        assert_eq!(
+            f("Page"),
+            LinkActivation {
+                target: "Page".into(),
+                anchor: "".into()
+            }
+        );
+        assert_eq!(
+            f("Page#Sec"),
+            LinkActivation {
+                target: "Page".into(),
+                anchor: "Sec".into()
+            }
+        );
+        assert_eq!(
+            f(" Page # Sec "),
+            LinkActivation {
+                target: "Page".into(),
+                anchor: "Sec".into()
+            }
+        );
+        assert_eq!(
+            f("P#A#B"),
+            LinkActivation {
+                target: "P".into(),
+                anchor: "A#B".into()
             },
-            &mut NullClipboard,
-        )
-    });
-    assert!(out.request_redraw, "toggle requests redraw");
-    assert_eq!(c.focused_block(), None, "focus inside collapsed content clears");
-    let f1 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
-    assert!(f1.list.runs.iter().any(|r| r.text.contains("▸ 展开")), "folded summary ▸");
-    assert!(
-        !f1.list.runs.iter().any(|r| r.text.contains("内容甲")),
-        "folded content hidden"
-    );
-    // emit 往返：open 翻转落发射（open:true → 摘除）。
-    let doc = c.emit_document();
-    assert!(doc.contains("$details(summary:\"展开\") {"), "{doc}");
-    assert!(!doc.contains("open:true"), "{doc}");
-    assert!(doc.contains("内容甲。"), "emit keeps inner content");
+            "仅首个 # 拆分"
+        );
+        assert_eq!(
+            f("#A"),
+            LinkActivation {
+                target: "".into(),
+                anchor: "A".into()
+            }
+        );
+        assert_eq!(
+            f("P#"),
+            LinkActivation {
+                target: "P".into(),
+                anchor: "".into()
+            }
+        );
+    }
 
-    // 再点击 → 展开，内容复显。
-    let (rect2, open1) = c.details_geom.lock().unwrap()[0];
-    assert!(!open1);
-    let _ = run_fs(|fs| {
-        c.handle_input(
-            fs,
-            DocInput::MousePressed {
-                button: EditorButton::Left,
-                x: rect2.x + 5.0,
-                y: rect2.y + 5.0,
-            },
-            &mut NullClipboard,
-        )
-    });
-    let f2 = run_fs(|fs| c.render_frame(fs, 500.0, WHITE, None));
-    assert!(f2.list.runs.iter().any(|r| r.text.contains("内容甲")), "re-expanded");
-    assert!(c.emit_document().contains("open:true"), "re-open roundtrips");
-}
-}
+    /// W 组：完整点击恰一次激活 + 载荷逐值。
+    #[test]
+    fn plan732_full_click_activates_with_payload() {
+        let c = core_for("p732_w_click", "见 [[目标页#锚点甲]] 与 [[无锚页]]。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let regions = c.link_regions();
+        assert_eq!(regions.len(), 2);
+        let (x, y) = region_center(&regions[0]);
+        let _ = click_at(c, x, y);
+        let out = release_at(c, x, y);
+        assert_eq!(
+            out.link_activated,
+            Some(LinkActivation {
+                target: "目标页".into(),
+                anchor: "锚点甲".into()
+            }),
+            "双 Str 载荷逐值（拆分+trim）"
+        );
+        // 第二个链接：无锚 → 空串。
+        reset_click_kind(c);
+        let (x2, y2) = region_center(&regions[1]);
+        let _ = click_at(c, x2, y2);
+        let out2 = release_at(c, x2, y2);
+        assert_eq!(
+            out2.link_activated,
+            Some(LinkActivation {
+                target: "无锚页".into(),
+                anchor: String::new()
+            }),
+            "无锚=空串（非 None/undefined 字面）"
+        );
+        // 编辑行为零回退：点击建焦、caret 在册（普通点击流程保留）。
+        assert!(c.focused_block().is_some(), "点击仍建焦（编辑兼容）");
+    }
 
+    /// W 组负例族：拖选超阈、右/中键、越点抬起（抬起点不在任何链接区）、
+    /// 非链接按下、修饰键按下、多击第二击——零激活。
+    #[test]
+    fn plan732_click_gate_negatives() {
+        let c = core_for("p732_w_neg", "甲 [[甲页#甲锚]] 乙 [[乙页]] 丙 普通文本段。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let regions = c.link_regions();
+        let (x, y) = region_center(&regions[0]);
+
+        // ① 拖选超阈（>4px）后回到原点抬起：零激活。
+        let _ = click_at(c, x, y);
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MouseDragged {
+                    x: x + 20.0,
+                    y: y + 6.0,
+                },
+                &mut NullClipboard,
+            )
+        });
+        assert_eq!(release_at(c, x, y).link_activated, None, "拖选零激活");
+
+        // ② 右键完整序列：零激活。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed {
+                    button: EditorButton::Right,
+                    x,
+                    y,
+                },
+                &mut NullClipboard,
+            )
+        });
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MouseReleased {
+                    button: EditorButton::Right,
+                    x,
+                    y,
+                },
+                &mut NullClipboard,
+            )
+        });
+        assert!(
+            c.link_pending.lock().unwrap().is_none(),
+            "右键不登记 pending"
+        );
+
+        // ③ 中键：零激活。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MousePressed {
+                    button: EditorButton::Middle,
+                    x,
+                    y,
+                },
+                &mut NullClipboard,
+            )
+        });
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::MouseReleased {
+                    button: EditorButton::Middle,
+                    x,
+                    y,
+                },
+                &mut NullClipboard,
+            )
+        });
+
+        // ④ 按下链接、抬起点移到另一链接：零激活（区间不同）。
+        let (x2, y2) = region_center(&regions[1]);
+        let _ = click_at(c, x, y);
+        assert_eq!(
+            release_at(c, x2, y2).link_activated,
+            None,
+            "跨链接抬起零激活"
+        );
+
+        // ⑤ 非链接点按下（普通文本）+ 原点抬起：零激活。
+        let plain = c.block_rects()[0];
+        let _ = click_at(c, plain.x + 4.0, plain.y + 4.0);
+        assert_eq!(
+            release_at(c, plain.x + 4.0, plain.y + 4.0).link_activated,
+            None,
+            "非链接零激活"
+        );
+
+        // ⑥ shift 按下（扩选意图）：零激活。
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::ModifiersChanged(EditorModifiers {
+                    shift: true,
+                    ..EditorModifiers::none()
+                }),
+                &mut NullClipboard,
+            )
+        });
+        let _ = click_at(c, x, y);
+        run_fs(|fs| {
+            c.handle_input(
+                fs,
+                DocInput::ModifiersChanged(EditorModifiers::none()),
+                &mut NullClipboard,
+            )
+        });
+        assert_eq!(release_at(c, x, y).link_activated, None, "shift 按下零激活");
+
+        // ⑦ 多击节律：首击激活恰一次，第二击（Double）不重复激活。
+        reset_click_kind(c);
+        let _ = click_at(c, x, y);
+        let first = release_at(c, x, y).link_activated;
+        assert!(first.is_some(), "首击激活");
+        let _ = click_at(c, x, y); // CLICK_TIMING 窗口内 → Double
+        assert_eq!(release_at(c, x, y).link_activated, None, "双击第二击零激活");
+    }
+
+    /// W/O 组：按下后换内容（外部真变化 rebuild）——排队旧激活零冒领。
+    #[test]
+    fn plan732_stale_hit_after_content_change() {
+        let c = core_for("p732_w_stale", "见 [[旧页#旧锚]] 也。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (x, y) = region_center(&c.link_regions()[0]);
+        let _ = click_at(c, x, y);
+        // 按住期间外部推新内容 → 整树重建（清 pending + 布局重算）。
+        assert!(
+            c.sync_external("全新内容，无链接。", true),
+            "外部真变化触发重建"
+        );
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(c.link_regions().is_empty(), "新内容零链接区");
+        assert_eq!(
+            release_at(c, x, y).link_activated,
+            None,
+            "换内容后旧命中零冒领"
+        );
+        assert!(
+            c.link_pending.lock().unwrap().is_none(),
+            "rebuild 清 pending"
+        );
+    }
+
+    /// O 组：双同正文实例各发各来源——两个 key 各自独立 core 状态，
+    /// A 的激活不污染 B（pending/link_regions 按实例隔离；VM 轨 widget
+    /// 实例级 callback 的结构性证据见 widget 测试）。
+    #[test]
+    fn plan732_dual_instance_isolated_activation() {
+        let src = "同 [[同页#同锚]] 文。";
+        let a = core_for("p732_o_a", src);
+        let b = core_for("p732_o_b", src);
+        let _ = run_fs(|fs| a.render_frame(fs, 400.0, WHITE, None));
+        let _ = run_fs(|fs| b.render_frame(fs, 400.0, WHITE, None));
+        assert!(!std::ptr::eq(a, b), "两实例不同核");
+        let (x, y) = region_center(&a.link_regions()[0]);
+        let _ = click_at(a, x, y);
+        assert!(a.link_pending.lock().unwrap().is_some(), "A 登记 pending");
+        assert!(
+            b.link_pending.lock().unwrap().is_none(),
+            "B 零 pending（无全局单槽）"
+        );
+        let out = release_at(a, x, y);
+        assert_eq!(
+            out.link_activated,
+            Some(LinkActivation {
+                target: "同页".into(),
+                anchor: "同锚".into()
+            })
+        );
+        // B 的同位点完整点击仍可独立激活（各发各来源）。
+        reset_click_kind(a);
+        reset_click_kind(b);
+        let (bx, by) = region_center(&b.link_regions()[0]);
+        let _ = click_at(b, bx, by);
+        assert_eq!(
+            release_at(b, bx, by).link_activated,
+            Some(LinkActivation {
+                target: "同页".into(),
+                anchor: "同锚".into()
+            })
+        );
+    }
+
+    /// X 组：本地编辑暂态（snapshot 失配）——链接区随样式区间同口径失活，
+    /// 回写重建后恢复（编辑兼容面：暂态不激活、恢复后可激活）。
+    #[test]
+    fn plan732_local_edit_deactivates_until_rebuild() {
+        let c = core_for("p732_x_edit", "见 [[编辑页#锚]] 文。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert_eq!(c.link_regions().len(), 1);
+        let (x, y) = region_center(&c.link_regions()[0]);
+        let _ = click_at(c, x, y);
+        // 本地编辑（文字变化，snapshot 失配）。
+        let _ = press(c, EditorKey::Char('z'));
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(
+            c.link_regions().is_empty(),
+            "本地编辑暂态链接区失活（陈旧命中归零）"
+        );
+        assert_eq!(release_at(c, x, y).link_activated, None, "暂态零激活");
+        // 自回显（on_change → .at 回写 = emit 全文）走 PLAN-057 回声守卫，
+        // 不整树重建（防连打丢键）——区间维持失活直到外部真变化：
+        let doc = c.emit_document();
+        assert!(!c.sync_external(&doc, true), "自回显按回声处理（零重建）");
+        // 外部真变化（非自回显）触发重建 → 链接区间恢复。
+        assert!(
+            c.sync_external("恢复 [[新页#新锚]] 文。", true),
+            "外部真变化触发重建"
+        );
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert_eq!(c.link_regions().len(), 1, "重建后链接区恢复");
+        assert_eq!(c.link_regions()[0].target, "新页#新锚");
+    }
+
+    /// R 组 MCP 负例锚（K-04）：`__mcp_click` 合成通道 = 单次
+    /// MousePressed 直调（renderer.rs __mcp_click 臂同构——ghost 落点语
+    /// 义），无抬起腿 → 完整点击门不闭合 → wikilink 零激活。ghost 语义
+    /// （建焦/focus_changed）保持不变——wikilink 激活非该通道职责。
+    #[test]
+    fn plan732_mcp_click_ghost_semantics_zero_wiki_activation() {
+        let c = core_for("p732_r_mcp", "见 [[Mcp页#锚]] 文。");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let (x, y) = region_center(&c.link_regions()[0]);
+        // __mcp_click 同构：仅 MousePressed 一次。
+        let out = click_at(c, x, y);
+        assert!(out.focus_changed, "ghost 语义保持：MCP click 建焦不变");
+        assert!(c.focused_block().is_some(), "焦点在册（ghost 数据源）");
+        assert_eq!(
+            out.link_activated, None,
+            "无抬起腿零激活（__mcp_click 非激活通道）"
+        );
+        // 后续别处完整点击不冒领旧 pending：pending 随下一次按下覆写。
+        let plain = c.block_rects()[0];
+        let _ = click_at(c, plain.x + 4.0, plain.y + plain.h - 4.0);
+        assert_eq!(
+            release_at(c, plain.x + 4.0, plain.y + plain.h - 4.0).link_activated,
+            None,
+            "旧 pending 不冒领"
+        );
+    }
+}

@@ -3,7 +3,7 @@
 //! This module provides functions for working with Option and Result types,
 //! which are used for optional values and error handling.
 
-use auto_val::{Args, Arg, AutoStr, Value};
+use auto_val::{Arg, Args, AutoStr, Value};
 
 // ==================== Option Functions ====================
 
@@ -271,7 +271,9 @@ pub fn result_unwrap(args: &Args) -> Value {
     // TODO: Unwrap Result<T, E> variant when added to Value enum
     // For now, return the value if not Error
     match &args.args[0] {
-        Arg::Pos(Value::Error(e)) => Value::Error(format!("Result_unwrap: called on Err: {}", e).into()),
+        Arg::Pos(Value::Error(e)) => {
+            Value::Error(format!("Result_unwrap: called on Err: {}", e).into())
+        }
         Arg::Pos(value) => value.clone(),
         Arg::Pair(_, value) => value.clone(),
         Arg::Name(name) => Value::Str(name.clone()),
@@ -422,10 +424,7 @@ mod tests {
     #[test]
     fn test_option_unwrap_or_some() {
         let args = Args {
-            args: vec![
-                Arg::Pos(Value::Int(42)),
-                Arg::Pos(Value::Int(100)),
-            ],
+            args: vec![Arg::Pos(Value::Int(42)), Arg::Pos(Value::Int(100))],
         };
         let result = option_unwrap_or(&args);
         match result {
@@ -437,10 +436,7 @@ mod tests {
     #[test]
     fn test_option_unwrap_or_none() {
         let args = Args {
-            args: vec![
-                Arg::Pos(Value::Nil),
-                Arg::Pos(Value::Int(100)),
-            ],
+            args: vec![Arg::Pos(Value::Nil), Arg::Pos(Value::Int(100))],
         };
         let result = option_unwrap_or(&args);
         match result {
@@ -526,10 +522,7 @@ mod tests {
     #[test]
     fn test_result_unwrap_or_ok() {
         let args = Args {
-            args: vec![
-                Arg::Pos(Value::Int(42)),
-                Arg::Pos(Value::Int(100)),
-            ],
+            args: vec![Arg::Pos(Value::Int(42)), Arg::Pos(Value::Int(100))],
         };
         let result = result_unwrap_or(&args);
         match result {

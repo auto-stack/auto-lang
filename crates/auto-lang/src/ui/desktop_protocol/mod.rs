@@ -26,13 +26,13 @@
 // 非法迁移；loopback demo 的 App 行为与直挂（in-process 直调）无差。
 
 #[cfg(feature = "ui-iced")]
-pub mod codec;
-#[cfg(feature = "ui-iced")]
 pub mod broker;
 #[cfg(feature = "ui-iced")]
 pub mod client_entry;
 #[cfg(feature = "ui-iced")]
 pub mod client_runtime;
+#[cfg(feature = "ui-iced")]
+pub mod codec;
 #[cfg(feature = "ui-iced")]
 pub mod coverage;
 #[cfg(feature = "ui-iced")]
@@ -41,12 +41,12 @@ pub mod demo;
 pub mod dual_mode;
 #[cfg(feature = "ui-iced")]
 pub mod editor_frame;
+#[cfg(feature = "ui-iced")]
+pub mod endpoint;
 /// PLAN-683（方案 2 远程 Renderer）：headless iced 宿主——iced 组件树照常
 /// 构建/布局/绘制，渲染原语经 tiny_skia 记录层截获降格为 DrawList 过线。
 #[cfg(feature = "ui-iced")]
 pub mod headless;
-#[cfg(feature = "ui-iced")]
-pub mod endpoint;
 #[cfg(feature = "ui-iced")]
 pub mod host;
 #[cfg(feature = "ui-iced")]
@@ -59,18 +59,14 @@ pub mod native_projector;
 pub mod pixels;
 #[cfg(feature = "ui-iced")]
 pub mod remote;
-/// PLAN-031 —— rqhost：共享合成器原生窗运行时（rendezvous 采纳 +
-/// 多窗 daemon + 输入路由；`auto run -q` 第四形态）。
-#[cfg(feature = "ui-iced")]
-pub mod rqhost;
 /// PLAN-693 —— a2r exe 三模式 CLI（independent/rq/desktop 底座参数化 +
 /// 优先级链 CLI > env > pac > independent；F-3 关闭口径的解析单源）。
 #[cfg(feature = "ui-iced")]
 pub mod render_cli;
-/// PLAN-690 T-02 —— daemon 窗 IME 激活门控（Windows IMM 直写；内部
-/// 自带平台 cfg，非 Windows 宿主为 no-op 观测行）。
+/// PLAN-031 —— rqhost：共享合成器原生窗运行时（rendezvous 采纳 +
+/// 多窗 daemon + 输入路由；`auto run -q` 第四形态）。
 #[cfg(feature = "ui-iced")]
-pub mod win_ime;
+pub mod rqhost;
 /// PLAN-029 T-03（D2）：Windows SendInput FFI（真机合成键入基建；内部
 /// 自带 `#![cfg(windows)]`，非 Windows 平台为空模块）。
 #[cfg(feature = "ui-iced")]
@@ -85,21 +81,25 @@ pub mod shm;
 pub mod stage3;
 #[cfg(feature = "ui-iced")]
 pub mod transport;
+/// PLAN-690 T-02 —— daemon 窗 IME 激活门控（Windows IMM 直写；内部
+/// 自带平台 cfg，非 Windows 宿主为 no-op 观测行）。
+#[cfg(feature = "ui-iced")]
+pub mod win_ime;
 
 /// 协议版本（信封头携带；不一致拒收——`CodecError::UnsupportedVersion`）。
 /// v1 = 本计划 Stage 1 定稿（见 `docs/design/autoui/desktop-protocol-v1.md`）。
 pub const PROTOCOL_VERSION: u16 = 1;
 
-pub use codec::{CodecError, Channel};
-pub use endpoint::{AppEndpoint, FrameSource, HostEndpoint, HostAction, HostState, ProtocolError};
-pub use native_projector::RqProjector;
+pub use codec::{Channel, CodecError};
+pub use endpoint::{AppEndpoint, FrameSource, HostAction, HostEndpoint, HostState, ProtocolError};
 pub use host::{ProtocolHost, SurfaceStore};
 pub use loopback::{loopback_pair, LoopbackEnd};
-pub use transport::{Transport, TransportError};
 pub use message::{
     ControlMsg, DrawList, DrawOp, FontBlob, FrameMsg, HandshakeMsg, InputMsg, ObserveMsg,
     ProtocolMsg, Rgba8, WRect,
 };
+pub use native_projector::RqProjector;
+pub use transport::{Transport, TransportError};
 
 /// Plan 515 G4 C 族（P500-1）—— e2e 用真 `auto` 二进制的陈旧防护。
 /// `auto_exe()` 优先取现存二进制，陈旧产物会伪装成回归：mtime 对账
@@ -112,7 +112,9 @@ pub(crate) mod e2e_exe {
     /// `crates/` 树下最新 `.rs` 的 (mtime, 路径)（跳过 target/node_modules）。
     fn newest_source(root: &Path) -> Option<(std::time::SystemTime, PathBuf)> {
         fn walk(dir: &Path, best: &mut Option<(std::time::SystemTime, PathBuf)>) {
-            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
             for e in entries.flatten() {
                 let p = e.path();
                 let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -165,12 +167,11 @@ pub(crate) mod e2e_exe {
         // 时探测序反转（release 优先）。缺省不变——debug 优先是 031 以来
         // 的构建时间权衡；desktop.ps1:45-53 release 优先先例同型。本模块
         // 测试门控，零生产影响。
-        let profiles: [&str; 2] =
-            if std::env::var("AUTO_E2E_PROFILE").as_deref() == Ok("release") {
-                ["release", "debug"]
-            } else {
-                ["debug", "release"]
-            };
+        let profiles: [&str; 2] = if std::env::var("AUTO_E2E_PROFILE").as_deref() == Ok("release") {
+            ["release", "debug"]
+        } else {
+            ["debug", "release"]
+        };
         for profile in profiles {
             let p = target.join(profile).join("auto.exe");
             if p.exists() {
@@ -205,17 +206,19 @@ mod e2e_exe_tests {
         std::fs::write(&src, b"src").expect("src");
         // 同拍写盘（mtime 粒度）：exe 触回一次使其确定更旧。
         let older = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
-        let _ = std::fs::File::options().write(true).open(&exe).and_then(|f| {
-            f.set_modified(older)
-        });
+        let _ = std::fs::File::options()
+            .write(true)
+            .open(&exe)
+            .and_then(|f| f.set_modified(older));
         assert!(
             stale_against(&exe, &dir.join("crates")).is_some(),
             "源码新于 exe → 陈旧检出"
         );
         // 源码更旧 → None。
-        let _ = std::fs::File::options().write(true).open(&src).and_then(|f| {
-            f.set_modified(older - std::time::Duration::from_secs(3600))
-        });
+        let _ = std::fs::File::options()
+            .write(true)
+            .open(&src)
+            .and_then(|f| f.set_modified(older - std::time::Duration::from_secs(3600)));
         assert!(
             stale_against(&exe, &dir.join("crates")).is_none(),
             "源码旧于 exe → 不陈旧"

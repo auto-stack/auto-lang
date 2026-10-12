@@ -1,0 +1,50 @@
+// app.at — PLAN-760 T-05 e2e 计数器夹具（remote 臂）。
+// 跑法（驱动脚本 scripts/remote_frame_e2e.py 编排，PLAN-102 P6 探针同族）：
+//   AUTO_RQHOST_WELLKNOWN/PIPE=<pipe> AUTO_VM_RENDER=remote AUTOUI_MCP_PORT=<p>
+//   auto run --render vm
+// app 名（Hello.app_name）= widget 名 RfFixture——remote-frame 宿主订阅名
+// 对齐（url query &app=RfFixture）。计数经 MCP autoui_state 断言。
+
+widget RfFixture {
+    msg { Inc, Reset }
+
+    model {
+        var count int = 0
+    }
+
+    view {
+        col {
+            style: "w-full h-full flex flex-col bg-background text-foreground p-4 gap-2"
+            row {
+                style: "flex items-center gap-2"
+                button "inc" {
+                    style: "h-16 px-16 text-2xl rounded-md bg-primary text-primary-foreground"
+                    onclick: .Inc
+                }
+                text `count: ${.count}` {
+                    style: "text-2xl font-bold px-2"
+                }
+                button "reset" {
+                    style: "h-10 px-3 rounded-md border border-border"
+                    onclick: .Reset
+                }
+            }
+            // 首帧辨识位：大字状态行（截图断言的视觉锚）。
+            text "RF-FIXTURE-LIVE" {
+                style: "text-3xl font-bold text-primary pt-8"
+            }
+            text .count {
+                style: "text-5xl font-bold pt-4"
+            }
+        }
+    }
+
+    on {
+        Inc -> {
+            .count = .count + 1
+        }
+        Reset -> {
+            .count = 0
+        }
+    }
+}

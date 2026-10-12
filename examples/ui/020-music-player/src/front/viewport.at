@@ -17,10 +17,17 @@ widget Viewport {
 
     view {
         col {
-            style: "w-0 h-0 overflow-hidden absolute pointer-events-none opacity-0"
+            // VM 渲染约束：0×0 视口会被 iced 渲染遍历裁掉（prepare 不跑 →
+            // mpv 引擎不起 → 桌面 VM 无声，2026-10-09 桌面实测定案）；最小
+            // 实体 1×1 + absolute + opacity-0 保持视觉隐藏且双端可播。
+            style: "w-[1px] h-[1px] overflow-hidden absolute pointer-events-none opacity-0"
 
             video {
                 src: .store.current_url
+                // 媒体引擎稳定键（2026-10-10 小组件独立播放配套）：主窗与
+                // dashboard mini 卡两个挂载点共享同一 mpv 运行时——升格/降格、
+                // 面板反复开关播放无缝交接，不会出现双引擎双声。
+                key: "media"
                 controls: false
                 preload: "auto"
                 playsinline: true
@@ -29,7 +36,7 @@ widget Viewport {
                 volume: .store.volume
                 muted: .store.is_muted
                 rate: 1.0
-                class: "w-0 h-0"
+                class: "w-[1px] h-[1px]"
                 ontimeupdate: .OnTime()
                 onloadedmetadata: .OnDuration()
                 onplaystatechange: .OnPlayState()

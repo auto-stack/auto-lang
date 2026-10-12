@@ -131,7 +131,8 @@ pub(crate) struct Interned {
 /// First-occurrence interning: dense deterministic token ids (before lines
 /// numbered first, then after lines). No hasher state → cross-run stable.
 pub(crate) fn intern_lines(a_lines: &[&str], b_lines: &[&str]) -> Interned {
-    let mut map: HashMap<&str, Token> = HashMap::with_capacity((a_lines.len() + b_lines.len()) / 2 + 8);
+    let mut map: HashMap<&str, Token> =
+        HashMap::with_capacity((a_lines.len() + b_lines.len()) / 2 + 8);
     let mut before = Vec::with_capacity(a_lines.len());
     for line in a_lines {
         let next_id = Token(map.len() as u32);
@@ -146,8 +147,18 @@ pub(crate) fn intern_lines(a_lines: &[&str], b_lines: &[&str]) -> Interned {
 }
 
 fn interned_len(inp: &Interned) -> u32 {
-    let max_before = inp.before.iter().map(|t| t.0 as usize + 1).max().unwrap_or(0);
-    let max_after = inp.after.iter().map(|t| t.0 as usize + 1).max().unwrap_or(0);
+    let max_before = inp
+        .before
+        .iter()
+        .map(|t| t.0 as usize + 1)
+        .max()
+        .unwrap_or(0);
+    let max_after = inp
+        .after
+        .iter()
+        .map(|t| t.0 as usize + 1)
+        .max()
+        .unwrap_or(0);
     max_before.max(max_after) as u32
 }
 
@@ -177,7 +188,11 @@ pub(crate) fn histogram_changes(before: &[Token], after: &[Token], num_tokens: u
 /// Patience anchor partition of a token pair: positions `(a_pos, b_pos)` of
 /// line values occurring exactly once on EACH side (forced matches).
 /// Content-determined — the same inputs always slice the same way.
-pub(crate) fn anchor_partition(before: &[Token], after: &[Token], num_tokens: u32) -> Vec<(usize, usize)> {
+pub(crate) fn anchor_partition(
+    before: &[Token],
+    after: &[Token],
+    num_tokens: u32,
+) -> Vec<(usize, usize)> {
     let n = num_tokens as usize;
     let mut count_a = vec![0u32; n];
     let mut count_b = vec![0u32; n];
@@ -264,7 +279,10 @@ pub(crate) fn engine_changes(inp: &Interned, parallel: bool) -> Vec<Change> {
         p += 1;
     }
     let mut s = 0usize;
-    while s < before.len() - p && s < after.len() - p && before[before.len() - 1 - s] == after[after.len() - 1 - s] {
+    while s < before.len() - p
+        && s < after.len() - p
+        && before[before.len() - 1 - s] == after[after.len() - 1 - s]
+    {
         s += 1;
     }
     let a_mid = &before[p..before.len() - s];
@@ -319,7 +337,9 @@ pub(crate) fn engine_changes(inp: &Interned, parallel: bool) -> Vec<Change> {
 
     let mut results: Vec<Vec<Change>> = vec![Vec::new(); segs.len()];
     if parallel && segs.len() > 1 {
-        let workers = segs.len().min(std::thread::available_parallelism().map_or(4, |n| n.get()));
+        let workers = segs
+            .len()
+            .min(std::thread::available_parallelism().map_or(4, |n| n.get()));
         let chunk = segs.len().div_ceil(workers);
         let segs_ref = &segs;
         std::thread::scope(|scope| {
@@ -340,7 +360,11 @@ pub(crate) fn engine_changes(inp: &Interned, parallel: bool) -> Vec<Change> {
                         let (ta, tb, bound) = local_remap(&a_mid[sa..ea], &b_mid[sb..eb]);
                         *slot = histogram_changes(&ta, &tb, bound)
                             .into_iter()
-                            .map(|c| Change { del: c.del, i: c.i + p + sa, j: c.j + p + sb })
+                            .map(|c| Change {
+                                del: c.del,
+                                i: c.i + p + sa,
+                                j: c.j + p + sb,
+                            })
                             .collect();
                     }
                 });
@@ -353,7 +377,11 @@ pub(crate) fn engine_changes(inp: &Interned, parallel: bool) -> Vec<Change> {
             let (ta, tb, bound) = local_remap(&a_mid[sa..ea], &b_mid[sb..eb]);
             *slot = histogram_changes(&ta, &tb, bound)
                 .into_iter()
-                .map(|c| Change { del: c.del, i: c.i + p + sa, j: c.j + p + sb })
+                .map(|c| Change {
+                    del: c.del,
+                    i: c.i + p + sa,
+                    j: c.j + p + sb,
+                })
                 .collect();
         }
     }
@@ -386,13 +414,21 @@ pub(crate) struct GroupedHunk {
 /// a change joins the open group iff it is within `2·ctx` of the previous
 /// change on BOTH coordinates.
 pub(crate) fn group_hunks(changes: &[Change], la: usize, lb: usize, ctx: usize) -> Vec<Hunk> {
-    group_hunks_annotated(changes, la, lb, ctx).into_iter().map(|g| g.hunk).collect()
+    group_hunks_annotated(changes, la, lb, ctx)
+        .into_iter()
+        .map(|g| g.hunk)
+        .collect()
 }
 
 // The grouping macro's trailing `open = false` is a dead write after the
 // final close — structural to the close-at-both-ends pattern.
 #[allow(unused_assignments)]
-pub(crate) fn group_hunks_annotated(changes: &[Change], la: usize, lb: usize, ctx: usize) -> Vec<GroupedHunk> {
+pub(crate) fn group_hunks_annotated(
+    changes: &[Change],
+    la: usize,
+    lb: usize,
+    ctx: usize,
+) -> Vec<GroupedHunk> {
     let ctx2 = 2 * ctx;
     let mut out: Vec<GroupedHunk> = Vec::new();
     let mut open = false;
@@ -420,7 +456,18 @@ pub(crate) fn group_hunks_annotated(changes: &[Change], la: usize, lb: usize, ct
             ga2 = ch.i;
             gb1 = ch.j;
             gb2 = ch.j;
-            out.push(GroupedHunk { hunk: Hunk { a1: 0, a2: 0, b1: 0, b2: 0 }, fc: idx, lc: idx, fi: ch.i, ah: ch.i });
+            out.push(GroupedHunk {
+                hunk: Hunk {
+                    a1: 0,
+                    a2: 0,
+                    b1: 0,
+                    b2: 0,
+                },
+                fc: idx,
+                lc: idx,
+                fi: ch.i,
+                ah: ch.i,
+            });
         } else {
             ga1 = ga1.min(ch.i);
             gb1 = gb1.min(ch.j);
@@ -468,7 +515,12 @@ pub fn diff_lines_parallel(a: &str, b: &str, opts: DiffOpts) -> DiffOut {
     diff_line_tables(&a_lines, &b_lines, opts, true)
 }
 
-pub(crate) fn diff_line_tables(a_lines: &[&str], b_lines: &[&str], opts: DiffOpts, parallel: bool) -> DiffOut {
+pub(crate) fn diff_line_tables(
+    a_lines: &[&str],
+    b_lines: &[&str],
+    opts: DiffOpts,
+    parallel: bool,
+) -> DiffOut {
     let inp = intern_lines(a_lines, b_lines);
     let changes = engine_changes(&inp, parallel);
     let adds = changes.iter().filter(|c| !c.del).count();
@@ -483,7 +535,13 @@ pub(crate) fn diff_line_tables(a_lines: &[&str], b_lines: &[&str], opts: DiffOpt
 /// rectangle. `adds`/`dels` count the changes whose coordinates fall inside
 /// the windows. See the module header for why this is a projection, not a
 /// re-diff (AC-04 consistency by construction).
-pub fn diff_lines_windowed(a: &str, b: &str, opts: DiffOpts, aw: Range<usize>, bw: Range<usize>) -> DiffOut {
+pub fn diff_lines_windowed(
+    a: &str,
+    b: &str,
+    opts: DiffOpts,
+    aw: Range<usize>,
+    bw: Range<usize>,
+) -> DiffOut {
     let a_lines = split_lines_universal(a);
     let b_lines = split_lines_universal(b);
     let inp = intern_lines(&a_lines, &b_lines);
@@ -552,7 +610,14 @@ pub fn diff_snapshots(sa: &RopeSnapshot, sb: &RopeSnapshot, opts: DiffOpts) -> D
     let local = engine_changes(&inp, false);
     let adds = local.iter().filter(|c| !c.del).count();
     let dels = local.iter().filter(|c| c.del).count();
-    let rebased: Vec<Change> = local.into_iter().map(|c| Change { del: c.del, i: c.i + la0, j: c.j + lb0 }).collect();
+    let rebased: Vec<Change> = local
+        .into_iter()
+        .map(|c| Change {
+            del: c.del,
+            i: c.i + la0,
+            j: c.j + lb0,
+        })
+        .collect();
     let hunks = group_hunks(&rebased, sa.line_count(), sb.line_count(), opts.ctx);
     DiffOut { hunks, adds, dels }
 }
@@ -614,7 +679,10 @@ pub fn refine_inline(a_line: &str, b_line: &str) -> Refinement {
         pre += 1;
     }
     let mut post = 0usize;
-    while post < a.len() - pre && post < b.len() - pre && a[a.len() - 1 - post] == b[b.len() - 1 - post] {
+    while post < a.len() - pre
+        && post < b.len() - pre
+        && a[a.len() - 1 - post] == b[b.len() - 1 - post]
+    {
         post += 1;
     }
     Refinement { pre, post }
@@ -632,12 +700,32 @@ mod tests {
     #[test]
     fn split_lines_universal_matches_downstream_contract() {
         assert_eq!(split_lines_universal("a\nb"), vec!["a", "b"]);
-        assert_eq!(split_lines_universal("a\nb\n"), vec!["a", "b"], "trailing newline absorbed");
-        assert_eq!(split_lines_universal("a\r\nb\r\n"), vec!["a", "b"], "CR tolerated");
+        assert_eq!(
+            split_lines_universal("a\nb\n"),
+            vec!["a", "b"],
+            "trailing newline absorbed"
+        );
+        assert_eq!(
+            split_lines_universal("a\r\nb\r\n"),
+            vec!["a", "b"],
+            "CR tolerated"
+        );
         assert_eq!(split_lines_universal(""), Vec::<&str>::new());
-        assert_eq!(split_lines_universal("\n"), vec![""], "lone newline = one empty line");
-        assert_eq!(split_lines_universal("a\rb\n"), vec!["a\rb"], "lone CR kept (only CRLF stripped)");
-        assert_eq!(split_lines_universal("a\r"), vec!["a"], "trailing lone CR stripped (split-on-LF semantics)");
+        assert_eq!(
+            split_lines_universal("\n"),
+            vec![""],
+            "lone newline = one empty line"
+        );
+        assert_eq!(
+            split_lines_universal("a\rb\n"),
+            vec!["a\rb"],
+            "lone CR kept (only CRLF stripped)"
+        );
+        assert_eq!(
+            split_lines_universal("a\r"),
+            vec!["a"],
+            "trailing lone CR stripped (split-on-LF semantics)"
+        );
     }
 
     // ── golden eight shapes (supply pack §1) ─────────────────────────────
@@ -647,7 +735,15 @@ mod tests {
         // ctx=1 keeps the golden tight (ctx=3 would legitimately absorb the
         // whole 3-line document — expansion clamps to the file bounds).
         let out = diff_lines("a\nb\nc\n", "a\nb\nX\nc\n", DiffOpts { ctx: 1 });
-        assert_eq!(out.hunks, vec![Hunk { a1: 1, a2: 3, b1: 1, b2: 4 }]);
+        assert_eq!(
+            out.hunks,
+            vec![Hunk {
+                a1: 1,
+                a2: 3,
+                b1: 1,
+                b2: 4
+            }]
+        );
         assert_eq!(out.adds, 1);
         assert_eq!(out.dels, 0);
     }
@@ -657,7 +753,15 @@ mod tests {
         let out = diff_lines("a\nb\nX\nc\n", "a\nb\nc\n", DiffOpts { ctx: 1 });
         // Del of X at a-line 2: a-window [2-1, 2+1+1)=[1,4); the del keeps
         // the b cursor at 2 → b-window [2-1, 2+1)=[1,3) (ctx rows b/c).
-        assert_eq!(out.hunks, vec![Hunk { a1: 1, a2: 4, b1: 1, b2: 3 }]);
+        assert_eq!(
+            out.hunks,
+            vec![Hunk {
+                a1: 1,
+                a2: 4,
+                b1: 1,
+                b2: 3
+            }]
+        );
         assert_eq!(out.adds, 0);
         assert_eq!(out.dels, 1);
     }
@@ -665,7 +769,15 @@ mod tests {
     #[test]
     fn golden_modification() {
         let out = diff_lines("a\nb\nc\n", "a\nB\nc\n", DiffOpts { ctx: 1 });
-        assert_eq!(out.hunks, vec![Hunk { a1: 0, a2: 3, b1: 0, b2: 3 }]);
+        assert_eq!(
+            out.hunks,
+            vec![Hunk {
+                a1: 0,
+                a2: 3,
+                b1: 0,
+                b2: 3
+            }]
+        );
         assert_eq!((out.adds, out.dels), (1, 1));
     }
 
@@ -676,7 +788,12 @@ mod tests {
         let a = "alpha\nbeta\ngamma\ndelta\n";
         let b = "delta\nalpha\nbeta\ngamma\n";
         let out = diff_lines(a, b, DiffOpts::default());
-        assert_eq!(out.adds + out.dels, 2, "a move = one del + one add: {:?}", out.hunks);
+        assert_eq!(
+            out.adds + out.dels,
+            2,
+            "a move = one del + one add: {:?}",
+            out.hunks
+        );
     }
 
     #[test]
@@ -689,9 +806,25 @@ mod tests {
     #[test]
     fn golden_empty_vs_content() {
         let out = diff_lines("", "x\n", DiffOpts::default());
-        assert_eq!(out.hunks, vec![Hunk { a1: 0, a2: 0, b1: 0, b2: 1 }]);
+        assert_eq!(
+            out.hunks,
+            vec![Hunk {
+                a1: 0,
+                a2: 0,
+                b1: 0,
+                b2: 1
+            }]
+        );
         let out = diff_lines("x\n", "", DiffOpts::default());
-        assert_eq!(out.hunks, vec![Hunk { a1: 0, a2: 1, b1: 0, b2: 0 }]);
+        assert_eq!(
+            out.hunks,
+            vec![Hunk {
+                a1: 0,
+                a2: 1,
+                b1: 0,
+                b2: 0
+            }]
+        );
     }
 
     #[test]
@@ -700,7 +833,15 @@ mod tests {
         let big2 = format!("{big}!");
         let out = diff_lines(&big, &big2, DiffOpts::default());
         assert_eq!(out.hunks.len(), 1);
-        assert_eq!(out.hunks[0], Hunk { a1: 0, a2: 1, b1: 0, b2: 1 });
+        assert_eq!(
+            out.hunks[0],
+            Hunk {
+                a1: 0,
+                a2: 1,
+                b1: 0,
+                b2: 1
+            }
+        );
     }
 
     #[test]
@@ -735,15 +876,32 @@ mod tests {
             }
         }
         let out = diff_lines(&a, &b, DiffOpts::default());
-        assert_eq!(out.hunks.len(), 2, "far-apart inserts stay separate: {:?}", out.hunks);
+        assert_eq!(
+            out.hunks.len(),
+            2,
+            "far-apart inserts stay separate: {:?}",
+            out.hunks
+        );
         let (h0, h1) = (out.hunks[0], out.hunks[1]);
         // Semantic form: each hunk contains its insert line with ctx=3
         // margins (exact field goldens live in the eight-shape family).
         // INS-A sits at b-line 10; INS-B follows L50 at b-line 52.
-        assert!(h0.b1 <= 10 && 10 < h0.b2, "h0 covers INS-A's b line: {h0:?}");
-        assert!(h0.a2 - h0.a1 <= 8 && h0.b2 - h0.b1 <= 8, "ctx=3 margins: {h0:?}");
-        assert!(h1.b1 <= 52 && 52 < h1.b2, "h1 covers INS-B's b line: {h1:?}");
-        assert!(h1.a2 - h1.a1 <= 8 && h1.b2 - h1.b1 <= 8, "ctx=3 margins: {h1:?}");
+        assert!(
+            h0.b1 <= 10 && 10 < h0.b2,
+            "h0 covers INS-A's b line: {h0:?}"
+        );
+        assert!(
+            h0.a2 - h0.a1 <= 8 && h0.b2 - h0.b1 <= 8,
+            "ctx=3 margins: {h0:?}"
+        );
+        assert!(
+            h1.b1 <= 52 && 52 < h1.b2,
+            "h1 covers INS-B's b line: {h1:?}"
+        );
+        assert!(
+            h1.a2 - h1.a1 <= 8 && h1.b2 - h1.b1 <= 8,
+            "ctx=3 margins: {h1:?}"
+        );
     }
 
     // ── AC-04 window projection consistency ──────────────────────────────
@@ -761,7 +919,14 @@ mod tests {
         }
         let full = diff_lines(&a, &b, DiffOpts::default());
         // Sample multiple window positions.
-        for &(s, e) in &[(0usize, 10usize), (10, 40), (40, 41), (50, 90), (90, 120), (119, 120)] {
+        for &(s, e) in &[
+            (0usize, 10usize),
+            (10, 40),
+            (40, 41),
+            (50, 90),
+            (90, 120),
+            (119, 120),
+        ] {
             let win = diff_lines_windowed(&a, &b, DiffOpts::default(), s..e, s..e);
             let want: Vec<Hunk> = full
                 .hunks
@@ -828,10 +993,17 @@ mod tests {
         // alignment choices can split/merge hunks differently than the
         // whole-document pass (SD-02 records this boundary).
         let text_out = diff_lines(&s0.to_string(), &s1.to_string(), DiffOpts::default());
-        assert_eq!((out.adds, out.dels), (text_out.adds, text_out.dels), "change counts");
+        assert_eq!(
+            (out.adds, out.dels),
+            (text_out.adds, text_out.dels),
+            "change counts"
+        );
         assert!(!out.hunks.is_empty());
         for w in out.hunks.windows(2) {
-            assert!(w[0].a2 <= w[1].a1 && w[0].b2 <= w[1].b1, "hunks ordered, non-overlapping");
+            assert!(
+                w[0].a2 <= w[1].a1 && w[0].b2 <= w[1].b1,
+                "hunks ordered, non-overlapping"
+            );
         }
 
         // Identical snapshots → O(1) empty.
@@ -893,7 +1065,11 @@ mod p703_dbg {
         let a = ["a", "b", "c"];
         let b = ["a", "b", "X", "c"];
         let inp = intern_lines(&a, &b);
-        println!("before={:?} after={:?}", inp.before.iter().map(|t| t.0).collect::<Vec<_>>(), inp.after.iter().map(|t| t.0).collect::<Vec<_>>());
+        println!(
+            "before={:?} after={:?}",
+            inp.before.iter().map(|t| t.0).collect::<Vec<_>>(),
+            inp.after.iter().map(|t| t.0).collect::<Vec<_>>()
+        );
         let mut d = ImaraDiff::default();
         d.compute_with(Algorithm::Histogram, &inp.before, &inp.after, 4);
         let rem: Vec<bool> = (0..3).map(|i| d.is_removed(i)).collect();
@@ -915,8 +1091,8 @@ mod p703_dbg {
 
 #[cfg(test)]
 mod diff_bench {
-    use super::*;
     use super::super::core::rope::Rope;
+    use super::*;
     use std::time::Instant;
 
     /// Deterministic pseudo-random filler so the shapes are reproducible.
@@ -1006,7 +1182,11 @@ mod diff_bench {
         // Identical: O(1) equal fast path.
         let t0 = Instant::now();
         assert!(diff_snapshots(&s0, &s0, DiffOpts::default()).is_empty());
-        println!("BENCH snapshot identical ({} bytes): {:?}", model.len(), t0.elapsed());
+        println!(
+            "BENCH snapshot identical ({} bytes): {:?}",
+            model.len(),
+            t0.elapsed()
+        );
         // Single edit mid-document: envelope ≈ the edit's neighbourhood.
         let at = rope.line_start_byte(700_000);
         rope.insert_bytes(at, "INSERTED LINE\n");
@@ -1068,9 +1248,15 @@ mod plan704_d2 {
         let b_mid: Vec<&str> = b[5..615].iter().map(|s| s.as_str()).collect();
         let inp = intern_lines(&a_mid, &b_mid);
         let anchors = anchor_partition(&inp.before, &inp.after, interned_len(&inp));
-        assert_eq!(anchors.len(), 300, "LIS keeps exactly one swapped block (A or B)");
+        assert_eq!(
+            anchors.len(),
+            300,
+            "LIS keeps exactly one swapped block (A or B)"
+        );
         assert!(
-            anchors.windows(2).all(|w| w[0].0 < w[1].0 && w[0].1 < w[1].1),
+            anchors
+                .windows(2)
+                .all(|w| w[0].0 < w[1].0 && w[0].1 < w[1].1),
             "anchors strictly monotone on both coordinates"
         );
     }
@@ -1083,9 +1269,17 @@ mod plan704_d2 {
         let ba = diff_lines(&bt, &at, DiffOpts::default());
         // kept accounting: len - dels == len - adds == alignment size (320 =
         // P5 + one anchored block 300 + M10 + S5); the script itself correct.
-        assert_eq!((ab.adds, ab.dels), (310, 310), "swap script correct, not 620/0");
+        assert_eq!(
+            (ab.adds, ab.dels),
+            (310, 310),
+            "swap script correct, not 620/0"
+        );
         assert_eq!((ba.adds, ba.dels), (310, 310), "symmetric both directions");
-        assert_eq!(620 - ab.dels, 620 - ab.adds, "kept-side accounting invariant");
+        assert_eq!(
+            620 - ab.dels,
+            620 - ab.adds,
+            "kept-side accounting invariant"
+        );
         assert_eq!(620 - ba.dels, 620 - ba.adds);
     }
 }

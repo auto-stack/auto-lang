@@ -99,7 +99,7 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
 | tscn | `tscn.rs` | 688 | Godot 场景文件生成（`SceneDecl` → .tscn） |
 | 逃逸分析 | `escape/` | — | 为 a2r 提供借用/clone/Rc 分层决策（plan-310） |
 
-测试采用约定式发现（plan-263）：`tests/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
+测试采用约定式发现（plan-263）：`test/runners/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
 通过 FFI `Test.run_*_dir` 扫描 `crates/auto-lang/test/a2{ c,r,ts,p,j,gd}/` 下的
 `.at` → `.expected.*` 对。当前规模（2026-09-10 快照，复现
 `find crates/auto-lang/test/<dir> -name "*.at" | wc -l`）：a2c 126、a2p 99、
@@ -125,6 +125,25 @@ a2r 267、a2ts 85、a2j 10、a2gd 69 个 `.at` 用例；cookbook 163 个 `.at` �
   `Vec<serde_json::Value>`；其元素派生局部按 Value 语义发射（字段访问 =
   索引读、记录字面量 = json! 构造、标量入 Value 容器 = json! 包裹、
   typed 目标收访问器）。语义源 = VM List（异构值）。
+
+## 装配目标与引用闭包（PLAN-738）
+
+- Rust/C 发射先声明装配目标再装载/发射（trans_rust/trans_c 入口）；
+  VM 专用层（.vm.at）不进入 Rust/C 类型上下文，反之亦然；项目 Rust 模块
+  发射消费实际选定 `.rs.at` 层；stdlib auto.* 模块不转译为 C 产物。
+- 六核心引用闭包**全路径**：限定 Dot（含 Json 别名）、具名/裸名/通配
+  导入、`auto.<core>.<method>` 三段形状、for-in 流反糖、`fn expr` Await
+  臂、公共方法 receiver 调用（`Owner.method` 分母归属：模块限定/扁平
+  value_* helper/json 值绑定 def-use 直发/未接管发射臂四形态——前三
+  验证，第四诚实拒绝）——全部经 `verify_rust_reference`（契约表驱动）。
+  provider claim 无真实 callee=PROVIDER_CLAIM_NO_CALLEE；漂移=
+  SIGNATURE_DRIFT；未证明=SIGNATURE_UNVERIFIED，不产出成功产物。
+- receiver 带参方法（get/get_at/has_key 的 `v.x("k")`）为 parser 不支持
+  拼写（语言层拒绝）；模块拼写的无臂方法（type/as_number/as_array）经
+  未接管发射臂诚实拒绝。
+- 面外边界（记档不删）：类型名渲染、`json!` 宏复合、legacy 平面符号
+  （http_post）、无公共声明的 legacy 别名（json.get/get_u64 等，P738-D2
+  在案）。非六核心裸名映射（diff/frame/fs/env 等）不在 strict 面。
 
 ## 关键入口
 
@@ -161,7 +180,7 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
 - `RustTrans`/`CTrans` 处于 Universe → Database 混合期（`db: Option<...>`，plan-066），两套类型信息来源并存。
 - a2j 文档（`docs/javascript-transpiler.md`）与实现脱节：文中 `JavaScriptTrans.scope` 字段已不存在，
   行数估计（~660）也过时（实际 814）；以代码为准。
-- a2r 测试分两套：`test/a2r/`（23 目录）+ `test/cookbook/`（163 文件，plan-240），由 `tests/a2r_tests.at` 两个 `#[test]` 分别驱动。
+- a2r 测试分两套：`test/a2r/`（23 目录）+ `test/cookbook/`（163 文件，plan-240），由 `test/runners/a2r_tests.at` 两个 `#[test]` 分别驱动。
 - plans/ 下存在两个 355 号 plan（详见 plans.md 备注），引用 355 时须带 slug。
 
 ## 蒸馏来源（Phase 1）
@@ -171,4 +190,27 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
 - `docs/javascript-transpiler.md`、`docs/python-transpiler.md`
 - `docs/plan-indices/06-transpilers.md` 及各 plan 文件（见 plans.md）
 - `crates/auto-lang/src/trans.rs`、`trans/`、`crates/auto-lang/src/lib.rs`、`crates/auto/src/main.rs`
-- `tests/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
+- `test/runners/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
+- a2r 文件传输发射（PLAN-727）：`http.transfer_*` submit/observe 面在 sync/async 上下文同形发射（非阻塞提交/观察无 async 变体），仅 `transfer_wait` 分叉（sync 桥接面 / `transfer_wait_async(&t).await`）；builder `.multipart_file/.multipart_text` 方法直发（路径描述到发送）；发射契约见 [http-client-lowering](design/http-client-lowering.md) 文件传输节，运行契约见 stdlib [http-file-transfer](../../stdlib/design/http-file-transfer.md)
+
+- a2r 服务端文件响应发射（PLAN-729）：`http.file_response(root, rel, options)` 直发
+  `a2r_std::http::file_response(...)`（sync/async 同形——构造零 I/O）；`FileResponse`
+  类型映射 `a2r_std::http::FileResponse`（返回位具体类型，非 trait）。发射契约见
+  [http-file-response-lowering](design/http-file-response-lowering.md)，运行契约见
+  stdlib [http-server-files](../../stdlib/design/http-server-files.md)。
+
+## 服务端上传 lowering（PLAN-730）
+
+- `http.upload_receive/commit/reject/metadata/error` 五自由函数与三 opaque 类型
+  （UploadRequest/Session/Receipt）的降级契约见
+  [design/http-upload-lowering.md](design/http-upload-lowering.md)：receive/
+  commit/reject 为 await 点（同步上下文指名诊断）；str 形参按 facade
+  `impl AsRef<str>` 直传；金样 `test/a2r/33_plan730`。
+
+## API 契约消费（PLAN-734）
+
+- api_gen 两套 TS/handler 生成与 targets 消费 `api/contract.rs` checked 分类
+  （身份判定）：文件/上传/显式 Response/SSE 分支按 ResponseKind；UploadRequest
+  参数剔除按 is_upload_param（s-expr 双族）。`try_transpile_body` 对 `Future<T>`
+  端点置位 async 上下文（set_async_ctx）——内联体 await 合法；转译失败 =
+  生成期 Err（诊断 500 handler 退役）。

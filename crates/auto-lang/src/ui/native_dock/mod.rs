@@ -55,7 +55,10 @@ impl Rect {
     }
 
     pub fn size(&self) -> Size {
-        Size { w: self.w, h: self.h }
+        Size {
+            w: self.w,
+            h: self.h,
+        }
     }
 
     /// 指针包含判定（左上闭、右下开）。
@@ -504,7 +507,9 @@ impl DragWatch {
 /// 单发 16ms 轮询（≈62 事件/s）下系统级噪声可把松手→落位拖到秒级；
 /// 成批上行后终态延迟上限收敛到一拍。`recv` 为 `try_recv` 闭包
 /// （`None` = 通道空），纯逻辑全平台单测。
-pub fn drain_slot_events(mut recv: impl FnMut() -> Option<NativeSlotEvent>) -> Vec<NativeSlotEvent> {
+pub fn drain_slot_events(
+    mut recv: impl FnMut() -> Option<NativeSlotEvent>,
+) -> Vec<NativeSlotEvent> {
     let mut batch = Vec::new();
     while let Some(evt) = recv() {
         batch.push(evt);
@@ -512,10 +517,12 @@ pub fn drain_slot_events(mut recv: impl FnMut() -> Option<NativeSlotEvent>) -> V
     // 稳定分区：START/End 保持相对序前置（sort_by_key 稳定排序），其余
     // （噪声 LOCATIONCHANGE、Minimize、Destroy）殿后。他窗并发拖拽时前置
     // 的新 START 覆盖在途会话与 start() 既有"新起点覆盖"语义一致。
-    batch.sort_by_key(|e| !matches!(
-        e.kind,
-        NativeSlotEventKind::MoveSizeStart | NativeSlotEventKind::MoveSizeEnd
-    ));
+    batch.sort_by_key(|e| {
+        !matches!(
+            e.kind,
+            NativeSlotEventKind::MoveSizeStart | NativeSlotEventKind::MoveSizeEnd
+        )
+    });
     batch
 }
 
@@ -681,9 +688,13 @@ mod tests {
     #[test]
     fn clamp_fits_when_slot_large_enough() {
         let slot = Rect::new(0, 0, 800, 600);
-        let (win, fitted) =
-            clamp_to_slot(Size::new(400, 300), slot, Size::new(200, 150), Rect::new(0, 0, 1920, 1080))
-                .unwrap();
+        let (win, fitted) = clamp_to_slot(
+            Size::new(400, 300),
+            slot,
+            Size::new(200, 150),
+            Rect::new(0, 0, 1920, 1080),
+        )
+        .unwrap();
         assert_eq!(win, slot);
         assert_eq!(fitted, slot);
     }
@@ -691,9 +702,13 @@ mod tests {
     #[test]
     fn clamp_expands_slot_to_min_size() {
         let slot = Rect::new(0, 0, 300, 200);
-        let (win, fitted) =
-            clamp_to_slot(Size::new(300, 200), slot, Size::new(500, 400), Rect::new(0, 0, 1920, 1080))
-                .unwrap();
+        let (win, fitted) = clamp_to_slot(
+            Size::new(300, 200),
+            slot,
+            Size::new(500, 400),
+            Rect::new(0, 0, 1920, 1080),
+        )
+        .unwrap();
         assert_eq!(win, Rect::new(0, 0, 500, 400));
         assert_eq!(fitted, win);
     }
@@ -822,10 +837,7 @@ mod tests {
         let mut w = DragWatch::new();
         w.start(NativeHwnd(0x22));
         w.sample((300, 200), desktop, &cells, 0);
-        assert_eq!(
-            w.end((50, 50), desktop),
-            Some(DragWatchOutcome::Abandon)
-        );
+        assert_eq!(w.end((50, 50), desktop), Some(DragWatchOutcome::Abandon));
         assert!(!w.is_watching());
     }
 
@@ -917,11 +929,9 @@ mod tests {
         assert_eq!(batch[0].kind, NativeSlotEventKind::MoveSizeStart);
         assert_eq!(batch[1].kind, NativeSlotEventKind::MoveSizeEnd);
         // 噪声殿后保持相对序（hwnd 递增可证稳定分区）。
-        assert!(
-            batch[2..]
-                .iter()
-                .all(|e| e.kind == NativeSlotEventKind::LocationChange)
-        );
+        assert!(batch[2..]
+            .iter()
+            .all(|e| e.kind == NativeSlotEventKind::LocationChange));
         assert_eq!(batch[2].hwnd, NativeHwnd(0));
         assert_eq!(batch[batch.len() - 1].hwnd, NativeHwnd(99));
     }
@@ -981,13 +991,19 @@ mod tests {
     fn landing_slot_containment_then_nearest() {
         let cells = [Rect::new(0, 0, 100, 100), Rect::new(200, 0, 100, 100)];
         // 包含命中：两 cell 间隙外的明确命中
-        assert_eq!(landing_slot((50, 50), &cells), Some(Rect::new(0, 0, 100, 100)));
+        assert_eq!(
+            landing_slot((50, 50), &cells),
+            Some(Rect::new(0, 0, 100, 100))
+        );
         assert_eq!(
             landing_slot((250, 50), &cells),
             Some(Rect::new(200, 0, 100, 100))
         );
         // 无包含：取中心距最近（间隙中点 150 距两中心等距 → 首序稳定）
-        assert_eq!(landing_slot((150, 50), &cells), Some(Rect::new(0, 0, 100, 100)));
+        assert_eq!(
+            landing_slot((150, 50), &cells),
+            Some(Rect::new(0, 0, 100, 100))
+        );
         // 明显偏向第二 cell
         assert_eq!(
             landing_slot((190, 50), &cells),
@@ -1013,11 +1029,11 @@ mod tests {
     fn window_local_holes_clips_and_translates() {
         let win = Rect::new(100, 100, 800, 600);
         let holes = [
-            Rect::new(300, 200, 200, 150),             // 窗内
-            Rect::new(50, 400, 100, 50),               // 左越界（x 裁到窗左）
-            Rect::new(850, 300, 200, 100),             // 右越界（右缘裁到 900）
-            Rect::new(900, 700, 50, 50),               // 完全越界（丢弃）
-            Rect::new(100, 100, 0, 10),                // 零宽（丢弃）
+            Rect::new(300, 200, 200, 150), // 窗内
+            Rect::new(50, 400, 100, 50),   // 左越界（x 裁到窗左）
+            Rect::new(850, 300, 200, 100), // 右越界（右缘裁到 900）
+            Rect::new(900, 700, 50, 50),   // 完全越界（丢弃）
+            Rect::new(100, 100, 0, 10),    // 零宽（丢弃）
         ];
         let out = window_local_holes(win, &holes);
         assert_eq!(

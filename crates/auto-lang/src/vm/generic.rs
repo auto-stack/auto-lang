@@ -27,7 +27,9 @@ impl GenericInstance {
     /// - List<string> → "List_str"
     /// - MyType<bool, int> → "MyType_bool_int"
     pub fn monomorphic_name(&self) -> String {
-        let param_names: Vec<String> = self.params.iter()
+        let param_names: Vec<String> = self
+            .params
+            .iter()
             .map(|t| Self::type_to_simple_name(t))
             .collect();
 
@@ -49,7 +51,11 @@ impl GenericInstance {
             Type::StrFixed(_) | Type::StrOwned => "str".to_string(),
             Type::CStrLit => "cstr".to_string(),
             Type::List(inner) => format!("List_{}", Self::type_to_simple_name(inner)),
-            Type::Map(k, v) => format!("Map_{}_{}", Self::type_to_simple_name(k), Self::type_to_simple_name(v)),
+            Type::Map(k, v) => format!(
+                "Map_{}_{}",
+                Self::type_to_simple_name(k),
+                Self::type_to_simple_name(v)
+            ),
             Type::User(type_decl) => type_decl.name.to_string(),
             _ => format!("unknown_{:?}", ty),
         }
@@ -72,7 +78,9 @@ impl GenericInstance {
 
 impl fmt::Display for GenericInstance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let param_names: Vec<String> = self.params.iter()
+        let param_names: Vec<String> = self
+            .params
+            .iter()
             .map(|t| t.unique_name().to_string())
             .collect();
         write!(f, "{}<{}>", self.base_name, param_names.join(", "))
@@ -120,7 +128,8 @@ impl GenericTable {
 
     /// Get all List instantiations
     pub fn list_instantiations(&self) -> Vec<&GenericInstance> {
-        self.instances.values()
+        self.instances
+            .values()
             .filter(|inst| inst.is_list())
             .collect()
     }
@@ -179,10 +188,7 @@ mod tests {
 
     #[test]
     fn test_generic_instance_list_int() {
-        let instance = GenericInstance::new(
-            "List".to_string(),
-            vec![Type::Int],
-        );
+        let instance = GenericInstance::new("List".to_string(), vec![Type::Int]);
 
         assert_eq!(instance.monomorphic_name(), "List_int");
         assert!(instance.is_list());
@@ -191,10 +197,7 @@ mod tests {
 
     #[test]
     fn test_generic_instance_list_string() {
-        let instance = GenericInstance::new(
-            "List".to_string(),
-            vec![Type::StrFixed(0)],
-        );
+        let instance = GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]);
 
         assert_eq!(instance.monomorphic_name(), "List_str");
         assert!(instance.is_list());
@@ -202,10 +205,7 @@ mod tests {
 
     #[test]
     fn test_generic_instance_multiple_params() {
-        let instance = GenericInstance::new(
-            "MyType".to_string(),
-            vec![Type::Int, Type::Bool],
-        );
+        let instance = GenericInstance::new("MyType".to_string(), vec![Type::Int, Type::Bool]);
 
         assert_eq!(instance.monomorphic_name(), "MyType_int_bool");
         assert!(!instance.is_list());
@@ -229,7 +229,10 @@ mod tests {
         let mut table = GenericTable::new();
 
         table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-        table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
+        table.register(GenericInstance::new(
+            "List".to_string(),
+            vec![Type::StrFixed(0)],
+        ));
         table.register(GenericInstance::new("MyType".to_string(), vec![Type::Bool]));
 
         assert_eq!(table.len(), 3);
@@ -256,10 +259,7 @@ mod tests {
 
     #[test]
     fn test_generic_instance_display() {
-        let instance = GenericInstance::new(
-            "List".to_string(),
-            vec![Type::Int],
-        );
+        let instance = GenericInstance::new("List".to_string(), vec![Type::Int]);
 
         assert_eq!(format!("{}", instance), "List<int>");
     }

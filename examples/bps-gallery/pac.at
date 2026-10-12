@@ -1,6 +1,6 @@
 // pac.at - bps-gallery（PLAN-676 Auto 化改造）
 //
-// 蓝图画廊：浏览 blueprints/ 目录的 spec / 变体 reference 源码 / gotchas。
+// 蓝图画廊：浏览 packages/blueprints/ 目录的 spec / 变体 reference 源码 / gotchas。
 // 壳消费 layout/gallery-shell BP（L1 通道，dep bps）；目录发现数据源 =
 // 生成的 src/front/registry.at（`auto bp list --format at` 产物，SD-01，
 // 取代 PLAN-640 import.meta.glob 零产物裁定——VM 臂无法读盘，双臂同源
@@ -21,7 +21,7 @@ theme: "dark"
 accent: "indigo"
 
 dep bps {
-    path: "../../blueprints"
+    path: "../../packages/blueprints"
 }
 
 // PLAN-685 T-05：Spec/Gotchas 换 autodown 渲染件（vue 臂消费

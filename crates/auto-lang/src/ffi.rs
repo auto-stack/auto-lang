@@ -140,11 +140,7 @@ impl CFfiBridge {
         // Load the library for real (PLAN-617 T-16 landed the Plan-212 load path).
         if !self.libraries.contains_key(library) {
             let lib = load_library(&library_path)?;
-            log::info!(
-                "Loaded C library: {} ({})",
-                library,
-                library_path.display()
-            );
+            log::info!("Loaded C library: {} ({})", library, library_path.display());
             self.libraries.insert(library.to_string(), lib);
         }
 
@@ -189,10 +185,7 @@ impl CFfiBridge {
         move |task: &mut AutoTask, _vm: &AutoVM| {
             // TODO(Plan-212): Call C function via libloading
             let _ = &signature;
-            log::warn!(
-                "C FFI not yet implemented for {}",
-                function_name,
-            );
+            log::warn!("C FFI not yet implemented for {}", function_name,);
 
             task.ram.push_i32(0);
 
@@ -633,7 +626,12 @@ impl RustFfiBridge {
         let _symbol_ptr: *const () = unsafe {
             let symbol = library
                 .get::<*const ()>(symbol_name.as_bytes())
-                .map_err(|e| VMError::FFI(format!("Symbol {} (exported as {}) not found: {}", function_name, exported_name, e)))?;
+                .map_err(|e| {
+                    VMError::FFI(format!(
+                        "Symbol {} (exported as {}) not found: {}",
+                        function_name, exported_name, e
+                    ))
+                })?;
             let raw = symbol.into_raw();
             let ptr = raw.as_raw_ptr() as *const ();
             ptr
@@ -712,7 +710,9 @@ impl RustFfiBridge {
 
         log::info!(
             "Registered Rust function: {} (native_id={}, exported={})",
-            key, native_id, exported_name
+            key,
+            native_id,
+            exported_name
         );
 
         Ok(native_id)
@@ -727,9 +727,8 @@ impl RustFfiBridge {
 
         type ManifestFn = unsafe extern "C" fn() -> *const std::os::raw::c_char;
 
-        let symbol: Result<libloading::Symbol<ManifestFn>, _> = unsafe {
-            library.get(b"auto__sig_manifest\0")
-        };
+        let symbol: Result<libloading::Symbol<ManifestFn>, _> =
+            unsafe { library.get(b"auto__sig_manifest\0") };
 
         match symbol {
             Ok(sym) => unsafe {
@@ -825,8 +824,10 @@ impl RustFfiBridge {
                         ffi_call!(
                             _keep_lib_alive,
                             exported_name,
-                            extern "C" fn(*const std::ffi::c_char, *const std::ffi::c_char)
-                                -> *const std::ffi::c_char,
+                            extern "C" fn(
+                                *const std::ffi::c_char,
+                                *const std::ffi::c_char,
+                            ) -> *const std::ffi::c_char,
                             a1,
                             a2
                         )
@@ -881,7 +882,6 @@ impl RustFfiBridge {
             Ok(())
         }
     }
-
 
     /// Register crate metadata with the registry
     pub fn register_crate(&mut self, metadata: &CrateMetadata) -> Result<(), VMError> {
@@ -945,7 +945,10 @@ pub fn sig_code_to_signature(sig_code: &str) -> RustSignature {
     let (params_str, ret_str) = sig_code.split_once('_').unwrap_or(("", "s"));
     let params: Vec<RustType> = params_str.chars().map(sig_char_to_rust_type).collect();
     let ret = sig_char_to_rust_type(ret_str.chars().next().unwrap_or('s'));
-    RustSignature { params, returns: ret }
+    RustSignature {
+        params,
+        returns: ret,
+    }
 }
 
 fn sig_char_to_rust_type(c: char) -> RustType {
@@ -1078,12 +1081,7 @@ impl RustType {
                 let s = if ptr.is_null() {
                     String::new()
                 } else {
-                    unsafe {
-                        CStr::from_ptr(ptr)
-                            .to_str()
-                            .unwrap_or("")
-                            .to_string()
-                    }
+                    unsafe { CStr::from_ptr(ptr).to_str().unwrap_or("").to_string() }
                 };
                 // 2026-08-22(池去重):直推绕过 dedup,改为 add_string。
                 // Plan 510 G1-2: 入栈配平(此前缺 retain,消费侧 POP 即多扣)。
@@ -1117,75 +1115,111 @@ pub fn known_signature(crate_name: &str, func_name: &str) -> Option<RustSignatur
 
         // chrono
         ("chrono", "now") => Some(RustSignature::new().returns(RustType::String)),
-        ("chrono", "year") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
-        }
-        ("chrono", "month") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
-        }
-        ("chrono", "day") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
-        }
-        ("chrono", "hour") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
-        }
-        ("chrono", "minute") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
-        }
-        ("chrono", "second") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
-        }
-        ("chrono", "timestamp") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::Long))
-        }
+        ("chrono", "year") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::Int),
+        ),
+        ("chrono", "month") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::Int),
+        ),
+        ("chrono", "day") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::Int),
+        ),
+        ("chrono", "hour") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::Int),
+        ),
+        ("chrono", "minute") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::Int),
+        ),
+        ("chrono", "second") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::Int),
+        ),
+        ("chrono", "timestamp") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::Long),
+        ),
 
         // url
-        ("url", "port") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::Int))
-        }
+        ("url", "port") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::Int),
+        ),
 
         // uuid
         ("uuid", "new_v4") => Some(RustSignature::new().returns(RustType::String)),
 
         // sha2
         ("sha2", "Sha256_new") => Some(RustSignature::new().returns(RustType::Pointer)),
-        ("sha2", "Sha256_finalize") => {
-            Some(RustSignature::new().param(RustType::Pointer).returns(RustType::String))
-        }
+        ("sha2", "Sha256_finalize") => Some(
+            RustSignature::new()
+                .param(RustType::Pointer)
+                .returns(RustType::String),
+        ),
 
         // toml — same pattern as serde_json
-        ("toml", "from_str") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
-        }
-        ("toml", "to_string") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
-        }
+        ("toml", "from_str") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::String),
+        ),
+        ("toml", "to_string") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::String),
+        ),
 
         // percent_encoding
-        ("percent_encoding", "percent_encode") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
-        }
-        ("percent_encoding", "percent_decode_str") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
-        }
+        ("percent_encoding", "percent_encode") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::String),
+        ),
+        ("percent_encoding", "percent_decode_str") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::String),
+        ),
 
         // urlencoding
-        ("urlencoding", "encode") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
-        }
-        ("urlencoding", "decode") => {
-            Some(RustSignature::new().param(RustType::String).returns(RustType::String))
-        }
+        ("urlencoding", "encode") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::String),
+        ),
+        ("urlencoding", "decode") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .returns(RustType::String),
+        ),
 
         // rand_distr
-        ("rand_distr", "Normal_new") => {
-            Some(RustSignature::new().param(RustType::Double).param(RustType::Double).returns(RustType::Pointer))
-        }
+        ("rand_distr", "Normal_new") => Some(
+            RustSignature::new()
+                .param(RustType::Double)
+                .param(RustType::Double)
+                .returns(RustType::Pointer),
+        ),
 
         // ansi_term
-        ("ansi_term", "Color_paint") => {
-            Some(RustSignature::new().param(RustType::String).param(RustType::String).returns(RustType::String))
-        }
+        ("ansi_term", "Color_paint") => Some(
+            RustSignature::new()
+                .param(RustType::String)
+                .param(RustType::String)
+                .returns(RustType::String),
+        ),
 
         _ => None,
     }
@@ -1201,7 +1235,10 @@ pub fn resolve_signature(crate_name: &str, func_name: &str) -> Option<RustSignat
     {
         let param_types: Vec<RustType> = params.chars().map(sig_char_to_rust_type).collect();
         let returns = sig_char_to_rust_type(ret.chars().next().unwrap_or('s'));
-        return Some(RustSignature { params: param_types, returns });
+        return Some(RustSignature {
+            params: param_types,
+            returns,
+        });
     }
     known_signature(crate_name, func_name)
 }
@@ -1299,7 +1336,10 @@ mod tests {
         });
 
         let result = bridge.register_c_function("hal", "gpio_init", sig, bogus);
-        assert!(result.is_err(), "不存在的库必须报错，不能像旧实现那样静默成功");
+        assert!(
+            result.is_err(),
+            "不存在的库必须报错，不能像旧实现那样静默成功"
+        );
         // VMError 没有 Display，用 Debug 形态做子串断言即可。
         let msg = format!("{:?}", result.unwrap_err());
         assert!(

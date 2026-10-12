@@ -294,7 +294,6 @@ fn test_std_file_flush() {
     assert_eq!(result, "OK");
 }
 
-
 #[test]
 #[ignore = "requires stdlib module loading support"]
 fn test_std_file_write_line() {

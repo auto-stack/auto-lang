@@ -1,0 +1,13 @@
+// PLAN-738 同源装配样例：一个模块名，三层各自提供实现。
+// VM 目标装配 = 公共层 + 选定 .vm.at 层；Rust/C 目标 = 公共层（发射面
+// 走 a2r-std crate / 预生成 C 产物，.rs.at/.c.at 在此为未消费 candidate）。
+use jsonx: *
+
+fn main() {
+    // 公共层 body-less 声明——实现由选定层提供（VM 跑 val→142）
+    let v = jsonx.val()
+    // 公共层 pure body 共享（两目标一致）
+    let a = jsonx.aux()
+    print(v)
+    print(a)
+}

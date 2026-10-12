@@ -24,8 +24,14 @@ fn main() {
     print("ok")
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
-    assert!(s.contains("ok"), "state write: stdout={:?} result={:?}", s, r);
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    assert!(
+        s.contains("ok"),
+        "state write: stdout={:?} result={:?}",
+        s,
+        r
+    );
 }
 
 /// State field increment persists across multiple handler invocations.
@@ -56,11 +62,22 @@ fn main() {
     h.send(1)
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // count increments 1, 2, 3 across the three messages. The conditionals
     // fire on the 2nd (count==2) and 3rd (count==3) invocations.
-    assert!(s.contains("reached two"), "count==2: stdout={:?} result={:?}", s, r);
-    assert!(s.contains("reached three"), "count==3: stdout={:?} result={:?}", s, r);
+    assert!(
+        s.contains("reached two"),
+        "count==2: stdout={:?} result={:?}",
+        s,
+        r
+    );
+    assert!(
+        s.contains("reached three"),
+        "count==3: stdout={:?} result={:?}",
+        s,
+        r
+    );
 }
 
 /// Plan 390 §5 Phase A (M1): Task.spawn passes init args that override the
@@ -85,9 +102,15 @@ fn main() {
     h.send(1)
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // The injected count=41 survives to the handler; +1 → 42.
-    assert!(s.contains("42"), "spawn init arg (count=41 → +1 = 42): stdout={:?} result={:?}", s, r);
+    assert!(
+        s.contains("42"),
+        "spawn init arg (count=41 → +1 = 42): stdout={:?} result={:?}",
+        s,
+        r
+    );
 }
 
 /// VM bug fix: a task with state fields but NO `fn start()` now applies the
@@ -112,9 +135,15 @@ fn main() {
     h.send(1)
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // Default count=5 applied (no fn start), handler +1 → 6.
-    assert!(s.contains("6"), "state default-init (count=5 → +1 = 6): stdout={:?} result={:?}", s, r);
+    assert!(
+        s.contains("6"),
+        "state default-init (count=5 → +1 = 6): stdout={:?} result={:?}",
+        s,
+        r
+    );
 }
 
 /// VM bug fix interaction: spawn init args override the (now-working) declared
@@ -138,9 +167,15 @@ fn main() {
     h.send(1)
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // Injected count=100 wins over default 5; handler +1 → 101.
-    assert!(s.contains("101"), "spawn init arg overrides default (100 → +1 = 101): stdout={:?} result={:?}", s, r);
+    assert!(
+        s.contains("101"),
+        "spawn init arg overrides default (100 → +1 = 101): stdout={:?} result={:?}",
+        s,
+        r
+    );
 }
 
 /// Plan 390 §G2: VM bound-variable message handler. `on { n int -> }` binds the
@@ -167,11 +202,27 @@ fn main() {
     h.send(3)
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // total: 0+5=5, 5+7=12, 12+3=15. Each n is the current message (5,7,3).
-    assert!(s.contains("5"), "bound-var msg1 (total=5): stdout={:?} result={:?}", s, r);
-    assert!(s.contains("12"), "bound-var msg2 (total=12): stdout={:?} result={:?}", s, r);
-    assert!(s.contains("15"), "bound-var msg3 (total=15): stdout={:?} result={:?}", s, r);
+    assert!(
+        s.contains("5"),
+        "bound-var msg1 (total=5): stdout={:?} result={:?}",
+        s,
+        r
+    );
+    assert!(
+        s.contains("12"),
+        "bound-var msg2 (total=12): stdout={:?} result={:?}",
+        s,
+        r
+    );
+    assert!(
+        s.contains("15"),
+        "bound-var msg3 (total=15): stdout={:?} result={:?}",
+        s,
+        r
+    );
 }
 
 /// Plan 390 §14 L3: WithBindings multi-field variant message. `on { Add(a int, b int) -> }`
@@ -196,10 +247,21 @@ fn main() {
     h.send(Add(10, 20))
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // 0+3+5=8, 8+10+20=38
-    assert!(s.contains("8"), "multi-field msg1 (total=8): stdout={:?} result={:?}", s, r);
-    assert!(s.contains("38"), "multi-field msg2 (total=38): stdout={:?} result={:?}", s, r);
+    assert!(
+        s.contains("8"),
+        "multi-field msg1 (total=8): stdout={:?} result={:?}",
+        s,
+        r
+    );
+    assert!(
+        s.contains("38"),
+        "multi-field msg2 (total=38): stdout={:?} result={:?}",
+        s,
+        r
+    );
 }
 
 /// Plan 390 §15 G2-refactor (方案 B) 边界测试：3 字段 WithBindings + 深嵌套表达式。
@@ -223,11 +285,22 @@ fn main() {
     h.send(Add3(1, 1, 1))
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // msg1: ((2+3)*(2+5))-(3*5) = (5*7)-15 = 35-15 = 20; total = 0+20 = 20
     // msg2: ((1+1)*(1+1))-(1*1) = (2*2)-1 = 3; total = 20+3 = 23
-    assert!(s.contains("20"), "deep-expr msg1 (total=20): stdout={:?} result={:?}", s, r);
-    assert!(s.contains("23"), "deep-expr msg2 (total=23): stdout={:?} result={:?}", s, r);
+    assert!(
+        s.contains("20"),
+        "deep-expr msg1 (total=20): stdout={:?} result={:?}",
+        s,
+        r
+    );
+    assert!(
+        s.contains("23"),
+        "deep-expr msg2 (total=23): stdout={:?} result={:?}",
+        s,
+        r
+    );
 }
 
 /// Plan 317 §11 Phase 5 (P2 回归): state field 名作为 `print(count)` 的直接参数。
@@ -250,12 +323,22 @@ fn main() {
     let h = Task.spawn("Counter", 0)
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // count 初始 0,start hook 里 +1 → 1,print(count) 应输出 "1"。
     // 修复前:print(count) 报 "Undefined variable: count"(intrinsic 参数路径
     // 未识别 state field)。
-    assert!(s.contains("1"), "print(count) state field: stdout={:?} result={:?}", s, r);
-    assert!(!r.contains("Undefined variable"), "count should resolve as state field: {:?}", r);
+    assert!(
+        s.contains("1"),
+        "print(count) state field: stdout={:?} result={:?}",
+        s,
+        r
+    );
+    assert!(
+        !r.contains("Undefined variable"),
+        "count should resolve as state field: {:?}",
+        r
+    );
 }
 
 /// Plan 317 §11 Phase 5 (P2 回归): state field 名作为 `let c = count` 的 RHS。
@@ -276,8 +359,18 @@ fn main() {
     let h = Task.spawn("Counter", 0)
 }
 "#;
-    let (r, s) = run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
+    let (r, s) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("ERROR: {}", e), String::new()));
     // count → 1,let c = count 把 state field 读进 local c,print 输出 "1"。
-    assert!(s.contains("1"), "let c = count (state field RHS): stdout={:?} result={:?}", s, r);
-    assert!(!r.contains("Undefined variable"), "count should resolve as state field on let RHS: {:?}", r);
+    assert!(
+        s.contains("1"),
+        "let c = count (state field RHS): stdout={:?} result={:?}",
+        s,
+        r
+    );
+    assert!(
+        !r.contains("Undefined variable"),
+        "count should resolve as state field on let RHS: {:?}",
+        r
+    );
 }

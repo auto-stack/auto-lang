@@ -274,3 +274,137 @@ pub fn sse_close(stream_id int) void;
 
 /// PLAN-707: Query terminal error — "" = not terminated / no error.
 pub fn sse_error(stream_id int) str;
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-727: File Transfer (cancellable, incremental, atomic-commit)
+// ═══════════════════════════════════════════════════════════
+
+/// Cancellable file transfer handle (download or upload).
+/// Execution runs on the shared transfer core: incremental I/O with bounded
+/// blocks, temp-file staging with atomic commit, failure/cancel preserves
+/// the original target.
+type FileTransfer
+
+/// Start a file download (non-blocking submit).
+/// options is strict JSON: {"headers":{...},"offset":N,"validator":{"etag":"..."}|
+/// {"last_modified":"..."},"max_bytes":N,"timeout_ms":N,"idle_timeout_ms":N,
+/// "on_exists":"overwrite"|"fail"}. Bad options fail terminally without a request.
+/// Example: let t = http.transfer_download(url, path, "{}")
+pub fn transfer_download(url str, path str, options str) FileTransfer;
+
+/// Start a file upload (non-blocking submit). Default mode is multipart with
+/// field "file"; use {"mode":"raw"} for an octet-stream body, "fields" for
+/// extra multipart text fields, "filename" to override, "retries" to opt in
+/// to retry (source re-opened and re-verified each attempt).
+/// Example: let t = http.transfer_upload(url, path, "{\"fields\":{\"note\":\"x\"}}")
+pub fn transfer_upload(url str, path str, options str) FileTransfer;
+
+/// Wait until the transfer reaches a terminal state; returns the receipt JSON:
+/// {"kind":"success|failed|cancelled","status":N|null,"bytes":N,"total":N|null,
+///  "headers":{...},"error":null|{"kind":"...","message":"..."},"body":"..."}.
+/// Only a committed file is reported as success.
+/// Example: let receipt = http.transfer_wait(t)
+pub fn transfer_wait(t FileTransfer) str;
+
+/// Read the latest progress: {"kind":"progress","bytes":N,"total":N|null,
+/// "percent":P|null} ("" = nothing new); the terminal receipt is delivered
+/// exactly once, then "" forever.
+pub fn transfer_next_progress(t FileTransfer) str;
+
+/// Cancel the transfer (idempotent). In-flight file operations close out
+/// before the terminal state; the original target is preserved unless the
+/// commit already succeeded.
+pub fn transfer_cancel(t FileTransfer) void;
+
+/// Terminal error message ("" = none / not terminated).
+pub fn transfer_error(t FileTransfer) str;
+
+/// PLAN-727: Attach a file part to the multipart form (declared previously
+/// only at the native layer). Budgets: ≤16 file parts, ≤64 text fields,
+/// text value ≤64 KiB, text total ≤1 MiB — exceeding fails the send
+/// terminally. File contents are streamed at send time; a missing/unreadable
+/// file fails the request (parts are never silently skipped).
+pub fn RequestBuilder.multipart_file(self RequestBuilder, field str, path str) RequestBuilder;
+
+/// PLAN-727: Attach a text field to the multipart form (see multipart_file
+/// budgets).
+pub fn RequestBuilder.multipart_text(self RequestBuilder, field str, value str) RequestBuilder;
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-729: Server-side File Response (GET/HEAD download face)
+// ═══════════════════════════════════════════════════════════
+
+/// Server file response descriptor. Constructing one never touches the
+/// filesystem: it only records the trusted root, the (untrusted) relative
+/// path and strictly-parsed options. Returning it from a `#[api]` GET/HEAD
+/// handler makes the HTTP layer serve the file with GET/HEAD, single-range
+/// and conditional-request semantics (VM default HTTP and generated Rust
+/// services alike); the body streams bounded blocks and holds its resources
+/// until completion. Not a JSON model, not a FileTransfer, and never a
+/// serializable handle for non-HTTP call forms.
+type FileResponse
+
+/// Build a file response descriptor (no I/O; safe to call anywhere).
+/// `root` comes from trusted app config; `relative_path` may come from route
+/// params — traversal (".."), absolute/drive/UNC paths, NUL and DOS device
+/// names are rejected (403 at serve time). `options` is strict JSON, `{}`
+/// valid: {"content_type":str, "download_name":str,
+/// "disposition":"attachment"|"inline", "etag":str}. Unknown keys, wrong
+/// types, unsafe header values and weak ("W/") etags fail the descriptor
+/// (500 at serve time); they never silently fall back to defaults.
+/// Example: return http.file_response(files_root, name, "{}")
+pub fn file_response(root str, relative_path str, options str) FileResponse;
+
+// ═══════════════════════════════════════════════════════════
+// PLAN-730: Server-side Upload Ingress (multipart/raw receive)
+// ═══════════════════════════════════════════════════════════
+
+/// HTTP-injected upload request capability. Only the HTTP host constructs
+/// one (POST/PUT `#[api]` handler parameter); it cannot be built from JSON,
+/// query data, or any request field, and is consumed exactly once. Routing
+/// and header/path/query auth run before any byte of the body is parsed or
+/// written — returning `http.upload_error(401, ...)` before receive never
+/// touches disk.
+type UploadRequest
+
+/// Receive outcome snapshot (id + bounded metadata; may carry a receive
+/// failure — inspect with upload_metadata, settle with upload_reject).
+type UploadSession
+
+/// Owned terminal result (real HTTP status + bounded JSON; copies do not
+/// re-commit). Returning it from an `#[api]` handler makes the HTTP layer
+/// reply with the receipt's status and JSON body.
+type UploadReceipt
+
+/// Receive the full upload into private staging (awaitable inside `~`
+/// handlers; parks VM tasks without blocking the owner). `root` and
+/// `staging_root` are trusted app config (never request data): staging must
+/// exist, live on the same volume as root, and sit outside the public root.
+/// `options` is strict JSON: {"mode":"multipart"|"raw", "file_field":str,
+/// "text_fields":[str], "raw_content_types":[str], "max_file_bytes":n, ...}
+/// — every limit can only tighten the server caps; unknown keys fail before
+/// any I/O. Single file + bounded ordered text fields; multipart without a
+/// file part, a second file, or unknown fields are explicit errors.
+pub fn upload_receive(req UploadRequest, root str, staging_root str, options str) UploadSession;
+
+/// Bounded receive-snapshot JSON (sync): received → {"state":"received",
+/// "mode","field","filename","size":"<decimal-string>","content_type",
+/// "fields":[ordered, duplicates kept]}; failed → {"state":"failed",
+/// "kind","message","suggested_status"}.
+pub fn upload_metadata(session UploadSession) str;
+
+/// Publish the staged file to `relative_target` under the receive root
+/// (awaitable). Atomic create-only: an existing target is a 409 receipt and
+/// the old file's bytes stay untouched; traversal/drive/UNC/device targets
+/// are 403; the client filename never becomes the storage path.
+pub fn upload_commit(session UploadSession, relative_target str) UploadReceipt;
+
+/// Reject the session: staging is cleaned up (awaitable) and the receipt
+/// carries your status (400..599; 0 on a failed session adopts the
+/// suggested status). A staged lease (30s default) expires sessions that
+/// neither commit nor reject.
+pub fn upload_reject(session UploadSession, status int, message str) UploadReceipt;
+
+/// Early-reject receipt with no I/O (sync) — use it for auth/target gate
+/// failures before receive; it can never fabricate a 201 success.
+pub fn upload_error(status int, message str) UploadReceipt;

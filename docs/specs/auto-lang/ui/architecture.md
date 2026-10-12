@@ -12,7 +12,7 @@ graph TD
   subgraph AURA IR
     EXTRACT["aura/extract.rs<br/>view/state/handler 三元提取"]
     TYPES["aura/types.rs<br/>AuraWidget/AuraRoute/LogicPayload/AuraApp"]
-    SCHEMA["aura/schema.rs + schema_loader.rs<br/>+ schema/aura.at 校验"]
+    SCHEMA["aura/schema.rs + schema_loader.rs<br/>+ docs/schema/aura.at 校验"]
   end
 
   subgraph 代码生成["ui_gen/（AOT codegen）"]
@@ -38,7 +38,7 @@ graph TD
 
   A2UI["a2ui/<br/>A2UIMessage JSON 协议"]
   API["api/ #[api] 契约<br/>typescript/tauri/axum"]
-  EXT["外部：schema/aura.at · stdlib/aura/widgets · blueprints/ · packages/widgets · examples/ui"]
+  EXT["外部：docs/schema/aura.at · stdlib/aura/widgets · packages/blueprints/ · packages/widgets · examples/ui"]
 
   DIALECT --> PARSER --> EXTRACT --> TYPES
   SCHEMA --> EXTRACT
@@ -96,7 +96,7 @@ graph TD
 - 日期 / 来源：docs/design/blueprints/blueprints-first-class.md §2
 - 决策：blueprint 不是预烘焙组件库，而是"自然语言 spec + 结构化 frontmatter + 每 variant 一份 reference `.at` + gotchas"；`auto bp add` 由 AI 按 spec 现场生成定制 `.at`，消费者拥有输出源码、可改可 eject。
 - 备选：A. 黑盒高配置组件（pros：复用即所得；cons：变体空间高维，props 爆炸——低代码地狱）；B. 纯示例代码（pros：零维护；cons：不算复用）；C. Skill 模型（pros：订制走 NL、验收靠 acceptance 清单；cons：生成可复现性需 reference 锚定 + 编译回路收敛）。
-- 后果：`ui_gen/bp/registry.rs:BlueprintRegistry` + 顶层 `blueprints/`（form/data-display/editor/navigation）已按包格式落地；Phase B 生成器 CLI 已落地（plan-343）；PLAN-639 升级三通道分级消费（L1 import/bind 主通道）+ 契约六问（docs/specs/blueprint/contract.md）。
+- 后果：`ui_gen/bp/registry.rs:BlueprintRegistry` + 顶层 `packages/blueprints/`（form/data-display/editor/navigation）已按包格式落地；Phase B 生成器 CLI 已落地（plan-343）；PLAN-639 升级三通道分级消费（L1 import/bind 主通道）+ 契约六问（docs/specs/blueprint/contract.md）。
 - 状态：active
 
 ### ADR-07: blueprint kind 词汇表圈住订制自由，eject 为天花板
@@ -113,11 +113,11 @@ graph TD
 - 后果：M1=015-notes 扩展（plan-338→354/357/360 系列）；widget 库扩容（plan-337 TODO-A）与 app 生成是同一攀登的两条腿。
 - 状态：active
 
-### ADR-09: 组件契约单源 schema/aura.at，数据流翻转
+### ADR-09: 组件契约单源 docs/schema/aura.at，数据流翻转
 - 日期 / 来源：plan-435（2026-08）
 - 决策：散落 8 处的组件定义收敛为一份 `.at` schema（扩展 aliases/tier/backends/deprecated 字段）+ 统一注册表；schema 管契约、Rust 管行为，render_support/vue import 映射从 schema 派生，CI 拦截漂移。canonical=kebab-case，变体进 aliases。
 - 备选：A. Rust 硬编码为源（cons：漂移实证 8 处）；B. schema 单源派生（pros：一处改处处生效；cons：派生链需维护）。
-- 后果：`schema/aura.at` 成为 widget/chart 契约唯一源；462 要求 virtual_window 经此登记（I4，随桌面线收尾合入）。
+- 后果：`docs/schema/aura.at` 成为 widget/chart 契约唯一源；462 要求 virtual_window 经此登记（I4，随桌面线收尾合入）。
 - 状态：active
 
 ### ADR-10: DSL 现代化——widget 单轨 + setup 三相位 + msg 简写
@@ -179,7 +179,7 @@ graph TD
 
 ### ADR-18: chart 族发射 = schema 声明驱动（契约单源）
 - 日期 / 来源：plan-437 Phase 1（2026-08-28，435 统一声明体系首批示范）
-- 决策：chart 族（area/bar/line/donut/chart/charttooltip/chartlegend 七元素）的 props 契约全量落库 schema/aura.at（唯一契约源），registry overlay（apply_schema_vue_mappings）把声明填进 vue BackendMapping.props，vue.rs 四个硬编码 match 臂（~130 行）退役，收敛为 emit_chart_family_attrs 遍历声明发射（按声明名排序保序）；值级转换保留为转换层特例（curve-type 字符串→CurveType 枚举、custom-tooltip 组件引用恒绑定）。
+- 决策：chart 族（area/bar/line/donut/chart/charttooltip/chartlegend 七元素）的 props 契约全量落库 docs/schema/aura.at（唯一契约源），registry overlay（apply_schema_vue_mappings）把声明填进 vue BackendMapping.props，vue.rs 四个硬编码 match 臂（~130 行）退役，收敛为 emit_chart_family_attrs 遍历声明发射（按声明名排序保序）；值级转换保留为转换层特例（curve-type 字符串→CurveType 枚举、custom-tooltip 组件引用恒绑定）。
 - 备选：继续硬编码臂 + 契约注释（cons：435 审计的"实现比声明多"典型样本，声明与发射漂移无围栏）。
 - 后果：契约测试锁声明→发射全链（cap_chart_family_props_contract_in_registry）；奇偶校验证明新旧臂输出仅属性序差异；后续 chart 属性扩展只改 schema。
 - 状态：active
@@ -240,4 +240,11 @@ graph TD
 - 配套（同计划）：`WidgetRegistry::with_defaults()` 进程级 OnceLock 单次构建 + Clone 深拷贝出借 + `run_session` 启动后台预热线程——preview-card 每实例生成器重建（实测 ~1.1-1.3s/卡）曾是页构建秒级成本的唯一来源，缓存后冷构建 20-350× 改善（实测数据见 specs design/vm-loading-responsiveness.md §1）。
 - 备选：env 二值 OR（cons：prop true 无法诊断关闭——实测 gallery 上 env=0 不生效）；逐臂 bump VM seq（cons：组件局部态本非 VM 状态，伪造 seq 突变污染三级命中快路径）。
 - 后果：已知未闭面=DataTable 静态扫描 Degrade 根因与 FileTree 恒 FILL（PLAN-711 承接）；加载期调度（Init demand/帧泵/CPU 片）另见 proposed 设计（711）。
+- 状态：active
+
+### ADR-27: autodown 编辑壳正文内链激活供给——零模型扩展复用 wikilink attr、run 段命中区进 DocLayout、激活经 publish 出口、双 Str 载荷沿 499 M2 实参先例（PLAN-732）
+- 日期 / 来源：2026-10-03 / plan-732（auto-jade PLAN-037 的上游供给本体；局部 spec 见 design/autodown-wikilink.md）
+- 决策：①**零模型扩展**——`[[inner]]` 的语义载荷复用 autodown-core 既有 `attr "wikilink"`（markdown_parser convertInlines wikilink 臂，解析期 inner 已 trim），编辑壳入口 `flatten_inlines` 补读 attrs 即得目标+样式（wikilink span 原无 `Mark::Link`，VM 轨同步补 `style.link`），autodown-core/auto-down 仓零改动。②**命中区模型**——`LinkInterval`（全块字节坐标+target 原文）随 `BlockBuf` 与 mark 区间同快照口径；`render_frame` 经 `push_link_regions`（选区 push_byte_range_rects 同路字节→像素）产 `DocLayout.links` 单 layout-run 段矩形，折行链接逐段独立命中、整块矩形禁用。③**完整点击门在 core handle_input**（widget 两鼠标臂的 DocInput 汇聚点，与生产共一实现）——按下登记 pending（block+lo/hi+target 三重身份+单击节律+无修饰键）、拖动 4px 容差取消、抬起同区间才激活；rebuild/FocusLost/非左键清除。④**激活出口**——`DocOutput.link_activated`（DocOutput 由此退 Copy）→ `DocEditor.publish` → `View::AutodownEditor.on_link`（LinkCallback newtype，map/scroll_sync 双臂透传）。⑤**载荷**——激活构造处单点归一（首个 `#` 拆分+两侧 trim，无锚空串）；`.at` 绑定双形态 `on "open-wiki-link"`（完整 kebab，jade Vue 同名）/`onopenwikilink`；`DynamicMessage::Typed` args 双 `Value::Str` 经 encode/decode_payload 过 Send 边界直达 handler 形参（Plan 499 M2 mouse-area 坐标实参同路），无 update 层拦截。⑥**origin=结构性实例绑定**——回调 per-View-node/per-widget-instance，无全局 last-mounted 单槽；换内容 rebuild 清 pending 零冒领。
+- 备选：MCP `__mcp_click` 扩展携带激活（cons：合成通道语义冻结为 ghost 落点，wikilink 激活非其职责——负例锚在案）；载荷显式携 key（cons：契约第二参=锚点，来源由结构保证）；门在 widget 层实现（cons：与 DocInput 生产汇聚点分裂两套 hit-test）。
+- 后果：VM 编辑器内 wikilink 获链接观感且可激活；验证面=真实 iced 事件经 UserInterface 生产事件泵（六环语料 test/ui/plan732_wikilink 从 parse 到 VM handler state 落地贯通）；输入期 `[[x]]` 键入解析时机维持重建模型（B-6 族 owner=auto-down，不承诺）。已知预存事实（非本 ADR 引入）：`autodown_editor_sync` 在 core 槽位缺席时 no-op，生产动态循环靠次帧重降层补内容（六环语料测试显式两段降层同此节律）。
 - 状态：active

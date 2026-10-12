@@ -92,6 +92,23 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
   `shim_http_server_listen` 串行同步形态；`*_sync` 客户端显式同步 API
   （不入 request scope）。
 
+## 服务面终态许可、middleware 失败与关闭边界（PLAN-736）
+
+- **终态许可**：普通请求许可（queued+running+parked 总上限）在**服务面**延伸到
+  响应 body 终态——不以 headers 送达为释放点。VM 轨：Text 回复立即 complete 的
+  旧分支不外推到服务面，文件/SSE 的 scope 代持（`FileBodyAdapter`/`FrameStream`
+  Drop 恰一次幂等终结）即为终态语义，上传资源组经 `finalize_scope` 单点收口；
+  生成轨：permit 经 response extensions 由 hyper 在 body 完成/断连后释放。
+  取消/断连/关闭统一走 scope 幂等终结，恰一次计数（`emit_once` slot take + swap）。
+- **middleware 失败 profile**：service profile（`proxy_service`）下应用 middleware
+  编组/执行错误 **fail-closed 500**（734 合同语义在服务面保留）；旧开发语义的
+  middleware Err 续链语义仅限 legacy 无配置面，不自动延伸到服务面。
+- **shutdown 边界**：drain 窗语义（§请求作用域 `AUTO_HTTP_SHUTDOWN_DRAIN_MS`）
+  在服务面叠加 ready 503 翻转与新业务拒绝；超期强制终结连接/task 并取消原
+  scope/stream/upload；在途 FS 读不强制中断（停止 issuance、等实际退出后归还
+  执行槽）。VM 无限 CPU 段/不可中断 native 不在有限关闭保证内。部署/观测契约见
+  [http-service-deployment](http-service-deployment.md)。
+
 ## 关联
 
 - PLAN-705（reports：705-async-decision / 705-parity / 705-resource-lifecycle / 705-verification）
@@ -100,3 +117,32 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
 - [http-server §8.1](http-server.md)（协议预算/装配）、
   [async-http-result-lifecycle](async-http-result-lifecycle.md)（结果通道单次终结）
 - [networking-stdlib](../../auto-lang/runtime/design/networking-stdlib.md)（阶段 C1 落地面）
+
+
+## PLAN-729：文件 body 的 scope 与期限
+
+- 文件回复与 SSE 同形：scope/许可随响应体代持（`FileBodyAdapter` Drop/pump finish
+  恰一次幂等终结），**不沿用普通 Text 回复的立即 `complete_scope` 分支**。
+- 两期限交接：handler 段沿用既有 30s deadline；回复送达后文件准备
+  （等许可+open+metadata+seek）取 min(30s, scope 剩余)；headers 之后转入 body
+  idle watchdog（60s 默认，独立计时任务覆盖不被 poll 的客户端）+ 可选总期限。
+  大下载不被 handler deadline 误杀。
+- 在途 FS 读不强制中断：取消 = 停止 issuance + 等收口；active 执行槽随 pump 退出
+  归还（逻辑取消与 FS 实际退出分开计数）。契约详见
+  [http-server-files §5](http-server-files.md)。
+
+## 服务端上传资源组与分阶段期限（PLAN-730）
+
+- **body capability / 上传资源组**：上传请求的原始 body 不在桥侧消费——
+  `UploadRequest`（注入句柄）/`UploadSession`（会话）/`UploadReceipt`（收据）三类
+  id 登记请求 scope 资源组，`finalize_scope` 幂等收口（取消在途接收、清理 staged、
+  释放未消费 body 能力、移除闲置收据）。收据构造即登记（未编组收据不滞留注册表）。
+- **分阶段期限**：普通请求期限（30s）覆盖 header/鉴权/队列；进入 receive 后经
+  scope deadline watch 切换到上传 total（10min，headers 入 scope 起，排队计入；
+  桥 reply 等待循环重臂，不保留旧捕获值）；接收 idle 60s 逐 chunk 强制；
+  staged lease 30s（业务判定窗口）。准入阶段（queue+active 等待）统一受队列
+  期限（默认 30s）——满额下一笔 503 于期限内，不吊到 total。
+- **仲裁**：commit gate=hard_link 原语本身——gate 前取消胜出（不发布+清理），
+  gate 后迟到取消等实际发布结果（成功保留）；scope 终结 ≠ 在途 FS 立即退出
+  （writer 收口后清柄/腾槽）。
+- 详细契约见 [http-server-uploads](http-server-uploads.md)。

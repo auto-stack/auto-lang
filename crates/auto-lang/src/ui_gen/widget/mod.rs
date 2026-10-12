@@ -36,8 +36,8 @@ mod registry;
 mod spec;
 
 pub use component_registry::{
-    ComponentRegistry, ComponentResolution, ComponentSource, LoadedPackage,
-    PackageManifest, ShadowViolation,
+    ComponentRegistry, ComponentResolution, ComponentSource, LoadedPackage, PackageManifest,
+    ShadowViolation,
 };
 pub use registry::WidgetRegistry;
 pub use registry::AUTO_IMPORTED_WIDGETS;

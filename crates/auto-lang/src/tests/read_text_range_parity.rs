@@ -49,8 +49,8 @@ fn read_text_range_dual_track_byte_parity() {
         (&cjk, 0, 4),     // limit backs off the 3-byte boundary
         (&cjk, 2, 4),     // offset walks back to the boundary
         (&cjk, 3, 3),
-        (&cjk, 9, 10),    // CJK EOF → null next_offset
-        (&cjk, 0, 12),    // whole file, exact limit
+        (&cjk, 9, 10), // CJK EOF → null next_offset
+        (&cjk, 0, 12), // whole file, exact limit
         (&empty, 0, 10),
         (&empty, 5, 10),
         (&missing, 0, 4), // IO error shape
@@ -59,7 +59,10 @@ fn read_text_range_dual_track_byte_parity() {
         let path = path.to_str().unwrap();
         let vm = vm_track(path, offset as i32, limit as i32);
         let a2r = a2r_track(path, offset, limit);
-        assert_eq!(vm, a2r, "track divergence at {path} offset={offset} limit={limit}");
+        assert_eq!(
+            vm, a2r,
+            "track divergence at {path} offset={offset} limit={limit}"
+        );
     }
 
     // Spot-check the exact shapes on the VM track (the .at fixture pins the

@@ -12,11 +12,16 @@ pub struct RustSource {
 
 impl RustSource {
     pub fn new(path: impl Into<String>) -> Self {
-        Self { full_path: path.into() }
+        Self {
+            full_path: path.into(),
+        }
     }
 
     pub fn short_name(&self) -> &str {
-        self.full_path.rsplit("::").next().unwrap_or(&self.full_path)
+        self.full_path
+            .rsplit("::")
+            .next()
+            .unwrap_or(&self.full_path)
     }
 }
 
@@ -31,38 +36,38 @@ pub enum Type {
     Float,
     Double,
     Bool,
-    Char, // char is actually u8/ubyte
-    StrFixed(usize), // Fixed-size string buffer (user writes str(N))
-    CStrLit,        // C-style string literal (null-terminated)
-    StrSlice,       // Borrowed string slice &str (user writes str)
-    StrOwned,       // Owned dynamic String (user writes Str)
-    Array(ArrayType),         // [N]T - static array (compile-time size)
-    RuntimeArray(RuntimeArrayType),  // [expr]T - runtime-sized array (Plan 052)
-    List(Box<Type>),          // List<T> - dynamic list
-    Map(Box<Type>, Box<Type>), // Map<K, V> - typed dictionary (Plan 160)
-    Slice(SliceType),         // []T - slice type
-    Ptr(PtrType),             // *T - raw pointer (Plan 052)
-    Reference(Box<Type>),     // &T - reference (Plan 052, for Rust transpiler)
+    Char,                           // char is actually u8/ubyte
+    StrFixed(usize),                // Fixed-size string buffer (user writes str(N))
+    CStrLit,                        // C-style string literal (null-terminated)
+    StrSlice,                       // Borrowed string slice &str (user writes str)
+    StrOwned,                       // Owned dynamic String (user writes Str)
+    Array(ArrayType),               // [N]T - static array (compile-time size)
+    RuntimeArray(RuntimeArrayType), // [expr]T - runtime-sized array (Plan 052)
+    List(Box<Type>),                // List<T> - dynamic list
+    Map(Box<Type>, Box<Type>),      // Map<K, V> - typed dictionary (Plan 160)
+    Slice(SliceType),               // []T - slice type
+    Ptr(PtrType),                   // *T - raw pointer (Plan 052)
+    Reference(Box<Type>),           // &T - reference (Plan 052, for Rust transpiler)
     User(TypeDecl),
     Union(Union),
     Tag(Shared<Tag>),
     Enum(Shared<EnumDecl>),
-    Spec(Shared<SpecDecl>),  // Spec 类型（多态接口）
+    Spec(Shared<SpecDecl>), // Spec 类型（多态接口）
     // May(Box<Type>) removed - use generic tag May<T> from stdlib instead
-    GenericInstance(GenericInstance),  // User-defined generic instance (e.g., MyType<int>)
-    Storage(StorageType),  // Storage strategy type (Plan 055)
-    Fn(Vec<Type>, Box<Type>),  // Function type: Fn(params, return) - Plan 060
+    GenericInstance(GenericInstance), // User-defined generic instance (e.g., MyType<int>)
+    Storage(StorageType),             // Storage strategy type (Plan 055)
+    Fn(Vec<Type>, Box<Type>),         // Function type: Fn(params, return) - Plan 060
     Void,
     Unknown,
     CStruct(TypeDecl),
-    Linear(Box<Type>),  // Linear type (move-only semantics)
-    Variadic,  // C variadic functions (...)
+    Linear(Box<Type>), // Linear type (move-only semantics)
+    Variadic,          // C variadic functions (...)
     // Plan 120: Option and Result types
-    Option(Box<Type>),  // ?T - Optional value (None is valid state)
-    Result(Box<Type>),  // !T - Error-propagating value (Err is exceptional)
+    Option(Box<Type>), // ?T - Optional value (None is valid state)
+    Result(Box<Type>), // !T - Error-propagating value (Err is exceptional)
     // Plan 121: Task handle type
     Handle {
-        task_type: Box<Type>,  // The task type this handle references
+        task_type: Box<Type>, // The task type this handle references
     },
     // Plan 190: Rust type imported via use.rust
     Rust(RustSource),
@@ -90,15 +95,18 @@ impl Type {
             Type::Array(array_type) => {
                 format!("[{}]{}", array_type.elem.unique_name(), array_type.len).into()
             }
-            Type::RuntimeArray(rta) => {
-                format!("[runtime:{}]{}", rta.elem.unique_name(), rta.size_expr.repr()).into()
-            }
+            Type::RuntimeArray(rta) => format!(
+                "[runtime:{}]{}",
+                rta.elem.unique_name(),
+                rta.size_expr.repr()
+            )
+            .into(),
             Type::List(elem) => format!("List<{}>", elem.unique_name()).into(),
             Type::Map(k, v) => format!("Map<{}, {}>", k.unique_name(), v.unique_name()).into(),
             Type::Slice(slice_type) => format!("[]{}", slice_type.elem.unique_name()).into(),
             Type::Storage(storage) => storage.to_string().into(),
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().unique_name()).into(),
-            Type::Reference(inner) => format!("&{}", inner.unique_name()).into(),  // Plan 052
+            Type::Reference(inner) => format!("&{}", inner.unique_name()).into(), // Plan 052
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             Type::Spec(spec_decl) => spec_decl.borrow().name.clone(),
@@ -107,7 +115,9 @@ impl Type {
                     // No type arguments, just return base name (e.g., "A" not "A<>")
                     inst.base_name.clone()
                 } else {
-                    let args: Vec<String> = inst.args.iter()
+                    let args: Vec<String> = inst
+                        .args
+                        .iter()
                         .map(|t| t.unique_name().to_string())
                         .collect();
                     format!("{}<{}>", inst.base_name, args.join(", ")).into()
@@ -117,9 +127,8 @@ impl Type {
             Type::Linear(inner) => format!("linear<{}>", inner.unique_name()).into(),
             Type::Variadic => "...".into(),
             Type::Fn(params, ret) => {
-                let param_str: Vec<String> = params.iter()
-                    .map(|t| t.unique_name().to_string())
-                    .collect();
+                let param_str: Vec<String> =
+                    params.iter().map(|t| t.unique_name().to_string()).collect();
                 format!("fn({}) {}", param_str.join(", "), ret.unique_name()).into()
             }
             Type::Void => "void".into(),
@@ -151,31 +160,31 @@ impl Type {
             Type::Char => "0".into(),
             Type::StrFixed(_) => "\"\"".into(),
             Type::CStrLit => "\"\"".into(),
-            Type::StrSlice => "\"\"".into(),  // Default empty slice
-            Type::StrOwned => "Str.new()".into(),  // Owned dynamic string
+            Type::StrSlice => "\"\"".into(), // Default empty slice
+            Type::StrOwned => "Str.new()".into(), // Owned dynamic string
             Type::Array(_) => "[]".into(),
-            Type::RuntimeArray(_) => "[runtime]".into(),  // Runtime array placeholder
-            Type::List(_) => "List.new()".into(),  // Empty list constructor
-            Type::Map(_, _) => "Map.new()".into(),  // Plan 160: Empty map constructor
-            Type::Slice(_) => "[]".into(),  // Empty slice literal
+            Type::RuntimeArray(_) => "[runtime]".into(), // Runtime array placeholder
+            Type::List(_) => "List.new()".into(),        // Empty list constructor
+            Type::Map(_, _) => "Map.new()".into(),       // Plan 160: Empty map constructor
+            Type::Slice(_) => "[]".into(),               // Empty slice literal
             Type::Ptr(ptr_type) => format!("*{}", ptr_type.of.borrow().default_value()).into(),
-            Type::Reference(inner) => format!("&{}", inner.default_value()).into(),  // Plan 052
+            Type::Reference(inner) => format!("&{}", inner.default_value()).into(), // Plan 052
             Type::User(_) => "{}".into(),
             Type::Union(_) => "{}".into(),
             Type::Tag(_) => "{}".into(),
             Type::Enum(enum_decl) => enum_decl.borrow().default_value().to_string().into(),
-            Type::Spec(_) => "{}".into(),  // Spec 默认值为空对象
-            Type::GenericInstance(_) => "{}".into(),  // Generic instances default to empty object
-            Type::Storage(_) => "Storage".into(),  // Storage type default
-            Type::Linear(inner) => inner.default_value(),  // Linear type wraps inner type
-            Type::Variadic => "...".into(),  // Variadic has no default value
-            Type::Fn(_, _) => "{}".into(),  // Function type has no default value
+            Type::Spec(_) => "{}".into(), // Spec 默认值为空对象
+            Type::GenericInstance(_) => "{}".into(), // Generic instances default to empty object
+            Type::Storage(_) => "Storage".into(), // Storage type default
+            Type::Linear(inner) => inner.default_value(), // Linear type wraps inner type
+            Type::Variadic => "...".into(), // Variadic has no default value
+            Type::Fn(_, _) => "{}".into(), // Function type has no default value
             Type::CStruct(_) => "{}".into(),
             Type::Unknown => "<unknown>".into(),
             Type::Void => "void".into(),
-            Type::Option(_) => "None".into(),  // Plan 120: Option default is None
-            Type::Result(_) => "Err(\"default error\")".into(),  // Plan 120: Result default is Err
-            Type::Handle { .. } => "Handle.null()".into(),  // Plan 121: Handle default is null handle
+            Type::Option(_) => "None".into(), // Plan 120: Option default is None
+            Type::Result(_) => "Err(\"default error\")".into(), // Plan 120: Result default is Err
+            Type::Handle { .. } => "Handle.null()".into(), // Plan 121: Handle default is null handle
             Type::Rust(_) => "null".into(),
             Type::Tuple(_) => "()".into(),
         }
@@ -197,9 +206,20 @@ impl Type {
     pub fn substitute(&self, params: &[Name], args: &[Type]) -> Type {
         match self {
             // Basic types: return directly (no substitution needed)
-            Type::Byte | Type::Int | Type::Uint | Type::USize | Type::Float | Type::Double |
-            Type::Bool | Type::Char | Type::Void | Type::CStrLit | Type::StrSlice |
-            Type::Unknown | Type::Variadic | Type::StrOwned => self.clone(),
+            Type::Byte
+            | Type::Int
+            | Type::Uint
+            | Type::USize
+            | Type::Float
+            | Type::Double
+            | Type::Bool
+            | Type::Char
+            | Type::Void
+            | Type::CStrLit
+            | Type::StrSlice
+            | Type::Unknown
+            | Type::Variadic
+            | Type::StrOwned => self.clone(),
 
             Type::Fn(params, ret) => {
                 // Function types don't support type parameter substitution
@@ -225,21 +245,15 @@ impl Type {
             }
 
             // Compound types: recursive substitution
-            Type::List(elem) => {
-                Type::List(Box::new(elem.substitute(params, args)))
-            }
-            Type::Map(k, v) => {
-                Type::Map(
-                    Box::new(k.substitute(params, args)),
-                    Box::new(v.substitute(params, args)),
-                )
-            }
-            Type::Array(array_type) => {
-                Type::Array(ArrayType {
-                    elem: Box::new(array_type.elem.substitute(params, args)),
-                    len: array_type.len,
-                })
-            }
+            Type::List(elem) => Type::List(Box::new(elem.substitute(params, args))),
+            Type::Map(k, v) => Type::Map(
+                Box::new(k.substitute(params, args)),
+                Box::new(v.substitute(params, args)),
+            ),
+            Type::Array(array_type) => Type::Array(ArrayType {
+                elem: Box::new(array_type.elem.substitute(params, args)),
+                len: array_type.len,
+            }),
             Type::RuntimeArray(rta) => {
                 // Runtime arrays keep their size expression as-is (no substitution in expressions)
                 Type::RuntimeArray(RuntimeArrayType {
@@ -247,35 +261,40 @@ impl Type {
                     size_expr: rta.size_expr.clone(),
                 })
             }
-            Type::Slice(slice_type) => {
-                Type::Slice(SliceType {
-                    elem: Box::new(slice_type.elem.substitute(params, args)),
-                })
-            }
-            Type::Ptr(ptr_type) => {
-                Type::Ptr(PtrType {
-                    of: auto_val::shared(Type::from(ptr_type.of.borrow().clone()).substitute(params, args)),
-                })
-            }
-            Type::Reference(inner) => {  // Plan 052
+            Type::Slice(slice_type) => Type::Slice(SliceType {
+                elem: Box::new(slice_type.elem.substitute(params, args)),
+            }),
+            Type::Ptr(ptr_type) => Type::Ptr(PtrType {
+                of: auto_val::shared(
+                    Type::from(ptr_type.of.borrow().clone()).substitute(params, args),
+                ),
+            }),
+            Type::Reference(inner) => {
+                // Plan 052
                 Type::Reference(Box::new(inner.substitute(params, args)))
             }
-            Type::Linear(inner) => {
-                Type::Linear(Box::new(inner.substitute(params, args)))
-            }
+            Type::Linear(inner) => Type::Linear(Box::new(inner.substitute(params, args))),
 
             // Generic instances: recursive substitution
-            Type::GenericInstance(inst) => {
-                Type::GenericInstance(GenericInstance {
-                    base_name: inst.base_name.clone(),
-                    args: inst.args.iter().map(|t| t.substitute(params, args)).collect(),
-                    source: inst.source.clone(),
-                })
-            }
+            Type::GenericInstance(inst) => Type::GenericInstance(GenericInstance {
+                base_name: inst.base_name.clone(),
+                args: inst
+                    .args
+                    .iter()
+                    .map(|t| t.substitute(params, args))
+                    .collect(),
+                source: inst.source.clone(),
+            }),
 
             // Complex types: clone as-is (no substitution in metadata)
-            Type::Enum(_) | Type::Spec(_) | Type::Tag(_) | Type::Union(_) |
-            Type::CStruct(_) | Type::Storage(_) | Type::I64 | Type::U64 => self.clone(),  // Storage types are not generic
+            Type::Enum(_)
+            | Type::Spec(_)
+            | Type::Tag(_)
+            | Type::Union(_)
+            | Type::CStruct(_)
+            | Type::Storage(_)
+            | Type::I64
+            | Type::U64 => self.clone(), // Storage types are not generic
 
             // Plan 120: Option and Result types - recursive substitution
             Type::Option(inner) => Type::Option(Box::new(inner.substitute(params, args))),
@@ -317,10 +336,16 @@ impl Type {
     pub fn is_optimized_by_value(&self) -> bool {
         match self {
             // Small types - use value passing (register-passed, no heap allocation)
-            Type::Byte | Type::Int | Type::Uint | Type::USize |
-            Type::I64 | Type::U64 |
-            Type::Bool | Type::Char |
-            Type::Float | Type::Double => true,
+            Type::Byte
+            | Type::Int
+            | Type::Uint
+            | Type::USize
+            | Type::I64
+            | Type::U64
+            | Type::Bool
+            | Type::Char
+            | Type::Float
+            | Type::Double => true,
 
             // Large types - use reference passing (heap-allocated or expensive to copy)
             Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => false,
@@ -328,7 +353,9 @@ impl Type {
             Type::Slice(_) | Type::Ptr(_) | Type::Reference(_) => false,
 
             // User-defined types - use reference passing (V1 conservative)
-            Type::User(_) | Type::Tag(_) | Type::Enum(_) | Type::Union(_) | Type::CStruct(_) => false,
+            Type::User(_) | Type::Tag(_) | Type::Enum(_) | Type::Union(_) | Type::CStruct(_) => {
+                false
+            }
 
             // Generic instances - use reference passing
             Type::GenericInstance(_) => false,
@@ -351,7 +378,10 @@ impl Type {
 
     /// Check if this type is any kind of string (literal, slice, or owned)
     pub fn is_any_string(&self) -> bool {
-        matches!(self, Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned)
+        matches!(
+            self,
+            Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned
+        )
     }
 }
 
@@ -377,8 +407,8 @@ pub struct TypeParam {
 /// Const parameter (e.g., `N u32` in `Inline<T, N u32>`)
 #[derive(Debug, Clone)]
 pub struct ConstParam {
-    pub name: Name,           // Parameter name (e.g., "N", "CAPACITY")
-    pub typ: Type,            // Parameter type (e.g., u32, usize)
+    pub name: Name,            // Parameter name (e.g., "N", "CAPACITY")
+    pub typ: Type,             // Parameter type (e.g., u32, usize)
     pub default: Option<Expr>, // Default value (optional, future extension)
 }
 
@@ -395,7 +425,15 @@ impl fmt::Display for TypeParam {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)?;
         if !self.constraint.is_empty() {
-            write!(f, ": {}", self.constraint.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(" + "))?;
+            write!(
+                f,
+                ": {}",
+                self.constraint
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" + ")
+            )?;
         }
         Ok(())
     }
@@ -411,8 +449,8 @@ impl fmt::Display for ConstParam {
 /// Example: `List<int>`, `May<string>`, `Map<str, int>`
 #[derive(Debug, Clone)]
 pub struct GenericInstance {
-    pub base_name: Name,       // Base type name (e.g., "List", "May", "Map")
-    pub args: Vec<Type>,        // Type arguments (e.g., [int], [str, int])
+    pub base_name: Name, // Base type name (e.g., "List", "May", "Map")
+    pub args: Vec<Type>, // Type arguments (e.g., [int], [str, int])
     /// Plan 190: Rust provenance for types imported via use.rust
     pub source: Option<RustSource>,
 }
@@ -468,12 +506,16 @@ pub struct SliceType {
 #[derive(Debug, Clone)]
 pub struct RuntimeArrayType {
     pub elem: Box<Type>,
-    pub size_expr: Box<Expr>,  // Size expression evaluated at runtime (boxed to avoid recursive type)
+    pub size_expr: Box<Expr>, // Size expression evaluated at runtime (boxed to avoid recursive type)
 }
 
 impl fmt::Display for RuntimeArrayType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(runtime-array-type (elem {}) (size-expr {}))", &self.elem, &self.size_expr)
+        write!(
+            f,
+            "(runtime-array-type (elem {}) (size-expr {}))",
+            &self.elem, &self.size_expr
+        )
     }
 }
 
@@ -533,7 +575,7 @@ impl fmt::Display for Type {
             Type::Map(k, v) => write!(f, "Map<{}, {}>", k, v),
             Type::Slice(slice_type) => write!(f, "{}", slice_type),
             Type::Ptr(ptr_type) => write!(f, "{}", ptr_type),
-            Type::Reference(inner) => write!(f, "&{}", inner),  // Plan 052
+            Type::Reference(inner) => write!(f, "&{}", inner), // Plan 052
             Type::User(type_decl) => write!(f, "{}", type_decl),
             Type::Enum(enum_decl) => write!(f, "{}", enum_decl.borrow()),
             Type::Spec(spec_decl) => write!(f, "spec {}", spec_decl.borrow().name),
@@ -546,7 +588,9 @@ impl fmt::Display for Type {
                 // Format: fn(param1, param2) ret
                 write!(f, "fn(")?;
                 for (i, param) in params.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", param)?;
                 }
                 write!(f, ") {}", ret)
@@ -562,7 +606,9 @@ impl fmt::Display for Type {
             Type::Tuple(ts) => {
                 write!(f, "(")?;
                 for (i, t) in ts.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", t)?;
                 }
                 write!(f, ")")
@@ -578,8 +624,8 @@ impl From<Type> for auto_val::Type {
             Type::Int => auto_val::Type::Int,
             Type::Uint => auto_val::Type::Uint,
             Type::USize => auto_val::Type::Uint,
-            Type::I64 => auto_val::Type::Int,  // i64 transpiles to Int for now
-            Type::U64 => auto_val::Type::Uint,  // u64 transpiles to Uint for now
+            Type::I64 => auto_val::Type::Int, // i64 transpiles to Int for now
+            Type::U64 => auto_val::Type::Uint, // u64 transpiles to Uint for now
             Type::Float => auto_val::Type::Float,
             Type::Double => auto_val::Type::Double,
             Type::Bool => auto_val::Type::Bool,
@@ -589,30 +635,30 @@ impl From<Type> for auto_val::Type {
             Type::StrSlice => auto_val::Type::StrSlice,
             Type::StrOwned => auto_val::Type::StrOwned,
             Type::Array(_) => auto_val::Type::Array,
-            Type::RuntimeArray(_) => auto_val::Type::Array,  // Runtime arrays transpile to Array type
-            Type::List(_) => auto_val::Type::Array,  // TODO: Add List to auto_val::Type
-            Type::Map(_, _) => auto_val::Type::User("Map".into()),  // Plan 160: Map as user type in auto_val
-            Type::Slice(_) => auto_val::Type::Array,  // TODO: Add Slice to auto_val::Type
+            Type::RuntimeArray(_) => auto_val::Type::Array, // Runtime arrays transpile to Array type
+            Type::List(_) => auto_val::Type::Array,         // TODO: Add List to auto_val::Type
+            Type::Map(_, _) => auto_val::Type::User("Map".into()), // Plan 160: Map as user type in auto_val
+            Type::Slice(_) => auto_val::Type::Array, // TODO: Add Slice to auto_val::Type
             Type::Ptr(_) => auto_val::Type::Ptr,
-            Type::Reference(_) => auto_val::Type::Ptr,  // Plan 052: Reference transpiles to Ptr in auto_val
+            Type::Reference(_) => auto_val::Type::Ptr, // Plan 052: Reference transpiles to Ptr in auto_val
             Type::User(decl) => auto_val::Type::User(decl.name),
             Type::Enum(decl) => auto_val::Type::Enum(decl.borrow().name.clone()),
             Type::Spec(decl) => auto_val::Type::User(decl.borrow().name.clone()),
             Type::Union(u) => auto_val::Type::Union(u.name),
             Type::Tag(t) => auto_val::Type::Tag(t.borrow().name.clone()),
-            Type::Linear(inner) => (*inner).into(),  // Linear wraps inner type
-            Type::Variadic => auto_val::Type::Void,  // Variadic transpiles to void for now
-            Type::Fn(_, _) => auto_val::Type::Void,  // TODO: Handle function types properly
+            Type::Linear(inner) => (*inner).into(), // Linear wraps inner type
+            Type::Variadic => auto_val::Type::Void, // Variadic transpiles to void for now
+            Type::Fn(_, _) => auto_val::Type::Void, // TODO: Handle function types properly
             Type::Void => auto_val::Type::Void,
             Type::Unknown => auto_val::Type::Void, // TODO: is this correct?
             Type::CStruct(_) => auto_val::Type::Void,
-            Type::GenericInstance(_) => auto_val::Type::Void,  // TODO: Handle generic instances properly
-            Type::Storage(_) => auto_val::Type::Void,  // Storage types are marker types
-            Type::Option(inner) => (*inner).into(),  // Option<T> maps to T's auto_val type
-            Type::Result(inner) => (*inner).into(),  // Result<T> maps to T's auto_val type
-            Type::Handle { .. } => auto_val::Type::Ptr,  // Plan 121: Handle maps to Ptr (internal reference)
+            Type::GenericInstance(_) => auto_val::Type::Void, // TODO: Handle generic instances properly
+            Type::Storage(_) => auto_val::Type::Void,         // Storage types are marker types
+            Type::Option(inner) => (*inner).into(),           // Option<T> maps to T's auto_val type
+            Type::Result(inner) => (*inner).into(),           // Result<T> maps to T's auto_val type
+            Type::Handle { .. } => auto_val::Type::Ptr, // Plan 121: Handle maps to Ptr (internal reference)
             Type::Rust(source) => auto_val::Type::User(source.short_name().into()),
-            Type::Tuple(_) => auto_val::Type::Array,  // Tuples map to Array in auto_val
+            Type::Tuple(_) => auto_val::Type::Array, // Tuples map to Array in auto_val
         }
     }
 }
@@ -630,9 +676,9 @@ pub enum TypeDeclKind {
 /// 表示 `has member Type for Spec` 语法
 #[derive(Debug, Clone)]
 pub struct Delegation {
-    pub member_name: AutoStr,  // 成员名
-    pub member_type: Type,     // 成员类型
-    pub spec_name: AutoStr,    // 委托的 spec
+    pub member_name: AutoStr, // 成员名
+    pub member_type: Type,    // 成员类型
+    pub spec_name: AutoStr,   // 委托的 spec
 }
 
 impl fmt::Display for Delegation {
@@ -640,7 +686,9 @@ impl fmt::Display for Delegation {
         write!(
             f,
             "(delegation (member {}) (type {}) (for spec {}))",
-            self.member_name, self.member_type.unique_name(), self.spec_name
+            self.member_name,
+            self.member_type.unique_name(),
+            self.spec_name
         )
     }
 }
@@ -649,21 +697,22 @@ impl fmt::Display for Delegation {
 pub struct TypeDecl {
     pub name: Name,
     pub kind: TypeDeclKind,
-    pub parent: Option<Box<Type>>,  // 单继承：父类型（使用 Box 避免递归类型）
+    pub parent: Option<Box<Type>>, // 单继承：父类型（使用 Box 避免递归类型）
     pub has: Vec<Type>,            // 组合：多个组合类型
     pub specs: Vec<Spec>,          // Spec 声明：实现的 specs (names only for compatibility)
-    pub spec_impls: Vec<super::spec::SpecImpl>,  // Plan 057: Generic spec implementations with type arguments
-    pub generic_params: Vec<GenericParam>,  // Generic parameters (Plan 052: type + const)
+    pub spec_impls: Vec<super::spec::SpecImpl>, // Plan 057: Generic spec implementations with type arguments
+    pub generic_params: Vec<GenericParam>,      // Generic parameters (Plan 052: type + const)
     pub members: Vec<Member>,
-    pub delegations: Vec<Delegation>,  // 新增：委托成员
+    pub delegations: Vec<Delegation>, // 新增：委托成员
     pub methods: Vec<Fn>,
     /// C8: associated consts from `ext Type { [pub] const NAME TYPE = v }`,
     /// emitted as `const` items inside the inherent impl block.
     pub consts: Vec<Store>,
-    pub attrs: Vec<AutoStr>,       // Plan 159 Phase 6B-2: derive/serde attribute passthrough
-    pub impl_attrs: Vec<AutoStr>,  // Plan 364 W1: dotted macro attrs (#[zbus.interface]) → before `impl Type {`
-    pub doc: Option<AutoStr>,      /// Doc comment lines (///)
-    pub is_pub: bool,              // Plan 163: true for #[pub] types
+    pub attrs: Vec<AutoStr>, // Plan 159 Phase 6B-2: derive/serde attribute passthrough
+    pub impl_attrs: Vec<AutoStr>, // Plan 364 W1: dotted macro attrs (#[zbus.interface]) → before `impl Type {`
+    pub doc: Option<AutoStr>,
+    /// Doc comment lines (///)
+    pub is_pub: bool, // Plan 163: true for #[pub] types
 }
 
 impl TypeDecl {
@@ -763,7 +812,7 @@ pub struct Member {
     pub name: Name,
     pub ty: Type,
     pub value: Option<Expr>,
-    pub attrs: Vec<AutoStr>,  // Plan 163: per-field attributes (e.g., serde rename)
+    pub attrs: Vec<AutoStr>, // Plan 163: per-field attributes (e.g., serde rename)
 }
 
 impl fmt::Display for Member {
@@ -778,7 +827,12 @@ impl fmt::Display for Member {
 
 impl Member {
     pub fn new(name: Name, ty: Type, value: Option<Expr>) -> Self {
-        Self { name, ty, value, attrs: Vec::new() }
+        Self {
+            name,
+            ty,
+            value,
+            attrs: Vec::new(),
+        }
     }
 }
 
@@ -919,7 +973,8 @@ impl AtomWriter for Type {
             Type::Ptr(ptr_type) => {
                 write!(f, "ptr({})", ptr_type.of.borrow().to_atom_str())?;
             }
-            Type::Reference(inner) => {  // Plan 052
+            Type::Reference(inner) => {
+                // Plan 052
                 write!(f, "ref({})", inner.to_atom_str())?;
             }
             Type::User(type_decl) => write!(f, "{}", type_decl.name)?,
@@ -933,22 +988,18 @@ impl AtomWriter for Type {
             Type::Variadic => write!(f, "...")?,
             Type::Fn(params, ret) => {
                 // Format: fn(param1, param2) ret
-                let param_str: Vec<String> = params.iter()
-                    .map(|p| p.to_string())
-                    .collect();
+                let param_str: Vec<String> = params.iter().map(|p| p.to_string()).collect();
                 write!(f, "fn({}) {}", param_str.join(", "), ret.to_string())?
             }
             Type::Void => write!(f, "void")?,
             Type::Unknown => write!(f, "unknown")?,
             Type::CStruct(type_decl) => write!(f, "struct {}", type_decl.name)?,
-            Type::Storage(storage) => {
-                match &storage.kind {
-                    StorageKind::Fixed { capacity } => {
-                        write!(f, "Fixed<{}>", capacity)?;
-                    }
-                    StorageKind::Dynamic => write!(f, "Dynamic")?,
+            Type::Storage(storage) => match &storage.kind {
+                StorageKind::Fixed { capacity } => {
+                    write!(f, "Fixed<{}>", capacity)?;
                 }
-            }
+                StorageKind::Dynamic => write!(f, "Dynamic")?,
+            },
             Type::GenericInstance(inst) => {
                 write!(f, "{}", inst.base_name)?;
                 if !inst.args.is_empty() {
@@ -977,7 +1028,9 @@ impl AtomWriter for Type {
             Type::Tuple(ts) => {
                 write!(f, "tuple(")?;
                 for (i, t) in ts.iter().enumerate() {
-                    if i > 0 { write!(f, ", ")?; }
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
                     write!(f, "{}", t.to_atom_str())?;
                 }
                 write!(f, ")")?;

@@ -3,8 +3,8 @@
 //! These nodes are only parsed when the scenario is UI (contextual keywords).
 //! They represent widget, msg, model, view, and on blocks as first-class citizens.
 
-use super::{Body, Expr, Name, Stmt, Type};
 use super::route::RoutesBlock;
+use super::{Body, Expr, Name, Stmt, Type};
 use auto_val::AutoStr;
 
 // ============================================================================
@@ -908,7 +908,12 @@ impl ViewNode {
     }
 
     /// Add an event handler with parameters
-    pub fn with_event_params(mut self, name: impl Into<String>, handler: impl Into<String>, params: Vec<String>) -> Self {
+    pub fn with_event_params(
+        mut self,
+        name: impl Into<String>,
+        handler: impl Into<String>,
+        params: Vec<String>,
+    ) -> Self {
         if let ViewNode::Element { events, .. } = &mut self {
             events.push(ViewEvent {
                 name: name.into(),
@@ -1014,10 +1019,7 @@ pub enum SceneNode {
         children: Vec<SceneNode>,
     },
     /// `instance Name "res://path.tscn"`
-    Instance {
-        name: AutoStr,
-        path: AutoStr,
-    },
+    Instance { name: AutoStr, path: AutoStr },
 }
 
 /// A signal connection: `connect signal from <path> to <path> method <name>`
@@ -1058,8 +1060,7 @@ mod tests {
 
     #[test]
     fn test_view_node_element() {
-        let node = ViewNode::element("col")
-            .with_child(ViewNode::text("Hello"));
+        let node = ViewNode::element("col").with_child(ViewNode::text("Hello"));
 
         match node {
             ViewNode::Element { tag, children, .. } => {
@@ -1116,13 +1117,13 @@ mod tests {
                     name: AutoStr::from("Inc"),
                     quoted: false,
                     payload: vec![],
-                payload_names: vec![],
+                    payload_names: vec![],
                 },
                 MsgVariant {
                     name: AutoStr::from("Set"),
                     quoted: false,
                     payload: vec![Type::Int],
-                 payload_names: vec![None],
+                    payload_names: vec![None],
                 },
             ],
         };

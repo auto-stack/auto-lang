@@ -1,14 +1,32 @@
-## 执行吞吐治理第二批挂账（2026-10-02，PLAN-726 立项分批裁定：第一批四项见 726，余量在此）
+### P762（2026-10-11，图表 Init 批量 flake 分诊——helper 判据遗留面）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
-| THR-D1 | medium | 构建面 | **crate 拆分前置测量**——单 crate 76.6 万行/1,650 文件（2026-10-02 实测），Rust crate 粒度增量下任何改动触发整 crate 重编+测试二进制重链；先测量冷 worktree check/链接时间占比（样点：sccache 79% 命中下 `cargo check -p auto-lang` 57s、lang-724 target 17G、non-cacheable 801 次），数据支撑再决定 workspace member 拆分立项——不测不做 | .cargo/config.toml jobs=12；sccache --show-stats；2026-10-02 会话实测样点 |
-| THR-D2 | medium | 构建面 | **共享 target/链接缓存评估**——REG-3 已实证共享 target 候选撞名红（auto-edit.exe 撞名翻转策展测试），评估带产物命名空间隔离的跨 worktree 共享方案；未评估不实施 | 本文件 REG-3；clean-autolang-targets.cmd |
-| THR-D3 | medium | 验证信号 | **master 14 红族清偿**（musk p053×4/p054×2/plan606/projector/plan707/e4→PLAN-726 承接/app_registry×2/desktop_protocol/iced renderer/a2vue 金样/plan484 streaming）——跨仓跨域，逐族立项；目标=验证信号零噪音、复审零定案税 | 711 §10② 红册；PLAN-715 批收据基线 |
-| THR-D4 | low | flake 族 | **ffi_dual_019 / plan502_m3 并行负载序敏感 flake**——批量档观察名单积累复现率，频率上升再立项查并发交互 | 本文件 REG-2；PLAN-715 登记 |
-| THR-D5 | low | release 档 | **release 档红册治理**（~254 环境红+tests/ 编译 rot 残余）——非维护门但偶发消费（P712-D4 陈旧产物观察） | P702-D2；release_full3.log 分诊 |
-| THR-D6 | low | 走查基建 | **实机走查脚本沉淀**——主检出 `.tmp-vm-*` 一次性脚本族（20+ 件未跟踪）收编入 `.agents/skills/autoui-verifier/scripts/` 标准件（AGENTS.md 既有要求），消除每次走查重写成本 | 主检出 .tmp-vm-*；autoui-verifier 技能 |
-| THR-D7 | low | 术语残件 | **725 计划落定后其文档内残存 10 处「谳」→「案」清理**（2026-10-02 出清批遗留——当时该文件由并行起草会话持有未动） | docs/plans/725-typed-frame-incremental-pipeline.md |
+| D-762-1 | medium | 测试载体驱动 helper 早退 | **`ui/dynamic.rs::drive_scheduler_to_quiescence` 的 `progressed` 判据不计"续跑片让出未完成"（`cpu.slices_run` 缺位）**——多片 Init 单调用确定性早退（761 tt 批量档 gallery 四路由 flake 在案；确定性复现钉子 plan437 `child_init_multi_slice_early_exit_and_completion_driving` 前半断言）。约 16 个调用点共享该暴露面（plan502 已自带外层完成态循环、plan437 本计划已修，其余裸调用点的多片 Init 在并行负载下理论可复现同类红）。清偿方向（须另行授权，PLAN-762 约定"改生产 helper 先修订确认"）：`progressed` 增计 `cpu.slices_run > 0` 与 `silent_done_transitions > 0`（对齐 `poll_frame_pump` 判据族），I/O 未就绪退出臂保持；修复时同步更新钉子前半断言（其注释已留指引）。生产帧泵不受影响（每帧重入天然推进让出片） | crates/auto-lang/src/ui/dynamic.rs:1556-1578；docs/plans/reports/762-chart-init-attribution.md（PLAN-762 worktree） |
+
+### P756（2026-10-10，网站文字修复复核：范围外 UI 观察）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P756-D1 | low | website SectionNav 手机目录 | 已有目录 toggle/list 在手机展开时呈 flex 横排，列表高且部分入口受限；本轮仅文字/待拍槽，未改目录。后续改为纵向展开，360/390 检查全部章节可达与标题遮挡 | website/.vitepress/theme/components/SectionNav.vue；reports/756-website-copy-review.md |
+| P756-D2 | low | website v05 原图负载与阅读密度 | 已有桌面首图约5.2MB、发布页较长；本轮保留有效原图与内容。后续生成展示派生图并保留完整原图/来源，另复核手机滚动和章节密度 | website/public/desktop-showcase/02-desktop-dark.png；reports/756-website-copy-review.md |
+
+### PG-MEM（2026-10-09，playground 全量示例走查实测登记——走查副产品）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| ~~PG-MEM-1~~ 已销账（PLAN-746，2026-10-09 交付 95c093001：VM 协作式截止+timeout_secs 默认 10s，全量走查 +11MB/挂起清零） | high | auto-playground /api/run 执行管控 | **run 接口无超时/取消——挂起执行永不终止并持续吃内存**（2026-10-09 实测：1343 示例串行走查后服务端 16MB→1434MB，其中 ~740MB 来自 5 个挂起示例各跑满客户端 90s 超时仍在服务端继续；批量结束后挂起任务继续增长到 1.77GB+ 仍不收敛；早前 8 并发批 20GB+ 同因）。挂起源三类：①`print(i, end=" ")` kwargs 形态触发 VM 高速缓冲膨胀（~3MB/s，think-python ch07 块 01/02 两围栏 +210/+348MB）——独立 VM 缺陷；②书摘真死循环（`for true {}`）；③已 #[ignore] 的 plan231 无限循环语料。清偿方向：run_handler 加执行超时（返回错误+丢弃任务），根治需 VM 燃料/取消机制 | crates/auto-playground/src/routes/run.rs:26（spawn_blocking 无超时）；crates/auto-lang/src/lib.rs:471（join unwrap）；scratch/playground-check/results_mem.json（逐示例内存曲线） |
+| ~~PG-MEM-2~~ 已销账（PLAN-746：内建族 kwargs/Bina(Asn) 形态编译期拒绝） | low | VM print kwargs 形态 | **`print(x, end=" ")` 不报错反而挂起并以 ~3MB/s 膨胀**（应为编译期拒绝或忽略 kwargs）——块 01 `for i in 0..3 { print(i, end=" ") }` 90s 内 +210MB；块 02 同形态 +348MB。与 PG-MEM-1 的取消机制正交，属 codegen/内建签名校验缺口 | scratch/playground-check/results_mem.json [903][904]；think-python ch07-iteration 块 01/02 |
+| ~~PG-MEM-3~~ 已销账（PLAN-746 T-04 归因修正：基线缓涨系挂起旋转窗口误判，挂起源消除后净增 +11MB≈工作集涨落，非泄露） | low | auto-playground 单进程基线 | **逐运行基线缓涨 ~1MB/示例**（148 条 >1MB，多为快成功运行，如 ch14-classes-functions 块 03/04 各 +33/+26MB/0.02s）——Windows 工作集不归还 + 每运行全局状态（惰性 native 注册/类型缓存）叠加；相比 PG-MEM-1 次要，单独 profiling 再定责 | scratch/playground-check/results_mem.json |
+
+### P726（2026-10-02，复审登记的预存发现——非本计划引入）
+
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P726-R1 | medium | book_listing 再生成工作流 | **裸 `cargo tb` 经 `generate_book_expected` 无条件改写外部书仓全部 expected 文件**（fs::write 恒写，非仅漂移项）——①破坏性：书仓在途 WIP（如 PLAN-715 期 ch06 编辑）会被当前转译器输出覆盖；②竞态：与对拍族同池跨进程并行，expected.rs 读写互踩致红集非确定（同克隆实测 7 红/16 红两采样，2026-10-02）；③新交互：PLAN-726 T-03 脏态守卫落地后，generate 改写使书仓变 M 脏 → 后续对拍全 skip（消息可归因，非静默）。清偿方向：generate 收编为显式 env 门工作流（如 AUTO_BOOK_REGEN=1）或改仅写漂移项+先备份 | crates/auto-lang/src/tests/book_listing_tests.rs generate_book_expected（fs::write 无条件）；726 §8 T-03 回执预存发现① |
+| P726-R2 | low | desktop_protocol FFI 卫生 | **stage3.rs 内同名 Win32 函数双声明签名不一致**——K32GetProcessMemoryInfo（mem_ffi，isize 句柄）与 EnumWindows（两处，签名不同）跨 extern 块重复声明且类型不匹配，编译器持续告警；同 crate 同符号两种签名理论 ABI 风险（现均为 8 字节句柄/x64 实际无害）。PLAN-726 已把自家 OpenProcess 声明对齐 isize 形态规避新增告警；存量两处清偿=统一收敛到单一 FFI 声明模块 | crates/auto-lang/src/ui/desktop_protocol/stage3.rs:146-152（mem_ffi）与 :5418（EnumWindows）；cargo check 告警实录（726 §8 T-05 预存发现②） |
+| REG-4 | ~~medium~~ → 已清偿（待 auto-os 合流） | kitchen-sink/schema 金样跨仓脱同步 | **schema_drift_fence / queue_coverage_drift_fence / docs_gen kitchen_sink_page_in_sync 三红族（2026-10-02 批量回归新红）**——根因=跨仓 auto-os commit `73d02b5`（Plan 717 "show all component examples"，2026-10-01 05:05）手改 widgets-gallery/src/front/pages/kitchen-sink.at 未走 `KITCHEN_SINK_UPDATE=1` 再生：时间线 0d5f5bf 重采样（09-30 14:21）→ 09-30 批量回执（10-01 00:20）三绿 → 73d02b5 手改 5h 后破红；auto-lang 窗口 c19b5351a..4614bd9df 零触 docs/components 与 schema 源；非 PLAN-726（stash 对照 pristine@17292c07e 同红，先于其 diff）。**PLAN-759 T-01（2026-10-11）已清偿**：①根因深化——非仅金样手改，Plan 717 四表同步整体欠账（别名/覆盖登记/render 臂皆缺，schema_drift_fence 的 P1 红长期遮蔽 P0 累积漂移）；②aura.at 手工补 12 别名+render_support 补 carousel/command fallback 臂+element_coverage 登记（auto-lang 986cc9392）；③金样经 AUTO_OS_ROOT 锚定 auto-os 独立 worktree 再生并提交（auto-os plan-759-dev 分支 b5a2333）——**待合流**：合回 auto-os main 后主检出/CI 的 kitchen_sink 围栏方绿（worktree 侧兄弟解析已绿） | auto-os worktree .wt/lang-759/auto-os@b5a2333（待合流）；schema_drift_baseline 刷新说明见 PLAN-759 执行记录；docs/plans/.last-batch-regression.json 2026-10-02 回执 |
 
 ### P723（2026-10-01，28应用图文介绍素材核查）
 
@@ -28,13 +46,13 @@
 |---|---|---|---|---|
 | P716-D1 | low | auto-edit 矩阵 供③ 多跑复核 | **大文件卡死回归「确认复核件」未完成——多跑×3 环境阻断，018 登记保持**——auto-edit `desktop_mcp.py` 矩阵 6 次启动实录：MCP 端口 TOCTOU 死占×3（9247=ui_desktop.exe PID 2824 [auto-musk 域在跑 UI] LISTENING+孤儿 auto.exe 占 9248/9249；`pick_free_port` connect_ex 探测对 LISTENING 态误判空闲）+boot 瞬态×1+**app 楔死×2**（主进程存活但事件循环楔死：X9-ALIVE 心跳 ~90s 停+SYN_SENT→8018 挂起+MCP 监听套接字消失——18 PASS 后断连）。根因假说=712 r2 T-16 桌面轨 AppTick 泵断链残余族（形态吻合**未证实**——同二进制 01:5x 空闲时段健康推进 T1→T13 20min+，楔死与机器态相关非确定性）。供③ 语义=稳定性确认件（018 v2205 单跑 T17.2/17.3/17.8 已全绿），非新能力；本件（PLAN-716）三组主体交付与其零耦合。**清偿路径**：712 T-16..T-19 修复交付后或共栖负载空闲窗口期，重跑矩阵 ×3（AUTOUI_MCP_PORT 绕开 924x 带）——T17 全绿→018 注记销账；若楔死复现→供③ 转「复现，原诉求恢复」（m1-supply §17 语义）。018 登记位未回写（不假销账） | 主检出 docs/plans/716-m4-upstream-batch.md §10 Q-5+T-12 行实录；auto-edit specs/auto-edit/tests/desktop_mcp.py pick_free_port:47；018-m4-perf-unblock-and-budget-gate.md:341 供③ 定性 |
 
-### P706 r2 收口批（2026-09-30，work 阶段定案的非本回归缺陷另立记账）
+### P706 r2 收口批（2026-09-30，work 阶段定谳的非本回归缺陷另立记账）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
-| ~~P707-R1~~ | high | async http 直驱臂（e4） | **已清偿（2026-10-02，PLAN-724 T-02）**——真因勘定=**测试侧违反 managed 提交协议**（非派发缺陷、非 detached 桥分离）：e4 三臂直接 `spawn_async_http_handle`/`spawn_async_http` 提交 managed job（999_001/999_101/999_102）却未先 `register_live_op`，707 `submit_client_job` 的 cancel-before-install 闭合（still-live 复查）在 spawn→登记窗口内发现令牌缺席 → 立即 abort 刚提交的任务 → 请求恒不到线 → 30s `recv_timeout` 恒红。生产 shim 全部先 register（stdlib.rs 5367/5390/5413/5434 等在案）。修复=测试改走生产协议：register→submit→wire 断言→消费配对（plain 臂增验 managed 完成落表 `Structured{status:200}`）+`cancel_live_op` 幂等清理，并钉住未登记反例（abort 句柄 submit 返回前回收 + 无令牌永无可消费结果）。取消守卫零改动；plan712（2/2）与 plan707_cancel（5/5）复证绿；修复后单跑 0.46s。公开入口覆盖保持：直驱两点即公开 native shim 的唯一 send 汇聚处，默认头/query/body wire 断言原样 | stdlib.rs e4 模块（default_headers 三臂+未登记反例臂）；`cargo t default_headers_reach_wire_on_plain_get` 绿日志（work 阶段在案） |
-| P706-D1 | medium | back-bridge call（merged 直调臂） | **probe_mtime merged 臂 release 载体 `done` 恒 false（挂起）为独立预存缺陷**——探针 widget 零 computed/memo，Init 弧 `probe_cases` back-bridge call 不完成；A/B 定案：old-carrier c8f86ef92（pre-delta）release **同形红**（`done: false` 超时），修复 exe debug 全案绿 → release 特异的 back-bridge 调用面，非 706/plan047/705 delta 引入。清偿需 release 档 CALL/段驱动时序定位（debug canary 先爆掩蔽同窗） | jade-edit tests/probe_mtime.mjs；`p706-probe-mtime-rel.log` vs `p706-probe-mtime-oldrel.log` vs `p706-probe-mtime-dbg.log`（组目录 .wt/lang-706/） |
-| P706-D2 | low | jade-edit e2e harness（消费方仓） | **vue 轨 Playwright e2e `快速打开` menubar 弹层点击预存 flaky**——元素反复 detach → click 重试至 240s 超时；双载体统计同 flaky（old c8f86ef92 2/4 pass / new 载体 1/4 pass，无区分度）⇒ 非本仓 delta 回归；gen/front/vue 为共享陈旧产物（前端非变量）。清偿归属 jade-edit harness 加固（force-click/动画等待/焦点稳定），不在 auto-lang | jade-edit e2e/matrix.spec.ts:632 waitButtonIn click；`e2e-old-run1..3.log`/`e2e-77d05-run*.log`（组目录） |
+| P707-R1 | high | async http 直驱臂（e4） | **e4 `default_headers_reach_wire_on_plain_get` 确定性红（非环境红）**——`spawn_async_http_handle`/`spawn_async_http` 直驱三臂在独占测试进程内恒不到线：曾无限挂死整跑（2026-09-30 双 tf 现行实录，其一卡死 30+ 分钟），fix-test-stability 加 30s `recv_timeout` 定界后 30.0s 恒红实证。同机 plan705 e2e（`Http.post_json` 全链）与 plan707 SSE（真 TCP 分时帧）均绿 ⇒ 机器网络正常，**头号嫌疑=plan707 T-02 `submit_detached_client_job` 消息桥分离**（fire-and-forget 路径疑似不再派发直驱 job）。4f123a50e 曾把 `default_headers` 计入"预存红 4"以环境红定责——**误标**。修复归 plan707 域；修复前日常档带此红 + 30s 长尾在案（slow-timeout 120s 终止兜底，防挂死回归） | stdlib.rs e4 模块（default_headers 三臂）；4f123a50e 定责行；.config/nextest.toml slow-timeout |
+| P706-D1 | medium | back-bridge call（merged 直调臂） | **probe_mtime merged 臂 release 载体 `done` 恒 false（挂起）为独立预存缺陷**——探针 widget 零 computed/memo，Init 弧 `probe_cases` back-bridge call 不完成；A/B 定谳：old-carrier c8f86ef92（pre-delta）release **同形红**（`done: false` 超时），修复 exe debug 全案绿 → release 特异的 back-bridge 调用面，非 706/plan047/705 delta 引入。清偿需 release 档 CALL/段驱动时序定位（debug canary 先爆掩蔽同窗） | auto-jade tests/probe_mtime.mjs；`p706-probe-mtime-rel.log` vs `p706-probe-mtime-oldrel.log` vs `p706-probe-mtime-dbg.log`（组目录 .wt/lang-706/） |
+| P706-D2 | low | auto-jade e2e harness（消费方仓） | **vue 轨 Playwright e2e `快速打开` menubar 弹层点击预存 flaky**——元素反复 detach → click 重试至 240s 超时；双载体统计同 flaky（old c8f86ef92 2/4 pass / new 载体 1/4 pass，无区分度）⇒ 非本仓 delta 回归；gen/front/vue 为共享陈旧产物（前端非变量）。清偿归属 auto-jade harness 加固（force-click/动画等待/焦点稳定），不在 auto-lang | auto-jade e2e/matrix.spec.ts:632 waitButtonIn click；`e2e-old-run1..3.log`/`e2e-77d05-run*.log`（组目录） |
 | P706-D3 | low | widgets-gallery VM 臂侧栏导航 | **sidebar 连按导航偶发失灵（双载体同）**——MCP press 后路由不切（old-carrier 2 连按后滞留 / new 载体同现），press 间页面重挂载期 MCP 响应可 >10s；四页收口经 press→fixture 双通道重试达成。机制未查（疑页面重建期 press 竞态），消费面仅探针脚本 idiomatic 影响向 | `.wt/lang-706/gallery-spot*.log`；widgets-gallery src/front/app.at routes |
 
 | P706-D4 | medium | plan705 e2e 门禁（tf 并行池） | **plan705 e2e 探针裸 `#[test]` 入 tf 全量池→套件挂起风险**——`plan705_e2e_deadline_cancels_parked_and_reclaims` 绑定固定端口 18511/18512+全局 env 变更（AUTO_HTTP_REQUEST_TIMEOUT_MS），tf 并行 run 实测 >62min 挂起（隔离 <3min 绿）；其自家计划 §6 明示真 TCP e2e 应入 `test-http-e2e` 门/th 串行池。706 r2 复审按 `-E` 排除后收口（单测复证在案）。清偿=cfg 门收编 th 串行池（705 域治理，随 705 系后续档） | crates/auto-lang/src/tests/plan705_spike_tests.rs:711；.wt/lang-706/tf-review-full.log vs 隔离复跑记录 |
@@ -153,18 +171,22 @@
 
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
-| P721-R1 | high | T-19 读侧机理（暂停回弹根因末环） | 下行 epoch 单调门只挡「世代回退」子类；桌面实测回弹写来自 **OnTime 触发的全新构建烤回 paused=false**（handler 两次写均 false、同一 binding 相邻构建读值不稳定）——读侧世界分裂/陈旧 memo 回放机理待定案。复现即现形：`AUTO_SCHED_DIAG=1` 桌面跑 030 点暂停看 `video_build` 行。 | evidence/721/apptick-verdict.md 结论二；desktop-721g.log |
-| P721-R2 | medium | T-11 播控条布局塌缩 | col_right 438↔658 进程级翻转非确定性源未定案（712-r2 登记态原样移交）。定案入口=进程内双构建比对 + builder 侧 HashMap 遍历审计（style 层 Vec 面已初查非嫌疑）。 | 归档 712 §10①；layout_tests.rs p712 探针族 |
+| P725-R1 | medium | 帧管线单帧单建的自动化回归守卫（PLAN-725 复审 P725-R1） | builds=1 断言与 MCP 快照等价对拍未自动化——现行证据=在仓双态谱 JSONL（56/56 typed 帧 builds=1）+可复跑脚本 ladder.py（AUTO_FRAME_BENCH 门控探针在库）；CI 时态守卫需 headless iced-session+MCP 测试基建（现仓无此 harness——musk/renderer 轨测试均不驱动 view() 全路径）。下游帧档（type_latency）为第二道语义守卫。 | docs/plans/evidence/725/T-00-survey.md §2；plan725 §9 复审记录 |
+| P725-R2 | low | 键入载荷退役的计数断言面（PLAN-725 复审 P725-R2） | 1MB clone 计数断言未自动化——MCP 驱动走模型层直写不触发 on_change 闭包（实测约束，s1 探针全程 0）；谓词决策已单测（input_payload_consumed_contract）；真实键盘路径的诊断面=s1 分段探针（在库）。 | plan725 §9 复审记录；SD-01 §3 |
+| P721-R1 | high | T-19 读侧机理（暂停回弹根因末环） | **PLAN-725 关联注记（2026-10-02）**：帧管线增量件 T-00④ 读侧一致性核查——MCP 驱动键入谱（[P725-FRAME] 分段，30 键×3 档）未现形相邻构建同 binding 读值漂移证据（编辑路径负载面）；机理定谳入口不变，仍在 T-19。增量缓存正确性纪律遵守=frozen⑤（本件零「跳过重解析」快道引入——T-03 memo 扩面裁定不扩）。 |
+下行 epoch 单调门只挡「世代回退」子类；桌面实测回弹写来自 **OnTime 触发的全新构建烤回 paused=false**（handler 两次写均 false、同一 binding 相邻构建读值不稳定）——读侧世界分裂/陈旧 memo 回放机理待定谳。复现即现形：`AUTO_SCHED_DIAG=1` 桌面跑 030 点暂停看 `video_build` 行。 | evidence/721/apptick-verdict.md 结论二；desktop-721g.log |
+| P721-R2 | medium | T-11 播控条布局塌缩 | col_right 438↔658 进程级翻转非确定性源未定谳（712-r2 登记态原样移交）。定谳入口=进程内双构建比对 + builder 侧 HashMap 遍历审计（style 层 Vec 面已初查非嫌疑）。 | 归档 712 §10①；layout_tests.rs p712 探针族 |
 | P721-R3 | medium | 030 seek 派发被 arity 守卫跳过 | 用户实机取证（030-standalone4.log 07:15）：进度条点击/拖拽 → `[VM-ARITY] Controls.SeekFraction declares 1 param(s) but dispatch supplies 2 — skipping` ×6——seek 完全失效。疑拖拽事件路径多带一参（712 T-12 `$0` 剥离同域）。 | 030 controls.at SeekFraction 绑定；plan-576 D4 守卫 |
 | P721-R4 | medium | 验收通道注入静默丢 | desktop-721i 实例 handler inject 排队后零派发（g/h 同代码正常）——registry_id 窗口反查在窗重用/多实例下疑 miss；inject 臂 `let _` 吞错无日志面。验收通道可靠性债。 | renderer.rs apply_desktop_injects Handler 臂 |
-| P721-R5 | low | 独立窗 ok=true 自退（seek 后） | 030 独立轨在用户 seek 交互后 `vm interpreter returned ok=true` 优雅退出（无 wgpu 告警，非 712 T-07 press 死因；用户主动关窗不可排除）。复现则按 T-07 同窗定案。 | 030-standalone4.log 尾段 |
+| P721-R5 | low | 独立窗 ok=true 自退（seek 后） | 030 独立轨在用户 seek 交互后 `vm interpreter returned ok=true` 优雅退出（无 wgpu 告警，非 712 T-07 press 死因；用户主动关窗不可排除）。复现则按 T-07 同窗定谳。 | 030-standalone4.log 尾段 |
 | P721-R6 | medium | T-19 桌面活体 ×10 复验 | epoch 门落地后桌面实机暂停 ×10 无回弹未走查（实例 I 用户占用+R4 注入丢+712 T-07 三重阻塞）。移交用户日常观察；若仍回弹=R1 机理现形入口。 | evidence/721/apptick-verdict.md 未竟段 |
 
 ### PLAN-712 r3 批（2026-10-01，归档收据 eed6acf25——未竟/登记项集中挂账）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
-| P712-D1 | high | 桌面轨更新路径家族（PLAN-721 承接中） | **推进中（2026-10-01，PLAN-721，worktree plan-721-dev @088b32aa6）**：①**T-16 结案**——r2「桌面内嵌轨 0 trace/Loading 卡死」定案为伪象或已被 712-r3 治愈（sched_diag 四轴 trace 全绿：sub_parked/到达/恢复 50.9ms/置脏回填，018 内嵌实机复验）；②**T-19 帧级序列捕获**：暂停写全链落盘（mpv 真停+上行回灌）后 ~100-185ms，OnTime 触发的**全新视图构建烤回 paused=false**（同一 binding 相邻构建读值不稳定=读侧世界分裂/陈旧 memo 回放，机理开放；video_build trace 已就位）；③**已落部分修复**=下行世代单调门（VideoContractDown.epoch + contract apply 回退整包拒绝），mpv_contract 13/13 绿（712-r3 双锁零扰动），独立轨真实按钮暂停钉住 7s+ 零回弹；④**T-11 未动**（col_right 438↔658 定案入口不变）。定案文档 docs/plans/evidence/721/apptick-verdict.md（worktree 088b32aa6）。另：验收通道 handler inject 在 desktop-721i 实例静默丢（排队零派发，g/h 正常）——验收通道可靠性债，随 PLAN-721 待澄清②复查。 | 归档 plan docs/plans/archive/712-vm-desktop-defects.md §8.5.3/§9/§10①；PLAN-721 plan 文档 |
+| P712-D1 | high | 桌面轨更新路径家族（PLAN-721 承接中） | **PLAN-725 家族注记（2026-10-02，worktree plan-725-dev）**：编辑路径帧管线分段谱定谳（ui::frame_segments——五段 S1..S4+builds/dirty，AUTO_FRAME_BENCH 同门）：S2 VM 段非瓶颈（0.07-0.33ms/帧）；S3 恒定 ~8ms；S4 曾随文档尺寸线性爆炸（root=iced scrollable 构造期 size_hint→content_height→fresh_fold_map 逐行物化，1MB 95ms/帧——已修，无折叠快道 O(1)）；Element 缓存 put-then-take 死缓存勘定（快道结构性不可能命中，死写移除）。双态谱+勘定=docs/plans/evidence/725/（下游 auto-edit M4 帧两行 FAIL 的上游清偿面）。 |
+**推进中（2026-10-01，PLAN-721，worktree plan-721-dev @088b32aa6）**：①**T-16 结案**——r2「桌面内嵌轨 0 trace/Loading 卡死」定谳为伪象或已被 712-r3 治愈（sched_diag 四轴 trace 全绿：sub_parked/到达/恢复 50.9ms/置脏回填，018 内嵌实机复验）；②**T-19 帧级序列捕获**：暂停写全链落盘（mpv 真停+上行回灌）后 ~100-185ms，OnTime 触发的**全新视图构建烤回 paused=false**（同一 binding 相邻构建读值不稳定=读侧世界分裂/陈旧 memo 回放，机理开放；video_build trace 已就位）；③**已落部分修复**=下行世代单调门（VideoContractDown.epoch + contract apply 回退整包拒绝），mpv_contract 13/13 绿（712-r3 双锁零扰动），独立轨真实按钮暂停钉住 7s+ 零回弹；④**T-11 未动**（col_right 438↔658 定谳入口不变）。定谳文档 docs/plans/evidence/721/apptick-verdict.md（worktree 088b32aa6）。另：验收通道 handler inject 在 desktop-721i 实例静默丢（排队零派发，g/h 正常）——验收通道可靠性债，随 PLAN-721 待澄清②复查。 | 归档 plan docs/plans/archive/712-vm-desktop-defects.md §8.5.3/§9/§10①；PLAN-721 plan 文档 |
 | P712-D2 | ~~medium~~ | 018 阅读链点验未完成 | **已清偿（2026-10-01，PLAN-721 承接批前置点验）**：独立 VM 单跑走查全绿——书架 3 本 → 点第 2 卡开对书（route /book/2，712-r3 Init 代际修复实机复证）→ 详情页标题/作者/「3 entries」+ 章节目录 3 章（884bcfa67 app 层在位）→ 点 Chapter 2 → route /book/2/chapter/2 + **`router.param("ch").to_int()` 堆化形态实测=2**（712-r3 第二层 materialize_obj_to_heap 修复实机复证）→ reading 页渲染章节标题/正文/「Chapter 2 of 3」/66.0% → Next → 第 3 章 100.0%（路由参数变化 Init 重跑在位）。载具=lang-721 worktree 二进制（master+T-1 门控插桩，行为面零差异）。截图 docs/plans/evidence/721/d2-reading-ch2.png。 | 018 book_detail.at（OpenChapter → /book/:id/chapter/:n）；reading.at:146 |
 | P712-D3 | medium | ui_desktop 壁纸克隆 OOM（env 缺陷） | 桌面启动数秒~数分钟死于 `memory allocation of 2660706 bytes failed`——`load_image_bytes`（renderer.rs:6590）**每次视图重建裸 clone 壁纸字节**（purple.png 2.55MB），提交压力尖峰下 OOM 金丝雀。master 构建同崩（A/B desktop-master-ab.log）= 预存非 712 引入。修法候选：壁纸字节/解码结果缓存一次（挂 config 或 handle 缓存，Plan 650 缓存族同源）。本日 4 份崩溃日志存 worktree 组目录（desktop-r3*.log，未入库）。 | 归档 plan §10⑧；renderer.rs:6590/15354 |
 | P712-D4 | low | release 档产物陈旧 | release 二进制 + `gen/front/vue/dist` 未随 r3 合并重建（PLAN-092 先例观察项）；桌面实机消费面=worktree debug 二进制形态。 | 归档 plan 合并收据 cleaned 段 |
@@ -178,3 +200,265 @@
 | P718-D1 | low | website /playground hero | **Playground 页 hero 大标题 "Playground" 字形顶部被水平裁切**——1440 桌面 dark/light × EN/ZH 四变体一致复现；已核对 715 已入库截图（docs/reports/p715-website-ui/final-playground-en-1440-dark.png）同缺陷=既存，非 718 引入（718 未触 /playground 样式）。疑似 hero 标题 line-height/overflow 裁剪，一处 CSS 可修；不扩围，留独立修复 | docs/reports/p718-website-ui/VISUAL-REVIEW.md；docs/reports/p715-website-ui/final-playground-en-1440-dark.png 对照 |
 | P718-D2 | low | website playground i18n | **en 版 /playground 语料树/按钮等组件文本为中文**（搜索标题或标签…/书籍示例/在 IDE 中打开）——auto-playground-vue 包组件级 i18n 未覆盖既存缺口；包源码不在网站计划可编辑范围 | docs/reports/p718-website-ui/VISUAL-REVIEW.md 次要观察；packages/auto-playground-vue |
 | P718-D3 | low | website zh docs 侧栏翻译完备度 | **zh docs 侧栏残留英文条目**（Components/Script to ship/Tour/Generics 等）——ZH_TITLE_MAP 未覆盖的目录/文件名回退，内容翻译范畴非视觉缺陷 | docs/reports/p718-website-ui/VISUAL-REVIEW.md 观察项 3；website/scripts/prepare-content.js ZH_TITLE_MAP |
+
+## PLAN-727 复审登记（2026-10-02，复审 @plan-727-dev 1fa1a49a4）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P727-F1 | medium | book 仓 listing 语法脱同步 | book `rust/listings` 的 is 臂仍用旧语法 `0 =>`（book_ch03_08/ch06_05/ch06_08/ch09_02 四例），现行解析器只接受 `0 ->`（语料 test/vm/04_control_flow/006_is_stmt 即新语法）——任何全新 worktree 的 `cargo tb book_ch*` 必红；主检出单跑通过属其 target 增量构建本地假象（`cargo clean -p auto-lang` 后复测仍过，其增量状态未深究；判定依据=基线提交 b34852532 全新 worktree 复现同红，probe worktree 已 guard+清理）。修复归属 book 仓（listing 再生成或语法升级），auto-lang 侧不动他仓。复审实现会话独立性局限已声明（结论由工件重建：HEAD scoped 复测绿 + 大宗门禁红逐名对照零新增）。 | docs/plans/reports/727-transfer-verification.md §3；727 §9 复审记录 |
+
+## PLAN-728 执行登记（2026-10-02，work @plan-728-dev 3bc929ca0/c19fec79f）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P728-D1 | medium | 分页 rope 行查询的页内换行重扫 | `line()`/`line_start_byte()` 每次调用对其所在页做 O(页) 换行扫描（64KB 页 ~千行级重扫/次）——`find_next` 全文档扫描在 50MB 档实测 ~30s（debug）/answer 线 3ms（release 暖缓存后）。优化方向=页级换行偏移索引（PageDesc 增量数组）或行游标缓存；触发条件=下游 1GB E2E 消费件裁定优先级（头窗口内打字/跳转不受影响）。 | rope.rs q_line_start_byte Chunk 臂；SD-01 帧域协同节 |
+| P728-D2 | low | 703 对齐行走字节基修正的回归面 | 顺手修复：`range_content_equal`/`collect_prune_spans` 的 leaf 比较从 str 切片改字节切片（对齐切割在对侧内容上可落字符中间位——纯 ASCII 语料 703 期从未踩中，分块树形态分歧后确定性触发 panic）。语义不变（字节精确比较），但 703 既有测试族覆盖的多为 ASCII/对齐友好语料——非 ASCII 分歧对拍面靠本件 dual_track/paged_snapshots 补位。 | rope.rs LeafView::bytes 注记；file_backing::tests |
+| P728-D3 | low | >50MB 档交互面窗口化边界 | 头窗口（2MB）外交互体验边界如实登记：find 匹配落点重物化窗口后 published 光标行=窗口相对坐标（模型绑定下游需知悉）；fold 面在 >50MB 档返回空图（折叠发现=全文档扫描，护栏早退）；`code_editor_text` 全量读出在 >50MB 档仍 O(n) 物化（Plan 413 事件面消费——下游适配件改走 doc_snapshot）。三项全部=auto-edit 消费件范围（供料档 §10 回执预告位在列）。 | SD-01 双轨形态节/回执节；auto-edit de6cb95 |
+
+## PLAN-729 执行登记（2026-10-02，work @plan-729-dev，R1 复审修复后）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P729-D1 | low | shutdown drain 专项 wire 演练 | 文件 body 在优雅关停排水窗内的收尾未做专项 wire 测试（scope 收口臂与 SSE FrameStream 共用路径已由共用代码覆盖；drain 窗语义沿 serve_with 现状）。补测需以 test_trigger_shutdown 驱动 + 慢 body fixture。 | http_transport.rs serve_file_seed/serve_with drain；729 lifecycle 报告 §3 |
+| P729-D2 | low | legacy stdnet 文件 500 诊断 wire 档 | serve_blocking_stdnet 的文件端点 500 诊断为代码面实现（fn_is_api_file_return 门 + 诊断写回）；legacy 为非默认调用图（plan705 spike 锁单调用点），无独立 wire 档。补测需手工 VM 构建管线。 | http_server.rs legacy 分支；SD-01 §6 矩阵注 |
+| P729-D3 | low | 端口可重绑专项 | e2e 服务器线程为 detached（既有基建约束，与 http_e2e 全族一致）；"结束可重新绑定端口"未做专项断言（每测试固定新端口规避）。 | plan729 e2e 基建注 |
+| P729-D4 | low | 排队取消的直接观测 | 文件排队项无外部取消 API：客户端 socket 关闭经 scope 级联、或 30s 准备期限到期出队（两者均 e2e 覆盖）；"取消排队即移除"以间接形态保证（lifecycle §3.2 如实记录）。 | http_file_service.rs 排队臂 |
+| P729-D5 | low | 权限拒绝 wire 级 | PermissionDenied→403 映射已对齐计划 §5.3（R1 G-10 修正）；Windows ACL 类权限场景的 wire 测试环境不稳（只读文件对读打开不生效等），未设 wire 断言——映射由单元分类与 SD-01 行承载。 | http_file_service.rs OpenError::Escape(permission) |
+
+
+### P733（2026-10-02，VM fn 调用语义计划复审登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P733-R1 | ~~medium~~ → 已清偿 | 测试基础设施 | **plan502_m3_layout_geometry_e2e 并行负载 flake（双树同发预存）**——全量并行档下 `handler_FlowDiagram_Init` 被 CPU-slice Parked(CpuRunnable)（PLAN-711 片预算负载下耗尽→测试驱动轮次内未续完→几何断言落 x=108 旧值）；单跑恒绿（本树 4/4+master 3/3）、全量约 2/4~2/5 闪红（worktree 与 master 3053f1fdf 同发同错，非 PLAN-733 回归——其 diff 零触 diagram/layout/parking 面）。**PLAN-759 T-08（2026-10-11，d5a507db3）已清偿**：run_dir 单轮 drive 改带 10s 截止时间的完成态循环（Init demand/CPU 续体/I-O parked 收敛即出），几何断言原值不放宽；plan502 族 8/8 绿+m3 scoped 两轮绿 | crates/auto-lang/src/tests/plan502_diagram_tests.rs:284（td st/ck 中轴断言）；复审记录 F-1（master 全量对照 5 采样 2 红） |
+| P733-R2 | ~~low~~ → 已清偿（③随 PLAN-759） | VM 视图求值器 | **musk_vm_track p053_1/p053_4/p053_6/p054 预存红族=fn 调用语义同族深层腿**（master 3053f1fdf 基线即红，PLAN-733 三腿修复前后零行为变化/同错）——computed 链式 helper 断言面（musk chats 消息列表 computed 形态）残腿指向子件 override 态 `.store.X` 解析链深层；PLAN-733 边界登记于 design/vm-fn-call-semantics.md 已知边界③。**PLAN-749（2026-10-10）甄别：与条件通道异根**；**PLAN-748 T-02 首腿（2026-10-10，2e2164b5e 待合）分解定音**：六红三根——①p053_1×2+p053_6=`.store.X` 泛名展平空快照拒展平（三套 .store 口径不一致）**已翻绿**（musk_vm_track 97/6→100/3）；②p054×2 图标子件渲染面**归 748 T-02 续腿已修**（2026-10-10，3ec6a4914：PLAN-625 T-09(b) `tag.contains("icon")` 粗闸误判 PascalCase lucide 名→占位卡；判别器改 lucide 名集成员资格 `is_icon_component_tag`，AppViewport ∉ 名集保持占位卡意图；musk_vm_track 102/103）；③p053_4 merged `#[api]` CALL_NAT 发射**异根**——**PLAN-759 T-03（2026-10-11，753733205）定谳并清偿**：PLAN-633 守卫语义（实现体在场=直调不发桩）为有意契约而非债务，旧断言陈旧；双臂重锁（直调落账+缺实现 3142→RuntimeError）绿 | crates/auto-lang/src/tests/musk_vm_track_tests.rs:563/628/675；docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md 已知边界节；PLAN-749 §9 T-00 定音报告 |
+
+### P735 批量回归登记（2026-10-03，merge 后到期档 tf/tt/tb@68a6ce919）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P735-R1 | medium | http 上传服务（PLAN-730 域） | **plan730_commit_target_matrix 确定性红（scoped 同红 3/3：tf 全档+tf fail-fast 首跑+单测 scoped）**——30.1s 恒定时长=内部 lease/deadline watchdog 到期形态；本批窗口（6988b1d7f..HEAD）代码面仅 PLAN-735 帧通道四文件（ui::frame_bench/frame_segments/iced::frame_probe+renderer 观测订阅——与 http_upload_service 零交集，无因果路径），同晨批量回执（covered 6988b1d7f 含 730 全码）报零新增确定性红→**环境/时序敏感测试（730 自己的 slow-upload/lease watchdog 族先例 38s 跨期限）在当前机时下翻红**，非 735 回归。清偿归属=PLAN-730 域（其 734 会话在途）：deadline 断言对机时负载的鲁棒化或超时预算放大 | http_upload_service.rs plan730_commit_target_matrix（30s 恒时长）；本仓 .tmp-regress.log 三腿实录（收据 JSON new_reds） |
+
+## PLAN-737 执行登记（2026-10-03，work @lang-737，跨仓缺陷单 jade PLAN-037 T-02）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P737-D1 | medium | MCP HTTP current-thread runtime 结构弱点 | MCP 服务器=`new_current_thread()` 单 tokio 线程；737 已把工具执行下沉 `spawn_blocking`（handler 同步阻塞曾冻结 accept/IO 线程=探针连发 ECONNRESET 放大器），但 `note_activity` 等仍在 runtime 线程持锁；残余偶发连接复位（jade 侧旧 binary 亦两见=非 737 引入；737 修复后全量探针 4 跑 1 见）。疑点=多 app 顺序 runs 的 keep-alive/端口生命周期；需服务器侧 stderr 捕获 + AUTO_SCHED_DIAG 定向排查（复位时 runtime 线程是否存活）。 | mcp_server.rs run()/mcp_http_handler；p737 回执 §5 |
+| P737-D2 | low | autodown 编辑壳键域双形态面 | storage key 归一形（`__autodown_editor_*`）与裸键在 MCP 载荷/装配注册两侧并存，靠 `normalize_payload_key` 幂等归一桥接（737 探针 MISS 实录后补）。后续新增 keyed 面应统一走该归一口，避免再分叉。 | autodown_editor/core.rs normalize_payload_key；renderer.rs ade_link_dispatch_message |
+
+## PLAN-739 执行登记（2026-10-03，work @lang-739，跨仓缺陷单 jade PLAN-037 F-037-R1）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P739-F1 | medium | auto-cache 测试目标仓内腐坏 | `cargo check -p auto-cache --tests` E0063：methods_pack.rs:697 测试构造 `ShimMethod` 缺 `trait_name` 字段（PLAN-596 T-03 给 shim-metadata/types.rs 加字段未同步该测试）。**日常档门禁只建 `-p auto-lang` 目标（cargo t 别名 --lib + 三 integration test），auto-cache 自身 lib 测试从不参与编译，腐坏不可见**——master@9fcbdb5de 实证同破，非 739 引入。清偿=补 `trait_name: None`（或 Default 展开）+ 评估是否需要把 workspace 兄弟 crate 的 lib-test 编译纳入某档抽样（防再腐坏）。 | crates/auto-cache/src/methods_pack.rs:697；crates/shim-metadata/src/types.rs:109 |
+
+## PLAN-740 执行登记（2026-10-08，work @lang-740）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P740-D1 | medium | VM app 启动健壮性 | `.am/state.at`（app 侧持久化旁路文件，gitignored）被杀进程写半截时残留 NUL 填充 → 下次 boot lexer panic（parser.rs:404 `lexer should produce first token`）**进程起不来**（2026-10-08 实录，删文件即恢复）。容错面（解析失败→忽略重建）属 app 健壮性域，非 740 范围 | 041 例 `.am/state.at` 23×NUL 实录 + handoff-v3 §3；复现=ladder/复判跑中途 kill 后再 boot |
+| P740-D2 | low | 执行环境 | 本机 2026-10-08 实测 app 进程偶发静默退出（无 panic 痕迹，rc=0/1 混合，改前改后二进制均现，手工短复现不复现；同机他方会话重负载嫌疑）——谱采集协议已按「失败档重跑」消化；复判件需同款重试纪律 | handoff-v3 §3；740 执行实录 3/12 跑触发 |
+
+## PLAN-736 复审登记（2026-10-08，review pass @6156c3de3）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P736-R1 | low | auto-man 服务进程托管 | `serve_rust` 父进程不 health 轮询子进程、不消费 ready 身份体做核对（代码注释自标"T-05 接管"未落地；T-05 执行记录"父进程核对同源"为过述）。AC-02 安全结论由 734 strict 门 + 占口 bind 失败非零 + 503-not-ready 探针承载，不受影响；父侧身份体核对列为可选增强（防子进程打印与监听者错位类的纵深防御） | crates/auto-man/src/http_service.rs:245-257；复审记录 R1 |
+| P736-R2 | low | http_transport stderr 日志 | 736 新增 eprintln 臂（413/超时等，http_transport.rs:416-432/476/506/556-559）打原始 method+path（可含 query 串）到 stderr——在 JSONL sink 不脱敏合同之外，但与 plan736 §5.4 精神不一致；后续统一脱敏或改道 sink | crates/auto-lang/src/vm/ffi/http_transport.rs 上述行 |
+| P736-R3 | low | 生成轨观测/响应头一致性 | 生成轨无显式 "startup" JSONL 事件（仅 state:ready，VM 轨有显式 startup）；生成轨 429 用 lowercase `retry-after`（合法但两轨风格不一）；main.rs:2842 重复 `#[cfg(test)]` 属性（无害） | api_gen.rs SERVICE_RUN_LOOP 模板；crates/auto/src/main.rs:2842 |
+| P736-R4 | medium | auto-man 测试目标腐坏（预存，非 736 引入） | `cargo test -p auto-man` 全 targets 编译失败：bin auto-man E0601（空 main）+ tests/plan734_commands_fixture.rs E0255/E0425/E0433（未生成 api 夹具）——master bef73f52f **逐项同破**；日常档门禁不建这些目标故不可见（同 P739-F1 模式）。清偿=退役/修复 bin main + 夹具改可编译桩或移出默认 targets | crates/auto-man/tests/plan734_commands_fixture.rs；master 对照同错（复审实测） |
+| P736-R5 | low | 执行环境 | 698 域 SSE 订阅会话首播后 ~1-2s 自然收口（帧竞速观察项，连续流不受影响）；VM resources RSS 单调缓升（59.6MiB，远低于 512 阈值，6/10 样本）——批量回归档复核 | reports/736-http-load.md 观察节；736-http-proxy.md 支持面边界③ |
+
+## PLAN-738 执行登记（2026-10-08，work @lang-738，T-04 裁决遗留 + T-05/T-06 实勘）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P738-D1 | medium | 生产 native 注册面 ID 相撞真冲突（T-04 遗留 b 分诊裁决） | 扫描面动态 id 相撞 13 组（id1607 char×conv、id9930-9933 http×transfer 等）冻结基线（t04 `id_alias_conflict_detection`）。T-06 分诊裁决：`auto stdlib inspect --check` 按模块前缀把冲突组归入受影响模块**如实上报非零**（check_http_reports_frozen_id_conflicts 冻结），不静默、不弱化；重编号=ABI 变更，归 D3b/后续计划 | validate.rs id_alias_conflict_groups；crates/auto/src/cmd_stdlib.rs check_core；plan738 27/27 基线 |
+| P738-D2 | medium | 核心模块 id 面分裂（T-04 遗留 c 同族扩展） | json 实勘（T-06 探针）：生产绑定面=catalog canonical 名（`auto.json.get`@1906，register_std_shims 实绑，生产 json 可用）；校验器问的公共扫描名面（`auto.json.json_get`@99xx）无 shim 可调——诚实判 Unverified（check_json_scan_face_unverified_nonzero 冻结）。与 http 扫描前缀名（裁决①）、io 第四绑定面（VmModule 方法表，遗留 a）同族：**公共符号 canonical 面全量重写**为统一清偿路径（下轮） | vm/native_catalog.rs 19xx 段；validate.rs canonical_native_name；cmd_stdlib.rs 实勘注记 |
+
+## PLAN-738 归档后补充复查 R11（2026-10-10）
+
+原计划归档终态保持。下项为实际反例确证的后续必修候选，须另走修复流程；登记不代表批准延期。R9 两项修复已确证闭合，不撤销其闭合记录。
+
+2026-10-10 闭合更新：P738-R11-01 已由 PLAN-751 `226ebfbbb` 修复，归档后独立补充复验原 R11 探针 1/1（1.55s），空文件一次绑定/再生成身份均 `811c9dc5` 且 fresh，读错误与恢复矩阵通过；正式生成服务完整链 1/1（361.01s，测试夹具仅适配缓存路径）。原反例登记保留历史；后续 HTTP 能力缺口见 P751-D1 / [751-review-r2.md](reports/751-review-r2.md)。
+
+| ID | 级别 | 问题 | 证据与修复要求 |
+|---|---|---|---|
+| P738-R11-01 | medium / P2 | 空 Cargo.lock 生产/消费身份不一致 | 落地 `9ff34ae0d`，api_gen.rs:1076 成功读取空字节写 `811c9dc5`，rust_ui.rs:4030 归 absent；实际生成成功后门判 stale，absent 首次空文件出现也未绑定。仅 NotFound=absent，成功读取统一实际内容身份；补正式生成/消费空文件、漂移/删除及读错误恢复矩阵。AC-06/07，SD-05；[R11](reports/738-review-r11.md)，探针 0/1（1.40s） |
+
+验证尾项：R9 HTTP 全档 45/102、57 项未跑，移交 regress 尚无覆盖此次落地的收据；完成完整串行 th 及逐名分诊后补收据，不外推全档通过。
+
+## PLAN-738 补充复审 R9（2026-10-10，needs_fix @19973b089）——**已全部闭合 @41b4d4be5（R10 pass 核证）**
+
+（历史登记保留）本节曾是本期未满足验收的**必修**；主链 re-merge 回归已修复后以下两项阻塞收口，现均已闭合：R9-01=gate/生成两端 NotFound-only absent + 其它读错误 fail-closed；R9-02=三文件四格式点收敛。证据：[738-review-r9.md](reports/738-review-r9.md) 头部闭合注记 + [738-review-r10.md](reports/738-review-r10.md)。证据与修复合同见 [738-review-r9.md](reports/738-review-r9.md)。
+
+| id | 级别 | 领域 | 必要修复 | 锚点 |
+|---|---|---|---|---|
+| P738-R9-01 | medium | lock 读取失败 | 未绑定收据 absent + Cargo.lock 读取 PermissionDenied 被实际门误判 fresh；生成/复用两端只允许 NotFound=absent，其他错误传播/判陈旧，补 unbound/bound 读取失败反例，保留一次绑定语义 | rust_ui.rs:4025 / api_gen.rs:1071；AC-06/07/08，T-12/13/14 |
+| P738-R9-02 | medium | 格式健康门 | 最终 14 文件默认与 skip_children 检查均 exit1；只处理三文件剩余布局并提交，绑定实际通过的新提交收据 | lib.rs:119 / renderer.rs:24761 / engine.rs:9840、9852；AC-08，T-14 |
+
+## PLAN-738 补充复审 R5（2026-10-10，needs_fix @9c255993b）
+
+本节为 revision 3 **未满足原验收的阻塞项**，不构成批准延期或 D3b 豁免。R4 pass 保留历史，本轮由实际反例回退 executing，详见 [738-review-r5.md](reports/738-review-r5.md)。
+
+| id | 级别 | 领域 | 必要修复 | 锚点 |
+|---|---|---|---|---|
+| P738-R5-01 | high | 生成依赖失效 | 收据 lock=absent 无结束条件：首次 lock 物化和随后依赖版本变更均被实际新鲜度门接受。首次成功构建后绑定真实 lock/features，后续严格比较；缺失/读取失败闭合拒绝，补完整状态序列反例 | rust_ui.rs:4022-4042；api_gen.rs:1071-1089；R5 正式生成/门反例；AC-06/07，T-12 |
+| P738-R5-02 | high | 六核心 receiver strict | 公开 JsonValue.len 的返回类型 int→str 漂移后，实际 CLI actual/check 仍 exit 0，proof 只有 parse。collector 不能对局部 receiver 直接跳过；补实际方法来源/producer/adapter 证明或拒绝，不能以 P738-D2 转 D3b | trans/rust.rs:5561-5586；json.at JsonValue.len；R5 CLI 反例；AC-03/07，T-11 |
+| P738-R5-03 | medium | 真实消费者验收 | 三角测试把 CLI manifest clone 当生成消费者并丢弃 Rust 转译 Result，未覆盖普通/persistent VM 与 C。保留局部身份测试，另补真实 CLI/会话/产物/正式生成收据/ready 的共同身份与依赖变更对拍 | plan738_stdlib_assembly_tests.rs:1640-1702；AC-02/06/07，T-12 |
+
+R6 复核（2026-10-10，@`68398d2d6`）：P738-R5-01/R5-03 **闭合确证**（一次绑定状态机+真实三目标三角/生成腿，[738-review-r6.md](reports/738-review-r6.md)）；P738-R5-02 **部分闭合**——len 形态闭合，但 receiver 公共方法面其余 11 方法（keys/is_null/as_int 等，含 is_null 可编译旁路）漂移仍 exit 0 无 proof，续期为 **P738-R6-01**（同锚点，修复要求见 R6 报告 §2.3）。
+
+## PLAN-738 独立复审 R1（2026-10-09，needs_fix @e4425b673）
+
+本节为本期**未满足验收的阻塞项**，不是批准延期。P738-D1/D2 的六核心部分由 R1/R2 收回，不能只登记为 D3b 后勾全。原计划已回 executing；详细修复要求、逐 AC、复现源码及门禁见 [独立复审报告](reports/738-independent-review.md)。
+
+| id | 级别 | 领域 | 必要修复 | 锚点 |
+|---|---|---|---|---|
+| P738-R1 | high | 生产 strict/冲突 | 校验器未进入 compile/codegen/persistent/trans；双活 body resolve_uses 返回 Ok。生产闭包拒缺失/冲突/未核验/引用 unsupported，注册前防 ID 错绑；收紧 duplicate 测试的成功放行臂 | compile.rs:1245；plan738 测试:1466；review R1 |
+| P738-R2 | high | 公共身份/独立签名 | tcp_listener_close 参数1改999仍 Supported+SignatureChecked。补六核心公共→真实callee映射及独立 producer 参数/返回/self/async/feature/stub 元数据；io第四面/json canonical 不得推到全库重写 | validate.rs:135/174；model.rs:128；review R2 |
+| P738-R3 | high | epoch/来源缓存 | 同会话改层仍 old_layer；CWD B 同名模块仍用A缓存。先解析来源再查cache，按epoch/来源身份及递归依赖闭包失效 | compile.rs:1245/1284；module_cache.rs:348；review probe |
+| P738-R4 | high | 装配指纹/ready | vm层改名rs层指纹不变；缺provider/host内容与环境features；receipt null+null 当fresh。绑定实际闭包与provider实现身份，依赖不可核验必须拒绝 | loader.rs:49；api_gen.rs:1039；rust_ui.rs:4015 |
+| P738-R5 | high | 生产目标装配 | Rust/C实际trans无manifest，无共同AssemblyPlan；persistent仍单独根与后缀；Rust net发射不存在模块也Ok。真实消费者接线，共用来源与不可变manifest | lib.rs:5943/6020；autovm_persistent.rs:258；review R5 |
+| P738-R6 | high | CLI严格语义 | rust net --check假pass；async公共parse失败假pass；jsonx actual检查无关六核心72违规。修target/env/实际闭包/parse/module归一及便携源ID | cmd_stdlib.rs:212/314；review CLI反例 |
+| P738-R7 | medium | 全分母/环境矩阵 | 字段与读失败层缺条目、WalkDir错误被吞；VM矩阵用目标helper分母，Rust/C无两环境格，native绑定不能证明browser adapter | loader.rs:82/225；validate.rs:330；review R7 |
+| P738-R8 | medium | 源错误定位 | 只有加目标文件名的Msg，没有source span/行列/双源位置；失败路径再次parse会写共享TypeStore | compile.rs:1650；review SOURCE_ERROR |
+| P738-R9 | high / medium | 真入口证据/健康/SD | C支持样例实编与generated API→service→ready未执行，不能用C HTTP缺provider或普通Json.parse witness替代；最终SD未核验。新增model.rs rustfmt三处diff必修 | verification报告；model.rs:106/196/203；review R9 |
+
+门禁完整重跑：t 14红均在已有批回执 known_reds；tt新增观测 back_provision红/dep_fields超时 scoped复跑均绿，归因未充分确认，暂不列本期确定性修复；th两back_proxy红见执行报告基线。本轮未新跑baseline worktree同命令，不过述“零新增红已双树证明”。
+
+### R1 修复进展（2026-10-09，work needs_replan @4fbcfe968→4089b8418）
+
+基础修复与剩余阻塞逐项对账见 [738-repair-round1.md](reports/738-repair-round1.md)；R1..R9 继续作为本期必要验收，**尚未整体清偿**。历史 P738-D1 的动态扫描 ID 冲突当前不再复现（分配避开 catalog 保留 ID，独立别名冲突检测为 0）；不同 callee 争同 ID 的实际生产门仍须补齐。P738-D2 的 json canonical/io VmModule 查询已接线，独立完整签名与最终活 callee snapshot 仍未闭合，不再采用“下轮公共面重写”作为当前延期许可。
+
+本轮特定反例已修：双实现宽松放行、arity 数量自证、同会话源变更、clone 跨 root、深依赖缓存、层改名指纹不变、null/null fresh、Rust net CLI 假绿、actual jsonx 无关六核心假红、读失败丢层和二次 parse 猜源。生产 strict 门/真实 emitter/完整公共矩阵/C 与 generated-service 见证仍未完成。已证伪原 init 三件套等同最终 callee 的设计假设；TCP read 公开 buffer/单返回与 VM size/双输出的 adapter 合同待有界修订，不能伪造 SignatureChecked。计划保持 executing；具体次序和依据见修复报告，不降低验收。
+
+另保留 HTTP 观察：full th 100/102；back_proxy routes 同 R1 断言，plan707 timed frames 在本轮两次定向复跑仍红（撤回新增 callee 排序/首个 producer 选择之后也红）。原 R1 log 该例通过；既有时序族 flake 记录不足以证明本次原因，未做新基线对照，不能宣称零新增红。最终 scoped 54/54 与三 crate check 通过；详细版本绑定见修复收据。
+
+## P747-D1（2026-10-09，PLAN-747 复审登记）：无审计行的静默崩溃族未归因
+
+WER 链中 09-12/09-22/09-29 的 AppCrash（c0000409/FastFail 0x7）当刻 `exit-audit.log`
+无对应 panic 行——非 panic 路径，疑栈溢出（fastfail 且无消息）。PLAN-747 已消除
+「caught panic → 打印失败 → panic-in-panic → abort」放大链（focus_pending 风暴根修 +
+容错打印），但该静默族若无 panic 前导则不受此修覆盖。观察条件：再次出现 auto.exe
+fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RUST_MIN_STACK/主线程栈深，
+嫌疑面：大树递归 Drop / vtree 递归转换）。证据锚：`AppCrash_auto.exe_*` 09-12/09-22×2/
+09-29×2 五份 ReportArchive；PLAN-747 §需求分析的时间线对照。
+
+## PLAN-748 执行登记（2026-10-10，work @lang-748）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P748-D1 | low | 测试基础设施 | **plan051_p2 模块级图标测试空洞绿**——`locate_corpus` 三候选路径（CARGO_MANIFEST_DIR 相对 / CWD 相对 / ../../ 相对）在 nextest 进程 CWD（crate 根）下全 miss `test/ui/plan051_p2_modules/pac.at`（语料实存仓根 test/ui/），`build_component_from_app` 返回 None → SKIPPED 分支静默 pass——该测试自落地起未真正跑过图标臂（PLAN-748 T-02 续腿定音插桩实证：全程零触 imported 分派臂）。清偿方向：locate_corpus 补仓根锚定（env!("CARGO_MANIFEST_DIR") 上溯两级）或断言 corpus 必达（miss 即 fail），防 SKIPPED 假绿 | crates/auto-lang/src/tests/plan051_p2_tests.rs:22（locate_corpus）/ :60（SKIPPED 分支） |
+
+## PLAN-751 执行登记（2026-10-10，work @lang-751）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P751-D1 | high | HTTP e2e 挂死族 | **plan730 上传 e2e 整族（14 项）+ e2e_a_redirect_302 确定性挂死**——服务端 accept 后不响应（60s×2 read timeout 累计 120s 被 nextest TERMINATING）；隔离单跑确定性复现（vm_plain_endpoint_untouched / e2e_a_redirect_302_with_location 均 TIMEOUT 120.0s）；与负载无关（同条件 plan326 兄弟 39 项 0.6s 全绿）。红移窗口=PLAN-738 系列（plan734 时代 th 99/101 绿 `ae9b7a7e2` → 738 后转红；http_server.rs 最后触碰=R2 `bade1845c`，其后 `19973b089` 触及 http 族契约注册撤销语义；R2 收据自述 th 绿与本轮矛盾）。**根因 bisect + 修复走后续专项计划**；候选锚点 `dd9ffe35b`/`19973b089` | docs/plans/reports/751-th-full-receipt.md；crates/auto-lang/src/tests/plan730_http_upload_tests.rs:254（start_server）/ crates/auto-lang/src/vm/ffi/http_server.rs |
+| P751-D2 | medium | auto-man 日常档盲区 | **auto-man lib 3 项预存红**（基面 stash 实证 0/3 同红，与 PLAN-751 diff 无关）：`vue::plan593_index_css_golden_tests::index_css_values_match_p1_baseline`（CSS 金样漂移）、`rust_ui::tests::test_shell_pack_lib_freshness`（shell-pack 入库物过期，panic 自述需重跑 regen_shell_pack#[ignore]+提交）、`rust_ui::tests::merged_api_client_crud_fallback_for_uncovered_endpoints`（merged API 客户端金样漂移）。根因：日常档 `cargo t` 只 `-p auto-lang`，auto-man 面长期脱离例行门禁——清偿方向：修复三红 + 将 auto-man scoped 面纳入复审触面清单 | crates/auto-man/src/rust_ui.rs:5743/6203；crates/auto-man/src/vue.rs（plan593 金样） |
+
+### PLAN-751 R2 补充分诊更新（2026-10-10）
+
+- **P751-R2-01（high/P1，P751-D1 的实证入口）**：落地树 `d79282eb6` 的原上传与重定向程序，通过实际 `crate::run` 在启动前即返回 `STDASSEMBLY.SIGNATURE_UNVERIFIED`，分别缺 `http.upload_receive #9937` 与 `http.response_redirect #3108` 的独立 producer/adapter 契约（探针 0/1、0.10s；shim 实际存在）。后续需审计最终公共 HTTP provider/ABI 并补真实合同，保留严格门，再验 wire/完整 th；不是 751 lock 修改引入。
+- **P751-R2-02（medium/P2，纠正 D1 归因边界）**：D1 上述「accept 后不响应、60s×2」只能保留为执行者假设，尚非确证机制；重定向实际配置 5s read timeout；原两 start_server 均丢弃 run Err。历史表为 plan730 13 timeout + interop fail，另 redirect timeout，不能把 interop 也计为 120s 挂死。需有界保留启动 Err/panic/readiness，再接通原 120 秒等待位置。last-touch 非根因证据；代码引入校验锚点 `d82eb02eb` 是新候选，尚未 good/bad 对拍，不签署精确归因。
+- 原 102 项计数保留历史；本轮没有再跑完整 th，不外推全绿。详情与新证据：[751-review-r2.md](reports/751-review-r2.md)。738/751 归档终态保持，修复走后续专用 worktree。
+- 原未修改的 `http_e2e_plan730_vm_plain_endpoint_untouched` 本轮独立复跑仍 timeout（120.046s，exit 100）；其长等待与有界诊断快返契约错误的差异尚未接通，不能直接等同。
+
+### PLAN-755 闭合更新（2026-10-10，work @lang-755；**同日 merge 销案定稿**）
+
+- **P751-D1 已销案（delivered @`e586b9113`，R1/R2/R3 三轮复审后合并）**：PLAN-755 已按专项修复并全档复验——①根因实证：契约错误（`SIGNATURE_UNVERIFIED` #9937/#3108，`crate::run` 32ms 快返）被夹具 `let _ =` 吞掉 + 本机拒绝连接 ~2.15s/次 × ready-poll 50 次 + 客户端 60 次重试爬行 = nextest 120s TERMINATING；"accept 后不响应/60s×2 read timeout"旧机制证伪（read 相位从未到达），见 [755-startup-diagnosis.md](reports/755-startup-diagnosis.md)。②修复：HTTP 公共面 41 项缺契约补齐 + 5 项 inventory 契约漂移覆盖 + 走查/merge 存活常驻守卫（[755-contract-inventory.md](reports/755-contract-inventory.md)）；夹具启动诊断有界化。③复验：串行全档 th **102 项 101 过/1 红（仅 back_proxy 在册基线红）/0 超时，186.4s**——14 timeout 清零、interop 转绿、86 绿零回归（[755-th-full-receipt.md](reports/755-th-full-receipt.md)）。bisect 候选锚点（dd9ffe35b/19973b089）随根因实证销案；规范增量 SD-01（公共面契约覆盖完整性）落 assembly-manifest.md。
+- P751-D2（auto-man 盲区）不在 PLAN-755 范围，保持开放。
+
+### PLAN-755 独立复审 R2（2026-10-10，needs_fix）
+
+| ID | 级别 | 影响验收 | 证据与修复要求 |
+|---|---|---|---|
+| P755-R2-01 | medium/P2 | AC-01、T-02 | 三启动助手的 `Err(panic)` 直接 Debug 格式化 boxed Any，父线程消息只得 `Any { .. }`。实际 plan730 助手注入标记 panic，负向验收 0/1（2.153s），标记只在默认子线程 hook，未转发至启动失败载荷；三处提取 &str/String payload 并冻结真实助手反例。 |
+| P755-R2-02 | medium/P2 | AC-06、T-06 | clean `4ce645516` 的四改动 Rust 文件 rustfmt check exit 1；此前“fmt 干净”与提交工件不符。格式修复提交后重新绑定门禁证据。 |
+| P755-R2-03 | medium/P2，簿记已纠正 | AC-07、T-07 | SD-01 modify 已存在的 assembly-manifest.md，不能因新增节登记为新组件；本复审已修正 spec-impact 分类，规范语义不变，修后重审定稿。 |
+
+契约守卫及上传/重定向原反例独立 2/2 + 2/2 通过，主要 HTTP 修复事实保留；整项退回 executing，P751-D1 保留闭合候选，尚不销案。详细证据：[755-review-r2.md](reports/755-review-r2.md)。
+
+2026-10-11 落地后独立闭合更新（覆盖上述 R2 的历史待修路由）：P755-R2-01/02 已由 `5672e8e2d`（原 `e121debf8`，range-diff 全等）修复，三助手共享字符串 panic 转发核心；本会话在 clean `cee541da7` 隔离树复跑守卫 4/4、四文件格式 exit 0、完整串行 HTTP 102/101/1 在册 back_proxy 红/0 超时（合并守卫共 106 run，265.241s）。P755-R2-03 元数据纠正保留，755 archived 不回退。blueprints 68 文件恢复后逐文件 Git 哈希与 HEAD 一致；恢复前额外日常红不同于原 R2 实现缺陷。P751-D1 已销案结论得到串行复验支持；批量回归仍 DUE（旧收据覆盖 740），另按 regress 补执行。证据：[755-landed-independent-check.md](reports/755-landed-independent-check.md)。
+
+### P753（2026-10-10，README 计划知识投影前置阻塞）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+**P753-D1 注记（2026-10-11）**：753/756 的投影阻塞已经 README §5 手工回退路径清偿（P753-1/2/3、P756-1/2/3 入账，两计划归档/清理完成，收据见各计划 recovery receipt）；债务剩余部分收窄为——store 本体无法加载现有 `.autoos/specs.json`（缺 document metadata，GET /api/specs 500）且无注册写入器可达（758 r2 同期收据复证 blocked by policy）。后续计划投影可继续走回退路径，store 修复为独立事项，本条保留至 store 恢复或裁定退役。
+
+| P753-D1 | medium | runtime Specs store 兼容性 | 既有 `.autoos/specs.json` 无法由当前 AutoMusk store 加载；任务自有 loopback 服务 `GET /api/specs` 返回 500，已停止。原账本 hash 保持不变；不通过手改 JSON 或删除重建修复。README/语言文档可独立复验，但 store-mediated 投影及随后的计划归档/清理必须等待受支持的恢复路径。未将此项视为已完成。 | [验证报告](reports/753-readme-verification.md)；PLAN-753 §9；auto-musk backend/crates/musk/src/specs.rs |
+
+### PLAN-754（2026-10-11，reviewed；低危外观瑕疵）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P754-R1-01 | low | playground-vue 深链 | 无效 `?note=<id>`（manifest 中不存在）时参数残留在 URL——`deeplinkTried` 仅在命中或无参时置位，`history.replaceState` 只在命中时执行。欢迎态不崩已由 e2e ③ 覆盖；后续顺手修：未命中分支同样置位+清参。 | PLAN-754 §9 复审记录；packages/auto-playground-vue/src/components/PlaygroundIDEApp.vue |
+
+### P758 补充（2026-10-11）
+
+- **P758-D1 / publication blocked**：AutoJade 当前规范与网站可合入；derived ledger 的 `P732-1` / `P722-1` 名称和九份规范投影（含 r3 宣传数字/桌面平台口径）须通过 store writer 更新。当前未注册写入工具，检查的既有服务端口无监听；临时 AutoMusk 服务启动/只读探测被自动审批以 `blocked by policy` 拒绝，未给进一步原因。未手改账本。保留 reviewed Plan 与工作树，待 writer 可用后只续做投影/归档/清理；证据与描述见 [p758 复核](../reports/p758-autojade-verification.md)、[待投影描述](../reports/p758-autojade/ledger-projection-pending.json)。延续 P753-D1 的收尾限制，不抹去旧账本内容。
+- **P758-OBS1 / asset provenance**：用户给的 P4 tags 文件实际是其他面板，未冒充标签图；SHOT-09 恢复仍依合同留空。六张合格深色原图有完整字节/hash，缺深色专属工具链 manifest，因此只标用户提供准备态。补拍要求见 [截图指南](../reports/website-v05-capture-guide.md)。
+- **P758-OBS2 / baseline gate**：注释改名无非注释差异；最后 Rust 日常档 19 红，其中 18 项在原注释基面复现，余一动画项在基线及最终隔离复验均通过；tu 的既有金样红亦在基线复现。不虚报全绿或纳入本次无关修复，逐项日志见 p758 复核附件。
+
+- **P758-OBS3 / concurrent baseline**：同步 PLAN-754 后，静态预览 /playground 主动探测同源 /api/examples 得到 404，fallback 127.0.0.1:3030 未运行产生连接拒绝；原控制台检查隔离复现。两个宿主组件与当前 master 等同，本计划未改变它们或放宽检查。证据：[基面核对](../reports/p758-autojade/concurrent-baseline-check.json)。最终当前网站 61/63，搜索隔离复验通过，余一既有此项；最终 t 5213/5231、18 红（16 已对照、2 flake 隔离绿），tu 857/2 红（原金样 + env 路径用例隔离绿），完整记录在 p758 复核。
+
+### PLAN-757（2026-10-11，r3 用户裁定留空合入；产品缺陷待修）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P757-D1 | high（用户指示需修改） | AutoEdit VM/iced 比较视图布局 | 双文件比较视图正文上方大片空白编辑区、差异挤在下半部（并排与内联均观察到；`h-0 w-0` 隐藏 code_editor 为排查线索，未确证根因）；真实画面不适合宣传（问题图 `docs/reports/p757-capture/media/p757-autoedit-diff-layout.png`，+16/-1 一个 hunk 被压缩）。功能本身已核查可用（保存后自动重比 +17/-1 两个 hunk 在案）。**SHOT-03 宣传图因此留空**，布局修复后按拍摄合同重拍（指南行"待布局修复后重拍"）。 | PLAN-757 §9/§10；[诊断原图](../reports/media/p757-autoedit-diff-layout.png)；[捕获目录](../reports/p757-autoedit-capture-catalog.json)；auto-edit specs/auto-edit/src/front/app.at 比较隐藏编辑器 |
+| P757-D2 | high | VM 查找输入与焦点路由 | 原生键入（聚焦查找输入后输入 ws_root）同时落入查找框与活动内置 untitled main.at 正文（样例缓冲区未保存，真实源码未受写入）；合格搜索图改用应用 MCP FindInput handler 规避。需专门复现焦点/键盘路由，不能把 MCP 成功当原生链无缺陷。 | [捕获目录](../reports/p757-autoedit-capture-catalog.json)；vm2.stderr.log；PLAN-757 r2 findings |
+| P757-D3 | low | VM 搜索响应 | 跨文件搜索扫描完整工程时同步阻塞原生窗口，完成后真实返回 ws_root=22、fn ws_root=2；未计精确时延不外推通用性能，拍摄须等待完成 | [搜索状态](../reports/p757-autoedit-search-state.txt)；AutoEdit fsys.at search_files_json |
+| P757-D4 | low | website 首次搜索索引加载 | VitePress local search 首次加载索引长尾，并行负载下 e2e 偶发超时（新端口单 worker 复跑 19.6s 过） | 同上 |
+
+### PLAN-759 清偿登记（2026-10-11，日常档 12 红族收口）
+
+清偿成员（证据链见 docs/plans/759-daily-red-family-clearance.md 执行步骤）：
+musk p053_4（P733-R2③）/ p748_t00 双臂（生而红 harness 边界）/ plan606 test_029（10.2s→0.18s）/
+projector_counter（双形态重锁）/ desktop_bus_inbox + desktop_surface_merge（壁纸机器态隔离）/
+schema 三围栏（REG-4 四表清偿）/ ash_stream_leak_probe（门禁分层，集成真跑绿）/ plan502_m3
+（P733-R1 完成态驱动）。
+
+| 编号 | 优先级 | 域 | 描述 | 锚点 |
+|---|---|---|---|---|
+| P759-D1 | low | iced 渲染配置 | **硬编码机器壁纸目录探测**——`wallpapers_dir_or_default`（renderer.rs）解析链末端探测 `D:\Down\stella-os\wallpapers`（PLAN-526 T19 机器便利默认），dev 便利进库代码路径：①机器相关行为（测试须显式隔离，规约已入 ui/overview.md PLAN-759 注记）；②他人机器不生效。清偿=挪 env/配置显式开启；涉及产品行为须用户裁定 | crates/auto-lang/src/ui/iced/renderer.rs `wallpapers_dir_or_default`（~:17019）；docs/specs/auto-lang/ui/overview.md PLAN-759 注记 |
+| P759-D2 | low | schema 漂移围栏 | **schema_drift 的 rs 扫描器仅认单行 `elements.insert("`**——schema.rs 现存 209 个多行 insert 形态不可见（仅 15 单行被扫到），四表对账长期靠千行级 baseline 白名单吸收。PLAN-759 刷新 baseline 时实证（+249/-301）。清偿=扫描器多行化+随后全维度 baseline 重审裁剪（牵动数百条目，独立计划） | crates/auto-lang/tests/schema_drift.rs:62 `scan_insert_tags`；crates/auto-lang/tests/fixtures/schema_drift_baseline.txt（1075+ 行） |
+
+### PLAN-759 落地后独立核查候选（2026-10-11）
+
+以下候选登记于[落地后审核](reports/759-post-landing-review-20261011.md)（原判定 needs_fix）；D3/D4 已由 `fd55d2d42`（fix-759-review-p2 轻量 worktree 路径）清偿，并于2026-10-11完成独立复审（`35be7f1e0`，两项修正 pass，日常5236/5236、tv162/162、裸libtest三线程4轮均绿；tu唯一余红为既有desktop金样，完整证据见同报告末节），不改变759归档终态。
+
+| 编号 | 优先级 | 域 | 描述 | 锚点 |
+|---|---|---|---|---|
+| ~~P759-D3 / F-759-R1~~ 已清偿 `fd55d2d42` | ~~medium~~ | 生产渲染诊断 | **已清偿**：render_support 详情查询折叠 schema canonical（kebab/canonical 三围一致）；command/carousel 族按 view_builder 实际转换臂逐子件校准（command_input=partial 与 input 同口径、command_item=partial 仅 value 忽略、command_empty=fallback 恒渲染 Empty、command_group/shortcut=full、carousel_item/previous/next=full 等）；schema/aura.at 12 行同步；别名一致/ignored 不过报/实际 View 对照三回归测试入 render_support::tests | ui/render_support.rs（get_support+详情表+tests）；schema/aura.at backends.iced；报告F-759-R1 |
+| ~~P759-D4 / F-759-R2~~ 已清偿 `fd55d2d42` | ~~medium~~ | 测试环境隔离 | **已清偿**：stdlib 新增 `HTTP_BASE_TEST_SERIALIZER`+`lock_http_base_for_test`（镜像 lock_storage_for_test 先例）与 `HttpBaseEnvGuard`（RAII panic-safe 恢复，含未设态）；plan606 photo 测试与 stdlib http_base_url_resolution 均改锁+守卫形态；panic 恢复回归测试入仓。全部原有断言（精确 URL/24 张恰一次/Cover/Contain/stub 收据）保留 | vm/ffi/stdlib.rs（锁+守卫+两测试）；tests/plan606_gallery_tests.rs；报告F-759-R2 |
+
+### PLAN-761 根目录整理的范围外候选（2026-10-11）
+
+| 编号 | 优先级 | 域 | 描述 | 锚点 |
+|---|---|---|---|---|
+| P761-D1 | medium | CLI test filter | `auto test --filter` 在 `test_file` 执行全部测试之后才过滤显示；a2ts runner 内部已有 FAILED 仍可显示 0 passed/0 failed 并返回0，VM runner即使使用不匹配过滤器也继续执行到超时。原有实现，本次仅迁移runner；不能把过滤后的退出0当套件验证通过。应将过滤条件传入执行层并保留实际失败退出码 | crates/auto/src/main.rs Test 分支（test_file→遍历reports→filter顺序）；reports/761-root-directory-review.md |
+| P761-D2 | low | 历史 Plan446 repro | 原字节保留的 b3check 语料在当前引擎报 `Init` 同时匹配 Theme/Modules（multi-store disambiguation）；新路径确已加载且没有SKIP，显式ignored旧复现仍不兼容当前严格规则。保留原始历史导出，不在目录美化中改其业务语义；后续若恢复常规使用，另做版本化修复夹具 | test/fixtures/plan446/b3check/auto；tests/plan446_j1_repro_tests.rs；reports/761-root-directory-review.md |
+
+
+### PLAN-761 收尾批量回归新观察（2026-10-11）
+
+- P761-R1（未销案）：tt的plan437 gallery_chart_components_render_geometry缺/bar-chart h6且Init仍CpuRunnable；同提交tf/tb通过。当前归因未确定，独立分诊[PLAN-762](762-chart-init-batch-flake.md)，不得仅凭偶发绿降为环境豁免；详见[批量报告](reports/761-batch-regression.md)。原目录整理已交付，未改变上述实现。
+
+
+### PLAN-763 迁移基线对照登记（2026-10-11，taa 全档 5 红分诊收口）
+
+| 编号 | 优先级 | 域 | 描述 | 锚点 |
+|---|---|---|---|---|
+| P763-R1 | low | aavm compile 腿 + a2r goldens（master 预存） | **3 枚 AAVM 红为迁移前基线预存债，非 PLAN-763 目录归并致因**——基线 worktree（716ca62db=分支点）同滤串同红同错误形态实证：①`test_aavm2_compile_corpus`/`test_aavm2_compile_use_corpus` 双 E0433（生成 main.rs 引 `auto_lang::a2r_std::fs::read_text_range` 而临时工程 `[dependencies]` 空、harness 无内联 shim；血统=db4e5954b plan687 增补，2026-09-22）；②`test_aavm2_goldens_check` 参考执行 `STDASSEMBLY.INVALID_BYTECODE: 60`（字节码语义红，与路径无关）。清偿归属 aavm/a2r 域另档：compile 腿需给临时 Cargo.toml 接 auto-lang path 依赖或改发射面；goldens 需定位字节码 60 案。与 aavm 无实用面裁定一致（守护=CI+ta，本债不阻塞合入） | docs/reports/763-baseline-taa.{json,log}；763-final-taa.log；db4e5954b |
+| P763-R2 | low | aavm 自举入口（master 预存） | **`auto <repo>/aavm.at` 单文件直跑 auto_link_E0401 `Undefined symbol: P.next in module typeinfo`**——master 主检出（迁移前源码+master 二进制）同命令逐字节同错实证=预存；与七删 CI 流最近五次全红的审计结论同向。迁移侧有效冒烟=命名空间 scratch（smoke-final aavm-namespace exit 0）；自举形态冒烟仍应走 aavm_build_smoke.sh（合并装载）而非单文件直跑 | docs/reports/763-smoke-recheck.json；763-ci-audit.md |
+
+### PLAN-765 复审登记（2026-10-12）
+
+| 编号 | 优先级 | 域 | 描述 | 锚点 |
+|---|---|---|---|---|
+| P765-D1 | low | VM 宿主内存 | idle 相位 ~1MB/min 线性缓漏未归因（1h 实测 +59.3MB/59.7min,AC-1 门 0.1MB/s 的 6× 余量内,线性不平台）。候选=每响应仍余 3 份全文瞬态(body/转义缓冲/VM Value+池)×2 拍/s 的堆记账漂移、消息批全窗重绘路径。后续杠杆:载荷池化复用/`unconditional-rendering` feature 退役评估(PLAN-708 基线启用项)。判定阈值:长寿实例(≥12h)私有内存超 ~1.2GB 再升级优先级 | docs/reports/765-t01-attribution-memos.md 后记⑥;soak tmp/soak-p765-1h.json(musk worktree,临时) |
+| P765-D2 | info | 跨仓仪器 | ~~musk soak 仪器 slopeMBPerMin 单位 bug~~ **已修(musk plan-104-dev 9794aa1/0e06161,2026-10-12 核验)**;AC-01 已按真值重判 pass(idle 0.717MB/min 对门 8.4× 余量) | docs/reports/765-t01-attribution-memos.md 后记⑤;musk 104 evidence §T-03 |
+| P765-D3 | info | 跨仓仪器 | bigpage-matrix.mjs 收尾击杀假象(try/finally 无 catch:click isError 抛错→finally taskkill→"VM EXITED code=1" 先于错误栈打印,被误读为进程自退;musk T-03 因此曾 blocked on 765-R2)。**765-R2 已定谳为假象非产品缺陷**(纪要后记⑦);修复归 musk 侧(click 补 value+收尾击杀标记,两行修,交接文案在案) | docs/reports/765-t01-attribution-memos.md 后记⑦ |

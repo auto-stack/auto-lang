@@ -9,8 +9,8 @@ pub mod parser;
 #[cfg(test)]
 mod tests;
 
-use crate::vm::opcode::OpCode;
 use crate::vm::codegen::ObjectType;
+use crate::vm::opcode::OpCode;
 use std::collections::HashMap;
 
 /// In-memory representation of an ABT program
@@ -84,7 +84,11 @@ impl AbtProgram {
         let mut line_no: usize = 1;
         let mut current_line: Option<u32> = None;
 
-        let mut emit_line = |s: &str, src_line: Option<u32>, out: &mut String, map: &mut Vec<crate::trans::SourceMapEntry>, line_no: &mut usize| {
+        let mut emit_line = |s: &str,
+                             src_line: Option<u32>,
+                             out: &mut String,
+                             map: &mut Vec<crate::trans::SourceMapEntry>,
+                             line_no: &mut usize| {
             out.push_str(s);
             out.push('\n');
             if let Some(sl) = src_line {
@@ -100,7 +104,13 @@ impl AbtProgram {
         if !self.strings.is_empty() {
             emit_line(".strings", None, &mut out, &mut map, &mut line_no);
             for (i, s) in self.strings.iter().enumerate() {
-                emit_line(&format!("  {}: {:?}", i, s), None, &mut out, &mut map, &mut line_no);
+                emit_line(
+                    &format!("  {}: {:?}", i, s),
+                    None,
+                    &mut out,
+                    &mut map,
+                    &mut line_no,
+                );
             }
             emit_line("", None, &mut out, &mut map, &mut line_no);
         }
@@ -121,7 +131,13 @@ impl AbtProgram {
         if !self.object_keys.is_empty() {
             emit_line(".object_keys", None, &mut out, &mut map, &mut line_no);
             for (i, keys) in self.object_keys.iter().enumerate() {
-                emit_line(&format!("  {}: {:?}", i, keys), None, &mut out, &mut map, &mut line_no);
+                emit_line(
+                    &format!("  {}: {:?}", i, keys),
+                    None,
+                    &mut out,
+                    &mut map,
+                    &mut line_no,
+                );
             }
             emit_line("", None, &mut out, &mut map, &mut line_no);
         }
@@ -130,7 +146,13 @@ impl AbtProgram {
             emit_line(".object_types", None, &mut out, &mut map, &mut line_no);
             for (i, types) in self.object_types.iter().enumerate() {
                 let type_names: Vec<String> = types.iter().map(|t| format!("{:?}", t)).collect();
-                emit_line(&format!("  {}: [{}]", i, type_names.join(", ")), None, &mut out, &mut map, &mut line_no);
+                emit_line(
+                    &format!("  {}: [{}]", i, type_names.join(", ")),
+                    None,
+                    &mut out,
+                    &mut map,
+                    &mut line_no,
+                );
             }
             emit_line("", None, &mut out, &mut map, &mut line_no);
         }
@@ -139,13 +161,25 @@ impl AbtProgram {
         for instr in &self.code {
             for (label, &offset) in &self.labels {
                 if offset == instr.offset {
-                    emit_line(&format!("\n{}:", label), None, &mut out, &mut map, &mut line_no);
+                    emit_line(
+                        &format!("\n{}:", label),
+                        None,
+                        &mut out,
+                        &mut map,
+                        &mut line_no,
+                    );
                 }
             }
 
             if let Some(line) = instr.source_line {
                 if current_line != Some(line) {
-                    emit_line(&format!("  .line {}", line), Some(line), &mut out, &mut map, &mut line_no);
+                    emit_line(
+                        &format!("  .line {}", line),
+                        Some(line),
+                        &mut out,
+                        &mut map,
+                        &mut line_no,
+                    );
                     current_line = Some(line);
                 }
             }
@@ -166,8 +200,11 @@ impl AbtProgram {
                         format!("  {}", instr.opcode.to_mnemonic())
                     }
                 }
-                OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
-                | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1 => {
+                OpCode::LOAD_LOC_0
+                | OpCode::LOAD_LOC_1
+                | OpCode::LOAD_LOC_2
+                | OpCode::STORE_LOC_0
+                | OpCode::STORE_LOC_1 => {
                     format!("  {}", instr.opcode.to_mnemonic())
                 }
                 _ => {
@@ -270,8 +307,11 @@ impl std::fmt::Display for AbtProgram {
                         writeln!(f, "  {}", instr.opcode.to_mnemonic())?;
                     }
                 }
-                OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
-                | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1 => {
+                OpCode::LOAD_LOC_0
+                | OpCode::LOAD_LOC_1
+                | OpCode::LOAD_LOC_2
+                | OpCode::STORE_LOC_0
+                | OpCode::STORE_LOC_1 => {
                     writeln!(f, "  {}", instr.opcode.to_mnemonic())?;
                 }
                 _ => {

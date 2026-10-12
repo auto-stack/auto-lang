@@ -62,15 +62,20 @@ impl TypeRegistry {
         let template = ClassTemplate {
             name: name.as_ref().to_string(),
             generic_params: type_decl.generic_params.clone(),
-            fields: type_decl.members.iter().map(|m| FieldDef {
-                name: m.name.as_ref().to_string(),
-                field_type: m.ty.clone(),
-            }).collect(),
+            fields: type_decl
+                .members
+                .iter()
+                .map(|m| FieldDef {
+                    name: m.name.as_ref().to_string(),
+                    field_type: m.ty.clone(),
+                })
+                .collect(),
             methods: HashMap::new(), // TODO: 处理方法
         };
 
         self.type_decls.insert(name.clone(), type_decl);
-        self.generic_templates.insert(name.as_ref().to_string(), template);
+        self.generic_templates
+            .insert(name.as_ref().to_string(), template);
     }
 
     /// 查找类型声明

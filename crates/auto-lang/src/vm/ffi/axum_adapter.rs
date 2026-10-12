@@ -132,6 +132,15 @@ pub fn sig_entry(param_type_names: &[String]) -> Vec<ExtractorKind> {
 /// Resolve a fn-ref closure's param shapes: closure → func_addr → export
 /// name (inverted exports table) → PARAM_SIGS. Falls back to the last
 /// path-segment match for module-qualified export names.
+/// Plan 545 后导出键为 `mod#sym`（module#sym）与 `mod.sym` 两种限定形态；
+/// PARAM_SIGS 以**声明名**（裸名）为键。声明名回退须同时处理 `.` 与 `#`
+/// 分隔符——此前只切 `.`，`#` 形态永远 miss → 全语料路由 handler 0 参
+/// 入栈（帧错位 bp=1、extractor 全 null；PLAN-093 G-8 实证与修复）。
+fn param_sig_decl_name(export_name: &str) -> &str {
+    let qualified = export_name.rsplit('.').next().unwrap_or(export_name);
+    qualified.rsplit('#').next().unwrap_or(qualified)
+}
+
 fn resolve_params(vm: &AutoVM, closure_id: u32) -> Vec<ExtractorKind> {
     let func_addr = match vm.closures.get(&closure_id) {
         Some(g) => g.func_addr,
@@ -147,11 +156,10 @@ fn resolve_params(vm: &AutoVM, closure_id: u32) -> Vec<ExtractorKind> {
         Some(n) => n,
         None => return Vec::new(),
     };
-    param_shapes_for(&name)
-        .or_else(|| {
-            let short = name.rsplit('.').next().unwrap_or(&name).to_string();
-            param_shapes_for(&short)
-        })
+    let direct = param_shapes_for(&name);
+    let short = param_sig_decl_name(&name).to_string();
+    param_shapes_for(&short)
+        .or_else(|| direct)
         .unwrap_or_default()
 }
 
@@ -282,7 +290,11 @@ pub fn push_extractor_args(
                 n += 1;
             }
             ExtractorKind::Json | ExtractorKind::Query => {
-                let raw = if *kind == ExtractorKind::Json { body_json } else { query_json };
+                let raw = if *kind == ExtractorKind::Json {
+                    body_json
+                } else {
+                    query_json
+                };
                 let parsed: serde_json::Value =
                     serde_json::from_str(raw).unwrap_or(serde_json::Value::Null);
                 // Marshal failure degrades to null — the handler's field
@@ -365,9 +377,9 @@ pub(crate) fn shim_method_chain(
         closure_id,
         params: resolve_params(vm, closure_id),
     };
-    let obj = vm
-        .get_heap_object(handle)
-        .ok_or_else(|| VMError::RuntimeError(format!("axum {method}: bad MethodRouter handle {handle}")))?;
+    let obj = vm.get_heap_object(handle).ok_or_else(|| {
+        VMError::RuntimeError(format!("axum {method}: bad MethodRouter handle {handle}"))
+    })?;
     let mut guard = obj.write().unwrap();
     let rust_obj = guard
         .as_any_mut()
@@ -424,7 +436,9 @@ pub(crate) fn shim_router_route(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         Some(bucket) => bucket.1.handlers.extend(handlers.clone()),
         None => builder.entries.push((
             path.clone(),
-            MethodRouter { handlers: handlers.clone() },
+            MethodRouter {
+                handlers: handlers.clone(),
+            },
         )),
     }
     drop(guard);
@@ -498,11 +512,52 @@ mod tests {
 
     #[test]
     fn extractor_kinds() {
-        assert_eq!(ExtractorKind::from_type_name("State<AppState>"), ExtractorKind::State);
-        assert_eq!(ExtractorKind::from_type_name("Json<LoginRequest>"), ExtractorKind::Json);
-        assert_eq!(ExtractorKind::from_type_name("Query<WorkspaceQuery>"), ExtractorKind::Query);
-        assert_eq!(ExtractorKind::from_type_name("Path<(str, str)>"), ExtractorKind::Path);
-        assert_eq!(ExtractorKind::from_type_name("HeaderMap"), ExtractorKind::Headers);
+        assert_eq!(
+            ExtractorKind::from_type_name("State<AppState>"),
+            ExtractorKind::State
+        );
+        assert_eq!(
+            ExtractorKind::from_type_name("Json<LoginRequest>"),
+            ExtractorKind::Json
+        );
+        assert_eq!(
+            ExtractorKind::from_type_name("Query<WorkspaceQuery>"),
+            ExtractorKind::Query
+        );
+        assert_eq!(
+            ExtractorKind::from_type_name("Path<(str, str)>"),
+            ExtractorKind::Path
+        );
+        assert_eq!(
+            ExtractorKind::from_type_name("HeaderMap"),
+            ExtractorKind::Headers
+        );
         assert_eq!(ExtractorKind::from_type_name("str"), ExtractorKind::Plain);
+    }
+}
+
+#[cfg(test)]
+mod plan093_param_sig_tests {
+    use super::param_sig_decl_name;
+
+    /// Plan 545 `mod#sym` 限定导出键 → 声明名回退（G-8：此前只切 `.`，
+    /// `#` 形态永远 miss → 路由 handler 0 参入栈）。
+    #[test]
+    fn hash_qualified_key_resolves_decl_name() {
+        assert_eq!(
+            param_sig_decl_name("canvas_vm#canvas_vm_stop"),
+            "canvas_vm_stop"
+        );
+        assert_eq!(param_sig_decl_name("server#auth_login"), "auth_login");
+    }
+
+    #[test]
+    fn dotted_qualified_key_resolves_decl_name() {
+        assert_eq!(param_sig_decl_name("db.create_note"), "create_note");
+    }
+
+    #[test]
+    fn bare_name_passthrough() {
+        assert_eq!(param_sig_decl_name("auth_login"), "auth_login");
     }
 }

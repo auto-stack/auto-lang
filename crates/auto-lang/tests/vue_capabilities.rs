@@ -2499,12 +2499,12 @@ widget App {
 
 // ============================================================================
 // Plan 437 Phase 1: chart 族契约（声明驱动发射）。
-// 契约源 = schema/aura.at 的 element props 声明（经 registry overlay 落入
+// 契约源 = docs/schema/aura.at 的 element props 声明（经 registry overlay 落入
 // vue BackendMapping.props）；vue.rs 的 chart 特判臂退役，发射遍历声明。
 // ============================================================================
 
 /// Phase 0 契约表落库锁:每个 chart 族 tag 的 vue BackendMapping 必须声明
-/// 全量 props 契约（来源 schema/aura.at,不再裸声明/硬编码分离)。
+/// 全量 props 契约（来源 docs/schema/aura.at,不再裸声明/硬编码分离)。
 #[test]
 fn cap_chart_family_props_contract_in_registry() {
     use auto_lang::ui_gen::widget::WidgetRegistry;

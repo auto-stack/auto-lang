@@ -25,7 +25,8 @@ impl AutovmPipeClient {
     /// Connect to a running daemon via named pipe.
     /// Retries up to 10 times with 200ms delays to handle daemon startup timing.
     pub fn connect(pipe_name: &str) -> Result<Self, String> {
-        let runtime = tokio::runtime::Runtime::new().map_err(|e| format!("Runtime error: {}", e))?;
+        let runtime =
+            tokio::runtime::Runtime::new().map_err(|e| format!("Runtime error: {}", e))?;
         let mut last_err = String::new();
         for attempt in 0..10 {
             match runtime.block_on(crate::autovm_daemon::connect_to_pipe(pipe_name)) {
@@ -59,9 +60,18 @@ impl AutovmPipeClient {
         let json = serde_json::to_string(req).map_err(|e| format!("Serialize error: {}", e))?;
         self.runtime.block_on(async {
             use tokio::io::AsyncWriteExt;
-            self.writer.write_all(json.as_bytes()).await.map_err(|e| format!("Write error: {}", e))?;
-            self.writer.write_all(b"\n").await.map_err(|e| format!("Write error: {}", e))?;
-            self.writer.flush().await.map_err(|e| format!("Flush error: {}", e))
+            self.writer
+                .write_all(json.as_bytes())
+                .await
+                .map_err(|e| format!("Write error: {}", e))?;
+            self.writer
+                .write_all(b"\n")
+                .await
+                .map_err(|e| format!("Write error: {}", e))?;
+            self.writer
+                .flush()
+                .await
+                .map_err(|e| format!("Flush error: {}", e))
         })
     }
 
@@ -82,7 +92,12 @@ impl AutovmPipeClient {
         serde_json::from_str(line).map_err(|e| format!("Parse error: {} (input: {})", e, line))
     }
 
-    fn call(&mut self, method: &str, session: Option<&str>, code: Option<&str>) -> Result<DaemonResponse, String> {
+    fn call(
+        &mut self,
+        method: &str,
+        session: Option<&str>,
+        code: Option<&str>,
+    ) -> Result<DaemonResponse, String> {
         let id = self.next_id();
         let req = DaemonRequest {
             id,
@@ -99,7 +114,8 @@ impl AutovmPipeClient {
         if resp.status != "ok" {
             return Err(resp.message.unwrap_or_else(|| "Unknown error".into()));
         }
-        resp.session.ok_or_else(|| "No session_id in response".into())
+        resp.session
+            .ok_or_else(|| "No session_id in response".into())
     }
 
     pub fn eval(&mut self, session: &str, code: &str) -> Result<DaemonResponse, String> {
@@ -141,7 +157,8 @@ pub struct AutovmStdioClient {
 impl AutovmStdioClient {
     /// Spawn a private daemon subprocess via stdio.
     pub fn spawn() -> Result<Self, String> {
-        let exe = std::env::current_exe().map_err(|e| format!("Cannot find auto executable: {}", e))?;
+        let exe =
+            std::env::current_exe().map_err(|e| format!("Cannot find auto executable: {}", e))?;
         let mut child = std::process::Command::new(exe)
             .args(["serve", "--stdio"])
             .stdin(std::process::Stdio::piped())
@@ -170,13 +187,17 @@ impl AutovmStdioClient {
     fn send(&mut self, req: &DaemonRequest) -> Result<(), String> {
         let json = serde_json::to_string(req).map_err(|e| format!("Serialize error: {}", e))?;
         writeln!(self.stdin, "{}", json).map_err(|e| format!("Write error: {}", e))?;
-        self.stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
+        self.stdin
+            .flush()
+            .map_err(|e| format!("Flush error: {}", e))?;
         Ok(())
     }
 
     fn recv(&mut self) -> Result<DaemonResponse, String> {
         let mut line = String::new();
-        self.stdout.read_line(&mut line).map_err(|e| format!("Read error: {}", e))?;
+        self.stdout
+            .read_line(&mut line)
+            .map_err(|e| format!("Read error: {}", e))?;
         let line = line.trim();
         if line.is_empty() {
             return Err("Empty response from daemon".into());
@@ -184,7 +205,12 @@ impl AutovmStdioClient {
         serde_json::from_str(line).map_err(|e| format!("Parse error: {} (input: {})", e, line))
     }
 
-    fn call(&mut self, method: &str, session: Option<&str>, code: Option<&str>) -> Result<DaemonResponse, String> {
+    fn call(
+        &mut self,
+        method: &str,
+        session: Option<&str>,
+        code: Option<&str>,
+    ) -> Result<DaemonResponse, String> {
         let id = self.next_id();
         let req = DaemonRequest {
             id,
@@ -201,7 +227,8 @@ impl AutovmStdioClient {
         if resp.status != "ok" {
             return Err(resp.message.unwrap_or_else(|| "Unknown error".into()));
         }
-        resp.session.ok_or_else(|| "No session_id in response".into())
+        resp.session
+            .ok_or_else(|| "No session_id in response".into())
     }
 
     pub fn eval(&mut self, session: &str, code: &str) -> Result<DaemonResponse, String> {
@@ -310,7 +337,10 @@ pub fn eval_one_shot(code: &str) -> (String, bool) {
                     if resp.status == "ok" {
                         return (resp.value.unwrap_or_default(), true);
                     } else {
-                        return (resp.message.unwrap_or_else(|| "Unknown error".into()), false);
+                        return (
+                            resp.message.unwrap_or_else(|| "Unknown error".into()),
+                            false,
+                        );
                     }
                 }
                 Err(e) => {
@@ -338,7 +368,10 @@ pub fn eval_one_shot(code: &str) -> (String, bool) {
             if resp.status == "ok" {
                 (resp.value.unwrap_or_default(), true)
             } else {
-                (resp.message.unwrap_or_else(|| "Unknown error".into()), false)
+                (
+                    resp.message.unwrap_or_else(|| "Unknown error".into()),
+                    false,
+                )
             }
         }
         Err(e) => {

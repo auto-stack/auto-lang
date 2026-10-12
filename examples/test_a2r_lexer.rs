@@ -4,10 +4,10 @@ use std::fs;
 fn main() {
     let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let files = vec![
-        "auto/lib/pos.at",
-        "auto/lib/token.at",
-        "auto/lib/error.at",
-        "auto/lib/lexer.at",
+        "packages/aavm/lib/pos.at",
+        "packages/aavm/lib/token.at",
+        "packages/aavm/lib/error.at",
+        "packages/aavm/lib/lexer.at",
     ];
     let mut code = String::new();
     for f in &files {

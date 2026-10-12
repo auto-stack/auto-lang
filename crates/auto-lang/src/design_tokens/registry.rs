@@ -25,16 +25,39 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenName {
     // ── shadcn 基础 19 ──
-    Background, Foreground,
-    Card, CardForeground, Popover, PopoverForeground,
-    Primary, PrimaryForeground, Secondary, SecondaryForeground,
-    Muted, MutedForeground, Accent, AccentForeground,
-    Destructive, DestructiveForeground, Border, Input, Ring,
+    Background,
+    Foreground,
+    Card,
+    CardForeground,
+    Popover,
+    PopoverForeground,
+    Primary,
+    PrimaryForeground,
+    Secondary,
+    SecondaryForeground,
+    Muted,
+    MutedForeground,
+    Accent,
+    AccentForeground,
+    Destructive,
+    DestructiveForeground,
+    Border,
+    Input,
+    Ring,
     // ── sidebar 族 8（scaffold/cli-vue 消费）──
-    SidebarBackground, SidebarForeground, SidebarPrimary, SidebarPrimaryForeground,
-    SidebarAccent, SidebarAccentForeground, SidebarBorder, SidebarRing,
+    SidebarBackground,
+    SidebarForeground,
+    SidebarPrimary,
+    SidebarPrimaryForeground,
+    SidebarAccent,
+    SidebarAccentForeground,
+    SidebarBorder,
+    SidebarRing,
     // ── AutoUI 扩展 4（模式不变功能色）──
-    Success, Warning, Info, Error,
+    Success,
+    Warning,
+    Info,
+    Error,
 }
 
 impl TokenName {
@@ -121,10 +144,10 @@ pub fn accent_hsl(name: &str) -> Option<(u16, u8, u8)> {
     match name {
         "indigo" => Some((239, 84, 67)),
         // Plan 503: coral 校准至 stella-os 玫瑰粉 light #c4706a = hsl(4,43%,59%)。
-        "coral"  => Some((4, 43, 59)),
-        "ocean"  => Some((217, 91, 60)),
-        "sage"   => Some((160, 84, 39)),
-        "amber"  => Some((38, 92, 50)),
+        "coral" => Some((4, 43, 59)),
+        "ocean" => Some((217, 91, 60)),
+        "sage" => Some((160, 84, 39)),
+        "amber" => Some((38, 92, 50)),
         _ => None,
     }
 }
@@ -151,7 +174,9 @@ pub fn hsl_str_to_rgb(s: &str) -> Option<(u8, u8, u8)> {
     let h: f32 = it.next()?.parse().ok()?;
     let sat: f32 = it.next()?.trim_end_matches('%').parse().ok()?;
     let lig: f32 = it.next()?.trim_end_matches('%').parse().ok()?;
-    if it.next().is_some() { return None; }
+    if it.next().is_some() {
+        return None;
+    }
     let (r, g, b) = hsl_to_rgb_f(h as u16, sat, lig);
     Some((r, g, b))
 }
@@ -164,28 +189,56 @@ fn hsl_to_rgb_f(h: u16, s: f32, l: f32) -> (u8, u8, u8) {
         let v = (l * 255.0) as u8;
         return (v, v, v);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let hue = |mut t: f32| -> f32 {
-        if t < 0.0 { t += 1.0; }
-        if t > 1.0 { t -= 1.0; }
-        if t < 1.0 / 6.0 { return p + (q - p) * 6.0 * t; }
-        if t < 0.5 { return q; }
-        if t < 2.0 / 3.0 { return p + (q - p) * (2.0 / 3.0 - t) * 6.0; }
+        if t < 0.0 {
+            t += 1.0;
+        }
+        if t > 1.0 {
+            t -= 1.0;
+        }
+        if t < 1.0 / 6.0 {
+            return p + (q - p) * 6.0 * t;
+        }
+        if t < 0.5 {
+            return q;
+        }
+        if t < 2.0 / 3.0 {
+            return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+        }
         p
     };
     let f2u = |v: f32| (v * 255.0) as u8;
-    (f2u(hue(h + 1.0 / 3.0)), f2u(hue(h)), f2u(hue(h - 1.0 / 3.0)))
+    (
+        f2u(hue(h + 1.0 / 3.0)),
+        f2u(hue(h)),
+        f2u(hue(h - 1.0 / 3.0)),
+    )
 }
 
 /// RGB → "h s% l%"（整数分量；stella CSS 面派生用）。
 pub fn rgb_to_hsl_str(rgb: (u8, u8, u8)) -> String {
-    let (r, g, b) = (rgb.0 as f32 / 255.0, rgb.1 as f32 / 255.0, rgb.2 as f32 / 255.0);
+    let (r, g, b) = (
+        rgb.0 as f32 / 255.0,
+        rgb.1 as f32 / 255.0,
+        rgb.2 as f32 / 255.0,
+    );
     let (mx, mn) = (r.max(g).max(b), r.min(g).min(b));
     let l = (mx + mn) / 2.0;
-    if mx == mn { return format!("0 0% {}%", (l * 100.0).round() as i32); }
+    if mx == mn {
+        return format!("0 0% {}%", (l * 100.0).round() as i32);
+    }
     let d = mx - mn;
-    let s = if l > 0.5 { d / (2.0 - mx - mn) } else { d / (mx + mn) };
+    let s = if l > 0.5 {
+        d / (2.0 - mx - mn)
+    } else {
+        d / (mx + mn)
+    };
     let h = if mx == r {
         ((g - b) / d + if g < b { 6.0 } else { 0.0 })
     } else if mx == g {
@@ -193,7 +246,12 @@ pub fn rgb_to_hsl_str(rgb: (u8, u8, u8)) -> String {
     } else {
         (r - g) / d + 4.0
     } / 6.0;
-    format!("{} {}% {}%", (h * 360.0).round() as i32, (s * 100.0).round() as i32, (l * 100.0).round() as i32)
+    format!(
+        "{} {}% {}%",
+        (h * 360.0).round() as i32,
+        (s * 100.0).round() as i32,
+        (l * 100.0).round() as i32
+    )
 }
 
 impl ColorLit {
@@ -231,17 +289,32 @@ pub const ZINC: ThemeSpec = ThemeSpec {
         (TokenName::Card, ColorLit::Hsl("0 0% 100%")),
         (TokenName::CardForeground, ColorLit::Hsl("222.2 84% 4.9%")),
         (TokenName::Popover, ColorLit::Hsl("0 0% 100%")),
-        (TokenName::PopoverForeground, ColorLit::Hsl("222.2 84% 4.9%")),
+        (
+            TokenName::PopoverForeground,
+            ColorLit::Hsl("222.2 84% 4.9%"),
+        ),
         (TokenName::Primary, ColorLit::Hsl("222.2 47.4% 11.2%")),
         (TokenName::PrimaryForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Secondary, ColorLit::Hsl("40 24% 85.5%")),
-        (TokenName::SecondaryForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::SecondaryForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Muted, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::MutedForeground, ColorLit::Hsl("215.4 16.3% 46.9%")),
+        (
+            TokenName::MutedForeground,
+            ColorLit::Hsl("215.4 16.3% 46.9%"),
+        ),
         (TokenName::Accent, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::AccentForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::AccentForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Destructive, ColorLit::Hsl("0 84.2% 60.2%")),
-        (TokenName::DestructiveForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::Border, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Input, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Ring, ColorLit::Hsl("222.2 84% 4.9%")),
@@ -254,7 +327,10 @@ pub const ZINC: ThemeSpec = ThemeSpec {
         (TokenName::Popover, ColorLit::Hsl("222.2 47% 11%")),
         (TokenName::PopoverForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Primary, ColorLit::Hsl("210 40% 98%")),
-        (TokenName::PrimaryForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::PrimaryForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Secondary, ColorLit::Hsl("215 25% 27%")),
         (TokenName::SecondaryForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Muted, ColorLit::Hsl("217.2 32.6% 17.5%")),
@@ -262,7 +338,10 @@ pub const ZINC: ThemeSpec = ThemeSpec {
         (TokenName::Accent, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::AccentForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Destructive, ColorLit::Hsl("0 62.8% 30.6%")),
-        (TokenName::DestructiveForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::Border, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::Input, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::Ring, ColorLit::Hsl("212.7 26.8% 83.9%")),
@@ -277,26 +356,50 @@ pub const SCAFFOLD: ThemeSpec = ThemeSpec {
         (TokenName::Card, ColorLit::Hsl("0 0% 100%")),
         (TokenName::CardForeground, ColorLit::Hsl("222.2 84% 4.9%")),
         (TokenName::Popover, ColorLit::Hsl("0 0% 100%")),
-        (TokenName::PopoverForeground, ColorLit::Hsl("222.2 84% 4.9%")),
+        (
+            TokenName::PopoverForeground,
+            ColorLit::Hsl("222.2 84% 4.9%"),
+        ),
         (TokenName::Primary, ColorLit::Hsl("239 84% 67%")),
         (TokenName::PrimaryForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Secondary, ColorLit::Hsl("40 24% 85.5%")),
-        (TokenName::SecondaryForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::SecondaryForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Muted, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::MutedForeground, ColorLit::Hsl("215.4 16.3% 46.9%")),
+        (
+            TokenName::MutedForeground,
+            ColorLit::Hsl("215.4 16.3% 46.9%"),
+        ),
         (TokenName::Accent, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::AccentForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::AccentForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Destructive, ColorLit::Hsl("0 84.2% 60.2%")),
-        (TokenName::DestructiveForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::Border, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Input, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Ring, ColorLit::Hsl("239 84% 67%")),
         (TokenName::SidebarBackground, ColorLit::Hsl("0 0% 98%")),
-        (TokenName::SidebarForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::SidebarForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::SidebarPrimary, ColorLit::Hsl("239 84% 67%")),
-        (TokenName::SidebarPrimaryForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::SidebarPrimaryForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::SidebarAccent, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::SidebarAccentForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::SidebarAccentForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::SidebarBorder, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::SidebarRing, ColorLit::Hsl("239 84% 67%")),
         // PLAN-038 Phase B T6: scaffold extended functional colors (VM-parity)
@@ -313,7 +416,10 @@ pub const SCAFFOLD: ThemeSpec = ThemeSpec {
         (TokenName::Popover, ColorLit::Hsl("222.2 47% 10%")),
         (TokenName::PopoverForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Primary, ColorLit::Hsl("239 84% 77%")),
-        (TokenName::PrimaryForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::PrimaryForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Secondary, ColorLit::Hsl("215 25% 27%")),
         (TokenName::SecondaryForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Muted, ColorLit::Hsl("217.2 32.6% 15%")),
@@ -321,16 +427,25 @@ pub const SCAFFOLD: ThemeSpec = ThemeSpec {
         (TokenName::Accent, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::AccentForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Destructive, ColorLit::Hsl("0 62.8% 30.6%")),
-        (TokenName::DestructiveForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::Border, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::Input, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::Ring, ColorLit::Hsl("239 84% 77%")),
         (TokenName::SidebarBackground, ColorLit::Hsl("222.2 47% 10%")),
         (TokenName::SidebarForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::SidebarPrimary, ColorLit::Hsl("239 84% 77%")),
-        (TokenName::SidebarPrimaryForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::SidebarPrimaryForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::SidebarAccent, ColorLit::Hsl("217.2 32.6% 17.5%")),
-        (TokenName::SidebarAccentForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::SidebarAccentForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::SidebarBorder, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::SidebarRing, ColorLit::Hsl("239 84% 77%")),
         (TokenName::Success, ColorLit::Rgb(34, 197, 94)),
@@ -358,7 +473,10 @@ pub const STELLA: ThemeSpec = ThemeSpec {
         (TokenName::Accent, ColorLit::Hsl("39 32% 91%")),
         (TokenName::AccentForeground, ColorLit::Hsl("38 7% 46%")),
         (TokenName::Destructive, ColorLit::Hsl("0 84.2% 60.2%")),
-        (TokenName::DestructiveForeground, ColorLit::Rgb(248, 250, 252)),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Rgb(248, 250, 252),
+        ),
         (TokenName::Border, ColorLit::Rgb(227, 221, 209)),
         (TokenName::Input, ColorLit::Hsl("40 24% 85%")),
         (TokenName::Ring, ColorLit::Hsl("239 84% 67%")),
@@ -383,7 +501,10 @@ pub const STELLA: ThemeSpec = ThemeSpec {
         (TokenName::Accent, ColorLit::Hsl("217 33% 17%")),
         (TokenName::AccentForeground, ColorLit::Hsl("216 17% 65%")),
         (TokenName::Destructive, ColorLit::Hsl("0 62.8% 30.6%")),
-        (TokenName::DestructiveForeground, ColorLit::Rgb(248, 250, 252)),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Rgb(248, 250, 252),
+        ),
         (TokenName::Border, ColorLit::Rgb(40, 49, 70)),
         (TokenName::Input, ColorLit::Hsl("222 27% 22%")),
         (TokenName::Ring, ColorLit::Hsl("239 84% 77%")),
@@ -402,17 +523,32 @@ pub const TAURI: ThemeSpec = ThemeSpec {
         (TokenName::Card, ColorLit::Hsl("0 0% 100%")),
         (TokenName::CardForeground, ColorLit::Hsl("222.2 84% 4.9%")),
         (TokenName::Popover, ColorLit::Hsl("0 0% 100%")),
-        (TokenName::PopoverForeground, ColorLit::Hsl("222.2 84% 4.9%")),
+        (
+            TokenName::PopoverForeground,
+            ColorLit::Hsl("222.2 84% 4.9%"),
+        ),
         (TokenName::Primary, ColorLit::Hsl("222.2 47.4% 11.2%")),
         (TokenName::PrimaryForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Secondary, ColorLit::Hsl("40 24% 85.5%")),
-        (TokenName::SecondaryForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::SecondaryForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Muted, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::MutedForeground, ColorLit::Hsl("215.4 16.3% 46.9%")),
+        (
+            TokenName::MutedForeground,
+            ColorLit::Hsl("215.4 16.3% 46.9%"),
+        ),
         (TokenName::Accent, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::AccentForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::AccentForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Destructive, ColorLit::Hsl("0 84.2% 60.2%")),
-        (TokenName::DestructiveForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::Border, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Input, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Ring, ColorLit::Hsl("222.2 84% 4.9%")),
@@ -430,7 +566,10 @@ pub const TAURI: ThemeSpec = ThemeSpec {
         (TokenName::Popover, ColorLit::Hsl("222.2 84% 4.9%")),
         (TokenName::PopoverForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Primary, ColorLit::Hsl("210 40% 98%")),
-        (TokenName::PrimaryForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::PrimaryForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Secondary, ColorLit::Hsl("215 25% 27%")),
         (TokenName::SecondaryForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Muted, ColorLit::Hsl("217.2 32.6% 17.5%")),
@@ -438,7 +577,10 @@ pub const TAURI: ThemeSpec = ThemeSpec {
         (TokenName::Accent, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::AccentForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Destructive, ColorLit::Hsl("0 62.8% 30.6%")),
-        (TokenName::DestructiveForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::Border, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::Input, ColorLit::Hsl("217.2 32.6% 17.5%")),
         (TokenName::Ring, ColorLit::Hsl("212.7 26.8% 83.9%")),
@@ -457,26 +599,50 @@ pub const CLI_VUE: ThemeSpec = ThemeSpec {
         (TokenName::Card, ColorLit::Hsl("0 0% 100%")),
         (TokenName::CardForeground, ColorLit::Hsl("222.2 84% 4.9%")),
         (TokenName::Popover, ColorLit::Hsl("0 0% 100%")),
-        (TokenName::PopoverForeground, ColorLit::Hsl("222.2 84% 4.9%")),
+        (
+            TokenName::PopoverForeground,
+            ColorLit::Hsl("222.2 84% 4.9%"),
+        ),
         (TokenName::Primary, ColorLit::Hsl("239 84% 67%")),
         (TokenName::PrimaryForeground, ColorLit::Hsl("0 0% 100%")),
         (TokenName::Secondary, ColorLit::Hsl("40 24% 85.5%")),
-        (TokenName::SecondaryForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::SecondaryForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Muted, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::MutedForeground, ColorLit::Hsl("215.4 16.3% 46.9%")),
+        (
+            TokenName::MutedForeground,
+            ColorLit::Hsl("215.4 16.3% 46.9%"),
+        ),
         (TokenName::Accent, ColorLit::Hsl("210 40% 96.1%")),
-        (TokenName::AccentForeground, ColorLit::Hsl("222.2 47.4% 11.2%")),
+        (
+            TokenName::AccentForeground,
+            ColorLit::Hsl("222.2 47.4% 11.2%"),
+        ),
         (TokenName::Destructive, ColorLit::Hsl("0 84.2% 60.2%")),
-        (TokenName::DestructiveForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::Border, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Input, ColorLit::Hsl("214.3 31.8% 91.4%")),
         (TokenName::Ring, ColorLit::Hsl("239 84% 67%")),
         (TokenName::SidebarBackground, ColorLit::Hsl("0 0% 98%")),
-        (TokenName::SidebarForeground, ColorLit::Hsl("240 5.3% 26.1%")),
+        (
+            TokenName::SidebarForeground,
+            ColorLit::Hsl("240 5.3% 26.1%"),
+        ),
         (TokenName::SidebarPrimary, ColorLit::Hsl("239 84% 67%")),
-        (TokenName::SidebarPrimaryForeground, ColorLit::Hsl("0 0% 100%")),
+        (
+            TokenName::SidebarPrimaryForeground,
+            ColorLit::Hsl("0 0% 100%"),
+        ),
         (TokenName::SidebarAccent, ColorLit::Hsl("240 4.8% 95.9%")),
-        (TokenName::SidebarAccentForeground, ColorLit::Hsl("240 5.9% 10%")),
+        (
+            TokenName::SidebarAccentForeground,
+            ColorLit::Hsl("240 5.9% 10%"),
+        ),
         (TokenName::SidebarBorder, ColorLit::Hsl("220 13% 91%")),
         (TokenName::SidebarRing, ColorLit::Hsl("239 84% 67%")),
         // PLAN-038 Phase B：auto CLI vue 轨功能色同源。
@@ -501,16 +667,25 @@ pub const CLI_VUE: ThemeSpec = ThemeSpec {
         (TokenName::Accent, ColorLit::Hsl("217 33% 17%")),
         (TokenName::AccentForeground, ColorLit::Hsl("210 40% 98%")),
         (TokenName::Destructive, ColorLit::Hsl("0 62.8% 30.6%")),
-        (TokenName::DestructiveForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::DestructiveForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::Border, ColorLit::Hsl("217 33% 20%")),
         (TokenName::Input, ColorLit::Hsl("217 33% 20%")),
         (TokenName::Ring, ColorLit::Hsl("239 84% 77%")),
         (TokenName::SidebarBackground, ColorLit::Hsl("222 47% 9%")),
         (TokenName::SidebarForeground, ColorLit::Hsl("210 40% 90%")),
         (TokenName::SidebarPrimary, ColorLit::Hsl("239 84% 77%")),
-        (TokenName::SidebarPrimaryForeground, ColorLit::Hsl("222 47% 11%")),
+        (
+            TokenName::SidebarPrimaryForeground,
+            ColorLit::Hsl("222 47% 11%"),
+        ),
         (TokenName::SidebarAccent, ColorLit::Hsl("217 33% 15%")),
-        (TokenName::SidebarAccentForeground, ColorLit::Hsl("210 40% 98%")),
+        (
+            TokenName::SidebarAccentForeground,
+            ColorLit::Hsl("210 40% 98%"),
+        ),
         (TokenName::SidebarBorder, ColorLit::Hsl("217 33% 18%")),
         (TokenName::SidebarRing, ColorLit::Hsl("239 84% 77%")),
         (TokenName::Success, ColorLit::Rgb(34, 197, 94)),
@@ -537,7 +712,11 @@ pub fn builtin(name: &str) -> Option<&'static ThemeSpec> {
 pub const BUILTIN_NAMES: [&str; 5] = ["zinc", "scaffold", "stella", "tauri", "cli-vue"];
 
 fn palette<'a>(theme: &'a ThemeSpec, is_dark: bool) -> &'a [(TokenName, ColorLit)] {
-    if is_dark { theme.dark } else { theme.light }
+    if is_dark {
+        theme.dark
+    } else {
+        theme.light
+    }
 }
 
 /// VM 面：按 mode 取 token 值（RGB）。resolve_semantic_rgb 委托入口。
@@ -569,26 +748,43 @@ pub fn render_sidebar(theme: &ThemeSpec, is_dark: bool) -> String {
 }
 
 pub const CORE_ORDER: [TokenName; 19] = [
-    TokenName::Background, TokenName::Foreground,
-    TokenName::Card, TokenName::CardForeground,
-    TokenName::Popover, TokenName::PopoverForeground,
-    TokenName::Primary, TokenName::PrimaryForeground,
-    TokenName::Secondary, TokenName::SecondaryForeground,
-    TokenName::Muted, TokenName::MutedForeground,
-    TokenName::Accent, TokenName::AccentForeground,
-    TokenName::Destructive, TokenName::DestructiveForeground,
-    TokenName::Border, TokenName::Input, TokenName::Ring,
+    TokenName::Background,
+    TokenName::Foreground,
+    TokenName::Card,
+    TokenName::CardForeground,
+    TokenName::Popover,
+    TokenName::PopoverForeground,
+    TokenName::Primary,
+    TokenName::PrimaryForeground,
+    TokenName::Secondary,
+    TokenName::SecondaryForeground,
+    TokenName::Muted,
+    TokenName::MutedForeground,
+    TokenName::Accent,
+    TokenName::AccentForeground,
+    TokenName::Destructive,
+    TokenName::DestructiveForeground,
+    TokenName::Border,
+    TokenName::Input,
+    TokenName::Ring,
 ];
 pub const SIDEBAR_ORDER: [TokenName; 8] = [
-    TokenName::SidebarBackground, TokenName::SidebarForeground,
-    TokenName::SidebarPrimary, TokenName::SidebarPrimaryForeground,
-    TokenName::SidebarAccent, TokenName::SidebarAccentForeground,
-    TokenName::SidebarBorder, TokenName::SidebarRing,
+    TokenName::SidebarBackground,
+    TokenName::SidebarForeground,
+    TokenName::SidebarPrimary,
+    TokenName::SidebarPrimaryForeground,
+    TokenName::SidebarAccent,
+    TokenName::SidebarAccentForeground,
+    TokenName::SidebarBorder,
+    TokenName::SidebarRing,
 ];
 /// PLAN-038 Phase B：AutoUI 扩展 4 键（功能色）CSS 渲染序——追加在 core 之后。
 /// 词表闭集内；scaffold/cli-vue/tauri/stella 持有，zinc 可缺席。
 pub const EXTENDED_ORDER: [TokenName; 4] = [
-    TokenName::Success, TokenName::Warning, TokenName::Info, TokenName::Error,
+    TokenName::Success,
+    TokenName::Warning,
+    TokenName::Info,
+    TokenName::Error,
 ];
 
 fn render_tokens(theme: &ThemeSpec, is_dark: bool, order: &[TokenName]) -> String {
@@ -651,7 +847,11 @@ mod tests {
                     );
                 }
             }
-            let sb = t.light.iter().filter(|(k, _)| SIDEBAR_ORDER.contains(k)).count();
+            let sb = t
+                .light
+                .iter()
+                .filter(|(k, _)| SIDEBAR_ORDER.contains(k))
+                .count();
             let expect_sb = matches!(name, "scaffold" | "cli-vue");
             assert_eq!(sb == 8, expect_sb, "{name} sidebar 键集不符: {sb}");
         }
@@ -667,14 +867,22 @@ mod tests {
                 for (tok, lit) in palette(t, dark) {
                     match lit {
                         ColorLit::Hsl(s) => {
-                            assert!(hsl_str_to_rgb(s).is_some(), "{name} {:?} 无法解析: {s}", tok.css_var());
+                            assert!(
+                                hsl_str_to_rgb(s).is_some(),
+                                "{name} {:?} 无法解析: {s}",
+                                tok.css_var()
+                            );
                         }
                         ColorLit::Rgb(r, g, b) => {
                             let back = hsl_str_to_rgb(&lit.css_str()).expect("roundtrip");
                             let want = [*r, *g, *b];
                             for (a, b) in [back.0, back.1, back.2].into_iter().zip(want) {
-                                assert!((a as i32 - b as i32).abs() <= 4, "{name} {:?} 往返漂移", tok.css_var()); // 容差 ±4：h/s/l 三分量各自整数化（±0.5）+ 通道 u8 截断的累积舍入；
-                                // s/l 互换类真 bug 偏差 ≥30，仍必被捕获。
+                                assert!(
+                                    (a as i32 - b as i32).abs() <= 4,
+                                    "{name} {:?} 往返漂移",
+                                    tok.css_var()
+                                ); // 容差 ±4：h/s/l 三分量各自整数化（±0.5）+ 通道 u8 截断的累积舍入；
+                                   // s/l 互换类真 bug 偏差 ≥30，仍必被捕获。
                             }
                         }
                     }
@@ -697,10 +905,18 @@ mod tests {
         assert!(render_sidebar(z, false).is_empty());
         let st = builtin("stella").unwrap();
         // VM 投影零漂移指纹（plan593 期望表同值）
-        assert_eq!(resolve_rgb(st, TokenName::Background, false), Some((245, 241, 232)));
-        assert_eq!(resolve_rgb(st, TokenName::Background, true), Some((20, 26, 41)));
+        assert_eq!(
+            resolve_rgb(st, TokenName::Background, false),
+            Some((245, 241, 232))
+        );
+        assert_eq!(
+            resolve_rgb(st, TokenName::Background, true),
+            Some((20, 26, 41))
+        );
         // CLI 两表值指纹（T-09 装配前的值保真）
-        assert!(render_core(builtin("tauri").unwrap(), false).contains("--primary: 222.2 47.4% 11.2%;"));
+        assert!(
+            render_core(builtin("tauri").unwrap(), false).contains("--primary: 222.2 47.4% 11.2%;")
+        );
         assert!(render_core(builtin("cli-vue").unwrap(), false).contains("--ring: 239 84% 67%;"));
     }
 
@@ -746,7 +962,10 @@ mod tests {
         for name in BUILTIN_NAMES {
             assert!(js.contains(&format!("'{name}': {{")), "{name} 缺席");
         }
-        assert!(js.contains("'background': '0 0% 100%'"), "zinc light 背景指纹");
+        assert!(
+            js.contains("'background': '0 0% 100%'"),
+            "zinc light 背景指纹"
+        );
         // zinc 无 sidebar、scaffold 有（与完备性测试同口径）
         let zinc = render_theme_pairs_js(builtin("zinc").unwrap());
         assert!(!zinc.contains("sidebar"));

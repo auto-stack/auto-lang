@@ -22,7 +22,13 @@ fn compile_to_bytecode(source: &str) -> Vec<u8> {
 }
 
 /// Plan 073: Helper function to compile with object_keys metadata
-fn compile_with_object_keys(source: &str) -> (Vec<u8>, Vec<Vec<auto_val::ValueKey>>, Vec<Vec<crate::vm::codegen::ObjectType>>) {
+fn compile_with_object_keys(
+    source: &str,
+) -> (
+    Vec<u8>,
+    Vec<Vec<auto_val::ValueKey>>,
+    Vec<Vec<crate::vm::codegen::ObjectType>>,
+) {
     let mut parser = Parser::from(source);
     let code = parser.parse().expect("Parse failed");
 
@@ -34,7 +40,6 @@ fn compile_with_object_keys(source: &str) -> (Vec<u8>, Vec<Vec<auto_val::ValueKe
 
     (codegen.code, codegen.object_keys, codegen.object_types)
 }
-
 
 #[test]
 fn test_float_literal_compiles() {
@@ -395,7 +400,11 @@ fn test_all_types() -> int {
     let bytecode = compile_to_bytecode(source);
     // Should contain multiple CONST_I32 opcodes
     let const_i32_count = bytecode.iter().filter(|&&x| x == 0x10).count();
-    assert!(const_i32_count >= 5, "Expected at least 5 CONST_I32 opcodes, got {}", const_i32_count);
+    assert!(
+        const_i32_count >= 5,
+        "Expected at least 5 CONST_I32 opcodes, got {}",
+        const_i32_count
+    );
 }
 
 #[test]
@@ -449,7 +458,10 @@ fn main() -> int {
 "#;
     let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have one object with 0 fields
     assert_eq!(object_keys.len(), 1, "Expected 1 object");
     assert_eq!(object_keys[0].len(), 0, "Expected 0 fields");
@@ -466,14 +478,20 @@ fn main() -> int {
 "#;
     let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have one object with 2 fields
     assert_eq!(object_keys.len(), 1, "Expected 1 object");
     assert_eq!(object_keys[0].len(), 2, "Expected 2 fields");
     assert_eq!(object_types[0].len(), 2, "Expected 2 field types");
     // Should have CONST_I32 for the two integer values
     let const_i32_count = bytecode.iter().filter(|&&x| x == 0x10).count();
-    assert!(const_i32_count >= 2, "Expected at least 2 CONST_I32 opcodes");
+    assert!(
+        const_i32_count >= 2,
+        "Expected at least 2 CONST_I32 opcodes"
+    );
 }
 
 #[test]
@@ -487,7 +505,10 @@ fn main() -> int {
     let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode (at least 2 for nested objects)
     let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
-    assert!(create_obj_count >= 2, "Expected at least 2 CREATE_OBJ opcodes");
+    assert!(
+        create_obj_count >= 2,
+        "Expected at least 2 CREATE_OBJ opcodes"
+    );
     // Should have 2 objects
     assert_eq!(object_keys.len(), 2, "Expected 2 objects");
     // Should have 2 type lists
@@ -505,7 +526,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should contain GET_FIELD opcode
     assert!(bytecode.contains(&0x2D), "Expected GET_FIELD opcode (0x2D)");
 }
@@ -522,10 +546,16 @@ fn main() -> int {
     let bytecode = compile_to_bytecode(source);
     // Should contain CREATE_OBJ opcodes (2 objects)
     let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
-    assert!(create_obj_count >= 2, "Expected at least 2 CREATE_OBJ opcodes");
+    assert!(
+        create_obj_count >= 2,
+        "Expected at least 2 CREATE_OBJ opcodes"
+    );
     // Should contain GET_FIELD opcodes (2 field accesses)
     let get_field_count = bytecode.iter().filter(|&&x| x == 0x2D).count();
-    assert!(get_field_count >= 2, "Expected at least 2 GET_FIELD opcodes");
+    assert!(
+        get_field_count >= 2,
+        "Expected at least 2 GET_FIELD opcodes"
+    );
 }
 
 // ============================================================================
@@ -542,7 +572,10 @@ fn main() -> int {
 "#;
     let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have Float field types
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Float);
     assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Float);
@@ -558,7 +591,10 @@ fn main() -> int {
 "#;
     let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have Double field types
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Double);
     assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Double);
@@ -574,7 +610,10 @@ fn main() -> int {
 "#;
     let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have String field types
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::String);
     assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::String);
@@ -590,7 +629,10 @@ fn main() -> int {
 "#;
     let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have Bool field types
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Bool);
     assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Bool);
@@ -606,7 +648,10 @@ fn main() -> int {
 "#;
     let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have Char field types
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Char);
     assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Char);
@@ -627,7 +672,10 @@ fn main() -> int {
 "#;
     let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have mixed field types
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::String);
     assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Int);
@@ -652,18 +700,32 @@ fn main() -> int {
 "#;
     let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have 2 objects total (nested + outer)
     assert_eq!(object_keys.len(), 2, "Expected 2 objects");
     // Nested object is created first (index 0), outer object second (index 1)
     // Nested object should have 2 Int fields
-    assert_eq!(object_types[0].len(), 2, "Expected 2 fields in nested object");
+    assert_eq!(
+        object_types[0].len(),
+        2,
+        "Expected 2 fields in nested object"
+    );
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Int);
     assert_eq!(object_types[0][1], crate::vm::codegen::ObjectType::Int);
     // Outer object should have String and NestedObject fields
-    assert_eq!(object_types[1].len(), 2, "Expected 2 fields in outer object");
+    assert_eq!(
+        object_types[1].len(),
+        2,
+        "Expected 2 fields in outer object"
+    );
     assert_eq!(object_types[1][0], crate::vm::codegen::ObjectType::String);
-    assert_eq!(object_types[1][1], crate::vm::codegen::ObjectType::NestedObject);
+    assert_eq!(
+        object_types[1][1],
+        crate::vm::codegen::ObjectType::NestedObject
+    );
 }
 
 #[test]
@@ -676,7 +738,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain CREATE_ARRAY opcode
-    assert!(bytecode.contains(&0x2F), "Expected CREATE_ARRAY opcode (0x2F)");
+    assert!(
+        bytecode.contains(&0x2F),
+        "Expected CREATE_ARRAY opcode (0x2F)"
+    );
 }
 
 #[test]
@@ -690,7 +755,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain CREATE_ARRAY opcode
-    assert!(bytecode.contains(&0x2F), "Expected CREATE_ARRAY opcode (0x2F)");
+    assert!(
+        bytecode.contains(&0x2F),
+        "Expected CREATE_ARRAY opcode (0x2F)"
+    );
     // Should contain GET_ELEM opcode
     assert!(bytecode.contains(&0x2C), "Expected GET_ELEM opcode (0x2C)");
 }
@@ -708,7 +776,10 @@ fn main() -> int {
 "#;
     let (bytecode, _object_keys, object_types) = compile_with_object_keys(source);
     // Should contain CREATE_OBJ opcode
-    assert!(bytecode.contains(&0x2E), "Expected CREATE_OBJ opcode (0x2E)");
+    assert!(
+        bytecode.contains(&0x2E),
+        "Expected CREATE_OBJ opcode (0x2E)"
+    );
     // Should have String and Array field types
     assert_eq!(object_types[0].len(), 2, "Expected 2 fields");
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::String);
@@ -732,16 +803,33 @@ fn main() -> int {
     let (bytecode, object_keys, object_types) = compile_with_object_keys(source);
     // Should contain 3 CREATE_OBJ opcodes
     let create_obj_count = bytecode.iter().filter(|&&x| x == 0x2E).count();
-    assert!(create_obj_count >= 3, "Expected at least 3 CREATE_OBJ opcodes");
+    assert!(
+        create_obj_count >= 3,
+        "Expected at least 3 CREATE_OBJ opcodes"
+    );
     // Should have 3 objects total
     assert_eq!(object_keys.len(), 3, "Expected 3 objects");
     // Innermost object created first (index 0), then middle (index 1), then outer (index 2)
-    assert_eq!(object_types[0].len(), 1, "Expected 1 field in innermost object");
+    assert_eq!(
+        object_types[0].len(),
+        1,
+        "Expected 1 field in innermost object"
+    );
     assert_eq!(object_types[0][0], crate::vm::codegen::ObjectType::Int);
-    assert_eq!(object_types[1].len(), 1, "Expected 1 field in middle object");
-    assert_eq!(object_types[1][0], crate::vm::codegen::ObjectType::NestedObject);
+    assert_eq!(
+        object_types[1].len(),
+        1,
+        "Expected 1 field in middle object"
+    );
+    assert_eq!(
+        object_types[1][0],
+        crate::vm::codegen::ObjectType::NestedObject
+    );
     assert_eq!(object_types[2].len(), 1, "Expected 1 field in outer object");
-    assert_eq!(object_types[2][0], crate::vm::codegen::ObjectType::NestedObject);
+    assert_eq!(
+        object_types[2][0],
+        crate::vm::codegen::ObjectType::NestedObject
+    );
 }
 
 #[test]
@@ -756,7 +844,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain CREATE_ARRAY opcode
-    assert!(bytecode.contains(&0x2F), "Expected CREATE_ARRAY opcode (0x2F)");
+    assert!(
+        bytecode.contains(&0x2F),
+        "Expected CREATE_ARRAY opcode (0x2F)"
+    );
     // Should contain SET_ELEM opcode (Plan 073)
     assert!(bytecode.contains(&0x2B), "Expected SET_ELEM opcode (0x2B)");
 }
@@ -792,9 +883,15 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain LT (for range comparison)
-    assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52) for range check");
+    assert!(
+        bytecode.contains(&0x52),
+        "Expected LT opcode (0x52) for range check"
+    );
     // Should contain JMP (for loop control)
-    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for loop");
+    assert!(
+        bytecode.contains(&0x60),
+        "Expected JMP opcode (0x60) for loop"
+    );
 }
 
 #[test]
@@ -809,7 +906,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain LE (for inclusive range comparison)
-    assert!(bytecode.contains(&0x54), "Expected LE opcode (0x54) for inclusive range");
+    assert!(
+        bytecode.contains(&0x54),
+        "Expected LE opcode (0x54) for inclusive range"
+    );
 }
 
 #[test]
@@ -825,7 +925,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain JMP_IF_Z (for condition check)
-    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61) for condition");
+    assert!(
+        bytecode.contains(&0x61),
+        "Expected JMP_IF_Z opcode (0x61) for condition"
+    );
 }
 
 #[test]
@@ -842,7 +945,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain JMP (for infinite loop)
-    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for infinite loop");
+    assert!(
+        bytecode.contains(&0x60),
+        "Expected JMP opcode (0x60) for infinite loop"
+    );
 }
 
 #[test]
@@ -877,7 +983,10 @@ fn main() -> int {
     let bytecode = compile_to_bytecode(source);
     // Should contain JMP for break statement
     let jmp_count = bytecode.iter().filter(|&&b| b == 0x60).count();
-    assert!(jmp_count >= 2, "Expected at least 2 JMP opcodes (0x60) - one for loop, one for break");
+    assert!(
+        jmp_count >= 2,
+        "Expected at least 2 JMP opcodes (0x60) - one for loop, one for break"
+    );
 }
 
 #[test]
@@ -896,8 +1005,14 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain JMP_IF_Z for condition and JMP for break
-    assert!(bytecode.contains(&0x61), "Expected JMP_IF_Z opcode (0x61) for condition");
-    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for break");
+    assert!(
+        bytecode.contains(&0x61),
+        "Expected JMP_IF_Z opcode (0x61) for condition"
+    );
+    assert!(
+        bytecode.contains(&0x60),
+        "Expected JMP opcode (0x60) for break"
+    );
 }
 
 #[test]
@@ -932,7 +1047,10 @@ fn main() -> int {
     let bytecode = compile_to_bytecode(source);
     // Should have multiple JMPs for loops and breaks
     let jmp_count = bytecode.iter().filter(|&&b| b == 0x60).count();
-    assert!(jmp_count >= 4, "Expected at least 4 JMP opcodes (0x60) for nested loops and breaks");
+    assert!(
+        jmp_count >= 4,
+        "Expected at least 4 JMP opcodes (0x60) for nested loops and breaks"
+    );
 }
 
 #[test]
@@ -953,7 +1071,10 @@ fn main() -> int {
     // Should contain loop opcodes, array indexing, and break
     assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52)");
     assert!(bytecode.contains(&0x2C), "Expected GET_ELEM opcode (0x2C)");
-    assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60) for break");
+    assert!(
+        bytecode.contains(&0x60),
+        "Expected JMP opcode (0x60) for break"
+    );
 }
 
 // Plan 073: Indexed iteration tests
@@ -973,8 +1094,14 @@ fn main() -> int {
     assert!(bytecode.contains(&0x52), "Expected LT opcode (0x52)");
 
     // Count the number of STORE_LOCAL opcodes (should be at least 2 for i and x initialization)
-    let store_count = bytecode.iter().filter(|&&b| b == 0x21 || b == 0x25 || b == 0x26).count();
-    assert!(store_count >= 2, "Expected at least 2 STORE opcodes for i and x variables");
+    let store_count = bytecode
+        .iter()
+        .filter(|&&b| b == 0x21 || b == 0x25 || b == 0x26)
+        .count();
+    assert!(
+        store_count >= 2,
+        "Expected at least 2 STORE opcodes for i and x variables"
+    );
 }
 
 #[test]
@@ -989,7 +1116,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain LE (for inclusive range comparison)
-    assert!(bytecode.contains(&0x54), "Expected LE opcode (0x54) for inclusive range");
+    assert!(
+        bytecode.contains(&0x54),
+        "Expected LE opcode (0x54) for inclusive range"
+    );
 }
 
 #[test]
@@ -1045,7 +1175,10 @@ fn main() -> int {
     let bytecode = compile_to_bytecode(source);
     // Should contain multiple loop structures
     let lt_count = bytecode.iter().filter(|&&b| b == 0x52).count();
-    assert!(lt_count >= 2, "Expected at least 2 LT opcodes for nested loops");
+    assert!(
+        lt_count >= 2,
+        "Expected at least 2 LT opcodes for nested loops"
+    );
 }
 
 // ============================================================================
@@ -1071,7 +1204,10 @@ fn main() -> int {
     assert!(bytecode.contains(&0x72), "Expected CALL_NAT opcode (0x72)");
     // Should contain loop control opcodes
     assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
-    assert!(bytecode.contains(&0x62), "Expected JMP_IF_NZ opcode (0x62) for iterator sentinel check");
+    assert!(
+        bytecode.contains(&0x62),
+        "Expected JMP_IF_NZ opcode (0x62) for iterator sentinel check"
+    );
     // Should contain DUP to preserve iterator value for both sentinel check and variable store
     assert!(bytecode.contains(&0x03), "Expected DUP opcode (0x03)");
 }
@@ -1119,7 +1255,10 @@ fn main() -> int {
     let bytecode = compile_to_bytecode(source);
     // Should contain multiple CALL_NAT opcodes (one for each iterator)
     let call_nat_count = bytecode.iter().filter(|&&b| b == 0x72).count();
-    assert!(call_nat_count >= 2, "Expected at least 2 CALL_NAT opcodes for nested iterators");
+    assert!(
+        call_nat_count >= 2,
+        "Expected at least 2 CALL_NAT opcodes for nested iterators"
+    );
 }
 
 #[test]
@@ -1176,7 +1315,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain CREATE_RANGE opcode (0x75)
-    assert!(bytecode.contains(&0x75), "Expected CREATE_RANGE opcode (0x75)");
+    assert!(
+        bytecode.contains(&0x75),
+        "Expected CREATE_RANGE opcode (0x75)"
+    );
     // Should contain CONST_I32 for start and end values
     assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
 }
@@ -1191,7 +1333,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain CREATE_RANGE_EQ opcode (0x76)
-    assert!(bytecode.contains(&0x76), "Expected CREATE_RANGE_EQ opcode (0x76)");
+    assert!(
+        bytecode.contains(&0x76),
+        "Expected CREATE_RANGE_EQ opcode (0x76)"
+    );
     // Should contain CONST_I32 for start and end values
     assert!(bytecode.contains(&0x10), "Expected CONST_I32 opcode (0x10)");
 }
@@ -1208,9 +1353,15 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain CREATE_RANGE opcode
-    assert!(bytecode.contains(&0x75), "Expected CREATE_RANGE opcode (0x75)");
+    assert!(
+        bytecode.contains(&0x75),
+        "Expected CREATE_RANGE opcode (0x75)"
+    );
     // Variables should be stored and loaded (check for STORE_LOCAL)
-    assert!(bytecode.contains(&0x21), "Expected STORE_LOCAL opcode (0x21)");
+    assert!(
+        bytecode.contains(&0x21),
+        "Expected STORE_LOCAL opcode (0x21)"
+    );
 }
 
 #[test]
@@ -1242,8 +1393,14 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain both CREATE_RANGE and CREATE_RANGE_EQ
-    assert!(bytecode.contains(&0x75), "Expected CREATE_RANGE opcode (0x75)");
-    assert!(bytecode.contains(&0x76), "Expected CREATE_RANGE_EQ opcode (0x76)");
+    assert!(
+        bytecode.contains(&0x75),
+        "Expected CREATE_RANGE opcode (0x75)"
+    );
+    assert!(
+        bytecode.contains(&0x76),
+        "Expected CREATE_RANGE_EQ opcode (0x76)"
+    );
 }
 
 // ============================================================================
@@ -1260,7 +1417,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain BUILD_FSTR opcode (0x77)
-    assert!(bytecode.contains(&0x77), "Expected BUILD_FSTR opcode (0x77)");
+    assert!(
+        bytecode.contains(&0x77),
+        "Expected BUILD_FSTR opcode (0x77)"
+    );
     // Should contain LOAD_STR for string literal
     assert!(bytecode.contains(&0x1F), "Expected LOAD_STR opcode (0x1F)");
 }
@@ -1276,7 +1436,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain BUILD_FSTR opcode
-    assert!(bytecode.contains(&0x77), "Expected BUILD_FSTR opcode (0x77)");
+    assert!(
+        bytecode.contains(&0x77),
+        "Expected BUILD_FSTR opcode (0x77)"
+    );
     // Should contain LOAD_STR for string literal part
     assert!(bytecode.contains(&0x1F), "Expected LOAD_STR opcode (0x1F)");
 }
@@ -1293,7 +1456,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain BUILD_FSTR opcode
-    assert!(bytecode.contains(&0x77), "Expected BUILD_FSTR opcode (0x77)");
+    assert!(
+        bytecode.contains(&0x77),
+        "Expected BUILD_FSTR opcode (0x77)"
+    );
     // Should contain ADD opcode for expression
     assert!(bytecode.contains(&0x30), "Expected ADD opcode (0x30)");
 }
@@ -1310,7 +1476,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain BUILD_FSTR opcode
-    assert!(bytecode.contains(&0x77), "Expected BUILD_FSTR opcode (0x77)");
+    assert!(
+        bytecode.contains(&0x77),
+        "Expected BUILD_FSTR opcode (0x77)"
+    );
 }
 
 #[test]
@@ -1409,7 +1578,10 @@ fn main() -> int {
     let bytecode = compile_to_bytecode(source);
     // Should contain multiple EQ opcodes (one per branch)
     let eq_count = bytecode.iter().filter(|&&b| b == 0x50).count();
-    assert!(eq_count >= 5, "Expected at least 5 EQ opcodes for 5 branches");
+    assert!(
+        eq_count >= 5,
+        "Expected at least 5 EQ opcodes for 5 branches"
+    );
 }
 
 // Plan 073 Phase 8.3.7: Is IfBranch (Conditional Pattern Matching)
@@ -1446,7 +1618,10 @@ fn main() -> int {
     let bytecode = compile_to_bytecode(source);
     // Should contain JMP_IF_Z for each condition
     let jz_count = bytecode.iter().filter(|&&b| b == 0x61).count();
-    assert!(jz_count >= 2, "Expected at least 2 JMP_IF_Z opcodes for 2 if branches");
+    assert!(
+        jz_count >= 2,
+        "Expected at least 2 JMP_IF_Z opcodes for 2 if branches"
+    );
     // Should contain JMP opcodes
     assert!(bytecode.contains(&0x60), "Expected JMP opcode (0x60)");
 }
@@ -1520,7 +1695,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain NULL_COALESCE opcode (0x78)
-    assert!(bytecode.contains(&0x78), "Expected NULL_COALESCE opcode (0x78)");
+    assert!(
+        bytecode.contains(&0x78),
+        "Expected NULL_COALESCE opcode (0x78)"
+    );
 }
 
 #[test]
@@ -1534,7 +1712,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain NULL_COALESCE opcode
-    assert!(bytecode.contains(&0x78), "Expected NULL_COALESCE opcode (0x78)");
+    assert!(
+        bytecode.contains(&0x78),
+        "Expected NULL_COALESCE opcode (0x78)"
+    );
 }
 
 #[test]
@@ -1549,7 +1730,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain NULL_COALESCE opcode
-    assert!(bytecode.contains(&0x78), "Expected NULL_COALESCE opcode (0x78)");
+    assert!(
+        bytecode.contains(&0x78),
+        "Expected NULL_COALESCE opcode (0x78)"
+    );
 }
 
 #[test]
@@ -1563,7 +1747,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain ERROR_PROPAGATE opcode (0x79)
-    assert!(bytecode.contains(&0x79), "Expected ERROR_PROPAGATE opcode (0x79)");
+    assert!(
+        bytecode.contains(&0x79),
+        "Expected ERROR_PROPAGATE opcode (0x79)"
+    );
 }
 
 #[test]
@@ -1581,7 +1768,10 @@ fn main() -> int {
 "#;
     let bytecode = compile_to_bytecode(source);
     // Should contain ERROR_PROPAGATE opcode
-    assert!(bytecode.contains(&0x79), "Expected ERROR_PROPAGATE opcode (0x79)");
+    assert!(
+        bytecode.contains(&0x79),
+        "Expected ERROR_PROPAGATE opcode (0x79)"
+    );
 }
 
 // Plan 073 Phase 8.6: TypeDecl/EnumDecl/SpecDecl Support

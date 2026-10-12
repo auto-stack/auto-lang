@@ -681,23 +681,33 @@ impl TailwindParser {
 
         // Shadow
         if class == "shadow" || class == "shadow-sm" {
-            style.shadow = Some(Shadow { elevation: Dimension::Dp(1.0) });
+            style.shadow = Some(Shadow {
+                elevation: Dimension::Dp(1.0),
+            });
             return true;
         }
         if class == "shadow-md" {
-            style.shadow = Some(Shadow { elevation: Dimension::Dp(4.0) });
+            style.shadow = Some(Shadow {
+                elevation: Dimension::Dp(4.0),
+            });
             return true;
         }
         if class == "shadow-lg" {
-            style.shadow = Some(Shadow { elevation: Dimension::Dp(8.0) });
+            style.shadow = Some(Shadow {
+                elevation: Dimension::Dp(8.0),
+            });
             return true;
         }
         if class == "shadow-xl" {
-            style.shadow = Some(Shadow { elevation: Dimension::Dp(16.0) });
+            style.shadow = Some(Shadow {
+                elevation: Dimension::Dp(16.0),
+            });
             return true;
         }
         if class == "shadow-2xl" {
-            style.shadow = Some(Shadow { elevation: Dimension::Dp(24.0) });
+            style.shadow = Some(Shadow {
+                elevation: Dimension::Dp(24.0),
+            });
             return true;
         }
 
@@ -806,7 +816,7 @@ impl TailwindParser {
         if !class.starts_with("font-") {
             return None;
         }
-        let weight = &class[5..];  // "font-" is 5 chars
+        let weight = &class[5..]; // "font-" is 5 chars
 
         match weight {
             "thin" => Some(FontWeight::Thin),
@@ -1072,8 +1082,14 @@ mod tests {
         println!("text-lg -> font_size: {:?}", style_font_size.font_size);
 
         let style_font_weight = parser.parse("font-bold");
-        println!("font-bold -> font_weight: {:?}", style_font_weight.font_weight);
-        println!("font-bold -> custom_classes: {:?}", style_font_weight.custom_classes);
+        println!(
+            "font-bold -> font_weight: {:?}",
+            style_font_weight.font_weight
+        );
+        println!(
+            "font-bold -> custom_classes: {:?}",
+            style_font_weight.custom_classes
+        );
 
         // Test direct parse_font_weight call
         let weight = parser.parse_font_weight("font-bold");
@@ -1203,7 +1219,12 @@ mod tests {
         let style = parser.parse("rounded-t-2xl");
         assert!(style.border_radius_spec.is_some());
         match &style.border_radius_spec {
-            Some(BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left }) => {
+            Some(BorderRadiusSpec::Corners {
+                top_left,
+                top_right,
+                bottom_right,
+                bottom_left,
+            }) => {
                 assert_eq!(*top_left, Some(Dimension::Dp(16.0)));
                 assert_eq!(*top_right, Some(Dimension::Dp(16.0)));
                 assert!(bottom_right.is_none());
@@ -1221,7 +1242,12 @@ mod tests {
         let style = parser.parse("rounded-b-lg");
         assert!(style.border_radius_spec.is_some());
         match &style.border_radius_spec {
-            Some(BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left }) => {
+            Some(BorderRadiusSpec::Corners {
+                top_left,
+                top_right,
+                bottom_right,
+                bottom_left,
+            }) => {
                 assert!(top_left.is_none());
                 assert!(top_right.is_none());
                 assert_eq!(*bottom_right, Some(Dimension::Dp(8.0)));
@@ -1239,7 +1265,12 @@ mod tests {
         let style = parser.parse("rounded-l-xl");
         assert!(style.border_radius_spec.is_some());
         match &style.border_radius_spec {
-            Some(BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left }) => {
+            Some(BorderRadiusSpec::Corners {
+                top_left,
+                top_right,
+                bottom_right,
+                bottom_left,
+            }) => {
                 assert_eq!(*top_left, Some(Dimension::Dp(12.0)));
                 assert!(top_right.is_none());
                 assert!(bottom_right.is_none());
@@ -1257,7 +1288,12 @@ mod tests {
         let style = parser.parse("rounded-r-sm");
         assert!(style.border_radius_spec.is_some());
         match &style.border_radius_spec {
-            Some(BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left }) => {
+            Some(BorderRadiusSpec::Corners {
+                top_left,
+                top_right,
+                bottom_right,
+                bottom_left,
+            }) => {
                 assert!(top_left.is_none());
                 assert_eq!(*top_right, Some(Dimension::Dp(2.0)));
                 assert_eq!(*bottom_right, Some(Dimension::Dp(2.0)));

@@ -9,7 +9,7 @@ sidebar: false
     <p>Browse runnable notes from the repo corpus — VM goldens, book fences, demos. Run and transpile need a local backend.</p>
   </div>
 
-  <NotesExplorer />
+  <PlaygroundIDEPage />
 
   <div id="backend" class="playground-note">
     <p>

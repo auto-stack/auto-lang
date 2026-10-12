@@ -159,7 +159,6 @@ pub struct ExecutionEngine {
 
     /// Frame ID counter - Phase 4 Plan 064
     pub frame_counter: StackFrameId,
-
 }
 
 impl ExecutionEngine {
@@ -555,7 +554,10 @@ mod tests {
         // Push frame with variable
         let sid1 = Sid::from("scope1");
         engine.push_frame(sid1);
-        engine.current_frame().unwrap().borrow_mut()
+        engine
+            .current_frame()
+            .unwrap()
+            .borrow_mut()
             .set(AutoStr::from("x"), ValueID(100));
 
         // Look up variable
@@ -564,7 +566,10 @@ mod tests {
         // Push another frame (shadows x)
         let sid2 = Sid::from("scope2");
         engine.push_frame(sid2);
-        engine.current_frame().unwrap().borrow_mut()
+        engine
+            .current_frame()
+            .unwrap()
+            .borrow_mut()
             .set(AutoStr::from("x"), ValueID(200));
 
         // Should find top frame's x

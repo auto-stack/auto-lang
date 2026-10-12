@@ -11,7 +11,7 @@
 //! service, and `shim_http_server_listen`/`back_proxy` are separate server
 //! paths (see docs/specs/stdlib/design/backend-assembly.md).
 
-use std::io::{Read, Write, BufRead};
+use std::io::{BufRead, Read, Write};
 use std::net::TcpListener;
 
 /// An HTTP route registered with the server.
@@ -49,8 +49,9 @@ pub struct ApiParamSig {
     pub ty: String,
 }
 
-static API_PARAM_SIGS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, Vec<ApiParamSig>>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+static API_PARAM_SIGS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, Vec<ApiParamSig>>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
 
 /// Codegen publishes each `#[api]` fn's declared params at fn-compile time
 /// (dep-module Codegen instances publish here too, so by-name binding resolves
@@ -110,9 +111,8 @@ pub fn clear_api_param_sigs() {
 /// 位模式猜成 future ID 后误消费；AC-01 普通 int 反例由此挡住）。对全部
 /// fn 发布（非仅 #[api]——段驱动 handler/`__axum:` fn-ref closure 同样
 /// 依此判定；closure 经 func_addr → exports 反查名，同 resolve_params）。
-static API_ASYNC_RETURNS: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::HashSet<String>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+static API_ASYNC_RETURNS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
 /// Codegen 在 fn 编译时发布（声明 ret 为 Future<T> 时调用）。
 pub fn record_api_async_return(fn_name: &str) {
@@ -123,7 +123,60 @@ pub fn record_api_async_return(fn_name: &str) {
 
 /// 编组期判定：该函数（或 fn-ref closure 反查出的函数）声明 `~T` 返回。
 pub(crate) fn fn_is_api_async(fn_name: &str) -> bool {
-    API_ASYNC_RETURNS.lock().ok().map(|t| t.contains(fn_name)).unwrap_or(false)
+    API_ASYNC_RETURNS
+        .lock()
+        .ok()
+        .map(|t| t.contains(fn_name))
+        .unwrap_or(false)
+}
+
+/// PLAN-729 T-04：编组期文件返回门——声明返回类型（`FileResponse` 或
+/// `Future<FileResponse>`）含 "FileResponse"。与登记命中（
+/// http_server_file::take_file_response）共同识别文件结果；普通 int 即使
+/// 数值撞上描述符 id 也走 JSON 兜底（AC-01 反例防线）。
+pub(crate) fn fn_is_api_file_return(fn_name: &str) -> bool {
+    fn_response_kind(fn_name) == crate::api::contract::ResponseKind::File
+}
+
+/// PLAN-730 T-02：编组期上传收据返回门——声明返回类型（`UploadReceipt`
+/// 或 `Future<UploadReceipt>`）含 "UploadReceipt"。与登记命中
+/// （http_upload::take_upload_receipt）共同识别；普通 int 撞号走 JSON
+/// 兜底（同 729 三重命中形态）。
+pub(crate) fn fn_is_api_upload_return(fn_name: &str) -> bool {
+    fn_response_kind(fn_name) == crate::api::contract::ResponseKind::Upload
+}
+
+/// PLAN-734 T-03：返回种类单源——API_RETURN_TYPES 条目经契约身份分类
+/// （ResponseKind::from_return_string；假同名类型不命中）。
+pub(crate) fn fn_response_kind(fn_name: &str) -> crate::api::contract::ResponseKind {
+    API_RETURN_TYPES
+        .lock()
+        .ok()
+        .and_then(|t| {
+            t.get(fn_name)
+                .map(|r| crate::api::contract::ResponseKind::from_return_string(r))
+        })
+        .unwrap_or(crate::api::contract::ResponseKind::Json)
+}
+
+/// PLAN-730 T-02：路由的上传能力分类——方法+参数类型双条件（不按
+/// Content-Type/URL 猜）。bridge deferral 与 owner dispatch 共用同一判定。
+pub fn route_declares_upload(fn_name: &str) -> bool {
+    api_param_sigs(fn_name)
+        .map(|sigs| {
+            sigs.iter()
+                .any(|p| crate::api::contract::is_upload_param(&p.ty))
+        })
+        .unwrap_or(false)
+}
+
+/// PLAN-730 T-05：bridge 侧上传路由预判（方法已由调用方限定 POST/PUT）。
+/// 与 owner 共用 match_route + 类型分类——同一请求两臂判定一致。
+pub fn upload_route_lookup(method: &str, path: &str) -> bool {
+    let routes = get_routes();
+    match_route(&routes, method, path)
+        .map(|rm| route_declares_upload(&rm.fn_name))
+        .unwrap_or(false)
 }
 
 /// PLAN-698 T-02/SD-02: POST 成功后的 SSE 广播臂——生成 Axum 侧
@@ -186,7 +239,8 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
     let query_params: Vec<(String, String)> = if query_string.is_empty() {
         Vec::new()
     } else {
-        query_string.split('&')
+        query_string
+            .split('&')
             .filter_map(|pair| {
                 let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
                 Some((url_decode(k), url_decode(v)))
@@ -194,44 +248,79 @@ pub fn match_route(routes: &[HttpRoute], method: &str, path: &str) -> Option<Rou
             .collect()
     };
 
-    for route in routes {
-        if route.method.to_uppercase() != method.to_uppercase() {
-            continue;
-        }
-        let route_segments: Vec<&str> = route.path.split('/').collect();
-        let path_segments: Vec<&str> = path_only.split('/').collect();
-        if route_segments.len() != path_segments.len() {
-            continue;
-        }
-        let mut params = Vec::new();
-        let mut matched = true;
-        for (rs, ps) in route_segments.iter().zip(path_segments.iter()) {
-            if let Some(param_name) = rs.strip_prefix(':') {
-                // Plan 022 (auto-down): Path params must arrive
-                // percent-DECODED (axum Path semantics): the front calls
-                // encodeURIComponent on wiki titles ("Hello%20World.ad"),
-                // and the undecoded form misses the file on disk.
-                let decoded = url_decode(ps);
-                if let Some(wild_name) = param_name.strip_prefix('*') {
-                    params.push((wild_name.to_string(), decoded));
-                } else {
-                    params.push((param_name.to_string(), decoded));
-                }
-            } else if *rs == "*" || rs.starts_with('*') {
-                // Plan 346: Wildcard route — matches any remaining segments.
+    // PLAN-729 R1（G-11 修复）：两遍匹配——第一遍精确 method；HEAD 请求在
+    // 第二遍回退到声明文件返回的 GET 路由（自动 HEAD）。显式同路径 HEAD
+    // 路由因第一遍先匹配而优先，与注册顺序无关（SD-01 §3 承诺对齐）。
+    // PLAN-093 (G-8 系)：尾部 catch-all（`*` / `*name`，由 axum `{*rest}`
+    // 翻译而来）消费全部剩余段——段数严格相等检查曾使多段剩余路径永远
+    // 404（/api/files/{ws}/{*path} 即此）。
+    let head_fallback = method.eq_ignore_ascii_case("HEAD");
+    let mut pass = 0;
+    while pass < 2 {
+        let use_fallback = pass == 1;
+        for route in routes {
+            let method_ok = route.method.to_uppercase() == method.to_uppercase()
+                || (use_fallback
+                    && head_fallback
+                    && route.method.eq_ignore_ascii_case("GET")
+                    && fn_is_api_file_return(&route.fn_name));
+            if !method_ok {
                 continue;
-            } else if rs != ps {
-                matched = false;
-                break;
+            }
+            let route_segments: Vec<&str> = route.path.split('/').collect();
+            let path_segments: Vec<&str> = path_only.split('/').collect();
+            let catch_all = route_segments
+                .last()
+                .map_or(false, |s| *s == "*" || s.starts_with('*'));
+            if catch_all {
+                if path_segments.len() < route_segments.len() - 1 {
+                    continue;
+                }
+            } else if route_segments.len() != path_segments.len() {
+                continue;
+            }
+            let mut params = Vec::new();
+            let mut matched = true;
+            for (i, rs) in route_segments.iter().enumerate() {
+                if let Some(param_name) = rs.strip_prefix(':') {
+                    // Plan 022 (auto-down): Path params must arrive
+                    // percent-DECODED (axum Path semantics): the front calls
+                    // encodeURIComponent on wiki titles ("Hello%20World.ad"),
+                    // and the undecoded form misses the file on disk.
+                    let Some(ps) = path_segments.get(i) else {
+                        matched = false;
+                        break;
+                    };
+                    let decoded = url_decode(ps);
+                    if let Some(wild_name) = param_name.strip_prefix('*') {
+                        params.push((wild_name.to_string(), decoded));
+                    } else {
+                        params.push((param_name.to_string(), decoded));
+                    }
+                } else if *rs == "*" || rs.starts_with('*') {
+                    // Plan 346 通配 + axum `{*name}` 语义（G-8）：剩余段以 '/'
+                    // 连接（解码后）作为该参数值；无名 `*` 仅消费不产出参数。
+                    let wild_name = rs.strip_prefix('*').unwrap_or("");
+                    let rest: Vec<&str> = path_segments[i.min(path_segments.len())..].to_vec();
+                    let decoded = url_decode(&rest.join("/"));
+                    if !wild_name.is_empty() {
+                        params.push((wild_name.to_string(), decoded));
+                    }
+                    break;
+                } else if path_segments.get(i) != Some(rs) {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched {
+                return Some(RouteMatch {
+                    fn_name: route.fn_name.clone(),
+                    path_params: params,
+                    query_params,
+                });
             }
         }
-        if matched {
-            return Some(RouteMatch {
-                fn_name: route.fn_name.clone(),
-                path_params: params,
-                query_params,
-            });
-        }
+        pass += 1;
     }
     None
 }
@@ -264,8 +353,7 @@ pub(crate) fn cors_headers() -> String {
 /// Plan 346 5e (B6): active rate-limit config `(max_requests, window_ms)`.
 /// `None` (default) = no limiting — backwards compatible until
 /// `http.rate_limit(n, ms)` is called.
-static RATE_LIMIT_CFG: std::sync::Mutex<Option<(u32, u64)>> =
-    std::sync::Mutex::new(None);
+static RATE_LIMIT_CFG: std::sync::Mutex<Option<(u32, u64)>> = std::sync::Mutex::new(None);
 /// Plan 346 5e (B6): per-IP fixed-window buckets `ip -> (window_start_ms, count)`.
 static RATE_BUCKETS: std::sync::Mutex<Option<std::collections::HashMap<String, (u64, u32)>>> =
     std::sync::Mutex::new(None);
@@ -358,74 +446,105 @@ fn find_sub(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() || haystack.len() < needle.len() {
         return None;
     }
-    haystack
-        .windows(needle.len())
-        .position(|w| w == needle)
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
-/// Plan 346 5a: save a file part under the upload dir (env `AUTO_UPLOAD_DIR`,
-/// default `./uploads`) and return the stored path. The original filename is
-/// reduced to its basename and prefixed with a counter so concurrent uploads
-/// of the same name cannot clobber each other.
-fn store_multipart_file(filename: &str, data: &[u8]) -> String {
+/// PLAN-730 T-07：legacy 落盘记录（files JSON 项 + provisional 清理路径）。
+pub(crate) struct LegacyStoredFile {
+    pub field: String,
+    pub filename: String,
+    pub path: String,
+    pub size: usize,
+}
+
+/// Plan 346 5a / PLAN-730 T-07：save file parts under the upload dir (env
+/// `AUTO_UPLOAD_DIR`, default `./uploads`)。文件名归约同历史（basename +
+/// 计数前缀防同名互踩）。**错误必须传播**（目录创建/写失败 → Err——
+/// 不返回不存在的假路径）；在宿主 spawn_blocking 执行，不在 owner。
+pub(crate) fn legacy_store_files(
+    files: &[(String, String, Vec<u8>)],
+) -> Result<Vec<LegacyStoredFile>, String> {
     static FILE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let dir = std::env::var("AUTO_UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
-    let _ = std::fs::create_dir_all(&dir);
-    let base = filename
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or("upload")
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
-        .collect::<String>();
-    let base = if base.is_empty() { "upload".to_string() } else { base };
-    let n = FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let path = std::path::Path::new(&dir).join(format!("{}_{}", n, base));
-    let _ = std::fs::write(&path, data);
-    path.to_string_lossy().to_string()
+    std::fs::create_dir_all(&dir).map_err(|e| format!("upload dir create failed: {e}"))?;
+    let mut stored = Vec::with_capacity(files.len());
+    for (field, filename, data) in files {
+        let base = filename
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("upload")
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+            .collect::<String>();
+        let base = if base.is_empty() {
+            "upload".to_string()
+        } else {
+            base
+        };
+        let n = FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let path = std::path::Path::new(&dir).join(format!("{}_{}", n, base));
+        std::fs::write(&path, data)
+            .map_err(|e| format!("upload write failed for {}: {e}", path.to_string_lossy()))?;
+        stored.push(LegacyStoredFile {
+            field: field.clone(),
+            filename: filename.clone(),
+            path: path.to_string_lossy().to_string(),
+            size: data.len(),
+        });
+    }
+    Ok(stored)
 }
 
-/// Plan 346 5a: build the handler-facing JSON for a multipart request:
-/// `{"fields":{"k":"v"},"files":[{"field","filename","path","size"}]}`.
-/// Text parts land in `fields`; file parts are persisted and described in
-/// `files` (handlers read metadata, not megabytes of bytes).
-pub fn multipart_to_handler_json(parts: Vec<MultipartPart>) -> String {
+/// Plan 346 5a / PLAN-730 T-07：handler-facing JSON for a multipart request:
+/// `{"fields":{"k":"v"},"files":[{"field","filename","path","size"}]}`。
+/// 文本字段即时折叠（纯内存，dispatch 段）；file 项由**中间件之后**的
+/// 宿主落盘结果合并（multipart_files_json）——解析与落盘分离。
+pub fn multipart_fields_json(parts: &[MultipartPart]) -> String {
     let mut fields: Vec<String> = Vec::new();
-    let mut files: Vec<String> = Vec::new();
     for part in parts {
-        match part.filename {
-            None => {
-                let text = String::from_utf8_lossy(&part.data).to_string();
-                fields.push(format!(
-                    "\"{}\":\"{}\"",
-                    part.name.replace('"', "\\\""),
-                    text.replace('\\', "\\\\").replace('"', "\\\"")
-                ));
-            }
-            Some(fname) => {
-                let path = store_multipart_file(&fname, &part.data);
-                files.push(format!(
-                    "{{\"field\":\"{}\",\"filename\":\"{}\",\"path\":\"{}\",\"size\":{}}}",
-                    part.name.replace('"', "\\\""),
-                    fname.replace('"', "\\\""),
-                    path.replace('\\', "/").replace('"', "\\\""),
-                    part.data.len()
-                ));
-            }
+        if part.filename.is_none() {
+            let text = String::from_utf8_lossy(&part.data).to_string();
+            fields.push(format!(
+                "\"{}\":\"{}\"",
+                part.name.replace('"', "\\\""),
+                text.replace('\\', "\\\\").replace('"', "\\\"")
+            ));
         }
     }
-    format!(
-        "{{\"fields\":{{{}}},\"files\":[{}]}}",
-        fields.join(","),
-        files.join(",")
-    )
+    fields.join(",")
+}
+
+/// PLAN-730 T-07：宿主落盘结果 → files JSON 项（历史形状逐字节保持）。
+pub(crate) fn multipart_files_json(stored: &[LegacyStoredFile]) -> String {
+    stored
+        .iter()
+        .map(|f| {
+            format!(
+                "{{\"field\":\"{}\",\"filename\":\"{}\",\"path\":\"{}\",\"size\":{}}}",
+                f.field.replace('"', "\\\""),
+                f.filename.replace('"', "\\\""),
+                f.path.replace('\\', "/").replace('"', "\\\""),
+                f.size
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// PLAN-730 T-07：fields + files 合并为 handler body（B6 历史成功形状）。
+pub(crate) fn multipart_handler_json(fields: &str, files: &str) -> String {
+    format!("{{\"fields\":{{{}}},\"files\":[{}]}}", fields, files)
 }
 
 /// Plan 346 5e (B6): enable per-IP fixed-window rate limiting.
 /// Called by the `http.rate_limit(max_requests, window_ms)` native.
 pub fn set_rate_limit(max_requests: u32, window_ms: u64) {
     if let Ok(mut cfg) = RATE_LIMIT_CFG.lock() {
-        *cfg = if max_requests == 0 { None } else { Some((max_requests, window_ms.max(1))) };
+        *cfg = if max_requests == 0 {
+            None
+        } else {
+            Some((max_requests, window_ms.max(1)))
+        };
     }
 }
 
@@ -506,11 +625,12 @@ fn http_status_reason(code: u16) -> &'static str {
 /// the request is an OPTIONS method; returns false otherwise so the caller can
 /// continue normal routing. Used by both blocking and async servers.
 pub(crate) fn handle_cors_preflight(method: &str) -> Option<String> {
+    if crate::http_service_config::service_policy_active() {
+        // 服务面：preflight 由桥层按配置决策（含 Origin 校验），不经此直通 204。
+        return None;
+    }
     if method.eq_ignore_ascii_case("OPTIONS") {
-        Some(format!(
-            "HTTP/1.1 204 No Content\r\n{}\r\n",
-            cors_headers()
-        ))
+        Some(format!("HTTP/1.1 204 No Content\r\n{}\r\n", cors_headers()))
     } else {
         None
     }
@@ -540,7 +660,11 @@ fn url_decode(s: &str) -> String {
 pub fn get_routes() -> Vec<HttpRoute> {
     crate::vm::ffi::stdlib::get_http_routes()
         .into_iter()
-        .map(|(method, path, fn_name)| HttpRoute { method, path, fn_name })
+        .map(|(method, path, fn_name)| HttpRoute {
+            method,
+            path,
+            fn_name,
+        })
         .collect()
 }
 
@@ -557,13 +681,20 @@ pub fn get_routes() -> Vec<HttpRoute> {
 /// - Option `Some(x)` → the inner value's JSON; `None` → HTTP caller maps to 404
 ///
 /// `depth` guards against cyclic references (objects referencing each other).
-pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth: u32) -> Option<String> {
+pub fn nv_to_json(
+    vm: &crate::vm::engine::AutoVM,
+    nv: auto_val::NanoValue,
+    depth: u32,
+) -> Option<String> {
     const MAX_DEPTH: u32 = 32;
 
     // Tagged string (the canonical handler-returns-string path)
     if auto_val::is_string(nv) {
         let idx = auto_val::decode_string(nv);
-        let s = vm.strings.read().unwrap()
+        let s = vm
+            .strings
+            .read()
+            .unwrap()
             .get(idx as usize)
             .map(|b| String::from_utf8_lossy(b).to_string())?;
         return Some(json_escape_string(&s));
@@ -576,7 +707,11 @@ pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth
         return Some(format_f64_json(auto_val::decode_f32(nv) as f64));
     }
     if auto_val::is_bool(nv) {
-        return Some(if auto_val::decode_bool(nv) { "true".to_string() } else { "false".to_string() });
+        return Some(if auto_val::decode_bool(nv) {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        });
     }
     if auto_val::is_null(nv) {
         return Some("null".to_string());
@@ -589,6 +724,32 @@ pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth
     if auto_val::is_list(nv) {
         let id = auto_val::decode_list(nv) as u64;
         return heap_object_to_json(vm, id, depth);
+    }
+    // PLAN-734 T-03（E3 修复）：i64/u64/BigInt 全域——48 位内联与堆装箱均按
+    // 数值序列化（此前无臂落 null——i64 响应体损坏为 "null"）。
+    if auto_val::is_i64(nv) {
+        return Some(auto_val::decode_i64(nv).to_string());
+    }
+    if auto_val::is_u64(nv) {
+        return Some(auto_val::decode_u64(nv).to_string());
+    }
+    if auto_val::is_bigint(nv) {
+        let id = auto_val::decode_bigint_handle(nv) as u64;
+        if let Some(obj) = vm.get_heap_object(id) {
+            if let Ok(g) = obj.read() {
+                if let Some(b) = g
+                    .as_any()
+                    .downcast_ref::<crate::vm::heap_object::BigIntData>()
+                {
+                    return Some(if b.is_unsigned {
+                        format!("{}", b.as_u64())
+                    } else {
+                        format!("{}", b.as_i64())
+                    });
+                }
+            }
+        }
+        return Some("0".to_string());
     }
     // i32: either a plain integer OR a heap/array object ID stored as i32.
     // Heap object ids start at 4_000_000 (heap_object_id_gen); array literals
@@ -618,11 +779,7 @@ pub fn nv_to_json(vm: &crate::vm::engine::AutoVM, nv: auto_val::NanoValue, depth
 /// Option handling: a `GenericInstanceData` whose mono_name starts with
 /// "Option.Some" is unwrapped to its single inner field; "Option.None"
 /// yields `None` (the HTTP layer maps this to 404).
-fn heap_object_to_json(
-    vm: &crate::vm::engine::AutoVM,
-    id: u64,
-    depth: u32,
-) -> Option<String> {
+fn heap_object_to_json(vm: &crate::vm::engine::AutoVM, id: u64, depth: u32) -> Option<String> {
     use crate::vm::generic_registry::GenericInstanceData;
 
     // 1. heap_objects: GenericInstanceData (user-defined struct instances)
@@ -654,18 +811,23 @@ fn heap_object_to_json(
             return Some(format!("{{{}}}", parts.join(", ")));
         }
         // Plan 346: ListData<Value> (List<T>.new(...) collections).
-        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+        {
             let mut parts: Vec<String> = Vec::new();
             for elem in &list.elems {
-                let json = value_to_json(vm, elem, depth + 1)
-                    .unwrap_or_else(|| "null".to_string());
+                let json = value_to_json(vm, elem, depth + 1).unwrap_or_else(|| "null".to_string());
                 parts.push(json);
             }
             return Some(format!("[{}]", parts.join(", ")));
         }
         // ListData<i32> (int collections, or struct lists where elements are
         // stored as heap object IDs >= 4000000).
-        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<i32>>()
+        {
             let mut parts: Vec<String> = Vec::new();
             for &i in &list.elems {
                 if i >= 4_000_000 {
@@ -680,12 +842,15 @@ fn heap_object_to_json(
             return Some(format!("[{}]", parts.join(", ")));
         }
         // Plan 390 §15 H3b: ObjectData (obj literals { k: v }) in heap_objects.
-        if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+        if let Some(od) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ObjectData>()
+        {
             let mut parts: Vec<String> = Vec::new();
             for (key, val) in od.fields.iter() {
                 let key_json = json_escape_string(&key.to_string());
-                let val_json = value_to_json(vm, val, depth + 1)
-                    .unwrap_or_else(|| "null".to_string());
+                let val_json =
+                    value_to_json(vm, val, depth + 1).unwrap_or_else(|| "null".to_string());
                 parts.push(format!("{}: {}", key_json, val_json));
             }
             return Some(format!("{{{}}}", parts.join(", ")));
@@ -700,7 +865,11 @@ fn heap_object_to_json(
 /// Serialize a `Value` (the enum used inside arrays / struct fields) to JSON.
 /// Struct/array `Value`s carry heap object IDs in `Value::Int` (>= 4_000_000),
 /// which we re-dispatch through `heap_object_to_json`.
-fn value_to_json(vm: &crate::vm::engine::AutoVM, value: &auto_val::Value, depth: u32) -> Option<String> {
+fn value_to_json(
+    vm: &crate::vm::engine::AutoVM,
+    value: &auto_val::Value,
+    depth: u32,
+) -> Option<String> {
     use auto_val::Value;
     const MAX_DEPTH: u32 = 32;
     if depth >= MAX_DEPTH {
@@ -723,7 +892,11 @@ fn value_to_json(vm: &crate::vm::engine::AutoVM, value: &auto_val::Value, depth:
         Value::I64(i) => Some(i.to_string()),
         Value::Byte(b) => Some(b.to_string()),
         Value::USize(u) => Some(u.to_string()),
-        Value::Bool(b) => Some(if *b { "true".to_string() } else { "false".to_string() }),
+        Value::Bool(b) => Some(if *b {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }),
         Value::Float(f) | Value::Double(f) => Some(format_f64_json(*f)),
         Value::Char(c) => Some(json_escape_string(&c.to_string())),
         Value::Str(s) => Some(json_escape_string(&s.to_string())),
@@ -767,6 +940,87 @@ fn format_f64_json(f: f64) -> String {
         format!("{}", f as i64)
     } else {
         format!("{}", f)
+    }
+}
+
+// =============================================================================
+// PLAN-755 T-02/R2（P755-R2-01）：e2e 启动结果有界上报共享核心
+// =============================================================================
+/// 三处 e2e 启动助手（plan730 `start_server`、plan326 `start_server`、
+/// `start_example_api_server`）统一经此 spawn：`crate::run` 的 Err 与
+/// **panic 原始载荷**都经通道回传，父线程在 ready 窗口内即时呈现真实
+/// 原因，不落入客户端 connect-refused 等待（751-R2：吞错 × 本机 ~2.15s/次
+/// 拒绝连接把启动失败藏成 nextest 120s TERMINATING）。
+///
+/// panic 载荷必须 downcast 提取字符串——`{panic:?}` 对 `Box<dyn Any>` 只会
+/// 得到 `Any { .. }`，丢失原因（R2 负向反例实证）。
+#[cfg(test)]
+pub(crate) fn spawn_outcome_reporter<F, T>(
+    stack_size: usize,
+    label: &str,
+    body: F,
+) -> std::sync::mpsc::Receiver<String>
+where
+    F: FnOnce() -> crate::error::AutoResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let label = label.to_string();
+    let (outcome_tx, outcome_rx) = std::sync::mpsc::channel::<String>();
+    std::thread::Builder::new()
+        .stack_size(stack_size)
+        .spawn(move || {
+            let outcome = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+                Ok(Ok(_)) => format!("{label} returned Ok without serving"),
+                Ok(Err(err)) => format!("{label} failed: {err}"),
+                Err(panic) => format!("{label} panicked: {}", panic_payload_text(panic)),
+            };
+            let _ = outcome_tx.send(outcome);
+        })
+        .expect("spawn server thread");
+    outcome_rx
+}
+
+/// catch_unwind 载荷的字符串提取（`&'static str` / `String` / 未知兜底）。
+#[cfg(test)]
+pub(crate) fn panic_payload_text(panic: Box<dyn std::any::Any + Send>) -> String {
+    match panic.downcast::<String>() {
+        Ok(text) => *text,
+        Err(panic) => match panic.downcast::<&'static str>() {
+            Ok(text) => (*text).to_string(),
+            Err(_) => "<non-string panic payload>".to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod plan755_outcome_reporter_tests {
+    /// P755-R2-01 负向冻结：真实 spawn/通道/catch_unwind 路径必须转发 panic
+    /// 原始载荷——父线程侧消息携带原因，而不是 `Any { .. }`。
+    #[test]
+    fn panic_payload_is_forwarded_through_real_spawn_path() {
+        let rx = super::spawn_outcome_reporter::<_, String>(8 * 1024 * 1024, "test-run", || {
+            panic!("PLAN755_PANIC_PAYLOAD_MARKER")
+        });
+        let outcome = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("outcome reported");
+        assert!(
+            outcome.contains("PLAN755_PANIC_PAYLOAD_MARKER"),
+            "父线程消息丢失 panic 载荷: {outcome}"
+        );
+    }
+
+    #[test]
+    fn panic_payload_text_covers_string_static_and_foreign() {
+        assert_eq!(
+            super::panic_payload_text(Box::new(String::from("owned"))),
+            "owned"
+        );
+        assert_eq!(super::panic_payload_text(Box::new("static")), "static");
+        assert_eq!(
+            super::panic_payload_text(Box::new(755usize)),
+            "<non-string panic payload>"
+        );
     }
 }
 
@@ -855,16 +1109,30 @@ mod plan326_tests {
         //   - "echo_id" at addr 0: FN_PROLOG, n_args=1, n_locals=0, RET
         //   - "create_note" at addr 4: FN_PROLOG, n_args=2, n_locals=0, RET
         let bytecode: Vec<u8> = vec![
-            OpCode::FN_PROLOG as u8, 1, 0, OpCode::RET as u8,            // echo_id (1 param)
-            OpCode::FN_PROLOG as u8, 2, 0, OpCode::RET as u8,            // create_note (2 params)
+            OpCode::FN_PROLOG as u8,
+            1,
+            0,
+            OpCode::RET as u8, // echo_id (1 param)
+            OpCode::FN_PROLOG as u8,
+            2,
+            0,
+            OpCode::RET as u8, // create_note (2 params)
         ];
         let mut flash = VirtualFlash::new_with_code(bytecode);
         flash.exports_by_name.insert("echo_id".to_string(), 0);
         flash.exports_by_name.insert("create_note".to_string(), 4);
         let vm = AutoVM::new(flash, 1024);
 
-        assert_eq!(vm.get_fn_n_args("echo_id"), Some(1), "1-param handler arity");
-        assert_eq!(vm.get_fn_n_args("create_note"), Some(2), "2-param handler arity");
+        assert_eq!(
+            vm.get_fn_n_args("echo_id"),
+            Some(1),
+            "1-param handler arity"
+        );
+        assert_eq!(
+            vm.get_fn_n_args("create_note"),
+            Some(2),
+            "2-param handler arity"
+        );
         assert_eq!(vm.get_fn_n_args("nonexistent"), None, "unknown fn -> None");
     }
 
@@ -884,7 +1152,10 @@ mod plan326_tests {
             strings.len() - 1
         };
         let nv = auto_val::encode_string(idx as u32);
-        assert_eq!(super::nv_to_json(&vm, nv, 0), Some(r#""hello""#.to_string()));
+        assert_eq!(
+            super::nv_to_json(&vm, nv, 0),
+            Some(r#""hello""#.to_string())
+        );
     }
 
     #[test]
@@ -923,28 +1194,34 @@ mod plan326_tests {
         let vm = fresh_vm();
         let a = GenericInstanceData::new_with_names(
             "Note".to_string(),
-            vec![auto_val::Value::Int(0), auto_val::Value::Str(auto_val::AutoStr::from("a"))],
+            vec![
+                auto_val::Value::Int(0),
+                auto_val::Value::Str(auto_val::AutoStr::from("a")),
+            ],
             vec!["id".to_string(), "title".to_string()],
         );
         let b = GenericInstanceData::new_with_names(
             "Note".to_string(),
-            vec![auto_val::Value::Int(1), auto_val::Value::Str(auto_val::AutoStr::from("b"))],
+            vec![
+                auto_val::Value::Int(1),
+                auto_val::Value::Str(auto_val::AutoStr::from("b")),
+            ],
             vec!["id".to_string(), "title".to_string()],
         );
         let id_a = vm.insert_heap_object(a) as i32;
         let id_b = vm.insert_heap_object(b) as i32;
         // Allocate an array id the same way CREATE_ARRAY does now.
         let arr_id = vm.insert_heap_object(crate::vm::types::ListData {
-            elems: vec![
-                auto_val::Value::Int(id_a),
-                auto_val::Value::Int(id_b),
-            ],
+            elems: vec![auto_val::Value::Int(id_a), auto_val::Value::Int(id_b)],
             storage: None,
         });
         // The handler returns the array id as i32.
         let nv = auto_val::encode_i32(arr_id as i32);
         let json = super::nv_to_json(&vm, nv, 0).unwrap();
-        assert_eq!(json, r#"[{"id": 0, "title": "a"}, {"id": 1, "title": "b"}]"#);
+        assert_eq!(
+            json,
+            r#"[{"id": 0, "title": "a"}, {"id": 1, "title": "b"}]"#
+        );
     }
 
     /// Option.Some(x) → unwrap to inner value's JSON.
@@ -958,7 +1235,10 @@ mod plan326_tests {
         );
         let id = vm.insert_heap_object(inst);
         let nv = auto_val::encode_i32(id as i32);
-        assert_eq!(super::nv_to_json(&vm, nv, 0), Some(r#""found""#.to_string()));
+        assert_eq!(
+            super::nv_to_json(&vm, nv, 0),
+            Some(r#""found""#.to_string())
+        );
     }
 
     /// Option.None → JSON null (Plan 326: we serialize None as `null` to keep
@@ -966,11 +1246,7 @@ mod plan326_tests {
     #[test]
     fn nv_to_json_option_none() {
         let vm = fresh_vm();
-        let inst = GenericInstanceData::new_with_names(
-            "Option.None".to_string(),
-            vec![],
-            vec![],
-        );
+        let inst = GenericInstanceData::new_with_names("Option.None".to_string(), vec![], vec![]);
         let id = vm.insert_heap_object(inst);
         let nv = auto_val::encode_i32(id as i32);
         assert_eq!(super::nv_to_json(&vm, nv, 0), Some("null".to_string()));
@@ -1008,8 +1284,14 @@ mod plan326_tests {
         record_api_param_sigs(
             "create_note",
             vec![
-                ApiParamSig { name: "title".into(), ty: "str".into() },
-                ApiParamSig { name: "id".into(), ty: "int".into() },
+                ApiParamSig {
+                    name: "title".into(),
+                    ty: "str".into(),
+                },
+                ApiParamSig {
+                    name: "id".into(),
+                    ty: "int".into(),
+                },
             ],
         );
         let sigs = api_param_sigs("create_note").expect("recorded");
@@ -1025,15 +1307,16 @@ mod plan326_tests {
     // stack values are inspected directly; e2e shapes run in http_e2e).
     // ---------------------------------------------------------------------
     mod plan669_bind_tests {
-        use super::super::{
-            bind_api_args_by_name, ApiArgBindError, ApiParamSig, RouteMatch,
-        };
+        use super::super::{bind_api_args_by_name, ApiArgBindError, ApiParamSig, RouteMatch};
         use crate::vm::engine::AutoVM;
         use crate::vm::task::AutoTask;
         use crate::vm::virt_memory::VirtualFlash;
 
         fn sig(name: &str, ty: &str) -> ApiParamSig {
-            ApiParamSig { name: name.into(), ty: ty.into() }
+            ApiParamSig {
+                name: name.into(),
+                ty: ty.into(),
+            }
         }
         fn rm(path_params: Vec<(&str, &str)>, query_params: Vec<(&str, &str)>) -> RouteMatch {
             RouteMatch {
@@ -1072,9 +1355,16 @@ mod plan326_tests {
             let body: serde_json::Value =
                 serde_json::from_str(r#"{"body":"second","title":"first"}"#).unwrap();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("title", "str"), sig("body", "str")],
-                &rm(vec![], vec![]), Some(&body), "", None, "POST", "/api/notes",
+                &rm(vec![], vec![]),
+                Some(&body),
+                "",
+                None,
+                "POST",
+                "/api/notes",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 2);
@@ -1087,10 +1377,16 @@ mod plan326_tests {
         fn query_binds_by_name() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("query", "str")],
                 &rm(vec![], vec![("q", "ignored"), ("query", "Build")]),
-                None, "", None, "GET", "/api/search",
+                None,
+                "",
+                None,
+                "GET",
+                "/api/search",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1101,20 +1397,37 @@ mod plan326_tests {
         fn typed_int_query_converts_and_rejects() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("page", "int")],
-                &rm(vec![], vec![("page", "7")]), None, "", None, "GET", "/x",
+                &rm(vec![], vec![("page", "7")]),
+                None,
+                "",
+                None,
+                "GET",
+                "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
             let nv = task.ram.pop_nv();
-            assert!(auto_val::is_i32(nv) || auto_val::decode_i32(nv) == 7, "int nv {nv:?}");
+            assert!(
+                auto_val::is_i32(nv) || auto_val::decode_i32(nv) == 7,
+                "int nv {nv:?}"
+            );
 
             let (vm2, mut task2) = rig();
             let err = bind_api_args_by_name(
-                &vm2, &mut task2,
+                &vm2,
+                &mut task2,
                 &[sig("page", "int")],
-                &rm(vec![], vec![("page", "seven")]), None, "", None, "GET", "/x",
+                &rm(vec![], vec![("page", "seven")]),
+                None,
+                "",
+                None,
+                "GET",
+                "/x",
+                None,
             )
             .unwrap_err();
             match err {
@@ -1129,40 +1442,65 @@ mod plan326_tests {
         fn bool_query_converts() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("done", "bool")],
-                &rm(vec![], vec![("done", "true")]), None, "", None, "GET", "/x",
+                &rm(vec![], vec![("done", "true")]),
+                None,
+                "",
+                None,
+                "GET",
+                "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
             let nv = task.ram.pop_nv();
-            assert!(auto_val::is_bool(nv) && auto_val::decode_bool(nv), "bool nv {nv:?}");
+            assert!(
+                auto_val::is_bool(nv) && auto_val::decode_bool(nv),
+                "bool nv {nv:?}"
+            );
         }
 
         #[test]
         fn path_wins_over_body_and_query() {
             let (vm, mut task) = rig();
-            let body: serde_json::Value =
-                serde_json::from_str(r#"{"id": 999}"#).unwrap();
+            let body: serde_json::Value = serde_json::from_str(r#"{"id": 999}"#).unwrap();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("id", "int")],
                 &rm(vec![("id", "42")], vec![("id", "7")]),
-                Some(&body), "", None, "GET", "/api/notes/42",
+                Some(&body),
+                "",
+                None,
+                "GET",
+                "/api/notes/42",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
             let nv = task.ram.pop_nv();
-            assert!(auto_val::decode_i32(nv) == 42, "path source must win, nv {nv:?}");
+            assert!(
+                auto_val::decode_i32(nv) == 42,
+                "path source must win, nv {nv:?}"
+            );
         }
 
         #[test]
         fn missing_param_is_400_naming_param() {
             let (vm, mut task) = rig();
             let err = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("title", "str"), sig("body", "str")],
-                &rm(vec![], vec![]), None, "", None, "POST", "/api/notes",
+                &rm(vec![], vec![]),
+                None,
+                "",
+                None,
+                "POST",
+                "/api/notes",
+                None,
             )
             .unwrap_err();
             match err {
@@ -1176,12 +1514,18 @@ mod plan326_tests {
         #[test]
         fn trailing_unbound_param_receives_metadata() {
             let (vm, mut task) = rig();
-            let body: serde_json::Value =
-                serde_json::from_str(r#"{"title":"t"}"#).unwrap();
+            let body: serde_json::Value = serde_json::from_str(r#"{"title":"t"}"#).unwrap();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("title", "str"), sig("meta", "str")],
-                &rm(vec![], vec![]), Some(&body), "", Some(r#"{"cookies":{}}"#), "POST", "/x",
+                &rm(vec![], vec![]),
+                Some(&body),
+                "",
+                Some(r#"{"cookies":{}}"#),
+                "POST",
+                "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 2);
@@ -1193,9 +1537,16 @@ mod plan326_tests {
         fn non_trailing_unbound_is_missing_even_with_metadata() {
             let (vm, mut task) = rig();
             let err = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("a", "str"), sig("meta", "str")],
-                &rm(vec![], vec![]), None, "", Some("{}"), "GET", "/x",
+                &rm(vec![], vec![]),
+                None,
+                "",
+                Some("{}"),
+                "GET",
+                "/x",
+                None,
             )
             .unwrap_err();
             assert!(matches!(err, ApiArgBindError::BadRequest(_)));
@@ -1205,9 +1556,16 @@ mod plan326_tests {
         fn raw_body_single_param_tolerance() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("data", "str")],
-                &rm(vec![], vec![]), None, "plain text not json", None, "POST", "/x",
+                &rm(vec![], vec![]),
+                None,
+                "plain text not json",
+                None,
+                "POST",
+                "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1223,9 +1581,16 @@ mod plan326_tests {
             let body: serde_json::Value =
                 serde_json::from_str(r#"{"fields":{"title":"hello"}}"#).unwrap();
             let n = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("form", "str")],
-                &rm(vec![], vec![]), Some(&body), r#"{"fields":{"title":"hello"}}"#, None, "POST", "/x",
+                &rm(vec![], vec![]),
+                Some(&body),
+                r#"{"fields":{"title":"hello"}}"#,
+                None,
+                "POST",
+                "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 1);
@@ -1240,9 +1605,16 @@ mod plan326_tests {
             let (vm, mut task) = rig();
             let body: serde_json::Value = serde_json::from_str(r#"{"title":"t"}"#).unwrap();
             let err = bind_api_args_by_name(
-                &vm, &mut task,
+                &vm,
+                &mut task,
                 &[sig("title", "str"), sig("body", "str")],
-                &rm(vec![], vec![]), Some(&body), r#"{"title":"t"}"#, Some("{}"), "POST", "/x",
+                &rm(vec![], vec![]),
+                Some(&body),
+                r#"{"title":"t"}"#,
+                Some("{}"),
+                "POST",
+                "/x",
+                None,
             )
             .unwrap_err();
             match err {
@@ -1257,7 +1629,16 @@ mod plan326_tests {
         fn empty_sigs_bind_zero() {
             let (vm, mut task) = rig();
             let n = bind_api_args_by_name(
-                &vm, &mut task, &[], &rm(vec![], vec![]), None, "", None, "GET", "/x",
+                &vm,
+                &mut task,
+                &[],
+                &rm(vec![], vec![]),
+                None,
+                "",
+                None,
+                "GET",
+                "/x",
+                None,
             )
             .expect("bind");
             assert_eq!(n, 0);
@@ -1277,7 +1658,10 @@ mod plan326_tests {
                 &vm,
                 &mut task,
                 "h_legacy_never_published",
-                &[("id".to_string(), "42".to_string()), ("slug".to_string(), "hello".to_string())],
+                &[
+                    ("id".to_string(), "42".to_string()),
+                    ("slug".to_string(), "hello".to_string()),
+                ],
                 &[("ignored".to_string(), "q".to_string())],
                 "raw-body",
                 "GET",
@@ -1289,7 +1673,10 @@ mod plan326_tests {
             assert_eq!(pop_str(&vm, &mut task), "raw-body");
             assert_eq!(pop_str(&vm, &mut task), "hello");
             let nv = task.ram.pop_nv();
-            assert!(auto_val::decode_i32(nv) == 42, "numeric path param as i32, nv {nv:?}");
+            assert!(
+                auto_val::decode_i32(nv) == 42,
+                "numeric path param as i32, nv {nv:?}"
+            );
         }
     }
 
@@ -1309,6 +1696,7 @@ mod plan326_tests {
     //   cargo test -p auto-lang --lib --features test-http-e2e -- --test-threads=1
     #[cfg(feature = "test-http-e2e")]
     mod http_e2e {
+        use super::super::spawn_outcome_reporter;
         use crate::vm::ffi::stdlib::clear_http_routes;
         use std::io::{Read, Write};
         use std::net::TcpStream;
@@ -1328,7 +1716,12 @@ mod plan326_tests {
             }
             let mut stream = stream.expect("could not connect to test HTTP server");
             stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-            write!(stream, "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n", path).unwrap();
+            write!(
+                stream,
+                "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+                path
+            )
+            .unwrap();
             let mut resp = String::new();
             stream.read_to_string(&mut resp).ok();
             resp
@@ -1347,7 +1740,10 @@ mod plan326_tests {
             }
             let mut stream = stream.expect("could not connect to test HTTP server");
             stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-            let mut req = format!("GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n", path);
+            let mut req = format!(
+                "GET {} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n",
+                path
+            );
             for (k, v) in headers {
                 req.push_str(&format!("{}: {}\r\n", k, v));
             }
@@ -1449,25 +1845,37 @@ mod plan326_tests {
         /// snapshot). The server thread is detached (blocks forever; the test
         /// process reaps it on exit — fine because CI runs each `cargo test`
         /// invocation as a separate process).
+        ///
+        /// PLAN-755 T-02/R2: bounded startup diagnostics via the shared
+        /// outcome reporter (`spawn_outcome_reporter`). A startup failure (e.g.
+        /// SIGNATURE_UNVERIFIED, `crate::run` returning Err within ~30ms, or a
+        /// panic whose payload is forwarded) must surface with its real reason
+        /// inside the ready window instead of being swallowed by `let _ =` and
+        /// buried in client-side connect-refused retries (~2.15s per attempt on
+        /// this host — the 751-R2 120s TERMINATING mechanism).
         fn start_server(code: &str, port: u16) -> u16 {
             clear_http_routes();
             std::env::set_var("AUTO_HTTP_PORT", port.to_string());
             let code = code.to_string();
-            let _server = std::thread::Builder::new()
-                .stack_size(8 * 1024 * 1024)
-                .spawn(move || {
-                    let _ = crate::run(&code);
-                })
-                .expect("spawn server thread");
+            let outcome_rx =
+                spawn_outcome_reporter(8 * 1024 * 1024, "crate::run", move || crate::run(&code));
             // Wait for the server to accept connections before returning, so the
             // first http_get doesn't race against a not-yet-bound listener.
             for _ in 0..50 {
                 if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                    break;
+                    return port;
+                }
+                if let Ok(outcome) = outcome_rx.try_recv() {
+                    panic!("test server failed to start on port {port}: {outcome}");
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            port
+            panic!(
+                "test server never accepted connections on port {port}: {}",
+                outcome_rx.try_recv().unwrap_or_else(|_| {
+                    "crate::run still blocking but the port is not accepting".to_string()
+                })
+            );
         }
 
         /// Start the real back/api.at with its sibling db.at resolved from the
@@ -1488,19 +1896,29 @@ mod plan326_tests {
             let source = std::fs::read_to_string(&entry)
                 .unwrap_or_else(|error| panic!("read {}: {error}", entry.display()));
             let source_path = entry.to_string_lossy().into_owned();
-            let _server = std::thread::Builder::new()
-                .stack_size(16 * 1024 * 1024)
-                .spawn(move || {
-                    let _ = crate::run_with_capture_and_path(&source, &source_path);
-                })
-                .expect("spawn real example API server");
+            // PLAN-755 T-02/R2：同 start_server 的有界启动诊断（共享上报核心，
+            // Err/panic 载荷不吞）。
+            let outcome_rx =
+                spawn_outcome_reporter(16 * 1024 * 1024, "run_with_capture_and_path", move || {
+                    crate::run_with_capture_and_path(&source, &source_path)
+                });
             for _ in 0..50 {
                 if TcpStream::connect(("127.0.0.1", port)).is_ok() {
                     return port;
                 }
+                if let Ok(outcome) = outcome_rx.try_recv() {
+                    panic!("{example} VM API failed to start on port {port}: {outcome}");
+                }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            panic!("{} VM API did not listen on port {port}", example);
+            panic!(
+                "{} VM API did not listen on port {port}: {}",
+                example,
+                outcome_rx.try_recv().unwrap_or_else(|_| {
+                    "run_with_capture_and_path still blocking but the port is not accepting"
+                        .to_string()
+                })
+            );
         }
 
         /// P442-4: e2e 端口唯一性守卫。nextest 每测试一进程并行执行，两个
@@ -1543,31 +1961,38 @@ mod plan326_tests {
 
         #[test]
         fn e2e_struct_handler_returns_json() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Note { id int; title str }
 
 #[api(method = "GET", path = "/api/notes/test")]
 fn get_note() Note {
     Note { id: 1, title: "hello" }
 }
-"#, 18731);
+"#,
+                18731,
+            );
             let resp = http_get(port, "/api/notes/test");
             let body = body_of(&resp);
             // The fix: body must be JSON object, not the bare heap-id "4000000".
             assert_eq!(
                 body, r#"{"id": 1, "title": "hello"}"#,
-                "struct handler JSON: full resp = {:?}", resp
+                "struct handler JSON: full resp = {:?}",
+                resp
             );
         }
 
         #[test]
         fn e2e_int_path_param_handler() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/echo/:id")]
 fn echo_id(id int) int {
     id
 }
-"#, 18732);
+"#,
+                18732,
+            );
             let resp = http_get(port, "/api/echo/42");
             let body = body_of(&resp);
             // Phase 5: :id injected as int 42, returned as-is.
@@ -1579,14 +2004,17 @@ fn echo_id(id int) int {
         /// next() runs only to the next yield (not the whole body upfront).
         #[test]
         fn e2e_sse_generator_handler() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/counter")]
 fn counter_handler() ~Iter<int> {
     yield 1
     yield 2
     yield 3
 }
-"#, 18733);
+"#,
+                18733,
+            );
             let resp = http_get(port, "/api/counter");
             // SSE response: the body should contain three "data: N\n\n" frames.
             let body = body_of(&resp);
@@ -1601,7 +2029,8 @@ fn counter_handler() ~Iter<int> {
         /// fire on that iter_id.
         #[test]
         fn e2e_sse_indirect_generator() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 fn counter() ~Iter<int> {
     yield 1
     yield 2
@@ -1611,12 +2040,26 @@ fn counter() ~Iter<int> {
 fn stream_handler() ~Iter<int> {
     return counter()
 }
-"#, 18734);
+"#,
+                18734,
+            );
             let resp = http_get(port, "/api/stream");
             let body = body_of(&resp);
-            assert!(body.contains("data: 1"), "indirect SSE frame 1: body={:?}", body);
-            assert!(body.contains("data: 2"), "indirect SSE frame 2: body={:?}", body);
-            assert!(body.contains("data: 3"), "indirect SSE frame 3: body={:?}", body);
+            assert!(
+                body.contains("data: 1"),
+                "indirect SSE frame 1: body={:?}",
+                body
+            );
+            assert!(
+                body.contains("data: 2"),
+                "indirect SSE frame 2: body={:?}",
+                body
+            );
+            assert!(
+                body.contains("data: 3"),
+                "indirect SSE frame 3: body={:?}",
+                body
+            );
         }
 
         /// Plan 442 C2 item ②: the SSE form — a generator yielding
@@ -1626,22 +2069,27 @@ fn stream_handler() ~Iter<int> {
         /// opaque Event object; `sse_frame_from_nv` formats it.
         #[test]
         fn e2e_sse_named_event_frames() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/events")]
 fn events_handler() ~Iter<int> {
     yield sse_named_event("e1", "hello")
     yield sse_named_event("e2", "world")
 }
-"#, 18738);
+"#,
+                18738,
+            );
             let resp = http_get(port, "/api/events");
             let body = body_of(&resp);
             assert!(
                 body.contains("event: e1\ndata: \"hello\""),
-                "named SSE frame 1: body={:?}", body
+                "named SSE frame 1: body={:?}",
+                body
             );
             assert!(
                 body.contains("event: e2\ndata: \"world\""),
-                "named SSE frame 2: body={:?}", body
+                "named SSE frame 2: body={:?}",
+                body
             );
         }
 
@@ -1651,7 +2099,8 @@ fn events_handler() ~Iter<int> {
         /// streams the yielded Event frames through the dispatch-3000 SSE arms.
         #[test]
         fn e2e_sse_chain() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 dep axum
 use.rs axum::response::sse::{Event, KeepAlive, Sse}
 
@@ -1664,12 +2113,15 @@ fn chain_handler() int {
 fn events_stream() ~Iter<int> {
     yield sse_named_event("tick", "42")
 }
-"#, 18746);
+"#,
+                18746,
+            );
             let resp = http_get(port, "/api/sse-chain");
             let body = body_of(&resp);
             assert!(
                 body.contains("event: tick\ndata: \"42\""),
-                "Sse chain SSE frame: body={:?}", body
+                "Sse chain SSE frame: body={:?}",
+                body
             );
         }
 
@@ -1678,7 +2130,8 @@ fn events_stream() ~Iter<int> {
         /// a `Value` built by `json.to_value`. They resolve as bare natives.
         #[test]
         fn e2e_value_accessors() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/acc")]
 fn acc() str {
     let obj = json.to_value("{\"msg\":\"hi\",\"ok\":true}")
@@ -1732,53 +2185,80 @@ fn hash() str {
 fn path() str {
     return path_inner("seg/ment")
 }
-"#, 18747);
+"#,
+                18747,
+            );
 
             let acc = http_get(port, "/acc");
             assert!(
                 acc.starts_with("HTTP/1.1 200"),
-                "value accessor status: {}", acc.lines().next().unwrap_or("")
+                "value accessor status: {}",
+                acc.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&acc), "\"hi\"",
-                "value_get_str/value_get_bool: full = {:?}", acc
+                body_of(&acc),
+                "\"hi\"",
+                "value_get_str/value_get_bool: full = {:?}",
+                acc
             );
 
             let isnull = http_get(port, "/isnull");
             assert_eq!(
-                body_of(&isnull), "\"yes\"",
-                "value_is_null on JSON null: full = {:?}", isnull
+                body_of(&isnull),
+                "\"yes\"",
+                "value_is_null on JSON null: full = {:?}",
+                isnull
             );
 
             let arr = http_get(port, "/arr");
             assert_eq!(
-                body_of(&arr), "[1, 2, 3]",
-                "value_get_array: full = {:?}", arr
+                body_of(&arr),
+                "[1, 2, 3]",
+                "value_get_array: full = {:?}",
+                arr
             );
 
             let nested = http_get(port, "/nested");
             assert_eq!(
-                body_of(&nested), r#"{"x": 7}"#,
-                "value_get nested object: full = {:?}", nested
+                body_of(&nested),
+                r#"{"x": 7}"#,
+                "value_get nested object: full = {:?}",
+                nested
             );
 
             // random_hex/new_id return a hex string of the request length.
-            let h = body_of(&http_get(port, "/hex")).trim_matches('"').to_string();
+            let h = body_of(&http_get(port, "/hex"))
+                .trim_matches('"')
+                .to_string();
             assert_eq!(h.len(), 8, "random_hex(4) should be 8 hex chars: {:?}", h);
-            assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "random_hex not hex: {:?}", h);
+            assert!(
+                h.chars().all(|c| c.is_ascii_hexdigit()),
+                "random_hex not hex: {:?}",
+                h
+            );
 
-            let n = body_of(&http_get(port, "/newid")).trim_matches('"').to_string();
+            let n = body_of(&http_get(port, "/newid"))
+                .trim_matches('"')
+                .to_string();
             assert_eq!(n.len(), 16, "new_id(8) should be 16 hex chars: {:?}", n);
 
             // hash_password = sha256(salt || p) hex (64 chars, deterministic).
-            let h = body_of(&http_get(port, "/hash")).trim_matches('"').to_string();
+            let h = body_of(&http_get(port, "/hash"))
+                .trim_matches('"')
+                .to_string();
             assert_eq!(h.len(), 64, "hash_password should be 64 hex chars: {:?}", h);
-            assert!(h.chars().all(|c| c.is_ascii_hexdigit()), "hash_password not hex: {:?}", h);
+            assert!(
+                h.chars().all(|c| c.is_ascii_hexdigit()),
+                "hash_password not hex: {:?}",
+                h
+            );
 
             // path_inner on a string is identity (axum Path pushes a string).
             assert_eq!(
-                body_of(&http_get(port, "/path")), "\"seg/ment\"",
-                "path_inner identity: full = {:?}", http_get(port, "/path")
+                body_of(&http_get(port, "/path")),
+                "\"seg/ment\"",
+                "path_inner identity: full = {:?}",
+                http_get(port, "/path")
             );
         }
 
@@ -1790,18 +2270,23 @@ fn path() str {
         /// object RC pitfalls.
         #[test]
         fn e2e_host_forward_app_config_daemon() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/daemon")]
 fn daemon() str {
     return app_config_effective_daemon_url(0)
 }
-"#, 18748);
+"#,
+                18748,
+            );
 
             // Phase 1: no host call registered → default constant.
             let d = http_get(port, "/daemon");
             assert_eq!(
-                body_of(&d), "\"http://127.0.0.1:17654\"",
-                "app_config_effective_daemon_url default: full = {:?}", d
+                body_of(&d),
+                "\"http://127.0.0.1:17654\"",
+                "app_config_effective_daemon_url default: full = {:?}",
+                d
             );
 
             // Phase 2: register a host call → the VM extern forwards to it.
@@ -1813,8 +2298,10 @@ fn daemon() str {
             );
             let f = http_get(port, "/daemon");
             assert_eq!(
-                body_of(&f), "\"http://10.0.0.5:9999\"",
-                "app_config_effective_daemon_url host-forwarded: full = {:?}", f
+                body_of(&f),
+                "\"http://10.0.0.5:9999\"",
+                "app_config_effective_daemon_url host-forwarded: full = {:?}",
+                f
             );
         }
 
@@ -1824,33 +2311,40 @@ fn daemon() str {
         /// `{runs: []}` object survives the CALL_NAT dead-zone release.
         #[test]
         fn e2e_host_forward_relay_runs() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/runs")]
 fn runs() int {
     return ok_response(relay_runs_list(0, 0))
 }
-"#, 18749);
+"#,
+                18749,
+            );
 
             // Phase 1: no host call → empty-store default shape.
             let d = http_get(port, "/runs");
             assert_eq!(
-                body_of(&d), r#"{"runs": []}"#,
-                "relay_runs_list default (empty store): full = {:?}", d
+                body_of(&d),
+                r#"{"runs": []}"#,
+                "relay_runs_list default (empty store): full = {:?}",
+                d
             );
 
             // Phase 2: register host call → the VM extern forwards to it,
             // passing the (marshalled) request args in args_json.
-            crate::vm::host_bridge::register_host_call("relay_runs_list", std::sync::Arc::new(
-                move |args: &str| -> Result<String, String> {
+            crate::vm::host_bridge::register_host_call(
+                "relay_runs_list",
+                std::sync::Arc::new(move |args: &str| -> Result<String, String> {
                     Ok(format!(r#"{{"runs":[{{"run_id":"r1","arg":{}}}]}}"#, args))
-                },
-            ));
+                }),
+            );
             let f = http_get(port, "/runs");
             let fbody = body_of(&f);
             // The shim marshalled q (an int 0 in this test) → "0", and forwarded it.
             assert!(
                 fbody.contains(r#""run_id": "r1""#) && fbody.contains(r#""arg": 0"#),
-                "relay_runs_list host-forwarded with args: full = {:?}", fbody
+                "relay_runs_list host-forwarded with args: full = {:?}",
+                fbody
             );
         }
 
@@ -1865,7 +2359,12 @@ fn runs() int {
         /// not a server bug. Since the endpoint is an idempotent GET, retrying
         /// the connection is a faithful client behavior and removes the test's
         /// dependence on scheduler timing.
-        fn http_get_until(port: u16, path: &str, need_fragments: &[&str], max_attempts: usize) -> String {
+        fn http_get_until(
+            port: u16,
+            path: &str,
+            need_fragments: &[&str],
+            max_attempts: usize,
+        ) -> String {
             let mut last_body = String::new();
             for _ in 0..max_attempts {
                 let resp = http_get(port, path);
@@ -1884,14 +2383,17 @@ fn runs() int {
         /// two handlers interleave (Goroutine-style cooperative scheduling).
         #[test]
         fn e2e_concurrent_sse() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/count")]
 fn counter_handler() ~Iter<int> {
     yield 1
     yield 2
     yield 3
 }
-"#, 18735);
+"#,
+                18735,
+            );
 
             let need = &["data: 1", "data: 2", "data: 3"];
             // Fire two connections concurrently from separate threads; each retries
@@ -1904,10 +2406,16 @@ fn counter_handler() ~Iter<int> {
             let body1 = h1.join().expect("conn1");
             let body2 = h2.join().expect("conn2");
             // Both connections must receive all three frames.
-            assert!(body1.contains("data: 1") && body1.contains("data: 2") && body1.contains("data: 3"),
-                "conn1 incomplete: body={:?}", body1);
-            assert!(body2.contains("data: 1") && body2.contains("data: 2") && body2.contains("data: 3"),
-                "conn2 incomplete: body={:?}", body2);
+            assert!(
+                body1.contains("data: 1") && body1.contains("data: 2") && body1.contains("data: 3"),
+                "conn1 incomplete: body={:?}",
+                body1
+            );
+            assert!(
+                body2.contains("data: 1") && body2.contains("data: 2") && body2.contains("data: 3"),
+                "conn2 incomplete: body={:?}",
+                body2
+            );
         }
 
         /// PLAN-696 T-02 red sample: ordinary request bodies must be read in
@@ -1916,24 +2424,39 @@ fn counter_handler() ~Iter<int> {
         /// an escaped newline in a string value.
         #[test]
         fn e2e_plan696_body_split_across_tcp_writes() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/echo")]
 fn echo(text str) str { text }
-"#, 18760);
+"#,
+                18760,
+            );
             let body = "{\n  \"text\": \"first\\nsecond\"\n}";
             let resp = http_post_json_in_chunks(port, "/api/echo", body);
-            assert!(resp.starts_with("HTTP/1.1 200 OK"), "split body status: {:?}", resp);
-            assert_eq!(body_of(&resp), r#""first\nsecond""#, "split body response: {:?}", resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 200 OK"),
+                "split body status: {:?}",
+                resp
+            );
+            assert_eq!(
+                body_of(&resp),
+                r#""first\nsecond""#,
+                "split body response: {:?}",
+                resp
+            );
         }
 
         /// PLAN-696 T-02 red sample: EOF before Content-Length is satisfied
         /// must reject the request before dispatching a body-independent route.
         #[test]
         fn e2e_plan696_short_body_rejected() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/ready")]
 fn ready() str { "ready" }
-"#, 18761);
+"#,
+                18761,
+            );
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
             stream.write_all(
@@ -1942,17 +2465,24 @@ fn ready() str { "ready" }
             stream.shutdown(std::net::Shutdown::Write).unwrap();
             let mut resp = String::new();
             stream.read_to_string(&mut resp).unwrap();
-            assert!(resp.starts_with("HTTP/1.1 400"), "short body must be rejected, got: {:?}", resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 400"),
+                "short body must be rejected, got: {:?}",
+                resp
+            );
         }
 
         /// PLAN-696 T-02: reject Content-Length above the shared request-body
         /// limit before allocating or dispatching the request.
         #[test]
         fn e2e_plan696_over_limit_body_rejected() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/ready")]
 fn ready() str { "ready" }
-"#, 18763);
+"#,
+                18763,
+            );
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
             stream.write_all(
@@ -1960,17 +2490,24 @@ fn ready() str { "ready" }
             ).unwrap();
             let mut resp = String::new();
             stream.read_to_string(&mut resp).unwrap();
-            assert!(resp.starts_with("HTTP/1.1 413"), "oversize body must be rejected, got: {:?}", resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 413"),
+                "oversize body must be rejected, got: {:?}",
+                resp
+            );
         }
 
         /// PLAN-696 T-03: reject malformed Content-Length instead of silently
         /// treating it as a bodyless request.
         #[test]
         fn e2e_plan696_invalid_content_length_rejected() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/ready")]
 fn ready() str { "ready" }
-"#, 18764);
+"#,
+                18764,
+            );
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
             stream.write_all(
@@ -1978,14 +2515,19 @@ fn ready() str { "ready" }
             ).unwrap();
             let mut resp = String::new();
             stream.read_to_string(&mut resp).unwrap();
-            assert!(resp.starts_with("HTTP/1.1 400"), "malformed length must be rejected, got: {:?}", resp);
+            assert!(
+                resp.starts_with("HTTP/1.1 400"),
+                "malformed length must be rejected, got: {:?}",
+                resp
+            );
         }
 
         /// PLAN-696 T-02 red sample: a delayed generator must not keep the
         /// single-thread I/O reactor from serving an unrelated health request.
         #[test]
         fn e2e_plan696_slow_sse_does_not_block_health() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/slow")]
 fn slow() ~Iter<int> {
     yield 1
@@ -1994,16 +2536,23 @@ fn slow() ~Iter<int> {
 }
 #[api(method = "GET", path = "/health")]
 fn health() str { "ok" }
-"#, 18762);
+"#,
+                18762,
+            );
 
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
-            stream.write_all(
-                b"GET /api/slow HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
-            ).unwrap();
+            stream
+                .write_all(
+                    b"GET /api/slow HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: keep-alive\r\n\r\n",
+                )
+                .unwrap();
             let mut received = Vec::new();
             let mut chunk = [0u8; 512];
-            while !received.windows(b"data: 1\n\n".len()).any(|w| w == b"data: 1\n\n") {
+            while !received
+                .windows(b"data: 1\n\n".len())
+                .any(|w| w == b"data: 1\n\n")
+            {
                 let n = stream.read(&mut chunk).expect("read first SSE frame");
                 assert!(n > 0, "SSE closed before first frame: {:?}", received);
                 received.extend_from_slice(&chunk[..n]);
@@ -2013,13 +2562,20 @@ fn health() str { "ok" }
             let started = std::time::Instant::now();
             let health = http_get(port, "/health");
             let elapsed = started.elapsed();
-            assert!(health.starts_with("HTTP/1.1 200"), "health response: {:?}", health);
+            assert!(
+                health.starts_with("HTTP/1.1 200"),
+                "health response: {:?}",
+                health
+            );
             assert!(
                 elapsed < Duration::from_millis(1500),
                 "health request waited {elapsed:?} behind the slow SSE producer"
             );
 
-            while !received.windows(b"data: 2\n\n".len()).any(|w| w == b"data: 2\n\n") {
+            while !received
+                .windows(b"data: 2\n\n".len())
+                .any(|w| w == b"data: 2\n\n")
+            {
                 let n = stream.read(&mut chunk).expect("read second SSE frame");
                 assert!(n > 0, "SSE closed before second frame: {:?}", received);
                 received.extend_from_slice(&chunk[..n]);
@@ -2035,7 +2591,8 @@ fn health() str { "ok" }
         /// before its post-sleep side effect runs.
         #[test]
         fn e2e_plan696_sse_disconnect_cancels_generator() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 var produced int = 0
 #[api(method = "GET", path = "/api/cancel")]
 fn cancel_stream() ~Iter<int> {
@@ -2046,7 +2603,9 @@ fn cancel_stream() ~Iter<int> {
 }
 #[api(method = "GET", path = "/api/produced")]
 fn produced_count() int { produced }
-"#, 18765);
+"#,
+                18765,
+            );
 
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
             stream.set_read_timeout(Some(Duration::from_secs(3))).ok();
@@ -2055,7 +2614,10 @@ fn produced_count() int { produced }
             ).unwrap();
             let mut received = Vec::new();
             let mut chunk = [0u8; 512];
-            while !received.windows(b"data: 1\n\n".len()).any(|w| w == b"data: 1\n\n") {
+            while !received
+                .windows(b"data: 1\n\n".len())
+                .any(|w| w == b"data: 1\n\n")
+            {
                 let n = stream.read(&mut chunk).expect("read first SSE frame");
                 assert!(n > 0, "SSE closed before first frame: {:?}", received);
                 received.extend_from_slice(&chunk[..n]);
@@ -2064,7 +2626,11 @@ fn produced_count() int { produced }
 
             std::thread::sleep(Duration::from_millis(3200));
             let state = http_get(port, "/api/produced");
-            assert_eq!(body_of(&state), "0", "disconnected SSE generator continued: {state:?}");
+            assert_eq!(
+                body_of(&state),
+                "0",
+                "disconnected SSE generator continued: {state:?}"
+            );
         }
 
         /// PLAN-696 T-07: the real 015-notes api.at/db.at pair preserves CRUD
@@ -2073,9 +2639,16 @@ fn produced_count() int { produced }
         fn e2e_plan696_real_015_notes_crud_parity() {
             let port = start_example_api_server("015-notes", 18766);
             let initial = http_get(port, "/api/notes");
-            assert!(initial.starts_with("HTTP/1.1 200"), "initial list: {initial}");
+            assert!(
+                initial.starts_with("HTTP/1.1 200"),
+                "initial list: {initial}"
+            );
             let notes: serde_json::Value = serde_json::from_str(body_of(&initial)).unwrap();
-            assert!(notes.as_array().unwrap().iter().any(|n| n["title"] == "Welcome"));
+            assert!(notes
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|n| n["title"] == "Welcome"));
 
             let created = http_post_json_with_headers(
                 port,
@@ -2083,7 +2656,10 @@ fn produced_count() int { produced }
                 r#"{"title":"Plan 696 parity","body":"body split","folder":"work"}"#,
                 &[],
             );
-            assert!(created.starts_with("HTTP/1.1 200"), "create response: {created}");
+            assert!(
+                created.starts_with("HTTP/1.1 200"),
+                "create response: {created}"
+            );
             let created_note: serde_json::Value =
                 serde_json::from_str(body_of(&created)).expect("created note JSON");
             assert_eq!(created_note["title"], "Plan 696 parity");
@@ -2101,7 +2677,10 @@ fn produced_count() int { produced }
             let port = start_example_api_server("017-chat", 18768);
             let contacts = http_get(port, "/api/contacts");
             assert!(contacts.starts_with("HTTP/1.1 200"), "contacts: {contacts}");
-            assert!(body_of(&contacts).contains("Alice"), "contact seed: {contacts}");
+            assert!(
+                body_of(&contacts).contains("Alice"),
+                "contact seed: {contacts}"
+            );
 
             let sent = http_post_json_with_headers(
                 port,
@@ -2117,7 +2696,11 @@ fn produced_count() int { produced }
             let listed = http_get(port, "/api/messages");
             assert!(listed.starts_with("HTTP/1.1 200"), "message list: {listed}");
             let messages: serde_json::Value = serde_json::from_str(body_of(&listed)).unwrap();
-            assert!(messages.as_array().unwrap().iter().any(|m| m["text"] == "Plan 696 parity"));
+            assert!(messages
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|m| m["text"] == "Plan 696 parity"));
         }
 
         /// PLAN-696 T-07: real 023-realworld auth and article responses retain
@@ -2135,7 +2718,10 @@ fn produced_count() int { produced }
             assert!(login.starts_with("HTTP/1.1 200"), "login response: {login}");
             let user: serde_json::Value = serde_json::from_str(body_of(&login)).unwrap();
             assert_eq!(user["username"], "Sarah Chen");
-            assert!(user["token"].as_str().unwrap_or_default().starts_with("tok-"));
+            assert!(user["token"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("tok-"));
             assert!(user.get("password").is_none(), "password leaked: {user}");
 
             let token = user["token"].as_str().unwrap();
@@ -2145,7 +2731,10 @@ fn produced_count() int { produced }
                 "/api/user",
                 &[("Authorization", authorization.as_str())],
             );
-            assert!(current.starts_with("HTTP/1.1 200"), "current user: {current}");
+            assert!(
+                current.starts_with("HTTP/1.1 200"),
+                "current user: {current}"
+            );
             let current: serde_json::Value = serde_json::from_str(body_of(&current)).unwrap();
             assert_eq!(current["username"], "Sarah Chen");
 
@@ -2155,7 +2744,10 @@ fn produced_count() int { produced }
                 r#"{"slug":"plan-696-parity","title":"Plan 696","description":"runtime check","body":"auth owner","tagList":"verification"}"#,
                 &[("Authorization", authorization.as_str())],
             );
-            assert!(article.starts_with("HTTP/1.1 200"), "authenticated article: {article}");
+            assert!(
+                article.starts_with("HTTP/1.1 200"),
+                "authenticated article: {article}"
+            );
             let article: serde_json::Value = serde_json::from_str(body_of(&article)).unwrap();
             assert_eq!(article["slug"], "plan-696-parity");
             assert_eq!(article["author"], "Sarah Chen");
@@ -2166,7 +2758,10 @@ fn produced_count() int { produced }
                 r#"{"slug":"anonymous","title":"Anonymous","description":"","body":"","tagList":""}"#,
                 &[],
             );
-            assert!(anonymous_article.starts_with("HTTP/1.1 200"), "anonymous article convention changed: {anonymous_article}");
+            assert!(
+                anonymous_article.starts_with("HTTP/1.1 200"),
+                "anonymous article convention changed: {anonymous_article}"
+            );
             let anonymous_article: serde_json::Value =
                 serde_json::from_str(body_of(&anonymous_article)).unwrap();
             assert_eq!(anonymous_article["slug"], "");
@@ -2177,7 +2772,10 @@ fn produced_count() int { produced }
                 r#"{"email":"sarah@vercel.com","password":"wrong"}"#,
                 &[],
             );
-            assert!(rejected.starts_with("HTTP/1.1 200"), "invalid-login convention changed: {rejected}");
+            assert!(
+                rejected.starts_with("HTTP/1.1 200"),
+                "invalid-login convention changed: {rejected}"
+            );
             let rejected: serde_json::Value = serde_json::from_str(body_of(&rejected)).unwrap();
             assert_eq!(rejected["id"], 0);
         }
@@ -2193,7 +2791,8 @@ fn produced_count() int { produced }
         /// pre-existing harness race (see Plan 317 §11 detached-server notes).
         #[test]
         fn e2e_a_redirect_302_with_location() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/old")]
 fn old_handler() int {
     return http.response_redirect("/new", 302)
@@ -2203,7 +2802,9 @@ fn old_handler() int {
 fn new_handler() str {
     return "arrived"
 }
-"#, 18740);
+"#,
+                18740,
+            );
             let resp = http_get(port, "/old");
             assert!(
                 resp.starts_with("HTTP/1.1 302"),
@@ -2232,7 +2833,8 @@ fn new_handler() str {
         /// extern_sigs` is needed here.
         #[test]
         fn e2e_musk_response_constructors() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/ok")]
 fn ok_handler() int {
     return ok_response("hello")
@@ -2252,7 +2854,9 @@ fn text_handler() int {
 fn to_handler() int {
     return to_response(null, "failed", 500)
 }
-"#, 18739);
+"#,
+                18739,
+            );
 
             let ok = http_get(port, "/ok");
             assert!(
@@ -2261,8 +2865,10 @@ fn to_handler() int {
                 ok.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&ok), "\"hello\"",
-                "ok_response JSON body: full = {:?}", ok
+                body_of(&ok),
+                "\"hello\"",
+                "ok_response JSON body: full = {:?}",
+                ok
             );
 
             let err = http_get(port, "/err");
@@ -2272,8 +2878,10 @@ fn to_handler() int {
                 err.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&err), r#"{"error":"boom"}"#,
-                "err_response body: full = {:?}", err
+                body_of(&err),
+                r#"{"error":"boom"}"#,
+                "err_response body: full = {:?}",
+                err
             );
 
             let text = http_get(port, "/text");
@@ -2283,8 +2891,10 @@ fn to_handler() int {
                 text.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&text), "not found",
-                "text_response body: full = {:?}", text
+                body_of(&text),
+                "not found",
+                "text_response body: full = {:?}",
+                text
             );
 
             // to_response with a null value degrades to err_response.
@@ -2295,8 +2905,10 @@ fn to_handler() int {
                 to.lines().next().unwrap_or("")
             );
             assert_eq!(
-                body_of(&to), r#"{"error":"failed"}"#,
-                "to_response(null,…) body: full = {:?}", to
+                body_of(&to),
+                r#"{"error":"failed"}"#,
+                "to_response(null,…) body: full = {:?}",
+                to
             );
         }
 
@@ -2318,16 +2930,12 @@ fn to_handler() int {
                     return;
                 }
             };
-            let db_src = std::fs::read_to_string(back.join("db.at"))
-                .expect("023 db.at must exist in-repo");
+            let db_src =
+                std::fs::read_to_string(back.join("db.at")).expect("023 db.at must exist in-repo");
 
             // Types block from api.at (up to `use db`), db.at minus its own
             // `use api:` import, plus bearer_token/json_str extracted verbatim.
-            let types_block: String = api_src
-                .split("use db")
-                .next()
-                .unwrap_or("")
-                .to_string();
+            let types_block: String = api_src.split("use db").next().unwrap_or("").to_string();
             let db_body = db_src
                 .lines()
                 .filter(|l| !l.starts_with("use api:"))
@@ -2388,7 +2996,11 @@ fn h_create_article(slug str, title str, description str, body str, tagList str,
                 &[],
             ))
             .to_string();
-            assert!(bad.contains("\"id\": 0"), "wrong password must fail: {}", bad);
+            assert!(
+                bad.contains("\"id\": 0"),
+                "wrong password must fail: {}",
+                bad
+            );
 
             // 2. Correct login → real user + fresh unique token.
             let ok = body_of(&http_post_json_with_headers(
@@ -2457,12 +3069,15 @@ fn h_create_article(slug str, title str, description str, body str, tagList str,
             let upload_dir = std::env::temp_dir().join("auto_multipart_e2e");
             let _ = std::fs::remove_dir_all(&upload_dir);
             std::env::set_var("AUTO_UPLOAD_DIR", upload_dir.to_str().unwrap());
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/upload")]
 fn upload(form str) str {
     return form
 }
-"#, 18744);
+"#,
+                18744,
+            );
 
             let boundary = "AutoBoundary7381";
             let mut file_data: Vec<u8> = Vec::new();
@@ -2524,10 +3139,18 @@ fn upload(form str) str {
                 .filter(|p| p.is_file())
                 .collect();
             stored_files.sort();
-            assert_eq!(stored_files.len(), 1, "exactly one stored file: {:?}", stored_files);
+            assert_eq!(
+                stored_files.len(),
+                1,
+                "exactly one stored file: {:?}",
+                stored_files
+            );
             let stored = std::fs::read(&stored_files[0])
                 .unwrap_or_else(|e| panic!("stored file readable: {}", e));
-            assert_eq!(stored, file_data, "persisted bytes must match uploaded bytes exactly");
+            assert_eq!(
+                stored, file_data,
+                "persisted bytes must match uploaded bytes exactly"
+            );
 
             let _ = std::fs::remove_dir_all(&upload_dir);
         }
@@ -2536,12 +3159,15 @@ fn upload(form str) str {
         /// (`req-<ms>-<n>`) when the client sends none.
         #[test]
         fn e2e_b6_request_id_generated_and_echoed() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/rid")]
 fn rid() int {
     return 7
 }
-"#, 18741);
+"#,
+                18741,
+            );
             let resp = http_get(port, "/api/rid");
             assert!(
                 resp.to_lowercase().contains("x-request-id: req-"),
@@ -2561,17 +3187,16 @@ fn rid() int {
         /// (trace propagation).
         #[test]
         fn e2e_b6_request_id_incoming_passthrough() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/rid2")]
 fn rid2() int {
     return 8
 }
-"#, 18742);
-            let resp = http_get_with_headers(
-                port,
-                "/api/rid2",
-                &[("X-Request-Id", "my-trace-42")],
+"#,
+                18742,
             );
+            let resp = http_get_with_headers(port, "/api/rid2", &[("X-Request-Id", "my-trace-42")]);
             assert!(
                 resp.to_lowercase().contains("x-request-id: my-trace-42"),
                 "incoming request id should be echoed verbatim, got: {:?}",
@@ -2589,18 +3214,29 @@ fn rid2() int {
         /// limiter via clear_http_routes, so this test cannot poison others.
         #[test]
         fn e2e_zz_rate_limit_429_after_quota() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 http.rate_limit(2, 60000)
 
 #[api(method = "GET", path = "/api/rl")]
 fn rl() int {
     return 1
 }
-"#, 18743);
+"#,
+                18743,
+            );
             let first = http_get(port, "/api/rl");
             let second = http_get(port, "/api/rl");
-            assert!(first.starts_with("HTTP/1.1 200"), "first should pass, got: {:?}", first);
-            assert!(second.starts_with("HTTP/1.1 200"), "second should pass, got: {:?}", second);
+            assert!(
+                first.starts_with("HTTP/1.1 200"),
+                "first should pass, got: {:?}",
+                first
+            );
+            assert!(
+                second.starts_with("HTTP/1.1 200"),
+                "second should pass, got: {:?}",
+                second
+            );
             let third = http_get(port, "/api/rl");
             assert!(
                 third.starts_with("HTTP/1.1 429"),
@@ -2632,7 +3268,8 @@ fn rl() int {
         /// Uses a module-level var for in-memory storage (like db.at's `var notes`).
         #[test]
         fn e2e_notes_crud() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Note { id int; title str; body str; time str }
 
 var notes = [
@@ -2662,26 +3299,43 @@ fn create_note(title str, body str) Note {
     nextid = nextid + 1
     return note
 }
-"#, 18736);
+"#,
+                18736,
+            );
 
             // GET /api/notes → JSON array of Note objects
             let resp_list = http_get(port, "/api/notes");
             let body_list = body_of(&resp_list);
-            assert!(body_list.contains("\"title\": \"Welcome\""),
-                "list: body={:?}", body_list);
-            assert!(body_list.contains("\"title\": \"Shopping\""),
-                "list: body={:?}", body_list);
+            assert!(
+                body_list.contains("\"title\": \"Welcome\""),
+                "list: body={:?}",
+                body_list
+            );
+            assert!(
+                body_list.contains("\"title\": \"Shopping\""),
+                "list: body={:?}",
+                body_list
+            );
             // Should be a JSON array: starts with [
-            assert!(body_list.trim_start().starts_with('['),
-                "list not array: body={:?}", body_list);
+            assert!(
+                body_list.trim_start().starts_with('['),
+                "list not array: body={:?}",
+                body_list
+            );
 
             // GET /api/notes/1 → single Note (Option.Some unwrapped)
             let resp_get = http_get(port, "/api/notes/1");
             let body_get = body_of(&resp_get);
-            assert!(body_get.contains("\"id\": 1"),
-                "get id=1: body={:?}", body_get);
-            assert!(body_get.contains("\"title\": \"Shopping\""),
-                "get title: body={:?}", body_get);
+            assert!(
+                body_get.contains("\"id\": 1"),
+                "get id=1: body={:?}",
+                body_get
+            );
+            assert!(
+                body_get.contains("\"title\": \"Shopping\""),
+                "get title: body={:?}",
+                body_get
+            );
 
             // PLAN-669 AC-01: POST body fields bind by param name — the
             // handler's `title`/`body` slots receive the JSON fields, not the
@@ -2694,12 +3348,21 @@ fn create_note(title str, body str) Note {
                 &[],
             );
             let body_post = body_of(&resp_post);
-            assert!(body_post.contains("\"title\": \"probe-item\""),
-                "post title by name: body={:?}", body_post);
-            assert!(body_post.contains("\"body\": \"probe-body\""),
-                "post body by name: body={:?}", body_post);
-            assert!(!body_post.contains("{\\\"title\\\""),
-                "raw body literal must not leak into fields: body={:?}", body_post);
+            assert!(
+                body_post.contains("\"title\": \"probe-item\""),
+                "post title by name: body={:?}",
+                body_post
+            );
+            assert!(
+                body_post.contains("\"body\": \"probe-body\""),
+                "post body by name: body={:?}",
+                body_post
+            );
+            assert!(
+                !body_post.contains("{\\\"title\\\""),
+                "raw body literal must not leak into fields: body={:?}",
+                body_post
+            );
         }
 
         /// PLAN-669 AC-01: POST JSON body fields bind by param name — the
@@ -2707,7 +3370,8 @@ fn create_note(title str, body str) Note {
         /// string used to land in `text` as a JSON literal).
         #[test]
         fn http_e2e_api_post_body_by_name() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Todo { id int; text str; done bool }
 var nextid int = 4
 
@@ -2717,19 +3381,23 @@ fn create_todo(text str) Todo {
     nextid = nextid + 1
     return todo
 }
-"#, 18750);
-
-            let resp = http_post_json_with_headers(
-                port,
-                "/api/todos",
-                r#"{"text":"probe-item"}"#,
-                &[],
+"#,
+                18750,
             );
+
+            let resp =
+                http_post_json_with_headers(port, "/api/todos", r#"{"text":"probe-item"}"#, &[]);
             let body = body_of(&resp);
-            assert!(body.contains("\"text\": \"probe-item\""),
-                "text bound from body field: body={:?}", body);
-            assert!(!body.contains("{\\\"text\\\""),
-                "raw body literal leaked into field: body={:?}", body);
+            assert!(
+                body.contains("\"text\": \"probe-item\""),
+                "text bound from body field: body={:?}",
+                body
+            );
+            assert!(
+                !body.contains("{\\\"text\\\""),
+                "raw body literal leaked into field: body={:?}",
+                body
+            );
         }
 
         /// PLAN-669 AC-02: GET query params bind by name (the 015-notes
@@ -2737,67 +3405,87 @@ fn create_todo(text str) Todo {
         /// name wins).
         #[test]
         fn http_e2e_api_query_by_name() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Hit { text str }
 
 #[api(method = "GET", path = "/api/search")]
 fn search(query str) Hit {
     return Hit { text: query }
 }
-"#, 18751);
+"#,
+                18751,
+            );
 
             let resp = http_get(port, "/api/search?q=wrong&query=Build");
             let body = body_of(&resp);
-            assert!(body.contains("\"text\": \"Build\""),
-                "query bound by name: body={:?}", body);
+            assert!(
+                body.contains("\"text\": \"Build\""),
+                "query bound by name: body={:?}",
+                body
+            );
         }
 
         /// PLAN-669 AC-03: declared `int` params convert exactly from the
         /// query string; non-numeric input is a named 400.
         #[test]
         fn http_e2e_api_typed_query_int() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "GET", path = "/api/page")]
 fn page(p int) int {
     return p
 }
-"#, 18752);
+"#,
+                18752,
+            );
 
             let resp = http_get(port, "/api/page?p=7");
             let body = body_of(&resp);
             assert!(body.trim() == "7", "int query converted: body={:?}", body);
 
             let resp_bad = http_get(port, "/api/page?p=seven");
-            assert!(resp_bad.starts_with("HTTP/1.1 400"),
-                "non-numeric int → 400: resp={:?}", &resp_bad[..resp_bad.len().min(80)]);
-            assert!(body_of(&resp_bad).contains("param `p`"),
-                "400 names the param: body={:?}", body_of(&resp_bad));
+            assert!(
+                resp_bad.starts_with("HTTP/1.1 400"),
+                "non-numeric int → 400: resp={:?}",
+                &resp_bad[..resp_bad.len().min(80)]
+            );
+            assert!(
+                body_of(&resp_bad).contains("param `p`"),
+                "400 names the param: body={:?}",
+                body_of(&resp_bad)
+            );
         }
 
         /// PLAN-669 AC-04: a missing body field is a 400 naming the param
         /// (back_proxy parity — silently wrong args are the defect itself).
         #[test]
         fn http_e2e_api_missing_param_400() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Note { title str; body str }
 
 #[api(method = "POST", path = "/api/notes")]
 fn create_note(title str, body str) Note {
     return Note { title: title, body: body }
 }
-"#, 18753);
-
-            let resp = http_post_json_with_headers(
-                port,
-                "/api/notes",
-                r#"{"title": "only-title"}"#,
-                &[],
+"#,
+                18753,
             );
-            assert!(resp.starts_with("HTTP/1.1 400"),
-                "missing body field → 400: resp={:?}", &resp[..resp.len().min(80)]);
+
+            let resp =
+                http_post_json_with_headers(port, "/api/notes", r#"{"title": "only-title"}"#, &[]);
+            assert!(
+                resp.starts_with("HTTP/1.1 400"),
+                "missing body field → 400: resp={:?}",
+                &resp[..resp.len().min(80)]
+            );
             let body = body_of(&resp);
-            assert!(body.contains("missing param `body`"),
-                "400 names the missing param: body={:?}", body);
+            assert!(
+                body.contains("missing param `body`"),
+                "400 names the missing param: body={:?}",
+                body
+            );
         }
 
         /// PLAN-669 AC-07: single str param + unparseable body → the raw
@@ -2805,18 +3493,24 @@ fn create_note(title str, body str) Note {
         /// convention's one correct case, preserved).
         #[test]
         fn http_e2e_api_raw_body_single_param() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 #[api(method = "POST", path = "/api/save")]
 fn save(data str) str {
     return data
 }
-"#, 18754);
+"#,
+                18754,
+            );
 
             // Not JSON — parse fails, lone str param receives it verbatim.
             let resp = http_post_json_with_headers(port, "/api/save", "plain text probe", &[]);
             let body = body_of(&resp);
-            assert!(body.contains("plain text probe"),
-                "raw body passthrough: body={:?}", body);
+            assert!(
+                body.contains("plain text probe"),
+                "raw body passthrough: body={:?}",
+                body
+            );
         }
 
         /// Plan 317 final validation: 015-notes backend pattern with List<Note>
@@ -2824,7 +3518,8 @@ fn save(data str) str {
         /// This mirrors db.at's `var notes List<Note>` + `fn all_notes() []Note`.
         #[test]
         fn e2e_notes_list_generic() {
-            let port = start_server(r#"
+            let port = start_server(
+                r#"
 type Note { id int; title str; body str; time str }
 
 var notes = [
@@ -2836,17 +3531,28 @@ var notes = [
 fn list_notes() []Note {
     return notes
 }
-"#, 18737);
+"#,
+                18737,
+            );
 
             let resp = http_get(port, "/api/notes");
             let body = body_of(&resp);
             // List<Note> serialized as JSON array of Note objects.
-            assert!(body.contains("\"title\": \"Welcome\""),
-                "list generic frame 1: body={:?}", body);
-            assert!(body.contains("\"title\": \"Shopping\""),
-                "list generic frame 2: body={:?}", body);
-            assert!(body.trim_start().starts_with('['),
-                "list generic should be JSON array: body={:?}", body);
+            assert!(
+                body.contains("\"title\": \"Welcome\""),
+                "list generic frame 1: body={:?}",
+                body
+            );
+            assert!(
+                body.contains("\"title\": \"Shopping\""),
+                "list generic frame 2: body={:?}",
+                body
+            );
+            assert!(
+                body.trim_start().starts_with('['),
+                "list generic should be JSON array: body={:?}",
+                body
+            );
         }
 
         // ============ PLAN-699: Axum/Hyper transport protocol probes ========
@@ -3026,8 +3732,7 @@ fn ping() str { "pong" }
             // Wait for accept, then exercise the real dispatch (404 path).
             let mut s = connect_retry(port);
             s.write_all(
-                "GET /api/nope HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-                    .as_bytes(),
+                "GET /api/nope HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n".as_bytes(),
             )
             .unwrap();
             let mut resp = String::new();
@@ -3047,7 +3752,6 @@ fn ping() str { "pong" }
             let rebind = std::net::TcpListener::bind(("127.0.0.1", port));
             assert!(rebind.is_ok(), "port must be rebindable after shutdown");
         }
-
     }
 }
 
@@ -3063,7 +3767,11 @@ fn ping() str { "pong" }
 /// 消费侧任何 release 即凭空多扣(over-release 注入源;P-053-5 把
 /// native.rs/stdlib.rs 收口到 add_string 时漏掉本文件)。
 /// 统一走 intern_runtime_str(add_string + rc 入栈 +1)。
-pub(crate) fn push_str_arg(vm: &crate::vm::engine::AutoVM, task: &mut crate::vm::task::AutoTask, s: &str) {
+pub(crate) fn push_str_arg(
+    vm: &crate::vm::engine::AutoVM,
+    task: &mut crate::vm::task::AutoTask,
+    s: &str,
+) {
     vm.intern_runtime_str(task, s.as_bytes().to_vec());
 }
 
@@ -3096,7 +3804,10 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
         }
         let parts: Vec<&str> = request_line.split_whitespace().collect();
         if parts.len() < 2 {
-            let resp = format!("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n{}\r\n", cors_headers());
+            let resp = format!(
+                "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n{}\r\n",
+                cors_headers()
+            );
             let _ = stream.write_all(resp.as_bytes());
             continue;
         }
@@ -3114,9 +3825,13 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
         let mut content_length = 0usize;
         loop {
             let mut header = String::new();
-            if reader.read_line(&mut header).is_err() { break; }
+            if reader.read_line(&mut header).is_err() {
+                break;
+            }
             let header = header.trim();
-            if header.is_empty() { break; }
+            if header.is_empty() {
+                break;
+            }
             if header.to_lowercase().starts_with("content-length:") {
                 content_length = header[15..].trim().parse().unwrap_or(0);
             }
@@ -3143,7 +3858,9 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
 
         // Call VM handler
         let handler_task_id = vm.spawn_task(0, 8192);
-        let result_json: Option<String> = if let Some(handler_task_arc) = vm.tasks.get(&handler_task_id) {
+        let result_json: Option<String> = if let Some(handler_task_arc) =
+            vm.tasks.get(&handler_task_id)
+        {
             let mut ht = handler_task_arc.blocking_lock();
 
             // PLAN-669: by-name binding when the fn's sigs are published;
@@ -3206,7 +3923,8 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                             loop {
                                 // Create a temp task for the next() call
                                 let next_task_id = vm.spawn_task(0, 1024);
-                                let next_result = if let Some(nt_arc) = vm.tasks.get(&next_task_id) {
+                                let next_result = if let Some(nt_arc) = vm.tasks.get(&next_task_id)
+                                {
                                     let mut nt = nt_arc.blocking_lock();
                                     // Push iterator_id for auto.iterator.next
                                     nt.ram.push_i32(iter_id as i32);
@@ -3237,7 +3955,10 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                                     }
                                     Some(val) if auto_val::is_string(val) => {
                                         let idx = auto_val::decode_string(val);
-                                        let s = vm.strings.read().unwrap()
+                                        let s = vm
+                                            .strings
+                                            .read()
+                                            .unwrap()
                                             .get(idx as usize)
                                             .map(|b| String::from_utf8_lossy(b).to_string())
                                             .unwrap_or_default();
@@ -3253,6 +3974,25 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                         }
                     }
 
+                    // PLAN-729 T-04：legacy stdnet 不承载文件响应——声明
+                    // 文件返回的路由在此入口明确 500 诊断（决策报告 §6：
+                    // 未接入入口不冒充支持；描述符不序列化为 JSON）。
+                    if fn_is_api_file_return(&route_match.fn_name) {
+                        drop(ht);
+                        let resp = format!(
+                            "HTTP/1.1 500 Internal Server Error
+Content-Type: application/json
+Content-Length: {}
+Connection: close
+{}
+{{\"error\":\"file responses require the default HTTP transport\"}}",
+                            br#"{"error":"file responses require the default HTTP transport"}"#
+                                .len(),
+                            cors_headers()
+                        );
+                        let _ = stream.write_all(resp.as_bytes());
+                        continue;
+                    }
                     // Normal JSON response mode (Plan 326 Phase 3)
                     // nv_to_json handles string/i32/f64/bool/null, and recognizes
                     // heap object IDs (>= 4_000_000) to expand struct/array/Option
@@ -3302,6 +4042,9 @@ pub(crate) struct ApiRequest {
     pub headers: Vec<(String, String)>,
     /// Fully framed body bytes (bounded by the transport's body limit).
     pub body: Vec<u8>,
+    /// PLAN-730 T-05：上传路由的原始 body（bridge 不消费，授权后由
+    /// receive 增量读取；非上传路由恒 None——`body` 语义不变）。
+    pub raw_upload_body: Option<axum::body::Body>,
     pub peer: Option<std::net::SocketAddr>,
 }
 
@@ -3314,11 +4057,21 @@ impl ApiRequest {
     }
 }
 
-/// Reply body payload: plain bytes, or SSE frames streamed from a producer
-/// task on the VM owner thread.
+/// Reply body payload: plain bytes, SSE frames streamed from a producer
+/// task on the VM owner thread, or a file response descriptor (PLAN-729).
 pub(crate) enum ApiBody {
     Text(Vec<u8>),
     Sse(tokio::sync::mpsc::Receiver<String>),
+    /// PLAN-729 T-04：文件响应描述符（编组单次取出；打开/协议决策/发送
+    /// 在 transport 侧的共享宿主服务，不在 VM owner）。status/headers 由
+    /// 宿主 serve 决定，`Full` 携带的占位被 File 臂忽略。
+    File(FileReplySeed),
+}
+
+/// [`ApiBody::File`] 载荷：owned 描述符 + 请求 id（日志/CORS 追加用）。
+pub(crate) struct FileReplySeed {
+    pub descriptor: a2r_std::http::FileResponse,
+    pub request_id: String,
 }
 
 /// Structured reply produced by the VM owner for one request.
@@ -3338,6 +4091,11 @@ pub(crate) enum ApiReply {
 /// CORS response headers as typed pairs (the string block in `cors_headers`
 /// stays for the sync stdnet server's string writer).
 pub(crate) fn cors_header_pairs() -> Vec<(String, String)> {
+    // PLAN-736 T-04: 服务策略激活时 legacy `*` 头块停用——附件由桥层按
+    // 配置决策（精确 origin/Vary），避免双份/泄漏。
+    if crate::http_service_config::service_policy_active() {
+        return Vec::new();
+    }
     let origin = cors_origin();
     vec![
         ("Access-Control-Allow-Origin".to_string(), origin),
@@ -3375,6 +4133,138 @@ pub(crate) fn compute_ws_accept(key: &str) -> String {
 ///   - JSON handlers: call_fn_by_name (synchronous), write response, done.
 ///   - SSE handlers: a bounded local producer steps the VM in instruction
 ///     batches while the connection task writes frames.
+/// PLAN-736 T-05：进程内服务关停发送端（`POST /__auto/shutdown` 触发同一
+/// 关闭入口；headless 测试的确定性注入路径——真实 Ctrl+C 证据范围见 SD-01）。
+static SERVICE_SHUTDOWN_TX: std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>> =
+    std::sync::Mutex::new(None);
+
+fn register_service_shutdown_tx(tx: tokio::sync::watch::Sender<bool>) {
+    if let Ok(mut slot) = SERVICE_SHUTDOWN_TX.lock() {
+        *slot = Some(tx);
+    }
+}
+
+fn peer_is_loopback(peer: std::net::SocketAddr) -> bool {
+    peer.ip().is_loopback()
+}
+
+/// PLAN-736 T-05/AC-02/05：服务控制面（`/__auto/*`，装配期与业务同名路由
+/// 冲突=启动诊断）。live/ready 开放（身份最小体）；snapshot/shutdown 仅
+/// loopback peer（不对代理/外部暴露操作面）。
+pub(crate) fn handle_service_control_path(
+    method: &str,
+    path: &str,
+    peer: std::net::SocketAddr,
+) -> Option<axum::response::Response> {
+    use crate::http_service_observability as obs;
+    if !path.starts_with("/__auto/") {
+        return None;
+    }
+    let json_resp = |status: u16, body: serde_json::Value| -> axum::response::Response {
+        axum::response::Response::builder()
+            .status(
+                axum::http::StatusCode::from_u16(status)
+                    .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+            )
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap()
+    };
+    match (method, path) {
+        ("GET", "/__auto/health/live") => Some(json_resp(
+            200,
+            serde_json::json!({ "state": obs::service_state().as_str() }),
+        )),
+        ("GET", "/__auto/health/ready") => {
+            if obs::is_ready() {
+                Some(json_resp(
+                    200,
+                    obs::service_identity().unwrap_or_else(|| serde_json::json!({})),
+                ))
+            } else {
+                Some(json_resp(
+                    503,
+                    serde_json::json!({ "state": obs::service_state().as_str() }),
+                ))
+            }
+        }
+        ("GET", "/__auto/health/snapshot") => {
+            if !peer_is_loopback(peer) {
+                return Some(json_resp(
+                    403,
+                    serde_json::json!({ "error": "loopback only" }),
+                ));
+            }
+            Some(json_resp(
+                200,
+                serde_json::json!({
+                    "state": obs::service_state().as_str(),
+                    "identity": obs::service_identity(),
+                    "counters": obs::service_counters().snapshot(),
+                }),
+            ))
+        }
+        ("POST", "/__auto/shutdown") => {
+            if !peer_is_loopback(peer) {
+                return Some(json_resp(
+                    403,
+                    serde_json::json!({ "error": "loopback only" }),
+                ));
+            }
+            let sent = SERVICE_SHUTDOWN_TX
+                .lock()
+                .ok()
+                .and_then(|slot| slot.as_ref().map(|tx| tx.send(true).is_ok()))
+                .unwrap_or(false);
+            obs::emit_event(serde_json::json!({
+                "event": "drain", "trigger": "shutdown_endpoint", "delivered": sent,
+            }));
+            Some(json_resp(202, serde_json::json!({ "draining": sent })))
+        }
+        _ => Some(json_resp(404, serde_json::json!({ "error": "not found" }))),
+    }
+}
+
+/// PLAN-736 AC-01/02: 最近一次 serve 的致命错误（bind 失败/net 线程死亡）。
+/// serve 入口（`auto serve`/run_file_with_service 消费者）据此以非零退出；
+/// legacy `auto run` 面不消费——保持既有"打印后继续"语义不变。
+static SERVE_FATAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+/// PLAN-736 AC-02: 最近一次 serve 成功 bind 的真实地址（port=0 解析值）。
+static SERVE_BOUND_ADDR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+fn record_serve_fatal(msg: impl Into<String>) {
+    if let Ok(mut slot) = SERVE_FATAL.lock() {
+        *slot = Some(msg.into());
+    }
+}
+
+/// serve 入口在 serve 返回后取致命错误（Some = 非零退出依据）。
+pub fn take_serve_fatal_error() -> Option<String> {
+    SERVE_FATAL.lock().ok().and_then(|mut s| s.take())
+}
+
+/// 只读快照（不消费）——run_file 内的钩子用它把 fatal 转成 Err 返回；
+/// 外层 serve 入口随后 `take` 收割消息。take/snapshot 双面分离避免单次
+/// take 被钩子吞掉后外层拿不到诊断。
+pub fn serve_fatal_snapshot() -> Option<String> {
+    SERVE_FATAL.lock().ok().and_then(|s| s.clone())
+}
+
+/// serve 入口在 ready 判定后取真实 bound 地址（port=0 场景必须用它）。
+pub fn bound_addr_snapshot() -> Option<String> {
+    SERVE_BOUND_ADDR.lock().ok().and_then(|s| s.clone())
+}
+
+/// 测试/serve 入口复位（进程内多 serve 序列时防陈旧值串场）。
+pub fn reset_serve_state() {
+    if let Ok(mut f) = SERVE_FATAL.lock() {
+        *f = None;
+    }
+    if let Ok(mut b) = SERVE_BOUND_ADDR.lock() {
+        *b = None;
+    }
+}
+
 pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str) {
     // PLAN-699 T-03: Axum/Hyper HTTP/1.1 transport (Design 33 阶段 B). The VM
     // owner keeps this thread's `LocalSet` and consumes a bounded queue of
@@ -3391,6 +4281,47 @@ pub async fn serve_async(vm: std::rc::Rc<crate::vm::engine::AutoVM>, addr: &str)
     }
     #[cfg(not(test))]
     let _ = &shutdown_tx;
+    // PLAN-736 T-05：/__auto/shutdown 控制面与信号汇入同一 watch。
+    register_service_shutdown_tx(shutdown_tx.clone());
+    tokio::task::spawn_local({
+        let shutdown_tx = shutdown_tx.clone();
+        async move {
+            let _ = tokio::signal::ctrl_c().await;
+            eprintln!("[HTTP] Ctrl+C — shutting down gracefully");
+            let _ = shutdown_tx.send(true);
+        }
+    });
+    #[cfg(unix)]
+    tokio::task::spawn_local({
+        let shutdown_tx = shutdown_tx.clone();
+        async move {
+            if let Ok(mut sig) =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            {
+                sig.recv().await;
+                eprintln!("[HTTP] SIGTERM — shutting down gracefully");
+                let _ = shutdown_tx.send(true);
+            }
+        }
+    });
+    serve_with(vm, addr, cfg, shutdown_rx).await;
+}
+
+/// PLAN-736 AC-03: 显式预算注入面——`auto service` 的 VM 轨用服务配置驱动
+/// TransportConfig（env 不参与）；信号面与 `serve_async` 相同。
+pub async fn serve_async_with(
+    vm: std::rc::Rc<crate::vm::engine::AutoVM>,
+    addr: &str,
+    cfg: super::http_transport::TransportConfig,
+) {
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    #[cfg(test)]
+    {
+        let _ = TEST_SHUTDOWN_TX.set(shutdown_tx.clone());
+    }
+    #[cfg(not(test))]
+    let _ = &shutdown_tx;
+    register_service_shutdown_tx(shutdown_tx.clone());
     tokio::task::spawn_local({
         let shutdown_tx = shutdown_tx.clone();
         async move {
@@ -3423,6 +4354,7 @@ pub(crate) fn test_api_request_get(path: &str) -> ApiRequest {
         path: path.to_string(),
         headers: Vec::new(),
         body: Vec::new(),
+        raw_upload_body: None,
         peer: None,
     }
 }
@@ -3450,6 +4382,9 @@ async fn serve_with(
     cfg: super::http_transport::TransportConfig,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) {
+    // PLAN-730 T-05：安装上传宿主 executor（幂等；a2r facade 的 receive/
+    // commit/reject 经此执行——VM 桥与生成 Rust 服务共用单源）。
+    crate::http_upload_service::install_upload_executor_service();
     let routes = get_routes();
     let (req_tx, mut req_rx) = tokio::sync::mpsc::channel::<(
         ApiRequest,
@@ -3457,7 +4392,7 @@ async fn serve_with(
         u64, // scope id (PLAN-705 T-05)
     )>(cfg.queue_capacity);
 
-    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
     let net_addr = addr.to_string();
     let net_cfg = cfg.clone();
     let net_shutdown = shutdown_rx.clone();
@@ -3485,16 +4420,38 @@ async fn serve_with(
         });
     if spawned.is_err() {
         eprintln!("[HTTP] failed to spawn the auto-http-net thread");
+        record_serve_fatal("failed to spawn the auto-http-net thread");
         return;
     }
     match ready_rx.await {
-        Ok(Ok(())) => {}
+        Ok(Ok(bound)) => {
+            // PLAN-736: 真实 bound 地址（port=0 时为内核分配值）供 serve 入口/
+            // health 身份消费。
+            if let Ok(mut slot) = SERVE_BOUND_ADDR.lock() {
+                *slot = Some(bound.clone());
+            }
+            // PLAN-736 T-05/AC-02：bind+初始化完成 → Ready（身份四元组）。
+            // 业务路由/VM 初始化在此之前已发生（run_file 编译先于 serve hook）。
+            if let Some(svc) = &cfg.service {
+                let c = &svc.config;
+                crate::http_service_observability::set_service_identity(
+                    &bound,
+                    c.profile.as_str(),
+                    c.effective_config_hash(),
+                );
+                crate::http_service_observability::set_service_state(
+                    crate::http_service_observability::ServiceState::Ready,
+                );
+            }
+        }
         Ok(Err(e)) => {
             eprintln!("[HTTP] Async server bind failed on {}: {}", addr, e);
+            record_serve_fatal(format!("bind failed on {addr}: {e}"));
             return;
         }
         Err(_) => {
             eprintln!("[HTTP] net thread died before binding");
+            record_serve_fatal("net thread died before binding");
             return;
         }
     }
@@ -3521,8 +4478,10 @@ async fn serve_with(
         // 事件唤醒后的消费点——取消信号同经 COMPLETION_NOTIFY）。
         drain_ready_parked(&vm, &mut parked);
         // 最早 deadline 定时臂（parked 非空时唤醒失效检查，防无事件悬挂）。
-        let next_deadline = parked.iter().filter_map(|p| lookup_scope(p.scope_id))
-            .map(|s| tokio::time::Instant::from_std(s.deadline))
+        let next_deadline = parked
+            .iter()
+            .filter_map(|p| lookup_scope(p.scope_id))
+            .map(|s| tokio::time::Instant::from_std(*s.deadline.read().unwrap()))
             .min();
         // (1) 注册完成通知兴趣（Notified 首次 poll 才登记 waiter，enable()
         // 把登记提前到检查之前）。
@@ -3581,9 +4540,19 @@ async fn serve_with(
                     // 排水窗开启：net 侧同步停收（watch 广播同源），已排队
                     // 请求继续应答；parked 请求等待完成或排水截止。
                     draining = true;
+                    if cfg.service.is_some() {
+                        crate::http_service_observability::set_service_state(
+                            crate::http_service_observability::ServiceState::Draining,
+                        );
+                    }
                 }
             }
         }
+    }
+    if cfg.service.is_some() {
+        crate::http_service_observability::set_service_state(
+            crate::http_service_observability::ServiceState::Stopped,
+        );
     }
     eprintln!("[HTTP] VM owner loop exited (port released)");
 }
@@ -3613,13 +4582,15 @@ pub(crate) fn dispatch_owner_request(
         return;
     }
     if let Some(s) = &scope {
-        s.state.store(SCOPE_RUNNING, std::sync::atomic::Ordering::SeqCst);
+        s.state
+            .store(SCOPE_RUNNING, std::sync::atomic::Ordering::SeqCst);
     }
     match dispatch_api_request_segment(vm, routes, api_req, reply_tx, scope_id) {
         DispatchOutcome::Replied => {}
         DispatchOutcome::Parked(p) => {
             if let Some(s) = lookup_scope(scope_id) {
-                s.state.store(SCOPE_PARKED, std::sync::atomic::Ordering::SeqCst);
+                s.state
+                    .store(SCOPE_PARKED, std::sync::atomic::Ordering::SeqCst);
             }
             parked.push(*p);
         }
@@ -3630,6 +4601,8 @@ pub(crate) fn dispatch_owner_request(
 /// live-op 回收（迟到的 worker 完成被 presence 守卫丢弃，无泄漏面）。
 fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) {
     for mut p in parked.drain(..) {
+        // PLAN-730 T-07：关闭废弃的 provisional 文件同样删除。
+        cleanup_legacy_files(&p.ctx.legacy_stored);
         match &p.wait {
             ParkedWait::HttpRequest(req_id) => {
                 crate::vm::ffi::stdlib::drop_async_result(*req_id);
@@ -3652,9 +4625,7 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
             let _ = tx.send(ApiReply::Full {
                 status: 503,
                 headers: json_reply_headers(&p.ctx.request_id),
-                body: ApiBody::Text(
-                    br#"{"error":"server shutting down"}"#.to_vec(),
-                ),
+                body: ApiBody::Text(br#"{"error":"server shutting down"}"#.to_vec()),
             });
         }
     }
@@ -3676,7 +4647,6 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
 /// 所有用到的 VM 状态访问都发生在 owner 线程（AutoVM !Send 契约不变）；
 /// 跨线程仍只有 owned `ApiRequest`/`ApiReply`。单执行段顺序执行、跨
 /// await 非原子事务（SD-01 契约：副作用不因取消/交错回滚）。
-
 use crate::vm::engine::{AutoVM, ParkedSegment, ParkedWait, SegmentOutcome};
 
 /// 编组延续所需的全部请求上下文（park 后恢复重建 reply 的最小集）。
@@ -3702,6 +4672,23 @@ pub(crate) struct DispatchCtx {
     pub handler_task_id: Option<u64>,
     /// 请求作用域 id（T-05：owner 派发/恢复前的失效检查）。
     pub scope_id: u64,
+    /// PLAN-730 T-05：上传路由的延迟 body 能力（原始流 + 请求头快照）；
+    /// start_handler 按 UploadRequest 参数注入消费（一次性）。
+    pub upload_pending: Option<PendingUpload>,
+    /// PLAN-730 T-07：legacy multipart 解析产物（纯内存，dispatch 段）；
+    /// 落盘在 middleware 链后经宿主执行（ParkStage::LegacyStore）。
+    pub legacy_parts: Option<Vec<MultipartPart>>,
+    /// PLAN-730 T-07：已折叠的文本字段 JSON（落盘完成后与 files 合并）。
+    pub legacy_fields_json: String,
+    /// PLAN-730 T-07：本次请求新建的 provisional 文件（绑定失败/handler
+    /// Err/取消 → 删除；成功回复按历史语义保留）。
+    pub legacy_stored: Vec<String>,
+}
+
+/// PLAN-730 T-05：bridge→handler 的上传 body 能力（未授权不解析/不落盘）。
+pub(crate) struct PendingUpload {
+    pub body: axum::body::Body,
+    pub headers: Vec<(String, String)>,
 }
 
 /// park 的延续点。
@@ -3716,6 +4703,9 @@ pub(crate) enum ParkStage {
     /// `~{}` 内部 future 体在 handler RET 后由服务端驱动，中途挂在外层
     /// External await 上（wait=外层 future id；internal_fid=内部 future）。
     AsyncReturnBody { internal_fid: u32 },
+    /// PLAN-730 T-07：legacy multipart 落盘在宿主 spawn_blocking 执行中
+    ///（middleware 已过；live-op 完成后合并 files JSON 进 body 再进 handler）。
+    LegacyStore { op_id: u64 },
 }
 
 /// 一次跨 park 的请求延续（owner loop parked 表的条目）。
@@ -3743,7 +4733,7 @@ pub(crate) enum DispatchOutcome {
 pub(crate) fn dispatch_api_request_segment(
     vm: &std::rc::Rc<AutoVM>,
     routes: &[HttpRoute],
-    req: ApiRequest,
+    mut req: ApiRequest,
     reply_tx: tokio::sync::oneshot::Sender<ApiReply>,
     scope_id: u64,
 ) -> DispatchOutcome {
@@ -3769,10 +4759,19 @@ pub(crate) fn dispatch_api_request_segment(
         .map(|v| v.to_ascii_lowercase().contains("websocket"))
         .unwrap_or(false);
 
-    let request_id = if incoming_request_id.is_empty() {
-        gen_request_id()
-    } else {
+    // PLAN-736 T-04/AC-05: 入站 request-id 校验——1..64 可见 ASCII 安全子集
+    // （[0-9A-Za-z._:@-]）；不合者重生成（原样透传 = 日志注入面）。
+    fn request_id_ok(id: &str) -> bool {
+        !id.is_empty()
+            && id.len() <= 64
+            && id
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | ':' | '@' | '-'))
+    }
+    let request_id = if request_id_ok(&incoming_request_id) {
         incoming_request_id
+    } else {
+        gen_request_id()
     };
 
     let client_ip = req
@@ -3807,30 +4806,8 @@ pub(crate) fn dispatch_api_request_segment(
 
     let body = String::from_utf8_lossy(&req.body).into_owned();
 
-    let mut multipart_json: Option<String> = None;
-    if content_type.starts_with("multipart/form-data") {
-        let boundary = content_type_raw
-            .split(';')
-            .find_map(|p| p.trim().strip_prefix("boundary="))
-            .map(|b| b.trim_matches('"').to_string());
-        if let Some(boundary) = boundary {
-            let parts = parse_multipart(&req.body, &boundary);
-            multipart_json = Some(multipart_to_handler_json(parts));
-            eprintln!(
-                "[HTTP] {} {} [{}] multipart: {} bytes parsed",
-                req_method,
-                req_path,
-                request_id,
-                req.body.len()
-            );
-        } else {
-            eprintln!(
-                "[HTTP] {} {} [{}] multipart without boundary — ignored",
-                req_method, req_path, request_id
-            );
-        }
-    }
-
+    // PLAN-730 T-05/T-07：路由先行（404/方法不匹配零解析零写盘）；上传
+    // 路由按类型分类跳过 legacy multipart（body 为延迟能力，不在此解析）。
     let route_match = match match_route(routes, &req_method, &req_path) {
         Some(rm) => rm,
         None => {
@@ -3844,6 +4821,98 @@ pub(crate) fn dispatch_api_request_segment(
             return DispatchOutcome::Replied;
         }
     };
+    let is_upload_route = route_declares_upload(&route_match.fn_name);
+    let upload_headers = req.headers.clone();
+    let upload_pending = if is_upload_route {
+        if !matches!(req_method.as_str(), "POST" | "PUT") {
+            let mut headers = cors_header_pairs();
+            headers.push(("X-Request-Id".to_string(), request_id.clone()));
+            headers.push(("Allow".to_string(), "POST, PUT".to_string()));
+            let _ = reply_tx.send(ApiReply::Full {
+                status: 405,
+                headers,
+                body: ApiBody::Text(
+                    br#"{"error":"upload endpoints support POST/PUT only"}"#.to_vec(),
+                ),
+            });
+            return DispatchOutcome::Replied;
+        }
+        match req.raw_upload_body.take() {
+            Some(b) => Some(PendingUpload {
+                body: b,
+                headers: upload_headers,
+            }),
+            // bridge 与 owner 的分类不一致（非 transport 入口的派发）——契约
+            // 破坏，fail-closed 500，不执行业务函数。
+            None => {
+                eprintln!(
+                    "[HTTP] {} {} [{}] → 500 (upload route without body capability)",
+                    req_method, req_path, request_id
+                );
+                let mut headers = cors_json_headers(&request_id);
+                headers[0].1 = "application/json".to_string();
+                let _ = reply_tx.send(ApiReply::Full {
+                    status: 500,
+                    headers,
+                    body: ApiBody::Text(
+                        br#"{"error":"upload route missing deferred body"}"#.to_vec(),
+                    ),
+                });
+                return DispatchOutcome::Replied;
+            }
+        }
+    } else {
+        None
+    };
+
+    // PLAN-730 T-07：解析（纯内存，路由命中后）与落盘（middleware 后宿主
+    // 执行）分离——404/method 不匹配/中间件拒绝零解析零写盘。
+    let mut legacy_parts: Option<Vec<MultipartPart>> = None;
+    let mut legacy_fields_json = String::new();
+    let mut multipart_json: Option<String> = None;
+    if !is_upload_route && content_type.starts_with("multipart/form-data") {
+        let boundary = content_type_raw
+            .split(';')
+            .find_map(|p| p.trim().strip_prefix("boundary="))
+            .map(|b| b.trim_matches('"').to_string());
+        if let Some(boundary) = boundary {
+            let parts = parse_multipart(&req.body, &boundary);
+            legacy_fields_json = multipart_fields_json(&parts);
+            let has_files = parts.iter().any(|p| p.filename.is_some());
+            if has_files {
+                legacy_parts = Some(parts);
+            } else {
+                multipart_json = Some(multipart_handler_json(&legacy_fields_json, ""));
+            }
+            eprintln!(
+                "[HTTP] {} {} [{}] multipart: {} bytes parsed (store deferred)",
+                req_method,
+                req_path,
+                request_id,
+                req.body.len()
+            );
+        } else {
+            eprintln!(
+                "[HTTP] {} {} [{}] multipart without boundary — ignored",
+                req_method, req_path, request_id
+            );
+        }
+    }
+
+    // PLAN-729 T-04：文件端点仅 GET/HEAD（决策报告 §4）——非 GET/HEAD 的
+    // 文件返回注解在路由命中处即 405（不执行 handler）。
+    if fn_is_api_file_return(&route_match.fn_name) && !matches!(req_method.as_str(), "GET" | "HEAD")
+    {
+        let mut headers = cors_header_pairs();
+        headers.push(("X-Request-Id".to_string(), request_id.clone()));
+        headers.push(("Allow".to_string(), "GET, HEAD".to_string()));
+        let _ = reply_tx.send(ApiReply::Full {
+            status: 405,
+            headers,
+            body: ApiBody::Text(br#"{"error":"file endpoints support GET/HEAD only"}"#.to_vec()),
+        });
+        return DispatchOutcome::Replied;
+    }
 
     if is_websocket {
         if let Some(key) = req.header("sec-websocket-key") {
@@ -3859,7 +4928,7 @@ pub(crate) fn dispatch_api_request_segment(
         req_method,
         req_path,
         content_type,
-        !body.is_empty(),
+        !body.is_empty() || upload_pending.is_some(),
         request_id
     );
     let middleware_names: Vec<String> = crate::vm::ffi::stdlib::MIDDLEWARE_CHAIN
@@ -3884,6 +4953,10 @@ pub(crate) fn dispatch_api_request_segment(
         request_info,
         handler_task_id: None,
         scope_id,
+        upload_pending,
+        legacy_parts,
+        legacy_fields_json,
+        legacy_stored: Vec::new(),
     };
     advance_dispatch(vm, ctx, 0, Some(reply_tx))
 }
@@ -3927,16 +5000,111 @@ fn advance_dispatch(
             }
         }
     }
+    // PLAN-730 T-07：legacy multipart 落盘——middleware 全过后才执行（有界
+    // 宿主 spawn_blocking + live-op 唤醒；owner 不做阻塞 std::fs::write）。
+    if let Some(parts) = ctx.legacy_parts.take() {
+        let files: Vec<(String, String, Vec<u8>)> = parts
+            .iter()
+            .filter_map(|p| {
+                p.filename
+                    .as_ref()
+                    .map(|f| (p.name.clone(), f.clone(), p.data.clone()))
+            })
+            .collect();
+        let op_id = crate::vm::ffi::stdlib::alloc_async_id();
+        crate::vm::ffi::async_http::register_live_op(op_id);
+        LEGACY_STORE_RESULTS.lock().unwrap().insert(op_id, None);
+        tokio::task::spawn_blocking(move || {
+            let result = legacy_store_files(&files).map(|stored| {
+                (
+                    stored
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .collect::<Vec<String>>(),
+                    multipart_files_json(&stored),
+                )
+            });
+            if let Ok(mut m) = LEGACY_STORE_RESULTS.lock() {
+                m.insert(op_id, Some(result));
+            }
+            // 唤醒协议同 live-op：迟到（取消后）完成被 presence 守卫丢弃，
+            // 结果条目随 abort 清理（consumed=Some 由 resume/abort 取走）。
+            if !crate::vm::ffi::async_http::complete_live_op(
+                op_id,
+                Ok(crate::vm::ffi::stdlib::AsyncResult::Body(String::new())),
+            ) {
+                if let Ok(mut m) = LEGACY_STORE_RESULTS.lock() {
+                    let _ = m.remove(&op_id);
+                }
+            }
+        });
+        return DispatchOutcome::Parked(Box::new(ParkedRequest {
+            reply_tx,
+            task_id: 0, // 无 VM 任务在执行（存储在宿主）
+            scope_id: ctx.scope_id,
+            seg: ParkedSegment {
+                fn_name: ctx.route.fn_name.clone(),
+                saved_bp: 0,
+                saved_fn_n_args: 0,
+            },
+            wait: ParkedWait::HttpRequest(op_id),
+            stage: ParkStage::LegacyStore { op_id },
+            ctx,
+        }));
+    }
     start_handler(vm, ctx, reply_tx)
+}
+
+/// PLAN-730 T-07：落盘完成后的续跑（middleware 已在 park 前全过——从链尾
+/// 直达 handler）。
+fn advance_after_legacy_store(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) -> ParkedResume {
+    let ctx = std::mem::replace(&mut p.ctx, placeholder_ctx());
+    match start_handler(vm, ctx, p.reply_tx.take()) {
+        DispatchOutcome::Replied => ParkedResume::Consumed,
+        DispatchOutcome::Parked(boxed) => {
+            // handler 段 park：延续条目（provisional 路径随 ctx 转移）。
+            let mut b = *boxed;
+            p.task_id = b.task_id;
+            p.scope_id = b.scope_id;
+            p.seg = b.seg.clone();
+            p.wait = b.wait;
+            p.stage = b.stage;
+            p.ctx = b.ctx;
+            ParkedResume::StillParked
+        }
+    }
+}
+
+/// PLAN-730 T-07：legacy 落盘结果表（op_id → Option<Result>；None=Pending）。
+lazy_static::lazy_static! {
+    static ref LEGACY_STORE_RESULTS: std::sync::Mutex<
+        std::collections::HashMap<u64, Option<Result<(Vec<String>, String), String>>>,
+    > = std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
+/// PLAN-730 T-07：provisional 文件清理（绑定失败/handler Err/取消路径）。
+fn cleanup_legacy_files(paths: &[String]) {
+    for path in paths {
+        if let Err(e) = std::fs::remove_file(path) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                eprintln!("[HTTP] legacy provisional cleanup failed for {path}: {e}");
+            }
+        }
+    }
 }
 
 enum MWStep {
     Continue,
     Reply(ApiReply),
-    Parked { task_id: u64, seg: ParkedSegment, wait: ParkedWait },
+    Parked {
+        task_id: u64,
+        seg: ParkedSegment,
+        wait: ParkedWait,
+    },
 }
 
-/// 运行 middleware_names[index]（spawn 任务 + 段驱动）。
+/// 运行 middleware_names[index]（spawn 任务 + 段驱动）。上传路由的执行
+/// 错误 fail-closed（500 短路、零落盘）——不沿用 legacy Err→Continue。
 fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) -> MWStep {
     let mw_fn = ctx.middleware_names[index].clone();
     let mw_task_id = vm.spawn_task(0, 65536);
@@ -3950,6 +5118,7 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
         Response(String),
         Parked(ParkedWait, ParkedSegment),
     }
+    let fail_closed = ctx.upload_pending.is_some();
     let end = {
         let Some(t_arc) = vm.tasks.get(&mw_task_id) else {
             vm.tasks.remove(&mw_task_id);
@@ -3973,8 +5142,18 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
                     }
                 }
             }
-            // legacy：middleware Err → None → 继续链（行为保持）。
-            SegmentOutcome::Completed(Err(_)) => MWEnd::Null,
+            // legacy：middleware Err → None → 继续链（行为保持）。上传路由
+            // fail-closed：Err → 500（决策 §4.4——Err 静默放行不可接受）。
+            SegmentOutcome::Completed(Err(_)) => {
+                if fail_closed {
+                    return MWStep::Reply(ApiReply::Full {
+                        status: 500,
+                        headers: cors_json_headers(&ctx.request_id),
+                        body: ApiBody::Text(br#"{"error":"middleware failed"}"#.to_vec()),
+                    });
+                }
+                MWEnd::Null
+            }
             SegmentOutcome::Parked { wait, seg } => MWEnd::Parked(wait, seg),
             // PLAN-711 T-11: Runnable 仅由 CpuSlice 驱动产生；HTTP server
             // 走 legacy 段契约（非 UI 轨），防御臂按 Err 同族继续链。
@@ -3982,17 +5161,18 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
         }
     };
     match end {
-        MWEnd::Parked(wait, seg) => MWStep::Parked { task_id: mw_task_id, seg, wait },
+        MWEnd::Parked(wait, seg) => MWStep::Parked {
+            task_id: mw_task_id,
+            seg,
+            wait,
+        },
         MWEnd::Null => {
             vm.tasks.remove(&mw_task_id);
             MWStep::Continue
         }
         MWEnd::Response(resp) => {
             vm.tasks.remove(&mw_task_id);
-            let mut headers = vec![(
-                "Content-Type".to_string(),
-                "application/json".to_string(),
-            )];
+            let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
             headers.extend(cors_header_pairs());
             headers.push(("X-Request-Id".to_string(), ctx.request_id.clone()));
             MWStep::Reply(ApiReply::Full {
@@ -4032,10 +5212,8 @@ fn start_handler(
                     ctx.req_method, ctx.req_path, ctx.route.fn_name
                 );
                 vm.tasks.remove(&handler_task_id);
-                let mut headers = vec![(
-                    "Content-Type".to_string(),
-                    "application/json".to_string(),
-                )];
+                let mut headers =
+                    vec![("Content-Type".to_string(), "application/json".to_string())];
                 headers.extend(cors_header_pairs());
                 let reply = ApiReply::Full {
                     status: 500,
@@ -4052,6 +5230,32 @@ fn start_handler(
         None
     };
     ctx.axum_route = axum_route.clone();
+
+    // PLAN-730 T-05：UploadRequest 注入——路由声明该参数类型时，把延迟
+    // body 能力建成宿主 UploadRequest（一次性；scope 组绑定）。分类与
+    // bridge 同源（方法+参数类型），不一致在 dispatch 段已 fail-closed。
+    let upload_handle: Option<i64> = match ctx.upload_pending.take() {
+        Some(pending) => {
+            let stream = {
+                use futures::StreamExt;
+                let data = pending.body.into_data_stream();
+                let mapped = data.map(|r| {
+                    r.map(|b| b.to_vec())
+                        .map_err(|e| std::io::Error::other(e.to_string()))
+                });
+                let boxed: a2r_std::http::UploadBodyStream = Box::pin(mapped);
+                boxed
+            };
+            let req = a2r_std::http::upload_request_from_parts(
+                &ctx.req_method,
+                &ctx.req_path,
+                pending.headers,
+                stream,
+            );
+            Some(super::http_upload::insert_upload_request(req) as i64)
+        }
+        None => None,
+    };
 
     let n_args = if let Some(ref axum_route) = axum_route {
         let query_json = if ctx.route.query_params.is_empty() {
@@ -4077,7 +5281,10 @@ fn start_handler(
                 let headers_json = if ctx.auth_header.is_empty() {
                     "{}".to_string()
                 } else {
-                    format!("{{\"authorization\":\"{}\"}}", ctx.auth_header.replace('"', ""))
+                    format!(
+                        "{{\"authorization\":\"{}\"}}",
+                        ctx.auth_header.replace('"', "")
+                    )
                 };
                 pushed = crate::vm::ffi::axum_adapter::push_extractor_args(
                     vm,
@@ -4103,16 +5310,17 @@ fn start_handler(
             ctx.multipart_json.as_deref(),
             &ctx.req_method,
             &ctx.req_path,
+            upload_handle,
         ) {
             Ok(n) => n,
             Err(ApiArgBindError::BadRequest(msg)) => {
                 eprintln!("[HTTP] {} {} → 400 ({})", ctx.req_method, ctx.req_path, msg);
                 vm.tasks.remove(&handler_task_id);
+                // PLAN-730 T-07：绑定失败——本次新建 provisional 文件删除。
+                cleanup_legacy_files(&ctx.legacy_stored);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
-                let mut headers = vec![(
-                    "Content-Type".to_string(),
-                    "application/json".to_string(),
-                )];
+                let mut headers =
+                    vec![("Content-Type".to_string(), "application/json".to_string())];
                 headers.extend(cors_header_pairs());
                 let reply = ApiReply::Full {
                     status: 400,
@@ -4127,11 +5335,10 @@ fn start_handler(
             Err(ApiArgBindError::Internal(msg)) => {
                 eprintln!("[HTTP] {} {} → 500 ({})", ctx.req_method, ctx.req_path, msg);
                 vm.tasks.remove(&handler_task_id);
+                cleanup_legacy_files(&ctx.legacy_stored);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
-                let mut headers = vec![(
-                    "Content-Type".to_string(),
-                    "application/json".to_string(),
-                )];
+                let mut headers =
+                    vec![("Content-Type".to_string(), "application/json".to_string())];
                 headers.extend(cors_header_pairs());
                 let reply = ApiReply::Full {
                     status: 500,
@@ -4221,6 +5428,8 @@ fn start_handler(
         })),
         HandlerEnd::Err(e) => {
             vm.tasks.remove(&handler_task_id);
+            // PLAN-730 T-07：handler 异常——本次新建 provisional 文件删除。
+            cleanup_legacy_files(&ctx.legacy_stored);
             let reply = handler_error_reply(&ctx, &e);
             if let Some(tx) = reply_tx {
                 let _ = tx.send(reply);
@@ -4294,6 +5503,92 @@ fn ctx_await_outer(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> Option<u32> {
     t.waiting_future_id
 }
 
+/// ctx 声明文件返回（axum_route closure 反查同 async 门）。
+fn handler_declares_file_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
+    match ctx.axum_route {
+        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+            .map(|n| fn_is_api_file_return(&n))
+            .unwrap_or(false),
+        None => fn_is_api_file_return(&ctx.route.fn_name),
+    }
+}
+
+/// ctx 的声明返回串（named fn 经 API_RETURN_TYPES；axum closure 反查导出名）。
+fn declared_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> String {
+    let lookup = |name: &str| -> Option<String> {
+        API_RETURN_TYPES
+            .lock()
+            .ok()
+            .and_then(|t| t.get(name).cloned())
+    };
+    match ctx.axum_route {
+        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+            .and_then(|n| lookup(&n))
+            .unwrap_or_default(),
+        None => lookup(&ctx.route.fn_name).unwrap_or_default(),
+    }
+}
+
+/// ctx 声明上传收据返回（axum_route closure 反查同门）。
+fn handler_declares_upload_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
+    match ctx.axum_route {
+        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+            .map(|n| fn_is_api_upload_return(&n))
+            .unwrap_or(false),
+        None => fn_is_api_upload_return(&ctx.route.fn_name),
+    }
+}
+
+/// 收据 → 真实 HTTP 回复（receipt.status + 有界 JSON；CORS + 请求 id）。
+fn upload_receipt_reply(ctx: &DispatchCtx, receipt: a2r_std::http::UploadReceipt) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} [{}] → {} ({}ms)",
+        ctx.req_method,
+        ctx.req_path,
+        ctx.request_id,
+        receipt.status,
+        ctx.started.elapsed().as_millis()
+    );
+    let mut headers = json_reply_headers(&ctx.request_id);
+    headers[0].1 = "application/json".to_string();
+    ApiReply::Full {
+        status: receipt.status,
+        headers,
+        body: ApiBody::Text(receipt.json.into_bytes()),
+    }
+}
+
+/// 声明上传收据返回但值不是登记收据 → 500 诊断（不 JSON 200）。
+fn upload_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} [{}] → 500 (handler '{}' declares UploadReceipt but returned non-receipt value {})",
+        ctx.req_method, ctx.req_path, ctx.request_id, ctx.route.fn_name, raw
+    );
+    let mut headers = json_reply_headers(&ctx.request_id);
+    headers[0].1 = "application/json".to_string();
+    ApiReply::Full {
+        status: 500,
+        headers,
+        body: ApiBody::Text(br#"{"error":"handler did not return an UploadReceipt"}"#.to_vec()),
+    }
+}
+
+/// 声明文件返回但值不是登记描述符 → 500 诊断（不 JSON 200；决策报告 §6）。
+fn file_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} [{}] → 500 (handler '{}' declares FileResponse but returned non-descriptor value {})",
+        ctx.req_method, ctx.req_path, ctx.request_id, ctx.route.fn_name, raw
+    );
+    let mut headers = json_reply_headers(&ctx.request_id);
+    let body = br#"{"error":"handler did not return a FileResponse descriptor"}"#.to_vec();
+    headers[0].1 = "application/json".to_string();
+    ApiReply::Full {
+        status: 500,
+        headers,
+        body: ApiBody::Text(body),
+    }
+}
+
 fn marshal_handler_value(
     vm: &std::rc::Rc<AutoVM>,
     ctx: &DispatchCtx,
@@ -4304,9 +5599,11 @@ fn marshal_handler_value(
         if (bits & 0xFF) == 0xF0 {
             let fid = ((bits as u32) >> 8) as u32;
             let handler_async = match ctx.axum_route {
-                Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
-                    .map(|n| fn_is_api_async(&n))
-                    .unwrap_or(false),
+                Some(ref r) => {
+                    crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+                        .map(|n| fn_is_api_async(&n))
+                        .unwrap_or(false)
+                }
                 None => fn_is_api_async(&ctx.route.fn_name),
             };
             if handler_async {
@@ -4361,7 +5658,22 @@ fn marshal_handler_value(
                 }
             }
         }
+        // PLAN-730 T-05：上传收据门（声明返回类型 + i32 + 登记命中三重闸；
+        // 置于 iterator 检查之前——收据 id 与 iterator id 空间独立，普通
+        // int 撞号仍走 JSON 兜底）。
+        if handler_declares_upload_return(vm, ctx) {
+            let rid = bits as u32 as u64;
+            return MarshalOutcome::Reply(match super::http_upload::take_upload_receipt(rid) {
+                Some(receipt) => upload_receipt_reply(ctx, receipt),
+                None => upload_contract_mismatch_reply(ctx, rid),
+            });
+        }
         let iter_id = bits as u32;
+        // PLAN-734 T-07 兼容回退：iterator/SSE 探测保持注册表命中制——
+        // Plan 326 wire 契约的 SSE 链 handler 声明 int 返回（axum Sse.into_response
+        // 返回持有 iterator 的句柄），声明门会破坏既有 e2e（sse_chain/302 实证）。
+        // 普通 int 撞 id 的理论碰撞由 id 空间分离（iterator/Response 各自
+        // 计数器）覆盖，AC-03 反例以 e2e 锁定。
         if vm.iterators.contains_key(&iter_id) {
             eprintln!(
                 "[HTTP] {} {} → 200 SSE ({}ms)",
@@ -4384,6 +5696,26 @@ fn marshal_handler_value(
                 body: ApiBody::Sse(receiver),
             });
         }
+        // PLAN-729 T-04：文件响应描述符（声明返回类型门 + 登记命中）。
+        if handler_declares_file_return(vm, ctx) {
+            return MarshalOutcome::Reply(
+                match super::http_server_file::take_file_response(iter_id as u64) {
+                    Some(descriptor) => ApiReply::Full {
+                        status: 200, // 占位：File 臂由宿主 serve 决定
+                        headers: Vec::new(),
+                        body: ApiBody::File(FileReplySeed {
+                            descriptor,
+                            request_id: ctx.request_id.clone(),
+                        }),
+                    },
+                    None => file_contract_mismatch_reply(ctx, iter_id as u64),
+                },
+            );
+        }
+        // PLAN-734 T-07 兼容回退：Response-object 探测保持注册表命中制——
+        // Plan 346 wire 契约的 handler 声明 int 返回（无 Response 声明词汇），
+        // 声明门会破坏既有 302/SSE-value e2e。普通 int 撞 handle id 的理论
+        // 碰撞由句柄计数器基座（4M+ 段）与既有 AC 反例防线共同覆盖。
         if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
             return MarshalOutcome::Reply(response_handle_reply(ctx, res));
         }
@@ -4473,10 +5805,7 @@ fn handler_error_reply(ctx: &DispatchCtx, e: &crate::vm::engine::VMError) -> Api
 
 /// CORS + JSON content-type + 请求 id（task-lock 失败臂用）。
 fn cors_json_headers(request_id: &str) -> Vec<(String, String)> {
-    let mut headers = vec![(
-        "Content-Type".to_string(),
-        "application/json".to_string(),
-    )];
+    let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
     headers.extend(cors_header_pairs());
     headers.push(("X-Request-Id".to_string(), request_id.to_string()));
     headers
@@ -4492,6 +5821,37 @@ fn final_value_reply(
     let nv = value
         .and_then(|v| value_to_nv_via_task(vm, ctx, v))
         .unwrap_or_else(auto_val::encode_null);
+    // PLAN-730 T-05：`~UploadReceipt` 终值（Value::Int = 收据句柄）在
+    // JSON 兜底前按同一门识别（sync/异步同形）。
+    if handler_declares_upload_return(vm, ctx) {
+        if auto_val::is_i32(nv) {
+            let rid = auto_val::decode_i32(nv) as u32 as u64;
+            return match super::http_upload::take_upload_receipt(rid) {
+                Some(receipt) => upload_receipt_reply(ctx, receipt),
+                None => upload_contract_mismatch_reply(ctx, rid),
+            };
+        }
+        return upload_contract_mismatch_reply(ctx, u64::MAX);
+    }
+    // PLAN-729 T-04：`~FileResponse` 终值（Value::Int = 描述符句柄）在
+    // JSON 兜底前按同一门识别（sync/异步同形）。
+    if handler_declares_file_return(vm, ctx) {
+        if auto_val::is_i32(nv) {
+            let id = auto_val::decode_i32(nv) as u64;
+            return match super::http_server_file::take_file_response(id) {
+                Some(descriptor) => ApiReply::Full {
+                    status: 200,
+                    headers: Vec::new(),
+                    body: ApiBody::File(FileReplySeed {
+                        descriptor,
+                        request_id: ctx.request_id.clone(),
+                    }),
+                },
+                None => file_contract_mismatch_reply(ctx, id),
+            };
+        }
+        return file_contract_mismatch_reply(ctx, u64::MAX);
+    }
     json_value_reply(
         vm,
         nv,
@@ -4551,7 +5911,9 @@ pub(crate) struct RequestScope {
     pub id: u64,
     pub conn_id: u64,
     pub state: std::sync::atomic::AtomicU8,
-    pub deadline: std::time::Instant,
+    /// PLAN-730 T-05：deadline 升级 RwLock——上传期限切换需透过 Arc 写
+    ///（extend_scope_deadline 只增不减；读方短暂陈旧方向安全）。
+    pub deadline: std::sync::RwLock<std::time::Instant>,
     /// 生命期许可（scope 终结时释放；SSE 流由桥侧 FrameStream Drop 代持）。
     pub permit: std::sync::Mutex<Option<tokio::sync::OwnedSemaphorePermit>>,
     /// 取消信号（桥 reply 等待 select 臂）。
@@ -4560,6 +5922,26 @@ pub(crate) struct RequestScope {
     /// finalize_scope（完成/取消/断连/关闭）逐一流收口（abort 生产者 +
     /// 释放队列），保证组内资源不越过请求生命期。
     pub resources: std::sync::Mutex<Vec<u64>>,
+    /// PLAN-727 T-05：有类型的传输资源组——与流 id 分开登记，finalize 时
+    /// 取消传输并出 VM 注册表（transfer id 不与 HTTPStream id 混淆清理）。
+    pub transfer_resources: std::sync::Mutex<Vec<u64>>,
+    /// PLAN-729 T-04：文件响应描述符组——finalize 时移除闲置描述符
+    /// （handler 未返回的构造防注册表无界增长）。
+    pub file_response_resources: std::sync::Mutex<Vec<u64>>,
+    /// PLAN-730 T-02：上传资源组（注入能力/会话/收据句柄混用同一 id 空间
+    /// 的三张表按 id 幂等收口——take 已消费的 no-op）。finalize 时取消在途
+    /// 接收、清理 staged、释放未消费 body 能力。
+    pub upload_resources: std::sync::Mutex<Vec<u64>>,
+    /// PLAN-730 T-05：请求起点（bridge 入队时刻）——上传总期限
+    /// （started_at + total_timeout）切换的锚点。
+    pub started_at: std::time::Instant,
+    /// PLAN-736 T-05/AC-05：请求观测事件（恰一次终态；finalize_scope 发射）。
+    pub event: std::sync::Mutex<Option<crate::http_service_observability::PendingRequestEvent>>,
+    /// PLAN-730 T-05：deadline 变更通道（上传 receive 启动时延展 30s→总
+    /// 期限；桥 reply 等待循环 watch 重臂——修"select 保留旧捕获值"）。
+    /// 只延展（extend）不缩短；与 `deadline` 字段同步写（读方短暂陈旧
+    /// 方向安全：只会更早到期判定由 watch 修正）。
+    pub deadline_tx: tokio::sync::watch::Sender<std::time::Instant>,
 }
 
 impl RequestScope {
@@ -4593,9 +5975,11 @@ pub(crate) fn set_life_permit_capacity_for_test(cap: usize) {
 
 fn life_permits() -> &'static std::sync::Arc<tokio::sync::Semaphore> {
     LIFE_PERMITS.get_or_init(|| {
-        let cap = TEST_PERMIT_CAPACITY.lock().unwrap().take().unwrap_or_else(|| {
-            super::http_transport::TransportConfig::from_env().queue_capacity
-        });
+        let cap = TEST_PERMIT_CAPACITY
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap_or_else(|| super::http_transport::TransportConfig::from_env().queue_capacity);
         std::sync::Arc::new(tokio::sync::Semaphore::new(cap))
     })
 }
@@ -4610,6 +5994,8 @@ pub(crate) fn create_scope(
         return None;
     };
     let id = SCOPE_ID_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let (deadline_tx, _deadline_rx) = tokio::sync::watch::channel(deadline);
+    let deadline = std::sync::RwLock::new(deadline);
     let scope = std::sync::Arc::new(RequestScope {
         id,
         conn_id,
@@ -4618,6 +6004,12 @@ pub(crate) fn create_scope(
         permit: std::sync::Mutex::new(Some(permit)),
         cancel_notify: tokio::sync::Notify::new(),
         resources: std::sync::Mutex::new(Vec::new()),
+        transfer_resources: std::sync::Mutex::new(Vec::new()),
+        file_response_resources: std::sync::Mutex::new(Vec::new()),
+        upload_resources: std::sync::Mutex::new(Vec::new()),
+        started_at: std::time::Instant::now(),
+        event: std::sync::Mutex::new(None),
+        deadline_tx,
     });
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.insert(id, scope.clone());
@@ -4648,12 +6040,46 @@ fn finalize_scope(scope: &RequestScope, to: u8) {
     for stream_id in group {
         crate::vm::ffi::http_stream::stream_cancel(stream_id);
     }
+    // PLAN-727 T-05：传输组收口——取消 + 出 VM 注册表（scope deadline/
+    // 断连/shutdown 级联取消的传输臂）。
+    let transfers: Vec<u64> = scope
+        .transfer_resources
+        .lock()
+        .map(|mut r| std::mem::take(&mut *r))
+        .unwrap_or_default();
+    crate::vm::ffi::http_transfer::scope_finalize_transfers(&transfers);
+    // PLAN-729 T-04：文件描述符组收口（幂等；编组已取出的 no-op）。
+    let descriptors: Vec<u64> = scope
+        .file_response_resources
+        .lock()
+        .map(|mut r| std::mem::take(&mut *r))
+        .unwrap_or_default();
+    crate::vm::ffi::http_server_file::scope_finalize_file_responses(&descriptors);
+    // PLAN-730 T-02：上传资源组收口（幂等；取消在途接收 + 清理 staged +
+    /// 释放未消费 body 能力 + 移除闲置收据）。
+    let uploads: Vec<u64> = scope
+        .upload_resources
+        .lock()
+        .map(|mut r| std::mem::take(&mut *r))
+        .unwrap_or_default();
+    crate::vm::ffi::http_upload::scope_finalize_uploads(&uploads);
     scope.permit.lock().unwrap().take(); // 释放生命期许可（幂等）
     if let Ok(mut map) = REQUEST_SCOPES.lock() {
         map.remove(&scope.id);
     }
     scope.cancel_notify.notify_waiters();
     crate::vm::ffi::async_http::COMPLETION_NOTIFY.notify_waiters();
+    // PLAN-736 T-05/AC-05：请求终态事件恰一次（完成/取消单点收敛；
+    // 重复 cancel/drop 双路径由事件自身的原子闸防双计）。
+    if let Ok(mut slot) = scope.event.lock() {
+        if let Some(ev) = slot.take() {
+            if to == SCOPE_CANCELLED {
+                ev.cancel();
+            } else {
+                ev.complete();
+            }
+        }
+    }
 }
 
 /// 正常完成（回复送达非 SSE / SSE 流结束）。
@@ -4676,12 +6102,38 @@ pub(crate) fn scope_usable(scope: &RequestScope) -> bool {
     if scope.terminal() {
         return false;
     }
-    std::time::Instant::now() <= scope.deadline
+    std::time::Instant::now() <= *scope.deadline.read().unwrap()
 }
 
 /// 按 id 查 scope（owner 侧）。
 pub(crate) fn lookup_scope(id: u64) -> Option<std::sync::Arc<RequestScope>> {
     REQUEST_SCOPES.lock().ok().and_then(|m| m.get(&id).cloned())
+}
+
+/// PLAN-730 T-05：延展 scope deadline（只增不减；上传 receive 启动时从
+/// 30s 切换到上传总期限）。watch 唤醒桥 reply 等待循环重臂；完成通知唤醒
+/// owner parked 定时臂重算。
+pub(crate) fn extend_scope_deadline(scope_id: u64, new_deadline: std::time::Instant) {
+    if let Some(scope) = lookup_scope(scope_id) {
+        let extended = {
+            let mut d = scope.deadline.write().unwrap();
+            if new_deadline > *d {
+                *d = new_deadline;
+                true
+            } else {
+                false
+            }
+        };
+        if extended {
+            let _ = scope.deadline_tx.send(new_deadline);
+            crate::vm::ffi::async_http::COMPLETION_NOTIFY.notify_waiters();
+        }
+    }
+}
+
+/// PLAN-730 T-05：当前段执行的 scope id（无绑定为 None——非请求上下文）。
+pub(crate) fn current_scope_id() -> Option<u64> {
+    CURRENT_SCOPE_ID.with(|c| c.get())
 }
 
 /// 连接终结（net 侧 watcher）：取消该连接名下全部 scope（已确证销毁判据，
@@ -4735,6 +6187,45 @@ pub(crate) fn register_scope_stream(stream_id: u64) {
     }
 }
 
+/// PLAN-727 T-05：transfer 提交 shim 调用——传输登记进当前请求的**有类型**
+/// 传输资源组（无 scope → no-op；CLI/UI 程序资源归显式 cancel/wait 管理）。
+pub(crate) fn register_scope_transfer(transfer_id: u64) {
+    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
+        return;
+    };
+    if let Some(scope) = lookup_scope(scope_id) {
+        if let Ok(mut r) = scope.transfer_resources.lock() {
+            r.push(transfer_id);
+        }
+    }
+}
+
+/// PLAN-729 T-04：file_response 构造 shim 调用——描述符登记进当前请求的
+/// 文件描述符资源组（无 scope → no-op；编组取出或 scope 终结时移除）。
+pub(crate) fn register_scope_file_response(descriptor_id: u64) {
+    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
+        return;
+    };
+    if let Some(scope) = lookup_scope(scope_id) {
+        if let Ok(mut r) = scope.file_response_resources.lock() {
+            r.push(descriptor_id);
+        }
+    }
+}
+
+/// PLAN-730 T-02：上传句柄（注入能力/会话/收据）登记进当前请求的上传
+/// 资源组（无 scope → no-op；非请求上下文构造不能进入 HTTP 编组面）。
+pub(crate) fn register_scope_upload(upload_id: u64) {
+    let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
+        return;
+    };
+    if let Some(scope) = lookup_scope(scope_id) {
+        if let Ok(mut r) = scope.upload_resources.lock() {
+            r.push(upload_id);
+        }
+    }
+}
+
 /// 资源基线探针（测试）：存活 scope 数。
 #[cfg(test)]
 pub(crate) fn live_scope_count() -> usize {
@@ -4747,7 +6238,6 @@ pub(crate) fn life_permit_available() -> usize {
     life_permits().available_permits()
 }
 
-
 /// 就绪探测（parked 表扫描用；不消费任何状态）。
 pub(crate) fn parked_is_ready(vm: &std::rc::Rc<AutoVM>, p: &ParkedRequest) -> bool {
     match &p.wait {
@@ -4759,9 +6249,7 @@ pub(crate) fn parked_is_ready(vm: &std::rc::Rc<AutoVM>, p: &ParkedRequest) -> bo
             .unwrap_or(true), // future 消失 → 唤醒（引擎恢复臂同款 nil fallback）
         // PLAN-707 T-05: 外部流——数据入队或终态即就绪（stream_ready 含
         // 条目消失的终结臂）。
-        ParkedWait::HttpStream(stream_id) => {
-            crate::vm::ffi::http_stream::stream_ready(*stream_id)
-        }
+        ParkedWait::HttpStream(stream_id) => crate::vm::ffi::http_stream::stream_ready(*stream_id),
         // PLAN-711 T-11: CPU continuation 归 vm_bridge 的 CPU 泵，HTTP 泵
         // 不拾取（防御臂；HTTP 轨不产该凭据）。
         ParkedWait::CpuRunnable => false,
@@ -4776,6 +6264,9 @@ pub(crate) enum ParkedResume {
     StillParked,
     /// 本条目作废，改挂交接条目（middleware 续链重新 park 的形态）。
     Handoff(Box<ParkedRequest>),
+    /// PLAN-730 T-07：回复已由下游自送（start_handler 内部消费 reply_tx；
+    /// 条目直接移除，caller 不得再送）。
+    Consumed,
 }
 
 pub(crate) fn resume_parked_request(
@@ -4830,7 +6321,9 @@ pub(crate) fn resume_parked_request(
                     SegmentOutcome::Completed(Err(_)) => MWResume::ContinueChain,
                     // PLAN-711 T-11: HTTP 轨不产 CPU continuation（防御臂：
                     // 未完成=仍 park，凭据 CpuRunnable 对 HTTP 泵恒不就绪）。
-                    SegmentOutcome::Runnable { seg } => MWResume::Parked(ParkedWait::CpuRunnable, seg),
+                    SegmentOutcome::Runnable { seg } => {
+                        MWResume::Parked(ParkedWait::CpuRunnable, seg)
+                    }
                 }
             } else {
                 MWResume::Missing
@@ -4862,6 +6355,41 @@ pub(crate) fn resume_parked_request(
                 }
             }
         }
+        // PLAN-730 T-07：legacy 落盘完成——合并 files JSON 进 body 后进
+        // handler；写失败 = 真实 500（不返回不存在的假路径）。
+        ParkStage::LegacyStore { op_id } => {
+            let result = LEGACY_STORE_RESULTS
+                .lock()
+                .ok()
+                .and_then(|mut m| m.remove(&op_id))
+                .flatten();
+            // live-op marker 出表（complete 侧落 Body("")；take 走防泄漏）。
+            let _ = crate::vm::ffi::stdlib::check_async_http_result(op_id);
+            match result {
+                Some(Ok((paths, files_json))) => {
+                    p.ctx.legacy_stored = paths;
+                    p.ctx.body = multipart_handler_json(&p.ctx.legacy_fields_json, &files_json);
+                    p.ctx.multipart_json = Some(p.ctx.body.clone());
+                    advance_after_legacy_store(vm, p)
+                }
+                Some(Err(message)) => {
+                    eprintln!(
+                        "[HTTP] {} {} [{}] → 500 (legacy multipart store: {})",
+                        p.ctx.req_method, p.ctx.req_path, p.ctx.request_id, message
+                    );
+                    let mut headers = cors_json_headers(&p.ctx.request_id);
+                    headers[0].1 = "application/json".to_string();
+                    ParkedResume::Reply(ApiReply::Full {
+                        status: 500,
+                        headers,
+                        body: ApiBody::Text(
+                            format!("{{\"error\":{}}}", json_escape_string(&message)).into_bytes(),
+                        ),
+                    })
+                }
+                None => ParkedResume::StillParked,
+            }
+        }
         ParkStage::Handler => {
             enum HResume {
                 Parked(ParkedWait, ParkedSegment),
@@ -4880,9 +6408,12 @@ pub(crate) fn resume_parked_request(
                     SegmentOutcome::Completed(Ok(())) => HResume::Value(t.ram.pop_nv()),
                     SegmentOutcome::Completed(Err(e)) => HResume::Err(e),
                     // PLAN-711 T-11: HTTP 轨不产 CPU continuation（防御臂）。
-                    SegmentOutcome::Runnable { .. } => HResume::Err(crate::vm::engine::VMError::RuntimeError(
-                        "internal: cpu-slice outcome escaped legacy http resume (unreachable)".into(),
-                    )),
+                    SegmentOutcome::Runnable { .. } => {
+                        HResume::Err(crate::vm::engine::VMError::RuntimeError(
+                            "internal: cpu-slice outcome escaped legacy http resume (unreachable)"
+                                .into(),
+                        ))
+                    }
                 }
             } else {
                 HResume::Missing
@@ -5005,6 +6536,10 @@ fn placeholder_ctx() -> DispatchCtx {
         request_info: String::new(),
         handler_task_id: None,
         scope_id: 0,
+        upload_pending: None,
+        legacy_parts: None,
+        legacy_fields_json: String::new(),
+        legacy_stored: Vec::new(),
     }
 }
 
@@ -5018,11 +6553,7 @@ fn placeholder_reply() -> ApiReply {
 
 /// 按返回 future 终态编组（Ready → 终值；Failed/缺失 → null；Pending →
 /// 继续等）。
-fn probe_return_future(
-    vm: &std::rc::Rc<AutoVM>,
-    p: &mut ParkedRequest,
-    fid: u32,
-) -> ParkedResume {
+fn probe_return_future(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest, fid: u32) -> ParkedResume {
     let Some(fut) = vm.futures.get(&fid) else {
         let reply = final_value_reply(vm, &p.ctx, None);
         vm.tasks.remove(&p.task_id);
@@ -5071,6 +6602,7 @@ pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<Park
                     parked.insert(i, *np);
                     i += 1;
                 }
+                ParkedResume::Consumed => {} // 回复已自送——条目移除即可
             }
         } else {
             i += 1;
@@ -5084,10 +6616,16 @@ fn abort_parked_request(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) {
     if let ParkedWait::HttpRequest(req_id) = &p.wait {
         crate::vm::ffi::stdlib::drop_async_result(*req_id);
     }
+    // PLAN-730 T-07：废弃请求的 legacy provisional 文件删除（取消/超时）；
+    // LegacyStore 期的迟到落盘结果由 presence 守卫丢弃 + 结果表条目清除。
+    cleanup_legacy_files(&p.ctx.legacy_stored);
     // PLAN-707 T-06（D-7）：废弃请求的任务持有的流一并取消（首段 open
     // 后 park 的形态）。
     if let Some(t) = vm.tasks.get(&p.task_id) {
-        let owned = t.try_lock().ok().map(|mut t| std::mem::take(&mut t.owned_stream_ids));
+        let owned = t
+            .try_lock()
+            .ok()
+            .map(|mut t| std::mem::take(&mut t.owned_stream_ids));
         if let Some(ids) = owned {
             for stream_id in ids {
                 crate::vm::ffi::http_stream::stream_cancel(stream_id);
@@ -5119,38 +6657,36 @@ fn json_value_reply(
 ) -> ApiReply {
     match nv_to_json(vm, nv, 0) {
         Some(result_json) => {
-            let is_error = result_json.starts_with("{\"error\":");
-            let status = if is_error { 500 } else { 200 };
+            // PLAN-734 T-03（D3）：`{"error":` 前缀猜测退役——业务 record
+            // 含 error 字段是数据（200）；错误状态由执行/序列化失败决定。
+            let status = 200;
             // PLAN-698 SD-02: POST 广播臂（Typing / New{Type}，has_sse 门控）。
-            if !is_error && req_method == "POST" {
+            if req_method == "POST" {
                 publish_post_broadcast(fn_name, request_body, &result_json);
             }
-            if !is_error {
-                eprintln!(
-                    "[HTTP] {} {} [{}] → 200 ({}ms)",
-                    req_method, req_path, request_id, elapsed_ms
-                );
-            }
+            eprintln!(
+                "[HTTP] {} {} [{}] → 200 ({}ms)",
+                req_method, req_path, request_id, elapsed_ms
+            );
             ApiReply::Full {
                 status,
                 headers: json_reply_headers(request_id),
                 body: ApiBody::Text(result_json.into_bytes()),
             }
         }
+        // PLAN-734 T-03（D3）：序列化失败 → 500 诊断（不再 200 空 body
+        // 冒充成功；AC-03）。
         None => ApiReply::Full {
-            status: 200,
+            status: 500,
             headers: json_reply_headers(request_id),
-            body: ApiBody::Text(Vec::new()),
+            body: ApiBody::Text(br#"{"error":"response serialization failed"}"#.to_vec()),
         },
     }
 }
 
 /// Standard headers of a JSON `#[api]` reply (content-type + CORS + request id).
 fn json_reply_headers(request_id: &str) -> Vec<(String, String)> {
-    let mut headers = vec![(
-        "Content-Type".to_string(),
-        "application/json".to_string(),
-    )];
+    let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
     headers.extend(cors_header_pairs());
     headers.push(("X-Request-Id".to_string(), request_id.to_string()));
     headers
@@ -5180,7 +6716,10 @@ fn cleanup_sse_iterator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
                 // 回收（首次 pull 发生在 SSE serve 循环，scope 守卫已退出，
                 // 资源组登记靠 task.owned_stream_ids 第二线承载）。
                 if let Some(t) = vm.tasks.get(&task_id) {
-                    let owned = t.try_lock().ok().map(|mut t| std::mem::take(&mut t.owned_stream_ids));
+                    let owned = t
+                        .try_lock()
+                        .ok()
+                        .map(|mut t| std::mem::take(&mut t.owned_stream_ids));
                     if let Some(ids) = owned {
                         for stream_id in ids {
                             crate::vm::ffi::http_stream::stream_cancel(stream_id);
@@ -5232,7 +6771,10 @@ fn wake_sse_generator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
     if let Some(task_id) = task_id {
         if let Some(task) = vm.tasks.get(&task_id) {
             if let Ok(mut task) = task.try_lock() {
-                if task.wake_time.is_some_and(|deadline| deadline <= std::time::Instant::now()) {
+                if task
+                    .wake_time
+                    .is_some_and(|deadline| deadline <= std::time::Instant::now())
+                {
                     task.wake_time = None;
                     task.status = crate::vm::task::TaskStatus::Ready;
                 }
@@ -5243,10 +6785,7 @@ fn wake_sse_generator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
 
 /// PLAN-707 T-05（D-6）：读取 generator 任务的等待凭据（cooperative sleep
 /// 之外的凭据化等待源）——外部流 id 或外部 future id。
-fn generator_wait_credential(
-    vm: &crate::vm::engine::AutoVM,
-    iterator_id: u32,
-) -> GeneratorWait {
+fn generator_wait_credential(vm: &crate::vm::engine::AutoVM, iterator_id: u32) -> GeneratorWait {
     use crate::vm::engine::Iterator;
     let task_id = match vm.iterators.get(&iterator_id) {
         Some(state) => match &*state {
@@ -5268,7 +6807,7 @@ fn generator_wait_credential(
         return GeneratorWait::Stream(stream_id);
     }
     if let Some(stream_id) = task.waiting_sse_stream_id {
-        return GeneratorWait::Stream(stream_id);
+        return GeneratorWait::LegacyStream(stream_id);
     }
     if let Some(fid) = task.waiting_future_id {
         return GeneratorWait::Future(fid);
@@ -5279,6 +6818,7 @@ fn generator_wait_credential(
 enum GeneratorWait {
     None,
     Stream(u64),
+    LegacyStream(u64),
     Future(u32),
 }
 
@@ -5362,6 +6902,9 @@ async fn next_sse_generator_value(
                     GeneratorWait::Stream(stream_id) => {
                         crate::vm::ffi::http_stream::wait_stream_ready(stream_id).await;
                     }
+                    GeneratorWait::LegacyStream(stream_id) => {
+                        crate::vm::ffi::http_stream::wait_legacy_stream_ready(stream_id).await;
+                    }
                     GeneratorWait::Future(_) => {
                         let notified = crate::vm::ffi::async_http::COMPLETION_NOTIFY.notified();
                         tokio::pin!(notified);
@@ -5378,10 +6921,8 @@ async fn next_sse_generator_value(
                     GeneratorWait::None => {
                         if let Some(deadline) = sse_generator_wake_deadline(vm, iterator_id) {
                             if deadline > std::time::Instant::now() {
-                                tokio::time::sleep_until(tokio::time::Instant::from_std(
-                                    deadline,
-                                ))
-                                .await;
+                                tokio::time::sleep_until(tokio::time::Instant::from_std(deadline))
+                                    .await;
                             }
                             wake_sse_generator(vm, iterator_id);
                         } else {
@@ -5502,6 +7043,91 @@ impl ApiTyKind {
 /// push_str_arg throat. PLAN-675 T-02: back_proxy session dispatch consumes
 /// this too (crate-internal) so gallery proxy path params coerce per `#[api]`
 /// signature — the standalone-server semantics, one implementation.
+/// PLAN-734 T-03：body JSON 值按声明类型校验（AC-02）。
+/// str/bool/int/float 形态精确匹配；optional 接受 null；数组/record 走
+/// 结构存在性（深度展开由 marshal 承担）。未知声明类型不在此拒绝
+/// （Unsupported 类按 transport 矩阵在生成期诊断；运行期按原行为 marshal）。
+fn validate_body_value(declared_ty: &str, v: &serde_json::Value) -> Result<(), String> {
+    use crate::api::contract::ParamKind;
+    let kind = ParamKind::from_param_string(declared_ty, &[]);
+    let mismatch = |expect: &str| format!("expected {expect}, got {}", json_value_kind_name(v));
+    match kind {
+        ParamKind::Str => {
+            if !v.is_string() {
+                return Err(mismatch("str"));
+            }
+        }
+        ParamKind::Bool => {
+            if !v.is_boolean() {
+                return Err(mismatch("bool"));
+            }
+        }
+        ParamKind::Int => {
+            if !v.is_i64() && !v.is_u64() {
+                return Err(mismatch("int"));
+            }
+        }
+        ParamKind::Float => {
+            if !v.is_number() {
+                return Err(mismatch("float"));
+            }
+            if let Some(f) = v.as_f64() {
+                if !f.is_finite() {
+                    return Err("float must be finite (NaN/Infinity rejected)".into());
+                }
+            }
+        }
+        ParamKind::Optional(_) => {
+            if !v.is_null() {
+                let inner = declared_ty
+                    .trim()
+                    .trim_start_matches('?')
+                    .trim_end_matches('?');
+                let inner_kind = ParamKind::from_param_string(inner, &[]);
+                let bad_scalar = match (&inner_kind, v) {
+                    (ParamKind::Str, serde_json::Value::String(_)) => false,
+                    (ParamKind::Bool, serde_json::Value::Bool(_)) => false,
+                    (ParamKind::Int, v) => !(v.is_i64() || v.is_u64()),
+                    (ParamKind::Float, v) => !v.is_number(),
+                    _ => false,
+                };
+                if bad_scalar {
+                    return Err(mismatch(inner));
+                }
+            }
+        }
+        ParamKind::Array(_) => {
+            if !v.is_array() {
+                return Err(mismatch("array"));
+            }
+        }
+        ParamKind::Record(_) => {
+            if !v.is_object() {
+                return Err(mismatch("record"));
+            }
+        }
+        ParamKind::Unsupported(_) => {}
+    }
+    Ok(())
+}
+
+fn json_value_kind_name(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(n) => {
+            if n.is_i64() || n.is_u64() {
+                "int"
+            } else {
+                "float"
+            }
+        }
+        serde_json::Value::String(_) => "str",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "record",
+    }
+}
+
 pub(crate) fn push_typed_string_arg(
     vm: &crate::vm::engine::AutoVM,
     task: &mut crate::vm::task::AutoTask,
@@ -5518,7 +7144,22 @@ pub(crate) fn push_typed_string_arg(
     };
     match ApiTyKind::from_ty(&sig.ty) {
         ApiTyKind::Int => match val.parse::<i64>() {
-            Ok(i) => task.ram.push_nv(auto_val::encode_i32(i as i32)),
+            Ok(i) => {
+                // PLAN-734 T-03（E4 修复）：int 语义 = i64 全域（不截断）；
+                // 定点变体按各自范围校验（超界 400，不静默回绕）。
+                let range_ok = match sig.ty.trim() {
+                    "u32" => (0..=u32::MAX as i64).contains(&i),
+                    "u64" | "usize" => i >= 0,
+                    "uint" => (0..=4_294_967_295i64).contains(&i),
+                    "byte" => (0..=255).contains(&i),
+                    _ => true, // int / i64 / i32：i64 全域交付
+                };
+                if !range_ok {
+                    return Err(bad(sig.ty.trim()));
+                }
+                task.ram
+                    .push_nv(crate::vm::ffi::convert::encode_i64_with_heap(vm, i));
+            }
             Err(_) => return Err(bad(sig.ty.trim())),
         },
         ApiTyKind::Float => match val.parse::<f64>() {
@@ -5552,16 +7193,43 @@ pub(crate) fn bind_api_args_by_name(
     metadata_json: Option<&str>,
     method: &str,
     req_path: &str,
+    upload_handle: Option<i64>,
 ) -> Result<usize, ApiArgBindError> {
     let mut n_args = 0usize;
     let mut unbound: Vec<&ApiParamSig> = Vec::new();
     for sig in sigs {
+        // PLAN-730 T-05：UploadRequest 注入参数——类型身份识别（734 契约
+        // 单源）置于 path/body/query/meta 全部规则**之前**（防 "req" meta
+        // 名约定与 whole-body 单参容忍吞掉注入参数；AC-01 反例防线）。
+        if crate::api::contract::is_upload_param(&sig.ty) {
+            match upload_handle {
+                Some(h) => {
+                    task.ram.push_i32(h as i32);
+                    n_args += 1;
+                    continue;
+                }
+                None => {
+                    return Err(ApiArgBindError::Internal(format!(
+                        "upload param `{}` has no injected request capability",
+                        sig.name
+                    )));
+                }
+            }
+        }
         if let Some((_, v)) = route_match.path_params.iter().find(|(n, _)| n == &sig.name) {
             push_typed_string_arg(vm, task, sig, v, method, req_path)?;
             n_args += 1;
             continue;
         }
         if let Some(v) = body_json.and_then(|b| b.get(&sig.name)) {
+            // PLAN-734 T-03：body 值按声明类型校验（错形态 400，不静默
+            // 按值自身形态 marshal；AC-02）。int 语义 i64 全域。
+            if let Err(msg) = validate_body_value(&sig.ty, v) {
+                return Err(ApiArgBindError::BadRequest(format!(
+                    "invalid value for param `{}`: {}",
+                    sig.name, msg
+                )));
+            }
             crate::vm::ffi::stdlib::json_to_vm_value(task, vm, v, 0).map_err(|e| {
                 ApiArgBindError::Internal(format!(
                     "body param `{}` marshal failed: {e:?}",
@@ -5571,7 +7239,11 @@ pub(crate) fn bind_api_args_by_name(
             n_args += 1;
             continue;
         }
-        if let Some((_, v)) = route_match.query_params.iter().find(|(n, _)| n == &sig.name) {
+        if let Some((_, v)) = route_match
+            .query_params
+            .iter()
+            .find(|(n, _)| n == &sig.name)
+        {
             push_typed_string_arg(vm, task, sig, v, method, req_path)?;
             n_args += 1;
             continue;
@@ -5593,8 +7265,11 @@ pub(crate) fn bind_api_args_by_name(
     // metadata-param convention (the 023-realworld / e2e corpus names it
     // `meta`) → cookies/auth JSON. Anything else unbound is a missing param.
     if unbound.len() == 1
-        && std::ptr::eq(unbound[0], sigs.last().expect("unbound implies sigs nonempty"))
-        && is_meta_param_name(&unbound[0].name)
+        && std::ptr::eq(
+            unbound[0],
+            sigs.last().expect("unbound implies sigs nonempty"),
+        )
+        && crate::api::contract::is_meta_alias(&unbound[0].name)
     {
         if let Some(meta) = metadata_json {
             push_str_arg(vm, task, meta);
@@ -5652,6 +7327,7 @@ pub(crate) fn bind_api_args_or_legacy(
             None,
             method,
             req_path,
+            None,
         )
     } else {
         let mut n_args = 0;
@@ -5675,30 +7351,49 @@ pub(crate) fn bind_api_args_or_legacy(
 /// Build handler arguments on the task's stack (path params + body).
 /// Returns the number of args pushed.
 /// PLAN-669: cookies + auth metadata JSON (the Plan 346 stage 4 payload).
+/// PLAN-734 T-03：meta 构造单源（standalone 与 back-proxy 共用）。
+pub(crate) fn build_meta_json(cookie_header: &str, auth_header: &str) -> String {
+    cookies_auth_metadata(cookie_header, auth_header)
+}
+
 fn cookies_auth_metadata(cookie_header: &str, auth_header: &str) -> String {
     let cookies_json: String = if cookie_header.is_empty() {
         "{}".to_string()
     } else {
-        let pairs: Vec<String> = cookie_header.split(';')
+        let pairs: Vec<String> = cookie_header
+            .split(';')
             .filter_map(|pair| {
                 let pair = pair.trim();
                 let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-                Some(format!("\"{}\":\"{}\"", k.trim().replace('"', "\\\""), v.trim().replace('"', "\\\"")))
+                Some(format!(
+                    "\"{}\":\"{}\"",
+                    k.trim().replace('"', "\\\""),
+                    v.trim().replace('"', "\\\"")
+                ))
             })
             .collect();
         format!("{{{}}}", pairs.join(","))
     };
-    let auth_val = if auth_header.is_empty() { "".to_string() } else { auth_header.replace('"', "\\\"") };
+    let auth_val = if auth_header.is_empty() {
+        "".to_string()
+    } else {
+        auth_header.replace('"', "\\\"")
+    };
     format!(r#"{{"cookies":{},"auth":"{}"}}"#, cookies_json, auth_val)
 }
 
 /// PLAN-669: form-urlencoded body → JSON object string (fields addressable
 /// by name; k/v percent-decoded), same conversion the legacy branch pushes.
 fn form_urlencoded_to_json_object(body: &str) -> String {
-    let pairs: Vec<String> = body.split('&')
+    let pairs: Vec<String> = body
+        .split('&')
         .filter_map(|pair| {
             let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-            Some(format!("\"{}\":\"{}\"", url_decode(k).replace('"', "\\\""), url_decode(v).replace('"', "\\\"")))
+            Some(format!(
+                "\"{}\":\"{}\"",
+                url_decode(k).replace('"', "\\\""),
+                url_decode(v).replace('"', "\\\"")
+            ))
         })
         .collect();
     format!("{{{}}}", pairs.join(","))
@@ -5715,6 +7410,7 @@ fn build_handler_args(
     multipart_json: Option<&str>,
     method: &str,
     req_path: &str,
+    upload_handle: Option<i64>,
 ) -> Result<usize, ApiArgBindError> {
     let mut n_args = 0;
     if let Some(_task_arc) = vm.tasks.get(&task_id) {
@@ -5736,8 +7432,7 @@ fn build_handler_args(
                 } else {
                     body.to_string()
                 };
-                let body_json: Option<serde_json::Value> =
-                    serde_json::from_str(&body_source).ok();
+                let body_json: Option<serde_json::Value> = serde_json::from_str(&body_source).ok();
                 let metadata = cookies_auth_metadata(cookie_header, auth_header);
                 return bind_api_args_by_name(
                     vm,
@@ -5749,6 +7444,7 @@ fn build_handler_args(
                     Some(&metadata),
                     method,
                     req_path,
+                    upload_handle,
                 );
             }
 
@@ -5758,19 +7454,27 @@ fn build_handler_args(
                     task.ram.push_i32(i);
                 } else {
                     // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                        push_str_arg(vm, &mut task, &param_val);
+                    push_str_arg(vm, &mut task, &param_val);
                 }
                 n_args += 1;
             }
 
             // Plan 346: Push query params as a JSON object string if no body.
             if !route_match.query_params.is_empty() && body.is_empty() {
-                let json_parts: Vec<String> = route_match.query_params.iter()
-                    .map(|(k, v)| format!("\"{}\":\"{}\"", k.replace('"', "\\\""), v.replace('"', "\\\"")))
+                let json_parts: Vec<String> = route_match
+                    .query_params
+                    .iter()
+                    .map(|(k, v)| {
+                        format!(
+                            "\"{}\":\"{}\"",
+                            k.replace('"', "\\\""),
+                            v.replace('"', "\\\"")
+                        )
+                    })
                     .collect();
                 let json_str = format!("{{{}}}", json_parts.join(","));
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                    push_str_arg(vm, &mut task, &json_str);
+                push_str_arg(vm, &mut task, &json_str);
                 n_args += 1;
             }
 
@@ -5779,7 +7483,7 @@ fn build_handler_args(
                 // Plan 346 5a (B6): multipart push — fields + persisted-file
                 // metadata as JSON (takes the body arg slot).
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                    push_str_arg(vm, &mut task, &mp);
+                push_str_arg(vm, &mut task, &mp);
                 n_args += 1;
             } else if !body.is_empty() {
                 let body_to_push = if content_type.contains("application/x-www-form-urlencoded") {
@@ -5788,7 +7492,7 @@ fn build_handler_args(
                     body.to_string()
                 };
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                    push_str_arg(vm, &mut task, &body_to_push);
+                push_str_arg(vm, &mut task, &body_to_push);
                 n_args += 1;
             }
 
@@ -5807,12 +7511,12 @@ fn build_handler_args(
             let declared_n_args = vm.get_fn_n_args(&route_match.fn_name);
             let push_meta = match declared_n_args {
                 Some(declared) => declared > n_args, // handler wants an extra param
-                None => true, // unknown — preserve old behavior (defensive)
+                None => true,                        // unknown — preserve old behavior (defensive)
             };
             if push_meta {
                 let meta_json = cookies_auth_metadata(cookie_header, auth_header);
                 // Plan 510 G1-1: 统一咽喉(裸写池无 dedup,rc 数组未覆盖时 retain 为静默 no-op)
-                    push_str_arg(vm, &mut task, &meta_json);
+                push_str_arg(vm, &mut task, &meta_json);
                 n_args += 1;
             }
         }
@@ -5825,11 +7529,16 @@ fn build_handler_args(
 #[cfg(test)]
 mod plan698_publisher_tests {
     use super::cleanup_sse_iterator;
-    use super::{publish_post_broadcast, record_api_param_sigs, record_api_return_type, ApiParamSig};
+    use super::{
+        publish_post_broadcast, record_api_param_sigs, record_api_return_type, ApiParamSig,
+    };
     use crate::vm::ffi::stdlib::bus_subscribe_for_test;
 
     fn sig(name: &str, ty: &str) -> ApiParamSig {
-        ApiParamSig { name: name.to_string(), ty: ty.to_string() }
+        ApiParamSig {
+            name: name.to_string(),
+            ty: ty.to_string(),
+        }
     }
 
     #[test]
@@ -5927,7 +7636,10 @@ mod plan698_f1_cleanup_tests {
             (tid, iter_id, stream_id)
         };
         assert!(
-            crate::vm::ffi::stdlib::ASYNC_STREAMS.lock().unwrap().contains_key(&stream_id),
+            crate::vm::ffi::stdlib::ASYNC_STREAMS
+                .lock()
+                .unwrap()
+                .contains_key(&stream_id),
             "handle registered by subscribe"
         );
 
@@ -5936,10 +7648,16 @@ mod plan698_f1_cleanup_tests {
         cleanup_sse_iterator(&vm, iter_id);
 
         assert!(
-            !crate::vm::ffi::stdlib::ASYNC_STREAMS.lock().unwrap().contains_key(&stream_id),
+            !crate::vm::ffi::stdlib::ASYNC_STREAMS
+                .lock()
+                .unwrap()
+                .contains_key(&stream_id),
             "F-1: handle reclaimed on cleanup — forwarder thread unblocks and exits"
         );
-        assert!(!vm.iterators.contains_key(&iter_id), "iterator entry removed");
+        assert!(
+            !vm.iterators.contains_key(&iter_id),
+            "iterator entry removed"
+        );
     }
 }
 
@@ -6041,14 +7759,22 @@ mod spike699_axum_transport {
             let port = ready_rx
                 .recv_timeout(Duration::from_secs(10))
                 .expect("spike server ready");
-            SpikeServer { port, shutdown_tx, done_rx }
+            SpikeServer {
+                port,
+                shutdown_tx,
+                done_rx,
+            }
         }
     }
 
     fn connect(port: u16) -> TcpStream {
         let stream = TcpStream::connect(("127.0.0.1", port)).expect("spike connect");
-        stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-        stream.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
         stream
     }
 
@@ -6129,10 +7855,7 @@ mod spike699_axum_transport {
                 "/api/echo-len",
                 axum::routing::post(|body: String| async move { body.len().to_string() }),
             )
-            .route(
-                "/api/hello",
-                axum::routing::get(|| async { "hi" }),
-            )
+            .route("/api/hello", axum::routing::get(|| async { "hi" }))
             .route(
                 "/api/sse",
                 axum::routing::get(|| async {
@@ -6164,15 +7887,17 @@ mod spike699_axum_transport {
         s.write_all(req.as_bytes()).unwrap();
         s.write_all(req.as_bytes()).unwrap();
         let resp = read_response_until(&mut s, &|resp, _head, _bytes| {
-            resp.matches("HTTP/1.1").count() >= 2
-                && {
-                    // Second head must also have its (content-length) body.
-                    let second = resp.split("HTTP/1.1").nth(2).unwrap_or("");
-                    second.contains("\r\n\r\n")
-                }
+            resp.matches("HTTP/1.1").count() >= 2 && {
+                // Second head must also have its (content-length) body.
+                let second = resp.split("HTTP/1.1").nth(2).unwrap_or("");
+                second.contains("\r\n\r\n")
+            }
         });
         let count = resp.matches("HTTP/1.1 200 OK").count();
-        assert_eq!(count, 2, "two keep-alive responses on one connection, got: {resp:?}");
+        assert_eq!(
+            count, 2,
+            "two keep-alive responses on one connection, got: {resp:?}"
+        );
     }
 
     /// AC-01 probe: chunked request body is decoded by the transport.
@@ -6189,8 +7914,14 @@ mod spike699_axum_transport {
         );
         s.write_all(req.as_bytes()).unwrap();
         let resp = read_response(&mut s);
-        assert!(resp.starts_with("HTTP/1.1 200"), "chunked body accepted, got: {resp:?}");
-        assert!(resp.contains(&body.len().to_string()), "decoded length echoed, got: {resp:?}");
+        assert!(
+            resp.starts_with("HTTP/1.1 200"),
+            "chunked body accepted, got: {resp:?}"
+        );
+        assert!(
+            resp.contains(&body.len().to_string()),
+            "decoded length echoed, got: {resp:?}"
+        );
     }
 
     /// AC-03 probe: oversized headers must produce a determinate outcome.
@@ -6207,7 +7938,10 @@ mod spike699_axum_transport {
             status.contains("431") || status.contains("400") || resp.is_empty(),
             "oversized headers → 431/400/close, got: {status:?}"
         );
-        eprintln!("[spike699] oversized headers outcome: {status:?} (bytes={})", resp.len());
+        eprintln!(
+            "[spike699] oversized headers outcome: {status:?} (bytes={})",
+            resp.len()
+        );
     }
 
     /// AC-03 probe: slow headers must hit the header read timeout and close.
@@ -6227,7 +7961,10 @@ mod spike699_axum_transport {
         );
         eprintln!(
             "[spike699] slow headers outcome: {:?} after {elapsed:?}",
-            String::from_utf8_lossy(&resp).lines().next().unwrap_or("<eof>")
+            String::from_utf8_lossy(&resp)
+                .lines()
+                .next()
+                .unwrap_or("<eof>")
         );
     }
 
@@ -6236,11 +7973,15 @@ mod spike699_axum_transport {
     fn spike_sse_frames_stream() {
         let server = SpikeServer::start(futures::executor::block_on(spike_router()));
         let mut s = connect(server.port);
-        s.write_all(b"GET /api/sse HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+        s.write_all(b"GET /api/sse HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            .unwrap();
         let resp = read_response_until(&mut s, &|resp, _head, _bytes| resp.contains("data: 2"));
         assert!(resp.contains("200 OK"), "SSE status, got {resp:?}");
         assert!(resp.contains("text/event-stream"), "SSE content-type");
-        assert!(resp.contains("data: 0") && resp.contains("data: 2"), "frames streamed");
+        assert!(
+            resp.contains("data: 0") && resp.contains("data: 2"),
+            "frames streamed"
+        );
     }
 
     /// AC-05 probe: graceful shutdown stops accept, drains, releases the port.
@@ -6248,7 +7989,8 @@ mod spike699_axum_transport {
     fn spike_graceful_shutdown_releases_port() {
         let server = SpikeServer::start(futures::executor::block_on(spike_router()));
         let mut s = connect(server.port);
-        s.write_all(b"GET /api/hello HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").unwrap();
+        s.write_all(b"GET /api/hello HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            .unwrap();
         let _ = read_response(&mut s);
         server.shutdown_tx.send(true).unwrap();
         std::thread::sleep(Duration::from_millis(200));
@@ -6261,5 +8003,79 @@ mod spike699_axum_transport {
             .unwrap()
             .block_on(async { tokio::net::TcpListener::bind(("127.0.0.1", server.port)).await });
         assert!(rebind.is_ok(), "port rebindable after shutdown");
+    }
+}
+
+// =============================================================================
+// PLAN-093 (G-8 系) catch-all 路由匹配回归：axum `{*rest}` 翻译为 `*rest` 段
+// 后须消费全部剩余段——此前段数严格相等检查使多段剩余路径永远 404。
+// =============================================================================
+#[cfg(test)]
+mod plan093_catch_all_tests {
+    use super::{match_route, HttpRoute};
+
+    fn routes() -> Vec<HttpRoute> {
+        vec![
+            HttpRoute {
+                method: "GET".into(),
+                path: "/api/files/:workspace_id/*path".into(),
+                fn_name: "workspace_file".into(),
+            },
+            HttpRoute {
+                method: "GET".into(),
+                path: "/api/chats/session/:id".into(),
+                fn_name: "chat_get".into(),
+            },
+        ]
+    }
+
+    #[test]
+    fn catch_all_consumes_remaining_segments() {
+        let m = match_route(
+            &routes(),
+            "GET",
+            "/api/files/default/targets/probe-a/pac.at",
+        )
+        .expect("multi-segment catch-all must match");
+        assert_eq!(m.fn_name, "workspace_file");
+        let ws = m
+            .path_params
+            .iter()
+            .find(|(k, _)| k == "workspace_id")
+            .unwrap();
+        assert_eq!(ws.1, "default");
+        let rest = m.path_params.iter().find(|(k, _)| k == "path").unwrap();
+        assert_eq!(rest.1, "targets/probe-a/pac.at");
+    }
+
+    #[test]
+    fn catch_all_still_requires_prefix() {
+        // 少于路由前缀段数 → 不匹配（workspace_id 缺失）。
+        assert!(match_route(&routes(), "GET", "/api/files").is_none());
+    }
+
+    #[test]
+    fn catch_all_single_segment_remainder() {
+        let m = match_route(&routes(), "GET", "/api/files/default/notes.md")
+            .expect("single-segment remainder must match");
+        let rest = m.path_params.iter().find(|(k, _)| k == "path").unwrap();
+        assert_eq!(rest.1, "notes.md");
+    }
+
+    #[test]
+    fn non_catch_all_still_strict_length() {
+        // 非 catch-all 路由保持严格段数：多余段不匹配。
+        assert!(match_route(&routes(), "GET", "/api/chats/session/a/b").is_none());
+        let m = match_route(&routes(), "GET", "/api/chats/session/abc")
+            .expect("exact-length param route must match");
+        assert_eq!(m.fn_name, "chat_get");
+    }
+
+    #[test]
+    fn catch_all_decodes_percent_encoded_remainder() {
+        let m = match_route(&routes(), "GET", "/api/files/default/wiki/Hello%20World.ad")
+            .expect("encoded remainder must match");
+        let rest = m.path_params.iter().find(|(k, _)| k == "path").unwrap();
+        assert_eq!(rest.1, "wiki/Hello World.ad");
     }
 }

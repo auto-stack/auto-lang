@@ -22,6 +22,7 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - stdlib 静态分发扩充（plan-504）：`Math.pow`（`f64::powf`）与 `Str.is_digit`（单字符 ASCII 数字谓词，多字符恒 false）Rust shim 入 `vm/ffi/stdlib.rs`，native_registry 自动扫描注册；Vue 端 ts_adapter 映射（`math.*`→`Math.*` 通配 / `is_digit`→`/^[0-9]$/.test`）；文件测试 `test/vm/18_ffi/056_math_pow`、`057_str_is_digit`。
 - 字符串池记账自持（plan-510）：over-release 注入源全仓清偿——19 处无计数池引用统一收口 `add_string`/`intern_runtime_str`/`rc_push_str_idx` 咽喉（http_server 裸写/native 返回串/ffi/py_ffi），over-retain 家族配平（BUILD_FSTR/pop_tagged 6 消费点先拷贝后释放/StakeGuard 增池份额）；不变量=每条引用恰一次 retain/release、freelist 槽恒 rc==0，防线三层（dedup 内容校验/墓碑先行/弹出清扫）降级纵深防御、健康态不触发。可观测：`PoolHealth` 快照（underflow_events/phantom_drops/live_shares，rc.rs）+ soak 双档 `pool_soak_churn_short`（日常门禁 800 轮）/`pool_soak_churn_long`（`P510_SOAK_ITERS` 显式档；复审 2M 轮幻影 0/下溢 0/live_shares 归零）。顺手清偿 P499-6/7（Log 族 native ID 移段 1805-1808 脱撞 Shell 1800-1803；kitchen-sink 生成器对 link/tag/use 视图关键字名禁发标签简写）。
 - null 家族守卫全景（plan-550，脚本模式 W0）：null 参与算术/拼接/索引/调用/迭代从静默位模式垃圾翻转为可 try-catch 捕获的 Python 风格 TypeError——算术族经 `virt_memory.rs` 共享弹栈助手 `pop_arith_pair_non_null`/`pop_arith_operand_non_null`（+`_F/_D/_U64/MOD` peek 前缀守卫）；拼接病灶在 STR_CAT 臂（codegen 对含 str 的 `+` 静态路由）；GET_ELEM null 对象 not subscriptable + 越界（ListData 四型）`IndexError: index N out of range`（负索引语义保留，tv 存量零撞击）；迭代病灶在 ARRAY_LEN 静默 0 臂（array 通道 for-in 长度探针，顺带翻 null.len()）；CALL_CLOSURE 动态 callee not callable（正常模式被编译期 E0401 先拦）；TYPE_TO_I32/F64 null 静默 -1/-1.0 臂翻案 TypeError（仅 Expr::To 显式转换发射，无内部哨兵依赖）；TYPE_TO_STR null → "None" + print shim（a2py str(None) 三方对齐）。守卫边界=TAG_NULL only（null/nil/None 三拼写经 PUSH_NIL 归一，PLAN-053；历史 i32 哨兵 -1/MIN+1 与真实整数不可区分不守卫，P550-D3）。单测 `engine.rs tests_null_guards` 13 例；语义契约见 [design/null-family.md](design/null-family.md)。
+- 模块级 fn 调用语义契约（plan-733，2026-10-02）：VM 渲染目标下 store handler 域与视图 computed 域的模块级 fn 调用（任意参型含列表/obj，同文件/跨模块等同）返回真实值、参数逐位绑定、失败显式报错——执行锚 = `vm_bridge.rs::call_vm_fn` 堆引用实参栈编码对齐 H2 统一约定（encode_list→encode_object，engine 数值臂只认 TAG_OBJECT/裸 i32，TAG_LIST 按空迭代即"computed fn 调用列表实参恒空"根因）+ 视图求值器补 `Expr::Object` 字面量臂；T-01 实证 handler 域本无缺陷（musk 附页③"handler 域返空"系输入面误归因）。矩阵回归锚 `plan733_fn_call_semantics_tests`（日常档）；语义矩阵与已知边界（懒挂载时序/push_value 占位/预存 musk_vm_track 红族）见 [design/vm-fn-call-semantics.md](design/vm-fn-call-semantics.md)。
 - 互操作分发层（plan-555，脚本模式 W1）：`vm/interop.rs` 分发组合子六件（`obj_get/set/call/len/iter/type_name`，native ID 1860-1865，目录限定名+裸名双注册）——运行期 tag 分派：外对象经 `HeapObject::as_foreign_object` 默认钩子（None 默认，宿主覆写）取 `ForeignObject` 协议面（首实现=py_ffi PyObjectHandle 六操作臂，send/contains 预留位），Auto 值走原生方法表（str/list/map 索引与按名读写、ARRAY_LEN 语义、array 通道迭代回推、callable/iterable 守卫对标 550）；发射复用 CALL_PY 传输形态（带实参数字节，P555-D5 命名债）；py 三桥补齐 `py_setattr` 467/`py_len` 468/`py_type_name` 469（539 桥型）。契约见 [design/interop-dispatch.md](design/interop-dispatch.md)。
 - 脚本模式 W2 糖批（plan-560）：py 桥扩至 475（470 contains/471 module/472 str/473 pow/474 truthy/475 is——GIL 通道）；`CALL_PY→CALL_NAT_COUNTED` 改名（带计数字节通用原生调用传输形态）；CALL_PY 错误出口 FFI→RuntimeError 统一（catch 拦值一致）；print shim 运行期 PyObjectHandle→GIL str() 臂；550 生产者门控**硬化**为诊断错误 auto_gate_E5501（文件上下文限定——内联/eval 无 path 不门，tv 文件测试走 run_with_capture_and_path 受门，.as/#[script] 豁免/#[rust] 压回）。
 - 脚本模式收官波（plan-567）：**Err 值通道拦截**——ERROR_PROPAGATE 的
@@ -93,6 +94,34 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
   使越界索引不可达属守卫语义；合法负索引（Python 式 normalize，-1 尾元素）
   保持。回归锚：`test/vm/99_short_circuit/`（短路矩阵副作用计数/calc
   eval_expr 全文/负索引共存三件）+ `plan615_calc_prog_tests`。
+
+## 串拼接与 JSON 产物读语义（plan-749）
+
+**串拼接显示契约**（PLAN-749 T-02 根修；此前两臂一律 `decode_i32(bits).to_string()`
+——TAG_BOOL 低 32 位 0x80000000 显示为 `-2147483648`，musk PLAN-100 E2E
+`ok=-2147483648` 实锤；i64/u64 截断同族）：
+
+- **规则**：串拼接（`OpCode::STR_CAT`——codegen 对字符串形 `+` 的静态路由；
+  及 `OpCode::ADD` 串臂）的非串操作数**按 tag 值显示**——bool→`true`/`false`、
+  i64/u64→按值、i32→数值；obj/list 维持堆 id 数值形态（既有语义，display
+  语义变更非本案面）。`.to_string()` 方法臂（:9203 一带）本就按 tag 值显示，
+  与本契约对齐。null 拼接 = 显式类型错（Plan 550 守卫不变）。
+- **数值拦截**：ADD 的 f64/f32 前置数值臂在串臂之前——`f64 + str` 走数值
+  提升而非拼接（既有语义）；STR_CAT 的 f32 操作数落 i32 分支为**预存观察项**
+  （`str + f32` 位型垃圾，musk 面未触发，未修）。
+- 回归锚：`plan749_read_semantics_tests::p749_s1_bool_concat_minimal`。
+
+**JSON 产物读语义（验证事实，无实现改动）**：GET_FIELD 物化臂（ObjectData/
+GenericInstanceData bool 压栈 `encode_bool`——Plan 402 口径）、`json.parse`
+物化（`__json_object` GenericInstanceData + ListData）、≥5 hop 深链、
+`??` 兜底、park-resume 续体读（Http 完成后 handler 续体内 parse+读）经
+PLAN-749 三上下文矩阵（fn 同步/handler 同步/handler 续体/视图/computed）
++ musk E2E（真实 chats.json 种子 15 会话最大 938KB，5/5 boot 载入链
+`ok=true` 零间歇失效）**验证为既有正确契约**。musk 观测的
+`r.ok → -2147483648` 与"深链全 MISS"定音为显示臂缺陷与 dirty 构建观测，
+非读路径缺陷。视图条件位读语义（含 `.store.X.Y` 真值路径/单段 computed
+比较）归 fn 调用语义契约（`design/vm-fn-call-semantics.md`）与视图条件
+求值通道（PLAN-749 G1-G3）。
 
 ## RC 生命周期协议（plan-604）
 

@@ -39,9 +39,24 @@
 // `subtree_equal`, which pairs the shortcuts (ptr_eq structural sharing,
 // whole-node digest match) with an aligned exact walk — verdicts are
 // proven, never guessed.
+//
+// File-backed pages (PLAN-728): a `Node::Chunk` is a leaf whose text lives
+// in the immutable base FILE (an {store, page, range} descriptor plus
+// prescan-computed summaries). The summary/digest machinery above works
+// over chunks WITHOUT materializing them; text-resolving paths fault the
+// page in through the store's LRU cache (see `rope/file_backing.rs`).
+// Base pages are never modified in place — offsets stay true, which the
+// merge-save copy path depends on.
 
 use std::borrow::Cow;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+pub(crate) mod file_backing;
+
+pub(crate) use file_backing::PageConfig;
+pub use file_backing::{PageState, PageStore};
 
 /// Target leaf payload. Oversized inserted text is split toward this size.
 const LEAF_TARGET_BYTES: usize = 1024;
@@ -127,6 +142,22 @@ enum Node {
         /// Content digest of the leaf text (PLAN-703 T-01).
         hash: u64,
     },
+    /// File-backed page slice (PLAN-728): text lives in the immutable base
+    /// file at `store.pages[page] + off`, length `len` bytes. Summaries are
+    /// prescan- (whole page) or split- (sub-range) computed, so every
+    /// summary/digest query answers without materializing; only
+    /// text-resolving paths fault the page in through the LRU cache.
+    Chunk {
+        store: Arc<PageStore>,
+        page: u32,
+        off: u32,
+        len: u32,
+        chars: u32,
+        newlines: u32,
+        start_chars: u32,
+        end_chars: u32,
+        hash: u64,
+    },
     Internal {
         left: Arc<Node>,
         right: Arc<Node>,
@@ -149,7 +180,51 @@ impl Node {
         let chars = text.chars().count();
         let newlines = text.bytes().filter(|&b| b == b'\n').count();
         let hash = poly_digest(text.as_bytes());
-        Arc::new(Node::Leaf { text, chars, newlines, hash })
+        Arc::new(Node::Leaf {
+            text,
+            chars,
+            newlines,
+            hash,
+        })
+    }
+
+    /// Whole-page chunk — summaries come from the prescan `PageDesc`
+    /// (zero IO; the page need not be resident).
+    fn chunk_whole(store: Arc<PageStore>, page: u32) -> Arc<Node> {
+        // Copy the descriptor (PageDesc is Copy) so the store Arc can move
+        // into the node while the fields ride along.
+        let d = *store.page_desc(page);
+        Arc::new(Node::Chunk {
+            store,
+            page,
+            off: 0,
+            len: d.len,
+            chars: d.chars,
+            newlines: d.newlines,
+            start_chars: d.start_chars,
+            end_chars: d.end_chars,
+            hash: d.hash,
+        })
+    }
+
+    /// Sub-range chunk — summaries computed from the given slice (the
+    /// caller resolves the page text; this never IOs on its own).
+    fn chunk_from_slice(store: Arc<PageStore>, page: u32, off: u32, text: &str) -> Arc<Node> {
+        debug_assert!(
+            off as usize + text.len() <= store.page_desc(page).len as usize,
+            "chunk slice exceeds its page"
+        );
+        Arc::new(Node::Chunk {
+            store,
+            page,
+            off,
+            len: text.len() as u32,
+            chars: text.chars().count() as u32,
+            newlines: text.bytes().filter(|&b| b == b'\n').count() as u32,
+            start_chars: text.chars().take_while(|&c| c != '\n').count() as u32,
+            end_chars: text.chars().rev().take_while(|&c| c != '\n').count() as u32,
+            hash: poly_digest(text.as_bytes()),
+        })
     }
 
     fn internal(left: Arc<Node>, right: Arc<Node>) -> Arc<Node> {
@@ -168,12 +243,23 @@ impl Node {
         };
         let height = left.height().max(right.height()) + 1;
         let hash = combine_hash(left.hash(), right.hash(), right.bytes());
-        Arc::new(Node::Internal { left, right, bytes, chars, newlines, start_chars, end_chars, height, hash })
+        Arc::new(Node::Internal {
+            left,
+            right,
+            bytes,
+            chars,
+            newlines,
+            start_chars,
+            end_chars,
+            height,
+            hash,
+        })
     }
 
     fn bytes(&self) -> usize {
         match self {
             Node::Leaf { text, .. } => text.len(),
+            Node::Chunk { len, .. } => *len as usize,
             Node::Internal { bytes, .. } => *bytes,
         }
     }
@@ -181,12 +267,14 @@ impl Node {
     fn chars(&self) -> usize {
         match self {
             Node::Leaf { chars, .. } | Node::Internal { chars, .. } => *chars,
+            Node::Chunk { chars, .. } => *chars as usize,
         }
     }
 
     fn newlines(&self) -> usize {
         match self {
             Node::Leaf { newlines, .. } | Node::Internal { newlines, .. } => *newlines,
+            Node::Chunk { newlines, .. } => *newlines as usize,
         }
     }
 
@@ -194,6 +282,7 @@ impl Node {
         match self {
             Node::Leaf { text, .. } => text.chars().take_while(|&c| c != '\n').count(),
             Node::Internal { start_chars, .. } => *start_chars,
+            Node::Chunk { start_chars, .. } => *start_chars as usize,
         }
     }
 
@@ -201,12 +290,13 @@ impl Node {
         match self {
             Node::Leaf { text, .. } => text.chars().rev().take_while(|&c| c != '\n').count(),
             Node::Internal { end_chars, .. } => *end_chars,
+            Node::Chunk { end_chars, .. } => *end_chars as usize,
         }
     }
 
     fn height(&self) -> u8 {
         match self {
-            Node::Leaf { .. } => 0,
+            Node::Leaf { .. } | Node::Chunk { .. } => 0,
             Node::Internal { height, .. } => *height,
         }
     }
@@ -215,6 +305,7 @@ impl Node {
     fn hash(&self) -> u64 {
         match self {
             Node::Leaf { hash, .. } | Node::Internal { hash, .. } => *hash,
+            Node::Chunk { hash, .. } => *hash,
         }
     }
 
@@ -230,6 +321,12 @@ impl Node {
         loop {
             match cur {
                 Node::Leaf { text, .. } => return text.as_bytes()[remaining] & 0xC0 != 0x80,
+                Node::Chunk { .. } => {
+                    let (store, page, off) = chunk_key(cur);
+                    let text = fault_page(store, page);
+                    let abs = off as usize + remaining;
+                    return text.as_bytes()[abs] & 0xC0 != 0x80;
+                }
                 Node::Internal { left, right, .. } => {
                     if remaining < left.bytes() {
                         cur = left;
@@ -245,15 +342,84 @@ impl Node {
     fn children(&self) -> (&Arc<Node>, &Arc<Node>) {
         match self {
             Node::Internal { left, right, .. } => (left, right),
-            Node::Leaf { .. } => unreachable!("children of a leaf"),
+            Node::Leaf { .. } | Node::Chunk { .. } => unreachable!("children of a leaf"),
         }
+    }
+}
+
+fn chunk_key(node: &Node) -> (&Arc<PageStore>, u32, u32) {
+    match node {
+        Node::Chunk {
+            store, page, off, ..
+        } => (store, *page, *off),
+        _ => unreachable!("chunk_key on a non-chunk node"),
+    }
+}
+
+/// Resolve a chunk's page text (sync fault-in through the LRU cache).
+/// IO/decode failure aborts the process with the cause — the base handle
+/// is held open, so a mid-session failure means storage vanished; a rope
+/// query cannot return a wrong answer silently.
+fn fault_page(store: &Arc<PageStore>, page: u32) -> Arc<str> {
+    match store.page_text(page) {
+        Ok(text) => text,
+        Err(e) => panic!("paged-rope: page {page} fault-in failed: {e}"),
+    }
+}
+
+/// Borrowed-or-owned leaf text view — the uniform face the comparison
+/// walks use over `Leaf` (borrowed, zero-copy) and `Chunk` (faulted page,
+/// owned Arc). `None` for internal nodes.
+enum LeafView<'a> {
+    Mem(&'a str),
+    Paged(Arc<str>),
+}
+
+impl LeafView<'_> {
+    fn slice(&self, a: usize, b: usize) -> &str {
+        match self {
+            LeafView::Mem(s) => &s[a..b],
+            LeafView::Paged(s) => &s[a..b],
+        }
+    }
+
+    /// Byte view — the comparison walks cut leaves at the OTHER side's
+    /// node edges, which are arbitrary byte positions in THIS side's
+    /// content once shapes diverge over multi-byte text (a latent 703
+    /// hazard that paged chunks surface deterministically). Comparisons
+    /// are byte-exact anyway, so the walks slice bytes, not str.
+    fn bytes(&self) -> &[u8] {
+        match self {
+            LeafView::Mem(s) => s.as_bytes(),
+            LeafView::Paged(s) => s.as_bytes(),
+        }
+    }
+}
+
+/// Page-internal byte offset of a chunk node (0 for mem leaves) —
+/// comparison walks carry NODE-relative offsets, page text is PAGE-relative.
+fn chunk_off(node: &Node) -> usize {
+    match node {
+        Node::Chunk { off, .. } => *off as usize,
+        _ => 0,
+    }
+}
+
+fn leaf_view(node: &Node) -> Option<LeafView<'_>> {
+    match node {
+        Node::Leaf { text, .. } => Some(LeafView::Mem(text)),
+        Node::Chunk { .. } => {
+            let (store, page, _) = chunk_key(node);
+            Some(LeafView::Paged(fault_page(store, page)))
+        }
+        Node::Internal { .. } => None,
     }
 }
 
 fn leaf_text(node: &Node) -> &str {
     match node {
         Node::Leaf { text, .. } => text,
-        Node::Internal { .. } => unreachable!("leaf_text on an internal node"),
+        Node::Internal { .. } | Node::Chunk { .. } => unreachable!("leaf_text on a non-mem leaf"),
     }
 }
 
@@ -314,7 +480,7 @@ fn concat(a: Arc<Node>, b: Arc<Node>) -> Arc<Node> {
 /// exceeds 1. Rotations rebuild only O(1) nodes; summaries recompute bottom
 /// up through `Node::internal`.
 fn rebalance(node: Arc<Node>) -> Arc<Node> {
-    if matches!(&*node, Node::Leaf { .. }) {
+    if matches!(&*node, Node::Leaf { .. } | Node::Chunk { .. }) {
         return node;
     }
     let (left, right) = node.children();
@@ -366,6 +532,20 @@ fn split(node: &Arc<Node>, byte: usize) -> (Arc<Node>, Arc<Node>) {
             let (l, r) = text.split_at(byte);
             (Node::leaf(l.to_string()), Node::leaf(r.to_string()))
         }
+        // PLAN-728: split a chunk by slicing its page text ONCE (fault-in
+        // of one page) and building two sub-range descriptors — the base
+        // stays untouched; both halves keep page-backed residency.
+        Node::Chunk {
+            store, page, off, ..
+        } => {
+            let text = fault_page(store, *page);
+            let abs = *off as usize;
+            let (l, r) = text[abs..abs + node.bytes()].split_at(byte);
+            (
+                Node::chunk_from_slice(store.clone(), *page, *off, l),
+                Node::chunk_from_slice(store.clone(), *page, *off + byte as u32, r),
+            )
+        }
         Node::Internal { left, right, .. } => {
             if byte < left.bytes() {
                 let (ll, lr) = split(left, byte);
@@ -401,6 +581,17 @@ fn q_byte_to_point(root: &Node, byte: usize) -> (usize, usize) {
                 };
                 return (line, col);
             }
+            Node::Chunk { off, .. } => {
+                let view = leaf_view(cur).expect("chunk leaf view");
+                let text = view.slice(*off as usize, *off as usize + remaining);
+                line += text.bytes().filter(|&b| b == b'\n').count();
+                col = if text.contains('\n') {
+                    text.chars().rev().take_while(|&c| c != '\n').count()
+                } else {
+                    col + text.chars().count()
+                };
+                return (line, col);
+            }
             Node::Internal { left, right, .. } => {
                 if remaining < left.bytes() {
                     cur = left;
@@ -409,7 +600,11 @@ fn q_byte_to_point(root: &Node, byte: usize) -> (usize, usize) {
                     line += left.newlines();
                     // After crossing a subtree with newlines, the column
                     // restarts from its last line's char length.
-                    col = if left.newlines() > 0 { left.end_chars() } else { col + left.chars() };
+                    col = if left.newlines() > 0 {
+                        left.end_chars()
+                    } else {
+                        col + left.chars()
+                    };
                     cur = right;
                 }
             }
@@ -448,7 +643,10 @@ fn q_point_to_byte(root: &Node, line: usize, char_col: usize) -> Option<usize> {
 /// Precondition: `line < line_count`.
 fn q_line_start_byte(root: &Node, line: usize) -> usize {
     let line_count = root.newlines() + 1;
-    assert!(line < line_count, "line_start_byte: line {line} out of range ({line_count} lines)");
+    assert!(
+        line < line_count,
+        "line_start_byte: line {line} out of range ({line_count} lines)"
+    );
     if line == 0 {
         return 0;
     }
@@ -460,6 +658,20 @@ fn q_line_start_byte(root: &Node, line: usize) -> usize {
     loop {
         match cur {
             Node::Leaf { text, .. } => {
+                let mut remaining = target_nl - nls_before;
+                for (i, c) in text.char_indices() {
+                    if c == '\n' {
+                        if remaining == 0 {
+                            return node_start + i + 1;
+                        }
+                        remaining -= 1;
+                    }
+                }
+                unreachable!("line_start_byte: newline not found (bounds checked)");
+            }
+            Node::Chunk { off, .. } => {
+                let view = leaf_view(cur).expect("chunk leaf view");
+                let text = view.slice(*off as usize, *off as usize + cur.bytes());
                 let mut remaining = target_nl - nls_before;
                 for (i, c) in text.char_indices() {
                     if c == '\n' {
@@ -499,7 +711,10 @@ fn q_line_end_byte(root: &Node, line: usize) -> usize {
 /// (zero-copy for the common case), gathered otherwise.
 /// O(log n) locate + O(span).
 fn q_slice_bytes<'a>(root: &'a Node, start: usize, end: usize) -> Cow<'a, str> {
-    debug_assert!(start <= end && end <= root.bytes(), "slice_bytes out of range");
+    debug_assert!(
+        start <= end && end <= root.bytes(),
+        "slice_bytes out of range"
+    );
     let mut node_start = 0usize;
     let mut cur = root;
     loop {
@@ -508,6 +723,15 @@ fn q_slice_bytes<'a>(root: &'a Node, start: usize, end: usize) -> Cow<'a, str> {
                 let a = start - node_start;
                 let b = end - node_start;
                 return Cow::Borrowed(&text[a..b]);
+            }
+            Node::Chunk { off, .. } => {
+                // Same node-relative cut as the leaf arm, but the text is a
+                // faulted page — the borrow lives in the page cache's Arc,
+                // not in `&root`, so the span comes back owned.
+                let a = start - node_start + *off as usize;
+                let b = end - node_start + *off as usize;
+                let view = leaf_view(cur).expect("chunk leaf view");
+                return Cow::Owned(view.slice(a, b).to_string());
             }
             Node::Internal { left, right, .. } => {
                 if end - node_start <= left.bytes() {
@@ -529,6 +753,10 @@ fn q_slice_bytes<'a>(root: &'a Node, start: usize, end: usize) -> Cow<'a, str> {
 fn gather(node: &Node, start: usize, end: usize, out: &mut String) {
     match node {
         Node::Leaf { text, .. } => out.push_str(&text[start..end]),
+        Node::Chunk { off, .. } => {
+            let view = leaf_view(node).expect("chunk leaf view");
+            out.push_str(view.slice(*off as usize + start, *off as usize + end));
+        }
         Node::Internal { left, right, .. } => {
             let lb = left.bytes();
             if start < lb {
@@ -556,7 +784,13 @@ fn q_to_string(root: &Node) -> String {
 /// Collect the aligned pieces covering `[start, end)`: fully-covered
 /// subtrees contribute their cached digest at O(1) each; the at most two
 /// straddling leaves hash their slice. Piece count is O(log n).
-fn collect_digest_pieces(node: &Node, node_start: usize, start: usize, end: usize, pieces: &mut Vec<(u64, usize)>) {
+fn collect_digest_pieces(
+    node: &Node,
+    node_start: usize,
+    start: usize,
+    end: usize,
+    pieces: &mut Vec<(u64, usize)>,
+) {
     let node_end = node_start + node.bytes();
     if start <= node_start && node_end <= end {
         pieces.push((node.hash(), node.bytes()));
@@ -567,6 +801,13 @@ fn collect_digest_pieces(node: &Node, node_start: usize, start: usize, end: usiz
             let a = start.max(node_start) - node_start;
             let b = end.min(node_end) - node_start;
             pieces.push((poly_digest(text[a..b].as_bytes()), b - a));
+        }
+        Node::Chunk { off, .. } => {
+            let a = start.max(node_start) - node_start;
+            let b = end.min(node_end) - node_start;
+            let view = leaf_view(node).expect("chunk leaf view");
+            let s = view.slice(*off as usize + a, *off as usize + b);
+            pieces.push((poly_digest(s.as_bytes()), b - a));
         }
         Node::Internal { left, right, .. } => {
             let mid = node_start + left.bytes();
@@ -586,7 +827,10 @@ fn collect_digest_pieces(node: &Node, node_start: usize, start: usize, end: usiz
 /// the root digest). O(log n) pieces + O(leaf) boundary hashing. Empty
 /// range = the empty digest (sentinel 1).
 fn q_range_hash(root: &Node, start: usize, end: usize) -> u64 {
-    debug_assert!(start <= end && end <= root.bytes(), "range_hash out of range");
+    debug_assert!(
+        start <= end && end <= root.bytes(),
+        "range_hash out of range"
+    );
     let mut pieces = Vec::new();
     collect_digest_pieces(root, 0, start, end, &mut pieces);
     let mut acc = 1; // empty digest
@@ -623,58 +867,30 @@ fn range_content_equal(a: &Node, a_off: usize, b: &Node, b_off: usize, len: usiz
             // shifted structural sharing across edits.)
             continue;
         }
-        if a.bytes() == len && b.bytes() == len && a.hash() == b.hash() && a.chars() == b.chars() && a.newlines() == b.newlines() {
+        if a.bytes() == len
+            && b.bytes() == len
+            && a.hash() == b.hash()
+            && a.chars() == b.chars()
+            && a.newlines() == b.newlines()
+        {
             continue; // content-determined Merkle verdict
         }
         match (a, b) {
-            (Node::Leaf { text: ta, .. }, Node::Leaf { text: tb, .. }) => {
-                if ta[a_off..a_off + len] != tb[b_off..b_off + len] {
-                    return false;
-                }
-            }
-            (Node::Leaf { .. }, _) | (_, Node::Leaf { .. }) => {
-                // One side has no internal boundary: split at the internal
-                // side's child boundary (it lies strictly inside the span).
-                let (leaf, l_off, inner, i_off, leaf_is_a) = match (a, b) {
-                    (Node::Leaf { .. }, i) => (a, a_off, i, b_off, false),
-                    (i, Node::Leaf { .. }) => (b, b_off, i, a_off, true),
-                    _ => unreachable!(),
-                };
-                let (il, ir) = inner.children();
-                let cut = if i_off >= il.bytes() { 0 } else { (il.bytes() - i_off).min(len) };
-                if cut == 0 {
-                    // Span starts at/past the internal side's boundary.
-                    if leaf_is_a {
-                        stack.push((leaf, l_off, ir, i_off - il.bytes(), len));
-                    } else {
-                        stack.push((ir, i_off - il.bytes(), leaf, l_off, len));
-                    }
-                    continue;
-                }
-                if cut == len {
-                    // Span ends inside the internal side's left child.
-                    if leaf_is_a {
-                        stack.push((leaf, l_off, il, i_off, len));
-                    } else {
-                        stack.push((il, i_off, leaf, l_off, len));
-                    }
-                    continue;
-                }
-                if leaf_is_a {
-                    stack.push((leaf, l_off, il, i_off, cut));
-                    stack.push((leaf, l_off + cut, ir, 0, len - cut));
-                } else {
-                    stack.push((il, i_off, leaf, l_off, cut));
-                    stack.push((ir, 0, leaf, l_off + cut, len - cut));
-                }
-            }
             (Node::Internal { .. }, Node::Internal { .. }) => {
                 let (al, ar) = a.children();
                 let (bl, br) = b.children();
                 // Boundary of each side inside the span (0 = span starts at
                 // or past the left child; len = span ends inside it).
-                let ca = if a_off >= al.bytes() { 0 } else { (al.bytes() - a_off).min(len) };
-                let cb = if b_off >= bl.bytes() { 0 } else { (bl.bytes() - b_off).min(len) };
+                let ca = if a_off >= al.bytes() {
+                    0
+                } else {
+                    (al.bytes() - a_off).min(len)
+                };
+                let cb = if b_off >= bl.bytes() {
+                    0
+                } else {
+                    (bl.bytes() - b_off).min(len)
+                };
                 if ca == 0 {
                     stack.push((ar, a_off - al.bytes(), b, b_off, len));
                 } else if cb == 0 {
@@ -699,6 +915,63 @@ fn range_content_equal(a: &Node, a_off: usize, b: &Node, b_off: usize, len: usiz
                     // c2 < len even when c1 == c2 (empty at c2 == len is
                     // skipped by the loop guard).
                     stack.push((ar, c2 - ca, br, c2 - cb, len - c2));
+                }
+            }
+            // At least one leaf-like side (mem Leaf or file-backed Chunk —
+            // both expose a contiguous text view via `leaf_view`; PLAN-728).
+            _ => {
+                let (va, vb) = (leaf_view(a), leaf_view(b));
+                match (va, vb) {
+                    (Some(ta), Some(tb)) => {
+                        let (oa, ob) = (chunk_off(a), chunk_off(b));
+                        if &ta.bytes()[oa + a_off..oa + a_off + len]
+                            != &tb.bytes()[ob + b_off..ob + b_off + len]
+                        {
+                            return false;
+                        }
+                    }
+                    _ => {
+                        // One side has no internal boundary: split at the
+                        // internal side's child boundary (it lies strictly
+                        // inside the span).
+                        let leaf_is_a = matches!(a, Node::Leaf { .. } | Node::Chunk { .. });
+                        let (leaf, l_off, inner, i_off) = if leaf_is_a {
+                            (a, a_off, b, b_off)
+                        } else {
+                            (b, b_off, a, a_off)
+                        };
+                        let (il, ir) = inner.children();
+                        let cut = if i_off >= il.bytes() {
+                            0
+                        } else {
+                            (il.bytes() - i_off).min(len)
+                        };
+                        if cut == 0 {
+                            // Span starts at/past the internal side's boundary.
+                            if leaf_is_a {
+                                stack.push((leaf, l_off, ir, i_off - il.bytes(), len));
+                            } else {
+                                stack.push((ir, i_off - il.bytes(), leaf, l_off, len));
+                            }
+                            continue;
+                        }
+                        if cut == len {
+                            // Span ends inside the internal side's left child.
+                            if leaf_is_a {
+                                stack.push((leaf, l_off, il, i_off, len));
+                            } else {
+                                stack.push((il, i_off, leaf, l_off, len));
+                            }
+                            continue;
+                        }
+                        if leaf_is_a {
+                            stack.push((leaf, l_off, il, i_off, cut));
+                            stack.push((leaf, l_off + cut, ir, 0, len - cut));
+                        } else {
+                            stack.push((il, i_off, leaf, l_off, cut));
+                            stack.push((ir, 0, leaf, l_off + cut, len - cut));
+                        }
+                    }
                 }
             }
         }
@@ -782,60 +1055,29 @@ fn collect_prune_spans(
         // The whole-node Merkle shortcut below carries the pruning load
         // (content-determined digest + length ⇒ same content, wherever it
         // sits); everything else classifies by leaf comparison.
-        if a.bytes() == len && b.bytes() == len && a.hash() == b.hash() && a.chars() == b.chars() && a.newlines() == b.newlines() {
+        if a.bytes() == len
+            && b.bytes() == len
+            && a.hash() == b.hash()
+            && a.chars() == b.chars()
+            && a.newlines() == b.newlines()
+        {
             out.shared.push((a_abs, a_abs + len, b_abs, b_abs + len));
             continue;
         }
         match (a, b) {
-            (Node::Leaf { text: ta, .. }, Node::Leaf { text: tb, .. }) => {
-                // Leaf-leaf pieces classify by content (the only place a
-                // mismatch can surface — everything above classifies via
-                // the shortcuts).
-                if ta[a_rel..a_rel + len] == tb[b_rel..b_rel + len] {
-                    out.shared.push((a_abs, a_abs + len, b_abs, b_abs + len));
-                } else {
-                    out.diverged.push((a_abs, a_abs + len, b_abs, b_abs + len));
-                }
-            }
-            (Node::Leaf { .. }, _) | (_, Node::Leaf { .. }) => {
-                let (leaf, l_rel, l_abs, inner, i_rel, i_abs, leaf_is_a) = match (a, b) {
-                    (Node::Leaf { .. }, i) => (a, a_rel, a_abs, i, b_rel, b_abs, false),
-                    (i, Node::Leaf { .. }) => (b, b_rel, b_abs, i, a_rel, a_abs, true),
-                    _ => unreachable!(),
-                };
-                let (il, ir) = inner.children();
-                let cut = if i_rel >= il.bytes() { 0 } else { (il.bytes() - i_rel).min(len) };
-                if cut == 0 {
-                    // Span starts at/past the internal side's boundary.
-                    if leaf_is_a {
-                        stack.push((leaf, l_rel, l_abs, ir, i_rel - il.bytes(), i_abs, len));
-                    } else {
-                        stack.push((ir, i_rel - il.bytes(), i_abs, leaf, l_rel, l_abs, len));
-                    }
-                    continue;
-                }
-                if cut == len {
-                    // Span ends inside the internal side's left child.
-                    if leaf_is_a {
-                        stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, len));
-                    } else {
-                        stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, len));
-                    }
-                    continue;
-                }
-                if leaf_is_a {
-                    stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, cut));
-                    stack.push((leaf, l_rel + cut, l_abs + cut, ir, 0, i_abs + cut, len - cut));
-                } else {
-                    stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, cut));
-                    stack.push((ir, 0, i_abs + cut, leaf, l_rel + cut, l_abs + cut, len - cut));
-                }
-            }
             (Node::Internal { .. }, Node::Internal { .. }) => {
                 let (al, ar) = a.children();
                 let (bl, br) = b.children();
-                let ca = if a_rel >= al.bytes() { 0 } else { (al.bytes() - a_rel).min(len) };
-                let cb = if b_rel >= bl.bytes() { 0 } else { (bl.bytes() - b_rel).min(len) };
+                let ca = if a_rel >= al.bytes() {
+                    0
+                } else {
+                    (al.bytes() - a_rel).min(len)
+                };
+                let cb = if b_rel >= bl.bytes() {
+                    0
+                } else {
+                    (bl.bytes() - b_rel).min(len)
+                };
                 if ca == 0 {
                     stack.push((ar, a_rel - al.bytes(), a_abs, b, b_rel, b_abs, len));
                 } else if cb == 0 {
@@ -862,6 +1104,97 @@ fn collect_prune_spans(
                     stack.push((ar, c2 - ca, a_abs + c2, br, c2 - cb, b_abs + c2, len - c2));
                 }
             }
+            // At least one leaf-like side (mem Leaf or file-backed Chunk —
+            // both expose a contiguous text view via `leaf_view`; PLAN-728).
+            _ => {
+                let (va, vb) = (leaf_view(a), leaf_view(b));
+                match (va, vb) {
+                    (Some(ta), Some(tb)) => {
+                        // Leaf-leaf pieces classify by content (the only
+                        // place a mismatch can surface — everything above
+                        // classifies via the shortcuts).
+                        let (oa, ob) = (chunk_off(a), chunk_off(b));
+                        if &ta.bytes()[oa + a_rel..oa + a_rel + len]
+                            == &tb.bytes()[ob + b_rel..ob + b_rel + len]
+                        {
+                            out.shared.push((a_abs, a_abs + len, b_abs, b_abs + len));
+                        } else {
+                            out.diverged.push((a_abs, a_abs + len, b_abs, b_abs + len));
+                        }
+                    }
+                    _ => {
+                        let leaf_is_a = matches!(a, Node::Leaf { .. } | Node::Chunk { .. });
+                        let (leaf, l_rel, l_abs, inner, i_rel, i_abs) = if leaf_is_a {
+                            (a, a_rel, a_abs, b, b_rel, b_abs)
+                        } else {
+                            (b, b_rel, b_abs, a, a_rel, a_abs)
+                        };
+                        let (il, ir) = inner.children();
+                        let cut = if i_rel >= il.bytes() {
+                            0
+                        } else {
+                            (il.bytes() - i_rel).min(len)
+                        };
+                        if cut == 0 {
+                            // Span starts at/past the internal side's boundary.
+                            if leaf_is_a {
+                                stack.push((
+                                    leaf,
+                                    l_rel,
+                                    l_abs,
+                                    ir,
+                                    i_rel - il.bytes(),
+                                    i_abs,
+                                    len,
+                                ));
+                            } else {
+                                stack.push((
+                                    ir,
+                                    i_rel - il.bytes(),
+                                    i_abs,
+                                    leaf,
+                                    l_rel,
+                                    l_abs,
+                                    len,
+                                ));
+                            }
+                            continue;
+                        }
+                        if cut == len {
+                            // Span ends inside the internal side's left child.
+                            if leaf_is_a {
+                                stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, len));
+                            } else {
+                                stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, len));
+                            }
+                            continue;
+                        }
+                        if leaf_is_a {
+                            stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, cut));
+                            stack.push((
+                                leaf,
+                                l_rel + cut,
+                                l_abs + cut,
+                                ir,
+                                0,
+                                i_abs + cut,
+                                len - cut,
+                            ));
+                        } else {
+                            stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, cut));
+                            stack.push((
+                                ir,
+                                0,
+                                i_abs + cut,
+                                leaf,
+                                l_rel + cut,
+                                l_abs + cut,
+                                len - cut,
+                            ));
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -879,7 +1212,9 @@ pub struct Rope {
 
 impl Default for Rope {
     fn default() -> Self {
-        Self { root: Node::leaf(String::new()) }
+        Self {
+            root: Node::leaf(String::new()),
+        }
     }
 }
 
@@ -889,12 +1224,16 @@ impl Rope {
     }
 
     pub fn from_str(text: &str) -> Self {
-        Self { root: leaf_or_tree(text) }
+        Self {
+            root: leaf_or_tree(text),
+        }
     }
 
     /// O(1) frozen view; further edits to this rope leave it untouched.
     pub fn snapshot(&self) -> RopeSnapshot {
-        RopeSnapshot { root: self.root.clone() }
+        RopeSnapshot {
+            root: self.root.clone(),
+        }
     }
 
     /// Document length in UTF-8 bytes. O(1) (root summary).
@@ -975,12 +1314,216 @@ impl Rope {
 
     /// Replace `[start, end)` with `text`. Same preconditions/complexity.
     pub fn replace_bytes(&mut self, start: usize, end: usize, text: &str) {
-        debug_assert!(start <= end && end <= self.len_bytes(), "replace_bytes out of range");
-        debug_assert!(self.root.is_char_boundary(start), "replace_bytes: start not a char boundary");
-        debug_assert!(self.root.is_char_boundary(end), "replace_bytes: end not a char boundary");
+        debug_assert!(
+            start <= end && end <= self.len_bytes(),
+            "replace_bytes out of range"
+        );
+        debug_assert!(
+            self.root.is_char_boundary(start),
+            "replace_bytes: start not a char boundary"
+        );
+        debug_assert!(
+            self.root.is_char_boundary(end),
+            "replace_bytes: end not a char boundary"
+        );
         let (left, right) = split(&self.root, end);
         let (left, _) = split(&left, start);
         self.root = concat(concat(left, leaf_or_tree(text)), right);
+    }
+
+    // ── PLAN-728: file-backed paging (供⑮ 面①..⑦) ─────────────────────
+
+    /// Open `path` as a file-backed (paged) rope: prescan builds the page
+    /// table + per-page summaries (one sequential pass — `line_count` and
+    /// digests answer O(1)/O(log n) WITHOUT materializing; text fault-ins
+    /// per page through the store's LRU cache). Returns the store handle
+    /// (prefetch/baseline probes) alongside the rope. Errors mirror
+    /// `read_to_string` semantics (IO / invalid UTF-8).
+    pub(crate) fn open_file_backed(
+        path: &Path,
+        cfg: PageConfig,
+    ) -> io::Result<(Rope, Arc<PageStore>)> {
+        let store = PageStore::prescan(path, &cfg)?;
+        file_backing::spawn_prefetcher(&store);
+        let root = build_chunk_tree(&store);
+        Ok((Rope { root }, store))
+    }
+
+    /// Whether byte `offset` starts a char (or is EOF) — the validation
+    /// face for endpoint offsets (PLAN-728: paged cores validate up front).
+    pub fn is_char_boundary(&self, offset: usize) -> bool {
+        offset <= self.len_bytes() && self.root.is_char_boundary(offset)
+    }
+
+    /// Flat content digest of a plain `&str` — the comparison face for
+    /// `content_hash` fast paths (content-determined: equal bytes ⇒ equal
+    /// digests regardless of rope shape).
+    pub(crate) fn content_hash_of(text: &str) -> u64 {
+        poly_digest(text.as_bytes())
+    }
+
+    /// Streaming merge save (PLAN-728 面⑤): unchanged base spans copy
+    /// disk→disk from the base handle (bypassing the page cache), edited
+    /// spans write from memory; the output lands in a sibling temp file
+    /// then atomically renames over `dest` (crash-safe — an interrupted
+    /// save leaves the original intact). Byte-for-byte with the rope
+    /// content. Errors — including an externally-mutated base (len/mtime
+    /// baseline mismatch) — abort before any rename (报错不静默).
+    /// Returns the bytes written.
+    pub fn write_backed(&self, dest: &Path) -> io::Result<u64> {
+        use std::io::Write as _;
+        // 1. Verify every base store that IS the destination still matches
+        //    its prescan baseline (a mutated base would corrupt the copy).
+        let stores = collect_stores(&self.root);
+        for store in &stores {
+            // ANY mutated base invalidates its chunk offsets — refuse
+            // regardless of the destination path (报错不静默).
+            if !store.baseline_matches() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!(
+                        "paged-rope save: base file {:?} changed on disk since open \
+                         (external modification) — refusing to save",
+                        store.path()
+                    ),
+                ));
+            }
+        }
+        // 2. Write the merged content to a sibling temp file.
+        let tmp = sibling_temp_path(dest);
+        {
+            let out = std::fs::File::create(&tmp)?;
+            let mut w = io::BufWriter::with_capacity(1024 * 1024, out);
+            let mut copy_buf = vec![0u8; 256 * 1024];
+            let mut written = 0u64;
+            write_node_for_save(&self.root, &mut w, &mut copy_buf, &mut written)?;
+            w.flush()?;
+            let file = w
+                .into_inner()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            file.sync_all()?;
+        }
+        // 3. Atomic replace, then re-stamp the baselines we just changed.
+        std::fs::rename(&tmp, dest)?;
+        for store in &stores {
+            if store.path() == dest {
+                store.refresh_baseline();
+            }
+        }
+        Ok(self.len_bytes() as u64)
+    }
+
+    /// Structural residency estimate: every tree node counts as its own
+    /// allocation size (an upper bound on the real per-node overhead —
+    /// chunk descriptors and internal summaries included, text of memory
+    /// leaves excluded). With `PageStore::structural_resident_bytes` this
+    /// is the ≤12MB@1GB contract assertion face (AC-03).
+    pub fn structural_resident_estimate(&self) -> usize {
+        let mut nodes = 0usize;
+        count_nodes(&self.root, &mut nodes);
+        nodes * std::mem::size_of::<Node>()
+    }
+}
+
+/// Recursively count tree nodes (early-exit free — the whole tree counts;
+/// O(#nodes), used only by the residency estimate face).
+fn count_nodes(node: &Arc<Node>, out: &mut usize) {
+    *out += 1;
+    if let Node::Internal { left, right, .. } = &**node {
+        count_nodes(left, out);
+        count_nodes(right, out);
+    }
+}
+
+/// Collect the distinct page stores referenced by the tree (dedup by Arc
+/// identity). A single-open rope references exactly one; the walk stays
+/// general for composed/edited shapes.
+fn collect_stores(node: &Arc<Node>) -> Vec<Arc<PageStore>> {
+    fn walk(node: &Arc<Node>, out: &mut Vec<Arc<PageStore>>) {
+        match &**node {
+            Node::Chunk { store, .. } => {
+                if !out.iter().any(|s| Arc::ptr_eq(s, store)) {
+                    out.push(store.clone());
+                }
+            }
+            Node::Internal { left, right, .. } => {
+                walk(left, out);
+                walk(right, out);
+            }
+            Node::Leaf { .. } => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(node, &mut out);
+    out
+}
+
+/// `<dest>.<pid>.p728tmp` in the destination's own directory (same volume
+/// — rename stays atomic).
+fn sibling_temp_path(dest: &Path) -> PathBuf {
+    let mut name = dest
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    name.push_str(&format!(".{}.p728tmp", std::process::id()));
+    dest.with_file_name(name)
+}
+
+/// Merge-save walk: chunk spans stream from the base handle through the
+/// copy buffer (never through the page cache); leaf spans write their
+/// text; internal spans recurse left-to-right (document order).
+fn write_node_for_save(
+    node: &Arc<Node>,
+    out: &mut dyn io::Write,
+    copy_buf: &mut [u8],
+    written: &mut u64,
+) -> io::Result<()> {
+    match &**node {
+        Node::Leaf { text, .. } => {
+            out.write_all(text.as_bytes())?;
+            *written += text.len() as u64;
+        }
+        Node::Chunk {
+            store,
+            page,
+            off,
+            len,
+            ..
+        } => {
+            let mut offset = store.range_offset(*page, *off);
+            let mut remaining = *len as usize;
+            while remaining > 0 {
+                let want = remaining.min(copy_buf.len());
+                store.read_base_range(offset, &mut copy_buf[..want])?;
+                out.write_all(&copy_buf[..want])?;
+                *written += want as u64;
+                offset += want as u64;
+                remaining -= want;
+            }
+        }
+        Node::Internal { left, right, .. } => {
+            write_node_for_save(left, out, copy_buf, written)?;
+            write_node_for_save(right, out, copy_buf, written)?;
+        }
+    }
+    Ok(())
+}
+
+/// Balanced tree over the store's whole-page chunk nodes (midpoint build —
+/// height-balanced by construction; chunks never merge like small leaves,
+/// so no `concat` squeeze applies). An empty base becomes an empty memory
+/// leaf (empty documents are one empty line either way).
+fn build_chunk_tree(store: &Arc<PageStore>) -> Arc<Node> {
+    fn build(store: &Arc<PageStore>, lo: u32, hi: u32) -> Arc<Node> {
+        if lo + 1 == hi {
+            return Node::chunk_whole(store.clone(), lo);
+        }
+        let mid = lo + (hi - lo) / 2;
+        Node::internal(build(store, lo, mid), build(store, mid, hi))
+    }
+    match store.page_count() {
+        0 => Node::leaf(String::new()),
+        n => build(store, 0, n as u32),
     }
 }
 
@@ -1046,7 +1589,14 @@ impl RopeSnapshot {
     /// Aligned prune spans vs `other` — see [`Rope::prune_spans`].
     pub(crate) fn prune_spans(&self, other: &RopeSnapshot) -> PruneSpans {
         let mut out = PruneSpans::default();
-        collect_prune_spans(&self.root, 0, &other.root, 0, self.root.bytes().min(other.root.bytes()), &mut out);
+        collect_prune_spans(
+            &self.root,
+            0,
+            &other.root,
+            0,
+            self.root.bytes().min(other.root.bytes()),
+            &mut out,
+        );
         append_length_tails(&self.root, &other.root, &mut out);
         out
     }
@@ -1082,7 +1632,8 @@ mod tests {
 
     /// Alphabet exercising 1/2/3/4-byte UTF-8 plus newlines and spaces.
     const POOL: &[&str] = &[
-        "a", "b", "Z", "0", " ", "~", "\n", "\n", "é", "中", "文", "🦀", "🎉", "ß", "fn ", "{", "}", "\t",
+        "a", "b", "Z", "0", " ", "~", "\n", "\n", "é", "中", "文", "🦀", "🎉", "ß", "fn ", "{",
+        "}", "\t",
     ];
 
     fn random_text(rng: &mut Rng, max_chars: usize) -> String {
@@ -1096,7 +1647,9 @@ mod tests {
 
     /// Char-boundary byte offsets of `s`, ascending (0 and len included).
     fn boundaries(s: &str) -> Vec<usize> {
-        std::iter::once(0).chain(s.char_indices().map(|(i, c)| i + c.len_utf8())).collect()
+        std::iter::once(0)
+            .chain(s.char_indices().map(|(i, c)| i + c.len_utf8()))
+            .collect()
     }
 
     fn assert_invariants(rope: &Rope, model: &str, ctx: &str) {
@@ -1106,7 +1659,11 @@ mod tests {
         let want_lines = model.bytes().filter(|&b| b == b'\n').count() + 1;
         assert_eq!(rope.line_count(), want_lines, "line_count ({ctx})");
         // Root summaries agree with the ground truth.
-        assert_eq!(rope.line(0), model.lines().next().unwrap_or(""), "line(0) ({ctx})");
+        assert_eq!(
+            rope.line(0),
+            model.lines().next().unwrap_or(""),
+            "line(0) ({ctx})"
+        );
     }
 
     /// Randomized differential test vs `String` — the correctness gate.
@@ -1127,7 +1684,8 @@ mod tests {
                 format!("insert({at}, {text:?})")
             } else if kind == 1 && at < model.len() {
                 let pos = bounds.iter().position(|&b| b == at).unwrap();
-                let end = bounds[(pos + 1 + rng.below(bounds.len() - pos - 1)).min(bounds.len() - 1)];
+                let end =
+                    bounds[(pos + 1 + rng.below(bounds.len() - pos - 1)).min(bounds.len() - 1)];
                 model.replace_range(at..end, "");
                 rope.delete_bytes(at, end);
                 format!("delete({at}, {end})")
@@ -1147,7 +1705,11 @@ mod tests {
             assert_invariants(&rope, &model, &ctx);
             // PLAN-703 T-01: digest tracks the model content exactly, and
             // every byte range digests as its flat content digest.
-            assert_eq!(rope.content_hash(), poly_digest(model.as_bytes()), "content_hash ({ctx})");
+            assert_eq!(
+                rope.content_hash(),
+                poly_digest(model.as_bytes()),
+                "content_hash ({ctx})"
+            );
             let bounds = boundaries(&model);
             let bi = rng.below(bounds.len());
             let hi_i = bi + rng.below(bounds.len() - bi);
@@ -1185,7 +1747,10 @@ mod tests {
         for &pos in &boundaries(base) {
             let mut r = Rope::from_str(base);
             r.insert_bytes(pos, "X中");
-            assert_eq!(r.to_string(), format!("{}X中{}", &base[..pos], &base[pos..]));
+            assert_eq!(
+                r.to_string(),
+                format!("{}X中{}", &base[..pos], &base[pos..])
+            );
 
             let mut r = Rope::from_str(base);
             if pos < base.len() {
@@ -1195,7 +1760,10 @@ mod tests {
             }
 
             let mut r = Rope::from_str(base);
-            let end = boundaries(base).into_iter().find(|&b| b > pos).unwrap_or(base.len());
+            let end = boundaries(base)
+                .into_iter()
+                .find(|&b| b > pos)
+                .unwrap_or(base.len());
             r.replace_bytes(pos, end, "🎉");
             assert_eq!(r.to_string(), format!("{}🎉{}", &base[..pos], &base[end..]));
         }
@@ -1205,7 +1773,11 @@ mod tests {
     fn empty_rope_ops() {
         let mut r = Rope::new();
         assert_eq!(r.to_string(), "");
-        assert_eq!(r.line_count(), 1, "empty document is ONE empty line (lines.join convention)");
+        assert_eq!(
+            r.line_count(),
+            1,
+            "empty document is ONE empty line (lines.join convention)"
+        );
         assert_eq!(r.line(0), "");
         r.insert_bytes(0, "hi");
         assert_eq!(r.to_string(), "hi");
@@ -1344,7 +1916,9 @@ mod tests {
     fn leaf_spanning_text() -> String {
         let mut s = String::new();
         for i in 0..80 {
-            s.push_str(&format!("line {i} — some content to spread across leaves 🦀\n"));
+            s.push_str(&format!(
+                "line {i} — some content to spread across leaves 🦀\n"
+            ));
         }
         s
     }
@@ -1352,11 +1926,22 @@ mod tests {
     #[test]
     fn digest_basics_and_range_agreement() {
         let text = leaf_spanning_text();
-        assert!(text.len() > LEAF_MAX_BYTES, "fixture must span multiple leaves");
+        assert!(
+            text.len() > LEAF_MAX_BYTES,
+            "fixture must span multiple leaves"
+        );
         let r = Rope::from_str(&text);
         assert_eq!(r.content_hash(), poly_digest(text.as_bytes()));
-        assert_eq!(r.range_hash(0, r.len_bytes()), r.content_hash(), "full range == root digest");
-        assert_eq!(r.range_hash(0, 0), 1, "empty range = empty digest (sentinel)");
+        assert_eq!(
+            r.range_hash(0, r.len_bytes()),
+            r.content_hash(),
+            "full range == root digest"
+        );
+        assert_eq!(
+            r.range_hash(0, 0),
+            1,
+            "empty range = empty digest (sentinel)"
+        );
         // Sampled subrange agreement (the fold is the concatenation rule, so
         // decomposition cannot change the value); plus an exhaustive sweep
         // over leaf-aligned pieces.
@@ -1367,7 +1952,11 @@ mod tests {
             let bi = rng.below(bounds.len());
             let hi_i = bi + rng.below(bounds.len() - bi);
             let (lo, hi) = (bounds[bi], bounds[hi_i]);
-            assert_eq!(r.range_hash(lo, hi), poly_digest(&bytes[lo..hi]), "range [{lo},{hi})");
+            assert_eq!(
+                r.range_hash(lo, hi),
+                poly_digest(&bytes[lo..hi]),
+                "range [{lo},{hi})"
+            );
         }
         // Snapshots expose the same faces with identical values.
         let s = r.snapshot();
@@ -1386,7 +1975,10 @@ mod tests {
         // share root Arcs → equal at O(1) (ptr_eq shortcut).
         let mut r = Rope::from_str(&text);
         let s1 = r.snapshot();
-        assert!(s1.subtree_equal(&r.snapshot()), "shared snapshot roots equal");
+        assert!(
+            s1.subtree_equal(&r.snapshot()),
+            "shared snapshot roots equal"
+        );
         let clone = r.clone();
         assert!(r.subtree_equal(&clone), "clone shares structure");
 
@@ -1396,7 +1988,10 @@ mod tests {
         fork.insert_bytes(edit_at, "// edited\n");
         assert!(!r.subtree_equal(&fork), "forked content unequal");
         let s_mid = fork.snapshot();
-        assert!(!s1.subtree_equal(&s_mid), "frozen original vs edited snapshot");
+        assert!(
+            !s1.subtree_equal(&s_mid),
+            "frozen original vs edited snapshot"
+        );
 
         // Family 3 — re-edit back to the original content: content-determined
         // digests make the verdict equal again at the root shortcut (the
@@ -1406,7 +2001,10 @@ mod tests {
         assert!(r.subtree_equal(&fork), "re-edit back to equal content");
         // Snapshot-level verdicts agree with rope-level ones.
         let s2 = fork.snapshot();
-        assert!(s2.subtree_equal(&s1), "reverted content equals frozen original");
+        assert!(
+            s2.subtree_equal(&s1),
+            "reverted content equals frozen original"
+        );
 
         // Independent builds of the same content → equal (identical
         // canonical shape → Merkle shortcut fires at the root).
@@ -1432,7 +2030,9 @@ mod tests {
     fn prune_spans_classify_shared_and_diverged() {
         let mut model = String::new();
         for i in 0..300 {
-            model.push_str(&format!("line {i} with padding text to cross leaf boundaries\n"));
+            model.push_str(&format!(
+                "line {i} with padding text to cross leaf boundaries\n"
+            ));
         }
         let mut r = Rope::from_str(&model);
 
@@ -1450,12 +2050,19 @@ mod tests {
         let mut b_model = model.clone();
         b_model.insert_str(insert_at, "INSERTED\n");
         let spans = r.snapshot().prune_spans(&s0);
-        assert!(!spans.diverged.is_empty(), "the edit region must register as diverged");
+        assert!(
+            !spans.diverged.is_empty(),
+            "the edit region must register as diverged"
+        );
         // Shared spans must be byte-identical across the (possibly shifted)
         // coordinate pair. a-coords index the POST tree (self = r = the
         // edited rope), b-coords the PRE snapshot (other = s0).
         for (a1, a2, b1, b2) in &spans.shared {
-            assert_eq!(&b_model[*a1..*a2], &model[*b1..*b2], "shared span a[{a1},{a2}) b[{b1},{b2})");
+            assert_eq!(
+                &b_model[*a1..*a2],
+                &model[*b1..*b2],
+                "shared span a[{a1},{a2}) b[{b1},{b2})"
+            );
         }
         // The inserted text must sit inside some diverged span (post side).
         assert!(
@@ -1502,13 +2109,21 @@ mod tests {
         let t1 = std::time::Instant::now();
         let mid = rope.line_start_byte(n / 2);
         assert_eq!(rope.byte_to_point(mid), (n / 2, 0));
-        assert!(t1.elapsed().as_millis() < 1000, "byte_to_point took {:?}", t1.elapsed());
+        assert!(
+            t1.elapsed().as_millis() < 1000,
+            "byte_to_point took {:?}",
+            t1.elapsed()
+        );
 
         let t2 = std::time::Instant::now();
         rope.insert_bytes(mid, "// inserted\n");
         rope.delete_bytes(mid, mid + 12);
         assert_eq!(rope.to_string(), text, "edits must cancel out");
-        assert!(t2.elapsed().as_secs() < 10, "mid edits took {:?}", t2.elapsed());
+        assert!(
+            t2.elapsed().as_secs() < 10,
+            "mid edits took {:?}",
+            t2.elapsed()
+        );
 
         // O(1) summaries: repeated reads are instant.
         let t3 = std::time::Instant::now();
@@ -1516,10 +2131,13 @@ mod tests {
             std::hint::black_box(rope.line_count());
             std::hint::black_box(rope.len_bytes());
         }
-        assert!(t3.elapsed().as_millis() < 500, "root summaries not O(1): {:?}", t3.elapsed());
+        assert!(
+            t3.elapsed().as_millis() < 500,
+            "root summaries not O(1): {:?}",
+            t3.elapsed()
+        );
     }
 }
-
 
 #[cfg(test)]
 mod p703_debug {
@@ -1531,12 +2149,22 @@ mod p703_debug {
         let (l0, _) = split(&r.root, 600);
         let h1 = poly_digest(&text.as_bytes()[..600]);
         let h2 = poly_digest(&text.as_bytes()[600..]);
-        println!("flat={} root={} left600={} poly600={} poly2={} combine={}",
-            poly_digest(text.as_bytes()), r.content_hash(), l0.hash(), h1, h2,
-            combine_hash(h1, h2, 600));
+        println!(
+            "flat={} root={} left600={} poly600={} poly2={} combine={}",
+            poly_digest(text.as_bytes()),
+            r.content_hash(),
+            l0.hash(),
+            h1,
+            h2,
+            combine_hash(h1, h2, 600)
+        );
         // single leaf vs combine
         let s = Rope::from_str("hello");
-        println!("small: leafhash={} poly={}", s.content_hash(), poly_digest(b"hello"));
+        println!(
+            "small: leafhash={} poly={}",
+            s.content_hash(),
+            poly_digest(b"hello")
+        );
     }
 }
 
@@ -1546,7 +2174,13 @@ mod prune_span_reference {
 
     /// Naive position-aligned reference: shared = equal runs at the same
     /// offset, diverged = the rest.
-    fn naive_spans(a: &str, b: &str) -> (Vec<(usize, usize, usize, usize)>, Vec<(usize, usize, usize, usize)>) {
+    fn naive_spans(
+        a: &str,
+        b: &str,
+    ) -> (
+        Vec<(usize, usize, usize, usize)>,
+        Vec<(usize, usize, usize, usize)>,
+    ) {
         let ab = a.as_bytes();
         let bb = b.as_bytes();
         let common = ab.len().min(bb.len());
@@ -1579,7 +2213,9 @@ mod prune_span_reference {
     fn prune_spans_agree_with_naive_classifier() {
         let mut model = String::new();
         for i in 0..300 {
-            model.push_str(&format!("line {i} with padding text to cross leaf boundaries\n"));
+            model.push_str(&format!(
+                "line {i} with padding text to cross leaf boundaries\n"
+            ));
         }
         let insert_at = 7699;
         let mut b_model = model.clone();
@@ -1600,11 +2236,11 @@ mod prune_span_reference {
         // walk-shared must be a subset of naive-shared (conservative OK)
         for (a1, a2, b1, b2) in &spans.shared {
             assert!(
-                nsh.iter().any(|&(c1, c2, d1, d2)| c1 <= *a1 && *a2 <= c2 && d1 <= *b1 && *b2 <= d2),
+                nsh.iter()
+                    .any(|&(c1, c2, d1, d2)| c1 <= *a1 && *a2 <= c2 && d1 <= *b1 && *b2 <= d2),
                 "shared a[{a1},{a2}) b[{b1},{b2}) not backed by naive classifier"
             );
         }
         let _ = (nsh, ndi);
     }
 }
-

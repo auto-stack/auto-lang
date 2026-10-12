@@ -65,7 +65,7 @@ real `trait` / `impl` / `Box<dyn>`, generics, ownership, `Result` + `?`. Link
 
 **Bridge** — the transpiler is on the hook for agreement. AutoVM output ==
 transpiled-Rust output. Not a claim: [verified by 260 three-way parity
-tests](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)
+tests](https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/parity-dashboard.html)
 across ten real libraries (plus consumer-mode crates — see dashboard).
 
 ## Why this beats "Python now, rewrite in Rust later"
@@ -104,7 +104,7 @@ marketing copy.
 | generators | 6/6 | yield iterators, lazy sequences |
 | http_client_sync | 5/5 | synchronous HTTP against a mock server |
 
-See the live [parity dashboard](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html) for the
+See the live [parity dashboard](https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/parity-dashboard.html) for the
 full matrix and per-library details.
 
 **Honest boundaries (L3 — roadmap, not yet verified):**
@@ -112,7 +112,7 @@ full matrix and per-library details.
 Every previously-listed trait divergence is now fixed and three-way verified
 (associated types, default method bodies, generic spec impls, bounded generic
 functions, the http_client_sync harness). What remains open is documented in
-[known-divergences](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/known-divergences.md), not hidden:
+[known-divergences](https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/known-divergences.md), not hidden:
 
 - **sha2 / rusqlite / reqwest parity libraries** — planned, not yet verified.
 - **Generator lazy chains** (range → map → filter over `~Iter`) — no Auto
@@ -129,7 +129,7 @@ you which tier a feature is in.
 → **[From Script to Ship — the interactive tour](/docs/script-to-ship/README)** —
 six chapters, every block runnable in your browser.
 
-→ **[Parity dashboard](https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html)** — the evidence.
+→ **[Parity dashboard](https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/parity-dashboard.html)** — the evidence.
 
 → **[Script-to-Ship demos](/examples/script-to-ship-demos/)** — runnable
 single-file examples (serde_json, regex, wc) you can clone and ship.

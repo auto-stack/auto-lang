@@ -1,0 +1,93 @@
+---
+plan_id: PLAN-764
+plan_revision: 1
+status: archived
+feature_name: autoedit-comparison-screenshot
+author: [Codex]
+created_at: 2026-10-11
+updated_at: 2026-10-12
+supersedes_spec_components: [docs/specs/website/design/application-introductions.md, docs/specs/website/project.md, docs/specs/website/plans.md]
+new_spec_components: []
+touched_goals: []
+affects: [website]
+current_step: 3
+total_steps: 3
+---
+
+# [PLAN-764] AutoEdit 文件对比原图接入
+
+## 0. 变更摘要
+用户明确授权把 PixPin_2026-10-11_16-23-31.png 放入对应页面，补齐 SHOT-03，中英共用完整原图。
+
+## 1. 目标
+AutoEdit 专题比较章节显示作者提供的深色实图，可放大及查看原图。
+
+## 2. 架构方案
+沿用 CAPTURE_IMAGES → ScreenshotSlot → EvidenceImage，无新组件，无产品源码变动。
+
+## 3. 需求分析与背景调查
+docs/specs/overview.md 定义官网模块；website/project.md 与 design/application-introductions.md 规定原图与键盘放大。PLAN-757 已归档，两张图已交付，SHOT-03 因旧布局留空；新图构图清晰，不冒用旧构建身份。
+授权：2026-10-11 本轮用户明确请求，涵盖图片接入、双语说明、截图清单与必要验证，无需再次确认。
+基面：6da3e6201b85e47934f9527a61b205b47be1278d。工作树 D:/autostack/.wt/lang-764/auto-lang，分支 plan-764-dev。依赖外仓只读。
+
+## 4. 详细设计
+原图复制到 website/public/v05/candidate/autoedit-comparison.png，3840×2419。新 provenance 记录原路径、hash、可见状态和提供日期；未知 backend/build commit 不推断。caption 标注 dark、作者提供日期及 before/after 场景。
+修订当前指南 SHOT-03 待拍状态及过期“757 未合入”说法；历史 p757 证据不改。保留 VM 深色截图政策和 Rust 界面未验收边界。
+
+### 规范增量
+SD-01 modify docs/specs/website/design/application-introductions.md：旧诊断图保留，新提供合格图填入 SHOT-03，未知构建身份单独登记，映射 AC-01/02/03。module project.md 与 plans.md 同步现状。touched_goals=[]：素材补齐不改变产品功能。
+
+## 5. 测试设计
+Category A，禁止 cargo t/docs_gen。npm website build；已有 v05-copy 图片/原图/键盘放大检查覆盖第三图；apps-introduction 图片数量更新，运行 AutoEdit 双语及多宽度/主题检查。原图 SHA-256 对拍。
+
+## 6. 验收标准
+AC-01：双语 AutoEdit 正确章节显示 SHOT-03 新图，无待拍，旧图不覆盖。
+AC-02：尺寸/hash 一致，原图链接及 Enter/Escape/回焦可用，桌面手机、深浅网页无溢出。
+AC-03：来源/双语说明/指南/规范一致；不伪造 runtime/commit，不宣称旧应用缺陷全部修复。
+
+## 7. 执行步骤
+- [x] T-01 原图/共享 metadata/双语 caption，AC-01/02。
+- [x] T-02 指南/新 provenance/规范与模块索引，AC-03。
+- [x] T-03 build/定向既有 e2e/hash/diff 核查并提交，AC-01/02/03。
+
+## 8. 风险
+新图 backend/build identity 未独立确认；按提供来源呈现。原图保留比例与放大。
+
+## 9. 复审记录
+stage: new | PLAN-764:r1 | pass | next: work。用户已明确授权；复审按工件重建，同会话限制如实记录。
+
+## 10. 待澄清事项
+无影响接入的用户决策项。
+
+### Work r1
+stage: work | PLAN-764:r1 | pass | implementation: 89071f738cb39ebd6c6cae344c3ab181b3af25e1 | T-01/02/03 complete | next: review。
+原图/hash/共享 SHOT-03 元数据、指南、规范和模块索引均接入；build 230.63s；8/8 定向 e2e（1.1min）；网页桌面/手机截图目视通过；Category A 无 Cargo。证据 docs/reports/p764-autoedit-comparison-verification.md、p764-autoedit-comparison-catalog.json、p764-spec-delta.json 和 p764-comparison/。
+
+### Review r1
+stage: review | PLAN-764:r1 | outcome: pass | reviewed_commit: 5fa9caefef5933c2a3e8950dd831be1486a0ca5e | base_commit: d42c4d497 | dependency_revisions: 外仓不变/未依赖构建。
+AC-01 pass：双语 SSR 和实际水合页面显示正确章节的新图；原 SHOT-01/02 保持，SHOT-03 不再待拍。
+AC-02 pass：3840×2419、原图/发布复制品同 hash；8/8 定向 e2e 包含三图 Enter/Escape/原图/回焦、双语导航和五宽度双主题；1440/390 PNG 逐图目视通过。复用同一网站实现、配置与依赖下的该次 gate，不无依据重跑。
+AC-03 pass：来源单独登记、双语 caption 日期准确、指南旧待拍状态修正、SD-01/模块 project/plans 回写一致。frozen delta sha256 5152881f0d6d9b0fd49752fce8084493968d2b25410477294baa5f95fd5b15fa，三 target hash 逐一匹配。
+遗漏/延后/workaround 扫描：无新增；既存 P757 产品问题不据新截图宣称关闭。零 Rust 触面；diff --check 通过，无新 debug。新旧原图/历史诊断边界明确。touched_goals=[] 的素材-only 理由保留。
+独立性限制：同实施会话复核，无授权外委；从已提交 diff、原始文件、frozen manifest、durable e2e 日志和页面图片重建结论。
+next: merge。
+
+### Merge r1 — landed / publication blocked
+stage: merge | PLAN-764:r1 | outcome: blocked | delivery_commit: 6977dc0b3361cf1fb2f956fb602e2ff8a2855ef3。
+- prepared：reviewed 5fa9caefef5933c2a3e8950dd831be1486a0ca5e；三 canonical target 已提交；frozen SD hash 5152881f0d6d9b0fd49752fce8084493968d2b25410477294baa5f95fd5b15fa。
+- landed：main --ff-only，tip=6977dc0b3361cf1fb2f956fb602e2ff8a2855ef3；本次 rebase 纯 Plan 簿记，range-diff 2/2 全等：89071f738→5287130a4、5fa9caefe→6977dc0b3。原图主检出 hash 与来源一致。无网站代码/依赖漂移，已构建产物和 8/8 gate 继续有效。
+- ledger_refreshed：blocked。当前无 registered spec writer tools；已检查本机没有 musk server 进程及相关监听。ledger 属 legacy 兼容投影（非当前 store schema），不直接手改或销毁；按当前 auto-plan:merge store-only 要求待有效 writer/受支持迁移后读回验证。既有其他 Plan 的手工回退收据保留，不冒充本轮 store 成功。
+- archived / cleaned：pending，保持 reviewed active，保留工作树及分支用于账本发布恢复。guard 已报 clean，无 junction/symlink；未删除任何其他任务。
+- artifacts：本地 website build 230.63s；预览会话 65325 位于该工作树、端口 4218；新图 dist hash 与原图一致。截图与 e2e.log.gz 在主检出 durable reports。打开中文介绍的 Codex 面板请求 queued（当前聊天未显示），不声称已前台打开。
+- remote deployment：本任务未授权远端发布；另会话 deploy-website-20261011 在构建过程中可见，未干预或停止其进程。本任务只接入本仓和本地预览。
+- batch due：最新收据 last_covered_plan_id=761、2026-10-11；764 非整五触发，未超过48h；本任务 Category A 不运行 Cargo。
+next：可用 store writer 恢复后仅刷新受影响 derived items，验证后归档和 guarded cleanup；图片接入任务已完成。
+
+### Merge r1 — 恢复完成（ledger_refreshed → archived）
+stage: merge | PLAN-764:r1 | outcome: pass | 恢复会话 2026-10-12（ZCode，Regime B）。
+- 解阻依据：2026-10-12 用户裁定——write_spec/update_spec 系 auto-ai 框架会话工具，外部成熟 agent（ZCode/Codex 等）永不适用 store-only 通道要求；auto-plan:merge 技能与 specs-ledger 契约已双轨化（auto-musk `78e196a`：B 轨=HTTP 优先→受护离线投影）。上文 blocked 条目按当时规约如实保留。
+- ledger_refreshed：pass @`6b8c2193b`（通道=受护离线投影，非 store 写通道，如实记不冒充 store 成功）。目标工作区 D:/autostack/auto-lang/.autoos/specs.json；条目 designs/`P764-1`、reviews/`P764-2`、reports/`P764-3`（184→185/220→221/133→134）。护栏全过：基线 sha `a47bc34a…`=主检出 rebase 后基线→字节级备份（%TEMP%/specs-json-backup-p764.json）→roundtrip 字节守卫（indent=1 序列化可字节复现全文件）→零扰动纯插入（unified diff **+50/-0**，未触区与顶层字段字节不变）→六区 schema 校验（无 plans 区）→main 合并后回读核验（sha `60b4115a…`）。tracked 落账路径：plan worktree 提交 + main `--ff-only`。
+- archived：pass——`git mv` 至 docs/plans/archive/，frontmatter status: reviewed→archived。
+- artifacts 观察项：主检出无 gen/front/vue/dist（本任务构建产物在 plan worktree 内，随清理消亡，主检出无消费者）；远端发布未授权未执行（deploy-website-20261011 另会话管线自理）；durable 证据（截图/e2e.log.gz/catalog/spec-delta）在主检出 docs/reports/p764-*。
+- batch due：不负——收据 last_covered_plan_id=766（2026-10-12T04:08Z，今日），764<766 无整五触发、未超 48h。
+- cleaned：pass——终检 wt-guard clean（无 reparse point）→ `git worktree remove D:/autostack/.wt/lang-764/auto-lang` → `git branch -d plan-764-dev`（tip 6b8c2193b 已在 main）→ 组目录残留 p764-e2e.log 与主检出 durable docs/reports/p764-comparison/e2e.log.gz 解压逐字节相同（2521B）后删除 → `rmdir` 组目录零残留。

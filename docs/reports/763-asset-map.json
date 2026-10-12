@@ -1,0 +1,2782 @@
+{
+  "plan": 763,
+  "assets": [
+    {
+      "old": "auto/aavm.at",
+      "new": "packages/aavm/aavm.at",
+      "before_sha256": "0ff06f099253e1aa1c8d83ef2810771f10d5a01e5388729354dd9fa249d4ee9a",
+      "after_sha256": "e68ae0f20034adadd9cb11f44fd96061b172868f1fbc0fac8407a843e7889d9f",
+      "content_changed": true
+    },
+    {
+      "old": "auto/greet_mod.at",
+      "new": "packages/aavm/greet_mod.at",
+      "before_sha256": "f35b0e125e0d34d8937c98faa05bdc428d4107598a759133dcc35850e3feec43",
+      "after_sha256": "f35b0e125e0d34d8937c98faa05bdc428d4107598a759133dcc35850e3feec43",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/.gitignore",
+      "new": "packages/aavm/lib-legacy/.gitignore",
+      "before_sha256": "c6372fca1ff9f77a8afbe6fa768de9f2535f3628dc59698843260c7bf5fe0f87",
+      "after_sha256": "c6372fca1ff9f77a8afbe6fa768de9f2535f3628dc59698843260c7bf5fe0f87",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/README.md",
+      "new": "packages/aavm/lib-legacy/README.md",
+      "before_sha256": "1e87fb512fa524b1e6b0dde53fd4c5fd1d1e70cff836c524f56279d939791983",
+      "after_sha256": "0ed8e25cbf7789501acd3e8f9a63df8e8995a657f1426c96e90f8f5e25b1daba",
+      "content_changed": true
+    },
+    {
+      "old": "auto/lib-legacy/a2r.at",
+      "new": "packages/aavm/lib-legacy/a2r.at",
+      "before_sha256": "d7fc4c29f1a673b3c228fafaf4aa2f31a38fcc8dbbecb82e74fe21223fb9941d",
+      "after_sha256": "d7fc4c29f1a673b3c228fafaf4aa2f31a38fcc8dbbecb82e74fe21223fb9941d",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/ast.at",
+      "new": "packages/aavm/lib-legacy/ast.at",
+      "before_sha256": "b7680789f4d773d2d928415df84d664613ed01dcef6ccca9ae5d08d77224d828",
+      "after_sha256": "b7680789f4d773d2d928415df84d664613ed01dcef6ccca9ae5d08d77224d828",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/codegen.at",
+      "new": "packages/aavm/lib-legacy/codegen.at",
+      "before_sha256": "c90d563e256634c1999fd0ae6b4d0544ebca3ec47eba609f19dee15f15c1db12",
+      "after_sha256": "c90d563e256634c1999fd0ae6b4d0544ebca3ec47eba609f19dee15f15c1db12",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/error.at",
+      "new": "packages/aavm/lib-legacy/error.at",
+      "before_sha256": "d64168a7beab32532814ba3706c52d9531167f318c5160e8de7241c4f914023b",
+      "after_sha256": "d64168a7beab32532814ba3706c52d9531167f318c5160e8de7241c4f914023b",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/eval.at",
+      "new": "packages/aavm/lib-legacy/eval.at",
+      "before_sha256": "42206b57218fad4076b4ec3f35b4c33101a69c67e763212baa7be302b6a12b8f",
+      "after_sha256": "42206b57218fad4076b4ec3f35b4c33101a69c67e763212baa7be302b6a12b8f",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/generics.at",
+      "new": "packages/aavm/lib-legacy/generics.at",
+      "before_sha256": "e87b2954450b75764b34488d8c7e3e38d5f2714856904ee0e7cd1f926ade02cd",
+      "after_sha256": "e87b2954450b75764b34488d8c7e3e38d5f2714856904ee0e7cd1f926ade02cd",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/lexer.at",
+      "new": "packages/aavm/lib-legacy/lexer.at",
+      "before_sha256": "3149e9769ec5319470eff48bd29d45cc6e02c810860b28d244990a133165d67f",
+      "after_sha256": "3149e9769ec5319470eff48bd29d45cc6e02c810860b28d244990a133165d67f",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/opcode.at",
+      "new": "packages/aavm/lib-legacy/opcode.at",
+      "before_sha256": "42401108dcb31e65371feffc4e770810fba02d2c364dbc5c4beac45ae21d0600",
+      "after_sha256": "42401108dcb31e65371feffc4e770810fba02d2c364dbc5c4beac45ae21d0600",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/parser.at",
+      "new": "packages/aavm/lib-legacy/parser.at",
+      "before_sha256": "79dca02d176ad913dbf4dcf946dbe1d957dca2f9c83c02910e256ef2a2f1c2a1",
+      "after_sha256": "79dca02d176ad913dbf4dcf946dbe1d957dca2f9c83c02910e256ef2a2f1c2a1",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/pos.at",
+      "new": "packages/aavm/lib-legacy/pos.at",
+      "before_sha256": "32e0d75763a20931ae5a8cf8ac6c79145322fad47b462ff8d114a8a4fea9d8a6",
+      "after_sha256": "32e0d75763a20931ae5a8cf8ac6c79145322fad47b462ff8d114a8a4fea9d8a6",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/token.at",
+      "new": "packages/aavm/lib-legacy/token.at",
+      "before_sha256": "608d2886033fee5194ea454cb9b256d86d0a91e3de3c3d09de9489c079a39b2e",
+      "after_sha256": "608d2886033fee5194ea454cb9b256d86d0a91e3de3c3d09de9489c079a39b2e",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/typeinfer.at",
+      "new": "packages/aavm/lib-legacy/typeinfer.at",
+      "before_sha256": "16e2a21c8a1c4494bf8c96bba8f2dd522479fc2c4da0e544b8bacedc6bb14721",
+      "after_sha256": "16e2a21c8a1c4494bf8c96bba8f2dd522479fc2c4da0e544b8bacedc6bb14721",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib-legacy/vm.at",
+      "new": "packages/aavm/lib-legacy/vm.at",
+      "before_sha256": "243015f38cb698aeba1b4a661a42acbab154d9f66847d86143896916c75f1dc1",
+      "after_sha256": "243015f38cb698aeba1b4a661a42acbab154d9f66847d86143896916c75f1dc1",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib/README.md",
+      "new": "packages/aavm/lib/README.md",
+      "before_sha256": "c6fdca9d18725848c7afac9c8019ece2a3115d5480c3e914bce74972e8929d10",
+      "after_sha256": "0a1e752457e2edbe52199f133d7a4fe73ccbe1972d36534a4482a4ddd3bd6469",
+      "content_changed": true
+    },
+    {
+      "old": "auto/lib/a2r.at",
+      "new": "packages/aavm/lib/a2r.at",
+      "before_sha256": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+      "after_sha256": "e3eddb46ab2e5d3e188a8f7ee8a78feda1891931cb99bc2a1392f694a459e2ae",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib/codegen.at",
+      "new": "packages/aavm/lib/codegen.at",
+      "before_sha256": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+      "after_sha256": "a95a484913b95084903f45ddcf4891664c2e080e520511b87c692cd1d8fe55e0",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib/engine.at",
+      "new": "packages/aavm/lib/engine.at",
+      "before_sha256": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328",
+      "after_sha256": "d8db6813edf82e0d6a763d7e707d33f37535190980399a6aa989d2ad5d748328",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib/lexer.at",
+      "new": "packages/aavm/lib/lexer.at",
+      "before_sha256": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+      "after_sha256": "c92bcce8c6432ffd80050f013ac3e53af0f6c5133a9c16ec47faef1df2bf9a01",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib/parser.at",
+      "new": "packages/aavm/lib/parser.at",
+      "before_sha256": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+      "after_sha256": "377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib/token.at",
+      "new": "packages/aavm/lib/token.at",
+      "before_sha256": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
+      "after_sha256": "963ccc1df73b86e510db95f13dda0e3ea17462f7c3f4b7652947e9f9f3381d74",
+      "content_changed": false
+    },
+    {
+      "old": "auto/lib/typeinfo.at",
+      "new": "packages/aavm/lib/typeinfo.at",
+      "before_sha256": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a",
+      "after_sha256": "9eed6f5f243225c17d4f79e5c53918d03a525e2e2bd99998b6ba6f95c3bb254a",
+      "content_changed": false
+    },
+    {
+      "old": "auto/pac.at",
+      "new": "packages/aavm/pac.at",
+      "before_sha256": "2571c9027c28093097e750d28817b5235aa1f5cf63a59c44592d87fcb237fa61",
+      "after_sha256": "c21537900e559c02c47063a9a617584216b7bcf6f62663857d72c2d31ef7adfe",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/README.md",
+      "new": "packages/blueprints/README.md",
+      "before_sha256": "3328a8f57a121a87d2115ff745c773637a168c2bf410a3e060cf21c94cf3203e",
+      "after_sha256": "78ada5c90621f7cfd060d39b9cfca645eee213c04a883b630c7350dbafccd1c9",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/dashboard/overview/gotchas.md",
+      "new": "packages/blueprints/dashboard/overview/gotchas.md",
+      "before_sha256": "ada0b37046734190378177406b080eee370bd94ddcba6274c6889fe48c7e1884",
+      "after_sha256": "ada0b37046734190378177406b080eee370bd94ddcba6274c6889fe48c7e1884",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/dashboard/overview/reference/default.at",
+      "new": "packages/blueprints/dashboard/overview/reference/default.at",
+      "before_sha256": "454b12b4eabc31d6b4546ce83875a60406cc42e03ffa221817dc187d93f61169",
+      "after_sha256": "454b12b4eabc31d6b4546ce83875a60406cc42e03ffa221817dc187d93f61169",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/dashboard/overview/reference/with_charts.at",
+      "new": "packages/blueprints/dashboard/overview/reference/with_charts.at",
+      "before_sha256": "a60b43c5db04b62a098e282acfea7647f78386e1bde875717cbeedd72ed283a0",
+      "after_sha256": "a60b43c5db04b62a098e282acfea7647f78386e1bde875717cbeedd72ed283a0",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/dashboard/overview/spec.md",
+      "new": "packages/blueprints/dashboard/overview/spec.md",
+      "before_sha256": "c646c530fac331c8be024275b89b741916df04c08224b2e67fc731a3408b425e",
+      "after_sha256": "c646c530fac331c8be024275b89b741916df04c08224b2e67fc731a3408b425e",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/data-table-crud/gotchas.md",
+      "new": "packages/blueprints/data-display/data-table-crud/gotchas.md",
+      "before_sha256": "18d20de8f871b0e32c9aeb2f6556499995bce9b9607c66351b2741b6cee65373",
+      "after_sha256": "18d20de8f871b0e32c9aeb2f6556499995bce9b9607c66351b2741b6cee65373",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/data-table-crud/reference/minimal.at",
+      "new": "packages/blueprints/data-display/data-table-crud/reference/minimal.at",
+      "before_sha256": "ef6d1ce997bff6e7e7baf16ec350c22bb581ea149800aad3489da3528067d14c",
+      "after_sha256": "ef6d1ce997bff6e7e7baf16ec350c22bb581ea149800aad3489da3528067d14c",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/data-table-crud/reference/with_dialog.at",
+      "new": "packages/blueprints/data-display/data-table-crud/reference/with_dialog.at",
+      "before_sha256": "08cdd0322c3c4901674041a2b61207a145d5a5754c247c608607634164f6a6b1",
+      "after_sha256": "08cdd0322c3c4901674041a2b61207a145d5a5754c247c608607634164f6a6b1",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/data-table-crud/spec.md",
+      "new": "packages/blueprints/data-display/data-table-crud/spec.md",
+      "before_sha256": "f5e8a16e7debc1106f95d8bd33d75b35a0fd0b7ecc80dbdebe7d0e611eda1b27",
+      "after_sha256": "f5e8a16e7debc1106f95d8bd33d75b35a0fd0b7ecc80dbdebe7d0e611eda1b27",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/master-detail/gotchas.md",
+      "new": "packages/blueprints/data-display/master-detail/gotchas.md",
+      "before_sha256": "0292649a49a58b84da3fc4e12ffac3e2836e07b08ecba3d06efeeec14857591b",
+      "after_sha256": "0292649a49a58b84da3fc4e12ffac3e2836e07b08ecba3d06efeeec14857591b",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/master-detail/reference/default.at",
+      "new": "packages/blueprints/data-display/master-detail/reference/default.at",
+      "before_sha256": "babbb2a4f08b41240b196633c4ac6296b77f8bf0f59603e9b12d5b05b051e6d2",
+      "after_sha256": "babbb2a4f08b41240b196633c4ac6296b77f8bf0f59603e9b12d5b05b051e6d2",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/master-detail/spec.md",
+      "new": "packages/blueprints/data-display/master-detail/spec.md",
+      "before_sha256": "682341013e05b8ee55013e6a75b6a25c395e63efcc6e686ae96c7d4a775ca4fb",
+      "after_sha256": "682341013e05b8ee55013e6a75b6a25c395e63efcc6e686ae96c7d4a775ca4fb",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/note-list/gotchas.md",
+      "new": "packages/blueprints/data-display/note-list/gotchas.md",
+      "before_sha256": "7bd7468021667421f6acf1f416764c184c9144b19edbdc2ba9abc441e552a887",
+      "after_sha256": "7bd7468021667421f6acf1f416764c184c9144b19edbdc2ba9abc441e552a887",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/note-list/reference/default.at",
+      "new": "packages/blueprints/data-display/note-list/reference/default.at",
+      "before_sha256": "08f64d3115989e802d7fe8371d60d22da316d961479f13cc698fbadf089f9b78",
+      "after_sha256": "08f64d3115989e802d7fe8371d60d22da316d961479f13cc698fbadf089f9b78",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/note-list/spec.md",
+      "new": "packages/blueprints/data-display/note-list/spec.md",
+      "before_sha256": "2b71671dbe0437ddf6981b1b671bdc769b63b7622caa29e3b5b42f04d7dffe12",
+      "after_sha256": "2b71671dbe0437ddf6981b1b671bdc769b63b7622caa29e3b5b42f04d7dffe12",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/row-list/gotchas.md",
+      "new": "packages/blueprints/data-display/row-list/gotchas.md",
+      "before_sha256": "f4d39c6ba6faeb2996bad61576e555a8be5c84bba1ef30170c024be9ee4dd005",
+      "after_sha256": "f4d39c6ba6faeb2996bad61576e555a8be5c84bba1ef30170c024be9ee4dd005",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/data-display/row-list/reference/default.at",
+      "new": "packages/blueprints/data-display/row-list/reference/default.at",
+      "before_sha256": "dbd6d25de074718922086b4b814696ff45399b37c78818a8a727311326b736fc",
+      "after_sha256": "ee6fdf434eb38105277a15ed8abcc1bf4d85913df8d71b16be5ea3775b3174f0",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/data-display/row-list/spec.md",
+      "new": "packages/blueprints/data-display/row-list/spec.md",
+      "before_sha256": "c42f0896ce7fd2417f2ad81605af9edece3b52d1cde15927b00453e34f54b273",
+      "after_sha256": "c42f0896ce7fd2417f2ad81605af9edece3b52d1cde15927b00453e34f54b273",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/editor/note-editor/gotchas.md",
+      "new": "packages/blueprints/editor/note-editor/gotchas.md",
+      "before_sha256": "c330713c09c6ca10e5e49bb4803148ea2e1c4037c8b83363d90ad2b707b7e2d6",
+      "after_sha256": "c330713c09c6ca10e5e49bb4803148ea2e1c4037c8b83363d90ad2b707b7e2d6",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/editor/note-editor/reference/default.at",
+      "new": "packages/blueprints/editor/note-editor/reference/default.at",
+      "before_sha256": "63d27de2eb80b0c0e3d0fe8d0a6ae450d27e8b8866a42eb77353f1ddda4043d8",
+      "after_sha256": "63d27de2eb80b0c0e3d0fe8d0a6ae450d27e8b8866a42eb77353f1ddda4043d8",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/editor/note-editor/spec.md",
+      "new": "packages/blueprints/editor/note-editor/spec.md",
+      "before_sha256": "fe8cd76adda2afb4f13b258628b8af2a642e758d440778510b7fda4997b85b77",
+      "after_sha256": "fe8cd76adda2afb4f13b258628b8af2a642e758d440778510b7fda4997b85b77",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/empty-state/gotchas.md",
+      "new": "packages/blueprints/feedback/empty-state/gotchas.md",
+      "before_sha256": "a9433850b089d32c070d5377bc7d67ed63e572028bbe1200cc3eae29d7a5e5ac",
+      "after_sha256": "a9433850b089d32c070d5377bc7d67ed63e572028bbe1200cc3eae29d7a5e5ac",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/empty-state/reference/error.at",
+      "new": "packages/blueprints/feedback/empty-state/reference/error.at",
+      "before_sha256": "793834e7a9f5e13e079be9f518cda10f3a9181bef25b56beee2f549d13bdb13e",
+      "after_sha256": "793834e7a9f5e13e079be9f518cda10f3a9181bef25b56beee2f549d13bdb13e",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/empty-state/reference/first_use.at",
+      "new": "packages/blueprints/feedback/empty-state/reference/first_use.at",
+      "before_sha256": "5158508dcc5572e182d47319085606e2a1807b94df4e82bede17ff7bb7688eb1",
+      "after_sha256": "5158508dcc5572e182d47319085606e2a1807b94df4e82bede17ff7bb7688eb1",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/empty-state/reference/no_result.at",
+      "new": "packages/blueprints/feedback/empty-state/reference/no_result.at",
+      "before_sha256": "303a06e26985b3afd14f2dcc35c17fe18e8ff989cab745eabbd971222f640f8b",
+      "after_sha256": "303a06e26985b3afd14f2dcc35c17fe18e8ff989cab745eabbd971222f640f8b",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/empty-state/spec.md",
+      "new": "packages/blueprints/feedback/empty-state/spec.md",
+      "before_sha256": "322edef570526baa2be754c77a483fa5fea5fb471f83652dbcf3c87749b08f87",
+      "after_sha256": "322edef570526baa2be754c77a483fa5fea5fb471f83652dbcf3c87749b08f87",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/result-page/gotchas.md",
+      "new": "packages/blueprints/feedback/result-page/gotchas.md",
+      "before_sha256": "92d0bc916a06ac1931feafd0c8dcce176b7324320c10b0c69df13928d46dabb9",
+      "after_sha256": "92d0bc916a06ac1931feafd0c8dcce176b7324320c10b0c69df13928d46dabb9",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/result-page/reference/error.at",
+      "new": "packages/blueprints/feedback/result-page/reference/error.at",
+      "before_sha256": "e5ce43e44b19a7092584beda806efdc1a98ebe7ad85342fb88080cc8b665a78a",
+      "after_sha256": "e5ce43e44b19a7092584beda806efdc1a98ebe7ad85342fb88080cc8b665a78a",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/result-page/reference/success.at",
+      "new": "packages/blueprints/feedback/result-page/reference/success.at",
+      "before_sha256": "0a1c5c18205eb933c952594771e21b898b71605537cd3bca0ad34d43f491ca7a",
+      "after_sha256": "0a1c5c18205eb933c952594771e21b898b71605537cd3bca0ad34d43f491ca7a",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/feedback/result-page/spec.md",
+      "new": "packages/blueprints/feedback/result-page/spec.md",
+      "before_sha256": "84d37820e08fd1be696409865b0d29c774d2800b2d98850c8b4566d21027771e",
+      "after_sha256": "84d37820e08fd1be696409865b0d29c774d2800b2d98850c8b4566d21027771e",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/login/gotchas.md",
+      "new": "packages/blueprints/form/login/gotchas.md",
+      "before_sha256": "9e14fce779eb195018c80d101e2a747a3f5bb29a6dcce30652ba8d7733e1aa32",
+      "after_sha256": "9e14fce779eb195018c80d101e2a747a3f5bb29a6dcce30652ba8d7733e1aa32",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/login/reference/minimal.at",
+      "new": "packages/blueprints/form/login/reference/minimal.at",
+      "before_sha256": "6ae92489888310ae505212ba981ed11517f98dae00fd633f79f1d238a03bfd5b",
+      "after_sha256": "6ae92489888310ae505212ba981ed11517f98dae00fd633f79f1d238a03bfd5b",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/login/reference/two_column.at",
+      "new": "packages/blueprints/form/login/reference/two_column.at",
+      "before_sha256": "3d8ec28ccf6b50d3c798bbb2e7d5c76ff9ec38a17f0e4377f0df9703c53070c5",
+      "after_sha256": "3d8ec28ccf6b50d3c798bbb2e7d5c76ff9ec38a17f0e4377f0df9703c53070c5",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/login/reference/with_sso.at",
+      "new": "packages/blueprints/form/login/reference/with_sso.at",
+      "before_sha256": "6268e2c2d321a8f0f5e664c35165d975160597f4c6ebec0a113e42e547e12fd1",
+      "after_sha256": "6268e2c2d321a8f0f5e664c35165d975160597f4c6ebec0a113e42e547e12fd1",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/login/spec.md",
+      "new": "packages/blueprints/form/login/spec.md",
+      "before_sha256": "84747cdf0001a5793819986db2f885c8088d1a9e168bbe44b587e7e182d86c3e",
+      "after_sha256": "84747cdf0001a5793819986db2f885c8088d1a9e168bbe44b587e7e182d86c3e",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/settings/gotchas.md",
+      "new": "packages/blueprints/form/settings/gotchas.md",
+      "before_sha256": "83e72b251ba75723c474400298b1c802535f6b71fe9aa53e37c73e70f9eee00a",
+      "after_sha256": "83e72b251ba75723c474400298b1c802535f6b71fe9aa53e37c73e70f9eee00a",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/settings/reference/default.at",
+      "new": "packages/blueprints/form/settings/reference/default.at",
+      "before_sha256": "cb1617fde7839ca477a13fbf95a59bc216973fad31c76b46aacdf446ece74f6d",
+      "after_sha256": "cb1617fde7839ca477a13fbf95a59bc216973fad31c76b46aacdf446ece74f6d",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/settings/spec.md",
+      "new": "packages/blueprints/form/settings/spec.md",
+      "before_sha256": "ee09c0593b8b5112a144a263076883be554b348fba401269fb0281d27b9f0b5d",
+      "after_sha256": "ee09c0593b8b5112a144a263076883be554b348fba401269fb0281d27b9f0b5d",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/signup/gotchas.md",
+      "new": "packages/blueprints/form/signup/gotchas.md",
+      "before_sha256": "076bec45c0556fb5eb682fdb006ae5293646e82071e8adb41657fa98bd9f2cf4",
+      "after_sha256": "076bec45c0556fb5eb682fdb006ae5293646e82071e8adb41657fa98bd9f2cf4",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/signup/reference/minimal.at",
+      "new": "packages/blueprints/form/signup/reference/minimal.at",
+      "before_sha256": "935c474f7a651008ddd4de2b15e7667eb04dc920b29ee9408165af994c88c3a4",
+      "after_sha256": "935c474f7a651008ddd4de2b15e7667eb04dc920b29ee9408165af994c88c3a4",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/signup/spec.md",
+      "new": "packages/blueprints/form/signup/spec.md",
+      "before_sha256": "a4110201bf046de20f27ae3b7ea527a0f452bb45ab79cd00690e16cae809277a",
+      "after_sha256": "a4110201bf046de20f27ae3b7ea527a0f452bb45ab79cd00690e16cae809277a",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/wizard/gotchas.md",
+      "new": "packages/blueprints/form/wizard/gotchas.md",
+      "before_sha256": "e66d7b1a123b94d352c0e108f3433957524bf7faf861d8e3ce611af28d5acdae",
+      "after_sha256": "e66d7b1a123b94d352c0e108f3433957524bf7faf861d8e3ce611af28d5acdae",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/wizard/reference/default.at",
+      "new": "packages/blueprints/form/wizard/reference/default.at",
+      "before_sha256": "3ba50f91d90d239cae8c18aeb825a756d9d5687fd2e3614e682acf229df25b0b",
+      "after_sha256": "3ba50f91d90d239cae8c18aeb825a756d9d5687fd2e3614e682acf229df25b0b",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/form/wizard/spec.md",
+      "new": "packages/blueprints/form/wizard/spec.md",
+      "before_sha256": "14b68de74641612382b4b9461f4891a97e3a86dc24b4c0d71488bd9f7d909bcf",
+      "after_sha256": "14b68de74641612382b4b9461f4891a97e3a86dc24b4c0d71488bd9f7d909bcf",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/layout/gallery-shell/gotchas.md",
+      "new": "packages/blueprints/layout/gallery-shell/gotchas.md",
+      "before_sha256": "337232f830a5a8a00b101114559996c97a688a910b56b0078d2487567e071439",
+      "after_sha256": "337232f830a5a8a00b101114559996c97a688a910b56b0078d2487567e071439",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/layout/gallery-shell/reference/default.at",
+      "new": "packages/blueprints/layout/gallery-shell/reference/default.at",
+      "before_sha256": "2590b1fce3a87e0133ba8d5ce58f5a53c5c4b90d3b3e533ddeadd3570c635d91",
+      "after_sha256": "627ec7009da698491ffa3c7d3267c6dabc3f7bbf0d6327f58208a57ea8c65d15",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/layout/gallery-shell/spec.md",
+      "new": "packages/blueprints/layout/gallery-shell/spec.md",
+      "before_sha256": "1c03d6b3fa9f3deaa0d2afaaa027ae011fc8e1971091be116746d54c561ca145",
+      "after_sha256": "1c03d6b3fa9f3deaa0d2afaaa027ae011fc8e1971091be116746d54c561ca145",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/layout/sandwich/gotchas.md",
+      "new": "packages/blueprints/layout/sandwich/gotchas.md",
+      "before_sha256": "e0450738b72643b95d3cf64de8f73179fa73cf7def32f760915a4aeb11875c73",
+      "after_sha256": "e0450738b72643b95d3cf64de8f73179fa73cf7def32f760915a4aeb11875c73",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/layout/sandwich/reference/default.at",
+      "new": "packages/blueprints/layout/sandwich/reference/default.at",
+      "before_sha256": "3fe50f1991c758cce28110500c6f6c7da89a36b4f19d4c6e3a32fc62434e0214",
+      "after_sha256": "b51f290ea755d13ed77a5ca2554d846689859866d2c4e990f48bfc009e29111b",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/layout/sandwich/reference/full.at",
+      "new": "packages/blueprints/layout/sandwich/reference/full.at",
+      "before_sha256": "8bd4b931fafde7c4d492958a7d80597fd1ad0cdfeea7f2e47e70c13f63bff1b6",
+      "after_sha256": "d67a6a863451c069c30967b456784fabe32d85afb7e585308b190941658338b8",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/layout/sandwich/spec.md",
+      "new": "packages/blueprints/layout/sandwich/spec.md",
+      "before_sha256": "8cfd5b14d534b96be6d110c236e8d458c3ecf33e4ceb51b081eb65365abb348c",
+      "after_sha256": "8cfd5b14d534b96be6d110c236e8d458c3ecf33e4ceb51b081eb65365abb348c",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/layout/status-bar/gotchas.md",
+      "new": "packages/blueprints/layout/status-bar/gotchas.md",
+      "before_sha256": "d5652a51d96eff148885076e61eba83d29cfb1c030dfb50292f01f7522e7d998",
+      "after_sha256": "d5652a51d96eff148885076e61eba83d29cfb1c030dfb50292f01f7522e7d998",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/layout/status-bar/reference/default.at",
+      "new": "packages/blueprints/layout/status-bar/reference/default.at",
+      "before_sha256": "d4eca9b8448e9942880ebe593877db4414876503b5a187334cc431926d1955cb",
+      "after_sha256": "c166bce95f883187feb3a0382cac74f1176a0d6a9d836477845cf007599fda0c",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/layout/status-bar/spec.md",
+      "new": "packages/blueprints/layout/status-bar/spec.md",
+      "before_sha256": "8f1cb87754dab7ae77ebdf6605cacbe0a5956a7aaabfcb0459d2c2603bd8a052",
+      "after_sha256": "8f1cb87754dab7ae77ebdf6605cacbe0a5956a7aaabfcb0459d2c2603bd8a052",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/filetree/gotchas.md",
+      "new": "packages/blueprints/navigation/filetree/gotchas.md",
+      "before_sha256": "d8351354f5b9e3ddc072d2dbe22dfbe8e23a93766d767dedf552666d06c42865",
+      "after_sha256": "d8351354f5b9e3ddc072d2dbe22dfbe8e23a93766d767dedf552666d06c42865",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/filetree/reference/default.at",
+      "new": "packages/blueprints/navigation/filetree/reference/default.at",
+      "before_sha256": "bc9b3c7df78727a1113f9ef8e55e6ff69de3cfbe6ba8881d4edfafa67b98b46c",
+      "after_sha256": "60809162477991a51ef034020fcf0aa287116c0870a41f163531e0f1e2cb8aaa",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/navigation/filetree/spec.md",
+      "new": "packages/blueprints/navigation/filetree/spec.md",
+      "before_sha256": "a4ec4099cf0054ced1635661a28640878c7c8114170381eca3f6ad993a7be38e",
+      "after_sha256": "a4ec4099cf0054ced1635661a28640878c7c8114170381eca3f6ad993a7be38e",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/filetree/tree_icon.at",
+      "new": "packages/blueprints/navigation/filetree/tree_icon.at",
+      "before_sha256": "9117890325e7ebf820c3de2b0011ae66afe5ba787a6921d183aebebb938c882a",
+      "after_sha256": "b0ed22d7428bfa8801b0ee5140d27942237e02f860f8560a939a2c94d9275d8a",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/navigation/filetree/tree_util.at",
+      "new": "packages/blueprints/navigation/filetree/tree_util.at",
+      "before_sha256": "8daffdc917c31920dc7037877a10ebae03844716da27f66be991ca633396e8f5",
+      "after_sha256": "f1e3cc8052ef95f8cf8c6a8ece621686399b9c3ee328f37395857800541c0158",
+      "content_changed": true
+    },
+    {
+      "old": "blueprints/navigation/sidebar-nav/gotchas.md",
+      "new": "packages/blueprints/navigation/sidebar-nav/gotchas.md",
+      "before_sha256": "42ee27ffe490b96ae06672d4cd078b9d8cbfb680ade444cb59749ec7260e480b",
+      "after_sha256": "42ee27ffe490b96ae06672d4cd078b9d8cbfb680ade444cb59749ec7260e480b",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/sidebar-nav/reference/compact.at",
+      "new": "packages/blueprints/navigation/sidebar-nav/reference/compact.at",
+      "before_sha256": "f69d706e7ce92c4d647e97fe570d5ecb0f23317be143d07bf862f19d88569fe7",
+      "after_sha256": "f69d706e7ce92c4d647e97fe570d5ecb0f23317be143d07bf862f19d88569fe7",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/sidebar-nav/reference/default.at",
+      "new": "packages/blueprints/navigation/sidebar-nav/reference/default.at",
+      "before_sha256": "0353d9875cff17b5d28aef620afc8c84fe04a80fbcf676d1a73c481efe5456d0",
+      "after_sha256": "0353d9875cff17b5d28aef620afc8c84fe04a80fbcf676d1a73c481efe5456d0",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/sidebar-nav/spec.md",
+      "new": "packages/blueprints/navigation/sidebar-nav/spec.md",
+      "before_sha256": "abef57e4552a8d4748de30e3d1ee7dc436ecc4d3802eaba57b7e57aaeb9c349b",
+      "after_sha256": "abef57e4552a8d4748de30e3d1ee7dc436ecc4d3802eaba57b7e57aaeb9c349b",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/sidebar-shell/gotchas.md",
+      "new": "packages/blueprints/navigation/sidebar-shell/gotchas.md",
+      "before_sha256": "0c1febfd428d2a99875c14c30511f490ff6b2a97785975868e5022c9c9bd7994",
+      "after_sha256": "0c1febfd428d2a99875c14c30511f490ff6b2a97785975868e5022c9c9bd7994",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/sidebar-shell/reference/compact.at",
+      "new": "packages/blueprints/navigation/sidebar-shell/reference/compact.at",
+      "before_sha256": "c1739099fcb29448c95a3544acb5930e2942026a90f6383959550ffdcb0b760a",
+      "after_sha256": "c1739099fcb29448c95a3544acb5930e2942026a90f6383959550ffdcb0b760a",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/sidebar-shell/reference/default.at",
+      "new": "packages/blueprints/navigation/sidebar-shell/reference/default.at",
+      "before_sha256": "faf9239741130177b55878e9da77255dad02d9ff544d2c49c76d1ef9d14d7e30",
+      "after_sha256": "faf9239741130177b55878e9da77255dad02d9ff544d2c49c76d1ef9d14d7e30",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/navigation/sidebar-shell/spec.md",
+      "new": "packages/blueprints/navigation/sidebar-shell/spec.md",
+      "before_sha256": "f2358dd94216913683bd458f4ea49884cacf4285a8dfac8fdde78b9b2fa880bc",
+      "after_sha256": "f2358dd94216913683bd458f4ea49884cacf4285a8dfac8fdde78b9b2fa880bc",
+      "content_changed": false
+    },
+    {
+      "old": "blueprints/pac.at",
+      "new": "packages/blueprints/pac.at",
+      "before_sha256": "96788aa5543cf5316116c5b77d1eb2eecc60a8899fccc3a5cce186280c66a41b",
+      "after_sha256": "6372a62061a691a17b14da3f99bae2e77500f51410da3bb6d99997c480850032",
+      "content_changed": true
+    },
+    {
+      "old": "parity/.gitignore",
+      "new": "test/parity/.gitignore",
+      "before_sha256": "69fd630ceeb6471845c43a26e9c23d11d12595382191d96e4d723ab7964be54e",
+      "after_sha256": "69fd630ceeb6471845c43a26e9c23d11d12595382191d96e4d723ab7964be54e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/Cargo.toml",
+      "new": "test/parity/Cargo.toml",
+      "before_sha256": "2620fb5a770349fcb31c387964465cc112e75a3f5b262ec36fc39c16a37c94d3",
+      "after_sha256": "2620fb5a770349fcb31c387964465cc112e75a3f5b262ec36fc39c16a37c94d3",
+      "content_changed": false
+    },
+    {
+      "old": "parity/README.md",
+      "new": "test/parity/README.md",
+      "before_sha256": "0f2cf3e1f7b63ad9b58b2402127903456d2409591afa378783d8aa8f44ec13d9",
+      "after_sha256": "69ada33ef5876eb8ff5b25cf984d83c32b38d7300c791f8b8c08564aaff28c79",
+      "content_changed": true
+    },
+    {
+      "old": "parity/crates/auto-parity/Cargo.toml",
+      "new": "test/parity/crates/auto-parity/Cargo.toml",
+      "before_sha256": "143c9f17533d0eee36e6cafcdecd451b4b82c5e74647c6709861cc2ffee8a767",
+      "after_sha256": "143c9f17533d0eee36e6cafcdecd451b4b82c5e74647c6709861cc2ffee8a767",
+      "content_changed": false
+    },
+    {
+      "old": "parity/crates/auto-parity/src/aavm.rs",
+      "new": "test/parity/crates/auto-parity/src/aavm.rs",
+      "before_sha256": "28478ccc2d482ecee77a1ee8aa7a99f9d919e1a2e5aaaaa45ecb025e98243581",
+      "after_sha256": "7589a02c3669cc9bb470f557b8e46bdeca63e9f1211c157e5d8a832df62ee5e0",
+      "content_changed": true
+    },
+    {
+      "old": "parity/crates/auto-parity/src/compare.rs",
+      "new": "test/parity/crates/auto-parity/src/compare.rs",
+      "before_sha256": "5f36dcb53e41504815217a7ea708d2bda3e54952d51d326ad451aec208f4e85c",
+      "after_sha256": "5f36dcb53e41504815217a7ea708d2bda3e54952d51d326ad451aec208f4e85c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/crates/auto-parity/src/deps.rs",
+      "new": "test/parity/crates/auto-parity/src/deps.rs",
+      "before_sha256": "edb59e580b9a3030efef50b51714ef58735216fc2adb5d8aa99992074a09bdc6",
+      "after_sha256": "edb59e580b9a3030efef50b51714ef58735216fc2adb5d8aa99992074a09bdc6",
+      "content_changed": false
+    },
+    {
+      "old": "parity/crates/auto-parity/src/freshness.rs",
+      "new": "test/parity/crates/auto-parity/src/freshness.rs",
+      "before_sha256": "d92422fe82d501218c880f411260bc471f7edfc822c7892cfbe640e97170b043",
+      "after_sha256": "d92422fe82d501218c880f411260bc471f7edfc822c7892cfbe640e97170b043",
+      "content_changed": false
+    },
+    {
+      "old": "parity/crates/auto-parity/src/main.rs",
+      "new": "test/parity/crates/auto-parity/src/main.rs",
+      "before_sha256": "e8d95f583f69fc97c558b8e19ee16eb6e9f40a58f1d674733674ab401bcb38ee",
+      "after_sha256": "06455729e2021c464be05ef652f7b61d87cda48054dd63861f9c9f14c83a6d97",
+      "content_changed": true
+    },
+    {
+      "old": "parity/crates/auto-parity/src/report.rs",
+      "new": "test/parity/crates/auto-parity/src/report.rs",
+      "before_sha256": "e1f495c9cbeedc43366410aca99fd989961d0652a40583e8022aa000157fb23e",
+      "after_sha256": "e1f495c9cbeedc43366410aca99fd989961d0652a40583e8022aa000157fb23e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/crates/auto-parity/src/runner.rs",
+      "new": "test/parity/crates/auto-parity/src/runner.rs",
+      "before_sha256": "213c4b4c69be990e06b29ebe12284aeb4c45c0b3e0516412f764ba7d367254a5",
+      "after_sha256": "7747b12f5df1e2ee5839a3a09af2f045fb99e7cfa8cd5e733d59999b196fa7f8",
+      "content_changed": true
+    },
+    {
+      "old": "parity/crates/auto-parity/src/tap.rs",
+      "new": "test/parity/crates/auto-parity/src/tap.rs",
+      "before_sha256": "d18a18dc428cccb38d08abf6a74ed43e0407b962dd2ebdf32983ea6004e36dfb",
+      "after_sha256": "d18a18dc428cccb38d08abf6a74ed43e0407b962dd2ebdf32983ea6004e36dfb",
+      "content_changed": false
+    },
+    {
+      "old": "parity/docs/aavm-matrix.html",
+      "new": "test/parity/docs/aavm-matrix.html",
+      "before_sha256": "916ebfc3ddd1176a761d2d2b67f2bf030ff907bedbe1794ad9c0482c78810e21",
+      "after_sha256": "916ebfc3ddd1176a761d2d2b67f2bf030ff907bedbe1794ad9c0482c78810e21",
+      "content_changed": false
+    },
+    {
+      "old": "parity/docs/known-divergences.md",
+      "new": "test/parity/docs/known-divergences.md",
+      "before_sha256": "27acff52125685d8d37bdbe5de7f2f2fbdc686ccda432b5fb98a605aa9f18222",
+      "after_sha256": "d9975efbb3efc880cde35bac764b3252d01b15af3290126bf7d157587cfd2d35",
+      "content_changed": true
+    },
+    {
+      "old": "parity/docs/parity-dashboard.html",
+      "new": "test/parity/docs/parity-dashboard.html",
+      "before_sha256": "af44f4bc70e8b87770fd78d574e9c9dc37254ae88d90aebe5de01d792f1fd221",
+      "after_sha256": "af44f4bc70e8b87770fd78d574e9c9dc37254ae88d90aebe5de01d792f1fd221",
+      "content_changed": false
+    },
+    {
+      "old": "parity/docs/parity-guide.md",
+      "new": "test/parity/docs/parity-guide.md",
+      "before_sha256": "2b49e3c55097b85c511001b5d2387b69c1442f77b91699311a56a92ca4de8f26",
+      "after_sha256": "00791d96339fecd25be2d9c877df80b35535527be970226d72bbef7df9752f6a",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/consumer/c_crawler/README.md",
+      "new": "test/parity/libs/consumer/c_crawler/README.md",
+      "before_sha256": "1240a1e774d1cbe4284bf893253f9b513458fda76728e5855c7aaaa759c50ec2",
+      "after_sha256": "1240a1e774d1cbe4284bf893253f9b513458fda76728e5855c7aaaa759c50ec2",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_crawler/auto/c_crawler.at",
+      "new": "test/parity/libs/consumer/c_crawler/auto/c_crawler.at",
+      "before_sha256": "5720bd56f233ae3f1a1264138ada293f5643ba50b91210b8376f12b1912de8f4",
+      "after_sha256": "5720bd56f233ae3f1a1264138ada293f5643ba50b91210b8376f12b1912de8f4",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_crawler/mock-server/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_crawler/mock-server/Cargo.toml",
+      "before_sha256": "92c6d9700a45c1a30871116672a48202601844336f2e67645f59cb060a554424",
+      "after_sha256": "92c6d9700a45c1a30871116672a48202601844336f2e67645f59cb060a554424",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_crawler/mock-server/src/main.rs",
+      "new": "test/parity/libs/consumer/c_crawler/mock-server/src/main.rs",
+      "before_sha256": "70a52af73c65a7997c5d3edc0923c5cdfa9fa9bcc7d35ccc5afd99c7ca0f6e9c",
+      "after_sha256": "70a52af73c65a7997c5d3edc0923c5cdfa9fa9bcc7d35ccc5afd99c7ca0f6e9c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_crawler/tests/auto/basic.at",
+      "new": "test/parity/libs/consumer/c_crawler/tests/auto/basic.at",
+      "before_sha256": "9ca645c3bd512f042fd61b9d9f6b3ea0976ea55db955416085d4cac30640b1d9",
+      "after_sha256": "9ca645c3bd512f042fd61b9d9f6b3ea0976ea55db955416085d4cac30640b1d9",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_crawler/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_crawler/tests/rust/Cargo.toml",
+      "before_sha256": "fd8526d5b3f3e16bf0c319b1077f8624a0400b0ef115c60b2cfc882f9096c8d9",
+      "after_sha256": "fd8526d5b3f3e16bf0c319b1077f8624a0400b0ef115c60b2cfc882f9096c8d9",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_crawler/tests/rust/tests/c_crawler.rs",
+      "new": "test/parity/libs/consumer/c_crawler/tests/rust/tests/c_crawler.rs",
+      "before_sha256": "e738b6a87cab175c7445d3e1f438d7aaec9942bf718456f4e080098edd8bf9bb",
+      "after_sha256": "e738b6a87cab175c7445d3e1f438d7aaec9942bf718456f4e080098edd8bf9bb",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_env_app/README.md",
+      "new": "test/parity/libs/consumer/c_env_app/README.md",
+      "before_sha256": "7210e242b483a10a29e13c43b740ac6532043ff1b18048cc9aa7c1c5e7db1daf",
+      "after_sha256": "7210e242b483a10a29e13c43b740ac6532043ff1b18048cc9aa7c1c5e7db1daf",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_env_app/auto/c_env_app.at",
+      "new": "test/parity/libs/consumer/c_env_app/auto/c_env_app.at",
+      "before_sha256": "348a6df214656e71db993cf1c41f8a561546e600927341341b9b8eeb588ef5aa",
+      "after_sha256": "348a6df214656e71db993cf1c41f8a561546e600927341341b9b8eeb588ef5aa",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_env_app/tests/auto/basic.at",
+      "new": "test/parity/libs/consumer/c_env_app/tests/auto/basic.at",
+      "before_sha256": "e5f18166d6d68d9936210f89f4b603812670338152dfb761c7992f6b72d7fbdf",
+      "after_sha256": "e5f18166d6d68d9936210f89f4b603812670338152dfb761c7992f6b72d7fbdf",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_env_app/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_env_app/tests/rust/Cargo.toml",
+      "before_sha256": "07ec34804f27eb03b8cb560e1df36faa53890d45f8649e332f4e09fecfb0427e",
+      "after_sha256": "07ec34804f27eb03b8cb560e1df36faa53890d45f8649e332f4e09fecfb0427e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_env_app/tests/rust/tests/c_env_app.rs",
+      "new": "test/parity/libs/consumer/c_env_app/tests/rust/tests/c_env_app.rs",
+      "before_sha256": "bf5745f12ff06ab831456a60cd0a92e2ac997020dee5ebee0a20b82bee0e24ff",
+      "after_sha256": "01b9f826c3510efe153cc487472d4b65c42c3adb9bc03908d20f5bacc154c651",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/consumer/c_fs_app/README.md",
+      "new": "test/parity/libs/consumer/c_fs_app/README.md",
+      "before_sha256": "40234d6ca49cb5b2b4e07e6ece8b0f02b6e442801238b716c80cbd2e42967485",
+      "after_sha256": "40234d6ca49cb5b2b4e07e6ece8b0f02b6e442801238b716c80cbd2e42967485",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_fs_app/auto/c_fs_app.at",
+      "new": "test/parity/libs/consumer/c_fs_app/auto/c_fs_app.at",
+      "before_sha256": "03dd4bc687a958abf428b5d434e1b9d3ecd84cbd9f98a8055fb18989f7827142",
+      "after_sha256": "03dd4bc687a958abf428b5d434e1b9d3ecd84cbd9f98a8055fb18989f7827142",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_fs_app/tests/auto/basic.at",
+      "new": "test/parity/libs/consumer/c_fs_app/tests/auto/basic.at",
+      "before_sha256": "98179459cee48e2d1fe97b82c9f68308f7c955c2a33eb73e53ed75175066df86",
+      "after_sha256": "98179459cee48e2d1fe97b82c9f68308f7c955c2a33eb73e53ed75175066df86",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_fs_app/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_fs_app/tests/rust/Cargo.toml",
+      "before_sha256": "8e9a168851459d733fe92becb1e2c1f8118d87d18ee061e041d24c5da71f804a",
+      "after_sha256": "8e9a168851459d733fe92becb1e2c1f8118d87d18ee061e041d24c5da71f804a",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_fs_app/tests/rust/tests/c_fs_app.rs",
+      "new": "test/parity/libs/consumer/c_fs_app/tests/rust/tests/c_fs_app.rs",
+      "before_sha256": "c26ef431c0411d9d899b8a959633a10444b3c6304aabdac37cb32454ea4f3bb1",
+      "after_sha256": "d37b30f1f76f2a3e9c064f070de4cac936ad9780df1243ee9adfc810264b7e2a",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/consumer/c_http_get/README.md",
+      "new": "test/parity/libs/consumer/c_http_get/README.md",
+      "before_sha256": "80450e72ef2fcc277b01f8c4b48f8833f7d70d6be6b7b9577f07e4d511c587fb",
+      "after_sha256": "80450e72ef2fcc277b01f8c4b48f8833f7d70d6be6b7b9577f07e4d511c587fb",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_http_get/auto/c_http_get.at",
+      "new": "test/parity/libs/consumer/c_http_get/auto/c_http_get.at",
+      "before_sha256": "ef9bb70e54c728091ff9ac5fdb954558b5ee26a9addaef95ee3308961b9598dc",
+      "after_sha256": "ef9bb70e54c728091ff9ac5fdb954558b5ee26a9addaef95ee3308961b9598dc",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_http_get/mock-server/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_http_get/mock-server/Cargo.toml",
+      "before_sha256": "67e65164d268eac14a85ac5457fe7e735d6acee2735d09a67c15c947b18faf0e",
+      "after_sha256": "67e65164d268eac14a85ac5457fe7e735d6acee2735d09a67c15c947b18faf0e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_http_get/mock-server/src/main.rs",
+      "new": "test/parity/libs/consumer/c_http_get/mock-server/src/main.rs",
+      "before_sha256": "70a52af73c65a7997c5d3edc0923c5cdfa9fa9bcc7d35ccc5afd99c7ca0f6e9c",
+      "after_sha256": "70a52af73c65a7997c5d3edc0923c5cdfa9fa9bcc7d35ccc5afd99c7ca0f6e9c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_http_get/tests/auto/basic.at",
+      "new": "test/parity/libs/consumer/c_http_get/tests/auto/basic.at",
+      "before_sha256": "0e1f9f5d4d26bea1e6b64befff32de5f0208313cabb93f5a0318157b120d1b02",
+      "after_sha256": "0e1f9f5d4d26bea1e6b64befff32de5f0208313cabb93f5a0318157b120d1b02",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_http_get/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_http_get/tests/rust/Cargo.toml",
+      "before_sha256": "c48694ee636f32dc7968b74a7501c5e63a20c76f1ed8e831a85593af4945bd0e",
+      "after_sha256": "c48694ee636f32dc7968b74a7501c5e63a20c76f1ed8e831a85593af4945bd0e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_http_get/tests/rust/tests/c_http_get.rs",
+      "new": "test/parity/libs/consumer/c_http_get/tests/rust/tests/c_http_get.rs",
+      "before_sha256": "668a1095fc83c9e984c301126a295ac8a73f7d6d05c4d7e602b1b1da65b9584f",
+      "after_sha256": "668a1095fc83c9e984c301126a295ac8a73f7d6d05c4d7e602b1b1da65b9584f",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_json_app/README.md",
+      "new": "test/parity/libs/consumer/c_json_app/README.md",
+      "before_sha256": "773ce948cf9f8c52981f2c12dd02596fbc4c398e16c097a942840db7432e4e20",
+      "after_sha256": "773ce948cf9f8c52981f2c12dd02596fbc4c398e16c097a942840db7432e4e20",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_json_app/auto/c_json_app.at",
+      "new": "test/parity/libs/consumer/c_json_app/auto/c_json_app.at",
+      "before_sha256": "b8653c68f445261ba8eb5bf5f0cd2e3a07633e9415fc904b9e3a9d6f9a43a037",
+      "after_sha256": "b8653c68f445261ba8eb5bf5f0cd2e3a07633e9415fc904b9e3a9d6f9a43a037",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_json_app/tests/auto/basic.at",
+      "new": "test/parity/libs/consumer/c_json_app/tests/auto/basic.at",
+      "before_sha256": "d9eef651463e7df972bc1d2e4069960c333f6d9a40093efdcf4fafbbc3d9c78c",
+      "after_sha256": "d9eef651463e7df972bc1d2e4069960c333f6d9a40093efdcf4fafbbc3d9c78c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_json_app/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_json_app/tests/rust/Cargo.toml",
+      "before_sha256": "eee9d923b7fe4ac4e61d10a76285c56d7b3a22397d97e7b859877c3abd1c4afe",
+      "after_sha256": "eee9d923b7fe4ac4e61d10a76285c56d7b3a22397d97e7b859877c3abd1c4afe",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_json_app/tests/rust/tests/c_json_app.rs",
+      "new": "test/parity/libs/consumer/c_json_app/tests/rust/tests/c_json_app.rs",
+      "before_sha256": "74eb95b274a5d2916b70885a31debdc106d954c32303b139995987a610d85f76",
+      "after_sha256": "74eb95b274a5d2916b70885a31debdc106d954c32303b139995987a610d85f76",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_process_app/README.md",
+      "new": "test/parity/libs/consumer/c_process_app/README.md",
+      "before_sha256": "9a501dab6241ad6d0ee126bcba9c7f1a901c51732575c224fefa1c9cc8e5d75c",
+      "after_sha256": "9a501dab6241ad6d0ee126bcba9c7f1a901c51732575c224fefa1c9cc8e5d75c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_process_app/auto/c_process_app.at",
+      "new": "test/parity/libs/consumer/c_process_app/auto/c_process_app.at",
+      "before_sha256": "afbf49e1149cb9a5c90667c7313293aa0b016240b56f198e5550213c58522f8a",
+      "after_sha256": "afbf49e1149cb9a5c90667c7313293aa0b016240b56f198e5550213c58522f8a",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_process_app/tests/auto/basic.at",
+      "new": "test/parity/libs/consumer/c_process_app/tests/auto/basic.at",
+      "before_sha256": "2aecbe3f1856384dc40b4ee6765a61185f3e28f4fe40202d4a00e08071e28e5c",
+      "after_sha256": "2aecbe3f1856384dc40b4ee6765a61185f3e28f4fe40202d4a00e08071e28e5c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_process_app/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_process_app/tests/rust/Cargo.toml",
+      "before_sha256": "c6153e2b90264a7f808e58163348e5aa7a00f00ca6856c86df1650e01b45a9cd",
+      "after_sha256": "c6153e2b90264a7f808e58163348e5aa7a00f00ca6856c86df1650e01b45a9cd",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_process_app/tests/rust/tests/c_process_app.rs",
+      "new": "test/parity/libs/consumer/c_process_app/tests/rust/tests/c_process_app.rs",
+      "before_sha256": "5e878a5f4f62e08b9741cdbf1a9573c9b90aebe9338069504b68c9134a323082",
+      "after_sha256": "99f782a4d719235d282ecfe75f100a9daeb8cd45960252fd6e7fbe086219aa99",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/consumer/c_text_app/README.md",
+      "new": "test/parity/libs/consumer/c_text_app/README.md",
+      "before_sha256": "3e08630c6157079f8e5916c225a47fb0cf305d644845be18384ef229766d1814",
+      "after_sha256": "3e08630c6157079f8e5916c225a47fb0cf305d644845be18384ef229766d1814",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_text_app/auto/c_text_app.at",
+      "new": "test/parity/libs/consumer/c_text_app/auto/c_text_app.at",
+      "before_sha256": "531b032ee340e2d4faece5fd190d28e49b7f2db14cbceeec3ddfa14adfce324e",
+      "after_sha256": "531b032ee340e2d4faece5fd190d28e49b7f2db14cbceeec3ddfa14adfce324e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_text_app/tests/auto/basic.at",
+      "new": "test/parity/libs/consumer/c_text_app/tests/auto/basic.at",
+      "before_sha256": "e7f3d4b2704c64b7338a1a19b580015a2e6a037b5b6fb4b5e6b2dc8d28d06ce2",
+      "after_sha256": "e7f3d4b2704c64b7338a1a19b580015a2e6a037b5b6fb4b5e6b2dc8d28d06ce2",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_text_app/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_text_app/tests/rust/Cargo.toml",
+      "before_sha256": "5ce31d981767b18a5982111f3b4037857ea66746feba656ee6ae848a1cd08345",
+      "after_sha256": "5ce31d981767b18a5982111f3b4037857ea66746feba656ee6ae848a1cd08345",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_text_app/tests/rust/tests/c_text_app.rs",
+      "new": "test/parity/libs/consumer/c_text_app/tests/rust/tests/c_text_app.rs",
+      "before_sha256": "44742930cf63306d325954d3846809b8cc2e616749bf0021a37b85cf4dc2d474",
+      "after_sha256": "81e34bf38acfef418e845b30d05f983f7ccab0bace8bd8d4076cc0a7799f3489",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/consumer/c_wget/README.md",
+      "new": "test/parity/libs/consumer/c_wget/README.md",
+      "before_sha256": "f32c70aa66345d1068b37769a9844ae53d8422c521148875ab2ecd494f8fe3ea",
+      "after_sha256": "f32c70aa66345d1068b37769a9844ae53d8422c521148875ab2ecd494f8fe3ea",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_wget/auto/c_wget.at",
+      "new": "test/parity/libs/consumer/c_wget/auto/c_wget.at",
+      "before_sha256": "37559f51e360a55b315bca6dcd5a32fb0596000c61f1fce16225d90eecbdecf0",
+      "after_sha256": "37559f51e360a55b315bca6dcd5a32fb0596000c61f1fce16225d90eecbdecf0",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_wget/mock-server/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_wget/mock-server/Cargo.toml",
+      "before_sha256": "92c6d9700a45c1a30871116672a48202601844336f2e67645f59cb060a554424",
+      "after_sha256": "92c6d9700a45c1a30871116672a48202601844336f2e67645f59cb060a554424",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_wget/mock-server/src/main.rs",
+      "new": "test/parity/libs/consumer/c_wget/mock-server/src/main.rs",
+      "before_sha256": "70a52af73c65a7997c5d3edc0923c5cdfa9fa9bcc7d35ccc5afd99c7ca0f6e9c",
+      "after_sha256": "70a52af73c65a7997c5d3edc0923c5cdfa9fa9bcc7d35ccc5afd99c7ca0f6e9c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_wget/tests/auto/basic.at",
+      "new": "test/parity/libs/consumer/c_wget/tests/auto/basic.at",
+      "before_sha256": "2d48222853bf195a15d9026cf0f466cee9446c97b62880f5c606553c1b0c238c",
+      "after_sha256": "2d48222853bf195a15d9026cf0f466cee9446c97b62880f5c606553c1b0c238c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_wget/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/c_wget/tests/rust/Cargo.toml",
+      "before_sha256": "5bdf6fcad1e47215a69dc30e4e98df9610a5e45da72f219d0479c06b3498039a",
+      "after_sha256": "5bdf6fcad1e47215a69dc30e4e98df9610a5e45da72f219d0479c06b3498039a",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/c_wget/tests/rust/tests/c_wget.rs",
+      "new": "test/parity/libs/consumer/c_wget/tests/rust/tests/c_wget.rs",
+      "before_sha256": "11e8127fc443a9dc091efd6e502fa95f1ac84fc9ffb2c9f4b93bf07cd44d9777",
+      "after_sha256": "11e8127fc443a9dc091efd6e502fa95f1ac84fc9ffb2c9f4b93bf07cd44d9777",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/http_client_sync/README.md",
+      "new": "test/parity/libs/consumer/http_client_sync/README.md",
+      "before_sha256": "42f1d3370e5e97a373a1ff450ad334d9078bfde559cf16eb77f8df68ce9c1f38",
+      "after_sha256": "ec70fc32e6be1200b3b565a338446c70ca05e306758a1d4268de1c836cd3c8ba",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/consumer/http_client_sync/auto/http_client_sync.at",
+      "new": "test/parity/libs/consumer/http_client_sync/auto/http_client_sync.at",
+      "before_sha256": "b10c4475f0bb0add7c062522341352617f380f95bdf7abba28149aa51bb04ed1",
+      "after_sha256": "b10c4475f0bb0add7c062522341352617f380f95bdf7abba28149aa51bb04ed1",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/http_client_sync/mock-server/Cargo.toml",
+      "new": "test/parity/libs/consumer/http_client_sync/mock-server/Cargo.toml",
+      "before_sha256": "67e65164d268eac14a85ac5457fe7e735d6acee2735d09a67c15c947b18faf0e",
+      "after_sha256": "67e65164d268eac14a85ac5457fe7e735d6acee2735d09a67c15c947b18faf0e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/http_client_sync/mock-server/src/main.rs",
+      "new": "test/parity/libs/consumer/http_client_sync/mock-server/src/main.rs",
+      "before_sha256": "70a52af73c65a7997c5d3edc0923c5cdfa9fa9bcc7d35ccc5afd99c7ca0f6e9c",
+      "after_sha256": "70a52af73c65a7997c5d3edc0923c5cdfa9fa9bcc7d35ccc5afd99c7ca0f6e9c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/http_client_sync/tests/auto/post_echo.at",
+      "new": "test/parity/libs/consumer/http_client_sync/tests/auto/post_echo.at",
+      "before_sha256": "76a14495e81cb8d7b1f5d6ffebd9ae0a7431339fc9075922737763b596ea2e86",
+      "after_sha256": "76a14495e81cb8d7b1f5d6ffebd9ae0a7431339fc9075922737763b596ea2e86",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/http_client_sync/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/consumer/http_client_sync/tests/rust/Cargo.toml",
+      "before_sha256": "8f4b4acc283d1fa419fcafd2865ad62877a930a1f8c7331653ea6f42bb3eaacd",
+      "after_sha256": "8f4b4acc283d1fa419fcafd2865ad62877a930a1f8c7331653ea6f42bb3eaacd",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/consumer/http_client_sync/tests/rust/tests/http_client_sync.rs",
+      "new": "test/parity/libs/consumer/http_client_sync/tests/rust/tests/http_client_sync.rs",
+      "before_sha256": "efeb652bec66b7cbf17f45a151076f9c07d0f8d67c36170a62da2eeaebe93b92",
+      "after_sha256": "b01c3129cb9f946954c23c22730210fdea00ca419abf7ff4c67a949022ed357f",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/dep/base64_real/README.md",
+      "new": "test/parity/libs/dep/base64_real/README.md",
+      "before_sha256": "e55eda7284bb4fbdbbcc6135e8875d430d9acb2fcecad4dbf45375cc8b060be4",
+      "after_sha256": "e55eda7284bb4fbdbbcc6135e8875d430d9acb2fcecad4dbf45375cc8b060be4",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/base64_real/tests/auto/basic.at",
+      "new": "test/parity/libs/dep/base64_real/tests/auto/basic.at",
+      "before_sha256": "fff1e0dffe0c8d42ade9042d7791003b0ecd7cbbf7ef672cd3438ee978894987",
+      "after_sha256": "fff1e0dffe0c8d42ade9042d7791003b0ecd7cbbf7ef672cd3438ee978894987",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/base64_real/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/dep/base64_real/tests/rust/Cargo.toml",
+      "before_sha256": "08dcdb4ccd951237d59aee03737b74134b9f7be4e6050aed3c00fdf8d062fe01",
+      "after_sha256": "08dcdb4ccd951237d59aee03737b74134b9f7be4e6050aed3c00fdf8d062fe01",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/base64_real/tests/rust/tests/base64_real.rs",
+      "new": "test/parity/libs/dep/base64_real/tests/rust/tests/base64_real.rs",
+      "before_sha256": "8db4a27cfe9a43964fc82477b3f9326978eb4b3b51787674581581da83014f85",
+      "after_sha256": "8db4a27cfe9a43964fc82477b3f9326978eb4b3b51787674581581da83014f85",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/regex_real/README.md",
+      "new": "test/parity/libs/dep/regex_real/README.md",
+      "before_sha256": "e65f3ea0dd83036ad31c93e5c1a9ac985ed1d49a013fc9e9860401cc93523774",
+      "after_sha256": "e65f3ea0dd83036ad31c93e5c1a9ac985ed1d49a013fc9e9860401cc93523774",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/regex_real/tests/auto/basic.at",
+      "new": "test/parity/libs/dep/regex_real/tests/auto/basic.at",
+      "before_sha256": "c89467dc165e6f5b06fb5a79c3f5c4afe1c3a66955ffae780610748a366aa2d0",
+      "after_sha256": "c89467dc165e6f5b06fb5a79c3f5c4afe1c3a66955ffae780610748a366aa2d0",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/regex_real/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/dep/regex_real/tests/rust/Cargo.toml",
+      "before_sha256": "eef97a599813a4a7856eafac4db62f8312e681c3212241d99a5fcf95d797bfb3",
+      "after_sha256": "eef97a599813a4a7856eafac4db62f8312e681c3212241d99a5fcf95d797bfb3",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/regex_real/tests/rust/tests/regex_real.rs",
+      "new": "test/parity/libs/dep/regex_real/tests/rust/tests/regex_real.rs",
+      "before_sha256": "075b46eb229c19f87cd8ce0f5ea995af5e9b7efe2533c81b15cb7b4f7de830a6",
+      "after_sha256": "075b46eb229c19f87cd8ce0f5ea995af5e9b7efe2533c81b15cb7b4f7de830a6",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/semver_real/README.md",
+      "new": "test/parity/libs/dep/semver_real/README.md",
+      "before_sha256": "01503be1aac42360af09e7cfdf5e09d4f4184beff8c107e18e7d499024931909",
+      "after_sha256": "01503be1aac42360af09e7cfdf5e09d4f4184beff8c107e18e7d499024931909",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/semver_real/tests/auto/basic.at",
+      "new": "test/parity/libs/dep/semver_real/tests/auto/basic.at",
+      "before_sha256": "26badb22d6ebd484d0469177e7bddf3497cf62fcdd7dc16f10fb9b9d4ccf1cf8",
+      "after_sha256": "26badb22d6ebd484d0469177e7bddf3497cf62fcdd7dc16f10fb9b9d4ccf1cf8",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/semver_real/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/dep/semver_real/tests/rust/Cargo.toml",
+      "before_sha256": "65fdac74bab85d920a428f8761f5a10aaa7379407203b2371df537e20137c9b5",
+      "after_sha256": "65fdac74bab85d920a428f8761f5a10aaa7379407203b2371df537e20137c9b5",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/semver_real/tests/rust/tests/semver_real.rs",
+      "new": "test/parity/libs/dep/semver_real/tests/rust/tests/semver_real.rs",
+      "before_sha256": "ab2d0fdbc309fdf55c7ecfded1360af6175c678fd3135987cf9152660ce5a174",
+      "after_sha256": "ab2d0fdbc309fdf55c7ecfded1360af6175c678fd3135987cf9152660ce5a174",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/serde_json_real/README.md",
+      "new": "test/parity/libs/dep/serde_json_real/README.md",
+      "before_sha256": "6f14dfc4b61ba80baf312ae5df13c00cd41adc4606af5b3908481945d5001218",
+      "after_sha256": "6f14dfc4b61ba80baf312ae5df13c00cd41adc4606af5b3908481945d5001218",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/serde_json_real/tests/auto/basic.at",
+      "new": "test/parity/libs/dep/serde_json_real/tests/auto/basic.at",
+      "before_sha256": "9df29afc66607582a16463ef5a58886609942768096927a0c73630307c7a3731",
+      "after_sha256": "9df29afc66607582a16463ef5a58886609942768096927a0c73630307c7a3731",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/serde_json_real/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/dep/serde_json_real/tests/rust/Cargo.toml",
+      "before_sha256": "d26015e2300b80b7603604aaacab31ad82f2ba082116754a795a2a54e96b41ca",
+      "after_sha256": "d26015e2300b80b7603604aaacab31ad82f2ba082116754a795a2a54e96b41ca",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/serde_json_real/tests/rust/tests/serde_json_real.rs",
+      "new": "test/parity/libs/dep/serde_json_real/tests/rust/tests/serde_json_real.rs",
+      "before_sha256": "a18c35b0f479fe413afa483c2c7b7dbcbfe6ae6bcab2b070662d42c11672b91e",
+      "after_sha256": "a18c35b0f479fe413afa483c2c7b7dbcbfe6ae6bcab2b070662d42c11672b91e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/url_real/README.md",
+      "new": "test/parity/libs/dep/url_real/README.md",
+      "before_sha256": "eee52734018dbc236f657546b11015aadc85ef2e4964ed7210ddce4fc068b6a9",
+      "after_sha256": "eee52734018dbc236f657546b11015aadc85ef2e4964ed7210ddce4fc068b6a9",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/url_real/tests/auto/basic.at",
+      "new": "test/parity/libs/dep/url_real/tests/auto/basic.at",
+      "before_sha256": "5c1851a1b0b0c9747320f481256823b70b6f91d271c94fd6620c94ced8ab2b07",
+      "after_sha256": "5c1851a1b0b0c9747320f481256823b70b6f91d271c94fd6620c94ced8ab2b07",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/url_real/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/dep/url_real/tests/rust/Cargo.toml",
+      "before_sha256": "d145e5a547884d1ca9a4d87363e3f4baa300a742332eca3a9494cc11dbe76315",
+      "after_sha256": "d145e5a547884d1ca9a4d87363e3f4baa300a742332eca3a9494cc11dbe76315",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/url_real/tests/rust/tests/url_real.rs",
+      "new": "test/parity/libs/dep/url_real/tests/rust/tests/url_real.rs",
+      "before_sha256": "76ce8c892caefc7da3a5fc6e752a7de5a96c6c4c435f4e40ea893cc8a4b0d4bb",
+      "after_sha256": "76ce8c892caefc7da3a5fc6e752a7de5a96c6c4c435f4e40ea893cc8a4b0d4bb",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/uuid_real/README.md",
+      "new": "test/parity/libs/dep/uuid_real/README.md",
+      "before_sha256": "ffbe5cf5c5f2ad8993589737c552c8472f4fee5762b63e0d4aa997bc9eb39b4e",
+      "after_sha256": "ffbe5cf5c5f2ad8993589737c552c8472f4fee5762b63e0d4aa997bc9eb39b4e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/uuid_real/tests/auto/basic.at",
+      "new": "test/parity/libs/dep/uuid_real/tests/auto/basic.at",
+      "before_sha256": "6aedf29d8902dae60fac1808c4563f79f8b24fc88867c8a3e93578885aa4dd56",
+      "after_sha256": "6aedf29d8902dae60fac1808c4563f79f8b24fc88867c8a3e93578885aa4dd56",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/uuid_real/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/dep/uuid_real/tests/rust/Cargo.toml",
+      "before_sha256": "fa253de69e932478bc69f0bc720db1640e80cd78e4ddcdd5f36e5586ebde899e",
+      "after_sha256": "fa253de69e932478bc69f0bc720db1640e80cd78e4ddcdd5f36e5586ebde899e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/dep/uuid_real/tests/rust/tests/uuid_real.rs",
+      "new": "test/parity/libs/dep/uuid_real/tests/rust/tests/uuid_real.rs",
+      "before_sha256": "cdf03b76dab74bcc811c172eb9fe2bda2d45f6577ab02f7b839a6b9eb21ebcc6",
+      "after_sha256": "cdf03b76dab74bcc811c172eb9fe2bda2d45f6577ab02f7b839a6b9eb21ebcc6",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/framework/_dummy/auto/_dummy.at",
+      "new": "test/parity/libs/framework/_dummy/auto/_dummy.at",
+      "before_sha256": "a505ee5767c056aa6b87eed914136f839f1955c36717d347f93d173b53f37589",
+      "after_sha256": "a505ee5767c056aa6b87eed914136f839f1955c36717d347f93d173b53f37589",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/framework/_dummy/tests/auto/dummy.at",
+      "new": "test/parity/libs/framework/_dummy/tests/auto/dummy.at",
+      "before_sha256": "e0e93326dc580360e1cca9551b178858639c3f4c00d4347e0e48c76534dcf260",
+      "after_sha256": "c43d4e240eb32087fa54d438704a959ef9739c332f9d32dd38700e1f6f05e03b",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/framework/_dummy/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/framework/_dummy/tests/rust/Cargo.toml",
+      "before_sha256": "2be12bead422f2b7b064363e50b01f7fe8107d3322be1a06267d740d5f7bf6d6",
+      "after_sha256": "2be12bead422f2b7b064363e50b01f7fe8107d3322be1a06267d740d5f7bf6d6",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/framework/_dummy/tests/rust/tests/dummy.rs",
+      "new": "test/parity/libs/framework/_dummy/tests/rust/tests/dummy.rs",
+      "before_sha256": "ca966c36bad47544e66aabe98bd508b1f978ab5a6d4f560726836ac77e73da81",
+      "after_sha256": "ca966c36bad47544e66aabe98bd508b1f978ab5a6d4f560726836ac77e73da81",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/cli_app/README.md",
+      "new": "test/parity/libs/lang/cli_app/README.md",
+      "before_sha256": "850aacac7ecb5cfc623f7e8f630cc66c26a14938031c3e9dcd3f64e793b2fd22",
+      "after_sha256": "850aacac7ecb5cfc623f7e8f630cc66c26a14938031c3e9dcd3f64e793b2fd22",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/cli_app/auto/cli_app.at",
+      "new": "test/parity/libs/lang/cli_app/auto/cli_app.at",
+      "before_sha256": "7ea0fc0765b4c598b05d00dcbd0f24031521f8e93e7a73c263f2bbba344cc1ed",
+      "after_sha256": "7ea0fc0765b4c598b05d00dcbd0f24031521f8e93e7a73c263f2bbba344cc1ed",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/cli_app/tests/auto/basic.at",
+      "new": "test/parity/libs/lang/cli_app/tests/auto/basic.at",
+      "before_sha256": "eecb4fdb8664ed3bddcfb4fa8500db34b8be657438278923a7ac2622c99aef6a",
+      "after_sha256": "c8cbd23a39a9371af2a9552f8faf558cde61718da3177f0ba88a2b490029274e",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/lang/cli_app/tests/auto/edge_cases.at",
+      "new": "test/parity/libs/lang/cli_app/tests/auto/edge_cases.at",
+      "before_sha256": "10a2bb728a92233a04a0d001b87ba8ddac6455add8e0205aa203c18312e82808",
+      "after_sha256": "10a2bb728a92233a04a0d001b87ba8ddac6455add8e0205aa203c18312e82808",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/cli_app/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/lang/cli_app/tests/rust/Cargo.toml",
+      "before_sha256": "4a521371b86373af73262a11cf0818543e20a9833b45db729b0278e18ee05c60",
+      "after_sha256": "4a521371b86373af73262a11cf0818543e20a9833b45db729b0278e18ee05c60",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/cli_app/tests/rust/tests/cli_app.rs",
+      "new": "test/parity/libs/lang/cli_app/tests/rust/tests/cli_app.rs",
+      "before_sha256": "4baade421a574bb6e63fc6cec30f5fa72d1edf8b68afb1fccd5054e960b011e3",
+      "after_sha256": "4baade421a574bb6e63fc6cec30f5fa72d1edf8b68afb1fccd5054e960b011e3",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/generators/README.md",
+      "new": "test/parity/libs/lang/generators/README.md",
+      "before_sha256": "f01f97fc096aede9e488f5c4829c7d801363664582f90f40ce99a8b67cb130fb",
+      "after_sha256": "f01f97fc096aede9e488f5c4829c7d801363664582f90f40ce99a8b67cb130fb",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/generators/auto/generators.at",
+      "new": "test/parity/libs/lang/generators/auto/generators.at",
+      "before_sha256": "401d24a365d16478a995f9471c97ef1ab628c5d55cd39dd541103b7fca4e7bce",
+      "after_sha256": "401d24a365d16478a995f9471c97ef1ab628c5d55cd39dd541103b7fca4e7bce",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/generators/tests/auto/basic.at",
+      "new": "test/parity/libs/lang/generators/tests/auto/basic.at",
+      "before_sha256": "1d05cd61ee5b866b583bcac6e438401fd1edd2e2090ba4f506c116caa98ce7e2",
+      "after_sha256": "1d05cd61ee5b866b583bcac6e438401fd1edd2e2090ba4f506c116caa98ce7e2",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/generators/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/lang/generators/tests/rust/Cargo.toml",
+      "before_sha256": "0d047c920e170b5b738bcd18efc8f7df7e248ecf55ab924b5945de1a3f6f8b7c",
+      "after_sha256": "0d047c920e170b5b738bcd18efc8f7df7e248ecf55ab924b5945de1a3f6f8b7c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/generators/tests/rust/tests/generators.rs",
+      "new": "test/parity/libs/lang/generators/tests/rust/tests/generators.rs",
+      "before_sha256": "5dfc51ffc575f4d2291d9547009d9979800fb7060d19af5d2e4097e34de8097c",
+      "after_sha256": "786e17449d8029d58f7bacda74bc8a8968841c163778b1e13adc059273099b8f",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/lang/string_utils/README.md",
+      "new": "test/parity/libs/lang/string_utils/README.md",
+      "before_sha256": "984c0175936fed9bff84b04f6ed2997abd276e9b263c2f00f0400e924abfdebb",
+      "after_sha256": "984c0175936fed9bff84b04f6ed2997abd276e9b263c2f00f0400e924abfdebb",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/string_utils/auto/string_utils.at",
+      "new": "test/parity/libs/lang/string_utils/auto/string_utils.at",
+      "before_sha256": "e62fad87e0febb8b414285a1800838b7db38aed6089dffc859bdf776d272259c",
+      "after_sha256": "e62fad87e0febb8b414285a1800838b7db38aed6089dffc859bdf776d272259c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/string_utils/tests/auto/basic.at",
+      "new": "test/parity/libs/lang/string_utils/tests/auto/basic.at",
+      "before_sha256": "19aa7425a8267a52090b96521b2995654c8b163d22b85263f3a31a6be4934a28",
+      "after_sha256": "19aa7425a8267a52090b96521b2995654c8b163d22b85263f3a31a6be4934a28",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/string_utils/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/lang/string_utils/tests/rust/Cargo.toml",
+      "before_sha256": "2d8028509ea7aa168003d7612f5b3650ba18030b52f11d6d7f39b7e83fcfd80f",
+      "after_sha256": "2d8028509ea7aa168003d7612f5b3650ba18030b52f11d6d7f39b7e83fcfd80f",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/string_utils/tests/rust/tests/string_utils.rs",
+      "new": "test/parity/libs/lang/string_utils/tests/rust/tests/string_utils.rs",
+      "before_sha256": "6040b4c4a4db735a8e1f0d2e0550ac78e4b968adaee3008036fc4ea010da69f0",
+      "after_sha256": "7f82c3b0a0a68140c4a24c8aac2e48c3c547aef2cc5a142b86733add7ba05908",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/lang/trait_advanced/README.md",
+      "new": "test/parity/libs/lang/trait_advanced/README.md",
+      "before_sha256": "a483034610b3b167960ecff32bfd23d99fe9ad3dfeaf25fc0c73c56bd633a8b5",
+      "after_sha256": "2c99957fb1b69c1562958dcd54c5ff36e73a5a6f803f57c41096b708f2f29458",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/lang/trait_advanced/auto/trait_advanced.at",
+      "new": "test/parity/libs/lang/trait_advanced/auto/trait_advanced.at",
+      "before_sha256": "a7638f39a1efdf827d5600e7be31f08727750b64d595acdfb0a9dc9eb73b9b99",
+      "after_sha256": "a7638f39a1efdf827d5600e7be31f08727750b64d595acdfb0a9dc9eb73b9b99",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/trait_advanced/tests/auto/assoc_types.at",
+      "new": "test/parity/libs/lang/trait_advanced/tests/auto/assoc_types.at",
+      "before_sha256": "b550a6960d2fb9f3133c295352b160c4890d70f4c5ddd935502fa48321cf2043",
+      "after_sha256": "f28af024218c8498cab05626d3c2af7ef5338abffaab409eb5e6197a286bf29d",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/lang/trait_advanced/tests/auto/bounded_generics.at",
+      "new": "test/parity/libs/lang/trait_advanced/tests/auto/bounded_generics.at",
+      "before_sha256": "4edf325e8c15d38ced9f4b869a35fbb2334f9e96f38f40ee1eaa1b2c67fff376",
+      "after_sha256": "26a3b171d2a15f063d06e9d514bdae40711cb25b7f7259bb6b6a53d713e8f9ff",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/lang/trait_advanced/tests/auto/default_methods_probe.at",
+      "new": "test/parity/libs/lang/trait_advanced/tests/auto/default_methods_probe.at",
+      "before_sha256": "99b624c2eeb3cccffc96b845615a3ea5dd5ad373e193354664e2f4182b2a8028",
+      "after_sha256": "99b624c2eeb3cccffc96b845615a3ea5dd5ad373e193354664e2f4182b2a8028",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/trait_advanced/tests/auto/spec_basics.at",
+      "new": "test/parity/libs/lang/trait_advanced/tests/auto/spec_basics.at",
+      "before_sha256": "833036bc8443403b4aa340d04a2732297675cb5a54660e5cfde8efe09c03eda5",
+      "after_sha256": "af5a4155147113e40384f9ad0d8b5f19370d94c79d2ae78ec9fd857f76a114f2",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/lang/trait_advanced/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/lang/trait_advanced/tests/rust/Cargo.toml",
+      "before_sha256": "375119c41c6f387a90a486ea2ed0979a4aac153a037aacb6f88cd09afe9ebf32",
+      "after_sha256": "375119c41c6f387a90a486ea2ed0979a4aac153a037aacb6f88cd09afe9ebf32",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/lang/trait_advanced/tests/rust/tests/trait_advanced.rs",
+      "new": "test/parity/libs/lang/trait_advanced/tests/rust/tests/trait_advanced.rs",
+      "before_sha256": "cc57ef44cba8a9b7c1f4d1bde75c6a0fc38fdae1863614b710b88e189616fe50",
+      "after_sha256": "cc57ef44cba8a9b7c1f4d1bde75c6a0fc38fdae1863614b710b88e189616fe50",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/README.md",
+      "new": "test/parity/libs/python/README.md",
+      "before_sha256": "fd9e1dc2fcd627691d36300536d821554a2f7e5d61813a2e8397cdbce672b88c",
+      "after_sha256": "fd9e1dc2fcd627691d36300536d821554a2f7e5d61813a2e8397cdbce672b88c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_anno/README.md",
+      "new": "test/parity/libs/python/py_anno/README.md",
+      "before_sha256": "5984cc6a7cbc3ebc621019a637f1213a45a8a95aca19503e44db84b8aca13495",
+      "after_sha256": "5984cc6a7cbc3ebc621019a637f1213a45a8a95aca19503e44db84b8aca13495",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_anno/tests/auto/anno.as",
+      "new": "test/parity/libs/python/py_anno/tests/auto/anno.as",
+      "before_sha256": "76f6fc5bc157b57fe419f14ac8bfc24d17f55df2c24b2987bce4687715b7042c",
+      "after_sha256": "76f6fc5bc157b57fe419f14ac8bfc24d17f55df2c24b2987bce4687715b7042c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_anno/tests/python/anno_mod.py",
+      "new": "test/parity/libs/python/py_anno/tests/python/anno_mod.py",
+      "before_sha256": "deb7b82d6fdc1bee4466d000b5df0b1debe0e26061f57e724bc11c0c9b6c5d80",
+      "after_sha256": "deb7b82d6fdc1bee4466d000b5df0b1debe0e26061f57e724bc11c0c9b6c5d80",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_anno/tests/python/test_anno.py",
+      "new": "test/parity/libs/python/py_anno/tests/python/test_anno.py",
+      "before_sha256": "94fec4681a718bc5647696ea941c7680edac537931351c9eba4881fde7dc42bc",
+      "after_sha256": "94fec4681a718bc5647696ea941c7680edac537931351c9eba4881fde7dc42bc",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_configparser/README.md",
+      "new": "test/parity/libs/python/py_configparser/README.md",
+      "before_sha256": "e5874fdd7d882b0060eac79304690302a8297e317e35949d759ad3a075e0c6cb",
+      "after_sha256": "e5874fdd7d882b0060eac79304690302a8297e317e35949d759ad3a075e0c6cb",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_configparser/tests/auto/configparser.as",
+      "new": "test/parity/libs/python/py_configparser/tests/auto/configparser.as",
+      "before_sha256": "2bd548348fa2496ebc6bd35aad1637c01b1b7f81ddf6350eeb54df90a828980b",
+      "after_sha256": "2bd548348fa2496ebc6bd35aad1637c01b1b7f81ddf6350eeb54df90a828980b",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_configparser/tests/python/test_configparser.py",
+      "new": "test/parity/libs/python/py_configparser/tests/python/test_configparser.py",
+      "before_sha256": "4be45f9b5459a72f4b08d21103ef40ab91be6ff4b242d8a8478431efbbb54b40",
+      "after_sha256": "4be45f9b5459a72f4b08d21103ef40ab91be6ff4b242d8a8478431efbbb54b40",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_datetime/README.md",
+      "new": "test/parity/libs/python/py_datetime/README.md",
+      "before_sha256": "2bae5e1764dc5d1584ab6d4903bd64f9cc3409540bcfb8e300e0951f224ecd61",
+      "after_sha256": "2bae5e1764dc5d1584ab6d4903bd64f9cc3409540bcfb8e300e0951f224ecd61",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_datetime/tests/auto/datetime.as",
+      "new": "test/parity/libs/python/py_datetime/tests/auto/datetime.as",
+      "before_sha256": "5e2f58051e0172f571a313ef2e50e9001033dcb4a7c1c0e47f9eb1cad73f93ee",
+      "after_sha256": "5e2f58051e0172f571a313ef2e50e9001033dcb4a7c1c0e47f9eb1cad73f93ee",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_datetime/tests/python/test_datetime.py",
+      "new": "test/parity/libs/python/py_datetime/tests/python/test_datetime.py",
+      "before_sha256": "0ace502319d8d3ed0a7f0cf1d93e057eb3f75e5692b21c0489c43e1e203618fa",
+      "after_sha256": "0ace502319d8d3ed0a7f0cf1d93e057eb3f75e5692b21c0489c43e1e203618fa",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_hashlib/README.md",
+      "new": "test/parity/libs/python/py_hashlib/README.md",
+      "before_sha256": "317f105523c06f51fcf5d12bad5a64af8044919d3ce6240a65d67a0be17355f1",
+      "after_sha256": "317f105523c06f51fcf5d12bad5a64af8044919d3ce6240a65d67a0be17355f1",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_hashlib/tests/auto/hashlib.as",
+      "new": "test/parity/libs/python/py_hashlib/tests/auto/hashlib.as",
+      "before_sha256": "4d9279ccd5101b2aed8d394d15ccb4857434aa59e8c2b937016f31b9e9b065d9",
+      "after_sha256": "4d9279ccd5101b2aed8d394d15ccb4857434aa59e8c2b937016f31b9e9b065d9",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_hashlib/tests/python/test_hashlib.py",
+      "new": "test/parity/libs/python/py_hashlib/tests/python/test_hashlib.py",
+      "before_sha256": "8b4d2e167720f60d5d35ce3314b37ad06b9f5c2e554318a265217e84d87004db",
+      "after_sha256": "8b4d2e167720f60d5d35ce3314b37ad06b9f5c2e554318a265217e84d87004db",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_json/README.md",
+      "new": "test/parity/libs/python/py_json/README.md",
+      "before_sha256": "79ad6b93b1325079bf9ca3a3c68ed74465dfe0e53917a99a2bf4d5b8ff89e2ea",
+      "after_sha256": "79ad6b93b1325079bf9ca3a3c68ed74465dfe0e53917a99a2bf4d5b8ff89e2ea",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_json/tests/auto/json.as",
+      "new": "test/parity/libs/python/py_json/tests/auto/json.as",
+      "before_sha256": "f309deec43fb191173f122a1d830ca764fd8b14868ef9c33b0601672d9462ae6",
+      "after_sha256": "f309deec43fb191173f122a1d830ca764fd8b14868ef9c33b0601672d9462ae6",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_json/tests/python/test_json.py",
+      "new": "test/parity/libs/python/py_json/tests/python/test_json.py",
+      "before_sha256": "4246d76153786c04abc48f35448c589476f7225dace4bdf2534258c18a70ff20",
+      "after_sha256": "4246d76153786c04abc48f35448c589476f7225dace4bdf2534258c18a70ff20",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_list/README.md",
+      "new": "test/parity/libs/python/py_list/README.md",
+      "before_sha256": "4d9d66891d506c284cc319398bc2baf4d699f3e6720dbac387dddd7f110ab351",
+      "after_sha256": "4d9d66891d506c284cc319398bc2baf4d699f3e6720dbac387dddd7f110ab351",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_list/tests/auto/list.as",
+      "new": "test/parity/libs/python/py_list/tests/auto/list.as",
+      "before_sha256": "8524547a0b86e9bd2754dfd01bd4da05a7cd531ba8ce7af13486fbc313f9f15b",
+      "after_sha256": "826b24a830ef78faa92b8d713791d4e29fafebe8d0b4327b1b215d926af833e7",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_list/tests/python/test_list.py",
+      "new": "test/parity/libs/python/py_list/tests/python/test_list.py",
+      "before_sha256": "7e7dcbef1ef015ddff35905eb4a8debed4f2d9148e801b018552ce095c910258",
+      "after_sha256": "7e7dcbef1ef015ddff35905eb4a8debed4f2d9148e801b018552ce095c910258",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_math/README.md",
+      "new": "test/parity/libs/python/py_math/README.md",
+      "before_sha256": "3eb4cdb5ad7ce9e4cad9b8ad3b476f61aa8da833d3caaf76304bedd23ea71dbc",
+      "after_sha256": "3eb4cdb5ad7ce9e4cad9b8ad3b476f61aa8da833d3caaf76304bedd23ea71dbc",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_math/tests/auto/math.as",
+      "new": "test/parity/libs/python/py_math/tests/auto/math.as",
+      "before_sha256": "230f036a2743936e5e4b37537e6c26c8ecbc997438725fd15b4d0e41f51221df",
+      "after_sha256": "83e90c5fe07a8cd838eeba0e49ccdc2406ca458e7028b1fb12b33f2e946bc515",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_math/tests/python/test_math.py",
+      "new": "test/parity/libs/python/py_math/tests/python/test_math.py",
+      "before_sha256": "3003837ff57ddaf7997a10e1ad5dd1d4bb3330bd9a66f1decb33a371f83dd222",
+      "after_sha256": "3003837ff57ddaf7997a10e1ad5dd1d4bb3330bd9a66f1decb33a371f83dd222",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_matplotlib/README.md",
+      "new": "test/parity/libs/python/py_matplotlib/README.md",
+      "before_sha256": "74e8e6cc8ed481f14645c892a4b33bc73bb7ff2770196db24b87ed724d4bcd44",
+      "after_sha256": "74e8e6cc8ed481f14645c892a4b33bc73bb7ff2770196db24b87ed724d4bcd44",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_matplotlib/tests/auto/matplotlib.as",
+      "new": "test/parity/libs/python/py_matplotlib/tests/auto/matplotlib.as",
+      "before_sha256": "1ccebad989c50af25fe840d1ef455e95b4cdd39d644c5765aec4e43f8f8cf0a2",
+      "after_sha256": "60fbad079fd4dec32e8b057d2ae57ef593c957f5092cf9732d2ff1454b2d886c",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_matplotlib/tests/python/test_matplotlib.py",
+      "new": "test/parity/libs/python/py_matplotlib/tests/python/test_matplotlib.py",
+      "before_sha256": "cd68d5c8cee90cb30df7ef36a8f0ef0cc4b5a32b6b247067a9268caab62d277e",
+      "after_sha256": "cd68d5c8cee90cb30df7ef36a8f0ef0cc4b5a32b6b247067a9268caab62d277e",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_numpy/README.md",
+      "new": "test/parity/libs/python/py_numpy/README.md",
+      "before_sha256": "801b163190da8005b8e583e8ca8e19e52c6418544394cea2c596957873c89cf8",
+      "after_sha256": "801b163190da8005b8e583e8ca8e19e52c6418544394cea2c596957873c89cf8",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_numpy/tests/auto/numpy.as",
+      "new": "test/parity/libs/python/py_numpy/tests/auto/numpy.as",
+      "before_sha256": "1571b65c7366d5938847e969d3ca03f00d6ad5bee30dc20adccc65fb49b9ae84",
+      "after_sha256": "2a38dd2ef2c989e9288612af9cf7aeea2fdb218fdcc7ef4115b6ac0da4710e0d",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_numpy/tests/python/test_numpy.py",
+      "new": "test/parity/libs/python/py_numpy/tests/python/test_numpy.py",
+      "before_sha256": "2f9da7a5132288bf87544fbfec410077ed8450b3f8883677dafbed076e5532ae",
+      "after_sha256": "2f9da7a5132288bf87544fbfec410077ed8450b3f8883677dafbed076e5532ae",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_os/README.md",
+      "new": "test/parity/libs/python/py_os/README.md",
+      "before_sha256": "49fdf2d44395ac28545903a706f14074fd4073afc66ec361e93a6775de0ca673",
+      "after_sha256": "49fdf2d44395ac28545903a706f14074fd4073afc66ec361e93a6775de0ca673",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_os/tests/auto/os.as",
+      "new": "test/parity/libs/python/py_os/tests/auto/os.as",
+      "before_sha256": "84d90f94c3d3e5969d918c3a77927519dc969cbf3fc092e4799d0710c3e98812",
+      "after_sha256": "a4e98d5953bfb9aee280e9259aeb2df3cbf83caa9f004a53cc49c53939ab0678",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_os/tests/python/test_os.py",
+      "new": "test/parity/libs/python/py_os/tests/python/test_os.py",
+      "before_sha256": "ffe438b8f21ff74b22ef8e71759226fa7f1925e0aa8d0ef356e87378d04d6a79",
+      "after_sha256": "ffe438b8f21ff74b22ef8e71759226fa7f1925e0aa8d0ef356e87378d04d6a79",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_pandas/README.md",
+      "new": "test/parity/libs/python/py_pandas/README.md",
+      "before_sha256": "379e8691961bf1b8a808bf2e5b1590aff79c97de5528d78bd68aa3b7b840df55",
+      "after_sha256": "379e8691961bf1b8a808bf2e5b1590aff79c97de5528d78bd68aa3b7b840df55",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_pandas/tests/auto/pandas.as",
+      "new": "test/parity/libs/python/py_pandas/tests/auto/pandas.as",
+      "before_sha256": "7faa03a756f6185e1a9a6dd3f9fe322c1812b12b178fef985d3bfe71dae4c3b6",
+      "after_sha256": "407de25fcc0224f99bae9d19dc856d9e668d239a592b3b5df9ece9a59b7257cd",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_pandas/tests/python/test_pandas.py",
+      "new": "test/parity/libs/python/py_pandas/tests/python/test_pandas.py",
+      "before_sha256": "c122bcfdfdd6b814cf6670d1a34e9a0c3e62e608a67e06868b5f867c9ff22974",
+      "after_sha256": "c122bcfdfdd6b814cf6670d1a34e9a0c3e62e608a67e06868b5f867c9ff22974",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_random/README.md",
+      "new": "test/parity/libs/python/py_random/README.md",
+      "before_sha256": "73d1685f0fe396485a7da214d455ba6f00cb175872929cb5159301ffe4286c7c",
+      "after_sha256": "73d1685f0fe396485a7da214d455ba6f00cb175872929cb5159301ffe4286c7c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_random/tests/auto/random.as",
+      "new": "test/parity/libs/python/py_random/tests/auto/random.as",
+      "before_sha256": "38d04b186278c56f1297656810791c2a3da63bedc050baf99d8cb5baada105b8",
+      "after_sha256": "10cb954d8483326c812aa4b4870ee70a888c08328e3409c051afe3c0127bb93a",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_random/tests/python/test_random.py",
+      "new": "test/parity/libs/python/py_random/tests/python/test_random.py",
+      "before_sha256": "f0687143dc128a1cffea9178c44ee7c57cc7e56ee93319241b1d3723c5ac0593",
+      "after_sha256": "f0687143dc128a1cffea9178c44ee7c57cc7e56ee93319241b1d3723c5ac0593",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_re/README.md",
+      "new": "test/parity/libs/python/py_re/README.md",
+      "before_sha256": "741aa96c6957547c0beee25beb4ed3a0cf228e8f18bf23c9dbacd6c9eca0c746",
+      "after_sha256": "741aa96c6957547c0beee25beb4ed3a0cf228e8f18bf23c9dbacd6c9eca0c746",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_re/tests/auto/re.as",
+      "new": "test/parity/libs/python/py_re/tests/auto/re.as",
+      "before_sha256": "70b0210f6c03669d7fe6903d45456216e96d8e2b4aba191d99b454efb1fea0d8",
+      "after_sha256": "70b0210f6c03669d7fe6903d45456216e96d8e2b4aba191d99b454efb1fea0d8",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_re/tests/python/test_re.py",
+      "new": "test/parity/libs/python/py_re/tests/python/test_re.py",
+      "before_sha256": "4ea3f2ed2a2517df36af56d75dba5c8aff9219cb206ebffc7113c0ebad8622fc",
+      "after_sha256": "4ea3f2ed2a2517df36af56d75dba5c8aff9219cb206ebffc7113c0ebad8622fc",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_string/README.md",
+      "new": "test/parity/libs/python/py_string/README.md",
+      "before_sha256": "1ee6717cb1bd67a0d12c9ea60673d729012b77bd132f22a801ae956b34eda9c5",
+      "after_sha256": "1ee6717cb1bd67a0d12c9ea60673d729012b77bd132f22a801ae956b34eda9c5",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_string/tests/auto/string.as",
+      "new": "test/parity/libs/python/py_string/tests/auto/string.as",
+      "before_sha256": "4e7b7dcf974d1008684409c0db4aa5eb0d8bef114ce6804620464d8242d0bf35",
+      "after_sha256": "a244bf20bfc968e5424f9a27fb641083662df7567dae4ca428c1e765d91a3d89",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_string/tests/python/test_string.py",
+      "new": "test/parity/libs/python/py_string/tests/python/test_string.py",
+      "before_sha256": "90866af1578d22261ee55a8aa690bcfd3b655eceb84abfb55f6cab3b0cc69fd0",
+      "after_sha256": "90866af1578d22261ee55a8aa690bcfd3b655eceb84abfb55f6cab3b0cc69fd0",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_struct/README.md",
+      "new": "test/parity/libs/python/py_struct/README.md",
+      "before_sha256": "f1459155db118bcf917ed5ffa320d5f723790bfd6af5bb6848fed9077bab5aed",
+      "after_sha256": "f1459155db118bcf917ed5ffa320d5f723790bfd6af5bb6848fed9077bab5aed",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_struct/tests/auto/struct.as",
+      "new": "test/parity/libs/python/py_struct/tests/auto/struct.as",
+      "before_sha256": "b666d9e6f2204f151609fabe50768453d741f5d49fe112745021da4486016444",
+      "after_sha256": "b666d9e6f2204f151609fabe50768453d741f5d49fe112745021da4486016444",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_struct/tests/python/test_struct.py",
+      "new": "test/parity/libs/python/py_struct/tests/python/test_struct.py",
+      "before_sha256": "304a5560b63f0146e1049beebafa61abedb7ae72a07eb49da2cf69e9d1f25210",
+      "after_sha256": "304a5560b63f0146e1049beebafa61abedb7ae72a07eb49da2cf69e9d1f25210",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_sys/README.md",
+      "new": "test/parity/libs/python/py_sys/README.md",
+      "before_sha256": "199dac116489408885f806726933aff33b29c1d27a9132a35299e3d7729e8b75",
+      "after_sha256": "199dac116489408885f806726933aff33b29c1d27a9132a35299e3d7729e8b75",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_sys/tests/auto/sys.as",
+      "new": "test/parity/libs/python/py_sys/tests/auto/sys.as",
+      "before_sha256": "dd1b061a0b44063ab1870959f696e84f3b2bc9292b2f3e614dbddad7d8b2634b",
+      "after_sha256": "dd1b061a0b44063ab1870959f696e84f3b2bc9292b2f3e614dbddad7d8b2634b",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_sys/tests/python/test_sys.py",
+      "new": "test/parity/libs/python/py_sys/tests/python/test_sys.py",
+      "before_sha256": "d8d4e03488b99ec096340748cb4fcdb999a0c01c77f2986dc2002d8ec551d6d4",
+      "after_sha256": "d8d4e03488b99ec096340748cb4fcdb999a0c01c77f2986dc2002d8ec551d6d4",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch/README.md",
+      "new": "test/parity/libs/python/py_torch/README.md",
+      "before_sha256": "a8feb60bdd97e859cddfb261e8956d4a012061def0a6574f653ea3b0597dd383",
+      "after_sha256": "a8feb60bdd97e859cddfb261e8956d4a012061def0a6574f653ea3b0597dd383",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch/tests/auto/torch.as",
+      "new": "test/parity/libs/python/py_torch/tests/auto/torch.as",
+      "before_sha256": "85898730501cb647a9d3f8cd5c3f04da61f0623a057bc130dd5b709c6dbf1b3d",
+      "after_sha256": "95d8d274394b4158aad0d8b3ae4f085b3321795d1491bec8a34b097f68e2bf2c",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_torch/tests/python/test_torch.py",
+      "new": "test/parity/libs/python/py_torch/tests/python/test_torch.py",
+      "before_sha256": "70169aa3d46f5f56026e51bbd88db47820eba767ede9901074f8790c7f9ea29a",
+      "after_sha256": "70169aa3d46f5f56026e51bbd88db47820eba767ede9901074f8790c7f9ea29a",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_infer/README.md",
+      "new": "test/parity/libs/python/py_torch_infer/README.md",
+      "before_sha256": "d74b2a702f17c8dc31ebaf0542a17149b2d7cbd540f4322cb2a7978cc214aa3f",
+      "after_sha256": "d74b2a702f17c8dc31ebaf0542a17149b2d7cbd540f4322cb2a7978cc214aa3f",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_infer/tests/auto/infer.as",
+      "new": "test/parity/libs/python/py_torch_infer/tests/auto/infer.as",
+      "before_sha256": "6a5109700099e423d32b00760a6575b0fe0eb75671275c9fa2cb198ba3c91bd1",
+      "after_sha256": "6a5109700099e423d32b00760a6575b0fe0eb75671275c9fa2cb198ba3c91bd1",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_infer/tests/python/test_infer.py",
+      "new": "test/parity/libs/python/py_torch_infer/tests/python/test_infer.py",
+      "before_sha256": "4bc3f5167904cef6b692bb541436be65fc6b105a7800a87cec02c808657923e6",
+      "after_sha256": "4bc3f5167904cef6b692bb541436be65fc6b105a7800a87cec02c808657923e6",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_subclass/README.md",
+      "new": "test/parity/libs/python/py_torch_subclass/README.md",
+      "before_sha256": "8a537c72e6d63ecdddec2e93e02525ffa31a9bca04bea34b614c08c1c74b587f",
+      "after_sha256": "8a537c72e6d63ecdddec2e93e02525ffa31a9bca04bea34b614c08c1c74b587f",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_subclass/tests/auto/subclass.as",
+      "new": "test/parity/libs/python/py_torch_subclass/tests/auto/subclass.as",
+      "before_sha256": "94704c26d28e3eada4b1bf92d75c011b422f7e937f842764e5c4ef222f849a08",
+      "after_sha256": "94704c26d28e3eada4b1bf92d75c011b422f7e937f842764e5c4ef222f849a08",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_subclass/tests/python/test_subclass.py",
+      "new": "test/parity/libs/python/py_torch_subclass/tests/python/test_subclass.py",
+      "before_sha256": "9725342913eadd4b93f911eb4f6c536ddd754d558f9d3ea02ece52fbf68987c4",
+      "after_sha256": "9725342913eadd4b93f911eb4f6c536ddd754d558f9d3ea02ece52fbf68987c4",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_train/README.md",
+      "new": "test/parity/libs/python/py_torch_train/README.md",
+      "before_sha256": "16eb32f61ff206d70a077657747e66bfd158538062cde1ee1054ec4038e9061f",
+      "after_sha256": "16eb32f61ff206d70a077657747e66bfd158538062cde1ee1054ec4038e9061f",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_train/tests/auto/train.as",
+      "new": "test/parity/libs/python/py_torch_train/tests/auto/train.as",
+      "before_sha256": "5388b55d472bb9faf658da3009c38a9d2920d10def49413ccfd968ae25bc10d4",
+      "after_sha256": "5388b55d472bb9faf658da3009c38a9d2920d10def49413ccfd968ae25bc10d4",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_torch_train/tests/python/test_train.py",
+      "new": "test/parity/libs/python/py_torch_train/tests/python/test_train.py",
+      "before_sha256": "5021ac2f6a9e0f77de5182c1c0c4ee2edce5355b29c8177f697358ef67767af7",
+      "after_sha256": "5021ac2f6a9e0f77de5182c1c0c4ee2edce5355b29c8177f697358ef67767af7",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_uuid/README.md",
+      "new": "test/parity/libs/python/py_uuid/README.md",
+      "before_sha256": "25b01f4820ca05b28aaf3f8266ea508299b8910c7ed24bca3a5c99fc632c39c6",
+      "after_sha256": "25b01f4820ca05b28aaf3f8266ea508299b8910c7ed24bca3a5c99fc632c39c6",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/python/py_uuid/tests/auto/uuid.as",
+      "new": "test/parity/libs/python/py_uuid/tests/auto/uuid.as",
+      "before_sha256": "a658409568bc32a3ad79546326e75b5636fb1feb70c2d7f9f80f4d1616e1d32b",
+      "after_sha256": "fc812c7a875a400085cda4c272b975d2ccc4e2963a5c736a8c72990e9c00a832",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/python/py_uuid/tests/python/test_uuid.py",
+      "new": "test/parity/libs/python/py_uuid/tests/python/test_uuid.py",
+      "before_sha256": "e5202b2cd45847f83d45db84a2fd6986cfa0f6063e24549b7bde0a73299fdf76",
+      "after_sha256": "e5202b2cd45847f83d45db84a2fd6986cfa0f6063e24549b7bde0a73299fdf76",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/base64/README.md",
+      "new": "test/parity/libs/rust/base64/README.md",
+      "before_sha256": "e9e560470a6921289e2fd43c211cca83a3e8c8ceea15a11d7c6cf3d0caebdcc4",
+      "after_sha256": "e9e560470a6921289e2fd43c211cca83a3e8c8ceea15a11d7c6cf3d0caebdcc4",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/base64/auto/base64.at",
+      "new": "test/parity/libs/rust/base64/auto/base64.at",
+      "before_sha256": "b94ac16e0f236306198b3b5f5299d35ca2a80ad4944789120fe886aa55151b54",
+      "after_sha256": "b94ac16e0f236306198b3b5f5299d35ca2a80ad4944789120fe886aa55151b54",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/base64/tests/auto/decode.at",
+      "new": "test/parity/libs/rust/base64/tests/auto/decode.at",
+      "before_sha256": "4f74b6cf682b31253a888a6bdbe3d950d8746f8c8fbbce6fa0b9410b2f3d98cc",
+      "after_sha256": "4f74b6cf682b31253a888a6bdbe3d950d8746f8c8fbbce6fa0b9410b2f3d98cc",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/base64/tests/auto/edge_cases.at",
+      "new": "test/parity/libs/rust/base64/tests/auto/edge_cases.at",
+      "before_sha256": "124643fe334aa5f6fd67801a1366733a9342ffd412bca55337926f3ec8f2da8f",
+      "after_sha256": "124643fe334aa5f6fd67801a1366733a9342ffd412bca55337926f3ec8f2da8f",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/base64/tests/auto/encode.at",
+      "new": "test/parity/libs/rust/base64/tests/auto/encode.at",
+      "before_sha256": "6a7c10d8fb994530b5d4a6a9049678f9c08c899d0b3800da6da803ed3cb9fdb8",
+      "after_sha256": "6025765d8f5ab9090c65f53784cd52f00184ab8e169672bb0d24309a0f397408",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/rust/base64/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/rust/base64/tests/rust/Cargo.toml",
+      "before_sha256": "bebf94495ee2d8aa3b675534b7080bef0ad55fe30dc61113c19e5bb67dfe8b66",
+      "after_sha256": "bebf94495ee2d8aa3b675534b7080bef0ad55fe30dc61113c19e5bb67dfe8b66",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/base64/tests/rust/tests/base64.rs",
+      "new": "test/parity/libs/rust/base64/tests/rust/tests/base64.rs",
+      "before_sha256": "d789d1d4ad7406be44c8dbb44bcb501abe4f4c3297b824d0a18267bbf6db8045",
+      "after_sha256": "d789d1d4ad7406be44c8dbb44bcb501abe4f4c3297b824d0a18267bbf6db8045",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/regex/README.md",
+      "new": "test/parity/libs/rust/regex/README.md",
+      "before_sha256": "c3a5a8fbb4908f41be044e82cee3cdea7a2b0587f31da33a6fe3b7b61620ced1",
+      "after_sha256": "104d835f328d9cec2834c85832a78f44c4ce9e1d917f4fa90b18d76a9c7ef725",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/rust/regex/auto/regex.at",
+      "new": "test/parity/libs/rust/regex/auto/regex.at",
+      "before_sha256": "024d672d3a5e5c8f1a65aae145d8e2d3d3813dddb2460ba54b662292d320c624",
+      "after_sha256": "024d672d3a5e5c8f1a65aae145d8e2d3d3813dddb2460ba54b662292d320c624",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/regex/tests/auto/match.at",
+      "new": "test/parity/libs/rust/regex/tests/auto/match.at",
+      "before_sha256": "59b1e454e5a5e28f6ba8dc56b1c901e0dc26e43343a2612c0b202024d7c3a1af",
+      "after_sha256": "59b1e454e5a5e28f6ba8dc56b1c901e0dc26e43343a2612c0b202024d7c3a1af",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/regex/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/rust/regex/tests/rust/Cargo.toml",
+      "before_sha256": "cc798acd4a0e308ca4e4dbbeb2079bebff46e290ed9799d2366ad80ba0c93266",
+      "after_sha256": "cc798acd4a0e308ca4e4dbbeb2079bebff46e290ed9799d2366ad80ba0c93266",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/regex/tests/rust/tests/regex.rs",
+      "new": "test/parity/libs/rust/regex/tests/rust/tests/regex.rs",
+      "before_sha256": "044cf801569ef29acf16bd29e39e376197687b0c5fd71cca38e7b2b13d0787a3",
+      "after_sha256": "044cf801569ef29acf16bd29e39e376197687b0c5fd71cca38e7b2b13d0787a3",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/rusqlite/README.md",
+      "new": "test/parity/libs/rust/rusqlite/README.md",
+      "before_sha256": "170ed6fce2001c12f64086c3ee70faa61d466da6e13492255ac239baca576985",
+      "after_sha256": "c027f8af4b8bf890a611ed081152a9765ee9a592eff22df4d2db3ede782ab5ce",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/rust/rusqlite/auto/rusqlite.at",
+      "new": "test/parity/libs/rust/rusqlite/auto/rusqlite.at",
+      "before_sha256": "904ab340eff0bdf757336703245bd07143e9c83c5af1700f954fbab0be593e48",
+      "after_sha256": "b862475de9b339aea176e059761c3d7e620d578a4278ba9f34162027f5c4daba",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/rust/rusqlite/tests/auto/from_sql.at",
+      "new": "test/parity/libs/rust/rusqlite/tests/auto/from_sql.at",
+      "before_sha256": "1200213dda4f481eaa593a0c0e1d5f560b7d12af29988c67d9a579cccafc8af7",
+      "after_sha256": "1200213dda4f481eaa593a0c0e1d5f560b7d12af29988c67d9a579cccafc8af7",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/rusqlite/tests/auto/to_sql_roundtrip.at",
+      "new": "test/parity/libs/rust/rusqlite/tests/auto/to_sql_roundtrip.at",
+      "before_sha256": "1244c47e5f9fce4e341f1ccf0a1b17bb9c4a893af7b1d5e685d86b7ff1086f52",
+      "after_sha256": "1244c47e5f9fce4e341f1ccf0a1b17bb9c4a893af7b1d5e685d86b7ff1086f52",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/rusqlite/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/rust/rusqlite/tests/rust/Cargo.toml",
+      "before_sha256": "43b314d6a9f5814ab06fd271df4067275935e84a5f4341fabe27ea3c2535f896",
+      "after_sha256": "43b314d6a9f5814ab06fd271df4067275935e84a5f4341fabe27ea3c2535f896",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/rusqlite/tests/rust/tests/rusqlite.rs",
+      "new": "test/parity/libs/rust/rusqlite/tests/rust/tests/rusqlite.rs",
+      "before_sha256": "5be86d8eace965ac741c3ad46be5057df1f78dd48001bcbc3162d4b12436f8e4",
+      "after_sha256": "5be86d8eace965ac741c3ad46be5057df1f78dd48001bcbc3162d4b12436f8e4",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/serde_json/README.md",
+      "new": "test/parity/libs/rust/serde_json/README.md",
+      "before_sha256": "c09e2d6142e5f55bc9a0a4981f494beaced54194fa76038eefc34819c5705ce8",
+      "after_sha256": "9d8946b1f26b3e11eb3b1ec85817a04ed43304ddb179e930304c848ce6ff7913",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/rust/serde_json/auto/serde_json.at",
+      "new": "test/parity/libs/rust/serde_json/auto/serde_json.at",
+      "before_sha256": "f466cf27262157aa10a8380905790643160dc82e532d548ed2a637fa6b273415",
+      "after_sha256": "f466cf27262157aa10a8380905790643160dc82e532d548ed2a637fa6b273415",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/serde_json/tests/auto/parse.at",
+      "new": "test/parity/libs/rust/serde_json/tests/auto/parse.at",
+      "before_sha256": "56fdaa4193c44d20afdc0497635e5258ee4864dfc7bcc48dd0d360b9a5730252",
+      "after_sha256": "56fdaa4193c44d20afdc0497635e5258ee4864dfc7bcc48dd0d360b9a5730252",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/serde_json/tests/auto/roundtrip.at",
+      "new": "test/parity/libs/rust/serde_json/tests/auto/roundtrip.at",
+      "before_sha256": "97ebaf62111a63d66cbde049139543a5bd095d5ad75ccaf73ecbfb7b9e40d369",
+      "after_sha256": "97ebaf62111a63d66cbde049139543a5bd095d5ad75ccaf73ecbfb7b9e40d369",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/serde_json/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/rust/serde_json/tests/rust/Cargo.toml",
+      "before_sha256": "0032aa27f7afc323e372e5f454ead576452b230e769321d2ca05e38c9f5b492d",
+      "after_sha256": "0032aa27f7afc323e372e5f454ead576452b230e769321d2ca05e38c9f5b492d",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/serde_json/tests/rust/tests/serde_json.rs",
+      "new": "test/parity/libs/rust/serde_json/tests/rust/tests/serde_json.rs",
+      "before_sha256": "7b04d5941ac863b17499a3ad2f66cfa1ea5faf61e04003ef3964194b8351861f",
+      "after_sha256": "68d800e766978f55530c58ae002d52a3c90bd742424b4e649b6383aff27eddc6",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/rust/sha2/README.md",
+      "new": "test/parity/libs/rust/sha2/README.md",
+      "before_sha256": "fb2c453ef510c6dbf126c4a9b2100b05e82bf19b0e38e413834f57780d7d11e5",
+      "after_sha256": "fb2c453ef510c6dbf126c4a9b2100b05e82bf19b0e38e413834f57780d7d11e5",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/sha2/auto/sha2.at",
+      "new": "test/parity/libs/rust/sha2/auto/sha2.at",
+      "before_sha256": "f6ec73df09b33a2ed178225a00e4af95235b623db34b727427765e590ccaaa21",
+      "after_sha256": "f6ec73df09b33a2ed178225a00e4af95235b623db34b727427765e590ccaaa21",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/sha2/tests/auto/hash.at",
+      "new": "test/parity/libs/rust/sha2/tests/auto/hash.at",
+      "before_sha256": "7511894e21d8e06d0e0ff58611e5b9bf145671c91542f6f6e61a8e7d4fde09c4",
+      "after_sha256": "7511894e21d8e06d0e0ff58611e5b9bf145671c91542f6f6e61a8e7d4fde09c4",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/sha2/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/rust/sha2/tests/rust/Cargo.toml",
+      "before_sha256": "12f073e86ed210d0f4abecc45a61be246a31c7fae45e9b23908eed2f92ac32a1",
+      "after_sha256": "12f073e86ed210d0f4abecc45a61be246a31c7fae45e9b23908eed2f92ac32a1",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/sha2/tests/rust/tests/hash.rs",
+      "new": "test/parity/libs/rust/sha2/tests/rust/tests/hash.rs",
+      "before_sha256": "f0d39599f40f7c0499f15e62c5872b97e863d2b19fdb971fcb2a887f324310ad",
+      "after_sha256": "f0d39599f40f7c0499f15e62c5872b97e863d2b19fdb971fcb2a887f324310ad",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio/README.md",
+      "new": "test/parity/libs/rust/tokio/README.md",
+      "before_sha256": "335eadf5295cfb7a32da8f7a6333a705a234cc7e88b0600379704e81dcf7df81",
+      "after_sha256": "c2fa646a6bda8862362bf1c5415108a41d57ee455953432ef9d8957118b23dfc",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/rust/tokio/auto/tokio.at",
+      "new": "test/parity/libs/rust/tokio/auto/tokio.at",
+      "before_sha256": "d106cff5ad465ade948d8d1368aa3a6ec9d87e4d95996a23bf4d71838a433ffb",
+      "after_sha256": "d106cff5ad465ade948d8d1368aa3a6ec9d87e4d95996a23bf4d71838a433ffb",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio/tests/auto/async_tasks.at",
+      "new": "test/parity/libs/rust/tokio/tests/auto/async_tasks.at",
+      "before_sha256": "9874db690d227d67cf6851f0ab4338dbf78b700f836abbae4990731ab280162c",
+      "after_sha256": "9874db690d227d67cf6851f0ab4338dbf78b700f836abbae4990731ab280162c",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/rust/tokio/tests/rust/Cargo.toml",
+      "before_sha256": "ae2019176f027d29f39d7da97430513d78b1a3f187d780fa97df6e8b00fca72a",
+      "after_sha256": "ae2019176f027d29f39d7da97430513d78b1a3f187d780fa97df6e8b00fca72a",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio/tests/rust/tests/async_tasks.rs",
+      "new": "test/parity/libs/rust/tokio/tests/rust/tests/async_tasks.rs",
+      "before_sha256": "654d260e0656c6aca985e8faedc96b95c87a34fa4b1d2bd467bb53f58f22ea23",
+      "after_sha256": "654d260e0656c6aca985e8faedc96b95c87a34fa4b1d2bd467bb53f58f22ea23",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio_stream/README.md",
+      "new": "test/parity/libs/rust/tokio_stream/README.md",
+      "before_sha256": "44a61ffffd2aa7f6bbed6458b34706a661f9f5292ce72d8830d89afd4ddb8a99",
+      "after_sha256": "44a61ffffd2aa7f6bbed6458b34706a661f9f5292ce72d8830d89afd4ddb8a99",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio_stream/auto/tokio_stream.at",
+      "new": "test/parity/libs/rust/tokio_stream/auto/tokio_stream.at",
+      "before_sha256": "e9fd2bcf4db01da817ffc59c66405274234aa56b7885f6ac6834b7c6dfc12ec8",
+      "after_sha256": "e9fd2bcf4db01da817ffc59c66405274234aa56b7885f6ac6834b7c6dfc12ec8",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio_stream/tests/auto/stream_basic.at",
+      "new": "test/parity/libs/rust/tokio_stream/tests/auto/stream_basic.at",
+      "before_sha256": "ba5044c5594ee8d668885688bb8d923d8afdc8750d74da01dc89f2576740f60a",
+      "after_sha256": "ba5044c5594ee8d668885688bb8d923d8afdc8750d74da01dc89f2576740f60a",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio_stream/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/rust/tokio_stream/tests/rust/Cargo.toml",
+      "before_sha256": "bef1c3e9c824596cb23a40a9f61356f69c429c97429a7a7d5d3faa982354eb63",
+      "after_sha256": "bef1c3e9c824596cb23a40a9f61356f69c429c97429a7a7d5d3faa982354eb63",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/tokio_stream/tests/rust/tests/stream_basic.rs",
+      "new": "test/parity/libs/rust/tokio_stream/tests/rust/tests/stream_basic.rs",
+      "before_sha256": "720e1240683d2cf50893ac4576ede2d179ecea804833f3abbb1603fc6e14c1f6",
+      "after_sha256": "720e1240683d2cf50893ac4576ede2d179ecea804833f3abbb1603fc6e14c1f6",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/url/README.md",
+      "new": "test/parity/libs/rust/url/README.md",
+      "before_sha256": "10a4a020861b410fb2bb791cabf4f6fb5efd84dcdc49d93691a9e9110b6649ba",
+      "after_sha256": "e856052d59dcd82ddbb0132aeb9e6b89459ed88aee9fab0245848081b021a846",
+      "content_changed": true
+    },
+    {
+      "old": "parity/libs/rust/url/auto/url.at",
+      "new": "test/parity/libs/rust/url/auto/url.at",
+      "before_sha256": "fc3bb9e39e47c7a65a0f1a7dedcc6eab36f1a5e4f57f228e9ef903f3ab68a235",
+      "after_sha256": "fc3bb9e39e47c7a65a0f1a7dedcc6eab36f1a5e4f57f228e9ef903f3ab68a235",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/url/tests/auto/components.at",
+      "new": "test/parity/libs/rust/url/tests/auto/components.at",
+      "before_sha256": "4d19ff5a0092119c4b2095c80594d149d79b452bb9638757334ecae01188ba05",
+      "after_sha256": "4d19ff5a0092119c4b2095c80594d149d79b452bb9638757334ecae01188ba05",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/url/tests/auto/parse.at",
+      "new": "test/parity/libs/rust/url/tests/auto/parse.at",
+      "before_sha256": "f6d50de878413dc1294777adec298d75b5410347fd77eff41ffae54576cf7a24",
+      "after_sha256": "f6d50de878413dc1294777adec298d75b5410347fd77eff41ffae54576cf7a24",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/url/tests/rust/Cargo.toml",
+      "new": "test/parity/libs/rust/url/tests/rust/Cargo.toml",
+      "before_sha256": "2550da4df19462d2ae0c549f2be6a19550027baf75b4d04919e86ca16d35d383",
+      "after_sha256": "2550da4df19462d2ae0c549f2be6a19550027baf75b4d04919e86ca16d35d383",
+      "content_changed": false
+    },
+    {
+      "old": "parity/libs/rust/url/tests/rust/tests/url.rs",
+      "new": "test/parity/libs/rust/url/tests/rust/tests/url.rs",
+      "before_sha256": "79c328f9a5b25ea390492ae225de4147bdbecfcde7e642c4f19909512c862dd9",
+      "after_sha256": "79c328f9a5b25ea390492ae225de4147bdbecfcde7e642c4f19909512c862dd9",
+      "content_changed": false
+    },
+    {
+      "old": "schema/aura.at",
+      "new": "docs/schema/aura.at",
+      "before_sha256": "9d7e22a35f85fc602a57cdd4f6b66c6a4e19a27df4ff9bce5bc44562046caec5",
+      "after_sha256": "9d7e22a35f85fc602a57cdd4f6b66c6a4e19a27df4ff9bce5bc44562046caec5",
+      "content_changed": false
+    },
+    {
+      "old": "schema/projection-protocol-v1.md",
+      "new": "docs/schema/projection-protocol-v1.md",
+      "before_sha256": "903a41ad9412ec795cee815bee8a86cf5117a85a8780395ee3e3f3b19d43e6e8",
+      "after_sha256": "d539e244ec459195053ab72b631d20609677019eaaf726b26c4b619667680aed",
+      "content_changed": true
+    },
+    {
+      "old": "patches/README.md",
+      "new": "crates/patches/README.md",
+      "before_sha256": "0b548aadfdcc1039afc0a755cea9f7a5d4ed6f96cd70d7550bb42b7281814b5d",
+      "after_sha256": "0b548aadfdcc1039afc0a755cea9f7a5d4ed6f96cd70d7550bb42b7281814b5d",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/.cargo-ok",
+      "new": "crates/patches/iced_widget/.cargo-ok",
+      "before_sha256": "afbf9d0f3560b0fd7795e81c42a0a79ee6b6fc67e064f77826aee642cad28d91",
+      "after_sha256": "afbf9d0f3560b0fd7795e81c42a0a79ee6b6fc67e064f77826aee642cad28d91",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/Cargo.toml",
+      "new": "crates/patches/iced_widget/Cargo.toml",
+      "before_sha256": "e8e6b9a72fc0f97c84b8fb2703fe6cdccd738c6c01d2fadf018a012182de93b5",
+      "after_sha256": "e8e6b9a72fc0f97c84b8fb2703fe6cdccd738c6c01d2fadf018a012182de93b5",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/Cargo.toml.orig",
+      "new": "crates/patches/iced_widget/Cargo.toml.orig",
+      "before_sha256": "f9bed37f4aa1edebea47824c1f9678411d410a1546401a14ce6f8b4108c96448",
+      "after_sha256": "f9bed37f4aa1edebea47824c1f9678411d410a1546401a14ce6f8b4108c96448",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/assets/iced-logo.svg",
+      "new": "crates/patches/iced_widget/assets/iced-logo.svg",
+      "before_sha256": "8ac9e30de1b466b3d594c77c984299b1a229f6f0f010e6804139a2f41ea8345e",
+      "after_sha256": "8ac9e30de1b466b3d594c77c984299b1a229f6f0f010e6804139a2f41ea8345e",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/action.rs",
+      "new": "crates/patches/iced_widget/src/action.rs",
+      "before_sha256": "feb91a386073280d76eaf37dbb8e7380e5a6bf9b8003110107b32bb8f577a239",
+      "after_sha256": "feb91a386073280d76eaf37dbb8e7380e5a6bf9b8003110107b32bb8f577a239",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/button.rs",
+      "new": "crates/patches/iced_widget/src/button.rs",
+      "before_sha256": "a8019fee3ad691fb2395afcdf302bec5f9e1cc592552aff4d8c8bbd1c6149f5a",
+      "after_sha256": "a8019fee3ad691fb2395afcdf302bec5f9e1cc592552aff4d8c8bbd1c6149f5a",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/canvas.rs",
+      "new": "crates/patches/iced_widget/src/canvas.rs",
+      "before_sha256": "1fecfd50d593c5ff9bc9317c9f1624d0c22eddc7cf39a795684bf70eb5954acd",
+      "after_sha256": "1fecfd50d593c5ff9bc9317c9f1624d0c22eddc7cf39a795684bf70eb5954acd",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/canvas/program.rs",
+      "new": "crates/patches/iced_widget/src/canvas/program.rs",
+      "before_sha256": "637bbc6d10a623f355c6d44af1162a10331861806cec094e2a8f2a97313acab9",
+      "after_sha256": "637bbc6d10a623f355c6d44af1162a10331861806cec094e2a8f2a97313acab9",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/checkbox.rs",
+      "new": "crates/patches/iced_widget/src/checkbox.rs",
+      "before_sha256": "4409c11d6473baf4baefafbb3ed253cd9353f04136cac6009422a876a84ec6b1",
+      "after_sha256": "4409c11d6473baf4baefafbb3ed253cd9353f04136cac6009422a876a84ec6b1",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/column.rs",
+      "new": "crates/patches/iced_widget/src/column.rs",
+      "before_sha256": "f880d15ebdb33e2f6ebb6067bb0b124c8fafdc73a6e5112a6f5b5e012fddadf4",
+      "after_sha256": "f880d15ebdb33e2f6ebb6067bb0b124c8fafdc73a6e5112a6f5b5e012fddadf4",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/combo_box.rs",
+      "new": "crates/patches/iced_widget/src/combo_box.rs",
+      "before_sha256": "973901d05003f684be1d13da5adc88ef7e030dc31db07c1bb0717cf9210d2391",
+      "after_sha256": "973901d05003f684be1d13da5adc88ef7e030dc31db07c1bb0717cf9210d2391",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/container.rs",
+      "new": "crates/patches/iced_widget/src/container.rs",
+      "before_sha256": "fbee00ec47b0734a4cc53425f0536879bced88db13ed3f8521076ca9ee80dcd5",
+      "after_sha256": "fbee00ec47b0734a4cc53425f0536879bced88db13ed3f8521076ca9ee80dcd5",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/float.rs",
+      "new": "crates/patches/iced_widget/src/float.rs",
+      "before_sha256": "9bc2d313052c97338dcdec2a5be7e0301b6261fe7975b511050fe4abeeb1c571",
+      "after_sha256": "9bc2d313052c97338dcdec2a5be7e0301b6261fe7975b511050fe4abeeb1c571",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/grid.rs",
+      "new": "crates/patches/iced_widget/src/grid.rs",
+      "before_sha256": "01e4deea4638fba19e3859d7ae27bd8090bca3fcee6f31c48bf5ad9a19f5c151",
+      "after_sha256": "01e4deea4638fba19e3859d7ae27bd8090bca3fcee6f31c48bf5ad9a19f5c151",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/helpers.rs",
+      "new": "crates/patches/iced_widget/src/helpers.rs",
+      "before_sha256": "3989cad7e901ff8171a16024d93ec40cb32e7859c2e76a98359f5f230a2fabcb",
+      "after_sha256": "3989cad7e901ff8171a16024d93ec40cb32e7859c2e76a98359f5f230a2fabcb",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/image.rs",
+      "new": "crates/patches/iced_widget/src/image.rs",
+      "before_sha256": "dab4c761c846ba2006ba5298c9b3573b0a2787272b2f74376cde6c35ae7f3694",
+      "after_sha256": "dab4c761c846ba2006ba5298c9b3573b0a2787272b2f74376cde6c35ae7f3694",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/image/viewer.rs",
+      "new": "crates/patches/iced_widget/src/image/viewer.rs",
+      "before_sha256": "ce372e8ba97248cea915abd52046020c0f5c318efc2af1d7f4d74958b14629bf",
+      "after_sha256": "ce372e8ba97248cea915abd52046020c0f5c318efc2af1d7f4d74958b14629bf",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/keyed.rs",
+      "new": "crates/patches/iced_widget/src/keyed.rs",
+      "before_sha256": "f1e572a13d0717816a6d4467d14f07fa613956a6bf9a2b234d79789b0bcb1d57",
+      "after_sha256": "f1e572a13d0717816a6d4467d14f07fa613956a6bf9a2b234d79789b0bcb1d57",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/keyed/column.rs",
+      "new": "crates/patches/iced_widget/src/keyed/column.rs",
+      "before_sha256": "09adcae868d561443e8d8b6f3cdfefd6831d8e94adf2b22c551c85b9669eb620",
+      "after_sha256": "09adcae868d561443e8d8b6f3cdfefd6831d8e94adf2b22c551c85b9669eb620",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/lazy.rs",
+      "new": "crates/patches/iced_widget/src/lazy.rs",
+      "before_sha256": "8c127fcd044cf887564856ce3a38ecf41ff3ff24d832d72095ec4e92f9907673",
+      "after_sha256": "8c127fcd044cf887564856ce3a38ecf41ff3ff24d832d72095ec4e92f9907673",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/lazy/cache.rs",
+      "new": "crates/patches/iced_widget/src/lazy/cache.rs",
+      "before_sha256": "59445853fb59941d73904689e5ee34bc6e9f7159c58bbea0cac8ef87f69a1b10",
+      "after_sha256": "59445853fb59941d73904689e5ee34bc6e9f7159c58bbea0cac8ef87f69a1b10",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/lazy/component.rs",
+      "new": "crates/patches/iced_widget/src/lazy/component.rs",
+      "before_sha256": "05e4e793f3462e5f164ef1191a5cf2c6daf32d410aeebbe1bb4e951fb04fdef7",
+      "after_sha256": "05e4e793f3462e5f164ef1191a5cf2c6daf32d410aeebbe1bb4e951fb04fdef7",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/lazy/helpers.rs",
+      "new": "crates/patches/iced_widget/src/lazy/helpers.rs",
+      "before_sha256": "d6bab15685469619bc3833afacc1df22112adacbdf944d6dbb5ea1b9e5f9d993",
+      "after_sha256": "d6bab15685469619bc3833afacc1df22112adacbdf944d6dbb5ea1b9e5f9d993",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/lib.rs",
+      "new": "crates/patches/iced_widget/src/lib.rs",
+      "before_sha256": "4da7f1a83cd8edc30bd9983e59ba3537f44a475814d0b9c80dcf7e97873badb4",
+      "after_sha256": "4da7f1a83cd8edc30bd9983e59ba3537f44a475814d0b9c80dcf7e97873badb4",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/markdown.rs",
+      "new": "crates/patches/iced_widget/src/markdown.rs",
+      "before_sha256": "5269582001d26d79f9de4e6ee60ebed587adf552f6f91c8ffcd757782319d161",
+      "after_sha256": "5269582001d26d79f9de4e6ee60ebed587adf552f6f91c8ffcd757782319d161",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/mouse_area.rs",
+      "new": "crates/patches/iced_widget/src/mouse_area.rs",
+      "before_sha256": "01686e65f76a4b89356ec6e5900b4411c856b15a56236ed3f6ef410ec3a4983d",
+      "after_sha256": "01686e65f76a4b89356ec6e5900b4411c856b15a56236ed3f6ef410ec3a4983d",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/overlay.rs",
+      "new": "crates/patches/iced_widget/src/overlay.rs",
+      "before_sha256": "104d339ba61626ebf0877f5c942e9f67b3db6261d6c9ae5e4805859508e1bc49",
+      "after_sha256": "104d339ba61626ebf0877f5c942e9f67b3db6261d6c9ae5e4805859508e1bc49",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/overlay/menu.rs",
+      "new": "crates/patches/iced_widget/src/overlay/menu.rs",
+      "before_sha256": "89719b05b75b4b1382de49e1220cab0034b155a24d744509ad928a25d69cca57",
+      "after_sha256": "89719b05b75b4b1382de49e1220cab0034b155a24d744509ad928a25d69cca57",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid.rs",
+      "before_sha256": "4eb5ae3be82237f5193b550d407c1a5a9f099a4d554442dbe8f51b0b72edb213",
+      "after_sha256": "4eb5ae3be82237f5193b550d407c1a5a9f099a4d554442dbe8f51b0b72edb213",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/axis.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/axis.rs",
+      "before_sha256": "4e7a842bc60bee64ee86c4d512c0ac034e4c6bf16b1fe0777c16b8a0b5b28751",
+      "after_sha256": "4e7a842bc60bee64ee86c4d512c0ac034e4c6bf16b1fe0777c16b8a0b5b28751",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/configuration.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/configuration.rs",
+      "before_sha256": "0d70a26e2fcafc1f1403e43f6c0790698940c92a0966d4ea4acec216778d65cd",
+      "after_sha256": "0d70a26e2fcafc1f1403e43f6c0790698940c92a0966d4ea4acec216778d65cd",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/content.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/content.rs",
+      "before_sha256": "13ec6f9517e0cbd7d2a311ef57b963eff2c5fe6f05264cca29e54d14a0ea8151",
+      "after_sha256": "13ec6f9517e0cbd7d2a311ef57b963eff2c5fe6f05264cca29e54d14a0ea8151",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/controls.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/controls.rs",
+      "before_sha256": "c7eeffce253b8aa0e7853baaf33ab3e926261df7e6b809a566aa17a4e779d560",
+      "after_sha256": "c7eeffce253b8aa0e7853baaf33ab3e926261df7e6b809a566aa17a4e779d560",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/direction.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/direction.rs",
+      "before_sha256": "f79259afb26fb38f4af7efdaea5fc6527b5426fe195ef89f72d16405d0bc3076",
+      "after_sha256": "f79259afb26fb38f4af7efdaea5fc6527b5426fe195ef89f72d16405d0bc3076",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/draggable.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/draggable.rs",
+      "before_sha256": "3688ee1a543a281c036d2f4f156a3c529263219b50e3945ef50fa4bb63b02ae3",
+      "after_sha256": "3688ee1a543a281c036d2f4f156a3c529263219b50e3945ef50fa4bb63b02ae3",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/node.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/node.rs",
+      "before_sha256": "bcda8a561581849163a3bb75f34d310d6463ff58ea6660e9fa33c8ea22d40c9f",
+      "after_sha256": "bcda8a561581849163a3bb75f34d310d6463ff58ea6660e9fa33c8ea22d40c9f",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/pane.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/pane.rs",
+      "before_sha256": "2305c36971b405368a99394ad6b3cd0cf21638d9933f8cbd445fd764a257a4df",
+      "after_sha256": "2305c36971b405368a99394ad6b3cd0cf21638d9933f8cbd445fd764a257a4df",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/split.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/split.rs",
+      "before_sha256": "8be472fc48c37055bbb62395839c599559abc3d70cb7806892f869bd95e90804",
+      "after_sha256": "8be472fc48c37055bbb62395839c599559abc3d70cb7806892f869bd95e90804",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/state.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/state.rs",
+      "before_sha256": "a13125af64ea6da1bcb5a13469f4ffdd51106776b27871e10ce3ac037d865b63",
+      "after_sha256": "a13125af64ea6da1bcb5a13469f4ffdd51106776b27871e10ce3ac037d865b63",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pane_grid/title_bar.rs",
+      "new": "crates/patches/iced_widget/src/pane_grid/title_bar.rs",
+      "before_sha256": "7556b48c85811d64e3c11c4ce901c579568f4ec056ff5f1bd5e38066b2f059ce",
+      "after_sha256": "7556b48c85811d64e3c11c4ce901c579568f4ec056ff5f1bd5e38066b2f059ce",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pick_list.rs",
+      "new": "crates/patches/iced_widget/src/pick_list.rs",
+      "before_sha256": "449fbbc5342c2bed227ec2587111ab43dcecb7382001fbcba2fab2651e54b33b",
+      "after_sha256": "449fbbc5342c2bed227ec2587111ab43dcecb7382001fbcba2fab2651e54b33b",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/pin.rs",
+      "new": "crates/patches/iced_widget/src/pin.rs",
+      "before_sha256": "f0b0ab2089300c9ceab8f8f3c75cd96409c7a84f3fa26d68645aab3f92247426",
+      "after_sha256": "f0b0ab2089300c9ceab8f8f3c75cd96409c7a84f3fa26d68645aab3f92247426",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/progress_bar.rs",
+      "new": "crates/patches/iced_widget/src/progress_bar.rs",
+      "before_sha256": "38e9bb585a9b764ff6cb947e17d65259a6a32cf3a69b23844e4c28e6c5a1c3ba",
+      "after_sha256": "38e9bb585a9b764ff6cb947e17d65259a6a32cf3a69b23844e4c28e6c5a1c3ba",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/qr_code.rs",
+      "new": "crates/patches/iced_widget/src/qr_code.rs",
+      "before_sha256": "712482a35eab47e0559fafd5452a2b934c5fbc5ae07c14c0c71781713b4dbfcc",
+      "after_sha256": "712482a35eab47e0559fafd5452a2b934c5fbc5ae07c14c0c71781713b4dbfcc",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/radio.rs",
+      "new": "crates/patches/iced_widget/src/radio.rs",
+      "before_sha256": "7b0f42744416e07f8af9409c5bae997b07a0653492ccc2e71911bdeed9c747b2",
+      "after_sha256": "7b0f42744416e07f8af9409c5bae997b07a0653492ccc2e71911bdeed9c747b2",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/responsive.rs",
+      "new": "crates/patches/iced_widget/src/responsive.rs",
+      "before_sha256": "2a3ff68573825a1407e3be27adbfb4851c7aae7cd100c7a0b670911bc3a08393",
+      "after_sha256": "2a3ff68573825a1407e3be27adbfb4851c7aae7cd100c7a0b670911bc3a08393",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/row.rs",
+      "new": "crates/patches/iced_widget/src/row.rs",
+      "before_sha256": "2566e8868bced1a6b7d455c9f1ab61c7025772b27bf843ee806d5c7806fcd44b",
+      "after_sha256": "2566e8868bced1a6b7d455c9f1ab61c7025772b27bf843ee806d5c7806fcd44b",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/rule.rs",
+      "new": "crates/patches/iced_widget/src/rule.rs",
+      "before_sha256": "b7b23722d314864d712e21c8ef260d2b747d0ac795bb3263a0a762c38467d6b9",
+      "after_sha256": "b7b23722d314864d712e21c8ef260d2b747d0ac795bb3263a0a762c38467d6b9",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/scrollable.rs",
+      "new": "crates/patches/iced_widget/src/scrollable.rs",
+      "before_sha256": "a176ea537bbe717550fe4dc17af31c801d9ec118edbcc44aab59ea1a78d1a7a2",
+      "after_sha256": "a176ea537bbe717550fe4dc17af31c801d9ec118edbcc44aab59ea1a78d1a7a2",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/sensor.rs",
+      "new": "crates/patches/iced_widget/src/sensor.rs",
+      "before_sha256": "cb95d1220fa5663b7a148d6b159081da2200debe6fea982a04f48e27dd072973",
+      "after_sha256": "cb95d1220fa5663b7a148d6b159081da2200debe6fea982a04f48e27dd072973",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/shader.rs",
+      "new": "crates/patches/iced_widget/src/shader.rs",
+      "before_sha256": "8753516e6a6b422a76632d07c716e047ff9b5e8f32bf9a9463c612c292306382",
+      "after_sha256": "8753516e6a6b422a76632d07c716e047ff9b5e8f32bf9a9463c612c292306382",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/shader/program.rs",
+      "new": "crates/patches/iced_widget/src/shader/program.rs",
+      "before_sha256": "4ce3711b2899b1c1d53544ff0c1f823e108542d356d5e374cb7b149c776d6918",
+      "after_sha256": "4ce3711b2899b1c1d53544ff0c1f823e108542d356d5e374cb7b149c776d6918",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/slider.rs",
+      "new": "crates/patches/iced_widget/src/slider.rs",
+      "before_sha256": "778d6a4c37b334cba62ada5f4958e5909a91404961fe5c1104acd9dad12a18d5",
+      "after_sha256": "778d6a4c37b334cba62ada5f4958e5909a91404961fe5c1104acd9dad12a18d5",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/space.rs",
+      "new": "crates/patches/iced_widget/src/space.rs",
+      "before_sha256": "40839bf1dfa93e02c9e3d7e2ab5bb41b328b1fe863846f6f1feca11d9885453b",
+      "after_sha256": "40839bf1dfa93e02c9e3d7e2ab5bb41b328b1fe863846f6f1feca11d9885453b",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/stack.rs",
+      "new": "crates/patches/iced_widget/src/stack.rs",
+      "before_sha256": "b12776ae1dd46ba95ca0ca52f6a095be1e0121c51f3180ad7cc202cd55764594",
+      "after_sha256": "b12776ae1dd46ba95ca0ca52f6a095be1e0121c51f3180ad7cc202cd55764594",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/svg.rs",
+      "new": "crates/patches/iced_widget/src/svg.rs",
+      "before_sha256": "a8167836a19806f4c2cc633a265953b8c4348f279082d7577b69f817e3166aeb",
+      "after_sha256": "a8167836a19806f4c2cc633a265953b8c4348f279082d7577b69f817e3166aeb",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/table.rs",
+      "new": "crates/patches/iced_widget/src/table.rs",
+      "before_sha256": "373f600db363090412e6bfc9c338bd6bc9516e78f7a43fb00f20d5ed21eb625c",
+      "after_sha256": "373f600db363090412e6bfc9c338bd6bc9516e78f7a43fb00f20d5ed21eb625c",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/text.rs",
+      "new": "crates/patches/iced_widget/src/text.rs",
+      "before_sha256": "a7d125fc7d07ba51e05f86ca97f4ffad5db37ef2e6d4320bbcd8475d99d51ed3",
+      "after_sha256": "a7d125fc7d07ba51e05f86ca97f4ffad5db37ef2e6d4320bbcd8475d99d51ed3",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/text/rich.rs",
+      "new": "crates/patches/iced_widget/src/text/rich.rs",
+      "before_sha256": "7deababcbe5f0294b605822fe2651eb0fee6e9c1bee37883dbc570481df6a0b9",
+      "after_sha256": "7deababcbe5f0294b605822fe2651eb0fee6e9c1bee37883dbc570481df6a0b9",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/text_editor.rs",
+      "new": "crates/patches/iced_widget/src/text_editor.rs",
+      "before_sha256": "cecf8686c90aa92066d55075beba545dfb7dd5a44bad0c1519fcb110a56070e1",
+      "after_sha256": "cecf8686c90aa92066d55075beba545dfb7dd5a44bad0c1519fcb110a56070e1",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/text_input.rs",
+      "new": "crates/patches/iced_widget/src/text_input.rs",
+      "before_sha256": "7cd64b0f79c6000f2985cc290642698a814be5dcd7b7a56ae463b13ffe5c3b47",
+      "after_sha256": "7cd64b0f79c6000f2985cc290642698a814be5dcd7b7a56ae463b13ffe5c3b47",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/text_input/cursor.rs",
+      "new": "crates/patches/iced_widget/src/text_input/cursor.rs",
+      "before_sha256": "eeb9241a25110583fd2e169da47834aeb39fd55335ea3b77aa3d1e43016c28d8",
+      "after_sha256": "eeb9241a25110583fd2e169da47834aeb39fd55335ea3b77aa3d1e43016c28d8",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/text_input/editor.rs",
+      "new": "crates/patches/iced_widget/src/text_input/editor.rs",
+      "before_sha256": "cd0e0168e9de1ad2599120a4dda8a5a373813a4ffc3a3c035929d18144544408",
+      "after_sha256": "cd0e0168e9de1ad2599120a4dda8a5a373813a4ffc3a3c035929d18144544408",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/text_input/value.rs",
+      "new": "crates/patches/iced_widget/src/text_input/value.rs",
+      "before_sha256": "03fba71d34f2c31df15431ac7e22f854b655336f86ef854ae34cc1e0bfbcefdd",
+      "after_sha256": "03fba71d34f2c31df15431ac7e22f854b655336f86ef854ae34cc1e0bfbcefdd",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/themer.rs",
+      "new": "crates/patches/iced_widget/src/themer.rs",
+      "before_sha256": "4b87e866b8f2a4420f30674ad64c605d24e3004f867bf95a1210b5338ed7a81e",
+      "after_sha256": "4b87e866b8f2a4420f30674ad64c605d24e3004f867bf95a1210b5338ed7a81e",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/toggler.rs",
+      "new": "crates/patches/iced_widget/src/toggler.rs",
+      "before_sha256": "70f1ef0ee8e2b6c0d7b93095eab1e615783bb81d945b4ff066af025dde8f5dcb",
+      "after_sha256": "70f1ef0ee8e2b6c0d7b93095eab1e615783bb81d945b4ff066af025dde8f5dcb",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/tooltip.rs",
+      "new": "crates/patches/iced_widget/src/tooltip.rs",
+      "before_sha256": "7fcaa3899ad1a946bb1a51d34d344497005aaccdf825f510e98105d1bc40bc63",
+      "after_sha256": "7fcaa3899ad1a946bb1a51d34d344497005aaccdf825f510e98105d1bc40bc63",
+      "content_changed": false
+    },
+    {
+      "old": "patches/iced_widget/src/vertical_slider.rs",
+      "new": "crates/patches/iced_widget/src/vertical_slider.rs",
+      "before_sha256": "75777345ced463b4a3b059fbe6c59efc952169987154b0597d87ce4da2076e3b",
+      "after_sha256": "75777345ced463b4a3b059fbe6c59efc952169987154b0597d87ce4da2076e3b",
+      "content_changed": false
+    }
+  ],
+  "counts": {
+    "total": 396,
+    "unchanged": 343,
+    "path_updates": 53
+  }
+}

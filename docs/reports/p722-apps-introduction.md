@@ -4,7 +4,7 @@ Date: 2026-10-01. Plan revision: 1. Worktree: D:/autostack/.wt/lang-722/auto-lan
 
 ## Delivered scope
 
-EN/ZH Apps overview with four primary products, eight reading topics (AutoEdit, AutoShell, AutoMusk, JadeEdit), two static system/demo introductions, and two retained AutoShell evidence guides. All new introductions are image-free, with capture intent recorded in source comments. Existing Shell native images, interactive guide and release preview are preserved. Prepared canonical Specs specify this presentation and a sourced 28-candidate demo rollout; no mock implementation or promise of 28 working online apps.
+EN/ZH Apps overview with four primary products, eight reading topics (AutoEdit, AutoShell, AutoMusk, AutoJade), two static system/demo introductions, and two retained AutoShell evidence guides. All new introductions are image-free, with capture intent recorded in source comments. Existing Shell native images, interactive guide and release preview are preserved. Prepared canonical Specs specify this presentation and a sourced 28-candidate demo rollout; no mock implementation or promise of 28 working online apps.
 
 ## Source and review baseline
 

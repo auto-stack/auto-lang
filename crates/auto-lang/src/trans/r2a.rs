@@ -54,22 +54,32 @@ fn map_type(ty: &syn::Type) -> String {
         syn::Type::Paren(p) => map_type(&p.elem),
         syn::Type::TraitObject(t) => {
             // dyn Trait → comment (AutoLang has no dynamic dispatch)
-            let trait_name = t.bounds.iter().filter_map(|b| match b {
-                syn::TypeParamBound::Trait(t) => {
-                    t.path.segments.last().map(|s| s.ident.to_string())
-                }
-                _ => None,
-            }).collect::<Vec<_>>().join(" + ");
+            let trait_name = t
+                .bounds
+                .iter()
+                .filter_map(|b| match b {
+                    syn::TypeParamBound::Trait(t) => {
+                        t.path.segments.last().map(|s| s.ident.to_string())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" + ");
             format!("/* dyn {} */", trait_name)
         }
         syn::Type::ImplTrait(it) => {
             // impl Trait → same as dyn, extract trait name
-            let trait_name = it.bounds.iter().filter_map(|b| match b {
-                syn::TypeParamBound::Trait(t) => {
-                    t.path.segments.last().map(|s| s.ident.to_string())
-                }
-                _ => None,
-            }).collect::<Vec<_>>().join(" + ");
+            let trait_name = it
+                .bounds
+                .iter()
+                .filter_map(|b| match b {
+                    syn::TypeParamBound::Trait(t) => {
+                        t.path.segments.last().map(|s| s.ident.to_string())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" + ");
             format!("/* impl {} */", trait_name)
         }
         _ => "/* unknown */".into(),
@@ -95,7 +105,7 @@ fn map_path_type(path: &syn::Path) -> String {
         "bool" => "bool".into(),
         "char" => "char".into(),
         "String" => "str".into(),
-        "str" => "cstr".into(),  // primitive str (usually behind &)
+        "str" => "cstr".into(), // primitive str (usually behind &)
         _ => map_generic_type(&ident, &last.arguments),
     }
 }
@@ -201,8 +211,8 @@ fn map_method_name(method: &str) -> &str {
 
 /// How `self` appears in an impl method signature.
 enum SelfKind {
-    Self_,    // &self
-    MutSelf,  // &mut self
+    Self_,   // &self
+    MutSelf, // &mut self
 }
 
 struct R2aTrans {
@@ -835,9 +845,11 @@ impl R2aTrans {
 
     fn local_to_string(&mut self, local: &syn::Local) -> String {
         let (name, is_mut, ty_annotation) = match &local.pat {
-            syn::Pat::Ident(pat_ident) => {
-                (pat_ident.ident.to_string(), pat_ident.mutability.is_some(), None)
-            }
+            syn::Pat::Ident(pat_ident) => (
+                pat_ident.ident.to_string(),
+                pat_ident.mutability.is_some(),
+                None,
+            ),
             syn::Pat::Type(pat_type) => {
                 let inner_name = pat_to_string(&pat_type.pat);
                 let ty = map_type(&pat_type.ty);
@@ -905,8 +917,8 @@ impl R2aTrans {
                         .join("::");
 
                     match full_ident.as_str() {
-                        "String::from" | "String::new" | "Box::new" | "Arc::new"
-                        | "Rc::new" | "Vec::new" => {
+                        "String::from" | "String::new" | "Box::new" | "Arc::new" | "Rc::new"
+                        | "Vec::new" => {
                             return handle_constructor(&full_ident, &args);
                         }
                         "Some" | "Ok" | "Err" => {
@@ -976,7 +988,8 @@ impl R2aTrans {
             syn::Expr::Macro(macro_expr) => self.macro_to_string(macro_expr),
 
             syn::Expr::Array(array) => {
-                let elems: Vec<String> = array.elems.iter().map(|e| self.expr_to_string(e)).collect();
+                let elems: Vec<String> =
+                    array.elems.iter().map(|e| self.expr_to_string(e)).collect();
                 format!("[{}]", elems.join(", "))
             }
 
@@ -1024,7 +1037,8 @@ impl R2aTrans {
             }
 
             syn::Expr::Tuple(tuple) => {
-                let elems: Vec<String> = tuple.elems.iter().map(|e| self.expr_to_string(e)).collect();
+                let elems: Vec<String> =
+                    tuple.elems.iter().map(|e| self.expr_to_string(e)).collect();
                 format!("({})", elems.join(", "))
             }
 
@@ -1592,7 +1606,10 @@ fn extract_string_literal(s: &str) -> (String, String) {
     }
 
     let remaining: String = chars.collect();
-    (content, remaining.trim().trim_start_matches(',').trim().to_string())
+    (
+        content,
+        remaining.trim().trim_start_matches(',').trim().to_string(),
+    )
 }
 
 /// Split macro arguments (after the format string) into individual argument strings.
@@ -1719,9 +1736,17 @@ mod tests {
     println!("hello, world!");
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("fn main()"), "missing fn main() in: {}", result);
+        assert!(
+            result.contains("fn main()"),
+            "missing fn main() in: {}",
+            result
+        );
         assert!(result.contains("print"), "missing print in: {}", result);
-        assert!(result.contains("hello, world!"), "missing hello in: {}", result);
+        assert!(
+            result.contains("hello, world!"),
+            "missing hello in: {}",
+            result
+        );
     }
 
     #[test]
@@ -1883,8 +1908,16 @@ pub const VERSION: &str = "1.0";"#;
     let c = s.clone();
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains(r#"let s = "hello""#), "missing String::from simplification in: {}", result);
-        assert!(result.contains("let b = 42"), "missing Box::new simplification in: {}", result);
+        assert!(
+            result.contains(r#"let s = "hello""#),
+            "missing String::from simplification in: {}",
+            result
+        );
+        assert!(
+            result.contains("let b = 42"),
+            "missing Box::new simplification in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2043,7 +2076,11 @@ pub const VERSION: &str = "1.0";"#;
         let result = transpile_r2a(case, &rust_code).unwrap();
 
         // Structural checks: must not be empty, must not panic
-        assert!(!result.trim().is_empty(), "r2a produced empty output for {}", case);
+        assert!(
+            !result.trim().is_empty(),
+            "r2a produced empty output for {}",
+            case
+        );
         // Must not contain unresolved Rust syntax fragments
         assert!(
             !result.contains("/* unknown */"),
@@ -2169,9 +2206,21 @@ impl Counter {
     }
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("mut fn increment"), "missing mut fn in: {}", result);
-        assert!(result.contains("fn get_count() int"), "missing get_count in: {}", result);
-        assert!(result.contains("static fn new"), "missing static fn in: {}", result);
+        assert!(
+            result.contains("mut fn increment"),
+            "missing mut fn in: {}",
+            result
+        );
+        assert!(
+            result.contains("fn get_count() int"),
+            "missing get_count in: {}",
+            result
+        );
+        assert!(
+            result.contains("static fn new"),
+            "missing static fn in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2181,7 +2230,11 @@ fn main() {
     let v: Vec<Box<dyn Flyer>> = vec![];
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("dyn Flyer"), "missing dyn trait comment in: {}", result);
+        assert!(
+            result.contains("dyn Flyer"),
+            "missing dyn trait comment in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2199,8 +2252,16 @@ impl Flyer for Pigeon {
     }
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("spec Flyer"), "missing spec Flyer in: {}", result);
-        assert!(result.contains("ext Pigeon for Flyer"), "missing ext for in: {}", result);
+        assert!(
+            result.contains("spec Flyer"),
+            "missing spec Flyer in: {}",
+            result
+        );
+        assert!(
+            result.contains("ext Pigeon for Flyer"),
+            "missing ext for in: {}",
+            result
+        );
         assert!(result.contains("print"), "missing print in: {}", result);
     }
 
@@ -2359,8 +2420,16 @@ struct Box<T> {
     value: T,
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("type Box<T>"), "missing generic struct in: {}", result);
-        assert!(result.contains("value T"), "missing generic field in: {}", result);
+        assert!(
+            result.contains("type Box<T>"),
+            "missing generic struct in: {}",
+            result
+        );
+        assert!(
+            result.contains("value T"),
+            "missing generic field in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2371,8 +2440,16 @@ enum May<T> {
     nil,
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("enum May<T>"), "missing generic enum in: {}", result);
-        assert!(result.contains("val(T)"), "missing tuple variant in: {}", result);
+        assert!(
+            result.contains("enum May<T>"),
+            "missing generic enum in: {}",
+            result
+        );
+        assert!(
+            result.contains("val(T)"),
+            "missing tuple variant in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2382,7 +2459,11 @@ fn duplicate<T: Clone>(x: T) -> T {
     x.clone()
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("fn duplicate<T: Clone>"), "missing bounded generic in: {}", result);
+        assert!(
+            result.contains("fn duplicate<T: Clone>"),
+            "missing bounded generic in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2394,9 +2475,21 @@ enum Coin {
     Dime = 2,
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("Penny = 0"), "missing discriminant in: {}", result);
-        assert!(result.contains("Nickel = 1"), "missing discriminant in: {}", result);
-        assert!(result.contains("Dime = 2"), "missing discriminant in: {}", result);
+        assert!(
+            result.contains("Penny = 0"),
+            "missing discriminant in: {}",
+            result
+        );
+        assert!(
+            result.contains("Nickel = 1"),
+            "missing discriminant in: {}",
+            result
+        );
+        assert!(
+            result.contains("Dime = 2"),
+            "missing discriminant in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2404,8 +2497,16 @@ enum Coin {
         let rust_code = r#"
 type IntList<T> = Vec<T>;"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("type IntList<T>"), "missing generic alias in: {}", result);
-        assert!(result.contains("List<T>"), "missing Vec->List mapping in: {}", result);
+        assert!(
+            result.contains("type IntList<T>"),
+            "missing generic alias in: {}",
+            result
+        );
+        assert!(
+            result.contains("List<T>"),
+            "missing Vec->List mapping in: {}",
+            result
+        );
     }
 
     // ── Phase 3: round-trip tests for groups 06, 08, 09 ──
@@ -2577,8 +2678,16 @@ async fn fetch_data(url: &str) -> String {
     String::from("data")
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("// async"), "missing async comment in: {}", result);
-        assert!(result.contains("fn fetch_data"), "missing fn in: {}", result);
+        assert!(
+            result.contains("// async"),
+            "missing async comment in: {}",
+            result
+        );
+        assert!(
+            result.contains("fn fetch_data"),
+            "missing fn in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2589,8 +2698,16 @@ struct Point {
     x: i32,
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("derive"), "missing derive comment in: {}", result);
-        assert!(result.contains("type Point"), "missing struct in: {}", result);
+        assert!(
+            result.contains("derive"),
+            "missing derive comment in: {}",
+            result
+        );
+        assert!(
+            result.contains("type Point"),
+            "missing struct in: {}",
+            result
+        );
     }
 
     #[test]
@@ -2602,7 +2719,11 @@ struct User {
     name: String,
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("serde"), "missing serde comment in: {}", result);
+        assert!(
+            result.contains("serde"),
+            "missing serde comment in: {}",
+            result
+        );
         assert!(result.contains("role int"), "missing field in: {}", result);
     }
 
@@ -2626,8 +2747,20 @@ fn main() {
     let c = Rc::new(42);
 }"#;
         let result = transpile_r2a("test", rust_code).unwrap();
-        assert!(result.contains("let a = 42"), "missing Box simplification in: {}", result);
-        assert!(result.contains("let b = \"hello\""), "missing Arc simplification in: {}", result);
-        assert!(result.contains("let c = 42"), "missing Rc simplification in: {}", result);
+        assert!(
+            result.contains("let a = 42"),
+            "missing Box simplification in: {}",
+            result
+        );
+        assert!(
+            result.contains("let b = \"hello\""),
+            "missing Arc simplification in: {}",
+            result
+        );
+        assert!(
+            result.contains("let c = 42"),
+            "missing Rc simplification in: {}",
+            result
+        );
     }
 }

@@ -1,14 +1,14 @@
 //! TypeScript Transpiler (Plan 100: a2js → a2ts)
 //!
 //! Transpiles AutoLang AST to TypeScript code with full type annotations.
-//! 
+//!
 //! Split across multiple modules for Plan 152:
 //! - ts_types.rs: Type mapping
 //! - ts_expr.rs: Expression transpilation
 //! - ts_stmt.rs: Statement transpilation
 //! - ts_runtime.rs: Stdlib runtime generation
 
-use super::{Sink, Trans, ToStrError};
+use super::{Sink, ToStrError, Trans};
 use crate::ast::*;
 use crate::AutoResult;
 use auto_val::AutoStr;
@@ -116,9 +116,16 @@ impl TypeScriptTrans {
     /// `use` imports, `ext` prototype assignments, stores, and trivia are
     /// top-level declarations but are not exported.
     fn is_exportable_decl(stmt: &Stmt) -> bool {
-        matches!(stmt,
-            Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_)
-            | Stmt::TypeAlias(_) | Stmt::Union(_) | Stmt::Tag(_) | Stmt::SpecDecl(_))
+        matches!(
+            stmt,
+            Stmt::Fn(_)
+                | Stmt::TypeDecl(_)
+                | Stmt::EnumDecl(_)
+                | Stmt::TypeAlias(_)
+                | Stmt::Union(_)
+                | Stmt::Tag(_)
+                | Stmt::SpecDecl(_)
+        )
     }
 }
 
@@ -133,7 +140,7 @@ impl Trans for TypeScriptTrans {
 
         // Split into declarations and main statements, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
-        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
+        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
 
         let source_lines = ast.source_lines;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
@@ -151,12 +158,21 @@ impl Trans for TypeScriptTrans {
             //   functions can reference them — wrapping them in a synthesized
             //   main() would make them block-scoped and invisible)
             // - comments/empty lines (trivia — must not trigger main synthesis)
-            if matches!(stmt,
-                Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Fn(_)
-                | Stmt::TypeAlias(_) | Stmt::Union(_) | Stmt::Tag(_)
-                | Stmt::SpecDecl(_) | Stmt::Ext(_) | Stmt::Use(_)
-                | Stmt::Store(_) | Stmt::Comment(_) | Stmt::EmptyLine(_))
-            {
+            if matches!(
+                stmt,
+                Stmt::TypeDecl(_)
+                    | Stmt::EnumDecl(_)
+                    | Stmt::Fn(_)
+                    | Stmt::TypeAlias(_)
+                    | Stmt::Union(_)
+                    | Stmt::Tag(_)
+                    | Stmt::SpecDecl(_)
+                    | Stmt::Ext(_)
+                    | Stmt::Use(_)
+                    | Stmt::Store(_)
+                    | Stmt::Comment(_)
+                    | Stmt::EmptyLine(_)
+            ) {
                 decls.push((stmt, line));
             } else {
                 main_stmts.push((stmt, line));

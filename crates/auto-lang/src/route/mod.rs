@@ -130,11 +130,10 @@ impl RouteDef {
 fn capitalize_module(module: &str) -> String {
     // Common word boundaries to detect
     const WORD_BOUNDARIES: &[&str] = &[
-        "page", "item", "card", "list", "grid", "box", "text", "input",
-        "button", "switch", "slider", "checkbox", "radio", "toggle",
-        "image", "icon", "badge", "chip", "tab", "table", "progress",
-        "header", "footer", "nav", "menu", "sidebar", "panel", "modal",
-        "dialog", "form", "field", "area", "view", "screen", "widget"
+        "page", "item", "card", "list", "grid", "box", "text", "input", "button", "switch",
+        "slider", "checkbox", "radio", "toggle", "image", "icon", "badge", "chip", "tab", "table",
+        "progress", "header", "footer", "nav", "menu", "sidebar", "panel", "modal", "dialog",
+        "form", "field", "area", "view", "screen", "widget",
     ];
 
     let lower = module.to_lowercase();
@@ -156,7 +155,10 @@ fn capitalize_module(module: &str) -> String {
 /// Capitalize the first letter of a string
 fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
-    let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+    let first = chars
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>())
+        .unwrap_or_default();
     let rest: String = chars.collect();
     format!("{}{}", first, rest)
 }

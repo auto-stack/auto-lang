@@ -3,8 +3,8 @@
 //! This module provides analysis to detect the last use of a variable,
 //! enabling automatic cleanup at the right time.
 
+use crate::ast::{Expr, For, If, Name, Stmt, Store};
 use std::collections::{HashMap, HashSet};
-use crate::ast::{Name, Stmt, Expr, Store, For, If};
 
 /// Unique identifier for expressions
 pub type ExprId = usize;

@@ -16,23 +16,20 @@
 
 use iced::advanced::graphics::text::Paragraph as GraphicsParagraph;
 use iced::advanced::text::paragraph::{Paragraph as _, Plain};
+use iced::advanced::text::{Alignment, LineHeight, Shaping, Wrapping};
 use iced::advanced::widget::text::{self as text_widget, Format};
 use iced::advanced::widget::tree::{self, Tag, Tree};
 use iced::advanced::{Clipboard, Layout, Renderer as _, Shell, Widget};
+use iced::alignment::{self};
 use iced::event::Event;
 use iced::keyboard::{self, key, Key};
 use iced::mouse;
-use iced::{
-    Color, Element, Font, Length, Pixels, Point, Rectangle, Size, Theme,
-};
-use iced::alignment::{self};
-use iced::advanced::text::{Alignment, LineHeight, Shaping, Wrapping};
+use iced::{Color, Element, Font, Length, Pixels, Point, Rectangle, Size, Theme};
 
 use super::selection::Selection;
 
 /// 双击判定窗口(与主流编辑器一致的 500ms)。
-const DOUBLE_CLICK_WINDOW: std::time::Duration =
-    std::time::Duration::from_millis(500);
+const DOUBLE_CLICK_WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
 /// 双击判定位移阈值(逻辑像素):超过视为重新按下。
 const DOUBLE_CLICK_SLOP: f32 = 4.0;
 
@@ -112,7 +109,11 @@ impl SelectableText {
 
     /// 段落局部坐标命中 → 全局字节偏移。
     fn hit_at(state: &State, para_local: Point) -> usize {
-        hit_global(state.paragraph.raw().buffer(), &state.line_starts, para_local)
+        hit_global(
+            state.paragraph.raw().buffer(),
+            &state.line_starts,
+            para_local,
+        )
     }
 
     /// 鼠标手势。`local` = 光标相对 widget 原点坐标(无可用时 None);
@@ -161,10 +162,7 @@ impl SelectableText {
                 if !state.dragging {
                     return false;
                 }
-                let p = Point::new(
-                    position.x - bounds.x,
-                    position.y - bounds.y,
-                );
+                let p = Point::new(position.x - bounds.x, position.y - bounds.y);
                 let para = Point::new(p.x - anchor.x, p.y - anchor.y);
                 let g = Self::hit_at(state, para).min(self.content.len());
                 state.selection.extend_to(g);
@@ -367,9 +365,7 @@ where
                     .map(|p| Point::new(p.x - bounds.x, p.y - bounds.y));
                 self.handle_mouse(state, mouse_event, local, anchor, bounds)
             }
-            Event::Keyboard(kb_event) => {
-                self.handle_keyboard(state, kb_event, clipboard)
-            }
+            Event::Keyboard(kb_event) => self.handle_keyboard(state, kb_event, clipboard),
             _ => false,
         };
         if captured {
@@ -453,11 +449,7 @@ pub fn line_index(line_starts: &[usize], global: usize) -> (usize, usize) {
 }
 
 /// cosmic 光标命中 → 全局字节偏移(无命中/空文本 → 0)。
-pub fn hit_global(
-    buffer: &cosmic_text::Buffer,
-    line_starts: &[usize],
-    local: Point,
-) -> usize {
+pub fn hit_global(buffer: &cosmic_text::Buffer, line_starts: &[usize], local: Point) -> usize {
     buffer
         .hit(local.x, local.y)
         .map(|c| global_offset(line_starts, c.line, c.index))
@@ -475,8 +467,7 @@ fn index_x(run: &cosmic_text::LayoutRun, index: usize) -> Option<f32> {
         if index <= glyph.end {
             let cluster = &run.text[glyph.start..glyph.end];
             let total = cluster.chars().count().max(1) as f32;
-            let before =
-                run.text[glyph.start..index.min(glyph.end)].chars().count() as f32;
+            let before = run.text[glyph.start..index.min(glyph.end)].chars().count() as f32;
             return Some(glyph.x + (glyph.w / total) * before);
         }
         prev_end = glyph.x + glyph.w;
@@ -661,7 +652,9 @@ mod tests {
         keyboard::Event::KeyPressed {
             modified_key: key.clone(),
             key,
-            physical_key: keyboard::key::Physical::Unidentified(keyboard::key::NativeCode::Unidentified),
+            physical_key: keyboard::key::Physical::Unidentified(
+                keyboard::key::NativeCode::Unidentified,
+            ),
             location: keyboard::Location::Standard,
             modifiers,
             text: None,
@@ -717,7 +710,9 @@ mod tests {
     fn r#move(widget: &SelectableText, state: &mut State, x: f32, y: f32) -> bool {
         widget.handle_mouse(
             state,
-            &mouse::Event::CursorMoved { position: Point::new(x, y) },
+            &mouse::Event::CursorMoved {
+                position: Point::new(x, y),
+            },
             Some(Point::new(x, y)),
             Point::ORIGIN,
             Rectangle::new(Point::ORIGIN, Size::new(400.0, 100.0)),
@@ -758,7 +753,10 @@ mod tests {
         r#move(&w, &mut state, 2.0, 8.0);
         release(&w, &mut state);
         let sel = state.selection.selected_text(W);
-        assert!(sel.starts_with('h'), "backward drag still from left: {sel:?}");
+        assert!(
+            sel.starts_with('h'),
+            "backward drag still from left: {sel:?}"
+        );
     }
 
     #[test]
@@ -862,9 +860,16 @@ mod tests {
         assert_eq!((l, global_offset(&starts, l, i)), (1, g));
 
         // 跨行选区矩形:one 整行 + two words 整行 + three 前缀。
-        let sel = Selection { anchor: 0, head: 17 }; // "one\ntwo words\nth"
+        let sel = Selection {
+            anchor: 0,
+            head: 17,
+        }; // "one\ntwo words\nth"
         let rects = selection_rects(buffer, &sel, &starts, Point::new(0.0, 0.0));
-        assert!(rects.len() >= 3, "one rect per touched line, got {}", rects.len());
+        assert!(
+            rects.len() >= 3,
+            "one rect per touched line, got {}",
+            rects.len()
+        );
     }
 
     /// T2 管线冒烟(iced_test simulator,feature `iced-layout-tests`):
@@ -881,9 +886,7 @@ mod tests {
         sim.point_at(iced::Point::new(30.0, 8.0));
 
         let statuses = sim.simulate([
-            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
-                iced::mouse::Button::Left,
-            )),
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)),
             iced::Event::Mouse(iced::mouse::Event::CursorMoved {
                 position: iced::Point::new(60.0, 8.0),
             }),
@@ -892,7 +895,9 @@ mod tests {
             )),
         ]);
         assert!(
-            statuses.iter().any(|s| matches!(s, iced::event::Status::Captured)),
+            statuses
+                .iter()
+                .any(|s| matches!(s, iced::event::Status::Captured)),
             "drag gestures must be captured by the real pipeline: {statuses:?}"
         );
     }
@@ -912,29 +917,24 @@ mod tests {
         sim.point_at(iced::Point::new(40.0, 8.0));
 
         // 无选区:Ctrl+C 必须不捕获(不抢编辑器快捷键)。
-        let idle = sim.simulate([iced::Event::Keyboard(
-            keyboard::Event::KeyPressed {
-                key: Key::Character("c".into()),
-                modified_key: Key::Character("c".into()),
-                physical_key: key::Physical::Unidentified(
-                    key::NativeCode::Unidentified,
-                ),
-                location: keyboard::Location::Standard,
-                modifiers: keyboard::Modifiers::CTRL,
-                text: None,
-                repeat: false,
-            },
-        )]);
+        let idle = sim.simulate([iced::Event::Keyboard(keyboard::Event::KeyPressed {
+            key: Key::Character("c".into()),
+            modified_key: Key::Character("c".into()),
+            physical_key: key::Physical::Unidentified(key::NativeCode::Unidentified),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::CTRL,
+            text: None,
+            repeat: false,
+        })]);
         assert!(
-            idle.iter().all(|s| matches!(s, iced::event::Status::Ignored)),
+            idle.iter()
+                .all(|s| matches!(s, iced::event::Status::Ignored)),
             "idle Ctrl+C must pass through: {idle:?}"
         );
 
         // 拖选后有选区:Ctrl+C 必须捕获(进剪贴板路径)。
         sim.simulate([
-            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
-                iced::mouse::Button::Left,
-            )),
+            iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left)),
             iced::Event::Mouse(iced::mouse::Event::CursorMoved {
                 position: iced::Point::new(60.0, 8.0),
             }),
@@ -942,19 +942,15 @@ mod tests {
                 iced::mouse::Button::Left,
             )),
         ]);
-        let with_sel = sim.simulate([iced::Event::Keyboard(
-            keyboard::Event::KeyPressed {
-                key: Key::Character("c".into()),
-                modified_key: Key::Character("c".into()),
-                physical_key: key::Physical::Unidentified(
-                    key::NativeCode::Unidentified,
-                ),
-                location: keyboard::Location::Standard,
-                modifiers: keyboard::Modifiers::CTRL,
-                text: None,
-                repeat: false,
-            },
-        )]);
+        let with_sel = sim.simulate([iced::Event::Keyboard(keyboard::Event::KeyPressed {
+            key: Key::Character("c".into()),
+            modified_key: Key::Character("c".into()),
+            physical_key: key::Physical::Unidentified(key::NativeCode::Unidentified),
+            location: keyboard::Location::Standard,
+            modifiers: keyboard::Modifiers::CTRL,
+            text: None,
+            repeat: false,
+        })]);
         assert!(
             with_sel
                 .iter()

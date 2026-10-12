@@ -54,7 +54,9 @@ impl GDScriptTrans {
             Expr::Float(f, _) => write!(out, "{}", f).map_err(Into::into),
             Expr::Double(d, _) => write!(out, "{}", d).map_err(Into::into),
             // GDScript uses lowercase true/false (not Python's True/False)
-            Expr::Bool(b) => write!(out, "{}", if *b { "true" } else { "false" }).map_err(Into::into),
+            Expr::Bool(b) => {
+                write!(out, "{}", if *b { "true" } else { "false" }).map_err(Into::into)
+            }
             Expr::Char(c) => write!(out, "'{}'", c).map_err(Into::into),
             Expr::Str(s) => write!(out, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::CStr(s) => write!(out, "\"{}\"", s).map_err(Into::into),
@@ -128,8 +130,7 @@ impl GDScriptTrans {
             // Type cast / conversion
             Expr::Cast { expr, target_type } | Expr::To { expr, target_type } => {
                 match target_type {
-                    Type::Int | Type::Uint | Type::USize
-                    | Type::I64 | Type::U64 | Type::Byte => {
+                    Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64 | Type::Byte => {
                         write!(out, "int(")?;
                         self.expr(expr, out)?;
                         out.write(b")")?;
@@ -218,40 +219,34 @@ impl GDScriptTrans {
             }
 
             // Option pattern
-            Expr::OptionPattern(cover) => {
-                match cover.variant {
-                    crate::ast::cover::OptionVariant::Some => {
-                        if let Some(ref binding) = cover.binding {
-                            write!(out, "SomeCase({})", binding).map_err(Into::into)
-                        } else {
-                            write!(out, "SomeCase(_)").map_err(Into::into)
-                        }
-                    }
-                    crate::ast::cover::OptionVariant::None => {
-                        write!(out, "null").map_err(Into::into)
+            Expr::OptionPattern(cover) => match cover.variant {
+                crate::ast::cover::OptionVariant::Some => {
+                    if let Some(ref binding) = cover.binding {
+                        write!(out, "SomeCase({})", binding).map_err(Into::into)
+                    } else {
+                        write!(out, "SomeCase(_)").map_err(Into::into)
                     }
                 }
-            }
+                crate::ast::cover::OptionVariant::None => write!(out, "null").map_err(Into::into),
+            },
 
             // Result pattern
-            Expr::ResultPattern(cover) => {
-                match cover.variant {
-                    crate::ast::cover::ResultVariant::Ok => {
-                        if let Some(ref binding) = cover.binding {
-                            write!(out, "OkCase({})", binding).map_err(Into::into)
-                        } else {
-                            write!(out, "OkCase(_)").map_err(Into::into)
-                        }
-                    }
-                    crate::ast::cover::ResultVariant::Err => {
-                        if let Some(ref binding) = cover.binding {
-                            write!(out, "ErrCase({})", binding).map_err(Into::into)
-                        } else {
-                            write!(out, "ErrCase(_)").map_err(Into::into)
-                        }
+            Expr::ResultPattern(cover) => match cover.variant {
+                crate::ast::cover::ResultVariant::Ok => {
+                    if let Some(ref binding) = cover.binding {
+                        write!(out, "OkCase({})", binding).map_err(Into::into)
+                    } else {
+                        write!(out, "OkCase(_)").map_err(Into::into)
                     }
                 }
-            }
+                crate::ast::cover::ResultVariant::Err => {
+                    if let Some(ref binding) = cover.binding {
+                        write!(out, "ErrCase({})", binding).map_err(Into::into)
+                    } else {
+                        write!(out, "ErrCase(_)").map_err(Into::into)
+                    }
+                }
+            },
 
             // nil/Null -> null (GDScript uses null, not Python's None)
             Expr::Nil | Expr::Null => out.write(b"null").to(),
@@ -483,7 +478,8 @@ impl GDScriptTrans {
         self.local_var_types.clear();
         for param in &func.params {
             if !matches!(param.ty, Type::Unknown) {
-                self.local_var_types.insert(param.name.clone(), param.ty.clone());
+                self.local_var_types
+                    .insert(param.name.clone(), param.ty.clone());
             }
         }
 
@@ -493,7 +489,11 @@ impl GDScriptTrans {
         out.write(b"func ")?;
 
         // main() -> _ready()
-        let fn_name = if func.name == "main" { "_ready" } else { &func.name };
+        let fn_name = if func.name == "main" {
+            "_ready"
+        } else {
+            &func.name
+        };
         out.write_all(fn_name.as_bytes())?;
 
         out.write(b"(")?;
@@ -562,7 +562,12 @@ impl GDScriptTrans {
     }
 
     /// Emit a method inside a class (adds self parameter)
-    fn fn_decl_in_class(&mut self, func: &Fn, _type_decl: &TypeDecl, out: &mut impl Write) -> AutoResult<()> {
+    fn fn_decl_in_class(
+        &mut self,
+        func: &Fn,
+        _type_decl: &TypeDecl,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         self.print_indent(out)?;
 
         // Check if this is a static method (static fn in Auto)
@@ -829,11 +834,12 @@ impl GDScriptTrans {
             out.write(b"var ")?;
             out.write_all(member.name.as_bytes())?;
             out.write(b": ")?;
-            let type_name = if self.is_type_decl_generic_param(&member.ty, &type_decl.generic_params) {
-                AutoStr::from("Variant")
-            } else {
-                self.gdscript_type_name(&member.ty)
-            };
+            let type_name =
+                if self.is_type_decl_generic_param(&member.ty, &type_decl.generic_params) {
+                    AutoStr::from("Variant")
+                } else {
+                    self.gdscript_type_name(&member.ty)
+                };
             out.write_all(type_name.as_bytes())?;
             out.write(b"\n")?;
         }
@@ -982,7 +988,12 @@ impl GDScriptTrans {
         Ok(())
     }
 
-    fn fn_decl_in_class_for_tag(&mut self, func: &Fn, _tag: &Tag, out: &mut impl Write) -> AutoResult<()> {
+    fn fn_decl_in_class_for_tag(
+        &mut self,
+        func: &Fn,
+        _tag: &Tag,
+        out: &mut impl Write,
+    ) -> AutoResult<()> {
         self.fn_decl_in_class(func, &TypeDecl::builtin(&_tag.name), out)
     }
 
@@ -1433,7 +1444,9 @@ impl GDScriptTrans {
 
     fn gdscript_type_name(&self, ty: &Type) -> AutoStr {
         match ty {
-            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64 | Type::Byte => "int".into(),
+            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64 | Type::Byte => {
+                "int".into()
+            }
             Type::Float | Type::Double => "float".into(),
             Type::Bool => "bool".into(),
             Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => "String".into(),
@@ -1442,10 +1455,17 @@ impl GDScriptTrans {
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
             // Plan 306 Phase 5a: typed collections — recurse on element types.
             Type::List(elem) => format!("Array[{}]", self.gdscript_type_name(elem)).into(),
-            Type::Map(k, v) => format!("Dictionary[{}, {}]", self.gdscript_type_name(k), self.gdscript_type_name(v)).into(),
+            Type::Map(k, v) => format!(
+                "Dictionary[{}, {}]",
+                self.gdscript_type_name(k),
+                self.gdscript_type_name(v)
+            )
+            .into(),
             // GDScript has no fixed-size array; [N]T / []T / [expr]T → Array[T]
             Type::Array(at) => format!("Array[{}]", self.gdscript_type_name(&at.elem)).into(),
-            Type::RuntimeArray(rta) => format!("Array[{}]", self.gdscript_type_name(&rta.elem)).into(),
+            Type::RuntimeArray(rta) => {
+                format!("Array[{}]", self.gdscript_type_name(&rta.elem)).into()
+            }
             Type::Slice(st) => format!("Array[{}]", self.gdscript_type_name(&st.elem)).into(),
             Type::Option(_) => "Variant".into(),
             Type::Result(_) => "Variant".into(),
@@ -1515,7 +1535,11 @@ impl GDScriptTrans {
             // use module → const Module = preload("res://module.gd")
             let module_name = path.rsplit('/').next().unwrap_or(path.as_ref());
             let class_name = capitalize_first(module_name);
-            write!(out, "const {} = preload(\"res://{}.gd\")\n", class_name, path)?;
+            write!(
+                out,
+                "const {} = preload(\"res://{}.gd\")\n",
+                class_name, path
+            )?;
             if let Some(syms) = symbols {
                 if !syms.is_empty() {
                     write!(out, "# imported: {}\n", syms.join(", "))?;
@@ -1539,9 +1563,11 @@ impl GDScriptTrans {
             Expr::Str(_) => Type::StrOwned,
             Expr::Array(_) => Type::List(Box::new(Type::Unknown)),
             Expr::Object(_) => Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown)),
-            Expr::Ident(name) => {
-                self.local_var_types.get(name).cloned().unwrap_or(Type::Unknown)
-            }
+            Expr::Ident(name) => self
+                .local_var_types
+                .get(name)
+                .cloned()
+                .unwrap_or(Type::Unknown),
             _ => Type::Unknown,
         }
     }
@@ -1642,13 +1668,17 @@ fn capitalize_first(s: &str) -> String {
 impl Trans for GDScriptTrans {
     fn trans(&mut self, ast: Code, sink: &mut Sink) -> AutoResult<()> {
         // Find and save main function if it exists
-        let main_func = ast.stmts.iter().find(|s| {
-            if let Stmt::Fn(func) = s {
-                func.name == "main"
-            } else {
-                false
-            }
-        }).cloned();
+        let main_func = ast
+            .stmts
+            .iter()
+            .find(|s| {
+                if let Stmt::Fn(func) = s {
+                    func.name == "main"
+                } else {
+                    false
+                }
+            })
+            .cloned();
 
         // Plan 306 Phase 2b: when the file declares a `scene`, the generated
         // script should extend the scene's root node type (e.g. Control) so the
@@ -1738,7 +1768,11 @@ impl Trans for GDScriptTrans {
 
         // Phase 3: Assemble final output
         // 1. File header
-        write!(sink.body, "# Auto-generated from {}.at — do not edit\n\n", self.name)?;
+        write!(
+            sink.body,
+            "# Auto-generated from {}.at — do not edit\n\n",
+            self.name
+        )?;
 
         // 1b. Script-level annotations (@tool, @icon(...)) — Godot requires these
         // before `extends`. Emitted verbatim from #[tool]/#[icon(...)].
@@ -1759,9 +1793,12 @@ impl Trans for GDScriptTrans {
                 if sig.params.is_empty() {
                     write!(sink.body, "signal {}\n", sig.name)?;
                 } else {
-                    let params = sig.params.iter().map(|p| {
-                        format!("{}: {}", p.name, self.gdscript_type_name(&p.ty))
-                    }).collect::<Vec<_>>().join(", ");
+                    let params = sig
+                        .params
+                        .iter()
+                        .map(|p| format!("{}: {}", p.name, self.gdscript_type_name(&p.ty)))
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     write!(sink.body, "signal {}({})\n", sig.name, params)?;
                 }
             }
@@ -1836,7 +1873,10 @@ mod tests {
             .stack_size(16 * 1024 * 1024)
             .spawn(move || test_a2gd(&case))
             .expect("failed to spawn deep-stack test thread");
-        child.join().expect("deep-stack test thread panicked").unwrap();
+        child
+            .join()
+            .expect("deep-stack test thread panicked")
+            .unwrap();
     }
 
     #[test]
@@ -1937,120 +1977,192 @@ mod tests {
     // Task 9: Expanded test suite
 
     #[test]
-    fn test_comments() { test_a2gd("01_basics/040_comments").unwrap(); }
+    fn test_comments() {
+        test_a2gd("01_basics/040_comments").unwrap();
+    }
 
     // Plan 306 Phase 2c: Godot builtin types keep their annotations.
     #[test]
-    fn test_godot_vector2_sig() { test_a2gd("17_godot_types/001_vector2").unwrap(); }
+    fn test_godot_vector2_sig() {
+        test_a2gd("17_godot_types/001_vector2").unwrap();
+    }
 
     // Plan 306 Phase 2c: #[export] var → GDScript @export var.
     #[test]
-    fn test_godot_export() { test_a2gd("17_godot_types/002_export").unwrap(); }
+    fn test_godot_export() {
+        test_a2gd("17_godot_types/002_export").unwrap();
+    }
 
     // Plan 306 Phase 3: extended annotations (@onready, @export_range, @export_group).
     #[test]
-    fn test_godot_annotations() { test_a2gd("17_godot_types/003_annot").unwrap(); }
+    fn test_godot_annotations() {
+        test_a2gd("17_godot_types/003_annot").unwrap();
+    }
 
     // Plan 306 Phase 3: script-level annotations (@tool, @icon) emitted before `extends`.
     #[test]
-    fn test_godot_script_annotations() { test_a2gd("17_godot_types/004_tool").unwrap(); }
+    fn test_godot_script_annotations() {
+        test_a2gd("17_godot_types/004_tool").unwrap();
+    }
 
     // Plan 306: signal declarations inside a scene → `signal name(p: T)` in .gd.
     #[test]
-    fn test_godot_signals() { test_a2gd("17_godot_types/005_signal").unwrap(); }
+    fn test_godot_signals() {
+        test_a2gd("17_godot_types/005_signal").unwrap();
+    }
 
     // Plan 306 Phase 5a: typed collections Array[T]/Dictionary[K,V].
     #[test]
-    fn test_godot_typed_collections() { test_a2gd("17_godot_types/006_typed").unwrap(); }
+    fn test_godot_typed_collections() {
+        test_a2gd("17_godot_types/006_typed").unwrap();
+    }
 
     // Plan 306 Phase 5b: enum explicit values + source-casing preservation.
     #[test]
-    fn test_godot_enum_values() { test_a2gd("17_godot_types/007_enum").unwrap(); }
+    fn test_godot_enum_values() {
+        test_a2gd("17_godot_types/007_enum").unwrap();
+    }
 
     #[test]
-    fn test_unary_neg() { test_a2gd("01_basics/041_unary_neg").unwrap(); }
+    fn test_unary_neg() {
+        test_a2gd("01_basics/041_unary_neg").unwrap();
+    }
 
     #[test]
-    fn test_unary_not() { test_a2gd("01_basics/042_unary_not").unwrap(); }
+    fn test_unary_not() {
+        test_a2gd("01_basics/042_unary_not").unwrap();
+    }
 
     #[test]
-    fn test_const_decl() { test_a2gd("01_basics/044_const_decl").unwrap(); }
+    fn test_const_decl() {
+        test_a2gd("01_basics/044_const_decl").unwrap();
+    }
 
     #[test]
-    fn test_boolean_ops() { test_a2gd("01_basics/046_boolean_ops").unwrap(); }
+    fn test_boolean_ops() {
+        test_a2gd("01_basics/046_boolean_ops").unwrap();
+    }
 
     #[test]
-    fn test_arithmetic() { test_a2gd("01_basics/047_arithmetic").unwrap(); }
+    fn test_arithmetic() {
+        test_a2gd("01_basics/047_arithmetic").unwrap();
+    }
 
     #[test]
-    fn test_lambda() { test_a2gd("05_expressions/010_lambda").unwrap(); }
+    fn test_lambda() {
+        test_a2gd("05_expressions/010_lambda").unwrap();
+    }
 
     #[test]
-    fn test_object() { test_a2gd("05_expressions/021_object").unwrap(); }
+    fn test_object() {
+        test_a2gd("05_expressions/021_object").unwrap();
+    }
 
     #[test]
-    fn test_chained_method() { test_a2gd("05_expressions/032_chained_method").unwrap(); }
+    fn test_chained_method() {
+        test_a2gd("05_expressions/032_chained_method").unwrap();
+    }
 
     #[test]
-    fn test_option() { test_a2gd("09_option_result/001_option").unwrap(); }
+    fn test_option() {
+        test_a2gd("09_option_result/001_option").unwrap();
+    }
 
     #[test]
-    fn test_result_ok() { test_a2gd("09_option_result/003_result_ok").unwrap(); }
+    fn test_result_ok() {
+        test_a2gd("09_option_result/003_result_ok").unwrap();
+    }
 
     // Cookbook tests from learn-gdscript (GDQuest)
     #[test]
-    fn test_cb_health_var() { test_a2gd("cookbook/01_variables/001_health_var").unwrap(); }
+    fn test_cb_health_var() {
+        test_a2gd("cookbook/01_variables/001_health_var").unwrap();
+    }
 
     #[test]
-    fn test_cb_angular_speed() { test_a2gd("cookbook/01_variables/002_angular_speed").unwrap(); }
+    fn test_cb_angular_speed() {
+        test_a2gd("cookbook/01_variables/002_angular_speed").unwrap();
+    }
 
     #[test]
-    fn test_cb_take_damage() { test_a2gd("cookbook/02_arithmetic/001_take_damage").unwrap(); }
+    fn test_cb_take_damage() {
+        test_a2gd("cookbook/02_arithmetic/001_take_damage").unwrap();
+    }
 
     #[test]
-    fn test_cb_heal() { test_a2gd("cookbook/02_arithmetic/002_heal").unwrap(); }
+    fn test_cb_heal() {
+        test_a2gd("cookbook/02_arithmetic/002_heal").unwrap();
+    }
 
     #[test]
-    fn test_cb_level_up() { test_a2gd("cookbook/02_arithmetic/003_level_up").unwrap(); }
+    fn test_cb_level_up() {
+        test_a2gd("cookbook/02_arithmetic/003_level_up").unwrap();
+    }
 
     #[test]
-    fn test_cb_damage_reduction() { test_a2gd("cookbook/02_arithmetic/004_damage_reduction").unwrap(); }
+    fn test_cb_damage_reduction() {
+        test_a2gd("cookbook/02_arithmetic/004_damage_reduction").unwrap();
+    }
 
     #[test]
-    fn test_cb_comparisons() { test_a2gd("cookbook/03_conditions/001_comparisons").unwrap(); }
+    fn test_cb_comparisons() {
+        test_a2gd("cookbook/03_conditions/001_comparisons").unwrap();
+    }
 
     #[test]
-    fn test_cb_limit_health() { test_a2gd("cookbook/03_conditions/002_limit_health").unwrap(); }
+    fn test_cb_limit_health() {
+        test_a2gd("cookbook/03_conditions/002_limit_health").unwrap();
+    }
 
     #[test]
-    fn test_cb_prevent_zero() { test_a2gd("cookbook/03_conditions/003_prevent_zero").unwrap(); }
+    fn test_cb_prevent_zero() {
+        test_a2gd("cookbook/03_conditions/003_prevent_zero").unwrap();
+    }
 
     #[test]
-    fn test_cb_for_range() { test_a2gd("cookbook/04_loops/001_for_range").unwrap(); }
+    fn test_cb_for_range() {
+        test_a2gd("cookbook/04_loops/001_for_range").unwrap();
+    }
 
     #[test]
-    fn test_cb_while_move() { test_a2gd("cookbook/04_loops/002_while_move").unwrap(); }
+    fn test_cb_while_move() {
+        test_a2gd("cookbook/04_loops/002_while_move").unwrap();
+    }
 
     #[test]
-    fn test_cb_for_each() { test_a2gd("cookbook/04_loops/003_for_each").unwrap(); }
+    fn test_cb_for_each() {
+        test_a2gd("cookbook/04_loops/003_for_each").unwrap();
+    }
 
     #[test]
-    fn test_cb_array_create() { test_a2gd("cookbook/05_arrays/001_create").unwrap(); }
+    fn test_cb_array_create() {
+        test_a2gd("cookbook/05_arrays/001_create").unwrap();
+    }
 
     #[test]
-    fn test_cb_append_pop() { test_a2gd("cookbook/05_arrays/002_append_pop").unwrap(); }
+    fn test_cb_append_pop() {
+        test_a2gd("cookbook/05_arrays/002_append_pop").unwrap();
+    }
 
     #[test]
-    fn test_cb_index_access() { test_a2gd("cookbook/05_arrays/003_index_access").unwrap(); }
+    fn test_cb_index_access() {
+        test_a2gd("cookbook/05_arrays/003_index_access").unwrap();
+    }
 
     #[test]
-    fn test_cb_string_concat() { test_a2gd("cookbook/06_strings/001_concat").unwrap(); }
+    fn test_cb_string_concat() {
+        test_a2gd("cookbook/06_strings/001_concat").unwrap();
+    }
 
     #[test]
-    fn test_cb_string_array() { test_a2gd("cookbook/06_strings/002_string_array").unwrap(); }
+    fn test_cb_string_array() {
+        test_a2gd("cookbook/06_strings/002_string_array").unwrap();
+    }
 
     #[test]
-    fn test_cb_return_value() { test_a2gd("cookbook/07_functions/001_return_value").unwrap(); }
+    fn test_cb_return_value() {
+        test_a2gd("cookbook/07_functions/001_return_value").unwrap();
+    }
 
     // Plan 308: reverse-translated Godot demo scripts.
     #[test]
@@ -2081,11 +2193,17 @@ mod tests {
     }
 
     #[test]
-    fn test_cb_dict_create() { test_a2gd("cookbook/08_dictionaries/001_create").unwrap(); }
+    fn test_cb_dict_create() {
+        test_a2gd("cookbook/08_dictionaries/001_create").unwrap();
+    }
 
     #[test]
-    fn test_cb_dict_loop() { test_a2gd("cookbook/08_dictionaries/002_loop").unwrap(); }
+    fn test_cb_dict_loop() {
+        test_a2gd("cookbook/08_dictionaries/002_loop").unwrap();
+    }
 
     #[test]
-    fn test_cb_type_conversion() { test_a2gd("cookbook/09_types/001_conversion").unwrap(); }
+    fn test_cb_type_conversion() {
+        test_a2gd("cookbook/09_types/001_conversion").unwrap();
+    }
 }

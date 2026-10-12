@@ -2,7 +2,7 @@
 # Base utilities only: no variant prefixes (hover:/dark:/md:…), no
 # arbitrary values (…-[Npx]), no opacity modifiers (…/75).
 # Source: official tailwindcss 3.4.x corePlugins default-theme scales,
-# expanded & deduped by tools/gen_tailwind_manifest.py (Plan 527 T1).
+# expanded & deduped by scripts/tools/gen_tailwind_manifest.py (Plan 527 T1).
 # Format: `# family <name>` starts a docs-family section; each
 # non-comment line is one utility class consumed by tests/style_parity.rs.
 

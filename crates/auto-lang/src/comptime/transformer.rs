@@ -55,16 +55,16 @@ impl CTEE {
 
     /// Initialize built-in compile-time constants
     fn init_builtins(&mut self) {
-        self.builtins.insert(
-            "OS".to_string(),
-            Value::Str(self.target_os.clone().into()),
-        );
+        self.builtins
+            .insert("OS".to_string(), Value::Str(self.target_os.clone().into()));
         self.builtins.insert(
             "ARCH".to_string(),
             Value::Str(self.target_arch.clone().into()),
         );
-        self.builtins.insert("DEBUG".to_string(), Value::Bool(cfg!(debug_assertions)));
-        self.builtins.insert("VERSION".to_string(), Value::Str("0.1.0".into()));
+        self.builtins
+            .insert("DEBUG".to_string(), Value::Bool(cfg!(debug_assertions)));
+        self.builtins
+            .insert("VERSION".to_string(), Value::Str("0.1.0".into()));
     }
 
     /// Get a built-in constant value
@@ -238,7 +238,8 @@ impl CTEE {
                     return Err(ComptimeError::CompileError {
                         message: msg,
                         span: SourceSpan::new(0usize.into(), 0usize.into()),
-                    }.into());
+                    }
+                    .into());
                 }
             }
         }
@@ -305,7 +306,8 @@ impl CTEE {
                 Err(crate::error::SyntaxError::Generic {
                     message: msg,
                     span: miette::SourceSpan::new(0usize.into(), 0usize.into()),
-                }.into())
+                }
+                .into())
             }
         }
     }

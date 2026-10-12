@@ -278,7 +278,10 @@ mod tests {
             modifiers: EditorModifiers::none(),
         });
         assert_eq!(text_via_protocol, direct.core.text(), "协议输入与直喂无差");
-        assert!(text_via_protocol.starts_with('x'), "打字确实落盘: {text_via_protocol:?}");
+        assert!(
+            text_via_protocol.starts_with('x'),
+            "打字确实落盘: {text_via_protocol:?}"
+        );
     }
 
     #[test]
@@ -296,18 +299,22 @@ mod tests {
 
         // commit：组合串落盘 + revision 前进。
         let rev_before = s.revision();
-        s.on_input(&InputMsg::ImeCommit { wid: 1, text: "让 ".into() });
-        assert!(s.core.text().starts_with("让 "), "IME commit 落盘: {:?}", s.core.text());
+        s.on_input(&InputMsg::ImeCommit {
+            wid: 1,
+            text: "让 ".into(),
+        });
+        assert!(
+            s.core.text().starts_with("让 "),
+            "IME commit 落盘: {:?}",
+            s.core.text()
+        );
         assert!(s.revision() > rev_before, "落盘推版本");
         let committed_frame = s.render_frame();
         assert!(
             frame_text(&committed_frame).contains("让"),
             "落盘文本随帧过线"
         );
-        assert!(
-            !s.last_cache_keys.is_empty(),
-            "缓存键随帧产出（413 §7.③）"
-        );
+        assert!(!s.last_cache_keys.is_empty(), "缓存键随帧产出（413 §7.③）");
     }
 
     #[test]

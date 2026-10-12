@@ -27,11 +27,13 @@ mod loop_member_style_interp {
 }
 "#;
         let mut comp = crate::build_dynamic_component(src, None).expect("compile");
-        let entries = vec![auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([(
-            "chip",
-            // rounded-[10px] VM 侧无 arbitrary 半径档,块级用 rounded-xl 双端等价。
-            auto_val::Value::Str("bg-[#7c9a6d21] rounded-xl".into()),
-        )])))];
+        let entries = vec![auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
+            (
+                "chip",
+                // rounded-[10px] VM 侧无 arbitrary 半径档,块级用 rounded-xl 双端等价。
+                auto_val::Value::Str("bg-[#7c9a6d21] rounded-xl".into()),
+            ),
+        ])))];
         let _ = comp.write_state_vec("rows", entries);
         let (view, _, _) = comp.view_with_debug_gated(false);
         let rendered = format!("{view:?}");
@@ -88,10 +90,9 @@ mod vue_loop_member_class {
     /// 既有 `${.field}` 形态不回归。
     #[test]
     fn vue_state_field_class_parts_no_regress() {
-        let (_, expr) = crate::ui_gen::vue::VueGenerator::interpolated_class_parts(
-            "w-full ${.chip}",
-        )
-        .expect("state interpolation must split");
+        let (_, expr) =
+            crate::ui_gen::vue::VueGenerator::interpolated_class_parts("w-full ${.chip}")
+                .expect("state interpolation must split");
         assert_eq!(expr, "'w-full' + chip");
     }
 }
@@ -122,7 +123,9 @@ mod launcher_rewrite {
 
     #[test]
     fn launcher_compiles_and_renders_brand_chips() {
-        let Some(mut comp) = build_launcher() else { return };
+        let Some(mut comp) = build_launcher() else {
+            return;
+        };
         let _ = comp.write_state("visible", auto_val::Value::str("1"));
         comp.bridge_mut()
             .call_handler("ApplyFilter", &[])
@@ -145,7 +148,9 @@ mod launcher_rewrite {
 
     #[test]
     fn launcher_pickcat_filters_results() {
-        let Some(mut comp) = build_launcher() else { return };
+        let Some(mut comp) = build_launcher() else {
+            return;
+        };
         let _ = comp.write_state("visible", auto_val::Value::str("1"));
         comp.bridge_mut()
             .call_handler("ApplyFilter", &[])

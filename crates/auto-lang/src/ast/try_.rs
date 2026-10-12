@@ -29,8 +29,16 @@ impl fmt::Display for Try {
             None => String::new(),
         };
         match &self.catch_param {
-            Some(p) => write!(f, "(try {} (catch {} {}){})", self.body, p, self.catch_body, finally),
-            None => write!(f, "(try {} (catch {}){})", self.body, self.catch_body, finally),
+            Some(p) => write!(
+                f,
+                "(try {} (catch {} {}){})",
+                self.body, p, self.catch_body, finally
+            ),
+            None => write!(
+                f,
+                "(try {} (catch {}){})",
+                self.body, self.catch_body, finally
+            ),
         }
     }
 }

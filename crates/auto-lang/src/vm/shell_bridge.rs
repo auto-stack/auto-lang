@@ -60,21 +60,24 @@ pub fn pop() -> Option<ShellExecRequest> {
 pub fn highlight_rgb(code: &str) -> Vec<(String, Option<(u8, u8, u8)>)> {
     // 与 vue 生成器(cmd_vue.rs)自定义 'auto' 语言的 keyword 正则同源。
     // null/nil 在该正则中属 keyword;true/false 走 boolean(橙)。
-    const KW: &[&str] = &["widget", "fn", "let", "mut", "const", "var", "if", "else", "for",
-        "in", "loop", "while", "break", "continue", "return", "use", "import", "export",
-        "type", "struct", "enum", "impl", "trait", "pub", "private", "static", "async",
-        "await", "try", "catch", "throw", "new", "null", "nil", "self", "super"];
+    const KW: &[&str] = &[
+        "widget", "fn", "let", "mut", "const", "var", "if", "else", "for", "in", "loop", "while",
+        "break", "continue", "return", "use", "import", "export", "type", "struct", "enum", "impl",
+        "trait", "pub", "private", "static", "async", "await", "try", "catch", "throw", "new",
+        "null", "nil", "self", "super",
+    ];
     const BOOL: &[&str] = &["true", "false"];
     // bash 代码块(npm install …)中这些命令词在 prism-bash 里着 function 橙;
     // 手写 lexer 不做语言区分,按词表近似同一色相。
-    const CMD: &[&str] = &["npx", "npm", "yarn", "pnpm", "cd", "bun", "git", "cargo",
-        "pip", "python", "node", "deno"];
+    const CMD: &[&str] = &[
+        "npx", "npm", "yarn", "pnpm", "cd", "bun", "git", "cargo", "pip", "python", "node", "deno",
+    ];
     const C_KW: (u8, u8, u8) = (0xcc, 0x99, 0xcd); // keyword/builtin 紫
     const C_STR: (u8, u8, u8) = (0x7e, 0xc6, 0x99); // string 绿
     const C_COM: (u8, u8, u8) = (0x99, 0x99, 0x99); // comment 灰
     const C_NUM: (u8, u8, u8) = (0xf0, 0x8d, 0x49); // number/boolean/function 橙
     const C_PUN: (u8, u8, u8) = (0xcc, 0xcc, 0xcc); // punctuation 浅灰
-    const C_OP: (u8, u8, u8) = (0x67, 0xcd, 0xcc);  // operator 青
+    const C_OP: (u8, u8, u8) = (0x67, 0xcd, 0xcc); // operator 青
 
     let bytes = code.as_bytes();
     let n = bytes.len();
@@ -115,7 +118,9 @@ pub fn highlight_rgb(code: &str) -> Vec<(String, Option<(u8, u8, u8)>)> {
             push(&mut out, code[s..i].to_string(), Some(C_NUM));
         } else if b.is_ascii_alphabetic() || b == b'_' {
             let s = i;
-            while i < n && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-') {
+            while i < n
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'-')
+            {
                 i += 1;
             }
             let t = &code[s..i];
@@ -126,9 +131,13 @@ pub fn highlight_rgb(code: &str) -> Vec<(String, Option<(u8, u8, u8)>)> {
                 j += 1;
             }
             let is_call = j < n && bytes[j] == b'(';
-            let color = if KW.contains(&t) { Some(C_KW) }
-                else if BOOL.contains(&t) || is_call || CMD.contains(&t) { Some(C_NUM) }
-                else { None };
+            let color = if KW.contains(&t) {
+                Some(C_KW)
+            } else if BOOL.contains(&t) || is_call || CMD.contains(&t) {
+                Some(C_NUM)
+            } else {
+                None
+            };
             push(&mut out, t.to_string(), color);
         } else if b == b' ' || b == b'\n' || b == b'\t' || b == b'\r' {
             let s = i;
@@ -136,12 +145,44 @@ pub fn highlight_rgb(code: &str) -> Vec<(String, Option<(u8, u8, u8)>)> {
                 i += 1;
             }
             push(&mut out, code[s..i].to_string(), None);
-        } else if matches!(b, b'+' | b'-' | b'*' | b'/' | b'%' | b'=' | b'<' | b'>'
-            | b'!' | b'&' | b'|' | b'^' | b'~' | b'?' | b':') {
+        } else if matches!(
+            b,
+            b'+' | b'-'
+                | b'*'
+                | b'/'
+                | b'%'
+                | b'='
+                | b'<'
+                | b'>'
+                | b'!'
+                | b'&'
+                | b'|'
+                | b'^'
+                | b'~'
+                | b'?'
+                | b':'
+        ) {
             let s = i;
             // 连续运算符字符并成一档(如 =>、==、&&)。
-            while i < n && matches!(bytes[i], b'+' | b'-' | b'*' | b'/' | b'%' | b'='
-                | b'<' | b'>' | b'!' | b'&' | b'|' | b'^' | b'~' | b'?' | b':') {
+            while i < n
+                && matches!(
+                    bytes[i],
+                    b'+' | b'-'
+                        | b'*'
+                        | b'/'
+                        | b'%'
+                        | b'='
+                        | b'<'
+                        | b'>'
+                        | b'!'
+                        | b'&'
+                        | b'|'
+                        | b'^'
+                        | b'~'
+                        | b'?'
+                        | b':'
+                )
+            {
                 i += 1;
             }
             push(&mut out, code[s..i].to_string(), Some(C_OP));

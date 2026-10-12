@@ -95,9 +95,15 @@ fn test_mem_profile_report() {
     );
     let s4 = Snapshot::take();
 
-    eprintln!("{}", report_delta_line("0_harness_libload", &s1.delta_since(&s0)));
+    eprintln!(
+        "{}",
+        report_delta_line("0_harness_libload", &s1.delta_since(&s0))
+    );
     eprintln!("{}", report_delta_line("1_compile", &s2.delta_since(&s1)));
     eprintln!("{}", report_delta_line("2_exec", &s3.delta_since(&s2)));
-    eprintln!("{}", report_delta_line("3_end_to_end_rerun", &s4.delta_since(&s3)));
+    eprintln!(
+        "{}",
+        report_delta_line("3_end_to_end_rerun", &s4.delta_since(&s3))
+    );
     eprintln!("{}", report_total_line());
 }

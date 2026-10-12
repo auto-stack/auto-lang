@@ -223,11 +223,16 @@ impl UiNode {
 
         // Actions
         if !self.actions.is_empty() {
-            let action_strs: Vec<String> = self.actions
+            let action_strs: Vec<String> = self
+                .actions
                 .iter()
                 .map(|a| format!("{} -> {}", a.name, a.handler))
                 .collect();
-            lines.push(format!("{}actions: [{}]", inner_pad, action_strs.join(", ")));
+            lines.push(format!(
+                "{}actions: [{}]",
+                inner_pad,
+                action_strs.join(", ")
+            ));
         }
 
         // Children

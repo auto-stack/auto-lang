@@ -611,14 +611,24 @@ impl<'a> Lexer<'a> {
                 self.chars.next(); // consume \
                 if let Some(&escaped) = self.chars.peek() {
                     self.chars.next(); // consume escaped char
-                    if escaped == 'n' { text.push('\n'); }
-                    else if escaped == 't' { text.push('\t'); }
-                    else if escaped == 'r' { text.push('\r'); }
-                    else if escaped == '\\' { text.push('\\'); }
-                    else if escaped == '"' { text.push('"'); }
-                    else if escaped == '`' { text.push('`'); }
-                    else if escaped == '$' { text.push('$'); }
-                    else { text.push('\\'); text.push(escaped); }
+                    if escaped == 'n' {
+                        text.push('\n');
+                    } else if escaped == 't' {
+                        text.push('\t');
+                    } else if escaped == 'r' {
+                        text.push('\r');
+                    } else if escaped == '\\' {
+                        text.push('\\');
+                    } else if escaped == '"' {
+                        text.push('"');
+                    } else if escaped == '`' {
+                        text.push('`');
+                    } else if escaped == '$' {
+                        text.push('$');
+                    } else {
+                        text.push('\\');
+                        text.push(escaped);
+                    }
                 }
             } else if c == self.fstr_note {
                 // text until $ is a string part
@@ -1115,7 +1125,11 @@ impl<'a> Lexer<'a> {
                                 self.chars.next(); // skip '#'
                                 self.chars.next(); // skip 'i'
                                 self.chars.next(); // skip 'f'
-                                return Ok(Token::new(TokenKind::HashIf, self.pos(3), "#if".into()));
+                                return Ok(Token::new(
+                                    TokenKind::HashIf,
+                                    self.pos(3),
+                                    "#if".into(),
+                                ));
                             }
                         }
                         // Check for #is
@@ -1128,7 +1142,11 @@ impl<'a> Lexer<'a> {
                                 self.chars.next(); // skip '#'
                                 self.chars.next(); // skip 'i'
                                 self.chars.next(); // skip 's'
-                                return Ok(Token::new(TokenKind::HashIs, self.pos(3), "#is".into()));
+                                return Ok(Token::new(
+                                    TokenKind::HashIs,
+                                    self.pos(3),
+                                    "#is".into(),
+                                ));
                             }
                         }
                     }
@@ -1145,7 +1163,11 @@ impl<'a> Lexer<'a> {
                                     self.chars.next(); // skip 'f'
                                     self.chars.next(); // skip 'o'
                                     self.chars.next(); // skip 'r'
-                                    return Ok(Token::new(TokenKind::HashFor, self.pos(4), "#for".into()));
+                                    return Ok(Token::new(
+                                        TokenKind::HashFor,
+                                        self.pos(4),
+                                        "#for".into(),
+                                    ));
                                 }
                             }
                         }
@@ -1246,8 +1268,11 @@ impl<'a> Lexer<'a> {
                             let found_else = loop {
                                 // Skip spaces/tabs/\r
                                 while let Some(&nc) = iter.peek() {
-                                    if nc == ' ' || nc == '\t' || nc == '\r' { iter.next(); }
-                                    else { break; }
+                                    if nc == ' ' || nc == '\t' || nc == '\r' {
+                                        iter.next();
+                                    } else {
+                                        break;
+                                    }
                                 }
                                 // Skip // line comments
                                 if iter.peek() == Some(&'/') {
@@ -1255,27 +1280,38 @@ impl<'a> Lexer<'a> {
                                     ci.next();
                                     if ci.peek() == Some(&'/') {
                                         // It's a // comment — skip to end of line
-                                        iter.next(); iter.next(); // skip //
+                                        iter.next();
+                                        iter.next(); // skip //
                                         while let Some(&nc) = iter.peek() {
-                                            if nc == '\n' { break; }
+                                            if nc == '\n' {
+                                                break;
+                                            }
                                             iter.next();
                                         }
                                         // Skip the newline after comment
-                                        if iter.peek() == Some(&'\n') { iter.next(); }
+                                        if iter.peek() == Some(&'\n') {
+                                            iter.next();
+                                        }
                                         continue;
                                     }
                                 }
                                 // Skip newlines
-                                if iter.peek() == Some(&'\n') { iter.next(); continue; }
+                                if iter.peek() == Some(&'\n') {
+                                    iter.next();
+                                    continue;
+                                }
                                 // Check if next word is "else"
                                 let peek_text: String = iter.clone().take(4).collect();
                                 if peek_text == "else" {
                                     // Check that 'else' is a complete word
                                     let mut ci = iter.clone();
-                                    ci.next(); ci.next(); ci.next(); ci.next();
-                                    let is_complete = ci.peek().map_or(true, |&c|
-                                        !c.is_alphanumeric() && c != '_'
-                                    );
+                                    ci.next();
+                                    ci.next();
+                                    ci.next();
+                                    ci.next();
+                                    let is_complete = ci
+                                        .peek()
+                                        .map_or(true, |&c| !c.is_alphanumeric() && c != '_');
                                     break is_complete;
                                 }
                                 break false;
@@ -1290,9 +1326,12 @@ impl<'a> Lexer<'a> {
                                         ci.next();
                                         if ci.peek() == Some(&'/') {
                                             // Skip the comment line
-                                            self.chars.next(); self.chars.next();
+                                            self.chars.next();
+                                            self.chars.next();
                                             while let Some(&nc) = self.chars.peek() {
-                                                if nc == '\n' { break; }
+                                                if nc == '\n' {
+                                                    break;
+                                                }
                                                 self.chars.next();
                                             }
                                             if self.chars.peek() == Some(&'\n') {
@@ -1337,11 +1376,7 @@ impl<'a> Lexer<'a> {
                     if two_stars {
                         self.chars.next(); // c
                         self.chars.next(); // 第二星
-                        return Ok(Token::new(
-                            TokenKind::Power,
-                            self.pos(2),
-                            "**".into(),
-                        ));
+                        return Ok(Token::new(TokenKind::Power, self.pos(2), "**".into()));
                     }
                     return Ok(self.with_equal(TokenKind::Star, TokenKind::MulEq, c));
                 }
@@ -1496,8 +1531,7 @@ impl<'a> Lexer<'a> {
             }
             // Regular line comment
             let tok = Token::new(TokenKind::CommentLine, self.pos(2), "//".into());
-            let content =
-                Token::new(TokenKind::CommentContent, self.pos(text.len()), text.into());
+            let content = Token::new(TokenKind::CommentContent, self.pos(text.len()), text.into());
             self.buffer.push_back(content);
             tok
         } else if self.peek('*') {
@@ -1728,7 +1762,10 @@ mod tests {
         // any other prop-bearing element.
         let code = r##"markdown { content: "# hello" }"##;
         let tokens = parse_token_strings(code);
-        assert_eq!(tokens, "<ident:markdown><{><ident:content><:><str:# hello><}>");
+        assert_eq!(
+            tokens,
+            "<ident:markdown><{><ident:content><:><str:# hello><}>"
+        );
     }
 
     #[test]
@@ -2077,7 +2114,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod tests_w2_power {
     use super::*;
@@ -2086,8 +2122,16 @@ mod tests_w2_power {
     fn test_star_vs_power_lex() {
         // Plan 560 T07：单星=Star、双星=Power。
         let toks = Lexer::new("3 * 2").tokenize_all().unwrap();
-        assert!(toks.iter().any(|t| matches!(t.kind, TokenKind::Star)), "{:?}", toks.iter().map(|t| &t.kind).collect::<Vec<_>>());
+        assert!(
+            toks.iter().any(|t| matches!(t.kind, TokenKind::Star)),
+            "{:?}",
+            toks.iter().map(|t| &t.kind).collect::<Vec<_>>()
+        );
         let toks2 = Lexer::new("3 ** 2").tokenize_all().unwrap();
-        assert!(toks2.iter().any(|t| matches!(t.kind, TokenKind::Power)), "{:?}", toks2.iter().map(|t| &t.kind).collect::<Vec<_>>());
+        assert!(
+            toks2.iter().any(|t| matches!(t.kind, TokenKind::Power)),
+            "{:?}",
+            toks2.iter().map(|t| &t.kind).collect::<Vec<_>>()
+        );
     }
 }

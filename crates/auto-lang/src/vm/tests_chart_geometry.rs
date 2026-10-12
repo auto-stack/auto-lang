@@ -8,7 +8,6 @@
 ///
 /// 纪律：float 中间量显式声明 `float`；int→float 转换经存储强转或
 /// 与 float 字面量混合（运行时 tag 驱动，两路均已修复）。
-
 use crate::run;
 
 // ---------- 能力验证 ----------
@@ -266,8 +265,6 @@ fn test_geo_math_trig() {
     assert_eq!(result, "0.999999999999999-1");
 }
 
-
-
 // ---------- donut 几何（复算 /donut-chart 页 Init 的完整计算）----------
 
 #[test]
@@ -376,10 +373,11 @@ fn test_geo_donut_paths() {
     assert!(slices[3].contains(" A100 100 0 0 1 "), "s3: {}", slices[3]);
 
     // 图例（含 {lbl} 字面量 bug 的回归防护）
-    assert_eq!(legend, "Desktop 55%   Mobile 25%   Tablet 12%   Wearable 8%");
+    assert_eq!(
+        legend,
+        "Desktop 55%   Mobile 25%   Tablet 12%   Wearable 8%"
+    );
 }
-
-
 
 // §0.6.H 回归：CALL_NAT 直接在 for 循环体内 → 后续浮点算术损坏
 // （最小复现：循环内 math.cos 后 cx+c 得位模式垃圾；用户函数包装幸存）。

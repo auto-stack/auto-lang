@@ -1,0 +1,51 @@
+{
+ "schema_version": 1,
+ "plan_id": "PLAN-738",
+ "plan_revision": 3,
+ "task": "T-14",
+ "final_code_commit": "b3a4d660e",
+ "worktree": "D:/autostack/.wt/lang-738/auto-lang",
+ "tree_clean": true,
+ "phase3_chain": [
+  "2c1b4a763 (R2 base)",
+  "c1579ed71 (T-10)",
+  "84bec29ef (T-11)",
+  "b6cfc6df1 (T-12)",
+  "1a983091f (T-14a lock first-materialization)",
+  "b3a4d660e (T-14b service-chain closeout)"
+ ],
+ "dependency_revisions": {
+  "auto_down": "895f8d0f (read-only)"
+ },
+ "diff_surface": {
+  "files": 8,
+  "insertions": 2224,
+  "deletions": 284
+ },
+ "gates": {
+  "check_three_crates": "0 errors",
+  "bare_t": "5183 run, 16 reds all documented baseline (13 master pre-existing + 3 flake-family); bound b6cfc6df1, auto-lang byte-identical at final",
+  "tv": "162/162",
+  "tt": "13 reds all baseline, non-baseline=0",
+  "th_serial": "85 pass/3 fail/14 timeout, per-name triage: back_proxy baseline; plan730 interop+multipart base-reproduced env red (temp worktree @2c1b4a763 same-command evidence); sse_chain isolated-green both trees; 13 cascade same plan730 family",
+  "plan738": "69/69",
+  "plan724": "5/5",
+  "cli_stdlib": "10/10",
+  "api_gen": "43/43",
+  "freshness": "2/2 + shell_pack env red (stash-verified)",
+  "rust_real_compile_witness": "1/1",
+  "c_stdio_msvc_witness": "1/1",
+  "service_full_chain": "1/1 (38.62s, schema4+workspace_lock receipt, stale->regenerate verified)"
+ },
+ "t14_fixes": [
+  "1a983091f: lock_freshness first-materialization semantics (deterministic materialization != dependency drift)",
+  "b3a4d660e: workspace_lock receipt write backfill (T-12 patch assertion-abort omission), current-side absent normalization, ready-vs-receipt fingerprint field alignment, schema-4 test assertion"
+ ],
+ "health": {
+  "debug_residue": 0,
+  "rustfmt": "clean",
+  "new_deterministic_reds": 0
+ },
+ "outcome": "execution_done; handoff to independent /auto-plan:review on b3a4d660e; no merge/archive/worktree-cleanup authorized",
+ "report": "docs/plans/reports/738-phase3-verification.md"
+}
