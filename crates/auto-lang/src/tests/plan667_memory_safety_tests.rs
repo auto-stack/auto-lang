@@ -32,7 +32,7 @@ async fn run_vm_probe(code: &str) -> (AutoVM, String, Option<String>) {
         last_error = t.last_error.clone();
         vm.rc_release_task_stack(&mut t);
     }
-    vm.tasks.remove(&tid);
+    vm.remove_task(tid);
     let out = stdout.read().unwrap().clone();
     (vm, out, last_error)
 }

@@ -5279,7 +5279,7 @@ pub fn shim_result_map_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
             _ => {
                 return Err(VMError::RuntimeError(
                     "map_err: Err field not an int".into(),
-                ))
+                ));
             }
         };
         // Release the read lock before calling closure (which may access heap)
@@ -5535,7 +5535,7 @@ fn generator_next_drive(
 
     if finished {
         // Generator returned/terminated: clean up the task.
-        vm.tasks.remove(&tid);
+        vm.remove_task(tid);
         gen_state.task_id = None;
         gen_state.done = true;
         task.ram.push_i32(-1);

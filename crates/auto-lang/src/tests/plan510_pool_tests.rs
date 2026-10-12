@@ -285,7 +285,7 @@ fn main() int {{
             vm.rc_release_task_stack(&mut t);
         }
         vm.reap_all();
-        vm.tasks.remove(&tid);
+        vm.remove_task(tid);
         let out = stdout.read().unwrap().clone();
         (vm, out)
     }

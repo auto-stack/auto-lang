@@ -1998,7 +1998,7 @@ async fn execute_autovm_with_deadline(
             let mut t = arc.lock().await;
             vm.rc_release_task_stack(&mut t);
         }
-        vm.tasks.remove(&init_task_id);
+        vm.remove_task(init_task_id);
     }
 
     // 5. Execute - Find main/test entry point
