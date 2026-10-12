@@ -1,0 +1,16 @@
+[package]
+name = "auto-test-case"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "AutoDown TestCase protocol core: profile, CaseIR, selection, comparison, reporting (Plan 768 pilot)"
+publish = false
+
+[dependencies]
+autodown-test-parser = { path = "../../vendor/autodown-test-parser" }
+
+[dev-dependencies]
+# Parity cross-check of the strict contract parser against the shared Atom
+# parser lands with the protocol layer (T-03); declared here from the start so
+# the dependency-light rule stays visible in one place.
+auto-atom = { path = "../auto-atom" }

@@ -8,6 +8,9 @@ members = [
     "crates/a2r-actor-tests",
     "crates/auto",
     "crates/auto-atom",
+    # Plan 768: AutoDown TestCase protocol core (dependency-light; adapters
+    # live in auto-lang/src/test_cases and depend on this crate).
+    "crates/auto-test-case",
     "crates/auto-gen",
     "crates/auto-lang",
     "crates/auto-macros",
@@ -45,6 +48,9 @@ exclude = [
     # Generated Rust UI examples live in their own workspace with a shared
     # target-dir pointing back at the main workspace target/.
     "examples/rust-workspace",
+    # Plan 768: pinned parser snapshot — frozen outside workspace settings;
+    # see vendor/autodown-test-parser/PROVENANCE.md.
+    "vendor/autodown-test-parser",
 ]
 resolver = "2"
 
