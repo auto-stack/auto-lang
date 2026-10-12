@@ -174,8 +174,8 @@ function onMobileKeydown(event: KeyboardEvent) {
       <div class="nav-actions">
         <SiteSearch class="nav-search" />
 
-        <a :href="langSwitchHref" class="nav-icon-btn nav-lang" :lang="zh ? 'en' : 'zh-CN'">
-          {{ langSwitchLabel }}
+        <a :href="langSwitchHref" class="nav-icon-btn nav-lang" :lang="zh ? 'en' : 'zh-CN'" :aria-label="langSwitchLabel" :title="langSwitchLabel">
+          {{ zh ? 'EN' : 'CN' }}
         </a>
 
         <button

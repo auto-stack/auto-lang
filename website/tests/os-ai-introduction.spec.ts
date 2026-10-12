@@ -47,7 +47,7 @@ for (const zh of [false, true]) {
         }
       }
       // The navbar language switch must retain this topic, including new articles.
-      const localeLink = page.locator('header.site-navbar a').filter({ hasText: zh ? 'English' : '中文' }).first()
+      const localeLink = page.locator('header.site-navbar a').filter({ hasText: zh ? 'EN' : 'CN' }).first()
       await expect(localeLink).toHaveAttribute('href', (zh ? '' : '/zh') + path)
       await localeLink.click()
       await expect(page).toHaveURL(new RegExp(`${zh ? '' : '/zh'}${path.replace(/\/$/, '/?')}$`))
