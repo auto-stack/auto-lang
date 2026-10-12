@@ -1,0 +1,32 @@
+/// VM function declarations for SQLite operations (Plan 744 / D-VM-SQLITE)
+/// Implemented in Rust in crates/auto-lang/src/vm/ffi/stdlib.rs.
+///
+/// The connection handle is an opaque int on the VM stack (VM-side registry,
+/// image-module opaque-ticket precedent); the public interface type SqliteDb
+/// stays in sqlite.at for the a2r track. Sentinel-error conventions match
+/// a2r-std/sqlite.rs: never panic, failures are queryable via last_error.
+
+/// Open (or create) a SQLite database file.
+/// Returns the connection handle (>0); falls back to an in-memory database
+/// on failure and records the error for last_error.
+#[vm]
+fn open(path str) int
+
+/// Execute a SQL statement (DDL or DML).
+/// Returns the number of rows affected, or -1 on failure (see last_error).
+#[vm]
+fn exec(handle int, sql str) int
+
+/// Run a SELECT query; every cell of every row is returned as a string
+/// (NULL → "", BLOB → "<N bytes>"). Returns List<List<str>> (nested heap
+/// list); empty list on failure.
+#[vm]
+fn query(handle int, sql str) [][]str
+
+/// Rowid of the most recent successful INSERT on this connection (0 if none).
+#[vm]
+fn last_insert_rowid(handle int) int
+
+/// The most recent error message recorded by this module ("" if none).
+#[vm]
+fn last_error() str

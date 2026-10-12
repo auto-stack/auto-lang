@@ -1,0 +1,88 @@
+// Draft, schema-bound Atom text. Not executable Auto source.
+// PLAN-741 native test: entry returns add(2, 3) == 5.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_add {
+        path: "examples.add"
+
+        types {
+            type t_i32 i32 {}
+            type t_entry function { params: []; result: "t_i32" }
+            type t_add function {
+                params: ["t_i32", "t_i32"]
+                result: "t_i32"
+            }
+        }
+
+        declarations {
+            function d_entry t_entry { name: "test_entry"; body: "b_entry" }
+            function d_add t_add {
+                name: "add"
+                body: "b_add"
+            }
+        }
+
+        bodies {
+            body b_add {
+                owner: "d_add"
+                entry: "k_entry"
+
+                locals {
+                    local l_a t_i32 { name: "a"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: "b"; role: param; index: 1u32 }
+                    local l_sum t_i32 { name: "sum"; role: binding; mutable: false }
+                }
+
+                expressions {
+                    expr e_a read_local { type: "t_i32"; local: "l_a" }
+                    expr e_b read_local { type: "t_i32"; local: "l_b" }
+                    expr e_add binary {
+                        type: "t_i32"
+                        op: add_i32
+                        overflow: trap
+                        lhs: "e_a"
+                        rhs: "e_b"
+                    }
+                    expr e_sum read_local { type: "t_i32"; local: "l_sum" }
+                }
+
+                blocks {
+                    block k_entry {
+                        let(local: "l_sum", value: "e_add") {}
+                        return(value: "e_sum") {}
+                    }
+                }
+            }
+
+            body b_entry {
+                owner: "d_entry"
+                entry: "k_entry_call"
+
+                locals {
+                    local l_r t_i32 { name: "r"; role: binding }
+                }
+
+                expressions {
+                    expr e_arg0 constant { type: "t_i32"; value: 2i32 }
+                    expr e_arg1 constant { type: "t_i32"; value: 3i32 }
+                    expr e_call call {
+                        type: "t_i32"
+                        callee: "d_add"
+                        eval_args: ["e_arg0", "e_arg1"]
+                        bindings: [
+                            { param: 0u32, arg: 0u32 },
+                            { param: 1u32, arg: 1u32 }
+                        ]
+                    }
+                    expr e_r read_local { type: "t_i32"; local: "l_r" }
+                }
+
+                blocks {
+                    block k_entry_call {
+                        let(local: "l_r", value: "e_call") {}
+                        return(value: "e_r") {}
+                    }
+                }
+            }
+        }
+    }
+}

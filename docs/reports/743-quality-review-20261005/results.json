@@ -1,0 +1,203 @@
+{
+  "current_check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-stale] MD-203 绑定的输入已变化: docs/specs/auto-ac/project.md\nERROR[decision-stale] MD-203 绑定的输入已变化: docs/specs/auto-hir/project.md\nERROR[decision-stale] MD-205 绑定的输入已变化: docs/specs/auto-ac/project.md\nERROR[decision-stale] MD-301 绑定的输入已变化: docs/specs/auto-ac/project.md\nERROR[decision-stale] MD-302 绑定的输入已变化: docs/specs/auto-ac/project.md\nERROR[decision-stale] MD-304 绑定的输入已变化: docs/specs/auto-ac/project.md\nERROR[decision-stale] MD-406 绑定的输入已变化: docs/specs/auto-hir/project.md\nERROR[decision-stale] MD-409 绑定的输入已变化: docs/specs/auto-hir/project.md\nERROR[decision-stale] MD-421 绑定的输入已变化: docs/specs/auto-hir/project.md\nCHECK-FAIL 9 项\n"
+  },
+  "multiline-string": {
+    "path": "multiline-string.at",
+    "declarations": [
+      {
+        "kind": "fn",
+        "name": "host",
+        "line": 1,
+        "param_types": [],
+        "ret": ""
+      }
+    ],
+    "methods": [],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-bare-call",
+        "name": "pretend",
+        "receiver": null,
+        "first_line": 3,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "free-function": [
+        1
+      ],
+      "string-literal": [
+        2,
+        4
+      ],
+      "return-statement": [
+        5
+      ],
+      "multiline-string-literal": [
+        2,
+        4
+      ]
+    },
+    "anomalies": [
+      {
+        "line": 2,
+        "kind": "unterminated-string"
+      },
+      {
+        "line": 4,
+        "kind": "unterminated-string"
+      }
+    ],
+    "brace_balance": 0
+  },
+  "same-name-method": {
+    "path": "same-name-method.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "Meter",
+        "line": 1
+      },
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 5,
+        "param_types": [
+          "Meter"
+        ],
+        "ret": "int"
+      }
+    ],
+    "methods": [
+      {
+        "owner": "Meter",
+        "name": "len",
+        "line": 2,
+        "static": false
+      },
+      {
+        "owner": "Meter",
+        "name": "new",
+        "line": 3,
+        "static": true
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "native-runtime",
+        "name": "len",
+        "receiver": "x",
+        "first_line": 7,
+        "count": 1
+      },
+      {
+        "kind": "native-runtime",
+        "name": "new",
+        "receiver": "Meter",
+        "first_line": 6,
+        "count": 1
+      },
+      {
+        "kind": "type-construction",
+        "name": "Meter",
+        "receiver": null,
+        "first_line": 3,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "free-function": [
+        2,
+        5
+      ],
+      "type-body-method": [
+        2,
+        3
+      ],
+      "integer-type-annotation": [
+        2,
+        5
+      ],
+      "return-statement": [
+        2,
+        3,
+        7
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0
+  },
+  "real_write_a": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "real_write_b": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "determinism": {
+    "two_writes_identical": true,
+    "normalized_manifest_matches_committed": true,
+    "summary_matches_committed": true
+  },
+  "unbound-decision_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "unbound-decision_check": {
+    "exit": 0,
+    "stdout": "OK[decisions] 1 条人工结论绑定全部新鲜\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "missing-evidence_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "missing-evidence_check": {
+    "exit": 0,
+    "stdout": "OK[decisions] 1 条人工结论绑定全部新鲜\nWARN[decision-evidence-outside] MD-MISSING 证据文件不存在: auto/lib/does-not-exist.at:999\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "empty-decisions_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "empty-decisions_check": {
+    "exit": 0,
+    "stdout": "OK[decisions] 0 条人工结论绑定全部新鲜\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "tests": {
+    "exit": 0,
+    "summary": "ut_decisions) ... ok\n\n----------------------------------------------------------------------\nRan 18 tests in 6.996s\n\nOK\n"
+  },
+  "hashes": {
+    "scripts/acc_inventory.py": "ea9a39f500f41ed4fa4c7f7b1a3de1d9d8754e38ad2e3c5938f87670833e822f",
+    "scripts/tests/test_acc_inventory.py": "40ada8524929d95989fe3ff0c01a027766912d360b067bab3334cff42d358b0c",
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "315dfd3ca8a62a8caba016616057442f5fcdfebc4107c3b3552f11fb3506a01c",
+    "docs/specs/auto-acc/project.md": "7e4481ae6f9ac220ec69a1c5efb2317c3e9c46a6f6f7aaa377710610aba92251",
+    "docs/specs/auto-hir/stage-contract.md": "d387ce54701646b5e6f70d42b1949ab6327b75ed7f2d051fcdcc4da306b444ae",
+    "docs/specs/auto-hir/project.md": "ae1a898fe12d5cd9f1d883fb68564049355556b488bc995b894f0976babe9660",
+    "docs/specs/auto-ac/project.md": "9679401e686e5de6ed11bc678ea0866d630f26fdfc7890249332a5a44e997f03",
+    "docs/design/strategy/auto-acc-bootstrap-contract.md": "a83e7a6c83192c8e0b1bc85cf502612cc9e5f6fd3807dc3bedf6700a20613797",
+    "docs/reports/743-acc-hir-contract/proposed-spec-delta.md": "b6b807110e5beac655e660b00f2639152ca9a041e513843514487c075ed39daa",
+    "docs/reports/743-acc-hir-contract/manual-decisions.json": "a684bf9cb748272088e2599599f99454a5b61aaf535dfbdd2e0fe5ed215cc5aa"
+  }
+}

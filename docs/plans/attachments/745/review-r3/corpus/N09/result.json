@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N09\\input.at:1:47: error[bind/source.undefined]: local `x` does not escape its declaring block\n"
+  },
+  "kind": "reject",
+  "input_sha256": "16d723918ce80369a579b0abfe87017f07dd9810eb10d2a34f01f56c2e8d0004",
+  "run": null,
+  "id": "N09",
+  "ok": true,
+  "artifact_hashes": []
+}

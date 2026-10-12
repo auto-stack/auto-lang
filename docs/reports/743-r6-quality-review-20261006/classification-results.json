@@ -1,0 +1,294 @@
+{
+  "type_qualified_parameter": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\ntype Other {}\nfn demo(Meter Other) int {\n return Meter.len()\n}\n",
+    "scan": {
+      "path": "type_qualified_parameter.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 4
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 5,
+          "param_types": [
+            "Other"
+          ],
+          "ret": "int"
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "unknown-receiver",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 6,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          4
+        ],
+        "free-function": [
+          2,
+          5
+        ],
+        "type-body-method": [
+          2
+        ],
+        "integer-type-annotation": [
+          2,
+          5
+        ],
+        "return-statement": [
+          2,
+          6
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "type_bare_parameter": {
+    "source": "type Meter {}\ntype Other {}\nfn demo(Meter Other) {\n Meter()\n}\n",
+    "scan": {
+      "path": "type_bare_parameter.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 2
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 3,
+          "param_types": [
+            "Other"
+          ],
+          "ret": ""
+        }
+      ],
+      "methods": [],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "unknown-bare-call",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 4,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          2
+        ],
+        "free-function": [
+          3
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "type_no_binding_control": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\nfn demo() {\n Meter.len()\n Meter()\n}\n",
+    "scan": {
+      "path": "type_no_binding_control.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 4,
+          "param_types": [],
+          "ret": ""
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "type-construction",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 6,
+          "count": 1
+        },
+        {
+          "kind": "type-qualified",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 5,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1
+        ],
+        "free-function": [
+          2,
+          4
+        ],
+        "type-body-method": [
+          2
+        ],
+        "integer-type-annotation": [
+          2
+        ],
+        "return-statement": [
+          2
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "enum_case_parameter": {
+    "source": "enum Mode { select }\ntype Other {}\nfn demo(select Other) {\n select()\n}\n",
+    "scan": {
+      "path": "enum_case_parameter.at",
+      "declarations": [
+        {
+          "kind": "enum",
+          "name": "Mode",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 2
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 3,
+          "param_types": [
+            "Other"
+          ],
+          "ret": ""
+        }
+      ],
+      "methods": [],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "unknown-bare-call",
+          "name": "select",
+          "receiver": null,
+          "first_line": 4,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "enum-declaration": [
+          1
+        ],
+        "record-type-declaration": [
+          2
+        ],
+        "free-function": [
+          3
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "type_qualified_import": {
+    "source": "type Meter {}\nuse \"some_module\" {Meter}\nfn demo() {\n Meter.len()\n}\n",
+    "scan": {
+      "path": "type_qualified_import.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 3,
+          "param_types": [],
+          "ret": ""
+        }
+      ],
+      "methods": [],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "type-qualified",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 4,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1
+        ],
+        "string-literal": [
+          2
+        ],
+        "free-function": [
+          3
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  }
+}

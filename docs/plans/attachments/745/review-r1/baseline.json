@@ -1,0 +1,52 @@
+{
+  "plan": "PLAN-745",
+  "revision": 1,
+  "review_scope": "final",
+  "reviewer": "Codex in original planning chat; implementation by separate GLM context",
+  "worktree": "D:/autostack/.wt/lang-745/auto-lang",
+  "branch": "plan-745-dev",
+  "head": "b3cd8171966281a42f96187780342ce0ff51c5fb",
+  "base": "eea7a80618d4d5e75749d666b7609a9a87925bbd",
+  "main_head": "0bc1bea0116140fd0ae29debf3d182bb9f5749ea",
+  "spec_inputs": [
+    {
+      "path": "docs/specs/auto-hir/project.md",
+      "sha256": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab"
+    },
+    {
+      "path": "docs/specs/auto-hir/stage-contract.md",
+      "sha256": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7"
+    },
+    {
+      "path": "docs/specs/auto-ac/project.md",
+      "sha256": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208"
+    },
+    {
+      "path": "docs/specs/auto-acc/project.md",
+      "sha256": "5e7103d73b499b3fdd04a37a6f66baff5db395ceb1183925be4af0351f406a10"
+    }
+  ],
+  "proposed_spec_delta_sha256": "ef3f4046ab52e8386ef7527e1cc829714cda75b964b624494dca2686b4f3c138",
+  "plan_sha256_before_review": "e6fb71d7184c6501f573539843ea11550d1587b24987e6cc3207c3e182b86e0b",
+  "dependency_revisions": {
+    "auto_down": "fba6563ed2148ce85e68208863159b4ccccac710"
+  },
+  "verification_configs": [
+    {
+      "sha256": "6e9cbe7dcd2e3371789597d6835cf679419f4bd50dee38d6e4938c91d15b58ba",
+      "path": "experimental/ac-core/Cargo.toml"
+    },
+    {
+      "sha256": "296429e6dd6db8e1affe9755f29c5ff94c902362361fa719b7bc1cd11ee7077e",
+      "path": "experimental/ac-core/Cargo.lock"
+    },
+    {
+      "sha256": "13cb02bef7ce0ad685135e36b667ccbe54ab1a04ba6d743de1a3c5f41d239003",
+      "path": ".cargo/config.toml"
+    },
+    {
+      "sha256": "0fbea4b493e2437105d5cd68c616549b1a39aaad6ae4b2f85fd83adf4782d5a2",
+      "path": ".config/nextest.toml"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "only_ids": [
+    "MD-203",
+    "MD-205",
+    "MD-301",
+    "MD-302",
+    "MD-304"
+  ],
+  "semantic_conclusions_preserved": true,
+  "all_other_bindings_and_consumers_unchanged": true,
+  "actual_source_ownership_clarified": true,
+  "entries": [
+    {
+      "id": "MD-203",
+      "subject": "acc:source-to-hir-adapter",
+      "conclusion": "new-subject",
+      "old_hash": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+      "new_hash": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc",
+      "line": 8,
+      "rationale": "745 现有 Rust 有限 source profile 的 adapter/来源映射已真实到 Checked；本决定 subject=acc:source-to-hir-adapter 指 Auto 编写的 ACC 主体，仍须新建。旧“源码 adapter 不存在”仅为741历史，不能覆盖745现状；不把 Rust 原型升级为 ACC 主体或 Gen1。"
+    },
+    {
+      "id": "MD-205",
+      "subject": "acc:driver-diagnostics",
+      "conclusion": "new-subject",
+      "old_hash": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+      "new_hash": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc",
+      "line": 53,
+      "rationale": "745 Rust 原型已有显式profile源码驱动/来源诊断，共用 finish_build；Auto 实现的 ACC 多阶段驱动、完整语言域诊断与桥客户端仍须新建。旧“不得冒充已接源码”属741历史；只认已审有限profile证据，不声称完整ACC。"
+    },
+    {
+      "id": "MD-301",
+      "subject": "service:cranelift-bridge",
+      "conclusion": "reference",
+      "old_hash": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+      "new_hash": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc",
+      "line": 4,
+      "rationale": "核对 Cranelift 0.126.2 栈仍在Rust消费侧、ACC不重写机器码；745仅新增前端且共享后端，非主体薄桥定位保持。"
+    },
+    {
+      "id": "MD-302",
+      "subject": "service:system-linker",
+      "conclusion": "reference",
+      "old_hash": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+      "new_hash": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc",
+      "line": 21,
+      "rationale": "核对 rust-lld首选/MSVC备选、Rust link.rs发现逻辑未变；source与HIR共享构建尾部，系统链接器非ACC主体定位保持。"
+    },
+    {
+      "id": "MD-304",
+      "subject": "service:overflow-trap-70",
+      "conclusion": "implemented",
+      "old_hash": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+      "new_hash": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc",
+      "line": 39,
+      "rationale": "核对加乘 signed 溢出仍 ExitProcess(70) 测试约定；745 source profile复用该路径且保持runtime trap/前驱效果，不扩成完整异常ABI。"
+    }
+  ]
+}

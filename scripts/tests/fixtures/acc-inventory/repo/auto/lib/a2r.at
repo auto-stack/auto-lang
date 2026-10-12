@@ -1,0 +1,16 @@
+// fixture: mini a2r module (multi-import + string concat + join)
+use auto.lib.token: TokenKind
+use auto.lib.parser: parse_all
+use auto.lib.typeinfo: t_infer
+use auto.lib.engine: ev_run
+
+fn ar_stmt(src str) str {
+    var parts = List.new()
+    parts.push(src)
+    var ok = t_infer(1, 2)
+    if ok {
+        parts.push("t")
+    }
+    var line = "a" + "b"
+    return parts.join(line)
+}

@@ -1,0 +1,15 @@
+{
+  "main_tip_equal": true,
+  "history_file": "docs/plans/archive/745-ac-source-checked-hir-native.md",
+  "writers_excluded": true,
+  "checkpoint": "ledger_refreshed",
+  "target": "D:/autostack/auto-lang/.autoos/specs.json",
+  "version": 9,
+  "sha256": "09c1bcfbab0b3fca3cef49abe6481baa456b8f6fbb85b0aa39227bc8a2f1369d",
+  "key": "PLAN-745:r1",
+  "published_commit": "9060743e501258ebf68a261f9c985cd3a2a351c5",
+  "changed_ids": [
+    "P745-3",
+    "P745-4"
+  ]
+}

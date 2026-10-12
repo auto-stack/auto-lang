@@ -1,0 +1,17 @@
+{
+    "descendant_alive_after_return":  true,
+    "elapsed_ms":  415,
+    "utf8":  {
+                 "Code":  0,
+                 "Stdout":  "PREFIX?SUFFIX",
+                 "Stderr":  "",
+                 "TimedOut":  false
+             },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "DESCENDANT_PID=3848",
+                "Stderr":  "",
+                "TimedOut":  false
+            },
+    "deadline_ms":  1000
+}

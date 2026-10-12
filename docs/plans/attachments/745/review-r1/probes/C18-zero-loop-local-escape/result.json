@@ -1,0 +1,12 @@
+{
+  "id": "C18-zero-loop-local-escape",
+  "source": "fn main() int { while false { let x = 1 }; return x }",
+  "want": "reject",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C18-zero-loop-local-escape\\input.at:1:44: error[bind/source.undefined]: local `x` does not escape its declaring block\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

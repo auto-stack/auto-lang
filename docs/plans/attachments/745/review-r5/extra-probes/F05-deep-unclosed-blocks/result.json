@@ -1,0 +1,9 @@
+{
+  "bytes": 36880,
+  "id": "F05-deep-unclosed-blocks",
+  "result": {
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\F05-deep-unclosed-blocks\\input.at:1:9016: error[text/source.syntax]: nesting deeper than 1000 levels is not accepted\n",
+    "exit": 1
+  }
+}

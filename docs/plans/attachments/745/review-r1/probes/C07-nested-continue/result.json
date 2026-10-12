@@ -1,0 +1,20 @@
+{
+  "id": "C07-nested-continue",
+  "source": "fn main() int { var i = 0; var n = 0; while i < 2 { i = i + 1; var j = 0; while j < 2 { j = j + 1; n = n + 1; continue }; n = n + 2 }; return n }",
+  "want": "native8",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=58eb9eae9a9fc428, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": {
+    "stderr": "",
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C07-nested-continue\\app.exe (entry main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C07-nested-continue\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C07-nested-continue\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C07-nested-continue\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 58eb9eae9a9fc428\n",
+    "exit": 0
+  },
+  "run": {
+    "stderr": "",
+    "stdout": "",
+    "exit": 8
+  }
+}

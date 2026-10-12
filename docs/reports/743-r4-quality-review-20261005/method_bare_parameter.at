@@ -1,0 +1,5 @@
+type Meter {
+ fn demo(print Other) int {
+  return print()
+ }
+}

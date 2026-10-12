@@ -1,0 +1,18 @@
+[
+  {
+    "test": "stage3_memory_baseline_n1_3_5",
+    "command": "cargo tf stage3_memory_baseline_n1_3_5 --jobs 1 --no-fail-fast",
+    "working_directory": "D:/autostack/auto-lang",
+    "exit": 0,
+    "timed_out": false,
+    "seconds": 7.1194655
+  },
+  {
+    "test": "plan707_client_sse_poll_close_error_surface",
+    "command": "cargo tf plan707_client_sse_poll_close_error_surface --jobs 1 --no-fail-fast",
+    "working_directory": "D:/autostack/auto-lang",
+    "exit": 0,
+    "timed_out": false,
+    "seconds": 2.1395725
+  }
+]

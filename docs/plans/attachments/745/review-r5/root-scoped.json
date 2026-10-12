@@ -1,0 +1,12 @@
+{
+  "scope": "Only cached auto-lang unit test binary in this worktree; no rebuild",
+  "exit": 0,
+  "sha256": "f3e24566115ba7e6919fa2bebebba76ba7f0c5a955c9b69545c94f0bb8c22122",
+  "exe": "D:/autostack/.wt/lang-745/auto-lang/target/debug/deps/auto_lang-0dbbf1d077475dc0.exe",
+  "args": [
+    "tests::plan707_cancel_tests::plan707_cancel_active_job_aborts_and_frees_permit",
+    "--exact",
+    "--nocapture",
+    "--test-threads=1"
+  ]
+}

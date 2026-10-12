@@ -1,0 +1,14 @@
+{
+  "kind": "reject",
+  "artifact_hashes": [],
+  "ok": true,
+  "input_sha256": "216f0f10f8aba500318675f6c9c1cb9d7fabc5a74f69d4e5956b5c07fb46a3b5",
+  "build": null,
+  "id": "N39",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N39\\input.at:1:1: error[text/source.unsupported]: `use` is not part of this source profile\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "run": null
+}

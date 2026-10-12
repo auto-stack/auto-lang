@@ -1,0 +1,16 @@
+{
+  "want_code": "source.syntax",
+  "bytes": 200030,
+  "artifact_hashes": [],
+  "build": null,
+  "ok": true,
+  "input_sha256": "090392573e17e84d3acf3b5cf9fc31c20aa830fd775595b2d44f9e303c6dec73",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N22-partial-else-tree-drop-20000\\input.at:1:200031: error[text/source.syntax]: expected statement or `}`, found end of file\n",
+    "stdout": ""
+  },
+  "want_native": null,
+  "run": null,
+  "id": "N22-partial-else-tree-drop-20000"
+}

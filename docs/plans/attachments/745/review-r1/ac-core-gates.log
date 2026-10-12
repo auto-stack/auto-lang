@@ -1,0 +1,168 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s
+   Compiling auto-ac-prototype v0.1.0 (D:\autostack\.wt\lang-745\auto-lang\experimental\ac-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.55s
+     Running unittests src\lib.rs (experimental\ac-core\target\debug\deps\auto_ac_prototype-02c7032bc8773592.exe)
+
+running 16 tests
+test link::tests::run_exe_60s_deadline_bounds_descendant_pipe_hold ... ignored, 60s acceptance evidence for AC-17; run explicitly
+test link::tests::discard_own_staged_branch_discriminators ... ok
+test link::tests::receipt_stage_failure_without_prior_artifacts_leaves_nothing ... ok
+test link::tests::receipt_stage_failure_cleans_staged_and_keeps_old_artifacts ... ok
+test link::tests::cleanup_failure_reports_residual_staged_exe ... ok
+test link::tests::backup_failure_aborts_cleanly ... ok
+test link::tests::publish_exe_failure_keeps_old_artifacts ... ok
+test link::tests::publish_obj_failure_restores_exe_and_receipt ... ok
+test link::tests::executor_error_locked_staged_exe_reports_cleanup ... ok
+test link::tests::containment_failure_is_controlled_rejection ... ok
+test link::tests::descendant_exits_promptly_success_path ... ok
+test link::tests::large_output_does_not_deadlock ... ok
+test link::tests::link_nonzero_failure_locked_staged_exe_reports_cleanup ... ok
+test link::tests::link_failure_without_lock_leaves_no_residue ... ok
+test link::tests::deadline_terminates_hanging_helper ... ok
+test link::tests::collect_deadline_when_descendant_holds_pipe ... ok
+
+test result: ok. 15 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.17s
+
+     Running unittests src\main.rs (experimental\ac-core\target\debug\deps\auto_ac_prototype-aab550c6959c55c8.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\cli.rs (experimental\ac-core\target\debug\deps\cli-f24c4b09dbc33189.exe)
+
+running 11 tests
+test check_invalid_document_fails_with_code ... ok
+test check_valid_document_succeeds ... ok
+test check_verify_stage_failure_reports_verify_code ... ok
+test build_without_capability_is_rejected ... ok
+test build_entry_with_wrong_signature_is_rejected ... ok
+test linker_override_failure_is_reported ... ok
+test build_with_missing_entry_fails_without_touching_artifacts ... ok
+test block_graph_violations_rejected_within_deadline ... ok
+test build_with_capability_fails_at_link_until_support_lib_exists ... ok
+test build_add_fixture_produces_running_exe_with_receipt ... ok
+test publish_failure_rolls_back_and_keeps_previous_artifacts ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+
+     Running tests\hir_verify.rs (experimental\ac-core\target\debug\deps\hir_verify-6891c68755f283d5.exe)
+
+running 9 tests
+test reordered_tables_keep_block_execution_order ... ok
+test if_exit_initialization_is_the_branch_intersection ... ok
+test checked_module_has_no_other_constructor ... ok
+test required_capabilities_are_preserved ... ok
+test verify_diagnostics_are_located ... ok
+test swapped_bindings_with_matching_types_verify ... ok
+test entry_wrapper_and_reordered_tables_verify ... ok
+test design_samples_verify ... ok
+test rejection_matrix_hits_expected_codes ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\native_execution.rs (experimental\ac-core\target\debug\deps\native_execution-48d26cbb3e0a51ea.exe)
+
+running 11 tests
+test object_exports_entry_and_start_symbols ... ok
+test mul_overflow_traps_70 ... ok
+test bool_condition_selects_native_branch ... ok
+test bool_abi_roundtrip_param_and_return ... ok
+test swapped_bindings_call_native ... ok
+test add_overflow_traps_70 ... ok
+test count_neg2_returns_0 ... ok
+test add_2_3_returns_5 ... ok
+test add_neg2_3_returns_1 ... ok
+test count_3_returns_3 ... ok
+test count_0_returns_0 ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+
+     Running tests\source_cli.rs (experimental\ac-core\target\debug\deps\source_cli-d547c65a3d554be1.exe)
+
+running 10 tests
+test check_source_valid_exits_zero ... ok
+test old_check_still_atom_only ... ok
+test check_source_pipeline_rejection_exits_one ... ok
+test check_source_capability_gates_marks ... ok
+test check_source_requires_explicit_profile ... ok
+test build_source_rejections_leave_no_artifacts ... ok
+test build_source_entry_errors ... ok
+test build_source_trace_requires_support_lib_at_link_time ... ok
+test build_source_trap_exit_code ... ok
+test build_source_produces_running_exe_with_receipt ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests\source_frontend.rs (experimental\ac-core\target\debug\deps\source_frontend-eac7393b5ff757bf.exe)
+
+running 12 tests
+test n31_lex_error_renders_position ... ok
+test p04_while_and_assignment ... ok
+test n03_name_span_line_col_for_later_stages ... ok
+test p01_precedence_shape ... ok
+test p02_functions_and_signed_args ... ok
+test p15_named_args_preserve_source_order ... ok
+test p07_nested_loops_break_nearest ... ok
+test p11_literal_domain ... ok
+test p20_crlf_utf8_spans ... ok
+test valid_corpus_parses ... ok
+test later_stage_cases_parse ... ok
+test text_stage_rejections ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\source_hir.rs (experimental\ac-core\target\debug\deps\source_hir-c335c5e149676903.exe)
+
+running 10 tests
+test marks_without_capability_are_undefined ... ok
+test n03_diagnostic_coordinates ... ok
+test p19_user_mark_wins_over_intrinsic ... ok
+test p03_bool_literal_encoding ... ok
+test p04_while_lowering_shape ... ok
+test p15_eval_order_and_binding_map ... ok
+test p11_literal_domain_in_hir ... ok
+test tampered_atom_is_rejected ... ok
+test negative_corpus_rejected_with_pinned_diagnostics ... ok
+test valid_corpus_compiles_to_checked ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\source_native.rs (experimental\ac-core\target\debug\deps\source_native-a8c9055c75e6aa5d.exe)
+
+running 2 tests
+test trace_case_without_support_lib_fails_at_link ... ok
+test positive_corpus_executes_natively ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.85s
+
+     Running tests\text_binding.rs (experimental\ac-core\target\debug\deps\text_binding-e44b70e4e32aaccb.exe)
+
+running 11 tests
+test descriptor_schema_parses ... ok
+test diagnostics_span_the_offense ... ok
+test requires_capability_is_carried_through ... ok
+test field_order_and_region_interchange_is_equal ... ok
+test builtin_enum_shorthand_binds_to_builtin_type ... ok
+test rejected_documents_produce_no_bundle ... ok
+test mutable_presence_is_recorded_separately ... ok
+test author_and_explicit_forms_are_semantically_equal ... ok
+test four_existing_documents_bind ... ok
+test canonical_roundtrip_is_semantically_equal ... ok
+test invalid_fixtures_are_rejected_with_expected_codes ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\trace_execution.rs (experimental\ac-core\target\debug\deps\trace_execution-67821398d1c506fc.exe)
+
+running 1 test
+test call_order_executes_natively_b_then_a_result_12 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+   Doc-tests auto_ac_prototype
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

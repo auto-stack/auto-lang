@@ -1,0 +1,13 @@
+{
+  "build": null,
+  "id": "H08-if-blocks-1001",
+  "check": {
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\H08-if-blocks-1001\\input.at:1:9016: error[text/source.syntax]: nesting deeper than 1000 levels is not accepted\n",
+    "exit": 1
+  },
+  "want_native": null,
+  "want": 0,
+  "bytes": 10046,
+  "run": null
+}

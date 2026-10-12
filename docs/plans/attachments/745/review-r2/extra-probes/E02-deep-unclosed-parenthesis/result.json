@@ -1,0 +1,11 @@
+{
+  "id": "E02-deep-unclosed-parenthesis",
+  "depth": 4096,
+  "source_bytes": 4122,
+  "want": "controlled source.syntax exit1",
+  "result": {
+    "stderr": "\nthread 'main' (21632) has overflowed its stack\n",
+    "stdout": "",
+    "exit": -1073741571
+  }
+}

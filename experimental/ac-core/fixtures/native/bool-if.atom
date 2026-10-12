@@ -1,0 +1,55 @@
+// Draft, schema-bound Atom text. Not executable Auto source.
+// PLAN-741 Phase 2 (QA-01): bool local binding, assignment and if condition.
+// bool values are i32 0/1 natively; entry exits 3 when (3 < 4) is true.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_bool_if {
+        path: "examples.bool_if"
+
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_entry function { params: []; result: "t_i32" }
+        }
+
+        declarations {
+            function d_entry t_entry { name: "test_entry"; body: "b_entry" }
+        }
+
+        bodies {
+            body b_entry {
+                owner: "d_entry"
+                entry: "k_entry"
+
+                locals {
+                    local l_b t_bool { name: "b"; role: binding; mutable: true }
+                }
+
+                places {
+                    place p_b local { local: "l_b"; type: "t_bool"; access: mutable }
+                }
+
+                expressions {
+                    expr e_1 constant { type: "t_i32"; value: 1i32 }
+                    expr e_2 constant { type: "t_i32"; value: 2i32 }
+                    expr e_3 constant { type: "t_i32"; value: 3i32 }
+                    expr e_4 constant { type: "t_i32"; value: 4i32 }
+                    expr e_lt1 binary { type: "t_bool"; op: lt_i32; lhs: "e_1"; rhs: "e_2" }
+                    expr e_lt2 binary { type: "t_bool"; op: lt_i32; lhs: "e_3"; rhs: "e_4" }
+                    expr e_r read_local { type: "t_bool"; local: "l_b" }
+                    expr e_yes constant { type: "t_i32"; value: 3i32 }
+                    expr e_no constant { type: "t_i32"; value: 4i32 }
+                }
+
+                blocks {
+                    block k_entry {
+                        let(local: "l_b", value: "e_lt1") {}
+                        assign(place: "p_b", value: "e_lt2") {}
+                        if(cond: "e_r", then: "k_yes", else: "k_no") {}
+                    }
+                    block k_yes { return(value: "e_yes") {} }
+                    block k_no { return(value: "e_no") {} }
+                }
+            }
+        }
+    }
+}

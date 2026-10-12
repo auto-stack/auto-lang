@@ -1,0 +1,143 @@
+[
+  {
+    "id": "G01-valid-parens-199",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=f226f50ebd5f753e, module(s)=1, capabilities required: []\n"
+    },
+    "run": null,
+    "bytes": 424,
+    "build": null,
+    "want": null,
+    "want_stderr": null
+  },
+  {
+    "id": "G02-valid-parens-200",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=2987f3128a8f3361, module(s)=1, capabilities required: []\n"
+    },
+    "run": null,
+    "bytes": 426,
+    "build": null,
+    "want": null,
+    "want_stderr": null
+  },
+  {
+    "id": "G03-valid-calls-100",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=e33230fbe74dc36e, module(s)=1, capabilities required: []\n"
+    },
+    "run": null,
+    "bytes": 355,
+    "build": null,
+    "want": null,
+    "want_stderr": null
+  },
+  {
+    "id": "G04-valid-calls-199",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=3ad0752151fedcfb, module(s)=1, capabilities required: []\n"
+    },
+    "run": null,
+    "bytes": 652,
+    "build": null,
+    "want": null,
+    "want_stderr": null
+  },
+  {
+    "id": "G05-mixed-calls-binary-199",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=b9888623bace36b7, module(s)=1, capabilities required: []\n"
+    },
+    "run": null,
+    "bytes": 1050,
+    "build": null,
+    "want": null,
+    "want_stderr": null
+  },
+  {
+    "id": "G06-nested-if-199",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=41dd9bc583cbff6f, module(s)=1, capabilities required: []\n"
+    },
+    "run": null,
+    "bytes": 2026,
+    "build": null,
+    "want": null,
+    "want_stderr": null
+  },
+  {
+    "id": "G07-native-chain-300",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=2d4b702b2031051e, module(s)=1, capabilities required: []\n"
+    },
+    "run": {
+      "stderr": "",
+      "exit": 300,
+      "stdout": ""
+    },
+    "bytes": 626,
+    "build": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G07-native-chain-300\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G07-native-chain-300\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G07-native-chain-300\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G07-native-chain-300\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 2d4b702b2031051e\n"
+    },
+    "want": 300,
+    "want_stderr": null
+  },
+  {
+    "id": "G08-trap-before-rhs-observable",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=6ad0e7b9dd130a9d, module(s)=1, capabilities required: [\"hir.test.trace.v1\"]\n"
+    },
+    "run": {
+      "stderr": "",
+      "exit": 70,
+      "stdout": ""
+    },
+    "bytes": 52,
+    "build": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G08-trap-before-rhs-observable\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G08-trap-before-rhs-observable\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G08-trap-before-rhs-observable\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G08-trap-before-rhs-observable\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 6ad0e7b9dd130a9d\n"
+    },
+    "want": 70,
+    "want_stderr": ""
+  },
+  {
+    "id": "G09-nested-trace-call-order",
+    "check": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=c85ddfbdacc4e0cb, module(s)=1, capabilities required: [\"hir.test.trace.v1\"]\n"
+    },
+    "run": {
+      "stderr": "baab",
+      "exit": 24,
+      "stdout": ""
+    },
+    "bytes": 120,
+    "build": {
+      "stderr": "",
+      "exit": 0,
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G09-nested-trace-call-order\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G09-nested-trace-call-order\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G09-nested-trace-call-order\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G09-nested-trace-call-order\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: c85ddfbdacc4e0cb\n"
+    },
+    "want": 24,
+    "want_stderr": "baab"
+  }
+]

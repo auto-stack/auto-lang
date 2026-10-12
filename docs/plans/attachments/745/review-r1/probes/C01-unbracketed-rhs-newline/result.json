@@ -1,0 +1,12 @@
+{
+  "id": "C01-unbracketed-rhs-newline",
+  "source": "fn main() int {\n return 1 +\n 2\n}",
+  "want": "reject",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=4dbfbcda15c175d0, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": null,
+  "run": null
+}

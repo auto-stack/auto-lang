@@ -1,0 +1,9 @@
+OK  frontmatter: plan_id=PLAN-741 status=archived revision=7 step=41/41
+OK  location: D:\autostack\auto-lang\docs\plans\archive (repo plan, status archived)
+OK  tasks: 41/41 complete (matches frontmatter), duplicates consistent, unchecked=0
+OK  links: 14 resolve from the real archive parent
+OK  README.md:8 plan link -> D:\autostack\auto-lang\docs\plans\archive\741-ac-hir-native-core.md
+OK  auto-hir/plans.md:7 741 row -> D:\autostack\auto-lang\docs\plans\archive\741-ac-hir-native-core.md
+OK  auto-ac/plans.md:7 741 row -> D:\autostack\auto-lang\docs\plans\archive\741-ac-hir-native-core.md
+OK  ledger: 7 P741-* review items checked (all at archive/)
+ALL-ASSERTIONS-PASS

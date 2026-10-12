@@ -1,0 +1,4 @@
+fn main() int {
+    for i = 0 { }
+    return 0
+}

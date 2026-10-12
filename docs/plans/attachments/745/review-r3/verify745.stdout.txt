@@ -1,0 +1,9 @@
+[PASS] context (HEAD + toolchain) (2.2s)
+[PASS] cargo check (ac-core) (0.5s)
+[PASS] cargo fmt --check (ac-core) (0.6s)
+[PASS] cargo check --all-targets, zero warnings (ac-core) (0.5s)
+[PASS] cargo test source_frontend (1.7s)
+[PASS] cargo test source_hir (0.7s)
+[PASS] cargo test source_native (--test-threads=1) (13.9s)
+[PASS] cargo test source_cli (--test-threads=1) (4.3s)
+[FAIL] build tool binary once (1.4s): The term 'Get-FileHash' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.

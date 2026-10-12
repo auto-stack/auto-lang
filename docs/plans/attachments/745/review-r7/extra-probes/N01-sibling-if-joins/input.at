@@ -1,0 +1,1 @@
+fn main() int { var x=0; if true { x=1 } else { x=2 }; if false { x=x+4 } else { x=x+8 }; return x }

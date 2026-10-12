@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "check": {
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\corpus\\N34\\input.at:2:28: error[text/source.unsupported]: operator `%` is not part of this source profile\n",
+    "exit": 1
+  },
+  "input_sha256": "02d1e4343c6a8e0b72671b63f56179bc161dc762472fc26c0e2b1237f1ea921f",
+  "kind": "reject",
+  "artifact_hashes": [],
+  "build": null,
+  "run": null,
+  "id": "N34"
+}

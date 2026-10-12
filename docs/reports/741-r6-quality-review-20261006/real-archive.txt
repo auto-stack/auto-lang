@@ -1,0 +1,5 @@
+NOTE fixture/external copy at C:\Users\zhaop\AppData\Local\Temp\741-r6-review-20261006: location check skipped
+OK  tasks: 38/38 complete (matches frontmatter), duplicates consistent, unchecked=0
+OK  links: 10 resolve from the real archive parent
+OK  ledger: 6 P741-* review items checked (all at archive/)
+ALL-ASSERTIONS-PASS

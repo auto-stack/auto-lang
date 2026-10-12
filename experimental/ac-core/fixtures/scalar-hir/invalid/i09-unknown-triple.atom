@@ -1,0 +1,6 @@
+// A well-formed header whose triple is not registered anywhere.
+hir(schema: "auto.hir.scalars.draft", revision: 1u32, profile: "scalar-i32-draft") {
+    module m {
+        types { type t_i32 i32 {} }
+    }
+}

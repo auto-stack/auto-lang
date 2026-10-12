@@ -1,0 +1,19 @@
+{
+  "reviewed_commit": "6baed9bba84016dd8610221a9a0358195444385e",
+  "dependency_auto_down": "fba6563ed2148ce85e68208863159b4ccccac710",
+  "package_id": "path+file:///D:/autostack/.wt/lang-741/auto-lang/experimental/ac-core#auto-ac-prototype@0.1.0",
+  "cargo_reported_library": "C:/Users/zhaop/AppData/Local/Temp/ac741-r4-review-target\\debug\\libauto_ac_prototype.rlib",
+  "library_sha256": "d23dfd239cf62df267f745c127fc762fdfd349b2603c8cabbee72686a932ec73",
+  "probe_sha256": "5866c1f563a066945c6bcce238cf40b7c7879fad4c643dfa7746c3cba68ce7d5",
+  "command": [
+    "cargo",
+    "build",
+    "--manifest-path",
+    "D:\\autostack\\.wt\\lang-741\\auto-lang\\experimental\\ac-core\\Cargo.toml",
+    "--locked",
+    "--offline",
+    "--lib",
+    "--message-format=json"
+  ],
+  "original_glob_output_is_stale_library_evidence_not_current_regression": true
+}

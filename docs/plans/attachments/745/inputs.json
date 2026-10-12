@@ -1,0 +1,111 @@
+{
+  "plan": "PLAN-745",
+  "revision": 1,
+  "repo": "D:/autostack/auto-lang",
+  "branch": "v0.6-dev",
+  "head": "ae8199416c772e95dc63e6b647ab3b833bd3cc7c",
+  "inputs": [
+    {
+      "path": "docs/specs/overview.md",
+      "sha256": "e13026319a36c7cb2e419b9db9910157560ad546059e2b4894ce697ff8db6abf"
+    },
+    {
+      "path": "docs/specs/auto-hir/project.md",
+      "sha256": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab"
+    },
+    {
+      "path": "docs/specs/auto-hir/stage-contract.md",
+      "sha256": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7"
+    },
+    {
+      "path": "docs/specs/auto-hir/plans.md",
+      "sha256": "f5ba02fdd152f72b18b5d2398ca381d33820aeb2ae8a714125d6aed30a56102c"
+    },
+    {
+      "path": "docs/specs/auto-ac/project.md",
+      "sha256": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208"
+    },
+    {
+      "path": "docs/specs/auto-ac/plans.md",
+      "sha256": "3c8719921a9f7c2261c79608790caef4693d3ec8bcef20f87e7b26bb0f89054a"
+    },
+    {
+      "path": "docs/specs/auto-acc/project.md",
+      "sha256": "5e7103d73b499b3fdd04a37a6f66baff5db395ceb1183925be4af0351f406a10"
+    },
+    {
+      "path": "docs/specs/auto-acc/plans.md",
+      "sha256": "f61947988e5ca18198a47e470ad1a672d8dbd5c2bf23e63f4c8395bea19adf01"
+    },
+    {
+      "path": "docs/reports/743-acc-hir-contract/next-work-packages.md",
+      "sha256": "da6806c312d5600753d8aa61c754e4444999007e138796fdf3cd6d5b44243af6"
+    },
+    {
+      "path": "docs/reports/743-acc-hir-contract/acceptance-matrix.md",
+      "sha256": "6f6fd92c75554907a31d1dcff07ff2c97665ee3ef1e2c3162a860877340df572"
+    },
+    {
+      "path": "docs/reports/743-acc-hir-contract/inventory.md",
+      "sha256": "d4adb8e35d6f5e1f32fa7fddb2277b4e273552e9ea19afe60535cde5ff87fb4c"
+    },
+    {
+      "path": "docs/reports/743-acc-hir-contract/manual-decisions.json",
+      "sha256": "39e86a2eef67f612812c8ae1b58efdf92fc12aae8f9b44df198701e05c8b0b54"
+    },
+    {
+      "path": "docs/design/strategy/auto-ac-subset-and-target.md",
+      "sha256": "4f563c492db1b4404a1f85854157dd0515365712aa4bbc0fe1cd461786f547a4"
+    },
+    {
+      "path": "docs/design/strategy/auto-hir-design.md",
+      "sha256": "c51caa7dd454010904c1f2055f57539ce01343ee5e7fee1fe4613e38e8c3ba0d"
+    },
+    {
+      "path": "docs/design/strategy/auto-acc-bootstrap-contract.md",
+      "sha256": "676521ab3b9f26ba39798a6c1f3eb78676a6040861055ede15dd0dbb088e5317"
+    },
+    {
+      "path": "experimental/ac-core/src/lib.rs",
+      "sha256": "7039e3c296c6e4a8e275e32c874b0f98ac91c23ba24d099761f9693d3280eaa7"
+    },
+    {
+      "path": "experimental/ac-core/src/hir.rs",
+      "sha256": "251d973f75a991675c7331bbc9dd683e61b7e830a9615120cd5cd6d5c6f29e63"
+    },
+    {
+      "path": "experimental/ac-core/src/verify.rs",
+      "sha256": "72d8433ac9ad2fc7d967a42f2416fc56504c4412e0301fc1e872d83bf305a36b"
+    },
+    {
+      "path": "experimental/ac-core/src/main.rs",
+      "sha256": "b43d00ba820e052f4afc06a79d9c600ac60b9fb37d4076dc16f33ae294f18a98"
+    },
+    {
+      "path": "experimental/ac-core/src/native.rs",
+      "sha256": "69ef4577b3d2089b73c2c4ee652d31111b8b4fb44a55cceec9ca2b24859eef88"
+    },
+    {
+      "path": "experimental/ac-core/src/atom_text.rs",
+      "sha256": "0d468f329a293078945c12a61cee12177997583f83b9f374d56c6bded56c3edb"
+    },
+    {
+      "path": "experimental/ac-core/schema/core-i32.atom",
+      "sha256": "a23e38fb605d503d7ac0526ac7c61e5ce6056ace7ad854dfb31a30984e640a7d"
+    },
+    {
+      "path": "scripts/new-plan.sh",
+      "sha256": "7d91938f9e6d7d6e808ae21504e04d4d09370b36e868e1cd8576ebb3036d475a"
+    }
+  ],
+  "skill_sources": [
+    {
+      "path": "C:/Users/zhaop/.agents/skills/auto-plan-new/SKILL.md",
+      "sha256": "3fa3c96edf47b71217966532a6ec64c0cadc508d0347cb372d766913b8fac585"
+    },
+    {
+      "path": "C:/Users/zhaop/.agents/skills/auto-plan-new/references/verification-contract.md",
+      "sha256": "d31998f1a58d295b7798b367139550c47bab2d924fb2f19c7311abbb09e4da9b"
+    }
+  ]
+}

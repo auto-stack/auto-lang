@@ -1,0 +1,2 @@
+fn f(x int) int { return x }
+fn main() int { var y int = f(1+2; return y }

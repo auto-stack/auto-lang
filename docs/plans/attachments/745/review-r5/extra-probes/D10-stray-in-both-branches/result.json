@@ -1,0 +1,12 @@
+{
+  "id": "D10-stray-in-both-branches",
+  "source": "fn main() int { if true { break } else { continue }; return 0 }",
+  "want": "reject loop-target-scope",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\D10-stray-in-both-branches\\input.at:1:27: error[verify/verify.loop-target-scope]: break target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\D10-stray-in-both-branches\\input.at:1:42: error[verify/verify.loop-target-scope]: continue target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\D10-stray-in-both-branches\\input.at:1:17: error[verify/verify.block-structure]: block `k0` has executable statements after a terminating statement\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\D10-stray-in-both-branches\\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths)\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

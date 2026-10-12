@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N48\\input.at:1:28: error[text/source.unsupported]: block comment is not part of this source profile\n"
+  },
+  "kind": "reject",
+  "input_sha256": "1966ac365160a35168c6eaaecb7db05213716794b16ed0a7b77af9888eeca41c",
+  "run": null,
+  "id": "N48",
+  "ok": true,
+  "artifact_hashes": []
+}

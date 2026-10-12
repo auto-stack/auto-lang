@@ -1,0 +1,22 @@
+C01-unbracketed-rhs-newline check=0 diag= build= run= trace=
+C02-parenthesized-newline-control check=0 diag= build= run= trace=
+C03-call-name-newline check=0 diag= build= run= trace=
+C04-escaped-string check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C04-escaped-string\input.at:1:30: error[text/source.lex]: unterminated string literal build= run= trace=
+C05-ac-start-user-function check=0 diag= build=1 run= trace=
+C06-exitprocess-user-function check=0 diag= build=1 run= trace=
+C07-nested-continue check=0 diag= build=0 run=8 trace=
+C08-trace-binary-order check=0 diag= build=0 run=21 trace=ba
+C09-both-branches-return-trailing check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C09-both-branches-return-trailing\input.at:1:17: error[verify/verify.block-structure]: block `k0` has executable statements after a terminating statement build= run= trace=
+C10-scope-escape-token check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C10-scope-escape-token\input.at:3:2: error[bind/source.undefined]: local `x` does not escape its declaring block build= run= trace=
+C11-immutable-write-token check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C11-immutable-write-token\input.at:3:2: error[verify/verify.immutable-write]: local `l0` is immutable and cannot be assigned build= run= trace=
+C12-keyword-full-language check=0 diag= build= run= trace=
+C13-param-root-shadow check=0 diag= build= run= trace=
+C14-bool-to-int-local check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C14-bool-to-int-local\input.at:1:29: error[verify/source.type-mismatch]: expected i32, found bool build= run= trace=
+C15-unsupported-logical-not check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C15-unsupported-logical-not\input.at:1:20: error[text/source.syntax]: expected expression, found `!` build= run= trace=
+C16-unsupported-or check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C16-unsupported-or\input.at:1:25: error[text/source.unsupported]: operator `||` is not part of this source profile build= run= trace=
+C17-unsupported-u32 check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C17-unsupported-u32\input.at:1:11: error[text/source.unsupported]: type `u32` is not part of this source profile build= run= trace=
+C18-zero-loop-local-escape check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C18-zero-loop-local-escape\input.at:1:44: error[bind/source.undefined]: local `x` does not escape its declaring block build= run= trace=
+C19-parenthesized-unary-minus check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C19-parenthesized-unary-minus\input.at:1:24: error[text/source.unsupported]: unary minus is only supported directly before an integer literal in this source profile build= run= trace=
+C20-extra-positional-arg check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r1\probes\C20-extra-positional-arg\input.at:1:53: error[bind/source.argument]: `f` expects 1 argument(s), found 2 build= run= trace=
+C21-bare-return-next-line check=0 diag= build= run= trace=
+C22-signed-negative-overflow check=0 diag= build=0 run=70 trace=

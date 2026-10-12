@@ -1,0 +1,49 @@
+[
+  {
+    "bytes": 60055,
+    "want_native": null,
+    "want": 0,
+    "build": null,
+    "run": null,
+    "id": "L01-calls-20000",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=33c6f1d52a785162, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    }
+  },
+  {
+    "bytes": 20535,
+    "want_native": 4097,
+    "want": 0,
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\L02-mixed-call-binary-4096-native\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\L02-mixed-call-binary-4096-native\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\L02-mixed-call-binary-4096-native\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\L02-mixed-call-binary-4096-native\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 49bc80b1bc294202\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 4097
+    },
+    "id": "L02-mixed-call-binary-4096-native",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=49bc80b1bc294202, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    }
+  },
+  {
+    "bytes": 40055,
+    "want_native": null,
+    "want": 1,
+    "build": null,
+    "run": null,
+    "id": "L03-unclosed-calls-20000",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\L03-unclosed-calls-20000\\input.at:1:40055: error[text/source.syntax]: expected `,` or `)`\n",
+      "stdout": "",
+      "exit": 1
+    }
+  }
+]

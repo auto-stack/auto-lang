@@ -1,0 +1,15 @@
+{
+  "want": 1,
+  "check": {
+    "stdout": "",
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M09-missing-call-before-semicolon\\input.at:1:62: error[text/source.syntax]: expected `,` or `)`\n"
+  },
+  "id": "M09-missing-call-before-semicolon",
+  "input_sha256": "92321489c59a9ba9b4aad292bf8842f3875ef98a46409dd91104b54199b4bdaf",
+  "bytes": 73,
+  "artifact_hashes": [],
+  "build": null,
+  "want_native": 30,
+  "run": null
+}

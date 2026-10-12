@@ -1,0 +1,40 @@
+rustc 1.98.1 (48a229cea 2026-09-01)
+binary: rustc
+commit-hash: 48a229ceaefd4985c50990b14116b6d856af0985
+commit-date: 2026-09-01
+host: x86_64-pc-windows-msvc
+release: 1.98.1
+LLVM version: 22.1.8
+
+[PASS] toolchain discovery (0.4s)
+[PASS] cargo check (ac-core) (1s)
+[PASS] cargo fmt --check (ac-core) (0.7s)
+[PASS] cargo check --all-targets, zero warnings (ac-core) (1.1s)
+[PASS] cargo test --lib (ac-core: link executor deadline/pipe/publish matrix) (4.5s)
+[PASS] cargo test text_binding (0.3s)
+[PASS] cargo test hir_verify (0.3s)
+[PASS] cargo test native_execution (--test-threads=1) (2.4s)
+[PASS] cargo test cli (--test-threads=1) (3s)
+[PASS] cargo test trace_execution (--test-threads=1) (1.1s)
+[PASS] ac-probe check 01-add (exit 0) (4.4s)
+[PASS] ac-probe build add-2-3 + run (exit 5) (1s)
+[PASS] ac-probe build trace (capability + support lib, exit 12) (1.2s)
+
+Step                                                                     Ok Seconds Detail
+----                                                                     -- ------- ------
+toolchain discovery                                                    True     0.4       
+cargo check (ac-core)                                                  True       1       
+cargo fmt --check (ac-core)                                            True     0.7       
+cargo check --all-targets, zero warnings (ac-core)                     True     1.1       
+cargo test --lib (ac-core: link executor deadline/pipe/publish matrix) True     4.5       
+cargo test text_binding                                                True     0.3       
+cargo test hir_verify                                                  True     0.3       
+cargo test native_execution (--test-threads=1)                         True     2.4       
+cargo test cli (--test-threads=1)                                      True       3       
+cargo test trace_execution (--test-threads=1)                          True     1.1       
+ac-probe check 01-add (exit 0)                                         True     4.4       
+ac-probe build add-2-3 + run (exit 5)                                  True       1       
+ac-probe build trace (capability + support lib, exit 12)               True     1.2       
+
+
+VERIFY-AC-741: all 13 steps PASS

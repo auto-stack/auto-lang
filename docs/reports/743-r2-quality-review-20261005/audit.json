@@ -1,0 +1,31 @@
+{
+  "unbound_current_evidence": [],
+  "local_links_checked": 18,
+  "broken_links": [
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 141,
+      "target": "../reports/743-quality-review-20261005/REVIEW.md"
+    },
+    {
+      "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "line": 581,
+      "target": "../reports/743-quality-review-20261005/REVIEW.md"
+    }
+  ],
+  "canonical_delta_text_matches_frozen": {
+    "docs/specs/auto-acc/project.md": true,
+    "docs/specs/auto-hir/stage-contract.md": true
+  },
+  "hashes": {
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "f0133243cd33f20bb60aa4540fa194829198252d68ab7677a5d9b59aa3134ffe",
+    "docs/design/strategy/auto-acc-bootstrap-contract.md": "676521ab3b9f26ba39798a6c1f3eb78676a6040861055ede15dd0dbb088e5317",
+    "docs/reports/743-acc-hir-contract/acceptance-matrix.md": "5b2360c39930e2187542c97309d38bfe344a32983eda12c75416aa9820149827",
+    "docs/reports/743-acc-hir-contract/inventory.md": "bd9fbc1829fc1419eb9b73a1b0363c25384f56b21aa708e847fa3023b986f846",
+    "docs/reports/743-acc-hir-contract/next-work-packages.md": "da6806c312d5600753d8aa61c754e4444999007e138796fdf3cd6d5b44243af6",
+    "docs/specs/auto-acc/project.md": "21cd68db2764c0bf52f4a71dfa8f648f99a75cf7b3309b4fadbd31b131606275",
+    "docs/specs/auto-hir/stage-contract.md": "6e4d0cded8886196d707fe21e755d62ad5548fcf87a054f06ea17bbd5b820248",
+    "docs/specs/auto-acc/plans.md": "cc5fc39749e186392bbec3ab085ea9482031ecb5c87466649a3098ca383895d9",
+    "docs/specs/auto-hir/plans.md": "24aa1d0b5e4f4c98c8e5f6ee548f61fc8af4d46b59599463d2f00eb7e5e8bf03"
+  }
+}

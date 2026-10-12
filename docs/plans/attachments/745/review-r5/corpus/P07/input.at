@@ -1,0 +1,1 @@
+fn main() int { var n = 0; loop { loop { n = n + 2; break }; n = n + 3; break }; return n }

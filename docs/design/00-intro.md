@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **34**——33 已用于标准库运行时），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **37**——35 为统一测试协议、36 为 AC 数据扩面共同边界），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blueprints/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -142,6 +142,8 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 文档 | 主题 | 状态 |
 |------|------|------|
 | [27-knowledge-base-lifecycle](27-knowledge-base-lifecycle.md) | current/target-state、canonical source、ADR/Spec/Plan/Generated Catalog 生命周期 | ✅ **现行 canonical design**（Plan 543） |
+| [35-autodown-test-cases](35-autodown-test-cases.md) | AutoDown 统一文件用例、同源多后端 oracle、执行/比较/覆盖协议与渐进迁移 | 📝 设计草案（2026-10-12；静态盘点完成，runner 未实施） |
+| [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 📝 设计草案（2026-10-12；PLAN-769/770/771 drafting，尚未实施） |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 
@@ -150,6 +152,17 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 文档 | 主题 | 状态 |
 |------|------|------|
 | [ecosystem-portfolio-strategy](strategy/ecosystem-portfolio-strategy.md) | **生态版图伞形总战略**：动静结合第一优势（全生态设计原点）+ 三大市场（需求侧 3 + 供给侧 1）+ 寄生期合作层原则 + 优先级总表与不做清单（各分战略入口） | 📝 Draft（2026-09-06） |
+| [v0.6-offline-development-strategy](strategy/v0.6-offline-development-strategy.md) | v0.6 提前开发的历史基线、合并边界、近期任务与当前状态 | 规划基线 v1（2026-10-04；具体实现另行评审） |
+| [demo-app-independence-strategy](strategy/demo-app-independence-strategy.md) | 教学 Demo 与独立产品分流、来源同步、子模块组织与产品孵化 | 首轮建仓/接线完成；产品功能与全量验收待推进 |
+| [unified-package-install-strategy](strategy/unified-package-install-strategy.md) | auto-man 系统级包网络、安装核心与实体生命周期 | 目标已确认，技术设计草案（v0.6 必做） |
+| [atom-batom-v2-design](strategy/atom-batom-v2-design.md) | 新 Atom/Batom：独立于 auto-val 的模型/内存、Schema、struct codec、Node/Lisp 文本、自描述与紧凑二进制 profile | 📝 Draft RFC（2026-10-04；新方向，格式/计划未冻结） |
+| [atom-schema-dsl-design](strategy/atom-schema-dsl-design.md) | Atom Schema DSL、独立描述与标注、组合/fragment、primary/secondary、业务 enum 与身份 | 📝 Draft RFC（2026-10-04；语法与分期建议待确认） |
+| [auto-hir-design](strategy/auto-hir-design.md) | AutoHIR 语义优先：结构化类型表示、引用身份、求值顺序、校验与后端边界，再映射 Atom Schema | 📝 第一版语义 Draft（2026-10-04；未冻结/实现） |
+| [auto-hir-atom-text](strategy/auto-hir-atom-text.md) | HIR Atom 文本映射与完整样例：双槽简写、类型化引用、函数、控制流、参数求值顺序及反例矩阵 | 📝 Draft（2026-10-04；尚未经 parser/verifier 验收） |
+| [auto-ac-subset-and-target](strategy/auto-ac-subset-and-target.md) | AC 计算核心、文本/数据工具与 AAC 子集分期；Windows x64 原生目标文件、链接与执行闭环 | 📝 Draft（2026-10-04；Cranelift/自举分期已确认，具体子集待验收） |
+| [auto-native-backend-evolution](strategy/auto-native-backend-evolution.md) | v0.6 Cranelift AC/ACC 自举与 pass 基础；v0.7 自主低层 IR/SSA、优化/代码生成实验及切换门槛 | 路线已确认（2026-10-04；技术细节与实现按计划验证） |
+| [auto-acc-bootstrap-contract](strategy/auto-acc-bootstrap-contract.md) | ACC 自举主体与公共 HIR 阶段契约：S0–S6 阶段表、pass 合同模板与非法变换反例、后端桥候选矩阵、Gen1–3 代际判据（PLAN-743 T-04） | 📝 Draft（2026-10-04；契约未冻结，实施计划按节认领） |
+| [auto-native-abi-rfc](strategy/auto-native-abi-rfc.md) | AC/ACC 原生 ABI：独立版本域、Windows x86-64、静态/动态模块、linker 分工、跨界类型、常驻运行时与状态热重载 | 📝 Draft RFC（2026-10-04；需求已记录，技术建议待评审，未实施） |
 | [auto-as-rust-script-strategy](strategy/auto-as-rust-script-strategy.md) | "Auto 作 Rust 脚本层"宣传与文档纲领 | ✅ Accepted（Plan 359） |
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |
 | [python-parity-roadmap](strategy/python-parity-roadmap.md) | Python parity 第三维度（use.py + a2py） | ✅ 现行（Plan 369 首批落地） |
@@ -159,7 +172,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [harmonyos-ecosystem-strategy](strategy/harmonyos-ecosystem-strategy.md) | 鸿蒙：ArkTS 主线（仓颉/ABC/机器码不做）+ OpenHarmony OS 终态方向 | 📝 Draft 骨架（2026-09-06，待扩充；a2ark rebaseline 为该线首个 plan） |
 | [mobile-jetpack-strategy](strategy/mobile-jetpack-strategy.md) | 移动：Android+iOS 统一 Jetpack Compose（不做 SwiftUI），排鸿蒙后 | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [ros2-ecosystem-strategy](strategy/ros2-ecosystem-strategy.md) | ROS2：C 消费面生态绑定包（rcl 纯 C + IDL 生成），C 轨重启触发条件之一 | 📝 Draft 骨架（2026-09-06，待扩充） |
-| [native-backend-strategy](strategy/native-backend-strategy.md) | Native 编译：终局必做的自主执行底座 + 近期开发形态逃逸（理由 e agent 集群放大/fork-rustc「Versioned ABI」Stage 0.5 分期 A/B/C——命名定案规避 Stable ABI/四段路线/cranelift 预裁注） | 📝 Draft→细化中（2026-09-06 立稿；2026-09-08 补开发形态分水岭+复核定分期，见 Design 28 关联） |
+| [native-backend-strategy](strategy/native-backend-strategy.md) | Native 战略：当前 AC/ACC/Cranelift 分期 + 历史自主生态/开发形态/fork-rustc 论证 | 2026-10-04 文首对齐新路线；旧阶段顺序保留为历史 |
 | [thirdgen-internet-strategy](strategy/thirdgen-internet-strategy.md) | 第三代互联网（AI+XR，曾用名"元宇宙/WEB3.0"）：三大市场之三，Godot/3D 引擎为入口（双形态优势 + 引擎侧静态缝合前提） | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [script-mode-interop](strategy/script-mode-interop.md) | 脚本模式互操作（AutoScript .as 糖→py 桥 lowering/错误模型/null 体系） | 📝 Draft（裁决闭环，待立项） |
 
@@ -210,6 +223,6 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 - **贡献 AutoUI/桌面**：16（战略）→ 20（架构）→ [autoui/](autoui/README.md) 各专题
   （虚拟桌面线：virtual-desktop → desktop-shell-and-launcher → desktop-shell[25]）。
 - **查现状/关键代码入口**：去 [docs/specs/](../specs/overview.md)（本目录存意图，specs 存现状）。
-- **查某次改动的来龙去脉**：去 [docs/plans/](../plans/archive/plans-status-audit-2026-08-20.md)（最新全量审计；2026-09-01 起由 [Plan 513](../plans/513-repo-integration-cleanup.md) 接任）。
+- **查某次改动的来龙去脉**：去 [docs/plans/](../plans/archive/plans-status-audit-2026-08-20.md)（最新全量审计；2026-09-01 起由 [Plan 513](../plans/archive/513-repo-integration-cleanup.md) 接任）。
 - **新增设计文档**：按"归位规则"节先定性再落位，写完在本索引登记。
 

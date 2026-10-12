@@ -1,0 +1,85 @@
+/// Outcome of a deadline-guarded process run.  runs mean the
+/// single deadline was exceeded by the process or its output collection;
+/// the contained tree was terminated and reaped, and no success is faked
+/// (R2/R3-QA-01..02).
+pub struct DeadlinedRun {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+    pub timed_out: bool,
+    /// Always false in the delegated implementation: reader errors surface
+    /// through the executor's error variants instead of being flattened
+    /// into output (kept for API stability of existing assertions).
+    pub drain_error: bool,
+}
+
+/// Run a command under the 741-proven contained executor
+/// ([], R3-QA-01): controlled
+/// suspended start, Job-Object subtree containment BEFORE the first
+/// instruction, one deadline covering process exit AND pipe-EOF collection,
+/// byte draining with lossy UTF-8 conversion, and full tree + reader
+/// reclamation on every exit (success, deadline, spawn/containment/wait).
+/// There is deliberately no test-only lifecycle here — the tests consume
+/// the same executor the linker itself uses.
+pub fn run_deadlined(
+    mut cmd: std::process::Command,
+    deadline: std::time::Duration,
+) -> std::io::Result<DeadlinedRun> {
+    use auto_ac_prototype::link::{run_deadlined_split, SubprocError};
+    match run_deadlined_split(&mut cmd, deadline) {
+        Ok((code, out, err)) => Ok(DeadlinedRun {
+            code: code.unwrap_or(-1),
+            stdout: out,
+            stderr: err,
+            timed_out: false,
+            drain_error: false,
+        }),
+        Err(SubprocError::Deadline) | Err(SubprocError::DeadlineCollect) => Ok(DeadlinedRun {
+            code: -1,
+            stdout: String::new(),
+            stderr: String::new(),
+            timed_out: true,
+            drain_error: false,
+        }),
+        Err(SubprocError::Spawn(e)) => Err(e),
+        Err(SubprocError::Wait(e)) => Err(e),
+        Err(SubprocError::ContainmentUnavailable(reason)) => {
+            // A process that cannot be bounded is a controlled refusal, not
+            // a success — surface it as a pseudo-io error for callers.
+            Err(std::io::Error::other(format!(
+                "containment unavailable: {reason}"
+            )))
+        }
+    }
+}
+fn main() {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let exe = std::env::current_exe().unwrap();
+    match std::env::args().nth(1).as_deref() {
+        Some("--hold") => { std::thread::sleep(Duration::from_secs(5)); println!("HELD_OUTPUT"); return; }
+        Some("--late") => { std::thread::sleep(Duration::from_millis(650)); println!("LATE"); return; }
+        Some(mode @ ("--root-exits" | "--root-late" | "--root-waits")) => {
+            let c = Command::new(&exe).arg(if mode=="--root-late" {"--late"} else {"--hold"})
+                .stdin(Stdio::null()).stdout(Stdio::inherit()).stderr(Stdio::inherit()).spawn().unwrap();
+            std::fs::write(std::env::var("AC745_REVIEW_PID_PATH").unwrap(), c.id().to_string()).unwrap();
+            println!("DESCENDANT_PID={}", c.id());
+            if mode=="--root-waits" {std::thread::sleep(Duration::from_secs(5));}
+            return;
+        }
+        Some("--invalid-utf8") => { std::io::stdout().write_all(b"PREFIX\xffSUFFIX").unwrap(); return; }
+        _ => {}
+    }
+    for (mode, ms) in [("--root-exits",500),("--root-late",3000),("--root-waits",500),("--invalid-utf8",1000)] {
+        let mut cmd=Command::new(&exe);cmd.arg(mode);
+        let started=Instant::now();let run=run_deadlined(cmd,Duration::from_millis(ms)).unwrap();
+        println!("CASE={mode} deadline_ms={ms} elapsed_ms={} timeout={} code={} out={:?}",started.elapsed().as_millis(),run.timed_out,run.code,run.stdout);
+        if mode!="--invalid-utf8" {
+            let pid=std::fs::read_to_string(std::env::var("AC745_REVIEW_PID_PATH").unwrap()).unwrap();
+            let alive=Command::new("powershell").args(["-NoProfile","-Command", &format!("if(Get-Process -Id {pid} -ErrorAction SilentlyContinue){{exit 0}}else{{exit 1}}")]).status().unwrap();
+            println!("DESCENDANT_ALIVE={}",alive.success());
+            if alive.success(){let _=Command::new("taskkill").args(["/PID",&pid,"/T","/F"]).stdout(Stdio::null()).stderr(Stdio::null()).status();}
+        }
+    }
+}

@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "D:\autostack\auto-lang\docs\reports\741-phase6-lifecycle-gate\fixture_tests.py", line 94, in <module>
+    main()
+    ~~~~^^
+  File "D:\autostack\auto-lang\docs\reports\741-phase6-lifecycle-gate\fixture_tests.py", line 83, in main
+    plan = mutated(name, transforms[name])
+  File "D:\autostack\auto-lang\docs\reports\741-phase6-lifecycle-gate\fixture_tests.py", line 34, in mutated
+    text = PLAN.read_text(encoding="utf8")
+  File "C:\Python314\Lib\pathlib\__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\pathlib\__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'D:\\autostack\\auto-lang\\docs\\plans\\741-ac-hir-native-core.md'

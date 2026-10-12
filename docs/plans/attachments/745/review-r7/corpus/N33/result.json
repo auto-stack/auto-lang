@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N33",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N33\\input.at:1:6: error[bind/source.duplicate]: parameter `x` is declared more than once\n",
+    "stdout": ""
+  },
+  "input_sha256": "0384b47794d238412a28c662d5675ba469939641990eacb38464d0a5cd5dc18d",
+  "run": null,
+  "ok": true
+}

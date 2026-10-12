@@ -1,0 +1,9 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.12s
+{
+  "exact_rlib": "D:\\autostack\\.wt\\lang-745\\auto-lang\\experimental\\ac-core\\target\\debug\\libauto_ac_prototype.rlib",
+  "rlib_sha256": "a0219b4fae07f6c711f7fad180c86fc27168aed92ade2584ae251e175637f707",
+  "binary_sha256": "6f7551a0a4f53f5efa4249bdaf25c1dcdfb690b482620520d7be20fd59305bcd",
+  "exit": 0,
+  "stdout": "CASE=--root-exits deadline_ms=500 elapsed_ms=508 timeout=true code=-1 out=\"\"\nDESCENDANT_ALIVE=false\nCASE=--root-late deadline_ms=3000 elapsed_ms=752 timeout=false code=0 out=\"DESCENDANT_PID=40340\\nLATE\\n\"\nDESCENDANT_ALIVE=false\nCASE=--root-waits deadline_ms=500 elapsed_ms=507 timeout=true code=-1 out=\"\"\nDESCENDANT_ALIVE=false\nCASE=--invalid-utf8 deadline_ms=1000 elapsed_ms=79 timeout=false code=0 out=\"PREFIX�SUFFIX\"\n",
+  "stderr": ""
+}

@@ -1,0 +1,1 @@
+fn f(flag bool) int { var x=1; if flag { return 7 } else { x=3 }; return x+2 } fn main() int { return f(false)+f(true) }

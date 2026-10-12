@@ -1,0 +1,16 @@
+{
+  "reviewed_head": "6baed9bba84016dd8610221a9a0358195444385e",
+  "base_commit": "39a4f91339ac9744578cf2064c9731090469e960",
+  "revision": 5,
+  "hashes": {
+    "experimental/ac-core/src/link.rs": "2afd2a4fa85508a26f3f76fc1fff45abfa4248f3e9808fba2be2572a73adf8bd",
+    "experimental/ac-core/src/main.rs": "b43d00ba820e052f4afc06a79d9c600ac60b9fb37d4076dc16f33ae294f18a98",
+    "experimental/ac-core/Cargo.toml": "6e9cbe7dcd2e3371789597d6835cf679419f4bd50dee38d6e4938c91d15b58ba",
+    "experimental/ac-core/Cargo.lock": "296429e6dd6db8e1affe9755f29c5ff94c902362361fa719b7bc1cd11ee7077e",
+    "docs/plans/archive/741-ac-hir-native-core.md": "971b1683b1a4f2884a11c77ca1fe209cc1760a443bcd1f36a463ef42b9ec4b7f",
+    "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+    "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab",
+    "docs/reports/741-phase5-link-cleanup/final_assertions.py": "1eb16bb0b44e5a62236d558bdce8008411c3dd77087dc4603eb6caa7c19e94e1",
+    "docs/reports/741-r4-quality-review-20261005/proposed-spec-delta-phase5.md": "26854294671db67bcd5b55f675a5dd49c3103ab47a4c2577ecd266481dbb1130"
+  }
+}

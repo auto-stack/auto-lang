@@ -1,0 +1,21 @@
+{
+  "build": {
+    "exit": 0,
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K02-if-999-native\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K02-if-999-native\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K02-if-999-native\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K02-if-999-native\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: f009a10cfe2a438f\n",
+    "stderr": ""
+  },
+  "run": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "bytes": 10026,
+  "check": {
+    "exit": 0,
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=f009a10cfe2a438f, module(s)=1, capabilities required: []\n",
+    "stderr": ""
+  },
+  "want": 0,
+  "id": "K02-if-999-native",
+  "want_native": 1
+}

@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N16",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N16\\input.at:1:17: error[verify/verify.loop-target-scope]: continue target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N16\\input.at:1:17: error[verify/verify.block-structure]: block `k0` has executable statements after a terminating statement\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N16\\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths)\n",
+    "stdout": ""
+  },
+  "input_sha256": "882bf5f6c1371b3cd926eff81517a157228eba9773211dad97bef226f98345c8",
+  "run": null,
+  "ok": true
+}

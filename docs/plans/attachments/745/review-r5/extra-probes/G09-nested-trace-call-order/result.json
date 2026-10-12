@@ -1,0 +1,21 @@
+{
+  "id": "G09-nested-trace-call-order",
+  "check": {
+    "stderr": "",
+    "exit": 0,
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=c85ddfbdacc4e0cb, module(s)=1, capabilities required: [\"hir.test.trace.v1\"]\n"
+  },
+  "run": {
+    "stderr": "baab",
+    "exit": 24,
+    "stdout": ""
+  },
+  "bytes": 120,
+  "build": {
+    "stderr": "",
+    "exit": 0,
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G09-nested-trace-call-order\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G09-nested-trace-call-order\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G09-nested-trace-call-order\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\G09-nested-trace-call-order\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: c85ddfbdacc4e0cb\n"
+  },
+  "want": 24,
+  "want_stderr": "baab"
+}

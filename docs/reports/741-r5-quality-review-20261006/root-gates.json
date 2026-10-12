@@ -1,0 +1,32 @@
+[
+  {
+    "gate": "root-check",
+    "exit": 0,
+    "seconds": 178.034,
+    "command": [
+      "cargo",
+      "check",
+      "-p",
+      "auto-lang"
+    ]
+  },
+  {
+    "gate": "root-t",
+    "exit": 100,
+    "seconds": 674.111,
+    "command": [
+      "cargo",
+      "t",
+      "--no-fail-fast"
+    ]
+  },
+  {
+    "gate": "root-tv",
+    "exit": 0,
+    "seconds": 6.807,
+    "command": [
+      "cargo",
+      "tv"
+    ]
+  }
+]

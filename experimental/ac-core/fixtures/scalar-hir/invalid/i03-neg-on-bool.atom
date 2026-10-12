@@ -1,0 +1,25 @@
+// neg_i32 applied to a bool operand.
+hir(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32-draft") {
+    module m {
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_f function { params: []; result: "t_bool" }
+        }
+        declarations { function d_main t_f { name: "sf_main"; body: "b_main" } }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {}
+                expressions {
+                    expr e0 constant { type: t_i32; value: 1i32 }
+                    expr e1 constant { type: t_i32; value: 2i32 }
+                    expr e2 binary { type: t_bool; op: lt_i32; lhs: e0; rhs: e1 }
+                    expr e3 unary { type: t_bool; op: neg_i32; operand: e2 }
+                }
+                blocks { block k0 { return(value: e3) } }
+            }
+        }
+    }
+}

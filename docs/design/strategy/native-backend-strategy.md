@@ -12,6 +12,24 @@ Stage 0.5 fork-rustc 方案"（当日在 auto-musk 会话推导定案）；同�
 
 ---
 
+## 当前路线更新（2026-10-04，优先于下文历史阶段顺序）
+
+用户已确认 v0.6 以 Cranelift 实现 Rust AC 与 Auto ACC 的约定原生自举；
+v0.7 推进自主低层 IR/SSA、优化体系与自主后端实验，不要求完全替换 Cranelift。
+具体版本、Windows ABI/对象/展开/模块能力仍按探针和独立 Plan 验证。
+完整比较、接口、自举与切换门槛见 [AC/ACC 后端演进](auto-native-backend-evolution.md)。
+
+自举与机器码后端重写是独立演进轴。v0.6 已需建立 HIR 的效果/顺序/所有权契约、
+pass 基础和必要优化，接入 Cranelift 时直接处理 CLIF/SSA；
+v0.7 的自有低层 IR/优化器可继续输出至 Cranelift，再扩大自主代码生成。
+切换按能力、ABI 对拍、实测收益和维护成本决定，可按 target/profile 分步并存。
+
+下文保留 2026-09 的论证和 Stage 0.5 fork-rustc 历史提案，
+不作为当前 v0.6 的强制前置条件，不再以旧 Stage 顺序或 GOAL-017 状态推迟 AC/ACC。
+ABI 的当前规则以 [Native ABI RFC](auto-native-abi-rfc.md) 的独立版本域为准，
+不将历史“同编译器版本”域恢复为现行规则。
+本更新记录路线决策，不声明自主后端、SSA、优化器或自举已实现。
+
 ## 0. 定性：从"寄生"到"自主"的分水岭
 
 现阶段 Auto 以源码级转译（a2r/a2c）寄生在 Rust/C 生态上——这是**短期务实选择，不是终局**。

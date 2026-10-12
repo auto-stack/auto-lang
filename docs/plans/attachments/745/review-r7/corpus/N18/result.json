@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N18",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N18\\input.at:1:27: error[verify/verify.block-structure]: block `k1` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+    "stdout": ""
+  },
+  "input_sha256": "324c250b3563c69664a68942c0b332489f55eff3f9b5d90f764025c9763bc3fb",
+  "run": null,
+  "ok": true
+}

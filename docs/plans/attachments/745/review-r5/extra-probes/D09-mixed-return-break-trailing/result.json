@@ -1,0 +1,12 @@
+{
+  "id": "D09-mixed-return-break-trailing",
+  "source": "fn main() int { loop { if true { return 1 } else { break }; let x = 2 }; return 0 }",
+  "want": "conservative verify behavior inspect",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=4d7fddadacb31c4a, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": null,
+  "run": null
+}

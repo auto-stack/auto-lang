@@ -1,0 +1,4 @@
+1e5ee09b1fdadd9bccd021b3380e45896731758380a95071d6c080c40bc81b26 *docs/reports/741-phase7-lifecycle-fixture-nav/fixture_tests.py
+5434d2864d802510419fa65d838e9e5b2c0eb8d1e385c329b01486c7d21bca15 *docs/reports/741-phase7-lifecycle-fixture-nav/final_assertions.py
+e6215978f6ed2fce532a6baba4f56e2628e2ecd0301a5c2b8ec12976d7c7d349 *docs/reports/741-phase7-lifecycle-fixture-nav/verification.md
+6911a2344be19359941beddb40cee17084d9bd878ff4479b829515add91b71fd *docs/reports/741-phase8-identity-verification/verification.md

@@ -1,0 +1,5 @@
+type_qualified_parameter [('len', 'type-qualified', 'Meter')]
+type_bare_parameter [('Meter', 'type-construction', None)]
+type_no_binding_control [('Meter', 'type-construction', None), ('len', 'type-qualified', 'Meter')]
+enum_case_parameter [('select', 'unknown-bare-call', None)]
+type_qualified_import [('len', 'type-qualified', 'Meter')]

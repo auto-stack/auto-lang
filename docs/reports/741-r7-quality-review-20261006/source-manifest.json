@@ -1,0 +1,31 @@
+{
+  "reviewed_commit": "18beff64b4ceefa1e7f4176296f5e37f77dd6da1",
+  "diff_base": "8296ff305b8a15909903c61bb2ae15aeefd7373b",
+  "plan_revision": 7,
+  "hashes": {
+    "docs/plans/archive/741-ac-hir-native-core.md": "619c40dca7b153040088523f371c3006e3b5bccf3203823631bd96ee04b59ea2",
+    "docs/reports/741-phase7-lifecycle-fixture-nav/fixture_tests.py": "dfdd718626d30994d79c1692c97e0cd395cc2f11558c638212ffa301dfec8eaa",
+    "docs/reports/741-phase7-lifecycle-fixture-nav/final_assertions.py": "6a70d8e744d067d69774e17c168e870e34ff220790fff678e928021137eb9e86",
+    "docs/reports/741-phase7-lifecycle-fixture-nav/fixture-run-final.txt": "7989084ede580693a580d628c6ca88058ab90f57b5e6536c053d0a165cf2048b",
+    "experimental/ac-core/README.md": "1dee376873b0d88751d3d329ca696550cdeebd534d3d0814b9e9936564ee739f",
+    "experimental/ac-core/Cargo.toml": "6e9cbe7dcd2e3371789597d6835cf679419f4bd50dee38d6e4938c91d15b58ba",
+    "experimental/ac-core/Cargo.lock": "296429e6dd6db8e1affe9755f29c5ff94c902362361fa719b7bc1cd11ee7077e",
+    "scripts/verify-ac-741.ps1": "f16a302c0f57c187e5dbc29d2c28fb25b96acf4f1b616999c25d1ea48570adb7",
+    "docs/specs/auto-ac/project.md": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208",
+    "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab",
+    "docs/specs/auto-ac/plans.md": "3ead2127fa600c5cca5b59746af7d298be8863d8d89da7fddf4e6e1f401cfc8a",
+    "docs/specs/auto-hir/plans.md": "2c303028bee3ffd94961d425c744aacc8544bb9d0fb39e6c1ec2f7fdf18aff53",
+    ".autoos/specs.json": "2043c3b439b6f3a6f39833e7a80e2d024e8b3a39a6b3960a5757bb63eee56e32",
+    "experimental/ac-core/src/atom_text.rs": "0d468f329a293078945c12a61cee12177997583f83b9f374d56c6bded56c3edb",
+    "experimental/ac-core/src/descriptor.rs": "3c66bee8c58f21bdf45d761c485d0b865e208849d98b340e99f565eac08741ad",
+    "experimental/ac-core/src/hir.rs": "251d973f75a991675c7331bbc9dd683e61b7e830a9615120cd5cd6d5c6f29e63",
+    "experimental/ac-core/src/lib.rs": "7039e3c296c6e4a8e275e32c874b0f98ac91c23ba24d099761f9693d3280eaa7",
+    "experimental/ac-core/src/link.rs": "2afd2a4fa85508a26f3f76fc1fff45abfa4248f3e9808fba2be2572a73adf8bd",
+    "experimental/ac-core/src/main.rs": "b43d00ba820e052f4afc06a79d9c600ac60b9fb37d4076dc16f33ae294f18a98",
+    "experimental/ac-core/src/native.rs": "69ef4577b3d2089b73c2c4ee652d31111b8b4fb44a55cceec9ca2b24859eef88",
+    "experimental/ac-core/src/verify.rs": "72d8433ac9ad2fc7d967a42f2416fc56504c4412e0301fc1e872d83bf305a36b"
+  },
+  "frozen_delta_sha256": "95a71fad48e32ae7903413b5ac0e3319d05dec117cc263a8dab78aae24b5044a",
+  "category": "A: read committed docs/Python scripts; fixture writes isolated TEMP only; no Cargo/native/docs_gen",
+  "owned_worktree": "none; prior implementation worktree already cleaned; verified landing via committed ancestry and main checkout"
+}

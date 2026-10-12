@@ -1,0 +1,6 @@
+type P {
+ fn next() int { return 1 }
+}
+type Q {
+ fn go() int { return .next() }
+}

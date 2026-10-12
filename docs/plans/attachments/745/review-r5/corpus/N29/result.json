@@ -1,0 +1,14 @@
+{
+  "kind": "reject",
+  "artifact_hashes": [],
+  "ok": true,
+  "input_sha256": "c70144e611b4be0c61b324d0a649c78b327b95327a509ba807f564d9fd74428d",
+  "build": null,
+  "id": "N29",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N29\\input.at:1:40: error[bind/source.not-callable]: `mark_b` is a local, not a function; it cannot be called\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "run": null
+}

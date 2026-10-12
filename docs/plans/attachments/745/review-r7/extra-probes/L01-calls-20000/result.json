@@ -1,0 +1,13 @@
+{
+  "bytes": 60055,
+  "want_native": null,
+  "want": 0,
+  "build": null,
+  "run": null,
+  "id": "L01-calls-20000",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=33c6f1d52a785162, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  }
+}

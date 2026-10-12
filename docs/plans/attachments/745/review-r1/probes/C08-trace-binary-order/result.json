@@ -1,0 +1,20 @@
+{
+  "id": "C08-trace-binary-order",
+  "source": "fn main() int { return mark_b() * 10 + mark_a() }",
+  "want": "native21/ba",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=d2f224cb45f58e6f, module(s)=1, capabilities required: [\"hir.test.trace.v1\"]\n",
+    "exit": 0
+  },
+  "build": {
+    "stderr": "",
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C08-trace-binary-order\\app.exe (entry main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C08-trace-binary-order\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C08-trace-binary-order\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C08-trace-binary-order\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: d2f224cb45f58e6f\n",
+    "exit": 0
+  },
+  "run": {
+    "stderr": "ba",
+    "stdout": "",
+    "exit": 21
+  }
+}

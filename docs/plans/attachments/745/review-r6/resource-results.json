@@ -1,0 +1,70 @@
+[
+  {
+    "build": {
+      "exit": 0,
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K01-call-999-native\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K01-call-999-native\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K01-call-999-native\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K01-call-999-native\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 3303f111ca8863db\n",
+      "stderr": ""
+    },
+    "run": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    },
+    "bytes": 3052,
+    "check": {
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=3303f111ca8863db, module(s)=1, capabilities required: []\n",
+      "stderr": ""
+    },
+    "want": 0,
+    "id": "K01-call-999-native",
+    "want_native": 1
+  },
+  {
+    "build": {
+      "exit": 0,
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K02-if-999-native\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K02-if-999-native\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K02-if-999-native\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K02-if-999-native\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: f009a10cfe2a438f\n",
+      "stderr": ""
+    },
+    "run": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    },
+    "bytes": 10026,
+    "check": {
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=f009a10cfe2a438f, module(s)=1, capabilities required: []\n",
+      "stderr": ""
+    },
+    "want": 0,
+    "id": "K02-if-999-native",
+    "want_native": 1
+  },
+  {
+    "build": null,
+    "run": null,
+    "bytes": 3055,
+    "check": {
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=3b8b50d49214426a, module(s)=1, capabilities required: []\n",
+      "stderr": ""
+    },
+    "want": 0,
+    "id": "K03-call-1000",
+    "want_native": null
+  },
+  {
+    "build": null,
+    "run": null,
+    "bytes": 10036,
+    "check": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K04-if-1000\\input.at:1:9016: error[text/source.syntax]: nesting deeper than 1000 levels is not accepted\n"
+    },
+    "want": 0,
+    "id": "K04-if-1000",
+    "want_native": null
+  }
+]

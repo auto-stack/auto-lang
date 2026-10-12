@@ -1,0 +1,13 @@
+{
+  "want_native": 5,
+  "bytes": 56,
+  "run": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M19-unclosed-if-condition\\input.at:1:25: error[text/source.syntax]: expected `)`\n"
+  },
+  "want": 1,
+  "id": "M19-unclosed-if-condition",
+  "build": null
+}

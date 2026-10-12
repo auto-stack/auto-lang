@@ -1,0 +1,8 @@
+{
+  "strict_same_source_main_comparison": false,
+  "new_names": [
+    "auto-lang tests::plan643_chart_tag_tests::t01_with_charts_vm_track_renders_charts"
+  ],
+  "current_nonpass_count": 35,
+  "historical_union_count": 38
+}

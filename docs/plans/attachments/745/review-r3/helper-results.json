@@ -1,0 +1,9 @@
+{
+  "helper_path": "D:\\autostack\\.wt\\lang-745\\auto-lang\\experimental\\ac-core\\tests\\common\\mod.rs",
+  "helper_sha256": "2b7b010ecb71b56069f8601cd3d464874aaef64c7a68b57529f19a5c9f480673",
+  "exact_harness_sha256": "611cd4ff89bf544fb8c1f94dea6b3d20801c8b3903545ac55d7e8f527b056f5e",
+  "binary_sha256": "037a3134c39b922a919b4fedd1f5b50f8a5f9df4d9f25b73fb80cbc37937b7c1",
+  "exit": 0,
+  "stdout": "PIPE_HOLD deadline_ms=500 elapsed_ms=505 timed_out=true code=0 output=\"\"\nDESCENDANT_ALIVE_AFTER_HELPER_RETURN=true pid=15472\nINVALID_UTF8 timed_out=false code=0 output=\"PREFIX�SUFFIX\"\n",
+  "stderr": ""
+}

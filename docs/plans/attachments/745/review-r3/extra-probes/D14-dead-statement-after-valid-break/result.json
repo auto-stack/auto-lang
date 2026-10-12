@@ -1,0 +1,12 @@
+{
+  "id": "D14-dead-statement-after-valid-break",
+  "source": "fn main() int { loop { break; let x = 2 }; return 0 }",
+  "want": "reject at let",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\extra-probes\\D14-dead-statement-after-valid-break\\input.at:1:31: error[verify/verify.block-structure]: block `k2` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+    "exit": 1,
+    "stdout": ""
+  },
+  "build": null,
+  "run": null
+}

@@ -1,0 +1,10 @@
+{
+  "script_sha256": "6a866ef40de1535419a2bd28e13c958907972599bb505aab582532acfebd7e9f",
+  "deadline_ms": 1000,
+  "elapsed_ms": 5044,
+  "result": {
+    "Code": 0,
+    "Stdout": "DESCENDANT_PID=35836\nDESCENDANT_COMPLETED\n",
+    "Stderr": ""
+  }
+}

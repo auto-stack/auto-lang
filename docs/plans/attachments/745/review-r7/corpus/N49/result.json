@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N49",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N49\\input.at:1:21: error[text/source.unsupported]: non-ASCII character cannot be used as a name in this source profile\n",
+    "stdout": ""
+  },
+  "input_sha256": "810cf8803ccb956bc68db570a156a6acf3a4933fe02d915dc149c4dd8b9d3d3b",
+  "run": null,
+  "ok": true
+}

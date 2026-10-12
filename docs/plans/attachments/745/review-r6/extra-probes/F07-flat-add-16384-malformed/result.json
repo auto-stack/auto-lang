@@ -1,0 +1,9 @@
+{
+  "id": "F07-flat-add-16384-malformed",
+  "bytes": 32793,
+  "result": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\F07-flat-add-16384-malformed\\input.at:1:32793: error[text/source.syntax]: expected expression, found `}`\n",
+    "exit": 1,
+    "stdout": ""
+  }
+}

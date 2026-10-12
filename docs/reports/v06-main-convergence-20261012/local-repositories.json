@@ -1,0 +1,487 @@
+[
+  {
+    "repo": "auto-ai",
+    "branch": "main",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\thttps://github.com/auto-stack/auto-ai.git (fetch)"
+    ],
+    "branches": [
+      "main 58bee8d origin/main ",
+      "v0.6-dev 58bee8d  "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-ai 58bee8d [main]"
+    ]
+  },
+  {
+    "repo": "auto-code-rs",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/auto-code-rs.git (fetch)"
+    ],
+    "branches": [
+      "master 35a710f origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-code-rs 35a710f [master]"
+    ]
+  },
+  {
+    "repo": "auto-codegen",
+    "branch": "master",
+    "dirty_count": 1,
+    "dirty_sample": [
+      " M Cargo.lock"
+    ],
+    "remotes": [
+      "origin\tgit@codeup.aliyun.com:soutek/auto-studio/auto-codegen.git (fetch)"
+    ],
+    "branches": [
+      "master 381ca0c origin/master [behind 7]"
+    ],
+    "worktrees": [
+      "D:/autostack/auto-codegen 381ca0c [master]"
+    ]
+  },
+  {
+    "repo": "auto-coder",
+    "branch": "master",
+    "dirty_count": 1245,
+    "dirty_sample": [
+      " D coder/rust/target/.rustc_info.json",
+      " D coder/rust/target/CACHEDIR.TAG",
+      " D coder/rust/target/debug/.cargo-lock",
+      " D coder/rust/target/debug/.fingerprint/a2r-std-d1d7a79ee57bee89/dep-lib-a2r_std",
+      " D coder/rust/target/debug/.fingerprint/a2r-std-d1d7a79ee57bee89/invoked.timestamp",
+      " D coder/rust/target/debug/.fingerprint/a2r-std-d1d7a79ee57bee89/lib-a2r_std"
+    ],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/auto-coder.git (fetch)"
+    ],
+    "branches": [
+      "master e213050 origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-coder e213050 [master]"
+    ]
+  },
+  {
+    "repo": "auto-down",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@github.com:auto-stack/auto-down.git (fetch)"
+    ],
+    "branches": [
+      "master fba6563 origin/master ",
+      "v0.6-dev fba6563  "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-down                         fba6563 [master]",
+      "C:/Users/zhaop/.codex/worktrees/5fa2/auto-down fba6563 (detached HEAD)",
+      "D:/autostack/.wt/lang-742/auto-down            fba6563 (detached HEAD) prunable",
+      "D:/autostack/.wt/lang-768/auto-down            fba6563 (detached HEAD)"
+    ]
+  },
+  {
+    "repo": "auto-forge",
+    "branch": "main",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@github.com:auto-stack/auto-forge.git (fetch)"
+    ],
+    "branches": [
+      "main a1f5982 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-forge a1f5982 [main]"
+    ]
+  },
+  {
+    "repo": "auto-gen",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@codeup.aliyun.com:soutek/auto-stack/auto-gen.git (fetch)"
+    ],
+    "branches": [
+      "master a06babe origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-gen a06babe [master]"
+    ]
+  },
+  {
+    "repo": "auto-lang",
+    "branch": "v0.6-dev",
+    "dirty_count": 13,
+    "dirty_sample": [
+      " M docs/design/00-intro.md",
+      " M docs/plans/.next-id",
+      " M docs/plans/768-autodown-testcase-protocol-pilot.md",
+      "?? docs/design/35-autodown-test-cases.md",
+      "?? docs/design/36-ac-data-resource-expansion.md",
+      "?? docs/plans/769-ac-data-resource-contract.md"
+    ],
+    "remotes": [
+      "gitcode\tgit@gitcode.com:auto-stack/auto-lang.git (fetch)",
+      "gitee\tgit@gitee.com:auto-stack/auto-lang.git (fetch)",
+      "origin\tgit@github.com:auto-stack/auto-lang.git (fetch)"
+    ],
+    "branches": [
+      "codex/archive-5fa2-20261006 711357f9a  ",
+      "codex/auto-abi-rfc f1d665271  ",
+      "feat/gallery-optimization ff9536645 gitee/feat/gallery-optimization ",
+      "master 168b56923 origin/master [ahead 1]",
+      "plan-768-dev 8a9f305cb  ",
+      "v0.6-dev a45ff543e  "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-lang                         a45ff543e [v0.6-dev]",
+      "C:/Users/zhaop/.codex/worktrees/61a7/auto-lang f1d665271 [codex/auto-abi-rfc]",
+      "D:/autostack/.wt/lang-768/auto-lang            8a9f305cb [plan-768-dev]"
+    ]
+  },
+  {
+    "repo": "auto-man",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/auto-man.git (fetch)"
+    ],
+    "branches": [
+      "master 51fafe8 origin/master ",
+      "v0.0.x b929867 origin/v0.0.x "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-man 51fafe8 [master]"
+    ]
+  },
+  {
+    "repo": "auto-musk",
+    "branch": "main",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@github.com:auto-stack/auto-musk.git (fetch)"
+    ],
+    "branches": [
+      "main bfcf373 origin/main [ahead 2]",
+      "v0.6-dev edde608  "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-musk bfcf373 [main]"
+    ]
+  },
+  {
+    "repo": "auto-os",
+    "branch": "v0.6-dev",
+    "dirty_count": 6,
+    "dirty_sample": [
+      " M apps/014-weather",
+      " M apps/015-notes",
+      " M apps/023-realworld",
+      " M apps/028-launcher",
+      "?? apps/probe-cmp.txt",
+      "?? apps/probe-out.txt"
+    ],
+    "remotes": [
+      "origin\tgit@github.com:auto-stack/auto-os.git (fetch)"
+    ],
+    "branches": [
+      "codex/os-v06-foundations 46d7ac3  ",
+      "main 93c3cb0 origin/main ",
+      "v0.6-dev 71d3b5f origin/v0.6-dev "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os                        71d3b5f [v0.6-dev]",
+      "D:/autostack/.wt/os-v06-app-import/auto-os  4504f4c (detached HEAD)",
+      "D:/autostack/.wt/os-v06-foundations/auto-os 46d7ac3 [codex/os-v06-foundations]"
+    ]
+  },
+  {
+    "repo": "auto-parse",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@codeup.aliyun.com:soutek/auto-studio/auto-parse.git (fetch)"
+    ],
+    "branches": [
+      "master 04cf1c6 origin/master [behind 1]"
+    ],
+    "worktrees": [
+      "D:/autostack/auto-parse 04cf1c6 [master]"
+    ]
+  },
+  {
+    "repo": "auto-rtos",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@codeup.aliyun.com:soutek/auto-stack/auto-rtos.git (fetch)"
+    ],
+    "branches": [
+      "master b7a4a91 origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-rtos b7a4a91 [master]"
+    ]
+  },
+  {
+    "repo": "auto-shell",
+    "branch": "main",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@github.com:auto-stack/auto-shell.git (fetch)"
+    ],
+    "branches": [
+      "main 00c8775 origin/main ",
+      "v0.6-dev 00c8775  "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-shell 00c8775 [main]"
+    ]
+  },
+  {
+    "repo": "auto-skills",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/auto-skills.git (fetch)"
+    ],
+    "branches": [
+      "master e0dac75 origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-skills e0dac75 [master]"
+    ]
+  },
+  {
+    "repo": "auto-studio",
+    "branch": "master",
+    "dirty_count": 4,
+    "dirty_sample": [
+      " M src/webview/MainPanel.vue",
+      " M src/webview/webview.ts",
+      "?? src/webview/App.vue",
+      "?? src/webview/ProjectsPanel.vue"
+    ],
+    "remotes": [
+      "origin\tgit@codeup.aliyun.com:soutek/auto-studio/auto-studio.git (fetch)"
+    ],
+    "branches": [
+      "master 8cdc2cd origin/master [ahead 1, behind 9]"
+    ],
+    "worktrees": [
+      "D:/autostack/auto-studio 8cdc2cd [master]"
+    ]
+  },
+  {
+    "repo": "auto-ui",
+    "branch": "master",
+    "dirty_count": 5,
+    "dirty_sample": [
+      " M crates/auto-ui/Cargo.toml",
+      "?? ..sisyphus/",
+      "?? .sisyphus/",
+      "?? docs/plans/015-auto-ui-merge-into-auto-lang.md",
+      "?? nul"
+    ],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/auto-ui.git (fetch)"
+    ],
+    "branches": [
+      "gpui3 233ecff origin/gpui3 ",
+      "iced 7d7fc74 origin/iced ",
+      "master f7d92ee origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-ui f7d92ee [master]"
+    ]
+  },
+  {
+    "repo": "auto-ui-gpui2",
+    "branch": "gpui3",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/auto-ui.git (fetch)"
+    ],
+    "branches": [
+      "gpui2 1e44f92 origin/gpui2 ",
+      "gpui3 233ecff origin/gpui3 ",
+      "master 03a6bc8 origin/master [behind 96]"
+    ],
+    "worktrees": [
+      "D:/autostack/auto-ui-gpui2 233ecff [gpui3]"
+    ]
+  },
+  {
+    "repo": "auto-vscode",
+    "branch": "master",
+    "dirty_count": 2,
+    "dirty_sample": [
+      " M vscode-extension/dist/extension.js",
+      " M vscode-extension/dist/extension.js.map"
+    ],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/auto-vscode.git (fetch)"
+    ],
+    "branches": [
+      "master 98591d6 origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-vscode 98591d6 [master]"
+    ]
+  },
+  {
+    "repo": "auto-zed",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/auto-zed.git (fetch)"
+    ],
+    "branches": [
+      "master ae5ca25 origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-zed ae5ca25 [master]"
+    ]
+  },
+  {
+    "repo": "book",
+    "branch": "master",
+    "dirty_count": 75,
+    "dirty_sample": [
+      " M rust/listings/ch01/listing-01-01/main.expected.rs",
+      " M rust/listings/ch02/listing-02-01/main.expected.rs",
+      " M rust/listings/ch02/listing-02-03/main.expected.rs",
+      " M rust/listings/ch02/listing-02-04/main.expected.rs",
+      " M rust/listings/ch02/listing-02-05/main.at",
+      " M rust/listings/ch02/listing-02-05/main.expected.rs"
+    ],
+    "remotes": [
+      "gitcode\tgit@gitcode.com:auto-stack/books.git (fetch)",
+      "origin\tgit@gitee.com:auto-stack/book.git (fetch)"
+    ],
+    "branches": [
+      "master 62e075b origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/book 62e075b [master]"
+    ]
+  },
+  {
+    "repo": "docs",
+    "branch": "master",
+    "dirty_count": 7,
+    "dirty_sample": [
+      "?? AutoForge/",
+      "?? LMAO/Auto_LMAO_html/",
+      "?? LMAO/LMAO.style.json",
+      "?? Trinity/",
+      "?? icon/auto_notext.svg",
+      "?? icon/auto_purple.svg"
+    ],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/docs.git (fetch)"
+    ],
+    "branches": [
+      "master aa7bfde origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/docs aa7bfde [master]"
+    ]
+  },
+  {
+    "repo": "hello",
+    "branch": "master",
+    "dirty_count": 6,
+    "dirty_sample": [
+      "?? .arts/",
+      "?? .codeartsdoer/",
+      "?? .gitignore",
+      "?? Cargo.lock",
+      "?? Cargo.toml",
+      "?? src/"
+    ],
+    "remotes": [],
+    "branches": [],
+    "worktrees": [
+      "D:/autostack/hello 0000000 [master]"
+    ]
+  },
+  {
+    "repo": "skills",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/skills.git (fetch)"
+    ],
+    "branches": [
+      "master 441afe4 origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/skills 441afe4 [master]"
+    ]
+  },
+  {
+    "repo": "taplc",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/taplc.git (fetch)"
+    ],
+    "branches": [
+      "master d5c3469 origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/taplc d5c3469 [master]"
+    ]
+  },
+  {
+    "repo": "tree-sitter-auto",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@gitee.com:auto-stack/tree-sitter-auto.git (fetch)"
+    ],
+    "branches": [
+      "master 6606037 origin/master [behind 1]"
+    ],
+    "worktrees": [
+      "D:/autostack/tree-sitter-auto 6606037 [master]"
+    ]
+  },
+  {
+    "repo": "xdm-gen",
+    "branch": "master",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remotes": [
+      "origin\tgit@codeup.aliyun.com:soutek/auto-stack/xdm-gen.git (fetch)"
+    ],
+    "branches": [
+      "master 05265a4 origin/master "
+    ],
+    "worktrees": [
+      "D:/autostack/xdm-gen 05265a4 [master]"
+    ]
+  }
+]

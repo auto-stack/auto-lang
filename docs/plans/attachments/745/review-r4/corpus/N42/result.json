@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "build": null,
+  "kind": "reject",
+  "ok": true,
+  "run": null,
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\N42\\input.at:1:4: error[text/source.unsupported]: function return type annotation (`int`/`i32`/`bool`) is required\n",
+    "stdout": ""
+  },
+  "input_sha256": "1ef24a91c554cbb56b3aac323551e9f7a2b7cfa95bde5768c4a4362f819f1f15",
+  "id": "N42"
+}

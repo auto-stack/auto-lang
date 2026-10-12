@@ -1,0 +1,36 @@
+// fixture: mini engine module (same-name methods on two types + native runtime + local-fn calls)
+use auto.lib.codegen: emit_all
+
+type Frame {
+    depth int
+    name str
+
+    fn len(self) int {
+        return self.depth
+    }
+
+    fn greet(f Frame) str {
+        return f.name
+    }
+}
+
+type Scope {
+    depth int
+
+    fn len(self) int {
+        return self.depth
+    }
+}
+
+fn ev_run(source str) str {
+    var code = emit_all(source)
+    var frames = List.new()
+    frames.push(code)
+    var first = frames.get(0)
+    return Frame.greet(Frame { depth: 1, name: first.s })
+}
+
+fn ev_run_files(path str) str {
+    var n = ev_run(path)
+    return n
+}

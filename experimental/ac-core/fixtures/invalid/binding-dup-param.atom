@@ -1,0 +1,93 @@
+// Test-only trace intrinsics return 1 ("a") and 2 ("b") respectively.
+// Caller evaluates b before a, then binds a to param 0 and b to param 1.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    requires: ["hir.test.trace.v1"]
+
+    module m_calls {
+        path: "examples.calls"
+
+        types {
+            type t_i32 i32 {}
+            type t_nullary function { params: []; result: "t_i32" }
+            type t_pair function { params: ["t_i32", "t_i32"]; result: "t_i32" }
+        }
+
+        declarations {
+            intrinsic d_mark_a t_nullary { symbol: "hir.test.mark_a"; effect: observable }
+            intrinsic d_mark_b t_nullary { symbol: "hir.test.mark_b"; effect: observable }
+            function d_pair t_pair { name: "pair"; body: "b_pair" }
+            function d_caller t_nullary { name: "caller"; body: "b_caller" }
+        }
+
+        bodies {
+            body b_pair {
+                owner: "d_pair"
+                entry: "k_pair"
+
+                locals {
+                    local l_a t_i32 { name: "a"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: "b"; role: param; index: 1u32 }
+                }
+
+                expressions {
+                    expr e_a read_local { type: "t_i32"; local: "l_a" }
+                    expr e_ten constant { type: "t_i32"; value: 10i32 }
+                    expr e_scaled binary {
+                        type: "t_i32"
+                        op: mul_i32
+                        overflow: trap
+                        lhs: "e_a"
+                        rhs: "e_ten"
+                    }
+                    expr e_b read_local { type: "t_i32"; local: "l_b" }
+                    expr e_pair binary {
+                        type: "t_i32"
+                        op: add_i32
+                        overflow: trap
+                        lhs: "e_scaled"
+                        rhs: "e_b"
+                    }
+                }
+
+                blocks {
+                    block k_pair { return(value: "e_pair") {} }
+                }
+            }
+
+            body b_caller {
+                owner: "d_caller"
+                entry: "k_call"
+
+                locals {}
+
+                expressions {
+                    expr e_mark_b call {
+                        type: "t_i32"
+                        callee: "d_mark_b"
+                        eval_args: []
+                        bindings: []
+                    }
+                    expr e_mark_a call {
+                        type: "t_i32"
+                        callee: "d_mark_a"
+                        eval_args: []
+                        bindings: []
+                    }
+                    expr e_call call {
+                        type: "t_i32"
+                        callee: "d_pair"
+                        eval_args: ["e_mark_b", "e_mark_a"]
+                        bindings: [
+                            { param: 0u32, arg: 1u32 },
+                            { param: 0u32, arg: 0u32 }
+                        ]
+                    }
+                }
+
+                blocks {
+                    block k_call { return(value: "e_call") {} }
+                }
+            }
+        }
+    }
+}

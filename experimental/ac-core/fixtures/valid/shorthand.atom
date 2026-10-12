@@ -1,0 +1,45 @@
+// PLAN-741 fixture: builtin enum shorthand (`type: i32` bareword) alongside
+// fully-named header slots, per auto-hir-atom-text.md section 12.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_shorthand {
+        path: "examples.shorthand"
+
+        types {
+            type(id: "t_i32", kind: i32) {}
+            type(id: "t_add", kind: function) { params: [i32, i32]; result: i32 }
+        }
+
+        declarations {
+            function(id: "d_add", type: "t_add") { name: "add"; body: "b_add" }
+        }
+
+        bodies {
+            body(id: "b_add") {
+                owner: "d_add"
+                entry: "k_entry"
+
+                locals {
+                    local(id: "l_a", type: i32) { name: "a"; role: param; index: 0u32 }
+                    local(id: "l_b", type: i32) { name: "b"; role: param; index: 1u32 }
+                    local(id: "l_sum", type: i32) { name: "sum"; role: binding }
+                }
+
+                expressions {
+                    expr e_a read_local { type: i32; local: "l_a" }
+                    expr e_b read_local { type: i32; local: "l_b" }
+                    expr(id: "e_add", kind: binary, type: i32, op: add_i32, overflow: trap) {
+                        lhs: "e_a"; rhs: "e_b"
+                    }
+                    expr e_sum read_local { type: i32; local: "l_sum" }
+                }
+
+                blocks {
+                    block k_entry {
+                        let(local: "l_sum", value: "e_add") {}
+                        return(value: "e_sum") {}
+                    }
+                }
+            }
+        }
+    }
+}

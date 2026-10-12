@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "check": {
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\corpus\\N22\\input.at:1:11: error[text/source.unsupported]: type `i64` is not part of this source profile\n",
+    "exit": 1
+  },
+  "input_sha256": "b97271c2437e608f5924178e0bc32eb3ad673ff37bebf24153f79d51eb5ee0c8",
+  "kind": "reject",
+  "artifact_hashes": [],
+  "build": null,
+  "run": null,
+  "id": "N22"
+}

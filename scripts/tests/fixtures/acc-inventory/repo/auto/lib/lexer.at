@@ -1,0 +1,29 @@
+// fixture: mini lexer module
+/*
+fn fake_decl_in_block_comment(str x) int {
+    var s = "brace } inside comment must not move depth"
+    return 1
+}
+*/
+use auto.lib.token: TokenKind, keyword_kind
+
+pub type Token {
+    kind TokenKind
+    text str
+    line int
+}
+
+fn cur_char(source str, p int) int {
+    return source.char_at(p)
+}
+
+fn is_digit(c int) bool {
+    return c >= '0' && c <= '9'
+}
+
+fn lex_all(source str) List<Token> {
+    var out = List.new()
+    var hint = "call List.push( inside a string is pseudocode, fn fake_in_string(str q) int"
+    out.push(Token { kind: TokenKind.Int, text: source, line: 1 })
+    return out
+}

@@ -1,0 +1,12 @@
+{
+  "id": "D08-both-diverge-trailing",
+  "source": "fn main() int { loop { if true { break } else { continue }; let x = 2 }; return 0 }",
+  "want": "reject at let",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r2\\extra-probes\\D08-both-diverge-trailing\\input.at:1:61: error[verify/verify.block-structure]: block `k4` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+    "exit": 1,
+    "stdout": ""
+  },
+  "build": null,
+  "run": null
+}

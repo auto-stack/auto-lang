@@ -1,0 +1,36 @@
+{
+  "artifact_hashes": [
+    {
+      "name": "app.exe",
+      "sha256": "cb820f4f11cca7ca4e2f323c3117cbcb6527c67ddde4686842882ea07f402367"
+    },
+    {
+      "name": "app.obj",
+      "sha256": "2e708afb43d81add8f320807002ad7e2022b7023f44776657abc38e5a7b06c76"
+    },
+    {
+      "name": "app.ac-link.txt",
+      "sha256": "95e32bc94ac192e5627916d6b9831417e86b886aaa71d6ff7722e53f29158a78"
+    }
+  ],
+  "check": {
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=7766a9eff0f682d6, module(s)=1, capabilities required: []\n",
+    "exit": 0,
+    "stderr": ""
+  },
+  "want_native": 3,
+  "want": 1,
+  "build": {
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M03-unclosed-paren-binary\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M03-unclosed-paren-binary\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M03-unclosed-paren-binary\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M03-unclosed-paren-binary\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 7766a9eff0f682d6\n",
+    "exit": 0,
+    "stderr": ""
+  },
+  "input_sha256": "843226ffa0adc7ff964682d9fe3516644ffa2802f0b6956e6152b1ce8f9dfe62",
+  "bytes": 29,
+  "id": "M03-unclosed-paren-binary",
+  "run": {
+    "stdout": "",
+    "exit": 3,
+    "stderr": ""
+  }
+}

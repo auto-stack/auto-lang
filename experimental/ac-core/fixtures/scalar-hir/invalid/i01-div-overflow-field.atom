@@ -1,0 +1,24 @@
+// div_i32 carries no overflow field (its traps are inherent); the branch
+// contract must reject the spurious field at bind time.
+hir(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32-draft") {
+    module m {
+        types {
+            type t_i32 i32 {}
+            type t_f function { params: []; result: "t_i32" }
+        }
+        declarations { function d_main t_f { name: "sf_main"; body: "b_main" } }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {}
+                expressions {
+                    expr e0 constant { type: t_i32; value: 7i32 }
+                    expr e1 constant { type: t_i32; value: 3i32 }
+                    expr e2 binary { type: t_i32; op: div_i32; overflow: trap; lhs: e0; rhs: e1 }
+                }
+                blocks { block k0 { return(value: e2) } }
+            }
+        }
+    }
+}

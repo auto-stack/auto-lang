@@ -1,0 +1,14 @@
+[
+  {
+    "exit": 1,
+    "stderr": "Get-FileHash : The term 'Get-FileHash' is not recognized as the name of a cmdlet, function, script file, or operable pr\r\nogram. Check the spelling of the name, or if a path was included, verify that the path is correct and try again.\r\nAt line:1 char:21\r\n+ $env:PSModulePath; (Get-FileHash AGENTS.md).Hash\r\n+                     ~~~~~~~~~~~~\r\n    + CategoryInfo          : ObjectNotFound: (Get-FileHash:String) [], CommandNotFoundException\r\n    + FullyQualifiedErrorId : CommandNotFoundException\r\n \r\n",
+    "stdout": "C:\\Users\\zhaop\\Documents\\PowerShell\\Modules;C:\\Program Files\\PowerShell\\Modules;d:\\soft\\powershell\\7\\Modules;C:\\Users\\zhaop\\Documents\\WindowsPowerShell\\Modules;C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules\r\n",
+    "case": "inherited-dotnet"
+  },
+  {
+    "exit": 0,
+    "stderr": "",
+    "stdout": "C:\\Users\\zhaop\\Documents\\WindowsPowerShell\\Modules;C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules\r\n15C9AFA82B14C2CECB5F359EFB50551B7B4A19FC40E374D2C32E8F88268B59DC\r\n",
+    "case": "removed-PSModulePath"
+  }
+]

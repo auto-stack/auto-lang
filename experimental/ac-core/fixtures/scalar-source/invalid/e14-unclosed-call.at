@@ -1,0 +1,4 @@
+fn main() int {
+    let x = f(1
+    return x
+}

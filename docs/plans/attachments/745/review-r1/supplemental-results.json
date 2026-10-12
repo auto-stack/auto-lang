@@ -1,0 +1,72 @@
+[
+  {
+    "sha256_before": [
+      "20C0A2DC902BED1E582F55BAC202B0267BE5FF9E70AC74CE0DC29D3962423ADE",
+      "40D0F3352BE16B34AC4B974782B8B86527985889E1A472EFFAFC930BFD8C8494",
+      "D51E1ED9A0117DBB17887B3A4A02BC4CAC5F4E0244F8A3727B706CD29F59A6E8"
+    ],
+    "sentinel_preserved": true,
+    "id": "bad-source",
+    "sha256_after": [
+      "20C0A2DC902BED1E582F55BAC202B0267BE5FF9E70AC74CE0DC29D3962423ADE",
+      "40D0F3352BE16B34AC4B974782B8B86527985889E1A472EFFAFC930BFD8C8494",
+      "D51E1ED9A0117DBB17887B3A4A02BC4CAC5F4E0244F8A3727B706CD29F59A6E8"
+    ],
+    "run": {
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\transaction\\bad-source.at:1:24: error[bind/source.undefined]: no local named `unknown` in scope\n",
+      "stdout": ""
+    }
+  },
+  {
+    "sha256_before": [
+      "20C0A2DC902BED1E582F55BAC202B0267BE5FF9E70AC74CE0DC29D3962423ADE",
+      "40D0F3352BE16B34AC4B974782B8B86527985889E1A472EFFAFC930BFD8C8494",
+      "D51E1ED9A0117DBB17887B3A4A02BC4CAC5F4E0244F8A3727B706CD29F59A6E8"
+    ],
+    "sentinel_preserved": true,
+    "id": "bad-link",
+    "sha256_after": [
+      "20C0A2DC902BED1E582F55BAC202B0267BE5FF9E70AC74CE0DC29D3962423ADE",
+      "40D0F3352BE16B34AC4B974782B8B86527985889E1A472EFFAFC930BFD8C8494",
+      "D51E1ED9A0117DBB17887B3A4A02BC4CAC5F4E0244F8A3727B706CD29F59A6E8"
+    ],
+    "run": {
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\transaction\\bad-link.at:1:1: error[link/link.failed]: rust-lld exit Some(1): rust-lld: error: could not open 'D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\transaction\\absent.lib': no such file or directory\n",
+      "stdout": ""
+    }
+  },
+  {
+    "sha256_before": [
+      "20C0A2DC902BED1E582F55BAC202B0267BE5FF9E70AC74CE0DC29D3962423ADE",
+      "40D0F3352BE16B34AC4B974782B8B86527985889E1A472EFFAFC930BFD8C8494",
+      "D51E1ED9A0117DBB17887B3A4A02BC4CAC5F4E0244F8A3727B706CD29F59A6E8"
+    ],
+    "sentinel_preserved": true,
+    "id": "wrong-entry",
+    "sha256_after": [
+      "20C0A2DC902BED1E582F55BAC202B0267BE5FF9E70AC74CE0DC29D3962423ADE",
+      "40D0F3352BE16B34AC4B974782B8B86527985889E1A472EFFAFC930BFD8C8494",
+      "D51E1ED9A0117DBB17887B3A4A02BC4CAC5F4E0244F8A3727B706CD29F59A6E8"
+    ],
+    "run": {
+      "exit": 1,
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\transaction\\wrong-entry.at:1:1: error[backend/entry.signature]: entry `d_main` must be a zero-parameter function returning i32 (found 1 params, result I32)\n",
+      "stdout": ""
+    }
+  },
+  {
+    "duration_ms": 93,
+    "id": "large-trace-drained-control",
+    "exit": 0,
+    "stderr_length": 20000
+  },
+  {
+    "note": "Same poll-before-drain ordering as source_native::run_deadlined; shortened deadline, not a claim that the actual 60s test was run.",
+    "stderr_length": 4096,
+    "id": "large-trace-poll-before-drain",
+    "blocked_before_drain": true,
+    "deadline_ms": 2000
+  }
+]

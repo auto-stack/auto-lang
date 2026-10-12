@@ -1,0 +1,8 @@
+type Meter {
+ fn len() int { return 1 }
+ static fn new() Meter { return Meter() }
+}
+fn demo(x Meter) int {
+ var m = Meter.new()
+ return x.len()
+}

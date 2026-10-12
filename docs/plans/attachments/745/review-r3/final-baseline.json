@@ -1,0 +1,37 @@
+{
+  "review_scope": "final",
+  "round": 3,
+  "plan_revision": 1,
+  "outcome": "needs_fix",
+  "head": "7437eb137a789259f01446da7a170e74031ff7f2",
+  "worktree": "D:/autostack/.wt/lang-745/auto-lang",
+  "branch": "plan-745-dev",
+  "implementation_clean": true,
+  "dependency_revision": "fba6563ed2148ce85e68208863159b4ccccac710",
+  "dependency_clean": true,
+  "main_head_before_bookkeeping": "e755c0e8b9cf502476903d5cd2627aa7e61c050a",
+  "plan_sha256": "8f5d2e928430f75f6d2e1c14f9c02214de181ef347002900e55ff0c0862b073a",
+  "report_sha256": "39112555842f7c211e03f7544ce04e7e4ca85e86015bc7701048c03ab2bcf8c5",
+  "spec_config_delta_unchanged": true,
+  "checked_tasks": [
+    "T-01",
+    "T-04"
+  ],
+  "reopened_tasks": [
+    "T-02",
+    "T-03",
+    "T-05",
+    "T-06",
+    "T-07"
+  ],
+  "pending_tasks": [
+    "T-08",
+    "T-09"
+  ],
+  "findings": [
+    "P745-R3-QA-01",
+    "P745-R3-QA-02"
+  ],
+  "canonical_verify745_exit": 0,
+  "timestamp": "2026-10-06T23:09:46.2239694+08:00"
+}

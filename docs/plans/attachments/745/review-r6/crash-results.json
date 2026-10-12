@@ -1,0 +1,112 @@
+[
+  {
+    "seconds": 0.1033199,
+    "bytes": 6026,
+    "id": "J1500-True",
+    "balanced": true,
+    "result": {
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=c6d0ae93a1e36cea, module(s)=1, capabilities required: []\n",
+      "stderr": ""
+    }
+  },
+  {
+    "seconds": 0.0098735,
+    "bytes": 4526,
+    "id": "J1500-False",
+    "balanced": false,
+    "result": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\J1500-False\\input.at:1:4526: error[text/source.syntax]: expected `)`\n"
+    }
+  },
+  {
+    "seconds": 0.131382,
+    "bytes": 8026,
+    "id": "J2000-True",
+    "balanced": true,
+    "result": {
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=9258411a57d1143e, module(s)=1, capabilities required: []\n",
+      "stderr": ""
+    }
+  },
+  {
+    "seconds": 0.0089925,
+    "bytes": 6026,
+    "id": "J2000-False",
+    "balanced": false,
+    "result": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\J2000-False\\input.at:1:6026: error[text/source.syntax]: expected `)`\n"
+    }
+  },
+  {
+    "seconds": 0.1954418,
+    "bytes": 10026,
+    "id": "J2500-True",
+    "balanced": true,
+    "result": {
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=b2e44a91ec15b742, module(s)=1, capabilities required: []\n",
+      "stderr": ""
+    }
+  },
+  {
+    "seconds": 0.0172374,
+    "bytes": 7526,
+    "id": "J2500-False",
+    "balanced": false,
+    "result": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\J2500-False\\input.at:1:7526: error[text/source.syntax]: expected `)`\n"
+    }
+  },
+  {
+    "seconds": 0.2432957,
+    "bytes": 12026,
+    "id": "J3000-True",
+    "balanced": true,
+    "result": {
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=51688482a6078176, module(s)=1, capabilities required: []\n",
+      "stderr": ""
+    }
+  },
+  {
+    "seconds": 0.0113436,
+    "bytes": 9026,
+    "id": "J3000-False",
+    "balanced": false,
+    "result": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\J3000-False\\input.at:1:9026: error[text/source.syntax]: expected `)`\n"
+    }
+  },
+  {
+    "seconds": 0.2733972,
+    "bytes": 16410,
+    "id": "J4096-True",
+    "balanced": true,
+    "result": {
+      "exit": 0,
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=cf461f2a41480b2e, module(s)=1, capabilities required: []\n",
+      "stderr": ""
+    }
+  },
+  {
+    "seconds": 0.0127566,
+    "bytes": 12314,
+    "id": "J4096-False",
+    "balanced": false,
+    "result": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\J4096-False\\input.at:1:12314: error[text/source.syntax]: expected `)`\n"
+    }
+  }
+]

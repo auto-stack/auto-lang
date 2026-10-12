@@ -1,0 +1,149 @@
+// core-i32-draft descriptor (PLAN-741).
+//
+// Machine-readable contract consumed by experimental/ac-core/src/descriptor.rs.
+// This is a versioned prototype descriptor for the AC A0 profile — it is NOT
+// the future general Schema DSL engine and does not allocate public schema
+// numbers. The root identity (schema/revision/profile) must be echoed by every
+// accepted HIR document; unknown tags, fields, enum cases and capabilities are
+// rejected.
+
+descriptor(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+
+    enums {
+        enum ExprKind { cases: [read_local, constant, binary, call] }
+        enum TypeKind { cases: [i32, bool, function] }
+        enum BinOp { cases: [add_i32, mul_i32, lt_i32] }
+        enum OverflowPolicy { cases: [trap] }
+        enum LocalRole { cases: [param, binding] }
+        enum PlaceKind { cases: [local] }
+        enum AccessKind { cases: [mutable, readonly] }
+        enum EffectKind { cases: [observable, pure] }
+    }
+
+    nodes {
+        node hir {
+            slots: []
+            fields { schema: Text; revision: U32; profile: Text; requires: TextList }
+            inline: [module]
+        }
+
+        node module {
+            slots: [Id]
+            fields { path: Text }
+            containers {
+                types: [type]
+                declarations: [function, intrinsic]
+                bodies: [body]
+            }
+        }
+
+        node type {
+            slots: [Id, TypeKind]
+            fields { params: TypeUseList; result: TypeUse }
+        }
+
+        node function {
+            slots: [Id, TypeRef]
+            fields { name: Text; body: BodyRef }
+        }
+
+        node intrinsic {
+            slots: [Id, TypeRef]
+            fields { symbol: Text; effect: EffectKind }
+        }
+
+        node body {
+            slots: [Id]
+            fields { owner: DefRef; entry: BlockRef }
+            containers {
+                locals: [local]
+                places: [place]
+                expressions: [expr]
+                blocks: [block]
+            }
+        }
+
+        node local {
+            slots: [Id, TypeUse]
+            fields { name: Text; role: LocalRole; index: U32; mutable: Bool }
+        }
+
+        node place {
+            slots: [Id, PlaceKind]
+            fields { local: LocalRef; type: TypeUse; access: AccessKind }
+        }
+
+        node expr {
+            slots: [Id, ExprKind]
+            fields {
+                type: TypeUse
+                local: LocalRef
+                value: I32
+                op: BinOp
+                overflow: OverflowPolicy
+                lhs: ExprRef
+                rhs: ExprRef
+                callee: DefRef
+                eval_args: ExprRefList
+                bindings: BindingList
+            }
+        }
+
+        node block {
+            slots: [Id]
+            statements: [let, return, if, loop, assign, break, continue]
+        }
+
+        node let { fields { local: LocalRef; value: ExprRef } }
+        node return { fields { value: ExprRef } }
+        node if { fields { cond: ExprRef; then: BlockRef; else: BlockRef } }
+        node loop { fields { id: LoopDecl; body: BlockRef } }
+        node assign { fields { place: PlaceRef; value: ExprRef } }
+        node break { fields { target: LoopRef } }
+        node continue { fields { target: LoopRef } }
+    }
+
+    branches {
+        branch(key: "hir") { require: [schema, revision, profile] }
+        branch(key: "type.i32") { forbid: [params, result] }
+        branch(key: "type.bool") { forbid: [params, result] }
+        branch(key: "type.function") { require: [params, result] }
+        branch(key: "function") { require: [name, body]; forbid: [symbol, effect] }
+        branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name, body] }
+        branch(key: "body") { require: [owner, entry] }
+        branch(key: "local.param") { require: [name, role, index]; forbid: [mutable] }
+        branch(key: "local.binding") { require: [name, role]; forbid: [index] }
+        branch(key: "place.local") { require: [local, type, access] }
+        branch(key: "expr.read_local") {
+            require: [type, local]
+            forbid: [value, op, overflow, lhs, rhs, callee, eval_args, bindings]
+        }
+        branch(key: "expr.constant") {
+            require: [type, value]
+            forbid: [local, op, overflow, lhs, rhs, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:add_i32") {
+            require: [type, op, overflow, lhs, rhs]
+            forbid: [local, value, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:mul_i32") {
+            require: [type, op, overflow, lhs, rhs]
+            forbid: [local, value, callee, eval_args, bindings]
+        }
+        branch(key: "expr.binary:lt_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, callee, eval_args, bindings]
+        }
+        branch(key: "expr.call") {
+            require: [type, callee, eval_args, bindings]
+            forbid: [local, value, op, overflow, lhs, rhs]
+        }
+        branch(key: "let") { require: [local, value] }
+        branch(key: "return") { require: [value] }
+        branch(key: "if") { require: [cond, then] }
+        branch(key: "loop") { require: [id, body] }
+        branch(key: "assign") { require: [place, value] }
+        branch(key: "break") { require: [target] }
+        branch(key: "continue") { require: [target] }
+    }
+}

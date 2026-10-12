@@ -1,0 +1,28 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.38s
+
+
+Algorithm : SHA256
+Hash      : D23DFD239CF62DF267F745C127FC762FDFD349B2603C8CABBEE72686A932EC73
+Path      : C:\Users\zhaop\AppData\Local\Temp\ac741-r4-review-target\debug\libauto_ac_prototype.rlib
+
+
+
+Cargo-reported reviewed library: C:\Users\zhaop\AppData\Local\Temp\ac741-r4-review-target\debug\libauto_ac_prototype.rlib
+BUILT C:\Users\zhaop\AppData\Local\Temp\741-r5-review-20261006\wrapper-control3\baseline\old.exe (entry test_entry)
+  obj: C:\Users\zhaop\AppData\Local\Temp\741-r5-review-20261006\wrapper-control3\baseline\old.obj
+  exe: C:\Users\zhaop\AppData\Local\Temp\741-r5-review-20261006\wrapper-control3\baseline\old.exe
+  receipt: C:\Users\zhaop\AppData\Local\Temp\741-r5-review-20261006\wrapper-control3\baseline\old.ac-link.txt
+  linker: C:\Users\zhaop\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe
+diagnostic=:1:1: error[link/link.cleanup]: :1:1: error[link/link.failed]: rust-lld exit Some(42):; transaction NOT committed; own staged files remain (release the blocking handles, then remove): C:\Users\zhaop\AppData\Local\Temp\741-r5-review-20261006\wrapper-control3\nonzero\tx.exe.tmp-ac741-40456: 鍙︿竴涓▼搴忔鍦ㄤ娇鐢ㄦ鏂囦欢锛岃繘绋嬫棤娉曡闂€?(os error 32)
+elapsed_ms=177
+staged_exe_left=true
+staged_exe_path=C:\Users\zhaop\AppData\Local\Temp\741-r5-review-20261006\wrapper-control3\nonzero\tx.exe.tmp-ac741-40456
+path_in_diagnostic=true
+cleanup_in_diagnostic=true
+actual_remove_os_error=Some(32)
+old_0_unchanged=true
+old_1_unchanged=true
+old_2_unchanged=true
+old_exe_exit=Some(5)
+released_cleanup_ok=true
+Evidence directory: C:\Users\zhaop\AppData\Local\Temp\741-r5-review-20261006\wrapper-control3

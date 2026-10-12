@@ -1,0 +1,421 @@
+{
+  "fixture_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "valid_control": {
+    "exit": 0,
+    "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "invalid_referenced_evidence_int": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-malformed] MD-REVIEW-900 evidence 必须为非空字符串数组: 'int'\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+  },
+  "invalid_referenced_evidence_list": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-malformed] MD-REVIEW-900 evidence 必须为非空字符串数组: 'list'\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+  },
+  "invalid_referenced_bound_input_hashes_int": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-malformed] MD-REVIEW-900 bound_input_hashes 必须为非空 {路径:hash} 字符串映射: 'int'\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+  },
+  "invalid_referenced_bound_input_hashes_NoneType": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-malformed] MD-REVIEW-900 bound_input_hashes 必须为非空 {路径:hash} 字符串映射: 'NoneType'\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定不存在: 'MD-REVIEW-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+  },
+  "evidence_applicability_binding": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[family-ref-inapplicable] resolved 族引用不适用（须 kind=unknown-resolution/conclusion=resolved 且证据覆盖族路径）: MD-REVIEW-900 -> auto/aavm.at/unknown-receiver\nERROR[family-ref-inapplicable] resolved 族引用不适用（须 kind=unknown-resolution/conclusion=resolved 且证据覆盖族路径）: MD-REVIEW-900 -> auto/lib/a2r.at/unknown-receiver\nERROR[family-ref-inapplicable] resolved 族引用不适用（须 kind=unknown-resolution/conclusion=resolved 且证据覆盖族路径）: MD-REVIEW-900 -> auto/lib/codegen.at/unknown-receiver\nERROR[family-ref-inapplicable] resolved 族引用不适用（须 kind=unknown-resolution/conclusion=resolved 且证据覆盖族路径）: MD-REVIEW-900 -> auto/lib/engine.at/unknown-receiver\nERROR[family-ref-inapplicable] resolved 族引用不适用（须 kind=unknown-resolution/conclusion=resolved 且证据覆盖族路径）: MD-REVIEW-900 -> auto/lib/lexer.at/unknown-receiver\nERROR[family-ref-inapplicable] resolved 族引用不适用（须 kind=unknown-resolution/conclusion=resolved 且证据覆盖族路径）: MD-REVIEW-900 -> auto/lib/typeinfo.at/unknown-receiver\nCHECK-FAIL 6 项\n"
+  },
+  "evidence_applicability_subject": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[family-ref-inapplicable] resolved 族引用不适用（须 kind=unknown-resolution/conclusion=resolved 且证据覆盖族路径）: MD-REVIEW-900 -> auto/aavm.at/unknown-receiver\nCHECK-FAIL 1 项\n"
+  },
+  "original_unbound_evidence": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-evidence-unbound] MD-REVIEW-000 证据文件无同条绑定: extra-evidence.txt\nCHECK-FAIL 1 项\n"
+  },
+  "bound_evidence_control": {
+    "exit": 0,
+    "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "bound_evidence_changed": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[decision-stale] MD-REVIEW-000 绑定的输入已变化: extra-evidence.txt\nCHECK-FAIL 1 项\n"
+  },
+  "original_resolved_no_ref": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[family-ref-missing] resolved 族缺决定引用: auto/aavm.at/unknown-receiver\nERROR[family-ref-missing] resolved 族缺决定引用: auto/lib/a2r.at/unknown-receiver\nERROR[family-ref-missing] resolved 族缺决定引用: auto/lib/codegen.at/unknown-receiver\nERROR[family-ref-missing] resolved 族缺决定引用: auto/lib/engine.at/unknown-receiver\nERROR[family-ref-missing] resolved 族缺决定引用: auto/lib/lexer.at/unknown-receiver\nERROR[family-ref-missing] resolved 族缺决定引用: auto/lib/typeinfo.at/unknown-receiver\nCHECK-FAIL 6 项\n"
+  },
+  "import_shadow": {
+    "path": "import_shadow.at",
+    "declarations": [
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 2,
+        "param_types": [],
+        "ret": ""
+      }
+    ],
+    "methods": [],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [
+      {
+        "to_module": "other",
+        "imports": [
+          "IO",
+          "List",
+          "File",
+          "process",
+          "print"
+        ]
+      }
+    ],
+    "call_candidates": [
+      {
+        "kind": "imported-symbol",
+        "name": "print",
+        "receiver": null,
+        "first_line": 7,
+        "count": 1
+      },
+      {
+        "kind": "unknown-receiver",
+        "name": "args",
+        "receiver": "process",
+        "first_line": 6,
+        "count": 1
+      },
+      {
+        "kind": "unknown-receiver",
+        "name": "new",
+        "receiver": "List",
+        "first_line": 4,
+        "count": 1
+      },
+      {
+        "kind": "unknown-receiver",
+        "name": "read_line",
+        "receiver": "IO",
+        "first_line": 3,
+        "count": 1
+      },
+      {
+        "kind": "unknown-receiver",
+        "name": "read_text",
+        "receiver": "File",
+        "first_line": 5,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "use-module": [
+        1
+      ],
+      "free-function": [
+        2
+      ],
+      "plain-list-value": [
+        4
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "parameter_shadow": {
+    "path": "parameter_shadow.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "Meter",
+        "line": 1
+      },
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 4,
+        "param_types": [
+          "Meter"
+        ],
+        "ret": "int"
+      }
+    ],
+    "methods": [
+      {
+        "owner": "Meter",
+        "name": "read_line",
+        "line": 2,
+        "static": false
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-receiver",
+        "name": "read_line",
+        "receiver": "IO",
+        "first_line": 5,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "free-function": [
+        2,
+        4
+      ],
+      "type-body-method": [
+        2
+      ],
+      "integer-type-annotation": [
+        2,
+        4
+      ],
+      "return-statement": [
+        2,
+        5
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "shadowed_host": {
+    "path": "shadowed_host.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "IO",
+        "line": 1
+      },
+      {
+        "kind": "fn",
+        "name": "print",
+        "line": 4,
+        "param_types": [],
+        "ret": "int"
+      },
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 5,
+        "param_types": [],
+        "ret": "int"
+      }
+    ],
+    "methods": [
+      {
+        "owner": "IO",
+        "name": "read_line",
+        "line": 2,
+        "static": true
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "local-fn",
+        "name": "print",
+        "receiver": null,
+        "first_line": 6,
+        "count": 1
+      },
+      {
+        "kind": "type-qualified",
+        "name": "read_line",
+        "receiver": "IO",
+        "first_line": 7,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "type-body-method": [
+        2
+      ],
+      "integer-type-annotation": [
+        2,
+        4,
+        5
+      ],
+      "return-statement": [
+        2,
+        4,
+        7
+      ],
+      "free-function": [
+        4,
+        5
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "different_owner": {
+    "path": "different_owner.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "P",
+        "line": 1
+      },
+      {
+        "kind": "type",
+        "name": "Q",
+        "line": 4
+      }
+    ],
+    "methods": [
+      {
+        "owner": "P",
+        "name": "next",
+        "line": 2,
+        "static": false
+      },
+      {
+        "owner": "Q",
+        "name": "go",
+        "line": 5,
+        "static": false
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-receiver",
+        "name": "next",
+        "receiver": ".",
+        "first_line": 5,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1,
+        4
+      ],
+      "free-function": [
+        2,
+        5
+      ],
+      "type-body-method": [
+        2,
+        5
+      ],
+      "integer-type-annotation": [
+        2,
+        5
+      ],
+      "return-statement": [
+        2,
+        5
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "unrelated_dot_pipe": {
+    "path": "unrelated_dot_pipe.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "P",
+        "line": 1
+      },
+      {
+        "kind": "fn",
+        "name": "unrelated",
+        "line": 4,
+        "param_types": [],
+        "ret": "int"
+      }
+    ],
+    "methods": [
+      {
+        "owner": "P",
+        "name": "next",
+        "line": 2,
+        "static": false
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "unknown-receiver",
+        "name": "next",
+        "receiver": ".",
+        "first_line": 5,
+        "count": 1
+      },
+      {
+        "kind": "unknown-receiver",
+        "name": "next",
+        "receiver": "|>",
+        "first_line": 6,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "free-function": [
+        2,
+        4
+      ],
+      "type-body-method": [
+        2
+      ],
+      "integer-type-annotation": [
+        2,
+        4
+      ],
+      "return-statement": [
+        2,
+        6
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "hashes": {
+    "scripts/acc_inventory.py": "074a32853df94b7f45f112bbb5d92545620a4d3fd92f99176c2b92ce2b383dcb",
+    "scripts/tests/test_acc_inventory.py": "9f9b3681c2b5c029527ffaafa857e78c960bec40816875125d062979d27fe073",
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "8b536f8550b35d4db63d05d836be99956429749baa96dbd43cfb3c56a296f6db",
+    "docs/specs/auto-acc/project.md": "f7307bdcdf9f488c4349c78ec8137c595d80da2232f6b8dfc72af1002c59e56d",
+    "docs/specs/auto-hir/stage-contract.md": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7",
+    "docs/design/strategy/auto-acc-bootstrap-contract.md": "676521ab3b9f26ba39798a6c1f3eb78676a6040861055ede15dd0dbb088e5317",
+    "docs/reports/743-acc-hir-contract/manual-decisions.json": "61b1802b370505f475dcba9b2f8ac2aa350ebbeac76836e2139c2c4fd035ce7e",
+    "docs/reports/743-acc-hir-contract/proposed-spec-delta-phase3.md": "a4af013b759a1d35dd7a70b34b202202e28e3c04b4ade204dc9ac47f72217466"
+  }
+}

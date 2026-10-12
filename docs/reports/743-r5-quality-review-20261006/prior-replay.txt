@@ -1,0 +1,15 @@
+fixture_control_exit 0
+mut_parameter [('read_line', 'unknown-receiver')]
+method_parameter [('read_line', 'unknown-receiver')]
+bare_parameter [('print', 'unknown-bare-call')]
+method_bare_parameter [('print', 'unknown-bare-call')]
+usual_parameter [('read_line', 'unknown-receiver')]
+conflict_free [('print', 'native-runtime'), ('read_line', 'native-runtime')]
+manifest_list exit 1 traceback False
+manifest_integer exit 1 traceback False
+manifest_source_identity_list exit 1 traceback False
+manifest_source_identity_null exit 1 traceback False
+consumer_invalid_conclusion exit 1 consumer_reads 0
+consumer_stale_binding exit 1 consumer_reads 0
+consumer_duplicate exit 1 consumer_reads 0
+consumer_invalid_type exit 1 consumer_reads 0

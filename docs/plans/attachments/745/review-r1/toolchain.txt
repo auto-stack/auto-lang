@@ -1,0 +1,20 @@
+rustc 1.98.1 (48a229cea 2026-09-01)
+binary: rustc
+commit-hash: 48a229ceaefd4985c50990b14116b6d856af0985
+commit-date: 2026-09-01
+host: x86_64-pc-windows-msvc
+release: 1.98.1
+LLVM version: 22.1.8
+cargo 1.98.1 (797e8a9bc 2026-08-05)
+
+Algorithm : SHA256
+Hash      : E9EDA515561AEDFEEC8D4FEA6877FB669E5453D261F71595CA2001E28509EB55
+Path      : D:\autostack\.wt\lang-745\auto-lang\experimental\ac-core\target\debug\auto-ac-prototype.exe
+
+
+
+Algorithm : SHA256
+Hash      : DAC1A42B4FF1F98D4AA2FCD6278614BDA32319505397CD704AA0963EBE5C377E
+Path      : D:\autostack\.wt\lang-745\auto-lang\experimental\ac-core\test-support\target\debug\ac_trace_support.lib
+
+

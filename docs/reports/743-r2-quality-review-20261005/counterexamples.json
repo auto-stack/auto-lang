@@ -1,0 +1,271 @@
+{
+  "fixture_write": {
+    "exit": 0,
+    "stdout": "NOTE[decisions-absent] 未生成 manual-decisions.json（人工结论由 T-03 审定产生，工具不代写）\nOK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "valid_control": {
+    "exit": 0,
+    "stdout": "OK[decisions] 9 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "unbound_evidence_before": {
+    "exit": 0,
+    "stdout": "OK[decisions] 9 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "unbound_evidence_after": {
+    "exit": 0,
+    "stdout": "OK[decisions] 9 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "resolved_families_no_decision": {
+    "exit": 0,
+    "stdout": "OK[decisions] 9 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "malformed_kind": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 924, in <module>\n    sys.exit(main())\n             ~~~~^^\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 903, in main\n    status, dmsgs = validate_decisions(\n                    ~~~~~~~~~~~~~~~~~~^\n        out_dir / DECISIONS_NAME, built[\"inputs\"], root,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        unknown_candidates=_unknown_candidates_from_scans(scans),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        require=args.require_decisions)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 674, in validate_decisions\n    if kind not in DECISION_KIND_CONCLUSIONS:\n       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: cannot use 'list' as a dict key (unhashable type: 'list')\n"
+  },
+  "malformed_conclusion": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 924, in <module>\n    sys.exit(main())\n             ~~~~^^\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 903, in main\n    status, dmsgs = validate_decisions(\n                    ~~~~~~~~~~~~~~~~~~^\n        out_dir / DECISIONS_NAME, built[\"inputs\"], root,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        unknown_candidates=_unknown_candidates_from_scans(scans),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        require=args.require_decisions)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 677, in validate_decisions\n    elif d.get(\"conclusion\") not in DECISION_KIND_CONCLUSIONS[kind]:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: cannot use 'list' as a set element (unhashable type: 'list')\n"
+  },
+  "malformed_bound_input_hashes": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 924, in <module>\n    sys.exit(main())\n             ~~~~^^\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 903, in main\n    status, dmsgs = validate_decisions(\n                    ~~~~~~~~~~~~~~~~~~^\n        out_dir / DECISIONS_NAME, built[\"inputs\"], root,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        unknown_candidates=_unknown_candidates_from_scans(scans),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        require=args.require_decisions)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 694, in validate_decisions\n    for p, h in sorted(bound.items()):\n                       ^^^^^^^^^^^\nAttributeError: 'list' object has no attribute 'items'\n"
+  },
+  "malformed_evidence": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 924, in <module>\n    sys.exit(main())\n             ~~~~^^\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 903, in main\n    status, dmsgs = validate_decisions(\n                    ~~~~~~~~~~~~~~~~~~^\n        out_dir / DECISIONS_NAME, built[\"inputs\"], root,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        unknown_candidates=_unknown_candidates_from_scans(scans),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        require=args.require_decisions)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\autostack\\auto-lang\\scripts\\acc_inventory.py\", line 682, in validate_decisions\n    for ev in d.get(\"evidence\", []):\n              ~~~~~^^^^^^^^^^^^^^^^\nTypeError: 'int' object is not iterable\n"
+  },
+  "malformed_id": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "ERROR[family-malformed] family 引用的决定不存在: 'MD-R-000'\nERROR[family-malformed] family 引用的决定不存在: 'MD-R-000'\nERROR[family-malformed] family 引用的决定不存在: 'MD-R-000'\nERROR[family-malformed] family 引用的决定不存在: 'MD-R-000'\nERROR[family-malformed] family 引用的决定不存在: 'MD-R-000'\nERROR[family-malformed] family 引用的决定不存在: 'MD-R-000'\nCHECK-FAIL 6 项\n"
+  },
+  "shadowed_host": {
+    "path": "shadowed_host.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "IO",
+        "line": 1
+      },
+      {
+        "kind": "fn",
+        "name": "print",
+        "line": 4,
+        "param_types": [],
+        "ret": "int"
+      },
+      {
+        "kind": "fn",
+        "name": "demo",
+        "line": 5,
+        "param_types": [],
+        "ret": "int"
+      }
+    ],
+    "methods": [
+      {
+        "owner": "IO",
+        "name": "read_line",
+        "line": 2,
+        "static": true
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "native-runtime",
+        "name": "print",
+        "receiver": null,
+        "first_line": 6,
+        "count": 1
+      },
+      {
+        "kind": "native-runtime",
+        "name": "read_line",
+        "receiver": "IO",
+        "first_line": 7,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "type-body-method": [
+        2
+      ],
+      "integer-type-annotation": [
+        2,
+        4,
+        5
+      ],
+      "return-statement": [
+        2,
+        4,
+        7
+      ],
+      "free-function": [
+        4,
+        5
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "unrelated_dot_pipe": {
+    "path": "unrelated_dot_pipe.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "P",
+        "line": 1
+      },
+      {
+        "kind": "fn",
+        "name": "unrelated",
+        "line": 4,
+        "param_types": [],
+        "ret": "int"
+      }
+    ],
+    "methods": [
+      {
+        "owner": "P",
+        "name": "next",
+        "line": 2,
+        "static": false
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "implicit-self-method",
+        "name": "next",
+        "receiver": null,
+        "first_line": 5,
+        "count": 1
+      },
+      {
+        "kind": "implicit-self-method",
+        "name": "next",
+        "receiver": null,
+        "first_line": 6,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1
+      ],
+      "free-function": [
+        2,
+        4
+      ],
+      "type-body-method": [
+        2
+      ],
+      "integer-type-annotation": [
+        2,
+        4
+      ],
+      "return-statement": [
+        2,
+        6
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "different_owner": {
+    "path": "different_owner.at",
+    "declarations": [
+      {
+        "kind": "type",
+        "name": "P",
+        "line": 1
+      },
+      {
+        "kind": "type",
+        "name": "Q",
+        "line": 4
+      }
+    ],
+    "methods": [
+      {
+        "owner": "P",
+        "name": "next",
+        "line": 2,
+        "static": false
+      },
+      {
+        "owner": "Q",
+        "name": "go",
+        "line": 5,
+        "static": false
+      }
+    ],
+    "fields": [],
+    "enum_cases": [],
+    "use_edges": [],
+    "call_candidates": [
+      {
+        "kind": "implicit-self-method",
+        "name": "next",
+        "receiver": null,
+        "first_line": 5,
+        "count": 1
+      }
+    ],
+    "capability_evidence": {
+      "record-type-declaration": [
+        1,
+        4
+      ],
+      "free-function": [
+        2,
+        5
+      ],
+      "type-body-method": [
+        2,
+        5
+      ],
+      "integer-type-annotation": [
+        2,
+        5
+      ],
+      "return-statement": [
+        2,
+        5
+      ]
+    },
+    "anomalies": [],
+    "brace_balance": 0,
+    "lexically_indeterminate": false
+  },
+  "hashes": {
+    "scripts/acc_inventory.py": "8be8c39952887304c126b3fe6eec6bb53c0f44ea05555548857a442bf6d99250",
+    "scripts/tests/test_acc_inventory.py": "1f8bde2f77b0272f20c5168a4f609f55d1a7d5d958955cedd250367b384e06bc",
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "f0133243cd33f20bb60aa4540fa194829198252d68ab7677a5d9b59aa3134ffe",
+    "docs/specs/auto-acc/project.md": "21cd68db2764c0bf52f4a71dfa8f648f99a75cf7b3309b4fadbd31b131606275",
+    "docs/specs/auto-hir/stage-contract.md": "6e4d0cded8886196d707fe21e755d62ad5548fcf87a054f06ea17bbd5b820248",
+    "docs/design/strategy/auto-acc-bootstrap-contract.md": "676521ab3b9f26ba39798a6c1f3eb78676a6040861055ede15dd0dbb088e5317",
+    "docs/reports/743-acc-hir-contract/manual-decisions.json": "3674c687647f88dc7324395038bb883d1ffca04f21d67a34dc54c4118e104a5d",
+    "docs/reports/743-acc-hir-contract/proposed-spec-delta-phase2.md": "a963adfbd6b2488772f9830c7f6ea279f1f5eecf9417fd1ba25f0f743f7cbf6b"
+  }
+}

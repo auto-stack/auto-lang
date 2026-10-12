@@ -1,0 +1,73 @@
+[
+  {
+    "id": "main-check",
+    "working_directory": "D:/autostack/auto-lang",
+    "head": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+    "command": "cargo",
+    "args": [
+      "check",
+      "-p",
+      "auto-lang"
+    ],
+    "exit": 0,
+    "timed_out": false,
+    "seconds": 145.1507067
+  },
+  {
+    "id": "main-inventory",
+    "working_directory": "D:/autostack/auto-lang",
+    "head": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+    "command": "python",
+    "args": [
+      "scripts/acc_inventory.py",
+      "--root",
+      ".",
+      "--output",
+      "docs/reports/743-acc-hir-contract",
+      "--check",
+      "--require-decisions"
+    ],
+    "exit": 0,
+    "timed_out": false,
+    "seconds": 0.6880882
+  },
+  {
+    "id": "batch-tf",
+    "working_directory": "D:/autostack/auto-lang",
+    "head": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+    "command": "cargo",
+    "args": [
+      "tf",
+      "--no-fail-fast"
+    ],
+    "exit": 100,
+    "timed_out": false,
+    "seconds": 150.0564733
+  },
+  {
+    "id": "batch-tt",
+    "working_directory": "D:/autostack/auto-lang",
+    "head": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+    "command": "cargo",
+    "args": [
+      "tt",
+      "--no-fail-fast"
+    ],
+    "exit": 100,
+    "timed_out": false,
+    "seconds": 445.5533073
+  },
+  {
+    "id": "batch-tb",
+    "working_directory": "D:/autostack/auto-lang",
+    "head": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+    "command": "cargo",
+    "args": [
+      "tb",
+      "--no-fail-fast"
+    ],
+    "exit": 100,
+    "timed_out": false,
+    "seconds": 442.3570431
+  }
+]

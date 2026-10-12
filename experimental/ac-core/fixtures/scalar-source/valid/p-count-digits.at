@@ -1,0 +1,13 @@
+// V-11: decimal digit count of 12345 by repeated division — 5 digits,
+// asserted from the independent literal 5.
+fn main() int {
+    var n = 12345
+    var count = 0
+    for n > 0 {
+        n = n / 10
+        count = count + 1
+    }
+    if count != 5 { return 1 }
+    if n != 0 { return 2 }
+    return 0
+}

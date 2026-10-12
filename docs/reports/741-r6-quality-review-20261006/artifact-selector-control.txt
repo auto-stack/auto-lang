@@ -1,0 +1,8 @@
+
+Algorithm : SHA256
+Hash      : 47489C1834C8E707C62E70CFA7206AFC9FA47542124413DDA522A27A24A87041
+Path      : C:\Users\zhaop\AppData\Local\Temp\741-r6-review-20261006\current.rlib
+
+Cargo-reported reviewed library: C:\Users\zhaop\AppData\Local\Temp\741-r6-review-20261006\current.rlib
+
+Mixed old/current physical libraries: Cargo-reported current selected. No Cargo build or native invocation performed.

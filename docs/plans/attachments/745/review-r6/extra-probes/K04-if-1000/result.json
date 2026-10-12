@@ -1,0 +1,13 @@
+{
+  "build": null,
+  "run": null,
+  "bytes": 10036,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\K04-if-1000\\input.at:1:9016: error[text/source.syntax]: nesting deeper than 1000 levels is not accepted\n"
+  },
+  "want": 0,
+  "id": "K04-if-1000",
+  "want_native": null
+}

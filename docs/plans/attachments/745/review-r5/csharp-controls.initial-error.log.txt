@@ -1,0 +1,5 @@
+Invoke-Expression: D:\autostack\auto-lang\docs\plans\attachments\745\review-r5\csharp-controls.ps1:35
+Line |
+  35 |  … xt((Join-Path $r ($c.id+'.ps1.txt')),$fault);Invoke-Expression $fault
+     |                                                 ~~~~~~~~~~~~~~~~~~~~~~~~
+     | ',' 后缺少表达式。

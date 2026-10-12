@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N28\\input.at:1:31: error[bind/source.not-callable]: `mark_a` is a local, not a function; it cannot be called\n"
+  },
+  "kind": "reject",
+  "input_sha256": "fa14b5acb88c674f5511c41d5bc2ec34939166fd57b1024ea8c3304e0516e493",
+  "run": null,
+  "id": "N28",
+  "ok": true,
+  "artifact_hashes": []
+}

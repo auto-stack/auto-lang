@@ -1,0 +1,16 @@
+{
+  "id": "C06-exitprocess-user-function",
+  "source": "fn ExitProcess() int { return 4 } fn main() int { return ExitProcess() }",
+  "want": "native4",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=f5ccd13780adfae5, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C06-exitprocess-user-function\\input.at:1:1: error[backend/backend.lowering]: declare ExitProcess: Function ExitProcess signature Signature { params: [], returns: [AbiParam { value_type: types::I32, purpose: Normal, extension: None }], call_conv: WindowsFastcall } is incompatible with previous declaration Signature { params: [AbiParam { value_type: types::I32, purpose: Normal, extension: None }], returns: [], call_conv: WindowsFastcall }\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "run": null
+}

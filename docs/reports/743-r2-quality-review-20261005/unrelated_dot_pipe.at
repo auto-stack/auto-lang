@@ -1,0 +1,7 @@
+type P {
+ fn next() int { return 1 }
+}
+fn unrelated() int {
+ .next()
+ return 2 |> .next()
+}

@@ -1,0 +1,1 @@
+fn main() int { let a=mark_a(); if false { return 2147483647+1 } else { let b=mark_b() }; return 3 }

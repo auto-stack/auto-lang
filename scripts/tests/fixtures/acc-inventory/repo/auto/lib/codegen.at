@@ -1,0 +1,27 @@
+// fixture: mini codegen module (enum + unknown receiver candidate)
+use auto.lib.token: TokenKind, kind_name
+use auto.lib.lexer: tokenize
+use auto.lib.parser: parse_all
+
+enum OpCode {
+    Add
+    Sub
+    Call
+}
+
+type I {
+    op OpCode
+    s str
+}
+
+fn emit_add(a int, b int) I {
+    var mystery = a + b
+    mystery.foo()
+    return I { op: OpCode.Add, s: kind_name(TokenKind.Int) }
+}
+
+fn emit_all(source str) List<I> {
+    var out = List.new()
+    out.push(emit_add(1, 2))
+    return out
+}

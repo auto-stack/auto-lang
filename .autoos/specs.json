@@ -1565,6 +1565,79 @@
      "created_at": 1791776849,
      "modified_at": 1791776849,
      "completed_at": 1791776849
+    },
+    {
+     "id": "P745-4",
+     "created": "2026-10-08",
+     "title": "PLAN-745 源码计算子集交付",
+     "content": "有限Auto源码→Checked HIR→Windows PE已落v0.6-dev；Specs与派生投影沉淀。归档/清理实际状态见Plan的PLAN-745:r1 merge收据；完整语言/ACC自举未完成。",
+     "status": "published",
+     "depends_on": [
+      "P745-2",
+      "P745-3"
+     ],
+     "related": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/archive/745-ac-source-checked-hir-native.md",
+     "milestone": null,
+     "module": "auto-ac",
+     "tags": [
+      "plan-745",
+      "derived-reference"
+     ],
+     "created_at": 1791417600,
+     "modified_at": 1791459054,
+     "completed_at": 1791459054,
+     "last_modified": "2026-10-08",
+     "canonical_section": "delivery",
+     "provenance": {
+      "plan": "PLAN-745",
+      "revision": 1,
+      "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+      "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+      "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+      "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+      "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+      "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+     }
+    },
+    {
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "P767-1",
+      "P767-2",
+      "P767-3"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": "auto-ac",
+     "tags": [
+      "plan-772",
+      "derived-reference"
+     ],
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12",
+     "id": "P772-4",
+     "title": "PLAN-772 标量扩面交付",
+     "content": "scalar-i32 profile落v0.6-dev（减/除/余/比较/eq-ne/一元/短路/条件for，双身份域+可信门）；Specs与派生投影沉淀。归档/清理实际状态见归档plan的PLAN-767:r2 merge收据；char/str/List/完整宽度/ACC代际未完成。",
+     "file": "docs/plans/archive/772-ac-scalar-ops-short-circuit.md",
+     "provenance": {
+      "plan": "PLAN-767",
+      "revision": 2,
+      "reviewed_commit": "4cc4645027d7404dee5797b195a9b7c680fe6ece5",
+      "rebased_reviewed_commit": "ec9d0d28e",
+      "delivery_commit": "7086eec8f7d65f3d9661ba3f9641c16f7adf2ea9",
+      "frozen_delta": "docs/reports/767-scalar-i32/proposed-spec-delta.md",
+      "frozen_delta_sha256": "312462d19d4c8f03641ccb9ef0605ed6191c0f4eb69db7624bdd2ee2c541d491",
+      "review_report": "docs/plans/attachments/767/review-codex-repair-4cc464502.md",
+      "review_report_sha256": "bde4bbdf5fbd96235e96abe56259751282c3f9afd7c87e718b930a6b9687c7a2",
+      "archive": "docs/plans/archive/767-ac-scalar-ops-short-circuit.md"
+     }
     }
    ]
   },
@@ -6115,6 +6188,189 @@
      "created_at": 1791776849,
      "modified_at": 1791776849,
      "completed_at": 1791776849
+    },
+    {
+     "id": "P741-1",
+     "title": "auto-hir core-i32 typed HIR contract（SD-01）",
+     "content": "PLAN-741 沉淀 current-state 契约：core-i32-draft descriptor 三重身份门（schema/revision/profile）；Atom 文本双槽/命名字段互换、同字段跨区重复拒绝；引用按类别+作用域绑定（模块表 vs 函数体表），category-mismatch 与 dangling-ref 分诊；TypeUse 内建简写与表引用在校验层归一、名义类型不折叠；verify 契约=let 初始化/assign 可变性双查/if 出口交集/循环零次保守/块唯一入口角色/求值位置唯一+表达式无环/入口全路径 return；CheckedModule 仅 verify() 可构造。canonical=docs/specs/auto-hir/project.md；证据=plan-741 text_binding 11/11 + hir_verify 8/8。r2（SD-03）增补：`bindings` 必须为双射（param 全覆盖唯一、arg 越界/重复消费/未被消费拒绝），实参类型按映射逐位核对（params[b.param] ≡ eval_args[b.arg]）不按求值下标对位；新增归属唯一规则——每函数 body 字段必须指向 owner 恰为该函数的 body，共享/同签名共享/冒领 body 在 verify 报 verify.owner-mismatch。r3（SD-05）增补：块包含边仅来自 if 的 then/else 与 loop 的 body（运行时 loop 重入/break/continue 的 LoopId 目标/递归调用不是包含边）；全部块从入口可达且包含图无环——显式栈 DFS 结构检查先于数据流走查，结构失败不构造 CheckedModule（自环报入口角色唯一、断开环报不可达，带定位 span 不 panic）。",
+     "file": "docs/specs/auto-hir/project.md",
+     "related": [],
+     "status": "published",
+     "created": "2026-10-04",
+     "last_modified": "2026-10-05"
+    },
+    {
+     "id": "P741-2",
+     "title": "AC 原生AOT：HIR及有限源码profile",
+     "content": "当前 Checked→native/事务/工具链见canonical；PLAN-745新增显式core-i32源码→Checked→Windows PE闭环。完整语言、生产ABI与ACC native自举仍open。",
+     "file": "docs/specs/auto-ac/project.md",
+     "related": [
+      "P745-2",
+      "P745-3"
+     ],
+     "status": "published",
+     "created": "2026-10-04",
+     "last_modified": "2026-10-08",
+     "depends_on": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "plan-745",
+      "derived-reference"
+     ],
+     "created_at": 1791072000,
+     "modified_at": 1791452507,
+     "completed_at": 1791452507,
+     "canonical_section": "current-state",
+     "provenance": {
+      "plan": "PLAN-745",
+      "revision": 1,
+      "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+      "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+      "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+      "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+      "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+      "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+     },
+     "source_sha256": "f613edc58338da61582c775eea5978426fda3aa94a650cfd300dde74272f5dcc"
+    },
+    {
+     "id": "P743-1",
+     "title": "ACC 主体与能力边界",
+     "content": "ACC主体/Gen1–3判据与四态现状见canonical；PLAN-745仅补有限Rust source profile数值证据。MD408/409 required与完整int/char open维持，不把原型当Auto主体/自举。",
+     "file": "docs/specs/auto-acc/project.md",
+     "related": [
+      "P745-3"
+     ],
+     "status": "published",
+     "created": "2026-10-04",
+     "last_modified": "2026-10-08",
+     "depends_on": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "plan-745",
+      "derived-reference"
+     ],
+     "created_at": 1791072000,
+     "modified_at": 1791452507,
+     "completed_at": 1791452507,
+     "canonical_section": "current-state",
+     "provenance": {
+      "plan": "PLAN-745",
+      "revision": 1,
+      "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+      "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+      "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+      "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+      "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+      "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+     },
+     "source_sha256": "3aea50b0f5a24c7d4133d1e2d889c491f2b0f4e095d7c5496e671c492a1a4fa9"
+    },
+    {
+     "id": "P743-2",
+     "title": "公共HIR阶段与Checked/pass边界",
+     "content": "S0仅auto.source.core-i32.draft接入；生成Atom/来源表→bind→全Bundle来源投影→verify→Checked。HIR三重身份/Schema/运算面/pass状态不扩面；阶段与效果/trap合同见canonical。",
+     "file": "docs/specs/auto-hir/stage-contract.md",
+     "related": [
+      "P745-3"
+     ],
+     "status": "published",
+     "created": "2026-10-04",
+     "last_modified": "2026-10-08",
+     "depends_on": [],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": null,
+     "tags": [
+      "plan-745",
+      "derived-reference"
+     ],
+     "created_at": 1791072000,
+     "modified_at": 1791452507,
+     "completed_at": 1791452507,
+     "canonical_section": "current-state",
+     "provenance": {
+      "plan": "PLAN-745",
+      "revision": 1,
+      "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+      "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+      "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+      "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+      "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+      "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+     },
+     "source_sha256": "992a3bb7536bcdcd01e8fb6c62871f37cac603970dd84c9a49be9807bcd7358b"
+    },
+    {
+     "id": "P745-1",
+     "created": "2026-10-08",
+     "title": "Auto source core-i32 profile",
+     "content": "PLAN-745 r1已审有限源码profile的数值/支持/拒绝/CLI/来源/嵌套与运行期语义；当前规则仅引用canonical，不复制Plan过程。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "P745-2",
+      "P745-3"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-ac/source-core-i32.md",
+     "milestone": null,
+     "module": "auto-ac",
+     "tags": [
+      "plan-745",
+      "derived-reference"
+     ],
+     "created_at": 1791417600,
+     "modified_at": 1791452507,
+     "completed_at": 1791452507,
+     "last_modified": "2026-10-08",
+     "canonical_section": "profile",
+     "provenance": {
+      "plan": "PLAN-745",
+      "revision": 1,
+      "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+      "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+      "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+      "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+      "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+      "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+     },
+     "source_sha256": "6ef8894c9c66320341ba32fdecbf8950f4a08db1977a5cc64623f8b3a06a4c92"
+    },
+    {
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "P767-2",
+      "P767-3"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": "auto-ac",
+     "tags": [
+      "plan-772",
+      "derived-reference"
+     ],
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12",
+     "id": "P772-1",
+     "title": "Auto source scalar-i32 profile",
+     "content": "scalar-i32源码profile规范：精确减/除/余（0、MIN/-1、MIN%-1 trap70）、全序比较、同类eq/ne、一元、布尔短路与条件for；身份/可信边界与拒绝面。canonical=docs/specs/auto-ac/source-scalar-i32.md。",
+     "file": "docs/specs/auto-ac/source-scalar-i32.md"
     }
    ]
   },
@@ -7303,6 +7559,68 @@
      "created_at": 1791776849,
      "modified_at": 1791776849,
      "completed_at": 1791776849
+    },
+    {
+     "id": "P745-2",
+     "created": "2026-10-08",
+     "title": "源码→Checked→native 验收",
+     "content": "源码74例（21PE/53拒绝）、114测试与独立M/N块流/未闭合/深输入、Bundle/事务/执行器控制；可执行入口与边界见canonical验收节，最终证据见PLAN-745第七轮报告。",
+     "status": "published",
+     "depends_on": [
+      "P745-1",
+      "P741-2"
+     ],
+     "related": [
+      "P745-4"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/auto-ac/source-core-i32.md",
+     "milestone": null,
+     "module": "auto-ac",
+     "tags": [
+      "plan-745",
+      "derived-reference"
+     ],
+     "created_at": 1791417600,
+     "modified_at": 1791452507,
+     "completed_at": 1791452507,
+     "last_modified": "2026-10-08",
+     "canonical_section": "验收与范围来源",
+     "provenance": {
+      "plan": "PLAN-745",
+      "revision": 1,
+      "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+      "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+      "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+      "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+      "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+      "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+     },
+     "source_sha256": "6ef8894c9c66320341ba32fdecbf8950f4a08db1977a5cc64623f8b3a06a4c92"
+    },
+    {
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "P767-4"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": "auto-ac",
+     "tags": [
+      "plan-772",
+      "derived-reference"
+     ],
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12",
+     "id": "P772-2",
+     "title": "scalar profile 验收",
+     "content": "verify-ac-scalar-767.ps1 14步45例（源码/HIR真实PE+反例+CLI隔离+收据身份）；scalar_hir/source/native三测试族；独立复审needs_fix三项修复轮反例16/16重放。canonical=docs/specs/auto-ac/source-scalar-i32.md验收节。",
+     "file": "docs/specs/auto-ac/source-scalar-i32.md"
     }
    ]
   },
@@ -9778,8 +10096,250 @@
      "created_at": 1791776849,
      "modified_at": 1791776849,
      "completed_at": 1791776849
+    },
+    {
+     "id": "P741-3",
+     "title": "PLAN-741 review pass（r1，同基线对照裁定）",
+     "content": "独立复审 pass @ 4dc4da636（基线 951b6c70f）：AC-01..08 全 pass（复审独立复跑 37/37、零 diff 核对、check PASS/tv 162/162）；P741-R1=日常档 26 红裁定非本回归（14 基线同红入 THR-D3 族 + 12 负载 flake 同 THR-D4 模式，对照收据 verification.md §4.1）；P741-R2=组内 auto-down detached 依赖 worktree 归 merge 清理。merge 交付链 1e4a2533a → lockfile 补交 cf369e0d5。",
+     "file": "docs/plans/archive/741-ac-hir-native-core.md",
+     "tags": [
+      "PLAN-741",
+      "review",
+      "native-aot",
+      "same-baseline"
+     ]
+    },
+    {
+     "id": "P743-3",
+     "title": "PLAN-743 r1 复审裁定：R1 needs_fix→修复→R2 pass",
+     "content": "PLAN-743 revision 1 复审链：R1（reviewed 基线 b96f7beab）8 项 AC 六 pass+AC-08 partial，发现 F-01（acceptance-matrix 相对链接多一级）与 F-03（use 边计数 15→18，manifest 为准）双 P2；修复循环 1 次提交 d7013b290 闭环；R2 复核 pass（修复 diff 仅 4 文件 4 行，delta 冻结 b6b80711 未触）。交付落 v0.6-dev：specs 沉淀 05d0127a4 + SD-03 落地后四条 spec 引用决定重绑 bbfca37b8（rebase 映射：d7013b290→9abc87acc）。工具收据：三命令 exit0、18 测试、字节确定性、--check HEAD 免疫。",
+     "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+     "related": [],
+     "status": "published",
+     "created": "2026-10-04",
+     "last_modified": "2026-10-04"
+    },
+    {
+     "id": "P741-4",
+     "title": "PLAN-741 r2 Phase 2 复审 pass + 质量修复收据（P741-QA-01..07）",
+     "file": "docs/plans/archive/741-ac-hir-native-core.md",
+     "tags": [
+      "PLAN-741",
+      "review",
+      "native-aot",
+      "quality-fix"
+     ],
+     "content": "外部质量复审 needs_fix（docs/reports/741-quality-review-20261004）→ 用户裁定激活 741 追加 Phase 2（r2）修复：QA-01 bool icmp 归一 i32（uextend 唯一出口）、QA-02 bindings 映射制类型核对+双射校验、QA-03 function↔body 双向归属唯一、QA-04 制品暂存-备份-发布-回滚事务（companion 全名后缀防同 stem 备份碰撞）、QA-05 README 真实 bin 名/带入口 fixture/归档链接/schema 路径笔误、QA-06 全子进程硬截止+并发管道读、QA-07 all-targets 零 warning 门。独立代理复审 pass：44/44 测试（r1 37→44）、复审反例六例全翻转、AC-01 面与 canonical specs 零 diff、发布失败保旧制品（exe/obj 哈希不变+旧 exe 实跑）。",
+     "status": "published",
+     "created": "2026-10-05",
+     "last_modified": "2026-10-05"
+    },
+    {
+     "id": "P743-4",
+     "title": "PLAN-743 r2 复审裁定：外部复核 needs_fix → Phase 2 修复 → R3 pass",
+     "content": "r2 链条：合入后独立复核（基线 fa3abe476）发现 P743-QA-01..07（跨行字符串泄漏、方法名越权判 native、人工层完整性缺口、常量折叠 trap 边界未定义、锚点/候选不一致、8 决定 9 绑定过期、勾选簿记），needs_fix；用户授权同 ID 再激活 r2（T-07..14/AC-09..14/SD-04..05）。Phase 2 修复实现 HEAD a63660137（rebase 映射 2ecccea12→6859e984f 等 6/6 补丁等价），R3 独立重放反例/严格门全绿 pass；交付落 v0.6-dev 4ca002099（SD-04/05 目标文件无决定绑定，§5.6.6 重绑条款条件满足无需重绑，严格冒烟绿）。冻结：phase2 提案 a963adfbd6b24887。",
+     "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+     "related": [],
+     "status": "published",
+     "created": "2026-10-05",
+     "last_modified": "2026-10-05"
+    },
+    {
+     "id": "P743-5",
+     "title": "PLAN-743 r3 复审裁定：外部复核 needs_fix → Phase 3 修复 → R4 pass",
+     "content": "r3 链条：r2 合入后独立复审（基线 5983f8aee）发现 P743-R2-QA-01..06（同名证据非 owner 证据、证据未绑定不失效、resolved 族无引用仍闭环、类型错误 traceback、canonical R3 摘要冲突、归档生命周期），needs_fix；同 ID 激活 r3（T-15..21/AC-15..20/SD-06..07）。Phase 3 修复实现 HEAD 184749168（rebase 前；6/5 提交链），R4 独立重放反例/严格门全绿 pass；交付落 v0.6-dev（SD-06/07 目标文件无决定绑定，落地后严格冒烟绿）。冻结：phase3 提案 a4af013b759a1d35。",
+     "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+     "related": [],
+     "status": "published",
+     "created": "2026-10-05",
+     "last_modified": "2026-10-05"
+    },
+    {
+     "id": "P741-5",
+     "title": "PLAN-741 r3 Phase 3 复审 pass + 边界修复收据（P741-R2-QA-01..04）",
+     "file": "docs/plans/archive/741-ac-hir-native-core.md",
+     "tags": [
+      "PLAN-741",
+      "review",
+      "native-aot",
+      "boundary-fix"
+     ],
+     "content": "r2 合入后复审 needs_fix（docs/reports/741-quality-review-20261005）→ r3 修复：R2-QA-01 块包含图结构门（显式栈 DFS 全可达+入边不变量、结构失败阻止数据流走查，自环/断开 SCC 定位拒绝不 panic）、R2-QA-02 单一单调截止覆盖等待+输出收集（windows-sys 0.59 Job Object KILL_ON_JOB_CLOSE 管控子树、reader 全出口回收、read_to_end+lossy 防截断成功）、R2-QA-03 发布事务暂存所有权全失败出口回收+link.restore 恢复诊断+占位目录保护、R2-QA-04 状态/指针簿记。独立代理复审 pass：原型 52 项+60s 证据测试、watchdog 60.05s 准时拒绝（对比 r2 实测 114.96s 挂起）、cargo t 双侧同基线归因零新增、生产面零 diff。",
+     "status": "published",
+     "created": "2026-10-05",
+     "last_modified": "2026-10-05"
+    },
+    {
+     "id": "P743-6",
+     "title": "PLAN-743 r4 复审裁定：外部复核 needs_fix → Phase 4 修复 → R5 pass",
+     "content": "r4 链条：r3 合入后独立复审（基线 8e8f6f19b）发现 P743-R3-QA-01..04（被淘汰记录进消费者索引 traceback、hash/subject 证据旁路、导入/参数遮蔽 native 误判、归档生命周期收口），needs_fix；同 ID 激活 r4（T-22..27/AC-21..24/SD-08）。Phase 4 修复实现 HEAD af3c8040e（rebase 前），R5 独立重放组合探针/旁路负例/遮蔽 fixture 全绿 pass；交付落 v0.6-dev（SD-08 目标文件无决定绑定，落地后严格冒烟绿；final_assertions.py 七类断言归档收口执行）。冻结：phase4 提案 f8924d0a8266976d。",
+     "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+     "related": [],
+     "status": "published",
+     "created": "2026-10-05",
+     "last_modified": "2026-10-05"
+    },
+    {
+     "id": "P741-6",
+     "title": "PLAN-741 r4 Phase 4 复审 pass + 资源边界修复收据（P741-R3-QA-01..03）",
+     "file": "docs/plans/archive/741-ac-hir-native-core.md",
+     "tags": [
+      "PLAN-741",
+      "review",
+      "native-aot",
+      "resource-boundary"
+     ],
+     "content": "r3 合入后复审 needs_fix（docs/reports/741-r3-quality-review-20261005）→ r4 修复：R3-QA-01 受控启动（CREATE_SUSPENDED→入 Job→ToolHelp 恢复主线程，约束前窗口消除；约束失败受控拒绝 link.containment，删除静默降级/detach）、R3-QA-02 清理错误全量汇总（link.cleanup：原失败+提交状态+残留自有路径+实际 OS 错误；目录=用户占位不删不计；成功段备份回收受阻单列 COMMITTED）、R3-QA-03 簿记归一（T-08 补勾、计数口径注明）。独立代理复审 pass（AC-21..24）：death-watch 反例 5/5 零泄漏（孙进程 0-20ms 内回收）、locked-cleanup 全要素、60s 生产路径准时拒绝、cargo t 双侧 worktree 34 红⊂基线 36 红零新增；windows-sys 增 ToolHelp feature。",
+     "status": "published",
+     "created": "2026-10-05",
+     "last_modified": "2026-10-05"
+    },
+    {
+     "id": "P741-7",
+     "title": "PLAN-741 r5 Phase 5 复审 pass + 链接清理收据（P741-R4-QA-01..02）",
+     "file": "docs/plans/archive/741-ac-hir-native-core.md",
+     "tags": [
+      "PLAN-741",
+      "review",
+      "native-aot",
+      "link-cleanup"
+     ],
+     "content": "r4 合入后复审 needs_fix（docs/reports/741-r4-quality-review-20261005）→ r5 修复：R4-QA-01 link_object_staged 两错误出口（链接器非零/执行器错误）经共享 discard_own_staged + with_staged_cleanup 汇总清理失败（link.cleanup：原失败+残留完整路径+OS 错误+NOT committed+恢复办法，与 publish 逐字等价去重）；R4-QA-02 归档计划 7 处 ../reports 链接改 ../../reports（归档终态可解析）+ final_assertions.py 三态链接/35 任务/指针断言。独立代理复审 pass（AC-25..27）：reproduce nonzero/timeout 两出口全要素、death-watch、红清单差分 29 共有+双侧各 3 独有（主检出 scoped 单跑 PASS=THR-D4 flake）。",
+     "status": "published",
+     "created": "2026-10-05",
+     "last_modified": "2026-10-05"
+    },
+    {
+     "id": "P743-7",
+     "title": "PLAN-743 r5 复审裁定：外部复核 needs_fix → Phase 5 修复 → R6 pass",
+     "content": "r5 链条：r4 合入后独立复审（基线 8e8f6f19b）发现 P743-R4-QA-01..04（mut/方法/裸参数遮蔽不完整、manifest 形状崩溃、消费者索引未达完整语义校验、归档六断链），needs_fix；同 ID 激活 r5（T-28..33/AC-25..28/SD-09）。Phase 5 修复实现 HEAD ce61e5e6d（rebase 前），R6 独立重放六 fixture/四形状探针/组合负例全绿 pass；交付落 v0.6-dev（SD-09 目标文件无决定绑定，落地后严格冒烟绿；final_assertions r5 33/33 收口执行）。冻结：phase5 提案 ad3e02d7a6c237f8（复审方交付）。",
+     "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+     "related": [],
+     "status": "published",
+     "created": "2026-10-06",
+     "last_modified": "2026-10-06"
+    },
+    {
+     "id": "P741-8",
+     "title": "PLAN-741 r6 Phase 6 复审 pass + 生命周期断言收据（P741-R5-QA-01..03）",
+     "file": "docs/plans/archive/741-ac-hir-native-core.md",
+     "tags": [
+      "PLAN-741",
+      "review",
+      "native-aot",
+      "lifecycle-gate"
+     ],
+     "content": "r5 合入后复审 needs_fix（docs/reports/741-r5-quality-review-20261006，仅 P3 验收与证据问题，r5 核心链接清理通过）→ r6 修复（零 Rust 改动）：R5-QA-01 final_assertions v2（frontmatter 必需字段解析、current_step==完成唯一数、total_steps==唯一总数合同派生无硬编码、archived=全完成+archive 位置、同 ID 冲突失败；上线即抓到执行侧 current_step=35≠34 计数错）、R5-QA-02 active 模式双链接验证（真实父目录 active 形 + 显式转换模拟归档，模拟不冒充实际 active）、R5-QA-03 exact-artifact 重放（Cargo JSON 绑定无 rlib glob；54→58 计数更正带 provenance）。独立代理复审 pass（AC-28..30）：4 例负面探针、fixture 8/8、库哈希一致全量重放。本 Phase 空规范影响（无 SD-10）。",
+     "status": "published",
+     "created": "2026-10-06",
+     "last_modified": "2026-10-06"
+    },
+    {
+     "id": "P743-8",
+     "title": "PLAN-743 r6 复审裁定：外部复核 needs_fix → Phase 6 修复 → R7 pass",
+     "content": "r6 链条：r5 合入后独立复审（基线 9111c21e5）发现 P743-R5-QA-01..03（缺失绑定文件仍入消费者、错类型同 ID 绕过全局唯一性、绑定让位于本地类型升级），needs_fix；同 ID 激活 r6（T-34..38/AC-29..31/SD-10）。Phase 6 修复实现 HEAD e6dad7ce9（rebase 前），R7 独立重放三段式/双序整组作废/遮蔽探针全绿 pass；交付落 v0.6-dev（SD-10 目标文件无决定绑定，落地后严格冒烟绿；final_assertions r6 38/38 收口执行）。冻结：SD-10 提案 825b4ae907ac2c26（复审方交付）。",
+     "file": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+     "related": [],
+     "status": "published",
+     "created": "2026-10-06",
+     "last_modified": "2026-10-06"
+    },
+    {
+     "id": "P741-9",
+     "title": "PLAN-741 r7 Phase 7 复审 pass + fixture 生命周期/导航门收据（P741-R6-QA-01..02）",
+     "file": "docs/plans/archive/741-ac-hir-native-core.md",
+     "tags": [
+      "PLAN-741",
+      "review",
+      "native-aot",
+      "lifecycle-fixture"
+     ],
+     "content": "r6 合入后复审 needs_fix（docs/reports/741-r6-quality-review-20261006，仅两个 P3 生命周期问题）→ r7 修复（零 Rust 改动）：R6-QA-01 fixture 生命周期化（计划源自动检测 active/归档态 git 历史重放；全完成合成控制承载沙盒 repo 骨架；同 ID 冲突变换按真实行状态翻转恰一行+断言实际修改；状态变换通配 set_fm；全部变异经 assert_modified）、R6-QA-02 最终门扩到 prototype README 741 链接与 auto-hir/auto-ac 741 导航行（状态生命周期一致+行号定位+--repo-root 沙盒负控制）。独立代理复审两轮：首轮 needs_fix 抓到执行侧状态翻转后未复跑（R1 status 硬编码零操作/PASS 计数不可复现/R3 list==set 死代码）→ 处置后交付 HEAD 实测两矩阵 21 用例+全 PASS。归档由本轮 merge 收口（链接转换+41/41+导航 delivered+archive）。",
+     "status": "published",
+     "created": "2026-10-06",
+     "last_modified": "2026-10-06"
+    },
+    {
+     "id": "P741-10",
+     "title": "PLAN-741 r8 Phase 8 复审 pass + 验收器身份检查收据（P741-R7-QA-01..02）",
+     "file": "docs/plans/archive/741-ac-hir-native-core.md",
+     "tags": [
+      "PLAN-741",
+      "review",
+      "native-aot",
+      "identity-gate"
+     ],
+     "content": "r7 合入后复审 needs_fix（docs/reports/741-r7-quality-review-20261006，两个 P3 验收器问题）→ r8 修复（零 Rust 改动）：R7-QA-01 两矩阵导航控制（all-correct/forgotten-nav-update）以 add_external 进入统一 cases 真实执行（各带沙盒 repo root），总数从执行记录派生（固定 +2 删除）；控制性确认：forgotten-nav-update 期望改 0 → fixture 整体非零（控制真实执行且失败传播）。R7-QA-02 final_assertions canonical 目标身份检查：推导 docs/plans[/archive]/741-ac-hir-native-core.md 为唯一规范目标；README 必须存在 741 计划引用（缺失即失败）；README/两模块导航行/全部 P741-* review 指针解析后必须恰等于 canonical（错目标失败含 expected/got 与 entry ID）；激活期 canonical_archive 尚不存在=显式列暂态（仅限精确 canonical 路径）。独立代理复审 pass（AC-33..34）：自建沙盒正负矩阵（含 743 占位错目标/缺引用）+ 反向验证旧版门对这些反例全部假通过（新负例非同义反复）。",
+     "status": "published",
+     "created": "2026-10-06",
+     "last_modified": "2026-10-06"
+    },
+    {
+     "id": "P745-3",
+     "created": "2026-10-08",
+     "title": "PLAN-745 r1 第七轮最终复审 pass",
+     "content": "最终独立复审绑定bb8cb4b4330d505059ea20e7bfe561a93c1051f3；AC01..08 pass。24提交rebase补丁全等价，交付2653e0088be1307119bb106ab0f82a4f4dc004f2。原三项发现清偿，根历史红公开，详细证据见review-r7/REVIEW.md与Plan收据。",
+     "status": "published",
+     "depends_on": [
+      "P745-1",
+      "P741-2",
+      "P743-1",
+      "P743-2"
+     ],
+     "related": [
+      "P745-4"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/plans/archive/745-ac-source-checked-hir-native.md",
+     "milestone": null,
+     "module": "auto-ac",
+     "tags": [
+      "plan-745",
+      "derived-reference"
+     ],
+     "created_at": 1791417600,
+     "modified_at": 1791459054,
+     "completed_at": 1791459054,
+     "last_modified": "2026-10-08",
+     "canonical_section": "review-r7",
+     "provenance": {
+      "plan": "PLAN-745",
+      "revision": 1,
+      "reviewed_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+      "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+      "frozen_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+      "review_report": "docs/plans/attachments/745/review-r7/REVIEW.md",
+      "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
+      "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
+     }
+    },
+    {
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "P767-4"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": "auto-ac",
+     "tags": [
+      "plan-772",
+      "derived-reference"
+     ],
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12",
+     "id": "P772-3",
+     "title": "PLAN-772 r2 独立复审 needs_fix→修复→final pass",
+     "content": "Codex独立最终复审发现P767-R1未注册身份归Core/writer换壳、R2签名TypeId越界致native panic（均P1）与R3设计公式错（P2）；同树修复（精确可失败映射+bind/writer双拒、模块级签名边界门+native全化、文档修正）后16/16反例重放通过、final pass。复审记录见归档plan §9。",
+     "file": "docs/plans/archive/772-ac-scalar-ops-short-circuit.md"
     }
    ]
   }
- ]
+ ],
+ "project": "auto-lang",
+ "version": 9
 }

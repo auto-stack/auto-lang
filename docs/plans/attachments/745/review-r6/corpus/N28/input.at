@@ -1,0 +1,2 @@
+fn f(mark_a int) int { return mark_a() }
+fn main() int { return f(1) }

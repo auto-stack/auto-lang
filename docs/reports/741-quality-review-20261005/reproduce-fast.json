@@ -1,0 +1,26 @@
+[
+  {
+    "name": "block-self-cycle",
+    "exit": -1073741571,
+    "stdout": null,
+    "stderr": "\nthread 'main' (29400) has overflowed its stack\n"
+  },
+  {
+    "name": "block-disconnected-cycle",
+    "exit": 0,
+    "stdout": "OK 1 module(s), capabilities required: []\n",
+    "stderr": null
+  },
+  {
+    "name": "baseline",
+    "exit": 0,
+    "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r2-37ed069a4f674722b3b9214a79243b41\\baseline.exe (entry test_entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r2-37ed069a4f674722b3b9214a79243b41\\baseline.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r2-37ed069a4f674722b3b9214a79243b41\\baseline.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r2-37ed069a4f674722b3b9214a79243b41\\baseline.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+    "stderr": null
+  },
+  {
+    "name": "receipt-prepare",
+    "exit": 0,
+    "stdout": "result=Err(Diagnostic { stage: Link, code: \"link.receipt\", message: \"write receipt: 拒绝访问。 (os error 5)\", span: Span { start: 0, end: 0 } })\nstaged_exe_left=true;old_exe_unchanged=true;old_obj_unchanged=true\n",
+    "stderr": null
+  }
+]

@@ -1,0 +1,9 @@
+path	bytes	sha256
+D:/autostack/auto-down/autodown/packages/engine/auto/parser/markdown_parser.at	101406	43299345fa5b0f961aa936f27692ffa9f144c45c36d958b497cdd67b68c2ffea
+D:/autostack/auto-down/autodown/packages/engine/auto/parser/block_model.at	29442	dece6e3ce273717c4b1f2af433b140b59f4178656be73adc803e673f190f95c7
+D:/autostack/auto-down/autodown/packages/engine/auto/parser/ial.at	12964	1dfcbf2810062487a9a1d5d52fac6aac48f6123650afd06adb11933e9a1d4165
+D:/autostack/auto-down/autodown/packages/engine/auto/parser/serializer.at	17455	c6c43bfcf15c6da37a0312ff7c5a2be220c705c67433911acef79f07222fb112
+D:/autostack/auto-down/autodown/packages/engine/rust/Cargo.toml	281	3c8884311521ae9d622a1be6f8537b927f76b7f6beecc7d8f459ea4ddfd0f339
+D:/autostack/auto-down/autodown/packages/engine/rust/src/lib.rs	1605	584750e78589e95cc0d387e27a2a50239b66f11620ac319803b8dbd0e98e62ae
+D:/autostack/auto-down/autodown/packages/engine/rust/src/markdown_parser.rs	111163	4c41853517d09f4740ed32f3a6645f3fedd8bd7ad69ac0fd3ece16f21427ffc9
+D:/autostack/auto-down/autodown/packages/engine/rust/src/block_model.rs	34512	8e99920ff0f078706ea7d8e8b2f351e3fe90c5220d57c791d6ca0e1000b04c36

@@ -1,0 +1,131 @@
+[
+  {
+    "descendant_alive": false,
+    "id": "hold",
+    "elapsed_ms": 548,
+    "deadline_ms": 500,
+    "ok": true,
+    "result": {
+      "Code": 0,
+      "Stdout": "DESCENDANT_PID=30424\n",
+      "Stderr": "",
+      "TimedOut": true,
+      "Error": null,
+      "Pid": 32976,
+      "StdoutReadError": 0,
+      "StderrReadError": 0
+    }
+  },
+  {
+    "descendant_alive": false,
+    "id": "late",
+    "elapsed_ms": 666,
+    "deadline_ms": 3000,
+    "ok": true,
+    "result": {
+      "Code": 0,
+      "Stdout": "DESCENDANT_PID=27016\nLATE\n",
+      "Stderr": "",
+      "TimedOut": false,
+      "Error": null,
+      "Pid": 41900,
+      "StdoutReadError": 0,
+      "StderrReadError": 0
+    }
+  },
+  {
+    "descendant_alive": false,
+    "id": "running-parent",
+    "elapsed_ms": 507,
+    "deadline_ms": 500,
+    "ok": true,
+    "result": {
+      "Code": 0,
+      "Stdout": "DESCENDANT_PID=25024\n",
+      "Stderr": "",
+      "TimedOut": true,
+      "Error": null,
+      "Pid": 6876,
+      "StdoutReadError": 0,
+      "StderrReadError": 0
+    }
+  },
+  {
+    "descendant_alive": false,
+    "id": "invalid-utf8",
+    "elapsed_ms": 9,
+    "deadline_ms": 1000,
+    "ok": true,
+    "result": {
+      "Code": 0,
+      "Stdout": "PREFIX�SUFFIX",
+      "Stderr": "",
+      "TimedOut": false,
+      "Error": null,
+      "Pid": 15300,
+      "StdoutReadError": 0,
+      "StderrReadError": 0
+    }
+  },
+  {
+    "control": "Unmodified RunControl executes real native failure",
+    "id": "actual-assignment-failure",
+    "child_alive_after_return": false,
+    "elapsed_ms": 9,
+    "ok": true,
+    "result": {
+      "Code": 0,
+      "Stdout": null,
+      "Stderr": null,
+      "TimedOut": false,
+      "Error": "containment unavailable",
+      "Pid": 28408,
+      "StdoutReadError": 0,
+      "StderrReadError": 0
+    }
+  },
+  {
+    "control": "Unmodified RunControl executes real native failure",
+    "id": "actual-read-failure",
+    "child_alive_after_return": false,
+    "elapsed_ms": 22,
+    "ok": true,
+    "result": {
+      "Code": 0,
+      "Stdout": null,
+      "Stderr": null,
+      "TimedOut": false,
+      "Error": "output read failed (stdout err 6, stderr err 0)",
+      "Pid": 9492,
+      "StdoutReadError": 6,
+      "StderrReadError": 0
+    }
+  },
+  {
+    "control": "Unmodified RunControl executes real native failure",
+    "id": "valid-assignment-and-read-control",
+    "child_alive_after_return": false,
+    "elapsed_ms": 19,
+    "ok": true,
+    "result": {
+      "Code": 0,
+      "Stdout": "READ_CONTROL\r\n",
+      "Stderr": "",
+      "TimedOut": false,
+      "Error": null,
+      "Pid": 22020,
+      "StdoutReadError": 0,
+      "StderrReadError": 0
+    }
+  },
+  {
+    "id": "wrapper-read-failure",
+    "ok": true,
+    "error": "contained executor refused 'cmd.exe': output read failed (stdout err 6, stderr err 0)"
+  },
+  {
+    "id": "wrapper-assignment-failure",
+    "ok": true,
+    "error": "contained executor refused 'cmd.exe': containment unavailable"
+  }
+]

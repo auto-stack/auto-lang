@@ -1,0 +1,14 @@
+{
+  "kind": "reject",
+  "artifact_hashes": [],
+  "ok": true,
+  "input_sha256": "f6a5d7b595218d80fe0f5a5bb2b2064495cd825e2c668614893446dd2ba27cc8",
+  "build": null,
+  "id": "N50",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N50\\input.at:1:24: error[bind/source.undefined]: no function named `absent` in this module\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "run": null
+}
