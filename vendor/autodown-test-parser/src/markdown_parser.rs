@@ -839,11 +839,11 @@ fn isFenceTailRun(t: &str) -> bool {
     while i < (t.chars().count() as i64) {
         let c = t.chars().nth((i) as usize).unwrap_or('\0') as i64;
         if c == 96 {
-
+            
 
         } else {
             if c == 126 {
-
+                
 
             } else {
                 return false;
@@ -1065,7 +1065,7 @@ fn argValueAt(args: &str, key: &str) -> i64 {
                 i += 1;
             }        }
 
-
+        
         let mut m: i64 = i;
         while m < n {
             if args.chars().nth((m) as usize).unwrap_or('\0') as i64 == 32 {
@@ -1089,7 +1089,7 @@ fn argValueAt(args: &str, key: &str) -> i64 {
                 if v < n {
                     return v;
                 }            }        }
-
+        
         let mut inQ: bool = false;
         while i < n {
             let c = args.chars().nth((i) as usize).unwrap_or('\0') as i64;
@@ -1159,7 +1159,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
             i += 1;
             continue;
         }
-
+        
 
         let mk = fenceMarker(line.as_str());
         if mk != "" {
@@ -1184,12 +1184,12 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
                 } else {
                     code = "".to_string();
                 }
-
+                
 
 
 
                 if language == "mermaid" {
-
+                    
 
 
                     let msrc = body.join("\n");
@@ -1198,7 +1198,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
                     nodes.push(codeNode(language.as_str(), code.as_str(), false));
                 }
             } else {
-
+                
 
 
                 while (body.len() as i64) > 0 {
@@ -1212,7 +1212,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
                     body.pop();
                 }
                 let mut openCode = body.join("\n");
-
+                
 
 
                 openCode = stripTrailingSpaceLine(openCode.as_str());
@@ -1221,7 +1221,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
             i = j + 1;
             continue;
         }
-
+        
 
         if isMathOpenLine(line.as_str()) {
             let mut mathBody: Vec<String> = vec![];
@@ -1240,10 +1240,10 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
                 nodes.push(mathNode(mathSrc.as_str()));
                 i = j + 1;
                 continue;
-            }
+            }            
 
         }
-
+        
 
         let hlevel = headingLevel(line.as_str());
         if hlevel > 0 {
@@ -1257,20 +1257,20 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
             i += 1;
             continue;
         }
-
+        
 
         if isThematicBreak(line.as_str()) {
             nodes.push(thematicNode());
             i += 1;
             continue;
         }
-
+        
 
         let comp = compOpenScan(line.as_str());
         if comp != None {
             let mut cs = comp.unwrap_or(CompScan { name: "".to_string(), argstr: "".to_string(), afterParen: 0 });
             if isContainerCompOpen(line.as_str()) {
-
+                
 
 
 
@@ -1303,7 +1303,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
                     }
                     i = j + 1;
                     continue;
-                }
+                }                
 
             } else {
                 if cs.name == "query" {
@@ -1318,7 +1318,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
                         continue;
                     }                }            }
         }
-
+        
 
         if startsBlockquote(line.as_str()) {
             let mut qlines: Vec<String> = vec![];
@@ -1330,7 +1330,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
                 } else {
                     if isBlank(lines[(j) as usize].as_str()) {
                         break;
-                    }
+                    }                    
 
                     if isParagraphStart(lines[(j) as usize].as_str()) {
                         qlines.push(lines[(j) as usize].clone());
@@ -1346,12 +1346,12 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
             i = j;
             continue;
         }
-
+        
 
         if isTableRow(line.as_str()) {
             if i + 1 < (lines.len() as i64) {
                 if isTableDelimiter(lines[(i + 1) as usize].as_str()) {
-
+                    
 
 
 
@@ -1362,7 +1362,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
                         i = tableEnd;
                         continue;
                     }                }            }        }
-
+        
 
         let bnum = olMarkerNum(line.as_str());
         let bmark = bulletMarker(line.as_str());
@@ -1377,13 +1377,13 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
             continue;
         }
         if bulletMarkerBare(line.as_str()) {
-
+            
 
             let mut bareEnd = parseList(lines.clone(), i, false, 0, &mut nodes, isFinal);
             i = bareEnd;
             continue;
         }
-
+        
 
         let mut para: Vec<String> = vec![];
         let mut j: i64 = i;
@@ -1414,7 +1414,7 @@ fn parseBlocks(mut lines: Vec<String>, isFinal: bool) -> Vec<WNode> {
             continue;
         }
         if (para.len() as i64) > 0 {
-
+            
 
 
 
@@ -1513,7 +1513,7 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
     while i < (lines.len() as i64) {
         let line = lines[(i) as usize].clone();
         if isBlank(line.as_str()) {
-
+            
 
             let mut k: i64 = i + 1;
             while k < (lines.len() as i64) {
@@ -1536,7 +1536,7 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
                     continue;
                 }            }            break;
         }
-
+        
         let mut markerIndent: i64 = 0;
         let mut contentStart: i64 = 0;
         let mut isItem: bool = false;
@@ -1558,7 +1558,7 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
                 if om >= 0 {
                     markerIndent = indentOf(line.as_str());
                     let t = trimStartStr(line.as_str());
-
+                    
 
 
                     let mut q: i64 = 0;
@@ -1597,7 +1597,7 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
                 }            }
         }
 
-
+        
         if !(isItem) {
             break;
         }
@@ -1605,7 +1605,7 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
             break;
         }
         if !(ordered) {
-
+            
 
             let t = trimStartStr(line.as_str());
             let firstChar = t.chars().take((1) as usize).skip((0) as usize).collect::<String>();
@@ -1614,11 +1614,11 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
             if firstChar != listChar {
                 break;
             }        }
-
+        
 
         let mut itemLines: Vec<String> = vec![];
         let mut firstText = line.chars().skip((contentStart) as usize).collect::<String>();
-
+        
 
         let mut itemChecked: Option<bool> = None;
         if !(orderedHere) {
@@ -1641,7 +1641,7 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
         while i < (lines.len() as i64) {
             let cur = lines[(i) as usize].clone();
             if isBlank(cur.as_str()) {
-
+                
 
                 let mut k: i64 = i + 1;
                 while k < (lines.len() as i64) {
@@ -1655,10 +1655,10 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
                 if k < (lines.len() as i64) {
                     if indentWidth(lines[(k) as usize].as_str()) >= contentStart {
                         if paraBreaks(lines[(k) as usize].as_str(), lines.clone(), k) {
-
+                            
 
                         } else {
-
+                            
 
                         }
                         let mut bi: i64 = i;
@@ -1676,7 +1676,7 @@ fn parseList(mut lines: Vec<String>, start: i64, ordered: bool, firstNum: i64, m
                 i += 1;
                 continue;
             }
-
+            
             if !(paraBreaks(cur.as_str(), lines.clone(), i)) {
                 itemLines.push(cur.to_string());
                 i += 1;
@@ -1769,7 +1769,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
     let lineLen: i64 = (line.chars().count() as i64);
     while i < lineLen {
         let cs = line.chars().take((i + 1) as usize).skip((i) as usize).collect::<String>();
-
+        
 
         if cs == "\n" {
             let mut sp: i64 = 0;
@@ -1795,10 +1795,10 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
             i += 1;
             continue;
         }
-
+        
 
         if cs == "*" {
-
+            
 
 
 
@@ -1836,7 +1836,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
             continue;
         }
         if cs == "_" {
-
+            
 
 
             if startsWithAt(line, "___", i) {
@@ -1849,7 +1849,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
                     }                    nodes.push(underlineNode(vec![emNode(parseInlineLine(scU3.inner.as_str(), isFinal))]));
                     i = scU3.next;
                     continue;
-                }            }
+                }            }            
 
 
             if startsWithAt(line, "__", i) {
@@ -1890,7 +1890,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
             i += 1;
             continue;
         }
-
+        
 
         if cs == "`" {
             let mut run: i64 = 0;
@@ -1911,7 +1911,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
                 seenCode = true;
                 i = close + run;
                 continue;
-            }
+            }            
 
 
             if !(isFinal) {
@@ -1923,7 +1923,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
                             continue;
                         }                    }                }            }            if run == 1 {
                 if !(isFinal) {
-
+                    
 
 
                     let rest = line.chars().skip((i + 1) as usize).collect::<String>();
@@ -1934,14 +1934,14 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
                     seenCode = true;
                     i = (line.chars().count() as i64);
                     continue;
-                }            }
+                }            }            
 
 
             buf += &line.chars().take((i + run) as usize).skip((i) as usize).collect::<String>();
             i += run;
             continue;
         }
-
+        
 
         if cs == "!" {
             if startsWithAt(line, "![", i) {
@@ -1958,7 +1958,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
             i += 1;
             continue;
         }
-
+        
 
 
 
@@ -1972,7 +1972,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
                     continue;
                 }                let mut close = findStrFrom(line, "]]", i + 2);
                 if close != -1 {
-
+                    
 
 
 
@@ -1994,7 +1994,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
                     nodes.push(textNode(buf.as_str()));
                     buf = "".to_string();
                 }                if lk.loading {
-
+                    
 
                     nodes.push(linkNode(lk.href.as_str(), lk.title.clone(), lk.text.as_str(), parseInlineLine(lk.text.as_str(), isFinal), true));
                     if lk.tail != "" {
@@ -2008,7 +2008,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
             i += 1;
             continue;
         }
-
+        
 
 
 
@@ -2023,7 +2023,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
                 let mut afterCode: i64 = 0;
                 if mclose + 1 < lineLen {
                     afterCode = line.chars().nth((mclose + 1) as usize).unwrap_or('\0') as i64;
-                }
+                }                
 
 
                 let mut digitAfter = afterCode >= 48 && afterCode <= 57;
@@ -2040,7 +2040,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
             i += 1;
             continue;
         }
-
+        
 
 
         if cs == "\\" {
@@ -2059,7 +2059,7 @@ fn parseInlineLine(line: &str, isFinal: bool) -> Vec<WNode> {
                     i += 2;
                     continue;
                 }            }        }
-
+        
         buf += &cs;
         i += 1;
     }
@@ -2217,7 +2217,7 @@ fn trimLastTextNode(last: WNode, mut nodes: Vec<WNode>) {
     let mut stripped: bool = false;
     let mut c2 = stripTrailingPartialTag(c.as_str());
     if c2 == c {
-
+        
 
         if endsWithTokSeq(c.as_str(), "<") {
             c2 = c.chars().take(((c.chars().count() as i64) - 1) as usize).skip((0) as usize).collect::<String>();
@@ -2245,7 +2245,7 @@ fn trimLastTextNode(last: WNode, mut nodes: Vec<WNode>) {
         c = stripTrailingSpaces(c.as_str());
     }
     if c.trim().to_string() == "|" {
-
+        
 
         c = "".to_string();
     }
@@ -2454,7 +2454,7 @@ fn smartQuotes(s: &str) -> String {
                 out += &CURLY_LDQUO();
                 i += 1;
                 continue;
-            }
+            }            
 
             if i + 1 >= (s.chars().count() as i64) {
                 out += &CURLY_RDQUO();
@@ -2557,12 +2557,12 @@ fn scanDelim(line: &str, i: i64, delim: &str, autoCloseWhenFinal: bool, isFinal:
         innerText = inner.chars().take((close) as usize).skip((0) as usize).collect::<String>();
     }
     if innerText == "" {
-
+        
 
         return None;
     }
     if isPunctuationCode(innerText.chars().nth((0) as usize).unwrap_or('\0') as i64) {
-
+        
 
 
 
@@ -2744,7 +2744,7 @@ fn scanLink(line: &str, i: i64, isFinal: bool, seenCode: bool) -> Option<LinkSca
     }
     let mut end = findStrFrom(line, ")", after);
     if end == -1 {
-
+        
 
 
 
@@ -2770,7 +2770,7 @@ fn scanLink(line: &str, i: i64, isFinal: bool, seenCode: bool) -> Option<LinkSca
         if endsWithTokSeq(titlePart.as_str(), "\"") {
             title = Some(titlePart.chars().take(((titlePart.chars().count() as i64) - 1) as usize).skip((0) as usize).collect::<String>());
         }    } else {
-
+        
 
 
 
@@ -2868,7 +2868,7 @@ fn convertInlines(wnodes: Vec<WNode>, mut marks: Vec<Mark>) -> Vec<InlineSpan> {
             }            out.push(spanWith(w.alt.clone().unwrap_or("".to_string()).as_str(), addMark(marks.clone(), Mark::Image.clone()), iattrs.clone()));
         }
         if t == "wikilink" {
-
+            
 
 
 
@@ -2878,7 +2878,7 @@ fn convertInlines(wnodes: Vec<WNode>, mut marks: Vec<Mark>) -> Vec<InlineSpan> {
             out.push(spanWith(w.title.clone().unwrap_or("".to_string()).as_str(), marks.clone(), wattrs.clone()));
         }
         if t == "math_inline" {
-
+            
 
 
 
@@ -2932,7 +2932,7 @@ fn convertBlock(wnode: WNode, id: &str) -> BlockNode {
     }
     if t == "list_item" {
         let mut attrsLI: Vec<Attr> = vec![];
-
+        
 
         let ck: Option<bool> = wnode.checked.clone();
         if ck != None {
@@ -2964,7 +2964,7 @@ fn convertBlock(wnode: WNode, id: &str) -> BlockNode {
     if t == "details" {
         let mut attrsD: Vec<Attr> = vec![];
         attrsD = attrSet(attrsD.clone(), "summary", Value::Str(wnode.text.unwrap_or("".to_string())));
-
+        
 
         if wnode.loading.unwrap_or(false) {
             attrsD = attrSet(attrsD.clone(), "open", Value::Bool(true));
@@ -3065,7 +3065,7 @@ fn stripAnchorSpans(mut spans: Vec<InlineSpan>, cut: i64) -> Vec<InlineSpan> {
         let end: i64 = pos + (t.chars().count() as i64);
         pos = end;
         if start >= cut {
-
+            
 
         } else {
             if end <= cut {

@@ -18,7 +18,6 @@ use auto_test_case::contract::{CheckSpec, Completion, EntryMode, ExpectSpec, Syn
 use auto_test_case::ir::ResolvedCase;
 use auto_test_case::report::{ArtifactRef, Status};
 use auto_test_case::sha256::{hex, sha256};
-use miette::Diagnostic;
 
 use super::{classify, materialize};
 

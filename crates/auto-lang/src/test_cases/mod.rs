@@ -171,11 +171,6 @@ fn run_case(
     limits: &Limits,
     report: &mut RunReport,
 ) {
-    let case_root = case_file
-        .path
-        .parent()
-        .unwrap_or(Path::new("."))
-        .to_path_buf();
     // `file:` payload / expected-artifact references resolve against the
     // suite-declared fixture base (imports keep legacy files in place).
     let ref_base = loaded.fixture_base.clone();

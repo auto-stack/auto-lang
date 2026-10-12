@@ -9837,7 +9837,10 @@ fn sqlite_from_handle(handle: i64) -> Option<SqliteDb> {
 fn shim_sqlite_open_impl(path: String) -> i64 {
     let db = a2r_std::sqlite::open(path);
     let id = SQLITE_HANDLE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    SQLITE_HANDLES.lock().expect("sqlite handle lock poisoned").insert(id, db);
+    SQLITE_HANDLES
+        .lock()
+        .expect("sqlite handle lock poisoned")
+        .insert(id, db);
     id
 }
 
@@ -9869,8 +9872,7 @@ pub fn shim_fs_dir_names(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let path: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let names: Vec<String> = a2r_std::fs::dir_names(path.as_str());
-    VMConvertible::push_to_stack(&names, task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))
+    VMConvertible::push_to_stack(&names, task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
 /// Pop the query rows off the FFI return and build the nested heap list the
@@ -9893,7 +9895,9 @@ pub fn shim_sqlite_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
             inner.push(-(len as i32) - 1);
         }
         let inner_id = vm.insert_heap_object(inner);
-        outer.push(auto_val::Value::VmRef(auto_val::VmRef { id: inner_id as usize }));
+        outer.push(auto_val::Value::VmRef(auto_val::VmRef {
+            id: inner_id as usize,
+        }));
     }
     let outer_id = vm.insert_heap_object(outer);
     vm.rc_push_id(task, outer_id as u64);
@@ -10066,11 +10070,17 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.sqlite.open", shim_sqlite_open);
     natives.register_shim_by_name("auto.sqlite.exec", shim_sqlite_exec);
     natives.register_shim_by_name("auto.sqlite.query", shim_sqlite_query);
-    natives.register_shim_by_name("auto.sqlite.last_insert_rowid", shim_sqlite_last_insert_rowid);
+    natives.register_shim_by_name(
+        "auto.sqlite.last_insert_rowid",
+        shim_sqlite_last_insert_rowid,
+    );
     natives.register_shim_by_name("auto.sqlite.last_error", shim_sqlite_last_error);
     natives.register_shim_by_name("auto.sqlitedb.exec", shim_sqlite_exec);
     natives.register_shim_by_name("auto.sqlitedb.query", shim_sqlite_query);
-    natives.register_shim_by_name("auto.sqlitedb.last_insert_rowid", shim_sqlite_last_insert_rowid);
+    natives.register_shim_by_name(
+        "auto.sqlitedb.last_insert_rowid",
+        shim_sqlite_last_insert_rowid,
+    );
     natives.register_shim_by_name("auto.fs.dir_names", shim_fs_dir_names);
 
     #[cfg(feature = "ui-iced")]
@@ -12455,8 +12465,17 @@ mod sqlite_vm_tests {
 
         let h = shim_sqlite_open_impl(db_path.clone());
         assert!(h > 0);
-        assert_eq!(shim_sqlite_exec_impl(h, "CREATE TABLE cats (id INTEGER PRIMARY KEY, name TEXT)".into()), 0);
-        assert_eq!(shim_sqlite_exec_impl(h, "INSERT INTO cats (name) VALUES ('Michi')".into()), 1);
+        assert_eq!(
+            shim_sqlite_exec_impl(
+                h,
+                "CREATE TABLE cats (id INTEGER PRIMARY KEY, name TEXT)".into()
+            ),
+            0
+        );
+        assert_eq!(
+            shim_sqlite_exec_impl(h, "INSERT INTO cats (name) VALUES ('Michi')".into()),
+            1
+        );
         assert_eq!(shim_sqlite_last_insert_rowid_impl(h), 1);
         let rows = shim_sqlite_query_impl(h, "SELECT id, name FROM cats ORDER BY id".into());
         assert_eq!(rows, vec![vec!["1".to_string(), "Michi".to_string()]]);

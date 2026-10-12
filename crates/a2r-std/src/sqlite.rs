@@ -111,10 +111,7 @@ impl SqliteDb {
                 Ok(Some(row)) => {
                     let mut cells = Vec::with_capacity(ncols);
                     for i in 0..ncols {
-                        let cell = row
-                            .get_ref(i)
-                            .map(cell_to_string)
-                            .unwrap_or_default();
+                        let cell = row.get_ref(i).map(cell_to_string).unwrap_or_default();
                         cells.push(cell);
                     }
                     out.push(cells);
