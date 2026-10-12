@@ -20,6 +20,9 @@ keywords = ["automation", "language", "scripting"]
 default = ["with-file-history", "ui-iced"]
 # Plan 289: Feature-gated test groups for faster daily development
 test-trans = []
+# Plan 768: AutoDown TestCase protocol adapters + auto-case bin (empty
+# feature gating the optional auto-test-case dependency).
+test-cases = ["dep:auto-test-case"]
 test-book = []
 # Plan 568: AAVM/AA2R 自举测试独立档。aavm 专属档 = cargo taa（触发条件与
 # 作用域映射见 AGENTS.md）。PLAN-700: 原 implies 的语料门随语料三族常驻化
@@ -170,6 +173,10 @@ shim-metadata = { path = "../shim-metadata" }
 # Plan 019 批次七: autodown-core（markdown parser/serializer/块模型 a2r 发射，
 # 见特性 autodown 注释——跨仓 path 指向 auto-down 主检出 crate）。
 autodown-core = { path = "../../../auto-down/autodown/packages/engine/rust", optional = true }
+# Plan 768: TestCase protocol core (adapters live here; dependency direction
+# auto-lang -> auto-test-case only). Gated behind the empty `test-cases`
+# feature so no-default/GUI-free builds can opt in.
+auto-test-case = { path = "../auto-test-case", optional = true }
 # Plan 216: C FFI Bindgen manifest types
 auto-bindgen = { path = "../auto-bindgen" }
 rustyline = { workspace = true, features = ["with-file-history"] }

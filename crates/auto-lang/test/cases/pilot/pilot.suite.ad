@@ -1,0 +1,23 @@
+# Plan 768 pilot suite
+
+Read-only import pilot: every source/oracle stays in its legacy location
+(`fixture_root: "../.."` = `crates/auto-lang/test/`); new reviewed emit
+oracles live under `cases/pilot/oracle/`. See legacy-map.tsv for the
+case-by-case reconciliation against the old runners.
+
+```test-suite
+suite {
+  schema: "autolang.suite/1"
+  id: "pilot"
+  fixture_root: "../.."
+  include: [
+    "vm-basics.case.ad",
+    "vm-shortcircuit.case.ad",
+    "vm-script.case.ad",
+    "a2r-basics.case.ad",
+    "a2r-cabi.case.ad",
+    "a2r-project.case.ad"
+  ]
+  defaults: { tier: "vm-corpus" }
+}
+```

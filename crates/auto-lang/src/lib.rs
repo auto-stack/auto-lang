@@ -120,6 +120,11 @@ pub mod mcp; // Plan 265: MCP server for AI agent interaction
 pub mod module_cache;
 pub mod stdlib_assembly; // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
                          // Plan 096 Phase 0: Scenario-based compilation
+// Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
+// orchestration; depends on the dependency-light `auto-test-case` core.
+#[cfg(feature = "test-cases")]
+pub mod test_cases;
+// Plan 096 Phase 0: Scenario-based compilation
 pub mod session;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
 pub mod aura;

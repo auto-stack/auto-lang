@@ -895,9 +895,28 @@ impl NativeInterface {
                     name
                 )
             });
-        self.register_static(id, func);
+        self.register_shim_for_id(id, func);
         self.register_name(name, id);
         id
+    }
+
+    /// Route a name-resolved shim to the correct ID table.
+    ///
+    /// Kept separate so the dynamic-band path can be tested without mutating
+    /// the process-global `BIGVM_NATIVES` registry.
+    fn register_shim_for_id<F>(&mut self, id: u16, func: F)
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        // Names whose registry id landed in the dynamic band (>= 10000 —
+        // e.g. after register_with_id bumped the shared next_id) must go to
+        // the dynamic table: register_static asserts the static band and
+        // would panic on a fresh-binary first VM run (Plan 768 T-07).
+        if id < STATIC_ID_MAX {
+            self.register_static(id, func);
+        } else {
+            self.register_dynamic_with_id(id, func);
+        }
     }
 
     /// Collect all inventory-submitted FFI registrations and register them.
@@ -1619,8 +1638,19 @@ pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = vm;
     task.ram
-        .push_i32(crate::ui::frame_bench::frame_begin_ms().min(i32::MAX as i64) as i32);
+        .push_i32(frame_begin_observed().min(i32::MAX as i64) as i32);
     Ok(())
+}
+
+/// no-`ui` 构建无帧泵=未捕获，按通道语义返回 0（与 a2r_std::frame 同源）。
+#[cfg(feature = "ui")]
+fn frame_begin_observed() -> i64 {
+    crate::ui::frame_bench::frame_begin_ms()
+}
+
+#[cfg(not(feature = "ui"))]
+fn frame_begin_observed() -> i64 {
+    0
 }
 
 /// `auto.frame.present_ms() -> int` — 呈现完成时间戳（711 帧泵消费时刻，
@@ -1628,8 +1658,18 @@ pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 pub fn shim_frame_present_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = vm;
     task.ram
-        .push_i32(crate::ui::frame_bench::frame_present_ms().min(i32::MAX as i64) as i32);
+        .push_i32(frame_present_observed().min(i32::MAX as i64) as i32);
     Ok(())
+}
+
+#[cfg(feature = "ui")]
+fn frame_present_observed() -> i64 {
+    crate::ui::frame_bench::frame_present_ms()
+}
+
+#[cfg(not(feature = "ui"))]
+fn frame_present_observed() -> i64 {
+    0
 }
 
 /// `auto.diff_files_window(path_a, path_b, ctx, rows_offset, rows_limit) -> Str`
@@ -12392,6 +12432,15 @@ mod tests {
 
         assert_eq!(ni.resolve("auto.list.push"), Some(101));
         assert_eq!(ni.resolve("rust.something"), None);
+    }
+
+    #[test]
+    fn register_shim_routes_dynamic_band_ids_without_panicking() {
+        let mut ni = NativeInterface::new();
+        ni.register_shim_for_id(DYNAMIC_ID_START, |_, _| Ok(()));
+
+        assert!(ni.get(DYNAMIC_ID_START).is_some());
+        assert_eq!(ni.next_dynamic_id(), DYNAMIC_ID_START + 1);
     }
 
     // ── Plan 413: code editor payload natives (UI bridge) ──────────────

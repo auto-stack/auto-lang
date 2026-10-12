@@ -1,0 +1,13 @@
+[package]
+name = "autodown-test-parser"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Pinned AutoDown headless block-tree parser snapshot (a2r-generated; vendored for auto-test-case)"
+publish = false
+
+# Frozen snapshot crate: standalone workspace so it can never absorb root
+# workspace settings; see PROVENANCE.md for source revision and fingerprints.
+[workspace]
+
+[dependencies]
