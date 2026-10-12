@@ -184,7 +184,11 @@ impl RunReport {
         ));
         s.push_str(&format!(
             "  \"load_errors\": [{}],\n",
-            self.load_errors.iter().map(|e| json_str(e)).collect::<Vec<_>>().join(", ")
+            self.load_errors
+                .iter()
+                .map(|e| json_str(e))
+                .collect::<Vec<_>>()
+                .join(", ")
         ));
         s.push_str("  \"results\": [\n");
         for (i, r) in self.results.iter().enumerate() {

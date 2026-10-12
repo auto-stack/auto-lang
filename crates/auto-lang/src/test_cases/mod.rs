@@ -5,8 +5,12 @@
 //! materializes inputs and writes observations/diffs ONLY inside its own
 //! subdirectory. Fixtures and oracles are never written to, and the
 //! process-global cwd/env are never touched.
+//!
+//! Product wiring: a passing check's artifacts are registered as products;
+//! a check whose `product_from` producer did not pass is BLOCKED (its own
+//! body never runs), which fails the gate without inventing a verdict.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use auto_test_case::admission::Limits;
 use auto_test_case::contract::{CaseSpec, CheckSpec};
@@ -15,39 +19,83 @@ use auto_test_case::ir::{resolve_case, ResolvedCase};
 use auto_test_case::report::{CheckOutcome, IdentityHashes, RunReport, Status};
 use auto_test_case::sha256::{hex, sha256};
 use auto_test_case::suite::apply_defaults;
+use miette::Diagnostic;
 
 pub mod a2r;
 pub mod avm;
+pub mod materialize;
 
-/// Everything an adapter needs to execute one check.
-pub struct CheckJob<'a> {
-    pub case: &'a ResolvedCase,
-    pub check: &'a CheckSpec,
-    /// Materialized input project root (files already written).
-    pub project_dir: PathBuf,
-    /// This check's private artifact directory.
-    pub artifact_dir: PathBuf,
+/// Classified failure of one backend execution (stage is variant-derived;
+/// code is a miette diagnostic code for parse/type, the internal VMError
+/// variant name for run-stage traps).
+pub struct Failure {
+    pub stage: auto_test_case::contract::Stage,
+    pub code: Option<String>,
+    pub message: String,
 }
 
-/// Write the case's virtual project into `dir` (creating parents).
-pub fn materialize_project(case: &ResolvedCase, dir: &Path) -> Result<(), String> {
-    for file in &case.files {
-        let target = dir.join(file.virtual_path.replace('/', std::path::MAIN_SEPARATOR_STR));
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("scratch mkdir: {}", e))?;
+/// Variant-based stage classification shared by the adapters (Plan 768
+/// feasibility §3): `Lexer*/Syntax*` → parse, `Type/Name/Comptime` → type
+/// (both frequently wrapped in `MultipleErrors`; the first error decides),
+/// `Msg` → run with the VMError variant name as code (`auto_gate_` prefix →
+/// gate, classified parse), `MsgWithSource` → type/link boundary.
+pub fn classify(e: &crate::error::AutoError) -> Failure {
+    use crate::error::AutoError;
+    use auto_test_case::contract::Stage;
+    fn first(e: &AutoError) -> &AutoError {
+        match e {
+            AutoError::MultipleErrors { errors, .. } => errors.first().unwrap_or(e),
+            other => other,
         }
-        std::fs::write(&target, &file.bytes)
-            .map_err(|e| format!("scratch write {}: {}", target.display(), e))?;
     }
-    Ok(())
-}
-
-fn fingerprint<T: std::fmt::Debug>(v: &T) -> String {
-    hex(&sha256(format!("{:?}", v).as_bytes()))
-}
-
-fn execution_key(loaded: &LoadedSuite, case_id: &str, check_id: &str) -> String {
-    format!("{}:{}:{}:{}", loaded.suite.id, loaded.suite_sha256, case_id, check_id)
+    let e = first(e);
+    let message = e.to_string();
+    match e {
+        AutoError::Lexer(_)
+        | AutoError::LexerWithSource(_)
+        | AutoError::Syntax(_)
+        | AutoError::SyntaxWithSource(_) => Failure {
+            stage: Stage::Parse,
+            code: e.code().map(|c| c.to_string()),
+            message,
+        },
+        AutoError::Type(_) | AutoError::Name(_) | AutoError::Comptime(_) => Failure {
+            stage: Stage::Type,
+            code: e.code().map(|c| c.to_string()),
+            message,
+        },
+        AutoError::Msg(m) => {
+            if m.starts_with("auto_gate_") {
+                Failure {
+                    stage: Stage::Parse,
+                    code: Some(m.split(':').next().unwrap_or("").to_string()),
+                    message,
+                }
+            } else {
+                // Internal VMError debug text, e.g. `DivisionByZero at line 3
+                // (ip=0x002d)` — the variant name is the stable code.
+                let code: String = m
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                Failure {
+                    stage: Stage::Run,
+                    code: if code.is_empty() { None } else { Some(code) },
+                    message,
+                }
+            }
+        }
+        AutoError::MsgWithSource(_) => Failure {
+            stage: Stage::Type,
+            code: e.code().map(|c| c.to_string()),
+            message,
+        },
+        _ => Failure {
+            stage: Stage::Run,
+            code: None,
+            message,
+        },
+    }
 }
 
 /// Run every check of every case of a suite; returns the full report.
@@ -105,7 +153,9 @@ pub fn run_suite(suite_path: &Path, out_dir: &Path, limits: &Limits) -> Result<R
                 .map(|set| set.contains(req.as_str()))
                 .unwrap_or(false);
             if !declared {
-                report.coverage_gaps.push((case_id.clone(), req.as_str().to_string()));
+                report
+                    .coverage_gaps
+                    .push((case_id.clone(), req.as_str().to_string()));
             }
         }
     }
@@ -121,7 +171,11 @@ fn run_case(
     limits: &Limits,
     report: &mut RunReport,
 ) {
-    let case_root = case_file.path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let case_root = case_file
+        .path
+        .parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
     let resolved = match resolve_case(spec.clone(), &case_file.doc, &case_root, limits) {
         Ok(r) => r,
         Err(e) => {
@@ -147,59 +201,137 @@ fn run_case(
         contract: fingerprint(spec),
     };
 
+    // Product registry: logical paths produced by PASSING checks, usable as
+    // product_from inputs by later checks of the same case.
+    let mut products: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+
     for check in &spec.checks {
         let (check, _origins) = apply_defaults(check, &loaded.suite.defaults);
 
         let started = std::time::Instant::now();
-        let outcome = if let Some(skip) = spec.status_skip.as_ref().or(check.skip.as_ref()) {
+        let mut outcome = if let Some(skip) = spec.status_skip.as_ref().or(check.skip.as_ref()) {
             let mut o = base_outcome(loaded, spec, &check, Status::Skip, &identity_base(&check));
             o.detail = Some(format!("skip: {} (issue {})", skip.reason, skip.issue));
             o
-        } else {
-            let case_dir = run_dir.join(sanitize(&spec.id));
-            let project_dir = case_dir.join("project");
-            let artifact_dir = case_dir.join(sanitize(&check.id));
-            let mut o = base_outcome(loaded, spec, &check, Status::Error, &identity_base(&check));
-            o.duration_ms = started.elapsed().as_millis();
-            match dispatch(&resolved, &check, &project_dir, &artifact_dir) {
-                Ok(verdict) => {
-                    o.status = verdict.status;
-                    o.mismatches = verdict.mismatches;
-                    o.detail = verdict.detail;
-                    o.artifacts = verdict.artifacts;
+        } else if let Some(upstream) = &check.product_from {
+            match products.get(upstream) {
+                None => {
+                    let mut o = base_outcome(
+                        loaded,
+                        spec,
+                        &check,
+                        Status::Blocked,
+                        &identity_base(&check),
+                    );
+                    o.detail = Some(format!(
+                        "upstream check {:?} produced no usable product (not passing) — BLOCKED",
+                        upstream
+                    ));
+                    o
                 }
-                Err(e) => {
-                    o.status = Status::Error;
-                    o.detail = Some(e);
+                Some(made) => {
+                    let mut o = dispatch_check(
+                        loaded,
+                        spec,
+                        &resolved,
+                        &check,
+                        &case_root,
+                        run_dir,
+                        &identity_base(&check),
+                        started,
+                    );
+                    o.detail = Some(format!("consumed products from {:?}: {:?}", upstream, made));
+                    o
                 }
             }
-            o.duration_ms = o.duration_ms.max(started.elapsed().as_millis());
-            o
+        } else {
+            dispatch_check(
+                loaded,
+                spec,
+                &resolved,
+                &check,
+                &case_root,
+                run_dir,
+                &identity_base(&check),
+                started,
+            )
         };
+        outcome.duration_ms = outcome.duration_ms.max(started.elapsed().as_millis());
+        if outcome.status == Status::Pass {
+            products.insert(
+                check.id.clone(),
+                outcome
+                    .artifacts
+                    .iter()
+                    .map(|a| a.logical_path.clone())
+                    .collect(),
+            );
+        }
         report.results.push(outcome);
     }
 }
 
-fn dispatch(
-    case: &ResolvedCase,
+#[allow(clippy::too_many_arguments)]
+fn dispatch_check(
+    loaded: &LoadedSuite,
+    spec: &CaseSpec,
+    resolved: &ResolvedCase,
     check: &CheckSpec,
-    project_dir: &Path,
-    artifact_dir: &Path,
-) -> Result<avm::Verdict, String> {
-    match (check.adapter, check.action) {
+    case_root: &Path,
+    run_dir: &Path,
+    identity: &IdentityHashes,
+    started: std::time::Instant,
+) -> CheckOutcome {
+    let case_dir = run_dir.join(sanitize(&spec.id));
+    let project_dir = case_dir.join("project");
+    let artifact_dir = case_dir.join(sanitize(&check.id));
+    let mut o = base_outcome(loaded, spec, check, Status::Error, identity);
+    o.duration_ms = started.elapsed().as_millis();
+    let dispatched = match (check.adapter, check.action) {
         (auto_test_case::contract::Adapter::Avm, auto_test_case::contract::Action::Run) => {
-            avm::run_check(case, check, project_dir, artifact_dir)
+            avm::run_check(resolved, check, case_root, &project_dir, &artifact_dir)
         }
         (auto_test_case::contract::Adapter::A2r, auto_test_case::contract::Action::Emit) => {
-            a2r::run_check(case, check, project_dir, artifact_dir)
+            a2r::run_check(resolved, check, case_root, &project_dir, &artifact_dir)
         }
         _ => Err("unreachable adapter/action (contract decode enforces the matrix)".to_string()),
+    };
+    match dispatched {
+        Ok(verdict) => {
+            o.status = verdict.status;
+            o.mismatches = verdict.mismatches;
+            o.detail = verdict.detail;
+            o.artifacts = verdict.artifacts;
+        }
+        Err(e) => {
+            o.status = Status::Error;
+            o.detail = Some(e);
+        }
     }
+    o
+}
+
+fn fingerprint<T: std::fmt::Debug>(v: &T) -> String {
+    hex(&sha256(format!("{:?}", v).as_bytes()))
+}
+
+fn execution_key(loaded: &LoadedSuite, case_id: &str, check_id: &str) -> String {
+    format!(
+        "{}:{}:{}:{}",
+        loaded.suite.id, loaded.suite_sha256, case_id, check_id
+    )
 }
 
 fn sanitize(id: &str) -> String {
     id.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -227,7 +359,12 @@ fn base_outcome(
     }
 }
 
-fn error_outcome(loaded: &LoadedSuite, spec: &CaseSpec, check: &CheckSpec, detail: &str) -> CheckOutcome {
+fn error_outcome(
+    loaded: &LoadedSuite,
+    spec: &CaseSpec,
+    check: &CheckSpec,
+    detail: &str,
+) -> CheckOutcome {
     CheckOutcome {
         suite_id: loaded.suite.id.clone(),
         case_id: spec.id.clone(),

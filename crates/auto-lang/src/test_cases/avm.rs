@@ -10,28 +10,17 @@
 //! Panics escaping the VM thread are infrastructure ERRORs, not language
 //! errors. miette diagnostic codes back the parse/type oracle channel.
 
-use std::path::Path;
 use std::panic::AssertUnwindSafe;
+use std::path::Path;
 
 use auto_test_case::compare::{compare_bytes, compare_text_exact, match_message, Mismatch};
-use auto_test_case::contract::{
-    CheckSpec, Completion, EntryMode, ExpectSpec, Stage, Syntax,
-};
+use auto_test_case::contract::{CheckSpec, Completion, EntryMode, ExpectSpec, Stage, Syntax};
 use auto_test_case::ir::ResolvedCase;
 use auto_test_case::report::{ArtifactRef, Status};
 use auto_test_case::sha256::{hex, sha256};
 use miette::Diagnostic;
 
-use super::materialize_project;
-
-/// Classified failure of one AVM execution.
-pub struct AvmFailure {
-    pub stage: Stage,
-    /// miette code for parse/type (`auto_syntax_E0001`, …); `VMError`
-    /// variant name for run (`DivisionByZero`, `RuntimeError`, …).
-    pub code: Option<String>,
-    pub message: String,
-}
+use super::{classify, materialize};
 
 /// Adapter verdict: judgement only — the orchestrator binds identity.
 pub struct Verdict {
@@ -43,13 +32,28 @@ pub struct Verdict {
 
 impl Verdict {
     pub fn pass() -> Verdict {
-        Verdict { status: Status::Pass, mismatches: vec![], detail: None, artifacts: vec![] }
+        Verdict {
+            status: Status::Pass,
+            mismatches: vec![],
+            detail: None,
+            artifacts: vec![],
+        }
     }
     pub fn fail(mismatches: Vec<Mismatch>) -> Verdict {
-        Verdict { status: Status::Fail, mismatches, detail: None, artifacts: vec![] }
+        Verdict {
+            status: Status::Fail,
+            mismatches,
+            detail: None,
+            artifacts: vec![],
+        }
     }
     pub fn error(detail: impl Into<String>) -> Verdict {
-        Verdict { status: Status::Error, mismatches: vec![], detail: Some(detail.into()), artifacts: vec![] }
+        Verdict {
+            status: Status::Error,
+            mismatches: vec![],
+            detail: Some(detail.into()),
+            artifacts: vec![],
+        }
     }
 }
 
@@ -58,6 +62,7 @@ impl Verdict {
 pub fn run_check(
     case: &ResolvedCase,
     check: &CheckSpec,
+    _case_root: &Path,
     project_dir: &Path,
     artifact_dir: &Path,
 ) -> Result<Verdict, String> {
@@ -67,7 +72,7 @@ pub fn run_check(
 
     std::fs::create_dir_all(project_dir).map_err(|e| format!("scratch: {}", e))?;
     std::fs::create_dir_all(artifact_dir).map_err(|e| format!("scratch: {}", e))?;
-    materialize_project(case, project_dir)?;
+    materialize::materialize_project(case, project_dir)?;
 
     let entry_abs = project_dir.join(case.entry_path.replace('/', std::path::MAIN_SEPARATOR_STR));
     let bytes = case
@@ -75,7 +80,12 @@ pub fn run_check(
         .iter()
         .find(|f| f.virtual_path == case.entry_path)
         .map(|f| f.bytes.clone())
-        .ok_or_else(|| format!("entry file {:?} missing from resolved project", case.entry_path))?;
+        .ok_or_else(|| {
+            format!(
+                "entry file {:?} missing from resolved project",
+                case.entry_path
+            )
+        })?;
     let code = String::from_utf8(bytes)
         .map_err(|_| "non-UTF-8 source cannot run on the avm adapter".to_string())?;
     let entry_path_str = entry_abs.display().to_string();
@@ -84,7 +94,9 @@ pub fn run_check(
     // it, exactly like the legacy production path); the pre-lowered bytes
     // are hashed here purely as submitted-input evidence.
     let lowered_sha = if case.spec.source.syntax == Syntax::AutoScript {
-        crate::trans::auto_s2s::lower_source(&code).ok().map(|low| hex(&sha256(low.as_bytes())))
+        crate::trans::auto_s2s::lower_source(&code)
+            .ok()
+            .map(|low| hex(&sha256(low.as_bytes())))
     } else {
         None
     };
@@ -94,7 +106,9 @@ pub fn run_check(
     }));
 
     let mut verdict = match execution {
-        Err(_) => Verdict::error("VM thread panicked — infrastructure error, not a language failure"),
+        Err(_) => {
+            Verdict::error("VM thread panicked — infrastructure error, not a language failure")
+        }
         Ok(Err(e)) => {
             let failure = classify(&e);
             let _ = std::fs::write(artifact_dir.join("error.txt"), &failure.message);
@@ -106,7 +120,11 @@ pub fn run_check(
                     actual: format!("{} error: {}", failure.stage.as_str(), failure.message),
                     first_diff: None,
                 }]),
-                Completion::Error { stage, code, message } => {
+                Completion::Error {
+                    stage,
+                    code,
+                    message,
+                } => {
                     let mut mismatches = Vec::new();
                     if failure.stage != *stage {
                         mismatches.push(Mismatch {
@@ -134,7 +152,11 @@ pub fn run_check(
                             mismatches.push(m);
                         }
                     }
-                    if mismatches.is_empty() { Verdict::pass() } else { Verdict::fail(mismatches) }
+                    if mismatches.is_empty() {
+                        Verdict::pass()
+                    } else {
+                        Verdict::fail(mismatches)
+                    }
                 }
             }
         }
@@ -157,7 +179,9 @@ pub fn run_check(
                         }
                     }
                     if let Some(want) = &expect_stream(&check.expect, "stdout") {
-                        if let Some(m) = compare_bytes(want.0.as_bytes(), stdout.as_bytes(), want.1, "stdout") {
+                        if let Some(m) =
+                            compare_bytes(want.0.as_bytes(), stdout.as_bytes(), want.1, "stdout")
+                        {
                             mismatches.push(m);
                         }
                     }
@@ -169,7 +193,11 @@ pub fn run_check(
                             mismatches.push(m);
                         }
                     }
-                    if mismatches.is_empty() { Verdict::pass() } else { Verdict::fail(mismatches) }
+                    if mismatches.is_empty() {
+                        Verdict::pass()
+                    } else {
+                        Verdict::fail(mismatches)
+                    }
                 }
             }
         }
@@ -189,51 +217,13 @@ fn expect_result(expect: &ExpectSpec) -> Option<String> {
     expect.result.as_ref().map(|r| r.text.clone())
 }
 
-fn expect_stream(expect: &ExpectSpec, which: &str) -> Option<(String, auto_test_case::contract::Compare)> {
+fn expect_stream(
+    expect: &ExpectSpec,
+    which: &str,
+) -> Option<(String, auto_test_case::contract::Compare)> {
     match which {
         "stdout" => expect.stdout.as_ref().map(|s| (s.text.clone(), s.compare)),
         _ => expect.stderr.as_ref().map(|s| (s.text.clone(), s.compare)),
-    }
-}
-
-/// Variant-based stage classification (see module docs).
-pub fn classify(e: &crate::error::AutoError) -> AvmFailure {
-    use crate::error::AutoError;
-    fn first(e: &AutoError) -> &AutoError {
-        match e {
-            AutoError::MultipleErrors { errors, .. } => errors.first().unwrap_or(e),
-            other => other,
-        }
-    }
-    let e = first(e);
-    let message = e.to_string();
-    match e {
-        AutoError::Lexer(_) | AutoError::LexerWithSource(_) | AutoError::Syntax(_) | AutoError::SyntaxWithSource(_) => AvmFailure {
-            stage: Stage::Parse,
-            code: e.code().map(|c| c.to_string()),
-            message,
-        },
-        AutoError::Type(_) | AutoError::Name(_) | AutoError::Comptime(_) => AvmFailure {
-            stage: Stage::Type,
-            code: e.code().map(|c| c.to_string()),
-            message,
-        },
-        AutoError::Msg(m) => {
-            if m.starts_with("auto_gate_") {
-                AvmFailure { stage: Stage::Parse, code: Some(m.split(':').next().unwrap_or("").to_string()), message }
-            } else {
-                // Internal VMError debug text, e.g.
-                // `DivisionByZero at line 3 (ip=0x002d)` or
-                // `RuntimeError("…") at line 2` — the variant name is the code.
-                let code = m
-                    .chars()
-                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                    .collect::<String>();
-                AvmFailure { stage: Stage::Run, code: if code.is_empty() { None } else { Some(code) }, message }
-            }
-        }
-        AutoError::MsgWithSource(_) => AvmFailure { stage: Stage::Type, code: e.code().map(|c| c.to_string()), message },
-        _ => AvmFailure { stage: Stage::Run, code: None, message },
     }
 }
 
@@ -265,6 +255,9 @@ mod tests {
     #[test]
     fn catch_unwind_wraps_vm_panics() {
         let r = std::panic::catch_unwind(AssertUnwindSafe(|| panic!("boom")));
-        assert!(r.is_err(), "panics must be catchable at the adapter boundary");
+        assert!(
+            r.is_err(),
+            "panics must be catchable at the adapter boundary"
+        );
     }
 }
