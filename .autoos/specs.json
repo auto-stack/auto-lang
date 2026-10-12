@@ -1540,6 +1540,31 @@
      "created_at": 1791775223,
      "modified_at": 1791775223,
      "completed_at": 1791775223
+    },
+    {
+     "id": "P769-Report",
+     "title": "截图压缩交付证据",
+     "content": "35WebP：39,521,546→6,993,620bytes，最大701,534；构建141.27s与线上35HTTPS hash/预算通过，可回滚部署20261012-ac2ac217a，原始PNG完整保留。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-769"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/reports/p769-verification.json",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-769",
+      "plan-revision:1",
+      "commit:ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+      "source-sha256:29b7a631c17edb67a072fd780ddf32e17200b7f1634cbc00b464906a2c4232ac"
+     ],
+     "created_at": 1791776849,
+     "modified_at": 1791776849,
+     "completed_at": 1791776849
     }
    ]
   },
@@ -5252,7 +5277,7 @@
     {
      "id": "P720-1",
      "title": "桌面实景展示：六图单源与单列图文卡片（PLAN-720/767）",
-     "content": "PLAN-767 更新 PLAN-720 展示规则：DesktopShowcase 以 EvidenceImage 展示完整六图，OS/v0.5 同为单列逐图卡片，图片在上介绍在下，无截图 tab/两图预览/离页链接。desktop-showcase.ts 原生截图元数据、日期与原始字节保持，场景顺序为浅/深桌面、浅/深 Launcher、游戏多窗口、工作布局；说明承接原四步。ScreenshotGallery 的其他使用者保持。项目其余产品契约见各独立设计条目。",
+     "content": "PLAN-767 更新 PLAN-720 展示规则：DesktopShowcase 以 EvidenceImage 展示完整六图，OS/v0.5 同为单列逐图卡片，图片在上介绍在下，无截图 tab/两图预览/离页链接。desktop-showcase.ts 原生截图元数据、日期与原始字节保持，场景顺序为浅/深桌面、浅/深 Launcher、游戏多窗口、工作布局；说明承接原四步。ScreenshotGallery 的其他使用者保持。项目其余产品契约见各独立设计条目。 PLAN-769：来源PNG/日期/维度保留，默认六图和放大使用原尺寸WebP（<1MB），原PNG仅显式原图链接；隐藏dialog不挂载img、关闭卸载。",
      "tags": [
       "plan-720",
       "website",
@@ -5265,13 +5290,18 @@
       "plan-767",
       "revision:2",
       "commit:964dd64bb",
-      "source-sha256:4f68a7bd4cf4cf356be8c3b3a5f1a85331cf63fe775b9e38aecfd6317914b86f"
+      "source-sha256:4f68a7bd4cf4cf356be8c3b3a5f1a85331cf63fe775b9e38aecfd6317914b86f",
+      "plan-769",
+      "plan-revision:1",
+      "commit:ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+      "source-sha256:6905a0f37c7b72bd6d523b312c6ee024ae059ea731e36f65b1a96a38bbe54b91"
      ],
      "file": "docs/specs/website/project.md",
      "status": "published",
      "depends_on": [],
      "related": [
-      "PLAN-767"
+      "PLAN-767",
+      "PLAN-769"
      ],
      "priority": null,
      "assignee": null,
@@ -5279,7 +5309,7 @@
      "milestone": null,
      "module": "website",
      "created_at": 1791774362,
-     "modified_at": 1791774362,
+     "modified_at": 1791776849,
      "completed_at": 1791774362
     },
     {
@@ -5626,7 +5656,7 @@
     {
      "id": "P719-1",
      "title": "OS/AI 介绍与 OS 融合阅读契约（PLAN-719/767）",
-     "content": "LaOS 理念、OS over OS 当前形态、AI+Lang+OS 方向承接保持。PLAN-767：双语 /os 直接包含桌面、窗口、应用与共享设置，单一 H1/目录；旧 /autoos/ 为 noindex/canonical 同语言/hash 兼容入口。六图单列卡片，原图/日期/键盘放大保留，主页面无需离页。历史/展望长文与来源边界保持。",
+     "content": "LaOS 理念、OS over OS 当前形态、AI+Lang+OS 方向承接保持。PLAN-767：双语 /os 直接包含桌面、窗口、应用与共享设置，单一 H1/目录；旧 /autoos/ 为 noindex/canonical 同语言/hash 兼容入口。六图单列卡片，原图/日期/键盘放大保留，主页面无需离页。历史/展望长文与来源边界保持。 PLAN-769明确网页/放大为<1MB WebP派生，完整原图来源另存和显式下载，原尺寸文字描述来源；隐藏放大图按需挂载，不预取PNG。",
      "tags": [
       "plan-719",
       "website",
@@ -5636,13 +5666,18 @@
       "plan-767",
       "revision:2",
       "commit:964dd64bb",
-      "source-sha256:7ac4aea3b9a5fbc209026b7f6edf5afe2082f947d36af7f4bf74155a9002c2b9"
+      "source-sha256:7ac4aea3b9a5fbc209026b7f6edf5afe2082f947d36af7f4bf74155a9002c2b9",
+      "plan-769",
+      "plan-revision:1",
+      "commit:ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+      "source-sha256:3b343e43c559a37c608ee2fa5a49c98b5ab4850cb5c0e79dcfd5414f12cf8805"
      ],
      "file": "docs/specs/website/design/os-ai-introduction.md",
      "status": "published",
      "depends_on": [],
      "related": [
-      "PLAN-767"
+      "PLAN-767",
+      "PLAN-769"
      ],
      "priority": null,
      "assignee": null,
@@ -5650,7 +5685,7 @@
      "milestone": null,
      "module": "website",
      "created_at": 1791774362,
-     "modified_at": 1791774362,
+     "modified_at": 1791776849,
      "completed_at": 1791774362
     },
     {
@@ -6055,6 +6090,31 @@
      "created_at": 1791775223,
      "modified_at": 1791775223,
      "completed_at": 1791775223
+    },
+    {
+     "id": "P769-1",
+     "title": "网页轻量截图与按需放大传输契约",
+     "content": "本地WebP派生映射覆盖35图，原尺寸质量95优先、每图<1MB；EvidenceImage及直接大img使用派生物、隐藏dialog不加载，显示/放大保持来源/比例，原PNG显式下载。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-769"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/website/project.md",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-769",
+      "plan-revision:1",
+      "commit:ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+      "source-sha256:6905a0f37c7b72bd6d523b312c6ee024ae059ea731e36f65b1a96a38bbe54b91"
+     ],
+     "created_at": 1791776849,
+     "modified_at": 1791776849,
+     "completed_at": 1791776849
     }
    ]
   },
@@ -7218,6 +7278,31 @@
      "created_at": 1791774362,
      "modified_at": 1791774362,
      "completed_at": 1791774362
+    },
+    {
+     "id": "P769-T",
+     "title": "截图预算、来源与浏览器请求回归",
+     "content": "新增静态来源/派生hash/预算检查，以及OS/v05/Apps默认和放大零原PNG请求、隐藏图0、关闭/Esc卸载和返回焦点；既有六图与画廊回归保持。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-769"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": "website/tests/image-delivery.spec.ts",
+     "file": "website/tests/image-delivery.spec.ts",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-769",
+      "plan-revision:1",
+      "commit:ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+      "source-sha256:73624be46ae08da37691feeaa5bdeb768e41145990668112c75381150e3e23e9"
+     ],
+     "created_at": 1791776849,
+     "modified_at": 1791776849,
+     "completed_at": 1791776849
     }
    ]
   },
@@ -9668,6 +9753,31 @@
      "created_at": 1791775223,
      "modified_at": 1791775223,
      "completed_at": 1791775223
+    },
+    {
+     "id": "P769-R",
+     "title": "截图压缩 r1 复审",
+     "content": "提交绑定的同会话制品重构复审通过；来源完整、62独立本地回归+5线上用例，SD-01/02匹配，零新增遗漏/债务；独立上下文限制在复审记录中明确。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-769"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/reports/p769-review.md",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-769",
+      "plan-revision:1",
+      "commit:ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+      "source-sha256:c69a3aae4e05f1daa28329df9ab9ebeeeb48d3274c4357cf29df7c4c19e09723"
+     ],
+     "created_at": 1791776849,
+     "modified_at": 1791776849,
+     "completed_at": 1791776849
     }
    ]
   }

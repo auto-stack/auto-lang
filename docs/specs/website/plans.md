@@ -22,3 +22,4 @@
 | 766 | automusk-website-real-captures | ✅（reviewed→archived） | [archive](../../plans/archive/766-automusk-website-real-captures.md) | 用户会话主图 SHOT-04 与计划页 SHOT-05 原图接入双语首页/v0.5/总览/专题；2560×1600 原始字节及键盘放大保留；计划 0/5 如实标注，SHOT-06 待拍 |
 | 767 | os-overview-inline-cards | ✅（reviewed→archived） | [archive](../../plans/archive/767-os-overview-inline-cards.md) | 双语 OS 完整融合桌面/窗口/应用/设置；OS/v0.5 六图单列卡片，旧入口兼容，原图与放大保留；本地36项+线上4项/解码2项，备份部署 |
 | 768 | navbar-repository-icons | ✅（reviewed→archived） | [archive](../../plans/archive/768-navbar-repository-icons.md) | 共用顶栏 GitHub/GitCode 指定仓库图标，中英/手机/主题/键盘保留；12回归+24布局访问+4线上校验，备份部署 |
+| 769 | screenshot-webp-delivery | ✅（reviewed→archived） | [archive](../../plans/archive/769-screenshot-webp-delivery.md) | 35原尺寸WebP单图<1MB、合计减82.3%；隐藏放大图按需挂载，原PNG显式下载；62本地+5线上验证，备份部署 |
