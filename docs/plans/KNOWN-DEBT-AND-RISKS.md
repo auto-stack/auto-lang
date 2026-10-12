@@ -1,3 +1,15 @@
+## PLAN-767 独立复审（2026-10-12，revision 2，修复重审 pass）
+
+以下为合同内阻塞缺陷与修复候选，必须在本计划修复后重新复审；登记不代表允许挂债收口或合入。受审提交 `033642a27d7404dee5797b195a9b7c680fe6ece5`，完整反例与任务路由见 [独立复审报告](attachments/767/review-codex-r2.md)。
+
+**销号收据**：三项均已在 `4cc4645021f029459a3b870c34a23eb16bc4ce59` 修复。原 needs_fix 的独立复审者重放冻结 16 项、新增 48 项不变量检查及 scoped 门禁后确认 closed，无遗留阻塞。保留历史缺陷描述，当前结论见 [独立修复重审](attachments/767/review-codex-repair-4cc464502.md)。Plan 为 reviewed（8/9），T-09 尚未执行。
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P767-R1 | P1 / closed | HIR 身份 | Descriptor::domain 将未知三重身份降为 Core，程序化 bind/verify 与 writer 可接受未知 schema/revision/profile；三维分别复现，共六反例。精确注册身份随行并受控拒绝，不以 CLI registry 正确为豁免。 | experimental/ac-core/src/descriptor.rs:245、2111（受审树）；PLAN-767 T-02/06/07/08，AC-01/05；owner=767 work |
+| P767-R2 | P1 / closed | HIR 类型可信门 | 签名 TypeUse 查表失败默认 I32，params/result TypeId(9999) 分别获 Checked 后 native 越界 panic；补所有签名引用验证和永久正反控制。旧默认逻辑不是本合同豁免理由。 | experimental/ac-core/src/verify.rs:226、255；native.rs:91（受审树）；PLAN-767 T-02/06/07/08，AC-04/05/06；owner=767 work |
+| P767-R3 | P2 / closed | 设计收据 | design.md 的减法溢出公式写为 MIN-b/MAX-b，实际后端正确为 MIN+b/MAX+b；修收据并重绑证据，不照错误文档改正确实现。 | docs/reports/767-scalar-i32/design.md:112（受审树）；PLAN-767 T-01/07/08，AC-07；owner=767 work |
+
 ## PLAN-745 new 取号核查（2026-10-06）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
