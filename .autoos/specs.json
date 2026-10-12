@@ -1473,6 +1473,22 @@
      ],
      "status": "published",
      "created": "2026-10-12"
+    },
+    {
+     "id": "P764-3",
+     "title": "PLAN-764 merge 收尾收据（账本经 B 轨受护离线投影恢复）",
+     "content": "merge r1 此前因无 store 写通道 blocked;2026-10-12 双轨裁定(auto-musk 78e196a:write_spec/update_spec 系 auto-ai 框架会话工具)后按 B 轨恢复收尾:受护离线投影护栏(字节备份+程序化 RMW+roundtrip 字节守卫+零扰动结构断言+六区 schema 校验+回读核验)落本三条;归档与 worktree/分支 guarded 清理收据见归档计划文档;交付本体 6977dc0b3 未重做,远端发布未授权未执行。",
+     "file": "docs/reports/p764-autoedit-comparison-verification.md",
+     "related": [
+      "PLAN-764"
+     ],
+     "tags": [
+      "plan-764",
+      "commit:6977dc0b3361cf1fb2f956fb602e2ff8a2855ef3",
+      "channel:guarded-offline-projection"
+     ],
+     "status": "published",
+     "created": "2026-10-12"
     }
    ]
   },
@@ -5910,6 +5926,24 @@
      "status": "published",
      "created": "2026-10-12",
      "last_modified": "2026-10-12"
+    },
+    {
+     "id": "P764-1",
+     "title": "AutoEdit 文件对比原图契约（PLAN-764 SHOT-03）",
+     "file": "docs/specs/website/design/application-introductions.md",
+     "content": "用户授权的 2026-10-11 暗色 side-by-side 文件对比原图（status-before.at/status-after.at，取 AutoEdit 源项目实际 Git revision）补齐 SHOT-03，中英介绍页共用，保留 3840×2419 全原始像素；源与 hash 元数据独立记录于 docs/reports/p764-autoedit-comparison-catalog.json，其后端/构建身份未独立确立、不得继承旧捕获身份；资产验收不关闭产品缺陷，外部发布决策另行。",
+     "related": [
+      "PLAN-764"
+     ],
+     "tags": [
+      "website",
+      "plan-764",
+      "source-sha256:5a310e4e221ed09ba2c9936b16b2834ee084da788cc889a61ecdb0f7dd3755c2",
+      "commit:6977dc0b3361cf1fb2f956fb602e2ff8a2855ef3"
+     ],
+     "status": "published",
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12"
     }
    ]
   },
@@ -9428,6 +9462,22 @@
      "related": [
       "PLAN-765",
       "PLAN-104"
+     ],
+     "status": "published",
+     "created": "2026-10-12"
+    },
+    {
+     "id": "P764-2",
+     "title": "PLAN-764 复审收据（r1 pass）",
+     "content": "r1 pass @5fa9caefe(rebase 后交付 6977dc0b3,range-diff 2/2 全等:89071f738→5287130a4/5fa9caefe→6977dc0b3,基 frozen SD 5152881f)。独立复审确认:三 canonical target(website application-introductions/project/plans)落地、主检出原图 hash 与来源一致、本地 website 构建与 8/8 门禁有效。落地后 PLAN-766 对同一规格文件为纯增量,本契约段落完好。",
+     "file": "docs/plans/archive/764-autoedit-comparison-screenshot.md",
+     "related": [
+      "PLAN-764"
+     ],
+     "tags": [
+      "plan-764",
+      "commit:6977dc0b3361cf1fb2f956fb602e2ff8a2855ef3",
+      "reviewed:5fa9caefe"
      ],
      "status": "published",
      "created": "2026-10-12"
