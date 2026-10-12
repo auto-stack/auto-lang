@@ -73,4 +73,4 @@ PLAN-768:r1 completion_kind:delivered。
 - deployment：release20261012-8f959f3fc，archive b0a691b8481fea8bc0d30cf2fd8b092db2c8c971b63e0a617e14e395cca1d629；HTTP/HTTPS bytes与保留十张原图hash验证；备份 /home/visus/auto-website-backup-20261012-8f959f3fc保留。12既有回归+1实机测试（24访问）+4线上通过。
 - batch_due：768%5!=0、2026-10-12T04:08Z收据<48h；不触发批量；Category A零Rust，无Cargo/docs_gen。
 - archived：docs/plans/archive/768-navbar-repository-icons.md；966118691提前归档已由实际落地后的本收据矫正，Plan/报告/账本均已在master Git。
-- cleaned：守卫与实际移除后补记。
+- cleaned：最终落地后wt-guard clean；lang-768 checkout与plan-768-dev分支已真实移除，核对绝对路径和空目录后移除组。仅删除已校验sha的本次服务器临时tar/脚本；回滚备份保留。最终master无WIP，代码祖先72c20c4bd与线上8f959f3fc网站树全等。
