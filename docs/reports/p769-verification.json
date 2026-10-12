@@ -81,12 +81,46 @@
     "shots/os-1440-dark-first.png"
   ],
   "spec_delta": {
-    "docs\\specs\\website\\project.md": "6905a0f37c7b72bd6d523b312c6ee024ae059ea731e36f65b1a96a38bbe54b91",
-    "docs\\specs\\website\\design\\os-ai-introduction.md": "3b343e43c559a37c608ee2fa5a49c98b5ab4850cb5c0e79dcfd5414f12cf8805"
+    "docs/specs/website/project.md": "6905a0f37c7b72bd6d523b312c6ee024ae059ea731e36f65b1a96a38bbe54b91",
+    "docs/specs/website/design/os-ai-introduction.md": "3b343e43c559a37c608ee2fa5a49c98b5ab4850cb5c0e79dcfd5414f12cf8805"
   },
   "dependencies": {
     "package_lock_sha256": "dc7121a2c03d91d0a20cd8c3cb8dc31b68ca235e8fc2364f0837082434f6ff82",
     "book_head": "d7a71a7fb1fa42ddd26d6cec859715ed98161f7a"
   },
-  "limitations": "Original PNG remains available only by explicit link; original capture quality preserved as separate provenance, displayed WebP is lossy. No claimed timing benchmark."
+  "limitations": "Original PNG remains available only by explicit link; original capture quality preserved as separate provenance, displayed WebP is lossy. No claimed timing benchmark.",
+  "implementation_commit": "ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+  "online_tests": {
+    "passed": 5,
+    "seconds": 39.6,
+    "log_sha256": "10f6b6ed118a8305110680f85a7386aa022503ed74ba4404d00e16d638e9603a",
+    "probe_sha256": "54a12d915cf3459adc8eee86453f731bc0df1a42e72cff797a8845cfef95bab1",
+    "asset_downloads": 35,
+    "asset_bytes_receipt_sha256": "b3588208d5dc76dadb6667c3002ef9061ba201c930752eaaf711e4d9c72d87ea",
+    "desktop_visits": 4,
+    "locales": [
+      "en",
+      "zh"
+    ],
+    "widths": [
+      390,
+      1440
+    ],
+    "first_card_captures": {
+      "online-en-1440.png": "45f7d075a6fddbe3036f7a8125132169881ec91e7a99b517c9576b34a31d391d",
+      "online-en-390.png": "48b75580c83d16a70c158860ff3def816e7996f58f355dc97acb6bf06fac6284",
+      "online-zh-1440.png": "4fc3fefe92f88b4b851a13f73a98f974bb00ccc4fa032dd30443a7776f58b4b1",
+      "online-zh-390.png": "83e7957f1ad5293c866e0efd3d484f1c5f143d8ef33e69ebee1be459ae41cf43"
+    },
+    "no_original_requests": true
+  },
+  "deployment": {
+    "release": "20261012-ac2ac217a",
+    "revision": "ac2ac217aa2e38fab623ad076f549b80c6cb1eed",
+    "archive_sha256": "9a4928bb02b506101e4f06d027ee83a52072cbe34ce068ca8faaefaa167b75f9",
+    "script_sha256": "c6f42fb0afc3c6ecedd0f6d6e319f18e0d6fa9bb126fb6d79fa389e768e26db9",
+    "log_sha256": "76643af08de43fad88cea7050a621ebbdc8d8f8144633929ab41eec57e115892",
+    "backup": "/home/visus/auto-website-backup-20261012-ac2ac217a",
+    "validation": "Stage validates all35 original and WebP checksums, WebP<1MB; HTTPS/HTTP HTML exact bytes plus HTTPS default WebP; live35 images HTTPS exact hashes/budgets; retained previous hashed assets and backup."
+  }
 }
