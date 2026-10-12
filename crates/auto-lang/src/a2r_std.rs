@@ -1100,13 +1100,26 @@ pub mod re {
 /// AutoLang's frame module — 帧时间戳只读观测（单调毫秒；未捕获=0）。
 pub mod frame {
     /// 帧开始时间戳（桌面 update 入口到达时刻）。
+    #[cfg(feature = "ui")]
     pub fn begin_ms() -> i64 {
         crate::ui::frame_bench::frame_begin_ms()
     }
 
     /// 呈现完成时间戳（711 帧泵消费时刻，≥ present 返回）。
+    #[cfg(feature = "ui")]
     pub fn present_ms() -> i64 {
         crate::ui::frame_bench::frame_present_ms()
+    }
+
+    /// no-`ui` 构建（headless 档）：无帧泵即无捕获，按通道语义"未捕获=0"。
+    #[cfg(not(feature = "ui"))]
+    pub fn begin_ms() -> i64 {
+        0
+    }
+
+    #[cfg(not(feature = "ui"))]
+    pub fn present_ms() -> i64 {
+        0
     }
 }
 

@@ -888,8 +888,19 @@ pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = vm;
     task.ram
-        .push_i32(crate::ui::frame_bench::frame_begin_ms().min(i32::MAX as i64) as i32);
+        .push_i32(frame_begin_observed().min(i32::MAX as i64) as i32);
     Ok(())
+}
+
+/// no-`ui` 构建无帧泵=未捕获，按通道语义返回 0（与 a2r_std::frame 同源）。
+#[cfg(feature = "ui")]
+fn frame_begin_observed() -> i64 {
+    crate::ui::frame_bench::frame_begin_ms()
+}
+
+#[cfg(not(feature = "ui"))]
+fn frame_begin_observed() -> i64 {
+    0
 }
 
 /// `auto.frame.present_ms() -> int` — 呈现完成时间戳（711 帧泵消费时刻，
@@ -897,8 +908,18 @@ pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 pub fn shim_frame_present_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = vm;
     task.ram
-        .push_i32(crate::ui::frame_bench::frame_present_ms().min(i32::MAX as i64) as i32);
+        .push_i32(frame_present_observed().min(i32::MAX as i64) as i32);
     Ok(())
+}
+
+#[cfg(feature = "ui")]
+fn frame_present_observed() -> i64 {
+    crate::ui::frame_bench::frame_present_ms()
+}
+
+#[cfg(not(feature = "ui"))]
+fn frame_present_observed() -> i64 {
+    0
 }
 
 /// `auto.diff_files_window(path_a, path_b, ctx, rows_offset, rows_limit) -> Str`
