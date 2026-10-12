@@ -19,6 +19,11 @@ fn rename(old str, new str) void
 #[vm]
 fn read_dir(dir str) str
 
+/// List direct child names (non-recursive; dotfiles skipped; sorted).
+/// Returns an empty list when the directory cannot be read.
+#[vm]
+fn dir_names(dir str) []str
+
 /// Get canonical (absolute, resolved) path.
 #[vm]
 fn canonical(path str) str

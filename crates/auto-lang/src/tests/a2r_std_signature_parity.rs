@@ -69,7 +69,9 @@ fn pairs() -> Vec<(&'static str, PairOpt)> {
                 // vm/native.rs shim（fs_tree_walk / shim_file_basename），
                 //不在本对 .rs.at 镜像面——双轨逐字节对齐由
                 // tests/fs_tree_parity.rs 钉（强于本名/元数兜带）。
-                allow_only_rs: &["mkdir_all", "tree", "basename"],
+                // `fs.dir_names` is declared by fs.at and dispatched through
+                // the shared a2r-std helper; file.rs.at is not its source twin.
+                allow_only_rs: &["mkdir_all", "tree", "basename", "dir_names"],
             },
         ),
         (

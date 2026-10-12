@@ -10,6 +10,12 @@
 | P767-R2 | P1 / closed | HIR 类型可信门 | 签名 TypeUse 查表失败默认 I32，params/result TypeId(9999) 分别获 Checked 后 native 越界 panic；补所有签名引用验证和永久正反控制。旧默认逻辑不是本合同豁免理由。 | experimental/ac-core/src/verify.rs:226、255；native.rs:91（受审树）；PLAN-767 T-02/06/07/08，AC-04/05/06；owner=767 work |
 | P767-R3 | P2 / closed | 设计收据 | design.md 的减法溢出公式写为 MIN-b/MAX-b，实际后端正确为 MIN+b/MAX+b；修收据并重绑证据，不照错误文档改正确实现。 | docs/reports/767-scalar-i32/design.md:112（受审树）；PLAN-767 T-01/07/08，AC-07；owner=767 work |
 
+## Plan 742/744 D9 Rust 发射映射
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P742-D9-SIG-01 | low / explicit | fs.dir_names 跨端映射 | `fs.dir_names` 是 VM 标准接口，Rust 发射器把它定向到 `a2r_std::fs::dir_names`。KNOWN-DEBT 396 的当前配对把 `file.rs.at` 与 `a2r-std/fs.rs` 比较，二者并非该 fs 命名空间函数的源码镜像，故在本对上显式允许这个 Rust 宿主函数；接口声明位于 `fs.at`，AutoDown/Notes 的真实双端升级路径覆盖其语义。若发射路线改成生成式 fs 模块镜像，应移除此例外并纳入对应生成校验。 | `stdlib/auto/fs.at`、`crates/auto-lang/src/trans/rust.rs`、`crates/auto-lang/src/vm/ffi/stdlib.rs`、`crates/a2r-std/src/fs.rs`、`crates/auto-lang/src/tests/a2r_std_signature_parity.rs`；PLAN-742/744 D9 |
+
 ## PLAN-745 new 取号核查（2026-10-06）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
