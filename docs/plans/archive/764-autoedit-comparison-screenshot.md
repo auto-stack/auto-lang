@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-764
 plan_revision: 1
-status: reviewed
+status: archived
 feature_name: autoedit-comparison-screenshot
 author: [Codex]
 created_at: 2026-10-11
-updated_at: 2026-10-11
+updated_at: 2026-10-12
 supersedes_spec_components: [docs/specs/website/design/application-introductions.md, docs/specs/website/project.md, docs/specs/website/plans.md]
 new_spec_components: []
 touched_goals: []
@@ -82,3 +82,11 @@ stage: merge | PLAN-764:r1 | outcome: blocked | delivery_commit: 6977dc0b3361cf1
 - remote deployment：本任务未授权远端发布；另会话 deploy-website-20261011 在构建过程中可见，未干预或停止其进程。本任务只接入本仓和本地预览。
 - batch due：最新收据 last_covered_plan_id=761、2026-10-11；764 非整五触发，未超过48h；本任务 Category A 不运行 Cargo。
 next：可用 store writer 恢复后仅刷新受影响 derived items，验证后归档和 guarded cleanup；图片接入任务已完成。
+
+### Merge r1 — 恢复完成（ledger_refreshed → archived）
+stage: merge | PLAN-764:r1 | outcome: pass | 恢复会话 2026-10-12（ZCode，Regime B）。
+- 解阻依据：2026-10-12 用户裁定——write_spec/update_spec 系 auto-ai 框架会话工具，外部成熟 agent（ZCode/Codex 等）永不适用 store-only 通道要求；auto-plan:merge 技能与 specs-ledger 契约已双轨化（auto-musk `78e196a`：B 轨=HTTP 优先→受护离线投影）。上文 blocked 条目按当时规约如实保留。
+- ledger_refreshed：pass @`6b8c2193b`（通道=受护离线投影，非 store 写通道，如实记不冒充 store 成功）。目标工作区 D:/autostack/auto-lang/.autoos/specs.json；条目 designs/`P764-1`、reviews/`P764-2`、reports/`P764-3`（184→185/220→221/133→134）。护栏全过：基线 sha `a47bc34a…`=主检出 rebase 后基线→字节级备份（%TEMP%/specs-json-backup-p764.json）→roundtrip 字节守卫（indent=1 序列化可字节复现全文件）→零扰动纯插入（unified diff **+50/-0**，未触区与顶层字段字节不变）→六区 schema 校验（无 plans 区）→main 合并后回读核验（sha `60b4115a…`）。tracked 落账路径：plan worktree 提交 + main `--ff-only`。
+- archived：pass——`git mv` 至 docs/plans/archive/，frontmatter status: reviewed→archived。
+- artifacts 观察项：主检出无 gen/front/vue/dist（本任务构建产物在 plan worktree 内，随清理消亡，主检出无消费者）；远端发布未授权未执行（deploy-website-20261011 另会话管线自理）；durable 证据（截图/e2e.log.gz/catalog/spec-delta）在主检出 docs/reports/p764-*。
+- batch due：不负——收据 last_covered_plan_id=766（2026-10-12T04:08Z，今日），764<766 无整五触发、未超 48h。
