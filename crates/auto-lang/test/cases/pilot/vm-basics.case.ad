@@ -1,0 +1,143 @@
+# VM basics (legacy `test/vm/01_basics`)
+
+Same source files as the legacy corpus, referenced in place. The first three
+cases carry dual checks (`avm/run` + `a2r/emit`); the a2r oracles are NEW,
+independently reviewed snapshots under `oracle/` (see legacy-map.tsv).
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.hello"
+  tags: ["pilot", "vm", "a2r"]
+  source: { file: "vm/01_basics/001_hello/hello.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", stdout: { text: "hello\n", compare: "bytes" } } },
+    { id: "rust", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "hello" },
+      expect: { completion: "success", artifacts: [
+        { path: "hello.rs", file: "cases/pilot/oracle/lang.basic.hello.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.str-upper"
+  tags: ["pilot", "vm", "a2r"]
+  source: { file: "vm/01_basics/003_str_upper/str_upper.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", stdout: { text: "HELLO\n", compare: "bytes" } } },
+    { id: "rust", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "str_upper" },
+      expect: { completion: "success", artifacts: [
+        { path: "str_upper.rs", file: "cases/pilot/oracle/lang.basic.str-upper.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.eq-false"
+  tags: ["pilot", "vm", "a2r"]
+  source: { file: "vm/01_basics/011_eq_false/eq_false.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "expression" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "false" } } },
+    { id: "rust", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "eq_false" },
+      expect: { completion: "success", artifacts: [
+        { path: "eq_false.rs", file: "cases/pilot/oracle/lang.basic.eq-false.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.arithmetic"
+  tags: ["pilot", "vm"]
+  source: { file: "vm/01_basics/002_arithmetic/arithmetic.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "expression" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "3" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.uint"
+  tags: ["pilot", "vm"]
+  source: { file: "vm/01_basics/004_uint/uint.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "expression" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "3u" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.byte"
+  tags: ["pilot", "vm"]
+  source: { file: "vm/01_basics/005_byte/byte.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "expression" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "0xFF" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.unary"
+  tags: ["pilot", "vm"]
+  source: { file: "vm/01_basics/006_unary/unary.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "expression" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "-6" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.group"
+  tags: ["pilot", "vm"]
+  source: { file: "vm/01_basics/007_group/group.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "expression" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "9" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.basic.comp"
+  tags: ["pilot", "vm"]
+  source: { file: "vm/01_basics/008_comp/comp.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "expression" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "true" } } }
+  ]
+}
+```

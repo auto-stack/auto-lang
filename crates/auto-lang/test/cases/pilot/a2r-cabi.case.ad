@@ -1,0 +1,40 @@
+# a2r C-ABI manifest cases (legacy `test/a2r/27_c_abi`)
+
+Pure emission: the `use.c` manifests are materialized as project files
+(just JSON reads at emit time — no C library involved). The adapter
+pre-verifies the manifest exists; a missing one is a contract error, never
+a silently different output.
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "trans.cabi.static"
+  tags: ["pilot", "a2r", "c-abi"]
+  source: { file: "a2r/27_c_abi/003_use_c_static/use_c_static.at", syntax: "auto", path: "main.at" }
+  files: [ { path: "engine_face_full.json", file: "a2r/27_c_abi/003_use_c_static/engine_face_full.json" } ]
+  entry: { mode: "program" }
+  checks: [
+    { id: "emit", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "use_c_static" },
+      expect: { completion: "success", artifacts: [
+        { path: "use_c_static.rs", file: "a2r/27_c_abi/003_use_c_static/use_c_static.expected.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "trans.cabi.dynamic"
+  tags: ["pilot", "a2r", "c-abi"]
+  source: { file: "a2r/27_c_abi/004_use_c_dynamic/use_c_dynamic.at", syntax: "auto", path: "main.at" }
+  files: [ { path: "engine_face_full_dyn.json", file: "a2r/27_c_abi/004_use_c_dynamic/engine_face_full_dyn.json" } ]
+  entry: { mode: "program" }
+  checks: [
+    { id: "emit", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "use_c_dynamic" },
+      expect: { completion: "success", artifacts: [
+        { path: "use_c_dynamic.rs", file: "a2r/27_c_abi/004_use_c_dynamic/use_c_dynamic.expected.rs", compare: "bytes" } ] } }
+  ]
+}
+```

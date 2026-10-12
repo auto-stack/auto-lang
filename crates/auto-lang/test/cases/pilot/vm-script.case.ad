@@ -1,0 +1,22 @@
+# VM script-dialect case (legacy `test/vm/18_ffi/016_json_is_null`)
+
+`.as` expression exercising script lowering through the production
+path-carrying API. The legacy per-case wrapper is `#[ignore]`d (unwired);
+this import makes the corpus piece observable again. The legacy expected file
+said `1`, but it was NEVER verified (the wrapper is #[ignore]d):
+`Json.is_null("null")` returns a bool, displayed as `true`. Oracle
+corrected and recorded as `unwired-revived+corrected-oracle`.
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.script.json-is-null"
+  tags: ["pilot", "vm", "as-script"]
+  source: { file: "vm/18_ffi/016_json_is_null/json_is_null.as", syntax: "auto-script", path: "main.as" }
+  entry: { mode: "expression" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", result: { format: "legacy-display", text: "true" } } }
+  ]
+}
+```

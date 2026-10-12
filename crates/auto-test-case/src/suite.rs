@@ -25,6 +25,12 @@ pub struct SuiteSpec {
     /// Adapters every selected case must declare a (non-skipped) check for;
     /// enforced by the gate reducer as a required-coverage contract error.
     pub required_adapters: Vec<Adapter>,
+    /// Explicit fixture root for `file:` payload and expected-artifact
+    /// references, relative to the suite file (default `.`). Referenced
+    /// paths themselves stay root-relative with no `..` — the root is the
+    /// single, suite-declared pointer (imported corpora keep their files in
+    /// place; nothing is copied).
+    pub fixture_root: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -131,7 +137,15 @@ pub fn decode_suite(v: &CVal) -> Result<SuiteSpec, ContractError> {
     }
     check_known(
         props,
-        &["schema", "id", "include", "exclude", "defaults", "required"],
+        &[
+            "schema",
+            "id",
+            "include",
+            "exclude",
+            "defaults",
+            "required",
+            "fixture_root",
+        ],
         "suite",
     )?;
 
@@ -216,6 +230,27 @@ pub fn decode_suite(v: &CVal) -> Result<SuiteSpec, ContractError> {
         }
     }
 
+    let fixture_root = match props.iter().find(|(k, _)| k == "fixture_root") {
+        None => ".".to_string(),
+        Some((_, CVal::Str(s))) => s.clone(),
+        Some((_, other)) => {
+            return Err(err(
+                "suite.fixture_root",
+                format!("expected string, got {}", other.type_name()),
+            ))
+        }
+    };
+    if fixture_root.is_empty()
+        || fixture_root.contains('\\')
+        || fixture_root.contains(':')
+        || fixture_root.starts_with('/')
+    {
+        return Err(err(
+            "suite.fixture_root",
+            "must be a non-empty relative path (no drive/absolute/backslash)",
+        ));
+    }
+
     let mut required_adapters = Vec::new();
     if let Some((_, rv)) = props.iter().find(|(k, _)| k == "required") {
         let rpairs = as_obj(rv, "suite.required")?;
@@ -259,6 +294,7 @@ pub fn decode_suite(v: &CVal) -> Result<SuiteSpec, ContractError> {
         exclude,
         defaults,
         required_adapters,
+        fixture_root,
     })
 }
 

@@ -42,8 +42,11 @@ pub struct LoadedSuite {
     pub suite: SuiteSpec,
     pub suite_path: PathBuf,
     pub suite_sha256: String,
-    /// Directory of the suite file — include/sidecar base.
+    /// Directory of the suite file — include base.
     pub root: PathBuf,
+    /// Resolved fixture root (`suite.fixture_root` joined onto `root`):
+    /// the single base for `file:` payload and expected-artifact references.
+    pub fixture_base: PathBuf,
     pub cases: Vec<CaseFile>,
     /// Non-fatal per-file load errors (surfaced by lint/list; an empty
     /// selection plus errors is a hard failure for the caller).
@@ -216,11 +219,18 @@ pub fn load_suite(suite_path: &Path, limits: &Limits) -> Result<LoadedSuite, Loa
         });
     }
 
+    let fixture_base = root.join(
+        suite
+            .fixture_root
+            .replace('/', std::path::MAIN_SEPARATOR_STR),
+    );
+    let fixture_base = fixture_base.canonicalize().unwrap_or(fixture_base);
     Ok(LoadedSuite {
         suite,
         suite_path: suite_path.to_path_buf(),
         suite_sha256: suite_sha,
         root,
+        fixture_base,
         cases,
         errors,
     })

@@ -176,7 +176,10 @@ fn run_case(
         .parent()
         .unwrap_or(Path::new("."))
         .to_path_buf();
-    let resolved = match resolve_case(spec.clone(), &case_file.doc, &case_root, limits) {
+    // `file:` payload / expected-artifact references resolve against the
+    // suite-declared fixture base (imports keep legacy files in place).
+    let ref_base = loaded.fixture_base.clone();
+    let resolved = match resolve_case(spec.clone(), &case_file.doc, &ref_base, limits) {
         Ok(r) => r,
         Err(e) => {
             // Resolution failure is a contract/infrastructure error for every
@@ -236,7 +239,7 @@ fn run_case(
                         spec,
                         &resolved,
                         &check,
-                        &case_root,
+                        &ref_base,
                         run_dir,
                         &identity_base(&check),
                         started,
@@ -251,7 +254,7 @@ fn run_case(
                 spec,
                 &resolved,
                 &check,
-                &case_root,
+                &ref_base,
                 run_dir,
                 &identity_base(&check),
                 started,

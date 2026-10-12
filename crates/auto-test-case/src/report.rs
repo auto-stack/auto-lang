@@ -268,17 +268,20 @@ impl RunReport {
         ));
         for r in &self.results {
             out.push_str(&format!(
-                "{:<12} {} / {} [{}::{}]{}\n",
+                "{:<12} {} / {} [{}::{}]{}{}\n",
                 r.status.as_str(),
                 r.case_id,
                 r.check_id,
                 r.adapter,
                 r.action,
-                match (&r.tier, r.detail.as_deref()) {
-                    (Some(t), _) => format!(" tier={}", t),
-                    (None, Some(d)) => format!(" — {}", d),
-                    (None, None) => String::new(),
-                }
+                r.tier
+                    .as_deref()
+                    .map(|t| format!(" tier={}", t))
+                    .unwrap_or_default(),
+                r.detail
+                    .as_deref()
+                    .map(|d| format!(" — {}", d))
+                    .unwrap_or_default(),
             ));
             for m in &r.mismatches {
                 out.push_str(&format!("    {}\n", m));

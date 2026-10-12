@@ -1,0 +1,35 @@
+# a2r project emission (legacy `test/a2r/14_modules/005_multi_file`)
+
+Project-mode emission has NO legacy byte golden (the legacy test asserts
+key sets + `mod` declarations only). The five oracle sidecars under
+`oracle/` are NEW: generated from the adapter's deterministic materialized
+layout (`<case>/project`) via the proposal flow, then independently
+reviewed before being accepted (see legacy-map.tsv). Note the Cargo.toml
+app name derives from the materialized entry directory name — part of the
+input identity (feasibility §4).
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "trans.project.multi-file"
+  tags: ["pilot", "a2r", "project", "multi-artifact"]
+  links: ["PLAN-768"]
+  source: { file: "a2r/14_modules/005_multi_file/main.at", syntax: "auto", path: "main.at" }
+  files: [
+    { path: "db.at", file: "a2r/14_modules/005_multi_file/db.at" },
+    { path: "api/mod.at", file: "a2r/14_modules/005_multi_file/api/mod.at" },
+    { path: "api/handlers.at", file: "a2r/14_modules/005_multi_file/api/handlers.at" }
+  ]
+  entry: { mode: "module" }
+  checks: [
+    { id: "emit", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      expect: { completion: "success", artifacts: [
+        { path: "main.rs", file: "cases/pilot/oracle/trans.project.multi-file.main.rs", compare: "bytes" },
+        { path: "db.rs", file: "cases/pilot/oracle/trans.project.multi-file.db.rs", compare: "bytes" },
+        { path: "api/mod.rs", file: "cases/pilot/oracle/trans.project.multi-file.api-mod.rs", compare: "bytes" },
+        { path: "api/handlers.rs", file: "cases/pilot/oracle/trans.project.multi-file.api-handlers.rs", compare: "bytes" },
+        { path: "Cargo.toml", file: "cases/pilot/oracle/trans.project.multi-file.Cargo.toml", compare: "bytes" }
+      ] } }
+  ]
+}
+```

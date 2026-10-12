@@ -628,3 +628,138 @@ fn proposals_are_written_to_proposal_dir_only() {
     // Oracle untouched; nothing written next to the case.
     assert_eq!(fs::read(root.join("expected-hello.rs")).unwrap(), bad);
 }
+
+// ------------------------------------------------------- T-06 pilot ------
+
+fn pilot_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("test/cases/pilot")
+}
+
+/// Full pilot run: 21 cases / 26 checks, everything green. This is also the
+/// aggregation entry the daily tier consumes (fixed name).
+#[test]
+fn pilot_suite_full_run() {
+    let out = std::env::temp_dir().join(format!("atc-pilot-{}", std::process::id()));
+    let report = crate::test_cases::run_suite(
+        &pilot_dir().join("pilot.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("suite loads");
+    assert!(
+        report.load_errors.is_empty(),
+        "load errors: {:?}",
+        report.load_errors
+    );
+    assert_eq!(report.results.len(), 24, "checks: {}", report.to_console());
+    assert_eq!(report.count(Status::Pass), 24, "{}", report.to_console());
+    assert_eq!(report.exit_code(), 0, "{}", report.to_console());
+
+    // ≥3 dual-check cases: same source, independent avm/a2r verdicts.
+    let dual = [
+        "lang.basic.hello",
+        "lang.basic.str-upper",
+        "lang.basic.eq-false",
+    ];
+    for case_id in dual {
+        let checks: Vec<&str> = report
+            .results
+            .iter()
+            .filter(|r| r.case_id == case_id)
+            .map(|r| r.check_id.as_str())
+            .collect();
+        assert_eq!(checks, vec!["vm", "rust"], "{}", case_id);
+    }
+    // Identity hashes bound on every outcome (stale-check basis).
+    for r in &report.results {
+        assert_eq!(r.identity.suite.len(), 64);
+        assert_eq!(r.identity.source.len(), 64);
+    }
+}
+
+/// V-07 reconciliation: legacy-map.tsv rows and the live report explain
+/// each other completely — no unexplained legacy import, no phantom case.
+#[test]
+fn pilot_legacy_map_reconciles() {
+    let out = std::env::temp_dir().join(format!("atc-pilot-map-{}", std::process::id()));
+    let report = crate::test_cases::run_suite(
+        &pilot_dir().join("pilot.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("suite loads");
+
+    let map = fs::read_to_string(pilot_dir().join("legacy-map.tsv")).unwrap();
+    let mut mapped: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for line in map.lines().skip(1) {
+        let cols: Vec<&str> = line.split('\t').collect();
+        assert_eq!(cols.len(), 12, "map row must have 12 columns: {:?}", cols);
+        let case_id = cols[8];
+        assert!(
+            !case_id.is_empty(),
+            "map row without new_case: {:?}",
+            cols[0]
+        );
+        for check in cols[9].split(';') {
+            let check = check.trim();
+            if check.is_empty() {
+                continue;
+            }
+            let (check_id, adapter) = check.split_once(':').expect("vm:avm form");
+            mapped.insert(format!("{}:{}", case_id, check_id));
+            // The declared adapter matches the actual outcome adapter.
+            let outcome = report
+                .results
+                .iter()
+                .find(|r| r.case_id == case_id && r.check_id == check_id)
+                .unwrap_or_else(|| {
+                    panic!("map references missing outcome {}:{}", case_id, check_id)
+                });
+            assert_eq!(outcome.adapter, adapter, "{}:{}", case_id, check_id);
+        }
+    }
+    let ran: std::collections::BTreeSet<String> = report
+        .results
+        .iter()
+        .map(|r| format!("{}:{}", r.case_id, r.check_id))
+        .collect();
+    assert_eq!(
+        mapped, ran,
+        "legacy-map and report must cover exactly the same case/check set"
+    );
+    // 21 distinct cases; multi-file/multi-artifact + weak/strengthened +
+    // unwired-revived classes are all present.
+    let cases: std::collections::BTreeSet<&String> =
+        report.results.iter().map(|r| &r.case_id).collect();
+    assert_eq!(cases.len(), 21);
+    assert!(cases.contains(&String::from("trans.project.multi-file")));
+    assert!(cases.contains(&String::from("lang.error.out-of-bounds")));
+    assert!(cases.contains(&String::from("lang.script.json-is-null")));
+}
+
+/// Oracle regeneration tool (bootstrap): reruns the suite and refreshes the
+/// NEW oracle candidates under `oracle/` from the persisted actual bytes via
+/// the proposal flow. NOT part of normal verification — run on demand, then
+/// review the diff before accepting.
+#[test]
+#[ignore = "oracle regeneration tool: run explicitly, review diff before accepting"]
+fn pilot_oracle_bootstrap() {
+    let out = std::env::temp_dir().join(format!("atc-pilot-boot-{}", std::process::id()));
+    let report = crate::test_cases::run_suite(
+        &pilot_dir().join("pilot.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("suite loads");
+    let proposals = crate::test_cases::materialize::collect_proposals(&report);
+    assert!(
+        !proposals.is_empty(),
+        "nothing to propose — are the oracles already green?"
+    );
+    let n = crate::test_cases::materialize::write_proposals(
+        &proposals,
+        &std::env::temp_dir().join("pilot-oracle-proposals"),
+    )
+    .unwrap();
+    panic!("{} proposal(s) written to {}/pilot-oracle-proposals — review, then copy into oracle/ deliberately", n, std::env::temp_dir().display());
+}
