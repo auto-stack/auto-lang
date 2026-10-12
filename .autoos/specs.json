@@ -1268,6 +1268,42 @@
             "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
             "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
           }
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [
+            "P767-1",
+            "P767-2",
+            "P767-3"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "plan-767",
+            "derived-reference"
+          ],
+          "created": "2026-10-12",
+          "last_modified": "2026-10-12",
+          "id": "P767-4",
+          "title": "PLAN-767 标量扩面交付",
+          "content": "scalar-i32 profile落v0.6-dev（减/除/余/比较/eq-ne/一元/短路/条件for，双身份域+可信门）；Specs与派生投影沉淀。归档/清理实际状态见归档plan的PLAN-767:r2 merge收据；char/str/List/完整宽度/ACC代际未完成。",
+          "file": "docs/plans/archive/767-ac-scalar-ops-short-circuit.md",
+          "provenance": {
+            "plan": "PLAN-767",
+            "revision": 2,
+            "reviewed_commit": "4cc4645027d7404dee5797b195a9b7c680fe6ece5",
+            "rebased_reviewed_commit": "ec9d0d28e",
+            "delivery_commit": "7086eec8f7d65f3d9661ba3f9641c16f7adf2ea9",
+            "frozen_delta": "docs/reports/767-scalar-i32/proposed-spec-delta.md",
+            "frozen_delta_sha256": "312462d19d4c8f03641ccb9ef0605ed6191c0f4eb69db7624bdd2ee2c541d491",
+            "review_report": "docs/plans/attachments/767/review-codex-repair-4cc464502.md",
+            "review_report_sha256": "bde4bbdf5fbd96235e96abe56259751282c3f9afd7c87e718b930a6b9687c7a2",
+            "archive": "docs/plans/archive/767-ac-scalar-ops-short-circuit.md"
+          }
         }
       ]
     },
@@ -5172,6 +5208,29 @@
             "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
           },
           "source_sha256": "6ef8894c9c66320341ba32fdecbf8950f4a08db1977a5cc64623f8b3a06a4c92"
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [
+            "P767-2",
+            "P767-3"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "plan-767",
+            "derived-reference"
+          ],
+          "created": "2026-10-12",
+          "last_modified": "2026-10-12",
+          "id": "P767-1",
+          "title": "Auto source scalar-i32 profile",
+          "content": "scalar-i32源码profile规范：精确减/除/余（0、MIN/-1、MIN%-1 trap70）、全序比较、同类eq/ne、一元、布尔短路与条件for；身份/可信边界与拒绝面。canonical=docs/specs/auto-ac/source-scalar-i32.md。",
+          "file": "docs/specs/auto-ac/source-scalar-i32.md"
         }
       ]
     },
@@ -6256,6 +6315,28 @@
             "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
           },
           "source_sha256": "6ef8894c9c66320341ba32fdecbf8950f4a08db1977a5cc64623f8b3a06a4c92"
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [
+            "P767-4"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "plan-767",
+            "derived-reference"
+          ],
+          "created": "2026-10-12",
+          "last_modified": "2026-10-12",
+          "id": "P767-2",
+          "title": "scalar profile 验收",
+          "content": "verify-ac-scalar-767.ps1 14步45例（源码/HIR真实PE+反例+CLI隔离+收据身份）；scalar_hir/source/native三测试族；独立复审needs_fix三项修复轮反例16/16重放。canonical=docs/specs/auto-ac/source-scalar-i32.md验收节。",
+          "file": "docs/specs/auto-ac/source-scalar-i32.md"
         }
       ]
     },
@@ -8492,6 +8573,28 @@
             "review_report_sha256": "3cc98a841184964afd8b7aecf59dbd5f95e3a3a36325516adb6ee70b4cb66488",
             "archive": "docs/plans/archive/745-ac-source-checked-hir-native.md"
           }
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [
+            "P767-4"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "auto-ac",
+          "tags": [
+            "plan-767",
+            "derived-reference"
+          ],
+          "created": "2026-10-12",
+          "last_modified": "2026-10-12",
+          "id": "P767-3",
+          "title": "PLAN-767 r2 独立复审 needs_fix→修复→final pass",
+          "content": "Codex独立最终复审发现P767-R1未注册身份归Core/writer换壳、R2签名TypeId越界致native panic（均P1）与R3设计公式错（P2）；同树修复（精确可失败映射+bind/writer双拒、模块级签名边界门+native全化、文档修正）后16/16反例重放通过、final pass。复审记录见归档plan §9。",
+          "file": "docs/plans/archive/767-ac-scalar-ops-short-circuit.md"
         }
       ]
     }
