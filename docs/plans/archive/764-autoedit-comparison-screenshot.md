@@ -90,3 +90,4 @@ stage: merge | PLAN-764:r1 | outcome: pass | 恢复会话 2026-10-12（ZCode，R
 - archived：pass——`git mv` 至 docs/plans/archive/，frontmatter status: reviewed→archived。
 - artifacts 观察项：主检出无 gen/front/vue/dist（本任务构建产物在 plan worktree 内，随清理消亡，主检出无消费者）；远端发布未授权未执行（deploy-website-20261011 另会话管线自理）；durable 证据（截图/e2e.log.gz/catalog/spec-delta）在主检出 docs/reports/p764-*。
 - batch due：不负——收据 last_covered_plan_id=766（2026-10-12T04:08Z，今日），764<766 无整五触发、未超 48h。
+- cleaned：pass——终检 wt-guard clean（无 reparse point）→ `git worktree remove D:/autostack/.wt/lang-764/auto-lang` → `git branch -d plan-764-dev`（tip 6b8c2193b 已在 main）→ 组目录残留 p764-e2e.log 与主检出 durable docs/reports/p764-comparison/e2e.log.gz 解压逐字节相同（2521B）后删除 → `rmdir` 组目录零残留。
