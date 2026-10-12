@@ -1,0 +1,17 @@
+CONTROL-CORE	expected=valid Checked	actual=valid core	PASS
+CONTROL-SCALAR	expected=valid Checked	actual=valid scalar	PASS
+CONTROL-DOMAIN	expected=reject scalar through core entry	actual=explicit verify entry	PASS
+CONTROL-WRITER	expected=reject core with scalar descriptor	actual=known domain mismatch	PASS
+WRITER-schema	expected=controlled identity rejection	actual=canonical.identity-conflict	PASS
+UNKNOWN-schema	expected=unregistered identity must not yield Checked	actual=bind rejected ["bind.descriptor-unregistered"]	PASS
+CONTROL-CLI-REGISTRY-schema	expected=registry rejects unknown identity	actual=bind_document registry	PASS
+WRITER-revision	expected=controlled identity rejection	actual=canonical.identity-conflict	PASS
+UNKNOWN-revision	expected=unregistered identity must not yield Checked	actual=bind rejected ["bind.descriptor-unregistered"]	PASS
+CONTROL-CLI-REGISTRY-revision	expected=registry rejects unknown identity	actual=bind_document registry	PASS
+WRITER-profile	expected=controlled identity rejection	actual=canonical.identity-conflict	PASS
+UNKNOWN-profile	expected=unregistered identity must not yield Checked	actual=bind rejected ["bind.descriptor-unregistered"]	PASS
+CONTROL-CLI-REGISTRY-profile	expected=registry rejects unknown identity	actual=bind_document registry	PASS
+SIGNATURE-parameter	expected=invalid TypeId rejected before Checked	actual=rejected ["verify.bad-reference"]	PASS
+SIGNATURE-result	expected=invalid TypeId rejected before Checked	actual=rejected ["verify.bad-reference"]	PASS
+CONTROL-BODY-BOUNDS	expected=invalid ExprId rejected	actual=known body bounds check	PASS
+CONTRACT_FAILURES=0
