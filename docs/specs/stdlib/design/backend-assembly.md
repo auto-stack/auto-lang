@@ -90,6 +90,12 @@ Vec<T>→[]T 按名身份；Null 哨兵返回族（parse/get/get_at 的 JsonValu
 错配=漂移；`impl AsRef<str>` 视图适配与不透明资源类型（FileResponse/
 Upload*/Response/HTTPStream）按名身份，适配变体写入证明单独记录。
 
+`json.encode[T]` 的 Rust producer 允许 `fn encode<T: serde::Serialize>(value: &T) -> String`
+作为类型恒等适配：契约必须明确声明唯一公共泛型 `T`，producer 只接受同名 `T`
+的共享引用并返回 `String`，且唯一约束为 `serde::Serialize`。此规则仅适用于
+`json.encode`；其他 type/const 泛型或 where-clause 仍需各自独立的 adapter contract，
+不能由类型名相似推断身份。
+
 ## 已证漂移面（如实上报，不擅改公开 ABI）
 
 json.is_valid/is_null/as_bool：公共声明 int，Rust producer bool——跨

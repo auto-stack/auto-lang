@@ -7072,14 +7072,13 @@ impl RustTrans {
                         return Ok(());
                     }
                     ("json", "encode") | ("Json", "encode") => {
-                        // json.encode(value) → serde_json::to_string(&value).unwrap_or_default()
-                        // (Plan 013 G6: typed serialization for transpiled client.)
+                        // Keep generic serialization behind the declared JSON producer.
                         self.a2r_std_used.set(true);
-                        write!(out, "serde_json::to_string(&")?;
+                        write!(out, "a2r_std::json::encode(&")?;
                         if let Some(Arg::Pos(a)) = call.args.args.first() {
                             self.expr(a, out)?;
                         }
-                        write!(out, ").unwrap_or_default()")?;
+                        write!(out, ")")?;
                         return Ok(());
                     }
                     ("str", "from_bytes") => {
@@ -8030,15 +8029,13 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "encode" => {
-                                // json.encode(value) → serde_json::to_string(&value).unwrap_or_default()
-                                // (Plan 013 G6: typed serialization for transpiled client. The value
-                                // is any Serialize — e.g. CompletionRequest.)
+                                // Keep generic serialization behind the declared JSON producer.
                                 self.a2r_std_used.set(true);
-                                write!(out, "serde_json::to_string(&")?;
+                                write!(out, "a2r_std::json::encode(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
-                                write!(out, ").unwrap_or_default()")?;
+                                write!(out, ")")?;
                                 return Ok(());
                             }
                             "get" => {

@@ -306,6 +306,10 @@ pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 pub mod json {
     use serde_json::Value;
 
+    pub fn encode<T: serde::Serialize>(value: &T) -> String {
+        serde_json::to_string(value).unwrap_or_default()
+    }
+
     pub fn is_valid(s: &str) -> bool {
         serde_json::from_str::<Value>(s).is_ok()
     }
