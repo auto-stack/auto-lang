@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-768
-status: drafting
+status: archived
 feature_name: navbar-repository-icons
 author: [Codex]
 created_at: 2026-10-12
 updated_at: 2026-10-12
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 3
 supersedes_spec_components: [docs/specs/website/project.md]
 new_spec_components: []
@@ -48,8 +48,8 @@ Vue/VitePress、现有 CSS 与 Playwright。Category A，仅网站；不跑 Carg
 - AC-03：本地提交/合入，备份部署线上准确外链；review/spec/归档/守卫清理有收据。
 
 ## 8. 执行步骤
-- [ ] T-01：lang-768 专用工作树更新 UnifiedNavbar 和 canonical project；AC-01/02。
-- [ ] T-02（依赖T-01）：构建、既有定向回归和链接/断点/主题/键盘临时实机校验、截图审读；AC-01/02。
+- [x] T-01：lang-768 专用工作树更新 UnifiedNavbar 和 canonical project；AC-01/02。
+- [x] T-02（依赖T-01）：构建、既有定向回归和链接/断点/主题/键盘临时实机校验、截图审读；AC-01/02。
 - [ ] T-03（依赖T-02）：提交、备份部署及线上核验，review/merge/规范投影/归档守卫清理；AC-03。
 
 ## 9. 复审记录
@@ -57,3 +57,20 @@ stage:new | PLAN-768 r1 | outcome:pass | next:work。现有用户明确指示覆
 
 ## 10. 待澄清事项
 无。默认全站共用顶栏一并受益，桌面和手机都有入口。
+
+T-01/02：共用顶栏两行内 SVG 外链；本地冻结依赖，构建141.02s EXIT0。12既有导航/搜索/菜单/主题/触控回归 + 1临时实机测试（24次布局访问+四路由SSR+双图标Enter实际弹出）通过。手机/桌面截图人工审读，零布局调整、无新依赖。durable docs/reports/p768-verification.json。
+
+T-03交付验证：源码8f959f3fc，release20261012-8f959f3fc；HTTP/HTTPS源码字节匹配，线上中英×手机/桌面4项全通过，备份保留。执行已交付，review/merge簿记随后完成。
+
+review PLAN-768:r1 | pass | reviewed_commit:8f959f3fc023d621325e3a4146ab07c338f889d9 | dependencies: p768-verification.json | frozen_delta: SD-01/project.md/hash在报告 | next:merge；同会话重建，AC-01/02/03 pass，零新债；docs/reports/p768-review.md。
+
+## 11. spec-sync 与交付收据
+PLAN-768:r1 completion_kind:delivered。
+- prepared：review8f959f3fc、SD-01/project blob hash冻结于p768-verification.json；delivery f6be5b751（metadata-only），网站树与验证/部署源8f959f3fc零差异。
+- landed：master --ff-only 1c7b99d37→f6be5b751；rebase up-to-date，无哈希改写；主检出 canonical blob/账本bytes校验通过。
+- ledger_refreshed：B轨 guarded offline projection，localhost8080不可达；写前逐字节备份，852旧项/未知字段均不动，仅P768-1/P768-R/P768-Report三个新条目；六段读回/引用/hash和撤回三条后原字节全等验证通过。旧投影无version字段，兼容根形状保持；详细前/后sha在p768-deposit.json。
+- spec-sync：website/project.md新增共用顶栏源码入口契约，website/plans.md新增768；spec-index.py26projects再生无语义diff。没有新架构/goal。
+- deployment：release20261012-8f959f3fc，archive b0a691b8481fea8bc0d30cf2fd8b092db2c8c971b63e0a617e14e395cca1d629；HTTP/HTTPS bytes与保留十张原图hash验证；备份 /home/visus/auto-website-backup-20261012-8f959f3fc保留。12既有回归+1实机测试（24访问）+4线上通过。
+- batch_due：768%5!=0、2026-10-12T04:08Z收据<48h；不触发批量；Category A零Rust，无Cargo/docs_gen。
+- archived：docs/plans/archive/768-navbar-repository-icons.md，Plan/报告/账本进入Git。
+- cleaned：守卫与实际移除后补记。
