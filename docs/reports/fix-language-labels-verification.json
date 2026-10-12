@@ -1,0 +1,68 @@
+{
+  "task": "L0 locale labels EN/CN",
+  "scope": "Two template lines plus one existing test selector, no formal Plan required by L0 workflow; dedicated fix-language-labels worktree, Category A no Cargo/docs_gen",
+  "base": "f9d4bd2da",
+  "implementation_commit": "b3944786bdb47ac01563828ccfd2bb4946099868",
+  "build": {
+    "exit": 0,
+    "seconds": 128.86,
+    "sha256": "6a160ccbd6cdc0046a618c3b065257b68f112f2b651de5d9282570e19b631e06"
+  },
+  "local": {
+    "distinct_passed": 13,
+    "existing_regression_passed": 11,
+    "matrix_passed": 1,
+    "keyboard_passed": 1,
+    "matrix_visits": 16,
+    "logs": {
+      "regression.log": "1331817b56396a932422baf0e3afb02409a039f8e43b4175cb9247a2902c227f",
+      "local.log": "4d89ae642435edc4782a61bfcd22803dcbcbe25e283f7053ec6e515a4f672d61",
+      "matrix.log": "b397689bdea2354f559584b67befe4e355e2a31b38a4790739a9440b8c5594ae"
+    },
+    "probe_sha256": "e0b661d7be0c3f7709f5eb5006c4c329841700ce283fd9689fa43b96ac724573",
+    "probe_correction": "Scratch matrix initially expected44px at desktop; existing desktop control36px/mobile44px confirmed from unchanged CSS and assertion corrected; matrix rerun passed, no product layout change."
+  },
+  "online": {
+    "passed": 2,
+    "seconds": 12.8,
+    "matrix_visits": 16,
+    "log_sha256": "a7a99806799517f22658e0da52c59910ea3ec170134535c1221aeaf5b67ca505",
+    "routes": [
+      "/",
+      "/zh/",
+      "/os/",
+      "/zh/os/"
+    ],
+    "widths": [
+      360,
+      1440
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "keyboard_locale_retains_topic": "OS both directions",
+    "capture_sha256": "a2d6dc3f6e3581568f244afed1dce90b8caaa79a6cc45d9d2135f1839c546fee"
+  },
+  "deployment": {
+    "release": "20261012-b3944786b",
+    "archive_sha256": "999cba97f14b908a58177d2f1dee75ae2f82953f7541f08aad8a9c69b881b87d",
+    "script_sha256": "16faadebf2dc58de3569dc77363b3dfba3b47b55cd75b9e65ee40ec792f91553",
+    "log_sha256": "4e5e8c65057e3dd3e36f4de47fadddbc18e19d5ae604aa3aad6387962c4cc15c",
+    "backup": "/home/visus/auto-website-backup-20261012-b3944786b",
+    "gates": "EN/CN SSR home/OS, HTTP/HTTPS exact served bytes, original+WebP35 catalog hashes/budgets all preserved, native staged backup and rollback"
+  },
+  "review": {
+    "outcome": "pass",
+    "baseline": "b3944786bdb47ac01563828ccfd2bb4946099868",
+    "method": "Same-session independent step reconstructed from committed diff and assertions/captures; no separate context independence claimed",
+    "criteria": {
+      "visible_labels": "Exact EN on Chinese routes and CN on English routes",
+      "locale_behavior": "Original href/lang and keyboard switching preserved; full title/aria language names remain",
+      "delivery": "Build/local/production gates pass, source committed; merge/guard cleanup verified subsequently"
+    },
+    "spec_impact": "Existing navigation locale routing contract unchanged; visible abbreviation only, no new Spec component/goal or architectural change; no ledger mutation for this L0 copy fix.",
+    "findings": "No missing or deferred in-scope requirement, no workaround/TODO/debug additions, zero new debt; baseline highlight/browser/chunk notices unchanged."
+  },
+  "batch": "Latest covered766 receipt2026-10-12T04:08Z <48h, L0 counts but no batch currently due."
+}
