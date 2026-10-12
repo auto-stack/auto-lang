@@ -1,13 +1,14 @@
 ---
 plan_id: PLAN-769
-status: drafting
+status: archived
 feature_name: screenshot-webp-delivery
 author: [Codex]
 created_at: 2026-10-12
 updated_at: 2026-10-12
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 3
+completion_kind: delivered
 supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/os-ai-introduction.md]
 new_spec_components: []
 touched_goals: []
@@ -50,12 +51,24 @@ VitePress/Vue、Pillow WebP 编码和Playwright网络/交互验证，Category A�
 - AC-03：本地提交/合入、可回滚部署及线上实际下载预算核验，review/spec/索引/归档守卫清理有收据。
 
 ## 8. 执行步骤
-- [ ] T-01：lang-769专用工作树编码/目录/图片映射，组件/直接图片与规范调整；AC-01/02。
-- [ ] T-02（依赖T-01）：字节/原始hash/图像审读、构建、现有相关回归和网络预算检查；AC-01/02。
-- [ ] T-03（依赖T-02）：提交部署线上验证；完成review/merge投影和归档清理；AC-03。
+- [x] T-01：lang-769专用工作树编码/目录/图片映射，组件/直接图片与规范调整；AC-01/02。
+- [x] T-02（依赖T-01）：字节/原始hash/图像审读、构建、现有相关回归和网络预算检查；AC-01/02。
+- [x] T-03（依赖T-02）：提交部署线上验证；AC-03。review/merge投影和归档清理在§9独立收据逐项追踪。
 
 ## 9. 复审记录
 stage:new | PLAN-769 r1 | outcome:pass | next:work；用户范围授权已明确，具体压缩/按需实现属于该范围。
 
 ## 10. 待澄清事项
 无。默认网页图压缩，原图不被页面提前下载，仅用户明确打开时获取。
+
+T-01：35图全部原尺寸质量95 WebP，39,521,546→6,993,620bytes（82.3%减少）；最大701,534bytes。桌面01 5,835,961→701,534bytes；六图维度2560×1600不变。共享映射+按需dialog+直接img入口完成。
+
+T-02：141.27s构建通过；初跑46通过/10失败（旧测试包含隐藏dialog图片），更新可见图数量并断言隐藏图0后17通过，共62独立用例通过。40次OS/v05五宽双主题双语矩阵，Apps各页同矩阵，32截图与三派生图审读。35原始hash对基面全等、重复编码字节全等，来源/预算与规范hash冻结于docs/reports/p769-verification.json。
+
+T-03：源码提交ac2ac217aa2e38fab623ad076f549b80c6cb1eed；可回滚release20261012-ac2ac217a部署通过，HTTP/HTTPS页面字节吻合、35原图/派生图stage校验；线上5用例39.6s通过（35 HTTPS实际下载预算/hash、中英OS×390/1440六图解码/放大/卸载/无原PNG请求、v05/apps共用回归）。保留backup、依赖缓存资产。后续生命周期操作独立追踪，未发生者不预标完成。
+
+stage:review | PLAN-769:r1 | outcome:pass | reviewed_commit:97a0f6f872edc91f5d345edb8d2eb9ad312b8862 | implementation_commit:ac2ac217aa2e38fab623ad076f549b80c6cb1eed | base:8f8ca80477be48005dae75889aa80933a344a24d | deps:book d7a71a7fb1fa42ddd26d6cec859715ed98161f7a, package-lock SHA frozen | SD-01/02 hashes:{"docs/specs/website/project.md": "6905a0f37c7b72bd6d523b312c6ee024ae059ea731e36f65b1a96a38bbe54b91", "docs/specs/website/design/os-ai-introduction.md": "3b343e43c559a37c608ee2fa5a49c98b5ab4850cb5c0e79dcfd5414f12cf8805"} | AC-01/02/03 delivery gates pass, lifecycle checkpoint gates executed sequentially after review | findings:none | evidence:docs/reports/p769-review.md,p769-verification.json,p769-image-catalog.json | same-session artifact reconstruction limitation explicit | next:merge.
+
+stage:merge | PLAN-769:r1 | prepared:pass | delivery_commit:7ad3c2bf0c9f2ad947fcd7ab8f0eb9daba663347 | reviewed:97a0f6f872edc91f5d345edb8d2eb9ad312b8862 | canonical/source tree unchanged from deployed ac2ac217a | projection:2updated/4added,855→859; ledger=7956aec5333cdd2cc52c8b200f5ea519edc03782c10c763305e38124a1a768e4; source link hashes readback all valid | channel:guarded offline projection; no store writer reachable | unrelated byte restoration guard pass | spec-index:26modules,zero semantic drift | batch:not due(769%5!=0,<48h) | archive/cleanup:pending actual merge.
+
+stage:merge | PLAN-769:r1 | landed:pass | master_head:7ad3c2bf0c9f2ad947fcd7ab8f0eb9daba663347 after successful --ff-only from8f8ca8047; ac2ac217a ancestry and website/spec tree equivalence verified | ledger_refreshed:pass | 6sections/859items,855prior items preserved except2declared updates; designsP720-1/P719-1/P769-1,testsP769-T,reviewsP769-R,reportsP769-Report; hash=7956aec5333cdd2cc52c8b200f5ea519edc03782c10c763305e38124a1a768e4 | docs/specs SD-01/02 and plans/index deposited | archive_path:docs/plans/archive/769-screenshot-webp-delivery.md | completion_kind:delivered | cleanup:pending guard after archive commit.
