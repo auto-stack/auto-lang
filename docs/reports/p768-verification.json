@@ -86,5 +86,14 @@
     "backup": "/home/visus/auto-website-backup-20261012-8f959f3fc",
     "clean_url_aliases": 926,
     "preserved_cached_assets": 1905
+  },
+  "landing_equivalence": {
+    "source": "72c20c4bd6157e028a14e9d520a99747880f4b70",
+    "old_implementation": "8f959f3fc023d621325e3a4146ab07c338f889d9",
+    "old_metadata": "f6be5b751",
+    "rebased_metadata": "5b2170aa1",
+    "rebase_base": "966118691",
+    "range_diff": "1:  8f959f3fc = 1:  72c20c4bd feat(website): add GitHub and GitCode navbar icons (Plan 768)\n2:  f6be5b751 = 2:  5b2170aa1 docs(website): record repository links review and deployment (Plan 768)\n",
+    "verification_reuse": "Identical website tree, lock, canonical source; concurrent Rust-only widget fix changes no website source inputs."
   }
 }

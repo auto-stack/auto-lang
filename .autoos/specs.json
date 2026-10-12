@@ -1534,7 +1534,8 @@
       "plan-768",
       "revision:1",
       "commit:8f959f3fc023d621325e3a4146ab07c338f889d9",
-      "source-sha256:ce1c618117e885d218fc5b748a0ca4fc2f348a85eed4ed068924c71f2ecb28b7"
+      "landing-commit:72c20c4bd6157e028a14e9d520a99747880f4b70",
+      "source-sha256:b933d9889363708b7888c3c51930ec029d636dfa80ea512f3fe8e77ae70b05d0"
      ],
      "created_at": 1791775223,
      "modified_at": 1791775223,
@@ -6048,6 +6049,7 @@
       "plan-768",
       "revision:1",
       "commit:8f959f3fc023d621325e3a4146ab07c338f889d9",
+      "landing-commit:72c20c4bd6157e028a14e9d520a99747880f4b70",
       "source-sha256:91259a4e18e5786b406c4fb0ae05aa6145c16672ed842ea61d2a3190629f5f91"
      ],
      "created_at": 1791775223,
@@ -9644,7 +9646,7 @@
     {
      "id": "P768-R",
      "title": "PLAN-768 r1 顶栏图标复审 pass",
-     "content": "reviewed 8f959f3fc023d621325e3a4146ab07c338f889d9；AC-01/02/03 全pass，同执行会话按提交与证据重建；无遗漏/新债。",
+     "content": "reviewed 8f959f3fc023d621325e3a4146ab07c338f889d9；AC-01/02/03 全pass，同执行会话按提交与证据重建；无遗漏/新债。 Rebase equality refresh: reviewed 72c20c4bd6157e028a14e9d520a99747880f4b70; original source retained as deployment provenance.",
      "status": "published",
      "depends_on": [],
      "related": [
@@ -9660,7 +9662,8 @@
       "plan-768",
       "revision:1",
       "commit:8f959f3fc023d621325e3a4146ab07c338f889d9",
-      "source-sha256:2a42f5bb5cd4b543520a102a71517570628f4ad72b40f60efda1023198b3c6b8"
+      "landing-commit:72c20c4bd6157e028a14e9d520a99747880f4b70",
+      "source-sha256:9e71b26e7d5901a3c2f1e62992f8966e66032248a91d7ed09b77d0ffd17121d5"
      ],
      "created_at": 1791775223,
      "modified_at": 1791775223,
