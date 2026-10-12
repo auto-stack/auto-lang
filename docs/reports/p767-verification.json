@@ -81,5 +81,26 @@
   "source_catalog": "p767-os-source-catalog.json",
   "book_head": "d7a71a7fb1fa42ddd26d6cec859715ed98161f7a",
   "dependency_lock_sha256": "cccc36b221de0180ac773220098a6c5dbb8b4d8d559e356cb557672ad506bf5e",
-  "scope": "website / Category A; no Cargo or docs_gen"
+  "scope": "website / Category A; no Cargo or docs_gen",
+  "implementation_commit": "964dd64bbdd373b8508d1641186cfbb2c47cc9e0",
+  "deployment": {
+    "release": "20261012-964dd64bb",
+    "revision": "964dd64bb",
+    "archive_sha256": "50a079bc3c7a251794f20d1860d36a3c88887658bf309e30974858daf4670b0b",
+    "backup": "/home/visus/auto-website-backup-20261012-964dd64bb",
+    "clean_url_aliases": 926,
+    "preserved_cached_assets": 1838
+  },
+  "online_tests": {
+    "passed": 4,
+    "log_sha256": "dee1e11cb3d32d214cbfe8cb0f26289b1419c2a5cd1d5f7dc62f462c618372eb",
+    "extra_decode_tests": 2,
+    "decode_log_sha256": "ac318a6d93d62ad92af16f4b19d719348b21350652cb055b1e39d31d06942eb3",
+    "test_sha256": "41f86fda9f243e5558b4afa6930cf92081f96d1bd563fc95e1a9fcc40732c1ca",
+    "corrected_probe": "Initial probe expected hidden default VPNavBar. Site uses its custom navigation; that unrelated assertion was removed. Initial image capture preceded async decode; extra decode checks and recapture completed."
+  },
+  "online_captures": {
+    "online-en.png": "730dd18e2d82afa3120fd2e26210f0a85c4858a165a07c93af25897c40a0c376",
+    "online-zh.png": "c665deeaed0d08b64d2d1ecec944325aadaa1b1966bd167aa9326250aa221ae8"
+  }
 }

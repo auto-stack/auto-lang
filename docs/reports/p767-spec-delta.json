@@ -6,7 +6,7 @@
       "id": "SD-01",
       "operation": "modify",
       "target": "docs/specs/website/design/os-ai-introduction.md",
-      "sha256": "5c393026283e1538247ba0191f07963d86d114688dc271835b2950aec3307169",
+      "sha256": "7ac4aea3b9a5fbc209026b7f6edf5afe2082f947d36af7f4bf74155a9002c2b9",
       "acceptance": [
         "AC-01",
         "AC-02",
@@ -17,12 +17,13 @@
       "id": "SD-02",
       "operation": "modify",
       "target": "docs/specs/website/project.md",
-      "sha256": "f0c42dc4f1580b49b396c9f639426aa4360b11f3d9884343a2f51a10f94e6612",
+      "sha256": "4f68a7bd4cf4cf356be8c3b3a5f1a85331cf63fe775b9e38aecfd6317914b86f",
       "acceptance": [
         "AC-01",
         "AC-02",
         "AC-03"
       ]
     }
-  ]
+  ],
+  "hash_encoding": "committed UTF-8/LF; normalized from working copy CRLF, no semantic delta"
 }
