@@ -84,4 +84,4 @@ PLAN-767:r2 completion_kind: delivered。
 - archived：docs/plans/archive/767-os-overview-inline-cards.md；本收据同Plan进入Git，交付完成。
 - batch_due：767%5!=0，收据last_covered766/2026-10-12T04:08Z，<48h；本轮未到期且Category A零Rust，未跑Cargo/docs_gen。
 - deployment：20261012-964dd64bb，archive50a079bc3c7a251794f20d1860d36a3c88887658bf309e30974858daf4670b0b；HTTP/HTTPS与原图字节验证；/home/visus/auto-website-backup-20261012-964dd64bb保留。
-- cleaned：待守卫及实际移除后补记。
+- cleaned：wt-guard clean；lang-767 工作树与 plan-767-dev 分支已移除；核对绝对组路径且空目录后移除组。归档搬迁先由 fc4dd1109 提交，状态/复审/收据随后由 921240568 落盘（首次 git add 同时引用已移除旧路径而被拒，现已纠正）；最终主检出 clean。本次只清理自有工作树，fix-widget-media-key 等他席工作树保留。
