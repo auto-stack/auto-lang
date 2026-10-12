@@ -80,7 +80,7 @@ for (const prefix of ['', '/zh']) {
     await page.goto(prefix + '/v05/')
     await expect(page.locator('#desktop-showcase').getByRole('tab')).toHaveCount(0)
     await expect(page.locator('#desktop-showcase .desktop-card')).toHaveCount(6)
-    await expect(page.locator('.hero-shot .evidence-image img')).toHaveAttribute('src', '/desktop-showcase/02-desktop-dark.png')
+    await expect(page.locator('.hero-shot .evidence-image img')).toHaveAttribute('data-original-src', '/desktop-showcase/02-desktop-dark.png')
     const philosophy = page.locator('#philosophy')
     await page.locator('#ph-laos summary').click()
     await expect(philosophy).toContainText('LaOS → OS over OS → AI + Lang + OS')

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { screenshotSrc } from '../data/optimized-image'
 
 // PLAN-715 T-04：EvidenceImage 扩展。
 // 新增可选 props（既有调用全部缺省，行为不变）：
@@ -25,7 +26,10 @@ const props = withDefaults(defineProps<{
 })
 
 const dialog = ref<HTMLDialogElement>()
+const dialogImageVisible = ref(false)
+const displaySrc = computed(() => screenshotSrc(props.src))
 function open() {
+  dialogImageVisible.value = true
   dialog.value?.showModal()
   dialog.value?.querySelector<HTMLButtonElement>('button')?.focus()
 }
@@ -36,6 +40,7 @@ function backdrop(event: MouseEvent) {
 // Esc 关闭后焦点回缩略图触发器（dialog 原生行为回焦 open() 前的元素，
 // 但显式回焦更稳——tabindex 由按钮自带）。
 function onDialogClose() {
+  dialogImageVisible.value = false
   ;(dialog.value?.previousElementSibling as HTMLElement | null)?.querySelector<HTMLElement>('.evidence-image')?.focus()
 }
 </script>
@@ -44,7 +49,7 @@ function onDialogClose() {
   <figure class="evidence-figure">
     <button type="button" class="evidence-image" :class="{ framed }" :aria-label="zoomLabel + ': ' + alt" @click="open">
       <span :class="{ 'table-preview': tablePreview }">
-        <img :src="src" :alt="alt" :loading="loading" decoding="async"
+        <img :src="displaySrc" :data-original-src="src" :alt="alt" :loading="loading" decoding="async"
           :width="width" :height="height"
           :style="width && height ? { aspectRatio: `${width} / ${height}` } : undefined" />
       </span>
@@ -52,13 +57,13 @@ function onDialogClose() {
     </button>
     <figcaption>{{ caption }}</figcaption>
   </figure>
-  <dialog ref="dialog" class="evidence-dialog" :aria-label="alt" @click="backdrop" @close="onDialogClose">
+  <dialog ref="dialog" class="evidence-dialog" :aria-label="alt" @click="backdrop" @close="onDialogClose" @cancel="dialogImageVisible = false">
     <div class="dialog-content">
       <div class="dialog-toolbar">
         <span>{{ alt }}</span>
         <button type="button" autofocus @click="close">{{ closeLabel }} <span aria-hidden="true">×</span></button>
       </div>
-      <img :src="src" :alt="alt" />
+      <img v-if="dialogImageVisible" :src="displaySrc" :alt="alt" />
       <div class="dialog-footer"><p>{{ caption }}</p><a :href="src" target="_blank" rel="noopener">{{ originalLabel }} ↗</a></div>
     </div>
   </dialog>

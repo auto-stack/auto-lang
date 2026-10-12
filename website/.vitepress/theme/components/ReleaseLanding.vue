@@ -7,6 +7,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vitepress'
 import { RELEASE_V05, releaseNavSections } from '../data/release-v05'
+import { screenshotSrc } from '../data/optimized-image'
 import EvidenceImage from './EvidenceImage.vue'
 import DesktopShowcase from './DesktopShowcase.vue'
 import AutoShellPreview from './AutoShellPreview.vue'
@@ -193,7 +194,7 @@ const t = computed(() => zh.value ? {
           </div>
           <div class="flagship-visual">
             <AutoShellPreview v-if="item.kind === 'autoshell'" :lang="zh ? 'zh' : 'en'" />
-            <img v-else-if="item.kind === 'image' && item.image" :src="item.image.src" :alt="item.image.alt" loading="lazy"
+            <img v-else-if="item.kind === 'image' && item.image" :src="screenshotSrc(item.image.src)" :alt="item.image.alt" loading="lazy"
               :width="item.image.width" :height="item.image.height" />
             <ScreenshotSlot v-else-if="item.captureId" :capture-id="item.captureId" />
           </div>

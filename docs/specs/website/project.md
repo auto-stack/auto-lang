@@ -88,3 +88,5 @@ PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范�
 PLAN-763：删除从未执行过的 deploy-website.yml（push main、手动和跨仓 dispatch 三入口）。当前网站发布通过显式手动脚本操作，没有仓内 Actions 自动发布。
 
 PLAN-764：AutoEdit 文件对比 SHOT-03 接入用户于 2026-10-11 提供的完整深色原图（3840×2419）；双语说明、原图和键盘放大沿用共用组件，来源/hash 独立登记，不套用旧工具链身份，历史诊断不覆盖。
+
+PLAN-769：网页截图使用本地 WebP 派生物（原尺寸、质量95优先、单图<1,000,000bytes），不改原始截图hash；EvidenceImage/ScreenshotGallery 的默认展示和放大使用压缩图，隐藏dialog不挂载图片，打开时按需加载、关闭/Esc卸载，原图PNG仅显式下载。原图尺寸/日期说明描述来源，非当前传输格式；35幅派生物/预算与来源见p769-image-catalog.json，脚本website/scripts/optimize-screenshots.py，直接img相应使用派生路径。

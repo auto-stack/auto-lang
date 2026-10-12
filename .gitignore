@@ -225,3 +225,6 @@ examples/rust-workspace/testt1/
 
 # PLAN-718 T-01: 截图 manifest 属于验收证据（AC-11），不受全局 *.json 影响
 !docs/reports/**/*.json
+
+# PLAN-769: screenshot delivery mapping is a runtime source dependency.
+!website/.vitepress/theme/data/screenshot-variants.json

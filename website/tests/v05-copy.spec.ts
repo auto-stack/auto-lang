@@ -23,7 +23,7 @@ for (const prefix of ['', '/zh']) {
     for (const route of ['/', '/v05/', '/apps', '/apps/automusk/']) {
       await page.goto(prefix + route)
       const slot = page.locator('[data-capture-id="SHOT-04"]')
-      await expect(slot.locator('.evidence-image img')).toHaveAttribute('src', '/v05/candidate/musk-workspace.png')
+      await expect(slot.locator('.evidence-image img')).toHaveAttribute('data-original-src', '/v05/candidate/musk-workspace.png')
       await expect(slot).not.toContainText(prefix ? '截图待补' : 'Capture pending')
     }
     for (const id of ['SHOT-04', 'SHOT-05']) {
@@ -84,19 +84,19 @@ for (const prefix of ['', '/zh']) {
     const names = await page.locator('#flagship h3').allTextContents()
     expect(names.map(name => name.replace(/^\S+\s+/, ''))).toEqual(['AutoEdit', 'AutoShell', 'AutoMusk', 'AutoJade'])
     const workspace = page.locator('[data-capture-id="SHOT-01"]')
-    await expect(workspace.locator('.evidence-image img')).toHaveAttribute('src', '/v05/candidate/autoedit-workspace.png')
+    await expect(workspace.locator('.evidence-image img')).toHaveAttribute('data-original-src', '/v05/candidate/autoedit-workspace.png')
     await expect(workspace).not.toContainText('Capture pending')
     await expect(workspace).not.toContainText('截图待补')
-    await expect(page.locator('[data-capture-id="SHOT-07"] .evidence-image img')).toHaveAttribute('src', '/apps/auto-jade/p1-main-dark.png')
-    await expect(page.locator('[data-capture-id="SHOT-04"] .evidence-image img')).toHaveAttribute('src', '/v05/candidate/musk-workspace.png')
+    await expect(page.locator('[data-capture-id="SHOT-07"] .evidence-image img')).toHaveAttribute('data-original-src', '/apps/auto-jade/p1-main-dark.png')
+    await expect(page.locator('[data-capture-id="SHOT-04"] .evidence-image img')).toHaveAttribute('data-original-src', '/v05/candidate/musk-workspace.png')
     for (const id of ['SHOT-10', 'SHOT-11', 'SHOT-12']) {
       const slot = page.locator(`[data-capture-id="${id}"]`)
       await expect(slot).toHaveCount(1)
       await expect(slot.locator('img')).toHaveCount(0)
     }
-    await expect(page.locator('img[src="/v05/automusk-app.png"], img[src="/v05/autodown-desktop.png"]')).toHaveCount(0)
-    await expect(page.locator('.hero-shot img[src="/desktop-showcase/02-desktop-dark.png"]').first()).toHaveCount(1)
-    await expect(page.locator('#flagship img[src="/apps/autoshell/ash-01.png"]').first()).toHaveCount(1)
+    await expect(page.locator('img[data-original-src="/v05/automusk-app.png"], img[data-original-src="/v05/autodown-desktop.png"]')).toHaveCount(0)
+    await expect(page.locator('.hero-shot img[data-original-src="/desktop-showcase/02-desktop-dark.png"]').first()).toHaveCount(1)
+    await expect(page.locator('#flagship img[data-original-src="/apps/autoshell/ash-01.png"]').first()).toHaveCount(1)
     await expect(page.locator('#desktop a[href="' + prefix + '/os#desktop-showcase"]')).toHaveCount(1)
     await expect(page.locator('#ecosystem a[href="' + prefix + '/playground"]')).toHaveCount(1)
     await page.locator('#get-started a').first().click()

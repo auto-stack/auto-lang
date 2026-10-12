@@ -23,11 +23,12 @@ for (const prefix of ['', '/zh']) {
       const content = page.locator(topic === 'overview' ? '.apps-overview' : '.vp-doc')
       await expect(content.locator('h1')).toHaveCount(1)
       await expect(content.locator('iframe')).toHaveCount(0)
-      const imageCount = topic === 'overview' ? 64 : topic === 'autoedit' ? 6 : topic === 'auto-jade' || topic === 'automusk' ? 4 : topic === 'autoshell' ? 2 : 0
+      const imageCount = topic === 'overview' ? 32 : topic === 'autoedit' ? 3 : topic === 'auto-jade' || topic === 'automusk' ? 2 : topic === 'autoshell' ? 1 : 0
       await expect(content.locator('img')).toHaveCount(imageCount)
+      await expect(content.locator('.evidence-dialog img')).toHaveCount(0)
       const slots = content.locator('[data-capture-id]')
       expect(await slots.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-capture-id')))).toEqual(captureIds[topic] || [])
-      await expect(slots.locator('img')).toHaveCount(topic === 'autoedit' || topic === 'overview' ? 6 : topic === 'auto-jade' || topic === 'automusk' ? 4 : 0)
+      await expect(slots.locator('img')).toHaveCount(topic === 'autoedit' || topic === 'overview' ? 3 : topic === 'auto-jade' || topic === 'automusk' ? 2 : 0)
       expect((await content.innerText()).length).toBeGreaterThan(600)
       expect(await content.innerText()).not.toMatch(/TODO|Screenshot slot|100% Auto/)
       const links = await content.locator('a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')!).filter(href => href.startsWith('/')))
@@ -79,7 +80,7 @@ for (const prefix of ['', '/zh']) {
     await page.goto(`${prefix}/apps/autoshell/`)
     await page.locator('.vp-doc').getByRole('link', { name: zh ? '使用指南与实跑示例' : 'Usage guide and recorded examples', exact: true }).click()
     await expect(page).toHaveURL(new RegExp(`${prefix}/apps/autoshell/guide/$`))
-    await expect(page.locator('img[src="/apps/autoshell/ash-01.png"]').first()).toBeVisible()
+    await expect(page.locator('img[data-original-src="/apps/autoshell/ash-01.png"]').first()).toBeVisible()
     const tabs = page.locator('.script-tabs [role="tab"]')
     await tabs.nth(2).click()
     await expect(page.locator('.script-panel .code-title').first()).toHaveText('user-report.ash')

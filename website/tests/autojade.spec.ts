@@ -11,7 +11,7 @@ for (const prefix of ['', '/zh']) {
     for (const route of ['/', '/v05/', '/apps']) {
       await page.goto(prefix + route)
       await expect(page.locator('a[href="' + prefix + '/apps/auto-jade/"]').first()).toBeVisible()
-      await expect(page.locator('[data-capture-id="SHOT-07"] .evidence-image img')).toHaveAttribute('src', '/apps/auto-jade/p1-main-dark.png')
+      await expect(page.locator('[data-capture-id="SHOT-07"] .evidence-image img')).toHaveAttribute('data-original-src', '/apps/auto-jade/p1-main-dark.png')
       await expect(page.locator('a[href*="/apps/jadeedit/"]')).toHaveCount(0)
     }
   })
@@ -29,7 +29,7 @@ for (const prefix of ['', '/zh']) {
       await expect(tab).toBeFocused()
       const trigger = gallery.locator('.evidence-image')
       const src = `/apps/auto-jade/${files[i]}`
-      await expect(trigger.locator('img')).toHaveAttribute('src', src)
+      await expect(trigger.locator('img')).toHaveAttribute('data-original-src', src)
       const expected = i === 4 ? [1933, 1245] : [1440, 900]
       await expect.poll(() => trigger.locator('img').evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight])).toEqual(expected)
       await trigger.focus()
