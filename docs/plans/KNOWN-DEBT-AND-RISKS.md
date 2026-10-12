@@ -4,6 +4,12 @@
 |---|---|---|---|---|
 | D-762-1 | medium | 测试载体驱动 helper 早退 | **`ui/dynamic.rs::drive_scheduler_to_quiescence` 的 `progressed` 判据不计"续跑片让出未完成"（`cpu.slices_run` 缺位）**——多片 Init 单调用确定性早退（761 tt 批量档 gallery 四路由 flake 在案；确定性复现钉子 plan437 `child_init_multi_slice_early_exit_and_completion_driving` 前半断言）。约 16 个调用点共享该暴露面（plan502 已自带外层完成态循环、plan437 本计划已修，其余裸调用点的多片 Init 在并行负载下理论可复现同类红）。清偿方向（须另行授权，PLAN-762 约定"改生产 helper 先修订确认"）：`progressed` 增计 `cpu.slices_run > 0` 与 `silent_done_transitions > 0`（对齐 `poll_frame_pump` 判据族），I/O 未就绪退出臂保持；修复时同步更新钉子前半断言（其注释已留指引）。生产帧泵不受影响（每帧重入天然推进让出片） | crates/auto-lang/src/ui/dynamic.rs:1556-1578；docs/plans/reports/762-chart-init-attribution.md（PLAN-762 worktree） |
 
+### Plan 744（2026-10-13，fs.dir_names Rust 发射签名 parity）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P742-D9-SIG-01 | low / explicit | `fs.dir_names` 跨端映射 | VM 标准接口 `fs.dir_names` 在 Rust 发射中映射到 `a2r_std::fs::dir_names`。KNOWN-DEBT 396 的既有签名配对比较 `file.rs.at` 与 `a2r-std/fs.rs`，并非该命名空间函数的源码镜像，因此此实现以显式 allowlist 例外记录；AutoDown/Notes 双端应用门覆盖行为。若未来改为生成式 fs 镜像，应移除此例外并加入生成一致性验证。 | `stdlib/auto/fs.at`；`crates/auto-lang/src/trans/rust.rs`；`crates/auto-lang/src/vm/ffi/stdlib.rs`；`crates/a2r-std/src/fs.rs`；`crates/auto-lang/src/tests/a2r_std_signature_parity.rs` |
+
 ### P756（2026-10-10，网站文字修复复核：范围外 UI 观察）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
