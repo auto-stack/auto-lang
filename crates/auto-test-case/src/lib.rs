@@ -10,13 +10,20 @@
 //! pinned [`autodown_test_parser`] snapshot; adapters that execute real
 //! backends live in `auto-lang` and depend on THIS crate, never the reverse.
 //!
-//! Current scope is the T-02 foundation:
-//! - [`document`]: pinned block tree + raw-fence correspondence, anchor
-//!   section resolution.
-//! - [`raw_ranges`]: byte-accurate fence locator over original bytes.
-//! - [`admission`]: resource/path admission limits and checks.
+//! Layering: [`document`]/[`raw_ranges`]/[`admission`] load and guard raw
+//! bytes; [`atom`]/[`contract`] decode the strict case schema; [`ir`]
+//! materializes payloads into owned bytes; [`suite`]/[`discovery`] bind
+//! cases into a suite with explicit defaults; [`compare`]/[`report`] judge
+//! observations and project results.
 
 pub mod admission;
+pub mod atom;
+pub mod compare;
+pub mod contract;
+pub mod discovery;
 pub mod document;
+pub mod ir;
 pub mod raw_ranges;
+pub mod report;
 pub mod sha256;
+pub mod suite;

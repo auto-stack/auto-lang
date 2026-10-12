@@ -1,0 +1,492 @@
+//! Suite schema (`autolang.suite/1`), explicit defaults, and selection.
+//!
+//! Defaults are the ONLY suite-injected context (Design 35 §4.4): `tier` and
+//! per-adapter/action `options`. Merging is object-recursive with whole-array
+//! replacement; a case's local value always wins; missing required fields
+//! remain errors at the case. Suites never copy semantic expectations from
+//! one backend to another and never declare new checks.
+
+use std::collections::BTreeMap;
+
+use crate::admission::validate_virtual_path;
+use crate::atom::CVal;
+use crate::contract::{Adapter, CheckSpec, ContractError, Options};
+
+pub const SUITE_SCHEMA: &str = "autolang.suite/1";
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuiteSpec {
+    pub schema: String,
+    pub id: String,
+    /// Case files relative to the suite file (no globbing in v1).
+    pub include: Vec<String>,
+    pub exclude: Vec<String>,
+    pub defaults: Defaults,
+    /// Adapters every selected case must declare a (non-skipped) check for;
+    /// enforced by the gate reducer as a required-coverage contract error.
+    pub required_adapters: Vec<Adapter>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Defaults {
+    pub tier: Option<String>,
+    /// adapter -> action -> options object (raw contract value; deep-merged
+    /// under the case's own options).
+    pub options: BTreeMap<String, BTreeMap<String, CVal>>,
+}
+
+/// One defaulted field provenance entry for `inspect`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldOrigin {
+    pub field: String,
+    pub source: &'static str, // "case" | "suite-default" | "implicit"
+}
+
+fn err(path: &str, message: impl Into<String>) -> ContractError {
+    ContractError {
+        path: path.to_string(),
+        message: message.into(),
+    }
+}
+
+fn as_obj<'v>(v: &'v CVal, path: &str) -> Result<&'v [(String, CVal)], ContractError> {
+    match v {
+        CVal::Obj(pairs) => Ok(pairs),
+        other => Err(err(
+            path,
+            format!("expected object, got {}", other.type_name()),
+        )),
+    }
+}
+
+fn req_str<'v>(
+    pairs: &'v [(String, CVal)],
+    key: &str,
+    path: &str,
+) -> Result<String, ContractError> {
+    let v = pairs
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v)
+        .ok_or_else(|| err(&format!("{}.{}", path, key), "required field is missing"))?;
+    match v {
+        CVal::Str(s) => Ok(s.clone()),
+        other => Err(err(
+            &format!("{}.{}", path, key),
+            format!("expected string, got {}", other.type_name()),
+        )),
+    }
+}
+
+fn str_list(pairs: &[(String, CVal)], key: &str, path: &str) -> Result<Vec<String>, ContractError> {
+    let v = pairs
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v)
+        .ok_or_else(|| err(&format!("{}.{}", path, key), "required field is missing"))?;
+    match v {
+        CVal::List(items) => items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| match item {
+                CVal::Str(s) => Ok(s.clone()),
+                other => Err(err(
+                    &format!("{}[{}]", path, i),
+                    format!("expected string, got {}", other.type_name()),
+                )),
+            })
+            .collect(),
+        other => Err(err(
+            &format!("{}.{}", path, key),
+            format!("expected array, got {}", other.type_name()),
+        )),
+    }
+}
+
+fn check_known(pairs: &[(String, CVal)], known: &[&str], path: &str) -> Result<(), ContractError> {
+    for (k, _) in pairs {
+        if !known.contains(&k.as_str()) {
+            return Err(err(
+                &format!("{}.{}", path, k),
+                format!("unknown field {:?} (known fields: {})", k, known.join(", ")),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Decode a `suite { … }` node.
+pub fn decode_suite(v: &CVal) -> Result<SuiteSpec, ContractError> {
+    let (name, props) = v.as_node().ok_or_else(|| {
+        err(
+            "suite",
+            format!("expected `suite {{ … }}` node, got {}", v.type_name()),
+        )
+    })?;
+    if name != "suite" {
+        return Err(err(
+            "suite",
+            format!("expected node `suite`, got {:?}", name),
+        ));
+    }
+    check_known(
+        props,
+        &["schema", "id", "include", "exclude", "defaults", "required"],
+        "suite",
+    )?;
+
+    let schema = req_str(props, "schema", "suite")?;
+    if schema != SUITE_SCHEMA {
+        return Err(err(
+            "suite.schema",
+            format!(
+                "unsupported schema {:?} (this pilot implements {})",
+                schema, SUITE_SCHEMA
+            ),
+        ));
+    }
+    let id = req_str(props, "id", "suite")?;
+    if id.is_empty()
+        || id.len() > 64
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+    {
+        return Err(err(
+            "suite.id",
+            "invalid suite id (alphanumerics, '_', '-')",
+        ));
+    }
+
+    let include = str_list(props, "include", "suite.include")?;
+    if include.is_empty() {
+        return Err(err(
+            "suite.include",
+            "empty include set — a suite with no case files is a contract error",
+        ));
+    }
+    for inc in &include {
+        validate_virtual_path(inc)
+            .map_err(|e| err(&format!("suite.include[{:?}]", inc), e.to_string()))?;
+    }
+    let exclude = match props.iter().find(|(k, _)| k == "exclude") {
+        None => Vec::new(),
+        Some((_, CVal::List(_))) => str_list(props, "exclude", "suite.exclude")?,
+        Some((_, other)) => {
+            return Err(err(
+                "suite.exclude",
+                format!("expected array, got {}", other.type_name()),
+            ))
+        }
+    };
+
+    let mut defaults = Defaults::default();
+    if let Some((_, dv)) = props.iter().find(|(k, _)| k == "defaults") {
+        let dpairs = as_obj(dv, "suite.defaults")?;
+        check_known(dpairs, &["tier", "options"], "suite.defaults")?;
+        if let Some((_, tv)) = dpairs.iter().find(|(k, _)| k == "tier") {
+            match tv {
+                CVal::Str(s) => defaults.tier = Some(s.clone()),
+                other => {
+                    return Err(err(
+                        "suite.defaults.tier",
+                        format!("expected string, got {}", other.type_name()),
+                    ))
+                }
+            }
+        }
+        if let Some((_, ov)) = dpairs.iter().find(|(k, _)| k == "options") {
+            let opairs = as_obj(ov, "suite.defaults.options")?;
+            check_known(opairs, &["avm", "a2r"], "suite.defaults.options")?;
+            for (adapter, av) in opairs {
+                let apath = format!("suite.defaults.options.{}", adapter);
+                let apairs = as_obj(av, &apath)?;
+                check_known(apairs, &["run", "emit"], &apath)?;
+                for (action, val) in apairs {
+                    let as_obj_val = as_obj(val, &format!("{}.{}", apath, action))?;
+                    // Validate that defaults decode as options for this combo.
+                    validate_options_shape(as_obj_val, adapter, action)?;
+                    defaults
+                        .options
+                        .entry(adapter.clone())
+                        .or_default()
+                        .insert(action.clone(), CVal::Obj(as_obj_val.to_vec()));
+                }
+            }
+        }
+    }
+
+    let mut required_adapters = Vec::new();
+    if let Some((_, rv)) = props.iter().find(|(k, _)| k == "required") {
+        let rpairs = as_obj(rv, "suite.required")?;
+        check_known(rpairs, &["adapters"], "suite.required")?;
+        if let Some((_, av)) = rpairs.iter().find(|(k, _)| k == "adapters") {
+            match av {
+                CVal::List(items) => {
+                    for (i, item) in items.iter().enumerate() {
+                        match item {
+                            CVal::Str(s) if s == "avm" => required_adapters.push(Adapter::Avm),
+                            CVal::Str(s) if s == "a2r" => required_adapters.push(Adapter::A2r),
+                            CVal::Str(other) => {
+                                return Err(err(
+                                    &format!("suite.required.adapters[{}]", i),
+                                    format!("unknown adapter {:?}", other),
+                                ))
+                            }
+                            other => {
+                                return Err(err(
+                                    &format!("suite.required.adapters[{}]", i),
+                                    format!("expected string, got {}", other.type_name()),
+                                ))
+                            }
+                        }
+                    }
+                }
+                other => {
+                    return Err(err(
+                        "suite.required.adapters",
+                        format!("expected array, got {}", other.type_name()),
+                    ))
+                }
+            }
+        }
+    }
+
+    Ok(SuiteSpec {
+        schema,
+        id,
+        include,
+        exclude,
+        defaults,
+        required_adapters,
+    })
+}
+
+fn validate_options_shape(
+    pairs: &[(String, CVal)],
+    adapter: &str,
+    action: &str,
+) -> Result<(), ContractError> {
+    let known: &[&str] = match adapter {
+        "avm" => &[],
+        _ => &["module_name"],
+    };
+    for (k, v) in pairs {
+        if !known.contains(&k.as_str()) {
+            return Err(err(
+                &format!("suite.defaults.options.{}.{}", adapter, k),
+                format!(
+                    "unknown option {:?} for {} ({} fields: {})",
+                    k,
+                    adapter,
+                    action,
+                    if known.is_empty() {
+                        "none".to_string()
+                    } else {
+                        known.join(", ")
+                    }
+                ),
+            ));
+        }
+        if k == "module_name" && !matches!(v, CVal::Str(_)) {
+            return Err(err(
+                &format!("suite.defaults.options.{}.module_name", adapter),
+                format!("expected string, got {}", v.type_name()),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Deep-merge objects (recursive), replace arrays wholesale; local wins.
+pub fn deep_merge(base: &CVal, over: &CVal) -> CVal {
+    match (base, over) {
+        (CVal::Obj(b), CVal::Obj(o)) => {
+            let mut merged = b.clone();
+            for (k, v) in o {
+                if let Some(slot) = merged.iter_mut().find(|(bk, _)| bk == k) {
+                    slot.1 = deep_merge(&slot.1.clone(), v);
+                } else {
+                    merged.push((k.clone(), v.clone()));
+                }
+            }
+            CVal::Obj(merged)
+        }
+        (_, over) => over.clone(),
+    }
+}
+
+/// A check with suite defaults applied (tier fallback + options deep-merge),
+/// plus per-field origins for `inspect`.
+pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec<FieldOrigin>) {
+    let mut merged = check.clone();
+    let mut origins = Vec::new();
+    if merged.tier.is_none() {
+        if let Some(t) = &defaults.tier {
+            merged.tier = Some(t.clone());
+            origins.push(FieldOrigin {
+                field: "tier".into(),
+                source: "suite-default",
+            });
+        }
+    } else {
+        origins.push(FieldOrigin {
+            field: "tier".into(),
+            source: "case",
+        });
+    }
+    let adapter = merged.adapter.as_str();
+    let action = merged.action.as_str();
+    if let Some(actions) = defaults.options.get(adapter) {
+        if let Some(base) = actions.get(action) {
+            let local = CVal::Obj(vec![(
+                "module_name".to_string(),
+                merged
+                    .options
+                    .module_name
+                    .clone()
+                    .map(CVal::Str)
+                    .unwrap_or(CVal::Null),
+            )])
+            .filter_nulls();
+            let combined = deep_merge(base, &local);
+            let pairs = combined.as_obj().unwrap_or(&[]);
+            let mut module_name = None;
+            let mut from_default = false;
+            for (k, v) in pairs {
+                if k == "module_name" {
+                    if let CVal::Str(s) = v {
+                        if merged.options.module_name.is_none() {
+                            from_default = true;
+                        }
+                        module_name = Some(s.clone());
+                    }
+                }
+            }
+            let had_module = module_name.is_some();
+            merged.options = Options { module_name };
+            if had_module {
+                origins.push(FieldOrigin {
+                    field: "options.module_name".to_string(),
+                    source: if from_default {
+                        "suite-default"
+                    } else {
+                        "case"
+                    },
+                });
+            }
+        }
+    }
+    (merged, origins)
+}
+
+trait FilterNulls {
+    fn filter_nulls(self) -> CVal;
+}
+
+impl FilterNulls for CVal {
+    /// Drop `key: null` placeholders used to represent "unset" locals.
+    fn filter_nulls(self) -> CVal {
+        match self {
+            CVal::Obj(pairs) => CVal::Obj(
+                pairs
+                    .into_iter()
+                    .filter(|(_, v)| !matches!(v, CVal::Null))
+                    .map(|(k, v)| (k, v.filter_nulls()))
+                    .collect(),
+            ),
+            CVal::List(items) => {
+                CVal::List(items.into_iter().map(FilterNulls::filter_nulls).collect())
+            }
+            other => other,
+        }
+    }
+}
+
+/// Effective include list after exclusion (order preserved).
+pub fn selected_files(suite: &SuiteSpec) -> Vec<String> {
+    suite
+        .include
+        .iter()
+        .filter(|inc| !suite.exclude.contains(inc))
+        .cloned()
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn suite_text(include: &str, defaults: &str, required: &str) -> String {
+        format!(
+            "suite {{ schema: \"autolang.suite/1\", id: \"t\", include: {}, exclude: [], defaults: {}, required: {} }}",
+            include, defaults, required
+        )
+    }
+
+    #[test]
+    fn decodes_and_selects() {
+        let v = crate::atom::parse_contract(&suite_text(
+            "[\"a.case.ad\", \"b.case.ad\"]",
+            "{ tier: \"vm-corpus\" }",
+            "{ adapters: [\"avm\"] }",
+        ))
+        .unwrap();
+        let s = decode_suite(&v).unwrap();
+        assert_eq!(s.defaults.tier.as_deref(), Some("vm-corpus"));
+        assert_eq!(s.required_adapters, vec![Adapter::Avm]);
+        assert_eq!(selected_files(&s), vec!["a.case.ad", "b.case.ad"]);
+
+        let v = crate::atom::parse_contract(&suite_text("[\"a\", \"b\"]", "{}", "{}")).unwrap();
+        let mut s = decode_suite(&v).unwrap();
+        s.exclude = vec!["a".to_string()];
+        assert_eq!(selected_files(&s), vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn empty_or_unknown_things_error() {
+        let v = crate::atom::parse_contract(&suite_text("[]", "{}", "{}")).unwrap();
+        assert!(decode_suite(&v)
+            .unwrap_err()
+            .message
+            .contains("empty include"));
+
+        let v = crate::atom::parse_contract(&suite_text(
+            "[\"a\"]",
+            "{ options: { a2r: { emit: { module_nam: \"x\" } } } }",
+            "{}",
+        ))
+        .unwrap();
+        assert!(decode_suite(&v)
+            .unwrap_err()
+            .message
+            .contains("unknown option"));
+
+        let v = crate::atom::parse_contract(&suite_text("[\"../escape.case.ad\"]", "{}", "{}"))
+            .unwrap();
+        assert!(decode_suite(&v).unwrap_err().message.contains("path"));
+    }
+
+    #[test]
+    fn deep_merge_objects_recursive_arrays_replace() {
+        let base = crate::atom::parse_contract("{ a: { x: 1, y: [1, 2] }, b: \"keep\" }").unwrap();
+        let over = crate::atom::parse_contract("{ a: { y: [9], z: 3 } }").unwrap();
+        let merged = deep_merge(&base, &over);
+        let pairs = merged.as_obj().unwrap();
+        let a = pairs
+            .iter()
+            .find(|(k, _)| k == "a")
+            .unwrap()
+            .1
+            .as_obj()
+            .unwrap();
+        let get = |k: &str| a.iter().find(|(bk, _)| bk == k).unwrap().1.clone();
+        assert_eq!(get("x"), CVal::Int(1)); // kept from base (recursive)
+        assert_eq!(get("y"), CVal::List(vec![CVal::Int(9)])); // array replaced wholesale
+        assert_eq!(get("z"), CVal::Int(3)); // added
+        assert_eq!(
+            pairs.iter().find(|(k, _)| k == "b").unwrap().1,
+            CVal::Str("keep".into())
+        );
+    }
+}
