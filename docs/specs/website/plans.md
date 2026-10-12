@@ -20,3 +20,4 @@
 | 758 | autojade-rename-and-promo | ✅（reviewed→archived） | archive/ | 全仓 JadeEdit→AutoJade/auto-jade 更名（规范路径 /apps/auto-jade/ 旧路由跳转，冻结证据保全）；六张用户深色准备态原图接入（hash 在案，P4 不冒充，SHOT-09 留空）；r3 v0.5 开篇四投入/五成果摘要 + L0"六个月"校正；Rust 注释性零行为改动（9 文件非注释行全等）|
 | 764 | autoedit-comparison-screenshot | reviewed | [Plan](../../plans/764-autoedit-comparison-screenshot.md) | SHOT-03 用户提供深色文件对比原图；独立来源/hash、双语键盘放大与响应式验证 |
 | 766 | automusk-website-real-captures | ✅（reviewed→archived） | [archive](../../plans/archive/766-automusk-website-real-captures.md) | 用户会话主图 SHOT-04 与计划页 SHOT-05 原图接入双语首页/v0.5/总览/专题；2560×1600 原始字节及键盘放大保留；计划 0/5 如实标注，SHOT-06 待拍 |
+| 767 | os-overview-inline-cards | ✅（reviewed→archived） | [archive](../../plans/archive/767-os-overview-inline-cards.md) | 双语 OS 完整融合桌面/窗口/应用/设置；OS/v0.5 六图单列卡片，旧入口兼容，原图与放大保留；本地36项+线上4项/解码2项，备份部署 |

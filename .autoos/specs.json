@@ -1489,6 +1489,31 @@
      ],
      "status": "published",
      "created": "2026-10-12"
+    },
+    {
+     "id": "P767-Report",
+     "title": "OS 主页面融合交付与部署收据",
+     "content": "PLAN-767 双语OS直接阅读与六卡常驻已部署 release20261012-964dd64bb；IP HTTP/域名HTTPS字节校验，原图hash核对，旧站备份保留。来源/规范/复审见 p767 报告组；归档 docs/plans/archive/767-os-overview-inline-cards.md。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-767"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/reports/p767-verification.json",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-767",
+      "revision:2",
+      "commit:964dd64bb",
+      "source-sha256:ba8b26c11cc00ac731bf5916e0f1fc5c3bf02f7dd3f38ea5710ebf91a673374a"
+     ],
+     "created_at": 1791774362,
+     "modified_at": 1791774362,
+     "completed_at": 1791774362
     }
    ]
   },
@@ -5200,8 +5225,8 @@
     },
     {
      "id": "P720-1",
-     "title": "桌面实景展示契约：六图同源四步说明与 OS 总览专题链接（PLAN-720 SD-01）",
-     "content": "PLAN-720 交付落账（website 域现行态投影；canonical 唯源=docs/specs/website/project.md，r1 落地 19bbbdee、repair-1 仅换 01..04 资产，delivery 764508169a）。契约：theme/data/desktop-showcase.ts 单源驱动六张 2026-10-01 原生截图的双语标签/alt/caption/尺寸与四步说明，DesktopShowcase.vue 复用 ScreenshotGallery/EvidenceImage；v0.5 与 AutoOS 专题按无展开窗口浅/深桌面→浅/深 Launcher→三小游戏→多应用工作递进展示全过程，OS 总览仅双主题预览并链接当前语言专题（/autoos/#desktop-showcase）；小组件来自已启动并最小化的应用，静态画面不当作功能/跨端/实时证明；保留完整 PNG、捕获日、尺寸、可键盘放大与原图链接。〔2026-10-01 增补：PLAN-719 增补 os-ai-introduction、PLAN-722/723 增补四应用介绍与 28 Demo 展示三设计（application-introductions/application-demos/demo-capture-catalog），project 卡相应扩展；详见各 designs 条目。〕",
+     "title": "桌面实景展示：六图单源与单列图文卡片（PLAN-720/767）",
+     "content": "PLAN-767 更新 PLAN-720 展示规则：DesktopShowcase 以 EvidenceImage 展示完整六图，OS/v0.5 同为单列逐图卡片，图片在上介绍在下，无截图 tab/两图预览/离页链接。desktop-showcase.ts 原生截图元数据、日期与原始字节保持，场景顺序为浅/深桌面、浅/深 Launcher、游戏多窗口、工作布局；说明承接原四步。ScreenshotGallery 的其他使用者保持。项目其余产品契约见各独立设计条目。",
      "tags": [
       "plan-720",
       "website",
@@ -5210,9 +5235,26 @@
       "docsha:994113f25acd2261",
       "plan-719",
       "plan-722",
-      "plan-723"
+      "plan-723",
+      "plan-767",
+      "revision:2",
+      "commit:964dd64bb",
+      "source-sha256:4f68a7bd4cf4cf356be8c3b3a5f1a85331cf63fe775b9e38aecfd6317914b86f"
      ],
-     "file": "docs/specs/website/project.md"
+     "file": "docs/specs/website/project.md",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-767"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": "website",
+     "created_at": 1791774362,
+     "modified_at": 1791774362,
+     "completed_at": 1791774362
     },
     {
      "id": "P720-2",
@@ -5557,16 +5599,33 @@
     },
     {
      "id": "P719-1",
-     "title": "OS/AI 介绍现行态：LaOS 理念—OS over OS 产品形态—AI+Lang+OS 方向承接（PLAN-719）",
-     "content": "PLAN-719:r2 交付落账（canonical 唯源=docs/specs/website/design/os-ai-introduction.md，delivery dfb2bbb3a）。OS/AI 介绍从零散宣传页重组为三态承接叙事：LaOS 是实现理念、OS over OS 是当前产品形态、AI+Lang+OS 是长期面向人的使用方向，三者承接不替换；宿主组件/独立系统/自有内核边界分明。双语总览+四篇历史/展望长文（AutoOS/AI 各中英）走可索引 Markdown 正文与默认阅读版式；31 公开来源引用核验（p719-public-sources.json）；48 实图全部取自已授权 720 desktop-showcase 体系，旧 v05 原图仅在相关设置/应用说明保留。",
+     "title": "OS/AI 介绍与 OS 融合阅读契约（PLAN-719/767）",
+     "content": "LaOS 理念、OS over OS 当前形态、AI+Lang+OS 方向承接保持。PLAN-767：双语 /os 直接包含桌面、窗口、应用与共享设置，单一 H1/目录；旧 /autoos/ 为 noindex/canonical 同语言/hash 兼容入口。六图单列卡片，原图/日期/键盘放大保留，主页面无需离页。历史/展望长文与来源边界保持。",
      "tags": [
       "plan-719",
       "website",
       "sd-01",
       "commit:dfb2bbb3a",
-      "docsha:93e021ec16ac2fed"
+      "docsha:93e021ec16ac2fed",
+      "plan-767",
+      "revision:2",
+      "commit:964dd64bb",
+      "source-sha256:7ac4aea3b9a5fbc209026b7f6edf5afe2082f947d36af7f4bf74155a9002c2b9"
      ],
-     "file": "docs/specs/website/design/os-ai-introduction.md"
+     "file": "docs/specs/website/design/os-ai-introduction.md",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-767"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "milestone": null,
+     "module": "website",
+     "created_at": 1791774362,
+     "modified_at": 1791774362,
+     "completed_at": 1791774362
     },
     {
      "id": "P722-1",
@@ -7082,6 +7141,31 @@
      "related": [
       "PLAN-763"
      ]
+    },
+    {
+     "id": "P767-T",
+     "title": "OS 页面融合与六卡浏览验证",
+     "content": "构建137.27s，本地36项；四路由×五宽度×双主题40布局访问，32捕获。十原图 hash不变，键盘放大/原图/Esc焦点/目录/兼容链接；线上4项及双语decode2项通过。Category A 无Cargo。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-767"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/reports/p767-verification.json",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-767",
+      "revision:2",
+      "commit:964dd64bb",
+      "source-sha256:ba8b26c11cc00ac731bf5916e0f1fc5c3bf02f7dd3f38ea5710ebf91a673374a"
+     ],
+     "created_at": 1791774362,
+     "modified_at": 1791774362,
+     "completed_at": 1791774362
     }
    ]
   },
@@ -9481,6 +9565,31 @@
      ],
      "status": "published",
      "created": "2026-10-12"
+    },
+    {
+     "id": "P767-R",
+     "title": "PLAN-767 r2 验收复审 pass",
+     "content": "AC-01/02/03 全 pass；reviewed dff0a8c0b，implementation 964dd64bb。同会话从提交和证据重建，非独立上下文；无遗漏/未批准延后或新增债。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-767"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/reports/p767-review.md",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-767",
+      "revision:2",
+      "commit:964dd64bb",
+      "source-sha256:cb8a077207a8fcc08989f7851550df2290f14d37fcca5183cf6a0d6e3f41b14b"
+     ],
+     "created_at": 1791774362,
+     "modified_at": 1791774362,
+     "completed_at": 1791774362
     }
    ]
   }
