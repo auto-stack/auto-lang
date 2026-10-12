@@ -80,35 +80,35 @@ T-01 补充节点/版本化 API 的具体设计收据，随后实现；不改变
 
 | 来源 | 已交付事实 | 仍未交付 |
 |---|---|---|
-| [741](archive/741-ac-hir-native-core.md)，archived 44/44 | Atom HIR → verify → Cranelift COFF/PE，可信门/工具事务强化 | 源码前端及完整语言面 |
-| [743](archive/743-acc-bootstrap-hir-contract.md)，archived 38/38 | ACC 主体/能力清单、阶段/桥/代际合同及严格盘点工具 | 目标态合同所描述的 ACC 实现 |
-| [745](archive/745-ac-source-checked-hir-native.md)，archived 9/9 | 单模块 core-i32 源码 → Checked → PE，74例及独立深输入/帧控制 | 运算扩面、堆数据及 ACC 主体 |
+| [741](741-ac-hir-native-core.md)，archived 44/44 | Atom HIR → verify → Cranelift COFF/PE，可信门/工具事务强化 | 源码前端及完整语言面 |
+| [743](743-acc-bootstrap-hir-contract.md)，archived 38/38 | ACC 主体/能力清单、阶段/桥/代际合同及严格盘点工具 | 目标态合同所描述的 ACC 实现 |
+| [745](745-ac-source-checked-hir-native.md)，archived 9/9 | 单模块 core-i32 源码 → Checked → PE，74例及独立深输入/帧控制 | 运算扩面、堆数据及 ACC 主体 |
 
 当前 canonical Specs 优先于旧战略的实现状态快照：
-[全局总览](../specs/overview.md)、[AC](../specs/auto-ac/project.md)、
-[source-core-i32](../specs/auto-ac/source-core-i32.md)、
-[HIR](../specs/auto-hir/project.md)、[stage-contract](../specs/auto-hir/stage-contract.md)、
-[ACC](../specs/auto-acc/project.md)。战略中的 2026-10-04 队列和 743 报告的
+[全局总览](../../specs/overview.md)、[AC](../../specs/auto-ac/project.md)、
+[source-core-i32](../../specs/auto-ac/source-core-i32.md)、
+[HIR](../../specs/auto-hir/project.md)、[stage-contract](../../specs/auto-hir/stage-contract.md)、
+[ACC](../../specs/auto-acc/project.md)。战略中的 2026-10-04 队列和 743 报告的
 「源码 adapter 未实现」保留为历史，不能用于否认 745 已完成。
 
 ### 4.2 为什么先做标量子合同
 
-[743 候选②](../reports/743-acc-hir-contract/next-work-packages.md) 原包括
+[743 候选②](../../reports/743-acc-hir-contract/next-work-packages.md) 原包括
 str/char/List 和整数/布尔运算，适合拆成独立实施合同，不能一次冻结全部资源/布局规则。
-[str 最高优先与运算需求](../reports/743-acc-hir-contract/inventory.md)是同一关键路径：
+[str 最高优先与运算需求](../../reports/743-acc-hir-contract/inventory.md)是同一关键路径：
 `auto/lib/lexer.at::is_digit/is_alpha/is_alnum/is_hex_digit` 已使用 `>= / <= / == / && / ||`，
 游标更新、切片端点和 parser 条件还需要减法及逻辑否定。
 当前 `hir.rs::BinOp` 只有 AddI32/MulI32/LtI32，source AST 同样仅三种二元操作，
 `main.rs` 只接受一个 SOURCE_PROFILE。因此先建立比较/短路与严格 profile 扩面机制，
 再引入需要所有权和字符索引决策的堆数据，是一个可独立复审的有界切口。
 
-循环语法依据 [for 教程](../../website/docs/tutorials/for-loop-guide.md) 的条件循环形式
+循环语法依据 [for 教程](../../../website/docs/tutorials/for-loop-guide.md) 的条件循环形式
 `for condition { ... }`。主 parser 的 `for_stmt` 已有 `Iter::Cond`；旧
 `while_stmt` 也降至此形式，但兼容实现不是新源码 profile 的语法依据。
 745 原型只接 while、排除 for 是已交付 profile 的局限，本计划补条件 for，
 不接旧 AST，不把范围循环、集合遍历和初始化/更新子句一起纳入。
 
-[str/char 语义冲突](../reports/745-source-core-i32/numeric-boundary.md)依然存在：
+[str/char 语义冲突](../../reports/745-source-core-i32/numeric-boundary.md)依然存在：
 VM builtin 的 char_at 返回 str、auto-lib 的表面返回 int、Value 保存 Unicode char。
 本计划不借补比较操作裁定这些冲突；完整 int 宽度也保持 unknown。
 取证固定于 [inputs.json](attachments/767/inputs.json) 的完整 SHA256 与主检出 HEAD；
@@ -116,10 +116,10 @@ VM builtin 的 char_at 返回 str、auto-lib 的表面返回 int、Value 保存 
 
 ### 4.3 战略对应及后续队列
 
-依据[后端演进 §3/§7.3](../design/strategy/auto-native-backend-evolution.md)、
-[AC 子集 §2/§3](../design/strategy/auto-ac-subset-and-target.md)、
-[自举合同](../design/strategy/auto-acc-bootstrap-contract.md)和
-[HIR 求值顺序](../design/strategy/auto-hir-design.md)。v0.6 继续使用 Cranelift。
+依据[后端演进 §3/§7.3](../../design/strategy/auto-native-backend-evolution.md)、
+[AC 子集 §2/§3](../../design/strategy/auto-ac-subset-and-target.md)、
+[自举合同](../../design/strategy/auto-acc-bootstrap-contract.md)和
+[HIR 求值顺序](../../design/strategy/auto-hir-design.md)。v0.6 继续使用 Cranelift。
 
 | 工作包（除767外均未取号、未执行） | 独立成果 | 前置/归属 |
 |---|---|---|
@@ -352,7 +352,7 @@ T-06），以及已有 `scripts/verify-ac-741.ps1` / `scripts/verify-ac-source-7
 [✅ 2026-10-12 review 修复轮] 见 §9 重审记录（final pass @4cc464502）。
 [历史 2026-10-12 review] 原实施会话 final pass 见 §9；已由本次 Codex 独立复审 needs_fix 取代，不能作为当前合入凭证。
 
-[重新打开 2026-10-12] T-01 修正 R3 设计公式；T-02 修复 R1 三重身份和 R2 签名引用可信门；T-06 将反例纳入永久测试并重跑受影响门禁；T-07 重新绑定修正收据/SD；T-08 对修复提交独立复审。T-03/04/05 的已验证成果保留，不能据此豁免修复后受影响路径的重新验证。详细证据见 [Codex 复审报告](attachments/767/review-codex-r2.md)。
+[重新打开 2026-10-12] T-01 修正 R3 设计公式；T-02 修复 R1 三重身份和 R2 签名引用可信门；T-06 将反例纳入永久测试并重跑受影响门禁；T-07 重新绑定修正收据/SD；T-08 对修复提交独立复审。T-03/04/05 的已验证成果保留，不能据此豁免修复后受影响路径的重新验证。详细证据见 [Codex 复审报告](../attachments/767/review-codex-r2.md)。
 
 | [x] | T-09 | merge | T-08 pass及合入授权 | /auto-plan:merge：真实落地、SD/导航/人工层审计、ledger/index、批回归到期判定、实际archive链接/身份/计数；fresh wt-guard clean后清原树/branch/空组，保留恢复ref/证据 | 09 |
 
@@ -394,7 +394,7 @@ closeout实际完成后archived 9/9。不得预勾复审/清理或把T-01设计�
 - dependency_revisions: Cranelift 0.126 lock 不变；rustc 1.98.1；test-support 静态库
   sha256 `70aeb8c8...4e124`；被测二进制 sha256 `16a10c15...84416f`。
 - task_ids: T-01..T-07 全 [x]，证据见各任务行与
-  [verification.md](../reports/767-scalar-i32/verification.md)（V-01..V-12 索引）。
+  [verification.md](../../reports/767-scalar-i32/verification.md)（V-01..V-12 索引）。
 - evidence: 完整 ac-core 143/0；verify-ac-scalar-767.ps1 14 步 45 例 PASS；
   verify-ac-741.ps1 -SkipMainGates 全过；verify-ac-source-745.ps1 13 步 74 例
   PASS；acc_inventory --check --require-decisions CHECK-OK；fmt clean、
@@ -438,7 +438,7 @@ closeout实际完成后archived 9/9。不得预勾复审/清理或把T-01设计�
   探针/门禁证据；SD-02..04 的四个新诊断码全部被实际触发验证；SD-05 只追加有限
   域结论）；4 个 modify 目标现存、1 个 add 目标待 merge 创建；canonical/ledger
   零改动 ✓。证据包哈希随 verification.md/proposed-spec-delta.md 落盘于受审提交。
-- evidence: 见 [verification.md](../reports/767-scalar-i32/verification.md) 与本记录
+- evidence: 见 [verification.md](../../reports/767-scalar-i32/verification.md) 与本记录
   探针清单；探针输入为临时目录制品，oracle 与命令已在记录中可复述。
 - next: T-09 `/auto-plan:merge`（需合入授权；到时按到期判定批回归）。
 
@@ -448,13 +448,13 @@ closeout实际完成后archived 9/9。不得预勾复审/清理或把T-01设计�
 - worktree_path: `D:/autostack/.wt/lang-767/auto-lang`；branch: `plan-767-dev`；入口/结束均 clean，HEAD 未变化。
 - reviewed_commit: `033642a27d7404dee5797b195a9b7c680fe6ece5`；base_commit: `a9225e8de6e13cc0bd0c519e7c4b380c7276ebfa`。
 - dependency_revisions / spec_inputs: Cranelift 0.126，锁文件未变；实际 Cargo/支持库/二进制/rlib、五份 canonical Spec、两份 schema 及门禁 SHA-256 见 [输入指纹](attachments/767/review-codex-inputs.tsv)。当前 CLI binary SHA-256 `2d81403a9cda6980ac9fb55e376960d76be54987177a9862d9b4fb9ddb1a1c28`，不冒用上轮不同 hash。
-- contract_revision: 2；§5..§7 [冻结合同](attachments/767/review-codex-contract-r2.md) SHA-256 `f9ba251f8a6d7f19e30bc9d26bae453fe11ea5ddd90a29fdd0257236cbbc9204`。没有修改成功标准或扩张合同。
-- proposed_spec_delta: [受审 SD-01..05 冻结副本](attachments/767/review-codex-proposed-spec-delta.md)，SHA-256 `fd7cfd598c5ca540f7bc4518621b9e964fdb1622c32c0102c826993680c943e6`；SD-02/03/04 的完整身份/可信门声明需修 R1/R2 后重新绑定，当前不批准沉淀。SD-01 数值/短路/条件 for 与已观测实现一致，SD-05 边界仍成立；canonical/ledger 未发布。
-- acceptance_results: AC-01 fail（R1）；AC-02 pass；AC-03 pass；AC-04 partial（R2）；AC-05 fail（R1/R2）；AC-06 partial（R2）；AC-07 partial（R3/受影响 SD）；AC-08 needs_fix；AC-09 pending merge-owned。详细逐条证据见 [最终报告](attachments/767/review-codex-r2.md) §4。
+- contract_revision: 2；§5..§7 [冻结合同](../attachments/767/review-codex-contract-r2.md) SHA-256 `f9ba251f8a6d7f19e30bc9d26bae453fe11ea5ddd90a29fdd0257236cbbc9204`。没有修改成功标准或扩张合同。
+- proposed_spec_delta: [受审 SD-01..05 冻结副本](../attachments/767/review-codex-proposed-spec-delta.md)，SHA-256 `fd7cfd598c5ca540f7bc4518621b9e964fdb1622c32c0102c826993680c943e6`；SD-02/03/04 的完整身份/可信门声明需修 R1/R2 后重新绑定，当前不批准沉淀。SD-01 数值/短路/条件 for 与已观测实现一致，SD-05 边界仍成立；canonical/ledger 未发布。
+- acceptance_results: AC-01 fail（R1）；AC-02 pass；AC-03 pass；AC-04 partial（R2）；AC-05 fail（R1/R2）；AC-06 partial（R2）；AC-07 partial（R3/受影响 SD）；AC-08 needs_fix；AC-09 pending merge-owned。详细逐条证据见 [最终报告](../attachments/767/review-codex-r2.md) §4。
 - gates_actual: 完整 ac-core 143 pass / 0 fail（另 1 ignored 不计通过）；767 门禁 14 步 45 例 pass；741 `-SkipMainGates` 13 步 pass；745 13 步 74 例 pass；acc_inventory 严格盘点 CHECK-OK。fmt / locked all-targets 零 warning。零 crates/root Cargo/config diff，按合同未运行根 t/tv/docs_gen。
-- independent_observations: 138 项精确整数断言真实 PE 通过；嵌套短路、命名实参、条件 for/continue 精确 stderr `abaabaabababaabaaba` 通过。持久输入、oracle、受控执行脚本及 hash 见 [报告](attachments/767/review-codex-r2.md) §1 与 [运行结果](attachments/767/review-codex-native-results.tsv)。
+- independent_observations: 138 项精确整数断言真实 PE 通过；嵌套短路、命名实参、条件 for/continue 精确 stderr `abaabaabababaabaaba` 通过。持久输入、oracle、受控执行脚本及 hash 见 [报告](../attachments/767/review-codex-r2.md) §1 与 [运行结果](attachments/767/review-codex-native-results.tsv)。
 - findings: **P767-R1 / P1**：未知 schema/revision/profile 被 `Descriptor::domain()` 归为 Core，程序化 bind/verify 与 canonical writer 可接受未知身份；六个反例复现。**P767-R2 / P1**：函数签名 param/result 的 TypeId(9999) 通过 verify_scalar 成为 Checked，native 两次越界 panic。**P767-R3 / P2**：设计收据减法护栏公式错误，实际后端公式正确。反例源与复现入口见 [探针](attachments/767/review-codex-probes.rs) 及报告 §2/3；8 个控制通过，8 个合同失败观测，exit 1。
-- omission/defer/workaround_audit: 未发现额外生产接线/目标关闭；R1/R2 是当前认领的程序化可信门遗漏，R3 是设计收口遗漏，均不能以预存/CLI 已防护/挂债豁免。已登记 [KNOWN-DEBT-AND-RISKS](KNOWN-DEBT-AND-RISKS.md) P767-R1..R3 为阻塞修复候选；本次不修实现、不改 oracle、不吞 panic。
+- omission/defer/workaround_audit: 未发现额外生产接线/目标关闭；R1/R2 是当前认领的程序化可信门遗漏，R3 是设计收口遗漏，均不能以预存/CLI 已防护/挂债豁免。已登记 [KNOWN-DEBT-AND-RISKS](../KNOWN-DEBT-AND-RISKS.md) P767-R1..R3 为阻塞修复候选；本次不修实现、不改 oracle、不吞 panic。
 - current_state: `executing`，current_step=3/9，T-01/02/06/07/08 重新打开；T-03/04/05 保留已验证完成记录。历史 pass 保留但不再代表当前结论。
 - pending_closeout_gates: T-09 实际合入、Spec/ledger/index、批回归到期判定、归档与 guarded 清理仍未执行；不得依据历史 pass 推进。
 - next_responsible_role: `/auto-plan:work` 在同一工作树修复、补永久反例并提交，再 `/auto-plan:review` 对新 HEAD 重放反例/正控及受影响门禁；无合同重规划需求。
@@ -525,10 +525,10 @@ closeout实际完成后archived 9/9。不得预勾复审/清理或把T-01设计�
 - worktree_path: `D:/autostack/.wt/lang-767/auto-lang`；branch: `plan-767-dev`；入口/结束均 clean，HEAD 一致。
 - reviewed_commit: `4cc4645021f029459a3b870c34a23eb16bc4ce59`；base_commit: `a9225e8de6e13cc0bd0c519e7c4b380c7276ebfa`。
 - dependency_revisions / spec_inputs: Cranelift 0.126.2、rustc 1.98.1；锁、schema、canonical Specs、门禁未变；新鲜输入/产品 hash 见 [修复轮指纹](attachments/767/review-codex-repair-inputs.tsv)。当前 CLI SHA-256 `7c845525027acf977bafc41407c807ba86b1383bf49fc4e5b2b76eac736e6fdf`。
-- contract_revision: 2，当前 §5..§7 与原冻结合同内容一致；原 10 份冻结 artifact hash 保持。SD-01..05 [新冻结提案](attachments/767/review-codex-repair-spec-delta.md) SHA-256 `312462d19d4c8f03641ccb9ef0605ed6191c0f4eb69db7624bdd2ee2c541d491`；SD-02/03 与修复后的精确身份/签名边界逐条一致，准予 merge 沉淀，尚未实际发布。
+- contract_revision: 2，当前 §5..§7 与原冻结合同内容一致；原 10 份冻结 artifact hash 保持。SD-01..05 [新冻结提案](../attachments/767/review-codex-repair-spec-delta.md) SHA-256 `312462d19d4c8f03641ccb9ef0605ed6191c0f4eb69db7624bdd2ee2c541d491`；SD-02/03 与修复后的精确身份/签名边界逐条一致，准予 merge 沉淀，尚未实际发布。
 - acceptance_results: AC-01..08 pass；AC-09 pending merge-owned。原反例在新 rlib 上重编译后 16/16 PASS、CONTRACT_FAILURES=0；新不变量 probe 48/48 PASS（双域身份组合、全部签名槽、未使用签名、types.len/u32::MAX、body 类型入口）；整数 138 断言和精确短路 `abaabaabababaabaaba` 原样重放 PASS。
 - gates_actual: ac-core 145 pass / 0 fail（1 ignored 未计通过）；767 14 步45例、741 13步、745 13步74例全部 PASS；盘点 CHECK-OK；fmt / locked all-targets 零 warning。无 crates/root Cargo/config/auto-lib diff，未运行根档。
-- findings / omission_defer_workaround_audit: P767-R1/R2/R3 closed，已在 KNOWN-DEBT 销号；无新合同内缺陷、未授权延后或目标关闭。完整不变量审计、逐项 AC/SD 与实际命令结果见 [独立修复重审报告](attachments/767/review-codex-repair-4cc464502.md)。
+- findings / omission_defer_workaround_audit: P767-R1/R2/R3 closed，已在 KNOWN-DEBT 销号；无新合同内缺陷、未授权延后或目标关闭。完整不变量审计、逐项 AC/SD 与实际命令结果见 [独立修复重审报告](../attachments/767/review-codex-repair-4cc464502.md)。
 - current_state: `reviewed`，8/9；T-01..08 完成，T-09 未执行。
 - pending_closeout_gates: 合入、SD/导航/ledger/index、批回归到期判定、归档与 wt-guard clean 后清理/收据；本轮未合入、归档或清理。
 - next_responsible_role: 获合入授权后 `/auto-plan:merge`。若实现/语义输入再变，须重新绑定新基线复审。
@@ -559,7 +559,11 @@ closeout实际完成后archived 9/9。不得预勾复审/清理或把T-01设计�
   代码合并触发时在主检出单实例执行。
 - archived: 本文件 git mv 至 docs/plans/archive/ 并置 status: archived；
   任务计数 9/9；spec-sync 回写记录见文末。
-- cleaned: 待清理完成后于下方补记（若本行仍在则清理未收口）。
+- cleaned: fresh wt-guard clean（无 reparse point）→ `git worktree remove
+  D:/autostack/.wt/lang-767/auto-lang` + `git branch -d plan-767-dev`（was
+  7086eec8f，已含于 v0.6-dev）→ 组目录 `D:/autostack/.wt/lang-767` 已删；
+  worktree 列表零残留。归档文件相对链接已按 archive/ 父目录改写并全量解析
+  复验（0 断链）。任务计数 9/9。
 
 ## 10. 待澄清事项
 
