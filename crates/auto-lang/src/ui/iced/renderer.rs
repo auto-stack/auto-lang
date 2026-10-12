@@ -7894,6 +7894,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 on_play_state,
                 on_ended,
                 on_media_error,
+                media_key,
                 style,
             } => {
                 // PLAN-721 T-19：build-time trace——T-19 定案最后一轴。同一
@@ -7922,11 +7923,29 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     on_play_state,
                     on_ended,
                     on_media_error,
+                    media_key,
                     style,
                 )
             }
         }
     }
+}
+
+/// 当前视图构建的媒体会话域（`dynamic_view_impl` 进入时置 app_id，离开
+/// 恢复）——`video` 的 `key:` 属性与之合成引擎稳定键（[`crate::ui::mpv::widget::stable_runtime_key`]），
+/// 同会话的 mini/main 视图面与面板反复开关都落到同一 mpv 运行时。
+thread_local! {
+    static MEDIA_VIEW_SCOPE: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
+/// 会话域内执行一次视图构建（作用域守卫：嵌套/异常路径都恢复前值）。
+pub(crate) fn with_media_view_scope<R>(ns: u64, f: impl FnOnce() -> R) -> R {
+    MEDIA_VIEW_SCOPE.with(|c| {
+        let prev = c.replace(Some(ns));
+        let out = f();
+        c.set(prev);
+        out
+    })
 }
 
 /// `video` 的渲染面（PLAN-617 T-19）。
@@ -7951,6 +7970,7 @@ fn render_video<M: Clone + Debug + 'static>(
     on_play_state: Option<crate::ui::view::MediaEventHandler<M>>,
     on_ended: Option<M>,
     on_media_error: Option<crate::ui::view::MediaEventHandler<M>>,
+    media_key: Option<String>,
     style: Option<Style>,
 ) -> iced::Element<'static, M> {
     use iced::Length;
@@ -7960,6 +7980,13 @@ fn render_video<M: Clone + Debug + 'static>(
         use crate::ui::iced::video_uplink::VideoUplink;
         use crate::ui::mpv::widget::{VideoProgram, VideoWidgetProps};
         use crate::ui::mpv::VideoContractDown;
+
+        // 稳定运行时键：`key:` 声明 + 当前会话域合成（域缺席 = ns 0——
+        // 面板/桌面 chrome 等非 app 视图构建，键只落 key 串本身）。
+        let runtime_key = media_key.map(|k| {
+            let ns = MEDIA_VIEW_SCOPE.with(|c| c.get()).unwrap_or(0);
+            crate::ui::mpv::widget::stable_runtime_key(ns, &k)
+        });
 
         // 尺寸：交给父容器（布局说了算）；widget 自身撑满可用空间。
         // PLAN-721 T-19：下行世代打戳——每次视图构建（convert）取新 epoch，
@@ -7980,13 +8007,15 @@ fn render_video<M: Clone + Debug + 'static>(
             },
             width: 0,
             height: 0,
-        });
+        })
+        .with_runtime_key(runtime_key);
         let shader = iced::widget::shader::Shader::new(program)
             .width(Length::Fill)
             .height(Length::Fill);
         // PLAN-712 T-04: 事件泵 wrapper 直接包 shader（children[0] 即 shader
         // 的 Tree,泵靠它定位运行时 id）——黑底 letterbox 容器包在 wrapper 外。
         let inner: iced::Element<'static, M> = VideoUplink::new(shader)
+            .with_runtime_key(runtime_key)
             .on_time_update(on_time_update)
             .on_loaded_metadata(on_loaded_metadata)
             .on_play_state(on_play_state)
@@ -8026,6 +8055,7 @@ fn render_video<M: Clone + Debug + 'static>(
             muted,
             rate,
             style,
+            media_key,
             on_time_update,
             on_loaded_metadata,
             on_play_state,
@@ -9438,6 +9468,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             on_play_state,
             on_ended,
             on_media_error,
+            media_key,
             style,
         } => AbstractView::Video {
             src,
@@ -9468,6 +9499,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                     IcedMessage::from_dynamic(&cb.call(p))
                 })
             }),
+            media_key,
             style,
         },
 
@@ -14000,6 +14032,11 @@ fn dashboard_hatched_tick_allowed(
     if !host.face_fields.contains_key(&app_id.0) {
         return true; // 非孵化会话：正常 app，Tick 恒订。
     }
+    // 升格窗在场 → 窗驱动的会话，Tick 恒订（face 垫片仍在——孵化出身
+    // 标记不拆；2026-10-10 升格/降格语义配套，否则升格窗随面板隐藏冻结）。
+    if host.wm.win_of_app(app_id).is_some() {
+        return true;
+    }
     // 面板隐藏 → face 不渲染 → 停订。
     if !state.dashboard_visible() {
         return false;
@@ -14143,7 +14180,9 @@ fn collect_dashboard_faces(
         } else if state.hatched_mini_of(&id).is_some() {
             "hatched"
         } else {
-            // ②静默孵化臂（D4）：无后端依赖才孵化；有后端 = 占位卡。
+            // ②静默孵化臂（2026-10-10 用户裁定 F-R3 翻案）：后端 app 随孵化
+            // 同链供给（hatch_mini_app 内 mirror launch 供给链）——组件与
+            // 窗解耦独立工作；仅 exe 形态与孵化失败落占位卡。
             match state.hatch_mini_app(&id) {
                 Ok(Some(app_id)) => {
                     state.register_hatched_mini(&id, app_id);
@@ -16625,6 +16664,17 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
         show_launch_unavailable(state, name);
         return;
     }
+    // 2026-10-10 用户裁定（小组件独立于 app 窗配套）：已有孵化 mini 会话
+    // → 升格开窗（face/窗同会话零分家，`__dashboard_open` 臂同语义）——
+    // 不再 launch 出第二会话（状态分家 + 后端计数翻倍）。无孵化 → 照常
+    // launch（WinAct 面板/桌面图标/launcher 三入口同此汇集）。
+    if let Some(hatched) = state.hatched_mini_of(name) {
+        if let Err(err) = state.open_window_for_session(name, hatched) {
+            eprintln!("[session] launch promote failed: {err}");
+            return;
+        }
+        return;
+    }
     match state.launch_app(name) {
         // PLAN-002 N3（用户复核裁定 2026-09-09）：启动成功不再发通知——
         // toast 层逐动态视图面各渲染一份（shell + 每 app 窗，见 412 toast
@@ -17988,12 +18038,19 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                     // PLAN-721 T-4/T-DOCS-1：验收通道任意内嵌 app 直呼——
                     // registry_id 反查（settings 臂同款机制泛化；launch 后窗
                     // 条目带注册名）。特权名先行匹配不受遮蔽（上方臂优先）。
-                    which => state.host.as_ref().and_then(|h| {
-                        h.wm.wins
-                            .iter()
-                            .find(|(_, v)| v.registry_id.as_deref() == Some(which))
-                            .map(|(_, v)| v.app)
-                    }),
+                    // 2026-10-10：孵化 mini 会话无窗——registry 反查落空时回退
+                    // hatched_minis（小组件成为一等验收靶面：独立播控/取数
+                    // 直呼）。
+                    which => state
+                        .host
+                        .as_ref()
+                        .and_then(|h| {
+                            h.wm.wins
+                                .iter()
+                                .find(|(_, v)| v.registry_id.as_deref() == Some(which))
+                                .map(|(_, v)| v.app)
+                        })
+                        .or_else(|| state.hatched_mini_of(which)),
                 };
                 let Some(app_id) = app_id else { continue };
                 let Some(sess) = state.apps.get_mut(&app_id) else {
@@ -24084,10 +24141,24 @@ fn run_session(
                     // shell = 空桌面合法态（任务栏存活，等待再启动；463）。
                     WmCommand::Close(wid) => {
                         if let Some(app) = state.wm_remove_win(wid) {
-                            state.apps.remove(&app);
-                            // PLAN-037 T-04：后端供给随窗释放（计数归零即
-                            // 卸载；标题栏 × 的 WM 主关闭路径）。
-                            state.release_backend(app);
+                            // 2026-10-10 用户裁定（小组件独立于 app 窗配套）：
+                            // 孵化 mini 会话的升格窗关闭 = **降格**不杀——窗
+                            // 摘除即降格回 face 垫片渲染（split_ref_face 无窗
+                            // 臂自动回落），会话与后端供给原样常驻（小组件
+                            // 继续活：音乐不因关窗停播、Todo 计数照旧）。
+                            // hatched_minis 反查命中才降格（孵化会话无窗时
+                            // 不可能进本臂；普通 launch 窗照旧随窗移除 +
+                            // 释放后端）。
+                            let demote =
+                                state.desktop.hatched_minis.values().any(|a| *a == app);
+                            if demote {
+                                // 仅摘窗（wm_remove_win 已做），会话保留。
+                            } else {
+                                state.apps.remove(&app);
+                                // PLAN-037 T-04：后端供给随窗释放（计数归零即
+                                // 卸载；标题栏 × 的 WM 主关闭路径）。
+                                state.release_backend(app);
+                            }
                         }
                         if state.desktop.shell_app.is_none()
                             && state
@@ -25566,6 +25637,19 @@ fn round_bottom_root_default<M: Clone + std::fmt::Debug>(view: &mut crate::ui::v
 }
 
 fn dynamic_view_impl(
+    state: crate::ui::session::SessionViewRef<'_>,
+    sync_mcp: bool,
+    round_bottom: bool,
+) -> iced::Element<'_, IcedMessage> {
+    // 媒体会话域（2026-10-10 小组件独立播放配套）：本次视图构建内 `video`
+    // `key:` 与 app_id 合成引擎稳定键——mini face 与主窗两条构建路同域，
+    // 共享同一 mpv 运行时（升格/降格无缝交接）。
+    with_media_view_scope(state.app_id.0, || {
+        dynamic_view_impl_inner(state, sync_mcp, round_bottom)
+    })
+}
+
+fn dynamic_view_impl_inner(
     state: crate::ui::session::SessionViewRef<'_>,
     sync_mcp: bool,
     round_bottom: bool,

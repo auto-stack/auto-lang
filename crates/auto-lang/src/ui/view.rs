@@ -1090,6 +1090,11 @@ pub enum View<M: Clone + Debug> {
         on_ended: Option<M>,
         /// `onmediaerror`：加载/解码失败（附文案）。
         on_media_error: Option<MediaEventHandler<M>>,
+        /// 媒体引擎稳定键（`key:` 属性；2026-10-10 小组件独立播放配套）——
+        /// 同会话内同 key 的 `video` 共享一个 mpv 运行时：mini/main 两个视图
+        /// 面、面板反复开关的卸载/重挂都落到同一引擎（无缝交接、零双声）。
+        /// `None` = 旧行为（每元素实例独立引擎）。
+        media_key: Option<String>,
         style: Option<Style>,
     },
 
@@ -2825,6 +2830,7 @@ impl<M: Clone + Debug> View<M> {
                 on_play_state,
                 on_ended,
                 on_media_error,
+                media_key,
                 style,
             } => View::Video {
                 src,
@@ -2851,6 +2857,7 @@ impl<M: Clone + Debug> View<M> {
                     let f = std::sync::Arc::clone(f);
                     MediaEventHandler::new(move |p| f(cb.call(p)))
                 }),
+                media_key,
                 style,
             },
             View::ImageSurface {

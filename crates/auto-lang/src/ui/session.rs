@@ -3400,6 +3400,9 @@ impl DesktopSession {
                 v.registry_id = Some(name.to_string());
             }
         }
+        // 升格诊断行（2026-10-10 小组件独立裁定配套）：孵化→窗同会话
+        // 交接的可观测面（实机冒烟按此对账 wid；零分家 = 无 launch 行）。
+        eprintln!("[session] promote `{name}` app={:?} → wid {:?}", app_id.0, wid.0);
         if layout != LayoutMode::Free {
             self.wm_set_layout(layout);
         }
@@ -6117,11 +6120,19 @@ impl DesktopSession {
 
     /// PLAN-024：静默孵化 mini 会话（windowless）——`build_dynamic_component`
     /// + `allocate_app` 照常，但不创建虚拟窗、不参与 z 序，仅供 face 拆借。
-    /// 孵化条件（D4）：注册表条目存在 + 源含 `view mini` 声明（grep 级
-    /// 探测，§5.3 两级确认的启动扫描半）+ 无后端依赖（pac 无 daemon 声明
-    /// 且无外部 back 根）+ 非 outproc/exe 形态。孵化会话常驻（面板关闭
+    /// 孵化条件：注册表条目存在 + 源含 `view mini` 声明（grep 级探测，§5.3
+    /// 两级确认的启动扫描半）+ 非 outproc/exe 形态（exe App 天然 outproc，
+    /// Plan 020 G1——无窗孵化不可达，仍占位卡）。孵化会话常驻（面板关闭
     /// 不杀；notification_app 槽先例）。
     /// 返回已存在的孵化会话 id（幂等）或新建的 id；条件不满足返回 None。
+    ///
+    /// 2026-10-10 用户裁定（PLAN-037 R1 F-R3 翻案）：小组件独立于 app 窗——
+    /// 后端依赖 app 随孵化**同链供给**（launch_app 四臂全量镜像：① daemon
+    /// 检活/spawn + env 注入 → Plan 501 外部 back cdylib → ②③ proxy 懒启
+    /// + 装载 + 字面量前缀化（含模块 overlay guard）→ 计数/归属绑定）。
+    /// 供给计数归孵化会话持有：升格开窗共享不重复装载（back_refs 计数
+    /// 语义原样），窗关降格不释放（小组件后端常温）。此后占位卡只剩
+    /// exe 形态与孵化失败两种来源。
     pub fn hatch_mini_app(&mut self, name: &str) -> Result<Option<AppId>, String> {
         // 幂等：已孵化直接复用。
         if let Some(existing) = self.hatched_mini_of(name) {
@@ -6139,24 +6150,63 @@ impl DesktopSession {
         if !spec.code.contains("view mini") {
             return Ok(None);
         }
-        // 静默孵化仅限无后端依赖（D4：有后端 app 未运行显示占位卡）。
-        // PLAN-037 R1 真机复审（F-R3）：后端声明面扩至供给决策树全域——
-        // media_root（capability 臂）/ back 特形（session 臂）任一命中即
-        // 占位卡，不孵化（mini 走供给的档位留作后续裁定，复审可翻案）；
-        // 裁决经 plan_backend 单点承载（G-2 单一裁决点语义）。
-        if spec.daemon.is_some() || spec.back_root.is_some() || spec.exe.is_some() {
+        // exe 形态不孵化（outproc 无窗会话不可达——占位卡保留唯一逃逸口）。
+        if spec.exe.is_some() {
             return Ok(None);
         }
-        if !crate::ui::back_provision::plan_backend(&spec, name).is_empty() {
-            return Ok(None);
+        // 后端供给链与 launch_app 同序同源（daemon → 外部 back → proxy
+        // 决策树）；失败降级语义两链一致（daemon Offline 不阻断、proxy
+        // 懒启失败 degrade 继续孵化——前端拿可诊断的连接错误）。
+        self.ensure_daemon_if_declared(&spec);
+        if let Some(back_root) = &spec.back_root {
+            if back_root.is_dir() {
+                crate::set_external_back_root(back_root.clone());
+                match load_back_cdylib(back_root) {
+                    Ok(lib) => self.desktop.back_keepalive = Some(lib),
+                    Err(err) => eprintln!(
+                        "[session] external backend cdylib load skipped (stubs in effect): {err}"
+                    ),
+                }
+            }
         }
-        let comp = crate::build_dynamic_component(&spec.code, spec.source_path.as_deref())
-            .map_err(|e| format!("hatch `{name}` failed: {e}"))?;
-        // 面无 mini（文本误报/只有主视图）→ 丢弃，不占会话槽。
+        let provision_root = self.ensure_backend(&spec, name);
+        let provisioned_code = match &provision_root {
+            Some(root) => crate::ui::back_provision::prefix_api_url_literals(&spec.code, root, name),
+            None => spec.code.clone(),
+        };
+        let _prefix_guard = provision_root.as_ref().and_then(|root| {
+            let front_dir = spec
+                .source_path
+                .as_deref()
+                .and_then(|p| std::path::Path::new(p).parent())
+                .map(|d| d.to_path_buf())?;
+            Some(crate::back_prefix::set_guard(crate::back_prefix::PrefixSpec {
+                front_dir,
+                root: root.clone(),
+                app_key: name.to_string(),
+            }))
+        });
+        let comp = crate::build_dynamic_component(&provisioned_code, spec.source_path.as_deref())
+            .map_err(|e| {
+                // 编译失败回滚供给计数（app 未诞生无归属可 release——归零
+                // 即卸载，防计数泄漏；launch 臂同律）。
+                if provision_root.is_some() {
+                    self.release_app_key(name);
+                }
+                format!("hatch `{name}` failed: {e}")
+            })?;
+        // 面无 mini（文本误报/只有主视图）→ 丢弃，不占会话槽（供给计数
+        // 同样回滚）。
         if comp.named_views().is_empty() {
+            if provision_root.is_some() {
+                self.release_app_key(name);
+            }
             return Ok(None);
         }
         let app_id = self.allocate_app(comp);
+        if provision_root.is_some() {
+            self.bind_app_backend(app_id, name);
+        }
         if let Some(host) = self.host.as_mut() {
             host.face_fields.insert(app_id.0, ShellFields::default());
         }
@@ -7073,12 +7123,12 @@ mod tests {
         assert_eq!(face.view_name, Some("mini"));
     }
 
-    /// PLAN-037 R1 真机复审（F-R3）：带后端供给声明的 app 不静默孵化——
-    /// dashboard 音乐卡（020 形态）曲库 0 根因 = hatch 绕过供给决策树；
-    /// 门槛扩至 plan_backend 全域（media_root capability / back 特形
-    /// session）→ 占位卡。无后端同形 app 照常孵化。
+    /// 2026-10-10 用户裁定（PLAN-037 R1 F-R3 翻案）：带后端供给声明的 app
+    /// 随孵化同链供给——media_root（capability 臂）命中时孵化成功 + proxy
+    /// 懒启 + 归属绑定在册（face 可独立取数，小组件不依赖 app 窗）；
+    /// exe 形态仍占位卡（outproc 无窗不可达）。无后端同形 app 照常孵化。
     #[test]
-    fn hatch_gate_excludes_backend_provisioned_apps() {
+    fn hatch_provisions_backend_apps_and_still_refuses_exe() {
         const MINI_SRC: &str = "widget Probe {\n    view {\n        text \"x\"\n    }\n    view mini {\n        text \"m\"\n    }\n}\n";
         let mk_resolver = |media_root: bool| {
             std::sync::Arc::new(move |name: &str| {
@@ -7100,16 +7150,38 @@ mod tests {
         ds.register_hatched_mini("probe-app", hatched.unwrap());
         assert!(ds.hatched_mini_of("probe-app").is_some());
 
-        // media_root 声明（020 形态）：占位卡不孵化（plan_backend ②臂命中）。
+        // media_root 声明（020 形态）：孵化 + 后端随供给（proxy 懒启 +
+        // 路由装载 + AppId 归属绑定——小组件独立取数面）。
         let mut ds2 = DesktopSession::__test_session();
         ds2.__test_open_desktop();
         ds2.desktop.app_resolver = Some(mk_resolver(true));
-        assert_eq!(
-            ds2.hatch_mini_app("probe-app").expect("hatch ok"),
-            None,
-            "带后端供给声明 → 占位卡（不孵化）"
+        let provisioned = ds2.hatch_mini_app("probe-app").expect("hatch ok");
+        let app_id = provisioned.expect("带后端 mini 随供给孵化");
+        assert!(ds2.desktop.back_proxy.is_some(), "proxy 懒启（供给在册）");
+        assert!(
+            ds2.desktop.back_refs.get("probe-app").is_some_and(|c| *c == 1),
+            "供给计数归孵化会话（升格共享/关窗不释放的底座）"
         );
-        assert!(ds2.hatched_mini_of("probe-app").is_none());
+        assert!(
+            ds2.desktop.app_back.get(&app_id).map(|k| k.as_str()) == Some("probe-app"),
+            "归属绑定（face 会话持有后端）"
+        );
+
+        // exe 形态：仍占位卡（outproc 无窗孵化不可达——逃逸口保留）。
+        let mut ds3 = DesktopSession::__test_session();
+        ds3.__test_open_desktop();
+        ds3.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "probe-app").then(|| LaunchSpec {
+                code: MINI_SRC.to_string(),
+                exe: Some("target/release/probe.exe".into()),
+                ..Default::default()
+            })
+        }));
+        assert_eq!(
+            ds3.hatch_mini_app("probe-app").expect("hatch ok"),
+            None,
+            "exe 形态 → 占位卡（不孵化）"
+        );
     }
 
     #[test]

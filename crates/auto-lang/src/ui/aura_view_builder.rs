@@ -9350,6 +9350,11 @@ impl<'a> AuraViewBuilder<'a> {
             .extract_f64_with(props, "rate", bindings)
             .filter(|r| *r > 0.0)
             .unwrap_or(1.0);
+        // 媒体引擎稳定键（`key:`；2026-10-10 小组件独立播放配套）——字面量
+        // 即可（会话域由宿主渲染期 thread-local 注入，作者无需感知）。
+        let media_key = self
+            .extract_string_with(props, "key", bindings)
+            .filter(|s| !s.is_empty());
         // 显示名：优先 title，其次 label，最后退回源路径的末段（降级文案要用真实名字）。
         let label = self
             .extract_string_with(props, "title", bindings)
@@ -9400,6 +9405,7 @@ impl<'a> AuraViewBuilder<'a> {
                     args: Vec::new(),
                 }
             }),
+            media_key,
             style,
         }
     }

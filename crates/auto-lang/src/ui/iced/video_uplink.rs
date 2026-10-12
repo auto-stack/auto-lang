@@ -100,6 +100,10 @@ pub fn synth_messages<M: Clone>(
 pub struct VideoUplink<'a, Message> {
     content: Element<'a, Message>,
     handlers: Arc<VideoUplinkHandlers<Message>>,
+    /// 稳定运行时键（2026-10-10 小组件独立播放配套）——与内层 shader 的
+    /// `VideoProgram.runtime_key` 同源同值；`Some` 时事件泵按它取队列
+    /// （跨挂载共享引擎的泵必须跟引擎同键），`None` 回落内层 state id。
+    runtime_key: Option<u64>,
 }
 
 impl<'a, Message> VideoUplink<'a, Message>
@@ -110,7 +114,14 @@ where
         Self {
             content: content.into(),
             handlers: Arc::new(VideoUplinkHandlers::default()),
+            runtime_key: None,
         }
+    }
+
+    /// 挂稳定运行时键（`render_video` 与 shader 同值挂载）。
+    pub fn with_runtime_key(mut self, key: Option<u64>) -> Self {
+        self.runtime_key = key;
+        self
     }
 
     fn with_handlers(mut self, f: impl FnOnce(&mut VideoUplinkHandlers<Message>)) -> Self {
@@ -146,10 +157,13 @@ where
         // VideoWidgetState——widget id 在 iced 生命周期内稳定（重建视图不改）。
         // （iced 0.14 的 State::downcast_ref 直接返回 &T，不匹配即 panic——
         // 本 wrapper 只在 render_video 的 shader 子节点上使用，形态恒定。）
-        let id = tree
+        let state_id = tree
             .children
             .first()
             .map(|child| child.state.downcast_ref::<VideoWidgetState>().id());
+        // 稳定键优先（与 shader 的 VideoProgram 同值——共享引擎的泵必须
+        // 从同一运行时取事件），缺省回落每实例 state id。
+        let id = self.runtime_key.or(state_id);
         if let Some(id) = id {
             let events = drain_events(id);
             if !events.is_empty() {
