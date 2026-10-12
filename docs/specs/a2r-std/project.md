@@ -42,8 +42,10 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 - 哨兵错误约定（与 fs/http 一致）：不 panic——`open` 失败回退内存库并记
   `last_error()`；`exec` 失败返 -1（批脚本/行返回语句经 `execute_batch` 回退
   报 0）；`query` 失败返空表；所有单元格字符串化（NULL→""、BLOB→"<N bytes>"）。
-- VM 侧无 native 实现：VM 程序不得调用（接口注释已声明）；cookbook stub
-  真实化留待 VM 侧落地。
+- a2r 侧 `SqliteDb` 是 RAII 值，drop 时关闭连接，无显式 close。VM 侧由
+  `stdlib/auto/sqlite.vm.at` 声明并用 native shim 调用同一 a2r-std 实现；opaque
+  int handle 存于所属 `AutoVM`，连接寿命绑定到打开它的 task。`AutoVM::remove_task`
+  删除该 task 时关闭其连接，VM 句柄不会跨 VM 共享；两端均没有显式 close。
 - 3 段式 `auto.sqlite.*` 调用受 Plan 223 预存死臂限制（`auto.env.get` 同病，
   KNOWN-DEBT 415-B1 条目），Auto 侧统一用 2 段式 `sqlite.open(...)`。
 
