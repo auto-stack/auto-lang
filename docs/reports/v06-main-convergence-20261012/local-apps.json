@@ -1,0 +1,560 @@
+[
+  {
+    "repo": "011-calculator",
+    "path": "D:\\autostack\\auto-os\\apps\\011-calculator",
+    "head": "e5247c549db375480f30b9eb1e417ad9b15191a3",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-calc.git",
+    "branches": [
+      "main e5247c5 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/011-calculator e5247c5 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "012-clock",
+    "path": "D:\\autostack\\auto-os\\apps\\012-clock",
+    "head": "551d05e065eb2f449c643b3fa4fd671a9ec7a307",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-clock.git",
+    "branches": [
+      "main 551d05e origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/012-clock 551d05e (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "013-todo",
+    "path": "D:\\autostack\\auto-os\\apps\\013-todo",
+    "head": "bc8391c3b33a9f2ee896a33874f7c458a33d67ca",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-todo.git",
+    "branches": [
+      "main bc8391c origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/013-todo bc8391c (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "014-weather",
+    "path": "D:\\autostack\\auto-os\\apps\\014-weather",
+    "head": "1626a4a16ccf4de717bc92e27b60a9184b8198f2",
+    "branch": "v0.6-dev",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-weather.git",
+    "branches": [
+      "main 1626a4a origin/main ",
+      "plan-008-dev 8c810c8  ",
+      "v0.6-dev 1626a4a origin/v0.6-dev "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/014-weather 1626a4a [v0.6-dev]",
+      "D:/autostack/.wt/weather-008/auto-weather          8c810c8 [plan-008-dev]"
+    ],
+    "plans": [
+      {
+        "meta": [
+          "status: execution_done",
+          "plan_revision: 1",
+          "current_step: 6",
+          "total_steps: 6"
+        ],
+        "name": "008-interaction-polish.md"
+      }
+    ]
+  },
+  {
+    "repo": "015-notes",
+    "path": "D:\\autostack\\auto-os\\apps\\015-notes",
+    "head": "61e83f81eff06165b18e776081d7b66a78dbd036",
+    "branch": "v0.6-dev",
+    "dirty_count": 10,
+    "dirty_sample": [
+      "?? tests/probe/evidence/r4-t12/",
+      "?? tests/probe/evidence/r4-t13/",
+      "?? tests/probe/evidence/r4-t13b/",
+      "?? tests/probe/evidence/r4-t13c/",
+      "?? tests/probe/evidence/r4-t13d/"
+    ],
+    "remote": "https://github.com/auto-stack/auto-notes.git",
+    "branches": [
+      "main 28d5157 origin/main ",
+      "v0.6-dev 61e83f8 origin/v0.6-dev [ahead 11]"
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/015-notes 61e83f8 [v0.6-dev]"
+    ],
+    "plans": [
+      {
+        "meta": [
+          "status: execution_done",
+          "plan_revision: 7",
+          "current_step: 34",
+          "total_steps: 34"
+        ],
+        "name": "001-durable-inbox.md"
+      },
+      {
+        "meta": [
+          "status: drafting",
+          "plan_revision: 2",
+          "current_step: 0",
+          "total_steps: 5"
+        ],
+        "name": "002-quick-card-assets.md"
+      },
+      {
+        "meta": [
+          "status: drafting",
+          "plan_revision: 2",
+          "current_step: 0",
+          "total_steps: 5"
+        ],
+        "name": "003-entry-and-knowledge-adapters.md"
+      }
+    ]
+  },
+  {
+    "repo": "016-calendar",
+    "path": "D:\\autostack\\auto-os\\apps\\016-calendar",
+    "head": "6f4d36d34476adc0656494fb45fca9b7c1b05860",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-calendar.git",
+    "branches": [
+      "main 6f4d36d origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/016-calendar 6f4d36d (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "017-chat",
+    "path": "D:\\autostack\\auto-os\\apps\\017-chat",
+    "head": "8df3f33b3bfedc123287d4324b5e67ae5b00a724",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-chat.git",
+    "branches": [
+      "main 8df3f33 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/017-chat 8df3f33 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "018-book-reader",
+    "path": "D:\\autostack\\auto-os\\apps\\018-book-reader",
+    "head": "29b5decf878ec2cdca5c6a39575e872a4597121d",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-reader.git",
+    "branches": [
+      "main 25d28c4 origin/main ",
+      "v0.6-dev 29b5dec origin/v0.6-dev "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/018-book-reader 29b5dec (detached HEAD)"
+    ],
+    "plans": [
+      {
+        "meta": [
+          "status: executing",
+          "plan_revision: 7",
+          "current_step: 16",
+          "total_steps: 32"
+        ],
+        "name": "001-real-library.md"
+      },
+      {
+        "meta": [
+          "status: drafting",
+          "plan_revision: 2",
+          "current_step: 0",
+          "total_steps: 5"
+        ],
+        "name": "002-reading-annotations.md"
+      },
+      {
+        "meta": [
+          "status: drafting",
+          "plan_revision: 2",
+          "current_step: 0",
+          "total_steps: 5"
+        ],
+        "name": "003-epub-reflow.md"
+      }
+    ]
+  },
+  {
+    "repo": "020-music-player",
+    "path": "D:\\autostack\\auto-os\\apps\\020-music-player",
+    "head": "6b73a417a3985f1ce02c998cffb54039443ac822",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-music.git",
+    "branches": [
+      "main 6b73a41 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/020-music-player 6b73a41 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "023-realworld",
+    "path": "D:\\autostack\\auto-os\\apps\\023-realworld",
+    "head": "08da63359c4f8d147c0c10f2c774d6feaad79425",
+    "branch": "v0.6-dev",
+    "dirty_count": 3,
+    "dirty_sample": [
+      " M src/back/drafts.at",
+      " M src/back/works.at",
+      " M src/front/draft_store.at"
+    ],
+    "remote": "https://github.com/auto-stack/auto-blog.git",
+    "branches": [
+      "main 55bd49e origin/main ",
+      "v0.6-dev 08da633 origin/v0.6-dev [ahead 14]"
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/023-realworld 08da633 [v0.6-dev]"
+    ],
+    "plans": [
+      {
+        "meta": [
+          "status: executing",
+          "plan_revision: 6",
+          "current_step: 3",
+          "total_steps: 31"
+        ],
+        "name": "001-durable-drafts.md"
+      },
+      {
+        "meta": [
+          "status: drafting",
+          "plan_revision: 2",
+          "current_step: 0",
+          "total_steps: 5"
+        ],
+        "name": "002-editor-assets-preview.md"
+      },
+      {
+        "meta": [
+          "status: drafting",
+          "plan_revision: 2",
+          "current_step: 0",
+          "total_steps: 5"
+        ],
+        "name": "003-snapshots-export.md"
+      }
+    ]
+  },
+  {
+    "repo": "024-charts",
+    "path": "D:\\autostack\\auto-os\\apps\\024-charts",
+    "head": "b1d14690751d89912f3ec0fd271caf48ff58b01a",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-charts.git",
+    "branches": [
+      "main b1d1469 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/024-charts b1d1469 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "025-sys-monitor",
+    "path": "D:\\autostack\\auto-os\\apps\\025-sys-monitor",
+    "head": "59f271de220eb4df3f55d0781f28c4ff098a6a4a",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-monitor.git",
+    "branches": [
+      "main 59f271d origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/025-sys-monitor 59f271d (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "026-database",
+    "path": "D:\\autostack\\auto-os\\apps\\026-database",
+    "head": "85fb35dbe675e354614629a4cbb40d6560ce86c0",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-database.git",
+    "branches": [
+      "main 85fb35d origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/026-database 85fb35d (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "027-file-manager",
+    "path": "D:\\autostack\\auto-os\\apps\\027-file-manager",
+    "head": "59a99b9f42896728aa32a7ff3e38fa08261c7d18",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "git@github.com:auto-stack/auto-explorer.git",
+    "branches": [
+      "main 19d13ed origin/main ",
+      "v0.6-dev 59a99b9 origin/v0.6-dev "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/027-file-manager 59a99b9 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "028-launcher",
+    "path": "D:\\autostack\\auto-os\\apps\\028-launcher",
+    "head": "df207283536ff943e2e574dc886c4cb8594cce13",
+    "branch": null,
+    "dirty_count": 11,
+    "dirty_sample": [
+      "?? .auto/",
+      "?? _ac12_both.py",
+      "?? _ac12fix.py",
+      "?? _admit.py",
+      "?? _brace.py"
+    ],
+    "remote": "https://github.com/auto-stack/auto-launcher.git",
+    "branches": [
+      "main 00582ce origin/main ",
+      "v0.6-dev 87ef98e origin/v0.6-dev [behind 1]"
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/028-launcher df20728 (detached HEAD)"
+    ],
+    "plans": [
+      {
+        "meta": [
+          "status: executing",
+          "plan_revision: 7",
+          "current_step: 15",
+          "total_steps: 15"
+        ],
+        "name": "001-query-provider-core.md"
+      },
+      {
+        "meta": [
+          "status: drafting",
+          "plan_revision: 2",
+          "current_step: 0",
+          "total_steps: 5"
+        ],
+        "name": "002-windows-host.md"
+      },
+      {
+        "meta": [
+          "status: drafting",
+          "plan_revision: 2",
+          "current_step: 0",
+          "total_steps: 5"
+        ],
+        "name": "003-files-plugins-capture.md"
+      }
+    ]
+  },
+  {
+    "repo": "029-photo-gallery",
+    "path": "D:\\autostack\\auto-os\\apps\\029-photo-gallery",
+    "head": "5eec01b873ba5139ed8b50572f646c12c76c0288",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-photos.git",
+    "branches": [
+      "main 5eec01b origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/029-photo-gallery 5eec01b (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "030-video-player",
+    "path": "D:\\autostack\\auto-os\\apps\\030-video-player",
+    "head": "b6efa4ef1b052e35d966b26aab17054c86ba5679",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-video.git",
+    "branches": [
+      "main b6efa4e origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/030-video-player b6efa4e (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "031-paint",
+    "path": "D:\\autostack\\auto-os\\apps\\031-paint",
+    "head": "a12bb20073e20a9ca3cc62b995af88cde66a75f7",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-paint.git",
+    "branches": [
+      "main a12bb20 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/031-paint a12bb20 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "036-tetris",
+    "path": "D:\\autostack\\auto-os\\apps\\036-tetris",
+    "head": "9537a62aa01909becba4132aea2108c75009a18f",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-tetris.git",
+    "branches": [
+      "main 9537a62 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/036-tetris 9537a62 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "037-klondike",
+    "path": "D:\\autostack\\auto-os\\apps\\037-klondike",
+    "head": "b5a2901a5780958ab12d14dccf8fefddb9ab3165",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-solitaire.git",
+    "branches": [
+      "main b5a2901 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/037-klondike b5a2901 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "038-minesweeper",
+    "path": "D:\\autostack\\auto-os\\apps\\038-minesweeper",
+    "head": "ae6dcbfd7033bc2ee81c6d11b7162d1c653e9d04",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-minesweeper.git",
+    "branches": [
+      "main ae6dcbf origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/038-minesweeper ae6dcbf (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "auto-term",
+    "path": "D:\\autostack\\auto-os\\apps\\auto-term",
+    "head": "7a0d0e8b718fb260641f0d09ada95a7346771cd3",
+    "branch": "main",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-term.git",
+    "branches": [
+      "main 7a0d0e8 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/auto-term 7a0d0e8 [main]"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "kanban",
+    "path": "D:\\autostack\\auto-os\\apps\\kanban",
+    "head": "5e0da499dec476b029237b1436856eb90e936ec6",
+    "branch": null,
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-kanban.git",
+    "branches": [
+      "main 5e0da49 origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/kanban 5e0da49 (detached HEAD)"
+    ],
+    "plans": []
+  },
+  {
+    "repo": "os-config",
+    "path": "D:\\autostack\\auto-os\\apps\\os-config",
+    "head": "8fe4cdc3a9a7bcc139230fa2c4bd7d79af1a5105",
+    "branch": "main",
+    "dirty_count": 0,
+    "dirty_sample": [],
+    "remote": "https://github.com/auto-stack/auto-os-config.git",
+    "branches": [
+      "main 8fe4cdc origin/main "
+    ],
+    "worktrees": [
+      "D:/autostack/auto-os/.git/modules/apps/os-config 8fe4cdc [main]"
+    ],
+    "plans": [
+      {
+        "meta": [
+          "status: execution_done",
+          "plan_revision: 1",
+          "current_step: 2",
+          "total_steps: 2"
+        ],
+        "name": "014-settings-delete-button-lucide-icon.md"
+      },
+      {
+        "meta": [
+          "status: execution_done",
+          "plan_revision: 1",
+          "current_step: 2",
+          "total_steps: 2"
+        ],
+        "name": "015-settings-select-buttons-and-models-enum.md"
+      },
+      {
+        "meta": [
+          "status: execution_done",
+          "plan_revision: 1",
+          "current_step: 3",
+          "total_steps: 3"
+        ],
+        "name": "016-autoui-select-defect-demo.md"
+      }
+    ]
+  }
+]

@@ -1,0 +1,1037 @@
+{
+  "observed_at": "2026-10-12",
+  "organization": [
+    {
+      "name": "auto-lang",
+      "default_branch": "master",
+      "archived": false
+    },
+    {
+      "name": "auto-ui",
+      "default_branch": "master",
+      "archived": false
+    },
+    {
+      "name": "auto-man",
+      "default_branch": "master",
+      "archived": false
+    },
+    {
+      "name": "tree-sitter-auto",
+      "default_branch": "master",
+      "archived": false
+    },
+    {
+      "name": "daizhigev20",
+      "default_branch": "master",
+      "archived": false
+    },
+    {
+      "name": "books",
+      "default_branch": "master",
+      "archived": false
+    },
+    {
+      "name": "auto-forge",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-down",
+      "default_branch": "master",
+      "archived": false
+    },
+    {
+      "name": "auto-musk",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-ai",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-shell",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-os-config",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-term",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-os",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-kanban",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-edit",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "jade-edit",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-calc",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-clock",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-todo",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-weather",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-notes",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-calendar",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-chat",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-reader",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-blog",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-video",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-music",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-photos",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-paint",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-monitor",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-database",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-explorer",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-launcher",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-tetris",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-solitaire",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-minesweeper",
+      "default_branch": "main",
+      "archived": false
+    },
+    {
+      "name": "auto-charts",
+      "default_branch": "main",
+      "archived": false
+    }
+  ],
+  "app_remote_branches": [
+    {
+      "name": "auto-calc",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "e5247c549db375480f30b9eb1e417ad9b15191a3"
+        },
+        {
+          "name": "source-sync",
+          "sha": "40b54859437ba3c9f009bb8282bcb6e4001d6da3"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "e5247c549db375480f30b9eb1e417ad9b15191a3"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-clock",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "551d05e065eb2f449c643b3fa4fd671a9ec7a307"
+        },
+        {
+          "name": "source-sync",
+          "sha": "d24bc8c2489526e0a341027285789fd22016f8c6"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "551d05e065eb2f449c643b3fa4fd671a9ec7a307"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-todo",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "bc8391c3b33a9f2ee896a33874f7c458a33d67ca"
+        },
+        {
+          "name": "source-sync",
+          "sha": "dab12c4a6befb9846ee749cbab1ccb63f0b5607e"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "bc8391c3b33a9f2ee896a33874f7c458a33d67ca"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-weather",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "1626a4a16ccf4de717bc92e27b60a9184b8198f2"
+        },
+        {
+          "name": "source-sync",
+          "sha": "bcc805ab41a78b615fbcaf42a6805b30cfbd9916"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "1626a4a16ccf4de717bc92e27b60a9184b8198f2"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-notes",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "28d5157b7ed8d4f49e55f835bf8a365d2f97a89a"
+        },
+        {
+          "name": "source-sync",
+          "sha": "3f284c821a4b042505cee4f78201d6c57daca9b8"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "80770cc29ec1e4ffca47477c52820d370149069b"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-calendar",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "6f4d36d34476adc0656494fb45fca9b7c1b05860"
+        },
+        {
+          "name": "source-sync",
+          "sha": "85b648af775e80e6f5d24da921f2fd341c1c0231"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "6f4d36d34476adc0656494fb45fca9b7c1b05860"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-chat",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "8df3f33b3bfedc123287d4324b5e67ae5b00a724"
+        },
+        {
+          "name": "source-sync",
+          "sha": "3945639516389283067e22444f1647ed54d5d3fe"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "8df3f33b3bfedc123287d4324b5e67ae5b00a724"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-reader",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "25d28c481aa7bcf375f0d21f04e4af7b6f624d58"
+        },
+        {
+          "name": "source-sync",
+          "sha": "a09e9ee3872fdbd528c09dd8c2a3966e7872150f"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "29b5decf878ec2cdca5c6a39575e872a4597121d"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-blog",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "55bd49e54ede0e189a39046cac557fa31ca8c5b4"
+        },
+        {
+          "name": "source-sync",
+          "sha": "823f371f963e3861e87e665273aa5b7a66c1e089"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "6d819c4edda9f7e1c3e52843b1e060c3df9d0a34"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-music",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "6b73a417a3985f1ce02c998cffb54039443ac822"
+        },
+        {
+          "name": "source-sync",
+          "sha": "48e5ba5daf730e79f38106ad3020abb461f44f8e"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "6b73a417a3985f1ce02c998cffb54039443ac822"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-photos",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "5eec01b873ba5139ed8b50572f646c12c76c0288"
+        },
+        {
+          "name": "source-sync",
+          "sha": "de6fc87e7af0b1ff589c9ec27cdca7c817e699cb"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "5eec01b873ba5139ed8b50572f646c12c76c0288"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-video",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "b6efa4ef1b052e35d966b26aab17054c86ba5679"
+        },
+        {
+          "name": "source-sync",
+          "sha": "2932fab47c41ee7ec118b0f7a856c8f19f393a5b"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "b6efa4ef1b052e35d966b26aab17054c86ba5679"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-paint",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "a12bb20073e20a9ca3cc62b995af88cde66a75f7"
+        },
+        {
+          "name": "source-sync",
+          "sha": "445f41feab6a6facdb99797757ca25a8e3b4f52e"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "a12bb20073e20a9ca3cc62b995af88cde66a75f7"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-monitor",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "59f271de220eb4df3f55d0781f28c4ff098a6a4a"
+        },
+        {
+          "name": "source-sync",
+          "sha": "524429d4f1245c758e72224d21f8f602a134ad73"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "59f271de220eb4df3f55d0781f28c4ff098a6a4a"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-database",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "85fb35dbe675e354614629a4cbb40d6560ce86c0"
+        },
+        {
+          "name": "source-sync",
+          "sha": "75caad8d5cbb2a74b3b530b1cf71771628e070b1"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "85fb35dbe675e354614629a4cbb40d6560ce86c0"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-explorer",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "19d13edba0b18170241f9b400fdcb092aa86553b"
+        },
+        {
+          "name": "source-sync",
+          "sha": "232494b8bd29a946f8549177b2a3e993299d4a7a"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "59a99b9f42896728aa32a7ff3e38fa08261c7d18"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-launcher",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "00582cee1bc3a0b1b1e0de91703b6607ab1d6451"
+        },
+        {
+          "name": "source-sync",
+          "sha": "b8ad1575a6fea8803d747d4064dec6d3fd55412b"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "df207283536ff943e2e574dc886c4cb8594cce13"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-tetris",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "9537a62aa01909becba4132aea2108c75009a18f"
+        },
+        {
+          "name": "source-sync",
+          "sha": "2615a5416cc68afa429be52d9f1e914dac00cb0e"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "9537a62aa01909becba4132aea2108c75009a18f"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-solitaire",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "b5a2901a5780958ab12d14dccf8fefddb9ab3165"
+        },
+        {
+          "name": "source-sync",
+          "sha": "24d36a1e9ab3355501c3617a2874b2798a47848b"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "b5a2901a5780958ab12d14dccf8fefddb9ab3165"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-minesweeper",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "ae6dcbfd7033bc2ee81c6d11b7162d1c653e9d04"
+        },
+        {
+          "name": "source-sync",
+          "sha": "ee8fa04a862cd6760c72f1fe77684b4183b88d05"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "ae6dcbfd7033bc2ee81c6d11b7162d1c653e9d04"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-charts",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "b1d14690751d89912f3ec0fd271caf48ff58b01a"
+        },
+        {
+          "name": "source-sync",
+          "sha": "a1f025bab84e6b8eea628d074be6e4d2dcf2b3a0"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "b1d14690751d89912f3ec0fd271caf48ff58b01a"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-term",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "7a0d0e8b718fb260641f0d09ada95a7346771cd3"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-kanban",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "1c967c5a418f95c547db1930bbcc4eccaf969a83"
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "auto-os-config",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "905e99335c37f259c69607faf44132d31752f969"
+        }
+      ],
+      "error": null
+    }
+  ],
+  "source_sync_ancestry": [
+    {
+      "repo": "auto-calc",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "40b54859437ba3c9f009bb8282bcb6e4001d6da3",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-clock",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "d24bc8c2489526e0a341027285789fd22016f8c6",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-todo",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "dab12c4a6befb9846ee749cbab1ccb63f0b5607e",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-weather",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 67,
+      "base": "bcc805ab41a78b615fbcaf42a6805b30cfbd9916",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-notes",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 39,
+      "base": "3f284c821a4b042505cee4f78201d6c57daca9b8",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-calendar",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "85b648af775e80e6f5d24da921f2fd341c1c0231",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-chat",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "3945639516389283067e22444f1647ed54d5d3fe",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-reader",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 46,
+      "base": "a09e9ee3872fdbd528c09dd8c2a3966e7872150f",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-blog",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 3,
+      "base": "823f371f963e3861e87e665273aa5b7a66c1e089",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-music",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "48e5ba5daf730e79f38106ad3020abb461f44f8e",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-photos",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "de6fc87e7af0b1ff589c9ec27cdca7c817e699cb",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-video",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "2932fab47c41ee7ec118b0f7a856c8f19f393a5b",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-paint",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "445f41feab6a6facdb99797757ca25a8e3b4f52e",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-monitor",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "524429d4f1245c758e72224d21f8f602a134ad73",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-database",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "75caad8d5cbb2a74b3b530b1cf71771628e070b1",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-explorer",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 33,
+      "base": "232494b8bd29a946f8549177b2a3e993299d4a7a",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-launcher",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 33,
+      "base": "b8ad1575a6fea8803d747d4064dec6d3fd55412b",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-tetris",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "2615a5416cc68afa429be52d9f1e914dac00cb0e",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-solitaire",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "24d36a1e9ab3355501c3617a2874b2798a47848b",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-minesweeper",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "ee8fa04a862cd6760c72f1fe77684b4183b88d05",
+      "files": [],
+      "error": null
+    },
+    {
+      "repo": "auto-charts",
+      "status": "behind",
+      "ahead": 0,
+      "behind": 1,
+      "base": "a1f025bab84e6b8eea628d074be6e4d2dcf2b3a0",
+      "files": [],
+      "error": null
+    }
+  ],
+  "remote_compare": [
+    {
+      "repo": "auto-stack/auto-lang",
+      "base": {
+        "sha": "38e4c7c5fa5b8c7f68b8054e342f106a7ec9f5fd",
+        "url": "https://api.github.com/repos/auto-stack/auto-lang/commits/38e4c7c5fa5b8c7f68b8054e342f106a7ec9f5fd",
+        "html_url": "https://github.com/auto-stack/auto-lang/commit/38e4c7c5fa5b8c7f68b8054e342f106a7ec9f5fd"
+      },
+      "merge_base": {
+        "sha": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+        "url": "https://api.github.com/repos/auto-stack/auto-lang/commits/17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+        "html_url": "https://github.com/auto-stack/auto-lang/commit/17292c07e792e80d4e4da5495fc3fc2917e8aa1e"
+      },
+      "ahead": 225,
+      "behind": 594,
+      "files_returned": 300,
+      "files_truncated": true
+    },
+    {
+      "repo": "auto-stack/auto-os",
+      "base": {
+        "sha": "e7fadc470684f611620175c722a1a22df5e9d9c9",
+        "url": "https://api.github.com/repos/auto-stack/auto-os/commits/e7fadc470684f611620175c722a1a22df5e9d9c9",
+        "html_url": "https://github.com/auto-stack/auto-os/commit/e7fadc470684f611620175c722a1a22df5e9d9c9"
+      },
+      "merge_base": {
+        "sha": "93c3cb0259c8cfe1644e2b35baff71638be59ec5",
+        "url": "https://api.github.com/repos/auto-stack/auto-os/commits/93c3cb0259c8cfe1644e2b35baff71638be59ec5",
+        "html_url": "https://github.com/auto-stack/auto-os/commit/93c3cb0259c8cfe1644e2b35baff71638be59ec5"
+      },
+      "ahead": 40,
+      "behind": 68,
+      "files_returned": 124,
+      "files_truncated": false
+    }
+  ],
+  "remote_plan_tail": [
+    {
+      "path": "docs/plans/archive/740-frame-delivery-pacing-clearance.md",
+      "blob": "bcd9cca3031ce6c9f0eb5a2f735e393f1915e747"
+    },
+    {
+      "path": "docs/plans/archive/746-pg-mem-fix.md",
+      "blob": "ca0e6639d05e6095ef4ab48e190ad6bb36acfec0"
+    },
+    {
+      "path": "docs/plans/archive/747-fix-ui-focus-refcell-storm.md",
+      "blob": "dd694604b05744882d4ffc064e06cdf3a09b6765"
+    },
+    {
+      "path": "docs/plans/archive/748-vm-cond-eval-and-field-write.md",
+      "blob": "61c1c34352497fa5e0b7119706d2056e73d014fc"
+    },
+    {
+      "path": "docs/plans/archive/749-vm-json-read-semantics.md",
+      "blob": "88dfb419e289e7f905c7e2c868e6ddda73004f67"
+    },
+    {
+      "path": "docs/plans/archive/750-vue-draft-settle-race.md",
+      "blob": "07328ebf45d9f181e79e129303dbf7218a7882b6"
+    },
+    {
+      "path": "docs/plans/archive/751-empty-lock-identity-th-tail.md",
+      "blob": "0011abac5d4039adbbd6edffdd098f1a93c93de8"
+    },
+    {
+      "path": "docs/plans/archive/752-pg-bootstrap-lib.md",
+      "blob": "bc0b2489069c906ebe96e37aa2f6493bf6670d40"
+    },
+    {
+      "path": "docs/plans/archive/753-ecosystem-readme-refresh.md",
+      "blob": "28662102807d46aec8cb0746d088f64b59c062a4"
+    },
+    {
+      "path": "docs/plans/archive/754-pg-unify.md",
+      "blob": "c3b1013f028da9591d3f85097a0a7b5eff70e51c"
+    },
+    {
+      "path": "docs/plans/archive/755-http-contract-startup-diagnosis.md",
+      "blob": "ed627245fe230c914cc14da6c683f99dc8122f5f"
+    },
+    {
+      "path": "docs/plans/archive/756-website-v05-copy-and-capture-slots.md",
+      "blob": "3517e0a58e61fe6743ecc58e1357204762e4c602"
+    },
+    {
+      "path": "docs/plans/archive/757-autoedit-website-real-captures.md",
+      "blob": "cdb34872b5f760aa7958b11d5715854218e6b67d"
+    },
+    {
+      "path": "docs/plans/archive/758-autojade-rename-and-promo.md",
+      "blob": "b287d5a04cf7c83b6e244f0ecf523336ed3828c6"
+    },
+    {
+      "path": "docs/plans/archive/759-daily-red-family-clearance.md",
+      "blob": "d854b302f70b433b06effb09d36f3488d083aca4"
+    },
+    {
+      "path": "docs/plans/archive/760-remote-frame-widget.md",
+      "blob": "de478e109db9a89f46392a97e6363f78d3ab2d64"
+    },
+    {
+      "path": "docs/plans/archive/761-root-directory-cleanup.md",
+      "blob": "329134b31f439ec6e2e3080434159ea1d8ae7462"
+    },
+    {
+      "path": "docs/plans/archive/762-chart-init-batch-flake.md",
+      "blob": "e7b660d1bf5487a5c8346b97dbef6df61feddd79"
+    },
+    {
+      "path": "docs/plans/archive/763-consolidate-root-packages.md",
+      "blob": "198aa9863ee5c17310c6b92acedba8ccede39c22"
+    },
+    {
+      "path": "docs/plans/archive/764-autoedit-comparison-screenshot.md",
+      "blob": "7eb3125f609322240e27e0a553a04dc5c20d303b"
+    },
+    {
+      "path": "docs/plans/archive/765-vm-host-active-session-stability.md",
+      "blob": "7f3bd9382a31f66426b67dac129707733df66cc2"
+    },
+    {
+      "path": "docs/plans/archive/766-automusk-website-real-captures.md",
+      "blob": "a3cfce0f3f3090215b2e443338bddca1553a7ad5"
+    },
+    {
+      "path": "docs/plans/archive/767-os-overview-inline-cards.md",
+      "blob": "46ede70ad6234dab0a8961d0277fe6ed7774cdba"
+    },
+    {
+      "path": "docs/plans/archive/768-navbar-repository-icons.md",
+      "blob": "d630b9105938c35f1e6ba90d35a456d622d4c7c9"
+    },
+    {
+      "path": "docs/plans/archive/769-screenshot-webp-delivery.md",
+      "blob": "f7c82cfe3f0b9f2eeccd640a07500d2af42d3394"
+    }
+  ],
+  "auxiliary_remote_branches": [
+    {
+      "name": "auto-ui",
+      "branches": [
+        {
+          "name": "gpui2",
+          "sha": "1e44f92caaa681e6f362eef6c1fada09e9041217"
+        },
+        {
+          "name": "gpui3",
+          "sha": "233ecff18491c8820c7cbb6c306d41d901ca12a5"
+        },
+        {
+          "name": "iced",
+          "sha": "7d7fc749d23635f888512bb39a413dc0c611252c"
+        },
+        {
+          "name": "master",
+          "sha": "f7d92eef273c7f5592cce9d1612fa28ebe12d45e"
+        }
+      ]
+    },
+    {
+      "name": "auto-man",
+      "branches": [
+        {
+          "name": "master",
+          "sha": "17e8800f590dae6541fa234cb9c8c101b1257e23"
+        }
+      ]
+    },
+    {
+      "name": "tree-sitter-auto",
+      "branches": [
+        {
+          "name": "master",
+          "sha": "02afcd68476fd6b0a94d1399e638fad49c716a58"
+        }
+      ]
+    },
+    {
+      "name": "books",
+      "branches": [
+        {
+          "name": "master",
+          "sha": "d7a71a7fb1fa42ddd26d6cec859715ed98161f7a"
+        }
+      ]
+    },
+    {
+      "name": "auto-calendar",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "6f4d36d34476adc0656494fb45fca9b7c1b05860"
+        },
+        {
+          "name": "source-sync",
+          "sha": "85b648af775e80e6f5d24da921f2fd341c1c0231"
+        },
+        {
+          "name": "v0.6-dev",
+          "sha": "6f4d36d34476adc0656494fb45fca9b7c1b05860"
+        }
+      ]
+    },
+    {
+      "name": "auto-ai",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "2a4d606f3cba16530d07a9bf5287529d3eabe63c"
+        }
+      ]
+    },
+    {
+      "name": "auto-forge",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "c239d61214958e936a8fcd3ba7ec3cd4f38dc971"
+        }
+      ]
+    },
+    {
+      "name": "auto-edit",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "acf71a0541e0f41741ce83083430c79cbc94bc06"
+        }
+      ]
+    },
+    {
+      "name": "jade-edit",
+      "branches": [
+        {
+          "name": "main",
+          "sha": "4d49bbc45bd62da2724a4bc678983f6133087470"
+        }
+      ]
+    }
+  ]
+}

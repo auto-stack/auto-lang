@@ -1,0 +1,8 @@
+de7dd589f7e54e4b841604951063887e5405fe46
+100644 e79f9aca56b27c8bd366fd4e2e10516e19bd7539 1	.agents/skills/auto-plan-review/SKILL.md
+100644 23f1a379f1a0836348cbb91e405327a829d9a915 2	.agents/skills/auto-plan-review/SKILL.md
+100644 6d564e52d15ad9522a825311c203c1bcd67efa64 3	.agents/skills/auto-plan-review/SKILL.md
+
+Auto-merging .agents/skills/auto-plan-merge/SKILL.md
+Auto-merging .agents/skills/auto-plan-review/SKILL.md
+CONFLICT (content): Merge conflict in .agents/skills/auto-plan-review/SKILL.md

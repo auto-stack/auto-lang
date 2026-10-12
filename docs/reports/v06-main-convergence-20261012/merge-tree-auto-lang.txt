@@ -1,0 +1,55 @@
+40fec6522b9050c253cbfc3b2ab6bb4abc34785d
+100644 3619e793dc0bd8204aab406e70cf12522c5383bb 1	.autoos/specs.json
+100644 ff7e3d0d654bfad46017fa1ce1c45c3c0c4165c1 2	.autoos/specs.json
+100644 8e80f721591ac60d12ae9a555d24900f8e57bc3e 3	.autoos/specs.json
+100644 fde7f4df368e2f3aa7348050fa54eaa5518f8710 1	crates/auto-lang/src/trans/rust.rs
+100644 4ddb45d5eb23a59a197c79c32aa00c95e4de6fd6 2	crates/auto-lang/src/trans/rust.rs
+100644 b0b45f2e02ddc0104cc81019626f5fa45d26e534 3	crates/auto-lang/src/trans/rust.rs
+100644 6356837195a0184a025f95d347768568756ea40f 1	crates/auto-lang/src/ui_gen/vue.rs
+100644 58a03f79a5a74937e6720221923e9290069209e6 2	crates/auto-lang/src/ui_gen/vue.rs
+100644 a11be70895374df73c0de4020c4bdd8a9c08e481 3	crates/auto-lang/src/ui_gen/vue.rs
+100644 57bafb83e3adf95fc26b4a4f1f518d3b2ba1ec26 1	crates/auto-man/src/api_gen.rs
+100644 f03cb1c0446c931e30fbc1818de16421e09b3a9c 2	crates/auto-man/src/api_gen.rs
+100644 68f7ec071ea77a2fe8e98151c1b98642081bab96 3	crates/auto-man/src/api_gen.rs
+100644 6e2596a9cb2aaf5f44b2e099b7f85345fc3a1b42 1	docs/plans/.last-batch-regression.json
+100644 c7964f86c5cfd785abb692feb85caae29949a090 2	docs/plans/.last-batch-regression.json
+100644 9681efba6ca538772bb4e49819657272b84fa890 3	docs/plans/.last-batch-regression.json
+100644 5a9a14151ce8dfb4dd4c3aea4d2d56564b8d355f 1	docs/plans/.next-id
+100644 361dbd8b34ce7383dfdd0ce4f30dabc3353170fa 2	docs/plans/.next-id
+100644 7fb7d4db48cec35e9341e6a135263e5b4327ae84 3	docs/plans/.next-id
+100644 7900e080271bddbc07177943d0eb70e04f66ede5 1	docs/plans/KNOWN-DEBT-AND-RISKS.md
+100644 13f5f8f586429fbb8f8e1a056d7923f2987e7d9d 2	docs/plans/KNOWN-DEBT-AND-RISKS.md
+100644 12f65b6d8d6b796ebf0b5f4937310c01e3260451 3	docs/plans/KNOWN-DEBT-AND-RISKS.md
+100644 574434c33e374e82b9b1e27579bea7573d9db399 1	docs/roadmap.md
+100644 3b02e091875ca47e9ddf0cf3630a030c73263a33 2	docs/roadmap.md
+100644 9d3fd0385707c9d511042685d8b796b42a9cc759 3	docs/roadmap.md
+100644 336bc1ecdc29fcbfaf9ca2697a9c9c0ffebf298f 1	docs/specs/INDEX.md
+100644 ad98de0ba0e05fa822a6e0a0dbcad50a1f1cadf3 2	docs/specs/INDEX.md
+100644 83ae7b98d9fa2376cec5b3618b457a1896703301 3	docs/specs/INDEX.md
+100644 65e1541870a3a892e35acfdf2de811c7d303fc87 1	docs/specs/overview.md
+100644 67079800e7e33b7c3af3b73db113996d6b24cc35 2	docs/specs/overview.md
+100644 0acaaf1a24a9ac3ec12ca9f9e0a1325c09bbfdc5 3	docs/specs/overview.md
+
+Auto-merging .autoos/specs.json
+CONFLICT (content): Merge conflict in .autoos/specs.json
+Auto-merging crates/auto-lang/src/a2r_std.rs
+Auto-merging crates/auto-lang/src/trans/rust.rs
+CONFLICT (content): Merge conflict in crates/auto-lang/src/trans/rust.rs
+Auto-merging crates/auto-lang/src/ui_gen/vue.rs
+CONFLICT (content): Merge conflict in crates/auto-lang/src/ui_gen/vue.rs
+Auto-merging crates/auto-lang/src/vm/ffi/stdlib.rs
+Auto-merging crates/auto-man/src/api_gen.rs
+CONFLICT (content): Merge conflict in crates/auto-man/src/api_gen.rs
+Auto-merging docs/design/00-intro.md
+Auto-merging docs/plans/.last-batch-regression.json
+CONFLICT (content): Merge conflict in docs/plans/.last-batch-regression.json
+Auto-merging docs/plans/.next-id
+CONFLICT (content): Merge conflict in docs/plans/.next-id
+Auto-merging docs/plans/KNOWN-DEBT-AND-RISKS.md
+CONFLICT (content): Merge conflict in docs/plans/KNOWN-DEBT-AND-RISKS.md
+Auto-merging docs/roadmap.md
+CONFLICT (content): Merge conflict in docs/roadmap.md
+Auto-merging docs/specs/INDEX.md
+CONFLICT (content): Merge conflict in docs/specs/INDEX.md
+Auto-merging docs/specs/overview.md
+CONFLICT (content): Merge conflict in docs/specs/overview.md

@@ -1,0 +1,57 @@
+== probe-t01 (Plan 768 T-01 whole-path feasibility) ==
+== [FP] vendoring-closure source fingerprints ==
+[PASS] fp:markdown_parser.rs — sha256=4c41853517d09f4740ed32f3a6645f3fedd8bd7ad69ac0fd3ece16f21427ffc9
+[PASS] fp:block_model.rs — sha256=8e99920ff0f078706ea7d8e8b2f351e3fe90c5220d57c791d6ca0e1000b04c36
+[INFO] fp:ial.rs — sha256=085091486a36aac33079984401575dc0e9331377d87114a2ae44c5fcd8a46bfa (not pre-recorded in plan)
+
+== [FENCE] raw locator vs pinned block tree ==
+[PASS] fence:count — tree=4 raw=4 (expect 4/4)
+[PASS] fence:0:lang — tree='auto' raw='auto'
+[PASS] fence:1:lang — tree='test-case' raw='test-case'
+[PASS] fence:2:lang — tree='' raw=''
+[PASS] fence:3:lang — tree='spaced-info' raw='spaced-info'
+[PASS] fence:0:payload-bytes — len=47 sha256=762dcefadee477e0b9ac90b13da2f18ba3bf753600e74887215bfd6aabd8dfc6
+[PASS] fence:1:payload-bytes — len=24 sha256=6edff8f5164b02c139bcc19ee08baf3c6cedffb5f64f9d4dacf37d9419f54e7f
+[PASS] fence:2:payload-bytes — len=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+[PASS] fence:3:payload-bytes — len=32 sha256=73dace6d0ed35757ff7f757d899b4e59e44105ddc1eda0adc349713c31771dcc
+[PASS] fence:0:tree-matches-raw — tree_len=45 norm_len=45
+[PASS] fence:1:tree-matches-raw — tree_len=23 norm_len=23
+[PASS] fence:2:tree-matches-raw — tree_len=0 norm_len=0
+[PASS] fence:3:tree-matches-raw — tree_len=32 norm_len=32
+[PASS] fence:headings — heads=[(1, "Title", None), (2, "Payloads", Some("auto-src"))]
+[PASS] fence:anchor — level=2 text='Payloads' anchor=Some("auto-src")
+[INFO] fence:unclosed — raw closed=false payload="let x = 1\n" tree_lang='rust' tree_text="let x = 1\n"
+
+== [AVM] run_with_capture_and_path observations ==
+[INFO] avm:fixture-arithmetic — Ok result="3" stdout=""
+[PASS] avm:fixture-arithmetic:result — got="3" want="3"
+[INFO] avm:program-main — Ok result="14" stdout=""
+[PASS] avm:program-main:result-14 — result="14"
+[INFO] avm:parse-error — Err stage=parse display=aborting due to 1 previous error
+  error[1]: unexpected token
+[INFO] avm:type-error — Ok result="0" stdout=""
+[INFO] avm:type-error-fn — Ok result="" stdout="s\n"
+[INFO] avm:ill-typed-add — Ok result="" stdout="1s\n"
+[INFO] avm:undefined-name — Err stage=type display=aborting due to 1 previous error
+  error[1]: undefined variable
+[INFO] avm:out-of-bounds(weak) — Err stage=run(msg) display=RuntimeError("Array index 10 out of bounds (array length: 3)") at line 2 (ip=0x003c)
+[INFO] avm:runtime-div0 — Err stage=run(msg) display=DivisionByZero at line 3 (ip=0x002d)
+[INFO] avm:as-propagate — Err stage=run(msg) display=Python FFI not enabled. Rebuild with `--features python` to use `use.py`.
+[INFO] avm:as-uncaught(weak) — Err stage=run(msg) display=Python FFI not enabled. Rebuild with `--features python` to use `use.py`.
+[INFO] avm:as-catch-value(python-gated) — Err stage=run(msg) display=Python FFI not enabled. Rebuild with `--features python` to use `use.py`.
+[INFO] avm:as-propagate:lowered-head — ["use.py builtins: int", "", "fn getnum(s str) {", "    return int(s)", "}", "fn main() {"]
+[INFO] avm:as-propagate-legacy — Err stage=run(msg) display=Python FFI not enabled. Rebuild with `--features python` to use `use.py`.
+[INFO] avm:use-fn — Err stage=run(msg) display=Module not found: auto.greet_mod (module_path=auto/greet_mod, parent_dirs=[])
+
+== [A2R] emit observations ==
+[PASS] a2r:hello:bytes — len=82 sha256=3f715618a8caf01baf8e1181b184020b0553c600cddbd0e1e7c8ced4ac56c64b
+[PASS] a2r:use-c-static:bytes — len=5486 sha256=b2481e447e4554f90514f1183f41ca5b39213ae35b30037d10c20e65b3da9a0a
+[INFO] a2r:use-c-static:no-manifest — len=175 (with manifest 5486) differs=true — silent-ignore caveat
+[PASS] a2r:project:keys — keys=["Cargo.toml", "api/handlers.rs", "api/mod.rs", "db.rs", "main.rs"]
+[FAIL] a2r:project:main.rs:bytes — len=294 sha256=e40c8d1ff1e762d829b362826cdd491b719e9ccd871ae74c8e8e8ef4fc325ec0
+[FAIL] a2r:project:db.rs:bytes — len=216 sha256=84e8395931f625598cf5c2462cf27d38050279dba183dceada154108bbce1947
+[FAIL] a2r:project:api/mod.rs:bytes — len=103 sha256=4fb3ab6d21bb8dddf6075b8608bf0f9ab37bf14f53b9d8b56fe9f865bc40af7a
+[FAIL] a2r:project:api/handlers.rs:bytes — len=106 sha256=7ee5ade63cc23e5e97ddfed18320064f6516f14c90168a1ca589475f00cb322a
+[INFO] a2r:project:cargo-toml — len=73 head="[package]\nname = \"app-005_multi_file\"\nversion = \"0.1.0\"\nedition = \"2021\"\n"
+
+== summary: 22 pass, 4 fail ==

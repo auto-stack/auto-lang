@@ -1,0 +1,33 @@
+7d0d4c9d7e632c6a5376ed6a74f82a300d56b1da
+100644 f0f2faf555f022baec5502b94597af28136cb057 1	.autoos/specs.json
+100644 1f1aa7541b7cb1c44c9a321ca06772b27191d64b 2	.autoos/specs.json
+100644 8592a2f62dd5376dadf4e6179d9dc1d75d18e264 3	.autoos/specs.json
+100644 75e0275d490249dcfaf59ffe3623c2331d48b1da 1	README.md
+100644 20971e7b0d9dad75cf0b5870473e73f4ee1ed504 2	README.md
+100644 378ed7c200fcd7798d6c9f074ac70ec1c1053fae 3	README.md
+100644 4b26718d5f7690b1dfd4e73424afaa15df348f04 1	apps.manifest
+100644 20998311e332eab93eacbf728d78aa9b73fd4c03 2	apps.manifest
+100644 9666d5b773957a87e7f6ee77a1358fc2dcdbcfc2 3	apps.manifest
+100644 594062308825a57596752201e8bbfafe4c97ed33 1	apps/036-tetris/src/front/app.at
+100644 241aea3fd873fced1b5e71ed773aae39745d9c41 2	apps/036-tetris/src/front/app.at
+160000 9537a62aa01909becba4132aea2108c75009a18f 3	apps/036-tetris~v0.6-dev
+100644 bdfbc4e8bdc30826913a8a533b51ff5f97063e32 1	apps/037-klondike/src/front/app.at
+100644 8acbdc81f33f51ba5cdfd4e0e729c1d061a5283b 2	apps/037-klondike/src/front/app.at
+160000 b5a2901a5780958ab12d14dccf8fefddb9ab3165 3	apps/037-klondike~v0.6-dev
+100644 b8b377e653891d2caaf6ff4e5e49f639eb3975f1 1	scripts/desktop.sh
+100644 248cd808daa08d3bc8c9700c27870b327e8d2f5c 2	scripts/desktop.sh
+100644 ca4ef3c615c8b8411f21fc9bf1de1b4828533989 3	scripts/desktop.sh
+
+Auto-merging .autoos/specs.json
+CONFLICT (content): Merge conflict in .autoos/specs.json
+Auto-merging README.md
+CONFLICT (content): Merge conflict in README.md
+Auto-merging apps.manifest
+CONFLICT (content): Merge conflict in apps.manifest
+CONFLICT (modify/delete): apps/036-tetris/src/front/app.at deleted in v0.6-dev and modified in origin/main.  Version origin/main of apps/036-tetris/src/front/app.at left in tree.
+CONFLICT (file/directory): directory in the way of apps/036-tetris from v0.6-dev; moving it to apps/036-tetris~v0.6-dev instead.
+CONFLICT (modify/delete): apps/037-klondike/src/front/app.at deleted in v0.6-dev and modified in origin/main.  Version origin/main of apps/037-klondike/src/front/app.at left in tree.
+CONFLICT (file/directory): directory in the way of apps/037-klondike from v0.6-dev; moving it to apps/037-klondike~v0.6-dev instead.
+Auto-merging scripts/desktop.ps1
+Auto-merging scripts/desktop.sh
+CONFLICT (content): Merge conflict in scripts/desktop.sh
