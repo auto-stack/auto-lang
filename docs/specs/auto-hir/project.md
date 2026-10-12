@@ -3,14 +3,31 @@
 > **Status**: experimental
 > 路径：`experimental/ac-core`（独立 Cargo workspace，package `auto-ac-prototype`） | 技术栈：Rust（cranelift 0.126 栈消费方见 auto-ac）
 
-core-i32 profile 的类型化 HIR 契约与实现：Schema-bound Atom 文本 → 绑定 → 语义校验 → `CheckedModule`。
-由 PLAN-741 建立首个闭环；完整 HIR（全 A 子集、来源表、跨模块、泛型/所有权）不在现状内。
+core-i32 / scalar-i32 双 profile 的类型化 HIR 契约与实现：Schema-bound Atom 文本 →
+绑定 → 语义校验 → `CheckedModule`。由 PLAN-741 建立首个闭环，PLAN-767 增设
+scalar 身份域与运算扩面；完整 HIR（全 A 子集、来源表、跨模块、泛型/所有权）
+不在现状内。
 
 ## 目标与范围
 
-- **只接受** `auto.hir.core.draft` / revision 1 / `core-i32-draft` 三重身份（嵌入 descriptor `experimental/ac-core/schema/core-i32.atom`）；未知 tag/case/字段/分支违约一律 bind 阶段拒绝。
-- 类型仅精确 `i32`/`bool`；运算 `add_i32`/`mul_i32`/`lt_i32`；加/乘必须声明 `overflow: trap`。
-- 单模块内解析引用；跨模块引用、字符串/聚合/所有权/泛型/enum 值不在本 profile。
+- **已注册双身份域**（精确可失败映射，未注册三元组不归类任何域）：
+  - `auto.hir.core.draft` / revision 1 / `core-i32-draft`（descriptor
+    `experimental/ac-core/schema/core-i32.atom`）；未知 tag/case/字段/分支违约
+    一律 bind 阶段拒绝；
+  - `auto.hir.scalar.draft` / revision 1 / `scalar-i32-draft`（descriptor
+    `schema/scalar-i32.atom`，core 的超集）。
+- 类型仅精确 `i32`/`bool`。运算面：core 域 `add_i32`/`mul_i32`/`lt_i32`（加/乘
+  必须声明 `overflow: trap`）；scalar 域另有 `sub/div/rem_i32`（div/rem 无
+  overflow 字段——trap 固有：除数 0、MIN/-1、MIN%-1）、全序
+  `le/gt/ge_i32`、同类 `eq/ne`（i32×i32 或 bool×bool → bool）、一元
+  `neg_i32/not_bool` 与 **lazy** `Logical{and,or}`（与 eager `Binary` 分离表示；
+  禁止映射为双参 intrinsic 或无条件发射 RHS）。程序化混入跨域运算/节点由
+  verify 拒绝（`verify.profile-op`），扩大的共享 enum 不扩大旧 profile。
+- `hir::Bundle` 携带 `HirDomain`（由 descriptor 三重身份精确导出）；verify 入口
+  按域分设：`verify` 限 core、`verify_scalar` 限 scalar（域错位 `verify.domain`）；
+  未注册 descriptor 的 bind 整体拒绝（`bind.descriptor-unregistered`），
+  canonical writer 对未注册/错域一律拒绝（`canonical.identity-conflict`）。
+- 单模块内解析引用；跨模块引用、字符串/聚合/所有权/泛型/enum 值不在两域内。
 
 ## 文本契约（atom_text + descriptor）
 
@@ -28,11 +45,19 @@ core-i32 profile 的类型化 HIR 契约与实现：Schema-bound Atom 文本 →
 
 ## 语义契约（verify → CheckedModule）
 
-- `CheckedModule` 只能由 `verify::verify` 构造；后端不得消费其它来源。
-- 类型：运算数/结果、调用实参/形参/结果、`return` 对函数签名、`if` 条件须 bool、param local 对签名
-  逐位一致（index 界内唯一）。
+- `CheckedModule` 只能由 `verify`（core 域）/`verify_scalar`（scalar 域）构造；
+  后端不得消费其它来源；Checked 记录所属域。
+- 引用边界门先于索引走查：body 内 local/place/expr/block/loop 引用与模块级
+  函数签名 params/result 的 `TypeUse::Ref` 越界均受控拒绝
+  （`verify.bad-reference`，签名门先于签名求值——非法 TypeId 不得默认成 i32
+  后进后端 panic）；声明 ty 越界沿 `verify.callee-type` 受控拒绝。
+- 类型：运算数/结果（算术→i32、比较/eq/ne/logical→bool 且 eq/ne 限同类、
+  一元 neg i32→i32 / not bool→bool）、调用实参/形参/结果、`return` 对函数签名、
+  `if` 条件须 bool、param local 对签名逐位一致（index 界内唯一）。
 - 归属唯一：每个函数的 `body` 字段必须指向 owner 恰为该函数的 body（共享 body、同签名共享、
   冒领 body 均在 verify 阶段报 `verify.owner-mismatch` 拒绝）；body→owner 反向一致性同此。
+  短路 `Logical` 的 lhs/rhs 各占一个操作数位——RHS 条件执行不改变「每个 ExprId
+  恰好一个语法求值位置」；未执行 RHS 仍受静态类型/初始化走查。
 - 初始化：`let` 初始化；`assign` 目标须已初始化且 mutable（place 与 local 双查）；if 出口初始化 =
   可达分支交集；循环按可能零次迭代保守处理（体内初始化不外泄）。
 - 块结构：块包含边仅来自 `if` 的 then/else 与 `loop` 的 body（运行时 loop 重入、break/continue 的

@@ -5,8 +5,10 @@
 
 AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x64 COFF → PE 原生执行。
 **HIR → 原生执行与有限源码 profile → 原生执行均已完成**；PLAN-745 的
-[source-core-i32.md](source-core-i32.md) 提供 A1–A3 源码闭环。完整语言面、AAC/ACC
-native 自举与其它能力仍由后续计划承接。
+[source-core-i32.md](source-core-i32.md) 提供 A1–A3 源码闭环，PLAN-767 的
+[source-scalar-i32.md](source-scalar-i32.md) 提供标量扩面（减/除/余、全序比较、
+同类 eq/ne、一元、布尔短路、条件 for）。完整语言面、AAC/ACC native 自举与
+其它能力仍由后续计划承接。
 
 ## 目标与范围
 
@@ -50,11 +52,18 @@ native 自举与其它能力仍由后续计划承接。
 
 ## CLI 与制品
 
-- 源码模式 check-source/build-source 必须显式 source profile；源码 → Atom/span表
-  → 真正 bind/verify → Checked → 与 HIR 模式共用 finish_build/native/link/发布尾部。
-  支持/拒绝、0/1/2、trace、来源映射与无固定嵌套排除见 [源码规范](source-core-i32.md)。
-  一键 scripts/verify-ac-source-745.ps1，21原生/53拒绝及独立深块/帧控制已验；
-  源码 profile/输入hash与三制品在同一事务写入收据。
+- 源码模式 check-source/build-source 必须显式 source profile——**已注册两档**：
+  `auto.source.core-i32.draft` 与 `auto.source.scalar-i32.draft`（未知值用法错 2，
+  两域支持/拒绝面互不扩大：scalar 拒 while、core 拒 for/新运算符）。源码 →
+  Atom/span表 → 真正 bind/verify（按域分派 descriptor 与 verify 入口）→ Checked
+  → 与 HIR 模式共用 finish_build/native/link/发布尾部。支持/拒绝、0/1/2、trace、
+  来源映射与无固定嵌套排除见两份源码规范；一键 scripts/verify-ac-source-745.ps1
+  与 scripts/verify-ac-scalar-767.ps1。
+- HIR 文本模式 check/build 按文档头三重身份选择**已注册 descriptor**（core/
+  scalar），未知身份 `bind/bind.descriptor-unknown` 受控拒绝，不猜测不回退。
+- build-source 收据在同一发布事务内记录 source profile、**HIR 三重身份**
+  （schema/revision/profile）与输入 hash；源码函数 native 符号 sf_ 前缀与
+  入口规则两域一致。
 
 - `auto-ac-prototype check <file>`：bind+verify，诊断 `file:line:col: error[stage/code]`；退出码 0/1/2
   （成功/流水线拒绝/用法错）。
@@ -85,8 +94,10 @@ native 自举与其它能力仍由后续计划承接。
 
 ## 边界与已知限制
 
-- 不宣称：完整 Auto 源码编译（仅独立 source profile，旧 AST 未接）、生产 ABI 冻结、DLL/热重载、Linux 发布验收、
+- 不宣称：完整 Auto 源码编译（仅两个独立 source profile，旧 AST 未接）、生产 ABI 冻结、DLL/热重载、Linux 发布验收、
   AAC 自举、性能承诺。
+- 标量扩面的 MIN%-1 trap70 是 scalar-i32 profile 固定测试语义，不推导全语言/
+  生产异常 ABI；char/str/List/完整 int 宽度仍 open。
 - 单模块 lowering；跨模块调用/动态分派不在本层。
 - 工具链发现依赖本机状态（注册表/env），CI 化需先固化 SDK 路径策略。
 

@@ -77,6 +77,16 @@ MD-409 仅收敛该 profile 的 int/i32=有符号32位、add/mul/lt与runtime tr
 两决定追加取证 note，required conclusion及原绑定保持；unknown族 owner/探针不变。
 数值证据见 [numeric-boundary.md](../../reports/745-source-core-i32/numeric-boundary.md)。
 
+## 标量扩面 profile 取证（PLAN-767）
+
+[source-scalar-i32](../auto-ac/source-scalar-i32.md) 在同一 AC 原型上补齐
+int 全序运算（`< > <= >=`）、同类 `eq/ne`、`- / %`（向零截断；0、MIN/-1、
+MIN%-1 trap70）与 bool 逻辑短路 `&& / || / !`、条件 for——MD-409/410 的
+required **不因有限域证据改项**：这是 Rust AC 原型域的验证，不是 Auto 实现
+的 ACC 主体；全语言 int 宽度、char/str/List、is-match/use 等仍 required，
+unknown 族 owner/探针不变。真实 PE 取证与独立复审（含修复轮）见
+[verification.md](../../reports/767-scalar-i32/verification.md)。
+
 ## 锚点/候选 owner 一致性（QA-05）
 
 A8（str/List 微程序）owner=运行时首批候选（str/容器/int 扩面工作包）；
