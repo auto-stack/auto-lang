@@ -112,6 +112,10 @@ pub mod config;
 pub mod database;
 pub mod dep;
 pub mod error;
+// Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
+// orchestration; depends on the dependency-light `auto-test-case` core.
+#[cfg(feature = "test-cases")]
+pub mod test_cases;
 // Plan 096 Phase 0: Scenario-based compilation
 pub mod session;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)

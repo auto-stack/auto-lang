@@ -99,6 +99,10 @@ pub struct RunReport {
     /// (case, adapter) pairs selected but missing a declared, non-skipped
     /// check — required-coverage contract errors.
     pub coverage_gaps: Vec<(String, String)>,
+    /// Suite/case-file level load errors (unreadable or undecodable files,
+    /// duplicate identities, resource overruns at load). These are contract
+    /// errors and force exit 2 even when every loaded check passes.
+    pub load_errors: Vec<String>,
 }
 
 impl RunReport {
@@ -110,6 +114,7 @@ impl RunReport {
             required_adapters: required_adapters.to_vec(),
             results: Vec::new(),
             coverage_gaps: Vec::new(),
+            load_errors: Vec::new(),
         }
     }
 
@@ -131,6 +136,7 @@ impl RunReport {
         if self.count(Status::Error) > 0
             || self.count(Status::Blocked) > 0
             || !self.coverage_gaps.is_empty()
+            || !self.load_errors.is_empty()
         {
             return 2;
         }
@@ -175,6 +181,10 @@ impl RunReport {
                 .map(|(c, a)| format!("[{}, {}]", json_str(c), json_str(a)))
                 .collect::<Vec<_>>()
                 .join(", ")
+        ));
+        s.push_str(&format!(
+            "  \"load_errors\": [{}],\n",
+            self.load_errors.iter().map(|e| json_str(e)).collect::<Vec<_>>().join(", ")
         ));
         s.push_str("  \"results\": [\n");
         for (i, r) in self.results.iter().enumerate() {
@@ -280,6 +290,12 @@ impl RunReport {
                 .collect::<Vec<_>>()
                 .join(" ")
         ));
+        if !self.load_errors.is_empty() {
+            out.push_str("load errors (contract):\n");
+            for e in &self.load_errors {
+                out.push_str(&format!("    {}\n", e));
+            }
+        }
         if !self.coverage_gaps.is_empty() {
             out.push_str("required-coverage gaps (contract errors):\n");
             for (case, adapter) in &self.coverage_gaps {
