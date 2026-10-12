@@ -252,6 +252,19 @@ impl NativeInterface {
                     name
                 )
             });
+        self.register_shim_for_id(id, func);
+        self.register_name(name, id);
+        id
+    }
+
+    /// Route a name-resolved shim to the correct ID table.
+    ///
+    /// Kept separate so the dynamic-band path can be tested without mutating
+    /// the process-global `BIGVM_NATIVES` registry.
+    fn register_shim_for_id<F>(&mut self, id: u16, func: F)
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
         // Names whose registry id landed in the dynamic band (>= 10000 —
         // e.g. after register_with_id bumped the shared next_id) must go to
         // the dynamic table: register_static asserts the static band and
@@ -261,8 +274,6 @@ impl NativeInterface {
         } else {
             self.register_dynamic_with_id(id, func);
         }
-        self.register_name(name, id);
-        id
     }
 
     /// Collect all inventory-submitted FFI registrations and register them.
@@ -11753,6 +11764,15 @@ mod tests {
 
         assert_eq!(ni.resolve("auto.list.push"), Some(101));
         assert_eq!(ni.resolve("rust.something"), None);
+    }
+
+    #[test]
+    fn register_shim_routes_dynamic_band_ids_without_panicking() {
+        let mut ni = NativeInterface::new();
+        ni.register_shim_for_id(DYNAMIC_ID_START, |_, _| Ok(()));
+
+        assert!(ni.get(DYNAMIC_ID_START).is_some());
+        assert_eq!(ni.next_dynamic_id(), DYNAMIC_ID_START + 1);
     }
 
     // ── Plan 413: code editor payload natives (UI bridge) ──────────────
