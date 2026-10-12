@@ -136,7 +136,7 @@ const t = computed(() => zh.value ? {
           <li v-for="(p, i) in c.desktop.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
         </ul>
       </div>
-      <p><a :href="prefix + '/autoos/'" class="inline-link">{{ zh ? '了解 AutoOS 与运行条件 →' : 'Explore AutoOS and its runtime conditions →' }}</a></p>
+      <p><a :href="prefix + '/os#desktop-showcase'" class="inline-link">{{ zh ? '了解 AutoOS 与运行条件 →' : 'Explore AutoOS and its runtime conditions →' }}</a></p>
       <div class="desktop-gallery">
         <DesktopShowcase embedded />
       </div>

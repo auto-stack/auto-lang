@@ -20,7 +20,7 @@ export function introCopy(zh: boolean): { home: { os: string; ai: string }; sect
       os: {
         title: 'AutoOS：以 Auto 语言为基础的操作系统环境',
         intro: 'AutoOS 正在构建一套跨平台的系统环境，包含桌面、应用、配置、命令接口和系统服务。当前可见的形态是运行在宿主系统中的虚拟桌面；长期方向是让这些组件根据设备与系统环境组合起来，逐步形成可以独立部署的操作系统。',
-        links: [link('了解当前桌面', '/autoos/'), link('阅读桌面架构', '/docs/design/autoui/virtual-desktop'), link('AutoOS 的历史与展望', '/articles/autoos-history')],
+        links: [link('了解当前桌面', '/os#desktop-showcase'), link('阅读桌面架构', '/docs/design/autoui/virtual-desktop'), link('AutoOS 的历史与展望', '/articles/autoos-history')],
         layers: ['应用与桌面 · 窗口、工作区和任务', 'AutoUI · 组件与交互定义', '渲染/合成宿主 · 浏览器、原生渲染与平台接入', 'AutoLang 与 Rust 基础设施 · 执行与系统能力', '宿主系统 · 内核、驱动、文件与进程'],
         diagramLabel: '当前宿主桌面的组成关系示意',
         diagramNote: '架构关系示意。当前形态复用宿主系统；各层的具体实现和平台覆盖不同，自有内核尚未实现。',
@@ -42,7 +42,7 @@ export function introCopy(zh: boolean): { home: { os: string; ai: string }; sect
       uiDesktop: {
         title: 'AutoUI 的桌面运行路径',
         intro: '相同视图定义可用于 Vue 与原生桌面；运行、代码生成和平台适配有各自的支持范围。桌面表面由 AutoOS 产品仓组织，语言框架提供执行、渲染与系统接入。',
-        links: [link('当前虚拟桌面', '/autoos/'), link('AutoUI 总览', '/ui'), link('桌面架构', '/docs/design/autoui/virtual-desktop')],
+        links: [link('当前虚拟桌面', '/os#desktop-showcase'), link('AutoUI 总览', '/ui'), link('桌面架构', '/docs/design/autoui/virtual-desktop')],
         layers: [], diagramLabel: '', diagramNote: '',
       },
     },
@@ -55,7 +55,7 @@ export function introCopy(zh: boolean): { home: { os: string; ai: string }; sect
       os: {
         title: 'AutoOS: an operating environment built around Auto',
         intro: 'AutoOS is developing a cross-platform system environment spanning the desktop, applications, configuration, command interfaces, and services. Its current visible form is a virtual desktop running within a host system. The longer-term direction is to assemble these components for different devices and system environments, including independently deployable operating systems.',
-        links: [link('Explore the current desktop', '/autoos/'), link('Desktop architecture', '/docs/design/autoui/virtual-desktop'), link('AutoOS history and outlook', '/articles/autoos-history')],
+        links: [link('Explore the current desktop', '/os#desktop-showcase'), link('Desktop architecture', '/docs/design/autoui/virtual-desktop'), link('AutoOS history and outlook', '/articles/autoos-history')],
         layers: ['Applications and desktop · windows, workspaces and tasks', 'AutoUI · components and interaction definitions', 'Rendering/composition hosts · browser, native rendering and platform integration', 'AutoLang and Rust infrastructure · execution and system capabilities', 'Host system · kernel, drivers, files and processes'],
         diagramLabel: 'Illustration of the current hosted desktop architecture',
         diagramNote: 'Architecture illustration. The current form reuses the host system. Implementations and platform coverage differ by layer; an AutoOS kernel has not been implemented.',
@@ -77,7 +77,7 @@ export function introCopy(zh: boolean): { home: { os: string; ai: string }; sect
       uiDesktop: {
         title: 'AutoUI desktop paths',
         intro: 'Shared view definitions support Vue and native desktop environments, with separate coverage for execution, code generation and platform integration. The AutoOS product repository organizes desktop surfaces; the language framework supplies execution, rendering and system integration.',
-        links: [link('Current virtual desktop', '/autoos/'), link('AutoUI overview', '/ui'), link('Desktop architecture', '/docs/design/autoui/virtual-desktop')],
+        links: [link('Current virtual desktop', '/os#desktop-showcase'), link('AutoUI overview', '/ui'), link('Desktop architecture', '/docs/design/autoui/virtual-desktop')],
         layers: [], diagramLabel: '', diagramNote: '',
       },
     },

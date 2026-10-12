@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const paths = ['/os', '/ai', '/autoos/', '/ui-desktop', '/articles/autoos-history', '/articles/auto-ai-history']
+const paths = ['/os', '/ai', '/ui-desktop', '/articles/autoos-history', '/articles/auto-ai-history']
 for (const zh of [false, true]) {
   for (const path of paths) {
     const route = (zh ? '/zh' : '') + path
@@ -78,7 +78,8 @@ for (const prefix of ['', '/zh']) {
     await page.locator(`a.feature-card[href="${prefix}/os"]`).click()
     await expect(page.locator('.introduction-header h1')).toBeVisible()
     await page.goto(prefix + '/v05/')
-    await expect(page.locator('#desktop-showcase').getByRole('tab')).toHaveCount(6)
+    await expect(page.locator('#desktop-showcase').getByRole('tab')).toHaveCount(0)
+    await expect(page.locator('#desktop-showcase .desktop-card')).toHaveCount(6)
     await expect(page.locator('.hero-shot .evidence-image img')).toHaveAttribute('src', '/desktop-showcase/02-desktop-dark.png')
     const philosophy = page.locator('#philosophy')
     await page.locator('#ph-laos summary').click()

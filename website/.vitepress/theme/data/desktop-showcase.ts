@@ -20,17 +20,3 @@ export function desktopShots(zh: boolean): GalleryShot[] {
   ]
   return rows.map(([file, label, alt, caption]) => ({ src: `/desktop-showcase/${file}`, label, alt, caption, width: 2560, height: 1600 }))
 }
-
-export function desktopSteps(zh: boolean) {
-  return zh ? [
-    { title: '从桌面开始', desc: '图标、壁纸与任务栏组成桌面。时钟、待办和音乐小组件来自已启动并最小化的应用。' },
-    { title: '用 Launcher 找到应用', desc: '打开启动器，以 Tab 切到图标网格，再通过搜索或键盘选择应用。' },
-    { title: '试试多个窗口', desc: '同时打开俄罗斯方块、纸牌接龙和扫雷；拖动窗口，让主要内容并排可见。' },
-    { title: '安排一个工作场景', desc: '编辑器占左半屏，右侧上下放置待办清单和日历，同时查看代码、任务与日期。' },
-  ] : [
-    { title: 'Start at the desktop', desc: 'Icons, wallpaper and taskbar form the desktop. Clock, Todo and music widgets come from apps that have been started and minimized.' },
-    { title: 'Find an app in Launcher', desc: 'Open Launcher, use Tab to switch to its icon grid, then choose an app through search or keyboard navigation.' },
-    { title: 'Try multiple windows', desc: 'Open Tetris, Solitaire and Minesweeper together, then drag the windows to keep their main content visible side by side.' },
-    { title: 'Arrange a workspace', desc: 'Give the editor the left half and stack Todo above Calendar on the right, keeping code, tasks and dates in view.' },
-  ]
-}

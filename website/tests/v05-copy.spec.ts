@@ -97,7 +97,7 @@ for (const prefix of ['', '/zh']) {
     await expect(page.locator('img[src="/v05/automusk-app.png"], img[src="/v05/autodown-desktop.png"]')).toHaveCount(0)
     await expect(page.locator('.hero-shot img[src="/desktop-showcase/02-desktop-dark.png"]').first()).toHaveCount(1)
     await expect(page.locator('#flagship img[src="/apps/autoshell/ash-01.png"]').first()).toHaveCount(1)
-    await expect(page.locator('#desktop a[href="' + prefix + '/autoos/"]')).toHaveCount(1)
+    await expect(page.locator('#desktop a[href="' + prefix + '/os#desktop-showcase"]')).toHaveCount(1)
     await expect(page.locator('#ecosystem a[href="' + prefix + '/playground"]')).toHaveCount(1)
     await page.locator('#get-started a').first().click()
     await expect(page.locator('.vp-doc h1')).toBeVisible()

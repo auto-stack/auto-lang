@@ -290,16 +290,12 @@ test.describe('v05 release page', () => {
     await expect(page.locator('.section-nav-link.current')).toContainText(/Apps|旗舰应用/)
   })
 
-  test('screenshot gallery: tabs switch main image', async ({ page }) => {
+  test('desktop cards expose the full sequence without tabs', async ({ page }) => {
     await page.goto('/v05/')
-    const tabs = page.locator('.shot-tabs [role="tab"]')
-    await expect(tabs.first()).toHaveAttribute('aria-selected', 'true')
-    const shotImg = page.locator('#shot-panel .evidence-image img')
-    const firstSrc = await shotImg.getAttribute('src')
-    await tabs.nth(1).click()
-    const secondSrc = await shotImg.getAttribute('src')
-    expect(secondSrc).not.toBe(firstSrc)
-    await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true')
+    const story = page.locator('#desktop-showcase')
+    await expect(story.getByRole('tab')).toHaveCount(0)
+    await expect(story.locator('.desktop-card')).toHaveCount(6)
+    await expect(story.locator('.desktop-card').last().getByRole('heading')).toHaveText('Work · Editor and tasks')
   })
 
   test('start menu uses real launcher image; no TODO placeholders', async ({ page }) => {
@@ -308,8 +304,9 @@ test.describe('v05 release page', () => {
     expect(html).not.toContain('TODO screenshot')
     expect(html).not.toContain('shot-placeholder')
     // PLAN-720：实际 Launcher 图标网格；保留“真实启动器图、非占位”回归。
-    await page.locator('.shot-tabs').getByRole('tab', { name: 'Launcher · Light', exact: true }).click()
-    await expect(page.locator('#shot-panel .evidence-image img[src="/desktop-showcase/03-launcher-light.png"]')).toHaveCount(1)
+    const launcher = page.locator('.desktop-card[data-desktop-shot="/desktop-showcase/03-launcher-light.png"]')
+    await launcher.scrollIntoViewIfNeeded()
+    await expect(launcher.locator('.evidence-image img')).toBeVisible()
   })
 
   test('philosophy details expandable and locatable', async ({ page }) => {

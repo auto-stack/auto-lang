@@ -24,6 +24,8 @@
 - 不做：不实现 playground 后端（crates/auto-playground）与可复用组件库（packages/auto-playground-vue）。
 - OS/AI 介绍（PLAN-719）：LaOS 实现理念、OS over OS 当前形态与 AI + Lang + OS 长期人本方向连续说明；宿主/现有内核独立系统/自有内核分清现状。OS、AI、AutoOS、ui-desktop 双语采用默认阅读布局及同源概要/架构关系，首页与 v0.5 同步相关摘要；两篇双语独立历史文章提供总览互链、资料时点与公开来源。规则见 [os-ai-introduction](design/os-ai-introduction.md)。
 
+PLAN-767：双语 OS 主页面直接融合桌面/窗口/应用/Kanban/共享设置及宿主说明；AutoOS 旧地址同语言/hash 兼容，现行入口直达 /os。OS/v0.5 六张原图改为纵向单列图文卡片，图片上、介绍下，全序列直接可读且保留原图/键盘放大；其他图集保全。规范见 design/os-ai-introduction.md。
+
 ## 模块架构
 
 PLAN-766：AutoMusk 会话主图 SHOT-04 共享于双语首页、v0.5、应用总览与专题；计划页 SHOT-05 展示同一密码生成器示例的 PLAN-001（0/5），不代表执行/复审已完成。两张用户提供的原始 2560×1600 PNG 保留原图/键盘放大，来源与 hash 见 docs/reports/p766-automusk-capture-catalog.json；SHOT-06 仍待拍。
