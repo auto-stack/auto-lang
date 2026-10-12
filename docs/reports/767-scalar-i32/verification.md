@@ -44,6 +44,31 @@ root 档隔离说明：741 脚本**已有** `-SkipMainGates` 显式模式（跳
 | V-11 | scalar_native 源码 PE：p-gcd-euclid（gcd(48,18)=6 等 5 组）、p-count-digits（12345=5）、p-is-digit（48/57/47/58 正反边界，明确非原 lexer 编译）；SP01..SP03 |
 | V-12 | scalar_source e07..e11（非 bool 条件/for-in/初始化子句/未闭合/while 均原 token 定位）+ p-for-loops（零次/嵌套 break-continue）+ p-gcd（`for y != 0`）真实 PE + CLI 双向隔离（SP01/SP06、767 脚本 profile-isolation 步） |
 
+
+## 修复轮取证（needs_fix → 重提交，2026-10-12）
+
+Codex 独立最终复审（[review-codex-r2.md](../../../docs/plans/attachments/767/review-codex-r2.md)）
+裁定 needs_fix，三项发现按不变量修复（非仅修样例）：
+
+| 发现 | 修复（作用域） | 永久回归 |
+|---|---|---|
+| P767-R1（P1）未知三重身份归为 Core、writer 可换壳 | `Descriptor::domain()` 改**精确可失败映射**（`Option<HirDomain>`，仅两个已注册三元组）；`descriptor::bind` 对未注册 descriptor 整体拒绝（新码 `bind.descriptor-unregistered`）；`write_canonical` 对未注册/错域一律 `canonical.identity-conflict`（消息标注 unregistered） | scalar_hir `unregistered_descriptor_identities_are_rejected_everywhere`（schema/revision/profile 三维 × bind+writer+改头文档+注册表控制） |
+| P767-R2（P1）签名 TypeId 越界得 Checked、native panic（native.rs:91） | verify 新增**模块级签名类型边界门**（函数类型 params/result 的 `TypeUse::Ref` 先于签名求值，`verify.bad-reference`，失败跳过该模块走查）；native `value_of_type_use`/`signature_of` 全化（越界 → 受控 backend 错误）。作用域审计：TypeUse::Ref 全部入口 = types 表（新门）、defs ty（既有 verify.callee-type .get 控制）、locals/places/exprs（既有 body 边界门）——无遗漏路径 | scalar_hir `signature_type_refs_are_bounds_checked_before_checked`（params[0]/result 各 TypeId(9999) + 有效/内建控制） |
+| P767-R3（P2）设计收据减法护栏公式错误 | design.md 公式改为与实现一致的 `(b>0 && a<min+b) \|\| (b<=0 && a>max+b)`（含可表示性说明）；未动正确后端 | 文档修正 + 复审探针重放 |
+
+**复审者反例重放**（同一探针程序 review-codex-probes.rs，对修复版 rlib 重编译）：
+16/16 全 PASS、`CONTRACT_FAILURES=0`、exit 0——WRITER-schema/revision/profile 三项
+`canonical.identity-conflict`、UNKNOWN-schema/revision/profile 三项
+`bind.descriptor-unregistered`、SIGNATURE-parameter/result 两项
+`verify.bad-reference`（不再有 native panic）、8 个控制项保持 PASS。
+
+**门禁重跑**（修复提交）：完整 ac-core 套件 **145/0**（143+2 新回归）；
+verify-ac-scalar-767 **14 步 0 失败 45 例**；verify-ac-741(-SkipMainGates) 13 步
+PASS；verify-ac-source-745 13 步 74 例 PASS；acc_inventory CHECK-OK；fmt clean、
+all-targets 零 warning。**复审者原生探针重放**（review-codex-native.ps1，修复版
+二进制）：ARITHMETIC exit=0；SHORTCIRCUIT exit=0、stderr 精确
+`abaabaabababaabaaba`——与其冻结 oracle 一致。
+
 ## 已知边界与不宣称
 
 - MIN%-1 trap70 是本 profile 固定测试语义，不推导全语言/生产异常 ABI。

@@ -27,8 +27,12 @@
   （见 §6）。`main.rs` 的 `check`/`build`（HIR 文本模式）改用 `bind_document`；
   既有 `bind_source`（core 便捷入口）保持原语义，供旧测试使用。
 - `Descriptor` 不内嵌域判断逻辑；`hir::HirDomain` 由 schema/revision/profile
-  三重身份映射（仅 `auto.hir.scalar.draft/1/scalar-i32-draft` → Scalar，其余
-  一律 Core——保守方向：未知身份永不升级为新 profile）。
+  三重身份做**精确可失败映射**（`Descriptor::domain() -> Option<HirDomain>`：
+  两个已注册三元组分别 → Some(Core)/Some(Scalar)，任何其它组合 → None）。
+  复审 P767-R1 修正：未知身份不得归类为 Core——`descriptor::bind` 对未注册
+  descriptor 整体拒绝（`bind.descriptor-unregistered`），canonical writer 对
+  未注册/错域 descriptor 一律 `canonical.identity-conflict`；唯一能产出
+  Bundle 的入口是已注册 descriptor。
 
 ## 2. HIR 节点与字段（hir.rs）
 
@@ -100,6 +104,10 @@ pub enum ExprKind {
   - `unary neg_i32`：操作数 i32、声明 i32；`unary not_bool`：操作数 bool、
     声明 bool；
   - `logical and/or`：两操作数 bool、声明 bool。
+- 复审 P767-R2 修正：模块级函数签名（params/result 的 `TypeUse::Ref`）先于
+  签名求值做边界门（`verify.bad-reference`，失败跳过该模块后续走查）；
+  native 的 `value_of_type_use`/`signature_of` 全化（越界 → 受控 backend
+  错误，不再索引 panic）。
 - 图结构与初始化走查扩充：`check_expr_graph` 的 operand 边、`expr_type` 的
   Enter/Exit、`walk_value_in` 的初始化检查均覆盖 `Unary.operand` 与
   `Logical.lhs/rhs`。短路不改变「每个 ExprId 恰好一个语法求值位置」：Logical
@@ -109,8 +117,9 @@ pub enum ExprKind {
 ## 5. native.rs（Windows x64 lowering）
 
 - eager 二元（左→右求值次序不变，迭代后序机器扩展）：
-  - `sub`：`isub` + 既有 checked_add 式护栏（(b>=0 && a<min-b)||(b<0 && a>max-b)
-    → trap70 路径）；
+  - `sub`：`isub` + 护栏 `(b>0 && a < min+b) || (b<=0 && a > max+b)` → trap70 路径
+    （减正数下溢 iff a<MIN+b；减非正数上溢 iff a>MAX+b；两个护栏项各自在
+    i32 域内可表示，护栏算术本身不回绕）；
   - `div`：目标指令前显式护栏——`safe_b = select(b==0, 1, select(b==-1, 1, b))`；
     `raw = sdiv(a, safe_b)`；`q = select(b==-1, ineg(a), raw)`；
     `bad = (b==0) || (b==-1 && a==MIN)` → `branch_to_trap_on(bad)`；结果 q。
@@ -143,7 +152,8 @@ pub enum ExprKind {
 | code | stage | 场景 |
 |---|---|---|
 | `bind.descriptor-unknown` | bind | `bind_document` 遇到未注册三重身份（文本头可解析但注册表无匹配） |
-| `canonical.identity-conflict` | bind | `write_canonical` 的 descriptor 与 bundle.domain 不一致 |
+| `bind.descriptor-unregistered` | bind | `descriptor::bind` 的 descriptor 自身三重身份未注册（程序化路径，复审 P767-R1） |
+| `canonical.identity-conflict` | bind | `write_canonical` 的 descriptor 未注册或与 bundle.domain 不一致（含 P767-R1 的未注册换壳） |
 | `verify.domain` | verify | `verify`/`verify_scalar` 入口的域不匹配（bundle.domain ≠ 入口域） |
 | `verify.profile-op` | verify | core 域 verify 遇到 scalar-only op / unary / logical 节点 |
 

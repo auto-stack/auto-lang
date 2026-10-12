@@ -243,6 +243,15 @@ impl Verifier {
     }
 
     fn check_module(&mut self, m: &hir::Module) {
+        // Module-level type-reference bounds FIRST (review P767-R2): a
+        // programmatically mutated bundle may carry out-of-range TypeIds in
+        // function-signature params/results. `value_of` would silently
+        // default them to i32 and hand a Checked to the native backend,
+        // which then indexes the type table and panics. Reject in a
+        // controlled way and skip this module's signature/body walks.
+        if !self.check_module_type_bounds(m) {
+            return;
+        }
         let type_map = Self::build_type_map(m);
         // Function signatures by def index.
         let mut sigs: SigTable = BTreeMap::new();
@@ -304,6 +313,43 @@ impl Verifier {
             self.check_profile_ops(body);
             self.check_body(m, BodyId(bi as u32), body, &type_map, &sigs);
         }
+    }
+
+    /// Bounds-check every `TypeUse::Ref` inside the module's function-type
+    /// signatures (params and result) against the module's own type table.
+    /// Text-bound bundles cannot violate this (the binder resolves type
+    /// references against the table); mutated bundles can, and must be
+    /// rejected before any signature-driven walk or native lowering.
+    fn check_module_type_bounds(&mut self, m: &hir::Module) -> bool {
+        let n_types = m.types.len();
+        let mut diags: Vec<Diagnostic> = Vec::new();
+        for t in &m.types {
+            let hir::TypeKind::Function(sig) = &t.kind else {
+                continue;
+            };
+            let mut check_use = |role: &str, u: &hir::TypeUse| {
+                if let hir::TypeUse::Ref(tid) = u {
+                    if (tid.0 as usize) >= n_types {
+                        diags.push(Diagnostic::new(
+                            Stage::Verify,
+                            "verify.bad-reference",
+                            format!(
+                                "type index `{}` in function type `{}`'s {} is out of range for the module's type table (length {})",
+                                tid.0, t.id_text, role, n_types
+                            ),
+                            t.span,
+                        ));
+                    }
+                }
+            };
+            for p in &sig.params {
+                check_use("param", p);
+            }
+            check_use("result", &sig.result);
+        }
+        let ok = diags.is_empty();
+        self.diags.extend(diags);
+        ok
     }
 
     fn check_body(

@@ -34,12 +34,15 @@
   core 的超集）：BinOp 扩至 11（+sub/div/rem/le/gt/ge/eq/ne），新增
   `Unary{neg_i32,not_bool}` 与 `Logical{and,or}`（lazy，与 eager Binary 分离
   表示，禁止映射为双参 intrinsic 或无条件发射 RHS）；`overflow:` 字段仅
-  add/sub/mul。Bundle 携带 `HirDomain`，由 descriptor 三重身份导出、随
-  binder→verify→Checked→canonical writer 行走；verify 入口按域分设
+  add/sub/mul。Bundle 携带 `HirDomain`，由 descriptor 三重身份做**精确可失败
+  映射**导出、随 binder→verify→Checked→canonical writer 行走——未注册
+  schema/revision/profile 不归类为任何已知域：bind 对未注册 descriptor 整体
+  拒绝（`bind.descriptor-unregistered`），writer 对未注册/错域一律拒绝
+  （`canonical.identity-conflict`，复审 P767-R1）；verify 入口按域分设
   （`verify` 限 core、`verify_scalar` 限 scalar；core 域程序化混入新 op/
-  节点 → verify.profile-op）；verify 增引用边界门（跨 body 引用
-  → verify.bad-reference，受控拒绝非 panic）；canonical writer 身份冲突
-  显式拒绝（canonical.identity-conflict）。
+  节点 → verify.profile-op）；verify 增引用边界门（body 引用 + 模块级函数
+  签名 params/result 的 TypeUse::Ref → verify.bad-reference，受控拒绝非
+  panic，复审 P767-R2）；native 类型投影全化（越界 → 受控 backend 错误）。
 - 验收绑定：AC-01、04、05；证据 V-01/07、roundtrip。
 
 ## SD-03 modify — docs/specs/auto-hir/stage-contract.md
@@ -50,6 +53,9 @@
   不猜测、不回退）；S2 Bundle 携带域身份；S3 verify 按域入口与 profile 边界
   校验；S4 CheckedModule 记录域；S5/S6 共享尾部不变。条件求值规则：短路
   RHS 只能发射进条件执行块，命名实参先按源码序求值再按 bindings 落位；
+  程序化 Bundle 的身份与引用（含函数签名类型引用）在任何 Checked 产出前
+  受精确边界门控制（P767-R1/R2 语义）；S1 程序化路径对未注册 descriptor
+  整体拒绝（bind.descriptor-unregistered）。
   `for cond {}` 降级为 `loop { if cond { body } else { break } }`（每轮
   重判、条件不 hoist），不新增低层控制流模型。
 - 验收绑定：AC-01、03..05；证据 V-01..05/12。

@@ -121,6 +121,133 @@ fn bind_document_dispatches_by_declared_identity() {
     assert!(ds[0].message.contains("accepted:"), "{:?}", ds[0].message);
 }
 
+// -- P767-R1: unregistered identities never classify as a known domain ----
+
+#[test]
+fn unregistered_descriptor_identities_are_rejected_everywhere() {
+    let core_src = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("docs/design/strategy/hir-examples/01-add.atom"),
+    )
+    .unwrap();
+    let core = bind_source(&core_src).expect("core bind");
+    assert_eq!(core.domain, HirDomain::Core);
+
+    // Controls: the two REGISTERED descriptors bind and write their own
+    // bundles cleanly.
+    assert!(descriptor::write_canonical(&core, auto_ac_prototype::descriptor()).is_ok());
+    let scalar = bind_scalar_ok(&fixture("valid", "s02-two-bodies.atom"));
+    assert!(descriptor::write_canonical(&scalar, scalar_descriptor()).is_ok());
+
+    // Each altered dimension (schema / revision / profile) of an otherwise
+    // valid core descriptor: binding under it and re-shelling through the
+    // canonical writer are BOTH controlled rejections — an unknown identity
+    // never falls back to the core domain on its way into a Bundle.
+    let cases: [(&str, Box<dyn Fn(&mut descriptor::Descriptor)>); 3] = [
+        (
+            "schema",
+            Box::new(|d: &mut descriptor::Descriptor| {
+                d.schema = "auto.hir.unregistered".to_string()
+            }),
+        ),
+        (
+            "revision",
+            Box::new(|d: &mut descriptor::Descriptor| d.revision = 99),
+        ),
+        (
+            "profile",
+            Box::new(|d: &mut descriptor::Descriptor| {
+                d.profile = "unregistered-profile".to_string()
+            }),
+        ),
+    ];
+    for (which, alter) in cases {
+        let mut desc = auto_ac_prototype::descriptor().clone();
+        alter(&mut desc);
+        assert_eq!(desc.domain(), None, "{}: unregistered triple", which);
+
+        // the writer refuses to re-shelve a bundle under an unregistered
+        // identity (no laundering, no output of a swapped header)
+        let err = descriptor::write_canonical(&core, &desc)
+            .expect_err("writer must reject an unregistered descriptor");
+        assert_eq!(err.code, "canonical.identity-conflict", "{}", which);
+        assert!(
+            err.message.contains("unregistered"),
+            "{}: {}",
+            which,
+            err.message
+        );
+
+        // the binder refuses to produce a Bundle under it at all
+        let ds = descriptor::bind(&desc, &core_src)
+            .expect_err("bind must reject an unregistered descriptor");
+        assert!(
+            has(&ds, "bind.descriptor-unregistered"),
+            "{}: {:?}",
+            which,
+            codes(&ds)
+        );
+
+        // and a document whose header was rewritten to the altered triple
+        // cannot reach a Checked through the programmatic path either
+        let mut altered_src = core_src.clone();
+        match which {
+            "schema" => {
+                altered_src = altered_src.replace("auto.hir.core.draft", "auto.hir.unregistered")
+            }
+            "revision" => altered_src = altered_src.replace("revision: 1u32", "revision: 99u32"),
+            "profile" => {
+                altered_src = altered_src.replace("core-i32-draft", "unregistered-profile")
+            }
+            _ => unreachable!(),
+        }
+        let ds = descriptor::bind(&desc, &altered_src)
+            .expect_err("altered-header bind under the same descriptor");
+        assert!(has(&ds, "bind.descriptor-unregistered"), "{}", which);
+        // the public registry keeps rejecting it independently
+        assert!(bind_document(&altered_src).is_err(), "{}: registry", which);
+    }
+}
+
+// -- P767-R2: signature TypeUse bounds gate -------------------------------
+
+#[test]
+fn signature_type_refs_are_bounds_checked_before_checked() {
+    // params[0] and result of a function type are separately mutated to an
+    // out-of-range TypeId; every other reference stays valid. Both must be
+    // rejected by verify with the reference-bounds code — never a Checked
+    // that would panic the native backend's type-table indexing.
+    for which in ["parameter", "result"] {
+        let mut b = bind_scalar_ok(&fixture("valid", "s02-two-bodies.atom"));
+        let hir::TypeKind::Function(sig) = &mut b.modules[0].types[1].kind else {
+            panic!("fixture function type");
+        };
+        if which == "parameter" {
+            sig.params[0] = hir::TypeUse::Ref(hir::TypeId(9999));
+        } else {
+            sig.result = hir::TypeUse::Ref(hir::TypeId(9999));
+        }
+        let ds = verify_scalar_err(b);
+        assert!(
+            has(&ds, "verify.bad-reference"),
+            "{}: {:?}",
+            which,
+            codes(&ds)
+        );
+    }
+    // control: the untouched fixture still verifies
+    let b = bind_scalar_ok(&fixture("valid", "s02-two-bodies.atom"));
+    verify::verify_scalar(b).expect("valid control");
+    // a valid Builtin result type is equally fine (in-range projection)
+    let mut b = bind_scalar_ok(&fixture("valid", "s02-two-bodies.atom"));
+    let hir::TypeKind::Function(sig) = &mut b.modules[0].types[1].kind else {
+        panic!("fixture function type");
+    };
+    sig.result = hir::TypeUse::Builtin(hir::BuiltinType::I32);
+    verify::verify_scalar(b).expect("builtin result control");
+}
+
 #[test]
 fn verify_entries_are_domain_gated() {
     // verify() is core-only; verify_scalar() is scalar-only. Neither

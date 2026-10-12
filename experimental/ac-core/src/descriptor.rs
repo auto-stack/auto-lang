@@ -238,18 +238,24 @@ impl Descriptor {
         self.enums.get(name)
     }
 
-    /// Authoritative domain of this descriptor's identity triple. Only the
-    /// registered scalar triple maps to Scalar; anything else stays Core —
-    /// the conservative direction (an unknown identity never upgrades a
-    /// bundle into the new profile, PLAN-767 §5.1).
-    pub fn domain(&self) -> hir::HirDomain {
-        if self.schema == "auto.hir.scalar.draft"
+    /// Authoritative domain of this descriptor's identity triple — an
+    /// EXACT, fallible mapping over the registered triples only
+    /// (PLAN-767 §5.1, review P767-R1): an unknown schema/revision/profile
+    /// is `None`, never silently classified as the core domain. Binders and
+    /// the canonical writer must reject such descriptors explicitly.
+    pub fn domain(&self) -> Option<hir::HirDomain> {
+        if self.schema == "auto.hir.core.draft"
+            && self.revision == 1
+            && self.profile == "core-i32-draft"
+        {
+            Some(hir::HirDomain::Core)
+        } else if self.schema == "auto.hir.scalar.draft"
             && self.revision == 1
             && self.profile == "scalar-i32-draft"
         {
-            hir::HirDomain::Scalar
+            Some(hir::HirDomain::Scalar)
         } else {
-            hir::HirDomain::Core
+            None
         }
     }
 
@@ -379,8 +385,23 @@ fn ident_list(v: &Value) -> Vec<String> {
 // ---------------------------------------------------------------------------
 
 /// Bind an Atom source against the descriptor. Collects all binder-level
-/// diagnostics; returns them if any occurred.
+/// diagnostics; returns them if any occurred. The descriptor's identity
+/// triple must itself be one of the registered triples (PLAN-767 §5.1,
+/// review P767-R1): binding under an unregistered schema/revision/profile
+/// is a controlled rejection — an unknown identity never classifies as the
+/// core domain on its way into a Bundle.
 pub fn bind(desc: &Descriptor, source: &str) -> Result<hir::Bundle, Vec<Diagnostic>> {
+    let Some(domain) = desc.domain() else {
+        return Err(vec![Diagnostic::new(
+            Stage::Bind,
+            "bind.descriptor-unregistered",
+            format!(
+                "descriptor identity `{}/{}/{}` is not registered in this build; binding cannot proceed under an unknown identity",
+                desc.schema, desc.revision, desc.profile
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    };
     let mut b = Binder::new(desc, source);
     match crate::atom_text::parse(source) {
         Ok(root) => b.bind_root(&root),
@@ -388,7 +409,7 @@ pub fn bind(desc: &Descriptor, source: &str) -> Result<hir::Bundle, Vec<Diagnost
     }
     if b.diags.is_empty() {
         Ok(hir::Bundle {
-            domain: desc.domain(),
+            domain,
             requires: b.out_requires,
             modules: b.out_modules,
         })
@@ -2107,16 +2128,23 @@ fn int_value(v: &Value) -> Option<IntLit> {
 /// yields a semantically equal bundle (see text_binding tests). The writer
 /// refuses to re-shelve a bundle under a descriptor of a different identity
 /// domain (PLAN-767 §5.1: no identity laundering through the writer).
+/// Review P767-R1: an UNREGISTERED identity triple is a rejection too —
+/// the comparison is against the exact registered domains, not a lossy
+/// classification that folds unknown identities into Core.
 pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String, Diagnostic> {
-    if desc.domain() != bundle.domain {
+    if desc.domain() != Some(bundle.domain) {
         return Err(Diagnostic::new(
             Stage::Bind,
             "canonical.identity-conflict",
             format!(
-                "descriptor identity `{}/{}/{}` does not match bundle domain `{}`",
+                "descriptor identity `{}/{}/{}` ({}) does not match bundle domain `{}`",
                 desc.schema,
                 desc.revision,
                 desc.profile,
+                match desc.domain() {
+                    Some(d) => d.as_str().to_string(),
+                    None => "unregistered".to_string(),
+                },
                 bundle.domain.as_str()
             ),
             Span { start: 0, end: 0 },

@@ -82,16 +82,21 @@ enum Vt {
     Function,
 }
 
-fn value_of_type_use(u: &hir::TypeUse, m: &hir::Module) -> Vt {
+/// Total projection of a type use (review P767-R2 hardening): an
+/// out-of-range `TypeUse::Ref` is `None` — a controlled backend error —
+/// instead of an indexing panic. Verify's module type-bounds gate makes
+/// this unreachable for Checked modules; this keeps the backend total for
+/// any future caller.
+fn value_of_type_use(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt> {
     match u {
         hir::TypeUse::Builtin(b) => match b {
-            hir::BuiltinType::I32 => Vt::I32,
-            hir::BuiltinType::Bool => Vt::Bool,
+            hir::BuiltinType::I32 => Some(Vt::I32),
+            hir::BuiltinType::Bool => Some(Vt::Bool),
         },
-        hir::TypeUse::Ref(tid) => match &m.types[tid.0 as usize].kind {
-            hir::TypeKind::I32 => Vt::I32,
-            hir::TypeKind::Bool => Vt::Bool,
-            hir::TypeKind::Function(_) => Vt::Function,
+        hir::TypeUse::Ref(tid) => match &m.types.get(tid.0 as usize)?.kind {
+            hir::TypeKind::I32 => Some(Vt::I32),
+            hir::TypeKind::Bool => Some(Vt::Bool),
+            hir::TypeKind::Function(_) => Some(Vt::Function),
         },
     }
 }
@@ -99,8 +104,11 @@ fn value_of_type_use(u: &hir::TypeUse, m: &hir::Module) -> Vt {
 fn signature_of(m: &hir::Module, ty: hir::TypeId) -> Option<(Vec<Vt>, Vt)> {
     match &m.types.get(ty.0 as usize)?.kind {
         hir::TypeKind::Function(sig) => {
-            let params: Vec<Vt> = sig.params.iter().map(|p| value_of_type_use(p, m)).collect();
-            Some((params, value_of_type_use(&sig.result, m)))
+            let mut params = Vec::with_capacity(sig.params.len());
+            for p in &sig.params {
+                params.push(value_of_type_use(p, m)?);
+            }
+            Some((params, value_of_type_use(&sig.result, m)?))
         }
         _ => None,
     }
