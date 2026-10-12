@@ -64,5 +64,11 @@
     "spec_impact": "Existing navigation locale routing contract unchanged; visible abbreviation only, no new Spec component/goal or architectural change; no ledger mutation for this L0 copy fix.",
     "findings": "No missing or deferred in-scope requirement, no workaround/TODO/debug additions, zero new debt; baseline highlight/browser/chunk notices unchanged."
   },
-  "batch": "Latest covered766 receipt2026-10-12T04:08Z <48h, L0 counts but no batch currently due."
+  "batch": "Latest covered766 receipt2026-10-12T04:08Z <48h, L0 counts but no batch currently due.",
+  "closure": {
+    "landed_head": "124c7b3dc8eebdd36b77d1b5393f79dd38f2b314",
+    "merge": "Successful ff-only from f9d4bd2da; deployed source ancestry and website tree equality verified",
+    "guard_sha256": "e8ab2d1d3dd608970f557010cdf0c47886d06f2d4cbb55a5c04f4d54a4a383b1",
+    "cleanup": "Clean no-reparse guard then native Git removal of worktree/landed branch; empty absolute group verified and removed. Main-only worktree inventory. Unique remote tmp archive/script SHA-guarded unlink succeeded; production site/backup and local recovery artifact retained."
+  }
 }
