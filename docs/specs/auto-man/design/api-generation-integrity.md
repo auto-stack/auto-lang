@@ -14,6 +14,11 @@
 
 - a2r 内联体转译失败 → 该端点生成 `Err`（`endpoint '{fn}' body transpile
   failed: ...`）——CRUD 模板/Default 桩 fallback 链退役（Plan 400 路径）。
+- JSON handler 业务体按形态分流：简单委派走已解析的 `db.rs` 调用；带控制流或
+  嵌套实参等非薄体走 a2r 内联转译。Plan 742 补齐该路径的 `List<T>.new` 构造、
+  companion module 导入/限定调用、借用参数修正和 `?T` Result/404 返回包装；
+  这些修正只覆盖相应发射形态，不扩大语言转译器的通用支持面。装配预检对
+  body 转译失败 fail closed，拒绝生成；运行时生成阶段不得静默落回 CRUD 桩。
 - `AUTO_A2R_BODY=0` = **显式 scaffold 模式**：CRUD 模板可达但 api.rs 头部强制
   `// PLAN-734: SCAFFOLD MODE` 标注（测试锁定——不冒充同源）。db.rs 委派
   保持为合法实现来源。
