@@ -14,7 +14,7 @@ use std::panic::AssertUnwindSafe;
 use std::path::Path;
 
 use auto_test_case::compare::{compare_bytes, compare_text_exact, match_message, Mismatch};
-use auto_test_case::contract::{CheckSpec, Completion, EntryMode, ExpectSpec, Stage, Syntax};
+use auto_test_case::contract::{CheckSpec, Completion, EntryMode, ExpectSpec, Syntax};
 use auto_test_case::ir::ResolvedCase;
 use auto_test_case::report::{ArtifactRef, Status};
 use auto_test_case::sha256::{hex, sha256};
@@ -106,8 +106,16 @@ pub fn run_check(
     }));
 
     let mut verdict = match execution {
-        Err(_) => {
-            Verdict::error("VM thread panicked — infrastructure error, not a language failure")
+        Err(payload) => {
+            let msg = payload
+                .downcast_ref::<String>()
+                .cloned()
+                .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "<non-string panic payload>".to_string());
+            Verdict::error(format!(
+                "VM thread panicked — infrastructure error, not a language failure: {}",
+                msg
+            ))
         }
         Ok(Err(e)) => {
             let failure = classify(&e);
@@ -231,6 +239,7 @@ fn expect_stream(
 mod tests {
     use super::*;
     use crate::error::AutoError;
+    use auto_test_case::contract::Stage;
 
     #[test]
     fn classify_multiple_errors_recurses_to_first() {

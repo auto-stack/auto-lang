@@ -65,7 +65,7 @@ jobs = 12
 # cargo nextest run -p auto-lang --test schema_drift queue_coverage --success-output immediate
 # (2026-09-22 注:ui-iced 已入 auto-lang default feature——本行显式 flag 冗余
 # 但保留作文档;全部档位见 tf 注的新裁定。)
-t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --features ui-iced"
+t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --features ui-iced,test-cases"
 # Plan 466: full 档 = 全部测试含 1M 大档 churn(批量回归专用——fix-test-tiering
 # 2026-09-30 起不再作 per-plan review 门禁,由 auto-plan-regress 技能主检出
 # 单实例触发;复审门禁=裸 cargo t + 触面档,见 AGENTS.md Category B)
@@ -84,8 +84,8 @@ tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test 
 # 语料三族,定义见 .config/nextest.toml [profile.tv]),与 t/tf 同一测试
 # 二进制——三档切换零重编。不用 -E 内联表达式:cargo 在 Windows 下对
 # alias 实参不做引号剥离,带空格的 filterset 传不进去(实测两形态皆败)。
-tv = "nextest run -p auto-lang --lib --profile tv"
-tt = "nextest run -p auto-lang --lib --features test-trans"
+tv = "nextest run -p auto-lang --lib --profile tv --features test-cases"
+tt = "nextest run -p auto-lang --lib --features test-trans,test-cases"
 tb = "nextest run -p auto-lang --lib --features test-book"
 # fix-ui-tier(2026-09-30): UI 代码生成档(vue/jet/ark/rust 四生成器内联测试,
 # ~854 例)。刻意用裸 cargo test(单进程 libtest 线程并行)而非 nextest:
