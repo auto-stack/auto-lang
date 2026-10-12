@@ -533,3 +533,11 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
 - 账本：`.autoos/specs.json` P765-1（designs）/P765-2（reviews）/P765-3
   （reports）;INDEX 再生幂等。
 - 交付提交：4f53653fd（ff-only 落 master）。
+
+### 清理收据补记（PLAN-765:r2，2026-10-12 用户要求清理残留目录）
+
+- 历史交付验证：10b9485ad 为当前 master 祖先，Plan 保持 archived/delivered/r2，不重新实施或改写历史复审。
+- 初次非递归 rmdir 仍报 WinError32；定位到原 worktree 的两个旧 p765_iat_probe_child 测试进程（PID24716/24584，02:30/02:42启动，原父进程均不在）。原生查询仍有各137句柄；仅定向终止这两个已确认的765探针，TerminateProcess成功、WaitForSingleObject返回0，复查进程消失。
+- cleaned：对 auto-lang 子目录及 lang-765 组目录重跑 wt-guard，均 clean；绝对路径/空目录/无Git登记复验后，非递归 rmdir 两级目录成功；plan-765-dev 已不存在。
+- 全量 .wt 目录盘点：D:/autostack/.wt 下无任何工作树目录，仅 p660-residual-014-rust-regen.patch（57,283bytes）历史补丁文件保留；未删除补丁或终止其他会话进程。主仓工作树清单仅主检出。
+- 仅收据补记，无源代码/Spec语义/账本修改，Category A无Cargo/docs_gen；原3ecd375d6所记“目录壳待释放”已于本次实际收尾。
