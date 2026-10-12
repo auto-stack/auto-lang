@@ -1514,6 +1514,31 @@
      "created_at": 1791774362,
      "modified_at": 1791774362,
      "completed_at": 1791774362
+    },
+    {
+     "id": "P768-Report",
+     "title": "顶栏源码链接交付与部署收据",
+     "content": "本地12回归+24访问矩阵、4线上检查；构建141.02s，release20261012-8f959f3fc，备份/HTTP/HTTPS验证，归档 docs/plans/archive/768-navbar-repository-icons.md。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-768"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/reports/p768-verification.json",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-768",
+      "revision:1",
+      "commit:8f959f3fc023d621325e3a4146ab07c338f889d9",
+      "source-sha256:ce1c618117e885d218fc5b748a0ca4fc2f348a85eed4ed068924c71f2ecb28b7"
+     ],
+     "created_at": 1791775223,
+     "modified_at": 1791775223,
+     "completed_at": 1791775223
     }
    ]
   },
@@ -6003,6 +6028,31 @@
      "status": "published",
      "created": "2026-10-12",
      "last_modified": "2026-10-12"
+    },
+    {
+     "id": "P768-1",
+     "title": "顶栏源码仓库图标入口契约",
+     "content": "GitHub/GitCode 固定仓库外链共用中英顶栏；本地 SVG/currentColor、可命名/可键盘焦点/新标签页/手机44px入口，准确指向用户给定 auto-stack/auto-lang，不拼locale。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-768"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/specs/website/project.md",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-768",
+      "revision:1",
+      "commit:8f959f3fc023d621325e3a4146ab07c338f889d9",
+      "source-sha256:91259a4e18e5786b406c4fb0ae05aa6145c16672ed842ea61d2a3190629f5f91"
+     ],
+     "created_at": 1791775223,
+     "modified_at": 1791775223,
+     "completed_at": 1791775223
     }
    ]
   },
@@ -9590,6 +9640,31 @@
      "created_at": 1791774362,
      "modified_at": 1791774362,
      "completed_at": 1791774362
+    },
+    {
+     "id": "P768-R",
+     "title": "PLAN-768 r1 顶栏图标复审 pass",
+     "content": "reviewed 8f959f3fc023d621325e3a4146ab07c338f889d9；AC-01/02/03 全pass，同执行会话按提交与证据重建；无遗漏/新债。",
+     "status": "published",
+     "depends_on": [],
+     "related": [
+      "PLAN-768"
+     ],
+     "priority": null,
+     "assignee": null,
+     "test_file": null,
+     "file": "docs/reports/p768-review.md",
+     "milestone": null,
+     "module": "website",
+     "tags": [
+      "plan-768",
+      "revision:1",
+      "commit:8f959f3fc023d621325e3a4146ab07c338f889d9",
+      "source-sha256:2a42f5bb5cd4b543520a102a71517570628f4ad72b40f60efda1023198b3c6b8"
+     ],
+     "created_at": 1791775223,
+     "modified_at": 1791775223,
+     "completed_at": 1791775223
     }
    ]
   }

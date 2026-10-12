@@ -66,5 +66,25 @@
     "book_head": "d7a71a7fb1fa42ddd26d6cec859715ed98161f7a"
   },
   "scope": "Category A; no Cargo/docs_gen",
-  "probe_correction": "Scratch config originally resolved preview cwd to scratch; corrected to explicit worktree website before functional verification."
+  "probe_correction": "Scratch config originally resolved preview cwd to scratch; corrected to explicit worktree website before functional verification.",
+  "implementation_commit": "8f959f3fc023d621325e3a4146ab07c338f889d9",
+  "online_tests": {
+    "passed": 4,
+    "log_sha256": "f00cbfcae8492ae1209718284b0be23950fd59e3f37087eac8a8c3ca6aabf30e",
+    "probe_sha256": "b103e8a5ee4a58eca2ba61169bc7b31f7b074bfa6fb86903b7021fde70ed5961",
+    "captures": {
+      "online-en-1440.png": "b75f9cda72c491c18dda246717faa0ab0eb6a13ebcc2730d60a087ef97f4c587",
+      "online-en-360.png": "c3feb1b63c8cebaff220df0a467249d7870f0ef75dc180467acc20a13ef9f617",
+      "online-zh-1440.png": "b759bd9ba0294e46cc79e5779c93d5627171a62a781e9b82dc87a98817c0bc57",
+      "online-zh-360.png": "f0400c76c146e3f76ae1f368de05b0715629296160797b308d566262b35eba75"
+    }
+  },
+  "deployment": {
+    "release": "20261012-8f959f3fc",
+    "revision": "8f959f3fc",
+    "archive_sha256": "b0a691b8481fea8bc0d30cf2fd8b092db2c8c971b63e0a617e14e395cca1d629",
+    "backup": "/home/visus/auto-website-backup-20261012-8f959f3fc",
+    "clean_url_aliases": 926,
+    "preserved_cached_assets": 1905
+  }
 }
