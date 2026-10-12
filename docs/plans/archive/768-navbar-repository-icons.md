@@ -50,7 +50,7 @@ Vue/VitePress、现有 CSS 与 Playwright。Category A，仅网站；不跑 Carg
 ## 8. 执行步骤
 - [x] T-01：lang-768 专用工作树更新 UnifiedNavbar 和 canonical project；AC-01/02。
 - [x] T-02（依赖T-01）：构建、既有定向回归和链接/断点/主题/键盘临时实机校验、截图审读；AC-01/02。
-- [ ] T-03（依赖T-02）：提交、备份部署及线上核验，review/merge/规范投影/归档守卫清理；AC-03。
+- [x] T-03（依赖T-02）：提交、备份部署及线上核验，review/merge/规范投影/归档守卫清理；AC-03。
 
 ## 9. 复审记录
 stage:new | PLAN-768 r1 | outcome:pass | next:work。现有用户明确指示覆盖范围，无需重复确认。
@@ -66,11 +66,11 @@ review PLAN-768:r1 | pass | reviewed_commit:8f959f3fc023d621325e3a4146ab07c338f8
 
 ## 11. spec-sync 与交付收据
 PLAN-768:r1 completion_kind:delivered。
-- prepared：review8f959f3fc、SD-01/project blob hash冻结于p768-verification.json；delivery f6be5b751（metadata-only），网站树与验证/部署源8f959f3fc零差异。
-- landed：master --ff-only 1c7b99d37→f6be5b751；rebase up-to-date，无哈希改写；主检出 canonical blob/账本bytes校验通过。
+- prepared：原review8f959f3fc、SD-01/project blob hash冻结于p768-verification.json；重对齐复审72c20c4bd，delivery3e15e9037，网站树与验证/部署源8f959f3fc零差异。
+- landed：同期cd61db302进入master，首个ff-only失败；错误命令链继续导致966118691提前归档/checkout清理，开发分支完整保留。恢复同一checkout后rebase至966118691；range-diff全等（8f959f3fc→72c20c4bd，f6be5b751→5b2170aa1），复审/投影刷新3e15e9037；master正确ff-only 966118691→3e15e9037。主检出网站树、canonical blob及账本bytes重新核对通过。没有重开归档，只完成已有交付证据的缺失落地；后续命令显式检测失败即停止。
 - ledger_refreshed：B轨 guarded offline projection，localhost8080不可达；写前逐字节备份，852旧项/未知字段均不动，仅P768-1/P768-R/P768-Report三个新条目；六段读回/引用/hash和撤回三条后原字节全等验证通过。旧投影无version字段，兼容根形状保持；详细前/后sha在p768-deposit.json。
 - spec-sync：website/project.md新增共用顶栏源码入口契约，website/plans.md新增768；spec-index.py26projects再生无语义diff。没有新架构/goal。
 - deployment：release20261012-8f959f3fc，archive b0a691b8481fea8bc0d30cf2fd8b092db2c8c971b63e0a617e14e395cca1d629；HTTP/HTTPS bytes与保留十张原图hash验证；备份 /home/visus/auto-website-backup-20261012-8f959f3fc保留。12既有回归+1实机测试（24访问）+4线上通过。
 - batch_due：768%5!=0、2026-10-12T04:08Z收据<48h；不触发批量；Category A零Rust，无Cargo/docs_gen。
-- archived：docs/plans/archive/768-navbar-repository-icons.md，Plan/报告/账本进入Git。
+- archived：docs/plans/archive/768-navbar-repository-icons.md；966118691提前归档已由实际落地后的本收据矫正，Plan/报告/账本均已在master Git。
 - cleaned：守卫与实际移除后补记。
