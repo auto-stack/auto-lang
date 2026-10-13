@@ -151,7 +151,7 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 | [ ] | T-07 | review | T-01..06完成、writes暂停 | 同一树独立 AC/SD/反例复审；pass才reviewed，needs_fix返原树 | 06 |
 | [ ] | T-08 | merge | T-07 pass与合入授权 | 沉淀 SD/导航/ledger/index；真实archive及总数；批回归到期判定；wt-guard clean 后清树/branch/空组 | 07 |
 
-实际唯一树 `D:/autostack/.wt/lang-774/auto-lang`、branch `plan-774-dev` 已创建；2026-10-13 两轮独立复审 needs_fix（r1 六发现、r2 四发现）均已修复并重新 execution_done 6/8；review7/8，实际closeout8/8；详见§9最新记录（以最新记录为准）。
+实际唯一树 `D:/autostack/.wt/lang-774/auto-lang`、branch `plan-774-dev` 已创建；2026-10-13 三轮独立复审 needs_fix（r1 六/r2 四/r3 两阻断+D1）均已修复并重新 execution_done 6/8；review7/8，实际closeout8/8；详见§9最新记录（以最新记录为准）。
 
 ## 9. 复审记录
 
@@ -210,10 +210,27 @@ evidence: decisions §3.9（跨行字面量恢复合法/静态字面量返回恢
 结果：探针 61/61 全绿；r1 反例重放 7/7（exit 0）；r2 model-controls 直编 3/3；774 门禁 7 步全绿（**提交后基线** gate-20261013-142903，head=da6a693c9，raw-20261013-142842）；旧门禁 741/745/767 重跑全绿。blockers: 无已知合同内缺口。
 next: T-07 第三轮独立复审（建议重放 r1 replay.ps1 与 r2 model-controls.rs 并逐项核对四发现）。
 
+2026-10-13，stage:review，review_scope:final，plan_id:PLAN-774，plan_revision:3，outcome:needs_fix（第三轮独立最终复审；用户明确授权「现在可以第三轮复审了」）。
+reviewer_identity/limitations: 当前Codex /root独立审阅上下文，未参与实施或修复；沿用审阅上下文，无另建agent/模型/checkout，无未暴露身份声明。
+worktree_path: D:/autostack/.wt/lang-774/auto-lang；branch: plan-774-dev；reviewed_commit: b3bab4278c9f065a5609a57d02d1f2552f640eab；repair_code_commit: da6a693c9439da2ae1e13a5e106af06789155818；base_commit: 5e21561d2c303a02319ff7a29e4607933e09a38f；入/出场同HEAD、实现树clean。
+dependency_revisions/spec_inputs: 原型path依赖/旧gate/根定义无774 diff；770/771主检出身份与字符拼写同步已核对；输入/Specs/代码/锁文件/技能hash见[绑定表](attachments/774/review-r3/input-hashes.tsv)。冻结SD SHA256=ff5ec7d62c8538bdade8eb8e99c3302aaf710da157d6e5cfbf4934cc80f73346，按当前decisions §3.9有效合同引用，不发布canonical/live ledger。
+acceptance_results: AC01 partial、AC02 pass、AC03 partial、AC04 fail、AC05 pass（本基线；修复后delta须重冻）、AC06 fail、AC07 pending。
+findings: P774-R3-01（P2，延续预算不变量）set_budget(i64)以as u32保存，4GiB/4GiB+1预算下2-byte合法请求被错误拒绝；P774-R3-02（P2，延续V05-15）扩表失败后先free使len从16降15，重试仅插回16，未触发声称的扩表恢复。P774-R3-D1（P3非阻断）SD显式引用/用例统计整理建议，不能因相同hash自行宣判全部delta失效。
+evidence: [完整第三轮报告及闭合矩阵](attachments/774/review-r3/REVIEW.md)。本轮774门禁7步/61 tests、ac-core145 passed/既有1 ignored、741 13步、745 74例、772 45例全绿；r1重放7/7、r2来源控制3/3。新增真实native4控制2过2失败：u32最大预算及保留16owner的真正扩表恢复通过，两个i64预算边界失败；输入/输出/重放/hash已持久保存。
+pending_closeout_gates: 两finding修复后复审、Spec/导航/ledger/index、用户合入授权、归档/任务总数、批回归到期、wt-guard/同树清理。
+next: 同树work仅围绕预算通道/数值域/checked比较及V05-15真跨容量恢复修复，保留前轮通过面；刷新冻结SD与新基线证据后独立review。T01保持完成，T02..06重开、T07/08未勾，executing 1/8，plan_revision仍3（本轮未改变语义合同）。
+
+2026-10-13，stage:work（修复轮 3），plan_id:PLAN-774，plan_revision:3，outcome:pass（r3 两阻断发现 P774-R3-01/02 + 非阻断 D1 全部处理；T-02..06 重开并重新完成，execution_done 6/8）。
+code_commit: 同树修复 HEAD `c5e631bd4`（r3 代码提交 `c2d5f7e86` + 收据提交；基面 5e21561d2）。
+task_ids: T-02..T-06 重勾（r3 修订版证据）。
+evidence: shim 预算 u64 原值保存+u64 比较（v08_budget_i64_no_truncation：u32 上界/4GiB/4GiB+1 三例即复审官两失败控制）；v05-15 拆分为真跨容量恢复（15a，全 16 owner 存活重试、读回 17 buffer、SUMMARY 18/17/17/0/0/17）与空位复用控制（15b，peak=16）；decisions §3.10（含矩阵 16 组勘误）；delta r3 校准节（沉淀引用 §3.9/§3.10 现行规则）。
+结果：探针 63/63 全绿；r3 反例重放 4/4（exit 0）；r1 重放 7/7；r2 model-controls 3/3；旧门禁 741/745/767 全绿；终版收据在提交后基线（gate-20261013-154638，head=c2d5f7e8，raw-20261013-154620）。blockers: 无已知合同内缺口。
+next: T-07 第四轮独立复审（建议按顺序重放 r1 replay.ps1、r2 model-controls.rs、r3 replay.ps1——三者现应全绿——并核对两阻断发现与 D1 校准）。
+
 ## 10. 待澄清事项
 
 1. ~~772修复复审合入前置已满足；实施agent启动时刷新最新基线并记录用户执行r3的授权。~~
    已兑现（2026-10-13 r3 实施授权记录于 §4；T-01 基线刷新 46/47 零漂移）。
-   现存待办：第二次交付就绪核查仍needs_fix；先完成来源/模式与下游合同等work-owned缺口，再完整独立复审；T-08合入授权仍待交接。
+   现存待办：第三轮独立最终复审仍needs_fix；来源/模式与下游合同已清偿，剩预算宽度和V05-15恢复oracle需修复；T-08合入授权仍待交接。
 2. 语义表示/资源策略属 D01..07 有界调查，必须在本计划冻结；超出现行承诺的改变需用户决策，不能带 open 交给770/771。
 3. 无完整所有权/公开 ABI/无限规模承诺；后续text-record/List/enum/use/ACC有 Design36 owner，非遗漏验收。
