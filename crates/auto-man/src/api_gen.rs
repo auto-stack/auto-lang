@@ -486,24 +486,73 @@ pub(crate) fn transpile_back_module_to_rs_with_proofs(
 /// and paths that the a2r transpiler now emits (see rust.rs Plan 396/B3
 /// comment) into the `auto_lang::` form that resolves against our deps.
 fn qualify_a2r_std(mut code: String) -> String {
-    // Protect already-qualified paths, then qualify the remaining bare paths.
-    // This keeps the helper idempotent when a generated fragment already
-    // carries the crate prefix.
-    // PLAN-668 R-24：`a2r_std::sys::*` 保护直连——auto_lang::a2r_std 是内嵌
-    // 迷你库（List/May/StringAsStr，无 sys 原生面），sys 调用须走独立
-    // a2r-std crate dep（workspace/backend 模板已补）。
-    code = code.replace("a2r_std::sys::", "__AUTO_A2R_STD_SYS__");
-    // Plan 742: `a2r_std::sqlite` 同理——sqlite 只在独立 a2r-std crate
-    // （rusqlite 封装），facade 无此模块；保护直连防被 qualify 到 facade。
-    code = code.replace("a2r_std::sqlite", "__AUTO_A2R_STD_SQLITE__");
-    code = code.replace("auto_lang::a2r_std::", "__AUTO_A2R_STD_QUAL__");
-    code = code.replace("a2r_std::", "auto_lang::a2r_std::");
-    code = code.replace("use a2r_std;\n", "use auto_lang::a2r_std;\n");
-    code = code.replace("use a2r_std::*;\n", "use auto_lang::a2r_std::*;\n");
+    // Plan 742 R2 (F-742-R2-01): every rewrite below applies ONLY in code
+    // regions — literal/comment payloads keep their bytes (a business string
+    // mentioning `a2r_std::` survives verbatim). Marker protection order is
+    // preserved from the original whole-text form. PLAN-668 R-24 /
+    // Plan 742: `a2r_std::sys` / `a2r_std::sqlite` are standalone-crate-only
+    // faces (the embedded facade has neither) — protected from the generic
+    // a2r_std:: qualification below.
+    code = replace_in_code_regions(&code, "a2r_std::sys::", "__AUTO_A2R_STD_SYS__");
+    code = replace_in_code_regions(&code, "a2r_std::sqlite", "__AUTO_A2R_STD_SQLITE__");
+    code = replace_in_code_regions(&code, "auto_lang::a2r_std::", "__AUTO_A2R_STD_QUAL__");
+    code = replace_in_code_regions(&code, "a2r_std::", "auto_lang::a2r_std::");
+    code = replace_in_code_regions(&code, "use a2r_std;", "use auto_lang::a2r_std;");
+    code = replace_in_code_regions(&code, "use a2r_std::*;", "use auto_lang::a2r_std::*;");
+    // Markers only ever enter code regions above; restoring them with a plain
+    // replace is safe (a pre-existing literal spelled exactly like an
+    // internal marker was already impossible to express before this change).
     code = code.replace("__AUTO_A2R_STD_QUAL__", "auto_lang::a2r_std::");
     code = code.replace("__AUTO_A2R_STD_SQLITE__", "::a2r_std::sqlite");
     code = code.replace("__AUTO_A2R_STD_SYS__", "a2r_std::sys::");
     code
+}
+
+/// Plan 742 R2 (F-742-R2-01): plain-text replacement confined to code
+/// regions of each line — strings/chars/comments keep their payload bytes.
+/// Line-oriented (split on '\n' keeps the trailing newline shape); the
+/// needle must not span lines (all current callers are single-line forms).
+fn replace_in_code_regions(code: &str, from: &str, to: &str) -> String {
+    if !code.contains(from) {
+        return code.to_string();
+    }
+    code.split('\n')
+        .map(|l| {
+            if !l.contains(from) {
+                return l.to_string();
+            }
+            let mask = auto_lang::trans::rust::RustTrans::code_region_mask(l);
+            let bytes = l.as_bytes();
+            let mut out = String::with_capacity(l.len());
+            let mut i = 0;
+            while i < bytes.len() {
+                if mask[i] && l[i..].starts_with(from) {
+                    out.push_str(to);
+                    i += from.len();
+                } else {
+                    let ch = l[i..].chars().next().unwrap();
+                    out.push(ch);
+                    i += ch.len_utf8();
+                }
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Plan 742 R2 (F-742-R2-01): whole-text code-region mask (per-line masks
+/// concatenated, '\n' bytes masked out). Single-line comment/string state —
+/// multi-line block comments are outside the emitted-surface boundary
+/// documented on the line-level scanner.
+fn code_region_mask_text(text: &str) -> Vec<bool> {
+    text.split('\n')
+        .flat_map(|l| {
+            let mut m = auto_lang::trans::rust::RustTrans::code_region_mask(l);
+            m.push(false); // the '\n' separator itself
+            m
+        })
+        .collect()
 }
 
 /// PLAN-681 T-01: light post-process for companion `src/back/*.at` modules
@@ -691,20 +740,27 @@ fn append_tostring_for_str_fields(code: &str) -> String {
 /// it lands on a non-ASCII lead byte (e.g. emoji in seed data like 📄), else
 /// `code[i..]` slices into a multi-byte char and panics.
 fn strip_collection_new(code: &str) -> String {
+    // Plan 742 R2 (F-742-R2-01): constructs must sit in code regions — a
+    // business string spelling `List<T>.new([...])` is literal text.
+    let mask = code_region_mask_text(code);
     let mut out = String::with_capacity(code.len());
     let bytes = code.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
         // Only attempt the List/Array match at an ASCII lead byte — landing mid
         // multi-byte char means we just copy the byte run through.
-        if bytes[i] < 0x80 && (code[i..].starts_with("List<") || code[i..].starts_with("Array<")) {
+        if mask[i]
+            && bytes[i] < 0x80
+            && (code[i..].starts_with("List<") || code[i..].starts_with("Array<"))
+        {
             let is_array = code[i..].starts_with("Array<");
             let lt_at = if is_array { i + 5 } else { i + 4 };
             if let Some(gt_rel) = code[lt_at..].find('>') {
                 let gt_at = lt_at + gt_rel;
-                if code
-                    .get(gt_at + 1..)
-                    .map_or(false, |s| s.starts_with(".new("))
+                if mask[gt_at]
+                    && code
+                        .get(gt_at + 1..)
+                        .map_or(false, |s| s.starts_with(".new("))
                 {
                     let paren_open = gt_at + 5;
                     if let Some(paren_close) = balance_paren(code, paren_open) {
@@ -2560,6 +2616,18 @@ fn wrap_inline_return(line: &str, mode: InlineRetWrap) -> String {
             InlineRetWrap::Plain | InlineRetWrap::Result => line.to_string(),
         };
     }
+    // R2 (F-742-R2-03): a2r lowers a bare `return` in a VOID body to
+    // `return None;` — void signatures still owe the status value there.
+    if trimmed == "return None;" {
+        return match mode {
+            InlineRetWrap::VoidResult => format!("{}return Ok(StatusCode::OK);", indent),
+            InlineRetWrap::VoidStatus => format!("{}return StatusCode::OK;", indent),
+            InlineRetWrap::ResultOption => {
+                format!("{}return Err(StatusCode::NOT_FOUND);", indent)
+            }
+            InlineRetWrap::Plain | InlineRetWrap::Result => line.to_string(),
+        };
+    }
     let Some(value) = trimmed.strip_prefix("return ") else {
         return line.to_string();
     };
@@ -2592,6 +2660,17 @@ fn wrap_inline_return(line: &str, mode: InlineRetWrap) -> String {
                 if let Some(stripped) = inner.strip_suffix(')') {
                     return format!("{}return Ok(JsonResponse({}));", indent, stripped);
                 }
+            }
+            // R2 (F-742-R2-03): a `?T` endpoint's plain return expression is
+            // Option-typed (a variable like `p`, not a Some/None spelling) —
+            // its Some/None-ness is a RUNTIME property. Classify by spelling
+            // only after exhausting the literal forms above; everything else
+            // maps through a match: Some→200, None→404.
+            if mode == InlineRetWrap::ResultOption {
+                return format!(
+                    "{}return match {} {{ Some(__opt_v) => Ok(JsonResponse(__opt_v)), None => Err(StatusCode::NOT_FOUND) }};",
+                    indent, value
+                );
             }
             format!("{}return Ok(JsonResponse({}));", indent, value)
         }
@@ -2779,36 +2858,93 @@ fn module_call_shape_at(line: &str, mask: &[bool], start: usize) -> bool {
     }
     i < bytes.len() && mask[i] && bytes[i] == b'('
 }
+/// Plan 742 R2 (F-742-R2-02): per-body scope state for module-call
+/// qualification. Bindings shadow module names only within their actual
+/// block visibility: a sub-block `var repository str` must NOT disable
+/// qualification for outer calls that lexically precede it (r1's flattened
+/// whole-body name set did exactly that, E0423), and the shadow must lapse
+/// once the block closes. Frame [0] carries the endpoint params; each
+/// code-region `{` pushes a frame, `}` pops (floor: params frame).
+struct BodyQualifyScope {
+    frames: Vec<std::collections::HashSet<String>>,
+}
 
-/// Plan 742 R1 (F-742-R1-02): local names visible in ONE endpoint's
-/// transpiled body — the .at endpoint params (re-bound via the generated
-/// input/query lets) plus every `let`/`for` binding the emitter produced. A
-/// module name among these shadows module qualification for this body only.
-fn endpoint_body_local_names(
-    endpoint: &ApiEndpoint,
-    stmts: &[String],
-) -> std::collections::HashSet<String> {
-    let mut names: std::collections::HashSet<String> =
-        endpoint.params.iter().map(|p| p.name.clone()).collect();
-    for line in stmts {
-        let t = line.trim_start();
-        let rest = if let Some(r) = t.strip_prefix("let ") {
-            r.strip_prefix("mut ").unwrap_or(r)
-        } else {
-            match t.strip_prefix("for ") {
-                Some(r) => r,
-                None => continue,
-            }
-        };
-        let name: String = rest
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        if !name.is_empty() {
-            names.insert(name);
+impl BodyQualifyScope {
+    fn new(param_names: &[String]) -> Self {
+        Self {
+            frames: vec![param_names.iter().cloned().collect()],
         }
     }
-    names
+
+    fn visible(&self) -> std::collections::HashSet<String> {
+        self.frames.iter().flatten().cloned().collect()
+    }
+
+    /// Qualify one emitted body line, then apply its scope effects.
+    /// Returns the line plus the frame depth at line start — a `return` at
+    /// depth 1 (function body top level) is the only kind that covers the
+    /// fallthrough for tail synthesis.
+    fn qualify_line(
+        &mut self,
+        line: &str,
+        modules: &[String],
+        referenced: &mut Vec<String>,
+    ) -> (String, usize) {
+        let depth_at_start = self.frames.len();
+        let out = qualify_module_dot_calls(line, modules, &self.visible(), referenced);
+        let mask = auto_lang::trans::rust::RustTrans::code_region_mask(line);
+        let bytes = line.as_bytes();
+        let t = line.trim_start();
+        // Head bindings: plain `let` joins the current frame; `for NAME` /
+        // `if let Some(NAME)` belong to the frame the trailing `{` opens
+        // (the brace walk below pushes that block frame first).
+        let mut plain_let: Option<String> = None;
+        let mut block_binding: Option<String> = None;
+        if let Some(rest) = t.strip_prefix("let ") {
+            let rest = rest.strip_prefix("mut ").unwrap_or(rest);
+            let n = take_ascii_ident(rest);
+            if !n.is_empty() {
+                plain_let = Some(n);
+            }
+        } else if let Some(rest) = t.strip_prefix("for ") {
+            let n = take_ascii_ident(rest);
+            if !n.is_empty() {
+                block_binding = Some(n);
+            }
+        } else if let Some(rest) = t.strip_prefix("if let Some(") {
+            let n = take_ascii_ident(rest);
+            if !n.is_empty() {
+                block_binding = Some(n);
+            }
+        }
+        for i in 0..bytes.len() {
+            if !mask[i] {
+                continue;
+            }
+            match bytes[i] {
+                b'{' => self.frames.push(Default::default()),
+                b'}' => {
+                    if self.frames.len() > 1 {
+                        self.frames.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(n) = plain_let {
+            self.frames.last_mut().unwrap().insert(n);
+        }
+        if let Some(n) = block_binding {
+            self.frames.last_mut().unwrap().insert(n);
+        }
+        (out, depth_at_start)
+    }
+}
+
+fn take_ascii_ident(rest: &str) -> String {
+    rest.chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect()
 }
 
 fn borrow_string_db_call_args(api_source: &str, db_source: &str) -> String {
@@ -2818,16 +2954,34 @@ fn borrow_string_db_call_args(api_source: &str, db_source: &str) -> String {
 /// Plan 742: marker-generalized form of [[borrow_string_db_call_args]] —
 /// companion modules (repository) have the same `&str`-param shape as db.rs,
 /// and handler bodies that call them directly need the same borrow fixup.
+/// Plan 742 R2 (F-742-R2-01): the marker must land on a real call site — a
+/// code-region position followed by an identifier and `(`. A business string
+/// spelling the marker (`"crate::repository::take(value)"`) is literal text
+/// and must survive byte-for-byte; the r1 whole-text `find(marker)` rewrote
+/// it into `take(&value)` while generation still reported Ok.
 fn borrow_string_module_call_args(api_source: &str, module_source: &str, marker: &str) -> String {
     let signatures = db_string_param_signatures(module_source);
     if signatures.is_empty() {
         return api_source.to_string();
     }
+    let mask = code_region_mask_text(api_source);
     let mut out = String::with_capacity(api_source.len());
     let mut cursor = 0usize;
     while let Some(rel) = api_source[cursor..].find(marker) {
         let start = cursor + rel;
         let name_start = start + marker.len();
+        let call_shape = mask[start]
+            && (start == 0
+                || !(api_source.as_bytes()[start - 1].is_ascii_alphanumeric()
+                    || api_source.as_bytes()[start - 1] == b'_'
+                    || api_source.as_bytes()[start - 1] == b':'))
+            && module_call_shape_at(api_source, &mask, name_start);
+        if !call_shape {
+            // Literal/comment occurrence — copy through verbatim.
+            out.push_str(&api_source[cursor..name_start]);
+            cursor = name_start;
+            continue;
+        }
         let name_end = name_start
             + api_source[name_start..]
                 .bytes()
@@ -3928,13 +4082,32 @@ fn generate_api_rs(
                         lines.push("    let meta: String = meta_json(&headers);".to_string());
                     }
                     append_inline_param_bindings(&mut lines, endpoint);
+                    // Plan 742 R2 (F-742-R2-04): file bodies call companion
+                    // modules too (`repository.path()`) — same scope-aware
+                    // qualification as the JSON loop; the retired whole-file
+                    // pass used to cover this entry point.
+                    let mut scope = BodyQualifyScope::new(
+                        &endpoint
+                            .params
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect::<Vec<_>>(),
+                    );
+                    let mut saw_tail_return = false;
                     for source_line in &stmts {
                         let line = rewrite_inline_runtime_names(source_line);
-                        lines.push(wrap_file_return(&line));
+                        let (line, depth_at_start) =
+                            scope.qualify_line(&line, crate_modules, &mut referenced_modules);
+                        let line = wrap_file_return(&line);
+                        if line.trim_start().starts_with("return") && depth_at_start == 1 {
+                            saw_tail_return = true;
+                        }
+                        lines.push(line);
                     }
                     // 体无尾 return（隐式返回）——按声明返回类型的契约缺口
-                    // 诊断（不静默 200）。
-                    if !stmts.iter().any(|l| l.trim_start().starts_with("return")) {
+                    // 诊断（不静默 200）。R2 (F-742-R2-03)：分支内 return 不
+                    // 覆盖 fallthrough，只有顶层 return 才算数。
+                    if !saw_tail_return {
                         lines.push(
                             "    return file_response_reply_missing(\"file handler body has no return\").await;".to_string(),
                         );
@@ -4051,11 +4224,28 @@ fn generate_api_rs(
                         lines.push("    let meta: String = meta_json(&headers);".to_string());
                     }
                     append_inline_param_bindings(&mut lines, endpoint);
+                    // Plan 742 R2 (F-742-R2-04): upload bodies share the
+                    // scope-aware companion qualification (source-level wiring
+                    // this round; oracle coverage documented in the plan).
+                    let mut scope = BodyQualifyScope::new(
+                        &endpoint
+                            .params
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect::<Vec<_>>(),
+                    );
+                    let mut saw_tail_return = false;
                     for source_line in &stmts {
                         let line = rewrite_inline_runtime_names(source_line);
-                        lines.push(wrap_upload_return(&line, &up_param.name));
+                        let (line, depth_at_start) =
+                            scope.qualify_line(&line, crate_modules, &mut referenced_modules);
+                        let line = wrap_upload_return(&line, &up_param.name);
+                        if line.trim_start().starts_with("return") && depth_at_start == 1 {
+                            saw_tail_return = true;
+                        }
+                        lines.push(line);
                     }
-                    if !stmts.iter().any(|l| l.trim_start().starts_with("return")) {
+                    if !saw_tail_return {
                         lines.push(
                             "    return __upload_reply(a2r_std::http::upload_error(500, \"upload handler body has no return\"));".to_string(),
                         );
@@ -4216,28 +4406,36 @@ fn generate_api_rs(
                         }
                         append_inline_param_bindings(&mut lines, endpoint);
                         // Plan 742 R1 (F-742-R1-02): qualify companion module
-                        // dot-calls HERE, per body — this endpoint's locals are
-                        // in scope (they shadow module names), string/comment
-                        // spans are masked out, and only call shapes qualify.
-                        let body_locals = endpoint_body_local_names(endpoint, &stmts);
-                        let mut saw_return = false;
+                        // dot-calls HERE, per body — string/comment spans are
+                        // masked out and only call shapes qualify. R2
+                        // (F-742-R2-02): scope-aware — bindings shadow modules
+                        // only within their actual block visibility (params
+                        // frame + one frame per code-region brace).
+                        let mut scope = BodyQualifyScope::new(
+                            &endpoint
+                                .params
+                                .iter()
+                                .map(|p| p.name.clone())
+                                .collect::<Vec<_>>(),
+                        );
+                        // R2 (F-742-R2-03): only a TOP-LEVEL return (frame
+                        // depth 1 at the return line) covers the fallthrough —
+                        // a branch-internal early return does not, and the
+                        // tail status must still be synthesized after it.
+                        let mut saw_tail_return = false;
                         for source_line in &stmts {
-                            let mut line = rewrite_inline_runtime_names(source_line);
-                            line = qualify_module_dot_calls(
-                                &line,
-                                crate_modules,
-                                &body_locals,
-                                &mut referenced_modules,
-                            );
-                            line = wrap_inline_return(&line, wrap_mode);
-                            if line.trim_start().starts_with("return") {
-                                saw_return = true;
+                            let src = rewrite_inline_runtime_names(source_line);
+                            let (line, depth_at_start) =
+                                scope.qualify_line(&src, crate_modules, &mut referenced_modules);
+                            let line = wrap_inline_return(&line, wrap_mode);
+                            if line.trim_start().starts_with("return") && depth_at_start == 1 {
+                                saw_tail_return = true;
                             }
                             lines.push(line);
                         }
-                        // A void body without an explicit tail return still owes
-                        // the signature its status value.
-                        if !ret_nonvoid && !saw_return {
+                        // A void body without a top-level return still owes
+                        // the signature its status value on the fallthrough.
+                        if !ret_nonvoid && !saw_tail_return {
                             lines.push(if needs_result {
                                 "    return Ok(StatusCode::OK);".to_string()
                             } else {
@@ -5965,6 +6163,343 @@ fn main() {{
         assert_eq!(
             stdout, expected,
             "handler return values must preserve the business strings"
+        );
+    }
+
+    /// Plan 742 R2: the r2 review matrix as one compile-and-run oracle —
+    /// escaped/composite literals, the borrow-marker literal (F-742-R2-01)
+    /// beside a REAL &str borrow positive control, nested local shadowing
+    /// (F-742-R2-02), void bodies with branch-internal early returns and a
+    /// path variant (F-742-R2-03), an Option VARIABLE return, and a File
+    /// endpoint calling a companion module (F-742-R2-04). Every handler is
+    /// compiled from the real generated artifact and value-compared.
+    #[test]
+    fn test_handler_body_r2_matrix_compile_oracle() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Probe = { text: str }
+
+#[api(method = "GET", path = "/api/echo")]
+pub fn echo() Probe {
+    var msg str = "引号\" List<int>.new([]) repository.ping() } return secret"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/echo_borrow")]
+pub fn echo_borrow() Probe {
+    var msg str = "crate::repository::measure(value)"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/borrow_pos")]
+pub fn borrow_pos() int {
+    var s str = "hi"
+    if s.len() > 0 { return repository.measure(s) }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/ping")]
+pub fn ping() int {
+    if true { return repository.ping() }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/scope")]
+pub fn scope() Probe {
+    var n int = repository.ping()
+    if false {
+        var repository str = "local"
+        var size int = repository.len()
+    }
+    if n == 7 { return Probe { text: "ok" } }
+    return Probe { text: "bad" }
+}
+
+#[api(method = "POST", path = "/api/void_plain")]
+pub fn void_plain() {
+    var x int = 1
+}
+
+#[api(method = "POST", path = "/api/void_branch")]
+pub fn void_branch() {
+    if false { return }
+    var x int = 1
+}
+
+#[api(method = "PUT", path = "/api/void_path/:id")]
+pub fn void_path(id int) {
+    if false { return }
+    var x int = 1
+}
+
+#[api(method = "GET", path = "/api/opt/:id")]
+pub fn opt(id int) ?Probe {
+    var p ?Probe = Some(Probe { text: "some" })
+    if id > 0 { return p }
+    return None
+}
+
+#[api(method = "GET", path = "/api/file")]
+pub fn file() FileResponse {
+    var path str = repository.path()
+    return http.file_response("D:/files", path, "{}")
+}
+"#;
+        let dir = std::env::temp_dir().join("p742_r2_matrix_probe");
+        let _ = std::fs::remove_dir_all(&dir);
+        let back_dir = dir.join("src").join("back");
+        std::fs::create_dir_all(&back_dir).expect("create back dir");
+        std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
+        std::fs::write(
+            back_dir.join("repository.at"),
+            "pub fn ping() int { return 7 }\npub fn measure(value str) int { return value.len() }\npub fn path() str { return \"readme.txt\" }\n",
+        )
+        .expect("write repository.at");
+
+        generate_api(&dir, "rust").expect("generate api");
+
+        let mut api_rs_path = None;
+        let ws = dir.join("rust-workspace");
+        for e in std::fs::read_dir(&ws).expect("rust-workspace").flatten() {
+            let candidate = e.path().join("src").join("api.rs");
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                if content.contains("repo_list") || content.contains("repository::ping") {
+                    api_rs_path = Some(candidate);
+                    break;
+                }
+            }
+        }
+        let api_rs =
+            std::fs::read_to_string(&api_rs_path.expect("generated api.rs")).expect("read api.rs");
+
+        // F-742-R2-01: the borrow-marker string survives byte-for-byte and
+        // the REAL borrow call still gets its & inserted (positive control).
+        assert!(
+            api_rs.contains(r#""crate::repository::measure(value)""#),
+            "borrow-marker literal must survive:
+{api_rs}"
+        );
+        assert!(
+            !api_rs.contains("measure(&value)"),
+            "borrow insertion leaked into the literal:
+{api_rs}"
+        );
+        assert!(
+            api_rs.contains("repository::measure(&s)")
+                || api_rs.contains("repository::measure(&msg"),
+            "real &str borrow positive control must keep its insertion:
+{api_rs}"
+        );
+        // F-742-R2-02: outer call qualified, sub-block method call NOT.
+        assert!(
+            api_rs.contains("crate::repository::ping()"),
+            "outer module call must qualify:
+{api_rs}"
+        );
+        assert!(
+            api_rs.contains("repository.len()"),
+            "sub-block local shadow must keep its method call:
+{api_rs}"
+        );
+        assert!(
+            !api_rs.contains("\"local\".len"),
+            "shadow initializer is literal text:
+{api_rs}"
+        );
+        // F-742-R2-03: Option variable maps through a runtime match.
+        assert!(
+            api_rs.contains("return match p {"),
+            "option variable must map Some/None at runtime:
+{api_rs}"
+        );
+        // F-742-R2-04: file body module call qualified.
+        assert!(
+            api_rs.contains("crate::repository::path()"),
+            "file-body module call must qualify:
+{api_rs}"
+        );
+
+        // Extract each generated handler by name (brace-balanced over CODE
+        // regions only — a `}` inside a business string must not end the
+        // handler) — skips glue/input structs entirely.
+        let file_mask = code_region_mask_text(&api_rs);
+        let extract = |name: &str| -> String {
+            let start = api_rs
+                .find(&format!("pub async fn {name}"))
+                .unwrap_or_else(|| panic!("handler {name} missing:\n{api_rs}"));
+            let bytes = api_rs.as_bytes();
+            let mut depth = 0i32;
+            let mut i = start;
+            let mut end = api_rs.len();
+            while i < bytes.len() {
+                if file_mask[i] {
+                    match bytes[i] {
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = i + 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                i += 1;
+            }
+            api_rs[start..end].to_string()
+        };
+        let handlers = [
+            "echo",
+            "echo_borrow",
+            "borrow_pos",
+            "ping",
+            "scope",
+            "void_plain",
+            "void_branch",
+            "void_path",
+            "opt",
+            "file",
+        ]
+        .iter()
+        .map(|n| format!("{}\n", extract(n)))
+        .collect::<String>();
+
+        let runner = r#"#![allow(unused)]
+use std::future::Future;
+use std::pin::pin;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Wake;
+use std::task::Waker;
+
+mod types {
+    #[derive(Clone)] pub struct Probe { pub text: String }
+}
+use crate::types::*;
+
+mod repository {
+    pub fn ping() -> i64 { 7 }
+    pub fn measure(value: &str) -> i64 { value.len() as i64 }
+    pub fn path() -> String { "readme.txt".to_string() }
+}
+
+#[derive(Clone)] pub struct State<T>(T);
+pub struct Path<T>(T);
+pub struct JsonResponse<T>(pub T);
+pub struct StatusCode;
+impl StatusCode { pub const NOT_FOUND: Self = Self; pub const OK: Self = Self; }
+pub type Db = Arc<Mutex<Vec<types::Probe>>>;
+
+mod axum {
+    pub mod http { pub struct Method; pub struct HeaderMap; }
+    pub mod response { #[derive(Debug)] pub struct Response(pub String); }
+}
+mod auto_lang {
+    pub mod a2r_std {
+        pub mod http {
+            pub struct FileResponse(pub String);
+            pub fn file_response(_: &str, path: &str, _: &str) -> FileResponse {
+                FileResponse(path.to_string())
+            }
+        }
+    }
+}
+async fn __file_reply(
+    d: auto_lang::a2r_std::http::FileResponse,
+    _: &axum::http::Method,
+    _: &axum::http::HeaderMap,
+) -> axum::response::Response {
+    axum::response::Response(d.0)
+}
+
+struct Noop;
+impl Wake for Noop { fn wake(self: Arc<Self>) {} }
+fn ready<T>(f: impl Future<Output = T>) -> T {
+    let w = Waker::from(Arc::new(Noop));
+    let mut c = Context::from_waker(&w);
+    let mut f = pin!(f);
+    match f.as_mut().poll(&mut c) {
+        Poll::Ready(v) => v,
+        Poll::Pending => panic!("handler unexpectedly pending"),
+    }
+}
+
+__HANDLERS__
+fn main() {
+    let sdb = State(Arc::new(Mutex::new(Vec::new())));
+    println!("echo={}", ready(echo(sdb.clone())).0.text);
+    println!("echo_borrow={}", ready(echo_borrow(sdb.clone())).0.text);
+    println!("borrow_pos={}", ready(borrow_pos(sdb.clone())).0);
+    println!("ping={}", ready(ping(sdb.clone())).0);
+    println!("scope={}", ready(scope(sdb.clone())).0.text);
+    let _ = ready(void_plain(sdb.clone()));
+    println!("void_plain=ok");
+    let _ = ready(void_branch(sdb.clone()));
+    println!("void_branch=ok");
+    match ready(void_path(Path(1), sdb.clone())) {
+        Ok(_) => println!("void_path=ok"),
+        Err(_) => println!("void_path=err"),
+    }
+    match ready(opt(Path(1), sdb.clone())) {
+        Ok(v) => println!("opt1={}", v.0.text),
+        Err(_) => println!("opt1=none"),
+    }
+    match ready(opt(Path(0), sdb.clone())) {
+        Ok(v) => println!("opt0={}", v.0.text),
+        Err(_) => println!("opt0=none"),
+    }
+    println!("file={}", ready(file(sdb.clone(), axum::http::Method, axum::http::HeaderMap)).0);
+}
+"#
+        .replace("__HANDLERS__", &handlers);
+        let runner_path = dir.join("oracle_runner.rs");
+        std::fs::write(&runner_path, runner).expect("write runner");
+        let exe_path = dir.join("oracle_runner.exe");
+        let compile = std::process::Command::new("rustc")
+            .arg("--edition=2021")
+            .arg("-o")
+            .arg(&exe_path)
+            .arg(&runner_path)
+            .output()
+            .expect("rustc on PATH (compile oracle)");
+        assert!(
+            compile.status.success(),
+            "generated handlers must compile:
+--- api.rs ---
+{api_rs}
+--- rustc stderr ---
+{}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        let run = std::process::Command::new(&exe_path)
+            .output()
+            .expect("run compiled oracle");
+        assert!(
+            run.status.success(),
+            "compiled oracle run failed:
+{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+        let expected = "echo=引号\" List<int>.new([]) repository.ping() } return secret\n\
+                        echo_borrow=crate::repository::measure(value)\n\
+                        borrow_pos=2\n\
+                        ping=7\n\
+                        scope=ok\n\
+                        void_plain=ok\n\
+                        void_branch=ok\n\
+                        void_path=ok\n\
+                        opt1=some\n\
+                        opt0=none\n\
+                        file=readme.txt\n";
+        assert_eq!(
+            stdout, expected,
+            "handler return values must preserve business strings and map exits"
         );
     }
 
