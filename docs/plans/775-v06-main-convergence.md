@@ -2,113 +2,137 @@
 plan_id: PLAN-775
 status: executing
 feature_name: v06-main-convergence
-plan_revision: 2
+plan_revision: 3
 author: [Codex]
 created_at: 2026-10-13
 updated_at: 2026-10-13
 supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
-affects: [auto-lang, auto-down, auto-os, app-repositories]
-current_step: 1
-total_steps: 11
+affects: [auto-lang, auto-down, auto-os, auto-musk, app-repositories]
+current_step: 7
+total_steps: 8
 ---
 
-# [PLAN-775] v0.6 在途收口与生态主线汇合
+# [PLAN-775] v0.6 已提交更新汇合与在途计划续做
 
 ## 变更摘要
 
-先完成或如实保留所有已开展的 v0.6 工作，再从各仓最新发布主线创建普通合并候选，吸收已验收的 v0.6 提交和本地有效成果。AutoLang、AutoDown、AutoOS、AutoMusk 与实际有 v0.6 增量的应用仓成为新的日常开发主线；其他相关仓逐一给出同步、保留或无需合并的证据。
+按用户 2026-10-13 的明确修正，本计划先把已经提交的 v0.6 开发更新汇入各仓默认分支；不等待 Plan 742/744/773、Notes、Blog、Reader、Launcher、Weather、Explorer 等在途工作全部完成。相关 Plan 保持原状态和未完成项，合流后在各自权威工作树继续。
 
-正式 release tags 和已推送分支不改写。使用普通 merge 和 fast-forward，不 rebase、squash 或 force-push。跨仓按依赖顺序先交付子仓，再更新 AutoOS gitlink。
+使用普通 merge、fast-forward 或可追溯 cherry-pick；不重写已发布历史，不 force-push，不删除恢复分支和用户 WIP。AutoLang 的默认分支名仍为 `master`，其他仓沿用各自 `main`/`master`；合流后各默认分支作为 v0.6 后续开发线。
 
 ## 目标
 
-1. 对 GitHub 上 37 个 AutoLang 相关仓逐一确定发布主线、开发独有提交、本地 WIP 与处理结果。
-2. 按各自原 Plan/验收完成已开展的 v0.6 开发；未达到 required 条件时保持失败或待办，不能把草案或弱证据写成完成。
-3. 把 v0.5 共同基点之后仍有效的发布线改动与 v0.6 开发成果汇入以 v0.5 发布主线为第一父线的候选；让 main/master 成为 v0.6 后续开发目标。
-4. 保留 Plan 身份、Spec、测试、应用源和固定 SHA 子仓关系的可追溯性；每仓独立复审并通过自己的门禁。
+1. 将各仓已提交且仍有效的 v0.6 增量放入默认分支，保留发布主线第一父链与原开发引用。
+2. 先发布应用子仓，再更新 AutoOS 固定 SHA；所有新写入的 gitlink 指向已推送的提交。
+3. 保持在途 Plan 的实际状态、验收目标、未提交工作和原工作树，不将分支合流误记为功能完成。
+4. 对未变化仓给出已有证据支持的无需合并判断；完成最终远端引用、fresh-clone 与安全清理核验后再关闭本计划。
 
-非目标：重命名仓库既有的 main/master；改写已发布历史；删除恢复分支、tag、未知机器上的 WIP；启动尚未实施的 Plan 769–771 特性。
+非目标：完成各功能 Plan 的 required 条件；将 drafting/executing 改为完成；改名现有默认分支；改写 v0.5 tag 或 v0.6-dev 历史；删除旧分支、异机 WIP 或不属于本计划的工作树。
 
 ## 架构方案
 
-以各仓最新远端发布默认分支为候选第一父线，以普通 merge 吸收已复审的开发源；有效的本地唯一提交通过可追溯合并或 cherry-pick 纳入，不丢原始引用。先完成 AutoLang/AutoDown 与应用代码，再迁 AutoOS 中 v0.5 对 Tetris、Klondike 的源增量，最后提交 AutoOS 父仓并固定可远端获取的 gitlink SHA。
+AutoLang 与 AutoOS 从发布默认分支创建候选并用普通 merge 汇入开发历史；其他存在有效开发增量的仓使用 fast-forward，或在提交仅存在于本地时以 `cherry-pick -x` 保留来源。AutoDown 与 Notes 的依赖顺序为先发布可包含 `src` 的 AutoDown 包，再由 Notes 提交更新嵌套 gitlink，最后由 AutoOS 更新外层 Notes gitlink。
 
-对子仓没有开发独有提交的情况，只快进到远端发布主线或保留无需变更；不能为了形式制造空 merge。远端不提供 v0.6-dev 或本地指向 Gitee/Codeup 的仓库先核实来源与内容，再决定同步方式，不擅自改远端配置。
+AutoOS v0.5 对 Tetris 与 Klondike 的源文件差异先落入产品仓并推送，再由 AutoOS 固定这两个产品提交。任何本地 checkout 的脏状态仅作调查对象，不通过 reset、stash、清理或复制覆盖处理。
 
 ## 需求分析与背景调查
 
-用户已于 2026-10-12 确认执行。本计划依据 `docs/reports/v06-main-convergence-20261012/README.md`、其中固定的 GitHub refs/compare/本地工作树证据，以及各相关仓现行 AGENTS 和应用 Plan。当前审计覆盖 GitHub `auto-stack` 的 38 个仓，排除语料仓 `daizhigev20` 后有 37 个相关仓；另核对本机 27 个 Git checkout。最终发布前必须刷新每个将合入仓的远端头。
+用户先授权执行，后明确要求“先把 v0.6-dev 上已有更新合并回 main；未完成的计划可以保持做到一半，合并后再单独做”。此修正替代 revision 2 中“先完成所有在途工作再合并”的先决顺序，不改变各在途 Plan 自身的 required 验收合同。
 
-关键已知条件：AutoLang v0.5.0 tag 为 `e05e2d3d7`，发布 master `38e4c7c5f`，本地 v0.6-dev 原头 `a45ff543e`，远端 v0.6-dev `94173fe2c`；开发分支已推送，原提交保持不动。本地 master 唯一文档提交 `168b56923`、AutoMusk main 的两条本地规约提交、恢复分支和现有工作树均须保全。Plan 768 在原树完成 work、待独立 review；Plan 742/744、Notes、Blog、Launcher、Reader、Weather、Explorer 的实际完成情况见报告，必须回到原合同核证。Reader 三个 required 目标保持不变。
+基线盘点覆盖 GitHub `auto-stack` 37 个相关仓和本机 27 个顶层检出，见 [初始调查报告](../reports/v06-main-convergence-20261012/README.md)。远端变化仓在推送前刷新了 refs；最终提交和推送收据见 [2026-10-13 合流收据](../reports/v06-main-convergence-20261012/merge-receipt-20261013.md)。该报告不能证明本机以外不存在未推送工作。
 
-Plan 编号联合表：
-
-| 身份 | 汇合后的编号 | 处理 |
-|---|---:|---|
-| v0.5 发布线 Plan 767–769 | 767–769 | 保留发布线原义与历史 |
-| v0.6-dev AC 标量计划（原 767） | 772 | 归档计划迁名；原附件、分支名和提交 SHA 保留作审计别名 |
-| v0.6-dev AutoDown TestCase 计划（原 768） | 773 | 现行计划迁名；原附件路径、分支名和提交 SHA 保留作审计别名 |
-| v0.6-dev AC 数据资源计划（原 769） | 774 | 草案迁名；尚未开始的工作仍保持 drafting |
-| 本汇合计划 | 775 | 保持不变；`.next-id` 为 776 |
-
-开发线 770/771 保持草案身份。历史 commit message、远端分支名、冻结附件路径与内容不改写；本计划及迁移后的 canonical 计划编号是现行身份映射。
+Plan 编号联合表不变：发布线 767–769 保持原义；v0.6 计划现行编号映射为 772/773/774；本计划为 775。Plan 773 当前为 `execution_done`，Plan 774 为 `drafting`；Plan 772 位于 archive。合流不改变这些状态，也不把它们当作本计划已完成的功能验收。
 
 ## 详细设计
 
-先在 master 上正式登记本计划，再在 `D:/autostack/.wt/lang-775/auto-lang` 建立 `plan-775-dev` 权威工作树，并在同组创建确有需要的兄弟仓工作树。每个原在途 Plan/应用树只设一个实现写入者；现有 WIP 和 ignored 数据须先核验、保全，不能用 stash/reset、清理或复制覆盖处理。工作树内禁止 junction/symlink。
+本次发布结果：
 
-按报告中逐仓表执行。语言层重点解决 `.autoos/specs.json`、`trans/rust.rs`、`ui_gen/vue.rs`、`auto-man/api_gen.rs`、测试收据、Plan 编号、debt ledger、roadmap、Spec 与目录整理冲突。派生 INDEX 从合并后的 canonical 文档重建。AutoOS 需保留 v0.5 对 `apps/036-tetris/src/front/app.at`、`apps/037-klondike/src/front/app.at` 的功能更新；`apps/039-syslog` 更新也须保留。产品仓 gitlink 转换前，先在产品仓合入并验证源文件增量。
+| 仓库 | 默认分支收口点 | 处理 |
+|---|---|---|
+| auto-lang | `master` `e35f9e99b6711ff6f1990ea980729d1fa521327e` | merge `77495105284b4ba657c1bd1aa3b864d72aeddb17`：第一父线保留发布 `master`，第二父线为本地 v0.6-dev `2e9777b191f32683e8a3bbbe0b993675e38cce63`；原远端 v0.6-dev `94173fe2c175ef007a825a25050a2f04fb5ed98a` 未改写 |
+| auto-down | `master` `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | 小型补充提交把 engine 包清单从 `dist` 扩为 `dist` + `src`，恢复 Notes 所需的可发布源文件 |
+| auto-notes | `main` `1391bd7eb2f6b3b08e9841d30b25125e47ced058` | 普通后续提交把 `vendor/auto-down` 指向上述已发布 SHA；旧不可达 pin 留在其历史祖先 |
+| auto-blog | `main` `08da63359c4f8d147c0c10f2c774d6feaad79425` | fast-forward 到已推送开发头 |
+| auto-reader | `main` `29b5decf878ec2cdca5c6a39575e872a4597121d` | 默认分支与开发头已一致，无额外提交 |
+| auto-launcher | `main` `df207283536ff943e2e574dc886c4cb8594cce13` | fast-forward 到已推送开发头 |
+| auto-weather | `main` `1626a4a16ccf4de717bc92e27b60a9184b8198f2` | 默认分支与开发头已一致；Plan 008 的未提交工作另行保留 |
+| auto-explorer / auto-file-manager | `main` `59a99b9f42896728aa32a7ff3e38fa08261c7d18` | fast-forward 到已推送开发头 |
+| auto-tetris | `main`、`v0.6-dev` `06b2e67f2117084853271cf194e67cc47be6b3c5` | 在产品仓保留 v0.5 源更新后推送两条分支 |
+| auto-solitaire / auto-klondike | `main`、`v0.6-dev` `91192ef593cb25377a2d089542e6f040507231a9` | 在产品仓保留 v0.5 源更新后推送两条分支 |
+| auto-os | `main` `853a551e681ad888f4c72c519b6ad1df94e7f313` | 普通 merge；第一父线 `e7fadc470684f611620175c722a1a22df5e9d9c9`，第二父线 `71d3b5f43ff4a20b998bca2917f7bf62b101fdd7` |
+| auto-musk | `main` `cb4cb9570ab185b0a2a7a645cc80edd65a1689f4` | 两条本地唯一的 Plan skill 文档提交用 `cherry-pick -x` 迁入远端主线；原本地 main 和原提交保持不动 |
 
-每个仓的代码、资料、测试和复审结果绑定 commit SHA。测试只按该仓 AGENTS 和原 Plan 的 required 门执行；变更和旧预存红分开记录。跨仓发布按“依赖仓可从远端获取 → 父仓固定 SHA”推进，任何子仓 push 失败都阻断父 gitlink 更新。
+其他仓的分支同步/无开发独有提交判定以初始调查表为准；完成关闭前仍需刷新未变化仓的远端 refs。AutoOS 候选的根提交已推送，但其当前工作目录内的多个子模块没有完整物化，`verify-app-links.py` 因 dirty checkout 检查失败；不得把该命令记录成通过。父仓索引中的 Notes、Tetris、Klondike SHA 已更新，fresh-clone 验证仍是待办。
+
+### 规范增量
+
+| delta_id | 操作 | 目标 | before / after | 原因 | 验收 |
+|---|---|---|---|---|---|
+| SD-00 | none | n/a | 此计划只汇合现有 Git 历史和依赖引用，不新增 AutoLang 运行时规则 | 功能 Spec 继续由各自 Plan 维护；本次合流保留其已提交版本 | AC-01–AC-05 |
+
+Spec-impact frontmatter 为空是有意的：本次不直接修改 AutoLang canonical Spec；AutoOS 随开发线合入的产品规格仍以其仓库记录为准。
 
 ## 测试设计
 
-- 结构核验：所有接受的源提交、本地独有提交及发布主线均能从最终候选祖先追溯；v0.5 tags 与原始 v0.6-dev refs 不变；无历史改写。
-- AutoLang：先核对 Plan 742/744/768 原 AC，按触面执行 `cargo check -p auto-lang`、`cargo t` 及 `cargo tv`/`cargo tt`/`cargo tb`/`cargo tu`/作用域 `cargo taa`；review 与 fold 前按 AGENTS 再跑所需门禁。批量 `cargo tf` 由主检出依到期规则单实例执行。
-- AutoDown/应用：沿用各自合同的 parser、协议和双端/原型验证；Blog 覆盖等待期、失败保存、恢复与迁移负例；Reader 覆盖混排滚动恢复、10 MiB 成功导入、原生 VM UI；Notes/Launcher/Weather/Explorer 用各自原门禁复核。
-- AutoOS：确认 Tetris/Klondike 发布线源增量和产品实现同时存在；检查 manifest、desktop 启动与所有 fixed-SHA 子仓能从新鲜 clone 获取。
-- 独立复审：逐条执行 AC-01–08、对照每仓最终 HEAD、检查工作树/未提交/债务/延期/workaround；审查失败回到 work，不创建合并发布提交。
+- 历史检查：验证发布主线是 AutoLang/AutoOS merge 的第一父线，开发头为第二父线；其余推送为祖先保持的 fast-forward/cherry-pick；检查 v0.5 tag 和原 v0.6-dev refs 未移动。
+- AutoLang：本轮执行记录已确认 `cargo check -p auto-lang -p auto-man --quiet`、`cargo tv` 通过；`cargo t`/`cargo tt` 的已知红按既有 Plan/基线记录区分。本次主要工作是历史整合，不重跑全套 feature 门禁。
+- AutoDown：`npm pack --dry-run --json` 通过，包含 178 个 `src/*` 项及 `src/index.ts`。
+- AutoMusk：迁入文档 `git diff --check` 通过；五个变更 Markdown 文件的相对链接检查通过。
+- AutoOS：关键 JSON 可解析、`scripts/desktop.sh` 的 Bash 语法通过，手工冲突文件的 staged whitespace 检查通过。`scripts/verify-app-links.py` 在合流候选上失败于子模块 checkout dirty 检查；fresh-clone 子模块验证尚未执行。
+- 只对分支/索引执行的变更不以这些检查替代原功能 Plan 的验收。
 
 ## 验收标准
 
-| ID | 结果 |
-|---|---|
-| AC-01 | 37 个相关仓的远端头、本地分支、独有提交、WIP、tag、工作树与处置均有 SHA 证据；调查范围外机器不宣称已证明无 WIP。 |
-| AC-02 | Plan 742/744/768 及 Notes、Blog、Launcher、Reader、Weather、Explorer 等已开展工作依原 required 合同完成或明确阻塞；未开工草案仍是草案。 |
-| AC-03 | 候选保留发布主线第一父链，接收源均可追溯；v0.5 tags 和原开发引用未变，无 rebase/squash/force。 |
-| AC-04 | AutoLang 代码/目录/Spec/Plan 身份冲突按语义解决；现行 Plan ID 唯一，旧编号有别名，派生索引从 canonical source 生成。 |
-| AC-05 | v0.5 应用源增量与 v0.6 产品实现均保留，子仓先于父 gitlink 发布，gitlink SHA 可远端获取。 |
-| AC-06 | 独立 review 绑定最终 revision 和每仓 HEAD，通过所有 required AC，并登记剩余债务与验证边界。 |
-| AC-07 | 每个有变化的仓通过其门禁并普通推送/快进；没有变化的仓有“已同步/无需合并”证据。 |
-| AC-08 | main/master 成为新 v0.6 日常开发目标；Plan/spec/ledger/index/归档和工作树清理收据正确，旧恢复引用保留。 |
+| ID | owner_stage | 当前结果 |
+|---|---|---|
+| AC-01 | merge | 已变更仓保留原发布主线历史，普通 merge/fast-forward/cherry-pick；v0.5 tag 与已检查开发 refs 未重写。未变更仓的最终 refs 刷新仍由 T-08 完成。 |
+| AC-02 | work | 在途功能 Plan 原状态、原 required 目标和独立工作树继续保留；本次不要求其先完成。 |
+| AC-03 | merge | AutoLang 与 AutoOS 的 merge 父顺序正确；其他开发更新可从默认分支追溯；AutoMusk 本地两提交有 `-x` 来源记录。 |
+| AC-04 | merge | Tetris/Klondike 的 v0.5 源增量已先推产品仓；AutoOS 指针指向已推提交；Notes 的 nested pin 指向已推 AutoDown 修复。 |
+| AC-05 | review | 变更仓按范围检查通过；AutoOS `verify-app-links.py` 和 fresh-clone 检查仍待在干净检出中完成。 |
+| AC-06 | review | 本阶段复核历史、冲突解决、来源、debt/未完成项和工作区边界；结论限定为 branch-convergence phase，不宣称整体 Plan 最终通过。 |
+| AC-07 | merge | 默认 `main`/`master` 作为 v0.6 后续开发线；完成全仓最终 ref 收据与安全清理后归档本计划。 |
 
 ## 执行步骤
 
-| Task | 阶段 | 操作与完成证据 | 状态 |
+| Task | owner_stage | 操作与完成证据 | 状态 |
 |---|---|---|---|
-| T-01 | work | 保存在途 WIP、调查证据和本地唯一提交；联合核对 plan ID；master 上由 `scripts/new-plan.sh v06-main-convergence` 创建本计划。 | [x] 2026-10-13：WIP/evidence 固定为 v0.6-dev 提交 `2e9777b19`；master 合入最新 origin/master（merge `7a3047f79`，保留 `168b56923`）；编号映射 767/768/769→772/773/774；中央脚本生成 PLAN-775，`.next-id=776`。工作树清单和远端 heads 在合入前刷新仍待 T-02。 |
-| T-02 | work | 基于最新默认主线建立隔离集成树；重新抓取 refs/工作树/原 Plan 状态，预演所有将合并的仓。 | [ ] |
-| T-03 | work | 在各自原树完成 Plan 742/744/768 原 AC、验证和独立 review；未通过项修复后复核。 | [ ] |
-| T-04 | work | 核验 Reader 新框架三项 required 能力；缺少的 AutoLang 前置另立专属设计/Plan，交付并完成 Reader 原验收。 | [ ] |
-| T-05 | work | 完成 Notes、Blog、Launcher、Weather 等原合同收尾/复审/知识沉淀；核对 Explorer 与其他已开展应用。 | [ ] |
-| T-06 | work | 合入 AutoLang v0.5 发布线、本地 master 文档、AutoMusk 两条规约提交和有效恢复信息；消解代码、目录、Plan ID、Spec/debt/roadmap 冲突。 | [ ] |
-| T-07 | work | 在 Tetris/Klondike 产品仓迁入并验证发布线源增量；逐项对账其他应用源，再在 AutoOS 普通合并、固定可获取 gitlink SHA。 | [ ] |
-| T-08 | work | 刷新所有来源头并跑联合构建/测试/原型/fresh-clone 检查；冻结最终候选和逐仓 evidence。 | [ ] |
-| T-09 | review | 在停止写入后独立复查 AC、Spec delta、遗漏/延期/workaround、refs、required 验证和各仓 HEAD；记录 pass 或 needs_fix。 | [ ] |
-| T-10 | merge | 复核远端无新提交后按子仓到父仓顺序普通 push/fast-forward；确认远端祖先关系、tags、子仓 SHA 可获取，登记每仓收据。 | [ ] |
-| T-11 | merge | 更新现行 workflow/spec/ledger/index、归档已审计划、回到主线；按批量回归到期规则处理，先 `wt-guard.sh` 再清理只属于本计划且干净的工作树。 | [ ] |
+| T-01 | work | 正式登记 PLAN-775、联合 Plan 编号和本地 WIP 快照。 | [x] 2026-10-13：`.next-id=776`；主检出 `auto/` 未跟踪目录保留。 |
+| T-02 | work | 以调查报告为基线，刷新所有有变化仓 refs；标明用户 WIP 和本地唯一提交的保留方式。 | [x] 变化仓推送前均刷新；AutoLang/AutoOS/AutoMusk/AutoDown/Notes 和产品子仓的最终 refs 见收据。未变化仓刷新列入 T-08。 |
+| T-03 | merge | 普通合入 AutoLang 发布线、本地有效提交与 v0.6-dev 更新，推送 `master`。 | [x] merge `7749510…`，远端头 `e35f9e99b…`；v0.5.0 tag 解引用 SHA `e05e2d3d7…` 保持。 |
+| T-04 | merge | 按依赖顺序更新 AutoDown、应用仓与产品 gitlink；保存 Tetris/Klondike 源增量。 | [x] AutoDown `c39ac7f…`，Notes `1391bd7…`，应用与产品 SHA 见表。 |
+| T-05 | merge | 普通合并 AutoOS 的发布线和 v0.6-dev，发布固定 SHA。 | [x] merge `853a551…`，父顺序已独立核对；推送时 `origin/v0.6-dev=71d3b5f…` 未变。 |
+| T-06 | merge | 在不覆盖原本地 checkout 的前提下将 AutoMusk 两条有效提交纳入远端 main。 | [x] cherry-pick `-x` 为 `eecac9b…`、`cb4cb95…`；原始 `8e09f5b…`、`bfcf373…` 在原本地 main 保留。 |
+| T-07 | review | 复核本阶段的历史、发布 SHA、用户范围修正、未完成计划和已知验证边界。 | [x] 2026-10-13 phase pass；自审限制与待办见 §复审记录。 |
+| T-08 | merge | 刷新所有未变化仓远端 refs；只快进无 WIP 的本地默认检出；在干净 AutoOS checkout 运行 `verify-app-links.py`/recursive submodule 验证；完成最终收据和通过 wt-guard 的安全清理。 | [ ] 已快进 AutoLang、AutoDown；AutoOS/AutoMusk 原检出因 WIP 或分叉保留原状。 |
 
 ## 复审记录
 
-### 2026-10-13 — stage: work / T-01 完成
+### 2026-10-13 — revision 2 的用户范围修正
 
-- revision: 2；outcome: executing；用户已确认本次执行，无待澄清事项。
-- v0.6-dev WIP 文档提交：`2e9777b19`。master 与 GitHub master 汇合提交：`7a3047f79`，其父链保留本地目录分析文档提交 `168b56923` 和远端发布主线 `38e4c7c5f`。尚未推送或改写任何发布分支。
-- PLAN-775 由 `scripts/new-plan.sh` 在 master 正式生成；编号联合表见 §需求分析。工作树中未提交的本地生成目录 `auto/` 保留原位，未纳入提交。
-- next_responsible_role: work；下一步重新核验多仓 refs/WIP，并建立 plan-775-dev 集成树。此前审计报告是固定时点快照，不能替代 T-02 刷新证据。
+- 用户明确要求分支合流先行，未完成 Plan 可以保持“做到一半”，并在主线更新后继续；因此 revision 2 中“先完成所有 in-progress Plan”的顺序不再适用。
+- 该修正只改变本计划的顺序和验收范围，不修改 Plan 742/744/773/774、Notes、Blog、Reader、Launcher、Weather、Explorer 等原合同。它们不得因本次 merge 自动改为 completed/reviewed/archived。
+
+### 2026-10-13 — stage: work / T-01–T-06 完成
+
+- revision: 3；outcome: executing；提交和 refs 见 [合流收据](../reports/v06-main-convergence-20261012/merge-receipt-20261013.md)。
+- AutoLang/AutoOS 保留发布线第一父线；AutoDown/Notes 以新提交修复 Notes 不可达嵌套 pin；AutoMusk 的本地有效规约改动通过带来源标记的 cherry-pick 保留。
+- 自动化审核曾拒绝在 dirty 子模块目录上批量执行 `git submodule update --checkout`，原因是该动作可能覆盖子模块内未提交状态。本计划不绕过该拒绝；通过索引和远端 SHA 核验继续推进，fresh-clone 验证保留为 T-08。
+- 已确认 Plan 773 仍为 `execution_done`、Plan 774 仍为 `drafting`，未把这些状态提升或关闭；应用原工作树与未提交工作也未清理。
+- next_responsible_role: review；review_scope: phase；下一步对 branch-convergence 阶段独立复核，记录复核限制和未完成的 closeout gates。
+
+### 2026-10-13 — stage: review / T-07 phase pass
+
+- review_scope: phase `branch-convergence`; plan_id: PLAN-775; plan_revision: 3; overall status remains `executing`.
+- reviewed_commit: AutoLang `e35f9e99b6711ff6f1990ea980729d1fa521327e`; AutoLang merge `77495105284b4ba657c1bd1aa3b864d72aeddb17` first/second parents `f903848bd8a468f9c4e166a217c1c52111f689a1` / `2e9777b191f32683e8a3bbbe0b993675e38cce63`; AutoOS merge `853a551e681ad888f4c72c519b6ad1df94e7f313` first/second parents `e7fadc470684f611620175c722a1a22df5e9d9c9` / `71d3b5f43ff4a20b998bca2917f7bf62b101fdd7`; AutoMusk `cb4cb9570ab185b0a2a7a645cc80edd65a1689f4`; AutoDown `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`; Notes `1391bd7eb2f6b3b08e9841d30b25125e47ced058`.
+- reviewer_identity/limitations: same task context as execution; no separate reviewer identity is claimed. I re-read the current Plan, merge parents, final refs, child pins, report, and staged conflict-resolution paths after publication.
+- acceptance_results: AC-01 pass for changed repositories; final refresh for unchanged repositories remains T-08. AC-02 pass (unfinished Plan states and requirements preserved). AC-03/AC-04 pass for reviewed history and child-first pins. AC-05 partial (scoped checks pass; clean recursive checkout remains pending). AC-06 pass for this phase only. AC-07 partial until T-08.
+- findings: F-01, non-blocking for the already-published branch convergence phase — AutoOS `verify-app-links.py` cannot pass in the current candidate worktree because numerous submodule directories are dirty/unmaterialized. Bulk checkout was rejected by automatic approval review because it could overwrite uncommitted submodule state; no bypass was attempted. Run the check from a clean checkout in T-08.
+- evidence: `docs/reports/v06-main-convergence-20261012/merge-receipt-20261013.md`; push output and `ls-remote` receipts; AutoDown `npm pack --dry-run --json`; AutoMusk markdown-link/whitespace checks; AutoOS JSON parse, Bash syntax and staged whitespace checks.
+- next: T-08 refresh remaining remote refs, run clean AutoOS recursive-submodule verification, then guarded cleanup only for trees proven clean. Resume unfinished feature Plans separately in their existing trees.
 
 ## 待澄清事项
 
-无。异机未推送成果不可由本机审计证明不存在；若执行中发现新源或远端推进，加入逐仓证据并重跑受影响复审与门禁。
+无。后续功能工作依各自 Plan 推进；异机本地 WIP 不在本机审计可证明范围内。
