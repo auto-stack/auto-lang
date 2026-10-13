@@ -93,8 +93,10 @@ Invoke-Step 'cargo check --locked --all-targets (probe)' {
 
 Invoke-Step 'cargo test --locked (probe: V02..V08 native cases)' {
     $t = Invoke-Cargo @('test', '--manifest-path', $ProbeManifest, '--locked')
-    $passed = ($t | Select-String -Pattern 'result: ok\. (\d+) passed').Matches | ForEach-Object { $_.Groups[1].Value }
-    $total = ($passed | Measure-Object -Sum).Sum
+    $ms = [regex]::Matches($t, 'result: ok\. (\d+) passed')
+    $total = 0
+    foreach ($m in $ms) { $total += [int]$m.Groups[1].Value }
+    if ($total -le 0) { throw "no probe tests counted; output:`n$t" }
     $script:ReceiptLines.Add("test: ok ($total probe tests; every PE under the contained 60s executor)")
 }
 
