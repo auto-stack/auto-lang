@@ -61,5 +61,5 @@ AutoOS main 的新产品 gitlink 已写为已推送 SHA：Weather `1626a4a…`�
 
 ## 收尾状态
 
-T-08 的远端头刷新、本地安全快进和 AutoOS fresh-clone 验证已完成。清理只删除了通过 `wt-guard` 的干净临时目录。带 20 个 dirty 应用子模块和 2 个 gitlink mismatch 的 AutoOS 集成候选按保全要求继续留存，不对其执行覆盖式同步或删除；该本地 WIP 不影响已发布默认分支的收口。Revision 6 将 T-08 标记完成，PLAN-775 仍待本阶段最终复审和归档；未完成的功能 Plan 按用户要求保持原状态，合流后另行继续。
+T-08 的远端头刷新、本地安全快进和 AutoOS fresh-clone 验证已完成。清理只删除了通过 `wt-guard` 的干净临时目录。最新只读检查显示 AutoOS 集成候选有 18 个 dirty app 子模块、2 个 gitlink mismatch；按保全要求继续留存，不做覆盖式同步或删除。Revision 6 的 branch-convergence phase review 已通过；PLAN-775 保持 `executing`，直到这个候选有独立、安全的交接/清理安排。未完成的功能 Plan 按用户要求保持原状态，合流后另行继续。
 
