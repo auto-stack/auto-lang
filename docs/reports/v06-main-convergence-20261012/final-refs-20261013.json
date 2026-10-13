@@ -1,10 +1,12 @@
 {
   "observed_at": "2026-10-13",
   "source": "GitHub REST API default-branch refs",
-  "note": "Snapshot taken after the AutoLang v0.5.0 ancestry correction and before this receipt-only documentation update; the recorded auto-lang head is the correction merge point.",
+  "note": "Point-in-time snapshot fetched via GitHub REST API before revision-6 receipt documentation was published; at capture, AutoLang master was d777ccbb227c41882ad5f6976c803b1e03b61135 and Jade Edit main was 5fb1e9e28e5a7e379317b7dffb400bad6c94606d. All 37 default heads and ancestry counts were rechecked on 2026-10-13.",
   "repository_count": 37,
+  "v06_dev_branch_audit": { "branches_found": 23, "tips_reachable_from_default": 23, "behind_count": 0 },
+  "v050_tag_audit": { "tags_found": 11, "tags_ancestors_of_default": 11, "repositories_without_tag": 26 },
   "repositories": [
-    { "name": "auto-lang", "default_branch": "master", "head": "3002c30ffd618f768031048742bcc700a2aff363" },
+    { "name": "auto-lang", "default_branch": "master", "head": "d777ccbb227c41882ad5f6976c803b1e03b61135" },
     { "name": "auto-ui", "default_branch": "master", "head": "f7d92eef273c7f5592cce9d1612fa28ebe12d45e" },
     { "name": "auto-man", "default_branch": "master", "head": "17e8800f590dae6541fa234cb9c8c101b1257e23" },
     { "name": "tree-sitter-auto", "default_branch": "master", "head": "02afcd68476fd6b0a94d1399e638fad49c716a58" },
@@ -19,7 +21,7 @@
     { "name": "auto-os", "default_branch": "main", "head": "853a551e681ad888f4c72c519b6ad1df94e7f313" },
     { "name": "auto-kanban", "default_branch": "main", "head": "1c967c5a418f95c547db1930bbcc4eccaf969a83" },
     { "name": "auto-edit", "default_branch": "main", "head": "acf71a0541e0f41741ce83083430c79cbc94bc06" },
-    { "name": "jade-edit", "default_branch": "main", "head": "4d49bbc45bd62da2724a4bc678983f6133087470" },
+    { "name": "jade-edit", "default_branch": "main", "head": "5fb1e9e28e5a7e379317b7dffb400bad6c94606d" },
     { "name": "auto-calc", "default_branch": "main", "head": "e5247c549db375480f30b9eb1e417ad9b15191a3" },
     { "name": "auto-clock", "default_branch": "main", "head": "551d05e065eb2f449c643b3fa4fd671a9ec7a307" },
     { "name": "auto-todo", "default_branch": "main", "head": "bc8391c3b33a9f2ee896a33874f7c458a33d67ca" },
@@ -43,3 +45,4 @@
     { "name": "auto-charts", "default_branch": "main", "head": "b1d14690751d89912f3ec0fd271caf48ff58b01a" }
   ]
 }
+
