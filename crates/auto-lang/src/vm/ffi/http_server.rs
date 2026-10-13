@@ -5882,11 +5882,10 @@ fn cors_json_headers(request_id: &str) -> Vec<(String, String)> {
     headers
 }
 
-/// ~T 最终值编组：FutureValue.result → NanoValue → json_value_reply
-/// （Failed / 缺 result → null；Phase A 语义同引擎恢复臂）。
-/// PLAN-776 T-03：资源终值（Value::VmRef → 本 VM 堆凭据）与 sync 同一
-/// `resource_claim_reply` 分派——Response/SSE/File/Upload 四族 sync/async
-/// 同形。Failed/缺 result 的有界 500 化在 T-04 落地。
+/// ~T 最终值编组：FutureValue.result → NanoValue → json_value_reply。
+/// PLAN-776 T-03：资源终值与 sync 同一 `resource_claim_reply` 分派。
+/// PLAN-776 T-04：Failed / result 缺失 / 值不可转换 → 有界 500（不再
+/// 200 null）；显式成功 Nil（Some(Nil)）→ 200 null 保持。
 fn final_value_reply(
     vm: &std::rc::Rc<AutoVM>,
     ctx: &DispatchCtx,
@@ -5897,14 +5896,16 @@ fn final_value_reply(
             return resource_claim_reply(vm, ctx, claim);
         }
     }
-    let nv = value
-        .and_then(|v| value_to_nv_via_task(vm, ctx, v))
-        .unwrap_or_else(auto_val::encode_null);
+    let Some(v) = value else {
+        return async_failure_reply(ctx, "future failed or result missing");
+    };
     // PLAN-730 T-05：`~UploadReceipt` 终值（Value::Int = 收据句柄）在
-    // JSON 兜底前按同一门识别（sync/异步同形）。
+    // JSON 兜底前按同一门识别（sync/异步同形）。PLAN-776 T-04：门在值桥
+    // 物化之前判定（直接匹配 Value::Int，与 is_i32(nv) 等价——Int 是
+    // is_i32 的唯一来源），提前 return 不留物化残渣。
     if handler_declares_upload_return(vm, ctx) {
-        if auto_val::is_i32(nv) {
-            let rid = auto_val::decode_i32(nv) as u32 as u64;
+        if let auto_val::Value::Int(rid) = v {
+            let rid = rid as u32 as u64;
             return match super::http_upload::take_upload_receipt(rid) {
                 Some(receipt) => upload_receipt_reply(ctx, receipt),
                 None => upload_contract_mismatch_reply(ctx, rid),
@@ -5915,8 +5916,8 @@ fn final_value_reply(
     // PLAN-729 T-04：`~FileResponse` 终值（Value::Int = 描述符句柄）在
     // JSON 兜底前按同一门识别（sync/异步同形）。
     if handler_declares_file_return(vm, ctx) {
-        if auto_val::is_i32(nv) {
-            let id = auto_val::decode_i32(nv) as u64;
+        if let auto_val::Value::Int(id) = v {
+            let id = id as u64;
             return match super::http_server_file::take_file_response(id) {
                 Some(descriptor) => ApiReply::Full {
                     status: 200,
@@ -5931,7 +5932,11 @@ fn final_value_reply(
         }
         return file_contract_mismatch_reply(ctx, u64::MAX);
     }
-    json_value_reply(
+    let mut materialized = Vec::new();
+    let Some(nv) = value_to_nv_via_task(vm, ctx, v, &mut materialized) else {
+        return async_failure_reply(ctx, "terminal value has no JSON wire form");
+    };
+    let reply = json_value_reply(
         vm,
         nv,
         &ctx.req_method,
@@ -5940,33 +5945,83 @@ fn final_value_reply(
         &ctx.body,
         &ctx.request_id,
         ctx.started.elapsed().as_millis(),
-    )
+    );
+    // PLAN-776 T-04：物化容器即用即弃（编组完成，无后续引用——计数归零
+    // 走 dying-grace 真回收，1000 次闭环存活回基线的前提）。
+    for id in materialized {
+        vm.rc_retain_id(id);
+        vm.rc_release_id(id);
+    }
+    reply
 }
 
-/// Value → NanoValue（经 handler 任务栈的 scratch——字符串走
-/// rc_push_str_idx 保 RC 簿记；复杂变体降级 null，~T 典型返回为标量/串）。
+/// PLAN-776 T-04：终值 Value → NanoValue 完整值桥（sync/async 同形）。
+/// - I64 全宽（48 位内联 / BigInt 堆装箱——`encode_i64_with_heap`）；
+/// - VmRef 身份保持（资源凭据/普通对象——TAG_OBJECT 回编组侧）；
+/// - Array/Obj 物化堆容器（id 记入 `materialized`，编组后统一释放——
+///   nv_to_json/value_to_json 现成序列化 record/list）；
+/// - 不可转换变体 → None（调用方 500 诊断——不再静默 null）。
 fn value_to_nv_via_task(
     vm: &std::rc::Rc<AutoVM>,
     ctx: &DispatchCtx,
     value: auto_val::Value,
+    materialized: &mut Vec<u64>,
 ) -> Option<auto_val::NanoValue> {
     let task_id = ctx.handler_task_id?;
     let t_arc = vm.tasks.get(&task_id)?.clone();
     let mut t = t_arc.try_lock().ok()?;
     let nv = match value {
         auto_val::Value::Int(i) => auto_val::encode_i32(i),
+        auto_val::Value::I64(i) => crate::vm::ffi::encode_i64_with_heap(vm, i),
         auto_val::Value::Float(f) => auto_val::encode_f64(f),
         auto_val::Value::Double(f) => auto_val::encode_f64(f),
         auto_val::Value::Bool(b) => auto_val::encode_bool(b),
-        auto_val::Value::Nil => auto_val::encode_null(),
+        auto_val::Value::Nil | auto_val::Value::Null => auto_val::encode_null(),
         auto_val::Value::Str(s) => {
             let idx = vm.add_string(s.to_string().into_bytes());
             vm.rc_push_str_idx(&mut t, idx);
             t.ram.pop_nv()
         }
-        _ => auto_val::encode_null(),
+        auto_val::Value::VmRef(r) => auto_val::encode_object(r.id as u32),
+        auto_val::Value::Array(a) => {
+            let list = crate::vm::types::ListData {
+                elems: a.values,
+                storage: None,
+            };
+            let id = vm.insert_heap_object(list);
+            materialized.push(id);
+            auto_val::encode_object(id as u32)
+        }
+        auto_val::Value::Obj(o) => {
+            let mut od = crate::vm::types::ObjectData::new();
+            for (k, v) in o.iter() {
+                od.fields.insert(k.clone(), v.clone());
+            }
+            let id = vm.insert_heap_object(od);
+            materialized.push(id);
+            auto_val::encode_object(id as u32)
+        }
+        _ => return None,
     };
     Some(nv)
+}
+
+/// PLAN-776 T-04：async 终态失败 → 有界 500（Failed / result 缺失 / 值不可
+/// 转换；不再伪装 200 null——显式成功 Nil 才是 200 null）。
+fn async_failure_reply(ctx: &DispatchCtx, detail: &str) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} [{}] → 500 (async terminal state: {})",
+        ctx.req_method, ctx.req_path, ctx.request_id, detail
+    );
+    let body = format!(
+        r#"{{"error":"async handler failed","detail":"{}"}}"#,
+        detail.replace('"', "\\\"").replace('\n', " ")
+    );
+    ApiReply::Full {
+        status: 500,
+        headers: json_reply_headers(&ctx.request_id),
+        body: ApiBody::Text(body.into_bytes()),
+    }
 }
 
 // ============================================================================

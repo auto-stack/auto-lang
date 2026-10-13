@@ -271,7 +271,7 @@ fn plain(n int) int {
         .to_string()
     }
 
-    fn start_server(code: &str, port: u16) -> u16 {
+    pub(super) fn start_server(code: &str, port: u16) -> u16 {
         crate::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
@@ -290,7 +290,7 @@ fn plain(n int) int {
         port
     }
 
-    fn get(port: u16, path: &str) -> (u16, Vec<(String, String)>, Vec<u8>) {
+    pub(super) fn get(port: u16, path: &str) -> (u16, Vec<(String, String)>, Vec<u8>) {
         let mut stream = None;
         for _ in 0..60 {
             if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
@@ -415,4 +415,71 @@ fn main() {
         0,
         "VM 退出后资源随 owner 回收归零"
     );
+}
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_t04 {
+    use super::http_e2e::{get, start_server};
+
+    fn program() -> String {
+        r#"
+#[api(method = "GET", path = "/api/async-redirect")]
+fn async_redirect() ~int {
+    delay_async(30)
+    return http.response_redirect("/async-target", 302)
+}
+
+#[api(method = "GET", path = "/api/async-big")]
+fn async_big() ~int {
+    delay_async(30)
+    return 5000000000
+}
+
+#[api(method = "GET", path = "/api/async-fail")]
+fn async_fail() ~int {
+    delay_async(30)
+    var d = 0
+    var boom = 10 / d
+    return boom
+}
+"#
+        .to_string()
+    }
+
+    /// AC-03：Internal async body 成功终值携带资源凭据（VmRef 桥保身份）
+    /// → 与 sync 同一编组（307 + Location）。
+    #[test]
+    fn http_e2e_plan776_async_terminal_resource_reply() {
+        let port = start_server(&program(), 19020);
+        let (status, headers, _) = get(port, "/api/async-redirect");
+        assert_eq!(status, 302, "async 资源终值按原协议回复");
+        let loc = headers
+            .iter()
+            .find(|(k, _)| k == "location")
+            .map(|(_, v)| v.clone())
+            .expect("Location");
+        assert_eq!(loc, "/async-target");
+    }
+
+    /// AC-03：async 终值 i64 全宽（超出 i32 域）不截断不降级 null。
+    #[test]
+    fn http_e2e_plan776_async_terminal_i64_full_width() {
+        let port = start_server(&program(), 19021);
+        let (status, _, body) = get(port, "/api/async-big");
+        assert_eq!(status, 200);
+        assert_eq!(body, b"5000000000".to_vec(), "i64 全宽终值");
+    }
+
+    /// AC-04：Failed 终态 → 有界 500（不再伪装 200 null）。
+    #[test]
+    fn http_e2e_plan776_async_failed_is_500_not_null() {
+        let port = start_server(&program(), 19022);
+        let (status, _, body) = get(port, "/api/async-fail");
+        assert_eq!(status, 500, "Failed 终态必须有界 500");
+        let text = String::from_utf8_lossy(&body).into_owned();
+        assert!(
+            text.contains("error"),
+            "失败体含 error 诊断: {text}"
+        );
+    }
 }
