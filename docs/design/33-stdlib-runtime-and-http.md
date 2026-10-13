@@ -1,14 +1,14 @@
 # 33 - Auto 标准库多后台与 Web 服务运行时
 
-> 状态：方案稿（2026-09-23静态审计；2026-10-03更新734交付、736实施与738规划；2026-10-08 更新736交付归档）；现状以 `docs/specs/` 与源码为准。
-> 实施入口：阶段 A [PLAN-696](../plans/archive/696-stdlib-http-server-runtime-hardening.md)、阶段 B [PLAN-699](../plans/archive/699-vm-http-transport-axum-bridge.md)、阶段 C1 [PLAN-705](../plans/archive/705-vm-http-handler-async-lifecycle.md)、阶段 C2a [PLAN-707](../plans/archive/707-vm-http-stream-async-relay.md)、阶段 C2b [PLAN-724](../plans/archive/724-a2r-http-client-async-convergence.md)、阶段 C2c [PLAN-727](../plans/archive/727-http-file-transfer-lifecycle.md)、阶段 D1a [PLAN-729](../plans/archive/729-http-server-file-responses.md)、阶段 D1b [PLAN-730](../plans/archive/730-http-server-upload-ingress.md)、阶段 D2a [PLAN-734](../plans/archive/734-api-contract-and-generation-integrity.md)已交付；D2b [PLAN-736](../plans/archive/736-http-service-deployment-and-operations.md)部署基线已交付归档（canonical 见 [http-service-deployment](../specs/stdlib/design/http-service-deployment.md)）；D3a [PLAN-738](../plans/738-stdlib-assembly-manifest-and-core-validation.md)装配manifest与核心校验已起草（736已合入，可实施）。
+> 状态：分阶段设计与交付路线（2026-10-13 更新 v0.6 HTTP 审计）；现行行为以 `docs/specs/` 与源码为准，未来阶段为拟议设计。
+> 实施入口：696/699/705/707/724/727/729/730/734/736/738 已交付，751/755 已补齐装配身份与公共 HTTP 契约；下一项 [PLAN-776](../plans/776-http-return-resource-contract.md) 返回资源/异步终值处于 drafting。完整交付清单与证据见 [v0.6 HTTP 进度审计](../plans/reports/http-progress-v06-20261013.md)。
 > 历史输入：[Design 13](13-networking.md)、[多平台填充草案](raw/stdlib-organization.md)、[HTTP 草案](raw/http-server-stdlib.md)。
 
 ## 1. 结论与适用边界
 
-**阶段状态**：下文 §2 与 §5 的风险表保留 PLAN-696 实施前的审计基线，不能当成 2026-10-03 的现状。PLAN-696 已修复分段 body、慢 SSE 阻塞和 VM 指针跨线程转运；PLAN-698 已交付 VM publisher SSE；PLAN-699 已用 Axum/Hyper 替换 VM `#[api]` 手写 HTTP 默认入口，补齐协议/队列预算和优雅关闭。PLAN-705 已交付普通 handler 的段执行/完成通知、请求作用域、迟到结果不复活和有界非流式客户端。PLAN-707 已闭合 VM 外部流等待、背压与 managed 实际取消；724 已交付两 Rust facade 的共享 async 内核、流背压/取消、增量 decoder 单源和 a2r async lowering，并清偿 P707-R1。727 已交付客户端增量文件传输、可靠提交、续传校验、进度/取消与 legacy 迁移，并补齐 queued 取消/期限。729/730服务端文件响应/上传与734 API契约/生成正确性已交付；736部署基线已交付并沉淀部署合同 canonical；738装配manifest基础已规划，CPU纪律及非核心标准库的更深ABI/行为parity仍独立推进。
+**阶段状态**：§2 与 §5 保留 PLAN-696 前历史审计，不能当作当前缺陷表。传输、异步网络等待/流、两 Rust 客户端 facade、客户端与服务端文件上传下载、API 契约和单代理部署基线已交付；738 已建立实际装配来源/六核心 strict/双指纹，751/755 已闭合空 lock 身份与公共 HTTP 契约缺失导致的启动超时。剩余重点是逐值返回资源、同步/异步终值、HTTP CPU/native 执行纪律和真实生成流业务体；742 handler body 修复仍 executing。
 
-Auto 当前足以支撑示例级、本机开发用的 CRUD API，以及已经验证的部分 SSE/媒体路径；不能据此认定 VM HTTP 入口已经具备通用 Web 服务器的协议正确性、并发隔离和运维能力。`#[api]` 是跨后台的用户契约，实际服务能力分散在 AutoVM 原生 shim、`auto-man` 生成的 Axum 服务、VM 合并调用、Tauri IPC，以及 gallery back-proxy 中。不能把“使用同一份 `api.at`”等同于“使用同一 HTTP 实现”。
+Auto 当前支持 HTTP/1.1 API、已验证 SSE、流式文件上传下载，以及 PLAN-736 认证的受单代理保护参考部署。不能由此宣称任意业务体跨 VM/Rust 等价、CPU/native 阻塞已隔离或直接公网全面认证。`#[api]` 的实际实现仍分布于 VM shim、生成 Axum、merged/IPC/back-proxy；使用同一份 api.at 不等于同一服务实现。
 
 保持 `api.at` 与 `auto.http` 的平台无关接口，以宿主实现传输层。Rust 生成轨继续用 Axum；VM 轨已由 PLAN-699 接入 Axum/Hyper、705 补请求作用域与普通等待通知、707 补外部流等待/背压/实际取消。724/727 已将 Rust 客户端与文件传输纳入 async 契约；729补服务端文件响应，730补上传，734接续普通API的真实实现、参数/返回分类与失败诊断。Auto `task`/`~T` 仍是语言语义，不直接暴露 Tokio 句柄。Auto 自实现 HTTP 解析器可作为教学或协议实验，不作为默认生产服务入口。
 
@@ -28,7 +28,9 @@ Auto 当前足以支撑示例级、本机开发用的 CRUD API，以及已经验
 
 ## 3. 多后台装配机制：保留分层，补上可验证契约
 
-### 3.1 当前机制与文档差距
+### 3.1 初始机制调查与后续装配交付
+
+以下段落保留初始调查。当前实际选层/provider/缓存与来源合同已由 738/751/755 交付，见 [assembly-manifest](../specs/stdlib/design/assembly-manifest.md) 与 [backend-assembly](../specs/stdlib/design/backend-assembly.md)；签名证明与运行行为验证仍分级。
 
 主文件 `.at` 在前、同名目标文件（VM `.vm.at`、C `.c.at`、Rust `.rs.at`）在后的模型已写在历史草案和 `stdlib/project.md`。实际代码中 VM 的 `.at + .vm.at` 连接最清楚；Rust 轨还有手写/镜像的 `a2r-std`，仅部分模块有 `.rs.at` 与签名对拍；Vue 前端的 `use.web` / 适配器链属于 UI 目标装配，不等同于 `auto.http` 自动加载一个 `.vue.at`。`io.at` 的 `#[vm] read_line`、`io.vm.at` 的 `ext File`、`io.c.at` 的 C 字段填充说明公共声明与目标实现已经混合，但未见统一的“每个公开符号恰有一个实现”门禁。
 
@@ -90,11 +92,11 @@ HTTP/IPC/合并适配器
 | D1b：服务端文件上传（PLAN-730，已交付） | multipart/raw单文件+有界字段、授权先行、私有staging与create-only提交、取消/FS收口、legacy顺序/错误修复 | VM/真实生成Rust同源互通和两端矩阵已有证据；精确范围见current http-server-uploads。 |
 | C2 后续：CPU 纪律（待立项） | CPU 预算/阻塞纪律依独立裁定 | 独立负载与共享状态证据，不能从异步网络等待推定 CPU 能力已实现。 |
 | D2a：API契约与生成代码一致性（PLAN-734，已交付） | 参数/返回分类、真实实现checked generation、产物指纹与错误传播 | R2 pass与delivery ec0eae41f；以api-transport-contract/API integrity规范及归档限制为准，保留D4/D5/D7已批准边界。 |
-| D2b：部署基线（PLAN-736，实施中） | 两轨独立serve、严格config/profile、loopback迁移、连接/请求预算、CORS/Host/单代理边界、ready身份/有界日志/关闭 | T-01已冻结schema/环境；后续实际proxy/负载/关闭验收未完成，不宣称直接公网或CPU/native隔离。 |
-| D3a：装配manifest与核心校验（PLAN-738，待736合入） | 全库inventory、真实装配源/provider/目标/环境、核心io/net/async/http/json/sse签名/缺实现门与cache/源映射 | 实际VM/persistent/Rust/C选择、native真实绑定、JSON inspect与生成收据；全库清点不等于全符号行为parity。 |
+| D2b：部署基线（PLAN-736，已交付） | 两轨独立服务、严格配置/loopback、预算/Host/CORS/单代理、ready/日志/关闭 | 已完成真实 Nginx HTTPS 代理、混合 IO/超载恢复及资源曲线；直接公网与 CPU/native 隔离未认证。 |
+| D3a：装配基础（PLAN-738/751/755，已交付） | actual manifest/inventory、六核心 provider/签名门、源映射/缓存、schema4 双指纹、lock 与 HTTP 契约覆盖 | 已交付真实选择/适配证据；755 串行 HTTP 102/101/1 在册红/0 timeout 是历史收据，不能冒称最新 HEAD 新验收。 |
 | D3b：装配覆盖与ABI/行为对拍深化（待立项） | 扩展非核心strict/provider门、资源/错误/取消与更深ABI、已需目标能力补齐 | 按D3a实际缺口逐模块立项，signature_checked不推定运行语义等价，不固定一轮补齐所有后台。 |
 
-阶段C1/C2/D各自独立验收；本轮仅起草738和更新路线，不运行Cargo或负载。734已归档，736正在实施；738同触lib/auto-man/CLI装配与生成来源，等736复审合入后执行。门禁以最新AGENTS.md为准：裸cargo t为per-plan基础门禁，按触面加tv/tt/th等；真TCP串行、负载单实例；tf为main到期批量回归，不是每计划门禁。
+各阶段独立验收。2026-10-13 本轮仅调查并起草 776，不运行 Cargo 或负载；门禁按最新 AGENTS.md：裸 cargo t 为实施复审基础，按触面加 tv/tt/th；真 TCP 用 nextest 串行，tf 为主检出到期单实例批量回归。
 
 ### 6.1 阶段 C1 的设计收敛（2026-09-28 设计基线；705 已交付）
 
@@ -148,7 +150,7 @@ HTTP/IPC/合并适配器
 
 730以UploadRequest类型声明上传route能力，headers先授权、receive才增量拉body，支持单文件multipart/raw与有界文本；默认文件64MiB/wire65MiB，普通JSON仍10MiB。私有同卷staging、业务校验、hard_link原子create-only commit、reject/lease、配额/期限与取消仲裁已交付。精确规则见[http-server-uploads](../specs/stdlib/design/http-server-uploads.md)，FS实际退出与逻辑取消分开。
 
-VM与真实生成Rust上传共用宿主执行代码，727上传→729下载hash及错误/超限/取消矩阵已验证。legacy小multipart保留成功形状、修正写盘顺序和错误/清理；typed上传middleware异常拒绝，非HTTP明确Unsupported。多文件事务、断点分片、全局磁盘配额/崩溃恢复仍另案。服务级关闭/真实代理早拒由736继续验证。
+VM与真实生成Rust上传共用宿主执行代码，727上传→729下载hash及错误/超限/取消矩阵已验证。legacy小multipart保留成功形状、修正写盘顺序和错误/清理；typed上传middleware异常拒绝，非HTTP明确Unsupported。多文件事务、断点分片、全局磁盘配额/崩溃恢复仍另案。服务级关闭/真实代理早拒已由736验证，后续按新返回/执行改动重验。
 
 ### 6.7 阶段 D2a：API契约与生成代码一致性（PLAN-734，已交付）
 
@@ -162,24 +164,43 @@ VM与真实生成Rust上传共用宿主执行代码，727上传→729下载hash�
 
 ### 6.8 阶段 D2b：HTTP服务部署基线（PLAN-736，已交付）
 
-两服务轨仍有部署差距：VM默认0.0.0.0而生成Rust仅loopback，CORS分别静态*与allow_origin(Any)；VM已有请求额度不限制全部连接，生成main未接同等预算/关闭；ready仅TCP probe且消息可能早于bind。736拟用版本无关HttpServiceConfig/策略和有界观测、0.8/0.7分别装配，补独立`auto serve`，不启UI或dev前端。
+736 已统一版本无关 HttpServiceConfig/策略和有界观测，VM Axum 0.8 与生成服务 0.7 分别装配；`auto service` 独立启动后端服务。loopback 默认、严格配置、预算和关闭合同已交付，不再作为待实现项。
 
 默认loopback迁移明确记录，显式service profile覆盖Host/CORS/单层trusted proxy、鉴权责任与middleware异常拒绝；内部扫描/简化WS在service profile默认off。普通连接/request/body预算、file/upload专属期限与body终态许可、identity ready、JSONL脱敏/有界sink、drain/真实子进程退出构成可验证的部署合同。
 
 736有8任务/9AC/6SD，已完成实施、独立复审 pass；验收证据（真实 Nginx HTTPS 代理、SSE 分帧与上传早拒、upload/download hash、短请求与慢 IO 混合负载、超载恢复、10min 资源曲线）见 docs/plans/reports/736-http-*.md，canonical 部署合同见 specs/stdlib/design/http-service-deployment.md。首期认证受单代理保护的参考服务；直接公网、CPU/native 隔离、内置 TLS/通用 WebSocket 另案，不从 profile 存在推定全面生产能力。
 
-### 6.9 阶段 D3a：装配manifest与核心校验（PLAN-738，提前规划）
+### 6.9 阶段 D3a：装配 manifest 与核心校验（738/751/755，已交付）
 
-738回到公共.at与目标层缝合的原始诉求。静态核查显示CompileSession后缀仍硬编码.vm.at、persistent另建路径；Rust有a2r_std映射，parser后缀helper未使用，cache单文件hash与实际合并源不同。目录有rs/c文件不代表生产入口用了它，native名字/ID存在也不证明callee真实绑定或签名匹配。
+738 将原始分层机制接入 actual AssemblyManifest：公共层在前、所选目标层在后，环境与执行目标分开，实际 source/provider/reference proof、缓存闭包与源位置可追踪。inventory 独立全库清点，失败与未验证项不删分母；六核心被引用闭包 strict，native 名字/ID 不能替代真实绑定和独立签名证据。
 
-本期建立actual AssemblyPlan/Manifest、独立全库inventory、六核心provider目录和验证等级。实际VM/persistent/Rust/C入口消费选定源/host provider；root在前、选层在后，目标层源位置与cache/dependency内容指纹保留。声明+一个合法实现是正常缝合；重复活实现、签名漂移、缺callee和环境不适用有构建/加载诊断。Rust宿主实现可合法没有rs文件，未消费的层只能报candidate。
+schema4 区分共同装配 fingerprint 与具体 consumer_fingerprint；生成收据/ready 使用后者，跨消费者实际装配对拍使用前者。751 修正 absent/empty Cargo.lock 的生成/消费身份；755 补公共 HTTP 契约与 CFFI merge 存活守卫、保留 strict 门，并将上传/redirect 启动错误由超时变为有界诊断后恢复成功服务。738/751/755 均 archived，不重开。
 
-执行目标vm/rust/c、Native/Browser环境与API传输拓扑分开，Vue前端不改后端Native环境；use.web适配是独立链，不能凭空假定io.vue.at自动拼接。CLI inspect输出稳定JSON与check退出码，生成API/736ready消费assembly指纹；真实三目标witness、双session/sidecar改动/native空绑定与假同名反例证明接线。
+公共装配机制可继续扩展，不需为 HTTP 推倒分层。但 signature_checked 不等于所有目标的资源/错误/取消行为等价；D3b 按实际使用面继续推进。规范某些总表仍残留“文件/manifest 待实现”描述，以专节与交付证据核对，后续 SD 明确纠正。
 
-738有8任务/8AC/7SD，736已合入后实施。全库清点必须含解析失败/未验证项与总分母；strict首期六核心，非核心更深ABI和行为parity由D3b分期。不能通过把原已支持能力改Unsupported清账，也不一轮新增所有缺失backend或宣称全部HTTP/标准库已完整。
+### 6.10 阶段 E1：返回资源与统一终值（PLAN-776，drafting）
 
-## 7. 待决策
+现在同步 VM 返回以 iterator/Response 表命中识别资源，异步终值另走 File/Upload 与 JSON。数字 id 分区不能证明资源来源；Future 转换对未列变体降级 null，失败/缺结果也与成功 Nil 混同。
 
-1. 705 已确定单 owner、执行段串行、跨 await 请求交错的非事务语义；是否进一步 actor/session 分片仍需独立负载与共享状态证据。
-2. 对外服务支持等级：仅开发本机、受反向代理保护的内网服务、还是直接公网监听。安全/性能验收阈值随等级设定。
-3. `Server` Builder 与 `#[api]` 是否承诺完全同语义，以及 `Request` 对象注入、TLS、WebSocket 的首个正式支持版本。
+拟采用按值携带的资源凭据，包含 owner/session、种类与代次，跨 helper/局部/共享状态/容器/闭包/Future 保留；声明负责校验，来源证明资源。普通整数永远是数据，旧 int 声明的真实 redirect/SSE/Response 源码保持兼容。T-01 在已有 heap/ref/RC/native ABI 上选择最小受控方案；若需整体 VM ABI 重构则 needs_replan，不以扩大 id 分区替代验收。
+
+成功终值共用编组；Response 产生 owned wire 快照，全局常量可重复回复；SSE/File/Upload 沿现行合同移交。失败/缺失/无法转换有界报错，成功 Nil 保留 200 null；取消迟到值释放且不回包。资源必须先在 owner 内投影，不能跨线程传 VM 引用。
+
+本期不承诺生成 Rust 任意 generator/SSE body；当前支持面回归、非支持形态定位拒绝。类型身份保留实际解析来源，738 独立适配/双指纹和 755 契约覆盖守卫继续有效。
+
+### 6.11 v0.6 剩余工作包
+
+以“受单代理保护的 HTTP/1.1 服务在返回/执行/跨后台已承诺面/运维均有合同与证据”为本轮终点，先按四阶段估算：
+
+1. E1 返回资源/终值：776，一个计划。
+2. E2 HTTP CPU 公平预算及阻塞 native：一至两个计划。711 的 UI CPU slice 与 746 的全 VM deadline 是可参考机制，不能当作 HTTP 请求隔离已实现。
+3. E3 真实 handler/SSE 生成：742 的部分实现已入主线，继续核实其在途验收/收口；另加一至两个计划闭合实际流业务体/取消/背压，不用事件总线模板替代业务语义。
+4. E4 公共面与部署收口：一个计划，核实 Builder/Request/Response/拓扑支持矩阵、历史债与在册 back_proxy 红，重建串行 HTTP 与真实代理/资源验收证据。
+
+约四至六个新增计划，另有 742 在途；是规划估算而非固定全部合同。内置 TLS、HTTP/2/3、完整 WebSocket、直接公网、多文件事务与全 C/browser 后台另行选择。完成 776 后再校准后续粒度。详见 [进度审计](../plans/reports/http-progress-v06-20261013.md)。
+
+## 7. 后续决策边界
+
+1. 705 已确定单 owner、段串行、跨 await 非事务语义。E2 应用实测选择 CPU 预算与阻塞 native 隔离，不在本次预设多 VM/多 owner 或 actor 重构。
+2. 736 已选择 loopback/受单可信代理参考部署。是否扩到直接公网与内置 TLS 是后续能力选择，不是当前计划前置问题。
+3. Builder 与 `#[api]` 的统一程度、Request 注入及全后台等价按 actual executed 矩阵定范围；不能从通用声明和签名证明推定全支持。
