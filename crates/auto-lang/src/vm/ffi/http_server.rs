@@ -5439,6 +5439,11 @@ fn start_handler(
         HandlerEnd::Value(nv) => {
             match marshal_handler_value(vm, &ctx, nv) {
                 MarshalOutcome::Reply(reply) => {
+                    // PLAN-776 T-05：编组产物 owned（快照 clone / 表 take /
+                    // iterator_id int），返回值栈槽的 RC 在此释放——凭据
+                    // 随引用归零回收（1000 闭环回基线的前提；此前 pop_nv
+                    // 只读不释放，remove_task 亦不清栈，堆对象恒泄漏 1 引用）。
+                    vm.rc_release(nv);
                     vm.remove_task(handler_task_id);
                     if let Some(tx) = reply_tx {
                         let _ = tx.send(reply);
@@ -6569,6 +6574,9 @@ pub(crate) fn resume_parked_request(
                 }
                 HResume::Value(nv) => match marshal_handler_value(vm, &p.ctx, nv) {
                     MarshalOutcome::Reply(reply) => {
+                        // PLAN-776 T-05：与 sync 分派同款——编组产物 owned，
+                        // 返回值栈槽 RC 释放（park 恢复路径的凭据回收）。
+                        vm.rc_release(nv);
                         vm.remove_task(task_id);
                         ParkedResume::Reply(reply)
                     }

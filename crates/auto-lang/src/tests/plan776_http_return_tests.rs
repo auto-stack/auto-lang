@@ -483,3 +483,199 @@ fn async_fail() ~int {
         );
     }
 }
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_t05 {
+    use super::http_e2e::start_server;
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    /// AC-06：临时资源 1000 次构造-返回闭环后，实际存活凭据数回到预热基线
+    ///（观察钩子计数，非 RSS）。dying 宽限窗 8192 解释步由 drain 请求跨过。
+    #[test]
+    fn http_e2e_plan776_thousand_loop_lifecycle_returns_to_baseline() {
+        let port = start_server(
+            r#"
+#[api(method = "GET", path = "/api/make")]
+fn make() int {
+    return http.response_redirect("/target", 302)
+}
+
+#[api(method = "GET", path = "/api/drain")]
+fn drain() int {
+    var i = 0
+    while i < 300 {
+        i = i + 1
+    }
+    return i
+}
+"#,
+            19030,
+        );
+        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        let mut ok = 0u32;
+        for _ in 0..1000 {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+            s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+            let _ = s.write_all(b"GET /api/make HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+            let mut buf = [0u8; 4096];
+            let mut raw = Vec::new();
+            loop {
+                let n = s.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                if raw.windows(4).position(|w| w == b"\r\n\r\n").is_some()
+                    && raw.starts_with(b"HTTP/1.1 302")
+                {
+                    break;
+                }
+            }
+            if raw.starts_with(b"HTTP/1.1 302") {
+                ok += 1;
+            }
+        }
+        assert_eq!(ok, 1000, "每次闭环都正确回复 302");
+        // dying 宽限窗（8192 解释步）：drain 请求推进解释步，有界轮询到归零
+        //（每请求解释步数有限，需多轮跨窗；10s 上界）。
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "1000 闭环后凭据未回基线: live={}",
+                crate::vm::ffi::http_return_resource::live_resource_count()
+            );
+            let mut s = TcpStream::connect(("127.0.0.1", port)).expect("drain connect");
+            let _ = s.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+            let mut buf = [0u8; 512];
+            let _ = s.read(&mut buf);
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// AC-06：Sse 凭据（Sse.new 链资源路径）在下游断连后回收——长流读首帧
+    /// 即断开，iterator 由 cleanup 守卫收口，凭据随引用归零回收。
+    #[test]
+    fn http_e2e_plan776_sse_credential_released_on_disconnect() {
+        let port = start_server(
+            r#"
+dep axum
+use.rs axum::response::sse::{Event, KeepAlive, Sse}
+
+#[api(method = "GET", path = "/api/sse")]
+fn chain_handler() int {
+    var sse = Sse.new(events_stream())
+    return sse.keep_alive(KeepAlive.new()).into_response()
+}
+
+#[api(method = "GET", path = "/api/drain")]
+fn drain() int {
+    var i = 0
+    while i < 300 {
+        i = i + 1
+    }
+    return i
+}
+
+fn events_stream() ~Iter<int> {
+    var i = 0
+    while i < 50000 {
+        yield sse_named_event("tick", "42")
+        i = i + 1
+    }
+}
+"#,
+            19031,
+        );
+        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        // 读到第一帧 data: 后立即断开。
+        let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        let _ = s.write_all(b"GET /api/sse HTTP/1.1\r\nHost: x\r\n\r\n");
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        let got_frame = loop {
+            let n = s.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break false;
+            }
+            raw.extend_from_slice(&buf[..n]);
+            if raw.windows(6).any(|w| w == b"event:" ) || raw.windows(5).any(|w| w == b"data:") {
+                break true;
+            }
+        };
+        assert!(got_frame, "应收到首帧（headers+data）");
+        drop(s); // 断连
+        // 断连传播 + 清理 + 宽限窗：轮询等待凭据回收（有界 10s）。
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut drained = 0;
+        loop {
+            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!(
+                    "断连后凭据未回收: live={} baseline={}",
+                    crate::vm::ffi::http_return_resource::live_resource_count(),
+                    baseline
+                );
+            }
+            // 推进解释步跨 dying 宽限窗（drain 端点不构造凭据）。
+            let mut d = TcpStream::connect(("127.0.0.1", port)).expect("drain");
+            let _ = d.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+            let mut db = [0u8; 512];
+            let _ = d.read(&mut db);
+            drop(d);
+            drained += 1;
+            let _ = drained;
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+/// T-05：rc 释放链路单元级——push(rc=1) → release 归零入 dying →
+/// reap_all 全收（静止点语义）；live 计数随 Drop 回落。
+#[test]
+fn plan776_t05_rc_release_chain_reaps_credential() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    http_return_resource::push_response_resource(
+        &mut task,
+        &vm,
+        200,
+        Vec::new(),
+        b"x".to_vec(),
+    )
+    .unwrap();
+    let nv = task.ram.pop_nv();
+    let id = auto_val::decode_object(nv) as u64;
+    let c1 = vm
+        .heap_rc
+        .get(&id)
+        .map(|e| e.load(std::sync::atomic::Ordering::Acquire));
+    vm.rc_release(nv);
+    let c2 = vm
+        .heap_rc
+        .get(&id)
+        .map(|e| e.load(std::sync::atomic::Ordering::Acquire));
+    let dying = vm
+        .dying_heap
+        .lock()
+        .map(|q| q.len())
+        .unwrap_or(usize::MAX);
+    assert_eq!(c1, Some(1), "构造后唯一栈引用");
+    assert_eq!(c2, None, "release 归零（条目移除）");
+    assert_eq!(dying, 1, "归零入 dying 宽限队列");
+    let before = http_return_resource::live_resource_count();
+    vm.reap_all();
+    assert_eq!(
+        http_return_resource::live_resource_count(),
+        before - 1,
+        "reap_all（静止点）全收凭据"
+    );
+}
