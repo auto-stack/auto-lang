@@ -70,12 +70,13 @@ pub const ERR_INDEX_OOB: i32 = -11;
 // ---------------------------------------------------------------------------
 
 struct Counters {
-    attempts: u32,        // HeapAlloc invocations (after len/budget checks)
-    allocs: u32,          // successful allocations
-    frees: u32,           // successful releases (ledger-validated)
-    live: u32,            // allocs - frees
-    live_bytes: u32,      // declared user bytes currently live (ledger-backed)
-    peak: u32,            // max live_bytes at alloc/free boundaries
+    attempts: u32,   // HeapAlloc invocations (after len/budget checks)
+    allocs: u32,     // successful allocations
+    frees: u32,      // successful releases (ledger-validated)
+    live: u32,       // allocs - frees
+    live_bytes: u64, // declared user bytes currently live (ledger-backed,
+    // r4: full precision — never saturates)
+    peak: u64,            // max live_bytes at alloc/free boundaries (u64)
     budget: Option<u64>, // None = unlimited; Some(0) = a real ZERO-byte budget (r3: full i64 range, no truncation)
     fail_nth: u32,       // 0 = off; nth allocator invocation fails (injected)
     seq: u32,            // allocator invocation ordinal
@@ -229,7 +230,7 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
     if let Some(budget) = c.budget {
         // u64 arithmetic on both sides: the budget keeps its full i64 value
         // and the live-byte sum cannot wrap before the comparison (r3).
-        if (c.live_bytes as u64) + (len as u64) > budget {
+        if c.live_bytes + (len as u64) > budget {
             return Err(ERR_BUDGET);
         }
     }
@@ -258,7 +259,9 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
     }
     c.allocs += 1;
     c.live += 1;
-    c.live_bytes = c.live_bytes.saturating_add(len);
+    // full-precision accumulate (r4): u64 cannot saturate at any budget the
+    // i64 setter accepts, so no high bits are ever dropped
+    c.live_bytes += len as u64;
     if c.live_bytes > c.peak {
         c.peak = c.live_bytes;
     }
@@ -297,7 +300,9 @@ fn owned_free(ptr: *mut u8) {
     if c.live > 0 {
         c.live -= 1;
     }
-    c.live_bytes = c.live_bytes.saturating_sub(len);
+    // exact release: the ledger-backed length is always <= live_bytes;
+    // subtract plainly so no discrepancy can hide behind a floor
+    c.live_bytes -= len as u64;
     trace_line(|l| {
         l.s("FREE id=");
         l.u(id);
@@ -331,6 +336,26 @@ impl Line {
             return;
         }
         let mut buf = [0u8; 10];
+        let mut n = 0;
+        let mut v = v;
+        while v > 0 {
+            let digit = b'0' + (v % 10) as u8;
+            unsafe { write_volatile(buf.as_mut_ptr().add(n), digit) };
+            v /= 10;
+            n += 1;
+        }
+        while n > 0 {
+            n -= 1;
+            let digit = unsafe { read_volatile(buf.as_ptr().add(n)) };
+            self.b(digit);
+        }
+    }
+    fn uu(&mut self, v: u64) {
+        if v == 0 {
+            self.b(b'0');
+            return;
+        }
+        let mut buf = [0u8; 20];
         let mut n = 0;
         let mut v = v;
         while v > 0 {
@@ -1052,9 +1077,9 @@ fn emit_summary() {
         l.s(" live=");
         l.u(c.live);
         l.s(" live_bytes=");
-        l.u(c.live_bytes);
+        l.uu(c.live_bytes);
         l.s(" peak=");
-        l.u(c.peak);
+        l.uu(c.peak);
     });
     trace_line(|l| {
         l.s("FREESTAT free_attempts=");

@@ -155,3 +155,10 @@
 - V05-15 拆分：15a 真跨容量恢复（全 owner 存活重试）/ 15b 空位复用，两条独立
   oracle（SUMMARY peak 17/16 区分）。
 - 来源×模式矩阵：8 合法 + **16** 非法脚本（勘误）。
+
+## 10. r4 复审修订同步（P774-R4-01）
+
+- 资源计数数值域：live_bytes/peak **u64 全精度**（无饱和/无截断）；预算比较全
+  程 u64；观测通道（SUMMARY 行）按 u64 打印，探针解析同步。
+- 永久跨 u32 边界 oracle = 宿主记账状态探针（state-probe/footer.rs，PS 门禁
+  "accounting-state probe" 步骤）；不冒称大内存 PE 验收。

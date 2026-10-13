@@ -645,18 +645,26 @@ pub fn freestat_of(outcome: &ProbeOutcome) -> (u32, u32, u32) {
 }
 
 /// Extract the SUMMARY counters line, parsed as (attempts, allocs, frees,
-/// live, live_bytes, peak).
-pub fn summary_of(outcome: &ProbeOutcome) -> (u32, u32, u32, u32, u32, u32) {
+/// live, live_bytes, peak). live_bytes/peak are u64 — the observation
+/// channel carries the full-precision accounting (r4 P774-R4-01).
+pub fn summary_of(outcome: &ProbeOutcome) -> (u32, u32, u32, u64, u64, u32) {
     let line = outcome
         .stderr
         .lines()
         .rev()
         .find(|l| l.starts_with("SUMMARY "))
         .unwrap_or_else(|| panic!("no SUMMARY line; stderr:\n{}", outcome.stderr));
-    let nums: Vec<u32> = line
+    let nums: Vec<u64> = line
         .split_whitespace()
-        .filter_map(|tok| tok.split('=').nth(1).and_then(|v| v.parse::<u32>().ok()))
+        .filter_map(|tok| tok.split('=').nth(1).and_then(|v| v.parse::<u64>().ok()))
         .collect();
     assert_eq!(nums.len(), 6, "malformed SUMMARY line: {line}");
-    (nums[0], nums[1], nums[2], nums[3], nums[4], nums[5])
+    (
+        nums[0] as u32,
+        nums[1] as u32,
+        nums[2] as u32,
+        nums[3],
+        nums[4],
+        nums[5] as u32,
+    )
 }

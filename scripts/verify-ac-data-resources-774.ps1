@@ -138,6 +138,42 @@ try {
         $script:ReceiptLines.Add('fmt: clean')
     }
 
+    # Permanent accounting-state probe (r4 P774-R4-01): the cross-u32
+    # accumulated-live-bytes boundary cannot run in a real PE without
+    # multi-GiB allocations, so this step compiles the CURRENT shim source
+    # (std-adapted: only the crate-level no_std/no_builtins scaffolding and
+    # the panic handler are stripped; the accounting code is untouched) with
+    # state-probe/footer.rs and runs it. Tiny physical buffers.
+    Invoke-Step 'accounting-state probe (u64 full precision across u32 boundary)' {
+        $sourcePath = Join-Path $ProbeDir 'shim\src\lib.rs'
+        $source = [System.IO.File]::ReadAllText($sourcePath)
+        $source = $source.Replace('#![no_std]', '').Replace('#![no_builtins]', '')
+        $panicStart = $source.LastIndexOf('#[panic_handler]')
+        if ($panicStart -lt 0) { throw 'shim panic_handler marker not found' }
+        $source = $source.Substring(0, $panicStart)
+        $footer = [System.IO.File]::ReadAllText((Join-Path $ProbeDir 'state-probe\footer.rs'))
+        $generated = Join-Path $ProbeDir 'target\state-probe.rs'
+        $exe = Join-Path $ProbeDir 'target\state-probe.exe'
+        $header = "// Generated std harness over the exact current shim accounting code.`n#![allow(dead_code)]`n"
+        [System.IO.File]::WriteAllText($generated, $header + $source + $footer, [System.Text.UTF8Encoding]::new($false))
+        $prev = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $out = & rustc --edition=2021 --test -A unused_unsafe -A suspicious_runtime_symbol_definitions $generated -o $exe 2>&1
+        $rc = $LASTEXITCODE
+        if ($rc -ne 0) {
+            $ErrorActionPreference = $prev
+            throw "state probe build failed:`n$($out | Out-String)"
+        }
+        $out = & $exe --test-threads=1 2>&1
+        $rc = $LASTEXITCODE
+        $ErrorActionPreference = $prev
+        if ($null -ne $script:RawDir) {
+            [System.IO.File]::WriteAllText((Join-Path $script:RawDir 'state-probe.txt'), ($out | Out-String))
+        }
+        if ($rc -ne 0) { throw "state probe failed:`n$($out | Out-String)" }
+        $script:ReceiptLines.Add('state-probe: ok (u64 full-precision accounting across the u32 boundary)')
+    }
+
     # --- V-09 scope isolation -------------------------------------------------
 
     Invoke-Step 'scope isolation (V-09: no old-surface changes)' {

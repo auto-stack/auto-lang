@@ -290,3 +290,11 @@ R2 checked 对照（h_get_checked 对陈旧句柄=-11）。
 | V05-15b | 空位复用控制：扩表失败→释放 1 owner→重试进现有表 | SUMMARY `18 17 17 0 0 16`；FREESTAT `17 17 0` |
 
 矩阵勘误：来源×模式矩阵非法脚本 **16** 组（文档此前误写 15）。
+
+## r4 复审修订增补（P774-R4-01）
+
+| Case | 内容 | 期望 |
+|---|---|---|
+| SP-1（状态探针，门禁步骤） | 2×i32::MAX 逻辑长度（物理 1 字节 buffer）注入账本；budget=2^32+2 | +4 恰等接受（live=2^32+2）；+2 拒绝；释放 4 后 live 精确=2^32-2；再申请 3 接受（live=2^32+1）；全释放后 allocs=frees、live=live_bytes=invalid=0 |
+
+SUMMARY 的 live_bytes/peak 为 u64 数值；summary_of 返回混合元组（位置 4/5 为 u64）。

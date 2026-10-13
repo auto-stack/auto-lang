@@ -78,7 +78,9 @@ interface-contract.md，merge 时全文搬运并按 Spec 模板重排）：
 - SD-01/03 沉淀时应引用 decisions **§3.9 与 §3.10 为现行有效规则**（§3 及
   §3.8 中与之冲突的历史语句不搬入 canonical：跨行字面量合法、静态字面量
   返回合法、`text.literal-newline` 作废、预算 u64 无截断、V05-15 双 oracle）。
-- 探针用例数以 verification.md 最新节为准（r3 后 63 项）。
+- 探针用例数以 verification.md 最新节为准（r3 后 63 项 + r4 记账状态探针 1 项）。
+- D-06 数值域（r4）：live_bytes/peak 与预算比较 u64 全精度；观测通道 u64；
+  跨 u32 边界 oracle 为宿主记账状态探针。沉淀时纳入 §3.11。
 - 矩阵计数：来源×模式矩阵 8 合法 + 16 非法。
 
 ## r1 复审修订（历史，已被 §3.9/§3.10 部分取代）
