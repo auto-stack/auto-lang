@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-774
-status: executing
+status: execution_done
 feature_name: AC 数据扩面的共同类型、资源与内部调用契约
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-12
 updated_at: 2026-10-13
-current_step: 1
+current_step: 6
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -143,11 +143,11 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 | 状态 | Task | owner_stage | 依赖 | 路径/操作、成果与验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 用户批准 r3；772 已 archived（9/9） | 刷新实际最新 Spec/inputs/主基线；确认唯一树，建 decisions.md 的事实差异表，无生产代码改动 | 01/05 |
-| [ ] | T-02 | work | T-01 | 完成 D01..07 候选/支持拒绝/接口与资源预算表及新probe-cases.md；按§5.3冻结值/trace/码/计数/布局/预算oracle，逐规则preflight后才进入T03；材料冲突先修订下游 | 01/04 |
-| [ ] | T-03 | work | T-02 | 新 probes/data-resources crate/shim 与锁文件，真实 COFF/PE 五类调用；V02/03/07/08；probe test/fmt/check | 02..04 |
-| [ ] | T-04 | work | T-03 | 新 scripts/verify-ac-data-resources-774.ps1，V04..06 故障/拒绝/反控；既有 executor deadline、完整输出与资源收据 | 03/04 |
-| [ ] | T-05 | work | T-04 | 冻结 decisions.md/interface-contract.md，D07 合并顺序、770/771 消费表；重新核对 oracle 不变 | 01/04 |
-| [ ] | T-06 | work | T-05 | verification.md/proposed-spec-delta.md；完整 probe/ac-core 与新旧 gates；inputs/native/artifact hash、SD覆盖；不发布 canonical | 05 |
+| [x] | T-02 | work | T-01 | 完成 D01..07 候选/支持拒绝/接口与资源预算表及新probe-cases.md；按§5.3冻结值/trace/码/计数/布局/预算oracle，逐规则preflight后才进入T03；材料冲突先修订下游 | 01/04 |
+| [x] | T-03 | work | T-02 | 新 probes/data-resources crate/shim 与锁文件，真实 COFF/PE 五类调用；V02/03/07/08；probe test/fmt/check | 02..04 |
+| [x] | T-04 | work | T-03 | 新 scripts/verify-ac-data-resources-774.ps1，V04..06 故障/拒绝/反控；既有 executor deadline、完整输出与资源收据 | 03/04 |
+| [x] | T-05 | work | T-04 | 冻结 decisions.md/interface-contract.md，D07 合并顺序、770/771 消费表；重新核对 oracle 不变 | 01/04 |
+| [x] | T-06 | work | T-05 | verification.md/proposed-spec-delta.md；完整 probe/ac-core 与新旧 gates；inputs/native/artifact hash、SD覆盖；不发布 canonical | 05 |
 | [ ] | T-07 | review | T-01..06完成、writes暂停 | 同一树独立 AC/SD/反例复审；pass才reviewed，needs_fix返原树 | 06 |
 | [ ] | T-08 | merge | T-07 pass与合入授权 | 沉淀 SD/导航/ledger/index；真实archive及总数；批回归到期判定；wt-guard clean 后清树/branch/空组 | 07 |
 
@@ -168,8 +168,17 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 
 2026-10-13，stage:new，revision3，outcome:pass（引用/交接核查，非实施完成）。770/771编号不变，前置改为现行774与已归档772；更新活跃链接/取材/拟建路径，保留历史附件与既有脚本路径。Task/AC/Case/SD ID、支持与测试语义不变，status仍drafting、current_step仍0。策略队列见[后端演进§7.5](../design/strategy/auto-native-backend-evolution.md#75-现行acacc队列与编号映射2026-10-13)。[核查收据](attachments/774/reference-update-20261013.md)包含当前路径/链接/指纹。共同774完成并复审合入后才放行770/771的依赖实施；本次未建树/实施/合入/运行Cargo。
 
+2026-10-13，stage:work，plan_id:PLAN-774，plan_revision:3，outcome:pass（work-owned T-01..06 全部完成并提交；execution_done 6/8，T-07 独立复审未开始）。
+code_commit: 工作树 D:/autostack/.wt/lang-774/auto-lang @ plan-774-dev，基面 5e21561d2（=master），收尾 HEAD f1a26e1be（85a4c482f→51f3a82e9→f5a91c42e→590e44a78→736e5a5da→69d3832c4→f1a26e1be，七提交；依赖无改动，auto-ac-prototype 为 path 依赖零源码 diff）。
+task_ids: T-01..T-06 全勾。
+evidence: decisions.md（事实差异表 46/47 零漂移 + D-01..07 冻结）、probe-cases.md（V-01..09 oracle 先冻结后实现，无反写）、experimental/ac-core/probes/data-resources/（39 探针测试全绿：五类 ABI 真实 PE、寿命计数、前门拒绝+R2 淘汰实证、故障注入、trap 0xC0000005、文本边界、4096 规模/预算两侧）、scripts/verify-ac-data-resources-774.ps1（6 步门禁含 scope 隔离与 hash 收据）、interface-contract.md（770/771 消费表+合并顺序）、verification.md（收据：probe 39/39、741 13步、745 74例、767 45例全绿）、proposed-spec-delta.md（SD-01..04，未发布 canonical）。
+blockers: 无。实现期两处基础设施修正（harness 违规标志极性、规则模型 EndView 状态机）均已修复合入，oracle/拒绝码/验收无变化。
+next: T-07 同树独立复审（AC-06；独立上下文重构 AC01..05/SD/遗漏债务，绑定合同/HEAD/hash），pass 后 T-08 merge（需用户合入授权）。
+
 ## 10. 待澄清事项
 
-1. 772修复复审合入前置已满足；实施agent启动时刷新最新基线并记录用户执行r3的授权。本会话不启动实施或代建agent。
+1. ~~772修复复审合入前置已满足；实施agent启动时刷新最新基线并记录用户执行r3的授权。~~
+   已兑现（2026-10-13 r3 实施授权记录于 §4；T-01 基线刷新 46/47 零漂移）。
+   现存待办：T-07 独立复审者与 T-08 合入授权待用户交接指定。
 2. 语义表示/资源策略属 D01..07 有界调查，必须在本计划冻结；超出现行承诺的改变需用户决策，不能带 open 交给770/771。
 3. 无完整所有权/公开 ABI/无限规模承诺；后续text-record/List/enum/use/ACC有 Design36 owner，非遗漏验收。
