@@ -12,6 +12,8 @@
 
 #![cfg(windows)]
 
+pub mod rules;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Command;
