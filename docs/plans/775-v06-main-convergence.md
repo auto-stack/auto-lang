@@ -2,7 +2,7 @@
 plan_id: PLAN-775
 status: executing
 feature_name: v06-main-convergence
-plan_revision: 5
+plan_revision: 6
 author: [Codex]
 created_at: 2026-10-13
 updated_at: 2026-10-13
@@ -51,7 +51,7 @@ Plan 编号联合表不变：发布线 767–769 保持原义；v0.6 计划现�
 
 | 仓库 | 默认分支收口点 | 处理 |
 |---|---|---|
-| auto-lang | `master` `e35f9e99b6711ff6f1990ea980729d1fa521327e` | merge `77495105284b4ba657c1bd1aa3b864d72aeddb17`：第一父线保留发布 `master`，第二父线为本地 v0.6-dev `2e9777b191f32683e8a3bbbe0b993675e38cce63`；原远端 v0.6-dev `94173fe2c175ef007a825a25050a2f04fb5ed98a` 未改写 |
+| auto-lang | 审计时 `master` `d777ccbb227c41882ad5f6976c803b1e03b61135` | 纠偏 merge `3002c30ffd618f768031048742bcc700a2aff363` 以 `v0.5.0` tag 为第一父、旧 `master` 为第二父；此审计点后只追加本计划收据文档。tag 和既有提交均未改写 |
 | auto-down | `master` `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | 小型补充提交把 engine 包清单从 `dist` 扩为 `dist` + `src`，恢复 Notes 所需的可发布源文件 |
 | auto-notes | `main` `1391bd7eb2f6b3b08e9841d30b25125e47ced058` | 普通后续提交把 `vendor/auto-down` 指向上述已发布 SHA；旧不可达 pin 留在其历史祖先 |
 | auto-blog | `main` `08da63359c4f8d147c0c10f2c774d6feaad79425` | fast-forward 到已推送开发头 |
@@ -63,8 +63,9 @@ Plan 编号联合表不变：发布线 767–769 保持原义；v0.6 计划现�
 | auto-solitaire / auto-klondike | `main`、`v0.6-dev` `91192ef593cb25377a2d089542e6f040507231a9` | 在产品仓保留 v0.5 源更新后推送两条分支 |
 | auto-os | `main` `853a551e681ad888f4c72c519b6ad1df94e7f313` | 普通 merge；第一父线 `e7fadc470684f611620175c722a1a22df5e9d9c9`，第二父线 `71d3b5f43ff4a20b998bca2917f7bf62b101fdd7` |
 | auto-musk | `main` `cb4cb9570ab185b0a2a7a645cc80edd65a1689f4` | 两条本地唯一的 Plan skill 文档提交用 `cherry-pick -x` 迁入远端主线；原本地 main 和原提交保持不动 |
+| jade-edit | `main` `5fb1e9e28e5a7e379317b7dffb400bad6c94606d` | 无 `v0.6-dev` 分支；从旧 `main` `4d49bbc45bd62da2724a4bc678983f6133087470` 快进至 `v0.5.0` tag target |
 
-其他仓的分支同步/无开发独有提交判定以初始调查表为准；T-08 已经通过 GitHub API 刷新全部 37 个相关仓的默认分支头，完整 SHA 清单见 [最终远端 refs](../reports/v06-main-convergence-20261012/final-refs-20261013.json)。AutoOS 候选的根提交已推送；在独立验证副本中确认 recursive 子模块无 SHA 不匹配，`verify-app-links.py` 通过（21 个新产品、24 个子模块，另核对 3 个既有应用）。
+2026-10-13 再次通过 GitHub API 刷新全部 37 个默认分支头：仅 AutoLang receipt-only 文档提交与 jade-edit 的 v0.5 tag 快进改变了上一版快照。23 个远端 `v0.6-dev` 尖端全部是对应默认分支祖先（compare `behind_by=0`）；可解析的 11 个 `v0.5.0` tag 全部是默认分支祖先，另 26 个仓没有该 tag。完整头列表见 [最终远端 refs](../reports/v06-main-convergence-20261012/final-refs-20261013.json)。AutoOS 候选的根提交已推送；在独立验证副本中确认 recursive 子模块无 SHA 不匹配，`verify-app-links.py` 通过（21 个新产品、24 个子模块，另核对 3 个既有应用）。
 
 ### 规范增量
 
@@ -87,13 +88,13 @@ Spec-impact frontmatter 为空是有意的：本次不直接修改 AutoLang cano
 
 | ID | owner_stage | 当前结果 |
 |---|---|---|
-| AC-01 | merge | 既有提交与 tag 均未改写；AutoLang 的 `v0.5.0` tag 经追加 merge 成为 `master` 祖先，37 个相关仓默认分支头已刷新并留有收据。 |
+| AC-01 | merge | 既有提交与 tag 均未改写；AutoLang 的 `v0.5.0` tag 经追加 merge 成为 `master` 祖先；37 个默认分支已刷新，23 个 `v0.6-dev` 头均可从默认分支到达；11 个存在的 `v0.5.0` tag 均为祖先。 |
 | AC-02 | work | 在途功能 Plan 原状态、原 required 目标和独立工作树继续保留；本次不要求其先完成。 |
 | AC-03 | merge | AutoLang 纠偏 merge `3002c30ffd618f768031048742bcc700a2aff363` 的第一父为 `v0.5.0` tag commit `e05e2d3d7832c7f1d7e29a09a371648b5a53f692`，第二父为原 `master` `9e54f738a07c3715e055ef2a763380e8ec31253e`；AutoOS 父顺序仍按原收据核验；其他开发更新可追溯，AutoMusk 两提交带 `-x` 来源记录。 |
 | AC-04 | merge | Tetris/Klondike 的 v0.5 源增量已先推产品仓；AutoOS 指针指向已推提交；Notes 的 nested pin 指向已推 AutoDown 修复。 |
 | AC-05 | review | 变更仓按范围检查通过；独立 AutoOS 检出 recursive 子模块无 SHA mismatch，`verify-app-links.py` 通过。 |
 | AC-06 | review | 本阶段复核历史、冲突解决、来源、debt/未完成项和工作区边界；结论限定为 branch-convergence phase，不宣称整体 Plan 最终通过。 |
-| AC-07 | merge | 默认 `main`/`master` 作为 v0.6 后续开发线；37 仓远端 refs 已记录。AutoLang 远端已包含纠偏提交，但本地 checkout 仍在旧头 `9e54f73…`，待网络恢复后快进；AutoOS dirty 候选仍保留，T-08 closeout 未结束。 |
+| AC-07 | merge | 默认 `main`/`master` 作为 v0.6 后续开发线；37 仓远端 refs 已记录并复核。审计时 AutoLang 本地 `master`/`origin/master` 同步在 `d777ccbb…`；jade-edit main 已快进到 v0.5 tag。AutoOS dirty 候选及用户本地 WIP 均保留，不作为合并或功能完成条件。 |
 
 ## 执行步骤
 
@@ -106,7 +107,7 @@ Spec-impact frontmatter 为空是有意的：本次不直接修改 AutoLang cano
 | T-05 | merge | 普通合并 AutoOS 的发布线和 v0.6-dev，发布固定 SHA。 | [x] merge `853a551…`，父顺序已独立核对；推送时 `origin/v0.6-dev=71d3b5f…` 未变。 |
 | T-06 | merge | 在不覆盖原本地 checkout 的前提下将 AutoMusk 两条有效提交纳入远端 main。 | [x] cherry-pick `-x` 为 `eecac9b…`、`cb4cb95…`；原始 `8e09f5b…`、`bfcf373…` 在原本地 main 保留。 |
 | T-07 | review | 复核本阶段的历史、发布 SHA、用户范围修正、未完成计划和已知验证边界。 | [x] 2026-10-13 phase pass；自审限制与待办见 §复审记录。 |
-| T-08 | merge | 刷新所有未变化仓远端 refs；只快进无 WIP 的本地默认检出；在干净 AutoOS checkout 运行 `verify-app-links.py`/recursive submodule 验证；完成最终收据和通过 wt-guard 的安全清理。 | [ ] 37 仓远端 refs、AutoOS fresh-clone recursive/app-link 验证已完成；AutoLang 远端纠偏后本地 checkout 尚待 fetch/快进。AutoOS 集成候选根状态仍含 20 个 dirty 子模块、2 处 recursive gitlink mismatch；按保全要求留存，安全清理待处理。 |
+| T-08 | merge | 刷新所有仓远端 refs；只快进无 WIP 的本地默认检出；在干净 AutoOS checkout 运行 `verify-app-links.py`/recursive submodule 验证；完成最终收据和通过 wt-guard 的安全清理。 | [x] 2026-10-13：37 个默认 refs 复核；23 个 v0.6-dev 尖端与 11 个可解析 v0.5.0 tag 均为默认分支祖先；AutoLang 本地检出同步到 `d777ccbb…`；jade-edit main 快进到 tag；AutoOS fresh-clone recursive/app-link 验证通过。所有可安全清理的临时工作树已按收据清理；dirty AutoOS 候选与用户 WIP 按保全要求原样保留。 |
 
 ## 复审记录
 
@@ -152,6 +153,31 @@ Spec-impact frontmatter 为空是有意的：本次不直接修改 AutoLang cano
 - publication: GitHub `master` moved from `9e54f738a07c3715e055ef2a763380e8ec31253e` to `3002c30ffd618f768031048742bcc700a2aff363` with expected-old-SHA checking and `force=false`. No tag or existing commit was rewritten.
 - limitation: the local checkout still points at the old `master` because shell GitHub fetch is blocked by the current network sandbox; fetch the published `master` when connectivity is available. The AutoOS dirty integration candidate and T-08 closeout status remain unchanged.
 
+### 2026-10-13 — revision 6 / all-repository ref audit and Jade Edit fast-forward
+
+- review_scope: branch-convergence-closeout update; plan_id: PLAN-775; plan_revision: 6; overall status remains `executing` pending a final review and plan archival.
+- refreshed_refs: GitHub API returned all 37 default branches. Only `auto-lang/master` advanced from `3002c30…` to receipt-only commit `d777ccbb227c41882ad5f6976c803b1e03b61135`, and `jade-edit/main` advanced from `4d49bbc45bd62da2724a4bc678983f6133087470` to `5fb1e9e28e5a7e379317b7dffb400bad6c94606d`.
+- jade_edit: the repository has no `v0.6-dev` branch. Its old `main` was two commits behind the `v0.5.0` tag target; `main` was fast-forwarded (no force) to `5fb1e9e…`. The two included commits modify `DEBTS.md`, `docs/parity-ledger.md`, and archived Plan 039 only. `v0.5.0` now equals `main`; old main remains an ancestor.
+- branch_audit: all 23 remote `v0.6-dev` tips are ancestors of their default branches (`behind_by=0`). Of 37 repositories, 11 have a resolvable `v0.5.0` tag and all 11 tags are ancestors; 26 have no resolvable tag. AutoLang compare is `v0.5.0..master = ahead 311, behind 0`.
+- local_sync at refs capture: `master` and `origin/master` were both `d777ccbb…`; after publishing the receipt-only commit `45db8e25…`, the Git CLI still cannot fetch via SSH. The local `master` remains at `d777ccbb…`, while its three tracked documentation files match the published `45db8e25…` blobs; the pre-existing `auto/` untracked directory remains untouched. Existing plan worktrees remain present.
+- preservation: AutoOS's dirty integration candidate remains intact (18 dirty app submodule worktrees, 2 recursive gitlink mismatches on the latest read-only inspection) because its state is not safe to remove; this does not block the published branch convergence. Feature Plans remain at their recorded statuses for separate continuation.
+
+### 2026-10-13 — stage: review / PLAN-775 branch-convergence phase
+
+- review_scope: phase `branch-convergence`; plan_id: PLAN-775; plan_revision: 6; outcome: pass; overall Plan status remains `executing` so preserved cross-repository WIP and unfinished feature Plans can continue separately.
+- reviewer_identity/limitations: same task context as execution; no separate reviewer identity is claimed. I reconstructed the result from current GitHub refs/compare responses, the published commit/tree objects, and read-only inspection of preserved worktrees rather than relying on the earlier execution summary.
+- worktree_path / branch: local `D:/autostack/auto-lang`, `master` at `d777ccbb227c41882ad5f6976c803b1e03b61135` with three documentation files matching the published review baseline blobs; review baseline on GitHub is `45db8e25f8eec63b67e21729ea00e002a8336d6d`. AutoOS preservation candidate `D:/autostack/.wt/lang-775/auto-os`, `plan-775-dev` at `853a551e681ad888f4c72c519b6ad1df94e7f313`.
+- base_commit: AutoLang correction merge `3002c30ffd618f768031048742bcc700a2aff363`; reviewed remote chain is `3002c30…` → `d777ccbb…` → `45db8e25…` (the latter two are receipt-only documentation commits).
+- reviewed_commit: `45db8e25f8eec63b67e21729ea00e002a8336d6d` (remote; the published revision-6 Plan and receipt blobs were read back and matched against the reviewed content).
+- dependency_revisions: final refs snapshot `../reports/v06-main-convergence-20261012/final-refs-20261013.json`; no code/spec dependency moved after the captured heads except AutoLang receipt-only documentation.
+- spec_inputs: SD-00 `none`, frozen in Plan revision 6 (blob `2b0f32305e83ad724e6279092983c6790464af62`); no canonical runtime Spec delta.
+- acceptance_results: AC-01 pass (37 default refs refreshed; 23/23 `v0.6-dev` tips reachable; 11/11 resolvable `v0.5.0` tags are ancestors, 26 repos have no tag); AC-02 pass (Plan 742/744/773/774 and existing worktrees retained at their existing states; root `auto/` untracked directory retained); AC-03 pass (AutoLang correction merge parents verified; remote and local `v0.6-dev` tips are ancestors; AutoOS merge parents and AutoMusk `-x` source recorded); AC-04 pass (AutoOS product gitlinks and Notes `vendor/auto-down` resolve to published SHAs); AC-05 pass (reused unchanged scoped test and fresh-clone evidence from the receipt; this review changed docs/refs only, so no Cargo or docs_gen tier was run); AC-06 pass (approved deferrals and preserved WIP are explicit); AC-07 pass (all audited default branches are the v0.6 development lines; Jade Edit now equals its v0.5 tag target).
+- findings: F-03, resolved — Jade Edit `main` was two docs commits behind its `v0.5.0` tag, with no `v0.6-dev` branch; non-forced fast-forward moved `main` to the tag. No open branch-convergence findings.
+- pending_closeout_gates: keep the AutoOS candidate intact; latest read-only status shows 18 modified app submodule worktrees and two recursive gitlink mismatches (`apps/015-notes` and its nested `vendor/auto-down`). Do not reset, checkout, or remove it. This is preserved local WIP, not an unmerged published branch update.
+- evidence: GitHub branch-ref and compare checks for 37 repos; AutoLang `v0.5.0..master` ahead 312/behind 0 and both `v0.6-dev` heads behind 0; Jade Edit `v0.5.0` vs `main` identical; AutoOS merge parents/tree gitlinks; Notes nested pin; receipt and final refs files.
+- next: continue the unfinished feature Plans separately from the updated development line; keep this Plan executing until the preserved AutoOS candidate receives its own safe handoff/cleanup decision.
+
 ## 待澄清事项
 
 无。后续功能工作依各自 Plan 推进；异机本地 WIP 不在本机审计可证明范围内。
+
