@@ -245,3 +245,35 @@ fn v08_budget_i64_no_truncation() {
         assert_eq!(probe::summary_of(&out), (1, 1, 1, 0, 0, 2), "case {name}");
     }
 }
+
+// ---- review r5 (P774-R5-01): the SUMMARY parser carries byte totals at
+// full precision — a synthetic protocol line is the permanent boundary
+// control (no high-memory PE is claimed) ----
+
+/// V08-7 (r5): parsing a SUMMARY line whose live_bytes/peak cross the u32
+/// boundary returns the exact u64 values; the u32 upper bound is the
+/// positive control. Field order (attempts, allocs, frees, live, bytes,
+/// peak); live is an object count.
+#[test]
+fn v08_7_summary_parse_full_precision_boundary() {
+    let mk = |line: &str| ac_data_probe_774::ProbeOutcome {
+        code: Some(0),
+        stdout: String::new(),
+        stderr: format!("{line}\n"),
+    };
+    // positive control: u32 upper bound
+    let at_max =
+        mk("SUMMARY attempts=3 allocs=3 frees=0 live=3 live_bytes=4294967295 peak=4294967295");
+    assert_eq!(
+        probe::summary_of(&at_max),
+        (3, 3, 0, 3, 4294967295, 4294967295)
+    );
+    // boundary control: u32::MAX + 3 on the BYTE fields — peak must NOT be
+    // narrowed (the r5 reviewer's exact protocol input)
+    let wide =
+        mk("SUMMARY attempts=3 allocs=3 frees=0 live=3 live_bytes=4294967298 peak=4294967298");
+    assert_eq!(
+        probe::summary_of(&wide),
+        (3, 3, 0, 3, 4294967298u64, 4294967298u64)
+    );
+}

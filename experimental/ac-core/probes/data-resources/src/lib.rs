@@ -645,9 +645,10 @@ pub fn freestat_of(outcome: &ProbeOutcome) -> (u32, u32, u32) {
 }
 
 /// Extract the SUMMARY counters line, parsed as (attempts, allocs, frees,
-/// live, live_bytes, peak). live_bytes/peak are u64 — the observation
-/// channel carries the full-precision accounting (r4 P774-R4-01).
-pub fn summary_of(outcome: &ProbeOutcome) -> (u32, u32, u32, u64, u64, u32) {
+/// live, live_bytes, peak). live is an object COUNT (u32); live_bytes/peak
+/// are byte totals carried at full u64 precision — no field is narrowed on
+/// the way out (r5 P774-R5-01).
+pub fn summary_of(outcome: &ProbeOutcome) -> (u32, u32, u32, u32, u64, u64) {
     let line = outcome
         .stderr
         .lines()
@@ -663,8 +664,8 @@ pub fn summary_of(outcome: &ProbeOutcome) -> (u32, u32, u32, u64, u64, u32) {
         nums[0] as u32,
         nums[1] as u32,
         nums[2] as u32,
-        nums[3],
+        nums[3] as u32,
         nums[4],
-        nums[5] as u32,
+        nums[5],
     )
 }

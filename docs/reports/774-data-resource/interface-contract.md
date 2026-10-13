@@ -159,6 +159,8 @@
 ## 10. r4 复审修订同步（P774-R4-01）
 
 - 资源计数数值域：live_bytes/peak **u64 全精度**（无饱和/无截断）；预算比较全
-  程 u64；观测通道（SUMMARY 行）按 u64 打印，探针解析同步。
+  程 u64；观测通道（SUMMARY 行）按 u64 打印；探针解析 summary_of 返回
+  `(u32,u32,u32,u32,u64,u64)`——live 为对象计数 u32，字节两域 u64，无出口
+  窄化（r5 勘误；V08-7 永久边界控制）。
 - 永久跨 u32 边界 oracle = 宿主记账状态探针（state-probe/footer.rs，PS 门禁
   "accounting-state probe" 步骤）；不冒称大内存 PE 验收。
