@@ -256,11 +256,19 @@ impl TypeStore {
             .collect()
     }
 
+    /// PLAN-776 T-06：名字是否为编译单元内声明的用户类型（struct/type
+    /// alias/enum——stdlib HTTP 词汇不注册于此，命中即用户来源）。API 返回
+    /// 身份分类的消费面（codegen 遮蔽登记）用。
+    pub fn contains_user_type(&self, name: &str) -> bool {
+        self.type_decls.contains_key(name)
+            || self.type_aliases.contains_key(name)
+            || self.enum_decls.contains_key(name)
+    }
+
     /// 注册类型声明
     pub fn register_type_decl(&mut self, decl: &TypeDecl) {
         let name = decl.name.clone();
         self.type_decls.insert(name, Rc::new(decl.clone()));
-
         // 如果是泛型，注册为泛型模板
         if !decl.generic_params.is_empty() {
             let template = GenericTemplate {

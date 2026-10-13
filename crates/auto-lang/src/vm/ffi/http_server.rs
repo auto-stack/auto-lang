@@ -84,6 +84,20 @@ pub fn record_api_return_type(fn_name: &str, ret_display: String) {
     }
 }
 
+/// PLAN-776 T-06：用户同名遮蔽集——返回类型裸名命中编译单元类型声明
+///（struct/type alias/enum，经 TypeStore）时登记。VM 编组门消费
+///（fn_response_kind 先查遮蔽 → Json）：同裸名用户类型不冒领 stdlib
+/// 专属身份（AC-07；无运行时模块上下文，来源在编译期冻结于此）。
+static API_RETURN_SHADOWED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+/// Codegen 发布遮蔽标记（与 record_api_return_type 同点调用）。
+pub fn record_api_return_shadowed(fn_name: &str) {
+    if let Ok(mut table) = API_RETURN_SHADOWED.lock() {
+        table.insert(fn_name.to_string());
+    }
+}
+
 /// 本工程是否声明了 ~Stream 端点（对齐 api_gen 的 has_sse 广播门控）。
 pub fn has_stream_endpoint() -> bool {
     API_RETURN_TYPES
@@ -99,6 +113,9 @@ pub fn clear_api_param_sigs() {
         table.clear();
     }
     if let Ok(mut table) = API_RETURN_TYPES.lock() {
+        table.clear();
+    }
+    if let Ok(mut table) = API_RETURN_SHADOWED.lock() {
         table.clear();
     }
     if let Ok(mut table) = API_ASYNC_RETURNS.lock() {
@@ -148,7 +165,16 @@ pub(crate) fn fn_is_api_upload_return(fn_name: &str) -> bool {
 
 /// PLAN-734 T-03：返回种类单源——API_RETURN_TYPES 条目经契约身份分类
 /// （ResponseKind::from_return_string；假同名类型不命中）。
+/// PLAN-776 T-06：编译期冻结的用户同名遮蔽优先（遮蔽 → Json——同裸名
+/// 用户类型不冒领 File/Upload/Stream/ExplicitResponse 专属身份）。
 pub(crate) fn fn_response_kind(fn_name: &str) -> crate::api::contract::ResponseKind {
+    if API_RETURN_SHADOWED
+        .lock()
+        .map(|t| t.contains(fn_name))
+        .unwrap_or(false)
+    {
+        return crate::api::contract::ResponseKind::Json;
+    }
     API_RETURN_TYPES
         .lock()
         .ok()

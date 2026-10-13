@@ -112,7 +112,8 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     // （rust/vue 后端经 HTTP 承载，无此限制。）
     if backend == "tauri" {
         for ep in &api_module.endpoints {
-            let kind = auto_lang::api::contract::ResponseKind::from_return_string(&ep.return_type);
+            // PLAN-776 T-06：读提取期冻结的来源身份分类。
+            let kind = ep.response;
             if kind.is_http_exclusive() {
                 return Err(format!(
                     "api endpoint `{}.{}` returns an HTTP-exclusive kind ({:?}); Tauri IPC cannot carry it — call the HTTP URL instead",
@@ -353,7 +354,8 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
         .map_err(|e| format!("Failed to create lib directory: {}", e))?;
 
     // Generate simple TypeScript client
-    let ts_gen = TypeScriptGenerator::new();
+    // PLAN-776 T-06：注入模块类型名集（来源身份映射——用户同名不落专属 wire）。
+    let ts_gen = TypeScriptGenerator::new().with_types(api_module.types.clone());
     let ts_code = ts_gen.generate_simple_client(api_module);
 
     std::fs::write(lib_dir.join("api.ts"), &ts_code)
@@ -3619,8 +3621,10 @@ fn push_delegating_scalar_handlers(
         let ret = endpoint.return_type.trim();
         // PLAN-729 T-05 / 734 R1 F-1：委派路径（route A/db 覆盖）的文件端点——
         // 同样生成真实文件 adapter（契约身份判定）。
-        if auto_lang::api::contract::ResponseKind::from_return_string(ret)
-            == auto_lang::api::contract::ResponseKind::File
+        if auto_lang::api::contract::ResponseKind::from_return_identity(
+            ret,
+            &api_module.types,
+        ) == auto_lang::api::contract::ResponseKind::File
         {
             // 路径参数：委派路径此前只覆盖 query/body——文件端点的典型
             // 形态是 `:name` 路径参数，这里补 Path 提取（首个路径参数，
@@ -3737,10 +3741,11 @@ fn generate_api_rs(
     // 版本无关 FileReply → 本地 axum Response（生成 crate 的 axum 版本与
     // auto-lang 不同也成立：FileReply 不含 axum 类型）。
     // PLAN-734 T-04：契约分类（假同名不命中）。
-    if api_module.endpoints.iter().any(|e| {
-        auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
-            == auto_lang::api::contract::ResponseKind::File
-    }) {
+    if api_module
+        .endpoints
+        .iter()
+        .any(|e| e.response == auto_lang::api::contract::ResponseKind::File)
+    {
         lines.extend(FILE_RESPONSE_GLUE.lines().map(|l| l.to_string()));
         lines.push("".to_string());
     }
@@ -3751,8 +3756,7 @@ fn generate_api_rs(
         e.params
             .iter()
             .any(|p| auto_lang::api::contract::is_upload_param(&p.ty))
-            || auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
-                == auto_lang::api::contract::ResponseKind::Upload
+            || e.response == auto_lang::api::contract::ResponseKind::Upload
     }) {
         lines.extend(UPLOAD_GLUE.lines().map(|l| l.to_string()));
         lines.push("".to_string());
@@ -4114,9 +4118,7 @@ fn generate_api_rs(
         // PLAN-729 T-05 / 734 R1 F-1: 文件端点——返回 `FileResponse`/
         // `Future<FileResponse>` 的 #[api] handler 生成真实文件 adapter
         // （契约身份判定；不经 JsonResponse，转译失败 = 诊断 500）。
-        if auto_lang::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-            == auto_lang::api::contract::ResponseKind::File
-        {
+        if endpoint.response == auto_lang::api::contract::ResponseKind::File {
             // 文件端点仅 GET/HEAD：生成期诊断 + 405 handler（与 VM 腿同语义）。
             if !matches!(method.as_str(), "GET" | "HEAD") {
                 eprintln!(
@@ -5144,8 +5146,7 @@ fn generate_main_rs(
             let method = e.method().to_lowercase();
             // PLAN-729 T-05: GET 文件端点自动具备 HEAD（显式 HEAD 路由不存在
             // 时；handler 从 Method 提取器区分）。
-            if auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
-                == auto_lang::api::contract::ResponseKind::File
+            if e.response == auto_lang::api::contract::ResponseKind::File
                 && method == "get"
                 && !api_module.endpoints.iter().any(|other| {
                     other.method().eq_ignore_ascii_case("HEAD") && other.path() == path
@@ -7161,6 +7162,45 @@ pub fn up(req UploadRequest) ~UploadReceipt {
         let api_rs = generate_api_rs(&module, None, false, &[]);
         assert!(api_rs.contains("METHOD_NOT_ALLOWED"), "{api_rs}");
         assert!(api_rs.contains("\"allow\", \"POST, PUT\""), "{api_rs}");
+    }
+
+    /// PLAN-776 T-06（AC-07/AC-08）：生成轨消费提取期来源身份——用户同名
+    /// `FileResponse`/`Response` 声明是普通 Json 端点：不生成文件 adapter、
+    /// TS 客户端不落原生 Response 映射（fetch .json() 数据面）；未遮蔽的
+    /// 真实 FileResponse 保持文件 glue。
+    #[test]
+    fn plan776_generation_consumes_source_identity() {
+        use auto_lang::api::ApiExtractor;
+        use auto_lang::api::TypeScriptGenerator;
+        use auto_lang::api::contract::ResponseKind;
+        let api = r#"
+pub type FileResponse = { name: str }
+
+#[api(method = "GET", path = "/api/user-file")]
+pub fn user_file() FileResponse {
+    return FileResponse { name: "x" }
+}
+
+#[api(method = "GET", path = "/api/real-file")]
+pub fn real_file() FileResponse2 {
+    return real_file_response("root", "a.bin", "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let user_ep = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "user_file")
+            .expect("user endpoint");
+        assert_eq!(user_ep.response, ResponseKind::Json, "用户同名遮蔽 → Json");
+
+        // TS 客户端：遮蔽端点走 .json() 数据面（不映射原生 Response）。
+        let gen = TypeScriptGenerator::new().with_types(module.types.clone());
+        let ts = gen.generate_simple_client(&module);
+        assert!(
+            ts.contains("return response.json();"),
+            "遮蔽端点按 JSON 数据面: {ts}"
+        );
     }
 
     /// TS 上传方法：FormData 直传（无 JSON.stringify/无 Content-Type 头）、

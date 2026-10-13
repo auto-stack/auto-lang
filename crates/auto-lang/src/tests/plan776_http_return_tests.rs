@@ -679,3 +679,86 @@ fn plan776_t05_rc_release_chain_reaps_credential() {
         "reap_all（静止点）全收凭据"
     );
 }
+
+// ============================================================================
+// T-06：解析来源身份（提取期分类 + VM 门遮蔽）
+// ============================================================================
+
+/// AC-07：同裸名用户类型（`Response`/`FileResponse` 被用户声明）按真实来源
+/// 分类为 Json；未声明的裸名保持 stdlib 专属身份；enum 声明同样遮蔽。
+#[test]
+fn plan776_t06_extract_source_identity_shadowing() {
+    let code = r#"
+type Response {
+    code int
+}
+
+type FileResponse {
+    name str
+}
+
+enum Iter {
+    A,
+    B,
+}
+
+#[api(method = "GET", path = "/api/user-response")]
+fn user_response() Response {
+    return Response { code: 1 }
+}
+
+#[api(method = "GET", path = "/api/user-file")]
+fn user_file() FileResponse {
+    return FileResponse { name: "x" }
+}
+
+#[api(method = "GET", path = "/api/user-iter")]
+fn user_iter() Iter {
+    return Iter::A
+}
+
+#[api(method = "GET", path = "/api/real-upload")]
+fn real_upload() UploadReceipt {
+    return upload_error(400, "no")
+}
+"#;
+    let mut parser = crate::parser::Parser::from(code);
+    let ast = parser.parse().expect("parse");
+    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let kind_of = |name: &str| {
+        module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == name)
+            .map(|e| e.response)
+            .unwrap_or_else(|| panic!("endpoint {name} 缺失"))
+    };
+    use crate::api::contract::ResponseKind;
+    // 用户同名声明（struct×2 + enum）→ Json（不冒领专属身份）。
+    assert_eq!(kind_of("user_response"), ResponseKind::Json);
+    assert_eq!(kind_of("user_file"), ResponseKind::Json);
+    assert_eq!(kind_of("user_iter"), ResponseKind::Json);
+    // 未遮蔽的裸名 → stdlib 内建身份保持。
+    assert_eq!(kind_of("real_upload"), ResponseKind::Upload);
+}
+
+/// AC-07：VM 编组门的编译期遮蔽——登记 shadowed 后 File 声明不再开门
+///（用户同名 FileResponse 返回按 Json 编组，不误消费描述符表）。
+#[test]
+fn plan776_t06_vm_gate_respects_compile_time_shadowing() {
+    use crate::api::contract::ResponseKind;
+    let name = "plan776_t06_shadowed_fn";
+    crate::vm::ffi::http_server::record_api_return_type(name, "FileResponse".into());
+    assert_eq!(
+        crate::vm::ffi::http_server::fn_response_kind(name),
+        ResponseKind::File,
+        "未遮蔽：File 门保持"
+    );
+    crate::vm::ffi::http_server::record_api_return_shadowed(name);
+    assert_eq!(
+        crate::vm::ffi::http_server::fn_response_kind(name),
+        ResponseKind::Json,
+        "编译期冻结的用户同名遮蔽 → Json"
+    );
+    assert!(!crate::vm::ffi::http_server::fn_is_api_file_return(name));
+}

@@ -1590,10 +1590,28 @@ impl Codegen {
                     // unique_name (not Display) — Display dumps the full
                     // type-decl s-expr for User types; the publisher needs
                     // the bare entity name ("Message" → "NewMessage").
+                    let ret_display = fn_decl.ret.unique_name().to_string();
                     crate::vm::ffi::http_server::record_api_return_type(
                         &fn_decl.name.to_string(),
-                        fn_decl.ret.unique_name().to_string(),
+                        ret_display.clone(),
                     );
+                    // PLAN-776 T-06：用户同名遮蔽——返回裸名命中编译单元类型
+                    // 声明（TypeStore）时冻结遮蔽标记（VM 编组门 → Json；
+                    /// stdlib HTTP 词汇不注册 TypeStore，命中即用户来源）。
+                    {
+                        let bare =
+                            crate::api::contract::return_bare_name(&ret_display).to_string();
+                        let shadowed = self
+                            .type_store
+                            .read()
+                            .map(|ts| ts.contains_user_type(&bare))
+                            .unwrap_or(false);
+                        if shadowed {
+                            crate::vm::ffi::http_server::record_api_return_shadowed(
+                                &fn_decl.name.to_string(),
+                            );
+                        }
+                    }
                     // PLAN-730 T-02: 上传端点加载期合同诊断——UploadRequest
                     // 注入参数仅 POST/PUT；其余参数必须 path/query/meta 可
                     // 绑定（不允许同时声明 JSON whole-body 注入）；返回类型

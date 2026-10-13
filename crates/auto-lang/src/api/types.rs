@@ -161,6 +161,10 @@ pub struct ApiEndpoint {
     /// transpiles this body into the generated handler via a2r (PLAN-734 makes
     /// that the strict default implementation source).
     pub body: Option<Body>,
+
+    /// PLAN-776 T-06：返回种类（提取期按解析来源身份判定一次——同裸名
+    /// 用户声明遮蔽为 Json；全部消费面读此字段，不再各自按裸串分类）。
+    pub response: crate::api::contract::ResponseKind,
 }
 
 impl ApiEndpoint {
@@ -172,6 +176,7 @@ impl ApiEndpoint {
             return_type: "void".to_string(),
             doc: None,
             body: None,
+            response: crate::api::contract::ResponseKind::Void,
         }
     }
 

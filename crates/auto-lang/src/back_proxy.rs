@@ -1460,6 +1460,16 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
     let api_routes: Vec<(String, String, String)> = codegen.api_routes.clone();
     let mut fn_params: HashMap<String, Vec<ApiParamSig>> = HashMap::new();
     let mut fn_meta: HashMap<String, (String, String)> = HashMap::new();
+    // PLAN-776 T-06：模块内用户类型名集（AST 直扫——back_proxy 跳过前端，
+    // type_store 不含声明；stdlib HTTP 词汇不出现于用户 stmts，命中即遮蔽）。
+    let user_type_names: std::collections::HashSet<String> = import_stmts
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Stmt::TypeDecl(d) => Some(d.name.to_string()),
+            Stmt::EnumDecl(e) => Some(e.name.to_string()),
+            _ => None,
+        })
+        .collect();
     for stmt in &import_stmts {
         if let Stmt::Fn(f) = stmt {
             if f.api_attrs.is_some() {
@@ -1480,7 +1490,14 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                     .unwrap_or_default();
                 let display = format!("{}", f.ret);
                 let primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
-                fn_meta.insert(f.name.to_string(), (method, format!("{primary}|{display}")));
+                // PLAN-776 T-06：第三段 = 返回裸名被用户同名遮蔽（1/空）。
+                // 消费侧（from_return_string 前）先解遮蔽 → Json（AC-07）。
+                let bare = crate::api::contract::return_bare_name(&display).to_string();
+                let shadowed = if user_type_names.contains(&bare) { "1" } else { "" };
+                fn_meta.insert(
+                    f.name.to_string(),
+                    (method, format!("{primary}|{display}|{shadowed}")),
+                );
             }
         }
     }
@@ -1579,10 +1596,19 @@ impl SessionRuntime {
         // 可序列化数据（决策报告 §6：Unsupported + 改走 HTTP URL 指引）。
         if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
             // PLAN-734 T-03：守卫按契约身份分类（假同名类型不命中）。fn_meta
-            // 值是 "primary|display" 拼串——分类取 display 半段（拼串整体
-            // 永不等于任何裸类型名，身份匹配必失败）。
-            let display = ret.split('|').next().unwrap_or(ret);
-            let mut kind = crate::api::contract::ResponseKind::from_return_string(display);
+            // 值是 "primary|display|shadowed" 拼串——分类取 display 半段（拼串
+            // 整体永不等于任何裸类型名，身份匹配必失败）。
+            // PLAN-776 T-06：第三段 shadowed=1（用户同名遮蔽，编译期冻结）
+            // 直接落 Json——不冒领 stdlib 专属身份。
+            let mut parts = ret.split('|');
+            let _primary = parts.next();
+            let display = parts.next().unwrap_or("");
+            let shadowed = parts.next().unwrap_or("");
+            let mut kind = if shadowed == "1" {
+                crate::api::contract::ResponseKind::Json
+            } else {
+                crate::api::contract::ResponseKind::from_return_string(display)
+            };
             // PLAN-734 T-07：参数面补充——UploadRequest 参数（Display s-expr
             // 形态经 is_upload_param 双族识别）即使返回串分类错过也命中。
             if kind != crate::api::contract::ResponseKind::Upload {
@@ -1760,15 +1786,23 @@ impl SessionRuntime {
         // ~Stream 端点时才广播）：typing 型（fn 名含 "typing"）void POST →
         // {"event":"Typing","name":<首参>}；create 型非 void POST → 返回实体
         // 加 "event":"New<主类型>" 判别后广播。
-        // PLAN-734 T-03：SSE 广播门按契约分类。
+        // PLAN-734 T-03：SSE 广播门按契约分类。PLAN-776 T-06：fn_meta 三段
+        // "primary|display|shadowed"——display 居中，遮蔽段非 "1" 才分类。
         let has_sse = self.fn_meta.values().any(|(_, r)| {
-            let display = r.split('|').next_back().unwrap_or(r);
-            crate::api::contract::ResponseKind::from_return_string(display)
-                == crate::api::contract::ResponseKind::Stream
+            let mut parts = r.split('|');
+            let _primary = parts.next();
+            let display = parts.next().unwrap_or("");
+            let shadowed = parts.next().unwrap_or("");
+            shadowed != "1"
+                && crate::api::contract::ResponseKind::from_return_string(display)
+                    == crate::api::contract::ResponseKind::Stream
         });
         if has_sse {
             if let Some((method, meta)) = self.fn_meta.get(&route_match.fn_name).cloned() {
-                let (primary, display) = meta.split_once('|').unwrap_or((meta.as_str(), ""));
+                // PLAN-776 T-06：三段拼串——primary 后 display 居中。
+                let mut parts = meta.split('|');
+                let primary = parts.next().unwrap_or(meta.as_str());
+                let display = parts.next().unwrap_or("");
                 if method.eq_ignore_ascii_case("POST") {
                     let fn_bare = route_match
                         .fn_name

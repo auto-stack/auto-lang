@@ -119,19 +119,35 @@ impl ApiExtractor {
     pub fn extract(&self, module_name: &str, stmts: &[Stmt]) -> ApiModule {
         let mut api_module = ApiModule::new(module_name.to_string());
 
+        // PLAN-776 T-06：两遍提取——先收全部类型声明（struct/enum）成完整
+        // 名集，再提取 endpoints 并按解析来源身份分类（同裸名用户声明 →
+        // Json；声明序无关）。类型别名由 TypeDecl 形态覆盖（extract_type）。
         for stmt in stmts {
             match stmt {
-                Stmt::Fn(fn_decl) => {
-                    if let Some(endpoint) = self.extract_endpoint(fn_decl) {
-                        api_module.add_endpoint(endpoint);
-                    }
-                }
                 Stmt::TypeDecl(type_decl) => {
                     if let Some(api_type) = self.extract_type(type_decl) {
                         api_module.types.push(api_type);
                     }
                 }
+                Stmt::EnumDecl(enum_decl) => {
+                    api_module.types.push(ApiType {
+                        name: enum_decl.name.to_string(),
+                        fields: Vec::new(),
+                        doc: None,
+                    });
+                }
                 _ => {}
+            }
+        }
+        for stmt in stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                if let Some(mut endpoint) = self.extract_endpoint(fn_decl) {
+                    endpoint.response = crate::api::contract::ResponseKind::from_return_identity(
+                        &endpoint.return_type,
+                        &api_module.types,
+                    );
+                    api_module.add_endpoint(endpoint);
+                }
             }
         }
 

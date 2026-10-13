@@ -20,9 +20,10 @@ use super::types::{ApiEndpoint, ApiModule, ApiParam, ApiType};
 // ============================================================================
 
 /// 端点返回的种类——决定编组分派、传输支持矩阵与生成分支。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ResponseKind {
     /// 普通 JSON 数据（声明返回非下方专属种类）。
+    #[default]
     Json,
     /// `~Iter<T>` / `~Stream<T>`（或裸 Iter/Stream 泛型）——SSE 流。
     Stream,
@@ -40,11 +41,27 @@ impl ResponseKind {
     /// 从返回类型显示串做**身份**分类（exact / 泛型解包 exact——非 contains）。
     /// 输入串来自 `type_to_string`（param 侧 Display）或 `unique_name`（返回侧），
     /// 两者对 User/泛型形态产出同形（`"FileResponse"` / `"Future<FileResponse>"`）。
+    ///
+    /// **无模块上下文的保守入口**：无法区分用户同名类型——专属种类按裸名
+    /// 命中。有模块上下文（提取/生成期持有 module types）的消费面必须用
+    /// [`ResponseKind::from_return_identity`]（PLAN-776 T-06：来源身份）。
     pub fn from_return_string(ret: &str) -> ResponseKind {
+        Self::from_return_identity(ret, &[])
+    }
+
+    /// PLAN-776 T-06：按**解析来源**分类——裸名命中模块类型声明（用户
+    /// struct/type alias/enum，含导入链合并后的名集）即为用户类型 → Json
+    /// （专属身份不因同名被冒领）；未命中才按 stdlib 内建裸名分派
+    /// （stdlib HTTP 词汇不注册模块类型声明——`type_decls` 命中即用户）。
+    pub fn from_return_identity(ret: &str, module_types: &[ApiType]) -> ResponseKind {
         let ret = ret.trim();
         // ~T 脱糖为 Future<T>；两种书写都解包。
         let unwrapped = unwrap_future(ret);
         let name = bare_name(unwrapped);
+        // 用户同名/别名：真实来源是用户声明——普通 Json 数据（AC-07）。
+        if module_types.iter().any(|t| t.name == name) {
+            return ResponseKind::Json;
+        }
         match name {
             "FileResponse" => ResponseKind::File,
             "UploadReceipt" | "UploadSession" => ResponseKind::Upload,
@@ -70,6 +87,13 @@ fn unwrap_future(ty: &str) -> &str {
         return inner.trim();
     }
     trimmed
+}
+
+/// 泛型实例裸名：`Iter<ChatEvent>` → `Iter`；裸类型原样。
+/// PLAN-776 T-06 起 pub(crate)：codegen 遮蔽登记/提取期身份判定共用
+///（裸名 = 来源身份的键）。
+pub(crate) fn return_bare_name(ty: &str) -> &str {
+    bare_name(unwrap_future(ty))
 }
 
 /// 泛型实例裸名：`Iter<ChatEvent>` → `Iter`；裸类型原样。
@@ -242,7 +266,8 @@ impl EndpointContract {
         let method = ep.method();
         let path = ep.path();
         let response_decl = ep.return_type.trim().to_string();
-        let response = ResponseKind::from_return_string(&response_decl);
+        // PLAN-776 T-06：来源身份分类（用户同名 → Json）。
+        let response = ResponseKind::from_return_identity(&response_decl, module_types);
         let is_async = response_decl.starts_with("Future<") || response_decl.starts_with('~');
         let params = ep
             .params
@@ -317,6 +342,36 @@ mod tests {
         assert_eq!(kinds("List<FileResponse>"), ResponseKind::Json);
         assert_eq!(kinds("MyResponse"), ResponseKind::Json);
         assert_eq!(kinds("FileResponseX<Stream<a>>"), ResponseKind::Json);
+    }
+
+    /// PLAN-776 T-06（AC-07）：解析来源身份——同裸名用户声明（struct/别名）
+    /// 是普通用户类型（Json），不冒领 stdlib 专属身份；未声明的裸名保持
+    /// 专属分派；无模块上下文（from_return_string）为保守入口。
+    #[test]
+    fn plan776_response_kind_source_identity_matrix() {
+        let user_types = vec![
+            ApiType { name: "Response".into(), fields: vec![], doc: None },
+            ApiType { name: "FileResponse".into(), fields: vec![], doc: None },
+            ApiType { name: "Iter".into(), fields: vec![], doc: None },
+            ApiType { name: "UploadReceipt".into(), fields: vec![], doc: None },
+        ];
+        let identity = |ret: &str| ResponseKind::from_return_identity(ret, &user_types);
+        // 用户同名声明：普通 Json（含 Future 包装与泛型实参形态）。
+        assert_eq!(identity("Response"), ResponseKind::Json);
+        assert_eq!(identity("Future<Response>"), ResponseKind::Json);
+        assert_eq!(identity("FileResponse"), ResponseKind::Json);
+        assert_eq!(identity("Future<FileResponse>"), ResponseKind::Json);
+        assert_eq!(identity("Iter<int>"), ResponseKind::Json);
+        assert_eq!(identity("UploadReceipt"), ResponseKind::Json);
+        // 未遮蔽的裸名：stdlib 内建身份保持。
+        assert_eq!(identity("HttpResponse"), ResponseKind::ExplicitResponse);
+        assert_eq!(identity("Stream<ChatEvent>"), ResponseKind::Stream);
+        assert_eq!(identity("int"), ResponseKind::Json);
+        // 同名集里只遮蔽已声明者：其他端点不受影响。
+        let partial = vec![ApiType { name: "Response".into(), fields: vec![], doc: None }];
+        let id2 = |ret: &str| ResponseKind::from_return_identity(ret, &partial);
+        assert_eq!(id2("Response"), ResponseKind::Json);
+        assert_eq!(id2("FileResponse"), ResponseKind::File, "未声明者保持专属身份");
     }
 
     #[test]
