@@ -456,6 +456,9 @@ mod plan736_http_service_tests;
 mod plan738_assembly_probe_tests;
 // PLAN-738 T-02：stdlib_assembly 正式族（全库 inventory/provider 目录机器对照）
 mod plan738_stdlib_assembly_tests;
+// PLAN-776 T-01：HTTP 返回资源身份表示探针（TAG_OBJECT 凭据传播/数字不可
+// 伪造/查表制对照；T-02 起扩展为返回资源全矩阵）
+mod plan776_http_return_tests;
 // PLAN-755 T-01/T-03：HTTP 公共面契约覆盖走查 + CFFI merge 存活守卫
 mod plan755_http_contract_tests;
 // PLAN-730: 服务端上传（平台探针 + parser/预算/存储矩阵 + http_e2e_plan730 双端）
