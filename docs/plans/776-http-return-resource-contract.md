@@ -5,7 +5,7 @@ feature_name: http-return-resource-contract
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-13
-updated_at: 2026-10-13
+updated_at: 2026-10-14
 supersedes_spec_components:
   - docs/specs/stdlib/design/api-transport-contract.md
   - docs/specs/stdlib/design/http-handler-async-lifecycle.md
@@ -180,6 +180,11 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 
 ## 8. 执行步骤
 
+> **R1 当前状态（2026-10-14）**：最终复审 needs_fix；T-01..08 各有未满足子项，
+> 已重新打开，current_step=0。下方 `[✅ 已完成]` 为原 work 历史主张，不能作为当前验收结论。
+> 通过子项与提交均保留；当前缺口及 AC verdict 以
+> [R1 独立复审报告](reports/776-return-resource-review-r1.md) 为准。
+
 - [x] **T-01：冻结表示与决策包**（无依赖；AC-01、AC-02、AC-03、AC-04、AC-05、AC-06、AC-07、AC-08；SD-01、SD-02、SD-03、SD-04、SD-05、SD-06、SD-07）
   核查上述 producer/VM/Future/consumer 符号和最新 742 状态；最多比较两种受控表示，完成最小正反探针及全路径表，写 decision 报告和 proposed-spec-delta 草稿。验证：`cargo t plan776` 运行表示正反例；图中每路径有 actual producer/消费者，无未归属入口。若最小方案需整体 ABI 改写，按 §10 needs_replan。
   [✅ 已完成] 决策报告 `docs/plans/reports/776-return-resource-decision.md`（基线 5e21561d2）：方案 A（HeapObject 载体 + TAG_OBJECT/VmRef 现成双桥）冻结，方案 B（i64 位编码）按不可伪造性否决；§1 全路径表含 actual 符号行号（marshal 5597/5677/5719/5735、final_value_reply 5816、value_to_nv_via_task 5869、HTTP_RESPONSES 4803/5776/5789、sse_into_response 降级点、engine 8358 访问器、api_gen 5 处消费）；742 executing 状态确认。探针 `plan776_http_return_tests.rs`（worktree a142756c9）：`cargo t plan776` 3/3 绿（传播保身份/数字不可伪造/查表制对照）；SD-01..07 草稿在报告 §7。i64 编码事实修正：`try_encode_i64` 48 位内联 Option（非 encode_i64）。
@@ -209,6 +214,29 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 
 ## 9. 复审记录
 
+### 最终独立复审 R1（2026-10-13 开始，2026-10-14 记录）
+
+- stage: review
+- review_scope: final
+- reviewer_identity/limitations: 当前 Codex 会话独立于实施会话；未委派子agent，不声称额外模型独立性。
+- plan_id: PLAN-776
+- plan_revision: 1（原语义合同未改；历史work的pass不构成实施复审通过）
+- outcome: needs_fix
+- worktree_path: D:/autostack/.wt/lang-776/auto-lang
+- branch: plan-776-dev
+- reviewed_commit: b4183e761199642aa341cfecd6491c1821c9e2e4
+- base_commit: 5e21561d2c303a02319ff7a29e4607933e09a38f
+- dependency_revisions: auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，组内detached、clean；738/751/755已交付，742仍在途。
+- spec_inputs: 主检出当前七份canonical及Plan/SD输入SHA256见 attachments/776/review-r1/input-hashes.json；审查前Plan blob=dac29340642a5a540a48963f45b9b0aef3295e01。
+- reviewed_spec_delta: reports/776-return-resource-spec-delta.md，blob=7452145a80ebcd30d00e3a41b5656206991f85d5；冻结副本 attachments/776/review-r1/reviewed-spec-delta.md；整体不通过，不能据此关闭P734-D7。
+- acceptance_results: AC-01 fail；AC-02 partial；AC-03 partial；AC-04 fail；AC-05 fail；AC-06 fail；AC-07 fail；AC-08 partial；AC-09 fail。逐项task/code/oracle见复审报告§3/4。
+- findings: F776-R1-01..09（4 P1、5 P2）；数值仍变资源、数值误释放凭据、owner同号误取、真Internal/异常资源泄漏、alias/空类型来源误分类、访问器载荷失配、32位分配不拒绝、Clone计数失真、矩阵/健康/SD证据缺口。
+- evidence: reports/776-return-resource-review-r1.md；attachments/776/review-r1/probe.rs + reproduce.ps1 + 分进程原始日志；25专项/162语料/755四守卫/auto-man专项1/api_gen46通过，但不覆盖漏测项。完整t=5294/5295，完整th=108/110；间歇红单跑绿仍保留，format在mod.rs失败。
+- pending_closeout_gates: 工作自有实现与必需矩阵未完成，须先修复、提交并独立R2；merge-owned Spec/ledger沉淀、归档、wt-guard清树、到期批量tf待最终pass后，不冒称已通过。
+- reopened_tasks: [T-01, T-02, T-03, T-04, T-05, T-06, T-07, T-08]；全部有原合同内未满足子项；current_step=0，保留历史提交与通过子项。
+- baseline_recheck: 写结论前实施树HEAD仍为上述full SHA，git status --porcelain为空；主检出其他计划的既有/并发改动未触碰。
+- next: work，同一lang-776实施树修复F776-R1-01..09，补完整oracle与真实生成wire后提交R2；本次不修实现、不合入、不归档、不发布canonical/live ledger。
+
 ### 执行交接（2026-10-13，/auto-plan:work）
 
 - stage: work
@@ -221,6 +249,32 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 - blockers: 无
 - next: review（独立 /auto-plan:review；通过后 merge 沉淀 SD-01..07 与 ledger，守卫清树）
 - 备注：T-05 揪出并修复既有泄漏模式（dispatch pop_nv 不释放返回值 RC）；T-07 矩阵扫揪出并修复 T-06 back_proxy primary 段回归——两次自纠均在提交链内闭环。
+
+### R1 修复轮交接（2026-10-14，/auto-plan:work 复修）
+
+- stage: work
+- plan_id: PLAN-776
+- plan_revision: 1
+- outcome: pass
+- code_commit: plan-776-dev 6494092de（R1 修复提交，前链 a142756c9..b4183e761 + 6494092de）
+- task_ids: [T-01, T-02, T-03, T-04, T-05, T-06, T-07, T-08]（复审重开后全部补齐）
+- evidence: F01..F09 逐项闭合（下表）；plan776 38/38（含全部 R1 反例复现 oracle）；裸 `cargo t` 5300/5300 全绿；`cargo tv` 162/162；`cargo th -j 1` 117/118（唯一红=back_proxy corpora 预存在册，master 同红）；plan729/730/SSE 族恢复全绿；触面格式/新增 warnings 清零
+- blockers: 无
+- next: review（R2 独立复审）
+
+**F776-R1 修复对账**：
+
+| Finding | 修复 | 证据 |
+|---|---|---|
+| F01 数值经表变资源 | iterator/SSE 查表臂→**声明门**（~Iter/~Stream 声明+命中——generator handler 语言形态）；HTTP_RESPONSES i32/i64 查表臂删除；upload/file"声明+int+take"→**纯诊断门**（声明专属返回+非凭据对象→mismatch 500，不触表）；Http.ok/created/bad_request/not_found/internal_error 五 producer+`http.response()`+setter 链全部迁移凭据对象（inventory 契约面零漂移）；client 面保持 int+表（FFI 访问器范围） | e2e r1：iterator id=0 同值 int→JSON 0；构造后普通 1→JSON；Http.ok→200 文本；plan729 vm_method（/wrong 诊断 500）恢复绿 |
+| F02 数值误释放份额 | dispatch 双点 release 加 `is_object` 门（rc::heap_ref_id 的历史 i32≥4M 启发不再进入 HTTP 返回槽路径） | e2e r1：共享凭据 30 次同值 int 往返+跨宽限窗 replay 仍 302；单元 RC 1→1 |
+| F03 owner 同号误取 | 凭据专用 id 段 `0x8000_0000|owner(7b)<<24|local(24b)`（per-VM http_credential_gen + VM instance_id 全局计数）——**owner 编入 id**，跨 VM 同号不可能；id 层校验先行，堆内 owner 二线 | 单元：双 VM 各持凭据 id 必不同号、四方向互拒（nv+VmRef 双载体）；e2e 双服务隔离 |
+| F04 Internal/Err 泄漏 | `execute_future_body`/`resume_suspended_body` 的 RET 臂释放 body 栈槽份额（push_value 重建调用者份额——Plan 419 咽喉点）；`remove_task` 扫任务 RAM 清偿凭据份额（Err/LockBusy/middleware/shutdown/cancel 全终态） | e2e r1：Internal `~{}` 11 请求 302 后 live 回基线；除零 11×500 后回基线；残留 debug eprintln 清除 |
+| F05 alias/空声明 | ApiExtractor 两遍收 Stmt::TypeAlias+空成员声明；back_proxy AST 名集同步 | 单元：`type Response = int;`/`type Response {}` 均 Json |
+| F06 访问器失配 | status_code/body/body_bytes/body_to_file/header_get 统一载荷（凭据快照或 client int+表）；CALL_SPEC 兜底扩展凭据 receiver | 单元：307 快照凭据 status_code=307；非资源对象不误读 |
+| F07 32 位边界 | local 24 位段耗尽→分配前拒绝（不截断复用） | 单元：2^24-1 可分配、2^24 拒绝（无表项不入计数） |
+| F08 Clone 失配 | HttpReturnResource 去 derive Clone（无生产克隆） | 编译级（无 Clone 使用） |
+| F09 矩阵/健康 | harness 755 化（ephemeral 端口+有界启动+**保留段重试**——Hyper-V 4090 bind 拒绝实录；不吞 run 错误）；三 Future 形态 oracle（Ready=Internal 即完/External park/Internal body await 资源终值）；vm/ffi/mod.rs 格式+新增 warnings（HashMap/ApiExtractor/dbg eprintln）清零 | 38/38；裸 t 5300/5300；生成真 TCP 实跑取证=预存编译漂移（master 同形 TIMEOUT——742 附件同类，非本 diff） |
 
 ### 起草交接（2026-10-13）
 

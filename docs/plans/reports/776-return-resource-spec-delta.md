@@ -95,3 +95,32 @@ plan705 19/19。
 
 **AC 映射**：SD-01{AC-01,02,05,06}、SD-02{AC-01,02,07,08}、SD-03{AC-03,04}、
 SD-04{AC-03,05,06}、SD-05{AC-02,05,07}、SD-06{AC-07,08}、SD-07{AC-08,09}。
+
+---
+
+## R1 修订（2026-10-14，review-r1 对 SD 描述的修正）
+
+R1 复审指出原草案的失配描述，本节为修订后的规则（覆盖上文对应条目）：
+
+- **SD-01 修订**：owner 身份**编入凭据 id**（专用段 `0x8000_0000 |
+  owner(7b) << 24 | local(24b)`，per-VM 计数）——跨 VM 同号不可能（"每 VM
+  一张表"不再作为来源证明）；id 层 owner 校验先行于堆查找，堆内 owner 字段
+  为二线。代次=local 段单调不复用；耗尽=local 24 位满（分配前拒绝，无
+  u32 截断）。`HttpReturnResource` 无 Clone（计数/Drop 配平）；观察钩子
+  仅 cfg(test) 读。
+- **SD-02 修订**：查表命中制**全部退役**（iterator 命中制→`~Iter/~Stream`
+  **声明门**；HTTP_RESPONSES 查表删除；upload/file"声明+int+take"→纯诊断
+  门——声明专属返回且值非凭据对象 → mismatch 500，不触表）。P734-D7 由
+  "真实资源对象臂 + 声明门 + 诊断门"替代关闭；未声明专属返回的普通数值
+  永远 JSON 数据。真实 producer 全集（redirect/musk ctor 8 族/Http.ok
+  五族/http.response()+setter 链/Sse.into_response/file/upload）产凭据
+  对象；HTTP_RESPONSES 表仅剩 client 注入面（FFI 访问器范围）。
+- **SD-03 修订**：Internal future body 的栈槽份额在 body RET 终结
+  （push_value 重建调用者份额）；任务终结（Err/LockBusy/middleware/
+  shutdown/cancel）经 remove_task 扫栈清偿凭据份额。
+- **SD-05 修订**：Response 访问器（status_code/body/body_bytes/
+  body_to_file/header_get）与 setter 链接受凭据对象载荷（快照读写，
+  owner 校验）；engine CALL_SPEC 兜底对凭据 receiver 分派同一 shim 族；
+  client int 句柄面保持表语义。
+- **SD-06 修订**：来源名集包含 type alias 与空成员声明（提取器/back_proxy
+  AST 扫描一致）。

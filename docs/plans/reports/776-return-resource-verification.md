@@ -72,3 +72,29 @@ aavm 零触发（`packages/aavm/**`、`test/vm/aavm2/**`、`test/parity/**` 无 
   4 e2e/单测 T-06 等）。
 - 报告：本报告 + `776-return-resource-spec-delta.md`（SD 草稿）+
   `776-return-resource-decision.md`（T-01 决策包）。
+
+---
+
+## R1 修复轮（2026-10-14，review-r1 needs_fix 后复修）
+
+代码提交：`6494092de`（前链 a142756c9..b4183e761）。逐项闭合 F776-R1-01..09，
+对账表见 Plan 文件"R1 修复轮交接"。门禁重跑：
+
+| 门禁 | 结果 |
+|---|---|
+| 裸 `cargo t` | **5300/5300 全绿**（72.8s） |
+| `cargo tv` | 162/162 |
+| `cargo th -j 1 --no-fail-fast` | **117/118**；唯一红=back_proxy corpora（master 预存在册） |
+| plan776 全族（含 R1 复现） | **38/38** |
+| plan729/730/SSE/back_proxy 族 | 全绿（file-501 诊断门恢复；sse_chain 4/4；upload 40/40） |
+| 生成真 TCP（auto-man test-http-e2e） | **预存编译漂移**：`http_e2e_plan729_generated_service_wire_matrix` 生成物 E0433+hyper Builder 差异编译失败——master 基线同形（TIMEOUT 120s / 同编译失败），742 附件同类在案；非本 diff 引入，归档待 742 轨收口 |
+
+修复要点（相对 R1 审查基线的合同变化）：
+- 普通数值经表取得资源的全部路径退役（iterator 命中制→声明门；Response 查表
+  删除；upload/file take 门→纯诊断门）——P734-D7 查表猜测正式替代。
+- 凭据 id 编入 owner 段（专用段 0x8000_0000|owner<<24|local），跨 VM 同号
+  不可能；id 层校验先行。
+- Internal future body/异常退出/取消的凭据终态清偿（body 栈槽释放 + remove_task
+  扫栈）。
+- 已知边界更新：owner 段 7 位（进程内 128 VM 后回绕——防御与通用段 2^48 回绕
+  同级）；client 句柄返回=JSON 数据（查表退役后的行为变化，无 wire 用例依赖）。
