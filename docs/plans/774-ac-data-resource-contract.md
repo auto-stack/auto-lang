@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-774
-status: drafting
+status: executing
 feature_name: AC 数据扩面的共同类型、资源与内部调用契约
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-12
 updated_at: 2026-10-13
-current_step: 0
+current_step: 1
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -55,6 +55,10 @@ affects: [auto-ac, auto-hir, auto-acc]
 - 本会话授权为规划和实施就绪核查，不在本会话实施、合入或创建树。用户拟单独开实施agent；在该agent下达执行774指令时记录当前r3实施授权，未指定模型或预算。独立最终复审与合入授权按后续交接办理。
 
 - 2026-10-13引用/交接核查基线：主检出 d777ccbb227c41882ad5f6976c803b1e03b61135。编号映射为标量772、共同契约774、文本770、record771；770/771未改号。历史输入表保留来源，当前指纹见 [引用核查输入表](attachments/774/reference-update-inputs-20261013.tsv)。本次仅修正引用/取材和实施入口，不修改语言支持、验收阈值或执行状态。
+- 2026-10-13 r3 实施授权（§4 预留条款兑现）：用户在独立实施会话下达「执行 774」指令，
+  授权按本计划 r3 全文实施 T-01..06（work-owned）；未指定模型或预算。独立最终复审（T-07）
+  与合入（T-08）按后续交接办理，本授权不含。实施起点主检出 5e21561d2c303a02319ff7a29e4607933e09a38f
+  （r3 引用核查后仅 docs/plans 簿记推进）；T-01 以实施时最新基线刷新输入。
 
 ## 5. 详细设计
 
@@ -138,7 +142,7 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 
 | 状态 | Task | owner_stage | 依赖 | 路径/操作、成果与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 用户批准 r3；772 已 archived（9/9） | 刷新实际最新 Spec/inputs/主基线；确认唯一树，建 decisions.md 的事实差异表，无生产代码改动 | 01/05 |
+| [x] | T-01 | work | 用户批准 r3；772 已 archived（9/9） | 刷新实际最新 Spec/inputs/主基线；确认唯一树，建 decisions.md 的事实差异表，无生产代码改动 | 01/05 |
 | [ ] | T-02 | work | T-01 | 完成 D01..07 候选/支持拒绝/接口与资源预算表及新probe-cases.md；按§5.3冻结值/trace/码/计数/布局/预算oracle，逐规则preflight后才进入T03；材料冲突先修订下游 | 01/04 |
 | [ ] | T-03 | work | T-02 | 新 probes/data-resources crate/shim 与锁文件，真实 COFF/PE 五类调用；V02/03/07/08；probe test/fmt/check | 02..04 |
 | [ ] | T-04 | work | T-03 | 新 scripts/verify-ac-data-resources-774.ps1，V04..06 故障/拒绝/反控；既有 executor deadline、完整输出与资源收据 | 03/04 |
