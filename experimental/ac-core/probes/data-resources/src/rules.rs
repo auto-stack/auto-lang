@@ -17,11 +17,18 @@ enum SlotState {
     Dead,
     /// Owned by the current frame (let Str local / own construction).
     LocalOwned,
-    /// Borrowed-in `str` param: the owner is the CALLER and outlives us.
+    /// Borrowed-in `str` param (default mode): the owner is the CALLER and
+    /// outlives us.
     ParamBorrowed,
+    /// Incoming `mut str` param (explicit mode): an exclusive mutable
+    /// borrow of a caller buffer, held for the whole body in the first
+    /// batch.
+    ParamMutBorrowed,
     /// Move-in `move Str` param: this frame owns it and must clean it up.
     ParamOwned,
-    /// Active read-only views over an owned slot; the base says where the
+    /// A static literal: immortal read-only storage, no cleanup risk.
+    StaticLit,
+    /// Active read-only views over a readable slot; the base says where the
     /// slot returns to when the last view ends.
     Viewed(u32, ViewBase),
     /// Active exclusive mut borrow; the base says where it returns to.
@@ -38,7 +45,9 @@ enum MutBase {
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum ViewBase {
     Local,
+    ParamBorrow,
     ParamOwned,
+    StaticLit,
 }
 
 /// Modeled resource operations (slot indices are abstract places).
@@ -51,8 +60,13 @@ pub enum Op {
     Make(usize),
     /// Register the slot as a borrowed-in `str` param (owner: caller).
     ParamBorrowed(usize),
+    /// Register the slot as an incoming `mut str` param: an exclusive
+    /// mutable borrow of a caller buffer.
+    ParamMutBorrowed(usize),
     /// Register the slot as a move-in `move Str` param (owner: this frame).
     ParamOwned(usize),
+    /// Register the slot as a static literal (immortal read-only storage).
+    StaticLiteral(usize),
     View(usize),
     EndView(usize),
     Mut(usize),
@@ -62,9 +76,9 @@ pub enum Op {
     Clone(usize),
     /// `return <view of a locally owned slot>` — always an escape.
     ReturnViewLocal(usize),
-    /// `return <view claimed to be a param>` — legal ONLY for a live
-    /// borrowed-in param; freed locals, moved-out slots and move-in owned
-    /// params all reject.
+    /// `return <view claimed to be a param>` — legal for a live borrowed-in
+    /// param OR a static literal (D-03: 借自参数或常驻字面量); freed locals,
+    /// moved-out slots and move-in owned params all reject.
     ReturnViewParam(usize),
     /// Store a VIEW of the slot into a record field — the first batch
     /// forbids borrowed fields (`verify.field-borrow`).
@@ -102,7 +116,9 @@ fn op_slot(op: Op) -> usize {
     match op {
         Op::Make(s)
         | Op::ParamBorrowed(s)
+        | Op::ParamMutBorrowed(s)
         | Op::ParamOwned(s)
+        | Op::StaticLiteral(s)
         | Op::View(s)
         | Op::EndView(s)
         | Op::Mut(s)
@@ -170,8 +186,16 @@ pub fn run_script(ops: &[Op]) -> RuleOutcome {
                 SlotState::Dead | SlotState::MovedOut => slots[s] = SlotState::ParamBorrowed,
                 _ => reject!(n, "verify.ownership-required"),
             },
+            Op::ParamMutBorrowed(s) => match st {
+                SlotState::Dead | SlotState::MovedOut => slots[s] = SlotState::ParamMutBorrowed,
+                _ => reject!(n, "verify.ownership-required"),
+            },
             Op::ParamOwned(s) => match st {
                 SlotState::Dead | SlotState::MovedOut => slots[s] = SlotState::ParamOwned,
+                _ => reject!(n, "verify.ownership-required"),
+            },
+            Op::StaticLiteral(s) => match st {
+                SlotState::Dead | SlotState::MovedOut => slots[s] = SlotState::StaticLit,
                 _ => reject!(n, "verify.ownership-required"),
             },
             Op::View(s) => match st {
@@ -188,16 +212,28 @@ pub fn run_script(ops: &[Op]) -> RuleOutcome {
                     slots[s] = SlotState::Viewed(1, ViewBase::ParamOwned);
                     dispatch!("borrow_read");
                 }
-                // a view of an already-borrowed param stays a plain read
-                SlotState::ParamBorrowed => dispatch!("borrow_read"),
+                // a view of an incoming borrowed param is a region over a
+                // caller-owned buffer (r2: trackable, ends back at the param)
+                SlotState::ParamBorrowed => {
+                    slots[s] = SlotState::Viewed(1, ViewBase::ParamBorrow);
+                    dispatch!("borrow_read");
+                }
+                SlotState::StaticLit => {
+                    slots[s] = SlotState::Viewed(1, ViewBase::StaticLit);
+                    dispatch!("borrow_read");
+                }
                 SlotState::Dead => reject!(n, "verify.use-after-free"),
                 SlotState::MovedOut => reject!(n, "verify.use-after-move"),
-                SlotState::MutBorrowed(_) => reject!(n, "verify.mut-conflict"),
+                SlotState::MutBorrowed(_) | SlotState::ParamMutBorrowed => {
+                    reject!(n, "verify.mut-conflict")
+                }
             },
             Op::EndView(s) => match slots[s] {
-                // the last view ending returns the slot to its owner kind
+                // the last view ending returns the slot to its source state
                 SlotState::Viewed(1, ViewBase::Local) => slots[s] = SlotState::LocalOwned,
+                SlotState::Viewed(1, ViewBase::ParamBorrow) => slots[s] = SlotState::ParamBorrowed,
                 SlotState::Viewed(1, ViewBase::ParamOwned) => slots[s] = SlotState::ParamOwned,
+                SlotState::Viewed(1, ViewBase::StaticLit) => slots[s] = SlotState::StaticLit,
                 SlotState::Viewed(k, base) if k > 1 => slots[s] = SlotState::Viewed(k - 1, base),
                 // model construction error in the test, not a language rule
                 _ => panic!("EndView without an active view"),
@@ -211,24 +247,35 @@ pub fn run_script(ops: &[Op]) -> RuleOutcome {
                     slots[s] = SlotState::MutBorrowed(MutBase::ParamOwned);
                     dispatch!("rec_mut");
                 }
-                // explicit `mut str` params are a declared legal form in
-                // D-03 but are NOT modeled here; the modeled surface stays
-                // sound by rejecting (documented model gap, not a rule).
+                // mutating THROUGH an incoming `mut str` param is the normal
+                // use of that exclusive borrow (r2: modeled; the region is
+                // held for the whole body in the first batch)
+                SlotState::ParamMutBorrowed => dispatch!("rec_mut"),
                 SlotState::Dead => reject!(n, "verify.use-after-free"),
                 SlotState::MovedOut => reject!(n, "verify.use-after-move"),
+                // readonly borrowed params and immortal literals are not
+                // mutable sources
                 _ => reject!(n, "verify.mut-conflict"),
             },
             Op::EndMut(s) => match slots[s] {
                 SlotState::MutBorrowed(MutBase::Local) => slots[s] = SlotState::LocalOwned,
                 SlotState::MutBorrowed(MutBase::ParamOwned) => slots[s] = SlotState::ParamOwned,
-                _ => panic!("EndMut without an active mut borrow"),
+                // the incoming `mut str` region spans the whole body; there
+                // is no mid-body close form in the first batch — a script
+                // that tries one is a test construction error
+                _ => panic!("EndMut without an active local mut borrow"),
             },
             Op::MoveOut(s) => match st {
                 SlotState::LocalOwned | SlotState::ParamOwned => slots[s] = SlotState::MovedOut,
                 SlotState::Dead => reject!(n, "verify.use-after-free"),
                 SlotState::MovedOut => reject!(n, "verify.double-move"),
-                SlotState::Viewed(_, _) | SlotState::MutBorrowed(_) | SlotState::ParamBorrowed => {
+                SlotState::Viewed(_, _) | SlotState::MutBorrowed(_) => {
                     reject!(n, "verify.mut-conflict")
+                }
+                // borrowed params, incoming mut borrows and immortal
+                // literals are not ownable sources (promotion is a copy)
+                SlotState::ParamBorrowed | SlotState::ParamMutBorrowed | SlotState::StaticLit => {
+                    reject!(n, "verify.ownership-required")
                 }
             },
             Op::Free(s) => match st {
@@ -236,8 +283,11 @@ pub fn run_script(ops: &[Op]) -> RuleOutcome {
                     slots[s] = SlotState::Dead;
                     dispatch!("own_free");
                 }
-                // freeing a borrowed view param requires ownership
-                SlotState::ParamBorrowed => reject!(n, "verify.ownership-required"),
+                // freeing borrowed params, incoming mut borrows or
+                // immortal literals requires ownership
+                SlotState::ParamBorrowed | SlotState::ParamMutBorrowed | SlotState::StaticLit => {
+                    reject!(n, "verify.ownership-required")
+                }
                 SlotState::Dead => reject!(n, "verify.use-after-free"),
                 SlotState::MovedOut => reject!(n, "verify.use-after-move"),
                 SlotState::Viewed(_, _) | SlotState::MutBorrowed(_) => {
@@ -248,17 +298,26 @@ pub fn run_script(ops: &[Op]) -> RuleOutcome {
                 require_live!();
                 dispatch!("own_clone");
             }
-            Op::ReturnViewLocal(_) => {
-                reject!(n, "verify.borrow-escape");
-            }
+            Op::ReturnViewLocal(_) => match st {
+                SlotState::Dead => reject!(n, "verify.use-after-free"),
+                SlotState::MovedOut => reject!(n, "verify.use-after-move"),
+                _ => reject!(n, "verify.borrow-escape"),
+            },
             Op::ReturnViewParam(_) => match st {
                 // the owner is the caller's borrowed param: outlives us
                 SlotState::ParamBorrowed => dispatch!("borrow_return"),
+                // D-03: a view of a static literal may also be returned —
+                // immortal storage, no cleanup boundary (r2 restoration)
+                SlotState::StaticLit => dispatch!("borrow_return"),
+                // views over those two bases are equally returnable
+                SlotState::Viewed(_, ViewBase::ParamBorrow)
+                | SlotState::Viewed(_, ViewBase::StaticLit) => dispatch!("borrow_return"),
                 // freed local passed off as a "param" view (r1 counterexample)
                 SlotState::Dead => reject!(n, "verify.use-after-free"),
                 SlotState::MovedOut => reject!(n, "verify.use-after-move"),
-                // local owned, or a move-in param whose cleanup boundary is
-                // this very frame: the view would escape its owner
+                // local owned, a view over a local, an incoming mut borrow
+                // (no first-batch reborrow downgrade), or a move-in param
+                // whose cleanup boundary is this very frame
                 _ => reject!(n, "verify.borrow-escape"),
             },
             Op::StoreFieldView(_) => {
@@ -285,7 +344,12 @@ pub fn run_script(ops: &[Op]) -> RuleOutcome {
                 }
                 SlotState::Dead => reject!(n, "verify.use-after-free"),
                 SlotState::MovedOut => reject!(n, "verify.double-move"),
-                _ => reject!(n, "verify.mut-conflict"),
+                SlotState::Viewed(_, _) | SlotState::MutBorrowed(_) => {
+                    reject!(n, "verify.mut-conflict")
+                }
+                SlotState::ParamBorrowed | SlotState::ParamMutBorrowed | SlotState::StaticLit => {
+                    reject!(n, "verify.ownership-required")
+                }
             },
         }
     }

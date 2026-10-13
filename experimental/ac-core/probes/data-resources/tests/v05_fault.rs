@@ -331,3 +331,91 @@ fn v05_13_ap3_ap4_fault_with_live_owner() {
     probe::assert_pass(&cat, &["CONCAT a=2 b=2"]);
     assert_eq!(probe::summary_of(&cat), (2, 1, 1, 0, 0, 16));
 }
+
+/// V05-14 (r2 P774-R2-03): the FIRST ledger allocation fails — the user
+/// request rolls back cleanly; after clearing the knob the same request
+/// succeeds (metadata failures are not user-allocation failures to keep).
+#[test]
+fn v05_14_first_ledger_alloc_fails_then_recovers() {
+    let out = probe::run_probe("v05-14", |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let one = probe::const_i32(fb, 1);
+            probe::call_shim(fb, fx, "p774_fail_ledger_nth", &[one]);
+            let seed = probe::const_i32(fb, 7);
+            let len = probe::const_i32(fb, 16);
+            let p1 = probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0);
+            let v1 = probe::expect_null(fb, p1);
+            let c1 = probe::load_i32(fb, outp, 0);
+            let v2 = probe::expect_eq_i32(fb, c1, probe::status::ERR_ENV_OOM);
+            // clear the knob: the same request must now succeed
+            let zero = probe::const_i32(fb, 0);
+            probe::call_shim(fb, fx, "p774_fail_ledger_nth", &[zero]);
+            let p2 = probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0);
+            let v3 = probe::expect_non_null(fb, p2);
+            probe::call_shim(fb, fx, "p774_own_free", &[p2]);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            let v = probe::acc(fb, v1, v2);
+            let v = probe::acc(fb, v, v3);
+            probe::acc(fb, v, inv)
+        }));
+    });
+    probe::assert_pass(&out, &["OWN-MAKE seed=7 len=16"]);
+    // 2 user attempts (1 rolled back), 1 successful alloc, 1 free
+    assert_eq!(probe::summary_of(&out), (2, 1, 1, 0, 0, 16));
+    assert_eq!(probe::freestat_of(&out), (1, 1, 0));
+}
+
+/// V05-15 (r2 P774-R2-03): ledger GROWTH fails while 16 owners are live —
+/// the 17th request rolls back; existing owners stay intact and freeable;
+/// after clearing the knob, growth succeeds and everything balances.
+#[test]
+fn v05_15_ledger_growth_fails_with_live_owners() {
+    let out = probe::run_probe("v05-15", |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let one = probe::const_i32(fb, 1);
+            // ledger attempt #1 = initial table (insert 1); attempt #2 =
+            // growth (insert 17). Fail the growth.
+            let two = probe::const_i32(fb, 2);
+            let _ = one;
+            probe::call_shim(fb, fx, "p774_fail_ledger_nth", &[two]);
+            let seed = probe::const_i32(fb, 7);
+            let len = probe::const_i32(fb, 1);
+            let mut owners = Vec::new();
+            for _ in 0..16 {
+                owners
+                    .push(probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0));
+            }
+            // 17th insertion triggers the (failing) growth; user buffer rolls back
+            let p17 = probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0);
+            let v1 = probe::expect_null(fb, p17);
+            let c1 = probe::load_i32(fb, outp, 0);
+            let v2 = probe::expect_eq_i32(fb, c1, probe::status::ERR_ENV_OOM);
+            // existing owners stay intact: free one
+            probe::call_shim(fb, fx, "p774_own_free", &[owners.remove(0)]);
+            // clear the knob: growth now succeeds
+            let zero = probe::const_i32(fb, 0);
+            probe::call_shim(fb, fx, "p774_fail_ledger_nth", &[zero]);
+            let seed2 = probe::const_i32(fb, 7);
+            let one2 = probe::const_i32(fb, 1);
+            let p18 = probe::call_shim(fb, fx, "p774_own_make", &[seed2, one2, outp]).remove(0);
+            let v3 = probe::expect_non_null(fb, p18);
+            // release everything
+            for p in owners.into_iter() {
+                probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            }
+            probe::call_shim(fb, fx, "p774_own_free", &[p18]);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            let v = probe::acc(fb, v1, v2);
+            let v = probe::acc(fb, v, v3);
+            probe::acc(fb, v, inv)
+        }));
+    });
+    probe::assert_pass(&out, &[]);
+    // 18 user attempts (16 ok + 1 rolled-back + 1 retry), 17 allocs, 17 frees
+    assert_eq!(probe::summary_of(&out), (18, 17, 17, 0, 0, 16));
+    assert_eq!(probe::freestat_of(&out), (17, 17, 0));
+}

@@ -406,3 +406,168 @@ fn v04_r2_checked_variant_detects_stale() {
     });
     probe::assert_pass(&pe, &["H-ALLOC h=1", "H-DROP h=1 rc=0"]);
 }
+
+// ---- review r2 (P774-R2-01/02): source x mode matrix, static literal,
+// incoming mut borrow ----
+
+/// The r2 reviewer's control: a view region over a borrowed param ends and
+/// the param remains returnable — no panic, no invalidation.
+#[test]
+fn v04_r2_borrowed_param_view_region_ends() {
+    let out = rules::run_script(&[
+        rules::Op::ParamBorrowed(0),
+        rules::Op::View(0),
+        rules::Op::EndView(0),
+        rules::Op::ReturnViewParam(0),
+    ]);
+    assert!(out.rejection.is_none(), "got {:?}", out.rejection);
+    assert_eq!(out.ledger.get("borrow_read"), Some(&1));
+    assert_eq!(out.ledger.get("borrow_return"), Some(&1));
+}
+
+/// Representative source x mode matrix (r2): every legal combination runs,
+/// every illegal one rejects with the frozen code — no legal input panics.
+#[test]
+fn v04_r2_source_mode_matrix() {
+    use rules::Op;
+    #[rustfmt::skip]
+    let legal: &[&[Op]] = &[
+        // local owned: view/end, mut/end, move, free, clone, store clone
+        &[Op::Make(0), Op::View(0), Op::EndView(0), Op::Mut(0), Op::EndMut(0), Op::Clone(0), Op::MoveOut(0)],
+        // borrowed param: view/end, return, clone
+        &[Op::ParamBorrowed(0), Op::View(0), Op::EndView(0), Op::Clone(0), Op::ReturnViewParam(0)],
+        // incoming mut param: mutate through it, then the frame ends
+        &[Op::ParamMutBorrowed(0), Op::Mut(0)],
+        // move-in param: view/end, mutate, free (callee cleanup), move out
+        &[Op::ParamOwned(0), Op::View(0), Op::EndView(0), Op::Mut(0), Op::EndMut(0), Op::MoveOut(0)],
+        &[Op::ParamOwned(0), Op::Free(0)],
+        // static literal: view/end, return the view
+        &[Op::StaticLiteral(0), Op::View(0), Op::EndView(0), Op::ReturnViewParam(0)],
+        // explicit move call transfers; implicit rejects
+        &[Op::Make(0), Op::CallMoveParamExplicit(0)],
+        &[Op::ParamBorrowed(0), Op::StoreOwnedClone(0)],
+    ];
+    for (i, script) in legal.iter().enumerate() {
+        let out = rules::run_script(script);
+        assert!(
+            out.rejection.is_none(),
+            "legal[{i}] rejected: {:?}",
+            out.rejection
+        );
+    }
+    #[rustfmt::skip]
+    let illegal: &[(&[Op], &str)] = &[
+        // readonly borrowed param is not a mutable source
+        (&[Op::ParamBorrowed(0), Op::Mut(0)], "verify.mut-conflict"),
+        // static literal is not mutable / not ownable / not freeable
+        (&[Op::StaticLiteral(0), Op::Mut(0)], "verify.mut-conflict"),
+        (&[Op::StaticLiteral(0), Op::MoveOut(0)], "verify.ownership-required"),
+        (&[Op::StaticLiteral(0), Op::Free(0)], "verify.ownership-required"),
+        (&[Op::StaticLiteral(0), Op::CallMoveParamExplicit(0)], "verify.ownership-required"),
+        // borrowed / mut-borrowed params are not ownable or freeable
+        (&[Op::ParamBorrowed(0), Op::Free(0)], "verify.ownership-required"),
+        (&[Op::ParamBorrowed(0), Op::MoveOut(0)], "verify.ownership-required"),
+        (&[Op::ParamMutBorrowed(0), Op::Free(0)], "verify.ownership-required"),
+        (&[Op::ParamMutBorrowed(0), Op::MoveOut(0)], "verify.ownership-required"),
+        // readonly view during an incoming exclusive mut borrow
+        (&[Op::ParamMutBorrowed(0), Op::View(0)], "verify.mut-conflict"),
+        // returning a view of an incoming mut borrow (no first-batch
+        // reborrow downgrade) or of a move-in param escapes
+        (&[Op::ParamMutBorrowed(0), Op::ReturnViewParam(0)], "verify.borrow-escape"),
+        (&[Op::ParamOwned(0), Op::ReturnViewParam(0)], "verify.borrow-escape"),
+        // views over locals still cannot escape
+        (&[Op::Make(0), Op::View(0), Op::ReturnViewParam(0)], "verify.borrow-escape"),
+        (&[Op::Make(0), Op::ReturnViewLocal(0)], "verify.borrow-escape"),
+        // dead / moved sources reject regardless of use kind
+        (&[Op::Make(0), Op::Free(0), Op::ReturnViewLocal(0)], "verify.use-after-free"),
+        (&[Op::Make(0), Op::MoveOut(0), Op::Clone(0)], "verify.use-after-move"),
+    ];
+    for (i, (script, code)) in illegal.iter().enumerate() {
+        let out = rules::run_script(script);
+        let r = out
+            .rejection
+            .unwrap_or_else(|| panic!("illegal[{i}] accepted"));
+        assert_eq!(r.code, *code, "illegal[{i}] code mismatch");
+    }
+}
+
+/// Static literal return as a REAL PE: the literal lives in rodata; a view
+/// of it crosses the frame and the caller reads through it (the m4c shape,
+/// restated for the restored D-03 source).
+#[test]
+fn v04_r2_static_literal_return_pe() {
+    let pe = probe::run_probe("v04-r2-lit", |cx| {
+        cx.data("lit", b"Auto", false); // read-only data section = static literal
+        cx.data("cells", &[0; 16], true);
+        cx.func(
+            "give_view",
+            &[
+                cranelift_codegen::ir::types::I64,
+                cranelift_codegen::ir::types::I32,
+                cranelift_codegen::ir::types::I64,
+            ],
+            Box::new(|fb, _fx, params| {
+                probe::store_i64(fb, params[2], 0, params[0]);
+                probe::store_i32(fb, params[2], 8, params[1]);
+                probe::const_i32(fb, 0)
+            }),
+        );
+        cx.set_main(Box::new(|fb, fx| {
+            let lit = probe::data_addr(fb, fx, "lit");
+            let cells = probe::data_addr(fb, fx, "cells");
+            let four = probe::const_i32(fb, 4);
+            let r = probe::call_shim(fb, fx, "give_view", &[lit, four, cells]).remove(0);
+            let vr = probe::expect_eq_i32(fb, r, 0);
+            let ptr = probe::load_i64(fb, cells, 0);
+            let len = probe::load_i32(fb, cells, 8);
+            let zero = probe::const_i32(fb, 0);
+            let byte = probe::call_shim(fb, fx, "p774_borrow_read", &[ptr, len, zero]).remove(0);
+            let vb = probe::expect_eq_i32(fb, byte, 65);
+            probe::acc(fb, vr, vb)
+        }));
+    });
+    probe::assert_pass(&pe, &[]);
+}
+
+/// Incoming `mut str` param as a REAL PE: the callee mutates EXCLUSIVELY
+/// through its mut-borrowed record param; the caller observes before/after.
+#[test]
+fn v04_r2_incoming_mut_param_pe() {
+    let pe = probe::run_probe("v04-r2-mutparam", |cx| {
+        cx.data(
+            "rec",
+            &{
+                let mut b = Vec::new();
+                b.extend_from_slice(&1i32.to_le_bytes());
+                b.extend_from_slice(&5i32.to_le_bytes());
+                b.extend_from_slice(&233i32.to_le_bytes());
+                b
+            },
+            true,
+        );
+        cx.func(
+            "mut_through_param",
+            &[cranelift_codegen::ir::types::I64],
+            Box::new(|fb, fx, params| {
+                let ten = probe::const_i32(fb, 10);
+                probe::call_shim(fb, fx, "p774_rec_mut", &[params[0], ten]);
+                probe::const_i32(fb, 0)
+            }),
+        );
+        cx.set_main(Box::new(|fb, fx| {
+            let p = probe::data_addr(fb, fx, "rec");
+            let before = probe::call_shim(fb, fx, "p774_rec_view", &[p]).remove(0);
+            let vb = probe::expect_eq_i32(fb, before, 710);
+            let r = probe::call_shim(fb, fx, "mut_through_param", &[p]).remove(0);
+            let vr = probe::expect_eq_i32(fb, r, 0);
+            let after = probe::call_shim(fb, fx, "p774_rec_view", &[p]).remove(0);
+            let va = probe::expect_eq_i32(fb, after, 729);
+            let v1 = probe::acc(fb, vb, vr);
+            probe::acc(fb, v1, va)
+        }));
+    });
+    probe::assert_pass(
+        &pe,
+        &["REC-VIEW flag=1 count=5 tag=233", "REC-MUT addend=10"],
+    );
+}

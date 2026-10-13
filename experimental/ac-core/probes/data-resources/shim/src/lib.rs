@@ -70,18 +70,20 @@ pub const ERR_INDEX_OOB: i32 = -11;
 // ---------------------------------------------------------------------------
 
 struct Counters {
-    attempts: u32,       // HeapAlloc invocations (after len/budget checks)
-    allocs: u32,         // successful allocations
-    frees: u32,          // successful releases (ledger-validated)
-    live: u32,           // allocs - frees
-    live_bytes: u32,     // declared user bytes currently live (ledger-backed)
-    peak: u32,           // max live_bytes at alloc/free boundaries
-    budget: Option<u32>, // None = unlimited; Some(0) = a real ZERO-byte budget
-    fail_nth: u32,       // 0 = off; nth allocator invocation fails (injected)
-    seq: u32,            // allocator invocation ordinal
-    free_attempts: u32,  // free calls on non-null pointers
-    invalid_frees: u32,  // double frees / foreign pointers (ledger misses)
-    next_id: u32,        // monotonic resource id for the FREE trace channel
+    attempts: u32,        // HeapAlloc invocations (after len/budget checks)
+    allocs: u32,          // successful allocations
+    frees: u32,           // successful releases (ledger-validated)
+    live: u32,            // allocs - frees
+    live_bytes: u32,      // declared user bytes currently live (ledger-backed)
+    peak: u32,            // max live_bytes at alloc/free boundaries
+    budget: Option<u32>,  // None = unlimited; Some(0) = a real ZERO-byte budget
+    fail_nth: u32,        // 0 = off; nth allocator invocation fails (injected)
+    seq: u32,             // allocator invocation ordinal
+    free_attempts: u32,   // free calls on non-null pointers
+    invalid_frees: u32,   // double frees / foreign pointers (ledger misses)
+    next_id: u32,         // monotonic resource id for the FREE trace channel
+    fail_ledger_nth: u32, // 0 = off; nth LEDGER allocation attempt fails (r2)
+    ledger_seq: u32,      // ledger allocation invocation ordinal (metadata)
 }
 
 static mut C: Counters = Counters {
@@ -97,6 +99,8 @@ static mut C: Counters = Counters {
     free_attempts: 0,
     invalid_frees: 0,
     next_id: 0,
+    fail_ledger_nth: 0,
+    ledger_seq: 0,
 };
 
 fn c() -> &'static mut Counters {
@@ -147,21 +151,39 @@ fn led_state() -> (*mut LedgerEntry, usize, usize) {
     }
 }
 
+// Counting boundary (r2 P774-R2-03): ledger metadata allocations are
+// INTERNAL bookkeeping — they are NOT counted in attempts/allocs/frees,
+// which count USER resource requests only. Their failures have a dedicated
+// injection knob (`p774_fail_ledger_nth`) and surface as env-oom for the
+// user request after a full rollback.
 fn ledger_insert(ptr: *mut u8, len: u32, id: u32) -> bool {
     unsafe {
         let (base, cap, len_n) = led_state();
         if len_n == cap {
             let new_cap = if cap == 0 { 16 } else { cap * 2 };
             let nbytes = new_cap * core::mem::size_of::<LedgerEntry>();
+            let c0 = c();
+            c0.ledger_seq += 1;
+            if c0.fail_ledger_nth != 0 && c0.ledger_seq == c0.fail_ledger_nth {
+                return false; // injected metadata failure (first or growth)
+            }
             let fresh = HeapAlloc(process_heap(), 0, nbytes) as *mut LedgerEntry;
             if fresh.is_null() {
-                return false; // ledger growth failed: treat as alloc failure
+                return false; // real metadata allocation failure
             }
             for i in 0..len_n {
                 write_volatile(fresh.add(i) as *mut LedgerEntry, read_volatile(base.add(i)));
             }
             if !base.is_null() {
-                HeapFree(process_heap(), 0, base as *mut core::ffi::c_void);
+                let freed = HeapFree(process_heap(), 0, base as *mut core::ffi::c_void);
+                if freed == 0 {
+                    // the old table release failed: surface through the
+                    // invalid-release counter (wired; not injectable)
+                    c().invalid_frees += 1;
+                    trace_line(|l| {
+                        l.s("FREE-INVALID");
+                    });
+                }
             }
             core::ptr::addr_of_mut!(LEDGER).write(fresh);
             core::ptr::addr_of_mut!(LED_CAP).write(new_cap);
@@ -221,8 +243,15 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
     c.next_id += 1;
     let id = c.next_id;
     if !ledger_insert(p, len, id) {
-        // ledger growth failed: roll back so accounting stays complete
-        unsafe { HeapFree(process_heap(), 0, p as *mut core::ffi::c_void) };
+        // ledger failure: roll the user buffer back so accounting stays
+        // complete; a refused rollback surfaces through invalid_frees
+        let freed = unsafe { HeapFree(process_heap(), 0, p as *mut core::ffi::c_void) };
+        if freed == 0 {
+            c.invalid_frees += 1;
+            trace_line(|l| {
+                l.s("FREE-INVALID");
+            });
+        }
         return Err(ERR_ENV_OOM);
     }
     c.allocs += 1;
@@ -994,6 +1023,13 @@ pub extern "system" fn p774_set_budget(bytes: i64) {
 #[no_mangle]
 pub extern "system" fn p774_fail_nth_alloc(n: i32) {
     c().fail_nth = if n < 0 { 0 } else { n as u32 };
+}
+
+#[no_mangle]
+pub extern "system" fn p774_fail_ledger_nth(n: i32) {
+    // r2 P774-R2-03: dedicated injection for the LEDGER's own metadata
+    // allocations (first table + growth), independent of user AP-1..4.
+    c().fail_ledger_nth = if n < 0 { 0 } else { n as u32 };
 }
 
 #[no_mangle]

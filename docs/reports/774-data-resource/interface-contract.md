@@ -130,3 +130,20 @@
 参数默认 view（str 与 Str 同）；显式 `mut Str`（排他借用）；显式 `move Str`
 （转移，调用点 `.move`，callee 清理，缺 `.move` → verify.ownership-required）。
 借用参数不可保存/释放/逃逸；`return <view>` 仅借入参数合法。
+
+## 8. r2 复审修订同步（P774-R2-01..04）
+
+- 借用返回合法来源 = 存活借入参数**或静态字面量**（恢复 D-03 原文；§7.4"仅借入
+  参数"作废）。模型来源五类：LocalOwned / ParamBorrowed / ParamMutBorrowed /
+  ParamOwned / StaticLiteral；View/EndView 区域对全部可读来源可追踪，合法输入
+  无 panic（v04_r2_source_mode_matrix 冻结合法/非法矩阵）。
+- 参数显式模式三分适用于 str 与 Str：默认 view；显式 `mut`（借入排他 / 对拥有
+  值排他）；显式 `move Str`（转移+调用点 `.move`）。`mut str` 区域覆盖整个函数体
+  （无中途关闭/降级；返回其视图拒绝 borrow-escape）。
+- 跨行字符串字面量合法（行界原样入值，LF/CRLF 不归一）；`text.literal-newline`
+  作废。转义白名单 `\n \t \r \0 \ \"`（str）+ `\'`（char）+ `\u{hex}`；未知
+  转义 `text.invalid-escape`；取材表见 decisions §3.9。
+- 新增符号：`p774_fail_ledger_nth(i32)`（账本元数据失败注入；元数据分配不计
+  用户三计数）。回滚/旧表释放的 OS 结果已捕获接线。
+- 身份表（§7.2）与源级拼写（§7.3）已在 770/771 r2 同步修订中落地（主检出
+  2026-10-13 书记提交），不再是"下游待办"。

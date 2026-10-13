@@ -91,6 +91,7 @@ const SHIM_SIGS: &[SigSpec] = &[
     ("p774_len_to_i32", &[P], &[I]),
     ("p774_set_budget", &[P], &[]),
     ("p774_fail_nth_alloc", &[I], &[]),
+    ("p774_fail_ledger_nth", &[I], &[]),
     ("p774_shim_error", &[], &[I]),
     ("p774_summary", &[], &[]),
     ("p774_check_invariant", &[], &[I]),

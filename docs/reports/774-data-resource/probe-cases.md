@@ -267,3 +267,16 @@ R2 checked 对照（h_get_checked 对陈旧句柄=-11）。
 
 **V-06 修订**：V06-2 前驱 trace 经文件重定向观察（`HANG-PRE live=1` 在 deadline
 后可读）；分类仍为 Err(Deadline)。
+
+## r2 复审修订增补（P774-R2-01..04）
+
+| Case | 内容 | 期望 |
+|---|---|---|
+| V04-r2a | ParamBorrowed→View→EndView→ReturnViewParam | 合法（无 panic）；ledger borrow_read=1、borrow_return=1 |
+| V04-r2b 来源×模式矩阵 | 8 合法脚本 + 15 非法脚本（冻结码逐格） | 全部按矩阵判定 |
+| V04-r2c | 静态字面量返回 PE（rodata 字面量跨帧 view+调用方读） | exit 0，首字节 65 |
+| V04-r2d | 借入 mut 参数 PE（callee 独占经参改写 record） | 710→729，REC-VIEW/REC-MUT trace |
+| V05-14 | 账本首表注入失败→回滚→清旋钮后成功 | SUMMARY `2 1 1 0 0 16`；FREESTAT `1 1 0` |
+| V05-15 | 16 owner 存活时扩表注入失败→回滚→owner 完好→清旋钮扩表成功→全释放 | SUMMARY `18 17 17 0 0 16`；FREESTAT `17 17 0` |
+
+跨行字面量/静态字面量返回/转义白名单的语义恢复与取材表：decisions §3.9。
