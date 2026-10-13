@@ -961,66 +961,22 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     // Generate api.rs with route handlers. Inline API bodies retain their
     // source-level calls into db.rs; borrow String expressions where the
     // transpiled db signature expects `&str`, just as route-B handlers do.
-    let mut api_rs = generate_api_rs(api_module, db_fns.as_ref(), api_impl_active);
-    let api_rs = qualify_a2r_std(api_rs);
-    // Plan 742: handler bodies calling companion modules (`repository.xxx()`)
-    // need (a) the module in scope and (b) dot-calls lowered to module-path
-    // form (`repository::xxx()` — modules are not values, E0423). `db` is
-    // always present (route B). Detection: `<mod>.<fn>(` call-shaped lines.
+    // Plan 742 R1 (F-742-R1-02): companion dot-call qualification moved INTO
+    // generate_api_rs's per-endpoint body loop — endpoint locals in scope,
+    // string/comment spans masked out, call shape (`mod.fn(`) required. The
+    // previous whole-file text pass rewrote same-spelling business strings
+    // (`"repository.filename"` → `"crate::repository::filename"`) and
+    // template-body `db.lock()` state access it could not distinguish.
     let mut crate_modules: Vec<String> = vec!["db".to_string()];
     for m in &companion_mods {
         crate_modules.push(m.clone());
     }
+    let api_rs = generate_api_rs(api_module, db_fns.as_ref(), api_impl_active, &crate_modules);
+    let api_rs = qualify_a2r_std(api_rs);
+    // Plan 742: borrow fixup AFTER module path qualification — the passes
+    // match `crate::db::` / `crate::<companion>::` markers, which the body
+    // loop emits directly (order dependency unchanged).
     let mut api_rs = api_rs;
-    for m in &crate_modules {
-        let referenced = api_rs.lines().any(|l| {
-            let t = l.trim_start();
-            (t.starts_with(m.as_str()) && t[m.len()..].starts_with('.'))
-                || t.contains(&format!(" {}.", m))
-        });
-        // Dot-call → crate-qualified path-call（含嵌套参数；use 行跳过）。
-        // 借修 pass 的 marker 就是这个 crate:: 前缀形态，顺序依赖见下。
-        let dot_call = format!("{}.", m);
-        let path_call = format!("crate::{}::", m);
-        api_rs = api_rs
-            .lines()
-            .map(|l| {
-                if l.trim_start().starts_with("use crate::") {
-                    return l.to_string();
-                }
-                let mut out = String::with_capacity(l.len());
-                let bytes = l.as_bytes();
-                let mut i = 0;
-                while i < bytes.len() {
-                    if l[i..].starts_with(&dot_call)
-                        && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_')
-                    {
-                        out.push_str(&path_call);
-                        i += dot_call.len();
-                    } else {
-                        let ch = l[i..].chars().next().unwrap_or(' ');
-                        out.push(ch);
-                        i += ch.len_utf8();
-                    }
-                }
-                out
-            })
-            .collect::<Vec<_>>()
-            .join(
-                "
-",
-            );
-        if referenced {
-            api_rs = format!(
-                "use crate::{};
-{}",
-                m, api_rs
-            );
-        }
-    }
-    // Plan 742: borrow fixup AFTER the dot→path rewrite — the passes match
-    // `crate::db::` / `crate::<companion>::` markers, which only exist once
-    // module dot-calls are lowered to path form.
     if let Ok(db_source) = std::fs::read_to_string(src_dir.join("db.rs")) {
         api_rs = borrow_string_db_call_args(&api_rs, &db_source);
     }
@@ -2565,22 +2521,44 @@ async fn file_response_reply_missing(message: &str) -> axum::response::Response 
         .unwrap()
 }"#;
 
-fn wrap_inline_return(line: &str) -> String {
-    wrap_inline_return_mode(line, false)
+/// Plan 742 R1 (F-742-R1-03): how a transpiled body's `return` line must be
+/// wrapped to satisfy THIS handler's signature. Every needs_result endpoint
+/// (path param or DELETE/PUT) has a `Result<_, StatusCode>` signature — for
+/// `?T` returns Some/None map to Ok/Err(NOT_FOUND), plain values wrap
+/// Ok(JsonResponse(x)), and void bodies owe a status value.
+#[derive(Clone, Copy, PartialEq)]
+enum InlineRetWrap {
+    /// `-> StatusCode` (void endpoint, no path) — bare `return;` → OK status.
+    VoidStatus,
+    /// `-> Result<StatusCode, StatusCode>` (void endpoint with path).
+    VoidResult,
+    /// `-> JsonResponse<T>` — `return x;` wraps JsonResponse(x).
+    Plain,
+    /// `-> Result<JsonResponse<T>, StatusCode>` — `return x;` wraps
+    /// Ok(JsonResponse(x)).
+    Result,
+    /// `?T` on a Result signature — Some(x) → Ok(JsonResponse(x)),
+    /// None/bare-return → Err(StatusCode::NOT_FOUND), plain → Ok(Json(x)).
+    ResultOption,
 }
 
-/// Plan 742 (D5): `option_result` mode — for `?T`-return endpoints WITH path
-/// params, the handler signature is `Result<Json<T>, StatusCode>` (needs_result
-/// 404 semantics). Body `return Some(x)` → `Ok(JsonResponse(x))` and
-/// `return None` → `Err(StatusCode::NOT_FOUND)`; plain `return x` →
-/// `Ok(JsonResponse(x))`.
-fn wrap_inline_return_mode(line: &str, option_result: bool) -> String {
+fn wrap_inline_return(line: &str, mode: InlineRetWrap) -> String {
     let trimmed = line.trim_start();
+    let indent = &line[..line.len() - trimmed.len()];
     // Plan 742 (D5): the transpiler lowers `return None` to a bare `return;`
-    // before this pass — in option_result mode that means NOT_FOUND.
-    if option_result && trimmed == "return;" {
-        let indent = &line[..line.len() - trimmed.len()];
-        return format!("{}return Err(StatusCode::NOT_FOUND);", indent);
+    // before this pass — in ResultOption mode that means NOT_FOUND, and in
+    // void modes it completes the status value.
+    if trimmed == "return;" || trimmed == "return" {
+        return match mode {
+            InlineRetWrap::ResultOption => {
+                format!("{}return Err(StatusCode::NOT_FOUND);", indent)
+            }
+            InlineRetWrap::VoidResult => format!("{}return Ok(StatusCode::OK);", indent),
+            InlineRetWrap::VoidStatus => format!("{}return StatusCode::OK;", indent),
+            // Non-void signatures never bare-return; leave the line so the
+            // artifact fails visibly at build instead of silently lying.
+            InlineRetWrap::Plain | InlineRetWrap::Result => line.to_string(),
+        };
     }
     let Some(value) = trimmed.strip_prefix("return ") else {
         return line.to_string();
@@ -2592,26 +2570,32 @@ fn wrap_inline_return_mode(line: &str, option_result: bool) -> String {
     if value.is_empty() {
         return line.to_string();
     }
-    if !option_result {
-        if value.starts_with("JsonResponse(") {
-            return line.to_string();
+    match mode {
+        InlineRetWrap::VoidStatus | InlineRetWrap::VoidResult => line.to_string(),
+        InlineRetWrap::Plain => {
+            if value.starts_with("JsonResponse(") {
+                line.to_string()
+            } else {
+                format!("{}return JsonResponse({});", indent, value)
+            }
         }
-        let indent = &line[..line.len() - trimmed.len()];
-        return format!("{}return JsonResponse({});", indent, value);
-    }
-    let indent = &line[..line.len() - trimmed.len()];
-    if value == "None" {
-        return format!("{}return Err(StatusCode::NOT_FOUND);", indent);
-    }
-    if let Some(inner) = value.strip_prefix("Some(") {
-        if let Some(stripped) = inner.strip_suffix(')') {
-            return format!("{}return Ok(JsonResponse({}));", indent, stripped);
+        InlineRetWrap::Result | InlineRetWrap::ResultOption => {
+            if let Some(inner) = value.strip_prefix("Some(") {
+                if let Some(stripped) = inner.strip_suffix(')') {
+                    return format!("{}return Ok(JsonResponse({}));", indent, stripped);
+                }
+            }
+            if value == "None" {
+                return format!("{}return Err(StatusCode::NOT_FOUND);", indent);
+            }
+            if let Some(inner) = value.strip_prefix("JsonResponse(") {
+                if let Some(stripped) = inner.strip_suffix(')') {
+                    return format!("{}return Ok(JsonResponse({}));", indent, stripped);
+                }
+            }
+            format!("{}return Ok(JsonResponse({}));", indent, value)
         }
     }
-    if value.starts_with("JsonResponse(") {
-        return format!("{}return Ok({});", indent, value);
-    }
-    format!("{}return Ok(JsonResponse({}));", indent, value)
 }
 
 fn matching_paren(source: &str, open: usize) -> Option<usize> {
@@ -2719,6 +2703,114 @@ fn db_string_param_signatures(db_source: &str) -> std::collections::HashMap<Stri
     signatures
 }
 
+/// Plan 742 R1 (F-742-R1-02): lower `mod.fn(` dot-calls in ONE transpiled
+/// body line to `crate::mod::fn(`. Qualification runs per endpoint body with
+/// that body's local names in hand (a local named like a module shadows it),
+/// and only call-shaped occurrences in code regions qualify — same-spelling
+/// business strings (`"repository.filename"`), comment text and field/method
+/// positions (`x.db.get()`) survive verbatim. `referenced` accumulates the
+/// modules needing a `use crate::<mod>;` header import.
+fn qualify_module_dot_calls(
+    line: &str,
+    modules: &[String],
+    locals: &std::collections::HashSet<String>,
+    referenced: &mut Vec<String>,
+) -> String {
+    if !modules
+        .iter()
+        .filter(|m| !locals.contains(*m))
+        .any(|m| line.contains(&format!("{}.", m)))
+    {
+        return line.to_string();
+    }
+    let mask = auto_lang::trans::rust::RustTrans::code_region_mask(line);
+    let bytes = line.as_bytes();
+    let mut out = String::with_capacity(line.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let mut matched = false;
+        for m in modules {
+            if locals.contains(m) {
+                continue;
+            }
+            let dot_call = format!("{}.", m);
+            if mask[i]
+                && line[i..].starts_with(&dot_call)
+                && (i == 0
+                    || (!bytes[i - 1].is_ascii_alphanumeric()
+                        && bytes[i - 1] != b'_'
+                        && bytes[i - 1] != b'.'))
+                && module_call_shape_at(line, &mask, i + dot_call.len())
+            {
+                out.push_str(&format!("crate::{}::", m));
+                if !referenced.iter().any(|r| r == m) {
+                    referenced.push(m.clone());
+                }
+                i += dot_call.len();
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            let ch = line[i..].chars().next().unwrap_or(' ');
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    out
+}
+
+/// `mod.` at `start` is a real module call only when an identifier followed
+/// by `(` appears in code regions (whitespace tolerated) —
+/// `repository.list_notes(` qualifies; the string `"repository.filename"`
+/// and `x.repository.field` never do.
+fn module_call_shape_at(line: &str, mask: &[bool], start: usize) -> bool {
+    let bytes = line.as_bytes();
+    let mut i = start;
+    let ident_start = i;
+    while i < bytes.len() && mask[i] && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    if i == ident_start {
+        return false;
+    }
+    while i < bytes.len() && mask[i] && (bytes[i] == b' ' || bytes[i] == 9) {
+        i += 1;
+    }
+    i < bytes.len() && mask[i] && bytes[i] == b'('
+}
+
+/// Plan 742 R1 (F-742-R1-02): local names visible in ONE endpoint's
+/// transpiled body — the .at endpoint params (re-bound via the generated
+/// input/query lets) plus every `let`/`for` binding the emitter produced. A
+/// module name among these shadows module qualification for this body only.
+fn endpoint_body_local_names(
+    endpoint: &ApiEndpoint,
+    stmts: &[String],
+) -> std::collections::HashSet<String> {
+    let mut names: std::collections::HashSet<String> =
+        endpoint.params.iter().map(|p| p.name.clone()).collect();
+    for line in stmts {
+        let t = line.trim_start();
+        let rest = if let Some(r) = t.strip_prefix("let ") {
+            r.strip_prefix("mut ").unwrap_or(r)
+        } else {
+            match t.strip_prefix("for ") {
+                Some(r) => r,
+                None => continue,
+            }
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() {
+            names.insert(name);
+        }
+    }
+    names
+}
+
 fn borrow_string_db_call_args(api_source: &str, db_source: &str) -> String {
     borrow_string_module_call_args(api_source, db_source, "crate::db::")
 }
@@ -2736,60 +2828,6 @@ fn borrow_string_module_call_args(api_source: &str, module_source: &str, marker:
     while let Some(rel) = api_source[cursor..].find(marker) {
         let start = cursor + rel;
         let name_start = start + marker.len();
-        let name_end = name_start
-            + api_source[name_start..]
-                .bytes()
-                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
-                .count();
-        let name = &api_source[name_start..name_end];
-        let Some(expected) = signatures.get(name) else {
-            out.push_str(&api_source[cursor..name_end]);
-            cursor = name_end;
-            continue;
-        };
-        let open = api_source[name_end..]
-            .find('(')
-            .map(|i| name_end + i)
-            .filter(|i| api_source[name_end..*i].trim().is_empty());
-        let Some(open) = open else {
-            out.push_str(&api_source[cursor..name_end]);
-            cursor = name_end;
-            continue;
-        };
-        let Some(close) = matching_paren(api_source, open) else {
-            out.push_str(&api_source[cursor..open + 1]);
-            cursor = open + 1;
-            continue;
-        };
-        let args = split_top_level_args(&api_source[open + 1..close]);
-        out.push_str(&api_source[cursor..open + 1]);
-        for (index, arg) in args.iter().enumerate() {
-            if index > 0 {
-                out.push_str(", ");
-            }
-            if expected.get(index).copied().unwrap_or(false) && !arg.starts_with('&') {
-                out.push('&');
-            }
-            out.push_str(arg);
-        }
-        out.push(')');
-        cursor = close + 1;
-    }
-    out.push_str(&api_source[cursor..]);
-    out
-}
-
-fn borrow_string_db_call_args_old(api_source: &str, db_source: &str) -> String {
-    let signatures = db_string_param_signatures(db_source);
-    if signatures.is_empty() {
-        return api_source.to_string();
-    }
-    const MARKER: &str = "crate::db::";
-    let mut out = String::with_capacity(api_source.len());
-    let mut cursor = 0usize;
-    while let Some(rel) = api_source[cursor..].find(MARKER) {
-        let start = cursor + rel;
-        let name_start = start + MARKER.len();
         let name_end = name_start
             + api_source[name_start..]
                 .bytes()
@@ -3443,6 +3481,7 @@ fn generate_api_rs(
     api_module: &auto_lang::api::ApiModule,
     db_fns: Option<&std::collections::HashSet<String>>,
     api_impl_active: bool,
+    crate_modules: &[String],
 ) -> String {
     let db_active = db_fns.map(|s| !s.is_empty()).unwrap_or(false);
     let mut lines = vec![
@@ -3684,6 +3723,10 @@ fn generate_api_rs(
         .endpoints
         .iter()
         .any(|e| e.return_type.contains("Stream<"));
+
+    // Plan 742 R1 (F-742-R1-02): modules whose dot-calls got qualified in an
+    // a2r inline body — each needs `use crate::<mod>;` in the header.
+    let mut referenced_modules: Vec<String> = Vec::new();
 
     // Generate handler for each endpoint
     for endpoint in &api_module.endpoints {
@@ -4145,19 +4188,61 @@ fn generate_api_rs(
                         // Ok(JsonResponse)/Err(NOT_FOUND) instead of
                         // JsonResponse(Option).
                         let ret_is_option = endpoint.return_type.trim().starts_with('?');
-                        let option_result = ret_nonvoid && ret_is_option && needs_result;
+                        // Plan 742 R1 (F-742-R1-03): EVERY non-void return on a
+                        // needs_result endpoint faces a Result signature, not
+                        // just ?T — plain `return x;` must wrap Ok(JsonResponse(x))
+                        // too. R1 review: update_note -> []NoteDocument emitted a
+                        // bare `return JsonResponse(docs);` against
+                        // `Result<JsonResponse<Vec<NoteDocument>>, StatusCode>`
+                        // (E0308). Void endpoints owe their signature a status
+                        // value even without an explicit tail return.
+                        let wrap_mode = if ret_is_option && needs_result {
+                            InlineRetWrap::ResultOption
+                        } else if needs_result {
+                            if ret_nonvoid {
+                                InlineRetWrap::Result
+                            } else {
+                                InlineRetWrap::VoidResult
+                            }
+                        } else if ret_nonvoid {
+                            InlineRetWrap::Plain
+                        } else {
+                            InlineRetWrap::VoidStatus
+                        };
                         // Plan B1(b): bind the server-injected meta JSON before
                         // the transpiled body (it references `meta` like any param).
                         if has_meta {
                             lines.push("    let meta: String = meta_json(&headers);".to_string());
                         }
                         append_inline_param_bindings(&mut lines, endpoint);
+                        // Plan 742 R1 (F-742-R1-02): qualify companion module
+                        // dot-calls HERE, per body — this endpoint's locals are
+                        // in scope (they shadow module names), string/comment
+                        // spans are masked out, and only call shapes qualify.
+                        let body_locals = endpoint_body_local_names(endpoint, &stmts);
+                        let mut saw_return = false;
                         for source_line in &stmts {
                             let mut line = rewrite_inline_runtime_names(source_line);
-                            if ret_nonvoid {
-                                line = wrap_inline_return_mode(&line, option_result);
+                            line = qualify_module_dot_calls(
+                                &line,
+                                crate_modules,
+                                &body_locals,
+                                &mut referenced_modules,
+                            );
+                            line = wrap_inline_return(&line, wrap_mode);
+                            if line.trim_start().starts_with("return") {
+                                saw_return = true;
                             }
                             lines.push(line);
+                        }
+                        // A void body without an explicit tail return still owes
+                        // the signature its status value.
+                        if !ret_nonvoid && !saw_return {
+                            lines.push(if needs_result {
+                                "    return Ok(StatusCode::OK);".to_string()
+                            } else {
+                                "    return StatusCode::OK;".to_string()
+                            });
                         }
                         lines.push("}".to_string());
                         lines.push("".to_string());
@@ -4499,7 +4584,18 @@ fn generate_api_rs(
         lines.push("".to_string());
     }
 
-    lines.join("\n")
+    // Plan 742 R1 (F-742-R1-02): header imports for modules an a2r body
+    // actually qualified (prepended, mirroring the retired whole-file pass).
+    if referenced_modules.is_empty() {
+        lines.join("\n")
+    } else {
+        let uses = referenced_modules
+            .iter()
+            .map(|m| format!("use crate::{};", m))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("{}\n{}", uses, lines.join("\n"))
+    }
 }
 
 /// Generate initial sample data for the primary type.
@@ -5300,6 +5396,11 @@ mod tests {
         use auto_lang::compile::CompileSession;
         use auto_lang::stdlib_assembly::manifest::AssemblyManifest;
         use auto_lang::stdlib_assembly::model::AssemblyTarget;
+        // Plan 742 R1: this test pins AUTO_RUST_WORKSPACE process-globally —
+        // serialize against every other env-sensitive generate_api test or
+        // the pin lands mid-flight and their backends vanish with this
+        // tempdir (bp-root-env-lock precedent, mirrored shape).
+        let _env_guard = a2r_env_lock();
         let dir = tempfile::tempdir().unwrap();
         let project = dir.path().join("project");
         let isolated_workspace = dir.path().join("workspace");
@@ -5560,6 +5661,310 @@ pub fn repo_list_active() []NoteDocument {
             "chained comparison:
 {}",
             api_rs
+        );
+    }
+
+    /// Plan 742 R1 (F-742-R1-01/02/03): business strings must survive the
+    /// body post-passes verbatim, the module-call qualification must not
+    /// rewrite same-spelling string payloads, and the generated handlers
+    /// must ACTUALLY compile and return the business values — a rustc
+    /// compile-and-run oracle on the real generate_api artifact, not
+    /// substring matching (r1 review: green substring test while the
+    /// E0308 artifact shipped).
+    #[test]
+    fn test_handler_body_string_survival_and_compile_oracle() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Probe = { text: str }
+pub type NoteDocument = { schema_version: int, note_id: str, title: str }
+pub type NoteView = { schema_version: int, note_id: str, title: str }
+
+#[api(method = "GET", path = "/api/echo")]
+pub fn echo() Probe {
+    var msg str = "ordinary message"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/echo_list")]
+pub fn echo_list() Probe {
+    var msg str = "List<int>.new([])"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/echo_brace")]
+pub fn echo_brace() Probe {
+    var msg str = "} return secret"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/echo_mod")]
+pub fn echo_mod() Probe {
+    var msg str = "repository.filename"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var out List<NoteDocument> = List<NoteDocument>.new([])
+    for d in docs {
+        out.push(d)
+    }
+    return out
+}
+
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn get_note(id int) ?NoteView {
+    var docs []NoteDocument = repository.repo_list_active()
+    if docs.len() > 0 {
+        var d NoteDocument = docs[0]
+        var v NoteView = NoteView { schema_version: d.schema_version, note_id: d.note_id, title: d.title }
+        return Some(v)
+    }
+    return None
+}
+
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn update_note(id int, title str) []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var ok bool = docs.len() > 0
+    if ok {
+        ok = docs[0].title == title
+    }
+    return docs
+}
+"#;
+        let dir = std::env::temp_dir().join("p742_r1_string_survival_probe");
+        let _ = std::fs::remove_dir_all(&dir);
+        let back_dir = dir.join("src").join("back");
+        std::fs::create_dir_all(&back_dir).expect("create back dir");
+        std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
+        std::fs::write(
+            back_dir.join("repository.at"),
+            "pub fn repo_list_active() []NoteDocument {\n    var out List<NoteDocument> = List<NoteDocument>.new([])\n    return out\n}\n",
+        )
+        .expect("write repository.at");
+
+        generate_api(&dir, "rust").expect("generate api");
+
+        let mut api_rs_path = None;
+        let ws = dir.join("rust-workspace");
+        for e in std::fs::read_dir(&ws).expect("rust-workspace").flatten() {
+            let candidate = e.path().join("src").join("api.rs");
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                if content.contains("repo_list_active") {
+                    api_rs_path = Some(candidate);
+                    break;
+                }
+            }
+        }
+        let api_rs_path = api_rs_path.expect("generated api.rs");
+        let api_rs = std::fs::read_to_string(&api_rs_path).expect("read api.rs");
+
+        // F-742-R1-01/02: business strings survive VERBATIM (payload bytes
+        // unchanged, single line, no qualified module path inside quotes).
+        for (needle, label) in [
+            (r#""ordinary message""#, "control"),
+            (r#""List<int>.new([])""#, "list literal"),
+            (r#""} return secret""#, "brace literal"),
+            (r#""repository.filename""#, "module literal"),
+        ] {
+            assert!(
+                api_rs.contains(needle),
+                "{label} string must survive verbatim:
+{api_rs}"
+            );
+        }
+        assert!(
+            !api_rs.contains("crate::repository::filename"),
+            "module qualification leaked into a business string:
+{api_rs}"
+        );
+        assert!(
+            !api_rs.contains("\"vec![]\""),
+            "list lowering leaked into a business string:
+{api_rs}"
+        );
+        // D2 companion import still emitted for the REAL module calls.
+        assert!(
+            api_rs.contains("use crate::repository;"),
+            "module import missing:
+{api_rs}"
+        );
+        // Real List constructs still lower (code region, not the literals).
+        assert!(
+            api_rs.contains("= vec![]"),
+            "real List construct must still lower to vec![]:
+{api_rs}"
+        );
+        // F-742-R1-03: plain-value return on a PUT/path endpoint (Result
+        // signature) must wrap Ok(JsonResponse(..)) — the E0308 shape.
+        assert!(
+            api_rs.contains("return Ok(JsonResponse(docs));"),
+            "PUT plain-value tail must be Ok(JsonResponse(..)) against the Result signature:
+{api_rs}"
+        );
+
+        // Real-compile + run + value oracle: extract the generated handlers
+        // and Input structs, wrap them in stub extractors/types (no axum/serde
+        // deps — mirror of the r1 review's runner), compile with rustc and
+        // compare the executed handler outputs.
+        let mut extracted = String::new();
+        let mut extracting = false;
+        for line in api_rs.lines() {
+            let t = line.trim_start();
+            if !extracting
+                && (t.starts_with("#[derive(")
+                    || t.starts_with("pub struct ")
+                    || t.starts_with("pub async fn "))
+            {
+                extracting = true;
+            }
+            if !extracting {
+                continue;
+            }
+            // The Input structs' serde derives don't exist in the stub world.
+            if t.starts_with("#[derive(") || t.starts_with("#[serde") {
+                continue;
+            }
+            extracted.push_str(line);
+            extracted.push('\n');
+        }
+        assert!(
+            extracted.contains("pub async fn update_note"),
+            "extraction must capture the handlers:
+{api_rs}"
+        );
+        // The Db state alias follows the (heuristic) primary type too —
+        // take it from the artifact so the stub State matches the handlers.
+        let db_alias = api_rs
+            .lines()
+            .find(|l| l.trim_start().starts_with("pub type Db"))
+            .expect("generated Db state alias")
+            .trim()
+            .to_string();
+        // The PUT body-param struct name follows the (heuristic) primary
+        // type — take it from the generated artifact instead of guessing.
+        let input_struct = api_rs
+            .lines()
+            .find_map(|l| {
+                let t = l.trim();
+                t.strip_prefix("pub struct ")
+                    .and_then(|r| r.strip_suffix(" {"))
+                    .filter(|name| name.ends_with("Input"))
+                    .map(|name| name.to_string())
+            })
+            .expect("generated Input struct for the PUT body params");
+        let runner = format!(
+            r#"#![allow(unused)]
+use std::future::Future;
+use std::pin::pin;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Wake;
+use std::task::Waker;
+
+mod types {{
+    #[derive(Clone)] pub struct Probe {{ pub text: String }}
+    #[derive(Clone)] pub struct NoteDocument {{ pub schema_version: i64, pub note_id: String, pub title: String }}
+    #[derive(Clone)] pub struct NoteView {{ pub schema_version: i64, pub note_id: String, pub title: String }}
+}}
+use crate::types::*;
+
+mod repository {{
+    pub fn repo_list_active() -> Vec<super::types::NoteDocument> {{ Vec::new() }}
+}}
+
+#[derive(Clone)] pub struct State<T>(T);
+pub struct Path<T>(T);
+pub struct Json<T>(pub T);
+pub struct JsonResponse<T>(pub T);
+pub struct StatusCode;
+impl StatusCode {{ pub const NOT_FOUND: Self = Self; pub const OK: Self = Self; }}
+{db_alias}
+struct Noop;
+impl Wake for Noop {{ fn wake(self: Arc<Self>) {{}} }}
+
+fn block_on_val<T>(f: impl Future<Output = T>) -> T {{
+    let w = Waker::from(Arc::new(Noop));
+    let mut c = Context::from_waker(&w);
+    let mut fut = pin!(f);
+    match fut.as_mut().poll(&mut c) {{
+        Poll::Ready(v) => v,
+        Poll::Pending => panic!("handler unexpectedly pending"),
+    }}
+}}
+
+{extracted}
+fn main() {{
+    let sdb = State(Arc::new(Mutex::new(Vec::new())));
+    let p = block_on_val(echo(sdb.clone()));
+    println!("echo={{}}", p.0.text);
+    let p = block_on_val(echo_list(sdb.clone()));
+    println!("echo_list={{}}", p.0.text);
+    let p = block_on_val(echo_brace(sdb.clone()));
+    println!("echo_brace={{}}", p.0.text);
+    let p = block_on_val(echo_mod(sdb.clone()));
+    println!("echo_mod={{}}", p.0.text);
+    let p = block_on_val(list_notes(sdb.clone()));
+    println!("list_notes_len={{}}", p.0.len());
+    match block_on_val(get_note(Path(1), sdb.clone())) {{
+        Ok(_) => println!("get_note=ok"),
+        Err(_) => println!("get_note=not_found"),
+    }}
+    let input = {input_struct} {{ title: String::from("t") }};
+    match block_on_val(update_note(Path(1), sdb.clone(), Json(input))) {{
+        Ok(v) => println!("update_note=ok_len_{{}}", v.0.len()),
+        Err(_) => println!("update_note=err"),
+    }}
+}}
+"#
+        );
+        let runner_path = dir.join("oracle_runner.rs");
+        std::fs::write(&runner_path, runner).expect("write runner");
+        let exe_path = dir.join("oracle_runner.exe");
+        let compile = std::process::Command::new("rustc")
+            .arg("--edition=2021")
+            .arg("-o")
+            .arg(&exe_path)
+            .arg(&runner_path)
+            .output()
+            .expect("rustc on PATH (compile oracle)");
+        assert!(
+            compile.status.success(),
+            "generated handlers must compile:
+--- api.rs ---
+{api_rs}
+--- rustc stderr ---
+{}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        let run = std::process::Command::new(&exe_path)
+            .output()
+            .expect("run compiled oracle");
+        assert!(
+            run.status.success(),
+            "compiled oracle run failed:
+{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+        let expected = "echo=ordinary message\n\
+                        echo_list=List<int>.new([])\n\
+                        echo_brace=} return secret\n\
+                        echo_mod=repository.filename\n\
+                        list_notes_len=0\n\
+                        get_note=not_found\n\
+                        update_note=ok_len_0\n";
+        assert_eq!(
+            stdout, expected,
+            "handler return values must preserve the business strings"
         );
     }
 
@@ -5918,7 +6323,7 @@ pub fn upload(req UploadRequest) ~UploadReceipt {
 }
 "#;
         let module = try_full_parse(api).expect("full parse");
-        let api_rs = generate_api_rs(&module, None, false);
+        let api_rs = generate_api_rs(&module, None, false, &[]);
         // 提取器：method/headers 先、Request 最后（不预读）——锁完整签名行
         //（glue 块也含同名类型，不单独寻位）。
         assert!(
@@ -5970,7 +6375,7 @@ pub fn up(req UploadRequest) ~UploadReceipt {
 }
 "#;
         let module = try_full_parse(api).expect("full parse");
-        let api_rs = generate_api_rs(&module, None, false);
+        let api_rs = generate_api_rs(&module, None, false, &[]);
         assert!(api_rs.contains("METHOD_NOT_ALLOWED"), "{api_rs}");
         assert!(api_rs.contains("\"allow\", \"POST, PUT\""), "{api_rs}");
     }
@@ -6040,7 +6445,7 @@ pub fn broken(req UploadRequest) UploadReceipt {
 }
 "#;
         let module = try_full_parse(api).expect("full parse");
-        let api_rs = generate_api_rs(&module, None, false);
+        let api_rs = generate_api_rs(&module, None, false, &[]);
         assert!(
             api_rs.contains("upload_error(500, \"api.at handler `broken` body failed to transpile"),
             "diagnostic 500: {api_rs}"
@@ -6142,7 +6547,7 @@ pub fn broken(req UploadRequest) UploadReceipt {
         /// 生成 → 写 crate → cargo run（子进程；监听后返回 Child）。
         fn spawn_generated_server(api_at: &str, port: u16) -> std::process::Child {
             let module = try_full_parse(api_at).expect("full parse");
-            let api_rs = generate_api_rs(&module, None, false);
+            let api_rs = generate_api_rs(&module, None, false, &[]);
             let main_rs = generate_main_rs(&module, None, false, &[], false);
             let types_rs = generate_types_rs(&module);
             let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -6490,7 +6895,7 @@ pub fn download(name str) FileResponse {{
             roots: &std::path::Path,
         ) -> std::process::Child {
             let module = try_full_parse(api_at).expect("full parse");
-            let api_rs = generate_api_rs(&module, None, false);
+            let api_rs = generate_api_rs(&module, None, false, &[]);
             let main_rs = generate_main_rs(&module, None, false, &[], false);
             let types_rs = generate_types_rs(&module);
             let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -6687,7 +7092,7 @@ pub fn download_async(name str) ~FileResponse {
             "Future<FileResponse> 返回类型: {}",
             module.endpoints[0].return_type
         );
-        let api_rs = generate_api_rs(&module, None, false);
+        let api_rs = generate_api_rs(&module, None, false, &[]);
         assert!(api_rs.contains("-> axum::response::Response"), "{api_rs}");
         assert!(api_rs.contains("__file_reply("), "{api_rs}");
         let main = generate_main_rs(&module, None, false, &[], false);
@@ -6708,7 +7113,7 @@ pub fn broken() FileResponse {
 }
 "#;
         let module = try_full_parse(api).expect("full parse");
-        let api_rs = generate_api_rs(&module, None, false);
+        let api_rs = generate_api_rs(&module, None, false, &[]);
         assert!(
             api_rs.contains("file_response_reply_missing("),
             "诊断 500 handler: {api_rs}"
@@ -6743,7 +7148,7 @@ pub fn download(name str) FileResponse {
 }
 "#;
         let module = try_full_parse(api).expect("full parse");
-        let api_rs = generate_api_rs(&module, None, false);
+        let api_rs = generate_api_rs(&module, None, false, &[]);
         // 同名 int 端点保持 JSON 面：其 handler 签名是 JsonResponse，不被
         // 文件分支改写（名字撞 native 不触发分支——门是声明返回类型）。
         let legacy_sig = api_rs
@@ -6795,7 +7200,7 @@ pub fn report() FileResponse {
             module.endpoints.iter().any(|e| e.body.is_some()),
             "body captured"
         );
-        let api_rs = generate_api_rs(&module, None, false);
+        let api_rs = generate_api_rs(&module, None, false, &[]);
         assert!(
             api_rs.contains("-> axum::response::Response"),
             "Response 签名: {api_rs}"
@@ -6836,7 +7241,7 @@ pub fn upload_file(name str) FileResponse {
 }
 "#;
         let module = try_full_parse(api).expect("full parse");
-        let api_rs = generate_api_rs(&module, None, false);
+        let api_rs = generate_api_rs(&module, None, false, &[]);
         assert!(
             api_rs.contains("METHOD_NOT_ALLOWED"),
             "非 GET 文件端点 405: {api_rs}"
@@ -6899,7 +7304,7 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
             .endpoints
             .iter()
             .any(|e| e.return_type.contains("Stream<")));
-        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false, &[]);
         assert!(
             api_rs.contains("axum::response::Sse<"),
             "SSE return: {}",
@@ -6939,7 +7344,12 @@ pub fn create_article(slug str, title str, meta str) Article { return db.create_
                 .into_iter()
                 .collect();
 
-        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
 
         // helper emitted once
         assert!(
@@ -7019,7 +7429,7 @@ pub fn create_article(slug str, title str, meta str) Article {
             ["current_user".to_string(), "create_article".to_string()]
                 .into_iter()
                 .collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns), false);
+        let api_rs = generate_api_rs(&module, Some(&db_fns), false, &[]);
         let db_source = r#"
 pub fn current_user(token: &str) -> User {
     todo!()
@@ -7065,7 +7475,12 @@ pub fn list_notes() []Note { return db.all_notes() }
         let module = extract_api_lenient(api).expect("extract api");
         let db_fns: std::collections::HashSet<String> =
             ["all_notes".to_string()].into_iter().collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
         assert!(
             !api_rs.contains("meta_json"),
             "no helper without meta: {}",
@@ -7102,7 +7517,12 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
                 .into_iter()
                 .collect();
 
-        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
 
         // GET list delegates to crate::db::all_messages(), no State<Db>.
         assert!(
@@ -7185,7 +7605,12 @@ pub fn search_notes(query str) []Note { return db.search_notes(query) }
         .into_iter()
         .collect();
 
-        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
 
         // Every endpoint resolves to its db.rs counterpart.
         for db_fn in &[
@@ -7371,7 +7796,7 @@ pub fn exists(path str) bool { return fsys.path_exists(path) }
         // And the api.at side wires both endpoints to those db functions.
         let api_at = std::fs::read_to_string(db_at.with_file_name("api.at")).unwrap();
         let module = extract_api_lenient(&api_at).expect("api extracts");
-        let api_rs = generate_api_rs(&module, Some(&fns), /* api_impl_active */ false);
+        let api_rs = generate_api_rs(&module, Some(&fns), /* api_impl_active */ false, &[]);
         assert!(
             api_rs.contains("crate::db::all_messages()"),
             "list delegates: {}",
@@ -7420,7 +7845,12 @@ pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
             ["set_done".to_string(), "toggle_pin".to_string()]
                 .into_iter()
                 .collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
 
         // PATCH+body (set_done): must have Json extractor AND delegate &input.done.
         assert!(
@@ -7478,7 +7908,12 @@ pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
             ["create_message".to_string(), "set_typing".to_string()]
                 .into_iter()
                 .collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
 
         // create POST broadcasts "NewMessage" (was hardcoded before §6).
         assert!(
@@ -7520,7 +7955,12 @@ pub fn lookup(id int) ?User { return db.find_user(id) }
         // body-based resolver finds find_user directly.
         let db_fns: std::collections::HashSet<String> =
             ["find_user".to_string()].into_iter().collect();
-        let api_rs = generate_api_rs(&module, Some(&db_fns), /* api_impl_active */ false);
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
         assert!(
             api_rs.contains("crate::db::find_user(id)"),
             "synonym endpoint delegates via body: {}",
@@ -7667,7 +8107,7 @@ pub fn get_item(id int) Item {
             "if-body is non-thin"
         );
         // No db.rs → no delegation possible.
-        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false, &[]);
         // The a2r path should have transpiled the if-statement into the handler.
         // Look for evidence: "if" keyword from the transpiled body (not the
         // CRUD template which has no if-statements).
@@ -7795,7 +8235,7 @@ pub fn get_item(id int) Item {
 }
 "#;
         let module = try_full_parse(api).expect("full_parse");
-        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false);
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false, &[]);
         std::env::remove_var("AUTO_A2R_BODY");
         // PLAN-734 T-04：AUTO_A2R_BODY=0 = 显式 scaffold 模式——CRUD 模板可达
         // 但必须带 SCAFFOLD 标注（不冒充同源；SD-04）。
