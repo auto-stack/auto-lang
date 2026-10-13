@@ -151,7 +151,7 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 | [ ] | T-07 | review | T-01..06完成、writes暂停 | 同一树独立 AC/SD/反例复审；pass才reviewed，needs_fix返原树 | 06 |
 | [ ] | T-08 | merge | T-07 pass与合入授权 | 沉淀 SD/导航/ledger/index；真实archive及总数；批回归到期判定；wt-guard clean 后清树/branch/空组 | 07 |
 
-意向唯一树 `D:/autostack/.wt/lang-774/auto-lang`、branch `plan-774-dev`；尚未创建。work-owned完成为6/8 execution_done，review7/8，实际closeout8/8。
+实际唯一树 `D:/autostack/.wt/lang-774/auto-lang`、branch `plan-774-dev` 已创建；2026-10-13 第一轮独立复审 needs_fix，T-02..06 重开，当前 executing 1/8。修复后 work-owned完成为6/8 execution_done，review7/8，实际closeout8/8；详见§9最新记录。
 
 ## 9. 复审记录
 
@@ -175,10 +175,28 @@ evidence: decisions.md（事实差异表 46/47 零漂移 + D-01..07 冻结）、
 blockers: 无。实现期两处基础设施修正（harness 违规标志极性、规则模型 EndView 状态机）均已修复合入，oracle/拒绝码/验收无变化。
 next: T-07 同树独立复审（AC-06；独立上下文重构 AC01..05/SD/遗漏债务，绑定合同/HEAD/hash），pass 后 T-08 merge（需用户合入授权）。
 
+2026-10-13，stage:review，review_scope:final，plan_id:PLAN-774，plan_revision:3，outcome:needs_fix（第一轮独立最终复审；用户「请复审一下计划774的工作，看看是否有遗漏？」授权）。
+reviewer_identity/limitations: 当前 Codex /root 会话；本会话未实施774，以合同/提交/源码/独立反例重构，无另建agent或审阅checkout，不声明未暴露模型/session身份。
+worktree_path: D:/autostack/.wt/lang-774/auto-lang；branch: plan-774-dev；reviewed_commit: f1a26e1be51de2dbb0c0d983b5ec346a86475aed；base_commit: 5e21561d2c303a02319ff7a29e4607933e09a38f。入/出场同HEAD，实现树clean。
+dependency_revisions/spec_inputs: ac-core path依赖源码/根定义/旧门禁无本计划diff；当前主检出相关Spec/ac-core/旧门禁相对基面无漂移；完整hash绑定见[input-hashes.tsv](attachments/774/review-r1/input-hashes.tsv)。冻结规范增量SHA256=17e1ee60194c9d9a510bac0f31640a6661d195a0fdb9398ad7d094c2c9da8df5，见[冻结提案](attachments/774/review-r1/proposed-spec-delta.frozen.md)。未发布canonical/live ledger。
+acceptance_results: AC-01 partial、AC-02 partial（五类平面ABI通过，nested合同缺项）、AC-03 fail、AC-04 fail、AC-05 partial、AC-06 fail（存在合同内缺口，不勾T07）、AC-07 pending merge-owned。
+findings: P774-R1-01资源账本64槽静默丢账/预算0隐含缺省；R1-02借用返回来源及拒绝面未验证；R1-03 LIFO/临时/嵌套退出证据缺项；R1-04默认Str参数模式、下游身份/转换拼写漂移及跨行/转义/嵌套record决定缺项；R1-05实际释放口径与freed-header负控问题；R1-06门禁/60s/持久取证和SD误称List已冻结。已登记KNOWN-DEBT；合同内缺口不是获准延后项。
+evidence: [完整报告和逐项修复要求](attachments/774/review-r1/REVIEW.md)；774门禁6/6、probe39/39、ac-core145 passed/既有1 ignored、741 13步、745 74例、772 45例均通过；独立7控制3通过/4失败（真实PE资源账本/预算恢复/预算0，模型返回来源），原始输入/输出/重放入口/hash均在同目录。没有代码修复/合入/归档。
+pending_closeout_gates: Spec/导航/ledger/index实际沉淀、归档/任务总数、用户合入授权、批回归到期判定、wt-guard及同树清理。
+next: `/auto-plan:work` 在原唯一树修复P774-R1-01..06，先核对并冻结共同/下游合同；语义变化按new/revision与用户授权边界处理。提交新基线、重放失败及合法兄弟控制后重新独立review。T01保持完成；T02..06重开、T07/08未勾，status=executing、current_step=1/8，plan_revision仍3（本轮未改变语义合同）。
+
+2026-10-13，stage:work（修复轮），plan_id:PLAN-774，plan_revision:3，outcome:pass（r1 复审六发现 P774-R1-01..06 全部修复；T-02..06 重开并重新完成，execution_done 6/8）。
+code_commit: 同树 plan-774-dev 修复 HEAD `773f9a09a`（基面 5e21561d2；前轮 7 提交 + 本轮 1 修复提交；依赖仍零 diff）。
+task_ids: T-02..T-06 重勾（r1 修订版证据）。
+evidence: decisions.md §3.8（六发现合同修订：参数三模式/身份表/源级拼写/字面量转义表/嵌套布局/预算零语义/R2 理由限定）、probe-cases/interface-contract r1 增补节；shim 完整外部账本（无容量上限）+ FREESTAT 分离计数 + FREE id 顺序 oracle + rec2/h_get_checked 新 op；rules.rs 来源追踪（LocalOwned/ParamBorrowed/ParamOwned）+ field/container/move-param 可达入口；新用例 v02_9/v03_6..10/v04_m4b..r2-checked/v05_13/v08 三例；PS 门禁重写（逐行警告匹配正反控制、check/test/fmt 全文落盘、失败也写收据、shim 60s+locked）；V06-2 前驱 trace 文件重定向可观察。
+结果：探针 55/55 全绿；**复审反例重放 7/7 全绿（exit 0，原 4 失败控制翻绿）**；774 门禁 7 步全绿（gate-20261013-134941 + raw 全文收据）；旧门禁 741/745/767 重跑全绿。blockers: 无。
+遗留明示：规则模型未建模显式 mut str 借用参数（D-03 声明合法，模型保守拒绝并注释）；770/771 §5.1 身份/拼写需其 revision 采用 774 表（下游责任，interface-contract §7）。
+next: T-07 第二轮独立复审（建议重放 review-r1/replay.ps1 应全绿 + r1 六发现逐项核对），pass 后 T-08 merge（合入授权另办）。
+
 ## 10. 待澄清事项
 
 1. ~~772修复复审合入前置已满足；实施agent启动时刷新最新基线并记录用户执行r3的授权。~~
    已兑现（2026-10-13 r3 实施授权记录于 §4；T-01 基线刷新 46/47 零漂移）。
-   现存待办：T-07 独立复审者与 T-08 合入授权待用户交接指定。
+   现存待办：本会话已获用户授权执行T-07第一轮独立复审，结果needs_fix；先修复后再复审，T-08合入授权仍待交接。
 2. 语义表示/资源策略属 D01..07 有界调查，必须在本计划冻结；超出现行承诺的改变需用户决策，不能带 open 交给770/771。
 3. 无完整所有权/公开 ABI/无限规模承诺；后续text-record/List/enum/use/ACC有 Design36 owner，非遗漏验收。
