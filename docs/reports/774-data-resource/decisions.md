@@ -2,7 +2,8 @@
 
 - 计划：PLAN-774 r3（work 阶段；AC-01/04/05 证据）
 - 工作树：`D:/autostack/.wt/lang-774/auto-lang` @ `plan-774-dev`
-- 状态：T-01 事实差异表已建；D-01..07 候选/裁定/oracle 由 T-02 冻结（§3 起为 T-02 产出）
+- 状态：T-01 事实差异表已建；D-01..07 候选/裁定/oracle 由 T-02 冻结（§3 起为 T-02 产出）；
+  **r1 复审修订**见 §3.8（needs_fix 六发现的合同修订，2026-10-13）
 - 边界：本包是**合同决定**，不是语言 feature 交付；探针（Rust/Cranelift）是可行性证据，
   不是 Auto native 编译证据。生产 ABI、完整借检查器/GC、完整 int 宽度不在本包。
 
@@ -226,6 +227,85 @@ offset(fᵢ) = 4·i；无重排无尾随填充。错误与释放责任：预期�
   非本包遗漏。
 
 
+
+## 4. 下游消费表（T-05 冻结）
+
+## 3.8 r1 复审修订（needs_fix 六发现的合同修订；P774-R1-01..06）
+
+本节修订是第一轮独立复审的修复产物，**修订后的规则取代 §3 中与之冲突的表述**；
+未提及的 §3 条款不变。逐发现：
+
+**R1-01（资源账本/预算）修订 D-06**：
+
+1. 资源账本为**完整外部账本**（堆支持的可增长登记表，键=用户指针，值=(长度,资源id)），
+   每次成功分配登记、每次释放精确移除；**无容量上限、不静默丢记录**——账本增长失败
+   时该分配按 env-oom 回滚。`live_bytes` 由账本背书，释放**即时**归还预算额度。
+2. `check_invariant` 语义收紧：allocs==frees ∧ live==0 ∧ **live_bytes==0** ∧
+   **invalid_frees==0** 才返回 0。
+3. **预算 0 裁定**：`set_budget(v≥0)` 为真实字节预算，**0 = 零字节预算**（任何非零请求
+   拒绝，零长请求仍合法）；负值清除上限。原"0=无限"的隐含缺省作废。
+
+**R1-05（释放口径）修订 D-06 计数定义**：`frees` = **成功释放数**（外部账本验证 +
+HeapFree 返回非零）；新增 `free_attempts`（非空 free 调用数）与 `invalid_frees`（账本
+未命中=双释放/外来指针，或 OS 拒绝释放）。双释放检测**不读取已释放内存**（账本验证
+先行）。双释放负控：invalid_frees=1 → invariant 失败 → exit 1。
+
+**R1-02（借用返回来源）修订 D-03/D-04**：模型/前门必须追踪**资源来源**：
+局部拥有（Make）、借入参数（ParamBorrowed，owner=调用方）、move-in 拥有参数
+（ParamOwned，owner=本帧）。`return <view>` 合法**当且仅当**来源是存活的借入参数；
+已释放局部（use-after-free）、move-in 参数（越过本帧清理边界=逃逸）均拒绝。合法兄弟
+例必须把借用 (ptr,len) **真实跨调用帧返回并在调用方读取**。`verify.field-borrow`/
+`verify.container-borrow`/`verify.ownership-required` 均有可达拒绝入口与合法兄弟
+（field/container：存 view 拒绝、存 owned clone 合法；ownership-required：无 `.move`
+传给 move 参数拒绝、显式 `.move` 转移且 **callee 负责清理**）。
+
+**R1-03（清理顺序/形态）修订 D-04/D-06 证据义务**：出口清理顺序为 **LIFO**，以资源
+id 的 FREE trace 为顺序 oracle；嵌套 break/continue/return 出口、临时值"存活至语句
+尾"（使用先于清理的 trace 顺序）、move-in 参数由 **callee 清理**、被调产出的 buffer
+**return 转移**回调用方，均须有代表性真实 PE 证据；每个申请点（AP-1..4）须有
+**带存活 owner** 的注入例；clone 独立性须含**内容控制**（原 buffer 释放后 clone 内容
+仍完整）。
+
+**R1-04（共同决定缺项）修订 D-02/D-03/D-05/D-07**：
+
+1. **Str 参数模式修正（D-03）**：原"参数 Str=move"一刀切与 Design 04/F8 冲突，作废。
+   修正：参数默认 **view**（str 与 Str 同），三种显式模式分列：
+   - `str` 参数（默认 view）：只读借用，callee 不得保存/释放/逃逸；
+   - `Str` 参数（默认 view）：借用视图，同上约束；**显式 `mut Str`**：排他可变借用；
+   - **显式 `move Str`**：所有权转移入函数（调用点须 `.move`），callee 负责清理，
+     调用后实参禁用；缺 `.move` 前门拒绝 `verify.ownership-required`。
+   a2r 的 String 存储位映射是实现事实，不替代源语义（F6 记录在案）。
+2. **身份同步（D-07）**：唯一身份表=interface-contract.md §7：
+   `auto.hir.text.draft / 1 / text-i32-draft` 与 `auto.hir.record.draft / 1 /
+   record-i32-draft`。**770 §5.1（现为 text-draft）与 771 §5.1（现为 record-draft）
+   必须在其下次 revision 采用本表**（下游责任，774 不代改两计划文件）。
+3. **字符转换拼写（D-02/D-07）**：机器 shim API（p774_char_from_codepoint）与源语言
+   拼写分层。源级拼写冻结：`c.to_codepoint() -> int` 与 `char.from_codepoint(n)`；
+   **770 §5.1 的 `.to(int)` 需在其 revision 改齐**（下游责任）。
+4. **字面量拼写/跨行/转义（D-02 补冻结表）**：
+   - 普通字符串字面量单行；**跨行字面量首批拒绝**（引号内出现源换行 → 前门
+     `text.literal-newline`）；字面量内容不含裸换行。
+   - 行尾：源文件 LF/CRLF 均为合法行界（沿 745 UTF8/CRLF 保持），不影响字面量内容。
+   - 转义白名单：`\n \t \\ \" \0 \u{XXXX}`（XXXX 为 1-6 位十六进制 Unicode 标量，
+     代理区/越界 → 前门 `text.invalid-scalar`）；**其它转义序列 → `text.invalid-escape`**。
+   - char 字面量恰一个标量：`'ab'` → `text.char-multi`；`''` → `text.char-empty`。
+   - 诊断责任：词法层（770 实现）产上述码；774 冻结码与边界，不实现 parser。
+5. **嵌套 record 布局（D-05 补规则）**：递归布局——`align(R)=max(字段对齐)`；
+   `offset(首字段)=0`，其后字段按**声明序**自对齐放置；`size(R)=round_up(尾偏移+尾宽,
+   align(R))`；嵌套 record **inline 值语义**（无指针，赋值=拷贝）；out-slot 互不重叠。
+   尺寸算术用 u32 checked，溢出 → 前门 `record.layout-overflow`。探针物化：
+   Inner{2×i32}=8/4；Outer{inner@0..8, flag@8}=12/4（rec2_out/rec2_view）。
+   771 的非递归嵌套 record 承诺由此承接，不降级为后续。
+6. **R2 淘汰理由限定（D-06）**：淘汰依据限定为**该候选的复杂度/前置**——要满足 D-04
+   前门性质，句柄层必须补 per-slot active 追踪 + generation + 静态所有权信息
+   （h_get_checked 对照实证），实质退化为在运行时表上重建 R1 的静态所有权模型，且
+   预算记账在共享句柄下归属不明。**不声称"引用计数句柄方案本身不可能"**。R1 选择
+   保留。
+
+**R1-06（门禁/收据）修订验证义务（verification.md）**：逐行警告匹配须带正反控制；
+check/test/fmt 原文全量落盘；失败也写收据；shim 构建纳入 60s+locked 执行器；V06-2
+前驱 trace 经文件重定向可观察（deadline 分支丢弃管道输出是执行器契约，文件是补充
+观察通道，不是绕过 containment——wrapper 与 PE 同在受控进程树内）。
 
 ## 4. 下游消费表（T-05 冻结）
 

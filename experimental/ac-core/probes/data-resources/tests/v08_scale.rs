@@ -98,3 +98,111 @@ fn v08_budget_boundary() {
     // attempts: make(16) ok, make(1) rejected pre-allocator, make(16) ok
     assert_eq!(probe::summary_of(&out), (2, 2, 2, 0, 0, 16));
 }
+
+// ---- review r1 (P774-R1-01): capacity, allowance restore, zero budget ----
+
+/// Host-side straight-line sequences of n concurrent 1-byte buffers,
+/// released in reverse (LIFO) — the counterexample shape from review r1.
+fn concurrent_lifecycle(case: &str, n: i64) -> ac_data_probe_774::ProbeOutcome {
+    probe::run_probe(case, |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(move |fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let one = probe::const_i32(fb, 1);
+            let mut ptrs = Vec::new();
+            for _ in 0..n {
+                ptrs.push(probe::call_shim(fb, fx, "p774_own_make", &[one, one, outp]).remove(0));
+            }
+            for p in ptrs.into_iter().rev() {
+                probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            }
+            probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0)
+        }));
+    })
+}
+
+/// V08-4a: the ledger has NO capacity cliff — 64 (just under the old fixed
+/// size) and 65 (just over) both hold exact accounting.
+#[test]
+fn v08_capacity_64_and_65() {
+    let n64 = concurrent_lifecycle("v08-live-64", 64);
+    probe::assert_pass(&n64, &[]);
+    assert_eq!(probe::summary_of(&n64), (64, 64, 64, 0, 0, 64));
+
+    let n65 = concurrent_lifecycle("v08-live-65", 65);
+    probe::assert_pass(&n65, &[]);
+    assert_eq!(probe::summary_of(&n65), (65, 65, 65, 0, 0, 65));
+}
+
+/// V08-5a: after 65 live-and-released 1-byte buffers, a full 65-byte
+/// request succeeds — the allowance is fully restored.
+#[test]
+fn v08_budget_restored_after_65() {
+    let out = probe::run_probe("v08-budget-restore", |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let budget = probe::const_ptr(fb, 65);
+            probe::call_shim(fb, fx, "p774_set_budget", &[budget]);
+            let one = probe::const_i32(fb, 1);
+            let mut ptrs = Vec::new();
+            for _ in 0..65 {
+                ptrs.push(probe::call_shim(fb, fx, "p774_own_make", &[one, one, outp]).remove(0));
+            }
+            for p in ptrs.into_iter().rev() {
+                probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            }
+            let n = probe::const_i32(fb, 65);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[one, n, outp]).remove(0);
+            let v = probe::expect_non_null(fb, p);
+            probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            probe::acc(fb, v, inv)
+        }));
+    });
+    probe::assert_pass(&out, &[]);
+    assert_eq!(probe::summary_of(&out), (66, 66, 66, 0, 0, 65));
+}
+
+/// V08-5b: budget 0 is a REAL zero-byte budget (any nonzero request
+/// rejects before the allocator); a negative value clears the ceiling.
+#[test]
+fn v08_zero_budget_and_negative_clears() {
+    let zero = probe::run_probe("v08-zero-budget", |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let budget = probe::const_ptr(fb, 0);
+            probe::call_shim(fb, fx, "p774_set_budget", &[budget]);
+            let one = probe::const_i32(fb, 1);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[one, one, outp]).remove(0);
+            let vn = probe::expect_null(fb, p);
+            let code = probe::load_i32(fb, outp, 0);
+            let vc = probe::expect_eq_i32(fb, code, probe::status::ERR_BUDGET);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            let v = probe::acc(fb, vn, vc);
+            probe::acc(fb, v, inv)
+        }));
+    });
+    probe::assert_pass(&zero, &[]);
+    assert_eq!(probe::summary_of(&zero), (0, 0, 0, 0, 0, 0));
+
+    let cleared = probe::run_probe("v08-budget-cleared", |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let zero_budget = probe::const_ptr(fb, 0);
+            probe::call_shim(fb, fx, "p774_set_budget", &[zero_budget]);
+            let neg = probe::const_ptr(fb, -1);
+            probe::call_shim(fb, fx, "p774_set_budget", &[neg]);
+            let one = probe::const_i32(fb, 1);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[one, one, outp]).remove(0);
+            let v = probe::expect_non_null(fb, p);
+            probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            probe::acc(fb, v, inv)
+        }));
+    });
+    probe::assert_pass(&cleared, &[]);
+    assert_eq!(probe::summary_of(&cleared), (1, 1, 1, 0, 0, 1));
+}

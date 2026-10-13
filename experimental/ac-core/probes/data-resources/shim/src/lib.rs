@@ -58,22 +58,30 @@ pub const ERR_RANGE_REVERSED: i32 = -9;
 pub const ERR_RANGE_OOB: i32 = -10;
 pub const ERR_INDEX_OOB: i32 = -11;
 
-const OWNED_MAGIC: u32 = 0xAC0_774;
-
 // ---------------------------------------------------------------------------
 // counters + fault injection state (single-threaded PE state)
+//
+// Review r1 (P774-R1-01/05) counting contract: `frees` counts SUCCESSFUL
+// releases only (ledger-validated, HeapFree returned nonzero); free calls on
+// non-null pointers are counted in `free_attempts`; pointers absent from the
+// ledger (double free / foreign) are counted in `invalid_frees` WITHOUT
+// reading any freed memory. `live_bytes` is backed by the complete ledger
+// below, so a release always restores the budget allowance.
 // ---------------------------------------------------------------------------
 
 struct Counters {
-    attempts: u32,   // HeapAlloc invocations (after len/budget checks)
-    allocs: u32,     // successful allocations
-    frees: u32,      // free calls on non-null owned pointers
-    live: u32,       // allocs - frees
-    live_bytes: u32, // declared user bytes currently live
-    peak: u32,       // max live_bytes at alloc/free boundaries
-    budget: u32,     // 0 = unlimited
-    fail_nth: u32,   // 0 = off; nth allocator invocation fails (injected)
-    seq: u32,        // allocator invocation ordinal
+    attempts: u32,       // HeapAlloc invocations (after len/budget checks)
+    allocs: u32,         // successful allocations
+    frees: u32,          // successful releases (ledger-validated)
+    live: u32,           // allocs - frees
+    live_bytes: u32,     // declared user bytes currently live (ledger-backed)
+    peak: u32,           // max live_bytes at alloc/free boundaries
+    budget: Option<u32>, // None = unlimited; Some(0) = a real ZERO-byte budget
+    fail_nth: u32,       // 0 = off; nth allocator invocation fails (injected)
+    seq: u32,            // allocator invocation ordinal
+    free_attempts: u32,  // free calls on non-null pointers
+    invalid_frees: u32,  // double frees / foreign pointers (ledger misses)
+    next_id: u32,        // monotonic resource id for the FREE trace channel
 }
 
 static mut C: Counters = Counters {
@@ -83,9 +91,12 @@ static mut C: Counters = Counters {
     live: 0,
     live_bytes: 0,
     peak: 0,
-    budget: 0,
+    budget: None,
     fail_nth: 0,
     seq: 0,
+    free_attempts: 0,
+    invalid_frees: 0,
+    next_id: 0,
 };
 
 fn c() -> &'static mut Counters {
@@ -103,31 +114,116 @@ fn process_heap() -> isize {
     }
 }
 
+// ---------------------------------------------------------------------------
+// complete live-resource ledger (review r1: no silent capacity loss)
+//
+// Heap-backed growable array keyed by user pointer; every successful
+// allocation inserts (ptr, len, id), every release removes exactly that
+// entry. Growth doubles the capacity via the same process heap, so the
+// ledger is always complete for ALL live allocations — the budget allowance
+// and live_bytes can never diverge from reality. Raw-pointer access
+// throughout: no indexing, so no panic paths can drag core::fmt (and the
+// CRT) into the no-CRT link.
+// ---------------------------------------------------------------------------
+
+#[derive(Copy, Clone)]
+struct LedgerEntry {
+    ptr: *mut u8,
+    len: u32,
+    id: u32,
+}
+
+static mut LEDGER: *mut LedgerEntry = core::ptr::null_mut();
+static mut LED_CAP: usize = 0;
+static mut LED_LEN: usize = 0;
+
+fn led_state() -> (*mut LedgerEntry, usize, usize) {
+    unsafe {
+        (
+            core::ptr::addr_of_mut!(LEDGER).read(),
+            core::ptr::addr_of_mut!(LED_CAP).read(),
+            core::ptr::addr_of_mut!(LED_LEN).read(),
+        )
+    }
+}
+
+fn ledger_insert(ptr: *mut u8, len: u32, id: u32) -> bool {
+    unsafe {
+        let (base, cap, len_n) = led_state();
+        if len_n == cap {
+            let new_cap = if cap == 0 { 16 } else { cap * 2 };
+            let nbytes = new_cap * core::mem::size_of::<LedgerEntry>();
+            let fresh = HeapAlloc(process_heap(), 0, nbytes) as *mut LedgerEntry;
+            if fresh.is_null() {
+                return false; // ledger growth failed: treat as alloc failure
+            }
+            for i in 0..len_n {
+                write_volatile(fresh.add(i) as *mut LedgerEntry, read_volatile(base.add(i)));
+            }
+            if !base.is_null() {
+                HeapFree(process_heap(), 0, base as *mut core::ffi::c_void);
+            }
+            core::ptr::addr_of_mut!(LEDGER).write(fresh);
+            core::ptr::addr_of_mut!(LED_CAP).write(new_cap);
+        }
+        let base = core::ptr::addr_of_mut!(LEDGER).read();
+        let at = core::ptr::addr_of_mut!(LED_LEN).read();
+        write_volatile(
+            base.add(at) as *mut LedgerEntry,
+            LedgerEntry { ptr, len, id },
+        );
+        core::ptr::addr_of_mut!(LED_LEN).write(at + 1);
+        true
+    }
+}
+
+/// Remove the entry for `ptr`; returns (len, id) when found.
+fn ledger_take(ptr: *mut u8) -> Option<(u32, u32)> {
+    unsafe {
+        let (base, _cap, len_n) = led_state();
+        for i in 0..len_n {
+            let e = read_volatile(base.add(i));
+            if e.ptr == ptr {
+                let last = len_n - 1;
+                let tail = read_volatile(base.add(last));
+                write_volatile(base.add(i) as *mut LedgerEntry, tail);
+                core::ptr::addr_of_mut!(LED_LEN).write(last);
+                return Some((e.len, e.id));
+            }
+        }
+        None
+    }
+}
+
 /// The single allocation entry behind every declared request point
 /// (AP-1..AP-4). Counting: len 0 is valid and makes NO allocator call;
 /// budget rejection makes NO allocator call; the injected nth failure and
 /// real HeapAlloc null both count as attempts and return ERR_ENV_OOM.
-fn try_alloc(len: u32) -> Result<*mut u8, i32> {
+fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
     let c = c();
     if len == 0 {
-        return Ok(core::ptr::null_mut());
+        return Ok((core::ptr::null_mut(), 0));
     }
-    if c.budget != 0 && c.live_bytes.saturating_add(len) > c.budget {
-        return Err(ERR_BUDGET);
+    if let Some(budget) = c.budget {
+        if c.live_bytes.saturating_add(len) > budget {
+            return Err(ERR_BUDGET);
+        }
     }
     c.seq += 1;
     c.attempts += 1;
     if c.fail_nth != 0 && c.seq == c.fail_nth {
         return Err(ERR_ENV_OOM);
     }
-    let base = unsafe { HeapAlloc(process_heap(), 0, len as usize + 4) } as *mut u8;
-    if base.is_null() {
+    let p = unsafe { HeapAlloc(process_heap(), 0, len as usize) } as *mut u8;
+    if p.is_null() {
         return Err(ERR_ENV_OOM);
     }
-    unsafe {
-        write_volatile(base as *mut u32, OWNED_MAGIC);
-        // header second word is not needed: length is recoverable from
-        // HeapSize-free bookkeeping via live_bytes; free() needs no len.
+    c.next_id += 1;
+    let id = c.next_id;
+    if !ledger_insert(p, len, id) {
+        // ledger growth failed: roll back so accounting stays complete
+        unsafe { HeapFree(process_heap(), 0, p as *mut core::ffi::c_void) };
+        return Err(ERR_ENV_OOM);
     }
     c.allocs += 1;
     c.live += 1;
@@ -135,71 +231,46 @@ fn try_alloc(len: u32) -> Result<*mut u8, i32> {
     if c.live_bytes > c.peak {
         c.peak = c.live_bytes;
     }
-    Ok(unsafe { base.add(4) })
+    Ok((p, id))
 }
 
-/// free of an owned buffer: null is a no-op (uncounted); a valid header
-/// releases; a stale header counts the call (violation surfaces through
-/// check_invariant) without a second physical HeapFree.
+/// free of an owned buffer: null is a no-op (uncounted). The pointer is
+/// validated against the EXTERNAL ledger first — a ledger miss is a double
+/// free / foreign pointer (counted in invalid_frees, no freed memory is
+/// read); a hit is released via HeapFree and only counted as a successful
+/// free when the OS call returns nonzero.
 fn owned_free(ptr: *mut u8) {
     let c = c();
     if ptr.is_null() {
         return;
     }
-    c.frees += 1;
-    let base = unsafe { ptr.sub(4) };
-    let magic = unsafe { read_volatile(base as *const u32) };
-    if magic != OWNED_MAGIC {
-        return; // detected double free: counted, physically skipped
+    c.free_attempts += 1;
+    let Some((len, id)) = ledger_take(ptr) else {
+        c.invalid_frees += 1;
+        trace_line(|l| {
+            l.s("FREE-INVALID");
+        });
+        return;
+    };
+    let ok = unsafe { HeapFree(process_heap(), 0, ptr as *mut core::ffi::c_void) };
+    if ok == 0 {
+        // OS refused the release: the entry was already removed; the
+        // accounting treats this as an invalid release attempt.
+        c.invalid_frees += 1;
+        trace_line(|l| {
+            l.s("FREE-INVALID");
+        });
+        return;
     }
-    unsafe { write_volatile(base as *mut u32, 0) };
-    unsafe { HeapFree(process_heap(), 0, base as *mut core::ffi::c_void) };
+    c.frees += 1;
     if c.live > 0 {
         c.live -= 1;
     }
-    // live_bytes: recover the declared length from the arena ledger below.
-    let len = arena_take_len(ptr);
     c.live_bytes = c.live_bytes.saturating_sub(len);
-}
-
-// Tiny pointer→length ledger for live allocations. The magic header already
-// proves validity; the ledger only carries the declared user length needed
-// to keep live_bytes exact on free. Fixed capacity, linear scan — a probe,
-// not a production allocator. Raw-pointer access throughout: no indexing,
-// so no panic paths can drag core::fmt (and the CRT) into the link.
-const ARENA_MAX: usize = 64;
-static mut ARENA: [(*mut u8, u32); ARENA_MAX] = [(core::ptr::null_mut(), 0); ARENA_MAX];
-
-fn arena_base() -> *mut (*mut u8, u32) {
-    unsafe { addr_of_mut!(ARENA) as *mut (*mut u8, u32) }
-}
-
-fn arena_put(ptr: *mut u8, len: u32) {
-    let base = arena_base();
-    for i in 0..ARENA_MAX {
-        let slot = unsafe { &mut *base.add(i) };
-        if slot.0.is_null() {
-            slot.0 = ptr;
-            slot.1 = len;
-            return;
-        }
-    }
-    // Table full: the probe never holds >64 live allocations; drop bookkeeping
-    // rather than fail the allocation that already succeeded.
-}
-
-fn arena_take_len(ptr: *mut u8) -> u32 {
-    let base = arena_base();
-    for i in 0..ARENA_MAX {
-        let slot = unsafe { &mut *base.add(i) };
-        if slot.0 == ptr {
-            let len = slot.1;
-            slot.0 = core::ptr::null_mut();
-            slot.1 = 0;
-            return len;
-        }
-    }
-    0
+    trace_line(|l| {
+        l.s("FREE id=");
+        l.u(id);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -411,16 +482,19 @@ pub extern "system" fn p774_own_make(seed: i32, len: i32, out_len: *mut i32) -> 
         l.i(len);
     });
     match try_alloc(len as u32) {
-        Ok(p) if p.is_null() => {
+        Ok((p, _id)) if p.is_null() => {
             // zero length: valid, no allocation
             unsafe { write_volatile(out_len, 0) };
             core::ptr::null_mut()
         }
-        Ok(p) => {
+        Ok((p, id)) => {
             for i in 0..len as usize {
                 unsafe { write_volatile(p.add(i), (seed.wrapping_add(i as i32)) as u8) };
             }
-            arena_put(p, len as u32);
+            trace_line(|l| {
+                l.s("OWN-MAKE id=");
+                l.u(id);
+            });
             unsafe { write_volatile(out_len, len) };
             p
         }
@@ -447,16 +521,19 @@ pub extern "system" fn p774_own_clone(src: *const u8, len: i32, out_len: *mut i3
         l.i(len);
     });
     match try_alloc(len as u32) {
-        Ok(p) if p.is_null() => {
+        Ok((p, _id)) if p.is_null() => {
             unsafe { write_volatile(out_len, 0) };
             core::ptr::null_mut()
         }
-        Ok(p) => {
+        Ok((p, id)) => {
             for i in 0..len as usize {
                 let byte = unsafe { read_volatile(src.add(i)) };
                 unsafe { write_volatile(p.add(i), byte) };
             }
-            arena_put(p, len as u32);
+            trace_line(|l| {
+                l.s("CLONE id=");
+                l.u(id);
+            });
             unsafe { write_volatile(out_len, len) };
             p
         }
@@ -493,11 +570,11 @@ pub extern "system" fn p774_own_concat(
         return core::ptr::null_mut();
     }
     match try_alloc(total as u32) {
-        Ok(p) if p.is_null() => {
+        Ok((p, _id)) if p.is_null() => {
             unsafe { write_volatile(out_len, 0) };
             core::ptr::null_mut()
         }
-        Ok(p) => {
+        Ok((p, id)) => {
             let mut w = 0usize;
             for i in 0..a_len as usize {
                 let byte = unsafe { read_volatile(a_ptr.add(i)) };
@@ -509,7 +586,10 @@ pub extern "system" fn p774_own_concat(
                 unsafe { write_volatile(p.add(w), byte) };
                 w += 1;
             }
-            arena_put(p, total as u32);
+            trace_line(|l| {
+                l.s("CONCAT id=");
+                l.u(id);
+            });
             unsafe { write_volatile(out_len, total as i32) };
             p
         }
@@ -535,16 +615,19 @@ pub extern "system" fn p774_own_from_lit(
         l.i(lit_len);
     });
     match try_alloc(lit_len as u32) {
-        Ok(p) if p.is_null() => {
+        Ok((p, _id)) if p.is_null() => {
             unsafe { write_volatile(out_len, 0) };
             core::ptr::null_mut()
         }
-        Ok(p) => {
+        Ok((p, id)) => {
             for i in 0..lit_len as usize {
                 let byte = unsafe { read_volatile(lit_ptr.add(i)) };
                 unsafe { write_volatile(p.add(i), byte) };
             }
-            arena_put(p, lit_len as u32);
+            trace_line(|l| {
+                l.s("LIT id=");
+                l.u(id);
+            });
             unsafe { write_volatile(out_len, lit_len) };
             p
         }
@@ -603,6 +686,41 @@ pub extern "system" fn p774_rec_out(seed: i32, out: *mut u8) {
         write_volatile(out.add(4) as *mut i32, seed);
         write_volatile(out.add(8) as *mut u32, (seed | 0x40) as u32);
     }
+}
+
+// Nested record layout (review r1 P774-R1-04; decisions.md §D-05):
+// Inner { x: i32 @0, y: i32 @4 } — size 8, align 4.
+// Outer { inner: Inner @0 (inline, value semantics), flag: bool @8 } —
+// size 12, align 4. Offsets are computed recursively per field alignment in
+// declaration order; no pointers, assignment copies values.
+#[no_mangle]
+pub extern "system" fn p774_rec2_out(seed: i32, out: *mut u8) {
+    trace_line(|l| {
+        l.s("REC2-OUT seed=");
+        l.i(seed);
+    });
+    unsafe {
+        write_volatile(out as *mut i32, seed); // inner.x @0
+        write_volatile(out.add(4) as *mut i32, seed.wrapping_add(1)); // inner.y @4
+        write_volatile(out.add(8) as *mut i32, seed & 1); // flag @8
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn p774_rec2_view(p: *const u8) -> i32 {
+    let x = unsafe { read_volatile(p as *const i32) };
+    let y = unsafe { read_volatile(p.add(4) as *const i32) };
+    let flag = unsafe { read_volatile(p.add(8) as *const i32) };
+    trace_line(|l| {
+        l.s("REC2-VIEW x=");
+        l.i(x);
+        l.s(" y=");
+        l.i(y);
+        l.s(" flag=");
+        l.i(flag);
+    });
+    x.wrapping_add(y.wrapping_mul(2))
+        .wrapping_add(flag.wrapping_mul(3))
 }
 
 // ---------------------------------------------------------------------------
@@ -867,7 +985,10 @@ pub extern "system" fn p774_len_to_i32(v: i64) -> i32 {
 
 #[no_mangle]
 pub extern "system" fn p774_set_budget(bytes: i64) {
-    c().budget = if bytes < 0 { 0 } else { bytes as u32 };
+    // Frozen ruling (review r1 P774-R1-01): v >= 0 sets a byte budget where
+    // 0 is a real ZERO-byte budget (any nonzero request is rejected); a
+    // negative value clears the ceiling (unlimited).
+    c().budget = if bytes < 0 { None } else { Some(bytes as u32) };
 }
 
 #[no_mangle]
@@ -896,6 +1017,14 @@ fn emit_summary() {
         l.s(" peak=");
         l.u(c.peak);
     });
+    trace_line(|l| {
+        l.s("FREESTAT free_attempts=");
+        l.u(c.free_attempts);
+        l.s(" frees_ok=");
+        l.u(c.frees);
+        l.s(" invalid=");
+        l.u(c.invalid_frees);
+    });
 }
 
 #[no_mangle]
@@ -907,7 +1036,7 @@ pub extern "system" fn p774_summary() {
 pub extern "system" fn p774_check_invariant() -> i32 {
     emit_summary();
     let c = c();
-    if c.allocs == c.frees && c.live == 0 {
+    if c.allocs == c.frees && c.live == 0 && c.live_bytes == 0 && c.invalid_frees == 0 {
         0
     } else {
         1
@@ -916,9 +1045,9 @@ pub extern "system" fn p774_check_invariant() -> i32 {
 
 #[no_mangle]
 pub extern "system" fn p774_trap_after_alloc(len: i32) -> ! {
-    let p = match try_alloc(len.max(0) as u32) {
-        Ok(p) => p,
-        Err(_) => core::ptr::null_mut(),
+    let (p, _id) = match try_alloc(len.max(0) as u32) {
+        Ok(pair) => pair,
+        Err(_) => (core::ptr::null_mut(), 0),
     };
     let _ = p; // the allocation stays live on purpose: OS reclaim boundary
     trace_line(|l| {
@@ -935,9 +1064,9 @@ pub extern "system" fn p774_trap_after_alloc(len: i32) -> ! {
 
 #[no_mangle]
 pub extern "system" fn p774_hang_after_alloc(len: i32) -> ! {
-    let p = match try_alloc(len.max(0) as u32) {
-        Ok(p) => p,
-        Err(_) => core::ptr::null_mut(),
+    let (p, _id) = match try_alloc(len.max(0) as u32) {
+        Ok(pair) => pair,
+        Err(_) => (core::ptr::null_mut(), 0),
     };
     let _ = p;
     trace_line(|l| {
@@ -1041,6 +1170,29 @@ pub extern "system" fn p774_h_get(h: i32) -> i32 {
     let v = slot.value;
     trace_line(|l| {
         l.s("H-GET h=");
+        l.u(h as u32);
+        l.s(" v=");
+        l.u(v as u32);
+    });
+    v as i32
+}
+
+/// R2 fairness control (review r1 P774-R1-04): what the refcount family
+/// WOULD need to reject a stale read — per-slot active tracking on top of
+/// the handle indirection. The plain `p774_h_get` above keeps the untracked
+/// behavior as the elimination evidence; this variant shows the extra
+/// machinery a front-door-safe R2 requires.
+#[no_mangle]
+pub extern "system" fn p774_h_get_checked(h: i32) -> i32 {
+    let Some(slot) = hslot(h).map(|p| unsafe { &*p }) else {
+        return ERR_INDEX_OOB;
+    };
+    if !slot.active {
+        return ERR_INDEX_OOB;
+    }
+    let v = slot.value;
+    trace_line(|l| {
+        l.s("H-GET-CHECKED h=");
         l.u(h as u32);
         l.s(" v=");
         l.u(v as u32);

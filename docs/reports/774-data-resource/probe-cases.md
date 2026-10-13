@@ -223,3 +223,47 @@ byte 与 scalar 计数不混：V07-1 与 V07-2 的双值断言同时锁定两套
   experimental/ac-core/probes/data-resources/Cargo.toml --locked --all-targets`、
   `cargo test --manifest-path … --locked`、`cargo fmt --manifest-path … --check`；
   不跑根 cargo t/tv/docs_gen（无 crates/root 定义改动）。
+
+## r1 复审修订（oracle 增补；与 decisions.md §3.8 对应）
+
+**计数口径**：`frees`=成功释放；新增 FREESTAT 行
+`FREESTAT free_attempts=%u frees_ok=%u invalid=%u`；分配成功 trace 附 ` id=N`；
+释放 trace `FREE id=%u` / `FREE-INVALID`；双释放负控 = invalid=1 + exit 1
+（不读已释放内存）。check_invariant 收紧含 live_bytes==0 ∧ invalid==0。
+
+**V-02 增补**：
+
+| Case | 输入 | 期望 |
+|---|---|---|
+| V02-9 | rec2_out(seed=5)+rec2_view+rec1 view 混合 | x=5,y=6,flag=1；校验和 5+12+3=**20**；REC2-VIEW x=5 y=6 flag=1；REC-VIEW flag=1 count=5 tag=233 同 PE |
+
+**V-03 增补**：
+
+| Case | 期望 |
+|---|---|
+| V03-6 LIFO | A(id1),B(id2) 创建，B→A 释放：trace `FREE id=2`→`FREE id=1`；FIFO 控制产生可区分的另一顺序 |
+| V03-7 嵌套 break/continue | 4 轮循环（i==1 continue 清理、i==2 break 清理、自然路径清理）：SUMMARY `3 3 3 0 0 16` |
+| V03-8 临时语句尾 | make→BSUM→BSUM→free：trace 顺序 BSUM/BSUM/FREE id=1（使用先于清理） |
+| V03-9 callee 清理+return 转移 | move-in 由 consume 释放；produce 经 i64 单元把指针移回调用方：SUMMARY `2 2 2 0 0 16` |
+| V03-10 clone 内容独立 | from_lit("Auto")→clone→free 原→BSUM(clone)=**409**→free：LIT id=1/CLONE id=2/FREE id=1 |
+
+**V-04 增补**：M4b 来源验证（free 后 ReturnViewParam=use-after-free；ParamOwned
+ReturnViewParam=borrow-escape；ParamBorrowed 合法）；M4c 真借用返回 PE（(ptr,len)
+跨帧经 i64/i32 单元，调用方 borrow_read=65）；M5 合法兄弟真实 PE；field/container
+入口（StoreFieldView/StoreContainerView 拒绝 + StoreOwnedClone 合法 + PE）；
+CallMoveParamImplicit/Explicit（缺 .move 拒绝；显式转移 callee 清理 PE）；
+R2 checked 对照（h_get_checked 对陈旧句柄=-11）。
+
+**V-05 增补**：V05-13 带 owner 注入（AP-3/AP-4 失败时 16 字节 owner 存活并按合同
+回收）：SUMMARY `2 1 1 0 0 16`。
+
+**V-08 增补**：
+
+| Case | 期望 |
+|---|---|
+| V08-4a 64/65 并发 | 直线 64/65 个 1 字节 buffer 逆序全释放：SUMMARY `(64,64,64,0,0,64)`/`(65,65,65,0,0,65)`，exit 0 |
+| V08-5a 额度归还 | budget=65；65×(1B)存活→逆序释放→单次 65B 请求成功：SUMMARY `66 66 66 0 0 65` |
+| V08-5b 零预算 | set_budget(0)：1B 请求→null+**-4**，attempts=0；set_budget(-1) 清除后同请求成功 |
+
+**V-06 修订**：V06-2 前驱 trace 经文件重定向观察（`HANG-PRE live=1` 在 deadline
+后可读）；分类仍为 Err(Deadline)。

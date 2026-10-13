@@ -214,3 +214,28 @@ fn v02_8_nested_calls() {
         &["REC-VIEW flag=1 count=5 tag=233", "REC-MUT addend=10"],
     );
 }
+
+/// V02-9 (review r1 P774-R1-04): nested record layout — Outer { inner:
+/// Inner{x,y} inline @0..8, flag @8 } via rec2_out/rec2_view, mixed with a
+/// flat Rec1 op in the same PE.
+#[test]
+fn v02_9_nested_record_layout() {
+    let out = probe::run_probe("v02-9", |cx| {
+        cx.data("outer", &[0; 12], true);
+        cx.data("rec", &rec_bytes(1, 5, 233), true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outer = probe::data_addr(fb, fx, "outer");
+            let seed = probe::const_i32(fb, 5);
+            probe::call_shim(fb, fx, "p774_rec2_out", &[seed, outer]);
+            let r2 = probe::call_shim(fb, fx, "p774_rec2_view", &[outer]).remove(0);
+            // checksum = x + 2*y + 3*flag = 5 + 12 + 3 = 20
+            let v2 = probe::expect_eq_i32(fb, r2, 20);
+            // mixed flat-record call in the same PE
+            let p = probe::data_addr(fb, fx, "rec");
+            let r1 = probe::call_shim(fb, fx, "p774_rec_view", &[p]).remove(0);
+            let v1 = probe::expect_eq_i32(fb, r1, 710);
+            probe::acc(fb, v1, v2)
+        }));
+    });
+    probe::assert_pass(&out, &["REC2-OUT seed=5", "REC2-VIEW x=5 y=6 flag=1"]);
+}

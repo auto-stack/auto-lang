@@ -92,3 +92,41 @@
 5. 组合 text-record、List、enum、use：后续 owner（Design 36 §7），两分支单独
    通过**不构成**组合能力；联合正确性不是 merge-owned 延后项，组合 profile
    需重新 verify 与联合语料。
+
+## 7. r1 复审修订（P774-R1-01..06 同步；取代上文冲突表述）
+
+### 7.1 追加/修订符号（机器签名同 §1 约定）
+
+| 符号 | 机器签名 | 说明 |
+|---|---|---|
+| p774_rec2_out | (seed: i32, out: ptr) -> () | 嵌套 record：Inner{x@0,y@4}+flag@8，size 12 |
+| p774_rec2_view | (p: ptr) -> i32 | 校验和 x+2y+3·flag（D-05 嵌套布局） |
+| p774_h_get_checked | (h: i32) -> i32 | R2 公平对照：active 追踪版 get（陈旧句柄=-11） |
+
+**计数口径修订（§3 同步）**：`frees`=成功释放（完整外部账本验证 + HeapFree 非零）；
+新增 `free_attempts` 与 `invalid_frees`（FREESTAT 行）；双释放不读已释放内存。
+分配 op 成功时 trace 附 ` id=N`（资源 id，PE 进程内单调）；释放 trace `FREE id=N` /
+`FREE-INVALID`。SUMMARY 六字段不变。
+
+**预算语义**：`set_budget(v≥0)` 真实字节预算（**0=零字节预算**）；负值清除上限。
+
+### 7.2 唯一身份表（D-07；770/771 下次 revision 必须采用）
+
+| profile | 身份三元组（schema/revision/profile） | 现状漂移（下游责任） |
+|---|---|---|
+| text | `auto.hir.text.draft / 1 / text-i32-draft` | 770 §5.1 现为 `text-draft`，须改齐 |
+| record | `auto.hir.record.draft / 1 / record-i32-draft` | 771 §5.1 现为 `record-draft`，须改齐 |
+
+### 7.3 源级拼写（与机器 API 分层）
+
+- char↔int：源级 `c.to_codepoint() -> int` / `char.from_codepoint(n)`；机器层
+  p774_char_from_codepoint/to_codepoint。770 §5.1 的 `.to(int)` 须改齐。
+- 字面量/转义/跨行/char 单标量规则与码（text.literal-newline / text.invalid-escape /
+  text.invalid-scalar / text.char-multi / text.char-empty）：冻结于
+  decisions.md §3.8 R1-04.4，770 词法层实现。
+
+### 7.4 参数模式（D-03 修订）
+
+参数默认 view（str 与 Str 同）；显式 `mut Str`（排他借用）；显式 `move Str`
+（转移，调用点 `.move`，callee 清理，缺 `.move` → verify.ownership-required）。
+借用参数不可保存/释放/逃逸；`return <view>` 仅借入参数合法。

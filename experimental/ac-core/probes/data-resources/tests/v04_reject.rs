@@ -206,3 +206,203 @@ fn v04_r2_silent_stale_read() {
     // violation is real, observable, and entirely silent.
     probe::assert_pass(&pe, &["H-ALLOC h=1", "H-DROP h=1 rc=0", "H-GET h=1 v=34"]);
 }
+
+// ---- review r1 (P774-R1-02): provenance, storage/mode entries, real PEs ----
+
+/// V04-M4b: ReturnViewParam must verify the slot IS a live borrowed param —
+/// a freed local, a moved-out slot, or a move-in owned param all reject.
+#[test]
+fn v04_m4b_provenance_required() {
+    // freed local masquerading as a "param" view (r1 counterexample)
+    let out = rejected(
+        &[
+            rules::Op::Make(0),
+            rules::Op::Free(0),
+            rules::Op::ReturnViewParam(0),
+        ],
+        3,
+        "verify.use-after-free",
+    );
+    assert_eq!(out.ledger.get("borrow_return"), None);
+    // move-in owned param: the view would escape this frame's cleanup boundary
+    let out2 = rejected(
+        &[rules::Op::ParamOwned(0), rules::Op::ReturnViewParam(0)],
+        2,
+        "verify.borrow-escape",
+    );
+    assert_eq!(out2.ledger.get("borrow_return"), None);
+    // the legal form: a registered borrowed-in param
+    let ok = rules::run_script(&[rules::Op::ParamBorrowed(0), rules::Op::ReturnViewParam(0)]);
+    assert!(ok.rejection.is_none());
+    assert_eq!(ok.ledger.get("borrow_return"), Some(&1));
+}
+
+/// V04-M4c: the legal borrow return as a REAL PE — the borrowed pointer AND
+/// length cross the call frame and the CALLER reads through them afterwards.
+#[test]
+fn v04_m4c_real_borrow_return_pe() {
+    let pe = probe::run_probe("v04-m4c", |cx| {
+        cx.data("lit", b"Auto", false);
+        cx.data("cells", &[0; 16], true); // [0..8] ptr cell, [8..12] len cell
+        cx.func(
+            "give_view",
+            &[
+                cranelift_codegen::ir::types::I64,
+                cranelift_codegen::ir::types::I32,
+                cranelift_codegen::ir::types::I64,
+            ],
+            Box::new(|fb, _fx, params| {
+                // store the borrowed (ptr, len) into the caller cells: the
+                // borrow is RETURNED, not consumed inside the callee
+                probe::store_i64(fb, params[2], 0, params[0]);
+                probe::store_i32(fb, params[2], 8, params[1]);
+                probe::const_i32(fb, 0)
+            }),
+        );
+        cx.set_main(Box::new(|fb, fx| {
+            let lit = probe::data_addr(fb, fx, "lit");
+            let cells = probe::data_addr(fb, fx, "cells");
+            let four = probe::const_i32(fb, 4);
+            let r = probe::call_shim(fb, fx, "give_view", &[lit, four, cells]).remove(0);
+            let vr = probe::expect_eq_i32(fb, r, 0);
+            let got_ptr = probe::load_i64(fb, cells, 0);
+            let got_len = probe::load_i32(fb, cells, 8);
+            let vl = probe::expect_eq_i32(fb, got_len, 4);
+            let zero = probe::const_i32(fb, 0);
+            let byte =
+                probe::call_shim(fb, fx, "p774_borrow_read", &[got_ptr, got_len, zero]).remove(0);
+            let vb = probe::expect_eq_i32(fb, byte, 65);
+            let v1 = probe::acc(fb, vr, vl);
+            probe::acc(fb, v1, vb)
+        }));
+    });
+    probe::assert_pass(&pe, &[]);
+}
+
+/// V04-M5 sibling as a REAL PE (make -> read through a view -> move -> one
+/// cleanup at the destination slot).
+#[test]
+fn v04_m5_sibling_real_pe() {
+    let pe = probe::run_probe("v04-m5-sib", |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let seed = probe::const_i32(fb, 7);
+            let len = probe::const_i32(fb, 16);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0);
+            let zero = probe::const_i32(fb, 0);
+            let byte = probe::call_shim(fb, fx, "p774_borrow_read", &[p, len, zero]).remove(0);
+            let vb = probe::expect_eq_i32(fb, byte, 7);
+            let dst = fb.declare_var(cranelift_codegen::ir::types::I64);
+            fb.def_var(dst, p);
+            let q = fb.use_var(dst);
+            probe::call_shim(fb, fx, "p774_own_free", &[q]);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            probe::acc(fb, vb, inv)
+        }));
+    });
+    probe::assert_pass(&pe, &[]);
+    assert_eq!(probe::summary_of(&pe), (1, 1, 1, 0, 0, 16));
+}
+
+/// V04-storage entries: field/container borrows have REACHABLE rejection
+/// operations; storing an owned clone is the legal sibling.
+#[test]
+fn v04_field_and_container_entries() {
+    let f = rejected(
+        &[rules::Op::Make(0), rules::Op::StoreFieldView(0)],
+        2,
+        "verify.field-borrow",
+    );
+    assert_eq!(f.ledger.get("own_make"), Some(&1));
+    let c = rejected(
+        &[rules::Op::Make(0), rules::Op::StoreContainerView(0)],
+        2,
+        "verify.container-borrow",
+    );
+    assert_eq!(c.ledger.get("own_make"), Some(&1));
+    // legal siblings in the model ...
+    let ok = rules::run_script(&[
+        rules::Op::Make(0),
+        rules::Op::StoreOwnedClone(0),
+        rules::Op::Free(0),
+    ]);
+    assert!(ok.rejection.is_none());
+    assert_eq!(ok.ledger.get("own_clone"), Some(&1));
+    // ... and as a real PE: field/container stores keep the value live
+    // until scope exit (the clone is freed exactly once).
+    let pe = probe::run_probe("v04-store-sib", |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let seed = probe::const_i32(fb, 7);
+            let len = probe::const_i32(fb, 16);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0);
+            let q = probe::call_shim(fb, fx, "p774_own_clone", &[p, len, outp]).remove(0);
+            probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            probe::call_shim(fb, fx, "p774_own_free", &[q]);
+            probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0)
+        }));
+    });
+    probe::assert_pass(&pe, &[]);
+    assert_eq!(probe::summary_of(&pe), (2, 2, 2, 0, 0, 32));
+}
+
+/// V04 mode requirement: passing an owned value to a `move Str` param
+/// without the call-site `.move` rejects; the explicit form transfers and
+/// the CALLEE takes over cleanup (real PE sibling).
+#[test]
+fn v04_move_param_mode_requirement() {
+    let bad = rejected(
+        &[rules::Op::Make(0), rules::Op::CallMoveParamImplicit(0)],
+        2,
+        "verify.ownership-required",
+    );
+    assert_eq!(bad.ledger.get("own_free"), None);
+    let ok = rules::run_script(&[rules::Op::Make(0), rules::Op::CallMoveParamExplicit(0)]);
+    assert!(ok.rejection.is_none());
+    // the callee's cleanup dispatch fires exactly once
+    assert_eq!(ok.ledger.get("own_free"), Some(&1));
+
+    let pe = probe::run_probe("v04-moveparam-sib", |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.func(
+            "consume",
+            &[cranelift_codegen::ir::types::I64],
+            Box::new(|fb, fx, params| {
+                // move-in param: the CALLEE owns cleanup
+                probe::call_shim(fb, fx, "p774_own_free", &[params[0]]);
+                probe::const_i32(fb, 0)
+            }),
+        );
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let seed = probe::const_i32(fb, 7);
+            let len = probe::const_i32(fb, 16);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0);
+            let r = probe::call_shim(fb, fx, "consume", &[p]).remove(0);
+            let v = probe::expect_eq_i32(fb, r, 0);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            probe::acc(fb, v, inv)
+        }));
+    });
+    probe::assert_pass(&pe, &[]);
+    assert_eq!(probe::summary_of(&pe), (1, 1, 1, 0, 0, 16));
+}
+
+/// R2 fairness control (review r1 P774-R1-04): with per-slot active
+/// tracking the stale read IS detectable — showing exactly the extra
+/// machinery a front-door-safe R2 would need on top of the handle table.
+#[test]
+fn v04_r2_checked_variant_detects_stale() {
+    let pe = probe::run_probe("v04-r2-checked", |cx| {
+        cx.set_main(Box::new(|fb, fx| {
+            let p11 = probe::const_i32(fb, 0x11);
+            let h1 = probe::call_shim(fb, fx, "p774_h_alloc", &[p11]).remove(0);
+            probe::call_shim(fb, fx, "p774_h_drop", &[h1]);
+            let stale = probe::call_shim(fb, fx, "p774_h_get_checked", &[h1]).remove(0);
+            probe::expect_eq_i32(fb, stale, probe::status::ERR_INDEX_OOB)
+        }));
+    });
+    probe::assert_pass(&pe, &["H-ALLOC h=1", "H-DROP h=1 rc=0"]);
+}

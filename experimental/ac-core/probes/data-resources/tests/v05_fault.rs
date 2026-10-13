@@ -267,3 +267,67 @@ fn v05_12_category_matrix() {
         assert!(!m.contains("depth"), "no depth-based rejection exists: {m}");
     }
 }
+
+/// V05-13 (review r1 P774-R1-03): per-point injection WITH another owned
+/// resource already live — the surviving owner is still reclaimed.
+#[test]
+fn v05_13_ap3_ap4_fault_with_live_owner() {
+    // AP-4 (literal promotion) fails while a 16-byte buffer is live
+    let lit = probe::run_probe("v05-13-lit", |cx| {
+        cx.data("lit", b"Auto", false);
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let two = probe::const_i32(fb, 2);
+            probe::call_shim(fb, fx, "p774_fail_nth_alloc", &[two]);
+            let seed = probe::const_i32(fb, 7);
+            let len = probe::const_i32(fb, 16);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0);
+            let v1 = probe::expect_non_null(fb, p);
+            let lp = probe::data_addr(fb, fx, "lit");
+            let four = probe::const_i32(fb, 4);
+            let q = probe::call_shim(fb, fx, "p774_own_from_lit", &[lp, four, outp]).remove(0);
+            let v2 = probe::expect_null(fb, q);
+            let code = probe::load_i32(fb, outp, 0);
+            let v3 = probe::expect_eq_i32(fb, code, probe::status::ERR_ENV_OOM);
+            probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            let v = probe::acc(fb, v1, v2);
+            let v = probe::acc(fb, v, v3);
+            probe::acc(fb, v, inv)
+        }));
+    });
+    probe::assert_pass(&lit, &["LIT len=4"]);
+    assert_eq!(probe::summary_of(&lit), (2, 1, 1, 0, 0, 16));
+
+    // AP-3 (concat build) fails while a 16-byte buffer is live
+    let cat = probe::run_probe("v05-13-concat", |cx| {
+        cx.data("a", b"Ab", false);
+        cx.data("b", b"cd", false);
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(|fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let two = probe::const_i32(fb, 2);
+            probe::call_shim(fb, fx, "p774_fail_nth_alloc", &[two]);
+            let seed = probe::const_i32(fb, 7);
+            let len = probe::const_i32(fb, 16);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[seed, len, outp]).remove(0);
+            let v1 = probe::expect_non_null(fb, p);
+            let pa = probe::data_addr(fb, fx, "a");
+            let pb = probe::data_addr(fb, fx, "b");
+            let la = probe::const_i32(fb, 2);
+            let lb = probe::const_i32(fb, 2);
+            let q = probe::call_shim(fb, fx, "p774_own_concat", &[pa, la, pb, lb, outp]).remove(0);
+            let v2 = probe::expect_null(fb, q);
+            let code = probe::load_i32(fb, outp, 0);
+            let v3 = probe::expect_eq_i32(fb, code, probe::status::ERR_ENV_OOM);
+            probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            let v = probe::acc(fb, v1, v2);
+            let v = probe::acc(fb, v, v3);
+            probe::acc(fb, v, inv)
+        }));
+    });
+    probe::assert_pass(&cat, &["CONCAT a=2 b=2"]);
+    assert_eq!(probe::summary_of(&cat), (2, 1, 1, 0, 0, 16));
+}

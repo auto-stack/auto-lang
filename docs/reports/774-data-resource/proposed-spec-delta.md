@@ -30,8 +30,9 @@ interface-contract.md，merge 时全文搬运并按 Spec 模板重排）：
 - before：能力门/边界节无数据资源合同条目；"char/str/List/完整 int 宽度仍 open"。
 - after：新增一节「数据/资源合同（PLAN-774）」：指向 data-resource-contract.md；
   声明探针 workspace（`probes/data-resources/`，独立 Cargo workspace + no_std shim）
-  及其非生产边界；char/str/List 在**新 profile 合同层已冻结、实现层仍 open** 的
-  双态表述；旧句"仍 open"保留但加合同指针。不新增任何 implemented 语句。
+  及其非生产边界；**text（str/Str/char）与标量 record 的共同合同已在 774 冻结并经
+  探针实证、实现层仍 open** 的双态表述（List 明确不在冻结面，仍为后续 owner）；
+  旧句"仍 open"保留但加合同指针。不新增任何 implemented 语句。
 - rationale：防混称（探针≠语言支持）；AC-05。
 - 验收 ID：AC-05。
 
@@ -39,9 +40,12 @@ interface-contract.md，merge 时全文搬运并按 Spec 模板重排）：
 
 - before：阶段表 S0–S6 现状只覆盖 core/scalar 两域；无数据/资源阶段责任。
 - after：在阶段表后追加「数据/资源阶段责任（PLAN-774，planned）」小节：
-  S3 verify 承担 D-03/D-04 前门（8 码 + native-count-0 义务）；S4 Checked 须携带
-  资源义务（所有权/清理责任）且不泄漏 ABI 布局（沿 X6）；S5 lowering 按 D-05 五类
-  形态；S6 执行器 deadline/containment 沿 741 合同。未实现部分明确 planned。
+  S3 verify 承担 D-03/D-04 前门（8 码 + native-count-0 义务——八码均已**在探针模型
+  中有可达入口并通过**，production verify 仍 planned）；S4 Checked 须携带资源义务
+  （所有权/清理责任）且不泄漏 ABI 布局（沿 X6）；S5 lowering 按 D-05 五类形态
+  （含嵌套 record 递归布局）；S6 执行器 deadline/containment 沿 741 合同。全路径
+  清理（LIFO/嵌套出口/临时/move-in/return 转移）的证据状态为**探针实证**；
+  未实现部分明确 planned。
 - rationale：保持 verify=Checked 唯一门；AC-01/03。
 - 验收 ID：AC-01/03。
 
@@ -67,3 +71,16 @@ interface-contract.md，merge 时全文搬运并按 Spec 模板重排）：
 | AC-05 | SD-01..04（边界/防混称/不冒称） |
 
 无 retire 项；无对既有 canonical 语义的 before 变更（全部为 add/追加注记）。
+
+
+## r1 复审修订（本轮增量）
+
+- SD-02：删除"char/str/List 已冻结"的误称——冻结面是 text（str/Str/char）与标量
+  record 的共同合同；**List 不在冻结面**（非目标/后续 owner）。
+- SD-01/03：claims 收敛为实际执行面——八码均有探针可达入口；全路径清理（LIFO/
+  嵌套出口/临时/move-in/return 转移）以探针实证表述，不写为 production 已验。
+- SD-01 内容骨架追加 §3.8 修订项（参数三模式、身份表、源级拼写、字面量/转义表、
+  嵌套布局、预算零语义、R2 理由限定）。
+- touched_goals=[] 的解释（计划 frontmatter 同步）：本计划不推进/关闭任何全语言或
+  自举 Goal（GOAL-017 的 AAVM 谱系已达成不受影响；AC/ACC native 自举 Gen1-3 不因
+  本合同开启），只交付 Rust 原型域的候选合同与探针实证，故无受影响 Goal ID。

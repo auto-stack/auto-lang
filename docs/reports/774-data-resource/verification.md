@@ -107,3 +107,31 @@ shim staticlib artifact     fcea5572e8848b00…（同上）
   volatile 字节循环实现）——这是 no-CRT PE 链接的通用事实，770 落地 runtime 时
   同样需要，已记入 interface-contract 消费面。
 - 后续 owner：text-record 组合、List/enum/use、生产 ABI、ACC 桥（Design 36 §7）。
+
+## 8. r1 复审修复轮（2026-10-13，needs_fix → executing 修复后）
+
+复审报告：[REVIEW.md](../../plans/attachments/774/review-r1/REVIEW.md)（六发现
+P774-R1-01..06）。本轮修复与证据：
+
+| 发现 | 修复 | 证据 |
+|---|---|---|
+| R1-01 账本容量/预算 | shim 改堆支持可增长完整外部账本（键=指针，无容量上限，增长失败按 env-oom 回滚）；check_invariant 收紧（live_bytes==0 ∧ invalid_frees==0）；budget 0=零字节预算、负值清除 | v08_capacity_64_and_65 / v08_budget_restored_after_65 / v08_zero_budget_and_negative_clears |
+| R1-02 来源/入口 | rules.rs 来源追踪（LocalOwned/ParamBorrowed/ParamOwned/Viewed(base)/MutBorrowed(base)）；ReturnViewParam 验证存活借入来源；field-borrow/container-borrow/ownership-required 均有可达入口；真借用返回 PE（(ptr,len) 跨帧+调用方读取）；M5 兄弟真实 PE | v04_m4b/m4c/m5_sibling_real_pe/field_and_container_entries/move_param_mode_requirement |
+| R1-03 LIFO/全路径 | FREE id 顺序 oracle（LIFO+IFO 可区分控制）；嵌套 break/continue 清理；临时语句尾（使用先于清理 trace 序）；move-in callee 清理+return 转移；clone 内容独立（原释放后 BSUM=409）；AP-3/4 带 owner 注入 | v03_6..v03_10、v05_13 |
+| R1-04 合同缺项 | decisions §3.8：Str 参数默认 view+三显式模式（对齐 Design 04/F8）；身份表唯一化+下游改齐责任；源级拼写 to_codepoint/from_codepoint；字面量/跨行/转义冻结表（5 码）；嵌套 record 递归布局+rec2 物化；R2 理由限定+checked 对照 | decisions.md §3.8、interface-contract §7、v02_9、v04_r2_checked_variant_detects_stale |
+| R1-05 释放口径 | frees=成功释放（账本+HeapFree 非零）；FREESTAT 行分离 free_attempts/invalid；双释放不读已释放内存 | v03_2n（exit 1 + FREESTAT 2/1/1 + FREE-INVALID） |
+| R1-06 门禁/收据 | PS 门禁：逐行警告匹配+内置正反控制；check/test/fmt 原文全量落盘（raw-*）；失败也写收据；shim 构建 60s+locked；V06-2 前驱 trace 文件重定向可观察 | gate-20261013-*.txt + raw-*/{check,test,fmt}.txt、v06_2 |
+
+**本轮结果**：探针全套 **55 测试全绿**（v02 9、v03 10、v04 12、v05 11、v06 2、
+v07 5、v08 5、smoke 1）；**复审反例重放 7/7 全绿**（含原 4 失败控制——
+`powershell docs/plans/attachments/774/review-r1/replay.ps1` exit 0）。收据时 HEAD
+与哈希见最新 gate 收据（含 probe 源/报告/gate 脚本哈希与 shim 工件哈希）。
+本节哈希以 gate 收据为准（旧 §6 的 16 位前缀对应修复前版本）。
+
+**旧门禁重跑（本轮修复后）**：741 `-SkipMainGates` 13 步 PASS、745 13 步/74 例
+PASS、767（772）14 步/45 例 PASS（2026-10-13，同一修复 HEAD）。最终门禁收据：
+`gate-20261013-134941.txt` + `raw-20261013-134941/`（check/test/fmt 全文）。
+
+**遗留模型缺口（明示）**：规则模型未建模显式 `mut str` 借用参数（D-03 声明合法，
+模型内拒绝 mut-conflict 并注释）——模型保守性说明，非规则声明；770 实现时以其
+Spec 为准。

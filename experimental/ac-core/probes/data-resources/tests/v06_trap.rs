@@ -45,10 +45,13 @@ fn v06_1_trap_after_alloc() {
 }
 
 /// V06-2: hang classification — the contained executor reports Deadline for
-/// a process that never exits (controlled timeout, not success/crash).
+/// a process that never exits (controlled timeout, not success/crash). The
+/// predecessor trace is OBSERVED through a file-redirected wrapper inside
+/// the same contained process tree (the deadline branch drops piped output
+/// by design).
 #[test]
 fn v06_2_hang_deadline_classification() {
-    let kind = probe::run_expect_deadline("v06-2", |cx| {
+    let (kind, trace) = probe::run_expect_deadline_traced("v06-2", |cx| {
         cx.set_main(Box::new(|fb, fx| {
             let sixteen = probe::const_i32(fb, 16);
             probe::call_shim(fb, fx, "p774_hang_after_alloc", &[sixteen]);
@@ -56,4 +59,8 @@ fn v06_2_hang_deadline_classification() {
         }));
     });
     assert_eq!(kind, "deadline");
+    assert!(
+        trace.lines().any(|l| l == "HANG-PRE live=1"),
+        "missing HANG-PRE in redirected trace; got:\n{trace}"
+    );
 }

@@ -79,6 +79,8 @@ const SHIM_SIGS: &[SigSpec] = &[
     ("p774_rec_view", &[P], &[I]),
     ("p774_rec_mut", &[P, I], &[]),
     ("p774_rec_out", &[I, P], &[]),
+    ("p774_rec2_out", &[I, P], &[]),
+    ("p774_rec2_view", &[P], &[I]),
     ("p774_text_scalars", &[P, I], &[I]),
     ("p774_text_bytes", &[P, I], &[I]),
     ("p774_char_at", &[P, I, I], &[I]),
@@ -98,6 +100,7 @@ const SHIM_SIGS: &[SigSpec] = &[
     ("p774_h_clone", &[I], &[I]),
     ("p774_h_drop", &[I], &[]),
     ("p774_h_get", &[I], &[I]),
+    ("p774_h_get_checked", &[I], &[I]),
 ];
 
 /// Everything a caller body can reference: imported shim FuncRefs and data
@@ -407,6 +410,18 @@ pub fn store_i32(fb: &mut FunctionBuilder, ptr: Value, offset: i32, val: Value) 
         .store(cranelift_codegen::ir::MemFlags::new(), val, ptr, offset);
 }
 
+/// Load i64 at ptr+offset.
+pub fn load_i64(fb: &mut FunctionBuilder, ptr: Value, offset: i32) -> Value {
+    fb.ins()
+        .load(P, cranelift_codegen::ir::MemFlags::new(), ptr, offset)
+}
+
+/// Store i64 at ptr+offset.
+pub fn store_i64(fb: &mut FunctionBuilder, ptr: Value, offset: i32, val: Value) {
+    fb.ins()
+        .store(cranelift_codegen::ir::MemFlags::new(), val, ptr, offset);
+}
+
 /// Call a shim function by name with args; returns the result Values.
 pub fn call_shim(fb: &mut FunctionBuilder, fx: &Fx, name: &str, args: &[Value]) -> Vec<Value> {
     let f = *fx
@@ -436,17 +451,18 @@ pub struct ProbeOutcome {
 }
 
 /// Path to the built shim staticlib; builds it once per test process via a
-/// contained cargo invocation.
+/// contained cargo invocation (60s deadline, --locked per plan §6 evidence
+/// contract — review r1 P774-R1-06).
 fn shim_lib() -> Result<PathBuf, String> {
     static CACHE: OnceLock<Result<PathBuf, String>> = OnceLock::new();
     CACHE
         .get_or_init(|| {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
             let mut cmd = Command::new("cargo");
-            cmd.args(["build", "-p", "ac-data-shim-774", "--release"])
+            cmd.args(["build", "-p", "ac-data-shim-774", "--release", "--locked"])
                 .current_dir(&root);
             let (code, out, err) =
-                auto_ac_prototype::link::run_deadlined_split(&mut cmd, Duration::from_secs(120))
+                auto_ac_prototype::link::run_deadlined_split(&mut cmd, Duration::from_secs(60))
                     .map_err(|e| format!("cargo build shim: {e:?}"))?;
             if code != Some(0) {
                 return Err(format!(
@@ -519,8 +535,16 @@ pub fn run_probe(case: &str, program: impl FnOnce(&mut ProbeCx)) -> ProbeOutcome
 }
 
 /// Run an exe that is EXPECTED to hit the executor deadline (V-06 timeout
-/// classification control) with a short explicit deadline.
-pub fn run_expect_deadline(case: &str, program: impl FnOnce(&mut ProbeCx)) -> &'static str {
+/// classification control) with a short explicit deadline, and OBSERVE the
+/// predecessor trace: the child's stderr is redirected (via a `cmd /c`
+/// wrapper INSIDE the same contained process tree) to a file that survives
+/// the deadline kill — the deadline branch of the contained executor drops
+/// piped output by design, so the file is the observable oracle
+/// (review r1 P774-R1-06).
+pub fn run_expect_deadline_traced(
+    case: &str,
+    program: impl FnOnce(&mut ProbeCx),
+) -> (&'static str, String) {
     let mut cx = ProbeCx::new().expect("probe module setup");
     program(&mut cx);
     let obj = cx.finish().expect("probe object emission");
@@ -530,6 +554,7 @@ pub fn run_expect_deadline(case: &str, program: impl FnOnce(&mut ProbeCx)) -> &'
     std::fs::create_dir_all(&dir).expect("probe scratch dir");
     let obj_path = dir.join("probe.obj");
     let exe_path = dir.join("probe.exe");
+    let trace_path = dir.join("trace.txt");
     std::fs::write(&obj_path, &obj).expect("write probe object");
 
     let lld = auto_ac_prototype::link::find_rust_lld().expect("locate rust-lld");
@@ -554,15 +579,25 @@ pub fn run_expect_deadline(case: &str, program: impl FnOnce(&mut ProbeCx)) -> &'
         .unwrap_or_else(|e| panic!("{case}: link executor: {e:?}"));
     assert_eq!(code, Some(0), "{case}: rust-lld failed: {out}{err}");
 
-    let mut run_cmd = Command::new(&exe_path);
-    match auto_ac_prototype::link::run_deadlined_split(&mut run_cmd, Duration::from_secs(5)) {
-        Err(auto_ac_prototype::link::SubprocError::Deadline) => "deadline",
-        Err(auto_ac_prototype::link::SubprocError::DeadlineCollect) => "deadline-collect",
-        Err(other) => panic!("{case}: unexpected executor error: {other:?}"),
-        Ok((code, out, err)) => {
-            panic!("{case}: expected deadline, process exited {code:?} (out={out} err={err})")
-        }
-    }
+    // cmd.exe redirects the hang PE's stderr into trace.txt; the wrapper and
+    // the PE both live inside the contained job (single process tree). Bare
+    // relative names + a working directory avoid every quoting layer.
+    let mut run_cmd = Command::new("cmd");
+    run_cmd
+        .args(["/C", "probe.exe 2>trace.txt"])
+        .current_dir(&dir);
+    let kind =
+        match auto_ac_prototype::link::run_deadlined_split(&mut run_cmd, Duration::from_secs(5)) {
+            Err(auto_ac_prototype::link::SubprocError::Deadline) => "deadline",
+            Err(auto_ac_prototype::link::SubprocError::DeadlineCollect) => "deadline-collect",
+            Err(other) => panic!("{case}: unexpected executor error: {other:?}"),
+            Ok((code, out, err)) => {
+                panic!("{case}: expected deadline, process exited {code:?} (out={out} err={err})")
+            }
+        };
+    let trace = std::fs::read_to_string(&trace_path)
+        .unwrap_or_else(|e| panic!("{case}: read trace file: {e}"));
+    (kind, trace)
 }
 
 /// Assert a PE outcome: exit code 0 and every listed trace line present in
@@ -590,6 +625,22 @@ pub fn assert_line_absent(outcome: &ProbeOutcome, line: &str) {
         "trace line unexpectedly present: {line}\nstderr:\n{}",
         outcome.stderr
     );
+}
+
+/// Extract the FREESTAT line, parsed as (free_attempts, frees_ok, invalid).
+pub fn freestat_of(outcome: &ProbeOutcome) -> (u32, u32, u32) {
+    let line = outcome
+        .stderr
+        .lines()
+        .rev()
+        .find(|l| l.starts_with("FREESTAT "))
+        .unwrap_or_else(|| panic!("no FREESTAT line; stderr:\n{}", outcome.stderr));
+    let nums: Vec<u32> = line
+        .split_whitespace()
+        .filter_map(|tok| tok.split('=').nth(1).and_then(|v| v.parse::<u32>().ok()))
+        .collect();
+    assert_eq!(nums.len(), 3, "malformed FREESTAT line: {line}");
+    (nums[0], nums[1], nums[2])
 }
 
 /// Extract the SUMMARY counters line, parsed as (attempts, allocs, frees,
