@@ -1,10 +1,10 @@
 {
   "observed_at": "2026-10-13",
   "source": "GitHub REST API default-branch refs",
-  "note": "Snapshot taken after repository pushes and before the final PLAN-775 receipt-only documentation commit; auto-lang master advances with that closeout commit.",
+  "note": "Snapshot taken after the AutoLang v0.5.0 ancestry correction and before this receipt-only documentation update; the recorded auto-lang head is the correction merge point.",
   "repository_count": 37,
   "repositories": [
-    { "name": "auto-lang", "default_branch": "master", "head": "5d72fc2cd8a13d62ae74d405fd48cd7dab8fcf5c" },
+    { "name": "auto-lang", "default_branch": "master", "head": "3002c30ffd618f768031048742bcc700a2aff363" },
     { "name": "auto-ui", "default_branch": "master", "head": "f7d92eef273c7f5592cce9d1612fa28ebe12d45e" },
     { "name": "auto-man", "default_branch": "master", "head": "17e8800f590dae6541fa234cb9c8c101b1257e23" },
     { "name": "tree-sitter-auto", "default_branch": "master", "head": "02afcd68476fd6b0a94d1399e638fad49c716a58" },
