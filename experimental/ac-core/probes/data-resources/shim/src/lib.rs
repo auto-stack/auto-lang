@@ -76,14 +76,14 @@ struct Counters {
     live: u32,            // allocs - frees
     live_bytes: u32,      // declared user bytes currently live (ledger-backed)
     peak: u32,            // max live_bytes at alloc/free boundaries
-    budget: Option<u32>,  // None = unlimited; Some(0) = a real ZERO-byte budget
-    fail_nth: u32,        // 0 = off; nth allocator invocation fails (injected)
-    seq: u32,             // allocator invocation ordinal
-    free_attempts: u32,   // free calls on non-null pointers
-    invalid_frees: u32,   // double frees / foreign pointers (ledger misses)
-    next_id: u32,         // monotonic resource id for the FREE trace channel
+    budget: Option<u64>, // None = unlimited; Some(0) = a real ZERO-byte budget (r3: full i64 range, no truncation)
+    fail_nth: u32,       // 0 = off; nth allocator invocation fails (injected)
+    seq: u32,            // allocator invocation ordinal
+    free_attempts: u32,  // free calls on non-null pointers
+    invalid_frees: u32,  // double frees / foreign pointers (ledger misses)
+    next_id: u32,        // monotonic resource id for the FREE trace channel
     fail_ledger_nth: u32, // 0 = off; nth LEDGER allocation attempt fails (r2)
-    ledger_seq: u32,      // ledger allocation invocation ordinal (metadata)
+    ledger_seq: u32,     // ledger allocation invocation ordinal (metadata)
 }
 
 static mut C: Counters = Counters {
@@ -227,7 +227,9 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
         return Ok((core::ptr::null_mut(), 0));
     }
     if let Some(budget) = c.budget {
-        if c.live_bytes.saturating_add(len) > budget {
+        // u64 arithmetic on both sides: the budget keeps its full i64 value
+        // and the live-byte sum cannot wrap before the comparison (r3).
+        if (c.live_bytes as u64) + (len as u64) > budget {
             return Err(ERR_BUDGET);
         }
     }
@@ -256,7 +258,7 @@ fn try_alloc(len: u32) -> Result<(*mut u8, u32), i32> {
     }
     c.allocs += 1;
     c.live += 1;
-    c.live_bytes += len;
+    c.live_bytes = c.live_bytes.saturating_add(len);
     if c.live_bytes > c.peak {
         c.peak = c.live_bytes;
     }
@@ -1014,10 +1016,11 @@ pub extern "system" fn p774_len_to_i32(v: i64) -> i32 {
 
 #[no_mangle]
 pub extern "system" fn p774_set_budget(bytes: i64) {
-    // Frozen ruling (review r1 P774-R1-01): v >= 0 sets a byte budget where
-    // 0 is a real ZERO-byte budget (any nonzero request is rejected); a
-    // negative value clears the ceiling (unlimited).
-    c().budget = if bytes < 0 { None } else { Some(bytes as u32) };
+    // Frozen ruling (r1 P774-R1-01, amended r3 P774-R3-01): v >= 0 sets a
+    // byte budget where 0 is a real ZERO-byte budget; a negative value
+    // clears the ceiling (unlimited). The i64 channel is stored as u64 —
+    // NEVER silently truncated to u32 (4 GiB budgets must stay 4 GiB).
+    c().budget = if bytes < 0 { None } else { Some(bytes as u64) };
 }
 
 #[no_mangle]

@@ -206,3 +206,42 @@ fn v08_zero_budget_and_negative_clears() {
     probe::assert_pass(&cleared, &[]);
     assert_eq!(probe::summary_of(&cleared), (1, 1, 1, 0, 0, 1));
 }
+
+// ---- review r3 (P774-R3-01): the i64 budget channel never truncates ----
+
+fn budget_width_case(case: &str, budget: i64) -> ac_data_probe_774::ProbeOutcome {
+    probe::run_probe(case, |cx| {
+        cx.data("outlen", &[0; 4], true);
+        cx.set_main(Box::new(move |fb, fx| {
+            let outp = probe::data_addr(fb, fx, "outlen");
+            let b = probe::const_ptr(fb, budget);
+            probe::call_shim(fb, fx, "p774_set_budget", &[b]);
+            let seed = probe::const_i32(fb, 7);
+            let two = probe::const_i32(fb, 2);
+            let p = probe::call_shim(fb, fx, "p774_own_make", &[seed, two, outp]).remove(0);
+            let v = probe::expect_non_null(fb, p);
+            let got = probe::load_i32(fb, outp, 0);
+            let vl = probe::expect_eq_i32(fb, got, 2);
+            probe::call_shim(fb, fx, "p774_own_free", &[p]);
+            let inv = probe::call_shim(fb, fx, "p774_check_invariant", &[]).remove(0);
+            let x = probe::acc(fb, v, vl);
+            probe::acc(fb, x, inv)
+        }));
+    })
+}
+
+/// V08-6 (r3): budgets up to u32::MAX, 4 GiB, and 4 GiB + 1 all keep their
+/// value — a 2-byte request succeeds under each; nothing turns into a
+/// smaller budget by truncation.
+#[test]
+fn v08_budget_i64_no_truncation() {
+    for &(name, budget) in &[
+        ("v08-budget-u32max", 0xFFFF_FFFFi64),
+        ("v08-budget-4gib", 0x1_0000_0000i64),
+        ("v08-budget-4gib-plus1", 0x1_0000_0001i64),
+    ] {
+        let out = budget_width_case(name, budget);
+        probe::assert_pass(&out, &[]);
+        assert_eq!(probe::summary_of(&out), (1, 1, 1, 0, 0, 2), "case {name}");
+    }
+}

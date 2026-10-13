@@ -73,7 +73,15 @@ interface-contract.md，merge 时全文搬运并按 Spec 模板重排）：
 无 retire 项；无对既有 canonical 语义的 before 变更（全部为 add/追加注记）。
 
 
-## r1 复审修订（本轮增量）
+## r3 校准（P774-R3-D1 随附；冻结 SD 刷新时的有效合同指针）
+
+- SD-01/03 沉淀时应引用 decisions **§3.9 与 §3.10 为现行有效规则**（§3 及
+  §3.8 中与之冲突的历史语句不搬入 canonical：跨行字面量合法、静态字面量
+  返回合法、`text.literal-newline` 作废、预算 u64 无截断、V05-15 双 oracle）。
+- 探针用例数以 verification.md 最新节为准（r3 后 63 项）。
+- 矩阵计数：来源×模式矩阵 8 合法 + 16 非法。
+
+## r1 复审修订（历史，已被 §3.9/§3.10 部分取代）
 
 - SD-02：删除"char/str/List 已冻结"的误称——冻结面是 text（str/Str/char）与标量
   record 的共同合同；**List 不在冻结面**（非目标/后续 owner）。
