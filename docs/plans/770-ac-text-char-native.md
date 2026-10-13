@@ -62,14 +62,14 @@ affects: [auto-ac, auto-hir, auto-acc]
 
 ### 5.1 版本与支持面
 
-候选 source=`auto.source.text.draft`；HIR=`auto.hir.text.draft` / 1 / `text-draft`。
+候选 source=`auto.source.text.draft`；HIR=`auto.hir.text.draft` / 1 / `text-i32-draft`（774 r2 同步：唯一身份表见 774 interface-contract §7.2，2026-10-13）。
 精确三元组注册，写另一descriptor或程序化替换任一维必须拒绝；旧core/scalar不自动获得text能力。
 新增Builtin/TypeDef StrSlice/StrOwned/Char语义身份，字段/签名/返回/调用/place与资源注解不得残留Unknown，所有引用重新核验。
 D01..06 经774沉淀且与本节一致才实施；有材料变化先revision本合同，禁止实现者自改预期。
 
 | 语义面 | 当前r1要求与可观察oracle |
 |---|---|
-| 文本存储/字符 | UTF-8；char独立Unicode标量类型，字面量1标量；显式`.to(int)`得码点，int反转char须有效标量；无隐式char/int互转。具体合法拼写由774核查，若变更先修订。 |
+| 文本存储/字符 | UTF-8；char独立Unicode标量类型，字面量1标量；显式`c.to_codepoint()`得码点、`char.from_codepoint(n)`反转（n 须有效标量）（774 r2 同步拼写，见 774 interface-contract §7.3）；无隐式char/int互转。具体合法拼写由774核查，若变更先修订。 |
 | 索引 | len/char_at/slice按Unicode标量，不按byte或字素；`A中😀`len=3，0/1/2对应三字符；组合e+重音len=2。 |
 | slice | `[start,end)`，空范围合法；负数、反向、end>len按774的runtime范围失败（本测试profile trap70）；不偷偷裁剪。 |
 | equality | 完整UTF-8文本值相等；NUL不截断；不做normalization；只支持eq/ne，文本排序不在本计划。 |

@@ -62,7 +62,7 @@ Specs auto-hir现仅i32/bool/function与local place；源TypeWord仅int/i32/bool
 
 ### 5.1 身份与类型
 
-候选 source=`auto.source.record.draft`；HIR=`auto.hir.record.draft` / 1 / `record-draft`。三元组精确注册、binder/Checked/writer/receipt一致；text类型不能从相邻分支漏入。
+候选 source=`auto.source.record.draft`；HIR=`auto.hir.record.draft` / 1 / `record-i32-draft`（774 r2 同步：唯一身份表见 774 interface-contract §7.2，2026-10-13）。三元组精确注册、binder/Checked/writer/receipt一致；text类型不能从相邻分支漏入。
 record名义身份至少包含本模块与声明标识；位置相同或结构相同不构成类型相等。字段i32/bool或已声明record；字段类型包含图必须无环（自环/互环/断开环全部核对）。
 支持非递归嵌套，不临时加语法深度排除；声明顺序独立于名字解析依赖顺序，前向类型可预登记后检查闭合。
 
