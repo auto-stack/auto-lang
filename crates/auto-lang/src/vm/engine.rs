@@ -442,6 +442,9 @@ pub struct ParkedSegment {
     pub saved_fn_n_args: usize,
 }
 
+/// PLAN-776 R1-F03：VM 实例唯一号分配器（凭据 owner 身份的来源侧）。
+static VM_INSTANCE_ID_GEN: AtomicU64 = AtomicU64::new(1);
+
 pub struct AutoVM {
     pub flash: Arc<VirtualFlash>,
     pub native_interface: Arc<NativeInterface>,
@@ -479,6 +482,14 @@ pub struct AutoVM {
     // `objects`/`arrays`/`nodes` registries were folded in here (H1/H3a/H3b).
     pub heap_objects: DashMap<u64, Arc<RwLock<dyn HeapObject>>>,
     pub heap_object_id_gen: AtomicU64,
+    /// PLAN-776 R1-F03：VM 实例唯一号（进程级 AtomicU64 分配）。heap id 是
+    /// per-VM 局部编号（两 VM 同号必然），HTTP 返回资源凭据的 id 段编入
+    /// owner（见 http_return_resource::credential_id），解析侧 id 层校验——
+    /// "每 VM 一张表"不构成来源证明。
+    pub instance_id: u64,
+    /// PLAN-776 R1-F03：HTTP 凭据专用 per-VM local 计数（凭据 id 不走通用
+    /// heap_object_id_gen——id 段编 owner，跨 VM 同号不可能）。
+    pub http_credential_gen: std::sync::atomic::AtomicU64,
 
     // Plan 419 Phase 1: 精确引用计数(heap_rc)+ 毒化 canary(tombstones)。
     // heap_rc: id → 计数(owned slot 数);insert_heap_object 不建条目,
@@ -796,7 +807,9 @@ impl AutoVM {
             // objects/arrays/nodes registries folded in — single id space).
             heap_objects: DashMap::new(),
             heap_object_id_gen: AtomicU64::new(4000000),
-            // Plan 419 Phase 1: RC 协议状态
+            // PLAN-776 R1-F03：VM 实例唯一号（凭据 owner 身份）。
+            instance_id: VM_INSTANCE_ID_GEN.fetch_add(1, Ordering::Relaxed),
+            http_credential_gen: std::sync::atomic::AtomicU64::new(0), // Plan 419 Phase 1: RC 协议状态
             heap_rc: DashMap::new(),
             #[cfg(debug_assertions)]
             tombstones: DashMap::new(),
@@ -861,6 +874,16 @@ impl AutoVM {
 
     /// Remove a task and release resources owned by its lifetime.
     pub(crate) fn remove_task(&self, task_id: TaskId) {
+        // PLAN-776 R1-F04：任务终结清偿 HTTP 返回资源凭据的栈份额——
+        // dispatch（含 middleware/parked/shutdown/cancel 各终态）统一经此
+        // remove；Internal `~{}` body 栈与异常退出路径的残留引用在此收口
+        //（只清 HttpReturnResource，通用对象栈清理是 P776-D1 既有边界）。
+        // try_lock 失败（任务仍在执行——remove 本身即异常路径）跳过不阻塞。
+        if let Some(t_arc) = self.tasks.get(&task_id) {
+            if let Ok(t) = t_arc.try_lock() {
+                crate::vm::ffi::http_return_resource::release_task_credentials(self, &t);
+            }
+        }
         self.tasks.remove(&task_id);
         self.sqlite_handles
             .lock()
@@ -8377,7 +8400,30 @@ impl AutoVM {
                 // http 调用栈下溢崩溃(E2 现场同根)。
                 // 判定收窄到"小正整数句柄且不在堆上、但命中 response 表",
                 // 服务端 Response 构建链(堆对象)与普通 int 方法不受影响。
+                // PLAN-776 R1-F06：receiver 双形态——client int 句柄（查表面）
+                // 或 **Response 凭据对象**（快照面——read_response_payload 内
+                // owner 校验分流）。对象臂 Some(0) 仅作"走 shim"标志（shim 按
+                // 栈上原 receiver nv 分流，不消费该值）。
+                let receiver_is_credential = auto_val::is_object(receiver_nv)
+                    && self
+                        .heap_objects
+                        .get(&(auto_val::decode_object(receiver_nv) as u64))
+                        .map(|o| {
+                            o.read()
+                                .map(|g| {
+                                    g.type_tag()
+                                        == crate::vm::heap_object::TypeTag::HttpReturnResource
+                                })
+                                .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
                 let http_response_handle = match method_name.as_str() {
+                    "status" | "status_code" | "body" | "body_bytes" | "body_to_file"
+                    | "header" | "header_get"
+                        if arg_count <= 2 && receiver_is_credential =>
+                    {
+                        Some(0i32)
+                    }
                     "status" | "status_code" | "body" | "body_bytes" | "body_to_file"
                     | "header" | "header_get"
                         if arg_count <= 2 && auto_val::is_i32(receiver_nv) =>
@@ -12809,6 +12855,15 @@ impl AutoVM {
                     // 成 Int(0)/Int(-1)，`.x = f().await` 后 `.x != None` 恒真。
                     if task.ram.sp > task.bp + 1 {
                         let raw = task.ram.pop_nv();
+                        // PLAN-776 R1-F04：body 栈槽份额终结（与 RET 指令的
+                        // 影子转移语义对齐）——result 是 VmRef（无份额），
+                        // push_value 回调用者栈时另行建份额（Plan 419 咽喉
+                        // 点）；此前只 pop 不释放，每 Internal body 的对象
+                        // 终值悬空一份（dying 宽限窗内的 retain 复活使窗口
+                        // 期安全）。
+                        if auto_val::is_object(raw) || auto_val::is_list(raw) {
+                            self.rc_release(raw);
+                        }
                         result_value = self.decode_tagged_nv(raw);
                     }
                     break;
@@ -12887,6 +12942,11 @@ impl AutoVM {
                 FrameResult::Return => {
                     if task.ram.sp > task.bp + 1 {
                         let raw = task.ram.pop_nv();
+                        // PLAN-776 R1-F04：与 execute_future_body 同款——body
+                        // 栈槽份额终结（VmRef 无份额，push_value 另建）。
+                        if auto_val::is_object(raw) || auto_val::is_list(raw) {
+                            self.rc_release(raw);
+                        }
                         result_value = self.decode_tagged_nv(raw);
                     }
                     // Complete the outer `~{}` future
@@ -12895,10 +12955,6 @@ impl AutoVM {
                         future.state = FutureState::Ready;
                         future.result = Some(result_value.clone());
                     }
-                    eprintln!(
-                        "[394] body complete outer={} result={:?} restore={:#x}",
-                        frame.outer_future_id, result_value, frame.outer_saved_ip
-                    );
                     // Drop all continuation frames for this body; restore outer IP
                     let mut restore_ip = frame.outer_saved_ip;
                     // Pop every frame belonging to this body (sequential external

@@ -1467,6 +1467,8 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
         .filter_map(|stmt| match stmt {
             Stmt::TypeDecl(d) => Some(d.name.to_string()),
             Stmt::EnumDecl(e) => Some(e.name.to_string()),
+            // PLAN-776 R1-F05：type alias 同为用户声明来源。
+            Stmt::TypeAlias(a) => Some(a.name.to_string()),
             _ => None,
         })
         .collect();

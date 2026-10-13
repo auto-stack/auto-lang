@@ -136,6 +136,15 @@ impl ApiExtractor {
                         doc: None,
                     });
                 }
+                // PLAN-776 R1-F05：type alias（`type Response = int`）是用户
+                // 声明的来源身份——别名名进名集（遮蔽 stdlib 同裸名）。
+                Stmt::TypeAlias(alias) => {
+                    api_module.types.push(ApiType {
+                        name: alias.name.to_string(),
+                        fields: Vec::new(),
+                        doc: None,
+                    });
+                }
                 _ => {}
             }
         }
@@ -193,11 +202,9 @@ impl ApiExtractor {
 
     /// Extract API type from type declaration
     fn extract_type(&self, type_decl: &crate::ast::TypeDecl) -> Option<ApiType> {
-        // Only extract user-defined types with struct-like members
-        if type_decl.members.is_empty() {
-            return None;
-        }
-
+        // PLAN-776 R1-F05：**名字**是来源身份的键——空成员声明（`type
+        // Response {}`）同样进入名集（字段为空），不再被丢弃；字段提取
+        // 保持原语义（仅 struct-like members）。
         let fields: Vec<ApiField> = type_decl
             .members
             .iter()

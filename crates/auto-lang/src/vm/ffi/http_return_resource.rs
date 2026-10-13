@@ -14,7 +14,6 @@
 //! Plan 326/346 六 wire 用例）保持原查表路径。
 
 use std::any::Any;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::vm::engine::{AutoVM, VMError};
@@ -61,8 +60,13 @@ pub enum HttpReturnKind {
 }
 
 /// HTTP 返回资源凭据对象（heap_objects 表 entry；RC 生命周期）。
-#[derive(Debug, Clone)]
+/// R1-F03：携带 owner（构造方 VM 的 instance_id）——heap id 是 per-VM 局部
+/// 编号（两个 VM 都从 4M 起步，同号必然），解析侧必须校验 owner 等值，
+/// 不能把"每 VM 一张表"当作来源证明。R1-F08：不 derive Clone（Clone 语义
+/// 不携带份额，与 Drop 的 LIVE 计数不配平；kind 数据经 ResourceClaim clone）。
+#[derive(Debug)]
 pub struct HttpReturnResource {
+    pub owner: u64,
     pub kind: HttpReturnKind,
 }
 
@@ -89,19 +93,52 @@ pub fn live_resource_count() -> usize {
     LIVE_RESOURCES.load(Ordering::Relaxed)
 }
 
-/// 构造 + 入堆 + RC push（`push_rust_obj` 同款模板——RC 簿记齐全）。
-/// heap id 单调递增；回绕（fetch_add 溢出回卷）在分配前拒绝——u64 空间
-/// 现实不可达，防御性失败而非重用使旧引用复活。
-fn push_kind(task: &mut AutoTask, vm: &AutoVM, kind: HttpReturnKind) -> Result<(), VMError> {
-    if vm.heap_object_id_gen.load(Ordering::Relaxed) < crate::vm::rc::HEAP_ID_BASE {
+/// R1-F03：凭据专用 id 段——`0x8000_0000 | owner(7bit) << 24 | local(24bit)`
+///（NanoValue TAG_OBJECT 的 u32 载荷内；与通用 heap id 段 4M+（<2^24 与
+/// 2^24..0x8000_0000 增长区间）不重叠）。**owner 编入 id**：跨 VM 的同号
+/// 不可能——两 VM 的通用分配器同号（4M 起步）互不干扰本段。owner 段取
+/// `instance_id & 0x7F`：128 个并发 VM 后回绕（进程内远超现实负载的边界，
+/// 与通用段 2^48 回绕同级防御）；local 超 2^24 拒绝分配（R1-F07 边界——
+/// 不截断复用使旧引用复活）。
+const CREDENTIAL_ID_FLAG: u64 = 0x8000_0000;
+const CREDENTIAL_LOCAL_MAX: u64 = 1 << 24;
+
+fn owner_slot(vm: &AutoVM) -> u64 {
+    vm.instance_id & 0x7F
+}
+
+/// 凭据 id 分配（owner+local 编码）；local 耗尽 → Err（不分配）。
+fn credential_id(vm: &AutoVM) -> Result<u64, VMError> {
+    let local = vm.http_credential_gen.fetch_add(1, Ordering::Relaxed);
+    if local >= CREDENTIAL_LOCAL_MAX {
         return Err(VMError::RuntimeError(
-            "http return resource heap id space exhausted".into(),
+            "http return resource id space exhausted".into(),
         ));
     }
+    Ok(CREDENTIAL_ID_FLAG | (owner_slot(vm) << 24) | local)
+}
+
+/// id 的 owner 段是否匹配本 VM（id 层校验——同号跨 VM 在此拒绝）。
+fn id_owner_matches(vm: &AutoVM, id: u64) -> bool {
+    id & CREDENTIAL_ID_FLAG != 0 && ((id >> 24) & 0x7F) == owner_slot(vm)
+}
+
+/// 构造 + 入堆 + RC push。凭据不走通用 heap_object_id_gen（id 段编 owner，
+/// R1-F03）；入堆簿记（rc_created_total/state_mutation_seq）与
+/// insert_heap_object 同款。HTTP 面 push 全部在 owner 线程（LocalSet 串行）。
+fn push_kind(task: &mut AutoTask, vm: &AutoVM, kind: HttpReturnKind) -> Result<(), VMError> {
+    let id = credential_id(vm)?;
     LIVE_RESOURCES.fetch_add(1, Ordering::Relaxed);
-    let handle = vm.insert_heap_object(HttpReturnResource { kind });
-    LAST_HANDLE.store(handle, Ordering::Relaxed);
-    vm.rc_push(task, auto_val::encode_object(handle as u32));
+    let obj: HttpReturnResource = HttpReturnResource {
+        owner: vm.instance_id,
+        kind,
+    };
+    vm.heap_objects
+        .insert(id, std::sync::Arc::new(std::sync::RwLock::new(obj)));
+    vm.rc_created_total.fetch_add(1, Ordering::Relaxed);
+    vm.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+    LAST_HANDLE.store(id, Ordering::Relaxed);
+    vm.rc_push(task, auto_val::encode_object(id as u32));
     Ok(())
 }
 
@@ -162,8 +199,9 @@ pub enum ResourceClaim {
 
 /// 解析 NanoValue 为本 VM 的资源凭据视图。
 ///
-/// 非 TAG_OBJECT / 堆查无（跨 owner、已回收）/ downcast 失败（非资源对象）
-/// 一律 `None`——凭据不可凭数值命中（AC-01/AC-05）。
+/// 非 TAG_OBJECT / 堆查无（已回收）/ downcast 失败（非资源对象）/**owner
+/// 不等值（R1-F03：另一 VM 的同号凭据）** 一律 `None`——凭据不可凭数值
+/// 命中，也不可凭 per-VM 表号命中（AC-01/AC-05）。
 pub fn resolve_resource(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<ResourceClaim> {
     if !auto_val::is_object(nv) {
         return None;
@@ -180,13 +218,71 @@ pub fn resolve_resource_value(vm: &AutoVM, value: &auto_val::Value) -> Option<Re
     }
 }
 
+/// R1-F03：owner 等值校验的公开探针（测试用——同号凭据跨 VM 互拒 oracle）。
+pub fn credential_owner(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<u64> {
+    if !auto_val::is_object(nv) {
+        return None;
+    }
+    let handle = auto_val::decode_object(nv) as u64;
+    if !id_owner_matches(vm, handle) {
+        return None;
+    }
+    let obj = vm.get_heap_object(handle)?;
+    let guard = obj.read().ok()?;
+    let res = guard.as_any().downcast_ref::<HttpReturnResource>()?;
+    Some(res.owner)
+}
+
+/// R1-F06：对凭据快照的可变访问（`http.response()` setter 链 / `res.status`
+/// 等访问器的对象载荷分派）——按本 VM owner 校验后改快照，表与凭据互不
+/// 串扰（构造时快照即真身，mutable 面直接改凭据）。
+pub fn mutate_response_snapshot<R>(
+    vm: &AutoVM,
+    nv: auto_val::NanoValue,
+    f: impl FnOnce(&mut ResponseSnapshot) -> R,
+) -> Option<R> {
+    if !auto_val::is_object(nv) {
+        return None;
+    }
+    let handle = auto_val::decode_object(nv) as u64;
+    if !id_owner_matches(vm, handle) {
+        return None;
+    }
+    let obj = vm.get_heap_object(handle)?;
+    let mut guard = obj.write().ok()?;
+    let res = guard
+        .as_any_mut()
+        .downcast_mut::<HttpReturnResource>()
+        .filter(|r| r.owner == vm.instance_id)?;
+    match &mut res.kind {
+        HttpReturnKind::Response(s) => Some(f(s)),
+        _ => None,
+    }
+}
+
+/// R1-F06：只读快照访问（访问器 `.status()/.body()/.header(k)` 的对象载荷）。
+pub fn read_response_snapshot(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<ResponseSnapshot> {
+    match resolve_resource(vm, nv)? {
+        ResourceClaim::Response(s) => Some(s),
+        _ => None,
+    }
+}
+
 fn read_claim(vm: &AutoVM, handle: u64) -> Option<ResourceClaim> {
+    // R1-F03：id 层 owner 校验先行（owner 编入 id 段——跨 VM 同号在此
+    // 拒绝，不依赖堆内字段——堆内 owner 是第二道防线）。
+    if !id_owner_matches(vm, handle) {
+        return None;
+    }
     let obj = vm.get_heap_object(handle)?;
     let guard = obj.read().ok()?;
     let res = guard
         .as_any()
         .downcast_ref::<HttpReturnResource>()
         .filter(|r| r.type_tag() == TypeTag::HttpReturnResource)?;
+    if res.owner != vm.instance_id {
+        return None;
+    }
     Some(match &res.kind {
         HttpReturnKind::Response(s) => ResourceClaim::Response(s.clone()),
         HttpReturnKind::Sse { iterator_id } => ResourceClaim::Sse {
@@ -334,5 +430,37 @@ mod tests {
             resolve_resource_value(&vm, &value),
             Some(ResourceClaim::Upload { receipt_id: 4242 })
         ));
+    }
+}
+
+/// R1-F04：HTTP 边界任务终结的资源凭据清偿——扫描任务 RAM 有效槽
+///（0..sp），释放所有本 VM `HttpReturnResource` 凭据的栈份额。Internal
+/// `~{}` body RET 后值进 result（VmRef 无份额），body 栈的构造份额与
+/// handler 异常/取消路径的残留引用都在此清偿；共享全局常量的份额不在
+/// 任务栈（STORE_GLOBAL 后释放过），不受影响。通用对象的栈清理是
+/// P776-D1 既有边界，此处只清本计划资源。
+pub fn release_task_credentials(vm: &AutoVM, task: &AutoTask) {
+    for slot in 0..task.ram.sp {
+        let nv = task.ram.read_nv(slot);
+        if !auto_val::is_object(nv) {
+            continue;
+        }
+        let id = auto_val::decode_object(nv) as u64;
+        let is_ours = vm
+            .get_heap_object(id)
+            .map(|o| {
+                o.read()
+                    .map(|g| {
+                        g.as_any()
+                            .downcast_ref::<HttpReturnResource>()
+                            .map(|r| r.owner == vm.instance_id)
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        if is_ours {
+            vm.rc_release_id(id);
+        }
     }
 }

@@ -5470,7 +5470,13 @@ fn start_handler(
                     // iterator_id int），返回值栈槽的 RC 在此释放——凭据
                     // 随引用归零回收（1000 闭环回基线的前提；此前 pop_nv
                     // 只读不释放，remove_task 亦不清栈，堆对象恒泄漏 1 引用）。
-                    vm.rc_release(nv);
+                    // R1-F02：只释放本槽实际持有的份额（TAG_OBJECT 栈槽）；
+                    // 普通数值槽（含 ≥4M 大数——rc::heap_ref_id 的历史 i32
+                    // 启发把其当裸 heap id）不持份额，不得按内容扣减无关
+                    // 资源对象的 RC（同号普通 int 误杀全局资源反例）。
+                    if auto_val::is_object(nv) {
+                        vm.rc_release(nv);
+                    }
                     vm.remove_task(handler_task_id);
                     if let Some(tx) = reply_tx {
                         let _ = tx.send(reply);
@@ -5533,6 +5539,20 @@ fn ctx_await_outer(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> Option<u32> {
     let t_arc = vm.tasks.get(&task_id)?.clone();
     let t = t_arc.try_lock().ok()?;
     t.waiting_future_id
+}
+
+/// R1-F01：ctx 声明流返回（`~Iter<T>`/`~Stream<T>`——`fn_response_kind ==
+/// Stream`，含 axum closure 反查）。SSE 的 int 路径唯一合法形态：generator
+/// handler（声明 ~Iter 的 generator fn 调用返回 iterator id）。未声明流返回
+/// 的普通 int 一律 JSON 数据（活跃 iterator 同号碰撞反例——F776-R1-01）。
+fn handler_declares_stream_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
+    let kind = match ctx.axum_route {
+        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+            .map(|n| fn_response_kind(&n))
+            .unwrap_or(crate::api::contract::ResponseKind::Json),
+        None => fn_response_kind(&ctx.route.fn_name),
+    };
+    kind == crate::api::contract::ResponseKind::Stream
 }
 
 /// ctx 声明文件返回（axum_route closure 反查同 async 门）。
@@ -5774,48 +5794,25 @@ fn marshal_handler_value(
                 }
             }
         }
-        // PLAN-730 T-05：上传收据门（声明返回类型 + i32 + 登记命中三重闸；
-        // 置于 iterator 检查之前——收据 id 与 iterator id 空间独立，普通
-        // int 撞号仍走 JSON 兜底）。
+        // R1-F01（F776-R1-01 修复）：普通数值不再通过任何表臂取得或消费
+        // 资源——upload/file 的"声明 + int + 表命中"入口与 iterator/
+        // HTTP_RESPONSES 查表命中制全部退役（P734-D7 查表猜测被本计划显式
+        // 替代：真实 producer 全部产凭据对象，对象臂按值分派）。唯一保留的
+        // int→SSE 形态是**声明门**：generator handler 声明 `~Iter<T>`（fn 调用
+        // 返回 iterator id 的语言形态）——未声明流返回的普通 int（含活跃
+        // iterator 同号碰撞）一律 JSON 数据。
+        // R1-F01 恢复 729/730 契约诊断门（无表消费）：声明 File/Upload 专属
+        // 返回但值非凭据对象（上方对象臂未命中）→ mismatch 500——普通数值
+        // 不取得/不消费资源（未声明专属返回的普通 int 仍永远 JSON 数据）。
         if handler_declares_upload_return(vm, ctx) {
-            let rid = bits as u32 as u64;
-            return MarshalOutcome::Reply(match super::http_upload::take_upload_receipt(rid) {
-                Some(receipt) => upload_receipt_reply(ctx, receipt),
-                None => upload_contract_mismatch_reply(ctx, rid),
-            });
+            return MarshalOutcome::Reply(upload_contract_mismatch_reply(ctx, bits as u32 as u64));
+        }
+        if handler_declares_file_return(vm, ctx) {
+            return MarshalOutcome::Reply(file_contract_mismatch_reply(ctx, bits as u32 as u64));
         }
         let iter_id = bits as u32;
-        // PLAN-734 T-07 兼容回退：iterator/SSE 探测保持注册表命中制——
-        // Plan 326 wire 契约的 SSE 链 handler 声明 int 返回（axum Sse.into_response
-        // 返回持有 iterator 的句柄），声明门会破坏既有 e2e（sse_chain/302 实证）。
-        // 普通 int 撞 id 的理论碰撞由 id 空间分离（iterator/Response 各自
-        // 计数器）覆盖，AC-03 反例以 e2e 锁定。
-        // PLAN-776 T-03：真实资源已走对象臂；本臂仅服务 legacy int 源码。
-        if vm.iterators.contains_key(&iter_id) {
+        if handler_declares_stream_return(vm, ctx) && vm.iterators.contains_key(&iter_id) {
             return MarshalOutcome::Reply(sse_iterator_reply(vm, ctx, iter_id));
-        }
-        // PLAN-729 T-04：文件响应描述符（声明返回类型门 + 登记命中）。
-        if handler_declares_file_return(vm, ctx) {
-            return MarshalOutcome::Reply(
-                match super::http_server_file::take_file_response(iter_id as u64) {
-                    Some(descriptor) => ApiReply::Full {
-                        status: 200, // 占位：File 臂由宿主 serve 决定
-                        headers: Vec::new(),
-                        body: ApiBody::File(FileReplySeed {
-                            descriptor,
-                            request_id: ctx.request_id.clone(),
-                        }),
-                    },
-                    None => file_contract_mismatch_reply(ctx, iter_id as u64),
-                },
-            );
-        }
-        // PLAN-734 T-07 兼容回退：Response-object 探测保持注册表命中制——
-        // Plan 346 wire 契约的 handler 声明 int 返回（无 Response 声明词汇），
-        // 声明门会破坏既有 302/SSE-value e2e。普通 int 撞 handle id 的理论
-        // 碰撞由句柄计数器基座（4M+ 段）与既有 AC 反例防线共同覆盖。
-        if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(iter_id as u64) {
-            return MarshalOutcome::Reply(response_handle_reply(ctx, res));
         }
         return MarshalOutcome::Reply(json_value_reply(
             vm,
@@ -5829,10 +5826,8 @@ fn marshal_handler_value(
         ));
     }
     if auto_val::is_i64(nv) {
-        let handle = auto_val::decode_i64(nv) as u64;
-        if let Some(res) = crate::vm::ffi::stdlib::lookup_http_response(handle) {
-            return MarshalOutcome::Reply(response_handle_reply(ctx, res));
-        }
+        // R1-F01：i64 查表命中制退役——普通 i64 是数据（client 句柄返回
+        // 面按 JSON 数字编组；真实 Response 走对象凭据臂）。
         return MarshalOutcome::Reply(json_value_reply(
             vm,
             nv,
@@ -5926,38 +5921,24 @@ fn final_value_reply(
     let Some(v) = value else {
         return async_failure_reply(ctx, "future failed or result missing");
     };
-    // PLAN-730 T-05：`~UploadReceipt` 终值（Value::Int = 收据句柄）在
-    // JSON 兜底前按同一门识别（sync/异步同形）。PLAN-776 T-04：门在值桥
-    // 物化之前判定（直接匹配 Value::Int，与 is_i32(nv) 等价——Int 是
-    // is_i32 的唯一来源），提前 return 不留物化残渣。
+    // R1-F01：upload/file 的"声明 + Value::Int + 表 take"门退役——普通
+    // 数值不得通过任何表臂消费资源；upload_commit/reject 与
+    // http.file_response 已产凭据对象（上方资源臂拦截）。恢复 729/730
+    // 契约**诊断**门（无表消费）：声明专属返回但终值非凭据对象 →
+    // mismatch 500（与 sync 同形；契约违反不 JSON 200 伪装成功）。
     if handler_declares_upload_return(vm, ctx) {
-        if let auto_val::Value::Int(rid) = v {
-            let rid = rid as u32 as u64;
-            return match super::http_upload::take_upload_receipt(rid) {
-                Some(receipt) => upload_receipt_reply(ctx, receipt),
-                None => upload_contract_mismatch_reply(ctx, rid),
-            };
-        }
-        return upload_contract_mismatch_reply(ctx, u64::MAX);
+        let raw = match &v {
+            auto_val::Value::Int(i) => *i as u32 as u64,
+            _ => u64::MAX,
+        };
+        return upload_contract_mismatch_reply(ctx, raw);
     }
-    // PLAN-729 T-04：`~FileResponse` 终值（Value::Int = 描述符句柄）在
-    // JSON 兜底前按同一门识别（sync/异步同形）。
     if handler_declares_file_return(vm, ctx) {
-        if let auto_val::Value::Int(id) = v {
-            let id = id as u64;
-            return match super::http_server_file::take_file_response(id) {
-                Some(descriptor) => ApiReply::Full {
-                    status: 200,
-                    headers: Vec::new(),
-                    body: ApiBody::File(FileReplySeed {
-                        descriptor,
-                        request_id: ctx.request_id.clone(),
-                    }),
-                },
-                None => file_contract_mismatch_reply(ctx, id),
-            };
-        }
-        return file_contract_mismatch_reply(ctx, u64::MAX);
+        let raw = match &v {
+            auto_val::Value::Int(i) => *i as u64,
+            _ => u64::MAX,
+        };
+        return file_contract_mismatch_reply(ctx, raw);
     }
     let mut materialized = Vec::new();
     let Some(nv) = value_to_nv_via_task(vm, ctx, v, &mut materialized) else {
@@ -6598,7 +6579,11 @@ pub(crate) fn resume_parked_request(
                     MarshalOutcome::Reply(reply) => {
                         // PLAN-776 T-05：与 sync 分派同款——编组产物 owned，
                         // 返回值栈槽 RC 释放（park 恢复路径的凭据回收）。
-                        vm.rc_release(nv);
+                        // R1-F02：仅 TAG_OBJECT 槽持份额；同号普通数值
+                        //（rc::heap_ref_id 的历史 i32 启发面）不得扣无关资源。
+                        if auto_val::is_object(nv) {
+                            vm.rc_release(nv);
+                        }
                         vm.remove_task(task_id);
                         ParkedResume::Reply(reply)
                     }

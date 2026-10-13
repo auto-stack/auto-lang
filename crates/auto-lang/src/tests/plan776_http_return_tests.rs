@@ -278,23 +278,43 @@ fn plain(n int) int {
         .to_string()
     }
 
-    pub(super) fn start_server(code: &str, port: u16) -> u16 {
-        crate::vm::ffi::stdlib::clear_http_routes();
-        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
-        let code = code.to_string();
-        let _server = std::thread::Builder::new()
-            .stack_size(8 * 1024 * 1024)
-            .spawn(move || {
-                let _ = crate::run(&code);
-            })
-            .expect("spawn server thread");
-        for _ in 0..50 {
-            if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                break;
+    /// OS 分配临时端口（R1-F09：固定端口在并行 worktree 下互踩/跨 run 连错
+    /// 服务——fix-test-tiering 裁定同款；755 有界启动：5s 探活失败即 panic，
+    /// 不吞 `crate::run` 结果——启动诊断在服务线程 stderr 可见）。
+    pub(super) fn ephemeral_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .expect("bind :0")
+            .local_addr()
+            .expect("local_addr")
+            .port()
+    }
+
+    /// R1-F09：OS 临时端口可能落入 Windows Hyper-V 保留段（4090 实录
+    /// WSAEACCES——服务 bind 被拒即静默未就绪）——就绪失败换端口重试
+    ///（最多 3 次；755 有界启动语义保持：全部失败才 panic）。
+    pub(super) fn start_server(code: &str, _fixed: u16) -> u16 {
+        for _attempt in 0..3 {
+            let port = ephemeral_port();
+            crate::vm::ffi::stdlib::clear_http_routes();
+            std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+            let code = code.to_string();
+            let _server = std::thread::Builder::new()
+                .stack_size(8 * 1024 * 1024)
+                .spawn(move || {
+                    if let Err(e) = crate::run(&code) {
+                        eprintln!("[plan776-test] server exited with error: {e:?}");
+                    }
+                })
+                .expect("spawn server thread");
+            for _ in 0..50 {
+                if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    return port;
+                }
+                std::thread::sleep(Duration::from_millis(100));
             }
-            std::thread::sleep(Duration::from_millis(100));
+            eprintln!("[plan776-test] port {port} 未就绪（保留段/竞争？）——换端口重试");
         }
-        port
+        panic!("plan776 server 3 次尝试未就绪（端口保留段或启动失败）");
     }
 
     pub(super) fn get(port: u16, path: &str) -> (u16, Vec<(String, String)>, Vec<u8>) {
@@ -784,4 +804,494 @@ fn plan776_t06_vm_gate_respects_compile_time_shadowing() {
         "编译期冻结的用户同名遮蔽 → Json"
     );
     assert!(!crate::vm::ffi::http_server::fn_is_api_file_return(name));
+}
+
+// ============================================================================
+// R1 修复复现族（review-r1 F01..F09 的可重放 oracle）
+// ============================================================================
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_r1 {
+    use super::http_e2e::{ephemeral_port, get, start_server};
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    /// F776-R1-01 反例复现：活跃 iterator 实际 id=0（首个 generator），handler
+    /// 未声明流返回却 return 0 → expected 200 JSON `0`，绝不被表命中变 SSE。
+    #[test]
+    fn http_e2e_plan776_r1_plain_int_zero_not_hijacked_by_iterator() {
+        let port = start_server(
+            r#"
+fn events_stream() ~Iter<int> {
+    yield 42
+}
+
+#[api(method = "GET", path = "/api/p")]
+fn p() int {
+    let live = events_stream()
+    return 0
+}
+"#,
+            0,
+        );
+        let (status, headers, body) = get(port, "/api/p");
+        assert_eq!(status, 200, "普通 int 是数据");
+        let ct = headers
+            .iter()
+            .find(|(k, _)| k == "content-type")
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("");
+        assert!(ct.starts_with("application/json"), "content-type={ct}");
+        assert_eq!(body, b"0".to_vec(), "活跃 iterator 同号 int 必须 JSON 0");
+    }
+
+    /// F776-R1-01：`http.response()` 构造后普通 1 不再被当 Response——
+    /// 未声明专属返回的 int 永远 JSON（查表面退役）。
+    #[test]
+    fn http_e2e_plan776_r1_plain_int_not_response_after_ctor() {
+        let port = start_server(
+            r#"
+#[api(method = "GET", path = "/api/mk")]
+fn mk() int {
+    let r = http.response()
+    http.response_status(r, 201)
+    return 1
+}
+"#,
+            0,
+        );
+        let (status, _, body) = get(port, "/api/mk");
+        assert_eq!(status, 200);
+        assert_eq!(body, b"1".to_vec(), "普通 1 是 JSON 数据");
+    }
+
+    /// F776-R1-01 正例：Http.ok 真实 producer 产凭据对象 → 200 文本。
+    #[test]
+    fn http_e2e_plan776_r1_sugar_ctor_object_credential() {
+        let port = start_server(
+            r#"
+#[api(method = "GET", path = "/api/ok")]
+fn ok_ep() int {
+    return Http.ok("hello")
+}
+"#,
+            0,
+        );
+        let (status, _, body) = get(port, "/api/ok");
+        assert_eq!(status, 200, "Http.ok wire 200");
+        assert_eq!(body, b"hello".to_vec());
+    }
+
+    /// F776-R1-04 反例复现：真 Internal `~{}` body 资源终值——11 请求后
+    /// drain 跨宽限窗，凭据存活回基线（此前残留 11 个）。
+    #[test]
+    fn http_e2e_plan776_r1_internal_future_credential_released() {
+        let port = start_server(
+            r#"
+#[api(method = "GET", path = "/api/ir")]
+fn ir() ~int {
+    return ~{
+        delay_async(10).await
+        http.response_redirect("/late", 302)
+    }
+}
+
+#[api(method = "GET", path = "/api/drain")]
+fn drain() int {
+    var i = 0
+    while i < 300 {
+        i = i + 1
+    }
+    return i
+}
+"#,
+            0,
+        );
+        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        for _ in 0..11 {
+            let (status, headers, _) = get(port, "/api/ir");
+            assert_eq!(status, 302, "Internal 终值 302");
+            assert!(headers.iter().any(|(k, v)| k == "location" && v == "/late"));
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        loop {
+            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Internal 路径凭据未回基线: live={}",
+                crate::vm::ffi::http_return_resource::live_resource_count()
+            );
+            let mut d = TcpStream::connect(("127.0.0.1", port)).expect("drain");
+            let _ = d.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+            let mut db = [0u8; 512];
+            let _ = d.read(&mut db);
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// F776-R1-04 反例复现：handler 异常退出（1/0 前 redirect 已构造）——
+    /// 11 请求全 500 后凭据回基线（此前残留 11 个）。
+    #[test]
+    fn http_e2e_plan776_r1_error_exit_credential_released() {
+        let port = start_server(
+            r#"
+#[api(method = "GET", path = "/api/boom")]
+fn boom() int {
+    let r = http.response_redirect("/x", 302)
+    var d = 0
+    var z = 10 / d
+    return r
+}
+
+#[api(method = "GET", path = "/api/drain")]
+fn drain() int {
+    var i = 0
+    while i < 300 {
+        i = i + 1
+    }
+    return i
+}
+"#,
+            0,
+        );
+        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        for _ in 0..11 {
+            let (status, _, _) = get(port, "/api/boom");
+            assert_eq!(status, 500, "除零 → 500");
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        loop {
+            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "异常退出凭据未回基线: live={}",
+                crate::vm::ffi::http_return_resource::live_resource_count()
+            );
+            let mut d = TcpStream::connect(("127.0.0.1", port)).expect("drain");
+            let _ = d.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+            let mut db = [0u8; 512];
+            let _ = d.read(&mut db);
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// F776-R1-02 反例复现（wire 面）：活跃资源存全局（共享），同值普通
+    /// int 端点多次往返（此前会误释放共享份额），跨宽限窗后共享资源仍能
+    /// 正确回复（RC 1→1）。
+    #[test]
+    fn http_e2e_plan776_r1_shared_resource_survives_int_collision_loop() {
+        let port = start_server(
+            r#"
+var kept_redirect = 0
+
+#[api(method = "GET", path = "/api/mk")]
+fn mk() int {
+    kept_redirect = http.response_redirect("/keep", 302)
+    return kept_redirect
+}
+
+#[api(method = "GET", path = "/api/plain/:n")]
+fn plain(n int) int {
+    return n
+}
+
+#[api(method = "GET", path = "/api/replay")]
+fn replay() int {
+    return kept_redirect
+}
+
+#[api(method = "GET", path = "/api/drain")]
+fn drain() int {
+    var i = 0
+    while i < 300 {
+        i = i + 1
+    }
+    return i
+}
+"#,
+            0,
+        );
+        let (status, _, _) = get(port, "/api/mk");
+        assert_eq!(status, 302);
+        let handle = crate::vm::ffi::http_return_resource::probe_last_resource_handle();
+        // 同值普通 int 往返 30 次（每次 dispatch cleanup 都不该扣共享份额）。
+        for _ in 0..30 {
+            let (s, _, b) = get(port, &format!("/api/plain/{handle}"));
+            assert_eq!((s, b.clone()), (200, handle.to_string().into_bytes()));
+        }
+        // 跨宽限窗后共享资源仍活：replay 仍 302。
+        let (s, _, _) = get(port, "/api/drain");
+        assert_eq!(s, 200);
+        let (s2, headers2, _) = get(port, "/api/replay");
+        assert_eq!(s2, 302, "同值 int 往返后共享资源不得被误释放（R1-F02）");
+        assert!(headers2
+            .iter()
+            .any(|(k, v)| k == "location" && v == "/keep"));
+    }
+
+    /// F776-R1-03（wire 侧补充）：双服务（两个独立 VM owner 线程）各自的
+    /// 凭据互不干扰——各打一轮后同值 plain 互不劫持（owner 隔离的运行面）。
+    #[test]
+    fn http_e2e_plan776_r1_two_vms_same_local_ids_isolated() {
+        let code = r#"
+#[api(method = "GET", path = "/api/mk")]
+fn mk() int {
+    return http.response_redirect("/vm", 302)
+}
+
+#[api(method = "GET", path = "/api/plain/:n")]
+fn plain(n int) int {
+    return n
+}
+"#;
+        let port_a = start_server(code, 0);
+        let port_b = start_server(code, 0);
+        let (sa, _, _) = get(port_a, "/api/mk");
+        let (sb, _, _) = get(port_b, "/api/mk");
+        assert_eq!((sa, sb), (302, 302));
+        // 两 VM 的凭据 heap id 同号（各自 4M 起步）——同值 int 在两服务都
+        // 是数据。
+        let handle_a = crate::vm::ffi::http_return_resource::probe_last_resource_handle();
+        let (s1, _, b1) = get(port_a, &format!("/api/plain/{handle_a}"));
+        assert_eq!(s1, 200);
+        assert_eq!(b1, handle_a.to_string().into_bytes());
+        let handle_b = crate::vm::ffi::http_return_resource::probe_last_resource_handle();
+        let (s2, _, b2) = get(port_b, &format!("/api/plain/{handle_b}"));
+        assert_eq!(s2, 200);
+        assert_eq!(b2, handle_b.to_string().into_bytes());
+    }
+
+    /// R1-F09：三种 Future 形态的真 oracle——Ready（立即完成的 future 值）、
+    /// External（delay_async park）、Internal `~{}`（body await）。资源/数据
+    /// 终值三形态同 wire。
+    #[test]
+    fn http_e2e_plan776_r1_three_future_shapes_same_wire() {
+        let port = start_server(
+            r#"
+fn quick() ~int {
+    return 1
+}
+
+#[api(method = "GET", path = "/api/ready")]
+fn ready_ep() ~int {
+    return quick()
+}
+
+#[api(method = "GET", path = "/api/external")]
+fn external_ep() ~int {
+    delay_async(60)
+    return 776177
+}
+
+#[api(method = "GET", path = "/api/internal")]
+fn internal_ep() ~int {
+    return ~{
+        delay_async(60).await
+        http.response_redirect("/three", 302)
+    }
+}
+"#,
+            0,
+        );
+        let (s1, _, b1) = get(port, "/api/ready");
+        assert_eq!(
+            (s1, b1),
+            (200, b"1".to_vec()),
+            "Internal body 即完成为 Ready 形态"
+        );
+        let (s2, _, b2) = get(port, "/api/external");
+        assert_eq!((s2, b2), (200, b"776177".to_vec()), "External park 终值");
+        let (s3, headers3, _) = get(port, "/api/internal");
+        assert_eq!(s3, 302, "Internal body await 后资源终值");
+        assert!(headers3
+            .iter()
+            .any(|(k, v)| k == "location" && v == "/three"));
+    }
+}
+
+/// F776-R1-03 单元级：两个 VM 各持**同号**凭据（4M 起步必然同号）——
+/// A 的凭据值在 B 解析必须被拒（owner 等值校验），双方本 owner 命中。
+#[test]
+fn plan776_r1_same_local_id_cross_vm_rejected() {
+    let vm_a = fresh_vm();
+    let vm_b = fresh_vm();
+    let mut task_a = fresh_task();
+    http_return_resource::push_response_resource(
+        &mut task_a,
+        &vm_a,
+        201,
+        Vec::new(),
+        b"a".to_vec(),
+    )
+    .unwrap();
+    let mut task_b = fresh_task();
+    http_return_resource::push_response_resource(
+        &mut task_b,
+        &vm_b,
+        202,
+        Vec::new(),
+        b"b".to_vec(),
+    )
+    .unwrap();
+    let nv_a = task_a.ram.pop_nv();
+    let nv_b = task_b.ram.pop_nv();
+    // R1-F03 修复语义：凭据 id 编入 owner 段——两 VM 的 id **必然不同号**
+    ///（旧实现的通用分配器同号 4M 起步是反例前提，已由专用 id 段消除）。
+    assert_ne!(
+        auto_val::decode_object(nv_a),
+        auto_val::decode_object(nv_b),
+        "owner 段编入 id：两 VM 凭据 id 不同号"
+    );
+    // 本 owner 命中各自快照。
+    assert!(matches!(
+        http_return_resource::resolve_resource(&vm_a, nv_a),
+        Some(ResourceClaim::Response(ref s)) if s.body == b"a"
+    ));
+    assert!(matches!(
+        http_return_resource::resolve_resource(&vm_b, nv_b),
+        Some(ResourceClaim::Response(ref s)) if s.body == b"b"
+    ));
+    // 跨 owner 拒绝（两方向）。
+    assert!(
+        http_return_resource::resolve_resource(&vm_b, nv_a).is_none(),
+        "B 不得解析 A 的同号凭据"
+    );
+    assert!(
+        http_return_resource::resolve_resource(&vm_a, nv_b).is_none(),
+        "A 不得解析 B 的同号凭据"
+    );
+    // 两种载体：VmRef 同样拒。
+    let ref_a = auto_val::Value::VmRef(auto_val::VmRef {
+        id: auto_val::decode_object(nv_a) as usize,
+    });
+    assert!(http_return_resource::resolve_resource_value(&vm_b, &ref_a).is_none());
+}
+
+/// F776-R1-07：凭据 local 段（24 位）耗尽必须拒绝——不截断复用使旧引用
+/// 复活。边界两侧（local 段满 → Err、无表项、不入计数）。
+#[test]
+fn plan776_r1_u32_payload_boundary_rejected() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    // 边界内：local 段最后一个可分配（2^24-1）。
+    vm.http_credential_gen
+        .store((1 << 24) - 1, std::sync::atomic::Ordering::Relaxed);
+    http_return_resource::push_response_resource(&mut task, &vm, 200, Vec::new(), Vec::new())
+        .unwrap();
+    // 边界外：local 段耗尽 → 拒绝（无表项、返回 Err）。
+    let before = http_return_resource::live_resource_count();
+    let heap_before = vm.heap_objects.len();
+    assert!(http_return_resource::push_response_resource(
+        &mut task,
+        &vm,
+        200,
+        Vec::new(),
+        Vec::new()
+    )
+    .is_err());
+    assert_eq!(
+        http_return_resource::live_resource_count(),
+        before,
+        "拒绝分配不入计数"
+    );
+    assert_eq!(vm.heap_objects.len(), heap_before, "拒绝分配无表项");
+}
+
+/// F776-R1-02 单元级：同值普通 int 不扣资源份额——真实资源保留在
+/// globals（RC 1），普通 int 槽形态不进入 release 路径，跨宽限窗仍活。
+#[test]
+fn plan776_r1_plain_int_release_does_not_touch_shared_credential() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    http_return_resource::push_response_resource(&mut task, &vm, 302, Vec::new(), Vec::new())
+        .unwrap();
+    let nv = task.ram.pop_nv();
+    let handle = auto_val::decode_object(nv) as u64;
+    vm.globals.insert("shared".to_string(), nv);
+    // 同值普通 i32（dispatch 槽形态）：is_object 门下不进入 rc_release
+    //（R1-F02 修复语义——旧实现会按 heap_ref_id 的 i32≥4M 启发扣份额）。
+    let plain = auto_val::encode_i32(handle as i32);
+    assert!(!auto_val::is_object(plain), "普通 int 槽形态");
+    if auto_val::is_object(plain) {
+        vm.rc_release(plain);
+    }
+    let rc = vm
+        .heap_rc
+        .get(&handle)
+        .map(|e| e.load(std::sync::atomic::Ordering::Acquire));
+    assert_eq!(rc, Some(1), "共享份额不受同值普通 int 影响");
+    // 跨宽限窗（reap_all 静止点语义）：无 dying 入队即无回收。
+    vm.reap_all();
+    assert!(vm.get_heap_object(handle).is_some(), "共享资源跨宽限窗仍活");
+}
+
+/// F776-R1-05：type alias 与空成员声明都是用户来源身份（遮蔽 stdlib 裸名）。
+#[test]
+fn plan776_r1_alias_and_empty_decl_shadow_identity() {
+    let alias_code = r#"
+type Response = int;
+
+#[api(method = "GET", path = "/api/r")]
+fn r() Response {
+    return 1
+}
+"#;
+    let mut parser = crate::parser::Parser::from(alias_code);
+    let ast = parser.parse().expect("parse alias");
+    let module = crate::api::ApiExtractor::new().extract("t", &ast.stmts);
+    assert!(
+        module.types.iter().any(|t| t.name == "Response"),
+        "type alias 进名集"
+    );
+    assert_eq!(
+        module.endpoints[0].response,
+        crate::api::contract::ResponseKind::Json,
+        "用户 alias 遮蔽 → Json"
+    );
+
+    let empty_code = r#"
+type Response {}
+
+#[api(method = "GET", path = "/api/r")]
+fn r2() Response {
+    return 1
+}
+"#;
+    let mut parser2 = crate::parser::Parser::from(empty_code);
+    let ast2 = parser2.parse().expect("parse empty");
+    let module2 = crate::api::ApiExtractor::new().extract("t2", &ast2.stmts);
+    assert!(
+        module2.types.iter().any(|t| t.name == "Response"),
+        "空成员声明进名集"
+    );
+    assert_eq!(
+        module2.endpoints[0].response,
+        crate::api::contract::ResponseKind::Json,
+        "空声明遮蔽 → Json"
+    );
+}
+
+/// F776-R1-06：已迁移 producer 的对象凭据与既有访问器兼容——
+/// `response_status_code(凭据)` 读到真实快照状态；非资源对象不误读。
+#[test]
+fn plan776_r1_credential_accessors_read_snapshot() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    http_return_resource::push_response_resource(&mut task, &vm, 307, Vec::new(), Vec::new())
+        .unwrap();
+    let nv = task.ram.pop_nv();
+    // shim 级：status_code 读凭据快照。
+    task.ram.push_nv(nv);
+    stdlib::shim_response_status_code(&mut task, &vm).unwrap();
+    assert_eq!(task.ram.pop_i32(), 307, "凭据快照状态");
+    // 错载荷对象不受识（0 降级保持原语义）。
+    let other = vm.insert_heap_object(RustStdlibObject::new("x", 1u32));
+    task.ram.push_nv(auto_val::encode_object(other as u32));
+    stdlib::shim_response_status_code(&mut task, &vm).unwrap();
+    assert_eq!(task.ram.pop_i32(), 0, "非资源对象不误读");
 }
