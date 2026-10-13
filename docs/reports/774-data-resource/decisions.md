@@ -227,6 +227,11 @@ offset(fᵢ) = 4·i；无重排无尾随填充。错误与释放责任：预期�
 
 
 
-## 4. 下游消费表（T-05 冻结后回填）
+## 4. 下游消费表（T-05 冻结）
 
-（D-07：770/771 最小接口/profile/API/共享热点清单及合入顺序。）
+明细见 [interface-contract.md](interface-contract.md)：冻结符号表（p774_* 全集与
+机器签名）、状态/拒绝码注册表、ABI 类别与布局消费面、资源表示与计数口径、
+770/771 逐条消费表、共同热点清单（source/hir/descriptor/verify/native/main）与
+合并顺序（774 → 770/771 并行、先成先合、后成者重放全门禁+首个 profile 回归、
+非文本冲突回 new 修订）。组合 text-record/List/enum/use 为后续 owner，
+两分支单独通过不构成组合能力。
