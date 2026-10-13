@@ -1491,9 +1491,9 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                 let display = format!("{}", f.ret);
                 let primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
                 // PLAN-776 T-06：第三段 = 返回裸名被用户同名遮蔽（1/空）。
+                // 裸名取 primary（主类型名——与消费侧分类段一致）。
                 // 消费侧（from_return_string 前）先解遮蔽 → Json（AC-07）。
-                let bare = crate::api::contract::return_bare_name(&display).to_string();
-                let shadowed = if user_type_names.contains(&bare) { "1" } else { "" };
+                let shadowed = if user_type_names.contains(&primary) { "1" } else { "" };
                 fn_meta.insert(
                     f.name.to_string(),
                     (method, format!("{primary}|{display}|{shadowed}")),
@@ -1596,18 +1596,19 @@ impl SessionRuntime {
         // 可序列化数据（决策报告 §6：Unsupported + 改走 HTTP URL 指引）。
         if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
             // PLAN-734 T-03：守卫按契约身份分类（假同名类型不命中）。fn_meta
-            // 值是 "primary|display|shadowed" 拼串——分类取 display 半段（拼串
-            // 整体永不等于任何裸类型名，身份匹配必失败）。
+            // 值是 "primary|display|shadowed" 拼串——分类取 **primary** 首段
+            //（裸主类型名；display 段是 linear<…>/s-expr 完整形态，不可裸名
+            // 匹配；拼串整体永不等于任何裸类型名）。
             // PLAN-776 T-06：第三段 shadowed=1（用户同名遮蔽，编译期冻结）
             // 直接落 Json——不冒领 stdlib 专属身份。
             let mut parts = ret.split('|');
-            let _primary = parts.next();
-            let display = parts.next().unwrap_or("");
+            let primary = parts.next().unwrap_or("");
+            let _display = parts.next().unwrap_or("");
             let shadowed = parts.next().unwrap_or("");
             let mut kind = if shadowed == "1" {
                 crate::api::contract::ResponseKind::Json
             } else {
-                crate::api::contract::ResponseKind::from_return_string(display)
+                crate::api::contract::ResponseKind::from_return_string(primary)
             };
             // PLAN-734 T-07：参数面补充——UploadRequest 参数（Display s-expr
             // 形态经 is_upload_param 双族识别）即使返回串分类错过也命中。

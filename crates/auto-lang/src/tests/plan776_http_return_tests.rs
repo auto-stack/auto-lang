@@ -11,7 +11,16 @@
 //! (3) **查表制对照**：现状 `insert_http_response`/`lookup_http_response`
 //!     是表命中制（本计划要叠加资源臂的兼容面），同值 int 不是对象。
 //!
-//! 正式资源类型与编组分派由 T-02/T-03 交付；本文件随后扩展为 §6 全矩阵。
+//! 正式资源类型与编组分派由 T-02/T-03 交付。T-07 覆盖矩阵（§6）：
+//! - 真碰撞（AC-01）：Response 族 e2e（iterator 族 = e2e_sse_chain/plan707
+//!   既有矩阵，查表命中制对照面保留）；
+//! - 逐值身份（AC-02）：探针 + T-02 传播/接线；
+//! - sync/async（AC-03）：wire 三态 + i64 全宽 + record 值域；
+//! - 终态负向（AC-04）：Failed→500 + stale/wrong-owner 单测；
+//! - 存活（AC-06）：1000 闭环 + SSE 断连回收 + rc 链路单测；
+//! - 兼容/来源（AC-07/08）：提取级遮蔽 + VM 门 + plan326/705/734/738/755/
+//!   442 scoped 族 + auto-man api_gen 46（legacy 6 wire 用例 = plan326
+//!   http_e2e 34 项内含 redirect/SSE/accessors/musk 常量）。
 
 use crate::vm::engine::{AutoVM, FutureKind, FutureState, FutureValue};
 use crate::vm::ffi::rust_stdlib::RustStdlibObject;
@@ -468,6 +477,29 @@ fn async_fail() ~int {
         let (status, _, body) = get(port, "/api/async-big");
         assert_eq!(status, 200);
         assert_eq!(body, b"5000000000".to_vec(), "i64 全宽终值");
+    }
+
+    /// AC-03：async 终值复杂 JSON（record）与 sync 同形——VmRef 物化 +
+    /// nv_to_json GenericInstance 序列化（不降级 null）。
+    #[test]
+    fn http_e2e_plan776_async_terminal_record_json() {
+        let port = start_server(
+            r#"
+type Note = { id: int, title: str }
+
+#[api(method = "GET", path = "/api/async-note")]
+fn async_note() ~Note {
+    delay_async(30)
+    return Note { id: 7, title: "plan776" }
+}
+"#,
+            19023,
+        );
+        let (status, _, body) = get(port, "/api/async-note");
+        assert_eq!(status, 200);
+        let text = String::from_utf8_lossy(&body).into_owned();
+        assert!(text.contains("\"id\": 7"), "record 字段: {text}");
+        assert!(text.contains("\"title\": \"plan776\""), "record 串字段: {text}");
     }
 
     /// AC-04：Failed 终态 → 有界 500（不再伪装 200 null）。
