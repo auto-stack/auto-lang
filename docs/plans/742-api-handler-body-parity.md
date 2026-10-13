@@ -60,6 +60,11 @@ SD-742-01/02 不能批准为完成。new_spec_components 为空，因为更新�
 旧反例已转绿，但完整发射链字面量保持、绑定作用域、File 入口及返回出口仍有缺口；
 本轮 SD-742-01/02 继续不可批准为完成，目标路径和原 AC 不变。
 
+第三次复审 [冻结增量](attachments/742/review-r3/spec-delta.md) SHA256
+`9DF237808934A93E5D5DCB21A8790EFC1925C4093F18AAF3EAA89A8E076AA4FF`。
+旧例及新增矩阵通过，placeholder 恢复与嵌套借用仍有反例，T-3 必要 oracle 未闭合；
+SD-742-01/02 仍不可批准为完整 parity，原目标路径/AC/revision 不变。
+
 ## 3. 任务
 
 - [x] T-1: 失败测试钉三缺陷（api_gen tests，extract_api_lenient + generate_api_rs 路径）
@@ -102,6 +107,11 @@ SD-742-01/02 不能批准为完成。new_spec_components 为空，因为更新�
   s10-final→taskkill /F→确认下线→重启→同目录 setup→GET 存活）；
   r2 replay 13/13 compile_exit=0 逐项对拍。Vue 面阻塞（pnpm 镜像网络
   两败）、VM 面阻塞（需有头桌面 MCP 9247）如实记录，见 work-r3。
+
+上述为历史 work 申报；2026-10-14 第三次复审为 **needs_fix**：r2 的 13 个输入
+确已转绿，但标准库 placeholder 恢复仍改字符串、嵌套模块调用漏补内层借用。
+Vue/VM 验证在交接时即未完成，S10 存档只有 setup/GET，缺创建、强杀、下线、
+重启过程；不能将 T-3 计完成。T-1/T-2/T-3 重开，当前 0/3。详见 §4.4。
 
 以上 r1 提交账与交付记录保留为历史；2026-10-13 独立 final review needs_fix
 后，r2 修复在 worktree `D:/autostack/.wt/lang-742/auto-lang`（branch
@@ -194,6 +204,32 @@ base `c151935f1b50a9aefb7164771bcc70ccf4b66c9d`；实现与验证输入无漂移
 整文件 qualifier 退役只迁移 JSON 入口；返回按 Some/None 文本及“出现任意 return”
 判断类型与全路径完成。下一次 work 必须对完整链/入口/binding/出口矩阵作出调整并留
 实际实编/值对拍证据，不能仅累加四个失败例。第二次 final needs_fix 的累计轮次保留。
+
+### 4.4 第三次复审（2026-10-14，r3 修复提交）
+
+实现树 `D:/autostack/.wt/lang-742/auto-lang`，`plan-742-dev`，
+reviewed_commit `8c9b2d3d96d648e3a0ffa7c40b4c25694a6da85d`，
+base `6d93cfdb73f5178b624846d46f88614ed999c158`，实现已提交且无漂移。
+报告：[review-r3](attachments/742/review-r3/REVIEW.md)。
+
+入口已声明缺必要 Vue/VM oracle，按技能就绪规则不进行另一完整 final 验收周期；
+本轮依用户明确请求做代码调查和旧例独立重放，最终不签 pass。
+`api_gen` **47 passed / 1 ignored**；新构建 exit 0；两触面格式和 crates diff 门通过。
+r2 的13个api.at/repository.at精确输入 **13/13** 实编运行符合预期；本轮有效补充四例
+为两通过、字符串值错误、嵌套借用 E0308。合计 **17有效case：15符合预期、1值错误、1编译失败**。
+日常/trans/Notes完整双端未作为本轮新门禁通过。
+
+| AC ID | 本次结果 | 当前依据 / 剩余 |
+|---|---|---|
+| AC-742-01 | fail | 旧构造/拆分通过；placeholder恢复破坏合法str（R3-01） |
+| AC-742-02 | fail | 旧作用域/限定化例通过；marker身份与嵌套调用借用漏遍历（R3-01/02） |
+| AC-742-03 | pass（可考边界） | 沿用已接受的归因；新实编oracle通过，不声称恢复失落WIP |
+| AC-742-04 | fail | Option/void/File旧例已关；合法嵌套调用生成体仍E0308（R3-02） |
+| AC-742-05 | partial | work电池有摘要；Vue/VM未完成，S10记录不足以核验强杀恢复（R3-03） |
+| AC-742-06 | partial | D7/D9和Vue种子宿主源码未变，已有Rust控制可重用；当前主题/VM联动待验 |
+
+两连败诊断及实际接线已核查，仍须调整 placeholder 恢复身份和借用遍历覆盖。
+本轮没有宣布未完成联动已通过，亦未因已有缺口重复运行完整日常/trans测试。
 
 ## 5. 已知延后
 
@@ -300,3 +336,47 @@ PLAN-745 交接注记（0bc1bea01）确认 742 合并面对其 27 处共现预�
   网络/有头桌面 MCP）；Upload 实编反例与 db.rs 遗留正则 pass 列为
   债务候选随复审处置 | next: review（/auto-plan:review r3，独立上下文；
   审面=8c9b2d3d9，基面 6d93cfdb7，工作树冻结待审；已知延后 D-742-1 另案）
+
+- stage: review（第三次） | review_scope: final |
+  reviewer_identity: Codex /root（前两轮审核上下文，未参与本轮实施，无子agent）|
+  readiness_limitations: 入口已承认Vue/VM oracle未完成，按技能作定向代码调查/重放，不能final pass |
+  plan_id: 742 | plan_revision: 1 | outcome: needs_fix |
+  worktree_path: D:/autostack/.wt/lang-742/auto-lang | branch: plan-742-dev |
+  reviewed_commit: 8c9b2d3d96d648e3a0ffa7c40b4c25694a6da85d |
+  base_commit: 6d93cfdb73f5178b624846d46f88614ed999c158 |
+  dependency_revisions: auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，
+  a2r-std=同提交源码，Notes=1391bd7eb2f6b3b08e9841d30b25125e47ced058 |
+  spec_inputs: [baseline.json](attachments/742/review-r3/baseline.json) 五canonical SHA256 |
+  acceptance_results: §4.4（fail:01/02/04；pass:03可考边界；partial:05/06）|
+  findings: F-742-R3-01(P2 marker恢复改字面量)、F-742-R3-02(P2嵌套借用漏遍历)、
+  F-742-R3-03(P2就绪/T3必要oracle与S10证据未闭合) |
+  prior_findings: r2十三旧例全部通过；R2-01完整不变量仍partial，其余已验形态关闭；R1-04仍closed |
+  pending_closeout_gates: 修复提交上的永久oracle、完整scoped gates、必要Notes双端/legacy和真实S10过程；
+  后续merge沉淀/归档/批量到期判定 |
+  evidence: [报告](attachments/742/review-r3/REVIEW.md)、
+  [冻结规范增量](attachments/742/review-r3/spec-delta.md) |
+  next: /auto-plan:work 742，同树修复并补齐work-owned oracle后重新交接。
+  状态退回executing、0/3；累计三次请求均未通过，历史记录和已关闭具体输入保留。
+
+### 9.2 r3 轮诊断扩展（回应 R3 报告"诊断从 mask 存在扩至 placeholder 身份与嵌套遍历"）
+
+| 剩余不变量 | 前轮修复为何漏掉 | 调整 | 当前结果 |
+|---|---|---|---|
+| placeholder 身份恢复 | r2 掩码化只覆盖"插入"侧；恢复侧 plain replace 无法区分自插入 marker 与同拼写合法字符串——注释以"不可能拼写"豁免属错误判断 | 撤销占位符方案：qualify_a2r_std 改单趟优先级扫描（已限定>sys/sqlite 直连>通用限定>use 行），无恢复步即无碰撞；fn 级单测钉代码正例+marker 字面量负例 | 全关（replay marker_literal 逐字节保持） |
+| 嵌套调用借用遍历 | r2 的 mask 修的是"字面量身份"；借用 pass 处理外层调用后 cursor 跳过整个 close，内层模块调用从未进入扫描 | borrow_pass worker 化，参数递归重扫（任意深度），外层 & 在递归结果之上插入；矩阵 oracle 加 outer(measure(s)) 双层组合（外不需借/内需借） | 全关（replay nested_borrow ok） |
+| T-3 证据完整性 | r3 前归档了 S10 转录的错误片段（仅末段验证），完整转录留在 /tmp；且在 Vue/VM 未验时勾满 T-3 | 本轮：Vue 阻塞实际解除（离线安装+子模块）→ 双端 + smoke 13/13 采证归档；S10 全生命周期单转录（含双二进制身份、存储哈希前后一致、新旧 PID）；VM autotest 以"启动已验 + 套件前提写明"为边界如实记录，不冒称 | §4 原验证清单（auto run + v1 电池 + legacy 冒烟）全项达成；VM autotest 为 NOTES-001 交付面复验项，前提=有头桌面 MCP 会话 |
+
+- stage: work（r4 修复轮，第三次自动修复轮） | plan_id: 742 | plan_revision: 1 |
+  outcome: pass | worktree_path: D:/autostack/.wt/lang-742/auto-lang |
+  branch: plan-742-dev | base_commit: 8c9b2d3d9（=r3 审核面）|
+  code_commit: 2c40e1fe4 | dependency_revisions: auto-down=组内兄弟 detached
+  c39ac7f9（notes vendor 子模块同钉此提交）| task_ids: T-1/T-2/T-3 |
+  evidence: §3/§9.2 + [work-r4 证据包](attachments/742/work-r4/README.md)
+  ——api_gen 48/48×2（新增 fn 级单测+矩阵 13 值全绿）；tt 5649/5649；
+  r3 replay 提交态 17/17 逐项对拍（marker_literal/nested_borrow 翻转）；
+  T-3：双端 auto run + smoke 13/13 + v1 电池 fails=0 + S10 全生命周期转录
+  （双身份+存储哈希前后一致）| blockers: 无在案未决代码发现。边界（如实，
+  非阻塞项）：VM autotest 19 场景未运行——前提为有头桌面 MCP 会话，
+  VM 启动+后端联动已验证；Upload 入口限定化为源码级接线共享 helper；
+  db.rs 遗留正则 pass 债务候选 | next: review（/auto-plan:review r4；
+  审面=2c40e1fe4，基面 8c9b2d3d9，工作树冻结待审）
