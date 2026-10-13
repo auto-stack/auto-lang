@@ -25,6 +25,17 @@ use crate::vm::task::AutoTask;
 /// （测试读取；生产日志诊断用）。
 static LIVE_RESOURCES: AtomicUsize = AtomicUsize::new(0);
 
+/// 最近一次构造的凭据 heap id（碰撞族测试观察钩子——仅 cfg(test) 读取；
+/// 生产侧 store 一次 AtomicU64 开销可忽略，不构成可伪造凭据的公共 API：
+/// 读到的数值是普通数字，无 TAG_OBJECT 位型）。
+static LAST_HANDLE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// 测试观察：最近构造的凭据 heap id（真碰撞 oracle 的实际 id 来源）。
+#[cfg(test)]
+pub fn probe_last_resource_handle() -> u64 {
+    LAST_HANDLE.load(Ordering::Relaxed)
+}
+
 /// owned HTTP 响应快照（与 stdlib::HttpResponseData 同形——凭据内独立 owned
 /// 副本，重复返回 clone 不消费；mutable setter 链继续走 stdlib 表，互不串扰）。
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -89,6 +100,7 @@ fn push_kind(task: &mut AutoTask, vm: &AutoVM, kind: HttpReturnKind) -> Result<(
     }
     LIVE_RESOURCES.fetch_add(1, Ordering::Relaxed);
     let handle = vm.insert_heap_object(HttpReturnResource { kind });
+    LAST_HANDLE.store(handle, Ordering::Relaxed);
     vm.rc_push(task, auto_val::encode_object(handle as u32));
     Ok(())
 }

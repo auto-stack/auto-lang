@@ -500,22 +500,25 @@ pub fn shim_sse_keep_alive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// Stack: sse_handle -> sse_resource
 pub fn shim_sse_into_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let sse_handle = pop_rust_handle(task, "Sse.into_response")?;
-    let iter_id = if let Some(obj) = vm.get_heap_object(sse_handle) {
-        let guard = obj.read().unwrap();
-        guard
-            .as_any()
-            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
-            .and_then(|ro| ro.downcast_ref::<Sse>())
-            .map(|s| s.iter_id)
-            .unwrap_or(0)
-    } else {
-        0
-    };
-    if iter_id == 0 {
-        return Err(VMError::RuntimeError(
-            "Sse.into_response: sse object carries no iterator".into(),
-        ));
-    }
+    let obj = vm.get_heap_object(sse_handle).ok_or_else(|| {
+        VMError::RuntimeError(format!(
+            "Sse.into_response: sse handle {sse_handle} not on heap"
+        ))
+    })?;
+    let guard = obj.read().unwrap();
+    let sse = guard
+        .as_any()
+        .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .and_then(|ro| ro.downcast_ref::<Sse>())
+        .ok_or_else(|| {
+            VMError::RuntimeError(format!(
+                "Sse.into_response: heap object {sse_handle} is not an Sse"
+            ))
+        })?;
+    let iter_id = sse.iter_id;
+    drop(guard);
+    // iterator id 从 0 起（首个 generator 即 0）——downcast 成功即凭据有效，
+    // 无 0 哨兵（marshal 侧 iterators.contains_key 校验存在性）。
     super::http_return_resource::push_sse_resource(task, vm, iter_id)
 }
 

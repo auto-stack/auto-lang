@@ -5589,11 +5589,100 @@ fn file_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> ApiReply {
     }
 }
 
+/// PLAN-776 T-03：SSE 迭代器 → wire 回复的**单源**（i32 查表命中制臂与
+/// 资源凭据臂共用；不新增另一套 SSE 输出循环——producer spawn/
+/// `produce_sse_frames`/cleanup 守卫原样）。
+fn sse_iterator_reply(
+    vm: &std::rc::Rc<AutoVM>,
+    ctx: &DispatchCtx,
+    iter_id: u32,
+) -> ApiReply {
+    eprintln!(
+        "[HTTP] {} {} → 200 SSE ({}ms)",
+        ctx.req_method,
+        ctx.req_path,
+        ctx.started.elapsed().as_millis()
+    );
+    let (sender, receiver) = tokio::sync::mpsc::channel(1);
+    let producer_vm = vm.clone();
+    tokio::task::spawn_local(async move {
+        produce_sse_frames(producer_vm, iter_id, sender).await;
+    });
+    ApiReply::Full {
+        status: 200,
+        headers: vec![
+            ("Content-Type".to_string(), "text/event-stream".to_string()),
+            ("Cache-Control".to_string(), "no-cache".to_string()),
+            ("Connection".to_string(), "keep-alive".to_string()),
+        ],
+        body: ApiBody::Sse(receiver),
+    }
+}
+
+/// PLAN-776 T-03：资源凭据 → owned 回复（sync 终值与 async 终值共用分派）。
+/// Response clone 快照（重复返回不消费）；Sse 校验注册表后走单源 serve；
+/// File/Upload take 单次移交（未登记 → mismatch 500，原 729/730 诊断体例）。
+fn resource_claim_reply(
+    vm: &std::rc::Rc<AutoVM>,
+    ctx: &DispatchCtx,
+    claim: crate::vm::ffi::http_return_resource::ResourceClaim,
+) -> ApiReply {
+    use crate::vm::ffi::http_return_resource::ResourceClaim;
+    match claim {
+        ResourceClaim::Response(snapshot) => response_handle_reply(
+            ctx,
+            (snapshot.status, snapshot.headers, snapshot.body),
+        ),
+        ResourceClaim::Sse { iterator_id } => {
+            if vm.iterators.contains_key(&iterator_id) {
+                sse_iterator_reply(vm, ctx, iterator_id)
+            } else {
+                eprintln!(
+                    "[HTTP] {} {} [{}] → 500 (sse credential references missing iterator {})",
+                    ctx.req_method, ctx.req_path, ctx.request_id, iterator_id
+                );
+                ApiReply::Full {
+                    status: 500,
+                    headers: cors_json_headers(&ctx.request_id),
+                    body: ApiBody::Text(
+                        br#"{"error":"sse credential references a missing iterator"}"#.to_vec(),
+                    ),
+                }
+            }
+        }
+        ResourceClaim::File { descriptor_id } => {
+            match super::http_server_file::take_file_response(descriptor_id) {
+                Some(descriptor) => ApiReply::Full {
+                    status: 200, // 占位：File 臂由宿主 serve 决定
+                    headers: Vec::new(),
+                    body: ApiBody::File(FileReplySeed {
+                        descriptor,
+                        request_id: ctx.request_id.clone(),
+                    }),
+                },
+                None => file_contract_mismatch_reply(ctx, descriptor_id),
+            }
+        }
+        ResourceClaim::Upload { receipt_id } => {
+            match super::http_upload::take_upload_receipt(receipt_id) {
+                Some(receipt) => upload_receipt_reply(ctx, receipt),
+                None => upload_contract_mismatch_reply(ctx, receipt_id),
+            }
+        }
+    }
+}
+
 fn marshal_handler_value(
     vm: &std::rc::Rc<AutoVM>,
     ctx: &DispatchCtx,
     nv: auto_val::NanoValue,
 ) -> MarshalOutcome {
+    // PLAN-776 T-03：真实资源凭据臂（TAG_OBJECT → 本 VM 堆 → downcast）。
+    // 优先于一切 int 探测——普通 int 永不命中；跨 owner/过期凭据落
+    // stale 诊断（不误取其他表项）。legacy int 面走下方原路径。
+    if let Some(claim) = super::http_return_resource::resolve_resource(vm, nv) {
+        return MarshalOutcome::Reply(resource_claim_reply(vm, ctx, claim));
+    }
     if auto_val::is_i32(nv) {
         let bits = auto_val::decode_i32(nv);
         if (bits & 0xFF) == 0xF0 {
@@ -5674,27 +5763,9 @@ fn marshal_handler_value(
         // 返回持有 iterator 的句柄），声明门会破坏既有 e2e（sse_chain/302 实证）。
         // 普通 int 撞 id 的理论碰撞由 id 空间分离（iterator/Response 各自
         // 计数器）覆盖，AC-03 反例以 e2e 锁定。
+        // PLAN-776 T-03：真实资源已走对象臂；本臂仅服务 legacy int 源码。
         if vm.iterators.contains_key(&iter_id) {
-            eprintln!(
-                "[HTTP] {} {} → 200 SSE ({}ms)",
-                ctx.req_method,
-                ctx.req_path,
-                ctx.started.elapsed().as_millis()
-            );
-            let (sender, receiver) = tokio::sync::mpsc::channel(1);
-            let producer_vm = vm.clone();
-            tokio::task::spawn_local(async move {
-                produce_sse_frames(producer_vm, iter_id, sender).await;
-            });
-            return MarshalOutcome::Reply(ApiReply::Full {
-                status: 200,
-                headers: vec![
-                    ("Content-Type".to_string(), "text/event-stream".to_string()),
-                    ("Cache-Control".to_string(), "no-cache".to_string()),
-                    ("Connection".to_string(), "keep-alive".to_string()),
-                ],
-                body: ApiBody::Sse(receiver),
-            });
+            return MarshalOutcome::Reply(sse_iterator_reply(vm, ctx, iter_id));
         }
         // PLAN-729 T-04：文件响应描述符（声明返回类型门 + 登记命中）。
         if handler_declares_file_return(vm, ctx) {
@@ -5813,11 +5884,19 @@ fn cors_json_headers(request_id: &str) -> Vec<(String, String)> {
 
 /// ~T 最终值编组：FutureValue.result → NanoValue → json_value_reply
 /// （Failed / 缺 result → null；Phase A 语义同引擎恢复臂）。
+/// PLAN-776 T-03：资源终值（Value::VmRef → 本 VM 堆凭据）与 sync 同一
+/// `resource_claim_reply` 分派——Response/SSE/File/Upload 四族 sync/async
+/// 同形。Failed/缺 result 的有界 500 化在 T-04 落地。
 fn final_value_reply(
     vm: &std::rc::Rc<AutoVM>,
     ctx: &DispatchCtx,
     value: Option<auto_val::Value>,
 ) -> ApiReply {
+    if let Some(v) = &value {
+        if let Some(claim) = super::http_return_resource::resolve_resource_value(vm, v) {
+            return resource_claim_reply(vm, ctx, claim);
+        }
+    }
     let nv = value
         .and_then(|v| value_to_nv_via_task(vm, ctx, v))
         .unwrap_or_else(auto_val::encode_null);

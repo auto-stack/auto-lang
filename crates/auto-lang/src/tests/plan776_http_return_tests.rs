@@ -231,3 +231,188 @@ fn plan776_t02_file_response_shim_pushes_resource() {
         other => panic!("错种类：{other:?}"),
     }
 }
+
+// ============================================================================
+// T-03：wire 级（真 TCP，test-http-e2e）——资源回复/快照重放/真碰撞
+// ============================================================================
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    const PORT: u16 = 19010;
+
+    /// 服务程序：redirect 资源全局缓存（重放）+ 同值普通 int 端点（碰撞）。
+    /// 调用形态对齐真实 wire 契约 `http.response_redirect`（CALL_NAT 直查名，
+    /// e2e_a_redirect_302_with_location 同款；点链 CALL_SPEC 形式主线预存
+    /// 静默 None，不在本计划面内）。
+    fn program() -> String {
+        r#"
+var cached_redirect = 0
+
+#[api(method = "GET", path = "/api/make")]
+fn make() int {
+    cached_redirect = http.response_redirect("/target", 302)
+    return cached_redirect
+}
+
+#[api(method = "GET", path = "/api/replay")]
+fn replay() int {
+    return cached_redirect
+}
+
+#[api(method = "GET", path = "/api/plain/:n")]
+fn plain(n int) int {
+    return n
+}
+"#
+        .to_string()
+    }
+
+    fn start_server(code: &str, port: u16) -> u16 {
+        crate::vm::ffi::stdlib::clear_http_routes();
+        std::env::set_var("AUTO_HTTP_PORT", port.to_string());
+        let code = code.to_string();
+        let _server = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let _ = crate::run(&code);
+            })
+            .expect("spawn server thread");
+        for _ in 0..50 {
+            if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        port
+    }
+
+    fn get(port: u16, path: &str) -> (u16, Vec<(String, String)>, Vec<u8>) {
+        let mut stream = None;
+        for _ in 0..60 {
+            if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                stream = Some(s);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let mut stream = stream.expect("connect");
+        stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        let req = format!(
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        );
+        stream.write_all(req.as_bytes()).unwrap();
+        let _ = stream.flush();
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 65536];
+        let header_end = loop {
+            let n = stream.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break None;
+            }
+            raw.extend_from_slice(&buf[..n]);
+            if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                break Some(pos + 4);
+            }
+        };
+        let header_end = header_end.expect("response headers");
+        let head = String::from_utf8_lossy(&raw[..header_end]).into_owned();
+        let mut lines = head.split("\r\n");
+        let status: u16 = lines
+            .next()
+            .unwrap_or_default()
+            .split_whitespace()
+            .nth(1)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let mut hdrs = Vec::new();
+        for line in lines {
+            if let Some((k, v)) = line.split_once(':') {
+                hdrs.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
+            }
+        }
+        let cl: usize = hdrs
+            .iter()
+            .find(|(k, _)| k == "content-length")
+            .and_then(|(_, v)| v.parse().ok())
+            .unwrap_or(0);
+        let mut resp = raw[header_end..].to_vec();
+        while resp.len() < cl {
+            let n = stream.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            resp.extend_from_slice(&buf[..n]);
+        }
+        resp.truncate(cl);
+        (status, hdrs, resp)
+    }
+
+    /// AC-01 真碰撞：活跃 Response 资源的真实同值普通 int → 200 JSON 数字；
+    /// 资源不被消费，随后仍按原协议回复（302）。实际 id 经观察钩子取得
+    /// （非任意常量冒充）。
+    #[test]
+    fn http_e2e_plan776_collision_resource_vs_plain_int() {
+        let port = start_server(&program(), PORT);
+        // 1) 构造真实资源并返回 → 302 + Location。
+        let (status, headers, _) = get(port, "/api/make");
+        assert_eq!(status, 302, "资源首次返回按原协议回复");
+        let location = headers
+            .iter()
+            .find(|(k, _)| k == "location")
+            .map(|(_, v)| v.clone())
+            .expect("Location header");
+        assert_eq!(location, "/target");
+
+        // 2) 观察钩子取活跃资源的实际 heap id，构造同值普通 int。
+        let handle = crate::vm::ffi::http_return_resource::probe_last_resource_handle();
+        assert!(handle > 0, "观察钩子应捕获构造");
+        let (s2, _, body2) = get(port, &format!("/api/plain/{handle}"));
+        assert_eq!(s2, 200, "同值普通 int 是数据（不得被劫持为资源）");
+        assert_eq!(body2, handle.to_string().into_bytes());
+
+        // 3) 资源未被消费：重放全局常量 → 仍 302（快照回复，可重复返回）。
+        let (s3, headers3, _) = get(port, "/api/replay");
+        assert_eq!(s3, 302, "资源未被 plain 请求消费");
+        let location3 = headers3
+            .iter()
+            .find(|(k, _)| k == "location")
+            .map(|(_, v)| v.clone())
+            .expect("Location on replay");
+        assert_eq!(location3, "/target");
+    }
+
+    /// AC-06 wire 面：全局常量资源连续多次请求正确（快照 clone，不首回消费）。
+    #[test]
+    fn http_e2e_plan776_response_constant_replays_across_requests() {
+        let port = start_server(&program(), PORT + 1);
+        for i in 0..3 {
+            let path = if i == 0 { "/api/make" } else { "/api/replay" };
+            let (status, headers, _) = get(port, path);
+            assert_eq!(status, 302, "第 {} 次请求", i + 1);
+            assert!(headers.iter().any(|(k, v)| k == "location" && v == "/target"));
+        }
+    }
+}
+
+#[test]
+fn plan776_diag_redirect_shape() {
+    // 调用形态对照：CALL_NAT 下划线形态（真实 wire 契约）可执行；VM 退出后
+    // 资源随 owner 回收（live 归零——AC-06 生命期的进程级观察）。
+    let code = r#"
+fn main() {
+    let r = http.response_redirect("/t", 302)
+    print("done")
+}
+"#;
+    let (stderr, stdout) = crate::run_with_capture(code).expect("run");
+    assert!(stdout.contains("done"), "stdout: {stdout:?} stderr: {stderr:?}");
+    assert_eq!(
+        http_return_resource::live_resource_count(),
+        0,
+        "VM 退出后资源随 owner 回收归零"
+    );
+}
