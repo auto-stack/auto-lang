@@ -485,27 +485,71 @@ pub(crate) fn transpile_back_module_to_rs_with_proofs(
 /// the standalone a2r-std crate), so re-qualify the bare `a2r_std` preamble
 /// and paths that the a2r transpiler now emits (see rust.rs Plan 396/B3
 /// comment) into the `auto_lang::` form that resolves against our deps.
-fn qualify_a2r_std(mut code: String) -> String {
-    // Plan 742 R2 (F-742-R2-01): every rewrite below applies ONLY in code
-    // regions — literal/comment payloads keep their bytes (a business string
-    // mentioning `a2r_std::` survives verbatim). Marker protection order is
-    // preserved from the original whole-text form. PLAN-668 R-24 /
-    // Plan 742: `a2r_std::sys` / `a2r_std::sqlite` are standalone-crate-only
-    // faces (the embedded facade has neither) — protected from the generic
-    // a2r_std:: qualification below.
-    code = replace_in_code_regions(&code, "a2r_std::sys::", "__AUTO_A2R_STD_SYS__");
-    code = replace_in_code_regions(&code, "a2r_std::sqlite", "__AUTO_A2R_STD_SQLITE__");
-    code = replace_in_code_regions(&code, "auto_lang::a2r_std::", "__AUTO_A2R_STD_QUAL__");
-    code = replace_in_code_regions(&code, "a2r_std::", "auto_lang::a2r_std::");
-    code = replace_in_code_regions(&code, "use a2r_std;", "use auto_lang::a2r_std;");
-    code = replace_in_code_regions(&code, "use a2r_std::*;", "use auto_lang::a2r_std::*;");
-    // Markers only ever enter code regions above; restoring them with a plain
-    // replace is safe (a pre-existing literal spelled exactly like an
-    // internal marker was already impossible to express before this change).
-    code = code.replace("__AUTO_A2R_STD_QUAL__", "auto_lang::a2r_std::");
-    code = code.replace("__AUTO_A2R_STD_SQLITE__", "::a2r_std::sqlite");
-    code = code.replace("__AUTO_A2R_STD_SYS__", "a2r_std::sys::");
-    code
+fn qualify_a2r_std(code: String) -> String {
+    // Plan 742 R3 (F-742-R3-01): single-pass, priority-ordered scan over
+    // code regions only — NO placeholder/restore round-trip. A restore step
+    // cannot distinguish a placeholder it inserted from a legal business
+    // string of the same spelling (`"__AUTO_A2R_STD_QUAL__"` is a legal
+    // str), so the r2 marker scheme rewrote literal payloads. Priority per
+    // position: already-qualified > standalone-only faces > generic
+    // qualification; `use` lines also qualify the bare crate name.
+    // PLAN-668 R-24 / Plan 742: `a2r_std::sys` / `a2r_std::sqlite` are
+    // standalone-crate-only faces (the embedded facade has neither) — they
+    // keep their direct form, the sys one untouched and sqlite with the
+    // standalone-crate `::` prefix.
+    code.split('\n')
+        .map(|l| {
+            if !l.contains("a2r_std") {
+                return l.to_string();
+            }
+            let mask = auto_lang::trans::rust::RustTrans::code_region_mask(l);
+            let is_use_line = l.trim_start().starts_with("use ");
+            let bytes = l.as_bytes();
+            let mut out = String::with_capacity(l.len());
+            let mut i = 0;
+            while i < bytes.len() {
+                if mask[i] {
+                    // Already qualified — copy verbatim (idempotency).
+                    if l[i..].starts_with("auto_lang::a2r_std::") {
+                        out.push_str("auto_lang::a2r_std::");
+                        i += "auto_lang::a2r_std::".len();
+                        continue;
+                    }
+                    // Standalone-only faces — keep their direct form.
+                    if l[i..].starts_with("a2r_std::sys::") {
+                        out.push_str("a2r_std::sys::");
+                        i += "a2r_std::sys::".len();
+                        continue;
+                    }
+                    if l[i..].starts_with("a2r_std::sqlite") {
+                        out.push_str("::a2r_std::sqlite");
+                        i += "a2r_std::sqlite".len();
+                        continue;
+                    }
+                    // Generic qualification.
+                    if l[i..].starts_with("a2r_std::") {
+                        out.push_str("auto_lang::a2r_std::");
+                        i += "a2r_std::".len();
+                        continue;
+                    }
+                    // `use a2r_std;` / `use a2r_std::*;` — bare crate name.
+                    if is_use_line && l[i..].starts_with("a2r_std") {
+                        let after = &l[i + "a2r_std".len()..];
+                        if after.starts_with(';') || after.starts_with("::*") {
+                            out.push_str("auto_lang::a2r_std");
+                            i += "a2r_std".len();
+                            continue;
+                        }
+                    }
+                }
+                let ch = l[i..].chars().next().unwrap();
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Plan 742 R2 (F-742-R2-01): plain-text replacement confined to code
@@ -2964,6 +3008,20 @@ fn borrow_string_module_call_args(api_source: &str, module_source: &str, marker:
     if signatures.is_empty() {
         return api_source.to_string();
     }
+    borrow_pass(api_source, &signatures, marker)
+}
+
+/// Plan 742 R3 (F-742-R3-02): the borrow worker, separated so call
+/// ARGUMENTS recurse — `outer(measure(s))` copies the outer arg text
+/// wholesale and then jumps past the whole call, so the inner module call
+/// never got its own &str fixup (E0308 at real compile). Each argument is
+/// re-processed before the outer-level & insertion, preserving evaluation
+/// order, already-borrowed args, and the real signatures at every level.
+fn borrow_pass(
+    api_source: &str,
+    signatures: &std::collections::HashMap<String, Vec<bool>>,
+    marker: &str,
+) -> String {
     let mask = code_region_mask_text(api_source);
     let mut out = String::with_capacity(api_source.len());
     let mut cursor = 0usize;
@@ -3013,10 +3071,13 @@ fn borrow_string_module_call_args(api_source: &str, module_source: &str, marker:
             if index > 0 {
                 out.push_str(", ");
             }
+            // Nested module calls inside this argument get their own fixup
+            // first (any depth), then the outer-level & applies.
+            let arg = borrow_pass(arg, signatures, marker);
             if expected.get(index).copied().unwrap_or(false) && !arg.starts_with('&') {
                 out.push('&');
             }
-            out.push_str(arg);
+            out.push_str(&arg);
         }
         out.push(')');
         cursor = close + 1;
@@ -6166,6 +6227,38 @@ fn main() {{
         );
     }
 
+    /// Plan 742 R3 (F-742-R3-01): placeholder-free qualify_a2r_std — the
+    /// r2 marker/restore round-trip rewrote legal business strings spelled
+    /// like an internal marker. Code positives keep their behavior (generic
+    /// qualification, use-line forms, standalone sys/sqlite faces,
+    /// already-qualified idempotency); literal payloads keep their bytes.
+    #[test]
+    fn test_qualify_a2r_std_code_regions_only() {
+        let code = "let x = a2r_std::list::new();
+                    use a2r_std;
+                    use a2r_std::*;
+                    let y = a2r_std::sys::now();
+                    let z = a2r_std::sqlite::open(p);
+                    let q = auto_lang::a2r_std::f();
+";
+        let out = qualify_a2r_std(code.to_string());
+        assert!(out.contains("auto_lang::a2r_std::list::new()"), "{out}");
+        assert!(out.contains("use auto_lang::a2r_std;"), "{out}");
+        assert!(out.contains("use auto_lang::a2r_std::*;"), "{out}");
+        // standalone-only faces keep their direct form
+        assert!(out.contains("a2r_std::sys::now()"), "{out}");
+        assert!(out.contains("::a2r_std::sqlite::open(p)"), "{out}");
+        assert!(!out.contains("auto_lang::a2r_std::sqlite"), "{out}");
+        // idempotency: already-qualified paths are not double-qualified
+        assert_eq!(out.matches("auto_lang::auto_lang").count(), 0, "{out}");
+        assert!(out.contains("auto_lang::a2r_std::f();"), "{out}");
+
+        let literal = "let m = \"__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__ a2r_std::x\".to_string();
+";
+        let out2 = qualify_a2r_std(literal.to_string());
+        assert_eq!(out2, literal, "literal payloads must keep their bytes");
+    }
+
     /// Plan 742 R2: the r2 review matrix as one compile-and-run oracle —
     /// escaped/composite literals, the borrow-marker literal (F-742-R2-01)
     /// beside a REAL &str borrow positive control, nested local shadowing
@@ -6198,6 +6291,20 @@ pub fn borrow_pos() int {
     var s str = "hi"
     if s.len() > 0 { return repository.measure(s) }
     return 0
+}
+
+#[api(method = "GET", path = "/api/nested")]
+pub fn nested() int {
+    var s str = "hi"
+    if true { return repository.outer(repository.measure(s)) }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/marker")]
+pub fn marker() Probe {
+    var msg str = "__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
 }
 
 #[api(method = "GET", path = "/api/ping")]
@@ -6254,7 +6361,8 @@ pub fn file() FileResponse {
         std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
         std::fs::write(
             back_dir.join("repository.at"),
-            "pub fn ping() int { return 7 }\npub fn measure(value str) int { return value.len() }\npub fn path() str { return \"readme.txt\" }\n",
+            "pub fn ping() int { return 7 }\npub fn measure(value str) int { return value.len() }
+pub fn outer(value int) int { return value }\npub fn path() str { return \"readme.txt\" }\n",
         )
         .expect("write repository.at");
 
@@ -6290,6 +6398,20 @@ pub fn file() FileResponse {
             api_rs.contains("repository::measure(&s)")
                 || api_rs.contains("repository::measure(&msg"),
             "real &str borrow positive control must keep its insertion:
+{api_rs}"
+        );
+        // F-742-R3-02: nested module calls fix the INNER borrow too.
+        assert!(
+            api_rs.contains("crate::repository::outer(crate::repository::measure(&s))"),
+            "nested module call must borrow the inner &str arg:
+{api_rs}"
+        );
+        // F-742-R3-01: internal-marker literals survive byte-for-byte.
+        assert!(
+            api_rs.contains(
+                r#""__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__""#
+            ),
+            "marker literal must survive:
 {api_rs}"
         );
         // F-742-R2-02: outer call qualified, sub-block method call NOT.
@@ -6355,6 +6477,8 @@ pub fn file() FileResponse {
             "echo",
             "echo_borrow",
             "borrow_pos",
+            "nested",
+            "marker",
             "ping",
             "scope",
             "void_plain",
@@ -6385,6 +6509,7 @@ use crate::types::*;
 mod repository {
     pub fn ping() -> i64 { 7 }
     pub fn measure(value: &str) -> i64 { value.len() as i64 }
+    pub fn outer(value: i64) -> i64 { value }
     pub fn path() -> String { "readme.txt".to_string() }
 }
 
@@ -6435,6 +6560,8 @@ fn main() {
     println!("echo={}", ready(echo(sdb.clone())).0.text);
     println!("echo_borrow={}", ready(echo_borrow(sdb.clone())).0.text);
     println!("borrow_pos={}", ready(borrow_pos(sdb.clone())).0);
+    println!("nested={}", ready(nested(sdb.clone())).0);
+    println!("marker={}", ready(marker(sdb.clone())).0.text);
     println!("ping={}", ready(ping(sdb.clone())).0);
     println!("scope={}", ready(scope(sdb.clone())).0.text);
     let _ = ready(void_plain(sdb.clone()));
@@ -6489,6 +6616,8 @@ fn main() {
         let expected = "echo=引号\" List<int>.new([]) repository.ping() } return secret\n\
                         echo_borrow=crate::repository::measure(value)\n\
                         borrow_pos=2\n\
+                        nested=2\n\
+                        marker=__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__\n\
                         ping=7\n\
                         scope=ok\n\
                         void_plain=ok\n\
