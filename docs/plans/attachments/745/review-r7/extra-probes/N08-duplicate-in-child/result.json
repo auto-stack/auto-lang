@@ -1,0 +1,16 @@
+{
+  "want_code": "source.duplicate",
+  "bytes": 56,
+  "artifact_hashes": [],
+  "build": null,
+  "ok": true,
+  "input_sha256": "63851b87904bb31bf4c748c9e42bd45ff356c5d63159e7c6c35e6f1b5fe9df6a",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N08-duplicate-in-child\\input.at:1:40: error[bind/source.duplicate]: local `x` is declared more than once in this block\n",
+    "stdout": ""
+  },
+  "want_native": null,
+  "run": null,
+  "id": "N08-duplicate-in-child"
+}

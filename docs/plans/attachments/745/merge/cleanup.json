@@ -1,0 +1,21 @@
+{
+  "git_registration_absence_verified": true,
+  "guard_source_sha256": "5102c9ffe8c9c0a6203db09dcf83b65ec94e6fd5599136d40e2e205318278cc7",
+  "tree": "D:\\autostack\\.wt\\lang-745\\auto-lang",
+  "recovery_commit": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+  "key": "PLAN-745:r1",
+  "dependency": "D:\\autostack\\.wt\\lang-745\\auto-down",
+  "outcome": "pass",
+  "group": "D:\\autostack\\.wt\\lang-745",
+  "dependency_head": "fba6563ed2148ce85e68208863159b4ccccac710",
+  "tree_head": "9060743e501258ebf68a261f9c985cd3a2a351c5",
+  "empty_group_only": true,
+  "completed_utc": "2026-10-08T11:33:57.2822141Z",
+  "fresh_guards": [
+    "guard-remove-auto-lang.txt",
+    "guard-remove-auto-down.txt"
+  ],
+  "disk_absence_verified": true,
+  "merged_branch_removed": true,
+  "recovery_ref": "refs/auto-plan/745/reviewed"
+}

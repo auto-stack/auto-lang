@@ -1,0 +1,8 @@
+valid state ok cli 0 consumer_reads 21 traceback False
+bound_file_exists state ok cli 0 consumer_reads 21 traceback False
+missing_bound_file state error cli 1 consumer_reads 0 traceback False
+bound_file_restored state ok cli 0 consumer_reads 21 traceback False
+duplicate_bad_type_first state error cli 1 consumer_reads 0 traceback False
+duplicate_bad_type_last state error cli 1 consumer_reads 0 traceback False
+duplicate_valid_first state error cli 1 consumer_reads 0 traceback False
+duplicate_valid_last state error cli 1 consumer_reads 0 traceback False

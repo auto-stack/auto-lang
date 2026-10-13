@@ -1,0 +1,295 @@
+{
+  "audit_date": "2026-10-06",
+  "repository": "D:/autostack/auto-lang",
+  "branch": "v0.6-dev",
+  "baseline_commit": "17263c57b284b080ae9d71f6eb528d27ccbd4ebc",
+  "scope": "workflow retrospective only; no implementation review or skill modification",
+  "initial_plans": [
+    {
+      "plan_id": "PLAN-741",
+      "commit": "951b6c70ff596f79e464ba977139669f2d196821",
+      "git_path": "docs/plans/741-ac-hir-native-core.md",
+      "git_blob": "aac3998d2d1186ca7443319bfe8d326c71fd33a2",
+      "original_sha256": "e6ac86669ef05471a709db59bc18485e394a0fb0351b5b191de6cee706fc0b31",
+      "snapshot": "initial-plan-741.md",
+      "snapshot_sha256": "e6ac86669ef05471a709db59bc18485e394a0fb0351b5b191de6cee706fc0b31",
+      "lines": 310
+    },
+    {
+      "plan_id": "PLAN-743",
+      "commit": "c1ac219e73ee2ed1ef6ba8dfec49c131bfbf1a75",
+      "git_path": "docs/plans/743-acc-bootstrap-hir-contract.md",
+      "git_blob": "06dac61458e28ddbc513f186e2550aa08fbe52ff",
+      "original_sha256": "077f830853386431f133f82cb45aadefb06a3d6477857b277c3ef31cbd1bf23e",
+      "snapshot": "initial-plan-743.md",
+      "snapshot_sha256": "077f830853386431f133f82cb45aadefb06a3d6477857b277c3ef31cbd1bf23e",
+      "lines": 314
+    }
+  ],
+  "sources": [
+    {
+      "path": "docs/plans/archive/741-ac-hir-native-core.md",
+      "sha256": "3e3840ef10ccea5534690f4244f9edc6c1cd7bb3ca25c5f3c5d0b51b374da2d5"
+    },
+    {
+      "path": "docs/plans/archive/743-acc-bootstrap-hir-contract.md",
+      "sha256": "bb0a419fb7a844a93ef0c90ce414cd28f828250b46ffebc1ff0f5e4ef7d06e60"
+    },
+    {
+      "path": "docs/reports/741-quality-review-20261004/REVIEW.md",
+      "sha256": "ccf0105c3b95a8ebf7751417540ba18e11a5b02d5326bc3c49340e22106e53a0"
+    },
+    {
+      "path": "docs/reports/741-quality-review-20261005/REVIEW.md",
+      "sha256": "34a91344320dc1a5931a7262cb189d2d40fc13f9a4771efa98a67a477c859028"
+    },
+    {
+      "path": "docs/reports/741-r3-quality-review-20261005/REVIEW.md",
+      "sha256": "1d8118407b7d83129746c868067707eff8d81e5bc7b062506207a47e75509c3d"
+    },
+    {
+      "path": "docs/reports/741-r4-quality-review-20261005/REVIEW.md",
+      "sha256": "451c76457ca1e1b3031b89022f44e544702facc517e8d2738217e271060ef786"
+    },
+    {
+      "path": "docs/reports/741-r5-quality-review-20261006/REVIEW.md",
+      "sha256": "934e203b9ed684344ba4e2d90226df863f4675f42c817b322b1afd0bbf09c5bd"
+    },
+    {
+      "path": "docs/reports/741-r6-quality-review-20261006/REVIEW.md",
+      "sha256": "cddac523818a9a4793a02533e045c9fad258a7a22eead725464ddac7e12da822"
+    },
+    {
+      "path": "docs/reports/741-r7-quality-review-20261006/REVIEW.md",
+      "sha256": "eb90a608c5865bcdedfbdd4e8300e431e5fddb15a65fdadf1ff5ea0a31acd2ee"
+    },
+    {
+      "path": "docs/reports/741-r8-quality-review-20261006/REVIEW.md",
+      "sha256": "c069f46d870ef5604944e5c3daa317aef8b8388504bd513b42dcab5f403372ec"
+    },
+    {
+      "path": "docs/reports/743-quality-review-20261005/REVIEW.md",
+      "sha256": "9099406d6a2f9a3442b803980089bc1f3eb23419b675d339c2f7ceb1976c8d53"
+    },
+    {
+      "path": "docs/reports/743-r2-quality-review-20261005/REVIEW.md",
+      "sha256": "a45fddfa4057333b6c82ddc34318e8392c2f9a5a9314e11f8fb3eedc2ef58aff"
+    },
+    {
+      "path": "docs/reports/743-r3-quality-review-20261005/REVIEW.md",
+      "sha256": "345d121ffa5794793d7847d7445c745ff717162fe4dbe6b5bdfc3aa976244325"
+    },
+    {
+      "path": "docs/reports/743-r4-quality-review-20261005/REVIEW.md",
+      "sha256": "232a191ae41d4283d380b5271850630601c02f55d99154b72c1362b8d3deb8fc"
+    },
+    {
+      "path": "docs/reports/743-r5-quality-review-20261006/REVIEW.md",
+      "sha256": "380227223d24d7bbd8d05b3f049c047eb2a2dd32b941fe5ca4fa524eace5f260"
+    },
+    {
+      "path": "docs/reports/743-r6-quality-review-20261006/REVIEW.md",
+      "sha256": "1f0b03df20fe8a5e56228adcffce6a9875e3c2c82742e66eaea586067b5e7c94"
+    },
+    {
+      "path": "docs/reports/741-phase4-resource-fixes/verification.md",
+      "sha256": "98e52631c652e3bab0dbaeb531b76ec51497289c6036bb4e14692e55e4b053b3"
+    },
+    {
+      "path": "docs/reports/741-phase7-lifecycle-fixture-nav/verification.md",
+      "sha256": "e6215978f6ed2fce532a6baba4f56e2628e2ecd0301a5c2b8ec12976d7c7d349"
+    }
+  ],
+  "current_skill_sources": [
+    {
+      "path": "C:/Users/zhaop/.agents/skills/auto-plan-new/SKILL.md",
+      "sha256": "23543fc7a5470082dfb3b0fd6da0277e3e4c615bb324ebc76c5d6711b0175028",
+      "historical_version_verified": false
+    },
+    {
+      "path": "C:/Users/zhaop/.agents/skills/auto-plan-work/SKILL.md",
+      "sha256": "8ee8014044b6a4c0f44ca0372df462010fbb6d61ab9e515d1ddeaaf837da20c5",
+      "historical_version_verified": false
+    },
+    {
+      "path": "C:/Users/zhaop/.agents/skills/auto-plan-review/SKILL.md",
+      "sha256": "13e5806b9484524515a881c58d94762452e40a449dcd55059eb85afe7db46598",
+      "historical_version_verified": false
+    },
+    {
+      "path": "C:/Users/zhaop/.agents/skills/auto-plan-merge/SKILL.md",
+      "sha256": "dfe7c1878ff0d9bcc2ffa982ebbd22827ac08f87adb24d888240f2f85071c62b",
+      "historical_version_verified": false
+    }
+  ],
+  "external_review_rounds": [
+    {
+      "plan_id": "PLAN-741",
+      "revision": 1,
+      "outcome": "needs_fix",
+      "path": "docs/reports/741-quality-review-20261004/REVIEW.md",
+      "finding_ids": [
+        "P741-QA-01",
+        "P741-QA-02",
+        "P741-QA-03",
+        "P741-QA-04",
+        "P741-QA-05",
+        "P741-QA-06",
+        "P741-QA-07"
+      ]
+    },
+    {
+      "plan_id": "PLAN-741",
+      "revision": 2,
+      "outcome": "needs_fix",
+      "path": "docs/reports/741-quality-review-20261005/REVIEW.md",
+      "finding_ids": [
+        "P741-R2-QA-01",
+        "P741-R2-QA-02",
+        "P741-R2-QA-03",
+        "P741-R2-QA-04"
+      ]
+    },
+    {
+      "plan_id": "PLAN-741",
+      "revision": 3,
+      "outcome": "needs_fix",
+      "path": "docs/reports/741-r3-quality-review-20261005/REVIEW.md",
+      "finding_ids": [
+        "P741-R3-QA-01",
+        "P741-R3-QA-02",
+        "P741-R3-QA-03"
+      ]
+    },
+    {
+      "plan_id": "PLAN-741",
+      "revision": 4,
+      "outcome": "needs_fix",
+      "path": "docs/reports/741-r4-quality-review-20261005/REVIEW.md",
+      "finding_ids": [
+        "P741-R4-QA-01",
+        "P741-R4-QA-02"
+      ]
+    },
+    {
+      "plan_id": "PLAN-741",
+      "revision": 5,
+      "outcome": "needs_fix",
+      "path": "docs/reports/741-r5-quality-review-20261006/REVIEW.md",
+      "finding_ids": [
+        "P741-R5-QA-01",
+        "P741-R5-QA-02",
+        "P741-R5-QA-03"
+      ]
+    },
+    {
+      "plan_id": "PLAN-741",
+      "revision": 6,
+      "outcome": "needs_fix",
+      "path": "docs/reports/741-r6-quality-review-20261006/REVIEW.md",
+      "finding_ids": [
+        "P741-R6-QA-01",
+        "P741-R6-QA-02"
+      ]
+    },
+    {
+      "plan_id": "PLAN-741",
+      "revision": 7,
+      "outcome": "needs_fix",
+      "path": "docs/reports/741-r7-quality-review-20261006/REVIEW.md",
+      "finding_ids": [
+        "P741-R7-QA-01",
+        "P741-R7-QA-02"
+      ]
+    },
+    {
+      "plan_id": "PLAN-741",
+      "revision": 8,
+      "outcome": "pass",
+      "path": "docs/reports/741-r8-quality-review-20261006/REVIEW.md",
+      "finding_ids": []
+    },
+    {
+      "plan_id": "PLAN-743",
+      "revision": 1,
+      "outcome": "needs_fix",
+      "path": "docs/reports/743-quality-review-20261005/REVIEW.md",
+      "finding_ids": [
+        "P743-QA-01",
+        "P743-QA-02",
+        "P743-QA-03",
+        "P743-QA-04",
+        "P743-QA-05",
+        "P743-QA-06",
+        "P743-QA-07"
+      ]
+    },
+    {
+      "plan_id": "PLAN-743",
+      "revision": 2,
+      "outcome": "needs_fix",
+      "path": "docs/reports/743-r2-quality-review-20261005/REVIEW.md",
+      "finding_ids": [
+        "P743-R2-QA-01",
+        "P743-R2-QA-02",
+        "P743-R2-QA-03",
+        "P743-R2-QA-04",
+        "P743-R2-QA-05",
+        "P743-R2-QA-06"
+      ]
+    },
+    {
+      "plan_id": "PLAN-743",
+      "revision": 3,
+      "outcome": "needs_fix",
+      "path": "docs/reports/743-r3-quality-review-20261005/REVIEW.md",
+      "finding_ids": [
+        "P743-R3-QA-01",
+        "P743-R3-QA-02",
+        "P743-R3-QA-03",
+        "P743-R3-QA-04"
+      ]
+    },
+    {
+      "plan_id": "PLAN-743",
+      "revision": 4,
+      "outcome": "needs_fix",
+      "path": "docs/reports/743-r4-quality-review-20261005/REVIEW.md",
+      "finding_ids": [
+        "P743-R4-QA-01",
+        "P743-R4-QA-02",
+        "P743-R4-QA-03",
+        "P743-R4-QA-04"
+      ]
+    },
+    {
+      "plan_id": "PLAN-743",
+      "revision": 5,
+      "outcome": "needs_fix",
+      "path": "docs/reports/743-r5-quality-review-20261006/REVIEW.md",
+      "finding_ids": [
+        "P743-R5-QA-01",
+        "P743-R5-QA-02",
+        "P743-R5-QA-03"
+      ]
+    },
+    {
+      "plan_id": "PLAN-743",
+      "revision": 6,
+      "outcome": "pass",
+      "path": "docs/reports/743-r6-quality-review-20261006/REVIEW.md",
+      "finding_ids": []
+    }
+  ],
+  "statistics": {
+    "external_reviews": 14,
+    "needs_fix": 12,
+    "pass_count": 2,
+    "finding_entries": 47
+  },
+  "limitations": [
+    "Worker model versions/prompts/full execution transcripts are not verified.",
+    "Cross-chat tool was unavailable (Transport closed).",
+    "Current skill text is not proof of historical skill versions."
+  ]
+}

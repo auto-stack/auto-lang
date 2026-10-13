@@ -1,0 +1,86 @@
+# a2r emit basics (legacy `test/a2r` single-file goldens)
+
+Oracles are the legacy `.expected.rs` files referenced in place — the
+adapter path must be byte-identical to the legacy `test_a2r_with_base`
+comparison. `module_name` mirrors the legacy stem derivation (metadata
+parity; it does not affect emitted bytes).
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "trans.basics.func"
+  tags: ["pilot", "a2r"]
+  source: { file: "a2r/01_basics/003_func/func.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "emit", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "func" },
+      expect: { completion: "success", artifacts: [
+        { path: "func.rs", file: "a2r/01_basics/003_func/func.expected.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "trans.basics.doc-comments"
+  tags: ["pilot", "a2r"]
+  source: { file: "a2r/01_basics/004_doc_comments/doc_comments.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "emit", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "doc_comments" },
+      expect: { completion: "success", artifacts: [
+        { path: "doc_comments.rs", file: "a2r/01_basics/004_doc_comments/doc_comments.expected.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "trans.basics.struct"
+  tags: ["pilot", "a2r"]
+  source: { file: "a2r/02_types/001_struct/struct.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "emit", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "struct" },
+      expect: { completion: "success", artifacts: [
+        { path: "struct.rs", file: "a2r/02_types/001_struct/struct.expected.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "trans.basics.for-range"
+  tags: ["pilot", "a2r"]
+  source: { file: "a2r/03_control_flow/005_for_range/for_range.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "emit", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "for_range" },
+      expect: { completion: "success", artifacts: [
+        { path: "for_range.rs", file: "a2r/03_control_flow/005_for_range/for_range.expected.rs", compare: "bytes" } ] } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "trans.basics.arithmetic"
+  tags: ["pilot", "a2r"]
+  source: { file: "a2r/05_expressions/001_arithmetic/arithmetic.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "emit", adapter: "a2r", action: "emit", tier: "trans-snapshot",
+      options: { module_name: "arithmetic" },
+      expect: { completion: "success", artifacts: [
+        { path: "arithmetic.rs", file: "a2r/05_expressions/001_arithmetic/arithmetic.expected.rs", compare: "bytes" } ] } }
+  ]
+}
+```

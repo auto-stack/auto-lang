@@ -1,0 +1,4 @@
+     Summary [  11.864s] 1299/4971 tests run: 1298 passed, 1 failed, 1534 skipped
+        FAIL [   1.381s] (1278/4971) auto-lang tests::ffi_dep_parity_tests::dep_parity_017_dep_lifecycle
+warning: 3672/4971 tests were not run due to test failure (run with --no-fail-fast to run all tests, or run with --max-fail)
+error: test run failed

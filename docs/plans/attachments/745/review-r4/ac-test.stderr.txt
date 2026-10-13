@@ -1,0 +1,15 @@
+   Compiling auto-ac-prototype v0.1.0 (D:\autostack\.wt\lang-745\auto-lang\experimental\ac-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.27s
+     Running unittests src\lib.rs (experimental\ac-core\target\debug\deps\auto_ac_prototype-02c7032bc8773592.exe)
+     Running unittests src\main.rs (experimental\ac-core\target\debug\deps\auto_ac_prototype-aab550c6959c55c8.exe)
+     Running tests\cli.rs (experimental\ac-core\target\debug\deps\cli-f24c4b09dbc33189.exe)
+     Running tests\deep_regression.rs (experimental\ac-core\target\debug\deps\deep_regression-7717f46a44a9bbbe.exe)
+     Running tests\hir_verify.rs (experimental\ac-core\target\debug\deps\hir_verify-6891c68755f283d5.exe)
+     Running tests\native_execution.rs (experimental\ac-core\target\debug\deps\native_execution-48d26cbb3e0a51ea.exe)
+     Running tests\source_cli.rs (experimental\ac-core\target\debug\deps\source_cli-d547c65a3d554be1.exe)
+     Running tests\source_frontend.rs (experimental\ac-core\target\debug\deps\source_frontend-eac7393b5ff757bf.exe)
+     Running tests\source_hir.rs (experimental\ac-core\target\debug\deps\source_hir-c335c5e149676903.exe)
+     Running tests\source_native.rs (experimental\ac-core\target\debug\deps\source_native-a8c9055c75e6aa5d.exe)
+     Running tests\text_binding.rs (experimental\ac-core\target\debug\deps\text_binding-e44b70e4e32aaccb.exe)
+     Running tests\trace_execution.rs (experimental\ac-core\target\debug\deps\trace_execution-67821398d1c506fc.exe)
+   Doc-tests auto_ac_prototype

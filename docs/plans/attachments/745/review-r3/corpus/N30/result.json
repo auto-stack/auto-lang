@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N30\\input.at:1:25: error[text/source.syntax]: expected statement or `}`, found end of file\n"
+  },
+  "kind": "reject",
+  "input_sha256": "369fff34de79755203c96001dd24667b4ad99d3f7ac33d5fabcf12fb197129ef",
+  "run": null,
+  "id": "N30",
+  "ok": true,
+  "artifact_hashes": []
+}

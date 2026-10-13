@@ -1,0 +1,1 @@
+FINAL-ASSERTIONS: 全部通过（归档 33/33、P743-* 指针、索引、canonical、链接、严格门）

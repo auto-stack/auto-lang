@@ -1,0 +1,1 @@
+fn f(mut int) int { return 1 } fn main() int { return f(2) }

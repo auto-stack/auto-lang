@@ -1,0 +1,4 @@
+fn demo() {
+ IO.read_line()
+ print()
+}

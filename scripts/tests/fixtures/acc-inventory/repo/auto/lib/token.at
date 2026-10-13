@@ -1,0 +1,17 @@
+// fixture: mini token module (enum + free functions + is-match + string literals)
+pub enum TokenKind {
+    Int
+    Ident
+    EOF
+}
+
+pub fn keyword_kind(text str) TokenKind {
+    is text {
+        "int" -> TokenKind.Int
+        else -> TokenKind.Ident
+    }
+}
+
+pub fn kind_name(k TokenKind) str {
+    return "Int"
+}

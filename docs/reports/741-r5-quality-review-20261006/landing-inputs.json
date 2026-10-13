@@ -1,0 +1,7 @@
+{
+  "reviewed_commit": "6baed9bba84016dd8610221a9a0358195444385e",
+  "main_before_review_commit": "cb7a59edec448801e7730b3d8f2c1d3be0d3e573",
+  "reviewed_sources_and_canonical_inputs_still_match": true,
+  "concurrent_main_sqlite_changes_not_in_review_baseline": true,
+  "live_ledger_modified_by_review": false
+}

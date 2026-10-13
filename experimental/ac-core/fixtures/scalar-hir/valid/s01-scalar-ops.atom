@@ -1,0 +1,59 @@
+// s01: every scalar-only operator in one legal single-use DAG (PLAN-767
+// V-02/V-06 HIR-side anchor). sub/neg on constants and on a param read,
+// div/rem, gt/le/ge, eq/ne, not_bool, and/or short-circuit spine.
+hir(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32-draft") {
+    module m_s {
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_f function { params: ["t_i32", "t_i32"]; result: "t_i32" }
+        }
+        declarations {
+            function d_main t_f { name: "sf_main"; body: "b_main" }
+        }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "a"; role: param; index: 0u32 }
+                    local l1 t_i32 { name: "b"; role: param; index: 1u32 }
+                    local l2 t_bool { name: "c"; role: binding }
+                }
+                expressions {
+                    expr e0 constant { type: t_i32; value: 7i32 }
+                    expr e1 constant { type: t_i32; value: 3i32 }
+                    expr e2 binary { type: t_i32; op: sub_i32; overflow: trap; lhs: e0; rhs: e1 }
+                    expr e3 unary { type: t_i32; op: neg_i32; operand: e2 }
+                    expr e4 read_local { type: t_i32; local: l0 }
+                    expr e5 unary { type: t_i32; op: neg_i32; operand: e4 }
+                    expr e6 constant { type: t_i32; value: 4i32 }
+                    expr e7 binary { type: t_i32; op: div_i32; lhs: e5; rhs: e6 }
+                    expr e8 constant { type: t_i32; value: 13i32 }
+                    expr e9 constant { type: t_i32; value: 5i32 }
+                    expr e10 binary { type: t_i32; op: rem_i32; lhs: e8; rhs: e9 }
+                    expr e11 binary { type: t_bool; op: eq; lhs: e7; rhs: e10 }
+                    expr e12 constant { type: t_i32; value: 9i32 }
+                    expr e13 constant { type: t_i32; value: 8i32 }
+                    expr e14 binary { type: t_bool; op: gt_i32; lhs: e12; rhs: e13 }
+                    expr e15 binary { type: t_bool; op: ne; lhs: e11; rhs: e14 }
+                    expr e16 constant { type: t_i32; value: 2i32 }
+                    expr e17 constant { type: t_i32; value: 5i32 }
+                    expr e18 binary { type: t_bool; op: le_i32; lhs: e16; rhs: e17 }
+                    expr e19 unary { type: t_bool; op: not_bool; operand: e18 }
+                    expr e20 logical { type: t_bool; op: and; lhs: e15; rhs: e19 }
+                    expr e21 constant { type: t_i32; value: 1i32 }
+                    expr e22 constant { type: t_i32; value: 5i32 }
+                    expr e23 binary { type: t_bool; op: ge_i32; lhs: e22; rhs: e21 }
+                    expr e24 logical { type: t_bool; op: or; lhs: e20; rhs: e23 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l2, value: e24)
+                        return(value: e3)
+                    }
+                }
+            }
+        }
+    }
+}

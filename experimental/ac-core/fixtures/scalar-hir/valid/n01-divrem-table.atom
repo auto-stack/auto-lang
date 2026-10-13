@@ -1,0 +1,83 @@
+// V-02 (HIR half): the six signed truncation rows of plan §5.2 combined
+// into one self-asserting sum — the exit code is 0 iff every row holds
+// (-7/3=-2, 7/-3=-2, -7%3=-1, 7%-3=1, -7/-3=2, -7%-3=-1). No negative
+// exit code is used as a value oracle.
+hir(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32-draft") {
+    module m_divrem {
+        types {
+            type t_i32 i32 {}
+            type t_f function { params: []; result: "t_i32" }
+        }
+        declarations {
+            function d_main t_f { name: "sf_main"; body: "b_main" }
+        }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "q1"; role: binding }
+                    local l1 t_i32 { name: "q2"; role: binding }
+                    local l2 t_i32 { name: "r1"; role: binding }
+                    local l3 t_i32 { name: "r2"; role: binding }
+                    local l4 t_i32 { name: "r3"; role: binding }
+                    local l5 t_i32 { name: "q3"; role: binding }
+                }
+                expressions {
+                    expr e0 constant { type: t_i32; value: -7i32 }
+                    expr e1 constant { type: t_i32; value: 3i32 }
+                    expr e2 binary { type: t_i32; op: div_i32; lhs: e0; rhs: e1 }
+                    expr e3 constant { type: t_i32; value: 2i32 }
+                    expr e4 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e2; rhs: e3 }
+                    expr e5 constant { type: t_i32; value: 7i32 }
+                    expr e6 constant { type: t_i32; value: -3i32 }
+                    expr e7 binary { type: t_i32; op: div_i32; lhs: e5; rhs: e6 }
+                    expr e8 constant { type: t_i32; value: 2i32 }
+                    expr e9 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e7; rhs: e8 }
+                    expr e10 constant { type: t_i32; value: -7i32 }
+                    expr e11 constant { type: t_i32; value: 3i32 }
+                    expr e12 binary { type: t_i32; op: rem_i32; lhs: e10; rhs: e11 }
+                    expr e13 constant { type: t_i32; value: 1i32 }
+                    expr e14 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e12; rhs: e13 }
+                    expr e15 constant { type: t_i32; value: 7i32 }
+                    expr e16 constant { type: t_i32; value: -3i32 }
+                    expr e17 binary { type: t_i32; op: rem_i32; lhs: e15; rhs: e16 }
+                    expr e18 constant { type: t_i32; value: 1i32 }
+                    expr e19 binary { type: t_i32; op: sub_i32; overflow: trap; lhs: e17; rhs: e18 }
+                    expr e20 constant { type: t_i32; value: -7i32 }
+                    expr e21 constant { type: t_i32; value: -3i32 }
+                    expr e22 binary { type: t_i32; op: rem_i32; lhs: e20; rhs: e21 }
+                    expr e23 constant { type: t_i32; value: 1i32 }
+                    expr e24 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e22; rhs: e23 }
+                    expr e25 constant { type: t_i32; value: -7i32 }
+                    expr e26 constant { type: t_i32; value: -3i32 }
+                    expr e27 binary { type: t_i32; op: div_i32; lhs: e25; rhs: e26 }
+                    expr e28 constant { type: t_i32; value: 2i32 }
+                    expr e29 binary { type: t_i32; op: sub_i32; overflow: trap; lhs: e27; rhs: e28 }
+                    expr e30 read_local { type: t_i32; local: l0 }
+                    expr e31 read_local { type: t_i32; local: l1 }
+                    expr e32 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e30; rhs: e31 }
+                    expr e33 read_local { type: t_i32; local: l2 }
+                    expr e34 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e32; rhs: e33 }
+                    expr e35 read_local { type: t_i32; local: l3 }
+                    expr e36 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e34; rhs: e35 }
+                    expr e37 read_local { type: t_i32; local: l4 }
+                    expr e38 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e36; rhs: e37 }
+                    expr e39 read_local { type: t_i32; local: l5 }
+                    expr e40 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e38; rhs: e39 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e4)
+                        let(local: l1, value: e9)
+                        let(local: l2, value: e14)
+                        let(local: l3, value: e19)
+                        let(local: l4, value: e24)
+                        let(local: l5, value: e29)
+                        return(value: e40)
+                    }
+                }
+            }
+        }
+    }
+}

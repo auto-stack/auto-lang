@@ -1,0 +1,13 @@
+{
+  "check": {
+    "stdout": "",
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\L03-unclosed-calls-20000\\input.at:1:40055: error[text/source.syntax]: expected `,` or `)`\n"
+  },
+  "want": 1,
+  "build": null,
+  "bytes": 40055,
+  "run": null,
+  "id": "L03-unclosed-calls-20000",
+  "want_native": null
+}

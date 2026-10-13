@@ -1,0 +1,11 @@
+{
+  "configuredDeadlineSeconds": 60,
+  "elapsedSeconds": 114.9633913,
+  "stillRunningAfterDeadline": true,
+  "stdout": "",
+  "stderr": "",
+  "ownedProbeProcessesStopped": true,
+  "startedUtc": "2026-10-05T02:14:30.6220455Z",
+  "observedUtc": "2026-10-05T02:16:25.5854368Z",
+  "timingNote": "Corrected log timestamp parsing using raw ISO8601; ConvertFrom-Json DateTime-to-string roundtrip had discarded UTC kind."
+}

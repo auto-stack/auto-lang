@@ -1,0 +1,566 @@
+{
+  "local-type-param-method-False-mut-False": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\ntype Other {}\nfn demo(Meter Other) {\n Meter.len()\n Meter()\n}\n",
+    "scan": {
+      "path": "local-type-param-method-False-mut-False.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 4
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 5,
+          "param_types": [
+            "Other"
+          ],
+          "ret": ""
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "unknown-bare-call",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 7,
+          "count": 1
+        },
+        {
+          "kind": "unknown-receiver",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 6,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          4
+        ],
+        "free-function": [
+          2,
+          5
+        ],
+        "type-body-method": [
+          2
+        ],
+        "integer-type-annotation": [
+          2
+        ],
+        "return-statement": [
+          2
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "local-type-param-method-False-mut-True": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\ntype Other {}\nfn demo(mut Meter Other) {\n Meter.len()\n Meter()\n}\n",
+    "scan": {
+      "path": "local-type-param-method-False-mut-True.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 4
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 5,
+          "param_types": [
+            "Other"
+          ],
+          "ret": ""
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "unknown-bare-call",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 7,
+          "count": 1
+        },
+        {
+          "kind": "unknown-receiver",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 6,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          4
+        ],
+        "free-function": [
+          2,
+          5
+        ],
+        "type-body-method": [
+          2
+        ],
+        "integer-type-annotation": [
+          2
+        ],
+        "return-statement": [
+          2
+        ],
+        "mut-parameter": [
+          5
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "local-type-param-method-True-mut-False": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\ntype Other {}\ntype Host {\n fn demo(Meter Other) {\n Meter.len()\n Meter()\n}\n}\n",
+    "scan": {
+      "path": "local-type-param-method-True-mut-False.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 4
+        },
+        {
+          "kind": "type",
+          "name": "Host",
+          "line": 5
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        },
+        {
+          "owner": "Host",
+          "name": "demo",
+          "line": 6,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "unknown-bare-call",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 8,
+          "count": 1
+        },
+        {
+          "kind": "unknown-receiver",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 7,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          4,
+          5
+        ],
+        "free-function": [
+          2,
+          6
+        ],
+        "type-body-method": [
+          2,
+          6
+        ],
+        "integer-type-annotation": [
+          2
+        ],
+        "return-statement": [
+          2
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "local-type-param-method-True-mut-True": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\ntype Other {}\ntype Host {\n fn demo(mut Meter Other) {\n Meter.len()\n Meter()\n}\n}\n",
+    "scan": {
+      "path": "local-type-param-method-True-mut-True.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 4
+        },
+        {
+          "kind": "type",
+          "name": "Host",
+          "line": 5
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        },
+        {
+          "owner": "Host",
+          "name": "demo",
+          "line": 6,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "unknown-bare-call",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 8,
+          "count": 1
+        },
+        {
+          "kind": "unknown-receiver",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 7,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          4,
+          5
+        ],
+        "free-function": [
+          2,
+          6
+        ],
+        "type-body-method": [
+          2,
+          6
+        ],
+        "integer-type-annotation": [
+          2
+        ],
+        "return-statement": [
+          2
+        ],
+        "mut-parameter": [
+          6
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "let": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\ntype Other {}\nfn demo() {\nlet Meter = Other()\n Meter.len()\n Meter()\n}\n",
+    "scan": {
+      "path": "let.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 4
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 5,
+          "param_types": [],
+          "ret": ""
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "type-construction",
+          "name": "Other",
+          "receiver": null,
+          "first_line": 6,
+          "count": 1
+        },
+        {
+          "kind": "unknown-bare-call",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 8,
+          "count": 1
+        },
+        {
+          "kind": "unknown-receiver",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 7,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          4
+        ],
+        "free-function": [
+          2,
+          5
+        ],
+        "type-body-method": [
+          2
+        ],
+        "integer-type-annotation": [
+          2
+        ],
+        "return-statement": [
+          2
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "var": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\ntype Other {}\nfn demo() {\nvar Meter = Other()\n Meter.len()\n Meter()\n}\n",
+    "scan": {
+      "path": "var.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 4
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 5,
+          "param_types": [],
+          "ret": ""
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [],
+      "call_candidates": [
+        {
+          "kind": "type-construction",
+          "name": "Other",
+          "receiver": null,
+          "first_line": 6,
+          "count": 1
+        },
+        {
+          "kind": "unknown-bare-call",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 8,
+          "count": 1
+        },
+        {
+          "kind": "unknown-receiver",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 7,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          4
+        ],
+        "free-function": [
+          2,
+          5
+        ],
+        "type-body-method": [
+          2
+        ],
+        "integer-type-annotation": [
+          2
+        ],
+        "return-statement": [
+          2
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  },
+  "use": {
+    "source": "type Meter {\n fn len() int { return 1 }\n}\ntype Other {}\nuse other: Meter\nfn demo() {\n Meter.len()\n Meter()\n}\n",
+    "scan": {
+      "path": "use.at",
+      "declarations": [
+        {
+          "kind": "type",
+          "name": "Meter",
+          "line": 1
+        },
+        {
+          "kind": "type",
+          "name": "Other",
+          "line": 4
+        },
+        {
+          "kind": "fn",
+          "name": "demo",
+          "line": 6,
+          "param_types": [],
+          "ret": ""
+        }
+      ],
+      "methods": [
+        {
+          "owner": "Meter",
+          "name": "len",
+          "line": 2,
+          "static": false
+        }
+      ],
+      "fields": [],
+      "enum_cases": [],
+      "use_edges": [
+        {
+          "to_module": "other",
+          "imports": [
+            "Meter"
+          ]
+        }
+      ],
+      "call_candidates": [
+        {
+          "kind": "imported-symbol",
+          "name": "Meter",
+          "receiver": null,
+          "first_line": 8,
+          "count": 1
+        },
+        {
+          "kind": "unknown-receiver",
+          "name": "len",
+          "receiver": "Meter",
+          "first_line": 7,
+          "count": 1
+        }
+      ],
+      "capability_evidence": {
+        "record-type-declaration": [
+          1,
+          4
+        ],
+        "free-function": [
+          2,
+          6
+        ],
+        "type-body-method": [
+          2
+        ],
+        "integer-type-annotation": [
+          2
+        ],
+        "return-statement": [
+          2
+        ],
+        "use-module": [
+          5
+        ]
+      },
+      "anomalies": [],
+      "brace_balance": 0,
+      "lexically_indeterminate": false
+    }
+  }
+}

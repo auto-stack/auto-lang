@@ -1,0 +1,12 @@
+{
+  "id": "C12-keyword-full-language",
+  "source": "fn type() int { return 1 } fn main() int { return type() }",
+  "want": "keyword rejection",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=619103e5c3e46f2e, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": null,
+  "run": null
+}

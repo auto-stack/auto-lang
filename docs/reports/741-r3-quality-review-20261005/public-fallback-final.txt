@@ -1,0 +1,2 @@
+child_handle=0x0;open_error=87;wait_status=4294967295
+mode=public-fallback;deadline_ms=60000;elapsed_ms=60020;result=Err(Diagnostic { stage: Link, code: "link.deadline", message: "subprocess C:\\Users\\zhaop\\AppData\\Local\\Temp\\auto-lang-741-r3-review-20261005\\original-helper.exe exited but its output did not finish within 60s (a descendant may still hold the pipe)", span: Span { start: 0, end: 0 } });child_pid=19848;child_alive_after_return=false

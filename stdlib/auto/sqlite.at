@@ -2,12 +2,13 @@
 ///
 /// Interface layer (declarations only). The a2r (Auto-to-Rust) path binds
 /// these calls to `a2r_std::sqlite` (rusqlite, bundled feature) — Plan 415-B1.
-/// The AutoVM path has no native implementation yet; VM programs must not
-/// call into this module until a VM backend lands (415-B2 follow-up scope).
+/// The AutoVM path uses the companion sqlite.vm.at declarations and the VM
+/// shim; its opaque handles are released when the task that opened them ends.
 
 /// Opaque handle to an open SQLite database connection.
-/// The connection is closed automatically when the handle goes out of
-/// scope (RAII) — there is no explicit close in the Auto surface.
+/// In the a2r path the connection closes when this value drops (RAII). The
+/// VM path uses an opaque int handle and releases its connection when the
+/// opening task is removed. Neither Auto surface has an explicit close call.
 type SqliteDb
 
 /// Open (or create) a SQLite database file.

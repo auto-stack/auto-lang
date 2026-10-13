@@ -1,0 +1,14 @@
+{
+  "kind": "reject",
+  "artifact_hashes": [],
+  "ok": true,
+  "input_sha256": "8901864fa2fdde6230987ed9b6ce069b6b35c14bf980891ea779ae77eefb72a1",
+  "build": null,
+  "id": "N36",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N36\\input.at:1:35: error[text/source.unsupported]: unary minus is only supported directly before an integer literal in this source profile\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "run": null
+}

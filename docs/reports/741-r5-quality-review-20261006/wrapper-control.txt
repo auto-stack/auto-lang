@@ -1,0 +1,21 @@
+warn: could not canonicalize path C:\Users\zhaop
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.39s
+
+
+Algorithm : SHA256
+Hash      : D23DFD239CF62DF267F745C127FC762FDFD349B2603C8CABBEE72686A932EC73
+Path      : C:\Users\zhaop\AppData\Local\Temp\ac741-r4-review-target\debug\libauto_ac_prototype.rlib
+
+
+
+Cargo-reported reviewed library: C:\Users\zhaop\AppData\Local\Temp\ac741-r4-review-target\debug\libauto_ac_prototype.rlib
+warn: could not canonicalize path C:\Users\zhaop
+D:\autostack\.wt\lang-741\auto-lang\experimental\ac-core\fixtures\native\add-2-3.atom:1:1: error[link/link.lld-not-found]: rust-lld.exe not found under sysroot C:\Users\zhaop\.rustup\toolchains\stable-x86_64-pc-windows-msvc
+warn: could not canonicalize path C:\Users\zhaop
+Real PE/COFF baseline build failed
+At C:\Users\zhaop\AppData\Local\Temp\741-r5-review-20261006\prepared\reproduce-exact-artifact.ps1:35 char:25
++ if($LASTEXITCODE -ne 0){throw 'Real PE/COFF baseline build failed'}
++                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Real PE/COFF baseline build failed:String) [], RuntimeException
+    + FullyQualifiedErrorId : Real PE/COFF baseline build failed
+ 

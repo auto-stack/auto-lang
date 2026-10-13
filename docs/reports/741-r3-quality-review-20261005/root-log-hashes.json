@@ -1,0 +1,22 @@
+{
+  "root-check.txt": {
+    "sha256": "f9be0ab43e88a606ae35e4b04f1950ea6a219042ebfe2e2df229f3648920bf1a",
+    "bytes": 165813
+  },
+  "root-t.txt": {
+    "sha256": "b940706f285bfa9e0058d2d291a4916f0817a84fa595823b671a4b518fd5953c",
+    "bytes": 359305
+  },
+  "root-t-all.txt": {
+    "sha256": "a0d52b7a4c35c1bc547b72f51aa7ca80ace2f975643e0a19d98324c3c783eb2c",
+    "bytes": 832823
+  },
+  "root-tv.txt": {
+    "sha256": "7a29a07d320cd174b58b1491d490c09fc2df1a4273a1baadc39e93e97fb45a85",
+    "bytes": 210952
+  },
+  "root-timeout-scoped.txt": {
+    "sha256": "7d37f6e93f36c1a9ce6e4fc05ca19eb12745178d371dd67da983f23bdcff4502",
+    "bytes": 213249
+  }
+}

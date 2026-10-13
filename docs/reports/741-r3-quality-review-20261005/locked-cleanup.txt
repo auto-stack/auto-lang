@@ -1,0 +1,2 @@
+result=Err(Diagnostic { stage: Link, code: "link.receipt", message: "stage receipt at C:\\Users\\zhaop\\AppData\\Local\\Temp\\auto-lang-741-r3-review-20261005\\locked-final\\tx.ac-link.txt.tmp-ac741-38836: 拒绝访问。 (os error 5)", span: Span { start: 0, end: 0 } })
+staged_exe_left=true;staged_exe_path=C:\Users\zhaop\AppData\Local\Temp\auto-lang-741-r3-review-20261005\locked-final\tx.exe.tmp-ac741-38836;old_exe_unchanged=true;old_obj_unchanged=true;old_receipt_unchanged=true;user_directory_preserved=true

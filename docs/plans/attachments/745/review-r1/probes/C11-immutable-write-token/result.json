@@ -1,0 +1,12 @@
+{
+  "id": "C11-immutable-write-token",
+  "source": "fn main() int {\n let x = 1\n x = 2\n return x\n}",
+  "want": "reject, token x line3 col2",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C11-immutable-write-token\\input.at:3:2: error[verify/verify.immutable-write]: local `l0` is immutable and cannot be assigned\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

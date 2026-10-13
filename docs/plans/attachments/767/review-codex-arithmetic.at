@@ -1,0 +1,279 @@
+fn check_0(x int, y int) bool { return x - y == 0 }
+fn check_1(x int, y int) bool { return x / y == 1 }
+fn check_2(x int, y int) bool { return x % y == 0 }
+fn check_3(x int, y int) bool { return x + y == -1 }
+fn check_4(x int, y int) bool { return x / y == -1 }
+fn check_5(x int, y int) bool { return x % y == -1 }
+fn check_6(x int, y int) bool { return x - y == -2147483648 }
+fn check_7(x int, y int) bool { return x + y == -2147483648 }
+fn check_8(x int, y int) bool { return x * y == 0 }
+fn check_9(x int, y int) bool { return x + y == -2147483647 }
+fn check_10(x int, y int) bool { return x * y == -2147483648 }
+fn check_11(x int, y int) bool { return x / y == -2147483648 }
+fn check_12(x int, y int) bool { return x % y == 0 }
+fn check_13(x int, y int) bool { return x + y == -2147483646 }
+fn check_14(x int, y int) bool { return x / y == -1073741824 }
+fn check_15(x int, y int) bool { return x % y == 0 }
+fn check_16(x int, y int) bool { return x - y == -2147483646 }
+fn check_17(x int, y int) bool { return x / y == 1073741824 }
+fn check_18(x int, y int) bool { return x % y == 0 }
+fn check_19(x int, y int) bool { return x - y == 0 }
+fn check_20(x int, y int) bool { return x / y == 1 }
+fn check_21(x int, y int) bool { return x % y == 0 }
+fn check_22(x int, y int) bool { return x + y == -1 }
+fn check_23(x int, y int) bool { return x / y == 0 }
+fn check_24(x int, y int) bool { return x % y == 2147483647 }
+fn check_25(x int, y int) bool { return x + y == 2147483646 }
+fn check_26(x int, y int) bool { return x * y == -2147483647 }
+fn check_27(x int, y int) bool { return x / y == -2147483647 }
+fn check_28(x int, y int) bool { return x % y == 0 }
+fn check_29(x int, y int) bool { return x - y == 2147483645 }
+fn check_30(x int, y int) bool { return x / y == 1073741823 }
+fn check_31(x int, y int) bool { return x % y == 1 }
+fn check_32(x int, y int) bool { return x + y == -2147483648 }
+fn check_33(x int, y int) bool { return x * y == 0 }
+fn check_34(x int, y int) bool { return x / y == 0 }
+fn check_35(x int, y int) bool { return x % y == 0 }
+fn check_36(x int, y int) bool { return x - y == -2147483647 }
+fn check_37(x int, y int) bool { return x + y == 2147483647 }
+fn check_38(x int, y int) bool { return x * y == 0 }
+fn check_39(x int, y int) bool { return x / y == 0 }
+fn check_40(x int, y int) bool { return x % y == 0 }
+fn check_41(x int, y int) bool { return x - y == 2147483647 }
+fn check_42(x int, y int) bool { return x / y == 0 }
+fn check_43(x int, y int) bool { return x % y == -1 }
+fn check_44(x int, y int) bool { return x - y == -2147483646 }
+fn check_45(x int, y int) bool { return x * y == 2147483647 }
+fn check_46(x int, y int) bool { return x / y == 0 }
+fn check_47(x int, y int) bool { return x % y == 1 }
+fn check_48(x int, y int) bool { return x - y == 0 }
+fn check_49(x int, y int) bool { return x + y == -2 }
+fn check_50(x int, y int) bool { return x * y == 1 }
+fn check_51(x int, y int) bool { return x / y == 1 }
+fn check_52(x int, y int) bool { return x % y == 0 }
+fn check_53(x int, y int) bool { return x - y == 2 }
+fn check_54(x int, y int) bool { return x + y == 0 }
+fn check_55(x int, y int) bool { return x * y == -1 }
+fn check_56(x int, y int) bool { return x / y == -1 }
+fn check_57(x int, y int) bool { return x % y == 0 }
+fn check_58(x int, y int) bool { return x - y == -22 }
+fn check_59(x int, y int) bool { return x + y == -12 }
+fn check_60(x int, y int) bool { return x * y == -85 }
+fn check_61(x int, y int) bool { return x / y == -3 }
+fn check_62(x int, y int) bool { return x % y == -2 }
+fn check_63(x int, y int) bool { return x - y == 22 }
+fn check_64(x int, y int) bool { return x + y == 12 }
+fn check_65(x int, y int) bool { return x * y == -85 }
+fn check_66(x int, y int) bool { return x / y == -3 }
+fn check_67(x int, y int) bool { return x % y == 2 }
+fn check_68(x int, y int) bool { return x - y == -12 }
+fn check_69(x int, y int) bool { return x + y == -22 }
+fn check_70(x int, y int) bool { return x * y == 85 }
+fn check_71(x int, y int) bool { return x / y == 3 }
+fn check_72(x int, y int) bool { return x % y == -2 }
+fn check_73(x int, y int) bool { return x - y == 1234246 }
+fn check_74(x int, y int) bool { return x + y == 1234888 }
+fn check_75(x int, y int) bool { return x * y == 396296007 }
+fn check_76(x int, y int) bool { return x / y == 3846 }
+fn check_77(x int, y int) bool { return x % y == 1 }
+fn check_78(x int, y int) bool { return x - y == 179924 }
+fn check_79(x int, y int) bool { return x + y == 179780 }
+fn check_80(x int, y int) bool { return x * y == -12949344 }
+fn check_81(x int, y int) bool { return x / y == -2497 }
+fn check_82(x int, y int) bool { return x % y == 68 }
+fn check_83(x int, y int) bool { return x - y == -143950 }
+fn check_84(x int, y int) bool { return x + y == -143826 }
+fn check_85(x int, y int) bool { return x * y == -8921056 }
+fn check_86(x int, y int) bool { return x / y == -2320 }
+fn check_87(x int, y int) bool { return x % y == -48 }
+fn check_88(x int, y int) bool { return x - y == 50840 }
+fn check_89(x int, y int) bool { return x + y == 50748 }
+fn check_90(x int, y int) bool { return x * y == -2336524 }
+fn check_91(x int, y int) bool { return x / y == -1104 }
+fn check_92(x int, y int) bool { return x % y == 10 }
+fn check_93(x int, y int) bool { return x - y == 163310 }
+fn check_94(x int, y int) bool { return x + y == 163346 }
+fn check_95(x int, y int) bool { return x * y == 2939904 }
+fn check_96(x int, y int) bool { return x / y == 9073 }
+fn check_97(x int, y int) bool { return x % y == 14 }
+fn check_98(x int, y int) bool { return x - y == -45511 }
+fn check_99(x int, y int) bool { return x + y == -45633 }
+fn check_100(x int, y int) bool { return x * y == 2779892 }
+fn check_101(x int, y int) bool { return x / y == 747 }
+fn check_102(x int, y int) bool { return x % y == -5 }
+fn check_103(x int, y int) bool { return x - y == -18503 }
+fn check_104(x int, y int) bool { return x + y == -18401 }
+fn check_105(x int, y int) bool { return x * y == -941052 }
+fn check_106(x int, y int) bool { return x / y == -361 }
+fn check_107(x int, y int) bool { return x % y == -41 }
+fn check_108(x int, y int) bool { return x - y == 123826 }
+fn check_109(x int, y int) bool { return x + y == 123848 }
+fn check_110(x int, y int) bool { return x * y == 1362207 }
+fn check_111(x int, y int) bool { return x / y == 11257 }
+fn check_112(x int, y int) bool { return x % y == 10 }
+fn check_113(x int, y int) bool { return x - y == 46705 }
+fn check_114(x int, y int) bool { return x + y == 46681 }
+fn check_115(x int, y int) bool { return x * y == -560316 }
+fn check_116(x int, y int) bool { return x / y == -3891 }
+fn check_117(x int, y int) bool { return x % y == 1 }
+fn check_118(x int, y int) bool { return x - y == -29933 }
+fn check_119(x int, y int) bool { return x + y == -29845 }
+fn check_120(x int, y int) bool { return x * y == -1315116 }
+fn check_121(x int, y int) bool { return x / y == -679 }
+fn check_122(x int, y int) bool { return x % y == -13 }
+fn check_123(x int, y int) bool { return x - y == -62809 }
+fn check_124(x int, y int) bool { return x + y == -62893 }
+fn check_125(x int, y int) bool { return x * y == 2639742 }
+fn check_126(x int, y int) bool { return x / y == 1496 }
+fn check_127(x int, y int) bool { return x % y == -19 }
+fn check_128(x int, y int) bool { return x - y == 74641 }
+fn check_129(x int, y int) bool { return x + y == 74673 }
+fn check_130(x int, y int) bool { return x * y == 1194512 }
+fn check_131(x int, y int) bool { return x / y == 4666 }
+fn check_132(x int, y int) bool { return x % y == 1 }
+fn check_133(x int, y int) bool { return x - y == 81652 }
+fn check_134(x int, y int) bool { return x + y == 81522 }
+fn check_135(x int, y int) bool { return x * y == -5303155 }
+fn check_136(x int, y int) bool { return x / y == -1255 }
+fn check_137(x int, y int) bool { return x % y == 12 }
+fn main() int {
+    if !check_0(-2147483648, -2147483648) { return 1 }
+    if !check_1(-2147483648, -2147483648) { return 2 }
+    if !check_2(-2147483648, -2147483648) { return 3 }
+    if !check_3(-2147483648, 2147483647) { return 4 }
+    if !check_4(-2147483648, 2147483647) { return 5 }
+    if !check_5(-2147483648, 2147483647) { return 6 }
+    if !check_6(-2147483648, 0) { return 7 }
+    if !check_7(-2147483648, 0) { return 8 }
+    if !check_8(-2147483648, 0) { return 9 }
+    if !check_9(-2147483648, 1) { return 10 }
+    if !check_10(-2147483648, 1) { return 11 }
+    if !check_11(-2147483648, 1) { return 12 }
+    if !check_12(-2147483648, 1) { return 13 }
+    if !check_13(-2147483648, 2) { return 14 }
+    if !check_14(-2147483648, 2) { return 15 }
+    if !check_15(-2147483648, 2) { return 16 }
+    if !check_16(-2147483648, -2) { return 17 }
+    if !check_17(-2147483648, -2) { return 18 }
+    if !check_18(-2147483648, -2) { return 19 }
+    if !check_19(2147483647, 2147483647) { return 20 }
+    if !check_20(2147483647, 2147483647) { return 21 }
+    if !check_21(2147483647, 2147483647) { return 22 }
+    if !check_22(2147483647, -2147483648) { return 23 }
+    if !check_23(2147483647, -2147483648) { return 24 }
+    if !check_24(2147483647, -2147483648) { return 25 }
+    if !check_25(2147483647, -1) { return 26 }
+    if !check_26(2147483647, -1) { return 27 }
+    if !check_27(2147483647, -1) { return 28 }
+    if !check_28(2147483647, -1) { return 29 }
+    if !check_29(2147483647, 2) { return 30 }
+    if !check_30(2147483647, 2) { return 31 }
+    if !check_31(2147483647, 2) { return 32 }
+    if !check_32(0, -2147483648) { return 33 }
+    if !check_33(0, -2147483648) { return 34 }
+    if !check_34(0, -2147483648) { return 35 }
+    if !check_35(0, -2147483648) { return 36 }
+    if !check_36(0, 2147483647) { return 37 }
+    if !check_37(0, 2147483647) { return 38 }
+    if !check_38(0, 2147483647) { return 39 }
+    if !check_39(0, 2147483647) { return 40 }
+    if !check_40(0, 2147483647) { return 41 }
+    if !check_41(-1, -2147483648) { return 42 }
+    if !check_42(-1, -2147483648) { return 43 }
+    if !check_43(-1, -2147483648) { return 44 }
+    if !check_44(1, 2147483647) { return 45 }
+    if !check_45(1, 2147483647) { return 46 }
+    if !check_46(1, 2147483647) { return 47 }
+    if !check_47(1, 2147483647) { return 48 }
+    if !check_48(-1, -1) { return 49 }
+    if !check_49(-1, -1) { return 50 }
+    if !check_50(-1, -1) { return 51 }
+    if !check_51(-1, -1) { return 52 }
+    if !check_52(-1, -1) { return 53 }
+    if !check_53(1, -1) { return 54 }
+    if !check_54(1, -1) { return 55 }
+    if !check_55(1, -1) { return 56 }
+    if !check_56(1, -1) { return 57 }
+    if !check_57(1, -1) { return 58 }
+    if !check_58(-17, 5) { return 59 }
+    if !check_59(-17, 5) { return 60 }
+    if !check_60(-17, 5) { return 61 }
+    if !check_61(-17, 5) { return 62 }
+    if !check_62(-17, 5) { return 63 }
+    if !check_63(17, -5) { return 64 }
+    if !check_64(17, -5) { return 65 }
+    if !check_65(17, -5) { return 66 }
+    if !check_66(17, -5) { return 67 }
+    if !check_67(17, -5) { return 68 }
+    if !check_68(-17, -5) { return 69 }
+    if !check_69(-17, -5) { return 70 }
+    if !check_70(-17, -5) { return 71 }
+    if !check_71(-17, -5) { return 72 }
+    if !check_72(-17, -5) { return 73 }
+    if !check_73(1234567, 321) { return 74 }
+    if !check_74(1234567, 321) { return 75 }
+    if !check_75(1234567, 321) { return 76 }
+    if !check_76(1234567, 321) { return 77 }
+    if !check_77(1234567, 321) { return 78 }
+    if !check_78(179852, -72) { return 79 }
+    if !check_79(179852, -72) { return 80 }
+    if !check_80(179852, -72) { return 81 }
+    if !check_81(179852, -72) { return 82 }
+    if !check_82(179852, -72) { return 83 }
+    if !check_83(-143888, 62) { return 84 }
+    if !check_84(-143888, 62) { return 85 }
+    if !check_85(-143888, 62) { return 86 }
+    if !check_86(-143888, 62) { return 87 }
+    if !check_87(-143888, 62) { return 88 }
+    if !check_88(50794, -46) { return 89 }
+    if !check_89(50794, -46) { return 90 }
+    if !check_90(50794, -46) { return 91 }
+    if !check_91(50794, -46) { return 92 }
+    if !check_92(50794, -46) { return 93 }
+    if !check_93(163328, 18) { return 94 }
+    if !check_94(163328, 18) { return 95 }
+    if !check_95(163328, 18) { return 96 }
+    if !check_96(163328, 18) { return 97 }
+    if !check_97(163328, 18) { return 98 }
+    if !check_98(-45572, -61) { return 99 }
+    if !check_99(-45572, -61) { return 100 }
+    if !check_100(-45572, -61) { return 101 }
+    if !check_101(-45572, -61) { return 102 }
+    if !check_102(-45572, -61) { return 103 }
+    if !check_103(-18452, 51) { return 104 }
+    if !check_104(-18452, 51) { return 105 }
+    if !check_105(-18452, 51) { return 106 }
+    if !check_106(-18452, 51) { return 107 }
+    if !check_107(-18452, 51) { return 108 }
+    if !check_108(123837, 11) { return 109 }
+    if !check_109(123837, 11) { return 110 }
+    if !check_110(123837, 11) { return 111 }
+    if !check_111(123837, 11) { return 112 }
+    if !check_112(123837, 11) { return 113 }
+    if !check_113(46693, -12) { return 114 }
+    if !check_114(46693, -12) { return 115 }
+    if !check_115(46693, -12) { return 116 }
+    if !check_116(46693, -12) { return 117 }
+    if !check_117(46693, -12) { return 118 }
+    if !check_118(-29889, 44) { return 119 }
+    if !check_119(-29889, 44) { return 120 }
+    if !check_120(-29889, 44) { return 121 }
+    if !check_121(-29889, 44) { return 122 }
+    if !check_122(-29889, 44) { return 123 }
+    if !check_123(-62851, -42) { return 124 }
+    if !check_124(-62851, -42) { return 125 }
+    if !check_125(-62851, -42) { return 126 }
+    if !check_126(-62851, -42) { return 127 }
+    if !check_127(-62851, -42) { return 128 }
+    if !check_128(74657, 16) { return 129 }
+    if !check_129(74657, 16) { return 130 }
+    if !check_130(74657, 16) { return 131 }
+    if !check_131(74657, 16) { return 132 }
+    if !check_132(74657, 16) { return 133 }
+    if !check_133(81587, -65) { return 134 }
+    if !check_134(81587, -65) { return 135 }
+    if !check_135(81587, -65) { return 136 }
+    if !check_136(81587, -65) { return 137 }
+    if !check_137(81587, -65) { return 138 }
+    return 0
+}

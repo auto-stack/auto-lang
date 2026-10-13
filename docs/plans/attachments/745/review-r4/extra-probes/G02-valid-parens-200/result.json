@@ -1,0 +1,13 @@
+{
+  "run": null,
+  "want": null,
+  "build": null,
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\extra-probes\\G02-valid-parens-200\\input.at:1:223: error[text/source.syntax]: nesting deeper than 200 levels is not accepted\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "bytes": 426,
+  "want_stderr": null,
+  "id": "G02-valid-parens-200"
+}

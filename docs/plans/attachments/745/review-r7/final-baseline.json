@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-08",
+  "review_scope": "final",
+  "review_round": 7,
+  "plan_revision": 1,
+  "outcome": "pass",
+  "head": "bb8cb4b4330d505059ea20e7bfe561a93c1051f3",
+  "branch": "plan-745-dev",
+  "worktree": "D:/autostack/.wt/lang-745/auto-lang",
+  "worktree_clean": true,
+  "dependency_revision": "fba6563ed2148ce85e68208863159b4ccccac710",
+  "dependency_clean": true,
+  "production_diff_paths": [],
+  "spec_inputs": [
+    {
+      "path": "docs/specs/auto-hir/project.md",
+      "sha256": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab"
+    },
+    {
+      "path": "docs/specs/auto-hir/stage-contract.md",
+      "sha256": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7"
+    },
+    {
+      "path": "docs/specs/auto-ac/project.md",
+      "sha256": "048a88cc01ca144259a99ed8a790fe61f19e80210e5315efb165bd0319085208"
+    },
+    {
+      "path": "docs/specs/auto-acc/project.md",
+      "sha256": "5e7103d73b499b3fdd04a37a6f66baff5db395ceb1183925be4af0351f406a10"
+    }
+  ],
+  "verification_configs": [
+    {
+      "path": "experimental/ac-core/Cargo.toml",
+      "sha256": "6e9cbe7dcd2e3371789597d6835cf679419f4bd50dee38d6e4938c91d15b58ba"
+    },
+    {
+      "path": "experimental/ac-core/Cargo.lock",
+      "sha256": "296429e6dd6db8e1affe9755f29c5ff94c902362361fa719b7bc1cd11ee7077e"
+    },
+    {
+      "path": ".cargo/config.toml",
+      "sha256": "13cb02bef7ce0ad685135e36b667ccbe54ab1a04ba6d743de1a3c5f41d239003"
+    },
+    {
+      "path": ".config/nextest.toml",
+      "sha256": "0fbea4b493e2437105d5cd68c616549b1a39aaad6ae4b2f85fd83adf4782d5a2"
+    }
+  ],
+  "proposed_spec_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+  "frozen_spec_delta_sha256": "cd027eae6395f8903f41f1623c20af49d67ec5fdf09631b30f52b8f5485bcdb2",
+  "baseline_stable": true,
+  "post_review_plan_sha256": "2f4cb1ece9bb288e816743d13a016f5543f0220360b5aa09f1bd283b278ad4f8",
+  "plan_state": "reviewed",
+  "completed_tasks": 8
+}

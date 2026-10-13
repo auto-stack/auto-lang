@@ -1,0 +1,4 @@
+fn main() int {
+    let x = 2147483648
+    return x
+}

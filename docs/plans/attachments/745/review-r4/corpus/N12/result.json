@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "build": null,
+  "kind": "reject",
+  "ok": true,
+  "run": null,
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\N12\\input.at:2:26: error[bind/source.argument]: `f` has no parameter named `y`\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\N12\\input.at:2:24: error[bind/source.argument]: parameter `x` of `f` is not bound\n",
+    "stdout": ""
+  },
+  "input_sha256": "616247f87bbfb88dbe749df857575a0b66f5f8348062e28711830efde2de6c7f",
+  "id": "N12"
+}

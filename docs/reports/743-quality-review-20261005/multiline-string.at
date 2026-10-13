@@ -1,0 +1,6 @@
+fn host() {
+ var text = "
+  pretend()
+ "
+ return 0
+}

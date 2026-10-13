@@ -1,0 +1,12 @@
+{
+  "id": "D12-keyword-named-arg",
+  "source": "fn f(x int) int { return x } fn main() int { return f(type: 2) }",
+  "want": "source.unsupported",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\extra-probes\\D12-keyword-named-arg\\input.at:1:55: error[text/source.unsupported]: keyword `type` is not part of this source profile\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

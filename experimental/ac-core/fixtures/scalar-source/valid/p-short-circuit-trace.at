@@ -1,0 +1,35 @@
+// V-04: the four short-circuit polarity rows. Trace wrappers mark exactly
+// one letter per evaluation; skipped RHS emits nothing and never traps.
+fn f_false() bool {
+    let x = mark_a()
+    return 2 < 1
+}
+
+fn t_true() bool {
+    let x = mark_a()
+    return 1 < 2
+}
+
+fn rhs_b(x bool) bool {
+    if x {
+        let y = mark_b()
+        return true
+    }
+    return false
+}
+
+fn main() int {
+    // false && rhs — rhs skipped (no b)
+    let r1 = f_false() && rhs_b(true)
+    if r1 { return 1 }
+    // true || rhs — rhs skipped (no b)
+    let r2 = t_true() || rhs_b(false)
+    if !r2 { return 2 }
+    // true && rhs — both run
+    let r3 = t_true() && rhs_b(true)
+    if !r3 { return 3 }
+    // false || rhs — both run
+    let r4 = f_false() || rhs_b(false)
+    if r4 { return 4 }
+    return 0
+}

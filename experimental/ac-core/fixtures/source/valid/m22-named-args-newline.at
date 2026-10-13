@@ -1,0 +1,3 @@
+fn f(x int, y int) int { return x*10+y }
+fn main() int { return f(x: 1+2,
+y: 3) }

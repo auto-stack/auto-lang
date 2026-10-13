@@ -1,0 +1,21 @@
+{
+  "run": {
+    "stdout": "",
+    "exit": 23,
+    "stderr": "ba"
+  },
+  "check": {
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=0c011a8ed5206679, module(s)=1, capabilities required: [\"hir.test.trace.v1\"]\n",
+    "exit": 0,
+    "stderr": ""
+  },
+  "want_native": 23,
+  "build": {
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M17-wrapped-trace-args\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M17-wrapped-trace-args\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M17-wrapped-trace-args\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M17-wrapped-trace-args\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 0c011a8ed5206679\n",
+    "exit": 0,
+    "stderr": ""
+  },
+  "want": 0,
+  "id": "M17-wrapped-trace-args",
+  "bytes": 97
+}

@@ -1,0 +1,33 @@
+// V-06/V-02: signed truncation table for / and %, full order comparisons,
+// eq/ne over i32 and bool, unary chains, and precedence mixing. Exit 0
+// only when every oracle row holds.
+fn main() int {
+    let a = 0 - 7
+    if a / 3 != -2 { return 1 }
+    if a % 3 != -1 { return 2 }
+    if 7 / -3 != -2 { return 3 }
+    if 7 % -3 != 1 { return 4 }
+    if -7 / -3 != 2 { return 5 }
+    if -7 % -3 != -1 { return 6 }
+    if !(-2147483648 < 2147483647) { return 7 }
+    if -2147483648 >= 2147483647 { return 8 }
+    if !(-2147483648 <= -2147483648) { return 9 }
+    if !(2147483647 > -2147483648) { return 10 }
+    let t = true
+    let f = false
+    if t == f { return 11 }
+    if !(t != f) { return 12 }
+    if !(t == true && f == false) { return 13 }
+    if 1 == 2 || 2 != 2 { return 14 }
+    if !(1 + 2 * 3 == 7) { return 15 }
+    if !(2 + 3 < 6 && 4 > 2) { return 16 }
+    if false || true && false { return 17 }
+    if !(1 < 2 == true) { return 18 }
+    let neg = -(a + 3)
+    if neg != 4 { return 19 }
+    let nn = - -5
+    if nn != 5 { return 20 }
+    if !(!t) != t { return 21 }
+    if !(10 % 4 == 2 && 9 / 2 == 4) { return 22 }
+    return 0
+}

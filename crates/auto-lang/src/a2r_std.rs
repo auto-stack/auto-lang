@@ -306,6 +306,10 @@ pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 pub mod json {
     use serde_json::Value;
 
+    pub fn encode<T: serde::Serialize>(value: &T) -> String {
+        serde_json::to_string(value).unwrap_or_default()
+    }
+
     pub fn is_valid(s: &str) -> bool {
         serde_json::from_str::<Value>(s).is_ok()
     }
@@ -685,6 +689,26 @@ pub mod fs {
     }
 
     pub fn create_dir(path: impl AsRef<str>) -> bool {
+        std::fs::create_dir_all(path.as_ref()).is_ok()
+    }
+
+    /// Plan 742 D9: 与独立 a2r-std crate 的 fs::list_dir 对齐（直接子文件名，
+    /// 非递归，跳过点文件，排序）。NOTES-001 r4 T-12 收据枚举所需。
+    pub fn dir_names(path: impl AsRef<str>) -> Vec<String> {
+        let mut names: Vec<String> = match std::fs::read_dir(path.as_ref()) {
+            Ok(rd) => rd
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| !n.starts_with('.'))
+                .collect(),
+            Err(_) => return Vec::new(),
+        };
+        names.sort();
+        names
+    }
+
+    /// 与独立 a2r-std crate 的 fs::mkdir_all 同名对齐（NOTES-001 r3 需要）。
+    pub fn mkdir_all(path: impl AsRef<str>) -> bool {
         std::fs::create_dir_all(path.as_ref()).is_ok()
     }
 
@@ -1202,13 +1226,26 @@ pub mod frame {
     }
 
     /// 帧开始时间戳（桌面 update 入口到达时刻）。
+    #[cfg(feature = "ui")]
     pub fn begin_ms() -> i32 {
         narrow_i32(crate::ui::frame_bench::frame_begin_ms())
     }
 
     /// 呈现完成时间戳（711 帧泵消费时刻，≥ present 返回）。
+    #[cfg(feature = "ui")]
     pub fn present_ms() -> i32 {
         narrow_i32(crate::ui::frame_bench::frame_present_ms())
+    }
+
+    /// no-`ui` 构建（headless 档）：无帧泵即无捕获，按通道语义"未捕获=0"。
+    #[cfg(not(feature = "ui"))]
+    pub fn begin_ms() -> i32 {
+        0
+    }
+
+    #[cfg(not(feature = "ui"))]
+    pub fn present_ms() -> i32 {
+        0
     }
 }
 

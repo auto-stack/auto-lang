@@ -1,0 +1,19 @@
+{
+  "reviewed_head": "c865adf66a75099df07113b053eb9d19e92986a3",
+  "contract_head": "1d8fba15c7f8685e670f3bc8a398198895331c72",
+  "plan_revision": 4,
+  "outcome": "needs_fix",
+  "sha256": {
+    "scripts/acc_inventory.py": "074a32853df94b7f45f112bbb5d92545620a4d3fd92f99176c2b92ce2b383dcb",
+    "scripts/tests/test_acc_inventory.py": "9f9b3681c2b5c029527ffaafa857e78c960bec40816875125d062979d27fe073",
+    "docs/specs/auto-acc/project.md": "f7307bdcdf9f488c4349c78ec8137c595d80da2232f6b8dfc72af1002c59e56d",
+    "docs/specs/auto-hir/stage-contract.md": "85989f57c70dd48676932c6fd91415f7b06446faed077feee92a337b021db7b7",
+    ".autoos/specs.json": "6d41f325ad9b205c44bb46fd8cda30085be28359447199aced6d236a3182f306",
+    "docs/plans/.next-id": "2f48e84237efa571864ee295ce65eebb5733d41b1f21a7c49e3ea734d4c59c5d",
+    "docs/reports/743-acc-hir-contract/source-manifest.json": "ad8653bb09b0d2ce05b4d80dabb7bf186c442037e6d6b776c16e07c36d053618",
+    "docs/reports/743-acc-hir-contract/scan-summary.md": "1468b6fa41c2d7a8508b9d107e2cd11d12efbfbe6eb5287e5d2b77174440c18e",
+    "docs/reports/743-acc-hir-contract/manual-decisions.json": "61b1802b370505f475dcba9b2f8ac2aa350ebbeac76836e2139c2c4fd035ce7e",
+    "docs/reports/743-acc-hir-contract/proposed-spec-delta-phase4.md": "f8924d0a8266976d1e30ad5e51cd7fc371a91fd6f8de26d4d7c04dcd24f9eac3",
+    "docs/plans/archive/743-acc-bootstrap-hir-contract.md": "8b536f8550b35d4db63d05d836be99956429749baa96dbd43cfb3c56a296f6db"
+  }
+}

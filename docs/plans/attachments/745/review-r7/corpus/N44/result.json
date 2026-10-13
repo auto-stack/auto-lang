@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N44",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N44\\input.at:1:1: error[text/source.unsupported]: `type` is not part of this source profile\n",
+    "stdout": ""
+  },
+  "input_sha256": "612e7063f7db0d3b6633de611ca212c68c60b9477fb80911b713ad8b95790267",
+  "run": null,
+  "ok": true
+}

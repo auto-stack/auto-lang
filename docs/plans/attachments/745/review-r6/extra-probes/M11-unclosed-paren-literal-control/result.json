@@ -1,0 +1,15 @@
+{
+  "artifact_hashes": [],
+  "check": {
+    "stdout": "",
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\M11-unclosed-paren-literal-control\\input.at:1:27: error[text/source.syntax]: expected `)`\n"
+  },
+  "want_native": null,
+  "want": 1,
+  "build": null,
+  "input_sha256": "93a90774c5290fabe716b54398458f239f378b1c36f0a765a6a8539164be9741",
+  "bytes": 27,
+  "id": "M11-unclosed-paren-literal-control",
+  "run": null
+}

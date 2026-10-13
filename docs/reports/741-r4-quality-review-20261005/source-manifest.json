@@ -1,0 +1,17 @@
+{
+  "reviewed_head": "7b9c6948c1465e87a6f60404510c30c712e1c7bc",
+  "base_commit": "c865adf66a75099df07113b053eb9d19e92986a3",
+  "revision": 4,
+  "hashes": {
+    "experimental/ac-core/src/link.rs": "26af0f371b06b5985572730658cf4fcd842b497f6419a034ccde22b0c96d128c",
+    "experimental/ac-core/src/main.rs": "b43d00ba820e052f4afc06a79d9c600ac60b9fb37d4076dc16f33ae294f18a98",
+    "experimental/ac-core/src/hir.rs": "251d973f75a991675c7331bbc9dd683e61b7e830a9615120cd5cd6d5c6f29e63",
+    "experimental/ac-core/src/verify.rs": "72d8433ac9ad2fc7d967a42f2416fc56504c4412e0301fc1e872d83bf305a36b",
+    "experimental/ac-core/Cargo.toml": "6e9cbe7dcd2e3371789597d6835cf679419f4bd50dee38d6e4938c91d15b58ba",
+    "experimental/ac-core/Cargo.lock": "296429e6dd6db8e1affe9755f29c5ff94c902362361fa719b7bc1cd11ee7077e",
+    "docs/specs/auto-ac/project.md": "fbfeeb6f885b1b0c6e7cf5bb242f93204ea24987167a3284dfd4da2d023f98de",
+    "docs/specs/auto-hir/project.md": "8ada42d7024af2c8104733a31ab7c857b0a79d2646228bcd73e12d89e9f1a5ab",
+    "docs/plans/archive/741-ac-hir-native-core.md": "dcc2b9e1507172b6fabfb16a5365191180ee02c4da6ee4dcf0706e8f8ede1fbd",
+    "docs/reports/741-r3-quality-review-20261005/proposed-spec-delta-phase4.md": "b315e83db2a1bc85b239589fb514d64f55d91405f8bb94befa403d79da0ebbbf"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "kind": "reject",
+  "build": null,
+  "id": "N24",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\corpus\\N24\\input.at:1:26: error[text/source.unsupported]: operator `/` is not part of this source profile\n",
+    "stdout": ""
+  },
+  "input_sha256": "84830ad5cdfca9eae41a4e9fc61a65f9502a91ad4cf5bd43fb0803c7f67f5959",
+  "run": null,
+  "ok": true
+}

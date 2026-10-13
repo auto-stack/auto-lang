@@ -1,0 +1,13 @@
+{
+  "id": "K04-if-1000",
+  "check": {
+    "exit": 0,
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=a1a608a90bb0317c, module(s)=1, capabilities required: []\n",
+    "stderr": ""
+  },
+  "run": null,
+  "bytes": 10036,
+  "build": null,
+  "want_native": null,
+  "want": 0
+}

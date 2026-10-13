@@ -4,6 +4,12 @@
 |---|---|---|---|---|
 | D-762-1 | medium | 测试载体驱动 helper 早退 | **`ui/dynamic.rs::drive_scheduler_to_quiescence` 的 `progressed` 判据不计"续跑片让出未完成"（`cpu.slices_run` 缺位）**——多片 Init 单调用确定性早退（761 tt 批量档 gallery 四路由 flake 在案；确定性复现钉子 plan437 `child_init_multi_slice_early_exit_and_completion_driving` 前半断言）。约 16 个调用点共享该暴露面（plan502 已自带外层完成态循环、plan437 本计划已修，其余裸调用点的多片 Init 在并行负载下理论可复现同类红）。清偿方向（须另行授权，PLAN-762 约定"改生产 helper 先修订确认"）：`progressed` 增计 `cpu.slices_run > 0` 与 `silent_done_transitions > 0`（对齐 `poll_frame_pump` 判据族），I/O 未就绪退出臂保持；修复时同步更新钉子前半断言（其注释已留指引）。生产帧泵不受影响（每帧重入天然推进让出片） | crates/auto-lang/src/ui/dynamic.rs:1556-1578；docs/plans/reports/762-chart-init-attribution.md（PLAN-762 worktree） |
 
+### Plan 744（2026-10-13，fs.dir_names Rust 发射签名 parity）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P742-D9-SIG-01 | low / explicit | `fs.dir_names` 跨端映射 | VM 标准接口 `fs.dir_names` 在 Rust 发射中映射到 `a2r_std::fs::dir_names`。KNOWN-DEBT 396 的既有签名配对比较 `file.rs.at` 与 `a2r-std/fs.rs`，并非该命名空间函数的源码镜像，因此此实现以显式 allowlist 例外记录；AutoDown/Notes 双端应用门覆盖行为。若未来改为生成式 fs 镜像，应移除此例外并加入生成一致性验证。 | `stdlib/auto/fs.at`；`crates/auto-lang/src/trans/rust.rs`；`crates/auto-lang/src/vm/ffi/stdlib.rs`；`crates/a2r-std/src/fs.rs`；`crates/auto-lang/src/tests/a2r_std_signature_parity.rs` |
+
 ### P756（2026-10-10，网站文字修复复核：范围外 UI 观察）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
@@ -462,3 +468,345 @@ schema 三围栏（REG-4 四表清偿）/ ash_stream_leak_probe（门禁分层�
 | P765-D1 | low | VM 宿主内存 | idle 相位 ~1MB/min 线性缓漏未归因（1h 实测 +59.3MB/59.7min,AC-1 门 0.1MB/s 的 6× 余量内,线性不平台）。候选=每响应仍余 3 份全文瞬态(body/转义缓冲/VM Value+池)×2 拍/s 的堆记账漂移、消息批全窗重绘路径。后续杠杆:载荷池化复用/`unconditional-rendering` feature 退役评估(PLAN-708 基线启用项)。判定阈值:长寿实例(≥12h)私有内存超 ~1.2GB 再升级优先级 | docs/reports/765-t01-attribution-memos.md 后记⑥;soak tmp/soak-p765-1h.json(musk worktree,临时) |
 | P765-D2 | info | 跨仓仪器 | ~~musk soak 仪器 slopeMBPerMin 单位 bug~~ **已修(musk plan-104-dev 9794aa1/0e06161,2026-10-12 核验)**;AC-01 已按真值重判 pass(idle 0.717MB/min 对门 8.4× 余量) | docs/reports/765-t01-attribution-memos.md 后记⑤;musk 104 evidence §T-03 |
 | P765-D3 | info | 跨仓仪器 | bigpage-matrix.mjs 收尾击杀假象(try/finally 无 catch:click isError 抛错→finally taskkill→"VM EXITED code=1" 先于错误栈打印,被误读为进程自退;musk T-03 因此曾 blocked on 765-R2)。**765-R2 已定谳为假象非产品缺陷**(纪要后记⑦);修复归 musk 侧(click 补 value+收尾击杀标记,两行修,交接文案在案) | docs/reports/765-t01-attribution-memos.md 后记⑦ |
+
+## v0.6-dev debt and review records
+
+The following unique review and debt sections are carried forward from v0.6-dev. Their historical attachment paths and source commits remain unchanged; Plan 767 is now PLAN-772 in the current ledger.
+
+## PLAN-772 独立复审（2026-10-12，revision 2，修复重审 pass）
+
+以下为合同内阻塞缺陷与修复候选，必须在本计划修复后重新复审；登记不代表允许挂债收口或合入。受审提交 `033642a27d7404dee5797b195a9b7c680fe6ece5`，完整反例与任务路由见 [独立复审报告](attachments/767/review-codex-r2.md)。
+
+**销号收据**：三项均已在 `4cc4645021f029459a3b870c34a23eb16bc4ce59` 修复。原 needs_fix 的独立复审者重放冻结 16 项、新增 48 项不变量检查及 scoped 门禁后确认 closed，无遗留阻塞。保留历史缺陷描述，当前结论见 [独立修复重审](attachments/767/review-codex-repair-4cc464502.md)。Plan 为 reviewed（8/9），T-09 尚未执行。
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P772-R1 | P1 / closed | HIR 身份 | Descriptor::domain 将未知三重身份降为 Core，程序化 bind/verify 与 writer 可接受未知 schema/revision/profile；三维分别复现，共六反例。精确注册身份随行并受控拒绝，不以 CLI registry 正确为豁免。 | experimental/ac-core/src/descriptor.rs:245、2111（受审树）；PLAN-772 T-02/06/07/08，AC-01/05；owner=767 work |
+| P772-R2 | P1 / closed | HIR 类型可信门 | 签名 TypeUse 查表失败默认 I32，params/result TypeId(9999) 分别获 Checked 后 native 越界 panic；补所有签名引用验证和永久正反控制。旧默认逻辑不是本合同豁免理由。 | experimental/ac-core/src/verify.rs:226、255；native.rs:91（受审树）；PLAN-772 T-02/06/07/08，AC-04/05/06；owner=767 work |
+| P772-R3 | P2 / closed | 设计收据 | design.md 的减法溢出公式写为 MIN-b/MAX-b，实际后端正确为 MIN+b/MAX+b；修收据并重绑证据，不照错误文档改正确实现。 | docs/reports/767-scalar-i32/design.md:112（受审树）；PLAN-772 T-01/07/08，AC-07；owner=767 work |
+## PLAN-745 new 取号核查（2026-10-06）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P745-D1 | high | 中央取号 | scripts/new-plan.sh 的 `ls active-glob archive-glob \| grep -q .` 在 `set -o pipefail` 下，某目录无匹配导致 ls 非零，即使另一目录已有同号也漏检；本次 .next-id=744 与既有 744-vm-sqlite-module.md 冲突时误建了同号骨架。已撤回本次未跟踪骨架，再由中央脚本取得745，未覆盖旧744，计数现746。脚本还缺跨写者排他锁；修复应在独立worktree建立统一排他取号与active/archive重复控制，不在主检出顺手改代码。 | scripts/new-plan.sh:33；docs/plans/745-ac-source-checked-hir-native.md §4.3；owner=后续取号机制修复工作，未编号 |
+## PLAN-741 复审批（2026-10-04，plan-741-dev @ 4dc4da636 同基线对照裁定——零新增债务，仅归档对照证据）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P741-R1 | info | 日常档红对照 | **PLAN-741 复审 cargo t 26 红裁定为非本回归**——worktree 基线 951b6c70f 上 `cargo t --no-fail-fast` = 4945 绿/26 红/1533 skip；同基线 scoped 对照（主检出 0d7c7f024，crates 与基线一致；PLAN-741 零 crates diff）：14 例同红（musk p053×3/p054×2、plan707 sse、plan502_m3、plan498_area、plan484_024、ffi_dual_017、dep_parity_017、projector_counter、plan606 gallery_029——**全部落入 THR-D3 既有清偿族**）+ 12 例 scoped 串行绿（并行负载 flake，与 THR-D4 同模式）+ 4 例 filter 未命中（schema_drift/docs_gen fence、ash_leak_probe 环境族）。无新增挂账项；本行为跨仓跟进类红的又一同基线实证样点 | PLAN-741 §9 复审记录；docs/reports/741-ac-hir-native/verification.md §4.1（入库后可解析）；THR-D3/THR-D4 |
+## 执行吞吐治理第二批挂账（2026-10-02，PLAN-726 立项分批裁定：第一批四项见 726，余量在此）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| THR-D1 | medium | 构建面 | **crate 拆分前置测量**——单 crate 76.6 万行/1,650 文件（2026-10-02 实测），Rust crate 粒度增量下任何改动触发整 crate 重编+测试二进制重链；先测量冷 worktree check/链接时间占比（样点：sccache 79% 命中下 `cargo check -p auto-lang` 57s、lang-724 target 17G、non-cacheable 801 次），数据支撑再决定 workspace member 拆分立项——不测不做 | .cargo/config.toml jobs=12；sccache --show-stats；2026-10-02 会话实测样点 |
+| THR-D2 | medium | 构建面 | **共享 target/链接缓存评估**——REG-3 已实证共享 target 候选撞名红（auto-edit.exe 撞名翻转策展测试），评估带产物命名空间隔离的跨 worktree 共享方案；未评估不实施 | 本文件 REG-3；clean-autolang-targets.cmd |
+| THR-D3 | medium | 验证信号 | **master 14 红族清偿**（musk p053×4/p054×2/plan606/projector/plan707/e4→PLAN-726 承接/app_registry×2/desktop_protocol/iced renderer/a2vue 金样/plan484 streaming）——跨仓跨域，逐族立项；目标=验证信号零噪音、复审零定案税 | 711 §10② 红册；PLAN-715 批收据基线 |
+| THR-D4 | low | flake 族 | **ffi_dual_019 / plan502_m3 并行负载序敏感 flake**——批量档观察名单积累复现率，频率上升再立项查并发交互 | 本文件 REG-2；PLAN-715 登记 |
+| THR-D5 | low | release 档 | **release 档红册治理**（~254 环境红+tests/ 编译 rot 残余）——非维护门但偶发消费（P712-D4 陈旧产物观察） | P702-D2；release_full3.log 分诊 |
+| THR-D6 | low | 走查基建 | **实机走查脚本沉淀**——主检出 `.tmp-vm-*` 一次性脚本族（20+ 件未跟踪）收编入 `.agents/skills/autoui-verifier/scripts/` 标准件（AGENTS.md 既有要求），消除每次走查重写成本 | 主检出 .tmp-vm-*；autoui-verifier 技能 |
+| THR-D7 | low | 术语残件 | **725 计划落定后其文档内残存 10 处「谳」→「案」清理**（2026-10-02 出清批遗留——当时该文件由并行起草会话持有未动） | docs/plans/725-typed-frame-incremental-pipeline.md |
+
+### P723（2026-10-01，28应用图文介绍素材核查）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+
+### P722（2026-10-01，网站 Apps 介绍复审）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+
+### P716（2026-10-01，供③ 确认复核件降级挂账——plan_revision 2 用户裁定）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+
+### P706 r2 收口批（2026-09-30，work 阶段定案的非本回归缺陷另立记账）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| ~~P707-R1~~ | high | async http 直驱臂（e4） | **已清偿（2026-10-02，PLAN-724 T-02）**——真因勘定=**测试侧违反 managed 提交协议**（非派发缺陷、非 detached 桥分离）：e4 三臂直接 `spawn_async_http_handle`/`spawn_async_http` 提交 managed job（999_001/999_101/999_102）却未先 `register_live_op`，707 `submit_client_job` 的 cancel-before-install 闭合（still-live 复查）在 spawn→登记窗口内发现令牌缺席 → 立即 abort 刚提交的任务 → 请求恒不到线 → 30s `recv_timeout` 恒红。生产 shim 全部先 register（stdlib.rs 5367/5390/5413/5434 等在案）。修复=测试改走生产协议：register→submit→wire 断言→消费配对（plain 臂增验 managed 完成落表 `Structured{status:200}`）+`cancel_live_op` 幂等清理，并钉住未登记反例（abort 句柄 submit 返回前回收 + 无令牌永无可消费结果）。取消守卫零改动；plan712（2/2）与 plan707_cancel（5/5）复证绿；修复后单跑 0.46s。公开入口覆盖保持：直驱两点即公开 native shim 的唯一 send 汇聚处，默认头/query/body wire 断言原样 | stdlib.rs e4 模块（default_headers 三臂+未登记反例臂）；`cargo t default_headers_reach_wire_on_plain_get` 绿日志（work 阶段在案） |
+
+
+### P708（2026-09-29，实施方案审查：待核实风险）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+
+### P683（2026-09-22，Plan 683 rq-remote-renderer 方案 2 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+### P684（2026-09-22，Plan 684 gallery 示例修复批 work 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+### P693（2026-09-23，Plan 693 native-exe-tri-mode work 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| ~~P693-D2~~ | medium | desktop 接入跨仓配对 | **已销号（PLAN-698 T-04，2026-09-23）**——形态勘定=子进程（库形态被 winit Windows 单事件循环结构性否决，RecreationAttempt 实锤）；`spawn_desktop_daemon` 孵化 `auto rqhost --pipe autodesk-rqhost-desktop-<pid>` + AUTO_DESKTOP_ENDPOINT env 注册表发布（命名裁定定稿）；003 converter.exe 全环录证（adopt→开窗→v2 帧→EOF 回收→末窗自退，reports/p698-batch/T04-desktop-pairing.md）。SD-04 落 ui/overview.md；WM 深度集成仍归 auto-os 侧后续 | renderer.rs run_session Desktop 臂；rqhost.rs spawn_desktop_daemon；desktop.ps1 |
+
+### PLAN-698（2026-09-23，Plan 698 desktop-substrate-hardening-batch work 执行登记）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+## PLAN-741 交付后质量复审（2026-10-04）
+
+复审基线c1ac219e7，结论needs_fix。~~均未清偿~~ **已全部清偿（2026-10-05，PLAN-741 r2 Phase 2）**：
+用户裁定不另开合同，激活741以plan_revision 2追加Phase 2修复；独立代理复审pass
+（44/44测试、六反例全翻转），交付合入v0.6-dev@52c67d3df。清偿证据：
+[741归档](741-ac-hir-native-core.md) §9 Phase 2记录；
+原始报告：[复审报告](../reports/741-quality-review-20261004/REVIEW.md)。
+
+| id | 级别 | 问题与实际证据 | 修复方向 |
+|---|---|---|---|
+| P741-QA-01 | P1 | bool icmp结果i8与local/ABI i32冲突；check绿而build panic101或后端拒绝 | 统一bool表示并补绑定/参数/返回原生测试 |；**已清偿**（r2 T-09 icmp_bool 唯一出口uextend归一+bool原生正例（bool-if exit3/bool-abi exit5））
+| P741-QA-02 | P1 | 按eval_args索引校验而非bindings映射；异类型合法调用被拒、非法调用获Checked | 按映射检查类型，保留求值顺序 |；**已清偿**（r2 T-10 bindings映射制类型核对+双射校验（binding-swap原生exit9/swap类型不配check拒绝））
+| P741-QA-03 | P1 | 两函数可共享异签名body且check绿；native参数索引panic101 | function/body双向owner及唯一归属检查 |；**已清偿**（r2 T-11 function↔body双向归属（shared-body-owner/same-sig/stolen全verify.owner-mismatch拒绝））
+| P741-QA-04 | P1 | receipt写失败exit1，exe已更新、obj仍旧 | 制品准备/发布事务与失败回滚，补发布失败测试 |；**已清偿**（r2 T-12 暂存-备份-发布-回滚事务（发布失败exe/obj哈希不变+旧exe实跑；回滚测试还实抓并修复同stem备份名碰撞））
+| P741-QA-05 | P2 | README多传ac-probe且示例无d_entry；真实exit2/entry.not-found，归档链接陈旧 | 统一命令/命名、可运行fixture和链接，复制运行验证 |；**已清偿**（r2 T-13 README真实bin名/带入口fixture/归档链接/schema笔误（三命令逐字复制运行全过））
+| P741-QA-06 | P2 | rustc/reg发现直接output无deadline；执行器先等退出再排pipe | 有截止的统一执行器与并发输出读取 |；**已清偿**（r2 T-14 全子进程硬截止+并发管道读（1s截止杀挂起helper、>126KB输出不阻塞单测））
+| P741-QA-07 | P3 | tests/common/mod.rs descriptor未使用warning | 清理并覆盖all-targets健康检查 |；**已清偿**（r2 T-15 未用导入清除+verify脚本all-targets零warning门）
+## PLAN-741 r2 合入后复核（2026-10-05）
+
+基线965b368a2，needs_fix；旧四项P1常规反例已确认修复，44/44原型测试通过。
+~~以下为新增/扩展边界，未清偿~~ **已全部清偿（2026-10-05，PLAN-741 r3 Phase 3）**：
+独立代理复审pass（AC-16..20全过、原型52项+60s证据测试、watchdog 60.05s准时拒绝、
+cargo t双侧同基线归因零新增），交付合入v0.6-dev@a0b3750c4。清偿证据：
+[741计划](741-ac-hir-native-core.md) §9 Phase 3记录；
+原报告：[r2复核报告](../reports/741-quality-review-20261005/REVIEW.md)。
+
+| id | 级别 | 观察 | 修复方向 |
+|---|---|---|---|
+| P741-R2-QA-01 | P1 | 入口块自环check栈溢出0xC00000FD；断开双块循环check0 | 先做完整块图无环/可达性验证，失败后阻止递归走查 |；**已清偿**（r3 T-19 块包含图结构门（显式栈DFS全可达+入边不变量、结构失败阻止走查；复审代理自构3块环/else回边反例全拒、两报告输入定位拒绝））
+| P741-R2-QA-02 | P2 | 子进程退出后reader join不受截止约束；持pipe后代反例114.963s仍未返回 | 进程与输出收集共享deadline，补继承pipe反例 |；**已清偿**（r3 T-20 单一单调截止覆盖等待+输出收集（Job Object KILL_ON_JOB_CLOSE 管控子树、reader全出口回收；watchdog实测60.05s准时拒绝 vs r2实测114.96s挂起；read_to_end+lossy修截断成功））
+| P741-R2-QA-03 | P2 | 收据暂存写失败遗留已链接.tmp exe；旧exe/obj保持不变 | stage所有权/统一清理覆盖准备/备份/发布失败 |；**已清偿**（r3 T-21 publish暂存所有权全失败出口回收（含已链接exe）+link.restore恢复诊断+占位目录保护；复审helper实测staged_exe_left=false）
+| P741-R2-QA-04 | P3 | archive内frontmatter仍reviewed，与merge receipt的archived不一致 | 修正簿记，保留历史与revision |；**已清偿**（r3 T-22 状态/指针簿记（复审方激活+本轮核对一致；最终归档由本merge完成））
+
+2026-10-05 用户明确再激活：[PLAN-741 Phase 3](741-ac-hir-native-core.md)，revision 3、executing。
+上述 P741-R2-QA-01..04 由 T-19..T-24 / AC-16..20 跟踪；本次仅合同修订，
+未经修复及独立复审不销账；旧 P741-QA-01..07 已修证据与历史记录保留。
+## PLAN-743 合入后独立复核（2026-10-05）
+
+基线 fa3abe476，needs_fix；用户授权激活 [PLAN-743 Phase 2](743-acc-bootstrap-hir-contract.md)，
+r2/executing。18/18 既有测试通过、旧 F-01/F-03 已修，以下新问题待 T-08..14 / AC-09..14 闭环。
+证据：[独立报告](../reports/743-quality-review-20261005/REVIEW.md)，本次不预销账。
+
+| id | 级别 | 观察 | 修复方向 |
+|---|---|---|---|
+| P743-QA-01 | P2 | 跨行字符串里的 pretend() 被扫为调用；MD-506 认可换行恢复 | 字面量整体屏蔽/行号回归，复核观察和结论 |
+| P743-QA-02 | P2 | Meter.len/new、真实 CG.new/Ar.new 被标 native-runtime | 接收者/owner 证据优先，未知保守分类 |
+| P743-QA-03 | P2 | 无绑定/缺证据/空决定被 CHECK-OK | provided schema/证据绑定校验+完成态严格门 |
+| P743-QA-04 | P2 | 必经路径常量溢出允许变编译期错误，observable/运行 trap 改变 | 保留 runtime trap，澄清编译期语境和 effect 术语 |
+| P743-QA-05 | P2 | A2 源码误称 existing，候选①要 A8、候选②缺 A9 前置 | 分 HIR/源码状态，语料与无环能力前置对齐 |
+| P743-QA-06 | P2（新鲜度） | 当前8决定/9绑定 stale，漂移拒绝正确 | 逐条语义重核后校准，不 blind hash update/exempt |
+| P743-QA-07 | P3 | T-05/T-06 未勾与6/6/已修收据矛盾 | 历史勾选校正，新 Phase 待办/最终归档一致 |
+## PLAN-743 r2 合入后复审 / Phase 3（2026-10-05）
+
+基线 5983f8aeedeae2dc5769f9a0820eec4b722d4c6d，needs_fix；[报告](../reports/743-r2-quality-review-20261005/REVIEW.md)。
+上节 r1 反例修复已核验（41/41、真实47决定新鲜）；该历史待办描述由本节取代，剩余保证由以下新 ID 跟踪，不把新增缺口抹成已闭环。
+用户授权激活 [743 Phase 3](743-acc-bootstrap-hir-contract.md)，r3/executing，T-15..21/AC-15..20；仅合同，本轮不销账。
+
+| ID | 级别 | 观察 | 修复 |
+|---|---|---|---|
+| P743-R2-QA-01 | P2 | 本地同名 IO/print 仍 native，跨 owner/无 owner 方法升级为 self | 当前 owner/冲突证据优先，unknown 保守 |
+| P743-R2-QA-02 | P2 | evidence 未在同条绑定，改变内容严格门仍绿（当前真实决定无此缺口） | 同条证据 hash 覆盖和变化拒绝 |
+| P743-R2-QA-03 | P2 | resolved family 删除 decision 仍闭环绿 | 适用决定引用与 open 去向真实校验 |
+| P743-R2-QA-04 | P2 | kind/conclusion/bound/evidence 错误类型抛 traceback | 字段/元素类型先验、定位受控拒绝 |
+| P743-R2-QA-05 | P2 | canonical R3 旧摘要与新正文冲突，报告 CLI 仍 ac-probe | 新 SD-07 同步摘要/正文，SD-06 工具政策，真实命令对账 |
+| P743-R2-QA-06 | P3 | archived 13/14/T-14未勾、模块executing/r2、归档两链接失效/ledger旧指针 | 历史据实勾选，新Phase独立待办，merge核对终态/索引/链接 |
+## PLAN-743 r3合入后复审 / Phase4（2026-10-05）
+
+基线8e8f6f19b96516fdbc9d4c893297fa1757a7aad4，needs_fix；[新报告](../reports/743-r3-quality-review-20261005/REVIEW.md)。
+上一轮未绑定证据、本地遮蔽/跨owner与canonical摘要/链接等反例已修；63/63和当前真实47决定绿，剩余保证由以下新ID跟踪。
+用户授权激活[743 Phase4](743-acc-bootstrap-hir-contract.md)，r4/executing，T-22..27/AC-21..24；本轮仅合同，不修工具，不预销账。
+
+| ID | 级别 | 观察 | 修复 |
+|---|---|---|---|
+| P743-R3-QA-01 | P2 | 被类型检查淘汰的决定仍入引用索引，evidence=17在族consumer处TypeError | 只消费验证记录/提前受控拒绝，引用组合负例 |
+| P743-R3-QA-02 | P2 | subject/hash覆盖可代替evidence覆盖，严格门假绿（真实七族证据完整） | evidence相关性独立且必需，移除OR旁路 |
+| P743-R3-QA-03 | P2 | 导入IO/List/File/process和Meter参数IO被标native | qualified宿主准入包含导入/局部绑定冲突，未知保守 |
+| P743-R3-QA-04 | P3 | archived20/21、T-21未标完成、P743-3活动指针失效 | 历史补据实完成，新Phase另列；final所有指针/计数统一验收 |
+## PLAN-741 r3合入后复审 / Phase4（2026-10-05）
+
+本节新增发现不撤销前两轮已修的具体证据，也不沿用r3“全出口已回收”覆盖新反例。
+[报告](../reports/741-r3-quality-review-20261005/REVIEW.md)基线f6a945db8，needs_fix；
+依用户授权激活[741 Phase4](archive/741-ac-hir-native-core.md)，r4/executing，T-25..30 / AC-21..24。
+~~本轮只复审/合同，不实施、不预销账~~ **已全部清偿（2026-10-05，PLAN-741 r4 Phase 4）**：独立代理复审pass（AC-21..24全过、death-watch反例5/5零泄漏、locked-cleanup全要素、60s生产路径准时拒绝、worktree红集⊂基线零新增），交付合入v0.6-dev@8fdae8c11；canonical SD-07/08已沉淀、live ledger P741-6已投影。清偿证据：[741计划](741-ac-hir-native-core.md) §9 Phase 4记录；原报告：[r3复核报告](../reports/741-r3-quality-review-20261005/REVIEW.md)。
+
+| ID | 级别 | 观察 | 修复/跟踪 |
+|---|---|---|---|
+| P741-R3-QA-01 | P2 | 公开run_exe约60.106s返回link.deadline后自有后代仍活；时序相关，另次正确回收。先spawn再约束、约束失败静默None/detach有缺口 | 受控启动及失败安全收口/reader回收，T-26，AC-17/21 |；**已清偿**（r4 T-26 受控启动（CREATE_SUSPENDED→入 Job→ToolHelp 恢复，约束前窗口消除）+约束失败受控拒绝（安全收口零泄漏）+reader 全出口回收；death-watch 反例 5/5 零泄漏、public-60s 60.05s 准时拒绝且后代回收）
+| P741-R3-QA-02 | P2 | 真实共享锁使owned暂存exe不能remove；收据准备失败只报link.receipt，未列该残留/清理错误，旧三件套不变 | 清理错误/自有路径/准确事务状态汇总，T-27，AC-18/22 |；**已清偿**（r4 T-27 清理错误全量汇总（link.cleanup：原失败+提交状态+残留自有路径+实际 OS 错误；目录=用户占位不删不计）；复审 locked-cleanup 实测 staged_exe_left=true+全保留标志、库内共享锁测试锁定）
+| P741-R3-QA-03 | P3 | archived23/24、T-08漏勾与r1/r3收据矛盾 | 根据收据补T-08，重开T-20..24验收，新六任务；最终完成ID计数/链接断言，T-28，AC-23 |；**已清偿**（r4 T-28/merge T-08 据收据补勾、重开 T-20..24 依 r4 任务关闭、最终计数 30/30 与归档断言一致（本轮 merge 收口））
+
+root门禁观察（非新增AC原型缺陷）：daily4971全跑4935通过/35失败/1超时；
+超时ffi_dual_018单独2.532s通过。旧THR-D3/D4及阶段报告包含对应族，但本轮未逐个完成35红对照，
+不得写成required daily gate绿或“新基线零新增已证实”；正式失败清单已入报告，T-29负责修复后复验/归因。
+## PLAN-741 r4合入后复审 / r5 Phase5（2026-10-05，未修复）
+
+绑定HEAD7b9c6948c；[独立报告](../reports/741-r4-quality-review-20261005/REVIEW.md)、[同ID修复合同](741-ac-hir-native-core.md)。r1..r4实施/原债项销账为历史，不删除；本轮54测试/一键13步/公开60s回收通过。
+
+- P741-R4-QA-01 / P2：link_object_staged非零及执行器错误出口吞暂存exe清理失败；真实共享锁OS error32、残留不入诊断，旧成功三件套不变。T32/AC25，SD09兑现SD08，不降为informational。
+- P741-R4-QA-02 / P3：archive内4个历史报告链接用active相对路径而失效；T33/AC26，必须最终真实归档门。
+
+尚未实施产品修复。r5 executing/22-of-35，只写证据/合同/导航；canonical/live ledger留pass后merge。P741-3..6旧archive指针激活后暂缺，最终必须全部恢复；不占新号、不碰其它计划工作树。
+## PLAN-743 r4合入后复审 → r5 Phase5（复审2026-10-05；2026-10-06补齐落地，未修复）
+
+绑定HEAD c865adf66a75099df07113b053eb9d19e92986a3；[独立报告](../reports/743-r4-quality-review-20261005/REVIEW.md)、[执行合同](743-acc-bootstrap-hir-contract.md)。
+
+- P743-R4-QA-01 / P2：mut/方法及裸调用参数遮蔽漏判，误升级native；T30/AC26。
+- P743-R4-QA-02 / P2：合法JSON manifest容器形状错误traceback；T31/AC27。
+- P743-R4-QA-03 / P2：非法语义/stale/重复先插入记录仍进入消费者；CLI正确拒绝，无假绿；T29/AC25。
+- P743-R4-QA-04 / P3：归档6个报告链接失效，r4断言未检查；T32..33/AC28。
+
+仅复审/合同激活，产品未修复，不宣称销账；83测试、fresh47、旧27/27/ledger真实通过。SD09/canonical/derived ledger留r5独立pass后的merge；激活导致P743-3..6旧archive指针暂缺，最终归档必须全部恢复。
+
+2026-10-06补齐激活文档，当前22/33；原83测试/47fresh为复审基线历史证据，主线另有5条AutoAC Spec过期绑定待T28/T30逐条重审。现有741 r5合同/债项原字节保留，未实施743修复。b'\r\n'  - **已清偿**（r5 T-32 两出口经共享 discard_own_staged + with_staged_cleanup 汇总（link.cleanup：原失败+残留完整路径+OS 错误+NOT committed+恢复办法）；复审 nonzero/timeout 实测 path/cleanup_in_diagnostic=true、os error 32、旧三件套不变、released_cleanup_ok=true）b'\r\n'  - **已清偿**（r5 T-33 计划 7 处链接改 ../../reports（归档终态可解析）+ final_assertions.py 三态门；复审逐条验证 5 目标自 archive 父目录可解析（覆盖原 4 断链超集）；本轮 merge 归档后以 archive 模式复跑 35/35 全勾门收口）
+## PLAN-741 r5合入后复审 → r6 Phase6（2026-10-06，待修）
+
+基线6baed9bba84016dd8610221a9a0358195444385e；needs_fix仅P3验收/证据，r5核心P2修复已通过真实当前库nonzero/60s共享锁及58测试/一键13；不重新挂旧核心缺陷。
+- P741-R5-QA-01/P3：archive current34/total35但35唯一任务已完成，最终断言不检查metadata，错误/缺数字仍通过。T36/AC28。
+- P741-R5-QA-02/P3：active只检查模拟archive，实际父目录7断链仍通过；当前真实archive链接已正确。T36/AC29。
+- P741-R5-QA-03/P3：旧反例任意取第一个缓存rlib可选旧库；r5当前摘要54/lib14过期（实际58/lib15）。T37/AC30。明确当前Cargo artifact重放已证实产品修好，旧库结果不得冒充回归。
+详见 ../reports/741-r5-quality-review-20261006/REVIEW.md。同741激活r6 current26/total38，未实施修复/未销账；仅最终断言/文档证据范围。canonical/live ledger保持原状态，P741-3..7暂态archive指针留最终归档恢复。
+## PLAN-743 r5合入后独立复审 → r6 Phase6（2026-10-06，激活时未修复；现已清偿，见后续复审）
+
+基线9111c21e53ccd9a81554bfd4764c540fdfdcad21；needs_fix，旧110测试/旧四类反例/47fresh/确定性/归档33门实际通过。
+- P743-R5-QA-01/P2：额外绑定文件删除后全局stale但记录仍入可信索引；存在/删除/恢复三段式CLI0/1/0，中间族消费者仍21。T35/AC29。
+- P743-R5-QA-02/P2：字段类型错误continue绕过去重，同ID坏记录前后两种顺序均保留合法同ID记录供族消费21；字段合法duplicate对照为0。T35/AC29。
+- P743-R5-QA-03/P2：已观察普通参数与local type同名，bare仍type-construction、qualified仍type-qualified，违反SD09绑定在类型升级前优先。T36/AC30。
+前两CLI受控非零/no traceback，不误报假CHECK-OK；当前真实人工层未因合成反例被宣称失效。全部复现/修复/SD10见../reports/743-r5-quality-review-20261006/REVIEW.md。同ID激活r6 current26/total38，未实施/未销账/未改canonical或live ledger；P743-3..7 archive暂态留最终merge恢复。741/742/ABI及所有历史pass/merge保留。b'\r\n'  - **已清偿**（r6 T-36 final_assertions v2（frontmatter 必需字段/数值解析、current_step==完成唯一数、total_steps==唯一总数合同派生无硬编码、archived=全完成+archive 位置、同 ID 冲突失败）；上线即抓到执行侧 current_step=35≠34 计数错；受控 fixture 8/8 真实退出码）b'\r\n'  - **已清偿**（r6 T-36 active 模式双链接验证（真实父目录 active 形 + 显式转换模拟归档副本，两行输出、任一失败即 exit 1，模拟不冒充实际 active）；复审确认 fixture 复刻缺陷形态正确非零；本轮归档后 archive 模式复跑收口）b'\r\n'  - **已清偿**（r6 T-37 采纳复审 exact-artifact 脚本（Cargo JSON 按 package/target/profile 唯一绑定库+CLI，无 rlib glob，Cargo 输出与哈希落盘）+ 全量重放；计数更正 54→58（lib15+43）带 provenance 入 r5 verification.md 与归档计划）
+## PLAN-741 r6合入后复审 → r7 Phase7（2026-10-06，未修复）
+
+基线d1adc03be39d2897f5dfd7090e0909095cf24465；[报告](../reports/741-r6-quality-review-20261006/REVIEW.md)、[同ID合同](741-ac-hir-native-core.md)。核心同源无新故障，17/17独立validator控制通过，不重新打开原型/Rust任务。
+
+| ID | 级别 | 真实缺口 | 修复与验收 |
+|---|---|---|---|
+| P741-R6-QA-01 | P3 | fixture固定active文件，最终归档后FileNotFoundError；只修输入后T35冲突mutation为零次替换，反例exit0 | T39/AC31，active/archive来源、动态实际翻转、预期诊断与mutation核对 |
+| P741-R6-QA-02 | P3 | 两模块741导航仍executing且指向缺失active文件；final_assertions只验Plan/ledger而遗漏README/导航，仍ALL-PASS | T40/41、AC32，最终门明确覆盖README/两模块/全部指针，实际归档后遗漏导航更新负控制非零 |
+
+同741激活r7，current36/total41；未实施/未销账。只重开T36/T38，保留历史pass/merge；不改canonical行为/live ledger，P741-3..8暂态留最终归档恢复。
+## PLAN-743 r6合入后独立复审清偿记录（2026-10-06）
+
+reviewed_commit=8b17e4de8851cdf37ccdce76a82f78422cf8bb15，outcome=pass；[独立报告](../reports/743-r6-quality-review-20261006/REVIEW.md)、[归档计划](archive/743-acc-bootstrap-hir-contract.md)。原r5反例/激活时待修文字为历史，本段为三个743债项的当前终态；不修改741或其它计划债项。
+
+| ID | 当前状态 | 独立验证 |
+|---|---|---|
+| P743-R5-QA-01 | 已清偿（r6 T35） | 绑定文件存在/删除/恢复CLI0/1/0，consumer21/0/21，缺失文件不再入可信消费者 |
+| P743-R5-QA-02 | 已清偿（r6 T35） | 错类型/合法duplicate双顺序及缺字段双顺序整组consumer0；错误ID容器类型受控拒绝无traceback |
+| P743-R5-QA-03 | 已清偿（r6 T36） | 原参数/local type同名bare/qualified保持unknown；7组普通/mut方法、let/var/use控制通过，无冲突正例维持 |
+
+128/128、真实strict47/146/7、确定性/manual原字节/三方一致及actual archive38/38/all P743指针通过。保持743 archived/r6，不新增修复phase；审查treeguard clean后已清理，Category A未跑Cargo/native/docs_gen。；**已清偿**（r7 T-39 fixture_tests.py 生命周期重写（计划源自动检测 active/git 历史重放归档态；冲突变换按真实行状态翻转恰一行+断言实际修改；状态变换通配 set_fm；全部变异经 assert_modified）；两矩阵 21 用例 + 全 PASS（含 archive 态 git 历史重放与全完成合成控制））；**已清偿**（r7 T-40 final_assertions v3 扩到 prototype README 741 链接与 auto-hir/auto-ac 741 导航行（状态生命周期一致+行号定位+--repo-root 沙盒负控制）；本轮归档后 archive 模式复跑收口）
+## PLAN-741 r7合入后复审 → r8 Phase8（2026-10-06，未修复）
+
+基线18beff64b4ceefa1e7f4176296f5e37f77dd6da1；[报告](../reports/741-r7-quality-review-20261006/REVIEW.md)、[同ID合同](741-ac-hir-native-core.md)。实际归档41/41与导航正确，核心同源；原缺文件/零操作已修，不重新挂旧缺陷。
+
+| ID | 级别 | 当前缺口 | 修复与验收 |
+|---|---|---|---|
+| P741-R7-QA-01 | P3 | 两个导航控制未实际运行，总数固定+2；归档7报9、双源17报21且记录称已验证 | T42/AC33，纳入实际控制列表、失败传播、按执行记录计数，旧日志保留注明过期 |
+| P741-R7-QA-02 | P3 | 必需README Plan引用缺失、README/模块/P741 review指向其它存在的归档Plan均仍ALL-PASS | T43/AC34，必需引用存在及规范唯一741目标严格比较，active暂态限定规范archive/741 |
+
+同741激活r8 current38/total44，只重开T39..41，新增T42..44；未实施/未销账，不改Rust/行为Spec/live ledger，P741-3..9归档暂态由最终merge恢复。742/743/ABI及历史收据保留。；**已清偿**（r8 T-42 两矩阵导航控制以 add_external 进入统一 cases 真实执行（各带沙盒 repo root）+ 总数从执行记录派生（固定 +2 删除）；控制性确认 forgotten-nav-update 期望改 0 → fixture 整体非零（失败传播）；--source auto 实测 25 用例全 PASS）；**已清偿**（r8 T-43 final_assertions canonical 目标身份检查（README 必须存在 741 计划引用；README/两模块导航/全部 P741-* review 指针解析后必须恰等于 docs/plans[/archive]/741-ac-hir-native-core.md，错目标失败含 expected/got 与 entry ID；激活期 canonical_archive 尚不存在=显式列暂态）；4 个 identity 沙盒负例 + 反向验证旧版门假通过全部实证）
+## PLAN-745 r1 最终独立复审（2026-10-06，待修）
+
+reviewed_commit=b3cd8171966281a42f96187780342ce0ff51c5fb；needs_fix；[最终报告](attachments/745/review-r1/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。同一实现树保留，执行中1/9；本轮仅复审/证据/簿记，没有修复、合入或规范沉淀。原92绿/74例/两脚本通过为真实局部证据，不能覆盖本轮反例。
+
+| ID | 级别 | 合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R1-QA-01 | P2 | 非括号RHS/callee跨行仍check0 | T02/05、AC02；换行边界正反控制 |
+| P745-R1-QA-02 | P2 | 用户ac_start/ExitProcess过Checked却native符号冲突 | T03/04/05、AC02/05/06；隔离native内部/用户名字空间，不静默保留源码名 |
+| P745-R1-QA-03 | P2 | 作用域逃逸指return，双分支终结后语句指前面的if | T03/05、AC04；精准出错token/span，纠正N09宽oracle |
+| P745-R1-QA-04 | P2 | Auto关键字当名字；!与转义str误分类 | T02/05、AC02/04；保留关键词和识别但排除的诊断 |
+| P745-R1-QA-05 | P2 | source测试无截止output/先wait后read堵管道；合法20K trace控制93ms，错误顺序2s仍阻塞 | T05/07、AC05/06/08；有限截止、并发采集、后代/全部出口回收 |
+| P745-R1-QA-06 | P2 | HIR trap结构断言、实际Bundle删let/错type/越域变异、source SENTINEL永久门缺失 | T03/05/07、AC01/03/05/06；真实变异/不变量oracle/失败传播；独立source三件保留已通过，不报告产品破坏 |
+| P745-R1-QA-07 | P3 | inventory --output误作文件，误称manifest未跟踪而推merge重扫 | T06/07、AC07；正确strict47已过，纠正证据/策略，不自动重hash |
+| P745-R1-QA-08 | P3 | source/HIR各复制Checked后构建管线，未兑现共用合同 | T04/05、AC06；同一构建入口，两模式回归 |
+
+这些项未清偿；登记不等于批准延后。SD01/03及盘点策略待修后重新冻结，完整宽度/char保持open；canonical/live ledger保持当前状态。root门禁完整daily29红/tv4红另有原始清单，生产源/config零745 diff且均在历史红集并集；未称门禁绿色或严格同源逐项归因完成。
+## PLAN-745 r1 第二轮最终独立复审（2026-10-06，待修）
+
+reviewed_commit=91b37560cffda75cf07cef8620cf524f5d6a3c7c；[第二轮报告](attachments/745/review-r2/REVIEW.md)、[同ID计划](archive/745-ac-source-checked-hir-native.md)。needs_fix/executing/1-of-9；同树保留，未实施本轮修复、合入或规范沉淀。
+
+R1-QA02（native符号）、QA04（关键词/排除）、QA07（盘点误归因）、QA08（共用构建）**已清偿**；QA01/03的具体原反例已修，但新增回归见下；QA05的大输出/普通父进程截止、QA06的trap结构/删let/错type/部分SENTINEL已修，剩余合同项按本轮ID追踪。旧历史段落保留，不撤销具体pass，也不以旧待修文字误称产品毫无修复。
+
+| ID | 级别 | 当前缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R2-QA-01 | P2 | 合法多行call/括号闭合后的同行+表达式误拒 | T02/05、AC02/05；括号上下文和真实语句换行边界成对控制，保留C01/C03拒绝 |
+| P745-R2-QA-02 | P2 | Rust助手500ms截止实际5016ms仍成功；PS1s实际5044ms；无效UTF8输出被吞 | T05/07、AC05/06/08；执行/采集同deadline，受控子树及全出口回收，字节排空/真实错误传播，两助手均修 |
+| P745-R2-QA-03 | P2 | 两Stray分支被提升有效Div，后续死块遮住break/continue目标错误 | T03/05、AC02/04；组合保留Stray诊断可达性，固定实际冒犯token |
+| P745-R2-QA-04 | P2 | Bundle第三变异只验异type；publish控制先删旧receipt后仅比较两文件 | T03/05/07、AC03/06；同type越域真实变异、保留三件旧文件的实际publish失败/恢复控制；独立verify.uninitialized-read已证实，不报告产品verifier失效 |
+| P745-R2-QA-05 | P2 | 4122字节/4096未闭合括号使编译器栈溢出exit -1073741571 | T02/03/05、AC02/04；深畸形输入受控diagnostic/exit1/无panic，浅合法控制；不偷缩profile或只扩大栈 |
+
+本轮99测试/两脚本/strict47均通过，但不覆盖这些反例；root日常33红/tv4红实录保留、hover隔离1/1通过，未声称严格同源逐项零新增或根门禁绿色。五项未清偿，登记不等于批准延后；SD01/03完整叙述待修后重新冻结，canonical/live ledger保持当前状态。
+## PLAN-745 r1 第三轮最终独立复审（2026-10-06，待修）
+
+reviewed_commit=7437eb137a789259f01446da7a170e74031ff7f2；needs_fix；[第三轮报告](attachments/745/review-r3/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。原树保留，executing 2/9；没有实施修复/合入/规范沉淀。
+
+| ID | 级别 | 当前合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R3-QA-01 | P2 | Rust 505ms 超时返回仍留后代和读线程；PS5.1 415ms 静默窗假成功，后代/输出未收完 | T05/07、AC05/06/08；受控启动子树、实际EOF、统一截止、所有出口回收/错误传播，持管道/延迟写/超时/约束失败控制 |
+| P745-R3-QA-02 | P2 | NEST_LIMIT 把合法224字节99层括号当syntax错误；32794字节合法加法链仍栈溢出 | T02/03/05/06/07、AC02/03/07/08；覆盖实际树及后续处理递归，合法与不闭合边界控制；不得静默缩小r1支持集 |
+
+R2-QA01 换行、QA03 Stray 组合、QA04 Bundle同类型越域/三真文件publish oracle已清偿。R2-QA02 字节读取/有界返回局部修复保留，整体转R3-QA01；R2-QA05原不闭合E02已受控，新健壮性/边界问题转R3-QA02。R1其它清偿保持。
+
+本轮104 passed/1 ignored、741 13步/745 12步74例、独立74/74与strict47通过；根日常27失败+1超时，tv4失败未称绿色，新增dep018超时隔离1/1通过。初始PS5.1哈希失败是复审.NET驱动继承PS7模块路径的环境注入，已通过单变量正反控制定位并按计划原命令重跑成功，不记为实施缺陷。
+## PLAN-745 r1 第四轮最终独立复审（2026-10-07，待修）
+
+reviewed_commit=dc5e95be757dba647ef758aa283e7e2788015747；needs_fix；[第四轮报告](attachments/745/review-r4/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。同树保留，executing 3/9；本轮没有实施修复、合入或canonical/live ledger沉淀。
+
+| ID | 级别 | 当前合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R4-QA-01 | P2 | 新PS C#执行器约束失败只杀空Job，挂起子进程仍存活；真实ReadFile错误6被当EOF返回Code0/空输出 | T05/07、AC05/06/08；未入Job进程直接终止+wait，读取/等待等错误传播，有效及真实失败控制、无幸存/无截断成功 |
+| P745-R4-QA-02 | P2 | NEST_LIMIT改语法计数仍未批准支持边界；200层完整合法括号426字节被syntax拒绝 | T02/05/06/07、AC02/07/08；保留r1支持或显式new修订边界/诊断/提案/正反验收，不以扩阈值替代合同义务 |
+
+R3-QA01的Rust生命周期与PS静默窗口原反例已清偿；R3-QA02的合法16384链崩溃、99/100层括号误拒已清偿；未完成的边界子项和新PS错误出口按上表追踪。原C/D诊断、符号、换行、Stray和既有oracle没有退化。
+
+本轮112 passed/1 ignored、741 13步/745 12步74例、独立74/74、strict47通过；新增native复杂求值24/baab、trap70空stderr、长链退出300通过。根日常35失败/tv4失败未称绿色；唯一新红名plan643隔离1/1通过。真实Win32失败控制保留原cleanup/result路径，不用全绿banner替代失败传播检查。
+## PLAN-745 r1 第五轮最终独立复审（2026-10-07，待修）
+
+reviewed_commit=15fd9263f6f4c400a6ba1d8ec5cb2cae44354d41；needs_fix；[第五轮报告](attachments/745/review-r5/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。原同树保留，executing3/9；没有实施修复、合入或canonical/live ledger沉淀。
+
+| ID | 级别 | 当前合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R5-QA-01 | P2 | 连续括号塌缩未覆盖1+(1+(…))；4096层完整16410字节与未闭合12314字节均stack overflow，5s仍未返回 | T02/05/07，AC02/04/08；实际非连续及组合路径受控，合法source→Checked通过、畸形诊断无panic，保留优先级/效果/span |
+| P745-R5-QA-02 | P2 | 调用/块护栏1000仍未批准入r1/SD；函数体占一层，999可native/1000完整语法已syntax拒绝 | T02/05/06/07，AC02/07/08；保留支持或显式new修订计数/各入口/资源诊断/边界及正反验收，不仅扩大阈值 |
+
+R4-QA01未入Job挂起子泄漏、ReadFile错误6假成功与wrapper传播已清偿（实际native失败控制无幸存）；R4-QA02原200层连续括号误拒已清偿，连续100000层通过，剩余边界转R5-QA02。历轮其它清偿保持；新发现不覆盖掉已经通过的控制。
+
+本轮113 passed/1 ignored、741与745均13步、独立74/74、strict47通过；native300、24/baab、trap70空stderr、混合括号111/5、999call/if通过。root日常33失败/tv4失败未称绿色；唯一新增plan707_cancel隔离1/1通过。完整反例/原始stderr/边界两侧与冻结delta在第五轮报告附件，登记不代表批准延后。
+## PLAN-745 r1 第六轮最终独立复审（2026-10-07，待修）
+
+reviewed_commit=522b98a4c27d2064049e188d386f6958721b3a90；needs_fix；[第六轮报告](attachments/745/review-r6/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。原同树保留，executing3/9；没有产品修复、合入或canonical/live ledger沉淀。
+
+| ID | 级别 | 当前合同内缺口 | 修复/验收 |
+|---|---|---|---|
+| P745-R6-QA-01 | P2 | 迭代表达式解析器逗号分支未先归约Bin：f(1+2,3*4)、named/异构bool/嵌套/trace均syntax误拒；同源H09由native111退化为拒绝 | T02/05/07，AC02/05/08；按Call/Paren边界归约当前实参，保留mark/命名映射/求值顺序，补正反永久回归 |
+| P745-R6-QA-02 | P2 | 终止分支仅归约前检查顶帧，Bin遮住未闭合Call/Paren，非法源码check/build0；f(1+2缺右括号被丢调用而native3，真SENTINEL三件被覆盖 | T02/05/07，AC02/04/06/08；所有出口归约后检查未闭合帧，准确诊断，无Checked/发布，保留三件 |
+| P745-R5-QA-02（块项） | P2 | 调用子项已清偿；块护栏1000仍未批准入r1/SD，999可native/1000完整if已拒，实施侧明确未完成 | T02/05/06/07，AC02/07/08；继续满足原合同，或显式new修订计数/入口/资源诊断/正反验收后获批 |
+
+R5-QA01原4096层非连续括号崩溃清偿；R5-QA02调用边界清偿（20000调用check0、4096混合native4097、未闭合受控），剩余块子项沿用原ID。历轮执行器/来源/Bundle/旧事务清偿保持；额外实参括号只是定位正控制，不能视为批准workaround。
+
+本轮113 passed/1 ignored、741与745均13步、独立74/74、strict47通过；Rust正常与PS9/9真实失败出口无幸存。root日常37失败全部历史共现、tv4失败未称绿色。完整输入/实际PE输出/SENTINEL前后指纹/冻结delta见第六轮附件，登记不代表批准延后。
+## PLAN-745 r1 第七轮最终独立复审（2026-10-08，清偿）
+
+reviewed_commit=bb8cb4b4330d505059ea20e7bfe561a93c1051f3；**pass**；[第七轮报告](attachments/745/review-r7/REVIEW.md)、[计划](archive/745-ac-source-checked-hir-native.md)。原同树保留，reviewed 8/9；没有合入、归档或canonical/live ledger沉淀。
+
+| 原ID | 处置 | 独立证据 |
+|---|---|---|
+| P745-R6-CLOSE-01 | 已清偿 | positional/named二元实参42、嵌套192、异构bool5、trace23/ba、H09恢复111；括号内非法逗号仍拒 |
+| P745-R6-CLOSE-02 | 已清偿 | return/let/if/while缺右括号均text/source.syntax准确拒绝；实际M21 check1/build1，exe/obj/receipt三件旧SHA逐件相同 |
+| P745-R5-QA-02（剩余块项） | 已清偿，原finding整体关闭 | 无固定嵌套计数护栏；1000if/1500if-else/2048while真实PE、20000if到Checked、深未闭合受控；新增N01..24块流/作用域/循环/trace矩阵全过 |
+
+历轮其它清偿保持；本轮无未清偿合同内finding。114 passed/1 ignored、741/745各13步、独立74/74、strict47新鲜；真实Bundle及执行器失败控制保持。root日常30失败全部历史共现、tv4历史semver失败，不称全绿或严格同源码main对照；生产路径无745 diff。冻结delta与终审HEAD/依赖/Specs/配置无漂移，证据见第七轮附件。T09真实closeout与批回归到期判断仍待执行，既有P745-D1中央取号脚本债务不在本计划修复范围。
+## PLAN-745 合入批量回归观察（2026-10-08）
+
+745 的独立源码 profile 合同已通过；以下属于根测试/外部输入的观察，未静默缩减验收或把失败报成全绿。完整原始日志与逐名归因见[合入报告](attachments/745/merge/MERGE.md)。根生产源、配置及依赖清单在落地前后无745变更。
+
+| ID | 观察 | 后续处理边界 |
+|---|---|---|
+| P745-MERGE-ENV-01 | temp_plan009_t8_transpile_at_app 硬编码外仓 auto-term 输入路径不存在，tt失败 | 后续独立计划修测试环境合同；本次不创建或写外仓路径 |
+| P745-MERGE-VERIFY-01 | tb 的55个book金样差异，且未ignore的generate_book_expected在同批成功写外仓金样；并发验证oracle会变化 | 后续独立计划隔离生成与只读验证；无外仓运行前快照，保留现存修改，不重生成/回滚来制造绿色，不等同旧七个parse失败 |
+
+stage3_memory_baseline_n1_3_5 与 plan707_client_sse_poll_close_error_surface 批量失败后，单实例、单job各1/1通过；按负载时序观察记录。tf/tt/tb分别31/34/76失败均保留原始证据，新增未匹配名没有自动归为历史红。

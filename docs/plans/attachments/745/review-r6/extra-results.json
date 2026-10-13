@@ -1,0 +1,218 @@
+[
+  {
+    "id": "D01-call-multiline-then-add",
+    "source": "fn f(x int) int { return x }\nfn main() int { return f(\n 2\n) + 3 }",
+    "want": "accept native5",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=83581b0d0b4de6e4, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D01-call-multiline-then-add\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D01-call-multiline-then-add\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D01-call-multiline-then-add\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D01-call-multiline-then-add\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 83581b0d0b4de6e4\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "run": {
+      "stdout": "",
+      "stderr": "",
+      "exit": 5
+    }
+  },
+  {
+    "id": "D02-parenthesized-multiline-then-add",
+    "source": "fn main() int { return (1 +\n 2) + 3 }",
+    "want": "accept native6",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=d996a04f5d02cf59, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D02-parenthesized-multiline-then-add\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D02-parenthesized-multiline-then-add\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D02-parenthesized-multiline-then-add\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D02-parenthesized-multiline-then-add\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: d996a04f5d02cf59\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "run": {
+      "stdout": "",
+      "stderr": "",
+      "exit": 6
+    }
+  },
+  {
+    "id": "D03-negative-multiline-arg",
+    "source": "fn f(x int) int { return x }\nfn main() int { return f(-\n 2) + 3 }",
+    "want": "accept native1",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=0fe6cea789417995, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D03-negative-multiline-arg\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D03-negative-multiline-arg\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D03-negative-multiline-arg\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D03-negative-multiline-arg\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 0fe6cea789417995\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "run": {
+      "stdout": "",
+      "stderr": "",
+      "exit": 1
+    }
+  },
+  {
+    "id": "D04-parenthesized-multiline-in-outer-parens",
+    "source": "fn main() int { return ((1 +\n 2) + 3) }",
+    "want": "accept native6",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=53a591475f5322a8, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D04-parenthesized-multiline-in-outer-parens\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D04-parenthesized-multiline-in-outer-parens\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D04-parenthesized-multiline-in-outer-parens\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D04-parenthesized-multiline-in-outer-parens\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 53a591475f5322a8\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "run": {
+      "stdout": "",
+      "stderr": "",
+      "exit": 6
+    }
+  },
+  {
+    "id": "D05-call-multiline-no-tail",
+    "source": "fn f(x int) int { return x }\nfn main() int { return f(\n 2\n) }",
+    "want": "accept native2",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=e4cfed73840b4a74, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D05-call-multiline-no-tail\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D05-call-multiline-no-tail\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D05-call-multiline-no-tail\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D05-call-multiline-no-tail\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: e4cfed73840b4a74\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "run": {
+      "stdout": "",
+      "stderr": "",
+      "exit": 2
+    }
+  },
+  {
+    "id": "D06-unbracketed-negative-newline",
+    "source": "fn main() int { return -\n2 }",
+    "want": "reject",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D06-unbracketed-negative-newline\\input.at:2:1: error[text/source.syntax]: unbracketed expression cannot continue across a newline\n",
+      "exit": 1
+    },
+    "build": null,
+    "run": null
+  },
+  {
+    "id": "D07-colliding-outer-prefix-name",
+    "source": "fn ac_start() int { return 3 } fn sf_ac_start() int { return 4 } fn main() int { return ac_start() + sf_ac_start() }",
+    "want": "accept native7",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=6984d6aaa2c780f6, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "build": {
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D07-colliding-outer-prefix-name\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D07-colliding-outer-prefix-name\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D07-colliding-outer-prefix-name\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D07-colliding-outer-prefix-name\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 6984d6aaa2c780f6\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "run": {
+      "stdout": "",
+      "stderr": "",
+      "exit": 7
+    }
+  },
+  {
+    "id": "D08-both-diverge-trailing",
+    "source": "fn main() int { loop { if true { break } else { continue }; let x = 2 }; return 0 }",
+    "want": "reject at let",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D08-both-diverge-trailing\\input.at:1:61: error[verify/verify.block-structure]: block `k4` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+      "exit": 1
+    },
+    "build": null,
+    "run": null
+  },
+  {
+    "id": "D09-mixed-return-break-trailing",
+    "source": "fn main() int { loop { if true { return 1 } else { break }; let x = 2 }; return 0 }",
+    "want": "conservative verify behavior inspect",
+    "check": {
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=4d7fddadacb31c4a, module(s)=1, capabilities required: []\n",
+      "stderr": "",
+      "exit": 0
+    },
+    "build": null,
+    "run": null
+  },
+  {
+    "id": "D10-stray-in-both-branches",
+    "source": "fn main() int { if true { break } else { continue }; return 0 }",
+    "want": "reject loop-target-scope",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D10-stray-in-both-branches\\input.at:1:27: error[verify/verify.loop-target-scope]: break target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D10-stray-in-both-branches\\input.at:1:42: error[verify/verify.loop-target-scope]: continue target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D10-stray-in-both-branches\\input.at:1:17: error[verify/verify.block-structure]: block `k0` has executable statements after a terminating statement\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D10-stray-in-both-branches\\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths)\n",
+      "exit": 1
+    },
+    "build": null,
+    "run": null
+  },
+  {
+    "id": "D11-escaped-char",
+    "source": "fn main() int { let x = '\\''; return 0 }",
+    "want": "source.unsupported",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D11-escaped-char\\input.at:1:25: error[text/source.unsupported]: char literal `'\\''` is not part of this source profile\n",
+      "exit": 1
+    },
+    "build": null,
+    "run": null
+  },
+  {
+    "id": "D12-keyword-named-arg",
+    "source": "fn f(x int) int { return x } fn main() int { return f(type: 2) }",
+    "want": "source.unsupported",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D12-keyword-named-arg\\input.at:1:55: error[text/source.unsupported]: keyword `type` is not part of this source profile\n",
+      "exit": 1
+    },
+    "build": null,
+    "run": null
+  },
+  {
+    "id": "D13-stray-branches-without-tail",
+    "source": "fn main() int { if true { break } else { continue } }",
+    "want": "reject loop-target-scope control",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D13-stray-branches-without-tail\\input.at:1:27: error[verify/verify.loop-target-scope]: break target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D13-stray-branches-without-tail\\input.at:1:42: error[verify/verify.loop-target-scope]: continue target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D13-stray-branches-without-tail\\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths)\n",
+      "exit": 1
+    },
+    "build": null,
+    "run": null
+  },
+  {
+    "id": "D14-dead-statement-after-valid-break",
+    "source": "fn main() int { loop { break; let x = 2 }; return 0 }",
+    "want": "reject at let",
+    "check": {
+      "stdout": "",
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\D14-dead-statement-after-valid-break\\input.at:1:31: error[verify/verify.block-structure]: block `k2` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+      "exit": 1
+    },
+    "build": null,
+    "run": null
+  }
+]

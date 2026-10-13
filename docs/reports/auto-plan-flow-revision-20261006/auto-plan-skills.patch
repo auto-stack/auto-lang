@@ -1,0 +1,377 @@
+diff --git a/.agents/skills/auto-plan-new/SKILL.md b/.agents/skills/auto-plan-new/SKILL.md
+--- a/.agents/skills/auto-plan-new/SKILL.md
++++ b/.agents/skills/auto-plan-new/SKILL.md
+@@ -81,7 +81,12 @@
+ - Give executable tasks stable IDs such as `T-01`, dependencies, affected
+   files or symbols verified against the repository, the intended outcome,
+   linked acceptance IDs, and verification commands with expected results.
+-  Identify genuinely new paths as new.
++  Identify genuinely new paths as new. Give tasks and acceptance criteria an
++  `owner_stage` in the Markdown contract: `work`, `review`, or `merge`.
++  Future review/closeout operations remain unchecked until actually performed;
++  they are not prerequisites for handing completed implementation to review.
++  Merge-owned criteria describe closeout effects; do not assign implementation
++  correctness to merge to bypass final acceptance review.
+ - Size tasks by independently verifiable outcomes. The former 2–5 minute rule
+   is a heuristic, not a gate. Detail the next executable work; do not invent
+   exact implementation mechanics for unresolved research. Use a bounded
+@@ -96,6 +101,29 @@
+   approved scope/revision, allowed repositories/actions, and any user-specified
+   budget or automatic continuation limits. Do not invent approvals or budgets.
+   Unknown constraints that affect correctness go to `10. 待澄清事项`.
++
++## Verification depth and review roles
++
++For compiler/IR contracts, trusted validation, resource lifetimes, publication
++transactions, or a rule shared by multiple consumers, read
++[verification-contract.md](references/verification-contract.md). Under section
++6, state the invariant, representative valid/invalid inputs, verification
++entrypoint, observable oracle, applicable paths/states, and coverage boundary.
++Choose cases that distinguish a plausible incorrect implementation; a green
++test family alone is not the oracle. Ordinary low-impact changes need only
++their scoped checks, not a mandatory matrix or a new checker.
++
++Preflight the contract before handing off: identify contradictory rules,
++unowned required paths, and cases whose expected result is still undefined.
++Resolve them or assign a bounded investigation with a decision artifact before
++dependent implementation. Proposed fixtures for a new interface are not
++already executable evidence; say which task will make them runnable.
++
++Record user-assigned implementation, internal-check, and final-review roles in
++section 6. When internal and final reviewers differ, internal pass only means
++ready for final review; final review precedes merge/archive/cleanup. Do not
++prescribe model names globally or create another agent/chat without authority.
++These are Markdown workflow instructions, not new backend fields or statuses.
+ 
+ ## Revisions and authorization
+ 
+@@ -115,6 +143,10 @@
+ 
+ Never remove acceptance criteria or silently defer work to make a Plan pass.
+ Mark affected prior verification as stale; preserve it as history.
++Keep sections 5–8 as the single current contract, with one authoritative task
++row per ID. Preserve superseded wording, findings, and receipts in section 9,
++Git revisions, or linked durable reports; do not append competing current task
++lists or leave historical "current/pending" prose as live instructions.
+ 
+ For a draft, keep `drafting`. A revision of an in-progress Plan stays
+ `executing` and records any pending decision explicitly; it is not reset to
+diff --git a/.agents/skills/auto-plan-work/SKILL.md b/.agents/skills/auto-plan-work/SKILL.md
+--- a/.agents/skills/auto-plan-work/SKILL.md
++++ b/.agents/skills/auto-plan-work/SKILL.md
+@@ -133,6 +133,21 @@
+ justify another run. Do not add tests that merely mirror wording or trivial
+ implementation details.
+ 
++## Repair the invariant, not only the reported example
++
++On needs_fix, reproduce the finding against the bound baseline, then list the
++other applicable branches, call sites, consumers, or lifecycle states sharing
++its cause. Record `finding → invariant → affected paths → fix → regression
++cases → current results`. Investigate uncovered paths instead of assuming the
++latest example exhausts the requirement; scope stays within the contract.
++
++Retain a meaningful regression for the old failure and representative sibling
++paths. Check the required observable behavior: a final CLI error is not proof
++of consumer isolation, timeout is not proof of resource cleanup, and existence
++is not proof of target identity when the contract distinguishes them.
++Fixture mutations must actually change the intended input; verification
++summaries and counts come from executed cases, with skips/pending explicit.
++
+ ## Adapt or route from evidence
+ 
+ | Situation | Action |
+@@ -152,13 +167,21 @@
+ work/review repair cycles at three, then diagnose or hand back the blocker.
+ Repeated identical failure without progress stops blind retries sooner.
+ This is a skill-level bound, not a background scheduler.
++After two consecutive failed final reviews of the same delivery, diagnose
++contract/oracle gaps, partial fixes, regressions, and changed inputs before the
++next repair. Count across semantic revisions; an internal pass does not reset
++the sequence. Record the resulting coverage/design adjustment and continue
++authorized work. This is a diagnostic checkpoint, not an automatic stop or a
++new request for already-granted approval.
+ 
+ ## Completion and handoff
+ 
+-Before setting `execution_done`, verify that all tasks and acceptance mappings
+-are accounted for, required scoped checks passed on the current code, completed
+-changes are committed, and no blocking question remains. Incomplete work stays
+-`executing`.
++Before setting `execution_done`, verify that all work-owned tasks and criteria
++are complete, required scoped checks passed on the current code, completed
++changes are committed, and no blocking question remains. Identify the remaining
++review/merge-owned tasks and gates without marking them complete. Legacy Plans
++may record these owners in the handoff without changing their requirements.
++Incomplete implementation stays `executing`; counts still include all tasks.
+ 
+ Append a short record under `9. 复审记录`; blockers also appear under
+ `10. 待澄清事项`:
+diff --git a/.agents/skills/auto-plan-review/SKILL.md b/.agents/skills/auto-plan-review/SKILL.md
+--- a/.agents/skills/auto-plan-review/SKILL.md
++++ b/.agents/skills/auto-plan-review/SKILL.md
+@@ -39,6 +39,17 @@
+ 
+ ## Establish the review baseline
+ 
++Resolve `review_scope: internal | final | phase` from the request and the Plan's
++assigned roles; record it in the receipt. With no split-role workflow, the
++ordinary independent acceptance review is final. With a designated final
++reviewer, an internal pass leaves `execution_done` and routes to that reviewer;
++it cannot grant `reviewed` or authorize merge. An internal non-pass returns the
++affected work to `executing`. Phase passes keep the Plan `executing`.
++Use a context independent of implementation for the assigned final review when
++available and authorized; do not relabel an implementation-session self-check
++as the separate final reviewer. Record actual reviewer/context identity when
++exposed, and limitations otherwise; never fabricate a model or session ID.
++
+ 1. Record Plan revision, full Git commit SHA, diff base, dependency revisions,
+    and relevant Spec source versions/hashes. Migrate a legacy Plan's missing
+    revision as described in [new](../auto-plan-new/SKILL.md); do not fabricate
+@@ -61,11 +72,10 @@
+ For each acceptance ID, reproduce its verification and record
+ `pass / partial / fail`, command or inspection method, result, and evidence.
+ 
+-- Run the repository-required full suite for code changes, including relevant
+-  backend/target checks. In auto-lang this includes `cargo tf`, plus
+-  `cargo tv`, `cargo tt`, or `cargo tb` for affected VM/transpiler/book work.
+-  Documentation-only changes use applicable content, link, and format checks
+-  unless repository rules require more.
++- Run the target repository's current change-scoped review gates and applicable
++  backend/target checks. Its test-tier and serialization rules govern; do not
++  substitute a stale global full-suite example. Documentation-only changes
++  use applicable content/link/format checks unless repository rules require more.
+ - Exercise user-visible/API behavior where required; source inspection alone
+   does not demonstrate a runtime acceptance criterion.
+ - Verify test assertions and negative cases, not just exit codes. Separate
+@@ -75,6 +85,19 @@
+   unchanged code, dependencies, and test configuration, reuse identified
+   evidence only with an explicit reason; rerun checks whose assumptions changed.
+ 
++For the Plan's high-risk invariants, inspect the complete declared path/state
++matrix and independently choose representative counterexamples, not only the
++executor's regression inputs. Cover the identified risk areas in the first
++review rather than stopping at the first defect. New scope is a contract change,
++not an undisclosed acceptance requirement. For document contracts, check rule
++consistency and dependency feasibility, not only field or example counts.
++
++Check raw invocation/results against claimed case IDs and totals. For a
++validator used as acceptance evidence, test meaningful valid and invalid
++controls, actual mutation, and failure propagation; an ALL-PASS banner cannot
++prove its own coverage. Required future merge checks remain recorded pending,
++not claimed pass on the strength of a mock or a receipt template.
++
+ Map `AC IDs → task IDs → code/artifacts → evidence`. Look for missing
+ sub-items, configuration/call-site gaps, unapproved scope reductions,
+ deferrals, or workarounds. Findings need stable IDs, affected acceptance/tasks,
+@@ -82,6 +105,10 @@
+ 
+ Recording an unmet requirement as debt does not make it complete. Distinguish
+ nonblocking improvements outside the agreed scope from failures within it.
++An in-contract defect cannot be downgraded merely because it is pre-existing,
++rare, or described as nearly unreachable. Findings identify whether they are
++an original requirement gap, contract clarification/change, new regression,
++input drift, or closeout defect; this determines the repair and review scope.
+ 
+ ## Review the knowledge delta
+ 
+@@ -108,9 +135,10 @@
+ 
+ Append to `9. 复审记录`:
+ 
+-`stage: review | plan_id | plan_revision | outcome | reviewed_commit |
+-base_commit | dependency_revisions | spec_inputs | acceptance_results |
+-findings | evidence | next`
++`stage: review | review_scope | reviewer_identity/limitations | plan_id |
++plan_revision | outcome | reviewed_commit | base_commit | dependency_revisions |
++spec_inputs | acceptance_results | pending_closeout_gates | findings | evidence |
++next`
+ 
+ Keep evidence paths resolvable after worktree removal: record durable repository
+ artifacts or concise command/result excerpts in the Plan, not only temporary logs.
+@@ -118,7 +146,8 @@
+ 
+ | Outcome | Plan state | Next action |
+ |---|---|---|
+-| `pass` | `reviewed` | merge; every required criterion and the delta passed |
++| final `pass` | `reviewed` | merge; required implementation/review criteria and delta passed, explicit merge-owned gates remain for closeout |
++| internal `pass` | `execution_done` | designated final review; no merge/archive/cleanup |
+ | `needs_fix` | `executing` | work with the concrete findings and affected task IDs |
+ | `needs_replan` | `executing` | new to revise the invalid design or task contract |
+ | `blocked` | `executing` | Resolve the named prerequisite/decision, then resume the appropriate stage |
+@@ -135,5 +164,8 @@
+ Do not merge or fix implementation within review. If the whole workflow is
+ already authorized, hand control to the appropriate skill and honor the repair
+ limit from [work](../auto-plan-work/SKILL.md); otherwise report the next action.
++Any semantic fix changes the reviewed baseline: return to work, commit it,
++and verify affected criteria on the resulting revision before a new final pass.
++Do not cover code added after pass with a comment-only/Spec-only exception.
+ Outcome records are a skill contract, not new backend statuses or automatic
+ Relay routing.
+diff --git a/.agents/skills/auto-plan-merge/SKILL.md b/.agents/skills/auto-plan-merge/SKILL.md
+--- a/.agents/skills/auto-plan-merge/SKILL.md
++++ b/.agents/skills/auto-plan-merge/SKILL.md
+@@ -42,9 +42,12 @@
+    Legacy active reviews without a verifiable baseline need
+    [review](../auto-plan-review/SKILL.md); never fill missing evidence with an
+    assumed pass. Archived requests use the recovery-only rule in step 5.
+-3. Ensure required tasks and acceptance criteria are complete. Unrelated open
+-   checkboxes in examples/history are not delivery blockers; actual unmet
+-   requirements or unapproved deferrals return to work/review.
++   If the Plan assigns internal and final reviewers, require the assigned final
++   review, not an internal pass. Never land/archive while waiting for it.
++3. Ensure implementation/review tasks and criteria are complete. Only explicitly
++   merge-owned operations/gates may remain pending; perform them before claiming
++   delivered pass. Unrelated checkboxes in examples/history are not blockers;
++   unmet implementation requirements or unapproved deferrals return to work/review.
+ 4. Verify reviewed commits against the real repository. A missing worktree is
+    not proof of landing; inspect ancestry and previous receipts.
+ 5. An archived Plan is eligible only for a verified no-op or finishing a
+@@ -177,16 +180,28 @@
+    set `status: archived`. Use `git mv` for a tracked Plan; preserve an
+    untracked Plan through the appropriate file move. Do not use a lifecycle
+    bypass that archives before the preceding checks.
+-2. Record `completion_kind: delivered` and the archive checkpoint in the
+-   receipt. Check that active/archive paths and frontmatter agree, and that
+-   provenance links resolve. Commit the target Plan's final bookkeeping.
++2. Verify the actual archived state before recording the archive checkpoint:
++   task IDs and counts agree, delivery/review/archival effects are verified,
++   remaining cleanup work is explicitly pending, state and location match,
++   links resolve from the real parent, required affected
++   README/module references are present, and navigation/history targets identify
++   this Plan rather than any existing file. Canonical knowledge entries still
++   point to their Specs. Use the repo's reusable gate when available; otherwise
++   record direct checks, not an unverified one-off checker. A pre-archive
++   simulation is useful but does not replace this actual-state check.
++   Record `completion_kind: delivered`, the verified checkpoint and results;
++   commit final bookkeeping. If this gate fails, keep the worktree for closeout
++   repair, record the pending recovery checkpoint, and do not claim pass or
++   clean up. Do not reopen passed implementation for a document-only repair.
+ 3. Recheck the worktree is clean and all its commits are landed. Immediately
+    before removal, verify the resolved absolute path is within its intended
+    group and require a fresh `wt-guard.sh` clean result. Remove the worktree
+    and its merged branch; remove only the empty group directory. Never create
+    junctions/symlinks or bypass the guard.
+-4. Verify removal and record `cleaned` in the archived Plan; commit that
+-   receipt update. If cleanup fails, keep the delivered archive, report
++4. Verify removal, complete its owned tasks, recompute final counts, and record
++   `cleaned` in the archived Plan. Verify the final task/count/reference state
++   before committing that receipt update or reporting merge pass. If cleanup
++   fails, leave its tasks pending, keep the delivered archive, report
+    `blocked` with cleanup pending, and retry only that operation.
+    Authorized dependency worktrees follow their own review/integration gates
+    and should already have been folded/cleaned promptly.
+diff --git a/.agents/skills/auto-plan-new/references/verification-contract.md b/.agents/skills/auto-plan-new/references/verification-contract.md
+new file mode 100644
+--- /dev/null
++++ b/.agents/skills/auto-plan-new/references/verification-contract.md
+@@ -0,0 +1,109 @@
++# Verification contracts for high-risk Plans
++
++Read when a Plan changes compiler/IR semantics, trusted admission/validation,
++resource lifetimes, publication transactions, or a contract used by multiple
++consumers. Use the applicable parts, not a universal exhaustive checklist.
++Ordinary low-impact changes use their scoped checks.
++
++## Put decisions and oracles in the contract
++
++Keep the repository's numbered Plan sections and five lifecycle states.
++In sections 5–8, distinguish the current contract from linked historical
++receipts. Specify behavior and externally checkable results; leave routine
++implementation choices to work. Unresolved architecture belongs in a bounded
++investigation task, not invented detailed pseudocode.
++
++For each risky rule, explain what it protects and choose representative cases
++that would fail under a plausible wrong implementation. Section 6 can use:
++
++| Case ID | AC / invariant | Input or setup | Entry point | Observable expected result | Assertion / evidence | Coverage boundary |
++|---|---|---|---|---|---|---|
++| V-01 | AC-01, mapped argument types | Different parameter types, reordered evaluation with valid bindings | Actual binder/verifier and native runner | Valid mapping accepted; native result matches; side effects retain evaluation order | Result, trace, diagnostic stage | Declared profile; not every future type |
++| V-02 | AC-01, mapped argument types | Same input with invalid bindings | Actual verifier | Controlled rejection before backend | Nonzero plus specific diagnostic; no unchecked consumer | Mapping/type gate |
++| V-03 | AC-02, failed publication preserves old output | Existing valid artifact set; representative failure during publication | Public build/publish entry | Old bytes preserved if not committed; cleanup or accurate residual/recovery report | Hashes and old executable result, owned residual paths | Specified artifact set and failure stages |
++
++These are illustrative cases, not mandatory IDs or universal feature requests.
++Select inputs from the real syntax/API. A proposed interface can name future
++fixtures and the task that will make them runnable; do not report them as
++executed before implementation. Existing supported inputs should use actual
++code or source evidence.
++
++For each applicable risk, cover representative axes rather than every Cartesian
++combination:
++
++- Identity/type: both ownership directions; heterogeneous mappings; values
++  crossing local, parameter, return, and branch boundaries when supported.
++- Graph structure: tiny cycles, disconnected components, valid nesting; ensure
++  invalid structure is rejected before an unsafe traversal.
++- Resource/publication: preparation, execution, output collection, publication,
++  rollback and cleanup failure exits; distinguish timeout from successful reap.
++- Trusted data: shape, semantic validity, freshness, uniqueness and applicability;
++  check downstream admission if promised, not only the final CLI exit code.
++- Classification: the declared binding/owner forms and ambiguity policy;
++  legitimate controls must remain accepted.
++- Workflow/validator: partial and complete states, active and archived paths,
++  required references and exact target identity; mutations occur and a failing
++  executed control makes the overall gate fail.
++
++Explicitly state exclusions and pending decisions. A later review must identify
++whether a finding violates this contract, clarifies it, or proposes new scope.
++Do not retroactively treat every new case as an original explicit requirement.
++
++## Separate task ownership and review roles
++
++Use `owner_stage` in the Markdown task/AC tables or handoff. These are workflow
++instructions; they do not claim new backend schema or parser support.
++
++| Task | owner_stage | Outcome and linked AC | Evidence |
++|---|---|---|---|
++| T-01 | work | Implementation and regression cases | Current committed result |
++| T-02 | review | Independent acceptance decision | Final reviewed commit and cases |
++| T-03 | merge | Actual archive references/counts/cleanup | Actual-state checks and receipts |
++
++All unique tasks count toward total_steps. current_step counts actually completed
++tasks; a pending review or cleanup is not marked done to make handoff look
++complete. work enters execution_done when its owned tasks are complete, final
++review enters reviewed when its criteria pass, merge finishes the remaining
++explicit closeout gates before delivered pass.
++Merge-owned criteria concern closeout, not deferring implementation correctness.
++At the archive checkpoint, cleanup may still be pending and counts must say so;
++only after actual cleanup are those tasks completed and final counts verified.
++
++For an explicitly split workflow, record roles and routing in section 6:
++
++```text
++Implementation: assigned implementation agent.
++Internal check: assigned checker; pass -> execution_done, final review next.
++Final review: assigned independent reviewer; pass -> reviewed, merge next.
++Closeout: merger; actual final-state check precedes cleanup.
++```
++
++Preserve user-assigned model choices; do not create or contact another agent
++without authority. With no split roles, the normal independent review remains
++final. An implementation-session check states its limitation and cannot stand
++in for an explicitly assigned separate final reviewer.
++
++## Keep evidence verifiable and the contract readable
++
++Record case IDs, commands, observed values/diagnostics, implementation and
++dependency fingerprints, relevant artifact identity, and raw result location.
++For split/high-risk workflows, identify the skill source/content version and
++exposed reviewer/context identity so stale instructions or routing are visible.
++Counts derive from actual invocations/results. List skipped or future gates as
++such. A helper must consume the intended artifact; an arbitrary cached binary
++or an ALL-PASS banner is not provenance.
++
++During repair, use a concise closure table:
++
++| Finding | Violated invariant | Applicable paths/consumers/states | Fix and permanent cases | Current result / remaining gap |
++|---|---|---|---|---|
++
++After two failed final reviews of the same delivery, review this table and the
++oracle before another repair. Preserve scope authorization and continue work;
++ask only for a genuinely changed requirement or missing decision.
++
++Keep one current task row per stable ID. Update current requirements and link
++prior revisions/findings/receipts rather than accumulating repeated active
++checkboxes. Detailed logs belong in durable evidence reports. Reuse an existing
++repository closeout gate when it fits; writing a new general checker is its own
++bounded implementation task, not a requirement for every Plan.

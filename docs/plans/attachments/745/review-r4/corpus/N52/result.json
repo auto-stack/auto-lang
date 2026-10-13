@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "build": null,
+  "kind": "reject",
+  "ok": true,
+  "run": null,
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\corpus\\N52\\input.at:1:29: error[text/source.syntax]: expected `fn`, found `unexpected`\n",
+    "stdout": ""
+  },
+  "input_sha256": "b1d35cfeec6e5f82785ac8bd2af7b0ebed68bca86d896e7b9f79a5fff9b83f6f",
+  "id": "N52"
+}

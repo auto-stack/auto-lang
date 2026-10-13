@@ -1,0 +1,13 @@
+{
+  "build": null,
+  "id": "H04-rhs-parens-4096",
+  "check": {
+    "stdout": "",
+    "stderr": "review hard deadline",
+    "exit": "TIMEOUT"
+  },
+  "want_native": null,
+  "want": 0,
+  "bytes": 16410,
+  "run": null
+}

@@ -1,0 +1,12 @@
+{
+  "id": "C12-keyword-full-language",
+  "source": "fn type() int { return 1 } fn main() int { return type() }",
+  "want": "keyword rejection",
+  "check": {
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r4\\probes\\C12-keyword-full-language\\input.at:1:4: error[text/source.unsupported]: keyword `type` cannot be used as a name\n",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

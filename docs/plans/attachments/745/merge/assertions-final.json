@@ -1,0 +1,23 @@
+{
+  "phase": "final",
+  "outcome": "pass",
+  "archive": "D:\\autostack\\auto-lang\\docs\\plans\\archive\\745-ac-source-checked-hir-native.md",
+  "delivery_commit": "2653e0088be1307119bb106ab0f82a4f4dc004f2",
+  "completed_tasks": 9,
+  "links_and_identities_verified": true,
+  "canonical_sources_current": true,
+  "ledger_ids_verified": [
+    "P741-2",
+    "P743-1",
+    "P743-2",
+    "P745-1",
+    "P745-2",
+    "P745-3",
+    "P745-4"
+  ],
+  "controls": [
+    "wrong-ledger-plan-rejected",
+    "wrong-navigation-plan-rejected",
+    "wrong-final-task-count-rejected"
+  ]
+}

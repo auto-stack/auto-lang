@@ -1,0 +1,1 @@
+fn main() int { var i = 0; while i < 20000 { let observed = mark_a(); i = i + 1 }; return 0 }

@@ -1,0 +1,18 @@
+// V-08: `a-1` is binary subtraction on the scalar surface — never a
+// negative-literal adjacency misread; negative literals still fold.
+fn sub1(a int) int {
+    return a - 1
+}
+
+fn main() int {
+    if sub1(5) != 4 { return 1 }
+    if sub1(0) != -1 { return 2 }
+    if sub1(-5) != -6 { return 3 }
+    let a = 10
+    let b = a-1
+    let c = a -1
+    let d = a- 1
+    if b != 9 || c != 9 || d != 9 { return 4 }
+    if 5 -3 != 2 { return 5 }
+    return 0
+}

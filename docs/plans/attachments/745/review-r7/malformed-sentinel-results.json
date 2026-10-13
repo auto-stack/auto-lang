@@ -1,0 +1,44 @@
+{
+  "before": [
+    {
+      "name": "app.exe",
+      "sha256": "34a5952a1b8eeb68f8cddbc38cbb68a71f39bb5c9230c897f06ec88eb364ba22"
+    },
+    {
+      "name": "app.obj",
+      "sha256": "6a7919bbc38e5196ad6884c1fbac4e9dc06734ebe7512e1d950679136916443f"
+    },
+    {
+      "name": "app.ac-link.txt",
+      "sha256": "ffff46a737c0b06857174d31bf3673871f4037c1c022c0fb2aa3c384fb276dcc"
+    }
+  ],
+  "run": null,
+  "sentinel_preserved": true,
+  "after": [
+    {
+      "name": "app.exe",
+      "sha256": "34a5952a1b8eeb68f8cddbc38cbb68a71f39bb5c9230c897f06ec88eb364ba22"
+    },
+    {
+      "name": "app.obj",
+      "sha256": "6a7919bbc38e5196ad6884c1fbac4e9dc06734ebe7512e1d950679136916443f"
+    },
+    {
+      "name": "app.ac-link.txt",
+      "sha256": "ffff46a737c0b06857174d31bf3673871f4037c1c022c0fb2aa3c384fb276dcc"
+    }
+  ],
+  "id": "M21-unclosed-source-sentinel",
+  "check": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M21-unclosed-source-sentinel\\input.at:1:62: error[text/source.syntax]: expected `,` or `)`\n",
+    "stdout": ""
+  },
+  "build": {
+    "exit": 1,
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M21-unclosed-source-sentinel\\input.at:1:62: error[text/source.syntax]: expected `,` or `)`\n",
+    "stdout": ""
+  },
+  "input_sha256": "07c120e960694834344679c2fb0067a18adca3976842b13ba7dd3a353f4b4349"
+}

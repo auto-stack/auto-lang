@@ -1,0 +1,19 @@
+D01-call-multiline-then-add check=0 diag= build=0 run=5
+D02-parenthesized-multiline-then-add check=0 diag= build=0 run=6
+D03-negative-multiline-arg check=0 diag= build=0 run=1
+D04-parenthesized-multiline-in-outer-parens check=0 diag= build=0 run=6
+D05-call-multiline-no-tail check=0 diag= build=0 run=2
+D06-unbracketed-negative-newline check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D06-unbracketed-negative-newline\input.at:2:1: error[text/source.syntax]: unbracketed expression cannot continue across a newline build= run=
+D07-colliding-outer-prefix-name check=0 diag= build=0 run=7
+D08-both-diverge-trailing check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D08-both-diverge-trailing\input.at:1:61: error[verify/verify.block-structure]: block `k4` is not reachable from the entry block (block graph must be connected and acyclic) build= run=
+D09-mixed-return-break-trailing check=0 diag= build= run=
+D10-stray-in-both-branches check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D10-stray-in-both-branches\input.at:1:27: error[verify/verify.loop-target-scope]: break target is not a loop enclosing this block
+D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D10-stray-in-both-branches\input.at:1:42: error[verify/verify.loop-target-scope]: continue target is not a loop enclosing this block
+D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D10-stray-in-both-branches\input.at:1:17: error[verify/verify.block-structure]: block `k0` has executable statements after a terminating statement
+D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D10-stray-in-both-branches\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths) build= run=
+D11-escaped-char check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D11-escaped-char\input.at:1:25: error[text/source.unsupported]: char literal `'\''` is not part of this source profile build= run=
+D12-keyword-named-arg check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D12-keyword-named-arg\input.at:1:55: error[text/source.unsupported]: keyword `type` is not part of this source profile build= run=
+D13-stray-branches-without-tail check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D13-stray-branches-without-tail\input.at:1:27: error[verify/verify.loop-target-scope]: break target is not a loop enclosing this block
+D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D13-stray-branches-without-tail\input.at:1:42: error[verify/verify.loop-target-scope]: continue target is not a loop enclosing this block
+D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D13-stray-branches-without-tail\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths) build= run=
+D14-dead-statement-after-valid-break check=1 diag=D:\autostack\auto-lang\docs\plans\attachments\745\review-r7\extra-probes\D14-dead-statement-after-valid-break\input.at:1:31: error[verify/verify.block-structure]: block `k2` is not reachable from the entry block (block graph must be connected and acyclic) build= run=

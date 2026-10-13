@@ -1,0 +1,12 @@
+{
+  "seconds": 5.0456113,
+  "id": "J4096-False",
+  "result": {
+    "timed_out": true,
+    "stderr": "\nthread 'main' (35780) has overflowed its stack\n",
+    "exit": "TIMEOUT",
+    "stdout": ""
+  },
+  "balanced": false,
+  "bytes": 12314
+}

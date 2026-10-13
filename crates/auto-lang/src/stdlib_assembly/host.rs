@@ -93,6 +93,23 @@ struct AdapterRule {
 }
 
 const ADAPTER_RULES: &[AdapterRule] = &[
+    // Generic Auto JSON values are serialized through a type-identical Rust
+    // `T: serde::Serialize` producer. The dedicated verifier checks that bound.
+    AdapterRule {
+        shape: AdapterShape::Plain,
+        module: "json",
+        symbol: "encode",
+        runtime: RuntimeSpec::Both,
+        callee: "encode",
+        arity: 1,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::Scalar("str"),
+        param_facades: &[],
+        public_params: &["T"],
+        extension_params: &[],
+        public_return: "str",
+    },
     // —— PLAN-724 状态侧信道族（body 选中 / status 进 thread-local）——
     AdapterRule {
         shape: AdapterShape::StatusSideChannel,
@@ -782,13 +799,13 @@ fn verify_adapted_reference(
             ),
         ));
     }
-    if !producer.sig.generics.params.is_empty() {
-        return Err(unproved(
-            module,
-            symbol,
-            "generic producer has no adapter contract",
-        ));
-    }
+    let public_signature = public.signature.as_ref().ok_or_else(|| {
+        unproved(module, symbol, "public logical signature missing")
+    })?;
+    let generic_names =
+        adapter_generic_names(module, symbol, &producer.sig, public_signature).ok_or_else(|| {
+            unproved(module, symbol, "generic producer has no adapter contract")
+        })?;
     let mut adapters: Vec<&'static str> = Vec::new();
     let mut parameters = Vec::new();
     for parameter in &producer.sig.inputs {
@@ -825,17 +842,19 @@ fn verify_adapted_reference(
                 adapters.push("declared param facade view adapter");
                 Some(face)
             }
-            None => logical_type(&parameter.ty).or_else(|| {
-                type_segment(&parameter.ty).and_then(|segment| {
-                    rule.param_facades
-                        .iter()
-                        .find(|(producer, _)| *producer == segment)
-                        .map(|(_, face)| {
-                            adapters.push("async facade handle view adapter");
-                            face.to_string()
-                        })
-                })
-            }),
+            None => logical_type(&parameter.ty)
+                .or_else(|| verified_generic_identity(&parameter.ty, &generic_names))
+                .or_else(|| {
+                    type_segment(&parameter.ty).and_then(|segment| {
+                        rule.param_facades
+                            .iter()
+                            .find(|(producer, _)| *producer == segment)
+                            .map(|(_, face)| {
+                                adapters.push("async facade handle view adapter");
+                                face.to_string()
+                            })
+                    })
+                }),
         };
         parameters.push(logical.ok_or_else(|| {
             unproved(
@@ -954,7 +973,7 @@ fn verify_adapted_reference(
         producer: format!("{}::{}", producer_id, emission.callee),
         receiver: owner,
         is_static,
-        generics: Vec::new(),
+        generics: generic_names,
         error_shape,
     };
     // 3. 公共声明 ↔ 适配投影（扩展位由契约冻结，不与公共声明对拍）。
@@ -987,7 +1006,7 @@ fn check_public_projection(
         .as_ref()
         .ok_or_else(|| unproved(module, symbol, "source logical signature missing"))?;
     let projection = super::model::LogicalSignature {
-        generics: Vec::new(),
+        generics: contract.generics.clone(),
         parameters: rule.public_params.iter().map(|p| p.to_string()).collect(),
         parameter_modes: rule.public_params.iter().map(|_| "View".into()).collect(),
         returns: rule.public_return.to_string(),
@@ -1066,7 +1085,7 @@ fn verify_plain_reference(
             ),
         ));
     }
-    if !producer.sig.generics.params.is_empty() {
+    if has_unsupported_generics(&producer.sig) {
         return Err(unproved(
             module,
             symbol,
@@ -1365,6 +1384,92 @@ fn producer_return_logical(signature: &syn::Signature) -> Option<String> {
     }
 }
 
+/// Rust lifetimes affect borrow validity but not the logical value signature
+/// checked by the Auto standard-library contract. Type/const generics and
+/// explicit where constraints still require a dedicated adapter contract.
+fn has_unsupported_generics(signature: &syn::Signature) -> bool {
+    signature.generics.where_clause.is_some()
+        || signature
+            .generics
+            .params
+            .iter()
+            .any(|parameter| !matches!(parameter, syn::GenericParam::Lifetime(_)))
+}
+
+fn adapter_generic_names(
+    module: &str,
+    symbol: &str,
+    producer: &syn::Signature,
+    public: &super::model::LogicalSignature,
+) -> Option<Vec<String>> {
+    if producer.generics.where_clause.is_some() {
+        return None;
+    }
+
+    if public.generics.is_empty()
+        && producer
+            .generics
+            .params
+            .iter()
+            .all(|parameter| matches!(parameter, syn::GenericParam::Lifetime(_)))
+    {
+        return Some(Vec::new());
+    }
+
+    if module != "json" || symbol != "encode" || public.generics != ["T"] {
+        return None;
+    }
+
+    if producer.generics.params.len() != 1 {
+        return None;
+    }
+    let syn::GenericParam::Type(type_param) = &producer.generics.params[0] else {
+        return None;
+    };
+    if type_param.ident != "T" || type_param.default.is_some() || type_param.bounds.len() != 1 {
+        return None;
+    }
+    let syn::TypeParamBound::Trait(bound) = &type_param.bounds[0] else {
+        return None;
+    };
+    let trait_path: Vec<String> = bound
+        .path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect();
+    if trait_path != ["serde", "Serialize"] {
+        return None;
+    }
+
+    if producer.inputs.len() != 1 {
+        return None;
+    }
+    let syn::FnArg::Typed(argument) = &producer.inputs[0] else {
+        return None;
+    };
+    let syn::Type::Reference(reference) = argument.ty.as_ref() else {
+        return None;
+    };
+    let syn::Type::Path(parameter_type) = reference.elem.as_ref() else {
+        return None;
+    };
+    if !parameter_type.path.is_ident("T") {
+        return None;
+    }
+    let syn::ReturnType::Type(_, return_type) = &producer.output else {
+        return None;
+    };
+    let syn::Type::Path(return_path) = return_type.as_ref() else {
+        return None;
+    };
+    if !return_path.path.is_ident("String") {
+        return None;
+    }
+
+    Some(vec!["T".into()])
+}
+
 fn producer_return_segment(signature: &syn::Signature) -> Option<String> {
     match &signature.output {
         syn::ReturnType::Type(_, ty) => match ty.as_ref() {
@@ -1377,6 +1482,29 @@ fn producer_return_segment(signature: &syn::Signature) -> Option<String> {
         },
         _ => None,
     }
+}
+
+/// Map a producer parameter to its public generic identity only after the
+/// adapter contract has proved the generic declaration and its bounds.
+fn verified_generic_identity(ty: &syn::Type, generics: &[String]) -> Option<String> {
+    let ty = match ty {
+        syn::Type::Reference(reference) if reference.mutability.is_none() => {
+            reference.elem.as_ref()
+        }
+        _ => ty,
+    };
+    let syn::Type::Path(path) = ty else {
+        return None;
+    };
+    if path.qself.is_some() || path.path.segments.len() != 1 {
+        return None;
+    }
+    let segment = path.path.segments.first()?;
+    if !matches!(segment.arguments, syn::PathArguments::None) {
+        return None;
+    }
+    let name = segment.ident.to_string();
+    generics.iter().any(|generic| generic == &name).then_some(name)
 }
 
 /// producer 返回必须是逻辑形状逐位匹配的 tuple（契约声明，非猜测）。
@@ -1686,6 +1814,65 @@ mod plan738_host {
         .unwrap()
         .unwrap();
         assert_eq!(proof.producer, "crates/auto-lang/src/a2r_std.rs::parse");
+    }
+
+    #[test]
+    fn embedded_json_get_accepts_lifetime_only_producer_generics() {
+        let proof = verify_rust_reference(
+            "json",
+            "JsonValue.get",
+            "a2r_std::json::get(&value, \"key\")",
+            RustRuntime::Embedded,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(proof.producer, "crates/auto-lang/src/a2r_std.rs::get");
+        assert_eq!(proof.selected_adapter.returns, "JsonValue?");
+
+        let lifetime = syn::parse_str::<syn::Signature>(
+            "fn get<'a>(value: &'a Value, key: &str) -> &'a Value",
+        )
+        .unwrap();
+        let type_parameter = syn::parse_str::<syn::Signature>("fn get<T>(value: T) -> T").unwrap();
+        assert!(!has_unsupported_generics(&lifetime));
+        assert!(has_unsupported_generics(&type_parameter));
+    }
+
+    #[test]
+    fn json_encode_proves_only_the_declared_serde_generic_identity() {
+        for runtime in [RustRuntime::Standalone, RustRuntime::Embedded] {
+            let proof = verify_rust_reference(
+                "json",
+                "encode",
+                "a2r_std::json::encode(&value)",
+                runtime,
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(proof.selected_adapter.generics, ["T"]);
+            assert_eq!(proof.selected_adapter.parameters, ["T"]);
+            assert_eq!(proof.selected_adapter.returns, "str");
+            assert_eq!(proof.verification, VerificationLevel::SignatureChecked);
+        }
+
+        let public_root = super::super::loader::repo_stdlib_root().unwrap();
+        let public_text = std::fs::read_to_string(public_root.join("json.at")).unwrap();
+        let public = super::super::loader::parse_layer(
+            &public_text,
+            LayerKind::Public,
+            "stdlib/auto/json.at".into(),
+        )
+        .symbols
+        .into_iter()
+        .find(|entry| entry.is_pub && entry.name == "encode")
+        .unwrap()
+        .signature
+        .unwrap();
+        let wrong_bound = syn::parse_str::<syn::Signature>(
+            "fn encode<T: Clone>(value: &T) -> String",
+        )
+        .unwrap();
+        assert!(adapter_generic_names("json", "encode", &wrong_bound, &public).is_none());
     }
 
     #[test]

@@ -1,0 +1,1479 @@
+[
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "6c0e1cd533df17eb5290317c79965e5a836a1b15e5947fa6ca4dc7930336c282"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "3c922ec8e877870cdd1e26cc950119db18eff82a8675b82c5a80c0feea89f946"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "4e01d55ed212ea1d60a63593de913c1ad0967d9d9cda90d49fc6a32d74578c79"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "a09b91f416483d65d8d75a46a20d3e28645844f268496ef45207d2fba16d32d2",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P01\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P01\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P01\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P01\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 8a05bd512dedb602\n",
+      "exit": 0
+    },
+    "id": "P01",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=8a05bd512dedb602, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 14
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "934b756f21ac05239a2837a0b6bbbed2c7c0baf39719950757fa342a13751f89"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "1fc4ee787b5ad68cafd7679ca73ea7368369da07fdc726b4720aa6a72a8824eb"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "d74b8ed82902880acc5668d71cd3c2fb8a9d79bb9e35bdd3e6fab53f4925a5d1"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "b6606ec99ca3b038da755a09fdd4cdb3ce8a8ac4002f5b8d6b2f5cabe1b463a4",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P02\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P02\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P02\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P02\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 825765e6f7e32f28\n",
+      "exit": 0
+    },
+    "id": "P02",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=825765e6f7e32f28, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 1
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "8ddda77ab8da5739a9d6ea538c8cf7c03db110473ac21e0197da4e8246b49540"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "6405aab1b44ddcc728af6864b8adcabb6efefc02f0067c5e3cacb0cfdbe77386"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "30df211c528e4a5d3a959a8a8ee3c6a04e025930511e8d2977524999787fdb2b"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "aefe99819ee76bc82ae51933ea42dbc957c92d963cdfa9fd58d68ced8ea5a374",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P03\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P03\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P03\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P03\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 246f42850a509297\n",
+      "exit": 0
+    },
+    "id": "P03",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=246f42850a509297, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 7
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "542536ef0ce719285d65487f1a4f0c246cff7233abcdd67dde8c7774f7e108ca"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "dcb67b20cb5c2fa2f845cc8bc801e085cfa7ca417ab4de49fdb7f1a383b5f332"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "ccbfdc4910e271978220604d396912baf4b286ee7eb1080463a55f444ed77401"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "556dcc51e11bf7b723e3b061db1c2d614e845770f41617857dfd0bd1425189bf",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P04\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P04\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P04\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P04\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 41da7f3b8b6d3ca0\n",
+      "exit": 0
+    },
+    "id": "P04",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=41da7f3b8b6d3ca0, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 3
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "25c478bbbb8ec74780b3a90d432cb8c6fc8d340a9f5d4db342802c6063f329b5"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "b7b35bc54197a0a89319abc5304ea9a48ad0afcbcab84ba1b70e18f685260d66"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "d55d3a36996b0f019e2e3127a643ff8949edf30e9ba6caedf4209dead35f8c14"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "1407ca813c5aeaff33017aafd342faaf6ad67a11418e554536097bfc14b3759d",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P05\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P05\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P05\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P05\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 7f54a27fd15f5598\n",
+      "exit": 0
+    },
+    "id": "P05",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=7f54a27fd15f5598, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 1
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "2f5b3ff034d9f46187721c81c7f77647091a3b5d15a22105a7a9320767755b35"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "442770e4c57c5260857fd8c5e08d4a340f027a27d1114be6b3830903b1e2ef3c"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "0fe1a8d690d69e83d65c35711328d9d2b01beb62edb2da5946953fbb13f6e6d0"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "91435499a6b92ff818d280349c0d9b780078c4cf7faa7af074849c7cd81270c8",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P06\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P06\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P06\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P06\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: d981168ca0aeb69e\n",
+      "exit": 0
+    },
+    "id": "P06",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=d981168ca0aeb69e, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 3
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "c57c3336d71192dac313c2fe3285e14abb9b6939eefa525319c6e5f1a9661fd5"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "a793a9482f262a19b23b518e772ced784d96770de182cf9726d825202072a492"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "d282db4dc44efd04f02e62017116f4bc23ccc739a76748a6cf3804f9595a20a8"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "6506162d22ce0d398111d739fe3815c017a5aebdd7709c631f0bff84ae856528",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P07\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P07\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P07\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P07\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: caa2b4a5a330dab6\n",
+      "exit": 0
+    },
+    "id": "P07",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=caa2b4a5a330dab6, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 5
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "db2776506d4b2dfa3cf22dd7bf72113af6075c8f0faa014c7c1996b148fd2b43"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "35ba48f01e5d84c761373f68f1c331aa17810decf64dd1be85ba68356e12d6bf"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "bc0dd5588cdead540cb78be654aedb6f2559f752d3aa340ef8685b5843e9cba3"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "dcda62893983d3ba20e17760b11258cf3eb797816e3531781a93515832944a85",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P08\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P08\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P08\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P08\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 8112ea7043ee9260\n",
+      "exit": 0
+    },
+    "id": "P08",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=8112ea7043ee9260, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 3
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "69486dec3c4aa7d1a9dcf867d56e7669bb066264b5a83a9e1b01c9c02988096c"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "1bd74175ace9baaaf9c4e66d4d6c1de73b7ad873ab04d3e06eaa28f4f8586dff"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "71ad7cbd672c84dcc4f78122efa7f6c40b826506d0e8619ff01a6f5a0daf39ca"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "6491415ef21f2a0204141fa9a637e38d6d5f240715d777eb0ddc9676e2e8fb62",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P09\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P09\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P09\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P09\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 36f512c63ceeafca\n",
+      "exit": 0
+    },
+    "id": "P09",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=36f512c63ceeafca, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 8
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "bc813f3c82bd09bc862c4f300fc6dd1e53d620fcf2f724d9a21b1e9820555bff"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "b34cce11a0e5378996977e19458a6c30ffceb9a9b34c5f1844e8b34c29b998be"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "c50b49974d8672f67bbc58aa62801556d7c53b4a6ccabe2c509b3a4e93f7939c"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "3fa87ea52dea38eb0ed750c0e4c87f03e966244ae2f17e5f235f198419309bea",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P10\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P10\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P10\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P10\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 3c3495f69c1350bc\n",
+      "exit": 0
+    },
+    "id": "P10",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=3c3495f69c1350bc, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 5
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "d3c10ea2a50df47fab6d280af811490f3882a0949cc6a1bb498cc451585c3bd2"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "3987726d1fe4612bd094cc5804e7efddd7bdb51ba6c5185ec32afd7273682416"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "dff9c4e5f83b13cf19e11ece01812357c2742a335cce106b50b6374dcff002e4"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "25bc370a6fcebac19fb5ea49d1a48f103f3da6c0f0ad82d8ba6b6fb8f49ad70d",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P11\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P11\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P11\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P11\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 7650468dd76f1db3\n",
+      "exit": 0
+    },
+    "id": "P11",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=7650468dd76f1db3, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 0
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "5262e06921bb7193490aaeb58f8c991cd384fb772b309386b3473d5b8d7b057e"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "f07fb918525b1b571cb63908685e3c452071d79e9ac106cfdd83750db2cafcd5"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "d36c09a793a79a2343c11cc7d5ca8f5cabdb224c52660e8175be6a408f8324a3"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "490f0a01093a4ca34d8fa039f1bb14b59f499c88dde60f9acdee571f7ac5b201",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P12\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P12\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P12\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P12\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 757a21dcad0414cf\n",
+      "exit": 0
+    },
+    "id": "P12",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=757a21dcad0414cf, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 0
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "402b456cd0f00176499fb32e398e90f5b0d0a574c62da017f601ee3e646efc6f"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "136073db9e015e104557b2d34899b90b99fa13e9abea180063bc98c71c7d0601"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "3eaa218f8009196fd63957120b2db4ee40afd1a901b6db73cb8af9a31032e9a3"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "3c8688fdacd28eecf38afb69647da79926dd95d998dfa0a9a7f5717cfee9d0f9",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P13\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P13\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P13\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P13\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: a4f6cfaca3bc392e\n",
+      "exit": 0
+    },
+    "id": "P13",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=a4f6cfaca3bc392e, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 70
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "28bac8127642c7a175d0e5ae3fb4ae859665524e338915025d5cc7a3fbae86fe"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "d1bed80c5bfa2747e5b4686de899089dab6d290e5ab4e09e9c8785c595d1e44d"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "b0e3e83810fb60b436de4fb49a2b759bde1f2b2ff77ddec3e8acfec014226dbe"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "8ce02fbc3c958173f08d1b1ed3015475b14ee6565cc84cfed001502bb59596c0",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P14\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P14\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P14\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P14\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: ae2dafc221e473e0\n",
+      "exit": 0
+    },
+    "id": "P14",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=ae2dafc221e473e0, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 70
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "7231e596f1f493ec4f04f6d167988835eac14139f3011d44e8423f89bac74c38"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "2bb216255e0ade50b8fc124cbe2d2a151ed71beb56e9273f256404fb7aca0b07"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "3f85ee241fa0660d2ef4394ff57d1de9037bd07b275b4c87928ed8ceaf092130"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "94a9724690289d3143345d808530261a3564f5dba758c3dc1f1047039f167052",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P15\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P15\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P15\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P15\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 2650c02500eccf37\n",
+      "exit": 0
+    },
+    "id": "P15",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=2650c02500eccf37, module(s)=1, capabilities required: [\"hir.test.trace.v1\"]\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "ba",
+      "stdout": "",
+      "exit": 12
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "e1c7afd75d555633753b861379a4e34145781b40252d6c4aadd436714529bade"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "b306df7f39a9ef99124bd0971225f0bb063fc8890624c87a45f2ce9b83213c46"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "d79ec6ff949e680b8a47ffc94a01f94bad03b4770dd8617af2320f20f384a30b"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "92d485c28495cc6c80460ffbde91f37ebfd8815d355472b8480fb3837837dfba",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P16\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P16\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P16\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P16\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: eaf6ca5f504fc3df\n",
+      "exit": 0
+    },
+    "id": "P16",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=eaf6ca5f504fc3df, module(s)=1, capabilities required: [\"hir.test.trace.v1\"]\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "a",
+      "stdout": "",
+      "exit": 70
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "bc75815d6b8b591ad5e555f3f22c926f09d4f8940a1214681af7105086855205"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "f8249c612674182849ded371f2e9210a8965f928ea9a8c153ee1c8a0a1bb5817"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "3636cb209edd2cb6af03c0a985084215d90b9a16e7b156229d96493cc08a54f2"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "d47441320bbb727380548d50954d9d7fdc0c5e5cd9b67de34f4c9209d129ad8f",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P17\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P17\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P17\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P17\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 84a68617981d330a\n",
+      "exit": 0
+    },
+    "id": "P17",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=84a68617981d330a, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 6
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "ce1873f1e385c2b14a71cb46c7bc352998b0d4804f6e10b1df09bfe2ee9cc177"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "7f12dcc63dd09a0ff73006bd5f0ef0cb05063d1a137cf767e051f1a7635b17e1"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "e8717949fe22b4c849ab518914111bc37fe87e0ea0db25968b9ce8af87364fa9"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "8426728f973314cfab2c8709a69be072f649d1ff09514bae8218d2c9096bc63f",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P18\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P18\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P18\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P18\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: fefb135b5a6bfa3b\n",
+      "exit": 0
+    },
+    "id": "P18",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=fefb135b5a6bfa3b, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 4
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "72c791fdefb7a7a921cf887d8c1764d732d601fa6c2d252f6acd93b503241ebd"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "f0490ad1fe583a095940b5ac6f373ad8ae12fd449233b8e66419a722ce0f0aea"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "79c10e8b588e8476a6c96642a5447a2dc2b0fc5d9cea7a5463487efa9ba97a63"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "1fd8da912590117a42d5825c0340e0f33d587cea8a7e6c8b4afec45c4c06b290",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P19\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P19\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P19\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P19\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: d359f877baed0ab7\n",
+      "exit": 0
+    },
+    "id": "P19",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=d359f877baed0ab7, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 6
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "6f274cae5093e15d9adcde172e02e7fd4c76dc0b8be79fdaf097c4fedfd5ed56"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "47aab9c16054e2d24c9ece3ac9b340481478cb009530de3a176431b0156323b0"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "91af62e62a6740906883f1c8f33643bd7c641a6744a8aa46e5ecc2a2bac818c1"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "08e75dceb6aea83f48a91d92e8a45e3afeedef3aea0a9d8cb8940187ce088e01",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P20\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P20\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P20\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P20\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: fdc747fdcf42c68b\n",
+      "exit": 0
+    },
+    "id": "P20",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=fdc747fdcf42c68b, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 0
+    }
+  },
+  {
+    "kind": "native",
+    "artifact_hashes": [
+      {
+        "name": "app.exe",
+        "sha256": "21cdfd438aedcfc38c685815de9f7ac9025d1374608355b843950551b211c487"
+      },
+      {
+        "name": "app.obj",
+        "sha256": "e751a4564792539d2518b5a59127c6d5f0165ad558d741d4ddd978def9b96f47"
+      },
+      {
+        "name": "app.ac-link.txt",
+        "sha256": "0cd45053d04421c3a4da37f42f4601bb6c6afa289cbdb3f2d4fb0d3194060a34"
+      }
+    ],
+    "ok": true,
+    "input_sha256": "393d727cdb3144f74cefe07366f264537b6e04ef3b6062a6c272697dcb4bf811",
+    "build": {
+      "stderr": "",
+      "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P21\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P21\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P21\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\P21\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 34adc6b93115990c\n",
+      "exit": 0
+    },
+    "id": "P21",
+    "check": {
+      "stderr": "",
+      "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=34adc6b93115990c, module(s)=1, capabilities required: []\n",
+      "exit": 0
+    },
+    "run": {
+      "stderr": "",
+      "stdout": "",
+      "exit": 4
+    }
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "8bc37dc200d665b5f3af7fb16b4dee9e85dcc0c2b4c3d423c98b18f013654afe",
+    "build": null,
+    "id": "N01",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N01\\input.at:1:24: error[text/source.literal-range]: integer literal `2147483648` is outside the signed 32-bit range of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "33f1f729e0f95b8e48e9a6a4e88fac2f84e033f220f1cfbf8a0b14cbf2e42dfb",
+    "build": null,
+    "id": "N02",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N02\\input.at:1:24: error[text/source.literal-range]: integer literal `-2147483649` is outside the signed 32-bit range of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "5ef6f0588fa10f32d852b218490a3acc0d055bc9f345a88d699006823ece243a",
+    "build": null,
+    "id": "N03",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N03\\input.at:2:24: error[bind/source.undefined]: no local named `missing` in scope\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "d0b87250db3d0d90d1a32e3f54be2d15ea7bdca0086a8dbbdf0e63ffade926f8",
+    "build": null,
+    "id": "N04",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N04\\input.at:1:24: error[verify/source.type-mismatch]: expected i32, found bool\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "9aa8749b76bec6ebcc90557a97bbc599e1e8eb1fc9a90675614a26cb87f635a3",
+    "build": null,
+    "id": "N05",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N05\\input.at:1:20: error[verify/source.type-mismatch]: expected bool, found i32\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "bb91dbcc9b85c5b9c23d0bd9853f554e19fd3ecc67ae4d22aafd2b10c3dab552",
+    "build": null,
+    "id": "N06",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N06\\input.at:1:24: error[verify/source.type-mismatch]: expected i32, found bool\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "9e3103f223e3279ff112257cfcad24760d8c872ee497c1ba8a6a60c497d8544e",
+    "build": null,
+    "id": "N07",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N07\\input.at:1:28: error[verify/verify.immutable-write]: local `l0` is immutable and cannot be assigned\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "47504d299c684fbccc709c896993ebc0d3b128a5141f013f8a7fafe6792289a4",
+    "build": null,
+    "id": "N08",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N08\\input.at:1:32: error[bind/source.duplicate]: local `x` is declared more than once in this block\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "16d723918ce80369a579b0abfe87017f07dd9810eb10d2a34f01f56c2e8d0004",
+    "build": null,
+    "id": "N09",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N09\\input.at:1:47: error[bind/source.undefined]: local `x` does not escape its declaring block\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "bc8c844b0dd459a5fab1f000b600a74d8ccf32feeef3a92dac44e94c3b478706",
+    "build": null,
+    "id": "N10",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N10\\input.at:2:24: error[bind/source.argument]: `f` expects 1 argument(s), found 0\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "eff554b20342b759d3ab6b208c58de6496a742e52eacf40f7229831b36cf3a40",
+    "build": null,
+    "id": "N11",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N11\\input.at:2:32: error[bind/source.argument]: argument `x` is passed more than once\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "616247f87bbfb88dbe749df857575a0b66f5f8348062e28711830efde2de6c7f",
+    "build": null,
+    "id": "N12",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N12\\input.at:2:26: error[bind/source.argument]: `f` has no parameter named `y`\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N12\\input.at:2:24: error[bind/source.argument]: parameter `x` of `f` is not bound\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "a2e58554d50e1be951aab0acf08816eb636c32d9ffc8db614ba73031ff44668c",
+    "build": null,
+    "id": "N13",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N13\\input.at:2:29: error[bind/source.argument]: arguments must be either all positional or all named\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "15f32cf2bed56e68a2dbc24e09d0071bec6b05dedf82ec76a6201ff7fda9e7b1",
+    "build": null,
+    "id": "N14",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N14\\input.at:2:26: error[verify/source.type-mismatch]: expected i32, found bool\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "861961a0ec429160969fa9278d415b59b723e6b6e21acbeb9b53a0bcfd4a1924",
+    "build": null,
+    "id": "N15",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N15\\input.at:1:17: error[verify/verify.loop-target-scope]: break target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N15\\input.at:1:17: error[verify/verify.block-structure]: block `k0` has executable statements after a terminating statement\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N15\\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths)\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "882bf5f6c1371b3cd926eff81517a157228eba9773211dad97bef226f98345c8",
+    "build": null,
+    "id": "N16",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N16\\input.at:1:17: error[verify/verify.loop-target-scope]: continue target is not a loop enclosing this block\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N16\\input.at:1:17: error[verify/verify.block-structure]: block `k0` has executable statements after a terminating statement\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N16\\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths)\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "fdedcbded03cc9ec7f8ac3c8c041a5f9c3b4f16f3b6b575367072115a60b7089",
+    "build": null,
+    "id": "N17",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N17\\input.at:1:4: error[verify/verify.no-return-path]: body `b_main` has no return path (entry block must return on all paths)\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "324c250b3563c69664a68942c0b332489f55eff3f9b5d90f764025c9763bc3fb",
+    "build": null,
+    "id": "N18",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N18\\input.at:1:27: error[verify/verify.block-structure]: block `k1` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "f4cb119361a28dc713a7a3c5a4be6a0efb651fad62cac6165c7a1e161ab42a2d",
+    "build": null,
+    "id": "N19",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N19\\input.at:1:17: error[text/source.unsupported]: locals must be initialized at declaration in this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "f6830e4f2fc9e8993448fc17110c19d6e3ac8d2bff4ca34718fa74f70557971b",
+    "build": null,
+    "id": "N20",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N20\\input.at:1:24: error[text/source.unsupported]: char literal `'a'` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "6570522639bbf9ab47ab08cd7fea661df26bf73d44e25667262d898cecd023f4",
+    "build": null,
+    "id": "N21",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N21\\input.at:1:23: error[text/source.unsupported]: type `str` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "b97271c2437e608f5924178e0bc32eb3ad673ff37bebf24153f79d51eb5ee0c8",
+    "build": null,
+    "id": "N22",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N22\\input.at:1:11: error[text/source.unsupported]: type `i64` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "fb94dcd10d93586682ae475c4222fd19af4da4196e1a33f9a757be375c9c438f",
+    "build": null,
+    "id": "N23",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N23\\input.at:1:26: error[text/source.unsupported]: operator `-` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "84830ad5cdfca9eae41a4e9fc61a65f9502a91ad4cf5bd43fb0803c7f67f5959",
+    "build": null,
+    "id": "N24",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N24\\input.at:1:26: error[text/source.unsupported]: operator `/` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "e8af31d10a6738efbe24f079e35ad087f7531afea990fdbc942fc22405e7e7a4",
+    "build": null,
+    "id": "N25",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N25\\input.at:1:25: error[text/source.unsupported]: operator `&&` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "7ed72d6e9c1291cb506854b0647b9bbae11bc6a6be48d099ca24dc990e0ae991",
+    "build": null,
+    "id": "N26",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N26\\input.at:1:28: error[text/source.unsupported]: `checked` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "488a8105f9188cd7578a1b66197436acfd19437c8d43146173b9028b308b8c2f",
+    "build": null,
+    "id": "N27",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N27\\input.at:2:35: error[bind/source.not-callable]: `f` is a local, not a function; it cannot be called\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "fa14b5acb88c674f5511c41d5bc2ec34939166fd57b1024ea8c3304e0516e493",
+    "build": null,
+    "id": "N28",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N28\\input.at:1:31: error[bind/source.not-callable]: `mark_a` is a local, not a function; it cannot be called\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "c70144e611b4be0c61b324d0a649c78b327b95327a509ba807f564d9fd74428d",
+    "build": null,
+    "id": "N29",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N29\\input.at:1:40: error[bind/source.not-callable]: `mark_b` is a local, not a function; it cannot be called\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "369fff34de79755203c96001dd24667b4ad99d3f7ac33d5fabcf12fb197129ef",
+    "build": null,
+    "id": "N30",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N30\\input.at:1:25: error[text/source.syntax]: expected statement or `}`, found end of file\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "5b531720a011212ec53751a01ff4a5c50ef8b875aaf0a853f3495d5f3439e6ef",
+    "build": null,
+    "id": "N31",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N31\\input.at:1:24: error[text/source.lex]: unknown character `@`\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "da79aa9dd0e0fc474c21a94cd0a8cd4db2e3b384f31c4d80c97a41ec50ea94ac",
+    "build": null,
+    "id": "N32",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N32\\input.at:2:1: error[bind/source.duplicate]: function `f` is declared more than once\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "0384b47794d238412a28c662d5675ba469939641990eacb38464d0a5cd5dc18d",
+    "build": null,
+    "id": "N33",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N33\\input.at:1:6: error[bind/source.duplicate]: parameter `x` is declared more than once\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "02d1e4343c6a8e0b72671b63f56179bc161dc762472fc26c0e2b1237f1ea921f",
+    "build": null,
+    "id": "N34",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N34\\input.at:2:28: error[text/source.unsupported]: operator `%` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "74e1864196e224f19f1627666ecc159cd179a5bc7ef692e560249ddcd17f0224",
+    "build": null,
+    "id": "N35",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N35\\input.at:1:37: error[text/source.unsupported]: operator `==` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "8901864fa2fdde6230987ed9b6ce069b6b35c14bf980891ea779ae77eefb72a1",
+    "build": null,
+    "id": "N36",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N36\\input.at:1:35: error[text/source.unsupported]: unary minus is only supported directly before an integer literal in this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "4896c89764d3994a1cef98ff4e507bf49bf39d5a0c58db049aebd35147e0c046",
+    "build": null,
+    "id": "N37",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N37\\input.at:1:24: error[text/source.unsupported]: suffixed/radix/float numeric literal `1i32` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "3fee4fde8b1cbb58ea02c35b1384644c716ccf89791c951031b0f0b5c2f83d0e",
+    "build": null,
+    "id": "N38",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N38\\input.at:1:24: error[text/source.unsupported]: suffixed/radix/float numeric literal `0x10` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "216f0f10f8aba500318675f6c9c1cb9d7fabc5a74f69d4e5956b5c07fb46a3b5",
+    "build": null,
+    "id": "N39",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N39\\input.at:1:1: error[text/source.unsupported]: `use` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "1b38623f422da9e5503bdbf3f4f933c3489b6292faf45f85719f02de1ed57943",
+    "build": null,
+    "id": "N40",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N40\\input.at:1:1: error[text/source.unsupported]: `let` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "469c9bac6ddae909ecf99fd5bf0a7ba0015cf4292e9f4e201cc227474e5e665b",
+    "build": null,
+    "id": "N41",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N41\\input.at:1:17: error[text/source.unsupported]: expression statements are not part of this source profile; calls are only allowed in initializers, assignments, returns and conditions\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "1ef24a91c554cbb56b3aac323551e9f7a2b7cfa95bde5768c4a4362f819f1f15",
+    "build": null,
+    "id": "N42",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N42\\input.at:1:4: error[text/source.unsupported]: function return type annotation (`int`/`i32`/`bool`) is required\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "1d7df007cefb7ad65823088680b689b995d7ea9124e872d7ee58f8b7c9135ede",
+    "build": null,
+    "id": "N43",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N43\\input.at:1:23: error[text/source.unsupported]: type `List` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "612e7063f7db0d3b6633de611ca212c68c60b9477fb80911b713ad8b95790267",
+    "build": null,
+    "id": "N44",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N44\\input.at:1:1: error[text/source.unsupported]: `type` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "e91bfa2bb918cb4da967aae996bc0124ce793f090a64573315170907047d64f0",
+    "build": null,
+    "id": "N45",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N45\\input.at:1:1: error[text/source.unsupported]: `enum` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "5b5d2ed6a7b4b2084459e4febcaeb5dce7b53e60d6d71eebfcd0d156839b5053",
+    "build": null,
+    "id": "N46",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N46\\input.at:1:17: error[text/source.unsupported]: `for` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "7ad1fadb16494c7878662acb297f13fb565c7c07f1c9304ffa57737c608fa623",
+    "build": null,
+    "id": "N47",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N47\\input.at:1:24: error[text/source.unsupported]: suffixed/radix/float numeric literal `1.5` is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "1966ac365160a35168c6eaaecb7db05213716794b16ed0a7b77af9888eeca41c",
+    "build": null,
+    "id": "N48",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N48\\input.at:1:28: error[text/source.unsupported]: block comment is not part of this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "810cf8803ccb956bc68db570a156a6acf3a4933fe02d915dc149c4dd8b9d3d3b",
+    "build": null,
+    "id": "N49",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N49\\input.at:1:21: error[text/source.unsupported]: non-ASCII character cannot be used as a name in this source profile\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "f6a5d7b595218d80fe0f5a5bb2b2064495cd825e2c668614893446dd2ba27cc8",
+    "build": null,
+    "id": "N50",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N50\\input.at:1:24: error[bind/source.undefined]: no function named `absent` in this module\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "975f0287f967d4cba27b209ebb02c07e74c3b945be3a33e3205afdb59ceee23c",
+    "build": null,
+    "id": "N51",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N51\\input.at:1:24: error[verify/source.type-mismatch]: expected i32, found bool\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N51\\input.at:1:24: error[verify/source.type-mismatch]: expected i32, found bool\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "b1d35cfeec6e5f82785ac8bd2af7b0ebed68bca86d896e7b9f79a5fff9b83f6f",
+    "build": null,
+    "id": "N52",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N52\\input.at:1:29: error[text/source.syntax]: expected `fn`, found `unexpected`\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  },
+  {
+    "kind": "reject",
+    "artifact_hashes": [],
+    "ok": true,
+    "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build": null,
+    "id": "N53",
+    "check": {
+      "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\corpus\\N53\\input.at:1:1: error[text/source.syntax]: expected `fn`, found end of file\n",
+      "stdout": "",
+      "exit": 1
+    },
+    "run": null
+  }
+]

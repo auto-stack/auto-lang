@@ -1,0 +1,12 @@
+{
+  "id": "C09-both-branches-return-trailing",
+  "source": "fn main() int { if true { return 0 } else { return 1 }; let x = 2; return x }",
+  "want": "reject",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C09-both-branches-return-trailing\\input.at:1:17: error[verify/verify.block-structure]: block `k0` has executable statements after a terminating statement\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

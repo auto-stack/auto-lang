@@ -1,0 +1,20 @@
+{
+  "id": "C22-signed-negative-overflow",
+  "source": "fn main() int { return -2147483648 + -1 }",
+  "want": "native70",
+  "check": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=b9cefdf4528beac7, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "build": {
+    "stderr": "",
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C22-signed-negative-overflow\\app.exe (entry main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C22-signed-negative-overflow\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C22-signed-negative-overflow\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C22-signed-negative-overflow\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: b9cefdf4528beac7\n",
+    "exit": 0
+  },
+  "run": {
+    "stderr": "",
+    "stdout": "",
+    "exit": 70
+  }
+}

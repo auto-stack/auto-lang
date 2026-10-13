@@ -231,25 +231,44 @@ mod plan394 {
 
     // ===================== L3 Phase C =====================
 
-    /// C1: Future.all 并发（墙钟 ≈ max）（Phase C）。
+    /// C1: Future.all 并发（相对串行执行显著更快）（Phase C）。
     #[test]
     fn c1_future_all() {
-        let t0 = std::time::Instant::now();
-        let out = run("fn main() {\n\
-             \x20   let r = future_all([delay_async(40), delay_async(60)]).await\n\
+        // Compare both programs through the same compile-and-run harness. A
+        // fixed wall-clock budget also measures compilation and runner startup,
+        // which made the old 200 ms assertion fail under parallel test load.
+        let concurrent_start = std::time::Instant::now();
+        let concurrent = run("fn main() {\n\
+             \x20   let r = future_all([delay_async(120), delay_async(240), delay_async(360)]).await\n\
              \x20   print(f\"${r}\")\n\
              }\n")
-        .expect("C1 program must run");
-        let elapsed = t0.elapsed().as_millis();
+        .expect("C1 concurrent program must run");
+        let concurrent_elapsed = concurrent_start.elapsed().as_millis();
         assert!(
-            out.contains("40") && out.contains("60"),
+            concurrent.contains("120")
+                && concurrent.contains("240")
+                && concurrent.contains("360"),
             "all results missing: {:?}",
-            out
+            concurrent
         );
-        // 并发：墙钟应接近 max(40,60)，远小于 sum(100)。放宽到 200ms 防 CI 抖动。
+
+        let sequential_start = std::time::Instant::now();
+        let sequential = run("fn main() {\n\
+             \x20   let a = delay_async(120).await\n\
+             \x20   let b = delay_async(240).await\n\
+             \x20   let c = delay_async(360).await\n\
+             \x20   print(f\"${a} ${b} ${c}\")\n\
+             }\n")
+        .expect("C1 sequential control program must run");
+        let sequential_elapsed = sequential_start.elapsed().as_millis();
         assert!(
-            elapsed < 200,
-            "future_all should be concurrent, took {elapsed}ms"
+            sequential.contains("120 240 360"),
+            "sequential control results missing: {:?}",
+            sequential
+        );
+        assert!(
+            concurrent_elapsed * 4 < sequential_elapsed * 3,
+            "future_all should be materially faster than sequential awaits; concurrent={concurrent_elapsed}ms, sequential={sequential_elapsed}ms"
         );
     }
 

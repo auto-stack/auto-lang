@@ -1,0 +1,87 @@
+{
+  "markdown_links": {
+    "checked": 15,
+    "broken": []
+  },
+  "frozen_delta": {
+    "docs/specs/auto-acc/project.md": {
+      "matches_proposed_body": true,
+      "sha256": "7e4481ae6f9ac220ec69a1c5efb2317c3e9c46a6f6f7aaa377710610aba92251"
+    },
+    "docs/specs/auto-hir/stage-contract.md": {
+      "matches_proposed_body": true,
+      "sha256": "d387ce54701646b5e6f70d42b1949ab6327b75ed7f2d051fcdcc4da306b444ae"
+    }
+  },
+  "coverage": {
+    "inputs": 9,
+    "modules": 8,
+    "use_edges": 18
+  },
+  "actual_type_new_calls": [
+    {
+      "file": "auto/lib/codegen.at",
+      "count": 5,
+      "first_line": 4168,
+      "kind": "native-runtime",
+      "name": "new",
+      "receiver": "CG"
+    },
+    {
+      "file": "auto/lib/a2r.at",
+      "count": 1,
+      "first_line": 4654,
+      "kind": "native-runtime",
+      "name": "new",
+      "receiver": "Ar"
+    }
+  ],
+  "stale_decisions": {
+    "MD-203": [
+      "docs/specs/auto-hir/project.md",
+      "docs/specs/auto-ac/project.md"
+    ],
+    "MD-205": [
+      "docs/specs/auto-ac/project.md"
+    ],
+    "MD-301": [
+      "docs/specs/auto-ac/project.md"
+    ],
+    "MD-302": [
+      "docs/specs/auto-ac/project.md"
+    ],
+    "MD-304": [
+      "docs/specs/auto-ac/project.md"
+    ],
+    "MD-406": [
+      "docs/specs/auto-hir/project.md"
+    ],
+    "MD-409": [
+      "docs/specs/auto-hir/project.md"
+    ],
+    "MD-421": [
+      "docs/specs/auto-hir/project.md"
+    ]
+  },
+  "plan_task_ticks": {
+    "T-01": "x",
+    "T-02": "x",
+    "T-03": "x",
+    "T-04": "x",
+    "T-05": " ",
+    "T-06": " "
+  },
+  "candidate_quotes": {
+    "candidate1_a8": true,
+    "a2_source_existing": [
+      "| A2 | 命名参数求值顺序 | `hir-examples/03-call-order.atom` 同语义源码版 | 求值顺序（左→右存临时）保持；重排=非法变换 X2 | 同 A1 | 同 A1 | eval_args 语义（741 已备） | **existing**（样例+拒绝矩阵已物化） |"
+    ]
+  },
+  "ancestors": {
+    "9abc87acc": 0,
+    "05d0127a4": 0,
+    "bbfca37b8": 0,
+    "274a9ded4": 0,
+    "bab649682": 0
+  }
+}

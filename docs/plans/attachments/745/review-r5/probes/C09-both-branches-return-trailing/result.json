@@ -1,0 +1,12 @@
+{
+  "id": "C09-both-branches-return-trailing",
+  "source": "fn main() int { if true { return 0 } else { return 1 }; let x = 2; return x }",
+  "want": "reject",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r5\\probes\\C09-both-branches-return-trailing\\input.at:1:57: error[verify/verify.block-structure]: block `k3` is not reachable from the entry block (block graph must be connected and acyclic)\n",
+    "exit": 1,
+    "stdout": ""
+  },
+  "build": null,
+  "run": null
+}

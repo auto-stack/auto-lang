@@ -1,0 +1,1692 @@
+{
+  "valid": {
+    "status": "ok",
+    "messages": [
+      "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）"
+    ],
+    "reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "consumer_reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "cli": {
+      "exit": 0,
+      "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+      "stderr": ""
+    }
+  },
+  "bound_file_exists": {
+    "status": "ok",
+    "messages": [
+      "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）"
+    ],
+    "reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "consumer_reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "cli": {
+      "exit": 0,
+      "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+      "stderr": ""
+    }
+  },
+  "missing_bound_file": {
+    "status": "stale",
+    "messages": [
+      "ERROR[decision-stale] MD-S-900 绑定的输入已不存在: docs/review-bound-reference.txt"
+    ],
+    "reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "consumer_reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-stale] MD-S-900 绑定的输入已不存在: docs/review-bound-reference.txt\nCHECK-FAIL 1 项\n"
+    }
+  },
+  "bound_file_restored": {
+    "status": "ok",
+    "messages": [
+      "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）"
+    ],
+    "reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "consumer_reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "cli": {
+      "exit": 0,
+      "stdout": "OK[decisions] 10 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 13 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+      "stderr": ""
+    }
+  },
+  "duplicate_bad_type_first": {
+    "status": "error",
+    "messages": [
+      "ERROR[decision-malformed] MD-S-900 evidence 必须为非空字符串数组: 'int'"
+    ],
+    "reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "consumer_reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-malformed] MD-S-900 evidence 必须为非空字符串数组: 'int'\nCHECK-FAIL 1 项\n"
+    }
+  },
+  "duplicate_bad_type_last": {
+    "status": "error",
+    "messages": [
+      "ERROR[decision-malformed] MD-S-900 evidence 必须为非空字符串数组: 'int'"
+    ],
+    "reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "consumer_reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "<genexpr>",
+        "line": 876
+      }
+    ],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-malformed] MD-S-900 evidence 必须为非空字符串数组: 'int'\nCHECK-FAIL 1 项\n"
+    }
+  },
+  "duplicate_valid_first": {
+    "status": "error",
+    "messages": [
+      "ERROR[decision-duplicate-id] MD-S-900",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/aavm.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)"
+    ],
+    "reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      }
+    ],
+    "consumer_reads": [],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-duplicate-id] MD-S-900\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+    }
+  },
+  "duplicate_valid_last": {
+    "status": "error",
+    "messages": [
+      "ERROR[decision-duplicate-id] MD-S-900",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/aavm.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)",
+      "ERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)"
+    ],
+    "reads": [
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/aavm.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/a2r.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/codegen.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/engine.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/lexer.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      },
+      {
+        "evidence": "auto/lib/typeinfo.at:911",
+        "caller": "validate_decisions",
+        "line": 760
+      }
+    ],
+    "consumer_reads": [],
+    "cli": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "ERROR[decision-duplicate-id] MD-S-900\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/aavm.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/a2r.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/codegen.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/engine.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/lexer.at/unknown-receiver)\nERROR[family-ref-missing] resolved 族引用的决定未通过校验: 'MD-S-900' (auto/lib/typeinfo.at/unknown-receiver)\nCHECK-FAIL 7 项\n"
+    }
+  }
+}

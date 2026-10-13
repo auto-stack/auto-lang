@@ -1,0 +1,25 @@
+{
+  "gen1--write": {
+    "exit": 0,
+    "stdout": "OK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "gen1--check": {
+    "exit": 0,
+    "stdout": "OK[decisions] 47 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 146 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "gen2--write": {
+    "exit": 0,
+    "stdout": "OK[write] source-manifest.json + scan-summary.md（9 输入全记录）\n",
+    "stderr": ""
+  },
+  "gen2--check": {
+    "exit": 0,
+    "stdout": "OK[decisions] 47 条人工结论绑定全部新鲜；严格门覆盖闭环通过（输入 9/unknown 候选 146 族）\nCHECK-OK 输入 9 项全部一致；注册表一致；人工结论层 ok\n",
+    "stderr": ""
+  },
+  "manifest_three_way_equal": true,
+  "summary_three_way_equal": true,
+  "manual_bytes_unchanged": true
+}

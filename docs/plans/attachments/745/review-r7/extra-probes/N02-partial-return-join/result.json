@@ -1,0 +1,37 @@
+{
+  "want_code": null,
+  "bytes": 120,
+  "artifact_hashes": [
+    {
+      "sha256": "a280c7a4ba10f77d610e424e5be3de34067db3fc38c91e8110d867d4e98c0eda",
+      "name": "app.exe"
+    },
+    {
+      "sha256": "3e3f871f455fd5e60ab703753c635188a9231a3049186dc3ecfa615729d7c1f5",
+      "name": "app.obj"
+    },
+    {
+      "sha256": "88556a06051f69100d8ee69b91e7ef061354999e8aa86257c829f1b69c4967f4",
+      "name": "app.ac-link.txt"
+    }
+  ],
+  "build": {
+    "exit": 0,
+    "stderr": "",
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N02-partial-return-join\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N02-partial-return-join\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N02-partial-return-join\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\N02-partial-return-join\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: be917c9eabed80ff\n"
+  },
+  "ok": true,
+  "input_sha256": "0968cbab21eb79621a5a5a5ccc5d2e777f5f5d757cfb20bed6de96814997d53d",
+  "check": {
+    "exit": 0,
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=be917c9eabed80ff, module(s)=1, capabilities required: []\n"
+  },
+  "want_native": 12,
+  "run": {
+    "exit": 12,
+    "stderr": "",
+    "stdout": ""
+  },
+  "id": "N02-partial-return-join"
+}

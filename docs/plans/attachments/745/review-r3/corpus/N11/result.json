@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N11\\input.at:2:32: error[bind/source.argument]: argument `x` is passed more than once\n"
+  },
+  "kind": "reject",
+  "input_sha256": "eff554b20342b759d3ab6b208c58de6496a742e52eacf40f7229831b36cf3a40",
+  "run": null,
+  "id": "N11",
+  "ok": true,
+  "artifact_hashes": []
+}

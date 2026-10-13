@@ -1,0 +1,6 @@
+// 中文注释
+fn main() i32 {
+ if true { return 0 } else { return 1 }
+ let x = 2
+ return x
+}

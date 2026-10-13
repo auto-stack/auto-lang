@@ -1,0 +1,36 @@
+{
+  "want": 0,
+  "check": {
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=464ed81c970d6dda, module(s)=1, capabilities required: []\n",
+    "exit": 0,
+    "stderr": ""
+  },
+  "id": "M15-binary-arg-last-control",
+  "input_sha256": "5962db8850044acbca9241b33edf1deb9c9eef3b068d952f271356234d658b8e",
+  "bytes": 73,
+  "artifact_hashes": [
+    {
+      "sha256": "66e6826c49d6003be2e1fb2f86600689dd0b3be12e32f4b8fd84a476b251d00a",
+      "name": "app.exe"
+    },
+    {
+      "sha256": "b5edc9ec62e6b70a41da597791a0f78c707db6c5f2653a488a7f0f33b8511a30",
+      "name": "app.obj"
+    },
+    {
+      "sha256": "64c06635263450a1eb39afcf4d7131037554bb20701ff544a690fdf193ef3994",
+      "name": "app.ac-link.txt"
+    }
+  ],
+  "build": {
+    "stdout": "BUILT D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M15-binary-arg-last-control\\app.exe (entry sf_main)\n  obj: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M15-binary-arg-last-control\\app.obj\n  exe: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M15-binary-arg-last-control\\app.exe\n  receipt: D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\M15-binary-arg-last-control\\app.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.core-i32.draft\n  source-input-hash: 464ed81c970d6dda\n",
+    "exit": 0,
+    "stderr": ""
+  },
+  "want_native": 15,
+  "run": {
+    "stdout": "",
+    "exit": 15,
+    "stderr": ""
+  }
+}

@@ -436,6 +436,10 @@ pub struct AutoVM {
 
     pub tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>,
     pub id_gen: AtomicU64,
+    // Plan 744: VM SQLite handles belong to their VM instance and opening
+    // task. HTTP request task cleanup releases its connections instead of
+    // retaining one process-global entry per request.
+    sqlite_handles: std::sync::Mutex<HashMap<i64, (TaskId, a2r_std::sqlite::SqliteDb)>>,
 
     // Channel Registry
     pub channels: DashMap<ChannelId, Arc<AutoChannel>>,
@@ -762,6 +766,7 @@ impl AutoVM {
             string_dedup: std::sync::Mutex::new(std::collections::HashMap::new()),
             tasks: DashMap::new(),
             id_gen: AtomicU64::new(0),
+            sqlite_handles: std::sync::Mutex::new(HashMap::new()),
             channels: DashMap::new(),
             channel_id_gen: AtomicU64::new(0),
             // Plan 077 Phase 6: Legacy list registry removed
@@ -812,6 +817,37 @@ impl AutoVM {
             // PLAN-746: no deadline by default (unlimited execution).
             deadline: None,
         }
+    }
+
+    /// Store a VM SQLite handle under the task that opened it.
+    pub(crate) fn store_sqlite_handle(
+        &self,
+        task_id: TaskId,
+        handle: i64,
+        db: a2r_std::sqlite::SqliteDb,
+    ) {
+        self.sqlite_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(handle, (task_id, db));
+    }
+
+    /// Clone a live SQLite connection for one shim operation.
+    pub(crate) fn sqlite_handle(&self, handle: i64) -> Option<a2r_std::sqlite::SqliteDb> {
+        self.sqlite_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&handle)
+            .map(|(_, db)| db.clone())
+    }
+
+    /// Remove a task and release resources owned by its lifetime.
+    pub(crate) fn remove_task(&self, task_id: TaskId) {
+        self.tasks.remove(&task_id);
+        self.sqlite_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|_, (owner, _)| *owner != task_id);
     }
 
     /// PLAN-746 (PG-MEM-1): install a cooperative execution deadline. The VM

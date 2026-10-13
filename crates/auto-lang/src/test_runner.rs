@@ -196,7 +196,7 @@ pub async fn run_test_in_vm(
     };
 
     // Clean up the task
-    vm.tasks.remove(&task_id);
+    vm.remove_task(task_id);
 
     // Capture stdout
     let stdout = vm

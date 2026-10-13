@@ -1,0 +1,128 @@
+// Draft, schema-bound Atom text. Not executable Auto source.
+// PLAN-741 Phase 2 (QA-01): bool across the call ABI — bool result feeding a
+// bool param, bool params in branches, i32 results summed. less(2,3)=true,
+// less(7,2)=false, so pick(true,5)+pick(false,9) = 5 + 0; entry exits 5.
+hir(schema: "auto.hir.core.draft", revision: 1u32, profile: "core-i32-draft") {
+    module m_bool_abi {
+        path: "examples.bool_abi"
+
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_entry function { params: []; result: "t_i32" }
+            type t_less function { params: ["t_i32", "t_i32"]; result: "t_bool" }
+            type t_pick function { params: ["t_bool", "t_i32"]; result: "t_i32" }
+        }
+
+        declarations {
+            function d_entry t_entry { name: "test_entry"; body: "b_entry" }
+            function d_less t_less { name: "less"; body: "b_less" }
+            function d_pick t_pick { name: "pick"; body: "b_pick" }
+        }
+
+        bodies {
+            body b_less {
+                owner: "d_less"
+                entry: "k_less"
+
+                locals {
+                    local l_a t_i32 { name: "a"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: "b"; role: param; index: 1u32 }
+                }
+
+                expressions {
+                    expr e_a read_local { type: "t_i32"; local: "l_a" }
+                    expr e_b read_local { type: "t_i32"; local: "l_b" }
+                    expr e_lt binary { type: "t_bool"; op: lt_i32; lhs: "e_a"; rhs: "e_b" }
+                }
+
+                blocks {
+                    block k_less { return(value: "e_lt") {} }
+                }
+            }
+
+            body b_pick {
+                owner: "d_pick"
+                entry: "k_pick"
+
+                locals {
+                    local l_c t_bool { name: "c"; role: param; index: 0u32 }
+                    local l_x t_i32 { name: "x"; role: param; index: 1u32 }
+                }
+
+                expressions {
+                    expr e_c read_local { type: "t_bool"; local: "l_c" }
+                    expr e_x read_local { type: "t_i32"; local: "l_x" }
+                    expr e_z constant { type: "t_i32"; value: 0i32 }
+                }
+
+                blocks {
+                    block k_pick { if(cond: "e_c", then: "k_x", else: "k_z") {} }
+                    block k_x { return(value: "e_x") {} }
+                    block k_z { return(value: "e_z") {} }
+                }
+            }
+
+            body b_entry {
+                owner: "d_entry"
+                entry: "k_entry"
+
+                expressions {
+                    expr e_1 constant { type: "t_i32"; value: 2i32 }
+                    expr e_2 constant { type: "t_i32"; value: 3i32 }
+                    expr e_7 constant { type: "t_i32"; value: 7i32 }
+                    expr e_2b constant { type: "t_i32"; value: 2i32 }
+                    expr e_5 constant { type: "t_i32"; value: 5i32 }
+                    expr e_9 constant { type: "t_i32"; value: 9i32 }
+                    expr e_c1 call {
+                        type: "t_bool"
+                        callee: "d_less"
+                        eval_args: ["e_1", "e_2"]
+                        bindings: [
+                            { param: 0u32, arg: 0u32 },
+                            { param: 1u32, arg: 1u32 }
+                        ]
+                    }
+                    expr e_c2 call {
+                        type: "t_bool"
+                        callee: "d_less"
+                        eval_args: ["e_7", "e_2b"]
+                        bindings: [
+                            { param: 0u32, arg: 0u32 },
+                            { param: 1u32, arg: 1u32 }
+                        ]
+                    }
+                    expr e_p1 call {
+                        type: "t_i32"
+                        callee: "d_pick"
+                        eval_args: ["e_c1", "e_5"]
+                        bindings: [
+                            { param: 0u32, arg: 0u32 },
+                            { param: 1u32, arg: 1u32 }
+                        ]
+                    }
+                    expr e_p2 call {
+                        type: "t_i32"
+                        callee: "d_pick"
+                        eval_args: ["e_c2", "e_9"]
+                        bindings: [
+                            { param: 0u32, arg: 0u32 },
+                            { param: 1u32, arg: 1u32 }
+                        ]
+                    }
+                    expr e_sum binary {
+                        type: "t_i32"
+                        op: add_i32
+                        overflow: trap
+                        lhs: "e_p1"
+                        rhs: "e_p2"
+                    }
+                }
+
+                blocks {
+                    block k_entry { return(value: "e_sum") {} }
+                }
+            }
+        }
+    }
+}

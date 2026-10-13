@@ -1,0 +1,13 @@
+{
+  "bytes": 40055,
+  "want_native": null,
+  "want": 1,
+  "build": null,
+  "run": null,
+  "id": "L03-unclosed-calls-20000",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r7\\extra-probes\\L03-unclosed-calls-20000\\input.at:1:40055: error[text/source.syntax]: expected `,` or `)`\n",
+    "stdout": "",
+    "exit": 1
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "C16-unsupported-or",
+  "source": "fn main() int { if true || false { return 0 } else { return 1 } }",
+  "want": "source.unsupported",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C16-unsupported-or\\input.at:1:25: error[text/source.unsupported]: operator `||` is not part of this source profile\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

@@ -1,0 +1,13 @@
+{
+  "want": 0,
+  "run": null,
+  "bytes": 4026,
+  "build": null,
+  "id": "H03-rhs-parens-1000",
+  "want_native": null,
+  "check": {
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=bd8f8376f8831526, module(s)=1, capabilities required: []\n",
+    "exit": 0,
+    "stderr": ""
+  }
+}

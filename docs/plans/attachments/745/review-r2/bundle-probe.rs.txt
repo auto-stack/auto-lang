@@ -1,0 +1,17 @@
+use auto_ac_prototype::{hir, source, verify};
+fn main() {
+    let src = "fn main() int { let outer = 1; if true { let inner = 2 }; return outer }";
+    let parts = source::compile_parts(src, "scope-control.at", &[]).unwrap();
+    assert!(verify::verify(parts.bundle.clone()).is_ok(), "valid control must verify");
+    let mut changed = parts.bundle;
+    let body = &mut changed.modules[0].bodies[0];
+    assert_eq!(body.locals.len(), 2);
+    assert_eq!(body.locals[0].ty, body.locals[1].ty, "same-type scope test");
+    let read = body.exprs.iter_mut().find(|e| matches!(e.kind,hir::ExprKind::ReadLocal{local} if local.0==0)).unwrap();
+    let before = format!("{:?}", read.kind);
+    read.kind = hir::ExprKind::ReadLocal {local: hir::LocalId(1)};
+    assert_ne!(format!("{:?}",read.kind), before);
+    let ds = verify::verify(changed).unwrap_err();
+    println!("VALID_CONTROL=true ACTUAL_SAME_TYPE_SCOPE_MUTATION=true CODES={:?}",ds.iter().map(|d|d.code.as_str()).collect::<Vec<_>>());
+    assert!(ds.iter().any(|d|d.code=="verify.uninitialized-read"));
+}

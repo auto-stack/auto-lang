@@ -1,0 +1,37 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+{
+  "name": "baseline",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-e6a2dd15833c48ee9639b45ef1902251\\old.exe (entry test_entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-e6a2dd15833c48ee9639b45ef1902251\\old.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-e6a2dd15833c48ee9639b45ef1902251\\old.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-e6a2dd15833c48ee9639b45ef1902251\\old.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+  "stderr": null
+}
+{
+  "name": "locked-cleanup",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "result=Err(Diagnostic { stage: Link, code: \"link.receipt\", message: \"stage receipt at C:\\\\Users\\\\zhaop\\\\AppData\\\\Local\\\\Temp\\\\p741-r3-review-e6a2dd15833c48ee9639b45ef1902251\\\\locked\\\\tx.ac-link.txt.tmp-ac741-24808: 拒绝访问。 (os error 5)\", span: Span { start: 0, end: 0 } })\nstaged_exe_left=true;staged_exe_path=C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-e6a2dd15833c48ee9639b45ef1902251\\locked\\tx.exe.tmp-ac741-24808;old_exe_unchanged=true;old_obj_unchanged=true;old_receipt_unchanged=true;user_directory_preserved=true\n",
+  "stderr": null
+}
+{
+  "name": "process-0",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0xe0;open_error=0;wait_status=258\nmode=fallback;deadline_ms=1000;elapsed_ms=1030;result=Err(DeadlineCollect);child_pid=37644;child_alive_after_return=true\n",
+  "stderr": null
+}
+{
+  "name": "process-1",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0xdc;open_error=0;wait_status=258\nmode=fallback;deadline_ms=1000;elapsed_ms=1010;result=Err(DeadlineCollect);child_pid=33956;child_alive_after_return=true\n",
+  "stderr": null
+}
+{
+  "name": "process-2",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0xd8;open_error=0;wait_status=258\nmode=fallback;deadline_ms=1000;elapsed_ms=1014;result=Err(DeadlineCollect);child_pid=38100;child_alive_after_return=true\n",
+  "stderr": null
+}
+Evidence directory: C:\Users\zhaop\AppData\Local\Temp\p741-r3-review-e6a2dd15833c48ee9639b45ef1902251

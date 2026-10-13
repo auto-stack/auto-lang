@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N40\\input.at:1:1: error[text/source.unsupported]: `let` is not part of this source profile\n"
+  },
+  "kind": "reject",
+  "input_sha256": "1b38623f422da9e5503bdbf3f4f933c3489b6292faf45f85719f02de1ed57943",
+  "run": null,
+  "id": "N40",
+  "ok": true,
+  "artifact_hashes": []
+}

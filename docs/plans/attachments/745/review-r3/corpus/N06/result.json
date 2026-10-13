@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N06\\input.at:1:24: error[verify/source.type-mismatch]: expected i32, found bool\n"
+  },
+  "kind": "reject",
+  "input_sha256": "bb91dbcc9b85c5b9c23d0bd9853f554e19fd3ecc67ae4d22aafd2b10c3dab552",
+  "run": null,
+  "id": "N06",
+  "ok": true,
+  "artifact_hashes": []
+}

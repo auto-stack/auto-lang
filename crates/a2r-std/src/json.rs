@@ -6,7 +6,7 @@ use serde_json::Value;
 // Encoding
 // ═══════════════════════════════════════════════════════════
 
-pub fn encode(value: &Value) -> String {
+pub fn encode<T: serde::Serialize>(value: &T) -> String {
     serde_json::to_string(value).unwrap_or_default()
 }
 

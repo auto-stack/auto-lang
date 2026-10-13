@@ -1,0 +1,25 @@
+{
+  "loop": {
+    "checkOutput": "OK 1 module(s), capabilities required: []\r\n",
+    "buildOutput": "BUILT D:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\loop-return.exe (entry entry)\r\n  obj: D:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\loop-return.obj\r\n  exe: D:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\loop-return.exe\r\n  receipt: D:\\autostack\\.wt\\review-741\\auto-lang\\scratch\\review-741-probes\\loop-return.ac-link.txt\r\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\r\n",
+    "checkExit": 0,
+    "buildExit": 0
+  },
+  "atomic": {
+    "exit": 1,
+    "output": "D:\\autostack\\.wt\\review-741\\auto-lang\\experimental\\ac-core\\fixtures\\native\\add-neg2-3.atom:1:1: error[link/link.receipt]: write receipt: 拒绝访问。 (os error 5)\r\n",
+    "exeChanged": true,
+    "producedExeExit": 1,
+    "beforeExe": "C7A834E4860BF2D56D642BE8FF74016E15E317309DF771F83FE5A4F388B33B44",
+    "objChanged": false,
+    "afterExe": "087C00901E0D5AA5D7AADF873975C88D294684E070AF9DAC5F07620147289AB4"
+  },
+  "readme": {
+    "output": "unknown command `ac-probe`; expected check|build\r\n",
+    "exit": 2
+  },
+  "readmeFixture": {
+    "output": "D:/autostack/.wt/review-741/auto-lang/docs/design/strategy/hir-examples/01-add.explicit.atom:1:1: error[backend/entry.not-found]: no declaration with id `d_entry` in this document\r\n",
+    "exit": 1
+  }
+}

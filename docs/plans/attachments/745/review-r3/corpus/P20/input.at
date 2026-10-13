@@ -1,0 +1,5 @@
+// 中文注释
+fn main() i32 {
+ let n int = - 2147483648
+ if n < 0 { return 0 } else { return 1 }
+}

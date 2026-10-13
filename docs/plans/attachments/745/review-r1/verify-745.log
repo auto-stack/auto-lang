@@ -1,0 +1,109 @@
+[PASS] context (HEAD + toolchain) (0.4s)
+[PASS] cargo check (ac-core) (0.1s)
+[PASS] cargo fmt --check (ac-core) (0.4s)
+[PASS] cargo check --all-targets, zero warnings (ac-core) (0.2s)
+[PASS] cargo test source_frontend (1.6s)
+[PASS] cargo test source_hir (0.4s)
+[PASS] cargo test source_native (--test-threads=1) (6.8s)
+[PASS] cargo test source_cli (--test-threads=1) (1s)
+[PASS] build tool binary once (1.2s)
+[PASS] build trace support library once (0.1s)
+[PASS] positive cases: build + run (21) (7.4s)
+[PASS] negative cases: check-source rejects (53) (1.1s)
+
+Case Exit Stderr   Ok
+---- ---- ------   --
+P01    14        True
+P02     1        True
+P03     7        True
+P04     3        True
+P05     1        True
+P06     3        True
+P07     5        True
+P08     3        True
+P09     8        True
+P10     5        True
+P11     0        True
+P12     0        True
+P13    70        True
+P14    70        True
+P15    12 ba     True
+P16    70 a      True
+P17     6        True
+P18     4        True
+P19     6        True
+P20     0        True
+P21     4        True
+N01     1        True
+N02     1        True
+N03     1        True
+N04     1        True
+N05     1        True
+N06     1        True
+N07     1        True
+N08     1        True
+N09     1        True
+N10     1        True
+N11     1        True
+N12     1        True
+N13     1        True
+N14     1        True
+N15     1        True
+N16     1        True
+N17     1        True
+N18     1        True
+N19     1        True
+N20     1        True
+N21     1        True
+N22     1        True
+N23     1        True
+N24     1        True
+N25     1        True
+N26     1        True
+N27     1        True
+N28     1        True
+N29     1        True
+N30     1        True
+N31     1        True
+N32     1        True
+N33     1        True
+N34     1        True
+N35     1        True
+N36     1        True
+N37     1        True
+N38     1        True
+N39     1        True
+N40     1        True
+N41     1        True
+N42     1        True
+N43     1        True
+N44     1        True
+N45     1        True
+N46     1        True
+N47     1        True
+N48     1        True
+N49     1        True
+N50     1        True
+N51     1        True
+N52     1        True
+N53     1        True
+
+
+
+Step                                                 Ok Seconds Detail
+----                                                 -- ------- ------
+context (HEAD + toolchain)                         True     0.4       
+cargo check (ac-core)                              True     0.1       
+cargo fmt --check (ac-core)                        True     0.4       
+cargo check --all-targets, zero warnings (ac-core) True     0.2       
+cargo test source_frontend                         True     1.6       
+cargo test source_hir                              True     0.4       
+cargo test source_native (--test-threads=1)        True     6.8       
+cargo test source_cli (--test-threads=1)           True       1       
+build tool binary once                             True     1.2       
+build trace support library once                   True     0.1       
+positive cases: build + run (21)                   True     7.4       
+negative cases: check-source rejects (53)          True     1.1       
+
+
+VERIFY-AC-SOURCE-745: all 12 steps PASS (74 cases)

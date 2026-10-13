@@ -1,0 +1,14 @@
+{
+  "build": null,
+  "check": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r3\\corpus\\N08\\input.at:1:32: error[bind/source.duplicate]: local `x` is declared more than once in this block\n"
+  },
+  "kind": "reject",
+  "input_sha256": "47504d299c684fbccc709c896993ebc0d3b128a5141f013f8a7fafe6792289a4",
+  "run": null,
+  "id": "N08",
+  "ok": true,
+  "artifact_hashes": []
+}

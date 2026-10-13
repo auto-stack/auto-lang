@@ -1,0 +1,8 @@
+// V-04 (trap polarity): the skipped RHS never executes its division by
+// zero; the executed one traps (exit 70) before the final return.
+fn main() int {
+    let safe = false && 1 / 0 > 0
+    if safe { return 1 }
+    let boom = true && 1 / 0 > 0
+    return 0
+}

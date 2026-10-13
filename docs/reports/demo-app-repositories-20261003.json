@@ -1,0 +1,1237 @@
+{
+  "date": "2026-10-03",
+  "organization": "auto-stack",
+  "visibility": "public",
+  "scope": "21 independent app repositories imported and pushed; connected to AutoOS v0.6-dev as pinned submodules.",
+  "confirmedByUser": true,
+  "visibilityReference": "https://github.com/auto-stack/auto-kanban",
+  "status": "complete",
+  "repositories": [
+    {
+      "name": "auto-calc",
+      "app": "计算器",
+      "description": "Calculator built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/011-calculator",
+          "primary": true,
+          "fileCount": 9,
+          "pacFields": {
+            "name": "calculator",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "icon": "calculator",
+            "title": "Calculator",
+            "title_zh": "计算器",
+            "accent": "indigo",
+            "window": "fit",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-calc",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17810,
+      "backPort": 17811,
+      "id": "011-calculator",
+      "sourceCommit": "40b54859437ba3c9f009bb8282bcb6e4001d6da3",
+      "commit": "e5247c549db375480f30b9eb1e417ad9b15191a3",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-calc",
+      "state": "pushed",
+      "ports": [
+        17810
+      ],
+      "stylekitFiles": [
+        "vendor/stylekit/pac.at",
+        "vendor/stylekit/src/front/styles.at"
+      ],
+      "sourceFilesVerified": 9,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/011-calculator",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-clock",
+      "app": "时钟",
+      "description": "Clock, alarms, stopwatch and timer for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/012-clock",
+          "primary": true,
+          "fileCount": 7,
+          "pacFields": {
+            "name": "clock",
+            "version": "2.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Clock",
+            "title_zh": "时钟",
+            "icon": "clock",
+            "category": "tool",
+            "window": "fit",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-clock",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17812,
+      "backPort": 17813,
+      "id": "012-clock",
+      "sourceCommit": "d24bc8c2489526e0a341027285789fd22016f8c6",
+      "ports": [
+        17812
+      ],
+      "commit": "551d05e065eb2f449c643b3fa4fd671a9ec7a307",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-clock",
+      "state": "pushed",
+      "sourceFilesVerified": 7,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/012-clock",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-todo",
+      "app": "待办",
+      "description": "Personal task management built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/013-todo",
+          "primary": true,
+          "fileCount": 13,
+          "pacFields": {
+            "name": "todo",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "icon": "list-checks",
+            "title": "Todo",
+            "title_zh": "待办清单",
+            "api": "rust",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-todo",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17814,
+      "backPort": 17815,
+      "id": "013-todo",
+      "sourceCommit": "dab12c4a6befb9846ee749cbab1ccb63f0b5607e",
+      "ports": [
+        17814,
+        17815
+      ],
+      "commit": "bc8391c3b33a9f2ee896a33874f7c458a33d67ca",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-todo",
+      "state": "pushed",
+      "sourceFilesVerified": 13,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/013-todo",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-weather",
+      "app": "天气",
+      "description": "Weather application built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/014-weather",
+          "primary": true,
+          "fileCount": 6,
+          "pacFields": {
+            "name": "weather",
+            "version": "2.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Weather",
+            "title_zh": "天气",
+            "window": "960x680",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-weather",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17816,
+      "backPort": 17817,
+      "id": "014-weather",
+      "sourceCommit": "bcc805ab41a78b615fbcaf42a6805b30cfbd9916",
+      "ports": [
+        17816
+      ],
+      "commit": "6a3f9dc202a31ef45bfb5a219a9994a77e6cab84",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-weather",
+      "state": "pushed",
+      "sourceFilesVerified": 6,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/014-weather",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-notes",
+      "app": "便笺",
+      "description": "Lightweight notes application for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/015-notes",
+          "primary": true,
+          "fileCount": 24,
+          "pacFields": {
+            "name": "notes",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "icon": "notebook",
+            "title": "Notes",
+            "title_zh": "备忘录",
+            "theme": "dark",
+            "accent": "indigo",
+            "api": "rust",
+            "npm_deps": "[",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-notes",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17818,
+      "backPort": 17819,
+      "id": "015-notes",
+      "sourceCommit": "3f284c821a4b042505cee4f78201d6c57daca9b8",
+      "autodownCommit": "fba6563ed2148ce85e68208863159b4ccccac710",
+      "ports": [
+        17818,
+        17819
+      ],
+      "commit": "28d5157b7ed8d4f49e55f835bf8a365d2f97a89a",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-notes",
+      "state": "pushed",
+      "sourceFilesVerified": 24,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/015-notes",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-calendar",
+      "app": "日历",
+      "description": "Calendar application built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/016-calendar",
+          "primary": true,
+          "fileCount": 5,
+          "pacFields": {
+            "name": "calendar",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Calendar",
+            "title_zh": "日历",
+            "theme": "light",
+            "accent": "indigo",
+            "window": "fit",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-calendar",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17820,
+      "backPort": 17821,
+      "id": "016-calendar",
+      "sourceCommit": "85b648af775e80e6f5d24da921f2fd341c1c0231",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17820
+      ],
+      "commit": "6f4d36d34476adc0656494fb45fca9b7c1b05860",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-calendar",
+      "state": "pushed",
+      "sourceFilesVerified": 5,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/016-calendar",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-chat",
+      "app": "聊天",
+      "description": "Chat application built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/017-chat",
+          "primary": true,
+          "fileCount": 17,
+          "pacFields": {
+            "name": "chat",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Chat",
+            "title_zh": "聊天",
+            "api": "rust",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-chat",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17822,
+      "backPort": 17823,
+      "id": "017-chat",
+      "sourceCommit": "3945639516389283067e22444f1647ed54d5d3fe",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17822,
+        17823
+      ],
+      "commit": "8df3f33b3bfedc123287d4324b5e67ae5b00a724",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-chat",
+      "state": "pushed",
+      "sourceFilesVerified": 17,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/017-chat",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-reader",
+      "app": "图书阅读器",
+      "description": "Book reading application for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/018-book-reader",
+          "primary": true,
+          "fileCount": 24,
+          "pacFields": {
+            "name": "book-reader",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Book Reader",
+            "title_zh": "图书阅读器",
+            "api": "rust",
+            "front_port": "3018",
+            "back_port": "8018",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-reader",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17824,
+      "backPort": 17825,
+      "id": "018-book-reader",
+      "sourceCommit": "a09e9ee3872fdbd528c09dd8c2a3966e7872150f",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17824,
+        17825
+      ],
+      "commit": "25d28c481aa7bcf375f0d21f04e4af7b6f624d58",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-reader",
+      "state": "pushed",
+      "sourceFilesVerified": 24,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/018-book-reader",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-blog",
+      "app": "博客与文章社区",
+      "description": "Blog reading, writing and community application for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/023-realworld",
+          "primary": true,
+          "fileCount": 39,
+          "pacFields": {
+            "name": "realworld",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "title": "RealWorld",
+            "title_zh": "RealWorld",
+            "api": "rust",
+            "front_port": "3023",
+            "back_port": "8023"
+          }
+        },
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/021-blog-viewer",
+          "primary": false,
+          "fileCount": 15,
+          "pacFields": {
+            "name": "blog-viewer",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Blog Viewer",
+            "title_zh": "博客阅读器",
+            "api": "rust",
+            "front_port": "3021",
+            "back_port": "8421"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-blog",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17826,
+      "backPort": 17827,
+      "id": "023-realworld",
+      "sourceCommit": "823f371f963e3861e87e665273aa5b7a66c1e089",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17826,
+        17827
+      ],
+      "commit": "55bd49e54ede0e189a39046cac557fa31ca8c5b4",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-blog",
+      "state": "pushed",
+      "sourceFilesVerified": 54,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/023-realworld",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-video",
+      "app": "视频播放器",
+      "description": "Video playback application for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/030-video-player",
+          "primary": true,
+          "fileCount": 18,
+          "pacFields": {
+            "name": "video-player",
+            "version": "0.1.0",
+            "description": "AutoOS System Video Player - minimal chromeless viewport, OSD controls & playlist (vue/vm)",
+            "scene": "ui",
+            "render": "vue",
+            "api": "rust",
+            "front_port": "3030",
+            "back_port": "8330",
+            "media_root": "E:\\\\Video",
+            "icon": "film",
+            "title": "Video Player",
+            "title_zh": "视频播放器",
+            "category": "media",
+            "desktop": "true",
+            "theme": "dark",
+            "accent": "indigo"
+          }
+        },
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/019-video-app",
+          "primary": false,
+          "fileCount": 17,
+          "pacFields": {
+            "name": "video-app",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Video App",
+            "title_zh": "视频应用",
+            "api": "rust",
+            "front_port": "3019",
+            "back_port": "8019",
+            "theme": "dark",
+            "accent": "pink"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-video",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17828,
+      "backPort": 17829,
+      "id": "030-video-player",
+      "sourceCommit": "2932fab47c41ee7ec118b0f7a856c8f19f393a5b",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17828,
+        17829
+      ],
+      "commit": "b6efa4ef1b052e35d966b26aab17054c86ba5679",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-video",
+      "state": "pushed",
+      "sourceFilesVerified": 35,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/030-video-player",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-music",
+      "app": "音乐播放器",
+      "description": "Music player built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/020-music-player",
+          "primary": true,
+          "fileCount": 12,
+          "pacFields": {
+            "name": "music-player",
+            "version": "2.0.0",
+            "description": "AutoMusic Player - Modern Local & Stream Music Player (QQ Music / NetEase / Spotify / Soda Music style)",
+            "scene": "ui",
+            "render": "vue",
+            "api": "rust",
+            "front_port": "3020",
+            "back_port": "8320",
+            "media_root": "E:\\\\Music\\\\",
+            "icon": "music",
+            "title": "AutoMusic Player",
+            "title_zh": "极光音乐播放器",
+            "category": "media",
+            "desktop": "true",
+            "theme": "dark",
+            "accent": "emerald"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-music",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17830,
+      "backPort": 17831,
+      "id": "020-music-player",
+      "sourceCommit": "48e5ba5daf730e79f38106ad3020abb461f44f8e",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17830,
+        17831
+      ],
+      "commit": "6b73a417a3985f1ce02c998cffb54039443ac822",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-music",
+      "state": "pushed",
+      "sourceFilesVerified": 12,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/020-music-player",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-photos",
+      "app": "图库与图片查看器",
+      "description": "Photo library and image viewer for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/029-photo-gallery",
+          "primary": true,
+          "fileCount": 4,
+          "pacFields": {
+            "name": "photo-gallery",
+            "version": "0.2.0",
+            "description": "Photo Gallery - album tabs, search/sort/density toolbar, thumbnail grid & fullscreen viewer with live backend scan (PLAN-043)",
+            "scene": "ui",
+            "render": "vue",
+            "api": "rust",
+            "front_port": "4029",
+            "back_port": "4429",
+            "photo_root": "C:\\\\Users\\\\zhaop\\\\Pictures",
+            "icon": "image",
+            "title": "Photo Gallery",
+            "title_zh": "照片图库",
+            "category": "media",
+            "desktop": "true"
+          }
+        },
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/031-image-viewer",
+          "primary": false,
+          "fileCount": 23,
+          "pacFields": {
+            "name": "image-viewer",
+            "version": "0.1.0",
+            "description": "AutoOS Image Viewer - asynchronous media surface and directory browsing",
+            "scene": "ui",
+            "render": "vue",
+            "api": "rust",
+            "front_port": "3031",
+            "back_port": "8031",
+            "icon": "image",
+            "title": "Image Viewer",
+            "title_zh": "图片查看器",
+            "category": "media",
+            "desktop": "true",
+            "opens": ".jpg,.jpeg,.png,.webp,.gif,.bmp,.svg,.ico",
+            "theme": "dark",
+            "accent": "indigo"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-photos",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17832,
+      "backPort": 17833,
+      "id": "029-photo-gallery",
+      "sourceCommit": "de6fc87e7af0b1ff589c9ec27cdca7c817e699cb",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17832,
+        17833
+      ],
+      "commit": "5eec01b873ba5139ed8b50572f646c12c76c0288",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-photos",
+      "state": "pushed",
+      "sourceFilesVerified": 27,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/029-photo-gallery",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-paint",
+      "app": "画板",
+      "description": "Painting application built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/031-paint",
+          "primary": true,
+          "fileCount": 4,
+          "pacFields": {
+            "name": "pixel-paint",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "icon": "pencil",
+            "title": "Paint",
+            "title_zh": "像素画板",
+            "category": "tool",
+            "theme": "dark",
+            "accent": "indigo",
+            "window": "fit",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-paint",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17834,
+      "backPort": 17835,
+      "id": "031-paint",
+      "sourceCommit": "445f41feab6a6facdb99797757ca25a8e3b4f52e",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17834
+      ],
+      "commit": "a12bb20073e20a9ca3cc62b995af88cde66a75f7",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-paint",
+      "state": "pushed",
+      "sourceFilesVerified": 4,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/031-paint",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-monitor",
+      "app": "系统监视器",
+      "description": "System monitoring application for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-os",
+          "commit": "93c3cb0259c8cfe1644e2b35baff71638be59ec5",
+          "path": "apps/025-sys-monitor",
+          "primary": true,
+          "fileCount": 15,
+          "pacFields": {
+            "name": "sys-monitor",
+            "version": "0.2.0",
+            "description": "任务管理器式系统监视器——真实系统数据（sysinfo 后端），vue/vm 双轨",
+            "scene": "ui",
+            "render": "vue",
+            "title": "System Monitor",
+            "title_zh": "系统监视器",
+            "icon": "activity",
+            "category": "system",
+            "front_port": "4025",
+            "back_port": "8425",
+            "desktop": "true",
+            "theme": "dark",
+            "accent": "indigo"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-monitor",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17836,
+      "backPort": 17837,
+      "id": "025-sys-monitor",
+      "sourceCommit": "524429d4f1245c758e72224d21f8f602a134ad73",
+      "ports": [
+        17836,
+        17837
+      ],
+      "commit": "59f271de220eb4df3f55d0781f28c4ff098a6a4a",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-monitor",
+      "state": "pushed",
+      "sourceFilesVerified": 15,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/025-sys-monitor",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-database",
+      "app": "数据库管理工具",
+      "description": "Database management application built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/026-database",
+          "primary": true,
+          "fileCount": 10,
+          "pacFields": {
+            "name": "database",
+            "version": "0.1.0",
+            "description": "SQLite visual database studio - Object Tree, Paginated DataTable, SQL Console, Schema Inspector (vue/vm)",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Database Studio",
+            "title_zh": "数据库工作室",
+            "front_port": "4026",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-database",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17838,
+      "backPort": 17839,
+      "id": "026-database",
+      "sourceCommit": "75caad8d5cbb2a74b3b530b1cf71771628e070b1",
+      "ports": [
+        17838
+      ],
+      "commit": "85fb35dbe675e354614629a4cbb40d6560ce86c0",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-database",
+      "state": "pushed",
+      "sourceFilesVerified": 10,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/026-database",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-explorer",
+      "app": "文件与资源浏览器",
+      "description": "File and resource explorer for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/027-file-manager",
+          "primary": true,
+          "fileCount": 18,
+          "pacFields": {
+            "name": "file-manager",
+            "version": "0.1.0",
+            "description": "File Manager - Dual-pane file browser & manager (vue/vm)",
+            "scene": "ui",
+            "render": "vue",
+            "api": "rust",
+            "front_port": "4027",
+            "back_port": "8027",
+            "icon": "folder",
+            "title": "File Manager",
+            "title_zh": "文件管理器",
+            "category": "system",
+            "desktop": "true",
+            "theme": "dark"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-explorer",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17840,
+      "backPort": 17841,
+      "id": "027-file-manager",
+      "sourceCommit": "232494b8bd29a946f8549177b2a3e993299d4a7a",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17840,
+        17841
+      ],
+      "commit": "19d13edba0b18170241f9b400fdcb092aa86553b",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-explorer",
+      "state": "pushed",
+      "sourceFilesVerified": 18,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/027-file-manager",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-launcher",
+      "app": "通用启动器",
+      "description": "Extensible launcher for Windows and AutoOS, with app, file search and AI plugins.",
+      "sources": [
+        {
+          "repo": "auto-os",
+          "commit": "93c3cb0259c8cfe1644e2b35baff71638be59ec5",
+          "path": "apps/028-launcher",
+          "primary": true,
+          "fileCount": 8,
+          "pacFields": {
+            "name": "launcher",
+            "version": "0.1.0",
+            "description": "Desktop launcher - palette/grid app search & launch (vue/vm)",
+            "scene": "ui",
+            "render": "vue",
+            "front_port": "4028",
+            "icon": "search",
+            "title": "Launcher",
+            "title_zh": "启动器",
+            "category": "system",
+            "desktop": "true",
+            "desktop_exe": "rust-workspace/target/debug/launcher.exe"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-launcher",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17842,
+      "backPort": 17843,
+      "id": "028-launcher",
+      "sourceCommit": "b8ad1575a6fea8803d747d4064dec6d3fd55412b",
+      "ports": [
+        17842
+      ],
+      "commit": "00582cee1bc3a0b1b1e0de91703b6607ab1d6451",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-launcher",
+      "state": "pushed",
+      "sourceFilesVerified": 8,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/028-launcher",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-tetris",
+      "app": "俄罗斯方块",
+      "description": "Falling-block puzzle game built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-os",
+          "commit": "93c3cb0259c8cfe1644e2b35baff71638be59ec5",
+          "path": "apps/036-tetris",
+          "primary": true,
+          "fileCount": 25,
+          "pacFields": {
+            "name": "tetris",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "icon": "blocks",
+            "title": "俄罗斯方块",
+            "theme": "dark",
+            "accent": "indigo",
+            "api": "rust",
+            "front_port": "17500",
+            "back_port": "17501",
+            "window": "fit",
+            "desktop": "true",
+            "desktop_exe": "rust-workspace/target/debug/tetris.exe",
+            "category": "game"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-tetris",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17844,
+      "backPort": 17845,
+      "id": "036-tetris",
+      "sourceCommit": "2615a5416cc68afa429be52d9f1e914dac00cb0e",
+      "ports": [
+        17844,
+        17845
+      ],
+      "commit": "9537a62aa01909becba4132aea2108c75009a18f",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-tetris",
+      "state": "pushed",
+      "sourceFilesVerified": 25,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/036-tetris",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-solitaire",
+      "app": "纸牌接龙",
+      "description": "Klondike solitaire built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-os",
+          "commit": "93c3cb0259c8cfe1644e2b35baff71638be59ec5",
+          "path": "apps/037-klondike",
+          "primary": true,
+          "fileCount": 19,
+          "pacFields": {
+            "name": "klondike",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "icon": "layers",
+            "title": "Klondike",
+            "title_zh": "纸牌接龙",
+            "theme": "dark",
+            "accent": "indigo",
+            "front_port": "17600",
+            "back_port": "17601",
+            "window": "1280x800",
+            "desktop": "true",
+            "desktop_exe": "rust-workspace/target/debug/klondike.exe",
+            "category": "game"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-solitaire",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17846,
+      "backPort": 17847,
+      "id": "037-klondike",
+      "sourceCommit": "24d36a1e9ab3355501c3617a2874b2798a47848b",
+      "ports": [
+        17846,
+        17847
+      ],
+      "commit": "b5a2901a5780958ab12d14dccf8fefddb9ab3165",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-solitaire",
+      "state": "pushed",
+      "sourceFilesVerified": 19,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/037-klondike",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-minesweeper",
+      "app": "扫雷",
+      "description": "Minesweeper game built with AutoLang and AutoUI.",
+      "sources": [
+        {
+          "repo": "auto-os",
+          "commit": "93c3cb0259c8cfe1644e2b35baff71638be59ec5",
+          "path": "apps/038-minesweeper",
+          "primary": true,
+          "fileCount": 8,
+          "pacFields": {
+            "name": "minesweeper",
+            "version": "1.0.0",
+            "scene": "ui",
+            "render": "vue",
+            "icon": "bomb",
+            "title": "Minesweeper",
+            "title_zh": "扫雷",
+            "front_port": "4038",
+            "window": "fit",
+            "desktop": "true",
+            "desktop_exe": "rust-workspace/target/debug/minesweeper.exe"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-minesweeper",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17848,
+      "backPort": 17849,
+      "id": "038-minesweeper",
+      "sourceCommit": "ee8fa04a862cd6760c72f1fe77684b4183b88d05",
+      "ports": [
+        17848
+      ],
+      "commit": "ae6dcbfd7033bc2ee81c6d11b7162d1c653e9d04",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-minesweeper",
+      "state": "pushed",
+      "sourceFilesVerified": 8,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/038-minesweeper",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    },
+    {
+      "name": "auto-charts",
+      "app": "图表工坊",
+      "description": "Chart workshop and data visualization application for the Auto ecosystem.",
+      "sources": [
+        {
+          "repo": "auto-lang",
+          "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+          "path": "examples/ui/024-charts",
+          "primary": true,
+          "fileCount": 12,
+          "pacFields": {
+            "name": "charts",
+            "version": "0.1.0",
+            "description": "Charts playground - edit series, switch chart type, watch geometry recompute (vue/vm)",
+            "scene": "ui",
+            "render": "vue",
+            "title": "Charts",
+            "title_zh": "图表",
+            "front_port": "4024",
+            "desktop": "true"
+          }
+        }
+      ],
+      "status": "imported-and-connected",
+      "url": "https://github.com/auto-stack/auto-charts",
+      "isEmpty": false,
+      "visibility": "public",
+      "frontPort": 17850,
+      "backPort": 17851,
+      "id": "024-charts",
+      "sourceCommit": "a1f025bab84e6b8eea628d074be6e4d2dcf2b3a0",
+      "stylekitFiles": [
+        {
+          "sourcePath": "examples/ui/stylekit/pac.at",
+          "path": "pac.at",
+          "sha256": "d990cbbd984c6e8af132fea0e7e44bd5ecd1643d5c4ccaa2e223cc26f12efa55"
+        },
+        {
+          "sourcePath": "examples/ui/stylekit/src/front/styles.at",
+          "path": "src/front/styles.at",
+          "sha256": "52d4392b37ba793dc17677e155dcb02cb3d83193b7221f4a98cdf67e21a42f09"
+        }
+      ],
+      "ports": [
+        17850
+      ],
+      "commit": "b1d14690751d89912f3ec0fd271caf48ff58b01a",
+      "localPath": "D:/autostack/.wt/os-v06-app-import/auto-charts",
+      "state": "pushed",
+      "sourceFilesVerified": 12,
+      "sourceSnapshotVerified": true,
+      "remoteRefsVerified": true,
+      "submodulePath": "apps/024-charts",
+      "connected": true,
+      "createdAsEmptyRepository": true
+    }
+  ],
+  "existingSubmodules": [
+    {
+      "name": "auto-term",
+      "path": "apps/auto-term",
+      "appRoot": "app",
+      "commit": "7a0d0e8b718fb260641f0d09ada95a7346771cd3",
+      "branch": "main"
+    },
+    {
+      "name": "auto-os-config",
+      "path": "apps/os-config",
+      "appRoot": "auto",
+      "commit": "8fe4cdc3a9a7bcc139230fa2c4bd7d79af1a5105",
+      "branch": "main"
+    },
+    {
+      "name": "auto-kanban",
+      "path": "apps/kanban",
+      "commit": "5e0da499dec476b029237b1436856eb90e936ec6",
+      "preservedOriginalPin": true
+    }
+  ],
+  "autoOsBranch": "v0.6-dev",
+  "integrationReport": "https://github.com/auto-stack/auto-os/blob/v0.6-dev/docs/reports/v0.6-app-import.json",
+  "autoOsDeliveryCommit": "4504f4cef4602eb02b62b0d128d77587bc6eb62a",
+  "autoOsRemoteVerified": true,
+  "validation": "24 app submodules, 352 source files, registry discovery, desktop dry-runs, fresh clone with remote dependencies; GUI runtime not exercised."
+}

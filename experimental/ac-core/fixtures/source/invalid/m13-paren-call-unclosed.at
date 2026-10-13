@@ -1,0 +1,2 @@
+fn f() int { return 7 }
+fn main() int { return (f()+2 }

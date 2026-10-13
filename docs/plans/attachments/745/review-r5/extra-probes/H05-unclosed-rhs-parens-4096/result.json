@@ -1,0 +1,13 @@
+{
+  "build": null,
+  "id": "H05-unclosed-rhs-parens-4096",
+  "check": {
+    "stdout": "",
+    "stderr": "review hard deadline",
+    "exit": "TIMEOUT"
+  },
+  "want_native": null,
+  "want": 1,
+  "bytes": 12314,
+  "run": null
+}

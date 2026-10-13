@@ -1,0 +1,12 @@
+[
+  {
+    "output": "\r\nthread 'main' (36244) has overflowed its stack\r\n",
+    "exit": -1073741571,
+    "case": "block-self-cycle.atom"
+  },
+  {
+    "output": "OK 1 module(s), capabilities required: []\r\n",
+    "exit": 0,
+    "case": "block-disconnected-cycle.atom"
+  }
+]

@@ -1,0 +1,6 @@
+Root: D:\autostack\.wt\lang-743\auto-lang
+HEAD: 8b17e4de8851cdf37ccdce76a82f78422cf8bb15
+Git clean: true
+wt-guard.sh: missing; use already documented r1-r6 equivalent guard
+GUARD-EQUIVALENT-CLEAN: 14195 entries scanned; no reparse points, links never traversed
+Removed only detached 743 review worktree and empty group; no branch created/deleted; 741/742/ABI preserved.

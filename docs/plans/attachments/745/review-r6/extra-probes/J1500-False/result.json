@@ -1,0 +1,11 @@
+{
+  "seconds": 0.0098735,
+  "bytes": 4526,
+  "id": "J1500-False",
+  "balanced": false,
+  "result": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r6\\extra-probes\\J1500-False\\input.at:1:4526: error[text/source.syntax]: expected `)`\n"
+  }
+}

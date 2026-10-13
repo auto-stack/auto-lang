@@ -1,0 +1,12 @@
+{
+  "id": "C04-escaped-string",
+  "source": "fn main() int { let x = \"a\\\"b\"; return 0 }",
+  "want": "source.unsupported",
+  "check": {
+    "stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\745\\review-r1\\probes\\C04-escaped-string\\input.at:1:30: error[text/source.lex]: unterminated string literal\n",
+    "stdout": "",
+    "exit": 1
+  },
+  "build": null,
+  "run": null
+}

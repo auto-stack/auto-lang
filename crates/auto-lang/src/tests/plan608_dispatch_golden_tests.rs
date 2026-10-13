@@ -105,7 +105,7 @@ fn main() int {
         vm.rc_release_task_stack(&mut t);
     }
     vm.reap_all();
-    vm.tasks.remove(&tid);
+    vm.remove_task(tid);
     let out = stdout.read().unwrap().clone();
     // 现行为：未知方法 → None（PLAN-057 兜底语义）；后续调用栈不偏移。
     assert!(out.contains("None"), "未知 str 方法应压 None：[{}]", out);

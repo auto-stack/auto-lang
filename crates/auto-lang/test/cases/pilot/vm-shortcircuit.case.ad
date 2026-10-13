@@ -1,0 +1,49 @@
+# VM short-circuit + negative (legacy `test/vm/99_short_circuit`, `15_nested_mutation`)
+
+`out-of-bounds` strengthens the legacy any-`Err` weak oracle with an
+independently reviewed strong diagnostic (T-01 probe evidence: the VM traps
+with `RuntimeError("Array index 10 out of bounds …")`); the legacy suite
+keeps its original weak assertion untouched.
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.shortcircuit.and-or"
+  tags: ["pilot", "vm", "short-circuit"]
+  source: { file: "vm/99_short_circuit/001_and_or_short_circuit/and_or_short_circuit.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", stdout: { text: "A: 0\nB else\nC else\nSIDE\nD: 1\nE taken\nSIDE\nSIDE\nSIDE\nF: 4\nSIDE\nG: 1\nH: false true\nI norm-false\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.shortcircuit.negative-index"
+  tags: ["pilot", "vm", "short-circuit"]
+  source: { file: "vm/99_short_circuit/003_negative_index_guard/negative_index_guard.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: "success", stdout: { text: "30\n20\nG tail-7\nE guarded\nO: true\n", compare: "bytes" } } }
+  ]
+}
+```
+
+```test-case
+case {
+  schema: "autolang.case/1"
+  id: "lang.error.out-of-bounds"
+  tags: ["pilot", "vm", "negative", "strengthened-oracle"]
+  links: ["PLAN-768"]
+  source: { file: "vm/15_nested_mutation/014_out_of_bounds_error/out_of_bounds_error.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "script" }
+  checks: [
+    { id: "vm", adapter: "avm", action: "run",
+      expect: { completion: { stage: "run", message: { contains: "out of bounds" } } } }
+  ]
+}
+```

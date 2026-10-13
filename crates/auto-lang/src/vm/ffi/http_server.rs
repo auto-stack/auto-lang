@@ -3880,7 +3880,7 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                 Ok(n) => n,
                 Err(e) => {
                     drop(ht);
-                    vm.tasks.remove(&handler_task_id);
+                    vm.remove_task(handler_task_id);
                     let (status, msg) = match e {
                         ApiArgBindError::BadRequest(m) => ("400 Bad Request", m),
                         ApiArgBindError::Internal(m) => ("500 Internal Server Error", m),
@@ -3939,7 +3939,7 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
                                 } else {
                                     None
                                 };
-                                vm.tasks.remove(&next_task_id);
+                                vm.remove_task(next_task_id);
 
                                 match next_result {
                                     Some(val) if auto_val::is_i32(val) => {
@@ -4008,7 +4008,7 @@ Connection: close
             None
         };
 
-        vm.tasks.remove(&handler_task_id);
+        vm.remove_task(handler_task_id);
 
         let (status, body_json) = match result_json {
             Some(s) => ("200 OK", s),
@@ -4620,7 +4620,7 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
         if let Some(s) = lookup_scope(p.scope_id) {
             cancel_scope(&s);
         }
-        vm.tasks.remove(&p.task_id);
+        vm.remove_task(p.task_id);
         if let Some(tx) = p.reply_tx.take() {
             let _ = tx.send(ApiReply::Full {
                 status: 503,
@@ -5121,7 +5121,7 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
     let fail_closed = ctx.upload_pending.is_some();
     let end = {
         let Some(t_arc) = vm.tasks.get(&mw_task_id) else {
-            vm.tasks.remove(&mw_task_id);
+            vm.remove_task(mw_task_id);
             return MWStep::Continue; // legacy：任务槽缺失 = 无响应继续
         };
         let mut t = match t_arc.try_lock() {
@@ -5167,11 +5167,11 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
             wait,
         },
         MWEnd::Null => {
-            vm.tasks.remove(&mw_task_id);
+            vm.remove_task(mw_task_id);
             MWStep::Continue
         }
         MWEnd::Response(resp) => {
-            vm.tasks.remove(&mw_task_id);
+            vm.remove_task(mw_task_id);
             let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
             headers.extend(cors_header_pairs());
             headers.push(("X-Request-Id".to_string(), ctx.request_id.clone()));
@@ -5211,7 +5211,7 @@ fn start_handler(
                     "[HTTP] {} {} → 500 (axum route lookup failed for {})",
                     ctx.req_method, ctx.req_path, ctx.route.fn_name
                 );
-                vm.tasks.remove(&handler_task_id);
+                vm.remove_task(handler_task_id);
                 let mut headers =
                     vec![("Content-Type".to_string(), "application/json".to_string())];
                 headers.extend(cors_header_pairs());
@@ -5315,7 +5315,7 @@ fn start_handler(
             Ok(n) => n,
             Err(ApiArgBindError::BadRequest(msg)) => {
                 eprintln!("[HTTP] {} {} → 400 ({})", ctx.req_method, ctx.req_path, msg);
-                vm.tasks.remove(&handler_task_id);
+                vm.remove_task(handler_task_id);
                 // PLAN-730 T-07：绑定失败——本次新建 provisional 文件删除。
                 cleanup_legacy_files(&ctx.legacy_stored);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
@@ -5334,7 +5334,7 @@ fn start_handler(
             }
             Err(ApiArgBindError::Internal(msg)) => {
                 eprintln!("[HTTP] {} {} → 500 ({})", ctx.req_method, ctx.req_path, msg);
-                vm.tasks.remove(&handler_task_id);
+                vm.remove_task(handler_task_id);
                 cleanup_legacy_files(&ctx.legacy_stored);
                 let err_body = format!("{{\"error\":{}}}", json_escape_string(&msg));
                 let mut headers =
@@ -5406,7 +5406,7 @@ fn start_handler(
                 ctx.req_path,
                 ctx.started.elapsed().as_millis()
             );
-            vm.tasks.remove(&handler_task_id);
+            vm.remove_task(handler_task_id);
             let reply = ApiReply::Full {
                 status: 500,
                 headers: cors_json_headers(&ctx.request_id),
@@ -5427,7 +5427,7 @@ fn start_handler(
             ctx,
         })),
         HandlerEnd::Err(e) => {
-            vm.tasks.remove(&handler_task_id);
+            vm.remove_task(handler_task_id);
             // PLAN-730 T-07：handler 异常——本次新建 provisional 文件删除。
             cleanup_legacy_files(&ctx.legacy_stored);
             let reply = handler_error_reply(&ctx, &e);
@@ -5439,7 +5439,7 @@ fn start_handler(
         HandlerEnd::Value(nv) => {
             match marshal_handler_value(vm, &ctx, nv) {
                 MarshalOutcome::Reply(reply) => {
-                    vm.tasks.remove(&handler_task_id);
+                    vm.remove_task(handler_task_id);
                     if let Some(tx) = reply_tx {
                         let _ = tx.send(reply);
                     }
@@ -6340,11 +6340,11 @@ pub(crate) fn resume_parked_request(
                     ParkedResume::StillParked
                 }
                 MWResume::ShortCircuit(reply) => {
-                    vm.tasks.remove(&task_id);
+                    vm.remove_task(task_id);
                     ParkedResume::Reply(reply)
                 }
                 MWResume::ContinueChain => {
-                    vm.tasks.remove(&task_id);
+                    vm.remove_task(task_id);
                     // 续链：ctx 移交进 advance_dispatch；其再次 park 时产出
                     // 新条目（Handoff）——本条目由 caller 移除。
                     let ctx = std::mem::replace(&mut p.ctx, placeholder_ctx());
@@ -6430,12 +6430,12 @@ pub(crate) fn resume_parked_request(
                     ParkedResume::StillParked
                 }
                 HResume::Err(e) => {
-                    vm.tasks.remove(&task_id);
+                    vm.remove_task(task_id);
                     ParkedResume::Reply(handler_error_reply(&p.ctx, &e))
                 }
                 HResume::Value(nv) => match marshal_handler_value(vm, &p.ctx, nv) {
                     MarshalOutcome::Reply(reply) => {
-                        vm.tasks.remove(&task_id);
+                        vm.remove_task(task_id);
                         ParkedResume::Reply(reply)
                     }
                     MarshalOutcome::ParkFuture(fid) => {
@@ -6468,12 +6468,12 @@ pub(crate) fn resume_parked_request(
             match step {
                 None => {
                     let reply = final_value_reply(vm, &p.ctx, None);
-                    vm.tasks.remove(&task_id);
+                    vm.remove_task(task_id);
                     return ParkedResume::Reply(reply);
                 }
                 Some(SegmentOutcome::Completed(Err(_))) => {
                     let reply = final_value_reply(vm, &p.ctx, None);
-                    vm.tasks.remove(&task_id);
+                    vm.remove_task(task_id);
                     return ParkedResume::Reply(reply);
                 }
                 Some(SegmentOutcome::Parked { wait, seg }) => {
@@ -6500,7 +6500,7 @@ pub(crate) fn resume_parked_request(
                 // future 消失 → nil fallback（引擎恢复臂同款）。终值编组需要
                 // handler 任务栈做 scratch——先编组后清理。
                 let reply = final_value_reply(vm, &p.ctx, None);
-                vm.tasks.remove(&p.task_id);
+                vm.remove_task(p.task_id);
                 return ParkedResume::Reply(reply);
             };
             if fut.read().unwrap().state == crate::vm::engine::FutureState::Pending {
@@ -6508,7 +6508,7 @@ pub(crate) fn resume_parked_request(
             }
             let value = fut.read().unwrap().result.clone();
             let reply = final_value_reply(vm, &p.ctx, value);
-            vm.tasks.remove(&p.task_id);
+            vm.remove_task(p.task_id);
             ParkedResume::Reply(reply)
         }
     }
@@ -6556,7 +6556,7 @@ fn placeholder_reply() -> ApiReply {
 fn probe_return_future(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest, fid: u32) -> ParkedResume {
     let Some(fut) = vm.futures.get(&fid) else {
         let reply = final_value_reply(vm, &p.ctx, None);
-        vm.tasks.remove(&p.task_id);
+        vm.remove_task(p.task_id);
         return ParkedResume::Reply(reply);
     };
     if fut.read().unwrap().state == crate::vm::engine::FutureState::Pending {
@@ -6566,7 +6566,7 @@ fn probe_return_future(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest, fid: u32
     }
     let value = fut.read().unwrap().result.clone();
     let reply = final_value_reply(vm, &p.ctx, value);
-    vm.tasks.remove(&p.task_id);
+    vm.remove_task(p.task_id);
     ParkedResume::Reply(reply)
 }
 
@@ -6632,7 +6632,7 @@ fn abort_parked_request(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) {
             }
         }
     }
-    vm.tasks.remove(&p.task_id);
+    vm.remove_task(p.task_id);
     if let Some(tx) = p.reply_tx.take() {
         let _ = tx.send(ApiReply::Full {
             status: 503,
@@ -6726,7 +6726,7 @@ fn cleanup_sse_iterator(vm: &crate::vm::engine::AutoVM, iterator_id: u32) {
                         }
                     }
                 }
-                vm.tasks.remove(&task_id);
+                vm.remove_task(task_id);
             }
         }
         Some((_, crate::vm::engine::Iterator::AsyncHttpStream(a))) => {
@@ -6884,7 +6884,7 @@ async fn next_sse_generator_value(
                 ))
             }
         };
-        vm.tasks.remove(&next_task_id);
+        vm.remove_task(next_task_id);
 
         match step_result {
             Ok(Some(value)) => {
@@ -7644,7 +7644,7 @@ mod plan698_f1_cleanup_tests {
         );
 
         // DashMap 读守卫全 drop 后再 cleanup（同 shard 自死锁陷阱纪律）。
-        vm.tasks.remove(&task_id);
+        vm.remove_task(task_id);
         cleanup_sse_iterator(&vm, iter_id);
 
         assert!(

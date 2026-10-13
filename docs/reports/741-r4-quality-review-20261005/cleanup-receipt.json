@@ -1,0 +1,10 @@
+{
+  "date": "2026-10-05",
+  "root": "D:/autostack/.wt/lang-741/auto-lang",
+  "detached_review_head": "7b9c6948c1465e87a6f60404510c30c712e1c7bc",
+  "removed": true,
+  "guard_deviation": "D:/autostack/wt-guard.sh absent; fixed Git bash path unavailable. Before removal verified exact absolute root/group, full group ReparsePoint scan empty, git status clean; removed using git worktree remove then only empty group with nonrecursive Remove-Item. Same equivalent scan procedure as r1-r4 receipts.",
+  "branch_created_or_deleted": false,
+  "other_worktrees": "742/743/ABI left untouched",
+  "durable_evidence": "D:/autostack/auto-lang/docs/reports/741-r4-quality-review-20261005"
+}

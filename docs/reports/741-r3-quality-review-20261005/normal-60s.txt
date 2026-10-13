@@ -1,0 +1,8 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.38s
+     Running unittests src\lib.rs (experimental\ac-core\target\debug\deps\auto_ac_prototype-1801b13c01922017.exe)
+
+running 1 test
+test link::tests::run_exe_60s_deadline_bounds_descendant_pipe_hold has been running for over 60 seconds
+test link::tests::run_exe_60s_deadline_bounds_descendant_pipe_hold ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 9 filtered out; finished in 60.03s

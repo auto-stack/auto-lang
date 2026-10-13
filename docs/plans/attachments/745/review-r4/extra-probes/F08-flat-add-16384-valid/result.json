@@ -1,0 +1,9 @@
+{
+  "id": "F08-flat-add-16384-valid",
+  "result": {
+    "stderr": "",
+    "stdout": "OK source profile=auto.source.core-i32.draft, input-hash=2ee32ba95e501b2e, module(s)=1, capabilities required: []\n",
+    "exit": 0
+  },
+  "bytes": 32794
+}

@@ -1,0 +1,44 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+{
+  "name": "baseline",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "BUILT C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-eff1b42a10c5457b9c252bab2096e4ef\\old.exe (entry test_entry)\n  obj: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-eff1b42a10c5457b9c252bab2096e4ef\\old.obj\n  exe: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-eff1b42a10c5457b9c252bab2096e4ef\\old.exe\n  receipt: C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-eff1b42a10c5457b9c252bab2096e4ef\\old.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+  "stderr": null
+}
+{
+  "name": "locked-cleanup",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "result=Err(Diagnostic { stage: Link, code: \"link.receipt\", message: \"stage receipt at C:\\\\Users\\\\zhaop\\\\AppData\\\\Local\\\\Temp\\\\p741-r3-review-eff1b42a10c5457b9c252bab2096e4ef\\\\locked\\\\tx.ac-link.txt.tmp-ac741-38208: 拒绝访问。 (os error 5)\", span: Span { start: 0, end: 0 } })\nstaged_exe_left=true;staged_exe_path=C:\\Users\\zhaop\\AppData\\Local\\Temp\\p741-r3-review-eff1b42a10c5457b9c252bab2096e4ef\\locked\\tx.exe.tmp-ac741-38208;old_exe_unchanged=true;old_obj_unchanged=true;old_receipt_unchanged=true;user_directory_preserved=true\n",
+  "stderr": null
+}
+{
+  "name": "process-0",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0x0;open_error=87;wait_status=4294967295\nmode=fallback;deadline_ms=1000;elapsed_ms=1015;result=Err(DeadlineCollect);child_pid=27360;child_alive_after_return=false\n",
+  "stderr": null
+}
+{
+  "name": "process-1",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0x0;open_error=87;wait_status=4294967295\nmode=fallback;deadline_ms=1000;elapsed_ms=1012;result=Err(DeadlineCollect);child_pid=26736;child_alive_after_return=false\n",
+  "stderr": null
+}
+{
+  "name": "process-2",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0xe0;open_error=0;wait_status=258\nmode=fallback;deadline_ms=1000;elapsed_ms=1032;result=Err(DeadlineCollect);child_pid=37384;child_alive_after_return=true\n",
+  "stderr": null
+}
+{
+  "name": "public-60s",
+  "exit": 0,
+  "completedBeforeOuterDeadline": true,
+  "stdout": "child_handle=0x0;open_error=87;wait_status=4294967295\nmode=public-fallback;deadline_ms=60000;elapsed_ms=60082;result=Err(Diagnostic { stage: Link, code: \"link.deadline\", message: \"subprocess C:\\\\Users\\\\zhaop\\\\AppData\\\\Local\\\\Temp\\\\p741-r3-review-eff1b42a10c5457b9c252bab2096e4ef\\\\original-helper.exe exited but its output did not finish within 60s (a descendant may still hold the pipe)\", span: Span { start: 0, end: 0 } });child_pid=19324;child_alive_after_return=false\n",
+  "stderr": null
+}
+Evidence directory: C:\Users\zhaop\AppData\Local\Temp\p741-r3-review-eff1b42a10c5457b9c252bab2096e4ef

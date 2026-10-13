@@ -1,0 +1,10 @@
+{
+  "date": "2026-10-06",
+  "root": "D:/autostack/.wt/lang-743/auto-lang",
+  "review_head": "c865adf66a75099df07113b053eb9d19e92986a3",
+  "removed": true,
+  "branch_created_or_deleted": false,
+  "guard_deviation": "wt-guard.sh absent; bash/WSL failed mounting its unavailable VHDX (ERROR_PATH_NOT_FOUND). Before removal exact absolute group/root and original detached HEAD verified, full group ReparsePoint scan empty, git clean verified; git worktree remove then nonrecursive removal of empty group. Same fallback as prior review receipts.",
+  "other_worktrees": "742/ABI/Codex attachment untouched",
+  "durable_report": "D:/autostack/auto-lang/docs/reports/743-r4-quality-review-20261005"
+}
