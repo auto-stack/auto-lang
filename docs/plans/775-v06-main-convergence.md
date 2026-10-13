@@ -2,7 +2,7 @@
 plan_id: PLAN-775
 status: executing
 feature_name: v06-main-convergence
-plan_revision: 3
+plan_revision: 4
 author: [Codex]
 created_at: 2026-10-13
 updated_at: 2026-10-13
@@ -10,7 +10,7 @@ supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
 affects: [auto-lang, auto-down, auto-os, auto-musk, app-repositories]
-current_step: 7
+current_step: 8
 total_steps: 8
 ---
 
@@ -64,7 +64,7 @@ Plan 编号联合表不变：发布线 767–769 保持原义；v0.6 计划现�
 | auto-os | `main` `853a551e681ad888f4c72c519b6ad1df94e7f313` | 普通 merge；第一父线 `e7fadc470684f611620175c722a1a22df5e9d9c9`，第二父线 `71d3b5f43ff4a20b998bca2917f7bf62b101fdd7` |
 | auto-musk | `main` `cb4cb9570ab185b0a2a7a645cc80edd65a1689f4` | 两条本地唯一的 Plan skill 文档提交用 `cherry-pick -x` 迁入远端主线；原本地 main 和原提交保持不动 |
 
-其他仓的分支同步/无开发独有提交判定以初始调查表为准；完成关闭前仍需刷新未变化仓的远端 refs。AutoOS 候选的根提交已推送，但其当前工作目录内的多个子模块没有完整物化，`verify-app-links.py` 因 dirty checkout 检查失败；不得把该命令记录成通过。父仓索引中的 Notes、Tetris、Klondike SHA 已更新，fresh-clone 验证仍是待办。
+其他仓的分支同步/无开发独有提交判定以初始调查表为准；T-08 已经通过 GitHub API 刷新全部 37 个相关仓的默认分支头，完整 SHA 清单见 [最终远端 refs](../reports/v06-main-convergence-20261012/final-refs-20261013.json)。AutoOS 候选的根提交已推送；在独立验证副本中确认 recursive 子模块无 SHA 不匹配，`verify-app-links.py` 通过（21 个新产品、24 个子模块，另核对 3 个既有应用）。
 
 ### 规范增量
 
@@ -80,20 +80,20 @@ Spec-impact frontmatter 为空是有意的：本次不直接修改 AutoLang cano
 - AutoLang：本轮执行记录已确认 `cargo check -p auto-lang -p auto-man --quiet`、`cargo tv` 通过；`cargo t`/`cargo tt` 的已知红按既有 Plan/基线记录区分。本次主要工作是历史整合，不重跑全套 feature 门禁。
 - AutoDown：`npm pack --dry-run --json` 通过，包含 178 个 `src/*` 项及 `src/index.ts`。
 - AutoMusk：迁入文档 `git diff --check` 通过；五个变更 Markdown 文件的相对链接检查通过。
-- AutoOS：关键 JSON 可解析、`scripts/desktop.sh` 的 Bash 语法通过，手工冲突文件的 staged whitespace 检查通过。`scripts/verify-app-links.py` 在合流候选上失败于子模块 checkout dirty 检查；fresh-clone 子模块验证尚未执行。
+- AutoOS：关键 JSON 可解析、`scripts/desktop.sh` 的 Bash 语法通过，手工冲突文件的 staged whitespace 检查通过。独立 AutoOS 检出 recursive 子模块 SHA mismatch=0；`scripts/verify-app-links.py` 通过，验证 21 个新产品和 3 个既有应用。
 - 只对分支/索引执行的变更不以这些检查替代原功能 Plan 的验收。
 
 ## 验收标准
 
 | ID | owner_stage | 当前结果 |
 |---|---|---|
-| AC-01 | merge | 已变更仓保留原发布主线历史，普通 merge/fast-forward/cherry-pick；v0.5 tag 与已检查开发 refs 未重写。未变更仓的最终 refs 刷新仍由 T-08 完成。 |
+| AC-01 | merge | 已变更仓保留原发布主线历史，普通 merge/fast-forward/cherry-pick；v0.5 tag 与已检查开发 refs 未重写。37 个相关仓的默认分支最终头已刷新并记入收据。 |
 | AC-02 | work | 在途功能 Plan 原状态、原 required 目标和独立工作树继续保留；本次不要求其先完成。 |
 | AC-03 | merge | AutoLang 与 AutoOS 的 merge 父顺序正确；其他开发更新可从默认分支追溯；AutoMusk 本地两提交有 `-x` 来源记录。 |
 | AC-04 | merge | Tetris/Klondike 的 v0.5 源增量已先推产品仓；AutoOS 指针指向已推提交；Notes 的 nested pin 指向已推 AutoDown 修复。 |
-| AC-05 | review | 变更仓按范围检查通过；AutoOS `verify-app-links.py` 和 fresh-clone 检查仍待在干净检出中完成。 |
+| AC-05 | review | 变更仓按范围检查通过；独立 AutoOS 检出 recursive 子模块无 SHA mismatch，`verify-app-links.py` 通过。 |
 | AC-06 | review | 本阶段复核历史、冲突解决、来源、debt/未完成项和工作区边界；结论限定为 branch-convergence phase，不宣称整体 Plan 最终通过。 |
-| AC-07 | merge | 默认 `main`/`master` 作为 v0.6 后续开发线；完成全仓最终 ref 收据与安全清理后归档本计划。 |
+| AC-07 | merge | 默认 `main`/`master` 作为 v0.6 后续开发线；37 仓远端 refs、可安全快进的本地默认检出和干净临时树处置已记录。AutoOS 集成候选因 dirty 子模块保留，T-08 closeout 尚未结束。 |
 
 ## 执行步骤
 
@@ -106,7 +106,7 @@ Spec-impact frontmatter 为空是有意的：本次不直接修改 AutoLang cano
 | T-05 | merge | 普通合并 AutoOS 的发布线和 v0.6-dev，发布固定 SHA。 | [x] merge `853a551…`，父顺序已独立核对；推送时 `origin/v0.6-dev=71d3b5f…` 未变。 |
 | T-06 | merge | 在不覆盖原本地 checkout 的前提下将 AutoMusk 两条有效提交纳入远端 main。 | [x] cherry-pick `-x` 为 `eecac9b…`、`cb4cb95…`；原始 `8e09f5b…`、`bfcf373…` 在原本地 main 保留。 |
 | T-07 | review | 复核本阶段的历史、发布 SHA、用户范围修正、未完成计划和已知验证边界。 | [x] 2026-10-13 phase pass；自审限制与待办见 §复审记录。 |
-| T-08 | merge | 刷新所有未变化仓远端 refs；只快进无 WIP 的本地默认检出；在干净 AutoOS checkout 运行 `verify-app-links.py`/recursive submodule 验证；完成最终收据和通过 wt-guard 的安全清理。 | [ ] 已快进 AutoLang、AutoDown；AutoOS/AutoMusk 原检出因 WIP 或分叉保留原状。 |
+| T-08 | merge | 刷新所有未变化仓远端 refs；只快进无 WIP 的本地默认检出；在干净 AutoOS checkout 运行 `verify-app-links.py`/recursive submodule 验证；完成最终收据和通过 wt-guard 的安全清理。 | [ ] 远端 refs、干净默认检出快进、AutoOS fresh-clone recursive/app-link 验证已完成；AutoLang/AutoMusk 干净工作树及验证副本已过 guard 并移除。AutoOS 集成候选虽无 reparse point，根状态仍含 20 个 dirty 子模块，recursive gitlink 有 2 处不匹配；按保全要求留存，安全清理待处理。 |
 
 ## 复审记录
 
@@ -119,19 +119,27 @@ Spec-impact frontmatter 为空是有意的：本次不直接修改 AutoLang cano
 
 - revision: 3；outcome: executing；提交和 refs 见 [合流收据](../reports/v06-main-convergence-20261012/merge-receipt-20261013.md)。
 - AutoLang/AutoOS 保留发布线第一父线；AutoDown/Notes 以新提交修复 Notes 不可达嵌套 pin；AutoMusk 的本地有效规约改动通过带来源标记的 cherry-pick 保留。
-- 自动化审核曾拒绝在 dirty 子模块目录上批量执行 `git submodule update --checkout`，原因是该动作可能覆盖子模块内未提交状态。本计划不绕过该拒绝；通过索引和远端 SHA 核验继续推进，fresh-clone 验证保留为 T-08。
+- 自动化审核曾拒绝在 dirty 子模块目录上批量执行 `git submodule update --checkout`，原因是该动作可能覆盖子模块内未提交状态。本计划不绕过该拒绝；先通过索引和远端 SHA 核验，之后在独立 fresh clone 完成验证。原 AutoOS 集成候选仍保留 dirty 子模块状态。
 - 已确认 Plan 773 仍为 `execution_done`、Plan 774 仍为 `drafting`，未把这些状态提升或关闭；应用原工作树与未提交工作也未清理。
 - next_responsible_role: review；review_scope: phase；下一步对 branch-convergence 阶段独立复核，记录复核限制和未完成的 closeout gates。
 
-### 2026-10-13 — stage: review / T-07 phase pass
+### 2026-10-13 — stage: review / T-07 branch-convergence phase pass
 
 - review_scope: phase `branch-convergence`; plan_id: PLAN-775; plan_revision: 3; overall status remains `executing`.
 - reviewed_commit: AutoLang `e35f9e99b6711ff6f1990ea980729d1fa521327e`; AutoLang merge `77495105284b4ba657c1bd1aa3b864d72aeddb17` first/second parents `f903848bd8a468f9c4e166a217c1c52111f689a1` / `2e9777b191f32683e8a3bbbe0b993675e38cce63`; AutoOS merge `853a551e681ad888f4c72c519b6ad1df94e7f313` first/second parents `e7fadc470684f611620175c722a1a22df5e9d9c9` / `71d3b5f43ff4a20b998bca2917f7bf62b101fdd7`; AutoMusk `cb4cb9570ab185b0a2a7a645cc80edd65a1689f4`; AutoDown `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`; Notes `1391bd7eb2f6b3b08e9841d30b25125e47ced058`.
-- reviewer_identity/limitations: same task context as execution; no separate reviewer identity is claimed. I re-read the current Plan, merge parents, final refs, child pins, report, and staged conflict-resolution paths after publication.
-- acceptance_results: AC-01 pass for changed repositories; final refresh for unchanged repositories remains T-08. AC-02 pass (unfinished Plan states and requirements preserved). AC-03/AC-04 pass for reviewed history and child-first pins. AC-05 partial (scoped checks pass; clean recursive checkout remains pending). AC-06 pass for this phase only. AC-07 partial until T-08.
-- findings: F-01, non-blocking for the already-published branch convergence phase — AutoOS `verify-app-links.py` cannot pass in the current candidate worktree because numerous submodule directories are dirty/unmaterialized. Bulk checkout was rejected by automatic approval review because it could overwrite uncommitted submodule state; no bypass was attempted. Run the check from a clean checkout in T-08.
-- evidence: `docs/reports/v06-main-convergence-20261012/merge-receipt-20261013.md`; push output and `ls-remote` receipts; AutoDown `npm pack --dry-run --json`; AutoMusk markdown-link/whitespace checks; AutoOS JSON parse, Bash syntax and staged whitespace checks.
-- next: T-08 refresh remaining remote refs, run clean AutoOS recursive-submodule verification, then guarded cleanup only for trees proven clean. Resume unfinished feature Plans separately in their existing trees.
+- reviewer_identity/limitations: same task context as execution; no separate reviewer identity is claimed. This is a phase review for the published branch convergence, not a final Plan pass. The Plan remains executing while T-08 cleanup is pending.
+- acceptance_results: AC-01 pass (37 default branch heads refreshed); AC-02 pass (unfinished Plan states and requirements preserved); AC-03/AC-04 pass for reviewed history and child-first pins; AC-05 pass (scoped checks and clean-clone recursive/app-link validation); AC-06 pass for this phase only; AC-07 partial because the dirty AutoOS candidate remains.
+- findings: F-01, resolved for verification — the first app-link check hit dirty/unmaterialized submodules; an independent clone later passed with recursive pointer mismatches=0. F-02, closeout pending — AutoOS integration worktree root status still reports 20 dirty app submodules and recursive gitlink mismatches=2 (Notes main and its nested AutoDown pin); preserve it and do not remove. Bulk checkout was rejected by automatic approval review because it could overwrite uncommitted submodule state; no bypass was attempted.
+- evidence: [merge receipt](../reports/v06-main-convergence-20261012/merge-receipt-20261013.md), [final remote refs](../reports/v06-main-convergence-20261012/final-refs-20261013.json); push/remote SHA receipts; AutoDown `npm pack --dry-run --json`; AutoMusk markdown-link/whitespace checks; AutoOS JSON/Bash/whitespace checks and fresh-clone recursive/app-link result; `wt-guard` results in the receipt.
+- next: Keep the dirty AutoOS candidate intact until its submodule state can be reconciled safely. Resume unfinished feature Plans separately in their existing trees.
+
+### 2026-10-13 — revision 4 / T-08 closeout recheck
+
+- review_scope: phase `branch-convergence-closeout`; plan_id: PLAN-775; plan_revision: 4; overall status remains `executing`.
+- reviewer_identity/limitations: same task context as execution; no separate reviewer identity is claimed. This recheck verifies updated closeout evidence and does not claim the active AutoOS worktree is clean.
+- verified: final refs JSON parses and contains 37 entries; GitHub API heads match the receipt's changed-repository SHAs; auto-ai/auto-shell/auto-forge fast-forwards ended at the audited SHAs; AutoOS fresh-clone `verify-app-links.py` passed and recursive mismatch count was zero; clean AutoLang/AutoMusk worktrees and verification clone were removed after guard.
+- remaining: AutoOS integration candidate has no reparse points but recursive Git status shows 20 dirty app submodules and 2 gitlink mismatches. It remains intact. T-08 is still unchecked, AC-07 partial, and PLAN-775 is not archived.
+- disposition: branch-convergence objective is delivered to the remote default branches; retain this Plan for cleanup closeout only. Do not resume or complete unrelated feature Plans as part of this Plan.
 
 ## 待澄清事项
 

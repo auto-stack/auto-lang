@@ -2,6 +2,8 @@
 
 本收据记录 PLAN-775 按用户修正后的“已提交更新先汇合”阶段。初始调查仍见同目录的 `README.md`、`remote-evidence.json` 与本地快照；它们是 2026-10-12 的基线，不能替代本收据中的最终提交。
 
+GitHub `auto-stack` 的 37 个相关仓默认分支头已于 2026-10-13 通过 GitHub API 重新核对；完整名称、分支和 SHA 见 [最终 refs 清单](final-refs-20261013.json)。本次变更仓的当前头均与已发布回执相符。
+
 ## 已发布分支
 
 | 仓库 | 默认分支头 | 处理 / 证据 |
@@ -23,18 +25,25 @@ AutoOS main 的新产品 gitlink 已写为已推送 SHA：Weather `1626a4a…`�
 
 ## 未变更仓
 
-基线报告中没有 v0.6-dev 独有提交、没有 GitHub v0.6-dev 分支，或已确认 `main` 与开发分支一致的仓，没有制造空合并。`auto-ai`、`auto-shell` 的远端默认分支已领先而本地开发头无独有提交；`auto-forge` 没有 v0.6-dev。auto-edit/jade-edit 无本机检出且无 v0.6-dev；auto-ui/auto-man/tree-sitter/books 的本地上游另指 Gitee/Codeup，未擅自重配。所有未变化仓的远端头仍需在 T-08 最终刷新。
+基线报告中没有 v0.6-dev 独有提交、没有 GitHub v0.6-dev 分支，或已确认 `main` 与开发分支一致的仓，没有制造空合并。`auto-ai`、`auto-shell` 的远端默认分支已领先而本地开发头无独有提交；`auto-forge` 没有 v0.6-dev。auto-edit/jade-edit 无本机检出且无 v0.6-dev；auto-ui/auto-man/tree-sitter/books 的本地上游另指 Gitee/Codeup，未擅自重配。全部 37 个相关仓的远端默认分支头已于 2026-10-13 查询并存档，详见 [最终 refs 清单](final-refs-20261013.json)。
 
 ## 在途工作与保留边界
 
 - PLAN-775 改为 revision 3，状态继续 `executing`；Plan 773=`execution_done`、Plan 774=`drafting`、Plan 772 已归档，不因合流改变。
 - AutoLang 与 AutoDown 的原默认检出在确认无 tracked WIP 后均已快进到远端头；AutoLang 根检出的 `auto/` 未跟踪目录仍在原位。AutoOS 原检出中的 Weather/Notes/Blog/Launcher 指针差异及 probe 文件、AutoMusk 原 main 的两条提交、Weather Plan 008 工作树、各应用原有 notes/blog/launcher/user evidence 均未清理。
-- 当前 AutoOS 集成工作树的多个子模块物理检出呈 dirty；`python scripts/verify-app-links.py` 曾在旧 Notes 子模块状态处报 `Dirty submodule apps/015-notes`。自动审核拒绝在这些脏子模块上批量 `git submodule update --checkout`，理由是可能覆盖未提交状态。本轮没有绕过拒绝；改以索引 gitlink、已推送远端 SHA、JSON、shell 语法和源仓提交核验继续。干净 fresh-clone / recursive 子模块检查仍未通过或执行，留作 T-08。
+- 当前 AutoOS 集成工作树的多个子模块物理检出呈 dirty；`python scripts/verify-app-links.py` 曾在旧 Notes 子模块状态处报 `Dirty submodule apps/015-notes`。自动审核拒绝在这些脏子模块上批量 `git submodule update --checkout`，理由是可能覆盖未提交状态。本轮没有绕过拒绝；改以索引 gitlink、已推送远端 SHA、JSON、shell 语法和源仓提交核验继续。此候选始终保留，未对其执行恢复或删除。
+- 为继续 T-08，在独立的 `auto-os-verify` 临时副本中重做验证；此前中断下载造成 8 个子模块只有暂存删除、没有工作区改动或未跟踪文件。仅在该临时副本将它们恢复到当前 HEAD 后，recursive 子模块 SHA mismatch=0，`scripts/verify-app-links.py` 通过：21 个新产品、24 个子模块，另有 3 个既有应用校验通过。验证副本与 AutoLang/AutoMusk 干净 PLAN-775 工作树都通过 `wt-guard.sh`（无 reparse points、clean）后移除；AutoMusk 的 `plan-775-dev` 在确认已并入 `origin/main` 后删除，AutoLang 的临时分支已并入 master 后删除。
+- AutoOS 集成候选单独复查：`wt-guard.sh` 确认无 reparse points，但递归 Git 状态仍有 20 个 dirty 应用子模块、2 个 gitlink mismatch（Notes 主提交及其嵌套 AutoDown pin）。因此没有移除 `.wt/lang-775/auto-os` 或其分支；`.wt/lang-775` 组目录继续保留。原 AutoOS 主检出中的 Weather/Notes/Blog/Launcher 指针差异和 probe 文件也保持原样。
+- 本机默认检出方面：干净的 auto-ai/auto-shell/auto-forge 在确认分支祖先关系后分别 fast-forward 到 API 核实的远端 SHA（`2a4d606…` / `46bf489…` / `c239d61…`）；AutoLang/AutoDown 已同步。AutoOS 原工作树继续停在带 WIP 的 `v0.6-dev`，仅将未检出的本地 `main` 引用 fast-forward 到 `853a551…`；AutoMusk 原本地 main 的两条提交和其他含 WIP/分叉的检出保持不动。
 
 ## 执行范围验证
 
 - AutoLang：`cargo check -p auto-lang -p auto-man --quiet`、`cargo tv` 已通过；`cargo t`/`cargo tt` 已知红按既有基线留存。
 - AutoDown：`npm pack --dry-run --json` 通过，src 文件计数如上。
 - AutoMusk：五个 Markdown 改动文件相对链接检查与 `git diff --check` 通过。
-- AutoOS：关键 JSON 可解析，`D:/soft/Git/bin/bash.exe -n scripts/desktop.sh` 通过，手工解冲突文件 whitespace 检查通过；完整 app-link 验证如上仍待在干净检出中完成。
+- AutoOS：关键 JSON 可解析，`D:/soft/Git/bin/bash.exe -n scripts/desktop.sh` 通过，手工解冲突文件 whitespace 检查通过；独立 clean checkout recursive SHA mismatch=0，`verify-app-links.py` 通过。
 - 这些分支/文档/打包检查不替代各功能 Plan 的 required 双端、编译、运行、独立 review 或知识沉淀。
+
+## 收尾状态
+
+T-08 的远端头刷新、本地安全快进和 AutoOS fresh-clone 验证已完成。清理只删除了通过 `wt-guard` 的干净临时目录。带 20 个 dirty 应用子模块和 2 个 gitlink mismatch 的 AutoOS 集成候选因保全要求仍保留，所以 PLAN-775 继续为 `executing`，T-08 未勾选，AC-07 仍 partial；本收据不宣称该 Plan 已归档或整体 closeout pass。未完成的功能 Plan 按用户要求保持原状态，合流后继续。
