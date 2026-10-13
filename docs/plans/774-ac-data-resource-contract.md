@@ -5,7 +5,7 @@ feature_name: AC 数据扩面的共同类型、资源与内部调用契约
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-12
-updated_at: 2026-10-13
+updated_at: 2026-10-14
 current_step: 6
 total_steps: 8
 supersedes_spec_components:
@@ -151,7 +151,7 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 | [ ] | T-07 | review | T-01..06完成、writes暂停 | 同一树独立 AC/SD/反例复审；pass才reviewed，needs_fix返原树 | 06 |
 | [ ] | T-08 | merge | T-07 pass与合入授权 | 沉淀 SD/导航/ledger/index；真实archive及总数；批回归到期判定；wt-guard clean 后清树/branch/空组 | 07 |
 
-实际唯一树 `D:/autostack/.wt/lang-774/auto-lang`、branch `plan-774-dev` 已创建；2026-10-13/14 四轮独立复审 needs_fix（r1 六/r2 四/r3 两/r4 一阻断）均已修复并重新 execution_done 6/8；review7/8，实际closeout8/8；详见§9最新记录（以最新记录为准）。
+实际唯一树 `D:/autostack/.wt/lang-774/auto-lang`、branch `plan-774-dev` 已创建；2026-10-13/14 五轮独立复审 needs_fix（r1 六/r2 四/r3 两/r4 一/r5 一阻断）均已修复并重新 execution_done 6/8；review7/8，实际closeout8/8；详见§9最新记录（以最新记录为准）。原树 executing 1/8，T02..06按依赖重开；历轮通过面保留。review7/8，实际closeout8/8；详见§9最新记录（以最新记录为准）。
 
 ## 9. 复审记录
 
@@ -244,10 +244,27 @@ evidence: shim live_bytes/peak **u64 全精度**（普通加/减、预算比较�
 结果：774 门禁 8/8 步全绿（63 探针 + 状态探针）；**四轮复审反例重放全绿**（r1 7/7、r2 3/3、r3 4/4、r4 状态探针 1/1，均 exit 0）；旧门禁 741/745/767 全绿；终版收据在提交后基线（gate-20261014-011902，head=c781dde7）。blockers: 无已知合同内缺口。
 next: T-07 第五轮独立复审（建议按序重放 r1/r2/r3/r4 四个反例包——现应全绿——并核对 u64 记账链与状态探针）。
 
+2026-10-14，stage:review，review_scope:final，plan_id:PLAN-774，plan_revision:3，outcome:needs_fix（第五轮独立最终复审；用户授权「修改完毕，继续第5轮复审」）。
+reviewer_identity/limitations: 当前Codex /root独立审阅上下文，未参与实施/修复，沿用审阅上下文，未另建agent/模型/checkout，不冒称另起新会话。
+worktree_path: D:/autostack/.wt/lang-774/auto-lang；branch: plan-774-dev；reviewed_commit: 8e4fb77289ad95eacfa2538f33dd460da2d707cf；repair_code_commit: c781dde710d9cf3c2f510fe7fe1cfd6046fd41a7；base_commit: 5e21561d2c303a02319ff7a29e4607933e09a38f；previous_reviewed_commit: c5e631bd43d1855ba76e144dfac31be3da487bd1；入/出场同HEAD，实现树clean。
+dependency_revisions/spec_inputs: 原型path依赖/旧gate/根定义无774 diff，当前Spec与770/771同步状态已核对；绑定见[输入表](attachments/774/review-r5/input-hashes.tsv)。冻结SD SHA256=83a721c3986952ab55009cde220bd8799bca4b747efa127c0d82db0f68c8f71a，见[冻结文本](attachments/774/review-r5/proposed-spec-delta.frozen.md)。未发布canonical/live ledger。
+acceptance_results: AC01 partial、AC02 pass、AC03 partial、AC04 partial（预算执行与恢复已通过，观测解析链未闭合）、AC05 partial（隔离/旧gate通过，SD观测声明待校准）、AC06 fail、AC07 pending。
+findings: 唯一P2阻断P774-R5-01：SUMMARY字段顺序为attempts/allocs/frees/live/live_bytes/peak，summary_of却返回(u32,u32,u32,u64,u64,u32)，末项as u32将合法peak=4294967298解析为2；decisions/verification重复错误类型，现有永久状态探针只检查Counters，没有覆盖输出→解析链。R4累计保存/比较/释放恢复缺陷已清偿，不重新打开来源/ABI或历轮通过控制。
+evidence: [第五轮报告/闭合表/修复要求](attachments/774/review-r5/REVIEW.md)；本轮774门禁8步（63 probe tests+永久状态探针1/1）、ac-core145 passed/既有1 ignored、741 13步、745 74例、772 45例均通过；r1/r2/r3/r4重放7/7、3/3、4/4、1/1通过。新合法SUMMARY协议控制1通过/1失败、exit101，可再生重放结果一致；只调用真实已提交parser，不宣称4GiB真实native申请。当前HEAD收据/raw全文、断言/入口/锁/hash均已持久保存。
+pending_closeout_gates: 峰值观测修复后复审、Spec/导航/ledger/index、用户合入授权、归档/任务数、批回归到期、wt-guard与同树清理。
+next: 同树work按字段修正解析宽度、同步D06文档/SD并补永久观测边界oracle；提交后重放review-r5/replay.ps1及旧控制，再独立review。T01保留，T02..06按依赖重开，T07/08未勾，executing1/8；plan_revision仍3（本轮未改变语义合同）。本轮未修实现、合入或归档。
+
+2026-10-14，stage:work（修复轮 5），plan_id:PLAN-774，plan_revision:3，outcome:pass（r5 单阻断 P774-R5-01 修复；T-02..06 重开并重新完成，execution_done 6/8）。
+code_commit: 同树修复 HEAD `c713aaafb`（r5 代码提交 `78537a80b` + verification §12 收据提交；基面 5e21561d2）。
+task_ids: T-02..T-06 重勾（r5 修订版证据）。
+evidence: summary_of 返回 `(u32,u32,u32,u32,u64,u64)`（live=对象计数 u32；live_bytes/peak=u64 字节域；无出口窄化）；永久解析边界控制 v08_7（合成协议行：u32 上界正控 + 4294967298 宽值控制=复审官输入）；decisions §3.12 勘误 + probe-cases/interface 同步。
+结果：探针 64/64 全绿；五轮反例重放全绿（r1 7/7、r2 3/3、r3 4/4、r4 1/1、r5 2/2）；774 门禁 8/8（提交后基线 gate-20261014-022118，head=78537a80）。blockers: 无已知合同内缺口。
+next: T-07 第六轮独立复审（建议按序重放 r1..r5 五个反例包并核对解析字段类型）。
+
 ## 10. 待澄清事项
 
 1. ~~772修复复审合入前置已满足；实施agent启动时刷新最新基线并记录用户执行r3的授权。~~
    已兑现（2026-10-13 r3 实施授权记录于 §4；T-01 基线刷新 46/47 零漂移）。
-   现存待办：第四轮needs_fix；第三轮两具体缺陷已清偿，剩累计存活字节u32饱和导致预算低估需修复；T-08合入授权仍待交接。
+   现存待办：第五轮needs_fix；累计记账/预算执行与恢复已清偿，剩peak观测解析窄化为u32及永久oracle缺口需修复；T-08合入授权仍待交接。
 2. 语义表示/资源策略属 D01..07 有界调查，必须在本计划冻结；超出现行承诺的改变需用户决策，不能带 open 交给770/771。
 3. 无完整所有权/公开 ABI/无限规模承诺；后续text-record/List/enum/use/ACC有 Design36 owner，非遗漏验收。
