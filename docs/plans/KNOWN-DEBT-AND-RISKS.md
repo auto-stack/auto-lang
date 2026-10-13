@@ -810,3 +810,10 @@ reviewed_commit=bb8cb4b4330d505059ea20e7bfe561a93c1051f3；**pass**；[第七轮
 | P745-MERGE-VERIFY-01 | tb 的55个book金样差异，且未ignore的generate_book_expected在同批成功写外仓金样；并发验证oracle会变化 | 后续独立计划隔离生成与只读验证；无外仓运行前快照，保留现存修改，不重生成/回滚来制造绿色，不等同旧七个parse失败 |
 
 stage3_memory_baseline_n1_3_5 与 plan707_client_sse_poll_close_error_surface 批量失败后，单实例、单job各1/1通过；按负载时序观察记录。tf/tt/tb分别31/34/76失败均保留原始证据，新增未匹配名没有自动归为历史红。
+## PLAN-774 状态核查（2026-10-13，规划交接漂移）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P774-D1 | medium / closed | 计划交接与取材 | 原共同契约769改为774后，活跃执行指令/意向工作树仍用769，标量前置链接仍指向不存在的旧767文件；770/771仍引用已不存在的769共同契约文件，消费者auto/lib路径亦已迁移。启动实施前校正活跃编号/依赖/取材，历史附件保留来源；这不是已完成实现的缺陷或豁免。774实际drafting 0/8，探针/报告/脚本/共同Spec均未产出。 | docs/plans/774-ac-data-resource-contract.md §4/8、770/771 §0；[状态核查](attachments/774/status-audit-20261013.md)；owner=774 plan handoff |
+
+P774-D1销号（2026-10-13）：770/771确认未改号；774/770/771活跃依赖、执行指令、工作树入口、真实消费者路径及战略/模块导航已同步。历史附件保留来源，当前指纹已刷新；仅引用缺陷关闭，774仍drafting 0/8。证据见[引用更新收据](attachments/774/reference-update-20261013.md)。

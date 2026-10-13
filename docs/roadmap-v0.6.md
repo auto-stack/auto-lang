@@ -337,6 +337,8 @@ v0.6 保留代表性接入探针与设计验证。AVM 编译路径最终也迁�
 3. Rust AC 编译 AAC 源码，生成第一代原生 AAC。
 4. 第一代 AAC 编译自身，生成下一代；再重复一轮，验证结果与行为一致性。
 
+2026-10-13现行实施队列：741/743/745及标量[772（开发线原767）](plans/archive/772-ac-scalar-ops-short-circuit.md)已交付；接下来先执行[774共同数据/资源契约（原769）](plans/774-ac-data-resource-contract.md)，实际验证、独立复审并合入后，[770文本/字符](plans/770-ac-text-char-native.md)与[771标量record/方法](plans/771-ac-record-method-native.md)可以并行。**770/771未改号**；774、770、771目前均为drafting。之后再推进文本聚合组合、List/enum/模块、真实ACC组件与后端桥，最终按上述代际验收。详见[后端演进§7.5](design/strategy/auto-native-backend-evolution.md#75-现行acacc队列与编号映射2026-10-13)。
+
 自举范围必须包括所声明的编译器主体，不能只迁移 CLI 或包装 Rust 前端就宣称完成。
 v0.6 的 Rust AC 与 Auto AAC/ACC 均沿 Cranelift 主路径：AC 直接调用，
 AAC 经明确后端桥接调用，保留库/运行时/接口来源和版本清单。

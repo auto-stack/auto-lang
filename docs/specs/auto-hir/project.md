@@ -4,7 +4,7 @@
 > 路径：`experimental/ac-core`（独立 Cargo workspace，package `auto-ac-prototype`） | 技术栈：Rust（cranelift 0.126 栈消费方见 auto-ac）
 
 core-i32 / scalar-i32 双 profile 的类型化 HIR 契约与实现：Schema-bound Atom 文本 →
-绑定 → 语义校验 → `CheckedModule`。由 PLAN-741 建立首个闭环，PLAN-767 增设
+绑定 → 语义校验 → `CheckedModule`。由 PLAN-741 建立首个闭环，PLAN-772 增设
 scalar 身份域与运算扩面；完整 HIR（全 A 子集、来源表、跨模块、泛型/所有权）
 不在现状内。
 

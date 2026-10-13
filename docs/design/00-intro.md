@@ -143,7 +143,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 |------|------|------|
 | [27-knowledge-base-lifecycle](27-knowledge-base-lifecycle.md) | current/target-state、canonical source、ADR/Spec/Plan/Generated Catalog 生命周期 | ✅ **现行 canonical design**（Plan 543） |
 | [35-autodown-test-cases](35-autodown-test-cases.md) | AutoDown 统一文件用例、同源多后端 oracle、执行/比较/覆盖协议与渐进迁移 | 📝 设计草案（2026-10-12；静态盘点完成，runner 未实施） |
-| [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 📝 设计草案（2026-10-12；PLAN-769/770/771 drafting，尚未实施） |
+| [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 📝 设计草案（2026-10-13；PLAN-774→770/771，均drafting；标量前置772已交付） |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 

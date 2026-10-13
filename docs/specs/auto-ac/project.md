@@ -5,7 +5,7 @@
 
 AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x64 COFF → PE 原生执行。
 **HIR → 原生执行与有限源码 profile → 原生执行均已完成**；PLAN-745 的
-[source-core-i32.md](source-core-i32.md) 提供 A1–A3 源码闭环，PLAN-767 的
+[source-core-i32.md](source-core-i32.md) 提供 A1–A3 源码闭环，PLAN-772 的
 [source-scalar-i32.md](source-scalar-i32.md) 提供标量扩面（减/除/余、全序比较、
 同类 eq/ne、一元、布尔短路、条件 for）。完整语言面、AAC/ACC native 自举与
 其它能力仍由后续计划承接。

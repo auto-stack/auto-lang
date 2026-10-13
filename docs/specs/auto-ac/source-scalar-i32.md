@@ -1,6 +1,6 @@
 # Auto 源码 scalar-i32 profile
 
-> **Status**: experimental；`auto.source.scalar-i32.draft` revision 1（PLAN-767）。
+> **Status**: experimental；`auto.source.scalar-i32.draft` revision 1（PLAN-772，开发线原PLAN-767；旧编号脚本/报告路径保留）。
 > 实现：`experimental/ac-core/src/source/`（与 core-i32 共用前端骨架，profile
 > 显式选择）；消费端见 [project.md](project.md)；姊妹 profile 见
 > [source-core-i32.md](source-core-i32.md)。
@@ -78,5 +78,5 @@ scalar_source/scalar_native；独立复审（含 needs_fix 三发现修复轮）
 控制见 [attachments/767](../../plans/attachments/767/review-codex-r2.md)。
 实现收据：[verification.md](../../reports/767-scalar-i32/verification.md)；
 设计收据：[design.md](../../reports/767-scalar-i32/design.md)；
-过程：[PLAN-767](../../plans/archive/767-ac-scalar-ops-short-circuit.md)。
+过程：[PLAN-772](../../plans/archive/772-ac-scalar-ops-short-circuit.md)。
 char/str/List、完整 int 宽度、ACC 主体/代际仍 open，未重开 GOAL-017。

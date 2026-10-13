@@ -4,11 +4,11 @@
 > 契约全文：docs/design/strategy/auto-acc-bootstrap-contract.md（PLAN-743 T-04）
 
 公共 HIR 的阶段边界与 pass 合同模板，版本化演进；741 现状是其 S1–S6
-core-i32 实现状态的事实来源；PLAN-767 追加 scalar-i32 域的阶段事实。
+core-i32 实现状态的事实来源；PLAN-772 追加 scalar-i32 域的阶段事实。
 
 ## 阶段表（S0–S6）
 
-S0 源码工作态（PLAN-745 的 auto.source.core-i32.draft 与 PLAN-767 的
+S0 源码工作态（PLAN-745 的 auto.source.core-i32.draft 与 PLAN-772 的
 auto.source.scalar-i32.draft 已实现；源码 → span token/AST → 词法/类型解析；
 scalar 面含新运算/一元/短路与条件 for）→ S1 Schema-bound Atom 文本（已实现；
 两源码 profile 各自生成文本及来源表；**按文档头三重身份选择已注册
@@ -24,7 +24,7 @@ scalar-i32 域）→ S5 lowering+能力门（已实现，测试 profile；通用
 与 [source-scalar-i32.md](../auto-ac/source-scalar-i32.md)。
 verify 仍为 Checked 唯一构造路径；通用 pass 框架未实现状态不变。
 
-条件求值规则（PLAN-767）：短路 RHS 只能发射进条件执行块（分支 + 变量合流），
+条件求值规则（PLAN-772）：短路 RHS 只能发射进条件执行块（分支 + 变量合流），
 不允许无条件调用/执行可能 trap 的操作；命名实参先按源码顺序求值，再按
 bindings 落位；逻辑表达式可用于任何实参/返回/初始化/赋值/条件位置。
 `for cond {}` 在源码域降级为 `loop { if cond { body } else { break } }`

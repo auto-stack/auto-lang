@@ -1,6 +1,6 @@
 # AC/ACC 后端演进：Cranelift、自举、SSA 与自主代码生成
 
-> 更新：2026-10-04。版本路线与分期已由用户确认；具体接口、优化集与选型探针按专项 Plan 验证。
+> 更新：2026-10-13（现行编号与推进队列）；2026-10-04版本路线与分期已由用户确认。具体接口、优化集与选型探针按专项 Plan 验证。
 > 记录目标架构，不表示全部能力已实现。AC 指 Rust 实现的首版原生编译器；
 > ACC 指 Auto 实现的编译器主体，现有 roadmap 的 AAC 与之指同一条自举路线，命名另行统一。
 > 用户确认：v0.6 借助 Cranelift 完成约定 AC/ACC 原生自举；v0.7 推进自主低层 IR/SSA、
@@ -174,7 +174,7 @@ WSL/Linux若成为新增native发布门禁，或自举主体扩至更大语言�
   → 原生自举、代际验证与发布收口
 ~~~
 
-先详细制定最近2–3个计划，其余保留工作包层级；以下仅为候选，不是已创建Plan：
+以下保留2026-10-04的候选拆分分析；已创建计划及现行编号以§7.5为准，其余保留工作包层级：
 
 | 候选标签 | 范围与可评审成果 | 前置与安排 |
 |---|---|---|
@@ -195,6 +195,36 @@ NEXT-B/C不要求都在下一编号连续出现，各线仍需统一独占取号
 主检出.next-id=742。战略中的后续工作包不是已获编号、已评审或已开工的计划。
 未fetch不可访问主机器，不据本快照推断其尚未push的新增工作。
 后续正式计划创建/归档后更新队列，执行状态以其合同和复审证据为准。
+
+### 7.5 现行AC/ACC队列与编号映射（2026-10-13）
+
+默认分支合流保留发布线767–769的原义，开发线标量计划767改为772、AutoDown试点768改为773、共同契约769改为774。**文本770与record771没有改号**。旧附件/报告/已存在的验收脚本可保留原文件名；活跃计划入口、执行指令和依赖使用现行编号。
+
+| 现行计划 | 成果与状态 | 下一步/依赖 |
+|---|---|---|
+| [741](../../plans/archive/741-ac-hir-native-core.md) | Atom HIR→Checked→Windows native首个闭环，archived | 已交付基础 |
+| [743](../../plans/archive/743-acc-bootstrap-hir-contract.md) | ACC主体/能力清单与HIR阶段合同，archived | 已交付盘点，不等于自举实现 |
+| [745](../../plans/archive/745-ac-source-checked-hir-native.md) | 独立Auto源码计算入口→native，archived | 已交付有限源码profile |
+| [772（开发线原767）](../../plans/archive/772-ac-scalar-ops-short-circuit.md) | 精确标量运算、布尔短路、条件for及可信边界，archived 9/9 | 已交付，scalar Spec已沉淀 |
+| [774（开发线原769）](../../plans/774-ac-data-resource-contract.md) | 数据/资源共同契约与真实native可行性探针，drafting 0/8 | 先执行；决定/预算/oracle冻结并实际验证，独立复审合入后解锁770/771 |
+| [770](../../plans/770-ac-text-char-native.md) | str/Str/char首批原生编译，drafting 0/9 | 依赖774，可与771并行实施 |
+| [771](../../plans/771-ac-record-method-native.md) | 标量record、字段与首批方法，drafting 0/9 | 依赖774，可与770并行实施；本轮无文本字段 |
+
+```mermaid
+flowchart LR
+    Scalar[772 标量已交付] --> Contract[774 共同契约与探针]
+    Contract --> Text[770 文本与字符]
+    Contract --> Record[771 标量record与方法]
+    Text --> Mix[后续文本聚合组合]
+    Record --> Mix
+    Mix --> Data[后续List / enum / 模块等能力]
+    Data --> Compiler[真实ACC组件与后端桥]
+    Compiler --> Bootstrap[Gen1 / Gen2 / Gen3原生自举]
+```
+
+770/771的独立profile各自通过不代表文本record组合或完整lexer已实现。两树共享AST/typecheck/HIR/verify/native等热点；774冻结接口和合入安排，第二合入者同步新基线、重跑两条路线相关门禁并重新独立复审。无需先重构旧编译器全仓。
+
+[773（开发线原768）](../../plans/773-autodown-testcase-protocol-pilot.md)是独立AutoDown测试协议试点，当前execution_done；它不是本批AC扩面前置，不能据其状态放行774/770/771。计划状态是本次检查快照，后续以各自frontmatter/执行/复审收据为准；本次引用维护没有启动任何实施或关闭自举目标。
 
 ## 8. 官方参考与核查范围
 

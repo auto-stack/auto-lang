@@ -77,7 +77,7 @@ MD-409 仅收敛该 profile 的 int/i32=有符号32位、add/mul/lt与runtime tr
 两决定追加取证 note，required conclusion及原绑定保持；unknown族 owner/探针不变。
 数值证据见 [numeric-boundary.md](../../reports/745-source-core-i32/numeric-boundary.md)。
 
-## 标量扩面 profile 取证（PLAN-767）
+## 标量扩面 profile 取证（PLAN-772）
 
 [source-scalar-i32](../auto-ac/source-scalar-i32.md) 在同一 AC 原型上补齐
 int 全序运算（`< > <= >=`）、同类 `eq/ne`、`- / %`（向零截断；0、MIN/-1、

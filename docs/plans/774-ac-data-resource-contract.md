@@ -2,10 +2,10 @@
 plan_id: PLAN-774
 status: drafting
 feature_name: AC 数据扩面的共同类型、资源与内部调用契约
-plan_revision: 2
+plan_revision: 3
 author: [Codex]
 created_at: 2026-10-12
-updated_at: 2026-10-12
+updated_at: 2026-10-13
 current_step: 0
 total_steps: 8
 supersedes_spec_components:
@@ -47,18 +47,20 @@ affects: [auto-ac, auto-hir, auto-acc]
 
 ## 4. 需求分析与背景调查
 
-- 原规划基线 `540dc7d30839eb7df8e68b4d19472358e170fe5b`；历史取材指纹见 [输入表](attachments/769/planning-inputs.tsv)。实施就绪核查基线为 `a45ff543e7f94474f29a0aed76661b8a76f081e0`，新鲜指纹见 [r2 输入表](attachments/769/readiness-inputs-r2.tsv)。本次不宣称 v0.5 完整恢复。
-- 当前 Specs：auto-ac/project、source-core-i32、source-scalar-i32、auto-hir/project/stage-contract、auto-acc/project；767 scalar Spec 与精确身份/签名边界已经实际沉淀。
-- [767](archive/767-ac-scalar-ops-short-circuit.md) 已修复、独立重审、合入并 archived（9/9）；P767-R1/R2/R3 已销号。本计划的767技术前置已满足，T-01仍应从启动时最新主基线刷新输入，而不是复制已清理的767工作树。
+- 原规划基线 `540dc7d30839eb7df8e68b4d19472358e170fe5b`；历史取材指纹见 [输入表](attachments/769/planning-inputs.tsv)。历史实施就绪核查基线为 `a45ff543e7f94474f29a0aed76661b8a76f081e0`，当时指纹见 [r2 输入表](attachments/769/readiness-inputs-r2.tsv)。本次不宣称 v0.5 完整恢复。
+- 当前 Specs：auto-ac/project、source-core-i32、source-scalar-i32、auto-hir/project/stage-contract、auto-acc/project；772 scalar Spec 与精确身份/签名边界已经实际沉淀。
+- [772](archive/772-ac-scalar-ops-short-circuit.md) 已修复、独立重审、合入并 archived（9/9）；P767-R1/R2/R3 已销号（历史发现ID保留）。本计划的772技术前置已满足，T-01仍应从启动时最新主基线刷新输入，而不是复制已清理的772工作树。
 - Design 02/04/10 与 types Spec：str/Str/字面量区分、view/mut/move、静态/实例方法。旧 ownership 模块未接生产，types 概述的“已实现”不能代替安全证据。
-- 745 numeric-boundary 明示 char_at 的三种表示及 int 冲突；auto/lib/lexer.at:44–63、token.at:154/219、parser.at:71+ 提供真实消费者。
-- 本会话授权为规划和实施就绪核查，不在本会话实施、合入或创建树。用户拟单独开实施agent；在该agent下达执行769指令时记录当前r2实施授权，未指定模型或预算。独立最终复审与合入授权按后续交接办理。
+- 745 numeric-boundary 明示 char_at 的三种表示及 int 冲突；packages/aavm/lib/lexer.at:44–63、token.at:154/219、parser.at:71+ 提供真实消费者。
+- 本会话授权为规划和实施就绪核查，不在本会话实施、合入或创建树。用户拟单独开实施agent；在该agent下达执行774指令时记录当前r3实施授权，未指定模型或预算。独立最终复审与合入授权按后续交接办理。
+
+- 2026-10-13引用/交接核查基线：主检出 d777ccbb227c41882ad5f6976c803b1e03b61135。编号映射为标量772、共同契约774、文本770、record771；770/771未改号。历史输入表保留来源，当前指纹见 [引用核查输入表](attachments/774/reference-update-inputs-20261013.tsv)。本次仅修正引用/取材和实施入口，不修改语言支持、验收阈值或执行状态。
 
 ## 5. 详细设计
 
 ### 5.1 决策包（必须完成，不允许留 open 供下游猜测）
 
-新建 `docs/reports/769-data-resource/{decisions.md,interface-contract.md,verification.md,proposed-spec-delta.md}`。
+新建 `docs/reports/774-data-resource/{decisions.md,interface-contract.md,verification.md,proposed-spec-delta.md}`。
 每个决定有 ID、现行要求/观察差异、候选、选择理由、支持/拒绝表、oracle、能力/profile 身份、下游责任。
 
 | 决定 ID | 固定范围与交付 |
@@ -75,14 +77,14 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 
 ### 5.2 全路径可行性探针
 
-新建探针 crate/Cargo.lock、测试 shim 与 `scripts/verify-ac-data-resources-769.ps1`。
+新建探针 crate/Cargo.lock、测试 shim 与 `scripts/verify-ac-data-resources-774.ps1`。
 用 Cranelift 生成调用者、独立显式 ABI shim 作被调用者，链接真实 PE；宿主测试不能直接调用 shim 冒充机器调用通过。
 观测分配/释放/借用/复制计数和固定 trace，正常 paths live=0、alloc=free、一次 move 无重复清理；故障注入不让 panic 跨 ABI。
 触发前门拒绝的控制由探针的规则模型拒绝入口执行并定位，模型结果不宣称生产 verifier 已支持资源。
 
 ### 5.3 T-02 → T-03 冻结关口
 
-769的表示、资源预算和具体错误码是本计划要产出的有界决定，不是假设已有结论。T-02在候选/支持拒绝表之外，须同时产出 `docs/reports/769-data-resource/probe-cases.md`：逐项列出V-01..09及必要子例的输入、真实入口、期望值/trace/状态或阶段与码、计数口径、覆盖边界及决定ID。T-03只实现已明确预期的候选探针，不得用探针自己的输出反写expected。
+774的表示、资源预算和具体错误码是本计划要产出的有界决定，不是假设已有结论。T-02在候选/支持拒绝表之外，须同时产出 `docs/reports/774-data-resource/probe-cases.md`：逐项列出V-01..09及必要子例的输入、真实入口、期望值/trace/状态或阶段与码、计数口径、覆盖边界及决定ID。T-03只实现已明确预期的候选探针，不得用探针自己的输出反写expected。
 
 - V-02在发射前列出五类ABI的参数/返回/字段哨兵值、准确大小/对齐/offset与调用trace；至少一个有效的异质顺序控制能识别参数或字段交换。布局预期从冻结ABI独立推导，不能从生成产物读取后作为expected。
 - V-03/05的alloc/free计数按成功分配与实际释放统计，分配尝试另计；为每个已声明申请点的故障注入列出应已释放的资源和返回状态。正常控制流与受控失败最终live=0；fatal trap另按V-06观察，不宣称Drop执行。
@@ -115,9 +117,9 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 | V-06 | AC-03 trap | 已分配后 fatal trap，受控 runner | 观察前驱 trace 与约定终止；只记录 OS 回收，不要求/冒称析构 | 不承诺 unwind |
 | V-07 | AC-04 边界 | A中😀、组合字符、NUL、invalid scalar/UTF-8、反向 slice、空范围 | 决策表列出确切预期与阶段，UTF-8 byte 与 scalar count 不混；有合法反控 | D02支持面 |
 | V-08 | AC-04 资源规模 | 0/1/4096 生命周期循环；支持预算临界与注入耗尽两侧 | 无 live 增长；预算单位/入口/拒绝 oracle 完整，无临时语法深度截断 | 不承诺任意性能/规模 |
-| V-09 | AC-05 隔离 | old registry/schema/source 与代码 scope diff；重跑既有 gates | 既有支持/拒绝和身份不变；无 crates/root/auto-lib diff | 741/745/767 已合入域 |
+| V-09 | AC-05 隔离 | old registry/schema/source 与代码 scope diff；重跑既有 gates | 既有支持/拒绝和身份不变；无 crates/root/auto-lib diff | 741/745/772 已合入域 |
 
-命令在唯一工作树：`cargo check --manifest-path experimental/ac-core/probes/data-resources/Cargo.toml --locked --all-targets`、`cargo test --manifest-path experimental/ac-core/probes/data-resources/Cargo.toml --locked`、`cargo fmt --manifest-path experimental/ac-core/probes/data-resources/Cargo.toml --check`，769 PS gate、741 `-SkipMainGates`、745 与 767 gates。开发 scoped probe；最终复审完整 probe+完整 ac-core 一次。无 crates/root 定义改动，不跑根 cargo t/tv/docs_gen。
+命令在唯一工作树：`cargo check --manifest-path experimental/ac-core/probes/data-resources/Cargo.toml --locked --all-targets`、`cargo test --manifest-path experimental/ac-core/probes/data-resources/Cargo.toml --locked`、`cargo fmt --manifest-path experimental/ac-core/probes/data-resources/Cargo.toml --check`，774 PS gate、741 `-SkipMainGates`、745 与 772 gates。开发 scoped probe；最终复审完整 probe+完整 ac-core 一次。无 crates/root 定义改动，不跑根 cargo t/tv/docs_gen。
 实施由用户单独启动的agent承担，具体agent/model未指定；内检与独立最终复审者待交接指定。最终复审在同一树使用独立上下文，自检通过只表示可交复审，不能自测绿即 reviewed。所有 PE/子进程复用 contained executor、60s 截止，输出及工具/产品 hash 随收据。
 
 ## 7. 验收标准
@@ -136,18 +138,20 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 
 | 状态 | Task | owner_stage | 依赖 | 路径/操作、成果与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 用户批准 r2；767 已 archived（9/9） | 刷新实际最新 Spec/inputs/主基线；确认唯一树，建 decisions.md 的事实差异表，无生产代码改动 | 01/05 |
+| [ ] | T-01 | work | 用户批准 r3；772 已 archived（9/9） | 刷新实际最新 Spec/inputs/主基线；确认唯一树，建 decisions.md 的事实差异表，无生产代码改动 | 01/05 |
 | [ ] | T-02 | work | T-01 | 完成 D01..07 候选/支持拒绝/接口与资源预算表及新probe-cases.md；按§5.3冻结值/trace/码/计数/布局/预算oracle，逐规则preflight后才进入T03；材料冲突先修订下游 | 01/04 |
 | [ ] | T-03 | work | T-02 | 新 probes/data-resources crate/shim 与锁文件，真实 COFF/PE 五类调用；V02/03/07/08；probe test/fmt/check | 02..04 |
-| [ ] | T-04 | work | T-03 | 新 scripts/verify-ac-data-resources-769.ps1，V04..06 故障/拒绝/反控；既有 executor deadline、完整输出与资源收据 | 03/04 |
+| [ ] | T-04 | work | T-03 | 新 scripts/verify-ac-data-resources-774.ps1，V04..06 故障/拒绝/反控；既有 executor deadline、完整输出与资源收据 | 03/04 |
 | [ ] | T-05 | work | T-04 | 冻结 decisions.md/interface-contract.md，D07 合并顺序、770/771 消费表；重新核对 oracle 不变 | 01/04 |
 | [ ] | T-06 | work | T-05 | verification.md/proposed-spec-delta.md；完整 probe/ac-core 与新旧 gates；inputs/native/artifact hash、SD覆盖；不发布 canonical | 05 |
 | [ ] | T-07 | review | T-01..06完成、writes暂停 | 同一树独立 AC/SD/反例复审；pass才reviewed，needs_fix返原树 | 06 |
 | [ ] | T-08 | merge | T-07 pass与合入授权 | 沉淀 SD/导航/ledger/index；真实archive及总数；批回归到期判定；wt-guard clean 后清树/branch/空组 | 07 |
 
-意向唯一树 `D:/autostack/.wt/lang-769/auto-lang`、branch `plan-769-dev`；尚未创建。work-owned完成为6/8 execution_done，review7/8，实际closeout8/8。
+意向唯一树 `D:/autostack/.wt/lang-774/auto-lang`、branch `plan-774-dev`；尚未创建。work-owned完成为6/8 execution_done，review7/8，实际closeout8/8。
 
 ## 9. 复审记录
+
+以下2026-10-12记录使用当时编号，作为历史保留；现行执行入口以§8及2026-10-13记录为准。
 
 2026-10-12，stage:new，revision1，outcome:pass（草案结构/覆盖 preflight，不是实现通过）。
 新增 T01..08、AC01..07、D01..07、SD01..04，支持决策由有界探针认领，三份 Plan 无环。
@@ -158,8 +162,10 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 
 2026-10-12，stage:new，revision2，outcome:pass（实施就绪核查，不是实现/测试通过）。767已实际archived 9/9，scalar Spec及修复证据落地；r2刷新§4/§10前置状态，并在§5.3/§6/T02明确探针前oracle冻结关口，任务/AC/Case/SD ID及范围不变。8个Task、7个AC、9个mandatory Case、4个SD，全部实施任务仍未勾。取材与核查见[r2就绪收据](attachments/769/readiness-r2.md)及[r2输入指纹](attachments/769/readiness-inputs-r2.tsv)。未创建实施树、未运行cargo/PE、未修改产品或canonical Specs；next: 用户在单独agent授权执行r2后 `/auto-plan:work` T01，T02冻结后进入T03，最终独立review后再merge。
 
+2026-10-13，stage:new，revision3，outcome:pass（引用/交接核查，非实施完成）。770/771编号不变，前置改为现行774与已归档772；更新活跃链接/取材/拟建路径，保留历史附件与既有脚本路径。Task/AC/Case/SD ID、支持与测试语义不变，status仍drafting、current_step仍0。策略队列见[后端演进§7.5](../design/strategy/auto-native-backend-evolution.md#75-现行acacc队列与编号映射2026-10-13)。[核查收据](attachments/774/reference-update-20261013.md)包含当前路径/链接/指纹。共同774完成并复审合入后才放行770/771的依赖实施；本次未建树/实施/合入/运行Cargo。
+
 ## 10. 待澄清事项
 
-1. 767修复复审合入前置已满足；实施agent启动时刷新最新基线并记录用户执行r2的授权。本会话不启动实施或代建agent。
+1. 772修复复审合入前置已满足；实施agent启动时刷新最新基线并记录用户执行r3的授权。本会话不启动实施或代建agent。
 2. 语义表示/资源策略属 D01..07 有界调查，必须在本计划冻结；超出现行承诺的改变需用户决策，不能带 open 交给770/771。
 3. 无完整所有权/公开 ABI/无限规模承诺；后续text-record/List/enum/use/ACC有 Design36 owner，非遗漏验收。
