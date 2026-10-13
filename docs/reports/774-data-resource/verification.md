@@ -135,3 +135,20 @@ PASS、767（772）14 步/45 例 PASS（2026-10-13，同一修复 HEAD）。最�
 **遗留模型缺口（明示）**：规则模型未建模显式 `mut str` 借用参数（D-03 声明合法，
 模型内拒绝 mut-conflict 并注释）——模型保守性说明，非规则声明；770 实现时以其
 Spec 为准。
+
+## 9. r2 复审修复轮（2026-10-13；提交 HEAD `da6a693c9` 后基线）
+
+复审报告：[REVIEW.md](../../plans/attachments/774/review-r2/REVIEW.md)（四发现
+P774-R2-01..04）。修复与证据（本节收据引用均为**提交后干净树**运行）：
+
+| 发现 | 修复 | 证据 |
+|---|---|---|
+| R2-01 来源模型/panic | View/EndView 区域对借入参数与静态字面量可追踪（Viewed(k, base)，base 四类），合法输入无 panic；ParamMutBorrowed（mut str 借入排他，区域覆盖整个函数体）+ StaticLiteral 建模；8 合法+15 非法矩阵 | v04_r2_borrowed_param_view_region_ends（即复审官 model-controls 的 panic 控制体）、v04_r2_source_mode_matrix；复审官 model-controls.rs 直编 3/3 通过 |
+| R2-02 下游/越权缩减 | 跨行字面量恢复合法（行界原样入值，取材 engine.at:314/333+旧 lexer string()）；静态字面量恢复为合法借用返回来源；转义白名单取材表（旧集+\u{}，未知转义 text.invalid-escape）；mut str/mut Str 区分建模；**770/771 身份与拼写在主检出实际同步**（6845a7601：text-i32-draft/record-i32-draft、to_codepoint/from_codepoint） | decisions §3.9、interface-contract §8、probe-cases r2 增补、v04_r2_static_literal_return_pe、v04_r2_incoming_mut_param_pe |
+| R2-03 账本失败出口 | 独立注入 p774_fail_ledger_nth（首表+扩表）；回滚 HeapFree 与旧表释放结果捕获接线；计数边界冻结（元数据不计用户三计数） | v05_14（首表失败→回滚→恢复）、v05_15（扩表失败带 16 owner→完好→恢复→平衡） |
+| R2-04 收据校准 | 终版门禁在提交后干净 HEAD 运行并引用实际目录 | gate-20261013-142903.txt：head=da6a693c9、raw-20261013-142842、61 tests；此前运行均为历史运行按源 hash 可复用 |
+
+**本轮结果**：探针 **61/61 全绿**（v02 9、v03 10、v04 16、v05 13、v06 2、v07 5、
+v08 5、smoke 1）；r1 反例重放 **7/7**（exit 0）；r2 model-controls **3/3**；
+旧门禁 741（13 步）/745（74 例）/767（45 例）全绿。提交：工作树 `da6a693c9`
+（基面 5e21561d2；七提交序列累计），主检出同步提交 `6845a7601`。
