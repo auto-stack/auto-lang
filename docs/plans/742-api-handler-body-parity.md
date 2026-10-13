@@ -55,6 +55,11 @@ API 规则已由 e35f9e99b 先行沉淀，但本次反例表明体路径仍未�
 SD-742-01/02 不能批准为完成。new_spec_components 为空，因为更新既有模块规则即可。
 复审不改 canonical Specs 或 live ledger；待修复与复审后按 merge 收口。
 
+第二次 final review 的 [冻结增量](attachments/742/review-r2/spec-delta.md) SHA256
+`9B4CA3167BBA44D5389B7840AF07499A025B63EDFD9B1B171D5D9E32B507AF28`。
+旧反例已转绿，但完整发射链字面量保持、绑定作用域、File 入口及返回出口仍有缺口；
+本轮 SD-742-01/02 继续不可批准为完成，目标路径和原 AC 不变。
+
 ## 3. 任务
 
 - [x] T-1: 失败测试钉三缺陷（api_gen tests，extract_api_lenient + generate_api_rs 路径）
@@ -67,6 +72,9 @@ SD-742-01/02 不能批准为完成。new_spec_components 为空，因为更新�
   记录 4 "(c) `==` 链式比较"，auto-notes 归档 001-durable-inbox.md）；触发
   源 api.at WIP 在 3bcf5bf 回滚前未提交，无可考源行；单 `==` 发射现由
   oracle 实编覆盖。
+  r3 增矩阵 oracle：`test_handler_body_r2_matrix_compile_oracle`——11 值
+  编译+运行矩阵（escape 复合串/borrow-marker 串+真实借用正例/嵌套遮蔽/
+  void 三态/Option 变量双臂/File 模块），覆盖 r2 全部反例与 path 变体。
 - [x] T-2: 修复使测试绿——r1 账（D1~D9，见下）+ r2 修复四发现（提交
   6d93cfdb7，worktree plan-742-dev）：
   - F-742-R1-01：`code_region_mask`（转义感知的字符串/字符/行+块注释）门控
@@ -88,13 +96,23 @@ SD-742-01/02 不能批准为完成。new_spec_components 为空，因为更新�
   含 S10 崩溃恢复/S15 修复/S19 混态；NOTES_TEST_MODE=1 + 隔离
   NOTES_DATA_DIR，NOTES_SEED 未设）。审核 replay.ps1 -Build 于提交态重放
   四用例 ALL-PASS（compile_exit=0 + 返回值与预期字面值逐字节一致；D7/D9
-  运行时控制同轮 PASS）。
+  运行时控制同轮 PASS）。r3 重验（绑定提交 8c9b2d3d9 重建 CLI SHA256
+  5e5b146ca7f2…）：再生成后端（generation.json 2026-10-14T01:40:08）→
+  cargo build → v1 电池 fails=0 + **实驱 S10**（setup 隔离目录→建
+  s10-final→taskkill /F→确认下线→重启→同目录 setup→GET 存活）；
+  r2 replay 13/13 compile_exit=0 逐项对拍。Vue 面阻塞（pnpm 镜像网络
+  两败）、VM 面阻塞（需有头桌面 MCP 9247）如实记录，见 work-r3。
 
 以上 r1 提交账与交付记录保留为历史；2026-10-13 独立 final review needs_fix
 后，r2 修复在 worktree `D:/autostack/.wt/lang-742/auto-lang`（branch
 plan-742-dev，base c151935f1 = reviewed_commit，修复提交 6d93cfdb7）完成。
 完整复现、修正方向、验收映射见 [复审报告](attachments/742/review-r1/REVIEW.md)，
 修复证据包见 [work-r2](attachments/742/work-r2/README.md)。
+
+以上 r2 为 work 申报与旧例闭合事实；第二次独立 final review 仍为 **needs_fix**，
+不能将具体输入通过视为全部不变量闭合。R1-04 告警已清偿；R1-01/02/03 旧例已绿，
+但新的完整路径反例见 F-742-R2-01～04。T-1/T-2 重开，T-3 在修复提交上补齐联动，
+当前 0/3。下一次 work 交接须先给出诊断与覆盖/设计调整（见 §4.3 和本轮报告）。
 
 ## 4. 验证
 
@@ -150,6 +168,32 @@ rustfmt 触面两文件干净；审核 replay 提交态重放 ALL-PASS；Notes v
 fails=0（36 断言）。测试基建：generation_consumer_identity 未持
 a2r_env_lock 即 set_var AUTO_RUST_WORKSPACE 的并行 receipt 竞争已补锁
 （bp-root-env-lock 先例形态）。
+
+### 4.3 第二次独立 final review（2026-10-13）
+
+绑定同工作树 `plan-742-dev` 的已提交 `6d93cfdb73f5178b624846d46f88614ed999c158`，
+base `c151935f1b50a9aefb7164771bcc70ccf4b66c9d`；实现与验证输入无漂移。
+详见 [报告/反例/诊断矩阵](attachments/742/review-r2/REVIEW.md)。
+
+| AC ID | 本次结果 | 证据 / 剩余 |
+|---|---|---|
+| AC-742-01 | fail | 构造/拆分旧例与转义正例通过，但下游 borrow pass 仍改字符串（R2-01） |
+| AC-742-02 | fail | 字面量借用、子块名字误遮蔽外层模块、File 漏限定化（R2-01/02/04） |
+| AC-742-03 | pass（可考边界） | 类别级 D3 来源/失落 WIP 归因接受；原 fixture 单比较实编；不冒称原失落输入重放 |
+| AC-742-04 | fail | 原 E0308 样例实编/运行关闭；Option 变量、void 分支/fallthrough 仍 E0308，File 调用 E0423（R2-03/04） |
+| AC-742-05 | partial | work 有电池摘要；本轮未运行 Notes 双端/legacy 冒烟，S10 外部驱动记录缺失；修复后绑定新提交重验 |
+| AC-742-06 | partial | 同指纹 r1 D7/D9 Rust 控制及 tu 可重用；当前 Notes 主题/VM 联动待验 |
+
+本轮 `api_gen` **46 passed / 1 ignored**；日常 `t --no-fail-fast`
+**5278/5278**；`tt --no-fail-fast` **5649/5649**；check/build/两触面文件格式门 exit 0。
+独立生成的 13 case 为 **8 符合预期、1 值错误、4 编译失败**（所有生成入口 exit 0）；
+另精确重放旧 E0308 fixture 三 handler 实编并运行 `list=0/get=404/update=ok:0`。
+四旧字符串例的 api.at/repository.at bytes 与 r1 一致。
+
+剩余诊断：只保护 qualifier/两个体 pass 未保护下游借用；局部名集丢作用域；
+整文件 qualifier 退役只迁移 JSON 入口；返回按 Some/None 文本及“出现任意 return”
+判断类型与全路径完成。下一次 work 必须对完整链/入口/binding/出口矩阵作出调整并留
+实际实编/值对拍证据，不能仅累加四个失败例。第二次 final needs_fix 的累计轮次保留。
 
 ## 5. 已知延后
 
@@ -212,3 +256,47 @@ PLAN-745 交接注记（0bc1bea01）确认 742 合并面对其 27 处共现预�
   ffi_dual 满池 flake 升级登记）随复审处置 | next: review（/auto-plan:review
   r2，独立上下文；基面=本记录 base/code，worktree 冻结待审；已知延后仅
   D-742-1 另案）
+
+- stage: review（第二次 final） | review_scope: final |
+  reviewer_identity: Codex /root（曾做 r1 审核，未参与 r2 实施，无子 agent）|
+  plan_id: 742 | plan_revision: 1 | outcome: needs_fix |
+  worktree_path: D:/autostack/.wt/lang-742/auto-lang | branch: plan-742-dev |
+  reviewed_commit: 6d93cfdb73f5178b624846d46f88614ed999c158 |
+  base_commit: c151935f1b50a9aefb7164771bcc70ccf4b66c9d |
+  dependency_revisions: auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，
+  a2r-std=同提交源码，Notes=1391bd7eb2f6b3b08e9841d30b25125e47ced058 |
+  spec_inputs: [baseline.json](attachments/742/review-r2/baseline.json) 五 canonical SHA256 |
+  acceptance_results: §4.3（fail:01/02/04；pass:03可考边界；partial:05/06）|
+  findings: F-742-R2-01(P1 borrow pass 改字面量)、F-742-R2-02(P2 子块名字遮蔽外层模块)、
+  F-742-R2-03(P2 Option 变量/void 出口 E0308)、F-742-R2-04(P1 File 入口调用漏迁移) |
+  prior_findings: R1-01/02/03 旧例关闭但完整不变量 partial，R1-04 closed |
+  pending_closeout_gates: work 的完整链/入口/出口诊断及矩阵调整、修复提交上的 T-1/T-2/T-3，
+  Notes 联动；后续 merge 沉淀/归档/批量到期判定 |
+  evidence: [报告与重放](attachments/742/review-r2/REVIEW.md)、
+  [冻结规范增量](attachments/742/review-r2/spec-delta.md) |
+  next: /auto-plan:work 742，在同树修复并提交后再独立复审。
+  执行申报 3/3 退回 0/3、executing；旧记录不覆盖，累计第二次 final needs_fix。
+
+### 9.1 两连败诊断（verification-contract §两连败检查点，r3 修复前完成）
+
+| 剩余不变量 | 前轮修复/测试为何漏掉 | 触面路径/状态 | 设计/oracle 调整 | 当前结果/阻塞 |
+|---|---|---|---|---|
+| 完整发射链字面量保持 | r1 只掩码化了 qualifier 与 split/lower；borrow pass 仍整文件 find(marker)；oracle 字面量不含已限定调用 marker | api.rs 链：qualify_a2r_std/borrow_string_module_call_args；db/companion 链：strip_collection_new | 全链盘点（work-r3 README 表）；borrow pass 掩码+调用形态；qualify_a2r_std/strip_collection_new 掩码化；矩阵 oracle 加 borrow-marker 串+真实借用正例 | 全关；db.rs 三个 Plan 399 遗留正则 pass 同类暴露登记债务候选 |
+| binding 真实作用域 | r1 局部名集合按整个 endpoint 扁平化；oracle 无同名子块 | qualify（JSON/File/Upload 体循环） | BodyQualifyScope 栈式帧（params 帧+每代码区 brace 一帧）；oracle 加嵌套遮蔽用例（外层限定、块内方法调用保持） | 全关；match 臂/if-let 多 pattern 绑定形态为已注记边界 |
+| 全入口调用可达 | 整文件 pass 退役时只迁移了 JSON 循环；测试全 JSON | File（3931）/Upload（4054）独立体循环 | 三入口共享 scope 化限定化；oracle 加 File 模块用例；Upload 源码级接线+明示待查 | File 全关；Upload 无独立实编反例（审核亦仅要求源码检查） |
+| 类型/出口完整返回 | 按 Some/None 拼写分类；saw_return 把任意 return 当全覆盖；void 裸 return 实际发射为 `return None;` | wrap_inline_return 五态 + 尾合成 | ?T 普通表达式=Option 类型→运行时 match 映射；void 映射 `return None;`；尾覆盖只认帧深 1 的顶层 return；oracle 加 void 三态+Option 变量双臂 | 全关 |
+
+- stage: work（r3 修复轮） | plan_id: 742 | plan_revision: 1 | outcome: pass |
+  worktree_path: D:/autostack/.wt/lang-742/auto-lang | branch: plan-742-dev |
+  base_commit: 6d93cfdb7（=r2 审核面）| code_commit: 8c9b2d3d9 |
+  dependency_revisions: auto-down=组内兄弟 detached c39ac7f9（同 r1/r2）|
+  task_ids: T-1/T-2/T-3（r3 语义全勾）|
+  evidence: §3/§9.1 + [work-r3 证据包](attachments/742/work-r3/README.md)
+  ——矩阵 oracle 11 值编译+运行全绿；r2 replay 提交态 13/13 逐项对拍；
+  api_gen 47/47×3；tt 5649/5649（满池轮红=预存 flake 家族定向复跑绿）；
+  Notes 提交态绑定（CLI SHA 5e5b146c…→再生成→build→电池 fails=0→
+  实驱 S10 存活）|
+  blockers: 无在案未决发现；Vue/VM 联动面环境阻塞如实记录（pnpm 镜像
+  网络/有头桌面 MCP）；Upload 实编反例与 db.rs 遗留正则 pass 列为
+  债务候选随复审处置 | next: review（/auto-plan:review r3，独立上下文；
+  审面=8c9b2d3d9，基面 6d93cfdb7，工作树冻结待审；已知延后 D-742-1 另案）
