@@ -58,9 +58,174 @@
 | D-06 资源与失败 | 无既成承诺（F11：无堆） | 无 | 分配器/所有权策略、失败注入点、正常清理与 fatal trap 的 OS 回收边界、预算单位/入口/耗尽类别全部在本包冻结 |
 | D-07 下游接口 | 770/771 无未决必需前提（Design 36 §5） | 共同热点清单已列（source/hir/descriptor/verify/native/main） | D-07 交付最小接口/profile/API/热点清单与合入顺序；语义定义一处 |
 
-## 3. 决策 D-01..D-07（T-02 冻结后回填）
+## 3. 决策 D-01..D-07（T-02 冻结）
 
-（T-02 产出：每项 ID 含候选、选择理由、支持/拒绝表、oracle、能力/profile 身份、下游责任。）
+通用裁定原则（全节适用）：本节所有规则是**首批（770 文本 / 771 record）合同**，
+在探针（T-03/04）中冻结 oracle 并以真实 COFF/PE 调用取证；探针通过不改变
+"实现仍仅探针"的边界（AC-05）。涉及既有语言承诺的变化：无——本节所有决定
+均落在 F1-F15 已授权的 profile 边界内，无一项需要修订现行 canonical Spec 语义。
+
+### D-01 整数精度、内部宽度与转换
+
+**裁定**：新 text/record source profile 与 HIR 域 int/i32 = 精确有符号 32 位
+（沿 core/scalar，F1）；char 名义类型内部为 **u32 Unicode 标量值**（宽 4、对齐 4，
+ABI 通道以 I32 位型承载）；**内部地址/字节长度/标量计数独立于源 i32**——
+内部字节长度与标量计数为 u32，指针为机器宽度（x64 = 8 字节）。
+
+| 转换 | 规则 | 失败类别/码 |
+|---|---|---|
+| 源 i32 → 内部长度 | 需 0 ≤ v；i32 域内自动满足 u32 上界 | 负值：运行期 `res.len-negative`（-2） |
+| 内部长度(u32) → 源 i32 | 需 ≤ 0x7FFF_FFFF | 超界：`res.len-too-large`（-3） |
+| 长度加法（如 concat） | i64 中间量，结果须 ≤ i32 通道上界 | 越界：`res.len-overflow`（-1），**先于任何分配与缓冲读取** |
+
+不宣称 i64/usize 是源语言类型（F2 分裂不由此收敛）；探针仅证明上述边界可实现。
+
+- 候选与拒绝：候选①内部长度用 i32（源同型）——拒绝：正确定义负长度无意义且
+  concat 和提升需要 >2^31 空间；候选②u64 内部长度——拒绝（首批）：全部 ABI 通道
+  4 字节足够，加宽无消费者。裁定 u32。
+- oracle：V-07（byte/scalar 计数）、V-05（三转换码）；下游责任：770/771 的
+  int 消费面不得把内部长度当 i32 直接回传。
+
+### D-02 文本表示与 char 名义身份
+
+**裁定**（沿 F15 候选，核查 F3/F4 后无推翻事实）：
+
+1. 文本 = Unicode 标量值序列，**UTF-8 字节存储**；语言级文本值恒为合法 UTF-8
+   （非法 UTF-8 字节序列只能作为探针对抗输入存在，运行期解码失败码
+   `text.invalid-utf8`（-7），记录字节偏移）。
+2. **索引单位 = Unicode 标量**（非字节、非字素）。默认长度 `len()` 返回标量计数；
+   字节长度经显式 `len_bytes()`。字位/组合字符不聚类：`e`+U+0301 是 2 标量/3 字节，
+   slice 可切在组合序列中间（首批无字素支持，明示非遗漏）。
+3. **char 独立名义类型**：`char_at(i)` 返回 char；char 与 int 无隐式互转（F3 的
+   `'0' <= c <= '9'` int 比较面**不采纳**）。显式转换：`char.to_codepoint() -> i32`
+   （恒成功）；`char.from_codepoint(i32)` 可失败——代理区 [0xD800,0xDFFF]、负值、
+   >0x10FFFF 拒绝，码 `text.invalid-scalar`（-8）。字面量形态的非法标量属 770 的
+   词法层前门拒绝，774 冻结的是构造边界规则。
+4. 范围规则：slice/char_at 的标量下标须满足 0 ≤ start ≤ end ≤ scalar_count；
+   start>end → `text.range-reversed`（-9）；越界 → `text.range-oob`（-10）；
+   **空范围 [s,s) 合法**（len 0）。NUL(U+0000) 是合法标量（1 字节），非终止符。
+   空串合法（0 字节/0 标量）。
+5. char_at 旧三宿主差异（F4）不升级：新 profile 返回 char，不改用单字符 str
+   （VM builtin）或 int 码点（auto-lib）。
+
+- oracle：V-07 全表（fixture/期望值见 probe-cases.md §V-07）；下游责任：770 实现
+  len/len_bytes/char_at/slice 语义必须逐字消费本表。
+
+### D-03 str/Str 逐语境规则
+
+**裁定**（按 F5 三分 + F6/F7 实况收敛；容器拥有禁令保留）：
+
+| 语境 | 首批规则 | 前门拒绝码 |
+|---|---|---|
+| 字面量 | 借用视图（指向常驻数据）；提升为 Str = 一次分配+拷贝（AP-4） | — |
+| 局部 str | 借用视图：指向字面量或拥有者的 slice；不拥有不清理 | — |
+| 局部 Str | 拥有：构造分配/接收转移；出口唯一清理（LIFO） | — |
+| 参数 str | 只读借用（view）；callee 不得保存/释放 | — |
+| 参数 Str | **move 语义**：调用点 `.move`，实参死后禁用；callee 负责清理 | 缺 `.move`：`verify.ownership-required` |
+| 返回 | 拥有 Str = 所有权转移给调用者；借用 str = 仅允许借自**参数或字面量** | 借自局部：`verify.borrow-escape` |
+| record 字段 | **仅 Str**（拥有）；str 字段首批禁止 | `verify.field-borrow` |
+| 容器元素 | 仅 Str；`List<str>` 既有禁止保留（F5） | `verify.container-borrow` |
+| clone | 显式 `s.clone()`：独立分配（AP-2），计数独立 | — |
+| 显式转换 | `s.to(Str)` 分配拷贝；`s.to(str)` 借用化不转移 | — |
+| move | `s.move`：源死后禁用，清理责任随所有权走 | `verify.use-after-move` |
+
+- 观察差异处理：F6（a2r 存储位一律拥有）是实现性分歧，不改变 F5 语义；新 profile
+  按语义裁定，a2r 不受影响。F7（旧 lib 记录内 str 入容器）记录为旧表面既有事实，
+  首批 771 字段仅 i32/bool 不触达；text-record 组合 profile 必须按本表用 Str 字段。
+- oracle：V-03（拥有/借用/clone/move 计数）、V-04（逃逸/容器拒绝）；下游：770 逐行
+  消费，770 域内 str/Str 类型检查按本表前门执行。
+
+### D-04 受限借/拥有规则（前门）
+
+**裁定**：借/拥有约束在 **verify 层前门**执行（F9 的旧 ownership 模块与运行期守卫
+不作安全凭证）；不支持的形态显式拒绝，不静默放行也不转运行期。
+
+- 所有权源：let Str 局部、拥有构造、move-in 参数、调用返回、字面量（不可变常驻）。
+- 活跃借用：view 在词法区域内活跃；活跃期间禁止 move/清理 owner、禁止 mut 借用
+  owner；**多个只读 view 可并存**（首批允许）。
+- move 后禁用：`x.move` 或 move-参数调用后，x 任何使用（含再 move/再借）前门拒绝。
+- mut 排他：至多一个活跃 mut 借用，且期间无任何只读 view。
+- 唯一清理：每分配恰一个清理责任方；owned 局部在出口（return/break/continue/
+  自然收尾）按 **LIFO** 生成清理；move 使源路径死、清理责任转移。
+- 临时延长：临时拥有值存活至所在完整语句结束（最后使用不早于语句尾）；返回转移
+  将其移出。首批无闭包/捕获，逃逸仅经返回与存储位。
+- receiver 规则（771）：只读实例方法 receiver = view 借用；显式 mut 自由函数
+  receiver = mut 参数（排他借用）；**可变实例方法（`mut fn`）首批不支持**（F14 留后续）。
+
+**模型拒绝码冻结**（探针规则模型与未来 verify 同名）：`verify.use-after-free`、
+`verify.double-move`、`verify.use-after-move`、`verify.mut-conflict`、
+`verify.borrow-escape`、`verify.field-borrow`、`verify.container-borrow`、
+`verify.ownership-required`。模型拒绝时**目标操作 native 调用计数为 0**（V-04 证据）。
+
+### D-05 内部 ABI 五类形态（探针冻结，非生产模块 ABI）
+
+平台：Windows x64 / WindowsFastcall / Cranelift 0.126（F11 现状之上）；整型/指针
+参数经 RCX/RDX/R8/R9，其后栈传；返回 ≤8 字节经 RAX。**不使用 >8 字节聚合返回**
+（避免 sret 隐藏参歧义）：拥有 buffer 的指针走 RAX、长度走显式 out 参。
+
+| ID | 形态 | 机器表示 | 大小/对齐 | caller 责任 | callee 责任 |
+|---|---|---|---|---|---|
+| ABI-A | i32/bool/char 值 | I32 按值（bool 规范 0/1；char = u32 标量位型） | 4/4 | 传值；bool/char 传前已合法 | 只读不改写 |
+| ABI-B | 借用 buffer | (ptr: I64, len: I32) 双参 | 8/8、4/4 | 借用期有效且内容稳定 | 只读；不保存/释放/越界 |
+| ABI-C | 返回拥有 buffer | 返回 ptr: I64；out 参 `*mut I32`（成功=长度≥0，失败=负状态码） | 8/8、4/4 | 取得即拥有；负责唯一清理 | 成功分配+填充；失败返回 null+负码 |
+| ABI-D | record view | 单参 `*const Rec`（I64） | 按 D-05 布局表 | 借用期有效 | 只读字段访问 |
+| ABI-E | record mut / out-return | mut：`*mut Rec`；out：caller 预置存储 + callee 全字段写入 | 同上 | mut 排他借用；out 提供存储 | mut 仅经此指针改写；out 完整初始化 |
+
+record 布局规则（首批）：字段按声明序、各字段自对齐 4、size = 4×n、对齐 4，
+offset(fᵢ) = 4·i；无重排无尾随填充。错误与释放责任：预期失败一律**值返回**
+（负状态码），panic 不穿 ABI（shim 无展开）；ABI-C 失败时已分配资源由 callee
+回收（live=0），成功时清理责任在 caller。
+
+- 候选与拒绝：候选①聚合 {ptr,len} 按 sret 隐藏参返回——拒绝：Win x64 sret 语义
+  依赖类型类别分类，Cranelift IR 无聚合类型，跨工具链手工复刻易错且无首批消费者；
+  候选②（裁定）指针走 RAX + 长度显式 out 参——通道无歧义、探针可逐位断言。
+- oracle：V-02（哨兵/布局/trace/异质顺序控制）；下游：770 消费 A/B/C，771 消费
+  A/D/E（consumer 表见 §4）。
+
+### D-06 资源策略、失败注入与终止边界
+
+**裁定（首批 = 候选 R1 显式拥有/借用）**：
+
+- 分配器：进程堆 kernel32 `GetProcessHeap`/`HeapAlloc`/`HeapFree`；不复用 Rust
+  String/Vec 私有布局；无自定义分配器。
+- 所有权：单拥有者；转移仅经 ABI-C 返回、move、clone（新独立分配）。
+- 正常清理：作用域出口 LIFO；分支/循环/早退全路径唯一清理。
+- **预算**：单位 = **存活字节数（live bytes）**；入口 = 每次分配请求在长度校验后
+  检查 `live + req ≤ budget`，违反即拒绝（码 `res.budget`，-4），**不触分配器**；
+  释放后额度即时回收。无固定语法/嵌套深度上限引入（拒绝码集合中不存在深度类码）。
+- 失败注入点（探针）：`fail_nth_alloc(n)`——第 n 次**分配器调用**返回 null
+  （模拟环境失败）；`set_budget(bytes)`。声明申请点：AP-1 拥有构造、AP-2 clone、
+  AP-3 concat 构建、AP-4 字面量提升（各点故障预期见 probe-cases §V-05）。
+- 失败类别（运行期状态值，与编译期拒绝、fatal trap 三分）：
+  `res.len-overflow`(-1)/`res.len-negative`(-2)/`res.len-too-large`(-3)/
+  `res.budget`(-4)/`res.env-oom`(-5)/`res.shim-error`(-6)。
+- 零长度：合法；拥有零长 = null 指针 + len 0，**不产生分配器调用**，free(null) 无操作。
+- fatal trap：进程级致命终止（硬件异常/abort）→ OS 回收全部进程内存；**不声称
+  执行析构、不承诺 unwind**；trap 前驱可观察效果（trace）顺序保持（F12 R3）。
+- **候选 R2（受限引用计数句柄）淘汰**：句柄表+rc 使每次值复制成为潜在所有权事件，
+  无法提供 D-04 要求的前门性质——move 禁用、mut 排他、逃逸拒绝都需要静态
+  所有权/借用状态，rc 只能在运行期"发现"（或静默原谅）违例；budget 记账在共享
+  句柄下归属不明。探针以 R2 最小族（h_alloc/h_clone/h_drop/h_get）实证：drop 后
+  复用句柄是**静默错读**（读回收槽位新内容、无任何错误码），对照 R1 前门
+  native-count-0 证据，构成淘汰依据（V-04）。`shared`/跨任务 ARC 属 Design 04
+  后续线，不由此重开。
+
+### D-07 下游接口与合入顺序（摘要；明细表 = T-05 interface-contract.md）
+
+- 770（文本）消费：D-01、D-02、D-03、D-04、D-05 A/B/C、D-06 全部；新增身份
+  `auto.hir.text.draft / 1 / text-i32-draft`（770 注册）。
+- 771（record）消费：D-01、D-04 receiver 规则、D-05 A/D/E；i32/bool record 无堆
+  资源，D-06 仅交互面（无拥有 buffer）；新增身份 `auto.hir.record.draft / 1 /
+  record-i32-draft`（771 注册）。
+- 共同热点（两分支都改）：source AST/typecheck、hir、descriptor、verify、native、
+  main；语义定义一处（本包 + 770/771 各自 Spec），**不得各自造通用类型系统**。
+- 合入顺序：774 复审合入 → 770/771 并行实施 → 先完成者先合入，后完成者在
+  新整合基线重放自身全门禁 + 首个 profile 回归；非文本合并冲突（身份/签名/Drop/
+  能力门不兼容）暂停依赖实现并 revision。
+- 组合 text-record、List、enum、use、生产 ABI、ACC 桥：后续 owner（Design 36 §7），
+  非本包遗漏。
+
+
 
 ## 4. 下游消费表（T-05 冻结后回填）
 
