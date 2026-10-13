@@ -37,10 +37,7 @@ fn fresh_vm() -> AutoVM {
 fn plan776_probe_resource_identity_survives_propagation() {
     let vm = fresh_vm();
     let sentinel = 776_776u64;
-    let handle = vm.insert_heap_object(RustStdlibObject::new(
-        "plan776.probe.Sentinel",
-        sentinel,
-    ));
+    let handle = vm.insert_heap_object(RustStdlibObject::new("plan776.probe.Sentinel", sentinel));
     let nv = auto_val::encode_object(handle as u32);
     assert!(auto_val::is_object(nv), "资源凭据必须是 TAG_OBJECT 载体");
 
@@ -54,7 +51,9 @@ fn plan776_probe_resource_identity_survives_propagation() {
     assert_eq!(auto_val::decode_object(*back) as u64, handle);
 
     // Future 终值（Value::VmRef 传播——External/Internal 终值同一载体）。
-    let value = auto_val::Value::VmRef(auto_val::VmRef { id: handle as usize });
+    let value = auto_val::Value::VmRef(auto_val::VmRef {
+        id: handle as usize,
+    });
     vm.futures.insert(
         1,
         std::sync::Arc::new(std::sync::RwLock::new(FutureValue {
@@ -78,7 +77,9 @@ fn plan776_probe_resource_identity_survives_propagation() {
     let mut fut2 = vm.futures.get_mut(&1).expect("future 可变读");
     fut2.write().unwrap().captures.insert(
         "res".to_string(),
-        auto_val::Value::VmRef(auto_val::VmRef { id: handle as usize }),
+        auto_val::Value::VmRef(auto_val::VmRef {
+            id: handle as usize,
+        }),
     );
     drop(fut2);
     let cap = vm
@@ -103,9 +104,7 @@ fn plan776_probe_resource_identity_survives_propagation() {
         .as_any()
         .downcast_ref::<RustStdlibObject>()
         .expect("downcast 保持（传播后仍是同一对象类型）");
-    let inner = ro
-        .downcast_ref::<u64>()
-        .expect("载荷类型保持");
+    let inner = ro.downcast_ref::<u64>().expect("载荷类型保持");
     assert_eq!(*inner, sentinel);
 }
 
@@ -115,14 +114,10 @@ fn plan776_probe_resource_identity_survives_propagation() {
 #[test]
 fn plan776_probe_plain_numbers_never_gain_resource_identity() {
     let vm = fresh_vm();
-    let handle = vm.insert_heap_object(RustStdlibObject::new(
-        "plan776.probe.Collision",
-        1u32,
-    ));
+    let handle = vm.insert_heap_object(RustStdlibObject::new("plan776.probe.Collision", 1u32));
     // 同值普通数（真碰撞形态：id 已知且资源活跃）。
     let i32_same = auto_val::encode_i32(handle as i32);
-    let i64_same = auto_val::try_encode_i64(handle as i64)
-        .expect("小值 i64 应可 48 位内联编码");
+    let i64_same = auto_val::try_encode_i64(handle as i64).expect("小值 i64 应可 48 位内联编码");
     assert!(!auto_val::is_object(i32_same), "同值 i32 不得命中对象 tag");
     assert!(!auto_val::is_object(i64_same), "同值 i64 不得命中对象 tag");
     assert!(auto_val::is_i32(i32_same) && auto_val::is_i64(i64_same));
@@ -158,7 +153,10 @@ fn plan776_probe_legacy_registry_lookup_vs_object_identity() {
     let first = stdlib::lookup_http_response(handle).expect("首次查表命中");
     assert_eq!(first.0, 302);
     let second = stdlib::lookup_http_response(handle).expect("重复查表仍命中");
-    assert_eq!(second.0, 302, "lookup 不消费（Response 可重复返回的现行为）");
+    assert_eq!(
+        second.0, 302,
+        "lookup 不消费（Response 可重复返回的现行为）"
+    );
 
     // 同值 int 是数据：查表命中不等于持有对象身份。
     let as_int = auto_val::encode_i32(handle as i32);
@@ -171,8 +169,8 @@ fn plan776_probe_legacy_registry_lookup_vs_object_identity() {
 // T-02：producer 接线（shim 级——构造点返回 TAG_OBJECT 凭据）
 // ============================================================================
 
-use crate::vm::task::AutoTask;
 use crate::vm::ffi::http_return_resource::{self, ResourceClaim};
+use crate::vm::task::AutoTask;
 
 fn fresh_task() -> AutoTask {
     AutoTask::new(0, 1024, 0)
@@ -310,9 +308,7 @@ fn plain(n int) int {
         }
         let mut stream = stream.expect("connect");
         stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
-        let req = format!(
-            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-        );
+        let req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
         stream.write_all(req.as_bytes()).unwrap();
         let _ = stream.flush();
         let mut raw = Vec::new();
@@ -402,7 +398,9 @@ fn plain(n int) int {
             let path = if i == 0 { "/api/make" } else { "/api/replay" };
             let (status, headers, _) = get(port, path);
             assert_eq!(status, 302, "第 {} 次请求", i + 1);
-            assert!(headers.iter().any(|(k, v)| k == "location" && v == "/target"));
+            assert!(headers
+                .iter()
+                .any(|(k, v)| k == "location" && v == "/target"));
         }
     }
 }
@@ -418,7 +416,10 @@ fn main() {
 }
 "#;
     let (stderr, stdout) = crate::run_with_capture(code).expect("run");
-    assert!(stdout.contains("done"), "stdout: {stdout:?} stderr: {stderr:?}");
+    assert!(
+        stdout.contains("done"),
+        "stdout: {stdout:?} stderr: {stderr:?}"
+    );
     assert_eq!(
         http_return_resource::live_resource_count(),
         0,
@@ -499,7 +500,10 @@ fn async_note() ~Note {
         assert_eq!(status, 200);
         let text = String::from_utf8_lossy(&body).into_owned();
         assert!(text.contains("\"id\": 7"), "record 字段: {text}");
-        assert!(text.contains("\"title\": \"plan776\""), "record 串字段: {text}");
+        assert!(
+            text.contains("\"title\": \"plan776\""),
+            "record 串字段: {text}"
+        );
     }
 
     /// AC-04：Failed 终态 → 有界 500（不再伪装 200 null）。
@@ -509,10 +513,7 @@ fn async_note() ~Note {
         let (status, _, body) = get(port, "/api/async-fail");
         assert_eq!(status, 500, "Failed 终态必须有界 500");
         let text = String::from_utf8_lossy(&body).into_owned();
-        assert!(
-            text.contains("error"),
-            "失败体含 error 诊断: {text}"
-        );
+        assert!(text.contains("error"), "失败体含 error 诊断: {text}");
     }
 }
 
@@ -637,13 +638,13 @@ fn events_stream() ~Iter<int> {
                 break false;
             }
             raw.extend_from_slice(&buf[..n]);
-            if raw.windows(6).any(|w| w == b"event:" ) || raw.windows(5).any(|w| w == b"data:") {
+            if raw.windows(6).any(|w| w == b"event:") || raw.windows(5).any(|w| w == b"data:") {
                 break true;
             }
         };
         assert!(got_frame, "应收到首帧（headers+data）");
         drop(s); // 断连
-        // 断连传播 + 清理 + 宽限窗：轮询等待凭据回收（有界 10s）。
+                 // 断连传播 + 清理 + 宽限窗：轮询等待凭据回收（有界 10s）。
         let deadline = std::time::Instant::now() + Duration::from_secs(10);
         let mut drained = 0;
         loop {
@@ -676,14 +677,8 @@ fn events_stream() ~Iter<int> {
 fn plan776_t05_rc_release_chain_reaps_credential() {
     let vm = fresh_vm();
     let mut task = fresh_task();
-    http_return_resource::push_response_resource(
-        &mut task,
-        &vm,
-        200,
-        Vec::new(),
-        b"x".to_vec(),
-    )
-    .unwrap();
+    http_return_resource::push_response_resource(&mut task, &vm, 200, Vec::new(), b"x".to_vec())
+        .unwrap();
     let nv = task.ram.pop_nv();
     let id = auto_val::decode_object(nv) as u64;
     let c1 = vm
@@ -695,11 +690,7 @@ fn plan776_t05_rc_release_chain_reaps_credential() {
         .heap_rc
         .get(&id)
         .map(|e| e.load(std::sync::atomic::Ordering::Acquire));
-    let dying = vm
-        .dying_heap
-        .lock()
-        .map(|q| q.len())
-        .unwrap_or(usize::MAX);
+    let dying = vm.dying_heap.lock().map(|q| q.len()).unwrap_or(usize::MAX);
     assert_eq!(c1, Some(1), "构造后唯一栈引用");
     assert_eq!(c2, None, "release 归零（条目移除）");
     assert_eq!(dying, 1, "归零入 dying 宽限队列");

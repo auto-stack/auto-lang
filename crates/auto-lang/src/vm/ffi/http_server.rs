@@ -88,8 +88,9 @@ pub fn record_api_return_type(fn_name: &str, ret_display: String) {
 ///（struct/type alias/enum，经 TypeStore）时登记。VM 编组门消费
 ///（fn_response_kind 先查遮蔽 → Json）：同裸名用户类型不冒领 stdlib
 /// 专属身份（AC-07；无运行时模块上下文，来源在编译期冻结于此）。
-static API_RETURN_SHADOWED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+static API_RETURN_SHADOWED: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
 
 /// Codegen 发布遮蔽标记（与 record_api_return_type 同点调用）。
 pub fn record_api_return_shadowed(fn_name: &str) {
@@ -5623,11 +5624,7 @@ fn file_contract_mismatch_reply(ctx: &DispatchCtx, raw: u64) -> ApiReply {
 /// PLAN-776 T-03：SSE 迭代器 → wire 回复的**单源**（i32 查表命中制臂与
 /// 资源凭据臂共用；不新增另一套 SSE 输出循环——producer spawn/
 /// `produce_sse_frames`/cleanup 守卫原样）。
-fn sse_iterator_reply(
-    vm: &std::rc::Rc<AutoVM>,
-    ctx: &DispatchCtx,
-    iter_id: u32,
-) -> ApiReply {
+fn sse_iterator_reply(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, iter_id: u32) -> ApiReply {
     eprintln!(
         "[HTTP] {} {} → 200 SSE ({}ms)",
         ctx.req_method,
@@ -5660,10 +5657,9 @@ fn resource_claim_reply(
 ) -> ApiReply {
     use crate::vm::ffi::http_return_resource::ResourceClaim;
     match claim {
-        ResourceClaim::Response(snapshot) => response_handle_reply(
-            ctx,
-            (snapshot.status, snapshot.headers, snapshot.body),
-        ),
+        ResourceClaim::Response(snapshot) => {
+            response_handle_reply(ctx, (snapshot.status, snapshot.headers, snapshot.body))
+        }
         ResourceClaim::Sse { iterator_id } => {
             if vm.iterators.contains_key(&iterator_id) {
                 sse_iterator_reply(vm, ctx, iterator_id)

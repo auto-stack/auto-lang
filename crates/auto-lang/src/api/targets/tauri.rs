@@ -412,7 +412,7 @@ mod tests {
             attrs,
             body: None,
             doc: None,
-                    response: Default::default(),
+            response: crate::api::contract::ResponseKind::File,
         };
         let gen = super::TauriGenerator::default();
         let cmd = gen.generate_command(&endpoint);
@@ -459,7 +459,7 @@ mod tests {
             return_type: "User".to_string(),
             doc: Some("Get user by ID".to_string()),
             body: None,
-                    response: Default::default(),
+            response: Default::default(),
         };
 
         let result = gen.generate_command(&endpoint);

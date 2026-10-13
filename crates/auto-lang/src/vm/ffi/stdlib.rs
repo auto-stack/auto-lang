@@ -12477,11 +12477,7 @@ mod sqlite_vm_tests {
             1
         );
         assert_eq!(shim_sqlite_last_insert_rowid_impl(&vm, h), 1);
-        let rows = shim_sqlite_query_impl(
-            &vm,
-            h,
-            "SELECT id, name FROM cats ORDER BY id".into(),
-        );
+        let rows = shim_sqlite_query_impl(&vm, h, "SELECT id, name FROM cats ORDER BY id".into());
         assert_eq!(rows, vec![vec!["1".to_string(), "Michi".to_string()]]);
 
         // 语法错误：-1 + last_error 非空（哨兵约定）
@@ -12500,10 +12496,7 @@ mod sqlite_vm_tests {
     fn sqlite_vm_handles_are_vm_local_and_released_with_request_task() {
         let vm_a = test_vm();
         let vm_b = test_vm();
-        let dir = std::env::temp_dir().join(format!(
-            "auto-vm-sqlite-scope-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("auto-vm-sqlite-scope-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path_a = dir.join("a.db").to_string_lossy().into_owned();
@@ -12513,24 +12506,15 @@ mod sqlite_vm_tests {
         let task_b = vm_b.spawn_task(0, 1024);
         let handle_a = shim_sqlite_open_impl(&vm_a, task_a, path_a);
         let handle_b = shim_sqlite_open_impl(&vm_b, task_b, path_b);
-        assert_eq!(
-            shim_sqlite_exec_impl(&vm_a, handle_a, "SELECT 1".into()),
-            0
-        );
-        assert_eq!(
-            shim_sqlite_exec_impl(&vm_b, handle_b, "SELECT 1".into()),
-            0
-        );
+        assert_eq!(shim_sqlite_exec_impl(&vm_a, handle_a, "SELECT 1".into()), 0);
+        assert_eq!(shim_sqlite_exec_impl(&vm_b, handle_b, "SELECT 1".into()), 0);
 
         vm_a.remove_task(task_a);
         assert_eq!(
             shim_sqlite_exec_impl(&vm_a, handle_a, "SELECT 1".into()),
             -1
         );
-        assert_eq!(
-            shim_sqlite_exec_impl(&vm_b, handle_b, "SELECT 1".into()),
-            0
-        );
+        assert_eq!(shim_sqlite_exec_impl(&vm_b, handle_b, "SELECT 1".into()), 0);
 
         vm_b.remove_task(task_b);
         assert_eq!(

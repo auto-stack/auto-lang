@@ -662,7 +662,7 @@ mod tests {
             attrs,
             body: None,
             doc: None,
-                    response: Default::default(),
+            response: crate::api::contract::ResponseKind::File,
         };
         let gen = super::TypeScriptGenerator::default();
         let ts_type = gen.to_ts_type("FileResponse");

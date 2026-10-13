@@ -3621,10 +3621,8 @@ fn push_delegating_scalar_handlers(
         let ret = endpoint.return_type.trim();
         // PLAN-729 T-05 / 734 R1 F-1：委派路径（route A/db 覆盖）的文件端点——
         // 同样生成真实文件 adapter（契约身份判定）。
-        if auto_lang::api::contract::ResponseKind::from_return_identity(
-            ret,
-            &api_module.types,
-        ) == auto_lang::api::contract::ResponseKind::File
+        if auto_lang::api::contract::ResponseKind::from_return_identity(ret, &api_module.types)
+            == auto_lang::api::contract::ResponseKind::File
         {
             // 路径参数：委派路径此前只覆盖 query/body——文件端点的典型
             // 形态是 `:name` 路径参数，这里补 Path 提取（首个路径参数，
@@ -7170,9 +7168,9 @@ pub fn up(req UploadRequest) ~UploadReceipt {
     /// 真实 FileResponse 保持文件 glue。
     #[test]
     fn plan776_generation_consumes_source_identity() {
+        use auto_lang::api::contract::ResponseKind;
         use auto_lang::api::ApiExtractor;
         use auto_lang::api::TypeScriptGenerator;
-        use auto_lang::api::contract::ResponseKind;
         let api = r#"
 pub type FileResponse = { name: str }
 

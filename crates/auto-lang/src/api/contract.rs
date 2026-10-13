@@ -350,10 +350,26 @@ mod tests {
     #[test]
     fn plan776_response_kind_source_identity_matrix() {
         let user_types = vec![
-            ApiType { name: "Response".into(), fields: vec![], doc: None },
-            ApiType { name: "FileResponse".into(), fields: vec![], doc: None },
-            ApiType { name: "Iter".into(), fields: vec![], doc: None },
-            ApiType { name: "UploadReceipt".into(), fields: vec![], doc: None },
+            ApiType {
+                name: "Response".into(),
+                fields: vec![],
+                doc: None,
+            },
+            ApiType {
+                name: "FileResponse".into(),
+                fields: vec![],
+                doc: None,
+            },
+            ApiType {
+                name: "Iter".into(),
+                fields: vec![],
+                doc: None,
+            },
+            ApiType {
+                name: "UploadReceipt".into(),
+                fields: vec![],
+                doc: None,
+            },
         ];
         let identity = |ret: &str| ResponseKind::from_return_identity(ret, &user_types);
         // 用户同名声明：普通 Json（含 Future 包装与泛型实参形态）。
@@ -368,10 +384,18 @@ mod tests {
         assert_eq!(identity("Stream<ChatEvent>"), ResponseKind::Stream);
         assert_eq!(identity("int"), ResponseKind::Json);
         // 同名集里只遮蔽已声明者：其他端点不受影响。
-        let partial = vec![ApiType { name: "Response".into(), fields: vec![], doc: None }];
+        let partial = vec![ApiType {
+            name: "Response".into(),
+            fields: vec![],
+            doc: None,
+        }];
         let id2 = |ret: &str| ResponseKind::from_return_identity(ret, &partial);
         assert_eq!(id2("Response"), ResponseKind::Json);
-        assert_eq!(id2("FileResponse"), ResponseKind::File, "未声明者保持专属身份");
+        assert_eq!(
+            id2("FileResponse"),
+            ResponseKind::File,
+            "未声明者保持专属身份"
+        );
     }
 
     #[test]

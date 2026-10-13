@@ -1493,7 +1493,11 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                 // PLAN-776 T-06：第三段 = 返回裸名被用户同名遮蔽（1/空）。
                 // 裸名取 primary（主类型名——与消费侧分类段一致）。
                 // 消费侧（from_return_string 前）先解遮蔽 → Json（AC-07）。
-                let shadowed = if user_type_names.contains(&primary) { "1" } else { "" };
+                let shadowed = if user_type_names.contains(&primary) {
+                    "1"
+                } else {
+                    ""
+                };
                 fn_meta.insert(
                     f.name.to_string(),
                     (method, format!("{primary}|{display}|{shadowed}")),

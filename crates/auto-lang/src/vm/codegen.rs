@@ -1599,8 +1599,7 @@ impl Codegen {
                     // 声明（TypeStore）时冻结遮蔽标记（VM 编组门 → Json；
                     /// stdlib HTTP 词汇不注册 TypeStore，命中即用户来源）。
                     {
-                        let bare =
-                            crate::api::contract::return_bare_name(&ret_display).to_string();
+                        let bare = crate::api::contract::return_bare_name(&ret_display).to_string();
                         let shadowed = self
                             .type_store
                             .read()
