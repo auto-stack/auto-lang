@@ -28,9 +28,11 @@
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::task::AutoTask;
 
-/// Build + register a structured HTTP response and push its handle as i32.
-/// Mirrors `shim_http_response_redirect`'s convention: the server's
-/// `is_i32 → lookup_http_response` path serves it directly.
+/// Build + register a structured HTTP response credential.
+/// PLAN-776 T-02: push owned 快照凭据对象（`http_return_resource`，TAG_OBJECT
+/// 载体）——`resp_*` 检视族不消费 HTTP_RESPONSES 表（它们检 Value 信封），
+/// 服务返回由 marshal 资源臂按快照回复；重复返回 clone 不消费。旧 int +
+/// 查表路径退役于本构造族（wire 用例经资源臂同形回复）。
 fn push_response(
     task: &mut AutoTask,
     vm: &AutoVM,
@@ -38,11 +40,7 @@ fn push_response(
     headers: Vec<(String, String)>,
     body: Vec<u8>,
 ) -> Result<(), VMError> {
-    let handle = crate::vm::ffi::stdlib::insert_http_response(status, headers, body);
-    // `_stake` keeps the RC contract balanced if the caller later reads it.
-    let _ = vm;
-    task.ram.push_i32(handle as i32);
-    Ok(())
+    super::http_return_resource::push_response_resource(task, vm, status, headers, body)
 }
 
 /// JSON body for a successful response: the argument serialized via the
@@ -495,8 +493,11 @@ pub fn shim_sse_keep_alive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     Ok(())
 }
 
-/// `sse.into_response()` → the generator iterator id the server streams.
-/// Stack: sse_handle -> iter_id
+/// `sse.into_response()` → the streaming credential the server serves.
+/// PLAN-776 T-02: 装箱 SSE iterator 凭据对象（`http_return_resource::Sse`）——
+/// 身份不再降级为裸 `push_i32(iter_id)`；底层 iterator 仍在 `vm.iterators`
+/// （注册机制不动），marshal 资源臂校验后走 `produce_sse_frames` 单源。
+/// Stack: sse_handle -> sse_resource
 pub fn shim_sse_into_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let sse_handle = pop_rust_handle(task, "Sse.into_response")?;
     let iter_id = if let Some(obj) = vm.get_heap_object(sse_handle) {
@@ -510,8 +511,12 @@ pub fn shim_sse_into_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     } else {
         0
     };
-    task.ram.push_i32(iter_id as i32);
-    Ok(())
+    if iter_id == 0 {
+        return Err(VMError::RuntimeError(
+            "Sse.into_response: sse object carries no iterator".into(),
+        ));
+    }
+    super::http_return_resource::push_sse_resource(task, vm, iter_id)
 }
 
 /// Read an `SseEvent` from a heap object handle if it is one.

@@ -157,3 +157,77 @@ fn plan776_probe_legacy_registry_lookup_vs_object_identity() {
     // 未登记 id 查表不命中（表命中制无凭据校验的对照面）。
     assert!(stdlib::lookup_http_response(handle + 1).is_none());
 }
+
+// ============================================================================
+// T-02：producer 接线（shim 级——构造点返回 TAG_OBJECT 凭据）
+// ============================================================================
+
+use crate::vm::task::AutoTask;
+use crate::vm::ffi::http_return_resource::{self, ResourceClaim};
+
+fn fresh_task() -> AutoTask {
+    AutoTask::new(0, 1024, 0)
+}
+
+/// redirect 构造点：`http.response.redirect(url, 302)` → Response 凭据对象
+/// （不进 HTTP_RESPONSES 表；快照 302 + Location）。
+#[test]
+fn plan776_t02_redirect_shim_pushes_resource() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    use crate::vm::ffi::VMConvertible;
+    "/next".to_string().push_to_stack(&mut task, &vm).unwrap();
+    task.ram.push_i32(302);
+    stdlib::shim_http_response_redirect(&mut task, &vm).unwrap();
+    let nv = task.ram.pop_nv();
+    assert!(auto_val::is_object(nv), "redirect 返回凭据对象");
+    match http_return_resource::resolve_resource(&vm, nv).unwrap() {
+        ResourceClaim::Response(s) => {
+            assert_eq!(s.status, 302);
+            assert_eq!(s.headers[0].1, "/next");
+        }
+        other => panic!("错种类：{other:?}"),
+    }
+}
+
+/// musk ctor 接线：`ok_response(v)` → 200 JSON Response 凭据。
+#[test]
+fn plan776_t02_musk_ok_response_pushes_resource() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    task.ram.push_i32(7);
+    crate::vm::ffi::musk_response_ctor::shim_ok_response(&mut task, &vm).unwrap();
+    let nv = task.ram.pop_nv();
+    assert!(auto_val::is_object(nv));
+    match http_return_resource::resolve_resource(&vm, nv).unwrap() {
+        ResourceClaim::Response(s) => {
+            assert_eq!(s.status, 200);
+            assert_eq!(s.body, b"7".to_vec());
+            assert_eq!(s.headers[0].1, "application/json");
+        }
+        other => panic!("错种类：{other:?}"),
+    }
+}
+
+/// file 构造点：`http.file_response(root, path, "{}")` → File 凭据对象 +
+/// 描述符表项在位（take 单次移交合同保留）。
+#[test]
+fn plan776_t02_file_response_shim_pushes_resource() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    use crate::vm::ffi::VMConvertible;
+    "root".to_string().push_to_stack(&mut task, &vm).unwrap();
+    "x.bin".to_string().push_to_stack(&mut task, &vm).unwrap();
+    "{}".to_string().push_to_stack(&mut task, &vm).unwrap();
+    crate::vm::ffi::http_server_file::shim_http_file_response(&mut task, &vm).unwrap();
+    let nv = task.ram.pop_nv();
+    assert!(auto_val::is_object(nv));
+    match http_return_resource::resolve_resource(&vm, nv).unwrap() {
+        ResourceClaim::File { descriptor_id } => {
+            // 表项在位（take 可消费——单次移交）。
+            assert!(crate::vm::ffi::http_server_file::take_file_response(descriptor_id).is_some());
+            assert!(crate::vm::ffi::http_server_file::take_file_response(descriptor_id).is_none());
+        }
+        other => panic!("错种类：{other:?}"),
+    }
+}

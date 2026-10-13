@@ -5748,24 +5748,21 @@ pub fn shim_http_response_html(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
 /// Plan 346: `http.response.redirect(url: String, status: int) -> response_handle`
 /// Create a redirect response (302 or 301).
+/// PLAN-776 T-02: 真实资源生产点——返回 owned 快照凭据对象（TAG_OBJECT），
+/// 不再进 HTTP_RESPONSES 表；源码不变（`return http.response.redirect(...)`
+/// 直接进服务返回），wire 由 marshal 资源臂按快照回复。普通 int 永不命中。
 pub fn shim_http_response_redirect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let status: i32 = crate::vm::native::pop_arg_i32(task);
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    HTTP_RESPONSES.with(|r| {
-        r.borrow_mut().insert(
-            handle,
-            HttpResponseData {
-                status: if status == 301 { 301 } else { 302 },
-                headers: vec![("Location".to_string(), url)],
-                body: Vec::new(),
-            },
-        );
-    });
-    task.ram.push_i32(handle as i32);
-    Ok(())
+    super::http_return_resource::push_response_resource(
+        task,
+        vm,
+        if status == 301 { 301 } else { 302 },
+        vec![("Location".to_string(), url)],
+        Vec::new(),
+    )
 }
 
 /// Plan 346 3c: server-side lookup of a pending response by handle. Lets the

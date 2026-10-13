@@ -47,6 +47,9 @@ pub(crate) fn take_file_response(id: u64) -> Option<FileResponse> {
 
 /// `http.file_response(root, relative_path, options) -> FileResponse`
 /// （非阻塞构造；严格 options/词法路径校验在描述符内，adapter 映射）。
+/// PLAN-776 T-02: 返回 File 凭据对象（`http_return_resource`）；描述符
+/// 仍入 `VM_FILE_RESPONSES` 表（take 单次移交 / scope 组收口合同不动），
+/// 对象只是按值身份——普通 int 不再凭声明门+撞号消费描述符。
 pub fn shim_http_file_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::ffi::convert::VMConvertible;
     let options: String = VMConvertible::pop_from_stack(task, vm)
@@ -58,8 +61,7 @@ pub fn shim_http_file_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     let descriptor = a2r_std::http::file_response(&root, &relative_path, &options);
     super::http_server::register_scope_file_response(descriptor.id());
     let id = insert_file_response(descriptor);
-    task.ram.push_i32(id as i32);
-    Ok(())
+    super::http_return_resource::push_file_resource(task, vm, id)
 }
 
 /// scope 组收口：移除组内闲置描述符（幂等；编组已取出的 no-op）。

@@ -250,7 +250,7 @@ pub fn shim_http_upload_commit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             Some(UploadOpResult::Receipt(receipt)) => {
                 task.waiting_http_request_id = None;
                 let rid = insert_upload_receipt(receipt);
-                task.ram.push_i32(rid as i32);
+                super::http_return_resource::push_upload_resource(task, vm, rid)?;
                 Ok(())
             }
             Some(UploadOpResult::Session(_)) => {
@@ -274,7 +274,7 @@ pub fn shim_http_upload_commit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             format!("upload_commit: unknown or already-terminal session {handle}"),
         );
         let rid = insert_upload_receipt(receipt);
-        task.ram.push_i32(rid as i32);
+        super::http_return_resource::push_upload_resource(task, vm, rid)?;
         return Ok(());
     };
     let op_id = spawn_upload_watcher(async move {
@@ -294,7 +294,7 @@ pub fn shim_http_upload_reject(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             Some(UploadOpResult::Receipt(receipt)) => {
                 task.waiting_http_request_id = None;
                 let rid = insert_upload_receipt(receipt);
-                task.ram.push_i32(rid as i32);
+                super::http_return_resource::push_upload_resource(task, vm, rid)?;
                 Ok(())
             }
             Some(UploadOpResult::Session(_)) => {
@@ -319,7 +319,7 @@ pub fn shim_http_upload_reject(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             format!("upload_reject: unknown or already-terminal session {handle}"),
         );
         let rid = insert_upload_receipt(receipt);
-        task.ram.push_i32(rid as i32);
+        super::http_return_resource::push_upload_resource(task, vm, rid)?;
         return Ok(());
     };
     let op_id = spawn_upload_watcher(async move {
@@ -338,8 +338,7 @@ pub fn shim_http_upload_error(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     let status = crate::vm::native::pop_arg_i32(task) as i64;
     let receipt = a2r_std::http::upload_error(status, &message);
     let rid = insert_upload_receipt(receipt);
-    task.ram.push_i32(rid as i32);
-    Ok(())
+    super::http_return_resource::push_upload_resource(task, vm, rid)
 }
 
 /// scope 组收口：取消在途接收 + 清理 staged 会话 + 释放未消费 body 能力
