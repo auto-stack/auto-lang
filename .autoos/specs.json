@@ -4,6 +4,20 @@
    "id": "reports",
    "items": [
     {
+     "id": "P774-M",
+     "title": "PLAN-774 合入沉淀收据（canonical 落地与探针状态）",
+     "file": "docs/reports/774-data-resource/verification.md",
+     "content": "T-08 交付：SD-01 新建 auto-ac/data-resource-contract.md；SD-02/03/04 修改 auto-ac/project、auto-hir/stage-contract、auto-acc/project；plans.md 行 + INDEX 重生成；ledger 离线投影四条目。探针 workspace probes/data-resources（64 测试+记账状态探针，PS 门禁 8 步）。归档 docs/plans/archive/774-ac-data-resource-contract.md。",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-14",
+     "last_modified": "2026-10-14",
+     "tags": [
+      "plan:PLAN-774",
+      "stage:merge"
+     ]
+    },
+    {
      "id": "P738-5",
      "title": "PLAN-738 Phase 3 执行收据（scope/strict/reference-audit/manifest/acceptance/verification）",
      "file": "docs/plans/reports/738-phase3-scope.md",
@@ -3953,6 +3967,21 @@
    "id": "designs",
    "items": [
     {
+     "id": "P774-1",
+     "title": "AC 数据扩面共同契约：类型/文本/str-Str/借拥有前门、内部 ABI 五类与资源合同",
+     "file": "docs/specs/auto-ac/data-resource-contract.md",
+     "content": "PLAN-774 冻结（六轮独立复审收敛）：D-01 i32/char 名义与内部宽度转换边界；D-02 UTF-8/标量索引/字面量拼写（跨行合法、转义白名单+\\u{}）；D-03 str/Str 逐语境（参数默认 view+mut/move 显式模式；借用返回=借入参数或静态字面量）；D-04 前门八码+native-count-0；D-05 内部 ABI 五类（无 sret）+嵌套 record 递归布局；D-06 R1 显式拥有裁定（R2 复杂度淘汰）、完整账本、u64 全精度计数、预算语义、失败/trap 分类。770/771 唯一接口来源。",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-14",
+     "last_modified": "2026-10-14",
+     "tags": [
+      "plan:PLAN-774",
+      "commit:c713aaafb",
+      "probe:64+1"
+     ]
+    },
+    {
      "id": "P738-2",
      "title": "实际 provider 索引与发射侧适配契约表（VM/Rust 运行形态分家·C c.* 直连）",
      "file": "docs/specs/stdlib/design/backend-assembly.md",
@@ -6378,6 +6407,20 @@
    "id": "tests",
    "items": [
     {
+     "id": "P774-T",
+     "title": "AC 数据/资源探针测试族（真实 COFF/PE 机器调用 + 记账状态探针）",
+     "file": "experimental/ac-core/probes/data-resources/tests/v02_abi.rs",
+     "content": "独立 workspace 64 测试：v02 五类 ABI/顺序与字段交换控制/嵌套 rec2；v03 寿命 LIFO/嵌套出口/临时/move-in/return 转移/clone 内容；v04 来源模型矩阵（8 合法+16 非法）与真实 PE 兄弟；v05 故障注入（AP-1..4、账本首表/扩表/回滚）；v06 trap 0xC0000005 与 Deadline 文件前驱；v07 文本边界；v08 规模/预算/解析边界。门禁 scripts/verify-ac-data-resources-774.ps1。",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-14",
+     "last_modified": "2026-10-14",
+     "tags": [
+      "plan:PLAN-774",
+      "tier:probe-gate"
+     ]
+    },
+    {
      "id": "P738-3",
      "title": "PLAN-738 测试矩阵（全分母双拼写/三角对拍/lock 状态机/服务链）",
      "file": "docs/plans/reports/738-phase3-verification.md",
@@ -7627,6 +7670,21 @@
   {
    "id": "reviews",
    "items": [
+    {
+     "id": "P774-R6",
+     "title": "PLAN-774 第六轮独立最终复审 pass（经 r1..r5 五轮 needs_fix 修复收敛）",
+     "file": "docs/plans/attachments/774/review-r6/REVIEW.md",
+     "content": "reviewed_commit=c713aaafb（repair 78537a80b）。r1 六发现/r2 四/r3 两/r4 一/r5 一全部修复清偿；AC01..06 通过。终验：774 gate 8 步/64 探针+状态探针、ac-core 145、741/745/772 门禁、五轮反例重放（7/3/4/1/2）与 formatter-parser 组合控制全绿。历史反例包 attachments/774/review-r1..r6 可重放。",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-14",
+     "last_modified": "2026-10-14",
+     "tags": [
+      "plan:PLAN-774",
+      "outcome:pass",
+      "commit:c713aaafb"
+     ]
+    },
     {
      "id": "P738-4",
      "title": "PLAN-738 审计链收据（R1 needs_fix→R8 pass→merge 修复轮 R9/R10）",
@@ -10341,5 +10399,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 9
+ "version": 10
 }

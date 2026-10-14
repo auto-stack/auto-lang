@@ -67,6 +67,17 @@ ExitProcess(70)）。仅当语言独立规定某语境必须编译期求值（�
 （目标态），当前不存在任何已实现 pass。声称实现任何 pass 的计划必须先按
 模板补全可执行 pre/post 断言并重验。
 
+### 数据/资源阶段责任（PLAN-774，planned）
+
+S3 verify 承担数据/资源前门：str/Str 逐语境与借/拥有八码（含被拒操作 native
+调用计数为 0 的义务——八码均已**探针模型可达入口并通过**，production verify 仍
+planned）；S4 Checked 须携带资源义务（所有权/清理责任）且不泄漏 ABI 布局
+（沿 X6）；S5 lowering 按 D-05 五类形态（含嵌套 record 递归布局）；S6 执行器
+deadline/containment 沿 741 合同。全路径清理（LIFO/嵌套出口/临时/move-in/
+return 转移）的证据状态为**探针实证**；合同全文见
+[auto-ac/data-resource-contract.md](../auto-ac/data-resource-contract.md)。
+text/record 域身份（text-i32-draft/record-i32-draft）注册归 770/771。
+
 ## 非法变换负面清单
 
 X1 分支 trap 提升；X2 命名参数按声明序重排；X3 变换后沿用旧 Checked 凭证；

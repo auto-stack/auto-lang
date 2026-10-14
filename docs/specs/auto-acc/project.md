@@ -87,6 +87,16 @@ required **不因有限域证据改项**：这是 Rust AC 原型域的验证，�
 unknown 族 owner/探针不变。真实 PE 取证与独立复审（含修复轮）见
 [verification.md](../../reports/767-scalar-i32/verification.md)。
 
+## 数据/资源合同取证（PLAN-774）
+
+D-01..07 共同合同已在 774 冻结并经真实 COFF/PE 探针实证（Rust AC 原型域；
+合同全文 [auto-ac/data-resource-contract.md](../auto-ac/data-resource-contract.md)）。
+required **不因合同冻结改项**（合同≠Auto 实现）：str/char/record/List 等
+required 状态不变。unknown 族更新：char↔int 在 profile 边界的规则已定
+（D-02：char 名义 + 显式 to_codepoint/from_codepoint），全语言宽度仍 open；
+probe-rt-own 由 774 的 D-06 资源合同部分回应（R1/R2 裁定 + 全路径探针），owner
+更新为 770/771 实施线。不关闭 GOAL-017（AC/ACC native 自举谱系不受影响）。
+
 ## 锚点/候选 owner 一致性（QA-05）
 
 A8（str/List 微程序）owner=运行时首批候选（str/容器/int 扩面工作包）；

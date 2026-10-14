@@ -92,6 +92,20 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 - 一键验证：`scripts/verify-ac-741.ps1`（§6 全命令 + CLI 实机构建运行 + 主仓门禁；PS 5.1 兼容，
   异步管道读防死锁；含 `cargo check --all-targets` 零 warning 健康检查）。
 
+## 数据/资源合同（PLAN-774）
+
+- [data-resource-contract.md](data-resource-contract.md)：文本/标量聚合首批的
+  共同类型（i32/char/内部宽度）、文本规则（UTF-8/标量索引/字面量与转义）、
+  str/Str 逐语境、受限借/拥有前门（8 码）、内部 ABI 五类形态、资源合同
+ （完整账本/u64 全精度计数/预算/失败分类/trap 边界）——经六轮独立复审收敛，
+  770/771 以其为唯一接口来源（interface-contract.md 为消费面明细）。
+- 探针 workspace：`experimental/ac-core/probes/data-resources/`（独立 Cargo
+  workspace + no_std shim staticlib，64 探针测试 + 永久记账状态探针；一键门禁
+  `scripts/verify-ac-data-resources-774.ps1`）。**非生产 ABI、非语言 feature
+  支持声明**；text（str/Str/char）与标量 record 的共同合同已冻结、实现层仍
+  open（List 未冻结，仍为后续 owner）。
+- char/str/List/完整 int 宽度的语言实现状态仍 open（合同≠实现，双态表述）。
+
 ## 边界与已知限制
 
 - 不宣称：完整 Auto 源码编译（仅两个独立 source profile，旧 AST 未接）、生产 ABI 冻结、DLL/热重载、Linux 发布验收、
