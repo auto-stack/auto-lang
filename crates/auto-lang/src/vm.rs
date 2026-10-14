@@ -4,6 +4,7 @@ use std::sync::Mutex;
 
 pub mod abt;
 pub mod builder;
+pub mod budget_policy;
 pub mod channel;
 pub mod codegen;
 pub mod context;

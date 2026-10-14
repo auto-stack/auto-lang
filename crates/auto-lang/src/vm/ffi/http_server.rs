@@ -6423,7 +6423,8 @@ pub(crate) fn resume_parked_request(
                 let Ok(mut t) = t_arc.try_lock() else {
                     return ParkedResume::StillParked; // 锁忙 → 下一轮重试
                 };
-                match vm.resume_fn_by_name_segment(&mut t, &seg) {
+                // PLAN-781 T-15: 请求级累计预算随恢复段延续（不重置）。
+                match vm.resume_fn_by_name_segment_http(&mut t, &seg) {
                     SegmentOutcome::Parked { wait, seg } => MWResume::Parked(wait, seg),
                     SegmentOutcome::Completed(Ok(())) => {
                         let nv = t.ram.pop_nv();
@@ -6537,7 +6538,8 @@ pub(crate) fn resume_parked_request(
                 let Ok(mut t) = t_arc.try_lock() else {
                     return ParkedResume::StillParked;
                 };
-                match vm.resume_fn_by_name_segment(&mut t, &seg) {
+                // PLAN-781 T-15: 请求级累计预算随恢复段延续（不重置）。
+                match vm.resume_fn_by_name_segment_http(&mut t, &seg) {
                     SegmentOutcome::Parked { wait, seg } => HResume::Parked(wait, seg),
                     SegmentOutcome::Completed(Ok(())) => HResume::Value(t.ram.pop_nv()),
                     SegmentOutcome::Completed(Err(e)) => HResume::Err(e),
@@ -6600,7 +6602,7 @@ pub(crate) fn resume_parked_request(
             let task_id = p.task_id;
             let step = if let Some(t_arc) = vm.tasks.get(&task_id) {
                 match t_arc.try_lock() {
-                    Ok(mut t) => Some(vm.resume_fn_by_name_segment(&mut t, &seg)),
+                    Ok(mut t) => Some(vm.resume_fn_by_name_segment_http(&mut t, &seg)),
                     Err(_) => return ParkedResume::StillParked,
                 }
             } else {

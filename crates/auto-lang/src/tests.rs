@@ -434,6 +434,8 @@ mod plan082_shell_query_tests;
 // 非 yield handler 同步对拍 + resume 段 .at try/catch 捕获）。
 #[cfg(test)]
 mod plan702_segment_tests;
+mod plan781_budget_tests;
+mod plan781_budget_http_tests;
 // PLAN-711 T-11：CPU 可续跑执行片（AC-13 假成功修复红绿 + 片等价性 +
 // 累计护栏 + bridge 有界泵/写队列 D-2 纪律）。
 #[cfg(test)]

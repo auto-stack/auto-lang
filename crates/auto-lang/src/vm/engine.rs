@@ -399,9 +399,15 @@ pub const CPU_PUMP_ROUND_BUDGET: std::time::Duration = std::time::Duration::from
 
 /// PLAN-711 T-11: 段驱动预算档。Legacy 保持既有 10M 步预算与逐字节同的
 /// 同步语义（非 UI 契约）；CpuSlice 为 UI 专用可续跑片。
+/// PLAN-781 T-15: `LegacyHttp(cap)` = HTTP 入口族的请求级累计预算档
+/// （决策报告 781-budget-decision.md D-1/D-4）——段内 10M 帽不变，另加
+/// **跨段累计**上限 `cap`（park/resume、嵌套 fn 不重置，不变量 2）；
+/// 逐指令精确检查（V-16 的 N-1/N/N+1 可控性）。
 #[derive(Clone, Copy, Debug)]
 pub enum DriveBudget {
     Legacy,
+    /// 请求级累计上限（`AUTO_HTTP_STEP_BUDGET` 解析产物）。
+    LegacyHttp(u64),
     CpuSlice(CpuSliceBudget),
 }
 
@@ -490,6 +496,11 @@ pub struct AutoVM {
     /// PLAN-776 R1-F03：HTTP 凭据专用 per-VM local 计数（凭据 id 不走通用
     /// heap_object_id_gen——id 段编 owner，跨 VM 同号不可能）。
     pub http_credential_gen: std::sync::atomic::AtomicU64,
+    /// PLAN-781 T-15：HTTP handler 请求级累计步预算快照（宿主 env
+    /// `AUTO_HTTP_STEP_BUDGET`；None = 默认 10M Legacy 语义）。构造期一次
+    /// 读取，运行期不可变（每 VM 实例一份——同进程多实例共享同一 env，
+    /// 跨进程天然隔离，决策报告 D-1）。
+    pub http_step_budget: Option<u64>,
 
     // Plan 419 Phase 1: 精确引用计数(heap_rc)+ 毒化 canary(tombstones)。
     // heap_rc: id → 计数(owned slot 数);insert_heap_object 不建条目,
@@ -827,7 +838,8 @@ impl AutoVM {
             heap_object_id_gen: AtomicU64::new(4000000),
             // PLAN-776 R1-F03：VM 实例唯一号（凭据 owner 身份）。
             instance_id: VM_INSTANCE_ID_GEN.fetch_add(1, Ordering::Relaxed),
-            http_credential_gen: std::sync::atomic::AtomicU64::new(0), // Plan 419 Phase 1: RC 协议状态
+            http_credential_gen: std::sync::atomic::AtomicU64::new(0),
+            http_step_budget: crate::vm::budget_policy::http_step_budget_from_env(), // Plan 419 Phase 1: RC 协议状态
             heap_rc: DashMap::new(),
             #[cfg(debug_assertions)]
             tombstones: DashMap::new(),
@@ -2529,14 +2541,20 @@ impl AutoVM {
         task.ip = closure.func_addr as usize;
 
         // 6. Segment drive（Parked 时 task 状态原样保留供恢复）。
+        // PLAN-781 T-15: 唯一生产调用方 = http_server axum closure 臂
+        //（决策报告 D-2 入口矩阵）——预算档随 policy 快照。
         task.segment_no_busy_wait = true;
+        let budget = match self.http_step_budget {
+            Some(cap) => DriveBudget::LegacyHttp(cap),
+            None => DriveBudget::Legacy,
+        };
         let outcome = self.drive_handler_segment(
             task,
             &format!("<closure:{}>", closure_id),
             saved_bp,
             saved_fn_n_args,
             false,
-            DriveBudget::Legacy,
+            budget,
         );
         if matches!(outcome, SegmentOutcome::Completed(_)) {
             task.segment_no_busy_wait = false;
@@ -2592,7 +2610,13 @@ impl AutoVM {
         fn_name: &str,
         n_args: usize,
     ) -> Result<(), VMError> {
-        match self.dispatch_fn_by_name_opt(task, fn_name, n_args, true, DriveBudget::Legacy, true) {
+        // PLAN-781 T-15: policy 快照 → LegacyHttp 档（None = Legacy 逐字节
+        // 保持；决策报告 D-2 入口矩阵）。
+        let budget = match self.http_step_budget {
+            Some(cap) => DriveBudget::LegacyHttp(cap),
+            None => DriveBudget::Legacy,
+        };
+        match self.dispatch_fn_by_name_opt(task, fn_name, n_args, true, budget, true) {
             SegmentOutcome::Completed(res) => res,
             SegmentOutcome::Parked { .. } => Err(VMError::RuntimeError(
                 "internal: segment driver parked under busy-wait mode (unreachable)".into(),
@@ -2611,9 +2635,16 @@ impl AutoVM {
         fn_name: &str,
         n_args: usize,
     ) -> SegmentOutcome {
-        // 与 call_fn_by_name_segment 同参数形态（busy_wait=false、Legacy
-        // budget），wrap_generators=true（generator 臂返回凭据对象）。
-        self.dispatch_fn_by_name_opt(task, fn_name, n_args, false, DriveBudget::Legacy, true)
+        // 与 call_fn_by_name_segment 同参数形态（busy_wait=false），
+        // wrap_generators=true（generator 臂返回凭据对象）。PLAN-781 T-15:
+        // 预算档 = policy 快照（None = Legacy）。
+        // PLAN-781 T-15: policy 快照 → LegacyHttp 档（None = Legacy 逐字节
+        // 保持；决策报告 D-2 入口矩阵）。
+        let budget = match self.http_step_budget {
+            Some(cap) => DriveBudget::LegacyHttp(cap),
+            None => DriveBudget::Legacy,
+        };
+        self.dispatch_fn_by_name_opt(task, fn_name, n_args, false, budget, true)
     }
 
     /// PLAN-702 T-01: segment-dispatch a named VM function (UI handler drive).
@@ -2691,6 +2722,37 @@ impl AutoVM {
             seg.saved_fn_n_args,
             false,
             DriveBudget::Legacy,
+        );
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-781 T-15: HTTP 请求恢复驱动——与 [`Self::resume_fn_by_name_segment`]
+    /// 同唤醒序障，预算档 = policy 快照（`DriveBudget::LegacyHttp`；None =
+    /// Legacy 逐字节同）。http_server 三处 step 循环专用；UI 桥沿用既有
+    /// cpu_slice / legacy resume 不经此入口。
+    pub fn resume_fn_by_name_segment_http(
+        &self,
+        task: &mut AutoTask,
+        seg: &ParkedSegment,
+    ) -> SegmentOutcome {
+        if let Some(o) = self.resume_parked_wake(task, seg) {
+            return o;
+        }
+        task.segment_no_busy_wait = true;
+        let budget = match self.http_step_budget {
+            Some(cap) => DriveBudget::LegacyHttp(cap),
+            None => DriveBudget::Legacy,
+        };
+        let outcome = self.drive_handler_segment(
+            task,
+            &seg.fn_name,
+            seg.saved_bp,
+            seg.saved_fn_n_args,
+            false,
+            budget,
         );
         if matches!(outcome, SegmentOutcome::Completed(_)) {
             task.segment_no_busy_wait = false;
@@ -2924,10 +2986,18 @@ impl AutoVM {
         allow_busy_wait: bool,
         budget: DriveBudget,
     ) -> SegmentOutcome {
-        let (max_steps, slice) = match budget {
-            DriveBudget::Legacy => (10_000_000u64, None),
-            DriveBudget::CpuSlice(b) => (b.max_steps, Some(b)),
+        let (max_steps, slice, cum_cap) = match budget {
+            DriveBudget::Legacy => (10_000_000u64, None, None),
+            // PLAN-781 T-15: 段帽 = policy 本身——无 park 的单段 handler（导入
+            // 形态）需要单段跑满请求预算；多段由累计帽执法（后段先触累计）。
+            // 默认不设 policy = 10M 段帽，逐字节不变。
+            DriveBudget::LegacyHttp(cap) => (cap, None, Some(cap)),
+            DriveBudget::CpuSlice(b) => (b.max_steps, Some(b), Some(b.cumulative_steps)),
         };
+        // PLAN-781 T-15: LegacyHttp 的 runaway 基线跨段延续（与 CpuSlice 同
+        // 理由——慢速跨段泄漏不因逐段重置基线而漏检）；纯 Legacy 档保持
+        // 段独立基线（既有语义逐字节不动）。
+        let baseline_carry = slice.is_some() || cum_cap.is_some();
         let slice_started = std::time::Instant::now();
         let mut steps = 0u64;
         // PLAN-711 AC-13: 段是否真正完成（RET 恢复 saved_bp）——与"预算/片
@@ -2942,30 +3012,44 @@ impl AutoVM {
         // PLAN-711 T-11 (D-2): CPU slice 档的 runaway 基线跨片延续——首片
         // 初始化到 task，后续片沿用，慢速跨片泄漏不因逐片重置基线而漏检；
         // legacy 档保持段独立基线（既有语义逐字节不动）。
-        let baseline_strings = match slice {
-            Some(_) => match task.cpu_baseline_strings {
+        let baseline_strings = if baseline_carry {
+            match task.cpu_baseline_strings {
                 Some(b) => b,
                 None => {
                     let b = self.strings.read().map(|s| s.len()).unwrap_or(0);
                     task.cpu_baseline_strings = Some(b);
                     b
                 }
-            },
-            None => self.strings.read().map(|s| s.len()).unwrap_or(0),
+            }
+        } else {
+            self.strings.read().map(|s| s.len()).unwrap_or(0)
         };
-        let baseline_heap = match slice {
-            Some(_) => match task.cpu_baseline_heap {
+        let baseline_heap = if baseline_carry {
+            match task.cpu_baseline_heap {
                 Some(b) => b,
                 None => {
                     let b = self.heap_objects.len();
                     task.cpu_baseline_heap = Some(b);
                     b
                 }
-            },
-            None => self.heap_objects.len(),
+            }
+        } else {
+            self.heap_objects.len()
         };
         while steps < max_steps {
             steps += 1;
+            // PLAN-781 T-15: 请求级累计上限（LegacyHttp）——逐指令精确检查：
+            // 恰好执行 cap 条指令（第 cap+1 条前拒绝），V-16 的 N-1 耗尽 /
+            // N 通过边界可控。I/O park 不计步（等待期不进循环）。
+            if let Some(cap) = cum_cap {
+                if task.cpu_steps_total.saturating_add(steps) > cap {
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                        "instruction budget exhausted in '{}' at ip=0x{:04x} (per-request cumulative budget {} steps; AUTO_HTTP_STEP_BUDGET)",
+                        fn_name, task.ip, cap
+                    ))));
+                }
+            }
             // PLAN-711 T-11 (D-2): slice 档至多每 clock_check_every 步查一次
             // 墙钟，超 4ms 即到片末——在安全指令边界（step 之间）让出。
             if let Some(b) = slice {
@@ -3025,6 +3109,9 @@ impl AutoVM {
                         // iced update returns and the resume pump re-drives
                         // the segment once the wait is satisfied.
                         if let Some(fid) = task.waiting_future_id {
+                            // PLAN-781 T-15: 段终止但请求未终——本段已执行步数计入任务累计
+                            //（resume 在新段继续累加，不重置）。
+                            task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
                             return SegmentOutcome::Parked {
                                 wait: ParkedWait::Future(fid),
                                 seg: ParkedSegment {
@@ -3041,6 +3128,9 @@ impl AutoVM {
                                     fn_name, req_id, task.ip, task.ram.sp, task.bp, saved_bp
                                 );
                             }
+                            // PLAN-781 T-15: 段终止但请求未终——本段已执行步数计入任务累计
+                            //（resume 在新段继续累加，不重置）。
+                            task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
                             return SegmentOutcome::Parked {
                                 wait: ParkedWait::HttpRequest(req_id),
                                 seg: ParkedSegment {
@@ -3053,6 +3143,9 @@ impl AutoVM {
                         // PLAN-707 T-05: 外部流无数据 → park（就绪/终结后由
                         // 完成通知唤醒的泵恢复；凭证供 parked_is_ready 判定）。
                         if let Some(stream_id) = task.waiting_http_stream_id {
+                            // PLAN-781 T-15: 段终止但请求未终——本段已执行步数计入任务累计
+                            //（resume 在新段继续累加，不重置）。
+                            task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
                             return SegmentOutcome::Parked {
                                 wait: ParkedWait::HttpStream(stream_id),
                                 seg: ParkedSegment {
@@ -3131,6 +3224,9 @@ impl AutoVM {
                     // on an external future) — park instead of the sync
                     // driver's fall-through hot-continue over a mid-body ip.
                     if !allow_busy_wait && task.waiting_future_id.is_some() {
+                        // PLAN-781 T-15: 段终止但请求未终——本段已执行步数计入任务累计
+                        //（resume 在新段继续累加，不重置）。
+                        task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
                         return SegmentOutcome::Parked {
                             wait: ParkedWait::Future(task.waiting_future_id.unwrap_or(0)),
                             seg: ParkedSegment {
@@ -3169,6 +3265,22 @@ impl AutoVM {
                         },
                     };
                 }
+                DriveBudget::LegacyHttp(cap) => {
+                    // PLAN-781 T-15: 请求预算耗尽（单段形态 = 段帽即请求帽；
+                    // 多段形态由循环内累计检查先触）。指名 policy 的资源拒绝
+                    // （不 Runnable：HTTP 无 CPU 泵；不假成功；不落 legacy
+                    // 文案——观测面可区分配置档与默认档）。累计记账在函数尾。
+                    let ip = task.ip;
+                    eprintln!(
+                        "WARN[budget] fn='{}' ip={} per-request cap {} reached at segment end",
+                        fn_name, ip, cap
+                    );
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                        "instruction budget exhausted in '{}' at ip=0x{:04x} (per-request cumulative budget {} steps; AUTO_HTTP_STEP_BUDGET)",
+                        fn_name, ip, cap
+                    ))));
+                }
                 DriveBudget::Legacy => {
                     // legacy 档耗尽：保留既有 WARN 诊断（近旁 FN_PROLOGUE 扫描），
                     // 但**不再落入 `Completed(Ok(()))` 静默假成功**——真实错误
@@ -3198,6 +3310,11 @@ impl AutoVM {
         }
 
         // 6. Restore non-stack state (return value already on stack top)
+        // PLAN-781 T-15: LegacyHttp 的段末统一累计（成功/段帽耗尽两路；
+        // Parked 各点已内联累计；CpuSlice 臂自带累计并提前 return）。
+        if cum_cap.is_some() {
+            task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
+        }
         task.current_fn_n_args = saved_fn_n_args;
         // PLAN-026 T-04: handler 粒度预算报告(api.* 忙等观测护栏)。
         Self::api_budget_report(fn_name);

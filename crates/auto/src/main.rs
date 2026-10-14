@@ -1207,6 +1207,13 @@ fn real_main(cli: Cli) -> Result<()> {
             http_config_inline,
             back_port,
         }) => {
+            // PLAN-781 T-15: 宿主可信预算配置 fail-fast——非法值指名报错 +
+            // 非零退出，先于任何业务 dispatch（决策报告 D-1；serve 面）。
+            if let Err(e) = auto_lang::vm::budget_policy::parse_http_step_budget(
+                std::env::var(auto_lang::vm::budget_policy::HTTP_STEP_BUDGET_ENV).ok().as_deref(),
+            ) {
+                return Err(miette::miette!("{e}"));
+            }
             // PLAN-736: server-only 启动；错误经 main Err 面 = 非零退出。
             return cmd_service::cmd_service(cmd_service::ServeArgs {
                 dir,
@@ -1234,6 +1241,14 @@ fn real_main(cli: Cli) -> Result<()> {
             merged,
             mut args,
         }) => {
+            // PLAN-781 T-15: 宿主可信预算配置 fail-fast——非法值指名报错 +
+            // 非零退出，先于任何业务 dispatch/窗口/服务启动（决策报告 D-1；
+            // run 面覆盖 vm/vue/desktop 全形态）。
+            if let Err(e) = auto_lang::vm::budget_policy::parse_http_step_budget(
+                std::env::var(auto_lang::vm::budget_policy::HTTP_STEP_BUDGET_ENV).ok().as_deref(),
+            ) {
+                return Err(miette::miette!("{e}"));
+            }
             if !ai_mode {
                 init_logger();
                 println_logo();
