@@ -505,10 +505,19 @@ fn qualify_a2r_std(code: String) -> String {
             let mask = auto_lang::trans::rust::RustTrans::code_region_mask(l);
             let is_use_line = l.trim_start().starts_with("use ");
             let bytes = l.as_bytes();
+            // Plan 742 R4 (F-742-R4-01): code-region identity is NOT module
+            // identity — a match must start at an identifier boundary. A
+            // legal companion named `custom_a2r_std` ends with the stdlib
+            // token; without this check its qualified path
+            // (`crate::custom_a2r_std::`) was rewritten into
+            // `crate::custom_auto_lang::a2r_std::` (E0433).
+            let at_ident_boundary = |i: usize| {
+                i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_')
+            };
             let mut out = String::with_capacity(l.len());
             let mut i = 0;
             while i < bytes.len() {
-                if mask[i] {
+                if mask[i] && at_ident_boundary(i) {
                     // Already qualified — copy verbatim (idempotency).
                     if l[i..].starts_with("auto_lang::a2r_std::") {
                         out.push_str("auto_lang::a2r_std::");
@@ -6257,6 +6266,19 @@ fn main() {{
 ";
         let out2 = qualify_a2r_std(literal.to_string());
         assert_eq!(out2, literal, "literal payloads must keep their bytes");
+
+        // F-742-R4-01: a legal module whose name merely ENDS with the stdlib
+        // token is a different identity — code occurrences stay verbatim.
+        let suffix = concat!(
+            "let c = custom_a2r_std::ping();\n",
+            "use custom_a2r_std;\n",
+            "let d = crate::custom_a2r_std::ping();\n",
+        );
+        let out3 = qualify_a2r_std(suffix.to_string());
+        assert_eq!(
+            out3, suffix,
+            "identifier-boundary: suffix-collision modules keep their identity"
+        );
     }
 
     /// Plan 742 R2: the r2 review matrix as one compile-and-run oracle —
@@ -6297,6 +6319,12 @@ pub fn borrow_pos() int {
 pub fn nested() int {
     var s str = "hi"
     if true { return repository.outer(repository.measure(s)) }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/nsfx")]
+pub fn nsfx() int {
+    if true { return custom_a2r_std.ping() }
     return 0
 }
 
@@ -6361,10 +6389,16 @@ pub fn file() FileResponse {
         std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
         std::fs::write(
             back_dir.join("repository.at"),
-            "pub fn ping() int { return 7 }\npub fn measure(value str) int { return value.len() }
-pub fn outer(value int) int { return value }\npub fn path() str { return \"readme.txt\" }\n",
+            "pub fn ping() int { return 7 }\npub fn measure(value str) int { return value.len() }\npub fn outer(value int) int { return value }\npub fn path() str { return \"readme.txt\" }\n",
         )
         .expect("write repository.at");
+        // F-742-R4-01: a companion whose name merely ends with the stdlib
+        // token must keep its own module identity end-to-end.
+        std::fs::write(
+            back_dir.join("custom_a2r_std.at"),
+            "pub fn ping() int { return 7 }\n",
+        )
+        .expect("write custom_a2r_std.at");
 
         generate_api(&dir, "rust").expect("generate api");
 
@@ -6404,6 +6438,17 @@ pub fn outer(value int) int { return value }\npub fn path() str { return \"readm
         assert!(
             api_rs.contains("crate::repository::outer(crate::repository::measure(&s))"),
             "nested module call must borrow the inner &str arg:
+{api_rs}"
+        );
+        // F-742-R4-01: suffix-collision companion keeps its full identity.
+        assert!(
+            api_rs.contains("crate::custom_a2r_std::ping()"),
+            "suffix-collision companion call must qualify to its own module:
+{api_rs}"
+        );
+        assert!(
+            !api_rs.contains("custom_auto_lang"),
+            "stdlib scan must not rewrite inside a longer identifier:
 {api_rs}"
         );
         // F-742-R3-01: internal-marker literals survive byte-for-byte.
@@ -6479,6 +6524,7 @@ pub fn outer(value int) int { return value }\npub fn path() str { return \"readm
             "borrow_pos",
             "nested",
             "marker",
+            "nsfx",
             "ping",
             "scope",
             "void_plain",
@@ -6506,6 +6552,7 @@ mod types {
 }
 use crate::types::*;
 
+mod custom_a2r_std { pub fn ping() -> i64 { 7 } }
 mod repository {
     pub fn ping() -> i64 { 7 }
     pub fn measure(value: &str) -> i64 { value.len() as i64 }
@@ -6561,6 +6608,7 @@ fn main() {
     println!("echo_borrow={}", ready(echo_borrow(sdb.clone())).0.text);
     println!("borrow_pos={}", ready(borrow_pos(sdb.clone())).0);
     println!("nested={}", ready(nested(sdb.clone())).0);
+    println!("nsfx={}", ready(nsfx(sdb.clone())).0);
     println!("marker={}", ready(marker(sdb.clone())).0.text);
     println!("ping={}", ready(ping(sdb.clone())).0);
     println!("scope={}", ready(scope(sdb.clone())).0.text);
@@ -6617,6 +6665,7 @@ fn main() {
                         echo_borrow=crate::repository::measure(value)\n\
                         borrow_pos=2\n\
                         nested=2\n\
+                        nsfx=7\n\
                         marker=__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__\n\
                         ping=7\n\
                         scope=ok\n\
