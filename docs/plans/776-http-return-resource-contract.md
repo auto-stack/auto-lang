@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-776
-status: execution_done
+status: reviewed
 feature_name: http-return-resource-contract
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-13
-updated_at: 2026-10-14
+updated_at: 2026-10-15
 supersedes_spec_components:
   - docs/specs/stdlib/design/api-transport-contract.md
   - docs/specs/stdlib/design/http-handler-async-lifecycle.md
@@ -180,6 +180,12 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 
 ## 8. 执行步骤
 
+> **R14 当前结论（2026-10-15）pass**：冻结提交 `e65c01012` 的独占快照
+> 断言实际使用expect，新增警告清零；776专项66/66、format/diff-check通过。
+> F776-R11-01/R13-01均关闭，T01..08完成，status=reviewed。
+> next: merge；裸t/tv/HTTP及相关生成验证、Spec沉淀/归档/守卫清树仍为
+> merge-owned pending，尚未交付。详见 [R14报告](reports/776-return-resource-review-r14.md)。以下交接为历史记录。
+
 > **R13 当前状态（2026-10-14，修复轮完成）**：F776-R13-01（P3）已修复
 >（worktree `e65c01012`，仅测试文件 +14）——独占格辅助函数的 `expect`
 > 参数此前未使用（+200 增量引入的 unused-variable 警告，违反零新增警告
@@ -280,6 +286,19 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 `cargo th` 为 nextest 滤串，串行参数使用 `-j 1`，不使用 libtest `--test-threads`。本次仅起草，不执行上述 Cargo 门禁。
 
 ## 9. 复审记录
+
+### 最终独立复审 R14（2026-10-15，pass）
+
+- stage: review；review_scope: final；reviewer_identity/limitations: 当前Codex延续R11..R13独立审查上下文，未实施修复，无子agent/额外模型声明。
+- plan_id: PLAN-776；plan_revision: 1；outcome: pass；reviewed_commit: e65c01012807ca1fa42235ba2971d245d57b5738；repair_diff_base: 367f4b288b515d49938a0b5f3bf47cf9de6f9b33；base_commit: 5e21561d2c303a02319ff7a29e4607933e09a38f。
+- worktree_path: D:/autostack/.wt/lang-776/auto-lang；branch: plan-776-dev；实施树clean；dependency_revisions: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，clean。
+- spec_inputs: attachments/776/review-r14/input-hashes.json及reviewed-spec-delta.md；SD SHA256=D5730778FA8EE21A005D6F934DBCD7C1BAFD49ED3B75EAA7B7548CC5E57D9CDB；canonical/decision/SD同R13。
+- acceptance_results: AC01..09 review-owned pass，详见报告逐项任务/证据映射及既定代表覆盖/生成支持边界。AC09的merge-owned门禁明确pending。
+- findings: F776-R13-01关闭（expect于释放前实际快照字段比对，警告消失）；F776-R11-01关闭结论保持；无开放work-owned finding，原非目标分诊债务P776-D1..D4保持。
+- evidence: reports/776-return-resource-review-r14.md；776专项66/66（34.328s，0timeout）；expect具体警告消除、总警告571→570，无新增警告；format/diff-check通过。仅测试+14，生产/依赖/配置/旧probe不变，复用R11生产15格/原UAF/126守卫及已冻结支持面证据。
+- pending_closeout_gates: merge在冻结提交上执行裸t/tv/HTTP及相关auto-man生成验证；tf主检出batch-only到期执行；Spec/ledger、归档、wt-guard清树pending。work提前整档不代替后置门禁，未来代码修改需受影响复审。
+- next: merge；status=reviewed，current_step=8/8，T01..08全部完成。本轮仅复审与簿记，未合入/归档/清树/发布canonical。
+
 
 ### R13 修复轮交接（2026-10-14，review-r13 needs_fix 后复修）
 
