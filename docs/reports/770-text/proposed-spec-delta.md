@@ -5,7 +5,8 @@
   `.autoos/specs.json` upsert + 模块回写 + `python scripts/spec-index.py`。
 - 原则：五项 SD 只登记**首批文本/字符真实编译的实验性支持面与实证状态**，
   不宣称完整 token/lexer 编译、不宣称 ACC Gen1、不宣称生产 ABI，不改变
-  core/scalar profile 的支持/拒绝集合（零回归由 V-10 三旧 gates 证明）。
+  core/scalar/record profile 的支持/拒绝集合（r6 起 771 已先合入，零回归
+  由 V-10 联合 gates 证明：741/745/767 + verify-ac-record-771 实跑）。
 
 ## SD-01 add `docs/specs/auto-ac/source-text.md`
 
@@ -59,22 +60,24 @@
 
 ## SD-02 modify `docs/specs/auto-hir/project.md`
 
-- before（现行 canonical 的确切状态）：`docs/specs/auto-hir/project.md` 由
-  PLAN-741/767 沉淀、并经已归档的 PLAN-772（计算管线修复）合入后的现行
-  canonical，登记且仅登记两个 HIR 域——`HirDomain::Core`
-  （`auto.hir.core.draft / 1 / core-i32-draft`）与 `HirDomain::Scalar`
-  （`auto.hir.scalar.draft / 1 / scalar-i32-draft`）；类型面为 i32/bool，
-  无 str/Str/char 类型、无文本表达式节点、无参数所有权模式、无 Drop
-  语句、无资源计划（774 的 data-resource-contract 落在 auto-ac 侧，
-  auto-hir 未登记任何资源身份）。
+- before（现行 canonical 的确切状态；r6 刷新——771 已先合入）：由
+  PLAN-741/767 沉淀、PLAN-772（计算管线修复）与 PLAN-771（record 首批）
+  合入后的现行 canonical 登记**三个 HIR 域**——Core、Scalar 与 Record
+  （`auto.hir.record.draft / 1 / record-i32-draft`：名义 record 类型、
+  record_ctor/field_get/borrow_view/borrow_mut 表达式、field_path place、
+  method 声明与参数 mode view/mut）；text 域及 str/Str/char 类型、12 个
+  文本表达式节点、MutBorrow/MoveOwn 参数所有权模式、Drop 语句与资源计划
+  **均未登记**（774 的 data-resource-contract 落在 auto-ac 侧）。
 - after：增加 `HirDomain::Text`（`auto.hir.text.draft / 1 /
   text-i32-draft`）；BuiltinType/TypeKind 增 StrSlice/StrOwned/Char；
   ExprKind 增 12 个文本节点（str_lit/char_lit/text_len/text_len_bytes/
   text_char_at/text_slice/text_concat/text_clone/text_to_owned/
   text_to_borrowed/char_to_codepoint/char_from_codepoint）；LocalDef 增
   param_mode（View/MutBorrow/MoveOwn）；Stmt 增 Drop；CallBinding 增
-  moved。verify_text 分域入口 + 文本资源前门与 TextResourcePlan；
-  verify/verify_scalar 对 Text 域一律 verify.domain 拒绝；旧域规则
+  moved（与 771 的 record ParamMode 在实现树中统一为
+  View/MutBorrow/MoveOwn——record 的 `mut` 即 MutBorrow）。verify_text
+  分域入口 + 文本资源前门与 TextResourcePlan；各域 profile 防线互拒
+  （text/record/旧域隔离由 check_profile_ops 统一承担）；旧域规则
   零改动。
 - rationale：信任凭证（身份/类型/资源义务随 HIR 冻结）；AC-01/04。
 - 验收 ID：AC-01/04。
@@ -91,13 +94,15 @@
 
 ## SD-04 modify `docs/specs/auto-ac/project.md`
 
-- before：runtime 仅 774 探针实证；无语言层文本 runtime；native 能力
-  仅 core/scalar。
+- before（r6 刷新——771 已先合入）：runtime 仅 774 探针实证；无语言层
+  文本 runtime；native 能力为 core/scalar + record（771 首批，含
+  copy-elision 与 ABI-D/E）；文本 runtime/native 未登记。
 - after：登记 `runtime/text` 静态库（独立 workspace，`ac_rt_*` 内部
   ABI，774 合同同构 + text_eq/ne + RT-FAIL trace；.lib+.contract.json
   sidecar）与 source/HIR→native 文本编译能力（V-02..V-09 真实 PE）；
   双态表述：**实验性内部 ABI，非生产模块 ABI、非 ACC Cranelift 桥**；
-  标量 record（771）不在本批。
+  与 record（771，已先行合入）保持域隔离，不承诺 text+record 组合
+  profile（r6 整合基线只证明共存零回归）。
 - rationale：不冒称生产 ABI；AC-02/03/06。
 - 验收 ID：AC-02/03/06。
 
