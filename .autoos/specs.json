@@ -1762,6 +1762,17 @@
             "completion:delivered"
           ],
           "content": "交付物：scripts/modularity-audit.py（只读审计+strict 增量判红）、.autoos/module-boundaries.toml（域/规则/ownership 27 项 7 必需组/文本扫描/资产）、module-boundaries-baseline.json（36 边冻结）、test/fixtures/modularity/audit/（自测夹具）。基线要点@677055420：2052 受管 .rs/945894 行、UI 五目录 239/353361、22 成员 36 边零缺口、cargo 对照零差异、文本候选 core→UI 886/UI→语言 181（仅 auto_lang:: 前缀）/man→语言 571。R1 needs_fix×6→R2 needs_fix×2→R3 needs_fix×1→R4 pass。Category A 无 Rust 整档；后续 770/781 合入后按规重采样基线并保留旧快照。"
+        },
+        {
+          "id": "P781-M",
+          "title": "PLAN-781 交付回执（Reader 框架前置三件套）",
+          "content": "阶段 A 原生验收通道（决策 781-channel-decision）+ 阶段 B 子内容锚点（决策 781-interface-decision r1-r6；含 gen-0 收养/managed 接线等实施期勘定）+ 阶段 C 有限执行预算（决策 781-budget-decision r1-r3；探针定量 20-40 步/字节，10MiB≈210-420M 步，实测成功 128-235s）。delivery 3e1b5fc03（rebase 等价于 reviewed dba0d7e5c+spec 沉积）；KNOWN-DEBT F-781-C01..C03；READER-001 T-25/T-26 解阻（接入映射=锚点 API+双 env 导入 profile+复验驱动）。",
+          "file": "docs/plans/archive/781-reader-runtime-prerequisites.md",
+          "tags": [
+            "plan:781",
+            "commit:3e1b5fc03",
+            "completion:delivered"
+          ]
         }
       ]
     },
@@ -6753,6 +6764,36 @@
             "supersedes:3800856129eb"
           ],
           "content": "PLAN-777 SD-01 落地：scripts/modularity-audit.py 为模块基线与增量检查入口（配置 .autoos/module-boundaries.toml，冻结基线 .autoos/module-boundaries-baseline.json）。持久规则：observe/strict/self-test 三入口；同输入稳定 payload（无时间戳/绝对路径）；规模口径=受管 .rs 物理行（非 SLOC）；声明边主源=成员 manifest path 依赖（normal/build/dev/optional/target，workspace 继承按根解析），cargo metadata --locked 仅对照（缺锁记 gap）；域表按包名（含已知外置实现包 auto-ui/auto-man），未登记保持 unclassified；文本扫描为启发式候选（盲区显式）；strict 判当前工作树边集、规则须有域方向（scope-only 惰性）、存量豁免绑定完整声明身份+逐边 owner/exit_phase、撤销/漂移/过期/宽豁免不得静默通过；输出守卫保护全部受管输入+实读 manifest+锁（含大小写/硬链接身份别名）。基线不表示 AutoUI/AutoMan 已拆仓。"
+        },
+        {
+          "id": "P781-D1",
+          "title": "子内容锚点（scroll-anchor/9922/9923）双端合同",
+          "content": "scroll-anchor DSL（可挂任意元素，pane 归属=最近 ordinary scroll-pane）+ auto.scroll.to_child/anchor_state（回执 queued/error；状态 pending/applied/invalid）+ nearest 冻结公式（顶/底对齐三分支+clamp）；代际语义=首绑前入队采用当前绑定/换绑 not_bound/当帧 key 消失一次性 not_found；managed/virtual/X 轴 unsupported；vue 轨=pane 作用域公式直算（scrollIntoView 级联滚动被裁定排除）。",
+          "file": "docs/specs/auto-lang/ui/design/scroll-child-anchor.md",
+          "tags": [
+            "plan:781",
+            "commit:3e1b5fc03"
+          ]
+        },
+        {
+          "id": "P781-D2",
+          "title": "原生验收通道合同（split VM 真实实例证据）",
+          "content": "auto run -r vm --no-merge 真实实例上的动作/帧身份/裁剪几何/冷启动证据合同：身份三件套、/__auto/health/live 就绪、autoui_scroll_state/autoui_visibility 只读 oracle（content-space 坐标，窗口化仅减 offset）、恢复期零驱动滚动纪律、owned-port sweep。驱动 scripts/tools/test_native_reader_acceptance.py。",
+          "file": "docs/specs/auto-lang/ui/design/native-acceptance-channel.md",
+          "tags": [
+            "plan:781",
+            "commit:3e1b5fc03"
+          ]
+        },
+        {
+          "id": "P781-D3",
+          "title": "HTTP handler 请求级累计执行预算",
+          "content": "env AUTO_HTTP_STEP_BUDGET（宿主可信，1..=4G 严格十进制，非法启动期指名非零退出；默认 10M 逐字节不变）→ DriveBudget::LegacyHttp：段帽=policy、跨 park/resume/嵌套 fn 累计不重置（task.cpu_steps_total）、逐指令精确（N-1/N/N+1 可控）、耗尽=指名资源拒绝。入口矩阵=命名段派发/closure/同步+段恢复；SSE 帧/UI bridge/back_proxy/middleware 维持既有。长导入 profile=双 env（+AUTO_HTTP_REQUEST_TIMEOUT_MS）。已知边界 F-781-C01（段泵串行公平性，新计划候选）。",
+          "file": "docs/specs/auto-lang/vm/design/handler-execution-budget.md",
+          "tags": [
+            "plan:781",
+            "commit:3e1b5fc03"
+          ]
         }
       ]
     },
@@ -8126,6 +8167,16 @@
             "commit:02371259a"
           ],
           "content": "python scripts/modularity-audit.py --self-test 15/15：v01 稳定只读/v02 新增边点名/v03 候选六类分类+盲区/v04a–d 窄豁免-撤销-过期-宽豁免/v05 多 target 表/v06 workspace 继承基点/v07 输出-刷新守卫/v08 optional 激活/v09 覆盖组缺口/v10 生产域与跨根规则矩阵（外置 auto-ui/auto-man normal/build/target/继承判红、未知 SDK 不误判）/v11 已读根外 manifest 与大小写别名/v12 硬链接→受管源码与实读锁身份矩阵。夹具 test/fixtures/modularity/audit/（假想 workspace，永不编译）；每变异场景先读回证明 fixture 被改。"
+        },
+        {
+          "id": "P781-T1",
+          "title": "双端锚点矩阵 + 预算测试资产",
+          "content": "examples/capability-tests/p781-scroll-child-anchor/（vm_probe 41 + vue_probe 43，V-01~06 全矩阵）；cargo t plan781（24：V-14/15/16 单测族）+ cargo th http_e2e_plan781（3：低预算指名拒/宽预算成/断连不楔死）；scripts/tools/test_reader_import_budget.py + test/fixtures/reader-import-budget/（V-14/15/17/18/19/20；10MiB 双端格式 + 逐章 sha256 边车）。",
+          "file": "scripts/tools/test_reader_import_budget.py",
+          "tags": [
+            "plan:781",
+            "commit:3e1b5fc03"
+          ]
         }
       ]
     },
@@ -10968,10 +11019,22 @@
             "plan_revision:1"
           ],
           "content": "reviewed_commit=5e1794bcc（rebase 后 02371259a，git range-diff 全 = 补丁等价；基线 677055420→d74308a76）。四轮闭合：R1 六项（多 target 表/workspace 继承基点/输出覆盖/optional 激活/ownership 覆盖/跨根误红）、R2 两项（外置 auto-ui 域映射/根外已读 manifest 覆盖）、R3 一项（硬链接身份）。验收：self-test 15/15、旧 replay 7/7、R2 supplemental 5/5、R3 input-matrix 4/4、identity combinations 3/3；真实双扫字节一致、36 声明边与 cargo metadata --locked 零差异、strict pass/0 违例/2 grandfathered（auto-man→auto-lang、auto-gen→auto-lang，owner+R5 退出）。Category A：无 Rust 整档门禁。"
+        },
+        {
+          "id": "P781-R1",
+          "title": "PLAN-781 最终独立复审 pass（局限：实施会话兼任）",
+          "content": "final pass @ reviewed dba0d7e5c（重放基线 CLI b7f09980744a）：三阶段 required oracle 全重放（阶段 A 核心 5/5 + 阶段 B 41/41+43/43 + 阶段 C 24/24+3/3+12/12）+ 独立新反例（导入中途杀进程 3/3 无部分写；梯度 200K 同实例 4KiB 成/256KiB 指名拒/服务继续 4/4）；SD-01~07 审过；实施会话兼任复审的局限显式记录；merge 门禁（裸 t 5353/5353、tu 865/865、th 135/137 两在案红归因）在重放终点复跑。",
+          "file": "docs/plans/archive/781-reader-runtime-prerequisites.md",
+          "tags": [
+            "plan:781",
+            "reviewed:dba0d7e5c",
+            "plan_revision:2",
+            "rebased:3e1b5fc03"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 17
+  "version": 18
 }
