@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-778
-status: drafting
+status: execution_done
 feature_name: 外部 UI 方言与 ParserBridge 可行性探针
 author: [Codex]
 created_at: 2026-10-13
-updated_at: 2026-10-13
+updated_at: 2026-10-15
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 7
 supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md]
 new_spec_components: []
@@ -44,11 +44,57 @@ T01冻结一页最小bridge/dispatch/恢复决策，不公开整个Parser。拟�
 
 本pilot支持明确的小子集，注解/widget等走现有实现并列为未迁；不声称其等价。with_session/导入/嵌套创建点逐一记录注册传播范围。Ok(None)不吞token（或已声明且执行rollback），Err恢复registry/context；冲突确定处理。Core view参数模式、task on、普通变量Store和Godot/AutoData必须不变。
 
+### T-01 冻结矩阵（2026-10-15 work 核读后冻结）
+
+实需验证点已证实：`try_dialect_stmt`/`try_token_dialect_stmt` 的 `mem::take` 整表移出 + `?` 提前返回在 Err 路径**永久丢失方言注册**（parser.rs:627-659）；Lexer 已有 `save_state/restore_state`（Plan 395 前瞻基建，含 chars 迭代器+计数器+缓冲 token 完整快照），checkpoint 无需新造轮子。冻结决策（等价接口机制范围内）：
+
+1. **Bridge 面**：新 `src/parser_bridge.rs`，`pub struct ParserBridge<'p,'a>` 私持 `&'p mut Parser<'a>`。pub 方法 = 游标（`cur_kind/cur_text/cur_pos/is_kind/advance/expect/expect_keyword/skip_empty_lines`）+ checkpoint（`checkpoint()/restore()`，封装 lexer save_state + cur/prev 回填）+ core expr/type（`parse_type/parse_expr` 委托）+ context（`scenario/is_ui_scenario/in_on_body/in_fn_body`）+ diagnostics（`syntax_error` 工厂按当前 pos 造 SyntaxError::Generic、`push_warning`）。`pub(crate) fn parser()` escape hatch 仅供 crate 内 UiDialect，外部不可见——**不公开 Parser/lexer/scope/db/type_store**。
+2. **Dialect trait 签名**：两方法改收 `&mut ParserBridge`（matches/keywords 不变）。外部实现只见 bridge（AC-01）；UiDialect 经 escape hatch 行为零变化。
+3. **注册与优先级**：`pub enum DialectPriority { Override, Append }`；`Parser::register_dialect(&mut self, d, priority)` + builder `with_dialect(d, priority)`。存储三段 `dialects_pre/dialects_builtin/dialects_post`（pub 字段 `dialects` 移除，in-tree 仅 parser.rs 派发+3 测试断言同步迁移）；`with_session` 只重建 builtin 段，外部注册跨 with_session 保留（V-03）。派发序 pre→builtin→post，首个 keywords 命中且 Some 者胜；Override=外部覆盖内建（内建退为 None 后备），冲突可区分（V-05 反控）。
+4. **恢复不变量（核心保证，非方言纪律）**：Err 不丢注册——派发改按 index 临时移出单条+显式 match（无 `?`），Err 路径同样移回；Ok(None) 不吞 token——派发器调用前 checkpoint、None 后强制 restore。方言内部投机解析同用 checkpoint。
+5. **fixture**：`test/fixtures/modularity/ui-dialect-consumer/` 独立 manifest（path 依赖 `../../../crates/auto-lang`），根 Cargo.toml `exclude` 追加，不入 members。
+6. **外部 model 子集冻结**：`model { [var] name [type] [= expr] }`（无注解）；遇 `#[` 注解或 `RBrace` 前异常形态→外部 `Ok(None)`（checkpoint 已回滚）交内建处理，注解/var 语义列入未迁清单。widget/msg/component/actions/style/view/on/store 全部未迁（内建不变）。
+7. **默认 grammar 零变化**：Core 场景空方言表、UiDialect 全关键字保持；无需公开全部 lexer/符号表私有面（bridge 面足以实现子集，不触发 §10 needs_replan）。
+
+### T-05 报告：已迁面 / 未迁清单 / 限制 / 后续迁移清单（2026-10-15 work）
+
+**已外部验证面（外部 crate 仅凭公开面实现）**：`model { [var] name [type] [= expr] }`
+子集（类型/初值经 bridge 委托核心文法）；typed `Stmt::ModelBlock` 构造；显式
+Override/Append 注册；跨 with_session / 嵌套 block 体 / 实例隔离 / Err 恢复 /
+None 回滚 / 冲突区分全部有正反控断言。
+
+**未迁清单（继续走内建 UiDialect，外部 None 让行回退）**：widget / msg /
+component / actions / style 关键字；view/on token 侧；store；model 注解
+（#[primary]/#[Consume]/#[Provide]/#[NavParam]）；widget 体内部结构（见限制 4）。
+
+**限制（pilot 边界，均非缺陷静默）**：
+1. bridge 无通用 warning 出口（`Warning` 枚举无通用变体，不为此扩枚举）——外部诊断统一 Err 路径，由核心 errors/error_limit/synchronize 收纳。
+2. 注册为每 Parser 实例显式：生产 UI 入口 18 处（lib.rs）与导入子解析器（compile.rs `parse_module_to_type_store`/`compile_module_to_bytecode`，Core 无 session）不自动继承；生产注入需逐入口 `with_dialect` 或 revision 引入 session 携带注册表。
+3. `matches()` 场景门控现在是派发时核心契约（此前仅靠 build_dialects 注册时机巧合满足，外部显式注册下原样会泄漏到非属场景——本 pilot 修复并回归）。
+4. 方言派发只覆盖语句位置（parse_stmt_inner）；widget 体循环直连 `parse_model_block_inner`（parser.rs parse_widget_decl），不经方言表——冻结传播边界。
+5. BridgeCheckpoint 只回滚游标；errors/warnings 单调追加不回滚（与 Plan 395 同取舍）。
+6. 块内错误 + 游离 `}` 的 synchronize 级联到 error_limit 为既有解析器恢复行为（内建同形态同产物），未纳入本 pilot 断言面（v04 测试注释记录）。
+7. fixture 独立 workspace 冷构建 auto-lang，不在日常档；门禁命令独立执行。
+
+**后续文法迁移清单（完整外部化路线，非本 pilot）**：① model 注解子集补齐 →
+② widget/msg 等 Ident 关键字逐一 Override 并行对拍 → ③ view/on token 侧经
+try_parse_token_stmt 验证 → ④ 生产入口接线（需 revision）→ ⑤ widget 内部结构
+解析方言化改造 → ⑥ UI AST/消费者迁移（Design 32/37 拆仓目标，重大 revision）。
+
 ### 规范增量
 
 | delta_id | 操作 | docs/specs target | before/after | 原因 | AC |
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/auto-lang/frontend/overview.md | 内建派发→新增实际external注册/bridge支持面与限制，UI AST仍兼容 | 外部证据 | AC-01/02/03 |
+
+SD-01 拟沉淀要点（merge 落 specs 时采用，work 不直接改 live ledger）：
+- frontend/overview 增"方言外部化（PLAN-778 pilot）"小节：`Dialect` trait 以
+  `ParserBridge` 为解析入口（游标/checkpoint/core expr/type/context/diagnostics
+  最小面，不含 Parser/lexer/符号表）；`Parser::register_dialect/with_dialect`
+  显式注册（Override 前插/Append 后接，跨 with_session 保留）；派发核心保证
+  Err 不丢注册、Ok(None) 强制游标回滚、matches() 派发时场景门控。
+- 声明当前外部已验证面仅 model 冻结子集；widget/msg/view/on 等仍内建（未迁
+  清单+边界见 plan §T-05 报告）；UI AST/consumer 兼容不变。
 
 ## 6. 测试设计
 
@@ -78,11 +124,11 @@ T03创建外部入口 `cargo test --manifest-path test/fixtures/modularity/ui-di
 
 | 状态 | Task | owner_stage | 依赖 | 操作/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 777+确认r1 | 核读私有能力/grammar；冻结bridge/dispatch/恢复支持矩阵 | 01/02 |
-| [ ] | T-02 | work | T01 | parser/dialect/新bridge，显式注册保持与错误恢复 | 01/02 |
-| [ ] | T-03 | work | T02 | 独立fixture真实model子集，V01–04正反控 | 01/02 |
-| [ ] | T-04 | work | T03 | 默认内建UI保持，V02/V05；点检session/import创建路径 | 02/03 |
-| [ ] | T-05 | work | T04 | check+t+tv+externalgate；后续文法迁移清单/限制报告 | 03 |
+| [x] | T-01 | work | 777+确认r1 | 核读私有能力/grammar；冻结bridge/dispatch/恢复支持矩阵 → §T-01冻结矩阵（mem::take丢表bug证实、Lexer save_state复用、三段注册/优先级、Err/None核心保证）；[✅ 已完成] | 01/02 |
+| [x] | T-02 | work | T01 | parser/dialect/新bridge，显式注册保持与错误恢复 → `parser_bridge.rs`（游标/checkpoint/expr/type/context/syntax_error + pub(crate) escape hatch）；trait 改收 ParserBridge；三段注册 `register_dialect/with_dialect`（Override/Append）+ `with_session` 只重建 builtin 段；派发重写（Err 移回不丢表 + None 强制回滚 + **matches() 派发时门控**——实需验证点证实并修复：旧实现从未调用 matches，靠 build_dialects 注册时机巧合）；crate 内 4 条永久回归 `test_plan778_*` 4/4 绿；[✅ 已完成] | 01/02 |
+| [x] | T-03 | work | T02 | 独立fixture真实model子集，V01–04正反控 → `test/fixtures/modularity/ui-dialect-consumer/`（独立 workspace + 根 exclude）12/12 绿（V01 typed结果+非内建替跑 / V02 core赋值·view参数·scene·widget全形态 / V03 with_session保留·嵌套block传播·实例隔离 / V04 Err后注册在+恢复点继续+错误位置offset8+注解None回滚 / V05 默认路径+Override/Append冲突可区分）；[✅ 已完成] | 01/02 |
+| [x] | T-04 | work | T03 | 默认内建UI保持，V02/V05；点检session/import创建路径 → `cargo t parser::tests` 179/179、`t dialect` 7/7、`t model` 15/15、`t widget` 68/68；创建路径记录：生产 UI 入口 18 处（lib.rs 各自 `Parser::from(..).with_session(ui())`）与导入子解析器（compile.rs:1878/1933 `new_with_type_store`，无 session）均每实例新建——外部方言按入口显式注册（fixture 模式），生产注入列迁移清单；widget 体 model 由 parse_widget_decl 直连内建（冻结边界，见 §T-05 报告）；[✅ 已完成] | 02/03 |
+| [x] | T-05 | work | T04 | check+t+tv+externalgate；后续文法迁移清单/限制报告 → `cargo check -p auto-lang` 0 error（新代码 0 警告）；外部门禁 12/12；定向档见 T-04；**裸 `cargo t` + `cargo tv` 按 2026-10-14 裁定为 merge-owned 门禁，冻结提交上执行，本阶段 pending**；迁移清单/限制报告见 §T-05 报告；[✅ 已完成] | 03 |
 | [ ] | T-06 | review | T05 | 独立review真实外部面与兼容性 | 04 |
 | [ ] | T-07 | merge | reviewpass | Spec/归档/合流/guard-clean清理 | 05 |
 
@@ -91,6 +137,22 @@ T03创建外部入口 `cargo test --manifest-path test/fixtures/modularity/ui-di
 ## 9. 复审记录
 
 2026-10-13 stage=new，r1，outcome=pass（草案preflight，具体未知由T01有界冻结）；next=确认后work。0/7任务，外部probe/测试未创建运行，不是实现复审pass。
+
+2026-10-15 stage=work | PLAN-778 | r1 | pass | D:/autostack/.wt/lang-778/auto-lang |
+plan-778-dev | base 87f45dc4e | code 40c69c890 | 依赖：auto-down 组内兄弟 worktree
+detached @ c39ac7f9（无代码改动，仅为 cargo 解析满足） | T-01..T-05 | 证据：外部门禁
+`cargo test --manifest-path test/fixtures/modularity/ui-dialect-consumer/Cargo.toml`
+12/12；crate 内 `test_plan778_*` 4/4；定向档 parser::tests 179/179、dialect 7/7、
+model 15/15、widget 68/68；`cargo check -p auto-lang` 0 error 新代码 0 警告 |
+blockers 无 | next=review（T-06）。
+
+Work-owned AC 就绪：AC-01 ✓（外部仅凭公开面产出 typed ModelBlock；bridge 不暴露
+Parser/lexer/符号表）；AC-02 ✓（Err/None/session/实例/冲突规则实断言，含 matches()
+门控修复回归）；AC-03 work 部分 ✓（V05 fixture + 定向档；**merge-owned 门禁
+pending：冻结提交 40c69c890 上裸 `cargo t` + `cargo tv`，未触及 trans/aavm 故
+无 tt/taa，未触 UI codegen 无 tu**）。在案 finding/覆盖缺口/未决契约：无。
+实需验证点闭合：mem::take 丢表 bug 证实并修复；matches() 从未派发调用证实并
+修复；widget 体直连边界冻结（§T-05 报告限制 4）。
 
 ## 10. 待澄清事项
 
