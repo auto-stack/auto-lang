@@ -88,6 +88,25 @@ pub fn compile_scalar_source(
     })
 }
 
+/// Compile under the text source profile (PLAN-770): parse/resolve/
+/// typecheck on the text surface, bind against the text descriptor and
+/// verify through the text entry (which also runs the resource walk and
+/// attaches the `TextResourcePlan`).
+pub fn compile_text_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Text)?;
+    let checked = crate::verify::verify_text(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::TEXT_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 /// Compile up to (but not including) verification under the explicit
 /// profile: the span-projected bundle plus the adapter receipt data. This
 /// is the seam the §6 mutation matrix exercises — a tampered bundle must

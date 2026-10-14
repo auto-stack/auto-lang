@@ -23,8 +23,8 @@ pub mod resolve;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_parts, compile_parts_with, compile_scalar_source, compile_source, CompiledSource,
-    SourceParts,
+    compile_parts, compile_parts_with, compile_scalar_source, compile_source, compile_text_source,
+    CompiledSource, SourceParts,
 };
 pub use parser::{parse_program, parse_program_with};
 pub use resolve::resolve_with;
@@ -39,12 +39,21 @@ pub const SOURCE_PROFILE: &str = "auto.source.core-i32.draft";
 /// conditional `for <bool-expr> { ... }` loops (`while` is rejected here).
 pub const SCALAR_SOURCE_PROFILE: &str = "auto.source.scalar-i32.draft";
 
+/// The text source profile (PLAN-770): the scalar surface plus str/Str/char
+/// types, string/char literals (with the 774 escape whitelist and cross-line
+/// string literals whose line breaks enter the value verbatim), the text
+/// method set (`len/len_bytes/char_at/slice/to/clone/to_codepoint`,
+/// `char.from_codepoint`), text `+` concatenation, text/char `==`/`!=`,
+/// parameter mode words (`mut`/`move`) and call-site `.move`.
+pub const TEXT_SOURCE_PROFILE: &str = "auto.source.text.draft";
+
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SourceProfile {
     Core,
     Scalar,
+    Text,
 }
 
 impl SourceProfile {
@@ -52,6 +61,7 @@ impl SourceProfile {
         match self {
             SourceProfile::Core => SOURCE_PROFILE,
             SourceProfile::Scalar => SCALAR_SOURCE_PROFILE,
+            SourceProfile::Text => TEXT_SOURCE_PROFILE,
         }
     }
 
@@ -60,6 +70,7 @@ impl SourceProfile {
         match self {
             SourceProfile::Core => crate::hir::HirDomain::Core,
             SourceProfile::Scalar => crate::hir::HirDomain::Scalar,
+            SourceProfile::Text => crate::hir::HirDomain::Text,
         }
     }
 
@@ -67,13 +78,20 @@ impl SourceProfile {
     /// unary ops, logical short-circuit) and the conditional `for` loop
     /// are accepted.
     pub fn is_scalar(&self) -> bool {
-        matches!(self, SourceProfile::Scalar)
+        matches!(self, SourceProfile::Scalar | SourceProfile::Text)
+    }
+
+    /// Whether the text surface (str/Str/char, literals, text methods,
+    /// mode words) is accepted (PLAN-770).
+    pub fn is_text(&self) -> bool {
+        matches!(self, SourceProfile::Text)
     }
 
     pub fn of(s: &str) -> Option<SourceProfile> {
         match s {
             SOURCE_PROFILE => Some(SourceProfile::Core),
             SCALAR_SOURCE_PROFILE => Some(SourceProfile::Scalar),
+            TEXT_SOURCE_PROFILE => Some(SourceProfile::Text),
             _ => None,
         }
     }

@@ -66,7 +66,7 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
 /// accepts the new operators, unary ops and the conditional `for` loop;
 /// the core surface keeps its historical accept/reject sets.
 pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, Diagnostic> {
-    let toks = super::lexer::tokenize(src)?;
+    let toks = super::lexer::tokenize_with(src, profile.is_text())?;
     let mut p = Parser {
         src,
         toks,
@@ -203,6 +203,8 @@ impl<'s> Parser<'s> {
                 Tok::Reserved(w) => format!("`{}`", w),
                 Tok::Punct(p) => format!("`{}`", p.as_str()),
                 Tok::Int(_) => "integer literal".to_string(),
+                Tok::StrLit(_) => "string literal".to_string(),
+                Tok::CharLit(_) => "char literal".to_string(),
                 Tok::Raw { kind, .. } => kind.describe().to_string(),
             },
             None => "end of file".to_string(),

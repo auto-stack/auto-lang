@@ -185,6 +185,11 @@ pub enum Tok {
         kind: RawKind,
         text: String,
     },
+    /// Decoded string literal (text profile only, PLAN-770): escapes
+    /// resolved, cross-line line breaks kept verbatim in the value.
+    StrLit(String),
+    /// Decoded char literal (text profile only): one Unicode scalar.
+    CharLit(u32),
 }
 
 #[derive(Clone, Debug)]
@@ -222,14 +227,26 @@ struct Lexer<'s> {
     b: &'s [u8],
     pos: usize,
     line: usize,
+    text: bool,
 }
 
 pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
+    tokenize_with(src, false)
+}
+
+/// Tokenize with the text-profile literal surface enabled (PLAN-770):
+/// string/char literals decode to real tokens (escape whitelist, scalar
+/// validation, cross-line strings whose line breaks enter the value
+/// verbatim). The historical core/scalar behavior — raw excluded tokens
+/// and the unterminated-at-newline rule — is preserved bit-for-bit when
+/// `text` is false.
+pub fn tokenize_with(src: &str, text: bool) -> Result<Vec<Token>, Diagnostic> {
     let mut lx = Lexer {
         src,
         b: src.as_bytes(),
         pos: 0,
         line: 1,
+        text,
     };
     let mut out = Vec::new();
     while lx.pos < lx.b.len() {
@@ -325,6 +342,292 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
                     _ => unreachable!(),
                 };
                 lx.push_punct(p, 1, &mut out);
+            }
+            b'"' if lx.text => {
+                let start = lx.pos;
+                lx.pos += 1;
+                let mut value = String::new();
+                loop {
+                    match lx.b.get(lx.pos) {
+                        None => {
+                            return Err(Diagnostic::new(
+                                Stage::Text,
+                                "source.lex",
+                                "unterminated string literal",
+                                Span { start, end: lx.pos },
+                            ));
+                        }
+                        Some(b'"') => {
+                            lx.pos += 1;
+                            break;
+                        }
+                        Some(b'\n') => {
+                            // cross-line literal (774 r2 R2-02): the line
+                            // break enters the value verbatim — LF sources
+                            // keep LF, CRLF sources keep CRLF (the CR byte
+                            // is consumed by the raw byte arm below)
+                            value.push('\n');
+                            lx.pos += 1;
+                            lx.line += 1;
+                        }
+                        Some(b'\\') => {
+                            let esc_start = lx.pos;
+                            lx.pos += 1;
+                            match lx.b.get(lx.pos) {
+                                Some(b'n') => {
+                                    value.push('\n');
+                                    lx.pos += 1;
+                                }
+                                Some(b't') => {
+                                    value.push('\t');
+                                    lx.pos += 1;
+                                }
+                                Some(b'r') => {
+                                    value.push('\r');
+                                    lx.pos += 1;
+                                }
+                                Some(b'0') => {
+                                    value.push('\0');
+                                    lx.pos += 1;
+                                }
+                                Some(b'\\') => {
+                                    value.push('\\');
+                                    lx.pos += 1;
+                                }
+                                Some(b'"') => {
+                                    value.push('"');
+                                    lx.pos += 1;
+                                }
+                                Some(b'u') => {
+                                    lx.pos += 1;
+                                    if lx.b.get(lx.pos) != Some(&b'{') {
+                                        return Err(Diagnostic::new(
+                                            Stage::Text,
+                                            "text.invalid-escape",
+                                            "escape \\u expects `{`",
+                                            Span {
+                                                start: esc_start,
+                                                end: lx.pos,
+                                            },
+                                        ));
+                                    }
+                                    lx.pos += 1;
+                                    let mut hex = String::new();
+                                    while matches!(lx.b.get(lx.pos), Some(c) if c.is_ascii_hexdigit())
+                                    {
+                                        hex.push(lx.b[lx.pos] as char);
+                                        lx.pos += 1;
+                                    }
+                                    if lx.b.get(lx.pos) != Some(&b'}')
+                                        || hex.is_empty()
+                                        || hex.len() > 6
+                                    {
+                                        return Err(Diagnostic::new(
+                                            Stage::Text,
+                                            "text.invalid-escape",
+                                            "escape \\u{...} expects 1-6 hex digits and `}`",
+                                            Span {
+                                                start: esc_start,
+                                                end: lx.pos,
+                                            },
+                                        ));
+                                    }
+                                    lx.pos += 1;
+                                    let cp = u32::from_str_radix(&hex, 16).unwrap();
+                                    match char::from_u32(cp) {
+                                        Some(ch) => value.push(ch),
+                                        None => {
+                                            return Err(Diagnostic::new(
+                                                Stage::Text,
+                                                "text.invalid-scalar",
+                                                format!(
+                                                    "\\u{{{}}} is not a Unicode scalar value",
+                                                    hex
+                                                ),
+                                                Span {
+                                                    start: esc_start,
+                                                    end: lx.pos,
+                                                },
+                                            ));
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    return Err(Diagnostic::new(
+                                        Stage::Text,
+                                        "text.invalid-escape",
+                                        "unknown escape sequence (whitelist: \\n \\t \\r \\0 \\\\ \\\" \\u{hex})",
+                                        Span {
+                                            start: esc_start,
+                                            end: (lx.pos + 1).min(lx.b.len()),
+                                        },
+                                    ));
+                                }
+                            }
+                        }
+                        Some(&byte) if byte < 0x80 => {
+                            value.push(byte as char);
+                            lx.pos += 1;
+                        }
+                        Some(_) => {
+                            let ch = lx.src[lx.pos..].chars().next().unwrap();
+                            value.push(ch);
+                            lx.pos += ch.len_utf8();
+                        }
+                    }
+                }
+                out.push(Token {
+                    tok: Tok::StrLit(value),
+                    span: Span { start, end: lx.pos },
+                    line: lx.line,
+                });
+            }
+            b'\'' if lx.text => {
+                let start = lx.pos;
+                lx.pos += 1;
+                // empty literal: the closing quote is the first body byte
+                if lx.b.get(lx.pos) == Some(&b'\'') {
+                    lx.pos += 1;
+                    return Err(Diagnostic::new(
+                        Stage::Text,
+                        "text.char-empty",
+                        "char literal must hold exactly one scalar",
+                        Span { start, end: lx.pos },
+                    ));
+                }
+                let scalar: char = match lx.b.get(lx.pos) {
+                    None | Some(b'\n') => {
+                        return Err(Diagnostic::new(
+                            Stage::Text,
+                            "source.lex",
+                            "unterminated char literal",
+                            Span {
+                                start,
+                                end: lx.pos.min(lx.b.len()),
+                            },
+                        ));
+                    }
+                    Some(b'\\') => {
+                        let esc_start = lx.pos;
+                        lx.pos += 1;
+                        match lx.b.get(lx.pos) {
+                            Some(b'n') => {
+                                lx.pos += 1;
+                                '\n'
+                            }
+                            Some(b't') => {
+                                lx.pos += 1;
+                                '\t'
+                            }
+                            Some(b'r') => {
+                                lx.pos += 1;
+                                '\r'
+                            }
+                            Some(b'0') => {
+                                lx.pos += 1;
+                                '\0'
+                            }
+                            Some(b'\\') => {
+                                lx.pos += 1;
+                                '\\'
+                            }
+                            Some(b'\'') => {
+                                lx.pos += 1;
+                                '\''
+                            }
+                            Some(b'u') => {
+                                lx.pos += 1;
+                                if lx.b.get(lx.pos) != Some(&b'{') {
+                                    return Err(Diagnostic::new(
+                                        Stage::Text,
+                                        "text.invalid-escape",
+                                        "escape \\u expects `{`",
+                                        Span {
+                                            start: esc_start,
+                                            end: lx.pos,
+                                        },
+                                    ));
+                                }
+                                lx.pos += 1;
+                                let mut hex = String::new();
+                                while matches!(lx.b.get(lx.pos), Some(c) if c.is_ascii_hexdigit()) {
+                                    hex.push(lx.b[lx.pos] as char);
+                                    lx.pos += 1;
+                                }
+                                if lx.b.get(lx.pos) != Some(&b'}')
+                                    || hex.is_empty()
+                                    || hex.len() > 6
+                                {
+                                    return Err(Diagnostic::new(
+                                        Stage::Text,
+                                        "text.invalid-escape",
+                                        "escape \\u{...} expects 1-6 hex digits and `}`",
+                                        Span {
+                                            start: esc_start,
+                                            end: lx.pos,
+                                        },
+                                    ));
+                                }
+                                lx.pos += 1;
+                                let cp = u32::from_str_radix(&hex, 16).unwrap();
+                                match char::from_u32(cp) {
+                                    Some(ch) => ch,
+                                    None => {
+                                        return Err(Diagnostic::new(
+                                            Stage::Text,
+                                            "text.invalid-scalar",
+                                            format!("\\u{{{}}} is not a Unicode scalar value", hex),
+                                            Span {
+                                                start: esc_start,
+                                                end: lx.pos,
+                                            },
+                                        ));
+                                    }
+                                }
+                            }
+                            _ => {
+                                return Err(Diagnostic::new(
+                                    Stage::Text,
+                                    "text.invalid-escape",
+                                    "unknown escape sequence in char literal",
+                                    Span {
+                                        start: esc_start,
+                                        end: (lx.pos + 1).min(lx.b.len()),
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                    Some(&byte) if byte < 0x80 => {
+                        lx.pos += 1;
+                        byte as char
+                    }
+                    Some(_) => {
+                        let ch = lx.src[lx.pos..].chars().next().unwrap();
+                        lx.pos += ch.len_utf8();
+                        ch
+                    }
+                };
+                if lx.b.get(lx.pos) != Some(&b'\'') {
+                    return Err(Diagnostic::new(
+                        Stage::Text,
+                        "text.char-multi",
+                        format!(
+                            "char literal must hold exactly one scalar (found more after `{}`)",
+                            scalar
+                        ),
+                        Span {
+                            start,
+                            end: (lx.pos + 1).min(lx.b.len()),
+                        },
+                    ));
+                }
+                lx.pos += 1;
+                out.push(Token {
+                    tok: Tok::CharLit(scalar as u32),
+                    span: Span { start, end: lx.pos },
+                    line: lx.line,
+                });
             }
             b'"' => {
                 let start = lx.pos;
