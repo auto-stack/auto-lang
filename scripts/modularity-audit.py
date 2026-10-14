@@ -311,20 +311,24 @@ def manifest_package_name(manifest: Path) -> str | None:
     return pkg.get("name") or data.get("lib", {}).get("name")
 
 
-def extract_declared_edges(root: Path) -> tuple[list[dict], list[str], dict]:
-    """返回 (edges, member_names, gaps)。边字典字段：
+def extract_declared_edges(root: Path) -> tuple[list[dict], list[str], list[str], list[Path]]:
+    """返回 (edges, member_names, gaps, read_manifests)。边字典字段：
     from/to（包名）、dep_key、kind（normal/dev/build）、optional、target（cfg 串或 None）、
     to_scope（member | nonmember-in-root | external | unresolved）。
+    read_manifests = 本次边提取实际读取过的 manifest 文件（含根外 path 依赖目标）——
+    它们是审计输入，输出守卫必须覆盖（F777-R2-02），不能只按扫描根内外判断安全。
     """
     members = discover_members(root)
     root_resolved = root.resolve()
     member_dirs = {m.resolve(): m for m in members}
     root_manifest = root / "Cargo.toml"
+    read_manifests: list[Path] = []
     workspace_deps: dict = {}
     if root_manifest.exists():
         try:
             root_data = tomllib.loads(root_manifest.read_text(encoding="utf-8"))
             workspace_deps = root_data.get("workspace", {}).get("dependencies", {})
+            read_manifests.append(root_manifest.resolve())
         except tomllib.TOMLDecodeError:
             pass
 
@@ -338,6 +342,7 @@ def extract_declared_edges(root: Path) -> tuple[list[dict], list[str], dict]:
         if name is None:
             gaps.append(f"member manifest 不可解析: {member.name}")
             continue
+        read_manifests.append(manifest.resolve())
         member_names.append(name)
         try:
             data = tomllib.loads(manifest.read_text(encoding="utf-8"))
@@ -381,6 +386,8 @@ def extract_declared_edges(root: Path) -> tuple[list[dict], list[str], dict]:
                 target_dir = (path_base / path_value).resolve()
                 target_manifest = target_dir / "Cargo.toml"
                 target_name = manifest_package_name(target_manifest)
+                if target_manifest.exists():
+                    read_manifests.append(target_manifest.resolve())
                 if target_dir in member_dirs:
                     to_scope = "member"
                     to = target_name or f"unresolved({target_dir.name})"
@@ -410,7 +417,7 @@ def extract_declared_edges(root: Path) -> tuple[list[dict], list[str], dict]:
                 })
 
     edges.sort(key=lambda e: (e["from"], e["to"], e["kind"], e["target"] or "", e["dep_key"]))
-    return edges, sorted(member_names), gaps
+    return edges, sorted(member_names), gaps, sorted(set(read_manifests))
 
 
 def _rel_or_external(path: Path, root: Path) -> str:
@@ -859,23 +866,44 @@ def rule_is_direction_based(rule: dict) -> bool:
 # ---------------------------------------------------------------------------
 
 def same_file(a: Path, b: Path) -> bool:
-    return a.resolve() == b.resolve()
+    """路径别名等价：normcase 归一（Windows 大小写/分隔符）后比较，
+    双存在时再以 samefile 兜底（链接等）。"""
+    import os
+    na = os.path.normcase(str(a.resolve()))
+    nb = os.path.normcase(str(b.resolve()))
+    if na == nb:
+        return True
+    try:
+        return a.exists() and b.exists() and a.samefile(b)
+    except OSError:
+        return False
 
 
 def guard_output_target(
     out_path: Path, root: Path, config_path: Path,
     baseline_path: Path | None, tracked: list[str],
+    read_manifests: list[Path] | None = None,
 ) -> None:
-    """--output 写入前守卫：拒绝覆盖配置/基线/任何受管输入或扫描根内既有文件。"""
-    resolved = out_path.resolve()
+    """--output 写入前守卫：拒绝覆盖任何审计输入。
+    输入矩阵（F777-R1-03 + F777-R2-02）：
+    - 边界配置 / 冻结基线（显式输入）；
+    - 本次边提取实际读取过的 manifest——**含扫描根外的 path 依赖目标 manifest**
+      （根外不等于安全另存，它可能正是被读过的输入）；
+    - 扫描根内：任何受管文件、任何既有文件。"""
     if config_path is not None and same_file(out_path, config_path):
         raise ConfigError(f"拒绝输出到审计输入（边界配置）: {out_path}")
     if baseline_path is not None and same_file(out_path, baseline_path):
         raise ConfigError(f"拒绝输出到审计输入（冻结基线）: {out_path}")
+    for manifest in read_manifests or []:
+        if same_file(out_path, manifest):
+            raise ConfigError(
+                f"拒绝输出到审计输入（本次已读取的依赖 manifest，含扫描根外）: {out_path}"
+            )
+    resolved = out_path.resolve()
     try:
         rel = resolved.relative_to(root.resolve())
     except ValueError:
-        return  # 扫描根之外：安全另存
+        return  # 扫描根之外且非已读输入：安全另存
     rel_posix = rel.as_posix()
     if rel_posix in set(tracked):
         raise ConfigError(f"拒绝输出覆盖受管输入文件: {rel_posix}")
@@ -1082,7 +1110,9 @@ METHOD = {
              "非生产 SLOC，非可删除量；与调研基线 v06-modularization-baseline.jsonl 同口径可比"
              "（top_files 不含 cfg(test) 行位/测试函数统计，历史快照段属调研一次性产物不在本工具范围）",
     "declared_edges": "主源=workspace 成员 manifest 直接解析（Python tomllib；含 target 表与 "
-                      "workspace 依赖继承；路径依赖按目标 manifest 归类 member/nonmember-in-root/external）；"
+                      "workspace 依赖继承——继承 path 按 workspace 根解析；路径依赖按目标 manifest "
+                      "归类 member/nonmember-in-root/external）；域映射按包名（members 表含已知根外"
+                      "实现包 auto-ui/auto-man，未登记外置包保持真实 unclassified）；"
                       "cargo metadata --no-deps --locked 仅作一致性对照，缺锁/锁不满足记录缺口，"
                       "不自动更新、不作编译验收；metadata 成功不代表编译成功",
     "text_candidates": "配置驱动正则扫描 + 逐字符注释/字符串状态机 + cfg(test)/macro_rules 区域跟踪的"
@@ -1093,7 +1123,9 @@ METHOD = {
                  "缺组在 strict 判红（不能只验证已登记 path 存在）",
     "assets": "受管文件按配置资产根计数（文件数/字节数/扩展名分布）",
     "stability": "同一输入两次扫描 payload 字节一致；无时间戳、无检出绝对路径；"
-                 "报告只读生成、另行保存，不回写输入（输出/刷新目标写入前有输入冲突守卫）",
+                 "报告只读生成、另行保存，不回写输入——输出/刷新目标写入前按完整输入矩阵守卫："
+                 "配置/基线/本次实读 manifest（含扫描根外 path 目标）/受管文件/根内既有文件，"
+                 "路径别名（大小写/分隔符/链接）归一比较",
     "strict": "判当前工作树边集对照冻结基线：新增禁向边按完整声明身份（含 optional/scope/dep_key）"
               "点名，未提交变更同样在判定面内；存量禁向边必须逐边 edge_note（owner+exit_phase）"
               "方可 grandfather；optional 激活等新禁向性质不得冒充存量豁免；revoked 边再现判红；"
@@ -1199,7 +1231,7 @@ def audit(root: Path, args) -> tuple[dict, int, dict]:
     tracked = collect_tracked_files(root)
     sizes, files = collect_sizes(root, tracked)
 
-    edges, member_names, gaps = extract_declared_edges(root)
+    edges, member_names, gaps, read_manifests = extract_declared_edges(root)
     cross_check = (
         {"attempted": False, "ok": None, "gap": "已通过 --no-cargo-check 显式停用",
          "discrepancies": []}
@@ -1271,7 +1303,10 @@ def audit(root: Path, args) -> tuple[dict, int, dict]:
         revision, sizes, files, assets,
         declared_edges_section, text_candidates, ownership, strict,
     )
-    guard_ctx = {"config_path": config_path, "baseline_path": baseline_path, "tracked": tracked}
+    guard_ctx = {
+        "config_path": config_path, "baseline_path": baseline_path,
+        "tracked": tracked, "read_manifests": read_manifests,
+    }
     return report, exit_code, guard_ctx
 
 
@@ -1722,6 +1757,166 @@ def scenario_v09(script: Path) -> str:
     return "V-09 覆盖对账：必需组缺 active 条目判红；完整控制通过"
 
 
+def make_external_crate(container: Path, package: str) -> Path:
+    """在容器内造一个根外 crate（复制 fixture-lang-sdk 并改包名）。"""
+    target = container / package
+    shutil.copytree(SCRIPT_ROOT / FIXTURE_RELPATH / "crates/fixture-lang-sdk", target)
+    manifest = target / "Cargo.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'name = "fixture-lang-sdk"', f'name = "{package}"'),
+        encoding="utf-8", newline="\n",
+    )
+    return target
+
+
+def scenario_v10(script: Path) -> str:
+    """F777-R2-01 永久反例：用生产域映射 + 生产跨根规则做 UI/Man 禁向矩阵。
+    从实施仓生产配置提取 [domains.members] 与跨根规则注入 fixture——
+    配置丢失 auto-ui/auto-man 映射或规则退化为 scope-only 时本场景失败。"""
+    production = tomllib.loads(
+        (SCRIPT_ROOT / ".autoos/module-boundaries.toml").read_text(encoding="utf-8")
+    )
+    members_prod = production["domains"]["members"]
+    st_check(members_prod.get("auto-ui") == "ui" and members_prod.get("auto-man") == "man",
+             "[v10] 生产域映射含 auto-ui=ui / auto-man=man",
+             json.dumps({k: members_prod.get(k) for k in ("auto-ui", "auto-man")}))
+    rule = next(
+        (r for r in production["rules"]["forbidden_declared"]
+         if "out-of-root" in r.get("id", "")), None,
+    )
+    st_check(rule is not None and rule.get("to_scopes") == ["external"]
+             and bool(rule.get("to_domains")) and bool(rule.get("from_domains")),
+             "[v10] 生产跨根规则存在且为方向限定（非 scope-only）")
+
+    fixture_members = {
+        "fixture-lang": "lang-monolith", "fixture-lang-sdk": "lang-core",
+        "fixture-ui": "ui", "fixture-ui-kit": "ui",
+        "fixture-test-util": "test", "fixture-app": "app",
+    }
+    merged = dict(members_prod)
+    merged.update(fixture_members)
+    members_block = "[domains.members]\n" + "".join(
+        f'"{k}" = "{v}"\n' for k, v in sorted(merged.items())
+    )
+    rule_block = "\n[[rules.forbidden_declared]]\n" + "".join(
+        f"{k} = {json.dumps(v)}\n" for k, v in sorted(rule.items())
+    )
+
+    cases = [
+        ("auto-ui-normal",
+         '\n[dependencies]\nauto-ui = { path = "../../../auto-ui" }\n', None,
+         EXIT_STRICT_FAIL, "auto-ui"),
+        ("auto-man-normal",
+         '\n[dependencies]\nauto-man = { path = "../../../auto-man" }\n', None,
+         EXIT_STRICT_FAIL, "auto-man"),
+        ("auto-ui-build-target",
+         '\n[target.\'cfg(windows)\'.build-dependencies]\nauto-ui = { path = "../../../auto-ui" }\n',
+         None, EXIT_STRICT_FAIL, "auto-ui"),
+        ("auto-ui-inherited",
+         '\n[dependencies]\nauto-ui = { workspace = true }\n',
+         '\n[workspace.dependencies]\nauto-ui = { path = "../auto-ui" }\n',
+         EXIT_STRICT_FAIL, "auto-ui"),
+        ("unknown-sdk-normal",
+         '\n[dependencies]\nexternal-lang-sdk = { path = "../../../external-lang-sdk" }\n',
+         None, EXIT_OK, None),
+    ]
+    for case_id, member_extra, root_extra, expected, target_name in cases:
+        repo = make_fixture_repo("v10-" + case_id)
+        try:
+            make_external_crate(repo.parent, "auto-ui")
+            make_external_crate(repo.parent, "auto-man")
+            make_external_crate(repo.parent, "external-lang-sdk")
+            cfg_path = repo / DEFAULT_CONFIG_RELPATH
+            cfg = cfg_path.read_text(encoding="utf-8")
+            begin = cfg.index("[domains.members]")
+            end = cfg.index("[[rules.forbidden_declared]]")
+            cfg_path.write_text(
+                cfg[:begin] + members_block + "\n" + cfg[end:] + rule_block,
+                encoding="utf-8", newline="\n",
+            )
+            commit_fixture(repo, "production domains+rule", f"v10/{case_id}")
+            code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+            st_check(code == 0, f"[v10/{case_id}] 基线刷新成功", err[:300])
+            manifest = repo / "crates/fixture-lang/Cargo.toml"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8") + member_extra,
+                encoding="utf-8", newline="\n",
+            )
+            if root_extra:
+                root_manifest = repo / "Cargo.toml"
+                root_manifest.write_text(
+                    root_manifest.read_text(encoding="utf-8") + root_extra,
+                    encoding="utf-8", newline="\n",
+                )
+            st_check(member_extra.strip().splitlines()[-1]
+                     in manifest.read_text(encoding="utf-8"),
+                     f"[v10/{case_id}] 变更落盘证明")
+            code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+            st_check(code == expected, f"[v10/{case_id}] 退出码符合预期",
+                     f"exit={code} expect={expected} {err[:200]}")
+            if expected == EXIT_STRICT_FAIL:
+                hits = [v for v in rep["strict"]["violations"]
+                        if v["type"] == "new_forbidden_edge"
+                        and v["edge"]["to"] == target_name]
+                st_check(len(hits) == 1 and hits[0]["edge"]["to_scope"] == "external",
+                         f"[v10/{case_id}] 判红点名外置 {target_name} 边",
+                         json.dumps(rep["strict"]["violations"])[:300])
+            else:
+                st_check(rep["strict"]["verdict"] == "pass",
+                         f"[v10/{case_id}] 未知外置 SDK 保持合法（真实 unknown 不误判）",
+                         json.dumps(rep["strict"]["violations"])[:300])
+        finally:
+            shutil.rmtree(repo.parent, ignore_errors=True)
+    return "V-10 生产域/规则矩阵：外置 auto-ui/auto-man（normal/build/target/继承）判红，未知 SDK 不误判"
+
+
+def scenario_v11(script: Path) -> str:
+    """F777-R2-02 永久反例：输出不得覆盖本次已读取的根外依赖 manifest；
+    根外独立另存保持可用。"""
+    repo = make_fixture_repo("v11")
+    external = make_external_crate(repo.parent, "external-lang-sdk")
+    ui_manifest = repo / "crates/fixture-ui/Cargo.toml"
+    ui_manifest.write_text(
+        ui_manifest.read_text(encoding="utf-8")
+        + '\nexternal-lang-sdk = { path = "../../../external-lang-sdk" }\n',
+        encoding="utf-8", newline="\n",
+    )
+    st_check("external-lang-sdk" in ui_manifest.read_text(encoding="utf-8"),
+             "[v11] 外置依赖声明落盘证明")
+    ext_manifest = external / "Cargo.toml"
+    before = ext_manifest.read_bytes()
+    # 合法控制：观察扫描正常，且边提取确实读取了该根外 manifest
+    code, rep, err = run_audit_cli(script, repo, "--mode", "observe")
+    st_check(code == 0, "[v11] observe 正常", err[:300])
+    edges = [e for e in rep["declared_edges"]["edges"] if e["to"] == "external-lang-sdk"]
+    st_check(len(edges) == 1 and edges[0]["to_scope"] == "external",
+             "[v11] 外置边被提取（其 manifest 是本次实读输入）")
+    code, err = run_audit_raw(
+        script, repo, "--mode", "observe", "--output", str(ext_manifest))
+    st_check(code == EXIT_CONFIG_INVALID, "[v11] 输出到已读根外 manifest 被拒绝",
+             f"exit={code} {err[:200]}")
+    st_check(ext_manifest.read_bytes() == before,
+             "[v11] 根外 manifest 字节未变（拒绝先于写入）")
+    if sys.platform == "win32":
+        alias = ext_manifest.parent / "cargo.toml"  # 大小写别名（Windows 不区分）
+        code, err = run_audit_raw(
+            script, repo, "--mode", "observe", "--output", str(alias))
+        st_check(code == EXIT_CONFIG_INVALID, "[v11] 大小写别名路径同样被拒绝",
+                 f"exit={code} {err[:200]}")
+        st_check(ext_manifest.read_bytes() == before, "[v11] 别名尝试后字节仍未变")
+    # 正控：根外未读取的新路径可正常另存
+    safe_out = repo.parent / "safe-report.json"
+    code, err = run_audit_raw(
+        script, repo, "--mode", "observe", "--output", str(safe_out))
+    st_check(code == EXIT_OK, "[v11] 根外独立另存可用", f"exit={code} {err[:200]}")
+    st_check(safe_out.exists()
+             and json.loads(safe_out.read_text(encoding="utf-8"))["schema"] == REPORT_SCHEMA,
+             "[v11] 另存报告可解析")
+    shutil.rmtree(repo.parent, ignore_errors=True)
+    return "V-11 输入保护矩阵：已读根外 manifest（含大小写别名）拒绝覆盖，根外另存正控可用"
+
+
 def run_self_test() -> int:
     script = SCRIPT_PATH
     scenarios = [
@@ -1730,6 +1925,7 @@ def run_self_test() -> int:
         ("v04c", scenario_v04c), ("v04d", scenario_v04d),
         ("v05", scenario_v05), ("v06", scenario_v06), ("v07", scenario_v07),
         ("v08", scenario_v08), ("v09", scenario_v09),
+        ("v10", scenario_v10), ("v11", scenario_v11),
     ]
     failures = 0
     for name, fn in scenarios:
@@ -1801,7 +1997,7 @@ def main(argv) -> int:
             guard_refresh_target(baseline_path, config_path)
             revision = collect_revision(root)
             tracked = collect_tracked_files(root)
-            edges, _members, _gaps = extract_declared_edges(root)
+            edges, _members, _gaps, _read = extract_declared_edges(root)
             text_candidates = run_text_scans(root, tracked, config.get("text_scan", []))
             baseline = refresh_baseline(
                 root, config, config_path, baseline_path, revision, edges, text_candidates,
@@ -1825,7 +2021,7 @@ def main(argv) -> int:
             # 同一目标的输出（F777-R1-03）。
             guard_output_target(
                 out, root, guard_ctx["config_path"], guard_ctx["baseline_path"],
-                guard_ctx["tracked"],
+                guard_ctx["tracked"], guard_ctx["read_manifests"],
             )
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(payload, encoding="utf-8", newline="\n")
