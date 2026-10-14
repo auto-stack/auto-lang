@@ -526,12 +526,14 @@ fn block_terminates_impl(body: &hir::Body, root: u32, memo: &mut BTreeMap<u32, b
                 stack.push(W::Finish(bid));
                 if let Some(bl) = body.blocks.get(bid as usize) {
                     for s in &bl.stmts {
-                        if let hir::Stmt::If {
-                            then, els: Some(e), ..
-                        } = s
-                        {
+                        if let hir::Stmt::If { then, els, .. } = s {
+                            // r8 R8-01: every arm that CAN run needs a memo —
+                            // a constant-true no-else if terminates with its
+                            // then arm alone
                             stack.push(W::Enter(then.0));
-                            stack.push(W::Enter(e.0));
+                            if let Some(e) = els {
+                                stack.push(W::Enter(e.0));
+                            }
                         }
                     }
                 }
@@ -549,14 +551,32 @@ fn block_terminates_impl(body: &hir::Body, root: u32, memo: &mut BTreeMap<u32, b
                             result = true;
                             break;
                         }
-                        hir::Stmt::If { then, els, .. } => {
-                            if let Some(e) = els {
-                                if memo.get(&then.0).copied().unwrap_or(false)
-                                    && memo.get(&e.0).copied().unwrap_or(false)
-                                {
-                                    result = true;
-                                    break;
+                        hir::Stmt::If {
+                            cond, then, els, ..
+                        } => {
+                            // r8 R8-01: consume the SAME constant
+                            // reachability the walk uses (const_truth) —
+                            // only the arms that can actually run decide
+                            // termination. A constant-true condition
+                            // terminates with its then arm alone; a
+                            // constant-false one ignores the then arm; an
+                            // unknown condition needs every possible arm
+                            // (plus the implicit fall-through when there
+                            // is no else).
+                            let t = const_truth(body, *cond);
+                            let terminated = match (t, els) {
+                                (Some(true), _) => memo.get(&then.0).copied().unwrap_or(false),
+                                (Some(false), Some(e)) => memo.get(&e.0).copied().unwrap_or(false),
+                                (Some(false), None) => false,
+                                (None, Some(e)) => {
+                                    memo.get(&then.0).copied().unwrap_or(false)
+                                        && memo.get(&e.0).copied().unwrap_or(false)
                                 }
+                                (None, None) => false,
+                            };
+                            if terminated {
+                                result = true;
+                                break;
                             }
                         }
                         _ => {}
