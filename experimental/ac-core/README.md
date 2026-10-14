@@ -35,7 +35,10 @@ mut 排他(`verify.mut-conflict`/`verify.ownership-required`,774 D-04)。
 native 走 774 D-05 内部 ABI:字段声明序 4 对齐 size=Σ字段尺寸,ABI-D
 `*const` view / ABI-E `*mut` + out-slot 返回(无聚合 RAX/sret);record
 局部即存储指针,赋值=值拷贝;生产型表达式(构造/调用/字段读)带
-copy-elision 直写目标存储,嵌套构造链零临时槽。深输入预算:类型含图
+copy-elision 直写目标存储,嵌套构造链零临时槽——R1 修复起,直写仅在
+目标与 RHS 触集不相交(目标根局部不在子树触集)时转发,否则 RHS 先落
+新槽再提交,`p = P { a: p.b, b: p.a }`/`p = swap(p)` 类别名自赋值保持
+读-后-写正确。深输入预算:类型含图
 1024 层、字段路径 4096 段(V-09 PE 实证)。范围与验收见
 [docs/plans/771-ac-record-method-native.md](../../docs/plans/771-ac-record-method-native.md)。
 

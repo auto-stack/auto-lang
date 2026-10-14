@@ -207,15 +207,10 @@ pub enum ExprKind {
         operand: Box<Expr>,
     },
     // -- record profile (PLAN-771) --
-    /// Positional construction `Pair(1, true)`; `Pair` must resolve to a
-    /// record type (resolve/typecheck decide — the parser keeps the
-    /// call-looking form).
-    CtorPos {
-        ty: Ident,
-        args: Vec<Arg>,
-    },
     /// Named construction `Pair { left: 1, right: true }` — arguments
     /// evaluate in SOURCE order, then map to declaration fields.
+    /// (Positional `Pair(1, true)` parses as a plain call; the resolver
+    /// routes it to construction when the name is a record — F-771-R1-02.)
     CtorNamed {
         ty: Ident,
         fields: Vec<NamedCtorField>,
@@ -339,7 +334,7 @@ impl Drop for Expr {
                 }
                 // nested calls carry inline argument expressions; drain
                 // them so no level drops recursively
-                ExprKind::Call { args, .. } | ExprKind::CtorPos { args, .. } => {
+                ExprKind::Call { args, .. } => {
                     for a in args.iter_mut() {
                         let e = match a {
                             Arg::Pos(e) => std::mem::replace(e, dummy()),

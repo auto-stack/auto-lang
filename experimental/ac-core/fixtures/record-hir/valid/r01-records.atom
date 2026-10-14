@@ -115,9 +115,9 @@ hir(schema: "auto.hir.record.draft", revision: 1u32, profile: "record-i32-draft"
                     expr efq2 field_get { type: t_i32; base: eq3; path: [0u32] }
                     expr c5b constant { type: t_i32; value: 5i32 }
                     expr x2 binary { type: t_bool; op: ne; lhs: efq2; rhs: c5b }
-                    expr c1c constant { type: t_i32; value: 1i32 }
-                    expr c1e constant { type: t_i32; value: 1i32 }
-                    expr c5c constant { type: t_i32; value: 5i32 }
+                    expr c1c constant { type: t_i32; value: 0i32 }
+                    expr c1e constant { type: t_i32; value: 11i32 }
+                    expr c5c constant { type: t_i32; value: 12i32 }
                 }
                 places {
                     place p_q_left field_path { local: l_q; type: t_i32; access: mutable; path: [0u32] }

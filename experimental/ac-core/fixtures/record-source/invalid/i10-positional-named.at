@@ -1,0 +1,7 @@
+// F-771-R1-02 negative: the parenthesized construction form takes
+// positional arguments only — named fields use `Type { field: value }`.
+type Q { v int }
+fn main() int {
+    let q = Q(v: 7)
+    return q.v
+}

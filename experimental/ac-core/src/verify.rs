@@ -898,7 +898,14 @@ impl Verifier {
                 let Some(mode) = modes.get(b.param as usize) else {
                     continue;
                 };
-                let Some(arg_e) = body.exprs.get(eval_args[b.arg as usize].0 as usize) else {
+                // F-771-R1-03: a mutated bundle can carry an out-of-range
+                // binding arg — the dedicated binding validation in
+                // check_blocks reports it; this earlier ownership walk
+                // must skip the binding instead of indexing past eval_args
+                let Some(arg_e) = eval_args
+                    .get(b.arg as usize)
+                    .and_then(|a| body.exprs.get(a.0 as usize))
+                else {
                     continue;
                 };
                 let is_record_param = matches!(

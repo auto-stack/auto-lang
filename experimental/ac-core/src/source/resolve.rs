@@ -180,7 +180,42 @@ impl Drop for ResolvedExpr {
                 let o = std::mem::replace(operand.as_mut(), dummy());
                 stack.push(o);
             }
-            _ => {}
+            // F-771-R1/V-09: the record profile adds DEEP non-operator
+            // spines (nested `T { r: T { r: .. } }` ctors, field paths,
+            // method/call args). Every boxed or Vec-held child must be
+            // detached here or that level falls back to recursive drop
+            // glue and a rejected malformed partial overflows the stack.
+            RExprKind::FieldGet { base, .. } => {
+                let b = std::mem::replace(base.as_mut(), dummy());
+                stack.push(b);
+            }
+            RExprKind::CallFn { args, .. } | RExprKind::CtorPos { args, .. } => {
+                for a in args.iter_mut() {
+                    let v = std::mem::replace(&mut a.value, dummy());
+                    stack.push(v);
+                }
+            }
+            RExprKind::CtorNamed { fields, .. } => {
+                for (_, v) in fields.iter_mut() {
+                    let e = std::mem::replace(v, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::MethodCall { recv, args, .. } => {
+                if let Some(r) = recv.as_mut() {
+                    let e = std::mem::replace(r.as_mut(), dummy());
+                    stack.push(e);
+                }
+                for a in args.iter_mut() {
+                    let v = std::mem::replace(&mut a.value, dummy());
+                    stack.push(v);
+                }
+            }
+            RExprKind::IntLit(_)
+            | RExprKind::BoolLit(_)
+            | RExprKind::ReadLocal(_)
+            | RExprKind::CallIntrinsic { .. }
+            | RExprKind::BorrowMut { .. } => {}
         };
         let mut stack: Vec<ResolvedExpr> = Vec::new();
         detach(self, &mut stack);
@@ -1182,8 +1217,9 @@ impl<'a> FnResolver<'a> {
             // the remaining kinds are true leaves here. --
             ExprKind::Field { .. } => unreachable!("handled by expr_iterative"),
             ExprKind::MethodCall { .. } => unreachable!("handled by expr_iterative"),
-            ExprKind::CtorPos { ty, args } => self.ctor_pos(ty, args, e.span),
-            ExprKind::CtorNamed { ty, fields } => self.ctor_named(ty, fields, e.span),
+            ExprKind::CtorNamed { .. } => {
+                unreachable!("named ctors resolve through the iterative walk")
+            }
             ExprKind::MutArg { name } => match self.lookup(&name.name) {
                 Some(l) => {
                     let vt = self.locals[l.0].vt;
@@ -1220,39 +1256,65 @@ impl<'a> FnResolver<'a> {
         }
     }
 
-    /// Positional construction `Pair(1, true)` (PLAN-771).
-    fn ctor_pos(&mut self, ty: &ast::Ident, args: &[ast::Arg], span: Span) -> ResolvedExpr {
-        let Some(&ri) = self.rec_index.get(&ty.name) else {
-            self.bind_err(
-                "source.undefined",
-                format!("no record type named `{}` in this module", ty.name),
-                ty.span,
-            );
-            return ResolvedExpr {
-                span,
-                vt: VT::I32,
-                kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
-            };
+    /// Positional construction `Pair(1, true)` (PLAN-771 §5.2; reached from
+    /// `resolve_call` once the callee name resolves to a record — the
+    /// parser cannot tell a ctor from a call without the symbol table).
+    /// Argument order IS declaration order here, so eval order matches the
+    /// written order trivially; arity and nominal field types are checked
+    /// inline (mirroring the named form).
+    fn ctor_positional(
+        &mut self,
+        ri: usize,
+        ty: &ast::Ident,
+        rargs: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        let desc = |t: VT, records: &[ResolvedRecord]| match t {
+            VT::Rec(i) => match records.get(i) {
+                Some(r) => format!("record `{}`", r.name),
+                None => "record".to_string(),
+            },
+            other => other.as_str().to_string(),
         };
-        let rargs = self.resolve_args(args);
-        let shape: Vec<VT> = self.records[ri].fields.iter().map(|f| f.vt).collect();
         if rargs.iter().any(|a| a.name.is_some()) {
             self.bind_err(
                 "source.argument",
-                "positional construction takes positional arguments only; named construction uses `Type { field: value }`",
+                "positional construction takes positional arguments only; named construction uses `Type { field: value }`".to_string(),
                 span,
             );
         }
-        if rargs.len() != shape.len() {
+        let fields = &self.records[ri].fields;
+        if rargs.len() != fields.len() {
             self.bind_err(
                 "source.argument",
                 format!(
                     "`{}` has {} fields; positional construction takes exactly that many arguments",
                     ty.name,
-                    shape.len()
+                    fields.len()
                 ),
                 span,
             );
+        }
+        for (i, a) in rargs.iter().enumerate() {
+            let Some(want) = fields.get(i).map(|f| f.vt) else {
+                continue;
+            };
+            if a.value.vt != want {
+                // nominal records name both sides (identical shapes still
+                // mismatch — PLAN-771 §5.1)
+                self.bind_err(
+                    "source.type-mismatch",
+                    format!(
+                        "argument {} initializes field `{}` of `{}`, which has type {}, found {}",
+                        i + 1,
+                        fields[i].name,
+                        ty.name,
+                        desc(want, self.records),
+                        desc(a.value.vt, self.records)
+                    ),
+                    a.value.span,
+                );
+            }
         }
         ResolvedExpr {
             span,
@@ -1267,10 +1329,14 @@ impl<'a> FnResolver<'a> {
     /// Named construction `Pair { left: 1, right: true }` (PLAN-771):
     /// field values keep SOURCE order; names map to declaration fields
     /// (completeness/duplicates checked here, types in typecheck).
-    fn ctor_named(
+    /// F-771-R1/V-09: takes PRE-RESOLVED field values — the iterative walk
+    /// resolves every field value as its own subtask, so a nested
+    /// `T { r: T { r: ... } }` chain never recurses through
+    /// ctor_named/expr_iterative frames.
+    fn ctor_named_out(
         &mut self,
         ty: &ast::Ident,
-        fields: &[ast::NamedCtorField],
+        values: Vec<(ast::Ident, Span, ResolvedExpr)>,
         span: Span,
     ) -> ResolvedExpr {
         let Some(&ri) = self.rec_index.get(&ty.name) else {
@@ -1287,21 +1353,20 @@ impl<'a> FnResolver<'a> {
         };
         let mut seen: BTreeSet<String> = BTreeSet::new();
         let mut resolved: Vec<(String, ResolvedExpr)> = Vec::new();
-        for f in fields {
-            if !seen.insert(f.name.name.clone()) {
+        for (name, fspan, v) in values {
+            if !seen.insert(name.name.clone()) {
                 self.bind_err(
                     "source.duplicate",
-                    format!("field `{}` is initialized more than once", f.name.name),
-                    f.name.span,
+                    format!("field `{}` is initialized more than once", name.name),
+                    name.span,
                 );
             }
             match self.records[ri]
                 .fields
                 .iter()
-                .position(|fl| fl.name == f.name.name)
+                .position(|fl| fl.name == name.name)
             {
                 Some(fi) => {
-                    let v = self.expr_iterative(&f.value);
                     let want = self.records[ri].fields[fi].vt;
                     if v.vt != want {
                         // nominal records name both sides (identical shapes
@@ -1317,21 +1382,21 @@ impl<'a> FnResolver<'a> {
                             "source.type-mismatch",
                             format!(
                                 "field `{}` of `{}` has type {}, found {}",
-                                f.name.name,
+                                name.name,
                                 ty.name,
                                 desc(want),
                                 desc(v.vt)
                             ),
-                            f.span,
+                            fspan,
                         );
                     }
-                    resolved.push((f.name.name.clone(), v));
+                    resolved.push((name.name.clone(), v));
                 }
                 None => {
                     self.bind_err(
                         "source.undefined",
-                        format!("record `{}` has no field named `{}`", ty.name, f.name.name),
-                        f.name.span,
+                        format!("record `{}` has no field named `{}`", ty.name, name.name),
+                        name.span,
                     );
                 }
             }
@@ -1782,6 +1847,17 @@ impl<'a> FnResolver<'a> {
                 spans: Vec<Span>,
                 node_span: Span,
             },
+            /// All field-value slots are filled; resolve the named
+            /// construction into `dest` (F-771-R1/V-09: nested ctors stay
+            /// iterative instead of recursing through `ctor_named`).
+            CtorOut {
+                ty: ast::Ident,
+                dest: usize,
+                arg_slots: Vec<usize>,
+                names: Vec<ast::Ident>,
+                fspans: Vec<Span>,
+                node_span: Span,
+            },
         }
         let mut out: Vec<ResolvedExpr> = vec![dummy_resolved()];
         let mut stack: Vec<Task> = vec![Task::Visit {
@@ -1946,9 +2022,53 @@ impl<'a> FnResolver<'a> {
                             node: operand,
                             slot: oslot,
                         });
+                    } else if let ExprKind::CtorNamed { ty, fields } = &node.kind {
+                        // every field value is its own subtask: the outer
+                        // ctor's frame returns before inner ctors resolve
+                        let mut arg_slots = Vec::with_capacity(fields.len());
+                        let mut names = Vec::with_capacity(fields.len());
+                        let mut fspans = Vec::with_capacity(fields.len());
+                        let mut subtasks = Vec::with_capacity(fields.len() + 1);
+                        for f in fields {
+                            let sp = out.len();
+                            out.push(dummy_resolved());
+                            arg_slots.push(sp);
+                            names.push(f.name.clone());
+                            fspans.push(f.span);
+                            subtasks.push(Task::Visit {
+                                node: &f.value,
+                                slot: sp,
+                            });
+                        }
+                        subtasks.push(Task::CtorOut {
+                            ty: ty.clone(),
+                            dest: slot,
+                            arg_slots,
+                            names,
+                            fspans,
+                            node_span: node.span,
+                        });
+                        for t in subtasks.into_iter().rev() {
+                            stack.push(t);
+                        }
                     } else {
                         out[slot] = self.expr(node);
                     }
+                }
+                Task::CtorOut {
+                    ty,
+                    dest,
+                    arg_slots,
+                    names,
+                    fspans,
+                    node_span,
+                } => {
+                    let mut values = Vec::with_capacity(arg_slots.len());
+                    for (i, sp) in arg_slots.iter().enumerate() {
+                        let v = std::mem::replace(&mut out[*sp], dummy_resolved());
+                        values.push((names[i].clone(), fspans[i], v));
+                    }
+                    out[dest] = self.ctor_named_out(&ty, values, node_span);
                 }
                 Task::FieldOut {
                     name,
@@ -2166,6 +2286,16 @@ impl<'a> FnResolver<'a> {
                     args: rargs,
                 },
             };
+        }
+
+        // Positional record construction `Q(7)` (PLAN-771 §5.2,
+        // F-771-R1-02): the callee name is neither a local nor a function —
+        // resolve it against the record table. Like functions, record
+        // types are user declarations and win over intrinsic name
+        // hijacking; a function sharing the record's name keeps the call
+        // form (the namespaces stay separate, mirroring the fn rule).
+        if let Some(&ri) = self.rec_index.get(&callee.name) {
+            return self.ctor_positional(ri, callee, rargs, call_span);
         }
 
         // User functions win over trace intrinsics (no name hijacking);

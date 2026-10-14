@@ -2,10 +2,13 @@
 
 - 工作树：`D:/autostack/.wt/lang-771/auto-lang` @ `plan-771-dev`；
   基面 master `199d6509e`（774 已合入）。
-- 本文件由 T-06/T-07 收尾写定；门禁原始收据在
+- 本文件由 T-06/T-07 收尾写定，**R1 复审 needs_fix 修复轮**（2026-10-14，
+  F-771-R1-01..04 + V-09 malformed partial 补证）修订；门禁原始收据在
   `experimental/ac-core/target/ac-verify-receipts/record-771/`（gitignored，
   含逐例输入/输出/hash）。规范增量提案见
   [proposed-spec-delta.md](proposed-spec-delta.md)（未发布 canonical）。
+- R1 复审报告与冻结反例见
+  [docs/plans/attachments/771/review-r1/REVIEW.md](../../docs/plans/attachments/771/review-r1/REVIEW.md)。
 
 ## 1. 提交与产品清单
 
@@ -33,20 +36,27 @@ README 增量。旧域（core/scalar）源码路径仅共享枚举扩面（带�
 | Case | 实际入口 | 结果 |
 |---|---|---|
 | V-01 | `record_hir.rs`（三维身份/隔离/dispatch/未知三元组）+ gate `profile isolation` 步 | ✅ |
-| V-02 | `record_source.rs`（源码腿）+ `record_hir.rs`（HIR 腿）+ `record_native.rs`（source flagship PE exit 0 / HIR fixture PE exit 1）+ gate SP01/HP01 | ✅ |
+| V-02 | `record_source.rs`（源码腿）+ `record_hir.rs`（HIR 腿）+ `record_native.rs`（source flagship PE exit 0 / HIR fixture PE exit 0——R1 修复后 r01 成功码 0、失败码 11/12 互异）+ gate SP01/HP01 | ✅ |
 | V-03 | `record_hir.rs`（同构异名/前向引用/自环/互环/断开环/1024 链/深路径）+ `record_source.rs`（名义拒绝含 record 名标注） | ✅ |
 | V-04 | `record_hir.rs` 8 组程序化 Bundle 变异（字段 TypeId/FieldId 越界与经标量续走/签名参数交换/结果改型/receiver 改位/owner 改型/字段 TypeRef 越界/ctor 绑定删失）+ 合法兄弟例 | ✅ |
 | V-05 | `record_native.rs`（命名实参重排+嵌套 record 实参、out-slot 链式 swap(mk)/swap(swap(mk))、.mut 递归标量+record、receiver 一次+实参序 trace `aab`）+ gate SP02 | ✅ |
 | V-06 | `record_source.rs`（let 写拒绝/缺 .mut/mut fn）+ `record_native.rs`（mut 只写目标 PE）+ `record_hir.rs`（双 mut 排他/let 互借/游离借位）+ gate SN01..SN03 | ✅ |
 | V-07 | `record_source.rs`（生成 Atom field_args 源码序 + 绑定按名落位 oracle）+ `record_native.rs`（命名构造 trace `ba`）+ gate SP02/SN06 | ✅ |
 | V-08 | `record_source.rs`（static/实例误用、同名遮蔽、未知字段/方法）+ `record_hir.rs`（receiver 契约）+ gate SN07 | ✅ |
-| V-09 | `record_hir.rs`（1024 链 verify、深 field path）+ `record_native.rs` 深输入 PE（1024 层类型图、4096 混合字段路径段、构造链 copy-elision：800 层 main 324817→3217 指令、46s→1.1s 构建）+ `deep_regression.rs` 既有 scalar 深输入回归 | ✅ |
+| V-09 | `record_hir.rs`（1024 链 verify、深 field path）+ `record_native.rs` 深输入 PE（1024 层类型图、4096 混合字段路径段、构造链 copy-elision：800 层 main 324817→3217 指令、46s→1.1s 构建）+ `deep_regression.rs` 既有 scalar 深输入回归 + **R1 补证：`record_source.rs` malformed 2000 深局部（parse→resolve 结构化拒绝→迭代 Drop 无栈溢出；修复前 resolve 嵌套 ctor 递归 + ResolvedExpr 递归 Drop，2MB 线程栈 300 深即爆；迭代化后 20000 深幸存）** | ✅ |
 | V-10 | `scripts/verify-ac-record-771.ps1` 全 15 步（本收据 §4）+ 旧 gates（741 -SkipMainGates / 745 / 767）+ SENTINEL 事务（失败 build 三件制品 hash 保持）+ 收据身份行 | ✅ |
 
 ## 3. 覆盖内省
 
-- record_hir 19 / record_source 14 / record_native 9 = 42 个新测试；
-  全 ac-core `cargo test --locked` 187/187（旧面 145 全数保留）。
+- R1 修复轮后：record_hir 21 / record_source 20 / record_native 13 =
+  54 个新测试；全 ac-core `cargo test --locked` 199/199（旧面 145 全数
+  保留）。R1 新增：变异绑定越界双模式（binding-arg 边界值/u32::MAX/
+  缺失绑定→verify.binding-invalid 受控拒绝）、位置构造五例（解析/元数/
+  命名参/字段类型/fn 同名优先）、malformed 深局部、别名赋值值语义六例
+  （ctor 自赋值/sret 自赋值/新目标控制/嵌套字段自赋值/mut 参数交错/
+  双 view 同对象）、位置构造 PE、HIR r02 强制失败控制（exit 11）、
+  HIR r03 直连腿（嵌套拷贝/聚合返回/别名自赋值/字段路径自读，失败码
+  21..29 互异）。
 - 整数 oracle 独立推导（探针 P2 布局公式 8+4k），无 golden 自动更新；
   深输入为验证规模而非语言上限，无固定语法深度排除。
 - 已知非阻断：诊断码 `verify.shadowed-type`/`verify.duplicate-decl`
@@ -56,9 +66,9 @@ README 增量。旧域（core/scalar）源码路径仅共享枚举扩面（带�
 
 ## 4. 门禁执行（verify-ac-record-771.ps1）
 
-**18 步全绿，0 failed，10 cases**（2026-10-14 实跑；原始收据
-`target/ac-verify-receipts/record-771/`，含 context/summary/cases
-与逐例 build/run 输出与 SHA256）：
+**R1 修复轮重跑：22 步全绿，0 failed，19 cases**（2026-10-14 实跑；
+原始收据 `target/ac-verify-receipts/record-771/`，含 context/summary/
+cases 与逐例 build/run 输出与 SHA256）：
 
 | # | 步骤 | 结果 |
 |---|---|---|
@@ -72,8 +82,12 @@ README 增量。旧域（core/scalar）源码路径仅共享枚举扩面（带�
 | 8 | 构建 trace 支持库 | PASS |
 | 9 | 正向 SOURCE：flagship 构建+运行 exit 0 | PASS |
 | 10 | 正向 SOURCE：求值序 trace `ba` | PASS |
-| 11 | 正向 HIR：record fixture 构建+运行 exit 1 | PASS |
-| 12 | 负向 SOURCE 7 例钉码拒绝 | PASS |
+| 11 | 正向 HIR：record fixture 构建+运行 exit 0 | PASS |
+| 12 | HIR 失败控制：强制拷贝检查 exit 11（F-771-R1-04） | PASS |
+| 12b | 正向 HIR：r03 嵌套拷贝/聚合返回/别名（F-771-R1-01/04） | PASS |
+| 12c | 正向 SOURCE：别名赋值值语义三例（F-771-R1-01） | PASS |
+| 12d | 正向 SOURCE：位置构造（F-771-R1-02） | PASS |
+| 13 | 负向 SOURCE 10 例钉码拒绝（R1 增 i08/i09/i10） | PASS |
 | 13 | profile 隔离（core/scalar 拒 record；未知 profile exit 2；域行） | PASS |
 | 14 | SENTINEL 事务（失败 build 三件制品 hash 保持） | PASS |
 | 15 | 收据身份行（record 三元组 + input-hash） | PASS |
@@ -103,6 +117,22 @@ README 增量。旧域（core/scalar）源码路径仅共享枚举扩面（带�
 14. SENTINEL 事务（失败 build 后 exe/obj/receipt 三件 hash 不变）
 15. 收据身份行（source-profile/hir 三元组/input-hash）+ 旧 gates
     741（-SkipMainGates）/745/767 串行重跑
+
+## 4b. R1 修复轮记录（2026-10-14，复审 needs_fix → 重开 T-02..07）
+
+| 发现 | 修复 | 永久回归 |
+|---|---|---|
+| F-771-R1-01 copy-elision 目的地别名存活输入（alias-ctor/alias-sret exit 12） | native.rs：预计算每表达式 record 局部触集（mention 集，迭代后序）；Assign/字段路径/ctor 子 dest/call out-slot 仅在目标根局部不在 RHS 触集时转发，否则 RHS 落新槽后提交（Let 新槽与 ABI-E out-param 恒安全——out-param 与全体实参存储不相交由调用点规则归纳保证） | `record_native.rs` `aliased_assignment_value_semantics_pe` 六例（含复审 attachment 原例三件 + 嵌套字段/mut 参数/双 view）+ gate SP03 三例；深构造效率保留（V-09 深输入门禁仍绿） |
+| F-771-R1-02 位置构造 `Q(7)` 被 source.undefined 拒绝 | resolve.rs `resolve_call`：局部/函数查名后查 record 表路由 `ctor_positional`（元数/命名参/逐参名义类型诊断；fn 同名仍优先调用形）；删除死的 AST `ExprKind::CtorPos` 变体与 `ctor_pos` | `record_source.rs` 五例 + i08/i09/i10 负向 fixture + `record_native.rs` `positional_ctor_pe`（含位置实参别名重排）+ gate SP04/SN08..SN10 |
+| F-771-R1-03 Call binding.arg=u32::MAX 令 verify panic | verify.rs 所有权走查改安全 `.get()` 跳过越界绑定，由既有 `verify.binding-invalid`（check_blocks）报错——与 core 域 binding-arg-oob 先例同码 | `record_hir.rs` 边界值 2（=len）与 u32::MAX 两模式 + 缺失绑定组合；复审 bundle-mutation.rs harness 重放双模式 controlled reject（原 binding-arg PANIC） |
+| F-771-R1-04 HIR 复制检查失败分支与成功同码 exit 1 | r01 fixture：成功 0、k1=11、k2=12 互异；新增 controls/r02 强制失败控制（c1d=99→k1→exit 11）与 valid/r03 直连腿（嵌套拷贝/聚合返回/sret 与 ctor 别名自赋值/字段路径自读；失败码 21..29） | `record_native.rs` `hir_fixture_pe_exit0`/`hir_broken_copy_control_pe_exit11`/`hir_nested_copy_return_alias_pe` + gate HP01(0)/HP02(11)/HP03(0)；r03 oracle 灵敏度实证（翻转 c2b 期望值→exit 21） |
+| （AC-05 partial 补证）malformed partial 深输入无 Drop 证据 | 修复根因：resolve 嵌套 ctor 递归（expr_iterative→expr→ctor_named→expr_iterative 每层三帧 ~7KB）迭代化（Task::CtorOut 子任务）；ResolvedExpr 迭代 Drop 扩至全部 record 子形态（原仅 Binary/Unary） | `record_source.rs` `malformed_deep_partial_source_rejects_and_drops_without_overflow`（2000 深结构化拒绝；探针：修复前 2MB 栈 300 深溢出，修复后 20000 深幸存） |
+
+卫生项：一次性实施辅助 `patch_a2.py`/`patch_r1.py` 已删除（复审
+nonblocking 观察）。复审冻结反例在修复后基线重放：positional check
+exit 0、alias-ctor/alias-sret/alias-control 均 exit 0、
+hir-broken-copy-check（旧常量文本）exit 1 ≠ 新成功码 0、
+bundle-mutation 双模式 controlled reject。
 
 ## 5. 输入指纹（SHA256）
 

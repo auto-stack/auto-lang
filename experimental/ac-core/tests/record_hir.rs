@@ -595,3 +595,66 @@ fn mutation_borrow_outside_call_position_is_rejected() {
         codes(&diags)
     );
 }
+
+#[test]
+fn mutation_call_binding_arg_out_of_range_is_controlled_rejection() {
+    // F-771-R1-03 replay: mutate a real Call binding's arg index past
+    // eval_args — the record ownership walk runs BEFORE the dedicated
+    // binding validation and must skip the binding instead of indexing
+    // past the table. Boundary (== len) and max (u32::MAX) both reject
+    // with verify.binding-invalid; the unmutated sibling still verifies.
+    verify::verify_record(
+        descriptor::bind(record_descriptor(), &fixture("valid", "r01-records.atom")).unwrap(),
+    )
+    .expect("unmutated sibling passes");
+    for bad in [2u32, u32::MAX] {
+        let mut bundle =
+            descriptor::bind(record_descriptor(), &fixture("valid", "r01-records.atom")).unwrap();
+        let m = &mut bundle.modules[0];
+        let b = m.bodies.iter_mut().find(|b| b.id_text == "b_main").unwrap();
+        let mut mutated = false;
+        for e in b.exprs.iter_mut() {
+            if let ExprKind::Call { bindings, .. } = &mut e.kind {
+                if !bindings.is_empty() {
+                    bindings[0].arg = bad;
+                    mutated = true;
+                    break;
+                }
+            }
+        }
+        assert!(mutated, "fixture must carry a bound call");
+        let diags = verify_mutated(bundle);
+        assert!(
+            has(&diags, "verify.binding-invalid"),
+            "binding arg {bad}, got {:?}",
+            codes(&diags)
+        );
+    }
+}
+
+#[test]
+fn mutation_call_bindings_missing_is_controlled_rejection() {
+    // dropping every binding of a call: no param is bound, no eval_args
+    // consumed — controlled rejection, never a panic (F-771-R1-03 replay
+    // of the missing-bindings combination)
+    let mut bundle = bind_record_ok(&fixture("valid", "r01-records.atom"));
+    let m = &mut bundle.modules[0];
+    let b = m.bodies.iter_mut().find(|b| b.id_text == "b_main").unwrap();
+    let mut mutated = false;
+    for e in b.exprs.iter_mut() {
+        if let ExprKind::Call { bindings, .. } = &mut e.kind {
+            if !bindings.is_empty() {
+                bindings.clear();
+                mutated = true;
+                break;
+            }
+        }
+    }
+    assert!(mutated, "fixture must carry a bound call");
+    let diags = verify_mutated(bundle);
+    assert!(
+        has(&diags, "verify.binding-invalid"),
+        "missing bindings, got {:?}",
+        codes(&diags)
+    );
+}

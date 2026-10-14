@@ -28,7 +28,7 @@ use cranelift_codegen::settings::Configurable;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{default_libcall_names, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use target_lexicon::Triple;
 
 const WINCALL: CallConv = CallConv::WindowsFastcall;
@@ -191,6 +191,108 @@ fn type_is_record(m: &hir::Module, u: &hir::TypeUse) -> bool {
             Some(hir::TypeKind::Record(_))
         ),
     }
+}
+
+/// Record-typed locals whose storage an expression subtree may read or hand
+/// to a callee, indexed by expr id (F-771-R1-01). Copy elision forwards an
+/// assignment destination into RHS evaluation; that is only sound when the
+/// destination's root local does not appear here — otherwise the RHS could
+/// observe (or a callee could interleave with) writes the elision performs
+/// into storage that is still being read. `BorrowMut` counts too: a callee
+/// writing through a mut argument touches the same storage.
+fn record_mention_sets(body: &hir::Body, local_is_record: &[bool]) -> Vec<BTreeSet<u32>> {
+    let mut sets: Vec<BTreeSet<u32>> = vec![BTreeSet::new(); body.exprs.len()];
+    enum Step {
+        Enter(hir::ExprId),
+        Combine(hir::ExprId),
+    }
+    let mut roots: Vec<hir::ExprId> = Vec::new();
+    for bl in &body.blocks {
+        for s in &bl.stmts {
+            match s {
+                hir::Stmt::Let { value, .. } | hir::Stmt::Return { value } => roots.push(*value),
+                hir::Stmt::If { cond, .. } => roots.push(*cond),
+                hir::Stmt::Assign { value, .. } => roots.push(*value),
+                hir::Stmt::Loop { .. } | hir::Stmt::Break { .. } | hir::Stmt::Continue { .. } => {}
+            }
+        }
+    }
+    for root in roots {
+        // single ownership (verifier) makes the forest acyclic; the walk is
+        // iterative so deep expressions cannot grow the emitter's stack
+        let mut stack: Vec<Step> = vec![Step::Enter(root)];
+        while let Some(step) = stack.pop() {
+            match step {
+                Step::Enter(id) => {
+                    let Some(e) = body.exprs.get(id.0 as usize) else {
+                        continue;
+                    };
+                    let mut children: Vec<hir::ExprId> = Vec::new();
+                    match &e.kind {
+                        hir::ExprKind::ReadLocal { local } => {
+                            if local_is_record.get(local.0 as usize).copied() == Some(true) {
+                                sets[id.0 as usize].insert(local.0);
+                            }
+                        }
+                        hir::ExprKind::BorrowMut { local } => {
+                            sets[id.0 as usize].insert(local.0);
+                        }
+                        hir::ExprKind::Constant { .. } => {}
+                        hir::ExprKind::Binary { lhs, rhs, .. }
+                        | hir::ExprKind::Logical { lhs, rhs, .. } => {
+                            children.push(*lhs);
+                            children.push(*rhs);
+                        }
+                        hir::ExprKind::Unary { operand, .. } => children.push(*operand),
+                        hir::ExprKind::Call { eval_args, .. }
+                        | hir::ExprKind::RecordCtor { eval_args, .. } => {
+                            children.extend(eval_args.iter().copied());
+                        }
+                        hir::ExprKind::FieldGet { base, .. }
+                        | hir::ExprKind::BorrowView { base } => {
+                            children.push(*base);
+                        }
+                    }
+                    if !children.is_empty() {
+                        stack.push(Step::Combine(id));
+                        for c in children.into_iter().rev() {
+                            stack.push(Step::Enter(c));
+                        }
+                    }
+                }
+                Step::Combine(id) => {
+                    let mut union: BTreeSet<u32> = sets[id.0 as usize].clone();
+                    let mut children: Vec<hir::ExprId> = Vec::new();
+                    if let Some(e) = body.exprs.get(id.0 as usize) {
+                        match &e.kind {
+                            hir::ExprKind::Binary { lhs, rhs, .. }
+                            | hir::ExprKind::Logical { lhs, rhs, .. } => {
+                                children.push(*lhs);
+                                children.push(*rhs);
+                            }
+                            hir::ExprKind::Unary { operand, .. } => children.push(*operand),
+                            hir::ExprKind::Call { eval_args, .. }
+                            | hir::ExprKind::RecordCtor { eval_args, .. } => {
+                                children.extend(eval_args.iter().copied());
+                            }
+                            hir::ExprKind::FieldGet { base, .. }
+                            | hir::ExprKind::BorrowView { base } => {
+                                children.push(*base);
+                            }
+                            _ => {}
+                        }
+                    }
+                    for c in children {
+                        if let Some(s) = sets.get(c.0 as usize) {
+                            union.extend(s.iter().copied());
+                        }
+                    }
+                    sets[id.0 as usize] = union;
+                }
+            }
+        }
+    }
+    sets
 }
 
 /// Walk a field path from a root record type (PLAN-771): returns the byte
@@ -472,6 +574,7 @@ pub fn lower_object(
             let is_rec_vt =
                 |u: &hir::TypeUse| matches!(value_of_type_use(u, module), Some(Vt::Record(_)));
             let local_is_record: Vec<bool> = body.locals.iter().map(|l| is_rec_vt(&l.ty)).collect();
+            let mentions = record_mention_sets(body, &local_is_record);
             let mut vars: BTreeMap<u32, Variable> = BTreeMap::new();
             for (li, rec) in local_is_record.iter().enumerate() {
                 let v = if *rec {
@@ -531,6 +634,7 @@ pub fn lower_object(
                 module,
                 layouts,
                 local_is_record,
+                mentions,
                 out_param: out_param_value,
                 result_bytes,
                 dests: BTreeMap::new(),
@@ -634,6 +738,18 @@ fn backend_diag(msg: impl Into<String>) -> Diagnostic {
     )
 }
 
+/// A copy-elision destination: the storage an expression writes into
+/// directly, plus the local whose storage that is (F-771-R1-01). `root` is
+/// `None` for freshly allocated slots (unreachable from any other
+/// expression) and for the ABI-E out param — the out param is disjoint
+/// from every argument storage by the call-site forwarding rule, so
+/// writing it during a callee's evaluation never clobbers a live input.
+#[derive(Clone, Copy)]
+struct Dest {
+    ptr: Value,
+    root: Option<u32>,
+}
+
 /// Per-function emission state.
 struct FuncEmitter<'c> {
     fb: FunctionBuilder<'c>,
@@ -652,7 +768,10 @@ struct FuncEmitter<'c> {
     /// record-producing expression should write into directly, instead of
     /// allocating a fresh temp. Keyed by expr id; each expr has exactly one
     /// consuming position (verifier), so the entry is consumed on use.
-    dests: BTreeMap<u32, Option<Value>>,
+    dests: BTreeMap<u32, Dest>,
+    /// Record-typed locals touched by each expression subtree (per expr
+    /// id); the insert-side disjointness gate for `dests` (F-771-R1-01).
+    mentions: Vec<BTreeSet<u32>>,
     /// Expr ids that WROTE into their destination directly (their parent
     /// store step must not re-copy them).
     elided: std::collections::BTreeSet<u32>,
@@ -728,6 +847,22 @@ impl<'c> FuncEmitter<'c> {
         *self
             .trap_block
             .get_or_insert_with(|| self.fb.create_block())
+    }
+
+    /// Whether a destination rooted at `root` may be forwarded into the
+    /// evaluation of `eid` (F-771-R1-01): the subtree must not touch the
+    /// root local's storage, or an interleaved read (in this expression or
+    /// inside a callee reading a borrowed argument) would observe the
+    /// destination writes. `None` roots — fresh slots, the ABI-E out
+    /// param — never alias reachable storage and are always safe.
+    fn forward_safe(&self, root: Option<u32>, eid: hir::ExprId) -> bool {
+        match root {
+            None => true,
+            Some(local) => !self
+                .mentions
+                .get(eid.0 as usize)
+                .is_some_and(|touched| touched.contains(&local)),
+        }
     }
 
     /// Emit one block with an explicit frame stack (R6: block nesting is
@@ -844,14 +979,21 @@ impl<'c> FuncEmitter<'c> {
                     if self.local_is_record.get(local.0 as usize).copied() == Some(true) {
                         // value semantics: the binding owns a fresh copy —
                         // a record-producing initializer writes straight
-                        // into the binding's slot (copy elision)
+                        // into the binding's slot (copy elision; the slot
+                        // is fresh, so no aliasing is possible)
                         let ty_idx = match self.body.locals[local.0 as usize].ty {
                             hir::TypeUse::Ref(t) => t.0,
                             _ => 0,
                         };
                         let bytes = self.layouts.get(&ty_idx).copied().unwrap_or(4);
                         let slot = self.new_slot(bytes);
-                        self.dests.insert(value.0, Some(slot));
+                        self.dests.insert(
+                            value.0,
+                            Dest {
+                                ptr: slot,
+                                root: None,
+                            },
+                        );
                         let v = self.eval_expr(value);
                         self.emit_copy(slot, v, bytes);
                         let var = self.vars[&local.0];
@@ -866,8 +1008,16 @@ impl<'c> FuncEmitter<'c> {
                     if let (Some(out), Some(bytes)) = (self.out_param, self.result_bytes) {
                         // record result: write into the ABI-E out slot
                         // (elided straight through ctor/call results),
-                        // void machine return
-                        self.dests.insert(value.0, Some(out));
+                        // void machine return. The out param is disjoint
+                        // from every argument storage by the call-site
+                        // forwarding rule (see Step::Call below).
+                        self.dests.insert(
+                            value.0,
+                            Dest {
+                                ptr: out,
+                                root: None,
+                            },
+                        );
                         let v = self.eval_expr(value);
                         self.emit_copy(out, v, bytes);
                         self.fb.ins().return_(&[]);
@@ -940,14 +1090,27 @@ impl<'c> FuncEmitter<'c> {
                         hir::PlaceKind::Local => {
                             if self.local_is_record.get(p.local.0 as usize).copied() == Some(true) {
                                 // whole-record assign = value copy into the
-                                // local's own slot (elided for ctors)
+                                // local's own slot (elided for ctors — but
+                                // only when the RHS does not read storage
+                                // rooted at the same local: F-771-R1-01,
+                                // `p = P { a: p.b, b: p.a }` /
+                                // `p = swap(p)` must materialize the RHS
+                                // first and commit afterwards)
                                 let dst = self.fb.use_var(self.vars[&p.local.0]);
                                 let ty_idx = match self.body.locals[p.local.0 as usize].ty {
                                     hir::TypeUse::Ref(t) => t.0,
                                     _ => 0,
                                 };
                                 let bytes = self.layouts.get(&ty_idx).copied().unwrap_or(4);
-                                self.dests.insert(value.0, Some(dst));
+                                if self.forward_safe(Some(p.local.0), value) {
+                                    self.dests.insert(
+                                        value.0,
+                                        Dest {
+                                            ptr: dst,
+                                            root: Some(p.local.0),
+                                        },
+                                    );
+                                }
                                 let v = self.eval_expr(value);
                                 self.emit_copy(dst, v, bytes);
                             } else {
@@ -981,7 +1144,19 @@ impl<'c> FuncEmitter<'c> {
                                 }
                                 Some(rt) => {
                                     let bytes = self.layouts.get(&rt).copied().unwrap_or(4);
-                                    self.dests.insert(value.0, Some(addr));
+                                    // F-771-R1-01: forward the field address
+                                    // only when the RHS does not touch the
+                                    // root local (`p.a = P { a: p.a.b, ... }`
+                                    // materializes first, then commits)
+                                    if self.forward_safe(Some(p.local.0), value) {
+                                        self.dests.insert(
+                                            value.0,
+                                            Dest {
+                                                ptr: addr,
+                                                root: Some(p.local.0),
+                                            },
+                                        );
+                                    }
                                     let v = self.eval_expr(value);
                                     self.emit_copy(addr, v, bytes);
                                 }
@@ -1133,9 +1308,12 @@ impl<'c> FuncEmitter<'c> {
                             // source evaluation order (eval_args order);
                             // record-typed field args whose field offset is
                             // statically known thread the destination down
-                            // (copy elision — no temp for nested ctors)
-                            let my_dest = self.dests.get(&id.0).copied().flatten();
-                            if let Some(dst) = my_dest {
+                            // (copy elision — no temp for nested ctors) —
+                            // gated per child on disjointness from the
+                            // destination's root local (F-771-R1-01)
+                            let my_dest: Option<(Value, Option<u32>)> =
+                                self.dests.get(&id.0).map(|d| (d.ptr, d.root));
+                            if let Some((dst, dst_root)) = my_dest {
                                 let shape = match &self.module.types[record.0 as usize].kind {
                                     hir::TypeKind::Record(sh) => sh,
                                     _ => unreachable!("ctor expr names a record"),
@@ -1174,10 +1352,16 @@ impl<'c> FuncEmitter<'c> {
                                                         },
                                                     )
                                                     .is_some();
-                                                if produces {
+                                                if produces && self.forward_safe(dst_root, *arg) {
                                                     let child_dst =
                                                         self.fb.ins().iadd_imm(dst, off as i64);
-                                                    self.dests.insert(arg.0, Some(child_dst));
+                                                    self.dests.insert(
+                                                        arg.0,
+                                                        Dest {
+                                                            ptr: child_dst,
+                                                            root: dst_root,
+                                                        },
+                                                    );
                                                     self.elided.insert(arg.0);
                                                 }
                                             }
@@ -1262,7 +1446,7 @@ impl<'c> FuncEmitter<'c> {
                     let temp = self
                         .dests
                         .remove(&id.0)
-                        .flatten()
+                        .map(|d| d.ptr)
                         .unwrap_or_else(|| self.new_slot(bytes));
                     let mut field_tys: Vec<hir::TypeUse> = Vec::new();
                     if let Some(hir::TypeKind::Record(sh)) =
@@ -1353,7 +1537,7 @@ impl<'c> FuncEmitter<'c> {
                             let temp = self
                                 .dests
                                 .remove(&id.0)
-                                .flatten()
+                                .map(|d| d.ptr)
                                 .unwrap_or_else(|| self.new_slot(bytes));
                             let src = self.fb.ins().iadd_imm(bv, off as i64);
                             self.emit_copy(temp, src, bytes);
@@ -1456,13 +1640,18 @@ impl<'c> FuncEmitter<'c> {
                     }
                     // ABI-E: a record-returning callee gets a fresh out
                     // slot appended; the call's result is that slot's
-                    // pointer (774 D-05 — no aggregate return in RAX)
+                    // pointer (774 D-05 — no aggregate return in RAX).
+                    // A forwarded destination (rooted at local L) reached
+                    // this point only after the insert-side disjointness
+                    // gate proved no argument storage touches L — the
+                    // callee may therefore write the out slot progressively
+                    // while reading its arguments (F-771-R1-01).
                     let callee_rec_result = self.def_result_is_record(callee.0);
                     let out_temp = callee_rec_result.map(|tid| {
                         let bytes = self.layouts.get(&tid).copied().unwrap_or(4);
                         self.dests
                             .remove(&id.0)
-                            .flatten()
+                            .map(|d| d.ptr)
                             .unwrap_or_else(|| self.new_slot(bytes))
                     });
                     if let Some(t) = out_temp {

@@ -8,7 +8,11 @@
 //! V-07 (named-ctor evaluation order `ba`, never declaration order),
 //! V-08 (static/instance methods on real calls) and V-09's deep inputs
 //! (1024-deep type graph, 4096 mixed field-path segments) — all through
-//! the shared contained executor.
+//! the shared contained executor. The R1 repair adds the F-771-R1-01
+//! aliased-destination replay set (copy elision must materialize the RHS
+//! before committing when the destination is still being read), the
+//! F-771-R1-02 positional construction PE, and the F-771-R1-04 distinct
+//! exit-code HIR oracles with a deliberate failure control.
 
 #![cfg(windows)]
 
@@ -83,9 +87,11 @@ fn source_flagship_pe_exit0() {
 }
 
 #[test]
-fn hir_fixture_pe_exit1() {
-    // the HIR fixture's happy path returns exactly 1 (c1c); the failure
-    // arms return 1 (k1) or 5 (k2) — 5 is the distinguishable failure code
+fn hir_fixture_pe_exit0() {
+    // r01's happy path returns 0 (c1c); the failure arms return 11 (k1,
+    // value-copy check) and 12 (k2, mut-visible check) — every branch has
+    // a DISTINCT exit code (F-771-R1-04: the previous 1/1/5 shape let a
+    // forced failure alias the success code)
     let dir = temp_dir("hir");
     let src = repo_path("experimental/ac-core/fixtures/record-hir/valid/r01-records.atom");
     let exe = dir.join("r01.exe");
@@ -102,7 +108,129 @@ fn hir_fixture_pe_exit1() {
     assert_eq!(b.code, 0, "stderr: {}", b.stderr);
     let run = run_pe(&exe);
     assert!(!run.timed_out);
-    assert_eq!(run.code, 1, "happy path exits 1; 5 means a check failed");
+    assert_eq!(run.code, 0, "happy path exits 0; 11/12 mean a check failed");
+}
+
+#[test]
+fn hir_broken_copy_control_pe_exit11() {
+    // F-771-R1-04 deliberate failure control: identical to r01 except the
+    // first copy-check constant forces k1. Proves the copy oracle can
+    // actually fire and is distinguishable from the success code.
+    let dir = temp_dir("hir-broken");
+    let src =
+        repo_path("experimental/ac-core/fixtures/record-hir/controls/r02-broken-copy-check.atom");
+    let exe = dir.join("r02.exe");
+    let mut c = Command::new(EXE);
+    c.args([
+        "build",
+        &src.display().to_string(),
+        "--entry",
+        "d_main",
+        "--output",
+    ])
+    .arg(&exe);
+    let b = run_deadlined(c, Duration::from_secs(600)).expect("spawn build");
+    assert_eq!(b.code, 0, "broken control must still build: {}", b.stderr);
+    let run = run_pe(&exe);
+    assert!(!run.timed_out);
+    assert_eq!(run.code, 11, "forced copy-check failure must exit 11");
+}
+
+#[test]
+fn hir_nested_copy_return_alias_pe() {
+    // F-771-R1-01/04 direct-HIR leg (V-02/V-07): nested record value copy
+    // through a record-returning call, original preserved, whole-local
+    // aliased self-assignment via call and via ctor (written order !=
+    // declaration order), nested field-path assignment reading the same
+    // root — every failure branch exits a distinct 21..29
+    let dir = temp_dir("hir-r3");
+    let src =
+        repo_path("experimental/ac-core/fixtures/record-hir/valid/r03-copy-return-alias.atom");
+    let exe = dir.join("r03.exe");
+    let mut c = Command::new(EXE);
+    c.args([
+        "build",
+        &src.display().to_string(),
+        "--entry",
+        "d_main",
+        "--output",
+    ])
+    .arg(&exe);
+    let b = run_deadlined(c, Duration::from_secs(600)).expect("spawn build");
+    assert_eq!(b.code, 0, "stderr: {}", b.stderr);
+    let run = run_pe(&exe);
+    assert!(!run.timed_out);
+    assert_eq!(run.code, 0, "all copy/return/alias checks hold");
+}
+
+#[test]
+fn aliased_assignment_value_semantics_pe() {
+    // F-771-R1-01 replay set: the assignment destination may alias storage
+    // the RHS still reads — copy elision must materialize the RHS first
+    // and commit afterwards (whole-local ctor self-assign, record-returning
+    // call self-assign, nested field-path self-assign, mut-param inter-
+    // leave), with the accepted fresh-destination control
+    struct Case {
+        name: &'static str,
+        src: &'static str,
+    }
+    let cases = [
+        Case {
+            name: "alias-ctor",
+            src: "type Q { v int }\ntype P { a Q; b Q }\nfn main() int {\n    var p = P { a: Q { v: 1 }, b: Q { v: 2 } }\n    p = P { a: p.b, b: p.a }\n    if p.a.v != 2 { return 11 }\n    if p.b.v != 1 { return 12 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "alias-sret",
+            src: "type Q { v int }\ntype P { a Q; b Q }\nfn swap(p P) P { return P { a: p.b, b: p.a } }\nfn main() int {\n    var p = P { a: Q { v: 1 }, b: Q { v: 2 } }\n    p = swap(p)\n    if p.a.v != 2 { return 11 }\n    if p.b.v != 1 { return 12 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "fresh-destination-control",
+            src: "type Q { v int }\ntype P { a Q; b Q }\nfn swap(p P) P { return P { a: p.b, b: p.a } }\nfn main() int {\n    let p = P { a: Q { v: 1 }, b: Q { v: 2 } }\n    let q = swap(p)\n    if q.a.v != 2 { return 11 }\n    if q.b.v != 1 { return 12 }\n    if p.a.v != 1 { return 13 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "nested-field-self-assign",
+            src: "type Q { x int; y int }\ntype P { a Q; b Q }\nfn main() int {\n    var p = P { a: Q { x: 1, y: 2 }, b: Q { x: 3, y: 4 } }\n    p.a = Q { x: p.a.y, y: p.a.x }\n    if p.a.x != 2 { return 11 }\n    if p.a.y != 1 { return 12 }\n    if p.b.x != 3 { return 13 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "mut-param-interleaves-out-slot",
+            src: "type Q { v int }\ntype P { a Q; b Q }\nfn adj(mut p P, d int) P { p.a.v = p.a.v + d; return p }\nfn main() int {\n    var p = P { a: Q { v: 10 }, b: Q { v: 20 } }\n    p = adj(p.mut, 5)\n    if p.a.v != 15 { return 11 }\n    if p.b.v != 20 { return 12 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "view-params-share-one-object",
+            src: "type Q { v int }\ntype P { a Q; b Q }\nfn both(x P, y P) int { return x.a.v + y.b.v }\nfn main() int {\n    let p = P { a: Q { v: 7 }, b: Q { v: 9 } }\n    if both(p, p) != 16 { return 11 }\n    return 0\n}\n",
+        },
+    ];
+    for case in cases {
+        let dir = temp_dir(&format!("alias-{}", case.name));
+        let src = dir.join("case.at");
+        std::fs::write(&src, case.src).unwrap();
+        let exe = dir.join("case.exe");
+        let b = build_source(&src, &exe, &[]);
+        assert_eq!(b.code, 0, "{}: stderr: {}", case.name, b.stderr);
+        let run = run_pe(&exe);
+        assert!(!run.timed_out, "{} timed out", case.name);
+        assert_eq!(run.code, 0, "{} exited {}", case.name, run.code);
+    }
+}
+
+#[test]
+fn positional_ctor_pe() {
+    // F-771-R1-02: `Q(7)` positional construction — single field, nested
+    // positional args, and a positional self-reassignment whose arguments
+    // read the destination
+    let dir = temp_dir("positional");
+    let src = dir.join("pos.at");
+    std::fs::write(
+        &src,
+        "type Q { v int }\ntype P { a Q; b Q }\nfn main() int {\n    let q = Q(7)\n    if q.v != 7 { return 1 }\n    let p = P(Q(1), Q(2))\n    if p.a.v != 1 { return 2 }\n    if p.b.v != 2 { return 3 }\n    var t = P(Q(1), Q(2))\n    t = P(t.b, t.a)\n    if t.a.v != 2 { return 4 }\n    if t.b.v != 1 { return 5 }\n    return 0\n}\n",
+    )
+    .unwrap();
+    let exe = dir.join("pos.exe");
+    let b = build_source(&src, &exe, &[]);
+    assert_eq!(b.code, 0, "stderr: {}", b.stderr);
+    let run = run_pe(&exe);
+    assert!(!run.timed_out);
+    assert_eq!(run.code, 0);
 }
 
 // -- V-05/V-07: evaluation-order traces --------------------------------------

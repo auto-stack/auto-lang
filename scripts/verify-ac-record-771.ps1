@@ -1,13 +1,15 @@
 # PLAN-771 one-shot record-profile verification script (ASCII only for
 # Windows PowerShell 5.1). Serial gate: full ac-core check/fmt/tests (all
 # domains), record_native PE suite single-threaded, the record case
-# walkthrough (positive source flagship + eval-order trace 'ba', positive
-# HIR fixture, 7 negative fixtures with pinned codes, profile isolation,
-# SENTINEL transaction preservation, receipt identity), then the three
-# old-profile gates (741 -SkipMainGates / 745 / 767) to prove the old
-# surfaces are byte-for-byte unaffected. Raw receipts land in
-# experimental/ac-core/target/ac-verify-receipts/record-771/ (gitignored).
-# The contained executor is VERBATIM the 745/741/767 runner.
+# walkthrough (positive source flagship + eval-order trace 'ba', aliased-
+# destination value-semantics trio and positional construction [F-771-R1-01/
+# 02], positive HIR fixtures r01/r03 with distinct exit codes plus the
+# forced-failure copy control [F-771-R1-04], 10 negative fixtures with
+# pinned codes, profile isolation, SENTINEL transaction preservation,
+# receipt identity), then the three old-profile gates (741 -SkipMainGates /
+# 745 / 767) to prove the old surfaces are byte-for-byte unaffected. Raw
+# receipts land in experimental/ac-core/target/ac-verify-receipts/record-771/
+# (gitignored). The contained executor is VERBATIM the 745/741/767 runner.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-record-771.ps1
 $ErrorActionPreference = 'Stop'
 
@@ -509,11 +511,79 @@ Invoke-Step 'positive HIR case: record fixture build + run (V-02 HIR leg)' {
     if ($build.Code -ne 0) { throw "HIR build exited $($build.Code): $($build.Stderr)" }
     $run = Invoke-Captured $exe @() $dir -TimeoutSec 60
     ("exit: " + $run.Code) | Add-Content (Join-Path $dir 'case.txt')
-    if ($run.Code -ne 1) { throw "HIR run exited $($run.Code), expected 1 (happy path)" }
+    if ($run.Code -ne 0) { throw "HIR run exited $($run.Code), expected 0 (happy path; 11/12 are failure codes)" }
     $caseSummary.Add([pscustomobject]@{ Case = 'HP01'; Exit = $run.Code; Stderr = ''; Ok = $true })
 }
 
-# Negative SOURCE corpus (V-03/V-06/V-07/V-08): id, fixture, code marker.
+Invoke-Step 'HIR failure control: forced copy-check exits 11 (F-771-R1-04)' {
+    $dir = Join-Path $ReceiptsDir 'hir-positive\HP02'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-hir\controls\r02-broken-copy-check.atom'
+    ("input: " + $srcp) | Set-Content (Join-Path $dir 'case.txt')
+    ("input-sha256: " + (Get-Sha256 $srcp)) | Add-Content (Join-Path $dir 'case.txt')
+    $exe = Join-Path $dir 'app.exe'
+    $build = Invoke-Captured $script:Bin @('build', $srcp, '--entry', 'd_main', '--output', $exe) $RepoRoot -TimeoutSec 120
+    if ($build.Code -ne 0) { throw "broken control build exited $($build.Code): $($build.Stderr)" }
+    $run = Invoke-Captured $exe @() $dir -TimeoutSec 60
+    ("exit: " + $run.Code) | Add-Content (Join-Path $dir 'case.txt')
+    if ($run.Code -ne 11) { throw "broken control exited $($run.Code), expected 11 (distinct from success 0)" }
+    $caseSummary.Add([pscustomobject]@{ Case = 'HP02'; Exit = $run.Code; Stderr = ''; Ok = $true })
+}
+
+Invoke-Step 'positive HIR case: nested copy / aggregate return / aliasing (F-771-R1-01/04)' {
+    $dir = Join-Path $ReceiptsDir 'hir-positive\HP03'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-hir\valid\r03-copy-return-alias.atom'
+    ("input: " + $srcp) | Set-Content (Join-Path $dir 'case.txt')
+    ("input-sha256: " + (Get-Sha256 $srcp)) | Add-Content (Join-Path $dir 'case.txt')
+    $exe = Join-Path $dir 'app.exe'
+    $build = Invoke-Captured $script:Bin @('build', $srcp, '--entry', 'd_main', '--output', $exe) $RepoRoot -TimeoutSec 120
+    if ($build.Code -ne 0) { throw "r03 build exited $($build.Code): $($build.Stderr)" }
+    $run = Invoke-Captured $exe @() $dir -TimeoutSec 60
+    ("exit: " + $run.Code) | Add-Content (Join-Path $dir 'case.txt')
+    if ($run.Code -ne 0) { throw "r03 exited $($run.Code), expected 0 (failure branches are 21..29)" }
+    $caseSummary.Add([pscustomobject]@{ Case = 'HP03'; Exit = $run.Code; Stderr = ''; Ok = $true })
+}
+
+Invoke-Step 'positive SOURCE cases: aliased assignment value semantics (F-771-R1-01)' {
+    # the assignment destination may alias storage the RHS still reads:
+    # ctor self-assign and record-returning call self-assign must keep the
+    # original reads intact; fresh destination is the accepted control
+    $cases = @(
+        @{ Name = 'alias-ctor'; Src = "type Q {`n    v int`n}`ntype P {`n    a Q`n    b Q`n}`nfn main() int {`n    var p = P { a: Q { v: 1 }, b: Q { v: 2 } }`n    p = P { a: p.b, b: p.a }`n    if p.a.v != 2 { return 11 }`n    if p.b.v != 1 { return 12 }`n    return 0`n}`n" },
+        @{ Name = 'alias-sret'; Src = "type Q {`n    v int`n}`ntype P {`n    a Q`n    b Q`n}`nfn swap(p P) P { return P { a: p.b, b: p.a } }`nfn main() int {`n    var p = P { a: Q { v: 1 }, b: Q { v: 2 } }`n    p = swap(p)`n    if p.a.v != 2 { return 11 }`n    if p.b.v != 1 { return 12 }`n    return 0`n}`n" },
+        @{ Name = 'fresh-control'; Src = "type Q {`n    v int`n}`ntype P {`n    a Q`n    b Q`n}`nfn swap(p P) P { return P { a: p.b, b: p.a } }`nfn main() int {`n    let p = P { a: Q { v: 1 }, b: Q { v: 2 } }`n    let q = swap(p)`n    if q.a.v != 2 { return 11 }`n    if q.b.v != 1 { return 12 }`n    if p.a.v != 1 { return 13 }`n    return 0`n}`n" }
+    )
+    foreach ($c in $cases) {
+        $dir = Join-Path $ReceiptsDir ('source-positive\SP03-' + $c.Name)
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $srcp = Join-Path $dir 'case.at'
+        Set-Content $srcp $c.Src
+        $exe = Join-Path $dir 'case.exe'
+        $build = Invoke-Captured $script:Bin @('build-source', $srcp, '--source-profile', $Record, '--entry', 'main', '--output', $exe) $RepoRoot -TimeoutSec 120
+        if ($build.Code -ne 0) { throw "$($c.Name) build exited $($build.Code): $($build.Stderr)" }
+        $run = Invoke-Captured $exe @() $dir -TimeoutSec 60
+        ("exit: " + $run.Code) | Set-Content (Join-Path $dir 'case.txt')
+        if ($run.Code -ne 0) { throw "$($c.Name) exited $($run.Code), expected 0" }
+        $caseSummary.Add([pscustomobject]@{ Case = 'SP03-' + $c.Name; Exit = $run.Code; Stderr = ''; Ok = $true })
+    }
+}
+
+Invoke-Step 'positive SOURCE case: positional construction (F-771-R1-02)' {
+    $dir = Join-Path $ReceiptsDir 'source-positive\SP04'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Set-Content (Join-Path $dir 'pos.at') "type Q {`n    v int`n}`ntype P {`n    a Q`n    b Q`n}`nfn main() int {`n    let q = Q(7)`n    if q.v != 7 { return 1 }`n    let p = P(Q(1), Q(2))`n    if p.a.v != 1 { return 2 }`n    if p.b.v != 2 { return 3 }`n    var t = P(Q(1), Q(2))`n    t = P(t.b, t.a)`n    if t.a.v != 2 { return 4 }`n    if t.b.v != 1 { return 5 }`n    return 0`n}`n"
+    $exe = Join-Path $dir 'pos.exe'
+    $build = Invoke-Captured $script:Bin @('build-source', (Join-Path $dir 'pos.at'), '--source-profile', $Record, '--entry', 'main', '--output', $exe) $RepoRoot -TimeoutSec 120
+    if ($build.Code -ne 0) { throw "positional build exited $($build.Code): $($build.Stderr)" }
+    $run = Invoke-Captured $exe @() $dir -TimeoutSec 60
+    ("exit: " + $run.Code) | Set-Content (Join-Path $dir 'case.txt')
+    if ($run.Code -ne 0) { throw "positional run exited $($run.Code)" }
+    $caseSummary.Add([pscustomobject]@{ Case = 'SP04'; Exit = $run.Code; Stderr = ''; Ok = $true })
+}
+
+# Negative SOURCE corpus (V-03/V-06/V-07/V-08 + F-771-R1-02): id, fixture,
+# code marker.
 $SourceNegative = @(
     @{ Id = 'SN01'; File = 'i01-let-field-write.at'; Code = 'verify.immutable-write' },
     @{ Id = 'SN02'; File = 'i02-missing-dotmut.at'; Code = 'source.type-mismatch' },
@@ -521,10 +591,13 @@ $SourceNegative = @(
     @{ Id = 'SN04'; File = 'i04-same-structure-swap.at'; Code = 'source.type-mismatch' },
     @{ Id = 'SN05'; File = 'i05-cycle.at'; Code = 'verify.record-cycle' },
     @{ Id = 'SN06'; File = 'i06-ctor-order-and-fields.at'; Code = 'source.duplicate' },
-    @{ Id = 'SN07'; File = 'i07-shadows-type.at'; Code = 'source.duplicate' }
+    @{ Id = 'SN07'; File = 'i07-shadows-type.at'; Code = 'source.duplicate' },
+    @{ Id = 'SN08'; File = 'i08-positional-arity.at'; Code = 'source.argument' },
+    @{ Id = 'SN09'; File = 'i09-positional-type.at'; Code = 'source.type-mismatch' },
+    @{ Id = 'SN10'; File = 'i10-positional-named.at'; Code = 'source.argument' }
 )
 
-Invoke-Step 'negative SOURCE cases: check-source rejects (7)' {
+Invoke-Step 'negative SOURCE cases: check-source rejects (10)' {
     foreach ($c in $SourceNegative) {
         $srcp = Join-Path $RepoRoot ("experimental\ac-core\fixtures\record-source\invalid\" + $c.File)
         $r = Invoke-Captured $script:Bin @('check-source', $srcp, '--source-profile', $Record) $RepoRoot -TimeoutSec 60

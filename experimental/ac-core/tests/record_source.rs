@@ -243,3 +243,89 @@ fn old_profiles_reject_the_record_surface() {
         Some(SourceProfile::Record)
     );
 }
+
+// -- F-771-R1-02: positional construction `Q(7)` ----------------------------
+
+#[test]
+fn positional_ctor_resolves_by_declaration_order() {
+    let src = "type Q { v int }\ntype P { a Q; b Q }\nfn main() int {\n    let p = P(Q(1), Q(2))\n    if p.a.v != 1 { return 1 }\n    return 0\n}\n";
+    let c = compile_ok(src);
+    let atom = &c.atom_text;
+    assert!(
+        atom.contains("record_ctor { type: t_rec_Q;"),
+        "positional Q(7) lowers to a record ctor: {atom}"
+    );
+    // positional: eval order == declaration order; binding i -> arg i
+    assert!(
+        atom.contains("ctor_bindings: [{ field: 0u32, arg: 0u32 }, { field: 1u32, arg: 1u32 }]"),
+        "identity binding by declaration order: {atom}"
+    );
+}
+
+#[test]
+fn positional_ctor_arity_is_rejected() {
+    let ds = compile_err("type Q { v int }\nfn main() int { let q = Q(1, 2); return q.v }\n");
+    assert!(has(&ds, "source.argument"), "{:?}", codes_of(&ds));
+}
+
+#[test]
+fn positional_ctor_named_args_are_rejected() {
+    let ds = compile_err("type Q { v int }\nfn main() int { let q = Q(v: 7); return q.v }\n");
+    assert!(has(&ds, "source.argument"), "{:?}", codes_of(&ds));
+}
+
+#[test]
+fn positional_ctor_field_type_is_rejected() {
+    let ds = compile_err("type Q { v int }\nfn main() int { let q = Q(true); return q.v }\n");
+    assert!(has(&ds, "source.type-mismatch"), "{:?}", codes_of(&ds));
+}
+
+#[test]
+fn function_sharing_a_record_name_wins_the_call_form() {
+    // namespaces stay separate: `fn Q` keeps `Q(7)` a function call; the
+    // record remains reachable in type position
+    let src = "type Q { v int }\nfn Q(x int) int { return x + 1 }\nfn main() int {\n    let n = Q(7)\n    return n - 8\n}\n";
+    let c = compile_ok(src);
+    // if the record won the call form, `n` would be a record and `n - 8`
+    // would not typecheck — compiling at all proves the fn wins; and no
+    // ctor may appear for Q anywhere in the atom
+    assert!(
+        !c.atom_text.contains("record_ctor"),
+        "Q(7) must call the function, not construct: {}",
+        c.atom_text
+    );
+}
+
+fn codes_of(ds: &[Diagnostic]) -> Vec<&str> {
+    ds.iter().map(|d| d.code.as_str()).collect()
+}
+
+// -- V-09: malformed deep partial (parse → resolve rejects → iterative Drop) --
+
+#[test]
+fn malformed_deep_partial_source_rejects_and_drops_without_overflow() {
+    // 2000-deep nested positional construction with an unknown field at
+    // the bottom: the full AST is parsed, resolve rejects with a
+    // structured diagnostic, and dropping the deep partial AST must not
+    // recurse (iterative Drop) — the process stays alive to report.
+    let mut s = String::with_capacity(120_000);
+    s.push_str("type T0 { x int }\n");
+    for k in 1..2000u32 {
+        s.push_str(&format!("type T{k} {{ r T{} }}\n", k - 1));
+    }
+    let mut ctor = "T0 { x: 7 }".to_string();
+    for k in 1..2000u32 {
+        ctor = format!("T{k} {{ r: {ctor} }}");
+    }
+    // inject the malformed field at the innermost ctor
+    ctor = ctor.replacen("T0 { x: 7 }", "T0 { x: 7, zzz: 8 }", 1);
+    s.push_str(&format!(
+        "fn main() int {{\n    let v = {ctor}\n    return v.r.x\n}}\n"
+    ));
+    let ds = compile_err(&s);
+    assert!(
+        has(&ds, "source.undefined") || has(&ds, "source.duplicate"),
+        "controlled diagnostic, got {:?}",
+        ds.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+    );
+}
