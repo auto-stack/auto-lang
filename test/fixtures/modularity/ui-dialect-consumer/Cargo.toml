@@ -1,0 +1,21 @@
+# PLAN-778 外部 UI 方言消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-lang 的公开面（Dialect trait +
+# ParserBridge + 公开 AST/session/token/error 类型），不访问任何
+# pub(crate)/私有字段，证明 model 子集可在 crate 边界外真实解析。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/ui-dialect-consumer/Cargo.toml
+
+[package]
+name = "ui-dialect-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-lang = { path = "../../../../crates/auto-lang" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

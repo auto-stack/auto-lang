@@ -51,6 +51,10 @@ exclude = [
     # Plan 768: pinned parser snapshot — frozen outside workspace settings;
     # see vendor/autodown-test-parser/PROVENANCE.md.
     "vendor/autodown-test-parser",
+    # PLAN-778: 外部 UI 方言消费方探针——独立 fixture crate（自带空
+    # [workspace]，模拟 crate 边界外的真实消费者），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/ui-dialect-consumer/Cargo.toml
+    "test/fixtures/modularity/ui-dialect-consumer",
 ]
 resolver = "2"
 

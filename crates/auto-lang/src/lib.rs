@@ -173,6 +173,10 @@ pub mod parser;
 pub mod query;
 pub use parser::Parser;
 pub mod dialect; // 方言扩展体系（PR-1 基建）
+// PLAN-778: 方言外部化最小桥面 —— 外部 crate 实现 Dialect 时的唯一解析入口。
+pub mod parser_bridge;
+pub use dialect::DialectPriority;
+pub use parser_bridge::ParserBridge;
                  // Plan 088 Phase 6: Type checking module for parameter passing modes
 pub mod autovm_repl;
 pub mod patch;

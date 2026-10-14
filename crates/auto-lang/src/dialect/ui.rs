@@ -10,7 +10,7 @@
 use crate::ast::Stmt;
 use crate::dialect::Dialect;
 use crate::error::AutoResult;
-use crate::parser::Parser;
+use crate::parser_bridge::ParserBridge;
 use crate::session::{CompilerSession, Scenario};
 use crate::token::TokenKind;
 
@@ -31,7 +31,14 @@ impl Dialect for UiDialect {
         &["widget", "msg", "model", "component", "actions", "style"]
     }
 
-    fn try_parse_stmt(&self, p: &mut Parser, kw: &str) -> AutoResult<Option<Stmt>> {
+    fn try_parse_stmt(
+        &self,
+        bridge: &mut ParserBridge<'_, '_>,
+        kw: &str,
+    ) -> AutoResult<Option<Stmt>> {
+        // PLAN-778：内建方言经 pub(crate) escape hatch 取回完整 Parser，
+        // 复用既有核心解析方法（该出口对外部 crate 不可见）。
+        let p = bridge.parser();
         // Plan 028 T14：on 体里的语句不应被方言声明关键字拦截——
         // `msg.content = "x"` 是局部对象字段赋值，不是 msg 声明。
         if p.in_on_body || p.in_fn_body {
@@ -59,7 +66,12 @@ impl Dialect for UiDialect {
         Ok(Some(stmt))
     }
 
-    fn try_parse_token_stmt(&self, p: &mut Parser, kind: TokenKind) -> AutoResult<Option<Stmt>> {
+    fn try_parse_token_stmt(
+        &self,
+        bridge: &mut ParserBridge<'_, '_>,
+        kind: TokenKind,
+    ) -> AutoResult<Option<Stmt>> {
+        let p = bridge.parser();
         match kind {
             // view 是 TokenKind::View。Plan 367 P2-3: peek for 'fn' → view fragment.
             // We need to check if next token after 'view' is 'fn'.

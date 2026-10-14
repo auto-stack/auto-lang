@@ -235,10 +235,13 @@ pub struct Parser<'a> {
     /// props brace ("Expected term, got RBrace"). Struct literals are always
     /// standalone `Type{...}`, never `obj.Field{...}`.
     in_dot_rhs: bool,
-    /// 方言表：按 session 装配，语句派发时按优先级查询。
-    /// PR-1 阶段初始为空（无方言注册），行为与现状一致。
-    /// PR-2 将把 UI 关键字迁入 UiDialect 并在 build_dialects 中注册。
-    pub dialects: Vec<Box<dyn crate::dialect::Dialect>>,
+    /// 方言表三段（PLAN-778）：pre = `DialectPriority::Override` 前插的外部
+    /// 方言；builtin = `with_session` 按 session 装配的内建方言（UiDialect 等，
+    /// 随 with_session 重建）；post = `Append` 后接的外部方言。派发序恒为
+    /// pre → builtin → post，外部注册跨 `with_session` 保留。
+    dialects_pre: Vec<Box<dyn crate::dialect::Dialect>>,
+    dialects_builtin: Vec<Box<dyn crate::dialect::Dialect>>,
+    dialects_post: Vec<Box<dyn crate::dialect::Dialect>>,
     pub skip_check: bool,
     pub compile_dest: CompileDest,
     /// Error recovery: collected errors during parsing
@@ -426,7 +429,9 @@ impl<'a> Parser<'a> {
             in_dot_rhs: false,
             with_header: false,
             compile_dest: CompileDest::Interp,
-            dialects: Vec::new(),
+            dialects_pre: Vec::new(),
+            dialects_builtin: Vec::new(),
+            dialects_post: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -501,7 +506,9 @@ impl<'a> Parser<'a> {
             in_dot_rhs: false,
             with_header: false,
             compile_dest: CompileDest::Interp,
-            dialects: Vec::new(),
+            dialects_pre: Vec::new(),
+            dialects_builtin: Vec::new(),
+            dialects_post: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -559,7 +566,9 @@ impl<'a> Parser<'a> {
             in_dot_rhs: false,
             with_header: false,
             compile_dest: CompileDest::Interp,
-            dialects: Vec::new(),
+            dialects_pre: Vec::new(),
+            dialects_builtin: Vec::new(),
+            dialects_post: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -599,13 +608,44 @@ impl<'a> Parser<'a> {
     /// This enables scenario-based parsing where keywords like
     /// `widget`, `view`, `model`, `msg`, `on` are only keywords
     /// in UI scenario.
+    ///
+    /// PLAN-778: 只重建内建段；`register_dialect`/`with_dialect` 注册的
+    /// 外部方言（pre/post 段）跨 with_session 保留（V-03 传播不变量）。
     pub fn with_session(mut self, session: crate::session::CompilerSession) -> Self {
         self.session = session;
-        self.dialects = Self::build_dialects(&self.session);
+        self.dialects_builtin = Self::build_dialects(&self.session);
         self
     }
 
-    /// 按 session 装配方言表。集中所有方言注册，便于一眼看清"当前有哪些方言"。
+    /// 显式注册外部方言（PLAN-778）。
+    ///
+    /// - `DialectPriority::Override`：前插 pre 段，先于内建方言查询——外部
+    ///   显式覆盖内建同名关键字处理，内建退为 Ok(None) 后备。
+    /// - `DialectPriority::Append`：后接 post 段，仅在内建方言全部 Ok(None)
+    ///   后可见。
+    pub fn register_dialect(
+        &mut self,
+        dialect: Box<dyn crate::dialect::Dialect>,
+        priority: crate::dialect::DialectPriority,
+    ) {
+        match priority {
+            crate::dialect::DialectPriority::Override => self.dialects_pre.push(dialect),
+            crate::dialect::DialectPriority::Append => self.dialects_post.push(dialect),
+        }
+    }
+
+    /// `register_dialect` 的 builder 形态（PLAN-778）。
+    pub fn with_dialect(
+        mut self,
+        dialect: Box<dyn crate::dialect::Dialect>,
+        priority: crate::dialect::DialectPriority,
+    ) -> Self {
+        self.register_dialect(dialect, priority);
+        self
+    }
+
+    /// 按 session 装配内建方言表。集中所有内建方言注册，便于一眼看清
+    /// "当前有哪些内建方言"（外部方言经 register_dialect 显式注册，不在此）。
     fn build_dialects(
         session: &crate::session::CompilerSession,
     ) -> Vec<Box<dyn crate::dialect::Dialect>> {
@@ -613,49 +653,121 @@ impl<'a> Parser<'a> {
         if session.scenario == crate::session::Scenario::UI {
             v.push(Box::new(crate::dialect::ui::UiDialect));
         }
-        // 未来方言（Shell 等）在此注册
+        // 未来内建方言（Shell 等）在此注册
         v
+    }
+
+    // ---- PLAN-778 方言派发（三段，恢复不变量核心保证） ----
+
+    fn dialect_section_len(&self, section: u8) -> usize {
+        self.dialect_section(section).len()
+    }
+
+    fn dialect_section(&self, section: u8) -> &Vec<Box<dyn crate::dialect::Dialect>> {
+        match section {
+            0 => &self.dialects_pre,
+            1 => &self.dialects_builtin,
+            _ => &self.dialects_post,
+        }
+    }
+
+    fn dialect_section_mut(
+        &mut self,
+        section: u8,
+    ) -> &mut Vec<Box<dyn crate::dialect::Dialect>> {
+        match section {
+            0 => &mut self.dialects_pre,
+            1 => &mut self.dialects_builtin,
+            _ => &mut self.dialects_post,
+        }
+    }
+
+    /// 游标 checkpoint（PLAN-778）：lexer 全状态（Plan 395 LexerState）+
+    /// cur/prev token 快照。供 ParserBridge 与方言派发器共用。
+    pub(crate) fn bridge_checkpoint(&self) -> crate::parser_bridge::BridgeCheckpoint<'a> {
+        crate::parser_bridge::BridgeCheckpoint {
+            lexer: self.lexer.save_state(),
+            cur: self.cur.clone(),
+            prev: self.prev.clone(),
+        }
+    }
+
+    pub(crate) fn bridge_restore(&mut self, cp: crate::parser_bridge::BridgeCheckpoint<'a>) {
+        self.lexer.restore_state(cp.lexer);
+        self.cur = cp.cur;
+        self.prev = cp.prev;
     }
 
     /// 尝试用已注册的方言解析当前语句起始标识符。
     /// 在 parse_stmt_inner 的 TokenKind::Ident 分支首位置调用。
     /// 返回 Ok(Some(stmt)) 表示某方言已处理；Ok(None) 表示无方言接管。
     ///
-    /// 注意：不能用 `for d in &self.dialects` 直接遍历——方言的 try_parse_stmt
-    /// 需要 `&mut Parser`，而迭代器持有 `&self` 的不可变借用会产生冲突。
-    /// 用 `mem::take` 临时移出 dialects，遍历局部变量后再放回，规避自引用借用。
+    /// PLAN-778 恢复不变量（核心保证，非方言纪律）：
+    /// - Err 不丢注册：逐条 remove/insert 临时移出单条方言，显式 match 无
+    ///   `?` 提前退出——Err 路径同样先移回再返回。（修复旧实现 `mem::take`
+    ///   整表移出 + `?` 提前返回导致 Err 后方言表永久为空的缺陷。）
+    /// - Ok(None) 不吞 token：调用方言前取 checkpoint，None 后强制 restore。
     fn try_dialect_stmt(&mut self, ident: &str) -> AutoResult<Option<Stmt>> {
-        let dialects = std::mem::take(&mut self.dialects);
-        let mut result = Ok(None);
-        for d in &dialects {
-            if !d.keywords().contains(&ident) {
-                continue;
-            }
-            match d.try_parse_stmt(self, ident)? {
-                Some(stmt) => {
-                    result = Ok(Some(stmt));
-                    break;
+        let mut section = 0u8;
+        while section < 3 {
+            let mut i = 0;
+            while i < self.dialect_section_len(section) {
+                let dialect = &self.dialect_section(section)[i];
+                // PLAN-778：matches() 是"该方言在当前 session 下生效"的契约——
+                // 外部方言跨 with_session 持久注册后，场景门控必须在派发时生效
+                // （内建方言此前仅靠 build_dialects 的注册时机巧合满足）。
+                if !dialect.matches(&self.session) || !dialect.keywords().contains(&ident) {
+                    i += 1;
+                    continue;
                 }
-                None => continue,
+                let cp = self.bridge_checkpoint();
+                let dialect = self.dialect_section_mut(section).remove(i);
+                let outcome = {
+                    let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+                    dialect.try_parse_stmt(&mut bridge, ident)
+                };
+                self.dialect_section_mut(section).insert(i, dialect);
+                match outcome {
+                    Ok(Some(stmt)) => return Ok(Some(stmt)),
+                    Ok(None) => self.bridge_restore(cp),
+                    Err(e) => return Err(e),
+                }
+                i += 1;
             }
+            section += 1;
         }
-        self.dialects = dialects;
-        result
+        Ok(None)
     }
 
     /// 尝试用已注册的方言解析当前真实 TokenKind（view/on 等非 Ident 的 UI token）。
     /// 在 parse_stmt_inner 的 TokenKind::View / TokenKind::On arm 里调用。
+    /// 恢复不变量同 `try_dialect_stmt`（Err 不丢注册 / None 强制回滚游标）。
     fn try_token_dialect_stmt(&mut self, kind: TokenKind) -> AutoResult<Option<Stmt>> {
-        let dialects = std::mem::take(&mut self.dialects);
-        let mut result = Ok(None);
-        for d in &dialects {
-            if let Some(stmt) = d.try_parse_token_stmt(self, kind)? {
-                result = Ok(Some(stmt));
-                break;
+        let mut section = 0u8;
+        while section < 3 {
+            let mut i = 0;
+            while i < self.dialect_section_len(section) {
+                if !self.dialect_section(section)[i].matches(&self.session) {
+                    i += 1;
+                    continue;
+                }
+                let cp = self.bridge_checkpoint();
+                let dialect = self.dialect_section_mut(section).remove(i);
+                let outcome = {
+                    let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+                    dialect.try_parse_token_stmt(&mut bridge, kind)
+                };
+                self.dialect_section_mut(section).insert(i, dialect);
+                match outcome {
+                    Ok(Some(stmt)) => return Ok(Some(stmt)),
+                    Ok(None) => self.bridge_restore(cp),
+                    Err(e) => return Err(e),
+                }
+                i += 1;
             }
+            section += 1;
         }
-        self.dialects = dialects;
-        result
+        Ok(None)
     }
 
     /// Check if current scenario is UI (Plan 096)
@@ -18060,7 +18172,10 @@ widget App { view { col { text \"hi\" {} } } }
     fn test_empty_dialects_core_scenario_unchanged() {
         // PR-1: Core 场景下方言表为空，普通代码按既有路径解析（不受 dialects 影响）。
         let mut parser = Parser::from("x = 1");
-        assert!(parser.dialects.is_empty()); // 默认 Core，build_dialects 返回空
+        // 默认 Core，build_dialects 返回空（PLAN-778 三段方言表全空）
+        assert!(parser.dialect_section_len(0) == 0
+            && parser.dialect_section_len(1) == 0
+            && parser.dialect_section_len(2) == 0);
         let ast = parser.parse().unwrap();
         assert!(!ast.stmts.is_empty());
     }
@@ -18069,10 +18184,153 @@ widget App { view { col { text \"hi\" {} } } }
     fn test_with_session_registers_ui_dialect() {
         // PR-2: UI session 注册 UiDialect；Core session 方言表为空。
         let ui_parser = Parser::from("x = 1").with_session(crate::session::CompilerSession::ui());
-        assert_eq!(ui_parser.dialects.len(), 1); // UiDialect
+        // builtin 段恰 1 个（UiDialect），外部段为空（PLAN-778 三段表）
+        assert_eq!(ui_parser.dialects_builtin.len(), 1);
+        assert_eq!(ui_parser.dialect_section_len(0) + ui_parser.dialect_section_len(2), 0);
 
         let core_parser = Parser::from("x = 1");
-        assert!(core_parser.dialects.is_empty());
+        assert_eq!(core_parser.dialects_builtin.len(), 0);
+    }
+
+    // ---- PLAN-778：方言派发恢复不变量的 crate 内永久回归 ----
+    // （外部行为面由 test/fixtures/modularity/ui-dialect-consumer 覆盖；
+    // 这里绑定三段私有字段做最紧回归。）
+
+    /// 恒 Err 的方言：复现旧缺陷锚（mem::take 整表 + `?` 提前退出会丢整张
+    /// 方言表）。Err 后三段注册必须原位。
+    struct Plan778FailModelDialect;
+
+    impl crate::dialect::Dialect for Plan778FailModelDialect {
+        fn matches(&self, s: &crate::session::CompilerSession) -> bool {
+            s.scenario == crate::session::Scenario::UI
+        }
+        fn keywords(&self) -> &'static [&'static str] {
+            &["model"]
+        }
+        fn try_parse_stmt(
+            &self,
+            _bridge: &mut crate::parser_bridge::ParserBridge<'_, '_>,
+            _keyword: &str,
+        ) -> AutoResult<Option<Stmt>> {
+            Err(SyntaxError::Generic {
+                message: "plan778 intentional failure".to_string(),
+                span: pos_to_span(crate::token::Pos {
+                    line: 0,
+                    at: 0,
+                    pos: 0,
+                    len: 0,
+                }),
+            }
+            .into())
+        }
+    }
+
+    #[test]
+    fn test_plan778_err_keeps_dialect_registration() {
+        let mut parser = Parser::from("model 123")
+            .with_session(crate::session::CompilerSession::ui())
+            .with_dialect(
+                Box::new(Plan778FailModelDialect),
+                crate::dialect::DialectPriority::Override,
+            );
+        assert!(parser.parse_stmt().is_err(), "方言恒 Err");
+        // 旧缺陷下此处三段全空（Err 提前 return 未移回）。
+        assert_eq!(parser.dialects_pre.len(), 1, "Err 后 pre 段注册不丢");
+        assert_eq!(parser.dialects_builtin.len(), 1, "Err 后 builtin 段不丢");
+        assert_eq!(parser.dialects_post.len(), 0);
+    }
+
+    /// 消费 token 后返回 None 的方言：派发器必须在 None 后强制回滚游标，
+    /// 内建方言从语句原位接管。
+    struct Plan778ConsumeThenNoneDialect;
+
+    impl crate::dialect::Dialect for Plan778ConsumeThenNoneDialect {
+        fn matches(&self, s: &crate::session::CompilerSession) -> bool {
+            s.scenario == crate::session::Scenario::UI
+        }
+        fn keywords(&self) -> &'static [&'static str] {
+            &["model"]
+        }
+        fn try_parse_stmt(
+            &self,
+            bridge: &mut crate::parser_bridge::ParserBridge<'_, '_>,
+            _keyword: &str,
+        ) -> AutoResult<Option<Stmt>> {
+            bridge.advance(); // 吞 "model"
+            bridge.advance(); // 吞 "{"
+            Ok(None) // 未迁形态让行——游标必须被派发器回滚
+        }
+    }
+
+    #[test]
+    fn test_plan778_none_rolls_back_cursor_for_next_dialect() {
+        let ast = Parser::from("model { count int = 1 }")
+            .with_session(crate::session::CompilerSession::ui())
+            .with_dialect(
+                Box::new(Plan778ConsumeThenNoneDialect),
+                crate::dialect::DialectPriority::Override,
+            )
+            .parse()
+            .expect("None 回滚后内建必须从语句原位接管");
+        match &ast.stmts[0] {
+            Stmt::ModelBlock(b) => assert_eq!(b.fields.len(), 1),
+            other => panic!("expected ModelBlock after rollback, got {:?}", other),
+        }
+    }
+
+    /// matches()=false 的方言在派发时必须被跳过（场景门控是派发时契约，
+    /// 不依赖注册时机）。
+    struct Plan778NeverMatchesDialect {
+        consulted: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl crate::dialect::Dialect for Plan778NeverMatchesDialect {
+        fn matches(&self, _s: &crate::session::CompilerSession) -> bool {
+            false
+        }
+        fn keywords(&self) -> &'static [&'static str] {
+            &["x"]
+        }
+        fn try_parse_stmt(
+            &self,
+            _bridge: &mut crate::parser_bridge::ParserBridge<'_, '_>,
+            _keyword: &str,
+        ) -> AutoResult<Option<Stmt>> {
+            self.consulted.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn test_plan778_dispatch_honors_matches_session_gate() {
+        let consulted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let dialect = Plan778NeverMatchesDialect {
+            consulted: consulted.clone(),
+        };
+        // Core session（默认）：matches=false，即便注册在案也不得被咨询。
+        let mut parser = Parser::from("x = 1").with_dialect(
+            Box::new(dialect),
+            crate::dialect::DialectPriority::Override,
+        );
+        let ast = parser.parse().expect("Core 下按普通赋值解析");
+        assert!(!ast.stmts.is_empty());
+        assert!(
+            !consulted.load(std::sync::atomic::Ordering::SeqCst),
+            "matches()=false 的方言不得被派发咨询"
+        );
+    }
+
+    #[test]
+    fn test_plan778_with_session_preserves_external_registration() {
+        // 先注册、后 with_session：pre 段保留，builtin 段按新 session 重建。
+        let parser = Parser::from("x = 1")
+            .with_dialect(
+                Box::new(Plan778ConsumeThenNoneDialect),
+                crate::dialect::DialectPriority::Append,
+            )
+            .with_session(crate::session::CompilerSession::ui());
+        assert_eq!(parser.dialects_post.len(), 1, "with_session 不清外部注册");
+        assert_eq!(parser.dialects_builtin.len(), 1, "builtin 段按 session 重建");
     }
 
     #[test]
