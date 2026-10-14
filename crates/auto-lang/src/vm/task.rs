@@ -56,6 +56,12 @@ pub struct AutoTask {
     pub last_result_type: ResultType,
     // Plan 118: Store last error for proper error propagation
     pub last_error: Option<String>,
+    /// Plan 773 F-08: typed identity of `last_error` — the `VMError` variant
+    /// name, decided where the typed error still exists (run-task loop).
+    /// `None` for synthetic errors (deadline kills) and non-trap paths; the
+    /// staged run API surfaces it so the run-stage oracle channel is
+    /// type-derived instead of message-text-parsed.
+    pub last_error_code: Option<&'static str>,
     // Plan 127: Task message loop support
     pub in_message_loop: bool, // Whether task is in message processing loop
     pub task_type_name: Option<String>, // Task type name for handler lookup
@@ -245,6 +251,7 @@ impl AutoTask {
             current_fn_n_locals: 0, // Plan 088 Phase 4: Initialize to 0
             last_result_type: ResultType::default(), // Plan 118: Initialize to Int
             last_error: None,       // Plan 118: Initialize to None
+            last_error_code: None,  // Plan 773 F-08: no typed trap yet
             in_message_loop: false,
             task_type_name: None,
             current_handler_has_context: false,

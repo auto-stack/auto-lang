@@ -1,0 +1,6 @@
++ curl -s -X POST http://localhost:17819/api/v1/test/setup -H 'Content-Type: application/json' -d '{"data_dir":"C:/Users/zhaop/AppData/Local/Temp/p742-s10-dir2","legacy_file":""}'
+"ok"+ echo
+
++ curl -s http://localhost:17819/api/v1/notes
++ python -c 'import json,sys; d=json.load(sys.stdin); print('\''S10_FINAL: COUNT'\'', len(d), '\''HAS'\'', any(n.get('\''title'\'')=='\''s10-final'\'' for n in d), '\''STATE'\'', next((n.get('\''state'\'') for n in d if n.get('\''title'\'')=='\''s10-final'\''), None))'
+S10_FINAL: COUNT 1 HAS True STATE active

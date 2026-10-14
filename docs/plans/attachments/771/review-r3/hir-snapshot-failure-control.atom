@@ -1,0 +1,113 @@
+// PLAN-771 R2 repair direct-HIR fixture (F-771-R2-01; V-02/V-07 HIR leg):
+// a record-typed ReadLocal bound to a constructor field must CAPTURE its
+// value at its own evaluation position — the later sibling argument's
+// `.mut` call may not retroactively change the captured field. The second
+// half writes the mutating argument FIRST (reorder form): the later read
+// then observes the post-mutation value, pinning the source-order half.
+// Distinct failure codes 31..34; success is 0.
+hir(schema: "auto.hir.record.draft", revision: 1u32, profile: "record-i32-draft") {
+    module m_r4 {
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_q record { fields: [{ name: v, type: t_i32 }] }
+            type t_p record { fields: [{ name: a, type: t_q }, { name: b, type: t_i32 }] }
+            type t_sig_bump function { params: [t_q]; result: t_i32 }
+            type t_sig_main function { params: []; result: t_i32 }
+        }
+        declarations {
+            function d_bump t_sig_bump { name: "r4_bump"; body: "b_bump" }
+            function d_main t_sig_main { name: "r4_main"; body: "b_main" }
+        }
+        bodies {
+            body b_bump {
+                owner: "d_bump"
+                entry: "k0"
+                locals {
+                    local l_q t_q { name: "q"; role: param; index: 0u32; mode: mut }
+                }
+                expressions {
+                    expr c2 constant { type: t_i32; value: 2i32 }
+                    expr c0 constant { type: t_i32; value: 0i32 }
+                }
+                places {
+                    place p_v field_path { local: l_q; type: t_i32; access: mutable; path: [0u32] }
+                }
+                blocks {
+                    block k0 {
+                        assign(place: p_v, value: c2)
+                        return(value: c0)
+                    }
+                }
+            }
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l_q t_q { name: "q"; role: binding; mutable: true }
+                    local l_p t_p { name: "p"; role: binding }
+                    local l_q2 t_q { name: "q2"; role: binding; mutable: true }
+                    local l_p2 t_p { name: "p2"; role: binding }
+                }
+                expressions {
+                    expr c1 constant { type: t_i32; value: 1i32 }
+                    expr c0 constant { type: t_i32; value: 0i32 }
+                    expr c31 constant { type: t_i32; value: 31i32 }
+                    expr c32 constant { type: t_i32; value: 32i32 }
+                    expr c33 constant { type: t_i32; value: 33i32 }
+                    expr c34 constant { type: t_i32; value: 34i32 }
+                    expr c5 constant { type: t_i32; value: 5i32 }
+                    expr c6 constant { type: t_i32; value: 2i32 }
+                    expr qa record_ctor { type: t_q; record: t_q; field_args: [c1]; ctor_bindings: [{ field: 0u32, arg: 0u32 }] }
+                    expr qb5 record_ctor { type: t_q; record: t_q; field_args: [c5]; ctor_bindings: [{ field: 0u32, arg: 0u32 }] }
+                    // read-then-mutate: field a's operand is captured
+                    // BEFORE the mutating sibling runs
+                    expr eq read_local { type: t_q; local: l_q }
+                    expr eb borrow_mut { type: t_q; local: l_q }
+                    expr cb call { type: t_i32; callee: d_bump; eval_args: [eb]; bindings: [{ param: 0u32, arg: 0u32 }] }
+                    expr pc record_ctor { type: t_p; record: t_p; field_args: [eq, cb]; ctor_bindings: [{ field: 0u32, arg: 0u32 }, { field: 1u32, arg: 1u32 }] }
+                    // mutate-then-read (reorder): field a's operand is
+                    // captured AFTER the mutating sibling runs
+                    expr eq2 read_local { type: t_q; local: l_q2 }
+                    expr eb2 borrow_mut { type: t_q; local: l_q2 }
+                    expr cb2 call { type: t_i32; callee: d_bump; eval_args: [eb2]; bindings: [{ param: 0u32, arg: 0u32 }] }
+                    expr pc2 record_ctor { type: t_p; record: t_p; field_args: [cb2, eq2]; ctor_bindings: [{ field: 1u32, arg: 0u32 }, { field: 0u32, arg: 1u32 }] }
+                    // checks: distinct failure codes
+                    expr eq3 read_local { type: t_q; local: l_q }
+                    expr xq field_get { type: t_i32; base: eq3; path: [0u32] }
+                    expr c2b constant { type: t_i32; value: 2i32 }
+                    expr x1 binary { type: t_bool; op: ne; lhs: xq; rhs: c2b }
+                    expr ep read_local { type: t_p; local: l_p }
+                    expr xa field_get { type: t_i32; base: ep; path: [0u32, 0u32] }
+                    expr c1b constant { type: t_i32; value: 99i32 }
+                    expr x2 binary { type: t_bool; op: ne; lhs: xa; rhs: c1b }
+                    expr eq4 read_local { type: t_q; local: l_q2 }
+                    expr xq2 field_get { type: t_i32; base: eq4; path: [0u32] }
+                    expr c6b constant { type: t_i32; value: 2i32 }
+                    expr x3 binary { type: t_bool; op: ne; lhs: xq2; rhs: c6b }
+                    expr ep2 read_local { type: t_p; local: l_p2 }
+                    expr xa2 field_get { type: t_i32; base: ep2; path: [0u32, 0u32] }
+                    expr x4 binary { type: t_bool; op: ne; lhs: xa2; rhs: c6 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l_q, value: qa)
+                        let(local: l_p, value: pc)
+                        let(local: l_q2, value: qb5)
+                        let(local: l_p2, value: pc2)
+                        if(cond: x1, then: k1)
+                        if(cond: x2, then: k2)
+                        if(cond: x3, then: k3)
+                        if(cond: x4, then: k4)
+                        return(value: c0)
+                    }
+                    block k1 { return(value: c31) }
+                    block k2 { return(value: c32) }
+                    block k3 { return(value: c33) }
+                    block k4 { return(value: c34) }
+                }
+            }
+        }
+    }
+}
+

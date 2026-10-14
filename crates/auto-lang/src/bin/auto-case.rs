@@ -6,6 +6,14 @@
 //! satisfied, 1 assertion/coverage failure, 2 contract/infrastructure error
 //! — and never replaces any tested program's own exit code.
 //!
+//! Plan 773 wiring: selectors validate and apply BEFORE execution (F-04);
+//! every write port (`--out`, `--json-out`, `--proposal-dir`) is
+//! path-domain audited against the suite/fixture roots BEFORE anything
+//! runs (F-05); lint/inspect run the full reference admission shared with
+//! the runner (F-09); proposals bind old/new identity with a real diff and
+//! persist the run report (F-11); `stale` re-checks an old report's
+//! identity axes against the current tree (F-06).
+//!
 //! ```text
 //! auto-case lint     --suite <pilot.suite.ad>
 //! auto-case list     --suite <pilot.suite.ad> [--format console|json]
@@ -14,6 +22,7 @@
 //!                    [--case <id>] [--adapter avm|a2r] [--check <id>]
 //!                    [--format console|json] [--json-out <file>]
 //! auto-case proposal --suite <pilot.suite.ad> --out <dir> [--proposal-dir <dir>]
+//! auto-case stale    --suite <pilot.suite.ad> --report <old report.json>
 //! ```
 
 #[cfg(not(feature = "test-cases"))]
@@ -43,11 +52,11 @@ fn real_main() -> Result<i32, String> {
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "test-cases")]
-use auto_test_case::admission::Limits;
+use auto_test_case::admission::{
+    check_no_reparse_ancestors, validate_output_domain, validate_output_file, Limits,
+};
 #[cfg(feature = "test-cases")]
 use auto_test_case::discovery::load_suite;
-#[cfg(feature = "test-cases")]
-use auto_test_case::report::{RunReport, Status};
 #[cfg(feature = "test-cases")]
 use auto_test_case::suite::apply_defaults;
 
@@ -81,28 +90,76 @@ fn run(args: &[String]) -> Result<i32, String> {
         "inspect" => inspect(&suite, require(args, "--case")?),
         "run" => run_cmd(&suite, args),
         "proposal" => proposal_cmd(&suite, args),
+        "stale" => stale_cmd(&suite, require(args, "--report")?),
         other => Err(format!("unknown command {:?}\n{}", other, usage())),
     }
 }
 
 #[cfg(feature = "test-cases")]
 fn usage() -> String {
-    "usage: auto-case <lint|list|inspect|run|proposal> --suite <path> [flags]".to_string()
+    "usage: auto-case <lint|list|inspect|run|proposal|stale> --suite <path> [flags]".to_string()
+}
+
+/// Protected input/oracle roots for the suite: its directory and the
+/// fixture base every `file:` reference resolves against.
+#[cfg(feature = "test-cases")]
+fn protected_roots(suite: &Path) -> Result<Vec<PathBuf>, String> {
+    let loaded = load_suite(suite, &Limits::defaults()).map_err(|e| e.to_string())?;
+    let mut roots = Vec::new();
+    if let Some(parent) = loaded.suite_path.parent() {
+        roots.push(parent.to_path_buf());
+    }
+    roots.push(loaded.fixture_base.clone());
+    Ok(roots)
+}
+
+/// Audit one output directory (created first so canonicalization resolves
+/// the real Windows form); on rejection, remove the directory only if this
+/// call created it empty (F-05).
+#[cfg(feature = "test-cases")]
+fn audit_output_dir(out: &Path, protected: &[PathBuf]) -> Result<(), String> {
+    let existed = out.exists();
+    std::fs::create_dir_all(out).map_err(|e| format!("create {}: {}", out.display(), e))?;
+    check_no_reparse_ancestors(out)
+        .and_then(|()| validate_output_domain(out, protected))
+        .map_err(|e| {
+            if !existed {
+                let _ = std::fs::remove_dir(out);
+            }
+            format!("output path rejected: {}", e)
+        })
+}
+
+/// Audit a single output FILE target: parent must exist (created on
+/// demand), no reparse point on the chain, and the file must stay outside
+/// the protected roots (F-05).
+#[cfg(feature = "test-cases")]
+fn audit_output_file(target: &Path, protected: &[PathBuf]) -> Result<(), String> {
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("create {}: {}", parent.display(), e))?;
+    }
+    check_no_reparse_ancestors(target)
+        .and_then(|()| validate_output_file(target, protected))
+        .map_err(|e| format!("output path rejected: {}", e))
 }
 
 #[cfg(feature = "test-cases")]
 fn lint(suite: &std::path::Path) -> Result<i32, String> {
+    // F-09: full admission — references (payload sidecars AND expected
+    // artifacts) resolve before lint can claim the contract is sound.
+    let errors = auto_lang::test_cases::materialize::lint_resolve(suite, &Limits::defaults())?;
     let loaded = load_suite(suite, &Limits::defaults()).map_err(|e| e.to_string())?;
     let total: usize = loaded.cases.iter().map(|c| c.specs.len()).sum();
     println!(
-        "suite ok: {} case file(s), {} case(s)",
+        "suite ok: {} case file(s), {} case(s), full reference admission {}",
         loaded.cases.len(),
-        total
+        total,
+        if errors.is_empty() { "passed" } else { "FAILED" }
     );
-    for e in &loaded.errors {
+    for e in &errors {
         println!("ERROR {}", e);
     }
-    if loaded.errors.is_empty() {
+    if errors.is_empty() {
         Ok(0)
     } else {
         Ok(2)
@@ -172,6 +229,9 @@ fn list(suite: &std::path::Path, format: Option<&str>) -> Result<i32, String> {
 
 #[cfg(feature = "test-cases")]
 fn inspect(suite: &std::path::Path, case_id: &str) -> Result<i32, String> {
+    // F-09: inspect shares the full admission — a broken reference is
+    // reported here too, not only at run time.
+    let errors = auto_lang::test_cases::materialize::lint_resolve(suite, &Limits::defaults())?;
     let loaded = load_suite(suite, &Limits::defaults()).map_err(|e| e.to_string())?;
     for file in &loaded.cases {
         for spec in &file.specs {
@@ -207,6 +267,11 @@ fn inspect(suite: &std::path::Path, case_id: &str) -> Result<i32, String> {
                 );
                 for a in &effective.expect.artifacts {
                     println!("    artifact {} <- {} ({:?})", a.path, a.file, a.compare);
+                }
+            }
+            for e in &errors {
+                if e.contains(&file.path.display().to_string()) {
+                    println!("ERROR {}", e);
                 }
             }
             return Ok(0);
@@ -263,32 +328,25 @@ fn fmt_completion(c: &auto_test_case::contract::Completion) -> String {
 fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     let out = PathBuf::from(require(args, "--out")?);
     let format = flag(args, "--format");
-    let mut report = auto_lang::test_cases::run_suite(suite, &out, &Limits::defaults())?;
+    let protected = protected_roots(suite)?;
 
-    // Selectors mark unselected checks NOT_RUN — a partial report never
-    // counts as a full gate pass (required coverage still judged against
-    // every declared check).
-    if let Some(case) = flag(args, "--case") {
-        mark_unselected(
-            &mut report,
-            |r| r.case_id == case,
-            &format!("--case {}", case),
-        );
+    // F-05: every write port is audited BEFORE execution.
+    audit_output_dir(&out, &protected)?;
+    if let Some(file) = flag(args, "--json-out") {
+        let file = PathBuf::from(file);
+        audit_output_file(&file, &protected)?;
     }
-    if let Some(adapter) = flag(args, "--adapter") {
-        mark_unselected(
-            &mut report,
-            |r| r.adapter == adapter,
-            &format!("--adapter {}", adapter),
-        );
-    }
-    if let Some(check) = flag(args, "--check") {
-        mark_unselected(
-            &mut report,
-            |r| r.check_id == check,
-            &format!("--check {}", check),
-        );
-    }
+
+    // F-04: the selection is parsed, validated, and applied INSIDE the
+    // runner — unselected checks never execute; typo/zero-match selectors
+    // are contract errors before any adapter call.
+    let selection = auto_lang::test_cases::Selection {
+        case: flag(args, "--case"),
+        adapter: flag(args, "--adapter"),
+        check: flag(args, "--check"),
+    };
+    let mut report =
+        auto_lang::test_cases::run_suite_selected(suite, &out, &Limits::defaults(), &selection)?;
 
     let text = match format.as_deref() {
         Some("json") => report.to_json(),
@@ -301,6 +359,7 @@ fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     // Persist the canonical report next to the run scratch. Failure to save
     // either format is an infrastructure error, never a green run.
     persist_reports(&out, &report.to_console(), &report.to_json())?;
+    let _ = &mut report;
     Ok(report.exit_code())
 }
 
@@ -314,39 +373,81 @@ fn persist_reports(out: &Path, console: &str, json: &str) -> Result<(), String> 
 }
 
 #[cfg(feature = "test-cases")]
-fn mark_unselected(
-    report: &mut RunReport,
-    keep: impl Fn(&auto_test_case::report::CheckOutcome) -> bool,
-    why: &str,
-) {
-    for r in report.results.iter_mut() {
-        if !keep(r) && r.status != Status::NotRun {
-            r.status = Status::NotRun;
-            r.detail = Some(format!("not selected ({})", why));
-            r.mismatches.clear();
-        }
-    }
-}
-
-#[cfg(feature = "test-cases")]
 fn proposal_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     let out = PathBuf::from(require(args, "--out")?);
     let proposal_dir = flag(args, "--proposal-dir")
         .map(PathBuf::from)
         .unwrap_or_else(|| out.join("proposals"));
+    let protected = protected_roots(suite)?;
+
+    // F-05: both write ports audited before execution.
+    audit_output_dir(&out, &protected)?;
+    audit_output_dir(&proposal_dir, &protected)?;
+
     let report = auto_lang::test_cases::run_suite(suite, &out, &Limits::defaults())?;
-    let proposals = auto_lang::test_cases::materialize::collect_proposals(&report);
+    // F-11: the run report is ALWAYS persisted — a proposal without its
+    // source report is not reviewable evidence.
+    persist_reports(&out, &report.to_console(), &report.to_json())?;
+    let report_ref = out.join("report.json").display().to_string();
+
+    let proposals = auto_lang::test_cases::materialize::collect_proposals(
+        &report,
+        suite,
+        &Limits::defaults(),
+    )?;
     if proposals.is_empty() {
         println!("no proposals — nothing failed an artifact oracle");
         return Ok(report.exit_code());
     }
-    let n = auto_lang::test_cases::materialize::write_proposals(&proposals, &proposal_dir)?;
+    let n = auto_lang::test_cases::materialize::write_proposals(
+        &proposals,
+        &proposal_dir,
+        Some(Path::new(&report_ref)),
+    )?;
     println!(
-        "{} proposal(s) written under {} — candidates only; accepting is a separate reviewed action",
+        "{} proposal(s) written under {} — candidates only (old/new sha256 + diff + shared consumers in PROPOSALS.md); accepting is a separate reviewed action",
         n,
         proposal_dir.display()
     );
     Ok(report.exit_code())
+}
+
+/// F-06: re-check an old report against the CURRENT tree via the library
+/// staleness check (`test_cases::stale`). Exit 0 = all fresh, 1 = stale
+/// findings, 2 = errors.
+#[cfg(feature = "test-cases")]
+fn stale_cmd(suite: &std::path::Path, report_path: &str) -> Result<i32, String> {
+    let raw = std::fs::read_to_string(report_path)
+        .map_err(|e| format!("reading report {}: {}", report_path, e))?;
+    let old: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("parsing report {}: {}", report_path, e))?;
+    let verdicts = auto_lang::test_cases::stale::check(suite, &old)?;
+    let mut stale_count = 0usize;
+    for v in &verdicts {
+        match v {
+            auto_lang::test_cases::stale::RowVerdict::Fresh { case, check } => {
+                println!("FRESH {}:{}", case, check)
+            }
+            auto_lang::test_cases::stale::RowVerdict::Stale {
+                case,
+                check,
+                drifted_axes,
+            } => {
+                println!("STALE {}:{} — {}", case, check, drifted_axes.join(", "));
+                stale_count += 1;
+            }
+        }
+    }
+    println!(
+        "{} result(s) checked, {} stale; axes: suite/case_file/source/oracle/contract + toolchain",
+        verdicts.len(),
+        stale_count
+    );
+    if stale_count == 0 {
+        Ok(0)
+    } else {
+        Ok(1)
+    }
 }
 
 #[cfg(feature = "test-cases")]

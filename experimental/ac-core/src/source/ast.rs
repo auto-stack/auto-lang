@@ -16,7 +16,7 @@
 
 use crate::atom_text::Span;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Ident {
     pub name: String,
     pub span: Span,
@@ -37,10 +37,20 @@ pub enum TypeWord {
 
 /// A type annotation. `int` and `i32` are synonyms inside this profile
 /// (both are the exact signed 32-bit type); `bool` is the boolean type.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// The record profile (PLAN-771) adds nominal record types by name —
+/// builtin-vs-record is decided syntactically here, existence and closure
+/// in resolve/typecheck.
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct TypeAnn {
-    pub word: TypeWord,
+    pub kind: TypeRef,
     pub span: Span,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum TypeRef {
+    Builtin(TypeWord),
+    /// Nominal record type by declared name.
+    Record(Ident),
 }
 
 /// Parameter ownership mode word (PLAN-770; old-language convention: the
@@ -67,6 +77,16 @@ pub struct Param {
     pub span: Span,
 }
 
+/// Method receiver shape inside a `type` block (PLAN-771). `Free` marks
+/// top-level functions.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Receiver {
+    Free,
+    Static,
+    /// Readonly instance method: implicit `self` view param.
+    View,
+}
+
 #[derive(Clone, Debug)]
 pub struct FnItem {
     pub name: Ident,
@@ -75,11 +95,41 @@ pub struct FnItem {
     pub body: Block,
     /// `fn` keyword through the closing brace of the body.
     pub span: Span,
+    /// Receiver (record profile): free function / static method /
+    /// readonly instance method.
+    pub receiver: Receiver,
+    /// Owning record name for methods.
+    pub owner: Option<Ident>,
+}
+
+/// One record field, in declaration order (= layout order, 774 D-05).
+#[derive(Clone, Debug)]
+pub struct FieldDecl {
+    pub name: Ident,
+    pub ty: TypeAnn,
+    /// Field name token through the type token.
+    pub span: Span,
+}
+
+/// A `type Name { fields; methods }` item (record profile only).
+#[derive(Clone, Debug)]
+pub struct TypeItem {
+    pub name: Ident,
+    pub fields: Vec<FieldDecl>,
+    pub methods: Vec<FnItem>,
+    /// `type` keyword through the closing brace.
+    pub span: Span,
+}
+
+#[derive(Clone, Debug)]
+pub enum Item {
+    Fn(FnItem),
+    Type(TypeItem),
 }
 
 #[derive(Clone, Debug)]
 pub struct Program {
-    pub items: Vec<FnItem>,
+    pub items: Vec<Item>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -186,12 +236,53 @@ pub enum ExprKind {
         op: UnaryOp,
         operand: Box<Expr>,
     },
+    // -- record profile (PLAN-771) --
+    /// Named construction `Pair { left: 1, right: true }` — arguments
+    /// evaluate in SOURCE order, then map to declaration fields.
+    /// (Positional `Pair(1, true)` parses as a plain call; the resolver
+    /// routes it to construction when the name is a record — F-771-R1-02.)
+    CtorNamed {
+        ty: Ident,
+        fields: Vec<NamedCtorField>,
+    },
+    /// Field read `base.name` (rvalue; a copy for record fields).
+    Field {
+        base: Box<Expr>,
+        name: Ident,
+    },
+    /// `recv.name(args)` — instance method when `recv` is a value, static
+    /// method when `recv` is a bare record type name (resolve decides).
+    MethodCall {
+        recv: Box<Expr>,
+        name: Ident,
+        args: Vec<Arg>,
+    },
+    /// `p.mut` — the explicit mut-borrow argument form (record profile).
+    MutArg {
+        name: Ident,
+    },
+}
+
+/// One `name: value` entry of a named constructor.
+#[derive(Clone, Debug)]
+pub struct NamedCtorField {
+    pub name: Ident,
+    pub value: Expr,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug)]
 pub struct Expr {
     pub kind: ExprKind,
     pub span: Span,
+}
+
+/// Assignment target: a local, or a field path rooted at a local
+/// (`p.inner.left = e` — PLAN-771).
+#[derive(Clone, Debug)]
+pub struct AssignTarget {
+    pub base: Ident,
+    pub path: Vec<Ident>,
 }
 
 #[derive(Clone, Debug)]
@@ -206,7 +297,7 @@ pub enum Stmt {
         span: Span,
     },
     Assign {
-        name: Ident,
+        target: AssignTarget,
         value: Expr,
         /// Name through the end of the value.
         span: Span,
@@ -290,6 +381,27 @@ impl Drop for Expr {
                             Arg::Pos(e) | Arg::MovePos(e) => std::mem::replace(e, dummy()),
                             Arg::Named { value, .. } => std::mem::replace(value, dummy()),
                         };
+                        stack.push(e);
+                    }
+                }
+                ExprKind::MethodCall { args, recv, .. } => {
+                    let r = std::mem::replace(recv.as_mut(), dummy());
+                    stack.push(r);
+                    for a in args.iter_mut() {
+                        let e = match a {
+                            Arg::Pos(e) | Arg::MovePos(e) => std::mem::replace(e, dummy()),
+                            Arg::Named { value, .. } => std::mem::replace(value, dummy()),
+                        };
+                        stack.push(e);
+                    }
+                }
+                ExprKind::Field { base, .. } => {
+                    let b = std::mem::replace(base.as_mut(), dummy());
+                    stack.push(b);
+                }
+                ExprKind::CtorNamed { fields, .. } => {
+                    for f in fields.iter_mut() {
+                        let e = std::mem::replace(&mut f.value, dummy());
                         stack.push(e);
                     }
                 }

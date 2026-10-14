@@ -52,9 +52,11 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 
 ## CLI 与制品
 
-- 源码模式 check-source/build-source 必须显式 source profile——**已注册两档**：
-  `auto.source.core-i32.draft` 与 `auto.source.scalar-i32.draft`（未知值用法错 2，
-  两域支持/拒绝面互不扩大：scalar 拒 while、core 拒 for/新运算符）。源码 →
+- 源码模式 check-source/build-source 必须显式 source profile——**已注册三档**：
+  `auto.source.core-i32.draft`、`auto.source.scalar-i32.draft` 与
+  `auto.source.record.draft`（未知值用法错 2，各域支持/拒绝面互不扩大：
+  scalar 拒 while、core 拒 for/新运算符、record 增名义 record 面且旧域拒绝
+  该面）。源码 →
   Atom/span表 → 真正 bind/verify（按域分派 descriptor 与 verify 入口）→ Checked
   → 与 HIR 模式共用 finish_build/native/link/发布尾部。支持/拒绝、0/1/2、trace、
   来源映射与无固定嵌套排除见两份源码规范；一键 scripts/verify-ac-source-745.ps1
@@ -91,6 +93,18 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   全有全无 UTF-8 校验遇本地化输出会丢弃合法前缀）。
 - 一键验证：`scripts/verify-ac-741.ps1`（§6 全命令 + CLI 实机构建运行 + 主仓门禁；PS 5.1 兼容，
   异步管道读防死锁；含 `cargo check --all-targets` 零 warning 健康检查）。
+
+## record profile（PLAN-771）
+
+- [source-record.md](source-record.md)：名义 record 的首批有限值语义合同
+  ——声明（含前向引用/无环）、位置/命名构造（源码序求值 + 值捕获不变式）、
+  字段路径读写、嵌套 record、聚合参数/返回（ABI-D/E）、`static fn` 与只读
+  实例方法、显式 `mut` 参数与 per-call 排他；source/HIR→native 闭环经
+  24 步门禁 23 例与 57 测试实证（V-01..V-10）。
+- 内部 ABI 边界重申（774 D-05）：非生产模块 ABI、非 ACC Cranelift 桥；
+  存储不重叠义务（目的地不相交门控 + 操作数求值位捕获）为 lasting rule。
+- text-record 组合未立项：770/771 各自 pass 不构成组合验收，第二合入者
+  必须在新整合基线重放全门禁并重新 review（774 interface-contract §6）。
 
 ## 数据/资源合同（PLAN-774）
 

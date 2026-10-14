@@ -1,0 +1,10 @@
+type Q { v int }
+type P { a Q; b int }
+fn bump(mut q Q) int { q.v = 2; return 0 }
+fn main() int {
+ var q = Q(1)
+ let p = P { a: q, b: bump(q.mut) }
+ if q.v != 2 { return 10 }
+ if p.a.v != 1 { return 11 }
+ return 0
+}

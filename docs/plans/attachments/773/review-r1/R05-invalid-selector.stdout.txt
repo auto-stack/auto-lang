@@ -1,0 +1,6 @@
+suite review (cb352d7d39e9c24ccf36c61732d6b5997360c93cd44fdeeb8b7ceeb73db1fd9f), schema autolang.test-report/1
+NOT_RUN      review.case / vm [avm::run] — not selected (--adapter typo)
+NOT_RUN      review.case / other [avm::run] — not selected (--adapter typo)
+total 2 (NOT_RUN=2)
+exit 1
+

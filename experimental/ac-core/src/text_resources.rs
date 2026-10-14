@@ -220,7 +220,9 @@ fn fn_result_of(
         return ValueType::I32;
     };
     let ty_id = match &def.kind {
-        hir::DefKind::Function { ty, .. } | hir::DefKind::Intrinsic { ty, .. } => *ty,
+        hir::DefKind::Function { ty, .. }
+        | hir::DefKind::Intrinsic { ty, .. }
+        | hir::DefKind::Method { ty, .. } => *ty,
     };
     match m.types.get(ty_id.0 as usize).map(|t| &t.kind) {
         Some(hir::TypeKind::Function(sig)) => match &sig.result {
@@ -387,6 +389,12 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
                 stack.push((*end, mode));
             }
             hir::ExprKind::Constant { .. } | hir::ExprKind::CharLit { .. } => {}
+            // record kinds never appear in a text module (profile
+            // defense); totality only
+            hir::ExprKind::RecordCtor { .. }
+            | hir::ExprKind::FieldGet { .. }
+            | hir::ExprKind::BorrowView { .. }
+            | hir::ExprKind::BorrowMut { .. } => {}
         }
     }
     scan
@@ -635,10 +643,18 @@ struct ResourceWalk<'a> {
 struct WalkState {
     /// owned local -> owning (let) block id
     live: BTreeMap<u32, u32>,
-    /// dead owned locals and why (moved / dropped)
+    /// dead owned locals and why (moved / dropped / scope exit)
     dead: BTreeMap<u32, DeadCause>,
-    /// str local -> backing owned locals (path-union over branches)
-    backing: BTreeMap<u32, BTreeSet<u32>>,
+    /// str local -> backing sources as (owner local, construction
+    /// generation) pairs (r6 R6-01): a fresh owned `let` bumps the local's
+    /// generation, so a view created against an earlier construction is
+    /// STALE even though the local id is alive again — reading it after
+    /// the re-let (before the view is reassigned) is a scope escape of
+    /// the freed buffer.
+    backing: BTreeMap<u32, BTreeSet<(u32, u32)>>,
+    /// owned local -> current construction generation (absent = 0); bumped
+    /// by every fresh owning `let` (r6 R6-01)
+    gen: BTreeMap<u32, u32>,
 }
 
 impl WalkState {
@@ -647,7 +663,32 @@ impl WalkState {
             live: BTreeMap::new(),
             dead: BTreeMap::new(),
             backing: BTreeMap::new(),
+            gen: BTreeMap::new(),
         }
+    }
+
+    /// The (owner, generation) sources of a view, projected to owner ids —
+    /// for identity-only consumers (alias/escape/exclusivity).
+    fn backing_ids(&self, v: &u32) -> BTreeSet<u32> {
+        self.backing
+            .get(v)
+            .map(|bs| bs.iter().map(|(l, _)| *l).collect())
+            .unwrap_or_default()
+    }
+
+    /// Convergence key for the loop re-entry fixpoint (r6 R6-01):
+    /// dead and the id-projection of every view's backing. Generations are
+    /// excluded — every body pass re-lets the same locals, so gens grow by
+    /// construction; once the structural state is stable the pass validates
+    /// the same program (fresh lets bump gens identically within the pass).
+    fn convergence_key(&self) -> (BTreeMap<u32, DeadCause>, BTreeMap<u32, BTreeSet<u32>>) {
+        (
+            self.dead.clone(),
+            self.backing
+                .iter()
+                .map(|(v, bs)| (*v, bs.iter().map(|(l, _)| *l).collect()))
+                .collect(),
+        )
     }
 }
 
@@ -673,6 +714,16 @@ enum RState {
         /// states that reached THIS loop's target exits (break/continue)
         /// in addition to the body's natural-completion state
         loop_id: u32,
+        /// the loop body's block (for re-walking; r6 R6-01)
+        body_bid: u32,
+        /// the loop-ENTRY state (with the re-entry pre-kill) — the base
+        /// every re-entry state merges onto (r6 R6-01)
+        base_init: WalkState,
+        /// the state THIS body pass was walked with (r6 R6-01)
+        entry_snapshot: WalkState,
+        /// diags length before the body walk — a re-walk replaces the
+        /// previous pass's body diagnostics (r6 R6-01)
+        diag_mark: usize,
     },
 }
 
@@ -687,6 +738,11 @@ struct RFrame {
     flow_done: bool,
     ret_slot: usize,
     state: RState,
+    /// whether this frame is on a statically REACHABLE path (r6 R6-02):
+    /// constant conditions prune arm reachability; statically unreachable
+    /// frames keep their static-legality checks but their break/continue
+    /// exits never enter the executable loop-exit state
+    reachable: bool,
 }
 
 enum Action {
@@ -740,8 +796,8 @@ impl<'a> ResourceWalk<'a> {
                 is_param && matches!((self.local_type)(*l), ValueType::Str | ValueType::StrOwned);
             if self.owned.contains(l) || text_param {
                 out.insert(*l);
-            } else if let Some(bs) = st.backing.get(l) {
-                out.extend(bs.iter().copied());
+            } else {
+                out.extend(st.backing_ids(l));
             }
         }
         out
@@ -758,8 +814,13 @@ impl<'a> ResourceWalk<'a> {
         for (_, l, _) in &scan.reads {
             if is_escape_src(l) {
                 out.insert(*l);
-            } else if let Some(bs) = st.backing.get(l) {
-                out.extend(bs.iter().copied().filter(|b| is_escape_src(b)));
+            } else {
+                out.extend(
+                    st.backing_ids(l)
+                        .iter()
+                        .copied()
+                        .filter(|b| is_escape_src(b)),
+                );
             }
         }
         out
@@ -806,7 +867,7 @@ impl<'a> ResourceWalk<'a> {
             }
             if (self.local_type)(*l) == ValueType::Str {
                 if let Some(bs) = st.backing.get(l) {
-                    for b in bs {
+                    for (b, bgen) in bs {
                         if let Some(cause) = st.dead.get(b) {
                             let code = match cause {
                                 DeadCause::Moved => "verify.use-after-move",
@@ -828,6 +889,27 @@ impl<'a> ResourceWalk<'a> {
                                     self.local_name(*l),
                                     self.local_name(*b),
                                     why
+                                ),
+                                *span,
+                            );
+                            continue;
+                        }
+                        // r6 R6-01: a live owner whose CURRENT
+                        // construction is newer than the one this view was
+                        // captured against — the view still points at the
+                        // freed previous buffer (a re-entered loop's fresh
+                        // `let` before the view is reassigned)
+                        let stale = st
+                            .live
+                            .get(b)
+                            .map_or(false, |_| st.gen.get(b).copied().unwrap_or(0) != *bgen);
+                        if stale {
+                            self.error(
+                                "verify.owned-scope-escape",
+                                format!(
+                                    "borrowed local `{}` outlives its backing owner `{}`'s previous construction; reassign the view after the owner is re-let",
+                                    self.local_name(*l),
+                                    self.local_name(*b)
                                 ),
                                 *span,
                             );
@@ -877,8 +959,13 @@ impl<'a> ResourceWalk<'a> {
             }
             if self.owned.contains(l) {
                 viewed.insert(*l);
-            } else if let Some(bs) = st.backing.get(l) {
-                viewed.extend(bs.iter().copied().filter(|b| self.owned.contains(b)));
+            } else {
+                viewed.extend(
+                    st.backing_ids(l)
+                        .iter()
+                        .copied()
+                        .filter(|b| self.owned.contains(b)),
+                );
             }
         }
         let mut moved = BTreeSet::new();
@@ -1115,9 +1202,7 @@ impl<'a> ResourceWalk<'a> {
                 let span = scan
                     .reads
                     .iter()
-                    .find(|(_, r, _)| {
-                        r == l || st.backing.get(r).map_or(false, |bs| bs.contains(l))
-                    })
+                    .find(|(_, r, _)| r == l || st.backing_ids(r).contains(l))
                     .map(|(_, _, s)| *s)
                     .unwrap_or_else(|| *span_of_last(&scan.reads));
                 self.error(
@@ -1162,7 +1247,10 @@ impl<'a> ResourceWalk<'a> {
         let mut loops: Vec<(hir::LoopId, u32)> = Vec::new();
         // r5 R5-02: per-target exit states of break/continue — consumed by
         // the target loop's AwaitLoop resume, never by the if join
-        let mut loop_exits: BTreeMap<u32, Vec<WalkState>> = BTreeMap::new();
+        // r6 R6-01: per-target loop exits, tagged by edge kind — break
+        // feeds the after-loop merge, continue and the natural back-edge
+        // feed the RE-ENTRY state the body is re-validated against
+        let mut loop_exits: BTreeMap<u32, Vec<(ExitKind, WalkState)>> = BTreeMap::new();
         frames.push(RFrame {
             bid: entry,
             loops_len: 0,
@@ -1172,6 +1260,7 @@ impl<'a> ResourceWalk<'a> {
             flow_done: false,
             ret_slot: 0,
             state: RState::Run,
+            reachable: true,
         });
         while !frames.is_empty() {
             let action = {
@@ -1197,6 +1286,10 @@ impl<'a> ResourceWalk<'a> {
             match action {
                 Action::Stmt { bid, idx, stmt } => {
                     let chain: Vec<u32> = frames.iter().map(|f| f.bid).collect();
+                    // r6 R6-01: the loop-edge kind of a break/continue
+                    // terminator, computed before the owned match (the
+                    // binding-free pattern does not move `stmt`)
+                    let is_break_term = matches!(stmt, hir::Stmt::Break { .. });
                     let frame = frames.last_mut().expect("resource walk frame");
                     match stmt {
                         hir::Stmt::Let { local, value } => {
@@ -1228,6 +1321,17 @@ impl<'a> ResourceWalk<'a> {
                                     }
                                     frame.st.live.insert(local.0, bid);
                                     frame.own_lets.push(local.0);
+                                    // r6 R6-01: a fresh owning `let` (re-)
+                                    // CONSTRUCTS the local — a new resource
+                                    // identity. Clear the previous death (a
+                                    // loop's next iteration must not be
+                                    // killed by the previous iteration's
+                                    // scope exit / move) and bump the
+                                    // generation so backings created against
+                                    // the old construction read as stale.
+                                    frame.st.dead.remove(&local.0);
+                                    let g = frame.st.gen.entry(local.0).or_insert(0);
+                                    *g += 1;
                                 }
                                 ValueType::Str => {
                                     if scan.has_owned_producing {
@@ -1241,7 +1345,10 @@ impl<'a> ResourceWalk<'a> {
                                         );
                                     }
                                     let prov = self.alias_reach(&st_snapshot, &scan);
-                                    frame.st.backing.insert(local.0, prov);
+                                    frame
+                                        .st
+                                        .backing
+                                        .insert(local.0, provenance(&frame.st, &prov));
                                 }
                                 _ => {}
                             }
@@ -1281,7 +1388,10 @@ impl<'a> ResourceWalk<'a> {
                                         );
                                     }
                                     let prov = self.alias_reach(&st_snapshot, &scan);
-                                    frame.st.backing.insert(target, prov);
+                                    frame
+                                        .st
+                                        .backing
+                                        .insert(target, provenance(&frame.st, &prov));
                                 }
                                 _ => {}
                             }
@@ -1398,6 +1508,14 @@ impl<'a> ResourceWalk<'a> {
                             let entry_live: Vec<u32> = frame.st.live.keys().copied().collect();
                             let cur_in = frame.st.clone();
                             let loops_len = frame.loops_len;
+                            // r6 R6-02: arm frames carry the STATIC
+                            // reachability (constant conditions prune);
+                            // statically unreachable arms keep their
+                            // static-legality walk but their break/continue
+                            // never enters the executable loop-exit state
+                            let arm_reach = frame.reachable;
+                            let then_reach = arm_reach && cond_t != Some(false);
+                            let else_reach = arm_reach && els.is_some() && cond_t != Some(true);
                             let parent_idx = frames.len() - 1;
                             let else_slot = match els {
                                 Some(e) => push_child(
@@ -1406,11 +1524,18 @@ impl<'a> ResourceWalk<'a> {
                                     e.0,
                                     loops_len,
                                     cur_in.clone(),
+                                    else_reach,
                                 ),
                                 None => usize::MAX,
                             };
-                            let then_slot =
-                                push_child(&mut frames, &mut results, then.0, loops_len, cur_in);
+                            let then_slot = push_child(
+                                &mut frames,
+                                &mut results,
+                                then.0,
+                                loops_len,
+                                cur_in,
+                                then_reach,
+                            );
                             frames[parent_idx].state = RState::AwaitIf {
                                 then_slot,
                                 else_slot,
@@ -1436,13 +1561,25 @@ impl<'a> ResourceWalk<'a> {
                                 child.live.remove(l);
                                 child.dead.entry(*l).or_insert(DeadCause::Moved);
                             }
+                            let loop_reach = frame.reachable;
                             let parent_idx = frames.len() - 1;
                             loops.push((id, b.0));
-                            let body_slot =
-                                push_child(&mut frames, &mut results, b.0, loops.len(), child);
+                            let diag_mark = self.diags.len();
+                            let body_slot = push_child(
+                                &mut frames,
+                                &mut results,
+                                b.0,
+                                loops.len(),
+                                child.clone(),
+                                loop_reach,
+                            );
                             frames[parent_idx].state = RState::AwaitLoop {
                                 body_slot,
                                 loop_id: id.0,
+                                body_bid: b.0,
+                                base_init: child.clone(),
+                                entry_snapshot: child,
+                                diag_mark,
                             };
                         }
                         hir::Stmt::Break { target } | hir::Stmt::Continue { target } => {
@@ -1484,22 +1621,31 @@ impl<'a> ResourceWalk<'a> {
                                             frame.st.dead.entry(*l).or_insert(DeadCause::ScopeExit);
                                         }
                                     }
-                                    // r5 R5-02: the TARGET exit state is kept
-                                    // separately from the if-join continuation
-                                    // (a terminating arm contributes nothing
-                                    // there, r4 R4-03) and consumed by the
-                                    // TARGET loop's resume step — its backing
-                                    // and dead entries reach the after-loop
-                                    // state, so a view of a freed loop-scoped
-                                    // owner cannot be read past the loop even
-                                    // when the break/continue sat inside an
-                                    // if arm. Recorded even when frees are
-                                    // empty: the backing matters (c02 keeps a
-                                    // live outer owner legal).
-                                    loop_exits
-                                        .entry(target.0)
-                                        .or_default()
-                                        .push(frame.st.clone());
+                                    // r5 R5-02 + r6 R6-01/R6-02: the TARGET
+                                    // exit state is kept separately from the
+                                    // if-join continuation (a terminating arm
+                                    // contributes nothing there, r4 R4-03)
+                                    // and consumed by the TARGET loop's
+                                    // resume step — break exits feed the
+                                    // after-loop merge, continue exits feed
+                                    // the RE-ENTRY state the body is
+                                    // re-validated against. Recorded only on
+                                    // statically reachable paths (an
+                                    // unreachable arm's exit can never run);
+                                    // recorded even when frees are empty:
+                                    // the backing matters (c02 keeps a live
+                                    // outer owner legal).
+                                    if frame.reachable {
+                                        let kind = if is_break_term {
+                                            ExitKind::Break
+                                        } else {
+                                            ExitKind::Continue
+                                        };
+                                        loop_exits
+                                            .entry(target.0)
+                                            .or_default()
+                                            .push((kind, frame.st.clone()));
+                                    }
                                 }
                             }
                             frame.flow_done = true;
@@ -1660,20 +1806,79 @@ impl<'a> ResourceWalk<'a> {
                                 }
                             }
                         }
-                        RState::AwaitLoop { body_slot, loop_id } => {
+                        RState::AwaitLoop {
+                            body_slot,
+                            loop_id,
+                            body_bid,
+                            base_init,
+                            entry_snapshot,
+                            diag_mark,
+                        } => {
+                            // captured before the re-walk branch: `frame`'s
+                            // borrow must end before push_child below
+                            let frame_reach = frame.reachable;
                             let body_st = results[body_slot].clone().expect("loop body state");
+                            let exits = loop_exits.remove(&loop_id).unwrap_or_default();
+                            // r6 R6-01: the back edges are the body's natural
+                            // completion and every CONTINUE exit; break exits
+                            // leave the loop. The RE-ENTRY state is the
+                            // loop-entry base merged with the back-edge
+                            // dead/backing — what iteration 2+ actually starts
+                            // from — and the body is RE-VALIDATED against it
+                            // until the structural state converges (dead and
+                            // id-projected backing grow monotonically on a
+                            // finite lattice, so this terminates; fresh owned
+                            // lets bump generations and clear the previous
+                            // death, redefining each iteration's resource
+                            // identity without being killed by the previous
+                            // iteration's scope exit).
+                            let mut reentry = base_init.clone();
+                            let backedges: Vec<&WalkState> = std::iter::once(&body_st)
+                                .chain(
+                                    exits
+                                        .iter()
+                                        .filter(|(k, _)| *k == ExitKind::Continue)
+                                        .map(|(_, st)| st),
+                                )
+                                .collect();
+                            for be in &backedges {
+                                merge_children(&mut reentry, &[(*be).clone()]);
+                            }
+                            if reentry.convergence_key() != entry_snapshot.convergence_key() {
+                                // re-walk the body from the re-entry state;
+                                // the previous pass's body diagnostics are
+                                // replaced by the final pass's
+                                self.diags.truncate(diag_mark);
+                                loops.push((hir::LoopId(loop_id), body_bid));
+                                let parent_idx = frames.len() - 1;
+                                let slot = push_child(
+                                    &mut frames,
+                                    &mut results,
+                                    body_bid,
+                                    loops.len(),
+                                    reentry.clone(),
+                                    frame_reach,
+                                );
+                                frames[parent_idx].state = RState::AwaitLoop {
+                                    body_slot: slot,
+                                    loop_id,
+                                    body_bid,
+                                    base_init,
+                                    entry_snapshot: reentry,
+                                    diag_mark,
+                                };
+                                continue;
+                            }
                             // r5 R5-02: the after-loop state merges the
                             // body's natural-completion (back-edge) state
                             // AND every state that reached THIS loop's target
-                            // exits (break — after-loop; continue —
-                            // re-entry, conservatively unioned like the
-                            // back edge). Dead/backing union only: sound and
-                            // consistent with the join model; the parent's
-                            // own live set stays authoritative.
+                            // exits (break — left the loop; continue — can
+                            // still leave it via a later failing condition).
+                            // Dead/backing union only: sound and consistent
+                            // with the join model; the parent's own live set
+                            // stays authoritative.
                             let mut states = vec![body_st];
-                            if let Some(exits) = loop_exits.remove(&loop_id) {
-                                states.extend(exits);
-                            }
+                            states.extend(exits.into_iter().map(|(_, st)| st));
                             merge_children(&mut frame.st, &states);
                             loops.truncate(frame.loops_len);
                         }
@@ -1711,6 +1916,7 @@ fn push_child(
     bid: u32,
     loops_len: usize,
     init: WalkState,
+    reachable: bool,
 ) -> usize {
     let slot = results.len();
     results.push(None);
@@ -1723,8 +1929,25 @@ fn push_child(
         flow_done: false,
         ret_slot: slot,
         state: RState::Run,
+        reachable,
     });
     slot
+}
+
+/// Which loop edge a recorded target exit arrived on (r6 R6-01): break
+/// exits leave the loop (after-loop), continue exits re-enter it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ExitKind {
+    Break,
+    Continue,
+}
+
+/// Lift identity sources to (owner, generation) provenance pairs against
+/// the capturing state (r6 R6-01).
+fn provenance(st: &WalkState, ids: &BTreeSet<u32>) -> BTreeSet<(u32, u32)> {
+    ids.iter()
+        .map(|l| (*l, st.gen.get(l).copied().unwrap_or(0)))
+        .collect()
 }
 
 /// Merge child states into the parent at a join: dead and backing are the
@@ -1742,6 +1965,15 @@ fn merge_children(parent: &mut WalkState, children: &[WalkState]) {
                 .entry(*v)
                 .or_default()
                 .extend(bs.iter().copied());
+        }
+        // r6 R6-01: the merged continuation's construction generation per
+        // local is the LATEST seen on any joining path (a view captured
+        // against an older construction then reads as stale)
+        for (l, g) in &c.gen {
+            let e = parent.gen.entry(*l).or_insert(0);
+            if *g > *e {
+                *e = *g;
+            }
         }
     }
 }

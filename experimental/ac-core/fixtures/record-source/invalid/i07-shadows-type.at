@@ -1,0 +1,9 @@
+// V-08: a local may not shadow a record type name (type positions stay
+// unambiguous in this profile)
+type Pair {
+    left int
+}
+fn main() int {
+    let Pair = 1
+    return Pair
+}

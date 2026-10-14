@@ -1,0 +1,8 @@
+// V-03 source leg: a containment cycle is rejected at the source front end
+type A {
+    b B
+}
+type B {
+    a A
+}
+fn main() int { return 0 }

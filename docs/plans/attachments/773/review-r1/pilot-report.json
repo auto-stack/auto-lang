@@ -1,0 +1,315 @@
+{
+  "schema": "autolang.test-report/1",
+  "suite": "pilot",
+  "suite_sha256": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665",
+  "required_adapters": [],
+  "summary": { "total": 24, "PASS": 24 },
+  "coverage_gaps": [],
+  "load_errors": [],
+  "results": [
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.hello:vm",
+      "case": "lang.basic.hello",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "69f96eae22f6fd138cab5f8b8c3d87ed823785105c6f70ff478000f8186cc202", "oracle": "1077ed13a33d8368b30730f9f53643fd22e89a351d48015e20e93add73ee77f6", "contract": "3a5ff8a5f7bde999df2d4fc86a04dd6538be2cfb848caff3ba22d4259dec060c" },
+      "duration_ms": 74
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.hello:rust",
+      "case": "lang.basic.hello",
+      "check": "rust",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "hello.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\lang.basic.hello\\rust\\actual\\hello.rs", "sha256": "93bd416adb1f8501ee487aed43987ce2bc4cf20bf20db0ebb66df0d798406c09", "bytes": 74 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "69f96eae22f6fd138cab5f8b8c3d87ed823785105c6f70ff478000f8186cc202", "oracle": "cf65219a1c5f835ed85cdf50e4b63a3dd38250e5cea09ed669a172fbe5c7c7d9", "contract": "3a5ff8a5f7bde999df2d4fc86a04dd6538be2cfb848caff3ba22d4259dec060c" },
+      "duration_ms": 1117
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.str-upper:vm",
+      "case": "lang.basic.str-upper",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "87c0dc1312db3cab26c1c7755e9f5d1c670c2f9c8803547d69c9c75ec7120dc4", "oracle": "c3f402559c5c64c5dd9798610685b645085f29d8aba54cb1e4bacf3a0bd8fea5", "contract": "ef81f51835f560a13d3249cbaad496f275ea8dba4f1d6b9eafae51e6e539c123" },
+      "duration_ms": 71
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.str-upper:rust",
+      "case": "lang.basic.str-upper",
+      "check": "rust",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "str_upper.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\lang.basic.str-upper\\rust\\actual\\str_upper.rs", "sha256": "8e14ecf3c944a58af6d9d473acabb7104e0c0824ee2abd8105a717f656b27675", "bytes": 147 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "87c0dc1312db3cab26c1c7755e9f5d1c670c2f9c8803547d69c9c75ec7120dc4", "oracle": "5aeee073eaf764d0df78eb785b7fee1615cc0cdb73311299f54316280e661967", "contract": "ef81f51835f560a13d3249cbaad496f275ea8dba4f1d6b9eafae51e6e539c123" },
+      "duration_ms": 77
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.eq-false:vm",
+      "case": "lang.basic.eq-false",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "3cca38ad6cc3135ee4261cc6f428ac4cfd90603a966560c8f3973cf3f63fa24a", "oracle": "a1f34616f4dc6fad2cc580f869a1c53e4c8ec23737cb6f6897fbc96895f47508", "contract": "f3c55849fb51ceded7c7a2dabde7e2d9207f6ed2bbe2da694b45246795e048b8" },
+      "duration_ms": 66
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.eq-false:rust",
+      "case": "lang.basic.eq-false",
+      "check": "rust",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "eq_false.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\lang.basic.eq-false\\rust\\actual\\eq_false.rs", "sha256": "e0278851b7fd8fdfb4e4b7c8728d36aa38a4a6887ba81591b2816d460205ba32", "bytes": 63 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "3cca38ad6cc3135ee4261cc6f428ac4cfd90603a966560c8f3973cf3f63fa24a", "oracle": "1eae04c9224f2ea298c336bf649751ed39afdf8fab028da305a16a559bfde46f", "contract": "f3c55849fb51ceded7c7a2dabde7e2d9207f6ed2bbe2da694b45246795e048b8" },
+      "duration_ms": 33
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.arithmetic:vm",
+      "case": "lang.basic.arithmetic",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "a3bf3a7dabef25b578a87d59f2c742a3bcf4b6ced9aa9b69cd8c7a56beb86fb7", "oracle": "c790998a5d080c26847b922f9acf3662d788474902ec101fc528f784ebd4ff28", "contract": "4b34d29afdcaa74b9dea554fb40701f0aaae49ee010a29bf60a269ae88227fdc" },
+      "duration_ms": 58
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.uint:vm",
+      "case": "lang.basic.uint",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "ab99e2bd6f1aeae28fe6f9cb35d393a08bfc42cd24ee9cd6c5fc77cae48e984c", "oracle": "d1b2517d1b42865e3cc2f2ff756a9331e7a13b6c3f34fcf8c3ed38ee3cc77425", "contract": "109dfd9e2dab3a9812262c41ef437d1d8d445aacae8d245bab1eb743423e8af9" },
+      "duration_ms": 43
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.byte:vm",
+      "case": "lang.basic.byte",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "6960706b4320a9d90a18350021f05f4ea64326baea7acdc7652715575727132b", "oracle": "d4ea250866bf6fd9ac67a4068713f018aeb6dd8ec8e1be22432f3716a005508e", "contract": "9c653bf1fe0e484989b9fdb4670f8ae29b817b73c248961aeca9a35dd570cb68" },
+      "duration_ms": 43
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.unary:vm",
+      "case": "lang.basic.unary",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "f9b724840fb8b83128e3c4ec735cf7445faf8ca98f65e5f277db903e56fd6175", "oracle": "e7f6549d4bfcce13b7ae0de6416fa362ccbf91b04248bd7fc1b2f353895f8aaa", "contract": "47ba481efecab867541a1057a0fa5424925951ccef5cfad96697bfaf91fdc0ca" },
+      "duration_ms": 41
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.group:vm",
+      "case": "lang.basic.group",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "22b75292ac6517786dd515f3e9f0ba93af14f8a72139021a192fcb80014d8393", "oracle": "79ff0a9bbed056d71ac776a546d069291ab344dd2a41780ca60851f9450b5172", "contract": "28b92cf0ce89daba6cbc090479e6600723e2333fcc8bd45c5ddaf1bfd3924c12" },
+      "duration_ms": 43
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.basic.comp:vm",
+      "case": "lang.basic.comp",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "6c9e294010c109e44b123d05aadb84e1df9ca05314eaa148ed2177e0c1a3a19a", "source": "f79b2fe28b4c816b947e157c51d720ed4d55d9d02694ed793ee2bdfc06333e91", "oracle": "7c2e895863b9e9216e4d138bd51691b29d649bb27bba3d35ef492ee8c8a8e3d2", "contract": "65eba6c0e2359bd73d5517385311f3d1b92d31664fdc67eae622af09d3362449" },
+      "duration_ms": 34
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.shortcircuit.and-or:vm",
+      "case": "lang.shortcircuit.and-or",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "77ebeb190c10d15913a976ae54c4312f87ebd8fb25b562eae047455c7fd7e1c0", "source": "c24b5af4b96aa6cff3876a0a92c1184985317803b298c03ec0756cdc05871c7f", "oracle": "0ced7b8c3eeff5313ef7391926640020c80b1d5aec30a16127823619370dfe07", "contract": "3db67d751faed85e1ae50bede6a230ee0405881082d87f285124dc1329d48c6a" },
+      "duration_ms": 40
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.shortcircuit.negative-index:vm",
+      "case": "lang.shortcircuit.negative-index",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "77ebeb190c10d15913a976ae54c4312f87ebd8fb25b562eae047455c7fd7e1c0", "source": "a1225e217fedac10bad6365c1adcebe2e7bf154861e8dc41d37a3f51fd69b3eb", "oracle": "599d0a5d11247948aefd28c2cab5f66078b4167bae6ca902569bdf0af44334c8", "contract": "3c6e688a242943b4cc166bf4050bfa113a6e52550f8851af9707cff705e32961" },
+      "duration_ms": 40
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.error.out-of-bounds:vm",
+      "case": "lang.error.out-of-bounds",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "77ebeb190c10d15913a976ae54c4312f87ebd8fb25b562eae047455c7fd7e1c0", "source": "ced8a32592422500cf052e53e87473f19db793c7b5ca24d3fb045a1f81336e2d", "oracle": "b227da91c8714788406a71161a3e0cd26a026058eca37d8f2b05dd513970ad8a", "contract": "de491a959c89bd449885441b84e89a3a3cfdf4badb638a7cd7f93892d87343b2" },
+      "duration_ms": 30
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:lang.script.json-is-null:vm",
+      "case": "lang.script.json-is-null",
+      "check": "vm",
+      "adapter": "avm",
+ "action": "run",
+      "tier": "vm-corpus",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "<lowered-input>", "stored": "sha256:76938dd2edc9fde438ea5ab4dbb7fd8fa329d0fab822a7fdc2e5b39dacab2a62", "sha256": "76938dd2edc9fde438ea5ab4dbb7fd8fa329d0fab822a7fdc2e5b39dacab2a62", "bytes": 0 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "ea55de17bd8b29c80f9e4980eafd8de39267a44aaffcf009016c0a4194d9ae92", "source": "97011c85b8ff265a2e3ea9dccce7e1cb7d00a39e5e46aff55f8761cc485b3c48", "oracle": "7c2e895863b9e9216e4d138bd51691b29d649bb27bba3d35ef492ee8c8a8e3d2", "contract": "d2ee36b67ece35b0925c37cf04bf07de7e5368b121cf35525bce972b01b47ee8" },
+      "duration_ms": 42
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:trans.basics.func:emit",
+      "case": "trans.basics.func",
+      "check": "emit",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "func.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.basics.func\\emit\\actual\\func.rs", "sha256": "326ca4eca98c6c99321ede197c13d4de49170c8dec7adcaab028670ca80e3db6", "bytes": 172 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "867d4d3f005faec1c7d442820e8baa9109e56c14662d775116346b437cc73b1b", "source": "8c4cc00f31730a92af6e49b3396ccbe94d8709bf9a93ef01ff649c1a2eaf08d2", "oracle": "2deb2f42d24d9b4de6d0eebe083f4c0faefa476942f38b8c175c7db41429b164", "contract": "d8f4390082ac4394da4369792e4351b9ecaab621b2e2e826a8c8d1242dd9a522" },
+      "duration_ms": 54
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:trans.basics.doc-comments:emit",
+      "case": "trans.basics.doc-comments",
+      "check": "emit",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "doc_comments.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.basics.doc-comments\\emit\\actual\\doc_comments.rs", "sha256": "423434b723f47acb895c4204cbf1bca191d599eb3d88ddc544858c7063ef0aab", "bytes": 205 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "867d4d3f005faec1c7d442820e8baa9109e56c14662d775116346b437cc73b1b", "source": "543247c1d546a87141e441616a51c05a91c2b43af31b332f368e6a5c78bf402d", "oracle": "ca8bc32582cf25aeed3ef0e31c2b6260c88e67a9d7c27090900086f2052006f5", "contract": "f87f6c76f4950d0377634be6e0e4e9842555df11690563a6de1d0e1aba25e150" },
+      "duration_ms": 48
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:trans.basics.struct:emit",
+      "case": "trans.basics.struct",
+      "check": "emit",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "struct.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.basics.struct\\emit\\actual\\struct.rs", "sha256": "81864510c1aab4c4d03fbb09fa5789c6d398ea8e7fa86e3d64f20bff930f4c33", "bytes": 536 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "867d4d3f005faec1c7d442820e8baa9109e56c14662d775116346b437cc73b1b", "source": "5c129a046eebafee6222dbeba8272b0db206e7af491ec51dd92a6ff87a776fa7", "oracle": "819794c5ae16dc20beff1ab3e26c07bddb09e3b103bb3be0a1dd05579c68fefe", "contract": "7a04b5e2b1be164f3b70fd941c774614060cf5810186bac847e57745e48d87a0" },
+      "duration_ms": 86
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:trans.basics.for-range:emit",
+      "case": "trans.basics.for-range",
+      "check": "emit",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "for_range.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.basics.for-range\\emit\\actual\\for_range.rs", "sha256": "4ff0191be02db5380818e8eb8efa8da8c52b31dfb1eb974f793f7978e4db005f", "bytes": 198 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "867d4d3f005faec1c7d442820e8baa9109e56c14662d775116346b437cc73b1b", "source": "4270d3644c4c445039587fee65d1ae6895337e987b6742b26134671e070c1723", "oracle": "625335d8a7d6e517740449d71c0926da818572c2efce7aa41d19ef10cdc7d367", "contract": "2ecceb4379808c55ddd7d866e0282e676200900c559abad7062680993676de8b" },
+      "duration_ms": 39
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:trans.basics.arithmetic:emit",
+      "case": "trans.basics.arithmetic",
+      "check": "emit",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "arithmetic.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.basics.arithmetic\\emit\\actual\\arithmetic.rs", "sha256": "335bb82a28230f1f991da5e74d0a062d57d55c4169187aa8cda60391acc92dfa", "bytes": 425 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "867d4d3f005faec1c7d442820e8baa9109e56c14662d775116346b437cc73b1b", "source": "25daf3e47d22ad545e51c352e5bb80c64b87274f21b4ba3b308661bcb6f0f97d", "oracle": "1e39e59cea2fa61d8ac0c4bdeaad733b6fdbecbd99d21edcbe91645713241c29", "contract": "6e9c317b8b6f478e996891d683e03215bf063082c413c07f3aa0b1dfdc38cd17" },
+      "duration_ms": 39
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:trans.cabi.static:emit",
+      "case": "trans.cabi.static",
+      "check": "emit",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "use_c_static.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.cabi.static\\emit\\actual\\use_c_static.rs", "sha256": "b2481e447e4554f90514f1183f41ca5b39213ae35b30037d10c20e65b3da9a0a", "bytes": 5486 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "0873c8d99c77e5e728d936da76544cea9ee629f82697e60c8b2703be95b81acd", "source": "dc1e97ebf51600c4b711eee98f73b580a20d1b4511d80008d90c39fc7828ca9f", "oracle": "c96718b86f0eb49c1c5d983a3a563bce704ed2b3f3afad738a80da825e27e245", "contract": "974186699c8bf018b94b3ec6619b0b6a655ba32762dd7759c137c00a802862f1" },
+      "duration_ms": 473
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:trans.cabi.dynamic:emit",
+      "case": "trans.cabi.dynamic",
+      "check": "emit",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "use_c_dynamic.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.cabi.dynamic\\emit\\actual\\use_c_dynamic.rs", "sha256": "62d78ef17f28c54bbca198d5b7cade8b89d6fe4925077488bb924b6781e04fd7", "bytes": 7094 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "0873c8d99c77e5e728d936da76544cea9ee629f82697e60c8b2703be95b81acd", "source": "fd3d7ec300e9b06f5bea77a5a49b950c20d23c185b4d23f5f9ab534040262194", "oracle": "0ab4e7ba1d60707fcfe6540c28319ee2e3e29c89581126fcd27cf7832783a528", "contract": "b39a39fd4171120617c914dfb6e72dc25ab15b242e303879561444444cda18eb" },
+      "duration_ms": 216
+    },
+    {
+      "execution_key": "pilot:e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665:trans.project.multi-file:emit",
+      "case": "trans.project.multi-file",
+      "check": "emit",
+      "adapter": "a2r",
+ "action": "emit",
+      "tier": "trans-snapshot",
+      "status": "PASS",
+      "artifacts": [
+        { "path": "Cargo.toml", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.project.multi-file\\emit\\actual\\Cargo.toml", "sha256": "d16d9060a95117b07fa296ad1ed4fab1b71962945a5201dbe9c58325cf5db365", "bytes": 62 },
+        { "path": "api/handlers.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.project.multi-file\\emit\\actual\\api\\handlers.rs", "sha256": "7ee5ade63cc23e5e97ddfed18320064f6516f14c90168a1ca589475f00cb322a", "bytes": 106 },
+        { "path": "api/mod.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.project.multi-file\\emit\\actual\\api\\mod.rs", "sha256": "4fb3ab6d21bb8dddf6075b8608bf0f9ab37bf14f53b9d8b56fe9f865bc40af7a", "bytes": 103 },
+        { "path": "db.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.project.multi-file\\emit\\actual\\db.rs", "sha256": "84e8395931f625598cf5c2462cf27d38050279dba183dceada154108bbce1947", "bytes": 216 },
+        { "path": "main.rs", "stored": "target/review773/pilot\\run-1791936828969-47616\\trans.project.multi-file\\emit\\actual\\main.rs", "sha256": "e40c8d1ff1e762d829b362826cdd491b719e9ccd871ae74c8e8e8ef4fc325ec0", "bytes": 294 }
+      ],
+      "identity": { "suite": "e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665", "case_file": "79d88be47a482f30a7fbb8b901a5015d8b393dcd61c3f8246642635704614d63", "source": "d29b16f21cbeb481d1f395d7f4ff3398a5e0d8d7ffe2097a5f5780a0a88b2f72", "oracle": "8734a63b21f16b4f2adc30109e037dd991ccd7f8892ec156d5e947e65f07ac19", "contract": "a4030d52eed8f423ff6d47e05ad039214b51b8bf241933ba5c1a88ac4fc12ab1" },
+      "duration_ms": 131
+    }
+  ]
+}

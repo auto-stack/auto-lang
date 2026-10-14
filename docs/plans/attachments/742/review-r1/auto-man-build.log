@@ -1,0 +1,68 @@
+    Blocking waiting for file lock on build directory
+   Compiling windows-sys v0.61.2
+   Compiling socket2 v0.6.5
+   Compiling mio v1.2.2
+   Compiling winapi-util v0.1.11
+   Compiling schannel v0.1.29
+   Compiling anstyle-query v1.1.5
+   Compiling softbuffer v0.4.8
+   Compiling anstyle-wincon v3.0.11
+   Compiling dirs-sys v0.5.0
+   Compiling terminal_size v0.4.4
+   Compiling home v0.5.12
+   Compiling stacker v0.1.25
+   Compiling colored v3.1.1
+   Compiling tempfile v3.27.0
+   Compiling same-file v1.0.6
+   Compiling termcolor v1.4.1
+   Compiling miette v7.6.0
+   Compiling dirs v6.0.0
+   Compiling native-tls v0.2.18
+   Compiling anstream v1.0.0
+   Compiling rustyline v14.0.0
+   Compiling is_executable v1.0.6
+   Compiling walkdir v2.5.0
+   Compiling auto-cache v0.1.0 (D:\autostack\auto-lang\crates\auto-cache)
+   Compiling tungstenite v0.24.0
+   Compiling clap_builder v4.6.5
+   Compiling syntect v5.3.0
+   Compiling notify v7.0.0
+   Compiling rust-embed-utils v8.12.0
+   Compiling dialoguer v0.11.0
+   Compiling simplelog v0.12.2
+   Compiling tokio v1.53.1
+   Compiling rust-embed v8.12.0
+   Compiling cosmic-text v0.15.0
+   Compiling clap v4.6.5
+   Compiling auto-bindgen v0.1.0 (D:\autostack\auto-lang\crates\auto-bindgen)
+   Compiling cryoglyph v0.1.0
+   Compiling iced_futures v0.14.0
+   Compiling tokio-util v0.7.19
+   Compiling tower v0.5.3
+   Compiling async-compression v0.4.43
+   Compiling tokio-native-tls v0.3.1
+   Compiling tokio-tungstenite v0.30.0
+   Compiling iced_graphics v0.14.0
+   Compiling iced_debug v0.14.0
+   Compiling iced_runtime v0.14.0
+   Compiling h2 v0.4.15
+   Compiling tower-http v0.6.11
+   Compiling iced_tiny_skia v0.14.0
+   Compiling iced_wgpu v0.14.0
+   Compiling iced_program v0.14.0
+   Compiling iced_winit v0.14.0
+   Compiling iced_renderer v0.14.0
+   Compiling iced_widget v0.14.2 (D:\autostack\auto-lang\crates\patches\iced_widget)
+   Compiling hyper v1.11.0
+   Compiling iced v0.14.0
+   Compiling hyper-util v0.1.20
+   Compiling hyper-tls v0.6.0
+   Compiling axum v0.8.9
+   Compiling reqwest v0.12.28
+   Compiling a2r-std v0.1.0 (D:\autostack\auto-lang\crates\a2r-std)
+   Compiling auto-lang v0.1.0 (D:\autostack\auto-lang\crates\auto-lang)
+   Compiling auto-gen v0.1.0 (D:\autostack\auto-lang\crates\auto-gen)
+   Compiling auto-man v0.1.0 (D:\autostack\auto-lang\crates\auto-man)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2m 43s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

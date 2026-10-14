@@ -36,3 +36,26 @@
   尚未全部迁入 `tests/*.at` 声明式。
 
 > 来源: docs/plans/archive/263-transpiler-tests.md；test/runners/a2c_tests.at、a2r_tests.at、a2ts_tests.at；docs/plans/archive/240-rust-cookbook-a2r-tests.md；docs/python-transpiler.md §Test Case Template
+
+## 双轨只读 pilot（TestCase 协议，Plan 773 / Design 35 A）
+
+旧目录机制保持不动；新增**引用式**第二轨：`crates/auto-lang/test/cases/pilot/`
+的 `.case.ad/.suite.ad` 合同原位引用旧语料（fixture_root 指向 `test/`，零搬动、
+零 wrapper 修改），由 `auto-case` CLI（`--features test-cases`，无默认 feature
+可无窗口跑）经 `src/test_cases/` adapter 执行 a2r/emit 检查。
+
+- **emit ≠ compile**：pilot 的 a2r 检查只判发射产物 bytes（逐字节对拍金样，
+  与本文件"字节差异即失败"同律）；Rust 真编译/运行是 Design 35 B，能力表显式
+  缺口，不得宣称编译覆盖。
+- 只读与产物纪律：金样/源/旧目录永不被写（新失败产物与候选基准只写隔离
+  out 目录）；`.wrong.*` 流程在 pilot 轨不适用——候选基准走 proposal-only
+  （旧新 sha256 + diff + 共享消费者清单，accept 是独立人工动作）。
+- 对账：`cases/pilot/legacy-map.tsv`（16 列）逐行登记旧 source/oracle 内容哈希、
+  入口/工程上下文与新 case/check 的对应，测试锁定哈希与报告集合一致。
+- 档位：`cargo tt` 经 `a2r_tests::pilot_aggregate_a2r` 聚合入口触达 pilot 的
+  a2r 半部（21 case/24 check 全集见 test_cases_tests 家族）。
+- 新 oracle（pilot 新增 emit 金样，`cases/pilot/oracle/`）与旧 `.expected.rs`
+  分域存放；旧金样被引用时原位不动。
+
+> 来源: docs/plans/773-autodown-testcase-protocol-pilot.md（Design 35 A 阶段，
+> R1 修复轮后）；协议合同见 docs/specs/auto-test-case/。

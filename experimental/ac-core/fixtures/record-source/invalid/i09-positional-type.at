@@ -1,0 +1,7 @@
+// F-771-R1-02 negative: positional construction arguments are checked
+// against the declared field types (nominal records).
+type Q { v int }
+fn main() int {
+    let q = Q(true)
+    return q.v
+}

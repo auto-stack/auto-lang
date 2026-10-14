@@ -93,9 +93,10 @@ enum OpFrame {
 }
 
 struct CallFrame {
-    /// PLAN-770: when a method's argument list reuses the call frame, the
-    /// popped receiver travels here; on close the node becomes a Method
-    /// instead of a Call.
+    /// The popped receiver when this call frame is actually a METHOD call
+    /// (`recv.name(args)`, PLAN-770 text `.to/.move/...` and PLAN-771
+    /// record methods alike); `None` for free calls — the close emits a
+    /// plain Call.
     method_recv: Option<Box<Expr>>,
     callee: Ident,
     args: Vec<Arg>,
@@ -103,9 +104,20 @@ struct CallFrame {
     pending_name: Option<Ident>,
 }
 
+/// PLAN-771: `Ty { field: expr, ... }` — named constructor frame. Field
+/// values are full expressions on the shared value stack; separators are
+/// commas or (inside the braces) newlines.
+struct CtorFrame {
+    ty: Ident,
+    fields: Vec<NamedCtorField>,
+    mark: usize,
+    pending_name: Option<Ident>,
+}
+
 enum Frame {
     Op(OpFrame),
     Call(Box<CallFrame>),
+    Ctor(Box<CtorFrame>),
 }
 
 // Statement-block machine types (R6: block nesting is unlimited — the
@@ -124,6 +136,7 @@ enum BlockCont {
         name: Ident,
         params: Vec<Param>,
         ret: TypeAnn,
+        receiver: Receiver,
     },
     /// `if cond { … }` closed; `else` may still follow.
     IfThen {
@@ -323,9 +336,23 @@ impl<'s> Parser<'s> {
         Ok(Program { items })
     }
 
-    fn item(&mut self) -> Result<FnItem, Diagnostic> {
+    fn item(&mut self) -> Result<Item, Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
-            Some(Tok::Kw(Kw::Fn)) => self.fn_item(),
+            Some(Tok::Kw(Kw::Fn)) => Ok(Item::Fn(self.fn_item(Receiver::Free)?)),
+            Some(Tok::Kw(Kw::Type)) if self.surface.is_record() => {
+                Ok(Item::Type(self.type_item()?))
+            }
+            Some(Tok::Kw(Kw::Static)) => {
+                let span = self.peek().unwrap().span;
+                Err(self.unsupported(
+                    "`static` is only legal before `fn` inside a `type` block of the record profile",
+                    span,
+                ))
+            }
+            Some(Tok::Kw(Kw::Type)) => {
+                let span = self.peek().unwrap().span;
+                Err(self.unsupported("`type` is not part of this source profile", span))
+            }
             Some(Tok::Ident(name)) => {
                 if TOPLEVEL_UNSUPPORTED_WORDS.contains(&name.as_str()) {
                     let span = self.peek().unwrap().span;
@@ -362,9 +389,167 @@ impl<'s> Parser<'s> {
         }
     }
 
-    fn fn_item(&mut self) -> Result<FnItem, Diagnostic> {
+    /// `type Name { fields; methods }` (record profile only; PLAN-771
+    /// §5.2/design.md §2.1 — mirrors the real parser's member grammar:
+    /// `name [":"] Type`, separators `;`/newline; `static fn`/`fn`
+    /// methods; no defaults/generics/inheritance).
+    fn type_item(&mut self) -> Result<TypeItem, Diagnostic> {
+        let kw = self.expect_kw(Kw::Type, "`type`")?;
+        let name = self.expect_ident("type name")?;
+        self.expect_punct(P::LBrace, "`{`")?;
+        let mut fields: Vec<FieldDecl> = Vec::new();
+        let mut methods: Vec<FnItem> = Vec::new();
+        let mut seen_fields: Vec<String> = Vec::new();
+        let mut any_member = false;
+        loop {
+            // member separator: `;`, newline(s) or the closing brace; the
+            // FIRST member may share the `{`'s line, and a member may share
+            // a `;`'s line
+            let after_semi = matches!(
+                self.toks.get(self.pos.wrapping_sub(1)),
+                Some(Token {
+                    tok: Tok::Punct(P::Semi),
+                    ..
+                })
+            );
+            match self.peek() {
+                None => return Err(self.syntax("expected `}` before end of file")),
+                Some(Token {
+                    tok: Tok::Punct(P::Semi),
+                    ..
+                }) => {
+                    self.pos += 1;
+                    continue;
+                }
+                Some(Token {
+                    tok: Tok::Punct(P::RBrace),
+                    ..
+                }) => break,
+                Some(t) if !any_member || after_semi || t.line > self.toks[self.pos - 1].line => {}
+                Some(_) => {
+                    return Err(self.syntax(format!(
+                        "expected `;`, newline or `}}`, found {}",
+                        self.describe_cur()
+                    )))
+                }
+            }
+            any_member = true;
+            match self.peek().map(|t| t.tok.clone()) {
+                Some(Tok::Kw(Kw::Static)) => {
+                    let sp = self.peek().unwrap().span;
+                    self.pos += 1;
+                    self.expect_kw(Kw::Fn, "`fn` after `static`")
+                        .map_err(|_| self.syntax("expected `fn` after `static`"))?;
+                    let _ = sp;
+                    methods.push(self.fn_body_from_fn_kw(name.clone(), Receiver::Static)?);
+                }
+                Some(Tok::Kw(Kw::Fn)) => {
+                    self.pos += 1;
+                    methods.push(self.fn_body_from_fn_kw(name.clone(), Receiver::View)?);
+                }
+                Some(Tok::Kw(Kw::Mut)) => {
+                    let sp = self.peek().unwrap().span;
+                    return Err(self.unsupported(
+                        "`mut fn` (mutable instance methods) is not part of this profile; methods are readonly views",
+                        sp,
+                    ));
+                }
+                Some(Tok::Ident(fname)) => {
+                    let fname_ident = self.expect_ident("field name")?;
+                    if fname == "self" {
+                        return Err(
+                            self.unsupported("`self` cannot be a field name", fname_ident.span)
+                        );
+                    }
+                    // optional `:`
+                    if matches!(
+                        self.peek(),
+                        Some(Token {
+                            tok: Tok::Punct(P::Colon),
+                            ..
+                        })
+                    ) {
+                        self.pos += 1;
+                    }
+                    let ty = self.member_type(&fname_ident)?;
+                    if seen_fields.contains(&fname) {
+                        return Err(self.err(
+                            "source.duplicate",
+                            format!(
+                                "field `{}` is declared more than once in type `{}`",
+                                fname, name.name
+                            ),
+                            fname_ident.span,
+                        ));
+                    }
+                    seen_fields.push(fname);
+                    fields.push(FieldDecl {
+                        span: fname_ident.span.join(ty.span),
+                        name: fname_ident,
+                        ty,
+                    });
+                }
+                Some(Tok::Kw(k)) => {
+                    let sp = self.peek().unwrap().span;
+                    return Err(self.unsupported(
+                        format!("`{}` is not a valid type member here", k.as_str()),
+                        sp,
+                    ));
+                }
+                _ => {
+                    return Err(self.syntax(format!(
+                        "expected field or method, found {}",
+                        self.describe_cur()
+                    )))
+                }
+            }
+        }
+        let rb = self.expect_punct(P::RBrace, "`}`")?;
+        if fields.is_empty() {
+            return Err(self.unsupported(
+                "empty records are not part of this profile; a record must declare at least one field",
+                kw.join(rb),
+            ));
+        }
+        Ok(TypeItem {
+            span: kw.join(rb),
+            name,
+            fields,
+            methods,
+        })
+    }
+
+    /// Method body after the `fn` keyword was consumed (receiver/owner
+    /// set); shared by `static fn` and `fn` members.
+    fn fn_body_from_fn_kw(
+        &mut self,
+        owner: Ident,
+        receiver: Receiver,
+    ) -> Result<FnItem, Diagnostic> {
+        let fn_span = self.toks[self.pos - 1].span; // the `fn` keyword
+        let mut item = self.fn_item_tail(fn_span, receiver)?;
+        item.owner = Some(owner);
+        Ok(item)
+    }
+
+    fn fn_item(&mut self, receiver: Receiver) -> Result<FnItem, Diagnostic> {
         let fn_kw = self.expect_kw(Kw::Fn, "`fn`")?;
+        self.fn_item_tail(fn_kw, receiver)
+    }
+
+    /// Everything after the `fn` keyword: name, params (with the record
+    /// profile's `mut name Type` mode prefix), return type (the record
+    /// profile also accepts a record type name), body.
+    fn fn_item_tail(&mut self, fn_kw: Span, receiver: Receiver) -> Result<FnItem, Diagnostic> {
         let name = self.expect_ident("function name")?;
+        // PLAN-771: an instance method's receiver is implicit; an explicit
+        // `self` param would shadow it.
+        if receiver == Receiver::View && name.name == "self" {
+            return Err(self.unsupported(
+                "`self` is the implicit receiver of an instance method and cannot be a method name",
+                name.span,
+            ));
+        }
         self.expect_punct(P::LParen, "`(`")?;
         let mut params = Vec::new();
         if !matches!(
@@ -375,9 +560,11 @@ impl<'s> Parser<'s> {
             })
         ) {
             loop {
-                // mode word before the name (PLAN-770, old-language
-                // convention `fn f(mut s str)`); non-text surfaces keep
-                // rejecting the reserved words exactly as before.
+                // mode word before the name: text surfaces use the
+                // reserved words `mut`/`move` (PLAN-770 convention `fn
+                // f(mut s str)`); the record surface uses the `mut`
+                // keyword (PLAN-771 `mut name Type`). Other surfaces keep
+                // rejecting the words exactly as before.
                 let mut mode = super::ast::ParamMode::Default;
                 let mode_span = match self.peek() {
                     Some(Token {
@@ -394,9 +581,28 @@ impl<'s> Parser<'s> {
                         self.pos += 1;
                         Some(sp)
                     }
+                    // the shared lexer keyword-izes `mut` (PLAN-771's
+                    // record spelling); the TEXT surface accepts the same
+                    // keyword token for its `mut` mode word
+                    Some(Token {
+                        tok: Tok::Kw(Kw::Mut),
+                        span,
+                        ..
+                    }) if self.surface.is_text() || self.surface.is_record() => {
+                        let sp = *span;
+                        mode = super::ast::ParamMode::Mut;
+                        self.pos += 1;
+                        Some(sp)
+                    }
                     _ => None,
                 };
                 let pname = self.expect_ident("parameter name")?;
+                if receiver == Receiver::View && pname.name == "self" {
+                    return Err(self.unsupported(
+                        "`self` is the implicit receiver of an instance method and cannot be declared as a parameter",
+                        pname.span,
+                    ));
+                }
                 let ty = self.param_type(&pname)?;
                 let span = match mode_span {
                     Some(ms) => ms.join(ty.span),
@@ -432,21 +638,32 @@ impl<'s> Parser<'s> {
             {
                 self.type_word()
             }
+            Some(Tok::Ident(_)) if self.surface.is_record() => {
+                let t = self.bump();
+                let id = match &t.tok {
+                    Tok::Ident(n) => Ident {
+                        name: n.clone(),
+                        span: t.span,
+                    },
+                    _ => unreachable!(),
+                };
+                TypeAnn {
+                    kind: TypeRef::Record(id),
+                    span: t.span,
+                }
+            }
             Some(Tok::Punct(P::LBrace)) => {
                 // N42: missing return annotation — point at the signature.
                 return Err(self.unsupported(
-                    "function return type annotation (`int`/`i32`/`bool`) is required",
+                    "function return type annotation (`int`/`i32`/`bool` or a record type) is required",
                     name.span.join(rparen),
                 ));
             }
-            Some(Tok::Ident(_)) | Some(Tok::Reserved(_)) => {
-                let t = self.peek().unwrap();
+            Some(Tok::Ident(t) | Tok::Reserved(t)) => {
+                let sp = self.peek().unwrap().span;
                 return Err(self.unsupported(
-                    format!(
-                        "type `{}` is not part of this source profile",
-                        t.span.slice(self.src)
-                    ),
-                    t.span,
+                    format!("type `{}` is not part of this source profile", t),
+                    sp,
                 ));
             }
             _ => {
@@ -456,8 +673,7 @@ impl<'s> Parser<'s> {
                 )))
             }
         };
-        let item = self.body_machine(fn_kw, name, params, ret)?;
-        Ok(item)
+        self.body_machine(fn_kw, name, params, ret, receiver)
     }
 
     /// Parse one function body with an explicit open-block stack (R6:
@@ -470,6 +686,7 @@ impl<'s> Parser<'s> {
         name: Ident,
         params: Vec<Param>,
         ret: TypeAnn,
+        receiver: Receiver,
     ) -> Result<FnItem, Diagnostic> {
         let lb = self.expect_punct(P::LBrace, "`{`")?;
         let mut stack: Vec<OpenBlock> = vec![OpenBlock {
@@ -480,6 +697,7 @@ impl<'s> Parser<'s> {
                 name,
                 params,
                 ret,
+                receiver,
             },
         }];
         loop {
@@ -502,6 +720,7 @@ impl<'s> Parser<'s> {
                             name,
                             params,
                             ret,
+                            receiver,
                         } => {
                             debug_assert!(stack.is_empty());
                             let last = self.toks[self.pos - 1].span;
@@ -511,6 +730,8 @@ impl<'s> Parser<'s> {
                                 params,
                                 ret,
                                 body: block,
+                                receiver,
+                                owner: None,
                             });
                         }
                         BlockCont::IfThen { kw, cond } => {
@@ -606,7 +827,7 @@ impl<'s> Parser<'s> {
                 });
                 Ok(())
             }
-            Some(Tok::Kw(Kw::While)) if self.surface.is_scalar() => {
+            Some(Tok::Kw(Kw::While)) if self.surface.surface_is_scalar_or_wider() => {
                 // PLAN-767 §5.2.1: the scalar profile spells conditional
                 // loops `for cond { ... }`; `while` is rejected at the
                 // keyword token.
@@ -627,7 +848,7 @@ impl<'s> Parser<'s> {
                 });
                 Ok(())
             }
-            Some(Tok::Kw(Kw::For)) if self.surface.is_scalar() => {
+            Some(Tok::Kw(Kw::For)) if self.surface.surface_is_scalar_or_wider() => {
                 // Conditional for (PLAN-767 §5.2.1): reuses the while's
                 // AST shape — the condition is re-evaluated before every
                 // entry into the body, `continue` re-tests it, `break`
@@ -666,16 +887,37 @@ impl<'s> Parser<'s> {
                 self.push_stmt(stack, Stmt::Continue { span: t.span })
             }
             Some(Tok::Ident(_))
-                if matches!(self.peek2().map(|t| &t.tok), Some(Tok::Punct(P::Assign))) =>
+                if matches!(
+                    self.peek2().map(|t| &t.tok),
+                    Some(Tok::Punct(P::Assign)) | Some(Tok::Punct(P::Dot))
+                ) =>
             {
-                let name = self.expect_ident("local name")?;
+                let base = self.expect_ident("local name")?;
+                let mut path: Vec<Ident> = Vec::new();
+                while matches!(
+                    self.peek(),
+                    Some(Token {
+                        tok: Tok::Punct(P::Dot),
+                        ..
+                    })
+                ) {
+                    if !self.surface.is_record() {
+                        return Err(self.unsupported(
+                            "field access is not part of this source profile",
+                            self.peek().unwrap().span,
+                        ));
+                    }
+                    self.pos += 1;
+                    path.push(self.expect_ident("field name after `.`")?);
+                }
+                let target = AssignTarget { base, path };
                 self.expect_punct(P::Assign, "`=`")?;
                 let value = self.expr(false)?;
                 self.push_stmt(
                     stack,
                     Stmt::Assign {
-                        span: name.span.join(value.span),
-                        name,
+                        span: target.base.span.join(value.span),
+                        target,
                         value,
                     },
                 )
@@ -742,7 +984,10 @@ impl<'s> Parser<'s> {
             },
             _ => unreachable!("type_word called on non-type token"),
         };
-        TypeAnn { word, span: t.span }
+        TypeAnn {
+            kind: TypeRef::Builtin(word),
+            span: t.span,
+        }
     }
 
     fn is_type_word(tok: &Tok) -> bool {
@@ -750,6 +995,32 @@ impl<'s> Parser<'s> {
             Tok::Kw(Kw::Int) | Tok::Kw(Kw::I32) | Tok::Kw(Kw::Bool) => true,
             Tok::Ident(w) => w == "str" || w == "Str" || w == "char",
             _ => false,
+        }
+    }
+
+    /// Record-member field type (PLAN-771): a builtin word or a record
+    /// type name (resolved in later stages; forward references legal).
+    fn member_type(&mut self, fname: &Ident) -> Result<TypeAnn, Diagnostic> {
+        match self.peek().map(|t| t.tok.clone()) {
+            Some(t) if Self::is_type_word(&t) => Ok(self.type_word()),
+            Some(Tok::Ident(_)) if self.surface.is_record() => {
+                let t = self.bump();
+                let id = match &t.tok {
+                    Tok::Ident(n) => Ident {
+                        name: n.clone(),
+                        span: t.span,
+                    },
+                    _ => unreachable!(),
+                };
+                Ok(TypeAnn {
+                    kind: TypeRef::Record(id),
+                    span: t.span,
+                })
+            }
+            _ => Err(self.unsupported(
+                "field type annotation (`int`/`i32`/`bool` or a record type) is required",
+                fname.span,
+            )),
         }
     }
 
@@ -770,6 +1041,20 @@ impl<'s> Parser<'s> {
                 ))
             }
             Some(t) if Self::is_type_word(&t) => Ok(self.type_word()),
+            Some(Tok::Ident(_)) if self.surface.is_record() => {
+                let t = self.bump();
+                let id = match &t.tok {
+                    Tok::Ident(n) => Ident {
+                        name: n.clone(),
+                        span: t.span,
+                    },
+                    _ => unreachable!(),
+                };
+                Ok(TypeAnn {
+                    kind: TypeRef::Record(id),
+                    span: t.span,
+                })
+            }
             Some(Tok::Ident(_)) | Some(Tok::Reserved(_)) => {
                 let t = self.peek().unwrap();
                 Err(self.unsupported(
@@ -803,6 +1088,20 @@ impl<'s> Parser<'s> {
                 ))
             }
             Some(t) if Self::is_type_word(&t) => Ok(Some(self.type_word())),
+            Some(Tok::Ident(_)) if self.surface.is_record() => {
+                let t = self.bump();
+                let id = match &t.tok {
+                    Tok::Ident(n) => Ident {
+                        name: n.clone(),
+                        span: t.span,
+                    },
+                    _ => unreachable!(),
+                };
+                Ok(Some(TypeAnn {
+                    kind: TypeRef::Record(id),
+                    span: t.span,
+                }))
+            }
             Some(Tok::Ident(_)) | Some(Tok::Reserved(_)) => {
                 let t = self.peek().unwrap();
                 Err(self.unsupported(
@@ -912,7 +1211,7 @@ impl<'s> Parser<'s> {
     }
 
     fn prec_of(&self, p: P) -> Option<(BinOp, u8)> {
-        if self.surface.is_scalar() {
+        if self.surface.surface_is_scalar_or_wider() {
             Self::scalar_prec_of(p)
         } else {
             Self::core_prec_of(p)
@@ -923,7 +1222,7 @@ impl<'s> Parser<'s> {
     /// to give the `source.unsupported` (not plain syntax) rejection when
     /// the core surface meets scalar-only operators.
     fn op_of_other_surface(&self, p: P) -> bool {
-        if self.surface.is_scalar() {
+        if self.surface.surface_is_scalar_or_wider() {
             false
         } else {
             Self::scalar_prec_of(p).is_some() && Self::core_prec_of(p).is_none()
@@ -934,9 +1233,11 @@ impl<'s> Parser<'s> {
     /// i.e. newlines are whitespace and line checks are off. Unary frames
     /// are operators, not brackets.
     fn in_bracket(frames: &[Frame]) -> bool {
-        frames
-            .iter()
-            .any(|f| matches!(f, Frame::Op(OpFrame::Paren)) || matches!(f, Frame::Call(_)))
+        frames.iter().any(|f| {
+            matches!(f, Frame::Op(OpFrame::Paren))
+                || matches!(f, Frame::Call(_))
+                || matches!(f, Frame::Ctor(_))
+        })
     }
 
     /// True when a primary that is about to be parsed must share the line
@@ -1023,6 +1324,38 @@ impl<'s> Parser<'s> {
         cf.args.push(arg);
         cf.mark = vals.len();
         let _ = src;
+        Ok(())
+    }
+
+    /// Reduce and append the current constructor-field value into the
+    /// Ctor frame (mirrors `finish_arg` for named ctor fields — the label
+    /// is required there, so a missing one is a syntax error).
+    fn finish_ctor_field(frames: &mut Vec<Frame>, vals: &mut Vec<Expr>) -> Result<(), Diagnostic> {
+        while frames
+            .last()
+            .is_some_and(|f| matches!(f, Frame::Op(OpFrame::Bin { .. })))
+        {
+            Self::reduce_ops(frames, vals);
+        }
+        let Some(Frame::Ctor(cf)) = frames.last_mut() else {
+            unreachable!("finish_ctor_field with ctor frame on top");
+        };
+        let name = cf
+            .pending_name
+            .take()
+            .expect("ctor field requires a `name:` label");
+        if vals.len() <= cf.mark {
+            return Err(Diagnostic::new(
+                Stage::Text,
+                "source.syntax",
+                "expected expression after field name",
+                name.span,
+            ));
+        }
+        let value = vals.pop().expect("ctor field value");
+        let span = name.span.join(value.span);
+        cf.fields.push(NamedCtorField { name, value, span });
+        cf.mark = vals.len();
         Ok(())
     }
 
@@ -1124,7 +1457,7 @@ impl<'s> Parser<'s> {
                                     kind: ExprKind::IntLit((mag as i128 * -1) as i32),
                                 });
                             }
-                            _ if self.surface.is_scalar() => {
+                            _ if self.surface.surface_is_scalar_or_wider() => {
                                 // general unary minus: `-x`, `-(expr)`,
                                 // `--x` chains (right-associative via the
                                 // pending-unary frame discipline)
@@ -1183,7 +1516,7 @@ impl<'s> Parser<'s> {
                         });
                     }
                     Tok::Punct(P::Bang) => {
-                        if self.surface.is_scalar() {
+                        if self.surface.surface_is_scalar_or_wider() {
                             self.pos += 1;
                             self.last_line = line;
                             frames.push(Frame::Op(OpFrame::Unary(UnaryOp::Not)));
@@ -1193,13 +1526,29 @@ impl<'s> Parser<'s> {
                             self.unsupported("unary `!` is not part of this source profile", span)
                         );
                     }
-                    Tok::Punct(P::Plus) if self.surface.is_scalar() => {
+                    Tok::Punct(P::Plus) if self.surface.surface_is_scalar_or_wider() => {
                         // unary `+` stays excluded on the scalar surface;
                         // the core surface keeps its historical plain
                         // syntax rejection for a leading `+`
                         return Err(
                             self.unsupported("unary `+` is not part of this source profile", span)
                         );
+                    }
+                    Tok::Kw(Kw::Type) | Tok::Kw(Kw::Static) | Tok::Kw(Kw::Mut) => {
+                        // never value-forming on any profile (mut exists
+                        // only as a param prefix / `.mut` suffix on the
+                        // record surface)
+                        return Err(self.unsupported(
+                            format!(
+                                "`{}` is not a value in this source profile",
+                                match tok {
+                                    Tok::Kw(Kw::Type) => "type",
+                                    Tok::Kw(Kw::Static) => "static",
+                                    _ => "mut",
+                                }
+                            ),
+                            span,
+                        ));
                     }
                     Tok::Reserved(word) => {
                         return Err(self.unsupported(
@@ -1223,7 +1572,142 @@ impl<'s> Parser<'s> {
                         frames.push(Frame::Op(OpFrame::Paren));
                         continue 'outer;
                     }
+                    Tok::Punct(P::Dot) if self.surface.is_record() => {
+                        // PLAN-771: leading `.name` — implicit `self` in
+                        // method bodies (real parser's dot_item: the base is
+                        // Dot(Ident self, name)). Inside any bracket a call
+                        // form `.name(args)` opens a method frame on `self`.
+                        self.pos += 1;
+                        self.last_line = line;
+                        let Some(Token {
+                            tok: Tok::Ident(mname),
+                            span: mspan,
+                            line: mline,
+                        }) = self.peek().cloned()
+                        else {
+                            return Err(self.syntax(format!(
+                                "expected field or method name after `.`, found {}",
+                                self.describe_cur()
+                            )));
+                        };
+                        let is_call = matches!(
+                            self.peek2(),
+                            Some(t2) if t2.tok == Tok::Punct(P::LParen)
+                                && (Self::in_bracket(&frames) || t2.line == mline)
+                        );
+                        if is_call {
+                            let callee = Ident {
+                                name: mname.clone(),
+                                span: mspan,
+                            };
+                            self.pos += 2;
+                            self.last_line = self.toks[self.pos - 1].line;
+                            if matches!(
+                                self.peek(),
+                                Some(Token {
+                                    tok: Tok::Punct(P::RParen),
+                                    ..
+                                })
+                            ) {
+                                let close = self.bump();
+                                let recv = Expr {
+                                    span,
+                                    kind: ExprKind::Var(Ident {
+                                        name: "self".to_string(),
+                                        span,
+                                    }),
+                                };
+                                vals.push(Expr {
+                                    span: span.join(close.span),
+                                    kind: ExprKind::MethodCall {
+                                        recv: Box::new(recv),
+                                        name: callee,
+                                        args: Vec::new(),
+                                    },
+                                });
+                                continue 'outer;
+                            }
+                            let recv = Expr {
+                                span,
+                                kind: ExprKind::Var(Ident {
+                                    name: "self".to_string(),
+                                    span,
+                                }),
+                            };
+                            frames.push(Frame::Call(Box::new(CallFrame {
+                                callee,
+                                args: Vec::new(),
+                                mark: vals.len(),
+                                pending_name: None,
+                                method_recv: Some(Box::new(recv)),
+                            })));
+                            self.take_named_label(&mut frames)?;
+                            continue 'outer;
+                        }
+                        self.pos += 1;
+                        self.last_line = mline;
+                        vals.push(Expr {
+                            span: span.join(mspan),
+                            kind: ExprKind::Field {
+                                base: Box::new(Expr {
+                                    span,
+                                    kind: ExprKind::Var(Ident {
+                                        name: "self".to_string(),
+                                        span,
+                                    }),
+                                }),
+                                name: Ident {
+                                    name: mname,
+                                    span: mspan,
+                                },
+                            },
+                        });
+                    }
                     Tok::Ident(name) => {
+                        // PLAN-771: named constructor `Ty { field: v, ... }`
+                        // when `{` follows on the callee's line (or inside
+                        // brackets). Whether `name` really is a record type
+                        // is resolved later; the parse is purely syntactic.
+                        if self.surface.is_record()
+                            && matches!(
+                                self.peek2(),
+                                Some(t2) if t2.tok == Tok::Punct(P::LBrace)
+                                    && (Self::in_bracket(&frames) || t2.line == line)
+                            )
+                        {
+                            let ty = Ident {
+                                name: name.clone(),
+                                span,
+                            };
+                            self.pos += 2; // ident + `{`
+                            self.last_line = self.toks[self.pos - 1].line;
+                            // empty ctor `Ty { }`?
+                            if matches!(
+                                self.peek(),
+                                Some(Token {
+                                    tok: Tok::Punct(P::RBrace),
+                                    ..
+                                })
+                            ) {
+                                let close = self.bump();
+                                vals.push(Expr {
+                                    span: ty.span.join(close.span),
+                                    kind: ExprKind::CtorNamed {
+                                        ty,
+                                        fields: Vec::new(),
+                                    },
+                                });
+                                continue 'outer;
+                            }
+                            frames.push(Frame::Ctor(Box::new(CtorFrame {
+                                ty,
+                                fields: Vec::new(),
+                                mark: vals.len(),
+                                pending_name: None,
+                            })));
+                            self.take_named_label(&mut frames)?;
+                            continue 'outer;
+                        }
                         // call when `(` sits on the callee's line; inside
                         // brackets a next-line `(` is still a call (parens
                         // make newlines whitespace)
@@ -1300,6 +1784,124 @@ impl<'s> Parser<'s> {
                 // frame applies now, before any binary operator or closing
                 // bracket can claim the value (unary binds tightest).
                 Self::apply_unaries(&mut frames, &mut vals);
+                // PLAN-771: the dot postfix (field read / method call /
+                // `p.mut`) binds tighter than any binary operator; it is
+                // consumed here, before the operator table is consulted.
+                if self.surface.is_record()
+                    && matches!(
+                        self.peek(),
+                        Some(Token {
+                            tok: Tok::Punct(P::Dot),
+                            ..
+                        })
+                    )
+                {
+                    let dline = self.peek().unwrap().line;
+                    if !Self::in_bracket(&frames) && dline != self.last_line {
+                        return Err(
+                            self.syntax("unbracketed expression cannot continue across a newline")
+                        );
+                    }
+                    self.pos += 1;
+                    self.last_line = dline;
+                    match self.peek().cloned() {
+                        Some(Token {
+                            tok: Tok::Kw(Kw::Mut),
+                            span: mspan,
+                            ..
+                        }) => {
+                            // `p.mut` — the receiver must be a bare local
+                            self.pos += 1;
+                            let recv = vals.pop().expect("dot receiver");
+                            let name = match &recv.kind {
+                                ExprKind::Var(id) => id.clone(),
+                                _ => {
+                                    return Err(self.unsupported(
+                                        "`.mut` applies to a local variable",
+                                        recv.span.join(mspan),
+                                    ))
+                                }
+                            };
+                            vals.push(Expr {
+                                span: name.span.join(mspan),
+                                kind: ExprKind::MutArg { name },
+                            });
+                            continue;
+                        }
+                        Some(Token {
+                            tok: Tok::Ident(mname),
+                            span: mspan,
+                            line: mline,
+                        }) => {
+                            let is_call = matches!(
+                                self.peek2(),
+                                Some(t2) if t2.tok == Tok::Punct(P::LParen)
+                                    && (Self::in_bracket(&frames) || t2.line == mline)
+                            );
+                            if is_call {
+                                // `recv.name(args)` — a method-call frame
+                                // carrying the evaluated receiver
+                                let callee = Ident {
+                                    name: mname.clone(),
+                                    span: mspan,
+                                };
+                                self.pos += 2; // name + `(`
+                                self.last_line = self.toks[self.pos - 1].line;
+                                if matches!(
+                                    self.peek(),
+                                    Some(Token {
+                                        tok: Tok::Punct(P::RParen),
+                                        ..
+                                    })
+                                ) {
+                                    let close = self.bump();
+                                    let recv = vals.pop().expect("method receiver");
+                                    vals.push(Expr {
+                                        span: recv.span.join(close.span),
+                                        kind: ExprKind::MethodCall {
+                                            recv: Box::new(recv),
+                                            name: callee,
+                                            args: Vec::new(),
+                                        },
+                                    });
+                                    continue;
+                                }
+                                let recv = vals.pop().expect("method receiver");
+                                frames.push(Frame::Call(Box::new(CallFrame {
+                                    callee,
+                                    args: Vec::new(),
+                                    mark: vals.len(),
+                                    pending_name: None,
+                                    method_recv: Some(Box::new(recv)),
+                                })));
+                                self.take_named_label(&mut frames)?;
+                                continue 'outer;
+                            }
+                            // plain field read
+                            self.pos += 1;
+                            self.last_line = mline;
+                            let base = vals.pop().expect("field base");
+                            let joined = base.span.join(mspan);
+                            vals.push(Expr {
+                                span: joined,
+                                kind: ExprKind::Field {
+                                    base: Box::new(base),
+                                    name: Ident {
+                                        name: mname,
+                                        span: mspan,
+                                    },
+                                },
+                            });
+                            continue;
+                        }
+                        _ => {
+                            return Err(self.syntax(format!(
+                                "expected field or method name after `.`, found {}",
+                                self.describe_cur()
+                            )))
+                        }
+                    }
+                }
                 let Some(tok) = self.peek().cloned() else {
                     // EOF: reduce the current argument's operators first —
                     // with a Bin on top the pre-reduce checks used to skip
@@ -1525,6 +2127,59 @@ impl<'s> Parser<'s> {
                         return Err(self
                             .syntax(format!("expected operator, found {}", self.describe_cur())));
                     }
+                    Tok::Punct(P::RBrace) => {
+                        // PLAN-771: closes a named-constructor frame
+                        // (`Ty { a: 1,\n b: 2 }` — commas or newlines
+                        // separate fields; newlines end the previous field
+                        // expression exactly like the statement layer)
+                        while let Some(Frame::Op(OpFrame::Bin { .. })) = frames.last() {
+                            Self::reduce_once(&mut frames, &mut vals);
+                        }
+                        match frames.last() {
+                            Some(Frame::Ctor(_)) => {
+                                if let Some(Frame::Ctor(cf)) = frames.last() {
+                                    if vals.len() > cf.mark || cf.pending_name.is_some() {
+                                        Self::finish_ctor_field(&mut frames, &mut vals)?;
+                                    }
+                                }
+                                let Some(Frame::Ctor(cf)) = frames.pop() else {
+                                    unreachable!()
+                                };
+                                self.pos += 1;
+                                self.last_line = tok.line;
+                                vals.push(Expr {
+                                    span: cf.ty.span.join(tok.span),
+                                    kind: ExprKind::CtorNamed {
+                                        ty: cf.ty,
+                                        fields: cf.fields,
+                                    },
+                                });
+                                // continue: an operator or another `}` may follow
+                            }
+                            _ => {
+                                // no ctor frame: expression ends at `}`
+                                Self::reduce_ops(&mut frames, &mut vals);
+                                match frames.last() {
+                                    Some(Frame::Call(_)) => {
+                                        return Err(self.syntax("expected `,` or `)`"))
+                                    }
+                                    Some(Frame::Op(OpFrame::Paren)) => {
+                                        return Err(self.syntax("expected `)`"))
+                                    }
+                                    Some(_) => unreachable!(),
+                                    None => {}
+                                }
+                                break 'outer;
+                            }
+                        }
+                    }
+                    Tok::Punct(P::Comma) if matches!(frames.last(), Some(Frame::Ctor(_))) => {
+                        Self::finish_ctor_field(&mut frames, &mut vals)?;
+                        self.pos += 1;
+                        self.last_line = tok.line;
+                        self.take_named_label(&mut frames)?;
+                        continue 'outer; // next field value primary
+                    }
                     Tok::Punct(P::RParen) => {
                         // pending binary operators bind tighter than the
                         // closing bracket — apply them first
@@ -1561,6 +2216,17 @@ impl<'s> Parser<'s> {
                                 self.pos += 1;
                                 self.last_line = tok.line;
                                 match cf.method_recv {
+                                    Some(recv) if self.surface.is_record() => {
+                                        let span = cf.callee.span.join(tok.span);
+                                        vals.push(Expr {
+                                            span: recv.span.join(span),
+                                            kind: ExprKind::MethodCall {
+                                                recv,
+                                                name: cf.callee,
+                                                args: cf.args,
+                                            },
+                                        });
+                                    }
                                     Some(recv) => {
                                         let span = recv.span.join(tok.span);
                                         vals.push(Expr {
@@ -1610,6 +2276,20 @@ impl<'s> Parser<'s> {
                         return Err(self.syntax("expected operator, found `,`"));
                     }
                     _ => {
+                        // PLAN-771: inside a named ctor braces, a NEWLINE
+                        // separates fields exactly like a comma (the real
+                        // parser's ctor_node accepts both).
+                        if matches!(frames.last(), Some(Frame::Ctor(_)))
+                            && tok.line > self.last_line
+                        {
+                            if let Some(Frame::Ctor(cf)) = frames.last() {
+                                if vals.len() > cf.mark || cf.pending_name.is_some() {
+                                    Self::finish_ctor_field(&mut frames, &mut vals)?;
+                                }
+                            }
+                            self.take_named_label(&mut frames)?;
+                            continue 'outer; // next field value primary
+                        }
                         // not an operator: the expression ends (the statement
                         // layer handles separators). Reduce first; any frame
                         // left after the reduction is an unclosed call or
@@ -1653,8 +2333,14 @@ impl<'s> Parser<'s> {
         let name = name.clone();
         let span = *span;
         self.pos += 2;
-        if let Some(Frame::Call(cf)) = frames.last_mut() {
-            cf.pending_name = Some(Ident { name, span });
+        match frames.last_mut() {
+            Some(Frame::Call(cf)) => {
+                cf.pending_name = Some(Ident { name, span });
+            }
+            Some(Frame::Ctor(cf)) => {
+                cf.pending_name = Some(Ident { name, span });
+            }
+            _ => {}
         }
         Ok(())
     }

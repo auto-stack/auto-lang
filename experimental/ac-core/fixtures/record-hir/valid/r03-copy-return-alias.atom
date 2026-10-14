@@ -1,0 +1,159 @@
+// PLAN-771 R1 repair direct-HIR fixture (F-771-R1-01/04; V-02/V-07 HIR
+// legs that the review found were only covered through the source path):
+// nested record construction + value copy through a record-returning call
+// (aggregate param in, ABI-E out-slot return), preservation of the
+// original object, whole-local aliased self-assignment through a call
+// (`p = swap(p)` shape) and through a constructor whose written order
+// differs from declaration order (by-name binding + reads-before-writes
+// under aliasing), and nested field-path assignment whose RHS reads the
+// same root. Every failure branch has a DISTINCT exit code; success is 0.
+hir(schema: "auto.hir.record.draft", revision: 1u32, profile: "record-i32-draft") {
+    module m_r3 {
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_q record { fields: [{ name: v, type: t_i32 }] }
+            type t_p record { fields: [{ name: a, type: t_q }, { name: b, type: t_q }] }
+            type t_sig_swap function { params: [t_p]; result: t_p }
+            type t_sig_main function { params: []; result: t_i32 }
+        }
+        declarations {
+            function d_swap t_sig_swap { name: "r3_swap"; body: "b_swap" }
+            function d_main t_sig_main { name: "r3_main"; body: "b_main" }
+        }
+        bodies {
+            body b_swap {
+                owner: "d_swap"
+                entry: "k0"
+                locals {
+                    local l_p t_p { name: "p"; role: param; index: 0u32; mode: view }
+                }
+                expressions {
+                    expr e0 read_local { type: t_p; local: l_p }
+                    expr e0b read_local { type: t_p; local: l_p }
+                    expr e1 field_get { type: t_q; base: e0; path: [1u32] }
+                    expr e2 field_get { type: t_q; base: e0b; path: [0u32] }
+                    expr e3 record_ctor { type: t_p; record: t_p; field_args: [e1, e2]; ctor_bindings: [{ field: 0u32, arg: 0u32 }, { field: 1u32, arg: 1u32 }] }
+                }
+                blocks {
+                    block k0 { return(value: e3) }
+                }
+            }
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l_p t_p { name: "p"; role: binding; mutable: true }
+                    local l_q t_p { name: "q"; role: binding }
+                }
+                expressions {
+                    expr c1 constant { type: t_i32; value: 1i32 }
+                    expr c2 constant { type: t_i32; value: 2i32 }
+                    expr c0 constant { type: t_i32; value: 0i32 }
+                    expr c21 constant { type: t_i32; value: 21i32 }
+                    expr c22 constant { type: t_i32; value: 22i32 }
+                    expr c23 constant { type: t_i32; value: 23i32 }
+                    expr c24 constant { type: t_i32; value: 24i32 }
+                    expr c25 constant { type: t_i32; value: 25i32 }
+                    expr c26 constant { type: t_i32; value: 26i32 }
+                    expr c27 constant { type: t_i32; value: 27i32 }
+                    expr c28 constant { type: t_i32; value: 28i32 }
+                    expr c29 constant { type: t_i32; value: 29i32 }
+                    expr qa record_ctor { type: t_q; record: t_q; field_args: [c1]; ctor_bindings: [{ field: 0u32, arg: 0u32 }] }
+                    expr qb record_ctor { type: t_q; record: t_q; field_args: [c2]; ctor_bindings: [{ field: 0u32, arg: 0u32 }] }
+                    expr pc record_ctor { type: t_p; record: t_p; field_args: [qa, qb]; ctor_bindings: [{ field: 0u32, arg: 0u32 }, { field: 1u32, arg: 1u32 }] }
+                    expr ep0 read_local { type: t_p; local: l_p }
+                    expr epv0 borrow_view { type: t_p; base: ep0 }
+                    expr sv call { type: t_p; callee: d_swap; eval_args: [epv0]; bindings: [{ param: 0u32, arg: 0u32 }] }
+                    expr eq0 read_local { type: t_p; local: l_q }
+                    expr xq_a field_get { type: t_i32; base: eq0; path: [0u32, 0u32] }
+                    expr c2b constant { type: t_i32; value: 2i32 }
+                    expr x1 binary { type: t_bool; op: ne; lhs: xq_a; rhs: c2b }
+                    expr eq1 read_local { type: t_p; local: l_q }
+                    expr xq_b field_get { type: t_i32; base: eq1; path: [1u32, 0u32] }
+                    expr c1b constant { type: t_i32; value: 1i32 }
+                    expr x2 binary { type: t_bool; op: ne; lhs: xq_b; rhs: c1b }
+                    expr ep1 read_local { type: t_p; local: l_p }
+                    expr xp_a field_get { type: t_i32; base: ep1; path: [0u32, 0u32] }
+                    expr c1c constant { type: t_i32; value: 1i32 }
+                    expr x3 binary { type: t_bool; op: ne; lhs: xp_a; rhs: c1c }
+                    // whole-local aliased self-assignment through the call:
+                    // p = swap(p) — the out slot must not clobber the
+                    // argument storage while the callee reads it
+                    expr ep2 read_local { type: t_p; local: l_p }
+                    expr epv2 borrow_view { type: t_p; base: ep2 }
+                    expr sv2 call { type: t_p; callee: d_swap; eval_args: [epv2]; bindings: [{ param: 0u32, arg: 0u32 }] }
+                    expr ep3 read_local { type: t_p; local: l_p }
+                    expr y_a field_get { type: t_i32; base: ep3; path: [0u32, 0u32] }
+                    expr c2c constant { type: t_i32; value: 2i32 }
+                    expr x4 binary { type: t_bool; op: ne; lhs: y_a; rhs: c2c }
+                    expr ep4 read_local { type: t_p; local: l_p }
+                    expr y_b field_get { type: t_i32; base: ep4; path: [1u32, 0u32] }
+                    expr c1d constant { type: t_i32; value: 1i32 }
+                    expr x5 binary { type: t_bool; op: ne; lhs: y_b; rhs: c1d }
+                    // ctor self-assignment with WRITTEN order b-then-a:
+                    // reads (p.a, p.b) must all complete before any write
+                    // lands in p's storage; bindings map by field name
+                    expr ep5 read_local { type: t_p; local: l_p }
+                    expr rp_a field_get { type: t_q; base: ep5; path: [0u32] }
+                    expr ep6 read_local { type: t_p; local: l_p }
+                    expr rp_b field_get { type: t_q; base: ep6; path: [1u32] }
+                    expr ac record_ctor { type: t_p; record: t_p; field_args: [rp_a, rp_b]; ctor_bindings: [{ field: 1u32, arg: 0u32 }, { field: 0u32, arg: 1u32 }] }
+                    expr ep7 read_local { type: t_p; local: l_p }
+                    expr z_a field_get { type: t_i32; base: ep7; path: [0u32, 0u32] }
+                    expr c1e constant { type: t_i32; value: 1i32 }
+                    expr x6 binary { type: t_bool; op: ne; lhs: z_a; rhs: c1e }
+                    expr ep8 read_local { type: t_p; local: l_p }
+                    expr z_b field_get { type: t_i32; base: ep8; path: [1u32, 0u32] }
+                    expr c2d constant { type: t_i32; value: 2i32 }
+                    expr x7 binary { type: t_bool; op: ne; lhs: z_b; rhs: c2d }
+                    // nested field-path assignment whose RHS reads the same
+                    // root: p.a = Q { v: p.b.v }
+                    expr ep9 read_local { type: t_p; local: l_p }
+                    expr rv field_get { type: t_i32; base: ep9; path: [1u32, 0u32] }
+                    expr qc record_ctor { type: t_q; record: t_q; field_args: [rv]; ctor_bindings: [{ field: 0u32, arg: 0u32 }] }
+                    expr ep10 read_local { type: t_p; local: l_p }
+                    expr w_a field_get { type: t_i32; base: ep10; path: [0u32, 0u32] }
+                    expr c2e constant { type: t_i32; value: 2i32 }
+                    expr x8 binary { type: t_bool; op: ne; lhs: w_a; rhs: c2e }
+                    expr ep11 read_local { type: t_p; local: l_p }
+                    expr w_b field_get { type: t_i32; base: ep11; path: [1u32, 0u32] }
+                    expr c2f constant { type: t_i32; value: 2i32 }
+                    expr x9 binary { type: t_bool; op: ne; lhs: w_b; rhs: c2f }
+                }
+                places {
+                    place p_p local { local: l_p; type: t_p; access: mutable }
+                    place p_a field_path { local: l_p; type: t_q; access: mutable; path: [0u32] }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l_p, value: pc)
+                        let(local: l_q, value: sv)
+                        if(cond: x1, then: k1)
+                        if(cond: x2, then: k2)
+                        if(cond: x3, then: k3)
+                        assign(place: p_p, value: sv2)
+                        if(cond: x4, then: k4)
+                        if(cond: x5, then: k5)
+                        assign(place: p_p, value: ac)
+                        if(cond: x6, then: k6)
+                        if(cond: x7, then: k7)
+                        assign(place: p_a, value: qc)
+                        if(cond: x8, then: k8)
+                        if(cond: x9, then: k9)
+                        return(value: c0)
+                    }
+                    block k1 { return(value: c21) }
+                    block k2 { return(value: c22) }
+                    block k3 { return(value: c23) }
+                    block k4 { return(value: c24) }
+                    block k5 { return(value: c25) }
+                    block k6 { return(value: c26) }
+                    block k7 { return(value: c27) }
+                    block k8 { return(value: c28) }
+                    block k9 { return(value: c29) }
+                }
+            }
+        }
+    }
+}

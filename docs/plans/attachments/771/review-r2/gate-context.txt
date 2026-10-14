@@ -1,0 +1,15 @@
+git-head: 86f3a91a0cabfafede9b9b69579d368bdf3df522
+git-branch: plan-771-dev
+rustc 1.98.0 (88d9e12ae 2026-08-18)
+binary: rustc
+commit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea
+commit-date: 2026-08-18
+host: x86_64-pc-windows-msvc
+release: 1.98.0
+LLVM version: 22.1.8
+
+cargo 1.98.0 (797e8a9bc 2026-08-05)
+
+binary: D:\autostack\.wt\lang-771\auto-lang\experimental\ac-core\target\debug\auto-ac-prototype.exe
+binary-sha256: 7ae040ef7ef04e46ae15a9da0f5f1748d8427a47a08f66f9e3e7d015d3482a70
+support-lib-sha256: 691a2b5b343b5d451df3fece73945ddbb5f9719ff408364921938c4255900a2d

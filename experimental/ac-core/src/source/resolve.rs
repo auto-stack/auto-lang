@@ -29,6 +29,9 @@ pub enum VT {
     StrOwned,
     /// Unicode scalar `char` (PLAN-770).
     Char,
+    /// Nominal record type by index into [`ResolvedProgram::records`]
+    /// (PLAN-771). Two records with identical shapes are distinct types.
+    Rec(usize),
 }
 
 impl VT {
@@ -39,6 +42,7 @@ impl VT {
             VT::Str => "str",
             VT::StrOwned => "Str",
             VT::Char => "char",
+            VT::Rec(_) => "record",
         }
     }
 
@@ -192,6 +196,38 @@ pub enum RExprKind {
         op: UnaryOp,
         operand: Box<ResolvedExpr>,
     },
+    // -- record profile (PLAN-771) --
+    /// Positional construction `Pair(1, true)` — args in source order,
+    /// bound to declaration fields by position.
+    CtorPos {
+        rec: usize,
+        args: Vec<ResolvedArg>,
+    },
+    /// Named construction — field values in SOURCE order with their field
+    /// names (the adapter maps to declaration indices; evaluation order is
+    /// the written order, never declaration order).
+    CtorNamed {
+        rec: usize,
+        fields: Vec<(String, ResolvedExpr)>,
+    },
+    /// Field read through a resolved path: each segment is
+    /// (owner record index, field declaration index).
+    FieldGet {
+        base: Box<ResolvedExpr>,
+        path: Vec<(usize, usize)>,
+    },
+    /// Method call: `recv` is `None` for static methods (the receiver was
+    /// a bare type name). Args exclude the receiver for instance methods —
+    /// the adapter re-attaches it as argument 0 (borrowed view).
+    MethodCall {
+        fn_index: usize,
+        recv: Option<Box<ResolvedExpr>>,
+        args: Vec<ResolvedArg>,
+    },
+    /// `p.mut` — exclusive borrow argument (record profile).
+    BorrowMut {
+        local: LocalRef,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -224,7 +260,47 @@ impl Drop for ResolvedExpr {
                 let o = std::mem::replace(operand.as_mut(), dummy());
                 stack.push(o);
             }
-            _ => {}
+            // F-771-R1/V-09: the record profile adds DEEP non-operator
+            // spines (nested `T { r: T { r: .. } }` ctors, field paths,
+            // method/call args). Every boxed or Vec-held child must be
+            // detached here or that level falls back to recursive drop
+            // glue and a rejected malformed partial overflows the stack.
+            RExprKind::FieldGet { base, .. } => {
+                let b = std::mem::replace(base.as_mut(), dummy());
+                stack.push(b);
+            }
+            RExprKind::CallFn { args, .. } | RExprKind::CtorPos { args, .. } => {
+                for a in args.iter_mut() {
+                    let v = std::mem::replace(&mut a.value, dummy());
+                    stack.push(v);
+                }
+            }
+            RExprKind::CtorNamed { fields, .. } => {
+                for (_, v) in fields.iter_mut() {
+                    let e = std::mem::replace(v, dummy());
+                    stack.push(e);
+                }
+            }
+            RExprKind::MethodCall { recv, args, .. } => {
+                if let Some(r) = recv.as_mut() {
+                    let e = std::mem::replace(r.as_mut(), dummy());
+                    stack.push(e);
+                }
+                for a in args.iter_mut() {
+                    let v = std::mem::replace(&mut a.value, dummy());
+                    stack.push(v);
+                }
+            }
+            RExprKind::IntLit(_)
+            | RExprKind::BoolLit(_)
+            | RExprKind::StrLit(_)
+            | RExprKind::CharLit(_)
+            | RExprKind::TypeWord(_)
+            | RExprKind::Method { .. }
+            | RExprKind::Move { .. }
+            | RExprKind::ReadLocal(_)
+            | RExprKind::CallIntrinsic { .. }
+            | RExprKind::BorrowMut { .. } => {}
         };
         let mut stack: Vec<ResolvedExpr> = Vec::new();
         detach(self, &mut stack);
@@ -243,6 +319,9 @@ pub enum RStmt {
     },
     Assign {
         local: LocalRef,
+        /// PLAN-771: field path rooted at the local — (record index, field
+        /// declaration index) per segment; empty = whole-local assign.
+        path: Vec<(usize, usize)>,
         value: ResolvedExpr,
         span: Span,
     },
@@ -325,6 +404,8 @@ pub struct ResolvedFn {
     pub item_span: Span,
     pub param_names: Vec<String>,
     pub params: Vec<VT>,
+    /// PLAN-771: per-param explicit `mut` mode (false everywhere else).
+    pub param_modes: Vec<bool>,
     pub result: VT,
     pub locals: Vec<LocalDecl>,
     pub body: RBlock,
@@ -332,10 +413,47 @@ pub struct ResolvedFn {
     pub loop_count: usize,
     /// Trace intrinsic symbols referenced by this function's body.
     pub used_intrinsics: BTreeSet<&'static str>,
+    /// PLAN-771: receiver shape — Free for top-level functions, Static /
+    /// View for methods (View's params[0] is the implicit `self` view).
+    pub receiver: ast::Receiver,
+    /// Owning record index for methods.
+    pub owner_rec: Option<usize>,
 }
 
 pub struct ResolvedProgram {
     pub fns: Vec<ResolvedFn>,
+    /// Nominal record types in declaration order (PLAN-771). `VT::Rec(i)`
+    /// indexes here.
+    pub records: Vec<ResolvedRecord>,
+}
+
+/// One resolved record type: fields in declaration order with their value
+/// types; methods with their resolved fn indexes.
+#[derive(Clone, Debug)]
+pub struct ResolvedRecord {
+    pub name: String,
+    pub name_span: Span,
+    pub fields: Vec<ResolvedField>,
+    pub methods: Vec<ResolvedMethod>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ResolvedField {
+    pub name: String,
+    pub vt: VT,
+    pub span: Span,
+}
+
+/// A type-bound method (PLAN-771): the resolved fn carries the body; this
+/// entry is the type-side view (receiver shape + param modes).
+#[derive(Clone, Debug)]
+pub struct ResolvedMethod {
+    pub name: String,
+    /// static (no receiver) or readonly view (receiver = params[0]).
+    pub is_static: bool,
+    /// Index into `ResolvedProgram::fns`.
+    pub fn_index: usize,
+    pub span: Span,
 }
 
 /// Parameter position the argument at `idx` binds to: positional arguments
@@ -384,10 +502,92 @@ pub fn resolve_with(
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     let mut diags = Vec::new();
 
+    // Pass 0 (PLAN-771): record types pre-register FIRST — field types may
+    // reference records declared later (forward references are legal; the
+    // containment graph closes across the whole module).
+    let mut records: Vec<ResolvedRecord> = Vec::new();
+    let mut rec_index: BTreeMap<String, usize> = BTreeMap::new();
+    for item in &program.items {
+        if let ast::Item::Type(t) = item {
+            if rec_index.contains_key(&t.name.name) {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.duplicate",
+                    format!("type `{}` is declared more than once", t.name.name),
+                    t.name.span,
+                ));
+                continue;
+            }
+            rec_index.insert(t.name.name.clone(), records.len());
+            records.push(ResolvedRecord {
+                name: t.name.name.clone(),
+                name_span: t.name.span,
+                fields: Vec::new(),
+                methods: Vec::new(),
+            });
+        }
+    }
+    // Fill field shapes (all record names are known now).
+    for item in &program.items {
+        if let ast::Item::Type(t) = item {
+            let Some(&ri) = rec_index.get(&t.name.name) else {
+                continue;
+            };
+            let mut seen: BTreeSet<&str> = BTreeSet::new();
+            for f in &t.fields {
+                if !seen.insert(f.name.name.as_str()) {
+                    diags.push(Diagnostic::new(
+                        Stage::Bind,
+                        "source.duplicate",
+                        format!(
+                            "field `{}` is declared more than once in type `{}`",
+                            f.name.name, t.name.name
+                        ),
+                        f.name.span,
+                    ));
+                }
+                let vt = vt_of_ann(&f.ty, &rec_index, &mut diags);
+                records[ri].fields.push(ResolvedField {
+                    name: f.name.name.clone(),
+                    vt,
+                    span: f.name.span,
+                });
+            }
+        }
+    }
+
     // Pass 1: signature pre-registration with duplicate detection.
     let mut sigs: BTreeMap<String, FnSig> = BTreeMap::new();
-    for (i, f) in program.items.iter().enumerate() {
-        if sigs.contains_key(&f.name.name) {
+    let mut fn_receiver: Vec<ast::Receiver> = Vec::new();
+    let mut fn_owner: Vec<Option<usize>> = Vec::new();
+    let mut flat: Vec<&ast::FnItem> = Vec::new();
+    for item in &program.items {
+        match item {
+            ast::Item::Fn(f) => {
+                fn_receiver.push(f.receiver);
+                fn_owner.push(None);
+                flat.push(f);
+            }
+            ast::Item::Type(t) => {
+                for m in &t.methods {
+                    fn_receiver.push(m.receiver);
+                    fn_owner.push(rec_index.get(&t.name.name).copied());
+                    flat.push(m);
+                }
+            }
+        }
+    }
+    for (i, f) in flat.iter().enumerate() {
+        let _ = &f;
+        let owner_ty = fn_owner[i]
+            .map(|oi| records[oi].name.clone())
+            .unwrap_or_default();
+        let sig_key = if fn_receiver[i] == ast::Receiver::Free {
+            f.name.name.clone()
+        } else {
+            format!("{}::{}", owner_ty, f.name.name)
+        };
+        if sigs.contains_key(&sig_key) {
             diags.push(Diagnostic::new(
                 Stage::Bind,
                 "source.duplicate",
@@ -413,27 +613,84 @@ pub fn resolve_with(
                 ));
             }
         }
+        // PLAN-771: a view receiver occupies param 0; the visible param
+        // names/types below are the written ones.
+        let recv = fn_receiver[i];
+        let mut param_names: Vec<String> = Vec::new();
+        let mut params: Vec<VT> = Vec::new();
+        if recv == ast::Receiver::View {
+            param_names.push("self".to_string());
+            params.push(VT::Rec(fn_owner[i].unwrap_or(usize::MAX)));
+        }
+        for p in &f.params {
+            param_names.push(p.name.name.clone());
+            params.push(vt_of_ann(&p.ty, &rec_index, &mut diags));
+        }
+        let result = vt_of_ann(&f.ret, &rec_index, &mut diags);
         sigs.insert(
-            f.name.name.clone(),
+            sig_key.clone(),
             FnSig {
-                param_names: f.params.iter().map(|p| p.name.name.clone()).collect(),
-                params: f.params.iter().map(|p| vt_of_word(p.ty.word)).collect(),
-                result: vt_of_word(f.ret.word),
+                param_names,
+                params,
+                result,
                 index: i,
             },
         );
+        // method-side registry on the owning record
+        if let Some(oi) = fn_owner[i] {
+            records[oi].methods.push(ResolvedMethod {
+                name: f.name.name.clone(),
+                is_static: recv == ast::Receiver::Static,
+                fn_index: i,
+                span: f.span,
+            });
+        }
     }
 
     // Pass 2: per-function body resolution.
     let mut fns = Vec::new();
-    for f in &program.items {
-        fns.push(resolve_fn(f, &sigs, trace_enabled, &mut diags));
+    for (i, f) in flat.iter().enumerate() {
+        fns.push(resolve_fn(
+            f,
+            &sigs,
+            trace_enabled,
+            &mut diags,
+            fn_receiver[i],
+            fn_owner[i],
+            &records,
+            &rec_index,
+        ));
     }
 
     if diags.is_empty() {
-        Ok(ResolvedProgram { fns })
+        Ok(ResolvedProgram { fns, records })
     } else {
         Err(diags)
+    }
+}
+
+/// Value type of a type annotation (PLAN-771): builtin words map directly;
+/// record names resolve through the pre-registered record index (unknown
+/// names are a bind-level error pointing at the annotation).
+fn vt_of_ann(
+    ann: &ast::TypeAnn,
+    rec_index: &BTreeMap<String, usize>,
+    diags: &mut Vec<Diagnostic>,
+) -> VT {
+    match &ann.kind {
+        ast::TypeRef::Builtin(w) => vt_of_word(*w),
+        ast::TypeRef::Record(id) => match rec_index.get(&id.name) {
+            Some(&i) => VT::Rec(i),
+            None => {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.undefined",
+                    format!("no record type named `{}` in this module", id.name),
+                    id.span,
+                ));
+                VT::I32
+            }
+        },
     }
 }
 
@@ -447,6 +704,9 @@ struct FnResolver<'a> {
     diags: &'a mut Vec<Diagnostic>,
     locals: Vec<LocalDecl>,
     scopes: Vec<Scope>,
+    /// PLAN-771: the module's record table (read-only here).
+    records: &'a [ResolvedRecord],
+    rec_index: &'a BTreeMap<String, usize>,
     /// Every local name declared anywhere in this function (any scope), to
     /// distinguish "never declared" from "declared in a scope that ended".
     declared_names: BTreeSet<String>,
@@ -462,7 +722,12 @@ fn resolve_fn(
     sigs: &BTreeMap<String, FnSig>,
     trace_enabled: bool,
     diags: &mut Vec<Diagnostic>,
+    receiver: ast::Receiver,
+    owner_rec: Option<usize>,
+    records: &[ResolvedRecord],
+    rec_index: &BTreeMap<String, usize>,
 ) -> ResolvedFn {
+    let fn_result = vt_of_ann(&f.ret, &rec_index, diags);
     let mut r = FnResolver {
         sigs,
         trace_enabled,
@@ -472,39 +737,120 @@ fn resolve_fn(
             names: BTreeMap::new(),
         }],
         declared_names: BTreeSet::new(),
-        fn_result: vt_of_word(f.ret.word),
+        fn_result,
         loop_stack: Vec::new(),
         loop_count: 0,
         used_intrinsics: BTreeSet::new(),
+        records,
+        rec_index,
     };
-    // Params live in the function's outermost scope.
+    let mut param_names: Vec<String> = Vec::new();
+    let mut params: Vec<VT> = Vec::new();
+    let mut param_modes: Vec<bool> = Vec::new();
+    // Params live in the function's outermost scope. A view receiver is
+    // the implicit `self` param 0 (PLAN-771 §5.3).
+    if receiver == ast::Receiver::View {
+        let ri = owner_rec.unwrap_or(usize::MAX);
+        let lref = LocalRef(r.locals.len());
+        r.locals.push(LocalDecl {
+            name: "self".to_string(),
+            vt: VT::Rec(ri),
+            mutable: false,
+            is_param: true,
+            param_index: Some(0),
+            mode: super::ast::ParamMode::Default,
+            span: f.name.span,
+        });
+        r.scopes[0].names.insert("self".to_string(), lref);
+        r.declared_names.insert("self".to_string());
+        param_names.push("self".to_string());
+        params.push(VT::Rec(ri));
+        param_modes.push(false);
+    }
     for (i, p) in f.params.iter().enumerate() {
+        if rec_index.contains_key(&p.name.name) {
+            r.bind_err(
+                "source.duplicate",
+                format!(
+                    "parameter `{}` shadows the record type of the same name; rename the parameter",
+                    p.name.name
+                ),
+                p.name.span,
+            );
+        }
+        let vt = vt_of_ann(&p.ty, rec_index, &mut Vec::new());
+        // mut mode is meaningful for record params (774 D-04) AND text
+        // `mut str`/`mut Str` exclusive borrows (PLAN-770); scalar params
+        // are by value on every profile
+        if p.mode == ast::ParamMode::Mut
+            && !matches!(vt, VT::Rec(_) | VT::Str | VT::StrOwned)
+        {
+            r.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "`mut` parameter `{}` requires a record or text type; i32/bool params are passed by value",
+                    p.name.name
+                ),
+                p.span,
+            );
+        }
         let lref = LocalRef(r.locals.len());
         r.locals.push(LocalDecl {
             name: p.name.name.clone(),
-            vt: vt_of_word(p.ty.word),
-            mutable: false,
+            vt,
+            mutable: p.mode == ast::ParamMode::Mut,
             is_param: true,
             mode: p.mode,
-            param_index: Some(i as u32),
+            param_index: Some(
+                (i + if receiver == ast::Receiver::View {
+                    1
+                } else {
+                    0
+                }) as u32,
+            ),
             span: p.span,
         });
         r.scopes[0].names.insert(p.name.name.clone(), lref);
         r.declared_names.insert(p.name.name.clone());
+        param_names.push(p.name.name.clone());
+        params.push(vt);
+        param_modes.push(p.mode == ast::ParamMode::Mut);
     }
     let body = r.resolve_body(&f.body);
-    let sig = &sigs[&f.name.name];
+    let sig_key = if receiver == ast::Receiver::Free {
+        f.name.name.clone()
+    } else {
+        format!(
+            "{}::{}",
+            owner_rec
+                .map(|oi| records[oi].name.clone())
+                .unwrap_or_default(),
+            f.name.name
+        )
+    };
+    let sig = sigs.get(&sig_key);
     ResolvedFn {
         name: f.name.name.clone(),
         name_span: f.name.span,
         item_span: f.span,
-        param_names: sig.param_names.clone(),
-        params: f.params.iter().map(|p| vt_of_word(p.ty.word)).collect(),
-        result: vt_of_word(f.ret.word),
+        param_names: if receiver == ast::Receiver::View {
+            param_names
+        } else {
+            sig.map(|g| g.param_names.clone()).unwrap_or(param_names)
+        },
+        params: if receiver == ast::Receiver::View {
+            params
+        } else {
+            sig.map(|g| g.params.clone()).unwrap_or(params)
+        },
+        param_modes,
+        result: sig.map(|g| g.result).unwrap_or(VT::I32),
         locals: r.locals,
         body,
         loop_count: r.loop_count,
         used_intrinsics: r.used_intrinsics,
+        receiver,
+        owner_rec,
     }
 }
 
@@ -669,7 +1015,7 @@ impl<'a> FnResolver<'a> {
                     // RHS resolves in the pre-declaration environment.
                     let mut value = self.expr_iterative(value);
                     let vt = match ann {
-                        Some(a) => vt_of_word(a.word),
+                        Some(a) => vt_of_ann(a, self.rec_index, &mut Vec::new()),
                         None => value.vt,
                     };
                     retag_literal(&mut value, vt);
@@ -678,6 +1024,18 @@ impl<'a> FnResolver<'a> {
                             "source.duplicate",
                             format!(
                                 "local `{}` is declared more than once in this block",
+                                name.name
+                            ),
+                            name.span.join(value.span),
+                        );
+                    }
+                    // PLAN-771 V-08: a local must not shadow a record type
+                    // name (type positions stay unambiguous)
+                    if self.rec_index.contains_key(&name.name) {
+                        self.bind_err(
+                            "source.duplicate",
+                            format!(
+                                "local `{}` shadows the record type of the same name; rename the local",
                                 name.name
                             ),
                             name.span.join(value.span),
@@ -709,36 +1067,87 @@ impl<'a> FnResolver<'a> {
                             span: *span,
                         });
                 }
-                Stmt::Assign { name, value, span } => {
+                Stmt::Assign {
+                    target,
+                    value,
+                    span,
+                } => {
                     let value = self.expr_iterative(value);
                     // Immutability itself is re-checked by the semantic verifier
                     // on the emitted place/local pair (verify.immutable-write);
                     // here only resolution failures are reported.
-                    let rstmt = match self.lookup(&name.name) {
-                        Some(l) => RStmt::Assign {
-                            local: l,
-                            value,
-                            span: *span,
-                        },
+                    let rstmt = match self.lookup(&target.base.name) {
+                        Some(l) => {
+                            // resolve the field path segment by segment
+                            // against the actual owner records
+                            let mut path: Vec<(usize, usize)> = Vec::new();
+                            let mut cur = self.locals[l.0].vt;
+                            let mut ok = true;
+                            for seg in &target.path {
+                                let VT::Rec(ri) = cur else {
+                                    self.bind_err(
+                                        "source.type-mismatch",
+                                        format!(
+                                            "`{}` has type `{}`; field paths continue through records only",
+                                            seg.name,
+                                            cur.as_str()
+                                        ),
+                                        seg.span,
+                                    );
+                                    ok = false;
+                                    break;
+                                };
+                                match self.records[ri]
+                                    .fields
+                                    .iter()
+                                    .position(|fl| fl.name == seg.name)
+                                {
+                                    Some(fi) => {
+                                        cur = self.records[ri].fields[fi].vt;
+                                        path.push((ri, fi));
+                                    }
+                                    None => {
+                                        self.bind_err(
+                                            "source.undefined",
+                                            format!(
+                                                "record `{}` has no field named `{}`",
+                                                self.records[ri].name, seg.name
+                                            ),
+                                            seg.span,
+                                        );
+                                        ok = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            let _ = ok;
+                            RStmt::Assign {
+                                local: l,
+                                path,
+                                value,
+                                span: *span,
+                            }
+                        }
                         None => {
-                            if self.sigs.contains_key(&name.name) {
+                            if self.sigs.contains_key(&target.base.name) {
                                 self.bind_err(
                                     "source.undefined",
                                     format!(
                                         "cannot assign to `{}`: functions are not assignable locals",
-                                        name.name
+                                        target.base.name
                                     ),
-                                    name.span,
+                                    target.base.span,
                                 );
                             } else {
                                 self.bind_err(
                                     "source.undefined",
-                                    format!("no local named `{}` in scope", name.name),
-                                    name.span,
+                                    format!("no local named `{}` in scope", target.base.name),
+                                    target.base.span,
                                 );
                             }
                             RStmt::Assign {
                                 local: LocalRef(usize::MAX),
+                                path: Vec::new(),
                                 value,
                                 span: *span,
                             }
@@ -929,7 +1338,589 @@ impl<'a> FnResolver<'a> {
             // (R3-QA-02).
             ExprKind::Binary { .. } => unreachable!("handled by expr_iterative"),
             ExprKind::Unary { .. } => unreachable!("handled by expr_iterative"),
+            // -- record profile (PLAN-771): Field/MethodCall carry a child
+            // expression and are handled by the iterative walk like Unary;
+            // the remaining kinds are true leaves here. --
+            ExprKind::Field { .. } => unreachable!("handled by expr_iterative"),
+            ExprKind::MethodCall { .. } => unreachable!("handled by expr_iterative"),
+            ExprKind::CtorNamed { .. } => {
+                unreachable!("named ctors resolve through the iterative walk")
+            }
+            ExprKind::MutArg { name } => match self.lookup(&name.name) {
+                Some(l) => {
+                    let vt = self.locals[l.0].vt;
+                    if !matches!(vt, VT::Rec(_)) {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "`.mut` requires a record-typed local, `{}` is `{}`",
+                                name.name,
+                                vt.as_str()
+                            ),
+                            e.span,
+                        );
+                    }
+                    ResolvedExpr {
+                        span: e.span,
+                        vt,
+                        kind: RExprKind::BorrowMut { local: l },
+                    }
+                }
+                None => {
+                    self.bind_err(
+                        "source.undefined",
+                        format!("no local named `{}` in scope", name.name),
+                        name.span,
+                    );
+                    ResolvedExpr {
+                        span: e.span,
+                        vt: VT::I32,
+                        kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                    }
+                }
+            },
         }
+    }
+
+    /// Positional construction `Pair(1, true)` (PLAN-771 §5.2; reached from
+    /// `resolve_call` once the callee name resolves to a record — the
+    /// parser cannot tell a ctor from a call without the symbol table).
+    /// Argument order IS declaration order here, so eval order matches the
+    /// written order trivially; arity and nominal field types are checked
+    /// inline (mirroring the named form).
+    fn ctor_positional(
+        &mut self,
+        ri: usize,
+        ty: &ast::Ident,
+        rargs: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        let desc = |t: VT, records: &[ResolvedRecord]| match t {
+            VT::Rec(i) => match records.get(i) {
+                Some(r) => format!("record `{}`", r.name),
+                None => "record".to_string(),
+            },
+            other => other.as_str().to_string(),
+        };
+        if rargs.iter().any(|a| a.name.is_some()) {
+            self.bind_err(
+                "source.argument",
+                "positional construction takes positional arguments only; named construction uses `Type { field: value }`".to_string(),
+                span,
+            );
+        }
+        let fields = &self.records[ri].fields;
+        if rargs.len() != fields.len() {
+            self.bind_err(
+                "source.argument",
+                format!(
+                    "`{}` has {} fields; positional construction takes exactly that many arguments",
+                    ty.name,
+                    fields.len()
+                ),
+                span,
+            );
+        }
+        for (i, a) in rargs.iter().enumerate() {
+            let Some(want) = fields.get(i).map(|f| f.vt) else {
+                continue;
+            };
+            if a.value.vt != want {
+                // nominal records name both sides (identical shapes still
+                // mismatch — PLAN-771 §5.1)
+                self.bind_err(
+                    "source.type-mismatch",
+                    format!(
+                        "argument {} initializes field `{}` of `{}`, which has type {}, found {}",
+                        i + 1,
+                        fields[i].name,
+                        ty.name,
+                        desc(want, self.records),
+                        desc(a.value.vt, self.records)
+                    ),
+                    a.value.span,
+                );
+            }
+        }
+        ResolvedExpr {
+            span,
+            vt: VT::Rec(ri),
+            kind: RExprKind::CtorPos {
+                rec: ri,
+                args: rargs,
+            },
+        }
+    }
+
+    /// Named construction `Pair { left: 1, right: true }` (PLAN-771):
+    /// field values keep SOURCE order; names map to declaration fields
+    /// (completeness/duplicates checked here, types in typecheck).
+    /// F-771-R1/V-09: takes PRE-RESOLVED field values — the iterative walk
+    /// resolves every field value as its own subtask, so a nested
+    /// `T { r: T { r: ... } }` chain never recurses through
+    /// ctor_named/expr_iterative frames.
+    fn ctor_named_out(
+        &mut self,
+        ty: &ast::Ident,
+        values: Vec<(ast::Ident, Span, ResolvedExpr)>,
+        span: Span,
+    ) -> ResolvedExpr {
+        let Some(&ri) = self.rec_index.get(&ty.name) else {
+            self.bind_err(
+                "source.undefined",
+                format!("no record type named `{}` in this module", ty.name),
+                ty.span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+            };
+        };
+        let mut seen: BTreeSet<String> = BTreeSet::new();
+        let mut resolved: Vec<(String, ResolvedExpr)> = Vec::new();
+        for (name, fspan, v) in values {
+            if !seen.insert(name.name.clone()) {
+                self.bind_err(
+                    "source.duplicate",
+                    format!("field `{}` is initialized more than once", name.name),
+                    name.span,
+                );
+            }
+            match self.records[ri]
+                .fields
+                .iter()
+                .position(|fl| fl.name == name.name)
+            {
+                Some(fi) => {
+                    let want = self.records[ri].fields[fi].vt;
+                    if v.vt != want {
+                        // nominal records name both sides (identical shapes
+                        // still mismatch — PLAN-771 §5.1)
+                        let desc = |t: VT| match t {
+                            VT::Rec(i) => match self.records.get(i) {
+                                Some(r) => format!("record `{}`", r.name),
+                                None => "record".to_string(),
+                            },
+                            other => other.as_str().to_string(),
+                        };
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "field `{}` of `{}` has type {}, found {}",
+                                name.name,
+                                ty.name,
+                                desc(want),
+                                desc(v.vt)
+                            ),
+                            fspan,
+                        );
+                    }
+                    resolved.push((name.name.clone(), v));
+                }
+                None => {
+                    self.bind_err(
+                        "source.undefined",
+                        format!("record `{}` has no field named `{}`", ty.name, name.name),
+                        name.span,
+                    );
+                }
+            }
+        }
+        if seen.len() != self.records[ri].fields.len() {
+            let missing: Vec<String> = self.records[ri]
+                .fields
+                .iter()
+                .filter(|fl| !seen.contains(&fl.name))
+                .map(|fl| fl.name.clone())
+                .collect();
+            self.bind_err(
+                "source.argument",
+                format!(
+                    "construction of `{}` must initialize every field exactly once; missing: {}",
+                    ty.name,
+                    missing.join(", ")
+                ),
+                span,
+            );
+        }
+        ResolvedExpr {
+            span,
+            vt: VT::Rec(ri),
+            kind: RExprKind::CtorNamed {
+                rec: ri,
+                fields: resolved,
+            },
+        }
+    }
+
+    /// Method call `recv.name(args)` (PLAN-771): a bare record type name as
+    /// the receiver selects a static method; a record-typed value selects
+    /// an instance method (readonly receiver view).
+    /// Method resolution from an already-resolved receiver (`None` = a
+    /// pre-classified static call whose receiver was a bare type name).
+    fn method_call_out(
+        &mut self,
+        recv: Option<Box<ResolvedExpr>>,
+        name: &ast::Ident,
+        rargs: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        if let Some(rrecv) = recv {
+            let VT::Rec(ri) = rrecv.vt else {
+                self.bind_err(
+                    "source.type-mismatch",
+                    format!(
+                        "method calls require a record-typed receiver, found `{}`",
+                        rrecv.vt.as_str()
+                    ),
+                    rrecv.span,
+                );
+                return ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                };
+            };
+            return self.instance_or_static(Some(rrecv), ri, name, rargs, span);
+        }
+        // static: no receiver expression was evaluated — the type name was
+        // consumed at classification time; recover it from the fn index of
+        // any record declaring `name` as static is ambiguous, so static
+        // calls carry the type via the classification path instead: this
+        // arm only fires for a `None` slot that was classified static.
+        // The classification stored nothing, so treat as unreachable-safe:
+        // look the method up across all records (single definition per
+        // name+static in well-formed modules; duplicates were reported).
+        for rec in self.records.iter() {
+            if let Some(m) = rec
+                .methods
+                .iter()
+                .find(|m| m.name == name.name && m.is_static)
+            {
+                let sig_params = self.method_sig_params(m.fn_index, 0);
+                self.check_args(
+                    &name.name,
+                    &self.method_sig_names(m.fn_index, 0),
+                    &sig_params,
+                    &rargs,
+                    span,
+                );
+                return ResolvedExpr {
+                    span,
+                    vt: self.method_sig_result(m.fn_index),
+                    kind: RExprKind::MethodCall {
+                        fn_index: m.fn_index,
+                        recv: None,
+                        args: rargs,
+                    },
+                };
+            }
+        }
+        // distinguish "no such method at all" from "exists but is an
+        // instance method" (V-08: exact resolution diagnostics)
+        if self.records.iter().any(|rec| {
+            rec.methods
+                .iter()
+                .any(|m| m.name == name.name && !m.is_static)
+        }) {
+            self.bind_err(
+                "source.not-callable",
+                format!(
+                    "`{}` is an instance method; call it on a record value, not the type name",
+                    name.name
+                ),
+                name.span,
+            );
+        } else {
+            self.bind_err(
+                "source.undefined",
+                format!("no static method named `{}` in this module", name.name),
+                name.span,
+            );
+        }
+        ResolvedExpr {
+            span,
+            vt: VT::I32,
+            kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+        }
+    }
+
+    fn instance_or_static(
+        &mut self,
+        recv: Option<Box<ResolvedExpr>>,
+        ri: usize,
+        name: &ast::Ident,
+        rargs: Vec<ResolvedArg>,
+        span: Span,
+    ) -> ResolvedExpr {
+        match self.records[ri]
+            .methods
+            .iter()
+            .find(|m| m.name == name.name)
+        {
+            Some(m) if !m.is_static => {
+                let sig_params = self.method_sig_params(m.fn_index, 1);
+                self.check_args(
+                    &name.name,
+                    &self.method_sig_names(m.fn_index, 1),
+                    &sig_params,
+                    &rargs,
+                    span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: self.method_sig_result(m.fn_index),
+                    kind: RExprKind::MethodCall {
+                        fn_index: m.fn_index,
+                        recv,
+                        args: rargs,
+                    },
+                }
+            }
+            Some(_) => {
+                self.bind_err(
+                    "source.not-callable",
+                    format!(
+                        "`{}` is a static method of `{}`; call it as `{}.{}(...)`",
+                        name.name, self.records[ri].name, self.records[ri].name, name.name
+                    ),
+                    name.span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                }
+            }
+            None => {
+                self.bind_err(
+                    "source.undefined",
+                    format!(
+                        "type `{}` has no method named `{}`",
+                        self.records[ri].name, name.name
+                    ),
+                    name.span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                }
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    fn method_call(
+        &mut self,
+        recv: &ast::Expr,
+        name: &ast::Ident,
+        args: &[ast::Arg],
+        span: Span,
+    ) -> ResolvedExpr {
+        // static: `Pair.new(...)`
+        if let ast::ExprKind::Var(id) = &recv.kind {
+            if self.lookup(&id.name).is_none() {
+                if let Some(&ri) = self.rec_index.get(&id.name) {
+                    let rargs = self.resolve_args(args);
+                    match self.records[ri]
+                        .methods
+                        .iter()
+                        .find(|m| m.name == name.name)
+                    {
+                        Some(m) if m.is_static => {
+                            let sig_params = self.method_sig_params(m.fn_index, 0);
+                            self.check_args(
+                                &name.name,
+                                &self.method_sig_names(m.fn_index, 0),
+                                &sig_params,
+                                &rargs,
+                                span,
+                            );
+                            return ResolvedExpr {
+                                span,
+                                vt: self.method_sig_result(m.fn_index),
+                                kind: RExprKind::MethodCall {
+                                    fn_index: m.fn_index,
+                                    recv: None,
+                                    args: rargs,
+                                },
+                            };
+                        }
+                        Some(_) => {
+                            self.bind_err(
+                                "source.not-callable",
+                                format!(
+                                    "`{}` is an instance method of `{}`; call it on a value (`{}.{}(...)` via a local)",
+                                    name.name, self.records[ri].name, self.records[ri].name, name.name
+                                ),
+                                name.span,
+                            );
+                            return ResolvedExpr {
+                                span,
+                                vt: VT::I32,
+                                kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                            };
+                        }
+                        None => {
+                            self.bind_err(
+                                "source.undefined",
+                                format!("type `{}` has no method named `{}`", id.name, name.name),
+                                name.span,
+                            );
+                            return ResolvedExpr {
+                                span,
+                                vt: VT::I32,
+                                kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+        // instance: resolve the receiver expression exactly once
+        let rrecv = self.expr_iterative(recv);
+        let VT::Rec(ri) = rrecv.vt else {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "method calls require a record-typed receiver, found `{}`",
+                    rrecv.vt.as_str()
+                ),
+                recv.span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+            };
+        };
+        let rargs = self.resolve_args(args);
+        match self.records[ri]
+            .methods
+            .iter()
+            .find(|m| m.name == name.name)
+        {
+            Some(m) if !m.is_static => {
+                // receiver occupies param 0; visible args bind from param 1
+                let sig_params = self.method_sig_params(m.fn_index, 1);
+                self.check_args(
+                    &name.name,
+                    &self.method_sig_names(m.fn_index, 1),
+                    &sig_params,
+                    &rargs,
+                    span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: self.method_sig_result(m.fn_index),
+                    kind: RExprKind::MethodCall {
+                        fn_index: m.fn_index,
+                        recv: Some(Box::new(rrecv)),
+                        args: rargs,
+                    },
+                }
+            }
+            Some(_) => {
+                self.bind_err(
+                    "source.not-callable",
+                    format!(
+                        "`{}` is a static method of `{}`; call it as `{}.{}(...)`",
+                        name.name, self.records[ri].name, self.records[ri].name, name.name
+                    ),
+                    name.span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                }
+            }
+            None => {
+                self.bind_err(
+                    "source.undefined",
+                    format!(
+                        "type `{}` has no method named `{}`",
+                        self.records[ri].name, name.name
+                    ),
+                    name.span,
+                );
+                ResolvedExpr {
+                    span,
+                    vt: VT::I32,
+                    kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                }
+            }
+        }
+    }
+
+    /// Resolve an argument list (positional and named).
+    fn resolve_args(&mut self, args: &[ast::Arg]) -> Vec<ResolvedArg> {
+        let mut out = Vec::new();
+        for a in args {
+            match a {
+                ast::Arg::Pos(e) => {
+                    let v = self.expr_iterative(e);
+                    out.push(ResolvedArg {
+                        span: e.span,
+                        name: None,
+                        moved: false,
+                        value: v,
+                    });
+                }
+                ast::Arg::MovePos(e) => {
+                    let v = self.expr_iterative(e);
+                    out.push(ResolvedArg {
+                        span: e.span,
+                        name: None,
+                        moved: true,
+                        value: v,
+                    });
+                }
+                ast::Arg::Named { name, value, span } => {
+                    let v = self.expr_iterative(value);
+                    out.push(ResolvedArg {
+                        span: *span,
+                        name: Some(name.clone()),
+                        moved: false,
+                        value: v,
+                    });
+                }
+            }
+        }
+        out
+    }
+
+    fn method_sig_params(&self, fn_index: usize, from: usize) -> Vec<VT> {
+        // fn sigs live behind key names; params are recoverable from the
+        // sig table only by key — the FnResolver carries sigs; for methods
+        // the receiver-agnostic view is reconstructed from the fn index by
+        // scanning the sig table.
+        for sig in self.sigs.values() {
+            if sig.index == fn_index {
+                return sig.params.iter().skip(from).copied().collect();
+            }
+        }
+        Vec::new()
+    }
+
+    fn method_sig_names(&self, fn_index: usize, from: usize) -> Vec<String> {
+        for sig in self.sigs.values() {
+            if sig.index == fn_index {
+                return sig.param_names.iter().skip(from).cloned().collect();
+            }
+        }
+        Vec::new()
+    }
+
+    fn method_sig_result(&self, fn_index: usize) -> VT {
+        for sig in self.sigs.values() {
+            if sig.index == fn_index {
+                return sig.result;
+            }
+        }
+        VT::I32
     }
 
     /// Resolve an expression tree with an explicit work stack (R3-QA-02):
@@ -958,8 +1949,8 @@ impl<'a> FnResolver<'a> {
                 spans: Vec<Span>,
                 node_span: Span,
             },
-            /// Receiver and argument slots are filled; bind the builtin
-            /// method into `dest` (PLAN-770).
+            /// Receiver and argument slots are filled; bind the TEXT
+            /// builtin method into `dest` (PLAN-770).
             MethodOut {
                 name: ast::Ident,
                 dest: usize,
@@ -969,6 +1960,18 @@ impl<'a> FnResolver<'a> {
                 spans: Vec<Span>,
                 node_span: Span,
                 to_word: Option<TypeWord>,
+            },
+            /// Receiver + arg slots are filled (receiver slot `None` for
+            /// pre-classified static calls); resolve the RECORD method
+            /// into `dest` (PLAN-771).
+            RecordMethodOut {
+                name: ast::Ident,
+                dest: usize,
+                recv_slot: Option<usize>,
+                arg_slots: Vec<usize>,
+                names: Vec<Option<ast::Ident>>,
+                spans: Vec<Span>,
+                node_span: Span,
             },
             /// Both operand slots are filled; combine into `dest`.
             Combine {
@@ -984,6 +1987,27 @@ impl<'a> FnResolver<'a> {
                 span: Span,
                 oslot: usize,
                 dest: usize,
+            },
+            /// Base slot is filled; resolve the field segment into `dest`
+            /// (PLAN-771; fields are iterative so 4096-segment chains never
+            /// recurse).
+            FieldOut {
+                name: ast::Ident,
+                span: Span,
+                bslot: usize,
+                dest: usize,
+            },
+
+            /// All field-value slots are filled; resolve the named
+            /// construction into `dest` (F-771-R1/V-09: nested ctors stay
+            /// iterative instead of recursing through `ctor_named`).
+            CtorOut {
+                ty: ast::Ident,
+                dest: usize,
+                arg_slots: Vec<usize>,
+                names: Vec<ast::Ident>,
+                fspans: Vec<Span>,
+                node_span: Span,
             },
         }
         let mut out: Vec<ResolvedExpr> = vec![dummy_resolved()];
@@ -1106,7 +2130,82 @@ impl<'a> FnResolver<'a> {
                         }
                         continue;
                     }
-                    if let ExprKind::Binary { op, lhs, rhs } = &node.kind {
+                    if let ExprKind::Field { base, name } = &node.kind {
+                        let bslot = out.len();
+                        out.push(dummy_resolved());
+                        stack.push(Task::FieldOut {
+                            name: name.clone(),
+                            span: node.span,
+                            bslot,
+                            dest: slot,
+                        });
+                        stack.push(Task::Visit {
+                            node: base,
+                            slot: bslot,
+                        });
+                    } else if let ExprKind::MethodCall { recv, name, args } = &node.kind {
+                        // static pre-classification: bare record type name
+                        // receiver resolves to no local — the receiver
+                        // expression is NOT evaluated for static calls.
+                        let static_recv = matches!(&recv.kind, ExprKind::Var(id)
+                            if self.lookup(&id.name).is_none()
+                                && self.rec_index.contains_key(&id.name));
+                        let recv_slot = if static_recv { None } else { Some(out.len()) };
+                        if recv_slot.is_some() {
+                            out.push(dummy_resolved());
+                        }
+                        let mut arg_slots = Vec::with_capacity(args.len());
+                        let mut names = Vec::with_capacity(args.len());
+                        let mut spans = Vec::with_capacity(args.len());
+                        let mut subtasks = Vec::with_capacity(args.len() + 1);
+                        for a in args {
+                            let sp = out.len();
+                            out.push(dummy_resolved());
+                            arg_slots.push(sp);
+                            match a {
+                                Arg::Pos(e) | Arg::MovePos(e) => {
+                                    names.push(None);
+                                    spans.push(e.span);
+                                    subtasks.push(Task::Visit { node: e, slot: sp });
+                                }
+                                Arg::Named {
+                                    name: n,
+                                    value,
+                                    span,
+                                } => {
+                                    names.push(Some(ast::Ident {
+                                        name: n.name.clone(),
+                                        span: n.span,
+                                    }));
+                                    spans.push(*span);
+                                    subtasks.push(Task::Visit {
+                                        node: value,
+                                        slot: sp,
+                                    });
+                                }
+                            }
+                        }
+                        subtasks.push(Task::RecordMethodOut {
+                            name: name.clone(),
+                            dest: slot,
+                            recv_slot,
+                            arg_slots,
+                            names,
+                            spans,
+                            node_span: node.span,
+                        });
+                        for t in subtasks.into_iter().rev() {
+                            stack.push(t);
+                        }
+                        // LIFO: the receiver visit must pop FIRST (before
+                        // the args and the MethodOut combiner)
+                        if let Some(rs) = recv_slot {
+                            stack.push(Task::Visit {
+                                node: recv,
+                                slot: rs,
+                            });
+                        }
+                    } else if let ExprKind::Binary { op, lhs, rhs } = &node.kind {
                         let lslot = out.len();
                         out.push(dummy_resolved());
                         let rslot = out.len();
@@ -1140,9 +2239,136 @@ impl<'a> FnResolver<'a> {
                             node: operand,
                             slot: oslot,
                         });
+                    } else if let ExprKind::CtorNamed { ty, fields } = &node.kind {
+                        // every field value is its own subtask: the outer
+                        // ctor's frame returns before inner ctors resolve
+                        let mut arg_slots = Vec::with_capacity(fields.len());
+                        let mut names = Vec::with_capacity(fields.len());
+                        let mut fspans = Vec::with_capacity(fields.len());
+                        let mut subtasks = Vec::with_capacity(fields.len() + 1);
+                        for f in fields {
+                            let sp = out.len();
+                            out.push(dummy_resolved());
+                            arg_slots.push(sp);
+                            names.push(f.name.clone());
+                            fspans.push(f.span);
+                            subtasks.push(Task::Visit {
+                                node: &f.value,
+                                slot: sp,
+                            });
+                        }
+                        subtasks.push(Task::CtorOut {
+                            ty: ty.clone(),
+                            dest: slot,
+                            arg_slots,
+                            names,
+                            fspans,
+                            node_span: node.span,
+                        });
+                        for t in subtasks.into_iter().rev() {
+                            stack.push(t);
+                        }
                     } else {
                         out[slot] = self.expr(node);
                     }
+                }
+                Task::CtorOut {
+                    ty,
+                    dest,
+                    arg_slots,
+                    names,
+                    fspans,
+                    node_span,
+                } => {
+                    let mut values = Vec::with_capacity(arg_slots.len());
+                    for (i, sp) in arg_slots.iter().enumerate() {
+                        let v = std::mem::replace(&mut out[*sp], dummy_resolved());
+                        values.push((names[i].clone(), fspans[i], v));
+                    }
+                    out[dest] = self.ctor_named_out(&ty, values, node_span);
+                }
+                Task::FieldOut {
+                    name,
+                    span,
+                    bslot,
+                    dest,
+                } => {
+                    let base = std::mem::replace(&mut out[bslot], dummy_resolved());
+                    let VT::Rec(ri) = base.vt else {
+                        self.bind_err(
+                            "source.type-mismatch",
+                            format!(
+                                "field access requires a record-typed value, found `{}`",
+                                base.vt.as_str()
+                            ),
+                            name.span,
+                        );
+                        out[dest] = ResolvedExpr {
+                            span,
+                            vt: VT::I32,
+                            kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                        };
+                        continue;
+                    };
+                    match self.records[ri]
+                        .fields
+                        .iter()
+                        .position(|fl| fl.name == name.name)
+                    {
+                        Some(fi) => {
+                            let vt = self.records[ri].fields[fi].vt;
+                            out[dest] = ResolvedExpr {
+                                span,
+                                vt,
+                                kind: RExprKind::FieldGet {
+                                    base: Box::new(base),
+                                    path: vec![(ri, fi)],
+                                },
+                            };
+                        }
+                        None => {
+                            self.bind_err(
+                                "source.undefined",
+                                format!(
+                                    "record `{}` has no field named `{}`",
+                                    self.records[ri].name, name.name
+                                ),
+                                name.span,
+                            );
+                            out[dest] = ResolvedExpr {
+                                span,
+                                vt: VT::I32,
+                                kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
+                            };
+                        }
+                    }
+                }
+                Task::RecordMethodOut {
+                    name,
+                    dest,
+                    recv_slot,
+                    arg_slots,
+                    names,
+                    spans,
+                    node_span,
+                } => {
+                    let mut rargs = Vec::with_capacity(arg_slots.len());
+                    for (i, sp) in arg_slots.iter().enumerate() {
+                        let value = std::mem::replace(&mut out[*sp], dummy_resolved());
+                        rargs.push(ResolvedArg {
+                            span: spans[i],
+                            name: names[i].clone(),
+                            moved: false,
+                            value,
+                        });
+                    }
+                    let rrecv = match recv_slot {
+                        None => None,
+                        Some(rs) => {
+                            Some(Box::new(std::mem::replace(&mut out[rs], dummy_resolved())))
+                        }
+                    };
+                    out[dest] = self.method_call_out(rrecv, &name, rargs, node_span);
                 }
                 Task::CallOut {
                     callee,
@@ -1535,6 +2761,16 @@ impl<'a> FnResolver<'a> {
                     args: rargs,
                 },
             };
+        }
+
+        // Positional record construction `Q(7)` (PLAN-771 §5.2,
+        // F-771-R1-02): the callee name is neither a local nor a function —
+        // resolve it against the record table. Like functions, record
+        // types are user declarations and win over intrinsic name
+        // hijacking; a function sharing the record's name keeps the call
+        // form (the namespaces stay separate, mirroring the fn rule).
+        if let Some(&ri) = self.rec_index.get(&callee.name) {
+            return self.ctor_positional(ri, callee, rargs, call_span);
         }
 
         // User functions win over trace intrinsics (no name hijacking);

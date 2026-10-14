@@ -1,0 +1,39 @@
+warning: type `State<()>` is more private than the item `echo`
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r1\cases\control\runner.rs:18:1
+   |
+18 | pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `echo` is reachable at visibility `pub`
+   |
+note: but type `State<()>` is only usable at visibility `pub(crate)`
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r1\cases\control\runner.rs:4:1
+   |
+ 4 | struct State<T>(T);
+   | ^^^^^^^^^^^^^^^
+   = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `JsonResponse<Probe>` is more private than the item `echo`
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r1\cases\control\runner.rs:18:1
+   |
+18 | pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `echo` is reachable at visibility `pub`
+   |
+note: but type `JsonResponse<Probe>` is only usable at visibility `pub(crate)`
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r1\cases\control\runner.rs:6:1
+   |
+ 6 | struct JsonResponse<T>(T);
+   | ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: type `Probe` is more private than the item `echo`
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r1\cases\control\runner.rs:18:1
+   |
+18 | pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ function `echo` is reachable at visibility `pub`
+   |
+note: but type `Probe` is only usable at visibility `pub(crate)`
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r1\cases\control\runner.rs:3:18
+   |
+ 3 | #[derive(Debug)] struct Probe { text: String }
+   |                  ^^^^^^^^^^^^
+
+warning: 3 warnings emitted
+

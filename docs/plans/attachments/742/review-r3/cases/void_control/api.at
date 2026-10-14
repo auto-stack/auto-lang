@@ -1,0 +1,6 @@
+pub type Probe = { text: str }
+#[api(method = "POST", path = "/api/echo")]
+pub fn echo() {
+    if false { var n int = 0 }
+    var x int = 1
+}

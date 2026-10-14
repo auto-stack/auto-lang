@@ -7,8 +7,8 @@
 
 use std::path::Path;
 
-use crate::admission::{check_limit, check_no_reparse, AdmissionError, Limits};
-use crate::contract::{CaseSpec, PayloadSpec};
+use crate::admission::{check_limit, read_bounded, AdmissionError, Limits};
+use crate::contract::{CaseSpec, CheckSpec, Compare, Completion, PayloadSpec, StreamExpect};
 use crate::document::CaseDocument;
 use crate::sha256::{hex, sha256};
 
@@ -76,12 +76,8 @@ fn fetch_payload(
         }
         PayloadSpec::File(rel) => {
             let full = case_root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
-            check_no_reparse(&full).map_err(|e: AdmissionError| fail(e.to_string()))?;
-            let bytes =
-                std::fs::read(&full).map_err(|e| fail(format!("sidecar read failed: {}", e)))?;
-            check_limit("max_sidecar_bytes", bytes.len(), limits.max_sidecar_bytes)
-                .map_err(|e| fail(e.to_string()))?;
-            Ok(bytes)
+            read_bounded(&full, "max_sidecar_bytes", limits.max_sidecar_bytes)
+                .map_err(|e: AdmissionError| fail(e.to_string()))
         }
         PayloadSpec::Text(text) => {
             let bytes = text.as_bytes().to_vec();
@@ -163,6 +159,100 @@ pub fn resolve_case(
         files,
         entry_path,
         source_sha256,
+    })
+}
+
+/// One expected-artifact sidecar resolved to actual bytes (Plan 773 F-06:
+/// oracle identity is over CONTENT, not just the declared reference).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedArtifact {
+    /// Logical output path (e.g. "main.rs").
+    pub path: String,
+    /// Sidecar reference exactly as declared (relative to the fixture base).
+    pub file: String,
+    pub compare: Compare,
+    pub bytes: Vec<u8>,
+    pub sha256: String,
+}
+
+/// A check's expectation with every `file:`-referenced sidecar read and
+/// hashed. `oracle_sha256` covers completion, stream/result texts, and the
+/// CONTENT hash of every expected artifact — mutating a sidecar's bytes
+/// changes the identity and invalidates old PASSes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedOracle {
+    pub completion: Completion,
+    pub result: Option<crate::contract::ResultExpect>,
+    pub stdout: Option<StreamExpect>,
+    pub stderr: Option<StreamExpect>,
+    pub artifacts: Vec<ResolvedArtifact>,
+    pub oracle_sha256: String,
+}
+
+/// Resolve every `file:` reference of a check's expectation against
+/// `ref_base` under admission (bounded read + reparse audit on the file and
+/// its ancestors). Missing/unreadable/oversized sidecars are errors here —
+/// not at comparison time — so lint and run share one full admission
+/// (Plan 773 F-09).
+pub fn resolve_oracle(
+    case_id: &str,
+    check: &CheckSpec,
+    ref_base: &Path,
+    limits: &Limits,
+) -> Result<ResolvedOracle, ResolveError> {
+    let fail = |msg: String| ResolveError {
+        case_id: case_id.to_string(),
+        path: "expect".to_string(),
+        message: msg,
+    };
+    let expect = &check.expect;
+
+    let mut artifacts = Vec::new();
+    for want in &expect.artifacts {
+        let full = ref_base.join(want.file.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let bytes = read_bounded(&full, "max_sidecar_bytes", limits.max_sidecar_bytes)
+            .map_err(|e| {
+                fail(format!(
+                    "expected artifact {} (check {:?}): {}",
+                    want.file, check.id, e
+                ))
+            })?;
+        let digest = hex(&sha256(&bytes));
+        artifacts.push(ResolvedArtifact {
+            path: want.path.clone(),
+            file: want.file.clone(),
+            compare: want.compare,
+            bytes,
+            sha256: digest,
+        });
+    }
+
+    // Content-bound oracle identity: declarations AND sidecar bytes.
+    let mut combined = String::new();
+    combined.push_str(&format!("{:?}\0", expect.completion));
+    if let Some(r) = &expect.result {
+        combined.push_str(&format!("result\0{}\0{}\0", r.format, r.text));
+    }
+    for (name, s) in [("stdout", &expect.stdout), ("stderr", &expect.stderr)] {
+        if let Some(s) = s {
+            combined.push_str(&format!("{}\0{}\0{:?}\0", name, s.text, s.compare));
+        }
+    }
+    for a in &artifacts {
+        combined.push_str(&format!(
+            "artifact\0{}\0{}\0{:?}\0{}\0",
+            a.path, a.file, a.compare, a.sha256
+        ));
+    }
+    let oracle_sha256 = hex(&sha256(combined.as_bytes()));
+
+    Ok(ResolvedOracle {
+        completion: expect.completion.clone(),
+        result: expect.result.clone(),
+        stdout: expect.stdout.clone(),
+        stderr: expect.stderr.clone(),
+        artifacts,
+        oracle_sha256,
     })
 }
 

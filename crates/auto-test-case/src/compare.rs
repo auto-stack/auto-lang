@@ -131,6 +131,63 @@ pub fn to_lf(bytes: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Single-hunk unified diff of the changed region (Plan 773 F-11): common
+/// leading/trailing lines are trimmed and the changed middle is rendered as
+/// a unified hunk with `context` surrounding lines. Line numbers are
+/// 1-based. `None` when the inputs are equal. This is a REAL content diff
+/// for baseline proposals — not just a first-divergence offset.
+pub fn unified_diff_hunk(expected: &[u8], actual: &[u8], context: usize) -> Option<String> {
+    let e_text = String::from_utf8_lossy(expected);
+    let a_text = String::from_utf8_lossy(actual);
+    let e: Vec<&str> = e_text.lines().collect();
+    let a: Vec<&str> = a_text.lines().collect();
+    let mut prefix = 0;
+    while prefix < e.len() && prefix < a.len() && e[prefix] == a[prefix] {
+        prefix += 1;
+    }
+    let mut suffix = 0;
+    while suffix < e.len().saturating_sub(prefix)
+        && suffix < a.len().saturating_sub(prefix)
+        && e[e.len() - 1 - suffix] == a[a.len() - 1 - suffix]
+    {
+        suffix += 1;
+    }
+    let e_mid = &e[prefix..e.len() - suffix];
+    let a_mid = &a[prefix..a.len() - suffix];
+    if e_mid.is_empty() && a_mid.is_empty() {
+        return None;
+    }
+    // Context window: `context` unchanged lines on each side of the whole
+    // middle (leading context from the common prefix, trailing context
+    // from the common suffix).
+    let mid_end_e = e.len() - suffix;
+    let mid_end_a = a.len() - suffix;
+    let e_lo = prefix.saturating_sub(context);
+    let e_hi = mid_end_e.saturating_add(context).min(e.len());
+    let a_lo = prefix.saturating_sub(context);
+    let a_hi = mid_end_a.saturating_add(context).min(a.len());
+    let mut out = format!(
+        "@@ -{},{} +{},{} @@\n",
+        e_lo + 1,
+        e_hi - e_lo,
+        a_lo + 1,
+        a_hi - a_lo
+    );
+    for line in &e[e_lo..prefix] {
+        out.push_str(&format!(" {}\n", line));
+    }
+    for line in e_mid {
+        out.push_str(&format!("-{}\n", line));
+    }
+    for line in a_mid {
+        out.push_str(&format!("+{}\n", line));
+    }
+    for line in &e[mid_end_e..e_hi] {
+        out.push_str(&format!(" {}\n", line));
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +233,33 @@ mod tests {
             "DivisionByZero"
         )
         .is_err());
+    }
+
+    #[test]
+    fn unified_diff_shows_the_changed_region() {
+        let expected = b"a\nb\nc\nd\ne\n";
+        let actual = b"a\nb\nX\nd\ne\n";
+        let diff = unified_diff_hunk(expected, actual, 1).expect("must differ");
+        // Leading context b, removed c, added X, trailing context d — the
+        // hunk spans 3 lines per side starting at line 2.
+        assert!(diff.starts_with("@@ -2,3 +2,3 @@"), "{}", diff);
+        assert!(diff.contains(" b\n"), "{}", diff);
+        assert!(diff.contains("-c\n"), "{}", diff);
+        assert!(diff.contains("+X\n"), "{}", diff);
+        assert!(diff.contains(" d\n"), "{}", diff);
+        assert!(unified_diff_hunk(expected, expected, 3).is_none());
+        // Multi-line middle and pure insertion/deletion shapes.
+        let del = unified_diff_hunk(b"a\nx\ny\nb\n", b"a\nb\n", 1).unwrap();
+        assert!(
+            del.contains("-x\n") && del.contains("-y\n") && !del.contains("\n+"),
+            "{}",
+            del
+        );
+        let ins = unified_diff_hunk(b"a\nb\n", b"a\nnew\nb\n", 1).unwrap();
+        assert!(
+            ins.contains("+new\n") && !ins.contains("\n-"),
+            "{}",
+            ins
+        );
     }
 }

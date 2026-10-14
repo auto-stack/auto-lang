@@ -87,6 +87,16 @@ required **不因有限域证据改项**：这是 Rust AC 原型域的验证，�
 unknown 族 owner/探针不变。真实 PE 取证与独立复审（含修复轮）见
 [verification.md](../../reports/767-scalar-i32/verification.md)。
 
+## record 有限子集取证（PLAN-771）
+
+[source-record](../auto-ac/source-record.md) 在 AC 原型上以 Rust 实现了
+MD-403/404 的有限子集：lexer 关键字位（type/static/mut）、parser type 块/
+static fn/方法调用/位置与命名构造拼写、名义 record 语义（结构同不互换）、
+字段路径与 mut 参数。required **不因有限域证据改项**：这是 Rust AC 原型域
+验证，不是 Auto 实现的 ACC 主体；P/CG/Token 的 text/enum/List 字段与可变
+实例方法仍为前置，Gen1/GOAL-017 不关闭。实现收据见
+[verification.md](../../reports/771-record/verification.md)。
+
 ## 数据/资源合同取证（PLAN-774）
 
 D-01..07 共同合同已在 774 冻结并经真实 COFF/PE 探针实证（Rust AC 原型域；

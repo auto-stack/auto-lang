@@ -1,0 +1,8 @@
+// `mut fn` (mutable instance methods) is not part of this batch
+type Pair {
+    left int
+    mut fn set(v int) int {
+        return v
+    }
+}
+fn main() int { return 0 }

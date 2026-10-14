@@ -33,6 +33,12 @@ pub enum Kw {
     Int,
     I32,
     Bool,
+    // Record-surface keywords (PLAN-771): consumed by the record source
+    // profile; the core/scalar profiles reject them wherever they appear
+    // (same `source.unsupported` as the historical Reserved lexing).
+    Type,
+    Static,
+    Mut,
 }
 
 impl Kw {
@@ -54,6 +60,9 @@ impl Kw {
             Kw::Int => "int",
             Kw::I32 => "i32",
             Kw::Bool => "bool",
+            Kw::Type => "type",
+            Kw::Static => "static",
+            Kw::Mut => "mut",
         }
     }
 }
@@ -160,9 +169,9 @@ impl RawKind {
 /// be used as a name.
 pub const RESERVED_KEYWORDS: &[&str] = &[
     "alias", "as", "await", "catch", "const", "copy", "dep", "enum", "ext", "go", "has", "hold",
-    "impl", "in", "is", "link", "mod", "move", "mut", "nil", "null", "outlet", "pac", "reply",
-    "routes", "shared", "spawn", "spec", "static", "super", "super2", "super3", "super4", "tag",
-    "take", "task", "to", "try", "type", "union", "use", "view", "with", "yield",
+    "impl", "in", "is", "link", "mod", "move", "nil", "null", "outlet", "pac", "reply", "routes",
+    "shared", "spawn", "spec", "super", "super2", "super3", "super4", "tag", "take", "task", "to",
+    "try", "union", "use", "view", "with", "yield",
 ];
 
 pub fn is_reserved_keyword(name: &str) -> bool {
@@ -218,6 +227,9 @@ pub fn keyword_of(name: &str) -> Option<Kw> {
         "int" => Kw::Int,
         "i32" => Kw::I32,
         "bool" => Kw::Bool,
+        "type" => Kw::Type,
+        "static" => Kw::Static,
+        "mut" => Kw::Mut,
         _ => return None,
     })
 }

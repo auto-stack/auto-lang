@@ -765,35 +765,87 @@ impl RustTrans {
         self.in_async_ctx.set(on);
     }
 
-    const NL: char = '\n';
+    /// Plan 742 R1 (F-742-R1-01): per-byte code-region mask for one emitted
+    /// line — `true` = ordinary code, `false` = inside a `"…"`/`'…'` literal
+    /// (escape-aware) or a `//`/`/* */` comment. Body-text post-passes may
+    /// only rewrite masked-true spans: the raw scans of the first 742 round
+    /// rewrote literal payloads (`"List<int>.new([])"` → `"vec![]"`,
+    /// `"} return secret"` split mid-string) while generation still reported
+    /// Ok. Boundary: single-line scans over emitter output — raw strings and
+    /// block comments spanning lines are outside the emitted-body surface
+    /// this guards.
+    pub fn code_region_mask(line: &str) -> Vec<bool> {
+        #[derive(Clone, Copy, PartialEq)]
+        enum St {
+            Code,
+            Str,
+            Char,
+            LineComment,
+            BlockComment,
+        }
+        let bytes = line.as_bytes();
+        let mut mask = vec![false; bytes.len()];
+        let mut st = St::Code;
+        let mut i = 0;
+        while i < bytes.len() {
+            match st {
+                St::Code => match bytes[i] {
+                    b'"' => st = St::Str,
+                    b'\'' => st = St::Char,
+                    b'/' if bytes.get(i + 1) == Some(&b'/') => st = St::LineComment,
+                    b'/' if bytes.get(i + 1) == Some(&b'*') => st = St::BlockComment,
+                    _ => mask[i] = true,
+                },
+                St::Str | St::Char => {
+                    if bytes[i] == b'\\' {
+                        i += 1; // escape: the escaped byte stays masked-out
+                    } else if bytes[i] == if st == St::Str { b'"' } else { b'\'' } {
+                        st = St::Code;
+                    }
+                }
+                St::LineComment => {}
+                St::BlockComment => {
+                    if bytes[i] == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                        i += 1;
+                        st = St::Code;
+                    }
+                }
+            }
+            i += 1;
+        }
+        mask
+    }
 
     /// Plan 742 (D6): split statement glue from block-close emission — the
     /// if/for close brace occasionally lands on the same line as the NEXT
     /// statement (`}    let x = ...`), which breaks the per-line return-wrap
     /// pass (the line no longer starts with `return`). Only splits on
     /// statement keywords to stay away from struct/map literals.
+    /// Plan 742 R1 (F-742-R1-01): `}` / keyword candidates must sit in code
+    /// regions — a business string like `"} return secret"` must survive
+    /// verbatim, not split mid-literal.
     fn split_glued_statements(line: &str) -> String {
         const KEYWORDS: [&str; 8] = [
             "let ", "return", "if ", "for ", "while ", "match ", "push(", "ok =",
         ];
-        let mut out = String::with_capacity(line.len());
+        let mask = Self::code_region_mask(line);
         let bytes = line.as_bytes();
+        let mut out = String::with_capacity(line.len());
         let mut i = 0;
         while i < bytes.len() {
-            if bytes[i] == b'}' {
+            if bytes[i] == b'}' && mask[i] {
                 // 找 } 之后的空白段，若空白后是语句关键字则在此断行
                 let mut j = i + 1;
-                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == 9) {
+                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == 9) && mask[j] {
                     j += 1;
                 }
-                let rest = &line[j..];
-                if KEYWORDS.iter().any(|k| rest.starts_with(k)) && j > i + 1 {
-                    out.push_str(
-                        "}
-",
-                    );
-                    i = j;
-                    continue;
+                if j < bytes.len() && mask[j] {
+                    let rest = &line[j..];
+                    if KEYWORDS.iter().any(|k| rest.starts_with(k)) && j > i + 1 {
+                        out.push_str("}\n");
+                        i = j;
+                        continue;
+                    }
                 }
             }
             let ch = line[i..].chars().next().unwrap_or(' ');
@@ -810,32 +862,39 @@ impl RustTrans {
     /// verbatim `List<Note>.new(vec![])` shape is not valid Rust.
     /// `List<T>.new(vec![])` → `vec![]`; `List<T>.new([a, b])` → `vec![a, b]`;
     /// `List<T>.new(expr)` → `expr` (annotation carries the Vec<T> type).
+    /// Plan 742 R1 (F-742-R1-01): the construct and its argument parens must
+    /// sit in code regions — a business string like `"List<int>.new([])"`
+    /// is literal text, not a construct, and must survive verbatim.
     fn lower_list_constructs(line: &str) -> String {
         let needle = ".new(";
-        let mut out = String::with_capacity(line.len());
+        let mask = Self::code_region_mask(line);
         let bytes = line.as_bytes();
+        let mut out = String::with_capacity(line.len());
         let mut i = 0;
         while i < bytes.len() {
-            // Find `List<` opening.
-            if line[i..].starts_with("List<") {
+            // Find `List<` opening (code region only).
+            if mask[i] && line[i..].starts_with("List<") {
                 if let Some(gt) = line[i..].find('>') {
                     let inner_end = i + gt;
                     // Matching `.new(` right after the closing '>'.
-                    if line[inner_end + 1..].starts_with(needle) {
+                    if mask[inner_end] && line[inner_end + 1..].starts_with(needle) {
                         let args_start = inner_end + 1 + needle.len();
-                        // Find the matching closing ')' of `.new(`.
+                        // Find the matching closing ')' of `.new(` — depth
+                        // changes only count parens in code regions.
                         let mut depth = 1;
                         let mut j = args_start;
                         while j < bytes.len() {
-                            match bytes[j] {
-                                b'(' => depth += 1,
-                                b')' => {
-                                    depth -= 1;
-                                    if depth == 0 {
-                                        break;
+                            if mask[j] {
+                                match bytes[j] {
+                                    b'(' => depth += 1,
+                                    b')' => {
+                                        depth -= 1;
+                                        if depth == 0 {
+                                            break;
+                                        }
                                     }
+                                    _ => {}
                                 }
-                                _ => {}
                             }
                             j += 1;
                         }
@@ -28556,11 +28615,15 @@ pub fn transpile_rust_full_with_options(
     let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransRust);
-    let mut ast = parser.parse().map_err(|e| e.to_string())?;
+    // Plan 773 F-08: keep parse/CTEE failures TYPED — flattening them via
+    // `.to_string()` here turned every emit-path syntax error into a plain
+    // `Msg`, which the stage classifier must then treat as infrastructure.
+    // Display text is unchanged (the old `Msg` wrapped the same string).
+    let mut ast = parser.parse()?;
 
     // Plan 095: Run CTEE to transform compile-time constructs
     let mut ctee = crate::comptime::CTEE::new();
-    ctee.transform(&mut ast).map_err(|e| e.to_string())?;
+    ctee.transform(&mut ast)?;
 
     // Plan 310 Phase 1: Run escape analysis on every top-level function body.
     let mut escape_results: HashMap<AutoStr, crate::trans::escape::EscapeMap> = HashMap::new();

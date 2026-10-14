@@ -1,0 +1,18 @@
+use crate::custom_auto_lang::a2r_std;
+use axum::{
+    extract::{Path, State, Json, Query},
+    http::StatusCode,
+    Json as JsonResponse,
+};
+use crate::types::*;
+use std::sync::{Arc, Mutex};
+
+pub type Db = Arc<Mutex<Vec<Probe>>>;
+
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut n: i64 = crate::custom_auto_lang::a2r_std::ping();
+    if n == 7 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}

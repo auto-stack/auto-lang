@@ -1,0 +1,2 @@
+pub fn measure(value str) int { return value.len() }
+pub fn outer(value int) int { return value }

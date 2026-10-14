@@ -1,0 +1,1 @@
+auto-case: bad selector: adapter "typo" is not a declared adapter (avm, a2r)

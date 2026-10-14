@@ -3118,3 +3118,35 @@ pub fn sample_system() {
 fn test_04_strings_010_print_concat() {
     test_a2r("04_strings/010_print_concat").unwrap();
 }
+
+// Plan 773 F-10: pilot aggregation entry with a FIXED NAME inside the
+// transpiler test family (cargo tt compiles this module with
+// --features test-trans,test-cases); asserts the protocol pilot's a2r
+// half. Harness presence and dynamic-check outcomes are separate
+// assertions.
+#[cfg(feature = "test-cases")]
+#[test]
+fn pilot_aggregate_a2r() {
+    let report = crate::tests::test_cases_tests::run_pilot_for_aggregate("a2r");
+    assert!(
+        report.load_errors.is_empty(),
+        "load errors: {:?}",
+        report.load_errors
+    );
+    let rust: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.adapter == "a2r")
+        .collect();
+    assert!(!rust.is_empty(), "harness: a2r half is present");
+    for r in &rust {
+        assert_eq!(
+            r.status,
+            auto_test_case::report::Status::Pass,
+            "{}/{}",
+            r.case_id,
+            r.check_id
+        );
+    }
+    println!("pilot a2r half: {} dynamic check(s) green", rust.len());
+}

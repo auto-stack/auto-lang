@@ -225,6 +225,13 @@ pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>
     }
 }
 
+/// Verify a bound record-domain bundle (`record-i32-draft`, PLAN-771). The
+/// scalar compute surface plus nominal records: construction, nested field
+/// paths, view/mut borrows (774 D-04) and type-bound methods.
+pub fn verify_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_domain(bundle, HirDomain::Record)
+}
+
 fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule, Vec<Diagnostic>> {
     if bundle.domain != expect {
         return Err(vec![Diagnostic::new(
@@ -265,6 +272,10 @@ pub(crate) enum ValueType {
     StrOwned,
     /// Unicode scalar char (PLAN-770).
     Char,
+    /// Nominal record identity (PLAN-771): the module-level `TypeId`.
+    /// Records are nominal — two distinct `TypeId`s never unify even with
+    /// identical field shapes.
+    Record(u32),
 }
 
 pub(crate) fn vt_name(v: ValueType) -> &'static str {
@@ -275,6 +286,7 @@ pub(crate) fn vt_name(v: ValueType) -> &'static str {
         ValueType::Str => "str",
         ValueType::StrOwned => "Str",
         ValueType::Char => "char",
+        ValueType::Record(_) => "record",
     }
 }
 
@@ -318,107 +330,179 @@ impl Verifier {
             .push(Diagnostic::new(Stage::Verify, code, msg, span));
     }
 
-    /// Core/scalar-domain defense (PLAN-767 §5.1, PLAN-770 isolation): the
-    /// shared HIR enums were widened by later profiles; a programmatically
-    /// mutated bundle of an OLDER profile must still be rejected at its own
-    /// surface, never silently reinterpreted under the new semantics. Core
-    /// additionally rejects every scalar-only operator; both reject the
-    /// entire text surface (expression kinds, drop statements, parameter
-    /// modes, str/Str/char types on locals and signatures).
-    fn check_profile_ops(&mut self, body: &hir::Body) {
-        if self.domain == HirDomain::Text {
-            return;
-        }
-        for e in &body.exprs {
-            let text_kind = matches!(
-                &e.kind,
-                hir::ExprKind::StrLit { .. }
-                    | hir::ExprKind::CharLit { .. }
-                    | hir::ExprKind::TextLen { .. }
-                    | hir::ExprKind::TextLenBytes { .. }
-                    | hir::ExprKind::TextCharAt { .. }
-                    | hir::ExprKind::TextSlice { .. }
-                    | hir::ExprKind::TextConcat { .. }
-                    | hir::ExprKind::TextClone { .. }
-                    | hir::ExprKind::TextToOwned { .. }
-                    | hir::ExprKind::TextToBorrowed { .. }
-                    | hir::ExprKind::CharToCodepoint { .. }
-                    | hir::ExprKind::CharFromCodepoint { .. }
-            );
-            if text_kind {
-                self.error(
-                    "verify.profile-op",
-                    format!(
-                        "text expression `{}` is not part of the {} profile",
-                        e.id_text,
-                        self.domain.as_str()
-                    ),
-                    e.span,
+    /// Profile-surface defense (PLAN-767 5.1 + PLAN-770/PLAN-771
+    /// isolation): the shared HIR enums were widened by later profiles; a
+    /// programmatically mutated bundle of one profile must still be
+    /// rejected at its own surface, never silently reinterpreted under
+    /// another's semantics. Core additionally rejects every scalar-only
+    /// operator; every NON-TEXT domain rejects the entire text surface
+    /// (text expression kinds, drop statements, and parameter modes --
+    /// `move` is text-only, `mut` is legal only in text and record);
+    /// every NON-RECORD domain rejects the record surface (record types,
+    /// method declarations, record expressions, field-path places).
+    fn check_profile_ops(&mut self, m: &hir::Module, body: &hir::Body) {
+        if self.domain != HirDomain::Text {
+            for e in &body.exprs {
+                let text_kind = matches!(
+                    &e.kind,
+                    hir::ExprKind::StrLit { .. }
+                        | hir::ExprKind::CharLit { .. }
+                        | hir::ExprKind::TextLen { .. }
+                        | hir::ExprKind::TextLenBytes { .. }
+                        | hir::ExprKind::TextCharAt { .. }
+                        | hir::ExprKind::TextSlice { .. }
+                        | hir::ExprKind::TextConcat { .. }
+                        | hir::ExprKind::TextClone { .. }
+                        | hir::ExprKind::TextToOwned { .. }
+                        | hir::ExprKind::TextToBorrowed { .. }
+                        | hir::ExprKind::CharToCodepoint { .. }
+                        | hir::ExprKind::CharFromCodepoint { .. }
                 );
-                continue;
-            }
-            if self.domain != HirDomain::Core {
-                continue;
-            }
-            match &e.kind {
-                hir::ExprKind::Binary { op, .. } if !op.in_core_profile() => {
+                if text_kind {
                     self.error(
                         "verify.profile-op",
                         format!(
-                            "op `{}` is not part of the core-i32-draft profile",
-                            op.as_str()
-                        ),
-                        e.span,
-                    );
-                }
-                hir::ExprKind::Unary { op, .. } => {
-                    self.error(
-                        "verify.profile-op",
-                        format!(
-                            "unary op `{}` is not part of the core-i32-draft profile",
-                            op.as_str()
-                        ),
-                        e.span,
-                    );
-                }
-                hir::ExprKind::Logical { op, .. } => {
-                    self.error(
-                        "verify.profile-op",
-                        format!(
-                            "logical op `{}` is not part of the core-i32-draft profile",
-                            op.as_str()
-                        ),
-                        e.span,
-                    );
-                }
-                _ => {}
-            }
-        }
-        for bl in &body.blocks {
-            for s in &bl.stmts {
-                if matches!(s, hir::Stmt::Drop { .. }) {
-                    self.error(
-                        "verify.profile-op",
-                        format!(
-                            "drop statements are not part of the {} profile",
+                            "text expression `{}` is not part of the {} profile",
+                            e.id_text,
                             self.domain.as_str()
                         ),
-                        bl.span,
+                        e.span,
+                    );
+                    continue;
+                }
+            }
+            for bl in &body.blocks {
+                for s in &bl.stmts {
+                    if matches!(s, hir::Stmt::Drop { .. }) {
+                        self.error(
+                            "verify.profile-op",
+                            format!(
+                                "drop statements are not part of the {} profile",
+                                self.domain.as_str()
+                            ),
+                            bl.span,
+                        );
+                    }
+                }
+            }
+            for l in &body.locals {
+                let bad_mode = match l.param_mode {
+                    hir::ParamMode::View => false,
+                    hir::ParamMode::MutBorrow => {
+                        !matches!(self.domain, HirDomain::Text | HirDomain::Record)
+                    }
+                    hir::ParamMode::MoveOwn => self.domain != HirDomain::Text,
+                };
+                if bad_mode {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "parameter mode `{}` is not part of the {} profile",
+                            l.param_mode.as_str(),
+                            self.domain.as_str()
+                        ),
+                        l.span,
                     );
                 }
             }
         }
-        for l in &body.locals {
-            if l.param_mode != hir::ParamMode::View {
-                self.error(
-                    "verify.profile-op",
-                    format!(
-                        "parameter mode `{}` is not part of the {} profile",
-                        l.param_mode.as_str(),
-                        self.domain.as_str()
-                    ),
-                    l.span,
-                );
+        if self.domain == HirDomain::Core {
+            for e in &body.exprs {
+                match &e.kind {
+                    hir::ExprKind::Binary { op, .. } if !op.in_core_profile() => {
+                        self.error(
+                            "verify.profile-op",
+                            format!(
+                                "op `{}` is not part of the core-i32-draft profile",
+                                op.as_str()
+                            ),
+                            e.span,
+                        );
+                    }
+                    hir::ExprKind::Unary { op, .. } => {
+                        self.error(
+                            "verify.profile-op",
+                            format!(
+                                "unary op `{}` is not part of the core-i32-draft profile",
+                                op.as_str()
+                            ),
+                            e.span,
+                        );
+                    }
+                    hir::ExprKind::Logical { op, .. } => {
+                        self.error(
+                            "verify.profile-op",
+                            format!(
+                                "logical op `{}` is not part of the core-i32-draft profile",
+                                op.as_str()
+                            ),
+                            e.span,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if self.domain != HirDomain::Record {
+            for t in &m.types {
+                if matches!(t.kind, hir::TypeKind::Record(_)) {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "record type `{}` is not part of the {} profile",
+                            t.id_text,
+                            self.domain.as_str()
+                        ),
+                        t.span,
+                    );
+                }
+            }
+            for d in &m.defs {
+                if matches!(d.kind, hir::DefKind::Method { .. }) {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "method declaration `{}` is not part of the {} profile",
+                            d.id_text,
+                            self.domain.as_str()
+                        ),
+                        d.span,
+                    );
+                }
+            }
+            for e in &body.exprs {
+                let record_kind = match &e.kind {
+                    hir::ExprKind::RecordCtor { .. } => Some("record_ctor"),
+                    hir::ExprKind::FieldGet { .. } => Some("field_get"),
+                    hir::ExprKind::BorrowView { .. } => Some("borrow_view"),
+                    hir::ExprKind::BorrowMut { .. } => Some("borrow_mut"),
+                    _ => None,
+                };
+                if let Some(kind) = record_kind {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "`{}` expression `{}` is not part of the {} profile",
+                            kind,
+                            e.id_text,
+                            self.domain.as_str()
+                        ),
+                        e.span,
+                    );
+                }
+            }
+            for p in &body.places {
+                if matches!(p.kind, hir::PlaceKind::FieldPath(_)) {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "field-path place `{}` is not part of the {} profile",
+                            p.id_text,
+                            self.domain.as_str()
+                        ),
+                        p.span,
+                    );
+                }
             }
         }
     }
@@ -454,6 +538,7 @@ impl Verifier {
                     hir::TypeKind::StrOwned => ValueType::StrOwned,
                     hir::TypeKind::Char => ValueType::Char,
                     hir::TypeKind::Function(_) => ValueType::Function,
+                    hir::TypeKind::Record(_) => ValueType::Record(i as u32),
                 };
                 (i as u32, vt)
             })
@@ -496,11 +581,16 @@ impl Verifier {
             }
         }
         let type_map = Self::build_type_map(m);
+        if self.domain == HirDomain::Record {
+            self.check_record_module(m, &type_map);
+        }
         // Function signatures by def index.
         let mut sigs: SigTable = BTreeMap::new();
         for (i, d) in m.defs.iter().enumerate() {
             let ty_id = match &d.kind {
-                hir::DefKind::Function { ty, .. } | hir::DefKind::Intrinsic { ty, .. } => *ty,
+                hir::DefKind::Function { ty, .. }
+                | hir::DefKind::Method { ty, .. }
+                | hir::DefKind::Intrinsic { ty, .. } => *ty,
             };
             match m.types.get(ty_id.0 as usize).map(|t| &t.kind) {
                 Some(hir::TypeKind::Function(sig)) => {
@@ -529,8 +619,9 @@ impl Verifier {
         // body -> owner direction, so a zero-param alias sharing a two-param
         // body passed verify and panicked the backend).
         for (di, d) in m.defs.iter().enumerate() {
-            let hir::DefKind::Function { body: def_body, .. } = &d.kind else {
-                continue;
+            let def_body = match &d.kind {
+                hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => *body,
+                hir::DefKind::Intrinsic { .. } => continue,
             };
             let Some(b) = m.bodies.get(def_body.0 as usize) else {
                 continue; // binder rejects dangling body refs
@@ -553,7 +644,7 @@ impl Verifier {
         }
 
         for (bi, body) in m.bodies.iter().enumerate() {
-            self.check_profile_ops(body);
+            self.check_profile_ops(m, body);
             self.check_body(m, BodyId(bi as u32), body, &type_map, &sigs);
         }
     }
@@ -567,32 +658,329 @@ impl Verifier {
         let n_types = m.types.len();
         let mut diags: Vec<Diagnostic> = Vec::new();
         for t in &m.types {
-            let hir::TypeKind::Function(sig) = &t.kind else {
-                continue;
-            };
-            let mut check_use = |role: &str, u: &hir::TypeUse| {
-                if let hir::TypeUse::Ref(tid) = u {
-                    if (tid.0 as usize) >= n_types {
-                        diags.push(Diagnostic::new(
-                            Stage::Verify,
-                            "verify.bad-reference",
-                            format!(
-                                "type index `{}` in function type `{}`'s {} is out of range for the module's type table (length {})",
-                                tid.0, t.id_text, role, n_types
-                            ),
-                            t.span,
-                        ));
+            match &t.kind {
+                hir::TypeKind::Function(sig) => {
+                    let mut check_use = |role: &str, u: &hir::TypeUse| {
+                        if let hir::TypeUse::Ref(tid) = u {
+                            if (tid.0 as usize) >= n_types {
+                                diags.push(Diagnostic::new(
+                                    Stage::Verify,
+                                    "verify.bad-reference",
+                                    format!(
+                                        "type index `{}` in function type `{}`'s {} is out of range for the module's type table (length {})",
+                                        tid.0, t.id_text, role, n_types
+                                    ),
+                                    t.span,
+                                ));
+                            }
+                        }
+                    };
+                    for p in &sig.params {
+                        check_use("param", p);
+                    }
+                    check_use("result", &sig.result);
+                }
+                // PLAN-771: record field type refs get the same bounds
+                // gate (a mutated bundle must not smuggle an out-of-range
+                // field type into the layout walk).
+                hir::TypeKind::Record(shape) => {
+                    for f in &shape.fields {
+                        if let hir::TypeUse::Ref(tid) = &f.ty {
+                            if (tid.0 as usize) >= n_types {
+                                diags.push(Diagnostic::new(
+                                    Stage::Verify,
+                                    "verify.bad-reference",
+                                    format!(
+                                        "type index `{}` in record type `{}`'s field `{}` is out of range for the module's type table (length {})",
+                                        tid.0, t.id_text, f.name, n_types
+                                    ),
+                                    t.span,
+                                ));
+                            }
+                        }
                     }
                 }
-            };
-            for p in &sig.params {
-                check_use("param", p);
+                _ => {}
             }
-            check_use("result", &sig.result);
         }
         let ok = diags.is_empty();
         self.diags.extend(diags);
         ok
+    }
+
+    // -- record-domain rules (PLAN-771) --------------------------------------
+
+    /// Whether a local may be written (directly or through a borrow): a
+    /// mutable binding (`var`), or an explicit `mut` param (PLAN-771; the
+    /// mutable bit is schema-forbidden on params, mode carries it). For the
+    /// core/scalar domains param_mode is always View, so behavior there is
+    /// unchanged.
+    fn local_writable(l: &hir::LocalDef) -> bool {
+        l.mutable || (l.role == hir::LocalRole::Param && l.param_mode == hir::ParamMode::MutBorrow)
+    }
+
+    /// Record shape of a module type, if it is one.
+    fn record_shape(m: &hir::Module, tid: u32) -> Option<&hir::RecordShape> {
+        match m.types.get(tid as usize)?.kind {
+            hir::TypeKind::Record(ref s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Module-level record checks: field well-formedness (non-empty, unique
+    /// names, closed scalar/record field types), the type containment graph
+    /// (acyclic — iterative worklist, PLAN-771 probe P1 shape; no recursion
+    /// anywhere on this path), and method ownership/receiver contracts.
+    fn check_record_module(&mut self, m: &hir::Module, type_map: &BTreeMap<u32, ValueType>) {
+        let n = m.types.len();
+        // 1. per-record well-formedness
+        for t in &m.types {
+            let hir::TypeKind::Record(shape) = &t.kind else {
+                continue;
+            };
+            if shape.fields.is_empty() {
+                self.error(
+                    "verify.record-empty",
+                    format!(
+                        "record type `{}` has no fields; empty records are not part of the record-i32-draft profile",
+                        t.id_text
+                    ),
+                    t.span,
+                );
+            }
+            let mut seen: BTreeMap<&str, ()> = BTreeMap::new();
+            for f in &shape.fields {
+                if seen.insert(f.name.as_str(), ()).is_some() {
+                    self.error(
+                        "verify.duplicate-decl",
+                        format!(
+                            "record type `{}` declares field `{}` more than once",
+                            t.id_text, f.name
+                        ),
+                        t.span,
+                    );
+                }
+                let vt = match &f.ty {
+                    hir::TypeUse::Builtin(b) => match b {
+                        hir::BuiltinType::I32 => ValueType::I32,
+                        hir::BuiltinType::Bool => ValueType::Bool,
+                        // text builtins cannot appear in a record module
+                        // (profile defense already rejected them)
+                        hir::BuiltinType::StrSlice
+                        | hir::BuiltinType::StrOwned
+                        | hir::BuiltinType::Char => ValueType::I32,
+                    },
+                    hir::TypeUse::Ref(tid) => {
+                        match type_map.get(&tid.0) {
+                            Some(v) => *v,
+                            None => continue, // out-of-range already reported
+                        }
+                    }
+                };
+                if matches!(vt, ValueType::Function) {
+                    self.error(
+                        "verify.type-mismatch",
+                        format!(
+                            "record type `{}`'s field `{}` has a function type; record fields are i32/bool/nested records only",
+                            t.id_text, f.name
+                        ),
+                        t.span,
+                    );
+                }
+            }
+        }
+
+        // 2. containment graph: iterate record->record field edges with an
+        // explicit worklist; self loops, mutual loops and disconnected
+        // loops are all rejected (probe P1's four shapes).
+        let mut mark = vec![0u8; n]; // 0 new, 1 on stack, 2 done
+        for start in 0..n {
+            if mark[start] != 0 || Self::record_shape(m, start as u32).is_none() {
+                continue;
+            }
+            let mut stack: Vec<(usize, usize)> = vec![(start, 0)];
+            mark[start] = 1;
+            while let Some(&(node, fi)) = stack.last() {
+                let Some(shape) = Self::record_shape(m, node as u32) else {
+                    break;
+                };
+                if fi < shape.fields.len() {
+                    stack.last_mut().unwrap().1 += 1;
+                    if let hir::TypeUse::Ref(tid) = shape.fields[fi].ty {
+                        if Self::record_shape(m, tid.0).is_some() {
+                            match mark[tid.0 as usize] {
+                                0 => {
+                                    mark[tid.0 as usize] = 1;
+                                    stack.push((tid.0 as usize, 0));
+                                }
+                                1 => {
+                                    let pos = stack
+                                        .iter()
+                                        .position(|&(x, _)| x == tid.0 as usize)
+                                        .unwrap_or(0);
+                                    let chain: Vec<String> = stack[pos..]
+                                        .iter()
+                                        .map(|&(x, _)| m.types[x].id_text.clone())
+                                        .chain(std::iter::once(
+                                            m.types[tid.0 as usize].id_text.clone(),
+                                        ))
+                                        .collect();
+                                    self.error(
+                                        "verify.record-cycle",
+                                        format!(
+                                            "record containment graph has a cycle: {}",
+                                            chain.join(" -> ")
+                                        ),
+                                        m.types[tid.0 as usize].span,
+                                    );
+                                    // keep walking to collect further cycles
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                } else {
+                    mark[node] = 2;
+                    stack.pop();
+                }
+            }
+        }
+
+        // 3. methods: owner kind, receiver contract, per-record unique names
+        let mut method_names: BTreeMap<(u32, &str), ()> = BTreeMap::new();
+        for d in &m.defs {
+            let hir::DefKind::Method {
+                name,
+                ty,
+                record,
+                receiver,
+                ..
+            } = &d.kind
+            else {
+                continue;
+            };
+            if Self::record_shape(m, record.0).is_none() {
+                self.error(
+                    "verify.type-mismatch",
+                    format!(
+                        "method `{}`'s record `{}` is not a record type",
+                        name,
+                        m.types
+                            .get(record.0 as usize)
+                            .map(|t| t.id_text.as_str())
+                            .unwrap_or("<out of range>")
+                    ),
+                    d.span,
+                );
+            } else if method_names.insert((record.0, name.as_str()), ()).is_some() {
+                self.error(
+                    "verify.duplicate-decl",
+                    format!(
+                        "record `{}` declares method `{}` more than once",
+                        m.types[record.0 as usize].id_text, name
+                    ),
+                    d.span,
+                );
+            }
+            let Some(hir::TypeKind::Function(sig)) = m.types.get(ty.0 as usize).map(|t| &t.kind)
+            else {
+                continue; // callee-type error already recorded
+            };
+            match receiver {
+                hir::ReceiverKind::View => {
+                    if sig.params.is_empty() {
+                        self.error(
+                            "verify.type-mismatch",
+                            format!(
+                                "instance method `{}` has no receiver param; a view receiver is params[0] of the owner record type",
+                                name
+                            ),
+                            d.span,
+                        );
+                    } else if sig.params[0] != hir::TypeUse::Ref(*record) {
+                        self.error(
+                            "verify.type-mismatch",
+                            format!(
+                                "instance method `{}`'s receiver param must be its owner record type",
+                                name
+                            ),
+                            d.span,
+                        );
+                    }
+                }
+                hir::ReceiverKind::Static => {}
+            }
+        }
+    }
+
+    /// Resolve a field path against the module's record shapes, checking
+    /// every segment's owner. Returns the final TypeUse and its computed
+    /// value type; scalar-mid-path continuation (a segment through an
+    /// i32/bool field) is `verify.field-owner`.
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_field_path(
+        &mut self,
+        m: &hir::Module,
+        type_map: &BTreeMap<u32, ValueType>,
+        root: hir::TypeUse,
+        path: &[hir::FieldId],
+        subject: &str,
+        span: Span,
+    ) -> Option<(hir::TypeUse, ValueType)> {
+        let mut cur_use = root;
+        for (i, seg) in path.iter().enumerate() {
+            let cur_vt = match &cur_use {
+                hir::TypeUse::Builtin(b) => match b {
+                    hir::BuiltinType::I32 => ValueType::I32,
+                    hir::BuiltinType::Bool => ValueType::Bool,
+                    // non-record builtin: surfaces as a non-record path
+                    hir::BuiltinType::StrSlice
+                    | hir::BuiltinType::StrOwned
+                    | hir::BuiltinType::Char => ValueType::I32,
+                },
+                hir::TypeUse::Ref(t) => *type_map.get(&t.0)?,
+            };
+            let ValueType::Record(owner) = cur_vt else {
+                self.error(
+                    "verify.field-owner",
+                    format!(
+                        "{}: path segment {} goes through the non-record type `{}`",
+                        subject,
+                        i,
+                        vt_name(cur_vt)
+                    ),
+                    span,
+                );
+                return None;
+            };
+            let shape = Self::record_shape(m, owner)?;
+            if (seg.0 as usize) >= shape.fields.len() {
+                self.error(
+                    "verify.field-owner",
+                    format!(
+                        "{}: field index {} is out of range for record `{}` ({} fields)",
+                        subject,
+                        seg.0,
+                        m.types[owner as usize].id_text,
+                        shape.fields.len()
+                    ),
+                    span,
+                );
+                return None;
+            }
+            cur_use = shape.fields[seg.0 as usize].ty;
+        }
+        let final_vt = match &cur_use {
+            hir::TypeUse::Builtin(b) => match b {
+                hir::BuiltinType::I32 => ValueType::I32,
+                hir::BuiltinType::Bool => ValueType::Bool,
+                hir::BuiltinType::StrSlice
+                | hir::BuiltinType::StrOwned
+                | hir::BuiltinType::Char => ValueType::I32,
+            },
+            hir::TypeUse::Ref(t) => *type_map.get(&t.0)?,
+        };
+        Some((cur_use, final_vt))
     }
 
     fn check_body(
@@ -613,7 +1001,13 @@ impl Verifier {
         let Some(def) = m.defs.get(body.owner.0 as usize) else {
             return; // binder guarantees resolution; errors already recorded
         };
-        let hir::DefKind::Function { body: def_body, .. } = &def.kind else {
+        let (def_body, def_is_fn) = match &def.kind {
+            hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => {
+                (*body, true)
+            }
+            hir::DefKind::Intrinsic { .. } => (hir::BodyId(0), false),
+        };
+        if !def_is_fn {
             self.error(
                 "verify.owner-mismatch",
                 format!(
@@ -623,8 +1017,8 @@ impl Verifier {
                 body.span,
             );
             return;
-        };
-        if *def_body != body_id {
+        }
+        if def_body != body_id {
             self.error(
                 "verify.owner-mismatch",
                 format!(
@@ -637,8 +1031,288 @@ impl Verifier {
         let Some((sig_params, fn_result)) = sigs.get(&body.owner.0) else {
             return;
         };
+        if self.domain == HirDomain::Record {
+            self.check_record_body_rules(m, body, type_map);
+        }
         self.check_params(body, sig_params, type_map);
-        self.check_blocks(body, *fn_result, type_map, sigs);
+        self.check_blocks(m, body, *fn_result, type_map, sigs);
+    }
+
+    /// Record-domain body rules (PLAN-771 §5.4; 774 D-04): borrows live
+    /// only as direct call arguments, call-site borrow modes match the
+    /// callee's param modes, at most one active borrow per object per call
+    /// (exclusive mut), and field-path places resolve with exact types.
+    fn check_record_body_rules(
+        &mut self,
+        m: &hir::Module,
+        body: &hir::Body,
+        type_map: &BTreeMap<u32, ValueType>,
+    ) {
+        // Instance-method receiver local must be a view param (mut
+        // receivers = `mut fn` are not in this batch).
+        if let Some(def) = m.defs.get(body.owner.0 as usize) {
+            if let hir::DefKind::Method { receiver, .. } = &def.kind {
+                if *receiver == hir::ReceiverKind::View {
+                    for l in &body.locals {
+                        if l.role == hir::LocalRole::Param && l.index == Some(0) {
+                            if l.param_mode != hir::ParamMode::View {
+                                self.error(
+                                    "verify.immutable-write",
+                                    format!(
+                                        "receiver local `{}` of an instance method is a read-only view; a mut receiver is not part of this profile",
+                                        l.id_text
+                                    ),
+                                    l.span,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Direct-call-arg membership for the borrow-position rule: the
+        // exprs that appear as a Call's own eval_args.
+        let mut direct_call_arg: BTreeSet<u32> = BTreeSet::new();
+        for e in &body.exprs {
+            let mut children: Vec<u32> = Vec::new();
+            let mut is_call = false;
+            match &e.kind {
+                hir::ExprKind::Call { eval_args, .. } => {
+                    is_call = true;
+                    children.extend(eval_args.iter().map(|a| a.0));
+                }
+                hir::ExprKind::RecordCtor { eval_args, .. } => {
+                    children.extend(eval_args.iter().map(|a| a.0));
+                }
+                hir::ExprKind::Binary { lhs, rhs, .. }
+                | hir::ExprKind::Logical { lhs, rhs, .. } => {
+                    children.push(lhs.0);
+                    children.push(rhs.0);
+                }
+                hir::ExprKind::Unary { operand, .. } => children.push(operand.0),
+                hir::ExprKind::FieldGet { base, .. } => children.push(base.0),
+                hir::ExprKind::BorrowView { base } => children.push(base.0),
+                hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => {}
+                hir::ExprKind::BorrowMut { .. } => {}
+                // text kinds never appear in a record module (profile
+                // defense); totality only
+                hir::ExprKind::StrLit { .. }
+                | hir::ExprKind::CharLit { .. }
+                | hir::ExprKind::TextLen { .. }
+                | hir::ExprKind::TextLenBytes { .. }
+                | hir::ExprKind::TextCharAt { .. }
+                | hir::ExprKind::TextSlice { .. }
+                | hir::ExprKind::TextConcat { .. }
+                | hir::ExprKind::TextClone { .. }
+                | hir::ExprKind::TextToOwned { .. }
+                | hir::ExprKind::TextToBorrowed { .. }
+                | hir::ExprKind::CharToCodepoint { .. }
+                | hir::ExprKind::CharFromCodepoint { .. } => {}
+            }
+            if is_call {
+                direct_call_arg.extend(children);
+            }
+        }
+        // A. borrow exprs must be direct args of a call — never statement
+        // roots, operator operands, ctor args or nested positions.
+        for (i, e) in body.exprs.iter().enumerate() {
+            let is_borrow = matches!(
+                e.kind,
+                hir::ExprKind::BorrowView { .. } | hir::ExprKind::BorrowMut { .. }
+            );
+            if is_borrow && !direct_call_arg.contains(&(i as u32)) {
+                self.error(
+                    "verify.eval-position",
+                    format!(
+                        "expr `{}`: a borrow expression is only legal as a direct call argument",
+                        e.id_text
+                    ),
+                    e.span,
+                );
+            }
+        }
+
+        // B+C. per call: mode matching + exclusivity; plus places.
+        for e in body.exprs.iter() {
+            let hir::ExprKind::Call {
+                callee,
+                eval_args,
+                bindings,
+            } = &e.kind
+            else {
+                continue;
+            };
+            let Some(def) = m.defs.get(callee.0 as usize) else {
+                continue;
+            };
+            let ty_id = match def.kind.fn_type() {
+                Some(t) => t,
+                None => continue,
+            };
+            let Some(hir::TypeKind::Function(sig)) = m.types.get(ty_id.0 as usize).map(|t| &t.kind)
+            else {
+                continue;
+            };
+            // callee param modes come from the callee's own param locals
+            let mut modes: Vec<hir::ParamMode> = vec![hir::ParamMode::View; sig.params.len()];
+            if let Some(bid) = def.kind.fn_body() {
+                if let Some(cb) = m.bodies.get(bid.0 as usize) {
+                    for l in &cb.locals {
+                        if l.role == hir::LocalRole::Param {
+                            if let Some(idx) = l.index {
+                                if (idx as usize) < modes.len() {
+                                    modes[idx as usize] = l.param_mode;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // mode matching through the bindings
+            for b in bindings {
+                let Some(mode) = modes.get(b.param as usize) else {
+                    continue;
+                };
+                // F-771-R1-03: a mutated bundle can carry an out-of-range
+                // binding arg — the dedicated binding validation in
+                // check_blocks reports it; this earlier ownership walk
+                // must skip the binding instead of indexing past eval_args
+                let Some(arg_e) = eval_args
+                    .get(b.arg as usize)
+                    .and_then(|a| body.exprs.get(a.0 as usize))
+                else {
+                    continue;
+                };
+                let is_record_param = matches!(
+                    type_map.get(&match sig.params.get(b.param as usize) {
+                        Some(hir::TypeUse::Ref(t)) => t.0,
+                        _ => u32::MAX,
+                    }),
+                    Some(ValueType::Record(_))
+                );
+                match (&arg_e.kind, *mode, is_record_param) {
+                    (hir::ExprKind::BorrowMut { .. }, hir::ParamMode::MutBorrow, true) => {}
+                    (hir::ExprKind::BorrowView { .. }, hir::ParamMode::View, true) => {}
+                    (hir::ExprKind::BorrowView { .. }, hir::ParamMode::MutBorrow, true) => {
+                        self.error(
+                            "verify.ownership-required",
+                            format!(
+                                "expr `{}`: param {} is declared `mut` and requires a `.mut` argument",
+                                e.id_text, b.param
+                            ),
+                            arg_e.span,
+                        );
+                    }
+                    (hir::ExprKind::BorrowMut { .. }, hir::ParamMode::View, true) => {
+                        self.error(
+                            "verify.ownership-required",
+                            format!(
+                                "expr `{}`: param {} is a read-only view and does not accept a `.mut` argument",
+                                e.id_text, b.param
+                            ),
+                            arg_e.span,
+                        );
+                    }
+                    (_, _, true) => {
+                        self.error(
+                            "verify.ownership-required",
+                            format!(
+                                "expr `{}`: record param {} requires a borrow argument (view or `.mut`)",
+                                e.id_text, b.param
+                            ),
+                            arg_e.span,
+                        );
+                    }
+                    // scalar params: borrow args are typed out by expr_type
+                    (_, _, false) => {}
+                }
+            }
+            // exclusivity: count access events per local across the whole
+            // combined arg trees of this one call; any local with a mut
+            // borrow and more than one event is a conflict
+            let mut events: BTreeMap<u32, (usize, bool)> = BTreeMap::new();
+            let mut stack: Vec<u32> = eval_args.iter().map(|a| a.0).collect();
+            let mut visited: BTreeSet<u32> = BTreeSet::new();
+            while let Some(id) = stack.pop() {
+                if !visited.insert(id) {
+                    continue;
+                }
+                let arg = &body.exprs[id as usize];
+                match &arg.kind {
+                    hir::ExprKind::BorrowMut { local } => {
+                        let slot = events.entry(local.0).or_insert((0, false));
+                        slot.0 += 1;
+                        slot.1 = true;
+                    }
+                    hir::ExprKind::ReadLocal { local } => {
+                        let slot = events.entry(local.0).or_insert((0, false));
+                        slot.0 += 1;
+                    }
+                    _ => {
+                        let mut children: Vec<u32> = Vec::new();
+                        match &arg.kind {
+                            hir::ExprKind::Call { eval_args: a2, .. }
+                            | hir::ExprKind::RecordCtor { eval_args: a2, .. } => {
+                                children.extend(a2.iter().map(|x| x.0));
+                            }
+                            hir::ExprKind::Binary { lhs, rhs, .. }
+                            | hir::ExprKind::Logical { lhs, rhs, .. } => {
+                                children.push(lhs.0);
+                                children.push(rhs.0);
+                            }
+                            hir::ExprKind::Unary { operand, .. } => children.push(operand.0),
+                            hir::ExprKind::FieldGet { base, .. } => children.push(base.0),
+                            hir::ExprKind::BorrowView { base } => children.push(base.0),
+                            _ => {}
+                        }
+                        stack.extend(children);
+                    }
+                }
+            }
+            for (local, (count, has_mut)) in events {
+                if has_mut && count > 1 {
+                    let name = body
+                        .locals
+                        .get(local as usize)
+                        .map(|l| l.id_text.as_str())
+                        .unwrap_or("<unknown>");
+                    self.error(
+                        "verify.mut-conflict",
+                        format!(
+                            "expr `{}`: local `{}` is mutably borrowed while also accessed {} time(s) in the same call; a mut borrow is exclusive",
+                            e.id_text,
+                            name,
+                            count - 1
+                        ),
+                        e.span,
+                    );
+                }
+            }
+        }
+
+        // places: field-path owner resolution + exact final type
+        for p in &body.places {
+            if let hir::PlaceKind::FieldPath(path) = &p.kind {
+                let root_local = &body.locals[p.local.0 as usize];
+                let subject = format!("place `{}`", p.id_text);
+                if let Some((_, final_vt)) =
+                    self.resolve_field_path(m, type_map, root_local.ty, path, &subject, p.span)
+                {
+                    let place_vt = self.value_of(&p.ty, type_map);
+                    if final_vt != place_vt {
+                        self.error(
+                            "verify.type-mismatch",
+                            format!(
+                                "{}: field path type does not match the place's declared type",
+                                subject
+                            ),
+                            p.span,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// Bounds-check every table reference inside one body (plus its type
@@ -765,6 +1439,33 @@ impl Verifier {
                     }
                 }
                 hir::ExprKind::StrLit { .. } | hir::ExprKind::CharLit { .. } => {}
+                hir::ExprKind::RecordCtor {
+                    record, eval_args, ..
+                } => {
+                    if (record.0 as usize) >= n_types {
+                        bad("type", record.0, n_types, e.span);
+                    }
+                    for a in eval_args {
+                        if (a.0 as usize) >= n_exprs {
+                            bad("expression", a.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::FieldGet { base, .. } => {
+                    if (base.0 as usize) >= n_exprs {
+                        bad("expression", base.0, n_exprs, e.span);
+                    }
+                }
+                hir::ExprKind::BorrowView { base } => {
+                    if (base.0 as usize) >= n_exprs {
+                        bad("expression", base.0, n_exprs, e.span);
+                    }
+                }
+                hir::ExprKind::BorrowMut { local } => {
+                    if (local.0 as usize) >= n_locals {
+                        bad("local", local.0, n_locals, e.span);
+                    }
+                }
                 hir::ExprKind::Constant { .. } => {}
             }
         }
@@ -933,6 +1634,7 @@ impl Verifier {
 
     fn expr_type(
         &mut self,
+        m: &hir::Module,
         eid: ExprId,
         body: &hir::Body,
         type_map: &BTreeMap<u32, ValueType>,
@@ -1068,6 +1770,48 @@ impl Verifier {
                             stack.push(Visit::Exit(id));
                             stack.push(Visit::Enter(*rhs));
                             stack.push(Visit::Enter(*lhs));
+                        }
+                        hir::ExprKind::RecordCtor { eval_args, .. } => {
+                            // source evaluation order: args entered left to
+                            // right exactly as written (never field order)
+                            stack.push(Visit::Exit(id));
+                            for a in eval_args.iter().rev() {
+                                stack.push(Visit::Enter(*a));
+                            }
+                        }
+                        hir::ExprKind::FieldGet { base, .. } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*base));
+                        }
+                        hir::ExprKind::BorrowView { base } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*base));
+                        }
+                        hir::ExprKind::BorrowMut { local } => {
+                            let l = &body.locals[local.0 as usize];
+                            let lt = self.value_of(&l.ty, type_map);
+                            if !matches!(lt, ValueType::Record(_)) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: a mut borrow requires a record-typed local",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if !Self::local_writable(l) {
+                                self.error(
+                                    "verify.immutable-write",
+                                    format!(
+                                        "expr `{}`: local `{}` is immutable and cannot be mutably borrowed",
+                                        e.id_text, l.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            tm.gray.remove(&id.0);
+                            tm.memo.insert(id.0, lt);
                         }
                     }
                 }
@@ -1754,6 +2498,229 @@ impl Verifier {
                         hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => {
                             tm.memo.get(&id.0).copied().unwrap_or(declared)
                         }
+                        hir::ExprKind::BorrowMut { .. } => {
+                            // fully handled at Enter (leaf)
+                            tm.memo.get(&id.0).copied().unwrap_or(declared)
+                        }
+                        hir::ExprKind::BorrowView { base } => {
+                            let bt =
+                                operand_type(tm, *base, declared_of(&body.exprs[base.0 as usize]));
+                            match bt {
+                                ValueType::Record(rec) => {
+                                    if declared != ValueType::Record(rec) {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: view borrow type does not match the borrowed record",
+                                                e.id_text
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    ValueType::Record(rec)
+                                }
+                                ValueType::Function
+                                | ValueType::I32
+                                | ValueType::Bool
+                                | ValueType::Str
+                                | ValueType::StrOwned
+                                | ValueType::Char => {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: a view borrow requires a record-typed value",
+                                            e.id_text
+                                        ),
+                                        e.span,
+                                    );
+                                    declared
+                                }
+                            }
+                        }
+                        hir::ExprKind::FieldGet { base, path } => {
+                            let bt =
+                                operand_type(tm, *base, declared_of(&body.exprs[base.0 as usize]));
+                            if !matches!(bt, ValueType::Record(_)) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: field access requires a record-typed base",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                                continue;
+                            }
+                            let root_use = body.exprs[base.0 as usize].ty.clone();
+                            match self.resolve_field_path(
+                                m,
+                                type_map,
+                                root_use,
+                                path,
+                                &format!("expr `{}`", e.id_text),
+                                e.span,
+                            ) {
+                                Some((_, final_vt)) => {
+                                    if final_vt != declared {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: field path type does not match the accessed field",
+                                                e.id_text
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    final_vt
+                                }
+                                None => declared,
+                            }
+                        }
+                        hir::ExprKind::RecordCtor {
+                            record,
+                            eval_args,
+                            bindings,
+                        } => {
+                            let rec_vt = ValueType::Record(record.0);
+                            if declared != rec_vt {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: constructor type must be the constructed record",
+                                        e.id_text
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            let shape = match Self::record_shape(m, record.0) {
+                                Some(sh) => sh,
+                                None => {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: constructor target is not a record type",
+                                            e.id_text
+                                        ),
+                                        e.span,
+                                    );
+                                    return declared;
+                                }
+                            };
+                            // every field initialized exactly once, each arg
+                            // consumed exactly once (mirrors the call
+                            // binding discipline)
+                            let mut seen_fields: BTreeSet<u32> = BTreeSet::new();
+                            let mut seen_args: BTreeSet<u32> = BTreeSet::new();
+                            for b in bindings {
+                                if !seen_fields.insert(b.field) {
+                                    self.error(
+                                        "verify.ctor-arity",
+                                        format!(
+                                            "expr `{}`: field {} is initialized more than once",
+                                            e.id_text, b.field
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                                if (b.field as usize) >= shape.fields.len() {
+                                    self.error(
+                                        "verify.ctor-arity",
+                                        format!(
+                                            "expr `{}`: field index {} is out of range for record `{}` ({} fields)",
+                                            e.id_text,
+                                            b.field,
+                                            m.types[record.0 as usize].id_text,
+                                            shape.fields.len()
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                                if (b.arg as usize) >= eval_args.len() {
+                                    self.error(
+                                        "verify.ctor-arity",
+                                        format!(
+                                            "expr `{}`: ctor binding arg {} indexes past {} eval_args",
+                                            e.id_text,
+                                            b.arg,
+                                            eval_args.len()
+                                        ),
+                                        e.span,
+                                    );
+                                } else if !seen_args.insert(b.arg) {
+                                    self.error(
+                                        "verify.ctor-arity",
+                                        format!(
+                                            "expr `{}`: eval_args[{}] is consumed by more than one field",
+                                            e.id_text, b.arg
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            if seen_fields.len() != shape.fields.len() {
+                                self.error(
+                                    "verify.ctor-arity",
+                                    format!(
+                                        "expr `{}`: {} of {} fields initialized; every field must be initialized exactly once",
+                                        e.id_text,
+                                        seen_fields.len(),
+                                        shape.fields.len()
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            for i in 0..eval_args.len() as u32 {
+                                if !seen_args.contains(&i) {
+                                    self.error(
+                                        "verify.ctor-arity",
+                                        format!(
+                                            "expr `{}`: eval_args[{}] is evaluated but no field consumes it",
+                                            e.id_text, i
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            // argument types against field types (nominal:
+                            // Record(tid) equality)
+                            for b in bindings {
+                                if let (Some(field), Some(arg_id)) = (
+                                    shape.fields.get(b.field as usize),
+                                    eval_args.get(b.arg as usize),
+                                ) {
+                                    let arg_e = &body.exprs[arg_id.0 as usize];
+                                    let at = operand_type(tm, *arg_id, declared_of(arg_e));
+                                    let ft = match &field.ty {
+                                        hir::TypeUse::Builtin(b2) => match b2 {
+                                            hir::BuiltinType::I32 => ValueType::I32,
+                                            hir::BuiltinType::Bool => ValueType::Bool,
+                                            hir::BuiltinType::StrSlice
+                                            | hir::BuiltinType::StrOwned
+                                            | hir::BuiltinType::Char => ValueType::I32,
+                                        },
+                                        hir::TypeUse::Ref(t2) => match type_map.get(&t2.0) {
+                                            Some(v) => *v,
+                                            None => continue,
+                                        },
+                                    };
+                                    if at != ft {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: field `{}` ({}) does not match eval_args[{}] ({})",
+                                                e.id_text,
+                                                field.name,
+                                                vt_name(ft),
+                                                b.arg,
+                                                vt_name(at)
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                }
+                            }
+                            rec_vt
+                        }
                     };
                     tm.gray.remove(&id.0);
                     tm.memo.insert(id.0, computed);
@@ -1838,6 +2805,18 @@ impl Verifier {
                     targets.push(rhs.0);
                 }
                 hir::ExprKind::StrLit { .. } | hir::ExprKind::CharLit { .. } => {}
+                hir::ExprKind::RecordCtor { eval_args, .. } => {
+                    for a in eval_args {
+                        targets.push(a.0);
+                    }
+                }
+                hir::ExprKind::FieldGet { base, .. } => {
+                    targets.push(base.0);
+                }
+                hir::ExprKind::BorrowView { base } => {
+                    targets.push(base.0);
+                }
+                hir::ExprKind::BorrowMut { .. } => {}
                 _ => {}
             }
             for t in targets {
@@ -1929,6 +2908,7 @@ impl Verifier {
 
     fn check_blocks(
         &mut self,
+        m: &hir::Module,
         body: &hir::Body,
         fn_result: ValueType,
         type_map: &BTreeMap<u32, ValueType>,
@@ -1937,7 +2917,7 @@ impl Verifier {
         self.check_expr_graph(body);
         let mut tm = TypeMemo::default();
         for i in 0..body.exprs.len() {
-            self.expr_type(ExprId(i as u32), body, type_map, sigs, &mut tm);
+            self.expr_type(m, ExprId(i as u32), body, type_map, sigs, &mut tm);
         }
 
         // Block containment graph first (QA-01): entry zero in-degree, every
@@ -1960,6 +2940,7 @@ impl Verifier {
             let mut tm = TypeMemo::default();
             let mut walked: BTreeSet<u32> = BTreeSet::new();
             let (flow, _exit_init) = self.walk_block(
+                m,
                 body.entry,
                 body,
                 &init,
@@ -2092,6 +3073,7 @@ impl Verifier {
     #[allow(clippy::too_many_arguments)]
     fn walk_block(
         &mut self,
+        m: &hir::Module,
         entry: crate::hir::BlockId,
         body: &hir::Body,
         init: &Init,
@@ -2208,7 +3190,7 @@ impl Verifier {
                         }
                         hir::Stmt::Return { value } => {
                             self.walk_value(value, body, &frame.cur);
-                            let vt = self.expr_type(value, body, type_map, sigs, tm);
+                            let vt = self.expr_type(m, value, body, type_map, sigs, tm);
                             if vt != fn_result {
                                 self.error(
                                     "verify.type-mismatch",
@@ -2223,7 +3205,7 @@ impl Verifier {
                         }
                         hir::Stmt::If { cond, then, els } => {
                             self.walk_value(cond, body, &frame.cur);
-                            let cond_ty = self.expr_type(cond, body, type_map, sigs, tm);
+                            let cond_ty = self.expr_type(m, cond, body, type_map, sigs, tm);
                             if cond_ty != ValueType::Bool {
                                 self.error(
                                     "verify.type-mismatch",
@@ -2285,7 +3267,7 @@ impl Verifier {
                                     );
                                 }
                                 let target = &body.locals[p.local.0 as usize];
-                                if !target.mutable {
+                                if !Self::local_writable(target) {
                                     self.error(
                                         "verify.immutable-write",
                                         format!(
@@ -2504,6 +3486,31 @@ impl Verifier {
                 hir::ExprKind::Constant { .. }
                 | hir::ExprKind::StrLit { .. }
                 | hir::ExprKind::CharLit { .. } => {}
+                hir::ExprKind::RecordCtor { eval_args, .. } => {
+                    for a in eval_args.iter().rev() {
+                        stack.push(*a);
+                    }
+                }
+                hir::ExprKind::FieldGet { base, .. } => {
+                    stack.push(*base);
+                }
+                hir::ExprKind::BorrowView { base } => {
+                    stack.push(*base);
+                }
+                hir::ExprKind::BorrowMut { local } => {
+                    if !init.contains(local) {
+                        let name = body
+                            .locals
+                            .get(local.0 as usize)
+                            .map(|l| l.id_text.as_str())
+                            .unwrap_or("<unknown>");
+                        self.error(
+                            "verify.uninitialized-read",
+                            format!("mut borrow of uninitialized local `{}`", name),
+                            e.span,
+                        );
+                    }
+                }
             }
         }
     }

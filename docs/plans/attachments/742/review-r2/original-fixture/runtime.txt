@@ -1,0 +1,3 @@
+list=0
+get=404
+update=ok:0

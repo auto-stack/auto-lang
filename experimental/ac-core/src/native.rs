@@ -28,7 +28,7 @@ use cranelift_codegen::settings::Configurable;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{default_libcall_names, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use target_lexicon::Triple;
 
 const WINCALL: CallConv = CallConv::WindowsFastcall;
@@ -98,6 +98,10 @@ enum Vt {
     I32,
     Bool,
     Function,
+    /// Nominal record type (PLAN-771; 774 D-05): lowered as a pointer
+    /// (ABI-D `*const` view / ABI-E `*mut` mut+out) with value storage in
+    /// stack slots — never as a by-value aggregate parameter or return.
+    Record(hir::TypeId),
 }
 
 /// Total projection of a type use (review P767-R2 hardening): an
@@ -122,8 +126,292 @@ fn value_of_type_use(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt> {
             hir::TypeKind::Bool => Some(Vt::Bool),
             hir::TypeKind::Function(_) => Some(Vt::Function),
             hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char => None,
+            hir::TypeKind::Record(_) => Some(Vt::Record(*tid)),
         },
     }
+}
+
+/// Record byte sizes by type index (PLAN-771 §3 / 774 D-05): declaration
+/// order, every field 4-aligned, size = sum of field sizes (scalar fields
+/// are 4 bytes; nested fields contribute their own size). Computed with an
+/// explicit work stack and checked adds — the verifier guarantees acyclicity.
+fn record_layouts(m: &hir::Module) -> BTreeMap<u32, u64> {
+    let n = m.types.len();
+    let mut size: Vec<Option<u64>> = vec![None; n];
+    let is_record = |i: usize| {
+        matches!(
+            m.types.get(i).map(|t| &t.kind),
+            Some(hir::TypeKind::Record(_))
+        )
+    };
+    for start in 0..n {
+        if !is_record(start) || size[start].is_some() {
+            continue;
+        }
+        let mut stack: Vec<usize> = vec![start];
+        let mut on_path = vec![false; n];
+        while let Some(&node) = stack.last() {
+            let done = match &m.types[node].kind {
+                hir::TypeKind::Record(shape) => {
+                    let mut pending = false;
+                    for f in &shape.fields {
+                        if let hir::TypeUse::Ref(t) = &f.ty {
+                            let fi = t.0 as usize;
+                            if is_record(fi) && size[fi].is_none() {
+                                if !on_path[fi] {
+                                    on_path[node] = true;
+                                    stack.push(fi);
+                                    pending = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if pending {
+                        continue;
+                    }
+                    let mut total: u64 = 0;
+                    for f in &shape.fields {
+                        let fsz = match &f.ty {
+                            hir::TypeUse::Builtin(_) => 4u64,
+                            hir::TypeUse::Ref(t) => {
+                                let fi = t.0 as usize;
+                                if is_record(fi) {
+                                    size[fi].unwrap_or(4)
+                                } else {
+                                    4
+                                }
+                            }
+                        };
+                        total = total.checked_add(fsz).unwrap_or(u32::MAX as u64);
+                    }
+                    size[node] = Some(total);
+                    true
+                }
+                _ => true,
+            };
+            if done {
+                on_path[node] = false;
+                stack.pop();
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    for (i, sz) in size.into_iter().enumerate() {
+        if let Some(sz) = sz {
+            out.insert(i as u32, sz);
+        }
+    }
+    out
+}
+
+/// Whether a type use names a RECORD type (refs to i32/bool typedefs are
+/// scalars — the source adapter emits field types through the `t_i32`/
+/// `t_bool` typedefs).
+fn type_is_record(m: &hir::Module, u: &hir::TypeUse) -> bool {
+    match u {
+        hir::TypeUse::Builtin(_) => false,
+        hir::TypeUse::Ref(t) => matches!(
+            m.types.get(t.0 as usize).map(|x| &x.kind),
+            Some(hir::TypeKind::Record(_))
+        ),
+    }
+}
+
+/// Record-typed locals whose storage an expression subtree may read or hand
+/// to a callee, indexed by expr id (F-771-R1-01). Copy elision forwards an
+/// assignment destination into RHS evaluation; that is only sound when the
+/// destination's root local does not appear here — otherwise the RHS could
+/// observe (or a callee could interleave with) writes the elision performs
+/// into storage that is still being read. `BorrowMut` counts too: a callee
+/// writing through a mut argument touches the same storage.
+fn record_mention_sets(body: &hir::Body, local_is_record: &[bool]) -> Vec<BTreeSet<u32>> {
+    let mut sets: Vec<BTreeSet<u32>> = vec![BTreeSet::new(); body.exprs.len()];
+    enum Step {
+        Enter(hir::ExprId),
+        Combine(hir::ExprId),
+    }
+    let mut roots: Vec<hir::ExprId> = Vec::new();
+    for bl in &body.blocks {
+        for s in &bl.stmts {
+            match s {
+                hir::Stmt::Let { value, .. } | hir::Stmt::Return { value } => roots.push(*value),
+                hir::Stmt::If { cond, .. } => roots.push(*cond),
+                hir::Stmt::Assign { value, .. } => roots.push(*value),
+                hir::Stmt::Loop { .. }
+                | hir::Stmt::Break { .. }
+                | hir::Stmt::Continue { .. }
+                | hir::Stmt::Drop { .. } => {}
+            }
+        }
+    }
+    for root in roots {
+        // single ownership (verifier) makes the forest acyclic; the walk is
+        // iterative so deep expressions cannot grow the emitter's stack
+        let mut stack: Vec<Step> = vec![Step::Enter(root)];
+        while let Some(step) = stack.pop() {
+            match step {
+                Step::Enter(id) => {
+                    let Some(e) = body.exprs.get(id.0 as usize) else {
+                        continue;
+                    };
+                    let mut children: Vec<hir::ExprId> = Vec::new();
+                    match &e.kind {
+                        hir::ExprKind::ReadLocal { local } => {
+                            if local_is_record.get(local.0 as usize).copied() == Some(true) {
+                                sets[id.0 as usize].insert(local.0);
+                            }
+                        }
+                        hir::ExprKind::BorrowMut { local } => {
+                            sets[id.0 as usize].insert(local.0);
+                        }
+                        hir::ExprKind::Constant { .. } => {}
+                        hir::ExprKind::Binary { lhs, rhs, .. }
+                        | hir::ExprKind::Logical { lhs, rhs, .. } => {
+                            children.push(*lhs);
+                            children.push(*rhs);
+                        }
+                        hir::ExprKind::Unary { operand, .. } => children.push(*operand),
+                        hir::ExprKind::Call { eval_args, .. }
+                        | hir::ExprKind::RecordCtor { eval_args, .. } => {
+                            children.extend(eval_args.iter().copied());
+                        }
+                        hir::ExprKind::FieldGet { base, .. }
+                        | hir::ExprKind::BorrowView { base } => {
+                            children.push(*base);
+                        }
+                        // text kinds never appear in a record module (the
+                        // verifier's profile defense); totality only
+                        _ => {}
+                    }
+                    if !children.is_empty() {
+                        stack.push(Step::Combine(id));
+                        for c in children.into_iter().rev() {
+                            stack.push(Step::Enter(c));
+                        }
+                    }
+                }
+                Step::Combine(id) => {
+                    let mut union: BTreeSet<u32> = sets[id.0 as usize].clone();
+                    let mut children: Vec<hir::ExprId> = Vec::new();
+                    if let Some(e) = body.exprs.get(id.0 as usize) {
+                        match &e.kind {
+                            hir::ExprKind::Binary { lhs, rhs, .. }
+                            | hir::ExprKind::Logical { lhs, rhs, .. } => {
+                                children.push(*lhs);
+                                children.push(*rhs);
+                            }
+                            hir::ExprKind::Unary { operand, .. } => children.push(*operand),
+                            hir::ExprKind::Call { eval_args, .. }
+                            | hir::ExprKind::RecordCtor { eval_args, .. } => {
+                                children.extend(eval_args.iter().copied());
+                            }
+                            hir::ExprKind::FieldGet { base, .. }
+                            | hir::ExprKind::BorrowView { base } => {
+                                children.push(*base);
+                            }
+                            _ => {}
+                        }
+                    }
+                    for c in children {
+                        if let Some(s) = sets.get(c.0 as usize) {
+                            union.extend(s.iter().copied());
+                        }
+                    }
+                    sets[id.0 as usize] = union;
+                }
+            }
+        }
+    }
+    sets
+}
+
+/// Record-typed `ReadLocal` expressions bound to record-valued constructor
+/// fields, by expr id (F-771-R2-01). A record rvalue operand must be
+/// CAPTURED at its own source-order evaluation point: deferring the field
+/// copy to the ctor's combine step lets a later sibling argument (e.g.
+/// `bump(q.mut)` in `P { a: q, b: bump(q.mut) }`) mutate the source storage
+/// first. Every other record-producing operand already materializes at its
+/// evaluation position (FieldGet copies, Calls own their out slot, nested
+/// ctors own their temp); borrow expressions never reach ctor position
+/// (verifier rule), so only plain local reads need the eager set.
+fn record_eager_reads(body: &hir::Body, m: &hir::Module) -> BTreeSet<u32> {
+    let mut out = BTreeSet::new();
+    for e in &body.exprs {
+        if let hir::ExprKind::RecordCtor {
+            record,
+            eval_args,
+            bindings,
+        } = &e.kind
+        {
+            let shape = match m.types.get(record.0 as usize).map(|t| &t.kind) {
+                Some(hir::TypeKind::Record(sh)) => sh,
+                _ => continue,
+            };
+            for b in bindings {
+                let (Some(field), Some(arg)) = (
+                    shape.fields.get(b.field as usize),
+                    eval_args.get(b.arg as usize),
+                ) else {
+                    continue;
+                };
+                if type_is_record(m, &field.ty)
+                    && matches!(
+                        body.exprs.get(arg.0 as usize).map(|x| &x.kind),
+                        Some(hir::ExprKind::ReadLocal { .. })
+                    )
+                {
+                    out.insert(arg.0);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Walk a field path from a root record type (PLAN-771): returns the byte
+/// offset of the final field and, when that field is itself a record, its
+/// type index (pointer storage); `None` in the second slot marks a scalar.
+fn field_path_offset(
+    m: &hir::Module,
+    layouts: &BTreeMap<u32, u64>,
+    root: u32,
+    path: &[hir::FieldId],
+) -> Option<(u64, Option<u32>)> {
+    let field_size = |ty: &hir::TypeUse| -> Option<u64> {
+        match ty {
+            hir::TypeUse::Builtin(_) => Some(4),
+            hir::TypeUse::Ref(t) => layouts.get(&t.0).copied().or(Some(4)),
+        }
+    };
+    let mut off: u64 = 0;
+    let mut cur = root;
+    for (i, seg) in path.iter().enumerate() {
+        let shape = match &m.types.get(cur as usize)?.kind {
+            hir::TypeKind::Record(sh) => sh,
+            _ => return None,
+        };
+        for f in shape.fields.iter().take(seg.0 as usize) {
+            off = off.checked_add(field_size(&f.ty)?)?;
+        }
+        let field = shape.fields.get(seg.0 as usize)?;
+        if type_is_record(m, &field.ty) {
+            let hir::TypeUse::Ref(t) = &field.ty else {
+                unreachable!("checked by type_is_record")
+            };
+            if i + 1 == path.len() {
+                return Some((off, Some(t.0)));
+            }
+            cur = t.0;
+        } else {
+            // scalar field (builtin word or i32/bool typedef): must be last
+            if i + 1 != path.len() {
+                return None;
+            }
+            return Some((off, None));
+        }
+    }
+    None
 }
 
 fn signature_of(m: &hir::Module, ty: hir::TypeId) -> Option<(Vec<Vt>, Vt)> {
@@ -235,8 +523,14 @@ pub fn lower_object(
     // hold two entries with the same name).
     let mut seen_names: BTreeMap<&str, DefId> = BTreeMap::new();
     for (di, d) in module.defs.iter().enumerate() {
-        if let hir::DefKind::Function { name, .. } = &d.kind {
-            if seen_names.insert(name.as_str(), DefId(di as u32)).is_some() {
+        let decl_name = match &d.kind {
+            hir::DefKind::Function { name, .. } | hir::DefKind::Method { name, .. } => {
+                Some(name.as_str())
+            }
+            hir::DefKind::Intrinsic { .. } => None,
+        };
+        if let Some(name) = decl_name {
+            if seen_names.insert(name, DefId(di as u32)).is_some() {
                 return Err(vec![Diagnostic::new(
                     Stage::Backend,
                     "backend.duplicate-symbol",
@@ -287,6 +581,9 @@ pub fn lower_object(
     for (di, d) in module.defs.iter().enumerate() {
         let (sym, linkage, ty) = match &d.kind {
             hir::DefKind::Function { name, ty, .. } => (name.as_str(), Linkage::Export, *ty),
+            // methods export under their internal symbol (`sm_...` from the
+            // source adapter / author-given name for hand-written HIR)
+            hir::DefKind::Method { name, ty, .. } => (name.as_str(), Linkage::Export, *ty),
             hir::DefKind::Intrinsic { symbol, ty, .. } => (symbol.as_str(), Linkage::Import, *ty),
         };
         let Some((params, result)) = signature_of(module, ty) else {
@@ -295,7 +592,16 @@ pub fn lower_object(
                 d.id_text
             ))]);
         };
-        let sig = cranelift_sig(&params, result);
+        // ABI-E out slot applies to the DECLARED signature too (call sites
+        // append the out pointer; the define site below mirrors this)
+        let layouts0 = record_layouts(module);
+        let mut machine_params0 = params.clone();
+        if let Vt::Record(tid) = result {
+            if layouts0.contains_key(&tid.0) {
+                machine_params0.push(Vt::Record(tid));
+            }
+        }
+        let sig = cranelift_sig(&machine_params0, result);
         let fid = match om.declare_function(sym, linkage, &sig) {
             Ok(id) => id,
             Err(e) => return Err(vec![backend_diag(format!("declare {}: {}", sym, e))]),
@@ -305,15 +611,26 @@ pub fn lower_object(
 
     // Define each function body.
     for (di, d) in module.defs.iter().enumerate() {
-        let hir::DefKind::Function { ty, body, .. } = &d.kind else {
-            continue;
+        let (ty, body) = match &d.kind {
+            hir::DefKind::Function { ty, body, .. } | hir::DefKind::Method { ty, body, .. } => {
+                (*ty, *body)
+            }
+            hir::DefKind::Intrinsic { .. } => continue,
         };
-        let Some((params, result)) = signature_of(module, *ty) else {
+        let Some((params, result)) = signature_of(module, ty) else {
             continue;
         };
         let body = &module.bodies[body.0 as usize];
+        let layouts = record_layouts(module);
+        // ABI-E: a record result becomes a trailing out pointer param.
+        let mut machine_params = params.clone();
+        if let Vt::Record(tid) = result {
+            if layouts.contains_key(&tid.0) {
+                machine_params.push(Vt::Record(tid)); // lowers to I64
+            }
+        }
         let mut ctx = om.make_context();
-        ctx.func.signature = cranelift_sig(&params, result);
+        ctx.func.signature = cranelift_sig(&machine_params, result);
         {
             let mut fb_ctx = FunctionBuilderContext::new();
             let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
@@ -329,14 +646,51 @@ pub fn lower_object(
             }
             let exit_ref = om.declare_func_in_func(exit_id, &mut fb.func);
 
-            // Locals → Cranelift variables.
+            // Locals → Cranelift variables. Record-typed locals hold an
+            // I64 pointer to their storage (774 D-05 ABI-D/E); scalars are
+            // i32 values.
+            let layouts = record_layouts(module);
+            let is_rec_vt =
+                |u: &hir::TypeUse| matches!(value_of_type_use(u, module), Some(Vt::Record(_)));
+            let local_is_record: Vec<bool> = body.locals.iter().map(|l| is_rec_vt(&l.ty)).collect();
+            let mentions = record_mention_sets(body, &local_is_record);
             let mut vars: BTreeMap<u32, Variable> = BTreeMap::new();
-            for (li, _l) in body.locals.iter().enumerate() {
-                let v = fb.declare_var(types::I32);
+            for (li, rec) in local_is_record.iter().enumerate() {
+                let v = if *rec {
+                    fb.declare_var(types::I64)
+                } else {
+                    fb.declare_var(types::I32)
+                };
                 vars.insert(li as u32, v);
             }
+            // ABI-E out-slot: a record result becomes a trailing pointer
+            // param; the machine return is void.
+            let sig_out = match &module.types[ty.0 as usize].kind {
+                hir::TypeKind::Function(sig) => {
+                    matches!(value_of_type_use(&sig.result, module), Some(Vt::Record(_)))
+                }
+                _ => unreachable!("signature checked above"),
+            };
             // Params start defined: entry block params are the signature
-            // values, in signature order.
+            // values, in signature order (the ABI-E out slot, when present,
+            // is the LAST machine param and belongs to no body local).
+            let out_param_value = if sig_out {
+                let n = fb.block_params(entry_block).len();
+                Some(fb.block_params(entry_block)[n - 1])
+            } else {
+                None
+            };
+            let result_bytes = if sig_out {
+                match &module.types[ty.0 as usize].kind {
+                    hir::TypeKind::Function(sig) => match &sig.result {
+                        hir::TypeUse::Ref(t) => layouts.get(&t.0).copied(),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            } else {
+                None
+            };
             for (li, l) in body.locals.iter().enumerate() {
                 if l.role == hir::LocalRole::Param {
                     let idx = l.index.expect("verifier: param has index") as usize;
@@ -356,6 +710,15 @@ pub fn lower_object(
             let mut fx = FuncEmitter {
                 fb,
                 body,
+                module,
+                layouts,
+                local_is_record,
+                mentions,
+                eager_reads: record_eager_reads(body, module),
+                out_param: out_param_value,
+                result_bytes,
+                dests: BTreeMap::new(),
+                elided: std::collections::BTreeSet::new(),
                 vars,
                 fnrefs,
                 exit_ref,
@@ -431,6 +794,8 @@ fn cranelift_sig(params: &[Vt], result: Vt) -> Signature {
         AbiParam::new(match v {
             Vt::Bool | Vt::I32 => types::I32, // bool is an i32 0/1 internally
             Vt::Function => types::I32,       // unreachable per verifier
+            // PLAN-771 (774 D-05): records cross as pointers (ABI-D/E).
+            Vt::Record(_) => types::I64,
         })
     };
     Signature {
@@ -453,10 +818,47 @@ fn backend_diag(msg: impl Into<String>) -> Diagnostic {
     )
 }
 
+/// A copy-elision destination: the storage an expression writes into
+/// directly, plus the local whose storage that is (F-771-R1-01). `root` is
+/// `None` for freshly allocated slots (unreachable from any other
+/// expression) and for the ABI-E out param — the out param is disjoint
+/// from every argument storage by the call-site forwarding rule, so
+/// writing it during a callee's evaluation never clobbers a live input.
+#[derive(Clone, Copy)]
+struct Dest {
+    ptr: Value,
+    root: Option<u32>,
+}
+
 /// Per-function emission state.
 struct FuncEmitter<'c> {
     fb: FunctionBuilder<'c>,
     body: &'c hir::Body,
+    module: &'c hir::Module,
+    /// Record byte sizes by type index (PLAN-771).
+    layouts: BTreeMap<u32, u64>,
+    /// Machine type of each body local by index: `false` = i32 value,
+    /// `true` = record (an I64 pointer to storage).
+    local_is_record: Vec<bool>,
+    /// The out-slot block param for record-returning functions.
+    out_param: Option<Value>,
+    /// The record result's byte size (when `out_param` is set).
+    result_bytes: Option<u64>,
+    /// Copy-elision destinations (PLAN-771 V-09): the storage pointer a
+    /// record-producing expression should write into directly, instead of
+    /// allocating a fresh temp. Keyed by expr id; each expr has exactly one
+    /// consuming position (verifier), so the entry is consumed on use.
+    dests: BTreeMap<u32, Dest>,
+    /// Record-typed locals touched by each expression subtree (per expr
+    /// id); the insert-side disjointness gate for `dests` (F-771-R1-01).
+    mentions: Vec<BTreeSet<u32>>,
+    /// Record-typed `ReadLocal` exprs bound to record ctor fields
+    /// (F-771-R2-01): value operands that must snapshot at their own
+    /// evaluation position instead of passing a live storage pointer.
+    eager_reads: BTreeSet<u32>,
+    /// Expr ids that WROTE into their destination directly (their parent
+    /// store step must not re-copy them).
+    elided: std::collections::BTreeSet<u32>,
     vars: BTreeMap<u32, Variable>,
     fnrefs: BTreeMap<u32, FuncRef>,
     exit_ref: FuncRef,
@@ -470,10 +872,81 @@ struct FuncEmitter<'c> {
 }
 
 impl<'c> FuncEmitter<'c> {
+    /// Fresh stack slot of `bytes` bytes (8-aligned) and its address.
+    fn new_slot(&mut self, bytes: u64) -> Value {
+        use cranelift_codegen::ir::StackSlotData;
+        let slot = self.fb.create_sized_stack_slot(StackSlotData::new(
+            cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+            bytes.max(4) as u32,
+            3,
+        ));
+        self.fb.ins().stack_addr(types::I64, slot, 0)
+    }
+
+    /// Inline byte copy `dst <- src` (records are 4-multiples; 8-byte words
+    /// then a 4-byte tail). Self-contained — no libc dependency (774 D-05
+    /// internal ABI; copies are value semantics, never aliasing).
+    fn emit_copy(&mut self, dst: Value, src: Value, bytes: u64) {
+        let flags = cranelift_codegen::ir::MemFlags::trusted();
+        let mut off = 0u64;
+        while off + 8 <= bytes {
+            let v = self.fb.ins().load(types::I64, flags, src, off as i32);
+            self.fb.ins().store(flags, v, dst, off as i32);
+            off += 8;
+        }
+        if off + 4 <= bytes {
+            let v = self.fb.ins().load(types::I32, flags, src, off as i32);
+            self.fb.ins().store(flags, v, dst, off as i32);
+        }
+    }
+
+    /// Whether def `di`'s function type returns a record (and so takes the
+    /// ABI-E out slot at call sites).
+    fn def_result_is_record(&self, di: u32) -> Option<u32> {
+        let d = self.module.defs.get(di as usize)?;
+        let ty = match &d.kind {
+            hir::DefKind::Function { ty, .. }
+            | hir::DefKind::Method { ty, .. }
+            | hir::DefKind::Intrinsic { ty, .. } => *ty,
+        };
+        match &self.module.types.get(ty.0 as usize)?.kind {
+            hir::TypeKind::Function(sig) => match &sig.result {
+                hir::TypeUse::Ref(t) => {
+                    if matches!(
+                        self.module.types.get(t.0 as usize).map(|x| &x.kind),
+                        Some(hir::TypeKind::Record(_))
+                    ) {
+                        Some(t.0)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     fn ensure_trap_block(&mut self) -> cranelift_codegen::ir::Block {
         *self
             .trap_block
             .get_or_insert_with(|| self.fb.create_block())
+    }
+
+    /// Whether a destination rooted at `root` may be forwarded into the
+    /// evaluation of `eid` (F-771-R1-01): the subtree must not touch the
+    /// root local's storage, or an interleaved read (in this expression or
+    /// inside a callee reading a borrowed argument) would observe the
+    /// destination writes. `None` roots — fresh slots, the ABI-E out
+    /// param — never alias reachable storage and are always safe.
+    fn forward_safe(&self, root: Option<u32>, eid: hir::ExprId) -> bool {
+        match root {
+            None => true,
+            Some(local) => !self
+                .mentions
+                .get(eid.0 as usize)
+                .is_some_and(|touched| touched.contains(&local)),
+        }
     }
 
     /// Emit one block with an explicit frame stack (R6: block nesting is
@@ -587,13 +1060,55 @@ impl<'c> FuncEmitter<'c> {
             frame.idx += 1;
             match stmt {
                 hir::Stmt::Let { local, value } => {
-                    let v = self.eval_expr(value);
-                    let var = self.vars[&local.0];
-                    self.fb.def_var(var, v);
+                    if self.local_is_record.get(local.0 as usize).copied() == Some(true) {
+                        // value semantics: the binding owns a fresh copy —
+                        // a record-producing initializer writes straight
+                        // into the binding's slot (copy elision; the slot
+                        // is fresh, so no aliasing is possible)
+                        let ty_idx = match self.body.locals[local.0 as usize].ty {
+                            hir::TypeUse::Ref(t) => t.0,
+                            _ => 0,
+                        };
+                        let bytes = self.layouts.get(&ty_idx).copied().unwrap_or(4);
+                        let slot = self.new_slot(bytes);
+                        self.dests.insert(
+                            value.0,
+                            Dest {
+                                ptr: slot,
+                                root: None,
+                            },
+                        );
+                        let v = self.eval_expr(value);
+                        self.emit_copy(slot, v, bytes);
+                        let var = self.vars[&local.0];
+                        self.fb.def_var(var, slot);
+                    } else {
+                        let v = self.eval_expr(value);
+                        let var = self.vars[&local.0];
+                        self.fb.def_var(var, v);
+                    }
                 }
                 hir::Stmt::Return { value } => {
-                    let v = self.eval_expr(value);
-                    self.fb.ins().return_(&[v]);
+                    if let (Some(out), Some(bytes)) = (self.out_param, self.result_bytes) {
+                        // record result: write into the ABI-E out slot
+                        // (elided straight through ctor/call results),
+                        // void machine return. The out param is disjoint
+                        // from every argument storage by the call-site
+                        // forwarding rule (see Step::Call below).
+                        self.dests.insert(
+                            value.0,
+                            Dest {
+                                ptr: out,
+                                root: None,
+                            },
+                        );
+                        let v = self.eval_expr(value);
+                        self.emit_copy(out, v, bytes);
+                        self.fb.ins().return_(&[]);
+                    } else {
+                        let v = self.eval_expr(value);
+                        self.fb.ins().return_(&[v]);
+                    }
                     frame.terminated = true;
                 }
                 hir::Stmt::If { cond, then, els } => {
@@ -654,10 +1169,84 @@ impl<'c> FuncEmitter<'c> {
                     });
                 }
                 hir::Stmt::Assign { place, value } => {
-                    let v = self.eval_expr(value);
                     let p = &self.body.places[place.0 as usize];
-                    let var = self.vars[&p.local.0];
-                    self.fb.def_var(var, v);
+                    match &p.kind {
+                        hir::PlaceKind::Local => {
+                            if self.local_is_record.get(p.local.0 as usize).copied() == Some(true) {
+                                // whole-record assign = value copy into the
+                                // local's own slot (elided for ctors — but
+                                // only when the RHS does not read storage
+                                // rooted at the same local: F-771-R1-01,
+                                // `p = P { a: p.b, b: p.a }` /
+                                // `p = swap(p)` must materialize the RHS
+                                // first and commit afterwards)
+                                let dst = self.fb.use_var(self.vars[&p.local.0]);
+                                let ty_idx = match self.body.locals[p.local.0 as usize].ty {
+                                    hir::TypeUse::Ref(t) => t.0,
+                                    _ => 0,
+                                };
+                                let bytes = self.layouts.get(&ty_idx).copied().unwrap_or(4);
+                                if self.forward_safe(Some(p.local.0), value) {
+                                    self.dests.insert(
+                                        value.0,
+                                        Dest {
+                                            ptr: dst,
+                                            root: Some(p.local.0),
+                                        },
+                                    );
+                                }
+                                let v = self.eval_expr(value);
+                                self.emit_copy(dst, v, bytes);
+                            } else {
+                                let v = self.eval_expr(value);
+                                let var = self.vars[&p.local.0];
+                                self.fb.def_var(var, v);
+                            }
+                        }
+                        hir::PlaceKind::FieldPath(path) => {
+                            // address into the root local's storage
+                            let base = self.fb.use_var(self.vars[&p.local.0]);
+                            let root_idx = match self.body.locals[p.local.0 as usize].ty {
+                                hir::TypeUse::Ref(t) => t.0,
+                                _ => 0,
+                            };
+                            let Some((off, field_rec)) =
+                                field_path_offset(self.module, &self.layouts, root_idx, path)
+                            else {
+                                unreachable!("verifier: field path resolves");
+                            };
+                            let addr = self.fb.ins().iadd_imm(base, off as i64);
+                            match field_rec {
+                                None => {
+                                    let v = self.eval_expr(value);
+                                    self.fb.ins().store(
+                                        cranelift_codegen::ir::MemFlags::trusted(),
+                                        v,
+                                        addr,
+                                        0,
+                                    );
+                                }
+                                Some(rt) => {
+                                    let bytes = self.layouts.get(&rt).copied().unwrap_or(4);
+                                    // F-771-R1-01: forward the field address
+                                    // only when the RHS does not touch the
+                                    // root local (`p.a = P { a: p.a.b, ... }`
+                                    // materializes first, then commits)
+                                    if self.forward_safe(Some(p.local.0), value) {
+                                        self.dests.insert(
+                                            value.0,
+                                            Dest {
+                                                ptr: addr,
+                                                root: Some(p.local.0),
+                                            },
+                                        );
+                                    }
+                                    let v = self.eval_expr(value);
+                                    self.emit_copy(addr, v, bytes);
+                                }
+                            }
+                        }
+                    }
                 }
                 hir::Stmt::Break { target } => {
                     let (_, _, after) = *self
@@ -731,6 +1320,13 @@ impl<'c> FuncEmitter<'c> {
                 merge: cranelift_codegen::ir::Block,
             },
             Call(ExprId),
+            /// Record-construction combiner: all field values evaluated in
+            /// source order; write them into a fresh temp (PLAN-771).
+            CtorOut(ExprId),
+            /// Field-read combiner: base pointer ready; load/copy.
+            FieldOut(ExprId),
+            /// View-borrow combiner: base pointer ready; pass through.
+            BorrowOut(ExprId),
         }
         enum Val {
             V(Value),
@@ -750,7 +1346,43 @@ impl<'c> FuncEmitter<'c> {
                         }
                         hir::ExprKind::ReadLocal { local } => {
                             let var = self.vars[&local.0];
-                            let v = self.fb.use_var(var);
+                            let ptr = self.fb.use_var(var);
+                            // A record local read is a VALUE operand when a
+                            // destination is registered for it or it feeds a
+                            // record ctor field: capture the bytes NOW, at
+                            // this operand's source-order evaluation point —
+                            // later sibling expressions (a `.mut` call arg)
+                            // may mutate the source storage before the ctor
+                            // combines its fields (F-771-R2-01). Without a
+                            // value context the pointer passes through (the
+                            // base of a view/mut borrow keeps borrow
+                            // semantics).
+                            let is_value =
+                                self.dests.get(&id.0).is_some() || self.eager_reads.contains(&id.0);
+                            let v = if is_value {
+                                let ty_idx = match self.body.locals[local.0 as usize].ty {
+                                    hir::TypeUse::Ref(t) => t.0,
+                                    _ => 0,
+                                };
+                                let bytes = self.layouts.get(&ty_idx).copied().unwrap_or(4);
+                                let used_dest = self.dests.remove(&id.0).map(|d| d.ptr);
+                                let dst = match used_dest {
+                                    // value written straight into the
+                                    // registered destination — the parent's
+                                    // store step must not re-copy it
+                                    Some(d) => {
+                                        self.elided.insert(id.0);
+                                        d
+                                    }
+                                    // fresh snapshot: the ctor's combine
+                                    // step still copies it into its field
+                                    None => self.new_slot(bytes),
+                                };
+                                self.emit_copy(dst, ptr, bytes);
+                                dst
+                            } else {
+                                ptr
+                            };
                             slots.insert(id.0, Val::V(v));
                         }
                         hir::ExprKind::Binary { op, lhs, rhs, .. } => {
@@ -814,6 +1446,103 @@ impl<'c> FuncEmitter<'c> {
                                 "verifier: text expressions exist only in the text profile"
                             );
                         }
+                        hir::ExprKind::RecordCtor {
+                            record,
+                            eval_args,
+                            bindings,
+                        } => {
+                            // source evaluation order (eval_args order);
+                            // record-typed field args whose field offset is
+                            // statically known thread the destination down
+                            // (copy elision — no temp for nested ctors) —
+                            // gated per child on disjointness from the
+                            // destination's root local (F-771-R1-01)
+                            let my_dest: Option<(Value, Option<u32>)> =
+                                self.dests.get(&id.0).map(|d| (d.ptr, d.root));
+                            if let Some((dst, dst_root)) = my_dest {
+                                let shape = match &self.module.types[record.0 as usize].kind {
+                                    hir::TypeKind::Record(sh) => sh,
+                                    _ => unreachable!("ctor expr names a record"),
+                                };
+                                for b in bindings {
+                                    if let Some(field) = shape.fields.get(b.field as usize) {
+                                        if type_is_record(self.module, &field.ty) {
+                                            let mut off: u64 = 0;
+                                            for prior in shape.fields.iter().take(b.field as usize)
+                                            {
+                                                off += match &prior.ty {
+                                                    hir::TypeUse::Builtin(_) => 4,
+                                                    hir::TypeUse::Ref(t) => {
+                                                        self.layouts.get(&t.0).copied().unwrap_or(4)
+                                                    }
+                                                };
+                                            }
+                                            if let Some(arg) = eval_args.get(b.arg as usize) {
+                                                // only record-PRODUCING
+                                                // children can write into
+                                                // the destination — a
+                                                // plain value (read, load)
+                                                // still needs its copy;
+                                                // a ReadLocal bound to a
+                                                // record field captures its
+                                                // value at its own
+                                                // evaluation position, so
+                                                // it counts as producing
+                                                // (F-771-R2-01)
+                                                let produces = matches!(
+                                                    &self.body.exprs[arg.0 as usize].kind,
+                                                    hir::ExprKind::RecordCtor { .. }
+                                                        | hir::ExprKind::FieldGet { .. }
+                                                        | hir::ExprKind::ReadLocal { .. }
+                                                ) || self
+                                                    .def_result_is_record(
+                                                        match &self.body.exprs[arg.0 as usize].kind
+                                                        {
+                                                            hir::ExprKind::Call {
+                                                                callee, ..
+                                                            } => callee.0,
+                                                            _ => u32::MAX,
+                                                        },
+                                                    )
+                                                    .is_some();
+                                                if produces && self.forward_safe(dst_root, *arg) {
+                                                    let child_dst =
+                                                        self.fb.ins().iadd_imm(dst, off as i64);
+                                                    self.dests.insert(
+                                                        arg.0,
+                                                        Dest {
+                                                            ptr: child_dst,
+                                                            root: dst_root,
+                                                        },
+                                                    );
+                                                    self.elided.insert(arg.0);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            stack.push(Step::CtorOut(id));
+                            for a in eval_args.iter().rev() {
+                                stack.push(Step::Enter(*a));
+                            }
+                        }
+                        hir::ExprKind::FieldGet { base, .. } => {
+                            stack.push(Step::FieldOut(id));
+                            stack.push(Step::Enter(*base));
+                        }
+                        hir::ExprKind::BorrowView { base } => {
+                            stack.push(Step::BorrowOut(id));
+                            stack.push(Step::Enter(*base));
+                        }
+                        hir::ExprKind::BorrowMut { local } => {
+                            // leaf: the local's storage pointer
+                            let var = self.vars[&local.0];
+                            let pv = self.fb.use_var(var);
+                            slots.insert(id.0, Val::V(pv));
+                        } // PLAN-771: RecordCtor/FieldGet/BorrowView carry
+                          // children and are handled above; BorrowMut is a
+                          // leaf handled above too — nothing falls through.
                     }
                 }
                 Step::Binary { dest, op, lhs, rhs } => {
@@ -857,6 +1586,126 @@ impl<'c> FuncEmitter<'c> {
                         }
                     };
                     slots.insert(dest.0, Val::V(v));
+                }
+                Step::CtorOut(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::RecordCtor {
+                        record, bindings, ..
+                    } = &e.kind
+                    else {
+                        unreachable!("ctor step on ctor expr")
+                    };
+                    let bytes = self.layouts.get(&record.0).copied().unwrap_or(4);
+                    let temp = self
+                        .dests
+                        .remove(&id.0)
+                        .map(|d| d.ptr)
+                        .unwrap_or_else(|| self.new_slot(bytes));
+                    let mut field_tys: Vec<hir::TypeUse> = Vec::new();
+                    if let Some(hir::TypeKind::Record(sh)) =
+                        self.module.types.get(record.0 as usize).map(|t| &t.kind)
+                    {
+                        field_tys.extend(sh.fields.iter().map(|f| f.ty));
+                    }
+                    // offsets from prior field sizes (declaration order)
+                    let mut offs: Vec<u64> = Vec::with_capacity(field_tys.len());
+                    let mut acc: u64 = 0;
+                    for ft in &field_tys {
+                        offs.push(acc);
+                        acc = acc
+                            .checked_add(match ft {
+                                hir::TypeUse::Builtin(_) => 4,
+                                hir::TypeUse::Ref(t) => {
+                                    self.layouts.get(&t.0).copied().unwrap_or(4)
+                                }
+                            })
+                            .unwrap_or(u32::MAX as u64);
+                    }
+                    let eval_ids: Vec<u32> = match &e.kind {
+                        hir::ExprKind::RecordCtor { eval_args, .. } => {
+                            eval_args.iter().map(|a| a.0).collect()
+                        }
+                        _ => unreachable!("ctor step on ctor expr"),
+                    };
+                    for b in bindings {
+                        let slot_key = eval_ids
+                            .get(b.arg as usize)
+                            .copied()
+                            .expect("ctor arg index in range");
+                        let Val::V(av) = slots.remove(&slot_key).expect("ctor arg slot filled");
+                        // an elided child ctor already wrote into
+                        // temp+off directly — no re-copy
+                        if self.elided.remove(&slot_key) {
+                            continue;
+                        }
+                        let off = offs.get(b.field as usize).copied().unwrap_or(0);
+                        let ft = field_tys.get(b.field as usize).copied();
+                        if ft.map(|t| type_is_record(self.module, &t)) == Some(true) {
+                            let hir::TypeUse::Ref(rt) = ft.unwrap() else {
+                                unreachable!()
+                            };
+                            let dst = self.fb.ins().iadd_imm(temp, off as i64);
+                            let bytes = self.layouts.get(&rt.0).copied().unwrap_or(4);
+                            self.emit_copy(dst, av, bytes);
+                        } else {
+                            self.fb.ins().store(
+                                cranelift_codegen::ir::MemFlags::trusted(),
+                                av,
+                                temp,
+                                off as i32,
+                            );
+                        }
+                    }
+                    slots.insert(id.0, Val::V(temp));
+                }
+                Step::FieldOut(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::FieldGet { base, path } = &e.kind else {
+                        unreachable!("field step on field expr")
+                    };
+                    let Val::V(bv) = slots.remove(&base.0).expect("field base slot");
+                    let root = match self.body.exprs[base.0 as usize].ty {
+                        hir::TypeUse::Ref(t) => t.0,
+                        _ => 0,
+                    };
+                    let Some((off, field_rec)) =
+                        field_path_offset(self.module, &self.layouts, root, path)
+                    else {
+                        unreachable!("verifier: field path resolves");
+                    };
+                    match field_rec {
+                        None => {
+                            let v = self.fb.ins().load(
+                                types::I32,
+                                cranelift_codegen::ir::MemFlags::trusted(),
+                                bv,
+                                off as i32,
+                            );
+                            slots.insert(id.0, Val::V(v));
+                        }
+                        Some(rt) => {
+                            // record field read = a VALUE copy (rvalue) into
+                            // the elision destination when one is set
+                            let bytes = self.layouts.get(&rt).copied().unwrap_or(4);
+                            let temp = self
+                                .dests
+                                .remove(&id.0)
+                                .map(|d| d.ptr)
+                                .unwrap_or_else(|| self.new_slot(bytes));
+                            let src = self.fb.ins().iadd_imm(bv, off as i64);
+                            self.emit_copy(temp, src, bytes);
+                            slots.insert(id.0, Val::V(temp));
+                        }
+                    }
+                }
+                Step::BorrowOut(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::BorrowView { base } = &e.kind else {
+                        unreachable!("borrow step on borrow expr")
+                    };
+                    let Val::V(bv) = slots.remove(&base.0).expect("borrow base slot");
+                    // a view borrow passes the storage pointer through
+                    slots.insert(id.0, Val::V(bv));
                 }
                 Step::Unary { dest, op, operand } => {
                     let a = match slots.remove(&operand.0) {
@@ -942,11 +1791,32 @@ impl<'c> FuncEmitter<'c> {
                             .expect("verifier: full param binding");
                         args.push(vals[b.arg as usize]);
                     }
+                    // ABI-E: a record-returning callee gets a fresh out
+                    // slot appended; the call's result is that slot's
+                    // pointer (774 D-05 — no aggregate return in RAX).
+                    // A forwarded destination (rooted at local L) reached
+                    // this point only after the insert-side disjointness
+                    // gate proved no argument storage touches L — the
+                    // callee may therefore write the out slot progressively
+                    // while reading its arguments (F-771-R1-01).
+                    let callee_rec_result = self.def_result_is_record(callee.0);
+                    let out_temp = callee_rec_result.map(|tid| {
+                        let bytes = self.layouts.get(&tid).copied().unwrap_or(4);
+                        self.dests
+                            .remove(&id.0)
+                            .map(|d| d.ptr)
+                            .unwrap_or_else(|| self.new_slot(bytes))
+                    });
+                    if let Some(t) = out_temp {
+                        args.push(t);
+                    }
                     let fnref = self.fnrefs[&callee.0];
                     let call = self.fb.ins().call(fnref, &args);
                     let n_results = self.fb.inst_results(call).len();
-                    let v = if n_results == 0 {
-                        // this profile's calls all return i32; defensive only
+                    let v = if let Some(t) = out_temp {
+                        t
+                    } else if n_results == 0 {
+                        // defensive: this profile's calls all return i32
                         self.fb.ins().iconst(types::I32, 0)
                     } else {
                         self.fb.inst_results(call)[0]
@@ -1143,6 +2013,8 @@ fn value_of_type_use_text(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt2> {
             hir::TypeKind::Str => Some(Vt2::StrBorrow),
             hir::TypeKind::StrOwned => Some(Vt2::StrOwn),
             hir::TypeKind::Function(_) => None,
+            // record types never appear in a text module (profile defense)
+            hir::TypeKind::Record(_) => None,
         },
     }
 }
@@ -1387,7 +2259,9 @@ fn lower_text_object(
     let mut def_sigs: BTreeMap<u32, (Vec<Vt2>, Vt2)> = BTreeMap::new();
     for (di, d) in module.defs.iter().enumerate() {
         let (sym, linkage, ty) = match &d.kind {
-            hir::DefKind::Function { name, ty, .. } => (name.as_str(), Linkage::Export, *ty),
+            hir::DefKind::Function { name, ty, .. } | hir::DefKind::Method { name, ty, .. } => {
+                (name.as_str(), Linkage::Export, *ty)
+            }
             hir::DefKind::Intrinsic { symbol, ty, .. } => (symbol.as_str(), Linkage::Import, *ty),
         };
         let Some((params, result)) = signature_of_text(module, ty) else {
@@ -2319,6 +3193,11 @@ impl<'c> TextEmitter<'c> {
                             });
                             stack.push(TStep::Enter(*operand));
                         }
+                        // record kinds never appear in a text module (the
+                        // verifier's profile defense); totality only
+                        _ => unreachable!(
+                            "verifier: record expressions exist only in the record profile"
+                        ),
                     }
                 }
                 TStep::Binary { dest, op, lhs, rhs } => {

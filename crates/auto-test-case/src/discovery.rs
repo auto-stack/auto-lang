@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::admission::{check_limit, check_no_reparse, Limits};
+use crate::admission::{check_limit, read_bounded, Limits};
 use crate::atom;
 use crate::contract::{decode_case, CaseSpec};
 use crate::document::CaseDocument;
@@ -54,11 +54,11 @@ pub struct LoadedSuite {
 }
 
 fn read_file_limited(path: &Path, limits: &Limits) -> Result<Vec<u8>, String> {
-    check_no_reparse(path).map_err(|e| e.to_string())?;
-    let bytes = std::fs::read(path).map_err(|e| format!("read failed: {}", e))?;
-    check_limit("max_document_bytes", bytes.len(), limits.max_document_bytes)
-        .map_err(|e| e.to_string())?;
-    Ok(bytes)
+    // Bounded read (Plan 773 F-07): over-limit documents are rejected
+    // without buffering them whole; reparse points on the file or any
+    // ancestor are rejected before the open.
+    read_bounded(path, "max_document_bytes", limits.max_document_bytes)
+        .map_err(|e| e.to_string())
 }
 
 fn contract_from_fence(payload: &[u8], language: &str) -> Result<atom::CVal, String> {
@@ -218,6 +218,23 @@ pub fn load_suite(suite_path: &Path, limits: &Limits) -> Result<LoadedSuite, Loa
             detail,
         });
     }
+
+    // Plan 773 F-07: the whole-run expansion limit is enforced at load —
+    // every entry (lint, list, run) sees it, not just execution. Individual
+    // file/case/check limits may all be legal while the total is not.
+    let total_checks: usize = cases
+        .iter()
+        .map(|c| c.specs.iter().map(|s| s.checks.len()).sum::<usize>())
+        .sum();
+    check_limit(
+        "max_expanded_checks_per_run",
+        total_checks,
+        limits.max_expanded_checks_per_run,
+    )
+    .map_err(|e| LoadError {
+        file: suite_path.to_path_buf(),
+        detail: e.to_string(),
+    })?;
 
     let fixture_base = root.join(
         suite

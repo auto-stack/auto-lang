@@ -1,0 +1,43 @@
+// PLAN-771 T-03 flagship source fixture (V-02/V-06/V-08 source legs):
+// nominal Pair with static new + readonly instance method, explicit `mut`
+// free function (mode-prefix spelling per the real parser), value-copy
+// semantics (`var q = p` then writing q leaves p), nested Inner, named
+// construction with right-then-left SOURCE order (V-07 order oracle is the
+// generated Atom's field_args sequence — native trace lands in T-05).
+type Pair {
+    left int
+    right bool
+
+    static fn new(l int, r bool) Pair {
+        return Pair { left: l, right: r }
+    }
+
+    fn left_is(v int) bool {
+        return .left == v
+    }
+}
+
+type Inner {
+    flag bool
+    p Pair
+}
+
+fn bump(mut r Pair, d int) int {
+    r.left = d
+    return r.left
+}
+
+fn main() int {
+    let p = Pair.new(1, true)
+    var q = p
+    q.left = bump(q.mut, 5)
+    if p.left != 1 { return 1 }
+    if q.left != 5 { return 2 }
+    if p.left_is(1) == false { return 3 }
+    let i = Inner { p: p, flag: false }
+    if i.p.right == false { return 4 }
+    if i.p.left_is(1) == false { return 5 }
+    let n = Pair { right: true, left: 9 }
+    if n.left != 9 { return 6 }
+    return 0
+}

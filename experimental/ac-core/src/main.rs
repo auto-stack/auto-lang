@@ -43,8 +43,9 @@
 //! are printed as `file:line:col: error[stage/code]: message`.
 
 use auto_ac_prototype::source::{
-    compile_scalar_source, compile_source, SourceProfile, RUNTIME_TEXT_CAPABILITY,
-    SCALAR_SOURCE_PROFILE, SOURCE_PROFILE, TEXT_SOURCE_PROFILE,
+    compile_record_source, compile_scalar_source, compile_source, SourceProfile,
+    RECORD_SOURCE_PROFILE, RUNTIME_TEXT_CAPABILITY, SCALAR_SOURCE_PROFILE, SOURCE_PROFILE,
+    TEXT_SOURCE_PROFILE,
 };
 use auto_ac_prototype::{link, native, verify};
 use std::path::{Path, PathBuf};
@@ -76,6 +77,7 @@ fn check(file: &Path) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::D
         auto_ac_prototype::hir::HirDomain::Core => verify::verify(bundle),
         auto_ac_prototype::hir::HirDomain::Scalar => verify::verify_scalar(bundle),
         auto_ac_prototype::hir::HirDomain::Text => verify::verify_text(bundle),
+        auto_ac_prototype::hir::HirDomain::Record => verify::verify_record(bundle),
     } {
         Ok(c) => c,
         Err(diags) => return Err((EXIT_PIPELINE, diags)),
@@ -154,8 +156,12 @@ fn parse_source_args(args: &[String], need_build: bool) -> Result<SourceArgs, St
     let profile = profile.ok_or("missing --source-profile <name>")?;
     let profile = SourceProfile::of(&profile).ok_or_else(|| {
         format!(
-            "unknown source profile `{}` (this build accepts `{}`, `{}` or `{}`)",
-            profile, SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE
+            "unknown source profile `{}` (this build accepts `{}`, `{}`, `{}` or `{}`)",
+            profile,
+            SOURCE_PROFILE,
+            SCALAR_SOURCE_PROFILE,
+            TEXT_SOURCE_PROFILE,
+            RECORD_SOURCE_PROFILE
         )
     })?;
     let file = file.ok_or("missing input file")?;
@@ -198,6 +204,7 @@ fn check_source(
         SourceProfile::Text => {
             auto_ac_prototype::source::compile_text_source(&src, &module_path, &args.capabilities)
         }
+        SourceProfile::Record => compile_record_source(&src, &module_path, &args.capabilities),
     };
     match compile {
         Ok(c) => Ok(format!(
@@ -233,6 +240,7 @@ fn build_source(
         SourceProfile::Text => {
             auto_ac_prototype::source::compile_text_source(&src, &module_path, &args.capabilities)
         }
+        SourceProfile::Record => compile_record_source(&src, &module_path, &args.capabilities),
     } {
         Ok(c) => c,
         Err(diags) => return fail(diags),
@@ -366,6 +374,7 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         auto_ac_prototype::hir::HirDomain::Core => verify::verify(bundle),
         auto_ac_prototype::hir::HirDomain::Scalar => verify::verify_scalar(bundle),
         auto_ac_prototype::hir::HirDomain::Text => verify::verify_text(bundle),
+        auto_ac_prototype::hir::HirDomain::Record => verify::verify_record(bundle),
     } {
         Ok(c) => c,
         Err(diags) => return fail(diags),
@@ -782,8 +791,9 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype check-source <file> --source-profile {}|{}|{} [--capability <name>]...",
-                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE
+                        "usage: auto-ac-prototype check-source <file> --source-profile {}|{}|{}|{} [--capability <name>]...",
+                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE,
+                        RECORD_SOURCE_PROFILE
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);
@@ -797,8 +807,9 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
-                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE
+                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{}|{}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
+                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE,
+                        RECORD_SOURCE_PROFILE
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);

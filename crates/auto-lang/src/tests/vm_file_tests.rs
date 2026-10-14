@@ -2487,3 +2487,35 @@ fn test_99_short_circuit_003_negative_index_guard() {
 fn test_99_plan664_001_value_lexemes() {
     test_vm("99_plan664/001_value_lexemes").unwrap();
 }
+
+// Plan 773 F-10: pilot aggregation entry with a FIXED NAME. The tv
+// profile's default-filter is `test(vm_file_tests::) or …`, so with
+// `--features test-cases` (cargo tv carries it) this reaches the protocol
+// pilot's avm half from the corpus tier; the harness assertion (suite
+// loads, half non-empty) and the dynamic-check assertions are separate.
+#[cfg(feature = "test-cases")]
+#[test]
+fn pilot_aggregate_vm() {
+    let report = crate::tests::test_cases_tests::run_pilot_for_aggregate("vm");
+    assert!(
+        report.load_errors.is_empty(),
+        "load errors: {:?}",
+        report.load_errors
+    );
+    let vm: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.adapter == "avm")
+        .collect();
+    assert!(!vm.is_empty(), "harness: avm half is present");
+    for r in &vm {
+        assert_eq!(
+            r.status,
+            auto_test_case::report::Status::Pass,
+            "{}/{}",
+            r.case_id,
+            r.check_id
+        );
+    }
+    println!("pilot avm half: {} dynamic check(s) green", vm.len());
+}

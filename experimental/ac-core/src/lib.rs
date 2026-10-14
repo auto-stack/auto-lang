@@ -32,6 +32,11 @@ pub const SCALAR_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/scalar-i32.at
 /// contract.
 pub const TEXT_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/text.atom");
 
+/// The versioned record descriptor this build accepts (PLAN-771): the
+/// scalar-i32 surface plus nominal records, record construction, nested
+/// field paths, view/mut borrows (774 D-04) and type-bound methods.
+pub const RECORD_DESCRIPTOR_SCHEMA: &str = include_str!("../schema/record.atom");
+
 /// Parse and return the embedded core descriptor (validated against itself
 /// once at startup).
 pub fn descriptor() -> &'static descriptor::Descriptor {
@@ -63,6 +68,16 @@ pub fn text_descriptor() -> &'static descriptor::Descriptor {
     })
 }
 
+/// Parse and return the embedded record descriptor (PLAN-771).
+pub fn record_descriptor() -> &'static descriptor::Descriptor {
+    use std::sync::OnceLock;
+    static DESC: OnceLock<descriptor::Descriptor> = OnceLock::new();
+    DESC.get_or_init(|| {
+        descriptor::Descriptor::parse(RECORD_DESCRIPTOR_SCHEMA)
+            .expect("embedded record-i32 descriptor must parse")
+    })
+}
+
 /// Convenience: bind a source document with the embedded core descriptor.
 pub fn bind_source(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnostic>> {
     descriptor::bind(descriptor(), source)
@@ -77,6 +92,7 @@ pub fn bind_document(source: &str) -> Result<hir::Bundle, Vec<atom_text::Diagnos
         (descriptor(), "core"),
         (scalar_descriptor(), "scalar"),
         (text_descriptor(), "text"),
+        (record_descriptor(), "record"),
     ];
     let header = match descriptor::peek_identity(source) {
         Ok(h) => h,

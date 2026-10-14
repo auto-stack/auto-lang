@@ -1,0 +1,7 @@
+// F-771-R1-02 negative: positional construction arity must match the
+// declared field count exactly.
+type Q { v int }
+fn main() int {
+    let q = Q(1, 2)
+    return q.v
+}

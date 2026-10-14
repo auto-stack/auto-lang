@@ -1,0 +1,15 @@
+error[E0423]: expected value, found module `repository`
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r2\cases\scope_shadow\runner.rs:23:22
+   |
+23 |     let mut n: i64 = repository.ping();
+   |                      ^^^^^^^^^^
+   |
+help: use the path separator to refer to an item
+   |
+23 -     let mut n: i64 = repository.ping();
+23 +     let mut n: i64 = repository::ping();
+   |
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0423`.

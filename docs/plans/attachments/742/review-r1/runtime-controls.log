@@ -1,0 +1,2 @@
+D7: owned String inputs, clone visibility, rollback and commit PASS
+D9: direct names sorted, hidden names skipped, missing directory empty PASS

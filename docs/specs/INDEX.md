@@ -10,6 +10,7 @@
 | auto-lang（语言核心） | active | 9 | [auto-lang/project.md](auto-lang/project.md) |
 | auto-val | active | 7 | [auto-val/project.md](auto-val/project.md) |
 | auto-atom | active | 3 | [auto-atom/project.md](auto-atom/project.md) |
+| auto-test-case | active | 12 | [auto-test-case/project.md](auto-test-case/project.md) |
 | a2r-std | active | 7 | [a2r-std/project.md](a2r-std/project.md) |
 | stdlib | active | 8 | [stdlib/project.md](stdlib/project.md) |
 | aavm | experimental | 11 | [aavm/project.md](aavm/project.md) |
@@ -51,6 +52,25 @@
 | atom | Atom 数据结构定义 | active |
 | parser | Atom 解析器 | active |
 | error | 错误类型（thiserror） | active |
+
+</details>
+
+<details><summary>auto-test-case 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| document / raw_ranges | pinned 块树 ↔ 原始 fence 字节区间双向校验 | active |
+| atom / contract | 静态 Atom 合同解析 + 严格 schema（含 per-adapter 观测支持表） | active |
+| admission | 资源限额（有界读）+ 路径域/reparse 审查 | active |
+| ir | payload/oracle 解析为 owned bytes；oracle 身份=逐字节内容哈希 | active |
+| suite / discovery | suite 编排、显式 defaults 深合并、逐文件发现（错误保留不静默丢） | active |
+| compare / report | 观测比较（bytes/lf/text/message）、逐 check 报告与 gate 退出码 | active |
+| sha256 | 极简指纹（无外部依赖） | active |
+| 通道 | avm/run | a2r/emit |
+| completion（success / error{stage,code?,message?}） | ✓ | ✓ |
+| result（legacy-display） | ✓ | — |
+| stdout / stderr | ✓（错误完成下不可声明） | — |
+| artifacts（多产物逐项 bytes） | — | ✓ |
 
 </details>
 
@@ -154,7 +174,7 @@
 | git / index / lock / pull | 依赖获取、注册索引、锁文件 | active |
 | scanner / target / dir / cache | 工程扫描、target 目录管理、本地缓存 | active |
 | vue / tauri / jet / ark / rust_ui | 各前端生态的工程集成；vue 侧含 desktop 宿主 scaffold（Plan 465：`generate_desktop_host` + `assets/wm/` WM 运行时资产 rust_embed + `apps-registry.ts` 注册表生成；`auto run --desktop/--apps`；Plan 515：`assets/wm/Wallpaper.vue` 桌面壁纸层三档组件 + host App.vue 生成期配置注入 `shell.desktop.wallpaper`）；**PLAN-038 Phase B（P038-3）**：`generate_tailwind_config`（auto-man/cmd_vue/cmd_tauri）补 `success/warning/info/error → hsl(var(--*))`；`regenerate_source_files` 与 scaffold 同源重写 `tailwind.config.cjs`（磁盘残留旧模板会漏映射）；codegen 全路径（scaffold / write_project_files / regenerate / prepare_vue_sources）写 `src/vite-env.d.ts` + `src/auto-select/overlay.ts` + `src/auto-sources.ts`（缺失时空 map，消除 P657-D2 phase-ordering 对手工 stub 的依赖）；画廊 VM demo 级联发射 `emit_gallery_vm_demos`（Plan 625 T-10/632：loadable 单 widget 示例改名 `Demo*` 相邻拷贝自有模块 + `AppViewport.vm.at` 条件实例化——发射器保证模块组件源可达，组件状态桥接为运行时职责，见 auto-lang docs/specs/auto-lang/ui/architecture.md ADR-20；Plan 633：fullstack 内嵌档——back 语料不再一票否决，back 链传递闭包级联为 `<ns>_<mod>` 唯一 stem（use 行/链内互引/item 调用点限定仅 back 链三层改写，组件调用不动），发射前 core 场景解析探针，back 缺失/native-ns(use auto.*)/~Stream 签名严格降级静态面板，见 auto-lang docs/specs/auto-lang/vm/architecture.md ADR-21） | active |
-| api_gen / tauri_backend / vscode / pkg | API/后端/扩展代码生成器，包管理器抽象（bun/npm）；api_gen server 生成器状态种子契约（**Plan 670 F-R1-A**）：`use api::Db`/`State<Db>` 种子仅当契约实际定义 Db（primary 类型存在，api.rs 才发 `pub type Db`）时发射，无 Db 标量契约走无状态退化路径（镜像 db_full_cover 分支形态）——生成物必须可编译（E0432 契约）；route A（无 db 覆盖的 scalar API 实现，以及含非薄业务体的 api.rs handler 内联转译）已落地，伴生模块导入/调用和 `List<T>.new` 构造由 Plan 742 补齐；转译失败由装配预检拒绝，`AUTO_A2R_BODY=0` 才允许显式标记的 scaffold | active |
+| api_gen / tauri_backend / vscode / pkg | API/后端/扩展代码生成器，包管理器抽象（bun/npm）；api_gen server 生成器状态种子契约（**Plan 670 F-R1-A**）：`use api::Db`/`State<Db>` 种子仅当契约实际定义 Db（primary 类型存在，api.rs 才发 `pub type Db`）时发射，无 Db 标量契约走无状态退化路径（镜像 db_full_cover 分支形态）——生成物必须可编译（E0432 契约）；route A（无 db 覆盖的 scalar API 实现，以及含非薄业务体的 api.rs handler 内联转译）已落地，伴生模块导入/调用和 `List<T>.new` 构造由 Plan 742 补齐（r1–r5 复审收敛体路径不变量：代码区字面量保持/模块 token 身份与作用域遮蔽/借用实参切分（比较 `<`/`>` 非泛型定界）/返回出口矩阵——详见 design/api-generation-integrity.md §2）；转译失败由装配预检拒绝，`AUTO_A2R_BODY=0` 才允许显式标记的 scaffold | active |
 | asset / fs / util / version / error 等 | 基础设施与公共类型 | active |
 | up | 升级功能 | disabled（zip 依赖已移除，模块注释停用） |
 

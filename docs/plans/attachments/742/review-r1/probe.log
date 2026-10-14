@@ -1,0 +1,41 @@
+  ✓ Generated Rust server: control-back/
+CASE control: generation Ok; expected text="ordinary message"
+ARTIFACT D:/autostack/tmp/p742-review-r1/projects\control\rust-workspace\control-back\src/api.rs
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "ordinary message".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+  ✓ Generated Rust server: list_literal-back/
+CASE list_literal: generation Ok; expected text="List<int>.new([])"
+ARTIFACT D:/autostack/tmp/p742-review-r1/projects\list_literal\rust-workspace\list_literal-back\src/api.rs
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "vec![]".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+  ✓ Generated Rust server: module_literal-back/
+CASE module_literal: generation Ok; expected text="repository.filename"
+ARTIFACT D:/autostack/tmp/p742-review-r1/projects\module_literal\rust-workspace\module_literal-back\src/api.rs
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "crate::repository::filename".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+  ✓ Generated Rust server: brace_literal-back/
+CASE brace_literal: generation Ok; expected text="} return secret"
+ARTIFACT D:/autostack/tmp/p742-review-r1/projects\brace_literal\rust-workspace\brace_literal-back\src/api.rs
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "}
+    return JsonResponse(secret".to_string());
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}

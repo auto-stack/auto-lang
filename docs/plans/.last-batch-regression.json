@@ -1,42 +1,67 @@
 {
-  "last_covered_plan_id": 766,
-  "timestamp": "2026-10-12T04:08:00Z",
-  "covered_commit": "3ecd375d6",
+  "last_covered_plan_id": 774,
+  "timestamp": "2026-10-14T11:30:00Z",
+  "covered_commit": "14e387537",
   "legs": [
     "tf",
     "tt",
-    "tb"
+    "tb",
+    "taa"
   ],
   "leg_results": {
     "tf": {
-      "seconds": 75.2,
-      "run": 6281,
-      "passed": 6279,
-      "failed": 2,
+      "seconds": 109.8,
+      "run": 6288,
+      "passed": 6287,
+      "failed": 1,
       "skipped": 519,
-      "note": "首跑 fail-fast 于 ffi_dual_019(昨夜同形);--no-fail-fast 全量 6279/6281,2 红=负载 flake(见 flake_observations)"
+      "note": "ffi_dual_019 满池三轮红/定向绿（REG-2 升格确认，KNOWN-DEPT THR-D5）"
     },
     "tt": {
-      "seconds": 102.2,
-      "run": 5629,
-      "passed": 5629,
+      "seconds": 183.0,
+      "run": 5667,
+      "passed": 5667,
       "failed": 0,
-      "skipped": 1790
+      "skipped": 1793,
+      "note": "首轮 1 timeout（plan484 族），完整复跑全绿"
     },
     "tb": {
-      "seconds": 71.6,
-      "run": 5313,
-      "passed": 5313,
+      "seconds": 113.0,
+      "run": 5319,
+      "passed": 5319,
       "failed": 0,
-      "skipped": 1542
+      "skipped": 1543,
+      "note": "首轮 lock_serializes_critical_sections 1 红（F-762-R2 在案形态），定向绿后完整复跑全绿"
+    },
+    "taa": {
+      "seconds": 46.5,
+      "run": 1283,
+      "passed": 1281,
+      "failed": 2,
+      "skipped": 640,
+      "note": "触发条件：窗口触 stdlib_assembly/host.rs（7 文件）；两红确定性（定向仍红）"
     }
   },
-  "new_reds": [],
-  "known_reds_seen": [],
-  "flake_observations": [
-    "tests::ffi_dual_tests::ffi_dual_019_dep_layout_invariants(tf 首跑+全量红;tf/t 两配置定向绿;今日 t05 目录基线 stash 亦复现满池红=预存负载 flake 非 r2 面;连续两收据复发,建议后续升级登记 KNOWN-DEBT 观察其满池竞态根因)",
-    "state_file::tests::lock_serializes_critical_sections(tf 全量红;F-762-R2 在册已知形态,昨夜 tb 首跑同款全量绿)"
+  "new_reds": [
+    {
+      "test": "tests::aavm2_a2r::test_aavm2_goldens_check",
+      "plan": 775,
+      "suspect_commit": "b1230e767",
+      "detail": "STDASSEMBLY.INVALID_BYTECODE: 60 — json.encode 泛型 adapter 规则后黄金语料 a2r 参考运行失败"
+    },
+    {
+      "test": "tests::aavm_runner_tests::test_aavm2_compile_corpus",
+      "plan": 775,
+      "suspect_commit": "b1230e767",
+      "detail": "同面 compile 腿"
+    }
   ],
-  "window_note": "窗口 76500e0c6..3ecd375d6 覆盖 PLAN-765 r2 再交付(renderer.rs/stdlib.rs F-10 IAT 追踪钩+归因纪要+规约扩展)与 364356e30 website 纯前端提交。零 aavm 触面→taa 未触发。跑腿期间 musk 会话固定版矩阵复跑在旁(1 VM+serve 轻载,precedent 容忍)。",
-  "verdict": "green-with-flakes"
+  "known_reds_seen": [
+    "ffi_dual_019_dep_layout_invariants(tf 满池×3, 定向绿, REG-2)"
+  ],
+  "flake_observations": [
+    "tt 首 1 timeout(plan484 族)与 tb lock_serializes_critical_sections(在案 F-762-R2 形态)均定向绿,完整复跑全绿"
+  ],
+  "window_note": "窗口 3ecd375d6..14e387537 覆盖 PLAN-773/774/775/776 合并与 PLAN-742 收口。775 divisible-by-5 规则同时命中（775>766）。taa 因窗口触 stdlib_assembly 触发；两新红归因 775 b1230e767（aavm 豁免面,KNOWN-DEBT REG-5 登记,不阻塞）。单实例串行执行（前置等待他组重档退出）。",
+  "verdict": "green-with-registered-new-reds"
 }

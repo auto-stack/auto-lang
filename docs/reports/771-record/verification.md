@@ -1,0 +1,163 @@
+# PLAN-771 验证收据（verification.md）
+
+- 工作树：`D:/autostack/.wt/lang-771/auto-lang` @ `plan-771-dev`；
+  基面 master `199d6509e`（774 已合入）。
+- 本文件由 T-06/T-07 收尾写定，**R1 复审 needs_fix 修复轮**（2026-10-14，
+  F-771-R1-01..04 + V-09 malformed partial 补证）修订；门禁原始收据在
+  `experimental/ac-core/target/ac-verify-receipts/record-771/`（gitignored，
+  含逐例输入/输出/hash）。规范增量提案见
+  [proposed-spec-delta.md](proposed-spec-delta.md)（未发布 canonical）。
+- R1 复审报告与冻结反例见
+  [review-r1/REVIEW.md](../../plans/attachments/771/review-r1/REVIEW.md)；R2 见 [review-r2/REVIEW.md](../../plans/attachments/771/review-r2/REVIEW.md)。
+
+## 1. 提交与产品清单
+
+| 项 | 值 |
+|---|---|
+| T-01 提交 | `f909781b4`（design.md 冻结 + whole-path probe 收据） |
+| T-02 提交 | `fb8bd7e14`（HIR 域/schema/binder/verifier + record_hir 19 测试） |
+| T-03 提交 | `f46cd128b`（source 七模块 record 面 + record_source 14 测试） |
+| T-04 提交 | `b0a7c31f9`（native 聚合 lowering） |
+| T-05 提交 | `67ee3cc01`（record_native 9 PE + copy-elision） |
+| T-06/T-07 提交 | 门禁脚本 + 文档（见 git log，HEAD 待复审绑定时填写） |
+| 依赖 | 无 auto-down / crates 改动；ac-core path 依赖零源码 diff |
+
+新增/修改（相对基面）：`experimental/ac-core/src/hir.rs`、
+`descriptor.rs`、`verify.rs`、`native.rs`、`source/{ast,lexer,mod,parser,
+resolve,typecheck,adapter}.rs`、`main.rs`、`lib.rs`；
+`schema/record.atom`；`tests/{record_hir,record_source,record_native}.rs`；
+`fixtures/record-{hir,source}/{valid,invalid}`；
+`scripts/verify-ac-record-771.ps1`；`docs/reports/771-record/*`；
+README 增量。旧域（core/scalar）源码路径仅共享枚举扩面（带域防御），
+接受/拒绝集合零改动（旧 gates 重跑证明，§4）。
+
+## 2. 测试设计执行（plan §6 Case 表 → 实际入口）
+
+| Case | 实际入口 | 结果 |
+|---|---|---|
+| V-01 | `record_hir.rs`（三维身份/隔离/dispatch/未知三元组）+ gate `profile isolation` 步 | ✅ |
+| V-02 | `record_source.rs`（源码腿）+ `record_hir.rs`（HIR 腿）+ `record_native.rs`（source flagship PE exit 0 / HIR fixture PE exit 0——R1 修复后 r01 成功码 0、失败码 11/12 互异）+ gate SP01/HP01 | ✅ |
+| V-03 | `record_hir.rs`（同构异名/前向引用/自环/互环/断开环/1024 链/深路径）+ `record_source.rs`（名义拒绝含 record 名标注） | ✅ |
+| V-04 | `record_hir.rs` 8 组程序化 Bundle 变异（字段 TypeId/FieldId 越界与经标量续走/签名参数交换/结果改型/receiver 改位/owner 改型/字段 TypeRef 越界/ctor 绑定删失）+ 合法兄弟例 | ✅ |
+| V-05 | `record_native.rs`（命名实参重排+嵌套 record 实参、out-slot 链式 swap(mk)/swap(swap(mk))、.mut 递归标量+record、receiver 一次+实参序 trace `aab`）+ gate SP02 | ✅ |
+| V-06 | `record_source.rs`（let 写拒绝/缺 .mut/mut fn）+ `record_native.rs`（mut 只写目标 PE）+ `record_hir.rs`（双 mut 排他/let 互借/游离借位）+ gate SN01..SN03 | ✅ |
+| V-07 | `record_source.rs`（生成 Atom field_args 源码序 + 绑定按名落位 oracle）+ `record_native.rs`（命名构造 trace `ba`）+ gate SP02/SN06 | ✅ |
+| V-08 | `record_source.rs`（static/实例误用、同名遮蔽、未知字段/方法）+ `record_hir.rs`（receiver 契约）+ gate SN07 | ✅ |
+| V-09 | `record_hir.rs`（1024 链 verify、深 field path）+ `record_native.rs` 深输入 PE（1024 层类型图、4096 混合字段路径段、构造链 copy-elision：800 层 main 324817→3217 指令、46s→1.1s 构建）+ `deep_regression.rs` 既有 scalar 深输入回归 + **R1 补证：`record_source.rs` malformed 2000 深局部（parse→resolve 结构化拒绝→迭代 Drop 无栈溢出；修复前 resolve 嵌套 ctor 递归 + ResolvedExpr 递归 Drop，2MB 线程栈 300 深即爆；迭代化后 20000 深幸存）** | ✅ |
+| V-10 | `scripts/verify-ac-record-771.ps1` 全 15 步（本收据 §4）+ 旧 gates（741 -SkipMainGates / 745 / 767）+ SENTINEL 事务（失败 build 三件制品 hash 保持）+ 收据身份行 | ✅ |
+
+## 3. 覆盖内省
+
+- R2 修复轮后：record_hir 21 / record_source 21 / record_native 15 =
+  57 个新测试；全 ac-core `cargo test --locked` 202/202（旧面 145 全数
+  保留）。R1 新增：变异绑定越界双模式（binding-arg 边界值/u32::MAX/
+  缺失绑定→verify.binding-invalid 受控拒绝）、位置构造五例（解析/元数/
+  命名参/字段类型/fn 同名优先）、malformed 深局部、别名赋值值语义六例
+  （ctor 自赋值/sret 自赋值/新目标控制/嵌套字段自赋值/mut 参数交错/
+  双 view 同对象）、位置构造 PE、HIR r02 强制失败控制（exit 11）、
+  HIR r03 直连腿（嵌套拷贝/聚合返回/别名自赋值/字段路径自读，失败码
+  21..29 互异）。R2 新增：ctor 操作数快照源码序七例 + r04 直连腿 +
+  互斥跨构造实参树钉子（见 §4c）。
+- 整数 oracle 独立推导（探针 P2 布局公式 8+4k），无 golden 自动更新；
+  深输入为验证规模而非语言上限，无固定语法深度排除。
+- 已知非阻断：诊断码 `verify.shadowed-type`/`verify.duplicate-decl`
+  的 HIR 级触发面由 source 前端同语义码覆盖（source.duplicate/
+  source.syntax），HIR 直写路径由 binder `bind.duplicate-id` 族把关
+  ——码表在 design.md §5 冻结，语义无缺口。
+
+## 4. 门禁执行（verify-ac-record-771.ps1）
+
+**R2 修复轮收尾重跑（当前收据）：24 步全绿，0 failed，23 cases**（2026-10-14 实跑；
+原始收据 `target/ac-verify-receipts/record-771/`，含 context/summary/
+cases 与逐例 build/run 输出与 SHA256；下表步骤号为 R1 轮 22 步结构的
+历史编号，R2 增补步骤以字母续排）：
+
+| # | 步骤 | 结果 |
+|---|---|---|
+| 1 | context（HEAD/branch/rustc/cargo + binary/support-lib SHA256） | PASS |
+| 2 | cargo check（ac-core） | PASS |
+| 3 | cargo fmt --check | PASS |
+| 4 | cargo check --all-targets 零警告 | PASS |
+| 5 | cargo test --locked（全 ac-core 202/202） | PASS 55.8s |
+| 6 | cargo test record_native（单线程 15/15） | PASS 12.3s |
+| 7 | 构建工具二进制 | PASS |
+| 8 | 构建 trace 支持库 | PASS |
+| 9 | 正向 SOURCE：flagship 构建+运行 exit 0 | PASS |
+| 10 | 正向 SOURCE：求值序 trace `ba` | PASS |
+| 11 | 正向 HIR：record fixture 构建+运行 exit 0 | PASS |
+| 12 | HIR 失败控制：强制拷贝检查 exit 11（F-771-R1-04） | PASS |
+| 12b | 正向 HIR：r03 嵌套拷贝/聚合返回/别名（F-771-R1-01/04） | PASS |
+| 12c | 正向 SOURCE：别名赋值值语义三例（F-771-R1-01） | PASS |
+| 12d | 正向 SOURCE：位置构造（F-771-R1-02） | PASS |
+| 12e | 正向 SOURCE：ctor 操作数快照序三例（F-771-R2-01） | PASS |
+| 12f | 正向 HIR：r04 快照序直连腿（失败码 31..34） | PASS |
+| 13 | 负向 SOURCE 10 例钉码拒绝（R1 增 i08/i09/i10） | PASS |
+| 13 | profile 隔离（core/scalar 拒 record；未知 profile exit 2；域行） | PASS |
+| 14 | SENTINEL 事务（失败 build 三件制品 hash 保持） | PASS |
+| 15 | 收据身份行（record 三元组 + input-hash） | PASS |
+| 16 | 旧 gate 741（-SkipMainGates） | PASS 11.2s |
+| 17 | 旧 gate 745（source core-i32） | PASS 39.8s |
+| 18 | 旧 gate 767（scalar） | PASS 22.5s |
+
+实施期修正（oracle 侧，非合同变化，T-06/T-07 历史记录）：SN04/SN07
+两 fixture 初稿写成合法程序（同构异名 seeding 全 i32 字段合法；类型名
+遮蔽当时未立规），改为真实违规（B 值入 A 类型字段；局部与 record 同名
+拒绝 `source.duplicate`——V-08 遮蔽矩阵的明示规则落地）。
+
+## 4b. R1 修复轮记录（2026-10-14，复审 needs_fix → 重开 T-02..07）
+
+| 发现 | 修复 | 永久回归 |
+|---|---|---|
+| F-771-R1-01 copy-elision 目的地别名存活输入（alias-ctor/alias-sret exit 12） | native.rs：预计算每表达式 record 局部触集（mention 集，迭代后序）；Assign/字段路径/ctor 子 dest/call out-slot 仅在目标根局部不在 RHS 触集时转发，否则 RHS 落新槽后提交（Let 新槽与 ABI-E out-param 恒安全——out-param 与全体实参存储不相交由调用点规则归纳保证） | `record_native.rs` `aliased_assignment_value_semantics_pe` 六例（含复审 attachment 原例三件 + 嵌套字段/mut 参数/双 view）+ gate SP03 三例；深构造效率保留（V-09 深输入门禁仍绿） |
+| F-771-R1-02 位置构造 `Q(7)` 被 source.undefined 拒绝 | resolve.rs `resolve_call`：局部/函数查名后查 record 表路由 `ctor_positional`（元数/命名参/逐参名义类型诊断；fn 同名仍优先调用形）；删除死的 AST `ExprKind::CtorPos` 变体与 `ctor_pos` | `record_source.rs` 五例 + i08/i09/i10 负向 fixture + `record_native.rs` `positional_ctor_pe`（含位置实参别名重排）+ gate SP04/SN08..SN10 |
+| F-771-R1-03 Call binding.arg=u32::MAX 令 verify panic | verify.rs 所有权走查改安全 `.get()` 跳过越界绑定，由既有 `verify.binding-invalid`（check_blocks）报错——与 core 域 binding-arg-oob 先例同码 | `record_hir.rs` 边界值 2（=len）与 u32::MAX 两模式 + 缺失绑定组合；复审 bundle-mutation.rs harness 重放双模式 controlled reject（原 binding-arg PANIC） |
+| F-771-R1-04 HIR 复制检查失败分支与成功同码 exit 1 | r01 fixture：成功 0、k1=11、k2=12 互异；新增 controls/r02 强制失败控制（c1d=99→k1→exit 11）与 valid/r03 直连腿（嵌套拷贝/聚合返回/sret 与 ctor 别名自赋值/字段路径自读；失败码 21..29） | `record_native.rs` `hir_fixture_pe_exit0`/`hir_broken_copy_control_pe_exit11`/`hir_nested_copy_return_alias_pe` + gate HP01(0)/HP02(11)/HP03(0)；r03 oracle 灵敏度实证（翻转 c2b 期望值→exit 21） |
+| （AC-05 partial 补证）malformed partial 深输入无 Drop 证据 | 修复根因：resolve 嵌套 ctor 递归（expr_iterative→expr→ctor_named→expr_iterative 每层三帧 ~7KB）迭代化（Task::CtorOut 子任务）；ResolvedExpr 迭代 Drop 扩至全部 record 子形态（原仅 Binary/Unary） | `record_source.rs` `malformed_deep_partial_source_rejects_and_drops_without_overflow`（2000 深结构化拒绝；探针：修复前 2MB 栈 300 深溢出，修复后 20000 深幸存） |
+
+卫生项：一次性实施辅助 `patch_a2.py`/`patch_r1.py` 已删除（复审
+nonblocking 观察）。复审冻结反例在修复后基线重放：positional check
+exit 0、alias-ctor/alias-sret/alias-control 均 exit 0、
+hir-broken-copy-check（旧常量文本）exit 1 ≠ 新成功码 0、
+bundle-mutation 双模式 controlled reject。
+
+## 4c. R2 修复轮记录（2026-10-14，第二次 needs_fix → 重开 T-04..07）
+
+两连败诊断（auto-plan-work 检查点要求）：不变式为「record 值操作数须在
+其自身源码序求值位捕获；仅借位上下文（view/mut 调用实参）传活指针」。
+R1 检查为何漏：R1 的 mention/不相交分析保护的是**目的地**不被 RHS 提前
+写入，未保护操作数的**源存储**不被更晚的兄弟实参（`bump(q.mut)`）在
+CtorOut 延迟拷贝前改写；R1 测试只覆盖目的地别名与新目的地形态。受影响
+路径：native.rs ReadLocal 以裸指针进槽、CtorOut 于全部实参求值后才拷贝
+字段。调整：值物化与借位指针分离——ReadLocal 值上下文（有注册目的地或
+record ctor 字段操作数）在自身求值位即时快照（有 dest 直写+elided，无
+dest 落新槽），BorrowView/BorrowMut 保持指针透传；其余产生型操作数
+（FieldGet/Call/嵌套 ctor）本就在其求值位物化。
+
+| 发现 | 修复 | 永久回归 |
+|---|---|---|
+| F-771-R2-01 ctor record 操作数晚于后续副作用才拷贝（ctor-snapshot/positional-snapshot exit 11） | native.rs：`record_eager_reads` 集合（绑定 record 字段的 ReadLocal）+ Enter ReadLocal 值路径（dest 直写+elided / 新槽快照）+ ctor 子目的地 produces 判定纳入 ReadLocal（保留单拷贝效率；深构造链无 ReadLocal 操作数不受影响） | 复审三反例重放 exit 0/0/0；`record_native.rs` `ctor_operand_snapshot_source_order_pe` 七例（named/位置/新目标控制/**mut 先行重排读后值**/嵌套 ctor/部分字段变异/函数返回操作数）+ `hir_ctor_snapshot_order_pe`（r04 直连腿，失败码 31..34 互异，oracle 灵敏度实证翻转→31）+ `record_source.rs` `mut_exclusivity_spans_ctor_arg_trees`（借位语义未放松的钉子：同调用合并实参树内 view+mut 仍互斥拒绝）+ gate SP05 三例/HP04（门禁 24 步全绿 23 cases）；R1 全反例复跑保持 exit 0 |
+
+文档卫生（R2 复审 nonblocking）：§4 移除与 22 步表重复的旧 15 步草稿
+清单（187/9 旧总数与「exit 1 = 快乐路径」旧行随之删除）；§4 头部 R1
+报告链接修正为 `../../plans/...`。
+
+## 5. 输入指纹（SHA256）
+
+| 输入 | SHA256 |
+|---|---|
+| 774 interface-contract.md | 046e4b5da59b100aec1126aa52e9f2b17731537757874f4ee9ca34d524dd9548 |
+| 774 decisions.md | bb4d8e312c5bae80db707fee5e7f707bc0272e0cd57152ddbb14656ea0320e3e |
+| Design 10-language-syntax.md | 627c55363d29a47f226d3588c60220f20f879a552840a63dde9aa4a569d55e6d |
+| Design 04-memory-ownership.md | eb87507a49666c42b4cc35b6316fcd2ddd570ce9e868b536a9c25732b9a39d54 |
+| packages/aavm/lib/parser.at | 377129b9b06afec72b5ccbc947b6d50c778b7a41f3df2f22ad6c99048b2ea559 |
+| 772 归档计划 | 99273e9cd59a90db9662702317ab1274c6336fd979bd24ce137ea2658698a1c6 |
+| 774 归档计划 | 88d0e1d8cba19c55e330814c5343d65139cbf683e3110f445fb0b7091ad5f880 |
+| design.md（本计划 T-01 冻结） | 9f8e52f00a947dd228677a9cd1374fcba15e2b7d8ef43700d171061fd009e266 |
+
+## 6. 后续 owner（不在本计划）
+
+- text-record 组合（770 合入后第二合入者重绑基线联跑其 gate；
+  774 interface-contract §6 顺序）。
+- 可变实例方法（`mut fn`）、unit/隐式尾返回、资源字段、List/enum/
+  use——扩面计划另行立项（design.md §9 拒绝面）。
+- 通用 pass（跨域 lowering/优化）保持 planned（SD-02/03）。

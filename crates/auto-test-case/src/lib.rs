@@ -27,3 +27,6 @@ pub mod raw_ranges;
 pub mod report;
 pub mod sha256;
 pub mod suite;
+
+/// Crate version, for report toolchain identity (Plan 773 F-06).
+pub const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");

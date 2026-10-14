@@ -187,6 +187,16 @@ const TEXT_ERRORS: &[(&str, &str, &str)] = &[
     ("m14-comma-in-parens.at", "source.syntax", ","),
 ];
 
+fn fn_item<'a>(
+    p: &'a auto_ac_prototype::source::ast::Program,
+    i: usize,
+) -> &'a auto_ac_prototype::source::ast::FnItem {
+    match &p.items[i] {
+        auto_ac_prototype::source::ast::Item::Fn(f) => f,
+        _ => panic!("expected fn item at {}", i),
+    }
+}
+
 #[test]
 fn valid_corpus_parses() {
     for name in VALID {
@@ -239,10 +249,10 @@ fn p01_precedence_shape() {
     let src = fixture("valid", "p01-precedence.at");
     let p = parse_program(&src).unwrap();
     assert_eq!(p.items.len(), 1);
-    let f = &p.items[0];
+    let f = fn_item(&p, 0);
     assert_eq!(f.name.name, "main");
     assert!(f.params.is_empty());
-    assert_eq!(f.ret.word, TypeWord::Int);
+    assert_eq!(f.ret.kind, TypeRef::Builtin(TypeWord::Int));
     assert_eq!(f.body.stmts.len(), 1);
     let Stmt::Return { value, .. } = &f.body.stmts[0] else {
         panic!("expected return")
@@ -266,11 +276,14 @@ fn p02_functions_and_signed_args() {
     let src = fixture("valid", "p02-signed-positional.at");
     let p = parse_program(&src).unwrap();
     assert_eq!(p.items.len(), 2);
-    assert_eq!(p.items[0].name.name, "add");
-    assert_eq!(p.items[0].params.len(), 2);
-    assert_eq!(p.items[0].params[0].name.name, "a");
-    assert_eq!(p.items[0].params[1].ty.word, TypeWord::Int);
-    let Stmt::Return { value, .. } = &p.items[0].body.stmts[0] else {
+    assert_eq!(fn_item(&p, 0).name.name, "add");
+    assert_eq!(fn_item(&p, 0).params.len(), 2);
+    assert_eq!(fn_item(&p, 0).params[0].name.name, "a");
+    assert_eq!(
+        fn_item(&p, 0).params[1].ty.kind,
+        TypeRef::Builtin(TypeWord::Int)
+    );
+    let Stmt::Return { value, .. } = &fn_item(&p, 0).body.stmts[0] else {
         panic!("add body")
     };
     let ExprKind::Binary {
@@ -284,7 +297,7 @@ fn p02_functions_and_signed_args() {
     assert!(matches!(lhs.kind, ExprKind::Var(_)));
     assert!(matches!(rhs.kind, ExprKind::Var(_)));
     // main returns add(-2, 3): the negative literal is one token pair.
-    let Stmt::Return { value, .. } = &p.items[1].body.stmts[0] else {
+    let Stmt::Return { value, .. } = &fn_item(&p, 1).body.stmts[0] else {
         panic!("main body")
     };
     let ExprKind::Call { callee, args } = &value.kind else {
@@ -301,7 +314,7 @@ fn p11_literal_domain() {
     let src = fixture("valid", "p11-literal-min-max.at");
     let p = parse_program(&src).unwrap();
     assert_eq!(p.items.len(), 1);
-    let stmts = &p.items[0].body.stmts;
+    let stmts = &fn_item(&p, 0).body.stmts;
     assert_eq!(stmts.len(), 3);
     let Stmt::Let {
         name,
@@ -329,7 +342,10 @@ fn p11_literal_domain() {
         panic!("let y")
     };
     assert_eq!(name.name, "y");
-    assert_eq!(ann.map(|a| a.word), Some(TypeWord::I32));
+    assert_eq!(
+        ann.as_ref().map(|a| a.kind.clone()),
+        Some(TypeRef::Builtin(TypeWord::I32))
+    );
     assert!(!*mutable);
     assert!(matches!(value.kind, ExprKind::IntLit(2147483647)));
     assert!(matches!(&stmts[2], Stmt::If { .. }));
@@ -339,7 +355,7 @@ fn p11_literal_domain() {
 fn p15_named_args_preserve_source_order() {
     let src = fixture("valid", "p15-named-eval-order-x2.at");
     let p = parse_program(&src).unwrap();
-    let Stmt::Return { value, .. } = &p.items[1].body.stmts[0] else {
+    let Stmt::Return { value, .. } = &fn_item(&p, 1).body.stmts[0] else {
         panic!("main body")
     };
     let ExprKind::Call { args, .. } = &value.kind else {
@@ -388,15 +404,18 @@ fn p20_crlf_utf8_spans() {
     let src = fixture("valid", "p20-utf8-crlf-negative-min.at");
     assert!(src.contains("中文注释"));
     let p = parse_program(&src).unwrap();
-    let f = &p.items[0];
-    assert_eq!(f.ret.word, TypeWord::I32);
+    let f = fn_item(&p, 0);
+    assert_eq!(f.ret.kind, TypeRef::Builtin(TypeWord::I32));
     let Stmt::Let {
         ann, value, span, ..
     } = &f.body.stmts[0]
     else {
         panic!("let n")
     };
-    assert_eq!(ann.map(|a| a.word), Some(TypeWord::Int));
+    assert_eq!(
+        ann.as_ref().map(|a| a.kind.clone()),
+        Some(TypeRef::Builtin(TypeWord::Int))
+    );
     // `- 2147483648` with whitespace between sign and digits is ONE literal.
     assert!(matches!(value.kind, ExprKind::IntLit(-2147483648)));
     assert_eq!(value.span.slice(&src), "- 2147483648");
@@ -417,16 +436,16 @@ fn p20_crlf_utf8_spans() {
 fn p07_nested_loops_break_nearest() {
     let src = fixture("valid", "p07-break-nearest-loop.at");
     let p = parse_program(&src).unwrap();
-    let Stmt::Let { .. } = &p.items[0].body.stmts[0] else {
+    let Stmt::Let { name, .. } = &fn_item(&p, 0).body.stmts[0] else {
         panic!("let n")
     };
-    let Stmt::Loop { body: outer, .. } = &p.items[0].body.stmts[1] else {
+    let Stmt::Loop { body: outer, .. } = &fn_item(&p, 0).body.stmts[1] else {
         panic!("outer loop")
     };
     let Stmt::Loop { body: inner, .. } = &outer.stmts[0] else {
         panic!("inner loop")
     };
-    let Stmt::Assign { name, .. } = &inner.stmts[0] else {
+    let Stmt::Assign { target: _, .. } = &inner.stmts[0] else {
         panic!("assign n")
     };
     assert_eq!(name.name, "n");
@@ -435,7 +454,7 @@ fn p07_nested_loops_break_nearest() {
         panic!("outer assign")
     };
     assert!(matches!(&outer.stmts[2], Stmt::Break { .. }));
-    let Stmt::Return { .. } = &p.items[0].body.stmts[2] else {
+    let Stmt::Return { .. } = &fn_item(&p, 0).body.stmts[2] else {
         panic!("return")
     };
     // Spans: the inner break keyword slice is exactly "break".
@@ -449,7 +468,7 @@ fn p07_nested_loops_break_nearest() {
 fn p04_while_and_assignment() {
     let src = fixture("valid", "p04-while-retest.at");
     let p = parse_program(&src).unwrap();
-    let stmts = &p.items[0].body.stmts;
+    let stmts = &fn_item(&p, 0).body.stmts;
     assert_eq!(stmts.len(), 3);
     let Stmt::Let {
         mutable,
@@ -470,10 +489,10 @@ fn p04_while_and_assignment() {
         panic!("cond")
     };
     assert_eq!(cond.span.slice(&src), "i < 3");
-    let Stmt::Assign { name, value, .. } = &body.stmts[0] else {
+    let Stmt::Assign { target, value, .. } = &body.stmts[0] else {
         panic!("assign")
     };
-    assert_eq!(name.name, "i");
+    assert_eq!(target.base.name, "i");
     assert_eq!(value.span.slice(&src), "i + 1");
     assert!(matches!(&stmts[2], Stmt::Return { .. }));
 }
@@ -482,7 +501,7 @@ fn p04_while_and_assignment() {
 fn n03_name_span_line_col_for_later_stages() {
     let src = fixture("invalid", "n03-undefined-name.at");
     let p = parse_program(&src).unwrap();
-    let Stmt::Return { value, .. } = &p.items[0].body.stmts[0] else {
+    let Stmt::Return { value, .. } = &fn_item(&p, 0).body.stmts[0] else {
         panic!("return")
     };
     let ExprKind::Var(v) = &value.kind else {
@@ -512,7 +531,7 @@ fn review_counterexample_coordinates() {
     // by source_hir. Here the dead `let` of the CRLF variant is located.
     let src = fixture("invalid", "c10-scope-escape-token.at");
     let p = parse_program(&src).unwrap();
-    let Stmt::Return { value, .. } = &p.items[0].body.stmts[1] else {
+    let Stmt::Return { value, .. } = &fn_item(&p, 0).body.stmts[1] else {
         panic!("second statement must be the return");
     };
     assert_eq!(value.span.slice(&src), "x");
@@ -521,7 +540,7 @@ fn review_counterexample_coordinates() {
     let src = fixture("invalid", "c09-trailing-utf8-crlf.at");
     let p = parse_program(&src).unwrap();
     // the dead `let x = 2` sits on line 4 (after comment/fn/if lines)
-    let Stmt::Let { span, .. } = &p.items[0].body.stmts[1] else {
+    let Stmt::Let { span, .. } = &fn_item(&p, 0).body.stmts[1] else {
         panic!("second statement must be the let");
     };
     assert_eq!(span.slice(&src), "let x = 2");

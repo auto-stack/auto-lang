@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **37**——35 为统一测试协议、36 为 AC 数据扩面共同边界），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **39**——38 为 AutoUI 应用功能复用与 OS 服务架构），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blueprints/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -108,7 +108,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 ## 三、AutoUI 与 App 生成域
 
-**域级章（仅此四篇拿号）**：
+**域级章**：
 
 | # | 文档 | 主题 |
 |---|------|------|
@@ -116,8 +116,11 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | 20 | [AutoUI Separation Architecture](20-autoui-separation-architecture.md) | AutoUI 分离架构：a2ui/ui_gen/host 分层（域架构锚点） |
 | 29 | [AutoUI Style & Theme System](29-autoui-style-theme-system.md) | 样式抽象与主题系统：ThemeRegistry 单一值源（partial override/extends 派生/hot-switch）+ style recipe 编译期组合宏；取代原 Design 19 值层（2026-09-09 立档） |
 | 32 | [AutoUI Repo Extraction](32-autoui-repo-extraction.md) | AutoUI 仓分离总方案（三件套+双插件缝）：方言插件（Dialect trait 补完）+ auto-man cargo 式插件缝 + 五阶段拆仓路线 + 函数级迁移勘定账。📝 方案稿（2026-09-20 立档待评审；DEBTS `拆仓-候选` 登记，下一版规划实施） |
+| 38 | [AutoUI Features & System Services](38-autoui-features-and-system-services.md) | Widget / Blueprint / Feature / App 与横向 System Service：功能包命名、分散 UI 贡献、scoped 命令/状态、裁剪与跨 App 复用、服务治理、编辑/知识能力纵向抽取。📝 调研与架构草案（2026-10-14；未冻结/实施） |
 
 **需求级设计子目录**（各篇头部有归位注记，保留原 Design NN 对应）：
+
+- [`autoui/app-presentation-host`](autoui/app-presentation-host.md)（App 呈现宿主：Region/Section/Surface 声明、Feature UI 目标绑定、灵活布局与整页栏目，Design 38 前置设计，2026-10-14 draft）
 
 - [`autoui/`](autoui/README.md)（需求级设计 + 索引）：shared-store(原18)、theming(19)、
   examples-app-track(21)、base-styles(22)、virtual-desktop(23)、desktop-shell-and-launcher(24)、
@@ -131,6 +134,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
   `docs/design/`**（Stage B P-5 指针登记，2026-09-07；首例即 auto-os Design 01
   Stage B 迁移定案，资产去向见 [docs/plans/INDEX.md](../plans/INDEX.md)）
 - [`autoui/autoui-mcp-test-fixture`](autoui/autoui-mcp-test-fixture.md)（AutoUI MCP 测试夹具协议，Plan 623）
+- [`autoui/reader-runtime-prerequisites`](autoui/reader-runtime-prerequisites.md)（Reader 框架前置设计：原生验收→child-anchor→10MiB有限执行；PLAN-781/r2，单计划三阶段，drafting）
 - [`blueprints/`](blueprints/blueprints-first-class.md)（4 篇）：blueprints-first-class(原17) 为 Blueprint 层主设计（PLAN-639 更名，原 blocks/），
   配套 agent-generation-workflow / blueprint-package-format / datasource-convention
 
@@ -144,6 +148,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [27-knowledge-base-lifecycle](27-knowledge-base-lifecycle.md) | current/target-state、canonical source、ADR/Spec/Plan/Generated Catalog 生命周期 | ✅ **现行 canonical design**（Plan 543） |
 | [35-autodown-test-cases](35-autodown-test-cases.md) | AutoDown 统一文件用例、同源多后端 oracle、执行/比较/覆盖协议与渐进迁移 | 📝 设计草案（2026-10-12；静态盘点完成，runner 未实施） |
 | [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 📝 设计草案（2026-10-13；PLAN-774→770/771，均drafting；标量前置772已交付） |
+| [37-v06-modularization-and-repo-boundaries](37-v06-modularization-and-repo-boundaries.md) | v0.6 结构治理：AutoUI/AutoMan 可拆性、语言内部 crate 分层、宿主/项目模型解耦、去重与退役、独立仓验收 | 📝 调研与设计草案（2026-10-13；证据报告与首批 PLAN-777–780，未实施） |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 

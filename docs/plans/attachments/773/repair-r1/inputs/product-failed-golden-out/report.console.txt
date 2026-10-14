@@ -1,0 +1,5 @@
+suite review (cb352d7d39e9c24ccf36c61732d6b5997360c93cd44fdeeb8b7ceeb73db1fd9f), schema autolang.test-report/1
+PASS         review.case / emit [a2r::emit]
+PASS         review.case / consumer [avm::run] — consumed 1 actual artifact(s) from "emit" (verified against manifest): ["main.rs"]
+total 2 (PASS=2)
+exit 0
