@@ -1719,6 +1719,28 @@
             "channel:guarded-offline-projection"
           ],
           "related": []
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "auto-lang",
+          "tags": [
+            "plan-776",
+            "merge",
+            "deposit",
+            "e65c01012807ca1fa42235ba2971d245d57b5738"
+          ],
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15",
+          "id": "P776-5",
+          "title": "PLAN-776 consolidation deposit",
+          "content": "合并收据：交付链a142756c9..e65c01012（14实现/测试提交）+spec沉淀提交；SD-01..07落七canonical目标（新增http-return-resources.md）；门禁=裸t 5312/5312、tv 162/162、th（merge-owned后置）、生成矩阵3/3（File/Upload/JSON+busSSE真TCP）；边界=P776-D3/D4归705/707轨、a2r use api:阻塞归742族。verification=docs/plans/reports/776-return-resource-verification.md（SHA256见计划§9 R13交接）。",
+          "file": "docs/plans/reports/776-return-resource-verification.md"
         }
       ]
     },
@@ -6634,6 +6656,50 @@
             "src:a1f671b572d9"
           ],
           "related": []
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "stdlib",
+          "tags": [
+            "plan-776",
+            "http",
+            "credentials",
+            "e65c01012807ca1fa42235ba2971d245d57b5738"
+          ],
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15",
+          "id": "P776-1",
+          "title": "HTTP return resource credentials (per-value identity)",
+          "content": "HTTP返回边界按值凭据：四族（Response快照/Sse/File/Upload）TAG_OBJECT凭据+专用id段（owner 11bit编入、耗尽拒绝、id层校验先行）；身份在生产点授予（generator CREATE_GENERATOR后无条件WRAP+dispatch臂+client egress），声明/表命中/数值不构成来源；五载体传播+TAG_FUTURE逐值载荷（Value::Future保真映射，legacy位形态驱动臂退役——普通496恒数据）；setter/iterator消费恰一份（StakeGuard Drop即消费）；单入口编组resource_claim_reply。canonical=docs/specs/stdlib/design/http-return-resources.md。",
+          "file": "docs/specs/stdlib/design/http-return-resources.md"
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "stdlib",
+          "tags": [
+            "plan-776",
+            "api",
+            "identity",
+            "e65c01012807ca1fa42235ba2971d245d57b5738"
+          ],
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15",
+          "id": "P776-2",
+          "title": "API transport: credential-first marshaling and P734-D7 closure",
+          "content": "api-transport-contract修订：资源凭据臂最前（id层owner校验→downcast四族）；查表臂/声明门退役——P734-D7关闭（legacy 6 wire用例由真实生产点凭据保持）；from_return_identity限定名先于用户名集+alias目标完整形态（Future<FileResponse>→File）+visited集链展开（真环保守Json）；TAG_FUTURE直接驱动。canonical=docs/specs/stdlib/design/api-transport-contract.md。",
+          "file": "docs/specs/stdlib/design/api-transport-contract.md"
         }
       ]
     },
@@ -7966,6 +8032,27 @@
             "src:747854d26f55"
           ],
           "related": []
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "auto-lang",
+          "tags": [
+            "plan-776",
+            "tests",
+            "e65c01012807ca1fa42235ba2971d245d57b5738"
+          ],
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15",
+          "id": "P776-3",
+          "title": "plan776 oracle family (66 tests)",
+          "content": "crates/auto-lang/src/tests/plan776_http_return_tests.rs：66项——碰撞/传播（六载体SSE+int声明/helper）/TAG_FUTURE载体矩阵（~int 496恒数据、数组/record字段/helper Future→42）/owner 11位耗尽/setter 15格消费矩阵（RC2共享/RC1独占/错误receiver×5 setter+回收断言）/iterator消费所有权（RC1净零+RC2共享跨reap）/存活闭环/alias链/生成矩阵harness（plan776_gen_e2e JSON+bus SSE真TCP）。",
+          "file": "crates/auto-lang/src/tests/plan776_http_return_tests.rs"
         }
       ]
     },
@@ -10764,10 +10851,32 @@
             "outcome:pass"
           ],
           "related": []
+        },
+        {
+          "status": "published",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "milestone": null,
+          "module": "auto-lang",
+          "tags": [
+            "plan-776",
+            "review",
+            "final-pass",
+            "e65c01012807ca1fa42235ba2971d245d57b5738"
+          ],
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15",
+          "id": "P776-4",
+          "title": "PLAN-776 final review chain R1-R14",
+          "content": "14轮独立复审闭合：R1（查表猜测/owner回绕）、R2（返回边界身份/UAF）、R3（知识增量重写+future-cache分诊归705=P776-D3）、R5-R7（生产点凭据/TAG_FUTURE逐值载荷/iterator全族+SSE死锁分诊=P776-D4）、R8-R10（Value载体保真/消费恰一份——StakeGuard Drop即消费，五setter双释放UAF修正）、R11-R13（oracle矩阵补齐+警告清零）；R14 final pass（reviewed_commit=e65c0101）。报告=docs/plans/reports/776-return-resource-review-r1..r14.md。",
+          "file": "docs/plans/reports/776-return-resource-review-r14.md"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 14
+  "version": 15
 }

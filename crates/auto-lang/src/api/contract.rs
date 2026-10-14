@@ -20,9 +20,10 @@ use super::types::{ApiEndpoint, ApiModule, ApiParam, ApiType};
 // ============================================================================
 
 /// 端点返回的种类——决定编组分派、传输支持矩阵与生成分支。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ResponseKind {
     /// 普通 JSON 数据（声明返回非下方专属种类）。
+    #[default]
     Json,
     /// `~Iter<T>` / `~Stream<T>`（或裸 Iter/Stream 泛型）——SSE 流。
     Stream,
@@ -40,11 +41,65 @@ impl ResponseKind {
     /// 从返回类型显示串做**身份**分类（exact / 泛型解包 exact——非 contains）。
     /// 输入串来自 `type_to_string`（param 侧 Display）或 `unique_name`（返回侧），
     /// 两者对 User/泛型形态产出同形（`"FileResponse"` / `"Future<FileResponse>"`）。
+    ///
+    /// **无模块上下文的保守入口**：无法区分用户同名类型——专属种类按裸名
+    /// 命中。有模块上下文（提取/生成期持有 module types）的消费面必须用
+    /// [`ResponseKind::from_return_identity`]（PLAN-776 T-06：来源身份）。
     pub fn from_return_string(ret: &str) -> ResponseKind {
+        Self::from_return_identity(ret, &[])
+    }
+
+    /// PLAN-776 T-06/R2-07/R5-02：按**解析来源**分类——`http.` 限定名是
+    /// stdlib 绑定，直接按裸名分派（**先于**用户名集查询，不受同名遮蔽
+    /// ——F776-R5-02：用户 `type FileResponse {}` 不劫持 `http.FileResponse`）；
+    /// 未限定裸名命中模块类型声明即用户来源；type alias 按**目标链**递归
+    /// 展开（target 支持 `http.` 限定与 alias→alias 链；循环/超深保守
+    /// 落 Json）；链尾是用户声明 → Json，是 stdlib 名 → 专属种类；未命中
+    /// 才按 stdlib 内建裸名分派（stdlib HTTP 词汇不注册模块类型声明）。
+    pub fn from_return_identity(ret: &str, module_types: &[ApiType]) -> ResponseKind {
         let ret = ret.trim();
         // ~T 脱糖为 Future<T>；两种书写都解包。
         let unwrapped = unwrap_future(ret);
         let name = bare_name(unwrapped);
+        // R2-07/R5-02：限定名即真实 stdlib 来源——绕过用户名集直派。
+        if let Some(stripped) = name.strip_prefix("http.") {
+            return Self::stdlib_kind(stripped);
+        }
+        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        Self::resolve_alias(name, module_types, &mut visited)
+    }
+
+    /// R5-02/R6-02：alias 目标链展开（**visited 集循环拒绝**——合法深链
+    /// 不限层数，仅真环 A→B→A 保守落 Json，F776-R6-02 九层正例）。每层
+    /// 目标先解 Future 包装（`type D = Future<FileResponse>` → File，
+    /// 与直接 `Future<FileResponse>` 规则一致——目标结构由提取器保留），
+    /// 再剥 `http.` 限定（限定=stdlib 绑定，先于名集判定）；链尾用户
+    /// 声明 → Json；不在名集 → stdlib 裸名分派。
+    fn resolve_alias(
+        name: &str,
+        module_types: &[ApiType],
+        visited: &mut std::collections::HashSet<String>,
+    ) -> ResponseKind {
+        if !visited.insert(name.to_string()) {
+            return ResponseKind::Json; // 真 alias 环保守
+        }
+        match module_types.iter().find(|t| t.name == name) {
+            None => Self::stdlib_kind(name),
+            Some(t) => match &t.alias_of {
+                None => ResponseKind::Json, // 用户直接声明（struct/enum）
+                Some(target) => {
+                    let bare = bare_name(unwrap_future(target.trim()));
+                    if let Some(stripped) = bare.strip_prefix("http.") {
+                        return Self::stdlib_kind(stripped);
+                    }
+                    Self::resolve_alias(bare, module_types, visited)
+                }
+            },
+        }
+    }
+
+    /// stdlib 内建裸名分派（无模块上下文的保守入口同款表）。
+    fn stdlib_kind(name: &str) -> ResponseKind {
         match name {
             "FileResponse" => ResponseKind::File,
             "UploadReceipt" | "UploadSession" => ResponseKind::Upload,
@@ -70,6 +125,13 @@ fn unwrap_future(ty: &str) -> &str {
         return inner.trim();
     }
     trimmed
+}
+
+/// 泛型实例裸名：`Iter<ChatEvent>` → `Iter`；裸类型原样。
+/// PLAN-776 T-06 起 pub(crate)：codegen 遮蔽登记/提取期身份判定共用
+///（裸名 = 来源身份的键）。
+pub(crate) fn return_bare_name(ty: &str) -> &str {
+    bare_name(unwrap_future(ty))
 }
 
 /// 泛型实例裸名：`Iter<ChatEvent>` → `Iter`；裸类型原样。
@@ -242,7 +304,8 @@ impl EndpointContract {
         let method = ep.method();
         let path = ep.path();
         let response_decl = ep.return_type.trim().to_string();
-        let response = ResponseKind::from_return_string(&response_decl);
+        // PLAN-776 T-06：来源身份分类（用户同名 → Json）。
+        let response = ResponseKind::from_return_identity(&response_decl, module_types);
         let is_async = response_decl.starts_with("Future<") || response_decl.starts_with('~');
         let params = ep
             .params
@@ -319,10 +382,70 @@ mod tests {
         assert_eq!(kinds("FileResponseX<Stream<a>>"), ResponseKind::Json);
     }
 
+    /// PLAN-776 T-06（AC-07）：解析来源身份——同裸名用户声明（struct/别名）
+    /// 是普通用户类型（Json），不冒领 stdlib 专属身份；未声明的裸名保持
+    /// 专属分派；无模块上下文（from_return_string）为保守入口。
+    #[test]
+    fn plan776_response_kind_source_identity_matrix() {
+        let user_types = vec![
+            ApiType {
+                name: "Response".into(),
+                fields: vec![],
+                doc: None,
+                alias_of: None,
+            },
+            ApiType {
+                name: "FileResponse".into(),
+                fields: vec![],
+                doc: None,
+                alias_of: None,
+            },
+            ApiType {
+                name: "Iter".into(),
+                fields: vec![],
+                doc: None,
+                alias_of: None,
+            },
+            ApiType {
+                name: "UploadReceipt".into(),
+                fields: vec![],
+                doc: None,
+                alias_of: None,
+            },
+        ];
+        let identity = |ret: &str| ResponseKind::from_return_identity(ret, &user_types);
+        // 用户同名声明：普通 Json（含 Future 包装与泛型实参形态）。
+        assert_eq!(identity("Response"), ResponseKind::Json);
+        assert_eq!(identity("Future<Response>"), ResponseKind::Json);
+        assert_eq!(identity("FileResponse"), ResponseKind::Json);
+        assert_eq!(identity("Future<FileResponse>"), ResponseKind::Json);
+        assert_eq!(identity("Iter<int>"), ResponseKind::Json);
+        assert_eq!(identity("UploadReceipt"), ResponseKind::Json);
+        // 未遮蔽的裸名：stdlib 内建身份保持。
+        assert_eq!(identity("HttpResponse"), ResponseKind::ExplicitResponse);
+        assert_eq!(identity("Stream<ChatEvent>"), ResponseKind::Stream);
+        assert_eq!(identity("int"), ResponseKind::Json);
+        // 同名集里只遮蔽已声明者：其他端点不受影响。
+        let partial = vec![ApiType {
+            name: "Response".into(),
+            fields: vec![],
+            doc: None,
+            alias_of: None,
+        }];
+        let id2 = |ret: &str| ResponseKind::from_return_identity(ret, &partial);
+        assert_eq!(id2("Response"), ResponseKind::Json);
+        assert_eq!(
+            id2("FileResponse"),
+            ResponseKind::File,
+            "未声明者保持专属身份"
+        );
+    }
+
     #[test]
     fn plan734_param_kind_matrix() {
         let types = vec![ApiType {
             name: "Note".into(),
+            alias_of: None,
             fields: vec![],
             doc: None,
         }];

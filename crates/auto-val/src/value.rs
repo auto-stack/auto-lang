@@ -95,9 +95,9 @@ pub enum ValueData {
     Char(char),
     Nil,
     Str(AutoStr),
-    String(Str), // NEW: Owned string with move semantics (Phase 2)
+    String(Str),        // NEW: Owned string with move semantics (Phase 2)
     StrSlice(StrSlice), // NEW: Borrowed string slice (Phase 3)
-    CStr(CStr), // NEW: C-compatible null-terminated string (Plan 025)
+    CStr(CStr),         // NEW: C-compatible null-terminated string (Plan 025)
 
     // Complex types with nested IDs (CHANGED from Value)
     Array(Vec<ValueID>),
@@ -157,9 +157,9 @@ pub enum Value {
     Bool(bool),
     Char(char),
     Str(AutoStr),
-    String(Str), // NEW: Owned string with move semantics (Phase 2)
+    String(Str),        // NEW: Owned string with move semantics (Phase 2)
     StrSlice(StrSlice), // NEW: Borrowed string slice (Phase 3)
-    CStr(CStr), // NEW: C-compatible null-terminated string (Plan 025)
+    CStr(CStr),         // NEW: C-compatible null-terminated string (Plan 025)
     Array(Array),
     Block(Array),
     Pair(ValueKey, Box<Value>),
@@ -188,6 +188,7 @@ pub enum Value {
     View(Box<View>),
     /// Plan 566 Phase B: MetaID 72B 装箱（11 调用点）。
     Meta(Box<MetaID>),
+
     Method(Box<Method>),
     /// Plan 566 Phase B: Instance 96B 装箱（103 调用点）。
     Instance(Box<Instance>),
@@ -547,19 +548,17 @@ impl Display for Value {
             Value::Ok(inner) => write!(f, "Ok({})", inner),
             Value::Err(msg) => write!(f, "Err(\"{}\")", msg),
             // Plan 124: Future display
-            Value::Future(future) => {
-                match &future.state {
-                    FutureState::Pending => write!(f, "<future#{}:pending>", future.id),
-                    FutureState::Ready => {
-                        if let Some(ref result) = future.result {
-                            write!(f, "<future#{}:ready:{}>", future.id, result)
-                        } else {
-                            write!(f, "<future#{}:ready>", future.id)
-                        }
+            Value::Future(future) => match &future.state {
+                FutureState::Pending => write!(f, "<future#{}:pending>", future.id),
+                FutureState::Ready => {
+                    if let Some(ref result) = future.result {
+                        write!(f, "<future#{}:ready:{}>", future.id, result)
+                    } else {
+                        write!(f, "<future#{}:ready>", future.id)
                     }
-                    FutureState::Failed => write!(f, "<future#{}:failed>", future.id),
                 }
-            }
+                FutureState::Failed => write!(f, "<future#{}:failed>", future.id),
+            },
         }
     }
 }
@@ -577,9 +576,9 @@ pub enum Op {
     DivEq,
     ModEq,
     Not,
-    Bang,  // Postfix bang operator for eager collection (!)
-    And,   // Logical and (Plan 072)
-    Or,    // Logical or (Plan 072)
+    Bang, // Postfix bang operator for eager collection (!)
+    And,  // Logical and (Plan 072)
+    Or,   // Logical or (Plan 072)
     LSquare,
     LParen,
     LBrace,
@@ -598,12 +597,12 @@ pub enum Op {
     // Property keywords (Phase 3: postfix property syntax)
     DotView,
     DotMut,
-    DotMove,  // Plan 122: .move accessor (ownership transfer)
-    DotTake,  // DEPRECATED - use DotMove instead
+    DotMove, // Plan 122: .move accessor (ownership transfer)
+    DotTake, // DEPRECATED - use DotMove instead
     // May type operators (Phase 1b.3)
-    QuestionQuestion,  // ?? - null-coalescing operator
-    DotQuestion,       // ?. - error propagation operator (legacy May<T>)
-    DotQuest,          // .? - error propagation operator (Plan 120: Option/Result)
+    QuestionQuestion, // ?? - null-coalescing operator
+    DotQuestion,      // ?. - error propagation operator (legacy May<T>)
+    DotQuest,         // .? - error propagation operator (Plan 120: Option/Result)
 }
 
 impl Value {
@@ -879,7 +878,7 @@ impl fmt::Display for Op {
             Op::DivEq => write!(f, "(op /=)"),
             Op::ModEq => write!(f, "(op %=)"),
             Op::Not => write!(f, "(op !)"),
-            Op::Bang => write!(f, "(op !)"),  // Bang operator (postfix)
+            Op::Bang => write!(f, "(op !)"), // Bang operator (postfix)
             Op::And => write!(f, "(op &&)"),
             Op::Or => write!(f, "(op ||)"),
             Op::LSquare => write!(f, "(op [)"),
@@ -927,7 +926,7 @@ impl Op {
             Op::DivEq => "/=",
             Op::ModEq => "%=",
             Op::Not => "!",
-            Op::Bang => "!",  // Bang operator (postfix)
+            Op::Bang => "!", // Bang operator (postfix)
             Op::And => "&&",
             Op::Or => "||",
             Op::LSquare => "[",

@@ -1,7 +1,17 @@
-# PLAN-776 拟议规范增量（SD-01..07，R8 终形）
+# PLAN-776 拟议规范增量（SD-01..07，R10 终形）
 
 > 供 review/merge 按实证沉淀（本次不修改 canonical Specs）。
 > 每条 SD：before（现行规则）→ after（本计划落地后的规则）→ 代码/测试证据。
+> **本稿为 R10 终形**（2026-10-14）：在 R9 终形之上按 F776-R10-01 修订
+> ——Response **五 setter**（status/header/text/html/bytes）消费收敛为
+> 恰一份（撤 R2-03 叠加的显式 release——与 R9 iterator 同型的双释放，
+> 共享 RC2 被销成 0 触发全局 UAF）。R9 冻结版见
+> attachments/776/review-r10/reviewed-spec-delta.md。
+> **本稿为 R9 终形**（2026-10-14）：在 R8 终形之上按 F776-R9-01..02 修订
+> ——iterator 消费**恰一份**（StakeGuard Drop 即那一次消费，R8 的显式
+> release 是第二份——RC2 共享引用双释放修正）；typed record 的 Future
+> 字段全链保真（CONSTRUCT_INSTANCE 逐字段转换 + GET_GENERIC_FIELD/
+> push_value 还原）。R8 冻结版见 attachments/776/review-r9/reviewed-spec-delta.md。
 > **本稿为 R8 终形**（2026-10-14）：在 R7 终形之上按 F776-R8-01..02 修订
 > ——Future 句柄在 **Value 载体保真**（既有 `Value::Future/FutureData`
 > 句柄视图映射，R7 的降级 Int 废弃）+ marshal legacy 位形态驱动臂**退役**；
@@ -53,21 +63,24 @@
   （`auto.iterator.next`/`map`/`filter`/`enumerate`/`collect`/`reduce`/
   `find` 共享凭据感知弹栈——裸 id 与 Sse 凭据同底层数据；**派生
   iterator 身份**：凭据源派生 id 同样包装凭据，下游继续可解；**消费
-  所有权协议**（R8-02）：对**原始凭据 nv** 执行 StakeGuard+rc_release
-  清偿调用方栈份额（guard 解包后的 iterator id 不能清偿高段 credential
-  heap id 的 owned 份额——R8 探针实证源凭据消费后 RC=1 恒存活）+ 弹出
-  槽清零（残留 TAG_OBJECT 会被任务栈全槽扫描误读）；错误早退同样清偿；
-  派生输出自带份额）。Response/File/Upload 由构造点 push 凭据。
+  恰一份**（R8-02/R9-01 终形）：**StakeGuard Drop 即那一次消费**（其
+  Drop 执行 rc_release_id——guard 不 retain，R8 叠加显式 release 造成
+  RC2 共享引用 2→0 双释放销毁全局份额，已撤）+ 弹出槽清零（残留
+  TAG_OBJECT 会被任务栈全槽扫描误读）；读取期间份额未动（release 只
+  在 Drop）；错误早退由 Drop 覆盖同样恰一份；派生输出自带份额）。Response/
+  File/Upload 由构造点 push 凭据。
 - **传播**：栈/globals/容器/closure captures/Future result 五载体身份保持
   （VmRef/TAG_OBJECT 双桥）；资源不可经数值转换获得。
 - **编组**：marshal 资源臂优先于一切 int 探测；Response=快照 clone（重复
   返回不消费）；Sse=iterators 注册表校验后走 `sse_iterator_reply` 单源
   serve；File/Upload=take 单次移交+mismatch 500。
-- **setter 终形（R2-03/06，替代 R1 的「setter 链保留表臂」）**：
+- **setter 终形（R2-03/06 + R10-01）**：
   status/header/text/html/bytes 五 setter 经 `mutate_response_snapshot`
-  改凭据内快照，owned-slot 返回协议（实参份额 `rc_release`+StakeGuard
-  保护、返回槽 `rc_push` 影子重建）——setter 返回值跨 8192 步宽限窗存活
-  （9000 步 wire oracle 锁 UAF 修复）。
+  改凭据内快照；owned-slot 返回协议=**恰一份消费**（StakeGuard Drop 即
+  那一次——R2-03 曾叠加显式 `rc_release` 造成第二份，共享 RC2 被销成 0、
+  释放返回槽后全局合法 Response 回收触发 UAF，R10 撤除）+ 返回槽
+  `rc_push` 影子重建——setter 后共享形态 RC2=返回槽+全局两份；setter
+  返回值跨 8192 步宽限窗存活（9000 步 wire oracle 锁 UAF 修复）。
 - **生命周期（R2 终形）**：凭据随 RC 归零回收（dying 宽限窗）；dispatch
   双点释放 handler 返回值槽（sync `HandlerEnd::Value`/parked
   `HResume::Value`）；任务终态 `release_task_credentials` 扫任务栈**全部
@@ -94,9 +107,11 @@
   **Future 句柄 = TAG_FUTURE 逐值载荷**（R8-01 终形）：全部生产点
   （CREATE_FUTURE 与 External creator）产 `encode_future(fid)`；marshal
   对 TAG_FUTURE 值直接驱动（无函数级门）。**Value 载体保真**（R8-01）：
-  句柄入 Value（容器元素/闭包捕获/异步终值/GET_ELEM）保真映射既有
-  `Value::Future(FutureData{id})` 句柄视图、还原回 `encode_future`——
-  数组取出/捕获读回的真实 Future 保持可驱动（V8-F3=42）；**legacy
+  句柄入 Value（容器元素/闭包捕获/异步终值/GET_ELEM/**typed record
+  字段**——CONSTRUCT_INSTANCE 逐字段转换与 GET_GENERIC_FIELD/
+  push_value 还原，R9-02）保真映射既有 `Value::Future(FutureData{id})`
+  句柄视图、还原回 `encode_future`——数组/record 字段取出、捕获读回的
+  真实 Future 保持可驱动（V8-F3/V9-F1=42）；**legacy
   `(fid<<8)|0xF0` 位形态驱动臂退役**——普通 i32（位模式撞活跃 fid 的
   496，`~T`/`~Iter` 声明皆然、有无 `return ~{}` 分支皆然）恒数据
   （V8-F2/F0/F1）；AWAIT/POLL 保留位形态兼容解码（功能面，无驱动门）；

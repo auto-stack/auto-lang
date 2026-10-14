@@ -9,18 +9,23 @@ pub type NanoValue = u64;
 
 // Tag constants (placed at bits 51-48 within NaN-boxed values)
 #[allow(dead_code)]
-const TAG_F64:    u64 = 0x0000_0000_0000_0000;
-const TAG_I32:    u64 = 0x0001_0000_0000_0000;
+const TAG_F64: u64 = 0x0000_0000_0000_0000;
+const TAG_I32: u64 = 0x0001_0000_0000_0000;
 const TAG_STRING: u64 = 0x0002_0000_0000_0000;
-const TAG_BOOL:   u64 = 0x0003_0000_0000_0000;
-const TAG_NULL:   u64 = 0x0004_0000_0000_0000;
+const TAG_BOOL: u64 = 0x0003_0000_0000_0000;
+const TAG_NULL: u64 = 0x0004_0000_0000_0000;
 const TAG_OBJECT: u64 = 0x0005_0000_0000_0000;
-const TAG_LIST:   u64 = 0x0006_0000_0000_0000;
-const TAG_F32:    u64 = 0x0007_0000_0000_0000;
+const TAG_LIST: u64 = 0x0006_0000_0000_0000;
+const TAG_F32: u64 = 0x0007_0000_0000_0000;
 // Plan 377: 单槽 i64/u64/BigInt 编码（48 位 payload + 堆兜底）
-const TAG_I64:    u64 = 0x0008_0000_0000_0000;
-const TAG_U64:    u64 = 0x0009_0000_0000_0000;
+const TAG_I64: u64 = 0x0008_0000_0000_0000;
+const TAG_U64: u64 = 0x0009_0000_0000_0000;
 const TAG_BIGINT: u64 = 0x000A_0000_0000_0000;
+/// PLAN-776 R7-01：Future 句柄**逐值来源**载荷——生产点（CREATE_FUTURE/
+/// External creator）全部产此形态；普通 i32（TAG_I32）永不携带 Future
+/// 身份（`(fid<<8)|0xF0` 位模式撞值即数据）。legacy 位形态仅作值经
+/// `Value::Int` 载体往返（容器/闭包捕获 env）后的降级兼容臂。
+const TAG_FUTURE: u64 = 0x000B_0000_0000_0000;
 
 // NaN-box base: sign=1, exponent=0x7FF (all 1s), tag=0, payload=0
 const NANBOX_BASE: u64 = 0xFFF0_0000_0000_0000;
@@ -43,10 +48,28 @@ pub fn is_nanboxed(v: NanoValue) -> bool {
 // ---- Encode ----
 
 #[inline(always)]
-pub fn encode_f64(f: f64) -> NanoValue { f.to_bits() }
+pub fn encode_f64(f: f64) -> NanoValue {
+    f.to_bits()
+}
 
 #[inline(always)]
-pub fn encode_i32(i: i32) -> NanoValue { NANBOX_BASE | TAG_I32 | ((i as u32) as u64) }
+pub fn encode_i32(i: i32) -> NanoValue {
+    NANBOX_BASE | TAG_I32 | ((i as u32) as u64)
+}
+
+// PLAN-776 R7-01：Future 句柄编码（TAG_FUTURE 载荷，见常量注）。
+#[inline(always)]
+pub fn encode_future(future_id: u32) -> NanoValue {
+    NANBOX_BASE | TAG_FUTURE | future_id as u64
+}
+#[inline(always)]
+pub fn is_future(v: NanoValue) -> bool {
+    is_nanboxed(v) && tag_of(v) == 0xB
+}
+#[inline(always)]
+pub fn decode_future(v: NanoValue) -> u32 {
+    (v & PAYLOAD_MASK) as u32
+}
 
 // String payload stores the NEGATIVE i32 tag (-(idx+1)) so that
 // decode_i32() on a string NanoValue returns the same negative value.
@@ -70,16 +93,24 @@ pub fn encode_bool(b: bool) -> NanoValue {
 
 // Null payload uses sentinel value: i32::MIN + 1
 #[inline(always)]
-pub fn encode_null() -> NanoValue { NANBOX_BASE | TAG_NULL | ((i32::MIN + 1) as u32 as u64) }
+pub fn encode_null() -> NanoValue {
+    NANBOX_BASE | TAG_NULL | ((i32::MIN + 1) as u32 as u64)
+}
 
 #[inline(always)]
-pub fn encode_object(id: u32) -> NanoValue { NANBOX_BASE | TAG_OBJECT | (id as u64) }
+pub fn encode_object(id: u32) -> NanoValue {
+    NANBOX_BASE | TAG_OBJECT | (id as u64)
+}
 
 #[inline(always)]
-pub fn encode_list(id: u32) -> NanoValue { NANBOX_BASE | TAG_LIST | (id as u64) }
+pub fn encode_list(id: u32) -> NanoValue {
+    NANBOX_BASE | TAG_LIST | (id as u64)
+}
 
 #[inline(always)]
-pub fn encode_f32(f: f32) -> NanoValue { NANBOX_BASE | TAG_F32 | (f.to_bits() as u64) }
+pub fn encode_f32(f: f32) -> NanoValue {
+    NANBOX_BASE | TAG_F32 | (f.to_bits() as u64)
+}
 
 // Plan 377: i64/u64 单槽编码（48 位 payload）。值落在 48 位范围内直接编码，
 // 否则返回 None（调用方堆装箱兜底）。详见 plan 377 §4.1。
@@ -98,7 +129,11 @@ pub fn try_encode_i64(i: i64) -> Option<NanoValue> {
 pub fn decode_i64(v: NanoValue) -> i64 {
     let raw = (v & PAYLOAD48_MASK) as i64;
     // 从 bit 47 符号扩展
-    if raw & (1i64 << 47) != 0 { raw | (!(PAYLOAD48_MASK as i64)) } else { raw }
+    if raw & (1i64 << 47) != 0 {
+        raw | (!(PAYLOAD48_MASK as i64))
+    } else {
+        raw
+    }
 }
 
 /// u64 无符号 48 位范围：[0, 2^48-1]
@@ -112,22 +147,32 @@ pub fn try_encode_u64(u: u64) -> Option<NanoValue> {
 }
 
 #[inline(always)]
-pub fn decode_u64(v: NanoValue) -> u64 { v & PAYLOAD48_MASK }
+pub fn decode_u64(v: NanoValue) -> u64 {
+    v & PAYLOAD48_MASK
+}
 
 /// BigInt（>2^48 的 i64/u64）堆对象 handle 编码
 #[inline(always)]
-pub fn encode_bigint(heap_id: u32) -> NanoValue { NANBOX_BASE | TAG_BIGINT | (heap_id as u64) }
+pub fn encode_bigint(heap_id: u32) -> NanoValue {
+    NANBOX_BASE | TAG_BIGINT | (heap_id as u64)
+}
 
 #[inline(always)]
-pub fn decode_bigint_handle(v: NanoValue) -> u32 { (v & PAYLOAD_MASK) as u32 }
+pub fn decode_bigint_handle(v: NanoValue) -> u32 {
+    (v & PAYLOAD_MASK) as u32
+}
 
 // ---- Decode ----
 
 #[inline(always)]
-pub fn decode_f64(v: NanoValue) -> f64 { f64::from_bits(v) }
+pub fn decode_f64(v: NanoValue) -> f64 {
+    f64::from_bits(v)
+}
 
 #[inline(always)]
-pub fn decode_i32(v: NanoValue) -> i32 { (v & PAYLOAD_MASK) as i32 }
+pub fn decode_i32(v: NanoValue) -> i32 {
+    (v & PAYLOAD_MASK) as i32
+}
 
 // Reverse of encode_string: neg_tag -> pool index
 // neg_tag = -(idx+1), so idx = -neg_tag - 1
@@ -140,58 +185,90 @@ pub fn decode_string(v: NanoValue) -> u32 {
 #[inline(always)]
 pub fn decode_bool(v: NanoValue) -> bool {
     let sentinel = (v & PAYLOAD_MASK) as i32;
-    sentinel == i32::MIN  // true = i32::MIN
+    sentinel == i32::MIN // true = i32::MIN
 }
 
 #[inline(always)]
-pub fn decode_object(v: NanoValue) -> u32 { (v & PAYLOAD_MASK) as u32 }
+pub fn decode_object(v: NanoValue) -> u32 {
+    (v & PAYLOAD_MASK) as u32
+}
 
 #[inline(always)]
-pub fn decode_list(v: NanoValue) -> u32 { (v & PAYLOAD_MASK) as u32 }
+pub fn decode_list(v: NanoValue) -> u32 {
+    (v & PAYLOAD_MASK) as u32
+}
 
 #[inline(always)]
-pub fn decode_f32(v: NanoValue) -> f32 { f32::from_bits((v & PAYLOAD_MASK) as u32) }
+pub fn decode_f32(v: NanoValue) -> f32 {
+    f32::from_bits((v & PAYLOAD_MASK) as u32)
+}
 
 // ---- Type query ----
 
 #[inline(always)]
 pub fn tag_of(v: NanoValue) -> u64 {
-    if is_nanboxed(v) { (v >> TAG_SHIFT) & TAG_MASK } else { 0 }
+    if is_nanboxed(v) {
+        (v >> TAG_SHIFT) & TAG_MASK
+    } else {
+        0
+    }
 }
 
 #[inline(always)]
-pub fn is_f64(v: NanoValue) -> bool { !is_nanboxed(v) }
+pub fn is_f64(v: NanoValue) -> bool {
+    !is_nanboxed(v)
+}
 
 #[inline(always)]
-pub fn is_i32(v: NanoValue) -> bool { tag_of(v) == 1 }
+pub fn is_i32(v: NanoValue) -> bool {
+    tag_of(v) == 1
+}
 
 #[inline(always)]
-pub fn is_string(v: NanoValue) -> bool { tag_of(v) == 2 }
+pub fn is_string(v: NanoValue) -> bool {
+    tag_of(v) == 2
+}
 
 #[inline(always)]
-pub fn is_bool(v: NanoValue) -> bool { tag_of(v) == 3 }
+pub fn is_bool(v: NanoValue) -> bool {
+    tag_of(v) == 3
+}
 
 #[inline(always)]
-pub fn is_null(v: NanoValue) -> bool { tag_of(v) == 4 }
+pub fn is_null(v: NanoValue) -> bool {
+    tag_of(v) == 4
+}
 
 #[inline(always)]
-pub fn is_object(v: NanoValue) -> bool { tag_of(v) == 5 }
+pub fn is_object(v: NanoValue) -> bool {
+    tag_of(v) == 5
+}
 
 #[inline(always)]
-pub fn is_list(v: NanoValue) -> bool { tag_of(v) == 6 }
+pub fn is_list(v: NanoValue) -> bool {
+    tag_of(v) == 6
+}
 
 #[inline(always)]
-pub fn is_f32(v: NanoValue) -> bool { tag_of(v) == 7 }
+pub fn is_f32(v: NanoValue) -> bool {
+    tag_of(v) == 7
+}
 
 // Plan 377: i64/u64/BigInt 类型查询（tag 8/9/A）
 #[inline(always)]
-pub fn is_i64(v: NanoValue) -> bool { tag_of(v) == 8 }
+pub fn is_i64(v: NanoValue) -> bool {
+    tag_of(v) == 8
+}
 
 #[inline(always)]
-pub fn is_u64(v: NanoValue) -> bool { tag_of(v) == 9 }
+pub fn is_u64(v: NanoValue) -> bool {
+    tag_of(v) == 9
+}
 
 #[inline(always)]
-pub fn is_bigint(v: NanoValue) -> bool { tag_of(v) == 0xA }
+pub fn is_bigint(v: NanoValue) -> bool {
+    tag_of(v) == 0xA
+}
 
 #[cfg(test)]
 mod tests {
@@ -257,13 +334,22 @@ mod tests {
     #[test]
     fn test_no_collision_between_types() {
         let values = [
-            encode_f64(1.0), encode_i32(1), encode_string(1),
-            encode_bool(true), encode_null(), encode_object(1),
-            encode_list(1), encode_f32(1.0),
+            encode_f64(1.0),
+            encode_i32(1),
+            encode_string(1),
+            encode_bool(true),
+            encode_null(),
+            encode_object(1),
+            encode_list(1),
+            encode_f32(1.0),
         ];
         for i in 0..values.len() {
-            for j in (i+1)..values.len() {
-                assert_ne!(values[i], values[j], "Collision between types {} and {}", i, j);
+            for j in (i + 1)..values.len() {
+                assert_ne!(
+                    values[i], values[j],
+                    "Collision between types {} and {}",
+                    i, j
+                );
             }
         }
         assert!(is_f64(values[0]));
@@ -281,12 +367,16 @@ mod tests {
     fn test_i64_roundtrip_48bit() {
         // 48 位有符号范围内的典型值
         let vals = [
-            0i64, 1, -1, 42, -100,
-            5_000_000_000i64,      // 5e9（>2^32，u64 常见值）
+            0i64,
+            1,
+            -1,
+            42,
+            -100,
+            5_000_000_000i64, // 5e9（>2^32，u64 常见值）
             -5_000_000_000i64,
-            10_000_000_000i64,     // 1e10
-            (1i64 << 47) - 1,      // 上界 2^47-1
-            -(1i64 << 47),         // 下界 -2^47
+            10_000_000_000i64, // 1e10
+            (1i64 << 47) - 1,  // 上界 2^47-1
+            -(1i64 << 47),     // 下界 -2^47
         ];
         for v in vals {
             let nv = try_encode_i64(v).unwrap_or_else(|| panic!("i64 {} 应可编码", v));
@@ -299,7 +389,7 @@ mod tests {
     #[test]
     fn test_i64_overflow_returns_none() {
         // 超过 48 位范围 → None（调用方堆装箱）
-        assert!(try_encode_i64(1i64 << 47).is_none());     // 2^47（超出上界）
+        assert!(try_encode_i64(1i64 << 47).is_none()); // 2^47（超出上界）
         assert!(try_encode_i64(-(1i64 << 47) - 1).is_none()); // -2^47-1（超出下界）
         assert!(try_encode_i64(i64::MAX).is_none());
         assert!(try_encode_i64(i64::MIN).is_none());
@@ -308,10 +398,13 @@ mod tests {
     #[test]
     fn test_u64_roundtrip_48bit() {
         let vals = [
-            0u64, 1, 42, 100,
-            5_000_000_000u64,      // 5e9
-            10_000_000_000u64,     // 1e10
-            (1u64 << 48) - 1,      // 上界 2^48-1
+            0u64,
+            1,
+            42,
+            100,
+            5_000_000_000u64,  // 5e9
+            10_000_000_000u64, // 1e10
+            (1u64 << 48) - 1,  // 上界 2^48-1
         ];
         for v in vals {
             let nv = try_encode_u64(v).unwrap_or_else(|| panic!("u64 {} 应可编码", v));
@@ -323,7 +416,7 @@ mod tests {
 
     #[test]
     fn test_u64_overflow_returns_none() {
-        assert!(try_encode_u64(1u64 << 48).is_none());  // 2^48（超出）
+        assert!(try_encode_u64(1u64 << 48).is_none()); // 2^48（超出）
         assert!(try_encode_u64(u64::MAX).is_none());
     }
 
@@ -363,7 +456,12 @@ mod tests {
             let nv = encode_f64(v);
             assert_eq!(tag_of(nv), TAG_F64, "f64 {} 的 float 标签丢失", v);
             assert!(is_f64(nv), "f64 {} 应识别为 f64", v);
-            assert_eq!(decode_f64(nv).to_bits(), v.to_bits(), "f64 {} 位型往返失真", v);
+            assert_eq!(
+                decode_f64(nv).to_bits(),
+                v.to_bits(),
+                "f64 {} 位型往返失真",
+                v
+            );
         }
         // -0.0 与 0.0 必须按位可区分（符号位保真）
         assert_ne!(encode_f64(0.0), encode_f64(-0.0));
@@ -376,7 +474,12 @@ mod tests {
             let nv = encode_f32(v);
             assert_eq!(tag_of(nv), 7, "f32 {} 的 float 标签丢失", v);
             assert!(is_f32(nv), "f32 {} 应识别为 f32", v);
-            assert_eq!(decode_f32(nv).to_bits(), v.to_bits(), "f32 {} 位型往返失真", v);
+            assert_eq!(
+                decode_f32(nv).to_bits(),
+                v.to_bits(),
+                "f32 {} 位型往返失真",
+                v
+            );
         }
     }
 }

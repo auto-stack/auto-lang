@@ -1,6 +1,6 @@
 # HTTP handler 异步等待与请求生命周期(http handler async lifecycle)
 
-> **Status**: current(PLAN-705,Design 33 阶段 C1;PLAN-707 C2a 外部流延伸) | 层:vm ffi http_server/engine | 2026-09-30
+> **Status**: current(PLAN-705,Design 33 阶段 C1;PLAN-707 C2a 外部流延伸;PLAN-776 终值统一与 Future 逐值载荷) | 层:vm ffi http_server/engine | 2026-10-15
 
 ## 执行模型
 
@@ -25,8 +25,8 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
 | middleware 链 | 逐个段驱动；middleware park 挂起整个请求，恢复后续链（Err→视为无响应继续，352 语义） | 同上 |
 | `__axum:` closure | `call_closure_segment`（帧建立与 `call_closure` 逐字节同） | 全链路 fixture 依赖 musk sibling；段入口以合成 fn-ref closure 单元覆盖 |
 | RequestBuilder `.send` | 段模式跳过同步 drain：rewind ip−6 + Yield park；重入凭据=`waiting_http_request_id`（与 CALL_NAT shim 重入协议同构） | 忙等 drain 保留给 legacy 调用图 |
-| `~T` 返回 | 编组期**元数据门**（`API_ASYNC_RETURNS`，codegen 按 `Future<T>` 声明发布；`__axum:` 经 func_addr→exports 反查）+ future bits 形态 + 注册表存在性三重闸 | 普通 int 位模式（如 240=0xF0）永不误判为 future |
-| `~T` 三形态 | External 挂起（AwaitReturnFuture）/ Internal 体就地驱动（`handle_await_future`）/ 体挂外层转 AsyncReturnBody | Failed/缺失→null（Phase A 语义） |
+| `~T` 返回 | **TAG_FUTURE 逐值载荷**（PLAN-776）：全部 future 生产点产 `encode_future(fid)`（nanobox tag 0xB）；marshal 对 TAG_FUTURE 值直接驱动（`drive_future_reply`，**无函数级门**——R5/R6/R7 的声明门/血缘登记/函数级标记均退役，声明/位模式/注册表都不构成来源） | 普通 i32（含 `(fid<<8)|0xF0` 位模式撞活跃 fid，如 496）恒 JSON 数据；Value 载体（容器/捕获/typed record 字段）保真映射 `Value::Future` 后仍可驱动 |
+| `~T` 三形态 | External 挂起（AwaitReturnFuture）/ Internal 体就地驱动（`handle_await_future`）/ 体挂外层转 AsyncReturnBody | Failed/缺 result/不可转换→**有界 500**（PLAN-776 修正 Phase A 的 200 null 伪装）；显式成功 Nil → 200 null |
 
 ## 请求作用域与取消
 
@@ -46,6 +46,20 @@ owner parked 表，**owner loop 立即空出**服务后续请求；完成端经�
 - **SSE**：许可随 scope 移交响应体（`FrameStream` Drop 释放）；流结束/
   断连/关闭均触发。排水窗内自然完成的请求照常回复（
   `AUTO_HTTP_SHUTDOWN_DRAIN_MS` 可调，默认 10s）。
+
+## 终值统一与值域（PLAN-776）
+
+- **单入口编组**：sync `marshal_handler_value` 与 async `final_value_reply`
+  （`resolve_resource_value`）汇于同一 `resource_claim_reply` 分派——四资源族
+  与 JSON 值域 sync/async 同形由构造保证（代表例验证）。
+- **完整值域**：i64 全宽（48 位内联/BigInt 装箱）、VmRef 身份保持、
+  Array/Obj 物化容器（即用即弃）——不可转换值 → 有界 500，不静默 null。
+- **立即体直驱读位**：handler 已 RET（bp==0）时 dispatch 直驱立即完成的
+  Internal 体，终值从栈顶正确读取（base 形态）。
+- **边界**：sync-await 帧缺陷（`execute_future_body` 复用 handler 帧 →
+  Terminated；缓存 Internal Future `.await` 组合）归 705 状态机域
+  （KNOWN-DEBT P776-D3）；rapid SSE 早断连 churn 服务级死锁归 SSE 服务域
+  （KNOWN-DEBT P776-D4）——均预存非 776 引入。
 
 ## 完成通知与结果通道
 

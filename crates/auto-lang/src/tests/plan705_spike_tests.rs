@@ -1364,7 +1364,12 @@ fn plan705_gate_default_callgraph_no_busy_wait() {
     let mut legacy = 0usize;
     let lines: Vec<&str> = src.lines().collect();
     for (i, line) in lines.iter().enumerate() {
-        if !line.contains(".call_fn_by_name(") && !line.contains(".call_closure(") {
+        // PLAN-776 R2-01：HTTP dispatch 专用变体 call_fn_by_name_http 同为
+        // legacy 同步驱动保留位的合法形态（generator 凭据包装入口）。
+        if !line.contains(".call_fn_by_name(")
+            && !line.contains(".call_fn_by_name_http(")
+            && !line.contains(".call_closure(")
+        {
             continue;
         }
         let trimmed = line.trim_start();

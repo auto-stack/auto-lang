@@ -44,13 +44,18 @@ pub mod dep_methods;
 pub mod http_server;
 pub mod rust_stdlib; // Plan 321/322: AutoHttpServer unified shim
 
-pub mod http_stream; // PLAN-707: 外部 HTTP/SSE 流统一资源表与生产者
-                     // PLAN-727 T-05: 文件传输桥——共享传输核心（a2r_std::http::transfer）的宿主
-                     // 注册表/park/legacy 迁移面。
-pub mod http_server_file; // PLAN-729: 服务端文件响应描述符桥
+// PLAN-707: 外部 HTTP/SSE 流统一资源表与生产者。
+// PLAN-727 T-05: 文件传输桥——共享传输核心（a2r_std::http::transfer）的宿主
+// 注册表/park/legacy 迁移面。
+pub mod http_stream;
+// PLAN-729: 服务端文件响应描述符桥。
+pub mod http_server_file;
 pub mod http_transfer;
-pub mod http_upload; // PLAN-730: 服务端上传句柄/会话/收据桥
-                     // PLAN-699: Axum/Hyper HTTP/1.1 transport (network thread + owned bridge).
+// PLAN-730: 服务端上传句柄/会话/收据桥。
+pub mod http_upload;
+// PLAN-776: HTTP 返回资源凭据（按值身份载体）。
+pub mod http_return_resource;
+// PLAN-699: Axum/Hyper HTTP/1.1 transport (network thread + owned bridge).
 pub mod http_transport;
 pub mod websocket; // Plan 350: WebSocket client
                    // auto-os Plan 013 T2: AutoTerm 引擎桥(auto.term.*,libloading → autoterm_core.dll)

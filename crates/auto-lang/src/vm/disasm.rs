@@ -135,7 +135,8 @@ impl<'a> Disassembler<'a> {
     fn decode_operands(&self, op: OpCode, ip: usize, offset: usize) -> (String, usize) {
         match op {
             // No operands
-            OpCode::NOP
+            OpCode::WRAP_SSE_RESOURCE
+            | OpCode::NOP
             | OpCode::POP
             | OpCode::DUP
             | OpCode::SWAP

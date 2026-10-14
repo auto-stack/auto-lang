@@ -102,8 +102,7 @@ impl TauriGenerator {
 
         // Plan 329: SSE handler → Channel command (async, streaming via emit)
         // PLAN-734 T-05：契约分类（身份判定）。
-        let is_sse = crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-            == crate::api::contract::ResponseKind::Stream;
+        let is_sse = endpoint.response == crate::api::contract::ResponseKind::Stream;
 
         // Build function signature
         let mut params: Vec<String> = endpoint
@@ -159,8 +158,7 @@ impl TauriGenerator {
             .params
             .iter()
             .any(|p| crate::api::contract::is_upload_param(&p.ty))
-            || crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-                == crate::api::contract::ResponseKind::Upload;
+            || endpoint.response == crate::api::contract::ResponseKind::Upload;
         if is_upload_endpoint {
             lines.clear();
             lines.push(format!(
@@ -183,9 +181,7 @@ impl TauriGenerator {
 
         // PLAN-729 T-05: 文件端点不经 Tauri IPC——描述符不是可序列化数据
         // （明确 Unsupported 诊断 + 改走 HTTP URL 指引，不 opaque 当成功数据）。
-        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-            == crate::api::contract::ResponseKind::File
-        {
+        if endpoint.response == crate::api::contract::ResponseKind::File {
             lines.clear();
             lines.push(format!(
                 "// PLAN-729: file endpoint `{}` — Tauri IPC is unsupported for file responses;",
@@ -416,6 +412,7 @@ mod tests {
             attrs,
             body: None,
             doc: None,
+            response: crate::api::contract::ResponseKind::File,
         };
         let gen = super::TauriGenerator::default();
         let cmd = gen.generate_command(&endpoint);
@@ -462,6 +459,7 @@ mod tests {
             return_type: "User".to_string(),
             doc: Some("Get user by ID".to_string()),
             body: None,
+            response: Default::default(),
         };
 
         let result = gen.generate_command(&endpoint);

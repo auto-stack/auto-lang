@@ -4234,6 +4234,14 @@ fn heap_value(vm: &AutoVM, val: &auto_val::Value) -> auto_val::Value {
 /// Plan 403: string values now decode to Value::Str (actual bytes), not
 /// Value::Int(pool_index) — keeps List<Value> string elements round-tripping.
 fn nv_to_value(nv: auto_val::NanoValue) -> auto_val::Value {
+    if auto_val::is_future(nv) {
+        // PLAN-776 R8-01：Future 句柄保真映射 Value::Future（句柄视图）。
+        return Value::Future(Box::new(auto_val::FutureData {
+            id: auto_val::decode_future(nv) as usize,
+            state: auto_val::FutureState::Pending,
+            result: None,
+        }));
+    }
     if auto_val::is_i32(nv) {
         Value::Int(auto_val::decode_i32(nv))
     } else if auto_val::is_object(nv) {
@@ -5578,6 +5586,49 @@ pub fn shim_iterator_next_cooperative(
 /// Stack: iterator_id -> element (or -1 for nil)
 /// Returns: element value, or -1 if exhausted
 // Plan 077 Phase 6: Updated to use unified registry
+/// PLAN-776 R7-02：iterator 消费面**凭据感知**弹栈——TAG_OBJECT Sse 凭据
+///（generator 生产点全部产此形态）解包底层 iterator id；裸 i32 保持原
+/// 语义。返回 (iterator_id, 源是否凭据)。
+pub fn pop_iterator_receiver(task: &mut AutoTask, vm: &AutoVM) -> (u32, bool) {
+    // PLAN-776 R8-02/R9-01：消费协议——
+    // ① 清零弹出槽（残留 TAG_OBJECT 会被 R2-04 任务栈全槽扫描误读成
+    //    有效持有 → 双释放/泄漏两向失真）；
+    // ② 对**原始凭据 nv**：**StakeGuard 即那一次消费**（其 Drop 执行
+    //    rc_release_id——一个输入槽恰一份；R8 误加显式 rc_release 致
+    //    RC2 共享引用 2→0 双释放——F776-R9-01 反例：全局份额被销）。
+    //    读取期间份额未动（release 只发生在 Drop）；错误早退由 Drop
+    //    覆盖同样恰一份。
+    let nv = task.ram.pop_nv();
+    task.ram.raw_nv[task.ram.sp] = 0;
+    if auto_val::is_object(nv) {
+        let stake = StakeGuard::nv(vm, nv);
+        let resolved = crate::vm::ffi::http_return_resource::resolve_resource(vm, nv);
+        drop(stake);
+        if let Some(crate::vm::ffi::http_return_resource::ResourceClaim::Sse { iterator_id }) =
+            resolved
+        {
+            return (iterator_id, true);
+        }
+    }
+    (auto_val::decode_i32(nv) as u32, false)
+}
+
+/// PLAN-776 R7-02：派生 iterator 身份——源为凭据时派生 id 同样包装 Sse
+/// 凭据（身份传播一致，下游 next/terminal 继续可解）；裸源保持裸 id。
+pub fn push_derived_iterator(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    id: u32,
+    from_credential: bool,
+) -> Result<(), VMError> {
+    if from_credential {
+        crate::vm::ffi::http_return_resource::push_sse_resource(task, vm, id)
+    } else {
+        task.ram.push_i32(id as i32);
+        Ok(())
+    }
+}
+
 pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
     use crate::vm::types::ListData;
@@ -5592,7 +5643,30 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         ));
     }
 
-    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R5-01：凭据感知——for-in/迭代源为 Sse 凭据对象（TAG_OBJECT）
+    // 时解包底层 iterator id。stream 声明函数内 generator 产出已凭据化
+    //（生产点包装），迭代消费经此保持 int 源同语义（非 HTTP 消费兼容）。
+    let iterator_id = if auto_val::is_object(task.ram.peek_nv(0)) {
+        // PLAN-776 R8-02/R9-01：与 pop_iterator_receiver 同款——槽清零 +
+        // StakeGuard 即一次消费（Drop 释放；不加显式 release——F776-R9-01）。
+        let nv = task.ram.pop_nv();
+        task.ram.raw_nv[task.ram.sp] = 0;
+        let stake = StakeGuard::nv(vm, nv);
+        let resolved = crate::vm::ffi::http_return_resource::resolve_resource(vm, nv);
+        drop(stake);
+        match resolved {
+            Some(crate::vm::ffi::http_return_resource::ResourceClaim::Sse { iterator_id }) => {
+                iterator_id
+            }
+            _ => {
+                return Err(VMError::RuntimeError(
+                    "iterator.next: object is not an SSE credential".to_string(),
+                ))
+            }
+        }
+    } else {
+        crate::vm::native::pop_arg_i32(task) as u32
+    };
     let cooperative_budget = PLAN696_SSE_NEXT_BUDGET.with(|slot| {
         slot.get()
             .filter(|(target_iterator, _)| *target_iterator == iterator_id)
@@ -6099,7 +6173,8 @@ pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let func_addr = crate::vm::native::pop_arg_i32(task) as u32;
 
     let _stake_func_addr = crate::vm::native::StakeGuard::new(vm, func_addr as i64 as u64);
-    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（TAG_OBJECT Sse 解包；裸 id 原语义）。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_source_iterator_id =
         crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
@@ -6122,8 +6197,8 @@ pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     // Store iterator
     vm.iterators.insert(new_iterator_id, iterator);
 
-    // Return new iterator_id
-    task.ram.push_i32(new_iterator_id as i32);
+    // Return new iterator_id（PLAN-776 R7-02：源为凭据时派生 id 同样包装）。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
     Ok(())
 }
 
@@ -6143,7 +6218,8 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let func_addr = crate::vm::native::pop_arg_i32(task) as u32;
 
     let _stake_func_addr = crate::vm::native::StakeGuard::new(vm, func_addr as i64 as u64);
-    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（TAG_OBJECT Sse 解包；裸 id 原语义）。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_source_iterator_id =
         crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
@@ -6166,8 +6242,8 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     // Store iterator
     vm.iterators.insert(new_iterator_id, iterator);
 
-    // Return new iterator_id
-    task.ram.push_i32(new_iterator_id as i32);
+    // Return new iterator_id（PLAN-776 R7-02：源为凭据时派生 id 同样包装）。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
     Ok(())
 }
 
@@ -6178,7 +6254,8 @@ pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     use crate::vm::engine::{EnumerateIterator, Iterator};
     use std::sync::atomic::Ordering;
 
-    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_source_iterator_id =
         crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
@@ -6196,7 +6273,8 @@ pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     });
 
     vm.iterators.insert(new_iterator_id, iterator);
-    task.ram.push_i32(new_iterator_id as i32);
+    // PLAN-776 R7-02：派生 iterator 身份——源为凭据时同样包装。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
     Ok(())
 }
 
@@ -6212,7 +6290,8 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     use crate::vm::engine::Iterator;
     use crate::vm::types::ListData;
 
-    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
 
@@ -6278,7 +6357,8 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     use crate::vm::engine::Iterator;
     use crate::vm::types::ListData;
 
-    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
     let _func_addr = crate::vm::native::pop_arg_i32(task) as u32;
@@ -6339,7 +6419,8 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::engine::Iterator;
     use crate::vm::types::ListData;
 
-    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
     let _func_addr = crate::vm::native::pop_arg_i32(task) as u32;

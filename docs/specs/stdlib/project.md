@@ -58,7 +58,11 @@ graph LR
   信任、健康/观测/受控关闭、代理模板与支持等级；两服务轨共用合同；PLAN-736）。
 
 - [api-transport-contract](design/api-transport-contract.md)——API 传输契约
-  （类型身份分类、参数来源、i64 全域、错误收敛、wire 兼容裁定；PLAN-734）。
+  （类型身份分类、参数来源、i64 全域、错误收敛、wire 兼容裁定；PLAN-734；
+  PLAN-776 修订——按值资源凭据/P734-D7 关闭/限定名与 alias 链）。
+- [http-return-resources](design/http-return-resources.md)——HTTP 返回资源
+  凭据（按值身份、生产点授予、消费恰一份协议、TAG_FUTURE 载荷；
+  PLAN-776）。
 
 ## 能力矩阵与验证等级（PLAN-738）
 

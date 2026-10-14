@@ -1590,10 +1590,27 @@ impl Codegen {
                     // unique_name (not Display) — Display dumps the full
                     // type-decl s-expr for User types; the publisher needs
                     // the bare entity name ("Message" → "NewMessage").
+                    let ret_display = fn_decl.ret.unique_name().to_string();
                     crate::vm::ffi::http_server::record_api_return_type(
                         &fn_decl.name.to_string(),
-                        fn_decl.ret.unique_name().to_string(),
+                        ret_display.clone(),
                     );
+                    // PLAN-776 T-06：用户同名遮蔽——返回裸名命中编译单元类型
+                    // 声明（TypeStore）时冻结遮蔽标记（VM 编组门 → Json；
+                    // stdlib HTTP 词汇不注册 TypeStore，命中即用户来源）。
+                    {
+                        let bare = crate::api::contract::return_bare_name(&ret_display).to_string();
+                        let shadowed = self
+                            .type_store
+                            .read()
+                            .map(|ts| ts.contains_user_type(&bare))
+                            .unwrap_or(false);
+                        if shadowed {
+                            crate::vm::ffi::http_server::record_api_return_shadowed(
+                                &fn_decl.name.to_string(),
+                            );
+                        }
+                    }
                     // PLAN-730 T-02: 上传端点加载期合同诊断——UploadRequest
                     // 注入参数仅 POST/PUT；其余参数必须 path/query/meta 可
                     // 绑定（不允许同时声明 JSON whole-body 注入）；返回类型
@@ -2690,6 +2707,10 @@ impl Codegen {
             }
             Stmt::Return(expr) => {
                 self.compile_expr(expr)?;
+                // PLAN-776 R5-01：SSE 凭据包装移至 generator 生产点
+                //（CREATE_GENERATOR 后，Call 臂）——`return <expr>` 不再
+                // 包装。生产点包装覆盖直接调用/局部/helper/Internal 尾等
+                // 全部传播形态；返回的普通数值恒为数据（R2-01 反例保持）。
                 let n_args = self.current_fn_n_args as u8;
                 // Plan 377: 全值单槽化后恒用 RET。f32→f64 仍需 PROMOTE_F64 编码提升。
                 if matches!(self.current_fn_ret_type, Type::Double)
@@ -11504,6 +11525,15 @@ impl Codegen {
                         });
 
                         self.last_expr_type = ObjectType::Int; // iterator_id
+
+                        // PLAN-776 R5-01/R6-01：generator **生产点**凭据化
+                        //（无条件——身份授予不依赖所在 fn 声明：旧 int 声明/
+                        // int helper 返回真实 generator 同样保来源，F776-R6-01
+                        // 反例 S7/S8；声明只用于编组校验/能力选择）。凭据随
+                        // local/helper/容器/闭包/Future 载体天然传播；for-in
+                        // 源由 iterator natives 凭据感知解包（非 HTTP 消费
+                        // 兼容）；普通数值永不取得身份（`return 0` 仍是数据）。
+                        self.emit(OpCode::WRAP_SSE_RESOURCE);
                     } else {
                         self.emit(OpCode::CALL);
 

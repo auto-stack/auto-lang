@@ -2413,7 +2413,7 @@ pub fn shim_test_delay_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             );
         });
     }
-    task.ram.push_i32(AutoVM::encode_future_bits(fid));
+    task.ram.push_nv(auto_val::encode_future(fid));
     Ok(())
 }
 
@@ -2427,7 +2427,7 @@ pub fn shim_test_fail_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         // enable→check 模式下先完成再等待同样立即可见）。
         crate::vm::ffi::async_http::complete_external_future(&future_arc, Err("failed".into()));
     }
-    task.ram.push_i32(AutoVM::encode_future_bits(fid));
+    task.ram.push_nv(auto_val::encode_future(fid));
     Ok(())
 }
 
@@ -2442,10 +2442,14 @@ fn pop_future_ids_from_list(task: &mut AutoTask, vm: &AutoVM) -> Result<Vec<u32>
             .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
         {
             for i in 0..list.len() {
-                if let Some(auto_val::Value::Int(bits)) = list.get(i) {
-                    if (bits & 0xFF) == 0xF0 {
-                        fids.push((bits >> 8) as u32);
+                // PLAN-776 R8-01：句柄元素为 Value::Future（保真映射）；
+                // legacy 位形态 Int 兼容保留（无生产者，防手工构造）。
+                match list.get(i) {
+                    Some(auto_val::Value::Future(f)) => fids.push(f.id as u32),
+                    Some(auto_val::Value::Int(bits)) if (bits & 0xFF) == 0xF0 => {
+                        fids.push((bits >> 8) as u32)
                     }
+                    _ => {}
                 }
             }
         }
@@ -2508,7 +2512,7 @@ pub fn shim_future_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
             }
         });
     }
-    task.ram.push_i32(AutoVM::encode_future_bits(combo));
+    task.ram.push_nv(auto_val::encode_future(combo));
     Ok(())
 }
 
@@ -2551,7 +2555,7 @@ pub fn shim_future_race(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
             }
         });
     }
-    task.ram.push_i32(AutoVM::encode_future_bits(combo));
+    task.ram.push_nv(auto_val::encode_future(combo));
     Ok(())
 }
 
@@ -5647,125 +5651,137 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     Ok(())
 }
 
-/// Create a new HTTP response
+/// Create a new HTTP response.
+/// PLAN-776 R1-F01：构造产 **Response 凭据对象**（默认快照 status=0——
+/// 语义同原 HttpResponseData::default()；setter 链直接改凭据快照）。裸 id
+/// +表路径退役——普通数值不再能通过表取得 Response 语义。
 pub fn shim_http_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let response = HttpResponseData::default();
-
-    HTTP_RESPONSES.with(|responses| {
-        responses.borrow_mut().insert(handle, response);
-    });
-
-    task.ram.push_i64(handle as i64);
-    Ok(())
+    super::http_return_resource::push_response_resource(task, vm, 0, Vec::new(), Vec::new())
 }
 
-/// Set response status
+/// Set response status.
+/// PLAN-776 R1-F01/F06：receiver 是 Response 凭据对象——直接改快照
+///（owner 校验在 mutate 内；非凭据对象/跨 owner → 错误，不猜测）。
 pub fn shim_http_response_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let code: i32 = crate::vm::native::pop_arg_i32(task);
-    let res_handle: i64 = task.ram.pop_i64();
-
-    HTTP_RESPONSES.with(|responses| {
-        if let Some(res) = responses.borrow_mut().get_mut(&(res_handle as u64)) {
-            res.status = code as u16;
-        }
-    });
-
-    task.ram.push_i64(res_handle);
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
+    let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| s.status = code as u16)
+        .ok_or_else(|| {
+        VMError::RuntimeError("response_status: expected a Response credential".into())
+    })?;
+    drop(stake);
+    // R2-03：返回值重建带影子份额（裸 push_nv 零份额 → 跨宽限窗 UAF）。
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
-/// Set response header
+/// Set response header（Response 凭据快照载荷——R1-F01/F06）。
 pub fn shim_http_response_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let value: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = task.ram.pop_i64();
-
-    HTTP_RESPONSES.with(|responses| {
-        if let Some(res) = responses.borrow_mut().get_mut(&(res_handle as u64)) {
-            res.headers.push((key, value));
-        }
-    });
-
-    task.ram.push_i64(res_handle);
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
+    let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
+        s.headers.push((key, value));
+    })
+    .ok_or_else(|| {
+        VMError::RuntimeError("response_header: expected a Response credential".into())
+    })?;
+    drop(stake);
+    // R2-03：返回值重建带影子份额（裸 push_nv 零份额 → 跨宽限窗 UAF）。
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
-/// Set response text body
+/// Set response text body（Response 凭据快照载荷——R1-F01/F06）。
 pub fn shim_http_response_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = task.ram.pop_i64();
-
-    HTTP_RESPONSES.with(|responses| {
-        if let Some(res) = responses.borrow_mut().get_mut(&(res_handle as u64)) {
-            res.body = body.into_bytes();
-            // Add Content-Type header if not set
-            if !res
-                .headers
-                .iter()
-                .any(|(k, _)| k.to_lowercase() == "content-type")
-            {
-                res.headers.push((
-                    "Content-Type".to_string(),
-                    "text/plain; charset=utf-8".to_string(),
-                ));
-            }
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
+    let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
+        s.body = body.into_bytes();
+        // Add Content-Type header if not set
+        if !s
+            .headers
+            .iter()
+            .any(|(k, _)| k.to_lowercase() == "content-type")
+        {
+            s.headers.push((
+                "Content-Type".to_string(),
+                "text/plain; charset=utf-8".to_string(),
+            ));
         }
-    });
-
-    task.ram.push_i64(res_handle);
+    })
+    .ok_or_else(|| VMError::RuntimeError("response_text: expected a Response credential".into()))?;
+    drop(stake);
+    // R2-03：返回值重建带影子份额（裸 push_nv 零份额 → 跨宽限窗 UAF）。
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
-/// Set response HTML body
+/// Set response HTML body（Response 凭据快照载荷——R1-F01/F06）。
 pub fn shim_http_response_html(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = task.ram.pop_i64();
-
-    HTTP_RESPONSES.with(|responses| {
-        if let Some(res) = responses.borrow_mut().get_mut(&(res_handle as u64)) {
-            res.body = body.into_bytes();
-            if !res
-                .headers
-                .iter()
-                .any(|(k, _)| k.to_lowercase() == "content-type")
-            {
-                res.headers.push((
-                    "Content-Type".to_string(),
-                    "text/html; charset=utf-8".to_string(),
-                ));
-            }
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
+    let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
+        s.body = body.into_bytes();
+        if !s
+            .headers
+            .iter()
+            .any(|(k, _)| k.to_lowercase() == "content-type")
+        {
+            s.headers.push((
+                "Content-Type".to_string(),
+                "text/html; charset=utf-8".to_string(),
+            ));
         }
-    });
-
-    task.ram.push_i64(res_handle);
+    })
+    .ok_or_else(|| VMError::RuntimeError("response_html: expected a Response credential".into()))?;
+    drop(stake);
+    // R2-03：返回值重建带影子份额（裸 push_nv 零份额 → 跨宽限窗 UAF）。
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
 /// Plan 346: `http.response.redirect(url: String, status: int) -> response_handle`
 /// Create a redirect response (302 or 301).
+/// PLAN-776 T-02: 真实资源生产点——返回 owned 快照凭据对象（TAG_OBJECT），
+/// 不再进 HTTP_RESPONSES 表；源码不变（`return http.response.redirect(...)`
+/// 直接进服务返回），wire 由 marshal 资源臂按快照回复。普通 int 永不命中。
 pub fn shim_http_response_redirect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let status: i32 = crate::vm::native::pop_arg_i32(task);
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    HTTP_RESPONSES.with(|r| {
-        r.borrow_mut().insert(
-            handle,
-            HttpResponseData {
-                status: if status == 301 { 301 } else { 302 },
-                headers: vec![("Location".to_string(), url)],
-                body: Vec::new(),
-            },
-        );
-    });
-    task.ram.push_i32(handle as i32);
-    Ok(())
+    super::http_return_resource::push_response_resource(
+        task,
+        vm,
+        if status == 301 { 301 } else { 302 },
+        vec![("Location".to_string(), url)],
+        Vec::new(),
+    )
 }
 
 /// Plan 346 3c: server-side lookup of a pending response by handle. Lets the
@@ -6146,118 +6162,126 @@ pub fn shim_http_server_use(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 
 /// Set response bytes body
 pub fn shim_http_response_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // R2-06：迁移对象载荷（凭据快照 mutate + R2-03 owned-slot 协议——
+    // 实参份额消费释放、返回槽 rc_push 重建带影子份额）。
     let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = task.ram.pop_i64();
-
-    HTTP_RESPONSES.with(|responses| {
-        if let Some(res) = responses.borrow_mut().get_mut(&(res_handle as u64)) {
-            res.body = data.into_iter().map(|b| b as u8).collect();
-        }
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
+    let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    let m = super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
+        s.body = data.into_iter().map(|b| b as u8).collect();
     });
-
-    task.ram.push_i64(res_handle);
+    drop(stake);
+    m.ok_or_else(|| {
+        VMError::RuntimeError("response_bytes: expected a Response credential".into())
+    })?;
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
-/// Create a 200 OK response
-#[auto_macros::rust_fn("Http.ok")]
-pub fn shim_http_ok(body: String) -> i64 {
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let response = HttpResponseData {
-        status: 200,
-        headers: vec![(
+/// PLAN-776 R1-F01：Http.ok/created/bad_request/not_found/internal_error 五个
+/// 真实服务端 Response producer 从"裸 i64 句柄 + HTTP_RESPONSES 表"迁移为
+/// **凭据对象**（owned 快照，marshal 资源臂按值分派）。查表命中制退役后
+/// 裸 id 不再具有资源语义；inventory 契约条目保持（签名面零漂移）。
+fn text_plain_response(status: u16, body: String) -> (u16, Vec<(String, String)>, Vec<u8>) {
+    (
+        status,
+        vec![(
             "Content-Type".to_string(),
             "text/plain; charset=utf-8".to_string(),
         )],
-        body: body.into_bytes(),
-    };
-
-    HTTP_RESPONSES.with(|responses| {
-        responses.borrow_mut().insert(handle, response);
-    });
-
-    handle as i64
+        body.into_bytes(),
+    )
 }
 
-/// Create a 201 Created response
-#[auto_macros::rust_fn("Http.created")]
-pub fn shim_http_created(body: String) -> i64 {
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let response = HttpResponseData {
-        status: 201,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/plain; charset=utf-8".to_string(),
-        )],
-        body: body.into_bytes(),
-    };
-
-    HTTP_RESPONSES.with(|responses| {
-        responses.borrow_mut().insert(handle, response);
-    });
-
-    handle as i64
+/// Create a 200 OK response（凭据对象载荷）。
+pub fn shim_http_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let (status, headers, body) = text_plain_response(200, body);
+    super::http_return_resource::push_response_resource(task, vm, status, headers, body)
 }
 
-/// Create a 400 Bad Request response
-#[auto_macros::rust_fn("Http.bad_request")]
-pub fn shim_http_bad_request(msg: String) -> i64 {
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let response = HttpResponseData {
-        status: 400,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/plain; charset=utf-8".to_string(),
-        )],
-        body: msg.into_bytes(),
-    };
-
-    HTTP_RESPONSES.with(|responses| {
-        responses.borrow_mut().insert(handle, response);
-    });
-
-    handle as i64
+/// Create a 201 Created response（凭据对象载荷）。
+pub fn shim_http_created(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let (status, headers, body) = text_plain_response(201, body);
+    super::http_return_resource::push_response_resource(task, vm, status, headers, body)
 }
 
-/// Create a 404 Not Found response
-#[auto_macros::rust_fn("Http.not_found")]
-pub fn shim_http_not_found(msg: String) -> i64 {
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let response = HttpResponseData {
-        status: 404,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/plain; charset=utf-8".to_string(),
-        )],
-        body: msg.into_bytes(),
-    };
-
-    HTTP_RESPONSES.with(|responses| {
-        responses.borrow_mut().insert(handle, response);
-    });
-
-    handle as i64
+/// Create a 400 Bad Request response（凭据对象载荷）。
+pub fn shim_http_bad_request(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let (status, headers, body) = text_plain_response(400, msg);
+    super::http_return_resource::push_response_resource(task, vm, status, headers, body)
 }
 
-/// Create a 500 Internal Server Error response
-#[auto_macros::rust_fn("Http.internal_error")]
-pub fn shim_http_internal_error(msg: String) -> i64 {
-    let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let response = HttpResponseData {
-        status: 500,
-        headers: vec![(
-            "Content-Type".to_string(),
-            "text/plain; charset=utf-8".to_string(),
-        )],
-        body: msg.into_bytes(),
-    };
+/// Create a 404 Not Found response（凭据对象载荷）。
+pub fn shim_http_not_found(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let (status, headers, body) = text_plain_response(404, msg);
+    super::http_return_resource::push_response_resource(task, vm, status, headers, body)
+}
 
-    HTTP_RESPONSES.with(|responses| {
-        responses.borrow_mut().insert(handle, response);
-    });
+/// Create a 500 Internal Server Error response（凭据对象载荷）。
+pub fn shim_http_internal_error(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg: String = super::convert::VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let (status, headers, body) = text_plain_response(500, msg);
+    super::http_return_resource::push_response_resource(task, vm, status, headers, body)
+}
 
-    handle as i64
+inventory::submit! {
+    crate::vm::ffi::StaticFFIRegistration {
+        name: "Http.ok",
+        shim: shim_http_ok,
+        parameters: &["String"],
+        returns: "i64",
+        producer: "auto_lang::vm::ffi::stdlib::shim_http_ok",
+    }
+}
+inventory::submit! {
+    crate::vm::ffi::StaticFFIRegistration {
+        name: "Http.created",
+        shim: shim_http_created,
+        parameters: &["String"],
+        returns: "i64",
+        producer: "auto_lang::vm::ffi::stdlib::shim_http_created",
+    }
+}
+inventory::submit! {
+    crate::vm::ffi::StaticFFIRegistration {
+        name: "Http.bad_request",
+        shim: shim_http_bad_request,
+        parameters: &["String"],
+        returns: "i64",
+        producer: "auto_lang::vm::ffi::stdlib::shim_http_bad_request",
+    }
+}
+inventory::submit! {
+    crate::vm::ffi::StaticFFIRegistration {
+        name: "Http.not_found",
+        shim: shim_http_not_found,
+        parameters: &["String"],
+        returns: "i64",
+        producer: "auto_lang::vm::ffi::stdlib::shim_http_not_found",
+    }
+}
+inventory::submit! {
+    crate::vm::ffi::StaticFFIRegistration {
+        name: "Http.internal_error",
+        shim: shim_http_internal_error,
+        parameters: &["String"],
+        returns: "i64",
+        producer: "auto_lang::vm::ffi::stdlib::shim_http_internal_error",
+    }
 }
 
 /// Perform a GET request (simple HTTP client). Returns a response handle.
@@ -6286,7 +6310,7 @@ pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -6307,7 +6331,7 @@ pub fn shim_http_post(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -6330,7 +6354,7 @@ pub fn shim_http_put(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -6353,7 +6377,7 @@ pub fn shim_http_delete(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -6530,7 +6554,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -7065,7 +7089,7 @@ pub fn shim_http_upload(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = super::http_transfer::consume_legacy_upload(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -7185,17 +7209,40 @@ fn spawn_download_with_progress(
 // Plan 195: Enhanced Response access methods
 // ============================================================================
 
+/// PLAN-776 R1-F06：Response 载荷统一读取——**对象凭据**（本 VM owner 校验
+/// 后读快照）或 **client int 句柄**（HTTP_RESPONSES 表——http.get 产句柄的
+/// 访问器面，FFI 资源范围保留表语义）。普通 int 未命中表 = None（调用方
+/// 按原语义降级，不猜测）。
+fn read_response_payload(
+    vm: &AutoVM,
+    res_nv: auto_val::NanoValue,
+) -> Option<super::http_return_resource::ResponseSnapshot> {
+    if auto_val::is_object(res_nv) {
+        return super::http_return_resource::read_response_snapshot(vm, res_nv);
+    }
+    if auto_val::is_i32(res_nv) {
+        let h = auto_val::decode_i32(res_nv) as i64;
+        return HTTP_RESPONSES.with(|r| {
+            r.borrow()
+                .get(&(h as u64))
+                .map(|res| super::http_return_resource::ResponseSnapshot {
+                    status: res.status,
+                    headers: res.headers.clone(),
+                    body: res.body.clone(),
+                })
+        });
+    }
+    None
+}
+
 /// Get status code from Response handle
 /// response_status_code(res_handle) -> int
+/// R1-F06：receiver 接受对象凭据或 client int 句柄（统一载荷）。
 pub fn shim_response_status_code(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
-
-    let status = HTTP_RESPONSES
-        .with(|r| {
-            r.borrow()
-                .get(&(res_handle as u64))
-                .map(|res| res.status as i32)
-        })
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    let status = read_response_payload(vm, res_nv)
+        .map(|s| s.status as i32)
         .unwrap_or(0);
 
     task.ram.push_i32(status);
@@ -7207,17 +7254,15 @@ pub fn shim_response_status_code(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 pub fn shim_response_header_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
 
-    let value = HTTP_RESPONSES
-        .with(|r| {
-            let responses = r.borrow();
-            responses.get(&(res_handle as u64)).and_then(|res| {
-                res.headers
-                    .iter()
-                    .find(|(k, _)| k.eq_ignore_ascii_case(&key))
-                    .map(|(_, v)| v.clone())
-            })
+    let value = read_response_payload(vm, res_nv)
+        .and_then(|s| {
+            s.headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case(&key))
+                .map(|(_, v)| v.clone())
         })
         .unwrap_or_default();
 
@@ -7243,14 +7288,11 @@ pub fn shim_response_header_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_response_body_to_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
 
-    let body_bytes = HTTP_RESPONSES
-        .with(|r| {
-            r.borrow()
-                .get(&(res_handle as u64))
-                .map(|res| res.body.clone())
-        })
+    let body_bytes = read_response_payload(vm, res_nv)
+        .map(|s| s.body)
         .unwrap_or_default();
 
     std::fs::write(&path, &body_bytes)
@@ -7260,33 +7302,14 @@ pub fn shim_response_body_to_file(task: &mut AutoTask, vm: &AutoVM) -> Result<()
 }
 
 pub fn shim_response_body_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
-    eprintln!("[dbg body_bytes] handle={}", res_handle);
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
 
-    let body_bytes = HTTP_RESPONSES
-        .with(|r| {
-            r.borrow()
-                .get(&(res_handle as u64))
-                .map(|res| res.body.clone())
-        })
+    let body_bytes = read_response_payload(vm, res_nv)
+        .map(|s| s.body)
         .unwrap_or_default();
-    eprintln!("[dbg body_bytes] table entry body len={}", body_bytes.len());
-
     let ints: Vec<i32> = body_bytes.iter().map(|&b| b as i32).collect();
-    eprintln!(
-        "[dbg body_bytes] ints.len={} list_id_before={}",
-        ints.len(),
-        {
-            let probe = crate::vm::native::create_list_from_i32(vm, ints.clone());
-            probe
-        }
-    );
-    let list_id = crate::vm::native::create_list_from_i32(vm, ints.clone());
-    eprintln!(
-        "[dbg body_bytes] real list_id={} ints again={}",
-        list_id,
-        ints.len()
-    );
+    let list_id = crate::vm::native::create_list_from_i32(vm, ints);
     // Plan 432 D26: 新堆 id 入栈必须 rc_push_id（裸 push_i32 零份额，
     // 列表在局部槽引用释放时即死——length 恒 0 的根因）。
     vm.rc_push_id(task, list_id);
@@ -7294,14 +7317,11 @@ pub fn shim_response_body_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 }
 
 pub fn shim_response_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
 
-    let body_bytes = HTTP_RESPONSES
-        .with(|r| {
-            r.borrow()
-                .get(&(res_handle as u64))
-                .map(|res| res.body.clone())
-        })
+    let body_bytes = read_response_payload(vm, res_nv)
+        .map(|s| s.body)
         .unwrap_or_default();
 
     let text = String::from_utf8_lossy(&body_bytes).to_string();
@@ -8626,31 +8646,32 @@ pub(crate) fn shim_http_get_msg_spawn_for_test(url: &str, event: &str) {
 
 /// Push a response-handle result onto the stack: allocate a NET_HANDLE_COUNTER
 /// id, insert the structured data into the *calling thread's* HTTP_RESPONSES
-/// thread_local, push the handle as i32. On error, returns a 500 handle via
-/// `shim_http_internal_error`. Plan 349 步骤 7/8 (W1).
+/// thread_local, push the handle as i32. Plan 349 步骤 7/8 (W1).
+/// PLAN-776 R1-F01：本函数是 **client 面**（http.get 产句柄、`.status()`/
+/// `.body()` 访问器经 engine CALL_SPEC 查表消费——FFI 资源范围，不在服务端
+/// 返回编组边界内）；错误臂内联 500 构造（`shim_http_internal_error` 已迁
+/// 凭据对象，不再共用）。
 fn push_handle_result(
     task: &mut AutoTask,
+    vm: &AutoVM,
     result: Result<(u16, Vec<(String, String)>, Vec<u8>), String>,
 ) -> Result<(), VMError> {
-    let handle = match result {
-        Ok((status, headers, body_bytes)) => {
-            let h = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-            HTTP_RESPONSES.with(|r| {
-                r.borrow_mut().insert(
-                    h,
-                    HttpResponseData {
-                        status,
-                        headers,
-                        body: body_bytes,
-                    },
-                );
-            });
-            h as i64
-        }
-        Err(msg) => shim_http_internal_error(format!("HTTP failed: {}", msg)),
+    // R2-05：client Response 在 HTTP egress 边界内（Plan §1.4）——producer
+    // 产 **Response 凭据对象**（owned 快照），不再返回裸 int+表：marshal
+    /// 资源臂保留真实 status/body（此前降级 JSON 裸编号）；访问器统一
+    /// 载荷（快照/int 表）兼容；表 insert 退役（int 查表面成为死兼容）。
+    let (status, headers, body) = match result {
+        Ok((status, headers, body_bytes)) => (status, headers, body_bytes),
+        Err(msg) => (
+            500,
+            vec![(
+                "Content-Type".to_string(),
+                "text/plain; charset=utf-8".to_string(),
+            )],
+            format!("HTTP failed: {}", msg).into_bytes(),
+        ),
     };
-    task.ram.push_i32(handle as i32);
-    Ok(())
+    super::http_return_resource::push_response_resource(task, vm, status, headers, body)
 }
 
 pub fn shim_http_get_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
@@ -9670,18 +9691,15 @@ pub fn shim_task_system_run(
 ) -> Result<(), crate::vm::engine::VMError> {
     use crate::vm::engine::{FrameResult, FutureState};
 
-    // Pop the future encoding from stack
-    let future_bits = crate::vm::native::pop_arg_i32(task);
-
-    let _stake_future_bits = crate::vm::native::StakeGuard::new(vm, future_bits as i64 as u64);
-
-    // Decode future ID
-    if (future_bits & 0xFF) != 0xF0 {
+    // Pop the future handle from stack（PLAN-776 R7-01：TAG_FUTURE 逐值载荷
+    // 优先，legacy 位模式兼容臂）。
+    let future_nv = task.ram.pop_nv();
+    task.ram.raw_nv[task.ram.sp] = 0;
+    let Some(future_id) = AutoVM::decode_future_handle(future_nv) else {
         // Not a valid future — push nil and return
         task.ram.push_i32(0);
         return Ok(());
-    }
-    let future_id = (future_bits >> 8) as u32;
+    };
 
     // Look up the future
     let future_arc = match vm.futures.get(&future_id) {
@@ -12480,11 +12498,7 @@ mod sqlite_vm_tests {
             1
         );
         assert_eq!(shim_sqlite_last_insert_rowid_impl(&vm, h), 1);
-        let rows = shim_sqlite_query_impl(
-            &vm,
-            h,
-            "SELECT id, name FROM cats ORDER BY id".into(),
-        );
+        let rows = shim_sqlite_query_impl(&vm, h, "SELECT id, name FROM cats ORDER BY id".into());
         assert_eq!(rows, vec![vec!["1".to_string(), "Michi".to_string()]]);
 
         // 语法错误：-1 + last_error 非空（哨兵约定）
@@ -12503,10 +12517,7 @@ mod sqlite_vm_tests {
     fn sqlite_vm_handles_are_vm_local_and_released_with_request_task() {
         let vm_a = test_vm();
         let vm_b = test_vm();
-        let dir = std::env::temp_dir().join(format!(
-            "auto-vm-sqlite-scope-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("auto-vm-sqlite-scope-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path_a = dir.join("a.db").to_string_lossy().into_owned();
@@ -12516,24 +12527,15 @@ mod sqlite_vm_tests {
         let task_b = vm_b.spawn_task(0, 1024);
         let handle_a = shim_sqlite_open_impl(&vm_a, task_a, path_a);
         let handle_b = shim_sqlite_open_impl(&vm_b, task_b, path_b);
-        assert_eq!(
-            shim_sqlite_exec_impl(&vm_a, handle_a, "SELECT 1".into()),
-            0
-        );
-        assert_eq!(
-            shim_sqlite_exec_impl(&vm_b, handle_b, "SELECT 1".into()),
-            0
-        );
+        assert_eq!(shim_sqlite_exec_impl(&vm_a, handle_a, "SELECT 1".into()), 0);
+        assert_eq!(shim_sqlite_exec_impl(&vm_b, handle_b, "SELECT 1".into()), 0);
 
         vm_a.remove_task(task_a);
         assert_eq!(
             shim_sqlite_exec_impl(&vm_a, handle_a, "SELECT 1".into()),
             -1
         );
-        assert_eq!(
-            shim_sqlite_exec_impl(&vm_b, handle_b, "SELECT 1".into()),
-            0
-        );
+        assert_eq!(shim_sqlite_exec_impl(&vm_b, handle_b, "SELECT 1".into()), 0);
 
         vm_b.remove_task(task_b);
         assert_eq!(

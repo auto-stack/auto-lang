@@ -110,6 +110,7 @@ fn instruction_size(instr: &AbtInstruction) -> usize {
         | OpCode::SWAP
         | OpCode::DROP
         | OpCode::CONST_0
+        | OpCode::WRAP_SSE_RESOURCE
         | OpCode::CONST_1
         | OpCode::HALT
         | OpCode::PRINT
@@ -352,6 +353,7 @@ fn emit_operands(
         // No operands
         OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
         | OpCode::CONST_0 | OpCode::CONST_1 | OpCode::HALT | OpCode::PRINT
+        | OpCode::WRAP_SSE_RESOURCE
         | OpCode::YIELD_TASK | OpCode::YIELD_VAL | OpCode::CREATE_NONE
         | OpCode::IS_SOME | OpCode::IS_OK | OpCode::UNWRAP_SOME | OpCode::UNWRAP_OK
         | OpCode::UNWRAP_ERR | OpCode::IS_NIL | OpCode::NEG | OpCode::NEG_F

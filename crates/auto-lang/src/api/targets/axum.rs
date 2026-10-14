@@ -197,9 +197,7 @@ impl AxumGenerator {
         // shared host serve（版本无关 FileReply → 本地 axum Response；成功体
         // 不经 Json）。文件端点仅 GET/HEAD——其他注解方法在签名处给 405 诊断
         // handler（决策报告 §6）。
-        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-            == crate::api::contract::ResponseKind::File
-        {
+        if endpoint.response == crate::api::contract::ResponseKind::File {
             let method = endpoint.method().to_lowercase();
             let path = endpoint.path();
             let path_params: Vec<&String> = endpoint
@@ -314,8 +312,7 @@ impl AxumGenerator {
         // []T → Json<Vec<T>>
         // ?T → Json<Option<T>>
         // void → StatusCode
-        let is_sse = crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-            == crate::api::contract::ResponseKind::Stream;
+        let is_sse = endpoint.response == crate::api::contract::ResponseKind::Stream;
 
         let (return_type, is_sse_handler) = if is_sse {
             // SSE handler: returns Sse<impl Stream<Item = Result<Event, Infallible>>>
@@ -475,10 +472,11 @@ impl AxumGenerator {
 
         // PLAN-729 T-05: 文件端点 glue（method/headers → 共享宿主 serve →
         // 本地 axum Response）。
-        if module.endpoints.iter().any(|e| {
-            crate::api::contract::ResponseKind::from_return_string(&e.return_type)
-                == crate::api::contract::ResponseKind::File
-        }) {
+        if module
+            .endpoints
+            .iter()
+            .any(|e| e.response == crate::api::contract::ResponseKind::File)
+        {
             for line in PLAN729_FILE_GLUE.lines() {
                 output.push(line.to_string());
             }
@@ -518,8 +516,7 @@ impl AxumGenerator {
             let path = endpoint.attrs.path.as_deref().unwrap_or("/");
             // PLAN-729 T-05: GET 文件端点自动具备 HEAD。
             let is_file_get = method == "get"
-                && crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-                    == crate::api::contract::ResponseKind::File
+                && endpoint.response == crate::api::contract::ResponseKind::File
                 && !module.endpoints.iter().any(|other| {
                     other.method().eq_ignore_ascii_case("HEAD") && other.path() == path
                 });

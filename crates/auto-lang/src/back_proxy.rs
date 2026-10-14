@@ -1344,6 +1344,22 @@ lazy_static::lazy_static! {
 /// AutoVM → 显式跑 `__module_init` 激活模块级 `var`（contacts/messages 等）。
 /// #[api] fn 返回类型的**主类型名**（POST 广播 "New<Type>" 判别用）。
 /// 遍历包装层（List/?/!/引用）取首个命名类型；标量返回 None。
+/// R6-02：alias 游走的单步规范化——剥 `http.` 限定 + 解一层 Future<…>
+/// 包装 + 取裸名（与 api/contract.rs 的 unwrap_future/bare_name 同源语义）。
+fn alias_step_bare(target: &str) -> String {
+    let t = target.trim();
+    let t = t.strip_prefix("http.").unwrap_or(t);
+    let t = t
+        .strip_prefix("Future<")
+        .and_then(|rest| rest.strip_suffix('>'))
+        .map(|inner| inner.trim())
+        .unwrap_or(t);
+    match t.find('<') {
+        Some(i) => t[..i].trim().to_string(),
+        None => t.to_string(),
+    }
+}
+
 fn primary_type_name(t: &crate::ast::Type) -> Option<String> {
     use crate::ast::Type;
     match t {
@@ -1460,6 +1476,38 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
     let api_routes: Vec<(String, String, String)> = codegen.api_routes.clone();
     let mut fn_params: HashMap<String, Vec<ApiParamSig>> = HashMap::new();
     let mut fn_meta: HashMap<String, (String, String)> = HashMap::new();
+    // PLAN-776 T-06：模块内用户类型名集（AST 直扫——back_proxy 跳过前端，
+    // type_store 不含声明；stdlib HTTP 词汇不出现于用户 stmts，命中即遮蔽）。
+    // PLAN-776 R1-F05/R2-07：直接声明名集（struct/enum）与 alias→target 表
+    // 分开——alias 的来源身份按目标解析。
+    let user_type_names: std::collections::HashSet<String> = import_stmts
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Stmt::TypeDecl(d) => Some(d.name.to_string()),
+            Stmt::EnumDecl(e) => Some(e.name.to_string()),
+            _ => None,
+        })
+        .collect();
+    let alias_targets: std::collections::HashMap<String, String> = import_stmts
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Stmt::TypeAlias(a) => {
+                let target = match &a.target {
+                    crate::ast::Type::User(td) => td.name.to_string(),
+                    crate::ast::Type::GenericInstance(inst) => inst.base_name.to_string(),
+                    other => {
+                        let full = format!("{other}");
+                        match full.find('<') {
+                            Some(i) => full[..i].trim().to_string(),
+                            None => full.trim().to_string(),
+                        }
+                    }
+                };
+                Some((a.name.to_string(), target))
+            }
+            _ => None,
+        })
+        .collect();
     for stmt in &import_stmts {
         if let Stmt::Fn(f) = stmt {
             if f.api_attrs.is_some() {
@@ -1479,8 +1527,42 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                     .map(|a| a.method.clone())
                     .unwrap_or_default();
                 let display = format!("{}", f.ret);
-                let primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
-                fn_meta.insert(f.name.to_string(), (method, format!("{primary}|{display}")));
+                let mut primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
+                let mut shadowed = "";
+                // PLAN-776 T-06/R2-07/R5-02/R6-02：第三段 = 返回裸名被用户同名
+                // 遮蔽；alias 按目标**链**展开（visited 集循环拒绝——合法深链
+                // 不限层；每层解 Future 包装 + 剥 `http.` 限定——限定名/限定
+                // 目标是 stdlib 绑定，先于用户名集判定）；链尾用户声明 →
+                // 遮蔽；stdlib 名 → primary 换链尾参与消费侧分类；真环保守
+                // 按现状裸名。
+                let initial_qualified = primary.starts_with("http.");
+                let mut cur = alias_step_bare(&primary);
+                let mut terminal_is_user = !initial_qualified && user_type_names.contains(&cur);
+                let mut visited: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+                while !terminal_is_user {
+                    if !visited.insert(cur.clone()) {
+                        break; // 真 alias 环保守
+                    }
+                    let Some(target) = alias_targets.get(&cur) else {
+                        break;
+                    };
+                    let was_qualified = target.starts_with("http.");
+                    cur = alias_step_bare(target);
+                    if was_qualified {
+                        break; // 限定目标 = stdlib 绑定，链在此终止。
+                    }
+                    terminal_is_user = user_type_names.contains(&cur);
+                }
+                if terminal_is_user {
+                    shadowed = "1";
+                } else {
+                    primary = cur;
+                }
+                fn_meta.insert(
+                    f.name.to_string(),
+                    (method, format!("{primary}|{display}|{shadowed}")),
+                );
             }
         }
     }
@@ -1579,10 +1661,20 @@ impl SessionRuntime {
         // 可序列化数据（决策报告 §6：Unsupported + 改走 HTTP URL 指引）。
         if let Some((_, ret)) = self.fn_meta.get(&route_match.fn_name) {
             // PLAN-734 T-03：守卫按契约身份分类（假同名类型不命中）。fn_meta
-            // 值是 "primary|display" 拼串——分类取 display 半段（拼串整体
-            // 永不等于任何裸类型名，身份匹配必失败）。
-            let display = ret.split('|').next().unwrap_or(ret);
-            let mut kind = crate::api::contract::ResponseKind::from_return_string(display);
+            // 值是 "primary|display|shadowed" 拼串——分类取 **primary** 首段
+            //（裸主类型名；display 段是 linear<…>/s-expr 完整形态，不可裸名
+            // 匹配；拼串整体永不等于任何裸类型名）。
+            // PLAN-776 T-06：第三段 shadowed=1（用户同名遮蔽，编译期冻结）
+            // 直接落 Json——不冒领 stdlib 专属身份。
+            let mut parts = ret.split('|');
+            let primary = parts.next().unwrap_or("");
+            let _display = parts.next().unwrap_or("");
+            let shadowed = parts.next().unwrap_or("");
+            let mut kind = if shadowed == "1" {
+                crate::api::contract::ResponseKind::Json
+            } else {
+                crate::api::contract::ResponseKind::from_return_string(primary)
+            };
             // PLAN-734 T-07：参数面补充——UploadRequest 参数（Display s-expr
             // 形态经 is_upload_param 双族识别）即使返回串分类错过也命中。
             if kind != crate::api::contract::ResponseKind::Upload {
@@ -1760,15 +1852,23 @@ impl SessionRuntime {
         // ~Stream 端点时才广播）：typing 型（fn 名含 "typing"）void POST →
         // {"event":"Typing","name":<首参>}；create 型非 void POST → 返回实体
         // 加 "event":"New<主类型>" 判别后广播。
-        // PLAN-734 T-03：SSE 广播门按契约分类。
+        // PLAN-734 T-03：SSE 广播门按契约分类。PLAN-776 T-06：fn_meta 三段
+        // "primary|display|shadowed"——display 居中，遮蔽段非 "1" 才分类。
         let has_sse = self.fn_meta.values().any(|(_, r)| {
-            let display = r.split('|').next_back().unwrap_or(r);
-            crate::api::contract::ResponseKind::from_return_string(display)
-                == crate::api::contract::ResponseKind::Stream
+            let mut parts = r.split('|');
+            let _primary = parts.next();
+            let display = parts.next().unwrap_or("");
+            let shadowed = parts.next().unwrap_or("");
+            shadowed != "1"
+                && crate::api::contract::ResponseKind::from_return_string(display)
+                    == crate::api::contract::ResponseKind::Stream
         });
         if has_sse {
             if let Some((method, meta)) = self.fn_meta.get(&route_match.fn_name).cloned() {
-                let (primary, display) = meta.split_once('|').unwrap_or((meta.as_str(), ""));
+                // PLAN-776 T-06：三段拼串——primary 后 display 居中。
+                let mut parts = meta.split('|');
+                let primary = parts.next().unwrap_or(meta.as_str());
+                let display = parts.next().unwrap_or("");
                 if method.eq_ignore_ascii_case("POST") {
                     let fn_bare = route_match
                         .fn_name

@@ -117,6 +117,15 @@ B 的唯一优势（不占堆 id 空间）不构成需求。**冻结方案 A。*
 > legacy 位形态驱动臂退役（普通数字恒数据）。iterator 消费补**所有权
 > 协议**（原始凭据 nv 的 StakeGuard+rc_release+弹出槽清零——R7 交接
 > 声明的清零未落进冻结提交，一并修正）。终形见 spec-delta R8 终形稿。
+> **R9 终形补注（2026-10-14，F776-R9-01..02）**：消费协议收敛为**恰一份**
+> （StakeGuard Drop 即消费；R8 显式 release 是第二份——RC2 共享双释放）；
+> typed record 的 Future 字段保真（CONSTRUCT_INSTANCE/GET_GENERIC_FIELD/
+> push_value 三处独立转换补 Future 臂——R8 桥清点漏了 typed instance
+> 专用路径，插桩实证 CREATE_OBJ/SET_GENERIC_FIELD/GET_FIELD 均不在该
+> 流程上）。终形见 spec-delta R9 终形稿。
+> **R10 终形补注（2026-10-14，F776-R10-01）**：R9 的恰一份消费收敛推广到
+> Response 五 setter（撤 R2-03 的显式 release——同型双释放，共享 RC2 →0
+> 全局 UAF）；§3.5 setter 条款同步（guard 非 retain 护栏、Drop 即消费）。
 
 ## 3. 凭据合同（方案 A 细则）
 

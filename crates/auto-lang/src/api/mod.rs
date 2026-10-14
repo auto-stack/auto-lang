@@ -119,19 +119,50 @@ impl ApiExtractor {
     pub fn extract(&self, module_name: &str, stmts: &[Stmt]) -> ApiModule {
         let mut api_module = ApiModule::new(module_name.to_string());
 
+        // PLAN-776 T-06：两遍提取——先收全部类型声明（struct/enum）成完整
+        // 名集，再提取 endpoints 并按解析来源身份分类（同裸名用户声明 →
+        // Json；声明序无关）。类型别名由 TypeDecl 形态覆盖（extract_type）。
         for stmt in stmts {
             match stmt {
-                Stmt::Fn(fn_decl) => {
-                    if let Some(endpoint) = self.extract_endpoint(fn_decl) {
-                        api_module.add_endpoint(endpoint);
-                    }
-                }
                 Stmt::TypeDecl(type_decl) => {
                     if let Some(api_type) = self.extract_type(type_decl) {
                         api_module.types.push(api_type);
                     }
                 }
+                Stmt::EnumDecl(enum_decl) => {
+                    api_module.types.push(ApiType {
+                        name: enum_decl.name.to_string(),
+                        fields: Vec::new(),
+                        doc: None,
+                        alias_of: None,
+                    });
+                }
+                // PLAN-776 R1-F05/R2-07/R6-02：type alias 的来源身份按**目标**
+                // 解析（`type Download = FileResponse` → File 种类；target 是
+                // 用户名/内建 → Json）——alias_of 携带 target **完整形态**
+                //（保 Future<…>/泛型结构，F776-R6-02：`type D =
+                // Future<FileResponse>` 需按 File 分类；裸名在 bare_type_name
+                // 中丢失实参不可恢复）——分类侧按需解包/规范化。
+                Stmt::TypeAlias(alias) => {
+                    api_module.types.push(ApiType {
+                        name: alias.name.to_string(),
+                        fields: Vec::new(),
+                        doc: None,
+                        alias_of: Some(type_to_string(&alias.target)),
+                    });
+                }
                 _ => {}
+            }
+        }
+        for stmt in stmts {
+            if let Stmt::Fn(fn_decl) = stmt {
+                if let Some(mut endpoint) = self.extract_endpoint(fn_decl) {
+                    endpoint.response = crate::api::contract::ResponseKind::from_return_identity(
+                        &endpoint.return_type,
+                        &api_module.types,
+                    );
+                    api_module.add_endpoint(endpoint);
+                }
             }
         }
 
@@ -177,11 +208,9 @@ impl ApiExtractor {
 
     /// Extract API type from type declaration
     fn extract_type(&self, type_decl: &crate::ast::TypeDecl) -> Option<ApiType> {
-        // Only extract user-defined types with struct-like members
-        if type_decl.members.is_empty() {
-            return None;
-        }
-
+        // PLAN-776 R1-F05：**名字**是来源身份的键——空成员声明（`type
+        // Response {}`）同样进入名集（字段为空），不再被丢弃；字段提取
+        // 保持原语义（仅 struct-like members）。
         let fields: Vec<ApiField> = type_decl
             .members
             .iter()
@@ -197,6 +226,7 @@ impl ApiExtractor {
             name: type_decl.name.to_string(),
             fields,
             doc: None,
+            alias_of: None,
         })
     }
 }
@@ -208,6 +238,8 @@ impl Default for ApiExtractor {
 }
 
 /// Convert Type to string representation
+/// PLAN-776 R2-07：类型引用的裸名（alias target 展开输入）——User/泛型
+/// 实例取声明名，内建按显示首词。
 fn type_to_string(ty: &Type) -> String {
     match ty {
         Type::Int => "int".to_string(),

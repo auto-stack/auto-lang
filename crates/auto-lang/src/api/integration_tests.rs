@@ -28,6 +28,7 @@ mod tests {
                 },
             ],
             doc: Some("User information".to_string()),
+            alias_of: None,
         };
         module.add_type(user_type);
 
@@ -39,6 +40,7 @@ mod tests {
             return_type: "User".to_string(),
             doc: Some("Get user by ID".to_string()),
             body: None,
+            response: Default::default(),
         };
         module.add_endpoint(get_user);
 
@@ -50,6 +52,7 @@ mod tests {
             return_type: "[]User".to_string(),
             doc: Some("List all users".to_string()),
             body: None,
+            response: Default::default(),
         };
         module.add_endpoint(list_users);
 
@@ -64,6 +67,7 @@ mod tests {
             return_type: "User".to_string(),
             doc: Some("Create a new user".to_string()),
             body: None,
+            response: Default::default(),
         };
         module.add_endpoint(create_user);
 
@@ -75,6 +79,7 @@ mod tests {
             return_type: "bool".to_string(),
             doc: Some("Delete a user".to_string()),
             body: None,
+            response: Default::default(),
         };
         module.add_endpoint(delete_user);
 
@@ -272,6 +277,7 @@ mod tests {
             return_type: "[]User".to_string(),
             doc: None,
             body: None,
+            response: Default::default(),
         };
         module.add_endpoint(endpoint);
 

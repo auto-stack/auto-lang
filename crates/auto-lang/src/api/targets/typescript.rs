@@ -9,11 +9,21 @@ use crate::api::{ApiEndpoint, ApiModule, ApiParam, ApiType};
 pub struct TypeScriptGenerator {
     /// Indentation string
     indent: String,
+    /// PLAN-776 T-06：模块类型声明名集（生成入口注入——类型映射按解析来源
+    /// 身份判定，用户同名类型不映射成 stdlib 专属 wire 形态）。
+    user_types: Vec<ApiType>,
 }
 
 impl TypeScriptGenerator {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// PLAN-776 T-06：注入模块类型声明名集（生成入口调用；缺省空集 =
+    /// 保守裸名判定）。
+    pub fn with_types(mut self, types: Vec<ApiType>) -> Self {
+        self.user_types = types;
+        self
     }
 }
 
@@ -21,6 +31,7 @@ impl Default for TypeScriptGenerator {
     fn default() -> Self {
         Self {
             indent: "    ".to_string(),
+            user_types: Vec::new(),
         }
     }
 }
@@ -32,7 +43,8 @@ impl TypeScriptGenerator {
 
         // PLAN-729 T-05: 文件端点（FileResponse / Future<FileResponse>）→
         // 原生 Response（fetch 返回原样交付，不 .json()）。
-        if crate::api::contract::ResponseKind::from_return_string(trimmed)
+        // PLAN-776 T-06：来源身份（用户同名声明不映射成专属 wire 形态）。
+        if crate::api::contract::ResponseKind::from_return_identity(trimmed, &self.user_types)
             == crate::api::contract::ResponseKind::File
         {
             return "Response".to_string();
@@ -40,7 +52,7 @@ impl TypeScriptGenerator {
 
         // PLAN-730 T-06: 上传三类型 → 收据 JSON（动态形状；UploadRequest 是
         // 注入参数——签名侧被 FormData 替换，此映射兜 interface/返回位）。
-        if crate::api::contract::ResponseKind::from_return_string(trimmed)
+        if crate::api::contract::ResponseKind::from_return_identity(trimmed, &self.user_types)
             == crate::api::contract::ResponseKind::Upload
             || crate::api::contract::is_upload_param(trimmed)
         {
@@ -472,9 +484,7 @@ export type { IApi };
 
         // PLAN-729 T-05: 文件端点返回原生 Response（状态/headers 保留，
         // 不调 .json()；读盘交给调用方——决策报告 §6）。
-        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-            == crate::api::contract::ResponseKind::File
-        {
+        if endpoint.response == crate::api::contract::ResponseKind::File {
             lines.push(format!("{}return response;", self.indent));
         } else if is_upload_endpoint {
             lines.push(format!("{}return response.json();", self.indent));
@@ -652,6 +662,7 @@ mod tests {
             attrs,
             body: None,
             doc: None,
+            response: crate::api::contract::ResponseKind::File,
         };
         let gen = super::TypeScriptGenerator::default();
         let ts_type = gen.to_ts_type("FileResponse");
@@ -706,6 +717,7 @@ mod tests {
                 },
             ],
             doc: Some("User information".to_string()),
+            alias_of: None,
         };
 
         let result = gen.generate_interface(&api_type);

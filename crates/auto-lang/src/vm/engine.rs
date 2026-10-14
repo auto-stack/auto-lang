@@ -442,6 +442,9 @@ pub struct ParkedSegment {
     pub saved_fn_n_args: usize,
 }
 
+/// PLAN-776 R1-F03：VM 实例唯一号分配器（凭据 owner 身份的来源侧）。
+static VM_INSTANCE_ID_GEN: AtomicU64 = AtomicU64::new(1);
+
 pub struct AutoVM {
     pub flash: Arc<VirtualFlash>,
     pub native_interface: Arc<NativeInterface>,
@@ -479,6 +482,14 @@ pub struct AutoVM {
     // `objects`/`arrays`/`nodes` registries were folded in here (H1/H3a/H3b).
     pub heap_objects: DashMap<u64, Arc<RwLock<dyn HeapObject>>>,
     pub heap_object_id_gen: AtomicU64,
+    /// PLAN-776 R1-F03：VM 实例唯一号（进程级 AtomicU64 分配）。heap id 是
+    /// per-VM 局部编号（两 VM 同号必然），HTTP 返回资源凭据的 id 段编入
+    /// owner（见 http_return_resource::credential_id），解析侧 id 层校验——
+    /// "每 VM 一张表"不构成来源证明。
+    pub instance_id: u64,
+    /// PLAN-776 R1-F03：HTTP 凭据专用 per-VM local 计数（凭据 id 不走通用
+    /// heap_object_id_gen——id 段编 owner，跨 VM 同号不可能）。
+    pub http_credential_gen: std::sync::atomic::AtomicU64,
 
     // Plan 419 Phase 1: 精确引用计数(heap_rc)+ 毒化 canary(tombstones)。
     // heap_rc: id → 计数(owned slot 数);insert_heap_object 不建条目,
@@ -766,6 +777,24 @@ impl AutoVM {
         ((future_id as i32) << 8) | 0xF0
     }
 
+    /// PLAN-776 R7-01：Future 句柄解码——TAG_FUTURE（逐值来源）优先；
+    /// i32 `0xF0` 位模式为 legacy 兼容臂（句柄经 `Value::Int` 载体往返
+    /// ——容器元素/闭包捕获 env——标签退化为位形态，功能保留）。
+    pub fn decode_future_handle(nv: auto_val::NanoValue) -> Option<u32> {
+        if auto_val::is_future(nv) {
+            Some(auto_val::decode_future(nv))
+        } else if auto_val::is_i32(nv) {
+            let bits = auto_val::decode_i32(nv);
+            if (bits & 0xFF) == 0xF0 {
+                Some((bits >> 8) as u32)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::production();
 
@@ -796,7 +825,9 @@ impl AutoVM {
             // objects/arrays/nodes registries folded in — single id space).
             heap_objects: DashMap::new(),
             heap_object_id_gen: AtomicU64::new(4000000),
-            // Plan 419 Phase 1: RC 协议状态
+            // PLAN-776 R1-F03：VM 实例唯一号（凭据 owner 身份）。
+            instance_id: VM_INSTANCE_ID_GEN.fetch_add(1, Ordering::Relaxed),
+            http_credential_gen: std::sync::atomic::AtomicU64::new(0), // Plan 419 Phase 1: RC 协议状态
             heap_rc: DashMap::new(),
             #[cfg(debug_assertions)]
             tombstones: DashMap::new(),
@@ -861,6 +892,16 @@ impl AutoVM {
 
     /// Remove a task and release resources owned by its lifetime.
     pub(crate) fn remove_task(&self, task_id: TaskId) {
+        // PLAN-776 R1-F04：任务终结清偿 HTTP 返回资源凭据的栈份额——
+        // dispatch（含 middleware/parked/shutdown/cancel 各终态）统一经此
+        // remove；Internal `~{}` body 栈与异常退出路径的残留引用在此收口
+        //（只清 HttpReturnResource，通用对象栈清理是 P776-D1 既有边界）。
+        // try_lock 失败（任务仍在执行——remove 本身即异常路径）跳过不阻塞。
+        if let Some(t_arc) = self.tasks.get(&task_id) {
+            if let Ok(t) = t_arc.try_lock() {
+                crate::vm::ffi::http_return_resource::release_task_credentials(self, &t);
+            }
+        }
         self.tasks.remove(&task_id);
         self.sqlite_handles
             .lock()
@@ -960,6 +1001,17 @@ impl AutoVM {
                 self.pool_release(str_idx);
                 return copy;
             }
+        } else if auto_val::is_future(nv) {
+            // PLAN-776 R8-01：Future 句柄入 Value 载体（容器/捕获 env/异步
+            // 终值）——**保真映射** `Value::Future(FutureData{id: fid})`（句柄
+            // 视图，state 占位 Pending；真实状态在 vm.futures）。R7 的降级
+            // Int(bits) 使 marshal 无法区分真实 Future 与同值普通数字
+            //（F776-R8-01 F2/F3），已废弃。
+            return auto_val::Value::Future(Box::new(auto_val::FutureData {
+                id: auto_val::decode_future(nv) as usize,
+                state: auto_val::FutureState::Pending,
+                result: None,
+            }));
         } else if auto_val::is_i32(nv) {
             // Plan 390 §15 H3b: all heap refs are TAG_OBJECT now (objects/
             // arrays/nodes produce encode_object), so a raw i32 is always a
@@ -1054,6 +1106,9 @@ impl AutoVM {
                 auto_val::encode_string(idx as u32)
             }
             Value::VmRef(r) => auto_val::encode_object(r.id as u32),
+            // PLAN-776 R8-01：Future 句柄 Value 载体还原为 TAG_FUTURE 载荷
+            //（容器/捕获往返保真；普通 Int 恒数据）。
+            Value::Future(f) => auto_val::encode_future(f.id as u32),
 
             // --- Array: register into heap_objects as ListData<Value> (H3b) ---
             Value::Array(arr) => {
@@ -1734,6 +1789,10 @@ impl AutoVM {
                 vm.rc_retain_id(vmref.id as u64);
                 ram.push_nv(auto_val::encode_object(vmref.id as u32));
                 ram.mark_top_stake(vmref.id as u64);
+            }
+            // PLAN-776 R9-02：Future 句柄还原 TAG_FUTURE（原落 WARNING+0）。
+            Value::Future(f) => {
+                ram.push_nv(auto_val::encode_future(f.id as u32));
             }
             _ => {
                 eprintln!("WARNING: push_value unsupported type: {:?}", value);
@@ -2526,6 +2585,37 @@ impl AutoVM {
         }
     }
 
+    /// PLAN-776 R2-01：HTTP handler dispatch 专用——generator 臂返回凭据对象。
+    pub fn call_fn_by_name_http(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> Result<(), VMError> {
+        match self.dispatch_fn_by_name_opt(task, fn_name, n_args, true, DriveBudget::Legacy, true) {
+            SegmentOutcome::Completed(res) => res,
+            SegmentOutcome::Parked { .. } => Err(VMError::RuntimeError(
+                "internal: segment driver parked under busy-wait mode (unreachable)".into(),
+            )),
+            SegmentOutcome::Runnable { .. } => Err(VMError::RuntimeError(
+                "internal: cpu-slice outcome escaped legacy sync driver (unreachable)".into(),
+            )),
+        }
+    }
+
+    /// PLAN-776 R2-01：segment 形态的 HTTP dispatch（parked handler）——
+    /// generator 臂同样返回凭据对象。
+    pub fn call_fn_by_name_segment_http(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> SegmentOutcome {
+        // 与 call_fn_by_name_segment 同参数形态（busy_wait=false、Legacy
+        // budget），wrap_generators=true（generator 臂返回凭据对象）。
+        self.dispatch_fn_by_name_opt(task, fn_name, n_args, false, DriveBudget::Legacy, true)
+    }
+
     /// PLAN-702 T-01: segment-dispatch a named VM function (UI handler drive).
     ///
     /// Same setup contract as [`Self::call_fn_by_name`] (args pre-pushed on
@@ -2719,6 +2809,21 @@ impl AutoVM {
         allow_busy_wait: bool,
         budget: DriveBudget,
     ) -> SegmentOutcome {
+        self.dispatch_fn_by_name_opt(task, fn_name, n_args, allow_busy_wait, budget, false)
+    }
+
+    /// PLAN-776 R2-01：`wrap_generators=true` 时 generator 臂在返回边界建立
+    /// 身份（push Sse 凭据对象而非裸 int id）——仅供 HTTP handler dispatch
+    /// 消费（marshal 资源臂按值分派）；for-in 等通用调用面保持 int 语义。
+    fn dispatch_fn_by_name_opt(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+        allow_busy_wait: bool,
+        budget: DriveBudget,
+        wrap_generators: bool,
+    ) -> SegmentOutcome {
         // 1. Look up function address
         let addr = match self.flash.exports_by_name.get(fn_name) {
             Some(a) => *a,
@@ -2764,7 +2869,18 @@ impl AutoVM {
                     .insert(next_id, Iterator::Generator(gen_state));
                 next_id
             };
-            task.ram.push_i32(iter_id as i32);
+            // PLAN-776 R2-01：generator 真实 producer 在返回边界建立身份——
+            // HTTP dispatch 消费面收 Sse 凭据对象（iterator 身份不靠声明或
+            // 表命中猜测）；通用调用面（for-in 等）保持 int 语义。
+            if wrap_generators {
+                if let Err(e) =
+                    crate::vm::ffi::http_return_resource::push_sse_resource(task, self, iter_id)
+                {
+                    return SegmentOutcome::Completed(Err(e));
+                }
+            } else {
+                task.ram.push_i32(iter_id as i32);
+            }
             return SegmentOutcome::Completed(Ok(()));
         }
 
@@ -4211,7 +4327,16 @@ impl AutoVM {
                     let type_idx = (field_count - 1 - i) as usize;
                     let obj_type = types.get(type_idx).copied().unwrap_or(ObjectType::Int);
                     let nv = task.ram.pop_nv();
-                    let value = if auto_val::is_object(nv) {
+                    let value = if auto_val::is_future(nv) {
+                        // PLAN-776 R9-02：Future 句柄字段**保真映射**
+                        // Value::Future（句柄视图）——原落整数 payload 臂
+                        // 把 fid 存成 Int(1)（F776-R9-02 反例 body=1）。
+                        auto_val::Value::Future(Box::new(auto_val::FutureData {
+                            id: auto_val::decode_future(nv) as usize,
+                            state: auto_val::FutureState::Pending,
+                            result: None,
+                        }))
+                    } else if auto_val::is_object(nv) {
                         auto_val::Value::VmRef(auto_val::VmRef {
                             id: auto_val::decode_object(nv) as usize,
                         })
@@ -4313,6 +4438,14 @@ impl AutoVM {
                                 auto_val::Value::Double(auto_val::decode_f64(nv))
                             } else if auto_val::is_f32(nv) {
                                 auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+                            } else if auto_val::is_future(nv) {
+                                // PLAN-776 R8-01：Future 句柄入数组——保真
+                                // 映射 Value::Future（句柄视图）。
+                                auto_val::Value::Future(Box::new(auto_val::FutureData {
+                                    id: auto_val::decode_future(nv) as usize,
+                                    state: auto_val::FutureState::Pending,
+                                    result: None,
+                                }))
                             } else {
                                 auto_val::Value::Int(auto_val::decode_i32(nv))
                             };
@@ -5833,6 +5966,14 @@ impl AutoVM {
                                     Value::Double(auto_val::decode_f64(nv))
                                 } else if auto_val::is_f32(nv) {
                                     Value::Float(auto_val::decode_f32(nv) as f64)
+                                } else if auto_val::is_future(nv) {
+                                    // PLAN-776 R9-02：Future 句柄字段**保真映射**
+                                    //（原落 Int 兜臂把 fid 存成 Int(1)——F776-R9-02）。
+                                    Value::Future(Box::new(auto_val::FutureData {
+                                        id: auto_val::decode_future(nv) as usize,
+                                        state: auto_val::FutureState::Pending,
+                                        result: None,
+                                    }))
                                 } else {
                                     Value::Int(auto_val::decode_i32(nv))
                                 }
@@ -6725,6 +6866,12 @@ impl AutoVM {
                                     auto_val::Value::VmRef(r) => {
                                         self.rc_push(task, auto_val::encode_object(r.id as u32));
                                     }
+                                    // PLAN-776 R8-01：Future 句柄元素还原
+                                    // TAG_FUTURE 载荷（容器取出保真——
+                                    // F776-R8-01 F3；原落 `_` 臂 push_i32(0)）。
+                                    auto_val::Value::Future(f) => {
+                                        task.ram.push_nv(auto_val::encode_future(f.id as u32));
+                                    }
                                     // PLAN-053 P-053-1: 对象元素物化——
                                     // Value::Obj 原落 `_` 臂 push_i32(0)，
                                     // `messages[i].id` 读 0、守卫恒假 →
@@ -7536,6 +7683,11 @@ impl AutoVM {
                                     // Plan 419: 子对象引用入栈 +1。
                                     self.rc_push_id(task, vm_ref.id as u64);
                                 }
+                                // PLAN-776 R9-02：Future 句柄字段还原
+                                // TAG_FUTURE（原落 `_` placeholder 0）。
+                                auto_val::Value::Future(f) => {
+                                    task.ram.push_nv(auto_val::encode_future(f.id as u32));
+                                }
                                 _ => {
                                     // Unsupported type - push 0 as placeholder
                                     task.ram.push_i32(0);
@@ -7600,6 +7752,11 @@ impl AutoVM {
                                             task,
                                             auto_val::encode_object(vm_ref.id as u32),
                                         );
+                                    }
+                                    // PLAN-776 R9-02：Future 句柄字段还原
+                                    // TAG_FUTURE（原落 `_` placeholder 0）。
+                                    auto_val::Value::Future(f) => {
+                                        task.ram.push_nv(auto_val::encode_future(f.id as u32));
                                     }
                                     _ => {
                                         task.ram.push_i32(0);
@@ -8377,7 +8534,30 @@ impl AutoVM {
                 // http 调用栈下溢崩溃(E2 现场同根)。
                 // 判定收窄到"小正整数句柄且不在堆上、但命中 response 表",
                 // 服务端 Response 构建链(堆对象)与普通 int 方法不受影响。
+                // PLAN-776 R1-F06：receiver 双形态——client int 句柄（查表面）
+                // 或 **Response 凭据对象**（快照面——read_response_payload 内
+                // owner 校验分流）。对象臂 Some(0) 仅作"走 shim"标志（shim 按
+                // 栈上原 receiver nv 分流，不消费该值）。
+                let receiver_is_credential = auto_val::is_object(receiver_nv)
+                    && self
+                        .heap_objects
+                        .get(&(auto_val::decode_object(receiver_nv) as u64))
+                        .map(|o| {
+                            o.read()
+                                .map(|g| {
+                                    g.type_tag()
+                                        == crate::vm::heap_object::TypeTag::HttpReturnResource
+                                })
+                                .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
                 let http_response_handle = match method_name.as_str() {
+                    "status" | "status_code" | "body" | "body_bytes" | "body_to_file"
+                    | "header" | "header_get"
+                        if arg_count <= 2 && receiver_is_credential =>
+                    {
+                        Some(0i32)
+                    }
                     "status" | "status_code" | "body" | "body_bytes" | "body_to_file"
                     | "header" | "header_get"
                         if arg_count <= 2 && auto_val::is_i32(receiver_nv) =>
@@ -11215,6 +11395,24 @@ impl AutoVM {
                 };
                 task.ram.push_i32(iter_id as i32);
             }
+            OpCode::WRAP_SSE_RESOURCE => {
+                // PLAN-776 R2-01/R5-01：generator 产出在**生产点**建立身份
+                //（codegen 对 ~Iter/~Stream 声明 fn 内的 CREATE_GENERATOR 后
+                // 插入；iterator 注册表校验后装箱 Sse 凭据）。幂等：已是
+                // 凭据对象（TAG_OBJECT）则原样回推——双包装/凭据回流安全。
+                let nv = task.ram.pop_nv();
+                if auto_val::is_object(nv) {
+                    task.ram.push_nv(nv);
+                } else {
+                    let iter_id = auto_val::decode_i32(nv) as u32;
+                    if !self.iterators.contains_key(&iter_id) {
+                        return Err(VMError::RuntimeError(format!(
+                            "wrap_sse: iterator {iter_id} not registered"
+                        )));
+                    }
+                    crate::vm::ffi::http_return_resource::push_sse_resource(task, self, iter_id)?;
+                }
+            }
             OpCode::SLEEP => {
                 let ms = self.flash.read_u32(task.ip) as u64;
                 task.ip += 4;
@@ -11384,11 +11582,12 @@ impl AutoVM {
             // Stack layout: [..., future_or_closure:i32]
             OpCode::SPAWN_GO => {
                 // Pop the single value pushed by the Expr::Go codegen.
-                let value = task.ram.pop_i32();
+                let value_nv = task.ram.pop_nv();
 
-                // Decode the value: a Future is encoded as (future_id << 8) | 0xF0.
-                if (value & 0xFF) == 0xF0 {
-                    let future_id = (value >> 8) as u32;
+                // PLAN-776 R7-01：TAG_FUTURE 逐值来源优先（legacy 位模式
+                // 兼容）；非 future 值按 closure id 处理（原语义）。
+                if let Some(future_id) = Self::decode_future_handle(value_nv) {
+                    let value = auto_val::decode_i32(value_nv);
                     // Look up the future to obtain its body offset and
                     // captures, then spawn a background task that starts at
                     // the body offset.
@@ -11437,7 +11636,7 @@ impl AutoVM {
                     // Otherwise treat the value as a closure id. Spawn a
                     // background task at the closure's function address so
                     // that the closure's body runs concurrently.
-                    let closure_id = value as u32;
+                    let closure_id = auto_val::decode_i32(value_nv) as u32;
                     if let Some(closure_guard) = self.closures.get(&closure_id) {
                         let func_addr = closure_guard.func_addr as usize;
                         let _new_task_id = self.spawn_task(func_addr, 1024);
@@ -12442,10 +12641,10 @@ impl AutoVM {
                 self.futures
                     .insert(future_id, Arc::new(RwLock::new(future)));
 
-                // For Phase 2.1, we encode Future on stack as: (future_id << 8) | 0xF0
-                // The 0xF0 marker distinguishes futures from other values
-                let future_bits = ((future_id as i32) << 8) | 0xF0;
-                task.ram.push_i32(future_bits);
+                // PLAN-776 R7-01：Future 句柄走 TAG_FUTURE **逐值来源**载荷
+                //（普通 i32 永不携带 Future 身份——`(fid<<8)|0xF0` 位模式
+                // 撞值即数据；legacy 位形态仅作 Value 往返降级兼容）。
+                task.ram.push_nv(auto_val::encode_future(future_id));
 
                 vm_debug!(
                     "DEBUG: CREATE_FUTURE: id={}, body_offset={}",
@@ -12461,12 +12660,10 @@ impl AutoVM {
                 // await 的同步值（含 return None 的 null nv）按 raw i32
                 // 重推（identity 路径），null 被拍平成 Int(-2147483647)。
                 let future_nv = task.ram.pop_nv();
-                let future_bits = auto_val::decode_i32(future_nv);
 
-                // Check if this is a valid future encoding
-                if (future_bits & 0xFF) == 0xF0 {
-                    let future_id = (future_bits >> 8) as u32;
-
+                // PLAN-776 R7-01：TAG_FUTURE 逐值来源优先；0xF0 位模式为
+                // legacy 兼容臂（非 future 值原样回推——下方 else）。
+                if let Some(future_id) = Self::decode_future_handle(future_nv) {
                     // Look up the future in the registry
                     if let Some(future_arc) = self.futures.get(&future_id) {
                         let future = future_arc.write().unwrap();
@@ -12528,13 +12725,11 @@ impl AutoVM {
             }
             OpCode::POLL_FUTURE => {
                 // Non-blocking poll for future state
-                // Stack: [..., future_bits]
+                // Stack: [..., future_handle]
                 // Returns: (is_ready: bool, value_or_nil)
-                let future_bits = task.ram.pop_i32();
+                let future_nv = task.ram.pop_nv();
 
-                if (future_bits & 0xFF) == 0xF0 {
-                    let future_id = (future_bits >> 8) as u32;
-
+                if let Some(future_id) = Self::decode_future_handle(future_nv) {
                     // Look up the future in the registry
                     if let Some(future_arc) = self.futures.get(&future_id) {
                         let future = future_arc.read().unwrap();
@@ -12807,8 +13002,26 @@ impl AutoVM {
                     // 对齐）——此前 pop_i32+decode_tagged_value 把 nanobox
                     // 标签位当 raw i32 重解码，return None 的 null nv 被拍平
                     // 成 Int(0)/Int(-1)，`.x = f().await` 后 `.x != None` 恒真。
-                    if task.ram.sp > task.bp + 1 {
+                    // PLAN-776 R5-01：bp==0（dispatch 直驱立即体——handler 已
+                    // RET、任务栈归 base，RET bp==0 短路不弹帧）时值就在
+                    // 栈顶；原 `sp > bp + 1` 只覆盖帧内（await/spawn）形态，
+                    // base 形态漏读 → 终值恒 Int(0)。
+                    let has_result = if task.bp == 0 {
+                        task.ram.sp > task.bp
+                    } else {
+                        task.ram.sp > task.bp + 1
+                    };
+                    if has_result {
                         let raw = task.ram.pop_nv();
+                        // PLAN-776 R1-F04：body 栈槽份额终结（与 RET 指令的
+                        // 影子转移语义对齐）——result 是 VmRef（无份额），
+                        // push_value 回调用者栈时另行建份额（Plan 419 咽喉
+                        // 点）；此前只 pop 不释放，每 Internal body 的对象
+                        // 终值悬空一份（dying 宽限窗内的 retain 复活使窗口
+                        // 期安全）。
+                        if auto_val::is_object(raw) || auto_val::is_list(raw) {
+                            self.rc_release(raw);
+                        }
                         result_value = self.decode_tagged_nv(raw);
                     }
                     break;
@@ -12887,6 +13100,11 @@ impl AutoVM {
                 FrameResult::Return => {
                     if task.ram.sp > task.bp + 1 {
                         let raw = task.ram.pop_nv();
+                        // PLAN-776 R1-F04：与 execute_future_body 同款——body
+                        // 栈槽份额终结（VmRef 无份额，push_value 另建）。
+                        if auto_val::is_object(raw) || auto_val::is_list(raw) {
+                            self.rc_release(raw);
+                        }
                         result_value = self.decode_tagged_nv(raw);
                     }
                     // Complete the outer `~{}` future
@@ -12895,10 +13113,6 @@ impl AutoVM {
                         future.state = FutureState::Ready;
                         future.result = Some(result_value.clone());
                     }
-                    eprintln!(
-                        "[394] body complete outer={} result={:?} restore={:#x}",
-                        frame.outer_future_id, result_value, frame.outer_saved_ip
-                    );
                     // Drop all continuation frames for this body; restore outer IP
                     let mut restore_ip = frame.outer_saved_ip;
                     // Pop every frame belonging to this body (sequential external

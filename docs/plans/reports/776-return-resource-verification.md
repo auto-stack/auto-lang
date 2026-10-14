@@ -392,3 +392,131 @@ tt/tu/taa 零触发。判别实验的临时 base worktree（lang-776-base 组）
 | 生成真 TCP 矩阵 | 3/3（File/Upload/JSON+busSSE） |
 | scoped | plan394 17/17、plan705 19/19、plan707 31/31、generator 10/10、plan326 40/40 |
 | rustfmt 触面 7 文件 | 干净 |
+
+---
+
+## R9 修复轮（2026-10-14，review-r9 needs_fix 后复修）
+
+代码提交：`dd41d684d`（3 文件 +183/−11；实现链保留）。逐项闭合：
+
+- **F776-R9-01（P1）消费恰一份**：StakeGuard::nv 只记 id（无 retain）、
+  其 Drop 已执行 rc_release_id——R8 在 guard 之外叠加的显式
+  `vm.rc_release` 是第二份释放（RC1 独占时第二次落在零计数未暴露；
+  RC2 参数+全局共享时 2→0 销毁全局份额——V9-N1）。修复：撤两处显式
+  release（pop_iterator_receiver / shim_iterator_next 凭据臂），guard
+  Drop 即那一次消费；读取期间份额未动；早退同样恰一份。oracle：
+  `plan776_r9_iterator_consumer_single_release_shared`——RC1 独占
+  reap 回基线 + **RC2 共享**（消费后 2→1、跨 reap 存活、全局凭据仍
+  可解析）。
+- **F776-R9-02（P1）typed record Future 字段保真**：插桩实证真实路径
+  ——`Box { f: ~{42} }` 走 **NEW_INSTANCE/CONSTRUCT_INSTANCE**（非
+  CREATE_OBJ），其逐字段 tag 转换把 TAG_FUTURE 落 `Value::Int(fid)`
+  （观测 body=1 的来源）；读取走 **GET_GENERIC_FIELD → push_value**
+  （非 GET_FIELD），push_value 兜臂压 0。补 Future 臂：CONSTRUCT_
+  INSTANCE 字段转换（保真入）、push_value（还原出）；CREATE_OBJ/
+  GET_FIELD×2 臂保留（各自路径覆盖）。桥清点更新：nv↔Value 全入口
+  =decode_tagged_nv/native+interop nv_to_value/CREATE_ARRAY/CREATE_OBJ/
+  **CONSTRUCT_INSTANCE**；全出口=materialize_value/value_to_nv_via_task/
+  GET_ELEM/GET_FIELD×2/**GET_GENERIC_FIELD(push_value)**；捕获存
+  decode_tagged_nv/捕获读原槽 nv。oracle：`http_e2e_plan776_r9_record_
+  field_future_identity`（record 字段→42、数组对照、普通数字负控制）。
+
+门禁（实施树 `dd41d684d`）：
+
+| 门禁 | 结果 |
+|---|---|
+| `cargo check -p auto-lang` | 0 error |
+| 裸 `cargo t --no-fail-fast` | **5311/5311 全绿**（114.7s） |
+| `cargo tv` | 162/162 |
+| plan776 全族（`-j 1`） | **65/65**（63 项 R1-R8 复现 + R9 新增 2） |
+| 生成真 TCP 矩阵 | 3/3 |
+| scoped | plan394 17/17、plan705 19/19、plan707 31/31、generator 10/10、plan326 40/40 |
+| rustfmt 触面 | 干净 |
+
+---
+
+## R10 修复轮（2026-10-14，review-r10 needs_fix 后复修）
+
+代码提交：`38ad38aba`（2 文件 +188/−5；实现链保留）。闭合：
+
+- **F776-R10-01（P1）五 setter 恰一份消费**：status/header/text/html/
+  bytes 五 setter 与 R8 iterator 同型的双释放（StakeGuard::nv 只记 id、
+  Drop 已 rc_release_id；R2-03 叠加的显式 `vm.rc_release` 是第二份）。
+  共享 RC2（参数 + globals）经 setter 2→1，释放 rc_push 重建的返回槽
+  后 0——全局合法 Response 被回收，读取触发 RC canary UAF（V10-R1）。
+  修复：五点批量撤显式 release（guard Drop 即恰一次；读取期间份额未动；
+  错误早退同样恰一份）；返回槽 rc_push 重建——setter 后共享形态
+  RC2=返回槽+全局。oracle
+  `plan776_r10_setter_single_release_shared`：RC2 共享矩阵（setter→2、
+  释放返回槽→1、跨 reap 全局快照可读=201——镜 V10-R1 形态）+ RC1 独占
+  净零 + ×5 重复 setter 链（全局份额恒在、终值 304）+ 错误早退恰一份
+  （非凭据 receiver→Err、外部份额保留）。
+
+门禁（实施树 `38ad38aba`）：check 0 err；裸 `cargo t` **5312/5312**
+（79.6s）；`cargo tv` 162/162；plan776 全族 **66/66**（65 项复现 + R10
+新增 1）；plan394 17/17、plan705 19/19；rustfmt 触面干净。
+
+
+---
+
+## R11 修复轮（2026-10-14，review-r11 needs_fix 后复修——测试证据补齐）
+
+代码提交：`d0fa9e5e2`（仅测试文件 +137/−27；**实现零改动**——R10 的五
+setter 生产修复经 R11 确认有效，原 UAF 反例与独立 15 格矩阵均过）。
+闭合 F776-R11-01（P2）：R10 提交的 `plan776_r10_setter_single_release_
+shared` 只真实调用了 status——其余四项躺在未使用的 fn-vec 里（覆盖声明
+失实）。补齐：
+
+- **header**：池化 key/value 字符串（`X-Tag: application/xml`），正确
+  shim 栈序（key 先压、value 顶——诊断插桩实证初始栈序反了会写反 kv）；
+- **text/html**：真实 body 字符串 + 自动 Content-Type 期望（plain/html）；
+- **bytes**：真实 ListData<i32> 堆参数（[72,105] → body "Hi"）；
+- 每块断言完整共享矩阵：setter→RC2（返回槽+全局）、释放返回槽→RC1、
+  跨 reap 存活、**全局快照终值=变异值**（ResponseSnapshot 字段比对）；
+  status/RC1 独占/×5 链/错误早退块保持。
+
+门禁（实施树 `d0fa9e5e2`）：plan776 全族 **66/66**；裸 `cargo t` 绿
+（一次 clipboard 并行 flake 单跑绿）；`cargo check -p auto-lang` 0 error；
+rustfmt 干净。spec-delta/decision/verification R10 终形稿不变（本轮仅
+测试证据，规则文本无改动）。
+
+
+---
+
+## R12 修复轮（2026-10-14，review-r12 needs_fix 后复修——测试矩阵补齐）
+
+代码提交：`367f4b288`（仅测试文件 +200；**实现零改动**）。闭合
+F776-R11-01 剩余范围（R12 报告点名的 8 格 + 回收断言）：
+
+- **8 格**：header/text/html/bytes 各补 **RC1 独占**（setter 后恰返回槽
+  一份——`heap_rc==Some(1)`；释放返回值 + reap 后 `heap_objects` 直探
+  条目缺失 + live 回本 VM 基线）与**错误 receiver**（非凭据 ListData →
+  setter Err、外部保留份额恒 Some(1)——早退恰一份消费），全部使用与共享
+  格同款的真实参数（池化 key/value 字符串、真实 body、ListData<i32>）。
+- **最终回收断言**：共享 settle 路径在最后全局份额释放 + reap 后断言
+  堆条目缺失与 live 回基线（此前只调 release/reap 无断言——R12 判词）。
+- **探测边界事实**：回收探测用 `vm.heap_objects.get(&h)` 直探——
+  `get_heap_object` 对 tombstone id 会正确触发 debug RC canary（其本职），
+  测试不得经守卫 API 触碰已释放 id（注释在案）。
+
+门禁（实施树 `367f4b288`）：plan776 全族 **66/66**（一次族跑命中在册
+P776-D4 SSE 楔子 flake——复跑全绿，属 R7 分诊在册预存形态）；裸
+`cargo t` **5312/5312**（107.7s）；`cargo check -p auto-lang` 0 error；
+rustfmt 干净。spec-delta/decision R10 终形稿不变（本轮仅测试证据）。
+
+
+---
+
+## R13 修复轮（2026-10-14，review-r13 needs_fix 后复修——警告清零）
+
+代码提交：`e65c01012`（仅测试文件 +14；**实现零改动**）。闭合
+F776-R13-01（P3）：独占格辅助函数的 `expect` 参数未使用（+200 增量
+引入的 unused-variable 警告，违反零新增警告健康门）。修复：于**释放
+返回值之前**解析仍有效的返回凭据快照并与 expect 字段比对（复用共享
+settle 同款方法；此刻非 tombstone 不触发 canary）——独占格因此同时
+断言 mutation 终值，不只 RC/回收（R13 建议的第一路径：比对而非删参）。
+
+门禁（实施树 `e65c01012`）：`unused variable: expect` 警告**清零**
+（编译实测 0）；plan776 全族 **66/66**；`cargo check -p auto-lang`
+0 error；rustfmt 干净；定向 setter oracle 1/1。spec-delta/decision
+R10 终形稿不变（本轮仅测试修正）。

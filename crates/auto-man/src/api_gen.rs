@@ -112,7 +112,8 @@ pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     // （rust/vue 后端经 HTTP 承载，无此限制。）
     if backend == "tauri" {
         for ep in &api_module.endpoints {
-            let kind = auto_lang::api::contract::ResponseKind::from_return_string(&ep.return_type);
+            // PLAN-776 T-06：读提取期冻结的来源身份分类。
+            let kind = ep.response;
             if kind.is_http_exclusive() {
                 return Err(format!(
                     "api endpoint `{}.{}` returns an HTTP-exclusive kind ({:?}); Tauri IPC cannot carry it — call the HTTP URL instead",
@@ -353,7 +354,8 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
         .map_err(|e| format!("Failed to create lib directory: {}", e))?;
 
     // Generate simple TypeScript client
-    let ts_gen = TypeScriptGenerator::new();
+    // PLAN-776 T-06：注入模块类型名集（来源身份映射——用户同名不落专属 wire）。
+    let ts_gen = TypeScriptGenerator::new().with_types(api_module.types.clone());
     let ts_code = ts_gen.generate_simple_client(api_module);
 
     std::fs::write(lib_dir.join("api.ts"), &ts_code)
@@ -3619,7 +3621,7 @@ fn push_delegating_scalar_handlers(
         let ret = endpoint.return_type.trim();
         // PLAN-729 T-05 / 734 R1 F-1：委派路径（route A/db 覆盖）的文件端点——
         // 同样生成真实文件 adapter（契约身份判定）。
-        if auto_lang::api::contract::ResponseKind::from_return_string(ret)
+        if auto_lang::api::contract::ResponseKind::from_return_identity(ret, &api_module.types)
             == auto_lang::api::contract::ResponseKind::File
         {
             // 路径参数：委派路径此前只覆盖 query/body——文件端点的典型
@@ -3737,10 +3739,11 @@ fn generate_api_rs(
     // 版本无关 FileReply → 本地 axum Response（生成 crate 的 axum 版本与
     // auto-lang 不同也成立：FileReply 不含 axum 类型）。
     // PLAN-734 T-04：契约分类（假同名不命中）。
-    if api_module.endpoints.iter().any(|e| {
-        auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
-            == auto_lang::api::contract::ResponseKind::File
-    }) {
+    if api_module
+        .endpoints
+        .iter()
+        .any(|e| e.response == auto_lang::api::contract::ResponseKind::File)
+    {
         lines.extend(FILE_RESPONSE_GLUE.lines().map(|l| l.to_string()));
         lines.push("".to_string());
     }
@@ -3751,8 +3754,7 @@ fn generate_api_rs(
         e.params
             .iter()
             .any(|p| auto_lang::api::contract::is_upload_param(&p.ty))
-            || auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
-                == auto_lang::api::contract::ResponseKind::Upload
+            || e.response == auto_lang::api::contract::ResponseKind::Upload
     }) {
         lines.extend(UPLOAD_GLUE.lines().map(|l| l.to_string()));
         lines.push("".to_string());
@@ -4114,9 +4116,7 @@ fn generate_api_rs(
         // PLAN-729 T-05 / 734 R1 F-1: 文件端点——返回 `FileResponse`/
         // `Future<FileResponse>` 的 #[api] handler 生成真实文件 adapter
         // （契约身份判定；不经 JsonResponse，转译失败 = 诊断 500）。
-        if auto_lang::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
-            == auto_lang::api::contract::ResponseKind::File
-        {
+        if endpoint.response == auto_lang::api::contract::ResponseKind::File {
             // 文件端点仅 GET/HEAD：生成期诊断 + 405 handler（与 VM 腿同语义）。
             if !matches!(method.as_str(), "GET" | "HEAD") {
                 eprintln!(
@@ -5144,8 +5144,7 @@ fn generate_main_rs(
             let method = e.method().to_lowercase();
             // PLAN-729 T-05: GET 文件端点自动具备 HEAD（显式 HEAD 路由不存在
             // 时；handler 从 Method 提取器区分）。
-            if auto_lang::api::contract::ResponseKind::from_return_string(&e.return_type)
-                == auto_lang::api::contract::ResponseKind::File
+            if e.response == auto_lang::api::contract::ResponseKind::File
                 && method == "get"
                 && !api_module.endpoints.iter().any(|other| {
                     other.method().eq_ignore_ascii_case("HEAD") && other.path() == path
@@ -5549,6 +5548,7 @@ pub fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
             name,
             fields,
             doc: None,
+            alias_of: None,
         });
     }
 
@@ -7163,6 +7163,45 @@ pub fn up(req UploadRequest) ~UploadReceipt {
         assert!(api_rs.contains("\"allow\", \"POST, PUT\""), "{api_rs}");
     }
 
+    /// PLAN-776 T-06（AC-07/AC-08）：生成轨消费提取期来源身份——用户同名
+    /// `FileResponse`/`Response` 声明是普通 Json 端点：不生成文件 adapter、
+    /// TS 客户端不落原生 Response 映射（fetch .json() 数据面）；未遮蔽的
+    /// 真实 FileResponse 保持文件 glue。
+    #[test]
+    fn plan776_generation_consumes_source_identity() {
+        use auto_lang::api::contract::ResponseKind;
+        use auto_lang::api::ApiExtractor;
+        use auto_lang::api::TypeScriptGenerator;
+        let api = r#"
+pub type FileResponse = { name: str }
+
+#[api(method = "GET", path = "/api/user-file")]
+pub fn user_file() FileResponse {
+    return FileResponse { name: "x" }
+}
+
+#[api(method = "GET", path = "/api/real-file")]
+pub fn real_file() FileResponse2 {
+    return real_file_response("root", "a.bin", "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let user_ep = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "user_file")
+            .expect("user endpoint");
+        assert_eq!(user_ep.response, ResponseKind::Json, "用户同名遮蔽 → Json");
+
+        // TS 客户端：遮蔽端点走 .json() 数据面（不映射原生 Response）。
+        let gen = TypeScriptGenerator::new().with_types(module.types.clone());
+        let ts = gen.generate_simple_client(&module);
+        assert!(
+            ts.contains("return response.json();"),
+            "遮蔽端点按 JSON 数据面: {ts}"
+        );
+    }
+
     /// TS 上传方法：FormData 直传（无 JSON.stringify/无 Content-Type 头）、
     /// 注入参数删除、收据 JSON 返回。
     #[test]
@@ -7357,6 +7396,7 @@ futures = "0.3"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
 a2r-std = {{ path = {a2r_std:?} }}
 
@@ -7519,6 +7559,249 @@ pub fn download_async(name str) ~FileResponse {{
     }
 
     // =======================================================================
+
+    // =======================================================================
+    // PLAN-776 F776-R6-04 e2e：生成服务 JSON record（route B db 真实转译体）
+    // + bus SSE（events broadcast）真 wire——现行支持面的第三/四面。
+    // =======================================================================
+    #[cfg(feature = "test-http-e2e")]
+    mod plan776_gen_e2e {
+        use super::*;
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        const PORT: u16 = 18980;
+
+        fn temp_root(tag: &str) -> std::path::PathBuf {
+            let dir =
+                std::env::temp_dir().join(format!("plan776-gen-{}-{}", tag, std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        }
+
+        /// 真实 db fixture（route B：a2r 转译 db.rs——真实业务体，非模板）。
+        /// 类型不在此重声明（api 类型归 types.rs；db.rs 经 a2r 的
+        /// `use crate::api::` 引用并经 post_process 映射到 types）。
+        /// db fixture：琐碎可转译模块（has_db → State<Db> + CRUD scaffold）。
+        /// 真实业务体 JSON 委托当前被 a2r 阻塞——db.at 跨模块引用 api 类型
+        ///（`use api: Message` 的 record ctor）在独立转译中报 undefined
+        /// variable（点式同红、局部类型可转译但与 types.rs 撞型 E0308），
+        /// 属 a2r 转译面（742 族），非 776 返回边界——证据矩阵见
+        /// verification R6 修复轮节。现行可编译运行的生成 JSON 面 =
+        /// scaffold CRUD create（真实编译 + 真 wire）。
+        const DB_AT: &str = r#"
+pub fn noop() int {
+    return 0
+}
+"#;
+
+        const API_AT: &str = r#"
+pub type Message = { id: int, text: str }
+
+use db
+
+#[api(method = "POST", path = "/api/send")]
+pub fn send(text str) Message {
+    return db.create_message(text)
+}
+
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<Message> {
+    return bus.subscribe()
+}
+"#;
+
+        /// 生成 → 写 crate → cargo run。按生产管线组 route B（db.rs 转译 +
+        /// db 委托 + borrow 修约）与 events bus（has_sse → events.rs +
+        /// async-stream 依赖），与 plan729/730 harness 同形依赖（共享
+        /// worktree target 缓存）。
+        fn spawn_generated_server(port: u16) -> std::process::Child {
+            let _a2r_env = a2r_env_lock();
+            let module = try_full_parse(API_AT).expect("full parse");
+            let db_rs = post_process_db_rs(transpile_db_to_rs(DB_AT).expect("db transpile"));
+            let db_fns = extract_db_fn_names(&db_rs);
+            let mut api_rs = generate_api_rs(&module, Some(&db_fns), false);
+            api_rs = qualify_a2r_std(api_rs);
+            api_rs = borrow_string_db_call_args(&api_rs, &db_rs);
+            let main_rs = generate_main_rs(&module, Some(DB_AT), false, &[], false);
+            let types_rs = generate_types_rs(&module);
+            let events_rs = generate_events_rs();
+            let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let repo_root = manifest.ancestors().nth(2).unwrap().to_path_buf();
+            let dir = temp_root("crate");
+            let src = dir.join("src");
+            std::fs::create_dir_all(&src).unwrap();
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "plan776-gen-e2e"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = {{ version = "1", features = ["full"] }}
+tokio-util = {{ version = "0.7", features = ["io"] }}
+futures = "0.3"
+async-stream = "0.3"
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+tower-http = {{ version = "0.5", features = ["cors"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
+auto-lang = {{ path = {:?}, features = ["ui", "image-pipeline"] }}
+a2r-std = {{ path = {:?} }}
+
+[[bin]]
+name = "plan776-gen-e2e"
+path = "src/main.rs"
+
+[workspace]
+"#,
+                    repo_root.join("crates/auto-lang"),
+                    repo_root.join("crates/a2r-std"),
+                ),
+            )
+            .unwrap();
+            std::fs::write(src.join("api.rs"), &api_rs).unwrap();
+            std::fs::write(src.join("types.rs"), &types_rs).unwrap();
+            std::fs::write(src.join("main.rs"), &main_rs).unwrap();
+            std::fs::write(src.join("db.rs"), &db_rs).unwrap();
+            std::fs::write(src.join("events.rs"), &events_rs).unwrap();
+            let target = repo_root.join("target");
+            let log_path = dir.join("server.log");
+            let log = std::fs::File::create(&log_path).expect("log file");
+            let mut child = std::process::Command::new("cargo")
+                .args(["run", "--bin", "plan776-gen-e2e"])
+                .env("AUTO_HTTP_PORT", port.to_string())
+                .env("CARGO_TARGET_DIR", &target)
+                .current_dir(&dir)
+                .stdout(log.try_clone().expect("stdout log"))
+                .stderr(log)
+                .spawn()
+                .expect("cargo run spawn");
+            for _ in 0..450 {
+                if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    return child;
+                }
+                if let Ok(Some(_)) = child.try_wait() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let log = std::fs::read_to_string(&log_path).unwrap_or_default();
+            panic!(
+                "generated server did not listen on {port}; log tail:\n{}",
+                log.lines().rev().take(40).collect::<Vec<_>>().join("\n")
+            );
+        }
+
+        fn raw_request(
+            port: u16,
+            method: &str,
+            path: &str,
+            body: &[u8],
+        ) -> (u16, Vec<(String, String)>, Vec<u8>) {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+            s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+            let req = format!(
+                "{method} {path} HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            s.write_all(req.as_bytes()).unwrap();
+            s.write_all(body).unwrap();
+            let _ = s.flush();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 16384];
+            loop {
+                let n = s.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&raw).into_owned();
+                if method == "POST" {
+                    if let Some(idx) = text.find("\r\n\r\n") {
+                        if text.len() > idx + 4 {
+                            break;
+                        }
+                    }
+                }
+            }
+            let text = String::from_utf8_lossy(&raw).into_owned();
+            let status = text
+                .lines()
+                .next()
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|c| c.parse::<u16>().ok())
+                .unwrap_or(0);
+            let body_start = text.find("\r\n\r\n").map(|i| i + 4).unwrap_or(text.len());
+            (status, Vec::new(), raw[body_start..].to_vec())
+        }
+
+        /// F776-R6-04（AC-08）：生成服务 **JSON record**（scaffold CRUD
+        /// create——现行可编译运行的生成 JSON 面）与 **bus SSE**（events
+        /// broadcast 通道）的真 TCP wire。
+        #[test]
+        fn http_e2e_plan776_generated_json_and_bus_sse_wire() {
+            let mut child = spawn_generated_server(PORT);
+            let result = std::panic::catch_unwind(|| {
+                // JSON record 面：POST → scaffold CRUD create（new id=1 +
+                // 输入参数透传）→ Message JSON（真实编译 + 真 wire；真实
+                // 业务体委托被 a2r `use api:` 跨模块转译阻塞——见 DB_AT 注）。
+                let (s, _, b) =
+                    raw_request(PORT, "POST", "/api/send", br#"{"text":"world"}"#.as_slice());
+                assert_eq!(s, 200, "POST /api/send status");
+                // 种子数据（generate_initial_data_pub 两例）后新 id=3——确定性。
+                assert_eq!(String::from_utf8_lossy(&b), r#"{"id":3,"text":"world"}"#);
+
+                // bus SSE 面：先开订阅连接（broadcast 只投订阅后消息），
+                // 再 POST → NewMessage 帧到达。
+                let mut sub = TcpStream::connect(("127.0.0.1", PORT)).expect("subscribe");
+                sub.set_read_timeout(Some(Duration::from_secs(30))).ok();
+                sub.write_all(b"GET /api/stream HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+                    .unwrap();
+                std::thread::sleep(Duration::from_millis(300));
+                let (s2, _, _) =
+                    raw_request(PORT, "POST", "/api/send", br#"{"text":"frame"}"#.as_slice());
+                assert_eq!(s2, 200);
+
+                let mut raw = Vec::new();
+                let mut buf = [0u8; 8192];
+                let deadline = std::time::Instant::now() + Duration::from_secs(20);
+                loop {
+                    let n = sub.read(&mut buf).unwrap_or(0);
+                    if n > 0 {
+                        raw.extend_from_slice(&buf[..n]);
+                        let text = String::from_utf8_lossy(&raw).into_owned();
+                        if text.contains("\"text\":\"frame\"") {
+                            break;
+                        }
+                    }
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "SSE 帧未到达: {}",
+                        String::from_utf8_lossy(&raw)
+                    );
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                let text = String::from_utf8_lossy(&raw).into_owned();
+                assert!(text.contains("text/event-stream"), "SSE 头: {text}");
+                assert!(
+                    text.contains("NewMessage") && text.contains("\"text\":\"frame\""),
+                    "广播帧: {text}"
+                );
+            });
+            let _ = child.kill();
+            let _ = child.wait();
+            if let Err(panic) = result {
+                std::panic::resume_unwind(panic);
+            }
+        }
+    }
+
     // PLAN-730 T-06 e2e：生成 Rust 服务真实编译运行（上传 wire 矩阵）。
     // 真实生成产物（api.rs/main.rs/types.rs/Cargo.toml）→ 临时 crate →
     // cargo run（共享 worktree target 缓存）→ 真 TCP wire 断言。
@@ -7703,6 +7986,7 @@ futures = "0.3"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
 a2r-std = {{ path = {a2r_std:?} }}
 

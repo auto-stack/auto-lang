@@ -2,13 +2,26 @@
 
 > 路径：`crates/auto-man/src/api_gen.rs`（strict 门/ready 记录/FNV）+
 > `rust_ui.rs`（新鲜度门）+ `vue.rs`/`tauri.rs`（错误传播）
-> 状态：active（PLAN-734 交付；报告见 `docs/plans/reports/734-api-{generation,verification}.md`）
+> 状态：active（PLAN-734 交付；PLAN-776 修订——alias 目标链/限定名来源
+  分类输入；报告见 `docs/plans/reports/734-api-{generation,verification}.md`）
 
 ## 1. strict 解析门
 
 - `try_full_parse` 失败 → `Err`（解析错误不再静默落 lenient/空提取）。
   lenient 提取退役为显式 `AUTO_API_LENIENT=1`（产物无业务体，scaffold 语义）。
   零端点且解析成功 = 合法 no-API（Ok——实现型 api.at 不受影响）。
+
+## 1b. 返回分类输入（PLAN-776）
+
+- `ApiEndpoint.response` 由 `ResponseKind::from_return_identity(ret,
+  module_types)` 冻结（提取期两遍判定）；**alias 目标携完整形态**
+  （`type D = Future<FileResponse>` → File，与直接 `Future<FileResponse>`
+  同规则）+ **visited 集链展开**（合法深链不限层、真环保保守 Json）；
+  `http.` 限定名先于用户名集（不受同名遮蔽）。api_gen/targets/
+  back_proxy 消费同一冻结身份（back_proxy fn_meta：target 全形存储 +
+  单步规范化 + visited 集——与 VM 分类单源同语义），不各自裸串分类。
+- 用户同名遮蔽三层（提取级/codegen TypeStore→`API_RETURN_SHADOWED`/
+  back_proxy fn_meta）；strict 门/738 双指纹/751 三态单点不变。
 
 ## 2. 真实实现优先
 

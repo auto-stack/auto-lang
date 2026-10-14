@@ -168,6 +168,11 @@ pub enum TypeTag {
     /// `auto_val::Node`. Migrated from the standalone `nodes` registry to
     /// `heap_objects`.
     Node,
+
+    // PLAN-776: HTTP 返回资源凭据（handler 成功终值的身份载体——status/
+    // headers/body 快照、SSE iterator、File 描述符、Upload 收据的按值来源；
+    /// 与普通数值 tag（i32/i64）分离，算术不可伪造）。
+    HttpReturnResource,
 }
 
 impl TypeTag {
@@ -197,6 +202,7 @@ impl TypeTag {
             TypeTag::RustStdlib(name) => name.clone().into(),
             TypeTag::ObjectData => "ObjectData".into(),
             TypeTag::Node => "Node".into(),
+            TypeTag::HttpReturnResource => "HttpReturnResource".into(),
         }
     }
 
