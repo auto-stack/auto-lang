@@ -343,3 +343,33 @@ fn mut_exclusivity_spans_ctor_arg_trees() {
     let ds = compile_err("type Q { v int }\ntype P { a Q; b int }\nfn pick(p P, d int) int { return p.a.v + p.b + d }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(1)\n    let r = pick(P { a: q, b: 5 }, bump(q.mut))\n    return r\n}\n");
     assert!(has(&ds, "verify.mut-conflict"), "{:?}", codes_of(&ds));
 }
+
+#[test]
+fn text_type_words_in_field_position_reject_controlled() {
+    // PLAN-782 F-A (T-01 probes N01..N03): the record profile's declared
+    // rejection face for str/Str/char FIELD types must be a controlled
+    // `source.unsupported` — the merged baseline panicked here (exit 101,
+    // parser `type_word` unreachable) until the member_type guard was
+    // aligned with param_type/decl_ann (PLAN-782 T-03).
+    for (field, word) in [("s Str", "Str"), ("s str", "str"), ("c char", "char")] {
+        let src = format!("type T {{ {} }}\nfn main() int {{ return 0 }}\n", field);
+        let ds = compile_err(&src);
+        assert!(
+            has(&ds, "source.unsupported"),
+            "{}: {:?}",
+            word,
+            ds.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
+        );
+        let msg = ds.iter().find(|d| d.code == "source.unsupported").unwrap();
+        assert!(
+            msg.message.contains(&format!(
+                "type `{}` is not part of this source profile",
+                word
+            )),
+            "{}",
+            msg.message
+        );
+    }
+    // sibling control: scalar fields keep compiling
+    compile_ok("type T { a int; b bool }\nfn main() int { return 0 }\n");
+}

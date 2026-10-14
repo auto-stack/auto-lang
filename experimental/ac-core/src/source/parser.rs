@@ -1002,6 +1002,25 @@ impl<'s> Parser<'s> {
     /// type name (resolved in later stages; forward references legal).
     fn member_type(&mut self, fname: &Ident) -> Result<TypeAnn, Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
+            // Text type words in FIELD position of a non-text profile are a
+            // controlled `source.unsupported` rejection — the same guard
+            // `param_type`/`decl_ann` already carry. Without it the shared
+            // `is_type_word` match below reaches `type_word`'s
+            // surface-gated ident arm and panics (PLAN-782 T-01 probe F-A:
+            // `type Tok { text Str }` under the record profile crashed with
+            // exit 101 instead of rejecting).
+            Some(Tok::Ident(w))
+                if !self.surface.is_text() && (w == "str" || w == "Str" || w == "char") =>
+            {
+                let t = self.peek().unwrap();
+                Err(self.unsupported(
+                    format!(
+                        "type `{}` is not part of this source profile",
+                        t.span.slice(self.src)
+                    ),
+                    t.span,
+                ))
+            }
             Some(t) if Self::is_type_word(&t) => Ok(self.type_word()),
             Some(Tok::Ident(_)) if self.surface.is_record() => {
                 let t = self.bump();

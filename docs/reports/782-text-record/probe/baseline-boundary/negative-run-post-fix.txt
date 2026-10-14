@@ -1,0 +1,9 @@
+===== N01 re-run (post F-A fix):
+docs/reports/782-text-record/probe/baseline-boundary/n01-record-owned-str-field.at:3:10: error[text/source.unsupported]: type `Str` is not part of this source profile
+exit=1
+===== N02:
+docs/reports/782-text-record/probe/baseline-boundary/n02-record-borrow-str-field.at:3:10: error[text/source.unsupported]: type `str` is not part of this source profile
+exit=1
+===== N03:
+docs/reports/782-text-record/probe/baseline-boundary/n03-record-char-field.at:3:7: error[text/source.unsupported]: type `char` is not part of this source profile
+exit=1
