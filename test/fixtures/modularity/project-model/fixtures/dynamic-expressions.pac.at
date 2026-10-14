@@ -1,0 +1,6 @@
+// PLAN-780 V-03 fixture: variable refs / calls / assignment / f-strings.
+name: "dyn"
+build_dir: out_dir
+resolved: make_path(base, "x")
+count = 5
+tpl: `prefix-${name}`

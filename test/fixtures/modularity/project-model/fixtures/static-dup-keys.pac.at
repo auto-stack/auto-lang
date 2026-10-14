@@ -1,0 +1,6 @@
+// PLAN-780 V-02/V-05 fixture: duplicate keys — later wins (mirrors VM + parse_pac_fields).
+name: "fixture-dup"
+title: "first"
+title: "second"
+render: "vm"
+render: "vue"

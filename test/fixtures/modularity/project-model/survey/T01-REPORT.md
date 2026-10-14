@@ -21,7 +21,15 @@ base `075a9b4ab6cb4284f3c259b348f2571322107fec`（= master tip）。
 - 语料中值形态：引号字符串、十进制整数（`front_port: 4046`）、裸 `true`（`recurse: true`）、
   字符串数组、对象值（`theme: {}` 块、`back: { project }`、`npm_deps: { "@x/y": "link:..." }`
   ——含**带引号对象键** `@`/`/` 字符）、嵌套对象（a3ui-replica `targets.vue.frontend`）。
-- `#` 行注释形态在 pac.at 语料不存在（`#` 是 .at 属性语法）；语料注释全部 `//`。
+- ~~`#` 行注释形态在 pac.at 语料不存在~~ **勘误（T-03 对拍发现）**：examples/ui 全族 pac.at
+  使用 `#` 行注释（PLAN-683 头注等，19 个文件）；.at 语义确认 `#` 非 `[` 后缀即行注释
+  （parser.rs:8785，Plan 442 C2）。静态扫描器已按同规则支持。
+- **顶层 JSON 式对象文档**（PLAN-729 minimal project format，`{ "scene": …, "members": […] }`）：
+  examples/http_server/{files,uploads}/pac.at 两例——对象对成为 root props；survey 脚本
+  未单列此形态（分类仍 static，正确），Rust 扫描器 T-03 补齐。
+- **VM 对象字面量键迭代序跨进程不稳定**（T-03 三探针实测：同输入不同运行 repr 顺序不同）：
+  任何对 pac 对象值 repr 的逐字比较都是在比噪声；对拍以结构（按名取键/排序键值对）为准。
+  生产消费全部按键名读取，故此前从未暴露——已记入 T-04 owner 注记。
 
 ## 2. 读点分类（谁在读 pac.at、用什么机制）
 

@@ -47,6 +47,10 @@ pub(crate) enum Entry {
         name: NodeName,
         body: Vec<Entry>,
         line: usize,
+        /// Interpolation found in the node-name position (template forms
+        /// `lib ${name} {}` / `app("${name}") {}`) — only the config VM's
+        /// render pipeline can produce that name.
+        name_unsupported: Option<UnsupportedConstruct>,
     },
     Unsupported(UnsupportedConstruct),
 }
@@ -81,9 +85,52 @@ impl<'a> Scanner<'a> {
             if self.peek().is_none() {
                 break;
             }
+            if self.peek() == Some('{') {
+                // Minimal project format (PLAN-729): the whole document is
+                // one JSON-ish object whose pairs become root props
+                // (`examples/http_server/files/pac.at` shape).
+                entries.extend(self.parse_object_document()?);
+                continue;
+            }
             entries.push(self.parse_entry()?);
         }
         Ok(ScanOutput { entries })
+    }
+
+    /// Top-level `{ "key": value, … }` document — entries surface as props.
+    fn parse_object_document(&mut self) -> Result<Vec<Entry>, ProjectModelError> {
+        let start_line = self.line;
+        let text = self.take_bracket_extent()?;
+        if let Some(u) = scan_unsupported_in_text(&text, start_line, "<document>") {
+            return Ok(vec![Entry::Unsupported(u)]);
+        }
+        let atom = auto_atom::AtomParser::parse(&text).map_err(|e| {
+            self.err_at(
+                ErrorStage::Document,
+                start_line,
+                self.col,
+                format!("top-level object document failed to parse: {e}"),
+            )
+        })?;
+        match atom {
+            auto_atom::Atom::Obj(obj) => Ok(obj
+                .iter()
+                .map(|(k, v)| Entry::Prop {
+                    key: k.to_string(),
+                    value: ScannedValue::Literal(v.clone()),
+                    line: start_line,
+                })
+                .collect()),
+            other => Err(self.err_at(
+                ErrorStage::Document,
+                start_line,
+                self.col,
+                format!(
+                    "top-level object document must be an object, got {:?}",
+                    std::mem::discriminant(&other)
+                ),
+            )),
+        }
     }
 
     fn err(&self, stage: ErrorStage, message: impl Into<String>) -> ProjectModelError {
@@ -156,6 +203,14 @@ impl<'a> Scanner<'a> {
                 }
                 continue;
             }
+            // `#` not followed by `[` is a corpus-style line comment
+            // (parser.rs Plan 442 C2 — same rule the config VM applies).
+            if self.peek() == Some('#') && self.peek2() != Some('[') {
+                while self.peek().is_some_and(|c| c != '\n') {
+                    self.advance();
+                }
+                continue;
+            }
             break;
         }
     }
@@ -213,6 +268,7 @@ impl<'a> Scanner<'a> {
             }
             Some(c) if is_ident_start(c) => self.parse_node(ident, None, line, col),
             Some('"') => self.parse_node(ident, None, line, col),
+            Some('{') => self.parse_node(ident, None, line, col),
             Some('(') => {
                 let raw_args = self.take_arg_list()?;
                 self.parse_node(ident, raw_args, line, col)
@@ -243,6 +299,10 @@ impl<'a> Scanner<'a> {
         // comment is grammar, not content — skip it first.
         self.skip_inline_ws();
         if self.peek() == Some('/') && self.peek2() == Some('/') {
+            while self.peek().is_some_and(|c| c != '\n') {
+                self.advance();
+            }
+        } else if self.peek() == Some('#') && self.peek2() != Some('[') {
             while self.peek().is_some_and(|c| c != '\n') {
                 self.advance();
             }
@@ -574,6 +634,12 @@ impl<'a> Scanner<'a> {
                             }
                             continue;
                         }
+                        '#' if self.peek2() != Some('[') => {
+                            while self.peek().is_some_and(|c| c != '\n') {
+                                self.advance();
+                            }
+                            continue;
+                        }
                         '/' if self.peek2() == Some('*') => {
                             self.advance();
                             self.advance();
@@ -650,10 +716,16 @@ impl<'a> Scanner<'a> {
         line: usize,
         col: usize,
     ) -> Result<Entry, ProjectModelError> {
+        let mut name_unsupported = None;
         let name = if let Some(args_text) = raw_args.as_deref() {
-            // arg list already consumed by the caller — the only statically
-            // nameable form is a single quoted string argument
-            NodeName::from_arg_text(Some(args_text))
+            if let Some(u) = scan_unsupported_in_text(args_text, line, &head) {
+                name_unsupported = Some(u);
+                NodeName::None
+            } else {
+                // arg list already consumed by the caller — the only
+                // statically nameable form is a single quoted string
+                NodeName::from_arg_text(Some(args_text))
+            }
         } else {
             match self.peek() {
                 Some(c) if is_ident_start(c) => NodeName::Bare(self.take_ident()),
@@ -670,6 +742,19 @@ impl<'a> Scanner<'a> {
                             ))
                         }
                     }
+                }
+                Some('$') => {
+                    // template form `lib ${name} {}` — interpolation in the
+                    // node-name position
+                    let raw = self.take_interp_marker();
+                    name_unsupported = Some(UnsupportedConstruct {
+                        kind: UnsupportedKind::Interpolation,
+                        line,
+                        column: col,
+                        raw,
+                        key: Some(head.clone()),
+                    });
+                    NodeName::None
                 }
                 _ => NodeName::None,
             }
@@ -714,7 +799,31 @@ impl<'a> Scanner<'a> {
             name,
             body,
             line,
+            name_unsupported,
         })
+    }
+
+    /// Consume a `$ident` / `${...}` marker in name position and return the
+    /// raw text.
+    fn take_interp_marker(&mut self) -> String {
+        let start = self.pos;
+        self.advance(); // '$'
+        if self.peek() == Some('{') {
+            while self.peek().is_some() {
+                let c = self.advance().unwrap();
+                if c == '}' {
+                    break;
+                }
+            }
+        } else {
+            while self
+                .peek()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_')
+            {
+                self.advance();
+            }
+        }
+        self.input[start..self.pos].to_string()
     }
 
     fn skip_to_entry_end(&mut self) {
@@ -782,6 +891,14 @@ fn scan_unsupported_in_text(text: &str, base_line: usize, key: &str) -> Option<U
     while let Some(c) = chars.next() {
         match c {
             '\n' => line += 1,
+            '#' if chars.peek() != Some(&('[')) => {
+                for sc in chars.by_ref() {
+                    if sc == '\n' {
+                        line += 1;
+                        break;
+                    }
+                }
+            }
             '"' | '\'' => {
                 let quote = c;
                 while let Some(sc) = chars.next() {

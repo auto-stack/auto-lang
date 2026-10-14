@@ -1,0 +1,11 @@
+[package]
+name = "project-model-consumer"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-780 V-01 external consumer gate: depends ONLY on auto-project-model (no auto-lang/auto-man/auto-vm/UI)"
+publish = false
+
+[dependencies]
+# The whole point of this crate (AC-01): the dependency list below is the
+# proof — the light model is consumable without the compiler/VM/UI stack.
+auto-project-model = { path = "../../../../../crates/auto-project-model" }

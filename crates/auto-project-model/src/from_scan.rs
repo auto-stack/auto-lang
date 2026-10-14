@@ -181,7 +181,13 @@ fn apply_entry(
             name,
             body,
             line,
-        } => apply_node(head, name, body, line, d),
+            name_unsupported,
+        } => {
+            if let Some(u) = name_unsupported {
+                d.unsupported.push(u);
+            }
+            apply_node(head, name, body, line, d)
+        }
         Entry::Unsupported(u) => d.unsupported.push(u),
     }
 }
@@ -310,18 +316,21 @@ fn apply_prop(
         }
         "theme" => {
             d.provenance.push(("theme", line));
-            // Scalar arm only — the theme{} block form (PLAN-601) is a
-            // composable declaration consumed via design_tokens; catalogued
-            // as a raw prop, not modeled here.
+            // Pac reads theme as to_astr().trim().to_lowercase() of whatever
+            // the prop holds — including the theme{} block form (PLAN-601),
+            // whose repr string the legacy field carries verbatim. Mirror
+            // that exactly; non-scalar forms are additionally catalogued as
+            // raw props (the composable declaration stays unmodeled here).
             match lit {
-                Some(v @ Value::Str(_)) => d.display.theme = lower_trimmed_non_empty(v),
-                Some(other) => {
-                    d.display.theme = None;
-                    d.raw_props.push(RawProp {
-                        key: key.clone(),
-                        value: Some(other.clone()),
-                        line,
-                    });
+                Some(v) => {
+                    d.display.theme = lower_trimmed_non_empty(v);
+                    if !matches!(v, Value::Str(_)) {
+                        d.raw_props.push(RawProp {
+                            key: key.clone(),
+                            value: Some(v.clone()),
+                            line,
+                        });
+                    }
                 }
                 None => d.display.theme = None,
             }
@@ -505,9 +514,15 @@ fn collect_body(
             Entry::Node {
                 head,
                 name,
-                    body,
+                body,
                 line,
-            } => children.push(raw_node_from(head, name, body, line, d)),
+                name_unsupported,
+            } => {
+                if let Some(u) = name_unsupported {
+                    d.unsupported.push(u);
+                }
+                children.push(raw_node_from(head, name, body, line, d))
+            },
             Entry::Unsupported(u) => d.unsupported.push(u),
         }
     }

@@ -1,0 +1,3 @@
+// PLAN-780 V-02 fixture: render split / multi / legacy backend / unknown backend.
+name: "fixture-render-split"
+render: { front: "vue", back: "rust" }

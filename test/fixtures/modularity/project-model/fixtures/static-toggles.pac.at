@@ -1,0 +1,4 @@
+// PLAN-780 V-02 fixture: toggle forms — bare on/off, quoted, bool, absent.
+name: "fixture-toggles"
+shadcn: off
+default_classes: "false"

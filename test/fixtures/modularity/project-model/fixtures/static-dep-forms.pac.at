@@ -1,0 +1,11 @@
+// PLAN-780 V-02 fixture: all three dep name forms.
+name: "fixture-deps"
+dep bps {
+    path: "../../packages/blueprints"
+}
+dep "stylekit" {
+    path: "../stylekit"
+}
+dep("kernel") {
+    port: "msvc/x64"
+}

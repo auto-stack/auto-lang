@@ -10,6 +10,9 @@ test-http-e2e = []
 
 [dependencies]
 auto-lang = { path = "../auto-lang", features = ["ui-iced"] }
+# PLAN-780: light static project-model (probe adapter only — no
+# production read path consumes it yet; see src/project_model_adapter.rs)
+auto-project-model = { path = "../auto-project-model" }
 regex = "1"
 auto-val = { path = "../auto-val" }
 auto-gen = { path = "../auto-gen" }

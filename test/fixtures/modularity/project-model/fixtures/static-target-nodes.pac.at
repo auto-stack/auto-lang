@@ -1,0 +1,9 @@
+// PLAN-780 V-02 fixture: target nodes (unmodeled, catalogued).
+name: "fixture-targets"
+app main {
+    at: "."
+    srcs: ["main.at"]
+}
+lib("auto") {
+    recurse: true
+}

@@ -1,0 +1,3 @@
+// PLAN-780 V-05 fixture: members wrong shape (scalar, not array).
+name: "bad-type"
+members: "front"

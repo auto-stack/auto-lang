@@ -1,0 +1,12 @@
+// PLAN-780 V-02 fixture: members, defines, ports, window forms, roots.
+name: "fixture-workspace"
+scene: "workspace"
+members: ["source/front", "source/back"]
+defines: ["A=1", "B=2"]
+front_port: 4046
+back_port: 8018
+window: "1440x900"
+media_root: "E:\Video"
+photo_root: "C:\Users\x\Pictures"
+api: "rust"
+lang: "rust"

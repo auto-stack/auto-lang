@@ -1,0 +1,3 @@
+// PLAN-780 V-05 fixture: prop without value.
+name: "bad-value"
+title:

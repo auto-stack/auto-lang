@@ -1,0 +1,4 @@
+// PLAN-780 V-03 fixture: config-VM-only constructs (scaffold template shape).
+name: "${name}"
+version: "0.1.0"
+app("${name}") {}

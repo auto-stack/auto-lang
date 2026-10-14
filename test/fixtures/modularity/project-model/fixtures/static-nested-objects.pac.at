@@ -1,0 +1,11 @@
+// PLAN-780 V-02 fixture: nested object values incl. quoted keys, back.project,
+// theme block (catalogued unmodeled), npm_deps both shapes.
+name: "fixture-nested"
+back: { project: "../ash-server" }
+npm_deps: {
+  "@autodown/engine": "link:D:/autostack/auto-down/autodown/packages/engine"
+}
+theme: { mode: "dark", extends: "base" }
+workspace: {
+    front: "./source/front"
+}

@@ -37,6 +37,9 @@ pub mod target;
 // Phase 2B: Package management (completed - depends on Phase 3 & 4)
 pub mod automan;
 pub mod pac;
+/// PLAN-780: explicit old-vs-new probe adapter — not wired into any
+/// production pac read path (pilot discipline: defaults unchanged).
+pub mod project_model_adapter;
 
 // Phase 5: Vue project support
 pub mod vue;

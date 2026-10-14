@@ -1,0 +1,2 @@
+name: "fixture-render-multi"
+backend: ["vue", "arkts"]
