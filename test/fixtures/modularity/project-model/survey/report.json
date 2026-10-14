@@ -1,0 +1,3554 @@
+{
+ "summary": {
+  "total": 149,
+  "counts": {
+   "static": 144,
+   "dynamic": 5,
+   "unknown": 0
+  },
+  "by_class": {
+   "static": [
+    "crates/auto-lang/test/ui/plan446_u1_event_freeze/pac.at",
+    "crates/auto-lang/test/ui/plan446_u3_text_wedge/pac.at",
+    "crates/auto-lang/tests/fixtures/g11_sibling/pac.at",
+    "crates/auto-man/test/a2c_project/pac.at",
+    "crates/auto-man/test/cargo_project/pac.at",
+    "docs/plans/evidence/580/t6app-template/pac.at",
+    "examples/a2ui-composer/pac.at",
+    "examples/a3ui-replica/pac.at",
+    "examples/api-example/back/pac.at",
+    "examples/api-example/front/pac.at",
+    "examples/api-example/pac.at",
+    "examples/book-reader/pac.at",
+    "examples/book-reader/source/back/pac.at",
+    "examples/book-reader/source/front/pac.at",
+    "examples/bp-admin/pac.at",
+    "examples/bp-gate/host/pac.at",
+    "examples/bps-gallery/pac.at",
+    "examples/capability-tests/021-block-static/pac.at",
+    "examples/capability-tests/026-keyboard-mouse-events/pac.at",
+    "examples/capability-tests/027-native-css/pac.at",
+    "examples/capability-tests/028-dom-escape/pac.at",
+    "examples/capability-tests/029-external-imports/pac.at",
+    "examples/capability-tests/030-custom-events-style/pac.at",
+    "examples/capability-tests/031-dyn-component-watch/pac.at",
+    "examples/capability-tests/032-expose/pac.at",
+    "examples/capability-tests/033-slots/pac.at",
+    "examples/capability-tests/034-vmodel/pac.at",
+    "examples/capability-tests/035-vfor-key/pac.at",
+    "examples/capability-tests/036-warnings/pac.at",
+    "examples/capability-tests/037-stores-multi/pac.at",
+    "examples/capability-tests/038-vshow/pac.at",
+    "examples/capability-tests/039-reserved-words/pac.at",
+    "examples/capability-tests/040-trycatch/pac.at",
+    "examples/capability-tests/041-model-deep-reactivity/pac.at",
+    "examples/capability-tests/042-autodown-vm/pac.at",
+    "examples/capability-tests/042-two-inputs-child/pac.at",
+    "examples/capability-tests/043-canvas-paint/pac.at",
+    "examples/capability-tests/046-bp-import/pac.at",
+    "examples/capability-tests/047-bp-compose/pac.at",
+    "examples/capability-tests/048-bp-module-fn/local-bps/pac.at",
+    "examples/capability-tests/048-bp-module-fn/pac.at",
+    "examples/capability-tests/049-canvas-graph/pac.at",
+    "examples/capability-tests/clipboard-bridge/pac.at",
+    "examples/capability-tests/codeeditor-rq/pac.at",
+    "examples/capability-tests/dnd-bridge/pac.at",
+    "examples/capability-tests/k1-shared-store-routing/pac.at",
+    "examples/capability-tests/k2-child-handler-binding/pac.at",
+    "examples/capability-tests/k3-widget-composition/pac.at",
+    "examples/capability-tests/k4-ports-forwarding/pac.at",
+    "examples/capability-tests/n1-contains-includes/pac.at",
+    "examples/capability-tests/n2-routing-codegen-paths/pac.at",
+    "examples/capability-tests/n3-handler-local-vars/pac.at",
+    "examples/capability-tests/nav-handler-routing/pac.at",
+    "examples/capability-tests/oom-event-binop-arg/pac.at",
+    "examples/capability-tests/overlay-probe/pac.at",
+    "examples/capability-tests/p051-min-ta/pac.at",
+    "examples/capability-tests/p1-toggle-array-rerender/pac.at",
+    "examples/capability-tests/p493-color-check/pac.at",
+    "examples/capability-tests/p507-tier-coverage/pac.at",
+    "examples/capability-tests/p515-scroll-overflow/pac.at",
+    "examples/capability-tests/p518-glass-sample/pac.at",
+    "examples/capability-tests/p656-scroll-pane/pac.at",
+    "examples/capability-tests/p781-scroll-child-anchor/pac.at",
+    "examples/capability-tests/style-import/pac.at",
+    "examples/capability-tests/tabs-variants/pac.at",
+    "examples/capability-tests/vm-svg-chart-layers/pac.at",
+    "examples/charts-gallery/pac.at",
+    "examples/desktop-host/pac.at",
+    "examples/http_server/api_contract/pac.at",
+    "examples/http_server/deployment/pac.at",
+    "examples/http_server/files/pac.at",
+    "examples/http_server/uploads/pac.at",
+    "examples/jet-gallery/pac.at",
+    "examples/jetdemo/pac.at",
+    "examples/jethell/pac.at",
+    "examples/multi-frontend-demo/back/pac.at",
+    "examples/multi-frontend-demo/front/pac.at",
+    "examples/multi-frontend-demo/pac.at",
+    "examples/quickstart/01-HelloWorld/pac.at",
+    "examples/quickstart/02-Banner/pac.at",
+    "examples/quickstart/03-ItemList/pac.at",
+    "examples/quickstart/04-Tabs/pac.at",
+    "examples/quickstart/05-Nav/pac.at",
+    "examples/quickstart/06-Login/pac.at",
+    "examples/rust-counter/pac.at",
+    "examples/split-demo/back/pac.at",
+    "examples/split-demo/front/pac.at",
+    "examples/split-demo/pac.at",
+    "examples/ui/001-helloworld/pac.at",
+    "examples/ui/002-counter/pac.at",
+    "examples/ui/003-converter/pac.at",
+    "examples/ui/004-profile-card/pac.at",
+    "examples/ui/005-login/pac.at",
+    "examples/ui/006-hero-section/pac.at",
+    "examples/ui/007-stats-board/pac.at",
+    "examples/ui/008-pricing-table/pac.at",
+    "examples/ui/009-article-feed/pac.at",
+    "examples/ui/010-contact-form/pac.at",
+    "examples/ui/011-calculator/pac.at",
+    "examples/ui/012-clock/pac.at",
+    "examples/ui/013-todo/pac.at",
+    "examples/ui/014-weather/pac.at",
+    "examples/ui/015-notes/pac.at",
+    "examples/ui/016-calendar/pac.at",
+    "examples/ui/017-chat/pac.at",
+    "examples/ui/018-book-reader/pac.at",
+    "examples/ui/019-video-app/pac.at",
+    "examples/ui/020-music-player/pac.at",
+    "examples/ui/021-blog-viewer/pac.at",
+    "examples/ui/022-kanban/pac.at",
+    "examples/ui/023-realworld/pac.at",
+    "examples/ui/024-charts/pac.at",
+    "examples/ui/025-sys-monitor/pac.at",
+    "examples/ui/026-database/pac.at",
+    "examples/ui/027-file-manager/pac.at",
+    "examples/ui/028-launcher/pac.at",
+    "examples/ui/029-photo-gallery/pac.at",
+    "examples/ui/030-video-player/pac.at",
+    "examples/ui/031-image-viewer/pac.at",
+    "examples/ui/031-paint/pac.at",
+    "examples/ui/032-handler-async-probe/pac.at",
+    "examples/ui/038-minesweeper/pac.at",
+    "examples/ui/041-auto-edit/pac.at",
+    "examples/ui/remote-frame-e2e/fixture/pac.at",
+    "examples/ui/remote-frame-e2e/host/pac.at",
+    "examples/ui/stylekit/pac.at",
+    "examples/unified-demo/pac.at",
+    "packages/aavm/pac.at",
+    "packages/blueprints/pac.at",
+    "test/fixtures/native-reader-acceptance/save-restore/pac.at",
+    "test/fixtures/native-reader-acceptance/scroll-geometry/pac.at",
+    "test/fixtures/plan446/b3check/auto/pac.at",
+    "test/fixtures/plan446/j2check/auto/pac.at",
+    "test/ui/plan051_p2_modules/pac.at",
+    "test/ui/plan051_timer/pac.at",
+    "test/ui/plan053_p8_click_arg/pac.at",
+    "test/ui/plan059_child_emit/pac.at",
+    "test/ui/plan062_memleak/pac.at",
+    "test/ui/plan534_side_panels/pac.at",
+    "test/ui/plan536_absolute/pac.at",
+    "test/ui/plan536_modal/pac.at",
+    "test/ui/plan536_reactive/pac.at",
+    "test/ui/plan617_video_vm/pac.at",
+    "test/ui/vue-gen-gap/specs/gap/pac.at"
+   ],
+   "dynamic": [
+    "crates/auto-man/assets/templates/app/pac.at",
+    "crates/auto-man/assets/templates/capp/pac.at",
+    "crates/auto-man/assets/templates/clib/pac.at",
+    "crates/auto-man/assets/templates/lib/pac.at",
+    "crates/auto-man/assets/templates/libdemo/pac.at"
+   ],
+   "unknown": []
+  },
+  "all_prop_keys": [
+   "accent",
+   "api",
+   "at",
+   "back_port",
+   "backend",
+   "build",
+   "category",
+   "default_classes",
+   "description",
+   "desktop",
+   "desktop_render",
+   "dev",
+   "entry",
+   "front",
+   "front_port",
+   "frontend",
+   "icon",
+   "lang",
+   "links",
+   "media_root",
+   "members",
+   "name",
+   "npm_deps",
+   "opens",
+   "path",
+   "photo_root",
+   "preview",
+   "recurse",
+   "render",
+   "scene",
+   "scripts",
+   "shadcn",
+   "srcs",
+   "styles",
+   "targets",
+   "theme",
+   "title",
+   "title_zh",
+   "ui_config",
+   "version",
+   "vue",
+   "window",
+   "workspace"
+  ],
+  "unknown_prop_keys": [
+   "at",
+   "build",
+   "dev",
+   "front",
+   "frontend",
+   "links",
+   "npm_deps",
+   "path",
+   "preview",
+   "recurse",
+   "scripts",
+   "srcs",
+   "styles",
+   "targets",
+   "vue"
+  ],
+  "dep_forms": [
+   "bare"
+  ],
+  "unknown_node_names": [],
+  "dynamic_indicator_kinds": [
+   "interpolation"
+  ],
+  "members_multiline_files": []
+ },
+ "files": [
+  {
+   "path": "crates/auto-lang/test/ui/plan446_u1_event_freeze/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-lang/test/ui/plan446_u3_text_wedge/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-lang/tests/fixtures/g11_sibling/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "name",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-man/assets/templates/app/pac.at",
+   "classification": "dynamic",
+   "indicators": [
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 1
+    },
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 7
+    }
+   ],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-man/assets/templates/capp/pac.at",
+   "classification": "dynamic",
+   "indicators": [
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 1
+    },
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 4
+    }
+   ],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-man/assets/templates/clib/pac.at",
+   "classification": "dynamic",
+   "indicators": [
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 1
+    }
+   ],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-man/assets/templates/lib/pac.at",
+   "classification": "dynamic",
+   "indicators": [
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 1
+    },
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 4
+    }
+   ],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-man/assets/templates/libdemo/pac.at",
+   "classification": "dynamic",
+   "indicators": [
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 1
+    },
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 4
+    },
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 6
+    },
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 7
+    },
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 7
+    },
+    {
+     "kind": "interpolation",
+     "detail": "${...}",
+     "line": 8
+    }
+   ],
+   "scan_unknown": [],
+   "prop_keys": [
+    "links",
+    "name",
+    "srcs",
+    "version"
+   ],
+   "unknown_props": [
+    "links",
+    "srcs"
+   ],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-man/test/a2c_project/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "at",
+    "name",
+    "srcs",
+    "version"
+   ],
+   "unknown_props": [
+    "at",
+    "srcs"
+   ],
+   "node_forms": [
+    [
+     "app",
+     "bare"
+    ]
+   ],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "crates/auto-man/test/cargo_project/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "lang",
+    "name",
+    "srcs",
+    "version"
+   ],
+   "unknown_props": [
+    "srcs"
+   ],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "docs/plans/evidence/580/t6app-template/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "at",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [
+    "at"
+   ],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/a2ui-composer/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/a3ui-replica/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "build",
+    "description",
+    "dev",
+    "front",
+    "frontend",
+    "name",
+    "preview",
+    "scene",
+    "scripts",
+    "targets",
+    "version",
+    "vue",
+    "workspace"
+   ],
+   "unknown_props": [
+    "build",
+    "dev",
+    "front",
+    "frontend",
+    "preview",
+    "scripts",
+    "targets",
+    "vue"
+   ],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/api-example/back/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "entry",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/api-example/front/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "backend",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/api-example/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "members",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": true,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/book-reader/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "members",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": true,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/book-reader/source/back/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "entry",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/book-reader/source/front/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "backend",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/bp-admin/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "description",
+    "desktop",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/bp-gate/host/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/bps-gallery/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "description",
+    "front_port",
+    "name",
+    "npm_deps",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "npm_deps",
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/021-block-static/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/026-keyboard-mouse-events/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/027-native-css/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "styles",
+    "version"
+   ],
+   "unknown_props": [
+    "styles"
+   ],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/028-dom-escape/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/029-external-imports/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/030-custom-events-style/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/031-dyn-component-watch/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/032-expose/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/033-slots/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/034-vmodel/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/035-vfor-key/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/036-warnings/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/037-stores-multi/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/038-vshow/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/039-reserved-words/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/040-trycatch/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/041-model-deep-reactivity/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "default_classes",
+    "name",
+    "render",
+    "scene",
+    "shadcn",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/042-autodown-vm/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "default_classes",
+    "name",
+    "render",
+    "scene",
+    "shadcn",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/042-two-inputs-child/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/043-canvas-paint/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "category",
+    "icon",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/046-bp-import/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "ui_config",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/047-bp-compose/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/048-bp-module-fn/local-bps/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/048-bp-module-fn/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/049-canvas-graph/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "category",
+    "icon",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/clipboard-bridge/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "front_port",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/codeeditor-rq/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/dnd-bridge/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "front_port",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/k1-shared-store-routing/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/k2-child-handler-binding/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/k3-widget-composition/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/k4-ports-forwarding/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/n1-contains-includes/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/n2-routing-codegen-paths/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/n3-handler-local-vars/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/nav-handler-routing/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/oom-event-binop-arg/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/overlay-probe/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/p051-min-ta/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/p1-toggle-array-rerender/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/p493-color-check/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/p507-tier-coverage/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/p515-scroll-overflow/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/p518-glass-sample/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/p656-scroll-pane/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/p781-scroll-child-anchor/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/style-import/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/tabs-variants/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/capability-tests/vm-svg-chart-layers/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/charts-gallery/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "front_port",
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/desktop-host/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/http_server/api_contract/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": true
+  },
+  {
+   "path": "examples/http_server/deployment/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": true
+  },
+  {
+   "path": "examples/http_server/files/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": true
+  },
+  {
+   "path": "examples/http_server/uploads/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": true
+  },
+  {
+   "path": "examples/jet-gallery/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/jetdemo/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/jethell/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/multi-frontend-demo/back/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/multi-frontend-demo/front/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/multi-frontend-demo/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "members",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": true,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/quickstart/01-HelloWorld/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/quickstart/02-Banner/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/quickstart/03-ItemList/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/quickstart/04-Tabs/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/quickstart/05-Nav/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/quickstart/06-Login/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/rust-counter/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/split-demo/back/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/split-demo/front/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/split-demo/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "members",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": true,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/001-helloworld/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "desktop_render",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/002-counter/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/003-converter/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "desktop_render",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/004-profile-card/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "desktop_render",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/005-login/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/006-hero-section/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "name",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/007-stats-board/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/008-pricing-table/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "name",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/009-article-feed/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "name",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/010-contact-form/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "name",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/011-calculator/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "desktop",
+    "icon",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/012-clock/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "category",
+    "desktop",
+    "icon",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/013-todo/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "desktop",
+    "icon",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/014-weather/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "desktop",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/015-notes/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "api",
+    "desktop",
+    "icon",
+    "name",
+    "npm_deps",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "npm_deps",
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/016-calendar/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "desktop",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/017-chat/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "desktop",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/018-book-reader/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "back_port",
+    "desktop",
+    "front_port",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/019-video-app/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "api",
+    "back_port",
+    "front_port",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/020-music-player/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "api",
+    "back_port",
+    "category",
+    "description",
+    "desktop",
+    "front_port",
+    "icon",
+    "media_root",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/021-blog-viewer/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "back_port",
+    "front_port",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/022-kanban/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "back_port",
+    "front_port",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/023-realworld/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "back_port",
+    "front_port",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/024-charts/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "desktop",
+    "front_port",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/025-sys-monitor/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "back_port",
+    "category",
+    "description",
+    "desktop",
+    "front_port",
+    "icon",
+    "name",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/026-database/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "desktop",
+    "front_port",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/027-file-manager/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "back_port",
+    "category",
+    "description",
+    "desktop",
+    "front_port",
+    "icon",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/028-launcher/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "category",
+    "description",
+    "desktop",
+    "front_port",
+    "icon",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/029-photo-gallery/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "api",
+    "back_port",
+    "category",
+    "description",
+    "desktop",
+    "front_port",
+    "icon",
+    "name",
+    "path",
+    "photo_root",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/030-video-player/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "api",
+    "back_port",
+    "category",
+    "description",
+    "desktop",
+    "front_port",
+    "icon",
+    "media_root",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/031-image-viewer/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "api",
+    "back_port",
+    "category",
+    "description",
+    "desktop",
+    "front_port",
+    "icon",
+    "name",
+    "opens",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/031-paint/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "accent",
+    "category",
+    "desktop",
+    "icon",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/032-handler-async-probe/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/038-minesweeper/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "desktop",
+    "front_port",
+    "icon",
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/041-auto-edit/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "description",
+    "desktop",
+    "front_port",
+    "name",
+    "opens",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/remote-frame-e2e/fixture/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/remote-frame-e2e/host/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "theme",
+    "title",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/ui/stylekit/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "examples/unified-demo/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "name",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "packages/aavm/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "backend",
+    "lang",
+    "name",
+    "recurse",
+    "version"
+   ],
+   "unknown_props": [
+    "recurse"
+   ],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "packages/blueprints/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/fixtures/native-reader-acceptance/save-restore/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/fixtures/native-reader-acceptance/scroll-geometry/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "title",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/fixtures/plan446/b3check/auto/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "default_classes",
+    "name",
+    "render",
+    "scene",
+    "shadcn",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/fixtures/plan446/j2check/auto/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan051_p2_modules/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan051_timer/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan053_p8_click_arg/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan059_child_emit/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan062_memleak/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan534_side_panels/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version",
+    "window"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan536_absolute/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan536_modal/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan536_reactive/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/plan617_video_vm/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "name",
+    "render",
+    "scene",
+    "version"
+   ],
+   "unknown_props": [],
+   "node_forms": [],
+   "dep_forms": [],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  },
+  {
+   "path": "test/ui/vue-gen-gap/specs/gap/pac.at",
+   "classification": "static",
+   "indicators": [],
+   "scan_unknown": [],
+   "prop_keys": [
+    "desktop",
+    "name",
+    "path",
+    "render",
+    "scene",
+    "title",
+    "title_zh",
+    "version"
+   ],
+   "unknown_props": [
+    "path"
+   ],
+   "node_forms": [
+    [
+     "dep",
+     "bare"
+    ]
+   ],
+   "dep_forms": [
+    "bare"
+   ],
+   "unknown_nodes": [],
+   "has_members_array": false,
+   "multiline_members": false
+  }
+ ]
+}
