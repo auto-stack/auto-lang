@@ -502,11 +502,17 @@ current_step 只计真实完成，未来阶段不能先勾。
 | landed | rebase onto master（master 期间仅 docs/plans+experimental 漂移，零文件交集）；哈希映射 39e2ecafd→fed5c7842（`git range-diff` 全等 `=`）+ b40bae383→ef7d77bb7（specs.json 冲突以 master v10 基重投影解决，P773 条目逐字相同、他条目前缀保全，v11）；主检出 `git merge --ff-only plan-773-dev`，master tip == plan-773-dev == ef7d77bb7（rev-parse 单值）；合入后 smoke：cargo check -p auto-test-case 绿、ledger v11 回读 P773-1..5、INDEX 含 auto-test-case |
 | ledger_refreshed | 通道=受控离线投影（ZCode 会话无 auto-ai spec 工具，HTTP store 不可达）；备份→脚本 RMW→schema/范围守卫（六段集合等价、既有条目逐字不变、version+1）→回读；条目 designs P773-1/2、tests P773-3、reviews P773-4、reports P773-5（均带 file+tags 绑 commit-39e2ecafd）；spec-index 再生（auto-test-case 归组"语言核心"） |
 | archived | git mv → docs/plans/archive/773-autodown-testcase-protocol-pilot.md；status: archived、current_step: 10/10；本收据与 docs/plans/attachments/773/** 一并在 master 提交；KNOWN-DEBT Plan 773 节标闭合 + F-773-R2-01 登记（5e3bde18a，stash 方案保全并发会话未提交条目原样保留为脏区） |
-| cleaned | （清理后回填） |
+| cleaned | wt-guard 双仓 clean（auto-lang + 组内 auto-down 兄弟，均 exit 0）；worktree `D:/autostack/.wt/lang-773/auto-lang` 与 `auto-down` 移除；分支 plan-773-dev 删除（was ef7d77bb7，已为 master 祖先）；空组目录 `.wt/lang-773` rmdir；他组（742/744/770/776/781）未触碰 |
 
 - F-773-R2-01 处置：①闭合表 F-08 行措辞修正为"单文件发射路径"；②KNOWN-DEBT 登记
   （low/fail-safe 债务，处置=B 阶段或独立 fix）。
-- 批量回归到期判定与产物检查：见收据尾注（清理后回填）。
+- 批量回归到期判定（2026-10-14T02:28Z 实测）：**未到期**——收据
+  `.last-batch-regression.json` last_covered_plan_id=766（2026-10-12T04:08Z），其后落地的
+  772/773/774 均非 ÷5 计划（770/775 仍活跃未合）；收据年龄 46.3h < 48h（若
+  2026-10-14T04:08Z 前无 ÷5 落地则届时按 48h 规则到期，归 /auto-plan:regress）。
+- 产物检查（landing≠deployment）：auto-lang 为库/测试仓——本计划无守护进程、
+  无发布二进制、无 web bundle 需重建；`auto-case`/`auto` CLI 为按需构建产物，
+  消费方（t/tv/tt 档与 §6.2 命令）已在合入后实测通过（见 landed smoke 与 R2 门禁）。
 
 ## 12. spec-sync 回写记录
 
