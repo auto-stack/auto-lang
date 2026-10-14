@@ -4,7 +4,7 @@ status: execution_done               # drafting → executing → execution_done
 feature_name: vm-sqlite-module
 author: []
 created_at: 2026-10-06
-updated_at: 2026-10-06
+updated_at: 2026-10-14
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
@@ -94,3 +94,5 @@ total_steps: 3
 ## 复审记录
 
 - work 记录 1：stage=work | plan_id=PLAN-744 | outcome=executing（交付完成，1 项环境残留） | code_commit=cb7a59ede（v0.6-dev）/ 5bbb51caa（plan-742-dev worktree，另含 fs.dir_names VM shim 与种子） | evidence=stdlib 单测 sqlite_vm_open_exec_query_roundtrip（含哨兵错误/未知句柄）、NOTES-001 应用 `auto run -r vm --server rust` 启动成功（MCP :9247 listening + 首帧 state sync + App Init 经 sqlite 路径完成——seed 6 条经 VM sqlite shims 落 inbox.db，autotest T0 初始状态断言通过=VM 端到端执行了 SQLite 存储）、evidence=notes 仓 tests/probe/evidence/vm-r4-boot.log + vm-r4/data/inbox.db（6 行+schema_v=2） | 残留=MCP 服务在无头会话中服务完首批请求后监听消失（PLAN-066 已登记的 9247 共址/存活脆弱类；本轮 19 场景套件仅 T0 跑通即断连），VM 全套冲突编排未能在会话内采——store 逻辑同一 .at 已在 Vue 轨 negatives-r4 3/3 实证 | next=review（VM 冲突编排的完整采证依赖 MCP 服务存活问题的修复，属 ui/mcp_server.rs 基建项，建议随本计划复审一并裁决是否入 744 范围或另立）
+- work 记录 2（2026-10-14，残留闭环）：stage=work | plan_id=PLAN-744 | plan_revision=1（范围未变） | outcome=pass（记录 1 残留全闭环，无代码改动——纯验证+簿记，故未开 worktree） | worktree_path=无（验证会话：auto-lang 主检出仅跑测试/构建，notes 仓 main@1391bd7 只读运行，写入均落 gitignored .auto/） | code_commit=无新增（sqlite 代码 = 924273fa5 状态；binary SHA-256 6e30c87f5c…f3524c5 全新构建） | evidence=[r2-evidence](attachments/744/r2-evidence/README.md)：①AC#1 重绑定 `cargo test -p auto-lang --lib sqlite` 2 passed（roundtrip + 924273fa5 的 handles_are_vm_local_and_released_with_request_task；1 预存 ignore=cookbook needs-sqlite）②AC#2 重绑定 VM autotest 19/19 EXIT=0 净库单轮（MCP 78s 就绪——rust 后端冷构建可超 r5 脚本 90s 窗）③AC#3 重绑定 VM 负例 13/13 EXIT=0 fails=[]（notes r5 交付的 run_vm_negative.py 原样重跑：外部写者冲突 dirty/conflict 保留+双恢复槽、陈旧保存被拒+Discard 取最新服务器版、after_manifest fault 裁决+幂等重试）④残留闭环依据=NOTES-001 r4 work 记录 9 把 MCP 断连根因定为套件自身契约缺陷（跨轮数据污染+筛选残留+索引期望陈旧+240s 时长，服务端 157/157 全服务；非 mcp_server.rs 缺陷）+AUTOUI_MCP_PORT/Connection:close/净库单轮三件套已落 notes 测面——原「入 744 或另立」的裁决不再需要 | 勘误（记录 1）=`--server rust` 启动下种子落盘走 a2r_std 直连，不经 VM shims——「seed 6 条经 VM sqlite shims」表述过当；VM shims 真实执行的证据=单测 + 本次 `--server vm` 探测（后端 AutoVM HTTP 起服 26 路由，inbox.db 三表+meta 经 shims 落盘=方法形 db.exec/db.query 在 run 模式可链接可执行） | 新发现（744 范围外，登记 KNOWN-DEBT P744-D1）=纯 VM 后端轨三连：fs.copy_recursive 两轨语义分裂（fs.at:58 声明 void+#[vm] 抛 RuntimeError vs a2r 返 bool→notes legacy 门 500）；`auto service --server vm` 链接失败 Undefined symbol: SqliteDb.exec in module p2probe（service 每-模块解析缺 Type.method 形映射，run 模式扁平化有）；后端 VM handler 上下文 fs.exists 疑似误报（未隔离，独立脚本探针正确） | blockers=无 | next=review（/auto-plan:review 对本记录+附件复审；P744-D1 由复审裁决路由）
+
