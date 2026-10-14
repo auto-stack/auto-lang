@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-774
-status: reviewed
+status: archived
 feature_name: AC 数据扩面的共同类型、资源与内部调用契约
 plan_revision: 3
 author: [Codex]
 created_at: 2026-10-12
 updated_at: 2026-10-14
-current_step: 7
+current_step: 8
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -149,7 +149,7 @@ D-02/03/04 候选规则先核查规范和消费者，再执行探针；结果与
 | [x] | T-05 | work | T-04 | 冻结 decisions.md/interface-contract.md，D07 合并顺序、770/771 消费表；重新核对 oracle 不变 | 01/04 |
 | [x] | T-06 | work | T-05 | verification.md/proposed-spec-delta.md；完整 probe/ac-core 与新旧 gates；inputs/native/artifact hash、SD覆盖；不发布 canonical | 05 |
 | [x] | T-07 | review | T-01..06完成、writes暂停 | 同一树独立 AC/SD/反例复审；pass才reviewed，needs_fix返原树 | 06 |
-| [ ] | T-08 | merge | T-07 pass与合入授权 | 沉淀 SD/导航/ledger/index；真实archive及总数；批回归到期判定；wt-guard clean 后清树/branch/空组 | 07 |
+| [x] | T-08 | merge | T-07 pass与合入授权 | 沉淀 SD/导航/ledger/index；真实archive及总数；批回归到期判定；wt-guard clean 后清树/branch/空组 | 07 |
 
 实际唯一树 `D:/autostack/.wt/lang-774/auto-lang`、branch `plan-774-dev` 保留；2026-10-14 第六轮独立最终复审 pass，绑定 HEAD c713aaafb5dfe73fd587a2e52f53f83c3f40355d。五轮历史阻断全部闭合，64探针/永久状态及旧门禁通过，新增真实格式化输出→解析三控制通过。status=reviewed，T01..07完成、current_step=7/8；T08合入授权与实际closeout仍待办，详见§9最新记录。
 
@@ -271,6 +271,19 @@ findings: 无新增阻断/债务；P774-R5-01清偿：summary_of六字段顺序�
 evidence: 本轮774门禁8步（64 probe tests+永久状态1/1）、完整ac-core145 passed/既有1 ignored、741 13步/745 74例/772 45例全绿；r1/r2/r3/r4/r5独立重放7/7、3/3、4/4、1/1、2/2全绿。新受控原formatter→真实stderr→原parser三组合控制3/3（u32上界、不同宽字节域、全释放后保留宽peak）。仅小内存宿主状态/协议检查，不宣称4GiB native申请；实际ABI仍由native probes验证。当前HEAD收据gate-20261014-074319/raw-20261014-074249、完整日志/原输出/再生入口/源码适配快照/native与包hash均在review-r6持久保存。
 pending_closeout_gates: 用户T08合入授权；SD/导航/ledger/index实际沉淀；归档/任务数；批回归到期判定（到期主检出单实例regress）；wt-guard clean后原树/branch/组清理及恢复收据。
 next: 获得合入授权后 `/auto-plan:merge` 原唯一树交接，合入前复核HEAD、输入/验证配置、实现洁净及主整合基线；实现/合同漂移重新核查受影响面。T07勾选，T08留空，reviewed7/8，revision仍3。本轮未修实现、合入、归档或清理。
+
+## 9.1 合入收敛收据（PLAN-774:r3，stage:merge）
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | reviewed c713aaafb（r6 pass，绑定六轮反例全绿）；冻结 SD SHA256 83a721c3…；canonical diff = SD-01 新建 + SD-02/03/04 追加 + plans.md 行 + INDEX 重生成 + ledger 投影；delivery=工树文档提交 3f09c3a1a（reviewed_commit 纯文档后代，实现/依赖零改动） |
+| landed | rebase 17/17 零冲突，range-diff 全 `=`（旧→新：c713aaafb→1a6f44ea4、3f09c3a1a→930d05fae）；master `--ff-only` 落地，tip=930d05fae=delivery；主检出门禁复跑 8/8 全绿 |
+| ledger_refreshed | `.autoos/specs.json`（tracked）guarded offline projection：字节级备份、indent=1 格式保真往返、手术 diff 59+/1−（唯一删除=version 行）、version 9→10、新增 P774-1/P774-R6/P774-M/P774-T（designs/reviews/reports/tests，均带 file+tags）、六节 schema 读回校验；通道=离线投影（无 store writer，PLAN-720 先例） |
+| archived | 本文件 git mv 至 docs/plans/archive/，status archived，8/8；module plans.md 行 + INDEX 已随 delivery 提交 |
+| cleaned | 见下（清理后回填） |
+
+生产工件观察：本计划交付为探针 workspace + 文档 + 门禁脚本，无 backend/daemon/web bundle 等生产消费面——无 stale 生产工件。
+批回归判定：见待澄清事项更新。
 
 ## 10. 待澄清事项
 
