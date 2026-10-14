@@ -295,7 +295,7 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 | landed | master tip `bcfe2d7d672646f6b00aa056b1bfc5a493bb9bf8` == `git merge --ff-only plan-776-dev`（无 merge commit）；rebase 改写经 `git range-diff 5e21561d2..b48ac691c 5e21561d2..master` 全等价（21 提交逐一 `=`；ledger 提交因冲突解决以 **master v14 基底**重放外科投影——首版 theirs 解决曾吞 master 26 条目（P742/P744/P771/P773/P774），零丢失验证抓出后已修复：v14→v15、+5 P776-*、既有条目重复感知零变异） |
 | ledger_refreshed | `.autoos/specs.json`（本仓 tracked，经 worktree+Git）；channel=**guarded offline projection**（HTTP 探测 3000/8787 无 store writer）；5 条目=P776-1/2（designs）、P776-3（tests）、P776-4（reviews）、P776-5（reports），均带 file+tags（reviewed_commit hash）；六节 schema/读回验证通过 |
 | archived | `docs/plans/archive/776-http-return-resource-contract.md`（git mv）；status=archived；本收据提交入默认分支 |
-| cleaned | 见下方 cleaned 行（wt-guard + worktree/branch/组目录移除后回填） |
+| cleaned | wt-guard clean（无 reparse point）→ `git worktree remove` lang-776/auto-lang + auto-down 兄弟、`git branch -d plan-776-dev`（was bcfe2d7d6，已并入）、组目录已删；`git worktree list` 复核无残留 |
 
 merge-owned 后置门禁（冻结基线 e65c01012→rebase 后等价链上）：裸 `cargo t` **5312/5312**；`cargo tv` **162/162**；`cargo th -j1` **132/134**——corpora=在册预存红（R1..R14 同形 `:id` 未替换）、031=并行顺序 flake（单跑 3/3 绿）；生成真 TCP 矩阵 **3/3**（File/Upload/JSON+busSSE；一次与 th 并发的 plan730 构建锁 TIMEOUT 独跑绿）；auto-man api_gen 46+1。部署产物观察项：`target/release` 后端二进制与 `gen/front/vue/dist` 均先于本合并（stale）——本仓为库仓，776 面生产消费经下游重建；批量回归到期判定见下。
 
