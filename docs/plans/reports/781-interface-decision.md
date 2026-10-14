@@ -83,3 +83,13 @@ clamp [0, content_h − viewport_h]（geometry::clamp_offset）
 ## 6. 验收映射（V-01~06 → 合同条款）
 
 V-01（真实定位/正面积）→ §3 公式 + §1 观测面；V-02（寻址/原始行号 key/col 包装）→ §1 key 语义；V-03（时序/换章/换绑代际）→ §2 代际；V-04（负例：空/缺/重复/越界）→ §1/§2 reason 集；V-05（重排/已可见不跳/过高起始可见）→ §3 三分支；V-06（旧 offset API 回归 + managed unsupported）→ §5。
+
+## 7. 修订记录
+
+**2026-10-14 r4（T-03 实施期勘定，worktree commit f75b32e31）**：
+
+1. **id 撞号（勘定+修复）**：99xx 静态带之外还有两路动态占用——stdlib `#[vm]` 声明计数器（从 100 爬升，现已到 99xx 带，`http.Request.method` 实占 9923）与动态 shim 分配器（10000 起）。静态目录行必须同步补 **NATIVE_ID_ENTRIES 避让表**（2939/9906 先例成文规律），否则声明计数器占号后被静态 shim 覆写（STDASSEMBLY.SIGNATURE_UNVERIFIED）。
+2. **句柄语义勘误（§1 修正）**：`bad_handle` 仅对空串——任意非空串为合法 controller 句柄（"`@scrollctl:N` 与 .at 侧裸字符串柄等价"，9900 族 pop_controller_handle 既有语义；Reader `var rsc str = "reading-pane"` 先例）。冻结稿的"非 @scrollctl: 前缀即 bad_handle"作废。
+3. **可见性公式勘误（阶段 A 决策报告 §5.3 同步修正）**：采集 bounds 已 pane 锚定（含 viewport 原点——R2 实测 row0=71.4 = pane 55.4 + padding 16 的正确解读）；窗口化 = **仅减 offset**，不再回加 viewport 原点。旧公式 +vy 双重计数被阶段 A 正例容差吸收，边界对齐目标（row40 差 3px 出窗）暴露。`compute_visibility` 与单测/v11 病例已同步。
+4. **动态渲染臂完备性**：新 View 变体必须同时补 `render_dynamic_view` 臂（路径透传递归）——缺臂时子树落入无 debug_ctx 的泛型 into_iced，整个子树失去 vnode id（LayoutCollector 全盲）。AnchorSlot 先例的动态臂同样存在（其子树不需要 MCP 寻址故未暴露）。
+5. **MCP scroll 动作对 controller pane 落空（修复）**：action 按 vnode id 直落 iced scroll_to，controller pane 的 iced id 是 `scroll_ctl_{key}` → 静默 no-op。VNodeProps::Scrollable 增 controller 键，action 改发句柄派生 id。

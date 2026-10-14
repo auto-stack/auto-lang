@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
-current_step: 7
+current_step: 8
 total_steps: 18
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -212,7 +212,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [✅ 2026-10-14] 决策报告落盘 [781-interface-decision.md](reports/781-interface-decision.md)：API 冻结为 DSL `scroll-anchor` 属性 + native 9922 `auto.scroll.to_child(handle,key)->queued/error` + 9923 `auto.scroll.anchor_state(handle,key)->pending/applied/invalid:<reason>/unknown`（id 实勘：9906–9921 全占、9922/9923 空闲、下一占用 9930）；状态机含绑定代际（bind_controller 换绑检测挂 generation）与内容代际（当帧锚点注册表）；nearest 三分支公式冻结（高于视口顶对齐/底出底对齐/顶出顶对齐/已交不动，clamp）；实现映射 = View::ScrollAnchorMark 零布局 wrapper（AnchorSlot 先例）+ operate 期合成 id `scrollanchor:{key}` 上报最终位置 bounds + controller 注册表独立请求队列（intent.rs 纯 offset 语义不污染）+ vue `data-scroll-anchor`/`__sctlToChild` helper；支持边界 = ordinary pane+controller 必须、嵌套包装允许、managed/virtual/X 轴显式 unsupported；778/779 草案无 landed 冲突、776/742 写面不触。可等价实现，无需 needs_replan。
 - [x] T-02: owner_stage=work；依赖T-01；修改ui/scroll/{intent,controller}.rs与native_catalog/对应shim、必要AURA绑定；增加scope/布局时序/失败永久单测。`cargo t scroll`及新族过滤测试通过。AC-02/03。
   [✅ 2026-10-14] worktree commit 65ddc5d2f。按接口决策落地：geometry.rs `nearest_child_offset`（冻结三分支公式 + NaN target 保持 offset 的 total 语义）；controller.rs 锚点请求表（(handle,key) 寻址/重复入队覆盖重 pending）、绑定代际（换绑 → 旧请求 invalid:not_bound）、managed 标记（入队拒 unsupported）、`resolve_anchor_requests`（当帧 key→(y,h) rect 折叠为 finals scroll_to 终态，未预热沿 F-4 晚一拍）；intent.rs 未改（决策 §4：纯 offset 语义不污染）；native 9922/9923（ui+无ui 降级臂，id 实勘 9906–9921 全占）；`View::ScrollAnchorMark` 零布局 wrapper（vtree/snapshot/coverage 全透传——MCP 寻址零扰动，8 处转换臂）；aura_view_builder 双入口（tracked/untracked）薄包装 `maybe_wrap_scroll_anchor`（空 key=告警不包装）。门禁：`cargo t scroll` **68/68**（新增 5 个生命周期单测 + nearest 分支 + builder 包装测试）；`cargo t plan781` 15/15。
-- [ ] T-03: owner_stage=work；依赖T-02；在ui/iced/renderer.rs及必要layout operation（新文件明确登记）按真实目标布局消费意图，保留ScrollStateReader回声；原生fixture验V-01~06。AC-01/02/03。
+- [x] T-03: owner_stage=work；依赖T-02；在ui/iced/renderer.rs及必要layout operation（新文件明确登记）按真实目标布局消费意图，保留ScrollStateReader回声；原生fixture验V-01~06。AC-01/02/03。
+  [✅ 2026-10-14] worktree commit f75b32e31。新文件 `ui/iced/scroll_anchor.rs`（mod 登记）：ScrollAnchor 零布局 wrapper（operate 期合成 id `scrollanchor:{pane}:{key}` 上报最终位置 bounds）+ AnchorBoundsCollector（Vec entry 形态——元组键 HashMap 不可 JSON 序列化，实测定罪）+ 双路 stash 齐备即解析 + finals 经既有 `__mcp_scroll` 通路落盘（写臂投影纪律）。`render_dynamic_view` 补路径透传臂（缺臂时子树落入无 ctx 泛型转换、整个子树丢 vnode id——消元法实锤）；convert_scroll 双臂 `inject_anchor_pane` 后置填 pane（嵌套 pane 停）。实施期三处勘定：① native 9922/9923 撞号——动态 #[vm] 声明计数器已爬到 99xx 带（http.Request.method 占 9923，2939 先例）→ 补 NATIVE_ID_ENTRIES 避让行；② 句柄语义勘误——任意非空串合法（Reader 裸串先例），bad_handle 仅空串；③ **可见性公式勘误（决策报告 r4）**——采集 bounds 已 pane 锚定含 viewport 原点，窗口化 = 仅减 offset（旧公式 +vy 双重计数，正例容差曾吸收、边界对齐目标 3px 出窗暴露）；单测与 v11 病例算术同步。另修 MCP scroll 动作对 controller pane 落空（VNodeProps::Scrollable 带 controller 键，改发 `scroll_ctl_{key}`）。scroll-geometry fixture 升级（controller + 行锚 + Go/Query 按钮）；驱动 v_anchor_native 11 项全绿（queued→产品定位→正面积可见→applied；底部段；invalid:not_found 且 offset 不动）。**全默认集 12/12 exit 0**；scroll 68/68、plan781 15/15、mcp_server 29/29。
 - [ ] T-04: owner_stage=work；依赖T-02；ui_gen/vue.rs生成绑定/helper，必要schema修改与golden同步；真实plain及Reader实际使用样式路径验证，无DOM类型泄漏。AC-01/02/03。
 - [ ] T-05: owner_stage=work；依赖T-03/04；新增examples/capability-tests/p781-scroll-child-anchor/与配套双端驱动（新）；完成全矩阵、分级门、负例失败传播、当前帧几何/截图/CLI hash。AC-01/02/03。
 
