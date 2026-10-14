@@ -67,7 +67,7 @@ README 增量。旧域（core/scalar）源码路径仅共享枚举扩面（带�
 
 ## 4. 门禁执行（verify-ac-record-771.ps1）
 
-**R2 修复轮重跑：24 步全绿，0 failed，23 cases**（2026-10-14 实跑；
+**R2 修复轮收尾重跑（当前收据）：24 步全绿，0 failed，23 cases**（2026-10-14 实跑；
 原始收据 `target/ac-verify-receipts/record-771/`，含 context/summary/
 cases 与逐例 build/run 输出与 SHA256；下表步骤号为 R1 轮 22 步结构的
 历史编号，R2 增补步骤以字母续排）：
@@ -78,8 +78,8 @@ cases 与逐例 build/run 输出与 SHA256；下表步骤号为 R1 轮 22 步结
 | 2 | cargo check（ac-core） | PASS |
 | 3 | cargo fmt --check | PASS |
 | 4 | cargo check --all-targets 零警告 | PASS |
-| 5 | cargo test --locked（全 ac-core 187/187） | PASS 36.8s |
-| 6 | cargo test record_native（单线程 9/9） | PASS 4.6s |
+| 5 | cargo test --locked（全 ac-core 202/202） | PASS 55.8s |
+| 6 | cargo test record_native（单线程 15/15） | PASS 12.3s |
 | 7 | 构建工具二进制 | PASS |
 | 8 | 构建 trace 支持库 | PASS |
 | 9 | 正向 SOURCE：flagship 构建+运行 exit 0 | PASS |
@@ -95,9 +95,9 @@ cases 与逐例 build/run 输出与 SHA256；下表步骤号为 R1 轮 22 步结
 | 13 | profile 隔离（core/scalar 拒 record；未知 profile exit 2；域行） | PASS |
 | 14 | SENTINEL 事务（失败 build 三件制品 hash 保持） | PASS |
 | 15 | 收据身份行（record 三元组 + input-hash） | PASS |
-| 16 | 旧 gate 741（-SkipMainGates） | PASS 9.1s |
-| 17 | 旧 gate 745（source core-i32） | PASS 41s |
-| 18 | 旧 gate 767（scalar） | PASS 25.6s |
+| 16 | 旧 gate 741（-SkipMainGates） | PASS 11.2s |
+| 17 | 旧 gate 745（source core-i32） | PASS 39.8s |
+| 18 | 旧 gate 767（scalar） | PASS 22.5s |
 
 实施期修正（oracle 侧，非合同变化，T-06/T-07 历史记录）：SN04/SN07
 两 fixture 初稿写成合法程序（同构异名 seeding 全 i32 字段合法；类型名

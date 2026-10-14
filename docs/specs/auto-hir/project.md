@@ -27,7 +27,21 @@ scalar 身份域与运算扩面；完整 HIR（全 A 子集、来源表、跨模
   按域分设：`verify` 限 core、`verify_scalar` 限 scalar（域错位 `verify.domain`）；
   未注册 descriptor 的 bind 整体拒绝（`bind.descriptor-unregistered`），
   canonical writer 对未注册/错域一律拒绝（`canonical.identity-conflict`）。
-- 单模块内解析引用；跨模块引用、字符串/聚合/所有权/泛型/enum 值不在两域内。
+- 单模块内解析引用；跨模块引用、字符串/泛型/enum 值不在任何已注册域内。
+- **record 域（PLAN-771）**：`auto.hir.record.draft / 1 / record-i32-draft`
+  （descriptor `schema/record.atom`，scalar 的超集）增设名义 record 类型
+  （`TypeKind::Record` 声明序字段表；结构相同不同名不互换）、字段 place
+  （`PlaceKind::FieldPath` 逐段归属）、构造表达式 `record_ctor`（源码序
+  求值表 + 按名/按位 ctor_bindings 双射）、借位表达式 `borrow_view`/
+  `borrow_mut`（仅直接调用实参位）与方法声明（`DefKind::Method` +
+  ReceiverKind static/view，param `mode` view/mut）。可信门：类型包含图
+  迭代环检测（`verify.record-cycle`）、名义 ValueType::Record(tid) 相等、
+  构造完整性（`verify.ctor-arity`）、逐段字段 owner（`verify.field-owner`）、
+  借位位置/模式与 per-call mut 排他（`verify.mut-conflict`，774 D-04）；
+  全部表引用（含 binding 内索引）先界检后走查，变异 Bundle 受控拒绝不
+  panic。旧 core/scalar profiles 的接受/拒绝集合零改动（`verify.profile-op`
+  域防御双向生效）；verify 入口 `verify_record` 限本域。合同细则见
+  [../auto-ac/source-record.md](../auto-ac/source-record.md)。
 
 ## 文本契约（atom_text + descriptor）
 

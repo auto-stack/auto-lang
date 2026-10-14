@@ -78,6 +78,19 @@ return 转移）的证据状态为**探针实证**；合同全文见
 [auto-ac/data-resource-contract.md](../auto-ac/data-resource-contract.md)。
 text/record 域身份（text-i32-draft/record-i32-draft）注册归 770/771。
 
+### record 域阶段责任（PLAN-771，已实现）
+
+record-i32-draft 的 S0–S6 已闭环（source-record.md 合同）：S1 binder 绑定
+record/field/method 结构与 CategoryRef；S3 verify 前门执行 774 D-04 借用/
+所有权规则（拒绝时目标操作 native 调用计数为 0）、构造完整性与全部表
+引用界检；S5 native 按 D-05 布局（字段声明序、4 对齐、size=Σ字段尺寸，
+checked u64）与 ABI-D（`*const` view）/ABI-E（`*mut` + out-slot 返回，无
+聚合 RAX/sret）lowering。**存储不重叠义务**（ lasting rule，771 R1/R2
+冻结）：copy-elision 仅在赋值目的地与 RHS 触集不相交时直写目的地，否则
+RHS 先完整物化再提交；record 值操作数（构造字段绑定的 ReadLocal）在其
+自身求值位捕获，借位实参传活指针；out-slot 与全体实参存储不相交由调用
+点转发规则归纳保证。通用聚合优化、公开/生产 ABI 保持 planned。
+
 ## 非法变换负面清单
 
 X1 分支 trap 提升；X2 命名参数按声明序重排；X3 变换后沿用旧 Checked 凭证；
