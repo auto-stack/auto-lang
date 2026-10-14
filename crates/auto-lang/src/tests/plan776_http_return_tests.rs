@@ -2967,8 +2967,22 @@ fn plan776_r10_setter_single_release_shared() {
             .map(|c| c.load(std::sync::atomic::Ordering::SeqCst));
         // setter 把参数份转移为返回槽份：仍恰一份（独占形态）。
         assert_eq!(rc, Some(1), "独占 setter 后 = 返回槽一份");
+        // R13-01：释放返回值**之前**读取仍有效的返回凭据快照并与 expect
+        // 比对（复用 settle 的字段比对方法）——此刻不是 tombstone，不触
+        // 发 canary；独占格因此同时覆盖 mutation 语义，不只 RC/回收。
         let ret = task.ram.pop_nv();
         assert!(auto_val::is_object(ret));
+        let claim = res::resolve_resource(&vm, ret).expect("独占返回值快照可解析（释放前）");
+        let matches_expect = match (&claim, &expect) {
+            (res::ResourceClaim::Response(a), res::ResourceClaim::Response(b)) => {
+                a.status == b.status && a.headers == b.headers && a.body == b.body
+            }
+            _ => false,
+        };
+        assert!(
+            matches_expect,
+            "独占格 mutation 终值: actual={claim:?} expect={expect:?}"
+        );
         vm.rc_release(ret);
         vm.reap_all();
         assert!(vm.heap_objects.get(&h).is_none(), "独占释放后回收");
