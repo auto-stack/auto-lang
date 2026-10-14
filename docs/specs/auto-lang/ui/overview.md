@@ -599,6 +599,11 @@ SFC 断链已由 PLAN-609 收口（根因=dep 源死指非发射链缺口，auto
 应用 `dark_mode`（boot 播种〔518 在案〕+ launch 播种缺省臂 + 独立 VM 窗
 `AUTO_UI_THEME` 环境链〔CLI>os-config>pac〕未解析时 OS 回退）；语义 token 类
 （bg-card/bg-muted/bg-primary…）随 set_dark_mode 自动双档，应用级零手工分支。
+  **widget/store 主题种子同源（Plan 742 D8）**：检测到主题契约且有 store
+  依赖时，首个 store 的 `dark_mode` 由 `__AUTO_UI_THEME__` 同源播种
+  （index.html bootstrap 与 App 初始化引用同一来源），消除"App 引用与
+  store 值分叉"（015-notes dark_mode 实案）；限定既有首 store 形态，
+  非全量 store 注入规则。
 ③bind 键盘直输：parse_bind_block 零参约束（仅收 `.Name`）——模式感知零参
 Key 处理器族范式（带参 bind 扩展=KNOWN-DEBT P615-D1）；`dom.copy_text` 双端
 剪贴板内建（VM native 2926 复用 418 面/vue navigator.clipboard）。

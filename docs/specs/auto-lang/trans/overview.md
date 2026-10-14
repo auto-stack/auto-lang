@@ -214,3 +214,10 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
   参数剔除按 is_upload_param（s-expr 双族）。`try_transpile_body` 对 `Future<T>`
   端点置位 async 上下文（set_async_ctx）——内联体 await 合法；转译失败 =
   生成期 Err（诊断 500 handler 退役）。
+- **体路径后处理门控（Plan 742 r1–r5）**：body 路径的集合构造降级与粘连
+  语句分割由 `code_region_mask`（转义感知字符串/字符/注释掩码）门控——
+  后处理只作用于真实代码区，业务字面量值不改变；宿主调用按实际签名与
+  表达式实参边界补借用，生成物可编译（实编+值对拍 oracle 在
+  auto-man/api_gen tests）。fs 面有 `mkdir_all` 与 `dir_names`（Plan 742
+  D9：非递归直接子名、排序、略点名、缺目录返回空——`list_dir` 名字归
+  Plan 626 VM walk face）。

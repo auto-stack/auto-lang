@@ -19,6 +19,29 @@
   companion module 导入/限定调用、借用参数修正和 `?T` Result/404 返回包装；
   这些修正只覆盖相应发射形态，不扩大语言转译器的通用支持面。装配预检对
   body 转译失败 fail closed，拒绝生成；运行时生成阶段不得静默落回 CRUD 桩。
+
+### 体路径不变量（Plan 742 r1–r5，六轮复审冻结）
+
+- **字面量保持**：api.rs/companion 后处理链（语句分割/集合降级/模块限定/
+  借用修正/标准库限定/strip_collection_new）只作用于代码区——`code_region_mask`
+  转义感知掩码（字符串/字符/行+块注释）门控，业务字符串载荷逐字节保留；
+  标准库限定为单趟优先级扫描（已限定 > sys/sqlite 直连 > 通用限定 > use
+  行），无占位符恢复步（恢复步无法区分自插入 marker 与同拼写合法串）。
+- **模块 token 身份**：companion 限定化按调用形态（`mod.fn(`）且要求标识符
+  边界——代码区命中 ≠ 完整 token 身份，名字以 stdlib token 结尾的合法
+  companion（`custom_a2r_std`）保持自身模块身份；绑定按真实作用域遮蔽
+  （栈式帧：params 帧起、每个代码区花括号一帧），子块局部只在块内遮蔽，
+  外层同名模块调用不受影响。
+- **借用**：按实际签名与实参切分补 `&`；比较 `<`/`>` 不是泛型定界——判别
+  取发射器形态规律（泛型 `<` 紧贴标识符、比较两侧带空格）；嵌套调用参数
+  逐层递归修复（外不需借/内需借组合必须正确）。
+- **返回出口矩阵**：值/Option/void × has_path/PUT/DELETE 各形态类型匹配
+  （`InlineRetWrap` 五态）：Option 变量按运行时 match 映射 Some→200/
+  None→404（不得按 Some/None 拼写判定类型）；void 体 `return None;` 映射
+  状态值、无顶层 return 时合成尾（分支内早退不覆盖 fallthrough）；File/
+  Upload 体入口共享同一限定化；失败不能假成功（生成期 fail closed 保持）。
+  永久 oracle：真生成 → rustc 实编 → 运行 → 值对拍矩阵（api_gen tests
+  内联），不是子串断言。
 - `AUTO_A2R_BODY=0` = **显式 scaffold 模式**：CRUD 模板可达但 api.rs 头部强制
   `// PLAN-734: SCAFFOLD MODE` 标注（测试锁定——不冒充同源）。db.rs 委派
   保持为合法实现来源。

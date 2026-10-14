@@ -39,6 +39,14 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
   `sqlite.rs.at`（#[rs] 示意层，手抄源）+ `crates/a2r-std/src/sqlite.rs`（真实现）。
 - 类型名 `SqliteDb`（刻意非 `Db`，避免转译器全局名映射劫持用户同名结构体）；
   RAII 关闭，无显式 close。
+- **连接共享语义（Plan 742 D7）**：a2r 侧 `SqliteDb` 为
+  `Arc<Mutex<Connection>>`——`clone` 共享同一连接与事务状态（跨 clone 的
+  BEGIN/COMMIT 相互可见，事务中 clone 不复制快照），最后一个 clone drop
+  时关闭连接；`open`/`exec`/`query` 接受 `AsRef<str>` 输入（owned String
+  可直传）。015-notes Phase-1 升级的运行时依赖面。
+- **fs.dir_names（Plan 742 D9）**：返回排序的直接子项名（仅一层、非递归），
+  点名跳过，目录缺失/失败返回空表；不限定普通文件（目录子项同样列出）。
+  VM 侧同签名 shim 复用同一实现（Plan 744 parity）。
 - 哨兵错误约定（与 fs/http 一致）：不 panic——`open` 失败回退内存库并记
   `last_error()`；`exec` 失败返 -1（批脚本/行返回语句经 `execute_batch` 回退
   报 0）；`query` 失败返空表；所有单元格字符串化（NULL→""、BLOB→"<N bytes>"）。
