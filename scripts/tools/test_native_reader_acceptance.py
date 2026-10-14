@@ -178,6 +178,36 @@ class Evidence:
         counts = {}
         for r in self.results:
             counts[r.status] = counts.get(r.status, 0) + 1
+        # AC-10 owned 进程收尾核查：本 run 记录的全部实例端口（含 restart 前任）
+        # 均不得仍被持有（外部执行方占用同一端口的情形由 pid 对照豁免——
+        # holders 与本 run 任何 pid 无交集即视为已释放）。
+        owned_pids = set()
+        for inst in self.manifest.get("instances", {}).values():
+            if isinstance(inst, dict) and inst.get("pid") is not None:
+                owned_pids.add(inst["pid"])
+        for rst in self.manifest.get("restarts", []):
+            for key in ("from_pid", "to_pid"):
+                if rst.get(key) is not None:
+                    owned_pids.add(rst[key])
+        lingering = {}
+        external_reuse = {}
+        for tag, inst in self.manifest.get("instances", {}).items():
+            if not isinstance(inst, dict):
+                continue
+            for label in ("mcp_port", "back_port"):
+                port = inst.get(label)
+                if port is None:
+                    continue
+                holders = netstat_listening_pids(port)
+                if not holders:
+                    continue
+                if holders & owned_pids:
+                    lingering[f"{tag}:{label}:{port}"] = sorted(holders)
+                else:
+                    # 端口已被外部进程复用 = 本 run 已释放（外部执行方并发证据）。
+                    external_reuse[f"{tag}:{label}:{port}"] = sorted(holders)
+        self.manifest["owned_port_sweep"] = {"checked": True, "lingering": lingering,
+                                             "external_reuse": external_reuse}
         self.manifest["cases"] = [vars(r) for r in self.results]
         self.manifest["case_counts"] = counts
         self.manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
@@ -185,6 +215,10 @@ class Evidence:
             json.dumps(self.manifest, ensure_ascii=False, indent=1, default=str),
             encoding="utf-8")
         print(f"cases: {counts}")
+        print(f"owned-port sweep: {'clean' if not lingering else lingering}"
+              + (f" (external reuse: {external_reuse})" if external_reuse else ""))
+        if lingering:
+            return 2
         if any(r.status == "fail" for r in self.results):
             return 2
         if any(r.nonpass for r in self.results):
@@ -695,6 +729,11 @@ def run_v10_pending_t11(ev: Evidence, inst: Instance) -> CaseResult:
 
     ev.raw_write("v10_fake_geometry", {"checks": [(c[0], bool(c[1])) for c in checks],
                                        "frame": ss.get("frame")})
+    try:
+        shot = cli.screenshot("v10geometry", baseline=False)
+        ev.shot_collect("v10geometry", str(shot))
+    except Exception:  # noqa: BLE001
+        pass
     reap_ok, reap_detail = inst.reap()
     bad = [c for c in checks if not c[1]]
     if bad or not reap_ok:
@@ -809,6 +848,11 @@ def run_v11_clip(ev: Evidence, inst: Instance) -> CaseResult:
 
     ev.raw_write("v11_clip", {"checks": [(c[0], bool(c[1])) for c in checks],
                               "pane": pane, "frame": ss.get("frame")})
+    try:
+        shot = cli.screenshot("v11clip", baseline=False)
+        ev.shot_collect("v11clip", str(shot))
+    except Exception:  # noqa: BLE001
+        pass
     reap_ok, reap_detail = inst.reap()
     bad = [c for c in checks if not c[1]]
     if bad or not reap_ok:
@@ -1058,7 +1102,13 @@ def run_v09_cold_restore(ev: Evidence, inst: Instance) -> CaseResult:
         r.status, r.detail = "fail", "negative restart not ready"
         inst.reap()
         return r
-    snap2 = inst.snapshot_text()
+    t0 = time.monotonic()
+    snap2 = ""
+    while time.monotonic() - t0 < 15:
+        snap2 = inst.snapshot_text()
+        if "内容已变化" in snap2 or "已恢复上次位置" in snap2:
+            break
+        time.sleep(POLL_INTERVAL)
     checks.append(("tampered anchor fails honestly",
                    "内容已变化" in snap2 and "已恢复上次位置" not in snap2))
 
@@ -1186,6 +1236,91 @@ def run_v08_reader_current_state(ev: Evidence, inst: Instance) -> CaseResult:
     return r
 
 
+def run_v13_anchor_interop(ev: Evidence, inst: Instance) -> CaseResult:
+    """V-13 锚点互操作负对照（阶段 B 未落地形态）：通道对 pane 外目标按实测
+    分类（clipped_out/不可见），锚点能力（scroll_to_child）以显式 Unknown
+    tool 诚实失败——不是「通道不支持」、驱动也不代为修正位置（零滚动）。"""
+    import re
+
+    r = CaseResult("v13_anchor_interop")
+    inst.launch()
+    ok, detail = inst.wait_backend()
+    if not ok:
+        r.status, r.detail = "fail", f"backend ready failed: {detail}"
+        inst.reap()
+        return r
+    ok, detail = inst.wait_mcp()
+    if not ok:
+        r.status, r.detail = "fail", f"mcp ready failed: {detail}"
+        inst.reap()
+        return r
+    cli = AutoUiMcpClient(inst.mcp_port)
+
+    def tool_json(name, args):
+        res = cli.call(name, args)
+        return json.loads("".join(p.get("text", "") for p in res.get("content", [])))
+
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 15:
+        ss = tool_json("autoui_scroll_state", {})
+        if ss.get("frame", 0) > 0 and ss.get("panes"):
+            break
+        time.sleep(POLL_INTERVAL)
+    if not ss.get("panes"):
+        r.status, r.detail = "fail", "no pane geometry"
+        inst.reap()
+        return r
+    offset_before = ss["panes"][0]["offset"]
+
+    vt = "".join(p.get("text", "") for p in cli.call("autoui_vtree", {}).get("content", []))
+    idx = vt.find("¶100 P781SG")
+    hdrs = [m for m in re.finditer(r"col (vnode_\d+) \{", vt[:idx])]
+    target = hdrs[-1].group(1) if hdrs else None
+    checks = [("outside-pane target found", bool(target))]
+    if target:
+        v = tool_json("autoui_visibility", {"element_id": target})
+        checks.append(("channel classifies honestly (clipped_out, not visible)",
+                       v.get("visible") is False and "clipped_out" in v.get("flags", [])))
+        ev.raw_write("v13_anchor_interop-visibility", v)
+
+    # 阶段 B 锚点工具未落地：MCP 必须显式 Unknown tool（诚实失败），
+    # 而非通道代答/假成功。
+    unknown_ok = False
+    unknown_text = ""
+    try:
+        res = cli.call("autoui_scroll_to_child", {"pane": "vnode", "anchor_key": "p100"})
+        unknown_text = json.dumps(res, ensure_ascii=False)[:200]
+        unknown_ok = res.get("isError") is True and "Unknown tool" in unknown_text
+    except Exception as e:  # noqa: BLE001
+        unknown_text = repr(e)[:200]
+    checks.append(("anchor capability fails honestly (Unknown tool)",
+                   unknown_ok))
+    ev.raw_write("v13_anchor_interop-anchor-call", {"response": unknown_text})
+
+    # 驱动不修正位置：全程零滚动，offset 不变。
+    ss2 = tool_json("autoui_scroll_state", {})
+    checks.append(("no driver scroll (offset unchanged)",
+                   ss2["panes"] and ss2["panes"][0]["offset"] == offset_before))
+    try:
+        shot = cli.screenshot("v13anchor", baseline=False)
+        ev.shot_collect("v13anchor", str(shot))
+    except Exception:  # noqa: BLE001
+        pass
+
+    ev.raw_write("v13_anchor_interop", {"checks": [(c[0], bool(c[1])) for c in checks],
+                                        "offset_before": offset_before})
+    reap_ok, reap_detail = inst.reap()
+    bad = [c for c in checks if not c[1]]
+    if bad or not reap_ok:
+        r.status = "fail"
+        r.detail = f"failed: {[c[0] for c in bad]}; reap={'ok' if reap_ok else reap_detail}"
+    else:
+        r.status = "pass"
+        r.detail = (f"{len(checks)} anchor-interop negative checks ok ({detail}); "
+                    "stage-B anchor API absent by design -> honest Unknown tool")
+    return r
+
+
 # ---------------------------------------------------------------- main
 def main() -> int:
     ap = argparse.ArgumentParser(description="PLAN-781 native reader acceptance driver")
@@ -1243,7 +1378,8 @@ def main() -> int:
 
     all_cases = ["r1_smoke", "v07_dual_instance", "v12_window_start_fail",
                  "v12_backend_dead", "v12_timeout", "v10_fake_geometry", "v11_clip",
-                 "v08_save", "v09_cold_restore", "v08_reader_current_state"]
+                 "v08_save", "v09_cold_restore", "v08_reader_current_state",
+                 "v13_anchor_interop"]
     selected = args.cases or all_cases
 
     for case_id in selected:
@@ -1305,6 +1441,11 @@ def main() -> int:
         elif case_id == "v08_reader_current_state":
             inst_holder.append(mk("v08reader"))
             ev.case(guard(run_v08_reader_current_state, inst_holder[-1]))
+        elif case_id == "v13_anchor_interop":
+            inst = mk("v13", fixture_mode=True, ready_marker="P781-SCROLL-GEOMETRY")
+            inst.app_dir = REPO_ROOT / "test" / "fixtures" / "native-reader-acceptance" / "scroll-geometry"
+            inst_holder.append(inst)
+            ev.case(guard(run_v13_anchor_interop, inst))
         else:
             print(f"[usage] unknown case: {case_id}")
             return 1
