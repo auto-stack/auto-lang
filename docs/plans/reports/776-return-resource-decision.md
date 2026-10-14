@@ -92,6 +92,13 @@ B 的唯一优势（不占堆 id 空间）不构成需求。**冻结方案 A。*
 > （§3.3 修订）；③ setter 链迁移快照+owned-slot（§3.5 修订）；④ 查表臂
 > 与声明门全部退役，iterator 身份在返回边界建立（§4 修订）。逐条 SD 终形
 > 见 `776-return-resource-spec-delta.md`（R2 终形稿）。
+> **R5 终形补注（2026-10-14，F776-R5-01）**：④ 再进一步——SSE 身份授予
+> 点从「return 位静态包装」改为 **generator 生产点凭据化**（CREATE_GENERATOR
+> 后按所在 fn 声明流返回包装；local/helper/容器/闭包/Future 全载体传播；
+> for-in 迭代 natives 凭据感知解包兼容）；stream 声明 fn 可返回 Future
+> （marshal future 门扩为 async-或-stream）；立即体直驱终值读位修复
+> （bp==0 base 形态）。alias 解析升为**目标链**递归展开 + 限定名先于
+> 用户名集（§5/F776-R5-02）。终形见 spec-delta R5 终形稿。
 
 ## 3. 凭据合同（方案 A 细则）
 
@@ -181,15 +188,16 @@ pub struct HttpReturnResource { pub kind: HttpReturnKind }
    Response → `response_handle_reply(ctx, 快照)`；Sse → iterators 校验后 SSE serve
    （复用现 serve 路径/`produce_sse_frames` 单源）；File/Upload → take 移交 +
    mismatch 诊断。
-2. **R2 终形修订（原「声明门保持」废止）**：upload/file 的「声明+int」入口
-   → **纯诊断门**（声明专属返回且值非凭据对象 → mismatch 500，不触表）；
-   iterator/SSE 身份由生产点在**返回边界**建立（`call_fn_by_name_http`
-   generator dispatch 臂 + codegen 对 `~Iter/~Stream` handler 的
-   `return <generator 调用>` 静态插 `WRAP_SSE_RESOURCE`(0xD5)）。
-3. **R2 终形修订（原「查表命中制原样保留」废止）**：iterator/Response 查表
-   臂与 `handler_declares_stream_return` 声明门全部退役（dead code 移除）——
-   声明/表命中/数值都不授予身份；6 legacy wire 用例由真实生产点凭据保持
-   wire 行为（plan326 34/34）；client 句柄面已凭据化（§3.3 修订）。
+2. **R2/R5 终形修订（原「声明门保持」废止）**：upload/file 的「声明+int」
+   入口 → **纯诊断门**（声明专属返回且值非凭据对象 → mismatch 500，不触
+   表）；iterator/SSE 身份在**generator 生产点**建立（R5-01：codegen 对
+   `~Iter/~Stream` 声明 fn 内 CREATE_GENERATOR 后静态插 `WRAP_SSE_RESOURCE`
+   ——凭据随 local/helper/容器/闭包/Future 全载体传播；迭代 natives 凭据
+   感知解包）。
+3. **R2/R5 终形修订（原「查表命中制原样保留」废止）**：iterator/Response
+   查表臂与 `handler_declares_stream_return` 声明门全部退役——声明/表
+   命中/数值都不授予身份；6 legacy wire 用例由真实生产点凭据保持 wire
+   行为（plan326 34/34）；client 句柄面已凭据化（§3.3 修订）。
 4. JSON 兜底（i64/普通值——普通数值永远数据）。
 
 `final_value_reply` 统一（T-03/T-04）：
