@@ -212,6 +212,21 @@ enum EKind {
         callee_intrinsic: Option<&'static str>,
         eval: Vec<usize>,
         bindings: Vec<(u32, u32)>,
+        /// moved flags parallel to `bindings` (PLAN-770 `.move` markers)
+        moved: Vec<bool>,
+    },
+    /// String literal (PLAN-770); the VT records the contextual borrowing
+    /// (Str) or promoting (StrOwned) choice.
+    StrLit(String),
+    /// Char literal (PLAN-770): one Unicode scalar.
+    CharLit(u32),
+    /// Builtin text/char method (PLAN-770); args are planned expr indices.
+    Text {
+        method: crate::source::resolve::BuiltinMethod,
+        recv: usize,
+        args: Vec<usize>,
+        /// `Some(target)` only for `To` conversions.
+        to: Option<super::resolve::VT>,
     },
 }
 
@@ -796,9 +811,22 @@ impl PlanCtx<'_> {
                 dest: usize,
                 arg_slots: Vec<usize>,
             },
+            /// receiver + argument slots planned; assemble the builtin
+            /// text method node (PLAN-770; iterative so method chains of
+            /// any depth cannot recurse).
+            TextOut {
+                method: crate::source::resolve::BuiltinMethod,
+                to: Option<VT>,
+                vt: VT,
+                span: Span,
+                recv_slot: usize,
+                arg_slots: Vec<usize>,
+                dest: usize,
+            },
             Combine {
                 op: BinOp,
                 span: Span,
+                vt: VT,
                 lslot: usize,
                 rslot: usize,
                 dest: usize,
@@ -849,6 +877,7 @@ impl PlanCtx<'_> {
                         stack.push(Task::Combine {
                             op: *op,
                             span: node.span,
+                            vt: node.vt,
                             lslot,
                             rslot,
                             dest: slot,
@@ -861,6 +890,56 @@ impl PlanCtx<'_> {
                             node: lhs,
                             slot: lslot,
                         });
+                    } else if let RExprKind::Method {
+                        recv,
+                        method,
+                        to,
+                        args,
+                    } = &node.kind
+                    {
+                        let recv_slot = slot_idx.len();
+                        slot_idx.push(usize::MAX);
+                        let mut arg_slots = Vec::with_capacity(args.len());
+                        let mut subtasks = Vec::with_capacity(args.len() + 1);
+                        // `.to` carries its target in `to`: none of its
+                        // arguments are values; other methods plan each
+                        // argument (TypeWord markers never plan)
+                        if *method != crate::source::resolve::BuiltinMethod::To {
+                            for a in args {
+                                if matches!(a.value.kind, RExprKind::TypeWord(_)) {
+                                    continue;
+                                }
+                                let sl = slot_idx.len();
+                                slot_idx.push(usize::MAX);
+                                arg_slots.push(sl);
+                                subtasks.push(Task::Plan {
+                                    node: &a.value,
+                                    slot: sl,
+                                });
+                            }
+                        }
+                        subtasks.push(Task::TextOut {
+                            method: *method,
+                            to: *to,
+                            vt: node.vt,
+                            span: node.span,
+                            recv_slot,
+                            arg_slots,
+                            dest: slot,
+                        });
+                        let mut ordered = Vec::new();
+                        // the type-level char.from_codepoint receiver is a
+                        // marker, not a value (slot stays usize::MAX)
+                        if !matches!(recv.kind, RExprKind::TypeWord(_)) {
+                            ordered.push(Task::Plan {
+                                node: recv,
+                                slot: recv_slot,
+                            });
+                        }
+                        ordered.extend(subtasks);
+                        for t in ordered.into_iter().rev() {
+                            stack.push(t);
+                        }
                     } else if let RExprKind::Unary { op, operand } = &node.kind {
                         let oslot = slot_idx.len();
                         slot_idx.push(usize::MAX);
@@ -891,10 +970,12 @@ impl PlanCtx<'_> {
                         eval.push(slot_idx[*s]);
                     }
                     let mut bindings = Vec::new();
+                    let mut moved = Vec::new();
                     if let Some(callee) = self.program.fns.get(*fn_index) {
                         for (idx, a) in args.iter().enumerate() {
                             if let Some(pos) = param_position(idx, a, callee) {
                                 bindings.push((pos as u32, idx as u32));
+                                moved.push(a.moved);
                             }
                         }
                     }
@@ -904,15 +985,43 @@ impl PlanCtx<'_> {
                             callee_intrinsic: None,
                             eval,
                             bindings,
+                            moved,
                         },
                         vt: node.vt,
                         span: node.span,
                     });
                     slot_idx[dest] = plan.exprs.len() - 1;
                 }
+                Task::TextOut {
+                    method,
+                    to,
+                    vt,
+                    span,
+                    recv_slot,
+                    arg_slots,
+                    dest,
+                } => {
+                    let r = slot_idx[recv_slot];
+                    let mut eval = Vec::with_capacity(arg_slots.len());
+                    for sl in &arg_slots {
+                        eval.push(slot_idx[*sl]);
+                    }
+                    plan.exprs.push(ENode {
+                        kind: EKind::Text {
+                            method,
+                            recv: r,
+                            args: eval,
+                            to,
+                        },
+                        vt,
+                        span,
+                    });
+                    slot_idx[dest] = plan.exprs.len() - 1;
+                }
                 Task::Combine {
                     op,
                     span,
+                    vt,
                     lslot,
                     rslot,
                     dest,
@@ -937,7 +1046,9 @@ impl PlanCtx<'_> {
                             slot_idx[dest] = plan.exprs.len() - 1;
                         }
                         _ => {
-                            let vt = super::resolve::bin_op_vt(op);
+                            // `vt` is the RESOLVED result type: it carries
+                            // the text-concat fact (PLAN-770) while
+                            // arithmetic keeps the operator's i32 result
                             plan.exprs.push(ENode {
                                 kind: EKind::Bin(op, l, r),
                                 vt,
@@ -1014,16 +1125,47 @@ impl PlanCtx<'_> {
                 });
                 plan.exprs.len() - 1
             }
+            RExprKind::StrLit(v) => {
+                plan.exprs.push(ENode {
+                    kind: EKind::StrLit(v.clone()),
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::CharLit(v) => {
+                plan.exprs.push(ENode {
+                    kind: EKind::CharLit(*v),
+                    vt: VT::Char,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::Method { .. } => {
+                unreachable!("method nodes are planned by the iterative TextOut walk")
+            }
+            RExprKind::Move { .. } => {
+                // stray `.move` outside argument wiring — resolve rejected
+                // it; nothing reaches the plan
+                unreachable!("`.move` is unwrapped by the call arms")
+            }
+            RExprKind::TypeWord(_) => {
+                // consumed by the Text planning arm; a stray marker was
+                // rejected by the typecheck walk
+                unreachable!("type-word markers are never planned as values")
+            }
             RExprKind::CallFn { fn_index, args } => {
                 let mut eval = Vec::new();
                 for a in args {
                     eval.push(self.plan_expr(plan, f, &a.value));
                 }
                 let mut bindings = Vec::new();
+                let mut moved = Vec::new();
                 if let Some(callee) = self.program.fns.get(*fn_index) {
                     for (idx, a) in args.iter().enumerate() {
                         if let Some(pos) = param_position(idx, a, callee) {
                             bindings.push((pos as u32, idx as u32));
+                            moved.push(a.moved);
                         }
                     }
                 }
@@ -1033,6 +1175,7 @@ impl PlanCtx<'_> {
                         callee_intrinsic: None,
                         eval,
                         bindings,
+                        moved,
                     },
                     vt: e.vt,
                     span: e.span,
@@ -1047,6 +1190,7 @@ impl PlanCtx<'_> {
                         callee_intrinsic: Some(symbol),
                         eval: Vec::new(),
                         bindings: Vec::new(),
+                        moved: Vec::new(),
                     },
                     vt: VT::I32,
                     span: e.span,
@@ -1250,6 +1394,9 @@ impl<'p> Emitter<'p> {
         match vt {
             VT::I32 => "t_i32",
             VT::Bool => "t_bool",
+            VT::Str => "t_str",
+            VT::StrOwned => "t_Str",
+            VT::Char => "t_char",
         }
     }
 
@@ -1350,6 +1497,17 @@ impl<'p> Emitter<'p> {
         frag!("type t_bool bool {}", program_span);
         spans.types.push(program_span);
         nl!(12);
+        if self.profile.is_text() {
+            frag!("type t_str str {}", program_span);
+            spans.types.push(program_span);
+            nl!(12);
+            frag!("type t_Str Str {}", program_span);
+            spans.types.push(program_span);
+            nl!(12);
+            frag!("type t_char char {}", program_span);
+            spans.types.push(program_span);
+            nl!(12);
+        }
         for f in &self.program.fns {
             let params: Vec<String> = f
                 .params
@@ -1453,13 +1611,19 @@ impl<'p> Emitter<'p> {
             frag!("{", f.name_span);
             nl!(20);
             for (li, l) in f.locals.iter().enumerate() {
+                let mode_word = match l.mode {
+                    super::ast::ParamMode::Default => "",
+                    super::ast::ParamMode::Mut => "; mode: mut",
+                    super::ast::ParamMode::Move => "; mode: move",
+                };
                 let line = if l.is_param {
                     format!(
-                        "local l{} {} {{ name: \"{}\"; role: param; index: {}u32 }}",
+                        "local l{} {} {{ name: \"{}\"; role: param; index: {}u32{} }}",
                         li,
                         Self::ty_name(l.vt),
                         Self::esc(&l.name),
-                        l.param_index.unwrap_or(0)
+                        l.param_index.unwrap_or(0),
+                        mode_word
                     )
                 } else {
                     format!(
@@ -1516,11 +1680,20 @@ impl<'p> Emitter<'p> {
                             format!("expr e{} read_local {{ type: {}; local: l{} }}", ei, ty, l)
                         }
                         EKind::Bin(op, l, r) => {
-                            let (ops, overflow) = bin_op_atom(*op);
-                            format!(
-                                "expr e{} binary {{ type: {}; op: {}{}; lhs: e{}; rhs: e{} }}",
-                                ei, ty, ops, overflow, l, r
-                            )
+                            // PLAN-770: `+` planned with a text result type
+                            // is concatenation, not add_i32
+                            if e.vt.is_text() {
+                                format!(
+                                    "expr e{} text_concat {{ type: {}; lhs: e{}; rhs: e{} }}",
+                                    ei, ty, l, r
+                                )
+                            } else {
+                                let (ops, overflow) = bin_op_atom(*op);
+                                format!(
+                                    "expr e{} binary {{ type: {}; op: {}{}; lhs: e{}; rhs: e{} }}",
+                                    ei, ty, ops, overflow, l, r
+                                )
+                            }
                         }
                         EKind::Logical(op, l, r) => {
                             format!(
@@ -1541,11 +1714,75 @@ impl<'p> Emitter<'p> {
                                 o
                             )
                         }
+                        EKind::StrLit(v) => {
+                            format!(
+                                "expr e{} str_lit {{ type: {}; text: \"{}\" }}",
+                                ei,
+                                ty,
+                                Self::esc(v)
+                            )
+                        }
+                        EKind::CharLit(v) => {
+                            format!("expr e{} char_lit {{ type: char; scalar: {}u32 }}", ei, v)
+                        }
+                        EKind::Text {
+                            method,
+                            recv,
+                            args,
+                            to,
+                        } => {
+                            use crate::source::resolve::BuiltinMethod as BM;
+                            let recv_s = format!("e{}", recv);
+                            match method {
+                                BM::Len => format!(
+                                    "expr e{} text_len {{ type: {}; operand: {} }}",
+                                    ei, ty, recv_s
+                                ),
+                                BM::LenBytes => format!(
+                                    "expr e{} text_len_bytes {{ type: {}; operand: {} }}",
+                                    ei, ty, recv_s
+                                ),
+                                BM::CharAt => format!(
+                                    "expr e{} text_char_at {{ type: {}; operand: {}; index: e{} }}",
+                                    ei, ty, recv_s, args[0]
+                                ),
+                                BM::Slice => format!(
+                                    "expr e{} text_slice {{ type: {}; operand: {}; start: e{}; end: e{} }}",
+                                    ei, ty, recv_s, args[0], args[1]
+                                ),
+                                BM::Clone => format!(
+                                    "expr e{} text_clone {{ type: {}; operand: {} }}",
+                                    ei, ty, recv_s
+                                ),
+                                BM::To => {
+                                    if matches!(to, Some(super::resolve::VT::StrOwned)) {
+                                        format!(
+                                            "expr e{} text_to_owned {{ type: {}; operand: {} }}",
+                                            ei, ty, recv_s
+                                        )
+                                    } else {
+                                        format!(
+                                            "expr e{} text_to_borrowed {{ type: {}; operand: {} }}",
+                                            ei, ty, recv_s
+                                        )
+                                    }
+                                }
+                                BM::ToCodepoint => format!(
+                                    "expr e{} char_to_codepoint {{ type: {}; operand: {} }}",
+                                    ei, ty, recv_s
+                                ),
+                                BM::FromCodepoint => format!(
+                                    "expr e{} char_from_codepoint {{ type: char; operand: e{} }}",
+                                    ei, args[0]
+                                ),
+                            }
+                        }
                         EKind::Call {
                             callee_fn,
                             callee_intrinsic,
                             eval,
                             bindings,
+                            moved,
                         } => {
                             let callee = match (callee_fn, callee_intrinsic) {
                                 (Some(i), _) => format!("d_{}", self.program.fns[*i].name),
@@ -1556,7 +1793,14 @@ impl<'p> Emitter<'p> {
                                 eval.iter().map(|x| format!("e{}", x)).collect();
                             let bind_s: Vec<String> = bindings
                                 .iter()
-                                .map(|(p, a)| format!("{{ param: {}u32, arg: {}u32 }}", p, a))
+                                .zip(moved.iter())
+                                .map(|((p, a), m)| {
+                                    if *m {
+                                        format!("{{ param: {}u32, arg: {}u32, moved: true }}", p, a)
+                                    } else {
+                                        format!("{{ param: {}u32, arg: {}u32 }}", p, a)
+                                    }
+                                })
                                 .collect();
                             format!(
                                 "expr e{} call {{ type: {}; callee: {}; eval_args: [{}]; bindings: [{}] }}",

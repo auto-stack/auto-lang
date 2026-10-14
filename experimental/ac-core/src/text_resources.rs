@@ -557,10 +557,19 @@ impl<'a> ResourceWalk<'a> {
                 _ => continue,
             };
             for (param_idx, is_moved) in bindings {
+                let is_owned_type = |u: &hir::TypeUse| match u {
+                    hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
+                    // the source adapter emits named text types (t_Str)
+                    hir::TypeUse::Ref(tid) => matches!(
+                        m.types.get(tid.0 as usize).map(|t| &t.kind),
+                        Some(hir::TypeKind::StrOwned)
+                    ),
+                    _ => false,
+                };
                 let param_is_move = sig_text
                     .params
                     .get(*param_idx as usize)
-                    .map(|p| matches!(p, hir::TypeUse::Builtin(hir::BuiltinType::StrOwned)))
+                    .map(|p| is_owned_type(p))
                     .unwrap_or(false)
                     && callee_body.locals.iter().any(|l| {
                         l.role == hir::LocalRole::Param

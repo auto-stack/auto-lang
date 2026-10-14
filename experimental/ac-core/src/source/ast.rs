@@ -27,6 +27,12 @@ pub enum TypeWord {
     Int,
     I32,
     Bool,
+    /// `str` — borrowed UTF-8 slice (PLAN-770, text profile only).
+    Str,
+    /// `Str` — owned UTF-8 buffer (PLAN-770).
+    StrOwned,
+    /// `char` — Unicode scalar (PLAN-770).
+    Char,
 }
 
 /// A type annotation. `int` and `i32` are synonyms inside this profile
@@ -37,12 +43,27 @@ pub struct TypeAnn {
     pub span: Span,
 }
 
+/// Parameter ownership mode word (PLAN-770; old-language convention: the
+/// mode word precedes the name — `fn f(mut s str)` / `fn f(take move Str)`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ParamMode {
+    /// No mode word: text params default to a read-only view.
+    Default,
+    /// `mut` — exclusive borrow (`mut str` borrows mutable, `mut Str`
+    /// exclusively borrows an owned value).
+    Mut,
+    /// `move` — ownership transfer in (`move Str` only; call sites must
+    /// mark `.move`).
+    Move,
+}
+
 #[derive(Clone, Debug)]
 pub struct Param {
     pub name: Ident,
     pub ty: TypeAnn,
-    /// Name token through the type token: the span used by duplicate-param
-    /// diagnostics.
+    pub mode: ParamMode,
+    /// Mode word (when present) through the type token: the span used by
+    /// duplicate-param diagnostics.
     pub span: Span,
 }
 
@@ -117,6 +138,9 @@ impl UnaryOp {
 #[derive(Clone, Debug)]
 pub enum Arg {
     Pos(Expr),
+    /// `x.move` — a positional argument marked for ownership transfer
+    /// (PLAN-770; only legal as a direct call argument).
+    MovePos(Expr),
     Named {
         name: Ident,
         value: Expr,
@@ -131,6 +155,24 @@ pub enum ExprKind {
     IntLit(i32),
     BoolLit(bool),
     Var(Ident),
+    /// Decoded string literal (text profile, PLAN-770); cross-line breaks
+    /// are part of the value.
+    StrLit(String),
+    /// Decoded char literal: one Unicode scalar.
+    CharLit(u32),
+    /// Method call `recv.name(args)` (text profile). Builtin text methods
+    /// bind by receiver type in the resolver; `char.from_codepoint` is the
+    /// type-level form with a `Var("char")` receiver that must not be
+    /// shadowed. `.to(str|Str)` carries a single [`ExprKind::TypeWordArg`]
+    /// argument; `.move` parses as a bare method (only legal as a direct
+    /// call argument).
+    Method {
+        recv: Box<Expr>,
+        name: Ident,
+        args: Vec<Arg>,
+    },
+    /// A bare type word in `.to(...)` argument position (never a value).
+    TypeWordArg(TypeWord),
     Call {
         callee: Ident,
         args: Vec<Arg>,
@@ -231,10 +273,21 @@ impl Drop for Expr {
                 }
                 // nested calls carry inline argument expressions; drain
                 // them so no level drops recursively
+                ExprKind::Method { recv, args, .. } => {
+                    let r = std::mem::replace(recv.as_mut(), dummy());
+                    stack.push(r);
+                    for a in args.iter_mut() {
+                        let e = match a {
+                            Arg::Pos(e) | Arg::MovePos(e) => std::mem::replace(e, dummy()),
+                            Arg::Named { value, .. } => std::mem::replace(value, dummy()),
+                        };
+                        stack.push(e);
+                    }
+                }
                 ExprKind::Call { args, .. } => {
                     for a in args.iter_mut() {
                         let e = match a {
-                            Arg::Pos(e) => std::mem::replace(e, dummy()),
+                            Arg::Pos(e) | Arg::MovePos(e) => std::mem::replace(e, dummy()),
                             Arg::Named { value, .. } => std::mem::replace(value, dummy()),
                         };
                         stack.push(e);

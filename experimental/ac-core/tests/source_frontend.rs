@@ -378,7 +378,7 @@ fn p15_named_args_preserve_source_order() {
 
 fn arg_span(a: &Arg) -> auto_ac_prototype::atom_text::Span {
     match a {
-        Arg::Pos(e) => e.span,
+        Arg::Pos(e) | Arg::MovePos(e) => e.span,
         Arg::Named { span, .. } => *span,
     }
 }

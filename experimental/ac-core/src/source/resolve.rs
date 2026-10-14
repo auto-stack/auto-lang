@@ -23,6 +23,12 @@ use std::collections::{BTreeMap, BTreeSet};
 pub enum VT {
     I32,
     Bool,
+    /// Borrowed text slice `str` (PLAN-770).
+    Str,
+    /// Owned text buffer `Str` (PLAN-770).
+    StrOwned,
+    /// Unicode scalar `char` (PLAN-770).
+    Char,
 }
 
 impl VT {
@@ -30,7 +36,14 @@ impl VT {
         match self {
             VT::I32 => "i32",
             VT::Bool => "bool",
+            VT::Str => "str",
+            VT::StrOwned => "Str",
+            VT::Char => "char",
         }
+    }
+
+    pub fn is_text(self) -> bool {
+        matches!(self, VT::Str | VT::StrOwned)
     }
 }
 
@@ -38,6 +51,51 @@ pub fn vt_of_word(w: TypeWord) -> VT {
     match w {
         TypeWord::Int | TypeWord::I32 => VT::I32,
         TypeWord::Bool => VT::Bool,
+        TypeWord::Str => VT::Str,
+        TypeWord::StrOwned => VT::StrOwned,
+        TypeWord::Char => VT::Char,
+    }
+}
+
+/// The text-profile builtin method set (PLAN-770 §5.1), bound by receiver
+/// type at resolve time. User functions never shadow these (distinct
+/// namespaces: methods bind on (receiver VT, name); functions on bare
+/// names) and these never shadow user names.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BuiltinMethod {
+    Len,
+    LenBytes,
+    CharAt,
+    Slice,
+    Clone,
+    To,
+    ToCodepoint,
+    FromCodepoint,
+}
+
+/// (receiver VT, method name) -> (builtin, param VTs, result VT).
+pub fn builtin_method(recv: VT, name: &str) -> Option<(BuiltinMethod, &'static [VT], VT)> {
+    use VT::*;
+    match (recv, name) {
+        (Str, "len") | (StrOwned, "len") => Some((BuiltinMethod::Len, &[], I32)),
+        (Str, "len_bytes") | (StrOwned, "len_bytes") => Some((BuiltinMethod::LenBytes, &[], I32)),
+        (Str, "char_at") | (StrOwned, "char_at") => Some((BuiltinMethod::CharAt, &[I32], Char)),
+        (Str, "slice") | (StrOwned, "slice") => Some((BuiltinMethod::Slice, &[I32, I32], Str)),
+        (Str, "clone") | (StrOwned, "clone") => Some((BuiltinMethod::Clone, &[], StrOwned)),
+        (Str, "to") | (StrOwned, "to") => Some((BuiltinMethod::To, &[], Str)),
+        (Char, "to_codepoint") => Some((BuiltinMethod::ToCodepoint, &[], I32)),
+        (Char, "from_codepoint") => Some((BuiltinMethod::FromCodepoint, &[I32], Char)),
+        _ => None,
+    }
+}
+
+/// Contextual literal typing (PLAN-770): a string literal defaults to the
+/// borrowing view `str`; an owning context (`let x Str = ...`, an `Str`
+/// formal, an `Str` return) retags it in place — the promotion is a
+/// TypeUse fact the adapter emits, never a value conversion at this layer.
+fn retag_literal(v: &mut ResolvedExpr, want: VT) {
+    if matches!(v.kind, RExprKind::StrLit(_)) && matches!(want, VT::Str | VT::StrOwned) {
+        v.vt = want;
     }
 }
 
@@ -75,6 +133,9 @@ pub struct LocalDecl {
     pub mutable: bool,
     pub is_param: bool,
     pub param_index: Option<u32>,
+    /// Parameter ownership mode (PLAN-770): Default = view, Mut = exclusive
+    /// borrow, Move = transfer in. Bindings always carry Default.
+    pub mode: super::ast::ParamMode,
     /// Name through the initializer (let/var) or the whole param phrase.
     pub span: Span,
 }
@@ -85,6 +146,8 @@ pub struct ResolvedArg {
     pub value: ResolvedExpr,
     /// Present for named arguments.
     pub name: Option<ast::Ident>,
+    /// `x.move` marker (PLAN-770): ownership transfers to the callee.
+    pub moved: bool,
     pub span: Span,
 }
 
@@ -92,6 +155,26 @@ pub struct ResolvedArg {
 pub enum RExprKind {
     IntLit(i32),
     BoolLit(bool),
+    StrLit(String),
+    CharLit(u32),
+    /// Builtin text/char method bound by receiver type (PLAN-770). The
+    /// `to` conversions carry their target in `to` (None for every other
+    /// method); arguments were checked against the builtin table at bind.
+    Method {
+        recv: Box<ResolvedExpr>,
+        method: BuiltinMethod,
+        /// `Some(target)` only for `BuiltinMethod::To`.
+        to: Option<VT>,
+        args: Vec<ResolvedArg>,
+    },
+    /// `x.move` outside/inside argument wiring: wraps the (single) inner
+    /// read; only legal as a direct call argument.
+    Move {
+        inner: Box<ResolvedExpr>,
+    },
+    /// A bare type-word marker (`.to(str)` argument, `char.from_codepoint`
+    /// receiver). Never a value; the typecheck walk rejects strays.
+    TypeWord(TypeWord),
     ReadLocal(LocalRef),
     CallFn {
         fn_index: usize,
@@ -367,6 +450,8 @@ struct FnResolver<'a> {
     /// Every local name declared anywhere in this function (any scope), to
     /// distinguish "never declared" from "declared in a scope that ended".
     declared_names: BTreeSet<String>,
+    /// Result type of the function being resolved (retag context).
+    fn_result: VT,
     loop_stack: Vec<LoopRef>,
     loop_count: usize,
     used_intrinsics: BTreeSet<&'static str>,
@@ -387,6 +472,7 @@ fn resolve_fn(
             names: BTreeMap::new(),
         }],
         declared_names: BTreeSet::new(),
+        fn_result: vt_of_word(f.ret.word),
         loop_stack: Vec::new(),
         loop_count: 0,
         used_intrinsics: BTreeSet::new(),
@@ -399,6 +485,7 @@ fn resolve_fn(
             vt: vt_of_word(p.ty.word),
             mutable: false,
             is_param: true,
+            mode: p.mode,
             param_index: Some(i as u32),
             span: p.span,
         });
@@ -580,11 +667,12 @@ impl<'a> FnResolver<'a> {
                     ..
                 } => {
                     // RHS resolves in the pre-declaration environment.
-                    let value = self.expr_iterative(value);
+                    let mut value = self.expr_iterative(value);
                     let vt = match ann {
                         Some(a) => vt_of_word(a.word),
                         None => value.vt,
                     };
+                    retag_literal(&mut value, vt);
                     if self.scopes.last().unwrap().names.contains_key(&name.name) {
                         self.bind_err(
                             "source.duplicate",
@@ -600,6 +688,7 @@ impl<'a> FnResolver<'a> {
                         name: name.name.clone(),
                         vt,
                         mutable: *mutable,
+                        mode: ast::ParamMode::Default,
                         is_param: false,
                         param_index: None,
                         span: name.span.join(value.span),
@@ -663,7 +752,14 @@ impl<'a> FnResolver<'a> {
                         .last_mut()
                         .expect("resolve frame")
                         .stmts
-                        .push(RStmt::Return { value, span: *span });
+                        .push(RStmt::Return {
+                            value: {
+                                let mut v = value;
+                                retag_literal(&mut v, self.fn_result);
+                                v
+                            },
+                            span: *span,
+                        });
                 }
                 Stmt::If {
                     cond,
@@ -802,6 +898,31 @@ impl<'a> FnResolver<'a> {
                     }
                 }
             },
+            ExprKind::StrLit(v) => ResolvedExpr {
+                span: e.span,
+                // default context: a literal is a borrowing view (D-03);
+                // owning contexts retag it via `retag_literal`
+                vt: VT::Str,
+                kind: RExprKind::StrLit(v.clone()),
+            },
+            ExprKind::CharLit(v) => ResolvedExpr {
+                span: e.span,
+                vt: VT::Char,
+                kind: RExprKind::CharLit(*v),
+            },
+            ExprKind::TypeWordArg(w) => {
+                // marker node: consumed by `.to(...)` and the type-level
+                // `char.from_codepoint` receiver; a stray one is rejected by
+                // the typecheck walk
+                ResolvedExpr {
+                    span: e.span,
+                    vt: vt_of_word(*w),
+                    kind: RExprKind::TypeWord(*w),
+                }
+            }
+            // Method and Move nodes resolve through the iterative walk
+            // (argument subtrees must not recurse); binary/unary likewise.
+            ExprKind::Method { .. } => unreachable!("handled by expr_iterative"),
             ExprKind::Call { callee, args } => self.call(callee, args, e.span),
             // Binary nodes are resolved by the ITERATIVE walk below —
             // operator chains are unbounded in length and must not recurse
@@ -836,6 +957,18 @@ impl<'a> FnResolver<'a> {
                 names: Vec<Option<ast::Ident>>,
                 spans: Vec<Span>,
                 node_span: Span,
+            },
+            /// Receiver and argument slots are filled; bind the builtin
+            /// method into `dest` (PLAN-770).
+            MethodOut {
+                name: ast::Ident,
+                dest: usize,
+                recv_slot: usize,
+                arg_slots: Vec<usize>,
+                names: Vec<Option<ast::Ident>>,
+                spans: Vec<Span>,
+                node_span: Span,
+                to_word: Option<TypeWord>,
             },
             /// Both operand slots are filled; combine into `dest`.
             Combine {
@@ -875,7 +1008,7 @@ impl<'a> FnResolver<'a> {
                             out.push(dummy_resolved());
                             arg_slots.push(s);
                             match a {
-                                Arg::Pos(e) => {
+                                Arg::Pos(e) | Arg::MovePos(e) => {
                                     names.push(None);
                                     spans.push(e.span);
                                     subtasks.push(Task::Visit { node: e, slot: s });
@@ -903,6 +1036,72 @@ impl<'a> FnResolver<'a> {
                         });
                         // LIFO: push in reverse so args resolve in source order
                         for t in subtasks.into_iter().rev() {
+                            stack.push(t);
+                        }
+                        continue;
+                    }
+                    if let ExprKind::Method { recv, name, args } = &node.kind {
+                        let recv_slot = out.len();
+                        out.push(dummy_resolved());
+                        let mut arg_slots = Vec::with_capacity(args.len());
+                        let mut names = Vec::with_capacity(args.len());
+                        let mut spans = Vec::with_capacity(args.len());
+                        let mut subtasks = Vec::with_capacity(args.len() + 2);
+                        // `.to(...)` takes a single bare type word, not a
+                        // value expression; keep it for MethodOut
+                        let mut to_word = None;
+                        for a in args {
+                            let sl = out.len();
+                            out.push(dummy_resolved());
+                            arg_slots.push(sl);
+                            match a {
+                                Arg::Pos(e) => {
+                                    names.push(None);
+                                    spans.push(e.span);
+                                    if let ExprKind::TypeWordArg(w) = &e.kind {
+                                        to_word = Some(*w);
+                                    } else {
+                                        subtasks.push(Task::Visit { node: e, slot: sl });
+                                    }
+                                }
+                                Arg::MovePos(e) => {
+                                    names.push(None);
+                                    spans.push(e.span);
+                                    subtasks.push(Task::Visit { node: e, slot: sl });
+                                }
+                                Arg::Named { name, value, span } => {
+                                    names.push(Some(ast::Ident {
+                                        name: name.name.clone(),
+                                        span: name.span,
+                                    }));
+                                    spans.push(*span);
+                                    subtasks.push(Task::Visit {
+                                        node: value,
+                                        slot: sl,
+                                    });
+                                }
+                            }
+                        }
+                        subtasks.push(Task::MethodOut {
+                            name: ast::Ident {
+                                name: name.name.clone(),
+                                span: name.span,
+                            },
+                            dest: slot,
+                            recv_slot,
+                            arg_slots,
+                            names,
+                            spans,
+                            node_span: node.span,
+                            to_word,
+                        });
+                        // LIFO: receiver first, then args, then the binding
+                        let mut ordered = vec![Task::Visit {
+                            node: recv,
+                            slot: recv_slot,
+                        }];
+                        ordered.extend(subtasks);
+                        for t in ordered.into_iter().rev() {
                             stack.push(t);
                         }
                         continue;
@@ -955,15 +1154,57 @@ impl<'a> FnResolver<'a> {
                 } => {
                     let mut rargs = Vec::with_capacity(arg_slots.len());
                     for (i, s) in arg_slots.iter().enumerate() {
-                        let value = std::mem::replace(&mut out[*s], dummy_resolved());
+                        let mut value = std::mem::replace(&mut out[*s], dummy_resolved());
+                        let moved = matches!(value.kind, RExprKind::Move { .. });
+                        let value = if moved {
+                            match std::mem::replace(&mut value.kind, RExprKind::IntLit(0)) {
+                                RExprKind::Move { inner } => *inner,
+                                _ => unreachable!("checked above"),
+                            }
+                        } else {
+                            value
+                        };
                         rargs.push(ResolvedArg {
                             span: spans[i],
                             name: names[i].clone(),
+                            moved,
                             value,
                         });
                     }
                     // the node's own span already covers callee..
                     out[dest] = self.resolve_call(callee, rargs, node_span);
+                }
+                Task::MethodOut {
+                    name,
+                    dest,
+                    recv_slot,
+                    arg_slots,
+                    names,
+                    spans,
+                    node_span,
+                    to_word,
+                } => {
+                    let recv = std::mem::replace(&mut out[recv_slot], dummy_resolved());
+                    let mut rargs = Vec::with_capacity(arg_slots.len());
+                    for (i, sl) in arg_slots.iter().enumerate() {
+                        let mut value = std::mem::replace(&mut out[*sl], dummy_resolved());
+                        let moved = matches!(value.kind, RExprKind::Move { .. });
+                        let value = if moved {
+                            match std::mem::replace(&mut value.kind, RExprKind::IntLit(0)) {
+                                RExprKind::Move { inner } => *inner,
+                                _ => unreachable!("checked above"),
+                            }
+                        } else {
+                            value
+                        };
+                        rargs.push(ResolvedArg {
+                            span: spans[i],
+                            name: names[i].clone(),
+                            moved,
+                            value,
+                        });
+                    }
+                    out[dest] = self.resolve_method(&name, recv, rargs, to_word, node_span);
                 }
                 Task::Combine {
                     op,
@@ -975,6 +1216,13 @@ impl<'a> FnResolver<'a> {
                     let l = std::mem::replace(&mut out[lslot], dummy_resolved());
                     let r = std::mem::replace(&mut out[rslot], dummy_resolved());
                     let vt = bin_op_vt(op);
+                    // PLAN-770: `+` over two text operands is concatenation
+                    // (owned result); the arithmetic i32 rule is unchanged.
+                    let vt = if op == BinOp::Add && l.vt.is_text() && r.vt.is_text() {
+                        VT::StrOwned
+                    } else {
+                        vt
+                    };
                     out[dest] = ResolvedExpr {
                         span,
                         vt,
@@ -1010,17 +1258,210 @@ impl<'a> FnResolver<'a> {
         std::mem::replace(&mut out[0], dummy_resolved())
     }
 
+    /// Bind a builtin text/char method (PLAN-770): receiver-type table
+    /// lookup, the type-level `char.from_codepoint` form, `.to` type-word
+    /// conversion, and the bare `.move` wrapper. User names never shadow
+    /// the builtin table and the builtins never hijack user functions
+    /// (distinct namespaces).
+    fn resolve_method(
+        &mut self,
+        name: &ast::Ident,
+        recv: ResolvedExpr,
+        args: Vec<ResolvedArg>,
+        to_word: Option<TypeWord>,
+        span: Span,
+    ) -> ResolvedExpr {
+        // bare `.move`: ownership marker, only legal on a named local and
+        // only as a direct call argument (the call arms unwrap it)
+        if name.name == "move" && to_word.is_none() {
+            if !args.is_empty() {
+                self.bind_err("source.syntax", "`.move` takes no arguments", span);
+            }
+            if !matches!(recv.kind, RExprKind::ReadLocal(_)) {
+                self.bind_err(
+                    "source.unsupported",
+                    "`.move` requires a named local (bind the value to a local first)",
+                    span,
+                );
+            }
+            let vt = recv.vt;
+            return ResolvedExpr {
+                span,
+                vt,
+                kind: RExprKind::Move {
+                    inner: Box::new(recv),
+                },
+            };
+        }
+        // type-level form: `char.from_codepoint(n)` — the parser rewrote
+        // the bare `char` receiver into a TypeWord marker, so a local
+        // actually named `char` can never be hijacked
+        if name.name == "from_codepoint" && matches!(recv.kind, RExprKind::TypeWord(TypeWord::Char))
+        {
+            if args.len() != 1 || args[0].name.is_some() || args[0].moved {
+                self.bind_err(
+                    "source.type-mismatch",
+                    "`from_codepoint` expects one positional i32 argument",
+                    span,
+                );
+            } else if args[0].value.vt != VT::I32 {
+                self.bind_err(
+                    "source.type-mismatch",
+                    format!(
+                        "argument of `from_codepoint` must be i32 (found {})",
+                        args[0].value.vt.as_str()
+                    ),
+                    args[0].span,
+                );
+            }
+            return ResolvedExpr {
+                span,
+                vt: VT::Char,
+                kind: RExprKind::Method {
+                    recv: Box::new(recv),
+                    method: BuiltinMethod::FromCodepoint,
+                    to: None,
+                    args,
+                },
+            };
+        }
+        let Some((method, params, _result)) = builtin_method(recv.vt, &name.name) else {
+            self.bind_err(
+                "source.undefined",
+                format!(
+                    "no builtin method `{}` on receiver type {} in this profile",
+                    name.name,
+                    recv.vt.as_str()
+                ),
+                span,
+            );
+            return ResolvedExpr {
+                span,
+                vt: VT::I32,
+                kind: RExprKind::IntLit(0),
+            };
+        };
+        if method == BuiltinMethod::To {
+            let Some(w) = to_word else {
+                self.bind_err(
+                    "source.syntax",
+                    "`.to` expects a single type argument: `.to(str)` or `.to(Str)`",
+                    span,
+                );
+                return ResolvedExpr {
+                    span,
+                    vt: VT::Str,
+                    kind: RExprKind::StrLit(String::new()),
+                };
+            };
+            let target = vt_of_word(w);
+            if !target.is_text() {
+                self.bind_err(
+                    "source.type-mismatch",
+                    "`.to` converts between str and Str only",
+                    span,
+                );
+            }
+            if args.len() > 1 {
+                self.bind_err("source.syntax", "`.to` takes a single type argument", span);
+            }
+            return ResolvedExpr {
+                span,
+                vt: target,
+                kind: RExprKind::Method {
+                    recv: Box::new(recv),
+                    method: BuiltinMethod::To,
+                    to: Some(target),
+                    args,
+                },
+            };
+        }
+        if to_word.is_some() {
+            self.bind_err(
+                "source.syntax",
+                "a type word is only allowed inside `.to(...)`",
+                span,
+            );
+        }
+        // positional arity + type check against the frozen table
+        if args.len() != params.len() || args.iter().any(|a| a.name.is_some() || a.moved) {
+            self.bind_err(
+                "source.type-mismatch",
+                format!(
+                    "method `{}` expects {} positional argument(s)",
+                    name.name,
+                    params.len()
+                ),
+                span,
+            );
+        } else {
+            for (i, a) in args.iter().enumerate() {
+                if a.value.vt != params[i] {
+                    self.bind_err(
+                        "source.type-mismatch",
+                        format!(
+                            "argument {} of `{}` must be {} (found {})",
+                            i + 1,
+                            name.name,
+                            params[i].as_str(),
+                            a.value.vt.as_str()
+                        ),
+                        a.span,
+                    );
+                }
+            }
+        }
+        let result = match method {
+            BuiltinMethod::Len | BuiltinMethod::LenBytes | BuiltinMethod::ToCodepoint => VT::I32,
+            BuiltinMethod::CharAt | BuiltinMethod::FromCodepoint => VT::Char,
+            BuiltinMethod::Slice => VT::Str,
+            BuiltinMethod::Clone => VT::StrOwned,
+            BuiltinMethod::To => VT::Str,
+        };
+        ResolvedExpr {
+            span,
+            vt: result,
+            kind: RExprKind::Method {
+                recv: Box::new(recv),
+                method,
+                to: None,
+                args,
+            },
+        }
+    }
+
     fn call(&mut self, callee: &ast::Ident, args: &[Arg], call_span: Span) -> ResolvedExpr {
         let mut rargs: Vec<ResolvedArg> = Vec::new();
         for a in args {
             match a {
-                Arg::Pos(e) => rargs.push(ResolvedArg {
-                    value: self.expr_iterative(e),
-                    name: None,
-                    span: e.span,
-                }),
+                Arg::Pos(e) => {
+                    let mut v = self.expr_iterative(e);
+                    let moved = matches!(v.kind, RExprKind::Move { .. });
+                    if moved {
+                        v = match std::mem::replace(&mut v.kind, RExprKind::IntLit(0)) {
+                            RExprKind::Move { inner } => *inner,
+                            _ => unreachable!("checked above"),
+                        };
+                    }
+                    rargs.push(ResolvedArg {
+                        value: v,
+                        name: None,
+                        moved,
+                        span: e.span,
+                    })
+                }
+                Arg::MovePos(e) => {
+                    let v = self.expr_iterative(e);
+                    rargs.push(ResolvedArg {
+                        value: v,
+                        name: None,
+                        moved: true,
+                        span: e.span,
+                    })
+                }
                 Arg::Named { name, value, span } => rargs.push(ResolvedArg {
                     value: self.expr_iterative(value),
+                    moved: false,
                     name: Some(ast::Ident {
                         name: name.name.clone(),
                         span: name.span,
@@ -1037,7 +1478,7 @@ impl<'a> FnResolver<'a> {
     fn resolve_call(
         &mut self,
         callee: &ast::Ident,
-        rargs: Vec<ResolvedArg>,
+        mut rargs: Vec<ResolvedArg>,
         call_span: Span,
     ) -> ResolvedExpr {
         let args = &rargs[..];
@@ -1064,6 +1505,21 @@ impl<'a> FnResolver<'a> {
         }
 
         if let Some(sig) = self.sigs.get(&callee.name).cloned() {
+            // contextual literal typing: a string literal adapts to a text
+            // formal (D-03 promotion) so the missing-`.move` rejection
+            // lands in the verifier, not as a type mismatch here
+            for (i, a) in rargs.iter_mut().enumerate() {
+                let pos = if a.name.is_some() {
+                    sig.param_names
+                        .iter()
+                        .position(|n| Some(n) == a.name.as_ref().map(|x| &x.name))
+                } else {
+                    Some(i)
+                };
+                if let Some(pos) = pos.filter(|&p| p < sig.params.len()) {
+                    retag_literal(&mut a.value, sig.params[pos]);
+                }
+            }
             self.check_args(
                 &callee.name,
                 &sig.param_names,

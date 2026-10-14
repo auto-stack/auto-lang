@@ -93,6 +93,10 @@ enum OpFrame {
 }
 
 struct CallFrame {
+    /// PLAN-770: when a method's argument list reuses the call frame, the
+    /// popped receiver travels here; on close the node becomes a Method
+    /// instead of a Call.
+    method_recv: Option<Box<Expr>>,
     callee: Ident,
     args: Vec<Arg>,
     mark: usize,
@@ -160,6 +164,10 @@ impl<'s> Parser<'s> {
 
     fn peek2(&self) -> Option<&Token> {
         self.toks.get(self.pos + 1)
+    }
+
+    fn peek3(&self) -> Option<&Token> {
+        self.toks.get(self.pos + 2)
     }
 
     fn bump(&mut self) -> Token {
@@ -367,12 +375,38 @@ impl<'s> Parser<'s> {
             })
         ) {
             loop {
+                // mode word before the name (PLAN-770, old-language
+                // convention `fn f(mut s str)`); non-text surfaces keep
+                // rejecting the reserved words exactly as before.
+                let mut mode = super::ast::ParamMode::Default;
+                let mode_span = match self.peek() {
+                    Some(Token {
+                        tok: Tok::Reserved(w),
+                        span,
+                        ..
+                    }) if self.surface.is_text() && (w == "mut" || w == "move") => {
+                        let sp = *span;
+                        mode = if w == "mut" {
+                            super::ast::ParamMode::Mut
+                        } else {
+                            super::ast::ParamMode::Move
+                        };
+                        self.pos += 1;
+                        Some(sp)
+                    }
+                    _ => None,
+                };
                 let pname = self.expect_ident("parameter name")?;
                 let ty = self.param_type(&pname)?;
+                let span = match mode_span {
+                    Some(ms) => ms.join(ty.span),
+                    None => pname.span.join(ty.span),
+                };
                 params.push(Param {
-                    span: pname.span.join(ty.span),
+                    span,
                     name: pname,
                     ty,
+                    mode,
                 });
                 match self.peek().map(|t| t.tok.clone()) {
                     Some(Tok::Punct(P::Comma)) => {
@@ -393,6 +427,11 @@ impl<'s> Parser<'s> {
             Some(Tok::Kw(Kw::Int)) => self.type_word(),
             Some(Tok::Kw(Kw::I32)) => self.type_word(),
             Some(Tok::Kw(Kw::Bool)) => self.type_word(),
+            Some(Tok::Ident(ref w))
+                if self.surface.is_text() && (w == "str" || w == "Str" || w == "char") =>
+            {
+                self.type_word()
+            }
             Some(Tok::Punct(P::LBrace)) => {
                 // N42: missing return annotation — point at the signature.
                 return Err(self.unsupported(
@@ -695,19 +734,41 @@ impl<'s> Parser<'s> {
             Tok::Kw(Kw::Int) => TypeWord::Int,
             Tok::Kw(Kw::I32) => TypeWord::I32,
             Tok::Kw(Kw::Bool) => TypeWord::Bool,
+            Tok::Ident(w) if self.surface.is_text() => match w.as_str() {
+                "str" => TypeWord::Str,
+                "Str" => TypeWord::StrOwned,
+                "char" => TypeWord::Char,
+                _ => unreachable!("type_word called on non-type token"),
+            },
             _ => unreachable!("type_word called on non-type token"),
         };
         TypeAnn { word, span: t.span }
     }
 
     fn is_type_word(tok: &Tok) -> bool {
-        matches!(tok, Tok::Kw(Kw::Int) | Tok::Kw(Kw::I32) | Tok::Kw(Kw::Bool))
+        match tok {
+            Tok::Kw(Kw::Int) | Tok::Kw(Kw::I32) | Tok::Kw(Kw::Bool) => true,
+            Tok::Ident(w) => w == "str" || w == "Str" || w == "char",
+            _ => false,
+        }
     }
 
     /// Type annotation in parameter position: required, only the three
     /// profile words. Any other identifier is an excluded type surface.
     fn param_type(&mut self, pname: &Ident) -> Result<TypeAnn, Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
+            Some(Tok::Ident(w))
+                if !self.surface.is_text() && (w == "str" || w == "Str" || w == "char") =>
+            {
+                let t = self.peek().unwrap();
+                Err(self.unsupported(
+                    format!(
+                        "type `{}` is not part of this source profile",
+                        t.span.slice(self.src)
+                    ),
+                    t.span,
+                ))
+            }
             Some(t) if Self::is_type_word(&t) => Ok(self.type_word()),
             Some(Tok::Ident(_)) | Some(Tok::Reserved(_)) => {
                 let t = self.peek().unwrap();
@@ -729,6 +790,18 @@ impl<'s> Parser<'s> {
     /// Optional annotation in `let`/`var` declarations.
     fn decl_ann(&mut self) -> Result<Option<TypeAnn>, Diagnostic> {
         match self.peek().map(|t| t.tok.clone()) {
+            Some(Tok::Ident(w))
+                if !self.surface.is_text() && (w == "str" || w == "Str" || w == "char") =>
+            {
+                let t = self.peek().unwrap();
+                Err(self.unsupported(
+                    format!(
+                        "type `{}` is not part of this source profile",
+                        t.span.slice(self.src)
+                    ),
+                    t.span,
+                ))
+            }
             Some(t) if Self::is_type_word(&t) => Ok(Some(self.type_word())),
             Some(Tok::Ident(_)) | Some(Tok::Reserved(_)) => {
                 let t = self.peek().unwrap();
@@ -1077,6 +1150,22 @@ impl<'s> Parser<'s> {
                             _ => return Err(self.syntax("expected expression after `-`")),
                         }
                     }
+                    Tok::StrLit(value) => {
+                        self.pos += 1;
+                        self.last_line = line;
+                        vals.push(Expr {
+                            span,
+                            kind: ExprKind::StrLit(value),
+                        });
+                    }
+                    Tok::CharLit(scalar) => {
+                        self.pos += 1;
+                        self.last_line = line;
+                        vals.push(Expr {
+                            span,
+                            kind: ExprKind::CharLit(scalar),
+                        });
+                    }
                     Tok::Kw(Kw::True) => {
                         self.pos += 1;
                         self.last_line = line;
@@ -1173,6 +1262,7 @@ impl<'s> Parser<'s> {
                             } else {
                                 frames.push(Frame::Call(Box::new(CallFrame {
                                     callee,
+                                    method_recv: None,
                                     args: Vec::new(),
                                     mark: vals.len(),
                                     pending_name: None,
@@ -1233,6 +1323,164 @@ impl<'s> Parser<'s> {
                     break 'outer;
                 };
                 match tok.tok {
+                    Tok::Punct(P::Dot) if self.surface.is_text() => {
+                        // PLAN-770 method postfix: `.name(args)`, `.to(str|Str)`,
+                        // bare `.move`. Non-text surfaces keep the historical
+                        // end-of-expression behavior (the statement layer owns
+                        // the rejection).
+                        match self.peek2().cloned() {
+                            Some(Token {
+                                tok: Tok::Reserved(w),
+                                span: mspan,
+                                line: mline,
+                            }) if w == "move" => {
+                                if !Self::in_bracket(&frames) && mline != self.last_line {
+                                    return Err(self.syntax(
+                                        "unbracketed expression cannot continue across a newline",
+                                    ));
+                                }
+                                self.pos += 2;
+                                self.last_line = mline;
+                                let Some(recv) = vals.pop() else {
+                                    return Err(self.syntax("`.move` needs a value before it"));
+                                };
+                                let span = recv.span.join(mspan);
+                                vals.push(Expr {
+                                    span,
+                                    kind: ExprKind::Method {
+                                        recv: Box::new(recv),
+                                        name: Ident {
+                                            name: "move".to_string(),
+                                            span: mspan,
+                                        },
+                                        args: Vec::new(),
+                                    },
+                                });
+                                continue; // re-examine what follows the postfix
+                            }
+                            Some(Token {
+                                tok: Tok::Reserved(w),
+                                span: tspan,
+                                ..
+                            }) if w == "to" => {
+                                // `.to(str)` / `.to(Str)`: single type word
+                                let _ = tspan;
+                                self.pos += 1; // consume dot; `to` next
+                                let to_tok = self.bump();
+                                self.last_line = to_tok.line;
+                                self.expect_punct(P::LParen, "`(` after `.to`")?;
+                                let word = match self.peek().cloned() {
+                                    Some(Token {
+                                        tok: Tok::Ident(w),
+                                        span: wspan,
+                                        ..
+                                    }) if w == "str" => (TypeWord::Str, wspan),
+                                    Some(Token {
+                                        tok: Tok::Ident(w),
+                                        span: wspan,
+                                        ..
+                                    }) if w == "Str" => (TypeWord::StrOwned, wspan),
+                                    _ => return Err(self.syntax("`.to` expects `str` or `Str`")),
+                                };
+                                self.pos += 1;
+                                self.last_line = self.toks[self.pos - 1].line;
+                                self.expect_punct(P::RParen, "`)` after the `.to` type")?;
+                                let Some(recv) = vals.pop() else {
+                                    return Err(self.syntax("`.to` needs a value before it"));
+                                };
+                                let span = recv.span.join(word.1);
+                                vals.push(Expr {
+                                    span,
+                                    kind: ExprKind::Method {
+                                        recv: Box::new(recv),
+                                        name: Ident {
+                                            name: "to".to_string(),
+                                            span: word.1,
+                                        },
+                                        args: vec![Arg::Pos(Expr {
+                                            span: word.1,
+                                            kind: ExprKind::TypeWordArg(word.0),
+                                        })],
+                                    },
+                                });
+                                continue;
+                            }
+                            Some(Token {
+                                tok: Tok::Ident(mname),
+                                span: mspan,
+                                line: mline,
+                            }) => {
+                                let is_call = matches!(
+                                    self.peek3(),
+                                    Some(t3) if t3.tok == Tok::Punct(P::LParen)
+                                        && (Self::in_bracket(&frames) || t3.line == mline)
+                                );
+                                if !is_call {
+                                    return Err(self.syntax(format!(
+                                        "method `.{}` requires parentheses",
+                                        mname
+                                    )));
+                                }
+                                // consume dot + name + `(`
+                                self.pos += 3;
+                                self.last_line = self.toks[self.pos - 1].line;
+                                let mut recv = vals.pop().ok_or_else(|| {
+                                    self.syntax(format!(
+                                        "method `.{}` needs a value before it",
+                                        mname
+                                    ))
+                                })?;
+                                // type-level receiver: `char.from_codepoint(...)`
+                                // — only when `char` is the bare receiver word
+                                if mname == "from_codepoint" {
+                                    if let ExprKind::Var(id) = &recv.kind {
+                                        if id.name == "char" {
+                                            recv = Expr {
+                                                span: id.span,
+                                                kind: ExprKind::TypeWordArg(TypeWord::Char),
+                                            };
+                                        }
+                                    }
+                                }
+                                let callee = Ident {
+                                    name: mname,
+                                    span: mspan,
+                                };
+                                if matches!(
+                                    self.peek(),
+                                    Some(Token {
+                                        tok: Tok::Punct(P::RParen),
+                                        ..
+                                    })
+                                ) {
+                                    let close = self.bump();
+                                    let span = recv.span.join(close.span);
+                                    vals.push(Expr {
+                                        span,
+                                        kind: ExprKind::Method {
+                                            recv: Box::new(recv),
+                                            name: callee,
+                                            args: Vec::new(),
+                                        },
+                                    });
+                                    continue;
+                                }
+                                frames.push(Frame::Call(Box::new(CallFrame {
+                                    callee,
+                                    method_recv: Some(Box::new(recv)),
+                                    args: Vec::new(),
+                                    mark: vals.len(),
+                                    pending_name: None,
+                                })));
+                                self.take_named_label(&mut frames)?;
+                                continue 'outer;
+                            }
+                            _ => {
+                                // dot without a method name on the text surface
+                                return Err(self.syntax("expected a method name after `.`"));
+                            }
+                        }
+                    }
                     Tok::Punct(p) if self.prec_of(p).is_some() => {
                         let in_br = Self::in_bracket(&frames);
                         if !in_br && tok.line != self.last_line {
@@ -1312,13 +1560,28 @@ impl<'s> Parser<'s> {
                                 };
                                 self.pos += 1;
                                 self.last_line = tok.line;
-                                vals.push(Expr {
-                                    span: cf.callee.span.join(tok.span),
-                                    kind: ExprKind::Call {
-                                        callee: cf.callee,
-                                        args: cf.args,
-                                    },
-                                });
+                                match cf.method_recv {
+                                    Some(recv) => {
+                                        let span = recv.span.join(tok.span);
+                                        vals.push(Expr {
+                                            span,
+                                            kind: ExprKind::Method {
+                                                recv,
+                                                name: cf.callee,
+                                                args: cf.args,
+                                            },
+                                        });
+                                    }
+                                    None => {
+                                        vals.push(Expr {
+                                            span: cf.callee.span.join(tok.span),
+                                            kind: ExprKind::Call {
+                                                callee: cf.callee,
+                                                args: cf.args,
+                                            },
+                                        });
+                                    }
+                                }
                                 // continue: operator or another `)` may follow
                             }
                             _ => {

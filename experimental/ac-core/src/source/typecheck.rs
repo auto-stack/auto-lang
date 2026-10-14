@@ -153,7 +153,21 @@ fn check_expr(
     let mut stack: Vec<&ResolvedExpr> = vec![root];
     while let Some(e) = stack.pop() {
         match &e.kind {
-            RExprKind::IntLit(_) | RExprKind::BoolLit(_) | RExprKind::ReadLocal(_) => {}
+            RExprKind::IntLit(_)
+            | RExprKind::BoolLit(_)
+            | RExprKind::ReadLocal(_)
+            | RExprKind::StrLit(_)
+            | RExprKind::CharLit(_)
+            | RExprKind::Method { .. }
+            | RExprKind::Move { .. } => {}
+            RExprKind::TypeWord(_) => {
+                diags.push(Diagnostic::new(
+                    Stage::Verify,
+                    "source.type-mismatch",
+                    "a type word is only allowed inside `.to(...)` or as the `char.from_codepoint` receiver",
+                    e.span,
+                ));
+            }
             RExprKind::CallIntrinsic { .. } => {}
             RExprKind::CallFn { fn_index, args } => {
                 let callee = program.fns.get(*fn_index);
@@ -174,7 +188,17 @@ fn check_expr(
                 stack.push(rhs.as_ref());
                 stack.push(lhs.as_ref());
                 match op {
-                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
+                    BinOp::Add => {
+                        // PLAN-770: text + text is concatenation; i32 + i32
+                        // stays arithmetic. Any mixed shape is a mismatch.
+                        let both_text = lhs.vt.is_text() && rhs.vt.is_text();
+                        let both_i32 = lhs.vt == VT::I32 && rhs.vt == VT::I32;
+                        if !both_text && !both_i32 {
+                            mismatch(diags, VT::I32, lhs.vt, lhs.span);
+                            mismatch(diags, VT::I32, rhs.vt, rhs.span);
+                        }
+                    }
+                    BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
                         for (role, v) in [("lhs", lhs), ("rhs", rhs)] {
                             if v.vt != VT::I32 {
                                 mismatch(diags, VT::I32, v.vt, v.span);
