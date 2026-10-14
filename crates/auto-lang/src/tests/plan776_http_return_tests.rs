@@ -17,6 +17,9 @@
 //! - 逐值身份（AC-02）：探针 + T-02 传播/接线；
 //! - sync/async（AC-03）：wire 三态 + i64 全宽 + record 值域；
 //! - 终态负向（AC-04）：Failed→500 + stale/wrong-owner 单测；
+//!   R3 分诊（F776-R3-03）：缓存 Internal Future await=705 域 sync-await
+//!   预存缺陷（归属 705 轨/KNOWN-DEBT P776-D3）——776 边界钉有界 500+
+//!   凭据回收+重放数据面三不变量（http_e2e_r3）；
 //! - 存活（AC-06）：1000 闭环 + SSE 断连回收 + rc 链路单测；
 //! - 兼容/来源（AC-07/08）：提取级遮蔽 + VM 门 + plan326/705/734/738/755/
 //!   442 scoped 族 + auto-man api_gen 46（legacy 6 wire 用例 = plan326
@@ -1640,4 +1643,102 @@ fn r() Resp {
         ResponseKind::from_return_identity("Future<http.UploadReceipt>", &[]),
         ResponseKind::Upload
     );
+}
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_r3 {
+    use super::http_e2e::{get, start_server};
+    use crate::vm::ffi::http_return_resource::live_resource_count;
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    /// F776-R3-03 分诊控制（wire，AC-04 负向/AC-06 回收）：缓存 Internal
+    /// Future 的 `.await` 组合（R2 future-cache 探针形态）。
+    ///
+    /// 机制裁定（705 域 sync-await 缺陷，预存非本 diff）：AWAIT_FUTURE 对
+    /// Pending Internal future 内联驱动 body 时复用当前帧——execute_future_
+    /// body 只存取 ip 不保 bp/sp，body 的 RET 弹掉 handler 帧，handler 自身
+    /// RET 落在 bp==0 → StepResult::Terminated → 有界 500；body 结果槽读取
+    /// 同随帧错位，future 被写为 Ready(Int(0))（首回 500 后重放恒 0）。数据
+    /// 体 `~{ 42 }` 同形失败（无资源参与），776 diff 零触该机制（engine 侧
+    /// 仅加 rc_release，不在数据体失败路径），失败点在返回编组之前——按
+    /// Plan §5.2「Future 的展开/等待仍由 705 状态机负责」归属 705 轨
+    /// （KNOWN-DEBT P776-D3，最小复现与本测试为可执行分诊记录）。
+    ///
+    /// 本测试钉住 776 边界在该缺陷下的不变量：首回有界 500（不挂死/不伪装
+    /// 200 成功）、重放走普通 int 数据面（无资源身份泄漏）、半驱动 body 的
+    /// 凭据经任务终态清偿回基线（R2-04 栈扫描的错误出口新路径）。705 修复
+    /// sync-await 后首回转 302、重放转 302——断言翻转即移交 705 轨收口，
+    /// 不得在 776 内静默改判。
+    #[test]
+    fn http_e2e_plan776_r3_cached_future_await_triage() {
+        let port = start_server(
+            r#"
+var cached = 0
+
+#[api(method = "GET", path = "/api/first")]
+fn first() int {
+    cached = ~{ http.response_redirect("/cached", 302) }
+    return cached.await
+}
+
+#[api(method = "GET", path = "/api/replay")]
+fn replay() int {
+    return cached.await
+}
+
+#[api(method = "GET", path = "/api/drain")]
+fn drain() int {
+    var i = 0
+    while i < 300 {
+        i = i + 1
+    }
+    return i
+}
+"#,
+            0,
+        );
+        let baseline = live_resource_count();
+
+        // 首回：705 域缺陷 → 776 边界有界 500（含 error 诊断体）
+        let (status, _, body) = get(port, "/api/first");
+        assert_eq!(status, 500, "sync-await 缺陷经函数错误路径有界 500");
+        let text = String::from_utf8_lossy(&body).into_owned();
+        assert!(text.contains("error"), "失败体含 error 诊断: {text}");
+
+        // 重放：future 已被写为 Ready(Int(0))——普通 int 数据面，
+        // 不取得资源身份（AC-01 数值即数据在污染态仍成立）。
+        let (status2, _, body2) = get(port, "/api/replay");
+        assert_eq!(status2, 200);
+        assert_eq!(body2, b"0".to_vec(), "重放是普通 int 数据，非资源身份");
+
+        // 多轮首回（每轮半驱动一个凭据）+ drain 跨宽限窗后回基线。
+        for _ in 0..11 {
+            let (s, _, _) = get(port, "/api/first");
+            assert_eq!(s, 500);
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        loop {
+            if live_resource_count() <= baseline {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "sync-await 错误出口的凭据未回基线: live={}",
+                live_resource_count()
+            );
+            let mut d = TcpStream::connect(("127.0.0.1", port)).expect("drain");
+            let _ = d.write_all(
+                b"GET /api/drain HTTP/1.1
+Host: x
+Connection: close
+
+",
+            );
+            let mut db = [0u8; 512];
+            let _ = d.read(&mut db);
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
 }
