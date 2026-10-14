@@ -1,0 +1,118 @@
+// PLAN-770 T-02 valid text matrix fixture: slice (borrowed return from a
+// param view), char.from_codepoint, char equality, clone independence and
+// a borrowed view of an owned local consumed in-scope.
+
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    module(id: "m_mat") {
+        types {
+            type(id: "t_slicer", kind: function) { params: [str]; result: str }
+            type(id: "t_fromcp", kind: function) { params: [i32]; result: char }
+            type(id: "t_chareq", kind: function) { params: [char, char]; result: bool }
+            type(id: "t_borrow", kind: function) { params: [Str]; result: i32 }
+            type(id: "t_main", kind: function) { params: []; result: i32 }
+        }
+        declarations {
+            function(id: "d_slicer", type: "t_slicer") { name: "slicer"; body: "b_slicer" }
+            function(id: "d_fromcp", type: "t_fromcp") { name: "fromcp"; body: "b_fromcp" }
+            function(id: "d_chareq", type: "t_chareq") { name: "char_eq"; body: "b_chareq" }
+            function(id: "d_borrow", type: "t_borrow") { name: "borrow_use"; body: "b_borrow" }
+            function(id: "d_main", type: "t_main") { name: "main"; body: "b_main" }
+        }
+        bodies {
+            body(id: "b_slicer") {
+                owner: "d_slicer"
+                entry: "bk_slicer"
+                locals {
+                    local(id: "l_s3", type: str) { name: "s"; role: param; index: 0u32 }
+                }
+                expressions {
+                    expr(id: "e_rs3", kind: read_local) { type: str; local: "l_s3" }
+                    expr(id: "e_one", kind: constant) { type: i32; value: 1i32 }
+                    expr(id: "e_two", kind: constant) { type: i32; value: 2i32 }
+                    expr(id: "e_slice", kind: text_slice) { type: str; operand: "e_rs3"; start: "e_one"; end: "e_two" }
+                }
+                blocks {
+                    block(id: "bk_slicer") {
+                        return(value: "e_slice") {}
+                    }
+                }
+            }
+            body(id: "b_fromcp") {
+                owner: "d_fromcp"
+                entry: "bk_fromcp"
+                locals {
+                    local(id: "l_n4", type: i32) { name: "n"; role: param; index: 0u32 }
+                }
+                expressions {
+                    expr(id: "e_rn4", kind: read_local) { type: i32; local: "l_n4" }
+                    expr(id: "e_fcp", kind: char_from_codepoint) { type: char; operand: "e_rn4" }
+                }
+                blocks {
+                    block(id: "bk_fromcp") {
+                        return(value: "e_fcp") {}
+                    }
+                }
+            }
+            body(id: "b_chareq") {
+                owner: "d_chareq"
+                entry: "bk_chareq"
+                locals {
+                    local(id: "l_ca", type: char) { name: "a"; role: param; index: 0u32 }
+                    local(id: "l_cb", type: char) { name: "b"; role: param; index: 1u32 }
+                }
+                expressions {
+                    expr(id: "e_rca", kind: read_local) { type: char; local: "l_ca" }
+                    expr(id: "e_rcb", kind: read_local) { type: char; local: "l_cb" }
+                    expr(id: "e_ceq", kind: binary) { type: bool; op: eq; lhs: "e_rca"; rhs: "e_rcb" }
+                }
+                blocks {
+                    block(id: "bk_chareq") {
+                        return(value: "e_ceq") {}
+                    }
+                }
+            }
+            body(id: "b_borrow") {
+                owner: "d_borrow"
+                entry: "bk_borrow"
+                locals {
+                    local(id: "l_o2", type: Str) { name: "o"; role: param; index: 0u32 }
+                    local(id: "l_v", type: str) { name: "v"; role: binding }
+                    local(id: "l_n5", type: i32) { name: "n"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_ro2", kind: read_local) { type: Str; local: "l_o2" }
+                    expr(id: "e_view", kind: text_to_borrowed) { type: str; operand: "e_ro2" }
+                    expr(id: "e_rv", kind: read_local) { type: str; local: "l_v" }
+                    expr(id: "e_vlen", kind: text_len) { type: i32; operand: "e_rv" }
+                    expr(id: "e_rn5", kind: read_local) { type: i32; local: "l_n5" }
+                }
+                blocks {
+                    block(id: "bk_borrow") {
+                        let(local: "l_v", value: "e_view") {}
+                        let(local: "l_n5", value: "e_vlen") {}
+                        return(value: "e_rn5") {}
+                    }
+                }
+            }
+            body(id: "b_main") {
+                owner: "d_main"
+                entry: "bk_main3"
+                expressions {
+                    expr(id: "e_litQ", kind: str_lit) { type: str; text: "q" }
+                    expr(id: "e_cs", kind: call) {
+                        type: str
+                        callee: "d_slicer"
+                        eval_args: ["e_litQ"]
+                        bindings: [{ param: 0u32, arg: 0u32 }]
+                    }
+                    expr(id: "e_cslen", kind: text_len) { type: i32; operand: "e_cs" }
+                }
+                blocks {
+                    block(id: "bk_main3") {
+                        return(value: "e_cslen") {}
+                    }
+                }
+            }
+        }
+    }
+}

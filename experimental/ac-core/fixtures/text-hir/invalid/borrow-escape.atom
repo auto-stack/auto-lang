@@ -1,0 +1,31 @@
+// PLAN-770 invalid fixture: returning a borrowed view of an owned local.
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    module(id: "m") {
+        types {
+            type(id: "t_bad", kind: function) { params: []; result: str }
+        }
+        declarations {
+            function(id: "d_bad", type: "t_bad") { name: "bad"; body: "b_bad" }
+        }
+        bodies {
+            body(id: "b_bad") {
+                owner: "d_bad"
+                entry: "k0"
+                locals {
+                    local(id: "l_o", type: Str) { name: "o"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_lit", kind: str_lit) { type: Str; text: "x" }
+                    expr(id: "e_ro", kind: read_local) { type: Str; local: "l_o" }
+                    expr(id: "e_view", kind: text_to_borrowed) { type: str; operand: "e_ro" }
+                }
+                blocks {
+                    block(id: "k0") {
+                        let(local: "l_o", value: "e_lit") {}
+                        return(value: "e_view") {}
+                    }
+                }
+            }
+        }
+    }
+}

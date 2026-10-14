@@ -1,0 +1,128 @@
+// PLAN-770 T-02 valid text fixture: the full first-batch text surface in
+// one module — borrowed/owned params with all three modes, literals,
+// len/len_bytes, char literal + codepoint casts, owned return, move call,
+// concat/clone/to/slice/eq legs live in t02 (lifecycle) and t03 (ops).
+
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    module(id: "m_text") {
+        types {
+            type(id: "t_lens", kind: function) { params: [str]; result: i32 }
+            type(id: "t_make", kind: function) { params: []; result: Str }
+            type(id: "t_char", kind: function) { params: []; result: i32 }
+            type(id: "t_consume", kind: function) { params: [Str]; result: i32 }
+            type(id: "t_main", kind: function) { params: []; result: i32 }
+        }
+        declarations {
+            function(id: "d_lens", type: "t_lens") { name: "lens"; body: "b_lens" }
+            function(id: "d_make", type: "t_make") { name: "make"; body: "b_make" }
+            function(id: "d_char", type: "t_char") { name: "char_cp"; body: "b_char" }
+            function(id: "d_consume", type: "t_consume") { name: "consume"; body: "b_consume" }
+            function(id: "d_main", type: "t_main") { name: "main"; body: "b_main" }
+        }
+        bodies {
+            body(id: "b_lens") {
+                owner: "d_lens"
+                entry: "bk_lens"
+                locals {
+                    local(id: "l_s", type: str) { name: "s"; role: param; index: 0u32 }
+                }
+                expressions {
+                    expr(id: "e_s", kind: read_local) { type: str; local: "l_s" }
+                    expr(id: "e_len", kind: text_len) { type: i32; operand: "e_s" }
+                }
+                blocks {
+                    block(id: "bk_lens") {
+                        return(value: "e_len") {}
+                    }
+                }
+            }
+            body(id: "b_make") {
+                owner: "d_make"
+                entry: "bk_make"
+                expressions {
+                    expr(id: "e_lit", kind: str_lit) { type: Str; text: "A中😀" }
+                }
+                blocks {
+                    block(id: "bk_make") {
+                        return(value: "e_lit") {}
+                    }
+                }
+            }
+            body(id: "b_char") {
+                owner: "d_char"
+                entry: "bk_char"
+                expressions {
+                    expr(id: "e_c", kind: char_lit) { type: char; scalar: 65u32 }
+                    expr(id: "e_cp", kind: char_to_codepoint) { type: i32; operand: "e_c" }
+                }
+                blocks {
+                    block(id: "bk_char") {
+                        return(value: "e_cp") {}
+                    }
+                }
+            }
+            body(id: "b_consume") {
+                owner: "d_consume"
+                entry: "bk_consume"
+                locals {
+                    local(id: "l_o", type: Str) { name: "o"; role: param; index: 0u32; mode: move }
+                }
+                expressions {
+                    expr(id: "e_ro", kind: read_local) { type: Str; local: "l_o" }
+                    expr(id: "e_lb", kind: text_len_bytes) { type: i32; operand: "e_ro" }
+                }
+                blocks {
+                    block(id: "bk_consume") {
+                        return(value: "e_lb") {}
+                    }
+                }
+            }
+            body(id: "b_main") {
+                owner: "d_main"
+                entry: "bk_main"
+                locals {
+                    local(id: "l_t", type: Str) { name: "t"; role: binding }
+                    local(id: "l_n", type: i32) { name: "n"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_litA", kind: str_lit) { type: str; text: "A中😀" }
+                    expr(id: "e_call1", kind: call) {
+                        type: i32
+                        callee: "d_lens"
+                        eval_args: ["e_litA"]
+                        bindings: [{ param: 0u32, arg: 0u32 }]
+                    }
+                    expr(id: "e_call2", kind: call) {
+                        type: i32
+                        callee: "d_char"
+                        eval_args: []
+                        bindings: []
+                    }
+                    expr(id: "e_mk", kind: call) {
+                        type: Str
+                        callee: "d_make"
+                        eval_args: []
+                        bindings: []
+                    }
+                    expr(id: "e_rt", kind: read_local) { type: Str; local: "l_t" }
+                    expr(id: "e_call3", kind: call) {
+                        type: i32
+                        callee: "d_consume"
+                        eval_args: ["e_rt"]
+                        bindings: [{ param: 0u32, arg: 0u32, moved: true }]
+                    }
+                    expr(id: "e_add1", kind: binary) { type: i32; op: add_i32; overflow: trap; lhs: "e_call1"; rhs: "e_call2" }
+                    expr(id: "e_add2", kind: binary) { type: i32; op: add_i32; overflow: trap; lhs: "e_add1"; rhs: "e_call3" }
+                    expr(id: "e_rn", kind: read_local) { type: i32; local: "l_n" }
+                }
+                blocks {
+                    block(id: "bk_main") {
+                        let(local: "l_t", value: "e_mk") {}
+                        let(local: "l_n", value: "e_add2") {}
+                        return(value: "e_rn") {}
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,57 @@
+// PLAN-770 invalid fixture: reading an owned local in a LATER statement
+// after it was moved (same-statement overlap is the separate mut-conflict
+// rule; this file exercises the cross-statement dead-state rule).
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    module(id: "m") {
+        types {
+            type(id: "t_take", kind: function) { params: [Str]; result: i32 }
+            type(id: "t_main", kind: function) { params: []; result: i32 }
+        }
+        declarations {
+            function(id: "d_take", type: "t_take") { name: "take"; body: "b_take" }
+            function(id: "d_main", type: "t_main") { name: "main"; body: "b_main" }
+        }
+        bodies {
+            body(id: "b_take") {
+                owner: "d_take"
+                entry: "k0"
+                locals {
+                    local(id: "l_o", type: Str) { name: "o"; role: param; index: 0u32; mode: move }
+                }
+                expressions {
+                    expr(id: "e_zero", kind: constant) { type: i32; value: 0i32 }
+                }
+                blocks {
+                    block(id: "k0") { return(value: "e_zero") {} }
+                }
+            }
+            body(id: "b_main") {
+                owner: "d_main"
+                entry: "k1"
+                locals {
+                    local(id: "l_x", type: Str) { name: "x"; role: binding }
+                    local(id: "l_n1", type: i32) { name: "n1"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_lit", kind: str_lit) { type: Str; text: "x" }
+                    expr(id: "e_rx", kind: read_local) { type: Str; local: "l_x" }
+                    expr(id: "e_call", kind: call) {
+                        type: i32
+                        callee: "d_take"
+                        eval_args: ["e_rx"]
+                        bindings: [{ param: 0u32, arg: 0u32, moved: true }]
+                    }
+                    expr(id: "e_rx2", kind: read_local) { type: Str; local: "l_x" }
+                    expr(id: "e_late", kind: text_len) { type: i32; operand: "e_rx2" }
+                }
+                blocks {
+                    block(id: "k1") {
+                        let(local: "l_x", value: "e_lit") {}
+                        let(local: "l_n1", value: "e_call") {}
+                        return(value: "e_late") {}
+                    }
+                }
+            }
+        }
+    }
+}

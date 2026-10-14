@@ -1,0 +1,34 @@
+// PLAN-770 invalid fixture: reading an owned local after an explicit drop.
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    module(id: "m") {
+        types {
+            type(id: "t_bad", kind: function) { params: [str]; result: i32 }
+        }
+        declarations {
+            function(id: "d_bad", type: "t_bad") { name: "bad"; body: "b_bad" }
+        }
+        bodies {
+            body(id: "b_bad") {
+                owner: "d_bad"
+                entry: "k0"
+                locals {
+                    local(id: "l_s", type: str) { name: "s"; role: param; index: 0u32 }
+                    local(id: "l_d", type: Str) { name: "d"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_rs", kind: read_local) { type: str; local: "l_s" }
+                    expr(id: "e_own", kind: text_to_owned) { type: Str; operand: "e_rs" }
+                    expr(id: "e_rd", kind: read_local) { type: Str; local: "l_d" }
+                    expr(id: "e_dlen", kind: text_len) { type: i32; operand: "e_rd" }
+                }
+                blocks {
+                    block(id: "k0") {
+                        let(local: "l_d", value: "e_own") {}
+                        drop(local: "l_d") {}
+                        return(value: "e_dlen") {}
+                    }
+                }
+            }
+        }
+    }
+}

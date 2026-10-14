@@ -92,11 +92,18 @@ fn value_of_type_use(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt> {
         hir::TypeUse::Builtin(b) => match b {
             hir::BuiltinType::I32 => Some(Vt::I32),
             hir::BuiltinType::Bool => Some(Vt::Bool),
+            // Text values flow through the text lowering path (PLAN-770
+            // T-05); the scalar signature projection stays i32/bool-only
+            // and reports None — a controlled backend rejection.
+            hir::BuiltinType::StrSlice | hir::BuiltinType::StrOwned | hir::BuiltinType::Char => {
+                None
+            }
         },
         hir::TypeUse::Ref(tid) => match &m.types.get(tid.0 as usize)?.kind {
             hir::TypeKind::I32 => Some(Vt::I32),
             hir::TypeKind::Bool => Some(Vt::Bool),
             hir::TypeKind::Function(_) => Some(Vt::Function),
+            hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char => None,
         },
     }
 }
@@ -647,6 +654,13 @@ impl<'c> FuncEmitter<'c> {
                     self.fb.ins().jump(header, &[]);
                     frame.terminated = true;
                 }
+                // Text-profile statements cannot reach the scalar lowering:
+                // the verifier's profile gate rejects them outside the text
+                // domain, and the text lowering path (PLAN-770 T-05) owns
+                // their emission.
+                hir::Stmt::Drop { .. } => {
+                    unreachable!("verifier: drop statements exist only in the text profile")
+                }
             }
         }
     }
@@ -757,6 +771,25 @@ impl<'c> FuncEmitter<'c> {
                             for a in eval_args.iter().rev() {
                                 stack.push(Step::Enter(*a));
                             }
+                        }
+                        // Text expressions cannot reach the scalar lowering
+                        // (verifier profile gate); the text path (PLAN-770
+                        // T-05) owns their emission.
+                        hir::ExprKind::StrLit { .. }
+                        | hir::ExprKind::CharLit { .. }
+                        | hir::ExprKind::TextLen { .. }
+                        | hir::ExprKind::TextLenBytes { .. }
+                        | hir::ExprKind::TextCharAt { .. }
+                        | hir::ExprKind::TextSlice { .. }
+                        | hir::ExprKind::TextConcat { .. }
+                        | hir::ExprKind::TextClone { .. }
+                        | hir::ExprKind::TextToOwned { .. }
+                        | hir::ExprKind::TextToBorrowed { .. }
+                        | hir::ExprKind::CharToCodepoint { .. }
+                        | hir::ExprKind::CharFromCodepoint { .. } => {
+                            unreachable!(
+                                "verifier: text expressions exist only in the text profile"
+                            );
                         }
                     }
                 }

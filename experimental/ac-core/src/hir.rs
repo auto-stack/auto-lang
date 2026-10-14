@@ -69,6 +69,13 @@ impl_id_num!(TypeId, DefId, BodyId, LocalId, ExprId, PlaceId, BlockId, LoopId);
 pub enum BuiltinType {
     I32,
     Bool,
+    /// Borrowed UTF-8 slice (`str`, PLAN-770). A view, never owns.
+    StrSlice,
+    /// Owned UTF-8 buffer (`Str`, PLAN-770). Single owner, LIFO cleanup.
+    StrOwned,
+    /// Independent Unicode scalar type (`char`, PLAN-770). u32 scalar value
+    /// carried on the I32 ABI channel; never implicitly int.
+    Char,
 }
 
 impl BuiltinType {
@@ -76,6 +83,9 @@ impl BuiltinType {
         match self {
             BuiltinType::I32 => "i32",
             BuiltinType::Bool => "bool",
+            BuiltinType::StrSlice => "str",
+            BuiltinType::StrOwned => "Str",
+            BuiltinType::Char => "char",
         }
     }
 }
@@ -99,6 +109,12 @@ pub struct FnSig {
 pub enum TypeKind {
     I32,
     Bool,
+    /// `str` (PLAN-770): borrowed slice kind for named type entries.
+    Str,
+    /// `Str` (PLAN-770): owned buffer kind for named type entries.
+    StrOwned,
+    /// `char` (PLAN-770): Unicode scalar kind for named type entries.
+    Char,
     Function(FnSig),
 }
 
@@ -113,6 +129,32 @@ pub struct TypeDef {
 pub enum LocalRole {
     Param,
     Binding,
+}
+
+/// Ownership mode of a parameter local (PLAN-770, 774 D-03/R1-04.1/R2-02.4).
+/// Defaults to [`ParamMode::View`] for every text param; `mut` and `move`
+/// are explicit declarations only. The mode carries ownership semantics and
+/// therefore participates in semantic equality.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ParamMode {
+    /// Read-only borrow (default for `str` and `Str` parameters).
+    View,
+    /// Exclusive borrow (`mut str` = borrowed-and-mutable,
+    /// `mut Str` = exclusive borrow of an owned value).
+    MutBorrow,
+    /// Ownership transfer in (`move Str`): the call site must mark `.move`,
+    /// the callee owns the value and cleans it up at its exits.
+    MoveOwn,
+}
+
+impl ParamMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ParamMode::View => "view",
+            ParamMode::MutBorrow => "mut",
+            ParamMode::MoveOwn => "move",
+        }
+    }
 }
 
 impl LocalRole {
@@ -135,6 +177,10 @@ pub struct LocalDef {
     /// Whether `mutable:` was written explicitly (recorded per the Atom text
     /// contract; excluded from semantic equality).
     pub mutable_explicit: bool,
+    /// Parameter ownership mode (PLAN-770). Only meaningful for `param`
+    /// locals; bindings always carry [`ParamMode::View`] (a binding's
+    /// ownership comes from its initializer, never a mode word). Semantic.
+    pub param_mode: ParamMode,
     pub span: Span,
 }
 
@@ -270,6 +316,10 @@ pub enum OverflowPolicy {
 pub struct CallBinding {
     pub param: u32,
     pub arg: u32,
+    /// Whether the call site marked this argument `.move` (PLAN-770):
+    /// ownership of an owned `Str` argument transfers to the callee, the
+    /// argument local dies at this call. Semantic.
+    pub moved: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -303,6 +353,66 @@ pub enum ExprKind {
         callee: DefId,
         eval_args: Vec<ExprId>,
         bindings: Vec<CallBinding>,
+    },
+    /// String literal (PLAN-770). The value is the decoded UTF-8 text
+    /// (escapes resolved at the lexing front door); a static, immortal
+    /// borrowing source. Auto-promotes to an owned `Str` in owning
+    /// contexts (AP-4 at runtime).
+    StrLit {
+        value: String,
+    },
+    /// Character literal (PLAN-770): exactly one Unicode scalar, carried
+    /// as its u32 code point on the I32 ABI channel.
+    CharLit {
+        scalar: u32,
+    },
+    /// `s.len()` — Unicode scalar count of a text operand (result i32).
+    TextLen {
+        operand: ExprId,
+    },
+    /// `s.len_bytes()` — UTF-8 byte length of a text operand (result i32).
+    TextLenBytes {
+        operand: ExprId,
+    },
+    /// `s.char_at(i)` — scalar-indexed char access (result char).
+    TextCharAt {
+        operand: ExprId,
+        index: ExprId,
+    },
+    /// `s.slice(start, end)` — borrowed `[start, end)` scalar slice
+    /// (result str; no allocation, views the operand).
+    TextSlice {
+        operand: ExprId,
+        start: ExprId,
+        end: ExprId,
+    },
+    /// `a + b` on text — concatenation into a fresh owned buffer
+    /// (result Str; AP-3).
+    TextConcat {
+        lhs: ExprId,
+        rhs: ExprId,
+    },
+    /// `s.clone()` — independent owned copy (result Str; AP-2).
+    TextClone {
+        operand: ExprId,
+    },
+    /// `s.to(Str)` — promotion to an owned copy (result Str; AP-4 form).
+    TextToOwned {
+        operand: ExprId,
+    },
+    /// `s.to(str)` — borrowing view of a text operand (result str; the
+    /// operand stays the owner, nothing transfers).
+    TextToBorrowed {
+        operand: ExprId,
+    },
+    /// `c.to_codepoint()` — char to i32 (always succeeds).
+    CharToCodepoint {
+        operand: ExprId,
+    },
+    /// `char.from_codepoint(n)` — i32 to char; invalid scalars are a
+    /// runtime rejection (`text.invalid-scalar`), not a verify error.
+    CharFromCodepoint {
+        operand: ExprId,
     },
 }
 
@@ -363,6 +473,13 @@ pub enum Stmt {
     Continue {
         target: LoopId,
     },
+    /// Explicit cleanup of an owned local (PLAN-770). The source frontend
+    /// never emits this — cleanup is compiler-scheduled; programmatic
+    /// bundles may carry it and the verifier audits it against the same
+    /// LIFO / unique-responsibility rules.
+    Drop {
+        local: LocalId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -408,6 +525,9 @@ pub enum HirDomain {
     Core,
     /// `auto.hir.scalar.draft / 1 / scalar-i32-draft` (PLAN-767).
     Scalar,
+    /// `auto.hir.text.draft / 1 / text-i32-draft` (PLAN-770): the scalar
+    /// surface plus str/Str/char with the 774 data-resource contract.
+    Text,
 }
 
 impl HirDomain {
@@ -415,6 +535,7 @@ impl HirDomain {
         match self {
             HirDomain::Core => "core-i32-draft",
             HirDomain::Scalar => "scalar-i32-draft",
+            HirDomain::Text => "text-i32-draft",
         }
     }
 
@@ -422,6 +543,7 @@ impl HirDomain {
         match self {
             HirDomain::Core => "auto.hir.core.draft",
             HirDomain::Scalar => "auto.hir.scalar.draft",
+            HirDomain::Text => "auto.hir.text.draft",
         }
     }
 
@@ -461,6 +583,9 @@ fn discriminant(k: &TypeKind) -> u8 {
         TypeKind::I32 => 0,
         TypeKind::Bool => 1,
         TypeKind::Function(_) => 2,
+        TypeKind::Str => 3,
+        TypeKind::StrOwned => 4,
+        TypeKind::Char => 5,
     }
 }
 
@@ -472,6 +597,7 @@ impl PartialEq for LocalDef {
             && self.role == other.role
             && self.index == other.index
             && self.mutable == other.mutable
+            && self.param_mode == other.param_mode
     }
 }
 impl Eq for LocalDef {}

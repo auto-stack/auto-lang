@@ -254,6 +254,11 @@ impl Descriptor {
             && self.profile == "scalar-i32-draft"
         {
             Some(hir::HirDomain::Scalar)
+        } else if self.schema == "auto.hir.text.draft"
+            && self.revision == 1
+            && self.profile == "text-i32-draft"
+        {
+            Some(hir::HirDomain::Text)
         } else {
             None
         }
@@ -1038,6 +1043,9 @@ impl<'d> Binder<'d> {
             let kind = match word.as_str() {
                 "i32" => hir::TypeKind::I32,
                 "bool" => hir::TypeKind::Bool,
+                "str" => hir::TypeKind::Str,
+                "Str" => hir::TypeKind::StrOwned,
+                "char" => hir::TypeKind::Char,
                 "function" => {
                     let mut params = Vec::new();
                     let mut ok = true;
@@ -1502,6 +1510,29 @@ impl<'d> Binder<'d> {
             },
             None => false,
         };
+        // Parameter ownership mode (PLAN-770): optional on params only —
+        // the `local.binding` branch contract forbids `mode` there.
+        let param_mode = match fields.get("mode") {
+            Some(f) => {
+                let Some((w, wspan)) = Some((self.text_of(&f.value), f.value_span)) else {
+                    unreachable!()
+                };
+                let Some(w) = w else {
+                    self.error("bind.type-shape", "mode must be text", wspan);
+                    return None;
+                };
+                if !self.check_enum_case("ParamModeKind", &w, wspan) {
+                    return None;
+                }
+                match w.as_str() {
+                    "view" => hir::ParamMode::View,
+                    "mut" => hir::ParamMode::MutBorrow,
+                    "move" => hir::ParamMode::MoveOwn,
+                    _ => return None,
+                }
+            }
+            None => hir::ParamMode::View,
+        };
         Some(hir::LocalDef {
             id_text,
             ty,
@@ -1510,6 +1541,7 @@ impl<'d> Binder<'d> {
             index,
             mutable,
             mutable_explicit,
+            param_mode,
             span: node.span,
         })
     }
@@ -1796,6 +1828,7 @@ impl<'d> Binder<'d> {
                                     Value::Obj(obj) => {
                                         let mut param = None;
                                         let mut arg = None;
+                                        let mut moved = false;
                                         for of in obj {
                                             match of.name.as_str() {
                                                 "param" => {
@@ -1818,6 +1851,18 @@ impl<'d> Binder<'d> {
                                                         })
                                                     })
                                                 }
+                                                "moved" => match self.text_of(&of.value) {
+                                                    Some(w) if w == "true" => moved = true,
+                                                    Some(w) if w == "false" => moved = false,
+                                                    _ => {
+                                                        self.error(
+                                                            "bind.type-shape",
+                                                            "binding moved must be true or false",
+                                                            of.value_span,
+                                                        );
+                                                        return None;
+                                                    }
+                                                },
                                                 other => {
                                                     self.error(
                                                         "bind.unknown-field",
@@ -1832,9 +1877,8 @@ impl<'d> Binder<'d> {
                                             }
                                         }
                                         match (param, arg) {
-                                            (Some(param), Some(arg)) => {
-                                                bindings.push(hir::CallBinding { param, arg })
-                                            }
+                                            (Some(param), Some(arg)) => bindings
+                                                .push(hir::CallBinding { param, arg, moved }),
                                             _ => {
                                                 self.error(
                                                     "bind.type-shape",
@@ -1867,6 +1911,141 @@ impl<'d> Binder<'d> {
                     eval_args,
                     bindings,
                 }
+            }
+            // -- PLAN-770 text expression kinds --------------------------------
+            "str_lit" => {
+                let Some(f) = fields.get("text") else {
+                    return None;
+                };
+                let Some(value) = str_value(&f.value) else {
+                    self.error(
+                        "bind.type-shape",
+                        "str_lit text must be a string literal",
+                        f.value_span,
+                    );
+                    return None;
+                };
+                hir::ExprKind::StrLit { value }
+            }
+            "char_lit" => {
+                let Some(f) = fields.get("scalar") else {
+                    return None;
+                };
+                match int_value(&f.value) {
+                    Some(lit) => match lit.to_u32() {
+                        Some(v)
+                            if matches!(lit.suffix.as_deref(), None | Some("u32"))
+                                && char::from_u32(v).is_some() =>
+                        {
+                            hir::ExprKind::CharLit { scalar: v }
+                        }
+                        _ => {
+                            self.error(
+                                "bind.literal-range",
+                                format!(
+                                    "scalar `{}` is not a u32 Unicode scalar value",
+                                    lit.span.slice(self.src)
+                                ),
+                                f.value_span,
+                            );
+                            return None;
+                        }
+                    },
+                    None => {
+                        self.error(
+                            "bind.type-shape",
+                            "char_lit scalar must be an integer",
+                            f.value_span,
+                        );
+                        return None;
+                    }
+                }
+            }
+            "text_len"
+            | "text_len_bytes"
+            | "text_clone"
+            | "text_to_owned"
+            | "text_to_borrowed"
+            | "char_to_codepoint"
+            | "char_from_codepoint" => {
+                let Some((ot, ospan)) = self.text_ref(&fields, "operand") else {
+                    return None;
+                };
+                let operand = match self.resolve_in(&ot, ospan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                match kind_word.as_str() {
+                    "text_len" => hir::ExprKind::TextLen { operand },
+                    "text_len_bytes" => hir::ExprKind::TextLenBytes { operand },
+                    "text_clone" => hir::ExprKind::TextClone { operand },
+                    "text_to_owned" => hir::ExprKind::TextToOwned { operand },
+                    "text_to_borrowed" => hir::ExprKind::TextToBorrowed { operand },
+                    "char_to_codepoint" => hir::ExprKind::CharToCodepoint { operand },
+                    _ => hir::ExprKind::CharFromCodepoint { operand },
+                }
+            }
+            "text_char_at" => {
+                let Some((ot, ospan)) = self.text_ref(&fields, "operand") else {
+                    return None;
+                };
+                let operand = match self.resolve_in(&ot, ospan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((it, ispan)) = self.text_ref(&fields, "index") else {
+                    return None;
+                };
+                let index = match self.resolve_in(&it, ispan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::TextCharAt { operand, index }
+            }
+            "text_slice" => {
+                let Some((ot, ospan)) = self.text_ref(&fields, "operand") else {
+                    return None;
+                };
+                let operand = match self.resolve_in(&ot, ospan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((st, sspan)) = self.text_ref(&fields, "start") else {
+                    return None;
+                };
+                let start = match self.resolve_in(&st, sspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((et, espan)) = self.text_ref(&fields, "end") else {
+                    return None;
+                };
+                let end = match self.resolve_in(&et, espan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::TextSlice {
+                    operand,
+                    start,
+                    end,
+                }
+            }
+            "text_concat" => {
+                let Some((lt, lspan)) = self.text_ref(&fields, "lhs") else {
+                    return None;
+                };
+                let lhs = match self.resolve_in(&lt, lspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((rt, rspan)) = self.text_ref(&fields, "rhs") else {
+                    return None;
+                };
+                let rhs = match self.resolve_in(&rt, rspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::TextConcat { lhs, rhs }
             }
             _ => return None,
         };
@@ -2048,6 +2227,17 @@ impl<'d> Binder<'d> {
                     )?);
                     hir::Stmt::Continue { target }
                 }
+                "drop" => {
+                    let (t, span) = self.text_ref(&sfields, "local")?;
+                    let local = hir::LocalId(self.resolve_in(
+                        &t,
+                        span,
+                        "LocalRef",
+                        &body.locals,
+                        block_sibs,
+                    )?);
+                    hir::Stmt::Drop { local }
+                }
                 _ => continue,
             };
             stmts.push(stmt_value);
@@ -2067,12 +2257,28 @@ impl<'d> Binder<'d> {
         span: Span,
         type_ids: &BTreeMap<String, u32>,
     ) -> Option<hir::TypeUse> {
+        let text_builtin = |word: &str| match word {
+            "str" => Some(hir::BuiltinType::StrSlice),
+            "Str" => Some(hir::BuiltinType::StrOwned),
+            "char" => Some(hir::BuiltinType::Char),
+            _ => None,
+        };
         match v {
             Value::Ident(word) if word == "i32" => {
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::I32))
             }
             Value::Ident(word) if word == "bool" => {
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::Bool))
+            }
+            // The str/Str/char builtin type words exist only in the text
+            // descriptor's vocabulary (PLAN-770 isolation): binding them
+            // under the core/scalar descriptors is a dangling type
+            // reference exactly as before, not a new builtin there.
+            Value::Ident(word)
+                if self.desc.domain() == Some(hir::HirDomain::Text)
+                    && text_builtin(word).is_some() =>
+            {
+                Some(hir::TypeUse::Builtin(text_builtin(word).unwrap()))
             }
             Value::Ident(_) | Value::Str(_) => {
                 let t = match self.text_of(v) {
@@ -2176,6 +2382,15 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                 hir::TypeKind::Bool => {
                     w.line(&format!("type(id: {}, kind: bool) {{}}", quote(&t.id_text)))
                 }
+                hir::TypeKind::Str => {
+                    w.line(&format!("type(id: {}, kind: str) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::StrOwned => {
+                    w.line(&format!("type(id: {}, kind: Str) {{}}", quote(&t.id_text)))
+                }
+                hir::TypeKind::Char => {
+                    w.line(&format!("type(id: {}, kind: char) {{}}", quote(&t.id_text)))
+                }
                 hir::TypeKind::Function(sig) => {
                     let params: Vec<String> =
                         sig.params.iter().map(|p| type_use_text(p, m)).collect();
@@ -2238,6 +2453,11 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                 if l.mutable || l.mutable_explicit {
                     parts.push(format!("mutable: {}", l.mutable));
                 }
+                // Param ownership mode: emit whenever it deviates from the
+                // default `view` (PLAN-770). Bindings never carry a mode.
+                if l.role == hir::LocalRole::Param && l.param_mode != hir::ParamMode::View {
+                    parts.push(format!("mode: {}", l.param_mode.as_str()));
+                }
                 w.line(&format!(
                     "local(id: {}, type: {}) {{ {} }}",
                     quote(&l.id_text),
@@ -2298,6 +2518,18 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::Unary { .. } => "unary",
         hir::ExprKind::Logical { .. } => "logical",
         hir::ExprKind::Call { .. } => "call",
+        hir::ExprKind::StrLit { .. } => "str_lit",
+        hir::ExprKind::CharLit { .. } => "char_lit",
+        hir::ExprKind::TextLen { .. } => "text_len",
+        hir::ExprKind::TextLenBytes { .. } => "text_len_bytes",
+        hir::ExprKind::TextCharAt { .. } => "text_char_at",
+        hir::ExprKind::TextSlice { .. } => "text_slice",
+        hir::ExprKind::TextConcat { .. } => "text_concat",
+        hir::ExprKind::TextClone { .. } => "text_clone",
+        hir::ExprKind::TextToOwned { .. } => "text_to_owned",
+        hir::ExprKind::TextToBorrowed { .. } => "text_to_borrowed",
+        hir::ExprKind::CharToCodepoint { .. } => "char_to_codepoint",
+        hir::ExprKind::CharFromCodepoint { .. } => "char_from_codepoint",
     };
     let mut body_fields: Vec<String> = vec![format!("type: {}", type_use_text(&e.ty, m))];
     match &e.kind {
@@ -2309,6 +2541,53 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         }
         hir::ExprKind::Constant { value } => {
             body_fields.push(format!("value: {}i32", value));
+        }
+        hir::ExprKind::StrLit { value } => {
+            body_fields.push(format!("text: {}", quote(value)));
+        }
+        hir::ExprKind::CharLit { scalar } => {
+            body_fields.push(format!("scalar: {}u32", scalar));
+        }
+        hir::ExprKind::TextLen { operand }
+        | hir::ExprKind::TextLenBytes { operand }
+        | hir::ExprKind::TextClone { operand }
+        | hir::ExprKind::TextToOwned { operand }
+        | hir::ExprKind::TextToBorrowed { operand }
+        | hir::ExprKind::CharToCodepoint { operand }
+        | hir::ExprKind::CharFromCodepoint { operand } => {
+            body_fields.push(format!(
+                "operand: {}",
+                quote(&b.exprs[operand.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::TextCharAt { operand, index } => {
+            body_fields.push(format!(
+                "operand: {}",
+                quote(&b.exprs[operand.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "index: {}",
+                quote(&b.exprs[index.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::TextSlice {
+            operand,
+            start,
+            end,
+        } => {
+            body_fields.push(format!(
+                "operand: {}",
+                quote(&b.exprs[operand.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "start: {}",
+                quote(&b.exprs[start.0 as usize].id_text)
+            ));
+            body_fields.push(format!("end: {}", quote(&b.exprs[end.0 as usize].id_text)));
+        }
+        hir::ExprKind::TextConcat { lhs, rhs } => {
+            body_fields.push(format!("lhs: {}", quote(&b.exprs[lhs.0 as usize].id_text)));
+            body_fields.push(format!("rhs: {}", quote(&b.exprs[rhs.0 as usize].id_text)));
         }
         hir::ExprKind::Binary {
             op,
@@ -2354,7 +2633,16 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
             body_fields.push(format!("eval_args: [{}]", args.join(", ")));
             let bs: Vec<String> = bindings
                 .iter()
-                .map(|bd| format!("{{ param: {}u32, arg: {}u32 }}", bd.param, bd.arg))
+                .map(|bd| {
+                    if bd.moved {
+                        format!(
+                            "{{ param: {}u32, arg: {}u32, moved: true }}",
+                            bd.param, bd.arg
+                        )
+                    } else {
+                        format!("{{ param: {}u32, arg: {}u32 }}", bd.param, bd.arg)
+                    }
+                })
                 .collect();
             body_fields.push(format!("bindings: [{}]", bs.join(", ")));
         }
@@ -2406,6 +2694,10 @@ fn write_stmt(s: &hir::Stmt, b: &hir::Body, _m: &hir::Module) -> String {
         hir::Stmt::Continue { target } => format!(
             "continue(target: {}) {{}}",
             quote(&b.loops[target.0 as usize])
+        ),
+        hir::Stmt::Drop { local } => format!(
+            "drop(local: {}) {{}}",
+            quote(&b.locals[local.0 as usize].id_text)
         ),
     }
 }

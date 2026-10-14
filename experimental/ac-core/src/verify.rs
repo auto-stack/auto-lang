@@ -45,10 +45,16 @@ use crate::hir::{self, BodyId, ExprId, HirDomain, LocalId, LoopId};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A module that has passed semantic verification. Constructed only by
-/// [`verify`]/[`verify_scalar`]; the backend consumes nothing else.
+/// [`verify`]/[`verify_scalar`]/[`verify_text`]; the backend consumes
+/// nothing else.
 #[derive(Clone, Debug)]
 pub struct CheckedModule {
     bundle: hir::Bundle,
+    /// The text resource plan (PLAN-770): present only for bundles verified
+    /// under the text domain. Owned locals, per-exit LIFO free schedules and
+    /// owned-return statements, computed by the verifier — the backend
+    /// consumes this plan without re-deriving ownership.
+    text_plan: Option<crate::text_resources::TextResourcePlan>,
 }
 
 impl CheckedModule {
@@ -71,6 +77,13 @@ impl CheckedModule {
     pub fn required_capabilities(&self) -> &[String] {
         &self.bundle.requires
     }
+
+    /// The verifier-computed text resource plan. `None` outside the text
+    /// domain; for text modules the lowering reads owned sets and exit free
+    /// schedules from here instead of re-analyzing ownership.
+    pub fn text_resources(&self) -> Option<&crate::text_resources::TextResourcePlan> {
+        self.text_plan.as_ref()
+    }
 }
 
 /// Verify a bound core-domain bundle (historical entry; compatibility
@@ -84,6 +97,43 @@ pub fn verify(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
 /// another domain.
 pub fn verify_scalar(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
     verify_domain(bundle, HirDomain::Scalar)
+}
+
+/// Verify a bound text-domain bundle (`text-i32-draft`, PLAN-770): the
+/// scalar surface plus str/Str/char under the 774 data-resource contract.
+/// On success the `CheckedModule` carries the text resource plan (owned
+/// locals, per-exit LIFO free schedules, owned returns) that the backend
+/// consumes verbatim — the backend performs no ownership analysis of its
+/// own.
+pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    let mut v = Verifier {
+        diags: Vec::new(),
+        domain: HirDomain::Text,
+    };
+    let mut plan = crate::text_resources::TextResourcePlan::default();
+    for m in &bundle.modules {
+        v.check_module(m);
+    }
+    if v.diags.is_empty() {
+        for (mi, m) in bundle.modules.iter().enumerate() {
+            for (bi, body) in m.bodies.iter().enumerate() {
+                let type_map = Verifier::build_type_map(m);
+                if let Some(bp) =
+                    crate::text_resources::check_body(body, m, &type_map, &mut v.diags)
+                {
+                    plan.bodies.insert((mi, bi as u32), bp);
+                }
+            }
+        }
+    }
+    if v.diags.is_empty() {
+        Ok(CheckedModule {
+            bundle,
+            text_plan: Some(plan),
+        })
+    } else {
+        Err(v.diags)
+    }
 }
 
 fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule, Vec<Diagnostic>> {
@@ -105,24 +155,36 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
     };
     v.check_bundle(&bundle);
     if v.diags.is_empty() {
-        Ok(CheckedModule { bundle })
+        Ok(CheckedModule {
+            bundle,
+            text_plan: None,
+        })
     } else {
         Err(v.diags)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum ValueType {
+pub(crate) enum ValueType {
     I32,
     Bool,
     Function,
+    /// Borrowed text slice (`str`, PLAN-770).
+    Str,
+    /// Owned text buffer (`Str`, PLAN-770).
+    StrOwned,
+    /// Unicode scalar char (PLAN-770).
+    Char,
 }
 
-fn vt_name(v: ValueType) -> &'static str {
+pub(crate) fn vt_name(v: ValueType) -> &'static str {
     match v {
         ValueType::I32 => "i32",
         ValueType::Bool => "bool",
         ValueType::Function => "function",
+        ValueType::Str => "str",
+        ValueType::StrOwned => "Str",
+        ValueType::Char => "char",
     }
 }
 
@@ -166,15 +228,48 @@ impl Verifier {
             .push(Diagnostic::new(Stage::Verify, code, msg, span));
     }
 
-    /// Core-domain defense (PLAN-767 §5.1): the shared HIR enums were
-    /// widened for the scalar profile; a programmatically mutated core
-    /// bundle must still be rejected at the operator set, not silently
-    /// reinterpreted under the new semantics.
+    /// Core/scalar-domain defense (PLAN-767 §5.1, PLAN-770 isolation): the
+    /// shared HIR enums were widened by later profiles; a programmatically
+    /// mutated bundle of an OLDER profile must still be rejected at its own
+    /// surface, never silently reinterpreted under the new semantics. Core
+    /// additionally rejects every scalar-only operator; both reject the
+    /// entire text surface (expression kinds, drop statements, parameter
+    /// modes, str/Str/char types on locals and signatures).
     fn check_profile_ops(&mut self, body: &hir::Body) {
-        if self.domain != HirDomain::Core {
+        if self.domain == HirDomain::Text {
             return;
         }
         for e in &body.exprs {
+            let text_kind = matches!(
+                &e.kind,
+                hir::ExprKind::StrLit { .. }
+                    | hir::ExprKind::CharLit { .. }
+                    | hir::ExprKind::TextLen { .. }
+                    | hir::ExprKind::TextLenBytes { .. }
+                    | hir::ExprKind::TextCharAt { .. }
+                    | hir::ExprKind::TextSlice { .. }
+                    | hir::ExprKind::TextConcat { .. }
+                    | hir::ExprKind::TextClone { .. }
+                    | hir::ExprKind::TextToOwned { .. }
+                    | hir::ExprKind::TextToBorrowed { .. }
+                    | hir::ExprKind::CharToCodepoint { .. }
+                    | hir::ExprKind::CharFromCodepoint { .. }
+            );
+            if text_kind {
+                self.error(
+                    "verify.profile-op",
+                    format!(
+                        "text expression `{}` is not part of the {} profile",
+                        e.id_text,
+                        self.domain.as_str()
+                    ),
+                    e.span,
+                );
+                continue;
+            }
+            if self.domain != HirDomain::Core {
+                continue;
+            }
             match &e.kind {
                 hir::ExprKind::Binary { op, .. } if !op.in_core_profile() => {
                     self.error(
@@ -209,6 +304,33 @@ impl Verifier {
                 _ => {}
             }
         }
+        for bl in &body.blocks {
+            for s in &bl.stmts {
+                if matches!(s, hir::Stmt::Drop { .. }) {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "drop statements are not part of the {} profile",
+                            self.domain.as_str()
+                        ),
+                        bl.span,
+                    );
+                }
+            }
+        }
+        for l in &body.locals {
+            if l.param_mode != hir::ParamMode::View {
+                self.error(
+                    "verify.profile-op",
+                    format!(
+                        "parameter mode `{}` is not part of the {} profile",
+                        l.param_mode.as_str(),
+                        self.domain.as_str()
+                    ),
+                    l.span,
+                );
+            }
+        }
     }
 
     fn check_bundle(&mut self, bundle: &hir::Bundle) {
@@ -222,6 +344,9 @@ impl Verifier {
             hir::TypeUse::Builtin(b) => match b {
                 hir::BuiltinType::I32 => ValueType::I32,
                 hir::BuiltinType::Bool => ValueType::Bool,
+                hir::BuiltinType::StrSlice => ValueType::Str,
+                hir::BuiltinType::StrOwned => ValueType::StrOwned,
+                hir::BuiltinType::Char => ValueType::Char,
             },
             hir::TypeUse::Ref(tid) => type_map.get(&tid.0).copied().unwrap_or(ValueType::I32),
         }
@@ -235,6 +360,9 @@ impl Verifier {
                 let vt = match &t.kind {
                     hir::TypeKind::I32 => ValueType::I32,
                     hir::TypeKind::Bool => ValueType::Bool,
+                    hir::TypeKind::Str => ValueType::Str,
+                    hir::TypeKind::StrOwned => ValueType::StrOwned,
+                    hir::TypeKind::Char => ValueType::Char,
                     hir::TypeKind::Function(_) => ValueType::Function,
                 };
                 (i as u32, vt)
@@ -251,6 +379,31 @@ impl Verifier {
         // controlled way and skip this module's signature/body walks.
         if !self.check_module_type_bounds(m) {
             return;
+        }
+        // Text kinds in the type table exist only in the text profile
+        // (PLAN-770 isolation): a programmatic mutation cannot smuggle
+        // str/Str/char named types into an older profile's signatures.
+        if self.domain != HirDomain::Text {
+            for t in &m.types {
+                if matches!(
+                    t.kind,
+                    hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
+                ) {
+                    self.error(
+                        "verify.local-type",
+                        format!(
+                            "type `{}` has text kind `{}`; text types exist only in the text-i32-draft profile",
+                            t.id_text,
+                            match t.kind {
+                                hir::TypeKind::Str => "str",
+                                hir::TypeKind::StrOwned => "Str",
+                                _ => "char",
+                            }
+                        ),
+                        t.span,
+                    );
+                }
+            }
         }
         let type_map = Self::build_type_map(m);
         // Function signatures by def index.
@@ -485,6 +638,43 @@ impl Verifier {
                         }
                     }
                 }
+                hir::ExprKind::TextLen { operand }
+                | hir::ExprKind::TextLenBytes { operand }
+                | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::TextToOwned { operand }
+                | hir::ExprKind::TextToBorrowed { operand }
+                | hir::ExprKind::CharToCodepoint { operand }
+                | hir::ExprKind::CharFromCodepoint { operand } => {
+                    if (operand.0 as usize) >= n_exprs {
+                        bad("expression", operand.0, n_exprs, e.span);
+                    }
+                }
+                hir::ExprKind::TextCharAt { operand, index } => {
+                    for id in [operand, index] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::TextSlice {
+                    operand,
+                    start,
+                    end,
+                } => {
+                    for id in [operand, start, end] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::TextConcat { lhs, rhs } => {
+                    for id in [lhs, rhs] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::StrLit { .. } | hir::ExprKind::CharLit { .. } => {}
                 hir::ExprKind::Constant { .. } => {}
             }
         }
@@ -538,6 +728,11 @@ impl Verifier {
                             bad("loop", target.0, n_loops, bl.span);
                         }
                     }
+                    hir::Stmt::Drop { local } => {
+                        if (local.0 as usize) >= n_locals {
+                            bad("local", local.0, n_locals, bl.span);
+                        }
+                    }
                 }
             }
         }
@@ -555,6 +750,7 @@ impl Verifier {
         let mut seen: BTreeSet<u32> = BTreeSet::new();
         for l in &body.locals {
             let lvt = self.value_of(&l.ty, type_map);
+            let text_vt = matches!(lvt, ValueType::Str | ValueType::StrOwned | ValueType::Char);
             if lvt == ValueType::Function {
                 self.error(
                     "verify.local-type",
@@ -564,6 +760,38 @@ impl Verifier {
                     ),
                     l.span,
                 );
+            } else if text_vt && self.domain != HirDomain::Text {
+                self.error(
+                    "verify.local-type",
+                    format!(
+                        "local `{}` has text type `{}`; text types exist only in the text-i32-draft profile",
+                        l.id_text,
+                        vt_name(lvt)
+                    ),
+                    l.span,
+                );
+            }
+            // Parameter ownership modes (PLAN-770): `move` transfers an
+            // owned buffer — only an owned Str parameter can carry it;
+            // `mut` is an exclusive text borrow — only text parameters.
+            if self.domain == HirDomain::Text && l.role == hir::LocalRole::Param {
+                match l.param_mode {
+                    hir::ParamMode::View => {}
+                    hir::ParamMode::MutBorrow if text_vt => {}
+                    hir::ParamMode::MoveOwn if lvt == ValueType::StrOwned => {}
+                    hir::ParamMode::MutBorrow | hir::ParamMode::MoveOwn => {
+                        self.error(
+                            "verify.ownership-required",
+                            format!(
+                                "parameter `{}` declares mode `{}` but has type `{}`; `move` requires Str, `mut` requires a text type",
+                                l.id_text,
+                                l.param_mode.as_str(),
+                                vt_name(lvt)
+                            ),
+                            l.span,
+                        );
+                    }
+                }
             }
             if l.role == hir::LocalRole::Param {
                 let Some(idx) = l.index else {
@@ -637,6 +865,9 @@ impl Verifier {
             match &e.ty {
                 hir::TypeUse::Builtin(hir::BuiltinType::I32) => ValueType::I32,
                 hir::TypeUse::Builtin(hir::BuiltinType::Bool) => ValueType::Bool,
+                hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => ValueType::Str,
+                hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => ValueType::StrOwned,
+                hir::TypeUse::Builtin(hir::BuiltinType::Char) => ValueType::Char,
                 hir::TypeUse::Ref(tid) => type_map.get(&tid.0).copied().unwrap_or(ValueType::I32),
             }
         };
@@ -714,6 +945,40 @@ impl Verifier {
                                 stack.push(Visit::Enter(*a));
                             }
                         }
+                        hir::ExprKind::StrLit { .. } | hir::ExprKind::CharLit { .. } => {
+                            // leaves; typed at Exit from the declared type
+                            stack.push(Visit::Exit(id));
+                        }
+                        hir::ExprKind::TextLen { operand }
+                        | hir::ExprKind::TextLenBytes { operand }
+                        | hir::ExprKind::TextClone { operand }
+                        | hir::ExprKind::TextToOwned { operand }
+                        | hir::ExprKind::TextToBorrowed { operand }
+                        | hir::ExprKind::CharToCodepoint { operand }
+                        | hir::ExprKind::CharFromCodepoint { operand } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*operand));
+                        }
+                        hir::ExprKind::TextCharAt { operand, index } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*index));
+                            stack.push(Visit::Enter(*operand));
+                        }
+                        hir::ExprKind::TextSlice {
+                            operand,
+                            start,
+                            end,
+                        } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*end));
+                            stack.push(Visit::Enter(*start));
+                            stack.push(Visit::Enter(*operand));
+                        }
+                        hir::ExprKind::TextConcat { lhs, rhs } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*rhs));
+                            stack.push(Visit::Enter(*lhs));
+                        }
                     }
                 }
                 Visit::Exit(id) => {
@@ -784,24 +1049,38 @@ impl Verifier {
                                     ValueType::Bool
                                 }
                                 Eq | Ne => {
-                                    if lt != rt
-                                        || !matches!(
+                                    let same_pair = lt == rt
+                                        && matches!(
                                             (lt, rt),
                                             (ValueType::I32, ValueType::I32)
                                                 | (ValueType::Bool, ValueType::Bool)
-                                        )
-                                    {
-                                        self.error(
-                                            "verify.type-mismatch",
+                                                | (ValueType::Str, ValueType::Str)
+                                                | (ValueType::StrOwned, ValueType::StrOwned)
+                                                | (ValueType::Char, ValueType::Char)
+                                        );
+                                    if !same_pair {
+                                        // keep the old profiles' exact
+                                        // wording (observable diagnostic
+                                        // surface); the text profile adds
+                                        // its wider type vocabulary.
+                                        let msg = if self.domain == HirDomain::Text {
+                                            format!(
+                                                "expr `{}`: {} operands must both be i32, bool, str, Str or char of the same type (found {} / {})",
+                                                e.id_text,
+                                                op.as_str(),
+                                                vt_name(lt),
+                                                vt_name(rt)
+                                            )
+                                        } else {
                                             format!(
                                                 "expr `{}`: {} operands must both be i32 or both be bool (found {} / {})",
                                                 e.id_text,
                                                 op.as_str(),
                                                 vt_name(lt),
                                                 vt_name(rt)
-                                            ),
-                                            e.span,
-                                        );
+                                            )
+                                        };
+                                        self.error("verify.type-mismatch", msg, e.span);
                                     }
                                     if declared != ValueType::Bool {
                                         self.error(
@@ -1049,6 +1328,338 @@ impl Verifier {
                             }
                             *result
                         }
+                        // -- PLAN-770 text typing --------------------------------
+                        hir::ExprKind::StrLit { .. } => {
+                            // A literal has no named type of its own: the
+                            // declared type IS the contextual borrowing or
+                            // owning choice (auto-promotion to Str happens
+                            // in owning contexts).
+                            if !matches!(declared, ValueType::Str | ValueType::StrOwned) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: string literal must have text type str or Str (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            declared
+                        }
+                        hir::ExprKind::CharLit { scalar } => {
+                            if declared != ValueType::Char {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char literal must have type char (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            // The binder range-checks the literal; a mutated
+                            // programmatic bundle may carry a surrogate or
+                            // out-of-range code point — reject it here so no
+                            // invalid scalar reaches lowering.
+                            if char::from_u32(*scalar).is_none() {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char literal scalar {:#x} is not a Unicode scalar value",
+                                        e.id_text, scalar
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::Char
+                        }
+                        hir::ExprKind::TextLen { operand }
+                        | hir::ExprKind::TextLenBytes { operand } => {
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            if !matches!(ot, ValueType::Str | ValueType::StrOwned) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: text length operand must be str or Str (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if declared != ValueType::I32 {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: text length must produce i32 (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::I32
+                        }
+                        hir::ExprKind::TextCharAt { operand, index } => {
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            let it = operand_type(
+                                tm,
+                                *index,
+                                declared_of(&body.exprs[index.0 as usize]),
+                            );
+                            if !matches!(ot, ValueType::Str | ValueType::StrOwned) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char_at operand must be str or Str (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if it != ValueType::I32 {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char_at index must be i32 (found {})",
+                                        e.id_text,
+                                        vt_name(it)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if declared != ValueType::Char {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: char_at must produce char (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::Char
+                        }
+                        hir::ExprKind::TextSlice {
+                            operand,
+                            start,
+                            end,
+                        } => {
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            let st = operand_type(
+                                tm,
+                                *start,
+                                declared_of(&body.exprs[start.0 as usize]),
+                            );
+                            let et =
+                                operand_type(tm, *end, declared_of(&body.exprs[end.0 as usize]));
+                            if !matches!(ot, ValueType::Str | ValueType::StrOwned) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: slice operand must be str or Str (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            for (role, vt) in [("start", st), ("end", et)] {
+                                if vt != ValueType::I32 {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: slice {} must be i32 (found {})",
+                                            e.id_text,
+                                            role,
+                                            vt_name(vt)
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            if declared != ValueType::Str {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: slice must produce str (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::Str
+                        }
+                        hir::ExprKind::TextConcat { lhs, rhs } => {
+                            let lt =
+                                operand_type(tm, *lhs, declared_of(&body.exprs[lhs.0 as usize]));
+                            let rt =
+                                operand_type(tm, *rhs, declared_of(&body.exprs[rhs.0 as usize]));
+                            for (role, vt) in [("lhs", lt), ("rhs", rt)] {
+                                if !matches!(vt, ValueType::Str | ValueType::StrOwned) {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: concat {} must be str or Str (found {})",
+                                            e.id_text,
+                                            role,
+                                            vt_name(vt)
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            if declared != ValueType::StrOwned {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: concat must produce Str (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::StrOwned
+                        }
+                        hir::ExprKind::TextClone { operand }
+                        | hir::ExprKind::TextToOwned { operand } => {
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            if !matches!(ot, ValueType::Str | ValueType::StrOwned) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: owned conversion operand must be str or Str (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if declared != ValueType::StrOwned {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: owned conversion must produce Str (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::StrOwned
+                        }
+                        hir::ExprKind::TextToBorrowed { operand } => {
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            if !matches!(ot, ValueType::Str | ValueType::StrOwned) {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: borrowed view operand must be str or Str (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if declared != ValueType::Str {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: borrowed view must produce str (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::Str
+                        }
+                        hir::ExprKind::CharToCodepoint { operand } => {
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            if ot != ValueType::Char {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: to_codepoint operand must be char (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if declared != ValueType::I32 {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: to_codepoint must produce i32 (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::I32
+                        }
+                        hir::ExprKind::CharFromCodepoint { operand } => {
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            if ot != ValueType::I32 {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: from_codepoint operand must be i32 (found {})",
+                                        e.id_text,
+                                        vt_name(ot)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            if declared != ValueType::Char {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: from_codepoint must produce char (found {})",
+                                        e.id_text,
+                                        vt_name(declared)
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::Char
+                        }
                         // leaves were fully handled at Enter
                         hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => {
                             tm.memo.get(&id.0).copied().unwrap_or(declared)
@@ -1110,6 +1721,33 @@ impl Verifier {
                         targets.push(a.0);
                     }
                 }
+                hir::ExprKind::TextLen { operand }
+                | hir::ExprKind::TextLenBytes { operand }
+                | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::TextToOwned { operand }
+                | hir::ExprKind::TextToBorrowed { operand }
+                | hir::ExprKind::CharToCodepoint { operand }
+                | hir::ExprKind::CharFromCodepoint { operand } => {
+                    targets.push(operand.0);
+                }
+                hir::ExprKind::TextCharAt { operand, index } => {
+                    targets.push(operand.0);
+                    targets.push(index.0);
+                }
+                hir::ExprKind::TextSlice {
+                    operand,
+                    start,
+                    end,
+                } => {
+                    targets.push(operand.0);
+                    targets.push(start.0);
+                    targets.push(end.0);
+                }
+                hir::ExprKind::TextConcat { lhs, rhs } => {
+                    targets.push(lhs.0);
+                    targets.push(rhs.0);
+                }
+                hir::ExprKind::StrLit { .. } | hir::ExprKind::CharLit { .. } => {}
                 _ => {}
             }
             for t in targets {
@@ -1600,6 +2238,10 @@ impl Verifier {
                             }
                             frame.flow = Flow::Diverged;
                         }
+                        // Explicit drops are not terminators and read no
+                        // uninitialized value: their resource semantics are
+                        // checked by the text resource walk (PLAN-770).
+                        hir::Stmt::Drop { .. } => {}
                     }
                 }
                 Action::AfterTerm | Action::Complete => {
@@ -1743,7 +2385,35 @@ impl Verifier {
                         stack.push(*a);
                     }
                 }
-                hir::ExprKind::Constant { .. } => {}
+                hir::ExprKind::TextLen { operand }
+                | hir::ExprKind::TextLenBytes { operand }
+                | hir::ExprKind::TextClone { operand }
+                | hir::ExprKind::TextToOwned { operand }
+                | hir::ExprKind::TextToBorrowed { operand }
+                | hir::ExprKind::CharToCodepoint { operand }
+                | hir::ExprKind::CharFromCodepoint { operand } => {
+                    stack.push(*operand);
+                }
+                hir::ExprKind::TextCharAt { operand, index } => {
+                    stack.push(*index);
+                    stack.push(*operand);
+                }
+                hir::ExprKind::TextSlice {
+                    operand,
+                    start,
+                    end,
+                } => {
+                    stack.push(*end);
+                    stack.push(*start);
+                    stack.push(*operand);
+                }
+                hir::ExprKind::TextConcat { lhs, rhs } => {
+                    stack.push(*rhs);
+                    stack.push(*lhs);
+                }
+                hir::ExprKind::Constant { .. }
+                | hir::ExprKind::StrLit { .. }
+                | hir::ExprKind::CharLit { .. } => {}
             }
         }
     }

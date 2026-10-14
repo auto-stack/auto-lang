@@ -1,0 +1,144 @@
+// PLAN-770 T-02 valid lifecycle fixture: branch-early-return cleanup, loop
+// iteration cleanup with break, concat/to legs, and an explicit
+// programmatic drop (length read BEFORE the drop — reading after it would
+// be use-after-free). The verifier's resource plan for this module is
+// asserted exactly in tests/text_hir.rs (exit frees in LIFO order).
+
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    module(id: "m_life") {
+        types {
+            type(id: "t_play", kind: function) { params: [i32]; result: i32 }
+            type(id: "t_looper", kind: function) { params: [i32]; result: i32 }
+            type(id: "t_dropper", kind: function) { params: [str]; result: i32 }
+            type(id: "t_main", kind: function) { params: []; result: i32 }
+        }
+        declarations {
+            function(id: "d_play", type: "t_play") { name: "scope_play"; body: "b_play" }
+            function(id: "d_looper", type: "t_looper") { name: "looper"; body: "b_looper" }
+            function(id: "d_dropper", type: "t_dropper") { name: "dropper"; body: "b_dropper" }
+            function(id: "d_main", type: "t_main") { name: "main"; body: "b_main" }
+        }
+        bodies {
+            body(id: "b_play") {
+                owner: "d_play"
+                entry: "bk_play"
+                locals {
+                    local(id: "l_n", type: i32) { name: "n"; role: param; index: 0u32 }
+                    local(id: "l_a", type: Str) { name: "a"; role: binding }
+                    local(id: "l_b", type: Str) { name: "b"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_litA", kind: str_lit) { type: Str; text: "aa" }
+                    expr(id: "e_rn", kind: read_local) { type: i32; local: "l_n" }
+                    expr(id: "e_zero", kind: constant) { type: i32; value: 0i32 }
+                    expr(id: "e_gt", kind: binary) { type: bool; op: gt_i32; lhs: "e_rn"; rhs: "e_zero" }
+                    expr(id: "e_ra", kind: read_local) { type: Str; local: "l_a" }
+                    expr(id: "e_ra2", kind: read_local) { type: Str; local: "l_a" }
+                    expr(id: "e_ra_len", kind: text_len) { type: i32; operand: "e_ra2" }
+                    expr(id: "e_litBB", kind: str_lit) { type: str; text: "bb" }
+                    expr(id: "e_cat", kind: text_concat) { type: Str; lhs: "e_ra"; rhs: "e_litBB" }
+                    expr(id: "e_rb", kind: read_local) { type: Str; local: "l_b" }
+                    expr(id: "e_rb_len", kind: text_len) { type: i32; operand: "e_rb" }
+                }
+                blocks {
+                    block(id: "bk_play") {
+                        let(local: "l_a", value: "e_litA") {}
+                        if(cond: "e_gt", then: "bk_then") {}
+                        return(value: "e_ra_len") {}
+                    }
+                    block(id: "bk_then") {
+                        let(local: "l_b", value: "e_cat") {}
+                        return(value: "e_rb_len") {}
+                    }
+                }
+            }
+            body(id: "b_looper") {
+                owner: "d_looper"
+                entry: "bk_looper"
+                locals {
+                    local(id: "l_n2", type: i32) { name: "n"; role: param; index: 0u32 }
+                    local(id: "l_c", type: Str) { name: "c"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_litX", kind: str_lit) { type: Str; text: "x" }
+                    expr(id: "e_rc", kind: read_local) { type: Str; local: "l_c" }
+                    expr(id: "e_clen", kind: text_len) { type: i32; operand: "e_rc" }
+                    expr(id: "e_zero2", kind: constant) { type: i32; value: 0i32 }
+                    expr(id: "e_eqz", kind: binary) { type: bool; op: eq; lhs: "e_clen"; rhs: "e_zero2" }
+                    expr(id: "e_rn2", kind: read_local) { type: i32; local: "l_n2" }
+                }
+                blocks {
+                    block(id: "bk_looper") {
+                        loop(id: "lp0", body: "bk_body") {}
+                        return(value: "e_rn2") {}
+                    }
+                    block(id: "bk_body") {
+                        let(local: "l_c", value: "e_litX") {}
+                        if(cond: "e_eqz", then: "bk_break") {}
+                    }
+                    block(id: "bk_break") {
+                        break(target: "lp0") {}
+                    }
+                }
+            }
+            body(id: "b_dropper") {
+                owner: "d_dropper"
+                entry: "bk_dropper"
+                locals {
+                    local(id: "l_s2", type: str) { name: "s"; role: param; index: 0u32 }
+                    local(id: "l_d", type: Str) { name: "d"; role: binding }
+                    local(id: "l_n3", type: i32) { name: "n"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_rs2", kind: read_local) { type: str; local: "l_s2" }
+                    expr(id: "e_own", kind: text_to_owned) { type: Str; operand: "e_rs2" }
+                    expr(id: "e_rd", kind: read_local) { type: Str; local: "l_d" }
+                    expr(id: "e_dlen", kind: text_len_bytes) { type: i32; operand: "e_rd" }
+                    expr(id: "e_rn3", kind: read_local) { type: i32; local: "l_n3" }
+                }
+                blocks {
+                    block(id: "bk_dropper") {
+                        let(local: "l_d", value: "e_own") {}
+                        let(local: "l_n3", value: "e_dlen") {}
+                        drop(local: "l_d") {}
+                        return(value: "e_rn3") {}
+                    }
+                }
+            }
+            body(id: "b_main") {
+                owner: "d_main"
+                entry: "bk_main2"
+                expressions {
+                    expr(id: "e_p3", kind: constant) { type: i32; value: 3i32 }
+                    expr(id: "e_callplay", kind: call) {
+                        type: i32
+                        callee: "d_play"
+                        eval_args: ["e_p3"]
+                        bindings: [{ param: 0u32, arg: 0u32 }]
+                    }
+                    expr(id: "e_p7", kind: constant) { type: i32; value: 7i32 }
+                    expr(id: "e_callloop", kind: call) {
+                        type: i32
+                        callee: "d_looper"
+                        eval_args: ["e_p7"]
+                        bindings: [{ param: 0u32, arg: 0u32 }]
+                    }
+                    expr(id: "e_litS", kind: str_lit) { type: str; text: "ss" }
+                    expr(id: "e_calldrop", kind: call) {
+                        type: i32
+                        callee: "d_dropper"
+                        eval_args: ["e_litS"]
+                        bindings: [{ param: 0u32, arg: 0u32 }]
+                    }
+                    expr(id: "e_sum1", kind: binary) { type: i32; op: add_i32; overflow: trap; lhs: "e_callplay"; rhs: "e_callloop" }
+                    expr(id: "e_sum2", kind: binary) { type: i32; op: add_i32; overflow: trap; lhs: "e_sum1"; rhs: "e_calldrop" }
+                }
+                blocks {
+                    block(id: "bk_main2") {
+                        return(value: "e_sum2") {}
+                    }
+                }
+            }
+        }
+    }
+}

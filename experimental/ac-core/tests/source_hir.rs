@@ -393,8 +393,16 @@ fn p15_eval_order_and_binding_map() {
     // param 0 (a) ← arg 1 (mark_a); param 1 (b) ← arg 0 (mark_b); the map
     // is listed in argument order, so arg 0's binding comes first.
     assert_eq!(bindings.len(), 2);
-    assert!(bindings.contains(&auto_ac_prototype::hir::CallBinding { param: 0, arg: 1 }));
-    assert!(bindings.contains(&auto_ac_prototype::hir::CallBinding { param: 1, arg: 0 }));
+    assert!(bindings.contains(&auto_ac_prototype::hir::CallBinding {
+        param: 0,
+        arg: 1,
+        moved: false
+    }));
+    assert!(bindings.contains(&auto_ac_prototype::hir::CallBinding {
+        param: 1,
+        arg: 0,
+        moved: false
+    }));
     let _ = callee;
 }
 
@@ -670,6 +678,9 @@ fn tampered_bundle_is_rejected_by_real_verify() {
                     auto_ac_prototype::hir::TypeKind::Bool => "bool",
                     _ => "fn",
                 },
+                // text types (PLAN-770) never appear in this scalar fixture;
+                // the arm only keeps the match total
+                _ => "text",
             };
             if vt == "i32" && i32l.is_none() {
                 i32l = Some(i);
