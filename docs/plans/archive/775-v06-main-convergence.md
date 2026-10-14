@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-775
-status: executing
+status: archived
 feature_name: v06-main-convergence
 plan_revision: 6
 author: [Codex]
 created_at: 2026-10-13
-updated_at: 2026-10-13
+updated_at: 2026-10-15
 supersedes_spec_components: []
 new_spec_components: []
 touched_goals: []
@@ -176,6 +176,30 @@ Spec-impact frontmatter 为空是有意的：本次不直接修改 AutoLang cano
 - pending_closeout_gates: keep the AutoOS candidate intact; latest read-only status shows 18 modified app submodule worktrees and two recursive gitlink mismatches (`apps/015-notes` and its nested `vendor/auto-down`). Do not reset, checkout, or remove it. This is preserved local WIP, not an unmerged published branch update.
 - evidence: GitHub branch-ref and compare checks for 37 repos; AutoLang `v0.5.0..master` ahead 312/behind 0 and both `v0.6-dev` heads behind 0; Jade Edit `v0.5.0` vs `main` identical; AutoOS merge parents/tree gitlinks; Notes nested pin; receipt and final refs files.
 - next: continue the unfinished feature Plans separately from the updated development line; keep this Plan executing until the preserved AutoOS candidate receives its own safe handoff/cleanup decision.
+
+### 2026-10-15 — stage: review / final closeout pass
+
+- review_scope: final `closeout`; plan_id: PLAN-775; plan_revision: 6（终审只加簿记，不改语义合同，revision 不动）; outcome: **pass**；Plan 状态 `executing` → `reviewed`。
+- reviewer_identity/limitations: 关账会话在主检出 `D:/autostack/auto-lang`；与执行同体系、无独立复审者身份，结论从活体远端 refs（ls-remote）、本地血统断言、收据与 final-refs 工件重建，不依赖执行者总结。
+- worktree_path / branch: 登记在案的保全候选 `D:/autostack/.wt/lang-775/auto-os`（`plan-775-dev` @ `853a551…`）已不存在——见下 disposition；本次关账仅涉 docs/plans 簿记，无需活动实现树。
+- reviewed_commit: 已发布复审基线 `45db8e25…`（revision 6）经 `merge-base --is-ancestor` 重验为本地 `master b74f1b492…` 与 `origin/master 2a510751…` 的祖先；关账在其上追加 docs-only 提交。
+- acceptance_results（2026-10-15 重验）: AC-01 pass——`v0.5.0` tag `e05e2d3d…` 与远端 `v0.6-dev` 尖端 `94173fe2…` 均为 `origin/master 2a510751…` 祖先（37 仓全量面以 final-refs-20261013.json 存档为准）；AC-02 pass——Plan 742/744/773/774 均经各自后续复审走到 archived（合流未强改状态、后续续做为计划本意）；AC-03 pass——纠偏 merge `3002c30…` 为现 master 祖先（本地验证），AutoOS merge `853a551…` 双父 `e7fadc47…`/`71d3b5f4…` 经 `git cat-file -p` 重验；AC-04 pass——远端抽查 `auto-os main=853a551`、`auto-notes main=1391bd7`、`auto-down master=c39ac7f`，与收据汇合点逐一相符；AC-05 pass——复用 2026-10-13 定向检查与 fresh-clone 证据（理由：本次关账只改 docs/plans，代码/依赖/测试配置输入未变）；AC-06 pass——本终审即其闭合；AC-07 pass——各默认分支仍为 v0.6 开发线，遗留保全项已按下方 disposition 关闭。
+- preserved_candidate_disposition: `.wt/lang-775` 组目录（含 AutoOS 脏集成候选工作树与 `plan-775-dev` 分支）在本机已不存在，且未找到移除收据。候选分支与 `main` 同指 `853a551…`，commit 层面无损；丢失的仅是 18 个子模块的未提交 WIP。用户 2026-10-15 知悉该工作树已消失并明确授权最终关账（接受该损失）；`auto-os` 主检出 clean 且正处 `853a551…`。
+- findings: 无新增合同内缺陷。REG-5（`cargo taa` 两确定性红：`aavm2_a2r::test_aavm2_goldens_check` + `aavm_runner_tests::test_aavm2_compile_corpus`，归因汇入提交 `b1230e767` 的 json.encode 泛型 adapter 规则）已登记于 KNOWN-DEBT-AND-RISKS.md，按 2026-10-02 aavm 豁免裁定非阻塞；批量回归收据 `.last-batch-regression.json`（2026-10-14，verdict `green-with-registered-new-reds`）已覆盖含 775 的窗口。
+- pending_closeout_gates: 无——docs-only 关账（Category A，无 cargo 档）；本窗口批量回归已执行。
+- evidence: ls-remote 输出（auto-lang master/v0.6-dev/v0.5.0、auto-os main、auto-notes main、auto-down master）；merge-base 断言；auto-os `cat-file` 父提交；[合流收据](../reports/v06-main-convergence-20261012/merge-receipt-20261013.md)；[final refs](../reports/v06-main-convergence-20261012/final-refs-20261013.json)；`.last-batch-regression.json`；KNOWN-DEBT REG-5 条目。
+- next: /auto-plan:merge 沉淀（SD-00 none，簿记级）→ 归档。
+
+### 2026-10-15 — stage: merge / 沉淀收据 PLAN-775:r6
+
+- prepared: 终审基线=已发布复审链 `3002c30…`→`d777ccbb…`→`45db8e25…`（rev6 复审基线，经 merge-base 重验为本地 `master b74f1b492…` 与 `origin/master 2a510751…` 祖先）；Spec delta=SD-00 none（冻结于 rev6，无 canonical spec 改动）；交付=2026-10-13 已发布远端汇流，非新代码着陆。
+- landed: auto-lang 侧交付链已在 master（历史性着陆，ff 语义无 merge commit 需新建）；本次关账在 master 直接追加 docs/ledger 簿记提交（AGENTS.md master 簿记例外）。auto-os `main`（本地+远端）=汇流点 `853a551…`。
+- ledger_refreshed: `.autoos/specs.json` 受护栏离线投影（无 store writer 可达——127.0.0.1 全端口探测无服务；与 P770/P777 同通道先例）。新增 `reviews/P775-R7`（终审 pass）、`reports/P775-M`（本收据）；designs 零条目=SD-00 书面说明所致，非欠填；version 18→19。字节级备份 `.autoos/specs.json.bak-775`，语义 diff 仅两节新增+version，回读校验通过。
+- archived: `git mv docs/plans/775-v06-main-convergence.md docs/plans/archive/`，`status: archived`，`completion_kind: delivered`；plan/ledger 工件随本提交入默认分支（非 untracked 落盘）。
+- cleaned: auto-lang 侧 PLAN-775 从未建 worktree/分支（`git worktree list` 仅 lang-778/lang-782 在册）；`.wt/lang-775` 组已先行消失（处置见终审 P775-R7：无移除收据、用户 2026-10-15 知情授权、commit 层面无损）。无待清对象，wt-guard N/A。
+- 批量回归到期判定：收据 `.last-batch-regression.json`（2026-10-14T11:30Z，窗口 766→774）已含 PLAN-775 合并工作并显式消费 775%5 触发；距今 <48h，归档时**不 due**（到期点 2026-10-16T11:30Z，届时由 /auto-plan:regress 主检出单实例执行）。
+- 部署陈旧性检查：docs-only 关账，今日零代码着陆，无生产工件需重建（2026-10-13 着陆代码已被后续计划门禁+批量回归覆盖）。
+- outcome: **pass**（delivery/ledger/archival/cleanup 全验证）。
 
 ## 待澄清事项
 

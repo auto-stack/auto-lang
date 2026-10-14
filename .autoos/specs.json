@@ -1773,6 +1773,17 @@
             "commit:3e1b5fc03",
             "completion:delivered"
           ]
+        },
+        {
+          "id": "P775-M",
+          "title": "PLAN-775 合入沉淀收据（v0.6 已提交更新汇流，SD-00 none）",
+          "file": "docs/plans/archive/775-v06-main-convergence.md",
+          "tags": [
+            "plan:775",
+            "delivery:45db8e25f",
+            "correction_merge:3002c30f"
+          ],
+          "content": "交付=已发布分支汇流：auto-lang 纠偏 merge 3002c30（第一父 v0.5.0 tag e05e2d3）+ 收据链至 45db8e25；auto-os merge 853a551；notes 1391bd7 / down c39ac7f / musk cherry-pick -x / jade-edit 快进，37 仓 refs 存档 final-refs-20261013.json。SD-00 none：不新增 AutoLang 运行时 spec（书面说明在计划 §规范增量），designs 零条目非欠填。ledger 离线投影（无 store writer 可达），P775-R7/P775-M，version 18→19。归档 docs/plans/archive/775-v06-main-convergence.md。无 worktree/分支待清（auto-lang 侧从未建树；lang-775 组已先行消失，处置见 P775-R7）。批量回归：2026-10-14 收据窗口 766→774 已含 775 合并工作并显式消费 775%5 触发，<48h 未到期，归档时不 due。docs-only 关账无生产工件需重建。"
         }
       ]
     },
@@ -11031,10 +11042,21 @@
             "plan_revision:2",
             "rebased:3e1b5fc03"
           ]
+        },
+        {
+          "id": "P775-R7",
+          "title": "PLAN-775 最终关账终审 pass（branch-convergence 收口）",
+          "file": "docs/plans/archive/775-v06-main-convergence.md",
+          "tags": [
+            "plan:775",
+            "reviewed:45db8e25f",
+            "plan_revision:6"
+          ],
+          "content": "final closeout pass（2026-10-15，主检出关账会话，与执行同体系限制已声明）。AC-01..07 全 pass：v0.5.0 tag e05e2d3d 与远端 v0.6-dev 尖端 94173fe2 均为 origin/master 2a510751 祖先；auto-os merge 853a551 双父 e7fadc47/71d3b5f4 cat-file 重验；auto-notes main=1391bd7、auto-down master=c39ac7f 与收据汇合点一致；742/744/773/774 均经各自后续复审走到 archived（合流未强改状态）。保全候选处置：.wt/lang-775 组（auto-os 脏集成候选+plan-775-dev 分支）已消失、无移除收据，候选分支与 main 同指 853a551 无 commit 损失，仅未提交子模块 WIP 丢失，用户 2026-10-15 知情并授权关账。REG-5（taa 两确定性红，json.encode 泛型 adapter，b1230e767）按 2026-10-02 aavm 豁免非阻塞，KNOWN-DEBT 在册。"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 18
+  "version": 19
 }
