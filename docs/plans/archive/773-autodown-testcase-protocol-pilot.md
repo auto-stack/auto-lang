@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-773
-status: reviewed
+status: archived
 feature_name: AutoDown TestCase 协议与只读试点
 plan_revision: 1
 author: [Codex]
@@ -15,7 +15,7 @@ new_spec_components:
   - docs/specs/auto-test-case/plans.md
 touched_goals: [GOAL-016]
 affects: [auto-test-case, auto-lang/vm, auto-lang/trans]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -23,10 +23,11 @@ total_steps: 10
 
 ## 0. 变更摘要
 
-当前状态（2026-10-14 R2）：R1 复审 11 项阻断（F-773-R1-01..11）已在修复树全部闭合并提交
-（plan-773-dev `39e2ecafd`，基线 284acbfb4），**R2 独立 final review pass**
-（status: reviewed；§9 R2 记录：逐项闭合 VERIFIED + 全门禁实测重跑 + 1 项 minor 债务
-F-773-R2-01 归 merge 处置）。复审反例集经适配重放
+当前状态（2026-10-14 终态）：**archived / delivered**。R2 final review pass 后完成
+merge：SD-01..04 canonical 沉淀、ledger 投影 P773-1..5、ff-only 合入
+（delivery `ef7d77bb7` = reviewed `39e2ecafd` 的 docs-only 后继，rebase 哈希映射
+39e2ecafd→fed5c7842 经 range-diff 等价）、F-773-R2-01 债务登记、归档与 guarded
+cleanup。收据见 §9 merge 记录。复审反例集经适配重放
 （[repair-r1/replay.py](attachments/773/repair-r1/replay.py)，唯一改动=输出目录移出
 fixture 根——该拒绝本身是 F-05 控制之一）全部按预期翻转：假绿变 FAIL/ERROR、
 sidecar 漂移改变身份、未选项零副作用、哨兵保全。
@@ -308,7 +309,7 @@ Design 35 §14 actual compile/run 条目归 B；本期 V-04 仅验证产物接�
 | T-07 | work | T-06 | 新 src/bin/auto-case.rs lint/list/inspect/run/proposal；在 src/tests/{vm_file_tests,a2r_tests}.rs 加 pilot 聚合入口并固定名称，报告 harness→动态 checks | 开发命令、tv/tt listing、no-default pilot、JSON/console 一致；AC-01/05/06/07/08 | [x] R1 修复 2026-10-14 work（commit 39e2ecafd）：选择器先于执行（未选项 NOT_RUN 零副作用、typo/零匹配=契约错误）；全部写口（out/json-out/proposal-dir）执行前路径域审计；lint/inspect 走完整 resolve；新增 stale 子命令；proposal 持久化 run report 并绑定旧新 hash/diff/共享消费者。；原完成记录为历史保留： 2026-10-12 work：commit 8a9f305cb（CLI 五子命令；selector 未选项记 NOT_RUN 不冒充全量 gate；t/tv/tt 别名接入 test-cases——旧 filter 直接触达 pilot 聚合入口；no-default CLI 全链 24/24 exit 0=§6.2 命令原样）。附带修复预存 VM 缺陷：register_shim_by_name 对动态段 id（next_id 被 register_with_id 顶过 10000）走 dynamic 表——新鲜二进制首跑 VM 原必炸（探针 registry=239/next_id=10015 实证）。日常档 no-fail-fast：仅四在案红+KNOWN-DEBT 396（Plan 744 dir_names），零新增红；cargo tv cookbook 红经 stash 基线对照为预存 |
 | T-08 | work | T-07 | attachments/768 完整 V-01–10/成本/只读 hash/拟议 Spec delta，内部合同预检 | scoped 控制 + §6门禁；AC-01–08。全部 work-owned 完成才 execution_done | [x] R1 修复 2026-10-14 work（commit 39e2ecafd）：F-01..11 永久控制测试入库（test_cases_tests 31 例全绿+核心 crate 67 例）；适配重放反例全部翻转（repair-r1/results.json）。；原完成记录为历史保留： 2026-10-12 work：[evidence.md](attachments/768/evidence.md)（V-01–10 全映射到可执行测试/命令且全过；成本构建/执行分列；只读树哈希前后一致 4ce1f974…；t/tv/tt/协议/无 GUI 档结果与预存红归因；SD-01–04 拟议内容；AC-01–08 自检表）+ pilot-run-console.txt/pilot-run-report.json。work-owned 8/10 完成 → execution_done |
 | T-09 | review | T-08 | auto-plan:review 独立上下文同树核查 diff/控制/AC/SD，扫描遗漏/延期/workaround/KNOWN-DEBT；固定 delta/revision/commit | §6最终门禁 + 独立反例，AC-09；needs_fix 回同树 | [x] 2026-10-14 R2 final review pass，记录见 §9 |
-| T-10 | merge | T-09 pass | auto-plan:merge 主检出合入、SD/module/global/账本/spec-index；归档 docs/plans/archive；guard→移树/分支/空组，批量到期判定 | AC-10；先 bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-768/auto-lang，必须 clean；真实终态收据 | [ ] |
+| T-10 | merge | T-09 pass | auto-plan:merge 主检出合入、SD/module/global/账本/spec-index；归档 docs/plans/archive；guard→移树/分支/空组，批量到期判定 | AC-10；先 bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-768/auto-lang，必须 clean；真实终态收据 | [x] 2026-10-14 merge pass：SD-01..04 落 docs/specs/auto-test-case/{project,profile-v1,architecture,plans}.md + trans test-convention 双轨节 + vm/overview 行 + 模块 plans 行 + 全局 overview/goals/INDEX；ledger 受控投影 P773-1..5（v10→11 经 rebase 重投影于 master v10 基）；delivery ef7d77bb7 ff-only；F-773-R2-01 两项处置（5e3bde18a）；收据见 §9 |
 
 total_steps=10；work 完成 8/10、review 9/10、实际 merge/清理后 10/10。
 current_step 只计真实完成，未来阶段不能先勾。
@@ -488,3 +489,32 @@ current_step 只计真实完成，未来阶段不能先勾。
   常规路径/等价实现沿已确认范围自行推进。
 - 首期执行资源边界如 §5.3；B 交付通用 deadline/containment。报告/help 显示边界，
   不接受声明硬资源要求却无能力执行的检查。
+
+## 11. 合入收据（PLAN-773:r1，2026-10-14）
+
+- stage: merge | PLAN-773 | plan_revision: 1 | outcome: **pass**
+  | reviewed_commit `39e2ecafd`（R2 final pass 绑定）| delivery_commit `ef7d77bb7`
+  | 分支 plan-773-dev | 工作树 `D:/autostack/.wt/lang-773/auto-lang`。
+
+| Checkpoint | 证据 |
+|---|---|
+| prepared | reviewed 基线核验（§9 R2：pass + 冻结 delta sha a1314a48… 未漂移）；canonical diff = SD-01..04 四文档组 + 模块/全局回写；提交 b40bae383（docs/projection-only 后继，实现零改动） |
+| landed | rebase onto master（master 期间仅 docs/plans+experimental 漂移，零文件交集）；哈希映射 39e2ecafd→fed5c7842（`git range-diff` 全等 `=`）+ b40bae383→ef7d77bb7（specs.json 冲突以 master v10 基重投影解决，P773 条目逐字相同、他条目前缀保全，v11）；主检出 `git merge --ff-only plan-773-dev`，master tip == plan-773-dev == ef7d77bb7（rev-parse 单值）；合入后 smoke：cargo check -p auto-test-case 绿、ledger v11 回读 P773-1..5、INDEX 含 auto-test-case |
+| ledger_refreshed | 通道=受控离线投影（ZCode 会话无 auto-ai spec 工具，HTTP store 不可达）；备份→脚本 RMW→schema/范围守卫（六段集合等价、既有条目逐字不变、version+1）→回读；条目 designs P773-1/2、tests P773-3、reviews P773-4、reports P773-5（均带 file+tags 绑 commit-39e2ecafd）；spec-index 再生（auto-test-case 归组"语言核心"） |
+| archived | git mv → docs/plans/archive/773-autodown-testcase-protocol-pilot.md；status: archived、current_step: 10/10；本收据与 docs/plans/attachments/773/** 一并在 master 提交；KNOWN-DEBT Plan 773 节标闭合 + F-773-R2-01 登记（5e3bde18a，stash 方案保全并发会话未提交条目原样保留为脏区） |
+| cleaned | （清理后回填） |
+
+- F-773-R2-01 处置：①闭合表 F-08 行措辞修正为"单文件发射路径"；②KNOWN-DEBT 登记
+  （low/fail-safe 债务，处置=B 阶段或独立 fix）。
+- 批量回归到期判定与产物检查：见收据尾注（清理后回填）。
+
+## 12. spec-sync 回写记录
+
+- SD-01 → docs/specs/auto-test-case/{project.md,profile-v1.md}（新增）
+- SD-02 → docs/specs/auto-test-case/{architecture.md,plans.md}（新增）
+- SD-03 → docs/specs/auto-lang/trans/design/test-convention.md（追加"双轨只读 pilot"节）
+- SD-04 → docs/specs/auto-lang/vm/overview.md（现状新增 pilot 观测通道行）
+- 模块回写：trans/plans.md、vm/plans.md 各增 PLAN-773 行；全局 overview.md 新 crate 行；
+  goals.md GOAL-016 证据补 plan-773；INDEX.md 再生（scripts/spec-index.py，GROUPS 增项）
+- 账本：.autoos/specs.json v11，P773-1..5（designs×2/tests/reviews/reports）
+
