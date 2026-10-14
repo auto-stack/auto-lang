@@ -7,6 +7,7 @@
 
 ## 历史主线（archive/）
 
+| 781 | reader-runtime-prerequisites（vm 面） | ✅（reviewed→archived） | archive/ | HTTP handler 请求级累计执行预算：env AUTO_HTTP_STEP_BUDGET（1..=4G，非法启动期指名非零退出；默认 10M 逐字节不变）→ engine DriveBudget::LegacyHttp 段帽=policy、跨 park/resume/嵌套 fn 累计不重置、耗尽=指名资源拒绝；三入口+段恢复消费；canonical [handler-execution-budget.md](design/handler-execution-budget.md)；10MiB 导入 profile=双 env（+AUTO_HTTP_REQUEST_TIMEOUT_MS） |
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
 | 001 | vm-function-integration | ⏳ Planning | archive/ | VM 早期函数集成设想，仅停留在规划 |

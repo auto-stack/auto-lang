@@ -141,6 +141,18 @@ Plan 419「copy-on-load 所有权协议」+ PLAN-062 T12 stake 影子账本的**
 - **GET_FIELD 未知编码臂（KD-VM2 收尾）**：环境门控诊断（`AUTO_DEBUG_GETFIELD`）+ 弹出槽 stake 结算；禁止无门控 eprintln（6 分钟 344MB 日志饿死 UI 线程事故在案）。
 - 回归载具：`probe_rc_leak_soak`（`cargo test --features ui-iced probe_rc_leak_soak`）——StructTick/LitPushTick 40 拍 live_heap 增量 ≤64（AC-01）、lenSeen=100/sum=4950 元素往返（AC-02/AC-03）。
 
+## HTTP handler 执行预算（PLAN-781）
+
+- 默认 Legacy 10M 段预算保持逐字节不变；宿主 env
+  `AUTO_HTTP_STEP_BUDGET`（合法域 1..=4G，非法启动期指名报错非零退出）
+  可声明单 HTTP 请求**累计**指令上限——跨 park/resume/嵌套 fn 不重置
+  （engine `DriveBudget::LegacyHttp`；任务 `cpu_steps_total` 记账）。
+- 消费入口 = http 命名段派发/closure/同步 + 段恢复循环；SSE 帧、UI
+  bridge（CpuSlice）、back_proxy 维持既有。耗尽 = 可识别资源拒绝
+  （500 + "per-request cumulative budget … AUTO_HTTP_STEP_BUDGET"），
+  非解析错/空成功/假成功。合同全文见
+  [vm/design/handler-execution-budget.md](design/handler-execution-budget.md)。
+
 ## 关键入口
 
 - `crates/auto-lang/src/lib.rs:run_autovm` / `run_with_capture` — 执行入口

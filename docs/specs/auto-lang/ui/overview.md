@@ -1673,6 +1673,20 @@ a2r 编译面轨随缺省翻转计划另立。
   scroll 时延地板 ~36.5Hz 如实注记）；027 ~93ms 恒定 pacing 上游不复现，
   下游定责归下游域复判件消费。
 
+## PLAN-781 注记（2026-10-15）
+
+- **子内容锚点**：`scroll-anchor` DSL 属性 + natives 9922/9923
+  （`auto.scroll.to_child/anchor_state`）+ nearest 冻结公式，双端
+  （iced wrapper + vue `data-scroll-anchor`/helper 族）一致；合同见
+  [ui/design/scroll-child-anchor.md](design/scroll-child-anchor.md)。
+- **原生验收通道**：split VM+HTTP 真实实例上的动作/帧身份/裁剪几何/
+  冷启动证据合同（MCP `autoui_scroll_state`/`autoui_visibility` 只读
+  工具 + 驱动纪律），见
+  [ui/design/native-acceptance-channel.md](design/native-acceptance-channel.md)；
+  驱动 `scripts/tools/test_native_reader_acceptance.py`。
+- 两面均已由 `examples/capability-tests/p781-scroll-child-anchor/` 双端
+  几何驱动（41+43 项）与阶段 A 病例族（v07~v13）锁定。
+
 ## PLAN-759 注记（2026-10-11）
 
 - **壁纸测试态隔离规约**（712 T-13/T-14 优先级语义的测试侧契约）：

@@ -145,6 +145,18 @@ thumb/rail 的平台用 `ScrollSource::NativeScrollbar`；native inertia/overscr
   直返落盘（MCP 同款机制）；新绑定 handle 下一 tick 读回预热；未预热
   intent 留队延迟解析（首用动作晚一拍而非解析为 0）。
 
+## 子内容锚点（PLAN-781）
+
+ordinary scroll-pane（须有 controller）支持按稳定子 key 定位：
+`scroll-anchor: "<key>"` DSL 属性（可挂任意元素，pane 归属 = 最近
+ordinary scroll-pane）+ native `auto.scroll.to_child/anchor_state`
+（9922/9923；回执 queued/error，状态 pending/applied/invalid——入队
+回执非完成证明）。nearest 三分支公式、代际语义（首绑前入队采用当前
+绑定、换绑 not_bound、当帧 key 消失 not_found 一次性）与双端实现
+合同见 [auto-lang/ui/design/scroll-child-anchor.md](../auto-lang/ui/design/scroll-child-anchor.md)。
+managed/virtual/X 轴 pane 显式 unsupported；既有 offset 族（9900-9905）
+零改动。
+
 ## 兼容承诺
 
 - `scrollable`/`scroll`/`Scroll` 旧代码零改动（alias + legacy direction）；
@@ -157,4 +169,6 @@ thumb/rail 的平台用 `ScrollSource::NativeScrollbar`；native inertia/overscr
 - 单测：`cargo t scroll`（state/intent/geometry/controller/host 全绿）；
 - codegen 黄金：`p656_scroll_pane_vue_codegen`；
 - capability 示例：`examples/capability-tests/p656-scroll-pane/`（双端同源，
-  ordinary y/x/both + hidden + controller + on-scroll + managed 10M 逻辑 extent）。
+  ordinary y/x/both + hidden + controller + on-scroll + managed 10M 逻辑 extent）；
+- 子内容锚点：`examples/capability-tests/p781-scroll-child-anchor/`
+  （V-01~06 双端几何驱动）+ `cargo t plan781`。

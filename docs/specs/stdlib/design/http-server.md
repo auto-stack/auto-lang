@@ -410,6 +410,20 @@ VM 轨与生成 Rust 轨作为**可部署服务**的装配、预算、策略、�
 
 ---
 
+## §8.2 Handler 执行预算（PLAN-781）
+
+每个 HTTP 请求的 handler dispatch 受**累计指令预算**约束：默认
+10,000,000（Legacy 段语义不变）；宿主 env `AUTO_HTTP_STEP_BUDGET`
+（合法域 1..=4,000,000,000，非法值启动期指名报错 + 非零退出）可声明
+更高/更紧上限。预算跨 park/resume 与嵌套 fn **不重置**；耗尽 =
+可识别资源拒绝（HTTP 500 + detail `per-request cumulative budget …
+AUTO_HTTP_STEP_BUDGET`），不产生解析错、空成功或假成功；单次请求一个
+终态，取消/断连/服务关闭沿既有 request scope。消费入口 = 命名段派发 /
+closure / stdnet 同步 + 段恢复（SSE 逐帧 next 与 middleware 为 v1 边
+界，维持既有）。长任务配套：`AUTO_HTTP_REQUEST_TIMEOUT_MS`（默认 30s）
+需按档位同步上调。合同全文见
+[auto-lang/vm/design/handler-execution-budget.md](../../auto-lang/vm/design/handler-execution-budget.md)。
+
 ## §9 实现优先级
 
 | 优先级 | 能力 | 依赖 |
