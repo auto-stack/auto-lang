@@ -1247,13 +1247,24 @@ impl<'a> ResourceWalk<'a> {
         // PLAN-782: a bare ReadLocal of an owned root consumed by a record
         // constructor FIELD is an implicit transfer - the field argument
         // must be an owned expression (literal promotion, `.move`,
-        // `.clone()`, concat or an owned call result).
+        // `.clone()`, concat or an owned call result). A VIEW/MUT text
+        // parameter's buffer belongs to the caller: storing it into an
+        // owning field is a borrow escape (the same rule as a borrowed
+        // return).
         for (_, args, span) in &scan.ctor_uses {
             for a in args {
                 if let Some(hir::ExprKind::ReadLocal { local }) =
                     self.body.exprs.get(a.0 as usize).map(|e| &e.kind)
                 {
-                    if self.owned.contains(&local.0) && !moved_arg_exprs.contains(&a.0) {
+                    let is_borrowed_text_param = {
+                        let ld = &self.body.locals[local.0 as usize];
+                        ld.role == hir::LocalRole::Param
+                            && ld.param_mode != hir::ParamMode::MoveOwn
+                            && matches!((self.local_type)(local.0), ValueType::StrOwned)
+                    };
+                    if (self.owned.contains(&local.0) || is_borrowed_text_param)
+                        && !moved_arg_exprs.contains(&a.0)
+                    {
                         self.error(
                             "verify.ownership-required",
                             format!(

@@ -513,7 +513,10 @@ pub fn lower_object(
     checked: &CheckedModule,
     sel: &EntrySelection,
 ) -> Result<Vec<u8>, Vec<Diagnostic>> {
-    if checked.domain() == hir::HirDomain::Text {
+    if matches!(
+        checked.domain(),
+        hir::HirDomain::Text | hir::HirDomain::TextRecord
+    ) {
         return lower_text_object(checked, sel);
     }
     let module = &checked.bundle().modules[sel.module];
@@ -1993,6 +1996,11 @@ impl<'c> FuncEmitter<'c> {
 // ---------------------------------------------------------------------------
 
 /// Language-facing machine type of the text domain (parallel to `Vt`).
+/// The combination surface (PLAN-782) adds records: an inline aggregate
+/// addressed by pointer (stack slot for locals, out-slot for results) -
+/// view/mut/move-in parameters and results all pass one I64 pointer
+/// (ABI-D/E; the responsibility differences live in the verifier's plan,
+/// not the machine shape).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Vt2 {
     I32,
@@ -2002,6 +2010,8 @@ enum Vt2 {
     StrBorrow,
     /// Owned buffer: (I64 ptr, I32 len); freed per the resource plan.
     StrOwn,
+    /// Record type id: aggregate by pointer.
+    Record(u32),
 }
 
 fn value_of_type_use_text(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt2> {
@@ -2020,8 +2030,9 @@ fn value_of_type_use_text(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt2> {
             hir::TypeKind::Str => Some(Vt2::StrBorrow),
             hir::TypeKind::StrOwned => Some(Vt2::StrOwn),
             hir::TypeKind::Function(_) => None,
-            // record types never appear in a text module (profile defense)
-            hir::TypeKind::Record(_) => None,
+            // PLAN-782: records exist on the combination surface; a text
+            // module never reaches here (profile defense)
+            hir::TypeKind::Record(_) => Some(Vt2::Record(tid.0)),
         },
     }
 }
@@ -2053,6 +2064,8 @@ fn cranelift_sig_text(params: &[Vt2], result: Vt2) -> Signature {
                 ps.push(AbiParam::new(types::I64));
                 ps.push(AbiParam::new(types::I32));
             }
+            // PLAN-782 ABI-D/E: one pointer for view/mut/move-in records
+            Vt2::Record(_) => ps.push(AbiParam::new(types::I64)),
             _ => ps.push(AbiParam::new(types::I32)),
         }
     }
@@ -2062,6 +2075,12 @@ fn cranelift_sig_text(params: &[Vt2], result: Vt2) -> Signature {
             vec![AbiParam::new(types::I64)]
         }
         Vt2::StrBorrow => vec![AbiParam::new(types::I64), AbiParam::new(types::I32)],
+        // PLAN-782 ABI-E: record results go through a trailing `*mut`
+        // out-slot written by the callee; the pointer returns in RAX
+        Vt2::Record(_) => {
+            ps.push(AbiParam::new(types::I64)); // trailing out-aggregate pointer
+            vec![AbiParam::new(types::I64)]
+        }
         _ => vec![AbiParam::new(types::I32)],
     };
     Signature {
@@ -2069,6 +2088,104 @@ fn cranelift_sig_text(params: &[Vt2], result: Vt2) -> Signature {
         params: ps,
         returns: rets,
     }
+}
+
+/// PLAN-782 section 4.5 layout: fields in declaration order, each at its
+/// own alignment (`Str` = 12/8 with {ptr u64, len u32}; scalars/char 4/4;
+/// nested records take their own size/align); `align(R) = max(field
+/// aligns)`, `size = round_up(tail, align)` (checked u64, capped at
+/// u32::MAX). A record whose closure holds no Str field keeps the 771
+/// 4-alignment; a resource record is 8-aligned. Frozen reference values:
+/// `Tok{text Str, kind, line, at, len int}` size 32, offsets
+/// 0/12/16/20/24; `{k int, text Str}` size 24, text@8.
+use std::rc::Rc;
+
+#[derive(Clone)]
+struct TrLayout {
+    size: u64,
+    align: u64,
+    field_off: Vec<u64>,
+}
+
+fn tr_record_layouts(m: &hir::Module, resource: &[bool]) -> BTreeMap<u32, TrLayout> {
+    let n = m.types.len();
+    let mut done: Vec<Option<Rc<TrLayout>>> = vec![None; n];
+    let shape_of = |i: usize| match m.types.get(i).map(|t| &t.kind) {
+        Some(hir::TypeKind::Record(sh)) => Some(sh),
+        _ => None,
+    };
+    fn field_sa(
+        m: &hir::Module,
+        done: &[Option<std::rc::Rc<TrLayout>>],
+        f_ty: &hir::TypeUse,
+    ) -> Option<(u64, u64)> {
+        match f_ty {
+            hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => Some((12, 8)),
+            hir::TypeUse::Builtin(_) => Some((4, 4)),
+            hir::TypeUse::Ref(t) => match m.types.get(t.0 as usize).map(|x| &x.kind) {
+                Some(hir::TypeKind::StrOwned) => Some((12, 8)),
+                Some(hir::TypeKind::Str) => Some((12, 8)), // rejected earlier; totality
+                Some(hir::TypeKind::Record(_)) => {
+                    done[t.0 as usize].as_ref().map(|l| (l.size, l.align))
+                }
+                _ => Some((4, 4)),
+            },
+        }
+    }
+    for start in 0..n {
+        if shape_of(start).is_none() || done[start].is_some() {
+            continue;
+        }
+        let mut stack: Vec<usize> = vec![start];
+        let mut on_path = vec![false; n];
+        while let Some(&node) = stack.last() {
+            let Some(shape) = shape_of(node) else {
+                stack.pop();
+                continue;
+            };
+            let mut pending = false;
+            for f in &shape.fields {
+                if let hir::TypeUse::Ref(t) = &f.ty {
+                    let fi = t.0 as usize;
+                    if shape_of(fi).is_some() && done[fi].is_none() && !on_path[fi] {
+                        on_path[node] = true;
+                        stack.push(fi);
+                        pending = true;
+                        break;
+                    }
+                }
+            }
+            if pending {
+                continue;
+            }
+            let mut total: u64 = 0;
+            let mut align: u64 = 1;
+            let mut offs = Vec::with_capacity(shape.fields.len());
+            for f in &shape.fields {
+                let (fsz, fal) = field_sa(m, &done, &f.ty).unwrap_or((4, 4));
+                align = align.max(fal);
+                let off = total.next_multiple_of(fal);
+                offs.push(off);
+                total = off.checked_add(fsz).unwrap_or(u32::MAX as u64);
+            }
+            let size = total.next_multiple_of(align.max(1)).min(u32::MAX as u64);
+            done[node] = Some(Rc::new(TrLayout {
+                size,
+                align: align.max(1),
+                field_off: offs,
+            }));
+            on_path[node] = false;
+            stack.pop();
+        }
+    }
+    let _ = resource; // alignment derives from the field kinds themselves
+    let mut out = BTreeMap::new();
+    for (i, l) in done.into_iter().enumerate() {
+        if let Some(l) = l {
+            out.insert(i as u32, (*l).clone());
+        }
+    }
+    out
 }
 
 /// Machine signature of a language-facing runtime symbol (the frozen 774
@@ -2178,6 +2295,17 @@ fn scan_body_rt_needs(
         }
     }
     if !plan.owned.is_empty() || !plan.exit_frees.is_empty() {
+        needs.insert("ac_rt_own_free");
+    }
+    // PLAN-782: record-clone lowers one ac_rt_own_clone per Str field and
+    // the buffer/replace schedules lower ac_rt_own_free calls
+    for e in &body.exprs {
+        if matches!(e.kind, hir::ExprKind::RecordClone { .. }) {
+            needs.insert("ac_rt_own_clone");
+            needs.insert("ac_rt_own_free");
+        }
+    }
+    if !plan.buffer_frees.is_empty() || !plan.replace_frees.is_empty() {
         needs.insert("ac_rt_own_free");
     }
     needs
@@ -2312,10 +2440,13 @@ fn lower_text_object(
         rt_ids.insert(name, fid);
     }
 
-    // Define each function body.
+    // Define each function body (PLAN-782: record METHODS included - the
+    // combination surface carries type-bound methods whose receiver is
+    // parameter 0 of the same lowering).
     for (di, d) in module.defs.iter().enumerate() {
-        let hir::DefKind::Function { body: body_id, .. } = &d.kind else {
-            continue;
+        let body_id = match &d.kind {
+            hir::DefKind::Function { body, .. } | hir::DefKind::Method { body, .. } => *body,
+            hir::DefKind::Intrinsic { .. } => continue,
         };
         let (params_vt, result_vt) = def_sigs[&(di as u32)].clone();
         let body = &module.bodies[body_id.0 as usize];
@@ -2379,15 +2510,49 @@ fn lower_text_object(
             }
 
             // Locals → machine slots: text locals get a (ptr, len) variable
-            // pair, scalar locals a single I32.
+            // pair, scalar locals a single I32; record locals (PLAN-782)
+            // get one aggregate stack slot, record params one pointer var.
             let mut svars: BTreeMap<u32, Variable> = BTreeMap::new();
             let mut tvars: BTreeMap<u32, (Variable, Variable)> = BTreeMap::new();
+            let mut rslots: BTreeMap<u32, cranelift_codegen::ir::StackSlot> = BTreeMap::new();
+            let mut rvars: BTreeMap<u32, Variable> = BTreeMap::new();
+            let mut rtids: BTreeMap<u32, u32> = BTreeMap::new();
+            let tr_layouts = if checked.domain() == hir::HirDomain::TextRecord {
+                tr_record_layouts(module, &[])
+            } else {
+                BTreeMap::new()
+            };
             for (li, l) in body.locals.iter().enumerate() {
                 match value_of_type_use_text(&l.ty, module) {
                     Some(Vt2::StrBorrow) | Some(Vt2::StrOwn) => {
                         let p = fb.declare_var(types::I64);
                         let n = fb.declare_var(types::I32);
                         tvars.insert(li as u32, (p, n));
+                    }
+                    Some(Vt2::Record(tid)) => {
+                        rtids.insert(li as u32, tid);
+                        let lay = tr_layouts.get(&tid).cloned().unwrap_or(TrLayout {
+                            size: 4,
+                            align: 4,
+                            field_off: Vec::new(),
+                        });
+                        let align_log2 = if lay.align >= 8 { 3 } else { 2 };
+                        let slot =
+                            fb.create_sized_stack_slot(cranelift_codegen::ir::StackSlotData::new(
+                                cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+                                lay.size.max(1) as u32,
+                                align_log2,
+                            ));
+                        // a param's storage is the CALLER's slot: only the
+                        // incoming pointer is kept (rslots stays
+                        // binding-only so address resolution never reads
+                        // the callee's own uninitialized slot)
+                        if l.role == hir::LocalRole::Param {
+                            let v = fb.declare_var(types::I64);
+                            rvars.insert(li as u32, v);
+                        } else {
+                            rslots.insert(li as u32, slot);
+                        }
                     }
                     _ => {
                         let v = fb.declare_var(types::I32);
@@ -2424,6 +2589,18 @@ fn lower_text_object(
                         fb.def_var(n, bps[cursor + 1]);
                         cursor += 2;
                     }
+                    // PLAN-782 ABI-D/E: one aggregate pointer param
+                    Vt2::Record(_) => {
+                        let var = rvars[&(li as u32)];
+                        if cursor >= bps.len() {
+                            return Err(vec![backend_diag(format!(
+                                "body `{}`: expanded parameter slots exceed the machine signature",
+                                body.id_text
+                            ))]);
+                        }
+                        fb.def_var(var, bps[cursor]);
+                        cursor += 1;
+                    }
                     _ => {
                         let var = svars[&(li as u32)];
                         if cursor >= bps.len() {
@@ -2439,9 +2616,15 @@ fn lower_text_object(
             }
             // StrOwn result: the trailing machine param is the out-length
             // pointer, kept in a variable for the return statements.
+            // A record result (PLAN-782 ABI-E) keeps the trailing
+            // out-AGGREGATE pointer the same way.
             let out_len_var = if result_vt == Vt2::StrOwn {
                 let v = fb.declare_var(types::I64);
                 fb.def_var(v, *bps.last().expect("StrOwn sig has the out param"));
+                Some(v)
+            } else if let Vt2::Record(_) = result_vt {
+                let v = fb.declare_var(types::I64);
+                fb.def_var(v, *bps.last().expect("record sig has the out param"));
                 Some(v)
             } else {
                 None
@@ -2465,6 +2648,11 @@ fn lower_text_object(
                 lit_gvs,
                 abic_slot: None,
                 pending_temps: Vec::new(),
+                layouts: tr_layouts,
+                rslots,
+                rvars,
+                rtids,
+                pending_aggs: Vec::new(),
             };
             fx.emit_block(body.entry);
             let trap = fx.ensure_trap_block();
@@ -2539,7 +2727,17 @@ fn lower_text_object(
 #[derive(Clone)]
 enum TVal {
     I(Value),
-    T { ptr: Value, len: Value },
+    T {
+        ptr: Value,
+        len: Value,
+    },
+    /// PLAN-782: a record value - the address of its inline aggregate
+    /// (a local's stack slot, a temporary slot, a caller-supplied
+    /// out-slot or an incoming parameter pointer).
+    R {
+        addr: Value,
+        tid: u32,
+    },
 }
 
 /// Per-function emission state for the text domain.
@@ -2571,6 +2769,28 @@ struct TextEmitter<'c> {
     /// the join passes its pointer as a block param (null on the skipped
     /// edge), and the tail free is guarded — no allocation, no free there.
     pending_temps: Vec<PendingTemp>,
+    // -- PLAN-782 combination state (empty on a pure text module) --
+    /// record layouts (section 4.5); empty when the module has no records
+    layouts: BTreeMap<u32, TrLayout>,
+    /// record locals' aggregate stack slots
+    rslots: BTreeMap<u32, cranelift_codegen::ir::StackSlot>,
+    /// record PARAMS: the incoming aggregate pointer saved in a variable
+    rvars: BTreeMap<u32, Variable>,
+    /// record-type ids of the rslots/rvars entries
+    rtids: BTreeMap<u32, u32>,
+    /// pending aggregate TEMPORARIES of the statement (ctor/clone/call
+    /// results not yet received by an owning position): their Str-field
+    /// buffers free at the statement tail, LIFO like text temps
+    pending_aggs: Vec<AggTemp>,
+}
+
+/// One pending aggregate temporary (PLAN-782).
+#[derive(Clone, Copy)]
+struct AggTemp {
+    slot: cranelift_codegen::ir::StackSlot,
+    tid: u32,
+    /// the expr id that produced the value (un-pend key for transfers)
+    src: u32,
 }
 
 /// One pending owned temporary of the current statement.
@@ -2626,6 +2846,15 @@ impl<'c> TextEmitter<'c> {
             self.fb.ins().jump(cont, &[]);
             self.fb.seal_block(cont);
             self.fb.switch_to_block(cont);
+        }
+        // PLAN-782: unreceived aggregate temporaries free their Str-field
+        // buffers at the same statement tail, LIFO (the aggregate storage
+        // itself is a stack slot - nothing to free there)
+        while let Some(agg) = self.pending_aggs.pop() {
+            let addr = self.fb.ins().stack_addr(types::I64, agg.slot, 0);
+            let mut paths = self.agg_str_paths(agg.tid);
+            paths.reverse();
+            self.free_agg_buffers(addr, agg.tid, &paths);
         }
     }
 
@@ -2691,6 +2920,25 @@ impl<'c> TextEmitter<'c> {
                 self.call_rt("ac_rt_own_free", &[ptr]);
             }
         }
+        // PLAN-782: the unified buffer schedule - plain owned-Str roots
+        // (empty path, already freed by the loop above in the text list)
+        // and one own_free per Str field buffer of the live record roots
+        // (probe P3 order)
+        if let Some(bufs) = self.plan.buffer_frees.get(&(bid, idx)) {
+            let flags = cranelift_codegen::ir::MemFlags::trusted();
+            for b in bufs {
+                if let Some(&(p, _)) = self.tvars.get(&b.root) {
+                    // a plain owned-Str root: its free already ran in the
+                    // exit_frees loop above (both lists carry it) - skip
+                    let _ = p;
+                    continue;
+                }
+                let addr = self.root_addr(b.root);
+                let off = self.path_offset(self.rtids[&b.root], &b.path) as i32;
+                let ptr = self.fb.ins().load(types::I64, flags, addr, off);
+                self.call_rt("ac_rt_own_free", &[ptr]);
+            }
+        }
     }
 
     fn def_local(&mut self, id: u32, v: TVal) {
@@ -2704,6 +2952,9 @@ impl<'c> TextEmitter<'c> {
                 self.fb.def_var(p, ptr);
                 self.fb.def_var(n, len);
             }
+            // record locals live in their aggregate slot - the let/assign
+            // arms copy the value into it before this is reached
+            TVal::R { .. } => {}
         }
     }
 
@@ -2826,12 +3077,21 @@ impl<'c> TextEmitter<'c> {
             match stmt {
                 hir::Stmt::Let { local, value } => {
                     let v = self.eval_text(value);
-                    // an owning text let takes the root temporary over;
-                    // the statement's OTHER temporaries die at its tail
+                    // an owned Str binding TRANSFERS the root temporary out
+                    // of the pending list (the local owns it now); the
+                    // statement's OTHER temporaries die at its tail
                     if self.tvars.contains_key(&local.0) {
                         self.transfer_root(&v);
                     }
-                    self.def_local(local.0, v);
+                    if let (Some(&slot), TVal::R { addr, tid }) = (self.rslots.get(&local.0), &v) {
+                        // PLAN-782: the binding copies the aggregate into
+                        // the local's slot (bitwise - buffers transfer)
+                        let dst = self.fb.ins().stack_addr(types::I64, slot, 0);
+                        self.copy_aggregate(dst, *addr, *tid);
+                        self.unpend_agg(value.0);
+                    } else {
+                        self.def_local(local.0, v);
+                    }
                     self.release_stmt_temps();
                 }
                 hir::Stmt::Return { value } => {
@@ -2843,9 +3103,24 @@ impl<'c> TextEmitter<'c> {
                     if self.result_vt == Vt2::StrOwn {
                         self.transfer_root(&v);
                     }
+                    if let (Vt2::Record(_), TVal::R { .. }) = (self.result_vt, &v) {
+                        // the returned aggregate transfers out of the
+                        // pending list (the receiver owns its buffers)
+                        self.unpend_agg(value.0);
+                    }
                     self.release_stmt_temps();
                     self.emit_exit_frees(bid, Some(stmt_idx));
                     match (self.result_vt, v) {
+                        (Vt2::Record(tid), TVal::R { addr, .. }) => {
+                            // ABI-E: write the aggregate through the
+                            // out-pointer, return the pointer
+                            let var = self
+                                .out_len_var
+                                .expect("record result keeps the out-pointer variable");
+                            let outp = self.fb.use_var(var);
+                            self.copy_aggregate(outp, addr, tid);
+                            self.fb.ins().return_(&[outp]);
+                        }
                         (Vt2::StrOwn, TVal::T { ptr, len, .. }) => {
                             // ABI-C return: len through the out channel.
                             let var = self
@@ -2933,7 +3208,49 @@ impl<'c> TextEmitter<'c> {
                 hir::Stmt::Assign { place, value } => {
                     let v = self.eval_text(value);
                     let p = &self.body.places[place.0 as usize];
-                    self.def_local(p.local.0, v);
+                    let path: Vec<u32> = match &p.kind {
+                        hir::PlaceKind::FieldPath(fp) => fp.iter().map(|f| f.0).collect(),
+                        _ => Vec::new(),
+                    };
+                    if self.rslots.contains_key(&p.local.0) || self.rvars.contains_key(&p.local.0) {
+                        // PLAN-782 P4: replacement on a record root. The
+                        // RHS is complete; free the OLD buffers the plan
+                        // scheduled, then commit.
+                        self.emit_replace_frees(bid, stmt_idx);
+                        let root = self.root_addr(p.local.0);
+                        if path.is_empty() {
+                            if let TVal::R { addr, tid } = &v {
+                                self.copy_aggregate(root, *addr, *tid);
+                                self.unpend_agg(value.0);
+                            }
+                        } else {
+                            let tid = self.rtids[&p.local.0];
+                            let off = self.path_offset(tid, &path) as i32;
+                            let flags = cranelift_codegen::ir::MemFlags::trusted();
+                            match &v {
+                                TVal::T { ptr, len } => {
+                                    // Str-field replacement: the buffer the
+                                    // RHS produced moves into the field
+                                    self.transfer_root(&TVal::T {
+                                        ptr: *ptr,
+                                        len: *len,
+                                    });
+                                    self.fb.ins().store(flags, *ptr, root, off);
+                                    self.fb.ins().store(flags, *len, root, off + 8);
+                                }
+                                TVal::I(iv) => {
+                                    self.fb.ins().store(flags, *iv, root, off);
+                                }
+                                TVal::R { addr, tid: ftid } => {
+                                    let faddr = self.fb.ins().iadd_imm(root, off as i64);
+                                    self.copy_aggregate(faddr, *addr, *ftid);
+                                    self.unpend_agg(value.0);
+                                }
+                            }
+                        }
+                    } else {
+                        self.def_local(p.local.0, v);
+                    }
                     self.release_stmt_temps();
                 }
                 hir::Stmt::Break { target } => {
@@ -2965,6 +3282,176 @@ impl<'c> TextEmitter<'c> {
         }
     }
 
+    // ==================== PLAN-782 combination emission ====================
+
+    /// Address of a root local's aggregate (slot for bindings, saved
+    /// pointer for parameters).
+    fn root_addr(&mut self, local: u32) -> Value {
+        if let Some(&slot) = self.rslots.get(&local) {
+            self.fb.ins().stack_addr(types::I64, slot, 0)
+        } else {
+            let v = self.rvars[&local];
+            self.fb.use_var(v)
+        }
+    }
+
+    /// Byte offset of a field path within a record type (declaration
+    /// indices through nested records).
+    fn path_offset(&self, tid: u32, path: &[u32]) -> u64 {
+        let mut off = 0u64;
+        let mut cur = tid;
+        for fi in path {
+            let lay = self
+                .layouts
+                .get(&cur)
+                .unwrap_or_else(|| panic!("internal: layout of type {cur}"));
+            off = off
+                .checked_add(lay.field_off.get(*fi as usize).copied().unwrap_or(0))
+                .unwrap_or(0);
+            // advance to the field's record type for the next segment
+            if let hir::TypeKind::Record(sh) = &self.module.types[cur as usize].kind {
+                if let Some(f) = sh.fields.get(*fi as usize) {
+                    if let hir::TypeUse::Ref(t) = &f.ty {
+                        if matches!(
+                            self.module.types.get(t.0 as usize).map(|x| &x.kind),
+                            Some(hir::TypeKind::Record(_))
+                        ) {
+                            cur = t.0;
+                            continue;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        off
+    }
+
+    /// Str-field paths of a record type, declaration order (a record with
+    /// no Str field transitively yields nothing by definition).
+    fn agg_str_paths(&self, tid: u32) -> Vec<Vec<u32>> {
+        let mut out = Vec::new();
+        let mut stack = vec![(tid, Vec::new())];
+        while let Some((t, path)) = stack.pop() {
+            let Some(hir::TypeKind::Record(sh)) =
+                self.module.types.get(t as usize).map(|x| &x.kind)
+            else {
+                continue;
+            };
+            for (fi, f) in sh.fields.iter().enumerate().rev() {
+                let mut p = path.clone();
+                p.push(fi as u32);
+                let is_str = match &f.ty {
+                    hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
+                    hir::TypeUse::Ref(tr) => matches!(
+                        self.module.types.get(tr.0 as usize).map(|x| &x.kind),
+                        Some(hir::TypeKind::StrOwned)
+                    ),
+                    _ => false,
+                };
+                let is_rec = match &f.ty {
+                    hir::TypeUse::Ref(tr) => matches!(
+                        self.module.types.get(tr.0 as usize).map(|x| &x.kind),
+                        Some(hir::TypeKind::Record(_))
+                    ),
+                    _ => false,
+                };
+                if is_str {
+                    out.push(p);
+                } else if is_rec {
+                    if let hir::TypeUse::Ref(tr) = &f.ty {
+                        stack.push((tr.0, p));
+                    }
+                }
+            }
+        }
+        // reverse the per-level stack order into declaration order
+        out.sort_unstable();
+        out
+    }
+
+    /// Bitwise aggregate copy (move semantics: buffers transfer with the
+    /// bits; a copyable record is the same operation).
+    fn copy_aggregate(&mut self, dst: Value, src: Value, tid: u32) {
+        let (size, align) = {
+            let lay = self
+                .layouts
+                .get(&tid)
+                .unwrap_or_else(|| panic!("internal: layout of type {tid}"));
+            (lay.size, lay.align)
+        };
+        let chunk = if size % 8 == 0 && align >= 8 {
+            8u64
+        } else {
+            4u64
+        };
+        let flags = cranelift_codegen::ir::MemFlags::trusted();
+        let mut off = 0u64;
+        while off < size {
+            if chunk == 8 {
+                let v = self.fb.ins().load(types::I64, flags, src, off as i32);
+                self.fb.ins().store(flags, v, dst, off as i32);
+            } else {
+                let v = self.fb.ins().load(types::I32, flags, src, off as i32);
+                self.fb.ins().store(flags, v, dst, off as i32);
+            }
+            off += chunk;
+        }
+    }
+
+    /// Free every Str-field buffer of an aggregate (per path, in the
+    /// caller's given order).
+    fn free_agg_buffers(&mut self, addr: Value, tid: u32, paths: &[Vec<u32>]) {
+        let flags = cranelift_codegen::ir::MemFlags::trusted();
+        for path in paths {
+            let off = self.path_offset(tid, path) as i32;
+            let ptr = self.fb.ins().load(types::I64, flags, addr, off);
+            self.call_rt("ac_rt_own_free", &[ptr]);
+        }
+    }
+
+    /// Un-pend the aggregate temp produced by `src` (ownership transferred
+    /// into a let/assign/move-arg/owned return).
+    fn unpend_agg(&mut self, src: u32) {
+        if let Some(pos) = self.pending_aggs.iter().rposition(|a| a.src == src) {
+            self.pending_aggs.remove(pos);
+        }
+    }
+
+    /// Fresh aggregate temp slot for `tid`.
+    fn agg_temp_slot(&mut self, tid: u32) -> cranelift_codegen::ir::StackSlot {
+        let lay = self.layouts.get(&tid).cloned().unwrap_or(TrLayout {
+            size: 4,
+            align: 4,
+            field_off: Vec::new(),
+        });
+        let align_log2 = if lay.align >= 8 { 3 } else { 2 };
+        self.fb
+            .create_sized_stack_slot(cranelift_codegen::ir::StackSlotData::new(
+                cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+                lay.size.max(1) as u32,
+                align_log2,
+            ))
+    }
+
+    /// Emit the plan's replacement frees for one assign statement (P4:
+    /// after the RHS materialized, before the commit).
+    fn emit_replace_frees(&mut self, bid: u32, idx: usize) {
+        if let Some(bufs) = self.plan.replace_frees.get(&(bid, idx)) {
+            for b in bufs {
+                let addr = self.root_addr(b.root);
+                let off = self.path_offset(self.rtids[&b.root], &b.path) as i32;
+                let ptr = self.fb.ins().load(
+                    types::I64,
+                    cranelift_codegen::ir::MemFlags::trusted(),
+                    addr,
+                    off,
+                );
+                self.call_rt("ac_rt_own_free", &[ptr]);
+            }
+        }
+    }
+
     /// Iterative post-order text expression emission (the scalar spine
     /// machine extended with the text node reductions). Owned temporaries
     /// are pushed onto the emitter's pending list and freed LIFO at the
@@ -2973,6 +3460,12 @@ impl<'c> TextEmitter<'c> {
     fn eval_text(&mut self, eid: ExprId) -> TVal {
         enum TStep {
             Enter(ExprId),
+            // PLAN-782 combination reductions
+            Ctor(ExprId),
+            Field(ExprId),
+            RClone(ExprId),
+            MoveP(ExprId),
+            BorrowV(ExprId),
             Binary {
                 dest: ExprId,
                 op: hir::BinOp,
@@ -3056,6 +3549,16 @@ impl<'c> TextEmitter<'c> {
                                 let ptr = self.fb.use_var(p);
                                 let len = self.fb.use_var(n);
                                 slots.insert(id.0, TVal::T { ptr, len });
+                            } else if let Some(&slot) = self.rslots.get(&local.0) {
+                                // PLAN-782: a record local's value is the
+                                // address of its aggregate slot
+                                let tid = self.rtids[&local.0];
+                                let addr = self.fb.ins().stack_addr(types::I64, slot, 0);
+                                slots.insert(id.0, TVal::R { addr, tid });
+                            } else if let Some(&v) = self.rvars.get(&local.0) {
+                                let tid = self.rtids[&local.0];
+                                let addr = self.fb.use_var(v);
+                                slots.insert(id.0, TVal::R { addr, tid });
                             } else {
                                 let var = self.svars[&local.0];
                                 slots.insert(id.0, TVal::I(self.fb.use_var(var)));
@@ -3200,12 +3703,193 @@ impl<'c> TextEmitter<'c> {
                             });
                             stack.push(TStep::Enter(*operand));
                         }
-                        // record kinds never appear in a text module (the
-                        // verifier's profile defense); totality only
-                        _ => unreachable!(
-                            "verifier: record expressions exist only in the record profile"
-                        ),
+                        // PLAN-782 combination kinds (never in a pure text
+                        // module - profile defense)
+                        hir::ExprKind::RecordCtor { eval_args, .. } => {
+                            stack.push(TStep::Ctor(id));
+                            for a in eval_args.iter().rev() {
+                                stack.push(TStep::Enter(*a));
+                            }
+                        }
+                        hir::ExprKind::FieldGet { base, .. } => {
+                            stack.push(TStep::Field(id));
+                            stack.push(TStep::Enter(*base));
+                        }
+                        hir::ExprKind::RecordClone { base, .. } => {
+                            stack.push(TStep::RClone(id));
+                            stack.push(TStep::Enter(*base));
+                        }
+                        hir::ExprKind::Move { inner } => {
+                            stack.push(TStep::MoveP(id));
+                            stack.push(TStep::Enter(*inner));
+                        }
+                        hir::ExprKind::BorrowView { base } => {
+                            stack.push(TStep::BorrowV(id));
+                            stack.push(TStep::Enter(*base));
+                        }
+                        hir::ExprKind::BorrowMut { local } => {
+                            let tid = self.rtids[&local.0];
+                            let addr = if let Some(&slot) = self.rslots.get(&local.0) {
+                                self.fb.ins().stack_addr(types::I64, slot, 0)
+                            } else {
+                                let v = self.rvars[&local.0];
+                                self.fb.use_var(v)
+                            };
+                            slots.insert(id.0, TVal::R { addr, tid });
+                        }
                     }
+                }
+                TStep::Ctor(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::RecordCtor {
+                        record,
+                        eval_args,
+                        bindings,
+                    } = &e.kind
+                    else {
+                        unreachable!("ctor step on ctor expr")
+                    };
+                    let tid = record.0;
+                    let mut arg_vals: Vec<Option<TVal>> =
+                        eval_args.iter().map(|a| slots.remove(&a.0)).collect();
+                    let slot = self.agg_temp_slot(tid);
+                    let addr = self.fb.ins().stack_addr(types::I64, slot, 0);
+                    let flags = cranelift_codegen::ir::MemFlags::trusted();
+                    let lay = self.layouts[&tid].clone();
+                    for b in bindings {
+                        let off = lay.field_off.get(b.field as usize).copied().unwrap_or(0) as i32;
+                        let v = arg_vals[b.arg as usize]
+                            .take()
+                            .expect("ctor arg slot filled");
+                        match v {
+                            TVal::I(v) => {
+                                self.fb.ins().store(flags, v, addr, off);
+                            }
+                            TVal::T { ptr, len } => {
+                                // the aggregate takes over the buffer
+                                self.transfer_root(&TVal::T { ptr, len });
+                                self.fb.ins().store(flags, ptr, addr, off);
+                                self.fb.ins().store(flags, len, addr, off + 8);
+                            }
+                            TVal::R {
+                                addr: src,
+                                tid: ftid,
+                            } => {
+                                // nested record field: bitwise copy from the
+                                // source aggregate into this field; a temp
+                                // source transfers its buffers into the ctor
+                                let faddr = self.fb.ins().iadd_imm(addr, off as i64);
+                                self.copy_aggregate(faddr, src, ftid);
+                                self.unpend_agg(eval_args[b.arg as usize].0);
+                            }
+                        }
+                    }
+                    self.pending_aggs.push(AggTemp {
+                        slot,
+                        tid,
+                        src: id.0,
+                    });
+                    slots.insert(id.0, TVal::R { addr, tid });
+                }
+                TStep::Field(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::FieldGet { base, path } = &e.kind else {
+                        unreachable!("field step on field expr")
+                    };
+                    let bv = slots.remove(&base.0).expect("field base slot filled");
+                    let TVal::R { addr, tid } = bv else {
+                        unreachable!("verifier: field access base is a record")
+                    };
+                    let path: Vec<u32> = path.iter().map(|f| f.0).collect();
+                    let off = self.path_offset(tid, &path) as i64;
+                    let faddr = self.fb.ins().iadd_imm(addr, off);
+                    let flags = cranelift_codegen::ir::MemFlags::trusted();
+                    match value_of_type_use_text(&e.ty, self.module) {
+                        Some(Vt2::StrBorrow) => {
+                            let ptr = self.fb.ins().load(types::I64, flags, faddr, 0);
+                            let len = self.fb.ins().load(types::I32, flags, faddr, 8);
+                            slots.insert(id.0, TVal::T { ptr, len });
+                        }
+                        Some(Vt2::Record(t)) => {
+                            slots.insert(
+                                id.0,
+                                TVal::R {
+                                    addr: faddr,
+                                    tid: t,
+                                },
+                            );
+                        }
+                        _ => {
+                            let v = self.fb.ins().load(types::I32, flags, faddr, 0);
+                            slots.insert(id.0, TVal::I(v));
+                        }
+                    }
+                }
+                TStep::RClone(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::RecordClone { record, base } = &e.kind else {
+                        unreachable!("clone step on clone expr")
+                    };
+                    let tid = record.0;
+                    let bv = slots.remove(&base.0).expect("clone base slot filled");
+                    let TVal::R { addr, .. } = bv else {
+                        unreachable!("verifier: clone base is a record")
+                    };
+                    let slot = self.agg_temp_slot(tid);
+                    let taddr = self.fb.ins().stack_addr(types::I64, slot, 0);
+                    // scalars (and copyable nesting) copy bitwise; every Str
+                    // field re-clones through the runtime (design 5)
+                    self.copy_aggregate(taddr, addr, tid);
+                    let flags = cranelift_codegen::ir::MemFlags::trusted();
+                    for path in self.agg_str_paths(tid) {
+                        let off = self.path_offset(tid, &path) as i32;
+                        let ptr = self.fb.ins().load(types::I64, flags, addr, off);
+                        let len = self.fb.ins().load(types::I32, flags, addr, off + 8);
+                        let (cptr, clen) = self.abic_call("ac_rt_own_clone", &[ptr, len]);
+                        // the cloned buffer belongs to the AGGREGATE temp
+                        // now, not to the text temporary list
+                        self.transfer_root(&TVal::T {
+                            ptr: cptr,
+                            len: clen,
+                        });
+                        self.fb.ins().store(flags, cptr, taddr, off);
+                        self.fb.ins().store(flags, clen, taddr, off + 8);
+                    }
+                    self.pending_aggs.push(AggTemp {
+                        slot,
+                        tid,
+                        src: id.0,
+                    });
+                    slots.insert(id.0, TVal::R { addr: taddr, tid });
+                }
+                TStep::MoveP(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::Move { inner } = &e.kind else {
+                        unreachable!("move step on move expr")
+                    };
+                    let v = slots.remove(&inner.0).expect("move inner slot filled");
+                    match v {
+                        TVal::T { ptr, len } => {
+                            // a moved text temp belongs to the receiver
+                            self.transfer_root(&TVal::T { ptr, len });
+                            slots.insert(id.0, TVal::T { ptr, len });
+                        }
+                        TVal::R { addr, tid } => {
+                            self.unpend_agg(inner.0);
+                            slots.insert(id.0, TVal::R { addr, tid });
+                        }
+                        TVal::I(i) => {
+                            slots.insert(id.0, TVal::I(i));
+                        }
+                    }
+                }
+                TStep::BorrowV(id) => {
+                    let e = &self.body.exprs[id.0 as usize];
+                    let hir::ExprKind::BorrowView { base } = &e.kind else {
+                        unreachable!("borrow step on borrow expr")
+                    };
+                    let v = slots.remove(&base.0).expect("borrow base slot filled");
+                    slots.insert(id.0, v);
                 }
                 TStep::Binary { dest, op, lhs, rhs } => {
                     let a = slots.remove(&lhs.0).expect("lhs slot filled");
@@ -3409,6 +4093,10 @@ impl<'c> TextEmitter<'c> {
                                 margs.push(ptr);
                                 margs.push(len);
                             }
+                            (Vt2::Record(_), TVal::R { addr, .. }) => {
+                                // ABI-D/E: one aggregate pointer argument
+                                margs.push(addr);
+                            }
                             (_, TVal::I(v)) => margs.push(v),
                             _ => unreachable!("verifier: argument matches the parameter type"),
                         }
@@ -3433,6 +4121,21 @@ impl<'c> TextEmitter<'c> {
                                 ptr: rs[0],
                                 len: rs[1],
                             }
+                        }
+                        Vt2::Record(tid) => {
+                            // ABI-E: caller-provided out-slot; the callee
+                            // writes the aggregate and returns the pointer
+                            let slot = self.agg_temp_slot(*tid);
+                            let outp = self.fb.ins().stack_addr(types::I64, slot, 0);
+                            margs.push(outp);
+                            self.fb.ins().call(fnref, &margs);
+                            let addr = self.fb.ins().stack_addr(types::I64, slot, 0);
+                            self.pending_aggs.push(AggTemp {
+                                slot,
+                                tid: *tid,
+                                src: id.0,
+                            });
+                            TVal::R { addr, tid: *tid }
                         }
                         _ => {
                             let call = self.fb.ins().call(fnref, &margs);
@@ -3686,8 +4389,10 @@ impl<'c> TextEmitter<'c> {
 /// Borrow the (ptr, len) parts of a text value (panics on scalars — the
 /// verifier types every text operation's operands as text).
 fn text_parts(v: &TVal) -> (Value, Value) {
+    // (record arms never reach the text helpers; the emitter loads field
+    // views into TVal::T directly)
     match v {
         TVal::T { ptr, len, .. } => (*ptr, *len),
-        TVal::I(_) => unreachable!("verifier: text operand is a text value"),
+        TVal::I(_) | TVal::R { .. } => unreachable!("verifier: text operand is a text value"),
     }
 }
