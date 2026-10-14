@@ -2789,7 +2789,21 @@ fn split_top_level_args(source: &str) -> Vec<&str> {
             b']' => brackets = brackets.saturating_sub(1),
             b'{' => braces += 1,
             b'}' => braces = braces.saturating_sub(1),
-            b'<' => angles += 1,
+            // Plan 742 R5 (F-742-R5-01): a `<` only opens generic depth when
+            // it is GLUED to a type-position token (`Vec<NoteDocument>` —
+            // the emitter never spaces generics); a comparison operand
+            // (`1 < 2`, `a <= b`) has whitespace before the operator and
+            // must not swallow the argument comma. The closing side stays
+            // unconditional (saturating) — a comparison `>` can only appear
+            // where generic depth is already 0.
+            b'<' => {
+                let glued_to_ident = index > 0
+                    && (source.as_bytes()[index - 1].is_ascii_alphanumeric()
+                        || source.as_bytes()[index - 1] == b'_');
+                if glued_to_ident {
+                    angles += 1;
+                }
+            }
             b'>' => angles = angles.saturating_sub(1),
             b',' if parens == 0 && brackets == 0 && braces == 0 && angles == 0 => {
                 args.push(source[start..index].trim());
@@ -6236,6 +6250,28 @@ fn main() {{
         );
     }
 
+    /// Plan 742 R5 (F-742-R5-01): comparison operators are not type
+    /// delimiters — a `<` glued to an identifier opens generic depth
+    /// (`Vec<T>`); a spaced comparison operand (`1 < 2`) must not swallow
+    /// the argument comma.
+    #[test]
+    fn test_split_top_level_args_comparison_vs_generic() {
+        let args = split_top_level_args("1 < 2, s");
+        assert_eq!(args, vec!["1 < 2", "s"]);
+        let args = split_top_level_args("flag <= 2, s");
+        assert_eq!(args, vec!["flag <= 2", "s"]);
+        let args = split_top_level_args("a, b > 1, c");
+        assert_eq!(args, vec!["a", "b > 1", "c"]);
+        // generic commas stay inside their angle depth
+        let args = split_top_level_args("HashMap<String, i32>, s");
+        assert_eq!(args, vec!["HashMap<String, i32>", "s"]);
+        let args = split_top_level_args("Vec<Vec<Note>>, s");
+        assert_eq!(args, vec!["Vec<Vec<Note>>", "s"]);
+        // string commas stay literal
+        let args = split_top_level_args("\"a, b\", s");
+        assert_eq!(args, vec!["\"a, b\"", "s"]);
+    }
+
     /// Plan 742 R3 (F-742-R3-01): placeholder-free qualify_a2r_std — the
     /// r2 marker/restore round-trip rewrote legal business strings spelled
     /// like an internal marker. Code positives keep their behavior (generic
@@ -6322,6 +6358,20 @@ pub fn nested() int {
     return 0
 }
 
+#[api(method = "GET", path = "/api/cmp_args")]
+pub fn cmp_args() int {
+    var s str = "hi"
+    if true { return repository.choose(1 < 2, s) }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/cmp_control")]
+pub fn cmp_control() int {
+    var s str = "hi"
+    if true { return repository.choose(true, s) }
+    return 0
+}
+
 #[api(method = "GET", path = "/api/nsfx")]
 pub fn nsfx() int {
     if true { return custom_a2r_std.ping() }
@@ -6389,7 +6439,8 @@ pub fn file() FileResponse {
         std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
         std::fs::write(
             back_dir.join("repository.at"),
-            "pub fn ping() int { return 7 }\npub fn measure(value str) int { return value.len() }\npub fn outer(value int) int { return value }\npub fn path() str { return \"readme.txt\" }\n",
+            "pub fn ping() int { return 7 }\npub fn measure(value str) int { return value.len() }\npub fn outer(value int) int { return value }
+pub fn choose(flag bool, s str) int {\n    if flag {\n        return s.len()\n    }\n    return 0\n}\npub fn path() str { return \"readme.txt\" }\n",
         )
         .expect("write repository.at");
         // F-742-R4-01: a companion whose name merely ends with the stdlib
@@ -6438,6 +6489,18 @@ pub fn file() FileResponse {
         assert!(
             api_rs.contains("crate::repository::outer(crate::repository::measure(&s))"),
             "nested module call must borrow the inner &str arg:
+{api_rs}"
+        );
+        // F-742-R5-01: a comparison operand must not hide the argument
+        // comma — the second &str arg keeps its borrow.
+        assert!(
+            api_rs.contains("repository::choose(1 < 2, &s)"),
+            "comparison arg must not swallow the comma (2nd param borrow):
+{api_rs}"
+        );
+        assert!(
+            api_rs.contains("repository::choose(true, &s)"),
+            "control shape keeps its borrow:
 {api_rs}"
         );
         // F-742-R4-01: suffix-collision companion keeps its full identity.
@@ -6525,6 +6588,8 @@ pub fn file() FileResponse {
             "nested",
             "marker",
             "nsfx",
+            "cmp_args",
+            "cmp_control",
             "ping",
             "scope",
             "void_plain",
@@ -6557,6 +6622,7 @@ mod repository {
     pub fn ping() -> i64 { 7 }
     pub fn measure(value: &str) -> i64 { value.len() as i64 }
     pub fn outer(value: i64) -> i64 { value }
+    pub fn choose(flag: bool, s: &str) -> i64 { if flag { s.len() as i64 } else { 0 } }
     pub fn path() -> String { "readme.txt".to_string() }
 }
 
@@ -6609,6 +6675,8 @@ fn main() {
     println!("borrow_pos={}", ready(borrow_pos(sdb.clone())).0);
     println!("nested={}", ready(nested(sdb.clone())).0);
     println!("nsfx={}", ready(nsfx(sdb.clone())).0);
+    println!("cmp_args={}", ready(cmp_args(sdb.clone())).0);
+    println!("cmp_control={}", ready(cmp_control(sdb.clone())).0);
     println!("marker={}", ready(marker(sdb.clone())).0.text);
     println!("ping={}", ready(ping(sdb.clone())).0);
     println!("scope={}", ready(scope(sdb.clone())).0.text);
@@ -6666,6 +6734,8 @@ fn main() {
                         borrow_pos=2\n\
                         nested=2\n\
                         nsfx=7\n\
+                        cmp_args=2\n\
+                        cmp_control=2\n\
                         marker=__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__\n\
                         ping=7\n\
                         scope=ok\n\
