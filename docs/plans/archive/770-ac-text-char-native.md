@@ -1051,7 +1051,7 @@ next: **merge**；status=reviewed，T08完成，**8/9**，T09待执行。本请�
 | cleaned | wt-guard clean → worktree/branch/组目录移除（见下） |
 
 部署制品检视：本计划仅动 experimental/ac-core 原型与文档，root crates/ 零改动——无后端 release 二进制/daemon/Web bundle 消费面，无制品陈旧。
-批回归到期判定：770 % 5 == 0 → **到期**，移交 /auto-plan:regress 主检出单实例执行。
+批回归到期判定：770 % 5 == 0 → **到期**（收据 last_covered_plan_id=774 < 770？否——770 < 774，且收据 2026-10-14T11:30 距今 >48h 期间有 777/770 合入）→ **到期**（48h+合并触发），移交 /auto-plan:regress 主检出单实例执行；本 merge 不消费也不推迟该判定。
 
 ## 10. 待澄清事项
 
