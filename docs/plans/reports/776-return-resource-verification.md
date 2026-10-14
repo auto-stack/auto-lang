@@ -455,3 +455,27 @@ tt/tu/taa 零触发。判别实验的临时 base worktree（lang-776-base 组）
 门禁（实施树 `38ad38aba`）：check 0 err；裸 `cargo t` **5312/5312**
 （79.6s）；`cargo tv` 162/162；plan776 全族 **66/66**（65 项复现 + R10
 新增 1）；plan394 17/17、plan705 19/19；rustfmt 触面干净。
+
+
+---
+
+## R11 修复轮（2026-10-14，review-r11 needs_fix 后复修——测试证据补齐）
+
+代码提交：`d0fa9e5e2`（仅测试文件 +137/−27；**实现零改动**——R10 的五
+setter 生产修复经 R11 确认有效，原 UAF 反例与独立 15 格矩阵均过）。
+闭合 F776-R11-01（P2）：R10 提交的 `plan776_r10_setter_single_release_
+shared` 只真实调用了 status——其余四项躺在未使用的 fn-vec 里（覆盖声明
+失实）。补齐：
+
+- **header**：池化 key/value 字符串（`X-Tag: application/xml`），正确
+  shim 栈序（key 先压、value 顶——诊断插桩实证初始栈序反了会写反 kv）；
+- **text/html**：真实 body 字符串 + 自动 Content-Type 期望（plain/html）；
+- **bytes**：真实 ListData<i32> 堆参数（[72,105] → body "Hi"）；
+- 每块断言完整共享矩阵：setter→RC2（返回槽+全局）、释放返回槽→RC1、
+  跨 reap 存活、**全局快照终值=变异值**（ResponseSnapshot 字段比对）；
+  status/RC1 独占/×5 链/错误早退块保持。
+
+门禁（实施树 `d0fa9e5e2`）：plan776 全族 **66/66**；裸 `cargo t` 绿
+（一次 clipboard 并行 flake 单跑绿）；`cargo check -p auto-lang` 0 error；
+rustfmt 干净。spec-delta/decision/verification R10 终形稿不变（本轮仅
+测试证据，规则文本无改动）。
