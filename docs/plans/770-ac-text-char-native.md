@@ -137,16 +137,16 @@ T01先做整个文本深链/临时资源/return路径可行性探针，冻结支
 | 状态 | Task | owner_stage | 依赖 | 路径/操作、成果与验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 用户批准r2；772/774已复审合入 | ✅ 已完成：[design.md](../reports/770-text/design.md)@6dbbf2712——47项输入指纹复核39零漂移+8归因、D01..07一致性表（无冲突）、码/节点/资源/Case冻结、774探针65/65绿复跑、771热点合入登记（771仍drafting，770预计先合入）；774 r2/r3/r4/r5修订链全部纳入 | 01..06 |
-| [x] | T-02 | work | T-01 | ✅ r4 返工完成 @42b0ba7da（§9.11）：R4-01/03/04/05 验证器侧闭合——块出口寿命入状态（DeadCause::ScopeExit，break/continue 同）、join 只合并真正进入的出口（incoming+implicit，终止臂不贡献 continuation）、join 一致性只覆盖本帧入口 owner（entry_live）、参数对排他约束 fixpoint 传播（verify_text 驱动）。历史：r2+r3 返工 @e81d649ac+@987172981（QA-01..07 + R3-01/02/04/05——实际 WalkState join/alias_reach/escape_reach 分离/派生需求清理义务/adapter move-Str 声明） | 01/02/03/04/05 |
+| [x] | T-02 | work | T-01 | ✅ r5 返工完成 @ebd0d05ee（§9.13）：R5-02 闭合——break/continue 状态按目标 LoopId 单独保存（loop_exits），由目标 AwaitLoop 与 body 自然完出口 dead/backing 并集合流；return 仍只指向函数；if join 不回退 R4-03。p04/p05 双腿拒 owned-scope-escape、c02 存活 owner 合法。历史：r4 返工完成 @42b0ba7da（§9.11）：R4-01/03/04/05 验证器侧闭合——块出口寿命入状态（DeadCause::ScopeExit，break/continue 同）、join 只合并真正进入的出口（incoming+implicit，终止臂不贡献 continuation）、join 一致性只覆盖本帧入口 owner（entry_live）、参数对排他约束 fixpoint 传播（verify_text 驱动）。历史：r2+r3 返工 @e81d649ac+@987172981（QA-01..07 + R3-01/02/04/05——实际 WalkState join/alias_reach/escape_reach 分离/派生需求清理义务/adapter move-Str 声明） | 01/02/03/04/05 |
 | [x] | T-03 | work | T-01/02 | ✅ r2 返工完成 @e81d649ac：runtime/text/Cargo.lock git add -f 入库（QA-08）；gate check/test --locked 与 20/20 全绿在含锁提交上重跑；gate hashes 步骤现记录其指纹 | 02/03/06 |
-| [x] | T-04 | work | T-02 | ✅ r4 返工完成 @42b0ba7da：词法/解析零改动（五项均为验证器/lowering 层）；r4 重放 source 腿 + r3/r2 source 腿全保持。历史：r2/r3 source 腿重放 + q01/q02/c01/c02 source 腿 + adapter eq/ne 与 move-Str 参数声明 | 02/04/05 |
-| [x] | T-05 | work | T-03/04 | ✅ r4 返工完成 @42b0ba7da：R4-02 lowering 闭合——短路 RHS 拥有临时经 join 块参数携带（skip 边 null）+ 语句尾逐临时 null 守卫释放；两条入边齐备后才 seal；跳过零分配零 FREE/执行一次配对/mark 先于 FREE/4096 探测帧保持。历史：语句尾寿命合同 + enable_probestack/inline @987172981 | 01..05 |
-| [x] | T-06 | work | T-05 | ✅ r4 返工完成：gate 双收据 13/13——代码提交 42b0ba7da（gate-20261014-171125）+最终 HEAD 1f8027500（gate-20261014-171634，docs-only delta），ac-core **244/244+1 ignored**（净增 text_review_r4 17）+runtime 20/20+三旧 gates+scope 隔离；其间一次 gate 失败（170638）为 source_native receipt-missing 瞬态窗口（r2/r3/r4 复审同族，零代码变化串行复跑通过，原文保留） | 06 |
-| [x] | T-07 | work | T-06 | ✅ r4 返工完成 @1f8027500：verification.md 增 r4 闭合行/交付行/重放集行并重绑收据 42b0ba7da；SD 冻结提案保持（资源/验证完成声明待第五轮 fresh review 清零后沉淀） | 06 |
+| [x] | T-04 | work | T-02 | ✅ r5 返工完成 @ebd0d05ee：词法/解析零改动（两项均为验证器/lowering 层）；r5 重放 source 腿 + r4/r3/r2 source 腿全保持。历史：r4 返工完成 @42b0ba7da：词法/解析零改动（五项均为验证器/lowering 层）；r4 重放 source 腿 + r3/r2 source 腿全保持。历史：r2/r3 source 腿重放 + q01/q02/c01/c02 source 腿 + adapter eq/ne 与 move-Str 参数声明 | 02/04/05 |
+| [x] | T-05 | work | T-03/04 | ✅ r5 返工完成 @ebd0d05ee：R5-01 闭合——短路 RHS 临时边界由 LogicalLhs 步骤在 LHS 完成后冻结（LHS 区临时保留真实指针、语句尾无条件释放；嵌套 Logical 组合正确）。p01/p02 唯一 FREE、p03 两枚 LIFO、mark 先于 FREE/4096 保持。历史：r4 返工完成 @42b0ba7da：R4-02 lowering 闭合——短路 RHS 拥有临时经 join 块参数携带（skip 边 null）+ 语句尾逐临时 null 守卫释放；两条入边齐备后才 seal；跳过零分配零 FREE/执行一次配对/mark 先于 FREE/4096 探测帧保持。历史：语句尾寿命合同 + enable_probestack/inline @987172981 | 01..05 |
+| [x] | T-06 | work | T-05 | ✅ r5 返工完成：gate 双收据 13/13——代码提交 ebd0d05ee（gate-20261014-175221）+最终 HEAD a14f1470b（gate-20261014-175631，docs-only delta），ac-core **255/255+1 ignored**（净增 text_review_r5 11）+runtime 20/20+三旧 gates+scope 隔离。历史：r4 返工完成：gate 双收据 13/13——代码提交 42b0ba7da（gate-20261014-171125）+最终 HEAD 1f8027500（gate-20261014-171634，docs-only delta），ac-core **244/244+1 ignored**（净增 text_review_r4 17）+runtime 20/20+三旧 gates+scope 隔离；其间一次 gate 失败（170638）为 source_native receipt-missing 瞬态窗口（r2/r3/r4 复审同族，零代码变化串行复跑通过，原文保留） | 06 |
+| [x] | T-07 | work | T-06 | ✅ r5 返工完成 @a14f1470b：verification.md 增 r5 交付/重放集/闭合行并重绑收据 ebd0d05ee；SD 冻结提案保持（完成声明待第六轮 fresh review 清零后沉淀）。历史：r4 返工完成 @1f8027500：verification.md 增 r4 闭合行/交付行/重放集行并重绑收据 42b0ba7da；SD 冻结提案保持（资源/验证完成声明待第五轮 fresh review 清零后沉淀） | 06 |
 | [ ] | T-08 | review | T-01..07完成、writes暂停 | 同树独立AC/SD/反例/生命周期审计，pass才reviewed，失败返work | 07 |
 | [ ] | T-09 | merge | T-08pass与合入授权 | 明确两分支实际顺序；只消费新基线经work重跑联合回归且重新review的fresh凭证；SD/ledger/index/归档/计数/批回归到期判定；guard清理 | 08 |
 
-worktree `D:/autostack/.wt/lang-770/auto-lang`、branch `plan-770-dev`，2026-10-14 已建组（基面 master@e849e06f9，含 auto-down 兄弟 detached；前置 772/774 均已复审合入归档，用户指令"实施它"=r2 批准）。r3 返工曾交接 work 完成 7/9（历史证据 @6dbbf2712..@92c14fe6c）；第四轮 final needs_fix 重开为 2/9 后，r4 返工 @42b0ba7da（代码）+@1f8027500（收据）恢复 **7/9**（T-01..07 完成，T-08/T09 未动）；下表描述绑定各轮提交。受审代码/基线变化时回同一树work重跑受影响gates、重新独立review；不能把实现/联合正确性推迟到T09。
+worktree `D:/autostack/.wt/lang-770/auto-lang`、branch `plan-770-dev`，2026-10-14 已建组（基面 master@e849e06f9，含 auto-down 兄弟 detached；前置 772/774 均已复审合入归档，用户指令"实施它"=r2 批准）。r3 返工曾交接 work 完成 7/9（历史证据 @6dbbf2712..@92c14fe6c）；第四轮 final needs_fix 重开为 2/9 后，r4 返工 @42b0ba7da+@1f8027500 恢复 7/9；第五轮 final needs_fix 再度重开为 2/9 后，r5 返工 @ebd0d05ee（代码）+@a14f1470b（收据）恢复 **7/9**（T-01..07 完成，T-08/T09 未动）；下表描述绑定各轮提交。受审代码/基线变化时回同一树work重跑受影响gates、重新独立review；不能把实现/联合正确性推迟到T09。
 
 ## 9. 复审记录
 
@@ -631,6 +631,69 @@ branch plan-770-dev、base_commit e849e06f9、code_commit 42b0ba7da（+docs
 1f8027500）、dependency_revisions runtime/text@e03bb725a（未触碰）。
 task_ids T-02/T-04/T-05/T-06/T-07（r4 重开后完成）。evidence：见上。
 blockers 无。next=review（T-08 同树独立第五轮 final review）。
+
+### 9.12 第五轮最终独立复审（2026-10-14，needs_fix）
+
+stage: review；review_scope: final；reviewer_identity/limitations: 独立审查上下文，未参与实现，未创建额外 agent；从合同/Specs/代码及本轮实际运行重建结论。
+plan_id: PLAN-770；plan_revision: 2；outcome: **needs_fix**。
+worktree_path: `D:/autostack/.wt/lang-770/auto-lang`；branch: `plan-770-dev`；
+reviewed_commit: `1f8027500d52cc69bfe279fe652c4f454c919523`；
+base_commit: `e849e06f976816dda3db0c68a520d485a69904a7`。
+
+dependency_revisions: 772/774 已归档且在基面，771 未合入；两锁文件/runtime 输入 hash 见 [baseline-fresh.txt](attachments/770/review-r5/baseline-fresh.txt)。主检出期间有其他门禁修复合入，相关六份 canonical 与实施树逐项 hash 相同；实施 HEAD/clean 未漂移。SD 冻结 SHA256=`DCC0717A873EEB4D8054716FEF77858DA80E1CDD09E4B1441B94D400AA8F2307`，未沉淀 canonical/ledger。
+
+完整 AC→Task→实现→证据、反例/正控、原例与完整不变量闭合区别、纠正要求见 [R5 审查报告](attachments/770/review-r5/REVIEW.md)。
+
+| Finding | 级别 | AC/Task | 当前缺口 |
+|---|---|---|---|
+| P770-R5-01 | P1 blocking | AC03/05，T05/06/07 | RHS 临时边界在求值 LHS 前冻结，把已执行 LHS 的临时也改成 skip 边 null；&&/||/嵌套双腿正常返回漏 FREE |
+| P770-R5-02 | P1 blocking | AC03/04/05，T02/04/05/06/07 | if continuation 丢弃终止臂的 backing/dead，loop 未另存 break/continue 目标出口；两腿与 Bundle 放行悬空借用，FREE 后读内存，exit70/-7 或偶然 exit3 |
+
+acceptance_results: AC01受测面pass；AC02受测操作面pass；AC03fail；AC04fail；AC05fail；AC06partial；AC07fail；AC08merge-owned pending。
+evidence: fresh gate **13/13 PASS**（gate-20261014-172651，持久 gate-fresh-pass/gate-fresh-raw），ac-core **244 passed/1 ignored**、runtime **20 passed**，两 workspace check 无 warning/fmt clean，741/745/767 实跑。未跑根 t/tv/tf/docs_gen。新增 **9 source+9 HIR** 与真实 Bundle API，历史 R4 **15+15**、R2 **17+19**、R3 **5+7** 原字节 fresh 重放；marks/Drop/requires/bad-reference/4096 的既有断言经本次全套重跑并核对。R4-01..05 旧例闭合有效，但 R4-02 的新 skip-side 回归与 R4-01/03 的目标出口完整不变量仍有缺口。命名实参 wrapper 同源拒、异源合法控制保持；早期附件两例错误命名拼写已改成实际 `:` 语法重跑，旧输出不充当有效证据。
+
+SD 路径/before/边界、空 touched_goals 解释有效；完成声明须随上述实现闭合后再定稿。两项均原合同内阻断，登记 KNOWN-DEBT 仅追踪，不授权延后或缩围。
+pending_closeout_gates: T09 实际合入、SD/导航/ledger/index、归档/计数、批回归到期判定、guard清理。
+next: **work 同树返工**；T01/T03保留，T02/04/05/06/07重开，status=executing、current_step=2/9，T08/T09未完成。§8 各行既有“完成”描述是本轮入场的历史交付证据，现行状态以未完成 checkbox 与本节为准；上轮“剩余缺口：无”已被本轮反例证伪。先修模型/永久组合 oracle，提交后重放新旧正反控+完整 gate，再交 fresh final review；不得 merge。plan_revision 不因复审簿记改变。
+
+### 9.13 r5 返工记录（2026-10-14，P770-R5-01/02 全修复，第五轮闭合表）
+
+2026-10-14，stage:work，plan_revision 2（合同未变更——两项均为合同内实现），
+outcome:pass（P770-R5-01/02 处置完成提交 @ebd0d05ee + 收据 @a14f1470b），
+worktree D:/autostack/.wt/lang-770/auto-lang、branch plan-770-dev、
+base e849e06f9、前序 …/1f8027500（r5 受审基线）。
+
+**诊断表（为何 r4 修复引入/遗留这两条）**：
+
+| 发现 | 根因 | 修复 | 永久 oracle |
+|---|---|---|---|
+| R5-01 跳过侧漏 LHS 释放 | r4-02 的 temps_mark 在进入整个 Logical 时记录（求值 LHS 之前），把 LHS 已分配的拥有缓冲也归入"未执行 RHS"，skip 边 null 守卫吞掉其 FREE——r4 测试的 RHS 临时都在 RHS 区内，LHS 拥有临时+跳过的组合从未构造 | LogicalLhs 步骤在 LHS 完成（含嵌套 Logical）后冻结 temps_mark 并在此处才压入 Enter(rhs)/LogicalRhs：LHS 区临时保留真实指针、语句尾无条件释放；RHS 区仍走 join 传 null；栈纪律保证嵌套组合正确 | p01/p02（&&/|| 跳过侧 LHS 唯一 FREE，双腿）/p03（嵌套外层跳过，id1/id2 全 LIFO 释放）/c01（双侧执行控制）+ 组合 oracle：mark 后于整个逻辑仍先于 LHS 临时 FREE |
+| R5-02 目标出口状态丢弃 | r4-03 的 join 只保留 incoming（正确），但 break/continue 的终止臂状态被整体丢弃；r4-01 只在**循环体自然出口**标 ScopeExit——臂内 break/continue 的出口状态没有任何通道到达 loop 之后 | break/continue 在标记自身 frees 后把整份状态按目标 LoopId 存入 loop_exits；目标 loop 的 AwaitLoop resume 把 body 自然完出口与全部目标出口一并 dead/backing 并集合流（live 仍以父帧为权威）；return 出口仍只指向函数不合流；if join 行为零回退 | p04/p05（if 臂内 break/continue 后借用已释放 loop 作用域 owner，源+冻结 atom 双腿拒 owned-scope-escape）/c02（存活外层 owner 经 break 合法 exit3）+ 组合 oracle：双臂 break/continue 各自 arm-local owner 出循环拒读；r4 returning-move（p05/p06-r4）与 r2 break 矩阵保持 |
+
+**闭合表**：两项闭合——p01..p06 反例全部达到复审要求（p04/p05 前门拒、
+p01..p03 合法唯一/LIFO FREE、p06 命名实参同源拒保持），c01..c03 正控逐字节
+保持预期 trace/exit；**剩余缺口：无**。历史重放：r4 冻结 15 source CLI 重放
+零回归；r2 18 + r3 9 + r4 17 测试全绿（历史 closure 不被本轮破坏）。
+
+**AC 自检（r5 返工增量）**：AC-03/05 正常路径漏释放清零（LHS/RHS 临时分区、
+每分配唯一清理、mark 先于 FREE）；AC-03/04 悬空借用前门拒（目标出口状态
+合流、双通道判决一致）；AC-06 gate 双收据 13/13（ebd0d05ee→
+gate-20261014-175221；a14f1470b→gate-20261014-175631），ac-core
+**255 passed+1 ignored**、runtime 20/20、零警告、fmt clean。
+
+**实现文件**：`src/native.rs`（LogicalLhs 冻结边界并接管 RHS 步骤压栈）、
+`src/text_resources.rs`（loop_exits 目标出口状态）、`tests/text_review_r5.rs`
+（新增 11 测试，含 p04/p05/p06 冻结 atom 嵌入）；词法/解析/runtime 零改动。
+
+blockers 无；next_responsible_role=review（第六轮 fresh final @a14f1470b，
+writes 已暂停，worktree clean）。
+
+2026-10-14，stage:work，plan_revision 2，outcome:pass（r5 返工完成，
+T-01..07 全部完成=7/9），worktree_path D:/autostack/.wt/lang-770/auto-lang、
+branch plan-770-dev、base_commit e849e06f9、code_commit ebd0d05ee（+docs
+a14f1470b）、dependency_revisions runtime/text@e03bb725a（未触碰）。
+task_ids T-02/T-04/T-05/T-06/T-07（r5 重开后完成）。evidence：见上。
+blockers 无。next=review（T-08 同树独立第六轮 final review）。
 
 ## 10. 待澄清事项
 
