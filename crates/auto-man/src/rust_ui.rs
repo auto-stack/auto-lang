@@ -4392,19 +4392,17 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
         std::thread::sleep(std::time::Duration::from_millis(500));
         // PLAN-736 T-05：health 优先（VM serve 面有控制面；legacy auto run
         // 的 VM 轨无 /__auto 路由 → 404 视为可继续），TCP connect 兜底。
-        match probe_service_ready(port) {
-            Some(is_ready) => {
-                if is_ready {
-                    println!(
-                        "  {} AutoVM server ready on http://127.0.0.1:{}",
-                        "✓".bright_green(),
-                        port
-                    );
-                    return true;
-                }
-                continue;
-            }
-            None => {}
+        // PLAN-781 R1 勘定：legacy VM 轨的 __auto 控制面实际已注册（共享
+        // transport），run 模式下 /ready 恒 503 "starting"（ready 态翻转只在
+        // service 面发生）→ Some(false) 不能再跳过 TCP 兜底，否则 -r vm
+        // --no-merge 原生窗口 split 形态 120s 必死。TCP 语义恢复为最终裁决。
+        if probe_service_ready(port) == Some(true) {
+            println!(
+                "  {} AutoVM server ready on http://127.0.0.1:{}",
+                "✓".bright_green(),
+                port
+            );
+            return true;
         }
         if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1))
             .is_ok()
