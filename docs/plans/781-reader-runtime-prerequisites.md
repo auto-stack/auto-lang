@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
-current_step: 4
+current_step: 5
 total_steps: 18
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -203,7 +203,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [✅ 2026-10-14] worktree commit 278a65aa4。API 不足已由 T-09 决策报告坐实，最小观测增量落地：SharedState 增 layout_frame（bounds 发布代数）+ scroll_tick（读回节拍代数，滚动不脏帧故 offset 新鲜度由 ≤2s 读回节拍维持）；ScrollStateEntry 记完整 viewport 原点（原实现丢 x/y）；`__mcp_scroll_states` 在 needs_bounds 批与 PLAN-656 读回节拍两路发布；新只读工具 autoui_scroll_state/autoui_visibility（几何法 pane 链解析、恰一次转换、正面积交集、unmeasured/zero_size/clipped_out/outside_window/no_pane flags）。R2 探针钉死坐标公式：**子节点 bounds 为 content-space**（滚动后逐位不变；window = child − offset + viewport 原点）。单测 8/8；驱动 v10_fake_geometry（4 项负例）+ v11_clip（9 项裁剪断言含转换算术）绿；全默认集 7/7；scoped 门 scroll 61/61、mcp_server 29/29。新增框架 fixture test/fixtures/native-reader-acceptance/scroll-geometry/（120 容器行 + 零尺寸负例行）。**发现并路由**：Reader reading.at:266 `let pr` 在 :315 重赋值 → VM handler 合成失败（"Cannot reassign to immutable variable"）→ 阅读页 Init 不执行、正文恒空——Vue 轨未拦截该语义（后端不一致，另属 742 api-handler-body-parity 域）；按仓边界不改 Reader，路由 READER-001 修复（决策报告 §12 r2 记录）。
 - [x] T-12: owner_stage=work；依赖T-10/T-11；创建test/fixtures/native-reader-acceptance/（新），跑真实Reader导入/段落press/保存/冷启动的V-08/V-09；保留磁盘与MCP证据；consumer失败另外列出，不能驱动写终态替代。AC-08。
   [✅ 2026-10-14] worktree commit 649fad2f7。fixture 家族落位：scroll-geometry（T-11）+ save-restore（T-12，120 均匀 ASCII 段 + 真实保存链后端 + Reader 同构恢复原语）。驱动病例：v08_save 8 项（press→Tap(40)→HTTP POST→后端校验/落盘/读回→note→磁盘/GET 逐字一致→字号持久化）、v09_cold_restore 7 项（冷重启新 pid/端口、观察期零滚动、产品自身恢复使 ¶40 正面积可见、状态/字号保留、损坏锚点诚实失败）、v08_reader_current_state（记录例：Reader `let pr` 缺陷如实取证路由 001，不授 PASS）。全默认集 **10/10 PASS exit 0**，证据包 D:/p781-t12/out。实施期钉死 4 项通道事实（决策报告 §12 r3）：VM Http.post 对象字面量 body 非严格 JSON（Reader VM 轨保存同病）、str 响应双重编码破坏 find 判据、for 迭代>0 的 events 注解不在 Atom 重复（候选试派发协议）、字符占比恢复的像素偏差（padding/gap 不计字符，¶40 为安全落点、偏差记录为证据）。
-- [ ] T-13: owner_stage=work；依赖T-12；完整V-07~V-13及required变异/失败传播、owned进程收尾验证；目标窗几何/截图人工核查，按触面跑相应门；V-13在阶段 B 未完成时用显式在pane外目标作负对照，不创建环依赖。AC-07/AC-08/AC-09/AC-10。
+- [x] T-13: owner_stage=work；依赖T-12；完整V-07~V-13及required变异/失败传播、owned进程收尾验证；目标窗几何/截图人工核查，按触面跑相应门；V-13在阶段 B 未完成时用显式在pane外目标作负对照，不创建环依赖。AC-07/AC-08/AC-09/AC-10。
+  [✅ 2026-10-14] worktree commit c724ae25c。新增 v13_anchor_interop（4 项：pane 外目标诚实分类 clipped_out、阶段 B 锚点工具以显式 Unknown tool 诚实失败、零滚动 offset 不变——无环依赖）与 Evidence.finish 的 owned 端口收尾核查（本 run 全部实例/重启端口不得仍被本 run pid 持有；外部复用端口记录不判负）。v09 损坏负例补 note 有界等待。全默认集 **11/11 PASS exit 0 + sweep clean**；注入失败传播正式化：独立调用实测 rc=2 + manifest injected_fail 证据对应。截图人工核查：v09 恢复态（"已恢复上次位置"提示 + ¶40 居中带选中高亮 + large 字号）、v10 fixture（标题+¶0-12 行+滚动条正常）经图像分析确认。触面分级门：改动面=auto-man CLI 编排 + auto-lang ui/（renderer/mcp_server/scroll_state_reader），非 ui_gen/VM 语料/trans/book/aavm 触面 → 裸 `cargo t` 全量 **5286/5286 通过**（首轮 plan492 c1 一次负载抖动，定向复跑+全量复跑均绿——外部执行方并发跑驱动所致负载，已在案）。阶段 A（T-09~13）收口。
 
 ### 阶段 B：精确段落锚点
 
@@ -242,6 +243,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 2026-10-14 work（T-11）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=7b0427e37 | code_commit=278a65aa4 | dependency_revisions=同上 | task_ids=T-11 | evidence=mcp_server/renderer/scroll_state_reader 增量（layout_frame+scroll_tick+ScrollStateEntry+两工具）+ 单测 8/8（cargo t plan781）+ R2 探针全 PASS（content-space 公式钉死）+ 驱动 v10(4)/v11(9) 绿 + 全默认集 7/7 + scoped scroll 61/61 mcp_server 29/29 + 证据包 D:/p781-t11/out + 决策报告 §12 修订 r2 | blockers=Reader 侧 reading.at `let pr` 重赋值缺陷（VM 合成失败→阅读页正文恒空）——按边界路由 READER-001；本计划 T-12 的 Reader 真实保存/恢复病例依赖其修复（fixture 通道不受阻） | next_responsible_role=work（T-12：Reader 真实导入/段落press/保存/冷启动 V-08/V-09——Reader 缺陷修复前可用框架正对照推进，见决策报告 §12 r2 处置）
 
 2026-10-14 work（T-12）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=278a65aa4 | code_commit=649fad2f7 | dependency_revisions=同上 | task_ids=T-12 | evidence=save-restore fixture + 驱动 v08_save(8)/v09_cold_restore(7)/v08_reader_current_state(记录例) + 全默认集 10/10 exit 0 + 证据包 D:/p781-t12/out + 决策报告 §12 修订 r3（4 项通道事实） | blockers=无新增（Reader 现状已按 AC-08 以框架正对照证明通道 + 记录例路由 001） | next_responsible_role=work（T-13：完整 V-07~V-13 required 门 + 变异/失败传播 + 人工几何/截图核查 + 触面分级门）
+
+2026-10-14 work（T-13，阶段 A 收口）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=649fad2f7 | code_commit=c724ae25c | dependency_revisions=同上 | task_ids=T-13 | evidence=v13_anchor_interop(4) + owned 端口 sweep + 全默认集 11/11 exit 0（证据包 D:/p781-t13/out）+ 注入失败独立调用 rc=2 + 截图人工核查（v09/v10 经图像分析）+ 裸 cargo t 5286/5286 | blockers=无 | next_responsible_role=work（阶段 B 起步：T-01 锚点接口冻结——核对 AURA/DSL 布局几何与在途 native 热点，产出 781-interface-decision.md；T-02~05 随后）
 
 ## 10. 待澄清事项
 
