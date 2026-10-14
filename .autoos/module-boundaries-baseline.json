@@ -1,6 +1,6 @@
 {
-  "base_revision": "0b5e79950381af5c7d486efc42e29bb8e315f6fe",
-  "config_sha256": "f1d8596d9a782633dcba6048b0f51dae27ac740752b44d29cc0a0d9036914ed5",
+  "base_revision": "3b50ea63ec30d68bc820448cf0fcbf100375bfe8",
+  "config_sha256": "5f781077b4acbb9394d1b07de0480c248c4cf73f60c7df3dff061b092f0ceaf9",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
