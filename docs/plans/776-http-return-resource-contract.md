@@ -180,39 +180,63 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 
 ## 8. 执行步骤
 
-> **R1 当前状态（2026-10-14）**：最终复审 needs_fix；T-01..08 各有未满足子项，
+> **R2 当前状态（2026-10-14）**：最终复审 needs_fix；T-01..08 各有未满足子项，
 > 已重新打开，current_step=0。下方 `[✅ 已完成]` 为原 work 历史主张，不能作为当前验收结论。
 > 通过子项与提交均保留；当前缺口及 AC verdict 以
-> [R1 独立复审报告](reports/776-return-resource-review-r1.md) 为准。
+> [R2 独立复审报告](reports/776-return-resource-review-r2.md) 为准。R1已关闭原例保留，不重新抹去修复进展。
 
-- [x] **T-01：冻结表示与决策包**（无依赖；AC-01、AC-02、AC-03、AC-04、AC-05、AC-06、AC-07、AC-08；SD-01、SD-02、SD-03、SD-04、SD-05、SD-06、SD-07）
+- [ ] **T-01：冻结表示与决策包**（无依赖；AC-01、AC-02、AC-03、AC-04、AC-05、AC-06、AC-07、AC-08；SD-01、SD-02、SD-03、SD-04、SD-05、SD-06、SD-07）
   核查上述 producer/VM/Future/consumer 符号和最新 742 状态；最多比较两种受控表示，完成最小正反探针及全路径表，写 decision 报告和 proposed-spec-delta 草稿。验证：`cargo t plan776` 运行表示正反例；图中每路径有 actual producer/消费者，无未归属入口。若最小方案需整体 ABI 改写，按 §10 needs_replan。
   [✅ 已完成] 决策报告 `docs/plans/reports/776-return-resource-decision.md`（基线 5e21561d2）：方案 A（HeapObject 载体 + TAG_OBJECT/VmRef 现成双桥）冻结，方案 B（i64 位编码）按不可伪造性否决；§1 全路径表含 actual 符号行号（marshal 5597/5677/5719/5735、final_value_reply 5816、value_to_nv_via_task 5869、HTTP_RESPONSES 4803/5776/5789、sse_into_response 降级点、engine 8358 访问器、api_gen 5 处消费）；742 executing 状态确认。探针 `plan776_http_return_tests.rs`（worktree a142756c9）：`cargo t plan776` 3/3 绿（传播保身份/数字不可伪造/查表制对照）；SD-01..07 草稿在报告 §7。i64 编码事实修正：`try_encode_i64` 48 位内联 Option（非 encode_i64）。
-- [x] **T-02：资源 producer/访问器及值传播**（依赖 T-01；AC-01、AC-02、AC-05、AC-07；SD-01、SD-02、SD-05）
+- [ ] **T-02：资源 producer/访问器及值传播**（依赖 T-01；AC-01、AC-02、AC-05、AC-07；SD-01、SD-02、SD-05）
   改 `vm/ffi/stdlib.rs`、`musk_response_ctor.rs`、`axum_adapter.rs`、`http_server_file.rs`、`http_upload.rs` 必要生产点；按决策在 `vm/heap_object.rs`、`engine.rs` 与 native/codegen 最小适配。可新增 `vm/ffi/http_return_resource.rs`；保留旧源码及真实公共契约，所有传播不得猜整数。验证：`cargo check -p auto-lang` + `cargo t plan776` 身份/错 owner/代次/耗尽族通过。
   [✅ 已完成] 新增 `vm/ffi/http_return_resource.rs`（HttpReturnResource + HttpReturnKind 四族 + resolve_resource/_value + live 计数钩子 + 耗尽拒绝）+ `TypeTag::HttpReturnResource`。生产点切换：redirect（stdlib）、musk ctor push_response 族、Sse.into_response、file_response、upload receipt 5 处终值——全部 push 凭据对象；engine/native 零适配（传播桥现成，T-01 探针证明）；axum_adapter 无生产点未改。legacy int 面（http.response()+setter 链死面保留、client 句柄、6 wire 用例查表路径）原样。`cargo check -p auto-lang` 0 error；`cargo t plan776` 12/12 绿（身份/错owner/过期回收/单调id无复用/非资源对象拒识/传播/redirect+ok_response+file shim 接线）。worktree 提交 85eaddbe6（T-01 探针 a142756c9）；中间态：marshal 对象臂在 T-03 落地前旧 wire e2e 预期红。
-- [x] **T-03：统一成功终值编组**（依赖 T-02；AC-01、AC-02、AC-03；SD-02、SD-04）
+- [ ] **T-03：统一成功终值编组**（依赖 T-02；AC-01、AC-02、AC-03；SD-02、SD-04）
   `http_server.rs::marshal_handler_value/final_value_reply` 共用来源分派和 owned 回复构造；File/Upload 原执行器与 SSE producer 单源。验证：`cargo t plan776` 对照族；`cargo nextest run -p auto-lang --lib --features test-http-e2e plan776 --jobs 1` 碰撞/同步真 TCP 全绿，不新增另一套 SSE 输出循环。
   [✅ 已完成] marshal 顶部资源臂（resolve_resource → resource_claim_reply：Response 快照/Sse 校验+单源 serve/File+Upload take 移交与 mismatch 500）；final_value_reply 经 resolve_resource_value 与 sync 同分派；SSE serve 抽 sse_iterator_reply 单源（i32 查表臂与资源臂共用，无第二输出循环）。修正 Sse.into_response 的 0 哨兵误拒（首个 generator iterator id=0 合法）。e2e 新增真碰撞族（AC-01：活跃资源实际 id 同值普通 int → 200 JSON；资源未被消费仍 302）与常量重放族。验证：plan776 15/15 绿（含 2 wire）；plan326 http_e2e 34/34；全 e2e 扫 115/117——2 红=back_proxy 预存（corpora 单跑 master 基线同红实证、031 并行 flake 单跑绿，均非本 diff 面）。worktree 提交 1c64d7bee。调用形态事实：redirect 真实 wire 是 `http.response_redirect`（CALL_NAT，e2e_a_redirect 同款）；点链 `http.response.redirect` CALL_SPEC 形态主线预存静默 None（plan352 在案），不在本计划范围。
-- [x] **T-04：Future 值桥与错误终态**（依赖 T-03；AC-03、AC-04、AC-05；SD-03、SD-05）
+- [ ] **T-04：Future 值桥与错误终态**（依赖 T-03；AC-03、AC-04、AC-05；SD-03、SD-05）
   修 `engine.rs::FutureValue` 相关转换和 HTTP park/resume/async body 终值入口；typed 资源与完整 JSON 值域保留，Failed/缺失与成功 Nil 分开。验证：`cargo t plan776` + `cargo nextest run -p auto-lang --lib --features test-http-e2e plan776 --jobs 1` 三异步形态、失败、迟到/取消族通过。
   [✅ 已完成] `value_to_nv_via_task` 扩为完整值桥：I64 全宽（encode_i64_with_heap 48 位内联/BigInt 装箱）、VmRef 身份保持、Array/Obj 物化堆容器（materialized 清单，序列化后 retain+release 即用即弃）、不可转换 → None→500（不再静默 null）；`final_value_reply`：Failed/缺 result/不可转换 → `async_failure_reply` 有界 500，显式成功 Nil 保持 200 null；upload/file 声明门前移至物化前（直接匹配 Value::Int，与 is_i32(nv) 等价），提前 return 无物化残渣。engine 零改动（decode_tagged_nv 已有 VmRef 臂——async body RET 终值身份天然保留，事实核证）。验证：plan776 18/18 绿（新三 wire：async 资源终值 302、i64 全宽 5000000000、Failed→500）；plan705 e2e 9/9（park/取消/关闭迟到族无回归）+ plan734 e2e 4/4（i64 wire/plain int 反例）。redirect shim 事实：301/302 规范化（307 输入归 302）。worktree 提交 0298f9c94。
-- [x] **T-05：引用存活与 body 移交收口**（依赖 T-02/04；AC-04、AC-05、AC-06；SD-01、SD-04、SD-05）
+- [ ] **T-05：引用存活与 body 移交收口**（依赖 T-02/04；AC-04、AC-05、AC-06；SD-01、SD-04、SD-05）
   在资源持有点、请求 scope、SSE/File/Upload 移交与 shutdown 处理终结；必要修改 `http_stream.rs`，不清空其他 owner 或逃逸常量。验证：`cargo t plan776` 1000 次闭环及错误反例；`cargo nextest run -p auto-lang --lib --features test-http-e2e plan776 --jobs 1` 重复常量与断连/慢消费/取消矩阵，实际存活数归零至基线。
   [✅ 已完成] **发现并修复既有泄漏模式**：dispatch 双点（sync `HandlerEnd::Value` / parked `HResume::Value`）pop_nv 只读、remove_task 不清栈 rc——handler 返回的堆对象恒泄漏 1 引用（凭据 live 计数使其可见）。修复：Reply 编组后 `vm.rc_release(nv)`（产物 owned：快照 clone/表 take/iterator id）。http_stream.rs 零改动（SSE 流生命周期 705/707 机制保留，cleanup 守卫原样）。File/Upload 表生命周期（scope 组收口/take）合同不动。验证：plan776 21/21 绿——1000 闭环 live 回基线（dying 8192 步宽限窗经工作循环 drain 跨过；`return 1` 式 drain 每请求仅 ~2 指令不足以跨窗，量化在案）、SSE 断连凭据回收（baseline 轮询归零）、rc 链路单测（push=1/release=0/reap_all 全收）、T-03 常量重放族。全 e2e 扫 120/122：back_proxy corpora 预存（master 同红）+ e2e_sse_chain 偶发（已知固定端口 harness race，单跑+两轮复跑全绿）。worktree 提交 89560b46b。
-- [x] **T-06：解析来源、strict 适配与消费者**（依赖 T-01/02；AC-07、AC-08；SD-02、SD-05、SD-06、SD-07）
+- [ ] **T-06：解析来源、strict 适配与消费者**（依赖 T-01/02；AC-07、AC-08；SD-02、SD-05、SD-06、SD-07）
   `api/contract.rs`、`api/types.rs`、`api/mod.rs::ApiExtractor` 与实际解析/导入路径与 `vm/native.rs`/codegen 维护 resolved 身份；`api/targets/*`、`back_proxy.rs`、`auto-man/src/api_gen.rs`/`rust_ui.rs` 消费同一来源，保持能力矩阵与 schema4 身份。与 742 重叠仅限返回合同。验证：`cargo t plan776` 同名/别名反例 + `cargo t plan755` + 原 738/751 scoped；`cargo test -p auto-man --lib plan776`（新增消费者族）与现行生成 fixture 实编/运行，通过且无模板替代业务体。
   [✅ 已完成] 三层冻结来源身份：(1) `ResponseKind::from_return_identity(ret, module_types)`（裸名命中模块声明=用户→Json；stdlib HTTP 词汇不注册 TypeStore，命中即用户）+ `ApiExtractor` 两遍提取（先收 struct/enum 名集后提取 endpoints，声明序无关）填 `ApiEndpoint.response`；(2) codegen `record_api_return_type` 处查 `TypeStore::contains_user_type`（struct+alias+enum）登记 `API_RETURN_SHADOWED`，VM 门 `fn_response_kind` 遮蔽优先；(3) back_proxy fn_meta 三段拼串（AST 直扫名集——该路径无前端 store），守卫/广播门解析。消费面切换：axum/tauri targets+typescript endpoint 位读 `endpoint.response`；`TypeScriptGenerator::with_types` 注入 to_ts_type；api_gen 5 处 + ts 生成入口注入。验证：plan776 24/24（提取级遮蔽 struct×2+enum、VM 门编译期遮蔽、wire 全族）、plan755 4/4、plan738 75/75、plan734 7/7、plan705 19/19；auto-man plan776 消费族 1/1 + api_gen 46/46 + plan734 2/2（生成 fixture 无回归；742 重叠面未触其业务体任务）。738 双指纹/751 三态单点未动（plan738 全量绿证）。worktree 提交 8586a6409。
-- [x] **T-07：完整 wire 与拓扑兼容矩阵**（依赖 T-03、T-04、T-05、T-06；AC-01、AC-02、AC-03、AC-04、AC-05、AC-06、AC-07、AC-08；SD-01、SD-02、SD-03、SD-04、SD-05、SD-06、SD-07）
+- [ ] **T-07：完整 wire 与拓扑兼容矩阵**（依赖 T-03、T-04、T-05、T-06；AC-01、AC-02、AC-03、AC-04、AC-05、AC-06、AC-07、AC-08；SD-01、SD-02、SD-03、SD-04、SD-05、SD-06、SD-07）
   新测试文件、tests.rs 登记及 755 有界启动工具；原 6 wire 用例保留；覆盖 VM 默认 named/closure 与现行 Rust/merged/IPC/back-proxy 消费面。验证：`cargo nextest run -p auto-lang --lib --features test-http-e2e plan776 --jobs 1`、原兼容族 scoped、生成实编真 TCP，矩阵每格明确 pass/受控拒绝，不使用手写响应冒充生成。
   [✅ 已完成] 测试文件头携带 AC→测试映射矩阵；新增 async 终值 record wire（VmRef 物化 + GenericInstance 序列化不降级）。矩阵扫揪出并修复 T-06 回归：back_proxy fn_meta 分类须用 **primary 首段**（display 段是 linear<…> 完整形态不可裸名匹配），遮蔽键同步改 primary——file-501 守卫恢复。验证：全量 e2e 123 项 121 绿（两红=back_proxy corpora 预存 master 同红 + plan724 sync-client 并行 flake 单跑绿）；plan442 axum Router 链 17/17（closure 面无回归）；plan776 25/25；legacy 6 wire 用例=plan326 http_e2e 34 项内含（T-03 已证 34/34）。生成实编真 TCP 归 T-08 门禁面（auto-man 触面 lib 测试已绿 46+1）。worktree 提交 d2a51bed4。
-- [x] **T-08：门禁、规范草稿与独立交接**（依赖 T-01、T-02、T-03、T-04、T-05、T-06、T-07；AC-09；SD-01、SD-02、SD-03、SD-04、SD-05、SD-06、SD-07）
+- [ ] **T-08：门禁、规范草稿与独立交接**（依赖 T-01、T-02、T-03、T-04、T-05、T-06、T-07；AC-09；SD-01、SD-02、SD-03、SD-04、SD-05、SD-06、SD-07）
   保存 `docs/plans/reports/776-return-resource-verification.md`、`776-return-resource-spec-delta.md`（新），绑定代码/依赖/fixture 输入版本，逐条 SD/AC 对账。实施树运行 `cargo check -p auto-lang`、裸 `cargo t`、`cargo tv`、触 trans 时 `cargo tt`、完整 `cargo th -j 1 --no-fail-fast`，及 auto-man 实际触面 lib 测试/生成实编；改动文件格式检查。沿用最新基线并分诊 back_proxy 在册红，不降低断言或掩盖超时。随后独立 `/auto-plan:review`，通过才交 `/auto-plan:merge` 沉淀 Specs/ledger 并守卫清树；到期 tf 由主检出单实例 `/auto-plan:regress`。不触 aavm；若实际 diff 触其映射则补相应 taa。
   [✅ 已完成] 两报告落盘（verification：门禁表+AC 逐条对账+红项分诊+边界清单；spec-delta：SD-01..07 逐条 before/after/证据）。门禁（实施树）：check 0 err；裸 `cargo t` **5295/5295**；`cargo tv` 162/162；`cargo th -j 1` **109/110**（唯一红=back_proxy corpora 预存，master `5e21561d2` 同红实证）；auto-man lib 350/357（7 红全部与 master 8 红等价：P751-D2 登记 3+742 在途 1+环境态 3——两树 desktop_roots 隔离同形）；scoped plan755 4/4+plan738 75/75+plan734 7/7+plan705 19/19+plan442 17/17；触面 18 文件 rustfmt 后干净。trans/aavm 零 diff（tt/taa 条件门禁不适用）。债务候选登记 KNOWN-DEBT（P776-D1 栈残留 RC 既有模式）。worktree 提交链 a142756c9..b4183e761（8 commits）。
 
 `cargo th` 为 nextest 滤串，串行参数使用 `-j 1`，不使用 libtest `--test-threads`。本次仅起草，不执行上述 Cargo 门禁。
 
 ## 9. 复审记录
+
+### 最终独立复审 R2（2026-10-14，连续第二次needs_fix）
+
+- stage: review
+- review_scope: final
+- reviewer_identity/limitations: 当前Codex会话独立于修复实施会话，延续R1审查上下文；无子agent或额外模型独立性声明。
+- plan_id: PLAN-776
+- plan_revision: 1（原语义合同保持；声明门和client非目标的未经批准缩减不接受）
+- outcome: needs_fix
+- worktree_path: D:/autostack/.wt/lang-776/auto-lang
+- branch: plan-776-dev
+- reviewed_commit: 6494092de6c33875b5e99f81491bb25815852b38
+- base_commit: 5e21561d2c303a02319ff7a29e4607933e09a38f；repair_diff_base=b4183e761199642aa341cfecd6491c1821c9e2e4。
+- dependency_revisions: 组内auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8（detached、clean）；738/751/755已交付，742仍在途，不替其验收。
+- spec_inputs: 当前主检出七个canonical与Plan/SD hash见 attachments/776/review-r2/input-hashes.json；输入Plan blob=3e5c51424e853ddb12b7f76a7cb24bb538c26eed。
+- reviewed_spec_delta: blob=debc28e4c80f5e73765846eeb16c495c1e0885a4；冻结副本 attachments/776/review-r2/reviewed-spec-delta.md；整体不通过。
+- acceptance_results: AC-01 fail；AC-02 fail；AC-03 partial；AC-04 fail；AC-05 fail；AC-06 fail；AC-07 partial；AC-08 fail；AC-09 fail。任务/代码/实际oracle见reports/776-return-resource-review-r2.md。
+- findings: F776-R2-01..08（5 P1、3 P2）：声明流普通数字仍变SSE；owner每128创建重复误取；setter返回丢份额UAF；nested异常泄漏；client Response变JSON裸id；bytes遗漏；stdlib alias/限定名未解析；完整矩阵/生成wire/format/SD缺口。
+- old_example_closure: R1-F02 dispatch数字释放门、F07 local耗尽、F08 Clone修复关闭；R1直接Internal/Err、用户alias-int/空声明、即时status、未声明数字碰撞原例通过。但R1-F01/03/04/05/06/09完整不变量未闭合，出现setter修复回归；旧证据/ID均保留。
+- evidence: R2报告；attachments/776/review-r2/probe.rs、reproduce.ps1、逐进程日志/基线hash；专项38/38、语料162/162、755四守卫、auto-man api_gen46绿；完整t5299/5300（donut命中区红，scoped绿）；完整th116passed/1在册corpora红/1multipart timeout；ffi/mod.rs format仍红，生成true TCP未成功不授权AC-08 pass。
+- reopened_tasks: [T-01, T-02, T-03, T-04, T-05, T-06, T-07, T-08]，各有已批准范围内未满足子项；current_step=0，保留所有已通过子项/修复提交，不重置最终复审轮次。
+- pending_closeout_gates: 先修实现与必需oracle并提交；Spec/ledger发布、归档、wt-guard清树、到期批量回归均merge-owned且待最终pass；此轮不merge/archive/cleanup。
+- baseline_recheck: 探针/门禁后HEAD仍为6494092de full SHA，实施树git status --porcelain为空；主检出其他计划的并发变更未触碰。
+- next: work，在同一lang-776树按R2 finding修复。连续两次最终复审失败，R3就绪前必须交付“剩余不变量→此前为何漏测→路径/状态/设计或oracle调整→当前结果”诊断，先核对完整闭合再进入最终复审；不得只增加旧例或降低原合同。
 
 ### 最终独立复审 R1（2026-10-13 开始，2026-10-14 记录）
 
@@ -249,6 +273,30 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 - blockers: 无
 - next: review（独立 /auto-plan:review；通过后 merge 沉淀 SD-01..07 与 ledger，守卫清树）
 - 备注：T-05 揪出并修复既有泄漏模式（dispatch pop_nv 不释放返回值 RC）；T-07 矩阵扫揪出并修复 T-06 back_proxy primary 段回归——两次自纠均在提交链内闭环。
+
+### R2 修复轮交接（2026-10-14，review-r2 needs_fix 后复修）
+
+- stage: work
+- plan_id: PLAN-776
+- plan_revision: 1
+- outcome: pass
+- code_commit: plan-776-dev 088e47823
+- task_ids: [T-01, T-02, T-03, T-04, T-05, T-06, T-07, T-08]
+- evidence: F776-R2-01..08 逐项闭合（下表）；plan776 **48/48**（R1+R2 全部反例复现 oracle）；裸 `cargo t` **5304/5304**；`cargo tv` 162/162；`cargo th -j 1` 123/124（唯一红=back_proxy corpora 预存在册）；SSE 4/4（indirect generator 恢复）；plan729/730/705/734/755 scoped 全绿；auto-man api_gen 46+1；全触面 rustfmt 干净（mod.rs 注释改独立行解循环冲突）
+- blockers: 无
+- next: review（R3 独立复审）
+
+**§5 诊断要求的路径/状态覆盖调整**（上轮为何漏 + 本轮调整）：
+
+| 剩余不变量 | 上轮漏因 | 本轮调整与 oracle |
+|---|---|---|
+| 逐值来源不依赖声明/表 | 声明门本身是新猜测形态（只测了未声明反例） | **身份在返回边界建立**：`call_fn_by_name_http`（generator 臂产 Sse 凭据）+ codegen 对 `~Iter/~Stream` handler 的 `return <generator-call>` 静态插 `WRAP_SSE_RESOURCE`(0xD5)——marshal int 臂不再授予 iterator 身份；oracle：declared-stream-plain-int（JSON）+ real-generator（SSE）+ indirect（SSE，plan326 恢复） |
+| owner 身份不复用 | 7 位掩码回绕（只测了相邻 VM） | owner 段 11 位**无掩码**：第 2049 个 VM 构造受控拒绝；oracle：顺序创建 2047 中间 VM + live-A 交叉验证 |
+| owned setter 返回值 | 只验证即时读 status | Plan 419 owned-slot 协议（实参消费释放+rc_push 影子重建）；oracle：单元 RC=1+跨窗解析 + e2e 9000 步跨窗 201 |
+| 终态释放所有持有路径 | 只扫顶层凭据槽 | 任务栈**全部堆对象槽**释放（父容器 dying 级联子 stakes，宽限窗复活保护逃逸）；oracle：Box{response}+1/0 11 请求回基线 |
+| HTTP 支持面没有缩减 | client 表面列非目标（与 Plan §1.4 冲突） | `push_handle_result` 凭据化（client 响应保留 status/body 进 egress）；oracle：本地上游 201+body 转发保真 |
+
+**F776-R2 修复对账**：R2-01 返回边界身份（双生产点包装+int 臂退役）｜R2-02 owner 11 位+双耗尽拒绝｜R2-03 setter owned-slot（5 setter 含 bytes）｜R2-04 容器级联清理｜R2-05 client egress 凭据化｜R2-06 bytes setter 迁移+roundtrip｜R2-07 alias target 展开+`http.` 限定名+back_proxy 双集｜R2-08 External 时延证据/harness 结果传回/plan705 门模式扩展/mod.rs fmt 根治。已知边界：closure 面 generator 分派（call_closure_segment）无现实用例，未包装（记录待察）；生成真 TCP 矩阵仍为预存编译漂移（master 同形，如实列未验证面——非本 diff 引入，归 742 轨收口）。
 
 ### R1 修复轮交接（2026-10-14，/auto-plan:work 复修）
 

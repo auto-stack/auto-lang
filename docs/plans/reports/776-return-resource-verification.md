@@ -98,3 +98,40 @@ aavm 零触发（`packages/aavm/**`、`test/vm/aavm2/**`、`test/parity/**` 无 
   扫栈）。
 - 已知边界更新：owner 段 7 位（进程内 128 VM 后回绕——防御与通用段 2^48 回绕
   同级）；client 句柄返回=JSON 数据（查表退役后的行为变化，无 wire 用例依赖）。
+
+---
+
+## R2 修复轮（2026-10-14，review-r2 needs_fix 后复修）
+
+代码提交：`088e47823`。逐项闭合 F776-R2-01..08，§5 诊断表与修复对账见 Plan
+文件"R2 修复轮交接"。门禁重跑：
+
+| 门禁 | 结果 |
+|---|---|
+| 裸 `cargo t` | **5304/5304 全绿**（91.7s；一次中间跑的 plan484/plan716 红单跑绿=日常间歇 flake） |
+| `cargo tv` | 162/162 |
+| `cargo th -j 1 --no-fail-fast` | **123/124**；唯一红=back_proxy corpora（master 预存在册） |
+| plan776 全族（R1+R2 复现） | **48/48** |
+| SSE 族（含 indirect generator） | 4/4（generator 身份在返回边界建立后恢复） |
+| plan729/730/705/734/755 scoped | 全绿（plan705 调用图门扩认 `_http` 变体） |
+| auto-man | api_gen 46+1 ignored；plan776 消费 1/1 |
+| rustfmt --check 全触面（含 mod.rs） | 干净（mod.rs 注释改独立行解 rustfmt 行尾注释循环合并） |
+
+修复要点（相对 R2 审查基线的合同收敛）：
+- **iterator 身份只在返回边界建立**（R2-01 终形）：generator 生产点两个——
+  `call_fn_by_name_http`（handler-是-generator 的 dispatch 臂）产 Sse 凭据；
+  codegen 对 `~Iter/~Stream` handler 的 `return <generator fn 调用>` 静态插
+  `WRAP_SSE_RESOURCE`(0xD5)。marshal int 臂不再授予 iterator 身份——声明/
+  表命中/数值全部不构成来源（R2 反例 `fn p() ~Iter { return 0 }` → JSON 0）。
+- owner 段 11 位无掩码（R2-02）：第 2049 个 VM 受控拒绝；id 层校验先行。
+- setter 族（5 个含 bytes）owned-slot 协议（R2-03/06）：实参份额消费释放、
+  返回槽 rc_push 影子重建——9000 步跨窗 wire oracle 锁 UAF 修复。
+- 任务终态清偿扩到全部堆对象槽（R2-04）：容器父份额释放→dying 级联子
+  stakes；逃逸/共享经宽限窗复活保护。
+- client Response 进 egress 边界（R2-05）：`push_handle_result` 凭据化，
+  上游 status/body 保真转发。
+- alias 按 target 解析 + `http.` 限定名（R2-07）：`type Download =
+  FileResponse` → File；alias→用户名 → Json；back_proxy 双集（直接声明 +
+  alias→target 表）。
+- 未验证面如实记录：生成真 TCP 矩阵=预存编译漂移（master 同形）；closure
+  面 generator 分派无现实用例未包装（待察）。
