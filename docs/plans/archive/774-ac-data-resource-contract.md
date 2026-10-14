@@ -280,10 +280,10 @@ next: 获得合入授权后 `/auto-plan:merge` 原唯一树交接，合入前复
 | landed | rebase 17/17 零冲突，range-diff 全 `=`（旧→新：c713aaafb→1a6f44ea4、3f09c3a1a→930d05fae）；master `--ff-only` 落地，tip=930d05fae=delivery；主检出门禁复跑 8/8 全绿 |
 | ledger_refreshed | `.autoos/specs.json`（tracked）guarded offline projection：字节级备份、indent=1 格式保真往返、手术 diff 59+/1−（唯一删除=version 行）、version 9→10、新增 P774-1/P774-R6/P774-M/P774-T（designs/reviews/reports/tests，均带 file+tags）、六节 schema 读回校验；通道=离线投影（无 store writer，PLAN-720 先例） |
 | archived | 本文件 git mv 至 docs/plans/archive/，status archived，8/8；module plans.md 行 + INDEX 已随 delivery 提交 |
-| cleaned | 见下（清理后回填） |
+| cleaned | wt-guard clean（无 reparse point）；plan-774-dev=930d05fae 全量在 master（merge-base --is-ancestor 验证）；worktree/branch/组目录已移除（.wt 仅余 lang-742/773/776） |
 
 生产工件观察：本计划交付为探针 workspace + 文档 + 门禁脚本，无 backend/daemon/web bundle 等生产消费面——无 stale 生产工件。
-批回归判定：见待澄清事项更新。
+批回归判定（2026-10-14T00:12Z）：收据 766@2026-10-12T04:08Z，年龄 44h04m < 48h；766 后无 5 整除计划落地（774%5=4；770/771/776/742/777/778 均 active 未合）→ **未到期**，不触发 /auto-plan:regress。
 
 ## 10. 待澄清事项
 
