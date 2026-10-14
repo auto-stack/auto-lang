@@ -2,7 +2,7 @@
 
 - 计划：PLAN-770 r2 · T-01..T-07（work 阶段，AC-01..06 证据）
 - 工作树：`D:/autostack/.wt/lang-770/auto-lang` @ `plan-770-dev`
-- 基线：工作树基面 `e849e06f9`（= master）；本收据时 HEAD `c4e169cec`（F-01 返工提交；r1 复审受审基线为 a87de0bd7）
+- 基线：工作树基面 `e849e06f9`（= master）；本收据时 HEAD `e81d649ac`（r2 返工提交；r1 受审基线 a87de0bd7、r2 受审基线 5061c20a9）
 - 日期：2026-10-14
 - 性质：**语言面真实 native 编译收据**（source/HIR → 真实 PE，runtime 真实
   分配/复制/释放）；不是完整 Auto 编译器，不宣称 ACC Gen1。
@@ -26,10 +26,10 @@
 | 命令 | 期望 | 实际 | 收据 |
 |---|---|---|---|
 | `cargo check --manifest-path experimental/ac-core/Cargo.toml --locked --all-targets` | 零错误零警告 | PASS | gate 原始输出 |
-| `cargo test --manifest-path … --locked`（ac-core 全套 18 二进制） | 全绿 | **200/200**（含 text_native 19、text_resources 10、text_hir 16、text_source 10、text_binding 11；旧面 scalar_native 8/source_native 10/native_execution 11 等逐位保持） | raw core-test.txt |
+| `cargo test --manifest-path … --locked`（ac-core 全套 18 二进制） | 全绿 | **218/218**（含 text_review_r2 18、text_native 19、text_resources 10、text_hir 16、text_source 10、text_binding 11；旧面 scalar_native 8/source_native 10/native_execution 11 等逐位保持） | raw core-test.txt |
 | `cargo fmt --manifest-path … --check`（ac-core 与 runtime/text 两处） | clean | PASS | gate |
 | `cargo check/test --manifest-path experimental/ac-core/runtime/text/Cargo.toml --locked` | 全绿 | **20/20**（fault 6、lifecycle 5、smoke 2、textops 4、trap 2、contract 1） | raw rt-test.txt |
-| `powershell … scripts/verify-ac-text-770.ps1` | 13 步全绿 | **PASS**（check/test/fmt ×2 + 旧 gates 741[-SkipMainGates]/745/767 + scope 隔离 + 库/合同指纹；**绑最终 HEAD c4e169cec**，F-02 处置） | `experimental/ac-core/target/ac-verify-receipts/770/gate-20261014-124436.txt` |
+| `powershell … scripts/verify-ac-text-770.ps1` | 13 步全绿 | **PASS**（check/test/fmt ×2 + 旧 gates 741[-SkipMainGates]/745/767 + scope 隔离 + 库/合同指纹；**绑最终 HEAD c4e169cec**，F-02 处置） | `experimental/ac-core/target/ac-verify-receipts/770/gate-20261014-143045.txt`（r2 返工提交 e81d649ac） |
 | `powershell … scripts/verify-ac-741.ps1 -SkipMainGates` | 全步 PASS | PASS（8.2s） | 同上内嵌 |
 | `powershell … scripts/verify-ac-source-745.ps1` | 全绿 | PASS（37.2s） | 同上内嵌 |
 | `powershell … scripts/verify-ac-scalar-767.ps1` | 全绿 | PASS（21.8s；覆盖 772 修复面） | 同上内嵌 |
@@ -51,6 +51,7 @@
 | V-07 顺序 | text_native::v07_mark_wrapped_concat_args_comparison_and_short_circuit（冻结 oracle：mark_a/b 包装 concat/位置实参/命名映射/比较/短路+被跳过侧零 trace 零分配，source 腿）+ v07_mark_wrapped_order_direct_hir_leg（直 HIR 腿 n02-order-marks.atom：绑定映射换序证明）；trace marks 以纯 COFF 对象与文本运行时共链（F-01 路径 A，见 §5.1） | 全绿 |
 | V-08 静态/来源 | text_source：非法转义/标量/多字符 char 词法拒、CRLF 跨行、遮蔽（len 同名用户函数）；未执行分支静态合法性 | 全绿 |
 | V-09 规模 | v09_concat_chain_4096（exit 4096；4095 CONCAT/FREE 逐对）、v09_resource_loop_4096（exit 16384；每轮 1 分配 1 释放）、v09_call_chain_4096_with_text_args（借用视图跨 4096 帧） | 全绿 |
+| r2 重放集 | text_review_r2 18 测试：p01..p09/c02..c08/mut01/mut02（QA-01..07 全覆盖；source PE 精确 trace 唯一 FREE 无 FREE-INVALID + HIR 变异腿证通道共享 verify 门）；QA-08 锁文件入库 | 全绿 |
 | V-10 集成 | verify-ac-text-770.ps1 13 步（三旧 gates 实跑 PASS=旧制品面保持；scope 隔离=无 crates/test 越界=strict acc_inventory 前提）+ v10_contract_gate_rejections + v10_rejecting_build_preserves_sentinels（SENTINEL 三件保持） | 全绿 |
 
 ## 4. 发现并修复的实现问题
