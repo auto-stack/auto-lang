@@ -173,10 +173,12 @@ fn r9_c06_outside_loop_return_move_legal() {
 
 #[test]
 fn r9_constant_terminated_break_move_legal() {
-    // composed matrix: a zero-re-entry loop terminated by a CONSTANT break
-    // also allows the single transfer of an outer owner (the r8
-    // const-aware termination composed with the r9 pre-kill gate)
-    let src = "fn consume(move s Str) int { return s.len() } fn main() int { let x Str=\"abc\"; var i int=0; for i<1 { let n int=consume(x.move); if true { break }; i=i+1 }; return 0 }";
+    // composed matrix: a zero-re-entry loop terminated by a CONSTANT
+    // break allows the single transfer of an outer owner. The wrapper
+    // condition must itself be provably true: a dynamic condition keeps
+    // the zero-iteration break exit alive, making the responsibility
+    // MIXED (r10 rejects that shape — see text_review_r10)
+    let src = "fn consume(move s Str) int { return s.len() } fn main() int { let x Str=\"abc\"; var i int=0; for true { let n int=consume(x.move); if true { break }; i=i+1 }; return 0 }";
     both_legs("const-break-move", src, 0, MOVE_TRACE);
 }
 

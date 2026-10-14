@@ -1921,25 +1921,70 @@ impl<'a> ResourceWalk<'a> {
                             // Dead/backing union only: sound and consistent
                             // with the join model; the parent's own live set
                             // stays authoritative.
+                            // r10 R10-01: the after-loop CLEANUP duty of
+                            // an entry-live owner follows the if-join rule,
+                            // decided per incoming state — the exits that
+                            // actually reach this join are the natural
+                            // completion (only when a real back edge
+                            // exists) and every BREAK exit (the wrapped
+                            // for's zero-iteration path arrives as its
+                            // condition-false break state). RETURN exits
+                            // target the function and never reach here.
+                            // Live on every incoming exit: this frame keeps
+                            // the free duty. Dead on every incoming exit:
+                            // the transfer happened on all of them — drop
+                            // the duty (freeing again would double-free the
+                            // callee-owned value). MIXED: no single static
+                            // responsibility exists — reject, exactly like
+                            // the if-join (r2 QA-03's maybe-transfer rule).
+                            // A dead-any union (the r9 form) dropped the
+                            // duty on zero-iteration / break-before-move
+                            // paths too and LEAKED the never-transferred
+                            // buffer.
+                            let mut incoming: Vec<&WalkState> = Vec::new();
+                            if body_falls_through {
+                                incoming.push(&body_st);
+                            }
+                            for (kind, st) in &exits {
+                                if *kind == ExitKind::Break {
+                                    incoming.push(st);
+                                }
+                            }
+                            if !incoming.is_empty() {
+                                let entry_owners: Vec<u32> =
+                                    frame.st.live.keys().copied().collect();
+                                for l in entry_owners {
+                                    let live_cnt = incoming
+                                        .iter()
+                                        .filter(|st| st.live.contains_key(&l))
+                                        .count();
+                                    if live_cnt == incoming.len() {
+                                        // live on every after-loop path:
+                                        // this frame keeps the free duty
+                                    } else if live_cnt == 0 {
+                                        frame.st.live.remove(&l);
+                                    } else {
+                                        self.error(
+                                            "verify.ownership-required",
+                                            format!(
+                                                "owned local `{}` is moved or dropped on some paths out of this loop but still owned on others; the after-loop cleanup responsibility is inconsistent (transfer on every path, or none)",
+                                                self.local_name(l)
+                                            ),
+                                            self.body.blocks[body_bid as usize].span,
+                                        );
+                                    }
+                                }
+                            }
+                            // r5 R5-02: the after-loop READ state merges the
+                            // natural-completion state and every target
+                            // exit (break — left the loop; continue — can
+                            // still leave via a later failing condition).
+                            // Dead/backing union only: conservative for
+                            // reads; the responsibility decision above is
+                            // what governs frees.
                             let mut states = vec![body_st];
                             states.extend(exits.into_iter().map(|(_, st)| st));
                             merge_children(&mut frame.st, &states);
-                            // r9 R9-01: an entry-live owner whose DEATH
-                            // (a real move/drop on any path reaching the
-                            // after-loop state) merged through the loop
-                            // loses this frame's free duty — freeing it
-                            // again would double-free the transferred
-                            // value (the callee owns it now). The union is
-                            // conservative, mirroring the if-join's
-                            // responsibility rule: a maybe-transfer reads
-                            // as dead afterwards (post-loop uses reject,
-                            // post-loop exits never free).
-                            let entry_owners: Vec<u32> = frame.st.live.keys().copied().collect();
-                            for l in entry_owners {
-                                if frame.st.dead.contains_key(&l) {
-                                    frame.st.live.remove(&l);
-                                }
-                            }
                             loops.truncate(frame.loops_len);
                         }
                         RState::Run => unreachable!("Run is not resumed"),
