@@ -86,6 +86,17 @@ V-01（真实定位/正面积）→ §3 公式 + §1 观测面；V-02（寻址/�
 
 ## 7. 修订记录
 
+**2026-10-14 r5（T-04 实施期勘定，vue 轨落地）**：
+
+1. **滚动原语实现形态（§4 修订）**：冻结稿写 `scrollIntoView({block:'nearest'})`——实施改用 **pane 作用域的 §3 公式直算**（`__sctlToChild(e, t)`：视觉坐标 `dv = tr.top − (pr.top + e.clientTop)`，三分支 `h>vh‖dv<0→顶对齐 / dv+h>vh→底对齐 / 不动` + `[0, scrollHeight−clientHeight]` clamp，只写 pane.scrollTop）。原因：scrollIntoView 按规范会级联滚动**全部**可滚祖先，直接违反 V-04「无跨 pane 滚动」；且高于视口目标的 nearest 浏览器实现与冻结公式（顶对齐=起始区域可见）存在偏差面。属 §5「不以实现细节对齐」边界内的实现选择，观测合同不变——真实路径探针顶对齐/底对齐/已可见三分支像素级通过（p40.top=pane.top=48.0、p115 底对齐 targetBottom=paneBottom=800.0、重复定位零漂移）。
+2. **同 pane 重复 key 的 DOM 解析**：iced 采集器 `bounds.insert` 按遍历序后写覆盖 = **文档序最后一个**生效；vue 端用 `querySelectorAll(...)` 取 last 对齐（`querySelector` 的 first 语义不对齐）。
+3. **vue 轨无 pending 窗口（§2 状态机的 vue 映射）**：`.Init` → onMounted（DOM 已挂载）后同步解析——回执 `queued` 返回时滚动已生效，`applied 即回执后 DOM 就绪`（§4 预期成立）；pane 缺席 = `invalid:not_bound`、key 缺席 = `invalid:not_found`，一次性不重试（与内容代际语义同形）。`unmeasured`/pending 是 iced 布局时序概念，vue 轨不存在。
+4. **managed 桥 vue 轨判据**：`scroll-test-content` 元素发射 `data-scroll-managed="1"` 标记；`scroll_to_child` 见 pane 内此标记即回 `error:unsupported`（与 iced 入队拒绝同形，V-06 vue 覆盖面）。
+5. **schema 面（S001 消除）**：`scroll-anchor` 按 §1「可挂任意元素」登记进 `validators.rs` 的 `UNIVERSAL_PROPS`（DSL 级通用属性，class/style/ref 同位）；不逐元素登记。
+6. **既有泄漏顺带修复（真实路径探针发现，PLAN-656 遗留）**：plain 路通用 v-bind 臂对 scroll 族 `controller` 重复发孤儿 `:controller` 绑定（Vue 会落成 DOM attribute）——已跳过（该 prop 已由 `:data-scroll-ctl` 特例消费）。
+7. **动态锚点 key**：静态字面量 → `data-scroll-anchor="k"` 静态 attr；动态表达式（Ident/for 循环键）→ `:data-scroll-anchor` v-bind（对应 iced `extract_string_with` 的绑定解析面）；空/不可解析 = R013 告警不发射（`maybe_wrap_scroll_anchor` stderr 告警同形）。
+8. **helper 注入面与类型纪律**：锚点函数族（公共 `scroll_to_child`/`scroll_anchor_state` 蛇形名直通 + 决策命名内核 `__sctlToChild`/`__sctlAnchorState` + store `__sctlAnchorStates`）并入 `scroll_ctl_helpers_needed` 块——任何 controller 在场即注入，保证无锚点标记的 to_child 探测调用也得到 `invalid:not_found` 而非全局桩抛错。TS 注解全量（p701 纪律：参数/返回/`as string | undefined` 收窄，TS2367 规避）；JS 模式零类型泄漏；真实工程 `vue-tsc --noEmit` 零错。native sig 映射实证：natives.d.ts 注册表驱动声明 + 组件内同名函数遮蔽 natives.ts 全局桩（PLAN-656 族机制）。
+
 **2026-10-14 r4（T-03 实施期勘定，worktree commit f75b32e31）**：
 
 1. **id 撞号（勘定+修复）**：99xx 静态带之外还有两路动态占用——stdlib `#[vm]` 声明计数器（从 100 爬升，现已到 99xx 带，`http.Request.method` 实占 9923）与动态 shim 分配器（10000 起）。静态目录行必须同步补 **NATIVE_ID_ENTRIES 避让表**（2939/9906 先例成文规律），否则声明计数器占号后被静态 shim 覆写（STDASSEMBLY.SIGNATURE_UNVERIFIED）。

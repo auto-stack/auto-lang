@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
-current_step: 8
+current_step: 9
 total_steps: 18
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -214,7 +214,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [✅ 2026-10-14] worktree commit 65ddc5d2f。按接口决策落地：geometry.rs `nearest_child_offset`（冻结三分支公式 + NaN target 保持 offset 的 total 语义）；controller.rs 锚点请求表（(handle,key) 寻址/重复入队覆盖重 pending）、绑定代际（换绑 → 旧请求 invalid:not_bound）、managed 标记（入队拒 unsupported）、`resolve_anchor_requests`（当帧 key→(y,h) rect 折叠为 finals scroll_to 终态，未预热沿 F-4 晚一拍）；intent.rs 未改（决策 §4：纯 offset 语义不污染）；native 9922/9923（ui+无ui 降级臂，id 实勘 9906–9921 全占）；`View::ScrollAnchorMark` 零布局 wrapper（vtree/snapshot/coverage 全透传——MCP 寻址零扰动，8 处转换臂）；aura_view_builder 双入口（tracked/untracked）薄包装 `maybe_wrap_scroll_anchor`（空 key=告警不包装）。门禁：`cargo t scroll` **68/68**（新增 5 个生命周期单测 + nearest 分支 + builder 包装测试）；`cargo t plan781` 15/15。
 - [x] T-03: owner_stage=work；依赖T-02；在ui/iced/renderer.rs及必要layout operation（新文件明确登记）按真实目标布局消费意图，保留ScrollStateReader回声；原生fixture验V-01~06。AC-01/02/03。
   [✅ 2026-10-14] worktree commit f75b32e31。新文件 `ui/iced/scroll_anchor.rs`（mod 登记）：ScrollAnchor 零布局 wrapper（operate 期合成 id `scrollanchor:{pane}:{key}` 上报最终位置 bounds）+ AnchorBoundsCollector（Vec entry 形态——元组键 HashMap 不可 JSON 序列化，实测定罪）+ 双路 stash 齐备即解析 + finals 经既有 `__mcp_scroll` 通路落盘（写臂投影纪律）。`render_dynamic_view` 补路径透传臂（缺臂时子树落入无 ctx 泛型转换、整个子树丢 vnode id——消元法实锤）；convert_scroll 双臂 `inject_anchor_pane` 后置填 pane（嵌套 pane 停）。实施期三处勘定：① native 9922/9923 撞号——动态 #[vm] 声明计数器已爬到 99xx 带（http.Request.method 占 9923，2939 先例）→ 补 NATIVE_ID_ENTRIES 避让行；② 句柄语义勘误——任意非空串合法（Reader 裸串先例），bad_handle 仅空串；③ **可见性公式勘误（决策报告 r4）**——采集 bounds 已 pane 锚定含 viewport 原点，窗口化 = 仅减 offset（旧公式 +vy 双重计数，正例容差曾吸收、边界对齐目标 3px 出窗暴露）；单测与 v11 病例算术同步。另修 MCP scroll 动作对 controller pane 落空（VNodeProps::Scrollable 带 controller 键，改发 `scroll_ctl_{key}`）。scroll-geometry fixture 升级（controller + 行锚 + Go/Query 按钮）；驱动 v_anchor_native 11 项全绿（queued→产品定位→正面积可见→applied；底部段；invalid:not_found 且 offset 不动）。**全默认集 12/12 exit 0**；scroll 68/68、plan781 15/15、mcp_server 29/29。
-- [ ] T-04: owner_stage=work；依赖T-02；ui_gen/vue.rs生成绑定/helper，必要schema修改与golden同步；真实plain及Reader实际使用样式路径验证，无DOM类型泄漏。AC-01/02/03。
+- [x] T-04: owner_stage=work；依赖T-02；ui_gen/vue.rs生成绑定/helper，必要schema修改与golden同步；真实plain及Reader实际使用样式路径验证，无DOM类型泄漏。AC-01/02/03。
+  [✅ 2026-10-14] vue 轨 parity 落地：`scroll-anchor` → `data-scroll-anchor`（静态 attr / 动态 v-bind 双形态，plain props 循环 + shadcn generate_shadcn_attrs 单点 + passthrough 防双发）；helper 族并入 scroll_ctl_helpers_needed 块（公共 `scroll_to_child`/`scroll_anchor_state` + 决策命名内核 `__sctlToChild`/`__sctlAnchorState`，回执/状态语义与 controller.rs 注册表一一镜像）；`scroll-test-content` 桥发 `data-scroll-managed` 标记（unsupported 判据）；schema 面 = `scroll-anchor` 登记 validators.rs UNIVERSAL_PROPS（S001 消除实证）；顺带修 plain 路孤儿 `:controller` 泄漏（PLAN-656 遗留，真实路径探针发现）。golden 同步：无既有 golden 受影响（test/a2vue 无 scroll controller 面），行为由新 3 单测锁定（attr 双路径/TS 注解/JS 零泄漏/managed 标记）。**真实 plain 路径验证**：scroll-geometry fixture 以 render:"vue" 经重建 auto.exe 起 dev server（plain Tailwind 生成器 + select markers，即 Reader render:"vue" 同款路径），Playwright 探针 **9/9**（attr 面 120 锚点零泄漏、queued/applied/invalid:not_found 回执语义、底对齐像素级 targetBottom=paneBottom=800、顶出分支顶对齐 p40.top=pane.top=48、已可见零漂移、零祖先滚动 winY=0、零页面错误；证据 D:/p781-t04/out/{probe_results.json,vue_plain_anchor.png}）；`vue-tsc --noEmit` 零错（无 DOM 类型泄漏的严格构建实证）；natives.d.ts/natives.ts sig 映射实证（注册表驱动声明 + 组件内遮蔽）。门禁：cargo tu **865/865**、裸 cargo t **5293/5293**（触面=ui_gen，无 VM/trans/book/aavm/HTTP 触面）。勘定记录见接口决策报告 §7 r5（scrollIntoView→pane 作用域公式直算等 8 项）。
 - [ ] T-05: owner_stage=work；依赖T-03/04；新增examples/capability-tests/p781-scroll-child-anchor/与配套双端驱动（新）；完成全矩阵、分级门、负例失败传播、当前帧几何/截图/CLI hash。AC-01/02/03。
 
 ### 阶段 C：有限预算与10MiB导入
@@ -248,6 +249,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 2026-10-14 work（T-12）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=278a65aa4 | code_commit=649fad2f7 | dependency_revisions=同上 | task_ids=T-12 | evidence=save-restore fixture + 驱动 v08_save(8)/v09_cold_restore(7)/v08_reader_current_state(记录例) + 全默认集 10/10 exit 0 + 证据包 D:/p781-t12/out + 决策报告 §12 修订 r3（4 项通道事实） | blockers=无新增（Reader 现状已按 AC-08 以框架正对照证明通道 + 记录例路由 001） | next_responsible_role=work（T-13：完整 V-07~V-13 required 门 + 变异/失败传播 + 人工几何/截图核查 + 触面分级门）
 
 2026-10-14 work（T-13，阶段 A 收口）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=649fad2f7 | code_commit=c724ae25c | dependency_revisions=同上 | task_ids=T-13 | evidence=v13_anchor_interop(4) + owned 端口 sweep + 全默认集 11/11 exit 0（证据包 D:/p781-t13/out）+ 注入失败独立调用 rc=2 + 截图人工核查（v09/v10 经图像分析）+ 裸 cargo t 5286/5286 | blockers=无 | next_responsible_role=work（阶段 B 起步：T-01 锚点接口冻结——核对 AURA/DSL 布局几何与在途 native 热点，产出 781-interface-decision.md；T-02~05 随后）
+
+2026-10-14 work（T-04）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=f75b32e31 | code_commit=1042beeb3 | dependency_revisions=同上 | task_ids=T-04 | evidence=vue.rs 双路径 attr/helper + validators.rs UNIVERSAL_PROPS + 新 3 单测 + cargo tu 865/865 + 裸 cargo t 5293/5293 + 真实 plain 路径 9/9 探针（D:/p781-t04/out）+ vue-tsc --noEmit 零错 + 决策报告 §7 r5（8 项勘定） | blockers=无 | next_responsible_role=work（T-05：examples/capability-tests/p781-scroll-child-anchor/ + 配套双端驱动全矩阵 V-01~06）
 
 ## 10. 待澄清事项
 
