@@ -86,6 +86,14 @@ V-01（真实定位/正面积）→ §3 公式 + §1 观测面；V-02（寻址/�
 
 ## 7. 修订记录
 
+**2026-10-14 r6（T-05 双端矩阵实施期勘定——三项框架缺陷修复，冻结合同语义澄清）**：
+
+1. **gen-0 请求收养（§2 语义澄清 + 修复）**：入队于任何绑定之前（generation=0，Init 先发目标形态）的请求，因首次 bind 的 0→1 自增被误判换绑 → invalid:not_bound（实机矩阵 v03_init_state_applied 红）。修复：`resolve_anchor_requests` 对 gen==0 的请求采用**当前**绑定（首绑或其后的现状）——冻结合同 §2「请求首次可在布局前发出，等待当前绑定的有效布局后消费」的落地面；gen≥1 请求仍严格校验换绑（既有单测保持）。新增单测 `plan781_anchor_pre_bind_request_adopts_first_binding`。
+2. **managed 标记接线（T-02 机制缺口）**：`mark_controller_managed` 此前**零生产调用**（仅测试）——9922 的 unsupported 合同在原生轨从未生效（回执 queued）。修复两处：(a) upsert 形态（标记先于首次 bind 时不再丢失）；(b) renderer 双臂（泛型 + 动态）在 controller pane build 期以 `content_is_managed_bridge` 有界递归判定（穿透 Container/Column/Row/AnchorSlot/ScrollAnchorMark/MouseArea 包装；**不进嵌套 Scrollable**——内层 managed 归属内层 controller）。
+3. **驱动时序经验（非缺陷）**：原生腿状态查询经 drain/prime 节拍（≤2s 心跳）有真实 pending 窗口——驱动用 expect_receipt 轮询而非一次性读；换章后新 pane 需 F-4 预热（首按可能晚一拍），矩阵断言以 visibility 终态为准。
+
+**双端矩阵结果（V-01~06 全通过）**：原生腿 41/41（`autoui_visibility` 几何 oracle + 按 controller 读 offset），Vue 腿 43/43（data-scroll-anchor 直达几何 + mouse.wheel 真滚动）。证据 `D:/p781-t05/out/{vm_report.json,vue_report.json,vm_final.png,vue_final.png}`，CLI sha256=93d14ed5…（worktree 重建产物）。跨腿一致点：顶对齐（原生 inter_y=vp_y / vue targetTop=paneTop）、managed error:unsupported、不回拉（vue 真滚轮 anchor=2706→user=1806 稳定）、跨 pane 零串线、重复 key last-wins。
+
 **2026-10-14 r5（T-04 实施期勘定，vue 轨落地）**：
 
 1. **滚动原语实现形态（§4 修订）**：冻结稿写 `scrollIntoView({block:'nearest'})`——实施改用 **pane 作用域的 §3 公式直算**（`__sctlToChild(e, t)`：视觉坐标 `dv = tr.top − (pr.top + e.clientTop)`，三分支 `h>vh‖dv<0→顶对齐 / dv+h>vh→底对齐 / 不动` + `[0, scrollHeight−clientHeight]` clamp，只写 pane.scrollTop）。原因：scrollIntoView 按规范会级联滚动**全部**可滚祖先，直接违反 V-04「无跨 pane 滚动」；且高于视口目标的 nearest 浏览器实现与冻结公式（顶对齐=起始区域可见）存在偏差面。属 §5「不以实现细节对齐」边界内的实现选择，观测合同不变——真实路径探针顶对齐/底对齐/已可见三分支像素级通过（p40.top=pane.top=48.0、p115 底对齐 targetBottom=paneBottom=800.0、重复定位零漂移）。
