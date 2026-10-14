@@ -3884,6 +3884,77 @@ if ((window as any).__AUTO_UI_THEME__ === 'light' || (window as any).__AUTO_UI_T
                 st = sig("scroll_to", &format!("{k}, {a}, {b}"), "void"),
                 ss = sig("scroll_state", k, state_ret_t),
             ));
+
+            // PLAN-781 T-04: 子内容锚点族（9922/9923 的 vue 轨运行面）。
+            // 语义与 controller.rs 注册表一一镜像：回执 queued / error:<reason>
+            //（bad_handle/empty_key/unsupported——managed 桥经 pane 内
+            // data-scroll-managed 标记识别）；状态查询 applied /
+            // invalid:<reason> / unknown。Vue 轨 DOM 同步——回执返回时滚动
+            // 已生效（.Init → onMounted 后 DOM 在场，无 iced 的布局 pending
+            // 窗口；pane 缺席 = not_bound、key 缺席 = not_found，一次性不
+            // 重试，与内容代际语义同形）。__sctlToChild = 决策报告 §3 冻结
+            // 公式的视觉坐标形态（scrollIntoView 会级联滚动全部可滚祖先，
+            // 违反 V-04 无跨 pane 滚动——r5 修订）；同 pane 重复 key 取文档
+            // 序最后一个（iced 采集器 HashMap 后写覆盖同构）。
+            let (k2, key2, s2) = if self.use_typescript {
+                ("k: string", "key: string", "s: string")
+            } else {
+                ("k", "key", "s")
+            };
+            let (e2, t2) = if self.use_typescript {
+                ("e: Element", "t: Element")
+            } else {
+                ("e", "t")
+            };
+            let store_t = if self.use_typescript {
+                ": Record<string, string>"
+            } else {
+                ""
+            };
+            let maybe_t = if self.use_typescript {
+                " as string | undefined"
+            } else {
+                ""
+            };
+            script.push_str(&format!(
+                r#"const __sctlAnchorStates{store_t} = {{}}
+{an} {{ __sctlAnchorStates[k + '\u0000' + key] = s }}
+{tc} {{
+  const pr = e.getBoundingClientRect()
+  const tr = t.getBoundingClientRect()
+  const dv = tr.top - (pr.top + e.clientTop)
+  const h = tr.height
+  const vh = e.clientHeight
+  let next = e.scrollTop
+  if (h > vh || dv < 0) next = e.scrollTop + dv
+  else if (dv + h > vh) next = e.scrollTop + dv + h - vh
+  e.scrollTop = Math.min(Math.max(0, e.scrollHeight - e.clientHeight), Math.max(0, next))
+}}
+{stc} {{
+  if (!k) return 'error:bad_handle'
+  if (!key) return 'error:empty_key'
+  const e = __scrollCtlEl(k)
+  if (!e) {{ __sctlAnchorNote(k, key, 'invalid:not_bound'); return 'queued' }}
+  if (e.querySelector('[data-scroll-managed]')) return 'error:unsupported'
+  const found = e.querySelectorAll('[data-scroll-anchor="' + key + '"]')
+  if (found.length === 0) {{ __sctlAnchorNote(k, key, 'invalid:not_found'); return 'queued' }}
+  __sctlToChild(e, found[found.length - 1])
+  __sctlAnchorNote(k, key, 'applied')
+  return 'queued'
+}}
+{sas} {{ return __sctlAnchorState(k, key) }}
+{ast} {{
+  const s = __sctlAnchorStates[k + '\u0000' + key]{maybe_t}
+  return s === undefined ? 'unknown' : s
+}}
+
+"#,
+                an = sig("__sctlAnchorNote", &format!("{k2}, {key2}, {s2}"), "void"),
+                tc = sig("__sctlToChild", &format!("{e2}, {t2}"), "void"),
+                stc = sig("scroll_to_child", &format!("{k2}, {key2}"), "string"),
+                sas = sig("scroll_anchor_state", &format!("{k2}, {key2}"), "string"),
+                ast = sig("__sctlAnchorState", &format!("{k2}, {key2}"), "string"),
+            ));
         }
 
         // PLAN-493: textarea mentions backdrop 的 HTML helper —— template
@@ -8209,6 +8280,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         }
                     }
                     if matches!(tag.as_str(), "scroll-test-content" | "scroll_test_content") {
+                        // PLAN-781 T-04: managed 桥标记——scroll_to_child 以
+                        // pane 内此标记判 unsupported（与 iced 侧 managed 入队
+                        // 拒绝同形的 vue 轨可观察面）。
+                        attrs.push("data-scroll-managed=\"1\"".to_string());
                         let get_num = |key: &str, default: &'static str| -> String {
                             props
                                 .get(key)
@@ -8316,6 +8391,24 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             }
                             if key == "gap" {
                                 continue; // Handled in extract_classes for layout elements
+                            }
+                            // PLAN-781 T-04: scroll-anchor → data-scroll-anchor
+                            // 寻址锚（pane 归属 = 最近 ordinary scroll-pane；
+                            // helper 族由此置位——无 controller 的 pane 上
+                            // 属性无操作，但 to_child 探测面需要 helper 在场）。
+                            if key == "scroll-anchor" {
+                                self.scroll_ctl_helpers_needed = true;
+                                self.push_scroll_anchor_attr(&mut attrs, value, tag);
+                                continue;
+                            }
+                            // PLAN-781 T-04（真实路径探针发现的既有泄漏）：
+                            // scroll 族的 controller 已在上方特例消费为
+                            // :data-scroll-ctl，通用 v-bind 臂不得再发孤儿
+                            // :controller（Vue 会把它落成 DOM attribute）。
+                            if key == "controller"
+                                && matches!(tag.as_str(), "scroll" | "scrollable" | "scroll-pane")
+                            {
+                                continue;
                             }
                             // Plan 412 §4.3: square 的自有 props 已由 extract_classes
                             // 转成 h-/w-/bg-… 类 —— 不透传为无效绑定属性。
@@ -13289,6 +13382,45 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// ondragstart: ... }` emit `:draggable="true"` alongside the flex class.
     /// Called from within `generate_shadcn_attrs` (non-Result context), so expr
     /// conversion failures are silently skipped (matching show/style_obj above).
+    /// PLAN-781 T-04: `scroll-anchor` prop → `data-scroll-anchor` 寻址锚
+    ///（静态字面量 → 静态 attr；动态表达式（for 循环键等）→ `:data-scroll-
+    /// anchor` v-bind 绑定）。空/类型不可解析 = R013 告警不发射——与 iced
+    /// 侧 maybe_wrap_scroll_anchor 的 stderr 告警语义同形（不失效页面）。
+    fn push_scroll_anchor_attr(
+        &self,
+        attrs: &mut Vec<String>,
+        value: &AuraPropValue,
+        tag: &str,
+    ) {
+        let unresolvable = |this: &Self| {
+            this.warn(
+                "R013",
+                crate::ui_gen::validators::Severity::Warning,
+                format!(
+                    "element `{}` prop `scroll-anchor`: empty or unresolvable key ignored",
+                    tag
+                ),
+            );
+        };
+        match value {
+            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                if s.is_empty() {
+                    unresolvable(self);
+                } else {
+                    attrs.push(format!(
+                        "data-scroll-anchor=\"{}\"",
+                        Self::escape_html_attr(s.as_str())
+                    ));
+                }
+            }
+            AuraPropValue::Expr(expr) => match self.expr_to_vue_bound_value(expr) {
+                Ok(bound) => attrs.push(format!(":data-scroll-anchor=\"{}\"", bound)),
+                Err(_) => unresolvable(self),
+            },
+            _ => unresolvable(self),
+        }
+    }
+
     fn push_passthrough_attrs(
         &self,
         attrs: &mut Vec<String>,
@@ -13305,6 +13437,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // Plan 412 §4.3: square 的尺寸 props 已转成 h-/w- 类,且 h/w/size
                 // 不是有效 HTML 属性 —— 不透传。
                 | "h" | "w" | "size"
+                // PLAN-781 T-04: 已在 generate_shadcn_attrs 顶部单点转发的
+                // 寻址锚——透传臂不重发（同元素双属性）。
+                | "scroll-anchor"
                 ) {
                     continue;
                 }
@@ -13555,6 +13690,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     format!("v-html on `{}`: {}; directive not emitted", tag, e),
                 ),
             }
+        }
+
+        // PLAN-781 T-04: scroll-anchor → data-scroll-anchor（shadcn 路单点
+        // 转发——curated 臂是 prop 白名单，未知 prop 静默丢；此处在所有臂
+        // 之前统一发射，与 plain 路同形；push_passthrough_attrs 跳过防双发）。
+        if let Some(value) = props.get("scroll-anchor") {
+            self.scroll_ctl_helpers_needed = true;
+            self.push_scroll_anchor_attr(&mut attrs, value, tag);
         }
 
         // Normalize tag for matching (kebab-case -> snake_case, lowercase for case-insensitive matching)
@@ -23573,6 +23716,193 @@ widget W {
             joined.contains("--sb-size: 16px") && joined.contains("scrollbar-width: none"),
             "{}",
             joined
+        );
+    }
+
+    /// PLAN-781 T-04: scroll-anchor → data-scroll-anchor（plain 路）——
+    /// 静态字面量 → 静态 attr；动态绑定（Ident，for 循环键同机制）→
+    /// :data-scroll-anchor v-bind；无裸 scroll-anchor 属性泄漏；
+    /// helper 族（scroll_to_child/scroll_anchor_state + __sctl 内核）注入。
+    #[test]
+    fn plan781_vue_scroll_anchor_attrs_plain() {
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Test {
+    model {
+        var rsc str = "ag"
+        var akey str = "dyn"
+    }
+    view {
+        scroll-pane (controller: .rsc, style: "h-40") {
+            col {
+                scroll-anchor: "p0"
+                text "first"
+            }
+            col {
+                scroll-anchor: .akey
+                text "second"
+            }
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("data-scroll-anchor=\"p0\""),
+            "静态锚点 attr:
+{sfc}"
+        );
+        assert!(
+            sfc.contains(":data-scroll-anchor=\"akey\""),
+            "动态锚点绑定:
+{sfc}"
+        );
+        assert!(
+            !sfc.contains(" scroll-anchor=\"") && !sfc.contains(":scroll-anchor="),
+            "裸 scroll-anchor 属性不得泄漏:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("function scroll_to_child(") && sfc.contains("function scroll_anchor_state("),
+            "公共蛇形名 helper 注入:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("function __sctlToChild(") && sfc.contains("__sctlAnchorState"),
+            "决策命名的 __sctl 内核在 SFC:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("data-scroll-ctl="),
+            "pane 寻址锚（controller）在场:
+{sfc}"
+        );
+    }
+
+    /// PLAN-781 T-04: shadcn 路 scroll-anchor 单点转发——generate_shadcn_attrs
+    /// 顶部发射 + push_passthrough_attrs 不双发；managed 桥标记。
+    #[test]
+    fn plan781_vue_scroll_anchor_attrs_shadcn() {
+        let mut gen = VueGenerator::new_shadcn();
+        let mut props = HashMap::new();
+        props.insert(
+            "scroll-anchor".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("p40".into())),
+        );
+        let (attrs, _, _) = gen.generate_shadcn_attrs("col", &props, &HashMap::new());
+        let hits = attrs.iter().filter(|a| a.contains("scroll-anchor")).count();
+        assert_eq!(
+            hits,
+            1,
+            "恰好一条 scroll-anchor attr（单点转发，无双发）:
+{attrs:?}"
+        );
+        assert!(
+            attrs.iter().any(|a| a == "data-scroll-anchor=\"p40\""),
+            "静态 attr 形态:
+{attrs:?}"
+        );
+        assert!(gen.scroll_ctl_helpers_needed, "helper 注入置位");
+
+        // managed 桥标记：scroll-test-content 元素发射 data-scroll-managed
+        //（scroll_to_child 的 unsupported 判据）。
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Test {
+    model { var rsc str = "ag" }
+    view {
+        scroll-pane (controller: .rsc) {
+            scroll-test-content (extent_w: 1000, extent_h: 2000) {}
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("data-scroll-managed=\"1\""),
+            "managed 桥标记:
+{sfc}"
+        );
+    }
+
+    /// PLAN-781 T-04: 锚点 helper 族 TS 注解（strict 面——p701 同形）与
+    /// JS 模式零类型泄漏（注解仅 TS 形态出现）。
+    #[test]
+    fn plan781_vue_anchor_helpers_typed() {
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
+widget Test {
+    model { var rsc str = "ag" }
+    view {
+        scroll-pane (controller: .rsc, style: "h-40") {
+            col { scroll-anchor: "p0", text "t" }
+        }
+    }
+}
+"#,
+        );
+        assert!(
+            sfc.contains("function scroll_to_child(k: string, key: string): string"),
+            "scroll_to_child 注解:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("function scroll_anchor_state(k: string, key: string): string"),
+            "scroll_anchor_state 注解:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("function __sctlToChild(e: Element, t: Element): void"),
+            "__sctlToChild 注解:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("const __sctlAnchorStates: Record<string, string> = {}"),
+            "store 注解:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("as string | undefined"),
+            "strict 下索引访问的 undefined 收窄需要显式 cast（TS2367 规避）:
+{sfc}"
+        );
+
+        // JS 模式：无任何 TS 注解泄漏。
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(
+            r#"
+widget Test {
+    model { var rsc str = "ag" }
+    view {
+        scroll-pane (controller: .rsc, style: "h-40") {
+            col { scroll-anchor: "p0", text "t" }
+        }
+    }
+}
+"#,
+        )
+        .with_session(session);
+        let ast = parser.parse().expect("parse");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
+        let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let mut gen = VueGenerator::new().with_typescript(false);
+        let sfc_js = gen.generate(&widget).expect("generate SFC");
+        assert!(
+            sfc_js.contains("function scroll_to_child(k, key)"),
+            "JS 裸形:
+{sfc_js}"
+        );
+        assert!(
+            !sfc_js.contains("scroll_to_child(k: string") && !sfc_js.contains("as string | undefined"),
+            "JS 模式不得泄漏 TS 注解:
+{sfc_js}"
         );
     }
 
