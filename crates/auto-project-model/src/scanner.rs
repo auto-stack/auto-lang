@@ -236,16 +236,18 @@ impl<'a> Scanner<'a> {
 
     fn parse_entry(&mut self) -> Result<Entry, ProjectModelError> {
         let (line, col) = (self.line, self.col);
-        let first = self
-            .peek()
-            .ok_or_else(|| self.err_at(ErrorStage::Document, line, col, "unexpected end of input"))?;
+        let first = self.peek().ok_or_else(|| {
+            self.err_at(ErrorStage::Document, line, col, "unexpected end of input")
+        })?;
 
         if !is_ident_start(first) {
             return Err(self.err_at(
                 ErrorStage::Entry,
                 line,
                 col,
-                format!("unexpected character '{first}' at entry start (expected key or node head)"),
+                format!(
+                    "unexpected character '{first}' at entry start (expected key or node head)"
+                ),
             ));
         }
         let ident = self.take_ident();
@@ -279,7 +281,9 @@ impl<'a> Scanner<'a> {
                 col,
                 format!(
                     "unexpected {} after '{ident}' (expected ':' prop, node name, or '(' args)",
-                    other.map(|c| c.to_string()).unwrap_or_else(|| "end of input".into())
+                    other
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "end of input".into())
                 ),
             )),
         }
@@ -533,7 +537,9 @@ impl<'a> Scanner<'a> {
                 key: Some(key.to_string()),
             }));
         }
-        Ok(ScannedValue::Literal(Value::Str(auto_val::AutoStr::from(out.as_str()))))
+        Ok(ScannedValue::Literal(Value::Str(auto_val::AutoStr::from(
+            out.as_str(),
+        ))))
     }
 
     fn take_number(&mut self) -> Result<String, ProjectModelError> {
@@ -669,9 +675,7 @@ impl<'a> Scanner<'a> {
         let mut depth = 1usize;
         loop {
             match self.peek() {
-                None => {
-                    return Err(self.err(ErrorStage::Entry, "unterminated '(' argument list"))
-                }
+                None => return Err(self.err(ErrorStage::Entry, "unterminated '(' argument list")),
                 Some(c) => {
                     if c == '(' {
                         depth += 1;
@@ -697,10 +701,9 @@ impl<'a> Scanner<'a> {
                             self.advance();
                         }
                         if self.peek().is_none() {
-                            return Err(self.err(
-                                ErrorStage::Entry,
-                                "unterminated string in argument list",
-                            ));
+                            return Err(
+                                self.err(ErrorStage::Entry, "unterminated string in argument list")
+                            );
                         }
                     }
                     self.advance();
@@ -816,10 +819,7 @@ impl<'a> Scanner<'a> {
                 }
             }
         } else {
-            while self
-                .peek()
-                .is_some_and(|c| c.is_alphanumeric() || c == '_')
-            {
+            while self.peek().is_some_and(|c| c.is_alphanumeric() || c == '_') {
                 self.advance();
             }
         }
@@ -868,7 +868,10 @@ impl NodeName {
             };
         };
         let t = text.trim();
-        if t.len() >= 2 && t.starts_with('"') && t.ends_with('"') && !t[1..t.len() - 1].contains('"')
+        if t.len() >= 2
+            && t.starts_with('"')
+            && t.ends_with('"')
+            && !t[1..t.len() - 1].contains('"')
         {
             return NodeName::Arg {
                 name: Some(t[1..t.len() - 1].to_string()),
@@ -885,7 +888,11 @@ impl NodeName {
 /// Detect interpolation / f-string markers inside a structured value's
 /// verbatim text (string-aware). Conservative: `${`, `$ident`, backtick, or
 /// `f"` inside the extent make the whole value unsupported-static.
-fn scan_unsupported_in_text(text: &str, base_line: usize, key: &str) -> Option<UnsupportedConstruct> {
+fn scan_unsupported_in_text(
+    text: &str,
+    base_line: usize,
+    key: &str,
+) -> Option<UnsupportedConstruct> {
     let mut chars = text.chars().peekable();
     let mut line = base_line;
     while let Some(c) = chars.next() {
@@ -912,9 +919,7 @@ fn scan_unsupported_in_text(text: &str, base_line: usize, key: &str) -> Option<U
                     // interpolation lives INSIDE string bodies
                     if sc == '$'
                         && (matches!(chars.peek(), Some('{'))
-                            || chars
-                                .peek()
-                                .is_some_and(|n| n.is_alphabetic() || *n == '_'))
+                            || chars.peek().is_some_and(|n| n.is_alphabetic() || *n == '_'))
                     {
                         return Some(UnsupportedConstruct {
                             kind: UnsupportedKind::Interpolation,

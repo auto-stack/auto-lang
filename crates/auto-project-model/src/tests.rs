@@ -35,16 +35,14 @@ fn dep_bare_name_node_with_path() {
     assert_eq!(d.deps.len(), 1);
     assert_eq!(d.deps[0].name, "bps");
     assert_eq!(d.deps[0].name_form, DepNameForm::Bare);
-    assert_eq!(
-        d.deps[0].path.as_deref(),
-        Some("../../packages/blueprints")
-    );
+    assert_eq!(d.deps[0].path.as_deref(), Some("../../packages/blueprints"));
     assert_eq!(d.deps[0].line, 2);
 }
 
 #[test]
 fn dep_quoted_and_arg_forms_parse() {
-    let d = parse("dep \"stylekit\" { path: \"../stylekit\" }\ndep(\"kernel\") { port: \"msvc\" }\n");
+    let d =
+        parse("dep \"stylekit\" { path: \"../stylekit\" }\ndep(\"kernel\") { port: \"msvc\" }\n");
     assert!(d.is_static_equivalent());
     assert_eq!(d.deps[0].name_form, DepNameForm::Quoted);
     assert_eq!(d.deps[1].name_form, DepNameForm::Arg);
@@ -66,12 +64,21 @@ fn render_split_multi_and_legacy_unknown() {
         multi.render.render,
         RenderSpec::Multi(vec!["vue".into(), "arkts".into()])
     );
-    assert_eq!(multi.render.legacy_backend.as_deref(), Some("[\"vue\", \"arkts\"]"));
+    assert_eq!(
+        multi.render.legacy_backend.as_deref(),
+        Some("[\"vue\", \"arkts\"]")
+    );
     // `backend: "rust-tauri"` (api-example/back): declared but not a known
     // backend name — oracle maps it to backend_config = None + legacy string.
     let unknown = parse("backend: \"rust-tauri\"\n");
-    assert_eq!(unknown.render.render, RenderSpec::Unknown("rust-tauri".into()));
-    assert_eq!(unknown.render.effective_backend.as_deref(), Some("rust-tauri"));
+    assert_eq!(
+        unknown.render.render,
+        RenderSpec::Unknown("rust-tauri".into())
+    );
+    assert_eq!(
+        unknown.render.effective_backend.as_deref(),
+        Some("rust-tauri")
+    );
 }
 
 #[test]
@@ -146,14 +153,22 @@ fn unmodeled_nodes_and_props_are_catalogued_not_dropped() {
     let raw_keys: Vec<&str> = d.raw_props.iter().map(|p| p.key.as_str()).collect();
     assert!(raw_keys.contains(&"description"));
     assert!(raw_keys.contains(&"npm_deps"));
-    assert!(raw_keys.contains(&"theme"), "theme block form is catalogued");
+    assert!(
+        raw_keys.contains(&"theme"),
+        "theme block form is catalogued"
+    );
     assert_eq!(d.raw_nodes.len(), 2, "app + lib nodes");
     let app = &d.raw_nodes[0];
     assert_eq!(app.head, "app");
     assert_eq!(app.name.as_deref(), Some("main"));
     assert_eq!(
         app.props.iter().find(|(k, _)| k == "srcs"),
-        Some(&("srcs".to_string(), Value::Array(auto_val::Array::from_vec(vec![Value::Str("main.at".into())]))))
+        Some(&(
+            "srcs".to_string(),
+            Value::Array(auto_val::Array::from_vec(vec![Value::Str(
+                "main.at".into()
+            )]))
+        ))
     );
     let lib = &d.raw_nodes[1];
     assert_eq!(lib.name.as_deref(), Some("auto"));
@@ -251,7 +266,10 @@ fn interpolation_inside_structured_value_is_dynamic() {
 fn dep_with_unnameable_args_is_classified() {
     let d = parse("dep(\"a\", \"b\") { path: \"x\" }\n");
     assert!(!d.is_static_equivalent());
-    assert_eq!(d.unsupported[0].kind, UnsupportedKind::DepNameUnrepresentable);
+    assert_eq!(
+        d.unsupported[0].kind,
+        UnsupportedKind::DepNameUnrepresentable
+    );
     assert_eq!(d.deps.len(), 0);
     assert_eq!(d.raw_nodes.len(), 1, "raw node preserved for audit");
 }
@@ -290,9 +308,11 @@ fn malformed_inputs_error_with_stage_and_position() {
     let e = parse_document("dep x\n", SourceInfo::inline()).unwrap_err();
     assert_eq!(e.stage, ErrorStage::Entry);
     // source path flows into diagnostics
-    let e = parse_document("x:\n", SourceInfo::from_path("some/pac.at"))
-        .unwrap_err();
-    assert_eq!(e.source_path.as_deref(), Some(std::path::Path::new("some/pac.at")));
+    let e = parse_document("x:\n", SourceInfo::from_path("some/pac.at")).unwrap_err();
+    assert_eq!(
+        e.source_path.as_deref(),
+        Some(std::path::Path::new("some/pac.at"))
+    );
     assert!(e.to_string().contains("some/pac.at"));
     assert!(e.to_string().contains("value"));
 }

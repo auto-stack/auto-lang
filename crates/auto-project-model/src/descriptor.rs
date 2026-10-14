@@ -121,7 +121,10 @@ pub enum RenderSpec {
     Absent,
     Single(String),
     Multi(Vec<String>),
-    Split { front: Vec<String>, back: String },
+    Split {
+        front: Vec<String>,
+        back: String,
+    },
     /// Declared, but not a statically-known backend name/shape. The verbatim
     /// repr is preserved; the oracle keeps it only in the legacy
     /// `backend` string.
@@ -234,9 +237,10 @@ impl ToggleValue {
         match self {
             ToggleValue::Unset => true,
             ToggleValue::Bool(b) => *b,
-            ToggleValue::Str(s) => {
-                !matches!(s.trim().to_lowercase().as_str(), "off" | "false" | "no" | "0")
-            }
+            ToggleValue::Str(s) => !matches!(
+                s.trim().to_lowercase().as_str(),
+                "off" | "false" | "no" | "0"
+            ),
         }
     }
 }

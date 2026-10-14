@@ -391,13 +391,11 @@ fn apply_prop(
         }
         "shadcn" => {
             d.provenance.push(("shadcn", line));
-            d.toggles.shadcn =
-                lit.map(toggle_from_value).unwrap_or(ToggleValue::Unset);
+            d.toggles.shadcn = lit.map(toggle_from_value).unwrap_or(ToggleValue::Unset);
         }
         "default_classes" => {
             d.provenance.push(("default_classes", line));
-            d.toggles.default_classes =
-                lit.map(toggle_from_value).unwrap_or(ToggleValue::Unset);
+            d.toggles.default_classes = lit.map(toggle_from_value).unwrap_or(ToggleValue::Unset);
         }
         _ => {
             d.raw_props.push(RawProp {
@@ -507,7 +505,11 @@ fn collect_body(
 ) {
     for entry in body {
         match entry {
-            Entry::Prop { key, value, line: _ } => match value {
+            Entry::Prop {
+                key,
+                value,
+                line: _,
+            } => match value {
                 ScannedValue::Literal(v) => props.push((key, v)),
                 ScannedValue::Unsupported(u) => d.unsupported.push(u),
             },
@@ -522,7 +524,7 @@ fn collect_body(
                     d.unsupported.push(u);
                 }
                 children.push(raw_node_from(head, name, body, line, d))
-            },
+            }
             Entry::Unsupported(u) => d.unsupported.push(u),
         }
     }

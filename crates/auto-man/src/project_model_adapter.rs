@@ -17,8 +17,7 @@ use crate::pac::{Pac, Scene};
 use crate::TargetKind;
 use auto_lang::config::{AutoConfig, BackendConfig};
 use auto_project_model::{
-    parse_document as model_parse, ProjectDescriptor, RenderSpec, SceneKind, SourceInfo,
-    WindowSpec,
+    parse_document as model_parse, ProjectDescriptor, RenderSpec, SceneKind, SourceInfo, WindowSpec,
 };
 use auto_val::{Obj, Value};
 
@@ -209,11 +208,7 @@ fn new_tuple(d: &ProjectDescriptor) -> FrozenNormalized {
         name: d.identity.name.clone().unwrap_or_default(),
         version: d.identity.version.clone().unwrap_or_default(),
         lang_declared: d.identity.lang.clone(),
-        backend_str: d
-            .render
-            .effective_backend
-            .clone()
-            .unwrap_or_default(),
+        backend_str: d.render.effective_backend.clone().unwrap_or_default(),
         backend_shape: model_backend_shape(&d.render.render),
         api: d.runtime.api.clone(),
         scene: d.runtime.scene.unwrap_or_default(),
@@ -500,7 +495,8 @@ mod tests {
             .join("app")
             .join("pac.at");
         let code = std::fs::read_to_string(&template).unwrap();
-        let (d, tuple) = new_normalized_from_code(&code, &SourceInfo::from_path(&template)).unwrap();
+        let (d, tuple) =
+            new_normalized_from_code(&code, &SourceInfo::from_path(&template)).unwrap();
         assert!(!d.is_static_equivalent());
         assert!(
             legacy_adapter_still_parses(&code),
@@ -551,10 +547,11 @@ mod tests {
     #[test]
     fn project_model_bad_inputs_and_no_effects_v05() {
         let before = std::fs::read_to_string(fixture("bad-missing-value.pac.at")).unwrap();
-        let dir_before: Vec<_> = std::fs::read_dir(fixture("bad-missing-value.pac.at").parent().unwrap())
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
-            .collect();
+        let dir_before: Vec<_> =
+            std::fs::read_dir(fixture("bad-missing-value.pac.at").parent().unwrap())
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+                .collect();
         let err = auto_project_model::parse_file(&fixture("bad-missing-value.pac.at"))
             .expect_err("missing value must error");
         assert_eq!(err.stage, auto_project_model::ErrorStage::Value);
@@ -570,10 +567,11 @@ mod tests {
         // no effects
         let after = std::fs::read_to_string(fixture("bad-missing-value.pac.at")).unwrap();
         assert_eq!(before, after, "parse must not modify its input");
-        let dir_after: Vec<_> = std::fs::read_dir(fixture("bad-missing-value.pac.at").parent().unwrap())
-            .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
-            .collect();
+        let dir_after: Vec<_> =
+            std::fs::read_dir(fixture("bad-missing-value.pac.at").parent().unwrap())
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+                .collect();
         assert_eq!(dir_before, dir_after, "parse must not write new files");
     }
 
@@ -595,10 +593,7 @@ mod tests {
             let path = fixture(name);
             let report = compare_file(&path);
             let old = report.old.as_ref().expect("old arm parses fixture");
-            let (static_eq, new) = report
-                .new
-                .as_ref()
-                .expect("new arm parses fixture");
+            let (static_eq, new) = report.new.as_ref().expect("new arm parses fixture");
             assert!(static_eq, "{name} should be static-equivalent");
             let diffs = field_diff(old, new);
             assert!(

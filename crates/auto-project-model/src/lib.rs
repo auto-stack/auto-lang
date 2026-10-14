@@ -30,7 +30,7 @@ mod from_scan;
 pub mod scanner;
 
 pub use descriptor::{
-    DependencyDecl, DepNameForm, DisplayFields, DuplicateKey, Identity, ProjectDescriptor,
+    DepNameForm, DependencyDecl, DisplayFields, DuplicateKey, Identity, ProjectDescriptor,
     RawNodeDecl, RawProp, RenderDecl, RenderSpec, RuntimeFields, SceneKind, SourceInfo,
     ToggleFields, ToggleValue, UnsupportedConstruct, UnsupportedKind, WindowSpec,
 };
