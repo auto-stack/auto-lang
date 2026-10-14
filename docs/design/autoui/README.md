@@ -29,7 +29,7 @@
 | [vm-loading-responsiveness](vm-loading-responsiveness.md) | — | VM 大程序加载响应性：可续跑 CPU 预算、Init 代际/帧通知、缓存与 computed 热点、独占 worker 后续边界（proposed，未实施） | 708 r2 |
 | [component-time-and-events](component-time-and-events.md) | — | 嵌套组件时间源与交互契约：TimeSource 收集/挂载过滤订阅/多层 props·msg·store 路径；D-2 类型级退订；gallery 内嵌 Tick 缺口 | 652（阶段 1 ✅）；654（阶段 2 path + 阶段 3 Clock） |
 | [universal-scroll-architecture](universal-scroll-architecture.md) | — | 通用滚动架构（替代原 universal-scrollbar 设想）：scroll-pane primitive + ScrollContent/ScrollState/Intent/Controller/Anchor 协议；普通布局/虚拟内容/自管 buffer 三类宿主同语义；Phase A–G 落地路径与验收 | 设计先行（draft）；Phase A+B+C 立项 PLAN-656；Phase E（terminal 迁移）为后续消费端 |
-| [reader-runtime-prerequisites](reader-runtime-prerequisites.md) | — | Reader 框架前置：子内容锚点定位、有限执行预算与10MiB导入、原生VM验收通道；保留 READER-001 原验收目标 | 781/782/783（drafting，未执行） |
+| [reader-runtime-prerequisites](reader-runtime-prerequisites.md) | — | Reader 框架前置：原生验收通道→子内容锚点→10MiB导入；单一计划、三阶段，保留 READER-001 原验收目标 | 781/r2（drafting，未执行） |
 
 > \* 原 `25-a2ui-composer-analysis.md`。注：该文档已归位本目录为 `desktop-shell.md`（Design 25，曾用名 AutoShell），
 > 届时 25 号一并封存。

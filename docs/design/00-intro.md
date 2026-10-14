@@ -131,7 +131,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
   `docs/design/`**（Stage B P-5 指针登记，2026-09-07；首例即 auto-os Design 01
   Stage B 迁移定案，资产去向见 [docs/plans/INDEX.md](../plans/INDEX.md)）
 - [`autoui/autoui-mcp-test-fixture`](autoui/autoui-mcp-test-fixture.md)（AutoUI MCP 测试夹具协议，Plan 623）
-- [`autoui/reader-runtime-prerequisites`](autoui/reader-runtime-prerequisites.md)（Reader 框架前置设计：child-anchor、10MiB有限执行、原生VM验收通道；PLAN-781–783，drafting）
+- [`autoui/reader-runtime-prerequisites`](autoui/reader-runtime-prerequisites.md)（Reader 框架前置设计：原生验收→child-anchor→10MiB有限执行；PLAN-781/r2，单计划三阶段，drafting）
 - [`blueprints/`](blueprints/blueprints-first-class.md)（4 篇）：blueprints-first-class(原17) 为 Blueprint 层主设计（PLAN-639 更名，原 blocks/），
   配套 agent-generation-workflow / blueprint-package-format / datasource-convention
 
