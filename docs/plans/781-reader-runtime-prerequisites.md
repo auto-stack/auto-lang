@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
-current_step: 5
+current_step: 6
 total_steps: 18
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -208,7 +208,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 ### 阶段 B：精确段落锚点
 
-- [ ] T-01: owner_stage=work；依赖T-13（阶段 A 通道验收）；按§4入口+共同设计核对AURA/DSL、普通布局的几何/锚点及在途native热点；形成docs/plans/reports/781-interface-decision.md（新），冻结接口/返回状态/代际/nearest与支持边界。若不可等价实现，先报告needs_replan；不压低可见门。AC-01/02/03。
+- [x] T-01: owner_stage=work；依赖T-13（阶段 A 通道验收）；按§4入口+共同设计核对AURA/DSL、普通布局的几何/锚点及在途native热点；形成docs/plans/reports/781-interface-decision.md（新），冻结接口/返回状态/代际/nearest与支持边界。若不可等价实现，先报告needs_replan；不压低可见门。AC-01/02/03。
+  [✅ 2026-10-14] 决策报告落盘 [781-interface-decision.md](reports/781-interface-decision.md)：API 冻结为 DSL `scroll-anchor` 属性 + native 9922 `auto.scroll.to_child(handle,key)->queued/error` + 9923 `auto.scroll.anchor_state(handle,key)->pending/applied/invalid:<reason>/unknown`（id 实勘：9906–9921 全占、9922/9923 空闲、下一占用 9930）；状态机含绑定代际（bind_controller 换绑检测挂 generation）与内容代际（当帧锚点注册表）；nearest 三分支公式冻结（高于视口顶对齐/底出底对齐/顶出顶对齐/已交不动，clamp）；实现映射 = View::ScrollAnchorMark 零布局 wrapper（AnchorSlot 先例）+ operate 期合成 id `scrollanchor:{key}` 上报最终位置 bounds + controller 注册表独立请求队列（intent.rs 纯 offset 语义不污染）+ vue `data-scroll-anchor`/`__sctlToChild` helper；支持边界 = ordinary pane+controller 必须、嵌套包装允许、managed/virtual/X 轴显式 unsupported；778/779 草案无 landed 冲突、776/742 写面不触。可等价实现，无需 needs_replan。
 - [ ] T-02: owner_stage=work；依赖T-01；修改ui/scroll/{intent,controller}.rs与native_catalog/对应shim、必要AURA绑定；增加scope/布局时序/失败永久单测。`cargo t scroll`及新族过滤测试通过。AC-02/03。
 - [ ] T-03: owner_stage=work；依赖T-02；在ui/iced/renderer.rs及必要layout operation（新文件明确登记）按真实目标布局消费意图，保留ScrollStateReader回声；原生fixture验V-01~06。AC-01/02/03。
 - [ ] T-04: owner_stage=work；依赖T-02；ui_gen/vue.rs生成绑定/helper，必要schema修改与golden同步；真实plain及Reader实际使用样式路径验证，无DOM类型泄漏。AC-01/02/03。
