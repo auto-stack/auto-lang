@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-780
-status: drafting
+status: execution_done
 feature_name: 轻项目模型与 pac.at 兼容性探针
 author: [Codex]
 created_at: 2026-10-13
-updated_at: 2026-10-13
+updated_at: 2026-10-15
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 7
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/project-model/project.md]
@@ -83,11 +83,11 @@ T02后 `cargo check -p auto-project-model`+`cargo test -p auto-project-model`；
 
 | 状态 | Task | owner_stage | 依赖 | 操作/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 777+确认r1 | 受管pac/读点分类、static feasibility；冻结字段/normalizedoracle | 02/03 |
-| [ ] | T-02 | work | T01 | 新model包/DTO/static入口，无compiler执行类型 | 01/02 |
-| [ ] | T-03 | work | T02 | 新fixtures/consumer/manadapter，V01–05，不切默认 | 01/02/03 |
-| [ ] | T-04 | work | T03 | 明确man/loader/registry字段owner、后续消除文本副本接线决策 | 03 |
-| [ ] | T-05 | work | T04 | 包/consumer/man scoped+t门，证明旧production读取不变 | 01/02/03 |
+| [x] | T-01 | work | 777+确认r1 | 受管pac/读点分类、static feasibility；冻结字段/normalizedoracle。**[✅ 2026-10-15]**：worktree lang-780@f3ca995e7；survey（149 文件：144 static / 5 dynamic 模板插值 / 0 unknown；dep 仅裸名形态；`${name}` 插值发生在 scaffold eval_template 拷贝层）+ 读点三类清单（VM 型 Pac::new/external_backend_dir、文本型 parse_pac_fields/parse_npm_deps/pac_declares_dep 等、dep_scanner 非 pac 面）；冻结子集与 oracle 定义见 `test/fixtures/modularity/project-model/survey/T01-REPORT.md`；T02 依赖核定=auto-atom+auto-val，AtomParser 复用于值层、文档层扫描器自持 | 02/03 |
+| [x] | T-02 | work | T01 | 新model包/DTO/static入口，无compiler执行类型。**[✅ 2026-10-15]**：`crates/auto-project-model`（deps 仅 auto-atom/auto-val；文档级扫描器自持+值层对象/数组委托 AtomParser）；DTO 含 source/provenance/raw_props/raw_nodes/duplicates/unsupported；unsupported 分类不丢字段（插值/裸标识/赋值/调用/f-string/on-off 越界/单引号/dep 名不可表达/类型不匹配）；单测 21/21 | 01/02 |
+| [x] | T-03 | work | T02 | 新fixtures/consumer/manadapter，V01–05，不切默认。**[✅ 2026-10-15]**：fixtures 15 例（static 10/dynamic 2/bad 3）+ consumer 独立 crate（manifest 即 V-01 证据，3/3）+ `auto-man/src/project_model_adapter.rs` 显式探针（5/5：corpus 149=**144 static 对拍相等**/4 dynamic 分类/1 clib template 双拒；V-03 旧臂保输出；V-04 路径基点与 external_backend_dir 对拍；V-05 stage/path 诊断+输入/目录零副作用）；生产读取零改动；语料实情补齐 `#` 注释/顶层对象文档/名字位插值三语法；发现 VM 对象键迭代序跨进程不稳定（对拍按结构比较） | 01/02/03 |
+| [x] | T-04 | work | T03 | 明确man/loader/registry字段owner、后续消除文本副本接线决策。**[✅ 2026-10-15]**：`T04-OWNER-MAP.md`（26 字段行×当前读者/文本副本/目标 owner/接线注记；决策=auto-man 内部 vue.rs/rust_ui.rs 文本读先行替换（无新依赖边）、auto-lang registry/loader 声明门待依赖裁定立项、VM adapter 永久保留面（模板 eval_template/dynamic 分类文件）、npm_deps/targets 不入冻结 DTO；VM 对象键序不稳定注记） | 03 |
+| [x] | T-05 | work | T04 | 包/consumer/man scoped+t门，证明旧production读取不变。**[✅ 2026-10-15]**：scoped 面=check -p auto-project-model ✓ / test -p auto-project-model **21/21** ✓ / consumer `--manifest-path` 门 **3/3** ✓（独立 manifest 即 AC-01 证据）/ `cargo test -p auto-man --lib project_model` **5/5** ✓（corpus 149=144 static 相等+4 dynamic+1 template 拒，P780 corpus 计数行）/ `cargo check -p auto-lang -p auto-man` exit 0 ✓；生产读取零改动=git diff master 对 pac.rs/vue.rs/rust_ui.rs/asset.rs/target.rs/auto-lang/src **空**，且 corpus 测试 149 次过旧臂 AutoConfig::from_code→Pac::new 生产路径；rustfmt 全量通过+复测三绿。**裸 `cargo t` 按 2026-10-14 时序裁定为 merge-owned 冻结提交门禁（pending）**；`cargo test -p auto-man`（非 --lib）单包构建因预存 plan734 tauri fixture 特性统一问题红（master 同红已验证，非本计划破坏，候选另立 L0） | 01/02/03 |
 | [ ] | T-06 | review | T05 | 独立review，不删动态输入假等价 | 04 |
 | [ ] | T-07 | merge | reviewpass | 真实Spec/归档/合流/guard-clean清理 | 05 |
 
@@ -96,6 +96,8 @@ T02后 `cargo check -p auto-project-model`+`cargo test -p auto-project-model`；
 ## 9. 复审记录
 
 2026-10-13 stage=new，r1，outcome=pass（草案preflight）；next=确认后work。0/7任务；新包/fixture未创建运行，不是auto-man拆仓成功或独立实现复审pass。
+
+2026-10-15：stage=work | PLAN-780 | r1 | outcome=pass（work-owned T-01..T-05 全部完成，交独立review） | worktree D:/autostack/.wt/lang-780/auto-lang | branch plan-780-dev | base 075a9b4ab（master tip at branch） | code 6aa07b630（f3ca995e7 T-01 survey → d7c7403e0 T-02 model crate → ac4e20b46 T-03 adapter/fixtures/consumer → b9738a272 T-04 owner map → 6aa07b630 rustfmt） | deps: auto-down 组内兄弟 detached@c39ac7f（只读，仅为 workspace path 依赖解析，未改） | tasks T-01..T-05=5/7（T-06 review、T-07 merge 待办） | evidence: ①model 单测 21/21；②consumer 独立门 3/3（manifest 仅 auto-project-model path 依赖=AC-01）；③adapter 探针 5/5——**corpus 对拍 149 受管 pac.at = 144 static 冻结字段逐项相等 / 4 dynamic 分类不假绿 / 1 clib 模板双臂拒（旧臂错误保留）**，fixture 边缘形态 10 例全等，V-03 旧臂仍解模板、V-04 路径基点与 external_backend_dir 对拍一致、V-05 stage/path 诊断+输入字节与目录零副作用；④生产读取零改动（六读点文件 diff 空；corpus 测试=旧臂生产路径 149 次绿）；⑤rustfmt 后三档复测全绿 | blockers: 无 | next=review（T-06：独立逐 AC 审计，重点=对拍 oracle 是否被弱化/unsupported 分类是否覆盖真实 dynamic 面/AC-01 依赖闭包证据/consumer+adapter 是否实际未接线任何生产读取）。**merge-owned pending 门禁**：裸 `cargo t`（2026-10-14 时序裁定，冻结提交上执行）+ SD-01/02 spec 沉淀 + tf 到期判定。实现要点偏离记录：①survey 后语料实情补齐三语法（`#` 行注释 19 文件、顶层 JSON 式对象文档 2 文件、节点名位插值 1 模板）——T-01 报告已勘误；②发现 **VM 对象字面量键迭代序跨进程不稳定**（三探针实测）——对拍对对象形态 repr 改结构化比较（排序键值对），语义字段（backend_shape/按键取值）不受影响，生产消费全部按键名读取无存量风险，已记 T-04 注记；③T-02 依赖核定落地=AtomParser 复用于对象/数组值层（`Atom::new` 拒顶层标量故标量本地解析），文档级扫描器自持；④adapter 测试跑 `--lib`（`cargo test -p auto-man` 全目标在单包构建下因**预存** plan734 tauri fixture 特性统一问题红，master 同红已验证，非本计划破坏）。
 
 ## 10. 待澄清事项
 
