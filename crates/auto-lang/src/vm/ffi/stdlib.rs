@@ -12542,6 +12542,177 @@ mod sqlite_vm_tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// F744-R1-01: the contract's nested-list oracle must travel the real VM
+    /// return path. Arguments ride the task stack exactly like engine-
+    /// dispatched calls, all five public calls go through their task/stack
+    /// shims (not the Rust `*_impl` helpers), and `query` is consumed as the
+    /// heap layout the .at surface receives: outer `ListData<Value>` of
+    /// VmRefs into inner `ListData<i32>` rows whose cells are negative
+    /// string-pool sentinels.
+    #[test]
+    fn sqlite_vm_query_nested_heap_list_via_vm_stack() {
+        fn vm_exec(task: &mut AutoTask, vm: &AutoVM, handle: i64, sql: &str) -> i64 {
+            VMConvertible::push_to_stack(&handle, task, vm).unwrap();
+            VMConvertible::push_to_stack(&sql.to_string(), task, vm).unwrap();
+            shim_sqlite_exec(task, vm).unwrap();
+            task.ram.pop_i64()
+        }
+
+        // rc_push_id leaves the outer heap id as an i32 stack slot.
+        fn vm_query_outer(task: &mut AutoTask, vm: &AutoVM, handle: i64, sql: &str) -> i32 {
+            VMConvertible::push_to_stack(&handle, task, vm).unwrap();
+            VMConvertible::push_to_stack(&sql.to_string(), task, vm).unwrap();
+            shim_sqlite_query(task, vm).unwrap();
+            task.ram.pop_i32()
+        }
+
+        // Consume both list levels and the string pool the way .at code
+        // would: outer VmRef rows -> inner sentinel cells -> utf-8 strings.
+        fn heap_rows(vm: &AutoVM, outer_id: i32) -> Vec<Vec<String>> {
+            assert!(outer_id > 0, "outer list id must be a heap id");
+            let outer_obj = vm
+                .get_heap_object(outer_id as u64)
+                .expect("outer list on heap");
+            let outer = outer_obj
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let outer_list = outer
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                .expect("outer is ListData<Value>");
+            let mut rows = Vec::new();
+            for elem in &outer_list.elems {
+                let row_id = match elem {
+                    auto_val::Value::VmRef(r) => r.id as u64,
+                    other => panic!("row element must be a VmRef, got {other:?}"),
+                };
+                let inner_obj = vm
+                    .get_heap_object(row_id)
+                    .expect("inner row list on heap");
+                let inner = inner_obj
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let inner_list = inner
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ListData<i32>>()
+                    .expect("inner row is ListData<i32>");
+                let mut cells = Vec::new();
+                for s in &inner_list.elems {
+                    assert!(*s < 0, "cells ride as negative pool sentinels, got {s}");
+                    let idx = (-*s - 1) as u32;
+                    let bytes = vm.get_string(idx).expect("pooled string");
+                    cells.push(String::from_utf8(bytes).expect("utf-8 cell"));
+                }
+                rows.push(cells);
+            }
+            rows
+        }
+
+        let vm = test_vm();
+        let dir = std::env::temp_dir().join(format!("auto-vm-sqlite-heap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("heap.db").to_string_lossy().into_owned();
+
+        let task_id = vm.spawn_task(0, 1024);
+        let task_arc = vm
+            .tasks
+            .get(&task_id)
+            .map(|r| r.value().clone())
+            .expect("spawned task registered");
+        // Sync libtest context: tokio Mutex needs blocking_lock (uncontended
+        // here — the engine is not running this task).
+        let mut task = task_arc.blocking_lock();
+
+        // open(path) — handle returns on the task stack.
+        VMConvertible::push_to_stack(&db_path, &mut task, &vm).unwrap();
+        shim_sqlite_open(&mut task, &vm).unwrap();
+        let handle = task.ram.pop_i64();
+        assert!(handle > 0);
+
+        // exec: DDL + 3 rows covering NULL, unicode, quotes, and a BLOB.
+        assert_eq!(
+            vm_exec(
+                &mut task,
+                &vm,
+                handle,
+                "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, note TEXT, blob BLOB)"
+            ),
+            0
+        );
+        assert_eq!(
+            vm_exec(
+                &mut task,
+                &vm,
+                handle,
+                "INSERT INTO t (name, note, blob) VALUES ('Michi', 'café 中文', X'414243')"
+            ),
+            1
+        );
+        assert_eq!(
+            vm_exec(
+                &mut task,
+                &vm,
+                handle,
+                "INSERT INTO t (name, note, blob) VALUES (NULL, 'it''s \"dq\"', NULL)"
+            ),
+            1
+        );
+        assert_eq!(
+            vm_exec(
+                &mut task,
+                &vm,
+                handle,
+                "INSERT INTO t (name, note, blob) VALUES ('第三行', '', X'00')"
+            ),
+            1
+        );
+
+        // last_insert_rowid via its shim.
+        VMConvertible::push_to_stack(&handle, &mut task, &vm).unwrap();
+        shim_sqlite_last_insert_rowid(&mut task, &vm).unwrap();
+        assert_eq!(task.ram.pop_i64(), 3);
+
+        // query: multi-row, multi-column, per-cell readback through the
+        // nested heap list (NULL -> "", BLOB -> "<N bytes>").
+        let outer_id = vm_query_outer(
+            &mut task,
+            &vm,
+            handle,
+            "SELECT id, name, note, blob FROM t ORDER BY id",
+        );
+        assert_eq!(
+            heap_rows(&vm, outer_id),
+            vec![
+                vec!["1", "Michi", "café 中文", "<3 bytes>"],
+                vec!["2", "", "it's \"dq\"", ""],
+                vec!["3", "第三行", "", "<1 bytes>"],
+            ]
+        );
+
+        // Empty result: a real outer list object with zero rows.
+        let empty_id = vm_query_outer(&mut task, &vm, handle, "SELECT id FROM t WHERE id > 100");
+        assert!(vm.get_heap_object(empty_id as u64).is_some());
+        assert_eq!(heap_rows(&vm, empty_id), Vec::<Vec<String>>::new());
+
+        // Error sentinel: bad SQL -> empty list, and last_error() is a
+        // non-empty string coming back through its own shim.
+        assert_eq!(
+            vm_exec(&mut task, &vm, handle, "NOT SQL"),
+            -1,
+            "exec reports the -1 sentinel before the query error check"
+        );
+        let err_id = vm_query_outer(&mut task, &vm, handle, "ALSO NOT SQL");
+        assert_eq!(heap_rows(&vm, err_id), Vec::<Vec<String>>::new());
+        shim_sqlite_last_error(&mut task, &vm).unwrap();
+        let msg: String = VMConvertible::pop_from_stack(&mut task, &vm).unwrap();
+        assert!(!msg.is_empty());
+
+        drop(task);
+        vm.remove_task(task_id);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]
