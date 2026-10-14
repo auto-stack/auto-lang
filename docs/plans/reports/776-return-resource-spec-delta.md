@@ -1,13 +1,14 @@
-# PLAN-776 拟议规范增量（SD-01..07，R5 终形）
+# PLAN-776 拟议规范增量（SD-01..07，R6 终形）
 
 > 供 review/merge 按实证沉淀（本次不修改 canonical Specs）。
 > 每条 SD：before（现行规则）→ after（本计划落地后的规则）→ 代码/测试证据。
-> **本稿为 R5 终形**（2026-10-14，实现基线 `088e47823` + R5 修复增量）：
-> 在 R2 终形之上按 F776-R5-01..04 修订——SSE 身份授予点从「return 位静态
-> 包装」改为 **generator 生产点凭据化**（局部/helper/容器/闭包/Internal
-> Future 全载体传播）；限定名先于用户名集判定 + alias 目标**链**展开；
-> 生成真 TCP oracle 建立（AC-08）。R4 冻结版（R2 终形）见
-> attachments/776/review-r4/reviewed-spec-delta.md（SHA256 `7F4DC023…`）。
+> **本稿为 R6 终形**（2026-10-14）：在 R5 终形之上按 F776-R6-01..04 修订
+> ——生产点包装**无条件**化（不依赖所在 fn 声明：旧 int 声明/int helper
+> 同保 SSE 来源）；future 驱动门=**return ~{} 血缘登记**（位模式撞活跃
+> fid 的普通数字不误驱动）；alias 目标**保结构**（Future<…> 实参）+
+> **visited 集**循环拒绝（合法深链不截断）；生成 JSON/bus SSE 真 TCP
+> oracle 建立。R5 冻结版见 attachments/776/review-r6/reviewed-spec-delta.md
+>（SHA256 `AF212A9F…`）。
 > 执行细节与门禁见 `776-return-resource-verification.md`；表示决策见
 > `776-return-resource-decision.md`（§2/§3 已按 R2/R5 终形修订）。
 > **修订史**：初稿（T-08，b4183e761）→ R1 修订（review-r1 冻结）→ R2
@@ -31,17 +32,19 @@
   前拒绝（不截断复用使旧引用复活）。**id 层 owner 校验先行**于堆查找
   （`id_owner_matches`——跨 VM 同号在 id 层拒绝），堆内 owner 字段为二线
   （R2-02 反例：7 位掩码下 A 与 A+128 同段误取，已废止）。
-- **身份授予点（R5 终形，F776-R5-01）**：身份只在**生产点**建立。
-  iterator/SSE：codegen 对 `~Iter/~Stream` 声明 fn 内的 generator 调用
-  （CREATE_GENERATOR 后）静态插 `WRAP_SSE_RESOURCE`(0xD5)（幂等：已是
-  凭据对象则原样回推）——凭据随 local/helper 返值/容器元素/闭包捕获/
-  Future 终值**全载体**天然传播（VmRef/TAG_OBJECT 双桥）；generator
-  handler 本体的 dispatch 臂（`call_fn_by_name_http`）与 musk
-  `Sse.into_response`（Sse 堆对象 → `push_sse_resource`）同产凭据。
-  **声明/表命中/数值全部不构成来源**——包装只挂在真实 generator 生产点
-  上（`return 0` 仍数据，R2-01 反例保持）；非 HTTP 消费兼容：for-in/
-  iterator natives 凭据感知解包回 iterator id。Response/File/Upload 由
-  构造点 push 凭据。
+- **身份授予点（R6 终形，F776-R6-01）**：身份只在**生产点**建立且
+  **不依赖所在 fn 声明**。iterator/SSE：codegen 对 generator fn 调用
+  （CREATE_GENERATOR 后）**无条件**静态插 `WRAP_SSE_RESOURCE`(0xD5)
+  （幂等：已是凭据对象则原样回推）——凭据随 local/helper 返值/容器
+  元素/闭包捕获/Future 终值**全载体**天然传播（VmRef/TAG_OBJECT 双桥），
+  旧 `int` 声明 handler 与 `int` helper 的 generator 返回同保真实 SSE
+  来源（Plan §0 旧 int 源码兼容——声明仅用于编组校验/能力选择，不参与
+  身份授予）；generator handler 本体的 dispatch 臂
+  （`call_fn_by_name_http`）与 musk `Sse.into_response`（Sse 堆对象 →
+  `push_sse_resource`）同产凭据。**声明/表命中/数值全部不构成来源**——
+  包装只挂在真实 generator 生产点上（`return 0` 仍数据，R2-01 反例
+  保持）；非 HTTP 消费兼容：for-in/iterator natives（`auto.iterator.next`）
+  凭据感知解包回 iterator id。Response/File/Upload 由构造点 push 凭据。
 - **传播**：栈/globals/容器/closure captures/Future result 五载体身份保持
   （VmRef/TAG_OBJECT 双桥）；资源不可经数值转换获得。
 - **编组**：marshal 资源臂优先于一切 int 探测；Response=快照 clone（重复
@@ -75,10 +78,13 @@
   最前；generator/SSE 身份由 SD-01 生产点包装；upload/file「声明专属返回+
   值非凭据对象」→纯诊断门 mismatch 500（不触表）；**未声明专属返回的普通
   数值永远 JSON 数据**（R2 反例 `fn p() ~Iter { return 0 }` → JSON 0）。
-  **stream 声明 fn 可返回 Future**（R5-01）：marshal future 探测门扩为
-  「声明 async **或** 声明 stream」——`fn p() ~Iter { return ~{ gen() } }`
-  的 Internal 体服务端驱动后按终值分派；future id 查无注册表照旧落数据面
-  （同 async 门语义）。
+  **返回 async 块的 fn 可被驱动 Future**（R6-03 终形）：marshal future
+  探测门=**血缘登记**（`fn_is_api_async`：`~T` 声明 fn ∪ body 含
+  `return ~{}` 的 fn——codegen 按返回位登记 API_ASYNC_RETURNS）。
+  `fn p() ~Iter { return ~{ gen() } }` 的 Internal 体服务端驱动后按终值
+  分派；`let f = ~{…}; return 496` 的普通数字（位模式撞活跃 fid）不进
+  门——声明/低字节/注册表都不是逐值 Future 来源；future id 查无注册表
+  照旧落数据面。
 - before §5（P734-D7）：6 wire 用例依赖查表命中制。
 - after §5：**P734-D7 关闭**——legacy 6 wire 用例 wire 行为不变由**真实
   生产点凭据**保持（redirect/musk ctor 8 族/Http.ok 五族/
@@ -151,14 +157,17 @@ plan705 19/19；R3 分诊负控制 1/1。
 - 返回分类输入升级：`ApiEndpoint.response`（提取期两遍判定冻结）+
   `ResponseKind::from_return_identity`；api_gen/targets/back_proxy 消费同一
   冻结身份（不各自裸串分类）。
-- **alias 按 target 展开（R5-02 终形）**：`ApiType.alias_of` 携 target，
-  `from_return_identity` 按**目标链**递归展开（深度护栏 8 层，循环 alias
-  保守 Json）——`type Download = FileResponse` → File；alias→alias 链
-  （Second→First→FileResponse）→ File；链尾用户声明 → Json。**`http.`
-  限定名（返回类型或 alias target）是 stdlib 绑定——先于用户名集判定**
-  （用户 `type FileResponse {}` 不遮蔽 `http.FileResponse`/alias 到它）。
-  back_proxy fn_meta 同语义（双集 + 链展开 + 限定优先）。用户直接声明
-  （struct/enum，含空成员）→ Json。
+- **alias 按 target 展开（R6-02 终形）**：`ApiType.alias_of` 携 target
+  **完整形态**（type_to_string——`type D = Future<FileResponse>` 的实参
+  不丢失），`from_return_identity` 按**目标链**递归展开——每层先解
+  Future 包装再剥 `http.` 限定；**visited 集循环拒绝**（合法深链不限
+  层数——九层链 File；真环 A→B→A 保守 Json）——`type Download =
+  FileResponse` → File；`type D = Future<FileResponse>` → File（与直接
+  `Future<FileResponse>` 同规则）；链尾用户声明 → Json。**`http.` 限定名
+  （返回类型或 alias target）是 stdlib 绑定——先于用户名集判定**（用户
+  `type FileResponse {}` 不遮蔽 `http.FileResponse`/alias 到它）。
+  back_proxy fn_meta 同语义（target 全形存储 + alias_step_bare 单步
+  规范化 + visited 集）。用户直接声明（struct/enum，含空成员）→ Json。
 - 三层遮蔽：提取级（ApiExtractor 两遍）/codegen TypeStore→
   `API_RETURN_SHADOWED`/back_proxy fn_meta；strict 门/738 双指纹/751 三态
   单点不变（plan738 75/75）。
@@ -172,11 +181,15 @@ plan705 19/19；R3 分诊负控制 1/1。
   值域、stream-fn Future 返回）、失败终态 500 化、返回值 RC 生命周期。
 - 纠正陈旧描述：redirect/musk ctor 构造点不再经 HTTP_RESPONSES 表（表
   仅剩 client 死兼容面）；"async 终值降级 null"条目退役。
-- **生成真 TCP oracle（R5-03 终形）**：现行支持面（Rust File/Upload 生成
-  服务矩阵）实编 + 真 wire 已验证——此前在册的「生成物编译漂移归 742」
-  实为 e2e harness 自写 Cargo.toml 缺 `hyper-util` 依赖（生产模板一直
-  声明，api_gen.rs:1265）；补齐后 plan729 File 矩阵 + plan730 Upload 矩阵
-  全绿。
+- **生成真 TCP oracle（R6-04 终形）**：现行支持面四面全验证——
+  plan729 File 矩阵 + plan730 Upload 矩阵（R5：harness 缺 hyper-util
+  一行已修）+ **plan776 生成 JSON record 面**（scaffold CRUD create——
+  现行可编译运行的生成 JSON 形态）+ **plan776 生成 bus SSE 面**
+  （events broadcast：订阅连接 → POST create → NewMessage 帧真 TCP
+  到达）。**真实业务体 JSON 委托当前被 a2r 阻塞**：db.at 跨模块引用
+  api 类型（`use api: X` 的 record ctor）在独立转译中报 undefined
+  variable（点式同红；局部类型可转译但与 types.rs 撞型 E0308）——属
+  a2r 转译面（742 族），非 776 返回边界（证据矩阵在 verification）。
 
 ---
 

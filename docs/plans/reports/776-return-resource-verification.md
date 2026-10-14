@@ -26,22 +26,22 @@ transpiler 零 diff（触面清单无 `trans/` 文件）——`cargo tt` 未触�
 aavm 零触发（`packages/aavm/**`、`test/vm/aavm2/**`、`test/parity/**` 无 diff）——
 `cargo taa` 不适用。
 
-## 2. AC 逐条对账（R5 终形，2026-10-14；基线 `088e47823` + R5 修复 `5bdca42e4`）
+## 2. AC 逐条对账（R6 终形，2026-10-14；基线 `088e47823` + R5 `5bdca42e4` + R6 修复轮）
 
-> 本表在 R2 终形表基础上按 R5 修复轮（F776-R5-01..04）改写；plan776 全族
-> 现 **54/54**（49 项 R1-R3 复现 + R5 新增 5 项：SSE 传播三 wire + 限定名/
-> 别名链双提取级）。
+> 本表在 R5 终形表基础上按 R6 修复轮（F776-R6-01..04）改写；plan776 全族
+> 现 **56/56**（54 项 R1-R5 复现 + R6 新增：S7/S8+496 负控制 wire 两测 +
+> T4/T5/环单测两测——见 R6 修复轮节明细）。
 
 | AC | 证据（R5 终形） | 判定 |
 |---|---|---|
 | AC-01 真碰撞 | e2e 碰撞族 + 声明门/查表臂退役双反例（`declared_stream_plain_int_is_data`、`real_generator`）+ **R5 负控制 S4**（`let s = events(); return 0` → JSON 0——生产点包装不授予数值身份） | **过** |
-| AC-02 逐值身份与兼容 | 传播探针 + 5 producer + setter owned-slot（9000 步跨窗）+ client egress 凭据 + bytes 快照 + **R5：SSE 身份跨全部传播边界**（`http_e2e_plan776_r5_sse_identity_propagates`：直接/局部/helper/闭包捕获/容器取出/Internal Future 尾六形态同 wire SSE+data 帧）；for-in 迭代消费凭据解包兼容（`credential_unwrapped_for_internal_iteration`）；6 legacy=plan326 34/34 | **过** |
+| AC-02 逐值身份与兼容 | 传播探针 + 5 producer + setter owned-slot（9000 步跨窗）+ client egress 凭据 + bytes 快照 + **R5：SSE 身份跨全部传播边界**（直接/局部/helper/闭包捕获/容器取出/Internal Future 尾六形态同 wire）+ **R6：身份授予不依赖声明**（S7 旧 `int` 声明局部返回、S8 `int` helper 存 generator 再返回——同 SSE data 帧，Plan §0 旧 int 源码兼容）；for-in 迭代消费凭据解包兼容；6 legacy=plan326 34/34 | **过** |
 | AC-03 sync/async 同形 | 单入口编组 `resource_claim_reply` 同形依据 + 代表例（async 资源终值 302/i64 全宽/record/SSE）；三 Future 形态；closure 面 plan442 17/17；**R5：stream 声明 fn 返回 Future 的立即体终值正确**（`return ~{ 42 }` → 42、`return ~{ events() }` → SSE——bp==0 直驱读位修复）；未逐格组合边界仍如实列（Upload/File async 终值未逐格） | **过** |
 | AC-04 终态 | Failed→500、成功 Nil 200 null、stale/wrong-owner id 层拒绝、迟到/取消=plan705；R3 分诊负控制（P776-D3 归 705 轨）保持 | **过** |
-| AC-05 错凭据 | owner 11 位段（2048 VM 受控拒绝+顺序 2047 中间 VM+live-A 交叉）、id 层校验先行、local 2^20 耗尽、Future 0xF0 位模式守卫 | **过** |
+| AC-05 错凭据 | owner 11 位段（2048 VM 受控拒绝+顺序 2047 中间 VM+live-A 交叉）、id 层校验先行、local 2^20 耗尽、**Future 0xF0 位模式普通数值守卫（R6-03 终形：F0/F1 双测——`~Iter` 或 `int` 声明 fn 构造活跃 Future 后返回字面量 496（=活跃 fid1 位模式）恒 JSON 496，门=return ~{} 血缘非声明/位模式）** | **过** |
 | AC-06 存活 | 1000 闭环回基线、常量重放、SSE 断连回收、setter 跨窗、容器级联（Box{response} 异常回基线）；729/730/707 scoped 绿 | **过** |
-| AC-07 来源身份 | **R5：限定名先于用户名集**（`http.FileResponse` + 用户同名声明 → File——V5-T1 复现闭合）；**alias 目标链**（`Download=http.FileResponse`→File、Second→First→FileResponse→File、链尾用户声明→Json、循环 alias 保守 Json——V5-T2/T3 闭合）；提取级双测 `plan776_r5_qualified_name_and_alias_chain_identity`/`alias_chain_and_cycle_rejected` + back_proxy 同语义（th 守卫族绿）；755 两守卫、738 双指纹 75/75、751 三态 | **过** |
-| AC-08 生成/拓扑面 | **已证面（R5 扩）**：生成服务**真 TCP oracle 建立**——「预存编译漂移归 742」实为 e2e harness Cargo.toml 缺 `hyper-util` 依赖（生产模板一直在案），一行修复后 **plan729 生成 File wire 矩阵**（GET/HEAD/range 206/416/etag 304/412/404/403/12MiB hash/async 文件）与 **plan730 生成 Upload 矩阵**全绿（真实 cargo build + 真 TCP wire）；api_gen 46+1、plan776 消费族、merged/IPC/back-proxy 矩阵（file-501/upload-501 守卫）、不泄漏裸 id。**边界如实列**：生成 JSON record handler 的 wire 面需要 route-A/B 业务体（无 db fixture 下 handler 桩 404）——生成级已验证（`pub async fn meta(...) -> Result<JsonResponse<FileMeta>, StatusCode>` 正确发射），wire 面归 742 业务体轨（R5 明言不要求 776 接管）；生成 bus SSE 保持生成级测试在案 | **partial→已证主体**（终判归 R6） |
+| AC-07 来源身份 | **R5：限定名先于用户名集 + alias 目标链**；**R6：目标保结构**（`type D = Future<FileResponse>` → File，与直接 `Future<FileResponse>` 同规则——提取器 alias_of 携完整形态）+ **visited 集循环拒绝**（九层合法链 A8→…→A0→FileResponse → File，真环保守 Json——R5 深度 8 截断撤除）；单测 `plan776_r6_future_wrapped_and_deep_alias_chains`/`alias_cycle_visited_reject` + R5 双测保持 + back_proxy 同语义；755 两守卫、738 75/75、751 三态 | **过** |
+| AC-08 生成/拓扑面 | **现行支持面四面真 TCP oracle 全绿（R6-04）**：plan729 生成 File wire 矩阵 + plan730 生成 Upload 矩阵（R5，hyper-util harness 修复）+ **plan776 生成 JSON record**（`http_e2e_plan776_generated_json_and_bus_sse_wire`：scaffold CRUD create——现行可编译运行的生成 JSON 形态，POST → `{"id":3,"text":"world"}` 真 wire）+ **plan776 生成 bus SSE**（events broadcast：订阅连接 → POST → NewMessage 帧真 TCP 到达）；api_gen 46+1、merged/IPC/back-proxy 矩阵、不泄漏裸 id。**边界如实列**：真实业务体 JSON 委托当前被 a2r 阻塞——db.at 跨模块引用 api 类型（`use api: X` 的 record ctor）独立转译报 undefined variable（点式同红；局部类型可转译但与 types.rs 撞型 E0308）——a2r 转译面（742 族）非 776 返回边界，证据矩阵见 R6 修复轮节 | **partial→四面已证**（真实体委托面归 742 族；终判归 R7） |
 | AC-09 门禁对账 | §1/§3 + R5 修复轮门禁：裸 t **5306/5306 全绿**、tv 162/162、th 127/128（唯一红=corpora 在册）、plan776 54/54、auto-man lib 356+（3 红=P751-D2 在册预存）、rustfmt 触面干净、**776 diff 新增 warnings 逐条关闭**（死代码侧道/unused_doc_comments/失效注释清理）——终判归 R6 | 待 R6 |
 
 ## 3. 红项分诊（全部在册/预存，零本 diff 新增）
@@ -252,3 +252,52 @@ a142756c9..088e47823 不动）。逐项闭合 F776-R3-01..03：
 | rustfmt 触面 9 文件 | 干净 |
 
 tt/tu/taa 零触发（无 trans/ui_gen/aavm 面 diff）。
+
+---
+
+## R6 修复轮（2026-10-14，review-r6 needs_fix 后复修）
+
+代码提交：`5fda97ceb`（7 文件 +585/−97；实现链 a142756c9..088e47823 + 73d4f0ff3 +
+5bdca42e4 保留）。逐项闭合 F776-R6-01..04：
+
+- **F776-R6-01（P1）身份授予不依赖声明**：CREATE_GENERATOR 后包装**无条件**
+  化（撤 R5 的 `fn_ret_declares_stream` 门）——旧 `int` 声明 handler 局部
+  返回（S7）与 `int` helper 存 generator 再返回（S8）同保真实 SSE 来源
+  （Plan §0 旧 int 源码兼容）；非 HTTP 消费由凭据感知 iterator natives
+  吸收（scoped generator/tv/SSE/plan705/707/442/326 全绿）。
+- **F776-R6-03（P1）future 门=血缘登记**：codegen 按 fn body 的
+  `return ~{}` 返回位登记 API_ASYNC_RETURNS（声明无关），撤 R5 的
+  「声明 stream 即进门」——`let f = ~{…}; return 496` 的普通数字（位模式
+  撞活跃 fid）恒 JSON 496（F0=int 声明/F1=~Iter 声明双负控制）；S3
+  （`return ~{ events() }`）经血缘进门保持 SSE。R5 门扩展引入的回归清偿。
+- **F776-R6-02（P2）alias 目标保结构 + visited 集链**：提取器 alias_of
+  携 target **完整形态**（type_to_string——`type D = Future<FileResponse>`
+  实参不丢，分类与直接 `Future<FileResponse>` 同 File）；contract/
+  back_proxy 链展开改 **visited 集循环拒绝**（九层合法链 → File；真环 →
+  Json；R5 深度 8 截断撤除）。
+- **F776-R6-04（P2）生成 JSON/bus SSE 真 TCP oracle**：
+  `http_e2e_plan776_generated_json_and_bus_sse_wire`（plan776_gen_e2e
+  harness，按生产管线组 db.rs 转译 + State<Db> CRUD scaffold + events
+  broadcast bus）——POST /api/send → `{"id":3,"text":"world"}` 真 wire；
+  订阅连接收到 NewMessage SSE 帧（真 TCP）。**真实体 JSON 委托的 a2r
+  阻塞证据矩阵**：db.at 跨模块引用 api 类型——`use api: Message` /
+  `use api.Message` 的 record ctor 独立转译均报 undefined variable；
+  局部类型可转译但 db::Message 与 types::Message 撞型（E0277 无 serde
+  derive / E0308 类型不符）——a2r 转译面（742 族）非 776 返回边界。
+
+门禁（实施树 `5fda97ceb`）：
+
+| 门禁 | 结果 |
+|---|---|
+| `cargo check -p auto-lang` | 0 error |
+| 裸 `cargo t --no-fail-fast` | **5308/5308 全绿**（119.0s；含 R6 新增测试） |
+| `cargo tv` | 162/162 |
+| `cargo th -j 1 --no-fail-fast` | **129/130**；唯一红=back_proxy corpora（在册预存，R1..R6 同形） |
+| plan776 全族（test-http-e2e，`-j 1`） | **58/58**（54 项 R1-R5 复现 + R6 新增 4；后台跑一次 e2e 偶发复跑全绿——在册 harness race 族） |
+| 生成真 TCP 矩阵 | **3/3**：plan729 File（16.7s）+ plan730 Upload（14.1s）+ **plan776 JSON/bus SSE（13.8s）** |
+| `cargo test -p auto-man --lib api_gen` | 47 passed, 1 ignored |
+| scoped | generator 10/10、plan705 19/19、plan707 31/31、plan442 17/17、plan326 40/40、SSE 族 4/4 |
+| rustfmt 触面 7 文件 | 干净 |
+
+tt/tu/taa 零触发。死代码清理：`fn_ret_declares_stream`（codegen）、
+`handler_declares_stream_return`（http_server——血缘门取代声明门后死亡）。
