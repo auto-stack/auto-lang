@@ -58,6 +58,14 @@ All AI coding assistants working in this repository must strictly adhere to the 
   - During development, **DO NOT run full test suites repeatedly**. Use fast syntax/type checks:
     - Fast type check: `cargo check -p auto-lang`
     - Scoped single-module test (optional): `cargo t <module_name>` (e.g. `cargo t iced`)
+  - **测试时序（2026-10-14 用户裁定，含 needs_fix 修复）**：先完成全部 findings 的修复，
+    仅做相关反例/模块测试及必要的 `cargo check`；提交修复、最终代码与验收审查通过后，
+    由 merge 阶段在冻结提交上统一执行裸 `cargo t` + 必要触面档，再合入。
+    开发提交、internal review、单条 finding 修复或再次送审均不得触发整档 `t/tv/tt/tb/tu/taa`。
+    验收所需的定向测试仍须执行；不得把它们后置来掩盖未完成的修复。
+    最终 review 的 pass 只表示代码/验收/规范审查通过，须显式记录 merge-owned 门禁 pending；
+    这些门禁通过前不得合入或宣称交付完成。门禁失败需归因；修复改变代码后，复审受影响
+    内容，再在新冻结提交上执行受影响门禁。复用证据须确认代码、依赖、测试配置与输入未变。
   - Reuse standardized automation scripts from `.agents/skills/autoui-verifier/scripts/` (`test_vm_mcp.py`, `test_vue_playwright.mjs`) instead of writing ad-hoc scripts.
 - **Change-Scoped Verification Gate (按改动范围分级测试门禁)**:
   - **Category A: Pure Verification / Asset / Doc-Only Tasks (纯验证/示例资产/计划跟踪)**:
@@ -65,7 +73,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
   - **Category B: Scoped Rust Code Changes (局部 Rust 模块改动)**:
     - 快速语法/类型检查：`cargo check -p auto-lang`
     - 开发迭代：`cargo t <module_name>`（如 `cargo t iced` 或 `cargo t ui`）
-    - **复审门禁 = 分级门禁（fix-test-tiering，2026-09-30 裁定）**：复审/合入前在 plan
+    - **合入门禁 = 分级门禁（fix-test-tiering；2026-10-14 后置裁定）**：最终审查通过后、合入前在 plan
       worktree 跑**裸 `cargo t`**（全日常面）+ 触面档：VM/编译器→`cargo tv`、trans→
       `cargo tt`、book→`cargo tb`、**UI 代码生成（`ui_gen/**` 四生成器）→`cargo tu`**、
       碰 aavm 触发路径→按 §AAVM/AA2R 作用域映射跑 `taa`。
@@ -88,7 +96,7 @@ All AI coding assistants working in this repository must strictly adhere to the 
       多跑并发时第二实例秒级确定性红（含持锁者 PID/cwd 提示），不再互毁挂死；
       持锁进程死亡的陈锁自动接管。aavm XL/LG 族经 2026-10-02 裁定豁免
       （aavm/aa2r 拟退役短期不跑；恢复运行时补接线即可）。
-    - **AAVM 专项（Plan 568）**：改 VM/编译器的复审随身跑 `cargo tv`（PLAN-700 语料三族，
+    - **AAVM 专项（Plan 568）**：改 VM/编译器在最终审查通过后、合入前统一跑 `cargo tv`（PLAN-700 语料三族，
       与 t/tf 同二进制零重编），全量收口归批量回归档；aavm 无实用面，不需要关心是否被
       改坏，守护=本地 `taa`/`ta`（PLAN-763 已移除旧 CI）。只有 diff 触及 aavm 代码（`packages/aavm/lib/*.at`、`test/vm/aavm2/**`、
       `test/parity/**`、aavm2 测试基建）才跑 `cargo taa`，且按 §AAVM/AA2R Test Tier 作用域
@@ -122,13 +130,13 @@ All AI coding assistants working in this repository must strictly adhere to the 
 | `packages/aavm/lib/a2r.at`（终段发射器） | `cargo taa aavm2_a2r aavm_at_mode` | ~260s |
 | `packages/aavm/lib/{token,lexer,parser,typeinfo,codegen}.at`（上游共享） | 全管线级联，直接裸 `cargo taa` | ~10min 量级 |
 
-review/fold 前无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜底。闸门粒度=测试目录级（单语料文件由所属闸门整体覆盖）。compile 腿（`compile_corpus`/`compile_use_corpus`）现场 cargo build 产物按内容 hash 缓存，二次运行秒级。
+最终审查通过后、fold 前，无论改了什么 aavm 文件，一律裸 `cargo taa` 全量兜底；修复迭代仅跑作用域内定向检查。闸门粒度=测试目录级（单语料文件由所属闸门整体覆盖）。compile 腿（`compile_corpus`/`compile_use_corpus`）现场 cargo build 产物按内容 hash 缓存，二次运行秒级。
 
 **全档资源表**（测试数/耗时/内存；"待实测"由 Plan 568 T7 回填）：
 
 | 档位 | 适用场景 | 测试数 | 实测耗时 | 内存 |
 |---|---|---|---|---|
-| `cargo t` | 日常快速回归 + **per-plan 复审门禁**（1M churn + 语料族 + 画廊围栏 + ui_gen 排除，PLAN-700/fix-tiering 系） | 4976（2026-10-02 实测选择面；含 PLAN-726 闸门单测 5） | **54.1s**（PLAN-726 merge 实测 2026-10-02，轻度竞争；e4 红已清偿[PLAN-724 T-02]——62s 旧值含其 30s 长尾；余量含预存红族红时长：plan606 10.2s/schema_fence 10.5s/plan707 flake 5.1s，14 预存红族见 §1 非目标/批量回执） | 轻池 <50MB/测 |
+| `cargo t` | 日常快速回归 + **per-plan 合入门禁（最终审查通过后）**（1M churn + 语料族 + 画廊围栏 + ui_gen 排除，PLAN-700/fix-tiering 系） | 4976（2026-10-02 实测选择面；含 PLAN-726 闸门单测 5） | **54.1s**（PLAN-726 merge 实测 2026-10-02，轻度竞争；e4 红已清偿[PLAN-724 T-02]——62s 旧值含其 30s 长尾；余量含预存红族红时长：plan606 10.2s/schema_fence 10.5s/plan707 flake 5.1s，14 预存红族见 §1 非目标/批量回执） | 轻池 <50MB/测 |
 | `cargo tf` | **批量回归档**（`/auto-plan:regress` 触发，主检出单实例；含 1M churn + 语料族 + 画廊围栏，PLAN-700；fix-test-tiering 2026-09-30 起**非 per-plan 门禁**） | 5689（2026-09-24 实测） | 77.2s（Plan 564）+语料段 ~4s（tv 同源实测）；画廊围栏冷态 ~800s 另计（每进程全量重编，无跨进程缓存）；围栏与 1M churn 自 PLAN-726 带机器级单实例闸门（并发第二实例秒级红，见 §2 并行纪律） | ≤2GB 预算 |
 | `cargo tv` | 改 VM/编译器后定向语料回归——filter 档（profile tv）与 t/tf 同二进制零重编（**不含 aavm**；PLAN-700） | 162 | 3.95s（2026-09-24 实测） | 同日常档 |
 | `cargo tt` | 改 transpiler 后 | 3786（trans 增量 ~360） | 43s（冷编译另计 ~1min） | 轻池 |
