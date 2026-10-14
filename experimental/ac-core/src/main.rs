@@ -44,6 +44,7 @@
 
 use auto_ac_prototype::source::{
     compile_scalar_source, compile_source, SourceProfile, SCALAR_SOURCE_PROFILE, SOURCE_PROFILE,
+    TEXT_SOURCE_PROFILE,
 };
 use auto_ac_prototype::{link, native, verify};
 use std::path::{Path, PathBuf};
@@ -153,8 +154,8 @@ fn parse_source_args(args: &[String], need_build: bool) -> Result<SourceArgs, St
     let profile = profile.ok_or("missing --source-profile <name>")?;
     let profile = SourceProfile::of(&profile).ok_or_else(|| {
         format!(
-            "unknown source profile `{}` (this build accepts `{}` or `{}`)",
-            profile, SOURCE_PROFILE, SCALAR_SOURCE_PROFILE
+            "unknown source profile `{}` (this build accepts `{}`, `{}` or `{}`)",
+            profile, SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE
         )
     })?;
     let file = file.ok_or("missing input file")?;
@@ -518,8 +519,8 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype check-source <file> --source-profile {}|{} [--capability <name>]...",
-                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE
+                        "usage: auto-ac-prototype check-source <file> --source-profile {}|{}|{} [--capability <name>]...",
+                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);
@@ -533,8 +534,8 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
-                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE
+                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
+                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);
