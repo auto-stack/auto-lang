@@ -5665,8 +5665,11 @@ pub fn shim_http_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_http_response_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let code: i32 = crate::vm::native::pop_arg_i32(task);
     let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
-    vm.rc_release(res_nv);
     super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| s.status = code as u16)
         .ok_or_else(|| {
         VMError::RuntimeError("response_status: expected a Response credential".into())
@@ -5684,8 +5687,11 @@ pub fn shim_http_response_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let key: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
-    vm.rc_release(res_nv);
     super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
         s.headers.push((key, value));
     })
@@ -5703,8 +5709,11 @@ pub fn shim_http_response_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
-    vm.rc_release(res_nv);
     super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
         s.body = body.into_bytes();
         // Add Content-Type header if not set
@@ -5731,8 +5740,11 @@ pub fn shim_http_response_html(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     let body: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
-    vm.rc_release(res_nv);
     super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
         s.body = body.into_bytes();
         if !s
@@ -6155,8 +6167,11 @@ pub fn shim_http_response_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_nv = crate::vm::native::pop_arg_nv(task);
+    // PLAN-776 R10-01：StakeGuard Drop 即**恰一次**消费（其 Drop 执行
+    // rc_release_id；R2-03 起叠加的显式 rc_release 是第二份——共享 RC2
+    // 被销成 0，释放返回槽后全局合法 Response 被回收触发 UAF）。读取
+    // 期间份额未动（release 只在 Drop）；错误早退同样恰一份。
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
-    vm.rc_release(res_nv);
     let m = super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
         s.body = data.into_iter().map(|b| b as u8).collect();
     });

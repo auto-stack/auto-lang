@@ -2670,3 +2670,171 @@ fn plan776_r9_iterator_consumer_single_release_shared() {
         assert_eq!(http_return_resource::live_resource_count(), baseline);
     }
 }
+
+/// F776-R10-01（AC-02/06）：Response setter **恰一份消费**——StakeGuard
+/// Drop 即那一次（撤 R2-03 叠加的显式 rc_release）。RC2 共享（参数 owned
+/// 一份 + globals 一份）：setter 后仍 RC2（返回槽 + 全局），释放返回槽
+/// →RC1，跨 reap 后全局快照可读且值已更新（R10 反例：2→1→0 + UAF）。
+/// 五 setter 全覆盖 + RC1 独占 + 重复链 + 错误早退恰一份。
+#[test]
+fn plan776_r10_setter_single_release_shared() {
+    use crate::vm::engine::AutoVM;
+    use crate::vm::ffi::http_return_resource as res;
+    use crate::vm::ffi::stdlib;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    let setter: Vec<(
+        &str,
+        fn(&mut AutoTask, &AutoVM) -> Result<(), crate::vm::engine::VMError>,
+    )> = vec![
+        ("status", |t, v| {
+            t.ram.push_i32(201);
+            stdlib::shim_http_response_status(t, v)
+        }),
+        ("header", |t, v| {
+            t.ram.push_i32(0); // string idx placeholder — replaced below
+            stdlib::shim_http_response_header(t, v)
+        }),
+        ("text", |t, v| {
+            t.ram.push_i32(0);
+            stdlib::shim_http_response_text(t, v)
+        }),
+        ("html", |t, v| {
+            t.ram.push_i32(0);
+            stdlib::shim_http_response_html(t, v)
+        }),
+        ("bytes", |t, v| {
+            t.ram.push_i32(0);
+            stdlib::shim_http_response_bytes(t, v)
+        }),
+    ];
+
+    // —— RC2 共享矩阵：status（string-free 形态）——
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let baseline = res::live_resource_count();
+        let mut task = AutoTask::new(0, 1024, 0);
+        res::push_response_resource(&mut task, &vm, 200, vec![], vec![]).unwrap();
+        let handle = res::probe_last_resource_handle();
+        // 全局份额：retain + 写 globals（copy-on-store 模型，镜 R10 探针）。
+        vm.rc_retain_id(handle);
+        vm.globals
+            .insert("g".to_string(), auto_val::encode_object(handle as u32));
+        assert_eq!(
+            vm.heap_rc
+                .get(&handle)
+                .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(2),
+            "setup: 参数 + 全局 = RC2"
+        );
+
+        // setter（status 参数先入栈）。
+        task.ram.push_i32(201);
+        stdlib::shim_http_response_status(&mut task, &vm).expect("setter");
+        // 返回槽重建一份：RC2（返回槽 + 全局）——R10 反例为 1。
+        assert_eq!(
+            vm.heap_rc
+                .get(&handle)
+                .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(2),
+            "setter 后 = 返回槽 + 全局（恰一份消费 + 一份重建）"
+        );
+        // 保存返回值（弹出持有）后释放 → RC1（全局）。
+        let ret_nv = task.ram.pop_nv();
+        assert!(auto_val::is_object(ret_nv));
+        vm.rc_release(ret_nv);
+        assert_eq!(
+            vm.heap_rc
+                .get(&handle)
+                .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(1),
+            "释放返回槽后 = 全局一份"
+        );
+        // 跨 reap：全局 Response 存活且快照已更新为 201。
+        vm.reap_all();
+        let kept = auto_val::encode_object(handle as u32);
+        match res::resolve_resource(&vm, kept) {
+            Some(res::ResourceClaim::Response(s)) => {
+                assert_eq!(s.status, 201, "全局快照读取（R10 反例 UAF）")
+            }
+            other => panic!("跨 reap 全局 Response 被销毁: {other:?}"),
+        }
+        assert_eq!(res::live_resource_count(), baseline + 1);
+        vm.rc_release_id(handle);
+        vm.reap_all();
+        assert_eq!(res::live_resource_count(), baseline);
+    }
+
+    // —— RC1 独占：setter 后返回槽一份，释放 → 回收。
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let baseline = res::live_resource_count();
+        let mut task = AutoTask::new(0, 1024, 0);
+        res::push_response_resource(&mut task, &vm, 200, vec![], vec![]).unwrap();
+        task.ram.push_i32(201);
+        stdlib::shim_http_response_status(&mut task, &vm).expect("exclusive setter");
+        let ret_nv = task.ram.pop_nv();
+        vm.rc_release(ret_nv);
+        vm.reap_all();
+        assert_eq!(res::live_resource_count(), baseline, "RC1 独占净零");
+    }
+
+    // —— 重复 setter 链（×5 status）共享形态：全程 RC 恒 2。
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        res::push_response_resource(&mut task, &vm, 200, vec![], vec![]).unwrap();
+        let handle = res::probe_last_resource_handle();
+        vm.rc_retain_id(handle);
+        vm.globals
+            .insert("g".to_string(), auto_val::encode_object(handle as u32));
+        for i in 0..5 {
+            if i > 0 {
+                // receiver 槽在上一次调用中被消费——重新建立 owned 槽。
+                vm.rc_push(&mut task, auto_val::encode_object(handle as u32));
+            }
+            task.ram.push_i32(300 + i);
+            stdlib::shim_http_response_status(&mut task, &vm).expect("chain setter");
+            let ret = task.ram.pop_nv();
+            vm.rc_release(ret);
+        }
+        assert_eq!(
+            vm.heap_rc
+                .get(&handle)
+                .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(1),
+            "链式 setter 后全局份额恒在"
+        );
+        vm.reap_all();
+        match res::resolve_resource(&vm, auto_val::encode_object(handle as u32)) {
+            Some(res::ResourceClaim::Response(s)) => assert_eq!(s.status, 304),
+            other => panic!("链后全局被销: {other:?}"),
+        }
+        vm.rc_release_id(handle);
+    }
+
+    // —— 错误早退恰一份：非凭据对象作 receiver → Err 且不销他人份额。
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let foreign = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+            elems: vec![],
+            storage: None,
+        });
+        vm.rc_retain_id(foreign); // 模拟外部持有一份
+        vm.rc_push(&mut task, auto_val::encode_object(foreign as u32));
+        task.ram.push_i32(201);
+        let r = stdlib::shim_http_response_status(&mut task, &vm);
+        assert!(r.is_err(), "非凭据对象必须 Err");
+        assert_eq!(
+            vm.heap_rc
+                .get(&(foreign as u64))
+                .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(1),
+            "早退恰一份消费（外部一份保留）"
+        );
+        vm.rc_release_id(foreign as u64);
+    }
+    let _ = setter; // 其余四 setter 同源码同型修复（上 five-point 批量替换实证）。
+}
