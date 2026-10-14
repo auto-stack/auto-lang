@@ -1567,15 +1567,25 @@ impl<'a> ResourceWalk<'a> {
                             };
                         }
                         hir::Stmt::Loop { id, body: b } => {
-                            // Loop re-entry rule: a local LIVE AT LOOP ENTRY
-                            // (initialized before the loop) that is moved
-                            // anywhere in the body is dead for the whole
-                            // body — a second iteration would move it again.
-                            // Locals LET INSIDE the body are fresh owners
-                            // each iteration (r2 QA-07) and are not killed.
+                            // Loop re-entry rule (r2 QA-07, refined by
+                            // r9 R9-01): a local LIVE AT LOOP ENTRY that is
+                            // moved anywhere in the body is dead for the
+                            // whole body — but ONLY when a REAL back edge
+                            // exists (some path falls through the body, or
+                            // a continue can re-enter): a second iteration
+                            // would move it again. A body that provably
+                            // NEVER re-enters (every path ends in
+                            // return/break — const-aware, r8) executes at
+                            // most once, so the first transfer is legal and
+                            // the pre-kill must not fire (p03: a return-only
+                            // loop's single consume(x.move)). Locals LET
+                            // INSIDE the body are fresh owners each
+                            // iteration and are never killed.
                             let mut moves_inside = BTreeSet::new();
-                            block_definite_moves(m, self.body, b.0, &mut moves_inside);
-                            moves_inside.retain(|l| frame.st.live.contains_key(l));
+                            if !block_terminates(self.body, b.0) {
+                                block_definite_moves(m, self.body, b.0, &mut moves_inside);
+                                moves_inside.retain(|l| frame.st.live.contains_key(l));
+                            }
                             let mut child = frame.st.clone();
                             for l in &moves_inside {
                                 child.live.remove(l);
@@ -1914,6 +1924,22 @@ impl<'a> ResourceWalk<'a> {
                             let mut states = vec![body_st];
                             states.extend(exits.into_iter().map(|(_, st)| st));
                             merge_children(&mut frame.st, &states);
+                            // r9 R9-01: an entry-live owner whose DEATH
+                            // (a real move/drop on any path reaching the
+                            // after-loop state) merged through the loop
+                            // loses this frame's free duty — freeing it
+                            // again would double-free the transferred
+                            // value (the callee owns it now). The union is
+                            // conservative, mirroring the if-join's
+                            // responsibility rule: a maybe-transfer reads
+                            // as dead afterwards (post-loop uses reject,
+                            // post-loop exits never free).
+                            let entry_owners: Vec<u32> = frame.st.live.keys().copied().collect();
+                            for l in entry_owners {
+                                if frame.st.dead.contains_key(&l) {
+                                    frame.st.live.remove(&l);
+                                }
+                            }
                             loops.truncate(frame.loops_len);
                         }
                         RState::Run => unreachable!("Run is not resumed"),
