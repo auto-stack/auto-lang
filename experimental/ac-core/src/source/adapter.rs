@@ -296,6 +296,10 @@ struct FnPlan {
     /// Span of each registered loop id (while → condition, loop/phantom →
     /// the statement).
     loops: Vec<Span>,
+
+    /// whether any text operation/literal was planned (drives the
+    /// ac.runtime.text.v1 capability requirement)
+    pub has_text_ops: bool,
 }
 
 /// Planning context: shares the program (immutable) and the intrinsic
@@ -308,6 +312,7 @@ struct PlanCtx<'p> {
 impl PlanCtx<'_> {
     fn plan_fn(&mut self, f: &ResolvedFn) -> FnPlan {
         let mut plan = FnPlan {
+            has_text_ops: false,
             exprs: Vec::new(),
             blocks: Vec::new(),
             places: Vec::new(),
@@ -1006,6 +1011,7 @@ impl PlanCtx<'_> {
                     for sl in &arg_slots {
                         eval.push(slot_idx[*sl]);
                     }
+                    plan.has_text_ops = true;
                     plan.exprs.push(ENode {
                         kind: EKind::Text {
                             method,
@@ -1126,6 +1132,7 @@ impl PlanCtx<'_> {
                 plan.exprs.len() - 1
             }
             RExprKind::StrLit(v) => {
+                plan.has_text_ops = true;
                 plan.exprs.push(ENode {
                     kind: EKind::StrLit(v.clone()),
                     vt: e.vt,
@@ -1134,6 +1141,7 @@ impl PlanCtx<'_> {
                 plan.exprs.len() - 1
             }
             RExprKind::CharLit(v) => {
+                plan.has_text_ops = true;
                 plan.exprs.push(ENode {
                     kind: EKind::CharLit(*v),
                     vt: VT::Char,
@@ -1470,9 +1478,21 @@ impl<'p> Emitter<'p> {
         frag!("{", program_span);
         nl!(4);
 
+        let mut requires: Vec<&'static str> = Vec::new();
         if !use_intrinsics.is_empty() {
-            let req_span = self.intrinsic_first_use[use_intrinsics[0]];
-            frag!(&format!("requires: [\"{}\"]", TRACE_CAPABILITY), req_span);
+            requires.push(TRACE_CAPABILITY);
+        }
+        if self.profile.is_text() && self.plans.iter().any(|p| p.has_text_ops) {
+            requires.push(RUNTIME_TEXT_CAPABILITY);
+        }
+        if !requires.is_empty() {
+            let req_span = if use_intrinsics.is_empty() {
+                program_span
+            } else {
+                self.intrinsic_first_use[use_intrinsics[0]]
+            };
+            let items: Vec<String> = requires.iter().map(|r| format!("\"{}\"", r)).collect();
+            frag!(&format!("requires: [{}]", items.join(", ")), req_span);
             nl!(4);
         }
 
@@ -1997,6 +2017,10 @@ fn bin_op_atom(op: BinOp) -> (&'static str, &'static str) {
         BinOp::And | BinOp::Or => unreachable!("logical ops lower to EKind::Logical"),
     }
 }
+
+/// Capability every text-profile module that lowers runtime calls must
+/// declare and the caller must explicitly provide (PLAN-770 §2).
+pub const RUNTIME_TEXT_CAPABILITY: &str = "ac.runtime.text.v1";
 
 fn intrinsic_def_id(sym: &str) -> String {
     format!("i_{}", sym.rsplit('.').next().unwrap_or("x"))
