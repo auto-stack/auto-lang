@@ -1,0 +1,30 @@
+
+Step                                                                            Ok Seconds Detail
+----                                                                            -- ------- ------
+context (HEAD + toolchain)                                                    True     0.2       
+cargo check (ac-core)                                                         True     0.1       
+cargo fmt --check (ac-core)                                                   True     0.3       
+cargo check --all-targets, zero warnings (ac-core)                            True     0.1       
+cargo test --locked (full ac-core)                                            True    34.9       
+cargo test record_native (--test-threads=1)                                   True    11.5       
+build tool binary once                                                        True     0.8       
+build trace support library once                                              True       0       
+positive SOURCE case: flagship build + run (V-02/V-06/V-08)                   True     0.2       
+positive SOURCE case: eval-order trace build + run (V-05/V-07)                True     0.2       
+positive HIR case: record fixture build + run (V-02 HIR leg)                  True     0.3       
+HIR failure control: forced copy-check exits 11 (F-771-R1-04)                 True     0.3       
+positive HIR case: nested copy / aggregate return / aliasing (F-771-R1-01/04) True     0.3       
+positive SOURCE cases: aliased assignment value semantics (F-771-R1-01)       True     0.7       
+positive SOURCE case: positional construction (F-771-R1-02)                   True     0.2       
+positive SOURCE cases: ctor operand snapshot order (F-771-R2-01)              True     0.7       
+positive HIR case: ctor operand snapshot order (F-771-R2-01)                  True     0.2       
+negative SOURCE cases: check-source rejects (10)                              True     0.1       
+profile isolation (V-01: old profiles reject the record surface)              True       0       
+SENTINEL transaction (V-10: failed build preserves artifacts)                 True     0.2       
+receipt identity lines (V-10)                                                 True     0.2       
+old gate 741 (core-i32)                                                       True       9       
+old gate 745 (source core-i32)                                                True    39.9       
+old gate 767 (scalar)                                                         True    24.6       
+
+
+

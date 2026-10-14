@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-771
-status: execution_done
+status: archived
 feature_name: AC 标量 record、字段与方法首批原生编译
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-12
 updated_at: 2026-10-14
-current_step: 7
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -143,8 +143,8 @@ T01先验证整个类型含图/字段路径/构造/Drop与内部聚合调用的�
 | [x] | T-05 | work | T-03/04 | main/shared finish_build/record_native tests、source/HIR PE；V02/05..09，一次receiver与构造eval序。[✅ 已完成] worktree 67ee3cc01：record_native.rs 9 PE 测试（源码旗舰 exit0、HIR fixture、命名构造源码序 trace `ba`、receiver 一次+实参序 trace `aab`、命名实参重排+嵌套 record 实参、out-slot 链式 swap(mk)/swap(swap(mk))、.mut 递归、mut 只写目标、V-09 深输入 1024 层类型图+4096 混合字段路径段运行绿）；copy elision（dest 穿透：生产型表达式直写消费存储——let/assign/return/out-slot 下传目的地，仅生产型子表达式内联），嵌套 ctor 链 O(n²) 临时槽清零（800 层 main 324817→3217 指令、46s→1.1s 构建；1024 层 1.6s 构建 0.4s 运行）；adapter CallOut 迭代路径补 view 包装；全 suite 187/187 + fmt；R1修复：R1 后 record_native 13 PE（增：别名赋值值语义六例、位置构造 PE、HIR r02 强制失败控制 exit 11、HIR r03 直连腿嵌套拷贝/聚合返回/别名；r01 成功码 0 失败码 11/12 互异）；全 suite 199/199；R2修复：R2 后 record_native 15 PE（增 ctor 操作数快照源码序七例 + r04 直连腿 exit0/失败码 31..34）；全 suite 202/202 | 01..05 |
 | [x] | T-06 | work | T-05 | 新verify-ac-record-771.ps1/case manifest；mandatory补充与新旧gates，若770已合入联跑其gate；严格盘点/scope/SENTINEL。[✅ 已完成] worktree ecd9530d0：18 步门禁（全 ac-core check/fmt/零警告 all-targets/test、record_native 单线程、正向源码旗舰+求值序 trace `ba`、正向 HIR、7 例钉码负向、profile 隔离、SENTINEL 事务、收据身份行）+ 旧 gates 741(-SkipMainGates)/745/767 串行——18/18 PASS 0 failed 10 cases；770 未合入故未联跑其 gate（interface-contract §6 顺序，第二合入者责任）；实施期 V-08 遮蔽规则落地（局部/参数不得与 record 类型同名）与 SN04/SN07 fixture oracle 修正；R1修复：R1 重跑 22 步全绿 0 failed 19 cases（增 HP02 失败控制/HP03 r03/SP03 别名三例/SP04 位置构造/SN08..10；HP01 成功码 1→0）；770 仍未合入；R2修复：R2 重跑门禁 24 步全绿 23 cases（增 SP05 快照三例/HP04 r04）；770 仍未合入 | 06 |
 | [x] | T-07 | work | T-06 | README、verification/proposed-spec-delta、inputs/依赖/实际产品hash；明确下一组合域owner，不发布canonical。[✅ 已完成] worktree ecd9530d0：README record profile 节；reports/771-record/verification.md（Case 全表、18 步门禁收据、输入 SHA256 表、后续 owner：text-record 组合/可变实例方法/unit/资源字段/List/use、通用 pass 保持 planned）；proposed-spec-delta.md（SD-01..05 提案，未发布 canonical）；依赖零 diff（无 auto-down/crates 改动）；R1修复：R1 修订：verification.md 增 §4b 修复轮记录（四发现闭合行+V-09 补证）；README copy-elision 补不相交门控说明；删除一次性辅助 patch_a2.py/patch_r1.py（复审卫生项）；R2修复：R2：verification.md §4c 修复轮记录 + 两连败诊断；卫生项修复（删旧 15 步草稿清单/187 旧总数/exit1 旧行，R1 链接改 ../../plans）；README 补 R2 快照语义 | 06 |
-| [ ] | T-08 | review | T-01..07完成、writes暂停 | 同树独立AC/SD/真实Bundle变异/ABI/order/深度复审，pass才reviewed | 07 |
-| [ ] | T-09 | merge | T-08pass与合入授权 | 只消费新基线经work联合gate且重新review的fresh凭证；SD/导航/ledger/index/实际archive/计数/批回归到期判定；guard clean清理树 | 08 |
+| [x] | T-08 | review | T-01..07完成、writes暂停 | 同树独立AC/SD/真实Bundle变异/ABI/order/深度复审，pass才reviewed | 07 |
+| [x] | T-09 | merge | T-08pass与合入授权 | 只消费新基线经work联合gate且重新review的fresh凭证；SD/导航/ledger/index/实际archive/计数/批回归到期判定；guard clean清理树 | 08 |
 
 现有工作树 `D:/autostack/.wt/lang-771/auto-lang`、branch `plan-771-dev`。2026-10-14 R1 final review needs_fix：T-02..07 曾重新打开（T-01 保持完成）；同日 work 修复轮闭合 F-771-R1-01..04 与 V-09 malformed partial 缺口（详 §9 R1 修复记录与 reports/771-record/verification.md §4b），T-02..07 全部重新完成，execution_done 7/9。review8/9、实际closeout9/9。受审代码/基线变化时回同一树work重跑受影响gates、重新独立review；不把实现/联合正确性延后给T09。
 
@@ -205,6 +205,25 @@ task_ids: T-04..T-07 重勾（R2 修复证据已附）。
 evidence: 三反例先在 86f3a91a0 复现（ctor-snapshot/positional-snapshot exit11、snapshot-control exit0），修复后 0/0/0；R1 全反例复跑保持 0。审计变体：mut 先行重排（读后值=后变异值，方向性断言）、嵌套 ctor 操作数、部分字段变异、函数返回操作数全绿；view+mut 同调用合并实参树（含经 ctor 操作数的读）仍被 verify.mut-conflict 拒绝（a5/a6 探针，钉子入 record_source.rs）。永久回归：record_native 15（+2：ctor_operand_snapshot_source_order_pe 七例、hir_ctor_snapshot_order_pe）/ record_source 21（+1：mut_exclusivity_spans_ctor_arg_trees）= 57 新测试；fixtures/record-hir/valid/r04（失败码 31..34，灵敏度实证翻转→31）；门禁 24 步全绿 23 cases（SP05 三例/HP04）；全 ac-core 202/202 + fmt/all-targets 零警告；旧 gates 741/745/767 全绿。文档卫生项（R2 nonblocking）：verification.md 删除与 22 步表重复的旧 15 步草稿清单（旧 187/9 总数与「exit 1=快乐路径」旧行随之移除）、R1 链接修正 ../../plans。
 blockers: 无已知合同内缺口。
 next: T-08 同树独立复审（AC-07，绑定修复后 HEAD；R1/R2 反例族与 24 步门禁收据重核；SD-03/04 值语义/order 断言对齐实际），pass 后 T-09 merge（需用户合入授权）。770 仍 execution_done 未合入——第二合入者按 interface-contract §6 新整合基线重放。
+
+2026-10-14，stage:review，review_scope:final，plan_id:PLAN-771，plan_revision:2，outcome:pass（R3）。
+reviewer_identity/limitations: 当前Codex复审上下文未实施修复；无额外agent/model角色声明。两轮失败后的诊断/覆盖调整已审查，按值物化与借位分离重构验证，不仅检查旧例。
+worktree_path: D:/autostack/.wt/lang-771/auto-lang；branch: plan-771-dev；reviewed_commit: e0ad328d80bfe00ca7563174b3352edeb8e6347b；base_commit: 199d6509e60821c3c0a6414ecd0bedf484105e4d；prior_review_commit:86f3a91a0cabfafede9b9b69579d368bdf3df522；复审前后实现树clean、HEAD稳定。main观察047c2696306afbe65ddbf0a712d50cd3d3b16681。
+dependency_revisions/spec_inputs: 772/774 archived，770未合入，依赖源码零改动；当前canonical输入hash与R2一致，见 [spec inputs](attachments/771/review-r3/spec-inputs.sha256)。SD冻结 [proposal](attachments/771/review-r3/proposed-spec-delta.frozen.md)，最终产品/输入/证据hash见 [manifest](attachments/771/review-r3/files.sha256)。touched_goals空因不关闭GOAL017等正式goal。
+acceptance_results: AC01..07 pass，AC08 pending（merge-owned）；T08勾选，status reviewed/current_step8/9，T09未执行。
+evidence: 独立重跑verify-ac-record-771.ps1 24/24 PASS、23 cases；ac-core202/202、record_native15/15、fmt/all-targets零warning、旧741/745/767全过。R1四源码输入PE均0、实际Bundle变异双模式controlled reject；R2三快照输入均0；新组合探针含mut参数返回构造/异质bool字段/record字段值/三次循环均PE0；直接HIR r04成功0，故意修改前捕获期望→32、后捕获期望→34（distinct failure），验证断言灵敏度。负向同调用view+mut（含经ctor操作数）仍verify.mut-conflict。完整 [R3报告](attachments/771/review-r3/REVIEW.md) 与durable gate receipts。
+findings/closure: F-771-R1-01..04/F-771-R2-01全部闭合，无新阻断。新增F-771-R3-01 low/nonblocking：verification.md §4当前表仍残留187/9旧数量/耗时，与202/15当前概述及§4c删旧声明矛盾；复审实际收据明确，closeout修正文档即可，无实施语义缺口。
+knowledge_delta: SD01..05与现有bounded profile/可信门/值捕获与借位/内部ABI/ACC有限取证相符；批准冻结提案供merge沉淀，未发布canonical或ledger。保持unit/mut实例方法/text资源字段/List/use/通用pass/公开ABI的后续边界。
+pending_closeout_gates: 实际merge/Spec导航ledger/index/archive计数/批回归到期判定/guard清理pending；如770先合，771在新组合基线重跑全门禁+770 gate且重新review（不得用本凭证覆盖新代码）。
+next: auto-plan:merge，仅消费本revision/commit且fresh的证据；本次未改实现、未合入归档清理。非阻断F-R3-01登记债务，closeout校正实际验证表。
+2026-10-14，stage:merge，plan_id:PLAN-771，plan_revision:2，outcome:pass（consolidation receipt，键 PLAN-771:r2）。
+prepared: R3 final pass 绑定 e0ad328d8（rebased e279ee018，range-diff 全 `=`）；canonical diff=SD-01..05（新 docs/specs/auto-ac/source-record.md + auto-hir/project、auto-hir/stage-contract、auto-ac/project、auto-acc/project 追加，lasting-rule 表述）+ F-R3-01 收据表校正（187/9→202/15、时序更新）；delivery_commit=`8b7485c9b`（reviewed 提交之上两文档/投影后代：bd1dabae1 规范沉淀 + 8b7485c9b ledger 投影；实现/依赖零改动核验）。
+landed: rebase plan-771-dev→master 后 `git merge --ff-only` 成功，master tip == 8b7485c9b == 分支 tip，无合并提交；旧→新映射 f909781b4→3feae83e6 / fb8bd7e14→520103021 / f46cd128b→2bc34e6fc / b0a7c31f9→c16de9da7 / 67ee3cc01→a95f5f164 / ecd9530d0→d640fa199 / 86f3a91a0→f28a71f70 / e0ad328d8→e279ee018 / d6ee10d49→bd1dabae1（git range-diff 全等）。
+merge_gates: merge-owned 裸 `cargo t` 于主检出全绿（5295/5295 passed、1545 skipped、123.3s）；不变输入论证：`git diff master..HEAD -- crates test benches examples Cargo.toml Cargo.lock .cargo` 为空（delivery 与 master 被测面零差异）；触面档（tv/tt/tb/tu/taa）零触发（无 crates/ 改动）；ac-core 面由 24 步门禁（工作树同内容）覆盖；主检出冒烟：ac-core build + r01 check（record 域行）+ 旗舰源码 PE exit0。
+ledger_refreshed: Regime B 受管离线投影（无 store 服务可达；.autoos/specs.json 受版本管理，经工作树提交随 ff 落地）：v13→14，新增 P771-1/P771-2（designs）、P771-T（tests）、P771-R3（reviews）、P771-M（reports），全部带 file+tags；守卫=字节级备份+程序化读改写+diff 证明外科范围（仅 version 与新条目）+六节模式校验+回读核验；spec-index 重生成（模块集无变化）。首版 indent=1 整文件重排被守卫拦截回滚，重写为 indent=2 匹配序列化。
+archived: docs/plans/archive/771-ac-record-method-native.md（git mv）；status: archived、current_step 9/9、T-09 勾结；plans.md 三行回写（auto-ac/auto-hir/auto-acc 指归档路径）；R1/R2/R3 复审附件随本提交纳入版本管理（K13）；观察项：experimental/ac-core 为自含实验 workspace，无生产 release 二进制/Web bundle 消费其产物——无部署制品需重建（auto-musk K13 教训核对）。
+batch_regression_due: 否——docs/plans/.last-batch-regression.json last_covered_plan_id=774（2026-10-14T11:30Z，<48h）；771%5=1 非 divisible-by-5 触发；本次合入后回执仍在 48h 窗口内。
+cleaned: pending（本提交后执行 wt-guard + 移除工作树/分支/组目录，随后补记）。
 
 ## 10. 待澄清事项
 

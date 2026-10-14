@@ -1,0 +1,11 @@
+type Q { v int }
+type P { a Q; b Q }
+fn swap(p P) P { return P { a: p.b, b: p.a } }
+fn main() int {
+ var p = P { a: Q { v: 1 }, b: Q { v: 2 } }
+ p = swap(p)
+ if p.a.v != 2 { return 11 }
+ if p.b.v != 1 { return 12 }
+ return 0
+}
+
