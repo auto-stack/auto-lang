@@ -26,19 +26,23 @@ transpiler 零 diff（触面清单无 `trans/` 文件）——`cargo tt` 未触�
 aavm 零触发（`packages/aavm/**`、`test/vm/aavm2/**`、`test/parity/**` 无 diff）——
 `cargo taa` 不适用。
 
-## 2. AC 逐条对账
+## 2. AC 逐条对账（R2 终形重写，2026-10-14；基线 `088e47823` + 分诊测试 `73d4f0ff3`）
 
-| AC | 证据 | 判定 |
+> 本表为 R3 修复轮（F776-R3-02）按 R2 实现终形改写的对账——T-08 初版表
+> 与 R1/R2 实现失配处（AC-01 查表臂表述、AC-08 过判）已修正；plan776
+> 全族现 **49/49**（48 项 R1+R2 反例复现 + 1 项 R3 分诊负控制）。
+
+| AC | 证据（R2 终形） | 判定 |
 |---|---|---|
-| AC-01 真碰撞 | e2e `http_e2e_plan776_collision_resource_vs_plain_int`：观察钩子取活跃资源实际 heap id → 同值普通 int wire 200 JSON 数字（`/api/plain/<id>`）→ 资源未被消费（`/api/replay` 仍 302+Location）。iterator 族对照由 legacy 查表臂保留（e2e_sse_chain 4/4 绿 + 探针 plain_numbers/legacy_registry） | **过** |
-| AC-02 逐值身份与兼容 | 传播探针（globals/futures/captures）+ T-02 shim 接线（redirect/ok_response/file）+ 提取级条件分支由 e2e 碰撞族覆盖；6 legacy wire 用例=plan326 http_e2e 34 项全绿（redirect/SSE 链/accessors/musk 常量内含）；访问器面 engine CALL_SPEC 兜底不动（plan724 客户端矩阵绿） | **过** |
-| AC-03 sync/async 同形 | e2e：async 资源终值 302、i64 全宽 5000000000、record 值域（`"id": 7` 序列化不降级）、Response 不变数字（碰撞族）/SSE 不变 JSON（sse_chain）；三 async 形态（Ready=External 延迟/Internal body await——delay_async+park 驱动）；named 面 e2e + closure 面 plan442 axum Router 链 17/17 | **过** |
-| AC-04 终态 | e2e Failed→500（`async_failure_reply`，不再 200 null）；成功 Nil 200 null 保持（plan705 既有语义测试绿）；stale/wrong-owner 单测拒绝（resolve miss）；迟到/取消=plan705 9/9（park/cancel/shutdown 族零回归） | **过** |
-| AC-05 错凭据 | 单测：wrong_owner（跨 VM 堆 miss）、stale（回收后 miss）、非资源对象 downcast 拒识、单调 id 无复用、耗尽防御（heap_id_gen 回绕分配前拒绝）；Future 0xF0 位模式普通 int 守卫保留（plan705 e2e int 反例绿） | **过** |
-| AC-06 存活 | e2e：常量重放 3 请求全 302；**1000 次构造-返回闭环 live 计数回基线**（dying 8192 步宽限窗由工作循环 drain 跨过——`return 1` 式 drain 每请求 ~2 指令不足，量化在案）；SSE 断连凭据回收（cleanup 守卫+RC 归零）；rc 链路单测（push=1/release=0/reap_all 全收）；SSE/File/Upload 移交合同（take 单次/scope 收口）不动=729/730/707 scoped 绿 | **过** |
-| AC-07 来源身份 | 三层冻结：提取级（ApiExtractor 两遍+`from_return_identity`——struct×2+enum 遮蔽反例单测）/VM 门（API_RETURN_SHADOWED 编译期冻结单测）/back_proxy（fn_meta 三段，primary 段分类+遮蔽）；755 契约覆盖 4/4+CFFI merge 守卫（cargo t 内）；738 双指纹 75/75；751 三态单点未动 | **过** |
-| AC-08 生成/拓扑面 | auto-man plan776 消费族 1/1（遮蔽端点 JSON 数据面）+api_gen 46/46（生成 fixture 无模板替代回归）；unsupported=tauri HTTP 专属矩阵拒绝保持（api_gen 46 内含）；merged/IPC/back-proxy=back_proxy 19 项 18 绿（file-501/upload-501 守卫恢复，corpora 预存）；不泄漏裸 id（资源对象入 JSON 兜底→heap_object_to_json None→500，不冒充成功） | **过** |
-| AC-09 门禁对账 | 本报告 §1/§3：无未解释红/超时；SD 草稿见 spec-delta 报告 | **过** |
+| AC-01 真碰撞 | e2e 碰撞族：活跃资源实际 id → 同值普通 int wire 200 JSON 数字（`/api/plain/<id>`）→ 资源未被消费（`/api/replay` 仍 302）。iterator 族对照=**声明门/查表臂已退役**后的双反例：`declared_stream_plain_int_is_data`（`fn p() ~Iter { return 0 }` → JSON 0——声明不授予身份）+ `real_generator`/indirect（真实 generator → SSE；plan326 indirect 形态恢复 4/4） | **过** |
+| AC-02 逐值身份与兼容 | 传播探针（globals/futures/captures）+ 5 producer 切换 + setter owned-slot（`setter_return_survives_grace_window` 9000 步跨窗 201）+ **client egress 凭据化**（`client_response_keeps_status_body`：本地上游 201+`upstream` body 保真转发，不再 JSON 裸编号）+ **bytes 快照**（`bytes_setter_roundtrip` body=AB）；6 legacy wire 用例=plan326 http_e2e 34/34（redirect/SSE 链/accessors/musk 常量内含，由真实生产点凭据保持） | **过** |
+| AC-03 sync/async 同形 | **同形依据=单入口编组**：sync `marshal_handler_value` 与 async `final_value_reply`（`resolve_resource`/`resolve_resource_value`）汇于**同一** `resource_claim_reply` 分派（Response 快照 clone/Sse 校验+`sse_iterator_reply` 单源/File+Upload take 移交）——同形由构造保证，代表例验证：async 资源终值 302、i64 全宽 5000000000、record JSON（`"id": 7` 不降级）、SSE 不变 JSON；三 Future 形态（Ready 即完/External park/Internal body await——delay_async+park 驱动）；closure 面 plan442 axum Router 链 17/17。**未逐格展开的组合边界**（如实列）：四资源族 × 三 Future 形态 × named/closure 未做全笛卡尔逐格 wire——Upload/File 的 async 终值形态与 record 嵌套资源组合未逐格断言（单入口构造保证同形，代表例覆盖 Response/SSE/i64/record） | **过**（单入口构造 + 代表例） |
+| AC-04 终态 | e2e Failed→500（`async_failure_reply`，不再 200 null）；成功 Nil 200 null 保持（plan705）；stale/wrong-owner id 层拒绝；迟到/取消=plan705 9/9 + 调用图门扩认。**R3 分诊（F776-R3-03）**：缓存 Internal Future 的 `.await` 组合（R2 future-cache 探针形态）= **705 域 sync-await 预存缺陷**（`execute_future_body` 帧复用 → body RET 弹 handler 帧 → handler RET bp==0 → Terminated；数据体 `~{42}` 同形失败、776 diff 零触该机制、失败在返回编组之前）——776 边界三不变量由负控制 `http_e2e_plan776_r3_cached_future_await_triage` 钉住：首回有界 500、重放普通 int 数据面（无身份泄漏）、半驱动凭据经任务终态清偿回基线。归 705 轨（KNOWN-DEBT P776-D3） | **过** |
+| AC-05 错凭据 | **owner 11 位段**：`owner_segment_exhaustion_rejected`（顺序创建 2047 中间 VM + live-A 交叉，第 2049 个 VM 受控拒绝——7 位掩码回绕已修）；id 层 owner 校验先行（跨 VM 同号拒绝）；stale（回收后 miss）、非资源对象 downcast 拒识、local 2^20 耗尽分配前拒绝；Future 0xF0 位模式普通 int 守卫保留（plan705 int 反例） | **过** |
+| AC-06 存活 | 1000 次构造-返回闭环 live 回基线（dying 8192 步宽限窗经 drain 跨过）；常量重放 3 请求全 302；SSE 断连凭据回收；setter 返回值跨宽限窗存活（9000 步 201）；**容器级联清理**（`nested_record_error_releases_credential`：Box{response}+1/0 异常 11 请求回基线——R2-04）；SSE/File/Upload 移交合同=729/730/707 scoped 绿 | **过** |
+| AC-07 来源身份 | **alias 按 target 展开**（`type Download = FileResponse` → File；alias→用户名 → Json；`http.` 限定名不受名集遮蔽——R2-07）+ 用户同名（struct×2/enum/空声明）三层遮蔽（提取/VM 门/back_proxy 双集）；755 契约覆盖 4/4；738 双指纹 75/75；751 三态单点未动 | **过** |
+| AC-08 生成/拓扑面 | **已证面**：auto-man api_gen 46+1 ignored（生成 fixture 无模板替代回归）+ plan776 消费族 1/1；unsupported=tauri HTTP 专属矩阵拒绝保持；merged/IPC/back-proxy=back_proxy 19 项 18 绿（file-501/upload-501 守卫恢复；corpora 预存在册，master 同红）；不泄漏裸 id（client egress 凭据化后上游保真；资源对象入 JSON 兜底→500 不冒充成功）。**未验证面（单列，F776-R3-02）**：生成 Rust **真 TCP 矩阵未验证**——预存编译漂移（生成物 E0433+hyper Builder 差异编译失败，master `5e21561d2` 同形 TIMEOUT，742 附件同类在案），非本 diff 引入，归 742 轨收口；不据此判 pass | **partial** |
+| AC-09 门禁对账 | §1/§3 + R3 修复轮门禁：无新增未解释红/超时；SD/decision/AC 表已按 `088e47823` 终形重写（F776-R3-01/02，spec-delta R2 终形稿）；future-cache 已分诊归 705（F776-R3-03，P776-D3）——**终判归 R4 独立复审** | 待 R4 |
 
 ## 3. 红项分诊（全部在册/预存，零本 diff 新增）
 
@@ -58,9 +62,22 @@ aavm 零触发（`packages/aavm/**`、`test/vm/aavm2/**`、`test/parity/**` 无 
    （plan352 在案）；真实 wire 契约是下划线 `http.response_redirect`。
 3. **redirect 状态规范化**：shim 只产 301/302（307 输入归 302）——Plan 346
    既有行为保持，非本计划变更。
-4. **HTTP_RESPONSES 表**：仅剩 client 注入面 + `http.response()`+setter 死面
-   （test/examples 零用户）；表仍 thread_local 无回收——client 面生命周期
+4. **HTTP_RESPONSES 表**：仅剩 client 死兼容面（int 查表；`push_handle_result`
+   凭据化后 insert 退役，R2-05）；表仍 thread_local 无回收——client 面生命周期
    归属 FFI 资源范围（§1.4 非目标），server 构造路径已全部资源化不经表。
+5. **缓存 Internal Future 的 `.await` 组合（R3 分诊，F776-R3-03）**：
+   全局缓存 `~{...}` future 再 `.await`（含跨 handler 重放）触发 705 域
+   sync-await 预存缺陷——`execute_future_body` 复用 handler 帧（只存取 ip
+   不保 bp/sp），body RET 弹掉 handler 帧后 handler 自身 RET 落在 bp==0 →
+   Terminated 有界 500；结果槽随帧错位，future 被写为 Ready(Int(0))
+   （重放恒 0）。**归属 705 状态机**（Plan §5.2「Future 的展开/等待由
+   705 状态机负责」）：数据体 `~{42}` 同形失败（无资源参与）、776 diff
+   零触该机制（engine 侧仅加 rc_release，不在数据体失败路径）、失败在
+   返回编组之前。776 边界三不变量（有界 500/重放数据面/凭据回收）由
+   `http_e2e_plan776_r3_cached_future_await_triage` 钉住；KNOWN-DEBT
+   **P776-D3** 归 705 轨。附带观察：sync handler `return ~{...}` 直接返回
+   future 位模式数值走 JSON 数据面（如 1264）——sync 声明下数值即数据，
+   与「声明不授予身份」一致，非泄漏。
 
 ## 5. 交付物清单
 
@@ -72,6 +89,10 @@ aavm 零触发（`packages/aavm/**`、`test/vm/aavm2/**`、`test/parity/**` 无 
   4 e2e/单测 T-06 等）。
 - 报告：本报告 + `776-return-resource-spec-delta.md`（SD 草稿）+
   `776-return-resource-decision.md`（T-01 决策包）。
+- **R3 修复轮新增**：分诊负控制测试 1 项
+  （`http_e2e_plan776_r3_cached_future_await_triage`，提交 `73d4f0ff3`）；
+  spec-delta R2 终形重写稿；decision §2/§3 R2 终形修订；本报告 §2 AC 表
+  终形重写。
 
 ---
 
@@ -135,3 +156,44 @@ aavm 零触发（`packages/aavm/**`、`test/vm/aavm2/**`、`test/parity/**` 无 
   alias→target 表）。
 - 未验证面如实记录：生成真 TCP 矩阵=预存编译漂移（master 同形）；closure
   面 generator 分派无现实用例未包装（待察）。
+
+---
+
+## R3 修复轮（2026-10-14，review-r3 needs_fix 后复修）
+
+代码提交：`73d4f0ff3`（仅新增分诊负控制测试，+101 行；实现链
+a142756c9..088e47823 不动）。逐项闭合 F776-R3-01..03：
+
+- **F776-R3-01（P1）**：spec-delta 全文重写为 **R2 终形稿**（SD-01..07
+  after 规则按 `088e47823`：返回边界身份、owner 11 位段耗尽、setter
+  owned-slot、容器级联清理、client egress 凭据、alias target 展开、bytes
+  快照；R1 修订节废止——修订史与 r1/r2/r3 冻结副本链保留）；decision
+  §2/§3 废止表述（「无显式 owner id / client 保持 int / 声明门保持 /
+  查表保留 / setter 走表臂」）就地修订并标注 R2 终形（§2 总注、§3.1
+  owner/代次、§3.3 client、§3.5 setter、§4 分派序）。
+- **F776-R3-02（P2）**：本报告 §2 AC 表按 R2 终形重写——AC-01 iterator
+  对照改双反例（查表臂退役）；AC-03 写明 `resource_claim_reply` 单入口
+  编组同形依据+未逐格组合边界清单；AC-08 改 **partial**（生成真 TCP
+  未验证面单列）；AC-09 改待 R4。
+- **F776-R3-03（P2）**：future-cache 分诊完成——机制（`execute_future_body`
+  帧复用 → body RET 弹 handler 帧 → handler RET bp==0 → Terminated 有界
+  500；结果槽错位 → future 被写 Ready(Int(0))，重放恒 0）+ 三重归属证据
+  （数据体 `~{42}` 同形失败=无资源参与；776 diff 零触该机制；失败在返回
+  编组之前）→ **归属 705 状态机**（Plan §5.2；KNOWN-DEBT P776-D3）；
+  负控制 `http_e2e_plan776_r3_cached_future_await_triage` 钉 776 边界三
+  不变量（首回有界 500 / 重放普通 int 数据面 / 半驱动凭据经任务终态清偿
+  回基线——R2-04 栈扫描的错误出口新路径）。
+
+门禁重跑（实施树 `73d4f0ff3`）：
+
+| 门禁 | 结果 |
+|---|---|
+| plan776 全族（test-http-e2e，`-j 1`） | **49/49**（48 项 R1+R2 复现 + R3 分诊 1 项） |
+| `cargo check -p auto-lang` | 0 error（预存 warnings 不变） |
+| 裸 `cargo t --no-fail-fast` | **5303/5304**；唯一红=plan484_024_charts（在册间歇 flake，**单跑 1/1 绿**——R2 轮同类实录） |
+| `cargo th -j 1 --no-fail-fast` | **123/125**；红 2=back_proxy corpora（master 预存在册）+ e2e_sse_generator_handler（plan326 SSE 族已知偶发 harness race，T-07 在案，**单跑 1/1 绿**） |
+| rustfmt --check（触面测试文件） | 干净 |
+
+本轮实现 diff 仅测试文件（文档改动在主检出 docs/plans/**）；tt/taa/tu
+零触发。cargo fmt 全仓因 examples/ui_container.rs 预存解析错误不可用
+（仓库惯例=触面逐文件 rustfmt）。

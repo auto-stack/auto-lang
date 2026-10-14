@@ -85,6 +85,14 @@ marshal 按位拆解验证）。
 **结论**：A 在全部硬性维度占优且复用已有受控引用机制（计划 §2 "优先复用"）。
 B 的唯一优势（不占堆 id 空间）不构成需求。**冻结方案 A。**
 
+> **R2 终形修订（2026-10-14，F776-R3-01）**：本报告为 T-01 基线冻结稿，
+> §3 下列条款已按 R1/R2 复审实现演进废止，终形以本节修订为准（实现
+> `088e47823`）：① owner 不再依赖"per-VM 表即边界"——凭据 id 编入
+> 11 位 owner 段（§3.1 修订）；② client Response 进 egress 边界凭据化
+> （§3.3 修订）；③ setter 链迁移快照+owned-slot（§3.5 修订）；④ 查表臂
+> 与声明门全部退役，iterator 身份在返回边界建立（§4 修订）。逐条 SD 终形
+> 见 `776-return-resource-spec-delta.md`（R2 终形稿）。
+
 ## 3. 凭据合同（方案 A 细则）
 
 ### 3.1 结构与 kind
@@ -107,12 +115,15 @@ pub struct HttpReturnResource { pub kind: HttpReturnKind }
 - `TypeTag::HttpReturnResource`（新变体，`name()` → `"HttpReturnResource"`）。
 - 生产 push 模板 = `push_rust_obj` 同款：`vm.insert_heap_object` + `vm.rc_push(task,
   encode_object(handle))`（stdlib.rs:10521 现成模式，RC 簿记齐全）。
-- **owner**：heap_objects per-VM 表即 owner 边界；凭据不再携带显式 owner id
-  （编组侧查 `vm` 的表，错 owner = 查无 → 受控失败）。诊断信息附 VM 实例指针值
-  （仅日志，不作校验键）。
-- **代次**：heap id 单调不复用 ⇒ 代次冗余；`insert_heap_object` 的 fetch_add 回绕
-  （id 回到已用段）为耗尽态——T-02 在分配包装处检测并拒绝分配（诊断
-  `http return resource table exhausted`），不重用。
+- **owner（R2 终形修订——原文「不再携带显式 owner id」废止）**：凭据
+  走**专用 id 段** `0x8000_0000 | owner(11bit) << 20 | local(20bit)`，
+  **owner 编入 id 且无掩码回绕**——id 层 owner 校验（`id_owner_matches`）
+  先行于堆查找（跨 VM 同号在 id 层拒绝），堆内 owner 字段为二线；进程内
+  第 2049 个 VM 起 owner 段超界 → 分配前受控拒绝（`owner space
+  exhausted`，R2-02：7 位掩码 A/A+128 同段误取已修正）。凭据不走
+  `heap_object_id_gen`（与通用 heap id 段 4M+ 区间不重叠）。
+- **代次（R2 终形修订）**：local 段单调不复用；2^20 耗尽 → 分配前拒绝
+  （诊断 `http return resource id space exhausted`），不截断重用。
 
 ### 3.2 传播与数值转换规则（身份保持分母）
 
@@ -139,7 +150,7 @@ pub struct HttpReturnResource { pub kind: HttpReturnKind }
 | `musk_response_ctor::shim_sse_into_response` | `push_i32(iter_id)` → push Sse 凭据对象（iterator_id 装箱；sse chain wire 用例同上兼容） |
 | File 描述符构造点（http_server_file native 面） | push File 凭据对象 |
 | Upload 收据 native 面（http_upload） | push Upload 凭据对象 |
-| client http.get/.send()（stdlib 8628 族） | **保持 int 句柄**（client 消费面不在服务返回边界；若其句柄被返回给 handler，走 legacy 查表臂——已覆盖） |
+| client http.get/.send()（stdlib 8628 族） | **R2 终形修订（原「保持 int 句柄」废止，R2-05）**：`push_handle_result` 产 **Response 凭据对象**（owned 快照）——client Response 进 HTTP egress 边界（Plan §1.4），上游 status/body 保真转发，不再降级 JSON 裸编号；访问器统一载荷（快照/int 表）兼容，HTTP_RESPONSES 表 insert 退役（int 查表面成为死兼容） |
 
 ### 3.4 错凭据诊断（AC-05）
 
@@ -152,11 +163,12 @@ pub struct HttpReturnResource { pub kind: HttpReturnKind }
 
 ### 3.5 响应可变访问器与重复返回（§5.3 合同）
 
-- Response 凭据持有 owned 快照；`response_status/header/text/html` 等可变 shim
-  操作**本 VM 表内条目**（新资源对象与表条目在构造时同源快照；shim 改表，凭据
-  回复时以凭据快照为准——**快照冻结于回复时刻**：marshal 回复读凭据内数据，
-  accessor 改表不再影响已构造凭据。变更需在构造前完成（与 442 musk ctor 一次性
-  构造语义一致；`http.response()` + setter 链的 legacy 面走表臂，行为不变）。
+- Response 凭据持有 owned 快照；`response_status/header/text/html` 等可变
+  shim **R2 终形修订（原「shim 改表/legacy 面走表臂」废止，R2-03/06）**：
+  五 setter（含 bytes）经 `mutate_response_snapshot` 直接改**凭据内快照**，
+  owned-slot 返回协议（实参份额 `rc_release`+StakeGuard 保护、返回槽
+  `rc_push` 影子重建）——setter 返回值是新凭据且跨宽限窗存活（9000 步
+  wire oracle）；`response_bytes` 同迁快照路径（body=AB roundtrip）。
 - 重复返回：marshal 对 Response 凭据 clone 快照（不消费、不 first-return-take）——
   全局常量两次回复 ✓。Sse/File/Upload 凭据回复走 take 单次移交（原合同）；凭据
   对象本身随 RC 归零回收，Drop 时把未消费的 File/Upload 表项幂等移除（防滞留）。
@@ -169,10 +181,16 @@ pub struct HttpReturnResource { pub kind: HttpReturnKind }
    Response → `response_handle_reply(ctx, 快照)`；Sse → iterators 校验后 SSE serve
    （复用现 serve 路径/`produce_sse_frames` 单源）；File/Upload → take 移交 +
    mismatch 诊断。
-2. 声明门（Upload/File）保持（int 路径）。
-3. iterator/Response 查表命中制（int 路径）**原样保留**——6 legacy wire 用例 +
-   client 句柄返回面不变。
-4. JSON 兜底（i64/普通值）。
+2. **R2 终形修订（原「声明门保持」废止）**：upload/file 的「声明+int」入口
+   → **纯诊断门**（声明专属返回且值非凭据对象 → mismatch 500，不触表）；
+   iterator/SSE 身份由生产点在**返回边界**建立（`call_fn_by_name_http`
+   generator dispatch 臂 + codegen 对 `~Iter/~Stream` handler 的
+   `return <generator 调用>` 静态插 `WRAP_SSE_RESOURCE`(0xD5)）。
+3. **R2 终形修订（原「查表命中制原样保留」废止）**：iterator/Response 查表
+   臂与 `handler_declares_stream_return` 声明门全部退役（dead code 移除）——
+   声明/表命中/数值都不授予身份；6 legacy wire 用例由真实生产点凭据保持
+   wire 行为（plan326 34/34）；client 句柄面已凭据化（§3.3 修订）。
+4. JSON 兜底（i64/普通值——普通数值永远数据）。
 
 `final_value_reply` 统一（T-03/T-04）：
 - 先经 `value_to_nv_via_task` 改造版：补 `Value::I64`（encode_i64 全宽）、
