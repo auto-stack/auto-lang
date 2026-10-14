@@ -1,0 +1,1 @@
+auto-case: D:\autostack\.wt\lang-773\auto-lang\target\r773\replay2-scratch\expanded-limit\s.suite.ad: resource limit max_expanded_checks_per_run exceeded: 5120 > 4096

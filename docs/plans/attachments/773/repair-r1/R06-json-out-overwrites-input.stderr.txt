@@ -1,0 +1,1 @@
+auto-case: output path rejected: output path "\\\\?\\D:\\autostack\\.wt\\lang-773\\auto-lang\\target\\r773\\replay2-scratch\\json-overwrite\\c.case.ad" overlaps the protected input/oracle root "\\\\?\\D:\\autostack\\.wt\\lang-773\\auto-lang\\target\\r773\\replay2-scratch\\json-overwrite" — outputs must live in a disjoint directory (not equal, inside, or containing it)
