@@ -531,6 +531,25 @@ pub enum ExprKind {
     BorrowMut {
         local: LocalId,
     },
+    /// Explicit deep clone of a record value (PLAN-782): recursively
+    /// duplicates every owned `Str` field (one allocation per non-empty
+    /// buffer) and copies scalar/copyable fields by value. The source
+    /// stays valid; the two owners' buffers are independent. Only the
+    /// text-record domain accepts this node.
+    RecordClone {
+        record: TypeId,
+        base: ExprId,
+    },
+    /// Whole-root ownership transfer `.move` (PLAN-782): a first-class
+    /// wrapper expression usable in let/assign/return/call-argument
+    /// positions of the text-record domain. `inner` must be a whole-local
+    /// read — moving a field or sub-expression is `verify.partial-move`;
+    /// the source root dies at the wrapper. The text domain keeps its
+    /// `CallBinding.moved` marker; in the text-record domain that marker
+    /// is rejected and this node is the canonical form.
+    Move {
+        inner: ExprId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -654,6 +673,11 @@ pub enum HirDomain {
     /// `auto.hir.record.draft / 1 / record-i32-draft` (PLAN-771; identity
     /// frozen by the 774 interface-contract §7.2 table).
     Record,
+    /// `auto.hir.text-record.draft / 1 / text-record-i32-draft`
+    /// (PLAN-782): the union surface of the text and record profiles —
+    /// owned `Str` fields inside nominal records under the 774
+    /// data-resource contract.
+    TextRecord,
 }
 
 impl HirDomain {
@@ -663,6 +687,7 @@ impl HirDomain {
             HirDomain::Scalar => "scalar-i32-draft",
             HirDomain::Text => "text-i32-draft",
             HirDomain::Record => "record-i32-draft",
+            HirDomain::TextRecord => "text-record-i32-draft",
         }
     }
 
@@ -672,6 +697,7 @@ impl HirDomain {
             HirDomain::Scalar => "auto.hir.scalar.draft",
             HirDomain::Text => "auto.hir.text.draft",
             HirDomain::Record => "auto.hir.record.draft",
+            HirDomain::TextRecord => "auto.hir.text-record.draft",
         }
     }
 

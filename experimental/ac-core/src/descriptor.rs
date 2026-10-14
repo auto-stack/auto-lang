@@ -270,6 +270,11 @@ impl Descriptor {
             && self.profile == "record-i32-draft"
         {
             Some(hir::HirDomain::Record)
+        } else if self.schema == "auto.hir.text-record.draft"
+            && self.revision == 1
+            && self.profile == "text-record-i32-draft"
+        {
+            Some(hir::HirDomain::TextRecord)
         } else {
             None
         }
@@ -2412,6 +2417,34 @@ impl<'d> Binder<'d> {
                 };
                 hir::ExprKind::BorrowMut { local }
             }
+            // -- PLAN-782 combination expression kinds ----------------------
+            "record_clone" => {
+                let Some((rt, rspan)) = self.text_ref(&fields, "record") else {
+                    return None;
+                };
+                let record = match self.resolve_in(&rt, rspan, "TypeRef", type_ids, def_sibs) {
+                    Some(t) => hir::TypeId(t),
+                    None => return None,
+                };
+                let Some((bt, bspan)) = self.text_ref(&fields, "base") else {
+                    return None;
+                };
+                let base = match self.resolve_in(&bt, bspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::RecordClone { record, base }
+            }
+            "move" => {
+                let Some((ot, ospan)) = self.text_ref(&fields, "operand") else {
+                    return None;
+                };
+                let inner = match self.resolve_in(&ot, ospan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::Move { inner }
+            }
             _ => return None,
         };
         Some(hir::Expr {
@@ -2636,12 +2669,15 @@ impl<'d> Binder<'d> {
                 Some(hir::TypeUse::Builtin(hir::BuiltinType::Bool))
             }
             // The str/Str/char builtin type words exist only in the text
-            // descriptor's vocabulary (PLAN-770 isolation): binding them
-            // under the core/scalar descriptors is a dangling type
-            // reference exactly as before, not a new builtin there.
+            // descriptors' vocabulary (PLAN-770 isolation; PLAN-782 extends
+            // the set to the combination domain): binding them under the
+            // core/scalar/record descriptors is a dangling type reference
+            // exactly as before, not a new builtin there.
             Value::Ident(word)
-                if self.desc.domain() == Some(hir::HirDomain::Text)
-                    && text_builtin(word).is_some() =>
+                if matches!(
+                    self.desc.domain(),
+                    Some(hir::HirDomain::Text) | Some(hir::HirDomain::TextRecord)
+                ) && text_builtin(word).is_some() =>
             {
                 Some(hir::TypeUse::Builtin(text_builtin(word).unwrap()))
             }
@@ -2953,6 +2989,8 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::FieldGet { .. } => "field_get",
         hir::ExprKind::BorrowView { .. } => "borrow_view",
         hir::ExprKind::BorrowMut { .. } => "borrow_mut",
+        hir::ExprKind::RecordClone { .. } => "record_clone",
+        hir::ExprKind::Move { .. } => "move",
     };
     let mut body_fields: Vec<String> = vec![format!("type: {}", type_use_text(&e.ty, m))];
     match &e.kind {
@@ -3107,6 +3145,22 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
             body_fields.push(format!(
                 "local: {}",
                 quote(&b.locals[local.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::RecordClone { record, base } => {
+            body_fields.push(format!(
+                "record: {}",
+                quote(&m.types[record.0 as usize].id_text)
+            ));
+            body_fields.push(format!(
+                "base: {}",
+                quote(&b.exprs[base.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::Move { inner } => {
+            body_fields.push(format!(
+                "operand: {}",
+                quote(&b.exprs[inner.0 as usize].id_text)
             ));
         }
     }

@@ -1,0 +1,74 @@
+// PLAN-782 T-02 text-record-domain HIR fixture (V-01/V-02 positive half):
+// nominal Token{text Str, kind i32, c char} — a resource record (owns one
+// buffer). `make` constructs it from an owned literal + scalar + char
+// literal (source-order evaluation, ctor_bindings bijection); `consume`
+// takes the whole record by explicit `move` mode and reads the owned field
+// as a view (text_len); `main` receives the call result into a fresh
+// binding (owned return transfer), then transfers it into `consume` with
+// the first-class `move` wrapper — the combination domain's canonical
+// transfer form (the text profile's CallBinding.moved marker is rejected
+// here). T-02 gates: structure/typing/classification; the resource walk
+// and native lowering land in T-04/T-05.
+hir(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-record-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
+    module m_tr {
+        types {
+            type t_i32 i32 {}
+            type t_token record { fields: [{ name: text, type: Str }, { name: kind, type: i32 }, { name: c, type: char }] }
+            type t_sig_make function { params: []; result: t_token }
+            type t_sig_consume function { params: [t_token]; result: i32 }
+            type t_sig_main function { params: []; result: i32 }
+        }
+        declarations {
+            function d_make t_sig_make { name: "trf_make"; body: "b_make" }
+            function d_consume t_sig_consume { name: "trf_consume"; body: "b_consume" }
+            function d_main t_sig_main { name: "trf_main"; body: "b_main" }
+        }
+        bodies {
+            body b_make {
+                owner: "d_make"
+                entry: "bk_make"
+                expressions {
+                    expr e_lit str_lit { type: Str; text: "hi" }
+                    expr e_k constant { type: i32; value: 7i32 }
+                    expr e_c char_lit { type: char; scalar: 65u32 }
+                    expr e_ctor record_ctor { type: t_token; record: t_token; field_args: [e_lit, e_k, e_c]; ctor_bindings: [{ field: 0u32, arg: 0u32 }, { field: 1u32, arg: 1u32 }, { field: 2u32, arg: 2u32 }] }
+                }
+                blocks {
+                    block bk_make { return(value: e_ctor) }
+                }
+            }
+            body b_consume {
+                owner: "d_consume"
+                entry: "bk_consume"
+                locals {
+                    local l_t t_token { name: "t"; role: param; index: 0u32; mode: move }
+                }
+                expressions {
+                    expr e_t read_local { type: t_token; local: l_t }
+                    expr e_f field_get { type: Str; base: e_t; path: [0u32] }
+                    expr e_len text_len { type: i32; operand: e_f }
+                }
+                blocks {
+                    block bk_consume { return(value: e_len) }
+                }
+            }
+            body b_main {
+                owner: "d_main"
+                entry: "bk_main"
+                locals {
+                    local l_t t_token { name: "t"; role: binding }
+                }
+                expressions {
+                    expr e_mk call { type: t_token; callee: d_make; eval_args: []; bindings: [] }
+                    expr e_t read_local { type: t_token; local: l_t }
+                    expr e_mv move { type: t_token; operand: e_t }
+                    expr e_len call { type: i32; callee: d_consume; eval_args: [e_mv]; bindings: [{ param: 0u32, arg: 0u32 }] }
+                }
+                blocks {
+                    block bk_main { let(local: l_t, value: e_mk); return(value: e_len) }
+                }
+            }
+        }
+    }
+}

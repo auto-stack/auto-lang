@@ -150,6 +150,11 @@ pub fn compile_parts_with(
         crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
         crate::hir::HirDomain::Text => crate::text_descriptor(),
         crate::hir::HirDomain::Record => crate::record_descriptor(),
+        // No source profile maps to the combination domain until
+        // PLAN-782 T-03; dead arm for totality.
+        crate::hir::HirDomain::TextRecord => {
+            unreachable!("the text-record source profile lands in PLAN-782 T-03")
+        }
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -1756,6 +1761,11 @@ impl<'p> Emitter<'p> {
             crate::hir::HirDomain::Scalar => ("auto.hir.scalar.draft", "scalar-i32-draft"),
             crate::hir::HirDomain::Text => ("auto.hir.text.draft", "text-i32-draft"),
             crate::hir::HirDomain::Record => ("auto.hir.record.draft", "record-i32-draft"),
+            // No source profile maps to the combination domain until
+            // PLAN-782 T-03; dead arm for totality.
+            crate::hir::HirDomain::TextRecord => {
+                unreachable!("the text-record source profile lands in PLAN-782 T-03")
+            }
         };
         frag!(
             &format!(

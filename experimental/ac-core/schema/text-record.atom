@@ -1,0 +1,317 @@
+// text-record-i32-draft descriptor (PLAN-782).
+//
+// Machine-readable contract consumed by experimental/ac-core/src/descriptor.rs.
+// Union of text-i32-draft (PLAN-770) and record-i32-draft (PLAN-771) plus the
+// two combination-only expression kinds: `record_clone` (explicit deep clone
+// of a record value — one allocation per non-empty Str field) and `move`
+// (whole-root ownership transfer usable in let/assign/return/argument
+// positions; the text domain's `CallBinding.moved` marker is NOT used here
+// and verify rejects it in this domain). Records may own `Str` (and carry
+// `char`) fields; `str` fields are rejected (`verify.field-borrow`, 774
+// D-03). All under the PLAN-774 data-resource contract. The root identity
+// (schema/revision/profile) must be echoed by every accepted HIR document;
+// unknown tags, fields, enum cases and capabilities are rejected. Documents
+// under the core/scalar/text/record identities keep using their own schemas —
+// the five profiles stay isolated by descriptor, verifier entry and
+// canonical writer.
+//
+// Layout/ABI of record values is NOT expressed here (774 D-05 owns it):
+// declaration order, self-align (i32/bool/char 4, Str field {ptr:u64,len:u32}
+// 12/8), align(R)=max(field aligns), size=round_up(tail,align) checked u32;
+// returns go through an explicit caller-provided out-slot; no aggregate
+// sret.
+
+descriptor(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-record-i32-draft") {
+
+    enums {
+        enum ExprKind { cases: [read_local, constant, binary, unary, logical, call, str_lit, char_lit, text_len, text_len_bytes, text_char_at, text_slice, text_concat, text_clone, text_to_owned, text_to_borrowed, char_to_codepoint, char_from_codepoint, record_ctor, field_get, borrow_view, borrow_mut, record_clone, move] }
+        enum TypeKind { cases: [i32, bool, str, Str, char, function, record] }
+        enum BinOp { cases: [add_i32, sub_i32, mul_i32, div_i32, rem_i32, lt_i32, le_i32, gt_i32, ge_i32, eq, ne] }
+        enum UnaryOp { cases: [neg_i32, not_bool] }
+        enum LogicOp { cases: [and, or] }
+        enum OverflowPolicy { cases: [trap] }
+        enum LocalRole { cases: [param, binding] }
+        enum ParamModeKind { cases: [view, mut, move] }
+        enum PlaceKind { cases: [local, field_path] }
+        enum AccessKind { cases: [mutable, readonly] }
+        enum EffectKind { cases: [observable, pure] }
+        enum ReceiverKind { cases: [static, view] }
+    }
+
+    nodes {
+        node hir {
+            slots: []
+            fields { schema: Text; revision: U32; profile: Text; requires: TextList }
+            inline: [module]
+        }
+
+        node module {
+            slots: [Id]
+            fields { path: Text }
+            containers {
+                types: [type]
+                declarations: [function, intrinsic, method]
+                bodies: [body]
+            }
+        }
+
+        node type {
+            slots: [Id, TypeKind]
+            fields { params: TypeUseList; result: TypeUse; fields: FieldDeclList }
+        }
+
+        node function {
+            slots: [Id, TypeRef]
+            fields {
+                name: Text
+                body: BodyRef
+            }
+        }
+
+        node method {
+            slots: [Id, TypeRef]
+            fields {
+                name: Text
+                body: BodyRef
+                record: TypeRef
+                receiver: ReceiverKind
+            }
+        }
+
+        node intrinsic {
+            slots: [Id, TypeRef]
+            fields { symbol: Text; effect: EffectKind }
+        }
+
+        node body {
+            slots: [Id]
+            fields { owner: DefRef; entry: BlockRef }
+            containers {
+                locals: [local]
+                places: [place]
+                expressions: [expr]
+                blocks: [block]
+            }
+        }
+
+        node local {
+            slots: [Id, TypeUse]
+            fields { name: Text; role: LocalRole; index: U32; mutable: Bool; mode: ParamModeKind }
+        }
+
+        node place {
+            slots: [Id, PlaceKind]
+            fields { local: LocalRef; type: TypeUse; access: AccessKind; path: FieldRefList }
+        }
+
+        node expr {
+            slots: [Id, ExprKind]
+            fields {
+                type: TypeUse
+                local: LocalRef
+                value: I32
+                text: Text
+                scalar: U32
+                op: BinOp
+                overflow: OverflowPolicy
+                lhs: ExprRef
+                rhs: ExprRef
+                operand: ExprRef
+                index: ExprRef
+                start: ExprRef
+                end: ExprRef
+                callee: DefRef
+                eval_args: ExprRefList
+                bindings: BindingList
+                record: TypeRef
+                field_args: ExprRefList
+                ctor_bindings: CtorBindingList
+                base: ExprRef
+                path: FieldRefList
+            }
+        }
+
+        node block {
+            slots: [Id]
+            statements: [let, return, if, loop, assign, break, continue, drop]
+        }
+
+        node let { fields { local: LocalRef; value: ExprRef } }
+        node return { fields { value: ExprRef } }
+        node if { fields { cond: ExprRef; then: BlockRef; else: BlockRef } }
+        node loop { fields { id: LoopDecl; body: BlockRef } }
+        node assign { fields { place: PlaceRef; value: ExprRef } }
+        node break { fields { target: LoopRef } }
+        node continue { fields { target: LoopRef } }
+        node drop { fields { local: LocalRef } }
+    }
+
+    branches {
+        branch(key: "hir") { require: [schema, revision, profile] }
+        branch(key: "type.i32") { forbid: [params, result, fields] }
+        branch(key: "type.bool") { forbid: [params, result, fields] }
+        branch(key: "type.str") { forbid: [params, result, fields] }
+        branch(key: "type.Str") { forbid: [params, result, fields] }
+        branch(key: "type.char") { forbid: [params, result, fields] }
+        branch(key: "type.function") { require: [params, result]; forbid: [fields] }
+        branch(key: "type.record") { require: [fields]; forbid: [params, result] }
+        branch(key: "function") {
+            require: [name, body]
+            forbid: [symbol, effect, record, receiver]
+        }
+        branch(key: "method") {
+            require: [name, body, record, receiver]
+            forbid: [symbol, effect]
+        }
+        branch(key: "intrinsic") { require: [symbol, effect]; forbid: [name, body, record, receiver] }
+        branch(key: "body") { require: [owner, entry] }
+        branch(key: "local.param") { require: [name, role]; forbid: [mutable] }
+        branch(key: "local.binding") { require: [name, role]; forbid: [index, mode] }
+        branch(key: "place.local") { require: [local, type, access]; forbid: [path] }
+        branch(key: "place.field_path") { require: [local, type, access, path] }
+        branch(key: "expr.read_local") {
+            require: [type, local]
+            forbid: [value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.constant") {
+            require: [type, value]
+            forbid: [local, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:add_i32") {
+            require: [type, op, overflow, lhs, rhs]
+            forbid: [local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:sub_i32") {
+            require: [type, op, overflow, lhs, rhs]
+            forbid: [local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:mul_i32") {
+            require: [type, op, overflow, lhs, rhs]
+            forbid: [local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:div_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:rem_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:lt_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:le_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:gt_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:ge_i32") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:eq") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.binary:ne") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.unary") {
+            require: [type, op, operand]
+            forbid: [local, value, text, scalar, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.logical") {
+            require: [type, op, lhs, rhs]
+            forbid: [overflow, local, value, text, scalar, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.call") {
+            require: [type, callee, eval_args, bindings]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.str_lit") {
+            require: [type, text]
+            forbid: [local, value, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.char_lit") {
+            require: [type, scalar]
+            forbid: [local, value, text, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_len") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_len_bytes") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_char_at") {
+            require: [type, operand, index]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_slice") {
+            require: [type, operand, start, end]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_concat") {
+            require: [type, lhs, rhs]
+            forbid: [local, value, text, scalar, op, overflow, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_clone") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_to_owned") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.text_to_borrowed") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.char_to_codepoint") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.char_from_codepoint") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.record_ctor") {
+            require: [type, record, field_args, ctor_bindings]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, base, path]
+        }
+        branch(key: "expr.field_get") {
+            require: [type, base, path]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings]
+        }
+        branch(key: "expr.borrow_view") {
+            require: [type, base]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, path]
+        }
+        branch(key: "expr.borrow_mut") {
+            require: [type, local]
+            forbid: [value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "expr.record_clone") {
+            require: [type, record, base]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, operand, index, start, end, callee, eval_args, bindings, field_args, ctor_bindings, path]
+        }
+        branch(key: "expr.move") {
+            require: [type, operand]
+            forbid: [local, value, text, scalar, op, overflow, lhs, rhs, index, start, end, callee, eval_args, bindings, record, field_args, ctor_bindings, base, path]
+        }
+        branch(key: "let") { require: [local, value] }
+        branch(key: "return") { require: [value] }
+        branch(key: "if") { require: [cond, then] }
+        branch(key: "loop") { require: [id, body] }
+        branch(key: "assign") { require: [place, value] }
+        branch(key: "break") { require: [target] }
+        branch(key: "continue") { require: [target] }
+        branch(key: "drop") { require: [local] }
+    }
+}

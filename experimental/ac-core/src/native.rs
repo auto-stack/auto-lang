@@ -1429,7 +1429,9 @@ impl<'c> FuncEmitter<'c> {
                         }
                         // Text expressions cannot reach the scalar lowering
                         // (verifier profile gate); the text path (PLAN-770
-                        // T-05) owns their emission.
+                        // T-05) owns their emission. The PLAN-782
+                        // combination kinds are likewise text-record only
+                        // (its merged lowering lands in 782 T-05).
                         hir::ExprKind::StrLit { .. }
                         | hir::ExprKind::CharLit { .. }
                         | hir::ExprKind::TextLen { .. }
@@ -1444,6 +1446,11 @@ impl<'c> FuncEmitter<'c> {
                         | hir::ExprKind::CharFromCodepoint { .. } => {
                             unreachable!(
                                 "verifier: text expressions exist only in the text profile"
+                            );
+                        }
+                        hir::ExprKind::RecordClone { .. } | hir::ExprKind::Move { .. } => {
+                            unreachable!(
+                                "verifier: record_clone/move expressions exist only in the text-record profile"
                             );
                         }
                         hir::ExprKind::RecordCtor {

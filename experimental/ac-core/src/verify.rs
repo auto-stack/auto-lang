@@ -232,6 +232,61 @@ pub fn verify_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnosti
     verify_domain(bundle, HirDomain::Record)
 }
 
+/// Verify a bound text-record-domain bundle (`text-record-i32-draft`,
+/// PLAN-782): the union of the text and record surfaces — owned `Str`
+/// fields inside nominal records with derived resource classification,
+/// explicit aggregate move / deep clone. Structural gates (identity,
+/// nominal typing, containment, construction, profile isolation) land in
+/// T-02; the full resource walk (ownership liveness, cleanup schedules)
+/// extends the PLAN-770 machinery in T-04.
+pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    if bundle.domain != HirDomain::TextRecord {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.domain",
+            format!(
+                "bundle identity `{}` does not match this verifier entry (`{}`); use the entry of the document's own descriptor profile",
+                bundle.domain.as_str(),
+                HirDomain::TextRecord.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let mut v = Verifier {
+        diags: Vec::new(),
+        domain: HirDomain::TextRecord,
+    };
+    for m in &bundle.modules {
+        v.check_module(m);
+    }
+    if v.diags.is_empty() {
+        // Derived runtime need: modules whose content performs text
+        // operations must declare the runtime capability (T-02 scope: the
+        // content scan; plan-driven cleanup obligations join in T-04).
+        let needs_runtime = crate::text_resources::bundle_needs_text_runtime(&bundle);
+        if needs_runtime
+            && !bundle
+                .requires
+                .iter()
+                .any(|r| r == crate::text_resources::RUNTIME_TEXT_CAPABILITY)
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Capability,
+                "capability.missing",
+                "the module lowers text runtime operations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        Ok(CheckedModule {
+            bundle,
+            text_plan: None,
+            runtime_text_needed: needs_runtime,
+        })
+    } else {
+        Err(v.diags)
+    }
+}
+
 fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule, Vec<Diagnostic>> {
     if bundle.domain != expect {
         return Err(vec![Diagnostic::new(
@@ -259,6 +314,64 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
     } else {
         Err(v.diags)
     }
+}
+
+/// Derived resource classification (PLAN-782): `resource[i]` is true iff
+/// the module type `i` is a record from which a `Str` field is transitively
+/// reachable through nested record fields. Computed by a fixpoint over the
+/// field-type graph (the containment graph is verified acyclic first, so
+/// this terminates regardless of input shapes); never trusted from the
+/// input. Records that own no text anywhere stay copyable and keep the 771
+/// value-copy semantics.
+pub fn record_resource_map(m: &hir::Module) -> Vec<bool> {
+    let n = m.types.len();
+    let mut resource = vec![false; n];
+    let mut settled = vec![false; n];
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (i, t) in m.types.iter().enumerate() {
+            if settled[i] {
+                continue;
+            }
+            let hir::TypeKind::Record(shape) = &t.kind else {
+                settled[i] = true;
+                changed = true;
+                continue;
+            };
+            let mut owns = false;
+            let mut pending = false;
+            for f in &shape.fields {
+                match &f.ty {
+                    hir::TypeUse::Builtin(hir::BuiltinType::StrOwned)
+                    | hir::TypeUse::Builtin(hir::BuiltinType::StrSlice) => {
+                        owns = true;
+                        break;
+                    }
+                    hir::TypeUse::Ref(tid) => {
+                        let idx = tid.0 as usize;
+                        if resource[idx] {
+                            owns = true;
+                            break;
+                        }
+                        if !settled[idx] {
+                            pending = true;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if owns {
+                resource[i] = true;
+                settled[i] = true;
+                changed = true;
+            } else if !pending {
+                settled[i] = true;
+                changed = true;
+            }
+        }
+    }
+    resource
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -341,7 +454,7 @@ impl Verifier {
     /// every NON-RECORD domain rejects the record surface (record types,
     /// method declarations, record expressions, field-path places).
     fn check_profile_ops(&mut self, m: &hir::Module, body: &hir::Body) {
-        if self.domain != HirDomain::Text {
+        if !matches!(self.domain, HirDomain::Text | HirDomain::TextRecord) {
             for e in &body.exprs {
                 let text_kind = matches!(
                     &e.kind,
@@ -357,6 +470,7 @@ impl Verifier {
                         | hir::ExprKind::TextToBorrowed { .. }
                         | hir::ExprKind::CharToCodepoint { .. }
                         | hir::ExprKind::CharFromCodepoint { .. }
+                        | hir::ExprKind::Move { .. }
                 );
                 if text_kind {
                     self.error(
@@ -388,10 +502,13 @@ impl Verifier {
             for l in &body.locals {
                 let bad_mode = match l.param_mode {
                     hir::ParamMode::View => false,
-                    hir::ParamMode::MutBorrow => {
-                        !matches!(self.domain, HirDomain::Text | HirDomain::Record)
+                    hir::ParamMode::MutBorrow => !matches!(
+                        self.domain,
+                        HirDomain::Text | HirDomain::Record | HirDomain::TextRecord
+                    ),
+                    hir::ParamMode::MoveOwn => {
+                        !matches!(self.domain, HirDomain::Text | HirDomain::TextRecord)
                     }
-                    hir::ParamMode::MoveOwn => self.domain != HirDomain::Text,
                 };
                 if bad_mode {
                     self.error(
@@ -443,7 +560,7 @@ impl Verifier {
                 }
             }
         }
-        if self.domain != HirDomain::Record {
+        if !matches!(self.domain, HirDomain::Record | HirDomain::TextRecord) {
             for t in &m.types {
                 if matches!(t.kind, hir::TypeKind::Record(_)) {
                     self.error(
@@ -476,6 +593,7 @@ impl Verifier {
                     hir::ExprKind::FieldGet { .. } => Some("field_get"),
                     hir::ExprKind::BorrowView { .. } => Some("borrow_view"),
                     hir::ExprKind::BorrowMut { .. } => Some("borrow_mut"),
+                    hir::ExprKind::RecordClone { .. } => Some("record_clone"),
                     _ => None,
                 };
                 if let Some(kind) = record_kind {
@@ -555,10 +673,10 @@ impl Verifier {
         if !self.check_module_type_bounds(m) {
             return;
         }
-        // Text kinds in the type table exist only in the text profile
+        // Text kinds in the type table exist only in the text profiles
         // (PLAN-770 isolation): a programmatic mutation cannot smuggle
         // str/Str/char named types into an older profile's signatures.
-        if self.domain != HirDomain::Text {
+        if !matches!(self.domain, HirDomain::Text | HirDomain::TextRecord) {
             for t in &m.types {
                 if matches!(
                     t.kind,
@@ -581,9 +699,18 @@ impl Verifier {
             }
         }
         let type_map = Self::build_type_map(m);
-        if self.domain == HirDomain::Record {
+        if matches!(self.domain, HirDomain::Record | HirDomain::TextRecord) {
             self.check_record_module(m, &type_map);
         }
+        // Derived resource classification (PLAN-782): a record owns buffers
+        // iff a Str field is transitively reachable. Computed from the
+        // shapes, never trusted from the input; consumed by the combination
+        // body rules (and, in T-04, the resource walk).
+        let resource_map = if self.domain == HirDomain::TextRecord {
+            record_resource_map(m)
+        } else {
+            Vec::new()
+        };
         // Function signatures by def index.
         let mut sigs: SigTable = BTreeMap::new();
         for (i, d) in m.defs.iter().enumerate() {
@@ -645,6 +772,9 @@ impl Verifier {
 
         for (bi, body) in m.bodies.iter().enumerate() {
             self.check_profile_ops(m, body);
+            if self.domain == HirDomain::TextRecord {
+                self.check_text_record_rules(m, body, &type_map, &resource_map);
+            }
             self.check_body(m, BodyId(bi as u32), body, &type_map, &sigs);
         }
     }
@@ -719,6 +849,110 @@ impl Verifier {
         l.mutable || (l.role == hir::LocalRole::Param && l.param_mode == hir::ParamMode::MutBorrow)
     }
 
+    /// PLAN-782 combination-domain structural rules (T-02): `move` wrapper
+    /// shape (whole-local reads only), `move` param modes restricted to
+    /// owning types, and the classification-based bare transfer rejection —
+    /// an existing resource record never copies implicitly through
+    /// let/assign/return; transfer needs the explicit `move` wrapper or a
+    /// `record_clone`. The liveness half (use-after-move, cleanup
+    /// schedules) extends the PLAN-770 walk in T-04.
+    fn check_text_record_rules(
+        &mut self,
+        m: &hir::Module,
+        body: &hir::Body,
+        type_map: &BTreeMap<u32, ValueType>,
+        resource: &[bool],
+    ) {
+        let _ = m;
+        for e in &body.exprs {
+            if let hir::ExprKind::Move { inner } = &e.kind {
+                if !matches!(
+                    body.exprs[inner.0 as usize].kind,
+                    hir::ExprKind::ReadLocal { .. }
+                ) {
+                    self.error(
+                        "verify.partial-move",
+                        format!(
+                            "expr `{}`: `.move` must wrap a whole local — moving a field or sub-expression of an owned record is not part of the text-record profile",
+                            e.id_text
+                        ),
+                        e.span,
+                    );
+                }
+            }
+        }
+        for l in &body.locals {
+            if l.param_mode == hir::ParamMode::MoveOwn {
+                let vt = self.value_of(&l.ty, type_map);
+                let owning = match vt {
+                    ValueType::StrOwned => true,
+                    ValueType::Record(tid) => resource.get(tid as usize).copied().unwrap_or(false),
+                    _ => false,
+                };
+                if !owning {
+                    self.error(
+                        "verify.ownership-required",
+                        format!(
+                            "parameter `{}` declares `move` but its type `{}` does not own buffers; `move` parameters are for `Str` and resource records",
+                            l.id_text,
+                            vt_name(vt)
+                        ),
+                        l.span,
+                    );
+                }
+            }
+        }
+        // Bare transfer of an existing resource record: the RHS/return
+        // value reads a whole local whose type is a resource record without
+        // a `move` wrapper (or a clone/ctor/call). Copyable records keep
+        // the 771 value-copy semantics and are untouched here.
+        for bl in &body.blocks {
+            for s in &bl.stmts {
+                let (value, what, code) = match s {
+                    hir::Stmt::Assign { value, .. } => (
+                        value,
+                        "assign to a resource record",
+                        "verify.resource-assign",
+                    ),
+                    hir::Stmt::Let { value, .. } => (
+                        value,
+                        "let-binding of an existing resource record",
+                        "verify.resource-assign",
+                    ),
+                    hir::Stmt::Return { value } => (
+                        value,
+                        "return of an owned record local",
+                        "verify.ownership-required",
+                    ),
+                    _ => continue,
+                };
+                let eid = *value;
+                if let hir::ExprKind::ReadLocal { local } = &body.exprs[eid.0 as usize].kind {
+                    let vt = self.value_of(&body.locals[local.0 as usize].ty, type_map);
+                    if let ValueType::Record(tid) = vt {
+                        if resource.get(tid as usize).copied().unwrap_or(false) {
+                            let owner = &body.locals[local.0 as usize];
+                            self.error(
+                                code,
+                                format!(
+                                    "cannot {} `{}` by implicit copy: its type owns text buffers; use `<local>.move` to transfer it or `<local>.clone()` for an independent copy{}",
+                                    what,
+                                    owner.id_text,
+                                    if code == "verify.ownership-required" {
+                                        " (or return a fresh construction)"
+                                    } else {
+                                        ""
+                                    },
+                                ),
+                                bl.span,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Record shape of a module type, if it is one.
     fn record_shape(m: &hir::Module, tid: u32) -> Option<&hir::RecordShape> {
         match m.types.get(tid as usize)?.kind {
@@ -764,11 +998,39 @@ impl Verifier {
                     hir::TypeUse::Builtin(b) => match b {
                         hir::BuiltinType::I32 => ValueType::I32,
                         hir::BuiltinType::Bool => ValueType::Bool,
-                        // text builtins cannot appear in a record module
-                        // (profile defense already rejected them)
-                        hir::BuiltinType::StrSlice
-                        | hir::BuiltinType::StrOwned
-                        | hir::BuiltinType::Char => ValueType::I32,
+                        // In the record domain text builtins cannot appear
+                        // in fields (profile defense already rejected the
+                        // type table). In the text-record domain (782):
+                        // `Str`/`char` fields own/carry values and are the
+                        // combination face; a borrowed `str` field is the
+                        // 774 D-03 `verify.field-borrow` rejection.
+                        hir::BuiltinType::StrSlice => {
+                            if self.domain == HirDomain::TextRecord {
+                                self.error(
+                                    "verify.field-borrow",
+                                    format!(
+                                        "record type `{}`'s field `{}` has borrowed type `str`; record fields must own their text (`Str`), borrowing fields are not part of the text-record profile",
+                                        t.id_text, f.name
+                                    ),
+                                    t.span,
+                                );
+                            }
+                            ValueType::Str
+                        }
+                        hir::BuiltinType::StrOwned => {
+                            if self.domain == HirDomain::TextRecord {
+                                ValueType::StrOwned
+                            } else {
+                                ValueType::I32
+                            }
+                        }
+                        hir::BuiltinType::Char => {
+                            if self.domain == HirDomain::TextRecord {
+                                ValueType::Char
+                            } else {
+                                ValueType::I32
+                            }
+                        }
                     },
                     hir::TypeUse::Ref(tid) => {
                         match type_map.get(&tid.0) {
@@ -933,10 +1195,24 @@ impl Verifier {
                 hir::TypeUse::Builtin(b) => match b {
                     hir::BuiltinType::I32 => ValueType::I32,
                     hir::BuiltinType::Bool => ValueType::Bool,
-                    // non-record builtin: surfaces as a non-record path
-                    hir::BuiltinType::StrSlice
-                    | hir::BuiltinType::StrOwned
-                    | hir::BuiltinType::Char => ValueType::I32,
+                    // text builtins are legal field types only in the
+                    // combination domain (782); elsewhere they surface as
+                    // a non-record path exactly as before
+                    hir::BuiltinType::StrSlice => ValueType::Str,
+                    hir::BuiltinType::StrOwned => {
+                        if self.domain == HirDomain::TextRecord {
+                            ValueType::StrOwned
+                        } else {
+                            ValueType::I32
+                        }
+                    }
+                    hir::BuiltinType::Char => {
+                        if self.domain == HirDomain::TextRecord {
+                            ValueType::Char
+                        } else {
+                            ValueType::I32
+                        }
+                    }
                 },
                 hir::TypeUse::Ref(t) => *type_map.get(&t.0)?,
             };
@@ -974,9 +1250,21 @@ impl Verifier {
             hir::TypeUse::Builtin(b) => match b {
                 hir::BuiltinType::I32 => ValueType::I32,
                 hir::BuiltinType::Bool => ValueType::Bool,
-                hir::BuiltinType::StrSlice
-                | hir::BuiltinType::StrOwned
-                | hir::BuiltinType::Char => ValueType::I32,
+                hir::BuiltinType::StrSlice => ValueType::Str,
+                hir::BuiltinType::StrOwned => {
+                    if self.domain == HirDomain::TextRecord {
+                        ValueType::StrOwned
+                    } else {
+                        ValueType::I32
+                    }
+                }
+                hir::BuiltinType::Char => {
+                    if self.domain == HirDomain::TextRecord {
+                        ValueType::Char
+                    } else {
+                        ValueType::I32
+                    }
+                }
             },
             hir::TypeUse::Ref(t) => *type_map.get(&t.0)?,
         };
@@ -1093,6 +1381,8 @@ impl Verifier {
                 hir::ExprKind::Unary { operand, .. } => children.push(operand.0),
                 hir::ExprKind::FieldGet { base, .. } => children.push(base.0),
                 hir::ExprKind::BorrowView { base } => children.push(base.0),
+                hir::ExprKind::RecordClone { base, .. } => children.push(base.0),
+                hir::ExprKind::Move { inner } => children.push(inner.0),
                 hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => {}
                 hir::ExprKind::BorrowMut { .. } => {}
                 // text kinds never appear in a record module (profile
@@ -1381,6 +1671,16 @@ impl Verifier {
                 hir::ExprKind::Unary { operand, .. } => {
                     if (operand.0 as usize) >= n_exprs {
                         bad("expression", operand.0, n_exprs, e.span);
+                    }
+                }
+                hir::ExprKind::RecordClone { base, .. } => {
+                    if (base.0 as usize) >= n_exprs {
+                        bad("expression", base.0, n_exprs, e.span);
+                    }
+                }
+                hir::ExprKind::Move { inner } => {
+                    if (inner.0 as usize) >= n_exprs {
+                        bad("expression", inner.0, n_exprs, e.span);
                     }
                 }
                 hir::ExprKind::Logical { lhs, rhs, .. } => {
@@ -1782,6 +2082,14 @@ impl Verifier {
                         hir::ExprKind::FieldGet { base, .. } => {
                             stack.push(Visit::Exit(id));
                             stack.push(Visit::Enter(*base));
+                        }
+                        hir::ExprKind::RecordClone { base, .. } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*base));
+                        }
+                        hir::ExprKind::Move { inner } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*inner));
                         }
                         hir::ExprKind::BorrowView { base } => {
                             stack.push(Visit::Exit(id));
@@ -2494,6 +2802,56 @@ impl Verifier {
                             }
                             ValueType::Char
                         }
+                        hir::ExprKind::RecordClone { record, base } => {
+                            let bt =
+                                operand_type(tm, *base, declared_of(&body.exprs[base.0 as usize]));
+                            match bt {
+                                ValueType::Record(rec) if rec == record.0 => {
+                                    if declared != ValueType::Record(record.0) {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                "expr `{}`: record clone type does not match the cloned record",
+                                e.id_text
+                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    ValueType::Record(record.0)
+                                }
+                                _ => {
+                                    self.error(
+                        "verify.type-mismatch",
+                        format!(
+                            "expr `{}`: `clone` here deep-copies a record value of the same record type (found `{}`)",
+                            e.id_text,
+                            vt_name(bt)
+                        ),
+                        e.span,
+                    );
+                                    declared
+                                }
+                            }
+                        }
+                        hir::ExprKind::Move { inner } => {
+                            let it = operand_type(
+                                tm,
+                                *inner,
+                                declared_of(&body.exprs[inner.0 as usize]),
+                            );
+                            if declared != it {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                        "expr `{}`: the move wrapper carries its operand's type (found `{}`)",
+                        e.id_text,
+                        vt_name(it)
+                    ),
+                                    e.span,
+                                );
+                            }
+                            it
+                        }
                         // leaves were fully handled at Enter
                         hir::ExprKind::ReadLocal { .. } | hir::ExprKind::Constant { .. } => {
                             tm.memo.get(&id.0).copied().unwrap_or(declared)
@@ -2694,9 +3052,11 @@ impl Verifier {
                                         hir::TypeUse::Builtin(b2) => match b2 {
                                             hir::BuiltinType::I32 => ValueType::I32,
                                             hir::BuiltinType::Bool => ValueType::Bool,
-                                            hir::BuiltinType::StrSlice
-                                            | hir::BuiltinType::StrOwned
-                                            | hir::BuiltinType::Char => ValueType::I32,
+                                            // legal combination field types
+                                            // (782); dead mapping elsewhere
+                                            hir::BuiltinType::StrSlice => ValueType::Str,
+                                            hir::BuiltinType::StrOwned => ValueType::StrOwned,
+                                            hir::BuiltinType::Char => ValueType::Char,
                                         },
                                         hir::TypeUse::Ref(t2) => match type_map.get(&t2.0) {
                                             Some(v) => *v,
@@ -2817,6 +3177,12 @@ impl Verifier {
                     targets.push(base.0);
                 }
                 hir::ExprKind::BorrowMut { .. } => {}
+                hir::ExprKind::RecordClone { base, .. } => {
+                    targets.push(base.0);
+                }
+                hir::ExprKind::Move { inner } => {
+                    targets.push(inner.0);
+                }
                 _ => {}
             }
             for t in targets {
@@ -3445,6 +3811,12 @@ impl Verifier {
                 }
                 hir::ExprKind::Unary { operand, .. } => {
                     stack.push(*operand);
+                }
+                hir::ExprKind::RecordClone { base, .. } => {
+                    stack.push(*base);
+                }
+                hir::ExprKind::Move { inner } => {
+                    stack.push(*inner);
                 }
                 hir::ExprKind::Logical { lhs, rhs, .. } => {
                     // both sides statically — a conditionally executed RHS

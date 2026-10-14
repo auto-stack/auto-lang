@@ -286,6 +286,16 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
         let e = &body.exprs[id.0 as usize];
         match &e.kind {
             hir::ExprKind::ReadLocal { local } => scan.reads.push((id.0, local.0, e.span)),
+            // PLAN-782 combination kinds: totality arms for the shared
+            // scanner — under the text profile these never appear (profile
+            // gate); the text-record walk (782 T-04) gives them their own
+            // ownership semantics.
+            hir::ExprKind::RecordClone { base, .. } => {
+                stack.push((*base, mode));
+            }
+            hir::ExprKind::Move { inner } => {
+                stack.push((*inner, mode));
+            }
             hir::ExprKind::TextConcat { lhs, rhs } => {
                 scan.has_owned_producing = true;
                 stack.push((*rhs, mode));

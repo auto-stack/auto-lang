@@ -78,6 +78,7 @@ fn check(file: &Path) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::D
         auto_ac_prototype::hir::HirDomain::Scalar => verify::verify_scalar(bundle),
         auto_ac_prototype::hir::HirDomain::Text => verify::verify_text(bundle),
         auto_ac_prototype::hir::HirDomain::Record => verify::verify_record(bundle),
+        auto_ac_prototype::hir::HirDomain::TextRecord => verify::verify_text_record(bundle),
     } {
         Ok(c) => c,
         Err(diags) => return Err((EXIT_PIPELINE, diags)),
@@ -375,6 +376,17 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         auto_ac_prototype::hir::HirDomain::Scalar => verify::verify_scalar(bundle),
         auto_ac_prototype::hir::HirDomain::Text => verify::verify_text(bundle),
         auto_ac_prototype::hir::HirDomain::Record => verify::verify_record(bundle),
+        // PLAN-782 T-02: verification of the combination domain is in; its
+        // native lowering lands in T-05 — building is a controlled backend
+        // rejection until then, never a silent scalar/record mis-lower.
+        auto_ac_prototype::hir::HirDomain::TextRecord => {
+            return fail(vec![auto_ac_prototype::atom_text::Diagnostic::new(
+                auto_ac_prototype::atom_text::Stage::Backend,
+                "backend.lowering-unsupported",
+                "native lowering for the text-record-i32-draft profile is not implemented yet (PLAN-782 T-05); `check` supports this profile today",
+                auto_ac_prototype::atom_text::Span { start: 0, end: 0 },
+            )])
+        }
     } {
         Ok(c) => c,
         Err(diags) => return fail(diags),
