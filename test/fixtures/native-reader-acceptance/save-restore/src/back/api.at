@@ -1,0 +1,75 @@
+// p781-save-restore 后端 — 进度持久化（框架正对照，T-12）。
+// 校验（index 范围/锚点非空/font 合法）+ 写盘 + 读回逐字核对。
+use fs
+
+pub fn data_dir() str {
+    let env str = Env.get("AUTO_READER_DATA")
+    if env != "" {
+        return env
+    }
+    return "./.p781-data"
+}
+
+fn progress_path() str {
+    return data_dir() + "/p781-progress.json"
+}
+
+#[api(method = "GET", path = "/api/ping")]
+pub fn ping() str {
+    return "pong"
+}
+
+/// GET /api/progress — 进度 JSON（无记录 ""）。
+#[api(method = "GET", path = "/api/progress")]
+pub fn get_progress() str {
+    let p str = progress_path()
+    if fs.exists(p) {
+        if fs.is_dir(p) {
+            return ""
+        }
+        return fs.read_text(p)
+    }
+    return ""
+}
+
+/// POST /api/progress — 校验+写盘+读回。body: {paragraph_index, paragraph_text, font_size}。
+/// 返回裸 ASCII 串 SAVED/ERR:...（VM HTTP str 返回双重编码，含引号的 JSON
+/// 会被 \ 转义打断前端 find——裸串判据不受编码层级影响）。
+#[api(method = "POST", path = "/api/progress")]
+pub fn put_progress(paragraph_index int, paragraph_text str, font_size str) str {
+    if paragraph_index < 0 {
+        return "ERR:index"
+    }
+    if paragraph_index >= 120 {
+        return "ERR:index"
+    }
+    if paragraph_text == "" {
+        return "ERR:text"
+    }
+    if font_size != "small" {
+        if font_size != "medium" {
+            if font_size != "large" {
+                return "ERR:font"
+            }
+        }
+    }
+    if !fs.exists(data_dir()) {
+        fs.create_dir(data_dir())
+    }
+    var payload str = "{\"reader\":\"p781-save-restore\",\"paragraph_index\":"
+    payload = payload + paragraph_index.to_string()
+    payload = payload + ",\"paragraph_text\":\""
+    payload = payload + paragraph_text
+    payload = payload + "\",\"font_size\":\""
+    payload = payload + font_size
+    payload = payload + "\",\"updated_at\":0}"
+    let rc int = fs.write_text(progress_path(), payload)
+    if rc != 0 {
+        return "ERR:write"
+    }
+    let back str = fs.read_text(progress_path())
+    if back != payload {
+        return "ERR:readback"
+    }
+    return "SAVED"
+}

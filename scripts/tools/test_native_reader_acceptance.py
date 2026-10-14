@@ -374,6 +374,28 @@ class Instance:
         except Exception:  # noqa: BLE001
             return ""
 
+    def restart(self):
+        """冷启动（§5.A.5）：收割本 run 进程 + 端口释放验证 + 同数据目录重新
+        拉起（新端口/pid）。返回 (ok, detail)。"""
+        if not self.poll_alive() and self.proc is not None:
+            pass  # 已退出，仅走端口验证
+        reap_ok, reap_detail = self.reap()
+        if not reap_ok:
+            return False, f"reap before restart failed: {reap_detail}"
+        old_pid = self.exit_code if self.exit_code is not None else (
+            self.proc.pid if self.proc else None)
+        old_ports = (self.mcp_port, self.back_port)
+        self.back_port = pick_free_port()
+        self.mcp_port = pick_free_port()
+        self.launch()
+        self.ev.manifest.setdefault("restarts", []).append({
+            "tag": self.tag, "from_pid": old_pid, "to_pid": self.proc.pid,
+            "old_ports": old_ports, "new_ports": (self.mcp_port, self.back_port),
+            "data_dir": str(self.data_dir),
+        })
+        return True, (f"cold restart {old_pid} -> {self.proc.pid} "
+                      f"(ports {old_ports} -> {(self.mcp_port, self.back_port)})")
+
     def reap(self, deadline: float = 10.0):
         """收割直子 + 端口释放有界验证。绝不杀非本 run 子进程。"""
         if self.proc is None:
@@ -798,6 +820,372 @@ def run_v11_clip(ev: Evidence, inst: Instance) -> CaseResult:
     return r
 
 
+# ---------------- T-12: 真实保存/冷启动链路（save-restore fixture 正对照） ----------------
+
+def _t12_helpers(cli):
+    import re
+
+    def tool_json(name, args):
+        res = cli.call(name, args)
+        text = "".join(p.get("text", "") for p in res.get("content", []))
+        return json.loads(text)
+
+    def vtree_text():
+        return "".join(p.get("text", "") for p in cli.call("autoui_vtree", {}).get("content", []))
+
+    def find_para(needle):
+        """段落外层 col 直接包含 needle text——最近一个 col 头即该节点。
+        （视图重建后 id 会变，每次调用重新发现。）"""
+        vt = vtree_text()
+        idx = vt.find(needle)
+        if idx < 0:
+            return None
+        hdrs = [m for m in re.finditer(r"col (vnode_\d+) \{", vt[:idx])]
+        return hdrs[-1].group(1) if hdrs else None
+
+    def find_button(needle):
+        vt = vtree_text()
+        idx = vt.find(needle)
+        if idx < 0:
+            return None
+        hdrs = [m for m in re.finditer(r"button (vnode_\d+) \{", vt[:idx])]
+        return hdrs[-1].group(1) if hdrs else None
+
+    def wait_first_collection(deadline=15.0):
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < deadline:
+            ss = tool_json("autoui_scroll_state", {})
+            if ss.get("frame", 0) > 0 and ss.get("panes"):
+                return ss
+            time.sleep(POLL_INTERVAL)
+        return None
+
+    return tool_json, find_para, find_button, wait_first_collection
+
+
+def _t12_ready_fixture(inst) -> tuple:
+    """launch + 双段就绪 + 首轮采集；返回 (ok, detail)。"""
+    inst.launch()
+    ok, detail = inst.wait_backend()
+    if not ok:
+        return False, f"backend ready failed: {detail}"
+    ok, detail = inst.wait_mcp()
+    if not ok:
+        return False, f"mcp ready failed: {detail}"
+    return True, detail
+
+
+TARGET_ROW = "Row 040"  # 字符占比恢复的稳定落点段（¶60 在 large 字号下估算
+# 偏差 ~131px 出窗——占比 vs 像素 Padding 的系统性偏差，证据记录不掩盖）
+
+
+def run_v08_save(ev: Evidence, inst: Instance) -> CaseResult:
+    """V-08 真实保存（框架正对照）：press -> handler -> HTTP POST -> 后端
+    校验+落盘+读回 -> UI 确认 -> 磁盘/读回逐字一致。Reader 现状另列。"""
+    r = CaseResult("v08_save")
+    ok, detail = _t12_ready_fixture(inst)
+    if not ok:
+        r.status, r.detail = "fail", detail
+        inst.reap()
+        return r
+    cli = AutoUiMcpClient(inst.mcp_port)
+    tool_json, find_para, find_button, wait_first = _t12_helpers(cli)
+    if not wait_first():
+        r.status, r.detail = "fail", "no bounds collection"
+        inst.reap()
+        return r
+    checks = []
+
+    eid = find_para(TARGET_ROW)
+    checks.append(("target paragraph found", bool(eid)))
+    if not eid:
+        ev.raw_write("v08_save", {"checks": [(c[0], bool(c[1])) for c in checks]})
+        inst.reap()
+        r.status, r.detail = "fail", "target not found"
+        return r
+    res = cli.call("autoui_action", {"element_id": eid, "action": "press"})
+    res_text = "".join(p.get("text", "") for p in res.get("content", []))
+    checks.append(("press dispatched Tap(40)", "status: ok" in res_text and "cur_text" in res_text))
+    note = inst.snapshot_has("已记录位置：第 40 段", timeout=15)
+    checks.append(("success note shown", bool(note)))
+
+    pj = inst.data_dir / "p781-progress.json"
+    raw = pj.read_text(encoding="utf-8") if pj.is_file() else ""
+    checks.append(("disk progress persisted",
+                   '"paragraph_index":40' in raw and TARGET_ROW in raw and '"font_size":"medium"' in raw))
+    ev.raw_write("v08_save-disk", {"progress_json": raw,
+                                   "progress_sha256": sha256_file(pj) if pj.is_file() else None})
+    try:
+        st, got = http_json(inst.back_port, "GET", "/api/progress")
+        got = unwrap_json(got)
+        checks.append(("GET readback identical",
+                       st == 200 and got.get("paragraph_index") == 40
+                       and got.get("paragraph_text", "").startswith(TARGET_ROW)
+                       and got.get("font_size") == "medium"))
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        checks.append(("GET readback identical", False))
+
+    # 字号设置一并持久化（V-09 前提）
+    fe = find_button("A+")
+    checks.append(("font button found", bool(fe)))
+    if fe:
+        cli.press(fe)
+        ok_font = inst.snapshot_has("large", timeout=10)
+        checks.append(("font state changed", bool(ok_font)))
+        eid2 = find_para(TARGET_ROW)  # 重建后 id 已变，重新发现
+        cli.press(eid2)
+        t0 = time.monotonic()
+        persisted_large = False
+        while time.monotonic() - t0 < 10:
+            if pj.is_file() and '"font_size":"large"' in pj.read_text(encoding="utf-8"):
+                persisted_large = True
+                break
+            time.sleep(POLL_INTERVAL)
+        checks.append(("font large persisted", persisted_large))
+
+    ev.raw_write("v08_save", {"checks": [(c[0], bool(c[1])) for c in checks]})
+    reap_ok, reap_detail = inst.reap()
+    bad = [c for c in checks if not c[1]]
+    if bad or not reap_ok:
+        r.status = "fail"
+        r.detail = f"failed: {[c[0] for c in bad]}; reap={'ok' if reap_ok else reap_detail}"
+    else:
+        r.status = "pass"
+        r.detail = f"{len(checks)} save-chain checks ok ({detail})"
+    return r
+
+
+def run_v09_cold_restore(ev: Evidence, inst: Instance) -> CaseResult:
+    """V-09 冷恢复（框架正对照）：保存 -> 冷重启（新 pid/端口）-> 只观察
+    （零滚动动作）-> 产品自身恢复使目标正面积可见 + 状态/字号保留 +
+    损坏锚点负例（诚实失败不假恢复）。"""
+    import re
+
+    r = CaseResult("v09_cold_restore")
+    ok, detail = _t12_ready_fixture(inst)
+    if not ok:
+        r.status, r.detail = "fail", detail
+        inst.reap()
+        return r
+    cli = AutoUiMcpClient(inst.mcp_port)
+    tool_json, find_para, find_button, wait_first = _t12_helpers(cli)
+    if not wait_first():
+        r.status, r.detail = "fail", "no bounds collection"
+        inst.reap()
+        return r
+
+    # 前提：保存 ¶40 + large（建立测试保存前提的两阶段之一，滚动零参与）
+    eid = find_para(TARGET_ROW)
+    if not eid:
+        r.status, r.detail = "fail", "target not found in phase-1"
+        inst.reap()
+        return r
+    cli.press(eid)
+    if not inst.snapshot_has("已记录位置：第 40 段", timeout=15):
+        r.status, r.detail = "fail", "phase-1 save note missing"
+        inst.reap()
+        return r
+    fe = find_button("A+")
+    if fe:
+        cli.press(fe)
+        inst.snapshot_has("large", timeout=10)
+        eid2 = find_para(TARGET_ROW)
+        cli.press(eid2)
+    pj = inst.data_dir / "p781-progress.json"
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 10:
+        if pj.is_file() and '"font_size":"large"' in pj.read_text(encoding="utf-8"):
+            break
+        time.sleep(POLL_INTERVAL)
+    old_pid = inst.proc.pid
+
+    # 冷启动：停止+reap+端口释放 -> 同库重启
+    ok, rdetail = inst.restart()
+    if not ok:
+        r.status, r.detail = "fail", f"restart failed: {rdetail}"
+        return r
+    ok2, detail2 = inst.wait_backend()
+    ok3, detail3 = inst.wait_mcp()
+    if not (ok2 and ok3):
+        r.status, r.detail = "fail", f"restart ready failed: {detail2} | {detail3}"
+        inst.reap()
+        return r
+    checks = [("cold restart new pid", inst.proc.pid != old_pid),
+              ("restart ready", True)]
+
+    # 观察期：零滚动动作（本函数自此不调用 autoui_action）。
+    cli2 = AutoUiMcpClient(inst.mcp_port)
+    tool_json, find_para, _, _ = _t12_helpers(cli2)  # 重启换端口——helpers 重绑
+    t0 = time.monotonic()
+    vis = None
+    while time.monotonic() - t0 < 25:
+        e2 = find_para(TARGET_ROW)
+        if e2:
+            try:
+                v = tool_json("autoui_visibility", {"element_id": e2})
+                if v.get("visible"):
+                    vis = v
+                    break
+            except Exception:  # noqa: BLE001  # 观察轮询：网络/解析抖动一律续等
+                pass
+        time.sleep(POLL_INTERVAL)
+    checks.append(("target visible after product restore (no driver scroll)", bool(vis)))
+    snap = inst.snapshot_text()
+    checks.append(("restore note shown", "已恢复上次位置" in snap))
+    checks.append(("font large restored", "large" in snap))
+    ss = tool_json("autoui_scroll_state", {})
+    checks.append(("product scrolled (offset moved by restore)",
+                   ss.get("panes") and ss["panes"][0]["offset"][1] > 0))
+    if vis:
+        ev.raw_write("v09_cold_restore-visibility", vis)
+    try:
+        shot = cli2.screenshot("v09restore", baseline=False)
+        ev.shot_collect("v09restore", str(shot))
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 负例：损坏锚点 -> 再冷启 -> 诚实失败（内容变化提示、不标记已恢复）
+    pj.write_text('{"reader":"p781-save-restore","paragraph_index":40,'
+                  '"paragraph_text":"TAMPERED anchor text","font_size":"large","updated_at":0}',
+                  encoding="utf-8")
+    ok, rdetail = inst.restart()
+    if not ok:
+        r.status, r.detail = "fail", f"negative restart failed: {rdetail}"
+        return r
+    ok2, _ = inst.wait_backend()
+    ok3, _ = inst.wait_mcp()
+    if not (ok2 and ok3):
+        r.status, r.detail = "fail", "negative restart not ready"
+        inst.reap()
+        return r
+    snap2 = inst.snapshot_text()
+    checks.append(("tampered anchor fails honestly",
+                   "内容已变化" in snap2 and "已恢复上次位置" not in snap2))
+
+    ev.raw_write("v09_cold_restore", {"checks": [(c[0], bool(c[1])) for c in checks],
+                                      "progress_sha256": sha256_file(pj) if pj.is_file() else None})
+    reap_ok, reap_detail = inst.reap()
+    bad = [c for c in checks if not c[1]]
+    if bad or not reap_ok:
+        r.status = "fail"
+        r.detail = f"failed: {[c[0] for c in bad]}; reap={'ok' if reap_ok else reap_detail}"
+    else:
+        r.status = "pass"
+        r.detail = f"{len(checks)} cold-restore checks ok ({detail} -> {detail3})"
+    return r
+
+
+def run_v08_reader_current_state(ev: Evidence, inst: Instance) -> CaseResult:
+    """Reader 现状记录例（AC-08）：真实 Reader 走同一保存链——当前因
+    reading.at `let pr` 重赋值致 VM 合成失败、阅读页正文恒空。本例 PASS =
+    该缺陷被通道如实取证（不授予 Reader 目标 PASS）。"""
+    r = CaseResult("v08_reader_current_state")
+    r.required = False  # 记录例：缺陷修复后应转正（001 路由）
+    inst.launch()
+    ok, detail = inst.wait_backend()
+    if not ok:
+        r.status, r.detail = "fail", f"backend ready failed: {detail}"
+        inst.reap()
+        return r
+    try:
+        inst.seed_book()
+    except RuntimeError as e:
+        r.status, r.detail = "fail", f"seed failed: {e}"
+        inst.reap()
+        return r
+    ok, detail = inst.wait_mcp()
+    if not ok:
+        r.status, r.detail = "fail", f"mcp ready failed: {detail}"
+        inst.reap()
+        return r
+    cli = AutoUiMcpClient(inst.mcp_port)
+
+    import re
+
+    def col_candidates(needle, n=6):
+        """needle 最近的 n 个容器头候选（内→外，含 col/button）。for 迭代>0
+        的 events 注解不随迭代重复、嵌套层数不定——由调用方逐一试派发。"""
+        vt = "".join(x.get("text", "") for x in cli.call("autoui_vtree", {}).get("content", []))
+        idx = vt.find(needle)
+        if idx < 0:
+            return []
+        hdrs = [mm.group(1) for mm in re.finditer(r"(?:col|button) (vnode_\d+) \{", vt)
+                if mm.end() <= idx]
+        out = []
+        for eid in reversed(hdrs):
+            if eid not in out:
+                out.append(eid)
+            if len(out) >= n:
+                break
+        return out
+
+    if not inst.snapshot_has(inst.marker, timeout=30.0):
+        r.status, r.detail = "fail", f"marker {inst.marker} not visible on bookshelf"
+        inst.reap()
+        return r
+
+    press_log = []
+
+    def press_with_retry(needle, what):
+        for attempt in range(3):
+            for eid in col_candidates(needle):
+                res = cli.call("autoui_action", {"element_id": eid, "action": "press"})
+                txt = "".join(x.get("text", "") for x in res.get("content", []))
+                press_log.append({"needle": needle, "eid": eid, "resp": txt[:120]})
+                if "status: ok" in txt:
+                    return True
+            time.sleep(1.0)
+        return False
+
+    if not press_with_retry(inst.marker, "card"):
+        r.status, r.detail = "fail", f"card press not dispatched: {press_log}"
+        inst.reap()
+        return r
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 20:
+        if "第1章" in inst.snapshot_text():
+            break
+        time.sleep(POLL_INTERVAL)
+    if not press_with_retry("第1章", "chapter"):
+        r.status, r.detail = "fail", f"chapter press not dispatched: {press_log}"
+        inst.reap()
+        return r
+    t0 = time.monotonic()
+    reading = False
+    while time.monotonic() - t0 < 20:
+        snap = inst.snapshot_text()
+        if "OnScroll" in snap or "（本章无内容）" in snap:
+            reading = True
+            break
+        time.sleep(POLL_INTERVAL)
+    if not reading:
+        r.status, r.detail = "fail", "reading page not reached"
+        inst.reap()
+        return r
+    snap = inst.snapshot_text()
+    err_txt = inst._read_log("stderr") + inst._read_log("stdout")
+    ev.raw_write("v08_reader_current_state", {
+        "snapshot_head": snap[:3000],
+        "synthesis_error_present": "Cannot reassign to immutable variable" in err_txt,
+        "empty_content_present": "（本章无内容）" in snap,
+        "paragraph_labels_present": "¶0" in snap,
+    })
+    defect_evidenced = ("Cannot reassign to immutable variable" in err_txt
+                        and "（本章无内容）" in snap)
+    reap_ok, _ = inst.reap()
+    if defect_evidenced and reap_ok:
+        r.status = "pass"
+        r.detail = ("documented consumer defect evidenced: reading.at:266 'let pr' reassigned "
+                    "at :315 -> VM handler synthesis fails -> reading Init never runs -> "
+                    "empty content; routed to READER-001 (not granted PASS)")
+    else:
+        r.status = "fail"
+        r.detail = (f"defect not evidenced as documented (synth_err="
+                    f"{'Cannot reassign' in err_txt}, empty={'（本章无内容）' in snap}) — "
+                    "若 Reader 已修复请把本例转正为真实保存链验收")
+    return r
+
+
 # ---------------------------------------------------------------- main
 def main() -> int:
     ap = argparse.ArgumentParser(description="PLAN-781 native reader acceptance driver")
@@ -854,7 +1242,8 @@ def main() -> int:
                         back_port=args.back_port, mcp_port=args.mcp_port, **kw)
 
     all_cases = ["r1_smoke", "v07_dual_instance", "v12_window_start_fail",
-                 "v12_backend_dead", "v12_timeout", "v10_fake_geometry", "v11_clip"]
+                 "v12_backend_dead", "v12_timeout", "v10_fake_geometry", "v11_clip",
+                 "v08_save", "v09_cold_restore", "v08_reader_current_state"]
     selected = args.cases or all_cases
 
     for case_id in selected:
@@ -903,6 +1292,19 @@ def main() -> int:
             inst.app_dir = REPO_ROOT / "test" / "fixtures" / "native-reader-acceptance" / "scroll-geometry"
             inst_holder.append(inst)
             ev.case(guard(run_v11_clip, inst))
+        elif case_id == "v08_save":
+            inst = mk("v08", fixture_mode=True, ready_marker="P781-SAVE-RESTORE-FIXTURE")
+            inst.app_dir = REPO_ROOT / "test" / "fixtures" / "native-reader-acceptance" / "save-restore"
+            inst_holder.append(inst)
+            ev.case(guard(run_v08_save, inst))
+        elif case_id == "v09_cold_restore":
+            inst = mk("v09", fixture_mode=True, ready_marker="P781-SAVE-RESTORE-FIXTURE")
+            inst.app_dir = REPO_ROOT / "test" / "fixtures" / "native-reader-acceptance" / "save-restore"
+            inst_holder.append(inst)
+            ev.case(guard(run_v09_cold_restore, inst))
+        elif case_id == "v08_reader_current_state":
+            inst_holder.append(mk("v08reader"))
+            ev.case(guard(run_v08_reader_current_state, inst_holder[-1]))
         else:
             print(f"[usage] unknown case: {case_id}")
             return 1

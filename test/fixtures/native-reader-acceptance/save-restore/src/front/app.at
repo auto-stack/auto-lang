@@ -1,0 +1,327 @@
+// p781-save-restore — PLAN-781 阶段A保存/冷恢复链路的框架正对照（T-12）。
+// 均匀 ASCII 书（120 段）+ 真实保存链（press -> handler -> HTTP POST ->
+// 后端校验+落盘+读回）+ 冷恢复流（Init 读进度 -> 逐字锚点 -> 溢出滚动 +
+// OnScroll 占比精化，Reader reading.at 同构生产原语）。
+// 正文刻意 ASCII（VM HTTP 请求体多字节损坏规避，reading.at real_payload
+// 注记）；多字节锚点归 READER-001 复验域。
+/// /api/progress 响应二次解析（双层编码）；无记录（""）或解析失败回 null。
+fn parse_progress(text str) JsonValue? {
+    var out JsonValue? = null
+    if text != "" {
+        let v = json.parse(text)
+        if v != null {
+            var s2 str = "" + v
+            if s2 != "" {
+                let v2 = json.parse(s2)
+                if v2 != null {
+                    out = v2
+                }
+            }
+        }
+    }
+    return out
+}
+
+widget App {
+    msg { Init, Tap(int), SetFont(str), OnScroll(float, float, float, float, float, float, float, float) }
+    model {
+        var paragraphs List = [
+            { idx: 0, text: "Row 000 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 1, text: "Row 001 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 2, text: "Row 002 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 3, text: "Row 003 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 4, text: "Row 004 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 5, text: "Row 005 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 6, text: "Row 006 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 7, text: "Row 007 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 8, text: "Row 008 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 9, text: "Row 009 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 10, text: "Row 010 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 11, text: "Row 011 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 12, text: "Row 012 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 13, text: "Row 013 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 14, text: "Row 014 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 15, text: "Row 015 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 16, text: "Row 016 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 17, text: "Row 017 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 18, text: "Row 018 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 19, text: "Row 019 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 20, text: "Row 020 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 21, text: "Row 021 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 22, text: "Row 022 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 23, text: "Row 023 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 24, text: "Row 024 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 25, text: "Row 025 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 26, text: "Row 026 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 27, text: "Row 027 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 28, text: "Row 028 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 29, text: "Row 029 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 30, text: "Row 030 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 31, text: "Row 031 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 32, text: "Row 032 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 33, text: "Row 033 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 34, text: "Row 034 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 35, text: "Row 035 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 36, text: "Row 036 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 37, text: "Row 037 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 38, text: "Row 038 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 39, text: "Row 039 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 40, text: "Row 040 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 41, text: "Row 041 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 42, text: "Row 042 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 43, text: "Row 043 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 44, text: "Row 044 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 45, text: "Row 045 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 46, text: "Row 046 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 47, text: "Row 047 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 48, text: "Row 048 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 49, text: "Row 049 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 50, text: "Row 050 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 51, text: "Row 051 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 52, text: "Row 052 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 53, text: "Row 053 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 54, text: "Row 054 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 55, text: "Row 055 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 56, text: "Row 056 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 57, text: "Row 057 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 58, text: "Row 058 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 59, text: "Row 059 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 60, text: "Row 060 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 61, text: "Row 061 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 62, text: "Row 062 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 63, text: "Row 063 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 64, text: "Row 064 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 65, text: "Row 065 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 66, text: "Row 066 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 67, text: "Row 067 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 68, text: "Row 068 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 69, text: "Row 069 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 70, text: "Row 070 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 71, text: "Row 071 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 72, text: "Row 072 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 73, text: "Row 073 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 74, text: "Row 074 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 75, text: "Row 075 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 76, text: "Row 076 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 77, text: "Row 077 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 78, text: "Row 078 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 79, text: "Row 079 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 80, text: "Row 080 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 81, text: "Row 081 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 82, text: "Row 082 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 83, text: "Row 083 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 84, text: "Row 084 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 85, text: "Row 085 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 86, text: "Row 086 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 87, text: "Row 087 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 88, text: "Row 088 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 89, text: "Row 089 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 90, text: "Row 090 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 91, text: "Row 091 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 92, text: "Row 092 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 93, text: "Row 093 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 94, text: "Row 094 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 95, text: "Row 095 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 96, text: "Row 096 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 97, text: "Row 097 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 98, text: "Row 098 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 99, text: "Row 099 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 100, text: "Row 100 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 101, text: "Row 101 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 102, text: "Row 102 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 103, text: "Row 103 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 104, text: "Row 104 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 105, text: "Row 105 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 106, text: "Row 106 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 107, text: "Row 107 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 108, text: "Row 108 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 109, text: "Row 109 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 110, text: "Row 110 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 111, text: "Row 111 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 112, text: "Row 112 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 113, text: "Row 113 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 114, text: "Row 114 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 115, text: "Row 115 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 116, text: "Row 116 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 117, text: "Row 117 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 118, text: "Row 118 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " },
+            { idx: 119, text: "Row 119 of the uniform reference book. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. " }
+        ]
+        var loaded bool = false
+        var cur_paragraph int = -1
+        var cur_text str = ""
+        var restored_note str = ""
+        var font_size str = "medium"
+        var body_style str = "text-foreground text-base leading-relaxed"
+        var rsc str = "p781-pane"
+        var restore_pi int = -1
+        var restore_cum int = 0
+        var restore_total int = 0
+    }
+
+    view {
+        col {
+            style: "h-screen flex flex-col"
+            row {
+                style: "h-12 items-center gap-2 px-4 border-b border-border shrink-0"
+                text "P781-SAVE-RESTORE-FIXTURE" { style: "font-bold text-foreground" }
+                button {
+                    onclick: .SetFont("small")
+                    style: "px-2 py-1 text-sm rounded hover:bg-accent"
+                    text "A-" { style: "text-sm" }
+                }
+                button {
+                    onclick: .SetFont("large")
+                    style: "px-2 py-1 text-sm rounded hover:bg-accent"
+                    text "A+" { style: "text-sm" }
+                }
+                text .font_size { style: "text-xs text-muted-foreground" }
+            }
+            if .restored_note != "" {
+                text .restored_note { style: "px-4 py-1 text-sm text-primary bg-primary/10 shrink-0" }
+            }
+            scroll-pane (controller: .rsc, style: "flex-1 min-h-0 w-full", onscroll: .OnScroll) {
+                if .loaded {
+                    col {
+                        style: "max-w-2xl mx-auto px-6 py-10 gap-4"
+                        for p in .paragraphs {
+                            col {
+                                onclick: .Tap(p.idx)
+                                style: ["px-3 py-2 rounded-lg cursor-pointer border-l-4",
+                                    if p.idx == .cur_paragraph {
+                                        "bg-primary/10 border-primary"
+                                    } else {
+                                        "border-transparent hover:bg-muted"
+                                    }]
+                                text f"¶${p.idx}" { style: "text-xs text-muted-foreground font-mono" }
+                                text p.text { style: .body_style }
+                            }
+                        }
+                    }
+                } else {
+                    col {
+                        style: "items-center justify-center py-20"
+                        text "Loading…" { style: "text-muted-foreground" }
+                    }
+                }
+            }
+        }
+    }
+
+
+    on {
+        .Init -> {
+            .loaded = true
+            let pr = parse_progress(Http.get_json("/api/progress"))
+            if pr != null {
+                let fsv str = "" + pr.font_size
+                if fsv == "small" {
+                    .font_size = "small"
+                    .body_style = "text-foreground text-sm leading-relaxed"
+                }
+                if fsv == "large" {
+                    .font_size = "large"
+                    .body_style = "text-foreground text-lg leading-relaxed"
+                }
+                let pi int = pr.paragraph_index
+                var txt str = "" + pr.paragraph_text
+                var matched bool = false
+                var i int = 0
+                while i < .paragraphs.len() {
+                    let p = .paragraphs[i]
+                    if p.idx == pi {
+                        if "" + p.text == txt {
+                            matched = true
+                        }
+                        i = .paragraphs.len()
+                    }
+                    i = i + 1
+                }
+                if matched {
+                    .cur_paragraph = pi
+                    .restored_note = "已恢复上次位置（点任意段落可更新）"
+                    .restore_pi = pi
+                    var total int = 0
+                    var cum int = 0
+                    var seen int = 0
+                    var k int = 0
+                    while k < .paragraphs.len() {
+                        let p2 = .paragraphs[k]
+                        let tl int = ("" + p2.text).len() + 1
+                        total = total + tl
+                        if p2.idx == pi {
+                            seen = 1
+                        } else {
+                            if seen == 0 {
+                                cum = cum + tl
+                            }
+                        }
+                        k = k + 1
+                    }
+                    .restore_cum = cum
+                    .restore_total = total
+                    let warm = scroll_to(.rsc, 0.0, 100000000.0)
+                } else {
+                    .restored_note = "上次保存的段落内容已变化，请重新点选位置"
+                }
+            }
+        }
+        .Tap(idx int) -> {
+            .cur_paragraph = idx
+            var i int = 0
+            while i < .paragraphs.len() {
+                let p = .paragraphs[i]
+                if p.idx == idx {
+                    .cur_text = "" + p.text
+                    i = .paragraphs.len()
+                }
+                i = i + 1
+            }
+            var save_ok bool = false
+            var resp_debug str = "EXC"
+            try {
+                var body str = "{\"paragraph_index\":"
+                body = body + idx.to_string()
+                body = body + ",\"paragraph_text\":\""
+                body = body + .cur_text
+                body = body + "\",\"font_size\":\""
+                body = body + .font_size
+                body = body + "\"}"
+                let resp str = Http.post("/api/progress", body)
+                resp_debug = resp
+                if resp.find("SAVED") >= 0 {
+                    save_ok = true
+                }
+            } catch { }
+            if save_ok {
+                .restored_note = f"已记录位置：第 ${idx} 段"
+            } else {
+                .restored_note = "保存失败resp=" + resp_debug
+            }
+        }
+        .SetFont(s str) -> {
+            .font_size = s
+            if s == "small" {
+                .body_style = "text-foreground text-sm leading-relaxed"
+            }
+            if s == "large" {
+                .body_style = "text-foreground text-lg leading-relaxed"
+            }
+        }
+        .OnScroll(ox, oy, vw, vh, cw, chh, px, py) -> {
+            if .restore_pi >= 0 {
+                if .restore_total > 0 {
+                    if chh > vh {
+                        let cf float = 0.0 + .restore_cum
+                        let tf float = 0.0 + .restore_total
+                        let ratio float = cf / tf
+                        let span float = chh - vh
+                        let target float = ratio * span
+                        let ok2 = scroll_to(.rsc, 0.0, target)
+                    }
+                }
+                .restore_pi = -1
+            }
+        }
+    }
+}
