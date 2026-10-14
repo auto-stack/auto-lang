@@ -3,8 +3,8 @@
 - 计划：PLAN-770 r2 · T-01..T-07（work 阶段，AC-01..06 证据；含 r4 返工）
 - 工作树：`D:/autostack/.wt/lang-770/auto-lang` @ `plan-770-dev`
 - 基线：工作树基面 `e849e06f9`；r6 起已整合当前主线（771 先合入，merge
-  基 `6787bbd4a`）；本收据时 HEAD `7468c553e`（r8 返工提交；受审基线
-  c71755567/314cbbeb6/e01997dc5/643a1b3eb/7e0b9f712/a14f1470b/ebd0d05ee/1f8027500）
+  基 `6787bbd4a`）；本收据时 HEAD `e60b6eacc`（r9 返工提交；受审基线
+  645054332/7468c553e/c71755567/314cbbeb6/e01997dc5/643a1b3eb/7e0b9f712/a14f1470b）
 - 日期：2026-10-14
 - 性质：**语言面真实 native 编译收据**（source/HIR → 真实 PE，runtime 真实
   分配/复制/释放）；不是完整 Auto 编译器，不宣称 ACC Gen1。
@@ -28,13 +28,14 @@
 | 643a1b3eb | r6 返工：P770-R6-01/02（循环重入 fixpoint+构造代际/不可达出口按帧可达性过滤）+ record gate 接入联合 text gate + text_review_r6 9 测试永久化 |
 | 314cbbeb6 | r7 返工：P770-R7-01（终止态循环体不伪造回边——back-edge 分类显式化：continue 恒回边、body 态仅在可自然落空时回边）+ text_review_r7 10 测试永久化 |
 | 7468c553e | r8 返工：P770-R8-01（block_terminates 消费 const_truth——恒真/恒假守卫的 break/return 不再误算自然回边；no-else 臂入 memo；嵌套恒定条件组合）+ text_review_r8 8 测试永久化 |
+| e60b6eacc | r9 返工：P770-R9-01（循环入口 move 预杀仅在有真实回边时生效；AwaitLoop after-merge 应用 if-join 同款责任规则——死并入的入口 owner 撤销 caller 清理义务）+ text_review_r9 11 测试永久化 |
 
 ## 2. 命令与结果（唯一工作树）
 
 | 命令 | 期望 | 实际 | 收据 |
 |---|---|---|---|
 | `cargo check --manifest-path experimental/ac-core/Cargo.toml --locked --all-targets` | 零错误零警告 | PASS | gate 原始输出 |
-| `cargo test --manifest-path … --locked`（ac-core 全套，整合后含 record 面） | 全绿 | **339 passed + 1 ignored**（r8 净增 text_review_r8 8；r2..r7 重放与 record/scalar/core 面在整合树上全绿） | raw core-test.txt |
+| `cargo test --manifest-path … --locked`（ac-core 全套，整合后含 record 面） | 全绿 | **350 passed + 1 ignored**（r9 净增 text_review_r9 11；r2..r8 重放与 record/scalar/core 面在整合树上全绿） | raw core-test.txt |
 | `cargo fmt --manifest-path … --check`（ac-core 与 runtime/text 两处） | clean | PASS | gate |
 | `cargo check/test --manifest-path experimental/ac-core/runtime/text/Cargo.toml --locked` | 全绿 | **20/20**（fault 6、lifecycle 5、smoke 2、textops 4、trap 2、contract 1） | raw rt-test.txt |
 | `powershell … scripts/verify-ac-text-770.ps1` | r6 起 14 步全绿（+record gate） | **PASS**（check/test/fmt ×2 + 旧 gates 741[-SkipMainGates]/745/767 + **verify-ac-record-771** 实跑 204.9s + scope 隔离 + 指纹）；绑 `643a1b3eb` 收据 gate-20261014-193430（收据卫生：本行旧引用 gate-20261014-155448/987172981 为 **r3 历史收据**，非现行绑定——r6 复审指出的陈旧表述在此更正） | gate-20261014-193430.txt |
@@ -61,6 +62,7 @@
 | V-08 静态/来源 | text_source：非法转义/标量/多字符 char 词法拒、CRLF 跨行、遮蔽（len 同名用户函数）；未执行分支静态合法性 | 全绿 |
 | V-09 规模 | v09_concat_chain_4096（exit 4096；4095 CONCAT/FREE 逐对）、v09_resource_loop_4096（exit 16384；每轮 1 分配 1 释放）、v09_call_chain_4096_with_text_args（借用视图跨 4096 帧） | 全绿 |
 | r3 重放集 | text_review_r3 9 测试：q01（嵌套不可达 move 不伪移交）/q04（可达臂 Drop 唯一释放）/c01（不可达 move 后合法读取）/q02+c02（同源 view 参数 mut 排他/异源合法）/q03（语句尾寿命：mark 先于 FREE）+4096 链探测帧/q05（纯清理函数必须声明 runtime）/q06（坏引用受控拒绝不 panic）；R3-01..05 全覆盖 | 全绿 |
+| r9 重放集 | text_review_r9 11 测试：p03（return-only 循环对外层 owner 的首次 .move 合法，双腿 run3 精确单次转移 trace）/p04（真实自然循环重复 move 保持 use-after-move 拒）/c05/c06（循环内 fresh owner 与无循环隔离控制）/恒定 break 终止的 move 组合矩阵（抓出并修复循环后责任撤销缺失——FREE-INVALID 双释放）；c01..c04（嵌套恒定 break/false-then-true return/恒真 continue 刷新/未知自然刷新）+ p01/p02（真实回边陈旧 view 保持拒） | 全绿 |
 | r8 重放集 | text_review_r8 8 测试：p01/p02/p04（恒真 then break/恒假 else break/恒真 return 守卫的循环出口不再伪造回边，双腿 run0 精确 LIFO trace）+ 嵌套恒定条件组合矩阵（outer true + inner false-else-break）；p03（真实 continue 回边陈旧借用保持拒——与 r6 p03 字节相同）；c01（动态双臂 break 合法）/c02（真实 continue 逐轮刷新 exit6）/c03（直接 return） | 全绿 |
 | r7 重放集 | text_review_r7 10 测试：m01/m02（直接 HIR break-only 循环不再伪造重入，冻结 atom 双例 run0 精确 trace）/c05（源码 break-only 双腿）/return-only（终止矩阵：return-only 体不重走，exit3）；p01/p02（陈旧重入经调用/嵌套循环读取，源+冻结 atom 双腿拒）；c01/c02（自然/continue 重入刷新视图合法 exit6 逐轮配对）/c03（true-else 不可达 continue exit0）/c04（嵌套 fresh owner exit12） | 全绿 |
 | r6 重放集 | text_review_r6 9 测试：p01/p02（`if false` 臂内 break/continue 不再污染出口，exit0 零分配零 FREE，双腿）/p03/p04（continue 与自然 back-edge 重入后读取上一轮已释放借用，源+冻结 atom 双腿拒 owned-scope-escape）/c01（外层存活 owner 重入合法 exit3）/c02（静态 view 重入 exit3 无 FREE）/c03/c04（R5-01 嵌套短路兄弟控制，精确每 id 一次 FREE/LIFO）；组合 oracle：重入后 fresh `let` 前的陈旧代际借用拒读 | 全绿 |
@@ -79,6 +81,7 @@
 | sha256 K[59] 笔误（0x8cc70808） | 复制错误，与 runtime 侧实现对拍发现 | 0x8cc70208；三处实现（CLI/tests/common/runtime contract.rs）已机械比对一致 |
 | marks 对象符号自检窗口长度错 | `windows(16)` 对 14/17 字节 needle 恒 false（自检空转） | 按 needle 长度开窗（`windows(n).any(w == needle)`） |
 | **r3 复审 R3-01..05（5 项阻塞）** | join 用语法预扫描而非实际臂状态（不可达嵌套 move 伪移交→漏释放；可达臂 Drop 后父级仍排释放→FREE-INVALID；不可达臂 dead 污染→合法读取误拒）；view 借入参数无源身份（同源 mut/view 放行）；临时在消费者处即释放（违背完整语句尾合同）；派生需求漏清理义务（纯 move 参数函数绕过合同门）；需求扫描先于结构校验且直接索引（坏引用 panic） | join 改实际 WalkState（可达性剪枝/终止臂不入/隐式臂快照/不可达臂状态丢弃）；alias_reach/escape_reach 分离（借入参数进别名集）；语句尾 pending_temps + enable_probestack/inline（cranelift 0.126 默认无探测——r2 的 4096 帧崩根因）；plan owned/exit_frees 入派生需求+adapter 为 move-Str 参数声明；扫描后置于结构校验且 total 化 |
+| **r9 复审 P770-R9-01（1 项 P2）** | r2 的循环入口预杀（block_definite_moves 对全部 entry-live owner 预判死）未消费 r7/r8 已有的真实回边区分——return-only/零重入体的首次转移被误拒（p03 双腿 use-after-move）；另由组合 oracle 发现：循环后父帧 live 未撤销已死 owner 义务（return 再 free=FREE-INVALID 双释放） | 预杀仅在 `!block_terminates(body)`（存在真实回边）时执行；AwaitLoop after-merge 对 dead 已并入的入口 owner 撤销 frame.st.live（if-join 同款责任规则，maybe-transfer 按并集保守读作死） |
 | **r8 复审 P770-R8-01（1 项 P2）** | r7 的 block_terminates 门是常量盲的语法分析：只认直接终止语句或 then+else 语法上同时终止——恒真/恒假守卫的 break/return 被当可自然落空，伪造重入误拒合法首读（p01/p02/p04 双腿 check1） | block_terminates 消费与走查相同的 const_truth 可达性：恒真只看 then、恒假只看 else、未知需全臂+无 else 落空；no-else 臂入 memo 供恒真用；嵌套恒定条件组合正确 |
 | **r7 复审 P770-R7-01（1 项 P2 回归）** | r6 fixpoint 无条件把 body 存态当回边——results 只存 WalkState 不区分终止方式，break-only/return-only 体把终止态送回 header 伪造第二次迭代，首读被误判陈旧 | 回边分类显式化：continue 出口恒入 fixpoint；body 态仅当 `block_terminates=false`（存在自然落空路径）才入；break/return 终止体零重入贡献，真实 break 态仍入 after-loop 合流（r5 语义）、return 态仍不合流 |
 | **r6 复审 P770-R6-01/02/03（2 项 P1 + 1 项 P2）** | 循环体只从入口快照走查一次——continue/自然 back-edge 状态只并入 after-loop，未反馈 header 再验证（重入读取上一轮已释放借用 run70/-7）；r5 出口收集器无可达性——不可达臂的 break/continue 污染 loop_exits 误拒合法代码；771 先合入后未整合（受审树不含 record 实现、未跑 record gate、SD before 过期） | 循环体按 RE-ENTRY 状态 fixpoint 重走（base+back-edge dead/backing 合流；收敛键=dead+id投影 backing；诊断截断至最终 pass）；fresh owned `let` 清死记+构造代际递增，backing 携 (owner,gen)——陈旧代际读取拒 owned-scope-escape；帧级静态可达性过滤出口记录（静态合法性检查不变）；同一实施树 merge master 调和 ParamMode/MethodOut/CallFrame/词法 mut/算子面谓词/check_profile_ops，text gate 接入 record gate 成 14 步联合门禁，SD02/04 before/after 按合 771 后 canonical 刷新 | 
@@ -110,8 +113,9 @@
 
 ## 6. 输入/制品指纹
 
-r8 联合门禁收据 `gate-20261014-230536.txt`（14/14 PASS，绑代码提交
-7468c553e；record gate 实跑）。r7 联合门禁收据 `gate-20261014-202410.txt`
+r9 联合门禁收据 `gate-20261015-003622.txt`（14/14 PASS，绑代码提交
+e60b6eacc；record gate 实跑）。r8 联合门禁收据 `gate-20261014-230536.txt`
+（代码提交 7468c553e）与 `gate-20261014-231354.txt`（最终 docs HEAD）。r7 联合门禁收据 `gate-20261014-202410.txt`
 （代码提交 314cbbeb6）与 `gate-20261014-203110.txt`（最终 docs HEAD）。r6 联合门禁收据
 `gate-20261014-193430.txt`（代码树）与 `gate-20261014-194300.txt`
 （最终 HEAD e01997dc5）。
