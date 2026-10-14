@@ -62,6 +62,7 @@
 | 合同门 api_revision 解析 None | 数字字段解析未跳过冒号 | 解析先定位 `:` |
 | sha256 K[59] 笔误（0x8cc70808） | 复制错误，与 runtime 侧实现对拍发现 | 0x8cc70208；三处实现（CLI/tests/common/runtime contract.rs）已机械比对一致 |
 | marks 对象符号自检窗口长度错 | `windows(16)` 对 14/17 字节 needle 恒 false（自检空转） | 按 needle 长度开窗（`windows(n).any(w == needle)`） |
+| **r2 复审 QA-01..08（8 项阻塞）** | 伪造域进 scalar lowering panic；requires 删除绕过能力/合同门；move 在 return/分支/短路路径双释放或漏释放；view Str 参数被当 owned 返回；owned Call/字面量视图与借用返回的 provenance 断开；mut 无排他/外逃检查；循环内 fresh move 误拒；runtime 锁文件被根 .gitignore 忽略 | verify_text 域前置拒+派生 runtime 需求（声明强制+build 门双触发+adapter eq/ne 补声明）；常量条件折叠+连接一致清理责任+短路条件 move 拒+return 先处理 move+循环只杀入口存活者；owned let/return 的 ReadLocal 禁令；scanner 补 owned Call/StrLit+backing 向量传播至末消费者（帧恒小）；mut 进 provenance（调用点别名/返回外逃/派生 view）；`git add -f` runtime/text/Cargo.lock；重放集 18 测试永久化（tests/text_review_r2.rs） |
 
 ## 5. 记录的边界（不宣称的面）
 

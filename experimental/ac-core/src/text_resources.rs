@@ -40,6 +40,69 @@ use crate::hir;
 use crate::verify::ValueType;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Capability every text-profile module whose content lowers to runtime
+/// calls must declare and the caller must explicitly provide (PLAN-770 §2;
+/// frozen string, shared by the verifier front door, the source adapter's
+/// requires emission and the build gates).
+pub const RUNTIME_TEXT_CAPABILITY: &str = "ac.runtime.text.v1";
+
+/// Whether any expression in the bundle lowers to an `ac_rt_*` call
+/// (review r2 QA-02): the DERIVED runtime need, independent of the
+/// document's own `requires` declaration. Mirrors the lowering's
+/// `scan_body_rt_needs` operation set (own_free rides the same library).
+pub fn bundle_needs_text_runtime(bundle: &hir::Bundle) -> bool {
+    bundle
+        .modules
+        .iter()
+        .any(|m| m.bodies.iter().any(|b| body_needs_text_runtime(m, b)))
+}
+
+pub fn body_needs_text_runtime(m: &hir::Module, body: &hir::Body) -> bool {
+    let text_ty = |e: &hir::Expr| type_use_is_text(&e.ty, m);
+    body.exprs.iter().any(|e| match &e.kind {
+        hir::ExprKind::TextLen { .. }
+        | hir::ExprKind::TextLenBytes { .. }
+        | hir::ExprKind::TextCharAt { .. }
+        | hir::ExprKind::TextSlice { .. }
+        | hir::ExprKind::TextConcat { .. }
+        | hir::ExprKind::TextClone { .. }
+        | hir::ExprKind::TextToOwned { .. }
+        | hir::ExprKind::CharToCodepoint { .. }
+        | hir::ExprKind::CharFromCodepoint { .. } => true,
+        hir::ExprKind::StrLit { .. } => type_use_is_owned(&e.ty, m),
+        hir::ExprKind::Binary {
+            op: hir::BinOp::Eq | hir::BinOp::Ne,
+            lhs,
+            ..
+        } => text_ty(&body.exprs[lhs.0 as usize]),
+        _ => false,
+    })
+}
+
+/// Nominal text-type test (str or Str, builtin shorthand or table ref).
+pub(crate) fn type_use_is_text(u: &hir::TypeUse, m: &hir::Module) -> bool {
+    match u {
+        hir::TypeUse::Builtin(hir::BuiltinType::StrSlice | hir::BuiltinType::StrOwned) => true,
+        hir::TypeUse::Ref(tid) => matches!(
+            m.types.get(tid.0 as usize).map(|t| &t.kind),
+            Some(hir::TypeKind::Str | hir::TypeKind::StrOwned)
+        ),
+        _ => false,
+    }
+}
+
+/// Nominal owned-Str type test.
+pub(crate) fn type_use_is_owned(u: &hir::TypeUse, m: &hir::Module) -> bool {
+    match u {
+        hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
+        hir::TypeUse::Ref(tid) => matches!(
+            m.types.get(tid.0 as usize).map(|t| &t.kind),
+            Some(hir::TypeKind::StrOwned)
+        ),
+        _ => false,
+    }
+}
+
 /// Verified resource obligations for one function body.
 #[derive(Clone, Debug, Default)]
 pub struct BodyResourcePlan {
@@ -142,34 +205,58 @@ enum DeadCause {
 }
 
 /// Static scan of one expression tree: every `ReadLocal` leaf, whether any
-/// owned-producing node exists, and every call's moved-binding arguments.
+/// owned-producing node exists, and every call's moved-binding arguments
+/// (review r2 QA-03/QA-05: moves are classified by EXECUTION REACHABILITY —
+/// a short-circuit RHS under a constant-polarity lhs is either definitely
+/// executed or definitely skipped; under an unknown lhs its moves are
+/// CONDITIONAL and the statement must be rejected — a maybe-transfer has
+/// no consistent static cleanup responsibility. Owned-producing now
+/// includes calls returning Str and promoted literals: a view of either
+/// stored across statements is a `verify.borrow-escape`).
 #[derive(Default)]
 struct ExprScan {
     /// (expr id, local id, span) of every ReadLocal leaf
     reads: Vec<(u32, u32, Span)>,
     has_owned_producing: bool,
-    /// (moved argument expr id, span) for `.move` bindings.
+    /// definitely-executed (expr id, span) for `.move` bindings
     moves: Vec<(hir::ExprId, Span)>,
+    /// maybe-executed moves (short-circuit RHS under unknown polarity)
+    conditional_moves: Vec<(hir::ExprId, Span)>,
     /// Call nodes with their bindings (param index -> moved flag), for
-    /// mode validation.
+    /// mode validation and mut-aliasing checks.
     call_moves: Vec<(hir::ExprId, Vec<(u32, bool)>, Span)>,
 }
 
-fn scan_expr(body: &hir::Body, root: hir::ExprId) -> ExprScan {
+fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mode {
+        /// moves count as definite
+        Normal,
+        /// moves are conditional (maybe executed)
+        Conditional,
+        /// statically unreachable subtree: reads still recorded (static
+        /// legality), moves ignored entirely
+        Dead,
+    }
     let mut scan = ExprScan::default();
-    let mut stack = vec![root];
-    while let Some(id) = stack.pop() {
+    let mut stack: Vec<(hir::ExprId, Mode)> = vec![(root, Mode::Normal)];
+    while let Some((id, mode)) = stack.pop() {
         let e = &body.exprs[id.0 as usize];
         match &e.kind {
             hir::ExprKind::ReadLocal { local } => scan.reads.push((id.0, local.0, e.span)),
             hir::ExprKind::TextConcat { lhs, rhs } => {
                 scan.has_owned_producing = true;
-                stack.push(*rhs);
-                stack.push(*lhs);
+                stack.push((*rhs, mode));
+                stack.push((*lhs, mode));
             }
             hir::ExprKind::TextClone { operand } | hir::ExprKind::TextToOwned { operand } => {
                 scan.has_owned_producing = true;
-                stack.push(*operand);
+                stack.push((*operand, mode));
+            }
+            hir::ExprKind::StrLit { .. } => {
+                if type_use_is_owned(&e.ty, m) {
+                    scan.has_owned_producing = true;
+                }
             }
             hir::ExprKind::Unary { operand, .. }
             | hir::ExprKind::TextLen { operand }
@@ -177,82 +264,304 @@ fn scan_expr(body: &hir::Body, root: hir::ExprId) -> ExprScan {
             | hir::ExprKind::TextToBorrowed { operand }
             | hir::ExprKind::CharToCodepoint { operand }
             | hir::ExprKind::CharFromCodepoint { operand } => {
-                stack.push(*operand);
+                stack.push((*operand, mode));
             }
             hir::ExprKind::Call {
+                callee,
                 eval_args,
                 bindings,
-                ..
             } => {
+                if let Some(hir::DefKind::Function { ty, .. }) =
+                    m.defs.get(callee.0 as usize).map(|d| &d.kind)
+                {
+                    if let Some(hir::TypeKind::Function(sig)) =
+                        m.types.get(ty.0 as usize).map(|t| &t.kind)
+                    {
+                        if type_use_is_owned(&sig.result, m) {
+                            scan.has_owned_producing = true;
+                        }
+                    }
+                }
                 let mut bm = Vec::new();
                 for b in bindings {
                     bm.push((b.param, b.moved));
-                    if b.moved && (b.arg as usize) < eval_args.len() {
+                    if b.moved && mode == Mode::Normal && (b.arg as usize) < eval_args.len() {
                         scan.moves.push((eval_args[b.arg as usize], e.span));
+                    } else if b.moved
+                        && mode == Mode::Conditional
+                        && (b.arg as usize) < eval_args.len()
+                    {
+                        scan.conditional_moves
+                            .push((eval_args[b.arg as usize], e.span));
                     }
                 }
                 scan.call_moves.push((id, bm, e.span));
                 for a in eval_args.iter().rev() {
-                    stack.push(*a);
+                    stack.push((*a, mode));
                 }
             }
-            hir::ExprKind::Binary { lhs, rhs, .. } | hir::ExprKind::Logical { lhs, rhs, .. } => {
-                stack.push(*rhs);
-                stack.push(*lhs);
+            hir::ExprKind::Logical { op, lhs, rhs } => {
+                // lhs always evaluates; the rhs runs only under the lhs's
+                // polarity (`&&`: true; `||`: false). A constant lhs pins
+                // the rhs's execution; an unknown lhs makes its moves
+                // conditional.
+                stack.push((*lhs, mode));
+                let lhs_truth = const_truth(body, *lhs);
+                let rhs_mode = match op {
+                    hir::LogicOp::And => match lhs_truth {
+                        Some(true) => mode,
+                        Some(false) => Mode::Dead,
+                        None => Mode::Conditional,
+                    },
+                    hir::LogicOp::Or => match lhs_truth {
+                        Some(false) => mode,
+                        Some(true) => Mode::Dead,
+                        None => Mode::Conditional,
+                    },
+                };
+                // a nested Dead/Conditional mode only narrows further
+                let rhs_mode = if mode == Mode::Dead {
+                    Mode::Dead
+                } else if mode == Mode::Conditional && rhs_mode == Mode::Normal {
+                    Mode::Conditional
+                } else {
+                    rhs_mode
+                };
+                stack.push((*rhs, rhs_mode));
+            }
+            hir::ExprKind::Binary { lhs, rhs, .. } => {
+                stack.push((*rhs, mode));
+                stack.push((*lhs, mode));
             }
             hir::ExprKind::TextCharAt { operand, index } => {
-                stack.push(*operand);
-                stack.push(*index);
+                stack.push((*operand, mode));
+                stack.push((*index, mode));
             }
             hir::ExprKind::TextSlice {
                 operand,
                 start,
                 end,
             } => {
-                stack.push(*operand);
-                stack.push(*start);
-                stack.push(*end);
+                stack.push((*operand, mode));
+                stack.push((*start, mode));
+                stack.push((*end, mode));
             }
-            hir::ExprKind::Constant { .. } | hir::ExprKind::StrLit { .. } => {}
-            hir::ExprKind::CharLit { .. } => {}
+            hir::ExprKind::Constant { .. } | hir::ExprKind::CharLit { .. } => {}
         }
     }
     scan
 }
 
-/// Collect the owned-local ids moved anywhere inside a block subtree
-/// (recursive over if/loop children) — loop re-entry kills them for the
-/// whole body.
-fn collect_block_moves(body: &hir::Body, bid: u32, out: &mut BTreeSet<u32>) {
-    let Some(bl) = body.blocks.get(bid as usize) else {
-        return;
-    };
-    for s in &bl.stmts {
-        match s {
-            hir::Stmt::Let { value, .. }
-            | hir::Stmt::Return { value }
-            | hir::Stmt::Assign { value, .. } => {
-                let scan = scan_expr(body, *value);
-                for (argid, _) in &scan.moves {
-                    if let hir::ExprKind::ReadLocal { local } = &body.exprs[argid.0 as usize].kind {
-                        out.insert(local.0);
+/// Constant evaluation of a boolean expression (bool constants are the
+/// canonical i32 0/1; comparisons and arithmetic over constants fold).
+/// `None` = not statically known. Iterative post-order with short-circuit
+/// early exit — a decisive logical lhs settles the node without needing
+/// the rhs (which may contain calls), and operator chains are unbounded
+/// (V-09), so no recursion.
+fn const_truth(body: &hir::Body, root: hir::ExprId) -> Option<bool> {
+    enum St {
+        Enter(hir::ExprId),
+        /// logical node whose lhs value decides whether the rhs must be
+        /// evaluated at all
+        LogWait(hir::ExprId),
+        Reduce(hir::ExprId),
+    }
+    let mut stack = vec![St::Enter(root)];
+    let mut vals: BTreeMap<u32, i32> = BTreeMap::new();
+    while let Some(st) = stack.pop() {
+        match st {
+            St::Enter(id) => {
+                let e = &body.exprs[id.0 as usize];
+                match &e.kind {
+                    hir::ExprKind::Constant { value } => {
+                        vals.insert(id.0, *value);
+                    }
+                    hir::ExprKind::Unary { operand, .. } => {
+                        stack.push(St::Reduce(id));
+                        stack.push(St::Enter(*operand));
+                    }
+                    hir::ExprKind::Binary { lhs, rhs, .. } => {
+                        stack.push(St::Reduce(id));
+                        stack.push(St::Enter(*rhs));
+                        stack.push(St::Enter(*lhs));
+                    }
+                    hir::ExprKind::Logical { lhs, .. } => {
+                        stack.push(St::LogWait(id));
+                        stack.push(St::Enter(*lhs));
+                    }
+                    _ => return None,
+                }
+            }
+            St::LogWait(id) => {
+                let hir::ExprKind::Logical { op, lhs, rhs } = &body.exprs[id.0 as usize].kind
+                else {
+                    unreachable!("LogWait on logical expr")
+                };
+                let a = vals.remove(&lhs.0)?;
+                let decisive = match op {
+                    hir::LogicOp::And => a == 0,
+                    hir::LogicOp::Or => a != 0,
+                };
+                if decisive {
+                    vals.insert(id.0, a);
+                } else {
+                    stack.push(St::Reduce(id));
+                    stack.push(St::Enter(*rhs));
+                }
+            }
+            St::Reduce(id) => {
+                let e = &body.exprs[id.0 as usize];
+                let v = match &e.kind {
+                    hir::ExprKind::Unary { op, operand } => {
+                        let a = vals.remove(&operand.0)?;
+                        match op {
+                            hir::UnaryOp::NotBool => Some(1 - a),
+                            hir::UnaryOp::NegI32 => 0i32.checked_sub(a),
+                        }
+                    }
+                    hir::ExprKind::Binary { op, lhs, rhs, .. } => {
+                        let a = vals.remove(&lhs.0)?;
+                        let b = vals.remove(&rhs.0)?;
+                        use hir::BinOp::*;
+                        match op {
+                            AddI32 => a.checked_add(b),
+                            SubI32 => a.checked_sub(b),
+                            MulI32 => a.checked_mul(b),
+                            LtI32 => Some((a < b) as i32),
+                            LeI32 => Some((a <= b) as i32),
+                            GtI32 => Some((a > b) as i32),
+                            GeI32 => Some((a >= b) as i32),
+                            Eq => Some((a == b) as i32),
+                            Ne => Some((a != b) as i32),
+                            DivI32 | RemI32 => None,
+                        }
+                    }
+                    hir::ExprKind::Logical { op, lhs, rhs } => {
+                        let a = vals.remove(&lhs.0)?;
+                        let b = vals.remove(&rhs.0)?;
+                        match op {
+                            hir::LogicOp::And => Some(((a != 0) && (b != 0)) as i32),
+                            hir::LogicOp::Or => Some(((a != 0) || (b != 0)) as i32),
+                        }
+                    }
+                    _ => return None,
+                }?;
+                vals.insert(id.0, v);
+            }
+        }
+    }
+    vals.get(&root.0).copied().map(|v| v != 0)
+}
+
+/// Whether a block subtree cannot fall through to its join (every path
+/// ends in return/break/continue). Iterative with a memo — block nesting
+/// is unbounded (V-09). A loop always has a fall-through edge (break), so
+/// it never terminates its parent's flow by itself.
+fn block_terminates(body: &hir::Body, bid: u32) -> bool {
+    let mut memo: BTreeMap<u32, bool> = BTreeMap::new();
+    block_terminates_impl(body, bid, &mut memo)
+}
+
+fn block_terminates_impl(body: &hir::Body, root: u32, memo: &mut BTreeMap<u32, bool>) -> bool {
+    enum W {
+        Enter(u32),
+        Finish(u32),
+    }
+    let mut stack = vec![W::Enter(root)];
+    while let Some(w) = stack.pop() {
+        match w {
+            W::Enter(bid) => {
+                if memo.contains_key(&bid) {
+                    continue;
+                }
+                memo.insert(bid, false); // cycle guard (verifier rejects cycles)
+                stack.push(W::Finish(bid));
+                if let Some(bl) = body.blocks.get(bid as usize) {
+                    for s in &bl.stmts {
+                        if let hir::Stmt::If {
+                            then, els: Some(e), ..
+                        } = s
+                        {
+                            stack.push(W::Enter(then.0));
+                            stack.push(W::Enter(e.0));
+                        }
                     }
                 }
             }
-            hir::Stmt::If { cond, then, els } => {
-                let scan = scan_expr(body, *cond);
-                for (argid, _) in &scan.moves {
-                    if let hir::ExprKind::ReadLocal { local } = &body.exprs[argid.0 as usize].kind {
-                        out.insert(local.0);
+            W::Finish(bid) => {
+                let Some(bl) = body.blocks.get(bid as usize) else {
+                    continue;
+                };
+                let mut result = false;
+                for s in &bl.stmts {
+                    match s {
+                        hir::Stmt::Return { .. }
+                        | hir::Stmt::Break { .. }
+                        | hir::Stmt::Continue { .. } => {
+                            result = true;
+                            break;
+                        }
+                        hir::Stmt::If { then, els, .. } => {
+                            if let Some(e) = els {
+                                if memo.get(&then.0).copied().unwrap_or(false)
+                                    && memo.get(&e.0).copied().unwrap_or(false)
+                                {
+                                    result = true;
+                                    break;
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                collect_block_moves(body, then.0, out);
-                if let Some(e) = els {
-                    collect_block_moves(body, e.0, out);
-                }
+                memo.insert(bid, result);
             }
-            hir::Stmt::Loop { body: b, .. } => collect_block_moves(body, b.0, out),
-            _ => {}
+        }
+    }
+    memo.get(&root).copied().unwrap_or(false)
+}
+
+/// Definitely-executed moved locals anywhere inside a block subtree (used
+/// by the loop re-entry kill and the if-join responsibility analysis).
+/// Conditional moves (unknown short-circuit arms) are NOT definite — their
+/// own statement/if reports them.
+fn block_definite_moves(m: &hir::Module, body: &hir::Body, bid: u32, out: &mut BTreeSet<u32>) {
+    let mut stack = vec![bid];
+    while let Some(b) = stack.pop() {
+        let Some(bl) = body.blocks.get(b as usize) else {
+            continue;
+        };
+        for s in &bl.stmts {
+            match s {
+                hir::Stmt::Let { value, .. }
+                | hir::Stmt::Return { value }
+                | hir::Stmt::Assign { value, .. } => {
+                    let scan = scan_expr(m, body, *value);
+                    for (argid, _) in &scan.moves {
+                        if let hir::ExprKind::ReadLocal { local } =
+                            &body.exprs[argid.0 as usize].kind
+                        {
+                            out.insert(local.0);
+                        }
+                    }
+                }
+                hir::Stmt::If { cond, then, els } => {
+                    let scan = scan_expr(m, body, *cond);
+                    for (argid, _) in &scan.moves {
+                        if let hir::ExprKind::ReadLocal { local } =
+                            &body.exprs[argid.0 as usize].kind
+                        {
+                            out.insert(local.0);
+                        }
+                    }
+                    stack.push(then.0);
+                    if let Some(e) = els {
+                        stack.push(e.0);
+                    }
+                }
+                hir::Stmt::Loop { body: lb, .. } => stack.push(lb.0),
+                _ => {}
+            }
         }
     }
 }
@@ -304,6 +613,10 @@ struct RFrame {
     flow_done: bool,
     ret_slot: usize,
     state: RState,
+    /// r2 QA-03: owned locals moved on EVERY path joining at this frame's
+    /// pending if — applied to `st.live` when the arms complete (the callee
+    /// owns them; this frame drops the free responsibility).
+    if_join_dead: BTreeSet<u32>,
 }
 
 enum Action {
@@ -343,11 +656,13 @@ impl<'a> ResourceWalk<'a> {
     }
 
     /// Owned locals reachable from an expression's reads: direct owned
-    /// reads plus the backings of borrowed str locals read (path-union).
+    /// reads, `mut`-parameter reads (r2 QA-06: a mut borrow is an aliasing
+    /// source for conflict and escape purposes, like an owned buffer), and
+    /// the backings of borrowed str locals read (path-union).
     fn owned_reach(&self, st: &WalkState, scan: &ExprScan) -> BTreeSet<u32> {
         let mut out = BTreeSet::new();
         for (_, l, _) in &scan.reads {
-            if self.owned.contains(l) {
+            if self.owned.contains(l) || is_mut_param(&self.body.locals[*l as usize]) {
                 out.insert(*l);
             } else if let Some(bs) = st.backing.get(l) {
                 out.extend(bs.iter().copied());
@@ -600,6 +915,52 @@ impl<'a> ResourceWalk<'a> {
                     );
                 }
             }
+            // r2 QA-06: a `mut` parameter borrows exclusively — its
+            // argument's reach (owned buffers or mut sources it views)
+            // must be disjoint from every other argument's reach.
+            let hir::ExprKind::Call {
+                eval_args,
+                bindings: call_bindings,
+                ..
+            } = &self.body.exprs[callid.0 as usize].kind
+            else {
+                continue;
+            };
+            let mut reaches: Vec<(u32, BTreeSet<u32>)> = Vec::new();
+            for b in call_bindings {
+                if (b.arg as usize) >= eval_args.len() {
+                    continue;
+                }
+                let ascan = scan_expr(m, self.body, eval_args[b.arg as usize]);
+                let r = self.owned_reach(st, &ascan);
+                reaches.push((b.param, r));
+            }
+            for (pi, reach_i) in &reaches {
+                let is_mut = callee_body.locals.iter().any(|l| {
+                    l.role == hir::LocalRole::Param
+                        && l.index == Some(*pi)
+                        && l.param_mode == hir::ParamMode::MutBorrow
+                });
+                if !is_mut {
+                    continue;
+                }
+                for (pj, reach_j) in &reaches {
+                    if pj == pi {
+                        continue;
+                    }
+                    if let Some(&hit) = reach_i.intersection(reach_j).next() {
+                        self.error(
+                            "verify.mut-conflict",
+                            format!(
+                                "argument for `mut` parameter {} of `{}` views `{}`, which parameter {} also views; a mut borrow is exclusive",
+                                pi, def.id_text, self.local_name(hit), pj
+                            ),
+                            *span,
+                        );
+                        break;
+                    }
+                }
+            }
         }
         for l in &moved {
             if viewed.contains(l) {
@@ -622,6 +983,18 @@ impl<'a> ResourceWalk<'a> {
             }
         }
         moved
+    }
+
+    fn reject_conditional_moves(&mut self, scan: &ExprScan) {
+        // r2 QA-03: a move under an unknown-polarity short-circuit operand
+        // would maybe-transfer — no single static free responsibility.
+        for (_, span) in &scan.conditional_moves {
+            self.error(
+                "verify.ownership-required",
+                "a `.move` inside a conditionally-executed `&&`/`||` right side has no consistent static cleanup responsibility; hoist it into an unconditional statement",
+                *span,
+            );
+        }
     }
 
     fn walk(&mut self, m: &hir::Module) {
@@ -648,6 +1021,7 @@ impl<'a> ResourceWalk<'a> {
             flow_done: false,
             ret_slot: 0,
             state: RState::Run,
+            if_join_dead: BTreeSet::new(),
         });
         while !frames.is_empty() {
             let action = {
@@ -676,7 +1050,8 @@ impl<'a> ResourceWalk<'a> {
                     let frame = frames.last_mut().expect("resource walk frame");
                     match stmt {
                         hir::Stmt::Let { local, value } => {
-                            let scan = scan_expr(self.body, value);
+                            let scan = scan_expr(m, self.body, value);
+                            self.reject_conditional_moves(&scan);
                             let st_snapshot = frame.st.clone();
                             self.check_reads(&st_snapshot, &chain, &scan.reads);
                             let moved = self.validate_moves(m, &st_snapshot, &scan, &chain);
@@ -686,16 +1061,20 @@ impl<'a> ResourceWalk<'a> {
                                     if let hir::ExprKind::ReadLocal { local: src } =
                                         &self.body.exprs[value.0 as usize].kind
                                     {
-                                        if self.owned.contains(&src.0) {
-                                            self.error(
-                                                "verify.ownership-required",
-                                                format!(
-                                                    "`let` cannot implicitly transfer ownership of `{}`; use `.clone()`, `.to(Str)` or a call result",
-                                                    self.local_name(src.0)
-                                                ),
-                                                self.body.exprs[value.0 as usize].span,
-                                            );
-                                        }
+                                        // r2 QA-04: ANY read-local initializer
+                                        // is an implicit transfer — of an owned
+                                        // local (old rule) or of a view/mut
+                                        // parameter the callee/caller owns
+                                        // (new): either way the binding must
+                                        // construct ownership explicitly.
+                                        self.error(
+                                            "verify.ownership-required",
+                                            format!(
+                                                "`let` cannot implicitly transfer ownership of `{}`; use `.clone()`, `.to(Str)` or a call result",
+                                                self.local_name(src.0)
+                                            ),
+                                            self.body.exprs[value.0 as usize].span,
+                                        );
                                     }
                                     frame.st.live.insert(local.0, bid);
                                     frame.own_lets.push(local.0);
@@ -722,7 +1101,8 @@ impl<'a> ResourceWalk<'a> {
                             }
                         }
                         hir::Stmt::Assign { place, value } => {
-                            let scan = scan_expr(self.body, value);
+                            let scan = scan_expr(m, self.body, value);
+                            self.reject_conditional_moves(&scan);
                             let st_snapshot = frame.st.clone();
                             self.check_reads(&st_snapshot, &chain, &scan.reads);
                             let moved = self.validate_moves(m, &st_snapshot, &scan, &chain);
@@ -761,20 +1141,40 @@ impl<'a> ResourceWalk<'a> {
                             }
                         }
                         hir::Stmt::Return { value } => {
-                            let scan = scan_expr(self.body, value);
+                            let scan = scan_expr(m, self.body, value);
+                            self.reject_conditional_moves(&scan);
                             let st_snapshot = frame.st.clone();
                             self.check_reads(&st_snapshot, &chain, &scan.reads);
                             let moved = self.validate_moves(m, &st_snapshot, &scan, &chain);
-                            let mut frees: BTreeSet<u32> =
-                                st_snapshot.live.keys().copied().collect();
+                            // r2 QA-03: apply the return expression's moves
+                            // FIRST — a local transferred into the callee is
+                            // the CALLEE's cleanup responsibility; the caller
+                            // must not schedule its own free for it.
+                            for l in &moved {
+                                frame.st.live.remove(l);
+                                frame.st.dead.insert(*l, DeadCause::Moved);
+                            }
                             match self.fn_result {
                                 ValueType::StrOwned => {
                                     self.plan.owned_returns.insert((bid, idx));
-                                    // the returned value itself escapes
                                     if let hir::ExprKind::ReadLocal { local } =
                                         &self.body.exprs[value.0 as usize].kind
                                     {
-                                        frees.remove(&local.0);
+                                        // r2 QA-04: only a local this body OWNS
+                                        // (an owned binding or a move-in
+                                        // parameter) may transfer out; a view
+                                        // or mut parameter's buffer belongs to
+                                        // the caller.
+                                        if !self.owned.contains(&local.0) {
+                                            self.error(
+                                                "verify.ownership-required",
+                                                format!(
+                                                    "cannot return `{}` as owned `Str`: it is a borrowed parameter/view whose buffer this function does not own; return an owned construction or a `move` parameter",
+                                                    self.local_name(local.0)
+                                                ),
+                                                self.body.exprs[value.0 as usize].span,
+                                            );
+                                        }
                                     }
                                 }
                                 ValueType::Str => {
@@ -782,33 +1182,97 @@ impl<'a> ResourceWalk<'a> {
                                     if scan.has_owned_producing || !prov.is_empty() {
                                         self.error(
                                             "verify.borrow-escape",
-                                            "returned borrowed str must not read owned locals or view temporaries (legal sources: parameters, static literals)",
+                                            "returned borrowed str must not read owned or mut parameters, owned locals, or view temporaries (legal sources: view parameters, static literals)",
                                             self.body.blocks[bid as usize].span,
                                         );
                                     }
                                 }
                                 _ => {}
                             }
+                            // frees are the POST-move live set: the returned
+                            // owned local itself escapes (not freed here)
+                            let mut frees: BTreeSet<u32> = frame.st.live.keys().copied().collect();
+                            if self.fn_result == ValueType::StrOwned {
+                                if let hir::ExprKind::ReadLocal { local } =
+                                    &self.body.exprs[value.0 as usize].kind
+                                {
+                                    frees.remove(&local.0);
+                                }
+                            }
                             if !frees.is_empty() {
                                 self.plan
                                     .exit_frees
                                     .insert((bid, Some(idx)), Self::lifo(&frees));
                             }
-                            // moves inside the return expression still die
-                            for l in moved {
-                                frame.st.live.remove(&l);
-                                frame.st.dead.insert(l, DeadCause::Moved);
-                            }
                             frame.flow_done = true;
                         }
                         hir::Stmt::If { cond, then, els } => {
-                            let scan = scan_expr(self.body, cond);
+                            let scan = scan_expr(m, self.body, cond);
+                            self.reject_conditional_moves(&scan);
                             let st_snapshot = frame.st.clone();
                             self.check_reads(&st_snapshot, &chain, &scan.reads);
                             let moved = self.validate_moves(m, &st_snapshot, &scan, &chain);
                             for l in moved {
                                 frame.st.live.remove(&l);
                                 frame.st.dead.insert(l, DeadCause::Moved);
+                            }
+                            // r2 QA-03: join responsibility analysis. Every
+                            // arm REACHABLE at the join (constant conditions
+                            // prune statically; terminating arms exit
+                            // elsewhere and never join) must agree on each
+                            // owned local: moved on ALL incoming paths (the
+                            // callee owns it — this frame drops the free
+                            // responsibility) or on NONE (this frame keeps
+                            // it). Anything else is rejected: a maybe-move
+                            // has no consistent static free.
+                            let cond_t = const_truth(self.body, cond);
+                            let mut then_moved = BTreeSet::new();
+                            block_definite_moves(m, self.body, then.0, &mut then_moved);
+                            let then_terms = block_terminates(self.body, then.0);
+                            let mut incoming: Vec<(&str, BTreeSet<u32>)> = Vec::new();
+                            if cond_t != Some(false) && !then_terms {
+                                incoming.push(("then arm", then_moved.clone()));
+                            }
+                            match els {
+                                Some(e) => {
+                                    let mut else_moved = BTreeSet::new();
+                                    block_definite_moves(m, self.body, e.0, &mut else_moved);
+                                    let else_terms = block_terminates(self.body, e.0);
+                                    if cond_t != Some(true) && !else_terms {
+                                        incoming.push(("else arm", else_moved));
+                                    }
+                                }
+                                None => {
+                                    // the implicit fall-through path
+                                    if cond_t != Some(true) {
+                                        incoming.push(("implicit fall-through", BTreeSet::new()));
+                                    }
+                                }
+                            }
+                            let union: BTreeSet<u32> = incoming
+                                .iter()
+                                .flat_map(|(_, ms)| ms.iter().copied())
+                                .collect();
+                            let mut join_dead = BTreeSet::new();
+                            for l in &union {
+                                let missing = incoming
+                                    .iter()
+                                    .find(|(_, ms)| !ms.contains(l))
+                                    .map(|(arm, _)| *arm);
+                                match missing {
+                                    Some(arm) => self.error(
+                                        "verify.ownership-required",
+                                        format!(
+                                            "owned local `{}` is moved inside this conditional but not on the {} path; the join would have inconsistent cleanup responsibility (hoist the move, or move on every path)",
+                                            self.local_name(*l),
+                                            arm
+                                        ),
+                                        self.body.blocks[bid as usize].span,
+                                    ),
+                                    None => {
+                                        join_dead.insert(*l);
+                                    }
+                                }
                             }
                             let cur_in = frame.st.clone();
                             let loops_len = frame.loops_len;
@@ -825,18 +1289,22 @@ impl<'a> ResourceWalk<'a> {
                             };
                             let then_slot =
                                 push_child(&mut frames, &mut results, then.0, loops_len, cur_in);
+                            frames[parent_idx].if_join_dead = join_dead;
                             frames[parent_idx].state = RState::AwaitIf {
                                 then_slot,
                                 else_slot,
                             };
                         }
                         hir::Stmt::Loop { id, body: b } => {
-                            // Loop re-entry rule: a local moved anywhere in
-                            // the body is dead for the WHOLE body (a second
-                            // iteration would move it again) and after the
-                            // loop.
+                            // Loop re-entry rule: a local LIVE AT LOOP ENTRY
+                            // (initialized before the loop) that is moved
+                            // anywhere in the body is dead for the whole
+                            // body — a second iteration would move it again.
+                            // Locals LET INSIDE the body are fresh owners
+                            // each iteration (r2 QA-07) and are not killed.
                             let mut moves_inside = BTreeSet::new();
-                            collect_block_moves(self.body, b.0, &mut moves_inside);
+                            block_definite_moves(m, self.body, b.0, &mut moves_inside);
+                            moves_inside.retain(|l| frame.st.live.contains_key(l));
                             let mut child = frame.st.clone();
                             for l in &moves_inside {
                                 child.live.remove(l);
@@ -952,6 +1420,12 @@ impl<'a> ResourceWalk<'a> {
                                 results[else_slot].clone()
                             };
                             merge_children(&mut frame.st, &[Some(then_st), else_st]);
+                            // r2 QA-03: locals moved on every joining path
+                            // are the callee's responsibility — drop this
+                            // frame's free duty (dead already merged).
+                            for l in std::mem::take(&mut frame.if_join_dead) {
+                                frame.st.live.remove(&l);
+                            }
                         }
                         RState::AwaitLoop { body_slot } => {
                             let body_st = results[body_slot].clone().expect("loop body state");
@@ -971,6 +1445,12 @@ fn span_of_last(reads: &[(u32, u32, Span)]) -> &Span {
         .last()
         .map(|(_, _, s)| s)
         .unwrap_or(&Span { start: 0, end: 0 })
+}
+
+/// Whether a local is a `mut` parameter (an exclusive-borrow aliasing
+/// source for conflict and escape purposes, r2 QA-06).
+fn is_mut_param(l: &hir::LocalDef) -> bool {
+    l.role == hir::LocalRole::Param && l.param_mode == hir::ParamMode::MutBorrow
 }
 
 fn place_local(body: &hir::Body, place: &hir::PlaceId) -> u32 {
@@ -998,6 +1478,7 @@ fn push_child(
         flow_done: false,
         ret_slot: slot,
         state: RState::Run,
+        if_join_dead: BTreeSet::new(),
     });
     slot
 }

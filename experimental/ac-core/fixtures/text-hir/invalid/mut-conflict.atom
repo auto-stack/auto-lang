@@ -1,5 +1,6 @@
 // PLAN-770 invalid fixture: one call views and moves the same owned local.
 hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
     module(id: "m") {
         types {
             type(id: "t_both", kind: function) { params: [str, Str]; result: i32 }

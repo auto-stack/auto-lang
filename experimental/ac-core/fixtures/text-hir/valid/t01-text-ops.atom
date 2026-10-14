@@ -4,6 +4,7 @@
 // concat/clone/to/slice/eq legs live in t02 (lifecycle) and t03 (ops).
 
 hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
     module(id: "m_text") {
         types {
             type(id: "t_lens", kind: function) { params: [str]; result: i32 }

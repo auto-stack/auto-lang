@@ -403,10 +403,14 @@ fn finish_build(
 ) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::Diagnostic>)> {
     let fail = |diags: Vec<auto_ac_prototype::atom_text::Diagnostic>| Err((EXIT_PIPELINE, diags));
     let mut receipt_extra = receipt_extra.to_string();
-    if checked
-        .required_capabilities()
-        .iter()
-        .any(|c| c == RUNTIME_TEXT_CAPABILITY)
+    // r2 QA-02: the gate fires on the VERIFIER-DERIVED runtime need (real
+    // operations), not only the document's own declaration — removing the
+    // `requires` entry can no longer bypass the capability/contract gates.
+    if checked.requires_runtime_text()
+        || checked
+            .required_capabilities()
+            .iter()
+            .any(|c| c == RUNTIME_TEXT_CAPABILITY)
     {
         match check_runtime_contract(support_libs) {
             Ok((lib, contract_sha)) => {

@@ -1,5 +1,6 @@
 // PLAN-770 invalid fixture: returning a borrowed view of an owned local.
 hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
     module(id: "m") {
         types {
             type(id: "t_bad", kind: function) { params: []; result: str }

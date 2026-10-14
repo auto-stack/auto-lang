@@ -1,5 +1,6 @@
 // PLAN-770 invalid fixture: the same owned local moved by two bindings.
 hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
     module(id: "m") {
         types {
             type(id: "t_drop2", kind: function) { params: [Str, Str]; result: i32 }

@@ -55,6 +55,9 @@ pub struct CheckedModule {
     /// owned-return statements, computed by the verifier — the backend
     /// consumes this plan without re-deriving ownership.
     text_plan: Option<crate::text_resources::TextResourcePlan>,
+    /// Derived text-runtime need (PLAN-770 r2 QA-02): computed by
+    /// `verify_text` from the verified content itself.
+    runtime_text_needed: bool,
 }
 
 impl CheckedModule {
@@ -76,6 +79,16 @@ impl CheckedModule {
     /// capabilities the target actually provides.
     pub fn required_capabilities(&self) -> &[String] {
         &self.bundle.requires
+    }
+
+    /// Whether the VERIFIED CONTENT actually lowers to text runtime calls
+    /// (PLAN-770 r2 QA-02): derived from real operations, independent of
+    /// the document's own `requires` declaration. The build gates
+    /// (capability provision + runtime contract sidecar) fire on this even
+    /// if a declaration were absent — although `verify_text` already
+    /// rejects that at the front door.
+    pub fn requires_runtime_text(&self) -> bool {
+        self.runtime_text_needed
     }
 
     /// The verifier-computed text resource plan. `None` outside the text
@@ -105,7 +118,42 @@ pub fn verify_scalar(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnosti
 /// locals, per-exit LIFO free schedules, owned returns) that the backend
 /// consumes verbatim — the backend performs no ownership analysis of its
 /// own.
+///
+/// Front-door gates (review r2 QA-01/QA-02): the bundle's OWN identity must
+/// be the text domain (a forged Core/Scalar header on text content is a
+/// `verify.domain` rejection — it must never reach the scalar lowering's
+/// text-unreachable path), and content that actually lowers to `ac_rt_*`
+/// calls MUST declare `requires: ["ac.runtime.text.v1"]` — the caller-
+/// controlled declaration alone was never sufficient in the other direction
+/// either: the derived need is recorded on the CheckedModule so the build
+/// gates (capability + runtime contract) fire on REAL usage.
 pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    if bundle.domain != HirDomain::Text {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.domain",
+            format!(
+                "bundle identity `{}` does not match this verifier entry (`{}`); use the entry of the document's own descriptor profile",
+                bundle.domain.as_str(),
+                HirDomain::Text.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let needs_runtime = crate::text_resources::bundle_needs_text_runtime(&bundle);
+    if needs_runtime
+        && !bundle
+            .requires
+            .iter()
+            .any(|r| r == crate::text_resources::RUNTIME_TEXT_CAPABILITY)
+    {
+        return Err(vec![Diagnostic::new(
+            Stage::Capability,
+            "capability.missing",
+            "the module lowers text runtime operations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred",
+            Span { start: 0, end: 0 },
+        )]);
+    }
     let mut v = Verifier {
         diags: Vec::new(),
         domain: HirDomain::Text,
@@ -130,6 +178,7 @@ pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>
         Ok(CheckedModule {
             bundle,
             text_plan: Some(plan),
+            runtime_text_needed: needs_runtime,
         })
     } else {
         Err(v.diags)
@@ -158,6 +207,7 @@ fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule
         Ok(CheckedModule {
             bundle,
             text_plan: None,
+            runtime_text_needed: false,
         })
     } else {
         Err(v.diags)

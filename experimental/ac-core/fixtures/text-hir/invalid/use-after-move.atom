@@ -2,6 +2,7 @@
 // after it was moved (same-statement overlap is the separate mut-conflict
 // rule; this file exercises the cross-statement dead-state rule).
 hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
     module(id: "m") {
         types {
             type(id: "t_take", kind: function) { params: [Str]; result: i32 }

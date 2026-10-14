@@ -1055,6 +1055,15 @@ impl PlanCtx<'_> {
                             // `vt` is the RESOLVED result type: it carries
                             // the text-concat fact (PLAN-770) while
                             // arithmetic keeps the operator's i32 result
+                            // type. r2 QA-02: a binary over TEXT operands
+                            // (concat or eq/ne) lowers to ac_rt_* calls —
+                            // the module must declare the runtime capability
+                            // even when no method-call node exists.
+                            if matches!(plan.exprs[l].vt, VT::Str | VT::StrOwned)
+                                || matches!(plan.exprs[r].vt, VT::Str | VT::StrOwned)
+                            {
+                                plan.has_text_ops = true;
+                            }
                             plan.exprs.push(ENode {
                                 kind: EKind::Bin(op, l, r),
                                 vt,
@@ -2019,8 +2028,10 @@ fn bin_op_atom(op: BinOp) -> (&'static str, &'static str) {
 }
 
 /// Capability every text-profile module that lowers runtime calls must
-/// declare and the caller must explicitly provide (PLAN-770 §2).
-pub const RUNTIME_TEXT_CAPABILITY: &str = "ac.runtime.text.v1";
+/// declare and the caller must explicitly provide (PLAN-770 §2). The
+/// frozen string lives with the verifier front door (text_resources.rs)
+/// so verify and the source adapter cannot drift apart (r2 QA-02).
+pub use crate::text_resources::RUNTIME_TEXT_CAPABILITY;
 
 fn intrinsic_def_id(sym: &str) -> String {
     format!("i_{}", sym.rsplit('.').next().unwrap_or("x"))

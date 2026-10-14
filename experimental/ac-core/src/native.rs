@@ -45,6 +45,24 @@ pub fn capabilities_check(
     provided: &[String],
 ) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
+    // r2 QA-02: the DERIVED runtime need gates even without a declaration
+    // (verify_text already rejects undeclared usage; this is the build-side
+    // backstop).
+    if checked.requires_runtime_text()
+        && !provided
+            .iter()
+            .any(|p| p == crate::text_resources::RUNTIME_TEXT_CAPABILITY)
+    {
+        diags.push(Diagnostic::new(
+            Stage::Capability,
+            "capability.missing",
+            format!(
+                "document requires capability `{}`, which this build does not provide",
+                crate::text_resources::RUNTIME_TEXT_CAPABILITY
+            ),
+            Span { start: 0, end: 0 },
+        ));
+    }
     for req in checked.required_capabilities() {
         if !provided.iter().any(|p| p == req) {
             diags.push(Diagnostic::new(
@@ -1554,6 +1572,7 @@ fn lower_text_object(
                 rt_refs,
                 lit_gvs,
                 abic_slot: None,
+                pending_temps: Vec::new(),
             };
             fx.emit_block(body.entry);
             let trap = fx.ensure_trap_block();
@@ -1618,18 +1637,20 @@ fn lower_text_object(
     }
 }
 
-/// One lowered value in the text domain: a scalar (i32/bool/char on the I32
-/// channel) or a text pair. `backing` is the owned-TEMPORARY pointer a
-/// borrowed value views: when this value is consumed by a non-let/non-return
-/// consumer, that pointer must be freed right after the consuming
-/// instruction (the verifier guarantees a single owning consumer).
-#[derive(Clone, Copy)]
+/// One lowered value in the text domain: a scalar (i32/bool/char on the
+/// I32 channel) or a text (ptr, len) pair. Owned temporaries live to the
+/// END OF THEIR STATEMENT (plan §4.4): every allocation point pushes its
+/// pointer onto the emitter's pending list and the statement's closing
+/// step frees them LIFO — views of temporaries therefore stay valid for
+/// the whole statement, and the root value that flows into an owning
+/// `let`/owned `return` transfers OUT of the pending list first.
+#[derive(Clone)]
 enum TVal {
     I(Value),
     T {
         ptr: Value,
         len: Value,
-        backing: Option<Value>,
+        backing: Vec<Value>,
     },
 }
 
@@ -1656,6 +1677,9 @@ struct TextEmitter<'c> {
     lit_gvs: BTreeMap<u32, cranelift_codegen::ir::GlobalValue>,
     /// The shared ABI-C out-length stack slot (see `abic_out_slot`).
     abic_slot: Option<cranelift_codegen::ir::StackSlot>,
+    /// Owned temporaries of the statement being emitted, in production
+    /// order (freed LIFO at the statement's end).
+    pending_temps: Vec<Value>,
 }
 
 impl<'c> TextEmitter<'c> {
@@ -1673,6 +1697,16 @@ impl<'c> TextEmitter<'c> {
             .unwrap_or_else(|| panic!("internal: runtime symbol `{name}` not declared"));
         let inst = self.fb.ins().call(f, args);
         self.fb.inst_results(inst).first().copied()
+    }
+
+    /// Free the owned temporaries a consumed value views (its backing
+    /// list), immediately after the consuming instruction — the verifier's
+    /// single-consumer graph invariant guarantees each pointer is freed
+    /// exactly once (r2 QA-05).
+    fn free_backings(&mut self, backing: &[Value]) {
+        for ptr in backing {
+            self.call_rt("ac_rt_own_free", &[*ptr]);
+        }
     }
 
     /// ABI-C allocation shape: trailing `*mut i32` out-length slot, pointer
@@ -1706,6 +1740,7 @@ impl<'c> TextEmitter<'c> {
             .unwrap_or_else(|| panic!("internal: `{sym}` must return the pointer"));
         let len = self.fb.ins().stack_load(types::I32, slot, 0);
         self.negative_trap(len);
+        self.pending_temps.push(ptr);
         (ptr, len)
     }
 
@@ -1715,16 +1750,6 @@ impl<'c> TextEmitter<'c> {
         let zero = self.fb.ins().iconst(types::I32, 0);
         let neg = self.icmp_bool(IntCC::SignedLessThan, v, zero);
         self.branch_to_trap_on(neg);
-    }
-
-    /// Free an owned temporary after its consumer, if the value views one.
-    fn free_backing(&mut self, v: TVal) {
-        if let TVal::T {
-            backing: Some(ptr), ..
-        } = v
-        {
-            self.call_rt("ac_rt_own_free", &[ptr]);
-        }
     }
 
     /// Emit the resource plan's free schedule at one exit position.
@@ -1870,6 +1895,8 @@ impl<'c> TextEmitter<'c> {
             let bid = frame.bid;
             match stmt {
                 hir::Stmt::Let { local, value } => {
+                    // an owning text let takes the root temporary over
+                    // (single-consumer invariant: nothing else to free)
                     let v = self.eval_text(value);
                     self.def_local(local.0, v);
                 }
@@ -1995,9 +2022,9 @@ impl<'c> TextEmitter<'c> {
 
     /// Iterative post-order text expression emission (the scalar spine
     /// machine extended with the text node reductions). Owned temporaries
-    /// are freed immediately after their single non-let/non-return
-    /// consumer; borrowed results carry the temp's backing pointer forward
-    /// until that consumer.
+    /// are pushed onto the emitter's pending list and freed LIFO at the
+    /// END of their full statement (plan §4.4); a root that flows into an
+    /// owning let/owned return transfers out of the pending list first.
     fn eval_text(&mut self, eid: ExprId) -> TVal {
         enum TStep {
             Enter(ExprId),
@@ -2083,7 +2110,7 @@ impl<'c> TextEmitter<'c> {
                                     TVal::T {
                                         ptr,
                                         len,
-                                        backing: None,
+                                        backing: Vec::new(),
                                     },
                                 );
                             } else {
@@ -2146,7 +2173,7 @@ impl<'c> TextEmitter<'c> {
                                     TVal::T {
                                         ptr,
                                         len,
-                                        backing: Some(ptr),
+                                        backing: vec![ptr],
                                     },
                                 );
                             } else {
@@ -2155,7 +2182,7 @@ impl<'c> TextEmitter<'c> {
                                     TVal::T {
                                         ptr: addr,
                                         len,
-                                        backing: None,
+                                        backing: Vec::new(),
                                     },
                                 );
                             }
@@ -2261,7 +2288,8 @@ impl<'c> TextEmitter<'c> {
                                 backing: bb,
                             },
                         ) => {
-                            // byte-exact UTF-8 value equality (D-02)
+                            // byte-exact UTF-8 value equality (D-02); the
+                            // comparison is each operand's last consumer
                             let sym = if matches!(op, hir::BinOp::Eq) {
                                 "ac_rt_text_eq"
                             } else {
@@ -2271,16 +2299,8 @@ impl<'c> TextEmitter<'c> {
                                 .call_rt(sym, &[ap, al, bp, bl])
                                 .expect("eq returns i32");
                             self.negative_trap(r);
-                            self.free_backing(TVal::T {
-                                ptr: ap,
-                                len: al,
-                                backing: ab,
-                            });
-                            self.free_backing(TVal::T {
-                                ptr: bp,
-                                len: bl,
-                                backing: bb,
-                            });
+                            self.free_backings(&ab);
+                            self.free_backings(&bb);
                             r
                         }
                         (_, TVal::I(a), TVal::I(b)) => match op {
@@ -2389,6 +2409,7 @@ impl<'c> TextEmitter<'c> {
                     let (params_vt, result_vt) = &self.def_sigs[&callee.0];
                     let mut margs: Vec<Value> = Vec::with_capacity(params_vt.len() * 2);
                     let mut post_free: Vec<Value> = Vec::new();
+                    let mut result_backing: Vec<Value> = Vec::new();
                     for (i, pvt) in params_vt.iter().enumerate() {
                         let b = bindings
                             .iter()
@@ -2396,15 +2417,20 @@ impl<'c> TextEmitter<'c> {
                             .expect("verifier: full param binding");
                         let v = arg_vals[b.arg as usize].take().expect("arg slot filled");
                         match (pvt, v) {
+                            // `.move` transfers the local (never a temp).
+                            // A view/mut text argument whose callee result
+                            // is a BORROWED str may be the buffer the callee
+                            // returns a view of — its backing propagates
+                            // into the result and is freed at the result's
+                            // own last consumer (r2 QA-05); every other
+                            // argument's temps are consumed by the call.
                             (Vt2::StrBorrow | Vt2::StrOwn, TVal::T { ptr, len, backing }) => {
                                 margs.push(ptr);
                                 margs.push(len);
-                                // `.move` transfers ownership to the callee;
-                                // a view/mut argument consumes any temp.
-                                if !b.moved {
-                                    if let Some(p) = backing {
-                                        post_free.push(p);
-                                    }
+                                if *result_vt == Vt2::StrBorrow && !b.moved {
+                                    result_backing.extend(backing.iter().copied());
+                                } else if !b.moved {
+                                    post_free.extend(backing);
                                 }
                             }
                             (_, TVal::I(v)) => margs.push(v),
@@ -2424,7 +2450,7 @@ impl<'c> TextEmitter<'c> {
                             TVal::T {
                                 ptr,
                                 len,
-                                backing: Some(ptr),
+                                backing: vec![ptr],
                             }
                         }
                         Vt2::StrBorrow => {
@@ -2433,7 +2459,7 @@ impl<'c> TextEmitter<'c> {
                             TVal::T {
                                 ptr: rs[0],
                                 len: rs[1],
-                                backing: None,
+                                backing: result_backing,
                             }
                         }
                         _ => {
@@ -2447,29 +2473,29 @@ impl<'c> TextEmitter<'c> {
                             TVal::I(v)
                         }
                     };
-                    for p in post_free {
-                        self.call_rt("ac_rt_own_free", &[p]);
-                    }
+                    self.free_backings(&post_free);
                     slots.insert(id.0, result);
                 }
                 TStep::Len { dest, operand } => {
                     let o = slots.remove(&operand.0).expect("operand slot filled");
-                    let (ptr, len) = text_parts(o);
+                    let (ptr, len) = text_parts(&o);
                     let r = self
                         .call_rt("ac_rt_text_scalars", &[ptr, len])
                         .expect("scalars returns i32");
                     self.negative_trap(r);
-                    self.free_backing(o);
+                    let o_backing = backing_of(o);
+                    self.free_backings(&o_backing);
                     slots.insert(dest.0, TVal::I(r));
                 }
                 TStep::LenBytes { dest, operand } => {
                     let o = slots.remove(&operand.0).expect("operand slot filled");
-                    let (ptr, len) = text_parts(o);
+                    let (ptr, len) = text_parts(&o);
                     let r = self
                         .call_rt("ac_rt_text_bytes", &[ptr, len])
                         .expect("bytes returns i32");
                     self.negative_trap(r);
-                    self.free_backing(o);
+                    let o_backing = backing_of(o);
+                    self.free_backings(&o_backing);
                     slots.insert(dest.0, TVal::I(r));
                 }
                 TStep::CharAt {
@@ -2482,12 +2508,13 @@ impl<'c> TextEmitter<'c> {
                         TVal::I(v) => v,
                         _ => unreachable!("verifier: char_at index is i32"),
                     };
-                    let (ptr, len) = text_parts(o);
+                    let (ptr, len) = text_parts(&o);
                     let r = self
                         .call_rt("ac_rt_char_at", &[ptr, len, i])
                         .expect("char_at returns i32");
                     self.negative_trap(r);
-                    self.free_backing(o);
+                    let o_backing = backing_of(o);
+                    self.free_backings(&o_backing);
                     slots.insert(dest.0, TVal::I(r));
                 }
                 TStep::Slice {
@@ -2505,19 +2532,16 @@ impl<'c> TextEmitter<'c> {
                         TVal::I(v) => v,
                         _ => unreachable!("verifier: slice end is i32"),
                     };
-                    let (ptr, len) = text_parts(o);
+                    let (ptr, len) = text_parts(&o);
                     let (slot, outp) = self.abic_out_slot();
                     let sptr = self
                         .call_rt("ac_rt_text_slice", &[ptr, len, s, e, outp])
                         .expect("slice returns the view pointer");
                     let slen = self.fb.ins().stack_load(types::I32, slot, 0);
                     self.negative_trap(slen);
-                    // a borrowed view: carries the operand's temp backing to
-                    // this view's own consumer
-                    let backing = match o {
-                        TVal::T { backing, .. } => backing,
-                        _ => None,
-                    };
+                    // a borrowed view: carries the operand's backing to
+                    // this view's own last consumer
+                    let backing = backing_of(o);
                     slots.insert(
                         dest.0,
                         TVal::T {
@@ -2530,31 +2554,34 @@ impl<'c> TextEmitter<'c> {
                 TStep::Concat { dest, lhs, rhs } => {
                     let a = slots.remove(&lhs.0).expect("lhs slot filled");
                     let b = slots.remove(&rhs.0).expect("rhs slot filled");
-                    let (ap, al) = text_parts(a);
-                    let (bp, bl) = text_parts(b);
+                    let (ap, al) = text_parts(&a);
+                    let (bp, bl) = text_parts(&b);
                     let (ptr, len) = self.abic_call("ac_rt_own_concat", &[ap, al, bp, bl]);
-                    self.free_backing(a);
-                    self.free_backing(b);
+                    let a_backing = backing_of(a);
+                    let b_backing = backing_of(b);
+                    self.free_backings(&a_backing);
+                    self.free_backings(&b_backing);
                     slots.insert(
                         dest.0,
                         TVal::T {
                             ptr,
                             len,
-                            backing: Some(ptr),
+                            backing: vec![ptr],
                         },
                     );
                 }
                 TStep::Clone { dest, operand } => {
                     let o = slots.remove(&operand.0).expect("operand slot filled");
-                    let (ptr, len) = text_parts(o);
+                    let (ptr, len) = text_parts(&o);
                     let (nptr, nlen) = self.abic_call("ac_rt_own_clone", &[ptr, len]);
-                    self.free_backing(o);
+                    let o_backing = backing_of(o);
+                    self.free_backings(&o_backing);
                     slots.insert(
                         dest.0,
                         TVal::T {
                             ptr: nptr,
                             len: nlen,
-                            backing: Some(nptr),
+                            backing: vec![nptr],
                         },
                     );
                 }
@@ -2708,9 +2735,17 @@ impl<'c> TextEmitter<'c> {
 
 /// Borrow the (ptr, len) parts of a text value (panics on scalars — the
 /// verifier types every text operation's operands as text).
-fn text_parts(v: TVal) -> (Value, Value) {
+fn text_parts(v: &TVal) -> (Value, Value) {
     match v {
-        TVal::T { ptr, len, .. } => (ptr, len),
+        TVal::T { ptr, len, .. } => (*ptr, *len),
+        TVal::I(_) => unreachable!("verifier: text operand is a text value"),
+    }
+}
+
+/// Take the backing list out of a consumed text value.
+fn backing_of(v: TVal) -> Vec<Value> {
+    match v {
+        TVal::T { backing, .. } => backing,
         TVal::I(_) => unreachable!("verifier: text operand is a text value"),
     }
 }

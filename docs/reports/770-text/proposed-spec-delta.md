@@ -21,10 +21,11 @@
    Unicode 标量）；字面量形态（普通/跨行保 CRLF/白名单转义/`\u{1-6hex}`；
    非法转义 `text.invalid-escape`、非法标量 `text.invalid-scalar`、
    多字符 `text.char-multi`、空 `text.char-empty` 均词法层拒绝）；
-   len/len_bytes/char_at/slice 按 Unicode 标量索引（`A中😀` len=3；
-   组合 e+U+0301 len=2）；slice `[start,end)` 空范围合法，负/反向/
-   越界为运行期 RT-FAIL(-9/-10)+trap70；eq/ne 字节精确（NUL 不截断、
-   无 normalization）；排序不在本批。
+   **len/char_at/slice 按 Unicode 标量单位**（`A中😀` len=3、0/1/2 对应
+   三字符；组合 e+U+0301 len=2）；**len_bytes 是显式 UTF-8 字节长度**
+   （774 D-02；`A中😀` len_bytes=8）——两者不可混称；slice `[start,end)`
+   空范围合法，负/反向/越界为运行期 RT-FAIL(-9/-10)+trap70；eq/ne
+   字节精确（NUL 不截断、无 normalization）；排序不在本批。
 4. 资源与语境（消费 774 D-03/04）：逐语境 str/Str；`.to(Str)` 显式提升
    （AP-4）、`.to(str)` 借用化不转移；`+` 双文本→拥有 concat（AP-3）；
    `.clone()`（AP-2）；字面量拥有语境提升；`=` 对 owned 目标拒绝
@@ -46,8 +47,10 @@
    →生成代码 ExitProcess(70)；70 是测试 profile trap 码。
 9. 边界：无 List/Map/record/enum 文本字段、字素索引/normalization/
    f-string/raw/正则、生产 print/File/process、公开 ABI；预算/故障
-   注入无语言入口（归 runtime 测试）；trace 支持库与文本运行时不能
-   共链一个 PE（`__rustc::rust_begin_unwind` 重复）。
+   注入无语言入口（归 runtime 测试）；trace 支持库与文本运行时**两个
+   no_std staticlib** 各携带 `__rustc::rust_begin_unwind`，二者不能
+   共链一个 PE——mark×text 共链面由 `test-support/marks.rs` 的纯 COFF
+   对象承载（r1 复审 F-01 路径 A，已可用）。
 10. 验证状态节：测试族索引（text_binding/text_hir/text_source/
     text_native/text_resources + runtime/text 三档 + verify-ac-text-770
     gate；引 verification.md）。
@@ -57,7 +60,8 @@
 ## SD-02 modify `docs/specs/auto-hir/project.md`
 
 - before（现行 canonical 的确切状态）：`docs/specs/auto-hir/project.md` 由
-  PLAN-741/767 沉淀，登记且仅登记两个 HIR 域——`HirDomain::Core`
+  PLAN-741/767 沉淀、并经已归档的 PLAN-772（计算管线修复）合入后的现行
+  canonical，登记且仅登记两个 HIR 域——`HirDomain::Core`
   （`auto.hir.core.draft / 1 / core-i32-draft`）与 `HirDomain::Scalar`
   （`auto.hir.scalar.draft / 1 / scalar-i32-draft`）；类型面为 i32/bool，
   无 str/Str/char 类型、无文本表达式节点、无参数所有权模式、无 Drop

@@ -3,6 +3,7 @@
 // a borrowed view of an owned local consumed in-scope.
 
 hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
     module(id: "m_mat") {
         types {
             type(id: "t_slicer", kind: function) { params: [str]; result: str }

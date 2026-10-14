@@ -5,6 +5,7 @@
 // asserted exactly in tests/text_hir.rs (exit frees in LIFO order).
 
 hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
     module(id: "m_life") {
         types {
             type(id: "t_play", kind: function) { params: [i32]; result: i32 }
