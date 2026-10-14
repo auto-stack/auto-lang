@@ -2527,3 +2527,146 @@ fn plan776_r8_iterator_consumer_ownership_protocol() {
         assert_eq!(http_return_resource::live_resource_count(), baseline);
     }
 }
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_r9 {
+    use super::http_e2e::{get, start_server};
+
+    /// F776-R9-02（AC-02/03）：typed record 的 Future 字段——CONSTRUCT_
+    /// INSTANCE 逐字段转换与 GET_GENERIC_FIELD/push_value 还原全链保真
+    ///（原两处 Int 兜臂把 fid 存/读成 1）；数组对照保持。
+    #[test]
+    fn http_e2e_plan776_r9_record_field_future_identity() {
+        let port = start_server(
+            r#"
+type Box {
+    f Future<int>
+}
+
+#[api(method = "GET", path = "/f1")]
+fn f1() ~Iter<int> {
+    let holder = Box { f: ~{ 42 } }
+    return holder.f
+}
+
+#[api(method = "GET", path = "/ctrl")]
+fn ctrl() ~Iter<int> {
+    let values = [~{ 42 }]
+    return values[0]
+}
+
+#[api(method = "GET", path = "/neg")]
+fn neg() ~Iter<int> {
+    let active = ~{ 42 }
+    if false {
+        return ~{ 99 }
+    }
+    return 496
+}
+"#,
+            0,
+        );
+        let (s1, _, b1) = get(port, "/f1");
+        assert_eq!(
+            (s1, b1.as_slice()),
+            (200, b"42".as_slice()),
+            "record 字段 Future"
+        );
+        let (sc, _, bc) = get(port, "/ctrl");
+        assert_eq!((sc, bc.as_slice()), (200, b"42".as_slice()), "数组对照");
+        let (sn, _, bn) = get(port, "/neg");
+        assert_eq!(
+            (sn, bn.as_slice()),
+            (200, b"496".as_slice()),
+            "普通数字负控制"
+        );
+    }
+}
+
+/// F776-R9-01（AC-02/05/06）：iterator 消费**恰一份**——StakeGuard Drop 即
+/// 那一次消费（无显式 release）。RC1 独占：消费后归零可回收（R8 泄漏
+/// 关闭）；**RC2 共享**（参数一份 + globals 一份）：消费参数后 RC=1，
+/// 全局份额跨 reap 存活且凭据仍可解析（R9 反例：双释放把全局份额销毁）。
+#[test]
+fn plan776_r9_iterator_consumer_single_release_shared() {
+    use crate::vm::engine::{AutoVM, Iterator, ListIterator};
+    use crate::vm::ffi::http_return_resource;
+    use crate::vm::native;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+    let list_id = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+        elems: vec![42],
+        storage: None,
+    });
+    vm.iterators.insert(
+        0,
+        Iterator::List(ListIterator {
+            list_id,
+            current_index: 0,
+        }),
+    );
+    vm.iterator_id_gen
+        .store(1, std::sync::atomic::Ordering::Relaxed);
+
+    let baseline = http_return_resource::live_resource_count();
+
+    // —— RC1 独占（R8 正控制）：消费→释放输出→reap 回基线。
+    {
+        let mut task = AutoTask::new(0, 1024, 0);
+        http_return_resource::push_sse_resource(&mut task, &vm, 0).unwrap();
+        native::shim_iterator_enumerate(&mut task, &vm).expect("exclusive enumerate");
+        let derived = task.ram.pop_nv();
+        assert!(auto_val::is_object(derived));
+        vm.rc_release(derived);
+        vm.reap_all();
+        assert_eq!(http_return_resource::live_resource_count(), baseline);
+    }
+
+    // —— RC2 共享（R9 反例）：参数份额 + globals 份额。消费参数后
+    //    源 RC 必须为 1（双释放=0→全局份额被销）；跨 reap 后全局里的
+    //    凭据仍可解析出底层 iterator。
+    {
+        let mut task = AutoTask::new(0, 1024, 0);
+        http_return_resource::push_sse_resource(&mut task, &vm, 0).unwrap();
+        // 全局份额：rc_retain_id + 写 globals（copy-on-store——镜像探针）。
+        let handle = http_return_resource::probe_last_resource_handle();
+        vm.rc_retain_id(handle);
+        vm.globals
+            .insert("kept".to_string(), auto_val::encode_object(handle as u32));
+
+        native::shim_iterator_enumerate(&mut task, &vm).expect("shared enumerate");
+        let derived = task.ram.pop_nv();
+        assert!(auto_val::is_object(derived));
+        // 消费恰一份：源 RC 2→1（全局份额存活）。
+        let rc_after = vm
+            .heap_rc
+            .get(&handle)
+            .map(|c| c.load(std::sync::atomic::Ordering::SeqCst));
+        assert_eq!(rc_after, Some(1), "消费恰一份（双释放=0 销毁全局份额）");
+        // 释放派生输出 + reap：全局份额跨宽限窗存活，凭据仍可解析。
+        vm.rc_release(derived);
+        vm.reap_all();
+        assert_eq!(
+            vm.heap_rc
+                .get(&handle)
+                .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(1),
+            "跨 reap 全局份额存活"
+        );
+        let kept_nv = auto_val::encode_object(handle as u32);
+        let claim = http_return_resource::resolve_resource(&vm, kept_nv);
+        assert!(
+            matches!(
+                claim,
+                Some(http_return_resource::ResourceClaim::Sse { iterator_id: 0 })
+            ),
+            "全局凭据仍可解析"
+        );
+        // 清理全局份额。
+        vm.rc_release_id(handle);
+        vm.reap_all();
+        assert_eq!(http_return_resource::live_resource_count(), baseline);
+    }
+}

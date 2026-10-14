@@ -5590,19 +5590,18 @@ pub fn shim_iterator_next_cooperative(
 ///（generator 生产点全部产此形态）解包底层 iterator id；裸 i32 保持原
 /// 语义。返回 (iterator_id, 源是否凭据)。
 pub fn pop_iterator_receiver(task: &mut AutoTask, vm: &AutoVM) -> (u32, bool) {
-    // PLAN-776 R8-02：消费协议（与 pop_arg_nv/setter 族同款）——
+    // PLAN-776 R8-02/R9-01：消费协议——
     // ① 清零弹出槽（残留 TAG_OBJECT 会被 R2-04 任务栈全槽扫描误读成
     //    有效持有 → 双释放/泄漏两向失真）；
-    // ② 对**原始凭据 nv**：StakeGuard 保护读取 + `rc_release` 清偿调用方
-    //    栈份额（guard 底层 iterator id 无法清偿高段 credential heap id
-    //    的 owned 份额——F776-R8-02 反例：消费后源凭据 RC=1 恒存活）。
-    //    错误早退（非凭据对象/查无）同样已完成清偿——份额在读取前释放，
-    //    guard Drop 前值已读。
+    // ② 对**原始凭据 nv**：**StakeGuard 即那一次消费**（其 Drop 执行
+    //    rc_release_id——一个输入槽恰一份；R8 误加显式 rc_release 致
+    //    RC2 共享引用 2→0 双释放——F776-R9-01 反例：全局份额被销）。
+    //    读取期间份额未动（release 只发生在 Drop）；错误早退由 Drop
+    //    覆盖同样恰一份。
     let nv = task.ram.pop_nv();
     task.ram.raw_nv[task.ram.sp] = 0;
     if auto_val::is_object(nv) {
         let stake = StakeGuard::nv(vm, nv);
-        vm.rc_release(nv);
         let resolved = crate::vm::ffi::http_return_resource::resolve_resource(vm, nv);
         drop(stake);
         if let Some(crate::vm::ffi::http_return_resource::ResourceClaim::Sse { iterator_id }) =
@@ -5648,12 +5647,11 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     // 时解包底层 iterator id。stream 声明函数内 generator 产出已凭据化
     //（生产点包装），迭代消费经此保持 int 源同语义（非 HTTP 消费兼容）。
     let iterator_id = if auto_val::is_object(task.ram.peek_nv(0)) {
-        // PLAN-776 R8-02：与 pop_iterator_receiver 同款消费协议——槽清零 +
-        // 原始凭据 nv 的 StakeGuard/rc_release（读取后消费）。
+        // PLAN-776 R8-02/R9-01：与 pop_iterator_receiver 同款——槽清零 +
+        // StakeGuard 即一次消费（Drop 释放；不加显式 release——F776-R9-01）。
         let nv = task.ram.pop_nv();
         task.ram.raw_nv[task.ram.sp] = 0;
         let stake = StakeGuard::nv(vm, nv);
-        vm.rc_release(nv);
         let resolved = crate::vm::ffi::http_return_resource::resolve_resource(vm, nv);
         drop(stake);
         match resolved {

@@ -1790,6 +1790,10 @@ impl AutoVM {
                 ram.push_nv(auto_val::encode_object(vmref.id as u32));
                 ram.mark_top_stake(vmref.id as u64);
             }
+            // PLAN-776 R9-02：Future 句柄还原 TAG_FUTURE（原落 WARNING+0）。
+            Value::Future(f) => {
+                ram.push_nv(auto_val::encode_future(f.id as u32));
+            }
             _ => {
                 eprintln!("WARNING: push_value unsupported type: {:?}", value);
                 ram.push_nv(auto_val::encode_i32(0));
@@ -4323,7 +4327,16 @@ impl AutoVM {
                     let type_idx = (field_count - 1 - i) as usize;
                     let obj_type = types.get(type_idx).copied().unwrap_or(ObjectType::Int);
                     let nv = task.ram.pop_nv();
-                    let value = if auto_val::is_object(nv) {
+                    let value = if auto_val::is_future(nv) {
+                        // PLAN-776 R9-02：Future 句柄字段**保真映射**
+                        // Value::Future（句柄视图）——原落整数 payload 臂
+                        // 把 fid 存成 Int(1)（F776-R9-02 反例 body=1）。
+                        auto_val::Value::Future(Box::new(auto_val::FutureData {
+                            id: auto_val::decode_future(nv) as usize,
+                            state: auto_val::FutureState::Pending,
+                            result: None,
+                        }))
+                    } else if auto_val::is_object(nv) {
                         auto_val::Value::VmRef(auto_val::VmRef {
                             id: auto_val::decode_object(nv) as usize,
                         })
@@ -5953,6 +5966,14 @@ impl AutoVM {
                                     Value::Double(auto_val::decode_f64(nv))
                                 } else if auto_val::is_f32(nv) {
                                     Value::Float(auto_val::decode_f32(nv) as f64)
+                                } else if auto_val::is_future(nv) {
+                                    // PLAN-776 R9-02：Future 句柄字段**保真映射**
+                                    //（原落 Int 兜臂把 fid 存成 Int(1)——F776-R9-02）。
+                                    Value::Future(Box::new(auto_val::FutureData {
+                                        id: auto_val::decode_future(nv) as usize,
+                                        state: auto_val::FutureState::Pending,
+                                        result: None,
+                                    }))
                                 } else {
                                     Value::Int(auto_val::decode_i32(nv))
                                 }
@@ -7662,6 +7683,11 @@ impl AutoVM {
                                     // Plan 419: 子对象引用入栈 +1。
                                     self.rc_push_id(task, vm_ref.id as u64);
                                 }
+                                // PLAN-776 R9-02：Future 句柄字段还原
+                                // TAG_FUTURE（原落 `_` placeholder 0）。
+                                auto_val::Value::Future(f) => {
+                                    task.ram.push_nv(auto_val::encode_future(f.id as u32));
+                                }
                                 _ => {
                                     // Unsupported type - push 0 as placeholder
                                     task.ram.push_i32(0);
@@ -7726,6 +7752,11 @@ impl AutoVM {
                                             task,
                                             auto_val::encode_object(vm_ref.id as u32),
                                         );
+                                    }
+                                    // PLAN-776 R9-02：Future 句柄字段还原
+                                    // TAG_FUTURE（原落 `_` placeholder 0）。
+                                    auto_val::Value::Future(f) => {
+                                        task.ram.push_nv(auto_val::encode_future(f.id as u32));
                                     }
                                     _ => {
                                         task.ram.push_i32(0);
