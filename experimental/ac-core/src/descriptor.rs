@@ -65,6 +65,9 @@ enum FieldType {
     TextList,
     ExprRefList,
     BindingList,
+    CtorBindingList,
+    FieldDeclList,
+    FieldRefList,
     TypeRef,
     DefRef,
     BodyRef,
@@ -94,6 +97,9 @@ fn builtin_field_type(word: &str) -> Option<FieldType> {
         "TextList" => FieldType::TextList,
         "ExprRefList" => FieldType::ExprRefList,
         "BindingList" => FieldType::BindingList,
+        "CtorBindingList" => FieldType::CtorBindingList,
+        "FieldDeclList" => FieldType::FieldDeclList,
+        "FieldRefList" => FieldType::FieldRefList,
         "TypeRef" => FieldType::TypeRef,
         "DefRef" => FieldType::DefRef,
         "BodyRef" => FieldType::BodyRef,
@@ -254,6 +260,11 @@ impl Descriptor {
             && self.profile == "scalar-i32-draft"
         {
             Some(hir::HirDomain::Scalar)
+        } else if self.schema == "auto.hir.record.draft"
+            && self.revision == 1
+            && self.profile == "record-i32-draft"
+        {
+            Some(hir::HirDomain::Record)
         } else {
             None
         }
@@ -1073,6 +1084,90 @@ impl<'d> Binder<'d> {
                     }
                     hir::TypeKind::Function(hir::FnSig { params, result })
                 }
+                "record" => {
+                    // PLAN-771: declaration-order field table. Each entry is
+                    // `(name: <text>, type: <TypeUse>)`; names are kept in
+                    // written order (the layout order); duplicate field
+                    // names are a semantic (verify) rejection, not a binder
+                    // one — the binder only shapes.
+                    let mut shape = hir::RecordShape { fields: Vec::new() };
+                    let mut ok = true;
+                    if let Some(f) = tfields.get("fields") {
+                        match &f.value {
+                            Value::List(items) => {
+                                for it in items {
+                                    let Value::Obj(obj) = it else {
+                                        self.error(
+                                            "bind.type-shape",
+                                            "fields entries must be (name: .., type: ..) objects",
+                                            f.value_span,
+                                        );
+                                        ok = false;
+                                        continue;
+                                    };
+                                    let mut fname: Option<String> = None;
+                                    let mut fty: Option<hir::TypeUse> = None;
+                                    for of in obj {
+                                        match of.name.as_str() {
+                                            "name" => {
+                                                fname = self.text_of(&of.value);
+                                                if fname.is_none() {
+                                                    self.error(
+                                                        "bind.type-shape",
+                                                        "field name must be text",
+                                                        of.value_span,
+                                                    );
+                                                    ok = false;
+                                                }
+                                            }
+                                            "type" => {
+                                                fty = self.resolve_typeuse(
+                                                    &of.value,
+                                                    of.value_span,
+                                                    &tables.types,
+                                                );
+                                                if fty.is_none() {
+                                                    ok = false;
+                                                }
+                                            }
+                                            other => {
+                                                self.error(
+                                                    "bind.unknown-field",
+                                                    format!(
+                                                        "unknown field `{}` in record field decl",
+                                                        other
+                                                    ),
+                                                    of.name_span,
+                                                );
+                                                ok = false;
+                                            }
+                                        }
+                                    }
+                                    match (fname, fty) {
+                                        (Some(name), Some(ty)) => {
+                                            shape.fields.push(hir::RecordField { name, ty });
+                                        }
+                                        _ => {
+                                            ok = false;
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {
+                                self.error(
+                                    "bind.type-shape",
+                                    "fields must be a list of field declarations",
+                                    f.value_span,
+                                );
+                                ok = false;
+                            }
+                        }
+                    }
+                    if !ok {
+                        continue;
+                    }
+                    hir::TypeKind::Record(shape)
+                }
                 _ => {
                     self.check_enum_case("TypeKind", &word, kind_span);
                     continue;
@@ -1149,6 +1244,60 @@ impl<'d> Binder<'d> {
                         None => continue,
                     };
                     hir::DefKind::Function { name, ty, body }
+                }
+                "method" => {
+                    // PLAN-771: type-bound method. `record` names the owning
+                    // nominal type; `receiver` selects static vs readonly
+                    // instance (the signature carries the receiver as
+                    // params[0] for `view` — a verify-level contract).
+                    let name = dfields
+                        .get("name")
+                        .and_then(|f| self.text_of(&f.value))
+                        .unwrap_or_default();
+                    let Some((rt, rspan)) = self.text_ref(&dfields, "record") else {
+                        continue;
+                    };
+                    let record = match self.resolve_in(
+                        &rt,
+                        rspan,
+                        "TypeRef",
+                        &tables.types,
+                        &[("declaration", &tables.defs), ("body", &tables.bodies)],
+                    ) {
+                        Some(t) => hir::TypeId(t),
+                        None => continue,
+                    };
+                    let Some((word, wsp)) = self.text_ref(&dfields, "receiver") else {
+                        continue;
+                    };
+                    if !self.check_enum_case("ReceiverKind", &word, wsp) {
+                        continue;
+                    }
+                    let receiver = match word.as_str() {
+                        "static" => hir::ReceiverKind::Static,
+                        "view" => hir::ReceiverKind::View,
+                        _ => continue,
+                    };
+                    let Some((t, span)) = self.text_ref(&dfields, "body") else {
+                        continue;
+                    };
+                    let body = match self.resolve_in(
+                        &t,
+                        span,
+                        "BodyRef",
+                        &tables.bodies,
+                        &[("type", &tables.types), ("declaration", &tables.defs)],
+                    ) {
+                        Some(b) => hir::BodyId(b),
+                        None => continue,
+                    };
+                    hir::DefKind::Method {
+                        name,
+                        ty,
+                        body,
+                        record,
+                        receiver,
+                    }
                 }
                 "intrinsic" => {
                     let Some((symbol, _)) = self.text_ref(&dfields, "symbol") else {
@@ -1502,6 +1651,20 @@ impl<'d> Binder<'d> {
             },
             None => false,
         };
+        // PLAN-771 param mode: absent in core/scalar schemas (always view);
+        // the record schema requires it on params and forbids it on
+        // bindings (branch contracts above).
+        let param_mode = match fields.get("mode") {
+            Some(f) => match self.text_of(&f.value) {
+                Some(w) if w == "view" => hir::ParamMode::View,
+                Some(w) if w == "mut" => hir::ParamMode::Mut,
+                _ => {
+                    self.error("bind.type-shape", "mode must be view or mut", f.value_span);
+                    return None;
+                }
+            },
+            None => hir::ParamMode::View,
+        };
         Some(hir::LocalDef {
             id_text,
             ty,
@@ -1510,6 +1673,7 @@ impl<'d> Binder<'d> {
             index,
             mutable,
             mutable_explicit,
+            param_mode,
             span: node.span,
         })
     }
@@ -1535,7 +1699,51 @@ impl<'d> Binder<'d> {
         if !self.check_enum_case("PlaceKind", &kind_word, kind_span) {
             return None;
         }
-        let kind = hir::PlaceKind::Local;
+        let kind = match kind_word.as_str() {
+            "field_path" => {
+                // PLAN-771: `path: [0u32, 1u32, ...]` — declaration indices
+                // within each segment's owner record. Per-segment owner
+                // validation is verify's job (it needs the type graph).
+                let Some(f) = fields.get("path") else {
+                    return None;
+                };
+                let Value::List(items) = &f.value else {
+                    self.error(
+                        "bind.type-shape",
+                        "path must be a list of field indices",
+                        f.value_span,
+                    );
+                    return None;
+                };
+                let mut path = Vec::with_capacity(items.len());
+                for it in items {
+                    match int_value(it).and_then(|l| {
+                        l.to_u32()
+                            .filter(|_| matches!(l.suffix.as_deref(), None | Some("u32")))
+                    }) {
+                        Some(v) => path.push(hir::FieldId(v)),
+                        None => {
+                            self.error(
+                                "bind.type-shape",
+                                "path entries must be u32 field indices",
+                                f.value_span,
+                            );
+                            return None;
+                        }
+                    }
+                }
+                if path.is_empty() {
+                    self.error(
+                        "bind.type-shape",
+                        "a field_path place requires at least one path segment",
+                        f.value_span,
+                    );
+                    return None;
+                }
+                hir::PlaceKind::FieldPath(path)
+            }
+            _ => hir::PlaceKind::Local,
+        };
         let Some((lt, lspan)) = self.text_ref(&fields, "local") else {
             return None;
         };
@@ -1868,6 +2076,174 @@ impl<'d> Binder<'d> {
                     bindings,
                 }
             }
+            "record_ctor" => {
+                // PLAN-771: `record` names the nominal type; `field_args`
+                // is the source-order evaluation list; `ctor_bindings`
+                // maps field declaration index -> arg index.
+                let Some((rt, rspan)) = self.text_ref(&fields, "record") else {
+                    return None;
+                };
+                let record = match self.resolve_in(&rt, rspan, "TypeRef", type_ids, def_sibs) {
+                    Some(t) => hir::TypeId(t),
+                    None => return None,
+                };
+                let mut eval_args = Vec::new();
+                if let Some(f) = fields.get("field_args") {
+                    let Value::List(items) = &f.value else {
+                        self.error("bind.type-shape", "field_args must be a list", f.value_span);
+                        return None;
+                    };
+                    for it in items {
+                        let Some(t) = self.text_of(it) else {
+                            self.error(
+                                "bind.type-shape",
+                                "field_args entries must be text",
+                                f.value_span,
+                            );
+                            return None;
+                        };
+                        match self.resolve_in(&t, f.value_span, "ExprRef", &body.exprs, expr_sibs) {
+                            Some(e) => eval_args.push(hir::ExprId(e)),
+                            None => return None,
+                        }
+                    }
+                }
+                let mut bindings = Vec::new();
+                if let Some(f) = fields.get("ctor_bindings") {
+                    let Value::List(items) = &f.value else {
+                        self.error(
+                            "bind.type-shape",
+                            "ctor_bindings must be a list",
+                            f.value_span,
+                        );
+                        return None;
+                    };
+                    for it in items {
+                        let Value::Obj(obj) = it else {
+                            self.error(
+                                "bind.type-shape",
+                                "ctor_bindings entries must be objects",
+                                f.value_span,
+                            );
+                            return None;
+                        };
+                        let mut field = None;
+                        let mut arg = None;
+                        for of in obj {
+                            match of.name.as_str() {
+                                "field" => {
+                                    field = int_value(&of.value).and_then(|l| {
+                                        l.to_u32().filter(|_| {
+                                            matches!(l.suffix.as_deref(), None | Some("u32"))
+                                        })
+                                    })
+                                }
+                                "arg" => {
+                                    arg = int_value(&of.value).and_then(|l| {
+                                        l.to_u32().filter(|_| {
+                                            matches!(l.suffix.as_deref(), None | Some("u32"))
+                                        })
+                                    })
+                                }
+                                other => {
+                                    self.error(
+                                        "bind.unknown-field",
+                                        format!("unknown field `{}` in ctor binding", other),
+                                        of.name_span,
+                                    );
+                                    return None;
+                                }
+                            }
+                        }
+                        match (field, arg) {
+                            (Some(field), Some(arg)) => {
+                                bindings.push(hir::CtorBinding { field, arg })
+                            }
+                            _ => {
+                                self.error(
+                                    "bind.type-shape",
+                                    "ctor binding requires field and arg u32 fields",
+                                    f.value_span,
+                                );
+                                return None;
+                            }
+                        }
+                    }
+                }
+                hir::ExprKind::RecordCtor {
+                    record,
+                    eval_args,
+                    bindings,
+                }
+            }
+            "field_get" => {
+                // PLAN-771: `base` expr + `path` of field declaration
+                // indices; per-segment ownership is checked in verify.
+                let Some((bt, bspan)) = self.text_ref(&fields, "base") else {
+                    return None;
+                };
+                let base = match self.resolve_in(&bt, bspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some(f) = fields.get("path") else {
+                    return None;
+                };
+                let Value::List(items) = &f.value else {
+                    self.error(
+                        "bind.type-shape",
+                        "path must be a list of field indices",
+                        f.value_span,
+                    );
+                    return None;
+                };
+                let mut path = Vec::with_capacity(items.len());
+                for it in items {
+                    match int_value(it).and_then(|l| {
+                        l.to_u32()
+                            .filter(|_| matches!(l.suffix.as_deref(), None | Some("u32")))
+                    }) {
+                        Some(v) => path.push(hir::FieldId(v)),
+                        None => {
+                            self.error(
+                                "bind.type-shape",
+                                "path entries must be u32 field indices",
+                                f.value_span,
+                            );
+                            return None;
+                        }
+                    }
+                }
+                if path.is_empty() {
+                    self.error(
+                        "bind.type-shape",
+                        "a field_get requires at least one path segment",
+                        f.value_span,
+                    );
+                    return None;
+                }
+                hir::ExprKind::FieldGet { base, path }
+            }
+            "borrow_view" => {
+                let Some((bt, bspan)) = self.text_ref(&fields, "base") else {
+                    return None;
+                };
+                let base = match self.resolve_in(&bt, bspan, "ExprRef", &body.exprs, expr_sibs) {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::BorrowView { base }
+            }
+            "borrow_mut" => {
+                let Some((lt, lspan)) = self.text_ref(&fields, "local") else {
+                    return None;
+                };
+                let local = match self.resolve_in(&lt, lspan, "LocalRef", &body.locals, expr_sibs) {
+                    Some(l) => hir::LocalId(l),
+                    None => return None,
+                };
+                hir::ExprKind::BorrowMut { local }
+            }
             _ => return None,
         };
         Some(hir::Expr {
@@ -2186,6 +2562,24 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                         type_use_text(&sig.result, m)
                     ));
                 }
+                hir::TypeKind::Record(shape) => {
+                    let fields: Vec<String> = shape
+                        .fields
+                        .iter()
+                        .map(|f| {
+                            format!(
+                                "{{ name: {}, type: {} }}",
+                                quote(&f.name),
+                                type_use_text(&f.ty, m)
+                            )
+                        })
+                        .collect();
+                    w.line(&format!(
+                        "type(id: {}, kind: record) {{ fields: [{}] }}",
+                        quote(&t.id_text),
+                        fields.join(", ")
+                    ));
+                }
             }
         }
         w.close();
@@ -2204,6 +2598,28 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                         quote(&m.types[ty.0 as usize].id_text),
                         quote(name),
                         quote(&body_text)
+                    ));
+                }
+                hir::DefKind::Method {
+                    name,
+                    ty,
+                    body,
+                    record,
+                    receiver,
+                } => {
+                    let body_text = m
+                        .bodies
+                        .get(body.0 as usize)
+                        .map(|b| b.id_text.clone())
+                        .unwrap_or_default();
+                    w.line(&format!(
+                        "method(id: {}, type: {}) {{ name: {}; body: {}; record: {}; receiver: {} }}",
+                        quote(&d.id_text),
+                        quote(&m.types[ty.0 as usize].id_text),
+                        quote(name),
+                        quote(&body_text),
+                        quote(&m.types[record.0 as usize].id_text),
+                        receiver.as_str()
                     ));
                 }
                 hir::DefKind::Intrinsic { symbol, effect, ty } => {
@@ -2238,6 +2654,12 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                 if l.mutable || l.mutable_explicit {
                     parts.push(format!("mutable: {}", l.mutable));
                 }
+                // PLAN-771: param mode is required on params in the record
+                // schema; view stays the default in core/scalar (absent —
+                // emitting it there would fail their descriptors).
+                if l.role == hir::LocalRole::Param && bundle.domain == hir::HirDomain::Record {
+                    parts.push(format!("mode: {}", l.param_mode.as_str()));
+                }
                 w.line(&format!(
                     "local(id: {}, type: {}) {{ {} }}",
                     quote(&l.id_text),
@@ -2252,9 +2674,18 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String
                     hir::Access::Mutable => "mutable",
                     hir::Access::ReadOnly => "readonly",
                 };
+                let kind_field = match &p.kind {
+                    hir::PlaceKind::Local => "kind: local".to_string(),
+                    hir::PlaceKind::FieldPath(path) => {
+                        let segs: Vec<String> =
+                            path.iter().map(|f| format!("{}u32", f.0)).collect();
+                        format!("kind: field_path, path: [{}]", segs.join(", "))
+                    }
+                };
                 w.line(&format!(
-                    "place(id: {}, kind: local) {{ local: {}; type: {}; access: {} }}",
+                    "place(id: {}, {}) {{ local: {}; type: {}; access: {} }}",
                     quote(&p.id_text),
+                    kind_field,
                     quote(&b.locals[p.local.0 as usize].id_text),
                     type_use_text(&p.ty, m),
                     access
@@ -2298,6 +2729,10 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::Unary { .. } => "unary",
         hir::ExprKind::Logical { .. } => "logical",
         hir::ExprKind::Call { .. } => "call",
+        hir::ExprKind::RecordCtor { .. } => "record_ctor",
+        hir::ExprKind::FieldGet { .. } => "field_get",
+        hir::ExprKind::BorrowView { .. } => "borrow_view",
+        hir::ExprKind::BorrowMut { .. } => "borrow_mut",
     };
     let mut body_fields: Vec<String> = vec![format!("type: {}", type_use_text(&e.ty, m))];
     match &e.kind {
@@ -2357,6 +2792,46 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
                 .map(|bd| format!("{{ param: {}u32, arg: {}u32 }}", bd.param, bd.arg))
                 .collect();
             body_fields.push(format!("bindings: [{}]", bs.join(", ")));
+        }
+        hir::ExprKind::RecordCtor {
+            record,
+            eval_args,
+            bindings,
+        } => {
+            body_fields.push(format!(
+                "record: {}",
+                quote(&m.types[record.0 as usize].id_text)
+            ));
+            let args: Vec<String> = eval_args
+                .iter()
+                .map(|a| quote(&b.exprs[a.0 as usize].id_text))
+                .collect();
+            body_fields.push(format!("field_args: [{}]", args.join(", ")));
+            let bs: Vec<String> = bindings
+                .iter()
+                .map(|bd| format!("{{ field: {}u32, arg: {}u32 }}", bd.field, bd.arg))
+                .collect();
+            body_fields.push(format!("ctor_bindings: [{}]", bs.join(", ")));
+        }
+        hir::ExprKind::FieldGet { base, path } => {
+            body_fields.push(format!(
+                "base: {}",
+                quote(&b.exprs[base.0 as usize].id_text)
+            ));
+            let segs: Vec<String> = path.iter().map(|f| format!("{}u32", f.0)).collect();
+            body_fields.push(format!("path: [{}]", segs.join(", ")));
+        }
+        hir::ExprKind::BorrowView { base } => {
+            body_fields.push(format!(
+                "base: {}",
+                quote(&b.exprs[base.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::BorrowMut { local } => {
+            body_fields.push(format!(
+                "local: {}",
+                quote(&b.locals[local.0 as usize].id_text)
+            ));
         }
     }
     w.line(&format!(

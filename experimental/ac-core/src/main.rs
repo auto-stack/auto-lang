@@ -74,6 +74,7 @@ fn check(file: &Path) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::D
     let checked = match match bundle.domain {
         auto_ac_prototype::hir::HirDomain::Core => verify::verify(bundle),
         auto_ac_prototype::hir::HirDomain::Scalar => verify::verify_scalar(bundle),
+        auto_ac_prototype::hir::HirDomain::Record => verify::verify_record(bundle),
     } {
         Ok(c) => c,
         Err(diags) => return Err((EXIT_PIPELINE, diags)),
@@ -357,6 +358,7 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
     let checked = match match bundle.domain {
         auto_ac_prototype::hir::HirDomain::Core => verify::verify(bundle),
         auto_ac_prototype::hir::HirDomain::Scalar => verify::verify_scalar(bundle),
+        auto_ac_prototype::hir::HirDomain::Record => verify::verify_record(bundle),
     } {
         Ok(c) => c,
         Err(diags) => return fail(diags),

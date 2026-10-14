@@ -80,6 +80,10 @@ enum Vt {
     I32,
     Bool,
     Function,
+    /// Nominal record type (PLAN-771; 774 D-05): lowered as a pointer
+    /// (ABI-D `*const` view / ABI-E `*mut` mut+out) with value storage in
+    /// stack slots — never as a by-value aggregate parameter or return.
+    Record(hir::TypeId),
 }
 
 /// Total projection of a type use (review P767-R2 hardening): an
@@ -97,6 +101,7 @@ fn value_of_type_use(u: &hir::TypeUse, m: &hir::Module) -> Option<Vt> {
             hir::TypeKind::I32 => Some(Vt::I32),
             hir::TypeKind::Bool => Some(Vt::Bool),
             hir::TypeKind::Function(_) => Some(Vt::Function),
+            hir::TypeKind::Record(_) => Some(Vt::Record(*tid)),
         },
     }
 }
@@ -198,6 +203,18 @@ pub fn lower_object(
     checked: &CheckedModule,
     sel: &EntrySelection,
 ) -> Result<Vec<u8>, Vec<Diagnostic>> {
+    // PLAN-771 T-02 bridge: record-domain lowering (records, methods,
+    // borrows, field paths) arrives with T-04 in this same worktree; until
+    // then a record-domain bundle is a controlled backend rejection — the
+    // record arms below are unreachable behind this gate.
+    if checked.bundle().domain == hir::HirDomain::Record {
+        return Err(vec![Diagnostic::new(
+            Stage::Backend,
+            "backend.record-lowering-pending",
+            "record-i32-draft native lowering lands with PLAN-771 T-04; this build path only lowers core/scalar domains",
+            Span { start: 0, end: 0 },
+        )]);
+    }
     let module = &checked.bundle().modules[sel.module];
 
     // Symbol table: function name collisions are a backend error (readable
@@ -258,6 +275,9 @@ pub fn lower_object(
         let (sym, linkage, ty) = match &d.kind {
             hir::DefKind::Function { name, ty, .. } => (name.as_str(), Linkage::Export, *ty),
             hir::DefKind::Intrinsic { symbol, ty, .. } => (symbol.as_str(), Linkage::Import, *ty),
+            // Unreachable per the record-domain bridge gate above; the
+            // T-04 lowering gives methods their internal ABI symbol.
+            hir::DefKind::Method { .. } => unreachable!("record domain gated above"),
         };
         let Some((params, result)) = signature_of(module, ty) else {
             return Err(vec![backend_diag(format!(
@@ -401,6 +421,8 @@ fn cranelift_sig(params: &[Vt], result: Vt) -> Signature {
         AbiParam::new(match v {
             Vt::Bool | Vt::I32 => types::I32, // bool is an i32 0/1 internally
             Vt::Function => types::I32,       // unreachable per verifier
+            // PLAN-771 (774 D-05): records cross as pointers (ABI-D/E).
+            Vt::Record(_) => types::I64,
         })
     };
     Signature {
@@ -757,6 +779,15 @@ impl<'c> FuncEmitter<'c> {
                             for a in eval_args.iter().rev() {
                                 stack.push(Step::Enter(*a));
                             }
+                        }
+                        // PLAN-771: record expression lowering is T-04;
+                        // the record-domain bridge gate at lower_object
+                        // entry makes these arms unreachable for now.
+                        hir::ExprKind::RecordCtor { .. }
+                        | hir::ExprKind::FieldGet { .. }
+                        | hir::ExprKind::BorrowView { .. }
+                        | hir::ExprKind::BorrowMut { .. } => {
+                            unreachable!("record exprs gated above (T-04)")
                         }
                     }
                 }

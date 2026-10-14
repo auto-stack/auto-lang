@@ -110,6 +110,7 @@ pub fn compile_parts_with(
     let descriptor = match profile.hir_domain() {
         crate::hir::HirDomain::Core => crate::descriptor(),
         crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
+        crate::hir::HirDomain::Record => crate::record_descriptor(),
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -1290,6 +1291,7 @@ impl<'p> Emitter<'p> {
         let (schema, profile_word) = match self.profile.hir_domain() {
             crate::hir::HirDomain::Core => ("auto.hir.core.draft", "core-i32-draft"),
             crate::hir::HirDomain::Scalar => ("auto.hir.scalar.draft", "scalar-i32-draft"),
+            crate::hir::HirDomain::Record => ("auto.hir.record.draft", "record-i32-draft"),
         };
         frag!(
             &format!(

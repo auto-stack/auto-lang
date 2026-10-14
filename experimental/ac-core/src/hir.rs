@@ -46,6 +46,10 @@ typed_id!(/// Index into `Body::blocks`.
 BlockId);
 typed_id!(/// Index into `Body::loops` (id texts in registration order).
 LoopId);
+typed_id!(/// Field declaration index within the owner record type
+/// (PLAN-771). The owner is derived per path segment from the preceding
+/// segment's record type — the id alone is never a global identity.
+FieldId);
 
 /// Numeric projection of a typed ID, used by the binder's shared lookup and
 /// diagnostic helpers.
@@ -63,7 +67,7 @@ macro_rules! impl_id_num {
     };
 }
 
-impl_id_num!(TypeId, DefId, BodyId, LocalId, ExprId, PlaceId, BlockId, LoopId);
+impl_id_num!(TypeId, DefId, BodyId, LocalId, ExprId, PlaceId, BlockId, LoopId, FieldId);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BuiltinType {
@@ -95,11 +99,26 @@ pub struct FnSig {
     pub result: TypeUse,
 }
 
+/// One field of a record type, in declaration order (PLAN-771 §5.1). The
+/// declaration order is the layout order (774 D-05) and participates in
+/// semantic equality; field names are unique per record (verifier rule).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RecordField {
+    pub name: String,
+    pub ty: TypeUse,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RecordShape {
+    pub fields: Vec<RecordField>,
+}
+
 #[derive(Clone, Debug)]
 pub enum TypeKind {
     I32,
     Bool,
     Function(FnSig),
+    Record(RecordShape),
 }
 
 #[derive(Clone, Debug)]
@@ -124,6 +143,26 @@ impl LocalRole {
     }
 }
 
+/// Parameter passing mode for record-typed params (PLAN-771 §5.3, 774
+/// D-04). `View` is the default (read-only borrow, ABI-D `*const`); `Mut`
+/// is the explicit exclusive borrow (ABI-E `*mut`, call site must carry
+/// `.mut`). i32/bool params are by-value (ABI-A) and always `View` — a
+/// scalar param declared `mut` is rejected at the source front end.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ParamMode {
+    View,
+    Mut,
+}
+
+impl ParamMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ParamMode::View => "view",
+            ParamMode::Mut => "mut",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct LocalDef {
     pub id_text: String,
@@ -135,6 +174,10 @@ pub struct LocalDef {
     /// Whether `mutable:` was written explicitly (recorded per the Atom text
     /// contract; excluded from semantic equality).
     pub mutable_explicit: bool,
+    /// Param passing mode (PLAN-771). Defaults to `View`; only record-typed
+    /// params may be `Mut`. Participates in semantic equality (a `mut` param
+    /// and a view param are different contracts).
+    pub param_mode: ParamMode,
     pub span: Span,
 }
 
@@ -153,6 +196,25 @@ impl Effect {
     }
 }
 
+/// Receiver shape of a type-bound method (PLAN-771 §5.3). `Static` methods
+/// have no receiver; `View` methods take the receiver as their first
+/// signature param (a read-only view borrow, ABI-D) — the "receiver is
+/// evaluated exactly once" invariant falls out of the call structure.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ReceiverKind {
+    Static,
+    View,
+}
+
+impl ReceiverKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ReceiverKind::Static => "static",
+            ReceiverKind::View => "view",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum DefKind {
     Function {
@@ -160,11 +222,41 @@ pub enum DefKind {
         ty: TypeId,
         body: BodyId,
     },
+    /// Type-bound method inside a record type's declaration (PLAN-771).
+    /// The signature (`ty`) carries the receiver as `params[0]` for
+    /// `View` receivers; `record` is the owning nominal type.
+    Method {
+        name: String,
+        ty: TypeId,
+        body: BodyId,
+        record: TypeId,
+        receiver: ReceiverKind,
+    },
     Intrinsic {
         symbol: String,
         effect: Effect,
         ty: TypeId,
     },
+}
+
+impl DefKind {
+    /// The function type of this def, if it has one (functions, methods
+    /// and intrinsics all do).
+    pub fn fn_type(&self) -> Option<TypeId> {
+        match self {
+            DefKind::Function { ty, .. } => Some(*ty),
+            DefKind::Method { ty, .. } => Some(*ty),
+            DefKind::Intrinsic { ty, .. } => Some(*ty),
+        }
+    }
+
+    /// The body of this def, if it has one.
+    pub fn fn_body(&self) -> Option<BodyId> {
+        match self {
+            DefKind::Function { body, .. } | DefKind::Method { body, .. } => Some(*body),
+            DefKind::Intrinsic { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -178,6 +270,7 @@ impl Def {
     pub fn name_for_diagnostic(&self) -> &str {
         match &self.kind {
             DefKind::Function { name, .. } => name,
+            DefKind::Method { name, .. } => name,
             DefKind::Intrinsic { symbol, .. } => symbol,
         }
     }
@@ -272,6 +365,18 @@ pub struct CallBinding {
     pub arg: u32,
 }
 
+/// Field-binding of one constructor argument (PLAN-771 §5.2): `field` is
+/// the declaration index in the record's field table, `arg` the index into
+/// the ctor's `eval_args` (source evaluation order). `bindings` are stored
+/// sorted by `field`; the eval order lives in `eval_args` alone, so a
+/// right-then-left named construction never folds into a declaration-order
+/// evaluation.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct CtorBinding {
+    pub field: u32,
+    pub arg: u32,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ExprKind {
     ReadLocal {
@@ -304,6 +409,38 @@ pub enum ExprKind {
         eval_args: Vec<ExprId>,
         bindings: Vec<CallBinding>,
     },
+    /// Record construction (PLAN-771): every field initialized exactly
+    /// once. `eval_args` is the source-order evaluation list (side effects
+    /// run left-to-right as written, never re-sorted by field order);
+    /// `bindings` maps each field to its argument. The expr's type is the
+    /// record type itself.
+    RecordCtor {
+        record: TypeId,
+        eval_args: Vec<ExprId>,
+        bindings: Vec<CtorBinding>,
+    },
+    /// Field read through a (possibly nested) path (PLAN-771). Each
+    /// `FieldId` is the declaration index within the record type of the
+    /// preceding segment (the first within `base`'s record type); the
+    /// verifier checks every segment against its actual owner. Reading is
+    /// an rvalue (a copy of the field for records).
+    FieldGet {
+        base: ExprId,
+        path: Vec<FieldId>,
+    },
+    /// Read-only borrow of a record value (view param / readonly receiver
+    /// argument, PLAN-771; ABI-D `*const`). `base` is evaluated exactly
+    /// once into a temp when it is not already a place.
+    BorrowView {
+        base: ExprId,
+    },
+    /// Exclusive mutable borrow of a record local (explicit `mut` param
+    /// argument, PLAN-771; ABI-E `*mut`). The target must be a mutable
+    /// local (a `var` binding or a `mut` param); at most one active
+    /// `BorrowMut` per local per call (774 D-04 exclusivity).
+    BorrowMut {
+        local: LocalId,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -314,9 +451,15 @@ pub struct Expr {
     pub span: Span,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum PlaceKind {
     Local,
+    /// A field path rooted at a local (PLAN-771): each `FieldId` is the
+    /// declaration index within the record type of the preceding segment.
+    /// The place's `ty` is the final field's type; writes go through the
+    /// root local's storage (value semantics: the path addresses into the
+    /// local itself, never into a copy).
+    FieldPath(Vec<FieldId>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -408,6 +551,9 @@ pub enum HirDomain {
     Core,
     /// `auto.hir.scalar.draft / 1 / scalar-i32-draft` (PLAN-767).
     Scalar,
+    /// `auto.hir.record.draft / 1 / record-i32-draft` (PLAN-771; identity
+    /// frozen by the 774 interface-contract §7.2 table).
+    Record,
 }
 
 impl HirDomain {
@@ -415,6 +561,7 @@ impl HirDomain {
         match self {
             HirDomain::Core => "core-i32-draft",
             HirDomain::Scalar => "scalar-i32-draft",
+            HirDomain::Record => "record-i32-draft",
         }
     }
 
@@ -422,6 +569,7 @@ impl HirDomain {
         match self {
             HirDomain::Core => "auto.hir.core.draft",
             HirDomain::Scalar => "auto.hir.scalar.draft",
+            HirDomain::Record => "auto.hir.record.draft",
         }
     }
 
@@ -450,6 +598,7 @@ impl PartialEq for TypeDef {
                 (TypeKind::Function(a), TypeKind::Function(b)) => {
                     a.params == b.params && a.result == b.result
                 }
+                (TypeKind::Record(a), TypeKind::Record(b)) => a == b,
                 (a, b) => discriminant(a) == discriminant(b),
             }
     }
@@ -461,6 +610,7 @@ fn discriminant(k: &TypeKind) -> u8 {
         TypeKind::I32 => 0,
         TypeKind::Bool => 1,
         TypeKind::Function(_) => 2,
+        TypeKind::Record(_) => 3,
     }
 }
 
@@ -472,6 +622,7 @@ impl PartialEq for LocalDef {
             && self.role == other.role
             && self.index == other.index
             && self.mutable == other.mutable
+            && self.param_mode == other.param_mode
     }
 }
 impl Eq for LocalDef {}
@@ -492,6 +643,22 @@ impl PartialEq for Def {
                         body: b2,
                     },
                 ) => n1 == n2 && t1 == t2 && b1 == b2,
+                (
+                    DefKind::Method {
+                        name: n1,
+                        ty: t1,
+                        body: b1,
+                        record: r1,
+                        receiver: k1,
+                    },
+                    DefKind::Method {
+                        name: n2,
+                        ty: t2,
+                        body: b2,
+                        record: r2,
+                        receiver: k2,
+                    },
+                ) => n1 == n2 && t1 == t2 && b1 == b2 && r1 == r2 && k1 == k2,
                 (
                     DefKind::Intrinsic {
                         symbol: s1,
