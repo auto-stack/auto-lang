@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-776
-status: reviewed
+status: archived
 feature_name: http-return-resource-contract
 plan_revision: 1
 author: [Codex]
@@ -286,6 +286,20 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 `cargo th` 为 nextest 滤串，串行参数使用 `-j 1`，不使用 libtest `--test-threads`。本次仅起草，不执行上述 Cargo 门禁。
 
 ## 9. 复审记录
+
+### PLAN-776:r1 合并收据（2026-10-15，/auto-plan:merge）
+
+| Checkpoint | 证据 |
+|---|---|
+| prepared | R14 final pass（reviewed_commit=e65c01012807ca1fa42235ba2971d245d57b5738，SD SHA256=D5730778…冻结于 attachments/776/review-r14）；canonical diff=SD-01..07（新增 http-return-resources.md + 六文件修订）；delivery 候选=reviewed_commit 的纯文档后代（diff 仅 docs/ + .autoos/，已核验零非文档文件） |
+| landed | master tip `bcfe2d7d672646f6b00aa056b1bfc5a493bb9bf8` == `git merge --ff-only plan-776-dev`（无 merge commit）；rebase 改写经 `git range-diff 5e21561d2..b48ac691c 5e21561d2..master` 全等价（21 提交逐一 `=`；ledger 提交因冲突解决以 **master v14 基底**重放外科投影——首版 theirs 解决曾吞 master 26 条目（P742/P744/P771/P773/P774），零丢失验证抓出后已修复：v14→v15、+5 P776-*、既有条目重复感知零变异） |
+| ledger_refreshed | `.autoos/specs.json`（本仓 tracked，经 worktree+Git）；channel=**guarded offline projection**（HTTP 探测 3000/8787 无 store writer）；5 条目=P776-1/2（designs）、P776-3（tests）、P776-4（reviews）、P776-5（reports），均带 file+tags（reviewed_commit hash）；六节 schema/读回验证通过 |
+| archived | `docs/plans/archive/776-http-return-resource-contract.md`（git mv）；status=archived；本收据提交入默认分支 |
+| cleaned | 见下方 cleaned 行（wt-guard + worktree/branch/组目录移除后回填） |
+
+merge-owned 后置门禁（冻结基线 e65c01012→rebase 后等价链上）：裸 `cargo t` **5312/5312**；`cargo tv` **162/162**；`cargo th -j1` **132/134**——corpora=在册预存红（R1..R14 同形 `:id` 未替换）、031=并行顺序 flake（单跑 3/3 绿）；生成真 TCP 矩阵 **3/3**（File/Upload/JSON+busSSE；一次与 th 并发的 plan730 构建锁 TIMEOUT 独跑绿）；auto-man api_gen 46+1。部署产物观察项：`target/release` 后端二进制与 `gen/front/vue/dist` 均先于本合并（stale）——本仓为库仓，776 面生产消费经下游重建；批量回归到期判定见下。
+
+旧→新 hash 映射（rebase 改写，range-diff 全等价）：a142756c9→8d93b8018 … e65c01012→0eeec1a1f、0db82b664→30c0a479d、（新增）bcfe2d7d6。
 
 ### 最终独立复审 R14（2026-10-15，pass）
 
