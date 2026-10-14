@@ -931,9 +931,40 @@ impl PlanCtx<'_> {
                     let RExprKind::CallFn { fn_index, args } = &node.kind else {
                         unreachable!("CallOut on non-call node")
                     };
+                    let callee = self.program.fns.get(*fn_index);
                     let mut eval = Vec::with_capacity(arg_slots.len());
-                    for s in &arg_slots {
-                        eval.push(slot_idx[*s]);
+                    for (idx, s) in arg_slots.iter().enumerate() {
+                        let planned = slot_idx[*s];
+                        // PLAN-771 borrow discipline for record args (the
+                        // iterative path mirrors plan_arg)
+                        let arg_vt = plan.exprs[planned].vt;
+                        let is_borrow = matches!(plan.exprs[planned].kind, EKind::BorrowMut { .. });
+                        if matches!(arg_vt, VT::Rec(_)) && !is_borrow {
+                            let pos = callee.and_then(|c| match &args[idx].name {
+                                None => {
+                                    if idx < c.params.len() {
+                                        Some(idx)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                Some(n) => c.param_names.iter().position(|p| *p == n.name),
+                            });
+                            let param_mut = pos
+                                .and_then(|i| callee.and_then(|c| c.param_modes.get(i).copied()))
+                                .unwrap_or(false);
+                            if !param_mut {
+                                let span = plan.exprs[planned].span;
+                                plan.exprs.push(ENode {
+                                    kind: EKind::BorrowView { base: planned },
+                                    vt: arg_vt,
+                                    span,
+                                });
+                                eval.push(plan.exprs.len() - 1);
+                                continue;
+                            }
+                        }
+                        eval.push(planned);
                     }
                     let mut bindings = Vec::new();
                     if let Some(callee) = self.program.fns.get(*fn_index) {

@@ -533,6 +533,8 @@ pub fn lower_object(
                 local_is_record,
                 out_param: out_param_value,
                 result_bytes,
+                dests: BTreeMap::new(),
+                elided: std::collections::BTreeSet::new(),
                 vars,
                 fnrefs,
                 exit_ref,
@@ -646,6 +648,14 @@ struct FuncEmitter<'c> {
     out_param: Option<Value>,
     /// The record result's byte size (when `out_param` is set).
     result_bytes: Option<u64>,
+    /// Copy-elision destinations (PLAN-771 V-09): the storage pointer a
+    /// record-producing expression should write into directly, instead of
+    /// allocating a fresh temp. Keyed by expr id; each expr has exactly one
+    /// consuming position (verifier), so the entry is consumed on use.
+    dests: BTreeMap<u32, Option<Value>>,
+    /// Expr ids that WROTE into their destination directly (their parent
+    /// store step must not re-copy them).
+    elided: std::collections::BTreeSet<u32>,
     vars: BTreeMap<u32, Variable>,
     fnrefs: BTreeMap<u32, FuncRef>,
     exit_ref: FuncRef,
@@ -831,31 +841,38 @@ impl<'c> FuncEmitter<'c> {
             frame.idx += 1;
             match stmt {
                 hir::Stmt::Let { local, value } => {
-                    let v = self.eval_expr(value);
                     if self.local_is_record.get(local.0 as usize).copied() == Some(true) {
-                        // value semantics: the binding owns a fresh copy
+                        // value semantics: the binding owns a fresh copy —
+                        // a record-producing initializer writes straight
+                        // into the binding's slot (copy elision)
                         let ty_idx = match self.body.locals[local.0 as usize].ty {
                             hir::TypeUse::Ref(t) => t.0,
                             _ => 0,
                         };
                         let bytes = self.layouts.get(&ty_idx).copied().unwrap_or(4);
                         let slot = self.new_slot(bytes);
+                        self.dests.insert(value.0, Some(slot));
+                        let v = self.eval_expr(value);
                         self.emit_copy(slot, v, bytes);
                         let var = self.vars[&local.0];
                         self.fb.def_var(var, slot);
                     } else {
+                        let v = self.eval_expr(value);
                         let var = self.vars[&local.0];
                         self.fb.def_var(var, v);
                     }
                 }
                 hir::Stmt::Return { value } => {
-                    let v = self.eval_expr(value);
                     if let (Some(out), Some(bytes)) = (self.out_param, self.result_bytes) {
-                        // record result: copy into the ABI-E out slot, void
-                        // machine return
+                        // record result: write into the ABI-E out slot
+                        // (elided straight through ctor/call results),
+                        // void machine return
+                        self.dests.insert(value.0, Some(out));
+                        let v = self.eval_expr(value);
                         self.emit_copy(out, v, bytes);
                         self.fb.ins().return_(&[]);
                     } else {
+                        let v = self.eval_expr(value);
                         self.fb.ins().return_(&[v]);
                     }
                     frame.terminated = true;
@@ -918,21 +935,23 @@ impl<'c> FuncEmitter<'c> {
                     });
                 }
                 hir::Stmt::Assign { place, value } => {
-                    let v = self.eval_expr(value);
                     let p = &self.body.places[place.0 as usize];
                     match &p.kind {
                         hir::PlaceKind::Local => {
                             if self.local_is_record.get(p.local.0 as usize).copied() == Some(true) {
                                 // whole-record assign = value copy into the
-                                // local's own slot
+                                // local's own slot (elided for ctors)
                                 let dst = self.fb.use_var(self.vars[&p.local.0]);
                                 let ty_idx = match self.body.locals[p.local.0 as usize].ty {
                                     hir::TypeUse::Ref(t) => t.0,
                                     _ => 0,
                                 };
                                 let bytes = self.layouts.get(&ty_idx).copied().unwrap_or(4);
+                                self.dests.insert(value.0, Some(dst));
+                                let v = self.eval_expr(value);
                                 self.emit_copy(dst, v, bytes);
                             } else {
+                                let v = self.eval_expr(value);
                                 let var = self.vars[&p.local.0];
                                 self.fb.def_var(var, v);
                             }
@@ -952,6 +971,7 @@ impl<'c> FuncEmitter<'c> {
                             let addr = self.fb.ins().iadd_imm(base, off as i64);
                             match field_rec {
                                 None => {
+                                    let v = self.eval_expr(value);
                                     self.fb.ins().store(
                                         cranelift_codegen::ir::MemFlags::trusted(),
                                         v,
@@ -961,6 +981,8 @@ impl<'c> FuncEmitter<'c> {
                                 }
                                 Some(rt) => {
                                     let bytes = self.layouts.get(&rt).copied().unwrap_or(4);
+                                    self.dests.insert(value.0, Some(addr));
+                                    let v = self.eval_expr(value);
                                     self.emit_copy(addr, v, bytes);
                                 }
                             }
@@ -1103,8 +1125,66 @@ impl<'c> FuncEmitter<'c> {
                                 stack.push(Step::Enter(*a));
                             }
                         }
-                        hir::ExprKind::RecordCtor { eval_args, .. } => {
-                            // source evaluation order (eval_args order)
+                        hir::ExprKind::RecordCtor {
+                            record,
+                            eval_args,
+                            bindings,
+                        } => {
+                            // source evaluation order (eval_args order);
+                            // record-typed field args whose field offset is
+                            // statically known thread the destination down
+                            // (copy elision — no temp for nested ctors)
+                            let my_dest = self.dests.get(&id.0).copied().flatten();
+                            if let Some(dst) = my_dest {
+                                let shape = match &self.module.types[record.0 as usize].kind {
+                                    hir::TypeKind::Record(sh) => sh,
+                                    _ => unreachable!("ctor expr names a record"),
+                                };
+                                for b in bindings {
+                                    if let Some(field) = shape.fields.get(b.field as usize) {
+                                        if type_is_record(self.module, &field.ty) {
+                                            let mut off: u64 = 0;
+                                            for prior in shape.fields.iter().take(b.field as usize)
+                                            {
+                                                off += match &prior.ty {
+                                                    hir::TypeUse::Builtin(_) => 4,
+                                                    hir::TypeUse::Ref(t) => {
+                                                        self.layouts.get(&t.0).copied().unwrap_or(4)
+                                                    }
+                                                };
+                                            }
+                                            if let Some(arg) = eval_args.get(b.arg as usize) {
+                                                // only record-PRODUCING
+                                                // children can write into
+                                                // the destination — a
+                                                // plain value (read, load)
+                                                // still needs its copy
+                                                let produces = matches!(
+                                                    &self.body.exprs[arg.0 as usize].kind,
+                                                    hir::ExprKind::RecordCtor { .. }
+                                                        | hir::ExprKind::FieldGet { .. }
+                                                ) || self
+                                                    .def_result_is_record(
+                                                        match &self.body.exprs[arg.0 as usize].kind
+                                                        {
+                                                            hir::ExprKind::Call {
+                                                                callee, ..
+                                                            } => callee.0,
+                                                            _ => u32::MAX,
+                                                        },
+                                                    )
+                                                    .is_some();
+                                                if produces {
+                                                    let child_dst =
+                                                        self.fb.ins().iadd_imm(dst, off as i64);
+                                                    self.dests.insert(arg.0, Some(child_dst));
+                                                    self.elided.insert(arg.0);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             stack.push(Step::CtorOut(id));
                             for a in eval_args.iter().rev() {
                                 stack.push(Step::Enter(*a));
@@ -1179,7 +1259,11 @@ impl<'c> FuncEmitter<'c> {
                         unreachable!("ctor step on ctor expr")
                     };
                     let bytes = self.layouts.get(&record.0).copied().unwrap_or(4);
-                    let temp = self.new_slot(bytes);
+                    let temp = self
+                        .dests
+                        .remove(&id.0)
+                        .flatten()
+                        .unwrap_or_else(|| self.new_slot(bytes));
                     let mut field_tys: Vec<hir::TypeUse> = Vec::new();
                     if let Some(hir::TypeKind::Record(sh)) =
                         self.module.types.get(record.0 as usize).map(|t| &t.kind)
@@ -1211,10 +1295,12 @@ impl<'c> FuncEmitter<'c> {
                             .get(b.arg as usize)
                             .copied()
                             .expect("ctor arg index in range");
-                        let Val::V(av) = slots.remove(&slot_key).expect("ctor arg slot filled")
-                        else {
-                            unreachable!("ctor arg is a value");
-                        };
+                        let Val::V(av) = slots.remove(&slot_key).expect("ctor arg slot filled");
+                        // an elided child ctor already wrote into
+                        // temp+off directly — no re-copy
+                        if self.elided.remove(&slot_key) {
+                            continue;
+                        }
                         let off = offs.get(b.field as usize).copied().unwrap_or(0);
                         let ft = field_tys.get(b.field as usize).copied();
                         if ft.map(|t| type_is_record(self.module, &t)) == Some(true) {
@@ -1263,9 +1349,14 @@ impl<'c> FuncEmitter<'c> {
                             slots.insert(id.0, Val::V(v));
                         }
                         Some(rt) => {
-                            // record field read = a fresh VALUE copy (rvalue)
+                            // record field read = a VALUE copy (rvalue) into
+                            // the elision destination when one is set
                             let bytes = self.layouts.get(&rt).copied().unwrap_or(4);
-                            let temp = self.new_slot(bytes);
+                            let temp = self
+                                .dests
+                                .remove(&id.0)
+                                .flatten()
+                                .unwrap_or_else(|| self.new_slot(bytes));
                             let src = self.fb.ins().iadd_imm(bv, off as i64);
                             self.emit_copy(temp, src, bytes);
                             slots.insert(id.0, Val::V(temp));
@@ -1373,7 +1464,10 @@ impl<'c> FuncEmitter<'c> {
                     let callee_rec_result = self.def_result_is_record(callee.0);
                     let out_temp = callee_rec_result.map(|tid| {
                         let bytes = self.layouts.get(&tid).copied().unwrap_or(4);
-                        self.new_slot(bytes)
+                        self.dests
+                            .remove(&id.0)
+                            .flatten()
+                            .unwrap_or_else(|| self.new_slot(bytes))
                     });
                     if let Some(t) = out_temp {
                         args.push(t);
