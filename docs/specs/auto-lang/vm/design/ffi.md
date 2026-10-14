@@ -93,6 +93,35 @@ native 函数注册体系、Rust/C FFI 动态加载、标准库 shim。对应代
 
 - `ffi/http_server.rs`、`ffi/websocket.rs` 把 HTTP/WebSocket 服务暴露为 native 函数（plan-312/313/349/350 系列）；任务挂起配合 `waiting_http_request_id`/`waiting_sse_stream_id`（见 concurrency.md）。
 
+### HTTP 返回资源凭据（PLAN-776）
+
+- **native 逻辑身份**：`HttpReturnResource` 的 HeapObject 实现与
+  `push_kind` 模板（`credential_id` 编 owner 段——专用 id 段
+  `0x8000_0000|owner(11b)<<20|local(20b)`，owner 耗尽拒绝）+ insert +
+  `rc_push`；实际载荷：各 kind 的表 backing（iterators/
+  VM_FILE_RESPONSES/VM_UPLOAD_RECEIPTS）不动，Response 数据 owned 于凭据。
+  契约见 [http-return-resources](../../../stdlib/design/http-return-resources.md)。
+- **访问器/迁移终形**：读访问器（status_code/body/body_bytes/body_to_file/
+  header_get）统一快照载荷；setter 五族（含 bytes）`mutate_response_snapshot`
+  改凭据内快照；**消费恰一份**——`StakeGuard` 只记 id 不 retain，其 Drop
+  执行 rc_release_id 即那一次消费（叠加显式 rc_release = 双释放，共享
+  RC2 被销成 0——R8/R10 两代反例的根因，已撤）；返回槽 `rc_push` 影子
+  重建。iterator 消费面（next/map/filter/enumerate/collect/reduce/find）
+  同协议（共享凭据感知弹栈 + 弹出槽清零 + 派生身份凭据化）。
+- **client Response egress 凭据化**：`push_handle_result` 产 Response
+  凭据对象（上游 status/body 保真）；HTTP_RESPONSES 表 insert 退役（int
+  查表面成为死兼容）。
+- **Future 句柄 TAG_FUTURE**（nanobox tag 0xB）：生产点（CREATE_FUTURE/
+  External creator）产 `encode_future(fid)`；nv↔Value 全桥保真
+  （decode_tagged_nv / nv_to_value ×2 / CREATE_ARRAY / CREATE_OBJ /
+  CONSTRUCT_INSTANCE ↔ materialize_value / value_to_nv_via_task /
+  GET_ELEM / GET_FIELD / GET_GENERIC_FIELD(push_value)）；legacy
+  `(fid<<8)|0xF0` 位形态仅作 Value 往返降级兼容（AWAIT/POLL 功能面，
+  无 marshal 驱动门）。
+- **dispatch 责任**：handler 返回值槽 RC 释放（sync/parked 双点）+
+  `release_task_credentials` 任务栈全部堆对象槽清偿（父容器 dying 级联
+  子 stakes）。
+
 ## 显式非目标
 
 - 多语言 FFI 插件系统（`Plugin` trait、handle 表生命周期）：design/05 Open Questions，未实现。

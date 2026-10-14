@@ -67,6 +67,22 @@ VM HTTP/SSE 的请求绑定、所有权、取消和错误行为详见 [HTTP Serv
   路径不获得该能力（无注入面，绑定诊断）；Tauri IPC/back-proxy 明确拒绝
   （Unsupported/501 + HTTP URL 指引）。契约见 [http-server-uploads](http-server-uploads.md)。
 
+## HTTP 返回资源身份与生成支持面（PLAN-776）
+
+- **身份边界**：VM HTTP 返回边界按值凭据（四族 + TAG_FUTURE 逐值载荷，
+  生产点授予、声明无关）——查表猜测/声明门/位模式驱动全部退役；sync/
+  async 终值单入口同形（含 i64 全宽/record 值域）；失败终态有界 500；
+  契约见 [http-return-resources](http-return-resources.md)。
+- **非 HTTP 消费兼容**：iterator natives 全族凭据感知（for-in/派生链）；
+  client egress 凭据化（上游保真）。
+- **生成真 TCP oracle**：现行支持面四面已验证——plan729 File 矩阵 +
+  plan730 Upload 矩阵 + plan776 生成 JSON record（scaffold CRUD create）
+  + plan776 生成 bus SSE（events broadcast：订阅连接真 TCP 收帧）。
+  真实体 JSON 委托当前被 a2r `use api:` 跨模块转译阻塞（742 族，
+  证据矩阵在 776 verification）。
+- **纠正陈旧描述**：redirect/musk ctor 构造点不再经 HTTP_RESPONSES 表
+  （表仅剩 client 死兼容面）；「async 终值降级 null」条目退役。
+
 ## API 契约消费者（PLAN-734）
 
 - VM HTTP、生成 Rust/Axum、back-proxy、merged、Tauri IPC 五形态消费同一

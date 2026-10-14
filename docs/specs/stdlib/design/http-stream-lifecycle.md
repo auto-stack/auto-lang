@@ -1,6 +1,6 @@
 # 外部 HTTP/SSE 流生命周期(http stream lifecycle)
 
-> **Status**: current(PLAN-707,Design 33 阶段 C2a;PLAN-724 SD-06 修订——a2r 客户端迁移落地) | 层:vm ffi http_stream/stdlib | 2026-10-02
+> **Status**: current(PLAN-707,Design 33 阶段 C2a;PLAN-724 SD-06 修订——a2r 客户端迁移落地;PLAN-776 SSE 身份生产点化) | 层:vm ffi http_stream/stdlib | 2026-10-15
 
 ## 执行模型
 
@@ -46,6 +46,22 @@ Opening(建立中,≤10s) → Pending(已建立待数据) → (有界队列) →
   Err)。迭代器终结**凭流状态**而非字符串比较——合法 `"[DONE]"` 载荷与
   空 data 是业务数据不丢。新增 `sse_close`(显式释放)、`sse_error`
   (终态诊断,非消费式)。
+
+## SSE 身份授予与迭代消费（PLAN-776）
+
+- **SSE 身份在生产点建立**：codegen 对 generator fn 调用（CREATE_GENERATOR
+  后）**无条件**插 `WRAP_SSE_RESOURCE`(0xD5)（幂等）——凭据随 local/
+  helper 返值/容器元素/闭包捕获/Future 终值全载体传播（旧 `int` 声明
+  handler 与 `int` helper 同保真实 SSE 来源；声明/表命中/数值不构成来源）；
+  generator handler dispatch 臂与 musk `Sse.into_response` 同产凭据
+  （iterator_id；**0 是合法 id**——首个 generator）。marshal Sse 臂校验
+  iterators 注册表后走 `sse_iterator_reply` **单源**（与 legacy 臂共用
+  producer spawn/`produce_sse_frames`/cleanup 守卫——无第二输出循环）。
+- **迭代消费面凭据感知全族**：`auto.iterator.next/map/filter/enumerate/
+  collect/reduce/find` 共享凭据感知弹栈（TAG_OBJECT Sse 解包 + 裸 i32
+  同底层数据；弹出槽清零）+ 派生 iterator 身份凭据化（凭据源派生 id
+  同样包装）；for-in 经此保持兼容。
+- 契约详见 [http-return-resources](http-return-resources.md)。
 
 ## 增量 SSE 解码
 
