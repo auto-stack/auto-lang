@@ -1053,3 +1053,23 @@ R1-F02、F07 local边界、F08关闭；直接Internal/Err资源、用户Response
 | F744-R1-01 | medium | AC-01/T-01 | 测试设计承诺 VM 嵌套堆列表逐格断言，实际 roundtrip 仅断言 `shim_sqlite_query_impl` 返回的 Rust `Vec<Vec<String>>`，未覆盖 `shim_sqlite_query` 的字符串池/inner heap/outer VmRef/栈路径。需补真正经过 shim 或 VM 字节码的多行多列 oracle；当前未证明运行错误，不可宣称完整验证。 |
 | F744-R1-02 | medium | AC-01/T-01 | scoped sqlite 2 passed 不等于既有 VM 无回归；缺 744 绑定提交/依赖/配置的门禁收据或明确复用依据。补测试提交后在恢复 worktree 跑仓规 `cargo t`+`cargo tv`，逐项归因真实红；本次纯核查未跑这些门禁。 |
 | F744-R1-03 | low | review/merge 收尾 | 入场无规范增量/影响元数据解释/最终 review pass。已在 Plan 提出 SD-01/02 与影响路径，仍待最终复审冻结和 merge 沉淀；a2r-std Spec 已有 VM-local/task 寿命约定，不能退回初版进程级连接注册表。 |
+
+## THR-D5 批量回归 2026-10-14（收据 766→774 窗口）
+
+- **REG-2 升格确认（ffi_dual_019 满池竞态）**：本收据窗口内 tf 满池连三轮红
+  （6287/6288×3）、定向 1/1 绿（3.5s）——连同前两份收据累计五轮同形复发。
+  维持"并行负载序敏感 flake、非语义回归"判定（REG-2 原始双基线实证），
+  观察名单不动；若后续收据再发（≥7 轮）应立项查 ffi_dual 测试体的并发
+  交互（锁序/临时目录竞争面）。
+- **新登记 REG-5（P775 aavm 黄金红，确定性）**：`cargo taa` 两红
+  `tests::aavm2_a2r::test_aavm2_goldens_check`（`rust reference run:
+  STDASSEMBLY.INVALID_BYTECODE: 60`，定向复跑仍红）与
+  `tests::aavm_runner_tests::test_aavm2_compile_corpus`。窗口
+  （3ecd375d6..14e387537）内 stdlib_assembly 面唯一改动 = PLAN-775
+  b1230e767 新增 `json.encode` 泛型 adapter 规则
+  （stdlib_assembly/host.rs ADAPTER_RULES + verify_adapted_reference
+  泛型放宽）——黄金语料的 json 调用经新规则发射后 a2r 参考运行报
+  bytecode 60 无效。归因 PLAN-775（置信高：唯一触面改动；未做提交级
+  二分）。处置：aavm/aa2r 面按 2026-10-02 豁免裁定短期不跑，本红不阻塞
+  交付；恢复运行时需先修 adapter 规则的黄金兼容（或按退役裁定一并处置）。
+  与 PLAN-744 F744-R1-01/02 同页登记。
