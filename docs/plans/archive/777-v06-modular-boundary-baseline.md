@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-777
-status: execution_done
+status: archived
 feature_name: v0.6 模块边界基线与增量检查
 author: [Codex]
 created_at: 2026-10-13
 updated_at: 2026-10-15
 plan_revision: 1
-current_step: 4
+current_step: 6
 total_steps: 6
 supersedes_spec_components: [docs/specs/design/repository-layout.md]
 new_spec_components: []
@@ -85,8 +85,8 @@ Category A：禁止cargo t/docs_gen。T01实现后 `python scripts/modularity-au
 | [x] | T-02 | work | T01 | 新boundary配置/ownership，逐项核对真实路径和存量退出阶段。[R1/R2历史保留]；**R3**：域映射表按包名补根外实现包 auto-ui=ui（F777-R2-01），未知外置包保持真实 unclassified；跨根规则正向拦截由生产域表+规则控制（v10/S01）| 02/03 |
 | [x] | T-03 | work | T02 | 新audit fixtures/self-test，V02–04实际正反控。[R1–R3历史保留]；**R4**：新增 v12（硬链接→受管源码/实读锁拒绝且字节不变、根外新路径另存正控），`--self-test` **15/15** | 02/03 |
 | [x] | T-04 | work | T03 | 真实扫描/diff/check输入不变，受管evidence；不跑Rust tests。[R1–R3历史保留]；**R4（代码 5e1794bcc，基线 677055420 不变——配置/边集零变更）**：观察双扫一致（sha 732ae3b6709a…，2052/945894）；cargo 对照 36=36 零差异；**四套复审控制全过：r1 replay 7 控 + r2 replay + r2 supplemental 5 控 + r3 input-matrix 4/4（M01-hardlink-source exit 3 输入不变）**；strict pass/0违例/2 grandfathered/coverage ok；证据 attachments/777/work/（t04r4-*、t03r4-selftest.txt） | 01/02/03 |
-| [ ] | T-05 | review | T04 | 独立review，禁止baseline偷换目标 | 04 |
-| [ ] | T-06 | merge | review pass | Spec/归档/合流/受保护清理；batch到期按现行规则 | 05 |
+| [x] | T-05 | review | T04 | 独立review，禁止baseline偷换目标；R4 final pass@5e1794bcc，旧反例及新增身份组合全部通过，冻结SD01；T06仍pending | 04 |
+| [x] | T-06 | merge | review pass | Spec/归档/合流/受保护清理；batch到期按现行规则。[✅ SD-01 落 docs/specs/design/repository-layout.md（6daa1a0b8）；ledger v16→17 +4 项（20335e52c）；ff-only 合入 master tip=20335e52c；归档+复审附件入库；组树清理见 r1 收据] | 05 |
 
 拟tree `D:/autostack/.wt/lang-777/auto-lang`，branch `plan-777-dev`；脚本实现也必须在worktree。Plan簿记在master；依赖用new-wt-group，禁止链接。
 
@@ -104,6 +104,8 @@ Category A：禁止cargo t/docs_gen。T01实现后 `python scripts/modularity-au
 
 2026-10-15 R3：stage=review | review_scope=final | reviewer_identity=本评审会话（规划及前两轮参与，未参与实施，直接提交/反例重建） | plan_id=PLAN-777 | plan_revision=1 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-777/auto-lang | branch=plan-777-dev | reviewed_commit=677055420203db3bc3a868a2dca697f8167361dd | base_commit=17bc8431457848b040bffa5c261e13b057771559 | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；Python3.14.2/Cargo1.98.0 | spec_inputs=repository-layout SHA256 3800856129eb9b5bd742fef9ea2aa0c94f0db780ab2a8ba01fc7ae8965dde49b；冻结SD01见附件 | acceptance_results=AC01 partial(R3-01)、AC02/03 pass、AC04审计完成未pass、AC05 pending | findings=F777-R3-01(P2 blocking，根外硬链接报告目标可覆盖受管Rust输入，exit0/hash改变) | closure=R2两项具体反例关闭；R1依赖/ownership问题保持关闭，完整输入只读仍partial | evidence=[R3完整报告](attachments/777/review-r3/REVIEW.md)、[输入别名矩阵](attachments/777/review-r3/input-matrix.py)、[原始输入/结果](attachments/777/review-r3/input-matrix.jsonl)、[指纹](attachments/777/review-r3/fingerprints.jsonl) | verification=自测14/14、旧7控/R2补充5控全pass、输入矩阵3pass/1fail；真实双扫一致/36=36/strict正控pass；全受管输入和锁hash/HEAD/status未变，diff-check通过，无Rust编译测试 | pending_closeout_gates=Category A无Rust整档；T06仍pending | task_state=保留T02，重开T01/03/04及依赖证据，executing 1/6，r1不变 | next=同树work补齐所有受管/实读输入的身份保护和永久矩阵，提交后复审；这是原只读不变量的剩余路径，可局部修复，不自动needs_replan。两连败诊断已检查，但身份比较仍仅接部分输入类别。本轮不修实施/merge/发布Spec/ledger/清理树。
 
+2026-10-15 R4：stage=review | review_scope=final | reviewer_identity=本评审会话（规划/前轮参与，未实施，原提交与独立组合重建） | plan_id=PLAN-777 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-777/auto-lang | branch=plan-777-dev | reviewed_commit=5e1794bcc6f1b811a2b8d7a224d12fac9997f829 | base_commit=17bc8431457848b040bffa5c261e13b057771559 | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；Python3.14.2/Cargo1.98.0 | spec_inputs=repository-layout SHA256 3800856129eb9b5bd742fef9ea2aa0c94f0db780ab2a8ba01fc7ae8965dde49b，具体SD01冻结见附件 | acceptance_results=AC01/02/03/04 pass，AC05 pending merge-owned | findings=none blocking；R1..R3全部闭合 | evidence=[R4完整报告](attachments/777/review-r4/REVIEW.md)、[额外身份组合](attachments/777/review-r4/identity-combinations.jsonl)、[原输入矩阵](attachments/777/review-r4/input-matrix.jsonl)、[全输入指纹](attachments/777/review-r4/fingerprints.jsonl)、[已审规范增量](attachments/777/review-r4/spec-delta-reviewed.md) | verification=自测15/15、旧7控、R2补充5控、R3身份4控、新组合3控均pass；真实双扫一致/36=36/strict pass(0违例/2存量)/coverage ok；受管输入和锁/HEAD/status不变，diff-check通过，无Rust编译测试 | pending_closeout_gates=Category A无Rust整档门禁；T06 Spec/导航/投影/合流/归档/到期判定/guard-clean仍pending | task_state=reviewed 5/6，r1不变 | next=/auto-plan:merge在此冻结提交上收尾；代码/依赖/规范漂移时复查受影响内容，本次不merge/发布canonical/归档/清理树。
+
 ## 10. 待澄清事项
 
 仓名/发布渠道不影响baseline。任何strict扫描扩面要先有可区分错误实现的oracle，再修订contract；不把此Plan扩大成Rust编译器。
@@ -113,3 +115,13 @@ Category A：禁止cargo t/docs_gen。T01实现后 `python scripts/modularity-au
 2026-10-15：stage=work | PLAN-777 | r1（合同未变） | outcome=pass（R2 needs_fix 两项已修复，重新交独立review） | worktree D:/autostack/.wt/lang-777/auto-lang | branch plan-777-dev | base 17bc84314578（不变） | code d6e947912（R2 修复+永久自测 v10/v11）+ 677055420（基线重冻，36 边不变/config sha 重绑） | deps: auto-down 组内兄弟 detached@c39ac7f（只读，未改） | tasks T-01..T-04=4/6（R3 证据回填） | evidence: [R3 工作证据](attachments/777/work/t04-summary.md)；self-test **14/14**；**r1 replay 7 控 + r2 replay + r2 supplemental 全过（exit 0）**；r3 双扫一致 sha 15af9eca82d8…；strict pass/0/2 grandfathered/coverage ok | blockers: 无 | next=review（T-05 r3：绑定 d6e947912+677055420）。修复对账：F777-R2-01 生产 [domains.members] 按包名补 auto-ui=ui（表语义=包名→域，含已知根外实现包；未登记外置包保持真实 unclassified，不假称所有外部依赖违规）——规则正向拦截以生产域表+规则实测（v10 五例 + S01 三例）；F777-R2-02 extract_declared_edges 返回实读 manifest 清单（含根外 path 目标），guard_output_target 输入矩阵闭合（配置/基线/实读 manifest/受管文件/根内既有文件），same_file 以 normcase+samefile 归一路径别名（v11：已读根外 manifest 与大小写别名拒绝且字节不变，根外另存正控可用）。闭合表校正：r1 C06 旧例仅证 scope-only 惰性语义，生产跨根规则的正向拦截证明由本轮 S01/v10 补齐；scope-only 惰性是 r1 建立并保持的规则合同（禁向判定基于依赖方向）。未新增豁免；复审 artifacts 未修改。两次 final review 失败后的诊断（技能两连败检查点）：R1 六项与 R2 两项同源于“具体反例闭合而完整不变量未闭合”——本轮按输入矩阵/域映射两条完整路径补面而非只补旧例；下轮如再失，按 needs_replan 升界。
 
 2026-10-15：stage=work | PLAN-777 | r1（合同未变） | outcome=pass（R3 needs_fix 一项已修复，重新交独立review） | worktree D:/autostack/.wt/lang-777/auto-lang | branch plan-777-dev | base 17bc84314578（不变） | code 5e1794bcc（R3 修复+永久自测 v12；**基线不重冻**——配置/边集零变更，677055420 仍有效：staleness 锚定面自 base 起无变更、config sha 一致） | deps: auto-down 组内兄弟 detached@c39ac7f（只读，未改） | tasks T-01..T-04=4/6（R4 证据回填；T-02 维持复审保留的 [x]） | evidence: [R4 工作证据](attachments/777/work/t04-summary.md)；self-test **15/15**；**四套复审控制全过**：r1 replay 7 控 / r2 replay / r2 supplemental 5 控 / **r3 input-matrix 4/4（M01-hardlink-source exit 3 且输入字节不变）**；r4 双扫一致 sha 732ae3b6709a…；strict pass/0/2 grandfathered/coverage ok | blockers: 无 | next=review（T-05 r4：绑定 5e1794bcc+677055420）。修复对账：F777-R3-01 guard_output_target 对根外**已存在**目标先以文件身份（st_dev/st_ino，硬链接同 inode）对照全部受管文件与实读锁（根 Cargo.lock，cargo 对照尝试运行时读取）再放行——身份比较接入的输入类别从“配置/manifest”补齐为“全部受管输入+锁”；永久控制 v12 覆盖硬链接→源码/锁负控与根外新路径正控。摘要 V01 行已按 r3 复审勘误同步 t04r4/sha 732ae3b6…。三连败诊断延续（R1/R2 同源+R3 输入身份未接入全类别）：本轮把身份保护补成完整输入/目标矩阵后，r3 矩阵 4/4 在新提交通过；若 r4 复审再失，按 needs_replan 升界。
+
+2026-10-15：stage=merge | PLAN-777:r1 | outcome=pass（delivered） | 收据 checkpoints：
+- **prepared**：reviewed_commit=5e1794bcc（R4 pass）；冻结 SD-01 源 SHA256 3800856129eb… 应用前实测一致；canonical diff=repository-layout.md +24/-2（冻结增量逐字 + current-state/来源行同步）；delivery_commit=20335e52c（6daa1a0b8 Spec 落地 + 20335e52c ledger 投影，均为 reviewed 代码的纯文档/投影后代，实现与依赖零变更）。
+- **landed**：master `git merge --ff-only plan-777-dev`，tip=20335e52c=delivery（92d0ed626→20335e52c，无合并提交）。rebase 旧→新哈希映射：0b5e79950→0efd1ae51、97df2f997→a6e44894d、3b50ea63e→4d25c0198、aaf702011→e733e8c02、d6e947912→6a7c1f7f9、677055420→d74308a76、5e1794bcc→02371259a、57ffeefbb→6daa1a0b8；`git range-diff` 7/7 全 `=`（补丁等价=安全重写证明）。落库前在 rebase 终树上真实复跑：strict pass/0违例/2 grandfathered、self-test 15/15。
+- **ledger_refreshed**：`.autoos/specs.json` 经**受管离线投影**（Regime B，无 store writer；字节级备份 /tmp/specs-backup-777.json），version 16→17，新增 P777-D1（designs，file=docs/specs/design/repository-layout.md）/P777-T（tests，file=scripts/modularity-audit.py）/P777-R4（reviews，file=review-r4/REVIEW.md）/P777-M（reports，file=归档计划路径），全部带 file+tags；外科手术校验（旧 items 全保留、非目标 section 字节等同）与读回 ID/字段校验通过。
+- **Category A 门禁**：未运行 cargo t/tv/tu/tt/tb/docs_gen/taa（777 全程零 crates/ Rust 源码改动——仅 scripts/、.autoos/、test/fixtures/、docs/）；按 AGENTS Category A 此为禁止项而非豁免。
+- **archived**：git mv → docs/plans/archive/777-v06-modular-boundary-baseline.md，status: archived，T-01..T-06=6/6；review-r1..r4 复审附件随本收据入库（K13：不入库≠归档；排除 __pycache__）。**基线重绑 pending 说明**：master 常带他计划簿记 WIP（782/KNOWN-DEBT，属其 owner，不代提交），阻止 --refresh-baseline 的干净树前置；现行基线 base_revision=d6e947912（旧哈希）经 range-diff 等价锚定且对象仍可解析（diff 锚定面为空=新鲜），下一次 master 干净时 refresh 重绑到可达提交即可，属常规运维（就绪文档既定流程），非交付缺口。
+- **cleaned**：wt-guard 双树 clean → 移除 lang-777/auto-lang、auto-down worktree、plan-777-dev 分支与组目录（见下一条收据更新）。
+
+批回归到期判定：777%5≠0；收据读取与判定见 cleaned 收据行。部署产物核对：auto-lang 无发布二进制/web bundle 生产面（本仓 Category A 工具/文档交付），N/A。

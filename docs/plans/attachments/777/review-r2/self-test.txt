@@ -1,0 +1,13 @@
+PASS v01: V-01 稳定只读：同 fixture HEAD 两次扫描 payload 一致，无绝对路径
+PASS v02: V-02 新增边：fixture-lang→fixture-ui-kit 判红并点名；UI→SDK 反向/dev-only 不误红
+PASS v03: V-03 候选诚实：comment/doc/string/test/macro/code 六类分类正确，盲区显式声明
+PASS v04a: V-04a 窄豁免：存量边 A grandfather（owner+退出阶段），新边 B 仍判红
+PASS v04b: V-04b 撤销边：status=revoked 的边仍存在 → 判红
+PASS v04c: V-04c 过期基线：base_revision 后锚定输入（manifest）实际变更 → 判红
+PASS v04d: V-04d 宽豁免：[baseline].exempt_paths 目录级豁免 → 配置加载即拒绝
+PASS v05: V-05 多 target 表：各表独立提取；Windows core→UI 判红、Unix →SDK 不误红
+PASS v06: V-06 workspace 继承：path 按根解析到成员并判红，不再产生 unresolved 假缺口
+PASS v07: V-07 只读守卫：输出/刷新目标与输入冲突在写入前拒绝，合法重冻结不受影响
+PASS v08: V-08 optional 激活：optional 控制通过，激活成必选判红且不冒充存量豁免
+PASS v09: V-09 覆盖对账：必需组缺 active 条目判红；完整控制通过
+self-test: 12/12 通过
