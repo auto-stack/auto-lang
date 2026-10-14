@@ -644,6 +644,16 @@ fn resolve_fn(
         param_modes.push(false);
     }
     for (i, p) in f.params.iter().enumerate() {
+        if rec_index.contains_key(&p.name.name) {
+            r.bind_err(
+                "source.duplicate",
+                format!(
+                    "parameter `{}` shadows the record type of the same name; rename the parameter",
+                    p.name.name
+                ),
+                p.name.span,
+            );
+        }
         let vt = vt_of_ann(&p.ty, rec_index, &mut Vec::new());
         // mut mode is only meaningful for record params (774 D-04)
         if p.mode == ast::ParamMode::Mut && !matches!(vt, VT::Rec(_)) {
@@ -885,6 +895,18 @@ impl<'a> FnResolver<'a> {
                             "source.duplicate",
                             format!(
                                 "local `{}` is declared more than once in this block",
+                                name.name
+                            ),
+                            name.span.join(value.span),
+                        );
+                    }
+                    // PLAN-771 V-08: a local must not shadow a record type
+                    // name (type positions stay unambiguous)
+                    if self.rec_index.contains_key(&name.name) {
+                        self.bind_err(
+                            "source.duplicate",
+                            format!(
+                                "local `{}` shadows the record type of the same name; rename the local",
                                 name.name
                             ),
                             name.span.join(value.span),
@@ -1282,14 +1304,23 @@ impl<'a> FnResolver<'a> {
                     let v = self.expr_iterative(&f.value);
                     let want = self.records[ri].fields[fi].vt;
                     if v.vt != want {
+                        // nominal records name both sides (identical shapes
+                        // still mismatch — PLAN-771 §5.1)
+                        let desc = |t: VT| match t {
+                            VT::Rec(i) => match self.records.get(i) {
+                                Some(r) => format!("record `{}`", r.name),
+                                None => "record".to_string(),
+                            },
+                            other => other.as_str().to_string(),
+                        };
                         self.bind_err(
                             "source.type-mismatch",
                             format!(
-                                "field `{}` of `{}` has type `{}`, found `{}`",
+                                "field `{}` of `{}` has type {}, found {}",
                                 f.name.name,
                                 ty.name,
-                                want.as_str(),
-                                v.vt.as_str()
+                                desc(want),
+                                desc(v.vt)
                             ),
                             f.span,
                         );

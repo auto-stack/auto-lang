@@ -1,4 +1,5 @@
-// V-08: a local shadowing a type name, then used as a callee
+// V-08: a local may not shadow a record type name (type positions stay
+// unambiguous in this profile)
 type Pair {
     left int
 }

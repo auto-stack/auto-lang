@@ -1326,9 +1326,7 @@ impl<'c> FuncEmitter<'c> {
                     let hir::ExprKind::FieldGet { base, path } = &e.kind else {
                         unreachable!("field step on field expr")
                     };
-                    let Val::V(bv) = slots.remove(&base.0).expect("field base slot") else {
-                        unreachable!("base is a value");
-                    };
+                    let Val::V(bv) = slots.remove(&base.0).expect("field base slot");
                     let root = match self.body.exprs[base.0 as usize].ty {
                         hir::TypeUse::Ref(t) => t.0,
                         _ => 0,
@@ -1368,9 +1366,7 @@ impl<'c> FuncEmitter<'c> {
                     let hir::ExprKind::BorrowView { base } = &e.kind else {
                         unreachable!("borrow step on borrow expr")
                     };
-                    let Val::V(bv) = slots.remove(&base.0).expect("borrow base slot") else {
-                        unreachable!("base is a value");
-                    };
+                    let Val::V(bv) = slots.remove(&base.0).expect("borrow base slot");
                     // a view borrow passes the storage pointer through
                     slots.insert(id.0, Val::V(bv));
                 }

@@ -1,4 +1,5 @@
-// V-03 source leg: same-structure records are nominal — no interchange
+// V-03 source leg: same-structure records are nominal — a B value cannot
+// seed an A-typed field even with identical shapes
 type A {
     x int
     y int
@@ -7,9 +8,11 @@ type B {
     x int
     y int
 }
+type W {
+    inner A
+}
 fn main() int {
-    let a = A { x: 1, y: 2 }
-    let b = B { x: a.x, y: a.y }
-    if b.x != 1 { return 1 }
-    return 0
+    let b = B { x: 1, y: 2 }
+    let w = W { inner: b }
+    return w.inner.x
 }

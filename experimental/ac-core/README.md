@@ -19,6 +19,26 @@ verify(分域入口 `verify`/`verify_scalar`)、Checked、canonical writer 到
 构建收据全程随行;旧 core 域的接受/拒绝集合零改动。范围与验收见
 [docs/plans/767-ac-scalar-ops-short-circuit.md](../../docs/plans/767-ac-scalar-ops-short-circuit.md)。
 
+PLAN-771 再增**record profile** `auto.source.record.draft`(HIR 身份
+`auto.hir.record.draft / 1 / record-i32-draft`,774 interface-contract
+§7.2 冻结;descriptor `schema/record.atom`):名义 record 类型
+(`type Name { 字段 [;] ... static fn/fn 方法 }`,字段 i32/bool/嵌套
+record,前向引用合法、含图必须无环)、位置构造 `Pair(1, true)` 与命名
+构造 `Pair { left: 1, right: true }`(求值按**源码序**,绑定按字段名)、
+字段读写路径(`p.inner.left`、`p.left = v`)、`static fn`(如 `Pair.new`)
+与只读实例方法(`self`/前导 `.field`,receiver 视图借用且只求值一次)、
+显式 `mut` 自由函数参数(`fn f(mut r Pair)`,调用点 `f(p.mut)`)。
+HIR 增 `record_ctor`/`field_get`/`borrow_view`/`borrow_mut` 表达式、
+`field_path` place、`method` 声明与参数 `mode`;verify 前门执行名义
+类型、迭代含图环检测、构造完整性、逐段字段归属、借位模式与 per-call
+mut 排他(`verify.mut-conflict`/`verify.ownership-required`,774 D-04)。
+native 走 774 D-05 内部 ABI:字段声明序 4 对齐 size=Σ字段尺寸,ABI-D
+`*const` view / ABI-E `*mut` + out-slot 返回(无聚合 RAX/sret);record
+局部即存储指针,赋值=值拷贝;生产型表达式(构造/调用/字段读)带
+copy-elision 直写目标存储,嵌套构造链零临时槽。深输入预算:类型含图
+1024 层、字段路径 4096 段(V-09 PE 实证)。范围与验收见
+[docs/plans/771-ac-record-method-native.md](../../docs/plans/771-ac-record-method-native.md)。
+
 ## 流水线
 
 ```text
@@ -36,7 +56,7 @@ verify(分域入口 `verify`/`verify_scalar`)、Checked、canonical writer 到
   → Windows PE
 
 [源码模式:check-source/build-source,745/767]
-.at 源码 + 显式 --source-profile core|scalar
+.at 源码 + 显式 --source-profile core|scalar|record
   → source/lexer.rs     UTF-8/ASCII 标识符/行敏感 token(排除面 token 化)
   → source/parser.rs    语句型语法(core:+ <* <;scalar:||<&&<==!=<关系<+-<* / %
                         + 一元链右结合 + 条件 for;迭代优先级攀爬机)
