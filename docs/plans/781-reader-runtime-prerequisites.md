@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
-current_step: 1
+current_step: 2
 total_steps: 18
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -197,7 +197,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 - [x] T-09: owner_stage=work；依赖无；核对现有MCP/action/layout脚本、Reader事件树与split生命周期，新增docs/plans/reports/781-channel-decision.md（动作/帧identity/裁剪/门控/复用边界）；有界定位缺口，冻结新工具/参数形状。AC-07/AC-08/AC-09/AC-10。
   [✅ 2026-10-14] 决策报告落盘 [781-channel-decision.md](reports/781-channel-decision.md)：3 只读探查（MCP/几何面、Python 设施、Reader 结构）+ 2 处探查冲突源码裁决（`--server=vm -r vm`=仅服务端无窗口 automan.rs:1499-1523；MCP 默认开启 renderer.rs:19098）。冻结：启动形态 `auto run -r vm --no-merge -B <port>`（单进程 iced 前端+VM HTTP 后端线程）；身份三件套（pid↔端口+stderr 监听行+内容断言）；帧代数计数器合同；`autoui_scroll_state`/`autoui_visibility` 两只读工具形状（ScrollStateReader 补 viewport 原点+双键空间桥接——layout_collector.rs:80-89 弃 translation/content_bounds、scroll_state_reader.rs:82-86 丢 x/y、controller 键不带 vnode 前缀三缺口）；驱动 CLI/证据包/三态退出码；R1–R6 风险与 T-10/T-11 交接。worktree 建组 D:/autostack/.wt/lang-781/{auto-lang@plan-781-dev,auto-down}，base=master@6ff794eff；Reader @29b5dec 核对一致、树干净。
-- [ ] T-10: owner_stage=work；依赖T-09；复用test_vm_mcp.py client与owned进程设施，新增scripts/tools/test_native_reader_acceptance.py；支持split、严格实例身份、隔离库、就绪条件和raw证据；跑V-07/V-12，不依赖固定sleep假就绪。AC-07/AC-10。
+- [x] T-10: owner_stage=work；依赖T-09；复用test_vm_mcp.py client与owned进程设施，新增scripts/tools/test_native_reader_acceptance.py；支持split、严格实例身份、隔离库、就绪条件和raw证据；跑V-07/V-12，不依赖固定sleep假就绪。AC-07/AC-10。
+  [✅ 2026-10-14] 驱动落盘（worktree commit 7b0427e37），r1_smoke/v07_dual_instance/v12_window_start_fail/v12_backend_dead/v12_timeout 全 PASS（exit 0），v12_injected_fail 正确 exit 2。证据包 D:/p781-t10/out（manifest 含 6 实例 pid/端口/auto_bin sha256=auto 0.1.0+v0.5.0-362-g6ff794eff、reader_commit=29b5decf、reader_tracked_damage=[]、截图 hash；截图经图像核验含种子书 P781smoke-* 卡片）。R1 框架缺陷实锤并修复：legacy VM 轨的 __auto 控制面 /ready 恒 503 "starting" → rust_ui.rs::start_vm_server 的 probe Some(false) 跳过 TCP 兜底 → split 形态 120s 必死；修复后 1.1-1.6s 就绪。合同偏差以决策报告修订记录（/health→/__auto/health/live、author/force 必填、种子插入 backend-live 与窗口就绪之间、"owned 进程设施"按合同 §7 实现）。
 - [ ] T-11: owner_stage=work；依赖T-09；仅当现有API不足，在ui/mcp_server.rs/mcp_types.rs/iced布局collector补最小gated观测与生产事件动作覆盖；加入真实帧/clip/失效单测与V-10/V-11，正常产品默认不打开测试入口。若无Rust改动，记录复用证据。AC-09/AC-10。
 - [ ] T-12: owner_stage=work；依赖T-10/T-11；创建test/fixtures/native-reader-acceptance/（新），跑真实Reader导入/段落press/保存/冷启动的V-08/V-09；保留磁盘与MCP证据；consumer失败另外列出，不能驱动写终态替代。AC-08。
 - [ ] T-13: owner_stage=work；依赖T-12；完整V-07~V-13及required变异/失败传播、owned进程收尾验证；目标窗几何/截图人工核查，按触面跑相应门；V-13在阶段 B 未完成时用显式在pane外目标作负对照，不创建环依赖。AC-07/AC-08/AC-09/AC-10。
@@ -233,6 +234,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 编号处置：撤销尚未实施的原782/783草案文件，不作delivered或归档；历史通过799eac6fb追溯。当前active/archive最高编号781，next-id=782。后续782/783可能重新分配，历史材料必须以commit和原标题定位，不能把旧含义当新计划。
 
 2026-10-14 work（T-09）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=6ff794eff | code_commit=（未动 Rust，T-09 为调查/文档任务） | dependency_revisions=auto-down@c39ac7f（组内兄弟）、Reader@29b5dec 只读 | task_ids=T-09 | evidence=reports/781-channel-decision.md（通道合同冻结；复用边界含"owned 进程设施"假设修正） | blockers=无（R1 原生窗口 split 形态无先例、R2 坐标公式未钉死均已在合同中定处置） | next_responsible_role=work（T-10 驱动 / T-11 观测增量，可并行起步）
+
+2026-10-14 work（T-10）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=6ff794eff | code_commit=7b0427e37 | dependency_revisions=同上 | task_ids=T-10 | evidence=scripts/tools/test_native_reader_acceptance.py（694 行新增，含 ready-gate 修复）+ 证据包 D:/p781-t10/out（5 case PASS exit 0 / 注入 fail exit 2 / manifest 全身份字段 / 截图核验）+ 决策报告 §12 修订 r1（6 项勘定，含 R1 框架缺陷修复：auto-man rust_ui.rs start_vm_server） | blockers=无 | next_responsible_role=work（T-11 最小观测增量：frame 计数器、scroll_state 发布、autoui_scroll_state/autoui_visibility 两工具 + R2 坐标探针）
 
 ## 10. 待澄清事项
 

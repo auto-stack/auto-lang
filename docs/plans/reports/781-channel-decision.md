@@ -140,3 +140,14 @@ MCP 面现状：**无任何工具返回 pid/app 路径/数据目录**（18 工�
 1. T-10 按本文 §1/§2/§7/§8 实施（驱动 + V-07/V-12 骨架）；T-11 按本文 §4/§5 实施最小观测增量（frame 计数器、scroll_state 扩展发布、两新只读工具）；二者可并行起步，T-13 全量验收要求两者都已落地。
 2. T-11 动手前先跑 R1/R2 两个探针（smoke 形态 + 已知 offset fixture），探针结果回填本文 §5.3 坐标公式（以修订记录形式追加，不改合同结构）。
 3. 任何与本合同冲突的实现发现 → 停止接线，按 work 技能 adapt-or-route 表记录处置；不接受静默降标（如以字符占比/中心包含替代正面积交集）。
+
+## 12. 修订记录
+
+**2026-10-14 r1（T-10 实施期勘定，worktree commit 7b0427e37）**：
+
+1. **R1 结案（框架缺陷+修复）**：legacy VM 轨实际注册了 `__auto` 控制面，`/__auto/health/ready` 在 run 模式恒 503 `{"state":"starting"}`（ready 态翻转只在 service 面发生）——PLAN-736 注释"legacy 无 /__auto 路由→404"的假设不成立；`probe_service_ready` 返回 `Some(false)` 后 `continue` 跳过 TCP 兜底，`-r vm --no-merge` 形态 120s 必死。修复：`crates/auto-man/src/rust_ui.rs::start_vm_server` 的 Some(false) 不再短路 TCP 兜底（TCP 恢复为最终裁决）。vue+vm split（vue.rs 同函数）同病同治。修复后实测 1.1–1.6s 就绪。
+2. **就绪探针修正**：§8 的 `/health` 200 不可用（legacy VM 轨无 /health app 路由，404）；改为 `/__auto/health/live`（实测恒 200，live=transport 应答）。
+3. **导入请求形状**：`POST /api/library/import` 的 `author`/`force` 为必填（缺 author 实测 400 `missing param`）；响应体双重 JSON 编码（body 为 JSON 字符串），驱动已 unwrap。
+4. **种子时机**：书架不自动刷新（前端 Init 仅启动时 fetch 一次）——种子导入必须插在 backend-live 之后、MCP 窗口就绪之前（wait_backend 与 wait_mcp 两段之间），marker 才进首帧数据。
+5. **listening 行**：`AutoUI MCP: listening on` 确为 eprintln→stderr，但实测窗口形态下该行不一定及时出现在进程 stderr（ui_console 侧另有 [boot] 行）；身份断言以 §2.1 pid↔端口 netstat 核对为主，stderr 仅硬性检查 `fell back`/FATAL 两个违规标记。
+6. **v12_timeout 确定性**：热缓存下 backend 可 <2s live，超时案例改用 0 预算（唯一保证超时的取值）。
