@@ -1,4 +1,4 @@
-### Plan 773（2026-10-14，独立 final review R1）
+### Plan 773（2026-10-14，独立 final review R1 —— 已闭合）
 
 历史实现已合入，当前独立验收 **needs_fix / executing 1/10**。以下是合同内阻断，
 不是允许延期的完成项；正常 pilot 24/24 与协议测试 57/57 不抵消反例。
@@ -21,6 +21,14 @@
 
 修复保留原 21 case/24 check 和既有 fence/strict schema 绿项；在同一树提供闭合表、
 永久控制和新提交，再跑 §6 完整 final 门禁。未写 canonical Spec/ledger，未归档或清理。
+
+**2026-10-14 闭合**：修复轮 commit 39e2ecafd（rebase 后 fed5c7842，git range-diff
+等价）关闭 F-773-R1-01..11（闭合表见计划 §9）；R2 独立 final review pass，唯一
+minor 发现转下表债务。canonical Spec/ledger 已沉淀，plan 归档。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F-773-R2-01 | low / 债务（fail-safe） | a2r project 模式两入口（transpile_rust_project Phase 2、transpile_rust_project_merged）仍把 parse 错误包成无名 AutoError::Msg → classify=Infrastructure→ERROR：方向安全（永不假 PASS）但 project-mode 强错误 oracle 不可满足（pilot 21 case 无 project-mode 负例，AC-04 不变量保持成立）。处置：Design 35 B 阶段或独立 fix；彻底修复需带模块路径上下文的类型化变体，非纯机械删压平。锚点 crates/auto-lang/src/trans/rust.rs；来源 R2 复审（计划 §9）。 |
 
 
 ### P762（2026-10-11，图表 Init 批量 flake 分诊——helper 判据遗留面）
