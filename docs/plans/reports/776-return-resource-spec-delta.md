@@ -1,14 +1,14 @@
-# PLAN-776 拟议规范增量（SD-01..07，R6 终形）
+# PLAN-776 拟议规范增量（SD-01..07，R7 终形）
 
 > 供 review/merge 按实证沉淀（本次不修改 canonical Specs）。
 > 每条 SD：before（现行规则）→ after（本计划落地后的规则）→ 代码/测试证据。
-> **本稿为 R6 终形**（2026-10-14）：在 R5 终形之上按 F776-R6-01..04 修订
-> ——生产点包装**无条件**化（不依赖所在 fn 声明：旧 int 声明/int helper
-> 同保 SSE 来源）；future 驱动门=**return ~{} 血缘登记**（位模式撞活跃
-> fid 的普通数字不误驱动）；alias 目标**保结构**（Future<…> 实参）+
-> **visited 集**循环拒绝（合法深链不截断）；生成 JSON/bus SSE 真 TCP
-> oracle 建立。R5 冻结版见 attachments/776/review-r6/reviewed-spec-delta.md
->（SHA256 `AF212A9F…`）。
+> **本稿为 R7 终形**（2026-10-14）：在 R6 终形之上按 F776-R7-01..04 修订
+> ——Future 句柄改 **TAG_FUTURE 逐值载荷**（值自带来源：位模式撞值恒
+> 数据、helper 传递的真实 Future 天然可驱动——函数级登记全部退役）；
+> iterator natives **凭据感知全族**（map/filter/enumerate/collect/reduce/
+> find + 派生 iterator 身份凭据化）；SSE 早断连 churn 服务死锁分诊归
+> plan707（base 复现证据，P776-D4）；健康清理。R6 冻结版见
+> attachments/776/review-r7/reviewed-spec-delta.md（SHA256 `F9C084F0…`）。
 > 执行细节与门禁见 `776-return-resource-verification.md`；表示决策见
 > `776-return-resource-decision.md`（§2/§3 已按 R2/R5 终形修订）。
 > **修订史**：初稿（T-08，b4183e761）→ R1 修订（review-r1 冻结）→ R2
@@ -43,8 +43,11 @@
   （`call_fn_by_name_http`）与 musk `Sse.into_response`（Sse 堆对象 →
   `push_sse_resource`）同产凭据。**声明/表命中/数值全部不构成来源**——
   包装只挂在真实 generator 生产点上（`return 0` 仍数据，R2-01 反例
-  保持）；非 HTTP 消费兼容：for-in/iterator natives（`auto.iterator.next`）
-  凭据感知解包回 iterator id。Response/File/Upload 由构造点 push 凭据。
+  保持）；非 HTTP 消费兼容：iterator natives **凭据感知全族**
+  （`auto.iterator.next`/`map`/`filter`/`enumerate`/`collect`/`reduce`/
+  `find` 共享凭据感知弹栈——裸 id 与 Sse 凭据同底层数据；**派生
+  iterator 身份**：凭据源派生 id 同样包装凭据，下游继续可解）。Response/
+  File/Upload 由构造点 push 凭据。
 - **传播**：栈/globals/容器/closure captures/Future result 五载体身份保持
   （VmRef/TAG_OBJECT 双桥）；资源不可经数值转换获得。
 - **编组**：marshal 资源臂优先于一切 int 探测；Response=快照 clone（重复
@@ -78,13 +81,14 @@
   最前；generator/SSE 身份由 SD-01 生产点包装；upload/file「声明专属返回+
   值非凭据对象」→纯诊断门 mismatch 500（不触表）；**未声明专属返回的普通
   数值永远 JSON 数据**（R2 反例 `fn p() ~Iter { return 0 }` → JSON 0）。
-  **返回 async 块的 fn 可被驱动 Future**（R6-03 终形）：marshal future
-  探测门=**血缘登记**（`fn_is_api_async`：`~T` 声明 fn ∪ body 含
-  `return ~{}` 的 fn——codegen 按返回位登记 API_ASYNC_RETURNS）。
-  `fn p() ~Iter { return ~{ gen() } }` 的 Internal 体服务端驱动后按终值
-  分派；`let f = ~{…}; return 496` 的普通数字（位模式撞活跃 fid）不进
-  门——声明/低字节/注册表都不是逐值 Future 来源；future id 查无注册表
-  照旧落数据面。
+  **Future 句柄 = TAG_FUTURE 逐值载荷**（R7-01 终形，替代 R6 的函数级
+  血缘登记——声明/位模式/注册表/函数级标记都不是来源）：全部生产点
+  （CREATE_FUTURE 与 External creator）产 `encode_future(fid)` 载荷；
+  marshal 对 TAG_FUTURE 值直接驱动（无函数级门）——helper 传递的真实
+  Future 天然展开；普通 i32（含位模式撞活跃 fid 的 496，函数内有无
+  `return ~{}` 分支皆然）恒数据。legacy `(fid<<8)|0xF0` 位形态仅作
+  值经 `Value::Int` 载体往返（容器/闭包捕获）后的降级兼容臂（~T 声明
+  门内驱动，功能保留）；`future_all/race` 列表扫描同形兼容。
 - before §5（P734-D7）：6 wire 用例依赖查表命中制。
 - after §5：**P734-D7 关闭**——legacy 6 wire 用例 wire 行为不变由**真实
   生产点凭据**保持（redirect/musk ctor 8 族/Http.ok 五族/
@@ -127,8 +131,9 @@ plan705 19/19；R3 分诊负控制 1/1。
   helper/容器/闭包/Future 全载体传播）；`call_fn_by_name_http` generator
   dispatch 臂。marshal Sse 臂校验 iterators 注册表后走 `sse_iterator_reply`
   **单源**（与 legacy 命中臂共用 producer spawn/`produce_sse_frames`/cleanup
-  守卫——无第二输出循环）。非 HTTP 消费：`auto.iterator.next` 等迭代
-  natives 凭据感知解包（for-in 兼容）。
+  守卫——无第二输出循环）。非 HTTP 消费：迭代 natives 凭据感知**全族**
+  解包（next/map/filter/enumerate/collect/reduce/find + 派生身份凭据化，
+  for-in 兼容）。
 - 取消/背压/断连/半关闭合同不变（plan707/705 族绿；indirect generator
   形态恢复，SSE 族 4/4）。
 

@@ -301,3 +301,58 @@ tt/tu/taa 零触发（无 trans/ui_gen/aavm 面 diff）。
 
 tt/tu/taa 零触发。死代码清理：`fn_ret_declares_stream`（codegen）、
 `handler_declares_stream_return`（http_server——血缘门取代声明门后死亡）。
+
+---
+
+## R7 修复轮（2026-10-14，review-r7 needs_fix 后复修）
+
+代码提交：`5d4d29ab0`（10 文件 +531/−225；实现链 a142756c9..5fda97ceb 保留）。
+逐项闭合 F776-R7-01..04：
+
+- **F776-R7-01（P1）Future 句柄 TAG_FUTURE 逐值载荷**：nano_value 新增
+  tag 0xB（encode/is/decode_future）——全部生产点（CREATE_FUTURE +
+  stdlib External creator ×4）产 `encode_future(fid)`；marshal 对
+  TAG_FUTURE 值**无门驱动**（drive_future_reply 共享助手）。函数级登记
+  两代（R5 声明门 / R6 血缘登记）全部退役。oracle：F0/F1（496 恒数据，
+  含未执行 `return ~{}` 分支）+ F2（`future_helper()` 真实 Future → 42）。
+  值经 `Value::Int` 载体往返（容器元素/闭包捕获）时标签降级为 legacy
+  `(fid<<8)|0xF0` 位形态（decode_tagged_nv / native+interop nv_to_value /
+  CREATE_ARRAY 三处映射）——AWAIT/POLL/SPAWN_GO/`future_all`-`race` 列表
+  扫描经兼容臂保持功能（plan394 17/17）。
+- **F776-R7-02（P1）iterator natives 凭据感知全族**：共享
+  `pop_iterator_receiver`（TAG_OBJECT Sse 解包 + 裸 i32，**弹出槽清零**
+  对齐 pop_arg_nv 纪律——残留 TAG_OBJECT 被 R2-04 任务栈扫描误读 → 双
+  释放 → 底层 list 回收；**031 names 空列表回归由 th 揪出**，定位=collect
+  pop 未清零，修复后 031 单跑/全档绿）适配 map/filter/enumerate/collect/
+  reduce/find；**派生 iterator 身份**：凭据源派生 id 包装凭据
+  （push_derived_iterator）。oracle：`plan776_r7_iterator_credential_native_
+  family`（同一底层表项裸 id/凭据双载荷 enumerate 均有效 + 派生凭据经
+  next 可迭代——镜 R7 探针 native 模式）。
+- **F776-R7-03（P2）S3 有头无帧分诊**：判别实验复现并定性——rapid SSE
+  **早断连 churn**（首帧即弃连 ×10）下 ~33% 触发**服务级死锁**（新连接
+  accept 后零响应、普通路由探测 3s 无响应——观测形态两相：零字节或
+  200+chunked 头后零 chunk）；**base `5e21561d2`（776 之前，老查表
+  SSE）同款实验 2/6 复现同形**（判别 worktree：同端点 ×10 早断连）——
+  **预存缺陷**，归属 SSE 服务/断连清理/调度域（plan707 轨），登记
+  KNOWN-DEBT **P776-D4**。776 侧硬化：S3 oracle 改 **15s 有界**+失败时
+  附探测诊断（区分服务级死锁 vs 泵死）；marshal future 驱动的 task
+  try_lock 有界重试（100×2ms，防静默跳过驱动）。
+- **F776-R7-04（P3）**：`bare_type_name` 死代码移除；无断言
+  `plan776_dbg_db_transpile` 探针测试移除（证据在本文档 R6 节）；
+  本轮新增触面零 dead_code/doc 告警。
+
+门禁（实施树 `5d4d29ab0`）：
+
+| 门禁 | 结果 |
+|---|---|
+| `cargo check -p auto-lang` | 0 error；776 触面新增 warnings 0 |
+| 裸 `cargo t --no-fail-fast` | **5309/5309 全绿**（111.7s；一次 state_file concurrent_atomic 并行 flake 单跑绿——非本触面） |
+| `cargo tv` | 162/162 |
+| `cargo th -j 1 --no-fail-fast` | **131/132**；唯一红=back_proxy corpora（在册预存）；031 修复后全档绿 |
+| plan776 全族（`-j 1`） | **61/61**（58 项 R1-R6 复现 + R7 新增 3：F0/F1/F2 wire、iterator 族单测、S3 有界 oracle；一次族跑命中预存 P776-D4 楔子单测红——复跑全绿，在册预存 flake 形态） |
+| 生成真 TCP 矩阵 | **3/3**（File/Upload/JSON+busSSE） |
+| scoped | plan394 17/17、plan705 19/19、plan707 31/31、generator 10/10、plan326 40/40 |
+| rustfmt 触面 10 文件 | 干净 |
+
+tt/tu/taa 零触发。判别实验的临时 base worktree（lang-776-base 组）已
+清理（实验数据保留于本节文字）。
