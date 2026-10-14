@@ -180,6 +180,17 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 
 ## 8. 执行步骤
 
+> **R12 当前状态（2026-10-14，修复轮完成）**：F776-R11-01 剩余范围已补齐
+>（worktree `367f4b288`，仅测试文件）——四非 status setter 各补 **RC1 独占**
+> 与**错误 receiver** 两格（共 8 格，真实参数同款）：RC1 断言 setter 后恰
+> 返回槽一份、释放+reap 后堆条目回收且 live 回基线；错误 receiver 断言
+> Err 且外部份额保留恰一份。共享 settle 补**最后释放后的回收断言**（堆条目
+> 缺失 + live 回基线）；回收探测用直接 heap_objects DashMap 访问
+>（get_heap_object 对 tombstone id 正确触发 canary，测试不得经守卫 API
+> 触碰已释放 id）。plan776 66/66（一次族跑命中在册 P776-D4 楔子，复跑绿）、
+> 裸 t 5312/5312。T-07/T-08 闭合，**next: review（R13 定向复审）**。详见
+> [R12报告](reports/776-return-resource-review-r12.md)。
+
 > **R11 当前状态（2026-10-14，修复轮完成）**：F776-R11-01（P2，测试
 > 证据缺口）已修复（worktree `d0fa9e5e2`，仅测试文件）——五 setter oracle
 > 全真实调用：header（池化 key/value 字符串+正确 shim 栈序）、text/html
@@ -213,6 +224,7 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
   [R9 已修复] F776-R9-01：显式 release 撤除——guard Drop 即恰一次消费（RC2 共享 2→1 保全局份额，RC1 独占照旧回收）。
   [R10 已修复] F776-R10-01：R9 收敛推广到 Response 五 setter（撤 R2-03 显式 release——同型双释放，共享 RC2→0 全局 UAF；oracle=RC2 矩阵/RC1/链式/早退）。
   [R11 已修复] F776-R11-01：四 setter（header/text/html/bytes）补真实参数调用与终值断言（R10 提交内仅 status 真跑——fn-vec 未用）。
+  [R12 已修复] F776-R12：四 setter 各补 RC1 独占/错误 receiver 8 格 + settle 最后释放后的回收断言（R12 报告点名的剩余验收面）。
   [R5 已修复（5bdca42e4 轮）] F776-R5-01：生产点凭据化（codegen CREATE_GENERATOR 后包装+iterator natives 解包）——local/helper/容器/闭包/Future 全载体传播（http_e2e_r5 wire oracle）。
 - [x] **T-03：统一成功终值编组**（依赖 T-02；AC-01、AC-02、AC-03；SD-02、SD-04）
   `http_server.rs::marshal_handler_value/final_value_reply` 共用来源分派和 owned 回复构造；File/Upload 原执行器与 SSE producer 单源。验证：`cargo t plan776` 对照族；`cargo nextest run -p auto-lang --lib --features test-http-e2e plan776 --jobs 1` 碰撞/同步真 TCP 全绿，不新增另一套 SSE 输出循环。
@@ -258,6 +270,37 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 `cargo th` 为 nextest 滤串，串行参数使用 `-j 1`，不使用 libtest `--test-threads`。本次仅起草，不执行上述 Cargo 门禁。
 
 ## 9. 复审记录
+
+### R12 修复轮交接（2026-10-14，review-r12 needs_fix 后复修）
+
+- stage: work
+- plan_id: PLAN-776
+- plan_revision: 1
+- outcome: pass（work 自有面闭合；终判归 R13 定向复审）
+- worktree_path: D:/autostack/.wt/lang-776/auto-lang
+- branch: plan-776-dev
+- base_commit: d0fa9e5e2（R12 审查基线）
+- code_commit: 367f4b288（仅测试文件 +200；实现零改动）
+- dependency_revisions: 组内 auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8（detached、clean、未动）
+- task_ids: [T-07, T-08]（R12 重开两项已修复）
+- evidence: F776-R11-01 剩余 8 格——header/text/html/bytes 各补 RC1 独占（setter 后恰返回槽一份；释放+reap 后 heap_objects 直探条目缺失 + live 回基线）与错误 receiver（非凭据对象 → Err、外部份额保留恰一份；早退消费正确）；共享 settle 补最后全局份额释放后的回收断言（堆条目缺失 + live 回基线——R12 点名「只调 release/reap 没有回收断言」）；回收探测不经 get_heap_object（tombstone id 会正确触发 RC canary——测试不得经守卫 API 触碰已释放 id，事实注释在案）。门禁：plan776 **66/66**（一次族跑命中在册 P776-D4 楔子 flake，复跑全绿）、裸 t **5312/5312**、check 0 err、rustfmt 干净。
+- blockers: 无
+- next: review（R13 定向复审——五 setter × {RC2 共享, RC1 独占, 错误 receiver} 全矩阵 + 最终回收断言；spec-delta/decision R10 终形不变，verification 追加 R12 节后 SHA256=ae553a15465ebf5572123f4005f285ffd3d02c3bd0beccfc5ed524de015ec3d4）
+- 备注：P776-D3/D4 与 a2r `use api:` 阻塞（742 族）边界不变。
+
+### 最终独立复审 R12（2026-10-14，needs_fix）
+
+- stage: review；review_scope: final；reviewer_identity/limitations: 当前 Codex 延续R11独立审查上下文，未实施修复，无子agent/额外模型声明。
+- plan_id: PLAN-776；plan_revision: 1；outcome: needs_fix。
+- worktree_path: D:/autostack/.wt/lang-776/auto-lang；branch: plan-776-dev；reviewed_commit: d0fa9e5e2d0b50924698a01c591541f6e8744c8c；base_commit: 5e21561d2c303a02319ff7a29e4607933e09a38f；repair_diff_base: 38ad38abaf7d0fc40adacbb775d3f0258aaa53a7。
+- dependency_revisions: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，clean；实施树clean，结论前HEAD复核。
+- spec_inputs: attachments/776/review-r12/input-hashes.json；SD冻结副本 reviewed-spec-delta.md，SHA256=D5730778FA8EE21A005D6F934DBCD7C1BAFD49ED3B75EAA7B7548CC5E57D9CDB；canonical/decision/SD同R11。
+- acceptance_results: AC01/03/04/05/07/08复用R11已注明范围的pass；AC02/06生产pass、仓内回归partial；AC09 fail。
+- findings: F776-R11-01部分闭合（未调用的四setter已真实执行，共享RC2/终值断言通过）；余下四setter RC1与错误receiver共8格未写，shared settle末次release/reap无回收断言。未发现新生产缺陷。
+- evidence: reports/776-return-resource-review-r12.md；定向新测试1/1，0.212s，无timeout；format/diff-check通过。仅测试diff，生产/依赖/配置/旧probe输入未变，复用R11生产15格与原UAF/66专项/126守卫证据，不重复完整final周期。
+- pending_closeout_gates: final pass后merge-owned裸t/tv/HTTP及相关生成验证；tf主检出batch-only；Spec/ledger、归档与wt-guard pending，work提前整档结果不替代后置门禁。
+- next: work，同树补剩余8格与末次回收断言后提交、定向复审；T07/T08重开，current_step=6/8，T01..06及已证子项保留。不修生产实现/合入/归档/清树。
+
 
 ### R11 修复轮交接（2026-10-14，review-r11 needs_fix 后复修）
 

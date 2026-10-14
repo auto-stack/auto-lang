@@ -479,3 +479,27 @@ shared` 只真实调用了 status——其余四项躺在未使用的 fn-vec 里
 （一次 clipboard 并行 flake 单跑绿）；`cargo check -p auto-lang` 0 error；
 rustfmt 干净。spec-delta/decision/verification R10 终形稿不变（本轮仅
 测试证据，规则文本无改动）。
+
+
+---
+
+## R12 修复轮（2026-10-14，review-r12 needs_fix 后复修——测试矩阵补齐）
+
+代码提交：`367f4b288`（仅测试文件 +200；**实现零改动**）。闭合
+F776-R11-01 剩余范围（R12 报告点名的 8 格 + 回收断言）：
+
+- **8 格**：header/text/html/bytes 各补 **RC1 独占**（setter 后恰返回槽
+  一份——`heap_rc==Some(1)`；释放返回值 + reap 后 `heap_objects` 直探
+  条目缺失 + live 回本 VM 基线）与**错误 receiver**（非凭据 ListData →
+  setter Err、外部保留份额恒 Some(1)——早退恰一份消费），全部使用与共享
+  格同款的真实参数（池化 key/value 字符串、真实 body、ListData<i32>）。
+- **最终回收断言**：共享 settle 路径在最后全局份额释放 + reap 后断言
+  堆条目缺失与 live 回基线（此前只调 release/reap 无断言——R12 判词）。
+- **探测边界事实**：回收探测用 `vm.heap_objects.get(&h)` 直探——
+  `get_heap_object` 对 tombstone id 会正确触发 debug RC canary（其本职），
+  测试不得经守卫 API 触碰已释放 id（注释在案）。
+
+门禁（实施树 `367f4b288`）：plan776 全族 **66/66**（一次族跑命中在册
+P776-D4 SSE 楔子 flake——复跑全绿，属 R7 分诊在册预存形态）；裸
+`cargo t` **5312/5312**（107.7s）；`cargo check -p auto-lang` 0 error；
+rustfmt 干净。spec-delta/decision R10 终形稿不变（本轮仅测试证据）。
