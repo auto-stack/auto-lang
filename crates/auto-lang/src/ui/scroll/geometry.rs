@@ -38,6 +38,28 @@ pub fn progress(s: &ScrollAxisState) -> f64 {
     (clamp_offset(s, s.offset) / range).clamp(0.0, 1.0)
 }
 
+/// PLAN-781 T-01 冻结的 nearest 锚点定位（决策报告 §3）：
+/// 目标 content-space rect `(ty, h)` 对 pane 测量 `(offset, viewport_h)` 的
+/// 最小滚动——已正面积相交不动；高于视口顶对齐；底出底对齐；顶出顶对齐。
+/// clamp 沿 [`clamp_offset`]；target 坐标 NaN 的 total 行为 = 比较恒 false
+/// → 落「已相交不动」分支（保持当前 offset——坏测量不触发滚动）。
+pub fn nearest_child_offset(
+    s: &ScrollAxisState,
+    target_y: f64,
+    target_h: f64,
+) -> f64 {
+    let raw = if target_h > s.viewport_extent {
+        target_y
+    } else if target_y + target_h > s.offset + s.viewport_extent {
+        target_y + target_h - s.viewport_extent
+    } else if target_y < s.offset {
+        target_y
+    } else {
+        s.offset
+    };
+    clamp_offset(s, raw)
+}
+
 fn thumb_extent(viewport: f64, content: f64, rail_extent: f64, min_thumb_extent: f64) -> f64 {
     if rail_extent <= 0.0 || content <= 0.0 {
         return 0.0;
@@ -204,6 +226,24 @@ mod tests {
         let zero_content = state(0.0, 0.0, 0.0);
         assert_eq!(thumb_from_state(&zero_content, 160.0, 24.0).extent, 0.0);
         assert_eq!(progress(&zero_content), 0.0);
+    }
+
+    #[test]
+    fn plan781_nearest_three_branches_and_noop() {
+        // pane: viewport 200, content 1000, range 800。
+        let s = state(100.0, 200.0, 1000.0);
+        // 已相交（target 120..160 ⊆ 100..300）→ 不动。
+        assert_eq!(nearest_child_offset(&s, 120.0, 40.0), 100.0);
+        // 底出（target 500..540，底 540 > 300）→ 底对齐 540-200=340。
+        assert_eq!(nearest_child_offset(&s, 500.0, 40.0), 340.0);
+        // 顶出（target 20..60，顶 20 < 100）→ 顶对齐 20。
+        assert_eq!(nearest_child_offset(&s, 20.0, 40.0), 20.0);
+        // 高于视口（h=300 > 200）→ 顶对齐。
+        assert_eq!(nearest_child_offset(&s, 600.0, 300.0), 600.0);
+        // clamp：底部目标越界 → range 800。
+        assert_eq!(nearest_child_offset(&s, 990.0, 40.0), 800.0);
+        // target NaN → 比较恒 false → 不动（保持 offset=100）。
+        assert_eq!(nearest_child_offset(&s, f64::NAN, 40.0), 100.0);
     }
 
     #[test]

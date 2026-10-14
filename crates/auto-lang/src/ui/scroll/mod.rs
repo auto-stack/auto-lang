@@ -12,6 +12,12 @@
 //! 刻意不落地的类型：`ScrollAnchor`（无真实 consumer 前不固定 `ItemKey` 抽象，
 //! Phase D/E 再设计）与 core 级 `ScrollControllerId`（controller 是 logical
 //! handle，binding id 属 runtime 私有类型）。
+//!
+//! PLAN-781 T-01 更新（2026-10-14）：子内容锚点已按 [781 接口决策]
+//! (../../plans/reports/781-interface-decision.md) 落地——锚点 key 为业务
+//! 字符串（DSL `scroll-anchor`），不引入 `ItemKey` 泛型抽象；请求队列与
+//! nearest 解析在 `controller.rs`（runtime 私有层），纯几何在 `geometry.rs`
+//! `nearest_child_offset`。core 语义层仍不引入 anchor 类型。
 
 pub mod controller;
 pub mod geometry;

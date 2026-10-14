@@ -544,6 +544,11 @@ macro_rules! for_each_native {
             (9903, NATIVE_SCROLL_BY, shim_scroll_by, "auto.scroll.by"),
             (9904, NATIVE_SCROLL_TO, shim_scroll_to, "auto.scroll.to"),
             (9905, NATIVE_SCROLL_STATE, shim_scroll_state, "auto.scroll.state"),
+            // === PLAN-781 阶段B: 子内容锚点族（T-01 冻结；id 实勘 9906–9921
+            // 全占（code_editor/Env.track/diff/frame/ui.focus），9922/9923 空闲、
+            // 下一占用 9930 http.transfer——沿 9900+ 高段续段纪律）===
+            (9922, NATIVE_SCROLL_TO_CHILD, shim_scroll_to_child, "auto.scroll.to_child"),
+            (9923, NATIVE_SCROLL_ANCHOR_STATE, shim_scroll_anchor_state, "auto.scroll.anchor_state"),
             // 014 直键入:terminal 键入队列 → 引擎裸写(键盘直键入泵)。
             (2957, NATIVE_TERM_ENGINE_PUMP_INPUT, shim_term_pump_input, "auto.term.engine_pump_input"),
             // 014:几何随动 + 光标格(apply_resize 取注册表待定几何;

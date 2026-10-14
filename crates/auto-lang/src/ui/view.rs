@@ -637,6 +637,15 @@ pub enum View<M: Clone + Debug> {
     /// VM 轨专用（autodown_render 构造；vue 生成器不产生此变体）。
     AnchorSlot { index: u64, child: Box<View<M>> },
 
+    /// PLAN-781 T-01: 子内容锚点标记（决策报告 781-interface-decision §4）。
+    /// DSL `scroll-anchor: "<key>"` → builder 包装子树；零布局（layout/draw
+    /// 委托子件）。iced 轨由 renderer 以合成 id `scrollanchor:{key}` 在
+    /// operate 期上报最终位置 bounds；vue 轨 → `data-scroll-anchor` attr。
+    ScrollAnchorMark {
+        key: std::sync::Arc<str>,
+        child: Box<View<M>>,
+    },
+
     /// Text display with optional styling
     Text {
         content: String,
@@ -2434,6 +2443,10 @@ impl<M: Clone + Debug> View<M> {
             // PLAN-063 T-04d-2: 锚槽递归映射 child（index 不变）。
             View::AnchorSlot { index, child } => View::AnchorSlot {
                 index,
+                child: Box::new(child.map_msg_with_arc(f)),
+            },
+            View::ScrollAnchorMark { key, child } => View::ScrollAnchorMark {
+                key,
                 child: Box::new(child.map_msg_with_arc(f)),
             },
             // Plan 484: MouseArea 递归映射 content + enter/exit 消息。

@@ -54,6 +54,8 @@ pub struct ControllerPaneSnapshot {
     /// 「滚动期间快照滞后/夹取竞态」的 stale 值强行 scroll_to 回去——
     /// auto-edit diff 视图大幅滚轮后滚动条来回抖动的格斗源。
     pub offset_from_measure: bool,
+    /// PLAN-781 T-01：managed content pane 标记（to_child 显式 unsupported）。
+    pub managed: bool,
 }
 
 impl ControllerPaneSnapshot {
@@ -82,6 +84,11 @@ struct ControllerRegistry {
     /// PLAN-656 F-4：新绑定 handle 的测量预热请求（update 期取走 → 推
     /// ScrollStateReader 读回操作补首用基线）。
     prime_requests: Vec<String>,
+    /// PLAN-781 T-01：pane 绑定代际——bind_controller 检测到换绑（widget_id
+    /// 变化）时 +1；锚点请求携带入队时代际，代际不符 → invalid:not_bound。
+    generations: HashMap<String, u64>,
+    /// PLAN-781 T-01：锚点请求表（(handle, key) 寻址，后写覆盖重新 pending）。
+    anchor_requests: HashMap<(String, String), AnchorRequest>,
 }
 
 lazy_static::lazy_static! {
@@ -89,19 +96,185 @@ lazy_static::lazy_static! {
         panes: HashMap::new(),
         intents: Vec::new(),
         prime_requests: Vec::new(),
+        generations: HashMap::new(),
+        anchor_requests: HashMap::new(),
     });
+}
+
+/// PLAN-781 T-01 冻结的锚点请求状态（`auto.scroll.anchor_state` 查询面）。
+#[derive(Debug, Clone, PartialEq)]
+pub enum AnchorRequestState {
+    Pending,
+    Applied,
+    /// reason ∈ `not_found` / `not_bound` / `unsupported` / `unmeasured`。
+    Invalid(String),
+}
+
+/// PLAN-781 T-01：一条锚点请求（(handle, key) 寻址）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct AnchorRequest {
+    pub generation: u64,
+    pub state: AnchorRequestState,
 }
 
 /// pane build 期绑定：handle → 稳定 widget id（renderer 在 build_scrollable
 /// 有 controller 时调用；绑定早于首次测量，snapshot 其余字段为零）。
+/// PLAN-781 T-01：换绑（widget_id 变化）时绑定代际 +1。
 pub fn bind_controller(handle: &str, widget_id: &str) {
     let mut reg = REGISTRY.lock().unwrap();
     // 新绑定或换绑：请求一次测量预热（稳定句柄重建不重复请求）。
     if reg.panes.get(handle).map(|s| s.widget_id.as_str()) != Some(widget_id) {
         reg.prime_requests.push(handle.to_string());
+        let g = reg.generations.entry(handle.to_string()).or_insert(0);
+        *g += 1;
     }
     let entry = reg.panes.entry(handle.to_string()).or_default();
     entry.widget_id = widget_id.to_string();
+}
+
+/// PLAN-781 T-01：pane 绑定代际读取（renderer drain 侧对照请求代际用）。
+pub fn controller_generation(handle: &str) -> u64 {
+    REGISTRY
+        .lock()
+        .unwrap()
+        .generations
+        .get(handle)
+        .copied()
+        .unwrap_or(0)
+}
+
+/// PLAN-781 T-01：managed pane 标记（renderer managed 桥 build 期调用）。
+pub fn mark_controller_managed(handle: &str) {
+    let mut reg = REGISTRY.lock().unwrap();
+    if let Some(entry) = reg.panes.get_mut(handle) {
+        entry.managed = true;
+    }
+}
+
+/// PLAN-781 T-01 冻结：`auto.scroll.to_child(handle, key)` 入队面。
+/// 回执错误 reason：`bad_handle` / `empty_key` / `unsupported`。
+/// 入队成功 → 请求置 pending（同 (handle,key) 后写覆盖重新 pending）。
+pub fn enqueue_anchor_request(handle: &str, key: &str) -> Result<(), &'static str> {
+    if !is_controller_handle(handle) {
+        return Err("bad_handle");
+    }
+    if key.is_empty() {
+        return Err("empty_key");
+    }
+    let mut reg = REGISTRY.lock().unwrap();
+    if let Some(snap) = reg.panes.get(handle) {
+        if snap.managed {
+            return Err("unsupported");
+        }
+    }
+    // handle 尚未绑定（pane 未 build）允许入队——pending 等待绑定/预热；
+    // 解析期按 not_bound/未预热语义处置（§2 状态机）。
+    let generation = reg.generations.get(handle).copied().unwrap_or(0);
+    reg.anchor_requests.insert(
+        (handle.to_string(), key.to_string()),
+        AnchorRequest {
+            generation,
+            state: AnchorRequestState::Pending,
+        },
+    );
+    Ok(())
+}
+
+/// PLAN-781 T-01 冻结：`auto.scroll.anchor_state(handle, key)` 查询面。
+pub fn anchor_request_state(handle: &str, key: &str) -> Option<AnchorRequestState> {
+    REGISTRY
+        .lock()
+        .unwrap()
+        .anchor_requests
+        .get(&(handle.to_string(), key.to_string()))
+        .map(|r| r.state.clone())
+}
+
+/// PLAN-781 T-02：drain 期锚点解析（renderer 调用；决策报告 §2/§3 状态机）。
+/// `anchor_bounds` = 当帧采集的 key → pane content-space rect `(y, h)`
+///（AnchorBoundsCollector 产物）；`collected` = 本帧采集器确实跑过
+///（false = 无采集帧，pending 保持，不作 not_found 判定）。
+/// 返回 (handle, widget_id, x, y) 终态 offset（并入既有 finals scroll_to
+/// 通路）；applied/invalid 状态就地回写。未预热 pane 的请求保持 pending
+///（沿 F-4 晚一拍纪律）。
+pub fn resolve_anchor_requests(
+    anchor_bounds: &HashMap<String, (f64, f64)>,
+    collected: bool,
+) -> Vec<(String, String, f64, f64)> {
+    let mut reg = REGISTRY.lock().unwrap();
+    let requests: Vec<(String, String)> = reg
+        .anchor_requests
+        .iter()
+        .filter(|(_, r)| r.state == AnchorRequestState::Pending)
+        .map(|((h, k), _)| (h.clone(), k.clone()))
+        .collect();
+    let mut finals: Vec<(String, String, f64, f64)> = Vec::new();
+    for (handle, key) in requests {
+        let Some(snapshot) = reg.panes.get(&handle) else {
+            // 无绑定记录 → not_bound（一次性失败）。
+            if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
+                req.state = AnchorRequestState::Invalid("not_bound".into());
+            }
+            continue;
+        };
+        if snapshot.widget_id.is_empty() {
+            if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
+                req.state = AnchorRequestState::Invalid("not_bound".into());
+            }
+            continue;
+        }
+        // 代际不符（入队后换绑）→ not_bound：旧请求不落到新内容。
+        let current_gen = reg.generations.get(&handle).copied().unwrap_or(0);
+        let req_gen = reg
+            .anchor_requests
+            .get(&(handle.clone(), key.clone()))
+            .map(|r| r.generation)
+            .unwrap_or(u64::MAX);
+        if req_gen != current_gen {
+            if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
+                req.state = AnchorRequestState::Invalid("not_bound".into());
+            }
+            continue;
+        }
+        if snapshot.managed {
+            if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
+                req.state = AnchorRequestState::Invalid("unsupported".into());
+            }
+            continue;
+        }
+        // 未预热（无测量基线）→ 保持 pending 晚一拍（F-4 纪律）。
+        if !snapshot_primed(snapshot) {
+            if !reg.prime_requests.contains(&handle) {
+                reg.prime_requests.push(handle.clone());
+            }
+            continue;
+        }
+        // 无当帧采集 → 保持 pending（布局时序，非失败）。
+        if !collected {
+            continue;
+        }
+        let Some(&(ty, th)) = anchor_bounds.get(&key) else {
+            if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
+                req.state = AnchorRequestState::Invalid("not_found".into());
+            }
+            continue;
+        };
+        // nearest（决策报告 §3 冻结公式）——x 轴不动（v1 单轴 Y）。
+        let y_axis = snapshot.to_scroll_state().y.unwrap_or(crate::ui::scroll::state::ScrollAxisState {
+            offset: 0.0,
+            viewport_extent: 0.0,
+            content_extent: 0.0,
+        });
+        let nearest_y =
+            crate::ui::scroll::geometry::nearest_child_offset(&y_axis, ty, th);
+        let x = snapshot.offset_x;
+        let widget_id = snapshot.widget_id.clone();
+        if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
+            req.state = AnchorRequestState::Applied;
+        }
+        finals.push((handle.clone(), widget_id, x, nearest_y));
+    }
+    finals
 }
 
 /// 读出臂测量更新（on_scroll 事件携带的六测量写入快照）。
@@ -261,13 +434,15 @@ pub fn pending_intent_count() -> usize {
     REGISTRY.lock().unwrap().intents.len()
 }
 
-/// 测试面：清空注册表（测试隔离用）。
-#[cfg(test)]
-pub fn reset_for_test() {
-    let mut reg = REGISTRY.lock().unwrap();
-    reg.panes.clear();
-    reg.intents.clear();
-}
+    /// 测试面：清空注册表（测试隔离用）。
+    #[cfg(test)]
+    pub fn reset_for_test() {
+        let mut reg = REGISTRY.lock().unwrap();
+        reg.panes.clear();
+        reg.intents.clear();
+        reg.generations.clear();
+        reg.anchor_requests.clear();
+    }
 
 #[cfg(test)]
 mod tests {
@@ -370,6 +545,118 @@ mod tests {
         );
         let (drained, _) = drain_resolved_intents();
         assert!(drained.is_empty());
+        reset_for_test();
+    }
+
+    // ---------------- PLAN-781 T-02: 锚点请求生命周期 ----------------
+
+    fn assert_state(handle: &str, key: &str, expected: AnchorRequestState) {
+        assert_eq!(anchor_request_state(handle, key).as_ref(), Some(&expected),
+                   "state mismatch for {handle}/{key}");
+    }
+
+    #[test]
+    fn plan781_anchor_enqueue_validation() {
+        reset_for_test();
+        // 非法 handle / 空 key。
+        assert_eq!(enqueue_anchor_request("nope", "k"), Err("bad_handle"));
+        assert_eq!(enqueue_anchor_request("@scrollctl:1", ""), Err("empty_key"));
+        // managed pane → unsupported（入队即拒）。
+        let h = next_controller_handle();
+        bind_controller(&h, "pane_m");
+        mark_controller_managed(&h);
+        assert_eq!(enqueue_anchor_request(&h, "k"), Err("unsupported"));
+        reset_for_test();
+    }
+
+    #[test]
+    fn plan781_anchor_pending_then_applied_with_nearest() {
+        reset_for_test();
+        let h = next_controller_handle();
+        bind_controller(&h, "pane_a"); // gen=1
+        take_prime_requests();
+        note_controller_state(&h, (0.0, 100.0), (400.0, 200.0), (800.0, 1000.0));
+        enqueue_anchor_request(&h, "p50").unwrap();
+        assert_state(&h, "p50", AnchorRequestState::Pending);
+        // 无采集帧 → pending 保持。
+        assert!(resolve_anchor_requests(&HashMap::new(), false).is_empty());
+        assert_state(&h, "p50", AnchorRequestState::Pending);
+        // 当帧采集：p50 位于 content y=500..540（底出：540 > 100+200）→
+        // 底对齐 offset = 540-200 = 340。
+        let bounds = HashMap::from([("p50".to_string(), (500.0_f64, 40.0_f64))]);
+        let finals = resolve_anchor_requests(&bounds, true);
+        assert_eq!(finals.len(), 1);
+        assert_eq!(finals[0].1, "pane_a");
+        assert_eq!(finals[0].2, 0.0); // x 不动
+        assert_eq!(finals[0].3, 340.0);
+        assert_state(&h, "p50", AnchorRequestState::Applied);
+        // 已消费：再次 drain 无产出（不驻留拉回）。
+        assert!(resolve_anchor_requests(&bounds, true).is_empty());
+        reset_for_test();
+    }
+
+    #[test]
+    fn plan781_anchor_unprimed_stays_pending_then_not_found() {
+        reset_for_test();
+        let h = next_controller_handle();
+        bind_controller(&h, "pane_b");
+        take_prime_requests();
+        // 未预热（无测量）：pending 晚一拍 + 进 prime 名单。
+        enqueue_anchor_request(&h, "ghost").unwrap();
+        assert!(resolve_anchor_requests(&HashMap::new(), true).is_empty());
+        assert_state(&h, "ghost", AnchorRequestState::Pending);
+        assert!(take_prime_requests().contains(&h));
+        // 预热后 key 不在当帧注册表 → not_found（一次性，不重试）。
+        note_controller_state(&h, (0.0, 0.0), (400.0, 200.0), (800.0, 1000.0));
+        assert!(resolve_anchor_requests(&HashMap::new(), true).is_empty());
+        assert_state(&h, "ghost", AnchorRequestState::Invalid("not_found".into()));
+        assert!(resolve_anchor_requests(&HashMap::new(), true).is_empty());
+        reset_for_test();
+    }
+
+    #[test]
+    fn plan781_anchor_rebind_generation_invalidates() {
+        reset_for_test();
+        let h = next_controller_handle();
+        bind_controller(&h, "pane_c1"); // gen=1
+        take_prime_requests();
+        note_controller_state(&h, (0.0, 100.0), (400.0, 200.0), (800.0, 1000.0));
+        enqueue_anchor_request(&h, "p10").unwrap();
+        // 换绑（换章/重建到新 widget id）→ generation=2。
+        bind_controller(&h, "pane_c2");
+        take_prime_requests();
+        note_controller_state(&h, (0.0, 0.0), (400.0, 200.0), (800.0, 1000.0));
+        let bounds = HashMap::from([("p10".to_string(), (50.0_f64, 40.0_f64))]);
+        let finals = resolve_anchor_requests(&bounds, true);
+        assert!(finals.is_empty(), "stale request must not land on new content");
+        assert_state(&h, "p10", AnchorRequestState::Invalid("not_bound".into()));
+        // 重新入队（新代际）正常解析。
+        enqueue_anchor_request(&h, "p10").unwrap();
+        let finals = resolve_anchor_requests(&bounds, true);
+        assert_eq!(finals.len(), 1);
+        assert_eq!(finals[0].1, "pane_c2");
+        assert_state(&h, "p10", AnchorRequestState::Applied);
+        reset_for_test();
+    }
+
+    #[test]
+    fn plan781_anchor_reequeue_supersedes() {
+        reset_for_test();
+        let h = next_controller_handle();
+        bind_controller(&h, "pane_d");
+        take_prime_requests();
+        note_controller_state(&h, (0.0, 100.0), (400.0, 200.0), (800.0, 1000.0));
+        let bounds = HashMap::from([("p30".to_string(), (900.0_f64, 40.0_f64))]);
+        enqueue_anchor_request(&h, "p30").unwrap();
+        let _ = resolve_anchor_requests(&bounds, true);
+        assert_state(&h, "p30", AnchorRequestState::Applied);
+        // 重复入队 → 覆盖重新 pending（用户重定位语义）。
+        enqueue_anchor_request(&h, "p30").unwrap();
+        assert_state(&h, "p30", AnchorRequestState::Pending);
+        let _ = resolve_anchor_requests(&bounds, true);
+        assert_state(&h, "p30", AnchorRequestState::Applied);
+        // 无记录 → unknown（anchor_state 查询语义）。
+        assert_eq!(anchor_request_state(&h, "none"), None);
         reset_for_test();
     }
 }

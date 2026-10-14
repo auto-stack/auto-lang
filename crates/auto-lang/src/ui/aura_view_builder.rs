@@ -2200,7 +2200,25 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+    /// PLAN-781 T-01：tracked 入口同款锚点包装（D-GAP 镜像纪律）。
     fn convert_element_tracked_ctx(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        path: &mut Vec<usize>,
+        id_map: &mut DebugIdMap,
+        probe: &mut BuildProbe,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let view = self.convert_element_tracked_ctx_inner(
+            tag, props, events, children, path, id_map, probe, bindings,
+        );
+        self.maybe_wrap_scroll_anchor(view, props, bindings)
+    }
+
+    fn convert_element_tracked_ctx_inner(
         &self,
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
@@ -4641,7 +4659,47 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
+
+    /// PLAN-781 T-01：`scroll-anchor: "<key>"` → 零布局锚点包装。
+    /// 空 key/类型不可解析 = stderr 告警 + 原样返回（不失效页面）。
+    fn maybe_wrap_scroll_anchor(
+        &self,
+        view: View<DynamicMessage>,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        if !props.contains_key("scroll-anchor") {
+            return view;
+        }
+        let key = self.extract_string_with(props, "scroll-anchor", bindings);
+        match key {
+            Some(k) if !k.is_empty() => View::ScrollAnchorMark {
+                key: std::sync::Arc::from(k.as_str()),
+                child: Box::new(view),
+            },
+            _ => {
+                eprintln!("scroll-anchor: empty or unresolvable key ignored");
+                view
+            }
+        }
+    }
+
+    /// PLAN-781 T-01：scroll-anchor 属性包装面（决策报告 §4）——薄入口，
+    /// 实际分派在 [`Self::convert_element_inner`]。非空 key → 零布局
+    /// `View::ScrollAnchorMark` 包装；空/类型错 = stderr 告警不包装。
     fn convert_element(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+        events: &HashMap<String, AuraEvent>,
+        children: &[AuraNode],
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let view = self.convert_element_inner(tag, props, events, children, bindings);
+        self.maybe_wrap_scroll_anchor(view, props, bindings)
+    }
+
+    fn convert_element_inner(
         &self,
         tag: &str,
         props: &HashMap<String, AuraPropValue>,
@@ -23627,6 +23685,41 @@ mod plan534_side_panel_tests {
         let dc = crate::build_dynamic_component(src, None).expect("build component");
         let (view, _, _) = dc.view_with_debug_gated(false);
         view
+    }
+
+    /// PLAN-781 T-01：`scroll-anchor` 属性 → 零布局 `View::ScrollAnchorMark`
+    /// 包装（key 透传）；无属性不包装。
+    #[test]
+    fn plan781_scroll_anchor_wraps_child() {
+        fn find_anchor(view: &View<DynamicMessage>) -> Vec<String> {
+            let mut out = Vec::new();
+            match view {
+                View::ScrollAnchorMark { key, child } => {
+                    out.push(key.to_string());
+                    out.extend(find_anchor(child));
+                }
+                View::Row { children, .. } | View::Column { children, .. } => {
+                    for c in children {
+                        out.extend(find_anchor(c));
+                    }
+                }
+                View::Container { child, .. } | View::Scrollable { child, .. } => {
+                    out.extend(find_anchor(child))
+                }
+                _ => {}
+            }
+            out
+        }
+        let anchored = build_view(
+            "widget T { view { col { scroll-pane (controller: \"p1\") { col { scroll-anchor: \"p40\"; text \"row\" {} } } } } }",
+        );
+        let keys = find_anchor(&anchored);
+        assert_eq!(keys, vec!["p40".to_string()], "anchored child wrapped once");
+
+        let plain = build_view(
+            "widget T { view { col { scroll-pane { col { text \"row\" {} } } } } }",
+        );
+        assert!(find_anchor(&plain).is_empty(), "no attr -> no wrapper");
     }
 
     /// PLAN-617 后续：`progress` 的 `onseek` 在 VM 侧的锚点——

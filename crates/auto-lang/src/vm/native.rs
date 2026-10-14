@@ -2409,6 +2409,40 @@ pub fn shim_scroll_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     Ok(())
 }
 
+/// PLAN-781 T-01 冻结：`to_child(handle, key) -> str`——锚点定位请求入队
+/// 回执（非完成证明）。返回 "queued" / "error:<reason>"（bad_handle /
+/// empty_key / unsupported）。args 压序 handle,key → 弹序 key,handle。
+#[cfg(feature = "ui")]
+pub fn shim_scroll_to_child(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
+    let handle = pop_string_arg(task, vm);
+    let reply = match crate::ui::scroll::controller::enqueue_anchor_request(&handle, &key) {
+        Ok(()) => "queued".to_string(),
+        Err(reason) => format!("error:{reason}"),
+    };
+    let idx = vm.add_string(reply.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// PLAN-781 T-01 冻结：`anchor_state(handle, key) -> str`——请求状态查询。
+/// "pending" / "applied" / "invalid:<reason>" / "unknown"。
+#[cfg(feature = "ui")]
+pub fn shim_scroll_anchor_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::ui::scroll::controller::AnchorRequestState;
+    let key = pop_string_arg(task, vm);
+    let handle = pop_string_arg(task, vm);
+    let reply = match crate::ui::scroll::controller::anchor_request_state(&handle, &key) {
+        Some(AnchorRequestState::Pending) => "pending".to_string(),
+        Some(AnchorRequestState::Applied) => "applied".to_string(),
+        Some(AnchorRequestState::Invalid(reason)) => format!("invalid:{reason}"),
+        None => "unknown".to_string(),
+    };
+    let idx = vm.add_string(reply.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
 // ── PLAN-656: scroll controller natives 降级臂（feature 无 ui 时队列层
 // 不存在；弹实参保栈纪律 + 默认值——dnd_start 降级先例）──────────────────
 #[cfg(not(feature = "ui"))]
@@ -2465,6 +2499,25 @@ pub fn shim_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_scroll_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let _ = pop_string_arg(task, vm);
     task.ram.push_f64(0.0);
+    Ok(())
+}
+
+// PLAN-781 T-01：锚点族降级臂（无 ui 队列层不存在；弹实参保栈纪律）。
+#[cfg(not(feature = "ui"))]
+pub fn shim_scroll_to_child(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = pop_string_arg(task, vm);
+    let _ = pop_string_arg(task, vm);
+    let idx = vm.add_string(b"error:unsupported".to_vec());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+#[cfg(not(feature = "ui"))]
+pub fn shim_scroll_anchor_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _ = pop_string_arg(task, vm);
+    let _ = pop_string_arg(task, vm);
+    let idx = vm.add_string(b"unknown".to_vec());
+    vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 

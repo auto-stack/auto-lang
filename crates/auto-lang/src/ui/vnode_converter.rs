@@ -127,6 +127,12 @@ where
         return convert_view_to_vnode_with_path(child, parent_id, path, tree, span_for);
     }
 
+    // PLAN-781 T-01: 锚点标记同样透传（快照寻址与无包装一致；锚点归属
+    // 由 renderer 侧合成 id 承载，不进 vtree）。
+    if let View::ScrollAnchorMark { child, .. } = view {
+        return convert_view_to_vnode_with_path(child, parent_id, path, tree, span_for);
+    }
+
     let id = VNodeId::new(id_from_path(path));
     let (kind, props) = extract_kind_and_props(view);
 
@@ -231,6 +237,8 @@ where
         // PLAN-063 T-04d-2: 锚槽在 convert_view_to_vnode* 入口已透传子件，
         // 此臂不可达（穷尽性兜底）；保持 Empty 形态以防绕行调用面。
         View::AnchorSlot { .. } => (VNodeKind::Text, VNodeProps::Empty),
+        // 透传层的防御臂（上游 if-let 已拦截；直达时按子件归类）。
+        View::ScrollAnchorMark { child, .. } => extract_kind_and_props(child),
         // Plan 484: MouseArea 命中区对 VNode 检视层不可见(事件转发原语,
         // 无内容语义),同 Overlay 降级 Text/Empty。
         // PLAN-089(T-07① 根修): 改 Container 形态——content 子树入 vtree

@@ -4534,6 +4534,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     child: el,
                 })
             }
+            // PLAN-781 T-02: 锚点标记 → 透传构建（零布局零行为占位；
+            // T-03 升级为 operate 期上报 bounds 的 wrapper widget）。
+            AbstractView::ScrollAnchorMark { child, .. } => child.into_iced(),
             AbstractView::Empty => {
                 // Plan 370 (Issue 1): render Empty as a zero-height Space
                 // instead of text(""). A text("") still reserves one line of
@@ -9292,6 +9295,12 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // 右栏整体消失，本计划实测）。
         AbstractView::AnchorSlot { index, child } => AbstractView::AnchorSlot {
             index,
+            child: Box::new(convert_view_messages(*child)),
+        },
+
+        // PLAN-781 T-01: 锚点标记递归转换 child（同锚槽纪律）。
+        AbstractView::ScrollAnchorMark { key, child } => AbstractView::ScrollAnchorMark {
+            key,
             child: Box::new(convert_view_messages(*child)),
         },
 
@@ -29392,6 +29401,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::Overlay { .. } => None,
         // PLAN-063 T-04d-2: 锚槽无自有样式，读子件。
         AbstractView::AnchorSlot { child, .. } => extract_view_style(child),
+        AbstractView::ScrollAnchorMark { child, .. } => extract_view_style(child),
         // F-UAT-2: Rich 自带 style（段落级 base 尺寸/色）。
         AbstractView::Rich { style, .. } => style.as_ref(),
         // Plan 422: Popover 的 chrome 在 content 上(anchor 各自带)。
@@ -29512,6 +29522,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Custom { .. } => "custom",
         AbstractView::Overlay { .. } => "overlay",
         AbstractView::AnchorSlot { .. } => "anchor_slot",
+        AbstractView::ScrollAnchorMark { .. } => "scroll_anchor",
         AbstractView::Popover { .. } => "popover",
         AbstractView::MouseArea { .. } => "mouse_area",
         AbstractView::Canvas { .. } => "canvas",
