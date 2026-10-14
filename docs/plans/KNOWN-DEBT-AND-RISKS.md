@@ -1200,3 +1200,10 @@ F-R1-01原例闭合但全值语义不变量尚未闭合。22步门禁与199项�
 
 [报告/冻结输入/hash/重放](attachments/771/review-r2/REVIEW.md)。计划executing3/9，T04..07重开；
 两次final non-pass后下次交接先提供不变量诊断与覆盖调整。canonical/ledger未发布，未合入归档清理。
+### Plan 781（2026-10-15，阶段 C 实施期发现，work 侧登记）
+
+| id | 级别 | 缺口 / 归属 |
+|---|---|---|
+| F-781-C01 | P2 / 新计划候选 | VM HTTP 段派发泵串行——单段无 park 的长忙 handler（10MiB 导入 70-230s）占住泵，共居 split-VM 前端的内部 HTTP（Init `/api/books`）饿死（实测 2/2 负载态 + 1/3 安静态）。781-budget-decision r3（D-1 预见的公平性证据坐实）；修复面 = 段泵并发化或 HTTP CpuSlice 化——D-1 冻结为 v1 非目标，需新计划。 |
+| F-781-C02 | P3 / 路由 READER-001 | Reader 前端把 Init 内部调用失败当致命 → 进程退出 → 进行中导入连接中断（consumer 韧性：Init 重试/降级不自杀）。 |
+| F-781-C03 | P3 / 预存（非 781 引入） | th 档 `http_e2e_back_proxy_real_routes_corpora_data_face` 在 776/770/771 合入后的 master 基线即红（`:id` 参数模板转发）——stash 基线同红实证；归属近次合入面，781 记录在案未修。 |

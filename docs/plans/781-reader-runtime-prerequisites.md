@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-781
-status: executing
+status: execution_done
 feature_name: reader-runtime-prerequisites
 title: "Reader 框架前置：原生验收、段落锚点与10MiB导入"
 author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
-current_step: 11
+current_step: 16
 total_steps: 18
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -223,14 +223,19 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 - [x] T-14: owner_stage=work；依赖T-05（阶段 B 双端锚点验收）；核对engine/task、http_server全部相关dispatch和期限路径，匹配CLI做10MiB whole-path有界探针，新增docs/plans/reports/781-budget-decision.md，冻结唯一policy/profile/入口矩阵/资源判据；共享776写面未释放前仅调查。AC-11/AC-12/AC-13。
   [✅ 2026-10-14] 决策报告落盘 [781-budget-decision.md](reports/781-budget-decision.md)。源码勘定：Legacy 每驱动段独立 10M 硬编码（源码自注「会 park 的 handler 每段重新计，比同步更宽」=不变量 2 要消除的形态；CpuSlice 档累计护栏已存在但 HTTP 三入口全走 Legacy）；耗尽可观察 = 500 + "instruction budget exhausted" detail（可识别资源拒绝，v1 沿用）。**真实 whole-path 探针**（Reader /api/library/import，隔离 split-VM 实例逐尺寸全新起）：256KiB **成功**、512KiB 起全部预算耗尽（1/2/4/8/10MiB TXT + 10MiB MD 均 500，1.2-1.9s 内耗尽，10MiB 峰值 WS 295.7MB）→ **20-40 指令/字节，10MiB 需 ≈210-420M 指令，成功路径预估 35-70s 忙时**。冻结：D-1 policy = 环境变量 `AUTO_HTTP_STEP_BUDGET`（宿主可信、进程隔离、默认 10M 不变、合法域 1..=4G、非法启动期指名错误+非零退出、导入推荐档 1G）；**不引入 HTTP CpuSlice（v1 非目标，三依据成文）**；D-2 入口矩阵（三 HTTP 入口+段恢复消费；SSE 帧/UI bridge/back_proxy 不变）；D-3 零新 deadline/取消机制（沿既有 scope+单终态）；D-4 计数载体 = AutoTask.cpu_steps_total 扩展 Legacy 档。**受阻对账**：D-4 写面（engine.rs/http_server.rs/auto-man 启动链）与在途 PLAN-776 修复正撞（其 worktree 现持三文件未提交改动，R7 needs_fix reopened T-01~08 next=work）——T-15/T-16 按 §4 纪律等待 776 合入。证据 D:/p781-t14/{probe_budget.py,out/probe_report.json+probe_rerun.json+probe_low.json}。
-- [ ] T-15: owner_stage=work；依赖T-14；新增或扩展engine policy/任务累计计数，trusted配置解析与per-instance快照，补V-14~V-16单测；新路径明确登记，scoped tests通过。AC-11/AC-12。
-- [ ] T-16: owner_stage=work；依赖T-15且相关HTTP源码写面释放；HTTP命名/closure/segment装配及必要CPU片推进，保持既有request scope/终态/取消；真实TCP跑V-18/V-20。AC-12/AC-14。
-- [ ] T-17: owner_stage=work；依赖T-16；新增fixture/consumer驱动，使用只读Reader源码、新隔离库与固定CLI/config；10MiB TXT/MD成功、逐字/asset hash、冷启动验证V-17；无法成功不交execution_done。AC-13。
-- [ ] T-18: owner_stage=work；依赖T-17；独立隔离实例跑V-14~V-20，低预算/坏配置/断连/超时实效与失败非零核查，scoped+分级门；固定fixture hash/计数/profile，不随红灯抬阈值。AC-11/AC-12/AC-13/AC-14。
+- [x] T-15: owner_stage=work；依赖T-14；新增或扩展engine policy/任务累计计数，trusted配置解析与per-instance快照，补V-14~V-16单测；新路径明确登记，scoped tests通过。AC-11/AC-12。
+  [✅ 2026-10-14] worktree commit bde7a6bb9（含 T-16 测试）。新增 `vm/budget_policy.rs`（env 解析：合法域 1..=4G 严格十进制，非法指名 BudgetConfigError；构造期宽松兜底）+ engine `DriveBudget::LegacyHttp(cap)` 档（**段帽=policy 本身**——r2 勘定：无 park 单段 handler 需单段跑满；默认不设=10M 逐字节不变）+ 循环内逐指令累计精确检查（N-1/N/N+1 可控）+ 四 Parked 点/段尾统一累计（resume 不重置）+ runaway 基线跨段延续 + `AutoVM.http_step_budget` per-instance 快照 + http 三入口（`call_fn_by_name_http`/`call_fn_by_name_segment_http`/`call_closure_segment`）与 3 处 http resume 循环消费 policy + auto `run`/`service` 臂启动 fail-fast（非法 env 指名错误 + exit 1 实证；`--version` 不受扰）。单测 plan781 **24/24**：V-15 配置表（budget_policy 内联）、V-16 三件（N-1/N/N+1 逐指令边界、嵌套 fn 同预算、park/resume 累计不重置——plan702 同款受控 server）、V-14 两件（per-instance 快照隔离、默认路径零累计逐字节）。**实机冒烟**：真实 Reader 10MiB 导入在 1G 档成功（`code:ok`，152.5s，峰值 WS 360MB，零预算错误）——同时钉死导入 profile 双 env（`AUTO_HTTP_REQUEST_TIMEOUT_MS` 30s 默认会先截断，r2 第 2 条）。决策报告 r2 四项勘定落盘。
+- [x] T-16: owner_stage=work；依赖T-15且相关HTTP源码写面释放；HTTP命名/closure/segment装配及必要CPU片推进，保持既有request scope/终态/取消；真实TCP跑V-18/V-20。AC-12/AC-14。
+  [✅ 2026-10-14] 写面释放实证（776 归档+worktree/分支清理后 master merge 入 781 树，plan781 16/16 无回归）。装配 = T-15 的入口接线（命名 segment/_http 同步/closure + 3 处 resume 循环）——CPU 片按决策 D-1 不引入（三依据成文）。真 TCP（`test-http-e2e` 档，plan730 同款 start_server fixture）**3/3**：低预算指名资源拒绝（500+per-request cumulative budget）且服务继续服务后续请求（V-18 单失败终态+不楔死）、宽预算同 handler 完成（V-14 成功半边）、断连中途服务器存活；closure 入口（V-20）经 plan705 合成 fn-ref closure 模式引擎级耗尽断言。th 档全量 134 测：132 过 + 2 红归因——back_proxy corpora 预存（stash 基线同红，非本改动）、plan730 boundary 并行负载 flake（单跑带改动绿）。
+- [x] T-17: owner_stage=work；依赖T-16；新增fixture/consumer驱动，使用只读Reader源码、新隔离库与固定CLI/config；10MiB TXT/MD成功、逐字/asset hash、冷启动验证V-17；无法成功不交execution_done。AC-13。
+  [✅ 2026-10-15] worktree commit dba0d7e5c。fixture = test/fixtures/reader-import-budget/（gen_fixtures.py 确定性生成 + manifest.json 逐章 sha256 边车；大文件 gitignore）；驱动 = scripts/tools/test_reader_import_budget.py（隔离 split-VM 实例 + 双 env 导入 profile + 前端就绪门 + 传输级重试卫生）。**V-17 全链绿（同 CLI b7f09980744a + fixture 定长哈希）**：TXT 导入 ok（131.6s）→ library.json 入册 → 受管副本 original.txt sha256=6b449126bc55 逐字节等 → TOC 1347/1347 → 章节抽样首/中/尾逐字（sha256 口径=trim）→ **冷重启**（pid 46620→12296 同库重启，TOC 1347 + 第 674 章内容逐字一致）；MD 导入 ok（221.7s）→ 副本 sha256=a5a02fd084b0 → TOC 1346/1346 + 章节抽样（out1 同 fixture）。**实施期发现（决策报告 r3 + KNOWN-DEBT F-781-C01/C02）**：段泵串行饿死共居前端 Init（驱动加前端就绪门卫生）；Reader 前端 Init 失败即进程亡路由 001。
+- [x] T-18: owner_stage=work；依赖T-17；独立隔离实例跑V-14~V-20，低预算/坏配置/断连/超时实效与失败非零核查，scoped+分级门；固定fixture hash/计数/profile，不随红灯抬阈值。AC-11/AC-12/AC-13/AC-14。
+  [✅ 2026-10-15] 全矩阵（同 CLI b7f09980744a，报告 D:/p781-t18/{out,out-final,out-cold}/reader_import_budget_report.json，fixture 哈希入报告）：**V-14** 双实例 4/4（1G 档 10MiB 成 218-233.5s / 默认档同文件指名耗尽 3.2-3.5s / 库互不可见 / 默认档小书边界复核）；**V-15** 真实 CLI 启动负例 6/6（0/-5/1.5/abc/u64 溢出/超上界 → rc=1 + 指名 AUTO_HTTP_STEP_BUDGET，fail-fast 先于服务）；**V-16** 单测（plan781 24/24：N-1/N/N+1 逐指令、嵌套 fn、park/resume 累计不重置、per-instance 隔离、默认零累计）；**V-17** 同 T-17；**V-18** th 真 TCP（低预算指名拒 + 服务继续 + 断连不楔死）+ 预算耗尽快（0.5s）不触 r3 饿死面；**V-19** 6/6×2 轮（低预算拒写：索引 bytes 439==439 不变、无 managed 半写、坏编码 decode_error、终态不变）；**V-20** 三入口（命名 e2e + closure 引擎级 + resume 循环单测）。分级门：cargo t plan781 24/24、th 132/134（back_proxy corpora 预存 F-781-C03 + boundary 并行 flake 单跑绿）、**裸 cargo t 5353/5353**（前四轮各死一个不同 charts/timing 测试且单跑绿=瞬态负载 flake，第五轮全绿；按 2026-10-14 时序裁定裸 t 终局归 merge 冻结提交）。
 
 ### 统一交接、最终复审与收尾
 
-- [ ] T-06: owner_stage=work；依赖T-05/T-13/T-18；统一冻结SD-01~07候选、实现commit、CLI/driver/config/fixture hash、三阶段raw结果和Reader接入/复验命令；仅在全部work-owned AC完成后交execution_done。AC-04/10/14。
+- [x] T-06: owner_stage=work；依赖T-05/T-13/T-18；统一冻结SD-01~07候选、实现commit、CLI/driver/config/fixture hash、三阶段raw结果和Reader接入/复验命令；仅在全部work-owned AC完成后交execution_done。AC-04/10/14。
+  [✅ 2026-10-15] 统一冻结记录见本节下方交接记录。SD-01~07 候选内容 = §5 规范增量表 + 两份决策报告（781-interface-decision r1-r6、781-budget-decision r1-r3）——发布归 T-08 merge（SD-02/04/05 为新文件候选：ui/design/scroll-child-anchor.md、ui/design/native-acceptance-channel.md、vm/design/handler-execution-budget.md；其余为既有文件 modify）。
 - [ ] T-07: owner_stage=review；依赖T-06；同一781树独立final review，重跑三阶段全部required oracle并独立选择新混排/失效/取消反例，核SD-01~07与整体承接；所有required通过才reviewed，不以单阶段绿灯代替全计划通过。AC-05。
 - [ ] T-08: owner_stage=merge；依赖T-07；按merge技能实际落地、规范沉淀、归档/守卫清理及到期批量门；统一交付781 dependency receipt到READER-001 T-25/T-26；不代替Reader业务接入及终审。AC-06。
 
@@ -258,10 +263,14 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 2026-10-14 work（T-14）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=292e8755a | code_commit=（纯调查/文档任务，未动 Rust） | dependency_revisions=同上；Reader@29b5dec 只读（其 reading.at:269/315 `let pr` 重赋值缺陷仍在，正文页损坏不影响后端 API——探针实证） | task_ids=T-14 | evidence=reports/781-budget-decision.md（policy/入口矩阵/取消策略/CpuSlice 裁定冻结）+ D:/p781-t14 探针（256KiB 成功/512KiB 起耗尽 → 20-40 步/字节，10MiB≈210-420M 步）| blockers=**T-15/T-16/T-17/T-18 被在途 PLAN-776 阻断**——776 worktree 现持 engine.rs/http_server.rs/codegen.rs 未提交改动（R7 needs_fix，reopened T-01~08，next=work），D-4 全部写面正撞；解锁动作 = 776 修复→复审→merge 合入 master 后，781 worktree 同步 master 再开 T-15 | next_responsible_role=等待 776 释放写面（或用户裁定并行路径）
 
+2026-10-15 work（T-15/T-16，阶段 C 接线）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=114e80c48（master 同步合并，776 归档后写面释放） | code_commit=bde7a6bb9 | dependency_revisions=Reader@29b5dec 只读；776 已归档（R6 合入 master） | task_ids=T-15,T-16 | evidence=budget_policy.rs + engine LegacyHttp 档（段帽=policy r2 勘定）+ 三入口/resume 接线 + fail-fast；plan781 单测 24/24；th 真 TCP 3/3 + closure 引擎级；th 全量 132/134（1 预存 F-781-C03 + 1 并行 flake 单跑绿）；10MiB 实机冒烟 code:ok 152.5s；决策报告 r2 | blockers=无 | next_responsible_role=work（T-17）
+
+2026-10-15 work（T-17/T-18/T-06，阶段 C 收口 → execution_done）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=bde7a6bb9 | code_commit=dba0d7e5c（T-17 fixture+driver） | dependency_revisions=同上 | task_ids=T-17,T-18,T-06 | evidence=V-17 全链（TXT 含冷重启 8/8 + MD 导入/哈希/TOC/章节）；V-19 6/6×2；V-14 4/4；V-15 6/6；V-16 单测；V-18 th；V-20 三入口；裸 cargo t 5353/5353（第五轮；前四轮各一个不同 timing 测试单跑绿=瞬态负载 flake）；证据 D:/p781-t18/{out,out-final,out-cold} + D:/p781-t05/out + D:/p781-t17 | 发现登记=KNOWN-DEBT F-781-C01（段泵串行公平性，新计划候选）/C02（路由 001）/C03（th 预存红）；决策报告 r3 | 统一冻结=实现 commits 65ddc5d2f→f75b32e31→1042beeb3→292e8755a→114e80c48(merge)→bde7a6bb9→dba0d7e5c；CLI=worktree target/debug/auto.exe sha256=b7f09980744a…；驱动=test_native_reader_acceptance.py + p781 双探针 + test_reader_import_budget.py；config=双 env 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）；fixture 哈希=报告内 fixtures 节；SD-01~07 候选=§5 表+两决策报告（发布归 T-08）；Reader 接入映射=9922/9923 + scroll-anchor DSL + 双端 helper（001 T-25/T-26 承接，READER-001 复验命令=上述驱动 --auto-bin --reader-dir） | blockers=无（work-owned AC-01~04、07~14 全过；AC-05 归 review、AC-06 归 merge） | next_responsible_role=review（T-07 最终独立复审）
+
 ## 10. 待澄清事项
 
 T-09负责动作/帧identity/布局freshness的复用边界；T-01冻结子key公共接口/代际/nearest；T-14冻结有限profile、同步/分片与配置/期限/取消的whole-path可行性（✅ 已冻结于 reports/781-budget-decision.md）。三项均为后续接线硬前置，不把未结束研究计为已实现。共享776/742/778/779热点入场对账；未释放则具名记录受阻任务。
 
-**受阻任务（2026-10-14 T-14 对账，具名记录）**：T-15/T-16/T-17/T-18 被 PLAN-776 在途修复阻断——776 worktree（D:/autostack/.wt/lang-776/auto-lang）现持 `vm/engine.rs`、`vm/ffi/http_server.rs`、`vm/codegen.rs` 未提交改动（R7 终审 needs_fix，reopened T-01~08，next=work，另一会话进行中），而预算决策 D-4 的全部实现写面正是这三个文件 + auto-man 启动链。按本计划 §4 纪律（不并行改共享热点）与 AGENTS 单写入者原则，781 不得开工 T-15/T-16。**精确解锁动作**：776 修复完成 → 独立复审通过 → `/auto-plan:merge` 合入 master → 781 worktree `git merge master` 同步 → T-15 按决策报告 D-4 开工（T-17/T-18 随 T-16 依赖链解锁；T-06 因此顺延，计划保持 executing）。用户如裁定绕过等待（如基于 776 已 commit 的 R6 基线开工），须显式授权并行写面处置方案。
+**受阻解除（2026-10-15）**：PLAN-776 已修复→复审→合入 master 并归档（worktree/分支/组清理）；781 已同步 master（merge 114e80c48）后完成 T-15~18。原受阻记录留档于 git 历史（37ad63290）。
 
 无需用户先选实现细节；若调查需改原目标、默认资源保护、业务API或扩大仓范围，再报告具体合同变更。合并只调整计划组织与编号，001原AC/T-25/T-26仍保持；框架能力交付后回001接入、取消混排fixme、重跑原生/长文并独立终审。

@@ -78,3 +78,13 @@ python D:/p781-t14/probe_budget.py            # 全尺寸 bisect（需 AUTO_BIN/
 ## 4. 修订记录
 
 - r1（2026-10-14，T-14 初冻）。
+- **r2（2026-10-14，T-15 实施期勘定）**：
+  1. **段帽修正（D-4 澄清）**：`LegacyHttp(cap)` 的段帽 = **policy 本身**（非 10M）——无 park 的单段 handler（导入形态）需单段跑满请求预算；多段由循环内累计检查执法（后段先触累计）。默认不设 policy = 10M 段帽逐字节不变。r1 文案「段内 10M 帽不变」作废。
+  2. **导入 profile = 双 env**：`AUTO_HTTP_STEP_BUDGET=1000000000` **加** 既有 `AUTO_HTTP_REQUEST_TIMEOUT_MS=300000`（默认 30s 请求等待会在 ~35-70s+ 的长导入上先截断——503 "request wait timed out"，既有 knob、零新机制，符合 D-3）。
+  3. **10MiB 实测成功**（T-15 冒烟，真实 Reader API）：`code:ok 导入成功`，墙钟 **152.5s**、峰值 WS ~360MB、零预算错误——预算上界估计（210-420M 步 @1G 档）充裕。
+  4. 错误文案区分：`LegacyHttp` 耗尽 = `instruction budget exhausted in '<fn>' … (per-request cumulative budget N steps; AUTO_HTTP_STEP_BUDGET)`——与默认档文案可区分（V-14 双实例观测面）。
+- **r3（2026-10-15，T-17 实施期发现——D-1 预见的公平性证据坐实）**：
+  - **现象**（真实 Reader 全矩阵驱动，2/2 复现于负载态 + 1/3 安静态）：长忙导入（70-230s 单段）期间，**共居前端**（split-VM 同进程 front）的 Init 内部调用 `GET /api/books` 失败（`error sending request`）→ Reader 前端把 Init 失败当致命 → 进程退出 → 进行中的导入连接中断（transport error）。
+  - **归因**：VM HTTP 段派发泵**串行**驱动请求——单段无 park 的忙 handler 占住泵，后到请求排队饿死；共居前端与后端共享同一 VM。这正是 D-1 不采 CpuSlice 时预留的「多路由饥饿」证据形态（当时按 axum 多 worker 估的可接受性未覆盖共居前端共享泵这一层）。
+  - **处置**（v1 维持 + 路由）：① 驱动侧加**前端就绪门**（health 后轮询 /api/books 200 再发导入——测试卫生，非掩盖）；② 公平性缺口登记 KNOWN-DEBT（候选：段泵并发化或 HTTP CpuSlice 化——D-1 冻结的 v1 非目标，需新计划）；③ Reader 前端 Init 失败即进程亡的脆弱性路由 READER-001（consumer 侧韧性）。
+  - **注意**：预算耗尽负例（500 指名拒绝）不受影响——驱动 v19/v14 低预算/默认档腿全程绿（耗尽快、不长时间占泵）。
