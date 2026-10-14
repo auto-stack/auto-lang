@@ -1,0 +1,1 @@
+PLAN-777 modularity-audit fixture asset sample.

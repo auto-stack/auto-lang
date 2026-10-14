@@ -1,0 +1,7 @@
+[package]
+name = "fixture-lang"
+version = "0.0.0"
+edition = "2021"
+
+[dev-dependencies]
+fixture-test-util = { path = "../fixture-test-util" }

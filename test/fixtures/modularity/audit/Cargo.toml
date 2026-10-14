@@ -1,0 +1,11 @@
+# PLAN-777 modularity-audit 自测夹具：假想 workspace（永不编译、不入根 workspace）
+[workspace]
+members = [
+    "crates/fixture-lang",
+    "crates/fixture-lang-sdk",
+    "crates/fixture-ui",
+    "crates/fixture-ui-kit",
+    "crates/fixture-test-util",
+    "crates/fixture-app",
+]
+resolver = "2"

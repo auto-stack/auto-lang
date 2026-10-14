@@ -1,0 +1,426 @@
+# PLAN-777：v0.6 模块边界基线配置（scripts/modularity-audit.py 读取）
+#
+# 依据：docs/plans/reports/v06-modularization-research.md（2026-10-13 调研）、
+# docs/design/37-v06-modularization-and-repo-boundaries.md（目标态，不得当成已达成事实）、
+# docs/plans/777-v06-modular-boundary-baseline.md。
+#
+# 纪律：
+# - 观察模式（observe）覆盖全仓；strict 只判冻结基线之外的新增禁向声明边。
+# - 存量禁向边必须逐边 [[baseline.edge_notes]]（owner + exit_phase）方可 grandfather；
+#   status="revoked" 的边再现即判红。
+# - [baseline] 不允许任何目录级/前缀级豁免键（宽豁免在配置加载时即被拒绝）。
+# - 域分类是声明性映射；无法精确分类的成员留在 "unclassified"，不伪造归属。
+
+schema = "module-boundaries/1"
+
+# ---------------------------------------------------------------------------
+# workspace 成员 → 模块域（Design 37 §2 五域；当前单仓内的诚实分类）
+# ---------------------------------------------------------------------------
+[domains.members]
+# 语言巨 crate：core+UI 五目录混居（已知债；终态拆分 R4/R8，见 ownership 焊点表）。
+# 不把它写成纯 lang-core——文本层候选单独观察（text_scan.core_to_ui）。
+"auto-lang" = "lang-monolith"
+# 数据域（Atom/Value 基础表示）——Design 37：数据域只依赖更低层。
+"auto-atom" = "data"
+"auto-val" = "data"
+# 语言工具基建（被 auto-lang 消费的底层 util/生成/测试基建）。
+"auto-cache" = "lang-infra"
+"shim-metadata" = "lang-infra"
+"auto-bindgen" = "lang-infra"
+"auto-test-case" = "lang-infra"
+"auto-macros" = "lang-infra"
+# 标准运行时/宿主能力（a2r-std）。
+"a2r-std" = "runtime"
+# 测试域。
+"a2r-actor-tests" = "test"
+# 工程工具域：man 核心 / man 生态（模板生成）。
+"auto-man" = "man"
+"auto-gen" = "man-ecosystem"
+# 顶层装配/工具/CLI（允许依赖任意下层域）。
+"auto" = "cli"
+"auto-lsp" = "tool"
+"auto-playground" = "tool"
+"auto-vm" = "tool"            # ~207 行辅助 CLI；命名债见调研 §7.1
+"shell-pack" = "host-tool"
+"auto-cosmic-ports" = "tool"   # cosmic 实验性移植/宿主（demo/host 依赖 lang 属顶层方向）
+"auto-cosmic-demo" = "tool"
+"auto-cosmic-host-libcosmic" = "tool"
+"auto-cosmic-ports-linux" = "tool"
+"auto-cosmic-host-smithay" = "tool"
+
+# ---------------------------------------------------------------------------
+# 禁向规则（只约束 normal/build 非 optional 声明边；dev 依赖与 optional 边默认放行，
+# 由具体规则显式收紧）。依据 Design 37 §2“禁止反向依赖”列 + §6 路径/发行规则。
+# ---------------------------------------------------------------------------
+[[rules.forbidden_declared]]
+id = "data-stays-bottom"
+from_domains = ["data"]
+to_domains = ["lang-monolith", "lang-infra", "runtime", "man", "man-ecosystem", "ui", "tool", "cli", "host-tool"]
+kinds = ["normal", "build"]
+
+[[rules.forbidden_declared]]
+id = "runtime-no-compiler-ui-man"
+from_domains = ["runtime"]
+to_domains = ["lang-monolith", "lang-infra", "man", "man-ecosystem", "tool", "cli", "host-tool"]
+kinds = ["normal", "build"]
+
+[[rules.forbidden_declared]]
+id = "lang-infra-no-upward"
+from_domains = ["lang-infra"]
+to_domains = ["lang-monolith", "man", "man-ecosystem", "runtime", "tool", "cli", "host-tool"]
+kinds = ["normal", "build"]
+
+[[rules.forbidden_declared]]
+id = "lang-no-man-no-tools"
+from_domains = ["lang-monolith"]
+to_domains = ["man", "man-ecosystem", "tool", "cli", "host-tool"]
+kinds = ["normal", "build"]
+
+[[rules.forbidden_declared]]
+id = "man-core-no-lang-monolith"
+from_domains = ["man"]
+to_domains = ["lang-monolith"]
+kinds = ["normal", "build"]
+
+[[rules.forbidden_declared]]
+id = "man-ecosystem-no-lang-monolith"
+from_domains = ["man-ecosystem"]
+to_domains = ["lang-monolith"]
+kinds = ["normal", "build"]
+
+[[rules.forbidden_declared]]
+id = "ui-no-man-big-lib"
+from_domains = ["ui"]
+to_domains = ["man"]
+kinds = ["normal", "build"]
+
+# 跨根 path 依赖（逃出仓根的 normal/build 边）必须 optional——发行/路径锁定规则
+# （Design 37 §6）；当前唯一跨根边 auto-lang→autodown-core 是 optional，存量合规。
+[[rules.forbidden_declared]]
+id = "out-of-root-edges-must-be-optional"
+to_scopes = ["external"]
+kinds = ["normal", "build"]
+
+# ---------------------------------------------------------------------------
+# 文本候选扫描（观察层；候选不是语义边；盲区见 scanner_limitations）
+# 口径与调研报告 §2/§4.3 对齐，计数可跨基线比较。
+# ---------------------------------------------------------------------------
+[[text_scan]]
+id = "core_to_ui"
+description = "语言 core（非 UI 五目录）对 UI 模块的文本引用候选：crate::ui / crate::ui_gen / crate::aura / crate::design_tokens / crate::a2ui 及 auto_lang:: 同名前缀"
+source_roots = ["crates/auto-lang/src"]
+exclude_roots = [
+    "crates/auto-lang/src/ui",
+    "crates/auto-lang/src/ui_gen",
+    "crates/auto-lang/src/aura",
+    "crates/auto-lang/src/design_tokens",
+    "crates/auto-lang/src/a2ui",
+]
+patterns = [
+    "\\bcrate::ui\\b", "\\bcrate::ui_gen\\b", "\\bcrate::aura\\b",
+    "\\bcrate::design_tokens\\b", "\\bcrate::a2ui\\b",
+    "\\bauto_lang::ui\\b", "\\bauto_lang::ui_gen\\b", "\\bauto_lang::aura\\b",
+    "\\bauto_lang::design_tokens\\b", "\\bauto_lang::a2ui\\b",
+]
+
+[[text_scan]]
+id = "ui_to_language"
+description = "UI 五目录对语言实现的文本引用候选（auto_lang:: 前缀）"
+source_roots = [
+    "crates/auto-lang/src/ui",
+    "crates/auto-lang/src/ui_gen",
+    "crates/auto-lang/src/aura",
+    "crates/auto-lang/src/design_tokens",
+    "crates/auto-lang/src/a2ui",
+]
+patterns = ["\\bauto_lang::"]
+
+[[text_scan]]
+id = "man_to_language"
+description = "auto-man 源码对语言实现的文本引用候选（auto_lang:: 前缀）"
+source_roots = ["crates/auto-man/src"]
+patterns = ["\\bauto_lang::"]
+
+# ---------------------------------------------------------------------------
+# 资产根（规模/归属盘点；owner = 目标域，exit_phase = 调研 §8 退出波次）
+# ---------------------------------------------------------------------------
+[[assets]]
+id = "aura-schema"
+root = "docs/schema"
+owner = "auto-ui"
+exit_phase = "R6"
+
+[[assets]]
+id = "stdlib-aura"
+root = "stdlib/aura"
+owner = "auto-ui"
+exit_phase = "R6"
+
+[[assets]]
+id = "stdlib-auto"
+root = "stdlib/auto"
+owner = "lang"
+exit_phase = "-"          # 生产标准库留语言仓
+
+[[assets]]
+id = "auto-man-assets"
+root = "crates/auto-man/assets"
+owner = "auto-man"
+exit_phase = "R7"
+
+[[assets]]
+id = "packages"
+root = "packages"
+owner = "split"           # Playground/网站体验留语言仓，其余逐项归属（调研 §4.6）
+exit_phase = "R6"
+
+[[assets]]
+id = "examples-ui"
+root = "examples/ui"
+owner = "auto-ui"
+exit_phase = "R6"
+
+[[assets]]
+id = "iced-patches"
+root = "crates/patches"
+owner = "auto-ui"
+exit_phase = "R6"
+
+# ---------------------------------------------------------------------------
+# ownership：调研焊点/拆分项/外部消费方（AC-03：覆盖全部调研焊点；unknown 显式）
+# evidence 均引自 v06-modularization-research.md；行号为调研时点，路径以存在性核对为准。
+# ---------------------------------------------------------------------------
+# —— core→UI 焊点（调研 §4.3 表，8 项 + §4.5 AURA 一项）——
+[[ownership]]
+id = "weld-sdk-ui-facade"
+kind = "weld"
+path = "crates/auto-lang/src/lib.rs"
+owner = "auto-ui"
+exit_phase = "R4"
+status = "active"
+evidence = "调研 §4.3：lib.rs:4411/4426 WidgetRegistry 参数、4513/5494 DynamicComponent、7231 起 ui_build API"
+
+[[ownership]]
+id = "weld-vm-ui-natives"
+kind = "weld"
+path = "crates/auto-lang/src/vm/native.rs"
+owner = "auto-ui"
+exit_phase = "R2"
+status = "active"
+evidence = "调研 §4.3：vm/native.rs:1612-2391 编辑器/clipboard/scroll 直调 ui；NativeInterface::production/register_std_shims 集中装配；779 frame provider 为 R2 首个探针"
+
+[[ownership]]
+id = "weld-media-asset-types"
+kind = "weld"
+path = "crates/auto-lang/src/vm/ffi/stdlib.rs"
+owner = "runtime+auto-ui"
+exit_phase = "R2"
+status = "active"
+evidence = "调研 §4.3：stdlib.rs:34/4933/4960 MediaAssetKey/MediaAssetTicket 等 UI 类型"
+
+[[ownership]]
+id = "weld-term-engine-loader"
+kind = "weld"
+path = "crates/auto-lang/src/vm/ffi/term_engine.rs"
+owner = "runtime+auto-ui"
+exit_phase = "R2"
+status = "active"
+evidence = "调研 §4.3：term_engine.rs 多处调用 ui::term_engine_loader"
+
+[[ownership]]
+id = "weld-back-proxy-media"
+kind = "weld"
+path = "crates/auto-lang/src/back_proxy.rs"
+owner = "app-host"
+exit_phase = "R4"
+status = "active"
+evidence = "调研 §4.3：back_proxy.rs:151 持有 MediaIndex、:1069 返回 PhotoEntry"
+
+[[ownership]]
+id = "weld-a2r-std-ui-calls"
+kind = "weld"
+path = "crates/auto-lang/src/a2r_std.rs"
+owner = "runtime"
+exit_phase = "R2"
+status = "active"
+evidence = "调研 §4.3：a2r_std.rs:1231-1306 调 ui::frame_bench 与 code_editor::diff"
+
+[[ownership]]
+id = "weld-database-ui-artifacts"
+kind = "weld"
+path = "crates/auto-lang/src/database/mod.rs"
+owner = "lang-core"
+exit_phase = "R4"
+status = "active"
+evidence = "调研 §4.3：database/mod.rs:27-33 导出 UIArtifact/UICache"
+
+[[ownership]]
+id = "weld-build-rs-scan"
+kind = "weld"
+path = "crates/auto-lang/build.rs"
+owner = "lang-build"
+exit_phase = "R6"
+status = "active"
+evidence = "调研 §4.3：build.rs:39 扫 ui_gen、91-107 扫整个 crates 与兄弟 auto-down（指纹与仓布局耦合）"
+
+[[ownership]]
+id = "weld-aura-validate-generator-dep"
+kind = "weld"
+path = "crates/auto-lang/src/aura/validate.rs"
+owner = "ui-core"
+exit_phase = "R4"
+status = "active"
+evidence = "调研 §4.5：aura/validate.rs:20 反引 ui_gen::widget::AUTO_IMPORTED_WIDGETS（基础 IR 依赖生成器）"
+
+# —— UI 侧反向焊点（调研 §5.3）——
+[[ownership]]
+id = "weld-ui-app-registry-pac"
+kind = "weld"
+path = "crates/auto-lang/src/ui/app_registry.rs"
+owner = "project-model"
+exit_phase = "R3"
+status = "active"
+evidence = "调研 §5.3：ui/app_registry.rs 平铺文本读 pac；项目元信息单源解析归 project-model（780 探针）"
+
+# —— auto-man 拆分项（调研 §5.2 表）——
+[[ownership]]
+id = "split-man-package-core"
+kind = "split"
+path = "crates/auto-man/src/pac.rs"
+owner = "man-core"
+exit_phase = "R5"
+status = "active"
+evidence = "调研 §5.2：pac/git/index/lock/pull/resolver 归 man core；resolver 语言适配置上层"
+
+[[ownership]]
+id = "split-man-ui-orchestration"
+kind = "split"
+path = "crates/auto-man/src/vue.rs"
+owner = "auto-ui-tool-plugin"
+exit_phase = "R5"
+status = "active"
+evidence = "调研 §5.2：vue/vue_shadcn/rust_ui/jet/ark/tauri、gallery/wm/image_viewer 归 auto-ui 工具插件（含模板资产）"
+
+[[ownership]]
+id = "split-man-service-gen"
+kind = "split"
+path = "crates/auto-man/src/api_gen.rs"
+owner = "lang-service-adapter"
+exit_phase = "R5"
+status = "active"
+evidence = "调研 §5.2：api_gen/http_service/tauri_backend 通用部分归语言/服务构建 adapter，不随 UI 搬"
+
+[[ownership]]
+id = "split-man-http-service"
+kind = "split"
+path = "crates/auto-man/src/http_service.rs"
+owner = "lang-service-adapter"
+exit_phase = "R5"
+status = "active"
+evidence = "调研 §5.2：通用 HTTP/API 生成不因历史服务 UI 就归 UI"
+
+[[ownership]]
+id = "split-gen-template-engine"
+kind = "split"
+path = "crates/auto-gen/src/lib.rs"
+owner = "man-ecosystem"
+exit_phase = "R5"
+status = "active"
+evidence = "调研 §5.2：auto-gen 拆纯模板核心与 Auto 可执行模板 adapter；不让模板引擎把完整编译器编进包管理"
+
+[[ownership]]
+id = "split-man-rust-ui"
+kind = "split"
+path = "crates/auto-man/src/rust_ui.rs"
+owner = "auto-ui-tool-plugin"
+exit_phase = "R5"
+status = "active"
+evidence = "调研 §5.2：rust_ui 164 行引用面属 UI 工程编排（与 vue.rs 共 19,243 行）"
+
+# —— 外部消费方（根外只读登记；调研 §4.6 抽查，非完整生态审计）——
+[[ownership]]
+id = "consumer-auto-os"
+kind = "consumer"
+path = "../auto-os"
+owner = "external"
+exit_phase = "-"
+status = "active"
+outside_root = true
+evidence = "调研 §4.6：desktop.ps1 验证 auto-lang+examples/desktop-host 并直接 build auto-lang example"
+
+[[ownership]]
+id = "consumer-auto-down"
+kind = "consumer"
+path = "../auto-down"
+owner = "external"
+exit_phase = "-"
+status = "active"
+outside_root = true
+evidence = "调研 §4.6：jade-garden/back/server 用 auto-lang 绝对 path；亦是组内解析序依赖仓"
+
+[[ownership]]
+id = "consumer-auto-term"
+kind = "consumer"
+path = "../auto-term"
+owner = "external"
+exit_phase = "-"
+status = "active"
+outside_root = true
+evidence = "调研 §4.6：at-gen 指向 language runtime 并可开 UI"
+
+[[ownership]]
+id = "consumer-auto-shell"
+kind = "consumer"
+path = "../auto-shell"
+owner = "external"
+exit_phase = "-"
+status = "active"
+outside_root = true
+evidence = "调研 §4.6：主库直接依赖 auto-lang（关闭默认 feature）——Design 32 旧结论不能照搬"
+
+[[ownership]]
+id = "consumer-auto-ai"
+kind = "consumer"
+path = "../auto-ai"
+owner = "external"
+exit_phase = "-"
+status = "active"
+outside_root = true
+evidence = "调研 §4.6：消费 auto-atom/auto-val/a2r-std"
+
+# ---------------------------------------------------------------------------
+# 基线（生成物为 .autoos/module-boundaries-baseline.json；--refresh-baseline 刷新）
+# ---------------------------------------------------------------------------
+[baseline]
+# 只允许窄豁免：[[baseline.edge_notes]] 逐边 owner + 退出阶段（status=active|revoked）。
+# 禁止目录级/前缀级豁免键——宽豁免会在配置加载时被拒绝。
+path = ".autoos/module-boundaries-baseline.json"
+
+# 存量禁向边（对上面规则的现行违例）——冻结于基线、带退出 owner：
+[[baseline.edge_notes]]
+from = "auto-man"
+to = "auto-lang"
+kind = "normal"
+owner = "man-core"
+exit_phase = "R5"
+status = "active"
+note = "man→完整语言栈（含 VM）；调研 §5.1/Design 37 §5——包管理核心与语言/服务构建 adapter 分层后退出"
+
+[[baseline.edge_notes]]
+from = "auto-gen"
+to = "auto-lang"
+kind = "normal"
+owner = "man-ecosystem"
+exit_phase = "R5"
+status = "active"
+note = "模板引擎拉入完整编译器；调研 §5.2——纯模板核心与可执行模板 adapter 分层后退出"
+
+# 非禁向但需治理登记的跨根边（optional，合规；供发行/路径规则 R6 追踪）：
+[[baseline.edge_notes]]
+from = "auto-lang"
+to = "autodown-core"
+kind = "normal"
+owner = "lang-build"
+exit_phase = "R6"
+status = "active"
+note = "跨仓 optional path 依赖（../auto-down）；组内解析序 + 发行版本锁定规则（Design 37 §6）"

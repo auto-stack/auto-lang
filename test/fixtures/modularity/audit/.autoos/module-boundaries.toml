@@ -1,0 +1,40 @@
+# PLAN-777 modularity-audit 自测夹具配置（假想 workspace；见同目录 README.md）
+schema = "module-boundaries/1"
+
+[domains.members]
+fixture-lang = "lang-core"
+fixture-lang-sdk = "lang-core"
+fixture-ui = "ui"
+fixture-ui-kit = "ui"
+fixture-test-util = "test"
+fixture-app = "app"
+
+[[rules.forbidden_declared]]
+id = "lang-core-no-ui"
+from_domains = ["lang-core"]
+to_domains = ["ui"]
+kinds = ["normal", "build"]
+
+[[text_scan]]
+id = "core_to_ui_fixture"
+description = "fixture：语言 core 源码对 UI 模块的文本引用候选（非语义边）"
+source_roots = ["crates/fixture-lang/src"]
+patterns = ["\\bcrate::fixture_ui\\b", "\\bcrate::fixture_ui_kit\\b"]
+
+[[assets]]
+id = "fixture-assets"
+root = "assets/fixture-assets"
+owner = "ui"
+exit_phase = "RX"
+
+[[ownership]]
+id = "fixture-weld-sdk-entry"
+kind = "weld"
+path = "crates/fixture-lang/src/lib.rs"
+owner = "ui"
+exit_phase = "RX"
+status = "active"
+
+[baseline]
+# 只允许窄豁免：[[baseline.edge_notes]] 逐边 owner + 退出阶段。
+# 任何目录级/前缀级豁免键（exempt_paths 等）在配置加载时即被拒绝（V-04d）。

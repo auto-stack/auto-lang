@@ -1,0 +1,8 @@
+[package]
+name = "fixture-app"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+fixture-lang = { path = "../fixture-lang" }
+fixture-ui = { path = "../fixture-ui" }
