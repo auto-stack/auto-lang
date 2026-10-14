@@ -1,7 +1,7 @@
 ---
 plan_id: 742
 title: "api.rs handler body transpile parity（NOTES-001 T-04 跨仓）"
-status: execution_done
+status: reviewed
 author: [Codex]
 created_at: 2026-10-04T21:20:00+08:00
 plan_revision: 1
@@ -74,6 +74,12 @@ SD-742-01/02继续partial。VM交互未验，不新增固定19场景门禁；原
 `9691E5B5BA2D146ECE88E16765135EB2BCEBFBBE11DFD2AF6F7D340EA6B0A675`。
 R4模块名反例和旧20输入原样闭合，新增多行字符串保持；但比较符被当泛型角括号，
 后续str实参漏借用（F-742-R5-01），SD-742-01/02继续partial；原目标/AC/revision不变。
+
+第六次复审 [冻结增量](attachments/742/review-r6/spec-delta.md) SHA256
+`04AA21D108255F07A1F55D65EEB38A7B7D6F9F78506539E5EBD3C70013DA8803`。
+F-742-R5-01 关闭（glued-ident 判别 + 独立重放 + 两枚审核方新探针），
+SD-742-01/02 批准为完成；SD-742-03 目标已被 PLAN-773 沉淀改写，merge 沉淀须
+基于当前 canonical 合入。原目标/AC/revision 不变。
 
 ## 3. 任务
 
@@ -279,6 +285,31 @@ api_gen48 pass/1 ignored；daily5278/5278；tt5648 pass/1 timeout（plan707
 VM交互沿用未验边界，本轮未跑、不新加19场景门禁；Upload/db候选仍原范围。
 诊断、原始输入/生成物/真实companion实编与门禁见
 [review-r5报告](attachments/742/review-r5/REVIEW.md)。
+
+### 4.7 第六次独立 final review（2026-10-14，r6 修复提交）——**pass**
+
+审面 `8d59f5e88962a51a7e608b5ffe9bd8d03ff22086`，基面
+`2174f0de28dd786369b2e44e94bfa1a1ac806499`；同 plan-742-dev 工作树，diff =
+api_gen.rs 单文件 +72/-2。审核人 Kimi Code 独立会话（非前轮 Codex 上下文，
+未参与实施）。
+
+| AC ID | 本次结果 | 依据 |
+|---|---|---|
+| AC-742-01 | pass | 旧例全绿，replay 24/24 独立重放逐字段一致 |
+| AC-742-02 | pass | F-742-R5-01 关闭：重放 compare_less 转 ok + 审核方新探针 cmp_glued_source（用户无空格源 `1<2` 经发射器归一化为 `1 < 2`，证明 glued-`<` 启发式在真实源下安全）与 cmp_nested_call_arg（比较+嵌套借用组合 `choose(2 > 1, &crate::repository::path())`）均实编运行通过 |
+| AC-742-03 | pass（可考边界） | 沿用已接受归因 |
+| AC-742-04 | pass | cmp 双端点实编运行=2，精确形态 `choose(1 < 2, &s)` |
+| AC-742-05 | pass（绑定注记） | 提交态电池 S0–S19 fails=0 收据在案；api.rs mtime 绑定被并行会话再生成覆盖，持久日志/制品保留，不冒称 Notes 当前工作区整体通过 |
+| AC-742-06 | pass（边界沿用） | Vue 13/13、S10 为已验事实；VM 交互未验边界沿用，不新增门禁 |
+
+门禁：api_gen 49 passed/1 ignored（正确拼写 `cargo nextest run -p auto-man
+--lib api_gen`）；tt 5648/5649（plan707 满池超时 flake 定向 1/1 绿，同 r5
+处置）；check exit 0；auto-man 告警 27 ≤ master 基线 29；触面 rustfmt 干净。
+发射器形态规律经源码实证（rust.rs:3960 二元操作符恒 `" {} "` 空格填充）。
+零新 finding；R1–R5 历史 finding 全部保持关闭。T-1/T-2/T-3 重计 3/3。
+完整证据、探针细节、债务候选（plan734 非 lib 测试目标预存编译失败等）见
+[review-r6 报告](attachments/742/review-r6/REVIEW.md) 与
+[baseline](attachments/742/review-r6/baseline.json)。
 
 ## 5. 已知延后
 
@@ -511,3 +542,32 @@ PLAN-745 交接注记（0bc1bea01）确认 742 合并面对其 27 处共现预�
   正则债务候选；另见本轮发现的 notes 仓另一会话 S20 WIP 路径缺陷（非
   742 面，work-r6 README 注记）| next: review（/auto-plan:review r6；
   审面=8d59f5e88，基面 2174f0de2，工作树冻结待审）
+
+- stage: review（第六次 final） | review_scope: final |
+  reviewer_identity: Kimi Code（独立会话，未参与 742 任何一轮实施；
+  验证经两个只读子 agent + 本会话直接检查）| plan_id: 742 |
+  plan_revision: 1 | outcome: pass |
+  worktree_path: D:/autostack/.wt/lang-742/auto-lang | branch: plan-742-dev |
+  reviewed_commit: 8d59f5e88962a51a7e608b5ffe9bd8d03ff22086 |
+  base_commit: 2174f0de28dd786369b2e44e94bfa1a1ac806499 |
+  dependency_revisions: auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，
+  Notes=1391bd7eb2f6b3b08e9841d30b25125e47ced058，主检出收口 HEAD
+  720cef365（PLAN-773 已落地，trans/rust.rs 改动与 742 面不相交，
+  merge-tree 实测干净）|
+  spec_inputs: [baseline.json](attachments/742/review-r6/baseline.json)
+  五 canonical SHA256（a2r-std/project.md 已被 773 沉淀改写，merge 须
+  rebase 式合入）|
+  acceptance_results: §4.7（pass:01/02/04/05/06；03 可考边界 pass）|
+  findings: 零新 finding；R5-01 关闭（重放+两枚审核方新探针实证），
+  R1–R5 历史 finding 全部保持关闭 |
+  prior_findings: 全部 closed |
+  pending_closeout_gates: merge 规范沉淀（基于当前 canonical）、
+  .autoos/specs.json 沉淀与 spec-index、批量回归到期判定、归档与
+  worktree 清理（含 worktree 内未跟踪 attachments/742 scratch 副本，
+  先跑 wt-guard.sh）|
+  evidence: [报告](attachments/742/review-r6/REVIEW.md)、
+  [基线](attachments/742/review-r6/baseline.json)、
+  [冻结规范增量](attachments/742/review-r6/spec-delta.md) SHA256
+  04AA21D108255F07A1F55D65EEB38A7B7D6F9F78506539E5EBD3C70013DA8803 |
+  next: /auto-plan:merge 742。状态翻 reviewed、3/3；累计第六次 final
+  通过，历史记录与已通过证据全部保留。
