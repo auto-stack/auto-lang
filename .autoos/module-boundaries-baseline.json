@@ -1,0 +1,337 @@
+{
+  "base_revision": "0b5e79950381af5c7d486efc42e29bb8e315f6fe",
+  "config_sha256": "f1d8596d9a782633dcba6048b0f51dae27ac740752b44d29cc0a0d9036914ed5",
+  "declared_edges": [
+    {
+      "dep_key": "auto-lang",
+      "from": "a2r-actor-tests",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man",
+      "from": "auto",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "shell-pack",
+      "from": "auto",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "shell-pack",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-atom",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "shim-metadata",
+      "from": "auto-cache",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "shim-metadata",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-cosmic-ports",
+      "from": "auto-cosmic-demo",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-cosmic-ports",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto-cosmic-demo",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-cosmic-ports",
+      "from": "auto-cosmic-host-libcosmic",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-cosmic-ports",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto-cosmic-host-libcosmic",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-cosmic-ports",
+      "from": "auto-cosmic-ports-linux",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-cosmic-ports",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "a2r-std",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": "cfg(windows)",
+      "to": "a2r-std",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-atom",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-bindgen",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-bindgen",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-cache",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-cache",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-macros",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-macros",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-test-case",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "auto-test-case",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "autodown-core",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "autodown-core",
+      "to_scope": "external"
+    },
+    {
+      "dep_key": "shim-metadata",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "shim-metadata",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto-lsp",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-lsp",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto-macros",
+      "kind": "dev",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-macros",
+      "kind": "dev",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-cache",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-cache",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-gen",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-gen",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto-playground",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-atom",
+      "from": "auto-test-case",
+      "kind": "dev",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "autodown-test-parser",
+      "from": "auto-test-case",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "autodown-test-parser",
+      "to_scope": "nonmember-in-root"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "auto-vm",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang",
+      "from": "shell-pack",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang",
+      "to_scope": "member"
+    }
+  ],
+  "generated_by": "scripts/modularity-audit.py --refresh-baseline",
+  "schema": "module-boundaries-baseline/1",
+  "text_scan_totals": {
+    "core_to_ui": 886,
+    "man_to_language": 571,
+    "ui_to_language": 181
+  }
+}
