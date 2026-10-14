@@ -1742,3 +1742,260 @@ Connection: close
         }
     }
 }
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_r5 {
+    use super::http_e2e::{get, start_server};
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    /// F776-R5-01 服务程序：同一 `events()` generator，经直接返回/局部/
+    /// helper/闭包捕获/容器取出/Internal Future 尾六种传播形态 + 负控制
+    ///（普通数值）+ 立即 async 块终值 + stream 声明 fn 内部 for-in 消费。
+    fn program() -> String {
+        r#"
+fn events() ~Iter<int> {
+    yield 42
+}
+
+fn helper() ~Iter<int> {
+    let s = events()
+    return s
+}
+
+fn helper_captured() ~Iter<int> {
+    let s = events()
+    let get = fn() ~Iter<int> {
+        return s
+    }
+    return get()
+}
+
+#[api(method = "GET", path = "/s0")]
+fn s0() ~Iter<int> {
+    return events()
+}
+
+#[api(method = "GET", path = "/s1")]
+fn s1() ~Iter<int> {
+    let stream = events()
+    return stream
+}
+
+#[api(method = "GET", path = "/s2")]
+fn s2() ~Iter<int> {
+    return helper()
+}
+
+#[api(method = "GET", path = "/s3")]
+fn s3() ~Iter<int> {
+    return ~{ events() }
+}
+
+#[api(method = "GET", path = "/s5")]
+fn s5() ~Iter<int> {
+    let arr = [events()]
+    return arr[0]
+}
+
+#[api(method = "GET", path = "/s6")]
+fn s6() ~Iter<int> {
+    return helper_captured()
+}
+
+#[api(method = "GET", path = "/s4")]
+fn s4() ~Iter<int> {
+    let stream = events()
+    return 0
+}
+
+#[api(method = "GET", path = "/r7")]
+fn r7() ~int {
+    return ~{ 42 }
+}
+
+#[api(method = "GET", path = "/iterstream")]
+fn iterstream() ~Iter<int> {
+    var total = 0
+    for x in events() {
+        total = total + x
+    }
+    yield total
+}
+"#
+        .to_string()
+    }
+
+    /// 原 wire 读（读到 SSE 首帧或连接关闭）——SSE 帧断言用。
+    fn read_wire(port: u16, path: &str) -> String {
+        let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        let _ = s.write_all(
+            format!(
+                "GET {path} HTTP/1.1
+Host: x
+Connection: close
+
+"
+            )
+            .as_bytes(),
+        );
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = s.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            raw.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&raw).into_owned();
+            if text.contains("data: 42") {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&raw).into_owned()
+    }
+
+    /// F776-R5-01（AC-02/03）：SSE 身份跨**全部合法传播边界**——生产点
+    ///（CREATE_GENERATOR 后）包装凭据，local/helper/闭包捕获/容器取出/
+    /// Internal Future 尾与直接返回同 wire（text/event-stream + data:42）。
+    #[test]
+    fn http_e2e_plan776_r5_sse_identity_propagates() {
+        let port = start_server(&program(), 0);
+        for path in ["/s0", "/s1", "/s2", "/s3", "/s5", "/s6"] {
+            let text = read_wire(port, path);
+            assert!(
+                text.contains("text/event-stream"),
+                "{path} 非 SSE wire: {text}"
+            );
+            assert!(text.contains("data: 42"), "{path} 无帧: {text}");
+        }
+    }
+
+    /// F776-R5-01 负控制（AC-01）：stream 声明 fn 返回**普通数值**仍是
+    /// JSON 数据（生产点包装不授予数值身份——R2-01 反例在传播修复后保持）。
+    /// 附 r7：立即完成 async 块终值正确（bp==0 直驱读位——R5 顺带修复，
+    /// 原恒 Int(0)）。
+    #[test]
+    fn http_e2e_plan776_r5_plain_value_and_immediate_body_terminal() {
+        let port = start_server(&program(), 0);
+        let (s4_status, headers4, body4) = get(port, "/s4");
+        assert_eq!(s4_status, 200);
+        assert_eq!(body4, b"0".to_vec(), "普通数值恒数据");
+        assert!(headers4
+            .iter()
+            .any(|(k, v)| k == "content-type" && v.contains("application/json")));
+        let (r7_status, _, r7_body) = get(port, "/r7");
+        assert_eq!((r7_status, r7_body), (200, b"42".to_vec()));
+    }
+
+    /// F776-R5-01 非 HTTP 消费兼容：stream 声明 fn **内部** for-in 消费
+    /// generator——凭据经 iterator native 解包回 iterator id 迭代（42），
+    /// handler 自身 generator 仍 SSE 回帧。
+    #[test]
+    fn http_e2e_plan776_r5_credential_unwrapped_for_internal_iteration() {
+        let port = start_server(&program(), 0);
+        let text = read_wire(port, "/iterstream");
+        assert!(text.contains("text/event-stream"), "wire: {text}");
+        assert!(text.contains("data: 42"), "内部迭代求值 42 后回帧: {text}");
+    }
+}
+
+/// F776-R5-02（AC-07）：`http.` 限定名不被用户同名遮蔽（先于名集判定）；
+/// alias 目标链（限定目标/alias→alias 链）按真实来源解析；循环保守 Json；
+/// 用户普通同名正控制保持。
+#[test]
+fn plan776_r5_qualified_name_and_alias_chain_identity() {
+    let code = r#"
+type FileResponse {
+    name str
+}
+
+type Download = http.FileResponse;
+
+#[api(method = "GET", path = "/api/t1")]
+fn t1() http.FileResponse {
+    return http.file_response(".", "x", "{}")
+}
+
+#[api(method = "GET", path = "/api/t1b")]
+fn t1b() FileResponse {
+    return FileResponse { name: "x" }
+}
+
+#[api(method = "GET", path = "/api/t2")]
+fn t2() Download {
+    return http.file_response(".", "x", "{}")
+}
+"#;
+    let mut parser = crate::parser::Parser::from(code);
+    let ast = parser.parse().expect("parse");
+    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let kind_of = |name: &str| {
+        module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == name)
+            .map(|e| e.response)
+            .unwrap_or_else(|| panic!("endpoint {name} 缺失"))
+    };
+    use crate::api::contract::ResponseKind;
+    // V5-T1：限定名是 stdlib 绑定——用户 `type FileResponse {}` 不遮蔽。
+    assert_eq!(kind_of("t1"), ResponseKind::File);
+    // 正控制：同名裸声明仍是用户来源 → Json。
+    assert_eq!(kind_of("t1b"), ResponseKind::Json);
+    // V5-T2：alias 目标为限定名——规范化后按 stdlib 解析。
+    assert_eq!(kind_of("t2"), ResponseKind::File);
+}
+
+/// F776-R5-02（AC-07）续：alias→alias 链展开到 stdlib；alias 链尾为用户
+/// 声明 → Json；循环 alias 保守 Json。
+#[test]
+fn plan776_r5_alias_chain_and_cycle_rejected() {
+    let code = r#"
+type First = FileResponse;
+type Second = First;
+
+type MyThing {
+    v int
+}
+type AliasToUser = MyThing;
+
+type CycA = CycB;
+type CycB = CycA;
+
+#[api(method = "GET", path = "/api/t3")]
+fn t3() Second {
+    return http.file_response(".", "x", "{}")
+}
+
+#[api(method = "GET", path = "/api/t4")]
+fn t4() AliasToUser {
+    return MyThing { v: 1 }
+}
+
+#[api(method = "GET", path = "/api/t5")]
+fn t5() CycA {
+    return 1
+}
+"#;
+    let mut parser = crate::parser::Parser::from(code);
+    let ast = parser.parse().expect("parse");
+    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let kind_of = |name: &str| {
+        module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == name)
+            .map(|e| e.response)
+            .unwrap_or_else(|| panic!("endpoint {name} 缺失"))
+    };
+    use crate::api::contract::ResponseKind;
+    // V5-T3：alias 链（Second→First→FileResponse）按链尾 stdlib 解析。
+    assert_eq!(kind_of("t3"), ResponseKind::File);
+    // 链尾用户声明 → Json。
+    assert_eq!(kind_of("t4"), ResponseKind::Json);
+    // 循环 alias（A→B→A）——深度护栏保守 Json。
+    assert_eq!(kind_of("t5"), ResponseKind::Json);
+}

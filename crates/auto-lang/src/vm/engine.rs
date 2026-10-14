@@ -11319,16 +11319,22 @@ impl AutoVM {
                 task.ram.push_i32(iter_id as i32);
             }
             OpCode::WRAP_SSE_RESOURCE => {
-                // PLAN-776 R2-01：generator 调用的返回值在返回边界建立身份
-                //（codegen 对 ~Iter/~Stream handler 的 `return <generator-call>`
-                // 静态插入；iterator 注册表校验后装箱 Sse 凭据）。
-                let iter_id = task.ram.pop_i32() as u32;
-                if !self.iterators.contains_key(&iter_id) {
-                    return Err(VMError::RuntimeError(format!(
-                        "wrap_sse: iterator {iter_id} not registered"
-                    )));
+                // PLAN-776 R2-01/R5-01：generator 产出在**生产点**建立身份
+                //（codegen 对 ~Iter/~Stream 声明 fn 内的 CREATE_GENERATOR 后
+                // 插入；iterator 注册表校验后装箱 Sse 凭据）。幂等：已是
+                // 凭据对象（TAG_OBJECT）则原样回推——双包装/凭据回流安全。
+                let nv = task.ram.pop_nv();
+                if auto_val::is_object(nv) {
+                    task.ram.push_nv(nv);
+                } else {
+                    let iter_id = auto_val::decode_i32(nv) as u32;
+                    if !self.iterators.contains_key(&iter_id) {
+                        return Err(VMError::RuntimeError(format!(
+                            "wrap_sse: iterator {iter_id} not registered"
+                        )));
+                    }
+                    crate::vm::ffi::http_return_resource::push_sse_resource(task, self, iter_id)?;
                 }
-                crate::vm::ffi::http_return_resource::push_sse_resource(task, self, iter_id)?;
             }
             OpCode::SLEEP => {
                 let ms = self.flash.read_u32(task.ip) as u64;
@@ -12922,7 +12928,16 @@ impl AutoVM {
                     // 对齐）——此前 pop_i32+decode_tagged_value 把 nanobox
                     // 标签位当 raw i32 重解码，return None 的 null nv 被拍平
                     // 成 Int(0)/Int(-1)，`.x = f().await` 后 `.x != None` 恒真。
-                    if task.ram.sp > task.bp + 1 {
+                    // PLAN-776 R5-01：bp==0（dispatch 直驱立即体——handler 已
+                    // RET、任务栈归 base，RET bp==0 短路不弹帧）时值就在
+                    // 栈顶；原 `sp > bp + 1` 只覆盖帧内（await/spawn）形态，
+                    // base 形态漏读 → 终值恒 Int(0)。
+                    let has_result = if task.bp == 0 {
+                        task.ram.sp > task.bp
+                    } else {
+                        task.ram.sp > task.bp + 1
+                    };
+                    if has_result {
                         let raw = task.ram.pop_nv();
                         // PLAN-776 R1-F04：body 栈槽份额终结（与 RET 指令的
                         // 影子转移语义对齐）——result 是 VmRef（无份额），

@@ -1513,17 +1513,37 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                 let display = format!("{}", f.ret);
                 let mut primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
                 let mut shadowed = "";
-                // PLAN-776 T-06/R2-07：第三段 = 返回裸名被用户同名遮蔽；
-                // alias 按 target 展开（target 用户声明 → 遮蔽；target 为
-                // stdlib 名 → primary 换 target 参与消费侧分类）。
-                if let Some(target) = alias_targets.get(&primary) {
-                    if user_type_names.contains(target) {
-                        shadowed = "1";
-                    } else {
-                        primary = target.clone();
+                // PLAN-776 T-06/R2-07/R5-02：第三段 = 返回裸名被用户同名遮蔽；
+                // alias 按目标**链**展开。限定名/限定目标（`http.X`）是 stdlib
+                // 绑定——先于用户名集判定（规范化后查名集会与用户同名碰撞
+                // 误判遮蔽）；链尾用户声明 → 遮蔽；stdlib 名 → primary 换链尾
+                // 参与消费侧分类；循环/超深保守按现状裸名。
+                let initial_qualified = primary.starts_with("http.");
+                let mut cur = primary
+                    .strip_prefix("http.")
+                    .unwrap_or(primary.as_str())
+                    .to_string();
+                let mut terminal_is_user = !initial_qualified && user_type_names.contains(&cur);
+                let mut depth = 0;
+                while !terminal_is_user {
+                    let Some(target) = alias_targets.get(&cur) else {
+                        break;
+                    };
+                    if depth >= 8 {
+                        break;
                     }
-                } else if user_type_names.contains(&primary) {
+                    if let Some(stripped) = target.strip_prefix("http.") {
+                        cur = stripped.to_string();
+                        break;
+                    }
+                    cur = target.clone();
+                    depth += 1;
+                    terminal_is_user = user_type_names.contains(&cur);
+                }
+                if terminal_is_user {
                     shadowed = "1";
+                } else {
+                    primary = cur;
                 }
                 fn_meta.insert(
                     f.name.to_string(),

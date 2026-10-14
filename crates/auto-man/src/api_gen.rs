@@ -7396,6 +7396,7 @@ futures = "0.3"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
 a2r-std = {{ path = {a2r_std:?} }}
 
@@ -7742,6 +7743,7 @@ futures = "0.3"
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
 a2r-std = {{ path = {a2r_std:?} }}
 

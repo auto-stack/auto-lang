@@ -99,29 +99,6 @@ pub fn record_api_return_shadowed(fn_name: &str) {
     }
 }
 
-/// PLAN-776 R2-01：generator fn 名集（body 含 yield——codegen 编译期登记）。
-/// `~Iter` 声明 + generator fn 的返回 int 是**真实 iterator id**（generator
-/// 调用的语言产出——producer 在调用边界）；非 generator fn 声明 `~Iter` 返回
-/// 普通数值 = 数据（R2 反例：`fn p() ~Iter<int> { let l=stream(); return 0 }`）。
-static API_GENERATOR_FNS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
-
-/// Codegen 在 generator fn 编译时发布。
-pub fn record_api_generator_fn(fn_name: &str) {
-    if let Ok(mut table) = API_GENERATOR_FNS.lock() {
-        table.insert(fn_name.to_string());
-    }
-}
-
-/// 编组期判定：该函数（或 closure 反查名）是 generator fn。
-pub(crate) fn fn_is_generator(fn_name: &str) -> bool {
-    API_GENERATOR_FNS
-        .lock()
-        .ok()
-        .map(|t| t.contains(fn_name))
-        .unwrap_or(false)
-}
-
 /// 本工程是否声明了 ~Stream 端点（对齐 api_gen 的 has_sse 广播门控）。
 pub fn has_stream_endpoint() -> bool {
     API_RETURN_TYPES
@@ -140,9 +117,6 @@ pub fn clear_api_param_sigs() {
         table.clear();
     }
     if let Ok(mut table) = API_RETURN_SHADOWED.lock() {
-        table.clear();
-    }
-    if let Ok(mut table) = API_GENERATOR_FNS.lock() {
         table.clear();
     }
     if let Ok(mut table) = API_ASYNC_RETURNS.lock() {
@@ -5583,16 +5557,6 @@ fn handler_declares_stream_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -
     kind == crate::api::contract::ResponseKind::Stream
 }
 
-/// R2-01：ctx 的 handler 是 generator fn（closure 经 export 名反查）。
-fn handler_is_generator(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
-    match ctx.axum_route {
-        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
-            .map(|n| fn_is_generator(&n))
-            .unwrap_or(false),
-        None => fn_is_generator(&ctx.route.fn_name),
-    }
-}
-
 /// ctx 声明文件返回（axum_route closure 反查同 async 门）。
 fn handler_declares_file_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
     match ctx.axum_route {
@@ -5600,22 +5564,6 @@ fn handler_declares_file_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> 
             .map(|n| fn_is_api_file_return(&n))
             .unwrap_or(false),
         None => fn_is_api_file_return(&ctx.route.fn_name),
-    }
-}
-
-/// ctx 的声明返回串（named fn 经 API_RETURN_TYPES；axum closure 反查导出名）。
-fn declared_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> String {
-    let lookup = |name: &str| -> Option<String> {
-        API_RETURN_TYPES
-            .lock()
-            .ok()
-            .and_then(|t| t.get(name).cloned())
-    };
-    match ctx.axum_route {
-        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
-            .and_then(|n| lookup(&n))
-            .unwrap_or_default(),
-        None => lookup(&ctx.route.fn_name).unwrap_or_default(),
     }
 }
 
@@ -5780,7 +5728,12 @@ fn marshal_handler_value(
                 }
                 None => fn_is_api_async(&ctx.route.fn_name),
             };
-            if handler_async {
+            // PLAN-776 R5-01：stream 声明（~Iter/~Stream）的 handler 同样
+            // 允许返回 Future——`fn p() ~Iter { return ~{ gen() } }` 的
+            // Internal 体在服务端驱动后按终值分派（体尾 generator 生产点
+            // 已凭据化）。声明只选择驱动能力，不授予数值身份：future id
+            // 查无注册表时照旧落数据面（同 async 门语义）。
+            if handler_async || handler_declares_stream_return(vm, ctx) {
                 if let Some(fut) = vm.futures.get(&fid) {
                     let (pending, is_external, body_offset) = {
                         let f = fut.read().unwrap();
@@ -5848,9 +5801,10 @@ fn marshal_handler_value(
         if handler_declares_file_return(vm, ctx) {
             return MarshalOutcome::Reply(file_contract_mismatch_reply(ctx, bits as u32 as u64));
         }
-        // R2-01（终形）：普通 int 永不取得 iterator 身份——generator 的真实
-        // 产出在**返回边界**已是凭据对象（call_fn_by_name_http / Return 包装
-        // 指令），走上方对象臂；声明/表命中不再授予身份。
+        // R2-01/R5-01（终形）：普通 int 永不取得 iterator 身份——generator 的
+        // 真实产出在**生产点**已是凭据对象（codegen 对 ~Iter/~Stream 声明 fn
+        // 内 CREATE_GENERATOR 后插 WRAP_SSE_RESOURCE；generator handler 的
+        // dispatch 臂直推），走上方对象臂；声明/表命中不授予身份。
         return MarshalOutcome::Reply(json_value_reply(
             vm,
             nv,

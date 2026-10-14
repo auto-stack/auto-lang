@@ -1,17 +1,22 @@
 //! PLAN-776 T-02：HTTP 返回资源凭据——handler 成功终值的按值身份载体。
 //!
-//! 决策报告（`docs/plans/reports/776-return-resource-decision.md` §2/§3）冻结
-//! 方案 A：资源凭据 = `heap_objects` 表 entry（`TypeTag::HttpReturnResource`），
-//! NanoValue 侧现成 `TAG_OBJECT`（`encode_object`），Value 侧现成
-//! `Value::VmRef`。普通 i32/i64 是 `TAG_I32/TAG_I64`——任何数值运算都不能
-//! 制造资源身份（AC-01）；heap 表 per-VM，编组持 `vm` 查表即 owner 校验
-//! （AC-05）；heap id 单调递增不复用（无旧引用复活）；凭据随 RC 归零回收。
+//! 决策报告（`docs/plans/reports/776-return-resource-decision.md` §2/§3，
+//! R2/R5 终形修订）冻结方案 A：资源凭据 = `heap_objects` 表 entry
+//! （`TypeTag::HttpReturnResource`），NanoValue 侧现成 `TAG_OBJECT`
+//! （`encode_object`），Value 侧现成 `Value::VmRef`。普通 i32/i64 是
+//! `TAG_I32/TAG_I64`——任何数值运算都不能制造资源身份（AC-01）。
+//!
+//! 凭据走**专用 id 段** `0x8000_0000 | owner(11bit) << 20 | local(20bit)`
+//!（R1-F03/R2-02）：owner 编入 id 且无掩码回绕（第 2049 个 VM 起分配前
+//! 受控拒绝；id 层 owner 校验先行，堆内 owner 字段二线）；local 段 2^20
+//! 耗尽同样分配前拒绝（无旧引用复活）。凭据随 RC 归零回收（dying 宽限窗）。
 //!
 //! 各 kind 的数据 backing 不动（SSE iterator 仍在 `vm.iterators`、File 描述符
 //! 仍在 `VM_FILE_RESPONSES`、Upload 收据仍在 `VM_UPLOAD_RECEIPTS`——take 单次
 //! 移交合同保持）；Response 快照直接 owned 在凭据内（重复返回 = 每次 clone，
-//! 不经全局表）。legacy int 面（`http.response()`+setter 链、client 句柄、
-//! Plan 326/346 六 wire 用例）保持原查表路径。
+//! 不经全局表）。legacy int 面=死兼容（R1-F01/R2-05 查表臂退役后：setter 链
+//! 已迁快照+owned-slot，client egress 已凭据化，`http.response()` 构造产
+//! 凭据——Plan 326/346 六 wire 用例由真实生产点保持 wire 行为）。
 
 use std::any::Any;
 use std::sync::atomic::{AtomicUsize, Ordering};

@@ -1597,7 +1597,7 @@ impl Codegen {
                     );
                     // PLAN-776 T-06：用户同名遮蔽——返回裸名命中编译单元类型
                     // 声明（TypeStore）时冻结遮蔽标记（VM 编组门 → Json；
-                    /// stdlib HTTP 词汇不注册 TypeStore，命中即用户来源）。
+                    // stdlib HTTP 词汇不注册 TypeStore，命中即用户来源）。
                     {
                         let bare = crate::api::contract::return_bare_name(&ret_display).to_string();
                         let shadowed = self
@@ -1680,9 +1680,6 @@ impl Codegen {
                     && body_contains_yield(&fn_decl.body)
                 {
                     self.generator_fns.insert(fn_decl.name.to_string());
-                    // PLAN-776 R2-01：运行时侧道——marshal 的 iterator 身份门
-                    // 需要 fn 级 generator 判定（声明不授予身份）。
-                    crate::vm::ffi::http_server::record_api_generator_fn(&fn_decl.name.to_string());
                 }
 
                 // PLAN-705 T-04/SD-01: publish async-return metadata for ALL
@@ -2710,15 +2707,10 @@ impl Codegen {
             }
             Stmt::Return(expr) => {
                 self.compile_expr(expr)?;
-                // PLAN-776 R2-01：`~Iter/~Stream` 声明的 handler 中
-                // `return <generator fn 调用>`——编译期静态证明的 generator
-                // 产出，在返回边界包装凭据（普通数值/非 generator 调用不包
-                //——声明不授予身份，R2 反例）。
-                if fn_ret_declares_stream(&self.current_fn_ret_type)
-                    && expr_is_generator_call(expr, &self.generator_fns)
-                {
-                    self.emit(OpCode::WRAP_SSE_RESOURCE);
-                }
+                // PLAN-776 R5-01：SSE 凭据包装移至 generator 生产点
+                //（CREATE_GENERATOR 后，Call 臂）——`return <expr>` 不再
+                // 包装。生产点包装覆盖直接调用/局部/helper/Internal 尾等
+                // 全部传播形态；返回的普通数值恒为数据（R2-01 反例保持）。
                 let n_args = self.current_fn_n_args as u8;
                 // Plan 377: 全值单槽化后恒用 RET。f32→f64 仍需 PROMOTE_F64 编码提升。
                 if matches!(self.current_fn_ret_type, Type::Double)
@@ -11533,6 +11525,19 @@ impl Codegen {
                         });
 
                         self.last_expr_type = ObjectType::Int; // iterator_id
+
+                        // PLAN-776 R5-01：generator **生产点**凭据化——所在
+                        // fn 声明 `~Iter/~Stream` 时，CREATE_GENERATOR 的
+                        // iterator 产出就地包装 Sse 凭据（身份随
+                        // local/helper/容器/闭包/Future 载体天然传播；for-in
+                        // 源由 iterator natives 凭据感知解包，非 HTTP 消费
+                        // 兼容）。声明不授予数值身份——包装只挂在真实
+                        // generator 生产点上（`return 0` 仍是数据，R2-01
+                        // 反例保持）。替代 R2 的 return 位包装（仅覆盖直接
+                        // 调用表达式）。
+                        if fn_ret_declares_stream(&self.current_fn_ret_type) {
+                            self.emit(OpCode::WRAP_SSE_RESOURCE);
+                        }
                     } else {
                         self.emit(OpCode::CALL);
 
@@ -16761,17 +16766,4 @@ fn fn_ret_declares_stream(ty: &crate::ast::Type) -> bool {
         other => format!("{other}"),
     };
     s == "Iter" || s == "Stream"
-}
-
-/// PLAN-776 R2-01：return 表达式是否为 generator fn 直接调用。
-fn expr_is_generator_call(
-    expr: &crate::ast::Expr,
-    generator_fns: &std::collections::HashSet<String>,
-) -> bool {
-    if let crate::ast::Expr::Call(c) = expr {
-        if let crate::ast::Expr::Ident(n) = c.name.as_ref() {
-            return generator_fns.contains(n.as_str());
-        }
-    }
-    false
 }

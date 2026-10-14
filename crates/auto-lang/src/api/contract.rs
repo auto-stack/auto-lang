@@ -49,41 +49,55 @@ impl ResponseKind {
         Self::from_return_identity(ret, &[])
     }
 
-    /// PLAN-776 T-06/R2-07：按**解析来源**分类——裸名命中模块类型声明即用户
-    /// 来源；type alias 按**目标**展开（一层——`type Download = FileResponse`
-    /// → target 按真实来源解析：target 是用户声明 → Json，是 stdlib 名 →
-    /// 专属种类）；`http.` 限定前缀是 stdlib 绑定（不受用户名集遮蔽）；
-    /// 未命中才按 stdlib 内建裸名分派（stdlib HTTP 词汇不注册模块类型声明）。
+    /// PLAN-776 T-06/R2-07/R5-02：按**解析来源**分类——`http.` 限定名是
+    /// stdlib 绑定，直接按裸名分派（**先于**用户名集查询，不受同名遮蔽
+    /// ——F776-R5-02：用户 `type FileResponse {}` 不劫持 `http.FileResponse`）；
+    /// 未限定裸名命中模块类型声明即用户来源；type alias 按**目标链**递归
+    /// 展开（target 支持 `http.` 限定与 alias→alias 链；循环/超深保守
+    /// 落 Json）；链尾是用户声明 → Json，是 stdlib 名 → 专属种类；未命中
+    /// 才按 stdlib 内建裸名分派（stdlib HTTP 词汇不注册模块类型声明）。
     pub fn from_return_identity(ret: &str, module_types: &[ApiType]) -> ResponseKind {
         let ret = ret.trim();
         // ~T 脱糖为 Future<T>；两种书写都解包。
         let unwrapped = unwrap_future(ret);
         let name = bare_name(unwrapped);
-        // R2-07：stdlib 限定名（`http.FileResponse`）——限定绑定即真实来源，
-        // 直接按 stdlib 裸名分派（不受名集遮蔽）。
-        let effective: &str = if let Some(stripped) = name.strip_prefix("http.") {
-            stripped
-        } else {
-            name
-        };
-        // 用户直接声明（struct/enum）或 alias-to-用户名：真实来源是用户 → Json。
-        if let Some(t) = module_types.iter().find(|t| t.name == effective) {
-            match &t.alias_of {
-                None => return ResponseKind::Json,
-                Some(target) => {
-                    // alias：按 target 展开（target 是用户声明 → Json）。
-                    if module_types
-                        .iter()
-                        .any(|u| u.name == *target && u.alias_of.is_none())
-                    {
-                        return ResponseKind::Json;
-                    }
-                    // target 是 stdlib 名 → 专属种类（下方 match 用 target）。
-                    return Self::stdlib_kind(target);
-                }
-            }
+        // R2-07/R5-02：限定名即真实 stdlib 来源——绕过用户名集直派。
+        if let Some(stripped) = name.strip_prefix("http.") {
+            return Self::stdlib_kind(stripped);
         }
-        Self::stdlib_kind(effective)
+        match module_types.iter().find(|t| t.name == name) {
+            Some(t) => Self::resolve_alias_target(t, module_types, 0),
+            None => Self::stdlib_kind(name),
+        }
+    }
+
+    /// R5-02：alias 目标链展开。每层 target 规范化（剥 `http.` 限定）后
+    /// 继续查名集：链尾用户声明（非 alias）→ Json；链尾不在名集 → 按
+    /// stdlib 裸名分派；循环/超深（A→B→A 或 >8 层）保守落 Json。
+    fn resolve_alias_target(t: &ApiType, module_types: &[ApiType], depth: u32) -> ResponseKind {
+        const MAX_ALIAS_DEPTH: u32 = 8;
+        let Some(target) = &t.alias_of else {
+            return ResponseKind::Json; // 用户直接声明（struct/enum）
+        };
+        if depth >= MAX_ALIAS_DEPTH {
+            return ResponseKind::Json; // 循环/超深保守
+        }
+        let trimmed = target.trim();
+        // 限定目标（`http.X`）= stdlib 绑定——**先于**名集判定（F776-R5-02：
+        // 规范化后再查名集会与用户同名声明碰撞误判 Json）。
+        if let Some(stripped) = trimmed.strip_prefix("http.") {
+            return Self::stdlib_kind(stripped);
+        }
+        match module_types.iter().find(|u| u.name == trimmed) {
+            // 链上下一层仍是 alias → 继续展开。
+            Some(next) if next.alias_of.is_some() => {
+                Self::resolve_alias_target(next, module_types, depth + 1)
+            }
+            // 链尾是用户直接声明（struct/enum）→ Json。
+            Some(_) => ResponseKind::Json,
+            // 不在名集 → stdlib 裸名分派。
+            None => Self::stdlib_kind(trimmed),
+        }
     }
 
     /// stdlib 内建裸名分派（无模块上下文的保守入口同款表）。

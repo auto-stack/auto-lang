@@ -5592,7 +5592,24 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         ));
     }
 
-    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R5-01：凭据感知——for-in/迭代源为 Sse 凭据对象（TAG_OBJECT）
+    // 时解包底层 iterator id。stream 声明函数内 generator 产出已凭据化
+    //（生产点包装），迭代消费经此保持 int 源同语义（非 HTTP 消费兼容）。
+    let iterator_id = if auto_val::is_object(task.ram.peek_nv(0)) {
+        let nv = task.ram.pop_nv();
+        match crate::vm::ffi::http_return_resource::resolve_resource(vm, nv) {
+            Some(crate::vm::ffi::http_return_resource::ResourceClaim::Sse { iterator_id }) => {
+                iterator_id
+            }
+            _ => {
+                return Err(VMError::RuntimeError(
+                    "iterator.next: object is not an SSE credential".to_string(),
+                ))
+            }
+        }
+    } else {
+        crate::vm::native::pop_arg_i32(task) as u32
+    };
     let cooperative_budget = PLAN696_SSE_NEXT_BUDGET.with(|slot| {
         slot.get()
             .filter(|(target_iterator, _)| *target_iterator == iterator_id)
