@@ -1,0 +1,5 @@
+// N01: record profile + owned Str field (combination face, must be controlled-rejected)
+type Tok {
+    text Str
+}
+fn main() int { return 0 }

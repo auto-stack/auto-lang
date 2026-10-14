@@ -1,0 +1,9 @@
+// N05r: record profile + .move on record value (fn renamed off reserved word)
+type Pair {
+    left int
+}
+fn eat(move p Pair) int { return p.left }
+fn main() int {
+    let p = Pair { left: 1 }
+    return eat(p.move)
+}

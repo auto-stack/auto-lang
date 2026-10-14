@@ -1,0 +1,8 @@
+     Running tests\record_hir.rs (experimental\ac-core\target\debug\deps\record_hir-c0936e0a974ed7c8.exe)
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests\record_source.rs (experimental\ac-core\target\debug\deps\record_source-d86586b14cfed2ad.exe)
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests\text_hir.rs (experimental\ac-core\target\debug\deps\text_hir-69d08c4e43d9f32f.exe)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests\text_source.rs (experimental\ac-core\target\debug\deps\text_source-70788fa3e462ff82.exe)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s

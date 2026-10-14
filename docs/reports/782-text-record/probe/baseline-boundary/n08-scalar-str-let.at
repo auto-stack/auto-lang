@@ -1,0 +1,5 @@
+// N08: scalar profile + owned Str let type
+fn main() int {
+    let s Str = "x"
+    return 0
+}

@@ -1,0 +1,5 @@
+// N03: record profile + char field (combination face)
+type Tok {
+    c char
+}
+fn main() int { return 0 }

@@ -1,0 +1,8 @@
+P1-OK resource classification (transitive, worklist)
+P2-OK layout (Str field 12/8, checked u64, u32 cap, 256-deep iterative)
+P3-OK cleanup plan (LIFO roots, reverse-decl fields, empty no-op, move handoff)
+P4-OK replace & overlap ordering (RHS-complete gate, single old free, rebuild-after-consume)
+P5-OK deep clone plan (per non-empty Str field, empty free, distinct ids)
+P6-OK fault oracle (status path: rollback + old target intact; trap path distinct: RT-FAIL+70)
+P7-OK scale (4096 loop LIFO, 256-deep explicit-stack cleanup)
+PROBE-OK

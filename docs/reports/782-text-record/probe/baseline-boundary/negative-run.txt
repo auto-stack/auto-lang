@@ -1,0 +1,46 @@
+===== N01 record+Str field:
+
+thread 'main' (28352) panicked at src\source\parser.rs:985:18:
+internal error: entered unreachable code: type_word called on non-type token
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+===== N02 record+str field:
+
+thread 'main' (47192) panicked at src\source\parser.rs:985:18:
+internal error: entered unreachable code: type_word called on non-type token
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+===== N03 record+char field:
+
+thread 'main' (46672) panicked at src\source\parser.rs:985:18:
+internal error: entered unreachable code: type_word called on non-type token
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+exit=101
+===== N04 text+record decl:
+docs/reports/782-text-record/probe/baseline-boundary/n04-text-record-decl.at:2:1: error[text/source.unsupported]: `type` is not part of this source profile
+exit=1
+===== N05 record .move:
+docs/reports/782-text-record/probe/baseline-boundary/n05-record-move-on-record.at:5:4: error[text/source.unsupported]: keyword `take` cannot be used as a name
+exit=1
+===== N06 record .clone():
+docs/reports/782-text-record/probe/baseline-boundary/n06-record-clone-on-record.at:7:15: error[bind/source.undefined]: type `Pair` has no method named `clone`
+docs/reports/782-text-record/probe/baseline-boundary/n06-record-clone-on-record.at:8:14: error[bind/source.type-mismatch]: field access requires a record-typed value, found `i32`
+exit=1
+===== N07 unregistered triple:
+docs/reports/782-text-record/probe/baseline-boundary/n07-unregistered-triple.atom:2:16: error[text/text.unexpected-char]: unexpected character `.`
+exit=1
+===== N08 scalar+Str let:
+docs/reports/782-text-record/probe/baseline-boundary/n08-scalar-str-let.at:3:11: error[text/source.unsupported]: type `Str` is not part of this source profile
+exit=1
+===== N09 core+str param:
+docs/reports/782-text-record/probe/baseline-boundary/n09-core-str-param.at:2:8: error[text/source.unsupported]: type `str` is not part of this source profile
+exit=1
+===== N05r record .move (renamed):
+docs/reports/782-text-record/probe/baseline-boundary/n05r-record-move-on-record.at:5:8: error[text/source.unsupported]: keyword `move` cannot be used as a name
+exit=1
+===== N07 unregistered triple (fixed syntax):
+docs/reports/782-text-record/probe/baseline-boundary/n07-unregistered-triple.atom:2:1: error[bind/bind.descriptor-unknown]: no registered descriptor for identity `auto.hir.text-record.draft/1/text-record-i32-draft (accepted: auto.hir.core.draft/1/core-i32-draft, auto.hir.scalar.draft/1/scalar-i32-draft, auto.hir.text.draft/1/text-i32-draft, auto.hir.record.draft/1/record-i32-draft)
+exit=1
+===== P-control: record flagship check:
+OK source profile=auto.source.record.draft, input-hash=b6f5455383c9fa78, module(s)=1, capabilities required: []
+exit=0

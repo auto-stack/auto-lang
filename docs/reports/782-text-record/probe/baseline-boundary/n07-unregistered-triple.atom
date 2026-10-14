@@ -1,0 +1,4 @@
+// N07: unregistered combination HIR triple -> bind.descriptor-unknown
+hir(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-record-i32-draft") {
+    module(id: "m") {}
+}

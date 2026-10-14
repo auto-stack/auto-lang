@@ -1,0 +1,9 @@
+// N06: record profile + .clone() on a record value (aggregate clone is the new profile's face)
+type Pair {
+    left int
+}
+fn main() int {
+    let p = Pair { left: 1 }
+    let q = p.clone()
+    return q.left
+}

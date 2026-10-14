@@ -1,0 +1,5 @@
+// N04: text profile + record type declaration (record face in text domain)
+type Pair {
+    left int
+}
+fn main() int { return 0 }

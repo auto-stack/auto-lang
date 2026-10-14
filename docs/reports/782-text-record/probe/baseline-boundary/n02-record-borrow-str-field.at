@@ -1,0 +1,5 @@
+// N02: record profile + borrowed str field (verify.field-borrow face in the new profile)
+type Tok {
+    text str
+}
+fn main() int { return 0 }

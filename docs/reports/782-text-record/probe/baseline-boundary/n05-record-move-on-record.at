@@ -1,0 +1,9 @@
+// N05: record profile + .move on a record value (move is text-only)
+type Pair {
+    left int
+}
+fn take(move p Pair) int { return p.left }
+fn main() int {
+    let p = Pair { left: 1 }
+    return take(p.move)
+}
