@@ -1,4 +1,4 @@
-# ac-core — PLAN-741 AC 首个闭环原型(745 源码 profile / 767 标量扩面)
+# ac-core — PLAN-741 AC 首个闭环原型(745 源码 profile / 767 标量扩面 / 770 文本与字符)
 
 独立 Cargo workspace:Schema-bound Atom HIR 文本 → 类型化绑定 → 语义校验 →
 Cranelift native lowering → Windows x64 COFF 对象 → rust-lld 链接 → 运行 PE。
@@ -19,6 +19,21 @@ verify(分域入口 `verify`/`verify_scalar`)、Checked、canonical writer 到
 构建收据全程随行;旧 core 域的接受/拒绝集合零改动。范围与验收见
 [docs/plans/767-ac-scalar-ops-short-circuit.md](../../docs/plans/767-ac-scalar-ops-short-circuit.md)。
 
+PLAN-770 再增**文本与字符 profile** `auto.source.text.draft`(HIR 身份
+`auto.hir.text.draft / 1 / text-i32-draft`,descriptor `schema/text.atom`):
+标量面之上加入 `str`(借用 UTF-8 切片)/`Str`(拥有缓冲)/`char`(独立
+Unicode 标量)。字符串/字符字面量(跨行、白名单转义、`\u{...}`)、
+`len`/`len_bytes`/`char_at`/`slice`(按 Unicode 标量索引)、`+` 拼接、
+`clone`/`.to(Str)`/`.to(str)`、`==`/`!=`(字节精确,无 normalization)、
+显式 `c.to_codepoint()`/`char.from_codepoint(n)`(代理/越界为运行期
+RT-FAIL+trap70)。资源沿 774 数据-资源合同:拥有/借用分语境,`.move`
+调用点转移所有权,LIFO 出口清理由 verifier 的 TextResourcePlan 冻结、
+后端只消费;native 侧经独立 `runtime/text` 静态库(`ac_rt_*` ABI)真实
+分配/复制/释放。文本模块须声明并显式提供能力 `ac.runtime.text.v1`,
+且 `--support-lib` 携带伴随 `<lib>.contract.json` 合同(api/revision/
+target/hash 对真实库校验,缺/错在发布前拒绝)。范围与验收见
+[docs/plans/770-ac-text-char-native.md](../../docs/plans/770-ac-text-char-native.md)。
+
 ## 流水线
 
 ```text
@@ -35,18 +50,29 @@ verify(分域入口 `verify`/`verify_scalar`)、Checked、canonical writer 到
                         全子进程硬截止覆盖等待与输出收集,Job Object 管控进程树)
   → Windows PE
 
-[源码模式:check-source/build-source,745/767]
-.at 源码 + 显式 --source-profile core|scalar
-  → source/lexer.rs     UTF-8/ASCII 标识符/行敏感 token(排除面 token 化)
+[源码模式:check-source/build-source,745/767/770]
+.at 源码 + 显式 --source-profile core|scalar|text
+  → source/lexer.rs     UTF-8/ASCII 标识符/行敏感 token(排除面 token 化;
+                        text profile 下 "/'/str/Str/char/to/move/mut 进
+                        上下文敏感 token,转义与 \u{} 在词法层解码校验)
   → source/parser.rs    语句型语法(core:+ <* <;scalar:||<&&<==!=<关系<+-<* / %
-                        + 一元链右结合 + 条件 for;迭代优先级攀爬机)
-  → source/resolve.rs   签名预登记/块作用域/参数映射(bind 级 source.* 诊断)
-  → source/typecheck.rs 精确类型检查(verify 级 source.type-mismatch)
+                        + 一元链右结合 + 条件 for;迭代优先级攀爬机;
+                        text 另有方法后缀链 .len()/.char_at/.slice/.clone/
+                        .to(str|Str)/.to_codepoint/.move 与 char 类型级
+                        接收者 char.from_codepoint(n),mode 词 mut|move)
+  → source/resolve.rs   签名预登记/块作用域/参数映射(bind 级 source.* 诊断;
+                        text:接收者类型绑定内建方法,用户同名遮蔽优先,
+                        字面量语境定型 str/Str,moved 绑定数据流)
+  → source/typecheck.rs 精确类型检查(verify 级 source.type-mismatch;
+                        text:双文本 +→concat、eq/ne 同型、无隐式 char/int)
   → source/adapter.rs   生成 Atom 文本 + span 再锚(循环→loop/if 降低、
                         bool=0<1/0<0、&&/||→Logical、-x/!x→Unary、return 后
                         死代码独立块、stray break phantom loop、条目序 span
-                        投影 + UTF8 边界后验)
-  → 同上 descriptor/verify/native/link(无旁路、无回退)
+                        投影 + UTF8 边界后验;text:文本节点/mode/moved 发射
+                        与 ac.runtime.text.v1 requires)
+  → 同上 descriptor/verify/native/link(无旁路、无回退;text 域 native
+                        lowering 走 runtime/text 静态库的 ac_rt_* 调用与
+                        TextResourcePlan 出口清理)
 ```
 
 ## 使用
@@ -100,6 +126,15 @@ cargo run --locked -- check-source fixtures/scalar-source/valid/p-gcd-euclid.at 
 cargo run --locked -- build-source fixtures/scalar-source/valid/p-gcd-euclid.at `
   --source-profile auto.source.scalar-i32.draft `
   --entry main --output target/ac-artifacts/gcd.exe
+
+# 文本与字符 profile(770):真实分配/复制/释放的 str/Str/char
+# 先构建 runtime 静态库(独立 workspace,产 .lib + 合同 sidecar 由其测试维护)
+cargo build --locked --release --manifest-path runtime/text/Cargo.toml -p ac-text-runtime-shim
+# 直接 HIR 模式(build);源码模式用 build-source --source-profile auto.source.text.draft
+cargo run --locked -- build fixtures/text-hir/valid/n01-native-ops.atom `
+  --entry d_main --output target/ac-artifacts/text-hir.exe `
+  --capability ac.runtime.text.v1 `
+  --support-lib runtime/text/target/release/ac_text_runtime.lib
 ```
 
 ## 一键验证
@@ -112,6 +147,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-sour
 # 标量扩面 profile 全语料(767:11 源码 + 15 HIR 正例真实运行 + 19 负例 +
 # CLI 隔离与收据身份;受控执行器与 741/745 同源)
 powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-scalar-767.ps1
+# 文本与字符 profile(770:ac-core 全套含 text_* 五族 + runtime/text 三档 +
+# 旧 gates 741/745/767 串行 + scope 隔离 + 库/合同指纹收据)
+powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-text-770.ps1
 ```
 
 三脚本均覆盖 ac-core 门禁(check/fmt/all-targets 零 warning)与各自 case 表;
@@ -136,6 +174,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-scal
 | scalar_hir | 767:双身份隔离(bind_document 分派/域门 verify/writer 换壳拒)、V-07 程序化变异门(错类型/共享/自环/二环/跨 body)、canonical 往返、4096 逻辑深链 |
 | scalar_source | 767:11+19 源码正反例、core 面在 token 级拒新语法、深输入(16384 项逻辑链/2 万层 !/4096 嵌套调用)到 Checked |
 | scalar_native | 767:HIR PE(除余六行表、七 trap 行 exit70+精确 stderr、短路六极性)+ 源码 PE(gcd/计数/is_digit/条件 for/CRLF/全上下文 trace)+ CLI 隔离 + 收据身份与 SENTINEL 事务保持 |
+| text_hir | 770:HirDomain::Text 隔离、verify_text 资源前门(owned-scope-escape/borrow-escape/use-after-move/double-move/mut-conflict/resource-assign)与 TextResourcePlan 精确断言 |
+| text_source | 770:V-02/03/08/09 source 腿(Unicode/码点/遮蔽/静态拒绝/4096 深链)到 Checked |
+| text_native | 770:真实 PE——V-02 Unicode(source+HIR)、V-03 码点往返与 invalid-scalar trap70、V-04 生命周期 trace(LIT/CONCAT/CLONE/FREE 配对、LIFO、.move 转移、跨帧拥有返回)、V-07 顺序/短路、V-09 4096 链/循环/调用链、V-10 合同门变异与 SENTINEL、标量面隔离 |
+| text_resources | 770:V-05 失败类矩阵(slice 越界/反向/负界、char_at 越界、invalid scalar 全部 trap70+RT-FAIL code)、零长拥有、合流 LIFO、move 单次释放;预算/注入边界归 runtime 测试 |
 
 ## 边界(勿过度宣称)
 
@@ -157,6 +199,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-scal
   固定测试语义,不推导全语言/生产异常 ABI。
 - 源码子集不含 char/str/聚合/泛型/方法/模块引用;char 一律
   source.unsupported(char↔int 映射在宿主表面间不一致,保持 open)。
+  **text profile 例外(770)**:`str`/`Str`/`char` 与上表内建方法是该
+  profile 的显式面;core/scalar profile 下这些 token 仍按原样拒绝
+  (零行为变化)。文本面自身不含 List/Map/record/enum 文本字段、
+  字素索引/normalization/f-string/raw/正则、生产 print/File/process
+  或任何公开 ABI。
+- 文本运行时是**内部测试 ABI**(`ac.runtime.text.v1`,runtime/text
+  静态库,774 合同同构):能力须显式声明提供,support-lib 伴随
+  `<lib>.contract.json`(api/revision/target/hash 对真实库文件校验);
+  RT-FAIL stderr 行 + 退出码 70 是失败类取证;预算/故障注入无语言
+  入口(归 runtime 测试)。两个 Rust no_std staticlib(trace 支持库与
+  文本运行时)因 `__rustc::rust_begin_unwind` 重复不能共链一个 PE——
+  顺序 oracle 用各自 trace 面。
 - 关键字不可作名字:profile 自身的 15 个关键字与生产词法器的完整 Auto
   关键字集合(含 type/enum/use/mut/nil 等)都按 `source.unsupported` 拒绝于
   名字位;识别但排除(关键字/排除 literal/排除运算)与坏 token(source.lex)、
