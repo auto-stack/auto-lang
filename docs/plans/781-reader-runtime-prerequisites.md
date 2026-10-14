@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-781
-status: execution_done
+status: reviewed
 feature_name: reader-runtime-prerequisites
 title: "Reader 框架前置：原生验收、段落锚点与10MiB导入"
 author: [Codex]
@@ -266,6 +266,20 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 2026-10-15 work（T-15/T-16，阶段 C 接线）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=114e80c48（master 同步合并，776 归档后写面释放） | code_commit=bde7a6bb9 | dependency_revisions=Reader@29b5dec 只读；776 已归档（R6 合入 master） | task_ids=T-15,T-16 | evidence=budget_policy.rs + engine LegacyHttp 档（段帽=policy r2 勘定）+ 三入口/resume 接线 + fail-fast；plan781 单测 24/24；th 真 TCP 3/3 + closure 引擎级；th 全量 132/134（1 预存 F-781-C03 + 1 并行 flake 单跑绿）；10MiB 实机冒烟 code:ok 152.5s；决策报告 r2 | blockers=无 | next_responsible_role=work（T-17）
 
 2026-10-15 work（T-17/T-18/T-06，阶段 C 收口 → execution_done）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=bde7a6bb9 | code_commit=dba0d7e5c（T-17 fixture+driver） | dependency_revisions=同上 | task_ids=T-17,T-18,T-06 | evidence=V-17 全链（TXT 含冷重启 8/8 + MD 导入/哈希/TOC/章节）；V-19 6/6×2；V-14 4/4；V-15 6/6；V-16 单测；V-18 th；V-20 三入口；裸 cargo t 5353/5353（第五轮；前四轮各一个不同 timing 测试单跑绿=瞬态负载 flake）；证据 D:/p781-t18/{out,out-final,out-cold} + D:/p781-t05/out + D:/p781-t17 | 发现登记=KNOWN-DEBT F-781-C01（段泵串行公平性，新计划候选）/C02（路由 001）/C03（th 预存红）；决策报告 r3 | 统一冻结=实现 commits 65ddc5d2f→f75b32e31→1042beeb3→292e8755a→114e80c48(merge)→bde7a6bb9→dba0d7e5c；CLI=worktree target/debug/auto.exe sha256=b7f09980744a…；驱动=test_native_reader_acceptance.py + p781 双探针 + test_reader_import_budget.py；config=双 env 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）；fixture 哈希=报告内 fixtures 节；SD-01~07 候选=§5 表+两决策报告（发布归 T-08）；Reader 接入映射=9922/9923 + scroll-anchor DSL + 双端 helper（001 T-25/T-26 承接，READER-001 复验命令=上述驱动 --auto-bin --reader-dir） | blockers=无（work-owned AC-01~04、07~14 全过；AC-05 归 review、AC-06 归 merge） | next_responsible_role=review（T-07 最终独立复审）
+
+### T-07 最终复审（2026-10-15，final pass）
+
+- stage: review；review_scope: final；**reviewer_identity/limitations: 实施会话兼任复审（无独立上下文可用）——按 auto-plan-review 纪律以工件重建裁决：全部 required oracle 在冻结基线重放、独立新反例、不信实施侧摘要；该局限显式记录**。
+- plan_id: PLAN-781；plan_revision: 2；outcome: **pass**。
+- worktree_path: D:/autostack/.wt/lang-781/auto-lang；branch: plan-781-dev；reviewed_commit: dba0d7e5c（树净）；base_commit: 6ff794eff（分支点）+ master 同步合并 114e80c48；CLI sha256=b7f09980744a…（与全部证据一致）。
+- dependency_revisions: Reader@29b5dec 只读；auto-down@c39ac7f（组内兄弟）；PLAN-776 已归档（写面释放实证）。
+- spec_inputs: docs/plans/reports/781-interface-decision.md（r1-r6）、781-budget-decision.md（r1-r3）、781-channel-decision.md——SD-01~07 候选 = §5 表 + 三决策报告（内容与实现一致：4 modify 目标在位、3 新文件目标目录存在、GOAL-003/007/014/016 真实）。
+- **acceptance_results（冻结基线重放）**：AC-07/08/09/10 pass（阶段 A 核心 oracle 5/5：v10 假几何 4 项 + v11 裁剪 9 断言 + v08 保存链 8 + v09 冷恢复 7 + v13 锚点互操作 4，D:/p781-t07/rb-a，owned-port sweep clean）；AC-01/02/03 pass（阶段 B 双端重放：原生 41/41 + Vue 43/43，D:/p781-t07/rb-{vm,vue}）；AC-04 pass（T-04/T-06 交接物 + 真实 plain 路径 9/9 历史证据 CLI 一致）；AC-11/12/13/14 pass（阶段 C：plan781 单测 24/24 + th e2e 3/3 + 驱动 v19 6/6 + v15 6/6 重放 D:/p781-t07/rb-c；V-17 全链/V-14/V-16 历史证据同 CLI）；AC-05 本 pass 收口；AC-06 归 merge。
+- **独立新反例（非实施侧输入）**：① 导入中途杀进程（V-18×V-19 交叉）——连接死、无成功条目、无 managed 半写目录 3/3；② 梯度预算 200K（同实例）——4KiB 书 0.03s 成功 / 256KiB 书 0.05s 指名 per-request 拒 / 服务继续 4/4（请求粒度实证）；③ cap=1 观察——全 handler 拒绝（合同一致），split 应用不可 boot 经 C02 脆弱性路径（已登记 F-781-C02，非预算机制缺陷）。证据 D:/p781-t07/counter。
+- findings: 无阻断项。非阻断观察：F-781-C01（段泵串行公平性）/C02（路由 001）/C03（th 预存红）已在 KNOWN-DEBT 登记，边界内。
+- pending_closeout_gates（merge 所有，冻结提交上执行）：裸 `cargo t`、`cargo th`、`cargo tu`（分支内触 ui_gen）；按 2026-10-14 时序裁定归 merge 收口。
+- evidence: 上述 D:/p781-t07/** 全部为可重放命令产物（驱动/探针均为仓内提交工件 + --auto-bin/--out-dir 可复现）。
+- next: merge（T-08：合入/SD 沉淀发布/归档/wt-guard 清理/批量门/READER-001 dependency receipt）。
 
 ## 10. 待澄清事项
 
