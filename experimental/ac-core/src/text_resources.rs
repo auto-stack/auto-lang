@@ -1819,26 +1819,40 @@ impl<'a> ResourceWalk<'a> {
                             let frame_reach = frame.reachable;
                             let body_st = results[body_slot].clone().expect("loop body state");
                             let exits = loop_exits.remove(&loop_id).unwrap_or_default();
-                            // r6 R6-01: the back edges are the body's natural
-                            // completion and every CONTINUE exit; break exits
-                            // leave the loop. The RE-ENTRY state is the
-                            // loop-entry base merged with the back-edge
-                            // dead/backing — what iteration 2+ actually starts
-                            // from — and the body is RE-VALIDATED against it
-                            // until the structural state converges (dead and
-                            // id-projected backing grow monotonically on a
-                            // finite lattice, so this terminates; fresh owned
-                            // lets bump generations and clear the previous
-                            // death, redefining each iteration's resource
-                            // identity without being killed by the previous
-                            // iteration's scope exit).
+                            // r6 R6-01 + r7 R7-01: the back edges are the
+                            // body's NATURAL completion and every CONTINUE
+                            // exit; break/return TERMINATE the body and never
+                            // create a re-entry. `results` stores only the
+                            // state, so whether body_st is a natural
+                            // completion is decided by the static terminator
+                            // analysis: a body whose every path ends in
+                            // return/break/continue CANNOT fall through, and
+                            // its stored state is a terminal one (r7's
+                            // break-only loop must not fabricate a second
+                            // iteration that would read stale views).
+                            // The RE-ENTRY state is the loop-entry base
+                            // merged with the back-edge dead/backing — what
+                            // iteration 2+ actually starts from — and the body
+                            // is RE-VALIDATED against it until the structural
+                            // state converges (dead and id-projected backing
+                            // grow monotonically on a finite lattice, so this
+                            // terminates; fresh owned lets bump generations
+                            // and clear the previous death, redefining each
+                            // iteration's resource identity without being
+                            // killed by the previous iteration's scope exit).
+                            let body_falls_through = !block_terminates(self.body, body_bid);
                             let mut reentry = base_init.clone();
-                            let backedges: Vec<&WalkState> = std::iter::once(&body_st)
+                            let backedges: Vec<&WalkState> = exits
+                                .iter()
+                                .filter(|(k, _)| *k == ExitKind::Continue)
+                                .map(|(_, st)| st)
                                 .chain(
-                                    exits
-                                        .iter()
-                                        .filter(|(k, _)| *k == ExitKind::Continue)
-                                        .map(|(_, st)| st),
+                                    if body_falls_through {
+                                        Some(&body_st)
+                                    } else {
+                                        None
+                                    }
+                                    .into_iter(),
                                 )
                                 .collect();
                             for be in &backedges {
