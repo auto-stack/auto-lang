@@ -1,0 +1,1 @@
+fn consume(move s Str) int { return s.len() } fn main() int { let x Str="abc"; return consume(x.move) }

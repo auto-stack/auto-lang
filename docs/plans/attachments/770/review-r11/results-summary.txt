@@ -1,0 +1,18 @@
+c01-nested-once-move.atom check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c01-nested-once-move.at check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c02-both-arms-move-break.atom check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c02-both-arms-move-break.at check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c03-two-owners-one-transfer.atom check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / LIT len=3 / LIT id=2 / TEXT-SCALARS n=3 / FREE id=1 / TEXT-SCALARS n=3 / FREE id=2 / 
+c03-two-owners-one-transfer.at check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / LIT len=3 / LIT id=2 / TEXT-SCALARS n=3 / FREE id=1 / TEXT-SCALARS n=3 / FREE id=2 / 
+c04-false-loop-owner-read.atom check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c04-false-loop-owner-read.at check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c05-no-transfer-loop-read.atom check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c05-no-transfer-loop-read.at check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c06-nested-return-break.atom check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c06-nested-return-break.at check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / 
+c07-fresh-loop-move.atom check=0 build=0 run=6 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / LIT len=3 / LIT id=2 / TEXT-SCALARS n=3 / FREE id=2 / 
+c07-fresh-loop-move.at check=0 build=0 run=6 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 / LIT len=3 / LIT id=2 / TEXT-SCALARS n=3 / FREE id=2 / 
+p01-nested-mixed-move.atom check=1 build=1 run= trace=
+p01-nested-mixed-move.at check=1 build=1 run= trace=
+p02-outer-break-mixed.atom check=1 build=1 run= trace=
+p02-outer-break-mixed.at check=1 build=1 run= trace=

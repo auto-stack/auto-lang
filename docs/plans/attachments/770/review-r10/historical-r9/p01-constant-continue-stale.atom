@@ -1,0 +1,81 @@
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
+    module m_src {
+        path: "r9"
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_str str {}
+            type t_Str Str {}
+            type t_char char {}
+            type t_f_main function { params: []; result: "t_i32" }
+            }
+        declarations {
+            function d_main t_f_main { name: "sf_main"; body: "b_main" }
+            }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l0 t_str { name: "v"; role: binding; mutable: true }
+                    local l1 t_i32 { name: "i"; role: binding; mutable: true }
+                    local l2 t_Str { name: "s"; role: binding; mutable: false }
+                    }
+                places {
+                    place p0 local { local: l0; type: t_str; access: mutable }
+                    place p1 local { local: l1; type: t_i32; access: mutable }
+                    }
+                expressions {
+                    expr e0 str_lit { type: t_str; text: "" }
+                    expr e1 constant { type: t_i32; value: 0i32 }
+                    expr e2 read_local { type: t_i32; local: l1 }
+                    expr e3 constant { type: t_i32; value: 2i32 }
+                    expr e4 binary { type: t_bool; op: lt_i32; lhs: e2; rhs: e3 }
+                    expr e5 read_local { type: t_i32; local: l1 }
+                    expr e6 constant { type: t_i32; value: 0i32 }
+                    expr e7 binary { type: t_bool; op: gt_i32; lhs: e5; rhs: e6 }
+                    expr e8 read_local { type: t_str; local: l0 }
+                    expr e9 text_len { type: t_i32; operand: e8 }
+                    expr e10 str_lit { type: t_Str; text: "abc" }
+                    expr e11 read_local { type: t_Str; local: l2 }
+                    expr e12 text_to_borrowed { type: t_str; operand: e11 }
+                    expr e13 read_local { type: t_i32; local: l1 }
+                    expr e14 constant { type: t_i32; value: 1i32 }
+                    expr e15 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e13; rhs: e14 }
+                    expr e16 constant { type: t_i32; value: 0i32 }
+                    expr e17 constant { type: t_i32; value: 1i32 }
+                    expr e18 binary { type: t_bool; op: lt_i32; lhs: e16; rhs: e17 }
+                    expr e19 constant { type: t_i32; value: 0i32 }
+                    }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0) {}
+                        let(local: l1, value: e1) {}
+                        loop(id: q0, body: k5) {}
+                        return(value: e19) {}
+                        }
+                    block k1 {
+                        if(cond: e7, then: k2) {}
+                        let(local: l2, value: e10) {}
+                        assign(place: p0, value: e12) {}
+                        assign(place: p1, value: e15) {}
+                        if(cond: e18, then: k3) {}
+                        }
+                    block k2 {
+                        return(value: e9) {}
+                        }
+                    block k3 {
+                        continue(target: q0) {}
+                        }
+                    block k4 {
+                        break(target: q0) {}
+                        }
+                    block k5 {
+                        if(cond: e4, then: k1, else: k4) {}
+                        }
+                    }
+                }
+            }
+        }
+    }

@@ -1,0 +1,8 @@
+c01-skipped-move-read.at: Checked
+c02-view-param-independent.at: Checked
+q01-nested-skipped-move.at: Checked
+q02-view-param-alias.at: ["verify.mut-conflict"]
+q03-temp-statement-tail.at: Checked
+q04 conditional Drop: verify=true
+q05 rejected ["capability.missing"]
+q06 controlled Err ["verify.bad-reference"]

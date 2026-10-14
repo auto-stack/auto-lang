@@ -1,0 +1,10 @@
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\c01-nested-constant-break.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\c02-false-then-true-return.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\c03-constant-continue-refresh.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\c04-unknown-natural-refresh.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\c05-fresh-return-move.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\c06-outside-loop-return-move.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\p01-constant-continue-stale.at: ["verify.owned-scope-escape"]
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\p02-false-no-else-natural-stale.at: ["verify.owned-scope-escape"]
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\p03-once-return-move.at: ["verify.use-after-move", "verify.use-after-move"]
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r9\p04-real-repeated-move.at: ["verify.use-after-move", "verify.use-after-move"]

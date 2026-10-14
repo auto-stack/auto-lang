@@ -1,0 +1,236 @@
+{
+    "name":  "c01-skipped-move-read.atom",
+    "input_sha256":  "DE9227C62BA4C4C386FCE2C507D0551C57AF59694AE5EBB3D50FDFA319F52977",
+    "head":  "41291aa10d22eb2e9a263e7aa574361fb55eafd1",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r3\\c01-skipped-move-read.atom:49:21: error[verify/verify.use-after-move]: read of moved local `l0`\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  55268,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r3\\c01-skipped-move-read.atom:49:21: error[verify/verify.use-after-move]: read of moved local `l0`\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  33688,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "c02-view-param-independent.atom",
+    "input_sha256":  "12E6EBE8911A53FD9A94B2C1B508E6FABD9B10413AB11BD87AD94B18FD5B54EE",
+    "head":  "41291aa10d22eb2e9a263e7aa574361fb55eafd1",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  52156,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-view-param-independent-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-view-param-independent-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-view-param-independent-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-view-param-independent-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  46812,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  4,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  38516,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "q01-nested-skipped-move.atom",
+    "input_sha256":  "657FBF0AD8A7DD5CF9BBB793CA1501EC718FBEF54D0D25EA5CE3BD72565E8AB3",
+    "head":  "41291aa10d22eb2e9a263e7aa574361fb55eafd1",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53532,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q01-nested-skipped-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q01-nested-skipped-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q01-nested-skipped-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q01-nested-skipped-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  17096,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  50624,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "q02-view-param-alias.atom",
+    "input_sha256":  "E5798350E9CE756653D3AAC0BE6B5075765F1C0A9B6C6D02D400A0B3005FFE8C",
+    "head":  "41291aa10d22eb2e9a263e7aa574361fb55eafd1",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  43204,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q02-view-param-alias-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q02-view-param-alias-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q02-view-param-alias-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q02-view-param-alias-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  10728,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  6,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  50028,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "q03-temp-statement-tail.atom",
+    "input_sha256":  "6E5B6A1E964DCAB57427106880F7114C9B484E973C49755E5897086E818E85B5",
+    "head":  "41291aa10d22eb2e9a263e7aa574361fb55eafd1",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"hir.test.trace.v1\", \"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  49308,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q03-temp-statement-tail-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q03-temp-statement-tail-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q03-temp-statement-tail-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q03-temp-statement-tail-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  31700,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\na",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  23508,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "q04-conditional-drop.atom",
+    "input_sha256":  "60F17A91FFFCE4BA92E2935A132DEA8F0B740C8C7CBF313FB43F4092C12BF330",
+    "head":  "41291aa10d22eb2e9a263e7aa574361fb55eafd1",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  42460,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q04-conditional-drop-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q04-conditional-drop-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q04-conditional-drop-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q04-conditional-drop-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  19184,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nFREE-INVALID\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  14828,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "q05-cleanup-no-requires.atom",
+    "input_sha256":  "D80C959C75CC2AF0FDB920D4FA7B116587C879FEDFA01AFEDEE48CA506158F41",
+    "head":  "41291aa10d22eb2e9a263e7aa574361fb55eafd1",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: []\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  9356,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q05-cleanup-no-requires-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q05-cleanup-no-requires-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q05-cleanup-no-requires-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\q05-cleanup-no-requires-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  49648,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  53512,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}

@@ -1,0 +1,290 @@
+[
+  {
+    "name": "c01-owned-return.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c01-owned-return.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c02-plain-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c02-plain-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c03-borrow-param-return.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c03-borrow-param-return.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c04-mut-independent.atom",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c04-mut-independent.at",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c05-branch-not-moved.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "name": "c05-branch-not-moved.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "name": "c06-shortcircuit-moved.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c06-shortcircuit-moved.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c07-marks-text-operands.atom",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "diag": "",
+    "trace": "abCONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n"
+  },
+  {
+    "name": "c07-marks-text-operands.at",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "diag": "",
+    "trace": "abCONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n"
+  },
+  {
+    "name": "c08-marks-text-comparison.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "ab"
+  },
+  {
+    "name": "c08-marks-text-comparison.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "ab"
+  },
+  {
+    "name": "mut01-owned-literal-view.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\mut01-owned-literal-view.atom:31:21: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+    "trace": null
+  },
+  {
+    "name": "mut02-no-runtime-requires.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\mut02-no-runtime-requires.atom:1:1: error[capability/capability.missing]: the module lowers text runtime operations or cleanup obligations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred\n",
+    "trace": null
+  },
+  {
+    "name": "p01-return-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "p01-return-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "p02-branch-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "p02-branch-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "p03-owned-call-view.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p03-owned-call-view.atom:46:21: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+    "trace": null
+  },
+  {
+    "name": "p03-owned-call-view.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p03-owned-call-view.at:3:5: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+    "trace": null
+  },
+  {
+    "name": "p04-borrowed-param-owned-return.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p04-borrowed-param-owned-return.atom:26:21: error[verify/verify.ownership-required]: cannot return `l0` as owned `Str`: it is a borrowed parameter/view whose buffer this function does not own; return an owned construction or a `move` parameter\n",
+    "trace": null
+  },
+  {
+    "name": "p04-borrowed-param-owned-return.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p04-borrowed-param-owned-return.at:1:30: error[verify/verify.ownership-required]: cannot return `l0` as owned `Str`: it is a borrowed parameter/view whose buffer this function does not own; return an owned construction or a `move` parameter\n",
+    "trace": null
+  },
+  {
+    "name": "p05-mut-return-view.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p05-mut-return-view.atom:29:21: error[verify/verify.borrow-escape]: returned borrowed str must not read owned or mut parameters, owned locals, or view temporaries (legal sources: view parameters, static literals)\n",
+    "trace": null
+  },
+  {
+    "name": "p05-mut-return-view.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p05-mut-return-view.at:1:28: error[verify/verify.borrow-escape]: returned borrowed str must not read owned or mut parameters, owned locals, or view temporaries (legal sources: view parameters, static literals)\n",
+    "trace": null
+  },
+  {
+    "name": "p06-mut-alias.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p06-mut-alias.atom:51:21: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_both` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)\n",
+    "trace": null
+  },
+  {
+    "name": "p06-mut-alias.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p06-mut-alias.at:4:12: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_both` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)\n",
+    "trace": null
+  },
+  {
+    "name": "p07-temporary-borrow-call.atom",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "diag": "",
+    "trace": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n"
+  },
+  {
+    "name": "p07-temporary-borrow-call.at",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "diag": "",
+    "trace": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n"
+  },
+  {
+    "name": "p08-shortcircuit-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "name": "p08-shortcircuit-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "name": "p09-loop-fresh-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "name": "p09-loop-fresh-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  }
+]

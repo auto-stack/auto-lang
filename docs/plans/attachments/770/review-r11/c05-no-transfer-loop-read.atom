@@ -1,0 +1,59 @@
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
+    module m_src {
+        path: "r9"
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_str str {}
+            type t_Str Str {}
+            type t_char char {}
+            type t_f_main function { params: []; result: "t_i32" }
+            }
+        declarations {
+            function d_main t_f_main { name: "sf_main"; body: "b_main" }
+            }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l0 t_Str { name: "x"; role: binding; mutable: false }
+                    local l1 t_i32 { name: "i"; role: binding; mutable: true }
+                    }
+                places {
+                    place p0 local { local: l1; type: t_i32; access: mutable }
+                    }
+                expressions {
+                    expr e0 str_lit { type: t_Str; text: "abc" }
+                    expr e1 constant { type: t_i32; value: 0i32 }
+                    expr e2 read_local { type: t_i32; local: l1 }
+                    expr e3 constant { type: t_i32; value: 2i32 }
+                    expr e4 binary { type: t_bool; op: lt_i32; lhs: e2; rhs: e3 }
+                    expr e5 read_local { type: t_i32; local: l1 }
+                    expr e6 constant { type: t_i32; value: 1i32 }
+                    expr e7 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e5; rhs: e6 }
+                    expr e8 read_local { type: t_Str; local: l0 }
+                    expr e9 text_len { type: t_i32; operand: e8 }
+                    }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0) {}
+                        let(local: l1, value: e1) {}
+                        loop(id: q0, body: k3) {}
+                        return(value: e9) {}
+                        }
+                    block k1 {
+                        assign(place: p0, value: e7) {}
+                        }
+                    block k2 {
+                        break(target: q0) {}
+                        }
+                    block k3 {
+                        if(cond: e4, then: k1, else: k2) {}
+                        }
+                    }
+                }
+            }
+        }
+    }

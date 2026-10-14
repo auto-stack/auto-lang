@@ -1,0 +1,8 @@
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r6\c01-reentry-live-owner.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r6\c02-reentry-static-view.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r6\c03-nested-rhs-skips.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r6\c04-inner-lhs-skips-outer-or.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r6\p01-unreachable-break-view.at: ["verify.owned-scope-escape"]
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r6\p02-unreachable-continue-view.at: ["verify.owned-scope-escape"]
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r6\p03-continue-reentry-read.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r6\p04-natural-reentry-read.at: Checked

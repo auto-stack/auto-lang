@@ -1,0 +1,2 @@
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\c01-lhs-and-execute.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\c02-loop-live-owner.at: Checked

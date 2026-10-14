@@ -1,0 +1,1 @@
+fn both(mut a str,b str) int { return a.len()+b.len() } fn relay(a str,b str) int { return both(b:b,a:a) } fn main() int { let x Str="abc"; return relay(b:x.to(str),a:x.to(str)) }

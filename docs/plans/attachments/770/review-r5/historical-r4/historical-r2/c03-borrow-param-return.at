@@ -1,0 +1,2 @@
+fn id(s str) str { return s }
+fn main() int { let x Str = "abc"; return id(x.to(str)).len() }

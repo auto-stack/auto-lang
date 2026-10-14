@@ -1,0 +1,6 @@
+fn steal(s Str) Str { return s }
+fn main() int {
+    let x Str = "abc"
+    let y Str = steal(x)
+    return y.len()
+}

@@ -1,0 +1,33 @@
+PLAN-770 text gate receipt
+head: 7a73cf0b68431073181937e3a6a384ca772101a9
+rustc: rustc 1.98.0 (88d9e12ae 2026-08-18)
+rust-lld: C:\Users\zhaop\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\bin\rust-lld.exe
+rust-lld-sha256: f436ddda2f519c5ad18b7c7b09a3eadc2d4fc1be88cd9280cc472740fc3b7389
+raw-outputs: D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\target\ac-verify-receipts\770\raw-20261015-005558
+ac-core check: ok (zero warnings, per-line matcher with controls)
+ac-core test: ok (350 tests; text_native/text_resources present; every PE under the contained executor)
+ac-core fmt: clean
+runtime/text check: ok (zero warnings)
+runtime/text test: ok (20 tests; AP fault injection, budget, trap/hang, contract sidecar)
+runtime/text fmt: clean
+old gate verify-ac-741.ps1: ok (scalar-767 covers the post-772 fixed surface; 741 main gates skipped per tiering)
+old gate verify-ac-source-745.ps1: ok (scalar-767 covers the post-772 fixed surface; 741 main gates skipped per tiering)
+old gate verify-ac-scalar-767.ps1: ok (scalar-767 covers the post-772 fixed surface; 741 main gates skipped per tiering)
+old gate verify-ac-record-771.ps1: ok (scalar-767 covers the post-772 fixed surface; 741 main gates skipped per tiering)
+scope: clean (diff 6787bbd4a0257067af43845c4450f3644125af6e..HEAD within ac-core/runtime/script/report paths; product crates/, test/ and every ACC binding untouched - the strict acc_inventory premise)
+runtime-lib-sha256: 3d7cc13b4c92cbd3d35ebeed7930b3015638a1c2f1a73422d6273aa853b035b9
+runtime-contract: a4529883ccb21429e0aee632939eb3935b12ba1c3f750c88988b952351eec87a
+core src/native.rs: 62ee3728fcc1fc829cad4acdce0be45d32fdf05c16444c5ae593994e832d896f
+core src/main.rs: e995e5e1219378bce8bcf205fade6f3167d4849df7d9a8294fc406cc6ab2e170
+core src/text_resources.rs: 2d64aa7ccb125ed395402e2daa5bbae4a14da8af52f90377ec304577094b3233
+core src/source/adapter.rs: efd5f95cb67f3536cada506179e2b562778576e5885574c8d96bfe808db7612c
+core src/source/mod.rs: 442d19f20f88582be5e27a356a8886e232c912962a75c847ca9b7963d238d978
+core tests/text_native.rs: 21bab8b26cb195c268e168425f92b620e2c299cea9b5dcccd6a14f1382ee03df
+core tests/text_resources.rs: 54b41ecbbf6dd5a2352c8fcc15f0415c9251a7c42a699073f34da3da7eff3936
+core runtime/text/shim/src/lib.rs: 3804b351b9f803e22089fedf73133465332629e04a6c2485151538627abfd04f
+core runtime/text/src/lib.rs: f7b76829d921f6b21165f43a02b720451b4e6a6a749ceed142e865f08faf5929
+core runtime/text/Cargo.toml: 2f57989667103bfa49e393b69f9226ed910e86a6e9e595b33578267ad1618fee
+core runtime/text/Cargo.lock: 36a992d94b5e272160e7558aa7338224187e07dc3cf7054f8d6557978b7e1afc
+core fixtures/text-hir/valid/n01-native-ops.atom: 637899360db2bc6b60b104c3982016699037bd5aa32ae417dd00893d18be9178
+gate-script: 15a14071248bace7d39e7554158f9e5c544184c9ca8edde2c89c26736f009542
+generated: 20261015-010244

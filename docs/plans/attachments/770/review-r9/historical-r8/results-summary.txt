@@ -1,0 +1,114 @@
+[
+  {
+    "name": "c01-both-arm-break.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c01-both-arm-break.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c02-loop-refresh.atom",
+    "check": 0,
+    "build": 0,
+    "run": 6,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "name": "c02-loop-refresh.at",
+    "check": 0,
+    "build": 0,
+    "run": 6,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "name": "c03-direct-return.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c03-direct-return.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "p01-constant-then-break.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "p01-constant-then-break.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "p02-constant-else-break.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "p02-constant-else-break.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "p03-stale-actual-backedge.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\p03-stale-actual-backedge.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n",
+    "trace": null
+  },
+  {
+    "name": "p03-stale-actual-backedge.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\p03-stale-actual-backedge.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n",
+    "trace": null
+  },
+  {
+    "name": "p04-constant-return.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "p04-constant-return.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  }
+]

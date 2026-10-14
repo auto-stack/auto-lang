@@ -1,0 +1,2 @@
+fn id(s str) str { return s }
+fn main() int { return id(("a" + "b").to(str)).len() }

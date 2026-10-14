@@ -1,0 +1,39 @@
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
+    module(id: "m_src") {
+        path: "literal-mutant"
+        types {
+            type(id: "t_i32", kind: i32) {}
+            type(id: "t_bool", kind: bool) {}
+            type(id: "t_str", kind: str) {}
+            type(id: "t_Str", kind: Str) {}
+            type(id: "t_char", kind: char) {}
+            type(id: "t_f_main", kind: function) { params: []; result: "t_i32" }
+        }
+        declarations {
+            function(id: "d_main", type: "t_f_main") { name: "sf_main"; body: "b_main" }
+        }
+        bodies {
+            body(id: "b_main") {
+                owner: "d_main"; entry: "k0"
+                locals {
+                    local(id: "l0", type: "t_str") { name: "v"; role: binding; mutable: false }
+                }
+                places {
+                }
+                expressions {
+                    expr(id: "e0", kind: str_lit) { type: Str; text: "abc" }
+                    expr(id: "e1", kind: text_to_borrowed) { type: "t_str"; operand: "e0" }
+                    expr(id: "e2", kind: read_local) { type: "t_str"; local: "l0" }
+                    expr(id: "e3", kind: text_len) { type: "t_i32"; operand: "e2" }
+                }
+                blocks {
+                    block(id: "k0") {
+                        let(local: "l0", value: "e1") {}
+                        return(value: "e3") {}
+                    }
+                }
+            }
+        }
+    }
+}

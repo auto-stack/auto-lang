@@ -1,0 +1,524 @@
+{
+    "name":  "c01-reentry-live-owner.at",
+    "input_sha256":  "1BF4D6198CEE65DF484A68AA9DBDAEEA4277F41B4CC99F7D41199D57305857AE",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=3aec790b50fafc7f, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  48812,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c01-reentry-live-owner.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c01-reentry-live-owner.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c01-reentry-live-owner.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c01-reentry-live-owner.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 3aec790b50fafc7f\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  35796,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  27476,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c02-reentry-static-view.at",
+    "input_sha256":  "7F5A73230982437BEA13FA83EC06EB26F04A35C5525495E3D07C0087F6E7D9A0",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=dc1b168bbf69da9e, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  20076,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c02-reentry-static-view.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c02-reentry-static-view.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c02-reentry-static-view.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c02-reentry-static-view.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: dc1b168bbf69da9e\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  41668,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "TEXT-SCALARS n=3\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  32088,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c03-nested-rhs-skips.at",
+    "input_sha256":  "01161C6988C11EBAAA4674EC75736E4B6AF5DAC65B100444F83F555A2B2ACAF5",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=69515c660aea9552, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  41484,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c03-nested-rhs-skips.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c03-nested-rhs-skips.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c03-nested-rhs-skips.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c03-nested-rhs-skips.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 69515c660aea9552\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  48056,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nCONCAT a=1 b=1\nCONCAT id=2\nTEXT-SCALARS n=2\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  49628,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c04-inner-lhs-skips-outer-or.at",
+    "input_sha256":  "2A241D4089AA8DCE8B64B92B16A65CC7664BB7FD7998698FE0333BB5C69692DF",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=f94d3d200c6f1cb2, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  20536,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c04-inner-lhs-skips-outer-or.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c04-inner-lhs-skips-outer-or.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c04-inner-lhs-skips-outer-or.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c04-inner-lhs-skips-outer-or.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: f94d3d200c6f1cb2\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53892,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  1,
+                "Stdout":  "",
+                "Stderr":  "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nCONCAT a=1 b=1\nCONCAT id=2\nTEXT-SCALARS n=2\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  13096,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p01-unreachable-break-view.at",
+    "input_sha256":  "EF90CC5A3A90BDA98ECC40C8965B84EC064E6FE1CB5B67E7F168D1DC24AD1E40",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r6\\p01-unreachable-break-view.at:1:120: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53512,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r6\\p01-unreachable-break-view.at:1:120: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53312,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p02-unreachable-continue-view.at",
+    "input_sha256":  "8BD909453C344AB98AE782D3BB6FF66FCF91C95D3FCEECBBBEBEB2962DEE530E",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r6\\p02-unreachable-continue-view.at:1:123: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53640,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r6\\p02-unreachable-continue-view.at:1:123: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  15072,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p03-continue-reentry-read.at",
+    "input_sha256":  "F98790FAE6B18BD420B3EC91BC8275EBEC08F6122CA0FE247D84CD266CA54ECE",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=a8a03bf46849287d, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  50972,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p03-continue-reentry-read.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p03-continue-reentry-read.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p03-continue-reentry-read.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p03-continue-reentry-read.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: a8a03bf46849287d\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  29736,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  70,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nFREE id=1\nRT-FAIL code=-7\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  38804,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p04-natural-reentry-read.at",
+    "input_sha256":  "370025CF5537D0C3BD4ECA3F663DE6BA46F5C77AA579600EE7EFF9878128BD81",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=f03d89d7c41e2597, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  36384,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p04-natural-reentry-read.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p04-natural-reentry-read.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p04-natural-reentry-read.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p04-natural-reentry-read.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: f03d89d7c41e2597\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  20180,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  70,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nFREE id=1\nRT-FAIL code=-7\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  5864,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c01-reentry-live-owner.atom",
+    "input_sha256":  "8D12A02C9DAB41D4553F50720965DF73161BEA142E417A76DFD92D5623940378",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  10844,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c01-reentry-live-owner-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c01-reentry-live-owner-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c01-reentry-live-owner-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c01-reentry-live-owner-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  18460,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  29968,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c02-reentry-static-view.atom",
+    "input_sha256":  "9D632836526C7CA313CB7742261B16A7D6C4FE3FDD06F89695B1B3077E12E2F4",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  520,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c02-reentry-static-view-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c02-reentry-static-view-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c02-reentry-static-view-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c02-reentry-static-view-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53288,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "TEXT-SCALARS n=3\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  20596,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c03-nested-rhs-skips.atom",
+    "input_sha256":  "66A46EDE6FC81CFB366EBEDE79E7E5CB295AA02928DC1F1806135C63079711F8",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  39168,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c03-nested-rhs-skips-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c03-nested-rhs-skips-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c03-nested-rhs-skips-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c03-nested-rhs-skips-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  7820,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nCONCAT a=1 b=1\nCONCAT id=2\nTEXT-SCALARS n=2\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  31232,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c04-inner-lhs-skips-outer-or.atom",
+    "input_sha256":  "611C60A1E770005BABC71BDFD3407A189D75BB5E74F9D85785040DAA0F667473",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  16496,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c04-inner-lhs-skips-outer-or-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c04-inner-lhs-skips-outer-or-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c04-inner-lhs-skips-outer-or-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\c04-inner-lhs-skips-outer-or-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  26848,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  1,
+                "Stdout":  "",
+                "Stderr":  "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nCONCAT a=1 b=1\nCONCAT id=2\nTEXT-SCALARS n=2\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  22548,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p01-unreachable-break-view.atom",
+    "input_sha256":  "7A7743F90426DFECF2B391A34B8814D748155269FA7C42FD0EC2B13036C87F2B",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r6\\p01-unreachable-break-view.atom:44:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  28568,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r6\\p01-unreachable-break-view.atom:44:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  37884,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p02-unreachable-continue-view.atom",
+    "input_sha256":  "B407AEC7F1064AD88B46578B8635F6C69CC7F7A26E28A87A9E63E030DB953A13",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r6\\p02-unreachable-continue-view.atom:44:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  19252,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r6\\p02-unreachable-continue-view.atom:44:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  54696,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p03-continue-reentry-read.atom",
+    "input_sha256":  "BF5FDD2F252E8358987074288DFC61BD62466CBC7F7D62617F26AC979F4F2C86",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  40840,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p03-continue-reentry-read-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p03-continue-reentry-read-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p03-continue-reentry-read-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p03-continue-reentry-read-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  18648,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  70,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nFREE id=1\nRT-FAIL code=-7\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  23056,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p04-natural-reentry-read.atom",
+    "input_sha256":  "B928E584F683B033A4E19063CBAB8724E6FF1F2CA54509BA21E58E2CC5598DE3",
+    "head":  "a14f1470b1d5e1174653e8d499091147b4257fe6",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  52680,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p04-natural-reentry-read-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p04-natural-reentry-read-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p04-natural-reentry-read-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r6\\p04-natural-reentry-read-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  31732,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  70,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nFREE id=1\nRT-FAIL code=-7\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  24240,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}

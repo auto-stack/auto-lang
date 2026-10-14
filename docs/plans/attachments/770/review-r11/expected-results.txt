@@ -1,0 +1,8 @@
+R11 independent combination expectations at afe45e2d65332b0cd448f3a2b5edf562903296b6:
+c01 nested once move, c02 both arms move+break: check/build0, PE0, LIT,len,FREE one callee.
+c03 two owners one transferred: PE3, ids1/2 each FREE once, callee consumes1, caller reads/frees2.
+c04 static false loop + read, c05 no transfer natural loop + read, c06 nested return/break + read: PE3, LIT,len,FREE one caller.
+c07 fresh loop move: PE6, ids1/2 each FREE once.
+p01 nested mixed move, p02 outer mixed break: check/build1 verify.ownership-required.
+Drop probes: c08 nested definite drop: PE0 LIT,FREE once; p03 nested mixed drop: verify.ownership-required.
+Frozen R10 p01/p02 must now reject inconsistent cleanup, remaining R10 controls unchanged. No input rewriting permitted.

@@ -1,0 +1,1 @@
+fn main() int { if true { let s Str="abc"; let n int=s.len() }; return 0 }

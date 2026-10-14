@@ -1,0 +1,1 @@
+fn main() int { var i int=0; let ok bool = i>0 && ("a"+"b").len()>0; if ok { return 1 }; return 0 }

@@ -1,0 +1,6 @@
+fn escape(mut s str) str { return s }
+fn main() int {
+    let x Str = "abc"
+    let y str = escape(x.to(str))
+    return y.len()
+}

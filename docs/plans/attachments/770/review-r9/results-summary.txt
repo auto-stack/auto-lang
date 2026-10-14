@@ -1,0 +1,162 @@
+[
+  {
+    "name": "c01-nested-constant-break.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c01-nested-constant-break.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c02-false-then-true-return.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c02-false-then-true-return.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c03-constant-continue-refresh.atom",
+    "check": 0,
+    "build": 0,
+    "run": 6,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "name": "c03-constant-continue-refresh.at",
+    "check": 0,
+    "build": 0,
+    "run": 6,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "name": "c04-unknown-natural-refresh.atom",
+    "check": 0,
+    "build": 0,
+    "run": 6,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "name": "c04-unknown-natural-refresh.at",
+    "check": 0,
+    "build": 0,
+    "run": 6,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "name": "c05-fresh-return-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c05-fresh-return-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c06-outside-loop-return-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c06-outside-loop-return-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "p01-constant-continue-stale.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p01-constant-continue-stale.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n",
+    "trace": null
+  },
+  {
+    "name": "p01-constant-continue-stale.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p01-constant-continue-stale.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n",
+    "trace": null
+  },
+  {
+    "name": "p02-false-no-else-natural-stale.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p02-false-no-else-natural-stale.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n",
+    "trace": null
+  },
+  {
+    "name": "p02-false-no-else-natural-stale.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p02-false-no-else-natural-stale.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n",
+    "trace": null
+  },
+  {
+    "name": "p03-once-return-move.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p03-once-return-move.atom:46:21: error[verify/verify.use-after-move]: read of owned local `l0` moved\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p03-once-return-move.atom:47:21: error[verify/verify.use-after-move]: local `l0` is moved again in the same statement\n",
+    "trace": null
+  },
+  {
+    "name": "p03-once-return-move.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p03-once-return-move.at:1:106: error[verify/verify.use-after-move]: read of owned local `l0` moved\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p03-once-return-move.at:1:98: error[verify/verify.use-after-move]: local `l0` is moved again in the same statement\n",
+    "trace": null
+  },
+  {
+    "name": "p04-real-repeated-move.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p04-real-repeated-move.atom:52:21: error[verify/verify.use-after-move]: read of owned local `l0` moved\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p04-real-repeated-move.atom:53:21: error[verify/verify.use-after-move]: local `l0` is moved again in the same statement\n",
+    "trace": null
+  },
+  {
+    "name": "p04-real-repeated-move.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p04-real-repeated-move.at:1:121: error[verify/verify.use-after-move]: read of owned local `l0` moved\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\p04-real-repeated-move.at:1:113: error[verify/verify.use-after-move]: local `l0` is moved again in the same statement\n",
+    "trace": null
+  }
+]

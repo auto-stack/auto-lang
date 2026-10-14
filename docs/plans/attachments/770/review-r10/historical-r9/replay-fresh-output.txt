@@ -1,0 +1,646 @@
+{
+    "name":  "c01-nested-constant-break.at",
+    "input_sha256":  "778DB72370882684A8625AE0298D046E690C8495974BD8CC0C067838AA011C4E",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=54a7a43e2932ee4e, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  15716,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c01-nested-constant-break.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c01-nested-constant-break.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c01-nested-constant-break.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c01-nested-constant-break.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 54a7a43e2932ee4e\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  16284,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  40292,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c02-false-then-true-return.at",
+    "input_sha256":  "519DCD273E336F1F70CACB5DB5678AB7005FB26C39769F80F44CDC8036BFA4EC",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=c71873c1e07d5ecd, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  40068,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c02-false-then-true-return.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c02-false-then-true-return.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c02-false-then-true-return.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c02-false-then-true-return.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: c71873c1e07d5ecd\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  23764,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  51616,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c03-constant-continue-refresh.at",
+    "input_sha256":  "0A48759E730166D5B39E3638578094D95A74C41EBDC3CE67717150EA88636F1C",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=ff08771fae69531a, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  48228,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c03-constant-continue-refresh.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c03-constant-continue-refresh.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c03-constant-continue-refresh.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c03-constant-continue-refresh.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: ff08771fae69531a\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  50976,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  6,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  12548,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c04-unknown-natural-refresh.at",
+    "input_sha256":  "C4EC4D3B00B96FA32781FCB5ABB1C2BC3A1A9B37189759B2EE183D7B09BD49C4",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=400f7d287a903c60, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  49960,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c04-unknown-natural-refresh.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c04-unknown-natural-refresh.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c04-unknown-natural-refresh.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c04-unknown-natural-refresh.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 400f7d287a903c60\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  27156,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  6,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  36460,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c05-fresh-return-move.at",
+    "input_sha256":  "3A914BFECFFC9197A443364A84CB32F309EA173045F4375C9E8FBF7CD8137426",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=523eb7af781e1348, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  27712,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c05-fresh-return-move.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c05-fresh-return-move.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c05-fresh-return-move.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c05-fresh-return-move.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 523eb7af781e1348\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53364,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  1920,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c06-outside-loop-return-move.at",
+    "input_sha256":  "9794776390A228FE5B39581E7A03AB48AF5AC4F40399351E368122075C34C2B6",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=e3ef2e19d2318490, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  27232,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c06-outside-loop-return-move.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c06-outside-loop-return-move.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c06-outside-loop-return-move.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c06-outside-loop-return-move.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: e3ef2e19d2318490\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  50076,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  42320,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p01-constant-continue-stale.at",
+    "input_sha256":  "FBA5160C72EA1895D7FE07FBFC55E9736D4F250E0727035868D3C9DE770EF44C",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p01-constant-continue-stale.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  15544,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p01-constant-continue-stale.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  19708,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p02-false-no-else-natural-stale.at",
+    "input_sha256":  "881EAD84B4235E7CA4A69C35F2FD0D140C8F93B50D59102FE2EE00B1A88DD8EE",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p02-false-no-else-natural-stale.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  26064,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p02-false-no-else-natural-stale.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  48104,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p03-once-return-move.at",
+    "input_sha256":  "830E1FBFC03A8D61A6EFE3C0ADEEAF63C1A0327CEA3A194FF982C8A880CFC32A",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=dd5c230d69b27d10, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  45860,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\p03-once-return-move.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\p03-once-return-move.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\p03-once-return-move.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\p03-once-return-move.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: dd5c230d69b27d10\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  29816,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  47208,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p04-real-repeated-move.at",
+    "input_sha256":  "EE17AE00BED1A22CD9E45BC542C7105514C18282544E12074083C9EE5C1D5867",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p04-real-repeated-move.at:1:121: error[verify/verify.use-after-move]: read of owned local `l0` moved\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p04-real-repeated-move.at:1:113: error[verify/verify.use-after-move]: local `l0` is moved again in the same statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  15988,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p04-real-repeated-move.at:1:121: error[verify/verify.use-after-move]: read of owned local `l0` moved\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p04-real-repeated-move.at:1:113: error[verify/verify.use-after-move]: local `l0` is moved again in the same statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  18440,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "c01-nested-constant-break.atom",
+    "input_sha256":  "A627BCADF84939DCEC2C39ACDE16D057F8BB0825548DF4D23A2B181A73E4E719",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  36528,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c01-nested-constant-break-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c01-nested-constant-break-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c01-nested-constant-break-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c01-nested-constant-break-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  38708,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  8936,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c02-false-then-true-return.atom",
+    "input_sha256":  "C7EEB622FC3851DC33BF819AE8C0D129230ED062FD49819A59E9D93FFD4CFEB4",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  36192,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c02-false-then-true-return-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c02-false-then-true-return-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c02-false-then-true-return-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c02-false-then-true-return-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  44144,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nLIT len=3\nLIT id=2\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  40432,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c03-constant-continue-refresh.atom",
+    "input_sha256":  "55BC38918AF74C82996339B1303AC3292FD32ABC0D569774AB820DD9587E4B92",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  15204,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c03-constant-continue-refresh-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c03-constant-continue-refresh-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c03-constant-continue-refresh-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c03-constant-continue-refresh-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  49412,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  6,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  41196,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c04-unknown-natural-refresh.atom",
+    "input_sha256":  "2A25B1BB3650331F030670E64083E8356B80236205656E160A003BFB83BE984D",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  54568,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c04-unknown-natural-refresh-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c04-unknown-natural-refresh-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c04-unknown-natural-refresh-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c04-unknown-natural-refresh-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  45236,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  6,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  54248,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c05-fresh-return-move.atom",
+    "input_sha256":  "1CC9BC21823866440F9D50D14B4A40B620853D2EB81C207472F7F240DAA641B8",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  30152,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c05-fresh-return-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c05-fresh-return-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c05-fresh-return-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c05-fresh-return-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  43812,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  52104,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c06-outside-loop-return-move.atom",
+    "input_sha256":  "CC2F0894B5537C7A4C4671848FF05FFFB5E82B60402112D8FC6E0DB4FA98C087",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  21628,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c06-outside-loop-return-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c06-outside-loop-return-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c06-outside-loop-return-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\c06-outside-loop-return-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  2052,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  30436,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p01-constant-continue-stale.atom",
+    "input_sha256":  "BD68DAC433662352DA5CE88F040B7A9A444FEB2CA8FC3281BB2DBE8F2BAFFEBB",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p01-constant-continue-stale.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  16444,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p01-constant-continue-stale.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  12948,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p02-false-no-else-natural-stale.atom",
+    "input_sha256":  "AC1C984EB9D88231A9E50DA0350CB33D162C55FE21C0C5DD892172E2D35CF07A",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p02-false-no-else-natural-stale.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  44832,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p02-false-no-else-natural-stale.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`\u0027s scope exited\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  23540,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p03-once-return-move.atom",
+    "input_sha256":  "02B289DD358A7E3A1D428C10245F186DA65C8186105040B142934EE942B993C8",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  47500,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\p03-once-return-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\p03-once-return-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\p03-once-return-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r9\\p03-once-return-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  54552,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  33944,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p04-real-repeated-move.atom",
+    "input_sha256":  "C96A94F53557523284E05E22B92B0C04B42565BEB9714078B046CE35366EA2E9",
+    "head":  "7a73cf0b68431073181937e3a6a384ca772101a9",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p04-real-repeated-move.atom:52:21: error[verify/verify.use-after-move]: read of owned local `l0` moved\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p04-real-repeated-move.atom:53:21: error[verify/verify.use-after-move]: local `l0` is moved again in the same statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  18668,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p04-real-repeated-move.atom:52:21: error[verify/verify.use-after-move]: read of owned local `l0` moved\nD:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r10\\historical-r9\\p04-real-repeated-move.atom:53:21: error[verify/verify.use-after-move]: local `l0` is moved again in the same statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  54020,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}

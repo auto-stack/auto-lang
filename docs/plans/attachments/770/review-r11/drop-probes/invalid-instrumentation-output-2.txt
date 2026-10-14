@@ -1,0 +1,52 @@
+{
+  "name": "c08-nested-drop.atom",
+  "input_sha256": "CC53589E112A6E56A5FADCB9C3A78F90D38927DE9C4D30035C42E4BA5B311A70",
+  "head": "afe45e2d65332b0cd448f3a2b5edf562903296b6",
+  "check": {
+    "Code": 1,
+    "Stdout": "",
+    "Stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r11\\drop-probes\\c08-nested-drop.atom:50:21: error[verify/verify.eval-position]: expr `e7` is never evaluated (no owning position)\n",
+    "TimedOut": false,
+    "Error": null,
+    "Pid": 51384,
+    "StdoutReadError": 0,
+    "StderrReadError": 0
+  },
+  "build": {
+    "Code": 1,
+    "Stdout": "",
+    "Stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r11\\drop-probes\\c08-nested-drop.atom:50:21: error[verify/verify.eval-position]: expr `e7` is never evaluated (no owning position)\n",
+    "TimedOut": false,
+    "Error": null,
+    "Pid": 49084,
+    "StdoutReadError": 0,
+    "StderrReadError": 0
+  },
+  "run": null
+}
+{
+  "name": "p03-nested-mixed-drop.atom",
+  "input_sha256": "6A09CC97701604FC2AE0E77B0E6FA47897C48FC5D86BC5F1069D90E3F552E843",
+  "head": "afe45e2d65332b0cd448f3a2b5edf562903296b6",
+  "check": {
+    "Code": 1,
+    "Stdout": "",
+    "Stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r11\\drop-probes\\p03-nested-mixed-drop.atom:52:21: error[verify/verify.eval-position]: expr `e8` is never evaluated (no owning position)\n",
+    "TimedOut": false,
+    "Error": null,
+    "Pid": 28316,
+    "StdoutReadError": 0,
+    "StderrReadError": 0
+  },
+  "build": {
+    "Code": 1,
+    "Stdout": "",
+    "Stderr": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r11\\drop-probes\\p03-nested-mixed-drop.atom:52:21: error[verify/verify.eval-position]: expr `e8` is never evaluated (no owning position)\n",
+    "TimedOut": false,
+    "Error": null,
+    "Pid": 35904,
+    "StdoutReadError": 0,
+    "StderrReadError": 0
+  },
+  "run": null
+}

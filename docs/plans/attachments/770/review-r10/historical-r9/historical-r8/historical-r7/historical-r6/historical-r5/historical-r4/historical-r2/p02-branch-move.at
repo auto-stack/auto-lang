@@ -1,0 +1,6 @@
+fn consume(move s Str) int { return s.len() }
+fn main() int {
+    let x Str = "abc"
+    if 1 == 1 { let n int = consume(x.move) }
+    return 0
+}

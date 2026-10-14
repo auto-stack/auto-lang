@@ -1,0 +1,89 @@
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
+    module m_src {
+        path: "r9"
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_str str {}
+            type t_Str Str {}
+            type t_char char {}
+            type t_f_main function { params: []; result: "t_i32" }
+            }
+        declarations {
+            function d_main t_f_main { name: "sf_main"; body: "b_main" }
+            }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l0 t_Str { name: "x"; role: binding; mutable: false }
+                    local l1 t_str { name: "v"; role: binding; mutable: true }
+                    local l2 t_i32 { name: "i"; role: binding; mutable: true }
+                    local l3 t_i32 { name: "n"; role: binding; mutable: false }
+                    local l4 t_Str { name: "s"; role: binding; mutable: false }
+                    }
+                places {
+                    place p0 local { local: l1; type: t_str; access: mutable }
+                    place p1 local { local: l2; type: t_i32; access: mutable }
+                    }
+                expressions {
+                    expr e0 str_lit { type: t_Str; text: "abc" }
+                    expr e1 read_local { type: t_Str; local: l0 }
+                    expr e2 text_to_borrowed { type: t_str; operand: e1 }
+                    expr e3 constant { type: t_i32; value: 0i32 }
+                    expr e4 read_local { type: t_i32; local: l2 }
+                    expr e5 constant { type: t_i32; value: 1i32 }
+                    expr e6 binary { type: t_bool; op: lt_i32; lhs: e4; rhs: e5 }
+                    expr e7 read_local { type: t_str; local: l1 }
+                    expr e8 text_len { type: t_i32; operand: e7 }
+                    expr e9 str_lit { type: t_Str; text: "def" }
+                    expr e10 read_local { type: t_Str; local: l4 }
+                    expr e11 text_to_borrowed { type: t_str; operand: e10 }
+                    expr e12 constant { type: t_i32; value: 0i32 }
+                    expr e13 constant { type: t_i32; value: 0i32 }
+                    expr e14 binary { type: t_bool; op: lt_i32; lhs: e12; rhs: e13 }
+                    expr e15 read_local { type: t_i32; local: l2 }
+                    expr e16 constant { type: t_i32; value: 1i32 }
+                    expr e17 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e15; rhs: e16 }
+                    expr e18 constant { type: t_i32; value: 0i32 }
+                    expr e19 constant { type: t_i32; value: 1i32 }
+                    expr e20 binary { type: t_bool; op: lt_i32; lhs: e18; rhs: e19 }
+                    expr e21 constant { type: t_i32; value: 0i32 }
+                    expr e22 constant { type: t_i32; value: 0i32 }
+                    }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0) {}
+                        let(local: l1, value: e2) {}
+                        let(local: l2, value: e3) {}
+                        loop(id: q0, body: k6) {}
+                        return(value: e22) {}
+                        }
+                    block k1 {
+                        let(local: l3, value: e8) {}
+                        let(local: l4, value: e9) {}
+                        assign(place: p0, value: e11) {}
+                        if(cond: e14, then: k2, else: k3) {}
+                        }
+                    block k2 {
+                        assign(place: p1, value: e17) {}
+                        }
+                    block k3 {
+                        if(cond: e20, then: k4) {}
+                        }
+                    block k4 {
+                        return(value: e21) {}
+                        }
+                    block k5 {
+                        break(target: q0) {}
+                        }
+                    block k6 {
+                        if(cond: e6, then: k1, else: k5) {}
+                        }
+                    }
+                }
+            }
+        }
+    }

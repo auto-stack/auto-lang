@@ -1,0 +1,2 @@
+c08-nested-drop.atom check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / FREE id=1 /  diag=
+p03-nested-mixed-drop.atom check=1 build=1 run= trace= diag=D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\drop-probes\p03-nested-mixed-drop.atom:72:21: error[verify/verify.ownership-required]: owned local `l0` is moved or dropped on some paths out of this loop but still owned on others; the after-loop cleanup responsibility is inconsistent (transfer on every path, or none) / 

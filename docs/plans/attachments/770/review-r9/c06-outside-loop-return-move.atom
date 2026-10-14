@@ -1,0 +1,55 @@
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
+    module m_src {
+        path: "r9"
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_str str {}
+            type t_Str Str {}
+            type t_char char {}
+            type t_f_consume function { params: ["t_Str"]; result: "t_i32" }
+            type t_f_main function { params: []; result: "t_i32" }
+            }
+        declarations {
+            function d_consume t_f_consume { name: "sf_consume"; body: "b_consume" }
+            function d_main t_f_main { name: "sf_main"; body: "b_main" }
+            }
+        bodies {
+            body b_consume {
+                owner: "d_consume"
+                entry: "k0"
+                locals {
+                    local l0 t_Str { name: "s"; role: param; index: 0u32; mode: move }
+                    }
+                expressions {
+                    expr e0 read_local { type: t_Str; local: l0 }
+                    expr e1 text_len { type: t_i32; operand: e0 }
+                    }
+                blocks {
+                    block k0 {
+                        return(value: e1) {}
+                        }
+                    }
+                }
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l0 t_Str { name: "x"; role: binding; mutable: false }
+                    }
+                expressions {
+                    expr e0 str_lit { type: t_Str; text: "abc" }
+                    expr e1 read_local { type: t_Str; local: l0 }
+                    expr e2 call { type: t_i32; callee: d_consume; eval_args: [e1]; bindings: [{ param: 0u32, arg: 0u32, moved: true }] }
+                    }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0) {}
+                        return(value: e2) {}
+                        }
+                    }
+                }
+            }
+        }
+    }

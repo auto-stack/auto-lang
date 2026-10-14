@@ -1,0 +1,9 @@
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\c01-lhs-and-execute.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\c02-loop-live-owner.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\c03-wrapper-named-distinct.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\p01-lhs-and-skip.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\p02-lhs-or-skip.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\p03-nested-lhs-skip.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\p04-break-borrow-escape.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\p05-continue-borrow-escape.at: Checked
+D:/autostack/auto-lang/docs/plans/attachments/770/review-r5\p06-wrapper-named-alias.at: ["verify.mut-conflict"]

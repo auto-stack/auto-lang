@@ -1,0 +1,4 @@
+R11 exact exit/stdout/stderr assertions: 18 source/HIR + 2 direct-HIR drop PASS
+Historical original-byte comparison: see historical-diff.txt and historical-input-hashes.txt (4 expected changes only)
+Historical instrument errors/timeouts: 0/184
+Initial drop construction eval-position controls preserved separately; corrected valid inputs tested both admission directions.

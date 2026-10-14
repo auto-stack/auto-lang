@@ -1,0 +1,1170 @@
+{
+    "name":  "c01-owned-return.at",
+    "input_sha256":  "6ADFADFC687F06603859E12CB1834A3A3B667133E1A5BD5E027DA68E95984F58",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=b34880bcf7031d5d, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  16472,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c01-owned-return.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c01-owned-return.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c01-owned-return.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c01-owned-return.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: b34880bcf7031d5d\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  46056,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  45236,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c02-plain-move.at",
+    "input_sha256":  "54965C3445EAE4EEB9CA019B1C2F75546718823CC2244D063084078946DDCB0D",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=e3ed8b7bdc1a68ae, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  38528,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-plain-move.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-plain-move.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-plain-move.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-plain-move.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: e3ed8b7bdc1a68ae\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  16784,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  38868,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c03-borrow-param-return.at",
+    "input_sha256":  "259E867593E420F276E1A8C4D4B78D810702F021C81AA6F7C0C0BF4DAD99905C",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=ab14eade59d88913, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  52092,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c03-borrow-param-return.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c03-borrow-param-return.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c03-borrow-param-return.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c03-borrow-param-return.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: ab14eade59d88913\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  27240,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  18396,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c04-mut-independent.at",
+    "input_sha256":  "C00878B17563A717F57DAC8B04896EF4524317A124EAE026B0DD4BEE6C4B2B47",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=c6f8e49267cd7d54, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  24992,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c04-mut-independent.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c04-mut-independent.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c04-mut-independent.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c04-mut-independent.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: c6f8e49267cd7d54\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  46280,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  4,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  1884,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c05-branch-not-moved.at",
+    "input_sha256":  "17C1592B8DADF3181E32BEB9360D5291F53CA74BC000D7DCF10686D0A46AA0A9",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=975ec90f78a4ea90, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  18360,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c05-branch-not-moved.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c05-branch-not-moved.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c05-branch-not-moved.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c05-branch-not-moved.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 975ec90f78a4ea90\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  25988,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  19000,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c06-shortcircuit-moved.at",
+    "input_sha256":  "439778A6459775F4DC4C335AD1A34D9EBA2E6CD9813E7BD10E22EF45CA5E252D",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=0b0336bcb016d2ed, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  13040,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c06-shortcircuit-moved.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c06-shortcircuit-moved.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c06-shortcircuit-moved.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c06-shortcircuit-moved.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 0b0336bcb016d2ed\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  30692,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  13156,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c07-marks-text-operands.at",
+    "input_sha256":  "D1EDFF00F4A2AEDB268FCA246D4BD742313A45E129008F777FC0A2BD1F09A957",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=c1256a62be6fbdea, module(s)=1, capabilities required: [\"hir.test.trace.v1\", \"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  16064,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c07-marks-text-operands.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c07-marks-text-operands.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c07-marks-text-operands.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c07-marks-text-operands.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: c1256a62be6fbdea\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  43124,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  2,
+                "Stdout":  "",
+                "Stderr":  "abCONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  19472,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c08-marks-text-comparison.at",
+    "input_sha256":  "609DE808A27AA1376C42D3D4332DC0B78B9AB3FF803CFBF7F537E90533BB9E5F",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=aaa8ecb95a625fe2, module(s)=1, capabilities required: [\"hir.test.trace.v1\", \"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53588,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c08-marks-text-comparison.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c08-marks-text-comparison.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c08-marks-text-comparison.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c08-marks-text-comparison.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: aaa8ecb95a625fe2\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  8336,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "ab",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  52748,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p01-return-move.at",
+    "input_sha256":  "1EAEA96E7D4CD76C5994C5630A62A387482F03237C8F3C4090BDD8F1887A7C17",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=4f836dcd3a547643, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  50828,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p01-return-move.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p01-return-move.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p01-return-move.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p01-return-move.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 4f836dcd3a547643\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  16556,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  39612,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p02-branch-move.at",
+    "input_sha256":  "9B105B749E8F552162FE7DC22F696BBF111997DE110E2EECA26B1B44D67CE7A5",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=889c40780b3caa93, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  47276,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p02-branch-move.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p02-branch-move.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p02-branch-move.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p02-branch-move.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 889c40780b3caa93\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  45124,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  29724,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p03-owned-call-view.at",
+    "input_sha256":  "6487991B5A0D607CADCB3F201FF8B9F9836D63200C7CBD4D503869CEE678E30D",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p03-owned-call-view.at:3:5: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  42932,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p03-owned-call-view.at:3:5: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  54052,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p04-borrowed-param-owned-return.at",
+    "input_sha256":  "9909DAA881C64E6C8C39D28BB3FE473DFF35111CA9CD8C15E92672CBA0A760B4",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p04-borrowed-param-owned-return.at:1:30: error[verify/verify.ownership-required]: cannot return `l0` as owned `Str`: it is a borrowed parameter/view whose buffer this function does not own; return an owned construction or a `move` parameter\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  18428,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p04-borrowed-param-owned-return.at:1:30: error[verify/verify.ownership-required]: cannot return `l0` as owned `Str`: it is a borrowed parameter/view whose buffer this function does not own; return an owned construction or a `move` parameter\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  27664,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p05-mut-return-view.at",
+    "input_sha256":  "F3E6A45D350B26F8D4F3FF27A11A7ACC4FCF49C2297C44D222FF9D2F85B8D85A",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p05-mut-return-view.at:1:28: error[verify/verify.borrow-escape]: returned borrowed str must not read owned or mut parameters, owned locals, or view temporaries (legal sources: view parameters, static literals)\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  27464,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p05-mut-return-view.at:1:28: error[verify/verify.borrow-escape]: returned borrowed str must not read owned or mut parameters, owned locals, or view temporaries (legal sources: view parameters, static literals)\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  28320,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p06-mut-alias.at",
+    "input_sha256":  "E9750B96890B22004E82D06BC1BCD6486BEE048AD635A4F7A9B269B34D346C51",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p06-mut-alias.at:4:12: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_both` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  30432,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p06-mut-alias.at:4:12: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_both` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  25452,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p07-temporary-borrow-call.at",
+    "input_sha256":  "9B47C4236C6D335FF94B753D9932E720B724B401688439BF001F0CA46AFB8355",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=b3391677904c5bba, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  41188,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p07-temporary-borrow-call.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p07-temporary-borrow-call.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p07-temporary-borrow-call.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p07-temporary-borrow-call.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: b3391677904c5bba\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  33212,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  2,
+                "Stdout":  "",
+                "Stderr":  "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  10028,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p08-shortcircuit-move.at",
+    "input_sha256":  "5B52466BE7486E83C991C34EDF1D8B35626B98DE3CB0D2932699A5D912CF262F",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=16c1233aacb043a8, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  38176,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p08-shortcircuit-move.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p08-shortcircuit-move.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p08-shortcircuit-move.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p08-shortcircuit-move.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 16c1233aacb043a8\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  3756,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  34124,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p09-loop-fresh-move.at",
+    "input_sha256":  "3A6271EA3414700584FCC646755EDF58E6FE2E93F98E8FC09D653FF3CDF21677",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK source profile=auto.source.text.draft, input-hash=9de0a4fbb09c2184, module(s)=1, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  24292,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p09-loop-fresh-move.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p09-loop-fresh-move.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p09-loop-fresh-move.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p09-loop-fresh-move.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n  source-profile: auto.source.text.draft\n  hir-identity: auto.hir.text.draft/1/text-i32-draft\n  source-input-hash: 9de0a4fbb09c2184\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  38448,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  2,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  52544,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c01-owned-return.atom",
+    "input_sha256":  "376AA9DCF01C0837B31D619A09374564F7280C9DDCC6AE66E0D78A43B733875D",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  25540,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c01-owned-return-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c01-owned-return-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c01-owned-return-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c01-owned-return-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  32964,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  8356,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c02-plain-move.atom",
+    "input_sha256":  "BB251CECA2FCD664840926F42A99A88DBF9B2CCE80F5D1D88E353A34BB9B8EB5",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  21176,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-plain-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-plain-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-plain-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c02-plain-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  50592,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  36652,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c03-borrow-param-return.atom",
+    "input_sha256":  "431FC6A595E0DB654D55C474DC226AED051A32A93883897AF3AD06E91E0BDA80",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  7572,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c03-borrow-param-return-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c03-borrow-param-return-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c03-borrow-param-return-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c03-borrow-param-return-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  48520,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  17020,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c04-mut-independent.atom",
+    "input_sha256":  "16C2DA1FAD4F1D9F8298173889DEDDF67921ACD4B9AC577D9AF78E1862682F92",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  21844,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c04-mut-independent-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c04-mut-independent-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c04-mut-independent-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c04-mut-independent-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  42412,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  4,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  1868,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c05-branch-not-moved.atom",
+    "input_sha256":  "6ECD5917FF1B99B843EC908A8F6AED27D4C2612FB78DAF8BE32AE9F79EC7013B",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  13884,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c05-branch-not-moved-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c05-branch-not-moved-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c05-branch-not-moved-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c05-branch-not-moved-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  28316,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  30780,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c06-shortcircuit-moved.atom",
+    "input_sha256":  "C7450A727CE2E0E68370463AB5C7D110372AF2C194D107F82E718EFBF920BB3E",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  29084,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c06-shortcircuit-moved-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c06-shortcircuit-moved-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c06-shortcircuit-moved-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c06-shortcircuit-moved-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  35836,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  47992,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c07-marks-text-operands.atom",
+    "input_sha256":  "F6D01654EB2ABB21D667E824BDF6817033A36921DCDAB135C9B7FFA64637334C",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"hir.test.trace.v1\", \"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  41132,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c07-marks-text-operands-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c07-marks-text-operands-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c07-marks-text-operands-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c07-marks-text-operands-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  44852,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  2,
+                "Stdout":  "",
+                "Stderr":  "abCONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  21488,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "c08-marks-text-comparison.atom",
+    "input_sha256":  "A25C197430A729B16147B34E754B29F3D965B05F8A486F698B2995C6493F0ACF",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"hir.test.trace.v1\", \"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  42420,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c08-marks-text-comparison-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c08-marks-text-comparison-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c08-marks-text-comparison-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\c08-marks-text-comparison-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  4456,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "ab",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  23880,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "mut01-owned-literal-view.atom",
+    "input_sha256":  "5140A2CC5D508DF23B04058E7F60D4126280B9576404F0188B731609B1464722",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\mut01-owned-literal-view.atom:31:21: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  51852,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\mut01-owned-literal-view.atom:31:21: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  6176,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "mut02-no-runtime-requires.atom",
+    "input_sha256":  "F1867E805C533DB2AD458A3DBAB0BBA5B77EA39DA74E6253FC11194890C05C6F",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\mut02-no-runtime-requires.atom:1:1: error[capability/capability.missing]: the module lowers text runtime operations or cleanup obligations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  14920,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\mut02-no-runtime-requires.atom:1:1: error[capability/capability.missing]: the module lowers text runtime operations or cleanup obligations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  17208,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p01-return-move.atom",
+    "input_sha256":  "24B4BE3701B2E3FB2DDFA2EA0A01CB7D39839260A252CC445A5EE07188726A97",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  7576,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p01-return-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p01-return-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p01-return-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p01-return-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  12720,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  3,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  42972,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p02-branch-move.atom",
+    "input_sha256":  "ACF4C6DBD527CA69B9BFBD7CA95BE656374ED7E90A2525AA074A78BFB12052E4",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  46656,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p02-branch-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p02-branch-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p02-branch-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p02-branch-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  42108,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  22544,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p03-owned-call-view.atom",
+    "input_sha256":  "E988CC2D77626FFD5FD1613EDE01B7E7006244B7F70F66A1182A9BF5426989F9",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p03-owned-call-view.atom:46:21: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  14320,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p03-owned-call-view.atom:46:21: error[verify/verify.borrow-escape]: str local `l0` stores a view of a temporary; owned values live only to the end of their statement\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  37628,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p04-borrowed-param-owned-return.atom",
+    "input_sha256":  "94EDA4806ADD289BFB002CAE7376CCA84718C10872E9D98B00FC9E305123DF22",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p04-borrowed-param-owned-return.atom:26:21: error[verify/verify.ownership-required]: cannot return `l0` as owned `Str`: it is a borrowed parameter/view whose buffer this function does not own; return an owned construction or a `move` parameter\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  23364,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p04-borrowed-param-owned-return.atom:26:21: error[verify/verify.ownership-required]: cannot return `l0` as owned `Str`: it is a borrowed parameter/view whose buffer this function does not own; return an owned construction or a `move` parameter\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  44932,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p05-mut-return-view.atom",
+    "input_sha256":  "095825055504EAC4CFCB94095F33ABCDB266A7E47FAC88A0016BE8D9FBE87707",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p05-mut-return-view.atom:29:21: error[verify/verify.borrow-escape]: returned borrowed str must not read owned or mut parameters, owned locals, or view temporaries (legal sources: view parameters, static literals)\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  27984,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p05-mut-return-view.atom:29:21: error[verify/verify.borrow-escape]: returned borrowed str must not read owned or mut parameters, owned locals, or view temporaries (legal sources: view parameters, static literals)\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  41072,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p06-mut-alias.atom",
+    "input_sha256":  "2713757F417128800A7D2CF04365B83C653937CBE3918884DBB6320876EDDDA3",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p06-mut-alias.atom:51:21: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_both` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53756,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  1,
+                  "Stdout":  "",
+                  "Stderr":  "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r2\\p06-mut-alias.atom:51:21: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_both` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)\n",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  46920,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  null
+}
+{
+    "name":  "p07-temporary-borrow-call.atom",
+    "input_sha256":  "BDF0367BBD0559640490F6FEA8C0D70E8D54D423B985948AEB9D9D4C839EC4A8",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  3788,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p07-temporary-borrow-call-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p07-temporary-borrow-call-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p07-temporary-borrow-call-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p07-temporary-borrow-call-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  18488,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  2,
+                "Stdout":  "",
+                "Stderr":  "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  5548,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p08-shortcircuit-move.atom",
+    "input_sha256":  "DCB87DEFD52E9F95939366C3413A54D2F83BA0911FED2B8DAB6F9E1D3E40B454",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  54028,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p08-shortcircuit-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p08-shortcircuit-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p08-shortcircuit-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p08-shortcircuit-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  22404,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  0,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nFREE id=1\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  3936,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}
+{
+    "name":  "p09-loop-fresh-move.atom",
+    "input_sha256":  "FDB060FF301D74DC44669D4FC2F3F21D1466C57975FC536BB96939E9DC398D01",
+    "head":  "6450543321bdff0e595c0eb61007fd5bfaadf40b",
+    "check":  {
+                  "Code":  0,
+                  "Stdout":  "OK 1 module(s), hir-profile text-i32-draft, capabilities required: [\"ac.runtime.text.v1\"]\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  53600,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "build":  {
+                  "Code":  0,
+                  "Stdout":  "BUILT D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p09-loop-fresh-move-hir.exe (entry sf_main)\n  obj: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p09-loop-fresh-move-hir.obj\n  exe: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p09-loop-fresh-move-hir.exe\n  receipt: D:\\autostack\\.wt\\lang-770\\auto-lang\\experimental\\ac-core\\target\\review-770-r2\\p09-loop-fresh-move-hir.ac-link.txt\n  linker: C:\\Users\\zhaop\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe\n",
+                  "Stderr":  "",
+                  "TimedOut":  false,
+                  "Error":  null,
+                  "Pid":  41888,
+                  "StdoutReadError":  0,
+                  "StderrReadError":  0
+              },
+    "run":  {
+                "Code":  2,
+                "Stdout":  "",
+                "Stderr":  "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n",
+                "TimedOut":  false,
+                "Error":  null,
+                "Pid":  17356,
+                "StdoutReadError":  0,
+                "StderrReadError":  0
+            }
+}

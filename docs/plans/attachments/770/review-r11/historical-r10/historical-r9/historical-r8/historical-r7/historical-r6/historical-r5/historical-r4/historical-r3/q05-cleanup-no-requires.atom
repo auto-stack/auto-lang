@@ -1,0 +1,51 @@
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    module(id: "m_src") {
+        path: "cleanup"
+        types {
+            type(id: "t_i32", kind: i32) {}
+            type(id: "t_bool", kind: bool) {}
+            type(id: "t_str", kind: str) {}
+            type(id: "t_Str", kind: Str) {}
+            type(id: "t_char", kind: char) {}
+            type(id: "t_f_unused", kind: function) { params: ["t_Str"]; result: "t_i32" }
+            type(id: "t_f_main", kind: function) { params: []; result: "t_i32" }
+        }
+        declarations {
+            function(id: "d_unused", type: "t_f_unused") { name: "sf_unused"; body: "b_unused" }
+            function(id: "d_main", type: "t_f_main") { name: "sf_main"; body: "b_main" }
+        }
+        bodies {
+            body(id: "b_unused") {
+                owner: "d_unused"; entry: "k0"
+                locals {
+                    local(id: "l0", type: "t_Str") { name: "s"; role: param; index: 0u32; mode: move }
+                }
+                places {
+                }
+                expressions {
+                    expr(id: "e0", kind: constant) { type: "t_i32"; value: 0i32 }
+                }
+                blocks {
+                    block(id: "k0") {
+                        return(value: "e0") {}
+                    }
+                }
+            }
+            body(id: "b_main") {
+                owner: "d_main"; entry: "k0"
+                locals {
+                }
+                places {
+                }
+                expressions {
+                    expr(id: "e0", kind: constant) { type: "t_i32"; value: 0i32 }
+                }
+                blocks {
+                    block(id: "k0") {
+                        return(value: "e0") {}
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,7 @@
+cargo.exe :     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s
+At D:\autostack\.wt\lang-770\auto-lang\scripts\verify-ac-text-770.ps1:54 char:19
++         $output = & cargo @ArgList 2>&1
++                   ~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Finished `d...get(s) in 0.06s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

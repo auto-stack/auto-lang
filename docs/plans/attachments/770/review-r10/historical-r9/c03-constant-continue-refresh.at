@@ -1,0 +1,1 @@
+fn main() int { var i int=0; var n int=0; var v str=""; for i<2 { let s Str="abc"; v=s.to(str); n=n+v.len(); i=i+1; if true { continue } }; return n }

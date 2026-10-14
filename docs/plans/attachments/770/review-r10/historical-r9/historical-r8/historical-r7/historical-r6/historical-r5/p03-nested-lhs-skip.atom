@@ -1,0 +1,61 @@
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
+    module m_src {
+        path: "r4"
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_str str {}
+            type t_Str Str {}
+            type t_char char {}
+            type t_f_main function { params: []; result: "t_i32" }
+            }
+        declarations {
+            function d_main t_f_main { name: "sf_main"; body: "b_main" }
+            }
+        bodies {
+            body b_main {
+                owner: "d_main"
+                entry: "k0"
+                locals {
+                    local l0 t_bool { name: "ok"; role: binding; mutable: false }
+                    }
+                expressions {
+                    expr e0 str_lit { type: t_str; text: "a" }
+                    expr e1 str_lit { type: t_str; text: "b" }
+                    expr e2 text_concat { type: t_Str; lhs: e0; rhs: e1 }
+                    expr e3 text_len { type: t_i32; operand: e2 }
+                    expr e4 constant { type: t_i32; value: 0i32 }
+                    expr e5 binary { type: t_bool; op: gt_i32; lhs: e3; rhs: e4 }
+                    expr e6 str_lit { type: t_str; text: "c" }
+                    expr e7 str_lit { type: t_str; text: "d" }
+                    expr e8 text_concat { type: t_Str; lhs: e6; rhs: e7 }
+                    expr e9 text_len { type: t_i32; operand: e8 }
+                    expr e10 constant { type: t_i32; value: 0i32 }
+                    expr e11 binary { type: t_bool; op: eq; lhs: e9; rhs: e10 }
+                    expr e12 logical { type: t_bool; op: and; lhs: e5; rhs: e11 }
+                    expr e13 str_lit { type: t_str; text: "e" }
+                    expr e14 str_lit { type: t_str; text: "f" }
+                    expr e15 text_concat { type: t_Str; lhs: e13; rhs: e14 }
+                    expr e16 text_len { type: t_i32; operand: e15 }
+                    expr e17 constant { type: t_i32; value: 0i32 }
+                    expr e18 binary { type: t_bool; op: gt_i32; lhs: e16; rhs: e17 }
+                    expr e19 logical { type: t_bool; op: and; lhs: e12; rhs: e18 }
+                    expr e20 read_local { type: t_bool; local: l0 }
+                    expr e21 constant { type: t_i32; value: 1i32 }
+                    expr e22 constant { type: t_i32; value: 0i32 }
+                    }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e19) {}
+                        if(cond: e20, then: k1) {}
+                        return(value: e22) {}
+                        }
+                    block k1 {
+                        return(value: e21) {}
+                        }
+                    }
+                }
+            }
+        }
+    }

@@ -1,0 +1,1 @@
+HEAD afe45e2d65332b0cd448f3a2b5edf562903296b6; cargo check --manifest-path experimental/ac-core/Cargo.toml --locked --all-targets: pass, no warnings; cargo test --manifest-path experimental/ac-core/Cargo.toml --locked --test text_review_r10 --test text_review_r9: 11+11 passed, 0 failed/ignored (2.64s/2.80s).

@@ -1,0 +1,1 @@
+fn main() int { let ok bool=false && "abc".len()>0; if ok { return 1 }; return 0 }

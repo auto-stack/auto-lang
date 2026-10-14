@@ -1,0 +1,12 @@
+c01-skipped-move-read.at: ["verify.use-after-move"]
+c02-view-param-independent.at: Checked
+q01-nested-skipped-move.at: Checked
+q02-view-param-alias.at: Checked
+q03-temp-statement-tail.at: Checked
+q04 conditional Drop: verify=true
+q05 cleanup-only: Checked runtime-needed=false capability-empty=true
+q06 bad Eq lhs: PANIC=true
+
+thread 'main' (30008) panicked at src\text_resources.rs:77:33:
+index out of bounds: the len is 5 but the index is 4294967295
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

@@ -1,0 +1,130 @@
+[
+  {
+    "name": "c01-reentry-live-owner.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+    "diag": ""
+  },
+  {
+    "name": "c01-reentry-live-owner.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+    "diag": ""
+  },
+  {
+    "name": "c02-reentry-static-view.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "trace": "TEXT-SCALARS n=3\n",
+    "diag": ""
+  },
+  {
+    "name": "c02-reentry-static-view.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "trace": "TEXT-SCALARS n=3\n",
+    "diag": ""
+  },
+  {
+    "name": "c03-nested-rhs-skips.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "trace": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nCONCAT a=1 b=1\nCONCAT id=2\nTEXT-SCALARS n=2\nFREE id=2\nFREE id=1\n",
+    "diag": ""
+  },
+  {
+    "name": "c03-nested-rhs-skips.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "trace": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nCONCAT a=1 b=1\nCONCAT id=2\nTEXT-SCALARS n=2\nFREE id=2\nFREE id=1\n",
+    "diag": ""
+  },
+  {
+    "name": "c04-inner-lhs-skips-outer-or.atom",
+    "check": 0,
+    "build": 0,
+    "run": 1,
+    "trace": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nCONCAT a=1 b=1\nCONCAT id=2\nTEXT-SCALARS n=2\nFREE id=2\nFREE id=1\n",
+    "diag": ""
+  },
+  {
+    "name": "c04-inner-lhs-skips-outer-or.at",
+    "check": 0,
+    "build": 0,
+    "run": 1,
+    "trace": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nCONCAT a=1 b=1\nCONCAT id=2\nTEXT-SCALARS n=2\nFREE id=2\nFREE id=1\n",
+    "diag": ""
+  },
+  {
+    "name": "p01-unreachable-break-view.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "trace": "TEXT-SCALARS n=0\n",
+    "diag": ""
+  },
+  {
+    "name": "p01-unreachable-break-view.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "trace": "TEXT-SCALARS n=0\n",
+    "diag": ""
+  },
+  {
+    "name": "p02-unreachable-continue-view.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "trace": "TEXT-SCALARS n=0\n",
+    "diag": ""
+  },
+  {
+    "name": "p02-unreachable-continue-view.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "trace": "TEXT-SCALARS n=0\n",
+    "diag": ""
+  },
+  {
+    "name": "p03-continue-reentry-read.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "trace": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r8\\historical-r7\\historical-r6\\p03-continue-reentry-read.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n"
+  },
+  {
+    "name": "p03-continue-reentry-read.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "trace": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r8\\historical-r7\\historical-r6\\p03-continue-reentry-read.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n"
+  },
+  {
+    "name": "p04-natural-reentry-read.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "trace": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r8\\historical-r7\\historical-r6\\p04-natural-reentry-read.atom:38:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n"
+  },
+  {
+    "name": "p04-natural-reentry-read.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "trace": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r8\\historical-r7\\historical-r6\\p04-natural-reentry-read.at:1:70: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l2`'s scope exited\n"
+  }
+]

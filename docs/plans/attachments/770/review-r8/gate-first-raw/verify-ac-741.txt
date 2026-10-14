@@ -1,0 +1,44 @@
+rustc 1.98.0 (88d9e12ae 2026-08-18)
+binary: rustc
+commit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea
+commit-date: 2026-08-18
+host: x86_64-pc-windows-msvc
+release: 1.98.0
+LLVM version: 22.1.8
+
+[PASS] toolchain discovery (0.1s)
+[PASS] cargo check (ac-core) (0.1s)
+[PASS] cargo fmt --check (ac-core) (0.5s)
+[PASS] cargo check --all-targets, zero warnings (ac-core) (0.1s)
+[PASS] cargo test --lib (ac-core: link executor deadline/pipe/publish matrix) (2.9s)
+[PASS] cargo test text_binding (0.1s)
+[PASS] cargo test hir_verify (0.1s)
+[PASS] cargo test native_execution (--test-threads=1) (1.2s)
+[PASS] cargo test cli (--test-threads=1) (1.2s)
+[PASS] cargo test trace_execution (--test-threads=1) (0.4s)
+[FAIL] ac-probe check 01-add (exit 0) (0.8s): 'cargo run --locked --quiet --manifest-path D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\Cargo.toml -- check D:\autostack\.wt\lang-770\auto-lang\docs\design\strategy\hir-examples\01-add.atom' exited 101 (expected 0): error: failed to remove file `D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\target\debug\auto-ac-prototype.exe`
+
+Caused by:
+  拒绝访问。 (os error 5)
+
+powershell.exe : 'cargo run --locked --quiet --manifest-path D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\Cargo.toml -- check D:\autostack\.wt\lang-770\auto-lang\docs\design\strategy\hir-examples\01-add.atom' exited 101 (expect
+ed 0): error: fai
+At D:\autostack\.wt\lang-770\auto-lang\scripts\verify-ac-text-770.ps1:186 char:28
++ ...      $out = & powershell -NoProfile -ExecutionPolicy Bypass -File (Jo ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ('cargo run --lo... 0): error: fai:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+led to remove file `D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\target\debug\auto-ac-prototype.exe`
+Caused by:
+  拒绝访问。 (os error 5)
+At D:\autostack\.wt\lang-770\auto-lang\scripts\verify-ac-741.ps1:58 char:9
++         throw "'$Exe $($ArgList -join ' ')' exited $($p.ExitCode) (ex ...
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: ('cargo run --lo...。 (os error 5)
+:String) [], RuntimeException
+    + FullyQualifiedErrorId : 'cargo run --locked --quiet --manifest-path D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\Cargo.toml -- check D:\autostack\.wt\lang-770\auto-lang\docs\design\strategy\hir-examples\01-add.atom' exit 
+   ed 101 (expected 0): error: failed to remove file `D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\target\debug\auto-ac-prototype.exe`
+Caused by:
+  拒绝访问。 (os error 5)
+ 

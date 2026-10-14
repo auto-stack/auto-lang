@@ -1,0 +1,14 @@
+PLAN-770 text gate receipt
+head: c717555679451b4c109d308d740777e19d7ce2af
+rustc: rustc 1.98.0 (88d9e12ae 2026-08-18)
+rust-lld: C:\Users\zhaop\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\bin\rust-lld.exe
+rust-lld-sha256: f436ddda2f519c5ad18b7c7b09a3eadc2d4fc1be88cd9280cc472740fc3b7389
+raw-outputs: D:\autostack\.wt\lang-770\auto-lang\experimental\ac-core\target\ac-verify-receipts\770\raw-20261014-221301
+ac-core check: ok (zero warnings, per-line matcher with controls)
+ac-core test: ok (331 tests; text_native/text_resources present; every PE under the contained executor)
+ac-core fmt: clean
+runtime/text check: ok (zero warnings)
+runtime/text test: ok (20 tests; AP fault injection, budget, trap/hang, contract sidecar)
+runtime/text fmt: clean
+gate: FAILED - see step table and raw outputs
+generated: 20261014-221637

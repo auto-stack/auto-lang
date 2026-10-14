@@ -1,0 +1,30 @@
+c01-borrowed-shortcircuit.atom check=0 build=0 run=0 trace= diag=
+c01-borrowed-shortcircuit.at check=0 build=0 run=0 trace= diag=
+c02-wrapper-independent.atom check=0 build=0 run=4 trace=LIT len=3 / LIT id=1 / LIT len=1 / LIT id=2 / TEXT-SCALARS n=3 / TEXT-SCALARS n=1 / FREE id=2 / FREE id=1 /  diag=
+c02-wrapper-independent.at check=0 build=0 run=4 trace=LIT len=3 / LIT id=1 / LIT len=1 / LIT id=2 / TEXT-SCALARS n=3 / TEXT-SCALARS n=1 / FREE id=2 / FREE id=1 /  diag=
+c03-static-branch-local.atom check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+c03-static-branch-local.at check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+c04-live-owner-borrow.atom check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+c04-live-owner-borrow.at check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p01-skipped-rhs-temp.atom check=0 build=0 run=0 trace= diag=
+p01-skipped-rhs-temp.at check=0 build=0 run=0 trace= diag=
+p02-executed-rhs-temp.atom check=0 build=0 run=1 trace=CONCAT a=1 b=1 / CONCAT id=1 / TEXT-SCALARS n=2 / FREE id=1 /  diag=
+p02-executed-rhs-temp.at check=0 build=0 run=1 trace=CONCAT a=1 b=1 / CONCAT id=1 / TEXT-SCALARS n=2 / FREE id=1 /  diag=
+p03-dynamic-rhs-temp.atom check=0 build=0 run=0 trace= diag=
+p03-dynamic-rhs-temp.at check=0 build=0 run=0 trace= diag=
+p04-lhs-rhs-temp.atom check=0 build=0 run=1 trace=CONCAT a=1 b=1 / CONCAT id=1 / TEXT-SCALARS n=2 / CONCAT a=1 b=1 / CONCAT id=2 / TEXT-SCALARS n=2 / FREE id=2 / FREE id=1 /  diag=
+p04-lhs-rhs-temp.at check=0 build=0 run=1 trace=CONCAT a=1 b=1 / CONCAT id=1 / TEXT-SCALARS n=2 / CONCAT a=1 b=1 / CONCAT id=2 / TEXT-SCALARS n=2 / FREE id=2 / FREE id=1 /  diag=
+p05-returning-move-arm.atom check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p05-returning-move-arm.at check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p06-nested-returning-move-arm.atom check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p06-nested-returning-move-arm.at check=0 build=0 run=3 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p07-wrapper-alias.atom check=1 build=1 run= trace= diag=D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\historical-r10\historical-r9\historical-r8\historical-r7\historical-r6\historical-r5\historical-r4\p07-wrapper-alias.atom:71:21: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_relay` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters) / 
+p07-wrapper-alias.at check=1 build=1 run= trace= diag=D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\historical-r10\historical-r9\historical-r8\historical-r7\historical-r6\historical-r5\historical-r4\p07-wrapper-alias.at:3:41: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_relay` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters) / 
+p08-branch-local-owned.atom check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p08-branch-local-owned.at check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p09-both-branch-locals.atom check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p09-both-branch-locals.at check=0 build=0 run=0 trace=LIT len=3 / LIT id=1 / TEXT-SCALARS n=3 / FREE id=1 /  diag=
+p10-borrowed-scope-escape.atom check=1 build=1 run= trace= diag=D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\historical-r10\historical-r9\historical-r8\historical-r7\historical-r6\historical-r5\historical-r4\p10-borrowed-scope-escape.atom:35:21: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l1`'s scope exited / 
+p10-borrowed-scope-escape.at check=1 build=1 run= trace= diag=D:\autostack\auto-lang\docs\plans\attachments\770\review-r11\historical-r10\historical-r9\historical-r8\historical-r7\historical-r6\historical-r5\historical-r4\p10-borrowed-scope-escape.at:1:80: error[verify/verify.owned-scope-escape]: read of borrowed local `l0` whose owner `l1`'s scope exited / 
+p11-or-rhs-temp.atom check=0 build=0 run=1 trace= diag=
+p11-or-rhs-temp.at check=0 build=0 run=1 trace= diag=

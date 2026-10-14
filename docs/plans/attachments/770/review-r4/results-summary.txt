@@ -1,0 +1,626 @@
+[
+  {
+    "group": "",
+    "name": "c01-borrowed-shortcircuit.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": ""
+  },
+  {
+    "group": "",
+    "name": "c01-borrowed-shortcircuit.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": ""
+  },
+  {
+    "group": "",
+    "name": "c02-wrapper-independent.atom",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "stderr": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "group": "",
+    "name": "c02-wrapper-independent.at",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "stderr": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "group": "",
+    "name": "c03-static-branch-local.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "",
+    "name": "c03-static-branch-local.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "",
+    "name": "c04-live-owner-borrow.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "",
+    "name": "c04-live-owner-borrow.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "",
+    "name": "p01-skipped-rhs-temp.atom",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p01-skipped-rhs-temp.at",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p02-executed-rhs-temp.atom",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p02-executed-rhs-temp.at",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p03-dynamic-rhs-temp.atom",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p03-dynamic-rhs-temp.at",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p04-lhs-rhs-temp.atom",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p04-lhs-rhs-temp.at",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p05-returning-move-arm.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p05-returning-move-arm.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p06-nested-returning-move-arm.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p06-nested-returning-move-arm.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p07-wrapper-alias.atom",
+    "check": 0,
+    "build": 0,
+    "run": 6,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "",
+    "name": "p07-wrapper-alias.at",
+    "check": 0,
+    "build": 0,
+    "run": 6,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "",
+    "name": "p08-branch-local-owned.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p08-branch-local-owned.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p09-both-branch-locals.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p09-both-branch-locals.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p10-borrowed-scope-escape.atom",
+    "check": 0,
+    "build": 0,
+    "run": 70,
+    "stderr": "LIT len=3\nLIT id=1\nFREE id=1\nRT-FAIL code=-7\n"
+  },
+  {
+    "group": "",
+    "name": "p10-borrowed-scope-escape.at",
+    "check": 0,
+    "build": 0,
+    "run": 70,
+    "stderr": "LIT len=3\nLIT id=1\nFREE id=1\nRT-FAIL code=-7\n"
+  },
+  {
+    "group": "",
+    "name": "p11-or-rhs-temp.atom",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "",
+    "name": "p11-or-rhs-temp.at",
+    "check": 0,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c01-owned-return.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c01-owned-return.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c02-plain-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c02-plain-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c03-borrow-param-return.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c03-borrow-param-return.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c04-mut-independent.atom",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "stderr": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c04-mut-independent.at",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "stderr": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c05-branch-not-moved.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c05-branch-not-moved.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c06-shortcircuit-moved.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c06-shortcircuit-moved.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c07-marks-text-operands.atom",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "stderr": "abCONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c07-marks-text-operands.at",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "stderr": "abCONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c08-marks-text-comparison.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "ab"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "c08-marks-text-comparison.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "ab"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "mut01-owned-literal-view.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "mut02-no-runtime-requires.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p01-return-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p01-return-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p02-branch-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p02-branch-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p03-owned-call-view.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p03-owned-call-view.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p04-borrowed-param-owned-return.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p04-borrowed-param-owned-return.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p05-mut-return-view.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p05-mut-return-view.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p06-mut-alias.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p06-mut-alias.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p07-temporary-borrow-call.atom",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "stderr": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p07-temporary-borrow-call.at",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "stderr": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p08-shortcircuit-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p08-shortcircuit-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p09-loop-fresh-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "group": "/historical-r2",
+    "name": "p09-loop-fresh-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 2,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "c01-skipped-move-read.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "c01-skipped-move-read.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "c02-view-param-independent.atom",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "stderr": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "c02-view-param-independent.at",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "stderr": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "q01-nested-skipped-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "q01-nested-skipped-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "q02-view-param-alias.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r3",
+    "name": "q02-view-param-alias.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  },
+  {
+    "group": "/historical-r3",
+    "name": "q03-temp-statement-tail.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\naFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "q03-temp-statement-tail.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "stderr": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\naFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "q04-conditional-drop.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "stderr": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "group": "/historical-r3",
+    "name": "q05-cleanup-no-requires.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "stderr": null
+  }
+]

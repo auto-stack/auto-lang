@@ -1,0 +1,98 @@
+[
+  {
+    "name": "c01-skipped-move-read.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c01-skipped-move-read.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "c02-view-param-independent.atom",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "c02-view-param-independent.at",
+    "check": 0,
+    "build": 0,
+    "run": 4,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nLIT len=1\nLIT id=2\nTEXT-SCALARS n=3\nTEXT-SCALARS n=1\nFREE id=2\nFREE id=1\n"
+  },
+  {
+    "name": "q01-nested-skipped-move.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "name": "q01-nested-skipped-move.at",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nFREE id=1\n"
+  },
+  {
+    "name": "q02-view-param-alias.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r3\\q02-view-param-alias.atom:50:21: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_both` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)\n",
+    "trace": null
+  },
+  {
+    "name": "q02-view-param-alias.at",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r3\\q02-view-param-alias.at:2:30: error[verify/verify.mut-conflict]: arguments for parameters 0 and 1 of `d_both` both view `l0`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)\n",
+    "trace": null
+  },
+  {
+    "name": "q03-temp-statement-tail.atom",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\naFREE id=1\n"
+  },
+  {
+    "name": "q03-temp-statement-tail.at",
+    "check": 0,
+    "build": 0,
+    "run": 3,
+    "diag": "",
+    "trace": "CONCAT a=1 b=1\nCONCAT id=1\nTEXT-SCALARS n=2\naFREE id=1\n"
+  },
+  {
+    "name": "q04-conditional-drop.atom",
+    "check": 0,
+    "build": 0,
+    "run": 0,
+    "diag": "",
+    "trace": "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n"
+  },
+  {
+    "name": "q05-cleanup-no-requires.atom",
+    "check": 1,
+    "build": 1,
+    "run": null,
+    "diag": "D:\\autostack\\auto-lang\\docs\\plans\\attachments\\770\\review-r9\\historical-r8\\historical-r7\\historical-r6\\historical-r5\\historical-r4\\historical-r3\\q05-cleanup-no-requires.atom:1:1: error[capability/capability.missing]: the module lowers text runtime operations or cleanup obligations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred\n",
+    "trace": null
+  }
+]
