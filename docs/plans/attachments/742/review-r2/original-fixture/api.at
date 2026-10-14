@@ -1,0 +1,34 @@
+
+pub type NoteDocument = { schema_version: int, note_id: str, title: str }
+pub type NoteView = { schema_version: int, note_id: str, title: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var out List<NoteDocument> = List<NoteDocument>.new([])
+    for d in docs {
+        out.push(d)
+    }
+    return out
+}
+
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn get_note(id int) ?NoteView {
+    var docs []NoteDocument = repository.repo_list_active()
+    if docs.len() > 0 {
+        var d NoteDocument = docs[0]
+        var v NoteView = NoteView { schema_version: d.schema_version, note_id: d.note_id, title: d.title }
+        return Some(v)
+    }
+    return None
+}
+
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn update_note(id int, title str) []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var ok bool = docs.len() > 0
+    if ok {
+        ok = docs[0].title == title
+    }
+    return docs
+}

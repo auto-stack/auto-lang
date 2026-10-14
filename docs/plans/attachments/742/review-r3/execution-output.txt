@@ -1,0 +1,121 @@
+[
+  {
+    "case": "control",
+    "compile_exit": 0,
+    "actual": "\"ordinary message\"",
+    "source_sha256": "EF4E633325CE4636EECBA24C9458287A9A3F0DD038DBFFBF7E2B655599DA4631",
+    "generated_sha256": "EAC463B4F015EFDCAF7C9F0CA1F37D3BB1EC1709DC4C21E81C792399DFF4C67A"
+  },
+  {
+    "case": "list_literal",
+    "compile_exit": 0,
+    "actual": "\"List<int>.new([])\"",
+    "source_sha256": "6F6A956D30C80202D5194374A5ECFB5E2F60EDFECDDC646B754A3072E7A33271",
+    "generated_sha256": "ECF0F8F9C8EAEF11F10DB3285A6A0DFC40FA6C80978C43EB5B560E0285763E0A"
+  },
+  {
+    "case": "module_literal",
+    "compile_exit": 0,
+    "actual": "\"repository.filename\"",
+    "source_sha256": "6B66BF120E4E684EE99301AA7DD3AB9FC794F30BC9769035A4313E09F2481EBA",
+    "generated_sha256": "BE2D4338EB54820AAD5CADCD02E4C0913507B8F62BAA3BA386809F2C8E71011C"
+  },
+  {
+    "case": "brace_literal",
+    "compile_exit": 0,
+    "actual": "\"} return secret\"",
+    "source_sha256": "09112508866C26E262D4BF86BC973B5230E1D97D9E431D31AA58465F1BB3ECE5",
+    "generated_sha256": "A5480D10B46D030BA4DC2E1136853FE7216F37B79770A61CA20FCF67BB180A6B"
+  },
+  {
+    "case": "borrow_literal",
+    "compile_exit": 0,
+    "actual": "\"crate::repository::take(value)\"",
+    "source_sha256": "593615EE29374E78F80761671132B3DC5A14040287D822B2175EFAC67BCCE004",
+    "generated_sha256": "412120F5211B707219BD03B79B36BE7852A6707DCC5BDFFAF4ADC75F239B75E8"
+  },
+  {
+    "case": "escape_literal",
+    "compile_exit": 0,
+    "actual": "\"引号\\\" List<int>.new([]) repository.ping() } return secret\"",
+    "source_sha256": "7BF2A066C71C46B3ADEB053FC6482DB384729165C9B899229F8FE4E459CA8EB4",
+    "generated_sha256": "58A8C5058C3BDB2AF77784136D7F40F8660B65F374673A0C92C120C660E2E407"
+  },
+  {
+    "case": "module_control",
+    "compile_exit": 0,
+    "actual": "\"ok\"",
+    "source_sha256": "674E0B421B41EDBA9D4B5D4B330FBF4AB964CE5A53ADE78C456A02C09D353EBF",
+    "generated_sha256": "AB1E934C70F2AA4738405280C1ACA721B46F9DBE5011B75A74F6240A0A6D2665"
+  },
+  {
+    "case": "scope_shadow",
+    "compile_exit": 0,
+    "actual": "\"ok\"",
+    "source_sha256": "CB7FBFE4B30CC133CEDC205CDF6D8445654DFCD01AF3E1FBEDDF399003A7E47B",
+    "generated_sha256": "CD4A03551739F96F640B06F57A5B96E441A9D7DEBECCF8493E3B6EB0B81C63A0"
+  },
+  {
+    "case": "void_control",
+    "compile_exit": 0,
+    "actual": "StatusCode",
+    "source_sha256": "872DA6DEC2C12B180A0141D538EEADA05089B1E20B30826259C8F3B969035EEA",
+    "generated_sha256": "EF61140DBD42B51D2A9D604C5A910DB23A101B2BBA99F39F29B880DA64DD9E51"
+  },
+  {
+    "case": "void_branch",
+    "compile_exit": 0,
+    "actual": "StatusCode",
+    "source_sha256": "3A4B49547BC2AFADA710B6F29F6B6FC3AC36AEDADFEEDBBFAA20D63774452762",
+    "generated_sha256": "E720F7AEC5F35FABF46EEFCB546B890CC55AF3B72F7D0A2828A350A21F4E5125"
+  },
+  {
+    "case": "option_variable",
+    "compile_exit": 0,
+    "actual": "1:ok\r\n-1:not_found",
+    "source_sha256": "05B499D41B044AA78E2CDEB9F2694F0CFAB435AA2FD2A848CA7CCF8C4AA951C9",
+    "generated_sha256": "2239FB455F504E688ACCA34C0F79D52BCDE55994B7A74BA072BA5A8744724D32"
+  },
+  {
+    "case": "file_control",
+    "compile_exit": 0,
+    "actual": "\"readme.txt\"",
+    "source_sha256": "FCFDE218E1ECF70FA6D55EA3ED8FB7FC604BFE83A08FCB6FC0C1EE2F554BDE4A",
+    "generated_sha256": "AA6AF2DBC2140B42C7ACFEAFA8C850A6EFAB5255F7A5F0E3B4689B8086E2B4A4"
+  },
+  {
+    "case": "file_module",
+    "compile_exit": 0,
+    "actual": "\"readme.txt\"",
+    "source_sha256": "C2A30E99C7F87FB7AE53680FDBE1D7C994FB90A3383CBB5C293202D082DD1F7A",
+    "generated_sha256": "A6D2A7FC741C9EDD8CEE3DFD55CBDA8E228781B415CBA84D298C5C01ED7FC3C9"
+  },
+  {
+    "case": "qualified_literal",
+    "compile_exit": 0,
+    "actual": "\"a2r_std::sqlite\"",
+    "source_sha256": "9BC61B7A4CA42AC624A222CCA8D23F979C9B39C7A04D1B7DC3E514423D843706",
+    "generated_sha256": "AAEECA1172D00BF539BC973CF70336F5D223D38588A576F03E8580F7D7717B43"
+  },
+  {
+    "case": "marker_literal",
+    "compile_exit": 0,
+    "actual": "\"auto_lang::a2r_std:: ::a2r_std::sqlite a2r_std::sys::\"",
+    "source_sha256": "AC299B5A8BB5478588C3368DC81F5105672BD020C8C7D677678F01EF6CFDD874",
+    "generated_sha256": "74BECCA5D28BE449355EA0F4AC894AE01FECA2CD68ACEA667BAC3CC9E1AA87C9"
+  },
+  {
+    "case": "nested_borrow",
+    "compile_exit": 1,
+    "actual": null,
+    "source_sha256": "7B78ABC88707EF68C9DA329B4EFB2BC0553CD05AC2E5C95F18A3014D4AF53454",
+    "generated_sha256": "5D6B6132720C70236A943D886E7DACA7CC72A5F67EA08AEFEB893717EE5E6A6C"
+  },
+  {
+    "case": "borrow_positive",
+    "compile_exit": 0,
+    "actual": "\"ok\"",
+    "source_sha256": "29B1E9BEE70F963B80E62D534394004F0AC8F4368B97FDD78C22DE595F5FB814",
+    "generated_sha256": "04F9488FFE13E8172B61BCC6B661FD2B5E82675FFFE3A770157D75904BCD768F"
+  }
+]

@@ -1,0 +1,2 @@
+SUMMARY attempts=11 allocs=5 frees=2 live=3 live_bytes=4294967295 peak=4294967295
+FREESTAT free_attempts=2 frees_ok=2 invalid=0

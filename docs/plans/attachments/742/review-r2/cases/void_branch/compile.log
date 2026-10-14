@@ -1,0 +1,23 @@
+error[E0308]: mismatched types
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r2\cases\void_branch\runner.rs:24:16
+   |
+24 |         return None;
+   |                ^^^^ expected `StatusCode`, found `Option<_>`
+   |
+   = note: expected struct `StatusCode`
+                found enum `Option<_>`
+
+error[E0308]: mismatched types
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r2\cases\void_branch\runner.rs:22:55
+   |
+22 |   pub async fn echo(State(db): State<Db>) -> StatusCode {
+   |  _______________________________________________________^
+23 | |     if false {
+24 | |         return None;
+...  |
+27 | | }
+   | |_^ expected `StatusCode`, found `()`
+
+error: aborting due to 2 previous errors
+
+For more information about this error, try `rustc --explain E0308`.

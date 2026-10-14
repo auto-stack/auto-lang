@@ -6,6 +6,7 @@
 
 | 文档 | 原号 | 主题 | 关联计划 |
 |---|---|---|---|
+| [app-presentation-host](app-presentation-host.md) | — | App 声明 Region/Section/Scene，Feature 多出口按目标装配；灵活布局、面板/整页栏目、overlay/通知、状态恢复与双端合同 | 设计草案（2026-10-14；Design 38 前置，未实施） |
 | [shared-store](shared-store.md) | 18 | Rung 4 跨 widget/跨路由共享状态 | 351/370 |
 | [theming-and-dark-mode](theming-and-dark-mode.md) | 19 | 深浅色模式与主题色配置——**值层已被 [Design 29](../29-autoui-style-theme-system.md) 取代**（词汇表/正交维度仍有效，头部有取代注记） | 458 |
 | [examples-app-track](examples-app-track.md) | 21 | examples/ui 应用轨道与 AutoOS 默认应用矩阵 | 401–441 |

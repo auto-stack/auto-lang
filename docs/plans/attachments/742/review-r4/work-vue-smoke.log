@@ -1,0 +1,18 @@
+
+Running 13 tests using 1 worker
+
+  ok  1 [chromium] › smoke.spec.ts:37:5 › T1: 点击列表切换笔记 (1.7s)
+  ok  2 [chromium] › smoke.spec.ts:44:5 › T2a: Pinned 筛选只剩置顶笔记 (1.6s)
+  ok  3 [chromium] › smoke.spec.ts:51:5 › T2b: All 恢复全量（置顶与普通都在列表里） (1.6s)
+  ok  4 [chromium] › smoke.spec.ts:59:5 › T2c: 文件夹筛选（personal） (1.6s)
+  ok  5 [chromium] › smoke.spec.ts:72:5 › T3: 搜索命中且大小写不敏感 (2.6s)
+  ok  6 [chromium] › smoke.spec.ts:83:5 › T3b: 搜索无命中显示空态 (2.3s)
+  ok  7 [chromium] › smoke.spec.ts:93:5 › T4: 标签筛选生效 (2.2s)
+  ok  8 [chromium] › smoke.spec.ts:107:5 › T11: 主题切换翻转根元素 dark class (2.2s)
+  ok  9 [chromium] › smoke.spec.ts:120:5 › T13: 控制台无实质错误 (2.5s)
+  ok 10 [chromium] › smoke.spec.ts:147:5 › T5a/T5b: 直接编辑 → Save 出现 → 落库 (4.8s)
+  ok 11 [chromium] › smoke.spec.ts:170:5 › T5c: 切换笔记自动落盘未保存草稿 (5.4s)
+  ok 12 [chromium] › smoke.spec.ts:195:5 › T6: New note 新建并自动选中空笔记 (3.9s)
+  ok 13 [chromium] › smoke.spec.ts:209:5 › T7: 删除需两步确认且真删 (4.7s)
+
+  13 passed (37.8s)

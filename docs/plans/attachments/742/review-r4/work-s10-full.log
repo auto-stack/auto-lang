@@ -1,0 +1,51 @@
+=== S10 FULL LIFECYCLE TRANSCRIPT 2026-10-14T02:58:00+08:00 ===
+backend binary: ./rust-workspace/target/debug/auto-notes-back.exe
+e58396eb8467b3962066417c0b8bdedd17669415a6881ec65bbd77671dd79bb6 *./rust-workspace/target/debug/auto-notes-back.exe
+generator CLI: D:/autostack/.wt/lang-742/auto-lang/target/debug/auto.exe (commit 2c40e1fe4)
+211d5eb87a80f8d21f7564124ee0286b3a20e42199932f8b0caaddac4a5a2e75 *D:/autostack/.wt/lang-742/auto-lang/target/debug/auto.exe
+generation.json generated_at: Wed Oct 14 02:55:25 2026
+--- [1] isolated setup dir
++ curl -s -X POST http://localhost:17819/api/v1/test/setup -H 'Content-Type: application/json' -d '{"data_dir":"C:/Users/zhaop/AppData/Local/Temp/p742-s10-r3","legacy_file":""}'
+"ok"+ echo
+
++ echo '--- [2] create durable note rid=s10-r3-1791917879'
+--- [2] create durable note rid=s10-r3-1791917879
++ curl -s -X POST http://localhost:17819/api/v1/notes -H 'content-type: application/json' -d '{"request_id":"s10-r3-1791917879","title":"s10-r3-survivor","body":"kill -9 survivor","folder":"inbox","tags":[]}'
+{"ok":true,"err_code":"","err_detail":"","doc":{"schema_version":1,"note_id":"n-7","revision":1,"title":"s10-r3-survivor","body":"kill -9 survivor","tags":[],"color":"","pinned":false,"state":"active","folder":"inbox","created_at":"","updated_at":"","legacy_id":7,"seq":7},"receipt":{"schema_version":1,"request_id":"s10-r3-1791917879","note_id":"n-7","revision":1,"status":"committed"},"replayed":false}+ echo
+
++ echo '--- [3] pre-kill read'
+--- [3] pre-kill read
++ curl -s http://localhost:17819/api/v1/notes
++ python -c 'import json,sys; d=json.load(sys.stdin); print('\''PRE_COUNT'\'', len(d), '\''HAS'\'', any(n.get('\''title'\'')=='\''s10-r3-survivor'\'' for n in d))'
+PRE_COUNT 7 HAS True
++ set +x
+--- [4] storage identity pre-kill
+ec850326d8af71ed1bd3b89053fc7692f870e48966a5ecfcba58bb8bdd92c7a9 */tmp/p742-s10-r3/inbox.db
+total 26144
+drwxr-xr-x 1 zhaop 197609     0 Oct 14 02:58 .
+drwxr-xr-x 1 zhaop 197609     0 Oct 14 02:58 ..
+-rw-r--r-- 1 zhaop 197609 32768 Oct 14 02:58 inbox.db
+--- [5] kill -9 backend
+backend PID=28848
++ taskkill //F //PID 28848
+SUCCESS: The process with PID 28848 has been terminated.
++ sleep 2
++ curl -s -m 2 http://localhost:17819/api/v1/notes
++ echo ' <- DOWN_CONFIRMED(empty=down)'
+ <- DOWN_CONFIRMED(empty=down)
++ set +x
+--- [6] restart backend (same binary, NOTES_TEST_MODE=1)
+--- [6a] new backend PID
+  TCP    127.0.0.1:17819        0.0.0.0:0              LISTENING       47932
+--- [7] storage identity post-restart (must equal pre-kill)
+ec850326d8af71ed1bd3b89053fc7692f870e48966a5ecfcba58bb8bdd92c7a9 */tmp/p742-s10-r3/inbox.db
++ echo '--- [8] same-dir setup + read-back'
+--- [8] same-dir setup + read-back
++ curl -s -X POST http://localhost:17819/api/v1/test/setup -H 'Content-Type: application/json' -d '{"data_dir":"C:/Users/zhaop/AppData/Local/Temp/p742-s10-r3","legacy_file":""}'
+"ok"+ echo
+
++ curl -s http://localhost:17819/api/v1/notes
++ python -c 'import json,sys; d=json.load(sys.stdin); print('\''POST_COUNT'\'', len(d), '\''HAS'\'', any(n.get('\''title'\'')=='\''s10-r3-survivor'\'' for n in d), '\''STATE'\'', next((n.get('\''state'\'') for n in d if n.get('\''title'\'')=='\''s10-r3-survivor'\''), None))'
+POST_COUNT 7 HAS True STATE active
++ set +x
+=== S10 TRANSCRIPT END 2026-10-14T02:58:18+08:00 ===

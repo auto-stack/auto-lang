@@ -1,0 +1,7 @@
+use auto.http
+pub type Probe = { text: str }
+#[api(method = "GET", path = "/api/echo")]
+pub fn echo() FileResponse {
+    var path str = repository.path()
+    return http.file_response("D:/files", path, "{}")
+}

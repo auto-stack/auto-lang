@@ -1,0 +1,268 @@
+  ✓ Generated Rust server: original_fixture-back/
+CASE original_fixture: generation Ok
+  ✓ Generated Rust server: control-back/
+CASE control: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "ordinary message".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+
+  ✓ Generated Rust server: list_literal-back/
+CASE list_literal: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "List<int>.new([])".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+
+  ✓ Generated Rust server: module_literal-back/
+CASE module_literal: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "repository.filename".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+
+  ✓ Generated Rust server: brace_literal-back/
+CASE brace_literal: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "} return secret".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+
+  ✓ Generated Rust server: borrow_literal-back/
+CASE borrow_literal: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "crate::repository::take(value)".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+
+  ✓ Generated Rust server: escape_literal-back/
+CASE escape_literal: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "引号\" List<int>.new([]) repository.ping() } return secret".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+
+  ✓ Generated Rust server: qualified_literal-back/
+CASE qualified_literal: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "a2r_std::sqlite".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+
+  ✓ Generated Rust server: marker_literal-back/
+CASE marker_literal: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut msg: String = "__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__".to_string();
+    if false {
+        return JsonResponse(Probe { text: msg.to_string() });
+    }
+    return JsonResponse(Probe { text: msg.to_string() });
+}
+
+  ✓ Generated Rust server: module_control-back/
+CASE module_control: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut n: i64 = crate::repository::ping();
+    if n == 7 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: scope_shadow-back/
+CASE scope_shadow: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut n: i64 = crate::repository::ping();
+    if false {
+        let mut repository: String = "local".to_string();
+        let mut size: i64 = (repository.len() as i64);
+    }
+    if n == 7 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: void_control-back/
+CASE void_control: generation Ok
+pub async fn echo(State(db): State<Db>) -> StatusCode {
+    if false {
+        let mut n: i64 = 0;
+    }
+    let mut x: i64 = 1;
+    return StatusCode::OK;
+}
+
+  ✓ Generated Rust server: void_branch-back/
+CASE void_branch: generation Ok
+pub async fn echo(State(db): State<Db>) -> StatusCode {
+    if false {
+        return StatusCode::OK;
+    }
+    let mut x: i64 = 1;
+    return StatusCode::OK;
+}
+
+  ✓ Generated Rust server: option_variable-back/
+CASE option_variable: generation Ok
+pub async fn echo(Path(id): Path<i64>, State(db): State<Db>) -> Result<JsonResponse<Probe>, StatusCode> {
+    let mut p: Option<Probe> = Some(Probe { text: "ok".to_string() });
+    if id > 0 {
+        return match p { Some(__opt_v) => Ok(JsonResponse(__opt_v)), None => Err(StatusCode::NOT_FOUND) };
+    }
+    return Err(StatusCode::NOT_FOUND);
+}
+
+  ✓ Generated Rust server: file_control-back/
+CASE file_control: generation Ok
+pub async fn echo(State(db): State<Db>, method: axum::http::Method, headers: axum::http::HeaderMap) -> axum::response::Response {
+    let mut path: String = "readme.txt".to_string();
+    return __file_reply(auto_lang::a2r_std::http::file_response("D:/files", path.as_str(), "{}"), &method, &headers).await;
+}
+
+  ✓ Generated Rust server: file_module-back/
+CASE file_module: generation Ok
+pub async fn echo(State(db): State<Db>, method: axum::http::Method, headers: axum::http::HeaderMap) -> axum::response::Response {
+    let mut path: String = crate::repository::path();
+    return __file_reply(auto_lang::a2r_std::http::file_response("D:/files", path.as_str(), "{}"), &method, &headers).await;
+}
+
+  ✓ Generated Rust server: nested_borrow-back/
+CASE nested_borrow: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut s: String = "hi".to_string();
+    let mut n: i64 = crate::repository::outer(crate::repository::measure(&s));
+    if n == 2 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: borrow_positive-back/
+CASE borrow_positive: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut s: String = "hi".to_string();
+    let mut n: i64 = crate::repository::measure(&s);
+    if n == 2 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: pair_scope-back/
+CASE pair_scope: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut names: Vec<String> = vec!["a", "bb"];
+    let mut n: i64 = 0;
+    if n == 3 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: pair_control-back/
+CASE pair_control: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut names: Vec<String> = vec!["a", "bb"];
+    let mut n: i64 = 0;
+    if n == 3 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: namespace_suffix-back/
+CASE namespace_suffix: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut n: i64 = crate::custom_a2r_std::ping();
+    if n == 7 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: nested_twice-back/
+CASE nested_twice: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut s: String = "hi".to_string();
+    let mut n: i64 = crate::repository::outer(crate::repository::outer(crate::repository::measure(&s)));
+    if n == 2 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: compare_less-back/
+CASE compare_less: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut s: String = "ok".to_string();
+    let mut n: i64 = crate::repository::choose(1 < 2, s);
+    if n == 2 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: compare_greater-back/
+CASE compare_greater: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut s: String = "ok".to_string();
+    let mut n: i64 = crate::repository::choose(2 > 1, &s);
+    if n == 2 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: compare_control-back/
+CASE compare_control: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut s: String = "ok".to_string();
+    let mut n: i64 = crate::repository::choose(true, &s);
+    if n == 2 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: multiline_literal-back/
+CASE multiline_literal: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut s: String = "first\na2r_std::sqlite repository.take(value) List<int>.new([])\nlast".to_string();
+    if true {
+        return JsonResponse(Probe { text: s.to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+
+  ✓ Generated Rust server: namespace_control-back/
+CASE namespace_control: generation Ok
+pub async fn echo(State(db): State<Db>) -> JsonResponse<Probe> {
+    let mut n: i64 = crate::custom::ping();
+    if n == 7 {
+        return JsonResponse(Probe { text: "ok".to_string() });
+    }
+    return JsonResponse(Probe { text: "bad".to_string() });
+}
+

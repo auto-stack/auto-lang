@@ -1,0 +1,22 @@
+PLAN-774 probe gate receipt
+head: b3bab4278c9f065a5609a57d02d1f2552f640eab
+rustc: rustc 1.98.0 (88d9e12ae 2026-08-18)
+rust-lld: C:\Users\zhaop\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib\rustlib\x86_64-pc-windows-msvc\bin\rust-lld.exe
+rust-lld-sha256: f436ddda2f519c5ad18b7c7b09a3eadc2d4fc1be88cd9280cc472740fc3b7389
+raw-outputs: D:\autostack\.wt\lang-774\auto-lang\experimental\ac-core\probes\data-resources\target\ac-verify-receipts\774\raw-20261013-145216
+check: ok (zero warnings, per-line matcher with controls)
+test: ok (61 probe tests; every PE under the contained 60s executor)
+fmt: clean
+scope: clean (diff 5e21561d2c303a02319ff7a29e4607933e09a38f..HEAD within probe/script/report paths)
+shim-sha256: e1f1f3d27227cd7d669e4fc34c1b4ed6cc76d8addeada7041523eefbe3c138b1
+probe src/lib.rs: eca94863a31e922dc8d7f33932d422a0aeffdf3d0f2773654905d1282a449384
+probe src/rules.rs: b49c89f8760be4d29759b772cd79fcf3fe43d755bdc1a393e73dfcbb0d9f8394
+probe shim/src/lib.rs: f0aef863a8e08973a134e812e62e087ac049128ff62452ae391e6b22571d2513
+probe Cargo.toml: 647329be2cf61f7740542a7ae14450c82d887ff96fe297681f6aa0d411668862
+probe Cargo.lock: 378ab55538ea00490de810dbec9aaa06eeab1f813193c032b1c16e775c3f856c
+report decisions.md: cad32246ba0bed224f137d9f0cc29e19ad66dc2133a35b88aaf0606feeaa2e9f
+report probe-cases.md: 83d0476a7f14d06badf1935f8a87b9fb5891ea4266e2a88c87d1f2b3f7e5d98d
+report interface-contract.md: c3ae39a14091de4c1677def4dba753e6acd4be28bf857962919756b013ba7a78
+report verification.md: cea9c0eb3dbb8460516cae26e709531d3e4adaf7823526f1a65e3b14f5d16ba8
+gate-script: 170a2b5ce98a849bb5dd3adbd0048069ebfa84d5e45c53e33349a2442b7284a4
+generated: 20261013-145249

@@ -1,0 +1,21 @@
+error[E0308]: mismatched types
+  --> D:\autostack\auto-lang\docs\plans\attachments\742\review-r5\cases\compare_less\runner.rs:26:55
+   |
+26 |     let mut n: i64 = crate::repository::choose(1 < 2, s);
+   |                      -------------------------        ^ expected `&str`, found `String`
+   |                      |
+   |                      arguments to this function are incorrect
+   |
+note: function defined here
+  --> D:/autostack/auto-lang/docs/plans/attachments/742/review-r5/cases/compare_less/repository.rs:3:8
+   |
+ 3 | pub fn choose(flag: bool, value: &str) -> i64 {
+   |        ^^^^^^             -----------
+help: consider borrowing here
+   |
+26 |     let mut n: i64 = crate::repository::choose(1 < 2, &s);
+   |                                                       +
+
+error: aborting due to 1 previous error
+
+For more information about this error, try `rustc --explain E0308`.

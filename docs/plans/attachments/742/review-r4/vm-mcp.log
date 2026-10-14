@@ -1,0 +1,36 @@
+---------------------------
+AutoNexus / Auto CLI
+---------------------------
+Loading AmConfig from Some("C:\\Users\\zhaop\\.auto\\auto-man\\am.at")...
+AmConfig: AmConfig {
+  name: default
+  index: {
+    default: git@gitee.com:auto-stack/auto-index.git
+    soutek: git@codeup.aliyun.com:soutek/auto-stack/auto-index.git
+    boe: git@codeup.aliyun.com:soutek/boe/index.git
+  }
+}
+
+
+Loaded port: windows_ninja
+port NAME: windows_ninja
+all index: {"default": "git@gitee.com:auto-stack/auto-index.git", "soutek": "git@codeup.aliyun.com:soutek/auto-stack/auto-index.git", "boe": "git@codeup.aliyun.com:soutek/boe/index.git"}
+used index: ["default"]
+23:46:27 [INFO] loading index store from C:/Users/zhaop/.auto/auto-man/index/default
+setting port builder: windows_ninja ninja, at build
+23:46:27 [INFO] AutoCache initialized for project: notes
+  → split mode: frontend vm ↔ backend rust over HTTP
+  Backend API server port: 17819 (from pac.at)
+  Frontend dev server port: 17818 (from pac.at)
+  VM window title: 备忘录 (from pac.at)
+  UI theme: dark (from pac.at)
+  UI accent: indigo (from pac.at)
+23:46:27 [INFO] Running project ...
+
+------------ output ------------
+─────────────────────────────────
+Cache: 4 files, 3 artifacts cached
+─────────────────────────────────
+[-] Timeout waiting for AutoUI MCP server to become ready.
+[*] Starting 'D:/autostack/.wt/lang-742/auto-lang/target/debug/auto.exe run -r vm' in D:\autostack\auto-notes on MCP port 10104...
+[*] Terminating VM process...
