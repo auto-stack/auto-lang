@@ -206,6 +206,11 @@ fn check_source(
             auto_ac_prototype::source::compile_text_source(&src, &module_path, &args.capabilities)
         }
         SourceProfile::Record => compile_record_source(&src, &module_path, &args.capabilities),
+        SourceProfile::TextRecord => auto_ac_prototype::source::compile_text_record_source(
+            &src,
+            &module_path,
+            &args.capabilities,
+        ),
     };
     match compile {
         Ok(c) => Ok(format!(
@@ -242,6 +247,11 @@ fn build_source(
             auto_ac_prototype::source::compile_text_source(&src, &module_path, &args.capabilities)
         }
         SourceProfile::Record => compile_record_source(&src, &module_path, &args.capabilities),
+        SourceProfile::TextRecord => auto_ac_prototype::source::compile_text_record_source(
+            &src,
+            &module_path,
+            &args.capabilities,
+        ),
     } {
         Ok(c) => c,
         Err(diags) => return fail(diags),

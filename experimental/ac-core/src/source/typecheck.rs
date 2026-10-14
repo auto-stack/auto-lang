@@ -316,6 +316,9 @@ fn check_expr(
                 stack.push(base.as_ref());
             }
             RExprKind::BorrowMut { .. } => {}
+            // PLAN-782: `r.clone()` carries the receiver's record type;
+            // nominal equality was already established at dispatch.
+            RExprKind::RecordClone { .. } => {}
             RExprKind::MethodCall {
                 fn_index,
                 recv,

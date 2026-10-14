@@ -24,7 +24,8 @@ pub mod typecheck;
 
 pub use adapter::{
     compile_parts, compile_parts_with, compile_record_source, compile_scalar_source,
-    compile_source, compile_text_source, CompiledSource, SourceParts, RUNTIME_TEXT_CAPABILITY,
+    compile_source, compile_text_record_source, compile_text_source, CompiledSource, SourceParts,
+    RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
 pub use resolve::resolve_with;
@@ -51,6 +52,11 @@ pub const TEXT_SOURCE_PROFILE: &str = "auto.source.text.draft";
 /// positional/named construction, nested field paths, readonly instance
 /// receivers, and explicit `mut` free-function params (774 D-04).
 pub const RECORD_SOURCE_PROFILE: &str = "auto.source.record.draft";
+/// The text-record source profile (PLAN-782): the union of the text and
+/// record surfaces — nominal records owning `Str` (and carrying `char`)
+/// fields, aggregate explicit `.move`/`.clone()`, field reads/replacement,
+/// plus the whole scalar/text operator and method surface.
+pub const TEXT_RECORD_SOURCE_PROFILE: &str = "auto.source.text-record.draft";
 
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
@@ -60,6 +66,7 @@ pub enum SourceProfile {
     Scalar,
     Text,
     Record,
+    TextRecord,
 }
 
 impl SourceProfile {
@@ -69,6 +76,7 @@ impl SourceProfile {
             SourceProfile::Scalar => SCALAR_SOURCE_PROFILE,
             SourceProfile::Text => TEXT_SOURCE_PROFILE,
             SourceProfile::Record => RECORD_SOURCE_PROFILE,
+            SourceProfile::TextRecord => TEXT_RECORD_SOURCE_PROFILE,
         }
     }
 
@@ -79,6 +87,7 @@ impl SourceProfile {
             SourceProfile::Scalar => crate::hir::HirDomain::Scalar,
             SourceProfile::Text => crate::hir::HirDomain::Text,
             SourceProfile::Record => crate::hir::HirDomain::Record,
+            SourceProfile::TextRecord => crate::hir::HirDomain::TextRecord,
         }
     }
 
@@ -86,19 +95,22 @@ impl SourceProfile {
     /// unary ops, logical short-circuit) and the conditional `for` loop
     /// are accepted.
     pub fn is_scalar(&self) -> bool {
-        matches!(self, SourceProfile::Scalar | SourceProfile::Text)
+        matches!(
+            self,
+            SourceProfile::Scalar | SourceProfile::Text | SourceProfile::TextRecord
+        )
     }
 
     /// Whether the text surface (str/Str/char, literals, text methods,
     /// mode words) is accepted (PLAN-770).
     pub fn is_text(&self) -> bool {
-        matches!(self, SourceProfile::Text)
+        matches!(self, SourceProfile::Text | SourceProfile::TextRecord)
     }
 
     /// Whether the record surface (type declarations, construction, field
     /// paths, methods, `mut` params — PLAN-771) is accepted.
     pub fn is_record(&self) -> bool {
-        matches!(self, SourceProfile::Record)
+        matches!(self, SourceProfile::Record | SourceProfile::TextRecord)
     }
 
     /// The widest operator surface this profile accepts: record builds on
@@ -108,7 +120,10 @@ impl SourceProfile {
         // scalar itself, text (PLAN-770) and record (PLAN-771)
         matches!(
             self,
-            SourceProfile::Scalar | SourceProfile::Text | SourceProfile::Record
+            SourceProfile::Scalar
+                | SourceProfile::Text
+                | SourceProfile::Record
+                | SourceProfile::TextRecord
         )
     }
 
@@ -118,6 +133,7 @@ impl SourceProfile {
             SCALAR_SOURCE_PROFILE => Some(SourceProfile::Scalar),
             TEXT_SOURCE_PROFILE => Some(SourceProfile::Text),
             RECORD_SOURCE_PROFILE => Some(SourceProfile::Record),
+            TEXT_RECORD_SOURCE_PROFILE => Some(SourceProfile::TextRecord),
             _ => None,
         }
     }

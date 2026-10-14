@@ -228,6 +228,13 @@ pub enum RExprKind {
     BorrowMut {
         local: LocalRef,
     },
+    /// `r.clone()` — builtin deep clone of a record value (PLAN-782;
+    /// one allocation per non-empty Str field, copyable fields by value).
+    /// Binds by (record receiver, method name); a user-declared `clone`
+    /// method on a record is rejected at declaration registration.
+    RecordClone {
+        base: Box<ResolvedExpr>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -265,7 +272,7 @@ impl Drop for ResolvedExpr {
             // method/call args). Every boxed or Vec-held child must be
             // detached here or that level falls back to recursive drop
             // glue and a rejected malformed partial overflows the stack.
-            RExprKind::FieldGet { base, .. } => {
+            RExprKind::FieldGet { base, .. } | RExprKind::RecordClone { base } => {
                 let b = std::mem::replace(base.as_mut(), dummy());
                 stack.push(b);
             }
@@ -497,7 +504,7 @@ pub fn resolve(
 pub fn resolve_with(
     program: &ast::Program,
     capabilities: &[String],
-    _surface: SourceProfile,
+    surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     let mut diags = Vec::new();
@@ -654,6 +661,7 @@ pub fn resolve_with(
             f,
             &sigs,
             trace_enabled,
+            surface,
             &mut diags,
             fn_receiver[i],
             fn_owner[i],
@@ -701,6 +709,10 @@ struct Scope {
 struct FnResolver<'a> {
     sigs: &'a BTreeMap<String, FnSig>,
     trace_enabled: bool,
+    /// PLAN-782: the combination profile keeps `.move` wrappers as
+    /// first-class argument values (text profile unwraps them into
+    /// CallBinding.moved markers instead).
+    profile: SourceProfile,
     diags: &'a mut Vec<Diagnostic>,
     locals: Vec<LocalDecl>,
     scopes: Vec<Scope>,
@@ -721,6 +733,7 @@ fn resolve_fn(
     f: &FnItem,
     sigs: &BTreeMap<String, FnSig>,
     trace_enabled: bool,
+    surface: SourceProfile,
     diags: &mut Vec<Diagnostic>,
     receiver: ast::Receiver,
     owner_rec: Option<usize>,
@@ -731,6 +744,7 @@ fn resolve_fn(
     let mut r = FnResolver {
         sigs,
         trace_enabled,
+        profile: surface,
         diags,
         locals: Vec::new(),
         scopes: vec![Scope {
@@ -1477,7 +1491,7 @@ impl<'a> FnResolver<'a> {
         };
         let mut seen: BTreeSet<String> = BTreeSet::new();
         let mut resolved: Vec<(String, ResolvedExpr)> = Vec::new();
-        for (name, fspan, v) in values {
+        for (name, fspan, mut v) in values {
             if !seen.insert(name.name.clone()) {
                 self.bind_err(
                     "source.duplicate",
@@ -1492,6 +1506,15 @@ impl<'a> FnResolver<'a> {
             {
                 Some(fi) => {
                     let want = self.records[ri].fields[fi].vt;
+                    // PLAN-782: an owning Str field promotes a borrowing
+                    // string literal exactly like `let s Str = "..."` does
+                    // (the owning context constructs, AP-4).
+                    if want == VT::StrOwned
+                        && v.vt == VT::Str
+                        && matches!(v.kind, RExprKind::StrLit(_))
+                    {
+                        v.vt = VT::StrOwned;
+                    }
                     if v.vt != want {
                         // nominal records name both sides (identical shapes
                         // still mismatch — PLAN-771 §5.1)
@@ -1565,6 +1588,13 @@ impl<'a> FnResolver<'a> {
         span: Span,
     ) -> ResolvedExpr {
         if let Some(rrecv) = recv {
+            // PLAN-782: on the combination surface the record dot postfix
+            // claims method chains first, so a TEXT receiver's builtin
+            // call (`t.text.len()`) arrives here — route it into the text
+            // builtin table instead of rejecting.
+            if !matches!(rrecv.vt, VT::Rec(_)) {
+                return self.resolve_method(name, *rrecv, rargs, None, span);
+            }
             let VT::Rec(ri) = rrecv.vt else {
                 self.bind_err(
                     "source.type-mismatch",
@@ -1580,6 +1610,18 @@ impl<'a> FnResolver<'a> {
                     kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
                 };
             };
+            // PLAN-782: builtin deep clone binds by (record receiver,
+            // "clone") — user `clone` methods on records are rejected at
+            // declaration registration, so the builtin owns the name.
+            if name.name == "clone" && rargs.is_empty() {
+                return ResolvedExpr {
+                    span,
+                    vt: VT::Rec(ri),
+                    kind: RExprKind::RecordClone {
+                        base: Box::new(*rrecv),
+                    },
+                };
+            }
             return self.instance_or_static(Some(rrecv), ri, name, rargs, span);
         }
         // static: no receiver expression was evaluated — the type name was
@@ -2379,7 +2421,11 @@ impl<'a> FnResolver<'a> {
                     let mut rargs = Vec::with_capacity(arg_slots.len());
                     for (i, s) in arg_slots.iter().enumerate() {
                         let mut value = std::mem::replace(&mut out[*s], dummy_resolved());
-                        let moved = matches!(value.kind, RExprKind::Move { .. });
+                        // PLAN-782: in the combination profile the
+                        // first-class move wrapper IS the argument value
+                        // (CallBinding.moved stays text-profile only).
+                        let moved = matches!(value.kind, RExprKind::Move { .. })
+                            && !self.profile.is_record();
                         let value = if moved {
                             match std::mem::replace(&mut value.kind, RExprKind::IntLit(0)) {
                                 RExprKind::Move { inner } => *inner,
@@ -2412,7 +2458,11 @@ impl<'a> FnResolver<'a> {
                     let mut rargs = Vec::with_capacity(arg_slots.len());
                     for (i, sl) in arg_slots.iter().enumerate() {
                         let mut value = std::mem::replace(&mut out[*sl], dummy_resolved());
-                        let moved = matches!(value.kind, RExprKind::Move { .. });
+                        // PLAN-782: in the combination profile the
+                        // first-class move wrapper IS the argument value
+                        // (CallBinding.moved stays text-profile only).
+                        let moved = matches!(value.kind, RExprKind::Move { .. })
+                            && !self.profile.is_record();
                         let value = if moved {
                             match std::mem::replace(&mut value.kind, RExprKind::IntLit(0)) {
                                 RExprKind::Move { inner } => *inner,

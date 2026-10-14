@@ -126,6 +126,25 @@ pub fn compile_record_source(
     })
 }
 
+/// Compile under the text-record source profile (PLAN-782): the union of
+/// the text and record surfaces — parse/resolve/typecheck, bind against
+/// the text-record descriptor and verify through the combination entry
+/// (T-02 structural gates; the extended resource walk lands in T-04).
+pub fn compile_text_record_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::TextRecord)?;
+    let checked = crate::verify::verify_text_record(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::TEXT_RECORD_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
 /// Compile up to (but not including) verification under the explicit
 /// profile: the span-projected bundle plus the adapter receipt data. This
 /// is the seam the §6 mutation matrix exercises — a tampered bundle must
@@ -150,11 +169,7 @@ pub fn compile_parts_with(
         crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
         crate::hir::HirDomain::Text => crate::text_descriptor(),
         crate::hir::HirDomain::Record => crate::record_descriptor(),
-        // No source profile maps to the combination domain until
-        // PLAN-782 T-03; dead arm for totality.
-        crate::hir::HirDomain::TextRecord => {
-            unreachable!("the text-record source profile lands in PLAN-782 T-03")
-        }
+        crate::hir::HirDomain::TextRecord => crate::text_record_descriptor(),
     };
     let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
@@ -286,6 +301,18 @@ enum EKind {
     /// Exclusive borrow (`p.mut`).
     BorrowMut {
         local: usize,
+    },
+    /// Builtin deep clone `r.clone()` (PLAN-782): one allocation per
+    /// non-empty Str field, copyable fields by value.
+    RecordClone {
+        rec: usize,
+        base: usize,
+    },
+    /// First-class `.move` wrapper (PLAN-782 combination profile): the
+    /// whole-root ownership transfer in let/assign/return/argument value
+    /// positions.
+    Move {
+        inner: usize,
     },
 }
 
@@ -1314,11 +1341,11 @@ impl PlanCtx<'_> {
             RExprKind::Method { .. } => {
                 unreachable!("method nodes are planned by the iterative TextOut walk")
             }
-            RExprKind::Move { .. } => {
-                // stray `.move` outside argument wiring — resolve rejected
-                // it; nothing reaches the plan
-                unreachable!("`.move` is unwrapped by the call arms")
-            }
+            // RExprKind::Move planning lives with the other combination
+            // kinds further down in this match (PLAN-782: on the text
+            // surface the wrapper is still unwrapped by the call arms and
+            // never reaches the plan; on the combination surface it is a
+            // first-class value).
             RExprKind::TypeWord(_) => {
                 // consumed by the Text planning arm; a stray marker was
                 // rejected by the typecheck walk
@@ -1428,6 +1455,32 @@ impl PlanCtx<'_> {
                         base: base_slot,
                         path: segs,
                     },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::RecordClone { base } => {
+                let VT::Rec(ri) = e.vt else {
+                    // unreachable: resolve dispatch types clones as records
+                    panic!("record clone planned with non-record type");
+                };
+                let bs = self.plan_expr(plan, f, base.as_ref());
+                plan.has_text_ops = true; // clone lowers runtime calls for Str fields
+                plan.exprs.push(ENode {
+                    kind: EKind::RecordClone { rec: ri, base: bs },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::Move { inner } => {
+                // combination profile: the wrapper survives as the value
+                // (let/assign/return positions and — via resolve keeping
+                // the wrapper — call argument values).
+                let is = self.plan_expr(plan, f, inner.as_ref());
+                plan.exprs.push(ENode {
+                    kind: EKind::Move { inner: is },
                     vt: e.vt,
                     span: e.span,
                 });
@@ -1761,10 +1814,8 @@ impl<'p> Emitter<'p> {
             crate::hir::HirDomain::Scalar => ("auto.hir.scalar.draft", "scalar-i32-draft"),
             crate::hir::HirDomain::Text => ("auto.hir.text.draft", "text-i32-draft"),
             crate::hir::HirDomain::Record => ("auto.hir.record.draft", "record-i32-draft"),
-            // No source profile maps to the combination domain until
-            // PLAN-782 T-03; dead arm for totality.
             crate::hir::HirDomain::TextRecord => {
-                unreachable!("the text-record source profile lands in PLAN-782 T-03")
+                ("auto.hir.text-record.draft", "text-record-i32-draft")
             }
         };
         frag!(
@@ -2279,6 +2330,15 @@ impl<'p> Emitter<'p> {
                                 "expr e{} borrow_mut {{ type: {}; local: l{} }}",
                                 ei, ty, local
                             )
+                        }
+                        EKind::RecordClone { rec, base } => {
+                            format!(
+                                "expr e{} record_clone {{ type: {}; record: t_rec_{}; base: e{} }}",
+                                ei, ty, rec, base
+                            )
+                        }
+                        EKind::Move { inner } => {
+                            format!("expr e{} move {{ type: {}; operand: e{} }}", ei, ty, inner)
                         }
                     };
                     frag!(&line, e.span);

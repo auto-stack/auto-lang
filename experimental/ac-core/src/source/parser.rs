@@ -1824,6 +1824,32 @@ impl<'s> Parser<'s> {
                     self.pos += 1;
                     self.last_line = dline;
                     match self.peek().cloned() {
+                        // PLAN-782: in the combination profile a `.move`
+                        // postfix on the record surface reuses the text
+                        // wrapper form — resolve gates the named-local
+                        // receiver, verify owns the resource typing.
+                        Some(Token {
+                            tok: Tok::Reserved(w),
+                            span: mspan,
+                            line: mline,
+                        }) if self.surface.is_text() && w == "move" => {
+                            self.pos += 1;
+                            self.last_line = mline;
+                            let recv = vals.pop().expect("dot receiver");
+                            let joined = recv.span.join(mspan);
+                            vals.push(Expr {
+                                span: joined,
+                                kind: ExprKind::Method {
+                                    recv: Box::new(recv),
+                                    name: Ident {
+                                        name: "move".to_string(),
+                                        span: mspan,
+                                    },
+                                    args: Vec::new(),
+                                },
+                            });
+                            continue;
+                        }
                         Some(Token {
                             tok: Tok::Kw(Kw::Mut),
                             span: mspan,
