@@ -28,6 +28,7 @@ mod tests {
                 },
             ],
             doc: Some("User information".to_string()),
+            alias_of: None,
         };
         module.add_type(user_type);
 

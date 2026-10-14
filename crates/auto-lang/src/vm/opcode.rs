@@ -309,8 +309,13 @@ pub enum OpCode {
     // handler stack. POP_HANDLER pops it on normal try-block exit.
     PUSH_HANDLER = 0xFD, // handler_pc: u16 -> void
     POP_HANDLER = 0x8F,  // -> void (pop the most-recent catch frame)
-    PUSH_NIL = 0xFB,     // -> nil marker (TAG_NULL in nanbox, i32::MIN+1 otherwise)
-    PUSH_BOOL = 0xFC,    // byte: 0|1 -> bool (Plan 318: true bool encoding, not Int)
+
+    // PLAN-776 R2-01: wrap the stack-top generator iterator id into an HTTP
+    // SSE credential object (return-boundary identity establishment for
+    // `return <generator-call>` in ~Iter/~Stream handlers). No operands.
+    WRAP_SSE_RESOURCE = 0xD5, // iterator_id: i32 -> sse credential object
+    PUSH_NIL = 0xFB,          // -> nil marker (TAG_NULL in nanbox, i32::MIN+1 otherwise)
+    PUSH_BOOL = 0xFC,         // byte: 0|1 -> bool (Plan 318: true bool encoding, not Int)
     HALT = 0xFF,
 
     // Plan 364 Step 5: Config-mode accumulation opcodes.
@@ -349,9 +354,9 @@ impl OpCode {
         0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0xa0,
         0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5,
         0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4,
-        0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xcc, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xe0, 0xe1,
-        0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xee, 0xef, 0xf0,
-        0xf1, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff,
+        0xc5, 0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xcb, 0xcc, 0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xe0,
+        0xe1, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xeb, 0xec, 0xed, 0xee, 0xef,
+        0xf0, 0xf1, 0xf3, 0xf4, 0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa, 0xfb, 0xfc, 0xfd, 0xfe, 0xff,
     ];
 
     pub fn is_valid(v: u8) -> bool {
@@ -509,6 +514,7 @@ impl OpCode {
             Self::SPAWN_GO => "spawn.go",
             Self::YIELD_VAL => "yield.val",
             Self::CREATE_GENERATOR => "create.gen",
+            Self::WRAP_SSE_RESOURCE => "wrap.sse",
             Self::TASK_LOOP => "task.loop",
             Self::HANDLE_MSG => "handle.msg",
             Self::REPLY => "reply",
@@ -710,6 +716,7 @@ impl OpCode {
             "spawn.go" => Some(Self::SPAWN_GO),
             "yield.val" => Some(Self::YIELD_VAL),
             "create.gen" => Some(Self::CREATE_GENERATOR),
+            "wrap.sse" => Some(Self::WRAP_SSE_RESOURCE),
             "task.loop" => Some(Self::TASK_LOOP),
             "handle.msg" => Some(Self::HANDLE_MSG),
             "reply" => Some(Self::REPLY),
@@ -779,7 +786,8 @@ impl OpCode {
     pub fn operand_size(self) -> Option<usize> {
         match self {
             // 0-byte operands (opcode only)
-            Self::NOP
+            Self::WRAP_SSE_RESOURCE
+            | Self::NOP
             | Self::POP
             | Self::DUP
             | Self::SWAP

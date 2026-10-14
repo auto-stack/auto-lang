@@ -717,6 +717,7 @@ mod tests {
                 },
             ],
             doc: Some("User information".to_string()),
+            alias_of: None,
         };
 
         let result = gen.generate_interface(&api_type);

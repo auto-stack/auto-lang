@@ -93,34 +93,50 @@ pub fn live_resource_count() -> usize {
     LIVE_RESOURCES.load(Ordering::Relaxed)
 }
 
-/// R1-F03：凭据专用 id 段——`0x8000_0000 | owner(7bit) << 24 | local(24bit)`
-///（NanoValue TAG_OBJECT 的 u32 载荷内；与通用 heap id 段 4M+（<2^24 与
-/// 2^24..0x8000_0000 增长区间）不重叠）。**owner 编入 id**：跨 VM 的同号
-/// 不可能——两 VM 的通用分配器同号（4M 起步）互不干扰本段。owner 段取
-/// `instance_id & 0x7F`：128 个并发 VM 后回绕（进程内远超现实负载的边界，
-/// 与通用段 2^48 回绕同级防御）；local 超 2^24 拒绝分配（R1-F07 边界——
-/// 不截断复用使旧引用复活）。
+/// R1-F03/R2-02：凭据专用 id 段——`0x8000_0000 | owner(11bit) << 20 |
+/// local(20bit)`（NanoValue TAG_OBJECT 的 u32 载荷内；与通用 heap id 段
+/// 4M+ 增长区间不重叠）。**owner 编入 id 且不掩码回绕**：owner 段超界
+///（进程内创建第 2049 个 VM 后）→ 该 VM 构造凭据**受控拒绝**
+///（`owner space exhausted`——有限表示不静默复用使旧 owner 的活跃凭据
+/// 可达；R2-02 反例：7 位掩码下 A 与 A+128 同段误取）。local 段耗尽
+/// 同样分配前拒绝（R1-F07——不截断复用使旧引用复活）。
 const CREDENTIAL_ID_FLAG: u64 = 0x8000_0000;
-const CREDENTIAL_LOCAL_MAX: u64 = 1 << 24;
+const CREDENTIAL_OWNER_BITS: u64 = 11;
+const CREDENTIAL_OWNER_MAX: u64 = 1 << CREDENTIAL_OWNER_BITS; // 2048
+const CREDENTIAL_LOCAL_MAX: u64 = 1 << 20; // ~1M/VM
 
-fn owner_slot(vm: &AutoVM) -> u64 {
-    vm.instance_id & 0x7F
+fn owner_slot(vm: &AutoVM) -> Result<u64, VMError> {
+    let owner = vm.instance_id;
+    if owner >= CREDENTIAL_OWNER_MAX {
+        return Err(VMError::RuntimeError(
+            "http return resource owner space exhausted".into(),
+        ));
+    }
+    Ok(owner)
 }
 
-/// 凭据 id 分配（owner+local 编码）；local 耗尽 → Err（不分配）。
+/// 凭据 id 分配（owner+local 编码）；任一段耗尽 → Err（不分配）。
 fn credential_id(vm: &AutoVM) -> Result<u64, VMError> {
+    let owner = owner_slot(vm)?;
     let local = vm.http_credential_gen.fetch_add(1, Ordering::Relaxed);
     if local >= CREDENTIAL_LOCAL_MAX {
         return Err(VMError::RuntimeError(
             "http return resource id space exhausted".into(),
         ));
     }
-    Ok(CREDENTIAL_ID_FLAG | (owner_slot(vm) << 24) | local)
+    Ok(CREDENTIAL_ID_FLAG | (owner << 20) | local)
 }
 
-/// id 的 owner 段是否匹配本 VM（id 层校验——同号跨 VM 在此拒绝）。
+/// id 的 owner 段是否匹配本 VM（id 层校验——同号跨 VM 在此拒绝；
+/// 本 VM owner 超界时恒 false——该 VM 从未成功构造过凭据）。
 fn id_owner_matches(vm: &AutoVM, id: u64) -> bool {
-    id & CREDENTIAL_ID_FLAG != 0 && ((id >> 24) & 0x7F) == owner_slot(vm)
+    if id & CREDENTIAL_ID_FLAG == 0 {
+        return false;
+    }
+    match owner_slot(vm) {
+        Ok(owner) => (id >> 20) & (CREDENTIAL_OWNER_MAX - 1) == owner,
+        Err(_) => false,
+    }
 }
 
 /// 构造 + 入堆 + RC push。凭据不走通用 heap_object_id_gen（id 段编 owner，
@@ -440,27 +456,16 @@ mod tests {
 /// 任务栈（STORE_GLOBAL 后释放过），不受影响。通用对象的栈清理是
 /// P776-D1 既有边界，此处只清本计划资源。
 pub fn release_task_credentials(vm: &AutoVM, task: &AutoTask) {
+    // R2-04：任务栈上的**全部**本 VM 堆对象槽（不只凭据）——record/list 等
+    // 容器的栈份额释放后，父对象进 dying 宽限窗，真回收时经 child_refs
+    // 级联释放子引用 stakes（凭据随之归零；逃逸/shared 值在宽限窗内被
+    // retain 复活——PLAN-062 语义保护）。此前只匹配顶层凭据，漏掉
+    // `Box { response: ... }` 等容器持有形态（R2-04 反例：异常退出 11 残留）。
     for slot in 0..task.ram.sp {
         let nv = task.ram.read_nv(slot);
         if !auto_val::is_object(nv) {
             continue;
         }
-        let id = auto_val::decode_object(nv) as u64;
-        let is_ours = vm
-            .get_heap_object(id)
-            .map(|o| {
-                o.read()
-                    .map(|g| {
-                        g.as_any()
-                            .downcast_ref::<HttpReturnResource>()
-                            .map(|r| r.owner == vm.instance_id)
-                            .unwrap_or(false)
-                    })
-                    .unwrap_or(false)
-            })
-            .unwrap_or(false);
-        if is_ours {
-            vm.rc_release_id(id);
-        }
+        vm.rc_release_id(auto_val::decode_object(nv) as u64);
     }
 }

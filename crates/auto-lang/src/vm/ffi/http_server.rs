@@ -99,6 +99,29 @@ pub fn record_api_return_shadowed(fn_name: &str) {
     }
 }
 
+/// PLAN-776 R2-01：generator fn 名集（body 含 yield——codegen 编译期登记）。
+/// `~Iter` 声明 + generator fn 的返回 int 是**真实 iterator id**（generator
+/// 调用的语言产出——producer 在调用边界）；非 generator fn 声明 `~Iter` 返回
+/// 普通数值 = 数据（R2 反例：`fn p() ~Iter<int> { let l=stream(); return 0 }`）。
+static API_GENERATOR_FNS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+
+/// Codegen 在 generator fn 编译时发布。
+pub fn record_api_generator_fn(fn_name: &str) {
+    if let Ok(mut table) = API_GENERATOR_FNS.lock() {
+        table.insert(fn_name.to_string());
+    }
+}
+
+/// 编组期判定：该函数（或 closure 反查名）是 generator fn。
+pub(crate) fn fn_is_generator(fn_name: &str) -> bool {
+    API_GENERATOR_FNS
+        .lock()
+        .ok()
+        .map(|t| t.contains(fn_name))
+        .unwrap_or(false)
+}
+
 /// 本工程是否声明了 ~Stream 端点（对齐 api_gen 的 has_sse 广播门控）。
 pub fn has_stream_endpoint() -> bool {
     API_RETURN_TYPES
@@ -117,6 +140,9 @@ pub fn clear_api_param_sigs() {
         table.clear();
     }
     if let Ok(mut table) = API_RETURN_SHADOWED.lock() {
+        table.clear();
+    }
+    if let Ok(mut table) = API_GENERATOR_FNS.lock() {
         table.clear();
     }
     if let Ok(mut table) = API_ASYNC_RETURNS.lock() {
@@ -3927,7 +3953,9 @@ pub fn serve_blocking_stdnet(vm: &crate::vm::engine::AutoVM, addr: &str) {
             // 的串行 stdnet server（决策报告 §2 入口矩阵 legacy 行）；默认
             // Axum 调用图（serve_with → dispatch_api_request_segment）零
             // 同步忙等派发，由 plan705 gate 测试锁定。
-            match vm.call_fn_by_name(&mut ht, &route_match.fn_name, n_args) {
+            // PLAN-776 R2-01：HTTP dispatch 专用入口——generator 臂在返回
+            // 边界建立凭据身份（marshal 资源臂按值分派）。
+            match vm.call_fn_by_name_http(&mut ht, &route_match.fn_name, n_args) {
                 Ok(()) => {
                     let nv = ht.ram.pop_nv();
 
@@ -5393,7 +5421,7 @@ fn start_handler(
                 match if let Some(ref axum_route) = axum_route {
                     vm.call_closure_segment(&mut ht, axum_route.closure_id, n_args)
                 } else {
-                    vm.call_fn_by_name_segment(&mut ht, &ctx.route.fn_name, n_args)
+                    vm.call_fn_by_name_segment_http(&mut ht, &ctx.route.fn_name, n_args)
                 } {
                     SegmentOutcome::Completed(Ok(())) => HandlerEnd::Value(ht.ram.pop_nv()),
                     SegmentOutcome::Completed(Err(e)) => HandlerEnd::Err(e),
@@ -5553,6 +5581,16 @@ fn handler_declares_stream_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -
         None => fn_response_kind(&ctx.route.fn_name),
     };
     kind == crate::api::contract::ResponseKind::Stream
+}
+
+/// R2-01：ctx 的 handler 是 generator fn（closure 经 export 名反查）。
+fn handler_is_generator(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
+    match ctx.axum_route {
+        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
+            .map(|n| fn_is_generator(&n))
+            .unwrap_or(false),
+        None => fn_is_generator(&ctx.route.fn_name),
+    }
 }
 
 /// ctx 声明文件返回（axum_route closure 反查同 async 门）。
@@ -5810,10 +5848,9 @@ fn marshal_handler_value(
         if handler_declares_file_return(vm, ctx) {
             return MarshalOutcome::Reply(file_contract_mismatch_reply(ctx, bits as u32 as u64));
         }
-        let iter_id = bits as u32;
-        if handler_declares_stream_return(vm, ctx) && vm.iterators.contains_key(&iter_id) {
-            return MarshalOutcome::Reply(sse_iterator_reply(vm, ctx, iter_id));
-        }
+        // R2-01（终形）：普通 int 永不取得 iterator 身份——generator 的真实
+        // 产出在**返回边界**已是凭据对象（call_fn_by_name_http / Return 包装
+        // 指令），走上方对象臂；声明/表命中不再授予身份。
         return MarshalOutcome::Reply(json_value_reply(
             vm,
             nv,

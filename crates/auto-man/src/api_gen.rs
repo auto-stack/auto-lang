@@ -5548,6 +5548,7 @@ pub fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
             name,
             fields,
             doc: None,
+            alias_of: None,
         });
     }
 

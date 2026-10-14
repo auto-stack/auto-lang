@@ -298,15 +298,19 @@ fn plain(n int) int {
             crate::vm::ffi::stdlib::clear_http_routes();
             std::env::set_var("AUTO_HTTP_PORT", port.to_string());
             let code = code.to_string();
+            // R2-08：启动结果传回测试线程（755 有界结果语义——spawn 侧
+            // AutoResult 经 mpsc 发送，探活窗口内收到 Err 即 panic 带错误）。
+            let (tx, rx) = std::sync::mpsc::channel::<Result<String, crate::error::AutoError>>();
             let _server = std::thread::Builder::new()
                 .stack_size(8 * 1024 * 1024)
                 .spawn(move || {
-                    if let Err(e) = crate::run(&code) {
-                        eprintln!("[plan776-test] server exited with error: {e:?}");
-                    }
+                    let _ = tx.send(crate::run(&code));
                 })
                 .expect("spawn server thread");
             for _ in 0..50 {
+                if let Ok(Err(e)) = rx.try_recv() {
+                    panic!("plan776 server 启动失败 port={port}: {e:?}");
+                }
                 if TcpStream::connect(("127.0.0.1", port)).is_ok() {
                     return port;
                 }
@@ -1178,9 +1182,9 @@ fn plan776_r1_same_local_id_cross_vm_rejected() {
 fn plan776_r1_u32_payload_boundary_rejected() {
     let vm = fresh_vm();
     let mut task = fresh_task();
-    // 边界内：local 段最后一个可分配（2^24-1）。
+    // 边界内：local 段最后一个可分配（2^20-1）。
     vm.http_credential_gen
-        .store((1 << 24) - 1, std::sync::atomic::Ordering::Relaxed);
+        .store((1 << 20) - 1, std::sync::atomic::Ordering::Relaxed);
     http_return_resource::push_response_resource(&mut task, &vm, 200, Vec::new(), Vec::new())
         .unwrap();
     // 边界外：local 段耗尽 → 拒绝（无表项、返回 Err）。
@@ -1294,4 +1298,346 @@ fn plan776_r1_credential_accessors_read_snapshot() {
     task.ram.push_nv(auto_val::encode_object(other as u32));
     stdlib::shim_response_status_code(&mut task, &vm).unwrap();
     assert_eq!(task.ram.pop_i32(), 0, "非资源对象不误读");
+}
+
+// ============================================================================
+// R2 修复复现族（review-r2 F01..F08 的可重放 oracle）
+// ============================================================================
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_r2 {
+    use super::http_e2e::{get, start_server};
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    /// F776-R2-01 反例复现：**声明** `~Iter<int>` 但 handler 非 generator、
+    /// 返回普通数值（活跃 iterator 同号 0）→ JSON 数据——声明不授予身份。
+    #[test]
+    fn http_e2e_plan776_r2_declared_stream_plain_int_is_data() {
+        let port = start_server(
+            r#"
+fn events_stream() ~Iter<int> {
+    yield 42
+}
+
+#[api(method = "GET", path = "/api/p")]
+fn p() ~Iter<int> {
+    let live = events_stream()
+    return 0
+}
+"#,
+            0,
+        );
+        let (status, headers, body) = get(port, "/api/p");
+        assert_eq!(status, 200, "声明流返回的普通数值仍是数据");
+        let ct = headers
+            .iter()
+            .find(|(k, _)| k == "content-type")
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("");
+        assert!(ct.starts_with("application/json"), "content-type={ct}");
+        assert_eq!(body, b"0".to_vec(), "R2-01：声明不得授予 iterator 身份");
+    }
+
+    /// F776-R2-01 正例：真实 generator handler（声明 ~Iter + yield body）→ SSE。
+    #[test]
+    fn http_e2e_plan776_r2_real_generator_still_sse() {
+        let port = start_server(
+            r#"
+#[api(method = "GET", path = "/api/gen")]
+fn gen() ~Iter<int> {
+    yield 7
+    yield 8
+}
+"#,
+            0,
+        );
+        let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        let _ = s.write_all(b"GET /api/gen HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = s.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            raw.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&raw).into_owned();
+            if text.contains("data: 7") && text.contains("data: 8") {
+                break;
+            }
+        }
+        let text = String::from_utf8_lossy(&raw).into_owned();
+        assert!(text.contains("text/event-stream"), "SSE 头: {text}");
+        assert!(
+            text.contains("data: 7") && text.contains("data: 8"),
+            "帧: {text}"
+        );
+    }
+
+    /// F776-R2-03 反例复现：setter 链返回值跨回收窗存活——9000 步循环
+    /// （跨 8192 dying 宽限窗）后 return r 仍 201（此前 UAF canary panic）。
+    #[test]
+    fn http_e2e_plan776_r2_setter_return_survives_grace_window() {
+        let port = start_server(
+            r#"
+#[api(method = "GET", path = "/api/setter")]
+fn setter_ep() int {
+    var r = http.response_status(http.response(), 201)
+    var i = 0
+    while i < 9000 {
+        i = i + 1
+    }
+    return r
+}
+"#,
+            0,
+        );
+        for _ in 0..3 {
+            let (status, _, _) = get(port, "/api/setter");
+            assert_eq!(status, 201, "setter 返回值跨宽限窗存活（R2-03 UAF 修复）");
+        }
+    }
+
+    /// F776-R2-04 反例复现：record 容器持有凭据 + 异常退出——11 请求 500
+    /// 后 drain 跨窗，凭据存活回基线（此前容器内 11 残留）。
+    #[test]
+    fn http_e2e_plan776_r2_nested_record_error_releases_credential() {
+        let port = start_server(
+            r#"
+type Box = { response: int }
+
+#[api(method = "GET", path = "/api/boom")]
+fn boom() int {
+    var b = Box { response: http.response_redirect("/x", 302) }
+    var d = 0
+    var z = 10 / d
+    return 1
+}
+
+#[api(method = "GET", path = "/api/drain")]
+fn drain() int {
+    var i = 0
+    while i < 300 {
+        i = i + 1
+    }
+    return i
+}
+"#,
+            0,
+        );
+        let baseline = crate::vm::ffi::http_return_resource::live_resource_count();
+        for _ in 0..11 {
+            let (status, _, _) = get(port, "/api/boom");
+            assert_eq!(status, 500, "除零 → 500");
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        loop {
+            if crate::vm::ffi::http_return_resource::live_resource_count() <= baseline {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "record 容器内凭据未回基线: live={}",
+                crate::vm::ffi::http_return_resource::live_resource_count()
+            );
+            let mut d = TcpStream::connect(("127.0.0.1", port)).expect("drain");
+            let _ = d.write_all(b"GET /api/drain HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+            let mut db = [0u8; 512];
+            let _ = d.read(&mut db);
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    /// F776-R2-05 反例复现：client Response 进入服务返回保留真实
+    /// status/body（上游 201 Created + body "upstream"）——不再降级裸编号。
+    #[test]
+    fn http_e2e_plan776_r2_client_response_keeps_status_body() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind upstream");
+        let up_port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                use std::io::{Read, Write};
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                let resp = "HTTP/1.1 201 Created\r\nContent-Type: text/plain\r\nContent-Length: 8\r\nConnection: close\r\n\r\nupstream";
+                let _ = stream.write_all(resp.as_bytes());
+            }
+        });
+        let code = format!(
+            r#"
+#[api(method = "GET", path = "/api/fwd")]
+fn fwd() int {{
+    return http.get("http://127.0.0.1:{up_port}/res")
+}}
+"#,
+            up_port = up_port
+        );
+        let port = start_server(&code, 0);
+        let (status, _, body) = get(port, "/api/fwd");
+        assert_eq!(status, 201, "client Response 保留上游 status（R2-05）");
+        assert_eq!(body, b"upstream".to_vec(), "保留上游 body");
+    }
+
+    /// F776-R2-08：External park 的状态证据——`delay_async(120)` 裸表达式体
+    ///（body 值=future → ParkFuture 等外部完成），wire 延迟 ≥110ms。
+    #[test]
+    fn http_e2e_plan776_r2_external_park_latency_evidence() {
+        let port = start_server(
+            r#"
+#[api(method = "GET", path = "/api/ext")]
+fn ext() ~int {
+    delay_async(120)
+}
+"#,
+            0,
+        );
+        let t0 = std::time::Instant::now();
+        let (status, _, body) = get(port, "/api/ext");
+        let elapsed = t0.elapsed();
+        assert_eq!((status, body), (200, b"120".to_vec()), "External 终值");
+        assert!(
+            elapsed >= Duration::from_millis(110),
+            "ParkFuture 真等待（状态证据）: {:?}",
+            elapsed
+        );
+    }
+}
+
+/// F776-R2-06：bytes setter roundtrip（shim 级——Auto 列表字面量的泛型
+/// 形态与 Vec<i32> pop 编码不互译，`bytes.log` 的 Invalid list ID 为独立
+/// 语言面，不归因 bytes 迁移）：ListData<i32> [65,66] 写入快照保真。
+#[test]
+fn plan776_r2_bytes_setter_roundtrip() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    http_return_resource::push_response_resource(&mut task, &vm, 0, Vec::new(), Vec::new())
+        .unwrap();
+    let mut list = crate::vm::types::ListData::<i32>::new();
+    list.push(65);
+    list.push(66);
+    let list_id = vm.insert_heap_object(list);
+    // shim 栈序：bytes 参数（列表 id）顶、receiver 凭据在下。
+    task.ram.push_nv(auto_val::encode_object(list_id as u32));
+    stdlib::shim_http_response_bytes(&mut task, &vm).unwrap();
+    let back = task.ram.pop_nv();
+    match http_return_resource::resolve_resource(&vm, back).unwrap() {
+        ResourceClaim::Response(s) => {
+            assert_eq!(s.body, b"AB".to_vec(), "字节载荷保真（R2-06）");
+        }
+        other => panic!("错种类：{other:?}"),
+    }
+}
+
+/// F776-R2-02：owner 段耗尽拒绝——顺序创建 2047 个中间 VM（丢弃），第
+/// 2048 号 VM（instance_id=2048，越过 11 位段）构造凭据受控拒绝；旧
+/// owner 的凭据仍可解析（未被复用段误取）。
+#[test]
+fn plan776_r2_owner_segment_exhaustion_rejected() {
+    let vm_a = fresh_vm();
+    let mut task_a = fresh_task();
+    http_return_resource::push_response_resource(
+        &mut task_a,
+        &vm_a,
+        200,
+        Vec::new(),
+        b"a".to_vec(),
+    )
+    .unwrap();
+    for _ in 2..=2047u64 {
+        let _dropped = fresh_vm();
+    }
+    let vm_b = fresh_vm();
+    assert_eq!(vm_b.instance_id, 2048, "顺序创建边界前提");
+    let mut task_b = fresh_task();
+    let before = http_return_resource::live_resource_count();
+    assert!(
+        http_return_resource::push_response_resource(
+            &mut task_b,
+            &vm_b,
+            500,
+            Vec::new(),
+            Vec::new()
+        )
+        .is_err(),
+        "owner 段耗尽受控拒绝（不静默复用旧 owner 段）"
+    );
+    assert_eq!(http_return_resource::live_resource_count(), before);
+    let nv_a = task_a.ram.pop_nv();
+    assert!(matches!(
+        http_return_resource::resolve_resource(&vm_a, nv_a),
+        Some(ResourceClaim::Response(ref s)) if s.body == b"a"
+    ));
+}
+
+/// F776-R2-03 单元级：setter 返回槽份额——构造→setter（消费实参、重建
+/// 返回槽带影子份额）→ 返回后 RC=1、跨宽限窗（reap_all）仍可解析 201。
+#[test]
+fn plan776_r2_setter_return_slot_ownership() {
+    let vm = fresh_vm();
+    let mut task = fresh_task();
+    http_return_resource::push_response_resource(&mut task, &vm, 0, Vec::new(), Vec::new())
+        .unwrap();
+    task.ram.push_i32(201);
+    stdlib::shim_http_response_status(&mut task, &vm).unwrap();
+    let nv = task.ram.pop_nv();
+    let id = auto_val::decode_object(nv) as u64;
+    let rc = vm
+        .heap_rc
+        .get(&id)
+        .map(|e| e.load(std::sync::atomic::Ordering::Acquire));
+    assert_eq!(rc, Some(1), "返回槽持有一份带影子份额");
+    vm.reap_all();
+    assert!(vm.get_heap_object(id).is_some(), "返回值对象跨窗存活");
+    task.ram.push_nv(nv);
+    stdlib::shim_response_status_code(&mut task, &vm).unwrap();
+    assert_eq!(task.ram.pop_i32(), 201, "setter 写入的快照状态可读");
+}
+
+/// F776-R2-07：alias 按目标解析 + stdlib 限定名。
+#[test]
+fn plan776_r2_alias_target_and_qualified_name_identity() {
+    use crate::api::contract::ResponseKind;
+    let alias_code = r#"
+type Download = FileResponse;
+
+#[api(method = "GET", path = "/api/dl")]
+fn dl() Download {
+    return http.file_response("root", "a.bin", "{}")
+}
+"#;
+    let mut parser = crate::parser::Parser::from(alias_code);
+    let ast = parser.parse().expect("parse alias");
+    let module = crate::api::ApiExtractor::new().extract("t", &ast.stmts);
+    assert_eq!(
+        module.endpoints[0].response,
+        ResponseKind::File,
+        "alias→stdlib target 按真实来源分类"
+    );
+
+    let alias_user = r#"
+type Resp = MyResp;
+type MyResp = { x int }
+
+#[api(method = "GET", path = "/api/r")]
+fn r() Resp {
+    return MyResp { x: 1 }
+}
+"#;
+    let mut p2 = crate::parser::Parser::from(alias_user);
+    let ast2 = p2.parse().expect("parse alias-user");
+    let m2 = crate::api::ApiExtractor::new().extract("t2", &ast2.stmts);
+    assert_eq!(m2.endpoints[0].response, ResponseKind::Json, "alias→用户名");
+
+    assert_eq!(
+        ResponseKind::from_return_identity("http.FileResponse", &[]),
+        ResponseKind::File,
+        "stdlib 限定名"
+    );
+    assert_eq!(
+        ResponseKind::from_return_identity("Future<http.UploadReceipt>", &[]),
+        ResponseKind::Upload
+    );
 }

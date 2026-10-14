@@ -49,19 +49,45 @@ impl ResponseKind {
         Self::from_return_identity(ret, &[])
     }
 
-    /// PLAN-776 T-06：按**解析来源**分类——裸名命中模块类型声明（用户
-    /// struct/type alias/enum，含导入链合并后的名集）即为用户类型 → Json
-    /// （专属身份不因同名被冒领）；未命中才按 stdlib 内建裸名分派
-    /// （stdlib HTTP 词汇不注册模块类型声明——`type_decls` 命中即用户）。
+    /// PLAN-776 T-06/R2-07：按**解析来源**分类——裸名命中模块类型声明即用户
+    /// 来源；type alias 按**目标**展开（一层——`type Download = FileResponse`
+    /// → target 按真实来源解析：target 是用户声明 → Json，是 stdlib 名 →
+    /// 专属种类）；`http.` 限定前缀是 stdlib 绑定（不受用户名集遮蔽）；
+    /// 未命中才按 stdlib 内建裸名分派（stdlib HTTP 词汇不注册模块类型声明）。
     pub fn from_return_identity(ret: &str, module_types: &[ApiType]) -> ResponseKind {
         let ret = ret.trim();
         // ~T 脱糖为 Future<T>；两种书写都解包。
         let unwrapped = unwrap_future(ret);
         let name = bare_name(unwrapped);
-        // 用户同名/别名：真实来源是用户声明——普通 Json 数据（AC-07）。
-        if module_types.iter().any(|t| t.name == name) {
-            return ResponseKind::Json;
+        // R2-07：stdlib 限定名（`http.FileResponse`）——限定绑定即真实来源，
+        // 直接按 stdlib 裸名分派（不受名集遮蔽）。
+        let effective: &str = if let Some(stripped) = name.strip_prefix("http.") {
+            stripped
+        } else {
+            name
+        };
+        // 用户直接声明（struct/enum）或 alias-to-用户名：真实来源是用户 → Json。
+        if let Some(t) = module_types.iter().find(|t| t.name == effective) {
+            match &t.alias_of {
+                None => return ResponseKind::Json,
+                Some(target) => {
+                    // alias：按 target 展开（target 是用户声明 → Json）。
+                    if module_types
+                        .iter()
+                        .any(|u| u.name == *target && u.alias_of.is_none())
+                    {
+                        return ResponseKind::Json;
+                    }
+                    // target 是 stdlib 名 → 专属种类（下方 match 用 target）。
+                    return Self::stdlib_kind(target);
+                }
+            }
         }
+        Self::stdlib_kind(effective)
+    }
+
+    /// stdlib 内建裸名分派（无模块上下文的保守入口同款表）。
+    fn stdlib_kind(name: &str) -> ResponseKind {
         match name {
             "FileResponse" => ResponseKind::File,
             "UploadReceipt" | "UploadSession" => ResponseKind::Upload,
@@ -354,21 +380,25 @@ mod tests {
                 name: "Response".into(),
                 fields: vec![],
                 doc: None,
+                alias_of: None,
             },
             ApiType {
                 name: "FileResponse".into(),
                 fields: vec![],
                 doc: None,
+                alias_of: None,
             },
             ApiType {
                 name: "Iter".into(),
                 fields: vec![],
                 doc: None,
+                alias_of: None,
             },
             ApiType {
                 name: "UploadReceipt".into(),
                 fields: vec![],
                 doc: None,
+                alias_of: None,
             },
         ];
         let identity = |ret: &str| ResponseKind::from_return_identity(ret, &user_types);
@@ -388,6 +418,7 @@ mod tests {
             name: "Response".into(),
             fields: vec![],
             doc: None,
+            alias_of: None,
         }];
         let id2 = |ret: &str| ResponseKind::from_return_identity(ret, &partial);
         assert_eq!(id2("Response"), ResponseKind::Json);
@@ -402,6 +433,7 @@ mod tests {
     fn plan734_param_kind_matrix() {
         let types = vec![ApiType {
             name: "Note".into(),
+            alias_of: None,
             fields: vec![],
             doc: None,
         }];

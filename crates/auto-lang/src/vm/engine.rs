@@ -2549,6 +2549,37 @@ impl AutoVM {
         }
     }
 
+    /// PLAN-776 R2-01：HTTP handler dispatch 专用——generator 臂返回凭据对象。
+    pub fn call_fn_by_name_http(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> Result<(), VMError> {
+        match self.dispatch_fn_by_name_opt(task, fn_name, n_args, true, DriveBudget::Legacy, true) {
+            SegmentOutcome::Completed(res) => res,
+            SegmentOutcome::Parked { .. } => Err(VMError::RuntimeError(
+                "internal: segment driver parked under busy-wait mode (unreachable)".into(),
+            )),
+            SegmentOutcome::Runnable { .. } => Err(VMError::RuntimeError(
+                "internal: cpu-slice outcome escaped legacy sync driver (unreachable)".into(),
+            )),
+        }
+    }
+
+    /// PLAN-776 R2-01：segment 形态的 HTTP dispatch（parked handler）——
+    /// generator 臂同样返回凭据对象。
+    pub fn call_fn_by_name_segment_http(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> SegmentOutcome {
+        // 与 call_fn_by_name_segment 同参数形态（busy_wait=false、Legacy
+        // budget），wrap_generators=true（generator 臂返回凭据对象）。
+        self.dispatch_fn_by_name_opt(task, fn_name, n_args, false, DriveBudget::Legacy, true)
+    }
+
     /// PLAN-702 T-01: segment-dispatch a named VM function (UI handler drive).
     ///
     /// Same setup contract as [`Self::call_fn_by_name`] (args pre-pushed on
@@ -2742,6 +2773,21 @@ impl AutoVM {
         allow_busy_wait: bool,
         budget: DriveBudget,
     ) -> SegmentOutcome {
+        self.dispatch_fn_by_name_opt(task, fn_name, n_args, allow_busy_wait, budget, false)
+    }
+
+    /// PLAN-776 R2-01：`wrap_generators=true` 时 generator 臂在返回边界建立
+    /// 身份（push Sse 凭据对象而非裸 int id）——仅供 HTTP handler dispatch
+    /// 消费（marshal 资源臂按值分派）；for-in 等通用调用面保持 int 语义。
+    fn dispatch_fn_by_name_opt(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+        allow_busy_wait: bool,
+        budget: DriveBudget,
+        wrap_generators: bool,
+    ) -> SegmentOutcome {
         // 1. Look up function address
         let addr = match self.flash.exports_by_name.get(fn_name) {
             Some(a) => *a,
@@ -2787,7 +2833,18 @@ impl AutoVM {
                     .insert(next_id, Iterator::Generator(gen_state));
                 next_id
             };
-            task.ram.push_i32(iter_id as i32);
+            // PLAN-776 R2-01：generator 真实 producer 在返回边界建立身份——
+            // HTTP dispatch 消费面收 Sse 凭据对象（iterator 身份不靠声明或
+            // 表命中猜测）；通用调用面（for-in 等）保持 int 语义。
+            if wrap_generators {
+                if let Err(e) =
+                    crate::vm::ffi::http_return_resource::push_sse_resource(task, self, iter_id)
+                {
+                    return SegmentOutcome::Completed(Err(e));
+                }
+            } else {
+                task.ram.push_i32(iter_id as i32);
+            }
             return SegmentOutcome::Completed(Ok(()));
         }
 
@@ -11260,6 +11317,18 @@ impl AutoVM {
                     next_id
                 };
                 task.ram.push_i32(iter_id as i32);
+            }
+            OpCode::WRAP_SSE_RESOURCE => {
+                // PLAN-776 R2-01：generator 调用的返回值在返回边界建立身份
+                //（codegen 对 ~Iter/~Stream handler 的 `return <generator-call>`
+                // 静态插入；iterator 注册表校验后装箱 Sse 凭据）。
+                let iter_id = task.ram.pop_i32() as u32;
+                if !self.iterators.contains_key(&iter_id) {
+                    return Err(VMError::RuntimeError(format!(
+                        "wrap_sse: iterator {iter_id} not registered"
+                    )));
+                }
+                crate::vm::ffi::http_return_resource::push_sse_resource(task, self, iter_id)?;
             }
             OpCode::SLEEP => {
                 let ms = self.flash.read_u32(task.ip) as u64;

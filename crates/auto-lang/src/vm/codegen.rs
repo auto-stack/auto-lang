@@ -1680,6 +1680,9 @@ impl Codegen {
                     && body_contains_yield(&fn_decl.body)
                 {
                     self.generator_fns.insert(fn_decl.name.to_string());
+                    // PLAN-776 R2-01：运行时侧道——marshal 的 iterator 身份门
+                    // 需要 fn 级 generator 判定（声明不授予身份）。
+                    crate::vm::ffi::http_server::record_api_generator_fn(&fn_decl.name.to_string());
                 }
 
                 // PLAN-705 T-04/SD-01: publish async-return metadata for ALL
@@ -2707,6 +2710,15 @@ impl Codegen {
             }
             Stmt::Return(expr) => {
                 self.compile_expr(expr)?;
+                // PLAN-776 R2-01：`~Iter/~Stream` 声明的 handler 中
+                // `return <generator fn 调用>`——编译期静态证明的 generator
+                // 产出，在返回边界包装凭据（普通数值/非 generator 调用不包
+                //——声明不授予身份，R2 反例）。
+                if fn_ret_declares_stream(&self.current_fn_ret_type)
+                    && expr_is_generator_call(expr, &self.generator_fns)
+                {
+                    self.emit(OpCode::WRAP_SSE_RESOURCE);
+                }
                 let n_args = self.current_fn_n_args as u8;
                 // Plan 377: 全值单槽化后恒用 RET。f32→f64 仍需 PROMOTE_F64 编码提升。
                 if matches!(self.current_fn_ret_type, Type::Double)
@@ -16732,4 +16744,34 @@ mod plan423_p5_tests {
         dropped.sort();
         assert_eq!(dropped, vec!["oob".to_string(), "poisoned".to_string()]);
     }
+}
+
+/// PLAN-776 R2-01：返回类型是否声明流（`~Iter<T>`/`~Stream<T>`——Linear
+/// 包装，内层裸名 Iter/Stream）。
+fn fn_ret_declares_stream(ty: &crate::ast::Type) -> bool {
+    // `~Iter<T>` 在 ast 呈 GenericInstance(Iter)/User(Iter)（parser 脱糖
+    // 形态——无 Linear 包装，R2 实测）；兼容 Linear 包装与裸名两种书写。
+    let inner: &crate::ast::Type = match ty {
+        crate::ast::Type::Linear(inner) => inner.as_ref(),
+        other => other,
+    };
+    let s = match inner {
+        crate::ast::Type::User(td) => td.name.to_string(),
+        crate::ast::Type::GenericInstance(inst) => inst.base_name.to_string(),
+        other => format!("{other}"),
+    };
+    s == "Iter" || s == "Stream"
+}
+
+/// PLAN-776 R2-01：return 表达式是否为 generator fn 直接调用。
+fn expr_is_generator_call(
+    expr: &crate::ast::Expr,
+    generator_fns: &std::collections::HashSet<String>,
+) -> bool {
+    if let crate::ast::Expr::Call(c) = expr {
+        if let crate::ast::Expr::Ident(n) = c.name.as_ref() {
+            return generator_fns.contains(n.as_str());
+        }
+    }
+    false
 }

@@ -5662,12 +5662,14 @@ pub fn shim_http_response_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let code: i32 = crate::vm::native::pop_arg_i32(task);
     let res_nv = crate::vm::native::pop_arg_nv(task);
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    vm.rc_release(res_nv);
     super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| s.status = code as u16)
         .ok_or_else(|| {
         VMError::RuntimeError("response_status: expected a Response credential".into())
     })?;
     drop(stake);
-    task.ram.push_nv(res_nv);
+    // R2-03：返回值重建带影子份额（裸 push_nv 零份额 → 跨宽限窗 UAF）。
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
@@ -5679,6 +5681,7 @@ pub fn shim_http_response_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_nv = crate::vm::native::pop_arg_nv(task);
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    vm.rc_release(res_nv);
     super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
         s.headers.push((key, value));
     })
@@ -5686,7 +5689,8 @@ pub fn shim_http_response_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         VMError::RuntimeError("response_header: expected a Response credential".into())
     })?;
     drop(stake);
-    task.ram.push_nv(res_nv);
+    // R2-03：返回值重建带影子份额（裸 push_nv 零份额 → 跨宽限窗 UAF）。
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
@@ -5696,6 +5700,7 @@ pub fn shim_http_response_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_nv = crate::vm::native::pop_arg_nv(task);
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    vm.rc_release(res_nv);
     super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
         s.body = body.into_bytes();
         // Add Content-Type header if not set
@@ -5712,7 +5717,8 @@ pub fn shim_http_response_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     })
     .ok_or_else(|| VMError::RuntimeError("response_text: expected a Response credential".into()))?;
     drop(stake);
-    task.ram.push_nv(res_nv);
+    // R2-03：返回值重建带影子份额（裸 push_nv 零份额 → 跨宽限窗 UAF）。
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
@@ -5722,6 +5728,7 @@ pub fn shim_http_response_html(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_nv = crate::vm::native::pop_arg_nv(task);
     let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    vm.rc_release(res_nv);
     super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
         s.body = body.into_bytes();
         if !s
@@ -5737,7 +5744,8 @@ pub fn shim_http_response_html(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     })
     .ok_or_else(|| VMError::RuntimeError("response_html: expected a Response credential".into()))?;
     drop(stake);
-    task.ram.push_nv(res_nv);
+    // R2-03：返回值重建带影子份额（裸 push_nv 零份额 → 跨宽限窗 UAF）。
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
@@ -6138,17 +6146,21 @@ pub fn shim_http_server_use(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 
 /// Set response bytes body
 pub fn shim_http_response_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // R2-06：迁移对象载荷（凭据快照 mutate + R2-03 owned-slot 协议——
+    // 实参份额消费释放、返回槽 rc_push 重建带影子份额）。
     let data: Vec<i32> = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let res_handle: i64 = task.ram.pop_i64();
-
-    HTTP_RESPONSES.with(|responses| {
-        if let Some(res) = responses.borrow_mut().get_mut(&(res_handle as u64)) {
-            res.body = data.into_iter().map(|b| b as u8).collect();
-        }
+    let res_nv = crate::vm::native::pop_arg_nv(task);
+    let stake = crate::vm::native::StakeGuard::nv(vm, res_nv);
+    vm.rc_release(res_nv);
+    let m = super::http_return_resource::mutate_response_snapshot(vm, res_nv, |s| {
+        s.body = data.into_iter().map(|b| b as u8).collect();
     });
-
-    task.ram.push_i64(res_handle);
+    drop(stake);
+    m.ok_or_else(|| {
+        VMError::RuntimeError("response_bytes: expected a Response credential".into())
+    })?;
+    vm.rc_push(task, res_nv);
     Ok(())
 }
 
@@ -6279,7 +6291,7 @@ pub fn shim_http_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -6300,7 +6312,7 @@ pub fn shim_http_post(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -6323,7 +6335,7 @@ pub fn shim_http_put(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -6346,7 +6358,7 @@ pub fn shim_http_delete(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -6523,7 +6535,7 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = check_async_http_result_handle(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -7058,7 +7070,7 @@ pub fn shim_http_upload(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     if let Some(req_id) = task.waiting_http_request_id {
         if let Some(result) = super::http_transfer::consume_legacy_upload(req_id) {
             task.waiting_http_request_id = None;
-            return push_handle_result(task, result);
+            return push_handle_result(task, vm, result);
         }
         task.status = crate::vm::task::TaskStatus::Waiting("http".into());
         return Ok(());
@@ -8622,29 +8634,25 @@ pub(crate) fn shim_http_get_msg_spawn_for_test(url: &str, event: &str) {
 /// 凭据对象，不再共用）。
 fn push_handle_result(
     task: &mut AutoTask,
+    vm: &AutoVM,
     result: Result<(u16, Vec<(String, String)>, Vec<u8>), String>,
 ) -> Result<(), VMError> {
-    let data = match result {
-        Ok((status, headers, body_bytes)) => HttpResponseData {
-            status,
-            headers,
-            body: body_bytes,
-        },
-        Err(msg) => HttpResponseData {
-            status: 500,
-            headers: vec![(
+    // R2-05：client Response 在 HTTP egress 边界内（Plan §1.4）——producer
+    // 产 **Response 凭据对象**（owned 快照），不再返回裸 int+表：marshal
+    /// 资源臂保留真实 status/body（此前降级 JSON 裸编号）；访问器统一
+    /// 载荷（快照/int 表）兼容；表 insert 退役（int 查表面成为死兼容）。
+    let (status, headers, body) = match result {
+        Ok((status, headers, body_bytes)) => (status, headers, body_bytes),
+        Err(msg) => (
+            500,
+            vec![(
                 "Content-Type".to_string(),
                 "text/plain; charset=utf-8".to_string(),
             )],
-            body: format!("HTTP failed: {}", msg).into_bytes(),
-        },
+            format!("HTTP failed: {}", msg).into_bytes(),
+        ),
     };
-    let h = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
-    HTTP_RESPONSES.with(|r| {
-        r.borrow_mut().insert(h, data);
-    });
-    task.ram.push_i32(h as i32);
-    Ok(())
+    super::http_return_resource::push_response_resource(task, vm, status, headers, body)
 }
 
 pub fn shim_http_get_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {

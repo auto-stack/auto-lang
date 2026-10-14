@@ -134,15 +134,18 @@ impl ApiExtractor {
                         name: enum_decl.name.to_string(),
                         fields: Vec::new(),
                         doc: None,
+                        alias_of: None,
                     });
                 }
-                // PLAN-776 R1-F05：type alias（`type Response = int`）是用户
-                // 声明的来源身份——别名名进名集（遮蔽 stdlib 同裸名）。
+                // PLAN-776 R1-F05/R2-07：type alias 的来源身份按**目标**解析
+                //（`type Download = FileResponse` → File 种类；target 是用户
+                // 名/内建 → Json）——alias_of 携带 target 裸名供分类展开。
                 Stmt::TypeAlias(alias) => {
                     api_module.types.push(ApiType {
                         name: alias.name.to_string(),
                         fields: Vec::new(),
                         doc: None,
+                        alias_of: Some(bare_type_name(&alias.target)),
                     });
                 }
                 _ => {}
@@ -220,6 +223,7 @@ impl ApiExtractor {
             name: type_decl.name.to_string(),
             fields,
             doc: None,
+            alias_of: None,
         })
     }
 }
@@ -231,6 +235,22 @@ impl Default for ApiExtractor {
 }
 
 /// Convert Type to string representation
+/// PLAN-776 R2-07：类型引用的裸名（alias target 展开输入）——User/泛型
+/// 实例取声明名，内建按显示首词。
+fn bare_type_name(ty: &Type) -> String {
+    match ty {
+        Type::User(td) => td.name.to_string(),
+        Type::GenericInstance(inst) => inst.base_name.to_string(),
+        other => {
+            let full = type_to_string(other);
+            match full.find('<') {
+                Some(i) => full[..i].trim().to_string(),
+                None => full.trim().to_string(),
+            }
+        }
+    }
+}
+
 fn type_to_string(ty: &Type) -> String {
     match ty {
         Type::Int => "int".to_string(),

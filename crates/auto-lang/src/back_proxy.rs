@@ -1462,13 +1462,33 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
     let mut fn_meta: HashMap<String, (String, String)> = HashMap::new();
     // PLAN-776 T-06：模块内用户类型名集（AST 直扫——back_proxy 跳过前端，
     // type_store 不含声明；stdlib HTTP 词汇不出现于用户 stmts，命中即遮蔽）。
+    // PLAN-776 R1-F05/R2-07：直接声明名集（struct/enum）与 alias→target 表
+    // 分开——alias 的来源身份按目标解析。
     let user_type_names: std::collections::HashSet<String> = import_stmts
         .iter()
         .filter_map(|stmt| match stmt {
             Stmt::TypeDecl(d) => Some(d.name.to_string()),
             Stmt::EnumDecl(e) => Some(e.name.to_string()),
-            // PLAN-776 R1-F05：type alias 同为用户声明来源。
-            Stmt::TypeAlias(a) => Some(a.name.to_string()),
+            _ => None,
+        })
+        .collect();
+    let alias_targets: std::collections::HashMap<String, String> = import_stmts
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Stmt::TypeAlias(a) => {
+                let target = match &a.target {
+                    crate::ast::Type::User(td) => td.name.to_string(),
+                    crate::ast::Type::GenericInstance(inst) => inst.base_name.to_string(),
+                    other => {
+                        let full = format!("{other}");
+                        match full.find('<') {
+                            Some(i) => full[..i].trim().to_string(),
+                            None => full.trim().to_string(),
+                        }
+                    }
+                };
+                Some((a.name.to_string(), target))
+            }
             _ => None,
         })
         .collect();
@@ -1491,15 +1511,20 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                     .map(|a| a.method.clone())
                     .unwrap_or_default();
                 let display = format!("{}", f.ret);
-                let primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
-                // PLAN-776 T-06：第三段 = 返回裸名被用户同名遮蔽（1/空）。
-                // 裸名取 primary（主类型名——与消费侧分类段一致）。
-                // 消费侧（from_return_string 前）先解遮蔽 → Json（AC-07）。
-                let shadowed = if user_type_names.contains(&primary) {
-                    "1"
-                } else {
-                    ""
-                };
+                let mut primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
+                let mut shadowed = "";
+                // PLAN-776 T-06/R2-07：第三段 = 返回裸名被用户同名遮蔽；
+                // alias 按 target 展开（target 用户声明 → 遮蔽；target 为
+                // stdlib 名 → primary 换 target 参与消费侧分类）。
+                if let Some(target) = alias_targets.get(&primary) {
+                    if user_type_names.contains(target) {
+                        shadowed = "1";
+                    } else {
+                        primary = target.clone();
+                    }
+                } else if user_type_names.contains(&primary) {
+                    shadowed = "1";
+                }
                 fn_meta.insert(
                     f.name.to_string(),
                     (method, format!("{primary}|{display}|{shadowed}")),

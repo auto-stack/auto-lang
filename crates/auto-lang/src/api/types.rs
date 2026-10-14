@@ -267,6 +267,11 @@ pub struct ApiType {
 
     /// Documentation
     pub doc: Option<String>,
+
+    /// PLAN-776 R2-07：type alias 的目标裸名（`type Download = FileResponse`
+    /// → "FileResponse"）。身份分类展开一层：target 按真实来源解析（用户
+    /// 名 → Json；stdlib 名 → 专属种类）；None = 直接声明。
+    pub alias_of: Option<String>,
 }
 
 impl ApiType {
@@ -275,6 +280,7 @@ impl ApiType {
             name,
             fields: Vec::new(),
             doc: None,
+            alias_of: None,
         }
     }
 }
