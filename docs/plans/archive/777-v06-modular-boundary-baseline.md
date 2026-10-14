@@ -122,6 +122,7 @@ Category A：禁止cargo t/docs_gen。T01实现后 `python scripts/modularity-au
 - **ledger_refreshed**：`.autoos/specs.json` 经**受管离线投影**（Regime B，无 store writer；字节级备份 /tmp/specs-backup-777.json），version 16→17，新增 P777-D1（designs，file=docs/specs/design/repository-layout.md）/P777-T（tests，file=scripts/modularity-audit.py）/P777-R4（reviews，file=review-r4/REVIEW.md）/P777-M（reports，file=归档计划路径），全部带 file+tags；外科手术校验（旧 items 全保留、非目标 section 字节等同）与读回 ID/字段校验通过。
 - **Category A 门禁**：未运行 cargo t/tv/tu/tt/tb/docs_gen/taa（777 全程零 crates/ Rust 源码改动——仅 scripts/、.autoos/、test/fixtures/、docs/）；按 AGENTS Category A 此为禁止项而非豁免。
 - **archived**：git mv → docs/plans/archive/777-v06-modular-boundary-baseline.md，status: archived，T-01..T-06=6/6；review-r1..r4 复审附件随本收据入库（K13：不入库≠归档；排除 __pycache__）。**基线重绑 pending 说明**：master 常带他计划簿记 WIP（782/KNOWN-DEBT，属其 owner，不代提交），阻止 --refresh-baseline 的干净树前置；现行基线 base_revision=d6e947912（旧哈希）经 range-diff 等价锚定且对象仍可解析（diff 锚定面为空=新鲜），下一次 master 干净时 refresh 重绑到可达提交即可，属常规运维（就绪文档既定流程），非交付缺口。
-- **cleaned**：wt-guard 双树 clean → 移除 lang-777/auto-lang、auto-down worktree、plan-777-dev 分支与组目录（见下一条收据更新）。
+- **cleaned**：wt-guard 双树 clean（reparse point 扫描均空）→ `git worktree remove` lang-777/auto-lang 与 auto-down、`git branch -d plan-777-dev`（was 20335e52c）、组目录 D:/autostack/.wt/lang-777 已删；`git worktree list` 仅剩主检出与 lang-781。spec-index 重生成 docs/specs/INDEX.md（30 projects）随本收据提交。
+- **批回归到期判定（fix-test-tiering）**：**due**——770（%5=0）于收据（2026-10-14T11:30Z，covered_commit 14e387537，last_covered_plan_id 774）之后落地，777 本次合并再计入窗口；移交 /auto-plan:regress 在主检出单实例执行（不阻塞本计划交付判定；红项归因走 fix-forward）。
 
 批回归到期判定：777%5≠0；收据读取与判定见 cleaned 收据行。部署产物核对：auto-lang 无发布二进制/web bundle 生产面（本仓 Category A 工具/文档交付），N/A。
