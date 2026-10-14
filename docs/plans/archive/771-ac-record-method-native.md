@@ -223,7 +223,7 @@ merge_gates: merge-owned 裸 `cargo t` 于主检出全绿（5295/5295 passed、1
 ledger_refreshed: Regime B 受管离线投影（无 store 服务可达；.autoos/specs.json 受版本管理，经工作树提交随 ff 落地）：v13→14，新增 P771-1/P771-2（designs）、P771-T（tests）、P771-R3（reviews）、P771-M（reports），全部带 file+tags；守卫=字节级备份+程序化读改写+diff 证明外科范围（仅 version 与新条目）+六节模式校验+回读核验；spec-index 重生成（模块集无变化）。首版 indent=1 整文件重排被守卫拦截回滚，重写为 indent=2 匹配序列化。
 archived: docs/plans/archive/771-ac-record-method-native.md（git mv）；status: archived、current_step 9/9、T-09 勾结；plans.md 三行回写（auto-ac/auto-hir/auto-acc 指归档路径）；R1/R2/R3 复审附件随本提交纳入版本管理（K13）；观察项：experimental/ac-core 为自含实验 workspace，无生产 release 二进制/Web bundle 消费其产物——无部署制品需重建（auto-musk K13 教训核对）。
 batch_regression_due: 否——docs/plans/.last-batch-regression.json last_covered_plan_id=774（2026-10-14T11:30Z，<48h）；771%5=1 非 divisible-by-5 触发；本次合入后回执仍在 48h 窗口内。
-cleaned: pending（本提交后执行 wt-guard + 移除工作树/分支/组目录，随后补记）。
+cleaned: 完成——wt-guard 对 lang-771/auto-lang 与兄弟 auto-down 均 clean（零 reparse point、零未提交改动、两树 tip 均已落地/零改动）；`git worktree remove` 移除两树，分支 plan-771-dev（=8b7485c9b 已合并）与临时 plan-771-dev-pre-rebase（d6ee10d49，range-diff 证等价后废弃）删除，组目录 .wt/lang-771 移除；最终核验：master tip=本收据提交、归档 9/9、无 771 相关未跟踪/未提交文件残留。
 
 ## 10. 待澄清事项
 
