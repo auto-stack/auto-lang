@@ -4534,9 +4534,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     child: el,
                 })
             }
-            // PLAN-781 T-02: 锚点标记 → 透传构建（零布局零行为占位；
-            // T-03 升级为 operate 期上报 bounds 的 wrapper widget）。
-            AbstractView::ScrollAnchorMark { child, .. } => child.into_iced(),
+            // PLAN-781 T-03: 锚点标记 → wrapper widget（operate 期以合成 id
+            // 上报最终位置 bounds；layout/draw 全委托零布局）。
+            AbstractView::ScrollAnchorMark { pane, key, child } => {
+                let el = child.into_iced();
+                iced::Element::new(crate::ui::iced::scroll_anchor::ScrollAnchor::new(
+                    &pane, &key, el,
+                ))
+            }
             AbstractView::Empty => {
                 // Plan 370 (Issue 1): render Empty as a zero-height Space
                 // instead of text(""). A text("") still reserves one line of
@@ -9299,7 +9304,8 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         },
 
         // PLAN-781 T-01: 锚点标记递归转换 child（同锚槽纪律）。
-        AbstractView::ScrollAnchorMark { key, child } => AbstractView::ScrollAnchorMark {
+        AbstractView::ScrollAnchorMark { pane, key, child } => AbstractView::ScrollAnchorMark {
+            pane,
             key,
             child: Box::new(convert_view_messages(*child)),
         },
@@ -20585,6 +20591,16 @@ fn run_session(
                     crate::ui::iced::scroll_state_reader::ScrollStateMap,
                 >(json)
                 {
+                    // PLAN-781 T-03: pane 原点旁路 stash（锚点解析第二路输入；
+                    // 与锚点 rect 到达顺序不定，齐备即解析）。
+                    let origins: std::collections::HashMap<String, (f64, f64)> = map
+                        .iter()
+                        .map(|(id, e)| (id.clone(), (e.viewport[0] as f64, e.viewport[1] as f64)))
+                        .collect();
+                    crate::ui::iced::scroll_anchor::note_pane_origins(origins);
+                    crate::ui::iced::scroll_anchor::stash_resolved_finals(
+                        crate::ui::iced::scroll_anchor::try_resolve_pending(),
+                    );
                     for (id, entry) in map {
                         let (ox, oy) = (entry.offset[0], entry.offset[1]);
                         let (vw, vh) = (entry.viewport[2], entry.viewport[3]);
@@ -20634,6 +20650,27 @@ fn run_session(
                     if let Some(ref mcp) = state.desktop.mcp_shared {
                         mcp.lock().unwrap().set_scroll_states(map);
                     }
+                }
+            }
+            return iced::Task::none();
+        }
+
+        // PLAN-781 T-03: 锚点 rect 采集回执——stash 后尝试解析（pane 原点
+        // 已在 __scroll_state_read 侧 stash；两路齐备即产出 finals，暂存
+        // 待 drain 块统一落盘）。
+        if msg.event == "__anchor_bounds_collected" {
+            if let Some(ref json) = msg.input_value {
+                if let Ok(rects) = serde_json::from_str::<
+                    crate::ui::iced::scroll_anchor::AnchorRectMap,
+                >(json)
+                {
+                    if std::env::var("P781_DEBUG").is_ok() {
+                        eprintln!("[P781] anchor rects collected: {} entries", rects.len());
+                    }
+                    crate::ui::iced::scroll_anchor::note_anchor_rects(rects);
+                    crate::ui::iced::scroll_anchor::stash_resolved_finals(
+                        crate::ui::iced::scroll_anchor::try_resolve_pending(),
+                    );
                 }
             }
             return iced::Task::none();
@@ -22908,6 +22945,24 @@ fn run_session(
             tail_tasks.push(scroll_read_task());
             tail_tasks.push(mcp_scroll_task());
         }
+        // PLAN-781 T-03: pending 锚点请求 → 推 AnchorBoundsCollector + 读回
+        //（两路消息下一拍到达、齐备即解析；未预热 pane 的请求自补 prime）。
+        if crate::ui::scroll::controller::has_pending_anchor_requests() {
+            if std::env::var("P781_DEBUG").is_ok() {
+                eprintln!("[P781] drain: pending anchors -> pushing collector");
+            }
+            tail_tasks.push(scroll_read_task());
+            tail_tasks.push(
+                iced::advanced::widget::operate(
+                    crate::ui::iced::scroll_anchor::AnchorBoundsCollector::new(),
+                )
+                .map(|rects| IcedMessage {
+                    widget: String::new(),
+                    event: "__anchor_bounds_collected".to_string(),
+                    input_value: Some(serde_json::to_string(&rects).unwrap_or_default()),
+                }),
+            );
+        }
         let (finals, prime) = crate::ui::scroll::drain_resolved_intents();
         let finals_done = !finals.is_empty();
         for (handle, id, x, y) in finals {
@@ -22933,6 +22988,17 @@ fn run_session(
         {
             tail_tasks.push(scroll_read_task());
             tail_tasks.push(mcp_scroll_task());
+        }
+
+        // PLAN-781 T-03: 锚点解析 finals 落盘（消息处理器暂存产物；同款
+        // 写臂投影 + __mcp_scroll 头部直返路径——与 controller finals 一致）。
+        for (a_handle, a_id, ax, ay) in crate::ui::iced::scroll_anchor::take_resolved_finals() {
+            crate::ui::scroll::controller::note_controller_offset(&a_handle, ax, ay);
+            tail_tasks.push(iced::Task::done(IcedMessage {
+                widget: String::new(),
+                event: "__mcp_scroll".to_string(),
+                input_value: Some(format!("{a_id}{sep}{ay}{sep}{ax}", sep = PAYLOAD_SEP)),
+            }));
         }
 
         // PLAN-063 T-04d-2: 块锚定同步目标消费——锚块变化时经注册表把
@@ -31000,6 +31066,16 @@ fn render_dynamic_view(
                 index: index as usize,
                 child: el,
             })
+        }
+        // PLAN-781 T-03: 锚点标记 → 动态路径**递归**渲染子件（路径透传——
+        // 与 vtree 透传同构，子件保留自身 vnode id/wrap_debug/采集面），
+        // 外层零布局 wrapper。缺此臂时子树落泛型 into_iced（无 debug_ctx），
+        // 整个子树失去 vnode id → LayoutCollector 全盲（T-03 实测定罪）。
+        AbstractView::ScrollAnchorMark { pane, key, child } => {
+            let el = render_dynamic_view(*child, debug_ctx, path);
+            iced::Element::new(crate::ui::iced::scroll_anchor::ScrollAnchor::new(
+                &pane, &key, el,
+            ))
         }
         // PLAN-013 W2：MouseArea 专用臂——此前落 catch-all 泛型转换，其
         // on_input 接线不带 input_value 载荷：launcher search 等**嵌套在

@@ -462,10 +462,11 @@ where
             },
         ),
 
-        View::Scrollable { offset, .. } => (
+        View::Scrollable { offset, controller, .. } => (
             VNodeKind::Scrollable,
             VNodeProps::Scrollable {
                 offset_y: offset.map(|(_, y)| y),
+                controller: controller.as_ref().map(|c| c.key().to_string()),
             },
         ),
 

@@ -232,8 +232,12 @@ pub enum VNodeProps {
     },
 
     /// 可滚动容器属性（PLAN-043 T6：offset 绑定 y 值——快照可观测口；
-    /// None = 无绑定）
-    Scrollable { offset_y: Option<f32> },
+    /// None = 无绑定）。PLAN-781 T-03：controller 键——MCP scroll 动作对
+    /// controller pane 须改发 `scroll_ctl_{key}` iced id（vnode id 落空）。
+    Scrollable {
+        offset_y: Option<f32>,
+        controller: Option<String>,
+    },
 
     /// 滑块属性
     Slider {

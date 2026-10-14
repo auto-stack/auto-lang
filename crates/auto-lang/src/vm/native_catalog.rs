@@ -2082,6 +2082,11 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     // PLAN-716 Phase 2 (供⑧): 9921——原 9920 与 ui.focus 撞号（见
     // for_each_native 组C 注）。
     ("auto.diff_files_window", 9921),
+    // PLAN-781 T-01: 子内容锚点族（for_each_native 9922/9923 同源行——
+    // 缺行时 register_vm_declarations 动态分配器不避让，stdlib #[vm] 声明
+    // （http.Request.method 族）会占号后被静态 shim 覆写，2939 同款坑）。
+    ("auto.scroll.to_child", 9922),
+    ("auto.scroll.anchor_state", 9923),
     // Plan 555 T06: 分发组合子（interop.* 限定名 + 裸名别名——裸名
     // resolve_qualified 经 NATIVE_ID_MAP 惰性注册命中）。
     ("interop.obj_get", 1860),

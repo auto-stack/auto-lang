@@ -639,9 +639,12 @@ pub enum View<M: Clone + Debug> {
 
     /// PLAN-781 T-01: 子内容锚点标记（决策报告 781-interface-decision §4）。
     /// DSL `scroll-anchor: "<key>"` → builder 包装子树；零布局（layout/draw
-    /// 委托子件）。iced 轨由 renderer 以合成 id `scrollanchor:{key}` 在
-    /// operate 期上报最终位置 bounds；vue 轨 → `data-scroll-anchor` attr。
+    /// 委托子件）。`pane` 为所属 scroll-pane 的 controller key（convert_scroll
+    /// 双臂经 inject_anchor_pane 后置填充；空串 = 无 controller 归属）。
+    /// iced 轨由 renderer 以合成 id `scrollanchor:{pane}:{key}` 在 operate
+    /// 期上报最终位置 bounds；vue 轨 → `data-scroll-anchor` attr。
     ScrollAnchorMark {
+        pane: std::sync::Arc<str>,
         key: std::sync::Arc<str>,
         child: Box<View<M>>,
     },
@@ -2445,7 +2448,8 @@ impl<M: Clone + Debug> View<M> {
                 index,
                 child: Box::new(child.map_msg_with_arc(f)),
             },
-            View::ScrollAnchorMark { key, child } => View::ScrollAnchorMark {
+            View::ScrollAnchorMark { pane, key, child } => View::ScrollAnchorMark {
+                pane,
                 key,
                 child: Box::new(child.map_msg_with_arc(f)),
             },

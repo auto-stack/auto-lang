@@ -38,6 +38,7 @@ pub mod renderer;
 // 承载——自持网格布局 + Drag 态临时宽实时重排 + 松手落定消息）。
 pub mod table_resize;
 // Plan 497 T2: 每窗口真缩略快照核心(裁剪式整窗快照,T1 定案)。
+pub mod scroll_anchor;
 pub mod snapshot;
 // Plan 515 D1: native 窗口真图标（HICON→RGBA）缓存（486 占位清偿）。
 pub mod native_icon;

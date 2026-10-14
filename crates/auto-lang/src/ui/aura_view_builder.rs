@@ -3409,6 +3409,11 @@ impl<'a> AuraViewBuilder<'a> {
         // PLAN-656 T-03: scroll-pane 语义（axis/scrollbar/controller/onscroll）。
         let (axes, scrollbar_policy, controller, on_scroll) =
             self.scroll_pane_semantics(props, events, bindings);
+        // PLAN-781 T-03: controller pane 的锚点归属后置注入（tracked 镜像）。
+        let col_view = match controller.as_ref() {
+            Some(c) => Self::inject_anchor_pane(col_view, c.key()),
+            None => col_view,
+        };
         View::Scrollable {
             child: Box::new(col_view),
             width: None,
@@ -4660,6 +4665,49 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
 
+    /// PLAN-781 T-03: 后置注入 pane 归属——把本 pane 子树内**未限定**的
+    /// ScrollAnchorMark 填上 controller key。遇嵌套 Scrollable 停（内层
+    /// convert_scroll 已注入其自己的归属，外层不得覆盖）。
+    fn inject_anchor_pane(
+        view: View<DynamicMessage>,
+        pane_key: &str,
+    ) -> View<DynamicMessage> {
+        match view {
+            View::ScrollAnchorMark { pane, key, child } => {
+                let pane = if pane.is_empty() {
+                    std::sync::Arc::from(pane_key)
+                } else {
+                    pane
+                };
+                View::ScrollAnchorMark {
+                    pane,
+                    key,
+                    child: Box::new(Self::inject_anchor_pane(*child, pane_key)),
+                }
+            }
+            View::Row { children, spacing, padding, style, onclick, on_right_click } => {
+                View::Row {
+                    children: children
+                        .into_iter()
+                        .map(|c| Self::inject_anchor_pane(c, pane_key))
+                        .collect(),
+                    spacing, padding, style, onclick, on_right_click,
+                }
+            }
+            View::Column { children, spacing, padding, style, onclick, on_right_click } => {
+                View::Column {
+                    children: children
+                        .into_iter()
+                        .map(|c| Self::inject_anchor_pane(c, pane_key))
+                        .collect(),
+                    spacing, padding, style, onclick, on_right_click,
+                }
+            }
+            // 嵌套 pane / 叶子：停。
+            other => other,
+        }
+    }
+
     /// PLAN-781 T-01：`scroll-anchor: "<key>"` → 零布局锚点包装。
     /// 空 key/类型不可解析 = stderr 告警 + 原样返回（不失效页面）。
     fn maybe_wrap_scroll_anchor(
@@ -4674,6 +4722,7 @@ impl<'a> AuraViewBuilder<'a> {
         let key = self.extract_string_with(props, "scroll-anchor", bindings);
         match key {
             Some(k) if !k.is_empty() => View::ScrollAnchorMark {
+                pane: std::sync::Arc::from(""),
                 key: std::sync::Arc::from(k.as_str()),
                 child: Box::new(view),
             },
@@ -8695,6 +8744,11 @@ impl<'a> AuraViewBuilder<'a> {
         // PLAN-656 T-03: scroll-pane 语义（axis/scrollbar/controller/onscroll）。
         let (axes, scrollbar_policy, controller, on_scroll) =
             self.scroll_pane_semantics(props, events, bindings);
+        // PLAN-781 T-03: controller pane 的锚点归属后置注入。
+        let col_view = match controller.as_ref() {
+            Some(c) => Self::inject_anchor_pane(col_view, c.key()),
+            None => col_view,
+        };
         View::Scrollable {
             child: Box::new(col_view),
             width: None,
@@ -23694,7 +23748,8 @@ mod plan534_side_panel_tests {
         fn find_anchor(view: &View<DynamicMessage>) -> Vec<String> {
             let mut out = Vec::new();
             match view {
-                View::ScrollAnchorMark { key, child } => {
+                View::ScrollAnchorMark { pane, key, child } => {
+                    assert!(!pane.is_empty(), "pane injected by convert_scroll");
                     out.push(key.to_string());
                     out.extend(find_anchor(child));
                 }

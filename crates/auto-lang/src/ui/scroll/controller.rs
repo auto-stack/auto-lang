@@ -155,7 +155,9 @@ pub fn mark_controller_managed(handle: &str) {
 /// 回执错误 reason：`bad_handle` / `empty_key` / `unsupported`。
 /// 入队成功 → 请求置 pending（同 (handle,key) 后写覆盖重新 pending）。
 pub fn enqueue_anchor_request(handle: &str, key: &str) -> Result<(), &'static str> {
-    if !is_controller_handle(handle) {
+    // 句柄语义与 9900 族 pop_controller_handle 等价：任意非空串合法
+    //（"@scrollctl:N" 与 .at 侧裸字符串柄等价——Reader 先例）；仅空串 bad_handle。
+    if handle.is_empty() {
         return Err("bad_handle");
     }
     if key.is_empty() {
@@ -190,15 +192,27 @@ pub fn anchor_request_state(handle: &str, key: &str) -> Option<AnchorRequestStat
         .map(|r| r.state.clone())
 }
 
-/// PLAN-781 T-02：drain 期锚点解析（renderer 调用；决策报告 §2/§3 状态机）。
-/// `anchor_bounds` = 当帧采集的 key → pane content-space rect `(y, h)`
-///（AnchorBoundsCollector 产物）；`collected` = 本帧采集器确实跑过
-///（false = 无采集帧，pending 保持，不作 not_found 判定）。
+/// PLAN-781：是否有 pending 锚点请求（renderer drain 期决定是否推采集）。
+pub fn has_pending_anchor_requests() -> bool {
+    REGISTRY
+        .lock()
+        .unwrap()
+        .anchor_requests
+        .values()
+        .any(|r| r.state == AnchorRequestState::Pending)
+}
+
+/// PLAN-781 T-02/T-03：drain 期锚点解析（renderer 调用；决策报告 §2/§3）。
+/// `anchor_bounds` = (controller key, anchor key) → pane 锚定 `(y, h)`
+///（AnchorBoundsCollector 产物，pane 原点为内容原点）；`pane_origins` =
+/// pane widget id → viewport 原点 `(vx, vy)`（换算 content-space target）；
+/// `collected` = 本帧采集器确实跑过（false = pending 保持，不作 not_found）。
 /// 返回 (handle, widget_id, x, y) 终态 offset（并入既有 finals scroll_to
 /// 通路）；applied/invalid 状态就地回写。未预热 pane 的请求保持 pending
 ///（沿 F-4 晚一拍纪律）。
 pub fn resolve_anchor_requests(
-    anchor_bounds: &HashMap<String, (f64, f64)>,
+    anchor_bounds: &HashMap<(String, String), (f64, f64)>,
+    pane_origins: &HashMap<String, (f64, f64)>,
     collected: bool,
 ) -> Vec<(String, String, f64, f64)> {
     let mut reg = REGISTRY.lock().unwrap();
@@ -253,12 +267,20 @@ pub fn resolve_anchor_requests(
         if !collected {
             continue;
         }
-        let Some(&(ty, th)) = anchor_bounds.get(&key) else {
+        let Some(&(pane_y, th)) = anchor_bounds.get(&(handle.clone(), key.clone())) else {
             if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
                 req.state = AnchorRequestState::Invalid("not_found".into());
             }
             continue;
         };
+        // pane 锚定 y → content-space（pane viewport 原点为内容原点）。
+        let Some(&(_vx, vy)) = pane_origins.get(&snapshot.widget_id) else {
+            if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
+                req.state = AnchorRequestState::Invalid("not_found".into());
+            }
+            continue;
+        };
+        let ty = pane_y - vy;
         // nearest（决策报告 §3 冻结公式）——x 轴不动（v1 单轴 Y）。
         let y_axis = snapshot.to_scroll_state().y.unwrap_or(crate::ui::scroll::state::ScrollAxisState {
             offset: 0.0,
@@ -558,9 +580,14 @@ mod tests {
     #[test]
     fn plan781_anchor_enqueue_validation() {
         reset_for_test();
-        // 非法 handle / 空 key。
-        assert_eq!(enqueue_anchor_request("nope", "k"), Err("bad_handle"));
+        // 空 handle / 空 key（非空裸串句柄合法——Reader 先例语义）。
+        assert_eq!(enqueue_anchor_request("", "k"), Err("bad_handle"));
         assert_eq!(enqueue_anchor_request("@scrollctl:1", ""), Err("empty_key"));
+        enqueue_anchor_request("bare-key", "k").unwrap();
+        assert_eq!(
+            anchor_request_state("bare-key", "k"),
+            Some(AnchorRequestState::Pending)
+        );
         // managed pane → unsupported（入队即拒）。
         let h = next_controller_handle();
         bind_controller(&h, "pane_m");
@@ -579,19 +606,20 @@ mod tests {
         enqueue_anchor_request(&h, "p50").unwrap();
         assert_state(&h, "p50", AnchorRequestState::Pending);
         // 无采集帧 → pending 保持。
-        assert!(resolve_anchor_requests(&HashMap::new(), false).is_empty());
+        assert!(resolve_anchor_requests(&HashMap::new(), &HashMap::new(), false).is_empty());
         assert_state(&h, "p50", AnchorRequestState::Pending);
         // 当帧采集：p50 位于 content y=500..540（底出：540 > 100+200）→
         // 底对齐 offset = 540-200 = 340。
-        let bounds = HashMap::from([("p50".to_string(), (500.0_f64, 40.0_f64))]);
-        let finals = resolve_anchor_requests(&bounds, true);
+        let bounds = HashMap::from([((h.clone(), "p50".to_string()), (515.5_f64, 40.0_f64))]);
+        let origins = HashMap::from([("pane_a".to_string(), (0.0_f64, 15.5_f64))]);
+        let finals = resolve_anchor_requests(&bounds, &origins, true);
         assert_eq!(finals.len(), 1);
         assert_eq!(finals[0].1, "pane_a");
         assert_eq!(finals[0].2, 0.0); // x 不动
         assert_eq!(finals[0].3, 340.0);
         assert_state(&h, "p50", AnchorRequestState::Applied);
         // 已消费：再次 drain 无产出（不驻留拉回）。
-        assert!(resolve_anchor_requests(&bounds, true).is_empty());
+        assert!(resolve_anchor_requests(&bounds, &HashMap::new(), true).is_empty());
         reset_for_test();
     }
 
@@ -603,14 +631,15 @@ mod tests {
         take_prime_requests();
         // 未预热（无测量）：pending 晚一拍 + 进 prime 名单。
         enqueue_anchor_request(&h, "ghost").unwrap();
-        assert!(resolve_anchor_requests(&HashMap::new(), true).is_empty());
+        assert!(resolve_anchor_requests(&HashMap::new(), &HashMap::new(), true).is_empty());
         assert_state(&h, "ghost", AnchorRequestState::Pending);
         assert!(take_prime_requests().contains(&h));
         // 预热后 key 不在当帧注册表 → not_found（一次性，不重试）。
         note_controller_state(&h, (0.0, 0.0), (400.0, 200.0), (800.0, 1000.0));
-        assert!(resolve_anchor_requests(&HashMap::new(), true).is_empty());
+        let origins = HashMap::from([("pane_b".to_string(), (0.0_f64, 0.0_f64))]);
+        assert!(resolve_anchor_requests(&HashMap::new(), &origins, true).is_empty());
         assert_state(&h, "ghost", AnchorRequestState::Invalid("not_found".into()));
-        assert!(resolve_anchor_requests(&HashMap::new(), true).is_empty());
+        assert!(resolve_anchor_requests(&HashMap::new(), &origins, true).is_empty());
         reset_for_test();
     }
 
@@ -626,13 +655,14 @@ mod tests {
         bind_controller(&h, "pane_c2");
         take_prime_requests();
         note_controller_state(&h, (0.0, 0.0), (400.0, 200.0), (800.0, 1000.0));
-        let bounds = HashMap::from([("p10".to_string(), (50.0_f64, 40.0_f64))]);
-        let finals = resolve_anchor_requests(&bounds, true);
+        let bounds = HashMap::from([((h.clone(), "p10".to_string()), (50.0_f64, 40.0_f64))]);
+        let origins = HashMap::from([("pane_c2".to_string(), (0.0_f64, 0.0_f64))]);
+        let finals = resolve_anchor_requests(&bounds, &origins, true);
         assert!(finals.is_empty(), "stale request must not land on new content");
         assert_state(&h, "p10", AnchorRequestState::Invalid("not_bound".into()));
         // 重新入队（新代际）正常解析。
         enqueue_anchor_request(&h, "p10").unwrap();
-        let finals = resolve_anchor_requests(&bounds, true);
+        let finals = resolve_anchor_requests(&bounds, &origins, true);
         assert_eq!(finals.len(), 1);
         assert_eq!(finals[0].1, "pane_c2");
         assert_state(&h, "p10", AnchorRequestState::Applied);
@@ -646,14 +676,15 @@ mod tests {
         bind_controller(&h, "pane_d");
         take_prime_requests();
         note_controller_state(&h, (0.0, 100.0), (400.0, 200.0), (800.0, 1000.0));
-        let bounds = HashMap::from([("p30".to_string(), (900.0_f64, 40.0_f64))]);
+        let bounds = HashMap::from([((h.clone(), "p30".to_string()), (900.0_f64, 40.0_f64))]);
+        let origins = HashMap::from([("pane_d".to_string(), (0.0_f64, 0.0_f64))]);
         enqueue_anchor_request(&h, "p30").unwrap();
-        let _ = resolve_anchor_requests(&bounds, true);
+        let _ = resolve_anchor_requests(&bounds, &origins, true);
         assert_state(&h, "p30", AnchorRequestState::Applied);
         // 重复入队 → 覆盖重新 pending（用户重定位语义）。
         enqueue_anchor_request(&h, "p30").unwrap();
         assert_state(&h, "p30", AnchorRequestState::Pending);
-        let _ = resolve_anchor_requests(&bounds, true);
+        let _ = resolve_anchor_requests(&bounds, &origins, true);
         assert_state(&h, "p30", AnchorRequestState::Applied);
         // 无记录 → unknown（anchor_state 查询语义）。
         assert_eq!(anchor_request_state(&h, "none"), None);

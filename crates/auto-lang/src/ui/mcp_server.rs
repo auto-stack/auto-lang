@@ -1819,6 +1819,10 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             Some(auto_val::Value::Double(d)) => *d,
             _ => return error_result("Action 'scroll' requires a numeric 'value' (y offset px)"),
         };
+        // PLAN-781 T-03: controller pane 的 iced id 是 `scroll_ctl_{key}`
+        //（build_scrollable 句柄派生），vnode id 直落会 miss——按 vtree 的
+        // controller 键改发；无 controller 保持 vnode id（既有行为）。
+        let mut scroll_target_id = element_id_str.to_string();
         let ok = {
             let shared = shared_handle.lock().unwrap();
             match element_id {
@@ -1826,7 +1830,20 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
                     .styled_vtree
                     .as_ref()
                     .and_then(|s| s.vtree.get(vnode_id))
-                    .map(|n| format!("{}", n.kind) == "Scrollable")
+                    .map(|n| {
+                        if format!("{}", n.kind) != "Scrollable" {
+                            false
+                        } else {
+                            if let VNodeProps::Scrollable {
+                                controller: Some(key),
+                                ..
+                            } = &n.props
+                            {
+                                scroll_target_id = format!("scroll_ctl_{}", key.as_str());
+                            }
+                            true
+                        }
+                    })
                     .unwrap_or(false),
                 ElementId::Aura(_) => false,
             }
@@ -1835,7 +1852,7 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             return error_result("Action 'scroll' requires a Scrollable element (vnode_N)");
         }
         let payload = format!(
-            "{element_id_str}{}{y}",
+            "{scroll_target_id}{}{y}",
             crate::ui::iced::renderer::PAYLOAD_SEP
         );
         let msg = ActionMessage {
@@ -4929,7 +4946,7 @@ fn aura_vtree_node(
         }
         // PLAN-043 T6：scroll offset 绑定值进 AURA 快照（滚动联动可观测
         // 口；无绑定的 scrollable 不输出该行）。
-        VNodeProps::Scrollable { offset_y: Some(y) } => {
+        VNodeProps::Scrollable { offset_y: Some(y), .. } => {
             out.push_str(&format!("{}offset_y: {:.1}\n", "  ".repeat(indent + 1), y));
         }
         // Plan 423 P3: disabled 标记进 AURA 快照(禁用项点击无消息的断言面)。
@@ -5043,12 +5060,16 @@ fn compute_visibility(
     chain: &[Rect4AndViewport],
     window: (f32, f32),
 ) -> (Option<Rect4>, Vec<&'static str>) {
+    // T-03 勘定（决策报告 §12 r4）：采集 bounds 已 pane 锚定（含 viewport
+    // 原点——R2 实测 row0=71.4 = pane 55.4 + padding 16），窗口化 = 仅减
+    // offset，**不再回加 viewport 原点**（旧公式双重计数 +vy，正例容差
+    // 曾吸收该偏差，边界对齐目标（row40 差 3px 出窗）暴露）。
     let mut r = target;
     let mut flags: Vec<&'static str> = Vec::new();
     for step in chain {
         r = Rect4 {
-            x: r.x - step.offset[0] + step.viewport.x,
-            y: r.y - step.offset[1] + step.viewport.y,
+            x: r.x - step.offset[0],
+            y: r.y - step.offset[1],
             w: r.w,
             h: r.h,
         };
@@ -6102,7 +6123,8 @@ mod tests_plan781_t11 {
         let (inter, flags) = compute_visibility(target, &chain, (800.0, 600.0));
         assert!(flags.is_empty());
         let i = inter.expect("positive intersection");
-        assert!((i.y - 150.0).abs() < 1e-3, "y translated once: {i:?}");
+        // 600 − 500 = 100（bounds 已含 pane 原点，仅减 offset）。
+        assert!((i.y - 100.0).abs() < 1e-3, "y translated once: {i:?}");
         assert!((i.h - 40.0).abs() < 1e-3);
         assert!(i.positive());
     }
@@ -6129,7 +6151,8 @@ mod tests_plan781_t11 {
             chain_item(inner_vp, [0.0, 400.0]),
             chain_item(outer_vp, [0.0, 100.0]),
         ];
-        let t_edge = Rect4 { x: 60.0, y: 900.0, w: 100.0, h: 20.0 };
+        // 内层换算（不再 +viewport 原点）：y=980 → 980−400=580 > 550 出界。
+        let t_edge = Rect4 { x: 60.0, y: 980.0, w: 100.0, h: 20.0 };
         let (inter, flags) = compute_visibility(t_edge, &chain, (800.0, 600.0));
         assert!(inter.is_none() && flags.contains(&"clipped_out"));
 
@@ -6137,7 +6160,7 @@ mod tests_plan781_t11 {
         let (inter, flags) = compute_visibility(t_ok, &chain, (800.0, 600.0));
         assert!(flags.is_empty());
         let i = inter.expect("visible through both panes");
-        assert!((i.y - 400.0).abs() < 1e-3 && i.positive());
+        assert!((i.y - 200.0).abs() < 1e-3 && i.positive());
     }
 
     #[test]

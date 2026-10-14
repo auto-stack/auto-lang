@@ -23,7 +23,8 @@ use crate::vm::native::{
     NATIVE_DIFF_SNAPSHOTS, NATIVE_DND_START, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32,
     NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED,
     NATIVE_RUNTIME_PANIC, NATIVE_SCROLL_BY, NATIVE_SCROLL_CONTROLLER, NATIVE_SCROLL_STATE,
-    NATIVE_SCROLL_TO, NATIVE_SCROLL_TO_END, NATIVE_SCROLL_TO_START, NATIVE_SHELL_ADD_RECENT,
+    NATIVE_SCROLL_TO, NATIVE_SCROLL_TO_CHILD, NATIVE_SCROLL_TO_END, NATIVE_SCROLL_TO_START,
+    NATIVE_SCROLL_ANCHOR_STATE, NATIVE_SHELL_ADD_RECENT,
     NATIVE_SHELL_EXIT, NATIVE_SHELL_EXPORT, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS,
     NATIVE_WRITE_STR,
 };
@@ -715,6 +716,9 @@ fn build_bare_native_intrinsics() -> HashMap<String, u16> {
     intrinsics.insert("scroll_by".to_string(), NATIVE_SCROLL_BY);
     intrinsics.insert("scroll_to".to_string(), NATIVE_SCROLL_TO);
     intrinsics.insert("scroll_state".to_string(), NATIVE_SCROLL_STATE);
+    // PLAN-781 T-01: 子内容锚点族（9922/9923，接口决策冻结）。
+    intrinsics.insert("scroll_to_child".to_string(), NATIVE_SCROLL_TO_CHILD);
+    intrinsics.insert("scroll_anchor_state".to_string(), NATIVE_SCROLL_ANCHOR_STATE);
     intrinsics.insert("dialog_open".to_string(), NATIVE_DIALOG_OPEN);
     intrinsics.insert("dialog_save".to_string(), NATIVE_DIALOG_SAVE);
     intrinsics.insert("file_basename".to_string(), NATIVE_FILE_BASENAME);
