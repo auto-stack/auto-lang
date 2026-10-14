@@ -70,6 +70,11 @@ SD-742-01/02 仍不可批准为完整 parity，原目标路径/AC/revision 不�
 旧17例、嵌套组合及当前S10/Vue通过；合法companion模块名后缀仍被误识别为标准库，
 SD-742-01/02继续partial。VM交互未验，不新增固定19场景门禁；原目标/AC/revision不变。
 
+第五次复审 [冻结增量](attachments/742/review-r5/spec-delta.md) SHA256
+`9691E5B5BA2D146ECE88E16765135EB2BCEBFBBE11DFD2AF6F7D340EA6B0A675`。
+R4模块名反例和旧20输入原样闭合，新增多行字符串保持；但比较符被当泛型角括号，
+后续str实参漏借用（F-742-R5-01），SD-742-01/02继续partial；原目标/AC/revision不变。
+
 ## 3. 任务
 
 - [x] T-1: 失败测试钉三缺陷（api_gen tests，extract_api_lenient + generate_api_rs 路径）
@@ -254,6 +259,26 @@ DB同路径前后文件hash不同，不将恢复过程不写文件作为新要�
 VM标准驱动45秒未ready，保留交互未验边界，不判产品故障、不新增VM19门禁。
 未验Upload/db候选维持原调查范围。完整映射、命令、输入/生成物、身份/限制见
 [review-r4报告](attachments/742/review-r4/REVIEW.md)。已通过事实保留，不以记账抹去。
+
+### 4.6 第五次独立 final review（2026-10-14）
+
+审面 `2174f0de28dd786369b2e44e94bfa1a1ac806499`，基面
+`2c40e1fe4673c2041ae3c366037d7eab38017d81`；同plan-742-dev工作树。
+结论 **needs_fix**。R4-01后缀模块名反例/控制关闭；旧20输入源hash及返回值相同。
+新增四组合后，24有效例23实编运行通过、1失败：F-742-R5-01（P2）
+split_top_level_args把表达式 `<` 当泛型角括号，repository.choose(1 < 2, s)
+漏补第二实参&s，实编E0308；true与2 > 1控制通过，直接include实际repository.rs。
+原AC02/04借用/handler可编译要求剩余缺口，非r5新增回归。T-1/T-2与T-3依赖版本
+证据重开，当前0/3；旧例/当前Notes通过事实全部保留。
+
+api_gen48 pass/1 ignored；daily5278/5278；tt5648 pass/1 timeout（plan707
+在案同款，定向1/1通过），不将整档称全绿。格式与crates whitespace通过。
+当前CLI4af3e449…/后端6b4bcb6a…独立S10强杀重启值读回及Vue13/13通过。
+收口Notes有并行源码/文档WIP，制品hash未变；上述运行结果不冒称当前Notes源码工作区
+整体通过，漂移详情见review-r5/notes-drift.json。742审面/配置保持稳定。
+VM交互沿用未验边界，本轮未跑、不新加19场景门禁；Upload/db候选仍原范围。
+诊断、原始输入/生成物/真实companion实编与门禁见
+[review-r5报告](attachments/742/review-r5/REVIEW.md)。
 
 ## 5. 已知延后
 
@@ -446,3 +471,43 @@ PLAN-745 交接注记（0bc1bea01）确认 742 合并面对其 27 处共现预�
   （有头桌面 MCP 会话）未变；Upload 入口源码级接线；db.rs 遗留正则债务
   候选 | next: review（/auto-plan:review r5；审面=2174f0de2，基面
   2c40e1fe4，工作树冻结待审）
+
+- stage: review（第五次） | review_scope: final |
+  reviewer_identity: Codex /root（前轮审核上下文，未参与本轮实施，无子agent）|
+  plan_id: 742 | plan_revision: 1 | outcome: needs_fix |
+  worktree_path: D:/autostack/.wt/lang-742/auto-lang | branch: plan-742-dev |
+  reviewed_commit: 2174f0de28dd786369b2e44e94bfa1a1ac806499 |
+  base_commit: 2c40e1fe4673c2041ae3c366037d7eab38017d81 |
+  dependency_revisions: auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，
+  Notes=1391bd7eb2f6b3b08e9841d30b25125e47ced058，当前制品见baseline |
+  spec_inputs: [baseline.json](attachments/742/review-r5/baseline.json) 五canonical SHA256 |
+  acceptance_results: AC01已验形态pass、AC02fail、AC03原可考范围pass、AC04fail、
+  AC05/06partial（S10/Vue当前独立pass，VM交互未验）|
+  findings: F-742-R5-01(P2比较实参与字符串借用组合)；R4-01旧例闭合，旧20输入全关 |
+  pending_closeout_gates: 修复实参拆分、提交永久oracle并重绑依赖验证；
+  merge规范沉淀/批量到期判定/归档清理 |
+  evidence: [报告](attachments/742/review-r5/REVIEW.md)、
+  [冻结规范增量](attachments/742/review-r5/spec-delta.md) |
+  next: /auto-plan:work 742，同树修复R5-01、更新表达式/类型token诊断与永久实编控制后交接。
+  当前executing 0/3；累计五次final未通过，历史及已通过证据保留。
+
+### 9.4 r5 轮诊断（F-742-R5-01）
+
+| 剩余不变量 | 前轮为何漏掉 | 调整 | 当前结果 |
+|---|---|---|---|
+| 实参切分的 token 语义 | split_top_level_args 的角深度把一切 `<` 当泛型定界——表达式里的比较操作数吞掉了顶层逗号，后续参数错位漏借用 | 判别依据=发射器形态规律：泛型 `<` 紧贴标识符、比较 `<` 两侧带空格；仅 glued-ident 开角，闭合侧饱和递减；fn 单测 + 矩阵 cmp 双端点（失败形+同形控制）实编 | 全关（replay compare_less ok；choose(1 < 2, &s) 精确形态断言） |
+
+- stage: work（r6 修复轮，用户逐轮转发审核结论驱动） | plan_id: 742 |
+  plan_revision: 1 | outcome: pass |
+  worktree_path: D:/autostack/.wt/lang-742/auto-lang | branch: plan-742-dev |
+  base_commit: 2174f0de2（=r5 审核面）| code_commit: 8d59f5e88 |
+  dependency_revisions: auto-down=组内兄弟 detached c39ac7f9 |
+  task_ids: T-1/T-2（本轮修复）；T-3 电池重绑（提交态脚本 S0–S19 fails=0，
+  CLI SHA cc57d2c9…；Vue/S10 制品验证经 r5 审核确认）|
+  evidence: §9.4 + [work-r6 证据包](attachments/742/work-r6/README.md)
+  ——api_gen 49/49×2；tt 5649/5649；r5 replay 全 case 通过（compare_less/
+  compare_greater/compare_control/multiline_literal）| blockers: 无在案
+  未决代码发现。边界沿用：VM autotest 前提；Upload 源码级接线；db.rs 遗留
+  正则债务候选；另见本轮发现的 notes 仓另一会话 S20 WIP 路径缺陷（非
+  742 面，work-r6 README 注记）| next: review（/auto-plan:review r6；
+  审面=8d59f5e88，基面 2174f0de2，工作树冻结待审）
