@@ -5693,6 +5693,71 @@ fn resource_claim_reply(
     }
 }
 
+/// PLAN-776 R7-01：Future 驱动——TAG_FUTURE **逐值来源**臂与 legacy
+/// `0xF0` 位形态臂共用。`None` = future id 查无注册表（调用方落后续
+/// 数据面/受控失败——位模式撞值不受影响）。
+fn drive_future_reply(
+    vm: &std::rc::Rc<AutoVM>,
+    ctx: &DispatchCtx,
+    fid: u32,
+) -> Option<MarshalOutcome> {
+    let fut = vm.futures.get(&fid)?;
+    let (pending, is_external, body_offset) = {
+        let f = fut.read().unwrap();
+        (
+            f.state == crate::vm::engine::FutureState::Pending,
+            f.kind == crate::vm::engine::FutureKind::External,
+            f.body_offset,
+        )
+    };
+    if pending {
+        if is_external {
+            return Some(MarshalOutcome::ParkFuture(fid));
+        }
+        // Internal `~{}`：体由 await 上下文驱动——handler 已 RET，服务端
+        // 就地驱动（handle_await_future）；体内部再挂 External await 时转
+        // AsyncReturnBody 阶段，由完成通知唤醒后续跑体。
+        // PLAN-776 R7-03：task 锁被并发持有（如前序流断连清理）时**不得
+        // 静默跳过驱动**（残留 Pending → 错误终态路径）——有界重试后仍
+        // 失败才放弃（后续 ParkBody/终态判定收口）。
+        let task_id = ctx.handler_task_id;
+        if let Some(task_id) = task_id {
+            if let Some(t_arc) = vm.tasks.get(&task_id) {
+                let mut driven = false;
+                for _ in 0..100 {
+                    if let Ok(mut t) = t_arc.try_lock() {
+                        let _ = vm.handle_await_future(&mut t, fid, body_offset);
+                        driven = true;
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                let _ = driven;
+            }
+        }
+        let fut2 = vm.futures.get(&fid)?;
+        {
+            let f = fut2.read().unwrap();
+            if f.state == crate::vm::engine::FutureState::Ready {
+                let value = f.result.clone();
+                drop(f);
+                return Some(MarshalOutcome::Reply(final_value_reply(vm, ctx, value)));
+            }
+            if f.state == crate::vm::engine::FutureState::Failed {
+                drop(f);
+                return Some(MarshalOutcome::Reply(final_value_reply(vm, ctx, None)));
+            }
+        }
+        // 体仍挂在外层 await 上 → AsyncReturnBody 阶段。
+        if let Some(outer_fid) = ctx_await_outer(vm, ctx) {
+            return Some(MarshalOutcome::ParkBody(fid, outer_fid));
+        }
+        return Some(MarshalOutcome::Reply(final_value_reply(vm, ctx, None)));
+    }
+    let value = fut.read().unwrap().result.clone();
+    Some(MarshalOutcome::Reply(final_value_reply(vm, ctx, value)))
+}
+
 fn marshal_handler_value(
     vm: &std::rc::Rc<AutoVM>,
     ctx: &DispatchCtx,
@@ -5703,6 +5768,14 @@ fn marshal_handler_value(
     // stale 诊断（不误取其他表项）。legacy int 面走下方原路径。
     if let Some(claim) = super::http_return_resource::resolve_resource(vm, nv) {
         return MarshalOutcome::Reply(resource_claim_reply(vm, ctx, claim));
+    }
+    // PLAN-776 R7-01：Future 的**逐值来源**门——TAG_FUTURE 载荷（全部生产
+    // 点：CREATE_FUTURE/External creator 产此形态）即来源证明，**无函数级
+    // 门**（声明/位模式/注册表都不是来源——R5/R6/R7 函数级登记反例）。
+    // 普通 i32（含撞活跃 fid 位形态的 496）永不进入此臂。
+    if auto_val::is_future(nv) {
+        return drive_future_reply(vm, ctx, auto_val::decode_future(nv))
+            .unwrap_or_else(|| MarshalOutcome::Reply(final_value_reply(vm, ctx, None)));
     }
     if auto_val::is_i32(nv) {
         let bits = auto_val::decode_i32(nv);
@@ -5716,60 +5789,12 @@ fn marshal_handler_value(
                 }
                 None => fn_is_api_async(&ctx.route.fn_name),
             };
-            // PLAN-776 R6-03：future 驱动门=**血缘**登记（fn_is_api_async：
-            // ~T 声明 fn ∪ body 返回 ~{} 的 fn——codegen 按返回位登记）。
-            // R5 的「声明 stream 即进门」已撤：位模式撞活跃 fid 的普通数字
-            // （如 496）不得误驱动（F776-R6-03 反例）；future id 查无注册
-            // 表照旧落数据面。
+            // PLAN-776 R7-01：legacy `0xF0` 位形态臂——仅 Value 载体往返
+            // 降级的句柄（容器/捕获 env）在 **~T 声明门**（PLAN-705 原语
+            // 义）内驱动；原生 TAG_FUTURE 载荷走上臂，位模式撞值恒数据。
             if handler_async {
-                if let Some(fut) = vm.futures.get(&fid) {
-                    let (pending, is_external, body_offset) = {
-                        let f = fut.read().unwrap();
-                        (
-                            f.state == crate::vm::engine::FutureState::Pending,
-                            f.kind == crate::vm::engine::FutureKind::External,
-                            f.body_offset,
-                        )
-                    };
-                    if pending {
-                        if is_external {
-                            return MarshalOutcome::ParkFuture(fid);
-                        }
-                        // Internal `~{}`：体由 await 上下文驱动——handler 已
-                        // RET，服务端就地驱动（handle_await_future）；体内部
-                        // 再挂 External await 时转 AsyncReturnBody 阶段，由
-                        // 完成通知唤醒后续跑体。
-                        let task_id = ctx.handler_task_id;
-                        if let Some(task_id) = task_id {
-                            if let Some(t_arc) = vm.tasks.get(&task_id) {
-                                if let Ok(mut t) = t_arc.try_lock() {
-                                    let _ = vm.handle_await_future(&mut t, fid, body_offset);
-                                }
-                            }
-                        }
-                        let Some(fut2) = vm.futures.get(&fid) else {
-                            return MarshalOutcome::Reply(final_value_reply(vm, ctx, None));
-                        };
-                        {
-                            let f = fut2.read().unwrap();
-                            if f.state == crate::vm::engine::FutureState::Ready {
-                                let value = f.result.clone();
-                                drop(f);
-                                return MarshalOutcome::Reply(final_value_reply(vm, ctx, value));
-                            }
-                            if f.state == crate::vm::engine::FutureState::Failed {
-                                drop(f);
-                                return MarshalOutcome::Reply(final_value_reply(vm, ctx, None));
-                            }
-                        }
-                        // 体仍挂在外层 await 上 → AsyncReturnBody 阶段。
-                        if let Some(outer_fid) = ctx_await_outer(vm, ctx) {
-                            return MarshalOutcome::ParkBody(fid, outer_fid);
-                        }
-                        return MarshalOutcome::Reply(final_value_reply(vm, ctx, None));
-                    }
-                    let value = fut.read().unwrap().result.clone();
-                    return MarshalOutcome::Reply(final_value_reply(vm, ctx, value));
+                if let Some(outcome) = drive_future_reply(vm, ctx, fid) {
+                    return outcome;
                 }
             }
         }

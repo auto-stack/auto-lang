@@ -4234,6 +4234,13 @@ fn heap_value(vm: &AutoVM, val: &auto_val::Value) -> auto_val::Value {
 /// Plan 403: string values now decode to Value::Str (actual bytes), not
 /// Value::Int(pool_index) — keeps List<Value> string elements round-tripping.
 fn nv_to_value(nv: auto_val::NanoValue) -> auto_val::Value {
+    if auto_val::is_future(nv) {
+        // PLAN-776 R7-01：Future 句柄入 Value 载体——退化为 legacy 位形态
+        // Int（AWAIT/POLL 兼容臂可解；future_all/race 列表扫描同形）。
+        return Value::Int(crate::vm::engine::AutoVM::encode_future_bits(
+            auto_val::decode_future(nv),
+        ));
+    }
     if auto_val::is_i32(nv) {
         Value::Int(auto_val::decode_i32(nv))
     } else if auto_val::is_object(nv) {
@@ -5578,6 +5585,37 @@ pub fn shim_iterator_next_cooperative(
 /// Stack: iterator_id -> element (or -1 for nil)
 /// Returns: element value, or -1 if exhausted
 // Plan 077 Phase 6: Updated to use unified registry
+/// PLAN-776 R7-02：iterator 消费面**凭据感知**弹栈——TAG_OBJECT Sse 凭据
+///（generator 生产点全部产此形态）解包底层 iterator id；裸 i32 保持原
+/// 语义。返回 (iterator_id, 源是否凭据)。
+pub fn pop_iterator_receiver(task: &mut AutoTask, vm: &AutoVM) -> (u32, bool) {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_object(nv) {
+        if let Some(crate::vm::ffi::http_return_resource::ResourceClaim::Sse { iterator_id }) =
+            crate::vm::ffi::http_return_resource::resolve_resource(vm, nv)
+        {
+            return (iterator_id, true);
+        }
+    }
+    (auto_val::decode_i32(nv) as u32, false)
+}
+
+/// PLAN-776 R7-02：派生 iterator 身份——源为凭据时派生 id 同样包装 Sse
+/// 凭据（身份传播一致，下游 next/terminal 继续可解）；裸源保持裸 id。
+pub fn push_derived_iterator(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    id: u32,
+    from_credential: bool,
+) -> Result<(), VMError> {
+    if from_credential {
+        crate::vm::ffi::http_return_resource::push_sse_resource(task, vm, id)
+    } else {
+        task.ram.push_i32(id as i32);
+        Ok(())
+    }
+}
+
 pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::engine::Iterator;
     use crate::vm::types::ListData;
@@ -6116,7 +6154,8 @@ pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     let func_addr = crate::vm::native::pop_arg_i32(task) as u32;
 
     let _stake_func_addr = crate::vm::native::StakeGuard::new(vm, func_addr as i64 as u64);
-    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（TAG_OBJECT Sse 解包；裸 id 原语义）。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_source_iterator_id =
         crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
@@ -6139,8 +6178,8 @@ pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError
     // Store iterator
     vm.iterators.insert(new_iterator_id, iterator);
 
-    // Return new iterator_id
-    task.ram.push_i32(new_iterator_id as i32);
+    // Return new iterator_id（PLAN-776 R7-02：源为凭据时派生 id 同样包装）。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
     Ok(())
 }
 
@@ -6160,7 +6199,8 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let func_addr = crate::vm::native::pop_arg_i32(task) as u32;
 
     let _stake_func_addr = crate::vm::native::StakeGuard::new(vm, func_addr as i64 as u64);
-    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（TAG_OBJECT Sse 解包；裸 id 原语义）。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_source_iterator_id =
         crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
@@ -6183,8 +6223,8 @@ pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     // Store iterator
     vm.iterators.insert(new_iterator_id, iterator);
 
-    // Return new iterator_id
-    task.ram.push_i32(new_iterator_id as i32);
+    // Return new iterator_id（PLAN-776 R7-02：源为凭据时派生 id 同样包装）。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
     Ok(())
 }
 
@@ -6195,7 +6235,8 @@ pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     use crate::vm::engine::{EnumerateIterator, Iterator};
     use std::sync::atomic::Ordering;
 
-    let source_iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_source_iterator_id =
         crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
@@ -6213,7 +6254,8 @@ pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     });
 
     vm.iterators.insert(new_iterator_id, iterator);
-    task.ram.push_i32(new_iterator_id as i32);
+    // PLAN-776 R7-02：派生 iterator 身份——源为凭据时同样包装。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
     Ok(())
 }
 
@@ -6229,7 +6271,8 @@ pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
     use crate::vm::engine::Iterator;
     use crate::vm::types::ListData;
 
-    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
 
@@ -6295,7 +6338,8 @@ pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     use crate::vm::engine::Iterator;
     use crate::vm::types::ListData;
 
-    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
     let _func_addr = crate::vm::native::pop_arg_i32(task) as u32;
@@ -6356,7 +6400,8 @@ pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use crate::vm::engine::Iterator;
     use crate::vm::types::ListData;
 
-    let iterator_id = crate::vm::native::pop_arg_i32(task) as u32;
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
 
     let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
     let _func_addr = crate::vm::native::pop_arg_i32(task) as u32;

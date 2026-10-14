@@ -240,20 +240,6 @@ impl Default for ApiExtractor {
 /// Convert Type to string representation
 /// PLAN-776 R2-07：类型引用的裸名（alias target 展开输入）——User/泛型
 /// 实例取声明名，内建按显示首词。
-fn bare_type_name(ty: &Type) -> String {
-    match ty {
-        Type::User(td) => td.name.to_string(),
-        Type::GenericInstance(inst) => inst.base_name.to_string(),
-        other => {
-            let full = type_to_string(other);
-            match full.find('<') {
-                Some(i) => full[..i].trim().to_string(),
-                None => full.trim().to_string(),
-            }
-        }
-    }
-}
-
 fn type_to_string(ty: &Type) -> String {
     match ty {
         Type::Int => "int".to_string(),

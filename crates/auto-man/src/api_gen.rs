@@ -7559,57 +7559,6 @@ pub fn download_async(name str) ~FileResponse {{
     }
 
     // =======================================================================
-    #[test]
-    fn plan776_dbg_db_transpile() {
-        let _a2r_env = a2r_env_lock();
-        let variants: Vec<(&str, &str)> = vec![
-            (
-                "colon-use",
-                "use api: Message
-
-pub fn create_message(text str) Message {
-    return Message { id: 7, text: text }
-}
-",
-            ),
-            (
-                "dot-use",
-                "use api.Message
-
-pub fn create_message(text str) Message {
-    return Message { id: 7, text: text }
-}
-",
-            ),
-            (
-                "local-type",
-                "pub type Message = { id: int, text: str }
-
-pub fn create_message(text str) Message {
-    return Message { id: 7, text: text }
-}
-",
-            ),
-            (
-                "colon-use-new",
-                "use api: Message
-
-pub fn create_message(text str) Message {
-    return new Message { id: 7, text: text }
-}
-",
-            ),
-        ];
-        for (tag, db) in variants {
-            match transpile_db_to_rs(db) {
-                Ok(rs) => eprintln!(
-                    "DBG-DB {tag} OK:
-{rs}"
-                ),
-                Err(e) => eprintln!("DBG-DB {tag} ERR: {e:?}"),
-            }
-        }
-    }
 
     // =======================================================================
     // PLAN-776 F776-R6-04 e2e：生成服务 JSON record（route B db 真实转译体）

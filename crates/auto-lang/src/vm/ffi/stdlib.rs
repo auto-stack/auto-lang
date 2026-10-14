@@ -2413,7 +2413,7 @@ pub fn shim_test_delay_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
             );
         });
     }
-    task.ram.push_i32(AutoVM::encode_future_bits(fid));
+    task.ram.push_nv(auto_val::encode_future(fid));
     Ok(())
 }
 
@@ -2427,7 +2427,7 @@ pub fn shim_test_fail_async(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         // enable→check 模式下先完成再等待同样立即可见）。
         crate::vm::ffi::async_http::complete_external_future(&future_arc, Err("failed".into()));
     }
-    task.ram.push_i32(AutoVM::encode_future_bits(fid));
+    task.ram.push_nv(auto_val::encode_future(fid));
     Ok(())
 }
 
@@ -2508,7 +2508,7 @@ pub fn shim_future_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
             }
         });
     }
-    task.ram.push_i32(AutoVM::encode_future_bits(combo));
+    task.ram.push_nv(auto_val::encode_future(combo));
     Ok(())
 }
 
@@ -2551,7 +2551,7 @@ pub fn shim_future_race(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
             }
         });
     }
-    task.ram.push_i32(AutoVM::encode_future_bits(combo));
+    task.ram.push_nv(auto_val::encode_future(combo));
     Ok(())
 }
 
@@ -9672,18 +9672,15 @@ pub fn shim_task_system_run(
 ) -> Result<(), crate::vm::engine::VMError> {
     use crate::vm::engine::{FrameResult, FutureState};
 
-    // Pop the future encoding from stack
-    let future_bits = crate::vm::native::pop_arg_i32(task);
-
-    let _stake_future_bits = crate::vm::native::StakeGuard::new(vm, future_bits as i64 as u64);
-
-    // Decode future ID
-    if (future_bits & 0xFF) != 0xF0 {
+    // Pop the future handle from stack（PLAN-776 R7-01：TAG_FUTURE 逐值载荷
+    // 优先，legacy 位模式兼容臂）。
+    let future_nv = task.ram.pop_nv();
+    task.ram.raw_nv[task.ram.sp] = 0;
+    let Some(future_id) = AutoVM::decode_future_handle(future_nv) else {
         // Not a valid future — push nil and return
         task.ram.push_i32(0);
         return Ok(());
-    }
-    let future_id = (future_bits >> 8) as u32;
+    };
 
     // Look up the future
     let future_arc = match vm.futures.get(&future_id) {

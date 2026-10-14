@@ -127,6 +127,13 @@ fn push_value(vm: &crate::vm::engine::AutoVM, task: &mut AutoTask, v: &auto_val:
 /// 栈 nv → Value（Auto 臂 obj_set 的字段写入转换）。
 fn nv_to_value(vm: &crate::vm::engine::AutoVM, nv: NanoValue) -> auto_val::Value {
     use auto_val::Value;
+    if auto_val::is_future(nv) {
+        // PLAN-776 R7-01：Future 句柄入 Value 载体——退化为 legacy 位形态
+        // Int（与 decode_tagged_nv/native::nv_to_value 同语义）。
+        return Value::Int(crate::vm::engine::AutoVM::encode_future_bits(
+            auto_val::decode_future(nv),
+        ));
+    }
     if auto_val::is_i32(nv) {
         Value::Int(auto_val::decode_i32(nv))
     } else if auto_val::is_string(nv) {

@@ -41,15 +41,6 @@ fn body_contains_yield(body: &crate::ast::Body) -> bool {
     format!("{:?}", body).contains("Yield")
 }
 
-/// PLAN-776 R6-03：fn body 是否**返回** async 块（`return ~{...}`）——
-/// future 驱动门的**血缘**登记（声明无关：~Iter/int 声明的 fn 只要真返回
-/// ~{} 就进门；`let f = ~{...}; return 496` 的普通数字不进门——F776-R6-03
-/// 反例：位模式撞活跃 fid 不得误驱动）。与 body_contains_yield 同款
-/// Debug 串判定（Return(AsyncBlock 精确匹配 return 位，let 赋值不命中）。
-fn body_returns_async_block(body: &crate::ast::Body) -> bool {
-    format!("{:?}", body).contains("Return(AsyncBlock")
-}
-
 // Plan 076 Phase 1: Generic type support
 use crate::vm::generic::{extract_generic_instance, GenericTable};
 // Plan 076 Phase 2: Monomorphization support
@@ -1698,7 +1689,6 @@ impl Codegen {
                 // clear_api_param_sigs 一并清空本表。
                 if matches!(&fn_decl.ret, Type::GenericInstance(inst)
                     if inst.base_name.as_str() == "Future")
-                    || body_returns_async_block(&fn_decl.body)
                 {
                     crate::vm::ffi::http_server::record_api_async_return(&fn_decl.name.to_string());
                 }

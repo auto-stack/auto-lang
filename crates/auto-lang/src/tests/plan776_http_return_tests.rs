@@ -2201,3 +2201,181 @@ fn c() CycA {
         .unwrap();
     assert_eq!(kind, crate::api::contract::ResponseKind::Json);
 }
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_r7 {
+    use super::http_e2e::{get, start_server};
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    fn program() -> String {
+        r#"
+fn events() ~Iter<int> {
+    yield 42
+}
+
+fn future_helper() int {
+    return ~{ 42 }
+}
+
+#[api(method = "GET", path = "/f1")]
+fn f1() ~Iter<int> {
+    let active = ~{ 42 }
+    if false {
+        return ~{ 99 }
+    }
+    return 496
+}
+
+#[api(method = "GET", path = "/f2")]
+fn f2() ~Iter<int> {
+    return future_helper()
+}
+
+#[api(method = "GET", path = "/f0")]
+fn f0() int {
+    let active = ~{ 42 }
+    return 496
+}
+
+#[api(method = "GET", path = "/s3")]
+fn s3() ~Iter<int> {
+    return ~{ events() }
+}
+"#
+        .to_string()
+    }
+
+    /// F776-R7-01（AC-02/03/05）：Future 句柄 **TAG_FUTURE 逐值来源**——
+    /// `f2` helper 传递的真实 Future 被驱动（42）；`f0`/`f1`（含未执行
+    /// `return ~{}` 分支）的普通 496（位模式撞同进程活跃 fid1）恒数据
+    /// （无函数级门——声明/位模式/注册表都不是来源）。
+    #[test]
+    fn http_e2e_plan776_r7_future_tag_value_provenance() {
+        let port = start_server(&program(), 0);
+        let (s2, _, b2) = get(port, "/f2");
+        assert_eq!(
+            (s2, b2.as_slice()),
+            (200, b"42".as_slice()),
+            "helper 真实 Future 驱动"
+        );
+        for path in ["/f0", "/f1"] {
+            let (status, _, body) = get(port, path);
+            assert_eq!(
+                (status, body.as_slice()),
+                (200, b"496".as_slice()),
+                "{path} 普通数字恒数据（死分支语法不进门）"
+            );
+        }
+    }
+
+    /// F776-R7-03 分诊 oracle：S3（`return ~{ events() }`）**有界**出帧
+    ///（头+data:42 帧或 15s 定界失败，失败时附探测区分服务级死锁 vs
+    /// SSE 泵死）。分诊结论：rapid SSE 早断连 churn 下的服务级死锁为
+    /// **预存缺陷**——base `5e21561d2`（776 之前，老查表 SSE）同款实验
+    /// 2/6 复现同形（探测=None，判别 worktree 实验，证据在 verification
+    /// R7 修复轮节），归属 SSE 服务/断连清理域（plan707 轨，KNOWN-DEBT
+    /// P776-D4）；本 oracle 若红即为该预存楔子暴露（在册预存 flake 形态，
+    /// 非 776 回归）。
+    #[test]
+    fn http_e2e_plan776_r7_s3_internal_stream_frames_bounded() {
+        let port = start_server(&program(), 0);
+        let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        s.set_read_timeout(Some(Duration::from_secs(15))).ok();
+        let _ = s.write_all(
+            b"GET /s3 HTTP/1.1
+Host: x
+Connection: close
+
+",
+        );
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 8192];
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        let mut framed = false;
+        loop {
+            let n = s.read(&mut buf).unwrap_or(0);
+            if n > 0 {
+                raw.extend_from_slice(&buf[..n]);
+                if String::from_utf8_lossy(&raw).contains("data: 42") {
+                    framed = true;
+                    break;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                let mut probe = TcpStream::connect(("127.0.0.1", port)).ok();
+                let probe_result = (|| -> Option<String> {
+                    let ps = probe.as_mut()?;
+                    ps.set_read_timeout(Some(Duration::from_secs(3))).ok();
+                    ps.write_all(
+                        b"GET /f0 HTTP/1.1
+Host: x
+Connection: close
+
+",
+                    )
+                    .ok()?;
+                    let mut buf = [0u8; 512];
+                    let n = ps.read(&mut buf).ok()?;
+                    Some(String::from_utf8_lossy(&buf[..n]).into_owned())
+                })();
+                panic!(
+                    "S3 15s 无帧; 探测={probe_result:?}（None=服务级死锁——预存 P776-D4）; 面={}",
+                    String::from_utf8_lossy(&raw)
+                );
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(framed);
+    }
+}
+
+/// F776-R7-02（AC-02/07）：iterator natives **凭据感知全族**——同一底层
+/// iterator（ListData [42] + Iterator::List id0），裸 id 与 Sse 凭据两种
+/// 载荷经 enumerate 均得有效派生句柄（非 -1）；凭据源派生句柄同为凭据
+/// （TAG_OBJECT）且经 next 可迭代出元素（镜 R7 探针 native 模式）。
+#[test]
+fn plan776_r7_iterator_credential_native_family() {
+    use crate::vm::engine::{AutoVM, Iterator, ListIterator};
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+    let list_id = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+        elems: vec![42],
+        storage: None,
+    });
+    vm.iterators.insert(
+        0,
+        Iterator::List(ListIterator {
+            list_id,
+            current_index: 0,
+        }),
+    );
+    vm.iterator_id_gen
+        .store(1, std::sync::atomic::Ordering::Relaxed);
+
+    // 裸 id 控制：enumerate 派生句柄有效（非 -1）。
+    let mut raw_task = AutoTask::new(0, 1024, 0);
+    raw_task.ram.push_i32(0);
+    crate::vm::native::shim_iterator_enumerate(&mut raw_task, &vm).expect("raw enumerate");
+    let raw_handle_nv = raw_task.ram.pop_nv();
+    let raw_handle = auto_val::decode_i32(raw_handle_nv);
+    assert!(raw_handle >= 0, "裸 id 派生句柄: {raw_handle}");
+
+    // 凭据载荷：同一底层表项——enumerate 不再读裸 i32（R7 反例 -1）。
+    let mut cred_task = AutoTask::new(0, 1024, 0);
+    crate::vm::ffi::http_return_resource::push_sse_resource(&mut cred_task, &vm, 0).unwrap();
+    crate::vm::native::shim_iterator_enumerate(&mut cred_task, &vm).expect("credential enumerate");
+    let derived_nv = cred_task.ram.pop_nv();
+    assert!(
+        auto_val::is_object(derived_nv),
+        "凭据源派生句柄应为凭据对象"
+    );
+    // 派生凭据经 next 可迭代（enumerate 产 (idx, elem)——List 臂首元素）。
+    cred_task.ram.push_nv(derived_nv);
+    crate::vm::native::shim_iterator_next(&mut cred_task, &vm).expect("next on derived");
+    let first = cred_task.ram.pop_nv();
+    assert_eq!(auto_val::decode_i32(first), 0, "enumerate 首帧 index=0");
+}

@@ -777,6 +777,24 @@ impl AutoVM {
         ((future_id as i32) << 8) | 0xF0
     }
 
+    /// PLAN-776 R7-01：Future 句柄解码——TAG_FUTURE（逐值来源）优先；
+    /// i32 `0xF0` 位模式为 legacy 兼容臂（句柄经 `Value::Int` 载体往返
+    /// ——容器元素/闭包捕获 env——标签退化为位形态，功能保留）。
+    pub fn decode_future_handle(nv: auto_val::NanoValue) -> Option<u32> {
+        if auto_val::is_future(nv) {
+            Some(auto_val::decode_future(nv))
+        } else if auto_val::is_i32(nv) {
+            let bits = auto_val::decode_i32(nv);
+            if (bits & 0xFF) == 0xF0 {
+                Some((bits >> 8) as u32)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::production();
 
@@ -983,6 +1001,11 @@ impl AutoVM {
                 self.pool_release(str_idx);
                 return copy;
             }
+        } else if auto_val::is_future(nv) {
+            // PLAN-776 R7-01：Future 句柄入 Value 载体（容器/捕获 env）——
+            // Value 无 Future 变体，退化为 legacy 位形态 Int（AWAIT/
+            // POLL 的兼容臂可解；marshal 驱动门只认 TAG_FUTURE 原生载荷）。
+            return auto_val::Value::Int(Self::encode_future_bits(auto_val::decode_future(nv)));
         } else if auto_val::is_i32(nv) {
             // Plan 390 §15 H3b: all heap refs are TAG_OBJECT now (objects/
             // arrays/nodes produce encode_object), so a raw i32 is always a
@@ -4393,6 +4416,12 @@ impl AutoVM {
                                 auto_val::Value::Double(auto_val::decode_f64(nv))
                             } else if auto_val::is_f32(nv) {
                                 auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+                            } else if auto_val::is_future(nv) {
+                                // PLAN-776 R7-01：Future 句柄入数组——退化
+                                // legacy 位形态 Int（future_all/race 扫描同形）。
+                                auto_val::Value::Int(Self::encode_future_bits(
+                                    auto_val::decode_future(nv),
+                                ))
                             } else {
                                 auto_val::Value::Int(auto_val::decode_i32(nv))
                             };
@@ -11505,11 +11534,12 @@ impl AutoVM {
             // Stack layout: [..., future_or_closure:i32]
             OpCode::SPAWN_GO => {
                 // Pop the single value pushed by the Expr::Go codegen.
-                let value = task.ram.pop_i32();
+                let value_nv = task.ram.pop_nv();
 
-                // Decode the value: a Future is encoded as (future_id << 8) | 0xF0.
-                if (value & 0xFF) == 0xF0 {
-                    let future_id = (value >> 8) as u32;
+                // PLAN-776 R7-01：TAG_FUTURE 逐值来源优先（legacy 位模式
+                // 兼容）；非 future 值按 closure id 处理（原语义）。
+                if let Some(future_id) = Self::decode_future_handle(value_nv) {
+                    let value = auto_val::decode_i32(value_nv);
                     // Look up the future to obtain its body offset and
                     // captures, then spawn a background task that starts at
                     // the body offset.
@@ -11558,7 +11588,7 @@ impl AutoVM {
                     // Otherwise treat the value as a closure id. Spawn a
                     // background task at the closure's function address so
                     // that the closure's body runs concurrently.
-                    let closure_id = value as u32;
+                    let closure_id = auto_val::decode_i32(value_nv) as u32;
                     if let Some(closure_guard) = self.closures.get(&closure_id) {
                         let func_addr = closure_guard.func_addr as usize;
                         let _new_task_id = self.spawn_task(func_addr, 1024);
@@ -12563,10 +12593,10 @@ impl AutoVM {
                 self.futures
                     .insert(future_id, Arc::new(RwLock::new(future)));
 
-                // For Phase 2.1, we encode Future on stack as: (future_id << 8) | 0xF0
-                // The 0xF0 marker distinguishes futures from other values
-                let future_bits = ((future_id as i32) << 8) | 0xF0;
-                task.ram.push_i32(future_bits);
+                // PLAN-776 R7-01：Future 句柄走 TAG_FUTURE **逐值来源**载荷
+                //（普通 i32 永不携带 Future 身份——`(fid<<8)|0xF0` 位模式
+                // 撞值即数据；legacy 位形态仅作 Value 往返降级兼容）。
+                task.ram.push_nv(auto_val::encode_future(future_id));
 
                 vm_debug!(
                     "DEBUG: CREATE_FUTURE: id={}, body_offset={}",
@@ -12582,12 +12612,10 @@ impl AutoVM {
                 // await 的同步值（含 return None 的 null nv）按 raw i32
                 // 重推（identity 路径），null 被拍平成 Int(-2147483647)。
                 let future_nv = task.ram.pop_nv();
-                let future_bits = auto_val::decode_i32(future_nv);
 
-                // Check if this is a valid future encoding
-                if (future_bits & 0xFF) == 0xF0 {
-                    let future_id = (future_bits >> 8) as u32;
-
+                // PLAN-776 R7-01：TAG_FUTURE 逐值来源优先；0xF0 位模式为
+                // legacy 兼容臂（非 future 值原样回推——下方 else）。
+                if let Some(future_id) = Self::decode_future_handle(future_nv) {
                     // Look up the future in the registry
                     if let Some(future_arc) = self.futures.get(&future_id) {
                         let future = future_arc.write().unwrap();
@@ -12649,13 +12677,11 @@ impl AutoVM {
             }
             OpCode::POLL_FUTURE => {
                 // Non-blocking poll for future state
-                // Stack: [..., future_bits]
+                // Stack: [..., future_handle]
                 // Returns: (is_ready: bool, value_or_nil)
-                let future_bits = task.ram.pop_i32();
+                let future_nv = task.ram.pop_nv();
 
-                if (future_bits & 0xFF) == 0xF0 {
-                    let future_id = (future_bits >> 8) as u32;
-
+                if let Some(future_id) = Self::decode_future_handle(future_nv) {
                     // Look up the future in the registry
                     if let Some(future_arc) = self.futures.get(&future_id) {
                         let future = future_arc.read().unwrap();
