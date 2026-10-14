@@ -26,6 +26,7 @@ id = "fixture-assets"
 root = "assets/fixture-assets"
 owner = "ui"
 exit_phase = "RX"
+coverage_group = "assets"
 
 [[ownership]]
 id = "fixture-weld-sdk-entry"
@@ -34,6 +35,11 @@ path = "crates/fixture-lang/src/lib.rs"
 owner = "ui"
 exit_phase = "RX"
 status = "active"
+coverage_group = "weld"
+
+# 覆盖组对账（777 r1 复审 F05）：缺组在 strict 判红
+[ownership_coverage]
+required = ["weld", "assets"]
 
 [baseline]
 # 只允许窄豁免：[[baseline.edge_notes]] 逐边 owner + 退出阶段。

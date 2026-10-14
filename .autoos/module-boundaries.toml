@@ -94,10 +94,14 @@ from_domains = ["ui"]
 to_domains = ["man"]
 kinds = ["normal", "build"]
 
-# 跨根 path 依赖（逃出仓根的 normal/build 边）必须 optional——发行/路径锁定规则
-# （Design 37 §6）；当前唯一跨根边 auto-lang→autodown-core 是 optional，存量合规。
+# 语言域禁止反向依赖外置 UI/Man 实现（Design 37 §2“语言”行：禁 auto-ui/auto-man/
+# 桌面应用）。只约束指向外部 ui/man 域的跨根 normal/build 边；跨根依赖本身不要求
+# optional——开发期显式 path、发行期版本/revision 锁定是 Design 37 §6 的既定规则，
+# “必须 optional”没有设计依据（777 r1 复审 F06 裁定）。
 [[rules.forbidden_declared]]
 id = "out-of-root-edges-must-be-optional"
+from_domains = ["lang-monolith", "lang-infra", "runtime"]
+to_domains = ["ui", "man", "man-ecosystem"]
 to_scopes = ["external"]
 kinds = ["normal", "build"]
 
@@ -125,7 +129,7 @@ patterns = [
 
 [[text_scan]]
 id = "ui_to_language"
-description = "UI 五目录对语言实现的文本引用候选（auto_lang:: 前缀）"
+description = "UI 五目录对语言实现的文本引用候选——观察范围仅 auto_lang:: 前缀；crate::ast/vm/parser 等核心路径不在本扫描范围（明确声明的范围边界，非完整架构依赖图）"
 source_roots = [
     "crates/auto-lang/src/ui",
     "crates/auto-lang/src/ui_gen",
@@ -146,42 +150,49 @@ patterns = ["\\bauto_lang::"]
 # ---------------------------------------------------------------------------
 [[assets]]
 id = "aura-schema"
+coverage_group = "assets"
 root = "docs/schema"
 owner = "auto-ui"
 exit_phase = "R6"
 
 [[assets]]
 id = "stdlib-aura"
+coverage_group = "assets"
 root = "stdlib/aura"
 owner = "auto-ui"
 exit_phase = "R6"
 
 [[assets]]
 id = "stdlib-auto"
+coverage_group = "assets"
 root = "stdlib/auto"
 owner = "lang"
 exit_phase = "-"          # 生产标准库留语言仓
 
 [[assets]]
 id = "auto-man-assets"
+coverage_group = "assets"
 root = "crates/auto-man/assets"
 owner = "auto-man"
 exit_phase = "R7"
 
 [[assets]]
 id = "packages"
+coverage_group = "assets"
 root = "packages"
 owner = "split"           # Playground/网站体验留语言仓，其余逐项归属（调研 §4.6）
 exit_phase = "R6"
 
 [[assets]]
 id = "examples-ui"
+coverage_group = "assets"
 root = "examples/ui"
 owner = "auto-ui"
 exit_phase = "R6"
 
 [[assets]]
 id = "iced-patches"
+coverage_group = "assets"
 root = "crates/patches"
 owner = "auto-ui"
 exit_phase = "R6"
@@ -193,6 +204,7 @@ exit_phase = "R6"
 # —— core→UI 焊点（调研 §4.3 表，8 项 + §4.5 AURA 一项）——
 [[ownership]]
 id = "weld-sdk-ui-facade"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/src/lib.rs"
 owner = "auto-ui"
@@ -202,6 +214,7 @@ evidence = "调研 §4.3：lib.rs:4411/4426 WidgetRegistry 参数、4513/5494 Dy
 
 [[ownership]]
 id = "weld-vm-ui-natives"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/src/vm/native.rs"
 owner = "auto-ui"
@@ -211,6 +224,7 @@ evidence = "调研 §4.3：vm/native.rs:1612-2391 编辑器/clipboard/scroll 直
 
 [[ownership]]
 id = "weld-media-asset-types"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/src/vm/ffi/stdlib.rs"
 owner = "runtime+auto-ui"
@@ -220,6 +234,7 @@ evidence = "调研 §4.3：stdlib.rs:34/4933/4960 MediaAssetKey/MediaAssetTicket
 
 [[ownership]]
 id = "weld-term-engine-loader"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/src/vm/ffi/term_engine.rs"
 owner = "runtime+auto-ui"
@@ -229,6 +244,7 @@ evidence = "调研 §4.3：term_engine.rs 多处调用 ui::term_engine_loader"
 
 [[ownership]]
 id = "weld-back-proxy-media"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/src/back_proxy.rs"
 owner = "app-host"
@@ -238,6 +254,7 @@ evidence = "调研 §4.3：back_proxy.rs:151 持有 MediaIndex、:1069 返回 Ph
 
 [[ownership]]
 id = "weld-a2r-std-ui-calls"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/src/a2r_std.rs"
 owner = "runtime"
@@ -247,6 +264,7 @@ evidence = "调研 §4.3：a2r_std.rs:1231-1306 调 ui::frame_bench 与 code_edi
 
 [[ownership]]
 id = "weld-database-ui-artifacts"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/src/database/mod.rs"
 owner = "lang-core"
@@ -256,6 +274,7 @@ evidence = "调研 §4.3：database/mod.rs:27-33 导出 UIArtifact/UICache"
 
 [[ownership]]
 id = "weld-build-rs-scan"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/build.rs"
 owner = "lang-build"
@@ -265,6 +284,7 @@ evidence = "调研 §4.3：build.rs:39 扫 ui_gen、91-107 扫整个 crates 与�
 
 [[ownership]]
 id = "weld-aura-validate-generator-dep"
+coverage_group = "core-ui-weld"
 kind = "weld"
 path = "crates/auto-lang/src/aura/validate.rs"
 owner = "ui-core"
@@ -272,9 +292,51 @@ exit_phase = "R4"
 status = "active"
 evidence = "调研 §4.5：aura/validate.rs:20 反引 ui_gen::widget::AUTO_IMPORTED_WIDGETS（基础 IR 依赖生成器）"
 
+# —— 语法/AST/Dialect 焊点（调研 §4.1/§4.2；777 r1 复审 F05 补登记）——
+[[ownership]]
+id = "weld-ast-ui-variants"
+kind = "weld"
+path = "crates/auto-lang/src/ast.rs"
+owner = "auto-ui"
+exit_phase = "R8"
+status = "active"
+coverage_group = "grammar-ast-dialect"
+evidence = "调研 §4.1：ast.rs:207,220-236 闭合 Stmt enum 拥有 WidgetDecl/StoreDecl/ViewFragmentDecl 等 UI 变体；兼容期实现分离（R4）后终态 UiAst 退出（R8），Rust 下游 crate 无法给上游 enum 增变体"
+
+[[ownership]]
+id = "weld-parser-ui-grammar"
+kind = "weld"
+path = "crates/auto-lang/src/parser.rs"
+owner = "lang-core"
+exit_phase = "R1"
+status = "active"
+coverage_group = "grammar-ast-dialect"
+evidence = "调研 §4.1/§4.2：UI 文法在核心 parser（build_dialects 硬编码 UiDialect、store 绕过方言表、atom() 内 UI 判别）；ParserBridge/外部方言探针（778=R1）后按族迁移"
+
+[[ownership]]
+id = "weld-dialect-bridge"
+kind = "weld"
+path = "crates/auto-lang/src/dialect.rs"
+owner = "lang-core"
+exit_phase = "R1"
+status = "active"
+coverage_group = "grammar-ast-dialect"
+evidence = "调研 §4.2：Dialect trait 存在但不具备外部实现能力（方法收 &mut Parser、in_on_body 等 pub(crate) 状态、with_session 重建方言表）；先最小 ParserBridge 再迁全部文法"
+
+[[ownership]]
+id = "weld-dialect-ui"
+kind = "weld"
+path = "crates/auto-lang/src/dialect/ui.rs"
+owner = "auto-ui"
+exit_phase = "R1"
+status = "active"
+coverage_group = "grammar-ast-dialect"
+evidence = "调研 §4.1/§4.2：UiDialect 仍调 Parser 内 UI 方法；widget/msg/model/component/actions/style 经 Ident 上下文派发；core view 参数模式与 task on 必须保留"
+
 # —— UI 侧反向焊点（调研 §5.3）——
 [[ownership]]
 id = "weld-ui-app-registry-pac"
+coverage_group = "project-model"
 kind = "weld"
 path = "crates/auto-lang/src/ui/app_registry.rs"
 owner = "project-model"
@@ -285,6 +347,7 @@ evidence = "调研 §5.3：ui/app_registry.rs 平铺文本读 pac；项目元信
 # —— auto-man 拆分项（调研 §5.2 表）——
 [[ownership]]
 id = "split-man-package-core"
+coverage_group = "man-split"
 kind = "split"
 path = "crates/auto-man/src/pac.rs"
 owner = "man-core"
@@ -294,6 +357,7 @@ evidence = "调研 §5.2：pac/git/index/lock/pull/resolver 归 man core；resol
 
 [[ownership]]
 id = "split-man-ui-orchestration"
+coverage_group = "man-split"
 kind = "split"
 path = "crates/auto-man/src/vue.rs"
 owner = "auto-ui-tool-plugin"
@@ -303,6 +367,7 @@ evidence = "调研 §5.2：vue/vue_shadcn/rust_ui/jet/ark/tauri、gallery/wm/ima
 
 [[ownership]]
 id = "split-man-service-gen"
+coverage_group = "man-split"
 kind = "split"
 path = "crates/auto-man/src/api_gen.rs"
 owner = "lang-service-adapter"
@@ -312,6 +377,7 @@ evidence = "调研 §5.2：api_gen/http_service/tauri_backend 通用部分归语
 
 [[ownership]]
 id = "split-man-http-service"
+coverage_group = "man-split"
 kind = "split"
 path = "crates/auto-man/src/http_service.rs"
 owner = "lang-service-adapter"
@@ -321,6 +387,7 @@ evidence = "调研 §5.2：通用 HTTP/API 生成不因历史服务 UI 就归 UI
 
 [[ownership]]
 id = "split-gen-template-engine"
+coverage_group = "man-split"
 kind = "split"
 path = "crates/auto-gen/src/lib.rs"
 owner = "man-ecosystem"
@@ -330,6 +397,7 @@ evidence = "调研 §5.2：auto-gen 拆纯模板核心与 Auto 可执行模板 a
 
 [[ownership]]
 id = "split-man-rust-ui"
+coverage_group = "man-split"
 kind = "split"
 path = "crates/auto-man/src/rust_ui.rs"
 owner = "auto-ui-tool-plugin"
@@ -337,9 +405,30 @@ exit_phase = "R5"
 status = "active"
 evidence = "调研 §5.2：rust_ui 164 行引用面属 UI 工程编排（与 vue.rs 共 19,243 行）"
 
+[[ownership]]
+id = "split-man-build-scheduling"
+kind = "split"
+path = "crates/auto-man/src/builder"
+owner = "man-core"
+exit_phase = "R5"
+status = "active"
+coverage_group = "man-split"
+evidence = "调研 §5.2：builder/{cargo,ninja}、target、工具发现/进程执行 → auto-man core + build provider"
+
+[[ownership]]
+id = "split-cli-thin-entry"
+kind = "split"
+path = "crates/auto/src/main.rs"
+owner = "auto-man"
+exit_phase = "R5"
+status = "active"
+coverage_group = "cli-top"
+evidence = "调研 §5.2：auto CLI（Run/Build/Ui/Bp/Tauri/Serve 等）→ auto-man 仓薄入口 + provider 路由，保留用户命令"
+
 # —— 外部消费方（根外只读登记；调研 §4.6 抽查，非完整生态审计）——
 [[ownership]]
 id = "consumer-auto-os"
+coverage_group = "external-consumers"
 kind = "consumer"
 path = "../auto-os"
 owner = "external"
@@ -350,6 +439,7 @@ evidence = "调研 §4.6：desktop.ps1 验证 auto-lang+examples/desktop-host �
 
 [[ownership]]
 id = "consumer-auto-down"
+coverage_group = "external-consumers"
 kind = "consumer"
 path = "../auto-down"
 owner = "external"
@@ -360,6 +450,7 @@ evidence = "调研 §4.6：jade-garden/back/server 用 auto-lang 绝对 path；�
 
 [[ownership]]
 id = "consumer-auto-term"
+coverage_group = "external-consumers"
 kind = "consumer"
 path = "../auto-term"
 owner = "external"
@@ -370,6 +461,7 @@ evidence = "调研 §4.6：at-gen 指向 language runtime 并可开 UI"
 
 [[ownership]]
 id = "consumer-auto-shell"
+coverage_group = "external-consumers"
 kind = "consumer"
 path = "../auto-shell"
 owner = "external"
@@ -380,6 +472,7 @@ evidence = "调研 §4.6：主库直接依赖 auto-lang（关闭默认 feature�
 
 [[ownership]]
 id = "consumer-auto-ai"
+coverage_group = "external-consumers"
 kind = "consumer"
 path = "../auto-ai"
 owner = "external"
@@ -387,6 +480,20 @@ exit_phase = "-"
 status = "active"
 outside_root = true
 evidence = "调研 §4.6：消费 auto-atom/auto-val/a2r-std"
+
+# ---------------------------------------------------------------------------
+# ownership 覆盖组对账：调研责任类别 → 必需组；任一必需组没有 active 条目即 strict 判红
+# ---------------------------------------------------------------------------
+[ownership_coverage]
+required = [
+    "core-ui-weld",          # 调研 §4.3 八焊点 + §4.5 AURA 分层
+    "grammar-ast-dialect",   # 调研 §4.1/§4.2 关键字/AST/Dialect
+    "project-model",         # 调研 §5.3 项目元信息单源
+    "man-split",             # 调研 §5.2 man core/适配器/build 调度
+    "cli-top",               # 调研 §5.2 auto CLI 薄入口
+    "assets",                # 调研 §4.6 资产归属
+    "external-consumers",    # 调研 §4.6 外部消费方
+]
 
 # ---------------------------------------------------------------------------
 # 基线（生成物为 .autoos/module-boundaries-baseline.json；--refresh-baseline 刷新）

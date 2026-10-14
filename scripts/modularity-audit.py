@@ -13,9 +13,11 @@ ownership 覆盖与 strict 增量判红。不编译、不写任何输入文件�
   对照——锁缺失/不满足时记录依赖调查缺口，绝不自动更新，也不作为编译验收。
 - 文本引用只是候选，不是解析后的语义依赖边；别名/re-export/宏展开为已知盲区，
   在报告 scanner_limitations 中显式声明。
-- 观察模式（observe）覆盖全仓，只报告不判红；strict 只判冻结基线之外的新增禁向边，
-  存量边以窄豁免（逐边 owner + 退出阶段）grandfather；过期基线/脏树/宽豁免确定性失败，
-  不能默默通行。
+- 观察模式（observe）覆盖全仓，只报告不判红；strict 判当前工作树边集对照冻结基线：
+  新增禁向边（完整声明身份，含 optional/scope）无论是否已提交都会点名；存量禁向边
+  以窄豁免（逐边 owner + 退出阶段）grandfather；过期基线/宽豁免/ownership 覆盖缺口
+  确定性失败，不能默默通行。脏树不判红（未提交变更本就在判定面内）；--refresh-baseline
+  拒绝脏树（冻结必须绑定干净受管树的实际 HEAD）。
 
 payload 稳定性契约：同一输入（同一 HEAD、同一受管内容、同一配置/基线文件）两次扫描
 输出字节一致；不含时间戳、不含检出绝对路径。
@@ -343,21 +345,28 @@ def extract_declared_edges(root: Path) -> tuple[list[dict], list[str], dict]:
             gaps.append(f"member manifest TOML 错误 {member.name}: {exc}")
             continue
 
-        dep_sections: list[tuple[str, str | None]] = [
-            ("dependencies", None), ("dev-dependencies", None), ("build-dependencies", None),
+        # 每个 target 表必须携带自己的依赖表：只存 (section, target_key) 会在读取时
+        # 复用外层循环最后留下的 target 表，导致多 target 声明互相覆盖/漏报（F777-R1-01）。
+        dep_sections: list[tuple[str, str | None, dict | None]] = [
+            ("dependencies", None, None),
+            ("dev-dependencies", None, None),
+            ("build-dependencies", None, None),
         ]
         for target_key, target_sec in (data.get("target") or {}).items():
             for section in ("dependencies", "dev-dependencies", "build-dependencies"):
-                dep_sections.append((section, target_key))
+                dep_sections.append((section, target_key, target_sec))
 
-        for section, target_key in dep_sections:
-            table = data.get(section) if target_key is None else (target_sec or {}).get(section)
+        for section, target_key, target_table in dep_sections:
+            table = data.get(section) if target_key is None else (target_table or {}).get(section)
             kind = {"dependencies": "normal", "dev-dependencies": "dev",
                     "build-dependencies": "build"}[section]
             for dep_key, spec in (table or {}).items():
                 if isinstance(spec, str):
                     spec = {"version": spec}
                 spec = dict(spec or {})
+                # path 的解析基点：workspace.dependencies 继承的 path 相对 workspace 根；
+                # 成员 manifest 自身声明的 path 相对成员目录（F777-R1-02，对齐 Cargo 语义）。
+                path_base = member
                 if spec.pop("workspace", False) and dep_key in workspace_deps:
                     inherited = workspace_deps[dep_key]
                     if isinstance(inherited, str):
@@ -365,10 +374,11 @@ def extract_declared_edges(root: Path) -> tuple[list[dict], list[str], dict]:
                     inherited = dict(inherited or {})
                     inherited.update({k: v for k, v in spec.items() if v is not None})
                     spec = inherited
+                    path_base = root
                 path_value = spec.get("path")
                 if not isinstance(path_value, str):
                     continue
-                target_dir = (member / path_value).resolve()
+                target_dir = (path_base / path_value).resolve()
                 target_manifest = target_dir / "Cargo.toml"
                 target_name = manifest_package_name(target_manifest)
                 if target_dir in member_dirs:
@@ -693,11 +703,12 @@ def run_text_scans(root: Path, tracked: list[str], scan_configs: list[dict]) -> 
 # ownership / 资产层
 # ---------------------------------------------------------------------------
 
-def check_ownership(root: Path, entries: list[dict]) -> dict:
+def check_ownership(root: Path, entries: list[dict], asset_cfgs: list[dict] | None = None) -> dict:
     results = []
     missing = []
     outside = 0
     by_owner: dict[str, int] = {}
+    groups: set[str] = set()
     for entry in entries:
         path = entry.get("path", "")
         is_outside = bool(entry.get("outside_root", False))
@@ -710,6 +721,9 @@ def check_ownership(root: Path, entries: list[dict]) -> dict:
                 missing.append(path)
         owner = entry.get("owner", "unassigned")
         by_owner[owner] = by_owner.get(owner, 0) + 1
+        group = entry.get("coverage_group", "")
+        if group and entry.get("status", "active") == "active":
+            groups.add(group)
         results.append({
             "id": entry.get("id", ""),
             "kind": entry.get("kind", "weld"),
@@ -717,16 +731,22 @@ def check_ownership(root: Path, entries: list[dict]) -> dict:
             "owner": owner,
             "exit_phase": entry.get("exit_phase", ""),
             "status": entry.get("status", "active"),
+            "coverage_group": group,
             "exists": exists,
             "outside_root": is_outside,
         })
     results.sort(key=lambda r: (r["kind"], r["id"]))
+    for asset in asset_cfgs or []:
+        group = asset.get("coverage_group", "")
+        if group:
+            groups.add(group)
     return {
         "entries": results,
         "entry_count": len(results),
         "paths_missing": sorted(missing),
         "outside_root_count": outside,
         "by_owner": dict(sorted(by_owner.items())),
+        "groups_present": sorted(groups),
     }
 
 
@@ -810,10 +830,80 @@ def edge_sort_key(edge: dict):
 
 
 def baseline_edge_keys(baseline: dict) -> set[tuple]:
+    """豁免绑定冻结时实际存在的完整声明身份（含 optional/scope/dep_key）：
+    只按包名对匹配会让 optional 激活、scope 变化等新禁向性质冒充存量豁免（F777-R1-04）。"""
     keys = set()
     for e in baseline["declared_edges"]:
-        keys.add((e["from"], e["to"], e["kind"], e["target"]))
+        keys.add((
+            e["from"], e["to"], e["kind"], e["target"],
+            e.get("optional", False), e.get("to_scope"), e.get("dep_key"),
+        ))
     return keys
+
+
+def current_edge_key(edge: dict) -> tuple:
+    return (
+        edge["from"], edge["to"], edge["kind"], edge["target"],
+        edge["optional"], edge["to_scope"], edge["dep_key"],
+    )
+
+
+def rule_is_direction_based(rule: dict) -> bool:
+    """禁向规则必须基于依赖方向（from/to 域约束）；scope-only 规则不构成方向判定，
+    按惰性规则处理并记录警告——不得据此禁掉合法方向的依赖（F777-R1-06）。"""
+    return bool(rule.get("from_domains")) or bool(rule.get("to_domains"))
+
+
+# ---------------------------------------------------------------------------
+# 只读守卫：报告输出不得覆盖审计输入（F777-R1-03）
+# ---------------------------------------------------------------------------
+
+def same_file(a: Path, b: Path) -> bool:
+    return a.resolve() == b.resolve()
+
+
+def guard_output_target(
+    out_path: Path, root: Path, config_path: Path,
+    baseline_path: Path | None, tracked: list[str],
+) -> None:
+    """--output 写入前守卫：拒绝覆盖配置/基线/任何受管输入或扫描根内既有文件。"""
+    resolved = out_path.resolve()
+    if config_path is not None and same_file(out_path, config_path):
+        raise ConfigError(f"拒绝输出到审计输入（边界配置）: {out_path}")
+    if baseline_path is not None and same_file(out_path, baseline_path):
+        raise ConfigError(f"拒绝输出到审计输入（冻结基线）: {out_path}")
+    try:
+        rel = resolved.relative_to(root.resolve())
+    except ValueError:
+        return  # 扫描根之外：安全另存
+    rel_posix = rel.as_posix()
+    if rel_posix in set(tracked):
+        raise ConfigError(f"拒绝输出覆盖受管输入文件: {rel_posix}")
+    if resolved.exists():
+        raise ConfigError(
+            f"拒绝输出覆盖扫描根内既有文件: {rel_posix}（报告必须另存，不得改写任何输入）"
+        )
+
+
+def guard_refresh_target(baseline_path: Path, config_path: Path) -> None:
+    """--refresh-baseline 写入前守卫：只准写合法的基线目标。
+    允许：尚不存在的新目标、既有内容可解析为本工具基线 schema 的文件（含受管基线的
+    周期性重冻结）；拒绝：任何其他既有输入（配置/manifest/受管源文件等）。"""
+    if same_file(baseline_path, config_path):
+        raise ConfigError("拒绝把基线目标指向边界配置（输入）")
+    if not baseline_path.exists():
+        return
+    text = read_text_or_none(baseline_path)
+    if text is not None:
+        try:
+            data = json.loads(text)
+            if data.get("schema") == BASELINE_SCHEMA:
+                return  # 既有基线的合法重冻结
+        except json.JSONDecodeError:
+            pass
+    raise ConfigError(
+        f"拒绝刷新到非法基线目标（该文件已存在且不是本工具的冻结基线）: {baseline_path.name}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -846,9 +936,33 @@ def rule_matches(rule: dict, edge: dict, domains_cfg: dict) -> bool:
 
 def violating_rule(edge: dict, rules: list[dict], domains_cfg: dict) -> dict | None:
     for rule in rules:
+        if not rule_is_direction_based(rule):
+            continue  # scope-only 规则惰性：不构成方向判定（F777-R1-06）
         if rule_matches(rule, edge, domains_cfg):
             return rule
     return None
+
+
+def inert_rules(rules: list[dict]) -> list[dict]:
+    return [
+        {"id": r.get("id", "unnamed"),
+         "reason": "规则未声明 from_domains/to_domains 任何方向约束，按惰性处理；"
+                   "禁向判定必须基于依赖方向（F777-R1-06）"}
+        for r in rules if not rule_is_direction_based(r)
+    ]
+
+
+def ownership_coverage(config: dict, ownership_result: dict) -> dict:
+    """对照配置声明的必需覆盖组核对 ownership/assets 归类；缺组=配置覆盖缺口（F777-R1-05）。"""
+    required = config.get("ownership_coverage", {}).get("required", [])
+    present = set(ownership_result.get("groups_present", []))
+    missing = [g for g in required if g not in present]
+    return {
+        "required": list(required),
+        "present": sorted(present),
+        "missing": missing,
+        "ok": not missing,
+    }
 
 
 def evaluate_strict(
@@ -869,13 +983,15 @@ def evaluate_strict(
     # strict 判的是当前工作树的边集（未提交的变更也在被判定面内）：
     # 新增禁向边无论是否已提交都会点名，不存在脏树静默通过的漏洞；
     # 干净树要求只在 --refresh-baseline（冻结必须绑定干净树的实际 HEAD）。
+    for inert in inert_rules(rules):
+        warnings.append(f"惰性规则（不参与判定）: {inert['id']} — {inert['reason']}")
 
     base_keys = baseline_edge_keys(baseline)
     for edge in declared_edges:
         rule = violating_rule(edge, rules, domains_cfg)
         if rule is None:
             continue
-        key = (edge["from"], edge["to"], edge["kind"], edge["target"])
+        key = current_edge_key(edge)
         note = notes.get((edge["from"], edge["to"], edge["kind"]))
         if key in base_keys:
             if note and note.get("status", "active") == "revoked":
@@ -900,17 +1016,16 @@ def evaluate_strict(
                 "type": "new_forbidden_edge",
                 "rule": rule.get("id"),
                 "edge": edge,
-                "detail": "冻结基线之外的新增禁向声明边",
+                "detail": "冻结基线之外的新增禁向声明边（完整声明身份含 optional/scope）",
             })
 
-    current_keys = {(e["from"], e["to"], e["kind"], e["target"]) for e in declared_edges}
+    current_keys = {current_edge_key(e) for e in declared_edges}
     resolved = sorted(
         {" -> ".join([k[0], k[1], k[2]]) + (f" [{k[3]}]" if k[3] else "") for k in base_keys - current_keys}
     )
     new_keys = current_keys - base_keys
     for edge in declared_edges:
-        if ((edge["from"], edge["to"], edge["kind"], edge["target"]) in new_keys
-                and violating_rule(edge, rules, domains_cfg) is None):
+        if current_edge_key(edge) in new_keys and violating_rule(edge, rules, domains_cfg) is None:
             new_allowed.append(edge)
 
     if cross_check.get("ok") is True and cross_check.get("discrepancies"):
@@ -938,6 +1053,14 @@ def evaluate_strict(
             + ", ".join(ownership["paths_missing"][:10])
         )
 
+    coverage = ownership_coverage(config, ownership)
+    if coverage["missing"]:
+        violations.append({
+            "type": "ownership_coverage_gap",
+            "detail": "必需覆盖组缺少任何 active 归类条目（调研责任类别对账失败，不能只验已登记 path 存在）",
+            "missing_groups": coverage["missing"],
+        })
+
     verdict = "fail" if violations else "pass"
     return {
         "verdict": verdict,
@@ -946,6 +1069,7 @@ def evaluate_strict(
         "grandfathered": grandfathered,
         "new_allowed_edges": new_allowed,
         "resolved_edges": resolved,
+        "ownership_coverage": coverage,
     }
 
 
@@ -965,13 +1089,17 @@ METHOD = {
                        "启发式分类（code/comment/doc/string/test/macro）；文本命中是候选，"
                        "不是解析后的语义依赖边；盲区见 scanner_limitations",
     "ownership": "按配置声明焊点/资产/consumer 的 owner 与退出阶段；路径存在性核对仅限扫描根内，"
-                 "根外 consumer 只登记不核对",
+                 "根外 consumer 只登记不核对；对照 ownership_coverage.required 必需组核对覆盖，"
+                 "缺组在 strict 判红（不能只验证已登记 path 存在）",
     "assets": "受管文件按配置资产根计数（文件数/字节数/扩展名分布）",
     "stability": "同一输入两次扫描 payload 字节一致；无时间戳、无检出绝对路径；"
-                 "报告只读生成、另行保存，不回写输入",
-    "strict": "只判冻结基线之外的新增禁向边；存量禁向边必须逐边 edge_note（owner+exit_phase）"
-              "方可 grandfather； revoked 边再现判红；基线锚定 base_revision 的"
-              " manifest/配置锚定面（基线文件自身落库除外）；脏树判红；宽豁免在配置加载即拒绝",
+                 "报告只读生成、另行保存，不回写输入（输出/刷新目标写入前有输入冲突守卫）",
+    "strict": "判当前工作树边集对照冻结基线：新增禁向边按完整声明身份（含 optional/scope/dep_key）"
+              "点名，未提交变更同样在判定面内；存量禁向边必须逐边 edge_note（owner+exit_phase）"
+              "方可 grandfather；optional 激活等新禁向性质不得冒充存量豁免；revoked 边再现判红；"
+              "基线锚定 base_revision 的 manifest/配置锚定面（基线文件自身落库除外）；"
+              "scope-only 无方向约束的规则惰性（不构成方向判定）；"
+              "ownership 覆盖缺组判红；宽豁免在配置加载即拒绝",
 }
 
 
@@ -1052,7 +1180,7 @@ def refresh_baseline(
 # 审计主流程
 # ---------------------------------------------------------------------------
 
-def audit(root: Path, args) -> tuple[dict, int]:
+def audit(root: Path, args) -> tuple[dict, int, dict]:
     config_path = (
         Path(args.config) if args.config else root / DEFAULT_CONFIG_RELPATH
     )
@@ -1089,12 +1217,16 @@ def audit(root: Path, args) -> tuple[dict, int]:
         "extraction_gaps": gaps,
         "cross_check": cross_check,
         "forbidden_rules": config.get("rules", {}).get("forbidden_declared", []),
+        "inert_rules": inert_rules(config.get("rules", {}).get("forbidden_declared", [])),
     }
 
     text_candidates = run_text_scans(
         root, tracked, config.get("text_scan", [])
     )
-    ownership = check_ownership(root, config.get("ownership", []))
+    ownership = check_ownership(
+        root, config.get("ownership", []), config.get("assets", [])
+    )
+    ownership["coverage"] = ownership_coverage(config, ownership)
     assets = summarize_assets(root, tracked, config.get("assets", []))
 
     strict = None
@@ -1139,7 +1271,8 @@ def audit(root: Path, args) -> tuple[dict, int]:
         revision, sizes, files, assets,
         declared_edges_section, text_candidates, ownership, strict,
     )
-    return report, exit_code
+    guard_ctx = {"config_path": config_path, "baseline_path": baseline_path, "tracked": tracked}
+    return report, exit_code, guard_ctx
 
 
 # ---------------------------------------------------------------------------
@@ -1179,20 +1312,30 @@ def make_fixture_repo(scenario: str) -> Path:
     return repo
 
 
-def run_audit_cli(script: Path, repo: Path, *extra: str) -> tuple[int, dict | None, str]:
-    out_path = repo.parent / "report.json"
+def run_audit_cli(script: Path, repo: Path, *extra: str, output: str | None = None) -> tuple[int, dict | None, str]:
+    out_arg = output if output is not None else str(repo.parent / "report.json")
     proc = subprocess.run(
         [sys.executable, str(script), "--root", str(repo),
-         "--output", str(out_path), *extra],
+         "--output", out_arg, *extra],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     report = None
+    out_path = Path(out_arg)
     if out_path.exists():
         try:
             report = json.loads(out_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             report = None
     return proc.returncode, report, proc.stderr
+
+
+def run_audit_raw(script: Path, repo: Path, *extra: str) -> tuple[int, str]:
+    """按调用者给定的参数原样执行（用于 --output 指向输入等守卫反例）。"""
+    proc = subprocess.run(
+        [sys.executable, str(script), "--root", str(repo), *extra],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    return proc.returncode, proc.stderr
 
 
 def mutate(repo: Path, relpath: str, old: str, new: str, scenario: str) -> None:
@@ -1405,12 +1548,188 @@ def scenario_v04d(script: Path) -> str:
     return "V-04d 宽豁免：[baseline].exempt_paths 目录级豁免 → 配置加载即拒绝"
 
 
+def scenario_v05(script: Path) -> str:
+    """F777-R1-01 永久反例：多个 target 依赖表必须各自读取，不得互相覆盖。"""
+    repo = make_fixture_repo("v05")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v05] 基线刷新成功", err[:300])
+    manifest = repo / "crates/fixture-lang/Cargo.toml"
+    before = manifest.read_text(encoding="utf-8")
+    after = before + (
+        "\n[target.'cfg(windows)'.dependencies]\n"
+        "fixture-ui-kit = { path = \"../fixture-ui-kit\" }\n"
+        "\n[target.'cfg(unix)'.dependencies]\n"
+        "fixture-lang-sdk = { path = \"../fixture-lang-sdk\" }\n"
+    )
+    manifest.write_text(after, encoding="utf-8", newline="\n")
+    st_check(after != before and "cfg(unix)" in manifest.read_text(encoding="utf-8"),
+             "[v05] 双 target 变更落盘证明")
+    # 先核观察层提取：两条 target 边都存在且 target 值正确
+    code, rep, err = run_audit_cli(script, repo, "--mode", "observe")
+    st_check(code == 0, "[v05] observe 提取成功", err[:300])
+    edges = {(e["to"], e["target"]): e for e in rep["declared_edges"]["edges"]
+             if e["from"] == "fixture-lang"}
+    st_check(("fixture-ui-kit", "cfg(windows)") in edges,
+             "[v05] Windows target 边被提取（不被后表覆盖）", json.dumps(list(edges))[:300])
+    st_check(("fixture-lang-sdk", "cfg(unix)") in edges,
+             "[v05] Unix target 边被提取", json.dumps(list(edges))[:300])
+    st_check(not rep["declared_edges"]["extraction_gaps"],
+             "[v05] 无未解析缺口", json.dumps(rep["declared_edges"]["extraction_gaps"])[:200])
+    # strict：Windows core→UI 判红点名；Unix →SDK（lang-core 内部）不误红
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v05] Windows 禁向边判红", f"exit={code}")
+    violations = rep["strict"]["violations"]
+    hits = [v for v in violations if v["type"] == "new_forbidden_edge"
+            and v["edge"]["to"] == "fixture-ui-kit"]
+    st_check(len(hits) == 1 and hits[0]["edge"]["target"] == "cfg(windows)",
+             "[v05] 判红点名 Windows core→UI 边", json.dumps(violations)[:300])
+    st_check(not [v for v in violations if v.get("edge", {}).get("to") == "fixture-lang-sdk"],
+             "[v05] Unix →SDK 边不误红")
+    shutil.rmtree(repo.parent, ignore_errors=True)
+    return "V-05 多 target 表：各表独立提取；Windows core→UI 判红、Unix →SDK 不误红"
+
+
+def scenario_v06(script: Path) -> str:
+    """F777-R1-02 永久反例：workspace.dependencies 继承的 path 按 workspace 根解析。"""
+    repo = make_fixture_repo("v06")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v06] 基线刷新成功", err[:300])
+    root_manifest = repo / "Cargo.toml"
+    root_after = root_manifest.read_text(encoding="utf-8") + (
+        "\n[workspace.dependencies]\n"
+        "fixture-ui-kit = { path = \"crates/fixture-ui-kit\" }\n"
+    )
+    root_manifest.write_text(root_after, encoding="utf-8", newline="\n")
+    manifest = repo / "crates/fixture-lang/Cargo.toml"
+    before = manifest.read_text(encoding="utf-8")
+    after = before + "\n[dependencies]\nfixture-ui-kit = { workspace = true }\n"
+    manifest.write_text(after, encoding="utf-8", newline="\n")
+    st_check("workspace = true" in manifest.read_text(encoding="utf-8")
+             and "workspace.dependencies" in root_manifest.read_text(encoding="utf-8"),
+             "[v06] 继承声明落盘证明")
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v06] 继承的 core→UI 边判红", f"exit={code}")
+    edges = [e for e in rep["declared_edges"]["edges"]
+             if e["from"] == "fixture-lang" and e["to"] == "fixture-ui-kit"]
+    st_check(len(edges) == 1 and edges[0]["to_scope"] == "member",
+             "[v06] 继承 path 按 workspace 根解析到成员（非 unresolved）",
+             json.dumps(rep["declared_edges"]["extraction_gaps"])[:300])
+    st_check(not rep["declared_edges"]["extraction_gaps"],
+             "[v06] 无未解析缺口", json.dumps(rep["declared_edges"]["extraction_gaps"])[:200])
+    st_check(any(v["type"] == "new_forbidden_edge" and v["edge"]["to"] == "fixture-ui-kit"
+                 for v in rep["strict"]["violations"]),
+             "[v06] 判红点名禁向边")
+    shutil.rmtree(repo.parent, ignore_errors=True)
+    return "V-06 workspace 继承：path 按根解析到成员并判红，不再产生 unresolved 假缺口"
+
+
+def scenario_v07(script: Path) -> str:
+    """F777-R1-03 永久反例：输出/刷新目标不得覆盖任何审计输入。"""
+    repo = make_fixture_repo("v07")
+    config = repo / DEFAULT_CONFIG_RELPATH
+    config_before = config.read_bytes()
+    code, err = run_audit_raw(
+        script, repo, "--mode", "observe", "--output", str(config))
+    st_check(code == EXIT_CONFIG_INVALID, "[v07] 输出到配置被拒绝", f"exit={code} {err[:200]}")
+    st_check(config.read_bytes() == config_before, "[v07] 配置字节未变（拒绝先于写入）")
+    baseline_file = repo / DEFAULT_BASELINE_RELPATH
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v07] 正常刷新成功", err[:300])
+    baseline_before = baseline_file.read_bytes()
+    config_before2 = config.read_bytes()
+    code, err = run_audit_raw(
+        script, repo, "--mode", "strict", "--output", str(baseline_file))
+    st_check(code == EXIT_CONFIG_INVALID, "[v07] 输出到基线被拒绝", f"exit={code} {err[:200]}")
+    st_check(baseline_file.read_bytes() == baseline_before, "[v07] 基线字节未变")
+    # 刷新目标被 --baseline 劫持到配置：拒绝且配置不变
+    code, err = run_audit_raw(
+        script, repo, "--refresh-baseline", "--baseline", str(config))
+    st_check(code == EXIT_CONFIG_INVALID, "[v07] 刷新目标指向配置被拒绝",
+             f"exit={code} {err[:200]}")
+    st_check(config.read_bytes() == config_before2, "[v07] 配置字节仍未变")
+    # 合法基线重冻结不受影响（既有基线 schema 可覆写）
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v07] 合法基线重冻结仍可用", err[:300])
+    shutil.rmtree(repo.parent, ignore_errors=True)
+    return "V-07 只读守卫：输出/刷新目标与输入冲突在写入前拒绝，合法重冻结不受影响"
+
+
+def scenario_v08(script: Path) -> str:
+    """F777-R1-04 永久反例：optional 激活成必选不得冒充存量豁免。"""
+    repo = make_fixture_repo("v08")
+    manifest = repo / "crates/fixture-lang/Cargo.toml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8")
+        + "\n[dependencies]\nfixture-ui-kit = { path = \"../fixture-ui-kit\", optional = true }\n",
+        encoding="utf-8", newline="\n",
+    )
+    config = repo / DEFAULT_CONFIG_RELPATH
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + "\n[[baseline.edge_notes]]\n"
+        + "from = \"fixture-lang\"\nto = \"fixture-ui-kit\"\nkind = \"normal\"\n"
+        + "owner = \"ui-owner\"\nexit_phase = \"RX\"\nstatus = \"active\"\n",
+        encoding="utf-8", newline="\n",
+    )
+    commit_fixture(repo, "optional edge + note", "v08")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v08] 基线刷新成功", err[:300])
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_OK, "[v08] 合法 optional 边控制通过", f"exit={code} {err[:200]}")
+    mutate(
+        repo, "crates/fixture-lang/Cargo.toml",
+        old='fixture-ui-kit = { path = "../fixture-ui-kit", optional = true }',
+        new='fixture-ui-kit = { path = "../fixture-ui-kit", optional = false }',
+        scenario="v08",
+    )
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v08] optional 激活成必选判红", f"exit={code}")
+    st_check(any(v["type"] == "new_forbidden_edge" and v["edge"]["to"] == "fixture-ui-kit"
+                 and v["edge"]["optional"] is False for v in rep["strict"]["violations"]),
+             "[v08] 判红类型=new_forbidden_edge（完整身份不匹配基线）",
+             json.dumps(rep["strict"]["violations"])[:300])
+    st_check(not rep["strict"]["grandfathered"],
+             "[v08] 未被同名 note 冒充存量豁免")
+    shutil.rmtree(repo.parent, ignore_errors=True)
+    return "V-08 optional 激活：optional 控制通过，激活成必选判红且不冒充存量豁免"
+
+
+def scenario_v09(script: Path) -> str:
+    """F777-R1-05 永久反例：必需覆盖组缺任何 active 条目即 strict 判红。"""
+    repo = make_fixture_repo("v09")
+    code, _, err = run_audit_cli(script, repo, "--refresh-baseline")
+    st_check(code == 0, "[v09] 基线刷新成功", err[:300])
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_OK, "[v09] 覆盖完整的控制通过", f"exit={code} {err[:200]}")
+    config = repo / DEFAULT_CONFIG_RELPATH
+    before = config.read_text(encoding="utf-8")
+    entry_block = (
+        "[[ownership]]\nid = \"fixture-weld-sdk-entry\"\nkind = \"weld\"\n"
+        "path = \"crates/fixture-lang/src/lib.rs\"\nowner = \"ui\"\nexit_phase = \"RX\"\n"
+        "status = \"active\"\ncoverage_group = \"weld\"\n"
+    )
+    st_check(entry_block in before, "[v09] 变更前态包含 ownership 条目")
+    config.write_text(before.replace(entry_block, "", 1), encoding="utf-8", newline="\n")
+    st_check("fixture-weld-sdk-entry" not in config.read_text(encoding="utf-8"),
+             "[v09] 条目移除落盘证明")
+    code, rep, err = run_audit_cli(script, repo, "--mode", "strict")
+    st_check(code == EXIT_STRICT_FAIL, "[v09] 覆盖组缺口判红", f"exit={code}")
+    st_check(any(v["type"] == "ownership_coverage_gap" and "weld" in v.get("missing_groups", [])
+                 for v in rep["strict"]["violations"]),
+             "[v09] 判红类型=ownership_coverage_gap 且点名缺失组",
+             json.dumps(rep["strict"]["violations"])[:300])
+    shutil.rmtree(repo.parent, ignore_errors=True)
+    return "V-09 覆盖对账：必需组缺 active 条目判红；完整控制通过"
+
+
 def run_self_test() -> int:
     script = SCRIPT_PATH
     scenarios = [
         ("v01", scenario_v01), ("v02", scenario_v02), ("v03", scenario_v03),
         ("v04a", scenario_v04a), ("v04b", scenario_v04b),
         ("v04c", scenario_v04c), ("v04d", scenario_v04d),
+        ("v05", scenario_v05), ("v06", scenario_v06), ("v07", scenario_v07),
+        ("v08", scenario_v08), ("v09", scenario_v09),
     ]
     failures = 0
     for name, fn in scenarios:
@@ -1479,6 +1798,7 @@ def main(argv) -> int:
             )
             if not baseline_path.is_absolute():
                 baseline_path = root / baseline_path
+            guard_refresh_target(baseline_path, config_path)
             revision = collect_revision(root)
             tracked = collect_tracked_files(root)
             edges, _members, _gaps = extract_declared_edges(root)
@@ -1493,7 +1813,7 @@ def main(argv) -> int:
             )
             return EXIT_OK
 
-        report, exit_code = audit(root, args)
+        report, exit_code, guard_ctx = audit(root, args)
         payload = canonical_json(report)
         if args.output == "-":
             sys.stdout.write(payload)
@@ -1501,6 +1821,12 @@ def main(argv) -> int:
             out = Path(args.output)
             if not out.is_absolute():
                 out = Path.cwd() / out
+            # 只读守卫：写入前拒绝与任何审计输入（配置/基线/受管文件/根内既有文件）
+            # 同一目标的输出（F777-R1-03）。
+            guard_output_target(
+                out, root, guard_ctx["config_path"], guard_ctx["baseline_path"],
+                guard_ctx["tracked"],
+            )
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(payload, encoding="utf-8", newline="\n")
         if args.mode == "strict":
