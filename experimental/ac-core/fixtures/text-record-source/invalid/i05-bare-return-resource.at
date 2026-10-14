@@ -1,0 +1,5 @@
+// verify.ownership-required: returning an owned record local by implicit
+// copy; `return t.move` or a fresh construction is the legal form
+type Tok { text Str; kind int }
+fn f(t Tok) Tok { return t }
+fn main() int { return 0 }

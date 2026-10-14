@@ -1,0 +1,11 @@
+// static legality of a NEVER-EXECUTED branch: `if false` does not exempt
+// the arm from the ownership rules (partial move inside the dead arm)
+type Tok { text Str; kind int }
+fn main() int {
+    let a Tok = Tok { text: "hi", kind: 1 }
+    if false {
+        let u Str = a.text.move
+        return u.len()
+    }
+    return a.kind
+}

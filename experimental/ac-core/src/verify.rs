@@ -350,12 +350,24 @@ pub fn record_resource_map(m: &hir::Module) -> Vec<bool> {
                     }
                     hir::TypeUse::Ref(tid) => {
                         let idx = tid.0 as usize;
-                        if resource[idx] {
-                            owns = true;
-                            break;
-                        }
-                        if !settled[idx] {
-                            pending = true;
+                        match m.types.get(idx).map(|t| &t.kind) {
+                            // a named text type entry carries the same
+                            // semantics as the inline builtin use (the
+                            // source adapter emits `type: t_Str` refs)
+                            Some(hir::TypeKind::StrOwned) | Some(hir::TypeKind::Str) => {
+                                owns = true;
+                                break;
+                            }
+                            Some(hir::TypeKind::Record(_)) => {
+                                if resource[idx] {
+                                    owns = true;
+                                    break;
+                                }
+                                if !settled[idx] {
+                                    pending = true;
+                                }
+                            }
+                            _ => {}
                         }
                     }
                     _ => {}
@@ -844,9 +856,21 @@ impl Verifier {
     /// mutable binding (`var`), or an explicit `mut` param (PLAN-771; the
     /// mutable bit is schema-forbidden on params, mode carries it). For the
     /// core/scalar domains param_mode is always View, so behavior there is
-    /// unchanged.
-    fn local_writable(l: &hir::LocalDef) -> bool {
-        l.mutable || (l.role == hir::LocalRole::Param && l.param_mode == hir::ParamMode::MutBorrow)
+    /// unchanged. On the combination surface (782 §6.3) a `move`-in param
+    /// is a legal replacement root as well — the callee owns the root; the
+    /// plain text profile keeps 770 semantics.
+    fn local_writable(&self, l: &hir::LocalDef) -> bool {
+        if l.mutable {
+            return true;
+        }
+        if l.role != hir::LocalRole::Param {
+            return false;
+        }
+        match l.param_mode {
+            hir::ParamMode::MutBorrow => true,
+            hir::ParamMode::MoveOwn => self.domain == HirDomain::TextRecord,
+            hir::ParamMode::View => false,
+        }
     }
 
     /// PLAN-782 combination-domain structural rules (T-02): `move` wrapper
@@ -916,12 +940,12 @@ impl Verifier {
                     ),
                     hir::Stmt::Let { value, .. } => (
                         value,
-                        "let-binding of an existing resource record",
+                        "let-bind an existing resource record",
                         "verify.resource-assign",
                     ),
                     hir::Stmt::Return { value } => (
                         value,
-                        "return of an owned record local",
+                        "return an owned record local",
                         "verify.ownership-required",
                     ),
                     _ => continue,
@@ -998,39 +1022,9 @@ impl Verifier {
                     hir::TypeUse::Builtin(b) => match b {
                         hir::BuiltinType::I32 => ValueType::I32,
                         hir::BuiltinType::Bool => ValueType::Bool,
-                        // In the record domain text builtins cannot appear
-                        // in fields (profile defense already rejected the
-                        // type table). In the text-record domain (782):
-                        // `Str`/`char` fields own/carry values and are the
-                        // combination face; a borrowed `str` field is the
-                        // 774 D-03 `verify.field-borrow` rejection.
-                        hir::BuiltinType::StrSlice => {
-                            if self.domain == HirDomain::TextRecord {
-                                self.error(
-                                    "verify.field-borrow",
-                                    format!(
-                                        "record type `{}`'s field `{}` has borrowed type `str`; record fields must own their text (`Str`), borrowing fields are not part of the text-record profile",
-                                        t.id_text, f.name
-                                    ),
-                                    t.span,
-                                );
-                            }
-                            ValueType::Str
-                        }
-                        hir::BuiltinType::StrOwned => {
-                            if self.domain == HirDomain::TextRecord {
-                                ValueType::StrOwned
-                            } else {
-                                ValueType::I32
-                            }
-                        }
-                        hir::BuiltinType::Char => {
-                            if self.domain == HirDomain::TextRecord {
-                                ValueType::Char
-                            } else {
-                                ValueType::I32
-                            }
-                        }
+                        hir::BuiltinType::StrSlice => ValueType::Str,
+                        hir::BuiltinType::StrOwned => ValueType::StrOwned,
+                        hir::BuiltinType::Char => ValueType::Char,
                     },
                     hir::TypeUse::Ref(tid) => {
                         match type_map.get(&tid.0) {
@@ -1038,6 +1032,33 @@ impl Verifier {
                             None => continue, // out-of-range already reported
                         }
                     }
+                };
+                // Text-field semantics are decided by the RESOLVED type, not
+                // the TypeUse's shape: the source adapter emits named
+                // `t_Str`/`t_str`/`t_char` refs while programmatic bundles
+                // use the inline builtins — both spellings meet one gate.
+                // In the text-record domain (782) `Str`/`char` fields
+                // own/carry values and are the combination face; a borrowed
+                // `str` field is the 774 D-03 `verify.field-borrow`
+                // rejection. Older domains reject text kinds at the type
+                // table already; the resolved vt collapses back to i32
+                // there exactly as the inline-builtin path always did.
+                let vt = if self.domain == HirDomain::TextRecord {
+                    if vt == ValueType::Str {
+                        self.error(
+                            "verify.field-borrow",
+                            format!(
+                                "record type `{}`'s field `{}` has borrowed type `str`; record fields must own their text (`Str`), borrowing fields are not part of the text-record profile",
+                                t.id_text, f.name
+                            ),
+                            t.span,
+                        );
+                    }
+                    vt
+                } else if matches!(vt, ValueType::Str | ValueType::StrOwned | ValueType::Char) {
+                    ValueType::I32
+                } else {
+                    vt
                 };
                 if matches!(vt, ValueType::Function) {
                     self.error(
@@ -1319,7 +1340,7 @@ impl Verifier {
         let Some((sig_params, fn_result)) = sigs.get(&body.owner.0) else {
             return;
         };
-        if self.domain == HirDomain::Record {
+        if matches!(self.domain, HirDomain::Record | HirDomain::TextRecord) {
             self.check_record_body_rules(m, body, type_map);
         }
         self.check_params(body, sig_params, type_map);
@@ -1499,6 +1520,31 @@ impl Verifier {
                             "verify.ownership-required",
                             format!(
                                 "expr `{}`: param {} is a read-only view and does not accept a `.mut` argument",
+                                e.id_text, b.param
+                            ),
+                            arg_e.span,
+                        );
+                    }
+                    // PLAN-782 combination face: a `move`-in param takes
+                    // the whole root through a `.move` wrapper argument —
+                    // the marker and the mode are symmetric (771 double
+                    // gate extended)
+                    (hir::ExprKind::Move { .. }, hir::ParamMode::MoveOwn, true) => {}
+                    (hir::ExprKind::Move { .. }, _, true) => {
+                        self.error(
+                            "verify.ownership-required",
+                            format!(
+                                "expr `{}`: param {} is not a `move` parameter and does not accept a `.move` argument",
+                                e.id_text, b.param
+                            ),
+                            arg_e.span,
+                        );
+                    }
+                    (_, hir::ParamMode::MoveOwn, true) => {
+                        self.error(
+                            "verify.ownership-required",
+                            format!(
+                                "expr `{}`: param {} is declared `move` and requires a `.move` argument (whole-root transfer)",
                                 e.id_text, b.param
                             ),
                             arg_e.span,
@@ -1851,7 +1897,7 @@ impl Verifier {
                     ),
                     l.span,
                 );
-            } else if text_vt && self.domain != HirDomain::Text {
+            } else if text_vt && !matches!(self.domain, HirDomain::Text | HirDomain::TextRecord) {
                 self.error(
                     "verify.local-type",
                     format!(
@@ -2108,7 +2154,7 @@ impl Verifier {
                                     e.span,
                                 );
                             }
-                            if !Self::local_writable(l) {
+                            if !self.local_writable(l) {
                                 self.error(
                                     "verify.immutable-write",
                                     format!(
@@ -3633,7 +3679,7 @@ impl Verifier {
                                     );
                                 }
                                 let target = &body.locals[p.local.0 as usize];
-                                if !Self::local_writable(target) {
+                                if !self.local_writable(target) {
                                     self.error(
                                         "verify.immutable-write",
                                         format!(

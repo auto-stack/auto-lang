@@ -1,0 +1,10 @@
+// source.type-mismatch: structurally identical records stay nominal — a
+// B VALUE cannot initialize an A-typed field
+type A { text Str; kind int }
+type B { text Str; kind int }
+type Box { payload A }
+fn main() int {
+    let b B = B { text: "hi", kind: 1 }
+    let bx Box = Box { payload: b }
+    return bx.payload.kind
+}

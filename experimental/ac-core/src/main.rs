@@ -45,7 +45,7 @@
 use auto_ac_prototype::source::{
     compile_record_source, compile_scalar_source, compile_source, SourceProfile,
     RECORD_SOURCE_PROFILE, RUNTIME_TEXT_CAPABILITY, SCALAR_SOURCE_PROFILE, SOURCE_PROFILE,
-    TEXT_SOURCE_PROFILE,
+    TEXT_RECORD_SOURCE_PROFILE, TEXT_SOURCE_PROFILE,
 };
 use auto_ac_prototype::{link, native, verify};
 use std::path::{Path, PathBuf};
@@ -813,9 +813,9 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype check-source <file> --source-profile {}|{}|{}|{} [--capability <name>]...",
+                        "usage: auto-ac-prototype check-source <file> --source-profile {}|{}|{}|{}|{} [--capability <name>]...",
                         SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE,
-                        RECORD_SOURCE_PROFILE
+                        RECORD_SOURCE_PROFILE, TEXT_RECORD_SOURCE_PROFILE
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);
@@ -829,9 +829,9 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{}|{}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
+                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{}|{}|{}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
                         SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE,
-                        RECORD_SOURCE_PROFILE
+                        RECORD_SOURCE_PROFILE, TEXT_RECORD_SOURCE_PROFILE
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);

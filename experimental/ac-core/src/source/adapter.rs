@@ -1081,10 +1081,13 @@ impl PlanCtx<'_> {
                     for (idx, s) in arg_slots.iter().enumerate() {
                         let planned = slot_idx[*s];
                         // PLAN-771 borrow discipline for record args (the
-                        // iterative path mirrors plan_arg)
+                        // iterative path mirrors plan_arg); a `.move`
+                        // wrapper argument is a whole-root transfer, never
+                        // a view
                         let arg_vt = plan.exprs[planned].vt;
                         let is_borrow = matches!(plan.exprs[planned].kind, EKind::BorrowMut { .. });
-                        if matches!(arg_vt, VT::Rec(_)) && !is_borrow {
+                        let arg_moved = matches!(plan.exprs[planned].kind, EKind::Move { .. });
+                        if matches!(arg_vt, VT::Rec(_)) && !is_borrow && !arg_moved {
                             let pos = callee.and_then(|c| match &args[idx].name {
                                 None => {
                                     if idx < c.params.len() {
@@ -1249,7 +1252,10 @@ impl PlanCtx<'_> {
     ) -> usize {
         let is_record = matches!(a.value.vt, VT::Rec(_));
         let is_borrow_mut = matches!(a.value.kind, RExprKind::BorrowMut { .. });
-        if !is_record || is_borrow_mut {
+        // a `.move` wrapper argument is a whole-root transfer, never a view
+        // borrow (on the combination surface the wrapper IS the move
+        // marker — CallBinding.moved is domain-forbidden there)
+        if !is_record || is_borrow_mut || matches!(a.value.kind, RExprKind::Move { .. }) {
             return self.plan_expr(plan, f, &a.value);
         }
         let pos = callee.and_then(|c| match &a.name {
@@ -2055,15 +2061,22 @@ impl<'p> Emitter<'p> {
             for (li, l) in f.locals.iter().enumerate() {
                 // text (PLAN-770): emit the mode word when it deviates
                 // from the default view; record (PLAN-771): the record
-                // schema REQUIRES the mode on params
+                // schema REQUIRES the mode on params. The combination
+                // surface (782) additionally carries `move` (its schema
+                // has the three-case enum; the plain record schema is
+                // view/mut only and its front door never yields move).
                 let mode_suffix = if l.is_param {
                     if self.profile.is_record() {
                         format!(
                             "; mode: {}",
-                            if l.mode == super::ast::ParamMode::Mut {
-                                "mut"
-                            } else {
-                                "view"
+                            match l.mode {
+                                super::ast::ParamMode::Mut => "mut",
+                                super::ast::ParamMode::Move
+                                    if self.profile == super::SourceProfile::TextRecord =>
+                                {
+                                    "move"
+                                }
+                                _ => "view",
                             }
                         )
                     } else {
@@ -2332,9 +2345,12 @@ impl<'p> Emitter<'p> {
                             )
                         }
                         EKind::RecordClone { rec, base } => {
+                            // type ids are nominal (`t_rec_<name>`), not the
+                            // record index
+                            let rec_name = &self.program.records[*rec].name;
                             format!(
                                 "expr e{} record_clone {{ type: {}; record: t_rec_{}; base: e{} }}",
-                                ei, ty, rec, base
+                                ei, ty, rec_name, base
                             )
                         }
                         EKind::Move { inner } => {

@@ -645,6 +645,23 @@ pub fn resolve_with(
         );
         // method-side registry on the owning record
         if let Some(oi) = fn_owner[i] {
+            // PLAN-782 §6.2: on the combination surface the builtin
+            // `r.clone()` owns the name — a user-declared record method
+            // `clone` (any receiver shape) is a controlled duplicate.
+            // The plain record profile keeps 771 semantics (any method
+            // name is legal; there is no builtin to collide with).
+            if f.name.name == "clone" && surface == SourceProfile::TextRecord {
+                diags.push(Diagnostic::new(
+                    Stage::Bind,
+                    "source.duplicate",
+                    format!(
+                        "method `clone` on record `{}` collides with the builtin deep-clone; user-declared clone methods are not supported",
+                        records[oi].name
+                    ),
+                    f.name.span,
+                ));
+                continue;
+            }
             records[oi].methods.push(ResolvedMethod {
                 name: f.name.name.clone(),
                 is_static: recv == ast::Receiver::Static,
@@ -1404,7 +1421,7 @@ impl<'a> FnResolver<'a> {
         &mut self,
         ri: usize,
         ty: &ast::Ident,
-        rargs: Vec<ResolvedArg>,
+        mut rargs: Vec<ResolvedArg>,
         span: Span,
     ) -> ResolvedExpr {
         let desc = |t: VT, records: &[ResolvedRecord]| match t {
@@ -1433,10 +1450,19 @@ impl<'a> FnResolver<'a> {
                 span,
             );
         }
-        for (i, a) in rargs.iter().enumerate() {
+        for (i, a) in rargs.iter_mut().enumerate() {
             let Some(want) = fields.get(i).map(|f| f.vt) else {
                 continue;
             };
+            // PLAN-782: positional construction promotes a borrowing string
+            // literal into an owning Str field exactly like the named form
+            // (the owning context constructs, AP-4).
+            if want == VT::StrOwned
+                && a.value.vt == VT::Str
+                && matches!(a.value.kind, RExprKind::StrLit(_))
+            {
+                a.value.vt = VT::StrOwned;
+            }
             if a.value.vt != want {
                 // nominal records name both sides (identical shapes still
                 // mismatch — PLAN-771 §5.1)
@@ -1584,7 +1610,7 @@ impl<'a> FnResolver<'a> {
         &mut self,
         recv: Option<Box<ResolvedExpr>>,
         name: &ast::Ident,
-        rargs: Vec<ResolvedArg>,
+        mut rargs: Vec<ResolvedArg>,
         span: Span,
     ) -> ResolvedExpr {
         if let Some(rrecv) = recv {
@@ -1611,9 +1637,12 @@ impl<'a> FnResolver<'a> {
                 };
             };
             // PLAN-782: builtin deep clone binds by (record receiver,
-            // "clone") — user `clone` methods on records are rejected at
-            // declaration registration, so the builtin owns the name.
-            if name.name == "clone" && rargs.is_empty() {
+            // "clone") on the COMBINATION surface only — the plain record
+            // profile keeps its 771 face (`type X has no method named
+            // clone`, N06). User `clone` methods on records are rejected
+            // at declaration registration, so the builtin owns the name.
+            if name.name == "clone" && rargs.is_empty() && self.profile == SourceProfile::TextRecord
+            {
                 return ResolvedExpr {
                     span,
                     vt: VT::Rec(ri),
@@ -1639,6 +1668,7 @@ impl<'a> FnResolver<'a> {
                 .find(|m| m.name == name.name && m.is_static)
             {
                 let sig_params = self.method_sig_params(m.fn_index, 0);
+                self.retag_method_args(&mut rargs, m.fn_index, 0);
                 self.check_args(
                     &name.name,
                     &self.method_sig_names(m.fn_index, 0),
@@ -1691,7 +1721,7 @@ impl<'a> FnResolver<'a> {
         recv: Option<Box<ResolvedExpr>>,
         ri: usize,
         name: &ast::Ident,
-        rargs: Vec<ResolvedArg>,
+        mut rargs: Vec<ResolvedArg>,
         span: Span,
     ) -> ResolvedExpr {
         match self.records[ri]
@@ -1701,6 +1731,7 @@ impl<'a> FnResolver<'a> {
         {
             Some(m) if !m.is_static => {
                 let sig_params = self.method_sig_params(m.fn_index, 1);
+                self.retag_method_args(&mut rargs, m.fn_index, 1);
                 self.check_args(
                     &name.name,
                     &self.method_sig_names(m.fn_index, 1),
@@ -1836,7 +1867,7 @@ impl<'a> FnResolver<'a> {
                 kind: RExprKind::ReadLocal(LocalRef(usize::MAX)),
             };
         };
-        let rargs = self.resolve_args(args);
+        let mut rargs = self.resolve_args(args);
         match self.records[ri]
             .methods
             .iter()
@@ -1845,6 +1876,7 @@ impl<'a> FnResolver<'a> {
             Some(m) if !m.is_static => {
                 // receiver occupies param 0; visible args bind from param 1
                 let sig_params = self.method_sig_params(m.fn_index, 1);
+                self.retag_method_args(&mut rargs, m.fn_index, 1);
                 self.check_args(
                     &name.name,
                     &self.method_sig_names(m.fn_index, 1),
@@ -2551,7 +2583,13 @@ impl<'a> FnResolver<'a> {
             if !args.is_empty() {
                 self.bind_err("source.syntax", "`.move` takes no arguments", span);
             }
-            if !matches!(recv.kind, RExprKind::ReadLocal(_)) {
+            // On the combination surface the wrapper stays first-class:
+            // `.move` on a field path / sub-expression flows into verify
+            // as `verify.partial-move` (the frozen single oracle); the
+            // plain text profile keeps its 770 front-door rejection.
+            if !matches!(recv.kind, RExprKind::ReadLocal(_))
+                && self.profile != SourceProfile::TextRecord
+            {
                 self.bind_err(
                     "source.unsupported",
                     "`.move` requires a named local (bind the value to a local first)",
@@ -2858,6 +2896,27 @@ impl<'a> FnResolver<'a> {
 
     /// Argument mapping: all-positional or all-named; names must exist and
     /// be unique; every formal is bound exactly once.
+    /// Promote borrowing string literals to owning `Str` when they bind an
+    /// owning formal (D-03 / AP-4): the same contextual typing a `let s Str`
+    /// initializer gets, applied to METHOD call arguments — regular function
+    /// calls retag in their own arm; `from` skips the receiver param.
+    fn retag_method_args(&mut self, rargs: &mut [ResolvedArg], fn_index: usize, from: usize) {
+        let param_names = self.method_sig_names(fn_index, from);
+        let params = self.method_sig_params(fn_index, from);
+        for (i, a) in rargs.iter_mut().enumerate() {
+            let pos = if a.name.is_some() {
+                param_names
+                    .iter()
+                    .position(|n| Some(n) == a.name.as_ref().map(|x| &x.name))
+            } else {
+                Some(i)
+            };
+            if let Some(pos) = pos.filter(|&p| p < params.len()) {
+                retag_literal(&mut a.value, params[pos]);
+            }
+        }
+    }
+
     fn check_args(
         &mut self,
         callee: &str,

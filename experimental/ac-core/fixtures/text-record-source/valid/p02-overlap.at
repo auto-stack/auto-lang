@@ -1,0 +1,28 @@
+// PLAN-782 T-03 V-05 source leg: overlapping assignment shapes that must
+// stay legal — self-clone assignment, clone-returning transform, consuming
+// a root through a move param whose result rebuilds the same local, and a
+// field replacement whose RHS reads the OLD field then concats. The
+// value/free-count oracles live in T-04/T-05; here the front door must
+// accept exactly these shapes.
+type Tok {
+    text Str
+    kind int
+}
+
+fn consume(move t Tok) int {
+    return t.kind
+}
+
+fn transform(t Tok) Tok {
+    return t.clone()
+}
+
+fn main() int {
+    var r Tok = Tok { text: "seed", kind: 1 }
+    r = r.clone()
+    r = transform(r)
+    r.text = r.text + "-tail"
+    let k int = consume(r.move)
+    r = Tok { text: "rebuilt", kind: k + 1 }
+    return r.kind + r.text.len()
+}

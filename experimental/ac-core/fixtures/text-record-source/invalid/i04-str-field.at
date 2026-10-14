@@ -1,0 +1,4 @@
+// verify.field-borrow: record fields must own their text — a borrowed
+// `str` field is the 774 D-03 rejection (both spellings of the field type)
+type Tok { text str; kind int }
+fn main() int { return 0 }

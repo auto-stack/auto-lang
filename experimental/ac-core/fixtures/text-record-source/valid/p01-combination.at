@@ -1,0 +1,55 @@
+// PLAN-782 T-03 flagship source fixture (V-02/V-03/V-05 source legs):
+// resource record Tok (owned Str + heterogeneous scalars + copyable and
+// resource nesting), positional AND named construction (named written in
+// reverse declaration order — the Atom's field_args sequence is the
+// evaluation-order oracle), builtin deep clone, explicit whole-root move
+// (param, let, assign, return), field view reads, field replacement with
+// a concat RHS, mut-param exclusivity, and 771 static/instance methods.
+type Tag { num int }
+
+type Wrap { inner Str }
+
+type Tok {
+    text Str
+    kind int
+    c char
+    meta Tag
+    note Wrap
+
+    static fn new(text Str, kind int) Tok {
+        return Tok { text: text, kind: kind, c: '0', meta: Tag { num: 0 }, note: Wrap { inner: "" } }
+    }
+
+    fn text_len() int {
+        return .text.len()
+    }
+}
+
+fn consume(move t Tok) int {
+    return t.kind
+}
+
+fn eat(move t Tok) Tok {
+    t.kind = t.kind + 1
+    return t.move
+}
+
+fn bump(mut t Tok, d int) int {
+    t.kind = d
+    return t.kind
+}
+
+fn main() int {
+    var a Tok = Tok { note: Wrap { inner: "w" }, meta: Tag { num: 7 }, c: 'A', kind: 1, text: "hello" }
+    var n int = a.text_len()
+    let m int = bump(a.mut, 5)
+    var b Tok = Tok("tail", 2, 'B', Tag(8), Wrap { inner: "" })
+    b = b.clone()
+    b.text = b.text + "!"
+    let c Tok = eat(a.move)
+    let k int = consume(c.move)
+    var d Tok = Tok.new("fresh", 9)
+    d = d.clone()
+    let f Tok = b.move
+    return n + m + k + c.kind + d.kind + f.text.len()
+}

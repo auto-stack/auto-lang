@@ -1,0 +1,5 @@
+// verify.ownership-required: `move` params are for Str and resource
+// records — a copyable record moves by value (771 semantics preserved)
+type Meta { num int }
+fn f(move m Meta) int { return m.num }
+fn main() int { return f(Meta { num: 7 }) }

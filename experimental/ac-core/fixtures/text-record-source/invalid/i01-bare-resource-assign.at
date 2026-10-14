@@ -1,0 +1,9 @@
+// verify.resource-assign: an existing resource record never copies
+// implicitly through plain assignment
+type Tok { text Str; kind int }
+fn main() int {
+    let a Tok = Tok { text: "hi", kind: 1 }
+    var b Tok = Tok { text: "x", kind: 2 }
+    b = a
+    return b.kind
+}

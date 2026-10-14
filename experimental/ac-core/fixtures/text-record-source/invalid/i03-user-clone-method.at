@@ -1,0 +1,6 @@
+// source.duplicate: the builtin `r.clone()` owns the name on the
+// combination surface; user-declared record clone methods are rejected
+type Tok { text Str; kind int
+    fn clone() int { return 0 }
+}
+fn main() int { return 0 }
