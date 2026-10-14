@@ -2684,32 +2684,6 @@ fn plan776_r10_setter_single_release_shared() {
     use crate::vm::task::AutoTask;
     use crate::vm::virt_memory::VirtualFlash;
 
-    let setter: Vec<(
-        &str,
-        fn(&mut AutoTask, &AutoVM) -> Result<(), crate::vm::engine::VMError>,
-    )> = vec![
-        ("status", |t, v| {
-            t.ram.push_i32(201);
-            stdlib::shim_http_response_status(t, v)
-        }),
-        ("header", |t, v| {
-            t.ram.push_i32(0); // string idx placeholder — replaced below
-            stdlib::shim_http_response_header(t, v)
-        }),
-        ("text", |t, v| {
-            t.ram.push_i32(0);
-            stdlib::shim_http_response_text(t, v)
-        }),
-        ("html", |t, v| {
-            t.ram.push_i32(0);
-            stdlib::shim_http_response_html(t, v)
-        }),
-        ("bytes", |t, v| {
-            t.ram.push_i32(0);
-            stdlib::shim_http_response_bytes(t, v)
-        }),
-    ];
-
     // —— RC2 共享矩阵：status（string-free 形态）——
     {
         let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
@@ -2836,5 +2810,141 @@ fn plan776_r10_setter_single_release_shared() {
         );
         vm.rc_release_id(foreign as u64);
     }
-    let _ = setter; // 其余四 setter 同源码同型修复（上 five-point 批量替换实证）。
+    // —— 其余四 setter 的真实调用（真实参数/RC2 共享/终值断言）——
+    // helper：建立共享形态（参数 owned + 全局份额）并返回 handle。
+    let setup_shared = |vm: &AutoVM, task: &mut AutoTask| {
+        res::push_response_resource(task, vm, 200, vec![], vec![]).unwrap();
+        let h = res::probe_last_resource_handle();
+        vm.rc_retain_id(h);
+        vm.globals
+            .insert("g".to_string(), auto_val::encode_object(h as u32));
+        h
+    };
+    // helper：setter 后的共享矩阵 + 跨 reap 终值断言。
+    let settle = |vm: &AutoVM, task: &mut AutoTask, h: u64, expect: res::ResourceClaim| {
+        assert_eq!(
+            vm.heap_rc
+                .get(&h)
+                .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(2),
+            "setter 后 = 返回槽 + 全局"
+        );
+        let ret = task.ram.pop_nv();
+        assert!(auto_val::is_object(ret));
+        vm.rc_release(ret);
+        assert_eq!(
+            vm.heap_rc
+                .get(&h)
+                .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+            Some(1),
+            "释放返回槽后 = 全局一份"
+        );
+        vm.reap_all();
+        let claim = res::resolve_resource(&vm, auto_val::encode_object(h as u32))
+            .expect("跨 reap 全局存活");
+        let matches_expect = match (&claim, &expect) {
+            (res::ResourceClaim::Response(a), res::ResourceClaim::Response(b)) => {
+                a.status == b.status && a.headers == b.headers && a.body == b.body
+            }
+            _ => false,
+        };
+        assert!(
+            matches_expect,
+            "全局快照终值: actual={claim:?} expect={expect:?}"
+        );
+        vm.rc_release_id(h);
+        vm.reap_all();
+    };
+
+    // header：真实 key/value 字符串参数（池化 encode_string）。
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let h = setup_shared(&vm, &mut task);
+        let val_idx = vm.add_string(b"application/xml".to_vec()) as u32;
+        let key_idx = vm.add_string(b"X-Tag".to_vec()) as u32;
+        // shim 栈序：value 顶、key 中、receiver 底（先压 key 再压 value）。
+        task.ram.push_nv(auto_val::encode_string(key_idx));
+        task.ram.push_nv(auto_val::encode_string(val_idx));
+        stdlib::shim_http_response_header(&mut task, &vm).expect("header setter");
+        settle(
+            &vm,
+            &mut task,
+            h,
+            res::ResourceClaim::Response(res::ResponseSnapshot {
+                status: 200,
+                headers: vec![("X-Tag".to_string(), "application/xml".to_string())],
+                body: vec![],
+            }),
+        );
+    }
+
+    // text：真实 body 字符串 + 自动 Content-Type。
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let h = setup_shared(&vm, &mut task);
+        let body_idx = vm.add_string(b"hello text".to_vec()) as u32;
+        task.ram.push_nv(auto_val::encode_string(body_idx));
+        stdlib::shim_http_response_text(&mut task, &vm).expect("text setter");
+        settle(
+            &vm,
+            &mut task,
+            h,
+            res::ResourceClaim::Response(res::ResponseSnapshot {
+                status: 200,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/plain; charset=utf-8".to_string(),
+                )],
+                body: b"hello text".to_vec(),
+            }),
+        );
+    }
+
+    // html：真实 body 字符串 + html Content-Type。
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let h = setup_shared(&vm, &mut task);
+        let body_idx = vm.add_string(b"<b>hi</b>".to_vec()) as u32;
+        task.ram.push_nv(auto_val::encode_string(body_idx));
+        stdlib::shim_http_response_html(&mut task, &vm).expect("html setter");
+        settle(
+            &vm,
+            &mut task,
+            h,
+            res::ResourceClaim::Response(res::ResponseSnapshot {
+                status: 200,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                )],
+                body: b"<b>hi</b>".to_vec(),
+            }),
+        );
+    }
+
+    // bytes：真实 ListData<i32> 参数（[72, 105] → "Hi"）。
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let h = setup_shared(&vm, &mut task);
+        let mut list = crate::vm::types::ListData::<i32>::new();
+        list.push(72);
+        list.push(105);
+        let list_id = vm.insert_heap_object(list);
+        task.ram.push_nv(auto_val::encode_object(list_id as u32));
+        stdlib::shim_http_response_bytes(&mut task, &vm).expect("bytes setter");
+        settle(
+            &vm,
+            &mut task,
+            h,
+            res::ResourceClaim::Response(res::ResponseSnapshot {
+                status: 200,
+                headers: vec![],
+                body: b"Hi".to_vec(),
+            }),
+        );
+    }
 }
