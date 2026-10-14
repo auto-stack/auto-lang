@@ -13,6 +13,9 @@ members = [
     "crates/auto-test-case",
     "crates/auto-gen",
     "crates/auto-lang",
+    # PLAN-780: light static project-model for pac.at (pilot probe; depends
+    # only on auto-atom/auto-val — no compiler/VM/UI types cross this boundary)
+    "crates/auto-project-model",
     "crates/auto-macros",
     # Plan 078: AutoMan migration from ../auto-man
     "crates/auto-man",

@@ -1,0 +1,10 @@
+[package]
+name = "auto-project-model"
+version = "0.1.0"
+edition = "2021"
+description = "Light static project-model for AutoLang pac.at declarations (PLAN-780 pilot): no compiler/VM/UI types"
+license = "MIT"
+
+[dependencies]
+auto-atom = { path = "../auto-atom" }
+auto-val = { path = "../auto-val" }

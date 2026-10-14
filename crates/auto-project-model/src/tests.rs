@@ -1,0 +1,307 @@
+//! PLAN-780 T-02 unit tests — grammar/static subset, dynamic classification
+//! (no fake green), and error diagnosis. The old-vs-new corpus comparison
+//! (V-02) lives in the auto-man probe adapter; these pin the model's own
+//! contract.
+
+use crate::*;
+use auto_val::Value;
+
+fn parse(text: &str) -> ProjectDescriptor {
+    parse_document(text, SourceInfo::inline()).expect("parse should succeed")
+}
+
+// ── static grammar ─────────────────────────────────────────────────────
+
+#[test]
+fn flat_props_and_comments() {
+    let d = parse(
+        "// header\nname: \"notes\"\nversion: \"1.0.0\"\n/* block */\nrender: \"vue\" // trailing\n",
+    );
+    assert!(d.is_static_equivalent());
+    assert_eq!(d.identity.name.as_deref(), Some("notes"));
+    assert_eq!(d.identity.version.as_deref(), Some("1.0.0"));
+    assert_eq!(d.render.render, RenderSpec::Single("vue".into()));
+    assert_eq!(
+        d.render.effective_backend.as_deref(),
+        Some("vue"),
+        "render wins over the lang-inferred backend"
+    );
+}
+
+#[test]
+fn dep_bare_name_node_with_path() {
+    let d = parse("name: \"x\"\ndep bps {\n    path: \"../../packages/blueprints\"\n}\n");
+    assert!(d.is_static_equivalent());
+    assert_eq!(d.deps.len(), 1);
+    assert_eq!(d.deps[0].name, "bps");
+    assert_eq!(d.deps[0].name_form, DepNameForm::Bare);
+    assert_eq!(
+        d.deps[0].path.as_deref(),
+        Some("../../packages/blueprints")
+    );
+    assert_eq!(d.deps[0].line, 2);
+}
+
+#[test]
+fn dep_quoted_and_arg_forms_parse() {
+    let d = parse("dep \"stylekit\" { path: \"../stylekit\" }\ndep(\"kernel\") { port: \"msvc\" }\n");
+    assert!(d.is_static_equivalent());
+    assert_eq!(d.deps[0].name_form, DepNameForm::Quoted);
+    assert_eq!(d.deps[1].name_form, DepNameForm::Arg);
+    assert_eq!(d.deps[1].name, "kernel");
+}
+
+#[test]
+fn render_split_multi_and_legacy_unknown() {
+    let split = parse("render: { front: \"vue\", back: \"rust\" }\n");
+    assert_eq!(
+        split.render.render,
+        RenderSpec::Split {
+            front: vec!["vue".into()],
+            back: "rust".into()
+        }
+    );
+    let multi = parse("backend: [\"vue\", \"arkts\"]\n");
+    assert_eq!(
+        multi.render.render,
+        RenderSpec::Multi(vec!["vue".into(), "arkts".into()])
+    );
+    assert_eq!(multi.render.legacy_backend.as_deref(), Some("[\"vue\", \"arkts\"]"));
+    // `backend: "rust-tauri"` (api-example/back): declared but not a known
+    // backend name — oracle maps it to backend_config = None + legacy string.
+    let unknown = parse("backend: \"rust-tauri\"\n");
+    assert_eq!(unknown.render.render, RenderSpec::Unknown("rust-tauri".into()));
+    assert_eq!(unknown.render.effective_backend.as_deref(), Some("rust-tauri"));
+}
+
+#[test]
+fn lang_inferred_backend_fallback() {
+    let d = parse("name: \"auto\"\nlang: \"rust\"\n");
+    assert_eq!(d.render.effective_backend.as_deref(), Some("rust"));
+    let c = parse("name: \"x\"\n");
+    assert_eq!(c.render.effective_backend.as_deref(), Some("c"));
+}
+
+#[test]
+fn members_array_and_scene() {
+    let d = parse("scene: \"workspace\"\nmembers: [\"source/front\", \"source/back\"]\n");
+    assert_eq!(d.runtime.scene, Some(SceneKind::Workspace));
+    assert_eq!(
+        d.members,
+        Some(vec!["source/front".to_string(), "source/back".to_string()])
+    );
+}
+
+#[test]
+fn display_and_runtime_fields_normalized_like_pac() {
+    let d = parse(
+        "title: \"  Notes \"\ntheme: \"Dark\"\naccent: \"Indigo\"\ndesktop_render: \"Queue\"\nfront_port: 4046\nwindow: \"1440x900\"\nmedia_root: \"  \"\n",
+    );
+    assert_eq!(d.display.title.as_deref(), Some("Notes"));
+    assert_eq!(d.display.theme.as_deref(), Some("dark"));
+    assert_eq!(d.display.accent.as_deref(), Some("indigo"));
+    assert_eq!(d.display.desktop_render.as_deref(), Some("queue"));
+    assert_eq!(d.runtime.front_port, Some(4046));
+    assert_eq!(d.runtime.window, Some(WindowSpec::Size(1440.0, 900.0)));
+    assert_eq!(d.runtime.media_root, None, "blank media_root → None");
+    let fit = parse("window: \"fit\"\n");
+    assert_eq!(fit.runtime.window, Some(WindowSpec::Fit));
+    // Pac bounds: below 200 or above 7680/4320 → None
+    let bad = parse("window: \"100x9000\"\n");
+    assert_eq!(bad.runtime.window, None);
+    // unparseable port → None (Pac: parse().ok())
+    let bad_port = parse("front_port: \"not-a-port\"\n");
+    assert_eq!(bad_port.runtime.front_port, None);
+}
+
+#[test]
+fn toggles_on_off_and_string_forms_agree_with_pac_rule() {
+    let d = parse("shadcn: off\ndefault_classes: \"false\"\n");
+    assert!(d.is_static_equivalent());
+    assert!(matches!(&d.toggles.shadcn, ToggleValue::Str(s) if s == "off"));
+    assert!(!d.toggles.shadcn.normalized());
+    assert!(!d.toggles.default_classes.normalized());
+    assert!(ToggleValue::Unset.normalized());
+    assert!(ToggleValue::Str("on".into()).normalized());
+    assert!(ToggleValue::Bool(true).normalized());
+    assert!(!ToggleValue::Str("0".into()).normalized());
+}
+
+#[test]
+fn external_backend_object_and_bare_string() {
+    let obj = parse("back: { project: \"../ash-server\" }\n");
+    assert_eq!(obj.external_backend.as_deref(), Some("../ash-server"));
+    let bare = parse("back: \"../b\"\n");
+    assert_eq!(bare.external_backend.as_deref(), Some("../b"));
+    let obj_no_project = parse("back: { other: \"x\" }\n");
+    assert_eq!(obj_no_project.external_backend, None);
+}
+
+#[test]
+fn unmodeled_nodes_and_props_are_catalogued_not_dropped() {
+    let d = parse(
+        "description: \"kept verbatim\"\nnpm_deps: [\"marked@^12.0.0\"]\napp main {\n    at: \".\"\n    srcs: [\"main.at\"]\n}\nlib(\"auto\") {\n    recurse: true\n}\ntheme: { mode: \"dark\" }\n",
+    );
+    assert!(d.is_static_equivalent());
+    let raw_keys: Vec<&str> = d.raw_props.iter().map(|p| p.key.as_str()).collect();
+    assert!(raw_keys.contains(&"description"));
+    assert!(raw_keys.contains(&"npm_deps"));
+    assert!(raw_keys.contains(&"theme"), "theme block form is catalogued");
+    assert_eq!(d.raw_nodes.len(), 2, "app + lib nodes");
+    let app = &d.raw_nodes[0];
+    assert_eq!(app.head, "app");
+    assert_eq!(app.name.as_deref(), Some("main"));
+    assert_eq!(
+        app.props.iter().find(|(k, _)| k == "srcs"),
+        Some(&("srcs".to_string(), Value::Array(auto_val::Array::from_vec(vec![Value::Str("main.at".into())]))))
+    );
+    let lib = &d.raw_nodes[1];
+    assert_eq!(lib.name.as_deref(), Some("auto"));
+    assert_eq!(
+        lib.props.iter().find(|(k, _)| k == "recurse"),
+        Some(&("recurse".to_string(), Value::Bool(true)))
+    );
+}
+
+#[test]
+fn duplicate_keys_later_wins_and_recorded() {
+    let d = parse("title: \"first\"\ntitle: \"second\"\n");
+    assert_eq!(d.display.title.as_deref(), Some("second"));
+    assert_eq!(d.duplicates.len(), 1);
+    assert_eq!(d.duplicates[0].key, "title");
+    assert_eq!(d.duplicates[0].line, 2);
+}
+
+#[test]
+fn npm_deps_object_with_quoted_keys() {
+    let d = parse("npm_deps: {\n  \"@autodown/engine\": \"link:D:/x\"\n}\n");
+    assert!(d.is_static_equivalent());
+    let npm = d
+        .raw_props
+        .iter()
+        .find(|p| p.key == "npm_deps")
+        .expect("npm_deps catalogued");
+    assert!(matches!(npm.value, Some(Value::Obj(_))));
+}
+
+#[test]
+fn provenance_records_field_lines() {
+    let d = parse("name: \"a\"\nrender: \"vm\"\ndep x { path: \"y\" }\n");
+    let name_line = d
+        .provenance
+        .iter()
+        .find(|(f, _)| *f == "name")
+        .map(|(_, l)| *l);
+    assert_eq!(name_line, Some(1));
+    assert_eq!(d.deps[0].line, 3);
+}
+
+// ── dynamic classification (V-03): never fake green ────────────────────
+
+#[test]
+fn interpolation_is_classified_dynamic() {
+    let d = parse("name: \"${name}\"\n");
+    assert!(!d.is_static_equivalent());
+    assert_eq!(d.unsupported[0].kind, UnsupportedKind::Interpolation);
+    assert_eq!(d.identity.name, None, "field is not faked");
+    assert_eq!(d.unsupported[0].raw, "${name}", "raw text preserved");
+}
+
+#[test]
+fn dollar_ident_and_backtick_and_fstring_are_dynamic() {
+    for (text, kind) in [
+        ("x: \"hi $name\"\n", UnsupportedKind::Interpolation),
+        ("x: `tpl`\n", UnsupportedKind::FString),
+        ("x: f\"tpl\"\n", UnsupportedKind::FString),
+    ] {
+        let d = parse(text);
+        assert!(!d.is_static_equivalent(), "{text}");
+        assert_eq!(d.unsupported[0].kind, kind, "{text}");
+    }
+    // plain $ without ident/{ stays literal (e.g. "cost $5")
+    let d = parse("x: \"cost $5\"\n");
+    assert!(d.is_static_equivalent());
+}
+
+#[test]
+fn bare_ident_assignment_and_call_are_dynamic() {
+    for (text, kind) in [
+        ("x: undefined_thing\n", UnsupportedKind::BareIdentValue),
+        ("x = 5\n", UnsupportedKind::Assignment),
+        ("x: make_value(1)\n", UnsupportedKind::Call),
+        ("theme: on\n", UnsupportedKind::OnOffOutsideToggle),
+        ("x: 'single'\n", UnsupportedKind::SingleQuotedString),
+    ] {
+        let d = parse(text);
+        assert!(!d.is_static_equivalent(), "{text}");
+        assert_eq!(d.unsupported[0].kind, kind, "{text}");
+    }
+}
+
+#[test]
+fn interpolation_inside_structured_value_is_dynamic() {
+    let d = parse("cfg: { front: \"${base}/src\" }\n");
+    assert!(!d.is_static_equivalent());
+    assert_eq!(d.unsupported[0].kind, UnsupportedKind::Interpolation);
+    let d = parse("members: [\"${a}\"]\n");
+    assert!(!d.is_static_equivalent());
+}
+
+#[test]
+fn dep_with_unnameable_args_is_classified() {
+    let d = parse("dep(\"a\", \"b\") { path: \"x\" }\n");
+    assert!(!d.is_static_equivalent());
+    assert_eq!(d.unsupported[0].kind, UnsupportedKind::DepNameUnrepresentable);
+    assert_eq!(d.deps.len(), 0);
+    assert_eq!(d.raw_nodes.len(), 1, "raw node preserved for audit");
+}
+
+#[test]
+fn members_wrong_shape_is_type_mismatch_not_empty_vec() {
+    let d = parse("members: \"front\"\n");
+    assert!(!d.is_static_equivalent());
+    assert_eq!(
+        d.unsupported[0].kind,
+        UnsupportedKind::TypeMismatch { field: "members" }
+    );
+    assert_eq!(d.members, None);
+}
+
+// ── malformed input → staged error (V-05) ──────────────────────────────
+
+#[test]
+fn malformed_inputs_error_with_stage_and_position() {
+    // missing value
+    let e = parse_document("name:\n", SourceInfo::inline()).unwrap_err();
+    assert_eq!(e.stage, ErrorStage::Value);
+    assert_eq!(e.line, 1);
+    // missing closing brace in structured value
+    let e = parse_document("x: [\"a\"\n", SourceInfo::inline()).unwrap_err();
+    assert!(e.message.contains("unterminated"), "{}", e);
+    assert_eq!(e.stage, ErrorStage::Value);
+    // unterminated node body
+    let e = parse_document("dep x {\n  path: \"y\"\n", SourceInfo::inline()).unwrap_err();
+    assert_eq!(e.stage, ErrorStage::NodeBody);
+    // trailing junk after value
+    let e = parse_document("x: \"a\" \"b\"\n", SourceInfo::inline()).unwrap_err();
+    assert_eq!(e.stage, ErrorStage::Value);
+    assert!(e.message.contains("trailing"), "{}", e);
+    // node without body
+    let e = parse_document("dep x\n", SourceInfo::inline()).unwrap_err();
+    assert_eq!(e.stage, ErrorStage::Entry);
+    // source path flows into diagnostics
+    let e = parse_document("x:\n", SourceInfo::from_path("some/pac.at"))
+        .unwrap_err();
+    assert_eq!(e.source_path.as_deref(), Some(std::path::Path::new("some/pac.at")));
+    assert!(e.to_string().contains("some/pac.at"));
+    assert!(e.to_string().contains("value"));
+}
+
+#[test]
+fn escape_sequences_mirror_atom_parser() {
+    let d = parse("x: \"a\\tb\\nc\\\"d\\\\e\\q\"\n");
+    match &d.raw_props[0].value {
+        Some(Value::Str(s)) => assert_eq!(s.as_str(), "a\tb\nc\"d\\e\\q"),
+        other => panic!("expected Str, got {other:?}"),
+    }
+}
