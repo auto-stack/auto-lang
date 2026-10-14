@@ -580,7 +580,7 @@ PLAN-745 交接注记（0bc1bea01）确认 742 合并面对其 27 处共现预�
 | landed | rebase master（旧→新：6d93cfdb7→b01d90001、8c9b2d3d9→e60b4f023、2c40e1fe4→f3567c2f7、2174f0de2→c9846c76b、8d59f5e88→e6eb873b2；range-diff 等价 `=`）；delivery=15c12883c（e6eb873b2 的 docs/projection-only 后代，实现零改动）；`git merge --ff-only plan-742-dev` 无合并提交，master tip=15c12883c；cargo check -p auto-man 过 |
 | ledger_refreshed | 工作区 D:/autostack/auto-lang（.autoos/specs.json 跟踪文件）；Regime B 守卫离线投影（HTTP store 探测无响应）：备份 specs.json.p742-merge.bak → 程序化 RMW → v12→v13 → 回读校验；新增 P742-1..7（designs×4/tests/reviews/reports，file+tags 全带，diff 107+/2- 仅目标范围）；spec-index.py 重建 INDEX.md |
 | archived | docs/plans/archive/742-api-handler-body-parity.md（git mv），status: archived，completion_kind: delivered；本收据随归档提交入默认分支 |
-| cleaned | 见下方实测行 |
+| cleaned | wt-guard 双树 clean（auto-lang/auto-down 均 exit 0）；worktree 提交态 15c12883c 全落地后移除；branch plan-742-dev 删除（was 15c12883c）；auto-down 兄弟移除；组目录 .wt/lang-742 删除；worktree list 复核仅余主检出与他组 |
 
 - 沉淀 canonical：api-generation-integrity.md（§体路径不变量）、auto-man/project.md、
   trans/overview.md、a2r-std/project.md（773 现版合入式）、ui/overview.md。
