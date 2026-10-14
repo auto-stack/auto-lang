@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-782
-status: drafting
+status: executing
 feature_name: AC 文本与 record 组合：拥有型字段、移动与清理
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-14
-updated_at: 2026-10-14
-current_step: 0
+updated_at: 2026-10-15
+current_step: 3
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -156,9 +156,9 @@ T-01 先做有界完整路径探针：含两个 Str 的构造/深 clone、嵌套
 
 | 状态 | Task | owner_stage | 依赖 | 文件/操作与可验成果 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 用户批准r1实施；770/771满足§5.1 | 从最新master核对Spec/前置review/gates/hash；新reports/782-text-record/design.md+probe-cases.md，冻结语法/码/布局/失败oracle/资源预算、whole-path探针和API热点；正反探针全过，材料冲突先revision | 01..06 |
-| [ ] | T-02 | work | T-01 | hir/descriptor/verify/text_resources.rs与新schema/text-record.atom：新身份、名义字段/资源分类/结构与引用界限；text_record_hir物化V01/02/08，真实Bundle变异均受控拒绝 | 01/02/03 |
-| [ ] | T-03 | work | T-02 | source七模块/typecheck/adapter：构造、字段/方法、mode/move/clone与原span接线；text_record_source物化源码正反和拒绝partial-move，未执行分支也检查 | 02/03/05 |
+| [x] | T-01 | work | 用户批准r1实施；770/771满足§5.1 | ✅ 已完成 @1bc7a1665：[design.md](reports/782-text-record/design.md)+[probe-cases.md](reports/782-text-record/probe-cases.md)——§1.1 前置硬门全项收据（770 R11 pass/合入/Spec 沉淀/联合门禁 14/14）、planning-inputs 漂移全归因（data-resource-contract 零漂移）、合同一致性表（无材料冲突）；冻结：新身份 auto.source.text-record.draft→auto.hir.text-record.draft/1/text-record-i32-draft（N07 实证无碰撞）、资源分类传递闭包（派生）、Str 字段布局 {ptr u64@0,len u32@8}=12/8（Token=32，offset 0/12/16/20/24，256 深 closed form 24+8n，u32 上界）、新码仅 verify.partial-move + 扩面 7 码、HIR 增 record_clone+moved 旗标（let/assign/return）、runtime/text **零新符号**、ABI 全复用（move-in 机器形 *mut）、V-01..12 物化落点与预算表。whole-path 探针 P1..P7 **PROBE-OK exit 0 零警告**（files.sha256 绑定）；边界负探针 N01..N09 实跑——**发现 F-A：record 域 member_type 对 Str/str/char 字段类型 panic（exit 101），违反 771 声明的拒绝合同**（770 R6-03 整合引入，无在途计划拥有；裁定 T-03 域内 5 行守卫修复，oracle=source.unsupported exit 1，见§10.5）；前置正控 record 旗舰+四族 68/68 绿 | 01..06 |
+| [x] | T-02 | work | T-01 | ✅ 已完成 @697e3f811：`schema/text-record.atom`（text∪record 并集 + record_clone/move 双新 case，分支全量 require/forbid）；hir.rs `HirDomain::TextRecord` + `ExprKind::RecordClone{record,base}`/`Move{inner}`（设计 §4.3 修订：moved 旗标改为 **`expr.move` 包装表达式**——77 个 Stmt 构造点零扰动，单一表示，`CallBinding.moved` 在新域禁用）；descriptor binder/writer/domain/TypeUse 内建词（Str/str/char 限 text+text-record 域）；verify：`verify_text_record` 入口（T-02 结构面 + 能力派生门）、check_profile_ops 四域化（旧四域互拒新面）、`record_resource_map` 传递分类（pub 供 T-04）、check_record_module 字段门（str→`verify.field-borrow`、Str/char 放行、域感知映射 4 处）、owning-position/界检/init 三走查 + ExprScan 补臂、`check_text_record_rules`（move 形状 `verify.partial-move`、move 参数类型门 `verify.ownership-required`、裸 let/assign/return 分类拒 resource-assign/ownership-required）；main.rs check/build 分派（build 在 T-05 前受控 `backend.lowering-unsupported`）。text_record_hir **13/13**（V-01 身份五域隔离+writer roundtrip+错维拒；V-02 Str/str/char 字段+传递分类+cycle+copyable 保持 771 值复制+clone 名义拒；V-08 ctor/call binding 越界、clone 跨型、requires 删除受控拒）；前置回归 79 例全绿、零警告、fmt clean | 01/02/03 |
+| [x] | T-03 | work | T-02 | ✅ 已完成 @3f0366f6d（核心链 @24171d462 + F-A @a2aa02a5b）：source 七模块/typecheck/adapter 组合面接线——构造（命名/位置双形、AP-4 提升补齐位置构造与静态/实例方法实参位）、字段/方法（Str 字段 view 接收者、771 static/instance/mut 面保持）、mode/move/clone（内建 clone 仅组合域绑定、用户声明 clone → `source.duplicate`、move 参数 `mode: move` 发射+可写根、Move 实参整体转移不被 borrow_view 包裹、缺 `.move` 调用点对称门）；verify 侧修复 Ref-vs-Builtin 字段类型盲点（资源分类/field-borrow/bare assign/return 门对源码 Bundle 生效）、771 调用绑定模式匹配扩展至组合域（含 MoveOwn 三臂）、组合域 Str 局部门白名单。text_record_source **19/19**（V-02/03/05 source 腿、partial-move 含死分支静态检查、旧域保持 N06/770-move）；全套 ac-core **394/0**、零警告、fmt clean | 02/03/05 |
 | [ ] | T-04 | work | T-02/03 | text_resources.rs/verify/native：根与字段来源、continuation合流、路径清理/能力推导；runtime/text仅必要组合helper，沿用账本不造第二套；text_record_resources物化V03/04/06/07/09 | 03/04 |
 | [ ] | T-05 | work | T-04 | native/main/shared finish_build：资源布局、view/mut/move/out-return、非重叠提交；text_record_native+双腿fixtures物化V02/05/09/10/11/12，真实PE trace/值/计数达oracle | 01..06 |
 | [ ] | T-06 | work | T-05 | 新verify-ac-text-record-782.ps1+reports/782-text-record/verification.md：最终基线全新旧门禁和故意失败控制，全部mandatory无skip、locked/fmt/零warning，制品及环境收据hash绑定 | 05/06 |
@@ -178,9 +178,42 @@ preflight：T01..07覆盖AC01..06及SD01..06，review/merge独立owner；V01..12
 
 next：可审阅/批准本草案；770/771修复、独立复审并合入且联合门禁后，用户授权实施时进入work T-01。若前置修复改变共同合同，先修订受影响§5–8/SD与revision。changed task_ids=T01..09，acceptance_ids=AC01..08，delta_ids=SD01..06。
 
+2026-10-14，stage:work（入口门未过，未进入实施），plan_id:PLAN-782，plan_revision:1，outcome:blocked（§5.1 硬门未满足）。
+worktree_path:无（§5.1 明令前置缺失时停在 drafting、不建实现树；lang-782 未创建）；branch:无；base_commit:master `119c8215a98e8d0bd3cc30fb0714a264cf0dd6ca`。
+前置核验（fresh 实测）：771 满足——已合入并归档 `docs/plans/archive/771-ac-record-method-native.md`（delivered）；**770 不满足**——status=executing（plan_revision 2，current_step 2/9），最新 R6 final review outcome=needs_fix 含三项 blocking（P770-R6-01 循环重入资源缺口 P1；P770-R6-02 不可达臂污染 loop_exits P2；P770-R6-03 771 整合基线与联合回归未做 P2，见 attachments/770/review-r6/REVIEW.md），`plan-770-dev` HEAD `a14f1470b1d5e1174653e8d499091147b4257fe6` 经 merge-base 核验未合入 master；`.wt/lang-770` 仍在途。
+task_ids:无开启（T-01 依赖"770/771满足§5.1"未满足，T-02..09 依赖 T-01）；code_commit:无；dependency_revisions:前置未冻结，T-01 时按 planning-inputs.tsv 重新比对。
+blockers:770 须先在原树闭合 R6-01/02/03 → fresh final review pass → 真实合入并沉淀 Spec；随后第二合入方在新共同基线实跑两套联合门禁并 fresh review（770 T-09 已含该要求）。owner=770 原 work/review/merge，不转交本计划。
+next_responsible_role:770 work（同树返工）；本计划保持 drafting/current_step=0，待前置全部满足且用户授权实施后由 T-01 重新入口。本轮零实施、零 worktree/branch/agent 创建、零 cargo/PE 运行、canonical Specs 未动。
+
+2026-10-15，stage:work（重新入口，进入实施），plan_id:PLAN-782，plan_revision:1，outcome:entered。
+前置复核（fresh，§5.1 全项满足）：771 合入归档；770 R11 final review **pass**（§9.24，reviewed_commit `afe45e2d65332b0cd448f3a2b5edf562903296b6`）、T-08 勾、status=reviewed 8/9、真实合入（master HEAD `4568e4ea7` = plan-770-dev tip，merge-base 实测）、Spec 沉淀 `f4b1d2e82`（source-text 契约 SD-01 + hir/stage SD-02/03 + ac/acc SD-04/05）、第二合入者联合门禁 14/14（text 361+1/runtime 20/20/record 24/24+23 cases，gate-20261015-014555）+ R11 fresh pass。770 T-09 归档/清理簿记仍开放，不属 §5.1 构成项，不阻塞。
+worktree_path:`D:/autostack/.wt/lang-782/auto-lang`；branch:`plan-782-dev`；base_commit:`4568e4ea7`（new-wt-group.sh 建组，auto-down 兄弟 detached c39ac7f，组内零链接）。
+task_ids:T-01 开启；授权=用户 2026-10-14"实施它"+2026-10-15"计划770已经merge了。请继续"。T-01 前置比对基线改为合入后 master（planning-inputs.tsv 采集于合入前，T-01 记录漂移归因，不回滚取材）。
+
+2026-10-15，stage:work，plan_id:PLAN-782，plan_revision:1，outcome:pass（T-01 完成=1/9，继续 T-02）。
+worktree_path:`D:/autostack/.wt/lang-782/auto-lang`；branch:`plan-782-dev`；base_commit:`4568e4ea7`；code_commit:`1bc7a1665`（design.md+probe-cases.md+probe/ 17 文件）。dependency_revisions:master==plan-770-dev tip（770 实现+Spec 沉淀全含）；771 archived。
+task_ids:T-01。evidence：design.md §1/§8（前置收据+探针收据）、whole_path_probe PROBE-OK exit 0 零警告、N01..N09 边界探针原文、正控 68/68；材料冲突=无；F-A 发现与裁定见 §10.5。
+blockers:无。next_responsible_role:work（T-02：schema/text-record.atom+descriptor/verify 域扩展+text_record_hir 物化 V-01/02/08）。
+
+2026-10-15，stage:work，plan_id:PLAN-782，plan_revision:1，outcome:pass（T-02 完成=2/9，继续 T-03）。
+code_commit:`697e3f811`（11 文件：schema/text-record.atom 新、tests/text_record_hir.rs 新、fixture tr01 新、hir/descriptor/lib/verify/main/native/adapter/text_resources 改）。task_ids:T-02。
+evidence：text_record_hir 13/13（V-01/02/08）；前置回归 record_hir 21+record_source 21+text_hir 16+text_source 10+text_binding 11=79 全绿；check --all-targets 零警告；fmt clean。设计 §4.3 修订（moved 旗标→`expr.move` 包装）在提交内注明理由（77 个 Stmt 构造点零扰动；`CallBinding.moved` 新域禁用，canonical 单一表示）。
+blockers:无。next_responsible_role:work（T-03：source 七模块/typecheck/adapter 组合面 + member_type F-A 修复 + text_record_source）。
+
+2026-10-15，stage:work，plan_id:PLAN-782，plan_revision:1，outcome:pass（T-03 完成=3/9，继续 T-04）。
+worktree_path:`D:/autostack/.wt/lang-782/auto-lang`；branch:`plan-782-dev`；base_commit:`4568e4ea7`；code_commit:`3f0366f6d`（T-03 收口：resolve/verify/adapter/main 4 改 + fixtures/text-record-source 10 新 + tests/text_record_source.rs 新；核心链前置提交 `24171d462`、F-A 修复 `a2aa02a5b`）。dependency_revisions:同 T-01 收据。
+task_ids:T-03。evidence：text_record_source 19/19（V-02 顺序/提升/名义 oracle、V-03/V-05 合法形、i01..i08 全部命中冻结核查码：resource-assign/partial-move/ownership-required/field-borrow/source.duplicate/type-mismatch、死分支静态检查、旧域 N06+770-move 保持）；全套 ac-core cargo test 394 通过 0 失败；check --all-targets 零警告；fmt clean。
+本轮修复的实现缺口（探针逐一定位后修）：① 内建 clone 臂无 profile 门→旧 record 域 `.clone()` 从 N06 的 source.undefined 漂移为 adapter internal error（已加 TextRecord 门恢复）；② RecordClone atom 发射用索引而非名义 `t_rec_<name>`（dangling TypeRef）；③ `record_resource_map`/`check_record_module` 字段门只识别内联 Builtin TypeUse、不解析 Ref 目标类型种类→源码 Bundle 的资源分类/bare assign/return/str 字段门全部失效（不变式修复：按解析后类型种类决定语义）；④ 位置构造与方法调用实参位缺 AP-4 字面量提升；⑤ move 参数 mode 发射塌缩为 view + verify 侧不可写（违反 §6.3 替换根合同）；⑥ Move 实参被 borrow_view 包裹（违反整体转移表示，§4.3 修订案）；⑦ 缺 `.move` 调用点对称门（771 模式匹配走查未扩展到组合域）；⑧ 组合域 Str 局部被 body 级 local-type 门误拒。
+发现的基线预存缺陷（非本计划引入，§10 登记）：771 命名构造字段值位不支持二元运算表达式；770 assign 位 `.move` 产生 source.internal 而非受控拒。
+blockers:无。next_responsible_role:work（T-04：text_resources.rs 资源走查扩展——owned 根扩容至资源 record、逐字段缓冲释放、moved 状态/use-after-move/double-move、字段借用 backing 溯源与 mut-conflict、V-03/04/06/07/09 物化）。
+
 ## 10. 待澄清事项
 
 1. 实施前置尚未满足，owner=770/771原work/review/merge；不影响本草案审阅。
 2. 资源record完整move/深clone/按根保守借用及拒绝partial move属于本r1新增支持合同，随草案批准一并确认；目前无实施授权。
 3. 组合物理布局、helper故障返回接口、准确新诊断码/对应span及复用runtime的申请点，owner=T-01；须有决定 artifact+区分oracle+探针后才放行T-02，不留给native猜测。
 4. 若前置最终Spec/API有材料变化，owner=T-01，先比对planning-inputs.tsv并记录revision与证据；旧计划状态和战略快照不得覆盖fresh收据。
+5. **F-A（T-01 发现，owner=T-03，已修复 @a2aa02a5b）**：合入基线上 record 域字段声明类型位遇 `Str`/`str`/`char` 标识符 panic（`parser.rs::type_word` unreachable，exit 101），违反 771 Spec"str/Str/char 字段显式拒绝"的一等合同；scalar/core 域同位均受控拒（N08/N09 对照），`member_type()` 独缺守卫，系 770 R6-03 整合引入且无在途计划拥有。修复：`member_type()` 补与 `param_type()/decl_ann()` 对齐守卫；冻结 oracle 命中（N01..N03 复验 `error[text/source.unsupported]: type 'X' is not part of this source profile` exit 1，`negative-run-post-fix.txt`）；record_source +1 回归测试（22/22）。属恢复 771 已声明合同，非旧域扩面。
+6. **基线预存缺陷（T-03 探针发现，owner 待定——均非 782 引入，不转交本计划修复）**：
+   - **D-771-A**：record 域（含组合域继承面）命名构造字段值位不支持二元运算表达式——`Pair { left: 1 + 2, ... }` 在纯 record 域即报 `source.syntax: expected operator`（771 交付面即如此）。782 组合程序以 let 提升规避（fixtures 已按此写）；若后续需在 ctor 字段值位直接写复合表达式，需独立修复并回归 771 面。
+   - **D-770-B**：text 域 assign 位 `.move`（如 `o = x.move`）产生 `source.internal: generated Atom text failed to bind`（adapter 发射 text descriptor 不接受的 `expr.move`），而非受控拒绝；770 语义上该位本就不支持 move 标记，缺的是前门拒绝。782 组合域 assign 位 move 走 `expr.move` 包装（descriptor 接受）不受影响。

@@ -1,3 +1,57 @@
+### Plan 777（2026-10-15，独立 final review R4 —— 已闭合）
+
+审面5e1794bcc6f1b811a2b8d7a224d12fac9997f829；**final pass / reviewed 5/6**，尚未merge/交付。
+R1六项、R2两项、R3一项全部合同内findings已闭合。自测15/15，旧7控/R2补充5控/R3输入身份4控/新身份组合3控全部通过。
+[R4报告/完整闭合表](attachments/777/review-r4/REVIEW.md)、[规范增量冻结](attachments/777/review-r4/spec-delta-reviewed.md)。
+
+F777-R3-01：新增文件身份检查覆盖全部tracked输入及实读锁；源码、非Rust资产、有效未受管锁的根外硬链接均拒绝且原hash不变，独立新/已有报告另存仍可用。R1/R2历史记录保留，当前无未闭合777阻断债务。
+
+T06 merge-owned Spec/投影/合流/归档/批回归到期判定/guard清理pending；Category A无Rust整档门禁。本轮只review，未发布canonical Spec/ledger、未合入/归档/清理树。
+
+### Plan 777（2026-10-15，独立 final review R3 —— 历史）
+
+审面677055420203db3bc3a868a2dca697f8167361dd；**needs_fix / executing 1/6**。
+R2两项具体反例已关闭；14/14自测、旧7控和R2补充5控通过。独立输入身份矩阵3pass/1fail。
+[R3报告/闭合表](attachments/777/review-r3/REVIEW.md)、[原始控制](attachments/777/review-r3/input-matrix.jsonl)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F777-R3-01 | medium / blocking | 根外硬链接输出指向已读取的受管Rust源文件时，guard仅对config/baseline/manifest比较身份、对tracked只查根内路径，exit0且源码被报告覆盖。配置/manifest同类拒绝，独立另存正控通过。原AC01；T01/T03/T04；输入只读不变量剩余路径，非扫描扩面。 |
+
+保留T02，重开T01/03/04，原r1可局部修复，不因第三次失败自动升界。真实实施树输入未改；所有硬链接/变异仅在评审自有临时副本。Category A未跑Rust整档，不发布Spec/ledger、不合入或清理树。
+
+### Plan 777（2026-10-15，独立 final review R2 —— 历史）
+
+审面 aaf70201110ed8afcfbbc6e1ccd99c4e82019982；**needs_fix / executing 0/6**。
+旧例7/7、自测12/12、真实扫描/strict正控通过；补充矩阵3通过/2失败。
+[R2报告和闭合表](attachments/777/review-r2/REVIEW.md)、[可重放补充矩阵](attachments/777/review-r2/supplemental.py)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F777-R2-01 | high / blocking | 新生产跨根规则限制 ui 域，但 auto-ui 没有域映射；语言→外置auto-ui必选path实际新增后strict exit0。auto-man禁向与SDK合法对照正常。AC02，T02/T03/T04 |
+| F777-R2-02 | high / blocking | --output根外直接放行，可覆盖本次已读取的外部path依赖Cargo.toml，exit0且输入hash变化。R1-03完整不变量未闭合；AC01，T01/T03/T04 |
+
+R1-01/02/04/05本轮关闭；R1-03配置旧例关闭但外部输入只读仍partial；R1-06原误红关闭，修复后的生产目标映射缺口见R2-01。两次final失败，下轮work先补诊断与完整输入/目标、外部域矩阵，再修复提交送审；不把新缺口延期为已完成项。Category A未跑Rust整档；未发布Spec/ledger、未合入或清理树。
+
+### Plan 777（2026-10-15，独立 final review R1 —— 历史）
+
+本轮为合同内阻断，**needs_fix / executing 0/6**；不是允许延期的完成项。
+原7项自测和真实仓正常扫描通过，不抵消独立反例。
+细节、AC/task、原始输入/结果与修复方向见
+[R1复审报告](attachments/777/review-r1/REVIEW.md)，修复继续使用lang-777/plan-777-dev。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F777-R1-01 | high / blocking | 多target依赖表复用最后一个table，Windows禁向边漏报、strict假绿 |
+| F777-R1-02 | high / blocking | workspace继承path按member解析，合法UI依赖成unresolved、strict假绿 |
+| F777-R1-03 | high / blocking | --output可覆盖本次审计的配置等输入；配置被JSON报告改写且exit 0 |
+| F777-R1-04 | medium / blocking | optional合法边改成必选禁向边后，窄豁免按同名包对错误扩大 |
+| F777-R1-05 | medium / blocking | AST/parser/Dialect、build调度与CLI迁移责任/退出阶段漏登 |
+| F777-R1-06 | medium / blocking | external path一律必须optional的新规则无Design37依据，合法UI→独立SDK误红 |
+
+保留既有稳定扫描/候选分类/豁免控制；修复全部问题、补永久反例与责任覆盖对账，
+提交后重新独立review。Category A不跑Rust整档；未写canonical Spec/ledger、未合入归档或清理。
+
 ### Plan 773（2026-10-14，独立 final review R1 —— 已闭合）
 
 历史实现已合入，当前独立验收 **needs_fix / executing 1/10**。以下是合同内阻断，
@@ -1049,6 +1103,55 @@ P774-R5-01已清偿：summary_of按字段返回(u32,u32,u32,u32,u64,u64)，峰�
 
 R1六项、R2四项、R3两项、R4一项、R5一项共14历史阻断全部闭合，R3-D1整理完成；历史ID/失败证据保留，以上待修条目为历史记录，不再是774当前阻断。五轮重放7/7、3/3、4/4、1/1、2/2全绿；本轮64 probe tests+状态1/1、ac-core145 passed/既有1 ignored、741/745/772旧门禁全绿。无新增债务/未授权延后；全语言/生产ABI/GC/List/ACC自举仍是明确非目标。review未合入/归档/发布canonical/live ledger；T08收口仍pending，不借复审pass预勾。
 
+## PLAN-776 第十轮独立最终复审（2026-10-14，needs_fix）
+
+**R14 闭合补注（2026-10-15，pass）**：冻结提交`e65c01012807ca1fa42235ba2971d245d57b5738`独占格释放前实际比对expect快照，F776-R13-01警告已消除；F776-R11-01关闭保持。776专项66/66（34.328s，0timeout），format/diff-check通过，无新增警告；生产/矩阵验收pass。status=reviewed8/8，merge-owned裸t/tv/HTTP与生成验证、Spec沉淀/归档/wt-guard及到期batch tf仍pending，未合入或交付。原P776-D1..D4分诊保持。详见 [R14报告](reports/776-return-resource-review-r14.md)。以下保留历史记录。
+
+
+**R13 补注（2026-10-14）**：`367f4b288b515d49938a0b5f3bf47cf9de6f9b33` 已补齐剩余8格与最终回收断言，F776-R11-01关闭；生产/15格矩阵pass保留。新增 **F776-R13-01 / P3**：测试exclusive helper的expect预期参数未使用，实际产生unused variable编译警告；按Mandatory Independent Review Health Check仅重开T08，executing7/8。建议释放前使用expect比对快照（不碰回收后id），提交并定向复审。测试1/1、format/diff-check通过，后置merge门禁pending，不授权延期。详见 [R13报告](reports/776-return-resource-review-r13.md)。
+
+
+**R12 补注（2026-10-14）**：`d0fa9e5e2d0b50924698a01c591541f6e8744c8c` 已补真实五setter调用及RC2共享/mutation断言，定向测试1/1通过；F776-R11-01部分关闭。四个非status setter仍缺R11已要求的RC1独占/错误receiver共8格，shared settle最后释放后无回收断言。延续同一P2 finding，不新增功能范围、不授权延期；生产修复pass不变。T07/T08重开、executing6/8；后置merge门禁pending。详见 [R12报告](reports/776-return-resource-review-r12.md)。
+
+
+**R11 闭合补注**：`38ad38abaf7d0fc40adacbb775d3f0258aaa53a7` 五 setter 生产修复通过原 shared Response UAF 重放及15格独立共享/独占/错误 receiver 矩阵，F776-R10-01 运行时缺陷关闭。尚有 **F776-R11-01 / P2**：`plan776_r10_setter_single_release_shared` 声明的五项函数指针表从未调用，实际各段只测 status，另外四项仍占位参数；须在同树提交实际五 setter 回归矩阵、更正覆盖声明（T07/T08，AC02/06回归证据及AC09），不是可延期债务。专项66/66、协议守卫126/126通过，未发现新运行时红；status=executing6/8，后置merge-owned门禁pending。详见 [R11报告](reports/776-return-resource-review-r11.md)。以下保留 R10 历史证据。
+
+reviewed_commit=`dd41d684dc2d8c1321034ed56d4a8cb38eab2894`，revision1，实施树clean。
+详见[R10报告](reports/776-return-resource-review-r10.md)及review-r10反例/重放/log/hash。
+R9两项原例与record兄弟路径已闭合；前轮遗漏的共享Response setter为原合同内P1，登记不授权延后。
+
+| ID | 级别 | 当前缺口 | 修复/验收 |
+|---|---|---|---|
+| F776-R10-01 | P1 | status/header/text/html/bytes仍显式rc_release+StakeGuard Drop双消费；shared status RC2→1，释放返回槽后0销毁globals并触发UAF | AC02/06/07/08/09、T01/02/05/07/08：全setter恰一份消费/返回owned份额、RC1/RC2+、丢弃/保存/串联、错误早退、跨reap共享replay；更正SD/decision协议 |
+
+本轮专项65/65、协议守卫针对性126/126、format干净；iterator共享、Future record/赋值/object/array/closure控制通过，shared-response新反例失败。整档后置merge-owned pending。status退executing3/8，T03/T04/T06及历史已证子项保留；未修实现/合入/归档/发布canonical或ledger。
+
+## PLAN-776 第九轮独立最终复审（2026-10-14，needs_fix）
+
+reviewed_commit=`5b8bffdef3889008d1cc84d85cfda35b01c1afa3`，revision1，实施树clean。
+详见[R9报告](reports/776-return-resource-review-r9.md)及review-r9/source/重放/log/hash。
+R8旧例闭合，但完整不变量失败；以下为原合同内必须修项，登记不授权延后/缩减。
+
+| ID | 级别 | 当前缺口 | 修复/验收 |
+|---|---|---|---|
+| F776-R9-01 | P1 | iterator共享源RC2经显式release+不retain的StakeGuard Drop减两份到0，globals仍持有而reap后消失 | AC02/05/06/07/08/09、T01/02/05/07/08：每个owned槽只消费一份，独占/共享/早退/派生/next+terminal矩阵；保留清零和旧净零控制 |
+| F776-R9-02 | P1 | typed Box.f Future<int>构造/取出仍丢tag，HTTP返回JSON1而非Future终值42 | AC02/03/08/09、T01/02/03/04/07/08：CREATE_OBJ及ObjectData/GenericInstance字段读补完整身份，所有Value往返入口闭合表，普通字段对照 |
+
+本轮专项63/63、触面format干净；数组/数字/closure代表例与独占/slot旧例通过，shared与typed-record新反例失败。整档按后置裁定未跑，合入门禁merge-owned pending。status退executing1/8，T06及历史已证子项保留；未修实现/合入/归档/发布canonical或ledger。
+
+## PLAN-776 第八轮独立最终复审（2026-10-14，needs_fix）
+
+reviewed_commit=`5d4d29ab0fac4cb2b18f7a720d55eb5a18a02213`，revision1，实施树clean。
+详见[R8报告](reports/776-return-resource-review-r8.md)及review-r8/source/重放/log/hash。
+以下为原合同内P1必须关闭项，登记不授权延后/缩减；旧R7功能例和类型来源进展保留。
+
+| ID | 级别 | 当前缺口 | 修复/验收 |
+|---|---|---|---|
+| F776-R8-01 | P1 | TAG_FUTURE经Value转普通Int；~int函数普通496仍驱动成42，数组取真实Future则JSON496 | AC02/03/05/08/09、T01/02/03/04/07/08：所有合法载体保逐值来源，撤raw位/声明猜测；同时覆盖~T声明真碰撞数字与容器/捕获真实Future |
+| F776-R8-02 | P1 | pop_iterator_receiver rawpop无清零/消费源凭据stake，guard解包iterator id；源消费后RC1，输出释放reap仍存活 | AC02/05/06/07/08/09、T01/02/05/07/08：原始nv读后释放+slot清零，错误早退与派生输出份额正确，next/全adapter/terminal owned矩阵；更正交接与SD清零声明 |
+
+本轮专项60/61（/s0有头无帧，非前条误定位的/s3），该例单跑1/1绿；P776-D4分诊进展保留，不冒61全绿。auto-val NanoValue16/16、触面format干净。整档t/tv/th按2026-10-14后置裁定未跑，merge-owned pending；status退executing1/8，T06及历史已证子项保留。未修实现/合入/归档/发布canonical与ledger。
+
 ## PLAN-776 第七轮独立最终复审（2026-10-14，needs_fix）
 
 reviewed_commit=`5fda97cebd952397b41af80f7ea5f076534223f9`，revision1，原实施树clean。
@@ -1159,6 +1262,85 @@ R1-F02、F07 local边界、F08关闭；直接Internal/Err资源、用户Response
 
 **r4 返工处置（2026-10-14，work @42b0ba7da+@1f8027500）**：P770-R4-01..05 全部修复并永久化（tests/text_review_r4.rs 17 测试，含 mark 先于 FREE/循环出口 backing/两层 wrapper 传播三个组合 oracle）；r2 18+r3 9 历史重放保持绿，ac-core 244 passed+1 ignored、runtime 20/20、gate 双收据 13/13（gate-20261014-171125/171634）。诊断表与闭合表见计划 §9.11。本节五项待第五轮 fresh review 核验后随计划归档一并清账；未合入。
 
+**第五轮 final review（2026-10-14，needs_fix @1f8027500）**：上述旧例 fresh 重放闭合有效；完整路径不变量仍未闭合，新增两项原合同内阻断如下。报告与可直接重放原始输入见 [review-r5/REVIEW.md](attachments/770/review-r5/REVIEW.md)。fresh gate 13/13、244+20 测试绿不能豁免；登记仅追踪，不授权延后或缩围。T01/T03保留，其余 work-owned 受影响任务重开，2/9，未合入。
+
+| ID | 级别 | 缺口 | owner / 必须闭合的不变量 |
+|---|---|---|---|
+| P770-R5-01 | P1 blocking | Logical 在 LHS 前记录 RHS 临时边界，跳过侧把已分配 LHS 指针也替成 null；&&/||/嵌套正常返回漏 FREE | T05/06/07，AC03/05；LHS 已执行临时与 RHS 条件临时分开，语句尾唯一释放、mark顺序/4096保持 |
+| P770-R5-02 | P1 blocking | 嵌套 break/continue 在 if join 被整体丢弃，loop 没有目标出口状态；Bundle/双腿放行 FREE 后借用读，70/-7 或偶然3 | T02/04/05/06/07，AC03/04/05；正常 continuation 与终止目标状态分开传递/合流，前门拒绝悬空借用，保留存活 owner/return 正控 |
+
+**r5 返工处置（2026-10-14，work @ebd0d05ee+@a14f1470b）**：P770-R5-01/02 全部修复并永久化（tests/text_review_r5.rs 11 测试，含 mark 先于 FREE 与双臂 break/continue 组合 oracle）；r2 18+r3 9+r4 17 历史重放保持绿，ac-core 255 passed+1 ignored、runtime 20/20、gate 双收据 13/13（gate-20261014-175221/175631）。诊断表与闭合表见计划 §9.13。本节两项待第六轮 fresh review 核验后随计划归档一并清账；未合入。
+
+## PLAN-770 第六轮最终独立复审（2026-10-14，needs_fix）
+
+受审提交 `a14f1470b1d5e1174653e8d499091147b4257fe6`、revision2、实施树始终clean；R5原例已闭合，完整不变量未闭合。报告/可重放source/HIR/API/raw见 [R6报告](attachments/770/review-r6/REVIEW.md)。13/13门禁、255+20测试绿不免除此处缺口；主线771已先合入，独立旧树绿不构成联合验收。
+
+| ID | 级别 | 原合同内缺口 | owner / 纠正义务 |
+|---|---|---|---|
+| P770-R6-01 | P1 blocking | continue/自然back-edge只并入after-loop，无重入读验证；下一轮读前轮已释放view，Bundle与双腿放行、PE70/-7 | AC03/04/05，T02/04/05/06/07；重入状态/来源安全闭合，fresh局部身份与外层存活owner/静态view/4096正控保持 |
+| P770-R6-02 | P2 blocking | false不可达臂无条件发布loop_exits，合法空串在循环后被owned-scope-escape误拒；修复回归 | AC03/04/05，T02/04/06/07；目标出口可达性随状态传播，静态合法性检查保持，不取消真实退出义务 |
+| P770-R6-03 | P2 blocking（依赖漂移） | 771先合入后未整合，text gate不跑record；SD现行before仍仅core/scalar | AC06，T02/04/05/06/07；同树整合并按774重放两profile实际门禁，更新SD/最终收据，重新独立review |
+
+**r6 返工处置（2026-10-14，work @7e0b9f712+@643a1b3eb+@e01997dc5）**：P770-R6-01/02/03 全部修复并永久化（tests/text_review_r6.rs 9 测试，含重入后 fresh let 陈旧代际组合 oracle）；master（771）merge 进同一实施树并调和共享热点，联合门禁 14/14 双收据（gate-20261014-193430/194300，record gate 实跑）+record gate 独立 24/24+整合套件 321+1；SD-02/04 before/after 已按合 771 后 canonical 刷新。诊断表与闭合表见计划 §9.15。本节三项待第七轮 fresh review 核验后随计划归档一并清账；未合入。
+
+T01/T03保留历史已完成，其他受影响work任务重开，executing2/9，未合入。登记仅追踪，不能延后为merge-owned债务。R5-01原例+本轮嵌套短路控制通过，R5-02仅post-loop原例闭合；旧发现不抹去，完整路径清偿待新模型证据。
+
+## PLAN-770 第七轮最终独立复审（2026-10-14，needs_fix）
+
+受审HEAD `e01997dc593c1d20b3ccab045b33b167eedf4a23`、revision2，已在同树整合771；R6三项原例/本轮受测控制闭合，联合14/14、record24/24(23 cases)、321+20测试绿。详见 [R7报告](attachments/770/review-r7/REVIEW.md)。新修复回归如下；登记仅追踪，不允许延后为merge债务。
+
+| ID | 级别 | 原合同内缺口 | owner / 纠正义务 |
+|---|---|---|---|
+| P770-R7-01 | P2 blocking | 直接HIR只有break、无自然/continue回边的循环仍把body_st送回header重走，第一条读取被ghost iteration污染而误拒owned-scope-escape | AC02/03/04/05，T02/06/07；区分自然/continue/break/return出口，只真实回边进fixpoint；m01/m02真实Bundle与source控制、原UAF/fresh-view/4096正反控保持 |
+
+**r7 返工处置（2026-10-14，work @314cbbeb6）**：P770-R7-01 修复并永久化（tests/text_review_r7.rs 10 测试，m01/m02/p01/p02 冻结 atom 字节一致；终止/回边矩阵含 return-only 控制）；联合门禁 14/14 双收据（gate-20261014-202410/203110）、整合套件 331+1。诊断与闭合表见计划 §9.17。待第八轮 fresh review 核验后随计划归档一并清账；未合入。
+
+仅T02/T06/T07重开，其他work任务保持已完成，executing4/9，未合入。m01已清理frontend包装的孤立块/条件表达式且重映射引用，最终拒绝仅资源码；m02同图存活owner合法PE0，c05源码+包装HIR合法PE0。不能限制直接HIR只能使用frontend for包装绕开该契约。
+
+## PLAN-770 第八轮最终独立复审（2026-10-14，needs_fix）
+
+受审HEAD `c717555679451b4c109d308d740777e19d7ce2af`、revision2、同树clean。R7直接break原例已闭合，完整真实退出不变量尚未闭合；详见 [R8报告](attachments/770/review-r8/REVIEW.md)。串行联合14/14、record24/24(23 cases)、331+20测试绿不豁免以下原合同内缺口。
+
+| ID | 级别 | 原合同内缺口 | owner / 纠正义务 |
+|---|---|---|---|
+| P770-R8-01 | P2 blocking | block_terminates仅认两臂语法终止、不采用const_truth；恒真then break/return、恒假else break仍伪造回边，合法首读source/HIR/Bundle误拒owned-scope-escape | AC02/03/04/05，T02/06/07；可达终止与自然出口分类一致，恒定/嵌套/真实back-edge矩阵永久化，保持原直接HIR和UAF/fresh-view控制 |
+
+**r8 返工处置（2026-10-14，work @7468c553e+@645054332）**：P770-R8-01 修复并永久化（tests/text_review_r8.rs 8 测试，含嵌套恒定条件组合矩阵）；联合门禁 14/14 双收据（gate-20261014-230536/231354）、整合套件 339+1。诊断与闭合表见计划 §9.19。待第九轮 fresh review 核验后随计划归档一并清账；未合入。
+
+仅T02/T06/T07重开，executing4/9，未合入；登记仅追踪，不批准缩围/延后。首跑门禁因审查者并行CLI重放造成exe占用os error5，完整原文保留，停止重放后无代码变化串行重跑全绿；不列为实现发现。
+
+## PLAN-770 第九轮最终独立复审（2026-10-15，needs_fix）
+
+受审HEAD `6450543321bdff0e595c0eb61007fd5bfaadf40b`、revision2、同树clean；R8-01常量终止缺口已验证闭合。串行联合14/14、record24/24(23 cases)、339+20测试绿；另有原合同内遗留预扫描缺口，详见 [R9报告](attachments/770/review-r9/REVIEW.md)。
+
+| ID | 级别 | 原合同内缺口 | owner / 纠正义务 |
+|---|---|---|---|
+| P770-R9-01 | P2 blocking | for true中直接return consume(x.move)，loop外存活x实际只移交一次；进入body前却被block_definite_moves先判死，source/HIR/Bundle首move误拒use-after-move | AC02/03/04/05，T02/06/07；真实入口/回边/目标退出责任代替一律预杀，确定单次移交合法、真实重复拒，caller/callee唯一清理与fresh-view/常量终止/4096保持 |
+
+**r9 返工处置（2026-10-15，work @e60b6eacc+@7a73cf0b6）**：P770-R9-01 修复并永久化（tests/text_review_r9.rs 11 测试，含恒定 break 终止 move 组合矩阵——顺带抓出并修复循环后责任撤销缺失）；联合门禁 14/14 双收据（gate-20261015-003622/004319）、整合套件 350+1。诊断与闭合表见计划 §9.21。待第十轮 fresh review 核验后随计划归档一并清账；未合入。
+
+c05将构造放至loop内、c06去掉loop均真实PE3，唯一LIT/len/FREE；p04真正重复move仍正确拒，不能通过放行重复移动修p03。仅T02/T06/T07重开，executing4/9，未合入。登记仅追踪，不授权缩围/延后；该项非const-aware helper回归，不撤销R8闭合证据。
+
+## PLAN-770 第十轮最终独立复审（2026-10-15，needs_fix）
+
+受审提交 `7a73cf0b68431073181937e3a6a384ca772101a9`，revision2；[R10报告](attachments/770/review-r10/REVIEW.md)。R9-01首次move旧例已闭合，以下为r9退出责任修复新增回归；登记不授权延后/缩围。
+
+| Finding | 级别 | 缺口 | 修复责任 |
+|---|---|---|---|
+| P770-R10-01 | P1 blocking | AwaitLoop以dead并集撤销entry-owner caller清理，未核验零迭代/移交前break与移交后break的责任一致性；两个source/HIR/真实Bundle通过，正常PE0只LIT无FREE | PLAN-770 T02/06/07、AC03/04/05；同树work核验真实after-loop incoming责任，保留单次move合法/真实重入拒绝，永久化冻结正反控、提交后重绑证据 |
+
+**r10 返工处置（2026-10-15，work @9033cdb39+@afe45e2d6）**：P770-R10-01 修复并永久化（tests/text_review_r10.rs 11 测试，每个合法 run 附 alloc=free 通用断言）；联合门禁 14/14 双收据（gate-20261015-012600/013331）、整合套件 361+1。诊断与闭合表见计划 §9.23。待第十一轮 fresh review 核验后随计划归档一并清账；未合入。
+
+原合同V04 alloc=free/774D04每分配恰一个责任方；R9纠正要求已明确混合出口责任。if-join现有一致性检查可受控拒绝，不要求额外动态清理。联合14/14、350+1/runtime20与record24/23均通过仍不覆盖该缺口。T02/T06/T07重开，executing4/9；未改实现/合入/发布canonical。
+
+## PLAN-770 第十一轮最终独立复审闭合（2026-10-15，pass）
+
+受审提交 `afe45e2d65332b0cd448f3a2b5edf562903296b6`，revision2；[R11报告](attachments/770/review-r11/REVIEW.md)。**P770-R10-01 closed**：两个冻结漏释放反例source/HIR/真实Bundle受控拒绝ownership-required；其余caller/callee合法控制保留唯一FREE。
+
+89 source+95 HIR历史原字节全重放/hash对账，唯一4项行为变化为R10反例两腿恢复正确拒绝；R2..R10受测阻断集闭合。新9 source+11 HIR嵌套/多owner/终止/Drop组合正反控精确trace通过；联合14/14，core361+1/runtime20，record24/24（23 cases），无新增阻断项。既有历史needs_fix记录保留；本段是当前闭合收据。
+
+Plan **reviewed8/9**，T09实际合入/规范沉淀/导航/ledger/index/归档/批回归到期/guard收尾pending；未修改实现或合入。基线/依赖变化须重绑复审。
+
 ## PLAN-770 第三轮最终独立复审（2026-10-14，needs_fix）
 
 受审提交 `41291aa10d22eb2e9a263e7aa574361fb55eafd1`、revision2，原树clean；详见 [R3报告](attachments/770/review-r3/REVIEW.md)。r2原例17 source+19 HIR已恢复预期，旧证据不抹去；full-invariant仍有以下合同内阻断，登记不授权延后/缩围。
@@ -1200,6 +1382,19 @@ F-R1-01原例闭合但全值语义不变量尚未闭合。22步门禁与199项�
 
 [报告/冻结输入/hash/重放](attachments/771/review-r2/REVIEW.md)。计划executing3/9，T04..07重开；
 两次final non-pass后下次交接先提供不变量诊断与覆盖调整。canonical/ledger未发布，未合入归档清理。
+
+### Plan 771（2026-10-14，独立 final review R3，pass）
+
+绑定e0ad328d80bfe00ca7563174b3352edeb8e6347b / revision2，reviewed8/9。
+F-771-R1-01..04与F-771-R2-01全部闭合：旧反例重放/双向源码序值捕获/HIR故意失败控制/借位冲突/新组合PE均通过。
+24步门禁/202项测试/15项native/旧741/745/767全绿。[报告与冻结证据](attachments/771/review-r3/REVIEW.md)。
+
+| id | 级别 | 残余项 / owner |
+|---|---|---|
+| F-771-R3-01 | low / nonblocking 文档债务 | verification.md §4仍留旧187/9数量与耗时，而当前概述202/15；§4c声称旧行已移除。实际复审收据准确，不阻断实现验收。merge closeout修正当前验证表。 |
+
+本pass不覆盖将来的整合代码；770若先合须新基线联跑并fresh review。未合入/发布canonical/归档/清理。
+
 ### Plan 781（2026-10-15，阶段 C 实施期发现，work 侧登记）
 
 | id | 级别 | 缺口 / 归属 |
@@ -1207,3 +1402,12 @@ F-R1-01原例闭合但全值语义不变量尚未闭合。22步门禁与199项�
 | F-781-C01 | P2 / 新计划候选 | VM HTTP 段派发泵串行——单段无 park 的长忙 handler（10MiB 导入 70-230s）占住泵，共居 split-VM 前端的内部 HTTP（Init `/api/books`）饿死（实测 2/2 负载态 + 1/3 安静态）。781-budget-decision r3（D-1 预见的公平性证据坐实）；修复面 = 段泵并发化或 HTTP CpuSlice 化——D-1 冻结为 v1 非目标，需新计划。 |
 | F-781-C02 | P3 / 路由 READER-001 | Reader 前端把 Init 内部调用失败当致命 → 进程退出 → 进行中导入连接中断（consumer 韧性：Init 重试/降级不自杀）。 |
 | F-781-C03 | P3 / 预存（非 781 引入） | th 档 `http_e2e_back_proxy_real_routes_corpora_data_face` 在 776/770/771 合入后的 master 基线即红（`:id` 参数模板转发）——stash 基线同红实证；归属近次合入面，781 记录在案未修。 |
+
+### Plan 782（2026-10-15，T-03 探针发现的基线预存缺陷，work 侧登记）
+
+非 782 引入（master 合入基线即有），782 组合程序已规避，不转交本计划修复；与 §10.6 对应。
+
+| id | 级别 | 缺口 / 归属 |
+|---|---|---|
+| D-771-A | P3 / 771 交付面 | 命名构造字段值位不支持二元运算表达式：`Pair { left: 1 + 2, ... }` 在纯 record 域报 `source.syntax: expected operator`（771 交付即如此）。需独立修复并回归 771 面；782 组合程序以 let 提升规避。 |
+| D-770-B | P3 / 770 前门缺口 | text 域 assign 位 `.move`（`o = x.move`）产生 `source.internal`（adapter 发射 text descriptor 不接受的 `expr.move`）而非受控拒绝。770 该位本就不支持 move 标记，缺前门拒绝；782 组合域 assign 位 move 走 descriptor 接受的包装表示不受影响。 |
