@@ -1,7 +1,13 @@
-# PLAN-776 拟议规范增量（SD-01..07，R7 终形）
+# PLAN-776 拟议规范增量（SD-01..07，R8 终形）
 
 > 供 review/merge 按实证沉淀（本次不修改 canonical Specs）。
 > 每条 SD：before（现行规则）→ after（本计划落地后的规则）→ 代码/测试证据。
+> **本稿为 R8 终形**（2026-10-14）：在 R7 终形之上按 F776-R8-01..02 修订
+> ——Future 句柄在 **Value 载体保真**（既有 `Value::Future/FutureData`
+> 句柄视图映射，R7 的降级 Int 废弃）+ marshal legacy 位形态驱动臂**退役**；
+> iterator 消费**所有权协议**（原始凭据 nv 的 StakeGuard+rc_release 清偿
+> + 弹出槽清零）。R7 冻结版见 attachments/776/review-r8/reviewed-spec-delta.md
+>（SHA256 `F4490ADB…`）。
 > **本稿为 R7 终形**（2026-10-14）：在 R6 终形之上按 F776-R7-01..04 修订
 > ——Future 句柄改 **TAG_FUTURE 逐值载荷**（值自带来源：位模式撞值恒
 > 数据、helper 传递的真实 Future 天然可驱动——函数级登记全部退役）；
@@ -46,8 +52,12 @@
   保持）；非 HTTP 消费兼容：iterator natives **凭据感知全族**
   （`auto.iterator.next`/`map`/`filter`/`enumerate`/`collect`/`reduce`/
   `find` 共享凭据感知弹栈——裸 id 与 Sse 凭据同底层数据；**派生
-  iterator 身份**：凭据源派生 id 同样包装凭据，下游继续可解）。Response/
-  File/Upload 由构造点 push 凭据。
+  iterator 身份**：凭据源派生 id 同样包装凭据，下游继续可解；**消费
+  所有权协议**（R8-02）：对**原始凭据 nv** 执行 StakeGuard+rc_release
+  清偿调用方栈份额（guard 解包后的 iterator id 不能清偿高段 credential
+  heap id 的 owned 份额——R8 探针实证源凭据消费后 RC=1 恒存活）+ 弹出
+  槽清零（残留 TAG_OBJECT 会被任务栈全槽扫描误读）；错误早退同样清偿；
+  派生输出自带份额）。Response/File/Upload 由构造点 push 凭据。
 - **传播**：栈/globals/容器/closure captures/Future result 五载体身份保持
   （VmRef/TAG_OBJECT 双桥）；资源不可经数值转换获得。
 - **编组**：marshal 资源臂优先于一切 int 探测；Response=快照 clone（重复
@@ -81,14 +91,16 @@
   最前；generator/SSE 身份由 SD-01 生产点包装；upload/file「声明专属返回+
   值非凭据对象」→纯诊断门 mismatch 500（不触表）；**未声明专属返回的普通
   数值永远 JSON 数据**（R2 反例 `fn p() ~Iter { return 0 }` → JSON 0）。
-  **Future 句柄 = TAG_FUTURE 逐值载荷**（R7-01 终形，替代 R6 的函数级
-  血缘登记——声明/位模式/注册表/函数级标记都不是来源）：全部生产点
-  （CREATE_FUTURE 与 External creator）产 `encode_future(fid)` 载荷；
-  marshal 对 TAG_FUTURE 值直接驱动（无函数级门）——helper 传递的真实
-  Future 天然展开；普通 i32（含位模式撞活跃 fid 的 496，函数内有无
-  `return ~{}` 分支皆然）恒数据。legacy `(fid<<8)|0xF0` 位形态仅作
-  值经 `Value::Int` 载体往返（容器/闭包捕获）后的降级兼容臂（~T 声明
-  门内驱动，功能保留）；`future_all/race` 列表扫描同形兼容。
+  **Future 句柄 = TAG_FUTURE 逐值载荷**（R8-01 终形）：全部生产点
+  （CREATE_FUTURE 与 External creator）产 `encode_future(fid)`；marshal
+  对 TAG_FUTURE 值直接驱动（无函数级门）。**Value 载体保真**（R8-01）：
+  句柄入 Value（容器元素/闭包捕获/异步终值/GET_ELEM）保真映射既有
+  `Value::Future(FutureData{id})` 句柄视图、还原回 `encode_future`——
+  数组取出/捕获读回的真实 Future 保持可驱动（V8-F3=42）；**legacy
+  `(fid<<8)|0xF0` 位形态驱动臂退役**——普通 i32（位模式撞活跃 fid 的
+  496，`~T`/`~Iter` 声明皆然、有无 `return ~{}` 分支皆然）恒数据
+  （V8-F2/F0/F1）；AWAIT/POLL 保留位形态兼容解码（功能面，无驱动门）；
+  `future_all/race` 列表扫描接受 `Value::Future` 元素。
 - before §5（P734-D7）：6 wire 用例依赖查表命中制。
 - after §5：**P734-D7 关闭**——legacy 6 wire 用例 wire 行为不变由**真实
   生产点凭据**保持（redirect/musk ctor 8 族/Http.ok 五族/

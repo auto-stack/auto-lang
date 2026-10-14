@@ -111,6 +111,12 @@ B 的唯一优势（不占堆 id 空间）不构成需求。**冻结方案 A。*
 > iterator natives 凭据感知全族 + 派生身份凭据化；SSE 早断连 churn
 > 服务死锁经 base `5e21561d2` 判别实验定性预存（归 plan707 轨，
 > P776-D4）。终形见 spec-delta R7 终形稿。
+> **R8 终形补注（2026-10-14，F776-R8-01..02）**：R7 的降级映射（Value
+> 载体往返 → legacy 位形态 Int）废弃——Value 载体保真映射既有
+> `Value::Future/FutureData`（句柄视图，Plan 124 变体，非新表示），marshal
+> legacy 位形态驱动臂退役（普通数字恒数据）。iterator 消费补**所有权
+> 协议**（原始凭据 nv 的 StakeGuard+rc_release+弹出槽清零——R7 交接
+> 声明的清零未落进冻结提交，一并修正）。终形见 spec-delta R8 终形稿。
 
 ## 3. 凭据合同（方案 A 细则）
 

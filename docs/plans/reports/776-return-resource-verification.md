@@ -356,3 +356,39 @@ tt/tu/taa 零触发。死代码清理：`fn_ret_declares_stream`（codegen）、
 
 tt/tu/taa 零触发。判别实验的临时 base worktree（lang-776-base 组）已
 清理（实验数据保留于本节文字）。
+
+---
+
+## R8 修复轮（2026-10-14，review-r8 needs_fix 后复修）
+
+代码提交：`5b8bffdef`（7 文件 +246/−68；实现链保留）。逐项闭合：
+
+- **F776-R8-01（P1）Value 载体保真 + legacy 臂退役**：TAG_FUTURE 句柄
+  入 Value（四桥：decode_tagged_nv / native+interop nv_to_value /
+  CREATE_ARRAY）保真映射**既有** `Value::Future(FutureData{id})`（句柄
+  视图，state 占位 Pending；Plan 124 变体——非新表示）；还原路径
+  （materialize_value / value_to_nv_via_task / **GET_ELEM**——原落 `_`
+  臂 push_i32(0)）回 `encode_future(fid)`。**marshal legacy 位形态驱动
+  臂整体退役**：`~int` 声明 fn 返回普通 496（位模式撞活跃 fid1）恒
+  数据（V8-F2）；数组取出真实 Future → 42（V8-F3）；R7 形态（F0/F1/
+  helper）保持。`future_all/race` 扫描接受 Value::Future 元素。
+- **F776-R8-02（P1)iterator 消费所有权协议**：`pop_iterator_receiver`
+  与 `shim_iterator_next` 凭据臂对**原始凭据 nv** 执行消费协议——
+  StakeGuard::nv（保护读取）+ `rc_release`（清偿调用方栈份额；R7-02
+  的 guard-解包-id 模式无法清偿高段 credential 的 owned 份额——R8
+  探针实证源凭据消费后 RC=1 恒存活）+ 弹出槽清零（R7 交接声明确未
+  落地于冻结提交，本轮一并修正）；错误早退同清偿；派生输出自带份额。
+  oracle：`plan776_r8_iterator_consumer_ownership_protocol`（×3 重复
+  消费净零——dying 宽限窗语义入账、早退非凭据对象、裸源控制）。
+
+门禁（实施树 `5b8bffdef`）：
+
+| 门禁 | 结果 |
+|---|---|
+| `cargo check -p auto-lang` | 0 error |
+| 裸 `cargo t --no-fail-fast` | **5310/5310 全绿**（81.0s；一次 plan707 cancel-gap 并行 flake 单跑绿——Value 桥触面广故本轮仍跑整档；后置裁定下最终档归 merge） |
+| `cargo tv` | 162/162 |
+| plan776 全族（`-j 1`） | **63/63**（61 项 R1-R7 复现 + R8 新增 2：载体身份 wire、所有权协议单测） |
+| 生成真 TCP 矩阵 | 3/3（File/Upload/JSON+busSSE） |
+| scoped | plan394 17/17、plan705 19/19、plan707 31/31、generator 10/10、plan326 40/40 |
+| rustfmt 触面 7 文件 | 干净 |
