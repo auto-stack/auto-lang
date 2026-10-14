@@ -669,6 +669,10 @@ enum RState {
     },
     AwaitLoop {
         body_slot: usize,
+        /// the loop's own id (r5 R5-02): the resume step consumes the
+        /// states that reached THIS loop's target exits (break/continue)
+        /// in addition to the body's natural-completion state
+        loop_id: u32,
     },
 }
 
@@ -1156,6 +1160,9 @@ impl<'a> ResourceWalk<'a> {
         let mut results: Vec<Option<WalkState>> = vec![None];
         let mut frames: Vec<RFrame> = Vec::new();
         let mut loops: Vec<(hir::LoopId, u32)> = Vec::new();
+        // r5 R5-02: per-target exit states of break/continue — consumed by
+        // the target loop's AwaitLoop resume, never by the if join
+        let mut loop_exits: BTreeMap<u32, Vec<WalkState>> = BTreeMap::new();
         frames.push(RFrame {
             bid: entry,
             loops_len: 0,
@@ -1433,7 +1440,10 @@ impl<'a> ResourceWalk<'a> {
                             loops.push((id, b.0));
                             let body_slot =
                                 push_child(&mut frames, &mut results, b.0, loops.len(), child);
-                            frames[parent_idx].state = RState::AwaitLoop { body_slot };
+                            frames[parent_idx].state = RState::AwaitLoop {
+                                body_slot,
+                                loop_id: id.0,
+                            };
                         }
                         hir::Stmt::Break { target } | hir::Stmt::Continue { target } => {
                             // Free everything scoped inside the exited loop:
@@ -1474,6 +1484,22 @@ impl<'a> ResourceWalk<'a> {
                                             frame.st.dead.entry(*l).or_insert(DeadCause::ScopeExit);
                                         }
                                     }
+                                    // r5 R5-02: the TARGET exit state is kept
+                                    // separately from the if-join continuation
+                                    // (a terminating arm contributes nothing
+                                    // there, r4 R4-03) and consumed by the
+                                    // TARGET loop's resume step — its backing
+                                    // and dead entries reach the after-loop
+                                    // state, so a view of a freed loop-scoped
+                                    // owner cannot be read past the loop even
+                                    // when the break/continue sat inside an
+                                    // if arm. Recorded even when frees are
+                                    // empty: the backing matters (c02 keeps a
+                                    // live outer owner legal).
+                                    loop_exits
+                                        .entry(target.0)
+                                        .or_default()
+                                        .push(frame.st.clone());
                                 }
                             }
                             frame.flow_done = true;
@@ -1634,9 +1660,21 @@ impl<'a> ResourceWalk<'a> {
                                 }
                             }
                         }
-                        RState::AwaitLoop { body_slot } => {
+                        RState::AwaitLoop { body_slot, loop_id } => {
                             let body_st = results[body_slot].clone().expect("loop body state");
-                            merge_children(&mut frame.st, &[body_st]);
+                            // r5 R5-02: the after-loop state merges the
+                            // body's natural-completion (back-edge) state
+                            // AND every state that reached THIS loop's target
+                            // exits (break — after-loop; continue —
+                            // re-entry, conservatively unioned like the
+                            // back edge). Dead/backing union only: sound and
+                            // consistent with the join model; the parent's
+                            // own live set stays authoritative.
+                            let mut states = vec![body_st];
+                            if let Some(exits) = loop_exits.remove(&loop_id) {
+                                states.extend(exits);
+                            }
+                            merge_children(&mut frame.st, &states);
                             loops.truncate(frame.loops_len);
                         }
                         RState::Run => unreachable!("Run is not resumed"),

@@ -2104,8 +2104,10 @@ impl<'c> TextEmitter<'c> {
                 operand: ExprId,
             },
             LogicalLhs {
+                dest: ExprId,
                 op: hir::LogicOp,
                 lhs: ExprId,
+                rhs: ExprId,
                 var: Variable,
                 merge: cranelift_codegen::ir::Block,
             },
@@ -2199,18 +2201,18 @@ impl<'c> TextEmitter<'c> {
                         hir::ExprKind::Logical { op, lhs, rhs } => {
                             let var = self.fb.declare_var(types::I32);
                             let merge = self.fb.create_block();
-                            let temps_mark = self.pending_temps.len();
-                            stack.push(TStep::LogicalRhs {
-                                dest: id,
-                                rhs: *rhs,
-                                var,
-                                merge,
-                                temps_mark,
-                            });
-                            stack.push(TStep::Enter(*rhs));
+                            // r5 R5-01: the RHS-temp boundary is frozen by
+                            // the LogicalLhs step AFTER the lhs (including
+                            // any logicals nested inside it) has fully
+                            // evaluated — lhs temps execute on EVERY path
+                            // and must keep their real pointers; only the
+                            // rhs-region temps ride the join as null-on-
+                            // skip params.
                             stack.push(TStep::LogicalLhs {
+                                dest: id,
                                 op: *op,
                                 lhs: *lhs,
+                                rhs: *rhs,
                                 var,
                                 merge,
                             });
@@ -2393,8 +2395,10 @@ impl<'c> TextEmitter<'c> {
                     slots.insert(dest.0, TVal::I(v));
                 }
                 TStep::LogicalLhs {
+                    dest,
                     op,
                     lhs,
+                    rhs,
                     var,
                     merge,
                 } => {
@@ -2414,6 +2418,21 @@ impl<'c> TextEmitter<'c> {
                     }
                     self.fb.seal_block(rhs_b);
                     self.fb.switch_to_block(rhs_b);
+                    // r5 R5-01: freeze the RHS temp boundary HERE — the
+                    // lhs (including logicals nested inside it) has fully
+                    // evaluated, so pending_temps below this mark execute
+                    // on every path and keep their real (unconditionally
+                    // freed) pointers; only the rhs region rides the join
+                    // as null-on-skip params.
+                    let temps_mark = self.pending_temps.len();
+                    stack.push(TStep::LogicalRhs {
+                        dest,
+                        rhs,
+                        var,
+                        merge,
+                        temps_mark,
+                    });
+                    stack.push(TStep::Enter(rhs));
                 }
                 TStep::LogicalRhs {
                     dest,
