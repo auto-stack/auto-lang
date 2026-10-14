@@ -690,7 +690,7 @@ fn decode_check(v: &CVal, path: &str) -> Result<CheckSpec, ContractError> {
         }
     };
 
-    let expect = decode_expect(f.req("expect")?, &f.path_of("expect"))?;
+    let expect = decode_expect(f.req("expect")?, &f.path_of("expect"), adapter)?;
 
     Ok(CheckSpec {
         id,
@@ -716,18 +716,73 @@ fn decode_options(
         Adapter::A2r => &["module_name"],
     };
     let f = Fields::new(path, pairs, known)?;
-    Ok(Options {
-        module_name: opt_str(&f, "module_name")?,
-    })
+    let module_name = opt_str(&f, "module_name")?;
+    if let Some(name) = &module_name {
+        // F-05: module_name becomes a product filename (`<name>.rs`) inside
+        // the run scratch — it must be a single safe path component.
+        let ok = !name.is_empty()
+            && name.len() <= 64
+            && !name.contains(['/', '\\', ':', '\0'])
+            && name != "."
+            && name != ".."
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'));
+        if !ok {
+            return Err(err(
+                &f.path_of("module_name"),
+                "module_name must be a single path component ([A-Za-z0-9_-], non-empty, <=64 chars) — it names an emitted artifact",
+            ));
+        }
+    }
+    Ok(Options { module_name })
 }
 
-fn decode_expect(v: &CVal, path: &str) -> Result<ExpectSpec, ContractError> {
+/// Per-adapter observable-channel support table (Plan 773 F-02, frozen for
+/// v1). A channel declared for an adapter that cannot observe it is an
+/// ADMISSION error — parsed-then-ignored expectations are forbidden.
+pub fn channel_supported(adapter: Adapter, channel: &str) -> bool {
+    match (adapter, channel) {
+        (Adapter::Avm, "result") => true,
+        (Adapter::Avm, "stdout") => true,
+        (Adapter::Avm, "stderr") => true,
+        (Adapter::A2r, "artifacts") => true,
+        _ => false,
+    }
+}
+
+fn decode_expect(v: &CVal, path: &str, adapter: Adapter) -> Result<ExpectSpec, ContractError> {
     let pairs = as_obj(v, path)?;
     let f = Fields::new(
         path,
         pairs,
         &["completion", "result", "stdout", "stderr", "artifacts"],
     )?;
+
+    // Frozen support table: every declared channel must be observable by
+    // this adapter, else the check never loads (F-02: unsupported fields
+    // may not be skipped after decode).
+    for channel in ["result", "stdout", "stderr", "artifacts"] {
+        if f.sub(channel).is_some() && !channel_supported(adapter, channel) {
+            return Err(err(
+                &f.path_of(channel),
+                format!(
+                    "`{}` is not an observable channel for {}/{} in this pilot (supported by {}: {})",
+                    channel,
+                    adapter.as_str(),
+                    match adapter {
+                        Adapter::Avm => "run",
+                        Adapter::A2r => "emit",
+                    },
+                    channel,
+                    match adapter {
+                        Adapter::Avm => "result, stdout, stderr",
+                        Adapter::A2r => "artifacts",
+                    }
+                ),
+            ));
+        }
+    }
 
     let completion = match f.req("completion")? {
         CVal::Str(s) if s == "success" => Completion::Success,
@@ -745,6 +800,12 @@ fn decode_expect(v: &CVal, path: &str) -> Result<ExpectSpec, ContractError> {
                 }
             };
             let code = opt_str(&cf, "code")?;
+            if code.as_deref() == Some("") {
+                return Err(err(
+                    &format!("{}.code", f.path_of("completion")),
+                    "empty `code` identifies nothing — declare a real variant/diagnostic code or omit the field",
+                ));
+            }
             let message = match cf.sub("message") {
                 None => None,
                 Some(mv) => {
@@ -757,9 +818,17 @@ fn decode_expect(v: &CVal, path: &str) -> Result<ExpectSpec, ContractError> {
                         return Err(err(&mp, "exactly one of exact/contains is required"));
                     }
                     if has_exact {
-                        Some(MessageMatcher::Exact(req_str(&mf, "exact")?))
+                        let s = req_str(&mf, "exact")?;
+                        if s.is_empty() {
+                            return Err(err(&mp, "exact: \"\" matches every message — a strong oracle needs discriminating text"));
+                        }
+                        Some(MessageMatcher::Exact(s))
                     } else {
-                        Some(MessageMatcher::Contains(req_str(&mf, "contains")?))
+                        let s = req_str(&mf, "contains")?;
+                        if s.is_empty() {
+                            return Err(err(&mp, "contains: \"\" matches every message — a strong oracle needs discriminating text"));
+                        }
+                        Some(MessageMatcher::Contains(s))
                     }
                 }
             };
@@ -819,6 +888,16 @@ fn decode_expect(v: &CVal, path: &str) -> Result<ExpectSpec, ContractError> {
                 let sp = f.path_of(key);
                 let pairs = as_obj(sv, &sp)?;
                 let sf = Fields::new(&sp, pairs, &["text", "compare"])?;
+                // F-02: streams are success-completion observations; an
+                // error completion exposes no streams to compare against,
+                // so declaring one there is an admission error instead of a
+                // silently-ignored assertion.
+                if matches!(completion, Completion::Error { .. }) {
+                    return Err(err(
+                        &sp,
+                        format!("`{}` expectations require completion \"success\" (error completions expose no streams in this pilot)", key),
+                    ));
+                }
                 let compare = decode_compare(sf.sub("compare"), &format!("{}.compare", sp))?;
                 Ok(Some(StreamExpect {
                     text: req_str(&sf, "text")?,

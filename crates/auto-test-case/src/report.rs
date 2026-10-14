@@ -95,6 +95,11 @@ pub struct RunReport {
     pub suite_sha256: String,
     /// Adapters the suite requires of every selected case.
     pub required_adapters: Vec<String>,
+    /// Toolchain/config identity the results are bound to (Plan 773 F-06):
+    /// core crate version, vendored parser fingerprint, driver crate
+    /// version, and the effective admission limits. Populated by the runner;
+    /// a stale check compares it axis by axis.
+    pub toolchain: BTreeMap<String, String>,
     pub results: Vec<CheckOutcome>,
     /// (case, adapter) pairs selected but missing a declared, non-skipped
     /// check — required-coverage contract errors.
@@ -112,6 +117,7 @@ impl RunReport {
             suite_id: suite_id.to_string(),
             suite_sha256: suite_sha256.to_string(),
             required_adapters: required_adapters.to_vec(),
+            toolchain: BTreeMap::new(),
             results: Vec::new(),
             coverage_gaps: Vec::new(),
             load_errors: Vec::new(),
@@ -131,8 +137,12 @@ impl RunReport {
     }
 
     /// Gate exit code: 2 (contract/infra errors) over 1 (assertion/coverage)
-    /// over 0.
+    /// over 0. A report with ZERO dynamic checks is a contract error (exit
+    /// 2) — an aggregate green must never hide an empty run (Plan 773 F-06).
     pub fn exit_code(&self) -> i32 {
+        if self.results.is_empty() {
+            return 2;
+        }
         if self.count(Status::Error) > 0
             || self.count(Status::Blocked) > 0
             || !self.coverage_gaps.is_empty()
@@ -165,12 +175,16 @@ impl RunReport {
                 .join(", ")
         ));
         let counts = self.counts();
+        let mut summary_parts = vec![format!("\"total\": {}", self.results.len())];
+        for (k, v) in &counts {
+            summary_parts.push(format!("\"{}\": {}", k, v));
+        }
+        s.push_str(&format!("  \"summary\": {{ {} }},\n", summary_parts.join(", ")));
         s.push_str(&format!(
-            "  \"summary\": {{ \"total\": {}, {} }},\n",
-            self.results.len(),
-            counts
+            "  \"toolchain\": {{ {} }},\n",
+            self.toolchain
                 .iter()
-                .map(|(k, v)| format!("\"{}\": {}", k, v))
+                .map(|(k, v)| format!("{}: {}", json_str(k), json_str(v)))
                 .collect::<Vec<_>>()
                 .join(", ")
         ));

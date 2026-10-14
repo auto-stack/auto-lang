@@ -132,22 +132,38 @@ fn weak_error_oracles_are_rejected() {
 
 #[test]
 fn error_completion_cannot_also_expect_result_or_artifacts() {
+    // Plan 773 F-02 tightened both axes: streams/result are success-only
+    // observations (and adapter-gated), artifacts likewise. Use an avm
+    // check for result/stdout and an a2r check (which supports artifacts)
+    // for the artifacts variant.
     let base = minimal_case().replace(
         "expect: { completion: \"success\", result: { format: \"legacy-display\", text: \"3\" } }",
         "expect: { completion: { stage: \"run\", code: \"X\" }, RESULT }",
     );
-    let err = decode(&base.replace(
-        "RESULT",
+    for chan in [
         "result: { format: \"legacy-display\", text: \"1\" }",
-    ))
-    .unwrap_err();
-    assert!(err.message.contains("completion \"success\""), "{}", err);
-    let err = decode(&base.replace(
-        "RESULT",
-        "artifacts: [ { path: \"main.rs\", file: \"exp.rs\" } ]",
-    ))
-    .unwrap_err();
-    assert!(err.message.contains("completion \"success\""), "{}", err);
+        "stdout: { text: \"x\" }",
+    ] {
+        let err = decode(&base.replace("RESULT", chan)).unwrap_err();
+        assert!(
+            err.message.contains("require completion \"success\""),
+            "{}",
+            err
+        );
+    }
+    let a2r_src = concat!(
+        "case { schema: \"autolang.case/1\", id: \"f02.h\", ",
+        "source: { text: \"fn main() {}\", syntax: \"auto\", path: \"main.at\" }, ",
+        "entry: { mode: \"script\" }, ",
+        "checks: [ { id: \"emit\", adapter: \"a2r\", action: \"emit\", ",
+        "expect: { completion: { stage: \"parse\", message: { contains: \"token\" } }, artifacts: [ { path: \"main.rs\", file: \"exp.rs\" } ] } } ] }"
+    );
+    let err = decode(a2r_src).unwrap_err();
+    assert!(
+        err.message.contains("require completion \"success\""),
+        "{}",
+        err
+    );
 }
 
 #[test]
@@ -229,4 +245,103 @@ fn check_count_limit_applies() {
     );
     let err = decode(&src).unwrap_err();
     assert!(err.message.contains("max_checks_per_case"), "{}", err);
+}
+
+// ---------------------------------------------------- Plan 773 F-02 ----
+// The frozen per-adapter observation support table: a channel an adapter
+// cannot observe is an ADMISSION error (never decoded-then-ignored), and
+// strong oracles without discriminating power are rejected.
+
+#[test]
+fn a2r_cannot_declare_stream_or_result_observations() {
+    for channel in [
+        "result: { format: \"legacy-display\", text: \"x\" }",
+        "stdout: { text: \"x\" }",
+        "stderr: { text: \"x\" }",
+    ] {
+        let src = format!(
+            "case {{ schema: \"autolang.case/1\", id: \"f02.a\", source: {{ text: \"fn main() {{}}\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"script\" }}, checks: [ {{ id: \"emit\", adapter: \"a2r\", action: \"emit\", expect: {{ completion: \"success\", {} }} }} ] }}",
+            channel
+        );
+        let err = decode(&src).unwrap_err();
+        assert!(
+            err.message.contains("not an observable channel"),
+            "{}: {}",
+            channel,
+            err
+        );
+        assert!(err.path.contains("expect"), "{}", err.path);
+    }
+}
+
+#[test]
+fn avm_cannot_declare_artifact_observations() {
+    let src = concat!(
+        "case { schema: \"autolang.case/1\", id: \"f02.b\", ",
+        "source: { text: \"1+2\", syntax: \"auto\", path: \"main.at\" }, ",
+        "entry: { mode: \"expression\" }, ",
+        "checks: [ { id: \"vm\", adapter: \"avm\", action: \"run\", ",
+        "expect: { completion: \"success\", artifacts: [ { path: \"x.bin\", file: \"x.bin\" } ] } } ] }"
+    );
+    let err = decode(src).unwrap_err();
+    assert!(err.message.contains("not an observable channel"), "{}", err);
+}
+
+#[test]
+fn streams_require_success_completion() {
+    let src = concat!(
+        "case { schema: \"autolang.case/1\", id: \"f02.c\", ",
+        "source: { text: \"fn (\", syntax: \"auto\", path: \"main.at\" }, ",
+        "entry: { mode: \"script\" }, ",
+        "checks: [ { id: \"vm\", adapter: \"avm\", action: \"run\", ",
+        "expect: { completion: { stage: \"parse\", message: { contains: \"token\" } }, stdout: { text: \"x\" } } } ] }"
+    );
+    let err = decode(src).unwrap_err();
+    assert!(
+        err.message.contains("require completion \"success\""),
+        "{}",
+        err
+    );
+}
+
+#[test]
+fn empty_strong_oracles_are_rejected() {
+    for (expect, needle) in [
+        (
+            "completion: { stage: \"parse\", code: \"\" }",
+            "empty `code`",
+        ),
+        (
+            "completion: { stage: \"parse\", message: { contains: \"\" } }",
+            "needs discriminating text",
+        ),
+        (
+            "completion: { stage: \"parse\", message: { exact: \"\" } }",
+            "needs discriminating text",
+        ),
+    ] {
+        let src = format!(
+            "case {{ schema: \"autolang.case/1\", id: \"f02.d\", source: {{ text: \"fn (\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"script\" }}, checks: [ {{ id: \"vm\", adapter: \"avm\", action: \"run\", expect: {{ {} }} }} ] }}",
+            expect
+        );
+        let err = decode(&src).unwrap_err();
+        assert!(err.message.contains(needle), "{}: {}", needle, err);
+    }
+}
+
+#[test]
+fn module_name_must_be_a_single_path_component() {
+    for bad in ["../evil", "a/b", "", "a\\b", "a:b", "."] {
+        let src = format!(
+            "case {{ schema: \"autolang.case/1\", id: \"f02.e\", source: {{ text: \"fn main() {{}}\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"script\" }}, checks: [ {{ id: \"emit\", adapter: \"a2r\", action: \"emit\", options: {{ module_name: {:?} }}, expect: {{ completion: \"success\" }} }} ] }}",
+            bad
+        );
+        let err = decode(&src).unwrap_err();
+        assert!(
+            err.message.contains("single path component"),
+            "{:?}: {}",
+            bad,
+            err
+        );
+    }
 }

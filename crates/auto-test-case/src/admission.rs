@@ -95,6 +95,12 @@ pub enum AdmissionError {
     PathEscape(String),
     /// A filesystem object turned out to be a symlink/junction/reparse point.
     ReparsePoint(String),
+    /// A file could not be opened/read during admission (Plan 773 F-07:
+    /// read failures propagate, never silently drop the input).
+    Read { path: String, detail: String },
+    /// A write target overlaps a protected input/oracle root (Plan 773
+    /// F-05): outputs must live in a disjoint path domain.
+    OutputOverlap { out: String, protected: String },
 }
 
 impl std::fmt::Display for AdmissionError {
@@ -115,6 +121,14 @@ impl std::fmt::Display for AdmissionError {
             AdmissionError::ReparsePoint(p) => {
                 write!(f, "reparse point (symlink/junction) rejected: {:?}", p)
             }
+            AdmissionError::Read { path, detail } => {
+                write!(f, "read failed for {:?}: {}", path, detail)
+            }
+            AdmissionError::OutputOverlap { out, protected } => write!(
+                f,
+                "output path {:?} overlaps the protected input/oracle root {:?} — outputs must live in a disjoint directory (not equal, inside, or containing it)",
+                out, protected
+            ),
         }
     }
 }
@@ -166,6 +180,116 @@ pub fn check_no_reparse(path: &std::path::Path) -> Result<(), AdmissionError> {
         // by the caller that intends to read them.
         Err(_) => Ok(()),
     }
+}
+
+/// Reject reparse points on a path AND every existing ancestor (Plan 773
+/// F-05). The endpoint-only check misses a junction anywhere up the chain:
+/// `check_no_reparse` on `root/out/report.json` happily passes while `out`
+/// itself is a junction re-basing the whole subtree.
+pub fn check_no_reparse_ancestors(path: &std::path::Path) -> Result<(), AdmissionError> {
+    check_no_reparse(path)?;
+    let mut cur = path.to_path_buf();
+    while cur.pop() {
+        check_no_reparse(&cur)?;
+    }
+    Ok(())
+}
+
+/// Bounded file read under admission (Plan 773 F-07): reparse-audits the file
+/// and its ancestors, then reads at most `max` bytes — one extra byte is read
+/// to detect overflow, so an over-limit file is rejected WITHOUT first
+/// buffering it whole. `limit_name` names the limit in Resource errors.
+pub fn read_bounded(
+    path: &std::path::Path,
+    limit_name: &'static str,
+    max: usize,
+) -> Result<Vec<u8>, AdmissionError> {
+    use std::io::Read as _;
+    check_no_reparse_ancestors(path)?;
+    let file = std::fs::File::open(path).map_err(|e| AdmissionError::Read {
+        path: path.display().to_string(),
+        detail: e.to_string(),
+    })?;
+    let mut buf = Vec::new();
+    file.take(max.saturating_add(1) as u64)
+        .read_to_end(&mut buf)
+        .map_err(|e| AdmissionError::Read {
+            path: path.display().to_string(),
+            detail: e.to_string(),
+        })?;
+    if buf.len() > max {
+        return Err(AdmissionError::Resource {
+            limit: limit_name,
+            observed: buf.len(),
+            max,
+        });
+    }
+    Ok(buf)
+}
+
+/// Output-path domain audit (Plan 773 F-05): a writable output location must
+/// not overlap any protected input/oracle root in either direction — equal,
+/// inside, or containing are all rejections. Comparison happens on
+/// canonicalized (`\\?\`-verbatim on Windows) forms so case differences,
+/// trailing separators, and 8.3 aliases cannot sneak an overlap through.
+///
+/// Both sides must exist on disk (callers create the output directory before
+/// auditing it); non-canonicalizable paths are rejected as unreadable.
+pub fn validate_output_domain(
+    out: &std::path::Path,
+    protected: &[std::path::PathBuf],
+) -> Result<(), AdmissionError> {
+    let out_canon = out.canonicalize().map_err(|e| AdmissionError::Read {
+        path: out.display().to_string(),
+        detail: format!("canonicalize: {}", e),
+    })?;
+    for root in protected {
+        let root_canon = root.canonicalize().map_err(|e| AdmissionError::Read {
+            path: root.display().to_string(),
+            detail: format!("canonicalize: {}", e),
+        })?;
+        let overlap = out_canon == root_canon
+            || out_canon.starts_with(&root_canon)
+            || root_canon.starts_with(&out_canon);
+        if overlap {
+            return Err(AdmissionError::OutputOverlap {
+                out: out_canon.display().to_string(),
+                protected: root_canon.display().to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Validate that a file write target stays out of the protected input/oracle
+/// roots (Plan 773 F-05, `--json-out` class). The target's parent directory
+/// must exist for canonicalization; `name` is the leaf file name.
+pub fn validate_output_file(
+    target: &std::path::Path,
+    protected: &[std::path::PathBuf],
+) -> Result<(), AdmissionError> {
+    // Audit the target path itself (parent canonical + leaf) so a
+    // pre-existing file directly inside a protected root is caught even
+    // before it exists under the exact spellings compared below.
+    let parent = target.parent().unwrap_or(std::path::Path::new("."));
+    let parent_canon = parent.canonicalize().map_err(|e| AdmissionError::Read {
+        path: parent.display().to_string(),
+        detail: format!("canonicalize: {}", e),
+    })?;
+    let target_canon = parent_canon.join(target.file_name().unwrap_or_default());
+    for root in protected {
+        let root_canon = root.canonicalize().map_err(|e| AdmissionError::Read {
+            path: root.display().to_string(),
+            detail: format!("canonicalize: {}", e),
+        })?;
+        if target_canon.starts_with(&root_canon) {
+            return Err(AdmissionError::OutputOverlap {
+                out: target_canon.display().to_string(),
+                protected: root_canon.display().to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -239,5 +363,80 @@ mod tests {
                 bad
             );
         }
+    }
+
+    // ---------------------------------------------- Plan 773 F-05/F-07 --
+
+    fn temp_dir_tagged(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("atc-adm-{}-{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn output_domain_rejects_overlap_in_both_directions() {
+        let root = temp_dir_tagged("domain");
+        let inputs = root.join("inputs");
+        std::fs::create_dir_all(inputs.join("sub")).unwrap();
+        // out inside the protected root (audit requires the target to
+        // exist — callers create it first, mirroring the runner).
+        let inside = inputs.join("sub").join("out");
+        std::fs::create_dir_all(&inside).unwrap();
+        let err = validate_output_domain(&inside, &[inputs.clone()]).unwrap_err();
+        assert!(err.to_string().contains("overlaps"), "{}", err);
+        // out equal to the protected root.
+        assert!(validate_output_domain(&inputs, &[inputs.clone()]).is_err());
+        // out CONTAINING the protected root (parent direction).
+        assert!(validate_output_domain(&root, &[inputs.clone()]).is_err());
+        // Disjoint sibling directory: accepted.
+        let ok = root.join("elsewhere");
+        std::fs::create_dir_all(&ok).unwrap();
+        assert!(validate_output_domain(&ok, &[inputs.clone()]).is_ok());
+        // Windows case-difference cannot sneak an overlap through.
+        let lower = root.join("inputs2");
+        std::fs::create_dir_all(&lower).unwrap();
+        let upper = root.join("INPUTS2");
+        assert!(validate_output_domain(&upper, &[lower.clone()]).is_err());
+    }
+
+    #[test]
+    fn output_file_targets_cannot_land_in_protected_roots() {
+        let root = temp_dir_tagged("outfile");
+        let inputs = root.join("inputs");
+        std::fs::create_dir_all(&inputs).unwrap();
+        let err =
+            validate_output_file(&inputs.join("report.json"), &[inputs.clone()]).unwrap_err();
+        assert!(err.to_string().contains("overlaps"), "{}", err);
+        let ok = root.join("out");
+        std::fs::create_dir_all(&ok).unwrap();
+        assert!(validate_output_file(&ok.join("report.json"), &[inputs]).is_ok());
+    }
+
+    #[test]
+    fn ancestors_reparse_audit_walks_the_chain() {
+        let root = temp_dir_tagged("ancestors");
+        let deep = root.join("a").join("b").join("c");
+        std::fs::create_dir_all(&deep).unwrap();
+        assert!(check_no_reparse_ancestors(&deep.join("f.txt")).is_ok());
+        // A normal directory chain has no reparse points; the endpoint
+        // check alone also passes — the walk is the guard for junctions
+        // higher up (source-audited; creating real junctions in tests is
+        // platform-privilege dependent).
+        assert!(check_no_reparse_ancestors(&root).is_ok());
+    }
+
+    #[test]
+    fn bounded_read_rejects_oversized_files() {
+        let root = temp_dir_tagged("bounded");
+        let f = root.join("big.bin");
+        std::fs::write(&f, vec![0u8; 100]).unwrap();
+        let err = read_bounded(&f, "max_probe", 16).unwrap_err();
+        assert!(err.to_string().contains("max_probe"), "{}", err);
+        // Exactly at the limit passes.
+        assert_eq!(read_bounded(&f, "max_probe", 100).unwrap().len(), 100);
+        // Missing file: a Read error, not a silent skip.
+        let err = read_bounded(&root.join("nope.bin"), "max_probe", 16).unwrap_err();
+        assert!(err.to_string().contains("read failed"), "{}", err);
     }
 }

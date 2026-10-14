@@ -20,6 +20,23 @@ use autodown_test_parser::markdown_parser::parse_blocks;
 use crate::admission::{check_limit, AdmissionError, Limits};
 use crate::raw_ranges::locate_fences;
 
+/// Fingerprint of the vendored parser snapshot actually compiled in (Plan
+/// 773 F-06 toolchain identity): one SHA-256 over the three pinned source
+/// files, embedded via `include_str!` so the hash tracks the compiled bytes,
+/// not whatever happens to sit next to the binary.
+pub fn vendored_parser_fingerprint() -> String {
+    use crate::sha256::{hex, sha256};
+    let mut combined = Vec::new();
+    for src in [
+        include_str!("../../../vendor/autodown-test-parser/src/markdown_parser.rs"),
+        include_str!("../../../vendor/autodown-test-parser/src/ial.rs"),
+        include_str!("../../../vendor/autodown-test-parser/src/block_model.rs"),
+    ] {
+        combined.extend_from_slice(src.as_bytes());
+    }
+    hex(&sha256(&combined))
+}
+
 /// A validated fence of a loaded document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentFence {

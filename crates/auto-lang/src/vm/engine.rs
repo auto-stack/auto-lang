@@ -275,6 +275,24 @@ pub enum VMError {
     ExitRequested(i32),
 }
 
+/// Plan 773 F-08: stable variant-name identity of a VM trap, decided where
+/// the typed `VMError` still exists (the run-task loop's error arm). This is
+/// the type-derived run-stage code for test-case oracles — never parsed back
+/// out of the flattened message text.
+pub fn vm_error_code(e: &VMError) -> &'static str {
+    match e {
+        VMError::StackOverflow => "StackOverflow",
+        VMError::StackUnderflow => "StackUnderflow",
+        VMError::InvalidOpCode(_) => "InvalidOpCode",
+        VMError::DivisionByZero => "DivisionByZero",
+        VMError::Halt => "Halt",
+        VMError::MissingNative(_) => "MissingNative",
+        VMError::RuntimeError(_) => "RuntimeError",
+        VMError::FFI(_) => "FFI",
+        VMError::ExitRequested(_) => "ExitRequested",
+    }
+}
+
 /// Result of executing a single VM instruction (used by `run_one_instruction`)
 #[derive(Debug, Clone, PartialEq)]
 pub enum StepResult {
@@ -3732,6 +3750,10 @@ impl AutoVM {
                             format!("{:?}", e)
                         };
                         task.last_error = Some(error_msg.clone());
+                        // Plan 773 F-08: keep the typed identity alongside the
+                        // flattened message — the staged run API reads it as
+                        // the run-stage oracle code.
+                        task.last_error_code = Some(vm_error_code(&e));
                         // Plan 260: Suppress error output when running in test mode (output_buffer set)
                         // Plan 011: ExitRequested is a cooperative stop, not a failure — don't log it.
                         if self.output_buffer.is_none() && !matches!(e, VMError::ExitRequested(_)) {

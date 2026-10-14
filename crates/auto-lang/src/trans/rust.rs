@@ -28556,11 +28556,15 @@ pub fn transpile_rust_full_with_options(
     let _scope = shared(crate::scope_manager::ScopeManager::new());
     let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransRust);
-    let mut ast = parser.parse().map_err(|e| e.to_string())?;
+    // Plan 773 F-08: keep parse/CTEE failures TYPED — flattening them via
+    // `.to_string()` here turned every emit-path syntax error into a plain
+    // `Msg`, which the stage classifier must then treat as infrastructure.
+    // Display text is unchanged (the old `Msg` wrapped the same string).
+    let mut ast = parser.parse()?;
 
     // Plan 095: Run CTEE to transform compile-time constructs
     let mut ctee = crate::comptime::CTEE::new();
-    ctee.transform(&mut ast).map_err(|e| e.to_string())?;
+    ctee.transform(&mut ast)?;
 
     // Plan 310 Phase 1: Run escape analysis on every top-level function body.
     let mut escape_results: HashMap<AutoStr, crate::trans::escape::EscapeMap> = HashMap::new();

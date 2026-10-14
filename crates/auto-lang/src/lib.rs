@@ -464,22 +464,75 @@ fn vm_thread_stack_size() -> usize {
         .unwrap_or(16 * 1024 * 1024)
 }
 
-/// Run AutoLang code with stdout capture, using the source file path for
-/// module resolution (so `use db` resolves `db.at` next to the source file).
-pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, String)> {
+/// Plan 773 F-08: run failure observed at the production stage boundary,
+/// with the typed VM trap code attached when the failure IS a run-stage trap
+/// (decided where the typed `VMError` still exists). `run_trap_code: None`
+/// means the failure did not come from a VM trap (I/O, missing files,
+/// synthetic deadlines, panics) — the test-case adapters treat exactly
+/// those as infrastructure ERRORs, never as language negatives.
+#[derive(Debug)]
+pub struct StagedRunFailure {
+    pub error: crate::error::AutoError,
+    /// `VMError` variant name from the engine's run-task loop, if any.
+    pub run_trap_code: Option<&'static str>,
+}
+
+impl std::fmt::Display for StagedRunFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error)
+    }
+}
+
+impl std::error::Error for StagedRunFailure {}
+
+/// Plan 773 F-08: relay for the typed trap code between the result
+/// extraction (deep inside the pipeline, where the task object lives) and
+/// the staged wrapper below. Every public execution API runs its pipeline
+/// on a DEDICATED thread, so the cell is call-scoped: set on the failing
+/// extraction, taken by the wrapper on the same thread before join returns.
+thread_local! {
+    static LAST_RUN_TRAP_CODE: std::cell::RefCell<Option<&'static str>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Plan 773 F-08: staged twin of [`run_with_capture_and_path`] — identical
+/// execution, but a failing run carries the typed trap code so the run-stage
+/// oracle channel is type-derived instead of message-text-parsed. The old
+/// API keeps its exact signature and behavior.
+pub fn run_with_capture_and_path_staged(
+    code: &str,
+    path: &str,
+) -> Result<(String, String), StagedRunFailure> {
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async {
+            let r = block_on_autovm_local(async {
                 execute_autovm_with_path(&code, true, Some(&path))
                     .await
                     .map(|(r, stdout, _, _)| (r, stdout))
+            });
+            let trap = LAST_RUN_TRAP_CODE.with(|c| c.borrow_mut().take());
+            r.map_err(|error| StagedRunFailure {
+                error,
+                run_trap_code: trap,
             })
         })
         .expect("Failed to spawn execution thread");
-    join_execution(handle)
+    match handle.join() {
+        Ok(r) => r,
+        Err(_) => Err(StagedRunFailure {
+            error: crate::error::AutoError::Msg("execution thread panicked".to_string()),
+            run_trap_code: None,
+        }),
+    }
+}
+
+/// Run AutoLang code with stdout capture, using the source file path for
+/// module resolution (so `use db` resolves `db.at` next to the source file).
+pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, String)> {
+    run_with_capture_and_path_staged(code, path).map_err(|f| f.error)
 }
 
 /// Run AutoLang code with stdout capture and return the disassembled bytecode.
@@ -2800,6 +2853,9 @@ pub async fn extract_autovm_result(
     use crate::vm::codegen::ObjectType;
     use crate::vm::task::ResultType;
 
+    // Plan 773 F-08: start each extraction with a clean trap relay.
+    LAST_RUN_TRAP_CODE.with(|c| *c.borrow_mut() = None);
+
     let task_arc = vm
         .tasks
         .get(&task_id)
@@ -2813,6 +2869,8 @@ pub async fn extract_autovm_result(
     if let Some(error) = task.last_error.clone() {
         // Plan 419: 出错任务的栈不再被读取 —— 整栈释放(含 state_vars)。
         vm.rc_release_task_stack(&mut task);
+        // Plan 773 F-08: relay the typed trap identity for the staged API.
+        LAST_RUN_TRAP_CODE.with(|c| *c.borrow_mut() = task.last_error_code);
         return Err(crate::error::AutoError::Msg(error));
     }
 

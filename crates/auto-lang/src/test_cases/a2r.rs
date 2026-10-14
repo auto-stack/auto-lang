@@ -10,25 +10,33 @@
 //!   materialized project, otherwise the check is a contract ERROR (the
 //!   emitter silently ignores missing manifests, which would change output
 //!   without failing);
-//! - `module_name` is inert for emitted bytes (legacy metadata parity only);
+//! - `module_name` is inert for emitted bytes (legacy metadata parity only)
+//!   and is a validated single path component (contract decode);
 //! - single-file emission yields one logical artifact `<module_name>.rs`;
 //!   project emission yields the filename-keyed map including `Cargo.toml`;
 //! - actual artifacts are persisted under the check's own scratch dir and
 //!   are NEVER taken from the expected sidecars; product consumers read the
 //!   persisted actuals (no Rust compilation happens in this pilot).
+//!
+//! Plan 773 F-01: completion status and assertion judgement are separate —
+//! a successful emission can NEVER satisfy an error completion (it FAILs
+//! with a stage mismatch), and an error completion is only satisfiable by
+//! a REAL language failure classified from the error type (infrastructure
+//! stays ERROR). Expected sidecars arrive pre-resolved and admission-bound
+//! (F-05/F-06/F-07): the adapter itself never opens oracle files.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use auto_test_case::compare::{compare_bytes, match_message, Mismatch};
-use auto_test_case::contract::{CheckSpec, Completion, Stage};
-use auto_test_case::ir::ResolvedCase;
+use auto_test_case::contract::{CheckSpec, Completion};
+use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
 use auto_test_case::report::ArtifactRef;
 use auto_test_case::sha256::{hex, sha256};
 
 use super::avm::Verdict;
 use super::materialize;
-use super::{classify, Failure};
+use super::{classify_staged, Failure, StageOutcome};
 
 /// Emit stack size: transpile paths need more than a default thread stack
 /// in debug builds (128 MiB mirrors the T-01 probe evidence).
@@ -37,7 +45,7 @@ const EMIT_STACK_BYTES: usize = 128 * 1024 * 1024;
 pub fn run_check(
     case: &ResolvedCase,
     check: &CheckSpec,
-    case_root: &Path,
+    oracle: &ResolvedOracle,
     project_dir: &Path,
     artifact_dir: &Path,
 ) -> Result<Verdict, String> {
@@ -128,34 +136,43 @@ pub fn run_check(
         .map_err(|e| format!("spawn emit thread: {}", e))?;
     let emit = match emit_handle.join() {
         Ok(result) => result,
-        Err(_) => {
-            return Ok(Verdict::error(
-                "emit thread panicked — infrastructure error",
-            ))
+        Err(payload) => {
+            return Ok(Verdict::error(format!(
+                "emit thread panicked — infrastructure error: {}",
+                super::avm::panic_message(&payload)
+            )))
         }
     };
 
     let artifacts: BTreeMap<String, Vec<u8>> = match emit {
         Err(e) => {
-            // Language failure on the emit path — classified by variant on
-            // the caller side of the thread boundary.
-            let failure = classify(&e);
-            let _ = std::fs::write(artifact_dir.join("emit-error.txt"), &failure.message);
-            return Ok(judge_completion_error(
-                &check.expect.completion,
-                &failure,
-                vec![],
-            ));
+            // F-08: classification from the error TYPE. The emit path has no
+            // VM traps, so anything that is not a typed language failure
+            // (Lexer/Syntax/Type/Name/...) is infrastructure and can never
+            // satisfy an error completion.
+            match classify_staged(&e, None) {
+                StageOutcome::Infrastructure(message) => {
+                    return Ok(Verdict::error(format!(
+                        "infrastructure failure on the emit path (never satisfies a language negative): {}",
+                        message
+                    )))
+                }
+                StageOutcome::Language(failure) => {
+                    let _ = std::fs::write(artifact_dir.join("emit-error.txt"), &failure.message);
+                    return Ok(judge_language_failure(&oracle.completion, &failure, vec![]));
+                }
+            }
         }
         Ok(artifacts) => artifacts,
     };
 
     // Persist actuals under the check's own scratch (never the oracle tree).
+    // Logical paths are validated component-wise before joining: a key with
+    // an absolute/escaping component is a contract error, not a write
+    // outside the scratch (F-05).
     let mut refs: Vec<ArtifactRef> = Vec::new();
     for (logical, bytes) in &artifacts {
-        let stored = artifact_dir
-            .join("actual")
-            .join(logical.replace('\\', "/").split('/').collect::<PathBuf>());
+        let stored = artifact_dir.join("actual").join(validated_rel_path(logical)?);
         if let Some(parent) = stored.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("actual mkdir: {}", e))?;
         }
@@ -168,37 +185,42 @@ pub fn run_check(
         });
     }
 
-    match &check.expect.completion {
+    match &oracle.completion {
         Completion::Error { .. } => {
-            let failure = Failure {
-                stage: Stage::Run,
-                code: None,
-                message: "emit succeeded".to_string(),
-            };
-            let mut v = judge_completion_error(&check.expect.completion, &failure, Vec::new());
+            // F-01: the emission SUCCEEDED. Completion status and assertion
+            // judgement are separate axes: success can never satisfy an
+            // error completion, so this is a plain FAIL — no fabricated
+            // failure object is fed to the error matcher.
+            let mut v = Verdict::fail(vec![Mismatch {
+                observation: "completion".into(),
+                kind: "stage",
+                expected: "error completion".into(),
+                actual: format!(
+                    "emit succeeded with {} artifact(s): {:?}",
+                    artifacts.len(),
+                    artifacts.keys().collect::<Vec<_>>()
+                ),
+                first_diff: None,
+            }]);
             v.artifacts = refs;
             Ok(v)
         }
         Completion::Success => {
             let mut mismatches = Vec::new();
             let mut expected_paths: Vec<String> = Vec::new();
-            for want in &check.expect.artifacts {
-                let expected_bytes = std::fs::read(
-                    case_root.join(want.file.replace('/', std::path::MAIN_SEPARATOR_STR)),
-                )
-                .map_err(|e| format!("expected artifact {}: {}", want.file, e))?;
+            for want in &oracle.artifacts {
                 expected_paths.push(want.path.clone());
                 match artifacts.get(&want.path) {
                     None => mismatches.push(Mismatch {
                         observation: format!("artifact {}", want.path),
                         kind: "missing",
-                        expected: format!("{} bytes", expected_bytes.len()),
+                        expected: format!("{} bytes", want.bytes.len()),
                         actual: "absent".to_string(),
                         first_diff: None,
                     }),
                     Some(actual) => {
                         if let Some(m) = compare_bytes(
-                            &expected_bytes,
+                            &want.bytes,
                             actual,
                             want.compare,
                             &format!("artifact {}", want.path),
@@ -242,11 +264,8 @@ fn default_module_name(entry_path: &str) -> String {
         .to_string()
 }
 
-fn judge_completion_error(
-    completion: &Completion,
-    failure: &Failure,
-    refs: Vec<ArtifactRef>,
-) -> Verdict {
+/// A REAL language failure judged against the declared error completion.
+fn judge_language_failure(completion: &Completion, failure: &Failure, refs: Vec<ArtifactRef>) -> Verdict {
     match completion {
         Completion::Success => {
             let mut v = Verdict::fail(vec![Mismatch {
@@ -300,4 +319,25 @@ fn judge_completion_error(
             v
         }
     }
+}
+
+/// Validate a product logical path (`api/mod.rs` style) and map it onto the
+/// local separator without leaving the scratch root (F-05): forward-slash
+/// relative, no drive/absolute prefix, no `..`/`.`/empty components.
+fn validated_rel_path(logical: &str) -> Result<PathBuf, String> {
+    let bad = || format!("artifact logical path {:?} escapes the scratch root", logical);
+    if logical.is_empty() || logical.contains('\0') || logical.contains('\\') {
+        return Err(bad());
+    }
+    if logical.starts_with('/') || logical.contains(':') {
+        return Err(bad());
+    }
+    let mut out = PathBuf::new();
+    for comp in logical.split('/') {
+        if comp.is_empty() || comp == "." || comp == ".." {
+            return Err(bad());
+        }
+        out.push(comp);
+    }
+    Ok(out)
 }
