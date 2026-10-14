@@ -8,7 +8,7 @@
   含逐例输入/输出/hash）。规范增量提案见
   [proposed-spec-delta.md](proposed-spec-delta.md)（未发布 canonical）。
 - R1 复审报告与冻结反例见
-  [docs/plans/attachments/771/review-r1/REVIEW.md](../../docs/plans/attachments/771/review-r1/REVIEW.md)。
+  [review-r1/REVIEW.md](../../plans/attachments/771/review-r1/REVIEW.md)；R2 见 [review-r2/REVIEW.md](../../plans/attachments/771/review-r2/REVIEW.md)。
 
 ## 1. 提交与产品清单
 
@@ -48,15 +48,16 @@ README 增量。旧域（core/scalar）源码路径仅共享枚举扩面（带�
 
 ## 3. 覆盖内省
 
-- R1 修复轮后：record_hir 21 / record_source 20 / record_native 13 =
-  54 个新测试；全 ac-core `cargo test --locked` 199/199（旧面 145 全数
+- R2 修复轮后：record_hir 21 / record_source 21 / record_native 15 =
+  57 个新测试；全 ac-core `cargo test --locked` 202/202（旧面 145 全数
   保留）。R1 新增：变异绑定越界双模式（binding-arg 边界值/u32::MAX/
   缺失绑定→verify.binding-invalid 受控拒绝）、位置构造五例（解析/元数/
   命名参/字段类型/fn 同名优先）、malformed 深局部、别名赋值值语义六例
   （ctor 自赋值/sret 自赋值/新目标控制/嵌套字段自赋值/mut 参数交错/
   双 view 同对象）、位置构造 PE、HIR r02 强制失败控制（exit 11）、
   HIR r03 直连腿（嵌套拷贝/聚合返回/别名自赋值/字段路径自读，失败码
-  21..29 互异）。
+  21..29 互异）。R2 新增：ctor 操作数快照源码序七例 + r04 直连腿 +
+  互斥跨构造实参树钉子（见 §4c）。
 - 整数 oracle 独立推导（探针 P2 布局公式 8+4k），无 golden 自动更新；
   深输入为验证规模而非语言上限，无固定语法深度排除。
 - 已知非阻断：诊断码 `verify.shadowed-type`/`verify.duplicate-decl`
@@ -66,9 +67,10 @@ README 增量。旧域（core/scalar）源码路径仅共享枚举扩面（带�
 
 ## 4. 门禁执行（verify-ac-record-771.ps1）
 
-**R1 修复轮重跑：22 步全绿，0 failed，19 cases**（2026-10-14 实跑；
+**R2 修复轮重跑：24 步全绿，0 failed，23 cases**（2026-10-14 实跑；
 原始收据 `target/ac-verify-receipts/record-771/`，含 context/summary/
-cases 与逐例 build/run 输出与 SHA256）：
+cases 与逐例 build/run 输出与 SHA256；下表步骤号为 R1 轮 22 步结构的
+历史编号，R2 增补步骤以字母续排）：
 
 | # | 步骤 | 结果 |
 |---|---|---|
@@ -87,6 +89,8 @@ cases 与逐例 build/run 输出与 SHA256）：
 | 12b | 正向 HIR：r03 嵌套拷贝/聚合返回/别名（F-771-R1-01/04） | PASS |
 | 12c | 正向 SOURCE：别名赋值值语义三例（F-771-R1-01） | PASS |
 | 12d | 正向 SOURCE：位置构造（F-771-R1-02） | PASS |
+| 12e | 正向 SOURCE：ctor 操作数快照序三例（F-771-R2-01） | PASS |
+| 12f | 正向 HIR：r04 快照序直连腿（失败码 31..34） | PASS |
 | 13 | 负向 SOURCE 10 例钉码拒绝（R1 增 i08/i09/i10） | PASS |
 | 13 | profile 隔离（core/scalar 拒 record；未知 profile exit 2；域行） | PASS |
 | 14 | SENTINEL 事务（失败 build 三件制品 hash 保持） | PASS |
@@ -95,28 +99,10 @@ cases 与逐例 build/run 输出与 SHA256）：
 | 17 | 旧 gate 745（source core-i32） | PASS 41s |
 | 18 | 旧 gate 767（scalar） | PASS 25.6s |
 
-实施期修正（oracle 侧，非合同变化）：SN04/SN07 两 fixture 初稿写成
-合法程序（同构异名 seeding 全 i32 字段合法；类型名遮蔽当时未立规），
-改为真实违规（B 值入 A 类型字段；局部与 record 同名拒绝
-`source.duplicate`——V-08 遮蔽矩阵的明示规则落地）。
-
-1. context（HEAD/branch/rustc/cargo + binary/support-lib SHA256）
-2. cargo check（ac-core，零警告）
-3. cargo fmt --check
-4. cargo check --all-targets 零警告
-5. cargo test --locked（全 ac-core 187/187）
-6. cargo test record_native（单线程，9/9）
-7. 构建工具二进制
-8. 构建 trace 支持库
-9. 正向 SOURCE：flagship 构建+运行（V-02/V-06/V-08）
-10. 正向 SOURCE：求值序 trace `ba`（V-05/V-07）
-11. 正向 HIR：record fixture 构建+运行（exit 1 = 快乐路径）
-12. 负向 SOURCE 7 例（钉码拒绝）
-13. profile 隔离（core/scalar 拒 record 面；未知 profile exit 2；
-    record HIR check 域行）
-14. SENTINEL 事务（失败 build 后 exe/obj/receipt 三件 hash 不变）
-15. 收据身份行（source-profile/hir 三元组/input-hash）+ 旧 gates
-    741（-SkipMainGates）/745/767 串行重跑
+实施期修正（oracle 侧，非合同变化，T-06/T-07 历史记录）：SN04/SN07
+两 fixture 初稿写成合法程序（同构异名 seeding 全 i32 字段合法；类型名
+遮蔽当时未立规），改为真实违规（B 值入 A 类型字段；局部与 record 同名
+拒绝 `source.duplicate`——V-08 遮蔽矩阵的明示规则落地）。
 
 ## 4b. R1 修复轮记录（2026-10-14，复审 needs_fix → 重开 T-02..07）
 
@@ -133,6 +119,27 @@ nonblocking 观察）。复审冻结反例在修复后基线重放：positional 
 exit 0、alias-ctor/alias-sret/alias-control 均 exit 0、
 hir-broken-copy-check（旧常量文本）exit 1 ≠ 新成功码 0、
 bundle-mutation 双模式 controlled reject。
+
+## 4c. R2 修复轮记录（2026-10-14，第二次 needs_fix → 重开 T-04..07）
+
+两连败诊断（auto-plan-work 检查点要求）：不变式为「record 值操作数须在
+其自身源码序求值位捕获；仅借位上下文（view/mut 调用实参）传活指针」。
+R1 检查为何漏：R1 的 mention/不相交分析保护的是**目的地**不被 RHS 提前
+写入，未保护操作数的**源存储**不被更晚的兄弟实参（`bump(q.mut)`）在
+CtorOut 延迟拷贝前改写；R1 测试只覆盖目的地别名与新目的地形态。受影响
+路径：native.rs ReadLocal 以裸指针进槽、CtorOut 于全部实参求值后才拷贝
+字段。调整：值物化与借位指针分离——ReadLocal 值上下文（有注册目的地或
+record ctor 字段操作数）在自身求值位即时快照（有 dest 直写+elided，无
+dest 落新槽），BorrowView/BorrowMut 保持指针透传；其余产生型操作数
+（FieldGet/Call/嵌套 ctor）本就在其求值位物化。
+
+| 发现 | 修复 | 永久回归 |
+|---|---|---|
+| F-771-R2-01 ctor record 操作数晚于后续副作用才拷贝（ctor-snapshot/positional-snapshot exit 11） | native.rs：`record_eager_reads` 集合（绑定 record 字段的 ReadLocal）+ Enter ReadLocal 值路径（dest 直写+elided / 新槽快照）+ ctor 子目的地 produces 判定纳入 ReadLocal（保留单拷贝效率；深构造链无 ReadLocal 操作数不受影响） | 复审三反例重放 exit 0/0/0；`record_native.rs` `ctor_operand_snapshot_source_order_pe` 七例（named/位置/新目标控制/**mut 先行重排读后值**/嵌套 ctor/部分字段变异/函数返回操作数）+ `hir_ctor_snapshot_order_pe`（r04 直连腿，失败码 31..34 互异，oracle 灵敏度实证翻转→31）+ `record_source.rs` `mut_exclusivity_spans_ctor_arg_trees`（借位语义未放松的钉子：同调用合并实参树内 view+mut 仍互斥拒绝）+ gate SP05 三例/HP04（门禁 24 步全绿 23 cases）；R1 全反例复跑保持 exit 0 |
+
+文档卫生（R2 复审 nonblocking）：§4 移除与 22 步表重复的旧 15 步草稿
+清单（187/9 旧总数与「exit 1 = 快乐路径」旧行随之删除）；§4 头部 R1
+报告链接修正为 `../../plans/...`。
 
 ## 5. 输入指纹（SHA256）
 

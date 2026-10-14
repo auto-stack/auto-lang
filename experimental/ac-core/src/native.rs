@@ -295,6 +295,49 @@ fn record_mention_sets(body: &hir::Body, local_is_record: &[bool]) -> Vec<BTreeS
     sets
 }
 
+/// Record-typed `ReadLocal` expressions bound to record-valued constructor
+/// fields, by expr id (F-771-R2-01). A record rvalue operand must be
+/// CAPTURED at its own source-order evaluation point: deferring the field
+/// copy to the ctor's combine step lets a later sibling argument (e.g.
+/// `bump(q.mut)` in `P { a: q, b: bump(q.mut) }`) mutate the source storage
+/// first. Every other record-producing operand already materializes at its
+/// evaluation position (FieldGet copies, Calls own their out slot, nested
+/// ctors own their temp); borrow expressions never reach ctor position
+/// (verifier rule), so only plain local reads need the eager set.
+fn record_eager_reads(body: &hir::Body, m: &hir::Module) -> BTreeSet<u32> {
+    let mut out = BTreeSet::new();
+    for e in &body.exprs {
+        if let hir::ExprKind::RecordCtor {
+            record,
+            eval_args,
+            bindings,
+        } = &e.kind
+        {
+            let shape = match m.types.get(record.0 as usize).map(|t| &t.kind) {
+                Some(hir::TypeKind::Record(sh)) => sh,
+                _ => continue,
+            };
+            for b in bindings {
+                let (Some(field), Some(arg)) = (
+                    shape.fields.get(b.field as usize),
+                    eval_args.get(b.arg as usize),
+                ) else {
+                    continue;
+                };
+                if type_is_record(m, &field.ty)
+                    && matches!(
+                        body.exprs.get(arg.0 as usize).map(|x| &x.kind),
+                        Some(hir::ExprKind::ReadLocal { .. })
+                    )
+                {
+                    out.insert(arg.0);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Walk a field path from a root record type (PLAN-771): returns the byte
 /// offset of the final field and, when that field is itself a record, its
 /// type index (pointer storage); `None` in the second slot marks a scalar.
@@ -635,6 +678,7 @@ pub fn lower_object(
                 layouts,
                 local_is_record,
                 mentions,
+                eager_reads: record_eager_reads(body, module),
                 out_param: out_param_value,
                 result_bytes,
                 dests: BTreeMap::new(),
@@ -772,6 +816,10 @@ struct FuncEmitter<'c> {
     /// Record-typed locals touched by each expression subtree (per expr
     /// id); the insert-side disjointness gate for `dests` (F-771-R1-01).
     mentions: Vec<BTreeSet<u32>>,
+    /// Record-typed `ReadLocal` exprs bound to record ctor fields
+    /// (F-771-R2-01): value operands that must snapshot at their own
+    /// evaluation position instead of passing a live storage pointer.
+    eager_reads: BTreeSet<u32>,
     /// Expr ids that WROTE into their destination directly (their parent
     /// store step must not re-copy them).
     elided: std::collections::BTreeSet<u32>,
@@ -1255,7 +1303,43 @@ impl<'c> FuncEmitter<'c> {
                         }
                         hir::ExprKind::ReadLocal { local } => {
                             let var = self.vars[&local.0];
-                            let v = self.fb.use_var(var);
+                            let ptr = self.fb.use_var(var);
+                            // A record local read is a VALUE operand when a
+                            // destination is registered for it or it feeds a
+                            // record ctor field: capture the bytes NOW, at
+                            // this operand's source-order evaluation point —
+                            // later sibling expressions (a `.mut` call arg)
+                            // may mutate the source storage before the ctor
+                            // combines its fields (F-771-R2-01). Without a
+                            // value context the pointer passes through (the
+                            // base of a view/mut borrow keeps borrow
+                            // semantics).
+                            let is_value =
+                                self.dests.get(&id.0).is_some() || self.eager_reads.contains(&id.0);
+                            let v = if is_value {
+                                let ty_idx = match self.body.locals[local.0 as usize].ty {
+                                    hir::TypeUse::Ref(t) => t.0,
+                                    _ => 0,
+                                };
+                                let bytes = self.layouts.get(&ty_idx).copied().unwrap_or(4);
+                                let used_dest = self.dests.remove(&id.0).map(|d| d.ptr);
+                                let dst = match used_dest {
+                                    // value written straight into the
+                                    // registered destination — the parent's
+                                    // store step must not re-copy it
+                                    Some(d) => {
+                                        self.elided.insert(id.0);
+                                        d
+                                    }
+                                    // fresh snapshot: the ctor's combine
+                                    // step still copies it into its field
+                                    None => self.new_slot(bytes),
+                                };
+                                self.emit_copy(dst, ptr, bytes);
+                                dst
+                            } else {
+                                ptr
+                            };
                             slots.insert(id.0, Val::V(v));
                         }
                         hir::ExprKind::Binary { op, lhs, rhs, .. } => {
@@ -1336,11 +1420,18 @@ impl<'c> FuncEmitter<'c> {
                                                 // children can write into
                                                 // the destination — a
                                                 // plain value (read, load)
-                                                // still needs its copy
+                                                // still needs its copy;
+                                                // a ReadLocal bound to a
+                                                // record field captures its
+                                                // value at its own
+                                                // evaluation position, so
+                                                // it counts as producing
+                                                // (F-771-R2-01)
                                                 let produces = matches!(
                                                     &self.body.exprs[arg.0 as usize].kind,
                                                     hir::ExprKind::RecordCtor { .. }
                                                         | hir::ExprKind::FieldGet { .. }
+                                                        | hir::ExprKind::ReadLocal { .. }
                                                 ) || self
                                                     .def_result_is_record(
                                                         match &self.body.exprs[arg.0 as usize].kind

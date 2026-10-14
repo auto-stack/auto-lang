@@ -329,3 +329,17 @@ fn malformed_deep_partial_source_rejects_and_drops_without_overflow() {
         ds.iter().map(|d| d.code.as_str()).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn mut_exclusivity_spans_ctor_arg_trees() {
+    // F-771-R2-01 complement: the value-snapshot repair must NOT relax
+    // borrow semantics — accessing the same object twice within one
+    // call's COMBINED argument trees (a view arg plus a nested `.mut`
+    // call, including a read through a ctor operand) stays an exclusive
+    // mut conflict. The standalone ctor (not a call) is the legal shape
+    // the snapshot oracle covers.
+    let ds = compile_err("type Q { v int }\nfn both(x Q, y int) int { return x.v * 10 + y }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(1)\n    let r = both(q, bump(q.mut))\n    return r\n}\n");
+    assert!(has(&ds, "verify.mut-conflict"), "{:?}", codes_of(&ds));
+    let ds = compile_err("type Q { v int }\ntype P { a Q; b int }\nfn pick(p P, d int) int { return p.a.v + p.b + d }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(1)\n    let r = pick(P { a: q, b: 5 }, bump(q.mut))\n    return r\n}\n");
+    assert!(has(&ds, "verify.mut-conflict"), "{:?}", codes_of(&ds));
+}

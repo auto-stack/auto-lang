@@ -426,3 +426,83 @@ fn deep_type_graph_and_field_paths_pe() {
     assert!(!run.timed_out, "deep PE must finish within the deadline");
     assert_eq!(run.code, 0, "deep walks read the bottom field");
 }
+
+#[test]
+fn ctor_operand_snapshot_source_order_pe() {
+    // F-771-R2-01 replay set: a record-typed constructor operand must be
+    // captured at its own source-order evaluation point — a later sibling
+    // argument's `.mut` call must not retroactively change the field
+    // (named and positional forms, fresh-destination control, and the
+    // reorder half where the LATER read observes the mutation)
+    struct Case {
+        name: &'static str,
+        src: &'static str,
+    }
+    let cases = [
+        Case {
+            name: "named-then-mut",
+            src: "type Q { v int }\ntype P { a Q; b int }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(1)\n    let p = P { a: q, b: bump(q.mut) }\n    if q.v != 2 { return 10 }\n    if p.a.v != 1 { return 11 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "positional-then-mut",
+            src: "type Q { v int }\ntype P { a Q; b int }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(1)\n    let p = P(q, bump(q.mut))\n    if q.v != 2 { return 10 }\n    if p.a.v != 1 { return 11 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "fresh-snapshot-control",
+            src: "type Q { v int }\ntype P { a Q; b int }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(1)\n    let saved = q\n    let p = P { a: saved, b: bump(q.mut) }\n    if p.a.v != 1 { return 11 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "mut-first-reorder-reads-post",
+            src: "type Q { v int }\ntype P { a Q; b int }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(5)\n    let p = P { b: bump(q.mut), a: q }\n    if q.v != 2 { return 21 }\n    if p.a.v != 2 { return 22 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "nested-ctor-operand",
+            src: "type Q { v int }\ntype P { a Q; b int }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(1)\n    let p = P { a: Q { v: q.v }, b: bump(q.mut) }\n    if p.a.v != 1 { return 31 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "partial-field-mutation",
+            src: "type Q { x int; y int }\ntype P { a Q; b int }\nfn bump(mut q Q) int { q.y = 99; return 0 }\nfn main() int {\n    var q = Q { x: 1, y: 2 }\n    let p = P { a: q, b: bump(q.mut) }\n    if q.y != 99 { return 41 }\n    if p.a.y != 2 { return 42 }\n    if p.a.x != 1 { return 43 }\n    return 0\n}\n",
+        },
+        Case {
+            name: "function-returned-operand",
+            src: "type Q { v int }\ntype P { a Q; b int }\nfn mk(x Q) Q { return Q { v: x.v } }\nfn bump(mut q Q) int { q.v = 2; return 0 }\nfn main() int {\n    var q = Q(1)\n    let p = P { a: mk(q), b: bump(q.mut) }\n    if p.a.v != 1 { return 51 }\n    return 0\n}\n",
+        },
+    ];
+    for case in cases {
+        let dir = temp_dir(&format!("snap-{}", case.name));
+        let src = dir.join("case.at");
+        std::fs::write(&src, case.src).unwrap();
+        let exe = dir.join("case.exe");
+        let b = build_source(&src, &exe, &[]);
+        assert_eq!(b.code, 0, "{}: stderr: {}", case.name, b.stderr);
+        let run = run_pe(&exe);
+        assert!(!run.timed_out, "{} timed out", case.name);
+        assert_eq!(run.code, 0, "{} exited {}", case.name, run.code);
+    }
+}
+
+#[test]
+fn hir_ctor_snapshot_order_pe() {
+    // F-771-R2-01 direct-HIR leg: ReadLocal bound to a record ctor field
+    // captures at its evaluation position (read-then-mutate keeps the
+    // pre-mutation value; the reorder form's later read observes the
+    // mutation). Failure codes 31..34 are distinct from success 0.
+    let dir = temp_dir("hir-r4");
+    let src =
+        repo_path("experimental/ac-core/fixtures/record-hir/valid/r04-ctor-snapshot-order.atom");
+    let exe = dir.join("r04.exe");
+    let mut c = Command::new(EXE);
+    c.args([
+        "build",
+        &src.display().to_string(),
+        "--entry",
+        "d_main",
+        "--output",
+    ])
+    .arg(&exe);
+    let b = run_deadlined(c, Duration::from_secs(600)).expect("spawn build");
+    assert_eq!(b.code, 0, "stderr: {}", b.stderr);
+    let run = run_pe(&exe);
+    assert!(!run.timed_out);
+    assert_eq!(run.code, 0, "snapshot captures at source-order position");
+}

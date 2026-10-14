@@ -2,14 +2,15 @@
 # Windows PowerShell 5.1). Serial gate: full ac-core check/fmt/tests (all
 # domains), record_native PE suite single-threaded, the record case
 # walkthrough (positive source flagship + eval-order trace 'ba', aliased-
-# destination value-semantics trio and positional construction [F-771-R1-01/
-# 02], positive HIR fixtures r01/r03 with distinct exit codes plus the
-# forced-failure copy control [F-771-R1-04], 10 negative fixtures with
-# pinned codes, profile isolation, SENTINEL transaction preservation,
-# receipt identity), then the three old-profile gates (741 -SkipMainGates /
-# 745 / 767) to prove the old surfaces are byte-for-byte unaffected. Raw
-# receipts land in experimental/ac-core/target/ac-verify-receipts/record-771/
-# (gitignored). The contained executor is VERBATIM the 745/741/767 runner.
+# destination value-semantics trio, positional construction [F-771-R1-01/
+# 02] and ctor-operand snapshot order [F-771-R2-01], positive HIR fixtures
+# r01/r03/r04 with distinct exit codes plus the forced-failure copy control
+# [F-771-R1-04], 10 negative fixtures with pinned codes, profile isolation,
+# SENTINEL transaction preservation, receipt identity), then the three
+# old-profile gates (741 -SkipMainGates / 745 / 767) to prove the old
+# surfaces are byte-for-byte unaffected. Raw receipts land in
+# experimental/ac-core/target/ac-verify-receipts/record-771/ (gitignored).
+# The contained executor is VERBATIM the 745/741/767 runner.
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-record-771.ps1
 $ErrorActionPreference = 'Stop'
 
@@ -580,6 +581,45 @@ Invoke-Step 'positive SOURCE case: positional construction (F-771-R1-02)' {
     ("exit: " + $run.Code) | Set-Content (Join-Path $dir 'case.txt')
     if ($run.Code -ne 0) { throw "positional run exited $($run.Code)" }
     $caseSummary.Add([pscustomobject]@{ Case = 'SP04'; Exit = $run.Code; Stderr = ''; Ok = $true })
+}
+
+Invoke-Step 'positive SOURCE cases: ctor operand snapshot order (F-771-R2-01)' {
+    # a record ctor operand is captured at its own source-order evaluation
+    # point: the later `.mut` sibling must not retroactively change the
+    # captured field; the explicit-save control distinguishes the oracle
+    $cases = @(
+        @{ Name = 'named-then-mut'; Src = "type Q {`n    v int`n}`ntype P {`n    a Q`n    b int`n}`nfn bump(mut q Q) int {`n    q.v = 2`n    return 0`n}`nfn main() int {`n    var q = Q(1)`n    let p = P { a: q, b: bump(q.mut) }`n    if q.v != 2 { return 10 }`n    if p.a.v != 1 { return 11 }`n    return 0`n}`n" },
+        @{ Name = 'positional-then-mut'; Src = "type Q {`n    v int`n}`ntype P {`n    a Q`n    b int`n}`nfn bump(mut q Q) int {`n    q.v = 2`n    return 0`n}`nfn main() int {`n    var q = Q(1)`n    let p = P(q, bump(q.mut))`n    if q.v != 2 { return 10 }`n    if p.a.v != 1 { return 11 }`n    return 0`n}`n" },
+        @{ Name = 'fresh-snapshot-control'; Src = "type Q {`n    v int`n}`ntype P {`n    a Q`n    b int`n}`nfn bump(mut q Q) int {`n    q.v = 2`n    return 0`n}`nfn main() int {`n    var q = Q(1)`n    let saved = q`n    let p = P { a: saved, b: bump(q.mut) }`n    if p.a.v != 1 { return 11 }`n    return 0`n}`n" }
+    )
+    foreach ($c in $cases) {
+        $dir = Join-Path $ReceiptsDir ('source-positive\SP05-' + $c.Name)
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $srcp = Join-Path $dir 'case.at'
+        Set-Content $srcp $c.Src
+        $exe = Join-Path $dir 'case.exe'
+        $build = Invoke-Captured $script:Bin @('build-source', $srcp, '--source-profile', $Record, '--entry', 'main', '--output', $exe) $RepoRoot -TimeoutSec 120
+        if ($build.Code -ne 0) { throw "$($c.Name) build exited $($build.Code): $($build.Stderr)" }
+        $run = Invoke-Captured $exe @() $dir -TimeoutSec 60
+        ("exit: " + $run.Code) | Set-Content (Join-Path $dir 'case.txt')
+        if ($run.Code -ne 0) { throw "$($c.Name) exited $($run.Code), expected 0" }
+        $caseSummary.Add([pscustomobject]@{ Case = 'SP05-' + $c.Name; Exit = $run.Code; Stderr = ''; Ok = $true })
+    }
+}
+
+Invoke-Step 'positive HIR case: ctor operand snapshot order (F-771-R2-01)' {
+    $dir = Join-Path $ReceiptsDir 'hir-positive\HP04'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $srcp = Join-Path $RepoRoot 'experimental\ac-core\fixtures\record-hir\valid\r04-ctor-snapshot-order.atom'
+    ("input: " + $srcp) | Set-Content (Join-Path $dir 'case.txt')
+    ("input-sha256: " + (Get-Sha256 $srcp)) | Add-Content (Join-Path $dir 'case.txt')
+    $exe = Join-Path $dir 'app.exe'
+    $build = Invoke-Captured $script:Bin @('build', $srcp, '--entry', 'd_main', '--output', $exe) $RepoRoot -TimeoutSec 120
+    if ($build.Code -ne 0) { throw "r04 build exited $($build.Code): $($build.Stderr)" }
+    $run = Invoke-Captured $exe @() $dir -TimeoutSec 60
+    ("exit: " + $run.Code) | Add-Content (Join-Path $dir 'case.txt')
+    if ($run.Code -ne 0) { throw "r04 exited $($run.Code), expected 0 (failure branches are 31..34)" }
+    $caseSummary.Add([pscustomobject]@{ Case = 'HP04'; Exit = $run.Code; Stderr = ''; Ok = $true })
 }
 
 # Negative SOURCE corpus (V-03/V-06/V-07/V-08 + F-771-R1-02): id, fixture,

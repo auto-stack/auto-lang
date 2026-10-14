@@ -38,7 +38,9 @@ native 走 774 D-05 内部 ABI:字段声明序 4 对齐 size=Σ字段尺寸,ABI-
 copy-elision 直写目标存储,嵌套构造链零临时槽——R1 修复起,直写仅在
 目标与 RHS 触集不相交(目标根局部不在子树触集)时转发,否则 RHS 先落
 新槽再提交,`p = P { a: p.b, b: p.a }`/`p = swap(p)` 类别名自赋值保持
-读-后-写正确。深输入预算:类型含图
+读-后-写正确;R2 修复起,record 值操作数(构造字段绑定的 ReadLocal)在
+其自身源码序求值位即时快照,更晚实参的 `.mut` 副作用不再回溯改写已捕获
+字段,借位实参(view/mut)仍传活指针。深输入预算:类型含图
 1024 层、字段路径 4096 段(V-09 PE 实证)。范围与验收见
 [docs/plans/771-ac-record-method-native.md](../../docs/plans/771-ac-record-method-native.md)。
 
