@@ -1,7 +1,7 @@
 ---
 plan_id: 742
 title: "api.rs handler body transpile parity（NOTES-001 T-04 跨仓）"
-status: reviewed
+status: archived
 author: [Codex]
 created_at: 2026-10-04T21:20:00+08:00
 plan_revision: 1
@@ -571,3 +571,25 @@ PLAN-745 交接注记（0bc1bea01）确认 742 合并面对其 27 处共现预�
   04AA21D108255F07A1F55D65EEB38A7B7D6F9F78506539E5EBD3C70013DA8803 |
   next: /auto-plan:merge 742。状态翻 reviewed、3/3；累计第六次 final
   通过，历史记录与已通过证据全部保留。
+
+## 10. 合入沉淀收据（PLAN-742:r1，2026-10-14）
+
+| Checkpoint | Evidence |
+|---|---|
+| prepared | reviewed baseline：r6 final pass（reviewed_commit 8d59f5e88，基面 2174f0de2，零新 finding）；冻结增量 SHA256 04AA21D1…；canonical 五目标 + 账本投影目标 |
+| landed | rebase master（旧→新：6d93cfdb7→b01d90001、8c9b2d3d9→e60b4f023、2c40e1fe4→f3567c2f7、2174f0de2→c9846c76b、8d59f5e88→e6eb873b2；range-diff 等价 `=`）；delivery=15c12883c（e6eb873b2 的 docs/projection-only 后代，实现零改动）；`git merge --ff-only plan-742-dev` 无合并提交，master tip=15c12883c；cargo check -p auto-man 过 |
+| ledger_refreshed | 工作区 D:/autostack/auto-lang（.autoos/specs.json 跟踪文件）；Regime B 守卫离线投影（HTTP store 探测无响应）：备份 specs.json.p742-merge.bak → 程序化 RMW → v12→v13 → 回读校验；新增 P742-1..7（designs×4/tests/reviews/reports，file+tags 全带，diff 107+/2- 仅目标范围）；spec-index.py 重建 INDEX.md |
+| archived | docs/plans/archive/742-api-handler-body-parity.md（git mv），status: archived，completion_kind: delivered；本收据随归档提交入默认分支 |
+| cleaned | 见下方实测行 |
+
+- 沉淀 canonical：api-generation-integrity.md（§体路径不变量）、auto-man/project.md、
+  trans/overview.md、a2r-std/project.md（773 现版合入式）、ui/overview.md。
+- 实际状态核对：任务 3/3、§0–§9 记录完整、五 canonical 均在 master（15c12883c）、
+  账本 P742-1..7 回读在册、附件 review-r1..r6 + work-r2..r6 均已入库（2a5107512
+  consolidation + 3efcde4da force-add）。
+- 产物观察项（landing ≠ deployment）：auto-lang 为工具链仓——`target/release`
+  未构建（本仓无守护进程消费 release 面）；兄弟仓消费的 dev CLI
+  （target/debug/auto.exe）由消费方会话自行重建；无 web bundle 面。
+- 批量回归到期判定：收据 last_covered_plan_id=766（2026-10-12），其后有
+  773/774/775/776 合并且 >48h → **到期**，交接 /auto-plan:regress 主检出
+  单实例执行（不在本收据内冒称已跑）。
