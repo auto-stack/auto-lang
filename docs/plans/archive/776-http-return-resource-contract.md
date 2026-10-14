@@ -297,7 +297,7 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 | archived | `docs/plans/archive/776-http-return-resource-contract.md`（git mv）；status=archived；本收据提交入默认分支 |
 | cleaned | wt-guard clean（无 reparse point）→ `git worktree remove` lang-776/auto-lang + auto-down 兄弟、`git branch -d plan-776-dev`（was bcfe2d7d6，已并入）、组目录已删；`git worktree list` 复核无残留 |
 
-merge-owned 后置门禁（冻结基线 e65c01012→rebase 后等价链上）：裸 `cargo t` **5312/5312**；`cargo tv` **162/162**；`cargo th -j1` **132/134**——corpora=在册预存红（R1..R14 同形 `:id` 未替换）、031=并行顺序 flake（单跑 3/3 绿）；生成真 TCP 矩阵 **3/3**（File/Upload/JSON+busSSE；一次与 th 并发的 plan730 构建锁 TIMEOUT 独跑绿）；auto-man api_gen 46+1。部署产物观察项：`target/release` 后端二进制与 `gen/front/vue/dist` 均先于本合并（stale）——本仓为库仓，776 面生产消费经下游重建；批量回归到期判定见下。
+merge-owned 后置门禁（冻结基线 e65c01012→rebase 后等价链上）：裸 `cargo t` **5312/5312**；`cargo tv` **162/162**；`cargo th -j1` **132/134**——corpora=在册预存红（R1..R14 同形 `:id` 未替换）、031=并行顺序 flake（单跑 3/3 绿）；生成真 TCP 矩阵 **3/3**（File/Upload/JSON+busSSE；一次与 th 并发的 plan730 构建锁 TIMEOUT 独跑绿）；auto-man api_gen 46+1。部署产物观察项：`target/release` 后端二进制与 `gen/front/vue/dist` 均先于本合并（stale）——本仓为库仓，776 面生产消费经下游重建；批量回归到期判定：**未到期**——收据 last_covered_plan_id=774（2026-10-14T11:30Z，距今 ~5h < 48h）；776%5=1 非整除；775 未在本仓归档落盘。下次到期由 `/auto-plan:regress` 主检出单实例执行。
 
 旧→新 hash 映射（rebase 改写，range-diff 全等价）：a142756c9→8d93b8018 … e65c01012→0eeec1a1f、0db82b664→30c0a479d、（新增）bcfe2d7d6。
 
