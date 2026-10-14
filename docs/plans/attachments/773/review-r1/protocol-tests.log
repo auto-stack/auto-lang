@@ -1,0 +1,114 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   Compiling memchr v2.8.3
+   Compiling autodown-test-parser v0.1.0 (D:\autostack\.wt\lang-773\auto-lang\vendor\autodown-test-parser)
+   Compiling syn v3.0.3
+   Compiling auto-test-case v0.1.0 (D:\autostack\.wt\lang-773\auto-lang\crates\auto-test-case)
+   Compiling aho-corasick v1.1.4
+   Compiling thiserror-impl v2.0.19
+   Compiling regex-automata v0.4.16
+   Compiling thiserror v2.0.19
+   Compiling regex v1.13.1
+   Compiling auto-val v0.1.0 (D:\autostack\.wt\lang-773\auto-lang\crates\auto-val)
+   Compiling auto-atom v0.1.0 (D:\autostack\.wt\lang-773\auto-lang\crates\auto-atom)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.24s
+     Running unittests src\lib.rs (D:/autostack/auto-lang/target\debug\deps\auto_test_case-1e6b610644b24351.exe)
+
+running 25 tests
+test admission::tests::check_limit_boundary ... ok
+test admission::tests::clamped_never_exceeds_caps_or_drops_below_defaults ... ok
+test admission::tests::limits_defaults_within_hard_caps ... ok
+test atom::tests::trailing_content_is_error ... ok
+test admission::tests::virtual_path_rules ... ok
+test compare::tests::text_exact_never_trims ... ok
+test atom::tests::duplicate_key_is_error ... ok
+test compare::tests::bytes_mode_is_raw ... ok
+test atom::tests::comments_and_trailing_commas ... ok
+test compare::tests::message_matchers ... ok
+test atom::tests::parses_primitives_and_containers ... ok
+test atom::tests::unsupported_forms_are_clear_errors ... ok
+test raw_ranges::tests::empty_document_has_no_fences ... ok
+test report::tests::json_and_console_share_the_data ... ok
+test report::tests::exit_code_precedence ... ok
+test compare::tests::lf_mode_converts_only_crlf ... ok
+test report::tests::coverage_gap_alone_fails_the_gate ... ok
+test raw_ranges::tests::indent_width_spaces_and_tabs ... ok
+test ir::tests::decode_and_resolve_end_to_end ... ok
+test report::tests::not_run_breaks_green ... ok
+test ir::tests::duplicate_virtual_paths_are_errors ... ok
+test report::tests::staleness_on_any_identity_drift ... ok
+test suite::tests::decodes_and_selects ... ok
+test suite::tests::deep_merge_objects_recursive_arrays_replace ... ok
+test suite::tests::empty_or_unknown_things_error ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\atom_parity.rs (D:/autostack/auto-lang/target\debug\deps\atom_parity-319503add4cc10d3.exe)
+
+running 4 tests
+test strict_decodes_the_design_example_shape ... ok
+test strict_rejects_what_upstream_silently_normalizes ... ok
+test both_parsers_reject_shared_malformed_input ... ok
+test both_parsers_accept_the_valid_subset ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\contract_decode.rs (D:/autostack/auto-lang/target\debug\deps\contract_decode-8740c47ada8182b7.exe)
+
+running 14 tests
+test wrong_schema_is_rejected ... ok
+test avm_options_are_closed ... ok
+test syntax_and_path_extension_must_agree ... ok
+test minimal_case_decodes ... ok
+test module_entry_requires_files ... ok
+test check_count_limit_applies ... ok
+test duplicate_check_ids_and_bad_ids_error ... ok
+test typo_field_is_never_silently_ignored ... ok
+test skip_is_explicit_xfail_is_unsupported ... ok
+test product_from_must_reference_earlier_checks ... ok
+test error_completion_cannot_also_expect_result_or_artifacts ... ok
+test unknown_fields_are_located_errors ... ok
+test weak_error_oracles_are_rejected ... ok
+test illegal_adapter_action_combos_error ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\discovery_suite.rs (D:/autostack/auto-lang/target\debug\deps\discovery_suite-3c21a1de7068c8f9.exe)
+
+running 4 tests
+test zero_cases_is_a_hard_error ... ok
+test loads_suite_with_inventory_and_errors ... ok
+test duplicate_case_ids_across_files_are_reported ... ok
+test suite_defaults_apply_tier_and_options ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\document_fences.rs (D:/autostack/auto-lang/target\debug\deps\document_fences-24fc677575e4f23c.exe)
+
+running 9 tests
+test document_size_limit_is_resource_error ... ok
+test non_utf8_is_error ... ok
+test unclosed_fence_is_error ... ok
+test mermaid_fence_maps_without_content_check ... ok
+test lone_cr_and_crlf_payloads_preserved ... ok
+test duplicate_top_level_anchor_is_error ... ok
+test anchor_section_requires_exactly_one_fence ... ok
+test anchor_resolution_spans_deeper_sections_until_same_level ... ok
+test valid_document_battery ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\vendor_provenance.rs (D:/autostack/auto-lang/target\debug\deps\vendor_provenance-823f47811631fa18.exe)
+
+running 1 test
+test vendored_files_match_pinned_fingerprints ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests auto_test_case
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

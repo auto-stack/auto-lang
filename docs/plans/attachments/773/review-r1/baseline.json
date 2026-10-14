@@ -1,0 +1,23 @@
+{
+  "reviewer": "Codex / this independent review conversation; not implementation session",
+  "review_scope": "final",
+  "plan_revision": 1,
+  "worktree": "D:\\autostack\\.wt\\lang-773\\auto-lang",
+  "branch": "plan-773-dev",
+  "reviewed_commit": "284acbfb4340c01ed4f5464257d9b8235bf8c223",
+  "dependency_auto_down": "c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8",
+  "hashes": {
+    "docs/plans/773-autodown-testcase-protocol-pilot.md": "3e8698ef0391ffa1a28304dfb344c22241b033445c0fe34e7437b14b8a6b294b",
+    "docs/design/35-autodown-test-cases.md": "eb7bd735854fd270aa39dab5c40432ea291defd66d7235857d3b9744eeadd34c",
+    "docs/specs/auto-lang/trans/design/test-convention.md": "03482686ca4a39d29f4892010a0f5d9bedc55f5d521c0aaead4c7a6c919682fd",
+    "docs/specs/auto-lang/vm/overview.md": "0e22704f9a678f775633a706db8c6583a60218589b8b7dc3f87ccd1b30ccf3c3",
+    ".cargo/config.toml": "a55e53fd140177f0b32cc7b24f577939e418dac53973c79102b39370a2022445",
+    ".config/nextest.toml": "0fbea4b493e2437105d5cd68c616549b1a39aaad6ae4b2f85fd83adf4782d5a2",
+    "Cargo.lock": "c426f66c69d76e5eaf11c2bb915583d99802a10577a0df4f3f90b211d5cef5d8",
+    "vendor/autodown-test-parser/src/markdown_parser.rs": "4c41853517d09f4740ed32f3a6645f3fedd8bd7ad69ac0fd3ece16f21427ffc9",
+    "vendor/autodown-test-parser/src/block_model.rs": "8e99920ff0f078706ea7d8e8b2f351e3fe90c5220d57c791d6ca0e1000b04c36",
+    "vendor/autodown-test-parser/src/ial.rs": "085091486a36aac33079984401575dc0e9331377d87114a2ae44c5fcd8a46bfa"
+  },
+  "cli_sha256": "a19c0af3d02e0ee4f6743f6dab3ed092947cedd914714ac5ec70cf408bf3dd4a",
+  "spec_delta_sha256": "a1314a481f88f99e4ee1ced480985305bff472d000261b2ffa414deb1d68a212"
+}

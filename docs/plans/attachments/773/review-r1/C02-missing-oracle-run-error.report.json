@@ -1,0 +1,32 @@
+{
+  "schema": "autolang.test-report/1",
+  "suite": "review",
+  "suite_sha256": "cb352d7d39e9c24ccf36c61732d6b5997360c93cd44fdeeb8b7ceeb73db1fd9f",
+  "required_adapters": [],
+  "summary": {
+    "total": 1,
+    "ERROR": 1
+  },
+  "coverage_gaps": [],
+  "load_errors": [],
+  "results": [
+    {
+      "execution_key": "review:cb352d7d39e9c24ccf36c61732d6b5997360c93cd44fdeeb8b7ceeb73db1fd9f:review.case:emit",
+      "case": "review.case",
+      "check": "emit",
+      "adapter": "a2r",
+      "action": "emit",
+      "tier": null,
+      "status": "ERROR",
+      "detail": "expected artifact expected.rs: 系统找不到指定的文件。 (os error 2)",
+      "identity": {
+        "suite": "cb352d7d39e9c24ccf36c61732d6b5997360c93cd44fdeeb8b7ceeb73db1fd9f",
+        "case_file": "fd3598266dbf13d9f848d48ba5d17f254a14366869344ab57979b3e5ba0b9df9",
+        "source": "6af11a79cb1fb9683e5a0527ec8625fc31bc886ad40c3b542ce8675aa0c13305",
+        "oracle": "5dafc43db2fd11abe0053cc67d7355d1552d8d983880cde174004f6c655a6f9f",
+        "contract": "bb064c80e3eaa4594695ad7f05d1aa09b27f3944ca51a2f377fecfe3f031daad"
+      },
+      "duration_ms": 1145
+    }
+  ]
+}
