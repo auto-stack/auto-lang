@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
-current_step: 10
+current_step: 11
 total_steps: 18
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -221,7 +221,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 ### 阶段 C：有限预算与10MiB导入
 
-- [ ] T-14: owner_stage=work；依赖T-05（阶段 B 双端锚点验收）；核对engine/task、http_server全部相关dispatch和期限路径，匹配CLI做10MiB whole-path有界探针，新增docs/plans/reports/781-budget-decision.md，冻结唯一policy/profile/入口矩阵/资源判据；共享776写面未释放前仅调查。AC-11/AC-12/AC-13。
+- [x] T-14: owner_stage=work；依赖T-05（阶段 B 双端锚点验收）；核对engine/task、http_server全部相关dispatch和期限路径，匹配CLI做10MiB whole-path有界探针，新增docs/plans/reports/781-budget-decision.md，冻结唯一policy/profile/入口矩阵/资源判据；共享776写面未释放前仅调查。AC-11/AC-12/AC-13。
+  [✅ 2026-10-14] 决策报告落盘 [781-budget-decision.md](reports/781-budget-decision.md)。源码勘定：Legacy 每驱动段独立 10M 硬编码（源码自注「会 park 的 handler 每段重新计，比同步更宽」=不变量 2 要消除的形态；CpuSlice 档累计护栏已存在但 HTTP 三入口全走 Legacy）；耗尽可观察 = 500 + "instruction budget exhausted" detail（可识别资源拒绝，v1 沿用）。**真实 whole-path 探针**（Reader /api/library/import，隔离 split-VM 实例逐尺寸全新起）：256KiB **成功**、512KiB 起全部预算耗尽（1/2/4/8/10MiB TXT + 10MiB MD 均 500，1.2-1.9s 内耗尽，10MiB 峰值 WS 295.7MB）→ **20-40 指令/字节，10MiB 需 ≈210-420M 指令，成功路径预估 35-70s 忙时**。冻结：D-1 policy = 环境变量 `AUTO_HTTP_STEP_BUDGET`（宿主可信、进程隔离、默认 10M 不变、合法域 1..=4G、非法启动期指名错误+非零退出、导入推荐档 1G）；**不引入 HTTP CpuSlice（v1 非目标，三依据成文）**；D-2 入口矩阵（三 HTTP 入口+段恢复消费；SSE 帧/UI bridge/back_proxy 不变）；D-3 零新 deadline/取消机制（沿既有 scope+单终态）；D-4 计数载体 = AutoTask.cpu_steps_total 扩展 Legacy 档。**受阻对账**：D-4 写面（engine.rs/http_server.rs/auto-man 启动链）与在途 PLAN-776 修复正撞（其 worktree 现持三文件未提交改动，R7 needs_fix reopened T-01~08 next=work）——T-15/T-16 按 §4 纪律等待 776 合入。证据 D:/p781-t14/{probe_budget.py,out/probe_report.json+probe_rerun.json+probe_low.json}。
 - [ ] T-15: owner_stage=work；依赖T-14；新增或扩展engine policy/任务累计计数，trusted配置解析与per-instance快照，补V-14~V-16单测；新路径明确登记，scoped tests通过。AC-11/AC-12。
 - [ ] T-16: owner_stage=work；依赖T-15且相关HTTP源码写面释放；HTTP命名/closure/segment装配及必要CPU片推进，保持既有request scope/终态/取消；真实TCP跑V-18/V-20。AC-12/AC-14。
 - [ ] T-17: owner_stage=work；依赖T-16；新增fixture/consumer驱动，使用只读Reader源码、新隔离库与固定CLI/config；10MiB TXT/MD成功、逐字/asset hash、冷启动验证V-17；无法成功不交execution_done。AC-13。
@@ -255,8 +256,12 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 2026-10-14 work（T-05，阶段 B 收口）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=1042beeb3 | code_commit=292e8755a | dependency_revisions=同上 | task_ids=T-05 | evidence=p781-scroll-child-anchor fixture + 双端驱动；原生腿 41/41 + Vue 腿 43/43（D:/p781-t05/out，CLI sha=93d14ed5…）；三项框架修复（gen-0 收养+单测 / managed 标记接线 upsert+递归判定 / 驱动时序经验）；scroll 69/69、plan781 16/16、裸 cargo t 5294/5294；决策报告 §7 r6 | blockers=无 | next_responsible_role=work（阶段 C 起步：T-14 预算决策调查——依赖 T-05 已满足；共享 776 写面核对后 whole-path 有界探针）
 
+2026-10-14 work（T-14）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=292e8755a | code_commit=（纯调查/文档任务，未动 Rust） | dependency_revisions=同上；Reader@29b5dec 只读（其 reading.at:269/315 `let pr` 重赋值缺陷仍在，正文页损坏不影响后端 API——探针实证） | task_ids=T-14 | evidence=reports/781-budget-decision.md（policy/入口矩阵/取消策略/CpuSlice 裁定冻结）+ D:/p781-t14 探针（256KiB 成功/512KiB 起耗尽 → 20-40 步/字节，10MiB≈210-420M 步）| blockers=**T-15/T-16/T-17/T-18 被在途 PLAN-776 阻断**——776 worktree 现持 engine.rs/http_server.rs/codegen.rs 未提交改动（R7 needs_fix，reopened T-01~08，next=work），D-4 全部写面正撞；解锁动作 = 776 修复→复审→merge 合入 master 后，781 worktree 同步 master 再开 T-15 | next_responsible_role=等待 776 释放写面（或用户裁定并行路径）
+
 ## 10. 待澄清事项
 
-T-09负责动作/帧identity/布局freshness的复用边界；T-01冻结子key公共接口/代际/nearest；T-14冻结有限profile、同步/分片与配置/期限/取消的whole-path可行性。三项均为后续接线硬前置，不把未结束研究计为已实现。共享776/742/778/779热点入场对账；未释放则具名记录受阻任务。
+T-09负责动作/帧identity/布局freshness的复用边界；T-01冻结子key公共接口/代际/nearest；T-14冻结有限profile、同步/分片与配置/期限/取消的whole-path可行性（✅ 已冻结于 reports/781-budget-decision.md）。三项均为后续接线硬前置，不把未结束研究计为已实现。共享776/742/778/779热点入场对账；未释放则具名记录受阻任务。
+
+**受阻任务（2026-10-14 T-14 对账，具名记录）**：T-15/T-16/T-17/T-18 被 PLAN-776 在途修复阻断——776 worktree（D:/autostack/.wt/lang-776/auto-lang）现持 `vm/engine.rs`、`vm/ffi/http_server.rs`、`vm/codegen.rs` 未提交改动（R7 终审 needs_fix，reopened T-01~08，next=work，另一会话进行中），而预算决策 D-4 的全部实现写面正是这三个文件 + auto-man 启动链。按本计划 §4 纪律（不并行改共享热点）与 AGENTS 单写入者原则，781 不得开工 T-15/T-16。**精确解锁动作**：776 修复完成 → 独立复审通过 → `/auto-plan:merge` 合入 master → 781 worktree `git merge master` 同步 → T-15 按决策报告 D-4 开工（T-17/T-18 随 T-16 依赖链解锁；T-06 因此顺延，计划保持 executing）。用户如裁定绕过等待（如基于 776 已 commit 的 R6 基线开工），须显式授权并行写面处置方案。
 
 无需用户先选实现细节；若调查需改原目标、默认资源保护、业务API或扩大仓范围，再报告具体合同变更。合并只调整计划组织与编号，001原AC/T-25/T-26仍保持；框架能力交付后回001接入、取消混排fixme、重跑原生/长文并独立终审。
