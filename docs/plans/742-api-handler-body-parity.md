@@ -65,6 +65,11 @@ SD-742-01/02 不能批准为完成。new_spec_components 为空，因为更新�
 旧例及新增矩阵通过，placeholder 恢复与嵌套借用仍有反例，T-3 必要 oracle 未闭合；
 SD-742-01/02 仍不可批准为完整 parity，原目标路径/AC/revision 不变。
 
+第四次复审 [冻结增量](attachments/742/review-r4/spec-delta.md) SHA256
+`D013A579F74D0861B9FD376C8016A4C7B7E5F229288A93710F5ABD5A0621FAC0`。
+旧17例、嵌套组合及当前S10/Vue通过；合法companion模块名后缀仍被误识别为标准库，
+SD-742-01/02继续partial。VM交互未验，不新增固定19场景门禁；原目标/AC/revision不变。
+
 ## 3. 任务
 
 - [x] T-1: 失败测试钉三缺陷（api_gen tests，extract_api_lenient + generate_api_rs 路径）
@@ -231,6 +236,25 @@ r2 的13个api.at/repository.at精确输入 **13/13** 实编运行符合预期�
 两连败诊断及实际接线已核查，仍须调整 placeholder 恢复身份和借用遍历覆盖。
 本轮没有宣布未完成联动已通过，亦未因已有缺口重复运行完整日常/trans测试。
 
+### 4.5 第四次独立 final review（2026-10-14）
+
+审面 `2c40e1fe4673c2041ae3c366037d7eab38017d81`，基面
+`8c9b2d3d96d648e3a0ffa7c40b4c25694a6da85d`；同plan-742-dev工作树。
+结论 **needs_fix**，原17输入hash相同并全部通过，R3-01/02具体旧例关闭。
+当前20有效输入实编运行19通过、1失败：F-742-R4-01（P2）标准库扫描在较长
+标识符后缀命中a2r_std，将合法custom_a2r_std.ping()改成
+crate::custom_auto_lang::a2r_std::ping()，实编E0433；custom模块控制通过。
+原模块身份/handler可编译要求尚未闭合；T-1/T-2及T-3依赖证据重开，当前0/3。
+
+本轮独立 api_gen48 pass/1 ignored，tt5649/5649；daily5277 pass/1 fail
+（state lock在案99≠100，定向复跑1/1）；格式及crates diff whitespace通过。
+独立S10完成创建→强杀/下线→同制品同目录重启→值读回，Vue smoke13/13。
+当前后端008f0045…与work早先制品不同，身份和runtime主检出路径如实绑定；
+DB同路径前后文件hash不同，不将恢复过程不写文件作为新要求。
+VM标准驱动45秒未ready，保留交互未验边界，不判产品故障、不新增VM19门禁。
+未验Upload/db候选维持原调查范围。完整映射、命令、输入/生成物、身份/限制见
+[review-r4报告](attachments/742/review-r4/REVIEW.md)。已通过事实保留，不以记账抹去。
+
 ## 5. 已知延后
 
 - D-742-1: `use api: Note` 于 db.at/repository.at 报 'Note' undefined
@@ -380,3 +404,45 @@ PLAN-745 交接注记（0bc1bea01）确认 742 合并面对其 27 处共现预�
   VM 启动+后端联动已验证；Upload 入口限定化为源码级接线共享 helper；
   db.rs 遗留正则 pass 债务候选 | next: review（/auto-plan:review r4；
   审面=2c40e1fe4，基面 8c9b2d3d9，工作树冻结待审）
+
+- stage: review（第四次） | review_scope: final |
+  reviewer_identity: Codex /root（前轮审核上下文，未参与本轮实施，无子agent）|
+  plan_id: 742 | plan_revision: 1 | outcome: needs_fix |
+  worktree_path: D:/autostack/.wt/lang-742/auto-lang | branch: plan-742-dev |
+  reviewed_commit: 2c40e1fe4673c2041ae3c366037d7eab38017d81 |
+  base_commit: 8c9b2d3d96d648e3a0ffa7c40b4c25694a6da85d |
+  dependency_revisions: auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，
+  Notes=1391bd7eb2f6b3b08e9841d30b25125e47ced058，制品/runtime路径见baseline |
+  spec_inputs: [baseline.json](attachments/742/review-r4/baseline.json) 五canonical SHA256 |
+  acceptance_results: AC01已验形态pass、AC02fail、AC03原归因范围pass、AC04fail、
+  AC05/06partial（Vue/S10当前独立pass，VM交互未验；不新增19场景硬门）|
+  findings: F-742-R4-01；R3-01/02旧例已关，R3-03的S10/Vue证据已补齐，VM边界保留 |
+  pending_closeout_gates: 修复模块身份边界并提交、同修复版本的依赖验证/未验边界；
+  后续merge沉淀/到期批量档/归档 |
+  evidence: [报告](attachments/742/review-r4/REVIEW.md)、
+  [冻结规范增量](attachments/742/review-r4/spec-delta.md) |
+  next: /auto-plan:work 742，同树修复F-742-R4-01、永久实编反例/控制和诊断后重新交接。
+  当前executing 0/3；累计四次未通过，历史发现及已通过具体证据保留。
+
+### 9.3 r4 轮诊断（R4 报告要求："代码区身份与完整模块/token 身份不同"）
+
+| 剩余不变量 | 前轮为何漏掉 | 调整 | 当前结果 |
+|---|---|---|---|
+| 文本匹配的 token 完整性 | r3 单趟扫描修了 placeholder 身份，但 starts_with 匹配无左边界——代码区命中≠完整标识符/token 身份；`custom_a2r_std` 以 stdlib token 结尾即被误命中 | qualify_a2r_std 全臂加标识符左边界（i==0 或前字节非 [A-Za-z0-9_]）；fn 级单测 + 矩阵 nsfx 端点（custom_a2r_std.at companion，实编 nsfx=7 + 精确形态/反向断言） | 全关（replay namespace_suffix ok） |
+| 系统性教训（r2→r4 连续同类） | 每轮新改的文本扫描缺其他 pass 已有的纪律之一：r2 缺恢复身份、r3 缺嵌套遍历、r4 缺 token 边界 | 全链扫描器纪律清单固化为四轴：字面量/注释掩码、标识符边界、完整 token 身份（非子串）、遍历完备（参数递归）；本计划触及的全部 pass（split/lower/qualify/borrow/qualify_a2r_std/strip）已逐轴核对 | 记录于 work-r5 README；db.rs 遗留正则 pass 债务候选仍待另案 |
+
+- stage: work（r5 修复轮，用户逐轮转发审核结论驱动） | plan_id: 742 |
+  plan_revision: 1 | outcome: pass |
+  worktree_path: D:/autostack/.wt/lang-742/auto-lang | branch: plan-742-dev |
+  base_commit: 2c40e1fe4（=r4 审核面）| code_commit: 2174f0de2 |
+  dependency_revisions: auto-down=组内兄弟 detached c39ac7f9 |
+  task_ids: T-1/T-2/T-3（r5 语义：T-1/T-2 于本修复，T-3 电池重绑 + 已立
+  Vue/S10 证据沿用——审核 r4 已确认"已运行的 Vue/S10 不因记账被抹去"）|
+  evidence: §9.3 + [work-r5 证据包](attachments/742/work-r5/README.md)
+  ——api_gen 48/48×2；日常 5278/5278；tt 5649/5649 干净收据；r4 replay
+  20/20（namespace_suffix/namespace_control/nested_twice 通过）；Notes 电池
+  fails=0（CLI SHA 4af3e449…，generation 08:50:48；首轮 S0 单红=预热竞争
+  复跑绿）| blockers: 无在案未决代码发现。边界沿用：VM autotest 前提
+  （有头桌面 MCP 会话）未变；Upload 入口源码级接线；db.rs 遗留正则债务
+  候选 | next: review（/auto-plan:review r5；审面=2174f0de2，基面
+  2c40e1fe4，工作树冻结待审）
