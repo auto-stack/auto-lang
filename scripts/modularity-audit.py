@@ -879,16 +879,47 @@ def same_file(a: Path, b: Path) -> bool:
         return False
 
 
+def _identity_hit(
+    out_path: Path, root: Path, tracked: list[str],
+    read_locks: list[Path] | None = None,
+) -> str | None:
+    """以文件身份（st_dev/st_ino，硬链接同 inode）对照全部受管输入与实读锁。
+    返回命中的输入相对路径；未命中返回 None。"""
+    import os
+    try:
+        out_stat = os.stat(out_path)
+    except OSError:
+        return None
+    for rel in tracked:
+        try:
+            st = os.stat(root / rel)
+        except OSError:
+            continue
+        if (st.st_dev, st.st_ino) == (out_stat.st_dev, out_stat.st_ino):
+            return rel
+    for lock in read_locks or []:
+        try:
+            st = os.stat(lock)
+        except OSError:
+            continue
+        if (st.st_dev, st.st_ino) == (out_stat.st_dev, out_stat.st_ino):
+            return lock.name
+    return None
+
+
 def guard_output_target(
     out_path: Path, root: Path, config_path: Path,
     baseline_path: Path | None, tracked: list[str],
     read_manifests: list[Path] | None = None,
+    read_locks: list[Path] | None = None,
 ) -> None:
     """--output 写入前守卫：拒绝覆盖任何审计输入。
-    输入矩阵（F777-R1-03 + F777-R2-02）：
+    输入矩阵（F777-R1-03 + F777-R2-02 + F777-R3-01）：
     - 边界配置 / 冻结基线（显式输入）；
     - 本次边提取实际读取过的 manifest——**含扫描根外的 path 依赖目标 manifest**
       （根外不等于安全另存，它可能正是被读过的输入）；
+    - 全部受管文件与实读锁：根外输出目标若**已存在**，必须以文件身份（硬链接同
+      inode）对照受管输入后才可放行——路径相对判定打不中根外硬链接别名；
     - 扫描根内：任何受管文件、任何既有文件。"""
     if config_path is not None and same_file(out_path, config_path):
         raise ConfigError(f"拒绝输出到审计输入（边界配置）: {out_path}")
@@ -903,7 +934,15 @@ def guard_output_target(
     try:
         rel = resolved.relative_to(root.resolve())
     except ValueError:
-        return  # 扫描根之外且非已读输入：安全另存
+        # 根外目标：已存在的目标可能是受管输入的硬链接别名（同 inode 不同路径），
+        # 须以文件身份对照后才能视为安全另存（F777-R3-01）。
+        if resolved.exists():
+            hit = _identity_hit(resolved, root, tracked, read_locks)
+            if hit is not None:
+                raise ConfigError(
+                    f"拒绝输出到审计输入（与受管输入 {hit} 同文件身份/硬链接）: {out_path}"
+                )
+        return
     rel_posix = rel.as_posix()
     if rel_posix in set(tracked):
         raise ConfigError(f"拒绝输出覆盖受管输入文件: {rel_posix}")
@@ -1238,6 +1277,12 @@ def audit(root: Path, args) -> tuple[dict, int, dict]:
         if args.no_cargo_check
         else cargo_metadata_cross_check(root, edges)
     )
+    # cargo metadata --locked 尝试运行时会读取根 Cargo.lock——它是审计输入，
+    # 输出守卫须以文件身份保护（F777-R3-01 输入矩阵）。
+    read_locks = (
+        [root / "Cargo.lock"]
+        if not args.no_cargo_check and (root / "Cargo.lock").exists() else []
+    )
     declared_edges_section = {
         "source": "manifest-tomllib/1",
         "workspace_members": member_names,
@@ -1306,6 +1351,7 @@ def audit(root: Path, args) -> tuple[dict, int, dict]:
     guard_ctx = {
         "config_path": config_path, "baseline_path": baseline_path,
         "tracked": tracked, "read_manifests": read_manifests,
+        "read_locks": read_locks,
     }
     return report, exit_code, guard_ctx
 
@@ -1917,6 +1963,51 @@ def scenario_v11(script: Path) -> str:
     return "V-11 输入保护矩阵：已读根外 manifest（含大小写别名）拒绝覆盖，根外另存正控可用"
 
 
+def scenario_v12(script: Path) -> str:
+    """F777-R3-01 永久反例：根外硬链接指向受管源码/实读锁时，输出守卫必须拒绝；
+    根外新路径另存保持可用。"""
+    import os
+    repo = make_fixture_repo("v12")
+    source = repo / "crates/fixture-lang/src/lib.rs"
+    st_check(source.exists(), "[v12] 受管源码存在")
+    # 负控 1：根外硬链接 → 受管 Rust 源码（同 inode）
+    alias_rs = repo.parent / "source-output.json"
+    if alias_rs.exists():
+        alias_rs.unlink()
+    os.link(source, alias_rs)
+    st_check(alias_rs.exists() and alias_rs.samefile(source),
+             "[v12] 硬链接别名与源码同文件身份（samefile=True）")
+    before = source.read_bytes()
+    code, err = run_audit_raw(
+        script, repo, "--mode", "observe", "--output", str(alias_rs))
+    st_check(code == EXIT_CONFIG_INVALID, "[v12] 输出到受管源码的硬链接被拒绝",
+             f"exit={code} {err[:200]}")
+    st_check(source.read_bytes() == before, "[v12] 源码字节未变（拒绝先于写入）")
+    # 负控 2：根外硬链接 → 根 Cargo.lock（cargo 对照实读输入）
+    lock = repo / "Cargo.lock"
+    lock.write_text("# fixture lock placeholder\n", encoding="utf-8", newline="\n")
+    alias_lock = repo.parent / "lock-output.json"
+    if alias_lock.exists():
+        alias_lock.unlink()
+    os.link(lock, alias_lock)
+    st_check(alias_lock.exists() and alias_lock.samefile(lock),
+             "[v12] 锁的硬链接别名同文件身份")
+    before_lock = lock.read_bytes()
+    code, err = run_audit_raw(
+        script, repo, "--mode", "observe", "--output", str(alias_lock))
+    st_check(code == EXIT_CONFIG_INVALID, "[v12] 输出到实读锁的硬链接被拒绝",
+             f"exit={code} {err[:200]}")
+    st_check(lock.read_bytes() == before_lock, "[v12] 锁字节未变")
+    # 正控：根外未存在的新路径可正常另存
+    safe_out = repo.parent / "fresh-report.json"
+    code, err = run_audit_raw(
+        script, repo, "--mode", "observe", "--output", str(safe_out))
+    st_check(code == EXIT_OK, "[v12] 根外独立另存仍可用", f"exit={code} {err[:200]}")
+    st_check(source.read_bytes() == before, "[v12] 正控运行后源码仍未变")
+    shutil.rmtree(repo.parent, ignore_errors=True)
+    return "V-12 身份矩阵：根外硬链接→受管源码/实读锁拒绝且字节不变，根外新路径另存可用"
+
+
 def run_self_test() -> int:
     script = SCRIPT_PATH
     scenarios = [
@@ -1925,7 +2016,7 @@ def run_self_test() -> int:
         ("v04c", scenario_v04c), ("v04d", scenario_v04d),
         ("v05", scenario_v05), ("v06", scenario_v06), ("v07", scenario_v07),
         ("v08", scenario_v08), ("v09", scenario_v09),
-        ("v10", scenario_v10), ("v11", scenario_v11),
+        ("v10", scenario_v10), ("v11", scenario_v11), ("v12", scenario_v12),
     ]
     failures = 0
     for name, fn in scenarios:
@@ -2022,6 +2113,7 @@ def main(argv) -> int:
             guard_output_target(
                 out, root, guard_ctx["config_path"], guard_ctx["baseline_path"],
                 guard_ctx["tracked"], guard_ctx["read_manifests"],
+                guard_ctx["read_locks"],
             )
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(payload, encoding="utf-8", newline="\n")
