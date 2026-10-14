@@ -1,13 +1,11 @@
 ---
 plan_id: PLAN-773
-status: execution_done
+status: reviewed
 feature_name: AutoDown TestCase 协议与只读试点
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-12
-updated_at: 2026-10-14
-
-supersedes_spec_components:
+updated_at: 2026-10-14supersedes_spec_components:
   - docs/specs/auto-lang/trans/design/test-convention.md
   - docs/specs/auto-lang/vm/overview.md
 new_spec_components:
@@ -17,7 +15,7 @@ new_spec_components:
   - docs/specs/auto-test-case/plans.md
 touched_goals: [GOAL-016]
 affects: [auto-test-case, auto-lang/vm, auto-lang/trans]
-current_step: 8
+current_step: 9
 total_steps: 10
 ---
 
@@ -25,14 +23,18 @@ total_steps: 10
 
 ## 0. 变更摘要
 
-当前状态（2026-10-14）：R1 复审 11 项阻断（F-773-R1-01..11）已在修复树全部闭合并提交
-（plan-773-dev `39e2ecafd`，基线 284acbfb4）。复审反例集经适配重放
+当前状态（2026-10-14 R2）：R1 复审 11 项阻断（F-773-R1-01..11）已在修复树全部闭合并提交
+（plan-773-dev `39e2ecafd`，基线 284acbfb4），**R2 独立 final review pass**
+（status: reviewed；§9 R2 记录：逐项闭合 VERIFIED + 全门禁实测重跑 + 1 项 minor 债务
+F-773-R2-01 归 merge 处置）。复审反例集经适配重放
 （[repair-r1/replay.py](attachments/773/repair-r1/replay.py)，唯一改动=输出目录移出
 fixture 根——该拒绝本身是 F-05 控制之一）全部按预期翻转：假绿变 FAIL/ERROR、
 sidecar 漂移改变身份、未选项零副作用、哨兵保全。
-T-01..T-08 完成（8/10）；T-09 独立 final review 待跑，T-10 merge pending。
+T-01..T-09 完成（9/10）；T-10 merge pending（含 SD canonical 撰写、归档、
+guarded cleanup、F-773-R2-01 债务登记）。
 修复树：`D:/autostack/.wt/lang-773/auto-lang` / `plan-773-dev`；完整证据见
-[R1](attachments/773/review-r1/REVIEW.md) 与 [repair-r1](attachments/773/repair-r1/results.json)。
+[R1](attachments/773/review-r1/REVIEW.md)、[repair-r1](attachments/773/repair-r1/results.json)
+与 §9 R2 复审记录。
 
 实施 [Design 35](../design/35-autodown-test-cases.md) 的 A 阶段：真实 AutoDown 块树
 定位静态 Atom 合同，原始 byte range/sidecar 提供载荷；建立严格发现/校验、AVM run
@@ -305,13 +307,75 @@ Design 35 §14 actual compile/run 条目归 B；本期 V-04 仅验证产物接�
 | T-06 | work | T-05 | 新 test/cases/pilot/{*.case.ad,pilot.suite.ad,legacy-map.tsv,README.md} 和 importer；20–30 引用导入、≥3 双 check，未发现/weak/ignore 对账 | 真实旧新报告、V-07/10，新协议负例不计导入；AC-01/03/04/06/07 | [x] R1 修复 2026-10-14 work（commit 39e2ecafd）：legacy-map 扩至 16 列（旧 source/oracle sha256 由真实文件重算+测试锁定、entry/工程上下文），对账测试升级为 hash 自校验。；原完成记录为历史保留： 2026-10-12 work：commit 85710109d。21 case/24 check（fixture_root 原位引用，零搬动）；3 双 check 同源独立 oracle；OOB 强化（map 记录）；json_is_null 旧 oracle 陈值修正（wrapper 从未验证）；8 个新 oracle 经 proposal 流生成+逐项人工审查；legacy-map 12 列对账=报告集合精确相等（测试锁定）。旧新一致证据：a2r wrappers 418 pass（2 预存红与本试点无关）、短路 wrappers 3 pass、新 runner 24/24。裁定修正：vm 01_basics/15_nested wrappers 均 #[ignore]]，活跃 legacy 门禁=发现式 corpus runner（map legacy_state 如实） |
 | T-07 | work | T-06 | 新 src/bin/auto-case.rs lint/list/inspect/run/proposal；在 src/tests/{vm_file_tests,a2r_tests}.rs 加 pilot 聚合入口并固定名称，报告 harness→动态 checks | 开发命令、tv/tt listing、no-default pilot、JSON/console 一致；AC-01/05/06/07/08 | [x] R1 修复 2026-10-14 work（commit 39e2ecafd）：选择器先于执行（未选项 NOT_RUN 零副作用、typo/零匹配=契约错误）；全部写口（out/json-out/proposal-dir）执行前路径域审计；lint/inspect 走完整 resolve；新增 stale 子命令；proposal 持久化 run report 并绑定旧新 hash/diff/共享消费者。；原完成记录为历史保留： 2026-10-12 work：commit 8a9f305cb（CLI 五子命令；selector 未选项记 NOT_RUN 不冒充全量 gate；t/tv/tt 别名接入 test-cases——旧 filter 直接触达 pilot 聚合入口；no-default CLI 全链 24/24 exit 0=§6.2 命令原样）。附带修复预存 VM 缺陷：register_shim_by_name 对动态段 id（next_id 被 register_with_id 顶过 10000）走 dynamic 表——新鲜二进制首跑 VM 原必炸（探针 registry=239/next_id=10015 实证）。日常档 no-fail-fast：仅四在案红+KNOWN-DEBT 396（Plan 744 dir_names），零新增红；cargo tv cookbook 红经 stash 基线对照为预存 |
 | T-08 | work | T-07 | attachments/768 完整 V-01–10/成本/只读 hash/拟议 Spec delta，内部合同预检 | scoped 控制 + §6门禁；AC-01–08。全部 work-owned 完成才 execution_done | [x] R1 修复 2026-10-14 work（commit 39e2ecafd）：F-01..11 永久控制测试入库（test_cases_tests 31 例全绿+核心 crate 67 例）；适配重放反例全部翻转（repair-r1/results.json）。；原完成记录为历史保留： 2026-10-12 work：[evidence.md](attachments/768/evidence.md)（V-01–10 全映射到可执行测试/命令且全过；成本构建/执行分列；只读树哈希前后一致 4ce1f974…；t/tv/tt/协议/无 GUI 档结果与预存红归因；SD-01–04 拟议内容；AC-01–08 自检表）+ pilot-run-console.txt/pilot-run-report.json。work-owned 8/10 完成 → execution_done |
-| T-09 | review | T-08 | auto-plan:review 独立上下文同树核查 diff/控制/AC/SD，扫描遗漏/延期/workaround/KNOWN-DEBT；固定 delta/revision/commit | §6最终门禁 + 独立反例，AC-09；needs_fix 回同树 | [ ] |
+| T-09 | review | T-08 | auto-plan:review 独立上下文同树核查 diff/控制/AC/SD，扫描遗漏/延期/workaround/KNOWN-DEBT；固定 delta/revision/commit | §6最终门禁 + 独立反例，AC-09；needs_fix 回同树 | [x] 2026-10-14 R2 final review pass，记录见 §9 |
 | T-10 | merge | T-09 pass | auto-plan:merge 主检出合入、SD/module/global/账本/spec-index；归档 docs/plans/archive；guard→移树/分支/空组，批量到期判定 | AC-10；先 bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-768/auto-lang，必须 clean；真实终态收据 | [ ] |
 
 total_steps=10；work 完成 8/10、review 9/10、实际 merge/清理后 10/10。
 current_step 只计真实完成，未来阶段不能先勾。
 
 ## 9. 复审记录
+
+### 2026-10-14 — R2 独立 final review / **pass**
+
+- stage: review | review_scope: final | reviewer_identity: 本次 Kimi 复审会话
+  （未参与原实现与 R1 修复实现；以代码与重跑门禁为准重建判定。限制：以 work 交接的
+  闭合表为核查地图，但每项均独立对照源码、重放证据与实测门禁，未采信摘要性结论）
+  | plan_id: PLAN-773 | plan_revision: 1 | outcome: **pass**
+  | worktree_path: `D:/autostack/.wt/lang-773/auto-lang` | branch: `plan-773-dev`
+  | reviewed_commit: `39e2ecafd095a02395cc89d8074482bdd44398ae`（F-01..11 修复提交，
+  工作树 clean，零未提交改动）
+  | base_commit: `284acbfb4340c01ed4f5464257d9b8235bf8c223`（R1 冻结基线）
+  | dependency_revisions: 组内只读 auto-down 兄弟未动（c39ac7f9 谱系）；vendored
+  三文件 sha256 与 vendor_provenance 守卫一致（4c418535…/8e99920f…/08509148…）
+  | spec_inputs / frozen_delta:
+  [proposed-spec-delta.md](attachments/773/review-r1/proposed-spec-delta.md)
+  sha256 `a1314a48…`（与 R1 冻结一致，未漂移；canonical 文本按合同留 merge 撰写）
+- acceptance_results:
+  - **F-773-R1-01..11 逐项闭合：全部 VERIFIED**。每项修复实现 + 命名永久控制测试
+    均在 39e2ecafd 源码中存在且语义相符（独立只读源码核查，file:line 证据见
+    本次审查工作底稿；控制测试清单即闭合表所列名，逐一命中）。
+  - 重放反例：repair-r1/results.json（sha256 `5abd1a8e…`）16 项记录与闭合表声称
+    一致（R01→exit 1 FAIL、R02 identity_equal=false、R03/R07/R08/R09→exit 2、
+    R04 consumer PASS+emit FAIL、R05 未选项零产物+typo exit 2、R06 哨兵/输入保全 exit 2）；
+    反例输入与 R1 原件逐字节一致（diff -rq 仅输出目录与 R1 运行产物差异；唯一
+    "差异"文件 json-overwrite/c.case.ad 正是 R1  buggy 运行把 report 覆写到输入的
+    证据，repair 侧恢复为原合同——恰为 F-05 实证）。重放适配仅 out 目录移至
+    fixture 根兄弟位置，是 F-05 语义的直接后果。
+  - AC-01..08：经 F-01..11 闭合 + 下述门禁重跑，全部满足；AC-09（本条）pass；
+    AC-10 pending（merge-owned）。
+  - **门禁（本复审在 39e2ecafd 实测重跑）**：
+    - `cargo test -p auto-test-case` 67/67 pass；
+    - 裸 `cargo t --no-fail-fast` **5294/5294 pass**（98.7s；首次 fail-fast 默认档
+      曾在 1096/5294 处停在 state_file::lock_serializes_critical_sections——负载敏感
+      flake，全量 run 与隔离复跑均绿，见下）；
+    - `cargo tv` 163/163 pass（含 pilot_aggregate_vm 聚合，5.1s）；
+    - `cargo tt --no-fail-fast` 5663 pass + 3 fail（state_file 锁竞争、
+      plan498 charts 时序、plan492 fstr geometry——三者隔离同命令复跑 3/3 绿，
+      均属在案负载 flake 家族，与 test_cases/auto-test-case 改动面零交集）；
+    - `cargo fmt --all -- --check`：本计划全部触及文件零差异（仅存差异均在
+      auto-down 兄弟仓，预存）；
+    - `cargo tree -p auto-test-case`：运行时依赖仅 vendored autodown-test-parser
+      （auto-atom 仅 dev-dep），无 auto-lang/GUI 依赖；
+    - no-default CLI 实跑（§6.2 原命令）：lint exit 0 / list exit 0 /
+      run 24/24 PASS exit 0（target/r773-review-out/report.json 复核 total 24 PASS 24）
+      / stale 24 FRESH exit 0。
+- findings: **F-773-R2-01（minor，不阻断，merge 时债务登记 + 闭合表表述修正）**：
+  F-08 闭合表称 "trans/rust 移除 parse/CTEE 的 to_string 压平"，实测仅单文件路径
+  （transpile_rust_full_with_options）去压平；project 模式两入口
+  （transpile_rust_project Phase 2、transpile_rust_project_merged）仍将 parse 错误
+  包成无名 AutoError::Msg → classify 为 Infrastructure → ERROR。影响面：a2r
+  project-mode 的强错误 oracle 不可满足（fail-safe 方向，永不假 PASS）；pilot 21
+  case 无 project-mode 负例，AC-04 不变量"基础设施永不满足语言负例"保持成立。
+  处置（merge 执行）：①闭合表 F-08 行措辞修正为"单文件发射路径"；②登记
+  docs/plans/KNOWN-DEBT-AND-RISKS.md（project-mode emit 错误类型化，B 阶段或
+  独立 fix 处理；彻底修复需带模块路径上下文的类型化变体，非纯机械删压平）。
+- pending_closeout_gates: AC-10（merge：SD-01..04 canonical 撰写/账本/索引/归档/
+  guard→移树/分支/空组/批量到期判定）+ F-773-R2-01 债务登记。
+- evidence: 本记录所述全部命令在本复审会话 lang-773 树内重跑；repair-r1/
+  results.json、review-r1/proposed-spec-delta.md 哈希如上；R01 报告
+  （attachments/773/review-r1/REVIEW.md 及 16 组原始结果）保持可解析。
+- next: /auto-plan:merge（ reviewed 基线 39e2ecafd，主检出合入、沉淀、归档、
+  guarded cleanup；含 F-773-R2-01 两项处置）。
 
 ### 2026-10-14 — R1 needs_fix 修复轮 / work 交接（execution_done 再次）
 
