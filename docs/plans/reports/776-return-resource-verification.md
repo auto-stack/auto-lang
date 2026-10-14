@@ -392,3 +392,43 @@ tt/tu/taa 零触发。判别实验的临时 base worktree（lang-776-base 组）
 | 生成真 TCP 矩阵 | 3/3（File/Upload/JSON+busSSE） |
 | scoped | plan394 17/17、plan705 19/19、plan707 31/31、generator 10/10、plan326 40/40 |
 | rustfmt 触面 7 文件 | 干净 |
+
+---
+
+## R9 修复轮（2026-10-14，review-r9 needs_fix 后复修）
+
+代码提交：`dd41d684d`（3 文件 +183/−11；实现链保留）。逐项闭合：
+
+- **F776-R9-01（P1）消费恰一份**：StakeGuard::nv 只记 id（无 retain）、
+  其 Drop 已执行 rc_release_id——R8 在 guard 之外叠加的显式
+  `vm.rc_release` 是第二份释放（RC1 独占时第二次落在零计数未暴露；
+  RC2 参数+全局共享时 2→0 销毁全局份额——V9-N1）。修复：撤两处显式
+  release（pop_iterator_receiver / shim_iterator_next 凭据臂），guard
+  Drop 即那一次消费；读取期间份额未动；早退同样恰一份。oracle：
+  `plan776_r9_iterator_consumer_single_release_shared`——RC1 独占
+  reap 回基线 + **RC2 共享**（消费后 2→1、跨 reap 存活、全局凭据仍
+  可解析）。
+- **F776-R9-02（P1）typed record Future 字段保真**：插桩实证真实路径
+  ——`Box { f: ~{42} }` 走 **NEW_INSTANCE/CONSTRUCT_INSTANCE**（非
+  CREATE_OBJ），其逐字段 tag 转换把 TAG_FUTURE 落 `Value::Int(fid)`
+  （观测 body=1 的来源）；读取走 **GET_GENERIC_FIELD → push_value**
+  （非 GET_FIELD），push_value 兜臂压 0。补 Future 臂：CONSTRUCT_
+  INSTANCE 字段转换（保真入）、push_value（还原出）；CREATE_OBJ/
+  GET_FIELD×2 臂保留（各自路径覆盖）。桥清点更新：nv↔Value 全入口
+  =decode_tagged_nv/native+interop nv_to_value/CREATE_ARRAY/CREATE_OBJ/
+  **CONSTRUCT_INSTANCE**；全出口=materialize_value/value_to_nv_via_task/
+  GET_ELEM/GET_FIELD×2/**GET_GENERIC_FIELD(push_value)**；捕获存
+  decode_tagged_nv/捕获读原槽 nv。oracle：`http_e2e_plan776_r9_record_
+  field_future_identity`（record 字段→42、数组对照、普通数字负控制）。
+
+门禁（实施树 `dd41d684d`）：
+
+| 门禁 | 结果 |
+|---|---|
+| `cargo check -p auto-lang` | 0 error |
+| 裸 `cargo t --no-fail-fast` | **5311/5311 全绿**（114.7s） |
+| `cargo tv` | 162/162 |
+| plan776 全族（`-j 1`） | **65/65**（63 项 R1-R8 复现 + R9 新增 2） |
+| 生成真 TCP 矩阵 | 3/3 |
+| scoped | plan394 17/17、plan705 19/19、plan707 31/31、generator 10/10、plan326 40/40 |
+| rustfmt 触面 | 干净 |
