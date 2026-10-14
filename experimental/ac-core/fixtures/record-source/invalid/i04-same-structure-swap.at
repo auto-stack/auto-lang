@@ -1,0 +1,15 @@
+// V-03 source leg: same-structure records are nominal — no interchange
+type A {
+    x int
+    y int
+}
+type B {
+    x int
+    y int
+}
+fn main() int {
+    let a = A { x: 1, y: 2 }
+    let b = B { x: a.x, y: a.y }
+    if b.x != 1 { return 1 }
+    return 0
+}

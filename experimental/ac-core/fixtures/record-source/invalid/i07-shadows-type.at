@@ -1,0 +1,8 @@
+// V-08: a local shadowing a type name, then used as a callee
+type Pair {
+    left int
+}
+fn main() int {
+    let Pair = 1
+    return Pair
+}

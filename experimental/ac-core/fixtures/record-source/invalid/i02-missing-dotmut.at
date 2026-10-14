@@ -1,0 +1,12 @@
+// V-06: a `mut` param requires a `.mut` argument at the call site
+type Pair {
+    left int
+}
+fn bump(mut r Pair, d int) int {
+    r.left = d
+    return r.left
+}
+fn main() int {
+    var p = Pair { left: 1 }
+    return bump(p, 2)
+}

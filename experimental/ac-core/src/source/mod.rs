@@ -23,8 +23,8 @@ pub mod resolve;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_parts, compile_parts_with, compile_scalar_source, compile_source, CompiledSource,
-    SourceParts,
+    compile_parts, compile_parts_with, compile_record_source, compile_scalar_source,
+    compile_source, CompiledSource, SourceParts,
 };
 pub use parser::{parse_program, parse_program_with};
 pub use resolve::resolve_with;
@@ -39,12 +39,19 @@ pub const SOURCE_PROFILE: &str = "auto.source.core-i32.draft";
 /// conditional `for <bool-expr> { ... }` loops (`while` is rejected here).
 pub const SCALAR_SOURCE_PROFILE: &str = "auto.source.scalar-i32.draft";
 
+/// The record source profile (PLAN-771): the scalar surface plus nominal
+/// records — `type` declarations with fields and `static fn`/`fn` methods,
+/// positional/named construction, nested field paths, readonly instance
+/// receivers, and explicit `mut` free-function params (774 D-04).
+pub const RECORD_SOURCE_PROFILE: &str = "auto.source.record.draft";
+
 /// The explicitly selected source profile of a compilation. Never inferred
 /// from file extensions or content.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SourceProfile {
     Core,
     Scalar,
+    Record,
 }
 
 impl SourceProfile {
@@ -52,6 +59,7 @@ impl SourceProfile {
         match self {
             SourceProfile::Core => SOURCE_PROFILE,
             SourceProfile::Scalar => SCALAR_SOURCE_PROFILE,
+            SourceProfile::Record => RECORD_SOURCE_PROFILE,
         }
     }
 
@@ -60,6 +68,7 @@ impl SourceProfile {
         match self {
             SourceProfile::Core => crate::hir::HirDomain::Core,
             SourceProfile::Scalar => crate::hir::HirDomain::Scalar,
+            SourceProfile::Record => crate::hir::HirDomain::Record,
         }
     }
 
@@ -70,10 +79,23 @@ impl SourceProfile {
         matches!(self, SourceProfile::Scalar)
     }
 
+    /// Whether the record surface (type declarations, construction, field
+    /// paths, methods, `mut` params — PLAN-771) is accepted.
+    pub fn is_record(&self) -> bool {
+        matches!(self, SourceProfile::Record)
+    }
+
+    /// The widest operator surface this profile accepts: record builds on
+    /// the scalar surface.
+    pub fn surface_is_scalar_or_wider(&self) -> bool {
+        matches!(self, SourceProfile::Scalar | SourceProfile::Record)
+    }
+
     pub fn of(s: &str) -> Option<SourceProfile> {
         match s {
             SOURCE_PROFILE => Some(SourceProfile::Core),
             SCALAR_SOURCE_PROFILE => Some(SourceProfile::Scalar),
+            RECORD_SOURCE_PROFILE => Some(SourceProfile::Record),
             _ => None,
         }
     }

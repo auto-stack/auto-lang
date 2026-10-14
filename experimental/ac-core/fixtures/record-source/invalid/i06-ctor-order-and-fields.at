@@ -1,0 +1,9 @@
+// V-07 negative: duplicate + missing fields in named construction
+type Pair {
+    left int
+    right bool
+}
+fn main() int {
+    let p = Pair { left: 1, left: 2 }
+    return 0
+}

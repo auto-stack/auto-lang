@@ -1,0 +1,9 @@
+// V-06: writing a field through a `let` binding is rejected
+type Pair {
+    left int
+}
+fn main() int {
+    let p = Pair { left: 1 }
+    p.left = 2
+    return 0
+}

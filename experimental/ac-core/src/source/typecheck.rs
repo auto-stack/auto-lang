@@ -25,7 +25,8 @@
 
 use super::ast::{BinOp, UnaryOp};
 use super::resolve::{
-    param_position, RBlock, RExprKind, RStmt, ResolvedExpr, ResolvedFn, ResolvedProgram, VT,
+    param_position, RBlock, RExprKind, RStmt, ResolvedArg, ResolvedExpr, ResolvedFn,
+    ResolvedProgram, VT,
 };
 use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span, Stage};
@@ -101,10 +102,17 @@ fn check_block(
                     mismatch(diags, want, value.vt, value.span);
                 }
             }
-            RStmt::Assign { local, value, .. } => {
+            RStmt::Assign {
+                local, path, value, ..
+            } => {
                 check_expr(value, program, f, diags);
                 if local.0 != usize::MAX {
-                    let want = f.locals[local.0].vt;
+                    // the write target's type: the path's final field for
+                    // field-path places, the local itself otherwise
+                    let mut want = f.locals[local.0].vt;
+                    for (ri, fi) in path {
+                        want = program.records[*ri].fields[*fi].vt;
+                    }
                     if value.vt != want {
                         mismatch(diags, want, value.vt, value.span);
                     }
@@ -141,6 +149,57 @@ fn check_block(
     }
 }
 
+/// Borrow-mode contract (PLAN-771 / 774 D-04): a record param declared
+/// `mut` must receive a `p.mut` argument, and a `p.mut` argument must land
+/// on a `mut` param — both directions are `source.type-mismatch` at the
+/// call site (the HIR verifier re-checks on the emitted borrows).
+fn check_arg_modes(
+    fn_index: usize,
+    first_visible: usize,
+    args: &[ResolvedArg],
+    program: &ResolvedProgram,
+    diags: &mut Vec<Diagnostic>,
+    span: Span,
+) {
+    let Some(callee) = program.fns.get(fn_index) else {
+        return;
+    };
+    for a in args {
+        let pos = match &a.name {
+            None => args.iter().position(|x| std::ptr::eq(x, a)),
+            Some(n) => callee.param_names.iter().position(|p| *p == n.name),
+        };
+        let Some(pos) = pos else { continue };
+        let param_i = pos + first_visible;
+        let param_mut = callee.param_modes.get(param_i).copied() == Some(true);
+        let arg_is_mut = matches!(a.value.kind, RExprKind::BorrowMut { .. });
+        let param_is_record = matches!(callee.params.get(param_i), Some(VT::Rec(_)));
+        if param_is_record && param_mut && !arg_is_mut {
+            diags.push(Diagnostic::new(
+                Stage::Verify,
+                "source.type-mismatch",
+                format!(
+                    "parameter `{}` of `{}` is declared `mut` and requires a `.mut` argument at the call site",
+                    callee.param_names.get(param_i).unwrap_or(&"?".to_string()),
+                    callee.name
+                ),
+                span,
+            ));
+        }
+        if arg_is_mut && (!param_mut || !param_is_record) {
+            diags.push(Diagnostic::new(
+                Stage::Verify,
+                "source.type-mismatch",
+                format!(
+                    "a `.mut` argument requires the parameter to be a `mut` record parameter of `{}`",
+                    callee.name
+                ),
+                span,
+            ));
+        }
+    }
+}
+
 fn check_expr(
     root: &ResolvedExpr,
     program: &ResolvedProgram,
@@ -168,6 +227,7 @@ fn check_expr(
                         }
                     }
                 }
+                check_arg_modes(*fn_index, 0, args, program, diags, e.span);
             }
             RExprKind::Binary { op, lhs, rhs, .. } => {
                 // push rhs first so lhs is checked first (LIFO)
@@ -211,6 +271,45 @@ fn check_expr(
                             }
                         }
                     }
+                }
+            }
+            // -- record profile (PLAN-771): typing was resolved inline in
+            // the resolve stage (nominal ctor fields, per-segment field
+            // paths, method sigs); here the borrow-mode contract is
+            // enforced (a `mut` record param requires its `p.mut` argument;
+            // a `p.mut` argument requires a `mut` param) and children walk.
+            RExprKind::CtorPos { args, .. } => {
+                for a in args {
+                    stack.push(&a.value);
+                }
+            }
+            RExprKind::CtorNamed { fields, .. } => {
+                for (_, v) in fields {
+                    stack.push(v);
+                }
+            }
+            RExprKind::FieldGet { base, .. } => {
+                stack.push(base.as_ref());
+            }
+            RExprKind::BorrowMut { .. } => {}
+            RExprKind::MethodCall {
+                fn_index,
+                recv,
+                args,
+            } => {
+                if let Some(r) = recv {
+                    stack.push(r.as_ref());
+                }
+                check_arg_modes(
+                    *fn_index,
+                    if recv.is_some() { 1 } else { 0 },
+                    args,
+                    program,
+                    diags,
+                    e.span,
+                );
+                for a in args {
+                    stack.push(&a.value);
                 }
             }
             RExprKind::Unary { op, operand } => {

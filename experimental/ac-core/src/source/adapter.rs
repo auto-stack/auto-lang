@@ -31,7 +31,8 @@
 
 use super::ast::{BinOp, UnaryOp};
 use super::resolve::{
-    param_position, RBlock, RExprKind, RStmt, ResolvedExpr, ResolvedFn, ResolvedProgram, VT,
+    param_position, RBlock, RExprKind, RStmt, ResolvedArg, ResolvedExpr, ResolvedFn,
+    ResolvedProgram, VT,
 };
 use super::typecheck;
 use super::{SourceProfile, SOURCE_PROFILE, TRACE_CAPABILITY};
@@ -82,6 +83,24 @@ pub fn compile_scalar_source(
     let checked = crate::verify::verify_scalar(parts.bundle)?;
     Ok(CompiledSource {
         profile: super::SCALAR_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
+
+/// Compile under the record source profile (PLAN-771): the scalar surface
+/// plus records — parse/resolve/typecheck, bind against the record
+/// descriptor, verify through the record entry.
+pub fn compile_record_source(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Record)?;
+    let checked = crate::verify::verify_record(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::RECORD_SOURCE_PROFILE,
         input_hash: parts.input_hash,
         atom_text: parts.atom_text,
         checked,
@@ -166,6 +185,16 @@ fn fnv1a_hex(bytes: &[u8]) -> String {
     format!("{:016x}", h)
 }
 
+/// Atom type id of a value type (PLAN-771: record types are
+/// `t_rec_<name>`, nominal by declaration).
+fn ty_name(vt: VT, records: &[crate::source::resolve::ResolvedRecord]) -> String {
+    match vt {
+        VT::I32 => "t_i32".to_string(),
+        VT::Bool => "t_bool".to_string(),
+        VT::Rec(i) => format!("t_rec_{}", records[i].name),
+    }
+}
+
 fn internal_diag(msg: String) -> Diagnostic {
     Diagnostic::new(
         Stage::Text,
@@ -193,6 +222,27 @@ enum EKind {
         callee_intrinsic: Option<&'static str>,
         eval: Vec<usize>,
         bindings: Vec<(u32, u32)>,
+    },
+    // -- record profile (PLAN-771) --
+    /// Positional/named construction: `eval` is the SOURCE-order
+    /// evaluation list; `bindings` map (field decl idx, arg idx).
+    RecordCtor {
+        rec: usize,
+        eval: Vec<usize>,
+        bindings: Vec<(u32, u32)>,
+    },
+    /// Field read through a flattened declaration-index path.
+    FieldGet {
+        base: usize,
+        path: Vec<u32>,
+    },
+    /// Read-only borrow (view param / instance receiver argument).
+    BorrowView {
+        base: usize,
+    },
+    /// Exclusive borrow (`p.mut`).
+    BorrowMut {
+        local: usize,
     },
 }
 
@@ -251,6 +301,9 @@ struct BNode {
 
 struct PNode {
     local: usize,
+    /// PLAN-771: field-path place — declaration indices per segment;
+    /// empty = whole-local place.
+    path: Vec<u32>,
     vt: VT,
     span: Span,
 }
@@ -584,12 +637,23 @@ impl PlanCtx<'_> {
                         span: *span,
                     });
                 }
-                RStmt::Assign { local, value, span } => {
+                RStmt::Assign {
+                    local,
+                    path,
+                    value,
+                    span,
+                } => {
                     let v = self.plan_expr(plan, f, value);
-                    let vt = f.locals[local.0].vt;
+                    // walk the field path to the final type; a path place
+                    // writes through the root local's storage (PLAN-771)
+                    let mut vt = f.locals[local.0].vt;
+                    for (ri, fi) in path {
+                        vt = self.program.records[*ri].fields[*fi].vt;
+                    }
                     let place = plan.places.len();
                     plan.places.push(PNode {
                         local: local.0,
+                        path: path.iter().map(|(_, fi)| *fi as u32).collect(),
                         vt,
                         span: *span,
                     });
@@ -952,6 +1016,49 @@ impl PlanCtx<'_> {
     }
 
     /// Plan a non-binary leaf (called only from the iterative walk).
+    /// Plan one call argument: a record-typed argument to a view param is
+    /// wrapped in a view borrow (ABI-D); `mut` record params receive the
+    /// explicit `p.mut` borrow unchanged (a missing `.mut` stays a plain
+    /// value and is rejected downstream); scalar args pass by value
+    /// (PLAN-771 / 774 D-04).
+    fn plan_arg(
+        &mut self,
+        plan: &mut FnPlan,
+        f: &ResolvedFn,
+        a: &ResolvedArg,
+        idx: usize,
+        callee: Option<&ResolvedFn>,
+    ) -> usize {
+        let is_record = matches!(a.value.vt, VT::Rec(_));
+        let is_borrow_mut = matches!(a.value.kind, RExprKind::BorrowMut { .. });
+        if !is_record || is_borrow_mut {
+            return self.plan_expr(plan, f, &a.value);
+        }
+        let pos = callee.and_then(|c| match &a.name {
+            None => {
+                if idx < c.params.len() {
+                    Some(idx)
+                } else {
+                    None
+                }
+            }
+            Some(n) => c.param_names.iter().position(|p| *p == n.name),
+        });
+        let param_mut = pos
+            .and_then(|i| callee.and_then(|c| c.param_modes.get(i).copied()))
+            .unwrap_or(false);
+        let slot = self.plan_expr(plan, f, &a.value);
+        if param_mut {
+            return slot; // missing `.mut` — plain value, rejected downstream
+        }
+        plan.exprs.push(ENode {
+            kind: EKind::BorrowView { base: slot },
+            vt: a.value.vt,
+            span: a.value.span,
+        });
+        plan.exprs.len() - 1
+    }
+
     fn plan_leaf(&mut self, plan: &mut FnPlan, f: &ResolvedFn, e: &ResolvedExpr) -> usize {
         match &e.kind {
             RExprKind::Binary { .. } | RExprKind::Unary { .. } => {
@@ -996,9 +1103,10 @@ impl PlanCtx<'_> {
                 plan.exprs.len() - 1
             }
             RExprKind::CallFn { fn_index, args } => {
+                let callee = self.program.fns.get(*fn_index);
                 let mut eval = Vec::new();
-                for a in args {
-                    eval.push(self.plan_expr(plan, f, &a.value));
+                for (idx, a) in args.iter().enumerate() {
+                    eval.push(self.plan_arg(plan, f, a, idx, callee));
                 }
                 let mut bindings = Vec::new();
                 if let Some(callee) = self.program.fns.get(*fn_index) {
@@ -1016,6 +1124,137 @@ impl PlanCtx<'_> {
                         bindings,
                     },
                     vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::CtorPos { rec, args } => {
+                // positional: eval order = source order; binding i -> i
+                let mut eval = Vec::new();
+                for a in args {
+                    eval.push(self.plan_expr(plan, f, &a.value));
+                }
+                let bindings = (0..eval.len() as u32)
+                    .map(|i| (i, i))
+                    .collect::<Vec<(u32, u32)>>();
+                plan.exprs.push(ENode {
+                    kind: EKind::RecordCtor {
+                        rec: *rec,
+                        eval,
+                        bindings,
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::CtorNamed { rec, fields } => {
+                // named: eval order = WRITTEN order; bindings map each
+                // declaration field to its argument (never re-sorted by
+                // field order; PLAN-771 §5.2)
+                let mut eval = Vec::new();
+                for (_, v) in fields {
+                    eval.push(self.plan_expr(plan, f, v));
+                }
+                let mut bindings = Vec::new();
+                for (ai, (name, _)) in fields.iter().enumerate() {
+                    if let Some(fi) = self.program.records[*rec]
+                        .fields
+                        .iter()
+                        .position(|fl| fl.name == *name)
+                    {
+                        bindings.push((fi as u32, ai as u32));
+                    }
+                }
+                bindings.sort_by_key(|(fi, _)| *fi);
+                plan.exprs.push(ENode {
+                    kind: EKind::RecordCtor {
+                        rec: *rec,
+                        eval,
+                        bindings,
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::FieldGet { base, path } => {
+                // flatten chained single-segment FieldGets into one path
+                let mut segs: Vec<u32> = path.iter().map(|(_, fi)| *fi as u32).collect();
+                let mut cur = base;
+                loop {
+                    let next = match &cur.kind {
+                        RExprKind::FieldGet {
+                            base: inner,
+                            path: ip,
+                        } => {
+                            let mut more: Vec<u32> = ip.iter().map(|(_, fi)| *fi as u32).collect();
+                            more.extend(segs);
+                            segs = more;
+                            inner
+                        }
+                        _ => break,
+                    };
+                    cur = next;
+                }
+                let base_slot = self.plan_expr(plan, f, cur);
+                plan.exprs.push(ENode {
+                    kind: EKind::FieldGet {
+                        base: base_slot,
+                        path: segs,
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::MethodCall {
+                fn_index,
+                recv,
+                args,
+            } => {
+                let callee = self.program.fns.get(*fn_index);
+                let mut eval = Vec::new();
+                let mut bindings = Vec::new();
+                if let Some(r) = recv {
+                    // instance: the receiver is evaluated EXACTLY ONCE,
+                    // first, as a view borrow (param 0)
+                    let rs = self.plan_expr(plan, f, r);
+                    plan.exprs.push(ENode {
+                        kind: EKind::BorrowView { base: rs },
+                        vt: r.vt,
+                        span: r.span,
+                    });
+                    eval.push(plan.exprs.len() - 1);
+                    bindings.push((0u32, 0u32));
+                }
+                let recv_shift = if recv.is_some() { 1usize } else { 0 };
+                for (idx, a) in args.iter().enumerate() {
+                    eval.push(self.plan_arg(plan, f, a, idx, callee));
+                }
+                if let Some(c) = callee {
+                    for (idx, a) in args.iter().enumerate() {
+                        if let Some(pos) = param_position(idx, a, c) {
+                            bindings.push(((pos + recv_shift) as u32, (idx + recv_shift) as u32));
+                        }
+                    }
+                }
+                plan.exprs.push(ENode {
+                    kind: EKind::Call {
+                        callee_fn: Some(*fn_index),
+                        callee_intrinsic: None,
+                        eval,
+                        bindings,
+                    },
+                    vt: e.vt,
+                    span: e.span,
+                });
+                plan.exprs.len() - 1
+            }
+            RExprKind::BorrowMut { local } => {
+                plan.exprs.push(ENode {
+                    kind: EKind::BorrowMut { local: local.0 },
+                    vt: f.locals[local.0].vt,
                     span: e.span,
                 });
                 plan.exprs.len() - 1
@@ -1227,11 +1466,8 @@ impl<'p> Emitter<'p> {
         }
     }
 
-    fn ty_name(vt: VT) -> &'static str {
-        match vt {
-            VT::I32 => "t_i32",
-            VT::Bool => "t_bool",
-        }
+    fn ty_name(&self, vt: VT) -> String {
+        ty_name(vt, &self.program.records)
     }
 
     fn esc(s: &str) -> String {
@@ -1331,18 +1567,51 @@ impl<'p> Emitter<'p> {
         frag!("type t_bool bool {}", program_span);
         spans.types.push(program_span);
         nl!(12);
-        for f in &self.program.fns {
+        // PLAN-771: record types (declaration order; fields carry their
+        // value types — builtin or record refs).
+        let is_record_profile = self.profile.is_record();
+        if is_record_profile {
+            for rec in &self.program.records {
+                let fields: Vec<String> = rec
+                    .fields
+                    .iter()
+                    .map(|fl| {
+                        format!(
+                            "{{ name: \"{}\", type: {} }}",
+                            Self::esc(&fl.name),
+                            ty_name(fl.vt, &self.program.records)
+                        )
+                    })
+                    .collect();
+                frag!(
+                    &format!(
+                        "type t_rec_{} record {{ fields: [{}] }}",
+                        rec.name,
+                        fields.join(", ")
+                    ),
+                    rec.name_span
+                );
+                spans.types.push(rec.name_span);
+                nl!(12);
+            }
+        }
+        for (fi, f) in self.program.fns.iter().enumerate() {
             let params: Vec<String> = f
                 .params
                 .iter()
-                .map(|p| format!("\"{}\"", Self::ty_name(*p)))
+                .map(|p| format!("\"{}\"", self.ty_name(*p)))
                 .collect();
+            let tid = if f.receiver == crate::source::ast::Receiver::Free {
+                format!("t_f_{}", f.name)
+            } else {
+                format!("t_f{}_{}", fi, f.name)
+            };
             frag!(
                 &format!(
-                    "type t_f_{} function {{ params: [{}]; result: \"{}\" }}",
-                    f.name,
+                    "type {} function {{ params: [{}]; result: \"{}\" }}",
+                    tid,
                     params.join(", "),
-                    Self::ty_name(f.result)
+                    self.ty_name(f.result)
                 ),
                 f.item_span
             );
@@ -1369,24 +1638,53 @@ impl<'p> Emitter<'p> {
         t.push(' ');
         frag!("{", program_span);
         nl!(12);
-        for f in &self.program.fns {
+        for (fi, f) in self.program.fns.iter().enumerate() {
             // The declared `name` is the object-file symbol. Source
             // functions carry an `sf_` prefix so the native namespace stays
             // isolated from the backend's fixed imports/exports
             // (`ExitProcess`, `ac_start`): a source function may legally
             // carry either name (QA-02) without a symbol-table collision.
-            // Identity stays in the def id (`d_<name>`), so resolution,
-            // recursion and the CLI's entry-by-name lookup are unaffected.
-            frag!(
-                &format!(
-                    "function d_{} t_f_{} {{ name: \"sf_{}\"; body: \"b_{}\" }}",
-                    f.name,
-                    f.name,
-                    Self::esc(&f.name),
-                    f.name
-                ),
-                f.item_span
-            );
+            // Identity stays in the def id, so resolution, recursion and
+            // the CLI's entry-by-name lookup are unaffected. Methods
+            // (record profile) carry index-qualified ids: a free function
+            // and a method may share a source name (PLAN-771).
+            if f.receiver == crate::source::ast::Receiver::Free {
+                frag!(
+                    &format!(
+                        "function d_{} t_f_{} {{ name: \"sf_{}\"; body: \"b_{}\" }}",
+                        f.name,
+                        f.name,
+                        Self::esc(&f.name),
+                        f.name
+                    ),
+                    f.item_span
+                );
+            } else {
+                let rec_name = f
+                    .owner_rec
+                    .map(|ri| self.program.records[ri].name.clone())
+                    .unwrap_or_default();
+                let recv_word = match f.receiver {
+                    crate::source::ast::Receiver::Static => "static",
+                    _ => "view",
+                };
+                frag!(
+                    &format!(
+                        "method d_f{}_{} t_f{}_{} {{ name: \"sm_{}_{}\"; body: \"b_f{}_{}\"; record: t_rec_{}; receiver: {} }}",
+                        fi,
+                        f.name,
+                        fi,
+                        f.name,
+                        rec_name,
+                        f.name,
+                        fi,
+                        f.name,
+                        rec_name,
+                        recv_word
+                    ),
+                    f.item_span
+                );
+            }
             spans.defs.push(f.item_span);
             nl!(12);
         }
@@ -1421,9 +1719,17 @@ impl<'p> Emitter<'p> {
                 exprs: Vec::new(),
                 blocks: Vec::new(),
             };
-            frag!(&format!("body b_{} {{", f.name), f.name_span);
+            let (body_id, def_id) = if f.receiver == crate::source::ast::Receiver::Free {
+                (format!("b_{}", f.name), format!("d_{}", f.name))
+            } else {
+                (
+                    format!("b_f{}_{}", fi, f.name),
+                    format!("d_f{}_{}", fi, f.name),
+                )
+            };
+            frag!(&format!("body {} {{", body_id), f.name_span);
             nl!(16);
-            frag!(&format!("owner: \"d_{}\"", f.name), f.name_span);
+            frag!(&format!("owner: \"{}\"", def_id), f.name_span);
             nl!(16);
             frag!("entry: \"k0\"", f.name_span);
             nl!(16);
@@ -1435,18 +1741,24 @@ impl<'p> Emitter<'p> {
             nl!(20);
             for (li, l) in f.locals.iter().enumerate() {
                 let line = if l.is_param {
+                    let mode = if self.profile.is_record() {
+                        format!("; mode: {}", if l.param_mut { "mut" } else { "view" })
+                    } else {
+                        String::new()
+                    };
                     format!(
-                        "local l{} {} {{ name: \"{}\"; role: param; index: {}u32 }}",
+                        "local l{} {} {{ name: \"{}\"; role: param; index: {}u32{} }}",
                         li,
-                        Self::ty_name(l.vt),
+                        self.ty_name(l.vt),
                         Self::esc(&l.name),
-                        l.param_index.unwrap_or(0)
+                        l.param_index.unwrap_or(0),
+                        mode
                     )
                 } else {
                     format!(
                         "local l{} {} {{ name: \"{}\"; role: binding; mutable: {} }}",
                         li,
-                        Self::ty_name(l.vt),
+                        self.ty_name(l.vt),
                         Self::esc(&l.name),
                         l.mutable
                     )
@@ -1465,12 +1777,21 @@ impl<'p> Emitter<'p> {
                 frag!("{", f.name_span);
                 nl!(20);
                 for (pi, p) in plan.places.iter().enumerate() {
+                    let (kind_word, path_field) = if p.path.is_empty() {
+                        ("local", String::new())
+                    } else {
+                        let segs: Vec<String> =
+                            p.path.iter().map(|f| format!("{}u32", f)).collect();
+                        ("field_path", format!("; path: [{}]", segs.join(", ")))
+                    };
                     frag!(
                         &format!(
-                            "place p{} local {{ local: l{}; type: {}; access: mutable }}",
+                            "place p{} {} {{ local: l{}; type: {}; access: mutable{} }}",
                             pi,
+                            kind_word,
                             p.local,
-                            Self::ty_name(p.vt)
+                            self.ty_name(p.vt),
+                            path_field
                         ),
                         p.span
                     );
@@ -1488,7 +1809,7 @@ impl<'p> Emitter<'p> {
                 frag!("{", f.name_span);
                 nl!(20);
                 for (ei, e) in plan.exprs.iter().enumerate() {
-                    let ty = Self::ty_name(e.vt);
+                    let ty = self.ty_name(e.vt);
                     let line = match &e.kind {
                         EKind::Const(v) => {
                             format!("expr e{} constant {{ type: {}; value: {}i32 }}", ei, ty, v)
@@ -1529,7 +1850,14 @@ impl<'p> Emitter<'p> {
                             bindings,
                         } => {
                             let callee = match (callee_fn, callee_intrinsic) {
-                                (Some(i), _) => format!("d_{}", self.program.fns[*i].name),
+                                (Some(i), _) => {
+                                    let cf = &self.program.fns[*i];
+                                    if cf.receiver == crate::source::ast::Receiver::Free {
+                                        format!("d_{}", cf.name)
+                                    } else {
+                                        format!("d_f{}_{}", i, cf.name)
+                                    }
+                                }
                                 (None, Some(s)) => intrinsic_def_id(s).to_string(),
                                 _ => "d_unknown".to_string(),
                             };
@@ -1546,6 +1874,50 @@ impl<'p> Emitter<'p> {
                                 callee,
                                 eval_s.join(", "),
                                 bind_s.join(", ")
+                            )
+                        }
+                        EKind::RecordCtor {
+                            rec,
+                            eval,
+                            bindings,
+                        } => {
+                            let rec_name = &self.program.records[*rec].name;
+                            let eval_s: Vec<String> =
+                                eval.iter().map(|x| format!("e{}", x)).collect();
+                            let bind_s: Vec<String> = bindings
+                                .iter()
+                                .map(|(f, a)| format!("{{ field: {}u32, arg: {}u32 }}", f, a))
+                                .collect();
+                            format!(
+                                "expr e{} record_ctor {{ type: {}; record: t_rec_{}; field_args: [{}]; ctor_bindings: [{}] }}",
+                                ei,
+                                ty,
+                                rec_name,
+                                eval_s.join(", "),
+                                bind_s.join(", ")
+                            )
+                        }
+                        EKind::FieldGet { base, path } => {
+                            let segs: Vec<String> =
+                                path.iter().map(|f| format!("{}u32", f)).collect();
+                            format!(
+                                "expr e{} field_get {{ type: {}; base: e{}; path: [{}] }}",
+                                ei,
+                                ty,
+                                base,
+                                segs.join(", ")
+                            )
+                        }
+                        EKind::BorrowView { base } => {
+                            format!(
+                                "expr e{} borrow_view {{ type: {}; base: e{} }}",
+                                ei, ty, base
+                            )
+                        }
+                        EKind::BorrowMut { local } => {
+                            format!(
+                                "expr e{} borrow_mut {{ type: {}; local: l{} }}",
+                                ei, ty, local
                             )
                         }
                     };

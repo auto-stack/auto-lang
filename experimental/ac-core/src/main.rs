@@ -43,7 +43,8 @@
 //! are printed as `file:line:col: error[stage/code]: message`.
 
 use auto_ac_prototype::source::{
-    compile_scalar_source, compile_source, SourceProfile, SCALAR_SOURCE_PROFILE, SOURCE_PROFILE,
+    compile_record_source, compile_scalar_source, compile_source, SourceProfile,
+    SCALAR_SOURCE_PROFILE, SOURCE_PROFILE,
 };
 use auto_ac_prototype::{link, native, verify};
 use std::path::{Path, PathBuf};
@@ -194,6 +195,7 @@ fn check_source(
     let compile = match args.profile {
         SourceProfile::Core => compile_source(&src, &module_path, &args.capabilities),
         SourceProfile::Scalar => compile_scalar_source(&src, &module_path, &args.capabilities),
+        SourceProfile::Record => compile_record_source(&src, &module_path, &args.capabilities),
     };
     match compile {
         Ok(c) => Ok(format!(
@@ -226,6 +228,7 @@ fn build_source(
     let compiled = match match args.profile {
         SourceProfile::Core => compile_source(&src, &module_path, &args.capabilities),
         SourceProfile::Scalar => compile_scalar_source(&src, &module_path, &args.capabilities),
+        SourceProfile::Record => compile_record_source(&src, &module_path, &args.capabilities),
     } {
         Ok(c) => c,
         Err(diags) => return fail(diags),
