@@ -151,3 +151,12 @@ MCP 面现状：**无任何工具返回 pid/app 路径/数据目录**（18 工�
 4. **种子时机**：书架不自动刷新（前端 Init 仅启动时 fetch 一次）——种子导入必须插在 backend-live 之后、MCP 窗口就绪之前（wait_backend 与 wait_mcp 两段之间），marker 才进首帧数据。
 5. **listening 行**：`AutoUI MCP: listening on` 确为 eprintln→stderr，但实测窗口形态下该行不一定及时出现在进程 stderr（ui_console 侧另有 [boot] 行）；身份断言以 §2.1 pid↔端口 netstat 核对为主，stderr 仅硬性检查 `fell back`/FATAL 两个违规标记。
 6. **v12_timeout 确定性**：热缓存下 backend 可 <2s live，超时案例改用 0 预算（唯一保证超时的取值）。
+
+**2026-10-14 r2（T-11 实施期勘定，worktree commit 278a65aa4）**：
+
+1. **R2 结案（坐标公式钉死）**：LayoutCollector 的 pane 内子节点 bounds 为 **content-space**——滚动 +400/满滚后 bounds 逐位不变（实测）；窗口化公式 `window = child − offset + viewport 原点`（每层 pane 恰一次，数值验证 row115: 5798.4−5259.4+55.4=594.4 ∈ viewport）。clamp 语义（满滚可视段=最底一屏）与 oracle 一致。
+2. **frame 语义修正（§4 增补）**：滚动不改脏帧（PLAN-650 静止帧不重采），bounds 批不会因滚动重跑——frame 不能作为滚动后 offset 新鲜度的判据。新增 **scroll_tick**（读回节拍代数，PLAN-656 通道 prime/drain/心跳 ≤2s 并行发布 `__mcp_scroll_states`）：驱动协议 = 视图类动作看 frame 增加、滚动类动作看 scroll_tick 增加+offset 变化。
+3. **可测目标边界**：text 节点无 iced Operation 钩子、永不进 layout_bounds——visibility 目标必须是 container（col/row/button/scrollable）。Reader 段落天然是 col（reading.at:191）；框架 fixture 行已包 col。
+4. **fixture 落位**：test/fixtures/native-reader-acceptance/scroll-geometry/（静态 120 容器行 + 零尺寸负例行 + 单 ping 路由后端；无 handler 无合成风险）。驱动 Instance 增 fixture_mode（就绪 = /api/ping + 快照 marker，跳过 Reader 专属空库断言）。
+5. **Reader 侧缺陷（发现并路由，不修）**：reading.at:266 `let pr = ...` 在 :315 `pr = null` 重赋值 → VM handler 合成失败（`Cannot reassign to immutable variable 'pr'`，进程日志 WARN）→ 阅读页 Init 从不执行、正文恒空、后端收不到 chapter 请求。Vue 代码生成未拦截该语义（后端语义不一致，另属 PLAN-742 api-handler-body-parity 域）。按仓边界路由 READER-001 修复；T-12 的 Reader 真实保存/恢复病例（V-08/V-09）在其修复前以框架正对照推进（AC-08 明文允许等价框架正对照 + Reader 实际失败具名记录）。
+6. **工具形状微调**：两工具响应额外携带 `scroll_tick` 与 `backend`；pane 钉定支持 controller 名自动展开 `scroll_ctl_` 前缀（renderer.rs:3034 句柄派生稳定 id 约定）。
