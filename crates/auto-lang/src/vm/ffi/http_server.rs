@@ -5545,18 +5545,6 @@ fn ctx_await_outer(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> Option<u32> {
 
 /// R1-F01：ctx 声明流返回（`~Iter<T>`/`~Stream<T>`——`fn_response_kind ==
 /// Stream`，含 axum closure 反查）。SSE 的 int 路径唯一合法形态：generator
-/// handler（声明 ~Iter 的 generator fn 调用返回 iterator id）。未声明流返回
-/// 的普通 int 一律 JSON 数据（活跃 iterator 同号碰撞反例——F776-R1-01）。
-fn handler_declares_stream_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
-    let kind = match ctx.axum_route {
-        Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
-            .map(|n| fn_response_kind(&n))
-            .unwrap_or(crate::api::contract::ResponseKind::Json),
-        None => fn_response_kind(&ctx.route.fn_name),
-    };
-    kind == crate::api::contract::ResponseKind::Stream
-}
-
 /// ctx 声明文件返回（axum_route closure 反查同 async 门）。
 fn handler_declares_file_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> bool {
     match ctx.axum_route {
@@ -5728,12 +5716,12 @@ fn marshal_handler_value(
                 }
                 None => fn_is_api_async(&ctx.route.fn_name),
             };
-            // PLAN-776 R5-01：stream 声明（~Iter/~Stream）的 handler 同样
-            // 允许返回 Future——`fn p() ~Iter { return ~{ gen() } }` 的
-            // Internal 体在服务端驱动后按终值分派（体尾 generator 生产点
-            // 已凭据化）。声明只选择驱动能力，不授予数值身份：future id
-            // 查无注册表时照旧落数据面（同 async 门语义）。
-            if handler_async || handler_declares_stream_return(vm, ctx) {
+            // PLAN-776 R6-03：future 驱动门=**血缘**登记（fn_is_api_async：
+            // ~T 声明 fn ∪ body 返回 ~{} 的 fn——codegen 按返回位登记）。
+            // R5 的「声明 stream 即进门」已撤：位模式撞活跃 fid 的普通数字
+            // （如 496）不得误驱动（F776-R6-03 反例）；future id 查无注册
+            // 表照旧落数据面。
+            if handler_async {
                 if let Some(fut) = vm.futures.get(&fid) {
                     let (pending, is_external, body_offset) = {
                         let f = fut.read().unwrap();

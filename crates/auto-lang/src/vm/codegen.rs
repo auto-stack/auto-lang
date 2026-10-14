@@ -41,6 +41,15 @@ fn body_contains_yield(body: &crate::ast::Body) -> bool {
     format!("{:?}", body).contains("Yield")
 }
 
+/// PLAN-776 R6-03：fn body 是否**返回** async 块（`return ~{...}`）——
+/// future 驱动门的**血缘**登记（声明无关：~Iter/int 声明的 fn 只要真返回
+/// ~{} 就进门；`let f = ~{...}; return 496` 的普通数字不进门——F776-R6-03
+/// 反例：位模式撞活跃 fid 不得误驱动）。与 body_contains_yield 同款
+/// Debug 串判定（Return(AsyncBlock 精确匹配 return 位，let 赋值不命中）。
+fn body_returns_async_block(body: &crate::ast::Body) -> bool {
+    format!("{:?}", body).contains("Return(AsyncBlock")
+}
+
 // Plan 076 Phase 1: Generic type support
 use crate::vm::generic::{extract_generic_instance, GenericTable};
 // Plan 076 Phase 2: Monomorphization support
@@ -1689,6 +1698,7 @@ impl Codegen {
                 // clear_api_param_sigs 一并清空本表。
                 if matches!(&fn_decl.ret, Type::GenericInstance(inst)
                     if inst.base_name.as_str() == "Future")
+                    || body_returns_async_block(&fn_decl.body)
                 {
                     crate::vm::ffi::http_server::record_api_async_return(&fn_decl.name.to_string());
                 }
@@ -11526,18 +11536,14 @@ impl Codegen {
 
                         self.last_expr_type = ObjectType::Int; // iterator_id
 
-                        // PLAN-776 R5-01：generator **生产点**凭据化——所在
-                        // fn 声明 `~Iter/~Stream` 时，CREATE_GENERATOR 的
-                        // iterator 产出就地包装 Sse 凭据（身份随
+                        // PLAN-776 R5-01/R6-01：generator **生产点**凭据化
+                        //（无条件——身份授予不依赖所在 fn 声明：旧 int 声明/
+                        // int helper 返回真实 generator 同样保来源，F776-R6-01
+                        // 反例 S7/S8；声明只用于编组校验/能力选择）。凭据随
                         // local/helper/容器/闭包/Future 载体天然传播；for-in
-                        // 源由 iterator natives 凭据感知解包，非 HTTP 消费
-                        // 兼容）。声明不授予数值身份——包装只挂在真实
-                        // generator 生产点上（`return 0` 仍是数据，R2-01
-                        // 反例保持）。替代 R2 的 return 位包装（仅覆盖直接
-                        // 调用表达式）。
-                        if fn_ret_declares_stream(&self.current_fn_ret_type) {
-                            self.emit(OpCode::WRAP_SSE_RESOURCE);
-                        }
+                        // 源由 iterator natives 凭据感知解包（非 HTTP 消费
+                        // 兼容）；普通数值永不取得身份（`return 0` 仍是数据）。
+                        self.emit(OpCode::WRAP_SSE_RESOURCE);
                     } else {
                         self.emit(OpCode::CALL);
 
@@ -16749,21 +16755,4 @@ mod plan423_p5_tests {
         dropped.sort();
         assert_eq!(dropped, vec!["oob".to_string(), "poisoned".to_string()]);
     }
-}
-
-/// PLAN-776 R2-01：返回类型是否声明流（`~Iter<T>`/`~Stream<T>`——Linear
-/// 包装，内层裸名 Iter/Stream）。
-fn fn_ret_declares_stream(ty: &crate::ast::Type) -> bool {
-    // `~Iter<T>` 在 ast 呈 GenericInstance(Iter)/User(Iter)（parser 脱糖
-    // 形态——无 Linear 包装，R2 实测）；兼容 Linear 包装与裸名两种书写。
-    let inner: &crate::ast::Type = match ty {
-        crate::ast::Type::Linear(inner) => inner.as_ref(),
-        other => other,
-    };
-    let s = match inner {
-        crate::ast::Type::User(td) => td.name.to_string(),
-        crate::ast::Type::GenericInstance(inst) => inst.base_name.to_string(),
-        other => format!("{other}"),
-    };
-    s == "Iter" || s == "Stream"
 }

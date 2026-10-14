@@ -65,38 +65,36 @@ impl ResponseKind {
         if let Some(stripped) = name.strip_prefix("http.") {
             return Self::stdlib_kind(stripped);
         }
-        match module_types.iter().find(|t| t.name == name) {
-            Some(t) => Self::resolve_alias_target(t, module_types, 0),
-            None => Self::stdlib_kind(name),
-        }
+        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        Self::resolve_alias(name, module_types, &mut visited)
     }
 
-    /// R5-02：alias 目标链展开。每层 target 规范化（剥 `http.` 限定）后
-    /// 继续查名集：链尾用户声明（非 alias）→ Json；链尾不在名集 → 按
-    /// stdlib 裸名分派；循环/超深（A→B→A 或 >8 层）保守落 Json。
-    fn resolve_alias_target(t: &ApiType, module_types: &[ApiType], depth: u32) -> ResponseKind {
-        const MAX_ALIAS_DEPTH: u32 = 8;
-        let Some(target) = &t.alias_of else {
-            return ResponseKind::Json; // 用户直接声明（struct/enum）
-        };
-        if depth >= MAX_ALIAS_DEPTH {
-            return ResponseKind::Json; // 循环/超深保守
+    /// R5-02/R6-02：alias 目标链展开（**visited 集循环拒绝**——合法深链
+    /// 不限层数，仅真环 A→B→A 保守落 Json，F776-R6-02 九层正例）。每层
+    /// 目标先解 Future 包装（`type D = Future<FileResponse>` → File，
+    /// 与直接 `Future<FileResponse>` 规则一致——目标结构由提取器保留），
+    /// 再剥 `http.` 限定（限定=stdlib 绑定，先于名集判定）；链尾用户
+    /// 声明 → Json；不在名集 → stdlib 裸名分派。
+    fn resolve_alias(
+        name: &str,
+        module_types: &[ApiType],
+        visited: &mut std::collections::HashSet<String>,
+    ) -> ResponseKind {
+        if !visited.insert(name.to_string()) {
+            return ResponseKind::Json; // 真 alias 环保守
         }
-        let trimmed = target.trim();
-        // 限定目标（`http.X`）= stdlib 绑定——**先于**名集判定（F776-R5-02：
-        // 规范化后再查名集会与用户同名声明碰撞误判 Json）。
-        if let Some(stripped) = trimmed.strip_prefix("http.") {
-            return Self::stdlib_kind(stripped);
-        }
-        match module_types.iter().find(|u| u.name == trimmed) {
-            // 链上下一层仍是 alias → 继续展开。
-            Some(next) if next.alias_of.is_some() => {
-                Self::resolve_alias_target(next, module_types, depth + 1)
-            }
-            // 链尾是用户直接声明（struct/enum）→ Json。
-            Some(_) => ResponseKind::Json,
-            // 不在名集 → stdlib 裸名分派。
-            None => Self::stdlib_kind(trimmed),
+        match module_types.iter().find(|t| t.name == name) {
+            None => Self::stdlib_kind(name),
+            Some(t) => match &t.alias_of {
+                None => ResponseKind::Json, // 用户直接声明（struct/enum）
+                Some(target) => {
+                    let bare = bare_name(unwrap_future(target.trim()));
+                    if let Some(stripped) = bare.strip_prefix("http.") {
+                        return Self::stdlib_kind(stripped);
+                    }
+                    Self::resolve_alias(bare, module_types, visited)
+                }
+            },
         }
     }
 

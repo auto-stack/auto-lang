@@ -137,15 +137,18 @@ impl ApiExtractor {
                         alias_of: None,
                     });
                 }
-                // PLAN-776 R1-F05/R2-07：type alias 的来源身份按**目标**解析
-                //（`type Download = FileResponse` → File 种类；target 是用户
-                // 名/内建 → Json）——alias_of 携带 target 裸名供分类展开。
+                // PLAN-776 R1-F05/R2-07/R6-02：type alias 的来源身份按**目标**
+                // 解析（`type Download = FileResponse` → File 种类；target 是
+                // 用户名/内建 → Json）——alias_of 携带 target **完整形态**
+                //（保 Future<…>/泛型结构，F776-R6-02：`type D =
+                // Future<FileResponse>` 需按 File 分类；裸名在 bare_type_name
+                // 中丢失实参不可恢复）——分类侧按需解包/规范化。
                 Stmt::TypeAlias(alias) => {
                     api_module.types.push(ApiType {
                         name: alias.name.to_string(),
                         fields: Vec::new(),
                         doc: None,
-                        alias_of: Some(bare_type_name(&alias.target)),
+                        alias_of: Some(type_to_string(&alias.target)),
                     });
                 }
                 _ => {}

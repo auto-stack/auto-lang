@@ -1999,3 +1999,205 @@ fn t5() CycA {
     // 循环 alias（A→B→A）——深度护栏保守 Json。
     assert_eq!(kind_of("t5"), ResponseKind::Json);
 }
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_r6 {
+    use super::http_e2e::{get, start_server};
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::time::Duration;
+
+    /// F776-R6-01/03 服务程序：int 声明/int helper 的旧源码路径 + Future
+    /// 位模式负控制 + stream fn 返回 async 块正控制。
+    fn program() -> String {
+        r#"
+fn events() ~Iter<int> {
+    yield 42
+}
+
+fn legacy_helper() int {
+    let s = events()
+    return s
+}
+
+#[api(method = "GET", path = "/s7")]
+fn s7() int {
+    let stream = events()
+    return stream
+}
+
+#[api(method = "GET", path = "/s8")]
+fn s8() ~Iter<int> {
+    return legacy_helper()
+}
+
+#[api(method = "GET", path = "/f0")]
+fn f0() int {
+    let active = ~{ 42 }
+    return 496
+}
+
+#[api(method = "GET", path = "/f1")]
+fn f1() ~Iter<int> {
+    let active = ~{ 42 }
+    return 496
+}
+
+#[api(method = "GET", path = "/s3")]
+fn s3() ~Iter<int> {
+    return ~{ events() }
+}
+"#
+        .to_string()
+    }
+
+    fn read_wire(port: u16, path: &str) -> String {
+        let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        let _ = s.write_all(
+            format!(
+                "GET {path} HTTP/1.1
+Host: x
+Connection: close
+
+"
+            )
+            .as_bytes(),
+        );
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            let n = s.read(&mut buf).unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            raw.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&raw).into_owned();
+            if text.contains("data: 42") {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&raw).into_owned()
+    }
+
+    /// F776-R6-01（AC-02/03）：生产点身份授予**不依赖声明**——旧 `int`
+    /// 声明（S7）与 `int` helper 存 generator 再返回（S8）同样保真实
+    /// SSE 来源（Plan §0 旧 int 源码兼容）；stream fn 返回 async 块
+    ///（S3，经 return ~{} 血缘登记的 future 门）同 SSE。
+    #[test]
+    fn http_e2e_plan776_r6_sse_identity_independent_of_declaration() {
+        let port = start_server(&program(), 0);
+        for path in ["/s7", "/s8", "/s3"] {
+            let text = read_wire(port, path);
+            assert!(
+                text.contains("text/event-stream"),
+                "{path} 非 SSE wire: {text}"
+            );
+            assert!(text.contains("data: 42"), "{path} 无帧: {text}");
+        }
+    }
+
+    /// F776-R6-03（AC-05）：Future 位模式普通数值守卫——`~Iter` 声明的
+    /// fn 构造活跃 Future 后返回字面量 496（=活跃 fid1 位模式）必须保持
+    /// JSON 496（声明/低字节/注册表都不是逐值 Future 来源；门=return ~{}
+    /// 血缘，`let f = ~{…}; return 496` 不进门）。int 声明对照 F0 同值。
+    #[test]
+    fn http_e2e_plan776_r6_plain_future_bits_number_stays_data() {
+        let port = start_server(&program(), 0);
+        for path in ["/f0", "/f1"] {
+            let (status, _, body) = get(port, path);
+            assert_eq!(
+                (status, body.as_slice()),
+                (200, b"496".as_slice()),
+                "{path}"
+            );
+        }
+    }
+}
+
+/// F776-R6-02（AC-07）：alias 目标**保结构**（`type D = Future<FileResponse>`
+/// 按 File 分类——目标实参在提取器不再丢失）；九层合法同源链不限深度
+/// 展开；真环保守 Json；直接 `Future<FileResponse>` 同规则对照。
+#[test]
+fn plan776_r6_future_wrapped_and_deep_alias_chains() {
+    let mut chain = String::new();
+    chain.push_str(
+        "type A0 = FileResponse;
+",
+    );
+    for i in 1..=8 {
+        chain.push_str(&format!(
+            "type A{i} = A{};
+",
+            i - 1
+        ));
+    }
+    let code = format!(
+        r#"
+{chain}
+type Download = Future<FileResponse>;
+
+#[api(method = "GET", path = "/t4")]
+fn t4() Download {{
+    return http.file_response(".", "x", "{{}}")
+}}
+
+#[api(method = "GET", path = "/t5")]
+fn t5() A8 {{
+    return http.file_response(".", "x", "{{}}")
+}}
+
+#[api(method = "GET", path = "/t4d")]
+fn t4d() Future<FileResponse> {{
+    return http.file_response(".", "x", "{{}}")
+}}
+
+#[api(method = "GET", path = "/t5x")]
+fn t5x() A3 {{
+    return http.file_response(".", "x", "{{}}")
+}}
+"#
+    );
+    let mut parser = crate::parser::Parser::from(&code);
+    let ast = parser.parse().expect("parse");
+    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let kind_of = |name: &str| {
+        module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == name)
+            .map(|e| e.response)
+            .unwrap_or_else(|| panic!("endpoint {name} 缺失"))
+    };
+    use crate::api::contract::ResponseKind;
+    // V6-T4：alias 目标带 Future 包装 → 与直接 Future<FileResponse> 同 File。
+    assert_eq!(kind_of("t4"), ResponseKind::File);
+    assert_eq!(kind_of("t4d"), ResponseKind::File);
+    // V6-T5：九层合法链（A8→…→A0→FileResponse）→ File（visited 集只拒真环）。
+    assert_eq!(kind_of("t5"), ResponseKind::File);
+    assert_eq!(kind_of("t5x"), ResponseKind::File);
+}
+
+/// F776-R6-02 续：真 alias 环（A→B→A）保守 Json。
+#[test]
+fn plan776_r6_alias_cycle_visited_reject() {
+    let code = r#"
+type CycA = CycB;
+type CycB = CycA;
+
+#[api(method = "GET", path = "/c")]
+fn c() CycA {
+    return 1
+}
+"#;
+    let mut parser = crate::parser::Parser::from(code);
+    let ast = parser.parse().expect("parse");
+    let module = crate::api::ApiExtractor::new().extract("test", &ast.stmts);
+    let kind = module
+        .endpoints
+        .iter()
+        .find(|e| e.fn_name == "c")
+        .map(|e| e.response)
+        .unwrap();
+    assert_eq!(kind, crate::api::contract::ResponseKind::Json);
+}

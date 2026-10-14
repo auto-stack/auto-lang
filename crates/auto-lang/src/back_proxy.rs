@@ -1344,6 +1344,22 @@ lazy_static::lazy_static! {
 /// AutoVM → 显式跑 `__module_init` 激活模块级 `var`（contacts/messages 等）。
 /// #[api] fn 返回类型的**主类型名**（POST 广播 "New<Type>" 判别用）。
 /// 遍历包装层（List/?/!/引用）取首个命名类型；标量返回 None。
+/// R6-02：alias 游走的单步规范化——剥 `http.` 限定 + 解一层 Future<…>
+/// 包装 + 取裸名（与 api/contract.rs 的 unwrap_future/bare_name 同源语义）。
+fn alias_step_bare(target: &str) -> String {
+    let t = target.trim();
+    let t = t.strip_prefix("http.").unwrap_or(t);
+    let t = t
+        .strip_prefix("Future<")
+        .and_then(|rest| rest.strip_suffix('>'))
+        .map(|inner| inner.trim())
+        .unwrap_or(t);
+    match t.find('<') {
+        Some(i) => t[..i].trim().to_string(),
+        None => t.to_string(),
+    }
+}
+
 fn primary_type_name(t: &crate::ast::Type) -> Option<String> {
     use crate::ast::Type;
     match t {
@@ -1513,31 +1529,29 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                 let display = format!("{}", f.ret);
                 let mut primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
                 let mut shadowed = "";
-                // PLAN-776 T-06/R2-07/R5-02：第三段 = 返回裸名被用户同名遮蔽；
-                // alias 按目标**链**展开。限定名/限定目标（`http.X`）是 stdlib
-                // 绑定——先于用户名集判定（规范化后查名集会与用户同名碰撞
-                // 误判遮蔽）；链尾用户声明 → 遮蔽；stdlib 名 → primary 换链尾
-                // 参与消费侧分类；循环/超深保守按现状裸名。
+                // PLAN-776 T-06/R2-07/R5-02/R6-02：第三段 = 返回裸名被用户同名
+                // 遮蔽；alias 按目标**链**展开（visited 集循环拒绝——合法深链
+                // 不限层；每层解 Future 包装 + 剥 `http.` 限定——限定名/限定
+                // 目标是 stdlib 绑定，先于用户名集判定）；链尾用户声明 →
+                // 遮蔽；stdlib 名 → primary 换链尾参与消费侧分类；真环保守
+                // 按现状裸名。
                 let initial_qualified = primary.starts_with("http.");
-                let mut cur = primary
-                    .strip_prefix("http.")
-                    .unwrap_or(primary.as_str())
-                    .to_string();
+                let mut cur = alias_step_bare(&primary);
                 let mut terminal_is_user = !initial_qualified && user_type_names.contains(&cur);
-                let mut depth = 0;
+                let mut visited: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
                 while !terminal_is_user {
+                    if !visited.insert(cur.clone()) {
+                        break; // 真 alias 环保守
+                    }
                     let Some(target) = alias_targets.get(&cur) else {
                         break;
                     };
-                    if depth >= 8 {
-                        break;
+                    let was_qualified = target.starts_with("http.");
+                    cur = alias_step_bare(target);
+                    if was_qualified {
+                        break; // 限定目标 = stdlib 绑定，链在此终止。
                     }
-                    if let Some(stripped) = target.strip_prefix("http.") {
-                        cur = stripped.to_string();
-                        break;
-                    }
-                    cur = target.clone();
-                    depth += 1;
                     terminal_is_user = user_type_names.contains(&cur);
                 }
                 if terminal_is_user {
