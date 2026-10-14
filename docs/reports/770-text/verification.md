@@ -2,7 +2,7 @@
 
 - 计划：PLAN-770 r2 · T-01..T-07（work 阶段，AC-01..06 证据）
 - 工作树：`D:/autostack/.wt/lang-770/auto-lang` @ `plan-770-dev`
-- 基线：工作树基面 `e849e06f9`（= master）；本收据时 HEAD `e81d649ac`（r2 返工提交；r1 受审基线 a87de0bd7、r2 受审基线 5061c20a9）
+- 基线：工作树基面 `e849e06f9`（= master）；本收据时 HEAD `987172981`（r3 返工提交；受审基线 a87de0bd7/5061c20a9/41291aa10）
 - 日期：2026-10-14
 - 性质：**语言面真实 native 编译收据**（source/HIR → 真实 PE，runtime 真实
   分配/复制/释放）；不是完整 Auto 编译器，不宣称 ACC Gen1。
@@ -26,10 +26,10 @@
 | 命令 | 期望 | 实际 | 收据 |
 |---|---|---|---|
 | `cargo check --manifest-path experimental/ac-core/Cargo.toml --locked --all-targets` | 零错误零警告 | PASS | gate 原始输出 |
-| `cargo test --manifest-path … --locked`（ac-core 全套 18 二进制） | 全绿 | **218/218**（含 text_review_r2 18、text_native 19、text_resources 10、text_hir 16、text_source 10、text_binding 11；旧面 scalar_native 8/source_native 10/native_execution 11 等逐位保持） | raw core-test.txt |
+| `cargo test --manifest-path … --locked`（ac-core 全套 18 二进制） | 全绿 | **227/227**（含 text_review_r3 9、text_review_r2 18、text_native 19、text_resources 10、text_hir 16、text_source 10、text_binding 11；旧面 scalar_native 8/source_native 10/native_execution 11 等逐位保持） | raw core-test.txt |
 | `cargo fmt --manifest-path … --check`（ac-core 与 runtime/text 两处） | clean | PASS | gate |
 | `cargo check/test --manifest-path experimental/ac-core/runtime/text/Cargo.toml --locked` | 全绿 | **20/20**（fault 6、lifecycle 5、smoke 2、textops 4、trap 2、contract 1） | raw rt-test.txt |
-| `powershell … scripts/verify-ac-text-770.ps1` | 13 步全绿 | **PASS**（check/test/fmt ×2 + 旧 gates 741[-SkipMainGates]/745/767 + scope 隔离 + 库/合同指纹；**绑最终 HEAD c4e169cec**，F-02 处置） | `experimental/ac-core/target/ac-verify-receipts/770/gate-20261014-143045.txt`（r2 返工提交 e81d649ac） |
+| `powershell … scripts/verify-ac-text-770.ps1` | 13 步全绿 | **PASS**（check/test/fmt ×2 + 旧 gates 741[-SkipMainGates]/745/767 + scope 隔离 + 库/合同指纹；**绑最终 HEAD c4e169cec**，F-02 处置） | `experimental/ac-core/target/ac-verify-receipts/770/gate-20261014-155448.txt`（r3 返工提交 987172981） |
 | `powershell … scripts/verify-ac-741.ps1 -SkipMainGates` | 全步 PASS | PASS（8.2s） | 同上内嵌 |
 | `powershell … scripts/verify-ac-source-745.ps1` | 全绿 | PASS（37.2s） | 同上内嵌 |
 | `powershell … scripts/verify-ac-scalar-767.ps1` | 全绿 | PASS（21.8s；覆盖 772 修复面） | 同上内嵌 |
@@ -51,6 +51,7 @@
 | V-07 顺序 | text_native::v07_mark_wrapped_concat_args_comparison_and_short_circuit（冻结 oracle：mark_a/b 包装 concat/位置实参/命名映射/比较/短路+被跳过侧零 trace 零分配，source 腿）+ v07_mark_wrapped_order_direct_hir_leg（直 HIR 腿 n02-order-marks.atom：绑定映射换序证明）；trace marks 以纯 COFF 对象与文本运行时共链（F-01 路径 A，见 §5.1） | 全绿 |
 | V-08 静态/来源 | text_source：非法转义/标量/多字符 char 词法拒、CRLF 跨行、遮蔽（len 同名用户函数）；未执行分支静态合法性 | 全绿 |
 | V-09 规模 | v09_concat_chain_4096（exit 4096；4095 CONCAT/FREE 逐对）、v09_resource_loop_4096（exit 16384；每轮 1 分配 1 释放）、v09_call_chain_4096_with_text_args（借用视图跨 4096 帧） | 全绿 |
+| r3 重放集 | text_review_r3 9 测试：q01（嵌套不可达 move 不伪移交）/q04（可达臂 Drop 唯一释放）/c01（不可达 move 后合法读取）/q02+c02（同源 view 参数 mut 排他/异源合法）/q03（语句尾寿命：mark 先于 FREE）+4096 链探测帧/q05（纯清理函数必须声明 runtime）/q06（坏引用受控拒绝不 panic）；R3-01..05 全覆盖 | 全绿 |
 | r2 重放集 | text_review_r2 18 测试：p01..p09/c02..c08/mut01/mut02（QA-01..07 全覆盖；source PE 精确 trace 唯一 FREE 无 FREE-INVALID + HIR 变异腿证通道共享 verify 门）；QA-08 锁文件入库 | 全绿 |
 | V-10 集成 | verify-ac-text-770.ps1 13 步（三旧 gates 实跑 PASS=旧制品面保持；scope 隔离=无 crates/test 越界=strict acc_inventory 前提）+ v10_contract_gate_rejections + v10_rejecting_build_preserves_sentinels（SENTINEL 三件保持） | 全绿 |
 
@@ -63,6 +64,7 @@
 | 合同门 api_revision 解析 None | 数字字段解析未跳过冒号 | 解析先定位 `:` |
 | sha256 K[59] 笔误（0x8cc70808） | 复制错误，与 runtime 侧实现对拍发现 | 0x8cc70208；三处实现（CLI/tests/common/runtime contract.rs）已机械比对一致 |
 | marks 对象符号自检窗口长度错 | `windows(16)` 对 14/17 字节 needle 恒 false（自检空转） | 按 needle 长度开窗（`windows(n).any(w == needle)`） |
+| **r3 复审 R3-01..05（5 项阻塞）** | join 用语法预扫描而非实际臂状态（不可达嵌套 move 伪移交→漏释放；可达臂 Drop 后父级仍排释放→FREE-INVALID；不可达臂 dead 污染→合法读取误拒）；view 借入参数无源身份（同源 mut/view 放行）；临时在消费者处即释放（违背完整语句尾合同）；派生需求漏清理义务（纯 move 参数函数绕过合同门）；需求扫描先于结构校验且直接索引（坏引用 panic） | join 改实际 WalkState（可达性剪枝/终止臂不入/隐式臂快照/不可达臂状态丢弃）；alias_reach/escape_reach 分离（借入参数进别名集）；语句尾 pending_temps + enable_probestack/inline（cranelift 0.126 默认无探测——r2 的 4096 帧崩根因）；plan owned/exit_frees 入派生需求+adapter 为 move-Str 参数声明；扫描后置于结构校验且 total 化 |
 | **r2 复审 QA-01..08（8 项阻塞）** | 伪造域进 scalar lowering panic；requires 删除绕过能力/合同门；move 在 return/分支/短路路径双释放或漏释放；view Str 参数被当 owned 返回；owned Call/字面量视图与借用返回的 provenance 断开；mut 无排他/外逃检查；循环内 fresh move 误拒；runtime 锁文件被根 .gitignore 忽略 | verify_text 域前置拒+派生 runtime 需求（声明强制+build 门双触发+adapter eq/ne 补声明）；常量条件折叠+连接一致清理责任+短路条件 move 拒+return 先处理 move+循环只杀入口存活者；owned let/return 的 ReadLocal 禁令；scanner 补 owned Call/StrLit+backing 向量传播至末消费者（帧恒小）；mut 进 provenance（调用点别名/返回外逃/派生 view）；`git add -f` runtime/text/Cargo.lock；重放集 18 测试永久化（tests/text_review_r2.rs） |
 
 ## 5. 记录的边界（不宣称的面）
