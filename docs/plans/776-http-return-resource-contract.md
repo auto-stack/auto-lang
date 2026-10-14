@@ -180,6 +180,15 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 
 ## 8. 执行步骤
 
+> **R13 当前状态（2026-10-14，修复轮完成）**：F776-R13-01（P3）已修复
+>（worktree `e65c01012`，仅测试文件 +14）——独占格辅助函数的 `expect`
+> 参数此前未使用（+200 增量引入的 unused-variable 警告，违反零新增警告
+> 健康门）；现于**释放返回值之前**解析仍有效的返回凭据快照并与 expect
+> 字段比对（复用 settle 同款方法；此刻非 tombstone 不触发 canary）——
+> 独占格同时覆盖 mutation 语义，不只 RC/回收。警告清零（expect 相关 0）、
+> plan776 66/66、check 0 err。T-08 闭合，**next: review（R14 定向复审）**。
+> 详见[R13报告](reports/776-return-resource-review-r13.md)。以下交接为历史记录。
+
 > **R12 当前状态（2026-10-14，修复轮完成）**：F776-R11-01 剩余范围已补齐
 >（worktree `367f4b288`，仅测试文件）——四非 status setter 各补 **RC1 独占**
 > 与**错误 receiver** 两格（共 8 格，真实参数同款）：RC1 断言 setter 后恰
@@ -225,6 +234,7 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
   [R10 已修复] F776-R10-01：R9 收敛推广到 Response 五 setter（撤 R2-03 显式 release——同型双释放，共享 RC2→0 全局 UAF；oracle=RC2 矩阵/RC1/链式/早退）。
   [R11 已修复] F776-R11-01：四 setter（header/text/html/bytes）补真实参数调用与终值断言（R10 提交内仅 status 真跑——fn-vec 未用）。
   [R12 已修复] F776-R12：四 setter 各补 RC1 独占/错误 receiver 8 格 + settle 最后释放后的回收断言（R12 报告点名的剩余验收面）。
+  [R13 已修复] F776-R13-01：独占格 expect 参数改为释放前快照比对（清 +200 增量的 unused 警告——独占格补覆盖 mutation 语义）。
   [R5 已修复（5bdca42e4 轮）] F776-R5-01：生产点凭据化（codegen CREATE_GENERATOR 后包装+iterator natives 解包）——local/helper/容器/闭包/Future 全载体传播（http_e2e_r5 wire oracle）。
 - [x] **T-03：统一成功终值编组**（依赖 T-02；AC-01、AC-02、AC-03；SD-02、SD-04）
   `http_server.rs::marshal_handler_value/final_value_reply` 共用来源分派和 owned 回复构造；File/Upload 原执行器与 SSE producer 单源。验证：`cargo t plan776` 对照族；`cargo nextest run -p auto-lang --lib --features test-http-e2e plan776 --jobs 1` 碰撞/同步真 TCP 全绿，不新增另一套 SSE 输出循环。
@@ -270,6 +280,36 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 `cargo th` 为 nextest 滤串，串行参数使用 `-j 1`，不使用 libtest `--test-threads`。本次仅起草，不执行上述 Cargo 门禁。
 
 ## 9. 复审记录
+
+### R13 修复轮交接（2026-10-14，review-r13 needs_fix 后复修）
+
+- stage: work
+- plan_id: PLAN-776
+- plan_revision: 1
+- outcome: pass（work 自有面闭合；终判归 R14 定向复审）
+- worktree_path: D:/autostack/.wt/lang-776/auto-lang
+- branch: plan-776-dev
+- base_commit: 367f4b288（R13 审查基线）
+- code_commit: e65c01012（仅测试文件 +14；实现零改动）
+- dependency_revisions: 组内 auto-down=c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8（detached、clean、未动）
+- task_ids: [T-08]（R13 重开一项已修复；T-01..07 保持完成）
+- evidence: F776-R13-01——exclusive 辅助函数的 expect 参数改为**释放返回值之前**解析返回凭据快照并字段比对（复用 settle 方法；此刻非 tombstone 不触发 canary）：独占格现在同时断言 mutation 终值（此前只 RC/回收）；`unused variable: expect` 警告清零（编译实测 0）。门禁：plan776 **66/66**、check 0 err、rustfmt 干净、定向 setter oracle 1/1。
+- blockers: 无
+- next: review（R14 定向复审——警告清零 + 独占格 mutation 断言；spec-delta/decision R10 终形不变，verification 追加 R13 节后 SHA256=c9943640abb13ae0372cadd5261119489ab67e87b7baeeaf8e382cd7a4493299）
+- 备注：P776-D3/D4 与 a2r `use api:` 阻塞（742 族）边界不变。
+
+### 最终独立复审 R13（2026-10-14，needs_fix）
+
+- stage: review；review_scope: final；reviewer_identity/limitations: 当前Codex延续R11/R12独立审查，未实施修复，无子agent/额外模型声明。
+- plan_id: PLAN-776；plan_revision: 1；outcome: needs_fix；reviewed_commit: 367f4b288b515d49938a0b5f3bf47cf9de6f9b33；repair_diff_base: d0fa9e5e2d0b50924698a01c591541f6e8744c8c；base_commit: 5e21561d2c303a02319ff7a29e4607933e09a38f。
+- worktree_path: D:/autostack/.wt/lang-776/auto-lang；branch: plan-776-dev；实施树clean；dependency_revisions: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8，clean。
+- spec_inputs: attachments/776/review-r13/input-hashes.json及reviewed-spec-delta.md；SD SHA256=D5730778FA8EE21A005D6F934DBCD7C1BAFD49ED3B75EAA7B7548CC5E57D9CDB；canonical/decision/SD同R12。
+- acceptance_results: AC01..08按既定代表覆盖/支持面pass；AC02/06矩阵缺口关闭；AC09 fail（新增未处理编译警告）。
+- findings: F776-R11-01关闭（五setter三场景15格实际执行，最后回收断言补齐）；F776-R13-01 P3：exclusive helper的expect从未使用，新增unused variable警告，违反Health Check；不判生产行为失败。
+- evidence: reports/776-return-resource-review-r13.md；定向测试1/1（0.130s，0timeout）及原始setter-test.log警告；format/diff-check通过。仅测试变化，生产/依赖/配置/旧probe未变，复用R11生产15格/原UAF/66专项/126守卫与R12共享mutation证据。
+- pending_closeout_gates: final pass后merge-owned裸t/tv/HTTP及相关生成验证、tf主检出batch-only、Spec/ledger/归档/wt-guard pending；work提前整档不代替后置门禁。
+- next: work，仅处理expect警告（建议释放前比对预期快照）、提交后定向复审；仅重开T08，current_step=7/8，T01..07及生产/矩阵pass保留。未修实施代码/合入/归档/清树。
+
 
 ### R12 修复轮交接（2026-10-14，review-r12 needs_fix 后复修）
 

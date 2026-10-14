@@ -503,3 +503,20 @@ F776-R11-01 剩余范围（R12 报告点名的 8 格 + 回收断言）：
 P776-D4 SSE 楔子 flake——复跑全绿，属 R7 分诊在册预存形态）；裸
 `cargo t` **5312/5312**（107.7s）；`cargo check -p auto-lang` 0 error；
 rustfmt 干净。spec-delta/decision R10 终形稿不变（本轮仅测试证据）。
+
+
+---
+
+## R13 修复轮（2026-10-14，review-r13 needs_fix 后复修——警告清零）
+
+代码提交：`e65c01012`（仅测试文件 +14；**实现零改动**）。闭合
+F776-R13-01（P3）：独占格辅助函数的 `expect` 参数未使用（+200 增量
+引入的 unused-variable 警告，违反零新增警告健康门）。修复：于**释放
+返回值之前**解析仍有效的返回凭据快照并与 expect 字段比对（复用共享
+settle 同款方法；此刻非 tombstone 不触发 canary）——独占格因此同时
+断言 mutation 终值，不只 RC/回收（R13 建议的第一路径：比对而非删参）。
+
+门禁（实施树 `e65c01012`）：`unused variable: expect` 警告**清零**
+（编译实测 0）；plan776 全族 **66/66**；`cargo check -p auto-lang`
+0 error；rustfmt 干净；定向 setter oracle 1/1。spec-delta/decision
+R10 终形稿不变（本轮仅测试修正）。
