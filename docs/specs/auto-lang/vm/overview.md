@@ -74,6 +74,8 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - 未实现：AutoLive 热重载、MicroVM C 实现、Tier-2 JIT、多语言 FFI 插件（design/05 Open Questions）。
 
 - 退出审计三挂点（plan-575）：`vm/ffi/stdlib.rs` `exit_audit`/`exit_audit_path`/`install_exit_audit_panic_hook`——`Process.exit` shim（site=vm_process_exit）、全局 panic hook（code=101+消息+位置，链式保留既有 hook）、desktop 装配管线 `run_session` 正常返回（site=main_return，实机 shutdown 端到证）三 site 落笔；路径 env `AUTO_DESKTOP_EXIT_LOG`（缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log），写失败静默=零行为变更（G3）；用途=静默退出归因常驻取证面（526 降档🟡 疑外部击杀，真实复现审计指认 site 即重启归因；台账 scratch/p575/ledger.jsonl）。
+- TestCase 协议 pilot 的 VM 侧观测通道（Plan 773，Design 35 A）：`run_with_capture_and_path_staged` 为 `run_with_capture_and_path` 的 staged 孪生（旧 API 签名/行为原样）——engine 陷阱点在 typed `VMError` 仍存活处记录变体名（`task.last_error_code`），经线程内中继随失败带出，构成 run 阶段强 oracle 的**类型化** code 通道（`vm_error_code`）；`.as` lower、result/stdout 观测、产物注册（执行过即注册，PASS/FAIL 皆然）与 avm/run adapter 见 `src/test_cases/avm.rs`。pilot 语料经 `cases/pilot/` 引用式合同原位消费旧 vm 目录（不动 wrapper/发现式 corpus runner 门禁）；旧 `expected.error`（any-Err，内容忽略）类弱断言在 pilot 轨必须强化为 stage+code/message 强辨识后才算已证。档位：`cargo tv` 经 `vm_file_tests::pilot_aggregate_vm` 触达 avm 半部。
+
 ## 布尔短路求值语义（plan-615）
 
 `&&`/`||` 为**短路求值**（PLAN-615 T-01 根修；此前 codegen 发射单条急切

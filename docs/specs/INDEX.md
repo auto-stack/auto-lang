@@ -10,6 +10,7 @@
 | auto-lang（语言核心） | active | 9 | [auto-lang/project.md](auto-lang/project.md) |
 | auto-val | active | 7 | [auto-val/project.md](auto-val/project.md) |
 | auto-atom | active | 3 | [auto-atom/project.md](auto-atom/project.md) |
+| auto-test-case | active | 12 | [auto-test-case/project.md](auto-test-case/project.md) |
 | a2r-std | active | 7 | [a2r-std/project.md](a2r-std/project.md) |
 | stdlib | active | 8 | [stdlib/project.md](stdlib/project.md) |
 | aavm | experimental | 11 | [aavm/project.md](aavm/project.md) |
@@ -51,6 +52,25 @@
 | atom | Atom 数据结构定义 | active |
 | parser | Atom 解析器 | active |
 | error | 错误类型（thiserror） | active |
+
+</details>
+
+<details><summary>auto-test-case 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| document / raw_ranges | pinned 块树 ↔ 原始 fence 字节区间双向校验 | active |
+| atom / contract | 静态 Atom 合同解析 + 严格 schema（含 per-adapter 观测支持表） | active |
+| admission | 资源限额（有界读）+ 路径域/reparse 审查 | active |
+| ir | payload/oracle 解析为 owned bytes；oracle 身份=逐字节内容哈希 | active |
+| suite / discovery | suite 编排、显式 defaults 深合并、逐文件发现（错误保留不静默丢） | active |
+| compare / report | 观测比较（bytes/lf/text/message）、逐 check 报告与 gate 退出码 | active |
+| sha256 | 极简指纹（无外部依赖） | active |
+| 通道 | avm/run | a2r/emit |
+| completion（success / error{stage,code?,message?}） | ✓ | ✓ |
+| result（legacy-display） | ✓ | — |
+| stdout / stderr | ✓（错误完成下不可声明） | — |
+| artifacts（多产物逐项 bytes） | — | ✓ |
 
 </details>
 
