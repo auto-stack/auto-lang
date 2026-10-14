@@ -119,14 +119,19 @@ pub fn verify_scalar(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnosti
 /// consumes verbatim — the backend performs no ownership analysis of its
 /// own.
 ///
-/// Front-door gates (review r2 QA-01/QA-02): the bundle's OWN identity must
-/// be the text domain (a forged Core/Scalar header on text content is a
-/// `verify.domain` rejection — it must never reach the scalar lowering's
-/// text-unreachable path), and content that actually lowers to `ac_rt_*`
-/// calls MUST declare `requires: ["ac.runtime.text.v1"]` — the caller-
-/// controlled declaration alone was never sufficient in the other direction
-/// either: the derived need is recorded on the CheckedModule so the build
-/// gates (capability + runtime contract) fire on REAL usage.
+/// Front-door gates (reviews r2 QA-01/QA-02 + r3 R3-04/R3-05): the bundle's
+/// OWN identity must be the text domain (a forged Core/Scalar header on
+/// text content is a `verify.domain` rejection — it must never reach the
+/// scalar lowering's text-unreachable path). The DERIVED runtime need —
+/// real text operations AND cleanup obligations (owned locals / exit
+/// frees: an emitted function whose only runtime use is `ac_rt_own_free`
+/// is gated the same way, r3 R3-04) — is computed AFTER the structural
+/// checks and resource plans, so illegal references are controlled
+/// `verify.bad-reference` rejections before any need scan runs (r3
+/// R3-05), and a module whose content needs the runtime MUST declare
+/// `requires: ["ac.runtime.text.v1"]`. The derived need is recorded on
+/// the CheckedModule so the build gates (capability + runtime contract)
+/// fire on REAL usage, not the caller-controlled declaration alone.
 pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
     if bundle.domain != HirDomain::Text {
         return Err(vec![Diagnostic::new(
@@ -137,20 +142,6 @@ pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>
                 bundle.domain.as_str(),
                 HirDomain::Text.as_str()
             ),
-            Span { start: 0, end: 0 },
-        )]);
-    }
-    let needs_runtime = crate::text_resources::bundle_needs_text_runtime(&bundle);
-    if needs_runtime
-        && !bundle
-            .requires
-            .iter()
-            .any(|r| r == crate::text_resources::RUNTIME_TEXT_CAPABILITY)
-    {
-        return Err(vec![Diagnostic::new(
-            Stage::Capability,
-            "capability.missing",
-            "the module lowers text runtime operations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred",
             Span { start: 0, end: 0 },
         )]);
     }
@@ -175,6 +166,25 @@ pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>
         }
     }
     if v.diags.is_empty() {
+        // r3 R3-04: the derived runtime need covers BOTH real text
+        // operations and plan-driven cleanup obligations (ac_rt_own_free).
+        // Computed only after structural checks + plans (r3 R3-05: illegal
+        // references were already rejected as verify.bad-reference).
+        let needs_runtime = crate::text_resources::bundle_needs_text_runtime(&bundle)
+            || crate::text_resources::plan_needs_text_runtime(&plan);
+        if needs_runtime
+            && !bundle
+                .requires
+                .iter()
+                .any(|r| r == crate::text_resources::RUNTIME_TEXT_CAPABILITY)
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Capability,
+                "capability.missing",
+                "the module lowers text runtime operations or cleanup obligations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred",
+                Span { start: 0, end: 0 },
+            )]);
+        }
         Ok(CheckedModule {
             bundle,
             text_plan: Some(plan),

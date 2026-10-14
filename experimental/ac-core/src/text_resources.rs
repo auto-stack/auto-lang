@@ -58,6 +58,9 @@ pub fn bundle_needs_text_runtime(bundle: &hir::Bundle) -> bool {
 }
 
 pub fn body_needs_text_runtime(m: &hir::Module, body: &hir::Body) -> bool {
+    // TOTAL (r3 R3-05): every expression/operand access is bounds-checked —
+    // an out-of-range reference is a controlled `verify.bad-reference`
+    // rejection by the structural checks, never a panic here.
     let text_ty = |e: &hir::Expr| type_use_is_text(&e.ty, m);
     body.exprs.iter().any(|e| match &e.kind {
         hir::ExprKind::TextLen { .. }
@@ -74,9 +77,20 @@ pub fn body_needs_text_runtime(m: &hir::Module, body: &hir::Body) -> bool {
             op: hir::BinOp::Eq | hir::BinOp::Ne,
             lhs,
             ..
-        } => text_ty(&body.exprs[lhs.0 as usize]),
+        } => body.exprs.get(lhs.0 as usize).map(text_ty).unwrap_or(false),
         _ => false,
     })
+}
+
+/// Whether a verified resource plan carries CLEANUP obligations that lower
+/// to `ac_rt_own_free` calls (r3 R3-04): owned locals (move-in parameters,
+/// owned bindings) and any scheduled exit frees — an emitted function with
+/// a pure-cleanup body must be gated by the runtime contract exactly like
+/// one with text operations.
+pub fn plan_needs_text_runtime(plan: &TextResourcePlan) -> bool {
+    plan.bodies
+        .values()
+        .any(|bp| !bp.owned.is_empty() || !bp.exit_frees.is_empty())
 }
 
 /// Nominal text-type test (str or Str, builtin shorthand or table ref).
@@ -521,10 +535,11 @@ fn block_terminates_impl(body: &hir::Body, root: u32, memo: &mut BTreeMap<u32, b
     memo.get(&root).copied().unwrap_or(false)
 }
 
-/// Definitely-executed moved locals anywhere inside a block subtree (used
-/// by the loop re-entry kill and the if-join responsibility analysis).
-/// Conditional moves (unknown short-circuit arms) are NOT definite — their
-/// own statement/if reports them.
+/// Definitely-executed transfer set inside a block subtree (loop re-entry
+/// kill): moved locals AND explicitly dropped locals, from REACHABLE code
+/// only — constant conditions prune arms (r3: an unreachable nested arm
+/// must not fake a transfer), and unknown short-circuit moves are left to
+/// their own statement's rejection.
 fn block_definite_moves(m: &hir::Module, body: &hir::Body, bid: u32, out: &mut BTreeSet<u32>) {
     let mut stack = vec![bid];
     while let Some(b) = stack.pop() {
@@ -545,6 +560,9 @@ fn block_definite_moves(m: &hir::Module, body: &hir::Body, bid: u32, out: &mut B
                         }
                     }
                 }
+                hir::Stmt::Drop { local } => {
+                    out.insert(local.0);
+                }
                 hir::Stmt::If { cond, then, els } => {
                     let scan = scan_expr(m, body, *cond);
                     for (argid, _) in &scan.moves {
@@ -554,9 +572,14 @@ fn block_definite_moves(m: &hir::Module, body: &hir::Body, bid: u32, out: &mut B
                             out.insert(local.0);
                         }
                     }
-                    stack.push(then.0);
+                    let cond_t = const_truth(body, *cond);
+                    if cond_t != Some(false) {
+                        stack.push(then.0);
+                    }
                     if let Some(e) = els {
-                        stack.push(e.0);
+                        if cond_t != Some(true) {
+                            stack.push(e.0);
+                        }
                     }
                 }
                 hir::Stmt::Loop { body: lb, .. } => stack.push(lb.0),
@@ -598,8 +621,22 @@ impl WalkState {
 
 enum RState {
     Run,
-    AwaitIf { then_slot: usize, else_slot: usize },
-    AwaitLoop { body_slot: usize },
+    AwaitIf {
+        then_slot: usize,
+        else_slot: usize,
+        /// the then arm is statically reachable at all (const conditions)
+        then_reachable: bool,
+        else_reachable: bool,
+        /// arms that actually JOIN here (reachable && fall through)
+        then_incoming: bool,
+        else_incoming: bool,
+        /// no-else fall-through state snapshot (incoming when present)
+        implicit: Option<WalkState>,
+        span: Span,
+    },
+    AwaitLoop {
+        body_slot: usize,
+    },
 }
 
 struct RFrame {
@@ -613,10 +650,6 @@ struct RFrame {
     flow_done: bool,
     ret_slot: usize,
     state: RState,
-    /// r2 QA-03: owned locals moved on EVERY path joining at this frame's
-    /// pending if — applied to `st.live` when the arms complete (the callee
-    /// owns them; this frame drops the free responsibility).
-    if_join_dead: BTreeSet<u32>,
 }
 
 enum Action {
@@ -655,17 +688,41 @@ impl<'a> ResourceWalk<'a> {
         set.iter().rev().copied().collect()
     }
 
-    /// Owned locals reachable from an expression's reads: direct owned
-    /// reads, `mut`-parameter reads (r2 QA-06: a mut borrow is an aliasing
-    /// source for conflict and escape purposes, like an owned buffer), and
-    /// the backings of borrowed str locals read (path-union).
-    fn owned_reach(&self, st: &WalkState, scan: &ExprScan) -> BTreeSet<u32> {
+    /// ALIAS reach (r3 R3-02): every text-SOURCE identity a value views —
+    /// owned locals, ANY text parameter (view/mut/move — a borrowed
+    /// parameter aliases its caller's buffer, so two arguments taken from
+    /// the same parameter alias each other), and str-local backings
+    /// (which now carry parameter sources too). Used by call-site
+    /// exclusivity and provenance seeding.
+    fn alias_reach(&self, st: &WalkState, scan: &ExprScan) -> BTreeSet<u32> {
         let mut out = BTreeSet::new();
         for (_, l, _) in &scan.reads {
-            if self.owned.contains(l) || is_mut_param(&self.body.locals[*l as usize]) {
+            let ld = &self.body.locals[*l as usize];
+            let is_param = ld.role == hir::LocalRole::Param;
+            let text_param =
+                is_param && matches!((self.local_type)(*l), ValueType::Str | ValueType::StrOwned);
+            if self.owned.contains(l) || text_param {
                 out.insert(*l);
             } else if let Some(bs) = st.backing.get(l) {
                 out.extend(bs.iter().copied());
+            }
+        }
+        out
+    }
+
+    /// ESCAPE reach: the sources a returned borrowed str must NOT view —
+    /// owned locals, `mut` parameters, and the owned/mut members of
+    /// backings. View parameters of this function outlive the call and
+    /// remain legal borrowed-return sources.
+    fn escape_reach(&self, st: &WalkState, scan: &ExprScan) -> BTreeSet<u32> {
+        let is_escape_src =
+            |l: &u32| self.owned.contains(l) || is_mut_param(&self.body.locals[*l as usize]);
+        let mut out = BTreeSet::new();
+        for (_, l, _) in &scan.reads {
+            if is_escape_src(l) {
+                out.insert(*l);
+            } else if let Some(bs) = st.backing.get(l) {
+                out.extend(bs.iter().copied().filter(|b| is_escape_src(b)));
             }
         }
         out
@@ -774,7 +831,7 @@ impl<'a> ResourceWalk<'a> {
             if self.owned.contains(l) {
                 viewed.insert(*l);
             } else if let Some(bs) = st.backing.get(l) {
-                viewed.extend(bs.iter().copied());
+                viewed.extend(bs.iter().copied().filter(|b| self.owned.contains(b)));
             }
         }
         let mut moved = BTreeSet::new();
@@ -932,7 +989,7 @@ impl<'a> ResourceWalk<'a> {
                     continue;
                 }
                 let ascan = scan_expr(m, self.body, eval_args[b.arg as usize]);
-                let r = self.owned_reach(st, &ascan);
+                let r = self.alias_reach(st, &ascan);
                 reaches.push((b.param, r));
             }
             for (pi, reach_i) in &reaches {
@@ -1021,7 +1078,6 @@ impl<'a> ResourceWalk<'a> {
             flow_done: false,
             ret_slot: 0,
             state: RState::Run,
-            if_join_dead: BTreeSet::new(),
         });
         while !frames.is_empty() {
             let action = {
@@ -1090,7 +1146,7 @@ impl<'a> ResourceWalk<'a> {
                                             self.body.blocks[bid as usize].span,
                                         );
                                     }
-                                    let prov = self.owned_reach(&st_snapshot, &scan);
+                                    let prov = self.alias_reach(&st_snapshot, &scan);
                                     frame.st.backing.insert(local.0, prov);
                                 }
                                 _ => {}
@@ -1130,7 +1186,7 @@ impl<'a> ResourceWalk<'a> {
                                             self.body.blocks[bid as usize].span,
                                         );
                                     }
-                                    let prov = self.owned_reach(&st_snapshot, &scan);
+                                    let prov = self.alias_reach(&st_snapshot, &scan);
                                     frame.st.backing.insert(target, prov);
                                 }
                                 _ => {}
@@ -1178,7 +1234,7 @@ impl<'a> ResourceWalk<'a> {
                                     }
                                 }
                                 ValueType::Str => {
-                                    let prov = self.owned_reach(&st_snapshot, &scan);
+                                    let prov = self.escape_reach(&st_snapshot, &scan);
                                     if scan.has_owned_producing || !prov.is_empty() {
                                         self.error(
                                             "verify.borrow-escape",
@@ -1216,64 +1272,32 @@ impl<'a> ResourceWalk<'a> {
                                 frame.st.live.remove(&l);
                                 frame.st.dead.insert(l, DeadCause::Moved);
                             }
-                            // r2 QA-03: join responsibility analysis. Every
-                            // arm REACHABLE at the join (constant conditions
-                            // prune statically; terminating arms exit
-                            // elsewhere and never join) must agree on each
-                            // owned local: moved on ALL incoming paths (the
-                            // callee owns it — this frame drops the free
-                            // responsibility) or on NONE (this frame keeps
-                            // it). Anything else is rejected: a maybe-move
-                            // has no consistent static free.
+                            // r3 R3-01: the join is computed from the ARMS'
+                            // ACTUAL responsibility states (not a syntactic
+                            // move pre-scan — unreachable nested arms must
+                            // not fake a transfer, and a Drop kills the same
+                            // way a move does). Constant conditions prune
+                            // reachability; terminating arms never join; the
+                            // no-else fall-through is a virtual arm carrying
+                            // this frame's snapshot. The resume step requires
+                            // every incoming state to agree on each owned
+                            // local: live on all (this frame keeps the free),
+                            // dead on all (the transfer happened — drop the
+                            // duty), mixed -> rejected.
                             let cond_t = const_truth(self.body, cond);
-                            let mut then_moved = BTreeSet::new();
-                            block_definite_moves(m, self.body, then.0, &mut then_moved);
-                            let then_terms = block_terminates(self.body, then.0);
-                            let mut incoming: Vec<(&str, BTreeSet<u32>)> = Vec::new();
-                            if cond_t != Some(false) && !then_terms {
-                                incoming.push(("then arm", then_moved.clone()));
-                            }
-                            match els {
-                                Some(e) => {
-                                    let mut else_moved = BTreeSet::new();
-                                    block_definite_moves(m, self.body, e.0, &mut else_moved);
-                                    let else_terms = block_terminates(self.body, e.0);
-                                    if cond_t != Some(true) && !else_terms {
-                                        incoming.push(("else arm", else_moved));
-                                    }
-                                }
-                                None => {
-                                    // the implicit fall-through path
-                                    if cond_t != Some(true) {
-                                        incoming.push(("implicit fall-through", BTreeSet::new()));
-                                    }
-                                }
-                            }
-                            let union: BTreeSet<u32> = incoming
-                                .iter()
-                                .flat_map(|(_, ms)| ms.iter().copied())
-                                .collect();
-                            let mut join_dead = BTreeSet::new();
-                            for l in &union {
-                                let missing = incoming
-                                    .iter()
-                                    .find(|(_, ms)| !ms.contains(l))
-                                    .map(|(arm, _)| *arm);
-                                match missing {
-                                    Some(arm) => self.error(
-                                        "verify.ownership-required",
-                                        format!(
-                                            "owned local `{}` is moved inside this conditional but not on the {} path; the join would have inconsistent cleanup responsibility (hoist the move, or move on every path)",
-                                            self.local_name(*l),
-                                            arm
-                                        ),
-                                        self.body.blocks[bid as usize].span,
-                                    ),
-                                    None => {
-                                        join_dead.insert(*l);
-                                    }
-                                }
-                            }
+                            let then_reachable = cond_t != Some(false);
+                            let else_reachable = els.is_some() && cond_t != Some(true);
+                            let then_incoming =
+                                then_reachable && !block_terminates(self.body, then.0);
+                            let else_incoming = match els {
+                                Some(e) => else_reachable && !block_terminates(self.body, e.0),
+                                None => false,
+                            };
+                            let implicit = if els.is_none() && cond_t != Some(true) {
+                                Some(frame.st.clone())
+                            } else {
+                                None
+                            };
                             let cur_in = frame.st.clone();
                             let loops_len = frame.loops_len;
                             let parent_idx = frames.len() - 1;
@@ -1289,10 +1313,15 @@ impl<'a> ResourceWalk<'a> {
                             };
                             let then_slot =
                                 push_child(&mut frames, &mut results, then.0, loops_len, cur_in);
-                            frames[parent_idx].if_join_dead = join_dead;
                             frames[parent_idx].state = RState::AwaitIf {
                                 then_slot,
                                 else_slot,
+                                then_reachable,
+                                else_reachable,
+                                then_incoming,
+                                else_incoming,
+                                implicit,
+                                span: self.body.blocks[bid as usize].span,
                             };
                         }
                         hir::Stmt::Loop { id, body: b } => {
@@ -1412,19 +1441,78 @@ impl<'a> ResourceWalk<'a> {
                         RState::AwaitIf {
                             then_slot,
                             else_slot,
+                            then_reachable,
+                            else_reachable,
+                            then_incoming,
+                            else_incoming,
+                            implicit,
+                            span,
                         } => {
+                            // r3 R3-01: UNREACHABLE arms keep their static
+                            // legality diagnostics (already emitted during
+                            // their walk) but their runtime responsibility
+                            // states are DISCARDED — dead code must not
+                            // pollute the join (c01/q01).
                             let then_st = results[then_slot].clone().expect("then arm state");
                             let else_st = if else_slot == usize::MAX {
                                 None
                             } else {
                                 results[else_slot].clone()
                             };
-                            merge_children(&mut frame.st, &[Some(then_st), else_st]);
-                            // r2 QA-03: locals moved on every joining path
-                            // are the callee's responsibility — drop this
-                            // frame's free duty (dead already merged).
-                            for l in std::mem::take(&mut frame.if_join_dead) {
-                                frame.st.live.remove(&l);
+                            let mut merging: Vec<Option<WalkState>> = Vec::new();
+                            if then_reachable {
+                                merging.push(Some(then_st.clone()));
+                            }
+                            if else_reachable {
+                                merging.push(else_st.clone());
+                            }
+                            merge_children(&mut frame.st, &merging);
+                            // Join responsibility from the ACTUAL incoming
+                            // states (reachable && fall-through arms plus the
+                            // implicit fall-through snapshot).
+                            let mut incoming: Vec<(&str, WalkState)> = Vec::new();
+                            if then_incoming {
+                                incoming.push(("then arm", then_st));
+                            }
+                            if else_incoming {
+                                incoming.push(("else arm", else_st.expect("else arm state")));
+                            }
+                            if let Some(imp) = implicit {
+                                incoming.push(("implicit fall-through", imp));
+                            }
+                            if !incoming.is_empty() {
+                                let owned: Vec<u32> = self.owned.iter().copied().collect();
+                                for l in owned {
+                                    let live_cnt = incoming
+                                        .iter()
+                                        .filter(|(_, st)| st.live.contains_key(&l))
+                                        .count();
+                                    if live_cnt == incoming.len() {
+                                        // live on every path: this frame
+                                        // keeps the cleanup duty
+                                    } else if live_cnt == 0 {
+                                        // moved/dropped on every joining
+                                        // path: the transfer already
+                                        // happened; drop the duty (dead is
+                                        // merged above)
+                                        frame.st.live.remove(&l);
+                                    } else {
+                                        let arm = incoming
+                                            .iter()
+                                            .find(|(_, st)| !st.live.contains_key(&l))
+                                            .map(|(arm, _)| *arm)
+                                            .unwrap_or("then arm");
+                                        self.error(
+                                            "verify.ownership-required",
+                                            format!(
+                                                "owned local `{}` is moved or dropped inside this conditional but still owned on the {} path; the join would have inconsistent cleanup responsibility (transfer on every path, or none)",
+                                                self.local_name(l),
+                                                arm
+                                            ),
+                                            span,
+                                        );
+                                    }
+                                }
                             }
                         }
                         RState::AwaitLoop { body_slot } => {
@@ -1478,7 +1566,6 @@ fn push_child(
         flow_done: false,
         ret_slot: slot,
         state: RState::Run,
-        if_join_dead: BTreeSet::new(),
     });
     slot
 }

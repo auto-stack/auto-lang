@@ -311,8 +311,14 @@ struct PlanCtx<'p> {
 
 impl PlanCtx<'_> {
     fn plan_fn(&mut self, f: &ResolvedFn) -> FnPlan {
+        // r3 R3-04: a `move Str` parameter is a CLEANUP obligation (its
+        // exit frees lower to ac_rt_own_free) even with zero text
+        // operations in the body — such a function needs the runtime too.
+        let has_move_str_param = f.locals.iter().any(|l| {
+            l.is_param && l.mode == super::ast::ParamMode::Move && matches!(l.vt, VT::StrOwned)
+        });
         let mut plan = FnPlan {
-            has_text_ops: false,
+            has_text_ops: has_move_str_param,
             exprs: Vec::new(),
             blocks: Vec::new(),
             places: Vec::new(),
