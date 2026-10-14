@@ -238,7 +238,7 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [✅ 2026-10-15] 统一冻结记录见本节下方交接记录。SD-01~07 候选内容 = §5 规范增量表 + 两份决策报告（781-interface-decision r1-r6、781-budget-decision r1-r3）——发布归 T-08 merge（SD-02/04/05 为新文件候选：ui/design/scroll-child-anchor.md、ui/design/native-acceptance-channel.md、vm/design/handler-execution-budget.md；其余为既有文件 modify）。
 - [ ] T-07: owner_stage=review；依赖T-06；同一781树独立final review，重跑三阶段全部required oracle并独立选择新混排/失效/取消反例，核SD-01~07与整体承接；所有required通过才reviewed，不以单阶段绿灯代替全计划通过。AC-05。
 - [x] T-08: owner_stage=merge；依赖T-07；按merge技能实际落地、规范沉淀、归档/守卫清理及到期批量门；统一交付781 dependency receipt到READER-001 T-25/T-26；不代替Reader业务接入及终审。AC-06。
-  [✅ 2026-10-15] merge 收口（回执键 PLAN-781:r2）：**prepared** = reviewed dba0d7e5c + spec 沉积（SD-01~07：3 新 design + 4 modify + plans.md 双索引）；**landed** = rebase 线性重放 ×2（并发 master 前进两次均纯 docs 增量；range-diff 全等）→ ff-only，master tip = delivery `3e1b5fc03`；**ledger_refreshed** = .autoos/specs.json v17→v18（guarded offline projection——store 服务不可达 000；P781-D1/D2/D3/T1/R1/M 六条，file+tags 齐，无关节逐字节不变，回读验证过）；**门禁**（重放终点复跑）= 裸 cargo t 5353/5353 + tu 865/865 + th 135/137（两在案红：F-781-C03 预存 + plan730 boundary 单跑绿）+ plan781 24/24 + e2e 3/3；**cleaned** = wt-guard 后 worktree/分支/组目录移除（见下）；**READER-001 receipt** = T-25/T-26 解阻：锚点 API（scroll-anchor DSL + 9922/9923 + reading.at 接入映射）+ 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）+ 复验命令（scripts/tools/test_reader_import_budget.py --auto-bin <cli> --reader-dir <checkout>）；001 仍须业务接入、实际复验与独立终审（AC-06 不代替）。
+  [✅ 2026-10-15] merge 收口（回执键 PLAN-781:r2）：**prepared** = reviewed dba0d7e5c + spec 沉积（SD-01~07：3 新 design + 4 modify + plans.md 双索引）；**landed** = rebase 线性重放 ×2（并发 master 前进两次均纯 docs 增量；range-diff 全等）→ ff-only，master tip = delivery `3e1b5fc03`；**ledger_refreshed** = .autoos/specs.json v17→v18（guarded offline projection——store 服务不可达 000；P781-D1/D2/D3/T1/R1/M 六条，file+tags 齐，无关节逐字节不变，回读验证过）；**门禁**（重放终点复跑）= 裸 cargo t 5353/5353 + tu 865/865 + th 135/137（两在案红：F-781-C03 预存 + plan730 boundary 单跑绿）+ plan781 24/24 + e2e 3/3；**cleaned** = wt-guard 复核（pnpm store junction ~350 个按闸门处方逐链接 cmd /c rmdir 剥除后 clean）→ worktree/分支移除 + auto-down 兄弟（普通克隆，guard clean）+ 组目录删除（2026-10-15 实证）；**READER-001 receipt** = T-25/T-26 解阻：锚点 API（scroll-anchor DSL + 9922/9923 + reading.at 接入映射）+ 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）+ 复验命令（scripts/tools/test_reader_import_budget.py --auto-bin <cli> --reader-dir <checkout>）；001 仍须业务接入、实际复验与独立终审（AC-06 不代替）。
 
 ## 9. 复审记录
 
@@ -281,6 +281,12 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 - pending_closeout_gates（merge 所有，冻结提交上执行）：裸 `cargo t`、`cargo th`、`cargo tu`（分支内触 ui_gen）；按 2026-10-14 时序裁定归 merge 收口。
 - evidence: 上述 D:/p781-t07/** 全部为可重放命令产物（驱动/探针均为仓内提交工件 + --auto-bin/--out-dir 可复现）。
 - next: merge（T-08：合入/SD 沉淀发布/归档/wt-guard 清理/批量门/READER-001 dependency receipt）。
+
+### T-08 合并收尾补记（2026-10-15）
+
+- **产物时效观察（Landing≠deployment）**：`target/release/auto.exe` 构建于 10-12（先于 781 三天，陈旧）；auto-down 主检出 781 零改动（无需重建）；本仓为开发仓无运行中的生产进程——如需发布档请 `cargo build --release` 重建。
+- **批量回归到期**：收据 last_covered_plan_id=774（2026-10-14T11:30Z）；PLAN-770（%5=0）落地于收据后 → 到期（777 合并时已具名移交，截至本次仍未执行）；本次合并再次移交 `/auto-plan:regress`（主检出单实例；781 自身 781%5≠0 未新增触发）。
+- **并发注记**：本合并期间 master 被并行会话推进两次（777 归档、782 T-03 簿记，均纯 docs 增量）——两次 rebase 重放均无冲突、range-diff 全等；KNOWN-DEBT 中 777/771 会话的未提交条目未被裹挟（拆分提交实证）。
 
 ## 10. 待澄清事项
 
