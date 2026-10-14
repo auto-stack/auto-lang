@@ -2811,6 +2811,8 @@ fn plan776_r10_setter_single_release_shared() {
         vm.rc_release_id(foreign as u64);
     }
     // —— 其余四 setter 的真实调用（真实参数/RC2 共享/终值断言）——
+    // R12：四 setter 共用段的 live 基线（settle 的回收断言引用）。
+    let baseline = res::live_resource_count();
     // helper：建立共享形态（参数 owned + 全局份额）并返回 handle。
     let setup_shared = |vm: &AutoVM, task: &mut AutoTask| {
         res::push_response_resource(task, vm, 200, vec![], vec![]).unwrap();
@@ -2854,6 +2856,13 @@ fn plan776_r10_setter_single_release_shared() {
         );
         vm.rc_release_id(h);
         vm.reap_all();
+        // R12：最后全局份额释放后的**回收断言**——堆条目不复存在、
+        // live 回到本 VM 基线（此前只调 release/reap 无断言）。
+        assert!(
+            vm.heap_objects.get(&h).is_none(),
+            "最后份额释放后堆条目回收"
+        );
+        assert_eq!(res::live_resource_count(), baseline, "回收后 live 回基线");
     };
 
     // header：真实 key/value 字符串参数（池化 encode_string）。
@@ -2946,5 +2955,196 @@ fn plan776_r10_setter_single_release_shared() {
                 body: b"Hi".to_vec(),
             }),
         );
+    }
+
+    // —— R12：四 setter × {RC1 独占回收, 错误 receiver} 8 格 ——
+    // helper：独占 RC1——setter 后返回槽恰一份，释放并 reap 后**回收**。
+    let exclusive = |vm: &AutoVM, task: &mut AutoTask, base: usize, expect: res::ResourceClaim| {
+        let h = res::probe_last_resource_handle();
+        let rc = vm
+            .heap_rc
+            .get(&h)
+            .map(|c| c.load(std::sync::atomic::Ordering::SeqCst));
+        // setter 把参数份转移为返回槽份：仍恰一份（独占形态）。
+        assert_eq!(rc, Some(1), "独占 setter 后 = 返回槽一份");
+        let ret = task.ram.pop_nv();
+        assert!(auto_val::is_object(ret));
+        vm.rc_release(ret);
+        vm.reap_all();
+        assert!(vm.heap_objects.get(&h).is_none(), "独占释放后回收");
+        assert_eq!(res::live_resource_count(), base, "独占回收后 live 回基线");
+        // 不再 resolve 已回收 id——RC canary 视其为 UAF 访问（正确语义）；
+        // 堆条目缺失 + live 回基线即回收证明。
+    };
+    // helper：错误 receiver——非凭据对象 → Err，外部份额保留恰一份。
+    let wrong_receiver =
+        |vm: &AutoVM,
+         task: &mut AutoTask,
+         foreign: u64,
+         call: &dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), crate::vm::engine::VMError>| {
+            let r = call(task, vm);
+            assert!(r.is_err(), "非凭据 receiver 必须 Err");
+            assert_eq!(
+                vm.heap_rc
+                    .get(&foreign)
+                    .map(|c| c.load(std::sync::atomic::Ordering::SeqCst)),
+                Some(1),
+                "早退恰一份消费（外部一份保留）"
+            );
+            vm.rc_release_id(foreign);
+            vm.reap_all();
+        };
+    // helper：建立独占 receiver（仅参数 owned 一份）。
+    let setup_exclusive = |vm: &AutoVM, task: &mut AutoTask| {
+        res::push_response_resource(task, vm, 200, vec![], vec![]).unwrap();
+    };
+    // helper：建立错误 receiver（foreign ListData，参数 owned + 外部保留一份）。
+    let setup_foreign = |vm: &AutoVM, task: &mut AutoTask| {
+        let foreign = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+            elems: vec![],
+            storage: None,
+        });
+        vm.rc_retain_id(foreign as u64); // 外部一份
+        vm.rc_push(task, auto_val::encode_object(foreign as u32)); // 参数 owned 一份
+        foreign as u64
+    };
+
+    // header × RC1 / err
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let base = res::live_resource_count();
+        setup_exclusive(&vm, &mut task);
+        let key_idx = vm.add_string(b"X-Tag".to_vec()) as u32;
+        let val_idx = vm.add_string(b"application/xml".to_vec()) as u32;
+        task.ram.push_nv(auto_val::encode_string(key_idx));
+        task.ram.push_nv(auto_val::encode_string(val_idx));
+        stdlib::shim_http_response_header(&mut task, &vm).expect("header RC1");
+        exclusive(
+            &vm,
+            &mut task,
+            base,
+            res::ResourceClaim::Response(res::ResponseSnapshot {
+                status: 200,
+                headers: vec![("X-Tag".to_string(), "application/xml".to_string())],
+                body: vec![],
+            }),
+        );
+    }
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let foreign = setup_foreign(&vm, &mut task);
+        let key_idx = vm.add_string(b"X-Tag".to_vec()) as u32;
+        let val_idx = vm.add_string(b"v".to_vec()) as u32;
+        task.ram.push_nv(auto_val::encode_string(key_idx));
+        task.ram.push_nv(auto_val::encode_string(val_idx));
+        wrong_receiver(&vm, &mut task, foreign, &|t, v| {
+            stdlib::shim_http_response_header(t, v)
+        });
+    }
+
+    // text × RC1 / err
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let base = res::live_resource_count();
+        setup_exclusive(&vm, &mut task);
+        let body_idx = vm.add_string(b"hello text".to_vec()) as u32;
+        task.ram.push_nv(auto_val::encode_string(body_idx));
+        stdlib::shim_http_response_text(&mut task, &vm).expect("text RC1");
+        exclusive(
+            &vm,
+            &mut task,
+            base,
+            res::ResourceClaim::Response(res::ResponseSnapshot {
+                status: 200,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/plain; charset=utf-8".to_string(),
+                )],
+                body: b"hello text".to_vec(),
+            }),
+        );
+    }
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let foreign = setup_foreign(&vm, &mut task);
+        let body_idx = vm.add_string(b"x".to_vec()) as u32;
+        task.ram.push_nv(auto_val::encode_string(body_idx));
+        wrong_receiver(&vm, &mut task, foreign, &|t, v| {
+            stdlib::shim_http_response_text(t, v)
+        });
+    }
+
+    // html × RC1 / err
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let base = res::live_resource_count();
+        setup_exclusive(&vm, &mut task);
+        let body_idx = vm.add_string(b"<b>hi</b>".to_vec()) as u32;
+        task.ram.push_nv(auto_val::encode_string(body_idx));
+        stdlib::shim_http_response_html(&mut task, &vm).expect("html RC1");
+        exclusive(
+            &vm,
+            &mut task,
+            base,
+            res::ResourceClaim::Response(res::ResponseSnapshot {
+                status: 200,
+                headers: vec![(
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                )],
+                body: b"<b>hi</b>".to_vec(),
+            }),
+        );
+    }
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let foreign = setup_foreign(&vm, &mut task);
+        let body_idx = vm.add_string(b"x".to_vec()) as u32;
+        task.ram.push_nv(auto_val::encode_string(body_idx));
+        wrong_receiver(&vm, &mut task, foreign, &|t, v| {
+            stdlib::shim_http_response_html(t, v)
+        });
+    }
+
+    // bytes × RC1 / err
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let base = res::live_resource_count();
+        setup_exclusive(&vm, &mut task);
+        let mut list = crate::vm::types::ListData::<i32>::new();
+        list.push(72);
+        list.push(105);
+        let list_id = vm.insert_heap_object(list);
+        task.ram.push_nv(auto_val::encode_object(list_id as u32));
+        stdlib::shim_http_response_bytes(&mut task, &vm).expect("bytes RC1");
+        exclusive(
+            &vm,
+            &mut task,
+            base,
+            res::ResourceClaim::Response(res::ResponseSnapshot {
+                status: 200,
+                headers: vec![],
+                body: b"Hi".to_vec(),
+            }),
+        );
+    }
+    {
+        let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+        let mut task = AutoTask::new(0, 1024, 0);
+        let foreign = setup_foreign(&vm, &mut task);
+        let mut list = crate::vm::types::ListData::<i32>::new();
+        list.push(1);
+        let list_id = vm.insert_heap_object(list);
+        task.ram.push_nv(auto_val::encode_object(list_id as u32));
+        wrong_receiver(&vm, &mut task, foreign, &|t, v| {
+            stdlib::shim_http_response_bytes(t, v)
+        });
     }
 }
