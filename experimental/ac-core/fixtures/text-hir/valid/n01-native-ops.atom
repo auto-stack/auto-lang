@@ -1,0 +1,31 @@
+// PLAN-770 T-05 native fixture: the direct-HIR leg of V-02. A borrowed
+// literal + scalar count through the text runtime, built as a real PE via
+// `build` with the ac.runtime.text.v1 capability and the contract-carrying
+// support library.
+
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1"]
+    module(id: "m_native") {
+        types {
+            type(id: "t_main", kind: function) { params: []; result: i32 }
+        }
+        declarations {
+            function(id: "d_main", type: "t_main") { name: "main"; body: "b_main" }
+        }
+        bodies {
+            body(id: "b_main") {
+                owner: "d_main"
+                entry: "bk_main"
+                expressions {
+                    expr(id: "e_lit", kind: str_lit) { type: str; text: "A中😀" }
+                    expr(id: "e_len", kind: text_len) { type: i32; operand: "e_lit" }
+                }
+                blocks {
+                    block(id: "bk_main") {
+                        return(value: "e_len") {}
+                    }
+                }
+            }
+        }
+    }
+}
