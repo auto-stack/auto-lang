@@ -46,6 +46,13 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
   `stdlib/auto/sqlite.vm.at` 声明并用 native shim 调用同一 a2r-std 实现；opaque
   int handle 存于所属 `AutoVM`，连接寿命绑定到打开它的 task。`AutoVM::remove_task`
   删除该 task 时关闭其连接，VM 句柄不会跨 VM 共享；两端均没有显式 close。
+- VM shim（Plan 744）只是句柄/值转换层——SQL 执行**复用同一 a2r-std 引擎**，
+  不重写；`query` 的 `List<List<str>>` 由 shim 转换入口构建（外层
+  `ListData<Value>` 持 VmRef 指向内层 `ListData<i32>` 负哨兵字符串行），
+  单元格字符串化与哨兵约定与 a2r 侧逐格一致；回归锚
+  `vm::ffi::stdlib::sqlite_vm_tests`（roundtrip / 任务寿命 / VM 栈嵌套列表
+  逐格三测）。初版进程级句柄注册表已由 Plan 775 的 task-local 注册表
+  取代，不回写。
 - 3 段式 `auto.sqlite.*` 调用受 Plan 223 预存死臂限制（`auto.env.get` 同病，
   KNOWN-DEBT 415-B1 条目），Auto 侧统一用 2 段式 `sqlite.open(...)`。
 

@@ -1675,6 +1675,21 @@
           "title": "PLAN-773 交付：AutoDown TestCase 协议与只读试点（A 阶段）",
           "content": "crates/auto-test-case（协议核心）+auto-lang src/test_cases（adapters/编排/materialize/stale）+auto-case CLI（lint/list/inspect/run/proposal/stale）+引用式 pilot 21 case/24 check（legacy-map 16 列 hash 对账）+vendored parser 快照。历史交付（677e84771/129c4474f）+R1 修复轮（39e2ecafd，基线 284acbfb4）均为 master 祖先谱系。非目标（Rust 真编译/deadline/进程隔离/AC/native）=Design 35 B/C。SD-01..04 沉淀 docs/specs/auto-test-case/* + trans test-convention 双轨节 + vm/overview pilot 行；GOAL-016 进展（档位接线/轻依赖）入 goals.md。",
           "file": "docs/plans/archive/773-autodown-testcase-protocol-pilot.md"
+        },
+        {
+          "id": "P744-5",
+          "title": "PLAN-744 合入沉淀收据",
+          "file": "docs/plans/archive/744-vm-sqlite-module.md",
+          "content": "交付=VM sqlite 模块（cb7a59ede 初版 + 924273fa5 task-local 句柄修正 + b9fd5691e VM 栈嵌套列表 oracle）；SD-01/02 落地 canonical（docs/specs/auto-lang/vm/overview.md + docs/specs/a2r-std/project.md）；vm/plans.md 行回写；notes VM 轨 19/19 套件 + 冲突负例 13/13 实证（split 模式）；纯 VM 后端轨（--server vm）fs parity / service 链接缺陷登记 KNOWN-DEBT P744-D1。",
+          "related": [],
+          "status": "published",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan-744",
+            "merge",
+            "deposit"
+          ]
         }
       ]
     },
@@ -6470,6 +6485,38 @@
           "title": "TestCase 裁判来源、依赖方向与类型化阶段通道",
           "content": "vendored autodown-test-parser 三文件快照（指纹守卫+报告 toolchain 指纹）；树↔raw fence 双向校验、载荷永远取原始 bytes；依赖单向 auto-lang→auto-test-case（核心零 GUI 依赖，tree 仅 vendor）；VM 侧 run_with_capture_and_path_staged 类型化 trap 通道（engine 陷阱点 VMError 变体名中继，旧 API 原样）+单文件 a2r 发射 parse/CTEE 错误保持类型化；MultipleErrors 全递归；I/O/panic/超时=Infrastructure ERROR 永不满足语言负例（F-773-R2-01：project 模式入口仍无名 Msg=已知 fail-safe 债）。双轨边界（emit≠compile）沉淀 docs/specs/auto-lang/trans/design/test-convention.md 双轨节 + vm/overview pilot 行。",
           "file": "docs/specs/auto-test-case/architecture.md"
+        },
+        {
+          "id": "P744-1",
+          "title": "sqlite VM 调用面（PLAN-744）",
+          "file": "docs/specs/auto-lang/vm/overview.md",
+          "content": "五函数（open/exec/query/last_insert_rowid/last_error）经 stdlib/auto/sqlite.vm.at（#[vm]）声明，vm/ffi/stdlib.rs 手写 shim 双形注册（auto.sqlite.* 模块形 + auto.sqlitedb.* Type.method 小写形，覆盖 codegen 两种拼法）；连接句柄=栈上 opaque int，注册表归 AutoVM 实例、寿命绑定 opening task（remove_task 释放，Plan 775 修正）；query 返回 .at 面嵌套堆列表（外层 ListData<Value> 持 VmRef → 内层 ListData<i32> 负哨兵字符串行）；SQL 复用 a2r-std 同引擎，哨兵错误同源（不 panic，last_error 可查）。详见 vm/overview.md §现状 sqlite 条目。",
+          "related": [],
+          "status": "current",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan-744",
+            "vm",
+            "sqlite",
+            "native-ffi"
+          ]
+        },
+        {
+          "id": "P744-2",
+          "title": "sqlite VM shim 与 a2r 同引擎约定（PLAN-744）",
+          "file": "docs/specs/a2r-std/project.md",
+          "content": "VM shim 只是句柄/值转换层——SQL 执行复用同一 a2r-std 引擎，不重写；query 的 List<List<str>> 经 shim 转换入口构建（外层 ListData<Value> VmRef → 内层 ListData<i32> 负哨兵行）；单元格字符串化与哨兵约定与 a2r 侧逐格一致（NULL→\"\"、BLOB→\"<N bytes>\"）；句柄 task-local（Plan 775 修正），进程级初版注册表不回写。详见 a2r-std/project.md §sqlite 模块约定。",
+          "related": [],
+          "status": "current",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan-744",
+            "a2r-std",
+            "sqlite",
+            "parity"
+          ]
         }
       ]
     },
@@ -7757,6 +7804,22 @@
           "title": "TestCase pilot 永久控制与档位接线",
           "content": "F-773-R1-01..11 反例固化为永久控制（test_cases_tests.rs 31 例：成功永不满足 error/支持表 admission/产物交接不切断/选择零副作用/输出域拒绝/身份逐字节+stale/限额/lint 全 admission/runner I/O=ERROR）；协议核心 67 例（contract_decode 支持表 5 例+admission 路径域/有界读 4 例+diff）；档位接线=cargo t（test_cases_tests 家族）/tv（vm_file_tests::pilot_aggregate_vm）/tt（a2r_tests::pilot_aggregate_a2r）；复审反例集适配重放（attachments/773/repair-r1/replay.py，输入零改动）。",
           "file": "crates/auto-lang/src/tests/test_cases_tests.rs"
+        },
+        {
+          "id": "P744-3",
+          "title": "sqlite_vm_tests 三测（PLAN-744）",
+          "file": "crates/auto-lang/src/vm/ffi/stdlib.rs",
+          "content": "①sqlite_vm_open_exec_query_roundtrip（open/exec/query/rowid/哨兵错误/未知句柄）②sqlite_vm_handles_are_vm_local_and_released_with_request_task（VM-local + remove_task 释放 + 跨 VM 隔离）③sqlite_vm_query_nested_heap_list_via_vm_stack（R1 复审 F744-R1-01 补齐：五公开调用全走 task/栈 shim、参数经 VMConvertible 入栈=引擎分派同路径；query 结果按堆布局消费逐格断言 3 行×4 列中文/引号/NULL/BLOB；空结果与错误哨兵覆盖）。日常档入口：cargo test -p auto-lang --lib sqlite。",
+          "related": [],
+          "status": "current",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan-744",
+            "vm",
+            "sqlite",
+            "test-oracle"
+          ]
         }
       ]
     },
@@ -10510,10 +10573,25 @@
           "title": "PLAN-773 R1 needs_fix→修复→R2 final pass",
           "content": "R1 独立复审 needs_fix（11 阻断：成功满足 error/已接受字段被忽略/FAIL 切断 actual 交接/selector 后筛/输出覆盖输入/身份不含内容/限额未接线/阶段从文本提取/lint 不验引用/pilot 不可达/追溯缺 hash）；修复轮 commit 39e2ecafd 全闭合（R2 逐项 VERIFIED+全门禁重跑：核心 67/67、裸 t 5294/5294、tv 163/163、tt 5663+3 负载 flake 隔离绿、fmt 零差异、tree 仅 vendor、CLI pilot 24/24+stale 24 FRESH）；R2 pass 唯一 finding F-773-R2-01（minor：a2r project 模式 emit 错误仍无名 Msg→Infrastructure，fail-safe 不假 PASS，登记 KNOWN-DEBT）。reviewed_commit 39e2ecafd，基线 284acbfb4，冻结 delta 未漂移。",
           "file": "docs/plans/archive/773-autodown-testcase-protocol-pilot.md"
+        },
+        {
+          "id": "P744-4",
+          "title": "PLAN-744 复审与合并收据（R1 needs_fix → R2 final pass）",
+          "file": "docs/plans/archive/744-vm-sqlite-module.md",
+          "content": "R1 就绪性核查 needs_fix（F744-R1-01 嵌套堆列表 VM oracle 缺失 / F744-R1-02 绑定提交门禁证据缺失 / F744-R1-03 规范收尾）；work 修复 b9fd5691e（test-only VM 栈 oracle + 绑定门禁：裸 cargo t 5278/5279 归因 0 新红、cargo tv 162/162）；R2 final pass @b9fd5691e：AC-01/02/03 全 pass，F-R1-01/02 closed、F-R1-03 冻结（SD-01/02），P744-D1 维持在册。报告 reports/744-completion-review-r1.md；证据 attachments/744/r2-evidence/。",
+          "related": [],
+          "status": "done",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan-744",
+            "review",
+            "merge-receipt"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 11
+  "version": 12
 }
