@@ -1,0 +1,13 @@
+expanded_limit=1 discovered_checks=2 errors=0
+empty_exit=0
+{
+  "schema": "autolang.test-report/1",
+  "suite": "empty",
+  "suite_sha256": "hash",
+  "required_adapters": [],
+  "summary": { "total": 0,  },
+  "coverage_gaps": [],
+  "load_errors": [],
+  "results": [
+  ]
+}

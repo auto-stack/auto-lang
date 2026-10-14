@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-773
-status: execution_done
+status: executing
 feature_name: AutoDown TestCase 协议与只读试点
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-12
-updated_at: 2026-10-12
+updated_at: 2026-10-14
 
 supersedes_spec_components:
   - docs/specs/auto-lang/trans/design/test-convention.md
@@ -17,7 +17,7 @@ new_spec_components:
   - docs/specs/auto-test-case/plans.md
 touched_goals: [GOAL-016]
 affects: [auto-test-case, auto-lang/vm, auto-lang/trans]
-current_step: 8
+current_step: 1
 total_steps: 10
 ---
 
@@ -25,12 +25,15 @@ total_steps: 10
 
 ## 0. 变更摘要
 
+当前状态（2026-10-14）：独立 final review R1 **needs_fix**；历史代码已合入，但验收缺口未闭合。T-02..08 重开，T-09/10 pending，1/10。
+修复树：`D:/autostack/.wt/lang-773/auto-lang` / `plan-773-dev`；完整证据见 [R1](attachments/773/review-r1/REVIEW.md)。
+
 实施 [Design 35](../design/35-autodown-test-cases.md) 的 A 阶段：真实 AutoDown 块树
 定位静态 Atom 合同，原始 byte range/sidecar 提供载荷；建立严格发现/校验、AVM run
 与 a2r emit 独立检查、只读预期、逐 check 报告。选 20–30 个现有逻辑用例作引用式
 试点，登记原入口、比较器、门禁与弱 oracle，保留旧执行路径。
 
-当前仅交付执行合同草案；尚未修改 runner 或执行全部测试。Plan 767 的 AC 标量
+以下为创建时的历史草案描述：当时仅交付执行合同草案，尚未修改 runner 或执行全部测试。Plan 767 的 AC 标量
 能力、工作树和验收独立推进；本计划无其完成依赖。
 
 ## 1. 目标
@@ -289,13 +292,13 @@ Design 35 §14 actual compile/run 条目归 B；本期 V-04 仅验证产物接�
 | ID | owner_stage | 依赖 | 文件/符号与成果 | 验证 / AC | 状态 |
 |---|---|---|---|---|---|
 | T-01 | work | 用户确认 r1 | 在指定树调查 parser 许可/来源/模块闭包、AVM 真阶段/entry/a2r 项目 API；新 attachments/768/feasibility.md 冻结来源、支持/资源表、试点约束 | 有限 parse→bytes→真 adapter whole-path 探针、V-09 边界定案；AC-02/04/08。关键不可行先修订合同 | [x] 2026-10-12 work：探针 [probe-t01.rs](attachments/768/probe-t01.rs)/[output](attachments/768/probe-t01-output.txt)（22 pass；fence 树↔raw 一一对应、AVM/a2r 与旧金样逐字节一致、program entry result="14"）；[feasibility.md](attachments/768/feasibility.md) 冻结 vendor 闭包/许可缺口/阶段分类/资源表/支持表/试点裁定。附带发现并修复：基线 `--no-default-features` 编译失败（frame_bench 4×E0433）→ 提交 2291cd78e；worktree 跨仓 path 解析需组内 auto-down 兄弟（pinned fba6563ed 分离 worktree，预存问题亦影响 lang-767） |
-| T-02 | work | T-01 | 新 vendor/autodown-test-parser/ pinned snapshot；新 crates/auto-test-case/{Cargo.toml,src/lib.rs,src/document.rs,src/raw_ranges.rs}；根 Cargo 成员；tree/range、path/resource admission | cargo test -p auto-test-case，V-02/06/09、cargo tree；AC-02/05/08 | [x] 2026-10-12 work：commit 8feeb9678（vendor 三文件指纹=feasibility §1 + 守卫测试防漂移；CaseDocument 树↔raw 逐 fence 对应/未闭合 ERROR/anchor 小节恰一 fence；raw locator 复刻上游 fence 规则；admission 冻结默认/硬顶+虚拟路径/reparse 拒绝）。`cargo test -p auto-test-case` 16 pass；`cargo tree`：运行时依赖仅 vendor 解析器（auto-atom/auto-val 仅 dev） |
-| T-03 | work | T-02 | 新协议 src/{profile,ir,discovery,suite,compare,report}.rs（可等价合并职责）；严格 schema/ref/defaults/DAG/comparator/report | protocol V-01/04/05/07/08；AC-01/03/04/07 | [x] 2026-10-12 work：commit 上接 8feeb9678（atom/contract/ir/suite/discovery/compare/report 七模块 + parity/decode/discovery 集成测试）。`cargo test -p auto-test-case` 57 pass 0 warn：未知字段定位错误、avm/run+a2r/emit 封闭矩阵、弱 oracle（裸 stage）拒绝、product_from 引用+环校验、defaults 深合并（对象递归/数组整体替换）、逐文件发现清单含错误保留、零发现硬错、退出码 2>1>0 与 NOT_RUN 破绿 |
-| T-04 | work | T-03 | 新 src/test_cases/{mod,avm}.rs，lib.rs 挂接/Cargo 依赖与空 feature；AVM stage observations、明确 entry、.as lower、result/stdout | check + scoped t test_cases，V-03/05/10；AC-03/04/08 | [x] 2026-10-12 work：commit 1b13aa323（runner 编排 + avm 适配器走生产 path API；变体法阶段分类/MultipleErrors 递归/miette code；panic=基础设施 ERROR；.as lowered hash 证据；skip/coverage-gap→exit 2）。`cargo test -p auto-lang --lib --features test-cases test_cases` 8 pass（正/负/独立/错阶段/.as/skip/gap）；`--no-default-features --features test-cases` 编译通过且依赖树无图形件。注：基线 examples 非 fmt-clean（预存，复审用档照实记录） |
-| T-05 | work | T-04 | 新 test_cases/{a2r,materialize}.rs，source_dir/project 真产物、manifest/scratch/proposal-only | scoped adapters V-03/04/06/10、前后 hash；AC-03/05/08 | [x] 2026-10-12 work：commit 7df514aa2（128MB 大栈发射；use.c builtin/盘上双路预检否则合同 ERROR；逐项 bytes+多出产物拒绝；product registry→上游未过=BLOCKED；proposal 只写提议目录+PROPOSALS.md）。测试 13/13：legacy 金样逐字节对拍、project 多产物≡同布局直接调用（发现 Cargo.toml app 名派生自父目录名→feasibility §4）、BLOCKED 链、缺 manifest、proposal 前后 hash 不变 |
-| T-06 | work | T-05 | 新 test/cases/pilot/{*.case.ad,pilot.suite.ad,legacy-map.tsv,README.md} 和 importer；20–30 引用导入、≥3 双 check，未发现/weak/ignore 对账 | 真实旧新报告、V-07/10，新协议负例不计导入；AC-01/03/04/06/07 | [x] 2026-10-12 work：commit 85710109d。21 case/24 check（fixture_root 原位引用，零搬动）；3 双 check 同源独立 oracle；OOB 强化（map 记录）；json_is_null 旧 oracle 陈值修正（wrapper 从未验证）；8 个新 oracle 经 proposal 流生成+逐项人工审查；legacy-map 12 列对账=报告集合精确相等（测试锁定）。旧新一致证据：a2r wrappers 418 pass（2 预存红与本试点无关）、短路 wrappers 3 pass、新 runner 24/24。裁定修正：vm 01_basics/15_nested wrappers 均 #[ignore]]，活跃 legacy 门禁=发现式 corpus runner（map legacy_state 如实） |
-| T-07 | work | T-06 | 新 src/bin/auto-case.rs lint/list/inspect/run/proposal；在 src/tests/{vm_file_tests,a2r_tests}.rs 加 pilot 聚合入口并固定名称，报告 harness→动态 checks | 开发命令、tv/tt listing、no-default pilot、JSON/console 一致；AC-01/05/06/07/08 | [x] 2026-10-12 work：commit 8a9f305cb（CLI 五子命令；selector 未选项记 NOT_RUN 不冒充全量 gate；t/tv/tt 别名接入 test-cases——旧 filter 直接触达 pilot 聚合入口；no-default CLI 全链 24/24 exit 0=§6.2 命令原样）。附带修复预存 VM 缺陷：register_shim_by_name 对动态段 id（next_id 被 register_with_id 顶过 10000）走 dynamic 表——新鲜二进制首跑 VM 原必炸（探针 registry=239/next_id=10015 实证）。日常档 no-fail-fast：仅四在案红+KNOWN-DEBT 396（Plan 744 dir_names），零新增红；cargo tv cookbook 红经 stash 基线对照为预存 |
-| T-08 | work | T-07 | attachments/768 完整 V-01–10/成本/只读 hash/拟议 Spec delta，内部合同预检 | scoped 控制 + §6门禁；AC-01–08。全部 work-owned 完成才 execution_done | [x] 2026-10-12 work：[evidence.md](attachments/768/evidence.md)（V-01–10 全映射到可执行测试/命令且全过；成本构建/执行分列；只读树哈希前后一致 4ce1f974…；t/tv/tt/协议/无 GUI 档结果与预存红归因；SD-01–04 拟议内容；AC-01–08 自检表）+ pilot-run-console.txt/pilot-run-report.json。work-owned 8/10 完成 → execution_done |
+| T-02 | work | T-01 | 新 vendor/autodown-test-parser/ pinned snapshot；新 crates/auto-test-case/{Cargo.toml,src/lib.rs,src/document.rs,src/raw_ranges.rs}；根 Cargo 成员；tree/range、path/resource admission | cargo test -p auto-test-case，V-02/06/09、cargo tree；AC-02/05/08 | [ ] **R1 重开**（原完成记录为历史；见 [独立复审](attachments/773/review-r1/REVIEW.md) F-773-R1-01..11） 2026-10-12 work：commit 8feeb9678（vendor 三文件指纹=feasibility §1 + 守卫测试防漂移；CaseDocument 树↔raw 逐 fence 对应/未闭合 ERROR/anchor 小节恰一 fence；raw locator 复刻上游 fence 规则；admission 冻结默认/硬顶+虚拟路径/reparse 拒绝）。`cargo test -p auto-test-case` 16 pass；`cargo tree`：运行时依赖仅 vendor 解析器（auto-atom/auto-val 仅 dev） |
+| T-03 | work | T-02 | 新协议 src/{profile,ir,discovery,suite,compare,report}.rs（可等价合并职责）；严格 schema/ref/defaults/DAG/comparator/report | protocol V-01/04/05/07/08；AC-01/03/04/07 | [ ] **R1 重开**（原完成记录为历史；见 [独立复审](attachments/773/review-r1/REVIEW.md) F-773-R1-01..11） 2026-10-12 work：commit 上接 8feeb9678（atom/contract/ir/suite/discovery/compare/report 七模块 + parity/decode/discovery 集成测试）。`cargo test -p auto-test-case` 57 pass 0 warn：未知字段定位错误、avm/run+a2r/emit 封闭矩阵、弱 oracle（裸 stage）拒绝、product_from 引用+环校验、defaults 深合并（对象递归/数组整体替换）、逐文件发现清单含错误保留、零发现硬错、退出码 2>1>0 与 NOT_RUN 破绿 |
+| T-04 | work | T-03 | 新 src/test_cases/{mod,avm}.rs，lib.rs 挂接/Cargo 依赖与空 feature；AVM stage observations、明确 entry、.as lower、result/stdout | check + scoped t test_cases，V-03/05/10；AC-03/04/08 | [ ] **R1 重开**（原完成记录为历史；见 [独立复审](attachments/773/review-r1/REVIEW.md) F-773-R1-01..11） 2026-10-12 work：commit 1b13aa323（runner 编排 + avm 适配器走生产 path API；变体法阶段分类/MultipleErrors 递归/miette code；panic=基础设施 ERROR；.as lowered hash 证据；skip/coverage-gap→exit 2）。`cargo test -p auto-lang --lib --features test-cases test_cases` 8 pass（正/负/独立/错阶段/.as/skip/gap）；`--no-default-features --features test-cases` 编译通过且依赖树无图形件。注：基线 examples 非 fmt-clean（预存，复审用档照实记录） |
+| T-05 | work | T-04 | 新 test_cases/{a2r,materialize}.rs，source_dir/project 真产物、manifest/scratch/proposal-only | scoped adapters V-03/04/06/10、前后 hash；AC-03/05/08 | [ ] **R1 重开**（原完成记录为历史；见 [独立复审](attachments/773/review-r1/REVIEW.md) F-773-R1-01..11） 2026-10-12 work：commit 7df514aa2（128MB 大栈发射；use.c builtin/盘上双路预检否则合同 ERROR；逐项 bytes+多出产物拒绝；product registry→上游未过=BLOCKED；proposal 只写提议目录+PROPOSALS.md）。测试 13/13：legacy 金样逐字节对拍、project 多产物≡同布局直接调用（发现 Cargo.toml app 名派生自父目录名→feasibility §4）、BLOCKED 链、缺 manifest、proposal 前后 hash 不变 |
+| T-06 | work | T-05 | 新 test/cases/pilot/{*.case.ad,pilot.suite.ad,legacy-map.tsv,README.md} 和 importer；20–30 引用导入、≥3 双 check，未发现/weak/ignore 对账 | 真实旧新报告、V-07/10，新协议负例不计导入；AC-01/03/04/06/07 | [ ] **R1 重开**（原完成记录为历史；见 [独立复审](attachments/773/review-r1/REVIEW.md) F-773-R1-01..11） 2026-10-12 work：commit 85710109d。21 case/24 check（fixture_root 原位引用，零搬动）；3 双 check 同源独立 oracle；OOB 强化（map 记录）；json_is_null 旧 oracle 陈值修正（wrapper 从未验证）；8 个新 oracle 经 proposal 流生成+逐项人工审查；legacy-map 12 列对账=报告集合精确相等（测试锁定）。旧新一致证据：a2r wrappers 418 pass（2 预存红与本试点无关）、短路 wrappers 3 pass、新 runner 24/24。裁定修正：vm 01_basics/15_nested wrappers 均 #[ignore]]，活跃 legacy 门禁=发现式 corpus runner（map legacy_state 如实） |
+| T-07 | work | T-06 | 新 src/bin/auto-case.rs lint/list/inspect/run/proposal；在 src/tests/{vm_file_tests,a2r_tests}.rs 加 pilot 聚合入口并固定名称，报告 harness→动态 checks | 开发命令、tv/tt listing、no-default pilot、JSON/console 一致；AC-01/05/06/07/08 | [ ] **R1 重开**（原完成记录为历史；见 [独立复审](attachments/773/review-r1/REVIEW.md) F-773-R1-01..11） 2026-10-12 work：commit 8a9f305cb（CLI 五子命令；selector 未选项记 NOT_RUN 不冒充全量 gate；t/tv/tt 别名接入 test-cases——旧 filter 直接触达 pilot 聚合入口；no-default CLI 全链 24/24 exit 0=§6.2 命令原样）。附带修复预存 VM 缺陷：register_shim_by_name 对动态段 id（next_id 被 register_with_id 顶过 10000）走 dynamic 表——新鲜二进制首跑 VM 原必炸（探针 registry=239/next_id=10015 实证）。日常档 no-fail-fast：仅四在案红+KNOWN-DEBT 396（Plan 744 dir_names），零新增红；cargo tv cookbook 红经 stash 基线对照为预存 |
+| T-08 | work | T-07 | attachments/768 完整 V-01–10/成本/只读 hash/拟议 Spec delta，内部合同预检 | scoped 控制 + §6门禁；AC-01–08。全部 work-owned 完成才 execution_done | [ ] **R1 重开**（原完成记录为历史；见 [独立复审](attachments/773/review-r1/REVIEW.md) F-773-R1-01..11） 2026-10-12 work：[evidence.md](attachments/768/evidence.md)（V-01–10 全映射到可执行测试/命令且全过；成本构建/执行分列；只读树哈希前后一致 4ce1f974…；t/tv/tt/协议/无 GUI 档结果与预存红归因；SD-01–04 拟议内容；AC-01–08 自检表）+ pilot-run-console.txt/pilot-run-report.json。work-owned 8/10 完成 → execution_done |
 | T-09 | review | T-08 | auto-plan:review 独立上下文同树核查 diff/控制/AC/SD，扫描遗漏/延期/workaround/KNOWN-DEBT；固定 delta/revision/commit | §6最终门禁 + 独立反例，AC-09；needs_fix 回同树 | [ ] |
 | T-10 | merge | T-09 pass | auto-plan:merge 主检出合入、SD/module/global/账本/spec-index；归档 docs/plans/archive；guard→移树/分支/空组，批量到期判定 | AC-10；先 bash D:/autostack/wt-guard.sh D:/autostack/.wt/lang-768/auto-lang，必须 clean；真实终态收据 | [ ] |
 
@@ -303,6 +306,27 @@ total_steps=10；work 完成 8/10、review 9/10、实际 merge/清理后 10/10�
 current_step 只计真实完成，未来阶段不能先勾。
 
 ## 9. 复审记录
+
+### 2026-10-14 — 独立 final review R1 / needs_fix
+
+- stage: review | review_scope: final | reviewer_identity: 本次 Codex 独立复审会话（未参与原实现）
+  | plan_id: PLAN-773 | plan_revision: 1 | outcome: **needs_fix**
+  | worktree_path: `D:/autostack/.wt/lang-773/auto-lang` | branch: `plan-773-dev`
+  | reviewed_commit: `284acbfb4340c01ed4f5464257d9b8235bf8c223`
+  | base_commit: 历史交付 `677e84771d2b3bfce6065260b2e1cc5bcf34483a`（含后修 `129c4474f`，均是 master 祖先）
+  | dependency_revisions: 只读 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`；裁判 vendor `fba6563e` 三文件指纹通过
+  | spec_inputs / frozen_delta: [baseline.json](attachments/773/review-r1/baseline.json)、[delta](attachments/773/review-r1/proposed-spec-delta.md)
+  | acceptance_results: AC-01/03/04/05/07 fail；AC-02/06/08 partial；AC-09 未获 pass；AC-10 pending
+  | findings: **F-773-R1-01..11**（合同内阻断，不是允许延期的完成项）
+  | evidence: [报告](attachments/773/review-r1/REVIEW.md)、[16 次 CLI 原始结果](attachments/773/review-r1/results.json)、[重放](attachments/773/review-r1/replay.py)
+  | pending_closeout_gates: 修复提交后 §6 全门禁、规范增量 pass、ledger、真实归档/guarded cleanup、batch due check
+  | next: auto-plan-work 在同一 lang-773 树修复/补永久控制 → 新提交独立复审。
+- 本轮协议测试 57/57、无窗口 pilot 24/24、正常只读 3,573 文件前后 hash 相等；
+  实证发现成功发射满足错误预期、已接受断言被忽略、FAIL 错误切断 actual 交接、
+  selector 后筛假 NOT_RUN、输出覆盖输入、sidecar 漂移不改身份、总量门未接线等。
+  当前 check/t/tv/tt 完整 final 门禁待修复提交，未沿用原工作侧“全过”摘要。
+- T-01 完成保留；T-02..08 重开，T-09/10 未完成；`current_step=1 / total_steps=10`。
+  已有默认分支交付不回滚；canonical Specs/账本未写，未归档，保留修复树。
 
 ### 2026-10-12 — work 完成 / execution_done 交接
 
@@ -349,7 +373,7 @@ current_step 只计真实完成，未来阶段不能先勾。
 
 ## 10. 待澄清事项
 
-- 按 L1 规则等待用户确认本 revision，然后创建实施工作树。
+- r1 实施已获授权并有历史交付；本轮退回 work，按 F-773-R1-01..11 修复后重新 final review；无新增范围确认请求。
 - parser 许可/来源、阶段/entry 通道、资源参数、多模块试点由 T-01 有界调查，
   不是默认通过的假设。若需跨仓写入/扩支持/削弱验收，先以具体证据修订给用户决定；
   常规路径/等价实现沿已确认范围自行推进。

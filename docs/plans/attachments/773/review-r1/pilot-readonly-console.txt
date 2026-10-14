@@ -1,0 +1,28 @@
+suite pilot (e8000bc50dd24730496473f720cfc0edde28565f6980b60244bad11737787665), schema autolang.test-report/1
+PASS         lang.basic.hello / vm [avm::run] tier=vm-corpus
+PASS         lang.basic.hello / rust [a2r::emit] tier=trans-snapshot
+PASS         lang.basic.str-upper / vm [avm::run] tier=vm-corpus
+PASS         lang.basic.str-upper / rust [a2r::emit] tier=trans-snapshot
+PASS         lang.basic.eq-false / vm [avm::run] tier=vm-corpus
+PASS         lang.basic.eq-false / rust [a2r::emit] tier=trans-snapshot
+PASS         lang.basic.arithmetic / vm [avm::run] tier=vm-corpus
+PASS         lang.basic.uint / vm [avm::run] tier=vm-corpus
+PASS         lang.basic.byte / vm [avm::run] tier=vm-corpus
+PASS         lang.basic.unary / vm [avm::run] tier=vm-corpus
+PASS         lang.basic.group / vm [avm::run] tier=vm-corpus
+PASS         lang.basic.comp / vm [avm::run] tier=vm-corpus
+PASS         lang.shortcircuit.and-or / vm [avm::run] tier=vm-corpus
+PASS         lang.shortcircuit.negative-index / vm [avm::run] tier=vm-corpus
+PASS         lang.error.out-of-bounds / vm [avm::run] tier=vm-corpus
+PASS         lang.script.json-is-null / vm [avm::run] tier=vm-corpus
+PASS         trans.basics.func / emit [a2r::emit] tier=trans-snapshot
+PASS         trans.basics.doc-comments / emit [a2r::emit] tier=trans-snapshot
+PASS         trans.basics.struct / emit [a2r::emit] tier=trans-snapshot
+PASS         trans.basics.for-range / emit [a2r::emit] tier=trans-snapshot
+PASS         trans.basics.arithmetic / emit [a2r::emit] tier=trans-snapshot
+PASS         trans.cabi.static / emit [a2r::emit] tier=trans-snapshot
+PASS         trans.cabi.dynamic / emit [a2r::emit] tier=trans-snapshot
+PASS         trans.project.multi-file / emit [a2r::emit] tier=trans-snapshot
+total 24 (PASS=24)
+exit 0
+

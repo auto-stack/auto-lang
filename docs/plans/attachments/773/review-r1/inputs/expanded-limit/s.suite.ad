@@ -1,0 +1,3 @@
+```test-suite
+suite { schema: "autolang.suite/1", id: "expanded", include: ["c0.case.ad", "c1.case.ad", "c2.case.ad", "c3.case.ad", "c4.case.ad"] }
+```

@@ -1,0 +1,3 @@
+```test-case
+case { schema: "autolang.case/1", id: "review.case", source: { text: "fn main() { print(1) }", syntax: "auto", path: "main.at" }, entry: { mode: "script" }, checks: [{ id: "emit", adapter: "a2r", action: "emit", expect: { completion: "success", stdout: { text: "IMPOSSIBLE" }, stderr: { text: "IMPOSSIBLE" }, result: { format: "legacy-display", text: "IMPOSSIBLE" }, artifacts: [{ path: "main.rs", file: "expected.rs" }] } }] }
+```
