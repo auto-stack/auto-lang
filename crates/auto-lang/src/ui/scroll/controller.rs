@@ -144,11 +144,13 @@ pub fn controller_generation(handle: &str) -> u64 {
 }
 
 /// PLAN-781 T-01：managed pane 标记（renderer managed 桥 build 期调用）。
+/// PLAN-781 T-05 勘定：upsert 形态——renderer 侧标记先于 build_scrollable
+/// 内的首次 bind_controller（无条目即丢失标记 → to_child 回执 queued 而非
+/// error:unsupported，实机矩阵 v06 锚定）；条目已存在时 bind 的 or_default
+/// 保持本标记。
 pub fn mark_controller_managed(handle: &str) {
     let mut reg = REGISTRY.lock().unwrap();
-    if let Some(entry) = reg.panes.get_mut(handle) {
-        entry.managed = true;
-    }
+    reg.panes.entry(handle.to_string()).or_default().managed = true;
 }
 
 /// PLAN-781 T-01 冻结：`auto.scroll.to_child(handle, key)` 入队面。
@@ -238,13 +240,18 @@ pub fn resolve_anchor_requests(
             continue;
         }
         // 代际不符（入队后换绑）→ not_bound：旧请求不落到新内容。
+        // PLAN-781 T-05 勘定：gen==0 = 入队于任何绑定之前（首次 bind 使
+        // 0→1）——冻结合同 §2「请求首次可在布局前发出，等待当前绑定的
+        // 有效布局后消费」：此类请求采用当前绑定（首绑或其后的现状），
+        // 不作 not_bound（Init 先发目标 → 首绑后 applied 的实机矩阵锚定；
+        // gen≥1 的请求仍严格校验换绑）。
         let current_gen = reg.generations.get(&handle).copied().unwrap_or(0);
         let req_gen = reg
             .anchor_requests
             .get(&(handle.clone(), key.clone()))
             .map(|r| r.generation)
             .unwrap_or(u64::MAX);
-        if req_gen != current_gen {
+        if req_gen != 0 && req_gen != current_gen {
             if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
                 req.state = AnchorRequestState::Invalid("not_bound".into());
             }
@@ -666,6 +673,31 @@ mod tests {
         assert_eq!(finals.len(), 1);
         assert_eq!(finals[0].1, "pane_c2");
         assert_state(&h, "p10", AnchorRequestState::Applied);
+        reset_for_test();
+    }
+
+    /// PLAN-781 T-05 实机矩阵勘定（vm_probe v03_init_state_applied 红）：
+    /// 入队于任何绑定之前（gen=0，Init 先发目标）的请求采用**当前**绑定
+    /// ——首次 bind 的 0→1 自增不是换绑；冻结合同 §2「请求首次可在布局
+    /// 前发出，等待当前绑定的有效布局后消费」。
+    #[test]
+    fn plan781_anchor_pre_bind_request_adopts_first_binding() {
+        reset_for_test();
+        let h = next_controller_handle();
+        // Init 时序：pane 尚未 build → 入队记录 gen=0。
+        enqueue_anchor_request(&h, "c3").unwrap();
+        assert_state(&h, "c3", AnchorRequestState::Pending);
+        // 首绑（gen 0→1）+ 预热 + 当帧采集 → applied（不是 not_bound）。
+        bind_controller(&h, "pane_init"); // gen=1
+        take_prime_requests();
+        note_controller_state(&h, (0.0, 50.0), (400.0, 200.0), (800.0, 1000.0));
+        let bounds = HashMap::from([((h.clone(), "c3".to_string()), (0.0_f64, 36.0_f64))]);
+        let origins = HashMap::from([("pane_init".to_string(), (0.0_f64, 50.0_f64))]);
+        let finals = resolve_anchor_requests(&bounds, &origins, true);
+        assert_eq!(finals.len(), 1, "pre-bind request must adopt first binding");
+        assert_eq!(finals[0].1, "pane_init");
+        assert_state(&h, "c3", AnchorRequestState::Applied);
+        // 对照：gen≥1 的请求在换绑后仍严格 not_bound（上一测覆盖）。
         reset_for_test();
     }
 

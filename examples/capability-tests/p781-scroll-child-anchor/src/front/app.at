@@ -1,0 +1,879 @@
+// p781-scroll-child-anchor — PLAN-781 阶段B子内容锚点 capability 示例（双端同源）。
+// 覆盖接口决策（docs/plans/reports/781-interface-decision.md）冻结合同的
+// V-01~06 矩阵：真实定位（双 4000 字长段/中文+ASCII）、非连续 key 寻址、
+// Init 先发目标/双章换绑、负例族（空key/缺key/越界/重复/跨pane/幽灵句柄）、
+// 重排（字号/宽度）、旧 offset 族回归与 managed unsupported。
+// 驱动：tests/vm_probe.py（MCP 原生腿）+ tests/vue_probe.mjs（Vue 腿）。
+
+widget App {
+    model {
+        var main_ctl str = "main-pane"
+        var side_ctl str = "side-pane"
+        var mgd_ctl str = "mgd-pane"
+        var reply str = "-"
+        var old_off float = -1.0
+        var chapter int = 1
+        var narrow bool = false
+        var body_style str = "text-sm leading-5"
+    }
+
+    msg C { Init, Go(str, str), Query(str, str), SwitchCh, FontL, FontS, SetNarrow, SetWide, OldEnd, OldBy, OldStart, OldProbe }
+
+    on {
+        .Init -> {
+            let r str = scroll_to_child(.main_ctl, "c3")
+        }
+        .Go(p, k) -> {
+            let r str = scroll_to_child(p, k)
+            .reply = r
+        }
+        .Query(p, k) -> {
+            .reply = scroll_anchor_state(p, k)
+        }
+        .SwitchCh -> {
+            .chapter = 3 - .chapter
+        }
+        .FontL -> {
+            .body_style = "text-lg leading-8"
+        }
+        .FontS -> {
+            .body_style = "text-sm leading-5"
+        }
+        .SetNarrow -> {
+            .narrow = true
+        }
+        .SetWide -> {
+            .narrow = false
+        }
+        .OldEnd -> {
+            let ok = scroll_to_end(.main_ctl)
+        }
+        .OldBy -> {
+            let ok = scroll_by(.main_ctl, 320.0)
+        }
+        .OldStart -> {
+            let ok = scroll_to_start(.main_ctl)
+        }
+        .OldProbe -> {
+            let s = scroll_state(.main_ctl)
+            .old_off = s.offset_y
+        }
+    }
+
+    view {
+        col (style: "h-screen flex flex-col") {
+            col (style: "shrink-0 border-b border-border px-3 py-2 gap-1") {
+                row (style: "gap-2 flex-wrap") {
+                    button "GoC50" { onclick: .Go(.main_ctl, "c50") }
+                    button "GoA80" { onclick: .Go(.main_ctl, "a80") }
+                    button "GoC3" { onclick: .Go(.main_ctl, "c3") }
+                    button "GoP8" { onclick: .Go(.main_ctl, "p8") }
+                    button "GoQ5" { onclick: .Go(.main_ctl, "q5") }
+                    button "GoDup" { onclick: .Go(.main_ctl, "dup") }
+                    button "GoMiss" { onclick: .Go(.main_ctl, "missing") }
+                    button "GoOOB" { onclick: .Go(.main_ctl, "p9999") }
+                }
+                row (style: "gap-2 flex-wrap") {
+                    button "GoEmptyK" { onclick: .Go(.main_ctl, "") }
+                    button "GoBadH" { onclick: .Go("", "c3") }
+                    button "GoGhost" { onclick: .Go("ghost-pane", "gk") }
+                    button "QGhost" { onclick: .Query("ghost-pane", "gk") }
+                    button "QC3" { onclick: .Query(.main_ctl, "c3") }
+                    button "QC50" { onclick: .Query(.main_ctl, "c50") }
+                    button "QQ5" { onclick: .Query(.main_ctl, "q5") }
+                    button "QMiss" { onclick: .Query(.main_ctl, "missing") }
+                    button "QUnknown" { onclick: .Query(.main_ctl, "never") }
+                    button "GoMgd" { onclick: .Go(.mgd_ctl, "any") }
+                }
+                row (style: "gap-2 flex-wrap") {
+                    button "GoSideDup" { onclick: .Go(.side_ctl, "dup") }
+                    button "GoSideOnly" { onclick: .Go(.side_ctl, "sideonly") }
+                    button "SwitchCh" { onclick: .SwitchCh }
+                    button "FontL" { onclick: .FontL }
+                    button "FontS" { onclick: .FontS }
+                    button "SetNarrow" { onclick: .SetNarrow }
+                    button "SetWide" { onclick: .SetWide }
+                }
+                row (style: "gap-2 flex-wrap") {
+                    button "OldEnd" { onclick: .OldEnd }
+                    button "OldBy" { onclick: .OldBy }
+                    button "OldStart" { onclick: .OldStart }
+                    button "OldProbe" { onclick: .OldProbe }
+                    text `R=${.reply} old=${.old_off}` { style: "text-xs font-mono text-muted-foreground" }
+                }
+            }
+            row (style: "flex-1 min-h-0 gap-2 px-3 pb-3") {
+                if .chapter == 1 {
+                    scroll-pane (controller: .main_ctl, style: ["border rounded h-full min-w-0", if .narrow { "w-1/2" } else { "flex-1" }]) {
+                        col (style: "px-4") {
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c0"
+                        text "V03-c0 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c1"
+                        text "V03-c1 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c2"
+                        text "V03-c2 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c3"
+                        text "V03-c3 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c4"
+                        text "V03-c4 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c5"
+                        text "V03-c5 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c6"
+                        text "V03-c6 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c7"
+                        text "V03-c7 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c8"
+                        text "V03-c8 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "c9"
+                        text "V03-c9 启动定位短行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "p2"
+                        text "V02-p2 原始行2号段。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "p5"
+                        text "V02-p5 原始行5号段。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "p8"
+                        text "V02-p8 原始行8号段。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "p12"
+                        text "V02-p12 原始行12号段。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "p16"
+                        text "V02-p16 原始行16号段。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "p20"
+                        text "V02-p20 原始行20号段。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s0"
+                        text "filler 短段 000 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s1"
+                        text "filler 短段 001 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s2"
+                        text "filler 短段 002 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s3"
+                        text "filler 短段 003 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s4"
+                        text "filler 短段 004 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s5"
+                        text "filler 短段 005 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s6"
+                        text "filler 短段 006 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s7"
+                        text "filler 短段 007 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s8"
+                        text "filler 短段 008 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s9"
+                        text "filler 短段 009 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s10"
+                        text "filler 短段 010 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s11"
+                        text "filler 短段 011 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s12"
+                        text "filler 短段 012 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s13"
+                        text "filler 短段 013 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s14"
+                        text "filler 短段 014 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s15"
+                        text "filler 短段 015 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s16"
+                        text "filler 短段 016 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s17"
+                        text "filler 短段 017 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s18"
+                        text "filler 短段 018 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s19"
+                        text "filler 短段 019 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s20"
+                        text "filler 短段 020 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s21"
+                        text "filler 短段 021 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s22"
+                        text "filler 短段 022 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s23"
+                        text "filler 短段 023 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s24"
+                        text "filler 短段 024 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s25"
+                        text "filler 短段 025 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s26"
+                        text "filler 短段 026 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s27"
+                        text "filler 短段 027 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s28"
+                        text "filler 短段 028 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s29"
+                        text "filler 短段 029 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s30"
+                        text "filler 短段 030 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s31"
+                        text "filler 短段 031 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s32"
+                        text "filler 短段 032 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s33"
+                        text "filler 短段 033 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s34"
+                        text "filler 短段 034 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s35"
+                        text "filler 短段 035 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s36"
+                        text "filler 短段 036 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s37"
+                        text "filler 短段 037 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s38"
+                        text "filler 短段 038 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s39"
+                        text "filler 短段 039 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s40"
+                        text "filler 短段 040 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s41"
+                        text "filler 短段 041 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s42"
+                        text "filler 短段 042 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s43"
+                        text "filler 短段 043 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s44"
+                        text "filler 短段 044 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s45"
+                        text "filler 短段 045 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s46"
+                        text "filler 短段 046 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s47"
+                        text "filler 短段 047 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s48"
+                        text "filler 短段 048 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s49"
+                        text "filler 短段 049 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        scroll-anchor: "c50"
+                        text "V01-C-LONG-START 锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的起始区域可见性，句子重复填充到四千字符规格。锚点长段落用于验证高于视口目标的 V01-C-LONG-END" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s50"
+                        text "filler 短段 050 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s51"
+                        text "filler 短段 051 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s52"
+                        text "filler 短段 052 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s53"
+                        text "filler 短段 053 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s54"
+                        text "filler 短段 054 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s55"
+                        text "filler 短段 055 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s56"
+                        text "filler 短段 056 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s57"
+                        text "filler 短段 057 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s58"
+                        text "filler 短段 058 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s59"
+                        text "filler 短段 059 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s60"
+                        text "filler 短段 060 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s61"
+                        text "filler 短段 061 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s62"
+                        text "filler 短段 062 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s63"
+                        text "filler 短段 063 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s64"
+                        text "filler 短段 064 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s65"
+                        text "filler 短段 065 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s66"
+                        text "filler 短段 066 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s67"
+                        text "filler 短段 067 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s68"
+                        text "filler 短段 068 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s69"
+                        text "filler 短段 069 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s70"
+                        text "filler 短段 070 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s71"
+                        text "filler 短段 071 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s72"
+                        text "filler 短段 072 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s73"
+                        text "filler 短段 073 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s74"
+                        text "filler 短段 074 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s75"
+                        text "filler 短段 075 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s76"
+                        text "filler 短段 076 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s77"
+                        text "filler 短段 077 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s78"
+                        text "filler 短段 078 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s79"
+                        text "filler 短段 079 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        scroll-anchor: "a80"
+                        text "V01-A-LONG-START The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller target becomes visible. The tall anchor paragraph verifies that the starting region of a viewport-taller ta V01-A-LONG-END" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s80"
+                        text "filler 短段 080 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s81"
+                        text "filler 短段 081 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s82"
+                        text "filler 短段 082 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s83"
+                        text "filler 短段 083 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s84"
+                        text "filler 短段 084 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s85"
+                        text "filler 短段 085 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s86"
+                        text "filler 短段 086 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s87"
+                        text "filler 短段 087 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s88"
+                        text "filler 短段 088 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s89"
+                        text "filler 短段 089 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s90"
+                        text "filler 短段 090 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s91"
+                        text "filler 短段 091 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s92"
+                        text "filler 短段 092 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s93"
+                        text "filler 短段 093 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s94"
+                        text "filler 短段 094 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s95"
+                        text "filler 短段 095 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s96"
+                        text "filler 短段 096 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s97"
+                        text "filler 短段 097 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s98"
+                        text "filler 短段 098 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "s99"
+                        text "filler 短段 099 filler short paragraph." { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "dup"
+                        text "dup-A-early 同pane重复键甲。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "dup"
+                        text "dup-B-late 同pane重复键乙。" { style: .body_style }
+                    }
+                        }
+                    }
+                } else {
+                    scroll-pane (controller: .main_ctl, style: ["border rounded h-full min-w-0", if .narrow { "w-1/2" } else { "flex-1" }]) {
+                        col (style: "px-4") {
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q0"
+                        text "ch2-q0 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q1"
+                        text "ch2-q1 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q2"
+                        text "ch2-q2 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q3"
+                        text "ch2-q3 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q4"
+                        text "ch2-q4 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q5"
+                        text "ch2-q5 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q6"
+                        text "ch2-q6 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q7"
+                        text "ch2-q7 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q8"
+                        text "ch2-q8 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q9"
+                        text "ch2-q9 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q10"
+                        text "ch2-q10 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q11"
+                        text "ch2-q11 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q12"
+                        text "ch2-q12 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q13"
+                        text "ch2-q13 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q14"
+                        text "ch2-q14 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q15"
+                        text "ch2-q15 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q16"
+                        text "ch2-q16 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q17"
+                        text "ch2-q17 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q18"
+                        text "ch2-q18 第二章内容行。" { style: .body_style }
+                    }
+                    col {
+                        style: "py-2 border-b border-border"
+                        scroll-anchor: "q19"
+                        text "ch2-q19 第二章内容行。" { style: .body_style }
+                    }
+                        }
+                    }
+                }
+                col (style: "w-56 flex flex-col gap-2 shrink-0") {
+                    scroll-pane (controller: .side_ctl, style: "border rounded flex-1 min-h-0") {
+                        col (style: "px-2") {
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sd0"
+                    text "side-0 侧栏行" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sd1"
+                    text "side-1 侧栏行" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sd2"
+                    text "side-2 侧栏行" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "dup"
+                    text "side-dup-row 跨pane同键" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sd3"
+                    text "side-3 侧栏行" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sideonly"
+                    text "side-only-row 侧栏独有键" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sd4"
+                    text "side-4 侧栏行" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sd5"
+                    text "side-5 侧栏行" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sd6"
+                    text "side-6 侧栏行" { style: "text-xs" }
+                }
+                col {
+                    style: "py-2 border-b border-border"
+                    scroll-anchor: "sd7"
+                    text "side-7 侧栏行" { style: "text-xs" }
+                }
+                        }
+                    }
+                    scroll-pane (controller: .mgd_ctl, style: "border rounded h-32") {
+                        scroll-test-content (key: "cap781", extent_h: 10000000.0, extent_w: 200000.0) {}
+                    }
+                }
+            }
+        }
+    }
+}

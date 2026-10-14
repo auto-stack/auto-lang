@@ -1,0 +1,6 @@
+// p781-scroll-child-anchor 后端占位：vue 轨（AutoVM HTTP 后端）要求
+// api.at 契约存在；单 ping 路由，前端不消费。
+#[api(method = "GET", path = "/api/ping")]
+pub fn ping() str {
+    return "pong"
+}

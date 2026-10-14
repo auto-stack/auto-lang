@@ -3010,6 +3010,32 @@ pub(crate) fn drain_pending_scroll_offsets() -> Vec<(String, (f32, f32))> {
 /// 结构性归零 rail 命中区，非仅视觉透明）；controller 经
 /// ui::scroll::controller 注册表绑定稳定 id 并缓存测量（update 期
 /// drain_resolved_intents 排空消费）。
+///
+/// PLAN-781 T-05：pane 内容为 managed 桥（子树含 ManagedScrollContent）
+/// 判定——controller pane build 期据此调 mark_controller_managed（9922
+/// to_child 的 unsupported 合同）。有界递归穿透包装变体
+/// （Container/Column/Row/AnchorSlot/ScrollAnchorMark/MouseArea——
+/// VM 轨 aura→View 转换的包装现实）；**不进嵌套 Scrollable**——内层
+/// pane 的 managed 内容归属内层 controller，不得误标外层。
+fn content_is_managed_bridge<M: Clone + Debug + 'static>(v: &AbstractView<M>) -> bool {
+    fn walk<M: Clone + Debug + 'static>(v: &AbstractView<M>, depth: u8) -> bool {
+        if depth == 0 {
+            return false;
+        }
+        match v {
+            AbstractView::ManagedScrollContent { .. } => true,
+            AbstractView::Container { child, .. }
+            | AbstractView::AnchorSlot { child, .. }
+            | AbstractView::ScrollAnchorMark { child, .. }
+            | AbstractView::MouseArea { content: child, .. } => walk(child, depth - 1),
+            AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
+                children.iter().any(|c| walk(c, depth - 1))
+            }
+            _ => false,
+        }
+    }
+    walk(v, 6)
+}
 #[allow(clippy::too_many_arguments)]
 fn build_scrollable<M: Clone + Debug + 'static>(
     child: iced::Element<'static, M>,
@@ -6342,6 +6368,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 };
                 // PLAN-656: 泛型路径 controller 直传（测量缓存包装仅在动态
                 // 臂可行——M 具体；此处无用户 on-scroll 时不缓存测量）。
+                // PLAN-781 T-05: managed 桥标记（9922 unsupported 合同）。
+                if let (Some(c), true) = (
+                    controller.as_ref(),
+                    content_is_managed_bridge(child.as_ref()),
+                ) {
+                    crate::ui::scroll::controller::mark_controller_managed(c.key());
+                }
                 build_scrollable(
                     child.into_iced(),
                     width,
@@ -30724,6 +30757,14 @@ fn render_dynamic_view(
                 dbg_props.push(("h".into(), format!("{}px", h)));
             }
             path.push(0);
+            // PLAN-781 T-05: managed 桥标记（9922 unsupported 合同；动态臂
+            // 与泛型臂同形——必须在 child move 进 render 前判定）。
+            if let (Some(c), true) = (
+                controller.as_ref(),
+                content_is_managed_bridge(child.as_ref()),
+            ) {
+                crate::ui::scroll::controller::mark_controller_managed(c.key());
+            }
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
             // iced widget ID for layout bounds collection (Plan 282)

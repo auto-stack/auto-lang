@@ -1,0 +1,5 @@
+name: "p781-scroll-child-anchor"
+version: "1.0.0"
+scene: "ui"
+render: "vue"
+title: "P781 Scroll Child Anchor"
