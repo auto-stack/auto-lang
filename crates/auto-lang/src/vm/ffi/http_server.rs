@@ -5779,25 +5779,11 @@ fn marshal_handler_value(
     }
     if auto_val::is_i32(nv) {
         let bits = auto_val::decode_i32(nv);
-        if (bits & 0xFF) == 0xF0 {
-            let fid = ((bits as u32) >> 8) as u32;
-            let handler_async = match ctx.axum_route {
-                Some(ref r) => {
-                    crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
-                        .map(|n| fn_is_api_async(&n))
-                        .unwrap_or(false)
-                }
-                None => fn_is_api_async(&ctx.route.fn_name),
-            };
-            // PLAN-776 R7-01：legacy `0xF0` 位形态臂——仅 Value 载体往返
-            // 降级的句柄（容器/捕获 env）在 **~T 声明门**（PLAN-705 原语
-            // 义）内驱动；原生 TAG_FUTURE 载荷走上臂，位模式撞值恒数据。
-            if handler_async {
-                if let Some(outcome) = drive_future_reply(vm, ctx, fid) {
-                    return outcome;
-                }
-            }
-        }
+        // PLAN-776 R8-01：legacy `0xF0` 位形态**驱动臂退役**——Value 载体
+        // 已保真映射 Future（R7 的降级 Int 废弃），任何位形态 i32 都是
+        // 普通数字（~T 声明 + 位模式 + 活跃 fid 查表不能证明来源——
+        // F776-R8-01 F2：`~int` fn 返回 496 恒数据）。Future 驱动只经上方
+        // TAG_FUTURE 臂。
         // R1-F01（F776-R1-01 修复）：普通数值不再通过任何表臂取得或消费
         // 资源——upload/file 的"声明 + int + 表命中"入口与 iterator/
         // HTTP_RESPONSES 查表命中制全部退役（P734-D7 查表猜测被本计划显式
@@ -5995,6 +5981,8 @@ fn value_to_nv_via_task(
             t.ram.pop_nv()
         }
         auto_val::Value::VmRef(r) => auto_val::encode_object(r.id as u32),
+        // PLAN-776 R8-01：Future 句柄 Value 载体还原 TAG_FUTURE 载荷。
+        auto_val::Value::Future(f) => auto_val::encode_future(f.id as u32),
         auto_val::Value::Array(a) => {
             let list = crate::vm::types::ListData {
                 elems: a.values,

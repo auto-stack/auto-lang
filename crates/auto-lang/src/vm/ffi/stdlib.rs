@@ -2442,10 +2442,14 @@ fn pop_future_ids_from_list(task: &mut AutoTask, vm: &AutoVM) -> Result<Vec<u32>
             .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
         {
             for i in 0..list.len() {
-                if let Some(auto_val::Value::Int(bits)) = list.get(i) {
-                    if (bits & 0xFF) == 0xF0 {
-                        fids.push((bits >> 8) as u32);
+                // PLAN-776 R8-01：句柄元素为 Value::Future（保真映射）；
+                // legacy 位形态 Int 兼容保留（无生产者，防手工构造）。
+                match list.get(i) {
+                    Some(auto_val::Value::Future(f)) => fids.push(f.id as u32),
+                    Some(auto_val::Value::Int(bits)) if (bits & 0xFF) == 0xF0 => {
+                        fids.push((bits >> 8) as u32)
                     }
+                    _ => {}
                 }
             }
         }

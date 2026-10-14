@@ -2379,3 +2379,151 @@ fn plan776_r7_iterator_credential_native_family() {
     let first = cred_task.ram.pop_nv();
     assert_eq!(auto_val::decode_i32(first), 0, "enumerate 首帧 index=0");
 }
+
+#[cfg(feature = "test-http-e2e")]
+mod http_e2e_r8 {
+    use super::http_e2e::{get, start_server};
+
+    fn program() -> String {
+        r#"
+fn future_helper() int {
+    return ~{ 42 }
+}
+
+#[api(method = "GET", path = "/f2")]
+fn f2() ~int {
+    let active = ~{ 42 }
+    return 496
+}
+
+#[api(method = "GET", path = "/f3")]
+fn f3() ~Iter<int> {
+    let values = [~{ 42 }]
+    return values[0]
+}
+
+#[api(method = "GET", path = "/f1r7")]
+fn f1r7() ~Iter<int> {
+    let active = ~{ 42 }
+    if false {
+        return ~{ 99 }
+    }
+    return 496
+}
+
+#[api(method = "GET", path = "/f2r7")]
+fn f2r7() ~Iter<int> {
+    return future_helper()
+}
+"#
+        .to_string()
+    }
+
+    /// F776-R8-01（AC-02/03/05）：Future 身份跨**全部合法载体**保真——
+    /// `~int` 声明 fn 的普通 496（位模式撞活跃 fid1）恒数据（legacy
+    /// 位形态驱动臂退役——声明+位模式+查表不能证明来源）；数组取出的
+    /// 真实 Future（Value::Future 保真映射 + GET_ELEM 还原 TAG_FUTURE）
+    /// 被驱动为 42；R7 形态（死分支 496/helper 传递）保持。
+    #[test]
+    fn http_e2e_plan776_r8_future_identity_all_carriers() {
+        let port = start_server(&program(), 0);
+        for (path, expect) in [
+            ("/f2", "496"),
+            ("/f3", "42"),
+            ("/f1r7", "496"),
+            ("/f2r7", "42"),
+        ] {
+            let (status, _, body) = get(port, path);
+            assert_eq!(
+                (status, body.as_slice()),
+                (200, expect.as_bytes()),
+                "{path} Future 身份载体失真"
+            );
+        }
+    }
+}
+
+/// F776-R8-02（AC-02/05/06）：iterator 消费**所有权协议**——原始凭据 nv
+/// 的 StakeGuard+rc_release 清偿、错误早退清偿、派生链份额、重复调用
+/// 净零（镜 R8 探针 native 模式；弹出槽清零由 RC/reap 行为面覆盖——
+/// 派生输出复用同槽，直接槽断言不可事后观测）。
+#[test]
+fn plan776_r8_iterator_consumer_ownership_protocol() {
+    use crate::vm::engine::{AutoVM, Iterator, ListIterator};
+    use crate::vm::ffi::http_return_resource;
+    use crate::vm::native;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+    let list_id = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+        elems: vec![42],
+        storage: None,
+    });
+    vm.iterators.insert(
+        0,
+        Iterator::List(ListIterator {
+            list_id,
+            current_index: 0,
+        }),
+    );
+    vm.iterator_id_gen
+        .store(1, std::sync::atomic::Ordering::Relaxed);
+
+    let baseline = http_return_resource::live_resource_count();
+
+    // —— 重复调用净零 ×3：凭据源被消费（份额清偿）+ 释放派生输出 →
+    //    live 回基线（R8-02 反例：源凭据消费后 RC=1 恒存活、输出释放
+    //    并 reap 后仍 retained）。
+    for round in 0..3 {
+        let mut task = AutoTask::new(0, 1024, 0);
+        http_return_resource::push_sse_resource(&mut task, &vm, 0).unwrap();
+        native::shim_iterator_enumerate(&mut task, &vm).expect("enumerate credential");
+        let derived_nv = task.ram.pop_nv();
+        assert!(
+            auto_val::is_object(derived_nv),
+            "round {round}: 派生句柄应为凭据对象"
+        );
+        // 消费后：源凭据 rc 已清偿（dying 宽限窗内未 reap 仍计 live）
+        // ——live = baseline + 2（dying 源 + 派生输出）；结算语义在下方
+        // reap 后断言（R8-02 反例形态：若消费未清偿，reap 后源恒存活）。
+        assert_eq!(
+            http_return_resource::live_resource_count(),
+            baseline + 2,
+            "round {round}: 消费后 = dying 源 + 派生输出"
+        );
+        // 释放派生输出并回收 → 全部归零。
+        vm.rc_release(derived_nv);
+        vm.reap_all();
+        assert_eq!(
+            http_return_resource::live_resource_count(),
+            baseline,
+            "round {round}: 输出释放后回基线"
+        );
+    }
+
+    // —— 错误早退也清偿：非凭据对象作源 → 裸语义 -1 且无泄漏。
+    {
+        let mut task = AutoTask::new(0, 1024, 0);
+        let foreign = vm.insert_heap_object(crate::vm::types::ListData::<i32> {
+            elems: vec![],
+            storage: None,
+        });
+        vm.rc_push(&mut task, auto_val::encode_object(foreign as u32));
+        native::shim_iterator_enumerate(&mut task, &vm).expect("non-credential object");
+        let handle = task.ram.pop_nv();
+        assert_eq!(auto_val::decode_i32(handle), -1);
+        vm.rc_release(auto_val::encode_object(foreign as u32));
+        vm.reap_all();
+    }
+
+    // —— 裸源控制：功能与净零不受消费协议影响。
+    {
+        let mut task = AutoTask::new(0, 1024, 0);
+        task.ram.push_i32(0);
+        native::shim_iterator_enumerate(&mut task, &vm).expect("raw enumerate");
+        let handle = task.ram.pop_nv();
+        assert!(auto_val::decode_i32(handle) >= 0, "裸源派生句柄有效");
+        assert_eq!(http_return_resource::live_resource_count(), baseline);
+    }
+}

@@ -1002,10 +1002,16 @@ impl AutoVM {
                 return copy;
             }
         } else if auto_val::is_future(nv) {
-            // PLAN-776 R7-01：Future 句柄入 Value 载体（容器/捕获 env）——
-            // Value 无 Future 变体，退化为 legacy 位形态 Int（AWAIT/
-            // POLL 的兼容臂可解；marshal 驱动门只认 TAG_FUTURE 原生载荷）。
-            return auto_val::Value::Int(Self::encode_future_bits(auto_val::decode_future(nv)));
+            // PLAN-776 R8-01：Future 句柄入 Value 载体（容器/捕获 env/异步
+            // 终值）——**保真映射** `Value::Future(FutureData{id: fid})`（句柄
+            // 视图，state 占位 Pending；真实状态在 vm.futures）。R7 的降级
+            // Int(bits) 使 marshal 无法区分真实 Future 与同值普通数字
+            //（F776-R8-01 F2/F3），已废弃。
+            return auto_val::Value::Future(Box::new(auto_val::FutureData {
+                id: auto_val::decode_future(nv) as usize,
+                state: auto_val::FutureState::Pending,
+                result: None,
+            }));
         } else if auto_val::is_i32(nv) {
             // Plan 390 §15 H3b: all heap refs are TAG_OBJECT now (objects/
             // arrays/nodes produce encode_object), so a raw i32 is always a
@@ -1100,6 +1106,9 @@ impl AutoVM {
                 auto_val::encode_string(idx as u32)
             }
             Value::VmRef(r) => auto_val::encode_object(r.id as u32),
+            // PLAN-776 R8-01：Future 句柄 Value 载体还原为 TAG_FUTURE 载荷
+            //（容器/捕获往返保真；普通 Int 恒数据）。
+            Value::Future(f) => auto_val::encode_future(f.id as u32),
 
             // --- Array: register into heap_objects as ListData<Value> (H3b) ---
             Value::Array(arr) => {
@@ -4417,11 +4426,13 @@ impl AutoVM {
                             } else if auto_val::is_f32(nv) {
                                 auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
                             } else if auto_val::is_future(nv) {
-                                // PLAN-776 R7-01：Future 句柄入数组——退化
-                                // legacy 位形态 Int（future_all/race 扫描同形）。
-                                auto_val::Value::Int(Self::encode_future_bits(
-                                    auto_val::decode_future(nv),
-                                ))
+                                // PLAN-776 R8-01：Future 句柄入数组——保真
+                                // 映射 Value::Future（句柄视图）。
+                                auto_val::Value::Future(Box::new(auto_val::FutureData {
+                                    id: auto_val::decode_future(nv) as usize,
+                                    state: auto_val::FutureState::Pending,
+                                    result: None,
+                                }))
                             } else {
                                 auto_val::Value::Int(auto_val::decode_i32(nv))
                             };
@@ -6833,6 +6844,12 @@ impl AutoVM {
                                     // Plan 419: 元素引用入栈 +1。
                                     auto_val::Value::VmRef(r) => {
                                         self.rc_push(task, auto_val::encode_object(r.id as u32));
+                                    }
+                                    // PLAN-776 R8-01：Future 句柄元素还原
+                                    // TAG_FUTURE 载荷（容器取出保真——
+                                    // F776-R8-01 F3；原落 `_` 臂 push_i32(0)）。
+                                    auto_val::Value::Future(f) => {
+                                        task.ram.push_nv(auto_val::encode_future(f.id as u32));
                                     }
                                     // PLAN-053 P-053-1: 对象元素物化——
                                     // Value::Obj 原落 `_` 臂 push_i32(0)，
