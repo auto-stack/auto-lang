@@ -160,3 +160,12 @@ MCP 面现状：**无任何工具返回 pid/app 路径/数据目录**（18 工�
 4. **fixture 落位**：test/fixtures/native-reader-acceptance/scroll-geometry/（静态 120 容器行 + 零尺寸负例行 + 单 ping 路由后端；无 handler 无合成风险）。驱动 Instance 增 fixture_mode（就绪 = /api/ping + 快照 marker，跳过 Reader 专属空库断言）。
 5. **Reader 侧缺陷（发现并路由，不修）**：reading.at:266 `let pr = ...` 在 :315 `pr = null` 重赋值 → VM handler 合成失败（`Cannot reassign to immutable variable 'pr'`，进程日志 WARN）→ 阅读页 Init 从不执行、正文恒空、后端收不到 chapter 请求。Vue 代码生成未拦截该语义（后端语义不一致，另属 PLAN-742 api-handler-body-parity 域）。按仓边界路由 READER-001 修复；T-12 的 Reader 真实保存/恢复病例（V-08/V-09）在其修复前以框架正对照推进（AC-08 明文允许等价框架正对照 + Reader 实际失败具名记录）。
 6. **工具形状微调**：两工具响应额外携带 `scroll_tick` 与 `backend`；pane 钉定支持 controller 名自动展开 `scroll_ctl_` 前缀（renderer.rs:3034 句柄派生稳定 id 约定）。
+
+**2026-10-14 r3（T-12 实施期勘定，worktree commit 649fad2f7）**：
+
+1. **VM Http.post 对象字面量 body 非严格 JSON**（框架事实）：`Http.post(url, {k: v})` 的对象参数经 VMConvertible→String 得到的不是合法 JSON（后端 400 缺参）；手拼 JSON 字符串 body 则正常。Reader 的 Tap 保存正用对象字面量——其 VM 轨保存必然同样失败（Vue 轨不受影响）。READER-001 复验时需换手拼 body；框架侧序列化修正另行立项评估（不在 781 授权面）。
+2. **str 响应双重编码破坏 find 判据**：VM HTTP str 返回的 body 是 JSON 字符串（内层引号带 `\` 转义），`find("\"ok\":true")` 类判据恒 false。fixture 后端改返回裸 ASCII 串（SAVED/ERR:...），GET 侧需二次 parse（fixture parse_progress 已双解包）。
+3. **for 迭代>0 的 events 注解不在 vtree Atom 重复**：只有模板头带 `events:{onclick}`；且段落/卡片嵌套层数不定（书卡 onclick col 在第 4 层）。驱动协议 = 最近 N 个容器头候选逐一试派发，取 ActionResult status:ok 者（`No 'press' handler found` 为无害负反馈）。
+4. **启动窗口期快照可能缺后续迭代**：styled_vtree 首发可能不含 for 后续迭代（press 报 VNode not found），一个心跳周期后自愈——驱动先等 marker 出现再派发，press 失败有界重试（重新发现）。
+5. **字符占比恢复的系统性像素偏差**：restore 以字符占比估算 offset，padding/gap/字号不计字符——large 字号下 ¶60 差 131px 出窗。fixture 正对照选 ¶40（估算落点稳在视口内），偏差进证据不掩盖；这是 Reader 同款机制的忠实复刻，精确段级定位属阶段 B 锚点能力。
+6. **AC-08 处置实录**：框架正对照（save-restore fixture）证明保存/冷恢复/观察协议通道可用；Reader 现状（`let pr` 合成失败→阅读页正文恒空）由 v08_reader_current_state 记录例如实取证并路由 READER-001，未授予其目标 PASS。
