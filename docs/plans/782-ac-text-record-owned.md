@@ -6,7 +6,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-14
 updated_at: 2026-10-15
-current_step: 4
+current_step: 5
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -160,7 +160,7 @@ T-01 先做有界完整路径探针：含两个 Str 的构造/深 clone、嵌套
 | [x] | T-02 | work | T-01 | ✅ 已完成 @697e3f811：`schema/text-record.atom`（text∪record 并集 + record_clone/move 双新 case，分支全量 require/forbid）；hir.rs `HirDomain::TextRecord` + `ExprKind::RecordClone{record,base}`/`Move{inner}`（设计 §4.3 修订：moved 旗标改为 **`expr.move` 包装表达式**——77 个 Stmt 构造点零扰动，单一表示，`CallBinding.moved` 在新域禁用）；descriptor binder/writer/domain/TypeUse 内建词（Str/str/char 限 text+text-record 域）；verify：`verify_text_record` 入口（T-02 结构面 + 能力派生门）、check_profile_ops 四域化（旧四域互拒新面）、`record_resource_map` 传递分类（pub 供 T-04）、check_record_module 字段门（str→`verify.field-borrow`、Str/char 放行、域感知映射 4 处）、owning-position/界检/init 三走查 + ExprScan 补臂、`check_text_record_rules`（move 形状 `verify.partial-move`、move 参数类型门 `verify.ownership-required`、裸 let/assign/return 分类拒 resource-assign/ownership-required）；main.rs check/build 分派（build 在 T-05 前受控 `backend.lowering-unsupported`）。text_record_hir **13/13**（V-01 身份五域隔离+writer roundtrip+错维拒；V-02 Str/str/char 字段+传递分类+cycle+copyable 保持 771 值复制+clone 名义拒；V-08 ctor/call binding 越界、clone 跨型、requires 删除受控拒）；前置回归 79 例全绿、零警告、fmt clean | 01/02/03 |
 | [x] | T-03 | work | T-02 | ✅ 已完成 @3f0366f6d（核心链 @24171d462 + F-A @a2aa02a5b）：source 七模块/typecheck/adapter 组合面接线——构造（命名/位置双形、AP-4 提升补齐位置构造与静态/实例方法实参位）、字段/方法（Str 字段 view 接收者、771 static/instance/mut 面保持）、mode/move/clone（内建 clone 仅组合域绑定、用户声明 clone → `source.duplicate`、move 参数 `mode: move` 发射+可写根、Move 实参整体转移不被 borrow_view 包裹、缺 `.move` 调用点对称门）；verify 侧修复 Ref-vs-Builtin 字段类型盲点（资源分类/field-borrow/bare assign/return 门对源码 Bundle 生效）、771 调用绑定模式匹配扩展至组合域（含 MoveOwn 三臂）、组合域 Str 局部门白名单。text_record_source **19/19**（V-02/03/05 source 腿、partial-move 含死分支静态检查、旧域保持 N06/770-move）；全套 ac-core **394/0**、零警告、fmt clean | 02/03/05 |
 | [x] | T-04 | work | T-02/03 | ✅ 已完成 @3be6031d1：text_resources.rs 扩展（770 机器沿用，无第二套账本）——owned 根扩容至资源 record 局部（binding+move-in 参数）；`BodyResourcePlan` 增 `buffer_frees`（逐 Str 字段缓冲统一出口调度，P3 序：根逆创建、字段逆声明、嵌套展开）与 `replace_frees`（P4：RHS 物化后旧缓冲，整根重赋/字段替换/move 后重建三分支）；Move 包装统一进 moves 验证（use-after-move/double-move/循环重入杀根/join 一致性/短路条件 move 拒绝全套沿 770）；字段借用 backing 溯源（按根保守：替换/移根期间活跃借用 → mut-conflict）；字段视图逃逸门（owned/mut/move-in 来源 → borrow-escape）；ctor 字段裸转移门（ownership-required）；verify_text_record 接线 excl 定点走查+计划驱动能力派生；§5.2 字段读取视图化（FieldGet 终型 StrOwned→str + verify 兼容规则 + parser `.to` 组合面让路）与字段替换 AP-4。text_record_resources **25/25**（V-03/04/06/07/09：门与计划形状 oracle、直接 HIR 腿；运行期注入/计数= T-05）；全套 ac-core **419/0**、零警告、fmt clean | 03/04 |
-| [ ] | T-05 | work | T-04 | native/main/shared finish_build：资源布局、view/mut/move/out-return、非重叠提交；text_record_native+双腿fixtures物化V02/05/09/10/11/12，真实PE trace/值/计数达oracle | 01..06 |
+| [x] | T-05 | work | T-04 | ✅ 已完成 @a2fc74d6d：合并 lowering（text lowerer 扩展，旧 text/record 路径零变化）——§4.5 布局（Str 字段 12/8、资源 record 8 对齐、copyable 嵌套保持 4 对齐，checked u64/u32 上界）；record 局部=栈槽聚合、参数/结果=指针形（ABI-D/E、move-in *mut、out-slot 聚合返回）；RecordCtor（提升字段缓冲入临时聚合+转移）、RecordClone（位拷贝+逐 Str 字段 ac_rt_own_clone）、Move/Borrow 地址直传、FieldGet 按偏移装载视图/标量；出口 buffer_frees 与 RHS 后 replace_frees 逐字消费 T-04 计划；聚合临时语句尾 LIFO 释放；方法体定义+CLI build-source 组合域接线；新增 verify 门（view 模式 Str 参数入 ctor 字段=借用逃逸）。text_record_native **11/11**（V-02 值/trace、V-05 重叠精确 trace、V-09 短路零分配、V-10 256 深/4096 循环/0 次零分配、V-11 能力门+拒绝无制品、V-12 Token 微程序+直接 HIR 腿+新旧 profile 共存）；全套 ac-core **430/0**、零警告、fmt clean | 01..06 |
 | [ ] | T-06 | work | T-05 | 新verify-ac-text-record-782.ps1+reports/782-text-record/verification.md：最终基线全新旧门禁和故意失败控制，全部mandatory无skip、locked/fmt/零warning，制品及环境收据hash绑定 | 05/06 |
 | [ ] | T-07 | work | T-06 | reports/782-text-record/proposed-spec-delta.md冻结SD01..06；核对支持/拒绝/取证声明、源文件manifest及前置反例组合闭合；canonical不在此步发布；work交execution_done=7/9 | 06 |
 | [ ] | T-08 | review | T-01..07完成，writes暂停 | 原树独立审计AC01..06与SD、反例/永久测试oracle/遗漏债务/健康；pass→reviewed=8/9，needs_fix回work，不修改实现 | 07 |
@@ -217,6 +217,7 @@ blockers:无。next_responsible_role:work（T-04：text_resources.rs 资源走�
 6. **基线预存缺陷（T-03 探针发现，owner 待定——均非 782 引入，不转交本计划修复）**：
    - **D-771-A**：record 域（含组合域继承面）命名构造字段值位不支持二元运算表达式——`Pair { left: 1 + 2, ... }` 在纯 record 域即报 `source.syntax: expected operator`（771 交付面即如此）。782 组合程序以 let 提升规避（fixtures 已按此写）；若后续需在 ctor 字段值位直接写复合表达式，需独立修复并回归 771 面。
    - **D-770-B**：text 域 assign 位 `.move`（如 `o = x.move`）产生 `source.internal: generated Atom text failed to bind`（adapter 发射 text descriptor 不接受的 `expr.move`），而非受控拒绝；770 语义上该位本就不支持 move 标记，缺的是前门拒绝。782 组合域 assign 位 move 走 `expr.move` 包装（descriptor 接受）不受影响。
+   - **D-771-C**（T-05 发现）：布尔 let（RHS 为逻辑式或 bool 返回调用）后跟 `if <变量>` 在纯 record 域即报 `source.syntax: expected expression, found return`（text/scalar 域同形通过，782 组合面继承 record 行为）。782 测试以内联条件规避；独立修复需回归 771 面。
 
 2026-10-15，stage:work，plan_id:PLAN-782，plan_revision:1，outcome:pass（T-04 完成=4/9，继续 T-05）。
 worktree_path:`D:/autostack/.wt/lang-782/auto-lang`；branch:`plan-782-dev`；base_commit:`4568e4ea7`；code_commit:`3be6031d1`（text_resources/verify/parser/resolve 改 + tests/text_record_resources.rs 新 + p01/i02/i07 fixture 随走查合同修正）。dependency_revisions:同 T-01 收据。
@@ -224,3 +225,12 @@ task_ids:T-04。evidence：text_record_resources 25/25——V-03（use-after-mov
 本轮顺带修复：①§5.2 字段读取视图化三件套（resolve FieldGet 终型、verify FieldGet 兼容+expr_type 返 declared、parser 组合面 `.to` 让路 text 臂——`to` 是 Reserved 词 record 臂会拒）；②字段替换位 AP-4 字面量提升；③p01 旗舰 fixture 的 use-after-move 违约（走查上线后抓获，n4 oracle 生效证据）、i02/i07 改推断形式以命中 partial-move 冻结码。
 T-05 交付面（下会话）：native/main/shared finish_build 合并 lowering——buffer_frees/replace_frees 消费、RecordClone/Move/字段 view 的 CLIF 发射、ABI-D/E/*mut move-in、trace oracle（每缓冲一行、alloc==free/live=0）、故障双通道注入、V-02/05/09/10/11/12 native 腿与双腿 fixtures。
 blockers:无。next_responsible_role:work（T-05）。
+
+2026-10-15，stage:work，plan_id:PLAN-782，plan_revision:1，outcome:pass（T-05 完成=5/9，继续 T-06）。
+worktree_path:`D:/autostack/.wt/lang-782/auto-lang`；branch:`plan-782-dev`；base_commit:`4568e4ea7`；code_commit:`a2fc74d6d`（native.rs 合并 lowering + text_resources.rs 逃逸门 + main.rs build 接线 + tests/text_record_native.rs 新 + p01 fixture 按合同修 move 参数）。dependency_revisions:同 T-01 收据；runtime/text 零改动（23 符号原样，§5 合同保持）。
+task_ids:T-05。evidence：首例组合域 PE 即过（m1：LIT/CLONE/TEXT-SCALARS/FREE 精确配对、P3 逆序、exit=5）；全功能冒烟 exit=7、5 分配==5 释放、P3/P4 语义精确（替换释放/被调方清理/出口逆序）；text_record_native 11/11——V-02（Token 四字段值+char、嵌套 record 深克隆独立性）、V-05（r=r.clone()/transform/字段 concat/move 重建的逐步旧缓冲释放 trace）、V-09（短路跳过臂零分配零释放）、V-10（256 深嵌套构造+8 段路径读取、4096 迭代新鲜根、0 次循环零分配）、V-11（缺 capability 拒绝且无制品）、V-12（Token 微程序 static/instance 方法+clone+move exit=57、text/record 旧 profile 共存构建运行、直接 HIR 腿 bind+verify+lowering）；全套 ac-core 430/0（含 text_native 19/19 零回归）；零警告、fmt clean。
+本轮修复的实现缺口：①RClone 的 own_clone 结果滞留 pending_temps（应归聚合）——首 PE 冒烟即暴露；②record 参数同时入 rslots/rvars 致读未初始化自有槽——隔离复现后修（参数仅存指针变量）；③方法体未在 text lowerer 定义循环中（Method kind 被跳过）；④buffer_frees 对纯 text 域 Str 根的重复释放路径（exit_frees 已覆盖，需跳过）。
+本轮新增 verify 门：view 模式 Str 参数的 ReadLocal 进 record ctor 字段=借用逃逸（774 借用返回规则的ctor 字段对偶）；move 参数入 ctor 字段的合法拼法为 `text.move`（§6.1 拥有表达式清单）。
+发现的基线预存缺陷（771 域，§10.7 登记）：D-771-C——布尔 let（含逻辑/调用 RHS）后跟 `if <var>` 在纯 record 域即解析失败（text/scalar 域通过）。
+T-06 交付面（下会话）：scripts/verify-ac-text-record-782.ps1 新门禁 + reports/782-text-record/verification.md——最终基线全新旧门禁（770/771/741/745/767/772 + 新 gate）与故意失败控制，全部 mandatory 无 skip、locked/fmt/零 warning、制品及环境收据 hash 绑定。
+blockers:无。next_responsible_role:work（T-06）。
