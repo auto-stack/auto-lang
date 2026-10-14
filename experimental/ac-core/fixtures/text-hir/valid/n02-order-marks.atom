@@ -1,0 +1,82 @@
+// PLAN-770 T-05 rework fixture (review F-01, path A): the direct-HIR leg of
+// V-07's frozen oracle — mark_a wrapped text operations in ONE PE. Links
+// the text runtime staticlib (contract sidecar) plus the plain-object trace
+// marks (`test-support/marks.rs` --emit=obj; no panic entry symbol, so it
+// co-links where two no_std staticlibs cannot). The call's bindings map
+// param 0 <- arg 1 (mark) and param 1 <- arg 0 (len): evaluation stays
+// left-to-right while the mapping follows the bindings, so a positional
+// reorder would return 4 instead of 1.
+
+hir(schema: "auto.hir.text.draft", revision: 1u32, profile: "text-i32-draft") {
+    requires: ["ac.runtime.text.v1", "hir.test.trace.v1"]
+    module(id: "m_order") {
+        types {
+            type(id: "t_null", kind: function) { params: []; result: i32 }
+            type(id: "t_first", kind: function) { params: [i32, i32]; result: i32 }
+        }
+        declarations {
+            intrinsic(id: "i_mark_a", type: "t_null") { symbol: "hir.test.mark_a"; effect: observable }
+            function(id: "d_first", type: "t_first") { name: "first"; body: "b_first" }
+            function(id: "d_main", type: "t_null") { name: "main"; body: "b_main" }
+        }
+        bodies {
+            body(id: "b_first") {
+                owner: "d_first"
+                entry: "bk_first"
+                locals {
+                    local(id: "l_a", type: i32) { name: "a"; role: param; index: 0u32 }
+                    local(id: "l_b", type: i32) { name: "b"; role: param; index: 1u32 }
+                }
+                expressions {
+                    expr(id: "e_a", kind: read_local) { type: i32; local: "l_a" }
+                }
+                blocks {
+                    block(id: "bk_first") {
+                        return(value: "e_a") {}
+                    }
+                }
+            }
+            body(id: "b_main") {
+                owner: "d_main"
+                entry: "bk_main"
+                locals {
+                    local(id: "l_t", type: Str) { name: "t"; role: binding }
+                }
+                expressions {
+                    expr(id: "e_l1", kind: str_lit) { type: str; text: "ab" }
+                    expr(id: "e_l2", kind: str_lit) { type: str; text: "cd" }
+                    expr(id: "e_cat", kind: text_concat) { type: Str; lhs: "e_l1"; rhs: "e_l2" }
+                    expr(id: "e_t", kind: read_local) { type: Str; local: "l_t" }
+                    expr(id: "e_len_a", kind: text_len) { type: i32; operand: "e_t" }
+                    expr(id: "e_mark", kind: call) {
+                        type: i32
+                        callee: "i_mark_a"
+                        eval_args: []
+                        bindings: []
+                    }
+                    expr(id: "e_call", kind: call) {
+                        type: i32
+                        callee: "d_first"
+                        eval_args: ["e_len_a", "e_mark"]
+                        bindings: [{ param: 0u32, arg: 1u32 }, { param: 1u32, arg: 0u32 }]
+                    }
+                    expr(id: "e_t2", kind: read_local) { type: Str; local: "l_t" }
+                    expr(id: "e_len_b", kind: text_len) { type: i32; operand: "e_t2" }
+                    expr(id: "e_ret", kind: binary) {
+                        type: i32
+                        op: add_i32
+                        overflow: trap
+                        lhs: "e_call"
+                        rhs: "e_len_b"
+                    }
+                }
+                blocks {
+                    block(id: "bk_main") {
+                        let(local: "l_t", value: "e_cat") {}
+                        return(value: "e_ret") {}
+                    }
+                }
+            }
+        }
+    }
+}

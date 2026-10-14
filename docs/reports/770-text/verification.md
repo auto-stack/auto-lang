@@ -18,7 +18,8 @@
 | c357efdb4 | T-04 (3/3) CLI usage 文案 |
 | 3e4b8620b | T-05 (1/3) text 模块发射 ac.runtime.text.v1 requires |
 | 53e8ac7c4 | T-05 文本 native lowering + runtime 合同门 + 真实 PE 测试（text_native 18 + text_resources 10） |
-| （本提交） | T-06 verify-ac-text-770.ps1 + T-07 README/reports |
+| a87de0bd7 | T-06 verify-ac-text-770.ps1 + T-07 README/reports（r1 复审受审基线） |
+| （返工提交） | F-01 路径 A：test-support/marks.rs 纯对象 + v07 冻结 oracle 恢复（source+HIR 双腿）+ F-02/03/04 处置 |
 
 ## 2. 命令与结果（唯一工作树）
 
@@ -47,7 +48,7 @@
 | V-04 正常寿命 | v04_lifecycle_traces_and_move_transfer（LIT/CONCAT/CLONE/FREE 逐 id 配对、LIFO、.move 转移给 callee 清理）、v04_cross_frame_owned_return（ABI-C 跨帧转移）、v04_borrow_never_frees（视图零释放） | 全绿 |
 | V-05 失败寿命 | text_resources：slice 越界(-10)/反向(-9)/负界(-10)、char_at 越界(-10)/负索引(-10)、invalid scalar(-8) 全部 trap70+RT-FAIL 精确行；trap 后语句不执行；预算/注入边界归 runtime 测试（记录） | 全绿 |
 | V-06 可信变异 | text_hir/text_binding 程序化 Bundle 变异门（T-02 面：类型/资源/身份变异拒收）+ v10 合同变异门（hash/api/revision/target/缺失/多载体） | 全绿 |
-| V-07 顺序 | text_native::v07：位置实参 lhs→rhs（CONCAT+TEXT-SCALARS 次序）、命名实参按名映射不重排、短路跳过侧零 trace 零分配；mark_a/b×text 共链边界（§5） | 全绿 |
+| V-07 顺序 | text_native::v07_mark_wrapped_concat_args_comparison_and_short_circuit（冻结 oracle：mark_a/b 包装 concat/位置实参/命名映射/比较/短路+被跳过侧零 trace 零分配，source 腿）+ v07_mark_wrapped_order_direct_hir_leg（直 HIR 腿 n02-order-marks.atom：绑定映射换序证明）；trace marks 以纯 COFF 对象与文本运行时共链（F-01 路径 A，见 §5.1） | 全绿 |
 | V-08 静态/来源 | text_source：非法转义/标量/多字符 char 词法拒、CRLF 跨行、遮蔽（len 同名用户函数）；未执行分支静态合法性 | 全绿 |
 | V-09 规模 | v09_concat_chain_4096（exit 4096；4095 CONCAT/FREE 逐对）、v09_resource_loop_4096（exit 16384；每轮 1 分配 1 释放）、v09_call_chain_4096_with_text_args（借用视图跨 4096 帧） | 全绿 |
 | V-10 集成 | verify-ac-text-770.ps1 13 步（三旧 gates 实跑 PASS=旧制品面保持；scope 隔离=无 crates/test 越界=strict acc_inventory 前提）+ v10_contract_gate_rejections + v10_rejecting_build_preserves_sentinels（SENTINEL 三件保持） | 全绿 |
@@ -56,17 +57,24 @@
 
 | 问题 | 定位 | 修复 |
 |---|---|---|
+| **F-01（r1 复审 blocking）：V-07 未按冻结 oracle 交付** | trace 支持库与文本运行时两 no_std staticlib 各带 `__rustc::rust_begin_unwind`，共链 duplicate symbol；首批以文本运行时自身 trace 替代 mark oracle（未批准缩围） | **路径 A**：`test-support/marks.rs` 以 `rustc --crate-type=lib --emit=obj -C panic=abort` 产纯 COFF 对象（无 panic 入口，测试内自断言该属性）与运行时共链；v07 恢复 mark_a/b 包装 concat/实参/比较/短路+被跳过分配 oracle，source 腿 + 直 HIR 腿（n02-order-marks.atom，绑定映射换序证明）双覆盖 |
 | 4096 链 segfault（零 trace） | 每个 ABI-C 调用独立 4B 栈槽 → 16KB 帧跨 stack guard page 未探测 | 每函数共享一个出参槽（写后立即读，无生命周期重叠；帧恒定）@53e8ac7c4 |
 | 合同门 api_revision 解析 None | 数字字段解析未跳过冒号 | 解析先定位 `:` |
 | sha256 K[59] 笔误（0x8cc70808） | 复制错误，与 runtime 侧实现对拍发现 | 0x8cc70208；三处实现（CLI/tests/common/runtime contract.rs）已机械比对一致 |
+| marks 对象符号自检窗口长度错 | `windows(16)` 对 14/17 字节 needle 恒 false（自检空转） | 按 needle 长度开窗（`windows(n).any(w == needle)`） |
 
 ## 5. 记录的边界（不宣称的面）
 
-1. **mark_a/mark_b × 文本无 PE 面**：trace 支持库与文本运行时都是 Rust
-   no_std staticlib，各自携带 `__rustc::rust_begin_unwind`，共链一个 PE
-   是 duplicate symbol（rust-lld 硬错）。V-07 顺序 oracle 改用文本运行时
-   自身 trace（CONCAT/TEXT-SCALARS/FROM-CP 行序），性质等价；mark_a/b
-   顺序腿仍由 767/772 标量 suites 覆盖。解除需任一侧去符号化（后续 owner）。
+1. **mark_a/b × 文本的共链载体（F-01 裁定路径 A，已解决）**：trace 支持库
+   与文本运行时都是 Rust no_std staticlib，各自携带
+   `__rustc::rust_begin_unwind`，两个 staticlib 共链一个 PE 是 duplicate
+   symbol（rust-lld 硬错）。首批交付曾以文本运行时自身 trace 替代
+   mark oracle（r1 复审 F-01 判定未批准缩围）；返工后 trace marks 以
+   **纯 COFF 对象**承载（`test-support/marks.rs`，`rustc --crate-type=lib
+   --emit=obj -C panic=abort`——对象形态无 panic 入口符号，与运行时
+   staticlib 共链无冲突），V-07 冻结 oracle（mark 包装 + source/HIR
+   双腿）恢复。两个 staticlib 之间的共链限制本身仍在（对后续组合
+   测试面适用）。
 2. **预算/故障注入无语言入口**：`ac_rt_set_budget`/`ac_rt_fail_nth_alloc`
    是 runtime 控制 API，首批语言面无调用点——V-05 的注入/预算面由
    runtime/text 测试族拥有（20 测试），语言面以"故障=RT-FAIL+70 可观察"

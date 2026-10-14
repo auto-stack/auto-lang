@@ -56,7 +56,13 @@
 
 ## SD-02 modify `docs/specs/auto-hir/project.md`
 
-- before：HIR 域仅 core/scalar；无文本类型/节点/资源身份。
+- before（现行 canonical 的确切状态）：`docs/specs/auto-hir/project.md` 由
+  PLAN-741/767 沉淀，登记且仅登记两个 HIR 域——`HirDomain::Core`
+  （`auto.hir.core.draft / 1 / core-i32-draft`）与 `HirDomain::Scalar`
+  （`auto.hir.scalar.draft / 1 / scalar-i32-draft`）；类型面为 i32/bool，
+  无 str/Str/char 类型、无文本表达式节点、无参数所有权模式、无 Drop
+  语句、无资源计划（774 的 data-resource-contract 落在 auto-ac 侧，
+  auto-hir 未登记任何资源身份）。
 - after：增加 `HirDomain::Text`（`auto.hir.text.draft / 1 /
   text-i32-draft`）；BuiltinType/TypeKind 增 StrSlice/StrOwned/Char；
   ExprKind 增 12 个文本节点（str_lit/char_lit/text_len/text_len_bytes/

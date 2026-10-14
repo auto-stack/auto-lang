@@ -210,6 +210,7 @@ try {
             '^experimental/ac-core/fixtures/',
             '^experimental/ac-core/schema/',
             '^experimental/ac-core/runtime/text/',
+            '^experimental/ac-core/test-support/marks\.rs$',
             '^experimental/ac-core/Cargo\.toml$',
             '^experimental/ac-core/Cargo\.lock$',
             '^experimental/ac-core/README\.md$',

@@ -209,8 +209,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-text
   `<lib>.contract.json`(api/revision/target/hash 对真实库文件校验);
   RT-FAIL stderr 行 + 退出码 70 是失败类取证;预算/故障注入无语言
   入口(归 runtime 测试)。两个 Rust no_std staticlib(trace 支持库与
-  文本运行时)因 `__rustc::rust_begin_unwind` 重复不能共链一个 PE——
-  顺序 oracle 用各自 trace 面。
+  文本运行时)因 `__rustc::rust_begin_unwind` 重复不能共链一个 PE;
+  mark×text 共链面用 `test-support/marks.rs` 的**纯 COFF 对象**
+  (`rustc --emit=obj`,无 panic 入口符号)承载(F-01 裁定路径 A)。
 - 关键字不可作名字:profile 自身的 15 个关键字与生产词法器的完整 Auto
   关键字集合(含 type/enum/use/mut/nil 等)都按 `source.unsupported` 拒绝于
   名字位;识别但排除(关键字/排除 literal/排除运算)与坏 token(source.lex)、

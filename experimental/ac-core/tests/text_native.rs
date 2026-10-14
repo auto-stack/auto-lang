@@ -32,6 +32,7 @@ const EXE: &str = env!("CARGO_BIN_EXE_auto-ac-prototype");
 const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 const TEXT: &str = "auto.source.text.draft";
 const TEXT_CAP: &str = "ac.runtime.text.v1";
+const TRACE_CAP: &str = "hir.test.trace.v1";
 
 fn repo_path(rel: &str) -> PathBuf {
     Path::new(REPO).join(rel)
@@ -371,105 +372,218 @@ fn v04_borrow_never_frees() {
     );
 }
 
-// -- V-07: evaluation order ---------------------------------------------------
+// -- V-07: evaluation order — the frozen mark_a/mark_b oracle ------------------
 //
-// Recorded boundary: combining the scalar trace support library with the
-// text runtime in ONE PE does not link — both are Rust no_std staticlibs
-// and each carries `__rustc::rust_begin_unwind` (duplicate symbol at
-// rust-lld). The mark_a/mark_b×text combination therefore has no first-
-// batch PE face; the order oracle below uses the text runtime's OWN trace
-// lines (every ac_rt_* call is ordered evidence), which prove the same
-// invariants: left→right argument evaluation, name-based parameter mapping
-// (no reorder), and a short-circuited RHS that never runs (its allocation
-// never happens). The mark_a/b order legs themselves stay covered by the
-// scalar suites (772/767).
+// Review F-01 rework (path A): the trace marks link as a PLAIN COFF object
+// (`test-support/marks.rs`, `rustc --crate-type=lib --emit=obj -C
+// panic=abort`) instead of the scalar trace staticlib — both no_std
+// staticlibs carry `__rustc::rust_begin_unwind` and can never co-link with
+// the text runtime, while the object form carries no panic entry at all.
+// This restores the plan's frozen oracle: mark_a/mark_b wrapped
+// concat/arguments/comparison/short-circuit traces, including the skipped
+// side's allocation, with a source leg AND a direct-HIR leg.
+
+/// Compile the trace marks to a plain COFF object (cached; asserts the
+/// F-01 property itself: no panic-entry symbol, both marks exported).
+fn build_trace_marks_obj() -> PathBuf {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<PathBuf> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let src = repo_path("experimental/ac-core/test-support/marks.rs");
+            let out = repo_path("experimental/ac-core/test-support/target/marks-text.obj");
+            let mut cmd = Command::new("rustc");
+            cmd.args([
+                "--edition",
+                "2021",
+                "--crate-type",
+                "lib",
+                "--emit=obj",
+                "-C",
+                "panic=abort",
+                "-o",
+            ])
+            .arg(&out)
+            .arg(&src);
+            let r = run_deadlined(cmd, Duration::from_secs(120)).expect("spawn rustc");
+            assert!(!r.timed_out, "marks object build exceeded 120s");
+            assert_eq!(r.code, 0, "marks object build failed:\n{}", r.stderr);
+            let bytes = std::fs::read(&out).expect("read marks object");
+            let has = |needle: &[u8]| bytes.windows(needle.len()).any(|w| w == needle);
+            assert!(
+                !has(b"rust_begin_unwind"),
+                "F-01 property violated: the marks object carries the panic entry"
+            );
+            assert!(
+                has(b"hir.test.mark_a") && has(b"hir.test.mark_b"),
+                "marks object must export both trace intrinsics"
+            );
+            out
+        })
+        .clone()
+}
+
+/// Build a text source PE with BOTH the runtime staticlib (contract) and
+/// the trace marks object linked (text × trace in one PE).
+fn build_text_with_marks(src: &Path, exe: &Path) {
+    let mut c = Command::new(EXE);
+    c.args([
+        "build-source",
+        &src.display().to_string(),
+        "--source-profile",
+        TEXT,
+        "--entry",
+        "main",
+        "--capability",
+        TEXT_CAP,
+        "--capability",
+        TRACE_CAP,
+        "--support-lib",
+    ])
+    .arg(common::text_runtime_lib())
+    .arg("--support-lib")
+    .arg(build_trace_marks_obj())
+    .arg("--output")
+    .arg(exe);
+    let b = run_deadlined(c, Duration::from_secs(600)).expect("spawn build");
+    assert!(!b.timed_out, "build deadline");
+    assert_eq!(b.code, 0, "build failed:\n{}", b.stderr);
+}
 
 #[test]
-fn v07_arg_order_and_short_circuit_with_text() {
-    let dir = temp_dir("v07-order");
-    // lhs→rhs positional args: the lhs's concat + count run first
+fn v07_mark_wrapped_concat_args_comparison_and_short_circuit() {
+    let dir = temp_dir("v07-frozen");
+
+    // wrapped concat + positional arguments + comparison: the lhs argument
+    // (its count, then "a") fully precedes the rhs ("b" after its count);
+    // the comparison's operands evaluate lhs→rhs; the concat's free rides
+    // the return exit
     let base = write_src(
         &dir,
         "a.at",
-        r#"fn pair(a int, b int) int { return a + b }
+        r#"fn wa(v int) int {
+    let m = mark_a()
+    return v
+}
+fn wb(v int) int {
+    let m = mark_b()
+    return v
+}
+fn first(a int, b int) int { return a }
 fn main() int {
-    let n int = pair(("ab" + "cd").len(), "a".len())
-    return n
+    let t Str = "ab" + "cd"
+    let n int = first(wa(t.len()), wb(t.len_bytes()))
+    if first(wa(n), wb(n)) == n { return t.len() }
+    return 1
 }
 "#,
     );
     let exe = dir.join("a.exe");
-    build_text(&base, &exe);
+    build_text_with_marks(&base, &exe);
     let run = run_pe(&exe);
-    assert_eq!(run.code, 5);
+    assert_eq!(run.code, 4, "n=4 propagates through the comparison");
     assert_eq!(
-        run.stderr, "CONCAT a=2 b=2\nCONCAT id=1\nTEXT-SCALARS n=4\nFREE id=1\nTEXT-SCALARS n=1\n",
-        "lhs argument fully evaluated (concat + count + temp free) before the rhs count"
+        run.stderr,
+        "CONCAT a=2 b=2\nCONCAT id=1\nTEXT-SCALARS n=4\naTEXT-BYTES n=4\nbabTEXT-SCALARS n=4\nFREE id=1\n",
+        "marks interleave with the runtime traces: lhs arg (count+a) fully before rhs (count+b);\
+         comparison operands a-then-b; letters are single bytes without newlines"
     );
 
-    // named args map by NAME in the callee, evaluation stays left→right:
-    // b evaluates first (n=3), a second (n=1); the callee sums a+b either way
+    // named arguments: evaluation stays left→right (a then b), the mapping
+    // follows NAMES (b-a=2; a positional reorder would give 1-3=-2)
     let named = write_src(
         &dir,
         "n.at",
-        r#"fn diff(a int, b int) int { return b - a }
+        r#"fn wa(v int) int {
+    let m = mark_a()
+    return v
+}
+fn wb(v int) int {
+    let m = mark_b()
+    return v
+}
+fn diff(a int, b int) int { return b - a }
 fn main() int {
-    return diff(a: "a".len(), b: "abc".len())
+    return diff(a: wa(1), b: wb(3))
 }
 "#,
     );
     let exe = dir.join("n.exe");
-    build_text(&named, &exe);
+    build_text_with_marks(&named, &exe);
     let run = run_pe(&exe);
+    assert_eq!(run.code, 2, "b=3 - a=1 by name");
     assert_eq!(
-        run.code, 2,
-        "b=3 - a=1: named mapping, not positional reorder"
-    );
-    assert_eq!(
-        run.stderr, "TEXT-SCALARS n=1\nTEXT-SCALARS n=3\n",
-        "evaluation order (a first, b second) is independent of the mapping"
+        run.stderr, "ab",
+        "evaluation order a then b, mapping by name"
     );
 
-    // eq operand order: lhs count before rhs count
-    let eqsrc = write_src(
-        &dir,
-        "e.at",
-        r#"fn main() int {
-    if "abc" == "abcd" { return 1 }
-    return 0
-}
-"#,
-    );
-    let exe = dir.join("e.exe");
-    build_text(&eqsrc, &exe);
-    let run = run_pe(&exe);
-    assert_eq!(run.code, 0);
-    assert_eq!(
-        run.stderr, "",
-        "eq itself is trace-free; length mismatch short-circuits"
-    );
-
-    // short-circuit: the rhs (with its allocation) never runs
+    // short-circuit: the skipped RHS neither traces nor allocates; the
+    // executed row's rhs traces its mark AND its concat lifecycle
     let sc = write_src(
         &dir,
         "s.at",
-        r#"fn rhs() bool { let t Str = "ab" + "cd"; return t.len() == 4 }
+        r#"fn rhs() bool {
+    let m = mark_b()
+    let t Str = "xy" + "zw"
+    return t.len() == 4
+}
 fn main() int {
     let r = 1 < 0 && rhs()
-    if r { return 1 }
-    let t Str = "xy" + "zw"
-    if 0 < 1 && t.len() == 4 { return 0 }
+    if r { return 9 }
+    let m2 = mark_a()
+    let ok = 0 < 1 && rhs()
+    if ok { return 0 }
     return 2
 }
 "#,
     );
     let exe = dir.join("s.exe");
-    build_text(&sc, &exe);
+    build_text_with_marks(&sc, &exe);
     let run = run_pe(&exe);
     assert_eq!(run.code, 0, "the executed && row runs its rhs");
     assert_eq!(
-        run.stderr, "CONCAT a=2 b=2\nCONCAT id=1\nTEXT-SCALARS n=4\nFREE id=1\n",
-        "no trace of rhs()'s concat: the skipped side neither evaluated nor allocated"
+        run.stderr, "abCONCAT a=2 b=2\nCONCAT id=1\nTEXT-SCALARS n=4\nFREE id=1\n",
+        "the skipped row emitted nothing (no b, no CONCAT); the executed row\
+         traces b, the concat, its count and its free exactly once"
+    );
+}
+
+#[test]
+fn v07_mark_wrapped_order_direct_hir_leg() {
+    // the direct-HIR leg: bindings map param0<-arg1 (mark) / param1<-arg0
+    // (len) while evaluation stays left→right — first(a)=1, so exit 1+4=5
+    // (a positional reorder would return 4+4=8)
+    let dir = temp_dir("v07-hir");
+    let exe = dir.join("h.exe");
+    let mut c = Command::new(EXE);
+    c.args([
+        "build",
+        &repo_path("experimental/ac-core/fixtures/text-hir/valid/n02-order-marks.atom")
+            .display()
+            .to_string(),
+        "--entry",
+        "d_main",
+        "--capability",
+        TEXT_CAP,
+        "--capability",
+        TRACE_CAP,
+        "--support-lib",
+    ])
+    .arg(common::text_runtime_lib())
+    .arg("--support-lib")
+    .arg(build_trace_marks_obj())
+    .arg("--output")
+    .arg(&exe);
+    let b = run_deadlined(c, Duration::from_secs(600)).expect("spawn build");
+    assert_eq!(b.code, 0, "HIR-mode build failed:\n{}", b.stderr);
+    let run = run_pe(&exe);
+    assert_eq!(
+        run.code, 5,
+        "binding mapping followed, not positional order"
+    );
+    assert_eq!(
+        run.stderr, "CONCAT a=2 b=2\nCONCAT id=1\nTEXT-SCALARS n=4\naTEXT-SCALARS n=4\nFREE id=1\n",
+        "lhs operand (count) precedes the mark; the concat's free rides the return"
     );
 }
 
