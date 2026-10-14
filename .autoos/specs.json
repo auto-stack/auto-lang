@@ -4,6 +4,20 @@
       "id": "reports",
       "items": [
         {
+          "id": "P771-M",
+          "title": "PLAN-771 合入沉淀收据（canonical 落地与门禁状态）",
+          "file": "docs/reports/771-record/verification.md",
+          "content": "T-09 交付：SD-01 新建 auto-ac/source-record.md；SD-02/03/04/05 修改 auto-hir/project、auto-hir/stage-contract、auto-ac/project、auto-acc/project；plans.md 行 + INDEX 重生成；ledger 离线投影五条目；F-R3-01 收据表计数/耗时校正。merge-owned 裸 cargo t 主检出通过（不变输入论证：delivery 与 master 被测面零 diff）。归档 docs/plans/archive/771-ac-record-method-native.md。",
+          "related": [],
+          "status": "active",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan:PLAN-771",
+            "stage:merge"
+          ]
+        },
+        {
           "id": "P774-M",
           "title": "PLAN-774 合入沉淀收据（canonical 落地与探针状态）",
           "file": "docs/reports/774-data-resource/verification.md",
@@ -4020,6 +4034,34 @@
       "id": "designs",
       "items": [
         {
+          "id": "P771-2",
+          "title": "auto-hir record 域：名义类型/字段 place/构造/借位/方法形态与阶段责任",
+          "file": "docs/specs/auto-hir/project.md",
+          "content": "PLAN-771 增设第三身份域 auto.hir.record.draft/1/record-i32-draft（schema/record.atom，scalar 超集）：TypeKind::Record 名义字段表、PlaceKind::FieldPath 逐段归属、record_ctor 双射绑定、borrow_view/mut 仅直接调用实参位、DefKind::Method+ReceiverKind、param mode。可信门：含图迭代环检测、名义相等、构造完整性、mut 排他、全表引用先界检后走查（含 binding 内索引）。stage-contract 增 record 域 S0-S6 责任与 D-05 布局/ABI-D/E、存储不重叠义务。旧 core/scalar 面零改动。",
+          "related": [],
+          "status": "active",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan:PLAN-771",
+            "commit:e279ee018"
+          ]
+        },
+        {
+          "id": "P771-1",
+          "title": "record 源码 profile 合同：名义 record 首批有限值语义",
+          "file": "docs/specs/auto-ac/source-record.md",
+          "content": "PLAN-771 交付：名义 record（前向引用/含图无环）、位置与命名构造（源码序求值；值捕获不变式——record 值操作数在自身求值位捕获，借位实参传活指针）、字段路径读写（仅 var/mut 入口）、嵌套 record、static fn 与只读实例方法（receiver 一次、先于实参）、显式 mut 参数与 per-call 排他；HIR record_ctor/field_get/borrow_view/borrow_mut/field_path place/mode 形态与可信门；目的地不相交不变式（copy elision 直写条件）。text-record 组合、可变实例方法/unit/资源字段/List/use 为后续 owner。",
+          "related": [],
+          "status": "active",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan:PLAN-771",
+            "commit:e279ee018"
+          ]
+        },
+        {
           "id": "P774-1",
           "title": "AC 数据扩面共同契约：类型/文本/str-Str/借拥有前门、内部 ABI 五类与资源合同",
           "file": "docs/specs/auto-ac/data-resource-contract.md",
@@ -6599,6 +6641,20 @@
       "id": "tests",
       "items": [
         {
+          "id": "P771-T",
+          "title": "record 测试族（HIR 变异门/源码前端/真实 PE 三层）",
+          "file": "experimental/ac-core/tests/record_native.rs",
+          "content": "record_hir 21（身份/名义/含图四形态环/1024 链/8+3 组 Bundle 变异含 binding 越界）+ record_source 21（前端正反例、位置构造五例、malformed 2000 深局部、mut 互斥跨构造实参树）+ record_native 15（源码旗舰 exit0、求值序 ba/aab、命名重排、out-slot 链式、mut 递归、V-09 1024/4096 深输入、别名赋值六例、ctor 操作数快照七例、HIR r01/r03/r04 直连腿与 r02 强制失败控制）。门禁 verify-ac-record-771.ps1 24 步 23 例（含旧 gates 741/745/767）。",
+          "related": [],
+          "status": "active",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan:PLAN-771",
+            "tier:gate"
+          ]
+        },
+        {
           "id": "P774-T",
           "title": "AC 数据/资源探针测试族（真实 COFF/PE 机器调用 + 记账状态探针）",
           "file": "experimental/ac-core/probes/data-resources/tests/v02_abi.rs",
@@ -7916,6 +7972,21 @@
     {
       "id": "reviews",
       "items": [
+        {
+          "id": "P771-R3",
+          "title": "PLAN-771 第三轮独立最终复审 pass（R1 四发现/R2 一发现修复清偿）",
+          "file": "docs/plans/attachments/771/review-r3/REVIEW.md",
+          "content": "reviewed_commit=e0ad328d8（=rebased e279ee018）。R1 F-01..04（elision 别名/位置构造/绑定 panic/HIR 退出码）与 R2 F-01（ctor 操作数延迟捕获）全部闭合；原反例+新组合（combined-snapshot 循环/混合类型、r04 双向 oracle、独立失败控制 32/34）重放绿；携带两连败诊断与值捕获 vs 借位上下文覆盖调整。独立门禁 24/24、ac-core 202/202、record_native 15/15、旧 gates 全过。AC01..07 pass。",
+          "related": [],
+          "status": "active",
+          "created": "2026-10-14",
+          "last_modified": "2026-10-14",
+          "tags": [
+            "plan:PLAN-771",
+            "outcome:pass",
+            "commit:e279ee018"
+          ]
+        },
         {
           "id": "P774-R6",
           "title": "PLAN-774 第六轮独立最终复审 pass（经 r1..r5 五轮 needs_fix 修复收敛）",
@@ -10698,5 +10769,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 13
+  "version": 14
 }
