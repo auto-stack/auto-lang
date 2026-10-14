@@ -149,19 +149,49 @@ pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>
         diags: Vec::new(),
         domain: HirDomain::Text,
     };
-    let mut plan = crate::text_resources::TextResourcePlan::default();
     for m in &bundle.modules {
         v.check_module(m);
     }
+    let mut plan = crate::text_resources::TextResourcePlan::default();
     if v.diags.is_empty() {
-        for (mi, m) in bundle.modules.iter().enumerate() {
-            for (bi, body) in m.bodies.iter().enumerate() {
+        // r4 R4-05: pairwise parameter exclusivity constraints are computed
+        // to a FIXPOINT before the reporting pass — each pass walks every
+        // body with the current constraint map, checks callee pairs at its
+        // call sites, and discovers constraints for ITS OWN signature; the
+        // map grows monotonically (bounded by params²), so the loop
+        // terminates and the last (stable) pass carries the diagnostics
+        // and plans computed against the final constraints. Earlier passes
+        // are seed-only subsets of the final pair set.
+        let mut excl = crate::text_resources::seed_param_exclusions(&bundle);
+        loop {
+            let mut next = excl.clone();
+            let mut pass_diags = Vec::new();
+            let mut pass_plan = crate::text_resources::TextResourcePlan::default();
+            for (mi, m) in bundle.modules.iter().enumerate() {
                 let type_map = Verifier::build_type_map(m);
-                if let Some(bp) =
-                    crate::text_resources::check_body(body, m, &type_map, &mut v.diags)
-                {
-                    plan.bodies.insert((mi, bi as u32), bp);
+                for (bi, body) in m.bodies.iter().enumerate() {
+                    let (bp, adds) = crate::text_resources::check_body(
+                        body,
+                        m,
+                        mi,
+                        &type_map,
+                        &excl,
+                        &mut pass_diags,
+                    );
+                    if !adds.is_empty() {
+                        next.entry((mi, bi as u32)).or_default().extend(adds);
+                    }
+                    if let Some(bp) = bp {
+                        pass_plan.bodies.insert((mi, bi as u32), bp);
+                    }
                 }
+            }
+            let stable = next == excl;
+            excl = next;
+            plan = pass_plan;
+            v.diags = pass_diags;
+            if stable {
+                break;
             }
         }
     }

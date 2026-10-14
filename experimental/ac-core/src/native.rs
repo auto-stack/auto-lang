@@ -1685,8 +1685,20 @@ struct TextEmitter<'c> {
     /// The shared ABI-C out-length stack slot (see `abic_out_slot`).
     abic_slot: Option<cranelift_codegen::ir::StackSlot>,
     /// Owned temporaries of the statement being emitted, in production
-    /// order (freed LIFO at the statement's end).
-    pending_temps: Vec<Value>,
+    /// order (freed LIFO at the statement's end). A `merged` entry exists
+    /// only on the executed path of a short-circuit right side (r4 R4-02):
+    /// the join passes its pointer as a block param (null on the skipped
+    /// edge), and the tail free is guarded — no allocation, no free there.
+    pending_temps: Vec<PendingTemp>,
+}
+
+/// One pending owned temporary of the current statement.
+#[derive(Clone, Copy)]
+struct PendingTemp {
+    ptr: Value,
+    /// short-circuit RHS temp: the value is a join param that is null on
+    /// the skipped path — free it only when non-null (r4 R4-02)
+    merged: bool,
 }
 
 impl<'c> TextEmitter<'c> {
@@ -1711,9 +1723,28 @@ impl<'c> TextEmitter<'c> {
     /// in the statement, e.g. a trace mark, precedes the FREE). Called
     /// after each statement's expression evaluation, before the
     /// statement's structural emission.
+    ///
+    /// `merged` entries (short-circuit RHS temps, r4 R4-02) are join
+    /// params that are NULL on the skipped path: each gets a null-guarded
+    /// diamond, so the skipped path executes no free while the executed
+    /// path frees exactly once — still at the statement tail.
     fn release_stmt_temps(&mut self) {
-        while let Some(ptr) = self.pending_temps.pop() {
-            self.call_rt("ac_rt_own_free", &[ptr]);
+        use cranelift_codegen::ir::condcodes::IntCC;
+        while let Some(t) = self.pending_temps.pop() {
+            if !t.merged {
+                self.call_rt("ac_rt_own_free", &[t.ptr]);
+                continue;
+            }
+            let is_null = self.fb.ins().icmp_imm(IntCC::Equal, t.ptr, 0);
+            let free_b = self.fb.create_block();
+            let cont = self.fb.create_block();
+            self.fb.ins().brif(is_null, cont, &[], free_b, &[]);
+            self.fb.seal_block(free_b);
+            self.fb.switch_to_block(free_b);
+            self.call_rt("ac_rt_own_free", &[t.ptr]);
+            self.fb.ins().jump(cont, &[]);
+            self.fb.seal_block(cont);
+            self.fb.switch_to_block(cont);
         }
     }
 
@@ -1721,7 +1752,7 @@ impl<'c> TextEmitter<'c> {
     /// value escapes into an owning `let` local or an owned `return`).
     fn transfer_root(&mut self, v: &TVal) {
         if let TVal::T { ptr, .. } = v {
-            if let Some(pos) = self.pending_temps.iter().rposition(|p| *p == *ptr) {
+            if let Some(pos) = self.pending_temps.iter().rposition(|p| p.ptr == *ptr) {
                 self.pending_temps.remove(pos);
             }
         }
@@ -1758,7 +1789,7 @@ impl<'c> TextEmitter<'c> {
             .unwrap_or_else(|| panic!("internal: `{sym}` must return the pointer"));
         let len = self.fb.ins().stack_load(types::I32, slot, 0);
         self.negative_trap(len);
-        self.pending_temps.push(ptr);
+        self.pending_temps.push(PendingTemp { ptr, merged: false });
         (ptr, len)
     }
 
@@ -2083,6 +2114,9 @@ impl<'c> TextEmitter<'c> {
                 rhs: ExprId,
                 var: Variable,
                 merge: cranelift_codegen::ir::Block,
+                /// pending_temps length at RHS entry (r4 R4-02): entries
+                /// beyond this were allocated inside the RHS region only
+                temps_mark: usize,
             },
             Call(ExprId),
             Len {
@@ -2165,11 +2199,13 @@ impl<'c> TextEmitter<'c> {
                         hir::ExprKind::Logical { op, lhs, rhs } => {
                             let var = self.fb.declare_var(types::I32);
                             let merge = self.fb.create_block();
+                            let temps_mark = self.pending_temps.len();
                             stack.push(TStep::LogicalRhs {
                                 dest: id,
                                 rhs: *rhs,
                                 var,
                                 merge,
+                                temps_mark,
                             });
                             stack.push(TStep::Enter(*rhs));
                             stack.push(TStep::LogicalLhs {
@@ -2384,15 +2420,56 @@ impl<'c> TextEmitter<'c> {
                     rhs,
                     var,
                     merge,
+                    temps_mark,
                 } => {
                     let r = match slots.remove(&rhs.0).expect("logical rhs slot filled") {
                         TVal::I(v) => v,
                         _ => unreachable!("verifier: logical operands are bool"),
                     };
                     self.fb.def_var(var, r);
-                    self.fb.ins().jump(merge, &[]);
-                    self.fb.seal_block(merge);
-                    self.fb.switch_to_block(merge);
+                    // r4 R4-02: owned temporaries allocated inside the RHS
+                    // region exist ONLY on the executed path. The statement
+                    // tail still frees them (774 D-04: later statement
+                    // effects precede the FREE), so their pointers are
+                    // carried through the join as block params — the
+                    // skipped edge forwards null, and the tail free is
+                    // null-guarded. Without this the tail free used an SSA
+                    // value the skip predecessor never defined (backend
+                    // verifier error on every RHS-owned-temp short
+                    // circuit).
+                    let rhs_temps = self.pending_temps.split_off(temps_mark);
+                    let mut phis: Vec<Value> = Vec::new();
+                    let cont = if rhs_temps.is_empty() {
+                        self.fb.ins().jump(merge, &[]);
+                        self.fb.seal_block(merge);
+                        merge
+                    } else {
+                        let cont = self.fb.create_block();
+                        for _ in &rhs_temps {
+                            phis.push(self.fb.append_block_param(cont, types::I64));
+                        }
+                        let args: Vec<cranelift_codegen::ir::BlockArg> =
+                            rhs_temps.iter().map(|t| t.ptr.into()).collect();
+                        self.fb.ins().jump(cont, &args);
+                        // the skip edge (the lhs branch straight into
+                        // `merge`) forwards null for every RHS temp; both
+                        // edges exist before the join is sealed
+                        self.fb.switch_to_block(merge);
+                        let null = self.fb.ins().iconst(types::I64, 0);
+                        let nulls: Vec<cranelift_codegen::ir::BlockArg> =
+                            rhs_temps.iter().map(|_| null.into()).collect();
+                        self.fb.ins().jump(cont, &nulls);
+                        self.fb.seal_block(cont);
+                        self.fb.seal_block(merge);
+                        cont
+                    };
+                    self.fb.switch_to_block(cont);
+                    for p in phis {
+                        self.pending_temps.push(PendingTemp {
+                            ptr: p,
+                            merged: true,
+                        });
+                    }
                     let v = self.fb.use_var(var);
                     slots.insert(dest.0, TVal::I(v));
                 }
@@ -2441,7 +2518,7 @@ impl<'c> TextEmitter<'c> {
                             let ptr = self.fb.inst_results(call)[0];
                             let len = self.fb.ins().stack_load(types::I32, slot, 0);
                             self.negative_trap(len);
-                            self.pending_temps.push(ptr);
+                            self.pending_temps.push(PendingTemp { ptr, merged: false });
                             TVal::T { ptr, len }
                         }
                         Vt2::StrBorrow => {

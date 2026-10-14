@@ -25,7 +25,21 @@
 //! - a local moved anywhere inside a loop body is dead for the whole body
 //!   (re-entry) and after the loop;
 //! - explicit `drop` statements free exactly once; a use after a drop is
-//!   `verify.use-after-free`.
+//!   `verify.use-after-free`;
+//! - block exits enter the dataflow state (r4 R4-01): a block's natural
+//!   end marks its own still-live lets `ScopeExit`-dead, so a view backed
+//!   by an owner whose `let` block exited is a `verify.owned-scope-escape`
+//!   — "not live and not dead" is never a legal backing;
+//! - a join merges continuation state ONLY from the exits that actually
+//!   enter it (r4 R4-03): reachable-but-terminating arms (return/break/
+//!   continue) keep their terminal frees/transfers but contribute no
+//!   live/dead/backing after the join; the cross-arm consistency question
+//!   covers only the frame's ENTRY owners (r4 R4-04) — arm-local owners
+//!   close at their own block exit;
+//! - pairwise parameter exclusivity constraints propagate across function
+//!   boundaries to a fixpoint (r4 R4-05): a wrapper re-exporting a `mut`
+//!   slot and any other slot fed from its own view/mut parameters carries
+//!   the pair on ITS signature, checked at ITS call sites.
 //!
 //! Output: per-exit LIFO free schedules (reverse declaration order) at
 //! `return`/`break`/`continue`/block fall-through points, plus the
@@ -141,13 +155,19 @@ pub struct TextResourcePlan {
 }
 
 /// Check one body; on success produce its resource plan. Diagnostics are
-/// appended to `diags` (caller decides pass/fail).
+/// appended to `diags` (caller decides pass/fail). `excl` carries the
+/// current pairwise parameter exclusivity constraints of every body
+/// (r4 R4-05; seeds + fixpoint propagation, see `verify::verify_text`);
+/// the second return value is the set of NEW constraints discovered for
+/// THIS body's own signature at its call sites.
 pub(crate) fn check_body(
     body: &hir::Body,
     m: &hir::Module,
+    mi: usize,
     type_map: &BTreeMap<u32, ValueType>,
+    excl: &ParamExclusions,
     diags: &mut Vec<Diagnostic>,
-) -> Option<BodyResourcePlan> {
+) -> (Option<BodyResourcePlan>, BTreeSet<(u32, u32)>) {
     let fn_result = fn_result_of(body, m, type_map);
     let local_type = |id: u32| -> ValueType {
         match &body.locals[id as usize].ty {
@@ -177,6 +197,9 @@ pub(crate) fn check_body(
         owned: &owned,
         local_type: &local_type,
         fn_result,
+        mi,
+        excl,
+        excl_adds: BTreeSet::new(),
         diags,
         plan: BodyResourcePlan {
             owned: owned.clone(),
@@ -185,7 +208,7 @@ pub(crate) fn check_body(
         },
     };
     w.walk(m);
-    Some(w.plan)
+    (Some(w.plan), w.excl_adds)
 }
 
 fn fn_result_of(
@@ -216,6 +239,9 @@ fn fn_result_of(
 enum DeadCause {
     Moved,
     Dropped,
+    /// The owner's `let` block exited (its natural-end free schedule ran)
+    /// — a view backed by it must not be read after the join (r4 R4-01).
+    ScopeExit,
 }
 
 /// Static scan of one expression tree: every `ReadLocal` leaf, whether any
@@ -594,6 +620,12 @@ struct ResourceWalk<'a> {
     owned: &'a BTreeSet<u32>,
     local_type: &'a dyn Fn(u32) -> ValueType,
     fn_result: ValueType,
+    /// module index of `m` (exclusion-map key component, r4 R4-05)
+    mi: usize,
+    /// current pairwise parameter exclusivity constraints (r4 R4-05)
+    excl: &'a ParamExclusions,
+    /// NEW constraints discovered for THIS body's signature (r4 R4-05)
+    excl_adds: BTreeSet<(u32, u32)>,
     diags: &'a mut Vec<Diagnostic>,
     plan: BodyResourcePlan,
 }
@@ -624,14 +656,15 @@ enum RState {
     AwaitIf {
         then_slot: usize,
         else_slot: usize,
-        /// the then arm is statically reachable at all (const conditions)
-        then_reachable: bool,
-        else_reachable: bool,
         /// arms that actually JOIN here (reachable && fall through)
         then_incoming: bool,
         else_incoming: bool,
         /// no-else fall-through state snapshot (incoming when present)
         implicit: Option<WalkState>,
+        /// owned locals live at the `if` — THIS frame's entry owners, the
+        /// only cross-arm consistency question (arm-local owners close at
+        /// their own block exit, r4 R4-04)
+        entry_live: Vec<u32>,
         span: Span,
     },
     AwaitLoop {
@@ -735,17 +768,17 @@ impl<'a> ResourceWalk<'a> {
     fn check_reads(&mut self, st: &WalkState, chain: &[u32], reads: &[(u32, u32, Span)]) {
         for (_, l, span) in reads {
             if let Some(cause) = st.dead.get(l) {
-                let code = match cause {
-                    DeadCause::Moved => "verify.use-after-move",
-                    DeadCause::Dropped => "verify.use-after-free",
-                };
-                let why = match cause {
-                    DeadCause::Moved => "moved",
-                    DeadCause::Dropped => "dropped",
+                let (code, why) = match cause {
+                    DeadCause::Moved => ("verify.use-after-move", "moved"),
+                    DeadCause::Dropped => ("verify.use-after-free", "dropped"),
+                    DeadCause::ScopeExit => (
+                        "verify.owned-scope-escape",
+                        "out of scope (its `let` block exited)",
+                    ),
                 };
                 self.error(
                     code,
-                    format!("read of {} local `{}`", why, self.local_name(*l)),
+                    format!("read of owned local `{}` {}", self.local_name(*l), why),
                     *span,
                 );
                 continue;
@@ -774,13 +807,23 @@ impl<'a> ResourceWalk<'a> {
                             let code = match cause {
                                 DeadCause::Moved => "verify.use-after-move",
                                 DeadCause::Dropped => "verify.use-after-free",
+                                // r4 R4-01: the backing owner's block
+                                // exited and freed its buffer — the view
+                                // escaped the owner's scope
+                                DeadCause::ScopeExit => "verify.owned-scope-escape",
+                            };
+                            let why = match cause {
+                                DeadCause::Moved => "was moved",
+                                DeadCause::Dropped => "was dropped",
+                                DeadCause::ScopeExit => "'s scope exited",
                             };
                             self.error(
                                 code,
                                 format!(
-                                    "read of borrowed local `{}` whose owner `{}` was moved or dropped",
+                                    "read of borrowed local `{}` whose owner `{}`{}",
                                     self.local_name(*l),
-                                    self.local_name(*b)
+                                    self.local_name(*b),
+                                    why
                                 ),
                                 *span,
                             );
@@ -859,13 +902,21 @@ impl<'a> ResourceWalk<'a> {
                 );
                 continue;
             }
-            if st.dead.contains_key(&local.0) {
-                self.error(
-                    "verify.use-after-move",
-                    format!(
-                        "local `{}` is moved again in the same statement",
-                        self.local_name(local.0)
+            if let Some(cause) = st.dead.get(&local.0) {
+                let (code, why) = match cause {
+                    DeadCause::Moved => (
+                        "verify.use-after-move",
+                        "is moved again in the same statement",
                     ),
+                    DeadCause::Dropped => ("verify.use-after-free", "was already dropped"),
+                    DeadCause::ScopeExit => (
+                        "verify.owned-scope-escape",
+                        "is moved outside the block subtree of its `let` (the block exited)",
+                    ),
+                };
+                self.error(
+                    code,
+                    format!("local `{}` {}", self.local_name(local.0), why),
                     *span,
                 );
                 continue;
@@ -972,9 +1023,14 @@ impl<'a> ResourceWalk<'a> {
                     );
                 }
             }
-            // r2 QA-06: a `mut` parameter borrows exclusively — its
-            // argument's reach (owned buffers or mut sources it views)
-            // must be disjoint from every other argument's reach.
+            // r2 QA-06 + r4 R4-05: exclusivity as CALLEE SIGNATURE
+            // constraints. The seeds cover the direct rule (a `mut`
+            // parameter's argument must be disjoint from every other
+            // argument's sources); fixpoint-propagated pairs extend the
+            // same check through wrappers — a body that feeds two
+            // constrained slots from its own view/mut parameters re-exports
+            // the pair as ITS signature constraint, so no call boundary can
+            // re-form a same-source mut/view pair one level up.
             let hir::ExprKind::Call {
                 eval_args,
                 bindings: call_bindings,
@@ -983,6 +1039,10 @@ impl<'a> ResourceWalk<'a> {
             else {
                 continue;
             };
+            let pairs = self.excl.get(&(self.mi, cb.0)).cloned().unwrap_or_default();
+            if pairs.is_empty() {
+                continue;
+            }
             let mut reaches: Vec<(u32, BTreeSet<u32>)> = Vec::new();
             for b in call_bindings {
                 if (b.arg as usize) >= eval_args.len() {
@@ -992,29 +1052,56 @@ impl<'a> ResourceWalk<'a> {
                 let r = self.alias_reach(st, &ascan);
                 reaches.push((b.param, r));
             }
-            for (pi, reach_i) in &reaches {
-                let is_mut = callee_body.locals.iter().any(|l| {
-                    l.role == hir::LocalRole::Param
-                        && l.index == Some(*pi)
-                        && l.param_mode == hir::ParamMode::MutBorrow
-                });
-                if !is_mut {
+            // callee parameter local id -> parameter index
+            let mut idx_of: BTreeMap<u32, u32> = BTreeMap::new();
+            for (li, l) in callee_body.locals.iter().enumerate() {
+                if l.role == hir::LocalRole::Param {
+                    if let Some(ix) = l.index {
+                        idx_of.insert(li as u32, ix);
+                    }
+                }
+            }
+            for (pl, ql) in &pairs {
+                let (Some(&pi), Some(&qi)) = (idx_of.get(pl), idx_of.get(ql)) else {
+                    continue;
+                };
+                let Some(ri) = reaches.iter().find(|(p, _)| *p == pi).map(|(_, r)| r) else {
+                    continue;
+                };
+                let Some(rj) = reaches.iter().find(|(p, _)| *p == qi).map(|(_, r)| r) else {
+                    continue;
+                };
+                if let Some(&hit) = ri.intersection(rj).next() {
+                    self.error(
+                        "verify.mut-conflict",
+                        format!(
+                            "arguments for parameters {} and {} of `{}` both view `{}`; the function requires their sources disjoint (an exclusive `mut` borrow, held directly or forwarded through parameters)",
+                            pi, qi, def.id_text, self.local_name(hit)
+                        ),
+                        *span,
+                    );
                     continue;
                 }
-                for (pj, reach_j) in &reaches {
-                    if pj == pi {
-                        continue;
-                    }
-                    if let Some(&hit) = reach_i.intersection(reach_j).next() {
-                        self.error(
-                            "verify.mut-conflict",
-                            format!(
-                                "argument for `mut` parameter {} of `{}` views `{}`, which parameter {} also views; a mut borrow is exclusive",
-                                pi, def.id_text, self.local_name(hit), pj
-                            ),
-                            *span,
-                        );
-                        break;
+                // Propagate the pair to THIS body's signature: only
+                // cross-side aliasable-parameter pairs (same-side sources
+                // may legally alias each other inside one argument).
+                let mut carriers_i: Vec<u32> = ri
+                    .iter()
+                    .copied()
+                    .filter(|&s| is_aliasable_param(self.body, s))
+                    .collect();
+                let mut carriers_j: Vec<u32> = rj
+                    .iter()
+                    .copied()
+                    .filter(|&s| is_aliasable_param(self.body, s))
+                    .collect();
+                carriers_i.sort_unstable();
+                carriers_i.dedup();
+                carriers_j.sort_unstable();
+                carriers_j.dedup();
+                for a in &carriers_i {
+                    for b in &carriers_j {
+                        self.excl_adds.insert(((*a).min(*b), (*a).max(*b)));
                     }
                 }
             }
@@ -1272,25 +1359,28 @@ impl<'a> ResourceWalk<'a> {
                                 frame.st.live.remove(&l);
                                 frame.st.dead.insert(l, DeadCause::Moved);
                             }
-                            // r3 R3-01: the join is computed from the ARMS'
-                            // ACTUAL responsibility states (not a syntactic
-                            // move pre-scan — unreachable nested arms must
-                            // not fake a transfer, and a Drop kills the same
-                            // way a move does). Constant conditions prune
-                            // reachability; terminating arms never join; the
-                            // no-else fall-through is a virtual arm carrying
-                            // this frame's snapshot. The resume step requires
-                            // every incoming state to agree on each owned
-                            // local: live on all (this frame keeps the free),
-                            // dead on all (the transfer happened — drop the
-                            // duty), mixed -> rejected.
+                            // r3 R3-01 + r4 R4-03/R4-04: the join is
+                            // computed ONLY from the exits that actually
+                            // reach it — arms that are unreachable, or
+                            // reachable but TERMINATING (return/break/
+                            // continue: their own exit frees/transfers
+                            // already ran), contribute no continuation
+                            // live/dead/backing state. Constant conditions
+                            // prune reachability; the no-else fall-through
+                            // is a virtual arm carrying this frame's
+                            // snapshot. The consistency question covers
+                            // only THIS frame's entry owners: an owned
+                            // local `let` inside an arm closes at the
+                            // arm's own block exit (marked ScopeExit in
+                            // the arm's outgoing state, r4 R4-01), it is
+                            // never this frame's cross-arm duty.
                             let cond_t = const_truth(self.body, cond);
-                            let then_reachable = cond_t != Some(false);
-                            let else_reachable = els.is_some() && cond_t != Some(true);
                             let then_incoming =
-                                then_reachable && !block_terminates(self.body, then.0);
+                                cond_t != Some(false) && !block_terminates(self.body, then.0);
                             let else_incoming = match els {
-                                Some(e) => else_reachable && !block_terminates(self.body, e.0),
+                                Some(e) => {
+                                    cond_t != Some(true) && !block_terminates(self.body, e.0)
+                                }
                                 None => false,
                             };
                             let implicit = if els.is_none() && cond_t != Some(true) {
@@ -1298,6 +1388,7 @@ impl<'a> ResourceWalk<'a> {
                             } else {
                                 None
                             };
+                            let entry_live: Vec<u32> = frame.st.live.keys().copied().collect();
                             let cur_in = frame.st.clone();
                             let loops_len = frame.loops_len;
                             let parent_idx = frames.len() - 1;
@@ -1316,11 +1407,10 @@ impl<'a> ResourceWalk<'a> {
                             frames[parent_idx].state = RState::AwaitIf {
                                 then_slot,
                                 else_slot,
-                                then_reachable,
-                                else_reachable,
                                 then_incoming,
                                 else_incoming,
                                 implicit,
+                                entry_live,
                                 span: self.body.blocks[bid as usize].span,
                             };
                         }
@@ -1371,6 +1461,18 @@ impl<'a> ResourceWalk<'a> {
                                         self.plan
                                             .exit_frees
                                             .insert((bid, Some(idx)), Self::lifo(&frees));
+                                        // r4 R4-01: record the scope exit on
+                                        // this path — the loop-level merge
+                                        // unions it forward so a view backed
+                                        // by a loop-scoped owner is not read
+                                        // after the loop. These are strictly
+                                        // loop-body-scoped locals (never a
+                                        // parent's), so no fall-through
+                                        // reader is lost.
+                                        for l in &frees {
+                                            frame.st.live.remove(l);
+                                            frame.st.dead.entry(*l).or_insert(DeadCause::ScopeExit);
+                                        }
                                     }
                                 }
                             }
@@ -1386,12 +1488,20 @@ impl<'a> ResourceWalk<'a> {
                                     ),
                                     self.body.blocks[bid as usize].span,
                                 );
-                            } else if frame.st.dead.contains_key(&local.0) {
+                            } else if let Some(cause) = frame.st.dead.get(&local.0) {
+                                let why = match cause {
+                                    DeadCause::Moved => "an earlier drop or move",
+                                    DeadCause::Dropped => "an earlier drop or move",
+                                    DeadCause::ScopeExit => {
+                                        "its `let` block exited (already freed)"
+                                    }
+                                };
                                 self.error(
                                     "verify.use-after-free",
                                     format!(
-                                        "local `{}` is dropped again after an earlier drop or move",
-                                        self.local_name(local.0)
+                                        "local `{}` is dropped again after {}",
+                                        self.local_name(local.0),
+                                        why
                                     ),
                                     self.body.blocks[bid as usize].span,
                                 );
@@ -1413,7 +1523,7 @@ impl<'a> ResourceWalk<'a> {
                     }
                 }
                 Action::AfterTerm | Action::Complete => {
-                    let frame = frames.pop().expect("resource walk frame");
+                    let mut frame = frames.pop().expect("resource walk frame");
                     if matches!(action, Action::Complete) {
                         // Fall-through end: free this block's own lets that
                         // are still live (descendant blocks already freed
@@ -1430,6 +1540,15 @@ impl<'a> ResourceWalk<'a> {
                             self.plan
                                 .exit_frees
                                 .insert((frame.bid, None), Self::lifo(&own));
+                            // r4 R4-01: the block-exit death enters the
+                            // outgoing state — a view backed by one of
+                            // these owners must not be read after the join
+                            // ("not live and not dead" was wrongly treated
+                            // as a legal backing before).
+                            for l in &own {
+                                frame.st.live.remove(l);
+                                frame.st.dead.entry(*l).or_insert(DeadCause::ScopeExit);
+                            }
                         }
                     }
                     results[frame.ret_slot] = Some(frame.st);
@@ -1441,35 +1560,27 @@ impl<'a> ResourceWalk<'a> {
                         RState::AwaitIf {
                             then_slot,
                             else_slot,
-                            then_reachable,
-                            else_reachable,
                             then_incoming,
                             else_incoming,
                             implicit,
+                            entry_live,
                             span,
                         } => {
-                            // r3 R3-01: UNREACHABLE arms keep their static
-                            // legality diagnostics (already emitted during
-                            // their walk) but their runtime responsibility
-                            // states are DISCARDED — dead code must not
-                            // pollute the join (c01/q01).
                             let then_st = results[then_slot].clone().expect("then arm state");
                             let else_st = if else_slot == usize::MAX {
                                 None
                             } else {
                                 results[else_slot].clone()
                             };
-                            let mut merging: Vec<Option<WalkState>> = Vec::new();
-                            if then_reachable {
-                                merging.push(Some(then_st.clone()));
-                            }
-                            if else_reachable {
-                                merging.push(else_st.clone());
-                            }
-                            merge_children(&mut frame.st, &merging);
-                            // Join responsibility from the ACTUAL incoming
-                            // states (reachable && fall-through arms plus the
-                            // implicit fall-through snapshot).
+                            // r4 R4-03: ONLY the exits that actually enter
+                            // this join contribute continuation state. A
+                            // reachable-but-terminating arm (return/break/
+                            // continue) keeps its own terminal frees and
+                            // transfers but must not pollute the reads that
+                            // continue after the join; an unreachable arm
+                            // contributed nothing either (its static legality
+                            // diagnostics were already emitted during its
+                            // walk).
                             let mut incoming: Vec<(&str, WalkState)> = Vec::new();
                             if then_incoming {
                                 incoming.push(("then arm", then_st));
@@ -1480,21 +1591,29 @@ impl<'a> ResourceWalk<'a> {
                             if let Some(imp) = implicit {
                                 incoming.push(("implicit fall-through", imp));
                             }
+                            let merging: Vec<WalkState> =
+                                incoming.iter().map(|(_, st)| st.clone()).collect();
+                            merge_children(&mut frame.st, &merging);
+                            // r4 R4-04: the cross-arm consistency question
+                            // covers only THIS frame's entry owners (live at
+                            // the `if`). Live on every incoming exit: this
+                            // frame keeps the cleanup duty. Dead on every
+                            // incoming exit (moved/dropped, or an inner
+                            // block's scope exit merged through): the duty
+                            // ended on every path. Mixed -> rejected.
                             if !incoming.is_empty() {
-                                let owned: Vec<u32> = self.owned.iter().copied().collect();
-                                for l in owned {
+                                for l in entry_live {
                                     let live_cnt = incoming
                                         .iter()
                                         .filter(|(_, st)| st.live.contains_key(&l))
                                         .count();
                                     if live_cnt == incoming.len() {
-                                        // live on every path: this frame
-                                        // keeps the cleanup duty
+                                        // live on every path into the join:
+                                        // this frame keeps the cleanup duty
                                     } else if live_cnt == 0 {
-                                        // moved/dropped on every joining
-                                        // path: the transfer already
-                                        // happened; drop the duty (dead is
-                                        // merged above)
+                                        // the responsibility ended on every
+                                        // joining path (transfer or scope
+                                        // exit already happened)
                                         frame.st.live.remove(&l);
                                     } else {
                                         let arm = incoming
@@ -1517,7 +1636,7 @@ impl<'a> ResourceWalk<'a> {
                         }
                         RState::AwaitLoop { body_slot } => {
                             let body_st = results[body_slot].clone().expect("loop body state");
-                            merge_children(&mut frame.st, &[Some(body_st)]);
+                            merge_children(&mut frame.st, &[body_st]);
                             loops.truncate(frame.loops_len);
                         }
                         RState::Run => unreachable!("Run is not resumed"),
@@ -1571,11 +1690,11 @@ fn push_child(
 }
 
 /// Merge child states into the parent at a join: dead and backing are the
-/// UNION over reachable paths (moved/borrowed on any path ⇒ moved/borrowed
+/// UNION over the joining paths (moved/borrowed on any path ⇒ moved/borrowed
 /// after the join — conservative and sound); live needs no merge because a
 /// parent's own live set is only ever extended by its own lets.
-fn merge_children(parent: &mut WalkState, children: &[Option<WalkState>]) {
-    for c in children.iter().flatten() {
+fn merge_children(parent: &mut WalkState, children: &[WalkState]) {
+    for c in children {
         for (l, cause) in &c.dead {
             parent.dead.entry(*l).or_insert(*cause);
         }
@@ -1587,4 +1706,64 @@ fn merge_children(parent: &mut WalkState, children: &[Option<WalkState>]) {
                 .extend(bs.iter().copied());
         }
     }
+}
+
+/// Pairwise PARAMETER exclusivity constraints of every body, keyed
+/// (module index, body id): pairs of parameter locals whose argument
+/// sources must be disjoint at every call site (r4 R4-05).
+///
+/// Seeds: a `mut` parameter borrows exclusively for the WHOLE callee body
+/// (774 D-03/04), so its argument's sources must be disjoint from every
+/// other parameter's (this is exactly the r2 QA-06 call-site rule).
+/// Propagation (fixpoint in `verify::verify_text`): when a body feeds two
+/// constrained parameter slots from its OWN view/mut parameters, the pair
+/// becomes a constraint on THAT body's signature — a wrapper must not
+/// re-form a same-source mut/view pair its caller was never allowed to
+/// form directly.
+pub(crate) type ParamExclusions = BTreeMap<(usize, u32), BTreeSet<(u32, u32)>>;
+
+pub(crate) fn seed_param_exclusions(bundle: &hir::Bundle) -> ParamExclusions {
+    let mut out = ParamExclusions::new();
+    for (mi, m) in bundle.modules.iter().enumerate() {
+        for (bi, body) in m.bodies.iter().enumerate() {
+            let mut muts: Vec<u32> = Vec::new();
+            let mut others: Vec<u32> = Vec::new();
+            for (li, l) in body.locals.iter().enumerate() {
+                if l.role != hir::LocalRole::Param {
+                    continue;
+                }
+                if is_mut_param(l) {
+                    muts.push(li as u32);
+                } else {
+                    others.push(li as u32);
+                }
+            }
+            let mut pairs = BTreeSet::new();
+            for &p in &muts {
+                for &q in &others {
+                    pairs.insert((p.min(q), p.max(q)));
+                }
+            }
+            for i in 0..muts.len() {
+                for j in i + 1..muts.len() {
+                    pairs.insert((muts[i].min(muts[j]), muts[i].max(muts[j])));
+                }
+            }
+            if !pairs.is_empty() {
+                out.insert((mi, bi as u32), pairs);
+            }
+        }
+    }
+    out
+}
+
+/// Whether a local of `body` is a parameter the CALLER can alias with
+/// another argument (view/mut text parameters: both borrow the caller's
+/// buffer). `move` parameters are transferred into the callee — they are
+/// the callee's own unique buffer, never an aliasing carrier.
+fn is_aliasable_param(body: &hir::Body, l: u32) -> bool {
+    body.locals
+        .get(l as usize)
+        .map(|ld| ld.role == hir::LocalRole::Param && ld.param_mode != hir::ParamMode::MoveOwn)
+        .unwrap_or(false)
 }
