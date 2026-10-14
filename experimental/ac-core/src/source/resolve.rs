@@ -1101,7 +1101,7 @@ impl<'a> FnResolver<'a> {
                     value,
                     span,
                 } => {
-                    let value = self.expr_iterative(value);
+                    let mut value = self.expr_iterative(value);
                     // Immutability itself is re-checked by the semantic verifier
                     // on the emitted place/local pair (verify.immutable-write);
                     // here only resolution failures are reported.
@@ -1150,6 +1150,13 @@ impl<'a> FnResolver<'a> {
                                 }
                             }
                             let _ = ok;
+                            // PLAN-782 AP-4: an owning Str-field
+                            // replacement promotes a borrowing literal
+                            // exactly like a constructor field (the owning
+                            // context constructs)
+                            if cur == VT::StrOwned && matches!(value.kind, RExprKind::StrLit(_)) {
+                                value.vt = VT::StrOwned;
+                            }
                             RStmt::Assign {
                                 local: l,
                                 path,
@@ -2388,7 +2395,18 @@ impl<'a> FnResolver<'a> {
                         .position(|fl| fl.name == name.name)
                     {
                         Some(fi) => {
-                            let vt = self.records[ri].fields[fi].vt;
+                            // PLAN-782 5.2: reading an owned Str field is a
+                            // BORROWING VIEW of the root's buffer, never a
+                            // copy of the owner - owning a field value takes
+                            // an explicit owned construction (`.to(Str)`,
+                            // clone, concat) or moving the whole root. The
+                            // plain record profile has no Str fields (its
+                            // member-type guard), so this rewrites nothing
+                            // there.
+                            let vt = match self.records[ri].fields[fi].vt {
+                                VT::StrOwned => VT::Str,
+                                v => v,
+                            };
                             out[dest] = ResolvedExpr {
                                 span,
                                 vt,

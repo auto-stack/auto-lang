@@ -51,5 +51,5 @@ fn main() int {
     var d Tok = Tok.new("fresh", 9)
     d = d.clone()
     let f Tok = b.move
-    return n + m + k + c.kind + d.kind + f.text.len()
+    return n + m + k + d.kind + f.text.len()
 }

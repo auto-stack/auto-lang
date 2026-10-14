@@ -175,6 +175,7 @@ pub fn verify_text(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>
                         m,
                         mi,
                         &type_map,
+                        &[],
                         &excl,
                         &mut pass_diags,
                     );
@@ -259,11 +260,52 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
     for m in &bundle.modules {
         v.check_module(m);
     }
+    let mut plan = crate::text_resources::TextResourcePlan::default();
     if v.diags.is_empty() {
-        // Derived runtime need: modules whose content performs text
-        // operations must declare the runtime capability (T-02 scope: the
-        // content scan; plan-driven cleanup obligations join in T-04).
-        let needs_runtime = crate::text_resources::bundle_needs_text_runtime(&bundle);
+        // PLAN-782 T-04: the resource walk (770 machinery extended to
+        // record roots). Same exclusivity fixpoint shape as verify_text;
+        // the per-module resource classification comes from the shapes
+        // (never trusted from the document).
+        let mut excl = crate::text_resources::seed_param_exclusions(&bundle);
+        loop {
+            let mut next = excl.clone();
+            let mut pass_diags = Vec::new();
+            let mut pass_plan = crate::text_resources::TextResourcePlan::default();
+            for (mi, m) in bundle.modules.iter().enumerate() {
+                let type_map = Verifier::build_type_map(m);
+                let resource = record_resource_map(m);
+                for (bi, body) in m.bodies.iter().enumerate() {
+                    let (bp, adds) = crate::text_resources::check_body(
+                        body,
+                        m,
+                        mi,
+                        &type_map,
+                        &resource,
+                        &excl,
+                        &mut pass_diags,
+                    );
+                    if !adds.is_empty() {
+                        next.entry((mi, bi as u32)).or_default().extend(adds);
+                    }
+                    if let Some(bp) = bp {
+                        pass_plan.bodies.insert((mi, bi as u32), bp);
+                    }
+                }
+            }
+            let stable = next == excl;
+            excl = next;
+            plan = pass_plan;
+            v.diags = pass_diags;
+            if stable {
+                break;
+            }
+        }
+    }
+    if v.diags.is_empty() {
+        // Derived runtime need: real text operations OR plan-driven
+        // cleanup obligations (owned roots and scheduled frees).
+        let needs_runtime = crate::text_resources::bundle_needs_text_runtime(&bundle)
+            || crate::text_resources::plan_needs_text_runtime(&plan);
         if needs_runtime
             && !bundle
                 .requires
@@ -273,13 +315,13 @@ pub fn verify_text_record(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diag
             return Err(vec![Diagnostic::new(
                 Stage::Capability,
                 "capability.missing",
-                "the module lowers text runtime operations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred",
+                "the module lowers text runtime operations or cleanup obligations but the document does not declare `requires: [\"ac.runtime.text.v1\"]`; the declaration is mandatory, not inferred",
                 Span { start: 0, end: 0 },
             )]);
         }
         Ok(CheckedModule {
             bundle,
-            text_plan: None,
+            text_plan: Some(plan),
             runtime_text_needed: needs_runtime,
         })
     } else {
@@ -2965,7 +3007,15 @@ impl Verifier {
                                 e.span,
                             ) {
                                 Some((_, final_vt)) => {
-                                    if final_vt != declared {
+                                    // PLAN-782 5.2: the source front end
+                                    // retags an owned Str-field READ as the
+                                    // borrowing view `str` (a read never
+                                    // copies the owner); both spellings are
+                                    // the same field.
+                                    let compatible = final_vt == declared
+                                        || (final_vt == ValueType::StrOwned
+                                            && declared == ValueType::Str);
+                                    if !compatible {
                                         self.error(
                                             "verify.type-mismatch",
                                             format!(
@@ -2975,7 +3025,9 @@ impl Verifier {
                                             e.span,
                                         );
                                     }
-                                    final_vt
+                                    // the retagged view spelling IS the
+                                    // expression's type on the surface
+                                    declared
                                 }
                                 None => declared,
                             }

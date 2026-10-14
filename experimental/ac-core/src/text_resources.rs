@@ -102,9 +102,12 @@ pub fn body_needs_text_runtime(m: &hir::Module, body: &hir::Body) -> bool {
 /// a pure-cleanup body must be gated by the runtime contract exactly like
 /// one with text operations.
 pub fn plan_needs_text_runtime(plan: &TextResourcePlan) -> bool {
-    plan.bodies
-        .values()
-        .any(|bp| !bp.owned.is_empty() || !bp.exit_frees.is_empty())
+    plan.bodies.values().any(|bp| {
+        !bp.owned.is_empty()
+            || !bp.exit_frees.is_empty()
+            || !bp.buffer_frees.is_empty()
+            || !bp.replace_frees.is_empty()
+    })
 }
 
 /// Nominal text-type test (str or Str, builtin shorthand or table ref).
@@ -131,6 +134,15 @@ pub(crate) fn type_use_is_owned(u: &hir::TypeUse, m: &hir::Module) -> bool {
     }
 }
 
+/// One Str buffer to free: a plain owned-Str local (empty path) or one Str
+/// field of a resource-record root (path from the root, declaration
+/// indices). PLAN-782 T-04.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordBuffer {
+    pub root: u32,
+    pub path: Vec<u32>,
+}
+
 /// Verified resource obligations for one function body.
 #[derive(Clone, Debug, Default)]
 pub struct BodyResourcePlan {
@@ -145,6 +157,56 @@ pub struct BodyResourcePlan {
     /// Return statements whose value is an owned `Str` transferring out:
     /// the returned value itself is NOT freed; everything else live is.
     pub owned_returns: BTreeSet<(u32, usize)>,
+    /// PLAN-782 combination: the UNIFIED per-exit buffer schedule — plain
+    /// owned-Str roots (empty path) plus every Str field of every live
+    /// resource-record root, in probe-P3 order (roots reverse creation,
+    /// a root's fields reverse declaration). `exit_frees` keeps the
+    /// plain-Str roots for 770-compatible consumers; the combination
+    /// lowering (T-05) consumes THIS map.
+    pub buffer_frees: BTreeMap<(u32, Option<usize>), Vec<RecordBuffer>>,
+    /// PLAN-782: replacement frees — the OLD buffers of an assign target
+    /// (whole-root re-assignment: all of the root's Str field paths; Str
+    /// field replacement: that one path), emitted after the RHS fully
+    /// materializes (probe P4). Key: (block id, statement index).
+    pub replace_frees: BTreeMap<(u32, usize), Vec<RecordBuffer>>,
+}
+
+/// Every Str-field path of a record type (declaration order, DFS pre-order
+/// through nested records; iterative — nesting is unbounded). A record
+/// whose transitive closure contains no Str field yields an empty list by
+/// definition of the resource classification.
+pub(crate) fn str_field_paths(m: &hir::Module, resource: &[bool], tid: u32) -> Vec<Vec<u32>> {
+    let mut out = Vec::new();
+    let mut stack = vec![(tid, Vec::new())];
+    while let Some((t, path)) = stack.pop() {
+        let Some(hir::TypeKind::Record(shape)) = m.types.get(t as usize).map(|ty| &ty.kind) else {
+            continue;
+        };
+        // push in reverse so the visited order matches declaration order
+        for (fi, f) in shape.fields.iter().enumerate().rev() {
+            let mut p = path.clone();
+            p.push(fi as u32);
+            match &f.ty {
+                hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => out.push(p),
+                hir::TypeUse::Ref(tid2) => match m.types.get(tid2.0 as usize).map(|ty| &ty.kind) {
+                    Some(hir::TypeKind::StrOwned) => out.push(p),
+                    Some(hir::TypeKind::Record(_))
+                        if resource.get(tid2.0 as usize).copied().unwrap_or(false) =>
+                    {
+                        stack.push((tid2.0, p));
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
+    // reverse the accumulated order: stack-pop DFS visited fields in
+    // declaration order per level but deepest-last within one root's
+    // subtrees; rebuild deterministically by sorting on the path
+    // (lexicographic = declaration order across all depths)
+    out.sort_unstable();
+    out
 }
 
 /// The verifier-computed text resource plan for a whole bundle.
@@ -165,6 +227,7 @@ pub(crate) fn check_body(
     m: &hir::Module,
     mi: usize,
     type_map: &BTreeMap<u32, ValueType>,
+    resource: &[bool],
     excl: &ParamExclusions,
     diags: &mut Vec<Diagnostic>,
 ) -> (Option<BodyResourcePlan>, BTreeSet<(u32, u32)>) {
@@ -179,14 +242,23 @@ pub(crate) fn check_body(
             hir::TypeUse::Ref(t) => type_map.get(&t.0).copied().unwrap_or(ValueType::I32),
         }
     };
-    // Owned locals: Str bindings plus `move Str` parameters. View/mut Str
-    // parameters borrow the caller's buffer and are never freed here.
+    // Owned locals: Str bindings plus `move Str` parameters; on the
+    // combination surface (PLAN-782 §4.4) a RESOURCE-RECORD local is an
+    // owned root too (bindings and `move`-in parameters — the callee owns
+    // and cleans the whole root). View/mut parameters borrow the caller's
+    // buffer and are never freed here; copyable records keep the 771
+    // value-copy semantics and are never roots.
+    let is_resource_root = |vt: ValueType| match vt {
+        ValueType::StrOwned => true,
+        ValueType::Record(tid) => resource.get(tid as usize).copied().unwrap_or(false),
+        _ => false,
+    };
     let owned: BTreeSet<u32> = body
         .locals
         .iter()
         .enumerate()
         .filter(|(i, l)| {
-            local_type(*i as u32) == ValueType::StrOwned
+            is_resource_root(local_type(*i as u32))
                 && (l.role == hir::LocalRole::Binding || l.param_mode == hir::ParamMode::MoveOwn)
         })
         .map(|(i, _)| i as u32)
@@ -198,6 +270,7 @@ pub(crate) fn check_body(
         local_type: &local_type,
         fn_result,
         mi,
+        resource,
         excl,
         excl_adds: BTreeSet::new(),
         diags,
@@ -205,6 +278,8 @@ pub(crate) fn check_body(
             owned: owned.clone(),
             exit_frees: BTreeMap::new(),
             owned_returns: BTreeSet::new(),
+            buffer_frees: BTreeMap::new(),
+            replace_frees: BTreeMap::new(),
         },
     };
     w.walk(m);
@@ -267,6 +342,15 @@ struct ExprScan {
     /// Call nodes with their bindings (param index -> moved flag), for
     /// mode validation and mut-aliasing checks.
     call_moves: Vec<(hir::ExprId, Vec<(u32, bool)>, Span)>,
+    /// PLAN-782 wrapper moves: `Move { ReadLocal }` nodes (definitely
+    /// executed) — the combination domain's transfer marker in
+    /// let/assign/return/argument positions (CallBinding.moved is
+    /// domain-forbidden there).
+    wrapper_moves: Vec<(hir::ExprId, Span)>,
+    /// RecordCtor nodes with their field-argument ids (PLAN-782: a bare
+    /// ReadLocal of an owned root as a field argument is an implicit
+    /// transfer — rejected by the walk).
+    ctor_uses: Vec<(hir::ExprId, Vec<hir::ExprId>, Span)>,
 }
 
 fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
@@ -286,14 +370,22 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
         let e = &body.exprs[id.0 as usize];
         match &e.kind {
             hir::ExprKind::ReadLocal { local } => scan.reads.push((id.0, local.0, e.span)),
-            // PLAN-782 combination kinds: totality arms for the shared
-            // scanner — under the text profile these never appear (profile
-            // gate); the text-record walk (782 T-04) gives them their own
-            // ownership semantics.
+            // PLAN-782 combination kinds: under the text profile these
+            // never appear (profile gate); the combination walk gives them
+            // their ownership semantics. A `Move` wrapper is the transfer
+            // marker — recorded like a binding-flag move (definite or
+            // conditional by the execution mode) and its inner read is
+            // still traversed (the moving read itself is excluded from
+            // the viewed set at validation time).
             hir::ExprKind::RecordClone { base, .. } => {
                 stack.push((*base, mode));
             }
             hir::ExprKind::Move { inner } => {
+                match mode {
+                    Mode::Normal => scan.wrapper_moves.push((id, e.span)),
+                    Mode::Conditional => scan.conditional_moves.push((id, e.span)),
+                    Mode::Dead => {}
+                }
                 stack.push((*inner, mode));
             }
             hir::ExprKind::TextConcat { lhs, rhs } => {
@@ -400,11 +492,23 @@ fn scan_expr(m: &hir::Module, body: &hir::Body, root: hir::ExprId) -> ExprScan {
             }
             hir::ExprKind::Constant { .. } | hir::ExprKind::CharLit { .. } => {}
             // record kinds never appear in a text module (profile
-            // defense); totality only
-            hir::ExprKind::RecordCtor { .. }
-            | hir::ExprKind::FieldGet { .. }
-            | hir::ExprKind::BorrowView { .. }
-            | hir::ExprKind::BorrowMut { .. } => {}
+            // defense); in the combination domain they traverse like any
+            // other operand tree (a field view reads its root; a mut
+            // borrow reads its local; ctor field arguments are ordinary
+            // sub-expressions — bare owned-local transfers among them are
+            // rejected by the walk)
+            hir::ExprKind::FieldGet { base, .. } | hir::ExprKind::BorrowView { base } => {
+                stack.push((*base, mode));
+            }
+            hir::ExprKind::BorrowMut { local } => {
+                scan.reads.push((id.0, local.0, e.span));
+            }
+            hir::ExprKind::RecordCtor { eval_args, .. } => {
+                scan.ctor_uses.push((id, eval_args.clone(), e.span));
+                for a in eval_args.iter().rev() {
+                    stack.push((*a, mode));
+                }
+            }
         }
     }
     scan
@@ -623,6 +727,12 @@ fn block_definite_moves(m: &hir::Module, body: &hir::Body, bid: u32, out: &mut B
                             out.insert(local.0);
                         }
                     }
+                    // PLAN-782 wrapper moves (combination domain)
+                    for (wid, _) in &scan.wrapper_moves {
+                        if let Some(root) = resolve_moved_root(body, *wid) {
+                            out.insert(root);
+                        }
+                    }
                 }
                 hir::Stmt::Drop { local } => {
                     out.insert(local.0);
@@ -634,6 +744,11 @@ fn block_definite_moves(m: &hir::Module, body: &hir::Body, bid: u32, out: &mut B
                             &body.exprs[argid.0 as usize].kind
                         {
                             out.insert(local.0);
+                        }
+                    }
+                    for (wid, _) in &scan.wrapper_moves {
+                        if let Some(root) = resolve_moved_root(body, *wid) {
+                            out.insert(root);
                         }
                     }
                     let cond_t = const_truth(body, *cond);
@@ -660,6 +775,8 @@ struct ResourceWalk<'a> {
     fn_result: ValueType,
     /// module index of `m` (exclusion-map key component, r4 R4-05)
     mi: usize,
+    /// per-type resource-record classification (PLAN-782; `record_resource_map`)
+    resource: &'a [bool],
     /// current pairwise parameter exclusivity constraints (r4 R4-05)
     excl: &'a ParamExclusions,
     /// NEW constraints discovered for THIS body's signature (r4 R4-05)
@@ -806,9 +923,46 @@ impl<'a> ResourceWalk<'a> {
             .unwrap_or("<unknown>")
     }
 
-    /// LIFO (reverse declaration order) list from a set of owned locals.
-    fn lifo(set: &BTreeSet<u32>) -> Vec<u32> {
-        set.iter().rev().copied().collect()
+    /// Emit one exit point's free schedule (PLAN-782 T-04): the plain-Str
+    /// roots keep a 770-compatible `exit_frees` entry; the UNIFIED
+    /// `buffer_frees` list carries every buffer to free — roots in reverse
+    /// creation order, a record root's Str fields in reverse declaration
+    /// order (probe P3). The combination lowering (T-05) consumes the
+    /// unified list verbatim.
+    fn emit_exit_frees(
+        &mut self,
+        m: &hir::Module,
+        key: (u32, Option<usize>),
+        frees: &BTreeSet<u32>,
+    ) {
+        if frees.is_empty() {
+            return;
+        }
+        let mut buffers: Vec<RecordBuffer> = Vec::new();
+        let mut str_roots: Vec<u32> = Vec::new();
+        for l in frees.iter().rev() {
+            match (self.local_type)(*l) {
+                ValueType::StrOwned => {
+                    str_roots.push(*l);
+                    buffers.push(RecordBuffer {
+                        root: *l,
+                        path: Vec::new(),
+                    });
+                }
+                ValueType::Record(tid) => {
+                    for path in str_field_paths(m, self.resource, tid).into_iter().rev() {
+                        buffers.push(RecordBuffer { root: *l, path });
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !str_roots.is_empty() {
+            self.plan.exit_frees.insert(key, str_roots);
+        }
+        if !buffers.is_empty() {
+            self.plan.buffer_frees.insert(key, buffers);
+        }
     }
 
     /// ALIAS reach (r3 R3-02): every text-SOURCE identity a value views —
@@ -981,7 +1135,20 @@ impl<'a> ResourceWalk<'a> {
         // local's provenance anywhere in the statement counts as viewed —
         // EXCEPT the reads that ARE the moved arguments (the moving read
         // itself is not a view).
-        let moved_arg_exprs: BTreeSet<u32> = scan.moves.iter().map(|(id, _)| id.0).collect();
+        // PLAN-782: a `Move { ReadLocal }` wrapper is the combination
+        // domain's transfer marker - unified here with the 770 binding
+        // flags. The exclusion set keeps the MOVING read (the wrapper's
+        // inner ReadLocal) out of the viewed set, exactly like a
+        // binding-flag move's argument.
+        let mut moved_arg_exprs: BTreeSet<u32> = scan.moves.iter().map(|(id, _)| id.0).collect();
+        for (id, _) in &scan.wrapper_moves {
+            moved_arg_exprs.insert(id.0);
+            if let Some(hir::ExprKind::Move { inner }) =
+                self.body.exprs.get(id.0 as usize).map(|e| &e.kind)
+            {
+                moved_arg_exprs.insert(inner.0);
+            }
+        }
         let mut viewed = BTreeSet::new();
         for (eid, l, _) in &scan.reads {
             if moved_arg_exprs.contains(eid) {
@@ -999,31 +1166,29 @@ impl<'a> ResourceWalk<'a> {
             }
         }
         let mut moved = BTreeSet::new();
-        for (argid, span) in &scan.moves {
-            let local = match &self.body.exprs[argid.0 as usize].kind {
-                hir::ExprKind::ReadLocal { local } => Some(local),
-                _ => None,
-            };
-            let Some(local) = local else {
+        let mut all_moves: Vec<(hir::ExprId, Span)> = scan.moves.clone();
+        all_moves.extend(scan.wrapper_moves.iter().copied());
+        for (argid, span) in &all_moves {
+            let Some(local) = resolve_moved_root(self.body, *argid) else {
                 self.error(
                     "verify.ownership-required",
-                    "`.move` requires a named owned Str argument (bind the value to a local first)",
+                    "`.move` requires a named owned root argument (bind the value to a local first)",
                     *span,
                 );
                 continue;
             };
-            if !self.owned.contains(&local.0) {
+            if !self.owned.contains(&local) {
                 self.error(
                     "verify.ownership-required",
                     format!(
-                        "`.move` argument `{}` is not an owned Str local",
-                        self.local_name(local.0)
+                        "`.move` argument `{}` is not an owned root (owned `Str` local or resource record)",
+                        self.local_name(local)
                     ),
                     *span,
                 );
                 continue;
             }
-            if let Some(cause) = st.dead.get(&local.0) {
+            if let Some(cause) = st.dead.get(&local) {
                 let (code, why) = match cause {
                     DeadCause::Moved => (
                         "verify.use-after-move",
@@ -1037,46 +1202,68 @@ impl<'a> ResourceWalk<'a> {
                 };
                 self.error(
                     code,
-                    format!("local `{}` {}", self.local_name(local.0), why),
+                    format!("local `{}` {}", self.local_name(local), why),
                     *span,
                 );
                 continue;
             }
-            if !st.live.contains_key(&local.0) {
+            if !st.live.contains_key(&local) {
                 // uninitialized owned move: the common walk reported the
                 // init problem; still reject here for a precise code.
                 self.error(
                     "verify.ownership-required",
                     format!(
                         "`.move` argument `{}` is not an initialized owned local",
-                        self.local_name(local.0)
+                        self.local_name(local)
                     ),
                     *span,
                 );
                 continue;
             }
-            if let Some(&let_block) = st.live.get(&local.0) {
+            if let Some(&let_block) = st.live.get(&local) {
                 if !chain.contains(&let_block) {
                     self.error(
                         "verify.owned-scope-escape",
                         format!(
                             "owned local `{}` is moved outside the block subtree of its `let`",
-                            self.local_name(local.0)
+                            self.local_name(local)
                         ),
                         *span,
                     );
                     continue;
                 }
             }
-            if !moved.insert(local.0) {
+            if !moved.insert(local) {
                 self.error(
                     "verify.double-move",
                     format!(
                         "local `{}` is moved by more than one binding in this statement",
-                        self.local_name(local.0)
+                        self.local_name(local)
                     ),
                     *span,
                 );
+            }
+        }
+        // PLAN-782: a bare ReadLocal of an owned root consumed by a record
+        // constructor FIELD is an implicit transfer - the field argument
+        // must be an owned expression (literal promotion, `.move`,
+        // `.clone()`, concat or an owned call result).
+        for (_, args, span) in &scan.ctor_uses {
+            for a in args {
+                if let Some(hir::ExprKind::ReadLocal { local }) =
+                    self.body.exprs.get(a.0 as usize).map(|e| &e.kind)
+                {
+                    if self.owned.contains(&local.0) && !moved_arg_exprs.contains(&a.0) {
+                        self.error(
+                            "verify.ownership-required",
+                            format!(
+                                "constructor field argument implicitly transfers `{}`; pass `<local>.move` to transfer it, `.clone()` for an independent copy, or construct a fresh value",
+                                self.local_name(local.0)
+                            ),
+                            *span,
+                        );
+                    }
+                }
             }
         }
         // Callee-side mode check: each moved binding must target a
@@ -1101,43 +1288,68 @@ impl<'a> ResourceWalk<'a> {
                 _ => continue,
             };
             for (param_idx, is_moved) in bindings {
-                let is_owned_type = |u: &hir::TypeUse| match u {
+                // PLAN-782: the marker may also be a `Move` wrapper on the
+                // argument itself (CallBinding.moved is domain-forbidden in
+                // the combination profile; the wrapper IS the marker).
+                let hir::ExprKind::Call { eval_args: ea, .. } =
+                    &self.body.exprs[callid.0 as usize].kind
+                else {
+                    continue;
+                };
+                let wrapper_marked = bindings
+                    .iter()
+                    .find(|b| b.0 == *param_idx)
+                    .and_then(|b| ea.get(b.1 as usize))
+                    .map(|a| {
+                        matches!(
+                            self.body.exprs.get(a.0 as usize).map(|e| &e.kind),
+                            Some(hir::ExprKind::Move { .. })
+                        )
+                    })
+                    .unwrap_or(false);
+                let has_marker = *is_moved || wrapper_marked;
+                let is_owning_type = |u: &hir::TypeUse| match u {
                     hir::TypeUse::Builtin(hir::BuiltinType::StrOwned) => true,
-                    // the source adapter emits named text types (t_Str)
-                    hir::TypeUse::Ref(tid) => matches!(
-                        m.types.get(tid.0 as usize).map(|t| &t.kind),
-                        Some(hir::TypeKind::StrOwned)
-                    ),
+                    // the source adapter emits named text types (t_Str) and
+                    // record types (t_rec_*); a resource record is an owning
+                    // root type on the combination surface (PLAN-782 4.2)
+                    hir::TypeUse::Ref(tid) => match m.types.get(tid.0 as usize).map(|t| &t.kind) {
+                        Some(hir::TypeKind::StrOwned) => true,
+                        Some(hir::TypeKind::Record(_)) => {
+                            self.resource.get(tid.0 as usize).copied().unwrap_or(false)
+                        }
+                        _ => false,
+                    },
                     _ => false,
                 };
                 let param_is_move = sig_text
                     .params
                     .get(*param_idx as usize)
-                    .map(|p| is_owned_type(p))
+                    .map(|p| is_owning_type(p))
                     .unwrap_or(false)
                     && callee_body.locals.iter().any(|l| {
                         l.role == hir::LocalRole::Param
                             && l.index == Some(*param_idx)
                             && l.param_mode == hir::ParamMode::MoveOwn
                     });
-                if *is_moved && !param_is_move {
+                if has_marker && !param_is_move {
                     self.error(
                         "verify.ownership-required",
                         format!(
-                            "argument is marked `.move` but parameter {} of `{}` does not declare `move Str`",
+                            "argument is marked `.move` but parameter {} of `{}` does not declare `move`",
                             param_idx, def.id_text
                         ),
                         *span,
                     );
                 }
-                if !*is_moved && param_is_move {
-                    // The callee frees a `move Str` parameter at its exits;
+                if !has_marker && param_is_move {
+                    // The callee frees a `move` parameter at its exits;
                     // passing without the `.move` marker would leave the
                     // caller's ownership intact — a double free.
                     self.error(
                         "verify.ownership-required",
                         format!(
-                            "parameter {} of `{}` declares `move Str` but the argument is not marked `.move`",
+                            "parameter {} of `{}` declares `move` but the argument is not marked `.move`",
                             param_idx, def.id_text
                         ),
                         *span,
@@ -1243,6 +1455,26 @@ impl<'a> ResourceWalk<'a> {
                     ),
                     span,
                 );
+                continue;
+            }
+            // PLAN-782 3.2: a root moved while an OUTSTANDING view (an
+            // earlier statement's field borrow of the current
+            // construction) still reads it - conservative by root
+            let holder = st.backing.iter().find_map(|(v, bs)| {
+                bs.iter()
+                    .find(|(b, bgen)| b == l && st.gen.get(b).copied().unwrap_or(0) == *bgen)
+                    .map(|_| *v)
+            });
+            if let Some(v) = holder {
+                self.error(
+                    "verify.mut-conflict",
+                    format!(
+                        "owned root `{}` is moved while still borrowed by `{}`; a borrow of any resource field holds the whole root",
+                        self.local_name(*l),
+                        self.local_name(v)
+                    ),
+                    *span_of_last(&scan.reads),
+                );
             }
         }
         moved
@@ -1264,12 +1496,20 @@ impl<'a> ResourceWalk<'a> {
         let entry = self.body.entry.0;
         let mut init = WalkState::new();
         // move-in parameters are owned from the entry block's scope
+        // (owned Str and, on the combination surface, resource records)
         for (i, l) in self.body.locals.iter().enumerate() {
-            if l.role == hir::LocalRole::Param
-                && l.param_mode == hir::ParamMode::MoveOwn
-                && (self.local_type)(i as u32) == ValueType::StrOwned
-            {
-                init.live.insert(i as u32, entry);
+            if l.role == hir::LocalRole::Param && l.param_mode == hir::ParamMode::MoveOwn {
+                let vt = (self.local_type)(i as u32);
+                let owning = match vt {
+                    ValueType::StrOwned => true,
+                    ValueType::Record(tid) => {
+                        self.resource.get(tid as usize).copied().unwrap_or(false)
+                    }
+                    _ => false,
+                };
+                if owning {
+                    init.live.insert(i as u32, entry);
+                }
             }
         }
         let mut results: Vec<Option<WalkState>> = vec![None];
@@ -1380,6 +1620,25 @@ impl<'a> ResourceWalk<'a> {
                                         .backing
                                         .insert(local.0, provenance(&frame.st, &prov));
                                 }
+                                ValueType::Record(tid)
+                                    if self
+                                        .resource
+                                        .get(tid as usize)
+                                        .copied()
+                                        .unwrap_or(false) =>
+                                {
+                                    // PLAN-782: a resource-record binding is an
+                                    // owned root - bookkept exactly like an
+                                    // owned Str let (bare ReadLocal transfers
+                                    // were already rejected by the structural
+                                    // gates; a Move wrapper here is a legal
+                                    // whole-root transfer of its inner local).
+                                    frame.st.live.insert(local.0, bid);
+                                    frame.own_lets.push(local.0);
+                                    frame.st.dead.remove(&local.0);
+                                    let g = frame.st.gen.entry(local.0).or_insert(0);
+                                    *g += 1;
+                                }
                                 _ => {}
                             }
                             for l in moved {
@@ -1394,8 +1653,81 @@ impl<'a> ResourceWalk<'a> {
                             self.check_reads(&st_snapshot, &chain, &scan.reads);
                             let moved = self.validate_moves(m, &st_snapshot, &scan, &chain);
                             let target = place_local(self.body, &place);
-                            let vt = (self.local_type)(target);
+                            let mut reown_root: Option<u32> = None;
+                            let mut reown_block: Option<u32> = None;
+                            let place_path: Vec<u32> =
+                                match self.body.places.get(place.0 as usize).map(|pl| &pl.kind) {
+                                    Some(hir::PlaceKind::FieldPath(path)) => {
+                                        path.iter().map(|f| f.0).collect()
+                                    }
+                                    _ => Vec::new(),
+                                };
+                            let was_live_block = st_snapshot.live.get(&target).copied();
+                            // dispatch on the PLACE's final type (a Str-field
+                            // replacement is a StrOwned place on a record
+                            // root), not the root local's type
+                            let vt = place_final_vt(m, (self.local_type)(target), &place_path);
                             match vt {
+                                ValueType::StrOwned if !place_path.is_empty() => {
+                                    // PLAN-782 P4: Str-field replacement on a
+                                    // record root. The OLD buffer frees only
+                                    // after the RHS fully materializes (RHS
+                                    // reads of the old field are legal); a
+                                    // live borrowed view of the root blocks
+                                    // the replacement (root-conservative).
+                                    let value_bare_owned_read = matches!(
+                                        self.body.exprs.get(value.0 as usize).map(|e| &e.kind),
+                                        Some(hir::ExprKind::ReadLocal { local })
+                                            if self.owned.contains(&local.0)
+                                                && !scan.wrapper_moves.iter().any(|(w, _)| {
+                                                    matches!(
+                                                        self.body.exprs.get(w.0 as usize).map(|e| &e.kind),
+                                                        Some(hir::ExprKind::Move { inner }) if inner.0 == value.0
+                                                    )
+                                                })
+                                    );
+                                    if value_bare_owned_read {
+                                        if let hir::ExprKind::ReadLocal { local } =
+                                            &self.body.exprs[value.0 as usize].kind
+                                        {
+                                            self.error(
+                                                "verify.ownership-required",
+                                                format!(
+                                                    "field assignment to `{}` implicitly transfers `{}`; pass `<local>.move`, `.clone()` or an owned construction",
+                                                    self.local_name(target),
+                                                    self.local_name(local.0)
+                                                ),
+                                                self.body.exprs[value.0 as usize].span,
+                                            );
+                                        }
+                                    }
+                                    let borrowed_by: Vec<u32> = st_snapshot
+                                        .backing
+                                        .iter()
+                                        .filter(|(_, bs)| bs.iter().any(|(l, _)| *l == target))
+                                        .map(|(v, _)| *v)
+                                        .collect();
+                                    if !borrowed_by.is_empty() {
+                                        self.error(
+                                            "verify.mut-conflict",
+                                            format!(
+                                                "field of owned root `{}` is replaced while borrowed by `{}`; a borrow of any resource field holds the whole root",
+                                                self.local_name(target),
+                                                self.local_name(borrowed_by[0])
+                                            ),
+                                            self.body.blocks[bid as usize].span,
+                                        );
+                                    }
+                                    self.plan.replace_frees.insert(
+                                        (bid, idx),
+                                        vec![RecordBuffer {
+                                            root: target,
+                                            path: place_path.clone(),
+                                        }],
+                                    );
+                                    reown_root = Some(target);
+                                    reown_block = was_live_block;
+                                }
                                 ValueType::StrOwned => {
                                     self.error(
                                         "verify.resource-assign",
@@ -1423,11 +1755,62 @@ impl<'a> ResourceWalk<'a> {
                                         .backing
                                         .insert(target, provenance(&frame.st, &prov));
                                 }
+                                ValueType::Record(tid)
+                                    if self
+                                        .resource
+                                        .get(tid as usize)
+                                        .copied()
+                                        .unwrap_or(false) =>
+                                {
+                                    // PLAN-782 P4: whole-root re-assignment
+                                    // (the place's type is the resource record
+                                    // itself) or a nested resource-record
+                                    // field replacement. Old buffers free
+                                    // after the RHS; the root is re-owned.
+                                    let bufs: Vec<RecordBuffer> = if place_path.is_empty() {
+                                        if was_live_block.is_some() {
+                                            str_field_paths(m, self.resource, tid)
+                                                .into_iter()
+                                                .rev()
+                                                .map(|fp| RecordBuffer {
+                                                    root: target,
+                                                    path: fp,
+                                                })
+                                                .collect()
+                                        } else {
+                                            Vec::new()
+                                        }
+                                    } else {
+                                        str_field_paths(m, self.resource, tid)
+                                            .into_iter()
+                                            .rev()
+                                            .map(|mut fp| {
+                                                let mut full = place_path.clone();
+                                                full.append(&mut fp);
+                                                RecordBuffer {
+                                                    root: target,
+                                                    path: full,
+                                                }
+                                            })
+                                            .collect()
+                                    };
+                                    if !bufs.is_empty() {
+                                        self.plan.replace_frees.insert((bid, idx), bufs);
+                                    }
+                                    reown_root = Some(target);
+                                    reown_block = was_live_block;
+                                }
                                 _ => {}
                             }
                             for l in moved {
                                 frame.st.live.remove(&l);
                                 frame.st.dead.insert(l, DeadCause::Moved);
+                            }
+                            if let Some(root) = reown_root {
+                                frame.st.dead.remove(&root);
+                                frame.st.live.insert(root, reown_block.unwrap_or(bid));
+                                let g = frame.st.gen.entry(root).or_insert(0);
+                                *g += 1;
                             }
                         }
                         hir::Stmt::Return { value } => {
@@ -1477,6 +1860,21 @@ impl<'a> ResourceWalk<'a> {
                                         );
                                     }
                                 }
+                                ValueType::Record(tid)
+                                    if self
+                                        .resource
+                                        .get(tid as usize)
+                                        .copied()
+                                        .unwrap_or(false) =>
+                                {
+                                    // PLAN-782: an owned record result transfers
+                                    // out (a Move wrapper's root left the live
+                                    // set below; a fresh construction/clone is
+                                    // a temporary with a single consumer). Bare
+                                    // ReadLocal returns were rejected by the
+                                    // structural gates already.
+                                    self.plan.owned_returns.insert((bid, idx));
+                                }
                                 _ => {}
                             }
                             // frees are the POST-move live set: the returned
@@ -1489,11 +1887,7 @@ impl<'a> ResourceWalk<'a> {
                                     frees.remove(&local.0);
                                 }
                             }
-                            if !frees.is_empty() {
-                                self.plan
-                                    .exit_frees
-                                    .insert((bid, Some(idx)), Self::lifo(&frees));
-                            }
+                            self.emit_exit_frees(m, (bid, Some(idx)), &frees);
                             frame.flow_done = true;
                         }
                         hir::Stmt::If { cond, then, els } => {
@@ -1645,9 +2039,7 @@ impl<'a> ResourceWalk<'a> {
                                         .map(|(&l, _)| l)
                                         .collect();
                                     if !frees.is_empty() {
-                                        self.plan
-                                            .exit_frees
-                                            .insert((bid, Some(idx)), Self::lifo(&frees));
+                                        self.emit_exit_frees(m, (bid, Some(idx)), &frees);
                                         // r4 R4-01: record the scope exit on
                                         // this path — the loop-level merge
                                         // unions it forward so a view backed
@@ -1695,7 +2087,7 @@ impl<'a> ResourceWalk<'a> {
                                 self.error(
                                     "verify.resource-assign",
                                     format!(
-                                        "drop of `{}`: only owned Str locals can be dropped",
+                                        "drop of `{}`: only owned roots (owned `Str` locals and resource records) can be dropped",
                                         self.local_name(local.0)
                                     ),
                                     self.body.blocks[bid as usize].span,
@@ -1727,7 +2119,9 @@ impl<'a> ResourceWalk<'a> {
                                     self.body.blocks[bid as usize].span,
                                 );
                             } else {
-                                self.plan.exit_frees.insert((bid, Some(idx)), vec![local.0]);
+                                let mut drop_set = BTreeSet::new();
+                                drop_set.insert(local.0);
+                                self.emit_exit_frees(m, (bid, Some(idx)), &drop_set);
                                 frame.st.live.remove(&local.0);
                                 frame.st.dead.insert(local.0, DeadCause::Dropped);
                             }
@@ -1749,9 +2143,7 @@ impl<'a> ResourceWalk<'a> {
                             .filter(|l| frame.st.live.contains_key(l))
                             .collect();
                         if !own.is_empty() {
-                            self.plan
-                                .exit_frees
-                                .insert((frame.bid, None), Self::lifo(&own));
+                            self.emit_exit_frees(m, (frame.bid, None), &own);
                             // r4 R4-01: the block-exit death enters the
                             // outgoing state — a view backed by one of
                             // these owners must not be read after the join
@@ -2002,6 +2394,62 @@ impl<'a> ResourceWalk<'a> {
                 }
             }
         }
+    }
+}
+
+/// Final value type of a place: the root local's type walked through the
+/// field path (declaration indices). PLAN-782: the assign arm dispatches on
+/// THIS type - a Str-field replacement is a `StrOwned` place even though
+/// its root local is a record.
+fn place_final_vt(m: &hir::Module, root_vt: ValueType, path: &[u32]) -> ValueType {
+    fn of_use(m: &hir::Module, u: &hir::TypeUse) -> ValueType {
+        match u {
+            hir::TypeUse::Builtin(b) => match b {
+                hir::BuiltinType::I32 => ValueType::I32,
+                hir::BuiltinType::Bool => ValueType::Bool,
+                hir::BuiltinType::StrSlice => ValueType::Str,
+                hir::BuiltinType::StrOwned => ValueType::StrOwned,
+                hir::BuiltinType::Char => ValueType::Char,
+            },
+            hir::TypeUse::Ref(t) => match m.types.get(t.0 as usize).map(|x| &x.kind) {
+                Some(hir::TypeKind::I32) => ValueType::I32,
+                Some(hir::TypeKind::Bool) => ValueType::Bool,
+                Some(hir::TypeKind::Str) => ValueType::Str,
+                Some(hir::TypeKind::StrOwned) => ValueType::StrOwned,
+                Some(hir::TypeKind::Char) => ValueType::Char,
+                Some(hir::TypeKind::Function(_)) => ValueType::Function,
+                Some(hir::TypeKind::Record(_)) => ValueType::Record(t.0),
+                None => ValueType::I32,
+            },
+        }
+    }
+    let mut vt = root_vt;
+    for fi in path {
+        let ValueType::Record(tid) = vt else {
+            return vt;
+        };
+        let Some(hir::TypeKind::Record(shape)) = m.types.get(tid as usize).map(|t| &t.kind) else {
+            return vt;
+        };
+        let Some(f) = shape.fields.get(*fi as usize) else {
+            return vt;
+        };
+        vt = of_use(m, &f.ty);
+    }
+    vt
+}
+
+/// Resolve a move entry to its root local: a 770 binding-flag move names
+/// the argument expression (a ReadLocal), a PLAN-782 wrapper move names
+/// the `Move` node whose inner read is the root.
+fn resolve_moved_root(body: &hir::Body, eid: hir::ExprId) -> Option<u32> {
+    match body.exprs.get(eid.0 as usize)?.kind {
+        hir::ExprKind::ReadLocal { local } => Some(local.0),
+        hir::ExprKind::Move { inner } => match body.exprs.get(inner.0 as usize)?.kind {
+            hir::ExprKind::ReadLocal { local } => Some(local.0),
+            _ => None,
+        },
+        _ => None,
     }
 }
 

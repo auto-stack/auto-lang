@@ -3,6 +3,6 @@
 type Tok { text Str; kind int }
 fn main() int {
     let a Tok = Tok { text: "hi", kind: 1 }
-    let u Str = a.text.move
+    let u = a.text.move
     return u.len()
 }

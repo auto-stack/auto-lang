@@ -1807,6 +1807,16 @@ impl<'s> Parser<'s> {
                 // `p.mut`) binds tighter than any binary operator; it is
                 // consumed here, before the operator table is consulted.
                 if self.surface.is_record()
+                    // the text `.to(str|Str)` postfix stays with the text
+                    // arm on the combination surface (`to` is a Reserved
+                    // word this record arm would otherwise reject)
+                    && !matches!(
+                        self.peek2(),
+                        Some(Token {
+                            tok: Tok::Reserved(w),
+                            ..
+                        }) if self.surface.is_text() && w == "to"
+                    )
                     && matches!(
                         self.peek(),
                         Some(Token {
