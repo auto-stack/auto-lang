@@ -782,9 +782,7 @@ fn resolve_fn(
         // mut mode is meaningful for record params (774 D-04) AND text
         // `mut str`/`mut Str` exclusive borrows (PLAN-770); scalar params
         // are by value on every profile
-        if p.mode == ast::ParamMode::Mut
-            && !matches!(vt, VT::Rec(_) | VT::Str | VT::StrOwned)
-        {
+        if p.mode == ast::ParamMode::Mut && !matches!(vt, VT::Rec(_) | VT::Str | VT::StrOwned) {
             r.bind_err(
                 "source.type-mismatch",
                 format!(

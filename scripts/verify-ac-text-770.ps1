@@ -166,12 +166,13 @@ try {
         $script:ReceiptLines.Add('runtime/text fmt: clean')
     }
 
-    # --- old gates (plan V-10: 741/745/772-surface; 771 not merged) -----------
+    # --- old gates (plan V-10: 741/745/772-surface + the record gate now
+    # --- that PLAN-771 merged first — r6 R6-03 joint baseline) -----------
 
     # 741 runs with -SkipMainGates: the main-repo cargo t/tv tiers belong to
     # the batch regression gate (/auto-plan:regress), not per-plan review —
     # and this plan touches nothing under crates/ or test/.
-    foreach ($gateScript in @('verify-ac-741.ps1', 'verify-ac-source-745.ps1', 'verify-ac-scalar-767.ps1')) {
+    foreach ($gateScript in @('verify-ac-741.ps1', 'verify-ac-source-745.ps1', 'verify-ac-scalar-767.ps1', 'verify-ac-record-771.ps1')) {
         # NB: the loop variable must NOT be named $name/$Name — dynamic
         # scoping inside Invoke-Step's scriptblock would resolve it to the
         # step-name parameter instead of this loop variable.
