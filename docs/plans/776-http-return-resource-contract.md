@@ -235,7 +235,7 @@ T-01 为 External Future 测试冻结真实完成入口；允许 host 完成源�
 - task_ids: [T-01, T-07, T-08]（R3 重开三项已修复；T-02..T-06 维持通过）
 - evidence: F776-R3-01——spec-delta 全文重写为 **R2 终形稿**（SD-01..07 after 规则=返回边界身份/owner 11 位段耗尽/setter owned-slot/容器级联/client egress 凭据/alias target 展开/bytes 快照；R1 修订节废止，修订史+冻结副本链保留）+ decision §2/§3 废止表述就地修订（§2 R2 终形修订总注、§3.1 owner/代次、§3.3 client、§3.5 setter、§4 分派序 2/3 条）；F776-R3-02——verification §2 AC 表终形重写（AC-01 双反例、AC-03 `resource_claim_reply` 单入口同形依据+未逐格边界清单、AC-08 **partial** 生成真 TCP 未验证面单列、AC-09 待 R4）；F776-R3-03——future-cache 分诊：705 域 sync-await 预存缺陷三重证据（数据体 `~{42}` 同形失败/776 diff 零触机制/失败在返回编组之前），归 705 轨（Plan §5.2；KNOWN-DEBT **P776-D3**）+ 负控制测试钉 776 边界三不变量（首回有界 500/重放普通 int 数据面/凭据回基线）。门禁：plan776 全族 **49/49**（-j 1，test-http-e2e）、`cargo check -p auto-lang` 0 error、触面 rustfmt 干净、裸 `cargo t` 5303/5304（唯一红=plan484 在册间歇 flake，单跑复核绿）、`cargo th -j 1` 见 verification R3 修复轮节。
 - blockers: 无
-- next: review（R4 最终独立复审；R2 终形 spec-delta SHA256=`7f4dc0234b38ca877c3e51e20b591236e72261107be0c7677a9743671fa80f85`、decision=`f41ffa4a0e033a8b75626b1a71428ea0bef99e0bc3bce596fcf5400555c2f679`、verification=`f34a3736d8eb20ddc68b85b942a0b4fb658b09436ea5eee593395aff1b01667f`——R4 以复核时冻结副本为准）
+- next: review（R4 最终独立复审；R2 终形 spec-delta SHA256=`7f4dc0234b38ca877c3e51e20b591236e72261107be0c7677a9743671fa80f85`、decision=`f41ffa4a0e033a8b75626b1a71428ea0bef99e0bc3bce596fcf5400555c2f679`、verification=`a0c6df8bad5ffd6fbabecab46c9f387e115f457f5016327375e87938578d7345`（含本修复轮节终稿）——R4 以复核时冻结副本为准）
 - 备注：cargo fmt 全仓因 examples/ui_container.rs 预存解析错误不可用（本轮误触 6 个 examples 的格式化已还原）；触面逐文件 rustfmt 保持仓库惯例。
 
 ### 最终独立复审 R3（2026-10-14，实现闭合但知识增量失配）
