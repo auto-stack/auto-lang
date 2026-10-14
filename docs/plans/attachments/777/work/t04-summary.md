@@ -1,7 +1,7 @@
 # PLAN-777 T-01..T-04 工作证据（2026-10-15）
 
-> R3 版（r2 复审 needs_fix 两项修复后重冻）。R1/R2 轮证据（t04-*、t04r2-*、t03*-selftest.txt）
-> 保留于本目录作历史；本节以 R3 冻结态为准。
+> R4 版（r3 复审 needs_fix 一项修复；配置零变更，基线仍为 677055420）。R1–R3 轮证据
+> （t04*、t03*-selftest.txt）保留于本目录作历史；本节以 R4 冻结态（5e1794bcc）为准。
 > R1 摘要计数勘误（历史）：受管 Rust 实为 **2052 文件 / 945894 行**（旧摘要误记 2045/945837，
 > 已按 r1 复审 §5 更正；原始 JSON 未改动）。
 
@@ -32,18 +32,26 @@
 
 闭合表校正（r2 复审 §R1 对账的修正）：r1 的 C06 旧例（scope-only 规则文本）证明的是惰性语义而非新生产跨根规则的正向拦截；本轮 S01/v10 以**实际生产域表+规则**补上正向拦截证明。scope-only 规则按惰性处理是 r1 建立并保持的规则合同（禁向判定必须基于依赖方向），本轮未改变。
 
-## 验证矩阵结果（R3 冻结态 677055420）
+
+## R4 修复对账（r3 finding → 不变量 → 修复与永久控制 → 当前结果）
+
+| finding | 不变量 | 修复与永久控制 | 当前结果 |
+|---|---|---|---|
+| F777-R3-01 根外硬链接指向受管源码，输出放行并覆盖 | 输入身份保护覆盖**全部**受管/实读输入，不能只按路径相对判定 | `guard_output_target`：根外**已存在**的输出目标先以文件身份（st_dev/st_ino，硬链接同 inode）对照全部受管文件与实读锁（根 Cargo.lock——cargo 对照尝试运行时读取）再放行；永久自测 v12（硬链接→受管 .rs / Cargo.lock 拒绝且字节不变；根外新路径另存正控） | v12 通过；r3 input-matrix **4/4**（M01-hardlink-config/manifest/**source** 均 exit 3、M02 独立另存 exit 0） |
+
+## 验证矩阵结果（R4 冻结态 5e1794bcc）
 
 | V | 验证 | 命令 | 结果 |
 |---|---|---|---|
 | T-01 | help 可用 | `python scripts/modularity-audit.py --help` | exit 0 |
-| V-01 | 稳定只读（真实仓） | 两次 `--mode observe`（t04r2-observe-a/b.json） | payload 字节一致（SHA-256 `6fa0e43e549a066e3834e75684b035ee1e2b1ea29c136d2ef9e43e014ab8ec8a`）；前后 `git status` 无变化 |
-| V-02..V-04 + R1/R2 反例 | 自测 | `--self-test` | **14/14**（v01–v04d + v05 多 target/v06 继承基点/v07 输出守卫/v08 optional 激活/v09 覆盖缺口 + v10 生产域/规则矩阵 + v11 根外 manifest 守卫；每变异场景先读回证明 fixture 被改） |
+| V-01 | 稳定只读（真实仓） | 两次 `--mode observe`（t04r4-observe-a/b.json） | payload 字节一致（SHA-256 `732ae3b6709af6bdc6e7b0a15daf04f645046c482af7a0c1f024906f3e045b08`）；前后 `git status` 无变化 |
+| V-02..V-04 + R1/R2/R3 反例 | 自测 | `--self-test` | **15/15**（v01–v04d + v05 多 target/v06 继承基点/v07 输出守卫/v08 optional 激活/v09 覆盖缺口 + v10 生产域/规则矩阵 + v11 根外 manifest 守卫 + v12 硬链接身份矩阵；每变异场景先读回证明 fixture 被改） |
 | 独立复审重放（r1） | 反例重放 | `review-r1/replay.py --implementation <worktree>` | 7 控全过（1 阳性对照 + 6 缺口控制），exit 0 |
 | 独立复审重放（r2） | 反例重放 | `review-r2/replay.py` + `review-r2/supplemental.py` | replay 与 supplemental 全 pass（S01-auto-ui=2/S01-auto-man=2/S01-external-sdk=0/S02=3 输入不变/S03=2 仅 Windows build 边），exit 0 |
+| 独立复审重放（r3） | 输入别名矩阵 | `review-r3/input-matrix.py` | **4/4**（M01-hardlink-config/manifest/source 均 exit 3 且输入不变；M02 独立根外另存 exit 0），exit 0 |
 | T-04 | strict 真实仓判定 | `--mode strict` | **verdict=pass，violations=0，grandfathered=2**（auto-man→auto-lang / auto-gen→auto-lang，owner+R5）；ownership coverage ok；exit 0 |
 
-## 真实基线要点（@d6e947912 + 677055420）
+## 真实基线要点（基线 @677055420；R4 代码 5e1794bcc 配置/边集零变更）
 
 - 规模（口径与调研一致）：tracked .rs **2052 文件 / 945894 行**；auto-lang/src 733/710,556；UI 五目录 239/353,361（与调研一致）；专用 src/tests 212/82,788。
 - 声明边：22 成员、36 条 path 边、0 提取缺口；`cargo metadata --no-deps --locked` 对照 **36=36 零差异**。
