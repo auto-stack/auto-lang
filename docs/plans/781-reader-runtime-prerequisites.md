@@ -253,7 +253,7 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 2026-10-14 work（T-04）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=f75b32e31 | code_commit=1042beeb3 | dependency_revisions=同上 | task_ids=T-04 | evidence=vue.rs 双路径 attr/helper + validators.rs UNIVERSAL_PROPS + 新 3 单测 + cargo tu 865/865 + 裸 cargo t 5293/5293 + 真实 plain 路径 9/9 探针（D:/p781-t04/out）+ vue-tsc --noEmit 零错 + 决策报告 §7 r5（8 项勘定） | blockers=无 | next_responsible_role=work（T-05：examples/capability-tests/p781-scroll-child-anchor/ + 配套双端驱动全矩阵 V-01~06）
 
-2026-10-14 work（T-05，阶段 B 收口）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=1042beeb3 | code_commit=（本次提交，见 git log） | dependency_revisions=同上 | task_ids=T-05 | evidence=p781-scroll-child-anchor fixture + 双端驱动；原生腿 41/41 + Vue 腿 43/43（D:/p781-t05/out，CLI sha=93d14ed5…）；三项框架修复（gen-0 收养+单测 / managed 标记接线 upsert+递归判定 / 驱动时序经验）；scroll 69/69、plan781 16/16、裸 cargo t 5294/5294；决策报告 §7 r6 | blockers=无 | next_responsible_role=work（阶段 C 起步：T-14 预算决策调查——依赖 T-05 已满足；共享 776 写面核对后 whole-path 有界探针）
+2026-10-14 work（T-05，阶段 B 收口）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=1042beeb3 | code_commit=292e8755a | dependency_revisions=同上 | task_ids=T-05 | evidence=p781-scroll-child-anchor fixture + 双端驱动；原生腿 41/41 + Vue 腿 43/43（D:/p781-t05/out，CLI sha=93d14ed5…）；三项框架修复（gen-0 收养+单测 / managed 标记接线 upsert+递归判定 / 驱动时序经验）；scroll 69/69、plan781 16/16、裸 cargo t 5294/5294；决策报告 §7 r6 | blockers=无 | next_responsible_role=work（阶段 C 起步：T-14 预算决策调查——依赖 T-05 已满足；共享 776 写面核对后 whole-path 有界探针）
 
 ## 10. 待澄清事项
 
