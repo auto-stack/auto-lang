@@ -1,7 +1,12 @@
-# PLAN-776 拟议规范增量（SD-01..07，R9 终形）
+# PLAN-776 拟议规范增量（SD-01..07，R10 终形）
 
 > 供 review/merge 按实证沉淀（本次不修改 canonical Specs）。
 > 每条 SD：before（现行规则）→ after（本计划落地后的规则）→ 代码/测试证据。
+> **本稿为 R10 终形**（2026-10-14）：在 R9 终形之上按 F776-R10-01 修订
+> ——Response **五 setter**（status/header/text/html/bytes）消费收敛为
+> 恰一份（撤 R2-03 叠加的显式 release——与 R9 iterator 同型的双释放，
+> 共享 RC2 被销成 0 触发全局 UAF）。R9 冻结版见
+> attachments/776/review-r10/reviewed-spec-delta.md。
 > **本稿为 R9 终形**（2026-10-14）：在 R8 终形之上按 F776-R9-01..02 修订
 > ——iterator 消费**恰一份**（StakeGuard Drop 即那一次消费，R8 的显式
 > release 是第二份——RC2 共享引用双释放修正）；typed record 的 Future
@@ -69,11 +74,13 @@
 - **编组**：marshal 资源臂优先于一切 int 探测；Response=快照 clone（重复
   返回不消费）；Sse=iterators 注册表校验后走 `sse_iterator_reply` 单源
   serve；File/Upload=take 单次移交+mismatch 500。
-- **setter 终形（R2-03/06，替代 R1 的「setter 链保留表臂」）**：
+- **setter 终形（R2-03/06 + R10-01）**：
   status/header/text/html/bytes 五 setter 经 `mutate_response_snapshot`
-  改凭据内快照，owned-slot 返回协议（实参份额 `rc_release`+StakeGuard
-  保护、返回槽 `rc_push` 影子重建）——setter 返回值跨 8192 步宽限窗存活
-  （9000 步 wire oracle 锁 UAF 修复）。
+  改凭据内快照；owned-slot 返回协议=**恰一份消费**（StakeGuard Drop 即
+  那一次——R2-03 曾叠加显式 `rc_release` 造成第二份，共享 RC2 被销成 0、
+  释放返回槽后全局合法 Response 回收触发 UAF，R10 撤除）+ 返回槽
+  `rc_push` 影子重建——setter 后共享形态 RC2=返回槽+全局两份；setter
+  返回值跨 8192 步宽限窗存活（9000 步 wire oracle 锁 UAF 修复）。
 - **生命周期（R2 终形）**：凭据随 RC 归零回收（dying 宽限窗）；dispatch
   双点释放 handler 返回值槽（sync `HandlerEnd::Value`/parked
   `HResume::Value`）；任务终态 `release_task_credentials` 扫任务栈**全部

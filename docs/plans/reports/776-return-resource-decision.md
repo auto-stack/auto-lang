@@ -123,6 +123,9 @@ B 的唯一优势（不占堆 id 空间）不构成需求。**冻结方案 A。*
 > push_value 三处独立转换补 Future 臂——R8 桥清点漏了 typed instance
 > 专用路径，插桩实证 CREATE_OBJ/SET_GENERIC_FIELD/GET_FIELD 均不在该
 > 流程上）。终形见 spec-delta R9 终形稿。
+> **R10 终形补注（2026-10-14，F776-R10-01）**：R9 的恰一份消费收敛推广到
+> Response 五 setter（撤 R2-03 的显式 release——同型双释放，共享 RC2 →0
+> 全局 UAF）；§3.5 setter 条款同步（guard 非 retain 护栏、Drop 即消费）。
 
 ## 3. 凭据合同（方案 A 细则）
 

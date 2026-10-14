@@ -432,3 +432,26 @@ tt/tu/taa 零触发。判别实验的临时 base worktree（lang-776-base 组）
 | 生成真 TCP 矩阵 | 3/3 |
 | scoped | plan394 17/17、plan705 19/19、plan707 31/31、generator 10/10、plan326 40/40 |
 | rustfmt 触面 | 干净 |
+
+---
+
+## R10 修复轮（2026-10-14，review-r10 needs_fix 后复修）
+
+代码提交：`38ad38aba`（2 文件 +188/−5；实现链保留）。闭合：
+
+- **F776-R10-01（P1）五 setter 恰一份消费**：status/header/text/html/
+  bytes 五 setter 与 R8 iterator 同型的双释放（StakeGuard::nv 只记 id、
+  Drop 已 rc_release_id；R2-03 叠加的显式 `vm.rc_release` 是第二份）。
+  共享 RC2（参数 + globals）经 setter 2→1，释放 rc_push 重建的返回槽
+  后 0——全局合法 Response 被回收，读取触发 RC canary UAF（V10-R1）。
+  修复：五点批量撤显式 release（guard Drop 即恰一次；读取期间份额未动；
+  错误早退同样恰一份）；返回槽 rc_push 重建——setter 后共享形态
+  RC2=返回槽+全局。oracle
+  `plan776_r10_setter_single_release_shared`：RC2 共享矩阵（setter→2、
+  释放返回槽→1、跨 reap 全局快照可读=201——镜 V10-R1 形态）+ RC1 独占
+  净零 + ×5 重复 setter 链（全局份额恒在、终值 304）+ 错误早退恰一份
+  （非凭据 receiver→Err、外部份额保留）。
+
+门禁（实施树 `38ad38aba`）：check 0 err；裸 `cargo t` **5312/5312**
+（79.6s）；`cargo tv` 162/162；plan776 全族 **66/66**（65 项复现 + R10
+新增 1）；plan394 17/17、plan705 19/19；rustfmt 触面干净。
