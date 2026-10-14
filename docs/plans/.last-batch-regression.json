@@ -1,67 +1,44 @@
 {
-  "last_covered_plan_id": 774,
-  "timestamp": "2026-10-14T11:30:00Z",
-  "covered_commit": "14e387537",
+  "last_covered_plan_id": 781,
+  "timestamp": "2026-10-15T03:55:00Z",
+  "covered_commit": "075a9b4ab6cb4284f3c259b348f2571322107fec",
   "legs": [
     "tf",
     "tt",
-    "tb",
-    "taa"
+    "tb"
   ],
   "leg_results": {
     "tf": {
-      "seconds": 109.8,
-      "run": 6288,
-      "passed": 6287,
-      "failed": 1,
+      "seconds": 1831.9,
+      "run": 6349,
+      "passed": 6346,
+      "failed": 2,
+      "timeout": 1,
       "skipped": 519,
-      "note": "ffi_dual_019 满池三轮红/定向绿（REG-2 升格确认，KNOWN-DEPT THR-D5）"
+      "note": "三非绿全 solo 绿：ffi_dual_019（REG-2 在案满池红/定向绿）+ plan492 pkg_canary（负载 flake，781 T-13 同族先例）+ 010_process_command（满池 1800s 超时，bare 单跑 0.36s 绿）"
     },
     "tt": {
-      "seconds": 183.0,
-      "run": 5667,
-      "passed": 5667,
+      "seconds": 154.8,
+      "run": 5725,
+      "passed": 5725,
       "failed": 0,
-      "skipped": 1793,
-      "note": "首轮 1 timeout（plan484 族），完整复跑全绿"
+      "skipped": 1796
     },
     "tb": {
-      "seconds": 113.0,
-      "run": 5319,
-      "passed": 5319,
+      "seconds": 110.8,
+      "run": 5377,
+      "passed": 5377,
       "failed": 0,
-      "skipped": 1543,
-      "note": "首轮 lock_serializes_critical_sections 1 红（F-762-R2 在案形态），定向绿后完整复跑全绿"
-    },
-    "taa": {
-      "seconds": 46.5,
-      "run": 1283,
-      "passed": 1281,
-      "failed": 2,
-      "skipped": 640,
-      "note": "触发条件：窗口触 stdlib_assembly/host.rs（7 文件）；两红确定性（定向仍红）"
+      "skipped": 1546
     }
   },
-  "new_reds": [
-    {
-      "test": "tests::aavm2_a2r::test_aavm2_goldens_check",
-      "plan": 775,
-      "suspect_commit": "b1230e767",
-      "detail": "STDASSEMBLY.INVALID_BYTECODE: 60 — json.encode 泛型 adapter 规则后黄金语料 a2r 参考运行失败"
-    },
-    {
-      "test": "tests::aavm_runner_tests::test_aavm2_compile_corpus",
-      "plan": 775,
-      "suspect_commit": "b1230e767",
-      "detail": "同面 compile 腿"
-    }
-  ],
+  "new_reds": [],
   "known_reds_seen": [
-    "ffi_dual_019_dep_layout_invariants(tf 满池×3, 定向绿, REG-2)"
+    "ffi_dual_019_dep_layout_invariants (REG-2)"
   ],
   "flake_observations": [
-    "tt 首 1 timeout(plan484 族)与 tb lock_serializes_critical_sections(在案 F-762-R2 形态)均定向绿,完整复跑全绿"
+    "plan492 pkg_canary 与 010_process_command 满池红/超时后 solo 绿（负载族）"
   ],
-  "window_note": "窗口 3ecd375d6..14e387537 覆盖 PLAN-773/774/775/776 合并与 PLAN-742 收口。775 divisible-by-5 规则同时命中（775>766）。taa 因窗口触 stdlib_assembly 触发；两新红归因 775 b1230e767（aavm 豁免面,KNOWN-DEBT REG-5 登记,不阻塞）。单实例串行执行（前置等待他组重档退出）。",
-  "verdict": "green-with-registered-new-reds"
+  "window_note": "窗口 14e387537..075a9b4ab 覆盖 PLAN-777 归档 + PLAN-778/779/780?（以 git log 为准）+ PLAN-781 合并（delivery 3e1b5fc03→清理簿记）。触发=770（%5）落于 774 收据后（777 合并已移交）。taa 未触发（窗口 diff 零 aavm 路径）。窗口含 782 在途未合入（不计）。",
+  "verdict": "green"
 }
