@@ -87,6 +87,13 @@ required **不因有限域证据改项**：这是 Rust AC 原型域的验证，�
 unknown 族 owner/探针不变。真实 PE 取证与独立复审（含修复轮）见
 [verification.md](../../reports/767-scalar-i32/verification.md)。
 
+## 文本/字符有限子集取证（PLAN-770）
+
+MD406/407/408 的 text profile 取证：lexer.at 的 char_at/len/slice/拼接需求
+与 token.at 的 keyword_kind/kind_name 需求现在有**首批真实 native 语言面**
+可对拍（str/Str/char 值语义 + 真实 PE trace）——但完整 token/lexer 编译仍
+是后续 owner，770 只提供语言原语；不自动改旧人工绑定。
+
 ## record 有限子集取证（PLAN-771）
 
 [source-record](../auto-ac/source-record.md) 在 AC 原型上以 Rust 实现了

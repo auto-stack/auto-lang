@@ -42,6 +42,19 @@ scalar 身份域与运算扩面；完整 HIR（全 A 子集、来源表、跨模
   panic。旧 core/scalar profiles 的接受/拒绝集合零改动（`verify.profile-op`
   域防御双向生效）；verify 入口 `verify_record` 限本域。合同细则见
   [../auto-ac/source-record.md](../auto-ac/source-record.md)。
+- **text 域（PLAN-770）**：`auto.hir.text.draft / 1 / text-i32-draft`
+  （descriptor `schema/text.atom`，scalar 的超集）增设 str/Str/char 类型
+  （`BuiltinType::StrSlice/StrOwned/Char`）与 12 个文本表达式节点
+  （str_lit/char_lit/text_len/text_len_bytes/text_char_at/text_slice/
+  text_concat/text_clone/text_to_owned/text_to_borrowed/char_to_codepoint/
+  char_from_codepoint）、`Stmt::Drop`、`CallBinding.moved` 与参数所有权模式
+  `ParamMode`（View/MutBorrow/MoveOwn——771 record 的 `mut` 即 MutBorrow，
+  实现树统一枚举）。可信门：verify_text 分域入口 + 文本资源前门
+  TextResourcePlan（owned 块词法作用域/借用 provenance 与构造代际/
+  `.move` 转移与双移除/清理责任 incoming 三态/参数对排他 fixpoint 传播
+  /派生 runtime 需求含清理义务）；各域 profile 防线互拒（`move` 仅
+  text、`mut` 仅 text+record）。合同细则见
+  [../auto-ac/source-text.md](../auto-ac/source-text.md)。
 
 ## 文本契约（atom_text + descriptor）
 

@@ -54,7 +54,7 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 
 - 源码模式 check-source/build-source 必须显式 source profile——**已注册三档**：
   `auto.source.core-i32.draft`、`auto.source.scalar-i32.draft` 与
-  `auto.source.record.draft`（未知值用法错 2，各域支持/拒绝面互不扩大：
+  `auto.source.record.draft`/`auto.source.text.draft`（未知值用法错 2，各域支持/拒绝面互不扩大：
   scalar 拒 while、core 拒 for/新运算符、record 增名义 record 面且旧域拒绝
   该面）。源码 →
   Atom/span表 → 真正 bind/verify（按域分派 descriptor 与 verify 入口）→ Checked
@@ -93,6 +93,20 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   全有全无 UTF-8 校验遇本地化输出会丢弃合法前缀）。
 - 一键验证：`scripts/verify-ac-741.ps1`（§6 全命令 + CLI 实机构建运行 + 主仓门禁；PS 5.1 兼容，
   异步管道读防死锁；含 `cargo check --all-targets` 零 warning 健康检查）。
+
+## text profile（PLAN-770）
+
+- [source-text.md](source-text.md)：str/Str/char 首批有限值语义合同
+  （字面量/索引/比较/码点转换、拥有-借用语境与 `.move`、清理责任不变式、
+  能力与运行期合同门）。
+- `runtime/text`：独立 workspace 静态库（23 符号内部 ABI：LIT/CONCAT/
+  CLONE/TEXT-SCALARS/FREE 生命周期 trace、eq/ne、RT-FAIL 失败通道、
+  预算/故障注入控制面 + `<lib>.contract.json` sidecar）；**实验性内部
+  ABI，非生产模块 ABI、非 ACC Cranelift 桥**（774 D-05 边界重申）。
+- source/HIR→native 文本编译：verify_text → TextResourcePlan → 独立 text
+  lowerer → 真实 PE（V-02..V-09 真实运行实证，4096 深链探测帧）。
+- text-record 组合未立项：770/771 各自 pass 不构成组合验收（774
+  interface-contract §6）。
 
 ## record profile（PLAN-771）
 

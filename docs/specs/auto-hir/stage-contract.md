@@ -76,7 +76,7 @@ planned）；S4 Checked 须携带资源义务（所有权/清理责任）且不�
 deadline/containment 沿 741 合同。全路径清理（LIFO/嵌套出口/临时/move-in/
 return 转移）的证据状态为**探针实证**；合同全文见
 [auto-ac/data-resource-contract.md](../auto-ac/data-resource-contract.md)。
-text/record 域身份（text-i32-draft/record-i32-draft）注册归 770/771。
+text/record 域身份（text-i32-draft/record-i32-draft）已由 770/771 注册（见下两节）。
 
 ### record 域阶段责任（PLAN-771，已实现）
 
@@ -90,6 +90,19 @@ checked u64）与 ABI-D（`*const` view）/ABI-E（`*mut` + out-slot 返回，�
 RHS 先完整物化再提交；record 值操作数（构造字段绑定的 ReadLocal）在其
 自身求值位捕获，借位实参传活指针；out-slot 与全体实参存储不相交由调用
 点转发规则归纳保证。通用聚合优化、公开/生产 ABI 保持 planned。
+
+### text 域阶段责任（PLAN-770，已实现·experimental）
+
+text-i32-draft 的 S0–S6 已闭环（source-text.md 合同，实验性内部 ABI）：
+S1 词法/解析按 profile 门控（str/Str/char 类型词、mut/move 模式词、文本/
+字符字面量含转义与 \u{} 词法层解码校验、跨行保真）；S2/3 resolve/
+typecheck 文本类型与 VT 扩面、方法按（接收者类型,方法名）绑定、遮蔽优先；
+adapter 发射文本节点与 `requires: ["ac.runtime.text.v1"]`（含纯清理义务）。
+S4 verify 前门见 auto-hir/project.md text 域条目；S5 native 独立 text
+lowerer（(ptr,len) 双变量表示、ABI-C 拥有返回出参槽、ac_rt_* import、
+TextResourcePlan 出口 LIFO 释放、短路 RHS 临时 join 块参数携带、内联探测
+帧）；S6 真实 PE（runtime/text 静态库 + 合同 sidecar）。通用 pass（完整
+token/lexer 编译、容器、record 文本字段）仍 planned。
 
 ## 非法变换负面清单
 
