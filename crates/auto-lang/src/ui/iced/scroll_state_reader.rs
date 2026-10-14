@@ -24,9 +24,24 @@ use iced::advanced::widget::operation::{Outcome, Scrollable};
 use iced::advanced::widget::Operation;
 use iced::widget::Id;
 use iced::{Rectangle, Vector};
+use serde::{Deserialize, Serialize};
 
-/// 读回结果：widget id 串 → (offset_x, offset_y, viewport_w, viewport_h, content_w, content_h)。
-pub type ScrollStateMap = HashMap<String, (f32, f32, f32, f32, f32, f32)>;
+/// PLAN-781 T-11：单个 scroll-pane 的完整几何读回（原六测量 + viewport
+/// 窗口坐标原点）。窗口逻辑 px；offset 与 absolute_offset 同号。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ScrollStateEntry {
+    /// viewport 矩形 [x, y, w, h]（窗口坐标，pane 的可见裁剪区）。
+    pub viewport: [f32; 4],
+    /// 滚动 offset [ox, oy]（正向滚动为正；overscroll 瞬态 clamp 0）。
+    pub offset: [f32; 2],
+    /// content extent [w, h]。
+    pub content: [f32; 2],
+}
+
+/// 读回结果：widget id 串 → pane 几何。键为 iced Id 原始串——controller
+/// pane 为 `scroll_ctl_<controller>`（renderer.rs:3034 句柄派生稳定 id），
+/// 无 controller pane 为 `vnode_<hash>`/`aura_N` 前缀。
+pub type ScrollStateMap = HashMap<String, ScrollStateEntry>;
 
 /// 从 iced `Id` 的 Debug 形态（`Id(Custom("scroll_ctl_main"))`）提取内部串。
 fn id_key(id: &Id) -> String {
@@ -77,14 +92,19 @@ impl Operation<ScrollStateMap> for ScrollStateReader {
             let offset_y = translation.y.max(0.0);
             self.out.insert(
                 id_key(id),
-                (
-                    offset_x,
-                    offset_y,
-                    bounds.width.max(0.0),
-                    bounds.height.max(0.0),
-                    content_bounds.width.max(0.0),
-                    content_bounds.height.max(0.0),
-                ),
+                ScrollStateEntry {
+                    viewport: [
+                        bounds.x,
+                        bounds.y,
+                        bounds.width.max(0.0),
+                        bounds.height.max(0.0),
+                    ],
+                    offset: [offset_x, offset_y],
+                    content: [
+                        content_bounds.width.max(0.0),
+                        content_bounds.height.max(0.0),
+                    ],
+                },
             );
         }
     }

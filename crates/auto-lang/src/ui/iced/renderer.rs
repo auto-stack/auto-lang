@@ -20573,10 +20573,13 @@ fn run_session(
         if msg.event == "__scroll_state_read" {
             if let Some(ref json) = msg.input_value {
                 if let Ok(map) = serde_json::from_str::<
-                    std::collections::HashMap<String, (f32, f32, f32, f32, f32, f32)>,
+                    crate::ui::iced::scroll_state_reader::ScrollStateMap,
                 >(json)
                 {
-                    for (id, (ox, oy, vw, vh, cw, ch)) in map {
+                    for (id, entry) in map {
+                        let (ox, oy) = (entry.offset[0], entry.offset[1]);
+                        let (vw, vh) = (entry.viewport[2], entry.viewport[3]);
+                        let (cw, ch) = (entry.content[0], entry.content[1]);
                         if std::env::var("P656_DEBUG").is_ok() {
                             eprintln!("[P656-READ] id={id} vals={:?}", (ox, oy, vw, vh, cw, ch));
                         }
@@ -20607,6 +20610,24 @@ fn run_session(
                     }
                 }
             }
+        }
+
+        // PLAN-781 T-11：MCP 观测面的 pane 几何发布（与 __bounds_collected
+        // 同一批 operate 推送，相邻 tick 到达——布局不变，同帧语义）。只进
+        // SharedState，不触 controller 注册表（那是 __scroll_state_read 的
+        // 职责，F-4/PLAN-701 裁定不受扰）。
+        if msg.event == "__mcp_scroll_states" {
+            if let Some(ref json) = msg.input_value {
+                if let Ok(map) = serde_json::from_str::<
+                    crate::ui::iced::scroll_state_reader::ScrollStateMap,
+                >(json)
+                {
+                    if let Some(ref mcp) = state.desktop.mcp_shared {
+                        mcp.lock().unwrap().set_scroll_states(map);
+                    }
+                }
+            }
+            return iced::Task::none();
         }
 
         // Layout bounds collection: store result from previous operation (Plan 282)
@@ -21332,13 +21353,25 @@ fn run_session(
             {
                 *state.app.devtools.needs_bounds.borrow_mut() = false;
                 use crate::ui::iced::LayoutCollector;
-                return iced::advanced::widget::operate(LayoutCollector::new()).map(|bounds_map| {
-                    IcedMessage {
+                // PLAN-781 T-11：泵臂与尾部批处理臂同构——bounds 与 pane 几何
+                // 成对推送（Task::batch 保持一次 return 的早退形态）。
+                return iced::Task::batch(vec![
+                    iced::advanced::widget::operate(LayoutCollector::new()).map(|bounds_map| {
+                        IcedMessage {
+                            widget: String::new(),
+                            event: "__bounds_collected".to_string(),
+                            input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                        }
+                    }),
+                    iced::advanced::widget::operate(
+                        crate::ui::iced::scroll_state_reader::ScrollStateReader::new(),
+                    )
+                    .map(|state_map| IcedMessage {
                         widget: String::new(),
-                        event: "__bounds_collected".to_string(),
-                        input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
-                    }
-                });
+                        event: "__mcp_scroll_states".to_string(),
+                        input_value: Some(serde_json::to_string(&state_map).unwrap_or_default()),
+                    }),
+                ]);
             }
             if let Ok(Some(_)) = state.component.check_file_changed() {
                 if let Some(path) = state.component.source_path() {
@@ -22785,6 +22818,8 @@ fn run_session(
         }
 
         // Plan 282: 布局 bounds 收集(截图/检视数据;截屏挂起时跳过)。
+        // PLAN-781 T-11：同一批并推 ScrollStateReader——pane 几何与 bounds
+        // 同一布局遍、相邻 tick 发布进 SharedState（见 __mcp_scroll_states）。
         if *state.app.devtools.needs_bounds.borrow()
             && state.app.devtools.screenshot_request.borrow().is_none()
         {
@@ -22797,6 +22832,16 @@ fn run_session(
                     input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
                 },
             ));
+            tail_tasks.push(
+                iced::advanced::widget::operate(
+                    crate::ui::iced::scroll_state_reader::ScrollStateReader::new(),
+                )
+                .map(|state_map| IcedMessage {
+                    widget: String::new(),
+                    event: "__mcp_scroll_states".to_string(),
+                    input_value: Some(serde_json::to_string(&state_map).unwrap_or_default()),
+                }),
+            );
         }
 
         // Plan 049: blocks 增加后自动滚到底部(最新 block 可见)。
@@ -22836,9 +22881,23 @@ fn run_session(
                 input_value: Some(serde_json::to_string(&state_map).unwrap_or_default()),
             })
         };
+        // PLAN-781 T-11：同一读回节拍并行发布 MCP 观测面（滚动不改脏帧，
+        // bounds 批不会重跑——offset 新鲜度由本通道维持，≤2s 节拍与
+        // __scroll_state_read 同源）。
+        let mcp_scroll_task = || {
+            iced::advanced::widget::operate(
+                crate::ui::iced::scroll_state_reader::ScrollStateReader::new(),
+            )
+            .map(|state_map| IcedMessage {
+                widget: String::new(),
+                event: "__mcp_scroll_states".to_string(),
+                input_value: Some(serde_json::to_string(&state_map).unwrap_or_default()),
+            })
+        };
         let has_prime_requests = !crate::ui::scroll::controller::take_prime_requests().is_empty();
         if has_prime_requests {
             tail_tasks.push(scroll_read_task());
+            tail_tasks.push(mcp_scroll_task());
         }
         let (finals, prime) = crate::ui::scroll::drain_resolved_intents();
         let finals_done = !finals.is_empty();
@@ -22860,9 +22919,11 @@ fn run_session(
         // 落盘 offset 在下一帧才可见，单次读会取到旧值——心跳读收敛投影；
         // 读消息自身不再触发读，防自激环）。
         if msg.event != "__scroll_state_read"
+            && msg.event != "__mcp_scroll_states"
             && (!prime.is_empty() || finals_done || msg.event == "__mcp_heartbeat")
         {
             tail_tasks.push(scroll_read_task());
+            tail_tasks.push(mcp_scroll_task());
         }
 
         // PLAN-063 T-04d-2: 块锚定同步目标消费——锚块变化时经注册表把

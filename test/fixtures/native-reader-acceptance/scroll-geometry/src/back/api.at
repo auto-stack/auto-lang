@@ -1,0 +1,6 @@
+// p781-scroll-geometry 后端占位：split 形态（-r vm --no-merge）要求
+// api.at 契约存在；单 ping 路由，前端不消费。
+#[api(method = "GET", path = "/api/ping")]
+pub fn ping() str {
+    return "pong"
+}

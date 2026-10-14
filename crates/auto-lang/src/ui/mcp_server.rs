@@ -162,6 +162,18 @@ pub struct SharedState {
     /// Actual layout bounds from iced renderer (Plan 282).
     /// Key: widget ID like "aura_0", Value: (x, y, width, height)
     layout_bounds: HashMap<String, (f32, f32, f32, f32)>,
+    /// PLAN-781 T-11: per-pane geometry (viewport rect incl. window-space
+    /// origin + offset + content extent), keyed by raw iced widget id
+    /// (`scroll_ctl_<controller>` / `vnode_<hash>` / `aura_N`). Published by
+    /// the iced thread in the same needs_bounds batch as layout_bounds.
+    scroll_states: HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
+    /// PLAN-781 T-11: 布局测量代数——每次 bounds 发布 +1。工具响应携带该值；
+    /// 驱动协议 = action 后须观察到 frame 增加才能把几何当新证据。
+    layout_frame: u64,
+    /// PLAN-781 T-11: pane 几何发布代数——滚动不改脏帧，offset 新鲜度由
+    /// 读回节拍（prime/drain/心跳 ≤2s）维持；驱动以 scroll_tick 增加判定
+    /// offset 数据来自新一次读回。
+    scroll_tick: u64,
     /// Real-time styled VTree snapshot (Plan 314). Copied each frame by the
     /// iced renderer when F12 is open or MCP is active.
     styled_vtree: Option<std::sync::Arc<StyledNodeSnapshot>>,
@@ -305,6 +317,9 @@ impl SharedState {
             view_template: None,
             window_size: None,
             layout_bounds: HashMap::new(),
+            scroll_states: HashMap::new(),
+            layout_frame: 0,
+            scroll_tick: 0,
             styled_vtree: None,
             source_code: None,
             backend_kind: BackendKind::Unknown,
@@ -458,13 +473,43 @@ impl SharedState {
     }
 
     /// Set layout bounds from iced renderer (Plan 282).
+    /// PLAN-781 T-11：bounds 发布即布局测量代数 +1——frame 语义锚定在唯一
+    /// 发布点，读取方以「frame 是否增加」判定几何是否来自新一次测量。
     pub fn set_layout_bounds(&mut self, bounds: HashMap<String, (f32, f32, f32, f32)>) {
         self.layout_bounds = bounds;
+        self.layout_frame = self.layout_frame.saturating_add(1);
     }
 
     /// Get layout bounds (Plan 282).
     pub fn get_layout_bounds(&self) -> &HashMap<String, (f32, f32, f32, f32)> {
         &self.layout_bounds
+    }
+
+    /// PLAN-781 T-11：当前布局测量代数。
+    pub fn get_layout_frame(&self) -> u64 {
+        self.layout_frame
+    }
+
+    /// PLAN-781 T-11：pane 几何读回发布（renderer `__mcp_scroll_states`）。
+    /// 每次发布 scroll_tick +1（offset 新鲜度代数）。
+    pub fn set_scroll_states(
+        &mut self,
+        map: HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
+    ) {
+        self.scroll_states = map;
+        self.scroll_tick = self.scroll_tick.saturating_add(1);
+    }
+
+    /// PLAN-781 T-11：pane 几何发布代数。
+    pub fn get_scroll_tick(&self) -> u64 {
+        self.scroll_tick
+    }
+
+    /// PLAN-781 T-11：pane 几何快照（克隆）。
+    pub fn get_scroll_states_cloned(
+        &self,
+    ) -> HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry> {
+        self.scroll_states.clone()
     }
 
     /// Set the real-time styled VTree snapshot (Plan 314). Called each frame by
@@ -1308,6 +1353,51 @@ fn tool_definitions() -> Vec<serde_json::Value> {
                 "openWorldHint": false
             }
         }),
+        // PLAN-781 T-11：pane 几何读回（只读观测，与 autoui_vtree 同类，无 env 门）。
+        serde_json::json!({
+            "name": "autoui_scroll_state",
+            "description": "PLAN-781: read real scroll-pane geometry bound to the current layout frame. Returns viewport rect (window logical px, incl. origin), scroll offset, and content extent per pane. Keys are iced widget ids: `scroll_ctl_<controller>` for controller-bound panes, `vnode_<hash>`/`aura_N` for plain panes. The `frame` field is the layout measurement generation — it increases only after a fresh bounds collection pass.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "pane": {
+                        "type": "string",
+                        "description": "Optional filter: exact key, controller name (matches `scroll_ctl_<name>`), or substring"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
+        // PLAN-781 T-11：同帧可见性 oracle（正面积交集判据）。
+        serde_json::json!({
+            "name": "autoui_visibility",
+            "description": "PLAN-781: same-frame visibility oracle. Resolves the target's enclosing scroll-pane chain geometrically (or uses the pinned `pane`), applies each pane translation exactly once, and intersects with every pane viewport plus the window rect. `visible` is true only when the final intersection has positive area and `flags` is empty. Unmeasured targets (no layout bounds) are never visible.",
+            "inputSchema": {
+                "type": "object",
+                "required": ["element_id"],
+                "properties": {
+                    "element_id": {
+                        "type": "string",
+                        "description": "Target element id (aura_N / vnode_N), same addressing as autoui_action"
+                    },
+                    "pane": {
+                        "type": "string",
+                        "description": "Optional pane pin: exact scroll_states key or controller name. Default resolves the innermost containing pane geometrically"
+                    }
+                }
+            },
+            "annotations": {
+                "readOnlyHint": true,
+                "destructiveHint": false,
+                "idempotentHint": true,
+                "openWorldHint": false
+            }
+        }),
     ]
 }
 
@@ -1339,6 +1429,8 @@ fn dispatch_tool_static(
         "autoui_press_sequence" => tool_press_sequence(shared, args),
         "autoui_editor_state" => tool_editor_state(shared, args),
         "autoui_desktop" => tool_desktop(shared, args),
+        "autoui_scroll_state" => tool_scroll_state(shared, args),
+        "autoui_visibility" => tool_visibility(shared, args),
         _ => error_result(format!("Unknown tool: {}", name)),
     }
 }
@@ -4901,6 +4993,263 @@ fn aura_vtree_node(
     out.push_str(&format!("{}}}\n", pad));
 }
 
+// ============================================================================
+// PLAN-781 T-11: pane geometry readback + same-frame visibility oracle
+// （决策报告 §4/§5 冻结；只读观测，与 autoui_vtree 同类，无 env 门）
+// ============================================================================
+
+/// 窗口逻辑 px 矩形（纯函数区，可单测）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Rect4 {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+}
+
+impl Rect4 {
+    fn area(&self) -> f32 {
+        self.w.max(0.0) * self.h.max(0.0)
+    }
+
+    fn positive(&self) -> bool {
+        self.w > 0.0 && self.h > 0.0
+    }
+
+    fn center(&self) -> (f32, f32) {
+        (self.x + self.w / 2.0, self.y + self.h / 2.0)
+    }
+
+    fn intersect(&self, o: &Rect4) -> Option<Rect4> {
+        let x1 = self.x.max(o.x);
+        let y1 = self.y.max(o.y);
+        let x2 = (self.x + self.w).min(o.x + o.w);
+        let y2 = (self.y + self.h).min(o.y + o.h);
+        if x2 > x1 && y2 > y1 {
+            Some(Rect4 { x: x1, y: y1, w: x2 - x1, h: y2 - y1 })
+        } else {
+            None
+        }
+    }
+}
+
+/// 可见性计算（决策报告 §5.3 冻结公式）：自内向外对每层 pane 先平移
+/// （`-offset + viewport 原点`，恰好一次），再与该层 viewport 求交；最后
+/// 与窗口矩形求交。任何一层空交 → `clipped_out`；仅窗口空交 →
+/// `outside_window`。viewport 坐标空间逐层上溯（iced 布局约定：pane 的
+/// viewport 表达在其父 pane 的 content 空间，根层为窗口空间）。
+fn compute_visibility(
+    target: Rect4,
+    chain: &[Rect4AndViewport],
+    window: (f32, f32),
+) -> (Option<Rect4>, Vec<&'static str>) {
+    let mut r = target;
+    let mut flags: Vec<&'static str> = Vec::new();
+    for step in chain {
+        r = Rect4 {
+            x: r.x - step.offset[0] + step.viewport.x,
+            y: r.y - step.offset[1] + step.viewport.y,
+            w: r.w,
+            h: r.h,
+        };
+        match r.intersect(&step.viewport) {
+            Some(i) => r = i,
+            None => {
+                flags.push("clipped_out");
+                return (None, flags);
+            }
+        }
+    }
+    let win = Rect4 { x: 0.0, y: 0.0, w: window.0, h: window.1 };
+    match r.intersect(&win) {
+        Some(i) => (Some(i), flags),
+        None => {
+            flags.push("outside_window");
+            (None, flags)
+        }
+    }
+}
+
+/// 链上一个 pane 步（viewport 即该层裁剪区，offset 为其滚动量）。
+#[derive(Debug, Clone, Copy)]
+struct Rect4AndViewport {
+    viewport: Rect4,
+    offset: [f32; 2],
+}
+
+/// 几何法解析目标的外围 pane 链（内→外）。第一步用目标中心（内层 content
+/// 空间）找含它的最小 viewport pane；此后每步用当前 pane 的 viewport 中心
+/// （父空间）继续上溯。非祖先 pane 的误配由最小 viewport 优先 + `pane`
+/// 显式钉定缓解（阶段 A 边界，决策报告 §5.3）。
+fn resolve_pane_chain(
+    target: Rect4,
+    panes: &HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
+) -> Vec<(String, Rect4AndViewport)> {
+    let mut used = std::collections::HashSet::new();
+    let mut chain: Vec<(String, Rect4AndViewport)> = Vec::new();
+    let mut probe = target.center();
+    while chain.len() < 4 {
+        let best = panes
+            .iter()
+            .filter(|(k, _)| !used.contains(k.as_str()))
+            .filter(|(_, e)| {
+                e.content[0] > 0.0
+                    && e.content[1] > 0.0
+                    && probe.0 >= 0.0
+                    && probe.0 <= e.content[0]
+                    && probe.1 >= 0.0
+                    && probe.1 <= e.content[1]
+            })
+            .min_by(|a, b| {
+                viewport_area(a.1)
+                    .partial_cmp(&viewport_area(b.1))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        match best {
+            Some((k, e)) => {
+                used.insert(k.clone());
+                let step = Rect4AndViewport {
+                    viewport: Rect4 { x: e.viewport[0], y: e.viewport[1], w: e.viewport[2], h: e.viewport[3] },
+                    offset: e.offset,
+                };
+                // 该 pane 的 viewport 表达在父空间——以其中心继续上溯。
+                probe = step.viewport.center();
+                chain.push((k.clone(), step));
+            }
+            None => break,
+        }
+    }
+    chain
+}
+
+fn viewport_area(e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry) -> f32 {
+    e.viewport[2].max(0.0) * e.viewport[3].max(0.0)
+}
+
+fn backend_kind_str(kind: BackendKind) -> &'static str {
+    match kind {
+        BackendKind::Vm => "vm",
+        BackendKind::Rust => "rust",
+        BackendKind::Unknown => "unknown",
+    }
+}
+
+fn tool_scroll_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let (frame, tick, panes, backend) = {
+        let g = shared.lock().unwrap();
+        (
+            g.get_layout_frame(),
+            g.get_scroll_tick(),
+            g.get_scroll_states_cloned(),
+            backend_kind_str(g.backend_kind()),
+        )
+    };
+    let filter = args.get("pane").and_then(|v| v.as_str());
+    let mut items: Vec<(&String, &crate::ui::iced::scroll_state_reader::ScrollStateEntry)> =
+        panes.iter().collect();
+    if let Some(f) = filter {
+        items.retain(|(k, _)| {
+            k.as_str() == f || k.as_str() == format!("scroll_ctl_{}", f) || k.contains(f)
+        });
+    }
+    items.sort_by(|a, b| a.0.cmp(b.0));
+    let payload = json!({
+        "backend": backend,
+        "frame": frame,
+        "scroll_tick": tick,
+        "panes": items.iter().map(|(k, e)| json!({
+            "key": k,
+            "viewport_rect": e.viewport,
+            "offset": e.offset,
+            "content": e.content,
+        })).collect::<Vec<_>>(),
+    });
+    text_result(serde_json::to_string_pretty(&payload).unwrap_or_default())
+}
+
+fn tool_visibility(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+    let element_id = match args.get("element_id").and_then(|v| v.as_str()) {
+        Some(e) => e.to_string(),
+        None => return error_result("missing required param: element_id"),
+    };
+    let pane_pin = args.get("pane").and_then(|v| v.as_str()).map(str::to_string);
+    let g = shared.lock().unwrap();
+    let frame = g.get_layout_frame();
+    let tick = g.get_scroll_tick();
+    let backend = backend_kind_str(g.backend_kind());
+    let target = g.get_layout_bounds().get(&element_id).copied();
+    let panes = g.get_scroll_states_cloned();
+    let window = g.window_size.unwrap_or((0.0, 0.0));
+
+    let Some((tx, ty, tw, th)) = target else {
+        let payload = json!({
+        "backend": backend,
+        "frame": frame,
+        "scroll_tick": tick,
+        "element_id": element_id,
+        "resolved": false, "intersection": null, "visible": false,
+        "flags": ["unmeasured"],
+    });
+        return text_result(serde_json::to_string_pretty(&payload).unwrap_or_default());
+    };
+    let target_rect = Rect4 { x: tx, y: ty, w: tw, h: th };
+
+    let chain: Vec<(String, Rect4AndViewport)> = if let Some(pin) = &pane_pin {
+        let key = if panes.contains_key(pin) {
+            pin.clone()
+        } else {
+            format!("scroll_ctl_{}", pin)
+        };
+        match panes.get(&key) {
+            Some(e) => vec![(
+                key,
+                Rect4AndViewport {
+                    viewport: Rect4 { x: e.viewport[0], y: e.viewport[1], w: e.viewport[2], h: e.viewport[3] },
+                    offset: e.offset,
+                },
+            )],
+            None => {
+                let mut known: Vec<&String> = panes.keys().collect();
+                known.sort();
+                return error_result(format!("pane not found: {} (known: {:?})", pin, known));
+            }
+        }
+    } else {
+        resolve_pane_chain(target_rect, &panes)
+    };
+
+    let (intersection, mut flags) = compute_visibility(
+        target_rect,
+        &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+        window,
+    );
+    if !target_rect.positive() {
+        flags.push("zero_size");
+    }
+    let visible = intersection.map(|i| i.positive()).unwrap_or(false) && flags.is_empty();
+    if chain.is_empty() && !visible {
+        // 决策报告 §5.3：目标不在任何 scroll-pane 内且与窗口无交集。
+        flags.push("no_pane");
+    }
+    let payload = json!({
+        "backend": backend,
+        "frame": frame,
+        "scroll_tick": tick,
+        "element_id": element_id,
+        "target_rect": [tx, ty, tw, th],
+        "pane_chain": chain.iter().map(|(k, s)| json!({
+            "key": k,
+            "viewport_rect": [s.viewport.x, s.viewport.y, s.viewport.w, s.viewport.h],
+            "offset": s.offset,
+        })).collect::<Vec<_>>(),
+        "window": [window.0, window.1],
+        "intersection": intersection.map(|i| vec![i.x, i.y, i.w, i.h]),
+        "visible": visible,
+        "flags": flags,
+    });
+    text_result(serde_json::to_string_pretty(&payload).unwrap_or_default())
+}
+
 fn text_result(text: String) -> serde_json::Value {
     json!({
         "content": [{ "type": "text", "text": text }],
@@ -5717,5 +6066,154 @@ mod tests_plan623 {
         let mut array_items = 0;
         let error = fixture_json_to_value(&value, 0, &mut array_items).expect_err("depth limit");
         assert!(error.contains("nesting"));
+    }
+}
+
+#[cfg(test)]
+mod tests_plan781_t11 {
+    use super::*;
+
+    fn entry(viewport: [f32; 4], offset: [f32; 2], content: [f32; 2]) ->
+        crate::ui::iced::scroll_state_reader::ScrollStateEntry
+    {
+        crate::ui::iced::scroll_state_reader::ScrollStateEntry { viewport, offset, content }
+    }
+
+    fn chain_item(viewport: Rect4, offset: [f32; 2]) -> Rect4AndViewport {
+        Rect4AndViewport { viewport, offset }
+    }
+
+    #[test]
+    fn plan781_frame_bumps_on_bounds_publication() {
+        let mut st = SharedState::new("demo".into());
+        assert_eq!(st.get_layout_frame(), 0);
+        st.set_layout_bounds(HashMap::new());
+        assert_eq!(st.get_layout_frame(), 1);
+        st.set_layout_bounds(HashMap::from([("aura_1".into(), (1.0, 2.0, 3.0, 4.0))]));
+        assert_eq!(st.get_layout_frame(), 2);
+    }
+
+    #[test]
+    fn plan781_visibility_translates_once_and_intersects() {
+        // pane viewport (100,50,400,300)，向下滚 500：内容坐标 y=600 的目标
+        // 落入窗口 y = 600 - 500 + 50 = 150。
+        let target = Rect4 { x: 120.0, y: 600.0, w: 200.0, h: 40.0 };
+        let chain = [chain_item(Rect4 { x: 100.0, y: 50.0, w: 400.0, h: 300.0 }, [0.0, 500.0])];
+        let (inter, flags) = compute_visibility(target, &chain, (800.0, 600.0));
+        assert!(flags.is_empty());
+        let i = inter.expect("positive intersection");
+        assert!((i.y - 150.0).abs() < 1e-3, "y translated once: {i:?}");
+        assert!((i.h - 40.0).abs() < 1e-3);
+        assert!(i.positive());
+    }
+
+    #[test]
+    fn plan781_visibility_clipped_out_when_target_beyond_viewport() {
+        // 目标在 content y=2000，滚动 500 后仍在 viewport(50..350) 之外。
+        let target = Rect4 { x: 120.0, y: 2000.0, w: 100.0, h: 30.0 };
+        let chain = [chain_item(Rect4 { x: 100.0, y: 50.0, w: 400.0, h: 300.0 }, [0.0, 500.0])];
+        let (inter, flags) = compute_visibility(target, &chain, (800.0, 600.0));
+        assert!(inter.is_none());
+        assert!(flags.contains(&"clipped_out"));
+    }
+
+    #[test]
+    fn plan781_visibility_nested_chain_applies_both_translations() {
+        // 外 pane viewport (0,0,800,600) 滚 100；内 pane viewport 在外 content
+        // 空间 (50,200,700,350) 滚 400。目标在内 content y=900：内层转换
+        // y = 900-400+200 = 700 > 550（内 viewport 上缘）→ 内层即裁掉。
+        // 目标 y=700：内层 → 500（∈[200,550]），外层 → 500-100 = 400，可见。
+        let outer_vp = Rect4 { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
+        let inner_vp = Rect4 { x: 50.0, y: 200.0, w: 700.0, h: 350.0 };
+        let chain = [
+            chain_item(inner_vp, [0.0, 400.0]),
+            chain_item(outer_vp, [0.0, 100.0]),
+        ];
+        let t_edge = Rect4 { x: 60.0, y: 900.0, w: 100.0, h: 20.0 };
+        let (inter, flags) = compute_visibility(t_edge, &chain, (800.0, 600.0));
+        assert!(inter.is_none() && flags.contains(&"clipped_out"));
+
+        let t_ok = Rect4 { x: 60.0, y: 700.0, w: 100.0, h: 20.0 };
+        let (inter, flags) = compute_visibility(t_ok, &chain, (800.0, 600.0));
+        assert!(flags.is_empty());
+        let i = inter.expect("visible through both panes");
+        assert!((i.y - 400.0).abs() < 1e-3 && i.positive());
+    }
+
+    #[test]
+    fn plan781_visibility_no_pane_window_content() {
+        // 无 pane：纯窗口内容与窗口正面积相交即可见。
+        let target = Rect4 { x: 10.0, y: 10.0, w: 50.0, h: 50.0 };
+        let (inter, flags) = compute_visibility(target, &[], (800.0, 600.0));
+        assert!(flags.is_empty());
+        assert!(inter.unwrap().positive());
+
+        let outside = Rect4 { x: -100.0, y: -100.0, w: 50.0, h: 50.0 };
+        let (inter, flags) = compute_visibility(outside, &[], (800.0, 600.0));
+        assert!(inter.is_none() && flags.contains(&"outside_window"));
+    }
+
+    #[test]
+    fn plan781_resolve_chain_inner_then_outer_by_geometry() {
+        let mut panes = HashMap::new();
+        panes.insert("scroll_ctl_reading-pane".to_string(),
+                    entry([100.0, 50.0, 400.0, 300.0], [0.0, 500.0], [400.0, 5000.0]));
+        panes.insert("vnode_outer".to_string(),
+                    entry([0.0, 0.0, 800.0, 600.0], [0.0, 0.0], [800.0, 5000.0]));
+        // 目标中心 (200, 1500) 落在两 pane 的 content 盒内；内 pane viewport
+        // 面积更小 → 先内后外。
+        let target = Rect4 { x: 150.0, y: 1450.0, w: 100.0, h: 100.0 };
+        let chain = resolve_pane_chain(target, &panes);
+        assert_eq!(chain.len(), 2, "inner + outer");
+        assert_eq!(chain[0].0, "scroll_ctl_reading-pane");
+        assert_eq!(chain[1].0, "vnode_outer");
+    }
+
+    #[test]
+    fn plan781_tool_visibility_unmeasured_never_visible() {
+        let shared: SharedStateHandle = std::sync::Arc::new(std::sync::Mutex::new(
+            SharedState::new("demo".into()),
+        ));
+        shared.lock().unwrap().set_window_size(800.0, 600.0);
+        let res = tool_visibility(&shared, json!({"element_id": "aura_9"}));
+        let text = res["content"][0]["text"].as_str().unwrap();
+        let payload: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(payload["flags"][0], "unmeasured");
+        assert_eq!(payload["visible"], false);
+        assert_eq!(payload["resolved"], false);
+    }
+
+    #[test]
+    fn plan781_tool_visibility_end_to_end_with_pane_pin() {
+        let shared: SharedStateHandle = std::sync::Arc::new(std::sync::Mutex::new(
+            SharedState::new("demo".into()),
+        ));
+        {
+            let mut g = shared.lock().unwrap();
+            g.set_backend_kind(BackendKind::Vm);
+            g.set_window_size(800.0, 600.0);
+            g.set_layout_bounds(HashMap::from([
+                ("vnode_t1".to_string(), (120.0, 600.0, 200.0, 40.0)),
+            ]));
+            g.set_scroll_states(HashMap::from([
+                ("scroll_ctl_p".to_string(), entry([100.0, 50.0, 400.0, 300.0], [0.0, 500.0], [400.0, 5000.0])),
+            ]));
+        }
+        // pane 钉定支持 controller 名（scroll_ctl_ 前缀展开）。
+        let res = tool_visibility(&shared, json!({
+            "element_id": "vnode_t1", "pane": "p"
+        }));
+        let text = res["content"][0]["text"].as_str().unwrap();
+        let payload: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(payload["visible"], true);
+        assert_eq!(payload["backend"], "vm");
+        assert_eq!(payload["frame"], 1);
+        assert_eq!(payload["pane_chain"][0]["key"], "scroll_ctl_p");
+
+        // 未知 pane → isError。
+        let res = tool_visibility(&shared, json!({
+            "element_id": "vnode_t1", "pane": "nope"
+        }));
+        assert_eq!(res["isError"], true);
     }
 }

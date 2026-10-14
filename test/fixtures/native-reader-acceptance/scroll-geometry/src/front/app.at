@@ -1,0 +1,500 @@
+// p781-scroll-geometry — PLAN-781 阶段A几何oracle的框架fixture（T-11）。
+// 静态视图：120 个 container 行在一个 ordinary scroll-pane 内，无 handler/
+// 无模型；行必须是 col（text 节点无 Operation 钩子不进 layout_bounds）。
+widget App {
+    view {
+        col {
+            style: "h-screen flex flex-col"
+            text "P781-SCROLL-GEOMETRY-FIXTURE" { style: "text-lg font-bold p-4 shrink-0" }
+            scroll-pane (style: "flex-1 min-h-0 w-full") {
+                col {
+                    style: "gap-1 p-4"
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶0 P781SG 第0行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "w-0 h-0 overflow-hidden"
+                        text "¶ZERO P781SG 零尺寸行" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶1 P781SG 第1行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶2 P781SG 第2行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶3 P781SG 第3行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶4 P781SG 第4行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶5 P781SG 第5行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶6 P781SG 第6行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶7 P781SG 第7行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶8 P781SG 第8行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶9 P781SG 第9行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶10 P781SG 第10行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶11 P781SG 第11行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶12 P781SG 第12行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶13 P781SG 第13行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶14 P781SG 第14行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶15 P781SG 第15行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶16 P781SG 第16行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶17 P781SG 第17行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶18 P781SG 第18行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶19 P781SG 第19行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶20 P781SG 第20行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶21 P781SG 第21行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶22 P781SG 第22行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶23 P781SG 第23行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶24 P781SG 第24行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶25 P781SG 第25行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶26 P781SG 第26行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶27 P781SG 第27行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶28 P781SG 第28行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶29 P781SG 第29行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶30 P781SG 第30行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶31 P781SG 第31行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶32 P781SG 第32行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶33 P781SG 第33行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶34 P781SG 第34行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶35 P781SG 第35行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶36 P781SG 第36行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶37 P781SG 第37行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶38 P781SG 第38行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶39 P781SG 第39行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶40 P781SG 第40行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶41 P781SG 第41行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶42 P781SG 第42行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶43 P781SG 第43行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶44 P781SG 第44行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶45 P781SG 第45行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶46 P781SG 第46行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶47 P781SG 第47行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶48 P781SG 第48行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶49 P781SG 第49行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶50 P781SG 第50行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶51 P781SG 第51行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶52 P781SG 第52行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶53 P781SG 第53行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶54 P781SG 第54行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶55 P781SG 第55行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶56 P781SG 第56行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶57 P781SG 第57行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶58 P781SG 第58行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶59 P781SG 第59行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶60 P781SG 第60行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶61 P781SG 第61行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶62 P781SG 第62行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶63 P781SG 第63行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶64 P781SG 第64行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶65 P781SG 第65行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶66 P781SG 第66行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶67 P781SG 第67行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶68 P781SG 第68行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶69 P781SG 第69行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶70 P781SG 第70行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶71 P781SG 第71行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶72 P781SG 第72行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶73 P781SG 第73行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶74 P781SG 第74行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶75 P781SG 第75行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶76 P781SG 第76行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶77 P781SG 第77行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶78 P781SG 第78行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶79 P781SG 第79行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶80 P781SG 第80行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶81 P781SG 第81行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶82 P781SG 第82行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶83 P781SG 第83行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶84 P781SG 第84行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶85 P781SG 第85行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶86 P781SG 第86行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶87 P781SG 第87行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶88 P781SG 第88行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶89 P781SG 第89行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶90 P781SG 第90行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶91 P781SG 第91行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶92 P781SG 第92行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶93 P781SG 第93行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶94 P781SG 第94行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶95 P781SG 第95行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶96 P781SG 第96行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶97 P781SG 第97行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶98 P781SG 第98行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶99 P781SG 第99行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶100 P781SG 第100行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶101 P781SG 第101行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶102 P781SG 第102行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶103 P781SG 第103行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶104 P781SG 第104行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶105 P781SG 第105行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶106 P781SG 第106行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶107 P781SG 第107行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶108 P781SG 第108行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶109 P781SG 第109行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶110 P781SG 第110行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶111 P781SG 第111行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶112 P781SG 第112行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶113 P781SG 第113行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶114 P781SG 第114行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶115 P781SG 第115行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶116 P781SG 第116行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶117 P781SG 第117行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶118 P781SG 第118行 几何探针正文内容行。" {}
+                    }
+                    col {
+                        style: "py-3 border-b border-border"
+                        text "¶119 P781SG 第119行 几何探针正文内容行。" {}
+                    }
+                }
+            }
+        }
+    }
+}

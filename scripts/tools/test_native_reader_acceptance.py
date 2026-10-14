@@ -198,7 +198,8 @@ class Instance:
 
     def __init__(self, ev: Evidence, auto_bin: Path, app_dir: Path, data_dir: Path,
                  tag: str, ready_timeout: float = 120.0,
-                 back_port: int | None = None, mcp_port: int | None = None):
+                 back_port: int | None = None, mcp_port: int | None = None,
+                 fixture_mode: bool = False, ready_marker: str | None = None):
         self.ev = ev
         self.auto_bin = auto_bin
         self.app_dir = app_dir
@@ -212,6 +213,10 @@ class Instance:
         self.argv: list = []
         self.exit_code = None
         self._log_files = []
+        # fixture_mode: 框架 fixture app（无 Reader API；就绪 = /api/ping + 快照
+        # 含 ready_marker，跳过空库断言——那是 Reader 隔离性专属）。
+        self.fixture_mode = fixture_mode
+        self.ready_marker = ready_marker
 
     # -- lifecycle ---------------------------------------------------------
     def launch(self) -> None:
@@ -255,6 +260,14 @@ class Instance:
             time.sleep(POLL_INTERVAL)
         if not live:
             return False, f"backend not live within {self.ready_timeout}s on :{self.back_port}"
+        if self.fixture_mode:
+            try:
+                st, _ = http_json(self.back_port, "GET", "/api/ping", timeout=3)
+                if st != 200:
+                    return False, f"fixture ping http {st}"
+            except (urllib.error.URLError, OSError, ValueError) as e:
+                return False, f"fixture ping failed: {e!r}"
+            return True, f"fixture backend live in {time.monotonic() - t0:.1f}s"
         try:
             st, books = http_json(self.back_port, "GET", "/api/library/books")
             got = books_ids(books)
@@ -267,22 +280,23 @@ class Instance:
         return True, f"backend live in {time.monotonic() - t0:.1f}s"
 
     def wait_mcp(self):
-        """就绪后半: MCP snapshot tree + 身份断言 + stderr 门。"""
+        """就绪后半: MCP snapshot tree（fixture: ready_marker）+ 身份断言 + stderr 门。"""
         t0 = time.monotonic()
         cli = AutoUiMcpClient(self.mcp_port)
         snap = ""
+        want = self.ready_marker if (self.fixture_mode and self.ready_marker) else "tree:"
         while time.monotonic() - t0 < self.ready_timeout:
             if not self.poll_alive():
                 return False, f"process exited during mcp-ready rc={self.proc.returncode}"
             try:
                 snap = cli.snapshot()
-                if snap and "tree:" in snap:
+                if snap and want in snap:
                     break
             except (urllib.error.URLError, OSError, RuntimeError, ValueError):
                 pass
             time.sleep(POLL_INTERVAL)
-        if not snap or "tree:" not in snap:
-            return False, f"mcp snapshot not ready within {self.ready_timeout}s"
+        if not snap or want not in snap:
+            return False, f"mcp snapshot not ready within {self.ready_timeout}s (want {want!r})"
         self.ev.raw_write(f"{self.tag}-ready-snapshot", {"snapshot_head": snap[:4000]})
         # 身份断言在 MCP 就绪之后（MCP 随 iced 前端启动，晚于后端线程）
         ident = self.identity_problems()
@@ -556,10 +570,231 @@ def run_v12_injected_fail(ev: Evidence) -> CaseResult:
     return r
 
 
-def run_v10_pending_t11(ev: Evidence) -> CaseResult:
+def run_v10_pending_t11(ev: Evidence, inst: Instance) -> CaseResult:
+    """V-10 假几何负例（T-11 版）：错 node / 无 bounds / 零尺寸 / 远端裁剪 /
+    无动作不刷代数。fixture = scroll-geometry（120 行 + 零尺寸行）。"""
+    import json as _json
+    import re
+
     r = CaseResult("v10_fake_geometry")
-    r.status = "skip"
-    r.detail = "requires T-11 autoui_visibility/autoui_scroll_state (not yet landed)"
+    inst.launch()
+    ok, detail = inst.wait_backend()
+    if not ok:
+        r.status, r.detail = "fail", f"backend ready failed: {detail}"
+        inst.reap()
+        return r
+    ok, detail = inst.wait_mcp()
+    if not ok:
+        r.status, r.detail = "fail", f"mcp ready failed: {detail}"
+        inst.reap()
+        return r
+    cli = AutoUiMcpClient(inst.mcp_port)
+
+    def tool_json(name, args):
+        res = cli.call(name, args)
+        text = "".join(p.get("text", "") for p in res.get("content", []))
+        return _json.loads(text)
+
+    def wait_first_collection(deadline=15.0):
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < deadline:
+            ss = tool_json("autoui_scroll_state", {})
+            if ss.get("frame", 0) > 0 and ss.get("panes"):
+                return ss
+            time.sleep(POLL_INTERVAL)
+        return None
+
+    def wait_scroll_settled(prev_y, deadline=15.0):
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < deadline:
+            ss = tool_json("autoui_scroll_state", {})
+            off = ss["panes"][0]["offset"][1] if ss.get("panes") else None
+            if off is not None and abs(off - prev_y) > 0.5:
+                return ss
+            time.sleep(POLL_INTERVAL)
+        return tool_json("autoui_scroll_state", {})
+
+    def find_container(needle):
+        vt = "".join(p.get("text", "") for p in cli.call("autoui_vtree", {}).get("content", []))
+        idx = vt.find(needle)
+        if idx < 0:
+            return None
+        best = None
+        for m in re.finditer(r"(col|row|container) (vnode_\d+) \{", vt):
+            if m.end() <= idx and (best is None or m.end() > best.end()):
+                best = m
+        return re.search(r"vnode_\d+", best.group(0)).group(0) if best else None
+
+    def find_scrollable():
+        vt = "".join(p.get("text", "") for p in cli.call("autoui_vtree", {}).get("content", []))
+        for pat in (r"(?:scrollable|Scrollable|scroll-pane) (vnode_\d+) \{",):
+            m = re.search(pat, vt)
+            if m:
+                return m.group(1)
+        return None
+
+    ss = wait_first_collection()
+    if not ss:
+        r.status, r.detail = "fail", "no bounds collection within deadline"
+        inst.reap()
+        return r
+    checks = []
+
+    # (1) 错 node：不存在的 element_id → unmeasured / resolved=false / 不可见
+    v = tool_json("autoui_visibility", {"element_id": "vnode_999999999"})
+    checks.append(("bogus id unmeasured",
+                   v.get("resolved") is False and v.get("visible") is False
+                   and "unmeasured" in v.get("flags", [])))
+
+    # (2) 零尺寸行：measured 但 w/h=0 → zero_size / 不可见
+    zero_eid = find_container("¶ZERO P781SG")
+    if not zero_eid:
+        checks.append(("zero-size row found", False))
+    else:
+        vz = tool_json("autoui_visibility", {"element_id": zero_eid})
+        checks.append(("zero-size flagged not visible",
+                       vz.get("visible") is False and "zero_size" in vz.get("flags", [])))
+
+    # (3) 远端行（content y 远超 viewport）→ clipped_out / 不可见
+    far_eid = find_container("¶100 P781SG")
+    if not far_eid:
+        checks.append(("far row found", False))
+    else:
+        vf = tool_json("autoui_visibility", {"element_id": far_eid})
+        checks.append(("far row clipped_out",
+                       vf.get("visible") is False and "clipped_out" in vf.get("flags", [])))
+
+    # (4) 无动作不刷代数：两次查询间 frame/scroll_tick 不变（无假新鲜度）
+    s1 = tool_json("autoui_scroll_state", {})
+    time.sleep(2.5)
+    s2 = tool_json("autoui_scroll_state", {})
+    checks.append(("no fake freshness without action",
+                   s2.get("frame") == s1.get("frame")))
+
+    ev.raw_write("v10_fake_geometry", {"checks": [(c[0], bool(c[1])) for c in checks],
+                                       "frame": ss.get("frame")})
+    reap_ok, reap_detail = inst.reap()
+    bad = [c for c in checks if not c[1]]
+    if bad or not reap_ok:
+        r.status = "fail"
+        r.detail = f"failed checks: {[c[0] for c in bad]}; reap={'ok' if reap_ok else reap_detail}"
+    else:
+        r.status = "pass"
+        r.detail = f"{len(checks)} negative-oracle checks ok ({detail})"
+    return r
+
+
+def run_v11_clip(ev: Evidence, inst: Instance) -> CaseResult:
+    """V-11 裁剪（T-11 版）：正面积交集 / 恰一次转换 / 部分可见 / 滚动后代数刷新。"""
+    import json as _json
+    import re
+
+    r = CaseResult("v11_clip")
+    inst.launch()
+    ok, detail = inst.wait_backend()
+    if not ok:
+        r.status, r.detail = "fail", f"backend ready failed: {detail}"
+        inst.reap()
+        return r
+    ok, detail = inst.wait_mcp()
+    if not ok:
+        r.status, r.detail = "fail", f"mcp ready failed: {detail}"
+        inst.reap()
+        return r
+    cli = AutoUiMcpClient(inst.mcp_port)
+
+    def tool_json(name, args):
+        res = cli.call(name, args)
+        text = "".join(p.get("text", "") for p in res.get("content", []))
+        return _json.loads(text)
+
+    def find_container(needle):
+        vt = "".join(p.get("text", "") for p in cli.call("autoui_vtree", {}).get("content", []))
+        idx = vt.find(needle)
+        if idx < 0:
+            return None
+        best = None
+        for m in re.finditer(r"(col|row|container) (vnode_\d+) \{", vt):
+            if m.end() <= idx and (best is None or m.end() > best.end()):
+                best = m
+        return re.search(r"vnode_\d+", best.group(0)).group(0) if best else None
+
+    def find_scrollable():
+        vt = "".join(p.get("text", "") for p in cli.call("autoui_vtree", {}).get("content", []))
+        m = re.search(r"(?:scrollable|Scrollable|scroll-pane) (vnode_\d+) \{", vt)
+        return m.group(1) if m else None
+
+    def wait_scroll_settled(prev_y, deadline=15.0):
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < deadline:
+            ss = tool_json("autoui_scroll_state", {})
+            off = ss["panes"][0]["offset"][1] if ss.get("panes") else None
+            if off is not None and abs(off - prev_y) > 0.5:
+                return ss
+            time.sleep(POLL_INTERVAL)
+        return tool_json("autoui_scroll_state", {})
+
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 15:
+        ss = tool_json("autoui_scroll_state", {})
+        if ss.get("frame", 0) > 0 and ss.get("panes"):
+            break
+        time.sleep(POLL_INTERVAL)
+    if not ss.get("panes"):
+        r.status, r.detail = "fail", "no pane geometry"
+        inst.reap()
+        return r
+    pane = ss["panes"][0]
+    vx, vy, vw, vh = pane["viewport_rect"]
+    checks = []
+
+    row0 = find_container("¶0 P781SG")
+    checks.append(("row0 found", bool(row0)))
+    v0 = tool_json("autoui_visibility", {"element_id": row0}) if row0 else {}
+    checks.append(("row0 visible positive-area",
+                   v0.get("visible") is True and (v0.get("intersection") or [0, 0, 0, 0])[2] > 0))
+
+    # content-space + 恰一次转换：row60 的 content y 已知 → 滚到使其跨 viewport
+    # 顶缘（offset = content_y + 20 → window_y = vy - 20 < vy 部分裁剪）。
+    row60 = find_container("¶60 P781SG")
+    checks.append(("row60 found", bool(row60)))
+    pane_eid = find_scrollable()
+    checks.append(("pane vnode found", bool(pane_eid)))
+    if row60 and pane_eid:
+        v60 = tool_json("autoui_visibility", {"element_id": row60})
+        cy = v60["target_rect"][1]
+        h = v60["target_rect"][3]
+        cli.call("autoui_action", {"element_id": pane_eid, "action": "scroll", "value": cy + 20})
+        ss2 = wait_scroll_settled(pane["offset"][1])
+        checks.append(("offset moved to straddle", abs(ss2["panes"][0]["offset"][1] - (cy + 20)) < 1.0,
+                       ))
+        v60b = tool_json("autoui_visibility", {"element_id": row60})
+        inter = v60b.get("intersection")
+        # 部分可见：正面积且被裁掉顶部（交高 < 目标高、交顶 = viewport 顶）
+        checks.append(("row60 partially visible",
+                       v60b.get("visible") is True and inter is not None
+                       and 0 < inter[3] < h and abs(inter[1] - vy) < 1.0))
+        # 恰一次转换的数值验证：window_y = content_y - offset + viewport_y
+        expect_y = cy - ss2["panes"][0]["offset"][1] + vy
+        checks.append(("translate-once arithmetic",
+                       inter is not None and abs(inter[1] - max(expect_y, vy)) < 1.0))
+        # bounds 不随滚动漂移（content-space）
+        v60c = tool_json("autoui_visibility", {"element_id": row60})
+        checks.append(("content-space bounds stable",
+                       all(abs(a - b) < 0.5 for a, b in zip(v60["target_rect"], v60c["target_rect"]))))
+        # 滚动后代数刷新（scroll_tick 增加而 frame 可不动）
+        checks.append(("scroll_tick advanced", ss2.get("scroll_tick", 0) > ss.get("scroll_tick", 0)))
+
+    ev.raw_write("v11_clip", {"checks": [(c[0], bool(c[1])) for c in checks],
+                              "pane": pane, "frame": ss.get("frame")})
+    reap_ok, reap_detail = inst.reap()
+    bad = [c for c in checks if not c[1]]
+    if bad or not reap_ok:
+        r.status = "fail"
+        r.detail = f"failed checks: {[c[0] for c in bad]}; reap={'ok' if reap_ok else reap_detail}"
+    else:
+        r.status = "pass"
+        r.detail = f"{len(checks)} clipping-oracle checks ok ({detail})"
     return r
 
 
@@ -612,14 +847,14 @@ def main() -> int:
 
     run_ts = datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    def mk(tag: str) -> Instance:
+    def mk(tag: str, **kw) -> Instance:
         return Instance(ev, auto_bin, app_dir,
                         data_root / f"reader001-review-{run_ts}-{tag}", tag,
                         ready_timeout=args.ready_timeout,
-                        back_port=args.back_port, mcp_port=args.mcp_port)
+                        back_port=args.back_port, mcp_port=args.mcp_port, **kw)
 
     all_cases = ["r1_smoke", "v07_dual_instance", "v12_window_start_fail",
-                 "v12_backend_dead", "v12_timeout", "v10_fake_geometry"]
+                 "v12_backend_dead", "v12_timeout", "v10_fake_geometry", "v11_clip"]
     selected = args.cases or all_cases
 
     for case_id in selected:
@@ -659,7 +894,15 @@ def main() -> int:
         elif case_id == "v12_injected_fail":
             ev.case(run_v12_injected_fail(ev))
         elif case_id == "v10_fake_geometry":
-            ev.case(run_v10_pending_t11(ev))
+            inst = mk("v10", fixture_mode=True, ready_marker="P781-SCROLL-GEOMETRY")
+            inst.app_dir = REPO_ROOT / "test" / "fixtures" / "native-reader-acceptance" / "scroll-geometry"
+            inst_holder.append(inst)
+            ev.case(guard(run_v10_pending_t11, inst))
+        elif case_id == "v11_clip":
+            inst = mk("v11", fixture_mode=True, ready_marker="P781-SCROLL-GEOMETRY")
+            inst.app_dir = REPO_ROOT / "test" / "fixtures" / "native-reader-acceptance" / "scroll-geometry"
+            inst_holder.append(inst)
+            ev.case(guard(run_v11_clip, inst))
         else:
             print(f"[usage] unknown case: {case_id}")
             return 1
