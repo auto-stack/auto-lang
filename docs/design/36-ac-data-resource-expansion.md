@@ -83,3 +83,9 @@ flowchart LR
 | 首个真实 ACC lexer | 文本、record、enum、List、模块能力 | token/lexer 适配源码 native + corpus_m1 对拍 |
 
 没有预分配后续编号，不把前三计划计作完整 lexer、生产 ABI 或任何自举代际完成。
+
+## 8. lexer/parser 迁移前的横向约束（2026-10-15）
+
+用户新增要求：增量编译、热重载、插件从AC/ACC起点融入；语法能力可复用为Atom/Batom配置的通用parser-generator、LSP和第三方语言元信息扫描底座。详见 [Design 39](39-ac-incremental-syntax-and-language-platform.md)。这影响源码/树/会话/模块身份接口，不要求将运行时装载逻辑放进lexer/parser。
+
+本节不扩充782正在复审修复的合同。后续enum/List可以继续规划，但真实ACC lexer/parser迁移前须先有snapshot/edit/CST/恢复/grammar代际与语义依赖合同；旧核心适配时消费该合同。通用产品、增量语义查询、ABI/运行时热重载分线验收，具体算法和实施编号未冻结。
