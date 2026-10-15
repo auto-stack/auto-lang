@@ -56,6 +56,16 @@ T01冻结一页最小bridge/dispatch/恢复决策，不公开整个Parser。拟�
 6. **外部 model 子集冻结**：`model { [var] name [type] [= expr] }`（无注解）；遇 `#[` 注解或 `RBrace` 前异常形态→外部 `Ok(None)`（checkpoint 已回滚）交内建处理，注解/var 语义列入未迁清单。widget/msg/component/actions/style/view/on/store 全部未迁（内建不变）。
 7. **默认 grammar 零变化**：Core 场景空方言表、UiDialect 全关键字保持；无需公开全部 lexer/符号表私有面（bridge 面足以实现子集，不触发 §10 needs_replan）。
 
+**R1 修订（2026-10-15，复审 needs_fix 后按等价机制更新冻结说明）**：
+- 第 3/4 条修订：方言表元素改 **Arc 共享句柄**——派发时克隆调用、永不移出表
+  （替代 remove/insert）。活跃方言在自身委托核心解析（闭包体再入语句派发）期间
+  仍可见，合法递归派发见到完整方言表（F778-R1-01）；Err/None 结构上不可能丢注册。
+- 第 4 条扩展：Err 恢复不变量含 **context 恢复**——BridgeCheckpoint 快照
+  in_on_body/in_fn_body/in_dot_rhs/with_header/body_depth；派发错误边界恢复
+  旗标（游标留失败位置，错误位置不变量）；核心 fn 体/watch 体/on-handler 体/
+  dot-RHS 四处 `?` 提前退出泄漏位点改为 Err 平衡恢复（根源修复，内建路径同受益）。
+- §T-05 限制 5 相应更新（checkpoint 含 context 旗标；errors/warnings 仍单调追加）。
+
 ### T-05 报告：已迁面 / 未迁清单 / 限制 / 后续迁移清单（2026-10-15 work）
 
 **已外部验证面（外部 crate 仅凭公开面实现）**：`model { [var] name [type] [= expr] }`
@@ -72,7 +82,7 @@ component / actions / style 关键字；view/on token 侧；store；model 注解
 2. 注册为每 Parser 实例显式：生产 UI 入口 18 处（lib.rs）与导入子解析器（compile.rs `parse_module_to_type_store`/`compile_module_to_bytecode`，Core 无 session）不自动继承；生产注入需逐入口 `with_dialect` 或 revision 引入 session 携带注册表。
 3. `matches()` 场景门控现在是派发时核心契约（此前仅靠 build_dialects 注册时机巧合满足，外部显式注册下原样会泄漏到非属场景——本 pilot 修复并回归）。
 4. 方言派发只覆盖语句位置（parse_stmt_inner）；widget 体循环直连 `parse_model_block_inner`（parser.rs parse_widget_decl），不经方言表——冻结传播边界。
-5. BridgeCheckpoint 只回滚游标；errors/warnings 单调追加不回滚（与 Plan 395 同取舍）。
+5. BridgeCheckpoint 回滚游标 + 语句级 context 旗标（R1 扩展：in_on_body/in_fn_body/in_dot_rhs/with_header/body_depth）；errors/warnings 单调追加不回滚（与 Plan 395 同取舍）。
 6. 块内错误 + 游离 `}` 的 synchronize 级联到 error_limit 为既有解析器恢复行为（内建同形态同产物），未纳入本 pilot 断言面（v04 测试注释记录）。
 7. fixture 独立 workspace 冷构建 auto-lang，不在日常档；门禁命令独立执行。
 
@@ -125,10 +135,10 @@ T03创建外部入口 `cargo test --manifest-path test/fixtures/modularity/ui-di
 | 状态 | Task | owner_stage | 依赖 | 操作/验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 777+确认r1 | 核读私有能力/grammar；冻结bridge/dispatch/恢复支持矩阵 → §T-01冻结矩阵（mem::take丢表bug证实、Lexer save_state复用、三段注册/优先级、Err/None核心保证）；[✅ 已完成] | 01/02 |
-| [x] | T-02 | work | T01 | parser/dialect/新bridge，显式注册保持与错误恢复 → `parser_bridge.rs`（游标/checkpoint/expr/type/context/syntax_error + pub(crate) escape hatch）；trait 改收 ParserBridge；三段注册 `register_dialect/with_dialect`（Override/Append）+ `with_session` 只重建 builtin 段；派发重写（Err 移回不丢表 + None 强制回滚 + **matches() 派发时门控**——实需验证点证实并修复：旧实现从未调用 matches，靠 build_dialects 注册时机巧合）；crate 内 4 条永久回归 `test_plan778_*` 4/4 绿；[✅ 已完成] | 01/02 |
-| [x] | T-03 | work | T02 | 独立fixture真实model子集，V01–04正反控 → `test/fixtures/modularity/ui-dialect-consumer/`（独立 workspace + 根 exclude）12/12 绿（V01 typed结果+非内建替跑 / V02 core赋值·view参数·scene·widget全形态 / V03 with_session保留·嵌套block传播·实例隔离 / V04 Err后注册在+恢复点继续+错误位置offset8+注解None回滚 / V05 默认路径+Override/Append冲突可区分）；[✅ 已完成] | 01/02 |
+| [x] | T-02 | work | T01 | parser/dialect/新bridge，显式注册保持与错误恢复 → `parser_bridge.rs`（游标/checkpoint/expr/type/context/syntax_error + pub(crate) escape hatch）；trait 改收 ParserBridge；三段注册 `register_dialect/with_dialect`（Override/Append）+ `with_session` 只重建 builtin 段；派发重写（Err 移回不丢表 + None 强制回滚 + **matches() 派发时门控**——实需验证点证实并修复：旧实现从未调用 matches，靠 build_dialects 注册时机巧合）；crate 内 4 条永久回归 `test_plan778_*` 4/4 绿；**R1 修复（a8a81aad4）**：方言表 Arc 共享句柄（F778-R1-01 委托递归期间活跃方言留表）+ 派发 Err 边界 context 恢复 + fn/on/watch/dot-RHS 四处根源 `?` 泄漏平衡修复（F778-R1-02）；[✅ 已完成] | 01/02 |
+| [x] | T-03 | work | T02 | 独立fixture真实model子集，V01–04正反控 → `test/fixtures/modularity/ui-dialect-consumer/`（独立 workspace + 根 exclude）12/12 绿（V01 typed结果+非内建替跑 / V02 core赋值·view参数·scene·widget全形态 / V03 with_session保留·嵌套block传播·实例隔离 / V04 Err后注册在+恢复点继续+错误位置offset8+注解None回滚 / V05 默认路径+Override/Append冲突可区分）；**R1 组合控制（r1_delegation_combinations.rs）6/6**：嵌套表达式委托递归 accepts=2、兄弟裸块控制、委托 Err 恢复点 context、成功委托正控、token None 回滚、token Err 再派发；合计 fixture 18/18；[✅ 已完成] | 01/02 |
 | [x] | T-04 | work | T03 | 默认内建UI保持，V02/V05；点检session/import创建路径 → `cargo t parser::tests` 179/179、`t dialect` 7/7、`t model` 15/15、`t widget` 68/68；创建路径记录：生产 UI 入口 18 处（lib.rs 各自 `Parser::from(..).with_session(ui())`）与导入子解析器（compile.rs:1878/1933 `new_with_type_store`，无 session）均每实例新建——外部方言按入口显式注册（fixture 模式），生产注入列迁移清单；widget 体 model 由 parse_widget_decl 直连内建（冻结边界，见 §T-05 报告）；[✅ 已完成] | 02/03 |
-| [x] | T-05 | work | T04 | check+t+tv+externalgate；后续文法迁移清单/限制报告 → `cargo check -p auto-lang` 0 error（新代码 0 警告）；外部门禁 12/12；定向档见 T-04；**裸 `cargo t` + `cargo tv` 按 2026-10-14 裁定为 merge-owned 门禁，冻结提交上执行，本阶段 pending**；迁移清单/限制报告见 §T-05 报告；[✅ 已完成] | 03 |
+| [x] | T-05 | work | T04 | check+t+tv+externalgate；后续文法迁移清单/限制报告 → `cargo check -p auto-lang` 0 error（新代码 0 警告）；外部门禁 12/12；定向档见 T-04；**裸 `cargo t` + `cargo tv` 按 2026-10-14 裁定为 merge-owned 门禁，冻结提交上执行，本阶段 pending**；迁移清单/限制报告见 §T-05 报告；R1 重放 `replay.py` 5/6——唯一差异为第 3 项冻结期望 [false,false] 属 P1 未修语义（论证见 §9 r2 收尾），联合修复语义 [false,true,false] 已收编为永久控制；rustfmt --check 新增/修改文件全净（F778-R1-03）；[✅ 已完成] | 03 |
 | [ ] | T-06 | review | T05 | 独立review真实外部面与兼容性 | 04 |
 | [ ] | T-07 | merge | reviewpass | Spec/归档/合流/guard-clean清理 | 05 |
 
@@ -153,6 +163,46 @@ pending：冻结提交 40c69c890 上裸 `cargo t` + `cargo tv`，未触及 trans
 无 tt/taa，未触 UI codegen 无 tu**）。在案 finding/覆盖缺口/未决契约：无。
 实需验证点闭合：mem::take 丢表 bug 证实并修复；matches() 从未派发调用证实并
 修复；widget 体直连边界冻结（§T-05 报告限制 4）。
+
+2026-10-15 R1：stage=review | review_scope=final | reviewer_identity=本评审会话（拆分规划及777审查参与，未实施778；由提交和独立反例重建） | plan_id=PLAN-778 | plan_revision=1 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-778/auto-lang | branch=plan-778-dev | reviewed_commit=40c69c890eb2d52854ad846b94846fdce7e498a5 | base_commit=87f45dc4e2c592c31844e74824e67bf9e6cb419f | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；root/fixture锁见指纹 | spec_inputs=frontend overview SHA256 fccb811a79b24b95678efa57b87bcc9ded10e5afd2b9abc44236b99aebb16dfe；SD01 partial冻结 | acceptance_results=AC01基本外部面pass、AC02 fail、AC03 partial、AC04审计完成未pass、AC05 pending | findings=F778-R1-01(P1活跃方言remove期间嵌套解析落回内建)/F778-R1-02(P2委托Err后in_fn_body残留)/F778-R1-03(P3新增文件格式不通过) | evidence=[R1报告](attachments/778/review-r1/REVIEW.md)、[独立源码](attachments/778/review-r1/independent.rs)、[最终6项输出](attachments/778/review-r1/replay-latest.log)、[指纹](attachments/778/review-r1/fingerprints.json)、[规范增量](attachments/778/review-r1/spec-delta-reviewed.md) | verification=外部12/12、crate新4/4及定向255/255、cargo check exit0；独立组合4pass/2fail、rustfmt新文件check exit1、diff-check pass；受管输入未变、树干净；已有警告不称全仓零warning | pending_closeout_gates=最终review pass后merge-owned裸cargo t+tv，T07沉淀/合流/归档/批到期/guard-clean pending；本轮未跑整档 | task_state=保留T01，重开T02..05，executing 1/7，r1不变 | next=同树work修复全部finding并补永久委托递归/Err上下文组合与格式检查，提交后复审。本次不修实现/merge/发布canonical/清理树。
+
+2026-10-15 stage=work（R1 needs_fix 修复） | PLAN-778 | r1 | pass | D:/autostack/.wt/lang-778/auto-lang |
+plan-778-dev | base 87f45dc4e | code a8a81aad4（修复提交，叠加于 40c69c890） |
+依赖：auto-down 组内兄弟 detached @ c39ac7f9（无改动） | T-02..T-05（重开后再闭合） |
+blockers 无 | next=review（T-06 复审 r2）。
+
+逐 finding 闭合行：
+- **F778-R1-01** → 不变量：活跃方言在其自身委托解析的合法递归派发期间必须仍在
+  注册表内 → 受影响路径：Ident/token 两派发的全部方言调用（原 remove/insert 模式
+  共两处） → 修复：方言表 Arc 共享句柄存储，派发克隆调用、结构上无移出；四项
+  既有注册/恢复不变量（优先级/matches 门控/实例隔离/Err 注册/None 回滚）不弱化 →
+  永久用例：`r1_nested_expression_keeps_active_registration`（accepts=2）+
+  `r1_sibling_nested_block_control` 兄弟控制 + token 两路组合 → 结果：fixture 18/18
+  绿 → 剩余缺口：无。
+- **F778-R1-02** → 不变量：委托核心解析的 Err 在派发错误边界恢复语句级 context
+  → 受影响路径：parser.rs 四处 `?` 提前退出泄漏位点（fn 体 9393 / watch 体
+  14152 / on-handler 体 17693 / dot-RHS 3277——同类排查发现的第四处） +
+  BridgeCheckpoint 语义 → 修复：四根源位点 Err 平衡恢复（内建路径同受益）+
+  checkpoint 快照五旗标 + 派发 Err 边界 restore_context_flags（游标留失败位置）→
+  永久用例：`r1_delegated_error_restores_context_at_recovery_point`（显式恢复点）+
+  `r1_successful_delegation_context_control` 正控 + token Err 再派发 → 结果：绿 →
+  剩余缺口：无。
+- **F778-R1-03** → rustfmt --edition 2021 格式化全部新增/修改文件，--check 复核
+  全净；未触碰全仓旧格式债务 → 结果：绿 → 剩余缺口：无。
+
+**R1 重放差异论证（供复审 r2 裁定）**：`replay.py` 5/6，唯一差异 =
+`delegated_error_restores_context_at_recovery_point` 冻结期望 `[false,false]`。
+该期望编码 P1 未修语义（回调期间方言从表消失 → fn 体内嵌 tail 派发不可见）；
+F778-R1-01 的修复要求恰使该嵌套派发**可见**（与 model 方言嵌套 accepts=2 同机制）。
+联合修复语义为 `[false, true, false]`：中位 true 是嵌套派发发生时**确在 fn 体内**
+的正确上下文（非残留）；P2 oracle（恢复点派发 context 已恢复）= 末位 false，满足。
+冻结证据文件（independent.rs/replay.py）未改动；联合语义期望已收编为 fixture
+永久控制并注明论证。若复审 r2 认定冻结期望优先于联合语义，需回退方案再议。
+
+验证汇总（a8a81aad4）：fixture 18/18（12 原有 + 6 R1 组合）；`test_plan778_*`
+4/4；parser::tests 179/179；`cargo check` exit0；rustfmt --check 净；
+`replay.py` exit1 仅上述已论证差异项。merge-owned 裸 `cargo t` + `cargo tv`
+仍 pending（冻结提交 a8a81aad4 上执行）。
 
 ## 10. 待澄清事项
 
