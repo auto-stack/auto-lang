@@ -161,6 +161,9 @@ pub(crate) async fn serve_network(
     // conn_rejected（此时不承诺能回 503）。
     let conn_permits = std::sync::Arc::new(tokio::sync::Semaphore::new(cfg.max_connections));
     static CONN_ID_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    // PLAN-781 T-22（R06）：本服务实例代际（每 serve_network 一次）——
+    // 排水截止按此归属，旧服务的截止不污染同进程其他/后续实例。
+    let server_gen = super::http_server::next_server_generation();
     loop {
         tokio::select! {
             accepted = listener.accept() => {
@@ -209,7 +212,10 @@ pub(crate) async fn serve_network(
                         let cfg = cfg.clone();
                         let req_tx = req_tx.clone();
                         let shutdown = shutdown.clone();
-                        async move { bridge_handler(request, peer, cfg, req_tx, shutdown, conn_id).await }
+                        async move {
+                            bridge_handler(request, peer, cfg, req_tx, shutdown, conn_id, server_gen)
+                                .await
+                        }
                     })
                 };
                 let watcher = graceful.watcher();
@@ -281,10 +287,13 @@ pub(crate) async fn serve_network(
                 // Graceful: stop accepting, let in-flight responses/SSE finish
                 // (SSE streams end themselves on the same flag), force close
                 // past the drain budget.
-                // PLAN-781 T-22（R04 修复轮）：排水截止全局可见——owner
-                // 可能正被 RUNNING CPU 段阻塞（cancel_all_parked 到不
-                // 了），engine 驱动环协作取消探测读此截止。
-                super::http_server::set_shutdown_drain_cutoff(
+                // PLAN-781 T-22（R04 修复轮；R06 按服务归属）：排水截止
+                // 按本服务代际登记——owner 可能正被 RUNNING CPU 段阻塞
+                //（cancel_all_parked 到不了），engine 驱动环协作取消探
+                // 测按 scope.server_gen 查询；net 循环退出时清除（下方
+                // drop(listener) 前），不残留到同进程后续实例。
+                super::http_server::set_server_drain_cutoff(
+                    server_gen,
                     std::time::Instant::now() + cfg.shutdown_drain,
                 );
                 let _ = tokio::time::timeout(cfg.shutdown_drain, graceful.shutdown()).await;
@@ -292,6 +301,9 @@ pub(crate) async fn serve_network(
             }
         }
     }
+    // PLAN-781 T-22（R06）：本服务生命周期终结——清除其排水截止（注册
+    // 表按代际归属；不影响同进程其他在途实例）。
+    super::http_server::clear_server_drain_cutoff(server_gen);
     drop(listener); // release the port
 }
 
@@ -349,6 +361,7 @@ async fn bridge_handler(
     req_tx: tokio::sync::mpsc::Sender<(ApiRequest, tokio::sync::oneshot::Sender<ApiReply>, u64)>,
     shutdown: tokio::sync::watch::Receiver<bool>,
     conn_id: u64,
+    server_gen: u64,
 ) -> Response {
     let (mut parts, body) = request.into_parts();
     let method = parts.method.as_str().to_uppercase();
@@ -536,8 +549,11 @@ async fn bridge_handler(
 
     // PLAN-705 T-05: 生命期许可 + scope ——入队前获取（queued+running+
     // parked 总上限）；许可不可得 = 总上限满 → 503（零分配零排队）。
-    let scope =
-        super::http_server::create_scope(conn_id, std::time::Instant::now() + cfg.request_timeout);
+    let scope = super::http_server::create_scope(
+        conn_id,
+        std::time::Instant::now() + cfg.request_timeout,
+        server_gen,
+    );
     let Some(scope) = scope else {
         eprintln!("[HTTP] {} {} → 503 (lifetime permit cap)", peer, "");
         let mut resp = error_response(503, "server busy");
@@ -1073,6 +1089,7 @@ mod bridge_tests {
             req_tx,
             shutdown,
             77,
+            0,
         )
         .await;
         assert_eq!(resp.status(), 503, "full queue must reject fast");

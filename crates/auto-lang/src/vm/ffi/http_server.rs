@@ -6066,6 +6066,9 @@ pub(crate) const SCOPE_CANCELLED: u8 = 4;
 pub(crate) struct RequestScope {
     pub id: u64,
     pub conn_id: u64,
+    /// PLAN-781 T-22（R06）：所属服务代际——排水截止按服务归属查询，
+    /// 旧服务的截止不污染同进程其他/后续实例。
+    pub server_gen: u64,
     pub state: std::sync::atomic::AtomicU8,
     /// PLAN-730 T-05：deadline 升级 RwLock——上传期限切换需透过 Arc 写
     ///（extend_scope_deadline 只增不减；读方短暂陈旧方向安全）。
@@ -6145,6 +6148,7 @@ fn life_permits() -> &'static std::sync::Arc<tokio::sync::Semaphore> {
 pub(crate) fn create_scope(
     conn_id: u64,
     deadline: std::time::Instant,
+    server_gen: u64,
 ) -> Option<std::sync::Arc<RequestScope>> {
     let Ok(permit) = life_permits().clone().try_acquire_owned() else {
         return None;
@@ -6155,6 +6159,7 @@ pub(crate) fn create_scope(
     let scope = std::sync::Arc::new(RequestScope {
         id,
         conn_id,
+        server_gen,
         state: std::sync::atomic::AtomicU8::new(SCOPE_QUEUED),
         deadline,
         permit: std::sync::Mutex::new(Some(permit)),
@@ -6331,41 +6336,65 @@ pub(crate) fn bind_current_scope(scope_id: u64) -> ScopeGuard {
     ScopeGuard
 }
 
-/// PLAN-781 T-22（R04 修复轮）：优雅关停排水截止（全局；net 线程在
-/// shutdown watch 翻转时设置 = now + shutdown_drain）。owner 可能正被
-/// RUNNING CPU 段阻塞（到达不了 cancel_all_parked），engine 驱动环的
-/// 协作取消探测读取此截止——绑定 HTTP scope 的段在排水截止后终止，
-/// 不产生客户端终态后的业务副作用。None = 未在排水。
-static SHUTDOWN_DRAIN_CUTOFF: std::sync::RwLock<Option<std::time::Instant>> =
-    std::sync::RwLock::new(None);
+/// PLAN-781 T-22（R04 修复轮；R06 修正为按服务代际归属）：优雅关停
+/// 排水截止注册表——**key = serve_network 服务代际**（进程内可并存多服
+/// 务实例；旧服务的截止只影响自身 scope，不污染同进程后续/并发实例
+/// ——R06 复审反例：同进程关停后重启，全局单值残留导致新实例长请求
+/// 首次探测即被误取消）。net 线程在 shutdown watch 翻转时设置
+/// now+shutdown_drain，net 循环退出时清除（服务生命周期绑定）；owner
+/// 可能正被 RUNNING CPU 段阻塞（到达不了 cancel_all_parked），engine
+/// 驱动环的协作取消探测按 scope.server_gen 查询本表。
+static SERVER_DRAIN_CUTOFFS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<u64, std::time::Instant>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+/// 服务代际发号（serve_network 启动时递增；0 保留给进程前历史调用方）。
+static SERVER_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+pub(crate) fn next_server_generation() -> u64 {
+    SERVER_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+}
 
 /// net 线程 shutdown 翻转时调用（见 http_transport serve_network）。
-pub(crate) fn set_shutdown_drain_cutoff(cutoff: std::time::Instant) {
-    if let Ok(mut g) = SHUTDOWN_DRAIN_CUTOFF.write() {
-        *g = Some(cutoff);
+pub(crate) fn set_server_drain_cutoff(server_gen: u64, cutoff: std::time::Instant) {
+    if let Ok(mut m) = SERVER_DRAIN_CUTOFFS.lock() {
+        m.insert(server_gen, cutoff);
     }
 }
 
-/// PLAN-781 T-22（R04 修复轮）：owner 驱动环的协作式取消探测——当前段
-/// 绑定 HTTP scope 且（a）scope 已终结（取消/deadline/关闭，含已出表）
-/// 或（b）排水截止已过时 true；无绑定（CLI/UI/legacy 程序段）恒 false
-/// （Legacy 语义不变）。连续 CPU 段无 park 边界，deadline/RST/关闭终
-/// 态后不得继续执行业务副作用——由 engine 驱动环周期调用本探测（安全
-/// 指令边界，非抢占）。
+/// net 循环退出时调用——本服务生命周期终结，截止随之移除（不影响
+/// 其他在途服务实例的排水）。
+pub(crate) fn clear_server_drain_cutoff(server_gen: u64) {
+    if let Ok(mut m) = SERVER_DRAIN_CUTOFFS.lock() {
+        m.remove(&server_gen);
+    }
+}
+
+/// PLAN-781 T-22（R04 修复轮；R06 归属修正）：owner 驱动环的协作式取
+/// 消探测——当前段绑定 HTTP scope 且（a）scope 已终结（取消/deadline/
+/// 关闭，含已出表）或（b）**本服务**（scope.server_gen）的排水截止已
+/// 过时 true；无绑定（CLI/UI/legacy 程序段）恒 false（Legacy 语义不
+/// 变）。连续 CPU 段无 park 边界，deadline/RST/关闭终态后不得继续执
+/// 行业务副作用——由 engine 驱动环周期调用本探测（安全指令边界，非
+/// 抢占）。
 pub(crate) fn current_request_cancelled() -> bool {
     let Some(id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
         return false; // 非 HTTP 上下文（CLI/UI 段）不受排水/取消影响
     };
-    if let Ok(g) = SHUTDOWN_DRAIN_CUTOFF.read() {
-        if let Some(cutoff) = *g {
-            if std::time::Instant::now() >= cutoff {
+    let Some(scope) = lookup_scope(id) else {
+        return true; // 已出表 = 已终结（finalize 时移除）
+    };
+    if !scope_usable(&scope) {
+        return true;
+    }
+    if let Ok(m) = SERVER_DRAIN_CUTOFFS.lock() {
+        if let Some(cutoff) = m.get(&scope.server_gen) {
+            if std::time::Instant::now() >= *cutoff {
                 return true;
             }
         }
     }
-    lookup_scope(id)
-        .map(|s| !scope_usable(&s))
-        .unwrap_or(true) // 已出表 = 已终结（finalize 时移除）
+    false
 }
 
 /// 流 open shim 调用：把新流登记进当前请求资源组（无 scope → no-op）。

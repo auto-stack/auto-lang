@@ -812,6 +812,7 @@ fn touch() str {
     let scope = crate::vm::ffi::http_server::create_scope(
         999,
         std::time::Instant::now() + std::time::Duration::from_secs(30),
+        0,
     )
     .expect("scope");
     // 取消发生在出队前（桥超时/连接终结/关闭皆可到达此态）。

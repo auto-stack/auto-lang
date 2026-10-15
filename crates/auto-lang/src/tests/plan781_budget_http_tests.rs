@@ -439,6 +439,73 @@ fn ping() str {{
         assert_cancelled_clean(dir.path(), at_cancel, total, op_baseline, "shutdown");
     }
 
+    /// W-04/R06（修复轮）：同进程关停→重启——旧服务的排水截止不得污
+    /// 染新实例（复审反例：全局单值残留，新实例长请求首次探测即被误
+    /// 取消 503）。控制面走真实 `POST /__auto/shutdown`；两实例同程序
+    /// 异端口，首实例 heavy 200 → 关停 202 → 次实例 ping 200 + **heavy
+    /// 200**（非 503 cancelled）→ 次实例关停 202。
+    #[test]
+    fn http_e2e_plan781_w04_restart_after_shutdown_not_poisoned_by_stale_cutoff() {
+        let (dir, d) = slowwrite_dir();
+        let port1 = free_port();
+        std::env::set_var("AUTO_HTTP_STEP_BUDGET", "400000000");
+        std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
+        std::env::set_var("AUTO_HTTP_SHUTDOWN_DRAIN_MS", "100");
+        start_server(&cpuloop_program(&d), port1);
+        // 首实例：长忙请求正常完成。
+        let (s1, b1) = http_get(port1, "/api/cpuloop");
+        assert_eq!(s1, 200, "first instance heavy must complete: {b1}");
+        assert!(b1.contains("done"), "{b1}");
+        // 真实控制面优雅关停（与生产同一入口；非测试注入）。
+        let mut c = TcpStream::connect(("127.0.0.1", port1)).expect("connect ctl");
+        write!(
+            &mut c,
+            "POST /__auto/shutdown HTTP/1.1
+Host: 127.0.0.1
+Content-Length: 0
+Connection: close
+
+"
+        )
+        .unwrap();
+        let mut ctl = String::new();
+        c.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        c.read_to_string(&mut ctl).unwrap_or_default();
+        let ctl_status = ctl.split_whitespace().nth(1).unwrap_or("");
+        assert!(
+            ctl_status == "202" || ctl_status == "200",
+            "shutdown control-plane must ack: {ctl}"
+        );
+        // 排水窗过后、net 退出清理截止后再起第二实例（真实重启语义）。
+        std::thread::sleep(Duration::from_millis(400));
+        let (dir2, d2) = slowwrite_dir();
+        let port2 = free_port();
+        start_server(&cpuloop_program(&d2), port2);
+        let (p2, pb2) = http_get(port2, "/api/ping");
+        assert_eq!(p2, 200, "second instance must be up: {pb2}");
+        // R06 核心：同有限计算在新实例必须正常完成，不得被旧截止误取消。
+        let (s2, b2) = http_get(port2, "/api/cpuloop");
+        assert_eq!(
+            s2, 200,
+            "stale drain cutoff poisoned the restarted instance: {b2}"
+        );
+        assert!(b2.contains("done"), "{b2}");
+        // 次实例照常可优雅关停。
+        let mut c2 = TcpStream::connect(("127.0.0.1", port2)).expect("connect ctl2");
+        write!(
+            &mut c2,
+            "POST /__auto/shutdown HTTP/1.1
+Host: 127.0.0.1
+Content-Length: 0
+Connection: close
+
+"
+        )
+        .unwrap();
+        let mut ctl2 = String::new();
+        c2.read_to_string(&mut ctl2).unwrap_or_default();
+    }
+
     /// W-04 CPU 段负例（R04 修复轮；复审反例原样）：deadline=200ms 下
     /// 纯 CPU 4M 环（无 park 边界）——503 终态后 late 副作用必须在超过
     /// 未取消全程的观测窗内保持缺席（修复前 5.9s 时 late 落盘）；scope/
