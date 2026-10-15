@@ -47,9 +47,9 @@
 | V-11 | `text_record_native.rs` v11（缺 capability 拒绝且无制品）+ gate 步 16/17（capability 控制、SENTINEL 三件制品 hash 保持） | ✅ |
 | V-12 | `text_record_native.rs`（Token 微程序 exit 57、新旧 profile 共存、直接 HIR 腿、**新增 tr01 fixture PE 腿**）+ gate 步 19..23（旧五门实跑）+ 步 24（scope diff） | ✅ |
 
-新测试合计 **71**（hir 13 / source 19 / resources 27 / native 12；T-07 +2）；全套
-ac-core `cargo test --locked` **433 通过 0 失败**（T-05 基线 430 + T-06 回归 1 +
-T-07 反例闭合 2）；runtime/text **20/20**（零改动回归）。
+新测试合计 **86**（hir 18 / source 21 / resources 27 / native 20；含 R1 修复
++15：变异 5、F-01 负例族 2、F-02/03/04 PE 3、V-07 注入 5）；全套 ac-core
+`cargo test --locked` **448 通过 0 失败**；runtime/text **20/20**（零改动回归）。
 
 ## 3. 覆盖内省
 
@@ -121,6 +121,23 @@ gate-20261015-093737；T-07 增量为 +2 组合测试与文档，基线重跑后
 中止，收据 gate-20261015-085429）；改 `IsNullOrEmpty` 守卫后第 2 轮 25 步
 全绿；第 3 轮在提交 `836635a2e` 冻结基线上重跑全绿并作为绑定收据。三轮
 原始输出均在 receipts 目录。
+
+### 5b. R1 复审修复轮记录（2026-10-15，final review needs_fix → 重开 T-02/04/05/06/07）
+
+六项 blocking 的闭合（复审反例原文重放全过，`review-r1/replay.py` 14 探针）：
+
+| 发现 | 修复 | 永久回归 |
+|---|---|---|
+| F-01 嵌套资源字段隐式复制逃过拥有门（field_copy/field_copy_return/field_ctor_copy 双重释放 exit 6） | 拥有门按值形态+类型判定：let/assign/return/ctor 字段位的资源 record 值须为拥有形态（RecordCtor/RecordClone/Call/Move）——FieldGet=视图永不隐式复制 | `text_record_source.rs` 负例族 2 测试（四入口钉码+clone/copyable 对照）；HIR 面由 18 测试族覆盖 |
+| F-02 `a = consume(a.move)` 提前释放返回缓冲（RT-FAIL -7 exit 70） | replace_frees 扣除 RHS 已 move 的目标根（Str 字段位与整根两臂） | `f782_r1_02_same_statement_move_return_rebuild`（exit 3 精确 trace，fresh 对照同形） |
+| F-03 动态短路循环重复释放上轮聚合临时（FREE-INVALID） | 统一 pending 语句临时表（创建序）；聚合临时带短路存在标记（join 参数 1/0），语句尾与回滚共用守护释放 | `f782_r1_03_*`（take→skip / skip→take / 嵌套逻辑三测试） |
+| F-04 混合文本/聚合 owner 违反 LIFO（类型类别序） | 语句尾单一 drain + 出口逐字消费计划的交错 buffer_frees（跨类型创建序） | `f782_r1_04_mixed_creation_order_lifo`（双方向+镜像对照） |
+| F-05 畸形 Move.inner 引用在语义规则前被索引（verifier panic） | 结构/引用界检先于语义规则（check_body 先行+纯函数界检门）；**取证纠正**：T-02 收据声称的变异测试当时未物化 | `text_record_hir.rs` 5 个真实程序化变异测试（bind→mutate→verify，Move.inner/FieldGet base+path/ctor+call binding 越界/requires 删除/TypeId 重映射） |
+| F-06 V-07 故障注入与部分输出 oracle 未交付（P6 为手写模拟） | **实现冻结设计的双通道**：CLI 测试面 `--rt-fail-nth-alloc/--rt-set-budget/--rt-fail-ledger-nth`（wrapper 前奏调用既有 23 符号中的控制面，无语言入口、无新 runtime 符号）+ 组合域 status 失败回滚发射（语句部分输出 trap 前逆序回收；RecordClone 置零 Str 槽位并先行挂聚合条目；旧目标不提交——replace_frees 保持 RHS 后）；纯 text 域 trap 合同原样（回滚门控组合域） | `v07_*` 5 测试：clone/ctor 部分回滚精确 trace、替换旧目标保全、预算 8 恰好 vs 6 差 1（-4/-5 码区分）、账本@1、零长控制 |
+
+复查声明纠正：本文件早前版本将 V-07 标 ✅ 仅凭计划形状测试、并把 P6 模拟当作
+实证——R1 复审驳回；上表为修复后的实际交付面。旧 gate 收据（433/431 基线）
+不含 R1 修复；修复后基线的 gate 重跑见 §4 更新行。
 
 ## 6. 输入指纹（节选自 gate-20261015-100236.txt）
 

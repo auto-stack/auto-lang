@@ -90,9 +90,13 @@ verify 前门执行结构/类型/资源分类/借用与所有权走查（含 exc
 计划驱动能力派生；拒绝时 native 调用计数 0）；native 阶段为**合并
 lowering**（组合域经 text lowerer 扩展；旧 text/record 路径零变化）：
 栈槽聚合局部、指针形参数/结果（ABI-D/E，move-in `*mut`）、逐出口
-buffer_frees 与 RHS 后 replace_frees、聚合临时语句尾 LIFO——真实 PE
-实证（V-02/05/09/10/11/12，256 深/4096 循环/0 次零分配）。通用
-pass/ACC 桥仍 planned。
+buffer_frees 与 RHS 后 replace_frees、**跨类型创建序统一的语句尾/出口
+LIFO（R1 修复）**、短路聚合临时的路径存在标记——真实 PE 实证
+（V-02/05/09/10/11/12，256 深/4096 循环/0 次零分配）。故障双通道（R1
+交付）：CLI 测试面注入旋钮（`--rt-fail-nth-alloc/--rt-set-budget/
+--rt-fail-ledger-nth`，wrapper 前奏调用既有控制符号，无语言入口）+
+组合域 status 失败的**部分输出 trap 前逆序回滚**（旧目标不提交；纯
+text 域 trap 合同原样）。通用 pass/ACC 桥仍 planned。
 
 ## SD-05（modify）docs/specs/auto-ac/project.md
 
@@ -129,8 +133,11 @@ GOAL-017 不关闭；ACC 桥仍 planned。
 | 771 R1-03 CallBinding 越界 panic | `text_record_hir` binding 越界双模式（V-08） |
 | 771 R1-04 失败分支 oracle 无区分力 | native 测试精确 exit 码 + gate HP01（exit 2 精确 trace）/TN 族（exit 1 钉码） |
 
-闭合判定：**零缺口**（唯一缺项=两层 wrapper 传播，T-07 以
-0318bcb93 补齐后闭合；全套 433/0）。
+闭合判定：T-07 自查零缺口（两层 wrapper 由 0318bcb93 补齐）；**R1 final
+review 另发现六项合同内缺口（F-01..06：嵌套字段隐式复制/move-return 重建/
+短路循环聚合临时/跨类型 LIFO/Move.inner 界检/V-07 实注入），已全部修复并
+各带永久回归（verification.md §5b）——闭合判定以 R1 修复后基线为准
+（全套 448/0）。**
 
 ## 附 B：源文件 manifest（T-07 核对）
 
