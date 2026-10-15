@@ -5098,6 +5098,52 @@ struct Rect4AndViewport {
     offset: [f32; 2],
 }
 
+/// 结构法解析目标的外围 pane 链（内→外；F-781-R08 主路径）。
+///
+/// 沿 styled VTree 祖先链找 `Scrollable` 节点：controller 键 →
+/// `scroll_ctl_<controller>`（renderer 句柄派生稳定 id）；非 controller
+/// Scrollable 尝试其自身 vnode id 形态。**归属=树结构事实**，与滚动/
+/// 裁剪状态无关——被裁掉的真实子节点保留 clip 链（R08：几何法把
+/// 「滚出视口」混同「无归属」，隐式查询退化为仅窗口判定 → 假
+/// visible=true）；真正不属于任何 pane 的节点（无 Scrollable 祖先）
+/// 稳定 no_pane，不受几何投影歧义（pane 邻近节点落在大 content 盒
+/// 投影内、offset=0 时几何不可分）影响。
+fn resolve_pane_chain_structural(
+    vnode_id: crate::ui::vnode::VNodeId,
+    vtree: &crate::ui::vnode::VTree,
+    panes: &HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
+) -> Vec<(String, Rect4AndViewport)> {
+    let step_of = |e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry| {
+        Rect4AndViewport {
+            viewport: Rect4 { x: e.viewport[0], y: e.viewport[1], w: e.viewport[2], h: e.viewport[3] },
+            offset: e.offset,
+        }
+    };
+    let mut chain = Vec::new();
+    let mut cur = vtree.get(vnode_id);
+    while let Some(node) = cur {
+        // controller 键在 props（kind 的 Scrollable 为单元变体）。
+        if let crate::ui::vnode::VNodeProps::Scrollable { controller, .. } = &node.props {
+            let mut key_hit: Option<String> = None;
+            if let Some(k) = controller {
+                let ck = format!("scroll_ctl_{}", k);
+                if panes.contains_key(&ck) {
+                    key_hit = Some(ck);
+                } else if panes.contains_key(k) {
+                    key_hit = Some(k.clone());
+                }
+            }
+            if let Some(key) = key_hit {
+                if let Some(e) = panes.get(&key) {
+                    chain.push((key, step_of(e)));
+                }
+            }
+        }
+        cur = node.parent.and_then(|p| vtree.get(p));
+    }
+    chain
+}
+
 /// 几何法解析目标的外围 pane 链（内→外）。
 ///
 /// F-781-D01 收口（w01 第二段，2026-10-15）：归属判定改为**发布公式的
@@ -5107,15 +5153,19 @@ struct Rect4AndViewport {
 /// 自身 content 盒（0..293）排除，误配 main-pane（content 0..9288 容错吸
 /// 收）→ 减 main offset 后飞出窗 → 恒 clipped_out。
 ///
-/// 新判定（逐 pane 独立，两条件同时成立才归属）：
+/// 判定（F-781-R08 修正：**归属与可见性裁剪分离**）：
 /// ① content 还原：`content_rect = target − viewport.origin` 整体落在
-///    `[0, content]` 内（0.5px 容差吸收边界舍入）；
-/// ② 滚动态窗口位：`win_rect = target − offset`（发布公式逆）与该 pane
-///    viewport 正面积相交——滚出视口的目标不被该 pane 认领（可见性由
-///    poll 收敛，语义与旧 no_pane 一致）。
-/// 多候选取 viewport 面积最小（最内层）；此后以子 pane viewport 中心
-/// （窗口空间）被祖先 viewport 包含逐层上溯补链；`pane` 显式钉定仍优
-/// 先（决策报告 §5.3）。
+///    `[0, content]` 内（0.5px 容差吸收边界舍入）——**仅此一条即归属**；
+/// ② ~~win_rect 与 viewport 正面积相交~~ 已从归属条件移除（R08：该
+///    条件把「被裁掉的真实子节点」混同「无归属」，隐式查询退化为仅
+///    窗口判定 → 短 pane 下被裁行假 visible=true）；可见性（visible/
+///    clipped_out）由消费端 compute_visibility 沿链裁剪判定。
+/// 多候选取 viewport 面积最小（最内层——D01 std 末行两盒皆含时内层
+/// 胜）；此后以子 pane viewport 中心被祖先 viewport 包含逐层上溯补
+/// 链；`pane` 显式钉定仍优先（决策报告 §5.3）。本函数为**无树回退**
+/// 路径（快照缺席/非 vnode id）；树在位时 tool_visibility 走
+/// resolve_pane_chain_structural（结构事实，免 pane 邻近节点的几何
+/// 投影歧义）。
 fn resolve_pane_chain(
     target: Rect4,
     panes: &HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
@@ -5137,16 +5187,9 @@ fn resolve_pane_chain(
                 && cy >= -0.5
                 && cx + target.w.max(0.0) <= e.content[0] + 0.5
                 && cy + target.h.max(0.0) <= e.content[1] + 0.5;
-            if !content_inside {
-                return false;
-            }
-            let wx = target.x - e.offset[0];
-            let wy = target.y - e.offset[1];
-            let ix0 = wx.max(e.viewport[0]);
-            let iy0 = wy.max(e.viewport[1]);
-            let ix1 = (wx + target.w).min(e.viewport[0] + e.viewport[2]);
-            let iy1 = (wy + target.h).min(e.viewport[1] + e.viewport[3]);
-            ix1 > ix0 && iy1 > iy0
+            // F-781-R08：仅 content 包含即归属——相交判定移交消费端
+            // （可见性），被裁子节点不再丢失 clip 链。
+            content_inside
         })
         .min_by(|a, b| {
             viewport_area(a.1)
@@ -5283,7 +5326,21 @@ fn tool_visibility(shared: &SharedStateHandle, args: serde_json::Value) -> serde
             }
         }
     } else {
-        resolve_pane_chain(target_rect, &panes)
+        // F-781-R08：结构法优先（styled VTree 祖先链——归属=树事实，
+        // 与裁剪状态无关）；快照缺席/非 vnode id 回退几何法（content
+        // 包含即归属，相交判定在消费端）。
+        let structural = g.styled_vtree.as_ref().and_then(|snap| {
+            parse_element_id(&element_id).and_then(|eid| match eid {
+                ElementId::Vnode(vid) => {
+                    Some(resolve_pane_chain_structural(vid, &snap.vtree, &panes))
+                }
+                _ => None,
+            })
+        });
+        match structural {
+            Some(chain) if !chain.is_empty() => chain,
+            _ => resolve_pane_chain(target_rect, &panes),
+        }
     };
 
     let (intersection, mut flags) = compute_visibility(
@@ -6238,12 +6295,119 @@ mod tests_plan781_t11 {
         assert_eq!(chain.len(), 2, "inner + outer");
         assert_eq!(chain[0].0, "scroll_ctl_reading-pane");
         assert_eq!(chain[1].0, "vnode_outer");
-        // 滚出视口的目标不被任何 pane 认领（F-781-D01 新语义：win 与
-        // viewport 无正面积交集 → 无 owner → no_pane，而非误配大 content
-        // 盒 pane 后假 clipped_out）。
+        // F-781-R08：滚出视口的目标**保留归属**（content 包含即归属，
+        // 相交判定移交消费端）——链在位后 compute_visibility 判
+        // clipped_out，而非退化为仅窗口判定的假 visible。
         let scrolled_out = Rect4 { x: 150.0, y: 1450.0, w: 100.0, h: 100.0 };
         let chain = resolve_pane_chain(scrolled_out, &panes);
-        assert!(chain.is_empty(), "滚出视口 → 无归属");
+        assert_eq!(chain.len(), 2, "滚出视口 → 归属保留（内+外）");
+        let (inter, flags) = compute_visibility(
+            scrolled_out,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+            (800.0, 600.0),
+        );
+        assert!(inter.is_none() && flags.contains(&"clipped_out"));
+        // 真非 pane 节点（content 还原出界）→ 无归属 no_pane 语义保持。
+        let foreign = Rect4 { x: 700.0, y: 5900.0, w: 100.0, h: 50.0 };
+        let chain = resolve_pane_chain(foreign, &panes);
+        assert!(chain.is_empty(), "content 出界 → 无归属");
+    }
+
+    /// F-781-R08（T-19）：结构法归属——树祖先链是归属事实，与裁剪/滚
+    /// 动状态无关；四控制：pane 内可见 / pane 内被裁且仍在窗口内 /
+    /// 无 Scrollable 祖先（真非 pane）/ 嵌套双 pane 链序。
+    #[test]
+    fn plan781_resolve_chain_structural_ownership_and_four_controls() {
+        use crate::ui::vnode::{VNode, VNodeKind, VNodeProps};
+        let mut tree = VTree::new();
+        // root Column(0) → Scrollable(controller=ag-pane)(1) → 行 Text(2)/(3)
+        // → 兄弟 Button(4)（不在任何 pane 内）。
+        let root = VNode::new(VNodeId::new(0), VNodeKind::Column,
+                              VNodeProps::Layout { spacing: 0, padding: 0 });
+        tree.set_root(root);
+        // 注：add_child 不回填 parent——链构建须 with_parent（结构解析
+        // 沿 parent 上溯）。
+        let pane = VNode::new(VNodeId::new(1), VNodeKind::Scrollable,
+                              VNodeProps::Scrollable { offset_y: Some(0.0), controller: Some("ag-pane".into()) })
+            .with_parent(VNodeId::new(0));
+        tree.add_node(pane);
+        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
+        for id in [2u64, 3u64] {
+            let n = VNode::new(VNodeId::new(id), VNodeKind::Text,
+                               VNodeProps::Text { content: "row".into(), selectable: false })
+                .with_parent(VNodeId::new(1));
+            tree.add_node(n);
+            tree.get_mut(VNodeId::new(1)).unwrap().add_child(VNodeId::new(id));
+        }
+        let btn = VNode::new(VNodeId::new(4), VNodeKind::Button,
+                             VNodeProps::Button { label: "outside".into(), disabled: false })
+            .with_parent(VNodeId::new(0));
+        tree.add_node(btn);
+        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(4));
+
+        let mut panes = HashMap::new();
+        // 复审反例几何：短 pane viewport (0,49,1280,128)，offset 0。
+        panes.insert("scroll_ctl_ag-pane".to_string(),
+                    entry([0.0, 49.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 5000.0]));
+
+        // 控制①：pane 内可见（行 0：y=60 在 viewport 49..177 内）。
+        let row0 = Rect4 { x: 8.0, y: 60.0, w: 200.0, h: 44.8 };
+        let chain = resolve_pane_chain_structural(VNodeId::new(2), &tree, &panes);
+        assert_eq!(chain.len(), 1, "行节点的结构链");
+        let (inter, flags) = compute_visibility(row0,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
+        assert!(flags.is_empty() && inter.unwrap().positive(), "pane 内可见");
+
+        // 控制②：pane 内被裁且仍在窗口内（复审反例：行 6 y=363.8）——
+        // 隐式（结构）与显式（pin）同判 clipped_out。
+        let row6 = Rect4 { x: 8.0, y: 363.8, w: 200.0, h: 44.8 };
+        let (inter, flags) = compute_visibility(row6,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
+        assert!(inter.is_none() && flags.contains(&"clipped_out"),
+                "被裁且仍在窗口内 → clipped_out（非假 visible）: {flags:?}");
+        // 几何内容盒也含该行（363.8−49=314.8 ≤ 5000）——几何回退同样保留
+        // 归属（相交判定已移出 owner 过滤）。
+        let chain_g = resolve_pane_chain(row6, &panes);
+        assert_eq!(chain_g.len(), 1, "几何回退：被裁行归属保留");
+
+        // 控制③：窗口外（行 100：y=1200 > 800）——保留链判 clipped_out，
+        // 不与 no_pane 混同。
+        let row100 = Rect4 { x: 8.0, y: 1200.0, w: 200.0, h: 44.8 };
+        let (inter, flags) = compute_visibility(row100,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
+        assert!(inter.is_none() && flags.contains(&"clipped_out"), "窗口外走 clip 链");
+
+        // 控制④：真非 pane 节点（Button 无 Scrollable 祖先）→ 空链
+        // no_pane——即使其几何坐标落在大 content 盒投影内（y=363.8 与
+        // 行 6 相同——几何不可分，结构可分）。
+        let chain_btn = resolve_pane_chain_structural(VNodeId::new(4), &tree, &panes);
+        assert!(chain_btn.is_empty(), "无 Scrollable 祖先 → no_pane");
+
+        // 嵌套链序：Scrollable(outer,5) 包含 Scrollable(inner,6) 包含
+        // Text(7)——链内→外。
+        let outer = VNode::new(VNodeId::new(5), VNodeKind::Scrollable,
+                               VNodeProps::Scrollable { offset_y: None, controller: Some("outer".into()) })
+            .with_parent(VNodeId::new(0));
+        tree.add_node(outer);
+        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(5));
+        let inner = VNode::new(VNodeId::new(6), VNodeKind::Scrollable,
+                               VNodeProps::Scrollable { offset_y: None, controller: Some("inner".into()) })
+            .with_parent(VNodeId::new(5));
+        tree.add_node(inner);
+        tree.get_mut(VNodeId::new(5)).unwrap().add_child(VNodeId::new(6));
+        let leaf = VNode::new(VNodeId::new(7), VNodeKind::Text,
+                              VNodeProps::Text { content: "x".into(), selectable: false })
+            .with_parent(VNodeId::new(6));
+        tree.add_node(leaf);
+        tree.get_mut(VNodeId::new(6)).unwrap().add_child(VNodeId::new(7));
+        panes.insert("scroll_ctl_inner".to_string(),
+                    entry([10.0, 60.0, 500.0, 300.0], [0.0, 0.0], [500.0, 2000.0]));
+        panes.insert("scroll_ctl_outer".to_string(),
+                    entry([0.0, 0.0, 1280.0, 800.0], [0.0, 0.0], [1280.0, 5000.0]));
+        let chain2 = resolve_pane_chain_structural(VNodeId::new(7), &tree, &panes);
+        assert_eq!(chain2.len(), 2, "嵌套双 pane 链");
+        assert_eq!(chain2[0].0, "scroll_ctl_inner");
+        assert_eq!(chain2[1].0, "scroll_ctl_outer");
     }
 
     /// F-781-D01 收口（T-19/W-01）：发布公式逆运算的 owner 判定。旧实现以
@@ -6271,11 +6435,20 @@ mod tests_plan781_t11 {
         );
         assert!(flags.is_empty(), "滚动后末行可见: {flags:?}");
         assert!(inter.expect("intersection").positive());
-        // 滚动前（offset 0）：win y 385.8 出 viewport 底 → 无 owner。
+        // F-781-R08：滚动前（offset 0）末行在视口外——**归属保留**，
+        // 消费端判 clipped_out（短 pane 复审反例：隐式查询曾假 visible）。
         panes.insert("scroll_ctl_@scrollctl:1".to_string(),
                     entry([0.0, 125.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 293.4]));
         let chain = resolve_pane_chain(target, &panes);
-        assert!(chain.is_empty(), "未滚动 → 末行在视口外无归属");
+        assert_eq!(chain.len(), 1, "未滚动 → 末行归属保留");
+        assert_eq!(chain[0].0, "scroll_ctl_@scrollctl:1");
+        let (inter, flags) = compute_visibility(
+            target,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+            (1280.0, 800.0),
+        );
+        assert!(inter.is_none() && flags.contains(&"clipped_out"),
+                "被裁且仍在窗口内 → clipped_out: {flags:?}");
     }
 
     #[test]
