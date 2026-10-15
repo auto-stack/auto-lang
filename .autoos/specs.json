@@ -4,6 +4,20 @@
    "id": "reports",
    "items": [
     {
+     "id": "P786-M",
+     "title": "PLAN-786 合入沉淀收据（展示字段读取收口交付）",
+     "file": "docs/plans/reports/786-display-reader-merge.md",
+     "content": "交付 240281c96（ff-only）：bde9d0523 实现→db71263b5(R1)→322719893(R2)→079b3b8d4(R3)→bb3cd34b7(R4)→240281c96(SD 沉淀+rebase 哈希映射 6/6 range-diff 全等)。merge-owned 冻结门禁：裸 cargo t 5364/5364 绿（bb3cd34b7，108.4s，1548 skipped）。canonical 沉淀：SD-01 auto-man/project.md（f12b0b4098450025）/SD-02 project-model/project.md（27d9fd39ef486a38），措辞按 R5 冻结 spec-delta。ledger v25→v26（Regime B 受管离线投影：备份/脚本改写/作用域 diff/schema 校验/回读五护栏）。真实去重：vue.rs 两行扫描循环删除、兼容算法单一冻结副本；非选副本（rust_ui/vscode/ark/jet/cmd_vue）显式保留并登记 784 迁移清单承接。",
+     "tags": [
+      "plan:786",
+      "completion:delivered"
+     ],
+     "related": null,
+     "status": null,
+     "created": null,
+     "last_modified": null
+    },
+    {
      "id": "P778-M",
      "title": "PLAN-778 合入沉淀收据（canonical 落地与门禁状态）",
      "file": "docs/reports/778-ui-dialect-externalization/verification.md",
@@ -4163,6 +4177,36 @@
    "id": "designs",
    "items": [
     {
+     "id": "P786-D2",
+     "title": "project-model 首个有限生产消费者与消费侧安全前置（开启括号计数包络）",
+     "file": "docs/specs/project-model/project.md",
+     "content": "PLAN-786 SD-02：auto-man Vue 展示读取器为当前唯一生产消费面（三字段、值等价准入含数值 astr 相等，不扩大模型语法）。消费侧安全前置：parse_document 前统计原文全部 [ 与 { 字符——无词法跳过、无递减；>64 三字段整体路由 DeepNesting legacy 兼容不触模型。保守计数可含字符串/注释字符与平铺组：不是实测嵌套深度、不是语法限制，可把浅文档路由到兼容（旧字段值保持），≤64 照常解析/准入分类，不从计数推断静态语法保证。64/65 边界（数组/对象/节点/混合/平铺/字符串/注释）与历史进程隔离反例=所选消费包络；模型级递归治理不在范围，不宣称任意规模/任意线程栈安全。registry/loader、其余 Pac/VM 消费者、剩余文本读取与 locale 求值不在本次迁移；PLAN-780 unsupported/归一规则全保留。",
+     "tags": [
+      "plan:786",
+      "commit:240281c96",
+      "sha256:27d9fd39ef486a38"
+     ],
+     "related": null,
+     "status": null,
+     "created": null,
+     "last_modified": null
+    },
+    {
+     "id": "P786-D1",
+     "title": "auto-man 展示字段(name/title/title_zh)统一只读入口：准入矩阵与唯一兼容扫描器",
+     "file": "docs/specs/auto-man/project.md",
+     "content": "PLAN-786 SD-01：Vue 工程生成经内部 project_display_reader 一次读取三字段——project-model DTO 首个有限生产消费。准入=行门槛集合==provenance/无重复键/唯一声明行旧行归一与模型值相等；其余走唯一一份显式兼容扫描器（name 首匹配可空串、title 族跳空续扫），具名原因 ParseError/HiddenOrPhantomLine/DuplicateKey/UnsupportedValue/LineFormMismatch/DeepNesting。DeepNesting 前置=对原文统计全部 [/{ 字符（无词法跳过、无递减，>64 整体兼容不触模型；512 层实测栈溢出 abort 不可 catch_unwind；含字符串/注释内字符与平铺组，非实测深度非语法限制）。locale(AUTO_LOCALE zh 前缀)与 title→name/目录兜底留原调用者；其余字段/读取器/VM 路径不变，不解除语言依赖不新增反向边；project_model_adapter 仍是探针。R1..R4 四轮反例（按字符串/注释词法跳区域、闭括号抵消计数）以开启括号计数根除，反例字节+64/65 边界为持久回归。",
+     "tags": [
+      "plan:786",
+      "commit:240281c96",
+      "sha256:f12b0b4098450025"
+     ],
+     "related": null,
+     "status": null,
+     "created": null,
+     "last_modified": null
+    },
+    {
      "id": "P778-1",
      "title": "frontend 方言外部化合同：ParserBridge 桥面 + 三段 Arc 注册与派发恢复不变量",
      "file": "docs/specs/auto-lang/frontend/overview.md",
@@ -6970,6 +7014,20 @@
    "id": "tests",
    "items": [
     {
+     "id": "P786-T",
+     "title": "display_reader 永久对拍族 V01..V05 + R1..R4 反例字节 fixtures（18 文件）",
+     "file": "crates/auto-man/src/project_display_reader_tests.rs",
+     "content": "冻结旧 oracle（vue.rs 原两循环逐字副本）仅存于测试。V01 受管语料 170 文件 510 字段读取逐值相等（model=496/compat=14）；V02 31 类边界矩阵+8 fixtures 期望与路径分类；V03 locale 链显式入参；V04 动态/坏输入不伪装静态+无写入+10k 行有界+进程隔离深嵌套探针（自执行子进程重放 R1..R4 全部形态，ChildGuard 全路径 kill+reap+诊断收集，30s 挂起 vs 2s 截止确定性控制）+ counterexample 文件复验（r3-*.at 8 + r4-*.at 10 复审反例原样字节：name=n/title=ok、32 控制 Model、>64 全 DeepNesting）；V05 源码断言（两循环已删/统一入口被调用/非选副本不动）。既有冻结测试 pac_title_overrides_document_title 与 pac_display_title_locale_chain 断言基线不变。",
+     "tags": [
+      "plan:786",
+      "commit:18416ac2b(rebase 前 bb3cd34b7)"
+     ],
+     "related": null,
+     "status": null,
+     "created": null,
+     "last_modified": null
+    },
+    {
      "id": "P778-T",
      "title": "外部 UI 方言 consumer 测试族（桥面合同 + R1 委托组合 + R2 裸字段边界矩阵）",
      "file": "test/fixtures/modularity/ui-dialect-consumer/tests/v01_v05_external_dialect.rs",
@@ -8415,6 +8473,21 @@
   {
    "id": "reviews",
    "items": [
+    {
+     "id": "P786-R5",
+     "title": "PLAN-786 第五轮独立最终复审 pass（R1..R4 全闭合）",
+     "file": "docs/plans/attachments/786/review-r5/REVIEW.md",
+     "content": "final pass 绑定 bb3cd34b7：R4-01/02（字符串内注释标记/闭括号抵消）闭合——前置筛为字面 [/{ 计数、无词法深度计算；每结构嵌套层消费一个 opener、兄弟条目循环、结构化值内调用先被 scan_value_positions 拒绝、文档参数 extent 迭代采集，故字符串/注释/闭括号组合不可能削减计数。独立 R3 8/8、R4 9/9、R5 13/13（64/65 边界 Model/DeepNesting+args512 单 opener 仍 Model）；reader 9/9、consumer 11/11、model 30/30、title/locale 各 1/1、check/rustfmt/diff-check 全过，lib-test 零新警告。保守过计数只改审计路由不改旧字段输出，与批准的兼容合同一致。SD 两目标冻结 SHA256 69D8D31B…。",
+     "tags": [
+      "plan:786",
+      "reviewed_commit:bb3cd34b7(rebase 后 18416ac2b)",
+      "spec_sha256:69d8d31b"
+     ],
+     "related": null,
+     "status": null,
+     "created": null,
+     "last_modified": null
+    },
     {
      "id": "P778-R3",
      "title": "PLAN-778 第三轮独立最终复审 pass（R1 三发现/R2 一发现修复后全闭合）",
@@ -11346,5 +11419,5 @@
   }
  ],
  "project": "auto-lang",
- "version": 25
+ "version": 26
 }
