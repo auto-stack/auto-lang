@@ -65,17 +65,16 @@ fn gc_budget_churn_512_converges_between_watermarks() {
         "GC physically deleted chunks: {}",
         c["gc_deleted_chunks"]
     );
-    // Watermark convergence semantics (SQLite main file never shrinks —
-    // declared behavior, D-783-D): the frozen-watermark run must drop
-    // back BELOW the high watermark after crossing (net real reclamation,
-    // peak bounded, staging budget respected); full convergence to the
-    // live set is then proven by one explicit full sweep (hair-trigger,
-    // no floor — the operator/recovery semantic).
+    // Watermark convergence — the ORIGINAL §5.4 contract restored (R2-05):
+    // the measured TOTAL (blocks + DB + WAL + everything counted) converges
+    // below the low watermark; SQLite space is actually returned
+    // (auto_vacuum + checkpoint), so "the DB never shrinks" is no longer an
+    // excuse. Peak bounded, staging budget respected (in-flight peak).
     assert!(
-        c["final_total"].as_u64().unwrap() <= GC_HIGH,
-        "final total {} must drop back below the high watermark {}",
+        c["final_total"].as_u64().unwrap() <= GC_LOW,
+        "final TOTAL {} must converge below the low watermark {} (R2-05 restored contract)",
         c["final_total"],
-        GC_HIGH
+        GC_LOW
     );
     assert!(
         c["final_total"].as_u64().unwrap() < c["peak_total"].as_u64().unwrap(),
@@ -94,9 +93,12 @@ fn gc_budget_churn_512_converges_between_watermarks() {
         "staging budget respected: {}",
         c["peak_staging"]
     );
-    // Full-sweep convergence: after the frozen run, one explicit sweep
-    // reclaims every remaining dead candidate; blocks converge to the
-    // live set (3 projects × ~5 chunks).
+    assert!(
+        c["peak_staging"].as_u64().unwrap() > 0,
+        "peak_staging observed in-flight reservations (not a post-hoc zero)"
+    );
+    // Extra control: a full sweep reclaims every remaining dead candidate;
+    // blocks converge to the live set (3 projects × ~5 chunks).
     let sweep = run_node(&[
         "gc",
         "--store",
@@ -107,12 +109,6 @@ fn gc_budget_churn_512_converges_between_watermarks() {
         "0",
     ]);
     assert_eq!(sweep.code, 0, "{}", sweep.raw);
-    let swept = first(&sweep, "GC");
-    assert!(
-        swept["deleted_chunks"].as_u64().unwrap() > 0,
-        "the sweep reclaimed the remaining dead chunks: {:?}",
-        swept
-    );
     let space = run_node(&["space", "--store", root.join("store").to_str().unwrap()]);
     let blocks = first(&space, "SPACE")["blocks_count"].as_u64().unwrap();
     assert!(
@@ -159,16 +155,14 @@ fn gc_budget_churn_small_converges() {
         c["gc_deleted_chunks"].as_u64().unwrap() > 0,
         "reclaimed for real"
     );
-    // Blocks converge to the live set (3 projects × ~5 chunks); the store
-    // does not grow with history. (final_TOTAL is not asserted here: the
-    // SQLite file never shrinks without VACUUM — accounted separately.)
+    // ORIGINAL total contract at scaled watermarks (R2-05): the measured
+    // TOTAL converges below low — DB space is actually returned.
     assert!(
-        c["blocks_count"].as_u64().unwrap() <= 20,
-        "blocks converged to the live set: {}",
-        c["blocks_count"]
+        c["final_total"].as_u64().unwrap() <= 600000,
+        "final TOTAL {} under scaled low 600000",
+        c["final_total"]
     );
 }
-
 #[test]
 fn gc_budget_hard_pins_over_budget_backoff_no_live_deletion() {
     let root = scratch("gc-pin");

@@ -242,7 +242,12 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
         return Ok(receipt);
     }
 
-    // Batch 2: unreachable chunks, oldest first, down to the low watermark.
+    // Batch 2: unreachable chunks, oldest first. Convergence against the
+    // §5.4 TOTAL contract (R2-05) is decided by MEASURED totals: after
+    // each deletion batch the DB is actually shrunk (WAL truncate +
+    // incremental vacuum) and the store re-measured — the GC's own
+    // metadata churn therefore counts, and the loop continues until the
+    // measured total is under the low watermark or candidates run out.
     let mut candidates: Vec<(u64, String, u64)> = Vec::new(); // (created, chunk, size)
     for (aid, cid, created) in &all_artifacts {
         if !live_artifacts.contains(aid) && !live_chunk_ids.contains(cid) {
@@ -258,45 +263,86 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
     let mut seen = HashSet::new();
     candidates.retain(|(_, c, _)| seen.insert(c.clone()));
 
-    // Watermark progress is tracked incrementally (a full space() walk per
-    // candidate would be O(store) × O(candidates) — quadratic on churn).
-    let mut accounted_total = space.total;
-    for (_, cid, size) in &candidates {
-        if cfg.low > 0 && accounted_total <= cfg.low {
+    let mut idx = 0usize;
+    // Convergence decisions use TRANSACTIONAL accounting (R2-05 repair):
+    // the DB's live-chunk size sum drops the instant a delete commits,
+    // while an NTFS directory walk immediately after mass renames can
+    // lag (measured undercount during the 512-churn debug). The receipt
+    // still reports the real walked totals.
+    let live_sum_db = |db: &rusqlite::Connection| -> u64 {
+        db.query_row(
+            "SELECT COALESCE(SUM(size), 0) FROM chunks WHERE state='live'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|v| v.max(0) as u64)
+        .unwrap_or(0)
+    };
+    loop {
+        if cfg.low > 0 {
+            super::shrink_db(&store.db());
+            let s = store.space();
+            let measured = s.total - s.blocks + live_sum_db(&store.db());
+            if measured <= cfg.low || idx >= candidates.len() {
+                break;
+            }
+        } else if idx >= candidates.len() {
             break;
         }
-        // Invalidate logically first (tombstone), then take the gate.
-        store.db().execute(
-            "UPDATE chunks SET state='tombstoned' WHERE chunk_id=?1 AND state='live'",
-            params![cid],
-        )?;
-        super::fault_pub("after-tombstone");
-        let gate = FileGuard::try_lock(&store.lock_path_pub(&format!("gate-{}", cid)), true)?;
-        match gate {
-            Some(_g) => {
-                receipt.invalid_bytes += size;
-                if store.blob_remove(cid)? {
-                    receipt.freed_bytes += size;
-                    receipt.deleted_chunks += 1;
-                    accounted_total = accounted_total.saturating_sub(*size);
-                } else {
-                    // Blocked remove (reader/AV holds a handle): the trash
-                    // copy remains and is reported as pending, not freed.
-                    receipt.pending_reader_bytes += size;
-                    receipt.failed_deletes += 1;
+        // Delete a bounded batch, then re-measure (avoids per-candidate
+        // full walks while keeping the decision measured, not estimated).
+        let batch_end = (idx + 32).min(candidates.len());
+        while idx < batch_end {
+            let (_, cid, size) = &candidates[idx];
+            idx += 1;
+            // Invalidate logically first (tombstone), then take the gate.
+            store.db().execute(
+                "UPDATE chunks SET state='tombstoned' WHERE chunk_id=?1 AND state='live'",
+                params![cid],
+            )?;
+            super::fault_pub("after-tombstone");
+            let gate = FileGuard::try_lock(&store.lock_path_pub(&format!("gate-{}", cid)), true)?;
+            match gate {
+                Some(_g) => {
+                    receipt.invalid_bytes += size;
+                    if store.blob_remove(cid)? {
+                        receipt.freed_bytes += size;
+                        receipt.deleted_chunks += 1;
+                    } else {
+                        // Blocked remove (reader/AV holds a handle): the
+                        // trash copy remains and is reported as pending.
+                        receipt.pending_reader_bytes += size;
+                        receipt.failed_deletes += 1;
+                    }
+                    // Metadata converges with physical state (R1 F-03/06).
+                    super::cascade_chunk_rows(&store.db(), cid)?;
                 }
-                // Metadata converges with physical state (R1 F-03/F-06).
-                super::cascade_chunk_rows(&store.db(), cid)?;
+                None => {
+                    // A reader is active under the shared gate: revert to
+                    // live and record pending — the reader finishes intact.
+                    receipt.pending_reader_bytes += size;
+                    store.db().execute(
+                        "UPDATE chunks SET state='live' WHERE chunk_id=?1",
+                        params![cid],
+                    )?;
+                }
             }
-            None => {
-                // A reader is active under the shared gate: revert to live
-                // and record pending — the reader finishes untouched.
-                receipt.pending_reader_bytes += size;
-                store.db().execute(
-                    "UPDATE chunks SET state='live' WHERE chunk_id=?1",
-                    params![cid],
-                )?;
-            }
+        }
+    }
+    // Final shrink so the receipt's total_after reflects returned space.
+    super::shrink_db(&store.db());
+
+    // Post-condition (R2-05): the transactional measure decides whether we
+    // genuinely reached low; the receipt's total_after reports the REAL
+    // walked total (file metadata may settle slightly later on NTFS).
+    if cfg.low > 0 {
+        let s = store.space();
+        let measured = s.total - s.blocks + live_sum_db(&store.db());
+        if measured > cfg.low && receipt.backoff.is_none() {
+            receipt.backoff = Some(format!(
+                "accounted total {} still above low watermark {} after exhausting reclaimable candidates",
+                measured, cfg.low
+            ));
         }
     }
 

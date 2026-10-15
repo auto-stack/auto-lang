@@ -55,7 +55,7 @@ fn perf_scenarios_execute_with_zero_semantic_failures() {
         gc.notes.join("; ")
     );
     assert!(
-        gc.gc_deleted_chunks > 0,
+        gc.gc_deleted_chunks > 0 && gc.gc_deleted_during_queries > 0,
         "GC deleted for real: {}",
         gc.notes.join("; ")
     );

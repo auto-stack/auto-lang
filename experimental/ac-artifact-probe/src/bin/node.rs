@@ -20,6 +20,7 @@ fn main() {
         "churn" => cmd_churn(rest),
         "lease" => cmd_lease(rest),
         "space" => cmd_space(rest),
+        "chunkstat" => cmd_chunkstat(rest),
         "unroot" => cmd_unroot(rest),
         "put" => cmd_put(rest),
         "hold-chunk" => cmd_hold_chunk(rest),
@@ -245,7 +246,12 @@ fn cmd_churn(rest: &[String]) -> i32 {
                 return 1;
             }
         }
-        peak_staging = peak_staging.max(store.space().staging);
+        // Peak evidence (R2-05): sample BEFORE the periodic GC (the GC
+        // itself lowers the total; sampling only afterwards hid the true
+        // peak) and use the store's in-flight reservation high-water mark
+        // for staging (the staging dir is already deleted when the build
+        // returns — a post-hoc walk proves nothing).
+        peak_total = peak_total.max(store.space().total);
         if (i + 1) % gc_every == 0 {
             let space = store.space();
             if space.total > gc_cfg.high {
@@ -263,6 +269,29 @@ fn cmd_churn(rest: &[String]) -> i32 {
         }
         peak_total = peak_total.max(store.space().total);
     }
+    // Session-end GC pass (R2-05): freshly written blobs can lag in
+    // directory/row visibility for a short window, so the in-loop pass
+    // immediately after the last build under-deletes. One settled final
+    // pass — hair-trigger high (the noop gate must not block it) with the
+    // REAL low watermark — converges the measured TOTAL to low.
+    std::thread::sleep(Duration::from_millis(150));
+    let r = run_gc(
+        &store,
+        ac_artifact_probe::store::GcConfig {
+            high: 1,
+            low: gc_cfg.low,
+        },
+    )
+    .expect("final gc");
+    if r.ran {
+        gc_ran += 1;
+    }
+    gc_deleted += r.deleted_chunks as u64;
+    if r.backoff.is_some() {
+        gc_backoffs += 1;
+    }
+    let peak_staging = peak_staging
+        .max(ac_artifact_probe::store::PEAK_STAGING.load(std::sync::atomic::Ordering::Relaxed));
     let final_space = store.space();
     emit(
         "CHURN",
@@ -328,6 +357,32 @@ fn cmd_space(rest: &[String]) -> i32 {
     let a = Args { rest };
     let store = open_store(&a);
     emit("SPACE", &store.space());
+    0
+}
+
+/// Diagnostics: DB-recorded live chunk accounting vs the real file walk.
+fn cmd_chunkstat(rest: &[String]) -> i32 {
+    let a = Args { rest };
+    let store = open_store(&a);
+    let (count, recorded): (i64, i64) = store
+        .db()
+        .query_row(
+            "SELECT COUNT(*), COALESCE(SUM(size),0) FROM chunks WHERE state='live'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    let s = store.space();
+    emit(
+        "CHUNKSTAT",
+        &serde_json::json!({
+            "db_live_count": count,
+            "db_recorded_bytes": recorded,
+            "walk_blocks_bytes": s.blocks,
+            "walk_blocks_count": s.blocks_count,
+            "delta": (s.blocks as i64) - recorded,
+        }),
+    );
     0
 }
 

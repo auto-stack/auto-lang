@@ -53,6 +53,7 @@ $families = [ordered]@{
     "V-11 perf"          = @{ target = "--test perf_";          minPassed = 2;  allowedIgnored = 0 }
     "V-12 dep-audit"     = @{ target = "--test dep_audit_";     minPassed = 5;  allowedIgnored = 0 }
     "R1 regressions"     = @{ target = "--test review_r1_";     minPassed = 12; allowedIgnored = 0 }
+    "R2 regressions"     = @{ target = "--test review_r2_";     minPassed = 6;  allowedIgnored = 0 }
 }
 
 $failures = @()
@@ -129,18 +130,61 @@ Write-Host "== committed perf report contract (>=30 samples/scenario)" -Foregrou
 Test-PerfReport -Path $committedReport -MinSamples 30 -Tag "perf-report"
 
 if ($Scope -eq "closeout") {
+    # --- full 512 churn: identity + summary enforced, not just exit code
+    # (R2-06: a filtered-out test or stubbed cargo exits 0 with zero runs).
     Write-Host "== full 512-iteration churn (merge-owned, frozen watermarks)" -ForegroundColor Cyan
     $out = & cmd /c "cargo test --manifest-path `"$manifest`" $CargoArgs $profile --test gc_budget_ gc_budget_churn_512 -- --ignored --nocapture 2>&1"
     $out | Write-Host
     if ($LASTEXITCODE -ne 0) { $failures += "512-churn (cargo exit $LASTEXITCODE)" }
+    $churnSummary = $out | Select-String "test result:" | Select-Object -First 1
+    if (-not $churnSummary) {
+        $failures += "512-churn (NO test summary — zero cases executed)"
+    } elseif ($churnSummary -match "(\d+) passed; (\d+) failed; (\d+) ignored") {
+        if ([int]$Matches[1] -ne 1 -or [int]$Matches[2] -ne 0) {
+            $failures += "512-churn (expected exactly 1 passed/0 failed, got $($Matches[1])/$($Matches[2]))"
+        }
+    } else {
+        $failures += "512-churn (unparsable summary: $churnSummary)"
+    }
+    if (-not ($out | Select-String "gc_budget_churn_512_converges_between_watermarks \.\.\. ok")) {
+        $failures += "512-churn (test identity line '. ok' absent — wrong or skipped case)"
+    }
 
+    # --- perf regeneration: NEW temp output, validate, THEN promote.
+    # The frozen commit is bound via AC_PROBE_SOURCE_COMMIT (R2-06): a
+    # stale/unbound report can never pass as new evidence, and a failed
+    # regeneration leaves the old report intact but fails the gate.
     Write-Host "== regenerate full perf report (>=30 samples/scenario)" -ForegroundColor Cyan
     $node = Join-Path $probe "target\release\node.exe"
     if (-not (Test-Path $node)) { $node = Join-Path $probe "target\debug\node.exe" }
-    & $node perf --out $committedReport --samples 30 --root "$env:TEMP\ac783-perf-closeout" --fixture p04-while-retest.at 2>&1 | Write-Host
-    if ($LASTEXITCODE -ne 0) { $failures += "perf-generation" }
-    Write-Host "== regenerated perf report contract" -ForegroundColor Cyan
-    Test-PerfReport -Path $committedReport -MinSamples 30 -Tag "perf-report-regen"
+    $head = & git -C $repo rev-parse HEAD 2>$null
+    if (-not $head) { $head = "unknown" }
+    $tmpReport = Join-Path $env:TEMP ("ac783-perf-closeout-" + [guid]::NewGuid().ToString("N") + ".json")
+    $env:AC_PROBE_SOURCE_COMMIT = "$head".Trim()
+    & $node perf --out $tmpReport --samples 30 --root "$env:TEMP\ac783-perf-closeout" --fixture p04-while-retest.at 2>&1 | Write-Host
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tmpReport)) {
+        $failures += "perf-generation (node exit $LASTEXITCODE, artifact present: $(Test-Path $tmpReport))"
+    } else {
+        Write-Host "== regenerated perf report contract (temp output)" -ForegroundColor Cyan
+        Test-PerfReport -Path $tmpReport -MinSamples 30 -Tag "perf-report-regen"
+        # Binding: the regenerated report must carry the frozen commit.
+        try {
+            $regen = Get-Content -Raw $tmpReport | ConvertFrom-Json
+            if ([string]$regen.source_commit -ne "$head".Trim()) {
+                $failures += "perf-report-regen (source_commit '$($regen.source_commit)' != frozen '$head')"
+            }
+            $gc = $regen.scenarios | Where-Object { $_.name -eq "gc-concurrent-query" }
+            if ([long]$gc.gc_deleted_during_queries -le 0) {
+                $failures += "perf-report-regen (gc deletions did not overlap the timed queries)"
+            }
+            # Promote only after validation.
+            Copy-Item $tmpReport $committedReport -Force
+        } catch {
+            $failures += "perf-report-regen (post-run validation: $_)"
+        }
+    }
+    Remove-Item Env:AC_PROBE_SOURCE_COMMIT -ErrorAction SilentlyContinue
+    if (Test-Path $tmpReport) { Remove-Item $tmpReport -Force -ErrorAction SilentlyContinue }
 }
 
 Write-Host ""

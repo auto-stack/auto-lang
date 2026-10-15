@@ -26,6 +26,7 @@ use crate::codec::{frame_chunk, unframe_chunk, ChunkKind, CodecError};
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 pub const PAGE_SIZE: usize = 64 * 1024;
@@ -40,8 +41,10 @@ pub const A_RECORDS_PER_PAGE: u64 = (PAGE_SIZE / A_RECORD_SIZE) as u64;
 /// Directory entry size (layout B): page u32 + offset u32 + len u16.
 pub const B_DIR_ENTRY: usize = 10;
 pub const B_DIR_ENTRIES_PER_PAGE: u64 = (PAGE_SIZE / B_DIR_ENTRY) as u64;
-/// Layout B record header: kind u16 + parent u32 + span u32×2 + len u8.
-pub const B_HEADER: usize = 13;
+/// Layout B record header: kind u16 + parent u32 + span u32×2 + len u8
+/// = 15 bytes on the wire (R2-02: the R1 constant was 13, letting
+/// 13/14-byte directory entries reach the b[14] length read and panic).
+pub const B_HEADER: usize = 15;
 /// Population bound on a synthetic payload (the generator emits 8..=72).
 pub const MAX_SYNTH_PAYLOAD: usize = 72;
 
@@ -564,6 +567,11 @@ impl<'s> LayoutView<'s> {
             let buf = &mut self.staging[slot];
             buf.clear();
             let mut f = fs::File::open(&path)?;
+            // BOUNDED read (R2-02): at most one framed page (+1 byte to
+            // detect oversize) — a malformed huge file cannot make the
+            // read path allocate it before validation rejects.
+            let cap = PAGE_SIZE + crate::codec::CHUNK_HEADER_LEN + 1;
+            let mut f = f.take(cap as u64);
             std::io::Read::read_to_end(&mut f, buf)?;
             self.stats.reads += 1;
             self.stats.bytes_read += buf.len() as u64;
@@ -654,8 +662,26 @@ impl<'s> LayoutView<'s> {
                     id, plen, MAX_SYNTH_PAYLOAD
                 )));
             }
-            let ppage = (poff / PAGE_SIZE as u64) as u32;
+            let ppage64 = poff / PAGE_SIZE as u64;
             let pin = (poff % PAGE_SIZE as u64) as usize;
+            // Checked conversion (R2-02): the u64 offset must address a
+            // REAL payload page in this manifest — an unchecked `as u32`
+            // truncated 2^48-scale offsets onto page 0 and accepted them.
+            let ppage = u32::try_from(ppage64).map_err(|_| {
+                LayoutError::BadState(format!(
+                    "record {} payload offset {} exceeds the page index space",
+                    id, poff
+                ))
+            })?;
+            if (ppage as usize) >= self.manifest.payload_pages.len() {
+                return Err(LayoutError::BadState(format!(
+                    "record {} payload offset {} addresses page {} outside the manifest's {} payload page(s)",
+                    id,
+                    poff,
+                    ppage,
+                    self.manifest.payload_pages.len()
+                )));
+            }
             if pin + plen > PAGE_SIZE {
                 return Err(LayoutError::BadState(format!(
                     "record {} payload [{}, +{}] crosses the page bound {}",

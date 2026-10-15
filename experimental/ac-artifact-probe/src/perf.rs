@@ -44,6 +44,10 @@ pub struct ScenarioReport {
     pub gc_ran: u64,
     #[serde(default)]
     pub gc_deleted_chunks: u64,
+    /// Deletions counted strictly between the first and last TIMED query
+    /// (R2-05 overlap evidence; 0 for non-GC scenarios).
+    #[serde(default)]
+    pub gc_deleted_during_queries: u64,
     #[serde(default)]
     pub worker_failures: u64,
     pub notes: Vec<String>,
@@ -78,6 +82,10 @@ fn pct(sorted: &[f64], p: f64) -> f64 {
     let idx = ((sorted.len() as f64 - 1.0) * p).round() as usize;
     sorted[idx.min(sorted.len() - 1)]
 }
+
+/// Live deletion counter for GC/query overlap evidence (R2-05): the GC
+/// worker increments it; the timed query loop samples it.
+static DELETED_DURING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn stats_of(mut v: Vec<f64>) -> SampleStats {
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -186,6 +194,7 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             gc_runs: 0,
             gc_ran: 0,
             gc_deleted_chunks: 0,
+            gc_deleted_during_queries: 0,
             worker_failures: 0,
             notes: vec![format!("oracle exit {}", want_exit)],
         });
@@ -232,6 +241,7 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             gc_runs: 0,
             gc_ran: 0,
             gc_deleted_chunks: 0,
+            gc_deleted_during_queries: 0,
             worker_failures: 0,
         });
     }
@@ -279,6 +289,7 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             gc_runs: 0,
             gc_ran: 0,
             gc_deleted_chunks: 0,
+            gc_deleted_during_queries: 0,
             worker_failures: 0,
             notes: vec![
                 "wall time includes OS process spawn; restart is not claimed as OS-cold".into(),
@@ -289,6 +300,7 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
     // 4. cross-project: same content under a different project id.
     {
         let before = shared.space().blocks_count;
+        let mem_before = crate::sysinfo::current_process_memory();
         let mut times = Vec::new();
         let mut ok = 0;
         let mut semfail = 0;
@@ -309,17 +321,19 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             }
         }
         let after = shared.space().blocks_count;
+        let mem1 = crate::sysinfo::current_process_memory();
         scenarios.push(ScenarioReport {
             name: "cross-project".into(),
             what: "identical content consumed by other projects: full hits, no new chunks".into(),
             stats: stats_of(times),
             ok,
             semantic_failures: semfail,
-            private_bytes_delta: 0,
+            private_bytes_delta: mem1.private_bytes as i64 - mem_before.private_bytes as i64,
             disk_total: shared.space().total,
             gc_runs: 0,
             gc_ran: 0,
             gc_deleted_chunks: 0,
+            gc_deleted_during_queries: 0,
             worker_failures: 0,
             notes: vec![format!(
                 "block count {} → {} (unchanged = content shared)",
@@ -331,6 +345,7 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
     // 5. body-modified: same signature, changed body → object must miss
     //    (distinct body bytes per sample, oracle semantics preserved).
     {
+        let mem_before = crate::sysinfo::current_process_memory();
         let mut times = Vec::new();
         let mut ok = 0;
         let mut semfail = 0;
@@ -354,17 +369,19 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
                 semfail += 1;
             }
         }
+        let mem1 = crate::sysinfo::current_process_memory();
         scenarios.push(ScenarioReport {
             name: "body-modified".into(),
             what: "body-only edit (same signature): object miss → full recompile".into(),
             stats: stats_of(times),
             ok,
             semantic_failures: semfail,
-            private_bytes_delta: 0,
+            private_bytes_delta: mem1.private_bytes as i64 - mem_before.private_bytes as i64,
             disk_total: shared.space().total,
             gc_runs: 0,
             gc_ran: 0,
             gc_deleted_chunks: 0,
+            gc_deleted_during_queries: 0,
             worker_failures: 0,
             notes: vec![],
         });
@@ -443,6 +460,13 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
                             w.gc_ran += 1;
                         }
                         w.gc_deleted += r.deleted_chunks as u64;
+                        // Live counter for OVERLAP evidence (R2-05): the
+                        // timed query loop samples it to prove deletions
+                        // happened DURING the measured queries, not after.
+                        DELETED_DURING.fetch_add(
+                            r.deleted_chunks as u64,
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
                     }
                     Err(e) => {
                         w.gc_failures += 1;
@@ -453,6 +477,9 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             }
             w
         });
+        // Overlap evidence (R2-05): deletions observed strictly between the
+        // first timed query's start and the last one's end.
+        DELETED_DURING.store(0, std::sync::atomic::Ordering::Relaxed);
         let mut times = Vec::new();
         let mut ok = 0;
         let mut semfail = 0;
@@ -474,10 +501,15 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
         }
         stop.store(true, std::sync::atomic::Ordering::SeqCst);
         // R1 F-07: worker failures are evidence, not noise.
+        // Overlap (R2-05): deletions counted between the first query's
+        // start and the last query's end prove the reclamation ran DURING
+        // the measured load, not merely in the same process lifetime.
+        let overlap_deleted = DELETED_DURING.load(std::sync::atomic::Ordering::Relaxed);
         let mut w = gc_thread.join().expect("gc worker must not panic");
         let mem1 = crate::sysinfo::current_process_memory();
         let worker_failures = w.build_failures + w.gc_failures;
-        let proving = w.gc_ran > 0 && w.gc_deleted > 0 && worker_failures == 0;
+        let proving =
+            w.gc_ran > 0 && w.gc_deleted > 0 && overlap_deleted > 0 && worker_failures == 0;
         let error_notes = std::mem::take(&mut w.errors);
         scenarios.push(ScenarioReport {
             name: "gc-concurrent-query".into(),
@@ -490,10 +522,11 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             gc_runs: w.gc_runs,
             gc_ran: w.gc_ran,
             gc_deleted_chunks: w.gc_deleted,
+            gc_deleted_during_queries: overlap_deleted,
             worker_failures,
             notes: std::iter::once(format!(
-                "gc runs={} ran={} deleted-chunks={} (hair-pin trigger from steady base, low=0; proving={}, failures={})",
-                w.gc_runs, w.gc_ran, w.gc_deleted, proving, worker_failures
+                "gc runs={} ran={} deleted-chunks={} during-timed-queries={} (hair-pin trigger from steady base, low=0; proving={}, failures={})",
+                w.gc_runs, w.gc_ran, w.gc_deleted, overlap_deleted, proving, worker_failures
             ))
             .chain(error_notes.iter().take(5).cloned())
             .collect(),

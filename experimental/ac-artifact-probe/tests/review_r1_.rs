@@ -659,13 +659,26 @@ fn r1_f08_overlapping_processes_identical_and_conflicting() {
             })
         })
         .count();
+    // R2-03 tightening: DIFFERENT payloads under one key admit exactly ONE
+    // winner (wins==2 would mean both committed different bytes — broken).
+    assert_eq!(
+        wins, 1,
+        "exactly one winner for conflicting payloads\n{}\n{}",
+        a.raw, b.raw
+    );
+    assert_eq!(
+        conflicts, 1,
+        "the loser reports the conflict naming both ids\n{}\n{}",
+        a.raw, b.raw
+    );
+    // The winner is readable in-process and carries ITS payload bytes.
+    let k = key("conflict-race");
+    let s = ManagedStore::open(&store_root).unwrap();
+    let loaded = s.get_artifact("A04", &k).unwrap().expect("winner readable");
     assert!(
-        wins == 2 || (wins == 1 && conflicts == 1),
-        "overlapping conflicting producers: exactly one winner, loser reports conflict (wins={}, conflicts={})\n{}\n{}",
-        wins,
-        conflicts,
-        a.raw,
-        b.raw
+        loaded.payload == b"conflict-A" || loaded.payload == b"conflict-B",
+        "winner bytes intact: {:?}",
+        String::from_utf8_lossy(&loaded.payload)
     );
 }
 

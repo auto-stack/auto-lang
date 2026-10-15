@@ -141,6 +141,14 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Process-global staging identity sequence (R2-03): millisecond + pid is
+/// NOT unique across same-process threads.
+static STAGING_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Process-wide high-water mark of in-flight staging (measured under the
+/// liveness guard at reservation time, framed bytes included — R2-05).
+pub static PEAK_STAGING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// True for reparse points (junctions/symlinks). Scans and deletes NEVER
 /// traverse these — a store-internal junction pointing outside must not
 /// turn into an out-of-root delete (PLAN-783 §5.4 目录边界).
@@ -393,6 +401,11 @@ impl ManagedStore {
         }
         let db = Connection::open(root.join("journal.db"))?;
         db.pragma_update(None, "journal_mode", "WAL")?;
+        // Incremental auto-vacuum (R2-05): the main DB file must be able
+        // to actually SHRINK after reclamation — the total contract (§5.4)
+        // counts DB/WAL bytes, so "SQLite never shrinks" cannot stand as
+        // an implementation answer. Must be set before the schema exists.
+        db.pragma_update(None, "auto_vacuum", "INCREMENTAL")?;
         db.pragma_update(None, "synchronous", "NORMAL")?;
         db.pragma_update(None, "busy_timeout", 8000)?;
         init_schema(&db)?;
@@ -532,23 +545,15 @@ impl ManagedStore {
     pub const STAGING_BUDGET: u64 = 8 * 1024 * 1024;
 
     pub fn put_artifact(&self, req: PutRequest) -> Result<String, StoreError> {
-        // Staging-budget check measures ONLY the staging namespace (an
-        // O(staging) walk); a full space() here would be O(store) per put
-        // — quadratic on churn (found in the R1 repair round).
-        let staging_now = Self::dir_size(&self.root.join("staging"));
-        if staging_now + req.payload.len() as u64 > Self::STAGING_BUDGET {
-            return Err(StoreError::ResourceExhausted(format!(
-                "staging {} + new {} exceeds budget {}",
-                staging_now,
-                req.payload.len(),
-                Self::STAGING_BUDGET
-            )));
-        }
-        let txn = format!("t{}-{}", now_ms(), crate::sysinfo::current_pid());
+        // Staging identity is unique even across same-millisecond threads
+        // in one process (R2-03): millisecond + pid + process-global seq.
+        let seq = STAGING_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let txn = format!("t{}-{}-{}", now_ms(), crate::sysinfo::current_pid(), seq);
         let staging_dir = self.root.join("staging").join(&txn);
         let result = self.put_inner(&req, &staging_dir);
         if result.is_err() {
-            // R1 F-08: a failed publish never leaves staging behind.
+            // A failed publish never leaves staging behind (R1 F-08) —
+            // EVERY error path, conflicts included.
             let _ = fs::remove_dir_all(&staging_dir);
         }
         result
@@ -559,15 +564,39 @@ impl ManagedStore {
         let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
         let art_id = Self::artifact_id(req, &chunk_id);
 
-        // 1. Stage.
+        // ONE critical section (R2-01/03): staging allocation, budget
+        // reservation, CAS placement and the metadata commit all run under
+        // the SHARED liveness guard, so GC/recovery (exclusive) can never
+        // observe or delete a half-published payload.
+        let _live = self.liveness_shared()?;
+        // Atomic budget reservation (R2-03): measured under the same guard
+        // every publisher uses, and counting the FULL framed bytes
+        // (48-byte header included), not the raw payload.
+        let staging_now = Self::dir_size(&self.root.join("staging"));
+        let staged_total = staging_now + framed.len() as u64;
+        PEAK_STAGING.fetch_max(staged_total, std::sync::atomic::Ordering::Relaxed);
+        if staged_total > Self::STAGING_BUDGET {
+            return Err(StoreError::ResourceExhausted(format!(
+                "staging {} + new {} exceeds budget {}",
+                staging_now,
+                framed.len(),
+                Self::STAGING_BUDGET
+            )));
+        }
+
+        // 1. Stage (transient sharing violations retried — AV scanners can
+        // hold a freshly created file; R2 repair-round observation).
         fs::create_dir_all(staging_dir)?;
         let staged_file = staging_dir.join("payload");
-        fs::write(&staged_file, &framed)?;
+        write_with_retry(&staged_file, &framed)?;
         fault("after-staging");
 
         // 2. Per-chunk cross-process lock, BOUNDED wait (R1 F-08): same-key
         //    producers serialize; the fixed tmp name in the reused
         //    BlobStore is never raced. A busy chunk is a controlled error.
+        //    Lock order liveness(shared) → chunk → sqlite; GC takes
+        //    liveness(exclusive) → gate → sqlite — no cycle (GC never
+        //    takes chunk locks, put never takes gate locks).
         let _chunk_lock = FileGuard::lock_timeout(
             &self.lock_path(&format!("chunk-{}", chunk_id)),
             true,
@@ -579,7 +608,7 @@ impl ManagedStore {
         // placement is idempotent (identical content, per-chunk locked).
         let mut placed = false;
         let mut last_err: Option<StoreError> = None;
-        for attempt in 0..4 {
+        for attempt in 0..8 {
             match self.blobs.put(&chunk_id, &staged_file) {
                 Ok(_) => {
                     placed = true;
@@ -595,7 +624,7 @@ impl ManagedStore {
                     if !transient {
                         break;
                     }
-                    std::thread::sleep(Duration::from_millis(25 * (attempt + 1)));
+                    std::thread::sleep(Duration::from_millis(40 * (attempt + 1)));
                 }
             }
         }
@@ -606,9 +635,10 @@ impl ManagedStore {
         }
         fault("after-chunk-move");
 
-        // 3. Atomic metadata publish under the SHARED liveness guard: GC
-        //    cannot decide+delete between our checks and our commit.
-        let _live = self.liveness_shared()?;
+        // 3. Atomic metadata publish — the SHARED liveness guard taken at
+        //    the top of this critical section is still held (R2-01): GC
+        //    and recovery cannot decide+delete between placement and
+        //    commit, nor observe this payload as an uncommitted orphan.
         let db = self.db.lock().unwrap();
         let tx = db.unchecked_transaction()?;
         // Chunk state upsert (R1 F-03): republication of previously
@@ -708,7 +738,7 @@ impl ManagedStore {
         drop(db);
         drop(_live);
         drop(_chunk_lock);
-        let _ = fs::remove_dir_all(staging_dir);
+        let _ = fs::remove_dir_all(&staging_dir);
         Ok(art_id)
     }
 
@@ -956,7 +986,7 @@ impl ManagedStore {
         Ok(())
     }
 
-    pub(crate) fn db(&self) -> std::sync::MutexGuard<'_, Connection> {
+    pub fn db(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.db.lock().unwrap()
     }
 
@@ -997,13 +1027,31 @@ fn rename_with_retry(src: &Path, dst: &Path) -> Result<(), StoreError> {
 }
 
 fn remove_with_retry(p: &Path) -> bool {
-    for attempt in 0..5 {
+    for attempt in 0..8 {
         if fs::remove_file(p).is_ok() {
             return true;
         }
         std::thread::sleep(Duration::from_millis(20 * (attempt + 1)));
     }
     false
+}
+
+/// Staged-write with bounded retry on transient sharing violations.
+fn write_with_retry(p: &Path, bytes: &[u8]) -> Result<(), StoreError> {
+    let mut last = None;
+    for attempt in 0..8 {
+        match fs::write(p, bytes) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.raw_os_error() == Some(32) || e.raw_os_error() == Some(5) => {
+                last = Some(e);
+                std::thread::sleep(Duration::from_millis(40 * (attempt + 1)));
+            }
+            Err(e) => return Err(StoreError::Io(e.to_string())),
+        }
+    }
+    Err(StoreError::Io(
+        last.map(|e| e.to_string()).unwrap_or_default(),
+    ))
 }
 
 /// `true` iff the artifact row exists and its payload chunk is live.
@@ -1131,6 +1179,15 @@ pub(crate) fn cascade_chunk_rows(db: &Connection, cid: &str) -> Result<(), Store
     Ok(())
 }
 
+/// Actually return DB/WAL space to the OS (R2-05): truncate the WAL and
+/// run incremental vacuum on the auto_vacuum=INCREMENTAL main file, so
+/// the §5.4 TOTAL contract is measurable after reclamation.
+pub(crate) fn shrink_db(db: &Connection) {
+    let _ = db.execute_batch(
+        "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA incremental_vacuum; PRAGMA optimize;",
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Recovery — full state reconciliation (R1 F-06)
 // ---------------------------------------------------------------------------
@@ -1161,6 +1218,21 @@ pub fn recover(
 ) -> Result<RecoveryReceipt, StoreError> {
     let _exclusive = store.liveness_exclusive()?;
     let mut receipt = RecoveryReceipt::default();
+
+    // 0. Namespace-root gates (R2-04): every managed namespace directory
+    //    we are about to enumerate/delete inside must itself not be a
+    //    reparse point. A junction at a namespace root is a hard boundary
+    //    violation — refuse the whole pass (fail closed, external content
+    //    preserved) rather than enumerating through it.
+    for ns in ["staging", "trash", "locks", "logs"] {
+        let dir = store.root.join(ns);
+        if dir.is_dir() && is_reparse(&dir) {
+            return Err(StoreError::Boundary(format!(
+                "managed namespace `{}` is a reparse point — refusing to operate through it",
+                ns
+            )));
+        }
+    }
 
     // 1. Staging leftovers.
     for entry in fs::read_dir(store.root.join("staging"))?.flatten() {
@@ -1244,7 +1316,8 @@ pub fn recover(
         }
     }
 
-    // 5. Orphan blob FILES + interrupted CAS tmp writes.
+    // 5. Orphan blob FILES + interrupted CAS tmp writes (namespace-root
+    //    gate included — R2-04).
     let committed: std::collections::HashSet<String> = store
         .db()
         .prepare("SELECT chunk_id FROM chunks")?
@@ -1253,6 +1326,11 @@ pub fn recover(
         .collect();
     let blocks_dir = store.root.join("blocks").join("blobs");
     if blocks_dir.is_dir() {
+        if is_reparse(&blocks_dir) || is_reparse(blocks_dir.parent().unwrap_or(&blocks_dir)) {
+            return Err(StoreError::Boundary(
+                "blocks namespace is a reparse point — refusing to operate through it".into(),
+            ));
+        }
         for shard in fs::read_dir(&blocks_dir)?.flatten() {
             let shard_path = shard.path();
             if !shard_path.is_dir() || is_reparse(&shard_path) {
@@ -1299,11 +1377,13 @@ pub fn recover(
         }
     }
 
-    // 7. Journal hygiene: mark lingering staging-phase txns aborted.
+    // 7. Journal hygiene: mark lingering staging-phase txns aborted, and
+    //    actually return DB/WAL space (R2-05) so freed bytes leave TOTAL.
     receipt.aborted_txn_rows = store.db().execute(
         "UPDATE txns SET phase='aborted' WHERE phase IN ('staging','conflict')",
         [],
     )?;
+    shrink_db(&store.db());
     Ok(receipt)
 }
 
