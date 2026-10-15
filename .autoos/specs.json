@@ -1767,11 +1767,11 @@
           "id": "P781-M",
           "title": "PLAN-781 交付回执（Reader 框架前置三件套）",
           "content": "阶段 A 原生验收通道（决策 781-channel-decision）+ 阶段 B 子内容锚点（决策 781-interface-decision r1-r6；含 gen-0 收养/managed 接线等实施期勘定）+ 阶段 C 有限执行预算（决策 781-budget-decision r1-r3；探针定量 20-40 步/字节，10MiB≈210-420M 步，实测成功 128-235s）。delivery 3e1b5fc03（rebase 等价于 reviewed dba0d7e5c+spec 沉积）；KNOWN-DEBT F-781-C01..C03；READER-001 T-25/T-26 解阻（接入映射=锚点 API+双 env 导入 profile+复验驱动）。",
-          "file": "docs/plans/archive/781-reader-runtime-prerequisites.md",
+          "file": "docs/plans/781-reader-runtime-prerequisites.md",
           "tags": [
             "plan:781",
             "commit:3e1b5fc03",
-            "completion:delivered"
+            "completion:delivered;phase-d-reopened-2026-10-15"
           ]
         },
         {
@@ -11035,7 +11035,7 @@
           "id": "P781-R1",
           "title": "PLAN-781 最终独立复审 pass（局限：实施会话兼任）",
           "content": "final pass @ reviewed dba0d7e5c（重放基线 CLI b7f09980744a）：三阶段 required oracle 全重放（阶段 A 核心 5/5 + 阶段 B 41/41+43/43 + 阶段 C 24/24+3/3+12/12）+ 独立新反例（导入中途杀进程 3/3 无部分写；梯度 200K 同实例 4KiB 成/256KiB 指名拒/服务继续 4/4）；SD-01~07 审过；实施会话兼任复审的局限显式记录；merge 门禁（裸 t 5353/5353、tu 865/865、th 135/137 两在案红归因）在重放终点复跑。",
-          "file": "docs/plans/archive/781-reader-runtime-prerequisites.md",
+          "file": "docs/plans/781-reader-runtime-prerequisites.md",
           "tags": [
             "plan:781",
             "reviewed:dba0d7e5c",
@@ -11058,5 +11058,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 19
+  "version": 20
 }
