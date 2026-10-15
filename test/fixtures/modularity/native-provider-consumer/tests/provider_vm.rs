@@ -68,10 +68,7 @@ fn fake(begin: i64, present: i64) -> Arc<dyn FrameProvider> {
     Arc::new(FakeFrame { begin, present })
 }
 
-const FRAME_PROGRAM: &str = concat!(
-    "print(frame.begin_ms())\n",
-    "print(frame.present_ms())\n",
-);
+const FRAME_PROGRAM: &str = concat!("print(frame.begin_ms())\n", "print(frame.present_ms())\n",);
 
 // ── 低层编译链（公开 API：Parser→Codegen→Linker→VirtualFlash→AutoVM）──
 
@@ -257,8 +254,7 @@ fn v02_large_values_clamp_to_i32_max() {
 #[test]
 fn v03_identity_and_contract_rules_preserved() {
     use auto_lang::vm::native::{
-        NATIVE_DIFF_DIRS, NATIVE_DIFF_FILES_WINDOW, NATIVE_FRAME_BEGIN_MS,
-        NATIVE_FRAME_PRESENT_MS,
+        NATIVE_DIFF_DIRS, NATIVE_DIFF_FILES_WINDOW, NATIVE_FRAME_BEGIN_MS, NATIVE_FRAME_PRESENT_MS,
     };
 
     let _g = serialized();
@@ -303,7 +299,10 @@ fn v03_identity_and_contract_rules_preserved() {
     let mut ni3 = NativeInterface::production();
     let rev_before = ni3.binding_revision();
     ni3.merge(&carrier);
-    assert!(ni3.binding_revision() > rev_before, "merge 须 bump revision");
+    assert!(
+        ni3.binding_revision() > rev_before,
+        "merge 须 bump revision"
+    );
 
     // 端到端：重注册覆盖派发——VM merge 覆盖 NI 后程序读覆盖值（7）。
     let compiled = compile_program(FRAME_PROGRAM);
