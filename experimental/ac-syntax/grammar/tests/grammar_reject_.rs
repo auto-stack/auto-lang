@@ -17,8 +17,8 @@ fn grammar_reject_left_recursion_direct() {
         r#"grammar(name: "t", revision: 1) {
             tokens { ws(trivia: true) { charset: " \t\r\n" } a { literal: "a" } plus { literal: "+" } }
             rules {
-                program { list(expr) }
-                expr { alt { expr plus expr } alt { a } }
+                program { list { expr() {} } }
+                expr { alt { expr() {} plus() {} expr() {} } alt { a() {} } }
             }
         }"#,
         "left recursion",
@@ -32,8 +32,8 @@ fn grammar_reject_left_recursion_via_nullable_prefix() {
         r#"grammar(name: "t", revision: 1) {
             tokens { ws(trivia: true) { charset: " \t\r\n" } a { literal: "a" } }
             rules {
-                program { list(expr) }
-                expr { alt { pre expr } alt { a } }
+                program { list { expr() {} } }
+                expr { alt { pre() {} expr() {} } alt { a() {} } }
                 pre { a(repeat: "opt") }
             }
         }"#,
@@ -48,8 +48,8 @@ fn grammar_reject_nullable_repeat() {
         r#"grammar(name: "t", revision: 1) {
             tokens { ws(trivia: true) { charset: " \t\r\n" } a { literal: "a" } }
             rules {
-                program { list(expr) }
-                expr { pre many(pre) a }
+                program { list { expr() {} } }
+                expr { pre() {} many { pre() {} } a() {} }
                 pre { a(repeat: "opt") }
             }
         }"#,
@@ -63,7 +63,7 @@ fn grammar_reject_unknown_references() {
         "unknown-ref",
         r#"grammar(name: "t", revision: 1) {
             tokens { ws(trivia: true) { charset: " \t\r\n" } a { literal: "a" } }
-            rules { program { list(missing-rule) } }
+            rules { program { list { missing-rule() {} } } }
         }"#,
         "neither lit/tok/ref/pratt nor a known rule/token",
     );
@@ -71,7 +71,7 @@ fn grammar_reject_unknown_references() {
         "unknown-tok",
         r#"grammar(name: "t", revision: 1) {
             tokens { ws(trivia: true) { charset: " \t\r\n" } a { literal: "a" } }
-            rules { program { many(missing-tok) } }
+            rules { program { many { missing-tok() {} } } }
         }"#,
         "neither lit/tok/ref/pratt nor a known rule/token",
     );
@@ -83,7 +83,7 @@ fn grammar_reject_nonprogressing_scanner_rule() {
         "no-progress",
         r#"grammar(name: "t", revision: 1) {
             tokens { ws(trivia: true) { charset: "" } a { literal: "a" } }
-            rules { program { a } }
+            rules { program { a() {} } }
         }"#,
         "matches nothing",
     );
@@ -95,7 +95,7 @@ fn grammar_reject_bad_atom_and_missing_sections() {
     assert!(e.iter().any(|d| d.message.contains("parse error")));
     let e = compile(r#"grammar(name: "t", revision: 1) { tokens { } }"#).unwrap_err();
     assert!(e.iter().any(|d| d.message.contains("no tokens")));
-    let e = compile(r#"grammar(name: "t", revision: 1) { nonsense { } tokens { x { literal: "x" } } rules { program { x } } }"#).unwrap_err();
+    let e = compile(r#"grammar(name: "t", revision: 1) { nonsense { } tokens { x { literal: "x" } } rules { program { x() {} } } }"#).unwrap_err();
     assert!(e.iter().any(|d| d.message.contains("unknown section")));
 }
 

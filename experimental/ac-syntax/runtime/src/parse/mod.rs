@@ -1351,12 +1351,22 @@ impl<'p, 'a> Machine<'p, 'a> {
             return;
         }
         // close 前导 trivia（args 末到 `)` 之间）+ open 前导 trivia 一并入树。
+        // taken 里可能仍含 args 交付节点（kids 已按 args_node 参数拼装）——
+        // 过滤首个重复引用，否则 args 子树在孩子里出现两次（字节重叠）。
         let mut close_trivia: Vec<u32> = Vec::new();
         let close_leaf = {
             let f = self.stack.last_mut().unwrap();
             let mut taken = std::mem::take(&mut f.children);
             let (l, _) = taken.pop().expect("consume pushed close leaf");
-            close_trivia = taken.into_iter().map(|(n, _)| n).collect();
+            let mut skip_args = args_node;
+            let mut rest: Vec<u32> = taken.into_iter().map(|(n, _)| n).collect();
+            if let Some(a) = skip_args {
+                if let Some(pos) = rest.iter().position(|&n| n == a) {
+                    rest.remove(pos);
+                }
+                skip_args = None;
+            }
+            close_trivia = rest;
             l
         };
         let open_trivia = std::mem::take(&mut self.stack.last_mut().unwrap().pratt_extra);

@@ -500,11 +500,17 @@ impl Ctx {
                 'alts: for alt in &r.alts {
                     let mut all_null = true;
                     for s in &alt.steps {
-                        let snull = match s.atom {
+                        // 步可空 = 原子可空 **或** repeat 为 opt/many/list（fixpoint 语义）。
+                        let atom_null = match s.atom {
                             Atom::Tok(_) => false,
                             Atom::Rule(sub) => nullable.get(sub as usize).copied().unwrap_or(false),
                             Atom::Pratt(_) => false,
                         };
+                        let snull = atom_null
+                            || matches!(
+                                s.repeat,
+                                Repeat::Optional | Repeat::ZeroOrMore | Repeat::ListPlain | Repeat::ListNewline
+                            );
                         if !snull {
                             all_null = false;
                             break 'alts;
