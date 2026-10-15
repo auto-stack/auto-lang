@@ -249,11 +249,22 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 - [x] T-08: owner_stage=merge；依赖T-07；按merge技能实际落地、规范沉淀、归档/守卫清理及到期批量门；统一交付781 dependency receipt到READER-001 T-25/T-26；不代替Reader业务接入及终审。AC-06。
   [✅ 2026-10-15] merge 收口（回执键 PLAN-781:r2）：**prepared** = reviewed dba0d7e5c + spec 沉积（SD-01~07：3 新 design + 4 modify + plans.md 双索引）；**landed** = rebase 线性重放 ×2（并发 master 前进两次均纯 docs 增量；range-diff 全等）→ ff-only，master tip = delivery `3e1b5fc03`；**ledger_refreshed** = .autoos/specs.json v17→v18（guarded offline projection——store 服务不可达 000；P781-D1/D2/D3/T1/R1/M 六条，file+tags 齐，无关节逐字节不变，回读验证过）；**门禁**（重放终点复跑）= 裸 cargo t 5353/5353 + tu 865/865 + th 135/137（两在案红：F-781-C03 预存 + plan730 boundary 单跑绿）+ plan781 24/24 + e2e 3/3；**cleaned** = wt-guard 复核（pnpm store junction ~350 个按闸门处方逐链接 cmd /c rmdir 剥除后 clean）→ worktree/分支移除 + auto-down 兄弟（普通克隆，guard clean）+ 组目录删除（2026-10-15 实证）；**READER-001 receipt** = T-25/T-26 解阻：锚点 API（scroll-anchor DSL + 9922/9923 + reading.at 接入映射）+ 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）+ 复验命令（scripts/tools/test_reader_import_budget.py --auto-bin <cli> --reader-dir <checkout>）；001 仍须业务接入、实际复验与独立终审（AC-06 不代替）。
 
+### 阶段 D 事故记录：F-781-D01（2026-10-15，T-19 实施期发现）
+
+**现象**：任一 pane 的 controller 绑定值为 `@scrollctl:` 前缀句柄（`scroll_controller()` 分配或 .at 字面串均可复现）时，**全部** iced scroll_to 类操作静默失效（MCP scroll action、旧 API intent、锚点 finals 三路齐哑；ScrollStateReader 读操作照常投递）；静态手写句柄零影响。最小复现：p781 fixture std pane + 单按 OldEnd（D:/p781-t19/live*.log，P656-EXEC 显示消费端以正确 id/offset 发射 Task，物理 offset 恒 0）。
+
+**已排除**：widget id 字符串本身（`@`/`:`）——controller_widget_id 哈希派生 containment 实测无效且引入自身回归（静态句柄也失效，已回滚至裸派生，绿基线已恢复）；__mcp_scroll 载荷分隔（U+001F）；shim 副作用（纯函数）；注册表反查（handles_for_widget 为 registry 扫描非前缀解析）；aura 层 @-sigil 解释（grep 无消费点）。
+
+**含义**：这是比审计 R01 更深的一层缺陷——标准 `scroll_controller()` 入口在 781 交付中从未被实机走过（全部 fixture 用手写句柄），D01 属于 R01 同域的未爆面。T-19 的 W-01 端到端验收以其为硬前置。
+
+**状态**：根因未明，追踪档案 D:/p781-t19/{live-stderr,live2,live3,live4,live5}.log + out1..out6 报告。下一步：D01 专项根因（候选面：iced Task 批处理对本 app 自定义 shell 的投递路径、prime/read-back 心跳与 scroll_to 同批次的执行序、CONTROLLER_HANDLE_PREFIX 在未 grep 到的镜像仓/生成代码中的消费）。
+
 ### 阶段 D：审计缺口修复（2026-10-15 用户裁定重开）
 
 **重开依据（用户裁定，2026-10-15）**：历史审计（[reports/781-historical-review-20261015.md](reports/781-historical-review-20261015.md)，needs_fix）四 findings 不另立计划，以本计划新增阶段承接——归档终态规则的一次显式例外；原 T-01..T-18 交付事实与记录不动，阶段 D 只修缺口补证据。任务编号延续 T-19..T-23；原 783 草案撤销、编号回收。
 
 - [ ] T-19: owner_stage=work；F-781-R01（P1）：scroll_anchor 合成 id 改不透明序号 + build 期注册表（seq→(pane,key) 查表，collector 回传 rect+seq）——消除冒号歧义拆分与 Debug 字符串取值两类面；单测含标准 `@scrollctl:N` 句柄与 `:`/引号/反斜杠 key 往返；双端 fixture 增真实 `scroll_controller()` controller + 分隔符 key 行（W-01）。AC-15。
+  [进行中 2026-10-15，worktree commit 34bb33090] 核心修复已落地：`scrollanchor:{seq}` 不透明序号 id + `register_anchor/lookup_anchor` 稳定注册表（重注册驱逐、stale miss 跳过、dup last-wins 保持）——R01 的两类面（冒号歧义、Debug 抓串）结构性根除；单测 2 个（往返含 `@scrollctl:N`/冒号/引号/反斜杠/CJK + 驱逐语义），scroll 71/71、plan781 24/24。fixture/探针 W-01 双端接线完成。**受阻发现 F-781-D01**（见 §9/§10）：`@scrollctl:` 前缀句柄使 iced scroll 操作全局静默失效——W-01 的标准句柄端到端验收被阻；fixture 暂以静态句柄保绿基线（全探针仅剩 w01 可见性一项待查），D01 根因清晰后切回 `scroll_controller()`。
 - [ ] T-20: owner_stage=work；依赖T-19；F-781-R02（P1）：vue 全 scroll-pane 元素发射 `data-scroll-pane` 所有权标记；helper 改全量遍历 + `closest('[data-scroll-pane]')===pane` 归属过滤 + 属性比对（弃 CSS selector 拼接）；managed 判据同归属；双端三对照（嵌套同名零串线/仅内层有 key→outer not_found/inner managed 不误伤 outer）+ 原生嵌套探针（W-02）。AC-15。
 - [ ] T-21: owner_stage=work；F-781-R03（P2）：chapter API 成本探针 → 全量 10MiB 全章扫描（1347+1346 章，含冷重启复扫）或**等价完整 oracle**（全形状多章书 TXT+MD 全章逐字+冷重启）+10MiB 维持 hash/TOC/抽样——修订路线须用户显式裁定后执行（审计明文禁静默降级）；损坏章负例证明 oracle 会红（W-03）。AC-16。
 - [ ] T-22: owner_stage=work；F-781-R04（P2）：生命周期断言补齐——`/api/slowwrite` 进入握手（entered 标记）+ 心跳副作用文件；deadline/断连/服务关闭三路断言取消后零写入+单终态+回收观测，绑定 LegacyHttp 长忙路径（W-04）。AC-17。
@@ -315,7 +326,9 @@ stage=review | review_scope=historical-final-audit | reviewer_identity=本次独
 
 ## 10. 待澄清事项
 
-T-21 若走合同修订路线（10MiB 全章扫描成本不可接受），修订内容须用户显式裁定后方可执行——审计明文禁止静默降级（F-781-R03）。其余无用户前置决策。
+T-21 若走合同修订路线（10MiB 全章扫描成本不可接受），修订内容须用户显式裁定后方可执行——审计明文禁止静默降级（F-781-R03）。
+
+**F-781-D01（2026-10-15 新发现）**：`@scrollctl:` 前缀 controller 句柄使 iced scroll 操作全局静默失效（详见 §9 事故记录）。T-19 的 W-01 标准句柄端到端验收以其根因/修复为硬前置；无用户决策需要，但若根因牵涉 iced 上游或 app shell 架构层，修复方案可能超出阶段 D 的“缺口修复”边界——届时按 needs_replan 报告。其余无用户前置决策。
 
 T-09负责动作/帧identity/布局freshness的复用边界；T-01冻结子key公共接口/代际/nearest；T-14冻结有限profile、同步/分片与配置/期限/取消的whole-path可行性（✅ 已冻结于 reports/781-budget-decision.md）。三项均为后续接线硬前置，不把未结束研究计为已实现。共享776/742/778/779热点入场对账；未释放则具名记录受阻任务。
 
