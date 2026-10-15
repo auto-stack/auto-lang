@@ -355,6 +355,18 @@ def main():
         ok, det = d.press_reply("QUnknown", "unknown")
         d.check("v04_unknown_state", ok, det)
 
+        # ── 阶段D W-01（F-781-R01）：标准 controller 句柄（Init 经
+        # scroll_controller() 构造，native "@scrollctl:N"）+ 含冒号 key——
+        # 旧实现合成 id 首冒号错拆 → not_found；修复后必须真实定位 applied。
+        ok, det = d.press_reply("GoStd", "queued")
+        d.check("w01_std_handle_queued", ok, det)
+        vstd = d.visible("STD-colon-row")
+        d.check("w01_std_colon_key_located", vstd and vstd.get("visible"),
+                f"intersection={vstd.get('intersection') if vstd else None}")
+        d.raw["w01_std_vis"] = vstd
+        ok, det = d.expect_reply("QStd", "applied", deadline=15.0)
+        d.check("w01_std_state_applied", ok, det)
+
         # ── V-03：双章换绑 ──
         ok = d.press("SwitchCh")
         time.sleep(1.2)

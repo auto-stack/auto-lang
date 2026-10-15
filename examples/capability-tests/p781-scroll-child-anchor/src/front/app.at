@@ -10,6 +10,7 @@ widget App {
         var main_ctl str = "main-pane"
         var side_ctl str = "side-pane"
         var mgd_ctl str = "mgd-pane"
+        var std_ctl str = "-"
         var reply str = "-"
         var old_off float = -1.0
         var chapter int = 1
@@ -21,6 +22,11 @@ widget App {
 
     on {
         .Init -> {
+            // 阶段D W-01（F-781-R01）：标准 controller 构造被 F-781-D01
+            // 阻断（@scrollctl 前缀句柄使 iced scroll 操作全局失效——见
+            // 计划 §9 D01 记录与 D:/p781-t19/live*.log 追踪）；暂用静态
+            // 句柄保绿基线，D01 闭合后切回 scroll_controller()。
+            .std_ctl = "std-pane"
             let r str = scroll_to_child(.main_ctl, "c3")
         }
         .Go(p, k) -> {
@@ -84,6 +90,8 @@ widget App {
                     button "QMiss" { onclick: .Query(.main_ctl, "missing") }
                     button "QUnknown" { onclick: .Query(.main_ctl, "never") }
                     button "GoMgd" { onclick: .Go(.mgd_ctl, "any") }
+                    button "GoStd" { onclick: .Go(.std_ctl, "std:colon-key") }
+                    button "QStd" { onclick: .Query(.std_ctl, "std:colon-key") }
                 }
                 row (style: "gap-2 flex-wrap") {
                     button "GoSideDup" { onclick: .Go(.side_ctl, "dup") }
@@ -102,6 +110,55 @@ widget App {
                     text `R=${.reply} old=${.old_off}` { style: "text-xs font-mono text-muted-foreground" }
                 }
             }
+scroll-pane (controller: .std_ctl, style: "border rounded h-32") {
+                        col (style: "px-2") {
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:plain"
+                                text "STD-plain-0 标准句柄普通键。" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:fill-0"
+                                text "STD-fill-0 填充行。" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:fill-1"
+                                text "STD-fill-1 填充行。" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:fill-2"
+                                text "STD-fill-2 填充行。" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:fill-3"
+                                text "STD-fill-3 填充行。" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:fill-4"
+                                text "STD-fill-4 填充行。" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:fill-5"
+                                text "STD-fill-5 填充行。" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:fill-6"
+                                text "STD-fill-6 填充行。" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "std:colon-key"
+                                text "STD-colon-row 标准句柄冒号键行。" { style: "text-xs" }
+                            }
+                        }
+                    }
             row (style: "flex-1 min-h-0 gap-2 px-3 pb-3") {
                 if .chapter == 1 {
                     scroll-pane (controller: .main_ctl, style: ["border rounded h-full min-w-0", if .narrow { "w-1/2" } else { "flex-1" }]) {

@@ -41,3 +41,12 @@ pub use intent::{ResolvedScrollIntent, ScrollIntent, ScrollSource};
 pub use state::{
     Axis, ScrollAxes, ScrollAxisState, ScrollState, ScrollViewportState, ScrollbarPolicy,
 };
+
+/// PLAN-783 T-19：controller pane 的 iced widget id 派生单源（当前 = 裸
+/// 内插 `scroll_ctl_{handle}`——F-781-D01 调查中：@scrollctl 前缀句柄使
+/// iced scroll 操作全局失效的机制未明（D:/p781-t19/live*.log 最小复现），
+/// 哈希派生 containment 实测引入自身回归（静态句柄也失效）已回滚；待 D01
+/// 根因清晰后再定安全派生形态。
+pub fn controller_widget_id(handle: &str) -> String {
+    format!("scroll_ctl_{handle}")
+}

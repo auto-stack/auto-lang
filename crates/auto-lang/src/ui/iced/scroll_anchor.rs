@@ -6,7 +6,7 @@
 //! ```text
 //! DSL scroll-anchor        → View::ScrollAnchorMark { pane, key }
 //! convert_scroll 双臂       → inject_anchor_pane 填 pane（controller key）
-//! renderer build           → 本 wrapper（合成 iced Id `scrollanchor:{pane}:{key}`）
+//! renderer build           → 本 wrapper（合成 iced Id `scrollanchor:{seq}`，seq 经注册表还原 (pane,key)——T-19/R01）
 //! drain 期（有 pending 请求）→ operate(AnchorBoundsCollector) + ScrollStateReader
 //! __anchor_bounds_collected → stash；与 pane 原点 stash 齐备即解析
 //! resolve_anchor_requests  → finals scroll_to（写臂投影回填既有纪律）
@@ -23,17 +23,58 @@ use iced::{Element, Length, Point, Rectangle, Size, Theme, Vector};
 /// 合成 id 前缀（AnchorBoundsCollector 只认此前缀的 container 上报）。
 pub const ANCHOR_ID_PREFIX: &str = "scrollanchor:";
 
-/// 合成 id：`scrollanchor:{pane_controller_key}:{anchor_key}`
-///（pane 为空串 = 无 controller 归属——按裸 key 兜底上报）。
-pub fn anchor_widget_id(pane: &str, key: &str) -> String {
-    format!("{ANCHOR_ID_PREFIX}{pane}:{key}")
+// ---------------------------------------------------------------------------
+// 稳定序号注册表（PLAN-783 T-19 / F-781-R01 修复）
+//
+// 旧实现把 (pane, key) 以冒号拼进合成 id、再按**第一个**冒号拆回——标准
+// controller 句柄 `@scrollctl:N` 自带冒号即错拆（R01 审计反例），且任意
+// key 字符还要经 Debug 字符串抓取往返。改为**不透明序号**：build 期
+// `register_anchor` 分配 `scrollanchor:{seq}`（纯数字——分隔符/引号/反斜杠
+// 不再进入 id），collector 只回传 seq，查表还原 (pane, key)。
+//
+// 生命周期 = 重注册驱逐：同一 (pane, key) 每帧重建时以新 seq 覆盖并驱逐
+// 旧 seq——稳态大小 = 活跃锚点数（无帧钩子、无跨帧增长）；同 pane 重复
+// key 的文档序 last-wins 语义保持（先注册者的旧 seq 被驱逐，上报侧跳过）。
+// ---------------------------------------------------------------------------
+
+static ANCHOR_SEQ_GEN: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(1);
+lazy_static::lazy_static! {
+    static ref ANCHOR_SEQ_FORWARD: Mutex<HashMap<(String, String), u32>> =
+        Mutex::new(HashMap::new());
+    static ref ANCHOR_SEQ_REVERSE: Mutex<HashMap<u32, (String, String)>> =
+        Mutex::new(HashMap::new());
 }
 
-/// 解析合成 id → (pane, key)。
-pub fn parse_anchor_widget_id(id: &str) -> Option<(String, String)> {
-    let rest = id.strip_prefix(ANCHOR_ID_PREFIX)?;
-    let (pane, key) = rest.split_once(':')?;
-    Some((pane.to_string(), key.to_string()))
+/// build 期注册 (pane, key) → 新 seq（驱逐同 pair 旧 seq）。
+pub fn register_anchor(pane: &str, key: &str) -> u32 {
+    let seq = ANCHOR_SEQ_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let pair = (pane.to_string(), key.to_string());
+    let mut fwd = ANCHOR_SEQ_FORWARD.lock().unwrap();
+    if let Some(old) = fwd.insert(pair.clone(), seq) {
+        ANCHOR_SEQ_REVERSE.lock().unwrap().remove(&old);
+    }
+    ANCHOR_SEQ_REVERSE.lock().unwrap().insert(seq, pair);
+    seq
+}
+
+/// 合成 id：`scrollanchor:{seq}`（纯数字——无歧义，任意 pane/key 字符安全）。
+pub fn anchor_widget_id(seq: u32) -> String {
+    format!("{ANCHOR_ID_PREFIX}{seq}")
+}
+
+/// 解析合成 id → seq（严格数字；非数字/越界 = None）。
+pub fn parse_anchor_widget_seq(id: &str) -> Option<u32> {
+    id.strip_prefix(ANCHOR_ID_PREFIX)?.parse().ok()
+}
+
+/// seq → (pane, key)（stale/未知 seq = None——调用方跳过该上报）。
+pub fn lookup_anchor(seq: u32) -> Option<(String, String)> {
+    ANCHOR_SEQ_REVERSE
+        .lock()
+        .unwrap()
+        .get(&seq)
+        .cloned()
 }
 
 // ---------------------------------------------------------------------------
@@ -80,12 +121,16 @@ impl Operation<AnchorRectMap> for AnchorBoundsCollector {
     fn container(&mut self, id: Option<&Id>, bounds: Rectangle) {
         if let Some(id) = id {
             let debug = format!("{id:?}");
-            // Id Debug 形态 `Id(Custom("scrollanchor:..."))`——取内层串。
+            // Id Debug 形态 `Id(Custom("scrollanchor:42"))`——取内层串。
+            // T-19 后 id 体为纯数字 seq（pane/key 不进入 id——R01 的分隔符
+            // 与 Debug 转义两类面根除），查注册表还原。
             let inner = debug
                 .split('"')
                 .nth(1)
                 .unwrap_or_default();
-            if let Some((pane, key)) = parse_anchor_widget_id(inner) {
+            if let Some((pane, key)) =
+                parse_anchor_widget_seq(inner).and_then(lookup_anchor)
+            {
                 self.out.push(AnchorRectEntry {
                     pane,
                     key,
@@ -183,8 +228,9 @@ pub struct ScrollAnchor<'a, M: Clone + std::fmt::Debug + 'static> {
 
 impl<'a, M: Clone + std::fmt::Debug + 'static> ScrollAnchor<'a, M> {
     pub fn new(pane: &str, key: &str, child: Element<'a, M>) -> Self {
+        // T-19（R01）：注册表分配 seq（重注册驱逐），id 不含 pane/key。
         Self {
-            qualified_id: anchor_widget_id(pane, key),
+            qualified_id: anchor_widget_id(register_anchor(pane, key)),
             child,
         }
     }
@@ -326,3 +372,55 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
 // Point 导入保留给未来 X 轴扩展（与 anchor_slot 对齐的形状契约）。
 #[allow(dead_code)]
 fn _point_marker(_: Point) {}
+
+#[cfg(test)]
+mod plan783_tests {
+    use super::*;
+
+    /// F-781-R01 反例复现锁：标准 `@scrollctl:N` 句柄（自带冒号）与含
+    /// 分隔符/引号/反斜杠的 key 必须经 id 往返无损；旧实现首冒号拆分
+    /// 会把 ("@scrollctl:1","k") 拆成 ("@scrollctl","1:k")。
+    #[test]
+    fn plan783_r01_standard_handle_and_delimiter_keys_roundtrip() {
+        let cases = [
+            ("@scrollctl:1", "chapter-50"),
+            ("@scrollctl:42", "a:b:c"),
+            ("main-pane", "k:nested-colon"),
+            ("", "bare-key"),
+            ("@scrollctl:7", "quote\"key"),
+            ("@scrollctl:8", "back\\slash"),
+            ("@scrollctl:9", "空格 与中文：键"),
+        ];
+        for (pane, key) in cases {
+            let seq = register_anchor(pane, key);
+            let id = anchor_widget_id(seq);
+            assert!(id.starts_with(ANCHOR_ID_PREFIX));
+            let got = parse_anchor_widget_seq(&id)
+                .and_then(lookup_anchor)
+                .unwrap_or_else(|| panic!("roundtrip failed for {pane:?}/{key:?}"));
+            assert_eq!(got, (pane.to_string(), key.to_string()), "{pane:?}/{key:?}");
+        }
+        // id 体为纯数字（无 pane/key 字符进入——注入面不存在）。
+        let seq = register_anchor("@scrollctl:1", "q\"k");
+        let id = anchor_widget_id(seq);
+        let rest = id.strip_prefix(ANCHOR_ID_PREFIX).unwrap();
+        assert!(rest.bytes().all(|b| b.is_ascii_digit()), "id body digits only: {rest}");
+    }
+
+    /// 重注册驱逐：同 (pane,key) 重建后旧 seq 失效（lookup miss = 上报侧
+    /// 跳过）、新 seq 生效；重复 key 的文档序 last-wins 语义保持。
+    #[test]
+    fn plan783_r01_reregistration_evicts_stale_seq() {
+        let (p, k) = ("@scrollctl:3", "dup");
+        let s1 = register_anchor(p, k);
+        let s2 = register_anchor(p, k);
+        assert_ne!(s1, s2);
+        assert_eq!(lookup_anchor(s1), None, "stale seq must miss");
+        assert_eq!(lookup_anchor(s2), Some((p.to_string(), k.to_string())));
+        // 未知 seq（从未分配/已驱逐）不 panic、不误配。
+        assert_eq!(lookup_anchor(u32::MAX), None);
+        assert_eq!(parse_anchor_widget_seq("scrollanchor:abc"), None);
+        assert_eq!(parse_anchor_widget_seq("scrollanchor:"), None);
+        assert_eq!(parse_anchor_widget_seq("unrelated:1"), None);
+    }
+}

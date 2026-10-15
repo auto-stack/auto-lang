@@ -237,6 +237,32 @@ try {
   r = await clickAndWait('QUnknown', 'unknown');
   record('v04_unknown_state', r === 'unknown', r);
 
+  // ── 阶段D W-01（F-781-R01）：标准 controller（onMounted 里
+  // scroll_controller() → "__scrollctl_N"）+ 含冒号 key 真实定位。
+  // pane 发现 = 含该锚点的 [data-scroll-ctl]（句柄值为运行期生成，不硬编码）。
+  r = await clickAndWait('GoStd', 'queued');
+  record('w01_std_handle_queued', r === 'queued', r);
+  await page.waitForTimeout(200);
+  const stdGeom = await page.evaluate((key) => {
+    const anchors = [...document.querySelectorAll(`[data-scroll-anchor="${key}"]`)];
+    const t = anchors[anchors.length - 1];
+    if (!t) return { target: false };
+    const pane = t.closest('[data-scroll-ctl]');
+    if (!pane) return { target: true, pane: false };
+    const pr = pane.getBoundingClientRect();
+    const tr = t.getBoundingClientRect();
+    const ct = pr.top + pane.clientTop;
+    const ix = Math.max(0, Math.min(pr.right, tr.right) - Math.max(pr.left, tr.left));
+    const iy = Math.max(0, Math.min(pr.bottom, tr.bottom) - Math.max(ct, tr.top));
+    return { target: true, pane: true, iy, ix, handle: pane.getAttribute('data-scroll-ctl') };
+  }, 'std:colon-key');
+  raw.w01_std = stdGeom;
+  record('w01_std_colon_key_located',
+    stdGeom && stdGeom.target && stdGeom.iy > 0 && stdGeom.ix > 0,
+    JSON.stringify(stdGeom).slice(0, 140));
+  r = await clickAndWait('QStd', 'applied');
+  record('w01_std_state_applied', r === 'applied', r);
+
   // ── V-03：双章换绑（v-if 双 pane 分支）──
   await page.click('text=SwitchCh');
   await page.waitForTimeout(700);
