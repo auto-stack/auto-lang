@@ -142,13 +142,19 @@ pub fn clear_process_default_clipboard_text_provider() {
     *slot = None;
 }
 
-/// 测试隔离（F-785-R1-01）：进程默认槽（frame / clipboard text）的
-/// **同进程**测试互斥锁。凡直接写槽（set/clear/if-absent）、经宿主入口
-/// 触发装配（VmBridge 构造、run 家族高层入口会 if-absent 写槽）、或
-/// 断言槽状态的 in-crate 测试，都必须持本锁串行并自行 save/restore。
-/// 各测试文件不得自建本地锁——不相交的锁域等于没有互斥（本轮复现：
-/// adapter 测试与 shim 缺席测试并行，clear→AutoVM::new 窗口被补缺写入
-/// 毒化）。nextest 每测独立进程不能替代裸 cargo test 的同进程并行隔离。
+/// 测试隔离（crate 级共享，cfg(test)）——持有者 = **清空/替换进程默认
+/// 槽的测试**（clear/set/restore 序列需跨操作原子，防彼此互踩）。普通
+/// 程序测试**零配合豁免**：其唯一槽写是 install 的 if-absent 补缺，对
+/// 一切非"缺席=None"断言无害（F-785-R1-01→R2-01 裁定：按具名测试枚举
+/// 加锁不完备——R2 反例 = plan320 普通测试经 run 族隐式装配毒化缺席
+/// 窗口；缺席断言不得依赖共享进程的全局槽）。
+///
+/// 已试否的生产侧写域（六写 API 入互斥域）方案：run 族入口的 execute/
+/// install 实际运行在 `run_autovm_capture` spawn 的独立 VM 线程上
+/// （lib.rs:694 起）——持域测试线程 join 该线程、该线程 install 取域，
+/// 构成持域者→join→取域环（看门狗栈实录），方案废弃；缺席断言改由
+/// `AutoVM::new_without_host_snapshot`（构造式，engine.rs cfg(test)）
+/// 与外部 fixture 独立进程（no-ui 无安装路径）承担。
 #[cfg(test)]
 pub(crate) fn test_default_slot_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();

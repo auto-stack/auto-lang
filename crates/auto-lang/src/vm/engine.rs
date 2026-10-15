@@ -806,24 +806,39 @@ impl AutoVM {
         }
     }
 
-    pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
+    pub fn new(flash: VirtualFlash, ram_size: usize) -> Self {
+        Self::new_inner(flash, ram_size, true)
+    }
+
+    /// F-785-R2-01：跳过进程默认快照的构造（cfg(test)）。共享 lib 测试
+    /// 进程的全局默认槽不可假定缺席（普通程序测试经 run 族隐式 if-absent
+    /// 装配），"无 provider"断言锚必须**构造式**成立而非依赖全局时序；
+    /// 全局缺席时序合同由外部 fixture 独立进程承担（no-ui 无安装路径）。
+    #[cfg(test)]
+    pub(crate) fn new_without_host_snapshot(flash: VirtualFlash, ram_size: usize) -> Self {
+        Self::new_inner(flash, ram_size, false)
+    }
+
+    fn new_inner(flash: VirtualFlash, _ram_size: usize, snapshot_host_capabilities: bool) -> Self {
         let mut native_interface = NativeInterface::production();
 
         // PLAN-779: 宿主能力装配——构造期快照进程默认 frame provider 进
         // 本实例（每 VM 独立槽：之后进程默认替换/其他实例注入互不影响，
         // 两实例可持不同 provider 不串线）。core 零 UI 引用；宿主注册点
         // 见 vm::host_capabilities（UI adapter / 外部 consumer）。
-        if let Some(provider) = crate::vm::host_capabilities::process_default_frame_provider() {
-            native_interface.set_frame_provider(provider);
-        }
+        if snapshot_host_capabilities {
+            if let Some(provider) = crate::vm::host_capabilities::process_default_frame_provider() {
+                native_interface.set_frame_provider(provider);
+            }
 
-        // PLAN-785: 同纪律快照文本剪贴板 provider（2925/2926 能力=注入；
-        // 缺席快照 = shim 侧 feature-disabled 形 VMError，与 no-ui 构建
-        // 迁移前行为一致）。
-        if let Some(provider) =
-            crate::vm::host_capabilities::process_default_clipboard_text_provider()
-        {
-            native_interface.set_clipboard_text_provider(provider);
+            // PLAN-785: 同纪律快照文本剪贴板 provider（2925/2926 能力=
+            // 注入；缺席快照 = shim 侧 feature-disabled 形 VMError，与
+            // no-ui 构建迁移前行为一致）。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_clipboard_text_provider()
+            {
+                native_interface.set_clipboard_text_provider(provider);
+            }
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.

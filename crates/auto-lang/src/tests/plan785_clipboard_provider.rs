@@ -16,7 +16,7 @@
 //!   恢复（内容不定，仅断言成功与单行——红线：不写真实剪贴板）。
 
 mod plan785_provider {
-    use std::sync::{Arc, Mutex, MutexGuard};
+    use std::sync::{Arc, Mutex};
 
     /// core 剪断（永久回归锚）：选定 shim 实现文件零 `ui::clipboard::`
     /// 直引（files 族 `ui::clipboard_native` 保留臂不匹配本串）；
@@ -38,6 +38,11 @@ mod plan785_provider {
     /// shim 缺席/委托契约（直调 shim，无程序编译）：无 provider → 原
     /// feature-disabled 错误文本逐字保持；实例注入 fake → String/Bool
     /// lane 委托供值、set 收精确参数。
+    /// F-785-R2-01：缺席断言锚 = **构造式**（`new_without_host_snapshot`
+    /// 跳过进程默认快照）——共享 lib 测试进程的全局槽不可假定缺席（普通
+    /// 程序测试经 run 族在独立 VM 线程上隐式 if-absent 装配）；**全局**
+    /// 缺席时序合同由外部 fixture no-ui 形承担（v03：真实高层入口 Err
+    /// 文本逐字）。本测试因此零全局槽操作，无需隔离锁。
     #[test]
     fn shim_absent_error_and_provider_delegation() {
         use crate::vm::engine::AutoVM;
@@ -46,13 +51,12 @@ mod plan785_provider {
         use crate::vm::task::AutoTask;
         use crate::vm::virt_memory::VirtualFlash;
 
-        let _g = serialized_default_slot();
-        let _guard = DefaultGuard::new();
-
-        // 缺席：构造前清进程默认（裸 cargo test 并行下防其他测试残留）。
-        crate::vm::host_capabilities::clear_process_default_clipboard_text_provider();
-        let vm = AutoVM::new(VirtualFlash::new(0), 64);
-        assert!(vm.clipboard_text_provider().is_none(), "缺席=无 provider");
+        // 缺席：构造式（不快照进程默认——无论全局槽当前被谁装配）。
+        let vm = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 64);
+        assert!(
+            vm.clipboard_text_provider().is_none(),
+            "构造式缺席：跳过快照=无 provider（不得依赖全局槽时序）"
+        );
         let mut task = AutoTask::new(0, 64, 0);
         let err =
             shim_clipboard_text(&mut task, &vm).expect_err("缺席须报原 feature-disabled 形错误");
@@ -185,6 +189,39 @@ mod plan785_provider {
         );
     }
 
+    /// F-785-R2-01 永久组合反例：**构造式缺席锚** × 普通高层入口并发。
+    /// R2 原发（plan320 普通测试并行 → run_with_capture → 独立 VM 线程
+    /// install → if-absent 写槽 → 毒化"clear→AutoVM::new 断言缺席"窗口，
+    /// 14 轮实录）证明：缺席断言不得依赖共享进程的全局槽时序。本测试把
+    /// 该混合场景钉为永久回归——线程 A 反复做构造式缺席断言
+    /// （`new_without_host_snapshot`，零全局槽操作）；线程 B 与 R2 反例同
+    /// 路径 hammer 普通高层入口（零锁配合）。若缺席锚退回全局时序实现
+    /// （clear→new），A 将随 B 的隐式装配随机变红（R2 证据）；构造式下
+    /// A 全轮通过、B 全轮成功。不触真实剪贴板。
+    #[test]
+    fn absence_anchor_survives_concurrent_implicit_installs() {
+        use crate::vm::engine::AutoVM;
+        use crate::vm::virt_memory::VirtualFlash;
+
+        let a = std::thread::spawn(|| {
+            for _ in 0..50 {
+                let vm = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 64);
+                assert!(
+                    vm.clipboard_text_provider().is_none(),
+                    "缺席锚不得依赖共享进程的全局槽时序（F-785-R2-01 反例形态）"
+                );
+            }
+        });
+        let b = std::thread::spawn(|| {
+            for _ in 0..100 {
+                // 普通高层入口：零锁配合——隔离责任在断言锚的构造方式。
+                let _ = crate::run_with_capture("print(1)");
+            }
+        });
+        a.join().expect("A 构造式缺席全轮通过");
+        b.join().expect("B 高层入口全轮成功");
+    }
+
     // ── 装配优先关系（UI 开列；默认测试构建=ui-iced on）────────────────
     //
     // 覆盖矩阵：高层入口 × {显式默认, 空槽} 供值；no-ui 列由外部 fixture
@@ -192,9 +229,10 @@ mod plan785_provider {
     // 本文件 shim 直调测试承担。红线（计划 §5）：空槽补缺断言只走读侧
     //（真 arboard adapter 不写用户剪贴板）。
 
-    fn serialized_default_slot() -> MutexGuard<'static, ()> {
-        // F-785-R1-01：共享 crate 级锁（本地 OnceLock 与其他测试文件的
-        // 本地锁不相交=无互斥）；持有者覆盖一切写槽/装配/缺席断言测试。
+    fn serialized_default_slot() -> std::sync::MutexGuard<'static, ()> {
+        // F-785-R1-01→R2-01：crate 级共享测试锁——持有者仅限**清空/替换
+        // 进程默认槽**的测试（跨操作原子）；普通程序测试零配合豁免（其
+        // 唯一槽写 if-absent 补缺对非缺席断言无害）。
         crate::vm::host_capabilities::test_default_slot_lock()
     }
 

@@ -119,9 +119,9 @@ mod plan779_provider {
     // v01(b) 低层双活与本文件 merge 测试承担。
 
     fn serialized_default_slot() -> std::sync::MutexGuard<'static, ()> {
-        // F-785-R1-01：改挂 crate 级共享锁——本文件的本地锁与 plan785/
-        // adapter 测试不相交=无互斥；高层入口测试会经 installer 双写
-        // frame+clipboard 两槽，必须同域串行。
+        // F-785-R2-01：crate 级共享测试锁——本文件高层入口测试 clear/set
+        // frame 槽（跨操作原子）；普通程序测试零配合豁免（install 的
+        // if-absent 补缺对非缺席断言无害）。
         crate::vm::host_capabilities::test_default_slot_lock()
     }
 
