@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-782
-status: executing
+status: execution_done
 feature_name: AC 文本与 record 组合：拥有型字段、移动与清理
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-14
 updated_at: 2026-10-15
-current_step: 6
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -162,7 +162,7 @@ T-01 先做有界完整路径探针：含两个 Str 的构造/深 clone、嵌套
 | [x] | T-04 | work | T-02/03 | ✅ 已完成 @3be6031d1：text_resources.rs 扩展（770 机器沿用，无第二套账本）——owned 根扩容至资源 record 局部（binding+move-in 参数）；`BodyResourcePlan` 增 `buffer_frees`（逐 Str 字段缓冲统一出口调度，P3 序：根逆创建、字段逆声明、嵌套展开）与 `replace_frees`（P4：RHS 物化后旧缓冲，整根重赋/字段替换/move 后重建三分支）；Move 包装统一进 moves 验证（use-after-move/double-move/循环重入杀根/join 一致性/短路条件 move 拒绝全套沿 770）；字段借用 backing 溯源（按根保守：替换/移根期间活跃借用 → mut-conflict）；字段视图逃逸门（owned/mut/move-in 来源 → borrow-escape）；ctor 字段裸转移门（ownership-required）；verify_text_record 接线 excl 定点走查+计划驱动能力派生；§5.2 字段读取视图化（FieldGet 终型 StrOwned→str + verify 兼容规则 + parser `.to` 组合面让路）与字段替换 AP-4。text_record_resources **25/25**（V-03/04/06/07/09：门与计划形状 oracle、直接 HIR 腿；运行期注入/计数= T-05）；全套 ac-core **419/0**、零警告、fmt clean | 03/04 |
 | [x] | T-05 | work | T-04 | ✅ 已完成 @a2fc74d6d：合并 lowering（text lowerer 扩展，旧 text/record 路径零变化）——§4.5 布局（Str 字段 12/8、资源 record 8 对齐、copyable 嵌套保持 4 对齐，checked u64/u32 上界）；record 局部=栈槽聚合、参数/结果=指针形（ABI-D/E、move-in *mut、out-slot 聚合返回）；RecordCtor（提升字段缓冲入临时聚合+转移）、RecordClone（位拷贝+逐 Str 字段 ac_rt_own_clone）、Move/Borrow 地址直传、FieldGet 按偏移装载视图/标量；出口 buffer_frees 与 RHS 后 replace_frees 逐字消费 T-04 计划；聚合临时语句尾 LIFO 释放；方法体定义+CLI build-source 组合域接线；新增 verify 门（view 模式 Str 参数入 ctor 字段=借用逃逸）。text_record_native **11/11**（V-02 值/trace、V-05 重叠精确 trace、V-09 短路零分配、V-10 256 深/4096 循环/0 次零分配、V-11 能力门+拒绝无制品、V-12 Token 微程序+直接 HIR 腿+新旧 profile 共存）；全套 ac-core **430/0**、零警告、fmt clean | 01..06 |
 | [x] | T-06 | work | T-05 | ✅ 已完成 @8558863ec（gate 修复基线 @836635a2e）：`scripts/verify-ac-text-record-782.ps1` + `docs/reports/782-text-record/verification.md`。最终基线 **25 步全绿 0 failed**（收据 gate-20261015-093737 绑定 HEAD 836635a2e，原始输出 raw-20261015-091943/）：两 workspace check/test/fmt 零警告（matcher 正负对照；ac-core **431/0** 四 text_record target 在场断言、runtime/text 20/20）；contained-executor 案例走查 11 例——TP01 旗舰 p01 PE exit 30 + 缓冲 id 多重集配对（泄漏/双释放零容忍）+obj/receipt 在场、TP02 重叠形态 exit 9、HP01 直接 HIR tr01 exit 2 精确 trace、TN01..08 钉码负例、profile 隔离（四旧域拒+未知 exit 2+域行）、capability 故意失败控制（exit 1+capability.missing+零制品）、SENTINEL 事务（失败 build 三件制品 hash 保持）、收据身份五针；旧五门实跑 771/741[-SkipMainGates]/745/767/770；**770 gate 归因裁定**——其 per-plan scope 步 allow-list 仅 770 路径、后继树按定义必败，本 gate 不改 770 已合入脚本，实跑全程断言唯一 [FAIL] 即 scope 步、被标 18 文件恰为本计划域内 artifact（同 git diff 重算对拍），实质步骤全绿（真实越界改动仍红=scope 不变式重基 782 域）；自有 scope 隔离+24 项输入/runtime-lib/合同/三 PE/gate 脚本 hash 入收据。**gate 工作发现并修复 T-05 缺口**：FieldGet 的 `Str` 拼写（verify 兼容规则两拼写等价）在合并 lowering 落标量臂→后续 text 操作 unreachable panic（Checked 不可 lowering，tr01 fixture 首跑抓获）；修复=视图装载臂扩 StrBorrow|StrOwn + 永久回归 `hir_fixture_str_typed_field_get_pe`（exit 2+精确 trace），全套 431/0 | 05/06 |
-| [ ] | T-07 | work | T-06 | reports/782-text-record/proposed-spec-delta.md冻结SD01..06；核对支持/拒绝/取证声明、源文件manifest及前置反例组合闭合；canonical不在此步发布；work交execution_done=7/9 | 06 |
+| [x] | T-07 | work | T-06 | ✅ 已完成 @9726a412c（收口 rebind @b025a85aa，相对 gate 绑定基线仅 verification.md 文档差）：`docs/reports/782-text-record/proposed-spec-delta.md` 冻结 SD-01..06——SD-01 新 source-text-record.md 合同（派生资源分类/完整根 move/深 clone/字段视图与替换/FieldGet 两拼写等价/唯一新码 partial-move+扩面七码）、SD-02 D-03/04/05/07 组合消费（标量 copy 适用域划界、backing 按根保守、owned_returns 扩 record 根）、SD-03 HIR 域/record_clone/move 包装形态与派生属性不信自称、SD-04 合并 lowering 已实证阶段范围（通用 pass/ACC 桥仍 planned）、SD-05 ac 工程能力面（runtime 23 符号零新增、770 gate 归因裁定）、SD-06 acc Token 取证与非目标；**附A 前置反例组合闭合核对九类零缺口**——唯一缺项 V-04"两层 wrapper 同源/异源 view-mut"由 @0318bcb93 补齐（mut 链两层：同源 verify.mut-conflict / 异源过，按 SOURCE 不按形式参数号，镜像 770 r4_p07/c02）；附B 源文件 manifest 与支持/拒绝声明对拍无材料冲突。canonical 未发布（归 T-09）。最终基线 gate 重跑 **25/25 全绿**（gate-20261015-100236 绑 9726a412c：ac-core **433/0**、runtime 20/20、旧五门+归因 770） | 06 |
 | [ ] | T-08 | review | T-01..07完成，writes暂停 | 原树独立审计AC01..06与SD、反例/永久测试oracle/遗漏债务/健康；pass→reviewed=8/9，needs_fix回work，不修改实现 | 07 |
 | [ ] | T-09 | merge | T-08 fresh pass与合入授权 | 实际合入/SD/导航/.autoos/specs.json/spec-index；archive状态和计数；批回归到期用regress；bash wt-guard clean后remove/branch/组清理收据，实际完成9/9 | 08 |
 
@@ -240,3 +240,10 @@ worktree_path:`D:/autostack/.wt/lang-782/auto-lang`；branch:`plan-782-dev`；ba
 task_ids:T-06。evidence：新 gate 25 步全绿 0 failed（verification.md §4 逐步表），绑定冻结基线 `836635a2e`（gate-20261015-093737）；ac-core 431/0（四 text_record target 在场）、runtime/text 20/20、双 workspace 零警告+fmt clean；11 个 gate 案例全过（TP01 exit30+缓冲配对、TP02 exit9、HP01 tr01 exit2 精确 trace、TN01..08 钉码、profile 隔离、capability 控制、SENTINEL、身份五针）；旧五门 771/741[-SkipMainGates]/745/767/770 实跑全过。
 裁定记录（review 需知）：①**770 gate scope 归因**——770 脚本 scope 步 allow-list 仅 770 路径，后继树按定义必败（本计划 18 个域内 artifact 被标）；本 gate 不修改已合入的 770 脚本（旧面字节不变），实跑全程并断言唯一 [FAIL]=scope 步、被标集与同 git diff 重算一致且 ⊆782 允许清单——真实越界改动仍令本步红，scope 不变式重基 782 域；770 尾部 hashes 步（纯记录）中止由本 gate 步骤 25 覆盖。②**T-05 缺口修复 @836635a2e**——FieldGet `Str` 拼写（verify 兼容两拼写）在 TStep::Field 落标量臂→text 操作 unreachable panic（违反 Checked 可 lowering 合同；tr01 fixture 拼写恰为 Str，HP01 首跑抓获）；修复=视图装载臂扩 StrBorrow|StrOwn，永久回归 hir_fixture_str_typed_field_get_pe（tr01 端到端 exit 2+精确 trace）。③gate 脚本 PS 5.1 陷阱（[string] 参数默认空串致 $null -ne 守卫失效）第 1 轮 13 步后暴露，IsNullOrEmpty 修复后第 2/3 轮全绿；三轮原始输出在 receipts。
 blockers:无。next_responsible_role:work（T-07：proposed-spec-delta.md 冻结 SD-01..06 + 支持/拒绝/取证声明核对 + 源文件 manifest + 前置反例组合闭合核对；完成后交 execution_done=7/9）。
+
+2026-10-15，stage:work，plan_id:PLAN-782，plan_revision:1，outcome:pass（T-06+T-07 完成=7/9，work 交付，交 final review）。
+worktree_path:`D:/autostack/.wt/lang-782/auto-lang`；branch:`plan-782-dev`；base_commit:`4568e4ea7`；code_commit:`b025a85aa`（gate 绑定基线 `9726a412c`，其后仅 verification.md rebind 文档差）。dependency_revisions:同 T-01 收据；runtime/text 零改动。
+task_ids:T-06、T-07。evidence：T-06——新 gate `scripts/verify-ac-text-record-782.ps1` 25 步 + `verification.md`（绑定链：836635a2e→gate-20261015-093737 431/0，9726a412c→gate-20261015-100236 **433/0** 最终）；T-07——`proposed-spec-delta.md` SD-01..06 冻结 + 附A 反例闭合零缺口 + 附B manifest。
+就绪记录（work-owned）：AC-01..06 全部有测试/gate 证据（verification.md §2 逐 V 落点、§4 逐步表）；合同内开口=零（V-04 两层 wrapper 缺口已补 0318bcb93，Str-拼写 lowering 缺口已修 836635a2e 带永久回归）；前置反例九类组合闭合（delta 附A）；未决合同决策=无。review/merge-owned 待办（不阻塞本交接）：T-08 独立复审（冻结于 b025a85aa）；T-09 合入+canonical 沉淀+归档；主仓裸 cargo t 等 merge-owned 门禁按 2026-10-14 裁定由 merge 在冻结提交执行（本计划不触 crates/，根档不适用）；批回归到期判定归 regress。
+裁定携带（review 需复核）：①770 gate scope 归因消费（verification.md §4b——真实越界仍红）；②Str/str 两拼写 FieldGet=视图读取（836635a2e）；③770 r4_p07 形状在组合域需 mut 链转发（view 参数不可 mut 再借——0318bcb93 测试形状与 770 text 域形状的差异属域规则，非合同放宽）。
+blockers:无。next_responsible_role:review（T-08：独立上下文、同一实施树，冻结 b025a85aa 审计 AC01..08/SD01..06/反例 oracle/遗漏债务/健康；pass→reviewed=8/9）。
