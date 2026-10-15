@@ -3805,7 +3805,11 @@ impl<'c> TextEmitter<'c> {
                     let faddr = self.fb.ins().iadd_imm(addr, off);
                     let flags = cranelift_codegen::ir::MemFlags::trusted();
                     match value_of_type_use_text(&e.ty, self.module) {
-                        Some(Vt2::StrBorrow) => {
+                        // a Str-field read spelled either way (verify's
+                        // 782 compatibility accepts `Str` and the retagged
+                        // `str`) is a borrowing view — a read never copies
+                        // the owner, so both spellings load (ptr, len).
+                        Some(Vt2::StrBorrow | Vt2::StrOwn) => {
                             let ptr = self.fb.ins().load(types::I64, flags, faddr, 0);
                             let len = self.fb.ins().load(types::I32, flags, faddr, 8);
                             slots.insert(id.0, TVal::T { ptr, len });

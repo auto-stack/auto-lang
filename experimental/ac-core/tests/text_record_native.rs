@@ -492,3 +492,40 @@ fn v12_direct_hir_leg() {
         "direct-HIR lifecycle pairing"
     );
 }
+
+#[test]
+fn hir_fixture_str_typed_field_get_pe() {
+    // T-06 gate-work defect lock: the committed T-02 fixture spells the
+    // owned-field READ `field_get { type: Str }` — verify's compatibility
+    // accepts both spellings (the retagged `str` and the declared `Str`),
+    // so the merged lowering must treat them as the same borrowing view.
+    // Before the fix the Str spelling fell into the scalar arm and the
+    // consuming text op hit an unreachable panic (native lowerer contract
+    // breach on a Checked bundle).
+    let dir = temp_dir("hir-str-field");
+    let lib = common::text_runtime_lib();
+    let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/text-record-hir/valid/tr01-combination.atom");
+    let exe = dir.join("tr01.exe");
+    let mut c = Command::new(EXE);
+    c.args([
+        "build",
+        &src.display().to_string(),
+        "--entry",
+        "d_main",
+        "--capability",
+        TEXT_CAP,
+        "--support-lib",
+    ])
+    .arg(&lib)
+    .arg("--output")
+    .arg(&exe);
+    let b = run_deadlined(c, Duration::from_secs(300)).expect("spawn build");
+    assert_eq!(b.code, 0, "tr01 fixture build:\n{}", b.stderr);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 2, "consume(t.move) = \"hi\".len() = 2");
+    assert_eq!(
+        run.stderr, "LIT len=2\nLIT id=1\nTEXT-SCALARS n=2\nFREE id=1\n",
+        "make LIT, view read, callee frees the move-in root"
+    );
+}
