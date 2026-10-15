@@ -102,7 +102,7 @@ fn grammar_core_basic_fn_parses() {
     use ac_syntax_rt::snapshot::{PageStore, Snapshot};
     let p = compiled("auto-core");
     let cs = CompiledScanner::compile(&p).unwrap();
-    let text = "fn add(a: int, b: int) int { return a + b }\nfn main() int { let x = add(2, 3) * 4\nreturn x }";
+    let text = "fn add(a int, b int) int { return a + b }\nfn main() int { let x = add(2, 3) * 4\nreturn x }";
     let snap = Snapshot::from_text(&std::rc::Rc::new(PageStore::new()), text);
     let out = parse_snapshot(&p, &cs, &snap, &Budget::default()).unwrap();
     assert!(out.tree.diags.is_empty(), "{:?}", out.tree.diags);

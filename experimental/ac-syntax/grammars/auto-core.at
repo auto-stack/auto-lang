@@ -104,7 +104,6 @@ grammar(name: "auto-core", revision: 1, newline: true, stmt-end: ["semi", "rbrac
         param-tail { comma() {} param() {} }
         param {
             ident(field: "name")
-            colon() {}
             type(field: "ty")
         }
         type {

@@ -241,6 +241,8 @@ struct Frame {
     rep_save: Option<Save>,
     /// Optional 步起点状态：item 失败回滚到步起点（非 alt 入口）。
     opt_save: Option<Save>,
+    /// 帧进入时的覆盖起点（含 pending 前导 trivia）——声明单元 origin 用。
+    cover_from: u64,
     pushed_active: bool,
     is_decl_frame: bool,
     // pratt 状态
@@ -456,6 +458,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                 list_started: false,
                 rep_save: None,
                 opt_save: None,
+                cover_from: 0,
                 pushed_active: false,
                 is_decl_frame: false,
                 pratt_vals: Vec::new(),
@@ -470,6 +473,12 @@ impl<'p, 'a> Machine<'p, 'a> {
         self.active_rules.push((rule, self.i));
         let save = self.save();
         let is_decl = self.stack.len() == 1;
+        // 覆盖起点：pending 首个 trivia（前导）或当前 token。
+        let cover_from = if let Some(&p0) = self.pending.first() {
+            self.toks[p0 as usize].start
+        } else {
+            self.toks.get(self.i).map(|t| t.start).unwrap_or(0)
+        };
         if is_decl {
             let cur_new = if self.pending.is_empty() { self.i } else { self.pending[0] as usize };
             let hit = self.graft.as_ref().and_then(|gi| {
@@ -494,6 +503,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             list_started: false,
             rep_save: None,
                 opt_save: None,
+                cover_from: 0,
             pushed_active: true,
             is_decl_frame: is_decl,
             pratt_vals: Vec::new(),
@@ -520,6 +530,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             list_started: false,
             rep_save: None,
                 opt_save: None,
+                cover_from: 0,
             pushed_active: false,
             is_decl_frame: false,
             pratt_vals: Vec::new(),
@@ -620,6 +631,9 @@ impl<'p, 'a> Machine<'p, 'a> {
         let mut max_end = 0u64;
         for (c, _) in &children {
             let nd = self.nodes[*c as usize];
+            if nd.flags & FLAG_TRIVIA != 0 {
+                continue; // 语义 span 不含 trivia（无损覆盖由孩子序列承担）
+            }
             if nd.len > 0 || nd.child_count > 0 || nd.start > 0 {
                 let s = nd.start as u64;
                 let e = s + nd.len as u64;
@@ -661,7 +675,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             }
             if trace && steps <= cap {
                 let f = self.stack.last().unwrap();
-                let st = if f.is_pratt() { format!("pratt {:?}", f.pratt_stage_variant()) } else { format!("r{} a{} s{}", f.rule, f.alt, f.step) };
+                let st = if f.is_pratt() { format!("pratt {:?} vals={:?} ops={:?}", f.pratt_stage_variant(), f.pratt_vals, f.pratt_ops.iter().map(|o| (o.0, o.3)).collect::<Vec<_>>()) } else { format!("r{} a{} s{}", f.rule, f.alt, f.step) };
                 let pk = self.toks.get(self.i).map(|t| (t.token, t.start, t.line)).unwrap_or((u32::MAX, u64::MAX, 0));
                 eprintln!("#{steps} {} i={} pk={:?} last_line={} bracket={} stack={} nodes={}", st, self.i, pk, self.last_line, self.bracket, self.stack.len(), self.nodes.len());
             }
@@ -782,6 +796,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                 if kind >= 1 {
                     // 分隔 token 消费（仅 sep_consume=`;`；`}` 是边界不消费，
                     // 留给块规则的右括号步骤）。
+                    let mut consumed_sep = false;
                     loop {
                         match self.peek() {
                             Some(pk) if self.p.newline.sep_consume.contains(&pk.token) => {
@@ -789,14 +804,17 @@ impl<'p, 'a> Machine<'p, 'a> {
                                     self.fail_alt();
                                     return Ok(());
                                 }
+                                consumed_sep = true;
                             }
                             _ => break,
                         }
                     }
-                    // ListNewline：第二项起需 `;`/`}`/换行 分隔。
+                    // ListNewline：第二项起需 `;`（已消费）/`}`/换行 分隔——
+                    // 已消费分隔符即满足（`; x` 同行合法）。
                     if kind == 2 && self.stack.last().unwrap().list_started
                         && self.p.newline.significant
                         && self.bracket == 0
+                        && !consumed_sep
                     {
                         if let Some(pk) = self.peek() {
                             let stmt_end = self.p.newline.stmt_end.contains(&pk.token);
@@ -1149,7 +1167,9 @@ impl<'p, 'a> Machine<'p, 'a> {
         let node = self.alloc_node(kind, children, None, false);
         if is_decl {
             // 声明单元登记：相对化 [node_start..=node]，写 decl 索引。
-            let origin = self.nodes[node as usize].start as u64;
+            // origin 取孩子最小起点（**含前导 trivia**——语义 span 已排除
+            // trivia，用节点自身 start 会把前导 trivia 截断错位）。
+            let origin = self.stack.last().unwrap().cover_from;
             for n in &mut self.nodes[node_start..] {
                 if n.start as u64 >= origin {
                     n.start = (n.start as u64 - origin) as u32;
@@ -1466,23 +1486,27 @@ impl<'p, 'a> Machine<'p, 'a> {
             (op, lhs, rhs)
         };
         let ((_, _, op_leaf, op_tok, op_trivia), lhs, rhs) = popped;
-        let missing_id = {
-            let op_start = self.nodes[op_leaf as usize].start;
-            let m = CstNode {
-                kind: KIND_MISSING,
-                start: op_start,
-                len: 0,
-                first_child: 0,
-                child_count: 0,
-                expected: TOKEN_KIND_BASE + op_tok,
-                flags: FLAG_MISSING,
-                decl: 0,
-            };
-            self.nodes.push(m);
-            (self.nodes.len() - 1) as u32
+        // missing 补位**惰性**分配：预分配会在正常归约中留下孤儿 MISSING 节点，
+        // 污染 has_error_nodes（strict 投影误拒）。
+        let (lhs, rhs) = match (lhs, rhs) {
+            (Some(l), Some(r)) => (l, r),
+            (l, r) => {
+                let op_start = self.nodes[op_leaf as usize].start;
+                let m = CstNode {
+                    kind: KIND_MISSING,
+                    start: op_start,
+                    len: 0,
+                    first_child: 0,
+                    child_count: 0,
+                    expected: TOKEN_KIND_BASE + op_tok,
+                    flags: FLAG_MISSING,
+                    decl: 0,
+                };
+                self.nodes.push(m);
+                let mid = (self.nodes.len() - 1) as u32;
+                (l.unwrap_or(mid), r.unwrap_or(mid))
+            }
         };
-        let lhs = lhs.unwrap_or(missing_id);
-        let rhs = rhs.unwrap_or(missing_id);
         let mut kids = vec![(lhs, NO_FIELD)];
         for t in op_trivia {
             kids.push((t, NO_FIELD));
