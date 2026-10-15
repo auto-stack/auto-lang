@@ -341,6 +341,8 @@ stage=review | review_scope=historical-final-audit | reviewer_identity=本次独
 
 T-21 若走合同修订路线（10MiB 全章扫描成本不可接受），修订内容须用户显式裁定后方可执行——审计明文禁止静默降级（F-781-R03）。
 
+**READER-001 路由补充（章索引 meta 设计，2026-10-15 用户裁定方向）**：F-781-R03 成本问题的根因在 Reader 侧章视图不落盘——`chapter_json`/`library_toc` 每请求 `content_of` 全文 + `parse_book_json` 整书重解析+整书 JSON 中间态往返（导入路径函数被读路径 naïve 复用；与传输格式无关）。用户裁定修复方向（781 不实施，001 承接）：**导入时一次扫描产出每书 meta 边车文件**（建议 `<book_id>.meta.json`），含书级统计（total_chapters/total_words）+ 每章 `{number,title,offset,length,word_count}`（偏移单位与 substr 语义一致；trim 口径与现 parse_book_json 逐字对齐）+ source_sha256 与受管副本互证——**副本不可变+hash 钉死 ⇒ 索引永免失效逻辑**。此后 toc/章 GET/书与章统计全部直读 meta（章 GET = read+substr+trim+escape，变体 A 零新原语，预计单章 <1s；变体 B 加 `fs.read_range` 原语真 O(章)，原语交付归 auto-lang）。meta 损坏处置（refuse+幂等重建 vs 拒服务）归 001 裁定。**联动**：该修复落地后 T-21 路线 1（10MiB 全量逐章）从 ~67h 降至分钟级——验证成本随性能修复自然消失。
+
 **F-781-D01（2026-10-15 新发现；同日结案）**：~~`@scrollctl:` 前缀 controller 句柄使 iced scroll 操作全局静默失效~~ **已结案**（详见 §9 事故记录结案段）：主根因为探针参数名错读（观测假象，框架未坏）+ 两个真缺陷（pane 样式双写钳死 Fixed 高 pane 的可滚动性；visibility 归属解析与发布空间错位）——三处修复均落 T-19 范围内（探针/aura 层/MCP 观测面），未涉 iced 上游或 app shell 架构层，无需 needs_replan。T-19 W-01 解阻。
 
 T-09负责动作/帧identity/布局freshness的复用边界；T-01冻结子key公共接口/代际/nearest；T-14冻结有限profile、同步/分片与配置/期限/取消的whole-path可行性（✅ 已冻结于 reports/781-budget-decision.md）。三项均为后续接线硬前置，不把未结束研究计为已实现。共享776/742/778/779热点入场对账；未释放则具名记录受阻任务。
