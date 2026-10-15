@@ -14,6 +14,7 @@
 | a2r-std | active | 7 | [a2r-std/project.md](a2r-std/project.md) |
 | stdlib | active | 8 | [stdlib/project.md](stdlib/project.md) |
 | aavm | experimental | 11 | [aavm/project.md](aavm/project.md) |
+| project-model | active（pilot） | 0 | [project-model/project.md](project-model/project.md) |
 
 <details><summary>auto-lang 模块明细</summary>
 

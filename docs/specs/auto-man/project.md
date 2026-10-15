@@ -100,6 +100,24 @@ opens: ".txt,.md,.at,.json"
   声明集 → 拒绝并 toast；未声明 app id → 未知应用拒绝。
 - 与 PLAN-015 四名称契约正交：同为平铺 `key: value` 行读键，互不依赖。
 
+## 静态项目模型 pilot（PLAN-780）
+
+现有依赖声明门、pac 字段/展示和构建协议全部保持；本节新增 pilot 说明：
+
+- `project_model_adapter` 为**显式旧新探针**：旧臂 `AutoConfig`→`Pac`，
+  新臂轻模型（`crates/auto-project-model`，见
+  [project-model spec](../project-model/project.md)），只在冻结域比较；
+  **生产默认读取保持原路径**（pac.rs/vue.rs/rust_ui.rs 等零切换）。
+- static 成功逐冻结字段比较；dynamic/unsupported 只分类，不计相等；
+  读取/编码失败使 required corpus 门失败（不以空配置代替）。
+- 双拒/模板特例仅允许**完整仓根相对路径精确命中**的有限清单；双拒绑定
+  预期新臂 stage；其他意外拒绝必须失败调查。同名/同后缀影子不得获得豁免。
+- 当前有限特例为 clib 模板、dynamic-expressions fixture（模板/旧臂拒绝），
+  以及 bad-missing-brace/bad-missing-value fixture（双拒，value stage），
+  实际文件身份在 adapter 测试清单维护；不允许泛化为任意双臂 Err 均成功。
+- 文本副本消除与动态管线后续按 T04 owner map 另立迁移计划。当前模型独立
+  消费成立，不等于 auto-man 仓库拆分或生产切换完成。
+
 ## 模块架构
 
 ```mermaid
