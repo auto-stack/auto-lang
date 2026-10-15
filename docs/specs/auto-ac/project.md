@@ -120,6 +120,20 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 - text-record 组合未立项：770/771 各自 pass 不构成组合验收，第二合入者
   必须在新整合基线重放全门禁并重新 review（774 interface-contract §6）。
 
+## text-record 组合 profile（PLAN-782）
+
+- [source-text-record.md](source-text-record.md)：拥有 Str 字段 record 的
+  首批有限组合合同——派生资源分类（传递闭包）、完整根显式 move/深 clone、
+  拥有形态 allowlist（let/assign/return/ctor 四位）、字段视图与替换（字段
+  写永不复活已移出根）、770 清理不变式全套扩展至资源 record 根、统一
+  跨类型 LIFO、短路聚合临时跨嵌套存在标记、故障双通道（CLI 测试面注入
+  既有 runtime 控制符号 + 组合域部分输出 trap 前回滚）。
+- source/HIR→native 闭环经 25 步联合门禁 11 例与 90 测试实证
+  （V-01..V-12，含 5 个真实故障注入 oracle）；runtime/text 23 符号零新增。
+- 770 gate 的 per-plan scope 步在 successor 树按**归因裁定**消费：782
+  gate 实跑其全程，断言唯一 [FAIL] 即该步、被标集恰为本计划域内 artifact
+  且 ⊆782 允许清单（真实越界仍红）。
+
 ## 数据/资源合同（PLAN-774）
 
 - [data-resource-contract.md](data-resource-contract.md)：文本/标量聚合首批的

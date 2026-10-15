@@ -106,6 +106,25 @@ scalar 身份域与运算扩面；完整 HIR（全 A 子集、来源表、跨模
 - 文档样例源：`docs/design/strategy/hir-examples/*.atom`（01-add / 01-add.explicit / 02-control /
   03-call-order）+ `experimental/ac-core/fixtures/{valid,invalid}/`（拒绝矩阵物化）。
 
+## text-record 组合域（PLAN-782）
+
+- `HirDomain::TextRecord`（schema `auto.hir.text-record.draft` / revision 1 /
+  profile `text-record-i32-draft`；descriptor = text ∪ record 全节点集 +
+  `expr.record_clone {record, base}` 与 `expr.move {inner}` 包装两新 case，
+  旧四 descriptor 零改动）。
+- 名义 record 类型在组合域可含 Str/char 字段；field place 组合段
+  （field-owner 逐段验证扩资源段）；资源分类为 verify 从 RecordShape 推导
+  的**派生属性**——输入 Bundle 的"自称"（copyable/owned/checked）不参与，
+  变异面（V-08）实证。
+- move 的单一表示：let/assign/return/实参位整体根转移统一走 `expr.move`
+  包装（`CallBinding.moved` 在本域禁用）；`RecordClone` 程序化 Bundle 可
+  直接构造。
+- 拥有形态 allowlist（let/assign/return/ctor 字段位）：RecordCtor /
+  RecordClone / Call / Move——裸局部与 FieldGet（视图）前门拒。
+- 结构/引用界检**先于**语义规则（畸形 Move.inner/binding 越界等 →
+  `verify.bad-reference` 受控拒，不 panic）；`check_profile_ops` 四域化
+  （旧四域对新节点零接受）。旧四域接受/拒绝集合零改动。
+
 ## 阶段契约
 
 公共 HIR 的阶段边界、pass 合同模板与非法变换负面清单见

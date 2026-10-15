@@ -140,6 +140,34 @@ record 布局：字段按声明序、各字段自对齐；`align(R)=max(字段�
   首个 profile 回归；非文本冲突回 new 修订。组合 text-record/List/enum/use：
   后续 owner（两分支单独通过不构成组合能力）。
 
+## 组合消费规则（PLAN-782 text-record）
+
+在 D-03/04/05/07 之上追加组合域消费（保留全部 774 探针身份与既有承诺）：
+
+- **D-03 增行（record 字段语境）**：Str 字段拥有（构造/clone/move 单位=完整
+  根）；字段读取为借用视图；`str` 字段拒绝面扩至 RecordShape。move-in 资源
+  record 参数=callee 根（callee 出口逐 Str 字段缓冲清理）。
+- **D-04 增行（字段来源对偶）**：字段借用 backing 溯源到根（构造代际沿
+  770）；活跃字段借用期间整个根 mut/move/替换保守拒绝（不承诺同根不相交
+  字段借用拆分）；来源五类的组合对偶全套沿 770，owner 集合扩至资源 record
+  根；owned_returns 扩 record 根（out-slot 转移）。**字段写永不复活已整体
+  move 出的根**（verify.use-after-move；仅完整根重赋可重建）。
+- **D-05 适用域划清**：标量 copy（赋值=拷贝）仅保留在无资源类型；资源
+  record inline 聚合但 Str 字段含内部拥有 buffer——显式 move=责任转移零位
+  拷贝、显式 clone=逐字段深复制；布局沿声明序公式（Str 字段 12/8、资源
+  record 8 对齐、copyable 嵌套保持 4 对齐，checked u64/u32）。
+- **统一清理序**：语句临时（文本+聚合）与函数出口（plain-Str 根+record 根
+  字段缓冲）均按**跨类型创建序** LIFO；短路聚合临时带跨嵌套组合的存在
+  标记（外层 join 转发内层标记值、外层 skip 恒 0）。
+- **故障双通道**：注入经 build 工具测试面（wrapper 前奏调用既有
+  ac_rt_set_budget/fail_nth_alloc/fail_ledger_nth，无语言入口）；组合域
+  status 失败的**部分输出**（语句 pending 临时）在 fatal trap 前逆序回收、
+  旧目标不提交；回滚后仍 RT-FAIL+ExitProcess(70)（无 Result/unwind；live
+  根依赖 OS 回收）。纯 text 域 trap 合同原样。
+- **D-07 增行**：模块含任意资源构造/clone/清理义务 ⇒ 派生
+  `requires: ["ac.runtime.text.v1"]`（纯 copyable 模块零需求；caller 声明
+  不可绕过——双触发门沿 770）。
+
 ## 探针实证状态
 
 crate `experimental/ac-core/probes/data-resources/`（独立 workspace + no_std

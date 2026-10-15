@@ -110,6 +110,19 @@ X1 分支 trap 提升；X2 命名参数按声明序重排；X3 变换后沿用�
 X4 输入 checked 标记越权；X5 未知 effect 当 pure；X6 公共 HIR 泄漏低层布局；
 X7 后端补做名字解析/typecheck；X8 凭证来自输入标记而非本进程 verify。
 
+## text-record 组合域阶段责任（PLAN-782，已实证范围）
+
+- binder 绑定组合 descriptor（record ∪ text 节点集 + record_clone/move）；
+  verify 前门执行结构/类型/资源分类/借用与所有权走查（excl 定点 + 计划
+  驱动能力派生；拒绝时 native 调用计数 0；结构界检先行防畸形 panic）。
+- native 阶段为**合并 lowering**（组合域经 text lowerer 扩展，旧 text/
+  record 路径零变化）：栈槽聚合局部、指针形参数/结果（ABI-D/E，move-in
+  `*mut`）、逐出口 buffer_frees 与 RHS 后 replace_frees、跨类型创建序
+  统一的语句尾/出口 LIFO、短路聚合临时存在标记（跨嵌套组合）、组合域
+  status 失败部分输出 trap 前逆序回滚 + 旧目标不提交——真实 PE 实证
+  （256 深/4096 循环/0 次零分配/真实故障注入）。
+- 通用 pass（跨域 lowering/优化）与 ACC 桥仍 planned。
+
 ## 边界与已知限制
 
 不冻结桥编码/字段编号；Effect 全集、多模块 Bundle 身份、宽度映射待实施计划裁定；

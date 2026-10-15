@@ -104,6 +104,16 @@ static fn/方法调用/位置与命名构造拼写、名义 record 语义（结�
 实例方法仍为前置，Gen1/GOAL-017 不关闭。实现收据见
 [verification.md](../../reports/771-record/verification.md)。
 
+## text-record 组合取证（PLAN-782）
+
+[source-text-record](../auto-ac/source-text-record.md) 在组合域证明内部
+数据结构可携带拥有文本：`type Token { text Str; kind/line/at/len int }`
+形状微程序（static/instance 方法 + clone + move，exit 57 精确值/trace）与
+直接 HIR 腿真实 PE。required **不因组合证据改项**：enum（TokenKind）、
+List/Map、use/多模块、可变实例方法、真实 lexer/parser 主体、Gen1-3 仍为
+前置；GOAL-017 不关闭，ACC 桥仍 planned。实现收据见
+[verification.md](../../reports/782-text-record/verification.md)。
+
 ## 数据/资源合同取证（PLAN-774）
 
 D-01..07 共同合同已在 774 冻结并经真实 COFF/PE 探针实证（Rust AC 原型域；
