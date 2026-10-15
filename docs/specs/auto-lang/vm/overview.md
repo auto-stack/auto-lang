@@ -76,6 +76,22 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 
 - 退出审计三挂点（plan-575）：`vm/ffi/stdlib.rs` `exit_audit`/`exit_audit_path`/`install_exit_audit_panic_hook`——`Process.exit` shim（site=vm_process_exit）、全局 panic hook（code=101+消息+位置，链式保留既有 hook）、desktop 装配管线 `run_session` 正常返回（site=main_return，实机 shutdown 端到证）三 site 落笔；路径 env `AUTO_DESKTOP_EXIT_LOG`（缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log），写失败静默=零行为变更（G3）；用途=静默退出归因常驻取证面（526 降档🟡 疑外部击杀，真实复现审计指认 site 即重启归因；台账 scratch/p575/ledger.jsonl）。
 - TestCase 协议 pilot 的 VM 侧观测通道（Plan 773，Design 35 A）：`run_with_capture_and_path_staged` 为 `run_with_capture_and_path` 的 staged 孪生（旧 API 签名/行为原样）——engine 陷阱点在 typed `VMError` 仍存活处记录变体名（`task.last_error_code`），经线程内中继随失败带出，构成 run 阶段强 oracle 的**类型化** code 通道（`vm_error_code`）；`.as` lower、result/stdout 观测、产物注册（执行过即注册，PASS/FAIL 皆然）与 avm/run adapter 见 `src/test_cases/avm.rs`。pilot 语料经 `cases/pilot/` 引用式合同原位消费旧 vm 目录（不动 wrapper/发现式 corpus runner 门禁）；旧 `expected.error`（any-Err，内容忽略）类弱断言在 pilot 轨必须强化为 stage+code/message 强辨识后才算已证。档位：`cargo tv` 经 `vm_file_tests::pilot_aggregate_vm` 触达 avm 半部。
+- frame native 9918/9919 为标量宿主能力 pilot（PLAN-779，Design 37 §4）：core shim 经 `vm::host_capabilities::FrameProvider` 供值，不再直引 UI 的 frame_bench；canonical 名/固定 ID/int 单槽/i32 上界饱和/未捕获 0 全保持。装配三层优先关系（显式 set 恒胜 / 兼容 if-absent 同锁补缺 / 实例独立）详见下节 [Frame native 宿主能力装配（PLAN-779）](#frame-native-宿主能力装配plan-779)。
+
+## Frame native 宿主能力装配（PLAN-779）
+
+frame native（9918/9919，`auto.frame.begin_ms/present_ms`）是 native/宿主解耦的首个 pilot（Design 37 §4 四层：定义/适配/实现/装配）。core shim 通过 `vm::host_capabilities::FrameProvider` 读取 begin_ms/present_ms，**不直接引用 UI 的 frame_bench 实现**；canonical 名称、固定 ID、int 单槽编码、i32 上界饱和（`.min(i32::MAX)`）及未捕获 0 语义保持。
+
+`NativeInterface` 持 per-VM provider 槽：`AutoVM` 构造期快照当前进程默认，实例 `set_frame_provider` 可覆盖；之后的进程默认变化不影响已建实例（两 VM 可持不同 provider 不串线）。`NativeInterface` 深克隆保留 provider，VM merge 保留目标实例 provider；provider 替换**不**更改 shim 绑定身份、**不** bump `binding_revision`——register/merge 原有 contract/proof 失效规则保持。
+
+装配分三层（优先关系契约，R2 复审冻结）：
+
+1. 显式 `set_process_default_frame_provider` 是替换接口，后显式注册者胜（权威 API；强制替换唯一通道）。
+2. `set_process_default_frame_provider_if_absent` 只在空槽补缺，检查与写入在同一写锁临界区完成（无 check-then-install 并发窗口）。**兼容安装不得覆盖调用方显式选择**。
+3. 实例 provider 独立于之后的默认变化，可在该 VM 上显式覆盖。
+
+无 provider 的原始 Core/no-ui 路径读 0；高层入口是否安装兼容默认由组合宿主负责（见 ui/overview 的装配位置清单）。`FrameProvider` 的 `Send + Sync` 只约束 provider 自身可共享，不改变 VM 线程亲和，不承诺 VM 跨线程迁移。本 pilot 不外推 heap handle、media 或 async 寿命已解决。验证边界：外部 no-ui 独立 manifest 与同源 UI 库链接的 consumer 各 6/6、门开程序轨/bridge 真值控制、默认优先关系/实例/有限并发控制（R3 独立补控）；独立 fixture 全新锁的 ui-iced 依赖解析（windows-core 双实例）**未**在本次验收通过，作为后续 fixture/发行依赖身份检查事项保留。
+
 
 ## 布尔短路求值语义（plan-615）
 

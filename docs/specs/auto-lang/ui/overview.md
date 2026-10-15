@@ -49,6 +49,16 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   档 §10 回执预告位在档）。
 - **顺手修复**：703 对齐行走字符中间切片隐患（leaf 比较改字节基）。
 
+## 现状（2026-10-15）——frame provider 宿主装配（PLAN-779）
+
+> UI 侧 frame 宿主能力装配契约（Design 37 §4 pilot；VM 侧契约见
+> vm/overview 的 Frame native 宿主能力装配节）。SD-02。
+
+- **adapter**：`ui::frame_provider::FrameBenchProvider` 从既有 `frame_bench` 通道读取；捕获开关（`AUTO_FRAME_BENCH` 门控零开销）、时源、renderer note 语义不变。`install_process_default` 统一调用 if-absent——**兼容默认只补空槽，不覆盖调用方显式选择**（优先关系契约见 vm/overview 三层清单）。
+- **自动装配位置**：VmBridge 两构造（`new_with_children`/`new_from_decls`）、`run_file_dynamic_ui_inner`、CLI ui-iced 入口（auto crate main），以及 crate 根组合助手 `install_ui_host_capabilities`。根助手覆盖 run 家族执行漏斗（`execute_autovm_with_deadline`）、test/debug、`create_vm_from_source/abt`、配置求值、REPL、解释器、back_proxy 的宿主创建路径；ui 构建提供兼容默认，no-ui 构建助手为 no-op。**不得**沿用"仅前三点注入、其余库程序轨须自行注册"的早期不完整描述。
+- **调用方保证**：高层入口前设置显式默认，UI 开/关两种构建均保持真实供值；无人注册时 UI 宿主恢复 frame_bench 默认，门开可读真值。原始 AutoVM 仍只按构造时默认快照，UI 实现不接回 vm core。
+- **未迁边界**：本 pilot 仅迁 VM frame 两函数——a2r_std 及生成 handler 的 frame 直接臂保留；clipboard、scroll、editor、terminal 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
+
 ## 现状（2026-10-11）——remote-frame 宿主侧远程帧消费元件（PLAN-760）
 
 > `.at` 元件谱新增 **`remote-frame`**（宿主侧远程帧消费面——auto-musk
