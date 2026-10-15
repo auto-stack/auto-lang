@@ -880,14 +880,14 @@ fn main() int {
         "LIT len=2\nLIT id=1\nLIT len=2\nLIT id=2\nCLONE len=2\nCLONE id=3\nCLONE len=2\nCLONE id=4\nTEXT-SCALARS n=2\nFREE id=4\nFREE id=3\nFREE id=2\nFREE id=1\n",
         "exact fit: full lifecycle pairing"
     );
-    let exe6 = dir.join("b6.exe");
-    build_tr_inj(&src, &exe6, None, Some(6), None);
-    let run6 = run_pe(&exe6);
-    assert_eq!(run6.code, 70, "one byte short traps");
+    let exe7 = dir.join("b7.exe");
+    build_tr_inj(&src, &exe7, None, Some(7), None);
+    let run7 = run_pe(&exe7);
+    assert_eq!(run7.code, 70, "one byte short traps");
     assert_eq!(
-        run6.stderr,
+        run7.stderr,
         "LIT len=2\nLIT id=1\nLIT len=2\nLIT id=2\nCLONE len=2\nCLONE id=3\nCLONE len=2\nRT-FAIL code=-4\nFREE id=3\n",
-        "ERR_BUDGET (-4) distinct from env-OOM (-5); rollback still runs"
+        "ERR_BUDGET (-4) distinct from env-OOM (-5); the 4th 2-byte request is denied with exactly ONE byte of headroom missing; rollback still runs"
     );
 }
 
@@ -931,4 +931,243 @@ fn main() int {
     let zrun = run_pe(&zexe);
     assert_eq!(zrun.code, 0, "zero-length = zero allocations = no failure");
     assert_eq!(zrun.stderr, "LIT len=0\nLIT len=0\nTEXT-SCALARS n=0\n");
+}
+
+// -- F-782-R2-01: the aggregate presence marker COMPOSES through nested
+// -- short-circuit joins (an outer RHS executing does not mean an inner
+// -- RHS did); loop take->skip across iterations stays free-less.
+
+#[test]
+fn f782_r2_01_nested_marker_composition() {
+    let dir = temp_dir("f-r2-01");
+    let cases = [
+        // inner take->skip under a constant-true outer && (R2 original 1)
+        (
+            "nested_and",
+            r#"type T { s Str; n int }
+fn yes() bool { return true }
+fn cond(i int) bool { return i == 0 }
+fn check(t T) bool { return t.n > 0 }
+fn main() int {
+    let a T = T { s: "abc", n: 1 }
+    var i int = 0
+    loop {
+        if yes() && (cond(i) && check(a.clone())) { i = i + 1 } else { i = i + 1 }
+        if i == 2 { break }
+    }
+    return a.s.len()
+}
+"#,
+        ),
+        // inner take->skip through a negated || (R2 original 2)
+        (
+            "nested_or_take_skip",
+            r#"type T { s Str; n int }
+fn yes() bool { return true }
+fn cond(i int) bool { return i == 0 }
+fn check(t T) bool { return t.n > 0 }
+fn main() int {
+    let a T = T { s: "abc", n: 1 }
+    var i int = 0
+    loop {
+        if yes() && (!cond(i) || check(a.clone())) { i = i + 1 } else { i = i + 1 }
+        if i == 2 { break }
+    }
+    return a.s.len()
+}
+"#,
+        ),
+        // THREE levels of nesting, innermost take->skip
+        (
+            "three_deep",
+            r#"type T { s Str; n int }
+fn yes() bool { return true }
+fn cond(i int) bool { return i == 0 }
+fn check(t T) bool { return t.n > 0 }
+fn main() int {
+    let a T = T { s: "abc", n: 1 }
+    var i int = 0
+    loop {
+        if yes() && (yes() && (cond(i) && check(a.clone()))) { i = i + 1 } else { i = i + 1 }
+        if i == 2 { break }
+    }
+    return a.s.len()
+}
+"#,
+        ),
+    ];
+    for (name, src) in cases {
+        let src = write_src(&dir, &format!("{name}.at"), src);
+        let exe = dir.join(&format!("{name}.exe"));
+        build_tr(&src, &exe, &[]);
+        let run = run_pe(&exe);
+        assert_eq!(run.code, 3, "{name}: a.s.len()");
+        assert_eq!(
+            run.stderr,
+            "LIT len=3\nLIT id=1\nCLONE len=3\nCLONE id=2\nFREE id=2\nTEXT-SCALARS n=3\nFREE id=1\n",
+            "{name}: exactly one clone/free pair in the TAKING iteration; the skipping iteration frees NOTHING (no FREE-INVALID)"
+        );
+    }
+}
+
+#[test]
+fn f782_r2_01_nested_marker_rides_the_rollback_releaser() {
+    // the SHARED failure rollback consumes the composed marker: failing
+    // the 2nd (inner-RHS) clone rolls back the 1st clone only
+    let dir = temp_dir("f-r2-01-rb");
+    let src = write_src(
+        &dir,
+        "n.at",
+        r#"type T { s Str; n int }
+fn yes() bool { return true }
+fn check(t T) bool { return t.n > 0 }
+fn main() int {
+    let a T = T { s: "abc", n: 1 }
+    if yes() && (check(a.clone()) && check(a.clone())) { return a.s.len() }
+    return 100
+}
+"#,
+    );
+    let exe = dir.join("n.exe");
+    build_tr_inj(&src, &exe, Some(3), None, None);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 70);
+    assert_eq!(
+        run.stderr,
+        "LIT len=3\nLIT id=1\nCLONE len=3\nCLONE id=2\nCLONE len=3\nRT-FAIL code=-5\nFREE id=2\n",
+        "the inner join's marker gates the rollback walk: only the executed clone frees"
+    );
+}
+
+// -- F-782-R2-02: a FIELD write never revives a moved-out root; only a
+// -- whole-root reassignment rebuilds it.
+
+fn check_rejects(dir: &Path, name: &str, src_text: &str) {
+    let src = write_src(dir, &format!("{name}.at"), src_text);
+    let mut c = Command::new(EXE);
+    c.args([
+        "check-source",
+        &src.display().to_string(),
+        "--source-profile",
+        TR,
+    ]);
+    let b = run_deadlined(c, Duration::from_secs(120)).expect("spawn check");
+    assert_eq!(
+        b.code, 1,
+        "{name}: front-door rejection, got exit {}",
+        b.code
+    );
+    assert!(
+        b.stderr.contains("verify.use-after-move"),
+        "{name}: expected verify.use-after-move, got:\n{}",
+        b.stderr
+    );
+}
+
+#[test]
+fn f782_r2_02_field_write_on_moved_root_rejects() {
+    let dir = temp_dir("f-r2-02");
+    // same-statement RHS move, Str-field position (R2 original 1)
+    check_rejects(
+        &dir,
+        "partial_reown",
+        r#"type T { a Str; b Str }
+fn extract(move x T) Str { return x.a.to(Str) }
+fn main() int {
+    var r T = T { a: "aa", b: "bbb" }
+    r.a = extract(r.move)
+    return r.b.len()
+}
+"#,
+    );
+    // same-statement, nested resource-record field position (R2 original 2)
+    check_rejects(
+        &dir,
+        "nested_reown",
+        r#"type I { a Str }
+type O { i I; b Str }
+fn extract(move x O) I { return x.i.clone() }
+fn main() int {
+    var r O = O { i: I { a: "aa" }, b: "bbb" }
+    r.i = extract(r.move)
+    return r.i.a.len()
+}
+"#,
+    );
+    // SCALAR field position on a moved root (all field positions)
+    check_rejects(
+        &dir,
+        "scalar_moved",
+        r#"type T { a Str; n int }
+fn extract(move x T) Str { return x.a.to(Str) }
+fn main() int {
+    var r T = T { a: "aa", n: 1 }
+    let k Str = extract(r.move)
+    r.n = 5
+    return k.len()
+}
+"#,
+    );
+    // cross-statement: the root died in an EARLIER statement
+    check_rejects(
+        &dir,
+        "cross_stmt",
+        r#"type T { a Str; b Str }
+fn extract(move x T) Str { return x.a.to(Str) }
+fn main() int {
+    var r T = T { a: "aa", b: "bbb" }
+    let k Str = extract(r.move)
+    r.a = "cc".to(Str)
+    return r.b.len()
+}
+"#,
+    );
+}
+
+#[test]
+fn f782_r2_02_live_replacement_and_whole_rebuild_stay_legal() {
+    // the accepted controls: a LIVE root's field replacement and a
+    // whole-root move-return rebuild (R2's field_live/whole_rebuild)
+    let dir = temp_dir("f-r2-02-ctl");
+    let src = write_src(
+        &dir,
+        "l.at",
+        r#"type T { a Str; b Str }
+fn main() int {
+    var r T = T { a: "aa", b: "bbb" }
+    r.a = "cc".to(Str)
+    return r.b.len()
+}
+"#,
+    );
+    let exe = dir.join("l.exe");
+    build_tr(&src, &exe, &[]);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 3);
+    assert_eq!(
+        run.stderr,
+        "LIT len=2\nLIT id=1\nLIT len=3\nLIT id=2\nCLONE len=2\nCLONE id=3\nFREE id=1\nTEXT-SCALARS n=3\nFREE id=2\nFREE id=3\n",
+        "live replacement: old field freed after the RHS; final exit frees both"
+    );
+    let src2 = write_src(
+        &dir,
+        "w.at",
+        r#"type T { a Str; b Str }
+fn rebuild(move x T) T { return x.move }
+fn main() int {
+    var r T = T { a: "aa", b: "bbb" }
+    r = rebuild(r.move)
+    return r.b.len()
+}
+"#,
+    );
+    let exe2 = dir.join("w.exe");
+    build_tr(&src2, &exe2, &[]);
+    let run2 = run_pe(&exe2);
+    assert_eq!(run2.code, 3);
+    assert_eq!(
+        run2.stderr,
+        "LIT len=2\nLIT id=1\nLIT len=3\nLIT id=2\nTEXT-SCALARS n=3\nFREE id=2\nFREE id=1\n",
+        "whole-root rebuild: the returned aggregate carries both buffers, freed once at the exit (LIFO)"
+    );
 }

@@ -4201,8 +4201,13 @@ impl<'c> TextEmitter<'c> {
                                 }
                             }
                         }
-                        // the executed edge forwards each text pointer /
-                        // aggregate presence `1` positionally
+                        // the executed edge forwards each text pointer
+                        // positionally; an aggregate that was created
+                        // UNCONDITIONALLY in this RHS region forwards
+                        // presence `1`, while one whose existence already
+                        // rides an INNER short-circuit marker forwards that
+                        // marker's VALUE (F-782-R2-01: the outer RHS having
+                        // executed does not mean the inner RHS did)
                         let args: Vec<cranelift_codegen::ir::BlockArg> = rhs_temps
                             .iter()
                             .zip(merged.iter())
@@ -4211,6 +4216,12 @@ impl<'c> TextEmitter<'c> {
                                     PendingStmtTemp::Text { ptr, .. },
                                     PendingStmtTemp::Text { .. },
                                 ) => (*ptr).into(),
+                                (
+                                    PendingStmtTemp::Agg {
+                                        present: Some(m), ..
+                                    },
+                                    PendingStmtTemp::Agg { .. },
+                                ) => (*m).into(),
                                 _ => self.fb.ins().iconst(types::I64, 1).into(),
                             })
                             .collect();

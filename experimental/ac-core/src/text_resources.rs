@@ -1674,6 +1674,32 @@ impl<'a> ResourceWalk<'a> {
                                     _ => Vec::new(),
                                 };
                             let was_live_block = st_snapshot.live.get(&target).copied();
+                            // F-782-R2-02 (ALL field positions): a field
+                            // write is a partial rebuild — it can never
+                            // revive a resource root whose ownership left
+                            // through a whole-root move (this statement's
+                            // RHS or an earlier one); writing one field
+                            // does not restore the other fields' buffers.
+                            // Copyable roots cannot be moved out, so this
+                            // only fires for resource roots.
+                            if !place_path.is_empty()
+                                && (moved.contains(&target)
+                                    || st_snapshot.dead.contains_key(&target))
+                            {
+                                if let ValueType::Record(tid) = (self.local_type)(target) {
+                                    if self.resource.get(tid as usize).copied().unwrap_or(false) {
+                                        self.error(
+                                            "verify.use-after-move",
+                                            format!(
+                                                "cannot assign a field of `{}`: the whole root was moved out; only a whole-root assignment rebuilds it",
+                                                self.local_name(target)
+                                            ),
+                                            self.body.blocks[bid as usize].span,
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
                             // dispatch on the PLACE's final type (a Str-field
                             // replacement is a StrOwned place on a record
                             // root), not the root local's type
