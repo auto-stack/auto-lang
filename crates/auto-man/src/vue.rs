@@ -3311,7 +3311,10 @@ export default router
         // Get project name + display title — PLAN-786: 三字段一次读取收口
         // 到 project_display_reader（name/title/title_zh；locale 链在下方）。
         let display = project_display_reader::read(&pac_content);
-        let name = display.name.clone().unwrap_or_else(|| "aura-app".to_string());
+        let name = display
+            .name
+            .clone()
+            .unwrap_or_else(|| "aura-app".to_string());
         // PLAN-063 Phase B T13 (KD 061 D28): 展示名 title 可选透传。
         // PLAN-015：locale 链——AUTO_LOCALE=zh（缺省）优先 title_zh。
         let index_title = parse_pac_display_title(&display);
@@ -10008,14 +10011,26 @@ title: \"Calculator\"
 title_zh: \"计算器\"
 ";
         let read = project_display_reader::read(pac);
-        assert_eq!(parse_pac_display_title_in(&read, true).as_deref(), Some("计算器"));
-        assert_eq!(parse_pac_display_title_in(&read, false).as_deref(), Some("Calculator"));
+        assert_eq!(
+            parse_pac_display_title_in(&read, true).as_deref(),
+            Some("计算器")
+        );
+        assert_eq!(
+            parse_pac_display_title_in(&read, false).as_deref(),
+            Some("Calculator")
+        );
         let no_zh = "name: \"x\"
 title: \"Clock\"
 ";
         let read_no_zh = project_display_reader::read(no_zh);
-        assert_eq!(parse_pac_display_title_in(&read_no_zh, true).as_deref(), Some("Clock"));
-        assert_eq!(parse_pac_display_title_in(&read_no_zh, false).as_deref(), Some("Clock"));
+        assert_eq!(
+            parse_pac_display_title_in(&read_no_zh, true).as_deref(),
+            Some("Clock")
+        );
+        assert_eq!(
+            parse_pac_display_title_in(&read_no_zh, false).as_deref(),
+            Some("Clock")
+        );
         let read_name_only = project_display_reader::read("name: \"x\"");
         assert_eq!(parse_pac_display_title_in(&read_name_only, true), None);
     }

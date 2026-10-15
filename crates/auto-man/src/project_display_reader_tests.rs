@@ -628,56 +628,56 @@ fn display_reader_v02_fixture_expectations() {
     let cu = CompatReason::UnsupportedValue;
     let fx = [
         Fx {
-            file: "three-fields.pac.at",
+            file: "three-fields.at",
             name: Some("demo-app"),
             title: Some("Demo App"),
             title_zh: Some("演示应用"),
             title_path: model(mv),
         },
         Fx {
-            file: "missing-title.pac.at",
+            file: "missing-title.at",
             name: Some("no-title"),
             title: None,
             title_zh: None,
             title_path: model(ma),
         },
         Fx {
-            file: "dup-title.pac.at",
+            file: "dup-title.at",
             name: Some("dup"),
             title: Some("first wins"),
             title_zh: None,
             title_path: compat(cd),
         },
         Fx {
-            file: "single-quoted-title.pac.at",
+            file: "single-quoted-title.at",
             name: Some("quoted"),
             title: Some("single quoted"),
             title_zh: None,
             title_path: compat(cu),
         },
         Fx {
-            file: "nested-same-name.pac.at",
+            file: "nested-same-name.at",
             name: Some("outer"),
             title: Some("inner value"),
             title_zh: None,
             title_path: compat(ch),
         },
         Fx {
-            file: "block-comment-hidden.pac.at",
+            file: "block-comment-hidden.at",
             name: Some("commented"),
             title: Some("hidden in block comment"),
             title_zh: None,
             title_path: compat(ch),
         },
         Fx {
-            file: "dynamic-interp-title.pac.at",
+            file: "dynamic-interp-title.at",
             name: Some("interp"),
             title: Some("v${version}"),
             title_zh: None,
             title_path: compat(cu),
         },
         Fx {
-            file: "empty-title.pac.at",
+            file: "empty-title.at",
             name: Some("empty"),
             title: None,
             title_zh: None,
@@ -708,7 +708,7 @@ fn display_reader_v02_fixture_expectations() {
 /// ——本测试只冻结 reader 字段层，不重复镜像链实现。
 #[test]
 fn display_reader_v03_locale_chain_explicit() {
-    let three = std::fs::read_to_string(display_fixture("three-fields.pac.at")).unwrap();
+    let three = std::fs::read_to_string(display_fixture("three-fields.at")).unwrap();
     let r = read(&three);
     assert_matches_oracle("three-fields", &three, &r);
     // zh（含 zh-CN 前缀族）→ title_zh 优先；en → 恒 title
@@ -717,7 +717,7 @@ fn display_reader_v03_locale_chain_explicit() {
     assert_eq!(zh.as_deref(), Some("演示应用"));
     assert_eq!(en.as_deref(), Some("Demo App"));
 
-    let missing = std::fs::read_to_string(display_fixture("missing-title.pac.at")).unwrap();
+    let missing = std::fs::read_to_string(display_fixture("missing-title.at")).unwrap();
     let r = read(&missing);
     assert_matches_oracle("missing-title", &missing, &r);
     // 链终点：无任何标题 → None（name/目录兜底是调用者职责，不在此伪装）
@@ -758,7 +758,7 @@ fn display_reader_v04_dynamic_bad_inputs_no_vm_no_writes() {
         assert_eq!(before, after, "{name}: 读取不得改动输入文件");
     }
     // 受影响字段的路径分类显式冻结：插值 title / root 包裹 title
-    let interp = std::fs::read_to_string(display_fixture("dynamic-interp-title.pac.at")).unwrap();
+    let interp = std::fs::read_to_string(display_fixture("dynamic-interp-title.at")).unwrap();
     let r = read(&interp);
     assert_matches_oracle("dynamic-interp", &interp, &r);
     assert_eq!(r.title_path, compat(CompatReason::UnsupportedValue));
@@ -848,4 +848,110 @@ fn display_reader_v05_unified_entry_and_unselected_fields_intact() {
         reader.contains("fn legacy_scan"),
         "兼容臂唯一冻结副本在 reader"
     );
+}
+
+/// R1 F786-R1-01 复现输入构造：无关字段携带 N 层嵌套数组 + 干净三字段行。
+fn deep_nesting_input(depth: usize) -> String {
+    let mut s = String::from("name: \"n\"\ntitle: \"ok\"\nextra: ");
+    for _ in 0..depth {
+        s.push('[');
+    }
+    s.push('0');
+    for _ in 0..depth {
+        s.push(']');
+    }
+    s.push('\n');
+    s
+}
+
+/// V04 补充（R1 F786-R1-01）：超深嵌套的进程隔离回归。栈溢出 abort 不可
+/// 被 catch_unwind 捕获，只能以子进程验证——child 模式跑真实 read()，
+/// parent 以 10s 外部截止守护（溢出时子进程以 STATUS_STACK_OVERFLOW
+/// 退出码失败，修复后干净退出 0）。
+#[test]
+fn display_reader_v04_deep_nesting_process_isolated() {
+    if std::env::var("P786_DEEP_PROBE").is_ok() {
+        // child：复审反例原样重放（512 层），必须返回旧 oracle 的标题且不崩溃
+        let r = read(&deep_nesting_input(512));
+        assert_eq!(r.name.as_deref(), Some("n"));
+        assert_eq!(r.title.as_deref(), Some("ok"));
+        assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+        // 1024 层加固：同一包络判定复用，不依赖具体层数
+        let r = read(&deep_nesting_input(1024));
+        assert_eq!(r.title.as_deref(), Some("ok"));
+        std::process::exit(0);
+    }
+    // parent：自执行子进程 + 10s 外部截止
+    use std::process::{Command, Stdio};
+    let exe = std::env::current_exe().expect("test exe");
+    let mut child = Command::new(exe)
+        .args([
+            "--exact",
+            "project_display_reader_tests::display_reader_v04_deep_nesting_process_isolated",
+            "--nocapture",
+        ])
+        .env("P786_DEEP_PROBE", "1")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn probe child");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        match child.try_wait().expect("poll probe child") {
+            Some(status) => {
+                assert!(
+                    status.success(),
+                    "深度探针子进程异常退出：{status}（栈溢出 abort 或断言失败）"
+                );
+                return;
+            }
+            None => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "深度探针超过 10s 外部截止（挂起）"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+    }
+}
+
+/// V04 补充（R1 F786-R1-01 同族状态）：包络边界与感知规则——64 层内仍走
+/// 模型路径；65 层整体兼容；字符串/注释内括号不计深度；节点嵌套同理。
+#[test]
+fn display_reader_v04_deep_nesting_boundary_and_awareness() {
+    let mv = ModelState::Value;
+    // 边界：64 层（含干净 title）→ 模型路径可用；65 层 → DeepNesting 兼容
+    let within = deep_nesting_input(64);
+    let r = read(&within);
+    assert_matches_oracle("depth-64", &within, &r);
+    assert_eq!(r.title.as_deref(), Some("ok"));
+    assert_eq!(r.title_path, model(mv), "包络内不收缩模型路径");
+    let beyond = deep_nesting_input(65);
+    let r = read(&beyond);
+    assert_matches_oracle("depth-65", &beyond, &r);
+    assert_eq!(r.title.as_deref(), Some("ok"), "兼容臂保旧行为");
+    assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    assert_eq!(r.name_path, compat(CompatReason::DeepNesting));
+    // 节点嵌套（{} 族）同因：512 层 dep 包裹 + 干净 name
+    let mut nested_nodes = String::from("name: \"nn\"\n");
+    for i in 0..512 {
+        nested_nodes.push_str(&format!("n{i} {{\n"));
+    }
+    for _ in 0..512 {
+        nested_nodes.push_str("}\n");
+    }
+    let r = read(&nested_nodes);
+    assert_matches_oracle("nodes-512", &nested_nodes, &r);
+    assert_eq!(r.name.as_deref(), Some("nn"));
+    assert_eq!(r.name_path, compat(CompatReason::DeepNesting));
+    // 感知规则：字符串/行注释/块注释内的括号不计深度——正常输入不受包络影响
+    let quoted = "name: \"q\"\ntitle: \"[[[[[[\"\n";
+    let r = read(quoted);
+    assert_matches_oracle("brackets-in-string", quoted, &r);
+    assert_eq!(r.title_path, model(mv), "字符串内括号不计数");
+    let commented = "name: \"cm\"\n// [[[[[\n/* ]]]] */\ntitle: \"T\"\n";
+    let r = read(commented);
+    assert_matches_oracle("brackets-in-comments", commented, &r);
+    assert_eq!(r.title_path, model(mv), "注释内括号不计数");
 }

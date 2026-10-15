@@ -54,6 +54,11 @@ pub(crate) enum CompatReason {
     /// 值虽静态但行形态与旧行归一不等：转义、引号内边缘空白、行内注释、
     /// 非 Str 的 astr 差异（如 nil）。
     LineFormMismatch,
+    /// 括号嵌套深度超过 [`MODEL_PARSE_MAX_BRACKET_DEPTH`]——超出模型
+    /// 递归解析的安全包络（R1 F786-R1-01：512 层嵌套数组使 parse_document
+    /// 进程级栈溢出 abort，catch_unwind 不可捕获）。超限输入不做模型解析，
+    /// 三字段整体走兼容臂，旧行为逐值保留。
+    DeepNesting,
 }
 
 /// 一次读取的全部结果：三字段值 + 各自路径分类。
@@ -71,8 +76,86 @@ pub(crate) struct DisplayRead {
     pub(crate) title_zh_path: ReadPath,
 }
 
+/// 模型递归解析的括号深度包络。实测（R1 F786-R1-01）：512 层嵌套使
+/// `parse_document` 在 Windows 默认主线程栈上 STATUS_STACK_OVERFLOW abort
+/// （catch_unwind 不可捕获）；128/32 层通过。真实受管 pac.at 嵌套远低于
+/// 此（个位数）。64 = 已验证通过点之下的成对余量；超限输入整体走兼容
+/// 臂（旧行为逐值保留），不是语法拒绝。
+const MODEL_PARSE_MAX_BRACKET_DEPTH: usize = 64;
+
+/// 迭代计算最大括号嵌套深度（字符串/转义/注释感知——引号与注释内的
+/// 括号不计入；块注释不嵌套，与 scanner.rs 语义一致）。只数 `{}`/`[]`：
+/// 递归位点在 scan_value_positions/parse_node/AtomParser 的结构化下钻，
+/// `()` 参数表是迭代采集不入此列。
+fn max_bracket_depth(content: &str) -> usize {
+    let mut max = 0usize;
+    let mut depth = 0usize;
+    let mut chars = content.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' | '\'' => {
+                let quote = c;
+                while let Some(sc) = chars.next() {
+                    if sc == '\\' {
+                        chars.next();
+                        continue;
+                    }
+                    if sc == quote || sc == '\n' {
+                        break;
+                    }
+                }
+            }
+            '/' if chars.peek() == Some(&'/') => {
+                for sc in chars.by_ref() {
+                    if sc == '\n' {
+                        break;
+                    }
+                }
+            }
+            '#' if !matches!(chars.peek(), Some('[')) => {
+                for sc in chars.by_ref() {
+                    if sc == '\n' {
+                        break;
+                    }
+                }
+            }
+            '/' if chars.peek() == Some(&'*') => {
+                chars.next();
+                let mut prev_star = false;
+                for sc in chars.by_ref() {
+                    match sc {
+                        '*' => prev_star = true,
+                        '/' if prev_star => break,
+                        _ => prev_star = false,
+                    }
+                }
+            }
+            '{' | '[' => {
+                depth += 1;
+                max = max.max(depth);
+            }
+            '}' | ']' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    max
+}
+
 /// 读取 pac.at 文本的展示三字段（只读，无副作用）。
 pub(crate) fn read(content: &str) -> DisplayRead {
+    // 深度前置筛：超包络输入不做模型解析（进程级栈溢出不可捕获），
+    // 三字段整体走兼容臂——值行为与旧实现逐值一致，仅路径分类不同。
+    if max_bracket_depth(content) > MODEL_PARSE_MAX_BRACKET_DEPTH {
+        let reason = ReadPath::Compat(CompatReason::DeepNesting);
+        return DisplayRead {
+            name: legacy_scan(content, "name", false),
+            title: legacy_scan(content, "title", true),
+            title_zh: legacy_scan(content, "title_zh", true),
+            name_path: reason,
+            title_path: reason,
+            title_zh_path: reason,
+        };
+    }
     let parsed = parse_document(content, SourceInfo::inline());
     let (name, name_path) = read_field(
         content,
