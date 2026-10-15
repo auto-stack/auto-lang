@@ -63,18 +63,18 @@
 
 ## 4. 门禁执行（verify-ac-text-record-782.ps1）
 
-**最终基线 `9726a412c`（plan-782-dev，T-07 收口）：25 步全绿，0 failed，11 gate
-案例**（2026-10-15 实跑；收据 `gate-20261015-100236.txt`，原始输出
-`raw-20261015-094825/`。中间绑定：T-06 冻结基线 `836635a2e` 同 25 步全绿，
-gate-20261015-093737；T-07 增量为 +2 组合测试与文档，基线重跑后本收据为
-最终绑定）：
+**R1 修复后基线 `56dd15748`（plan-782-dev）：25 步全绿，0 failed，11 gate
+案例，ac-core 448/0**（2026-10-15 实跑；收据 `gate-20261015-124603.txt`，
+原始输出见 receipts 目录 raw-20261015-*/。中间绑定：`836635a2e`→
+gate-20261015-093737（431）、`9726a412c`→gate-20261015-100236（433，R1
+复审基线）——两收据不含 R1 修复，仅作历史链）：
 
 | # | 步骤 | 结果 |
 |---|---|---|
 | 1 | warning matcher controls（正/负对照） | PASS |
 | 2 | context（HEAD/branch/rustc/cargo/rust-lld sha256 + raw dir） | PASS |
 | 3 | ac-core `cargo check --locked --all-targets` 零警告 | PASS |
-| 4 | ac-core `cargo test --locked`（433；四 text_record target 在场断言） | PASS 176.2s |
+| 4 | ac-core `cargo test --locked`（448；四 text_record target 在场断言） | PASS |
 | 5 | ac-core `cargo fmt --check` | PASS |
 | 6 | runtime/text `check --locked --all-targets` 零警告 | PASS |
 | 7 | runtime/text `cargo test --locked`（20；故障注入/预算/trap/合同面） | PASS 10.8s |
@@ -143,7 +143,7 @@ gate-20261015-093737；T-07 增量为 +2 组合测试与文档，基线重跑后
 
 | 输入 | SHA256 |
 |---|---|
-| head（最终绑定） | `9726a412cc3810bbf6f330565dd7b8c29f1cd6a7` |
+| head（R1 修复后最终绑定） | `56dd1574821842b6aadc074967a7f1a585315654` |
 | rust-lld | f436ddda2f519c5ad18b7c7b09a3eadc2d4fc1be88cd9280cc472740fc3b7389 |
 | runtime lib（ac_text_runtime.lib） | 3d7cc13b4c92cbd3d35ebeed7930b3015638a1c2f1a73422d6273aa853b035b9 |
 | runtime 合同 sidecar | a4529883ccb21429e0aee632939eb3935b12ba1c3f750c88988b952351eec87a |
