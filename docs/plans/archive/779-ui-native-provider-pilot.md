@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-779
-status: reviewed
+status: archived
 feature_name: UI Frame Native 宿主注入探针
 author: [Codex]
 created_at: 2026-10-13
 updated_at: 2026-10-15
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 7
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md]
 new_spec_components: []
@@ -89,7 +89,7 @@ T03拟建external gate `cargo test --manifest-path test/fixtures/modularity/nati
 | [x] | T-04 | work | T03 | UI adapter与所有生产装配；V04/05；不改media/776（R2修复：兼容默认 if-absent 优先关系，见§9 R2-repair） | 03 |
 | [x] | T-05 | work | T04 | check+t+tv+externalgate与宿主实测，后续native族清单（R2修复后双构建覆盖矩阵闭合） | 01/02/03 |
 | [x] | T-06 | review | T05 | 独立review，不能外推heap/async已解决 | 04 |
-| [ ] | T-07 | merge | reviewpass | Spec/归档/合流/guard-clean清理 | 05 |
+| [x] | T-07 | merge | reviewpass | Spec/归档/合流/guard-clean清理 | 05 |
 
 T-02–T-05 执行收据（worktree `D:/autostack/.wt/lang-779/auto-lang`，branch `plan-779-dev`，base=master@2253134cb）：
 
@@ -167,6 +167,8 @@ next_responsible_role=review（R3：bind 45203b5ca；重点复核优先关系矩
 | gates | 冻结提交 45203b5ca：裸 `cargo t` 5364/5364（111.3s）+ `cargo tv` 163/163；delivery f24d61dcb 复跑：t 5364/5364（104.2s）+ tv 163/163；无 tu/taa/tt 触面 |
 | landed | master tip=0bb1e3709=plan-779-dev（ff-only，无 merge commit；首轮拒绝后按规程二次 rebase 于 1b4c0728d 再 ff） |
 | ledger_refreshed | `.autoos/specs.json` v23→v24 守卫式离线投影（通道=无 store writer 可达；backup sha256 16a0f22d92043569；首轮 indent 失配被 diff 守卫拦截后还原重投；终态 diff=+75/−1 仅 5 项+version；schema 六节 id 精确、字段完备、读回验证）；P779-1/2(designs)/P779-T(tests)/P779-R3(reviews)/P779-M(reports) |
+
+2026-10-15 merge 终态：| archived=docs/plans/archive/779-ui-native-provider-pilot.md（eb70fbd3b，7/7，completion_kind=delivered）| cleaned=wt-guard 双树 clean（auto-lang + auto-down 兄弟，rc 均 0）；worktree 双移除（auto-down 按组脚本 --force 先例——只读依赖树含 ignored 构建产物）；branch plan-779-dev 已删（was 0bb1e3709）；组目录 lang-779 已删 | batch_regression_due=否（收据 last_covered_plan_id=781@2026-10-15T03:55Z green；无 %5 计划（785 未达）落地其后；48h 时钟未满——到期判定移交后续 merge/regress 会话）| artifacts=auto-lang 源码构建仓，无部署态 backend/bundle 产物需重建（auto-musk 特定检查项 N/A，理由在 verification.md）| stray=主检出根目录 ledger_770.py 为他会在途文件，未触碰（已向用户提示）|
 
 ## 10. 待澄清事项
 
