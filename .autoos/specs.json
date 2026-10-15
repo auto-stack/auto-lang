@@ -1824,6 +1824,20 @@
       "plan:PLAN-782",
       "stage:merge"
      ]
+    },
+    {
+     "id": "P779-M",
+     "title": "PLAN-779 合入沉淀收据（canonical 落地与门禁状态）",
+     "file": "docs/reports/779-frame-provider/verification.md",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15",
+     "tags": [
+      "plan:PLAN-779",
+      "stage:merge"
+     ],
+     "content": "merge 收据：rebase 六提交 range-diff 全等价（45203b5ca→1868e522d）；裸 cargo t 5364/5364 + tv 163/163（冻结与 delivery 双跑）；SD-01/02 沉淀 vm/ui overview；ledger v23→v24 守卫式离线投影（零扰动）；批回归到期判定与 guard-clean 清理见计划终态。"
     }
    ]
   },
@@ -6898,6 +6912,36 @@
       "plan:PLAN-782",
       "commit:99d92513f"
      ]
+    },
+    {
+     "id": "P779-1",
+     "title": "frame native 9918/9919 宿主能力装配契约（vm 侧）",
+     "file": "docs/specs/auto-lang/vm/overview.md",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15",
+     "tags": [
+      "plan:PLAN-779",
+      "reviewed:45203b5ca",
+      "spec:vm/overview"
+     ],
+     "content": "core shim 经 vm::host_capabilities::FrameProvider 供值（零 UI 直引）；ID/canonical/int 单槽/i32 饱和/未捕获 0 保持。NativeInterface per-VM 槽：构造快照+实例覆盖+Clone/merge 保留；provider 替换不 bump binding_revision。三层装配优先：显式 set 恒胜 / if-absent 同锁补缺 / 实例独立。Send+Sync 不改 VM 线程亲和。"
+    },
+    {
+     "id": "P779-2",
+     "title": "frame provider 宿主装配位置与调用方保证（ui 侧）",
+     "file": "docs/specs/auto-lang/ui/overview.md",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15",
+     "tags": [
+      "plan:PLAN-779",
+      "reviewed:45203b5ca",
+      "spec:ui/overview"
+     ],
+     "content": "FrameBenchProvider 读既有 frame_bench 通道（门控/时源/note 语义不变）；install_process_default 统一 if-absent。装配位置=VmBridge 两构造、run_file_dynamic_ui_inner、CLI ui-iced 入口、crate 根 install_ui_host_capabilities 漏斗（run/test/debug/create×2/config/REPL/解释器/back_proxy）；no-ui=no-op。UI 开/关两构建显式默认均真实供值；a2r 臂与未迁族清单在案。"
     }
    ]
   },
@@ -8319,6 +8363,21 @@
       "plan:PLAN-782",
       "tier:gate"
      ]
+    },
+    {
+     "id": "P779-T",
+     "title": "frame provider 测试族（外部双构建 consumer + in-crate 锚）",
+     "file": "test/fixtures/modularity/native-provider-consumer/tests/provider_vm.rs",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15",
+     "tags": [
+      "plan:PLAN-779",
+      "tier:external-gate",
+      "fixture:native-provider-consumer"
+     ],
+     "content": "外部独立 manifest（no-ui）6 测：显式 A/B 经 run_with_capture 与低层双活实例 stdout 真值/不串线/缺席 0/clamp i32::MAX/ID-契约-merge 规则；UI 开=同源经 workspace 锁库 6/6。in-crate：plan779_frame_provider（剪断源扫描/VmBridge 装配/merge 保 provider/高层优先关系）+ frame_provider 单元锚。门禁=cargo test --manifest-path …/native-provider-consumer/Cargo.toml + 复审 ui-consumer harness。"
     }
    ]
   },
@@ -11225,10 +11284,25 @@
       "outcome:pass",
       "commit:17508b703"
      ]
+    },
+    {
+     "id": "P779-R3",
+     "title": "PLAN-779 第三轮独立最终复审 pass（R1 两项/R2 一项全部闭合）",
+     "file": "docs/plans/attachments/779/review-r3/REVIEW.md",
+     "related": [],
+     "status": "active",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15",
+     "tags": [
+      "plan:PLAN-779",
+      "outcome:pass",
+      "commit:45203b5ca"
+     ],
+     "content": "R3 final pass@45203b5ca：R1-F01 门开程序轨/R1-F02 格式/R2-F01 兼容装配覆盖显式 provider 全 closed；独立补控（优先关系/实例快照覆盖/有限并发/空槽补缺）四组通过；外部 consumer UI 开关双 6/6。边界：不外推 heap/media/async 与呈现性能；fixture ui-iced 新锁解析问题保留为后续发行依赖身份检查。"
     }
    ]
   }
  ],
  "project": "auto-lang",
- "version": 23
+ "version": 24
 }
