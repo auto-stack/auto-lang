@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-785
-status: drafting
+status: execution_done
 feature_name: 文本剪贴板宿主能力依赖倒置
 author: [Codex]
 created_at: 2026-10-15
-updated_at: 2026-10-15
+updated_at: 2026-10-16
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md]
 new_spec_components: []
@@ -85,18 +85,20 @@ T01先冻结当前调用入口/feature/错误/值编码/生命周期矩阵，登
 
 | 状态 | ID | owner_stage | 依赖 | 操作/验证产出 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 784+781交付/热点释放+确认 | 冻结feature/调用/encoding与ownership矩阵，bounded接线决策和反控输入 | 01/02/03 |
-| [ ] | T-02 | work | T01 | host_capabilities/NativeInterface/AutoVM接文本接口、快照/覆盖和两shim，core实现直引清零 | 01/02 |
-| [ ] | T-03 | work | T02 | 新独立consumer及V01..04，字符串释放/失败与双feature形态实际门 | 01/02 |
-| [ ] | T-04 | work | T03 | UI clipboard adapter接全部受支持宿主；V04/05、保留779/未迁族 | 03 |
-| [ ] | T-05 | work | T04 | 定向encoding/ownership/contract/入口回归+check/fmt，无整档 | 01/02/03 |
-| [ ] | T-06 | work | T05 | 实现提交、永久案例与覆盖记录、SD素材，确认所有work项闭合 | 01/02/03 |
+| [x] | T-01 | work | 784+781交付/热点释放+确认 | 冻结feature/调用/encoding与ownership矩阵，bounded接线决策和反控输入。[✅ 已完成：附件 attachments/785/t01-freeze-matrix.md——784 已归档；781 未合入但热点重叠实测=engine.rs 单文件不相邻 hunk（781 触 L39/3055/13024，785 触 L816/1240），裁定开工+登记 final review 前同步 master 残余义务；{ui-clipboard} 单开实测不可建（E0433）→单体 shim 后新可建（缺席错误语义，已登记）；786 归档零重叠] | 01/02/03 |
+| [x] | T-02 | work | T01 | host_capabilities/NativeInterface/AutoVM接文本接口、快照/覆盖和两shim，core实现直引清零。[✅ 已完成：commit 64c72d20c——ClipboardTextProvider（owned String 出/&str 入）+进程默认槽4 API+NI实例槽（Clone保留）+AutoVM::new快照+实例API；两 shim 单体化（缺席=原 feature-disabled 错误文本逐字）；core 直引 `ui::clipboard::` 清零（plan785 剪断锚常驻）] | 01/02 |
+| [x] | T-03 | work | T02 | 新独立consumer及V01..04，字符串释放/失败与双feature形态实际门。[✅ 已完成：test/fixtures/modularity/clipboard-provider-consumer/（独立 workspace、no-ui）10/10——UTF-8 精确参数/相邻读写ownership/缺席矩阵（错误文本逐字）/优先矩阵/identity+merge；UI 形态经 workspace 锁定 rlib 重放（779 R3 法，attachments/785/ui-form-replay/）10/10 exit0，frozen_source_unchanged=true——独立 UI 锁解析漂移（wgpu-hal）如实登记不冒称（779 同款既有债）] | 01/02 |
+| [x] | T-04 | work | T03 | UI clipboard adapter接全部受支持宿主；V04/05、保留779/未迁族。[✅ 已完成：ui/clipboard_provider.rs ArboardClipboardProvider（纯委托既有函数+plan418 既有测试不动）+优先关系单测；六处宿主接线（统一 installer/run_file_dynamic_ui_inner/VmBridge×2/auto CLI main/autovm_persistent 经统一）；plan779 4/4+779 fixture 6/6+clipboard 族 21/21 全绿（未迁 files/image/editor 族零改动）] | 03 |
+| [x] | T-05 | work | T04 | 定向encoding/ownership/contract/入口回归+check/fmt，无整档。[✅ 已完成：check（default/no-ui/{ui-clipboard}单开=新可建）0 错；plan785 5/5（含 shim 直调缺席契约+String/Bool lane+装配优先矩阵）；rustfmt 触面文件清（全仓 fmt 预存漂移+examples/ui_container.rs 预存 E0765 登记为 F-785-P02，未触碰）；无整档 t/tf/tu/taa] | 01/02/03 |
+| [x] | T-06 | work | T05 | 实现提交、永久案例与覆盖记录、SD素材，确认所有work项闭合。[✅ 已完成：实现 commit 64c72d20c（worktree D:/autostack/.wt/lang-785/auto-lang，基面 master@340ab95fd 含786归档）；永久案例=fixture 10 测试+in-crate plan785_clipboard_provider 5 测试+clipboard_provider.rs 优先锚；覆盖记录见 §9；SD-01/02 素材就绪（§5 规范增量表不变）；merge-owned 门禁显式 pending（裸 cargo t+tv 于冻结提交，T-08）] | 01/02/03 |
 | [ ] | T-07 | review | T06 | 独立final，不能以默认0/空串/跳过OS代替注入证据 | 04 |
 | [ ] | T-08 | merge | review pass | t+tv冻结门、SD/ledger/归档合流/清理 | 05 |
 
 ## 9. 复审记录
 
 2026-10-15 stage=new | plan_revision=1 | outcome=pass（草案preflight） | next=前置交付及合同确认后work | 0/8，无实现/测试/树。已明确frame与字符串能力差别；T01仅核定接线机制，不允许修改既有缺席/编码合同来消红。
+
+2026-10-16 stage=work（T-01..T-06 收口 → execution_done）：stage=work | plan_id=PLAN-785 | plan_revision=1 | worktree_path=D:/autostack/.wt/lang-785/auto-lang（组内兄弟 auto-down detached@c39ac7f） | branch=plan-785-dev | base_commit=340ab95fd（master，含 786 归档；786 仅动 auto-man 零重叠） | code_commit=64c72d20c | dependency_revisions=auto-down 主检出 c39ac7f（依赖仓只读）；PLAN-781 未合入——热点重叠实测裁定见 attachments/785/t01-freeze-matrix.md §4（engine.rs 同文件不相邻 hunk，781 触 L39/3055/13024 vs 785 触 L816/1240；native_catalog.rs 785 零改动），准予开工+残余义务：**785 final review（T-07）前同步 master，若 781 已合入则吸收并复跑受影响门禁；若 engine.rs 冲突按 781 语义优先解** | task_ids=T-01..T-06（6/8；余 T-07 review/T-08 merge） | evidence=T01 冻结矩阵+接线决策+反控输入（attachments/785/t01-freeze-matrix.md：{ui-clipboard} 单开实测不可建→单体 shim 后新可建且缺席错误语义、{ui}/{ui,ui-clipboard} 预存 8 错与本计划无关、.at 面零触点）；T02..T05 实现+门禁：fixture no-ui 10/10 + UI 锁定重放 10/10（attachments/785/ui-form-replay/ui-consumer.json，frozen_source_unchanged=true，源 sha256=77c58ae5…）+ in-crate plan785 5/5 + plan779 4/4 + clipboard 族 21/21 + host_capabilities 1/1 + 779 fixture 6/6 + check 三形态 0 错 + 触面 rustfmt 清 | 覆盖记录：V01=fixture v01×2（stdout 实值+低层双活+UTF-8 精确+不串线）；V02=v02×3（临时 owned String 相邻读写/空串/None/false 不计成功）；V03=v03×2+in-crate shim 直调（错误文本逐字/no-ui 高层 Err/ui 补缺成功差分/裸 VM 零输出）；V04=v04×2+in-crate 高层优先+adapter 单测（显式不被覆盖/空槽补缺/实例覆盖独立）；V05=fixture v05+in-crate merge 保 provider（2925/2926 钉扎、邻族不撞、注入不 bump revision、Clone/merge 不丢、覆盖 shim 端到端） | 真实 OS adapter 证据=纯一行委托+plan418 既有 roundtrip（headless 自跳过）+UI 重放读侧成功（内容不定差分 oracle；红线遵守：全程未新增任何写用户剪贴板的验收步骤；首轮断言失败时 panic 消息意外回显真实剪贴板内容，已从日志净化） | 预存发现登记=KNOWN-DEBT F-785-P01（{ui}/{ui,ui-clipboard} 预存不可建+779 文档化 ui 复跑命令已烂）/F-785-P02（examples/ui_container.rs 预存 E0765 使全仓 cargo fmt 不可跑+仓级 fmt 漂移）；独立 UI 锁解析漂移沿 779 R3 同款登记（跨仓发行依赖身份验证，不冒称发行通过） | blockers=无（work-owned AC01..03 全闭；AC04 归 review、AC05 归 merge；merge-owned 门禁显式 pending：冻结提交裸 cargo t+tv——本计划改 VM 未触 ui_gen/aavm/trans，不 tu/taa/tt；tf 仅批量规约） | next_responsible_role=review（T-07 独立 final：重点=781 同步义务执行情况、缺席/编码合同逐字、覆盖矩阵对 V01..05、SD-01/02 冻结）
 
 ## 10. 待澄清事项
 
