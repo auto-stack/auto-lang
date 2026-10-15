@@ -31,10 +31,11 @@ auto-ui 主检出带未提交 `M Cargo.lock`（原始字节已保全）；auto-m
 - 全量 git bundle（含全部 refs+HEAD）+ 未提交/ignored 载荷的原始字节备份 +
   SHA256 清单，位于仓外独立恢复位置（路径与 hash 见
   [PLAN-784 保全收据](../../plans/reports/784-repo-preservation.md)）；
-  保全为**状态寻址快照**（`snapshots/<snap-id>/`，snap-id 由 tip+WIP+保留内容
-  hash 派生）：同态重跑幂等复用、状态变化新增独立快照、既有快照永不被覆盖，
-  verify 对全部保留原文件（含 ignored）做漂移检测；
-  恢复演练（disposable clone）已验证 refs/tree/tag 完整可恢复。
+  保全为**状态寻址快照**（`snapshots/<snap-id>/`，snap-id 由 tip+**完整
+  refs→objectID 映射**+WIP+保留内容 hash 派生）：同态重跑幂等复用、任何状态
+  变化（含仅 refs 变化）新增独立快照、既有快照永不被覆盖；创建/复用/复核三处
+  均断言 bundle 实际承载 refs 覆盖冻结映射，verify 对全部保留原文件（含
+  ignored）做漂移检测；恢复演练（disposable clone）验证 refs/tree/tag 完整可恢复。
 
 ## 迁移准备状态
 

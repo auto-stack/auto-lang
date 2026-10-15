@@ -185,7 +185,9 @@ def latest_pointer(payload_dir: Path, repo_name: str) -> Path:
 
 
 def compute_state(repo: Path, facts: dict, ignored_keep: list[str]) -> dict:
-    """从原仓当前状态派生快照身份：tip + status + 全部保留内容 hash。
+    """从原仓当前状态派生快照身份：tip + **完整 refs→objectID 映射** + status +
+    全部保留内容 hash（F784-R2-01：refs 影响 bundle 内容，必须参与身份——
+    同 HEAD 仅增/移/删 tag/branch 时也要产生新快照，否则复用旧 bundle 会缺 ref）。
     bundle 字节不参与（同 refs 的两次 bundle 打包字节可差，不构成状态差）。"""
     toplevel = Path(facts["toplevel"])
     wip_state = []
@@ -209,6 +211,7 @@ def compute_state(repo: Path, facts: dict, ignored_keep: list[str]) -> dict:
     ]
     return {
         "head": facts["head"],
+        "refs": facts["refs"],
         "status_porcelain": facts["status_porcelain"],
         "wip": wip_state,
         "untracked": untracked_state,
@@ -246,6 +249,28 @@ def write_snapshot_payloads(repo: Path, facts: dict, state: dict, paths: dict) -
         shutil.copyfile(toplevel / entry["path"], dst)
 
 
+def bundle_refs(repo: Path, bundle_file: Path) -> dict:
+    """bundle 实际承载的 ref→sha（F784-R2-01 oracle：不能只凭 manifest/hash 自证）。"""
+    out = git(repo, "bundle", "list-heads", bundle_file.as_posix()).stdout
+    heads = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            heads[parts[1]] = parts[0]
+    return heads
+
+
+def bundle_covers_refs(repo: Path, bundle_file: Path, refs: dict) -> list[str]:
+    """断言 bundle 实际可恢复 refs 覆盖给定映射（HEAD 键为 bundle 附加，不在比对面）。"""
+    heads = bundle_refs(repo, bundle_file)
+    missing = []
+    for ref, sha in refs.items():
+        got = heads.get(ref)
+        if got != sha:
+            missing.append(f"{ref}: bundle={'无' if got is None else got} 期望={sha}")
+    return missing
+
+
 def check_snapshot_integrity(repo: Path, paths: dict, state: dict) -> list[str]:
     """既有/staging 快照与期望状态的一致性；返回 failures（非空=拒绝，且不写任何东西）。"""
     failures = []
@@ -259,6 +284,9 @@ def check_snapshot_integrity(repo: Path, paths: dict, state: dict) -> list[str]:
         failures.append("快照 bundle verify 失败")
     if paths["bundle"].is_file() and sha256_file(paths["bundle"]) != manifest.get("bundle", {}).get("sha256"):
         failures.append("快照 bundle sha256 与其 manifest 不一致")
+    # bundle 实际承载 refs 必须覆盖状态中的完整 refs 映射。
+    for line in bundle_covers_refs(repo, paths["bundle"], state["refs"]):
+        failures.append(f"bundle 未覆盖 ref: {line}")
     for entry in state["wip"]:
         safe = entry["path"].replace("/", "__")
         if "work_sha256" in entry:
@@ -348,9 +376,13 @@ def cmd_preserve(args) -> int:
     }
     try:
         bundle_info = create_bundle(repo, staging_paths["bundle"])
+        uncovered = bundle_covers_refs(repo, staging_paths["bundle"], facts["refs"])
+        if uncovered:
+            raise RuntimeError("新 bundle 未覆盖全部当前 refs: " + "; ".join(uncovered[:3]))
         write_snapshot_payloads(repo, facts, state, staging_paths)
         manifest = {
             "tool": TOOL_VERSION,
+            "state_schema": 2,
             "snapshot_id": snap_id,
             "repo": {k: facts[k] for k in ("name", "toplevel", "head", "branch", "symref")},
             "state": state,
@@ -471,12 +503,14 @@ def cmd_verify(args) -> int:
         if facts["refs"].get(full) != sha:
             failures.append(f"保全 refs 漂移: {full}")
 
-    # bundle：可校验 + hash 一致。
+    # bundle：可校验 + hash 一致 + **实际承载 refs 覆盖冻结映射**（F784-R2-01）。
     verify = git(repo, "bundle", "verify", paths["bundle"].as_posix(), check=False)
     if verify.returncode != 0:
         failures.append("bundle verify 失败")
     if sha256_file(paths["bundle"]) != manifest["bundle"]["sha256"]:
         failures.append("bundle sha256 与 manifest 不一致")
+    for line in bundle_covers_refs(repo, paths["bundle"], state["refs"]):
+        failures.append(f"bundle 未覆盖 ref: {line}")
 
     # 载荷文件：存在 + hash 与快照一致。
     for entry in state["wip"]:
@@ -652,6 +686,20 @@ def latest_snapshot_id(payload_dir: Path, name: str) -> str:
     return latest_pointer(payload_dir, name).read_text(encoding="utf-8").strip()
 
 
+def fetch_refs_from_bundle(bundle: Path, scratch: Path, name: str) -> dict:
+    """真实恢复 oracle：bare fetch bundle 后的 ref→sha 全表。"""
+    bare = scratch / name
+    if bare.exists():
+        rmtree_force(bare)
+    git(None, "init", "-q", "--bare", bare.as_posix())
+    git(bare, "fetch", "-q", bundle.as_posix(), "refs/*:refs/*")
+    return {
+        line.split()[0]: line.split()[1]
+        for line in git(bare, "for-each-ref", "--format=%(refname) %(objectname)").stdout.splitlines()
+        if line.strip()
+    }
+
+
 def cmd_drill(args) -> int:
     scratch = Path(args.scratch).resolve() if args.scratch else Path(tempfile.mkdtemp(prefix="p784-drill-"))
     scratch.mkdir(parents=True, exist_ok=True)
@@ -697,6 +745,7 @@ def cmd_drill(args) -> int:
     # D4 preserve 快照化：同 HEAD 下 dirty 前后两次保全=两个独立快照。
     d4, tip_d = make_tmp_repo(scratch, "d4-preserve-idempotent")
     payload4 = scratch / "d4-payload"
+    rmtree_force(payload4)  # 控制间隔离：payload 不跨 drill 运行累积
     p4a = run_preserve(d4, payload4)
     id4a = latest_snapshot_id(payload4, d4.name)
     (d4 / "f.txt").write_text("dirty\n", encoding="utf-8")
@@ -710,6 +759,7 @@ def cmd_drill(args) -> int:
     # 控制文件一律 write_bytes：文本模式在 Windows 落 CRLF，字节断言必须自控。
     d5, tip5 = make_tmp_repo(scratch, "d5-snapshot-retention")
     payload5 = scratch / "d5-payload"
+    rmtree_force(payload5)  # 控制间隔离：payload 不跨 drill 运行累积
     (d5 / "f.txt").write_bytes(b"version-A\n")
     p5a = run_preserve(d5, payload5)
     id_a = latest_snapshot_id(payload5, d5.name)
@@ -737,6 +787,7 @@ def cmd_drill(args) -> int:
     # 判红，恢复后复绿，快照备份字节不动。
     d6, tip6 = make_tmp_repo(scratch, "d6-ignored-drift")
     payload6 = scratch / "d6-payload"
+    rmtree_force(payload6)  # 控制间隔离：payload 不跨 drill 运行累积
     (d6 / ".gitignore").write_bytes(b"private.cfg\n")
     (d6 / "private.cfg").write_bytes(b"secret-v1\n")
     (d6 / "u.txt").write_bytes(b"u-v1\n")
@@ -773,7 +824,8 @@ def cmd_drill(args) -> int:
     # D7（F784-R1-01 边）快照 bundle 损坏：同状态重跑 preserve 必须拒绝且不改写快照。
     d7, tip7 = make_tmp_repo(scratch, "d7-corrupt-bundle")
     payload7 = scratch / "d7-payload"
-    (d7 / "f.txt").write_text("x\n", encoding="utf-8")
+    rmtree_force(payload7)  # 控制间隔离：payload 不跨 drill 运行累积
+    (d7 / "f.txt").write_bytes(b"x\n")
     p7a = run_preserve(d7, payload7)
     id7 = latest_snapshot_id(payload7, d7.name)
     snap7 = payload7 / d7.name / "snapshots" / id7
@@ -788,11 +840,84 @@ def cmd_drill(args) -> int:
            and snap7.exists())
     results.append({"control": "D7-corrupt-bundle-refused-no-rewrite", "ok": ok7})
 
+    # D8（F784-R2-01）同 HEAD 下 refs 新增/移动/删除：快照身份必须分裂，
+    # bundle 实际可恢复（bare fetch 断言），既有快照字节不变，同态重跑 reuse。
+    d8, tip8 = make_tmp_repo(scratch, "d8-refs-identity")
+    payload8 = scratch / "d8-payload"
+    rmtree_force(payload8)  # 控制间隔离：payload 不跨 drill 运行累积
+    branch8 = git(d8, "branch", "--show-current").stdout.strip()
+    p8a = run_preserve(d8, payload8)
+    id8a = latest_snapshot_id(payload8, d8.name)
+    snap8a = payload8 / d8.name / "snapshots" / id8a
+    hash8a = snapshot_tree_hash(snap8a)
+
+    # 新增：tag 指向旧 bundle 不可达的独立提交（临时分支提交后删分支，HEAD/工作区不变）。
+    git(d8, "checkout", "-q", "-b", "tmp-side")
+    (d8 / "side.txt").write_bytes(b"side\n")
+    git(d8, "add", "side.txt")
+    git(d8, "commit", "-q", "-m", "side")
+    side_tip = git(d8, "rev-parse", "HEAD").stdout.strip()
+    git(d8, "checkout", "-q", branch8)
+    git(d8, "branch", "-qD", "tmp-side")
+    git(d8, "tag", "archived-extra", side_tip)
+    assert git(d8, "rev-parse", "HEAD").stdout.strip() == tip8
+    p8b = run_preserve(d8, payload8)
+    id8b = latest_snapshot_id(payload8, d8.name)
+    snap8b = payload8 / d8.name / "snapshots" / id8b
+    hash8b = snapshot_tree_hash(snap8b)
+    rec8b = fetch_refs_from_bundle(snap8b / "bundle" / f"{d8.name}-full.bundle", scratch, "d8-rec-b")
+    rec8a = fetch_refs_from_bundle(snap8a / "bundle" / f"{d8.name}-full.bundle", scratch, "d8-rec-a")
+    sub_add = {
+        "split": p8a == 0 and p8b == 0 and id8b != id8a,
+        "old-snapshot-bytes-unchanged": snapshot_tree_hash(snap8a) == hash8a,
+        "new-bundle-carries-tag": rec8b.get("refs/tags/archived-extra") == side_tip,
+        "old-bundle-lacks-tag": "refs/tags/archived-extra" not in rec8a,
+        "head-unchanged": json.loads((snap8b / "manifest.json").read_text(encoding="utf-8"))["state"]["head"] == tip8,
+    }
+
+    # 移动：tag 改指 HEAD tip。
+    git(d8, "tag", "-f", "archived-extra", tip8)
+    p8c = run_preserve(d8, payload8)
+    id8c = latest_snapshot_id(payload8, d8.name)
+    snap8c = payload8 / d8.name / "snapshots" / id8c
+    hash8c = snapshot_tree_hash(snap8c)
+    rec8c = fetch_refs_from_bundle(snap8c / "bundle" / f"{d8.name}-full.bundle", scratch, "d8-rec-c")
+    sub_move = {
+        "split": p8c == 0 and id8c not in (id8a, id8b),
+        "prior-snapshots-unchanged": (snapshot_tree_hash(snap8a) == hash8a
+                                      and snapshot_tree_hash(snap8b) == hash8b),
+        "tag-moved-in-bundle": rec8c.get("refs/tags/archived-extra") == tip8,
+    }
+
+    # 删除：删 tag 后状态回到初始 refs——应复用初始快照（状态寻址语义），
+    # bundle 无该 tag，不产生新目录；同态重跑仍 reuse。
+    git(d8, "tag", "-d", "archived-extra")
+    p8d = run_preserve(d8, payload8)
+    id8d = latest_snapshot_id(payload8, d8.name)
+    snap8d = payload8 / d8.name / "snapshots" / id8d
+    rec8d = fetch_refs_from_bundle(snap8d / "bundle" / f"{d8.name}-full.bundle", scratch, "d8-rec-d")
+    p8e = run_preserve(d8, payload8)
+    snap_count = len([x for x in (payload8 / d8.name / "snapshots").iterdir() if not x.name.startswith(".")])
+    sub_del = {
+        "reuses-original-state-snapshot": p8d == 0 and id8d == id8a,
+        "tag-absent-in-bundle": "refs/tags/archived-extra" not in rec8d,
+        "idempotent-rerun": p8e == 0 and latest_snapshot_id(payload8, d8.name) == id8d,
+        "snapshot-count-unchanged": snap_count == 3,
+        "all-prior-unchanged": (snapshot_tree_hash(snap8a) == hash8a
+                                and snapshot_tree_hash(snap8b) == hash8b
+                                and snapshot_tree_hash(snap8c) == hash8c),
+    }
+    ok8 = all(sub_add.values()) and all(sub_move.values()) and all(sub_del.values())
+    results.append({"control": "D8-refs-identity-add-move-delete", "ok": ok8,
+                    "add": sub_add, "move": sub_move, "delete": sub_del,
+                    "snapshots": [id8a, id8b, id8c, id8d]})
+
     if not args.keep:
         for sub in ("d1-idempotent", "d3-head-drift", "d4-preserve-idempotent",
-                    "d5-snapshot-retention", "d6-ignored-drift", "d7-corrupt-bundle"):
+                    "d5-snapshot-retention", "d6-ignored-drift", "d7-corrupt-bundle",
+                    "d8-refs-identity", "d8-rec-a", "d8-rec-b", "d8-rec-c", "d8-rec-d"):
             rmtree_force(scratch / sub)
-        for p in ("d4-payload", "d5-payload", "d6-payload", "d7-payload"):
+        for p in ("d4-payload", "d5-payload", "d6-payload", "d7-payload", "d8-payload"):
             rmtree_force(scratch / p)
     ok = all(r["ok"] for r in results)
     print(json.dumps({"ok": ok, "controls": results,
