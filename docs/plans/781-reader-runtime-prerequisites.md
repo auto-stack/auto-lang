@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-781
-status: executing
+status: execution_done
 feature_name: reader-runtime-prerequisites
 title: "Reader 框架前置：原生验收、段落锚点与10MiB导入"
 author: [Codex]
 created_at: 2026-10-14T00:00:00Z
-updated_at: 2026-10-14T00:00:00Z
-plan_revision: 2
-current_step: 21
+updated_at: 2026-10-15T00:00:00Z
+plan_revision: 3
+current_step: 23
 total_steps: 26
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -18,6 +18,7 @@ new_spec_components:
   - docs/specs/auto-lang/ui/design/scroll-child-anchor.md
   - docs/specs/auto-lang/ui/design/native-acceptance-channel.md
   - docs/specs/auto-lang/vm/design/handler-execution-budget.md
+  - docs/specs/stdlib/design/primitive-str-byte-len.md
 touched_goals: [GOAL-003, GOAL-007, GOAL-014, GOAL-016]
 affects: [auto-lang/ui, auto-lang/vm, widgets, stdlib]
 depends_on: []
@@ -28,6 +29,8 @@ depends_on: []
 ## 0. 变更摘要
 
 按用户2026-10-14“请合成一个计划，并更新 next-id”的要求，将三份未实施草案合入PLAN-781/r2。一个总目标、三个实施阶段、一个专用工作树、一次整体最终复审与收尾。原生行为证据、精确段落定位及10MiB成功导入的目标与正负验证全部保留，READER-001继续承接业务接入和最终验收。
+
+**版本沿革**：r2=三草案合并（2026-10-14 立项）；**r3=阶段 D/E 语义合同收口（2026-10-15，本次）**——阶段 D（审计重开，F-781-R01..R04 四 finding + AC-15..18）与阶段 E（用户裁定新增：byte_len 原语 + Reader 章 meta 索引 + AC-19，覆盖阶段 D 的“Reader 只读”边界、Reader 改造由 781 承接）在 r2 frontmatter 下执行但未递增 revision；r3 追认该语义变更（保留全部历史批准与用户裁定原样，不伪造既往审批），并补齐 SD-08..11 规范候选、任务勾选与 §9 关闭表。T-22 实施期另发现并修复 transport 断连检测缺口（hyper h1 响应挂起期不 poll 读侧——RST 对纯等待请求不可见），属 F-781-R04 不变量的实现修复。
 
 ## 1. 目标
 
@@ -113,8 +116,10 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 | SD-05 | add | docs/specs/auto-lang/vm/design/handler-execution-budget.md | 无可信有限预算合同 → 配置来源/合法有限域/默认/累计、错误与取消/支持入口 | 所有入口同规则 | AC-11/12/14 |
 | SD-06 | modify | docs/specs/auto-lang/vm/overview.md | 固定Legacy/UI预算 → 实际policy入口与覆盖，默认10M保持 | 能力声明准确 | AC-11/12/14 |
 | SD-07 | modify | docs/specs/stdlib/design/http-server.md | handler无该预算说明 → HTTP各dispatch/取消终态与真实10MiB档位 | 不以UI片或失败保护替代成功 | AC-12/13/14 |
-| SD-08 | modify | docs/specs/auto-lang/ui/design/scroll-child-anchor.md | 锚点id/归属实现描述 → 序号id+注册表、最近pane归属含无controller嵌套、managed同归属、key全字符集 | 标准controller可用、嵌套零串线（R01/R02） | AC-15 |
-| SD-09 | modify | docs/specs/auto-lang/vm/design/handler-execution-budget.md | V-18 oracle 形状与（若修订）10MiB 验收边界成文 | 取消语义可观测（R03/R04） | AC-16/17 |
+| SD-08 | modify | docs/specs/auto-lang/ui/design/scroll-child-anchor.md | 锚点id/归属实现描述 → 冒号歧义与 Debug 取值两类面消除：合成 id=不透明序号 `scrollanchor:{seq}` + build 期注册表（seq→(pane,key)，重注册驱逐/stale 跳过/dup last-wins）；vue 侧全部 scroll-pane 元素发射 `data-scroll-pane` 所有权标记，目标/managed 判据按最近 pane 归属（`closest()==pane`，含无 controller 嵌套）+ 属性比对寻址（弃 CSS selector 拼接，任意合法字符 key 结构性安全） | 标准controller可用、嵌套零串线（R01/R02） | AC-15 |
+| SD-09 | modify | docs/specs/auto-lang/vm/design/handler-execution-budget.md | V-18 oracle 形状与（若修订）10MiB 验收边界成文 + **取消语义可观测合同（T-22 冻结）**：LegacyHttp 长忙请求（park 点心跳副作用形态）在 deadline/断连(RST)/服务关闭三路——取消后零新副作用（心跳冻结、至多一个在飞写）、无迟到成功、单终态（恰一次 503/连接终结）、task/scope/live-op 回收、生命期许可归还；**断连判据实现=transport 影子句柄 MSG_PEEK 侦测**（hyper h1 响应挂起期不 poll 读侧，RST 不可见的缺口由重复句柄窥视补全）；FIN-only 全关与半关闭传输层同形，保持 plan705 §5.4 半关闭契约（不判取消，迟到执行受请求 deadline 上界约束）；`io.write_text_async` 等真 park 点是取消生效边界（CPU 段内不可抢占=既有边界） | 取消语义可观测（R03/R04） | AC-16/17 |
+| SD-10 | add | docs/specs/stdlib/design/primitive-str-byte-len.md | 无该原语合同 → `auto.str.byte_len(s str) -> int`（UTF-8 字节数；`str.len()` 为字符数、`str.bytes()` 返回 VM 列表在大文本不可用）；双轨交付：VM nat#1526（catalog 三表接线）+ a2r-std `str::str_byte_len` 镜像（trans/rust.rs 降表/推断臂 + str.rs.at 声明，a2r_std_signature_parity 双侧齐）；游标空间与 `File.read_text_range`（nat#1016）一致（total/next_offset/mid-char 回退）——Reader 章 meta 索引字节偏移累计的配套原语 | 大文本字节口径寻址（阶段 E） | AC-19 |
+| SD-11 | add | （auto-reader 仓 canonical specs——经 READER-001 终审沉淀，非本仓文件） | 无章索引架构记录 → 导入一次扫描产出 `<book_id>.meta.json`（书级 total_chapters/total_words + 每章 `{number,title,offset,length,word_count}` 字节偏移 + 副本 hash 互证，不可变副本⇒索引永免失效）；章 GET=`File.read_text_range` 窗读+首行拆题+trim；TOC/统计直读 meta；meta 缺失/损坏诚实失败不静默重建；meta 路径与 parse_book_json 路径全章逐字节 parity 为永久回归 | 章视图 O(章) 而非 O(书)（阶段 E） | AC-19 |
 
 不改既有http-service-deployment的默认资源/期限；T-14发现须修改公共配置schema或允许范围时，先追加Spec delta及语义revision再接线。此阶段不发布canonical Specs或ledger。
 
@@ -289,10 +294,16 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [✅ 2026-10-15] worktree commit e455c1d16。**vue 轨修复三处**：①plain/shadcn 双臂全部 scroll-pane 元素（含无 controller 者）发射 `data-scroll-pane="1"` 所有权标记；②`scroll_to_child` helper 改最近 pane 归属过滤（`owns(el) = el.closest('[data-scroll-pane]') === pane`，候选目标与 managed 标记同规则——嵌套 pane 的目标/标记不被外层认领）+ 全量遍历 `getAttribute()` 属性比对（弃 selector 拼接——引号/冒号/反斜杠 key 与句柄结构性安全）；③`__scrollCtlEl` 同改属性比对寻址。**W-02 fixture/探针双端**：嵌套列（外层 nest-outer 含 controller 内层 nest-inner + 无 controller 内层 + mo/mi managed 嵌套；同名 key 行置各 pane 末尾保区分性）+ 13 项 W-02 检查双端（嵌套同名零串线 inner offset 不动/inner-only 与 plain-inner（无 controller 嵌套）→ outer not_found/inner managed 不误伤 outer（queued+applied）/mi → error:unsupported）。**验证**：VM 腿 **57/57** + Vue 腿 **59/59**（D:/p781-t20/{vm,vue}）；单测 plan781_vue **5/5**（新增 ownership 标记/归属过滤/selector 拼接退役两测）+ plan781 26/26。**实施期探针勘定两条**：vue_probe `text=` 点击改带引号精确匹配（'GoMI' 子串命中 'GoMiss' 的假红——复现实证 clicked=['GoMiss']）；vue 腿复跑前须清残留 auto.exe/vite 实例（并发实例污染导致 waitForSelector 超时）。iced 侧归属结构本正确（inject_anchor_pane 遇嵌套 Scrollable 即停），W-02 实机证据补齐。tu 全档按 2026-10-14 时序裁定归 merge（ui_gen 触面已登记）。
 - [x] T-21: owner_stage=work；F-781-R03（P2）：chapter API 成本探针 → 全量 10MiB 全章扫描（1347+1346 章，含冷重启复扫）或**等价完整 oracle**（全形状多章书 TXT+MD 全章逐字+冷重启）+10MiB 维持 hash/TOC/抽样——修订路线须用户显式裁定后执行（审计明文禁静默降级）；损坏章负例证明 oracle 会红（W-03）。AC-16。
   [✅ 2026-10-15] 用户裁定（§10）：不走全文扫描路线，改为阶段 E meta 索引架构；成本探针中止（D:/p781-t21 遗留仅历史记录）。全章 oracle 经 T-26 以 **deep 全量**形态交付（强于修订路线——非降级）：TXT/MD 全章逐字 + 冷重启全章复扫 + W-03 损坏章负例（第 900 章精确检出）。
-- [ ] T-22: owner_stage=work；F-781-R04（P2）：生命周期断言补齐——`/api/slowwrite` 进入握手（entered 标记）+ 心跳副作用文件；deadline/断连/服务关闭三路断言取消后零写入+单终态+回收观测，绑定 LegacyHttp 长忙路径（W-04）。AC-17。
-- [ ] T-23: owner_stage=work；依赖T-19..22；全量回归（cargo t scroll/plan781 + tu + th + 双端探针 41+43+新增）+ 四 finding 闭合表 + SD-08/09 候选冻结 → execution_done；复审/merge 另属其角色。AC-18。
+- [x] T-22: owner_stage=work；F-781-R04（P2）：生命周期断言补齐——`/api/slowwrite` 进入握手（entered 标记）+ 心跳副作用文件；deadline/断连/服务关闭三路断言取消后零写入+单终态+回收观测，绑定 LegacyHttp 长忙路径（W-04）。AC-17。
+  [✅ 2026-10-15] worktree commits **dac061353**（W-04 测试 + transport 修复）。slowwrite 形态=entered 握手 → 20000 次 `io.write_text_async` 心跳（真 park 点：副作用文件 + live-op/COMPLETION_NOTIFY 事件驱动恢复，LegacyHttp policy 400M 下跨多段累计）→ done 迟到成功标记。三路永久测试 `http_e2e_plan781_w04_{deadline_cancels_writes_single_terminal_reclaims, client_disconnect_stops_writes_and_returns_permit, shutdown_drain_cancels_writes_and_reclaims}`（th 档）全绿：**deadline** 600ms 恰一次 503（elapsed<5s 非完成界）+ entered 在场 + 心跳冻结（≤at_cancel+200 探测余量）+ done 永不出现 + scope/live-op 回基线；**断连** RST（SO_LINGER=0+close）心跳冻结 + 容量 1 许可两态（cancel 前 ping 503=许可被持 / cancel 后 ping 200=归还且服务存活）；**关闭** 排水窗 300ms 单终态（503/连接终结）+ 冻结 + 回收。**实施期发现并修复真缺口**：hyper h1 dispatch 响应挂起期不 poll 连接读侧（dispatch.rs poll_loop 证实）→ RST 对纯等待请求不可见——修复前 slowwrite 跑满 20000 心跳 + 迟到 200（10.4s，实测）；修复=http_transport.rs 影子句柄侦测（socket2 SockRef::try_clone 重复句柄 + tokio 异步 MSG_PEEK 零消费；传输错误→cancel_scopes_for_conn，FIN→按 plan705 §5.4 半关闭契约退出不取消，管道化数据 20ms 让步，连接正常终结时 abort）；RST 语义本机实证（WSAECONNRESET 10054）。FIN-only 全关与半关闭同形不判取消=已定契约，迟到执行受 deadline 上界约束（测试注释成文）。
+- [x] T-23: owner_stage=work；依赖T-19..22；全量回归（cargo t scroll/plan781 + tu + th + 双端探针 41+43+新增）+ 四 finding 闭合表 + SD-08/09 候选冻结 → execution_done；复审/merge 另属其角色。AC-18。
+  [✅ 2026-10-15] 收口记录见 §9「T-22/T-23 收口」：四 finding 闭合表（R01..R04 反例→不变量→修复→永久用例→原始结果）+ 冻结块（commits/CLI/配置/fixture/reader 探针目录归属）+ 定向验收（th 137/139 两红在案归因、plan781 28/28、scroll 72/72、a2r parity 绿）+ 复用证据未变核验（ui/ui_gen/fixtures 自 W-02 证据 commit e455c1d16 起零 diff，git diff 实证）+ T-24 rider（str.rs.at 镜像缺口修复 d83458941，a2r_std_signature_parity 基线红→绿）。SD-08..11 候选冻结（§5 表），plan_revision 2→3（§0 版本沿革）。**tu/th 全档按 2026-10-14 裁定归 merge 冻结提交**（tu=ui_gen 触面在案、本回合 ui_gen 零改动；th 的 W-04/预算定向面已在本回合跑绿）；双端探针复用依据=触面零 diff；merge-owned 门禁 pending 如下。
 
 ## 9. 复审记录
+
+### 再次送审入口核查（2026-10-15，needs_fix）
+
+stage=review | review_scope=final-readiness | reviewer_identity=本次独立 Codex 审查上下文，非本轮实施者 | plan_revision=2（阶段 D/E 合同版本待收口） | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | reviewed_commit=3d7817a246fa9409bb001bc0dd0d8717940e8108 | base_commit=491e84afbdcbfa3e05755596f5fb8d5187ba2f3a | dependency_revisions=auto-reader@41c5dd3d2f7fc8631011376d42c82aa183edae49 | acceptance_results=AC-17 fail（T-22/W-04 未实施，原断连测试无改动）；AC-18 partial（T-23 未收口）；R01..R03 保留已完工作进展，未重新授 final pass | findings=F-781-R04 仍 open；T-23 需冻结关闭表/Spec delta/合同 revision | pending_closeout_gates=merge-owned 全档 pending，本次未跑 cargo 整档或实机矩阵 | evidence=[入口核查报告](reports/781-rereview-readiness-20261015.md) | next=work 完成 T-22/T-23 后重新交 execution_done。status 保持 executing，current_step=21；原未完成任务继续未勾选，其余完成进展不撤销。
 
 2026-10-14 r1历史：原781锚点立项合同完成；原三个draft均0/8、功能未实施，旧范围/任务/AC/测试/Spec候选完整冻结于Git commit 799eac6fb。该记录是规划交接，不是实现通过。
 
@@ -326,6 +337,34 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 2026-10-15 work（T-20 / F-781-R02 收口）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=ab65017c0 | code_commit=e455c1d16（vue.rs 三处修复 + W-02 fixture/双探针） | task_ids=T-20 [✅] | evidence=VM 腿 57/57 + Vue 腿 59/59（D:/p781-t20/{vm,vue}，W-02 三对照 13 项/端：嵌套同名零串线（inner offset 不动）、inner-only/plain-inner（无 controller 嵌套）→ outer invalid:not_found、inner managed 不误伤 outer、mi → error:unsupported）；单测 plan781_vue 5/5（新增 2）+ plan781 26/26；cargo check 0 error | 探针勘定=vue text= 点击须带引号精确匹配（GoMI 子串命中 GoMiss 假红，Playwright 无引号 text= 为子串匹配）；vue 腿复跑前清残留实例 | 观察记录=vue_probe 收尾 taskkill 偶发挂起（node 侧清理路径，与 W-02 无关，结果已落盘）；tu 归 merge（ui_gen 触面） | blockers=无 | next_responsible_role=work（T-21 R03 全章 oracle 或用户裁定修订路线）
 
+### T-22/T-23 收口（2026-10-15，r3 合同版本下交 execution_done）
+
+stage=work | plan_id=PLAN-781 | plan_revision=3 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=3d7817a24（阶段 E 后基线） | code_commit=**dac061353**（T-22：W-04 三测 + transport RST 影子侦测 + socket2 依赖）+ **d83458941**（T-24 rider：str.rs.at 镜像） | dependency_revisions=auto-reader@41c5dd3d2f7fc8631011376d42c82aa183edae49（D:/autostack/.wt/reader-781e/auto-reader，plan-781e-meta-index） | task_ids=T-22,T-23（23/26；余 T-07 review/T-08 merge） | blockers=无 | next_responsible_role=review（T-07 最终独立复审）
+
+#### 四 finding 闭合表（反例 → 不变量 → 修复 → 永久用例 → 原始结果）
+
+| finding | 反例（审计输入） | 不变量 | 修复 | 永久用例 | 原始结果 |
+|---|---|---|---|---|---|
+| F-781-R01（P1） | `(pane="@scrollctl:1", key="chapter-50")` 编码 `scrollanchor:@scrollctl:1:chapter-50` 解码为 `("@scrollctl","1:chapter-50")`——采集表 miss，标准 `scroll_controller()` 句柄用户锚点恒 not_found；Debug 字符串取值对引号/反斜杠 key 无往返保证（探针 docs/plans/attachments/781/historical-review/probe.cjs） | 锚点身份=结构化 (pane,key) 二元组；任意合法句柄/key 字符（`@`/`:`/引号/反斜杠/CJK）往返无损；标准 `scroll_controller()` 与手写句柄同语义；重注册驱逐/stale 跳过/dup last-wins | 34bb33090：合成 id 改不透明序号 `scrollanchor:{seq}` + build 期注册表（seq→(pane,key) 查表，collector 回传 rect+seq） | 单测（`@scrollctl:N`/冒号/引号/反斜杠/CJK 往返 + 驱逐/stale/dup 语义）；W-01 双端 fixture 真实 `scroll_controller()` + 分隔符 key 行 | VM 腿 44/44（d01r6 全迹 + d01r7 清埋点终验）+ Vue 腿 46/46（vue-final，w01 handle=`__scrollctl_1`）；plan781 26/26 + scroll 72/72 + mcp_server 30/30（at ab65017c0） |
+| F-781-R02（P1） | `ui_gen/vue.rs:3938-3942` 对 pane 整子树 querySelectorAll 取最后命中——嵌套同名 key 时 outer 请求滚 inner 目标并误报 applied；仅 inner 有 key 时 outer 不报 not_found；inner managed 标记误伤 outer unsupported（从实际生成器提取的 helper + 标准 DOM 查询形状桩证明） | 最近 ordinary scroll-pane 归属：目标与 managed 判据只被其最近 pane（含无 controller 嵌套）认领；不同 pane 同名不串线；合法引号/冒号/反斜杠 key 结构性安全（不做 CSS selector 拼接） | e455c1d16：全部 scroll-pane 元素（含无 controller）发射 `data-scroll-pane` 所有权标记；helper 改最近 pane 归属过滤（`closest('[data-scroll-pane]')===pane`）+ 全量遍历属性比对；`__scrollCtlEl` 同规则寻址 | plan781_vue 单测 5（所有权标记/归属过滤/selector 拼接退役）；W-02 13 项检查×双端（嵌套同名零串线/inner-only→outer not_found/plain-inner 嵌套/inner managed 不误伤/mi→unsupported） | VM 腿 57/57 + Vue 腿 59/59（D:/p781-t20/{vm,vue}）；ui/ui_gen/fixtures 自 e455c1d16 至 r3 HEAD 零 diff（复用核验，见下） |
+| F-781-R03（P2） | driver `deep=False` 钉死——10MiB 只查首/中/尾 3 章（3/1347、3/1346）、冷启动 1 章；原件 hash+TOC 数量不能证明未抽查章的拆分/正文正确 | 10MiB 导入（TXT+MD）每一章逐字节等于输入推导内容，含冷重启后；单章窗内字节变异必须被精确检出（oracle 会红） | 用户裁定→阶段 E meta 索引架构（导入一次扫描 `<book_id>.meta.json`，章 GET=File.read_text_range 窗读）；3d7817a24：run_v17 接 deep=True 全章 oracle + 冷重启复扫 + W-03 变异负例 | `test_reader_import_budget.py --deep`（TXT/MD 全章+冷重启）；reader t07 parity 20 项（meta 路径 vs parse_book_json 全章逐字节等 + meta 缺失/损坏/偏移变异负例） | TXT 1347 章两轮（含冷重启）bad=[]、MD 1346 全绿；W-03 变异@6990506→精确检出第 900 章、首章无扰；单章 GET ~180s→亚秒、导入 131.6→74.2s（D:/p781-t26/{out1,out2}，reader@41c5dd3） |
+| F-781-R04（P2） | 断连测试只断言 300ms 后 ping=200——无 entered 确认、无写入/scope/许可观测、deadline/关闭终态未测。**补齐 oracle 后实测出真缺陷**：RST 断连后 slowwrite 跑满 20000 心跳 + 迟到 200（10381ms，修复前 run 实录）——hyper h1 响应挂起期不 poll 读侧，RST 不可见 | LegacyHttp 长忙请求（park 点心跳副作用形态）在 deadline/断连(RST)/服务关闭三路：取消后零新副作用（心跳冻结、至多一在飞写）、无迟到成功（done 永现缺席）、单终态（恰一次 503/连接终结）、task/scope/live-op 回收、生命期许可归还（容量 1 下 ping 503→200）；FIN-only=半关闭契约（deadline 上界约束） | dac061353：http_transport.rs 影子句柄侦测（SockRef::try_clone 重复句柄 + 异步 MSG_PEEK 零消费；传输错误→cancel_scopes_for_conn；FIN 退出不取消；连接正常终结 abort 影子）+ socket2 常规依赖 | 三个永久 e2e 测试 `http_e2e_plan781_w04_*`（th 档；slowwrite=entered+20000 心跳+done；断言冻结/单终态/回收/许可两态） | 5/5 绿（deadline 2.04s/断连 1.77s/关闭 2.01s）；修复前断连路红（跑满+迟到写入）→修复后绿=oracle 区分度实证；th 137/139 |
+
+**T-24 rider（本回合发现的阶段 E 预存缺陷）**：`a2r_std_signature_parity` 在基线 3d7817a24 即红——T-24 只落了 a2r-std 侧 `str_byte_len` 未镜像 `stdlib/auto/str.rs.at` 声明；修复 d83458941（.rs.at 声明补齐），parity 红→绿（stash 基线复跑归因在案）。
+
+#### 冻结块（r3 交审基线）
+
+- **auto-lang**：plan-781-dev HEAD=**d83458941**（dac061353 + d83458941；merge-base=491e84afb）；树 clean。
+- **auto-reader**：plan-781e-meta-index HEAD=**41c5dd3d2f7fc8631011376d42c82aa183edae49**，tracked clean；未跟踪 `s5-probe-/ s5b-/ s5c-/ t07-probe-/`＝T-25 实施期探针临时产物（证据价值已沉淀于 reader t07/t26 报告与 D:/p781-t26 JSON），merge 清理时可删，不属冻结面。
+- **CLI**：W-04/预算 e2e 为进程内 `crate::run`（无独立 CLI）；reader 面 CLI 沿用 T-17/T-18 冻结值（worktree auto.exe sha256=b7f09980744a…，vue 腿 52e2f153…）——T-22/T-23 未重建 auto.exe、reader 面驱动零改动。
+- **配置**：W-04 逐测试 env（AUTO_HTTP_STEP_BUDGET=400000000；AUTO_HTTP_REQUEST_TIMEOUT_MS=600/30000；AUTO_HTTP_SHUTDOWN_DRAIN_MS=300；AUTO_HTTP_MAX_INFLIGHT=1——均测试内置）；生产默认零变化（默认预算 10M/deadline 30s 不动）。
+- **fixture**：W-04 无新增盘上 fixture（tempdir 隔离）；既有 fixture 家族哈希不变（reader-import-budget 定长哈希沿 T-17 manifest）。
+- **定向验收（本回合实跑）**：`cargo th`（http_e2e 过滤档）**137/139**——两红归因：back_proxy corpora=F-781-C03 预存（单跑同红）、plan730 quoted_boundary=在案并行 flake（单跑带改动绿）；W-04 新测 5/5；`cargo t plan781` **28/28**；`cargo t scroll` **72/72**；a2r parity 绿；clipboard 单跑绿（全档并行环境 flake，与改动无关——基线单跑同绿）；`cargo check -p auto-lang` 0 error、触面文件零新警告。
+- **复用证据核验**：ui/ui_gen/native fixture/p781 fixture 自 W-01/W-02 证据 commit（ab65017c0/e455c1d16）至 r3 HEAD **零 diff**（git diff 实证）→ 双端探针 44/46+57/59 证据有效复用；trans/rust.rs 增量仅为 byte_len 新方法臂（不影响既有 vue 生成路径，金样面归 merge-owned tu）。
+- **merge-owned pending 门禁**（2026-10-14 时序裁定，非本回合执行）：裸 `cargo t`、`cargo tu`（ui_gen 触面在案）、`cargo tv`（VM 触面：stdlib.rs/engine 未再动，T-24 已闭——按 merge 实际触面核定）、reader 面批量档。
+- **SD 候选**：SD-01..07（r1）+ SD-08..11（r3 冻结，§5 表）——发布归 T-08 merge；SD-11 沉淀面=auto-reader 仓 canonical specs（经 READER-001 终审）。
+
+
 ### T-07 最终复审（2026-10-15，final pass）
 
 - stage: review；review_scope: final；**reviewer_identity/limitations: 实施会话兼任复审（无独立上下文可用）——按 auto-plan-review 纪律以工件重建裁决：全部 required oracle 在冻结基线重放、独立新反例、不信实施侧摘要；该局限显式记录**。
@@ -356,7 +395,7 @@ stage=review | review_scope=historical-final-audit | reviewer_identity=本次独
 
 ~~T-21 若走合同修订路线（10MiB 全章扫描成本不可接受），修订内容须用户显式裁定后方可执行——审计明文禁止静默降级（F-781-R03）。~~ **已裁定（2026-10-15）**：不走全文扫描路线——成本探针中止（其 D:/p781-t21 遗留数据仅作历史记录）；改为阶段 E 的「预先扫描+索引 meta+按章窗读」架构（见 §8 阶段 E），T-21 的验收经 T-26 以索引后可行的全章 oracle 收口——非降级，是架构升级后的更强 oracle。
 
-**READER-001 路由补充（章索引 meta 设计，2026-10-15 用户裁定方向）**：F-781-R03 成本问题的根因在 Reader 侧章视图不落盘——`chapter_json`/`library_toc` 每请求 `content_of` 全文 + `parse_book_json` 整书重解析+整书 JSON 中间态往返（导入路径函数被读路径 naïve 复用；与传输格式无关）。用户裁定修复方向（781 不实施，001 承接）：**导入时一次扫描产出每书 meta 边车文件**（建议 `<book_id>.meta.json`），含书级统计（total_chapters/total_words）+ 每章 `{number,title,offset,length,word_count}`（偏移单位与 substr 语义一致；trim 口径与现 parse_book_json 逐字对齐）+ source_sha256 与受管副本互证——**副本不可变+hash 钉死 ⇒ 索引永免失效逻辑**。此后 toc/章 GET/书与章统计全部直读 meta（章 GET = read+substr+trim+escape，变体 A 零新原语，预计单章 <1s；变体 B 加 `fs.read_range` 原语真 O(章)，原语交付归 auto-lang）。meta 损坏处置（refuse+幂等重建 vs 拒服务）归 001 裁定。**联动**：该修复落地后 T-21 路线 1（10MiB 全量逐章）从 ~67h 降至分钟级——验证成本随性能修复自然消失。**stdlib 现状勘定（同日，二次修正——零改动结论）**：用户初裁「781 加阶段修改 stdlib 实现 read_range」，勘定后前提推翻——**PLAN-687 已交付 `File.read_text_range(path, offset, limit)`（nat#1016，`auto.file.read_text_range`）**：真 seek+精确窗读（O(limit) IO，无整文件读）、UTF-8 边界安全（mid-char offset 回退/窗尾回退，never-half-char）、EOF 信封 `{text,total,next_offset}`（next_offset=null 仅真 EOF；offset<0/limit≤0→total:-1）、a2r-std 双轨字节级 parity（read_text_range_parity.rs 全边界矩阵 + aavm_runner_tests .at 级调用；engine.at:819 实用先例）——正是 meta 索引章 GET 所需语义，**框架侧零改动**。另：句柄族 `File.open_rw/seek/read/position`（ffi/stdlib.rs，`Mutex<File>`）亦存在但有 id 2841-2843 撞号史与 `File.read` 有损解码/双 open 语义分叉——索引用例不依赖句柄族。`fs.read_range` 别名不新增（PLAN-738 裁决②单权威名收敛）。**001 直接消费 `File.read_text_range` 即可**；用户「加阶段改 stdlib」裁定以本勘定记录为终（无需实施）。
+**READER-001 路由补充（章索引 meta 设计，2026-10-15 用户裁定方向）**：~~（本段“781 不实施、001 承接”的路由已被**同日稍后的阶段 E 用户裁定覆盖**——Reader 章 meta 索引改造改由 781 阶段 E 承接实施（T-25 落地 auto-reader@41c5dd3），READER-001 仅保留业务终审；本段保留为设计讨论的历史记录，其中“变体 A/B、meta 损坏处置归 001 裁定”等未决细节以阶段 E 实际实现与 t07 规格为准。）~~ 以下为历史原文：F-781-R03 成本问题的根因在 Reader 侧章视图不落盘——`chapter_json`/`library_toc` 每请求 `content_of` 全文 + `parse_book_json` 整书重解析+整书 JSON 中间态往返（导入路径函数被读路径 naïve 复用；与传输格式无关）。用户裁定修复方向（781 不实施，001 承接）：**导入时一次扫描产出每书 meta 边车文件**（建议 `<book_id>.meta.json`），含书级统计（total_chapters/total_words）+ 每章 `{number,title,offset,length,word_count}`（偏移单位与 substr 语义一致；trim 口径与现 parse_book_json 逐字对齐）+ source_sha256 与受管副本互证——**副本不可变+hash 钉死 ⇒ 索引永免失效逻辑**。此后 toc/章 GET/书与章统计全部直读 meta（章 GET = read+substr+trim+escape，变体 A 零新原语，预计单章 <1s；变体 B 加 `fs.read_range` 原语真 O(章)，原语交付归 auto-lang）。meta 损坏处置（refuse+幂等重建 vs 拒服务）归 001 裁定。**联动**：该修复落地后 T-21 路线 1（10MiB 全量逐章）从 ~67h 降至分钟级——验证成本随性能修复自然消失。**stdlib 现状勘定（同日，二次修正——零改动结论）**：用户初裁「781 加阶段修改 stdlib 实现 read_range」，勘定后前提推翻——**PLAN-687 已交付 `File.read_text_range(path, offset, limit)`（nat#1016，`auto.file.read_text_range`）**：真 seek+精确窗读（O(limit) IO，无整文件读）、UTF-8 边界安全（mid-char offset 回退/窗尾回退，never-half-char）、EOF 信封 `{text,total,next_offset}`（next_offset=null 仅真 EOF；offset<0/limit≤0→total:-1）、a2r-std 双轨字节级 parity（read_text_range_parity.rs 全边界矩阵 + aavm_runner_tests .at 级调用；engine.at:819 实用先例）——正是 meta 索引章 GET 所需语义，**框架侧零改动**。另：句柄族 `File.open_rw/seek/read/position`（ffi/stdlib.rs，`Mutex<File>`）亦存在但有 id 2841-2843 撞号史与 `File.read` 有损解码/双 open 语义分叉——索引用例不依赖句柄族。`fs.read_range` 别名不新增（PLAN-738 裁决②单权威名收敛）。**001 直接消费 `File.read_text_range` 即可**；用户「加阶段改 stdlib」裁定以本勘定记录为终（无需实施）。
 
 **F-781-D01（2026-10-15 新发现；同日结案）**：~~`@scrollctl:` 前缀 controller 句柄使 iced scroll 操作全局静默失效~~ **已结案**（详见 §9 事故记录结案段）：主根因为探针参数名错读（观测假象，框架未坏）+ 两个真缺陷（pane 样式双写钳死 Fixed 高 pane 的可滚动性；visibility 归属解析与发布空间错位）——三处修复均落 T-19 范围内（探针/aura 层/MCP 观测面），未涉 iced 上游或 app shell 架构层，无需 needs_replan。T-19 W-01 解阻。
 
