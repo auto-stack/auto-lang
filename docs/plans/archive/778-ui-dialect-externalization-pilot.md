@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-778
-status: execution_done
+status: archived
 feature_name: 外部 UI 方言与 ParserBridge 可行性探针
 author: [Codex]
 created_at: 2026-10-13
 updated_at: 2026-10-15
 plan_revision: 1
-current_step: 5
+current_step: 7
 total_steps: 7
 supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md]
 new_spec_components: []
@@ -141,8 +141,8 @@ T03创建外部入口 `cargo test --manifest-path test/fixtures/modularity/ui-di
 | [x] | T-03 | work | T02 | 独立fixture真实model子集，V01–04正反控 → `test/fixtures/modularity/ui-dialect-consumer/`（独立 workspace + 根 exclude）12/12 绿（V01 typed结果+非内建替跑 / V02 core赋值·view参数·scene·widget全形态 / V03 with_session保留·嵌套block传播·实例隔离 / V04 Err后注册在+恢复点继续+错误位置offset8+注解None回滚 / V05 默认路径+Override/Append冲突可区分）；**R1 组合控制（r1_delegation_combinations.rs）6/6**：嵌套表达式委托递归 accepts=2、兄弟裸块控制、委托 Err 恢复点 context、成功委托正控、token None 回滚、token Err 再派发；合计 fixture 18/18；**R2 闭合（da17a3d44）**：裸字段支持 + 四象限边界矩阵 8 项收编（r2_bare_field_boundary.rs），fixture 合计 26/26；审查 boundary 3/3、independent 7/7（pinned）全绿 | 01/02 |
 | [x] | T-04 | work | T03 | 默认内建UI保持，V02/V05；点检session/import创建路径 → `cargo t parser::tests` 179/179、`t dialect` 7/7、`t model` 15/15、`t widget` 68/68；创建路径记录：生产 UI 入口 18 处（lib.rs 各自 `Parser::from(..).with_session(ui())`）与导入子解析器（compile.rs:1878/1933 `new_with_type_store`，无 session）均每实例新建——外部方言按入口显式注册（fixture 模式），生产注入列迁移清单；widget 体 model 由 parse_widget_decl 直连内建（冻结边界，见 §T-05 报告）；R2 点检：内建裸字段拒绝控制钉住（r2_builtin_bare_field_still_rejected_control），scoped 255/255（run.py scoped.log exit0） | 02/03 |
 | [x] | T-05 | work | T04 | check+t+tv+externalgate；后续文法迁移清单/限制报告 → `cargo check -p auto-lang` 0 error（新代码 0 警告）；外部门禁 12/12；定向档见 T-04；**裸 `cargo t` + `cargo tv` 按 2026-10-14 裁定为 merge-owned 门禁，冻结提交上执行，本阶段 pending**；迁移清单/限制报告见 §T-05 报告；R1 重放 `replay.py` 5/6——唯一差异为第 3 项冻结期望 [false,false] 属 P1 未修语义（论证见 §9 r2 收尾），联合修复语义 [false,true,false] 已收编为永久控制；rustfmt --check 新增/修改文件全净（F778-R1-03）；**R2 闭合**：run.py 四腿全 exit0（external/independent/scoped/check）+ boundary 3/3；F778-R1-03 复核 fmt 净；覆盖诊断见 §9 r3 | 03 |
-| [ ] | T-06 | review | T05 | 独立review真实外部面与兼容性 | 04 |
-| [ ] | T-07 | merge | reviewpass | Spec/归档/合流/guard-clean清理 | 05 |
+| [x] | T-06 | review | T05 | R3 final pass，da17a3d44409b8f002ed17250ae23dd867387d8a；全finding闭合，外部26/26+独立7/7+边界3/3+新组合3/3+定向255/255+check/fmt通过；merge-owned裸t+tv 由 merge 执行（见 §9 r1 consolidation） | 04 |
+| [x] | T-07 | merge | reviewpass | Spec/归档/合流/guard-clean清理 → §9 PLAN-778:r1 consolidation 收据 | 05 |
 
 拟tree `D:/autostack/.wt/lang-778/auto-lang`，branch `plan-778-dev`；所有实现/构建/测试在该树，主检出只簿记，禁止链接。
 
@@ -247,6 +247,28 @@ parser::tests 179/179、dialect/model/widget 定向绿（scoped 255/255）；
 `cargo check --locked` exit0；rustfmt --check 净。merge-owned 裸 `cargo t` +
 `cargo tv` 仍 pending（冻结提交 da17a3d44 上执行）。
 
+
+2026-10-15 R3：stage=review | review_scope=final | reviewer_identity=当前独立评审会话（未实施778，延续R2独立上下文，按提交/源码及新组合重建） | plan_id=PLAN-778 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-778/auto-lang | branch=plan-778-dev | reviewed_commit=da17a3d44409b8f002ed17250ae23dd867387d8a | base_commit=87f45dc4e2c592c31844e74824e67bf9e6cb419f | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；root/fixture/harness锁与受管输入hash见指纹 | spec_inputs=frontend overview SHA256 fccb811a79b24b95678efa57b87bcc9ded10e5afd2b9abc44236b99aebb16dfe；SD01 pass冻结 | acceptance_results=AC01/02/03(work-review)/04 pass，AC05 merge-owned pending | findings=F778-R1-01/02/03及F778-R2-01全closed；无新增阻断项 | evidence=[R3完整报告](attachments/778/review-r3/REVIEW.md)、[重放入口](attachments/778/review-r3/run.py)、[补充独立组合](attachments/778/review-r3/combinations.rs)、[指纹](attachments/778/review-r3/fingerprints.json)、[规范增量冻结](attachments/778/review-r3/spec-delta-reviewed.md) | verification=fixture26/26、独立7/7、历史边界3/3、新组合3/3、定向255/255、check exit0、改动面fmt/diff-check pass；输入/HEAD不变、实施树及依赖干净；既有warnings不称全仓零 | pending_closeout_gates=merge在冻结da17a3d44上执行裸cargo t+tv（未触trans/ui_gen/aavm，不要求tt/tu/taa）；T07 Spec/ledger/合流/归档/批到期判定/guard-clean pending | task_state=reviewed 6/7，T06完成，T07未完成 | next=merge；本轮未运行整档、未修实现、未发布canonical/ledger、未合入/归档/清理；review pass不等于交付完成。
+
+R3就绪审计：R2覆盖诊断与四象限永久矩阵已落实；pre-restore上下文观察已收编；本轮额外混合裸/var/typed字段、注释/CRLF、缺右括号EOF拒绝、非法类型offset14均通过。F778-R2-01按原合同修复，不收窄文法；内建默认路径保持拒绝裸字段。具体SD01完整文本冻结于R3附件，merge须同时替换frontend原mem::take建议并核对规范源漂移。
+
+2026-10-15 PLAN-778:r1 consolidation（stage=merge，outcome=pass）：
+
+| checkpoint | evidence |
+|---|---|
+| prepared | reviewed 基线 da17a3d44（R3 pass 绑定）；SD-01 冻结增量落 worktree（frontend/overview 新增"方言外部化"节 + 原位替换 mem::take 坑点；源 hash fccb811a 复核无并发漂移）；frontend/plans.md 行 + docs/reports/778-ui-dialect-externalization/verification.md 收据 + INDEX 再生（spec-index.py）；docs-only 后代提交经 exact-delta 核验成为 delivery |
+| gates | 裸 `cargo t`（nextest default，冻结基线）三样本：5357 选择面 5356/5357、5355+1timeout/5357、5356/5357——每轮恰 1-2 红且轮换（state_file lock / plan498 chart / clipboard shim / plan776 http timeout），逐一隔离复跑全部通过=机器并行负载 flake 家族，零确定性红；交付触面族（parser::tests/dialect/model/widget 255 项）每轮全绿。`cargo tv` 163/163 全过。rebase 后 range-diff 三代码提交 patch 全等（40c69c890=4fba860c7 / a8a81aad4=5e8f24e73 / da17a3d44=e86104835）→ 代码位与门禁基线零差，证据有效（不变输入论证） |
+| landed | master tip = 711ce23f6 = plan-778-dev tip（`git merge --ff-only`，无 merge commit；rebase 两次吸收并发 491e84afb[P781 ledger repoint] 与 602bc850f[782 簿记]，specs.json 冲突以 master 格式 indent=2 守卫式重放，外科 diff +60/−2） |
+| ledger_refreshed | `.autoos/specs.json` 离线投影（本仓既有通道；byte 备份+程序化 upsert+schema/读回守卫）；P778-1（designs）/P778-T（tests）/P778-R3（reviews）/P778-M（reports）四条目，version 20→21（合并 P781 并发 repoint 后基线）；无关条目字节语义零扰动断言 |
+| archived | docs/plans/archive/778-ui-dialect-externalization-pilot.md；附件 review-r1/r2/r3 + 报告随本提交入默认分支；7/7 任务闭合 |
+| cleaned | （本提交后执行， receipts 见下方更新） |
+
+发现物归档：两次 rebase 均因他线并发簿记（非本计划冲突）；首次投影 indent=1 与仓内 indent=2 格式不一致已按守卫协议回滚重写（守卫教训：语义等价断言不足以保证外科边界，需字节级 diff 复核）。
+
 ## 10. 待澄清事项
 
 T01只能选择等价接口机制；改默认grammar/扩大model子集/搬UiAst需revision。若必须公开全部lexer/符号表私有面，先出失败决策needs_replan，不以getter全开放绕过。
+
+## 11. spec-sync 回写记录
+
+- 2026-10-15（merge）：SD-01 → docs/specs/auto-lang/frontend/overview.md（新增"方言外部化（PLAN-778 pilot）"节；已知坑 mem::take 条目原位替换为 Arc 派发语义，未遗留冲突建议）；frontend/plans.md 追加 778 行；INDEX 再生；ledger P778-1/T/R3/M（v21）。

@@ -1,3 +1,23 @@
+### Plan 778（2026-10-15，final review R3 —— 全部闭合）
+
+审面da17a3d44409b8f002ed17250ae23dd867387d8a；**final pass / reviewed 6/7**。F778-R1-01/02/03和F778-R2-01全部closed；无新增阻断项。外部26/26、独立历史7/7、边界3/3、新组合3/3、定向255/255、check/fmt/diff-check通过。
+[R3报告及闭合表](attachments/778/review-r3/REVIEW.md)、[冻结规范增量](attachments/778/review-r3/spec-delta-reviewed.md)。
+
+裸字段Unknown/Nil在外部fixture按原冻结合同实现，默认内建拒绝控制保持；四象限矩阵、var/非法反控与pre-restore上下文观察均永久收编。R1/R2历史记录保留，现无778未闭合阻断债务。
+
+T07合入前冻结提交裸cargo t+tv与Spec/ledger/合流/归档/批回归到期判定/guard-clean pending；review pass不等于交付完成。本轮只review，未运行整档、未合入/归档或清理树。
+
+### Plan 778（2026-10-15，final review R2 —— 历史，R3已闭合）
+
+审面a8a81aad4671ac8eae1728c4e71623c2628abd8b；**needs_fix / executing 2/7**。R1三项finding均已闭合；联合上下文期望[false,true,false]正确，pre-restore独立观察通过。fixture18/18、定向255/255、check/改动面格式通过。独立反例6pass/1fail、边界2pass/1fail。
+[R2报告](attachments/778/review-r2/REVIEW.md)、[可重放控制](attachments/778/review-r2/run.py)、[边界输入](attachments/778/review-r2/boundary.rs)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F778-R2-01 | medium / blocking | Plan冻结及已验证面name [type] [= expr]允许两者同时缺省；外部model { count }在}处Expected type，换行同样报错。type-only正控通过，内建裸字段也拒绝；是pilot支持面/契约缺口，非默认grammar新回归。需按已冻结合同实现或经new显式调整revision，不可静默缩小。AC01/03，T03..05。 |
+
+保留T01/T02，重开T03..05及依赖验收；同树work完成契约闭合、永久正反控与覆盖诊断（连续两次final needs_fix），提交后复审。T06未通过，裸t+tv整档仍merge-owned pending。本轮不改实现/Spec/ledger，不合入或清理。下方R1记录保留历史。
+
 ### Plan 777（2026-10-15，独立 final review R4 —— 已闭合）
 
 审面5e1794bcc6f1b811a2b8d7a224d12fac9997f829；**final pass / reviewed 5/6**，尚未merge/交付。
