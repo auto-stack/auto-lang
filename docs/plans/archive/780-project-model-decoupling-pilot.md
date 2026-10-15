@@ -146,7 +146,7 @@ line*/, extra: 1 }` 恢复 static 且 external_backend 保留；例 1/2（注释
 - **archived**：git mv → docs/plans/archive/780-project-model-decoupling-pilot.md，status: archived，T-01..T-07=7/7；review-r1..r5 复审附件随本收据入库（K13）。
 - **cleaned**：wt-guard 双树 clean（reparse point 扫描均空）→ lang-780/auto-lang 与组内 auto-down 兄弟 worktree 移除（后者从属仓 auto-down 注销）、plan-780-dev 分支删除（was ec934b000）、组目录 D:/autostack/.wt/lang-780 已删；git worktree list 仅剩主检出与 779/781/782/783。
 - **部署产物核对**：auto-lang 无发布二进制/web bundle 生产面，N/A。
-- **批回归到期判定（fix-test-tiering）**：**due**——780%5=0 落地；移交 /auto-plan:regress 主检出单实例执行。
+- **批回归到期判定（fix-test-tiering）**：**due**——780%5=0 落地于收据覆盖提交之后；**用户裁定（2026-10-15）：本周期不执行，延后至下一周期**由 /auto-plan:regress 在主检出单实例补跑（机器当日有他线并发负载）。
 
 ## 10. 待澄清事项
 
