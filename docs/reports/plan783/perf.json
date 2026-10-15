@@ -1,12 +1,12 @@
 {
   "probe": "ac-artifact-probe/0.1.0",
-  "source_commit": "d00d4f00f5d176dfa019791f8cc2c6fe7b65781b",
+  "source_commit": "a3cbe7643ad5d41f13910eb66f5de79c319c7c49",
   "build_profile": "release",
   "machine": {
     "os": "windows",
     "logical_cores": 20,
     "total_phys": 34163630080,
-    "avail_phys": 8536715264
+    "avail_phys": 13514215424
   },
   "fixture": "p04-while-retest.at",
   "samples_per_scenario": 30,
@@ -16,16 +16,16 @@
       "what": "cold store: parse→HIR→verify→lower→link→run per sample (distinct source)",
       "stats": {
         "n": 30,
-        "p50_ms": 253.24609999999998,
-        "p95_ms": 266.73560000000003,
-        "p99_ms": 288.6053,
-        "mean_ms": 254.90704999999997,
-        "min_ms": 247.0321,
-        "max_ms": 288.6053
+        "p50_ms": 246.3682,
+        "p95_ms": 257.8513,
+        "p99_ms": 259.9394,
+        "mean_ms": 244.51481666666675,
+        "min_ms": 225.2056,
+        "max_ms": 259.9394
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 1884160,
+      "private_bytes_delta": 1806336,
       "disk_total": 4408650,
       "gc_runs": 0,
       "gc_ran": 0,
@@ -41,16 +41,16 @@
       "what": "object-hit resume in the same process (link+run only)",
       "stats": {
         "n": 30,
-        "p50_ms": 192.69819999999999,
-        "p95_ms": 201.96710000000002,
-        "p99_ms": 213.06130000000002,
-        "mean_ms": 193.38620666666668,
-        "min_ms": 183.0597,
-        "max_ms": 213.06130000000002
+        "p50_ms": 187.4611,
+        "p95_ms": 206.3996,
+        "p99_ms": 222.4172,
+        "mean_ms": 188.53204999999997,
+        "min_ms": 175.1183,
+        "max_ms": 222.4172
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 1789952,
+      "private_bytes_delta": 1921024,
       "disk_total": 1563137,
       "gc_runs": 0,
       "gc_ran": 0,
@@ -64,12 +64,12 @@
       "what": "object-hit resume in a NEW process (process spawn + store open + link + run)",
       "stats": {
         "n": 30,
-        "p50_ms": 216.0,
-        "p95_ms": 218.0,
-        "p99_ms": 266.0,
-        "mean_ms": 213.8,
-        "min_ms": 200.0,
-        "max_ms": 266.0
+        "p50_ms": 217.0,
+        "p95_ms": 249.0,
+        "p99_ms": 273.0,
+        "mean_ms": 218.83333333333334,
+        "min_ms": 186.0,
+        "max_ms": 273.0
       },
       "ok": 30,
       "semantic_failures": 0,
@@ -89,16 +89,16 @@
       "what": "identical content consumed by other projects: full hits, no new chunks",
       "stats": {
         "n": 30,
-        "p50_ms": 219.3083,
-        "p95_ms": 351.5644,
-        "p99_ms": 361.4697,
-        "mean_ms": 234.29528666666667,
-        "min_ms": 188.1457,
-        "max_ms": 361.4697
+        "p50_ms": 185.916,
+        "p95_ms": 206.0565,
+        "p99_ms": 211.4364,
+        "mean_ms": 185.4022,
+        "min_ms": 170.5472,
+        "max_ms": 211.4364
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 315392,
+      "private_bytes_delta": 360448,
       "disk_total": 3853857,
       "gc_runs": 0,
       "gc_ran": 0,
@@ -114,16 +114,16 @@
       "what": "body-only edit (same signature): object miss → full recompile",
       "stats": {
         "n": 30,
-        "p50_ms": 319.4763,
-        "p95_ms": 411.5423,
-        "p99_ms": 432.865,
-        "mean_ms": 318.6806699999999,
-        "min_ms": 260.2883,
-        "max_ms": 432.865
+        "p50_ms": 245.1601,
+        "p95_ms": 271.5307,
+        "p99_ms": 298.42879999999997,
+        "mean_ms": 242.39890000000005,
+        "min_ms": 216.09419999999997,
+        "max_ms": 298.42879999999997
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 180224,
+      "private_bytes_delta": -233472,
       "disk_total": 4451345,
       "gc_runs": 0,
       "gc_ran": 0,
@@ -137,24 +137,24 @@
       "what": "object-hit build latency while GC recycles junk versions concurrently (hair-pin trigger, no floor: every dead candidate reclaimed per pass)",
       "stats": {
         "n": 30,
-        "p50_ms": 255.85809999999998,
-        "p95_ms": 405.6035,
-        "p99_ms": 406.2907,
-        "mean_ms": 282.3396966666668,
-        "min_ms": 201.49810000000002,
-        "max_ms": 406.2907
+        "p50_ms": 285.0292,
+        "p95_ms": 501.9291,
+        "p99_ms": 502.541,
+        "mean_ms": 307.0875633333333,
+        "min_ms": 195.13539999999998,
+        "max_ms": 502.541
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 372736,
+      "private_bytes_delta": 483328,
       "disk_total": 164926,
-      "gc_runs": 20,
-      "gc_ran": 20,
-      "gc_deleted_chunks": 69,
-      "gc_deleted_during_queries": 65,
+      "gc_runs": 21,
+      "gc_ran": 21,
+      "gc_deleted_chunks": 73,
+      "gc_deleted_during_queries": 69,
       "worker_failures": 0,
       "notes": [
-        "gc runs=20 ran=20 deleted-chunks=69 during-timed-queries=65 (hair-pin trigger from steady base, low=0; proving=true, failures=0)"
+        "gc runs=21 ran=21 deleted-chunks=73 during-timed-queries=69 (hair-pin trigger from steady base, low=0; proving=true, failures=0)"
       ]
     }
   ]

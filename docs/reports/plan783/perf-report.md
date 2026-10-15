@@ -1,18 +1,18 @@
-GC 真实并发回收时的命中查询(22趟/77块删/73重叠) | 516 ms | 707 | 774 | 30/30 || 707 | 774 | 30/30 || 497 | 510 | 30/30 || 364 | 386 | 30/30 || 347 | 387 | 30/30 || 437 | 453 | 30/30 || 398 | 400 | 30/30 |# PLAN-783 性能与资源基线(V-11,T-06;R5 修复后再生)
+GC 真实并发回收时的命中查询(21趟/73块删/69重叠) | 516 ms | 707 | 774 | 30/30 || 707 | 774 | 30/30 || 497 | 510 | 30/30 || 364 | 386 | 30/30 || 347 | 387 | 30/30 || 437 | 453 | 30/30 || 398 | 400 | 30/30 |# PLAN-783 性能与资源基线(V-11,T-06;R5 修复后再生)
 
 - 机器:见 `perf.json` `machine`(Windows,核心数/物理内存随文件);参考机数据,非产品承诺。
-- fixture:`p04-while-retest.at`(oracle exit 3);每场景 **30 样本**(plan §5.5);构建 profile=release;`source_commit` 随报告(本文件为 closeout 在冻结提交 `6b4ea4390` 上的再生产物;与 512 churn 同机串行,负载噪声如实保留)。
+- fixture:`p04-while-retest.at`(oracle exit 3);每场景 **30 样本**(plan §5.5);构建 profile=release;`source_commit` 随报告(本文件为 closeout 在冻结提交 `a3cbe7643` 上的再生产物;与 512 churn 同机串行,负载噪声如实保留)。
 - 语义正确性:每样本断言 exit oracle(`semantic_failures=0`),不减验证换时延。
-- GC 场景证据:22 趟 GC,**77 个 chunk 物理删除,其中 73 个发生在被计时查询期间**(overlap 计数);0 worker 失败;触发为稳态基准之上的 hair-pin 高水位+无地板(每趟回收全部死候选)。真实水位边界(64/48MiB)由 512 churn 证明。
+- GC 场景证据:21 趟 GC,**73 个 chunk 物理删除,其中 69 个发生在被计时查询期间**(overlap 计数);0 worker 失败;触发为稳态基准之上的 hair-pin 高水位+无地板(每趟回收全部死候选)。真实水位边界(64/48MiB)由 512 churn 证明。
 
 | 场景 | 含义 | P50 | P95 | P99 | 全对 |
 |---|---|---|---|---|---|
-| fresh | 冷仓:parse→HIR→verify→lower→link→run(每样本不同源) | 346 ms | 398 | 400 | 30/30 |
-| same-process-hot | 同进程对象命中:仅真 link+run | 327 ms | 437 | 453 | 30/30 |
-| restart-disk-hot | 新进程对象命中(进程生发+开仓+link+run) | 232 ms | 347 | 387 | 30/30 |
-| cross-project | 同内容他工程:全命中,零新块 | 332 ms | 364 | 386 | 30/30 |
-| body-modified | 同签名改 body:对象 miss→全重编 | 419 ms | 497 | 510 | 30/30 |
-| gc-concurrent-query | GC 真实并发回收时的命中查询(22趟/77块删/73重叠) | 516 ms | 707 | 774 | 30/30 |
+| fresh | 冷仓:parse→HIR→verify→lower→link→run(每样本不同源) | 246 ms | 258 | 260 | 30/30 |
+| same-process-hot | 同进程对象命中:仅真 link+run | 187 ms | 206 | 222 | 30/30 |
+| restart-disk-hot | 新进程对象命中(进程生发+开仓+link+run) | 217 ms | 249 | 273 | 30/30 |
+| cross-project | 同内容他工程:全命中,零新块 | 186 ms | 206 | 211 | 30/30 |
+| body-modified | 同签名改 body:对象 miss→全重编 | 245 ms | 272 | 298 | 30/30 |
+| gc-concurrent-query | GC 真实并发回收时的命中查询(22趟/77块删/73重叠) | 285 ms | 502 | 503 | 30/30 |
 
 ## 读数与瓶颈(诚实归因)
 
