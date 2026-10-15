@@ -5134,12 +5134,16 @@ fn resolve_pane_chain_structural(
                 keys.push(format!("scroll_ctl_{}", k));
                 keys.push(k.clone());
             }
-            if !node.path.is_empty() {
-                keys.push(format!(
-                    "vnode_{}",
-                    crate::ui::vnode::id_from_path(&node.path)
-                ));
-            }
+            // F-781-R08-C：**空路径是合法根身份**（vnode_converter 的
+            // view_to_vtree_with_paths 约定根 path=[]，renderer 根键即
+            // `vnode_{id_from_path([])}`——FNV 种子 14695981039346656037，
+            // 复审实证已发布）。节点已在树中=结构信息在位，路径恒可
+            // 计算；不得以非空判断跳过根级无 controller pane（根 pane
+            // 被裁行曾因此漏链假 visible）。
+            keys.push(format!(
+                "vnode_{}",
+                crate::ui::vnode::id_from_path(&node.path)
+            ));
             for key in keys {
                 if let Some(e) = panes.get(&key) {
                     chain.push((key, step_of(e)));
@@ -6423,6 +6427,44 @@ mod tests_plan781_t11 {
             &chain3.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
         assert!(inter.is_none() && flags.contains(&"clipped_out"),
                 "无 controller 内层被裁 → clipped_out: {flags:?}");
+
+        // 根级无 controller pane（F-781-R08-C）：根 path=[] 是合法身份
+        //（键=FNV 种子 vnode_14695981039346656037，复审实证 renderer 已
+        // 发布）；根 pane 的被裁行不得漏链假 visible。
+        {
+            let mut rt = VTree::new();
+            // 根即 Scrollable（无 controller、path=[]）。
+            rt.set_root(VNode::new(VNodeId::new(0), VNodeKind::Scrollable,
+                                   VNodeProps::Scrollable { offset_y: None, controller: None })
+                .with_path(vec![]));
+            let row = VNode::new(VNodeId::new(1), VNodeKind::Text,
+                                 VNodeProps::Text { content: "r".into(), selectable: false })
+                .with_parent(VNodeId::new(0)).with_path(vec![0u16]);
+            rt.add_node(row);
+            rt.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
+            let mut rp = HashMap::new();
+            let root_key = format!("vnode_{}",
+                                   crate::ui::vnode::id_from_path(&[]));
+            assert_eq!(root_key, "vnode_14695981039346656037",
+                       "根键=FNV 种子（复审已发布键）");
+            // 复审 fixture 几何：viewport=(0,0,1280,128) content 高 1028.8。
+            rp.insert(root_key.clone(),
+                      entry([0.0, 0.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 1028.8]));
+            let chain = resolve_pane_chain_structural(VNodeId::new(1), &rt, &rp);
+            assert_eq!(chain.len(), 1, "根级无 controller pane 入链");
+            assert_eq!(chain[0].0, root_key);
+            // 复审反例：第 6 行 y=333.6 在 128px 视口外、窗口 1280×800
+            // 内——沿链 clipped_out（修复前空链→仅窗口判定假 visible）。
+            let r10_row = Rect4 { x: 16.0, y: 333.6, w: 102.3, h: 44.8 };
+            let (inter, flags) = compute_visibility(r10_row,
+                &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
+            assert!(inter.is_none() && flags.contains(&"clipped_out"),
+                    "根级被裁行 clipped_out: {flags:?}");
+            // 正对照：第 0 行 y=16 在视口内 → visible。
+            let (inter, flags) = compute_visibility(Rect4 { x: 16.0, y: 16.0, w: 102.3, h: 44.8 },
+                &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
+            assert!(flags.is_empty() && inter.unwrap().positive(), "根级视口内行可见");
+        }
 
         // 嵌套链序：Scrollable(outer,5) 包含 Scrollable(inner,6) 包含
         // Text(7)——链内→外。
