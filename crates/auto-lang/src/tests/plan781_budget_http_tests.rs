@@ -446,7 +446,7 @@ fn ping() str {{
     /// 200**（非 503 cancelled）→ 次实例关停 202。
     #[test]
     fn http_e2e_plan781_w04_restart_after_shutdown_not_poisoned_by_stale_cutoff() {
-        let (dir, d) = slowwrite_dir();
+        let (_dir, d) = slowwrite_dir();
         let port1 = free_port();
         std::env::set_var("AUTO_HTTP_STEP_BUDGET", "400000000");
         std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
@@ -478,7 +478,7 @@ Connection: close
         );
         // 排水窗过后、net 退出清理截止后再起第二实例（真实重启语义）。
         std::thread::sleep(Duration::from_millis(400));
-        let (dir2, d2) = slowwrite_dir();
+        let (_dir2, d2) = slowwrite_dir();
         let port2 = free_port();
         start_server(&cpuloop_program(&d2), port2);
         let (p2, pb2) = http_get(port2, "/api/ping");
