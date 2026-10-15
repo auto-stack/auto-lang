@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-787
-status: drafting
+status: executing
 feature_name: Atom 语法驱动的增量词法与无损 CST 首条闭环
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-15
 updated_at: 2026-10-15
-current_step: 0
+current_step: 4
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -191,10 +191,10 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 
 | 状态 / ID | owner_stage | 依赖 | 操作/路径与产物 | 验证 / AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 用户执行指令 | 新experimental/ac-syntax工作区/锁版本，冻结包依赖、grammar/schema、坐标边界；做最小Atom→跨块CST→edit→fresh等价；新docs/reports/plan787/feasibility.md | 两语言最小输入、配置变更、core语法表达审计；公开接缝不足回规划；AC-01–05 |
-| [ ] T-02 | work | T-01 | 新runtime/src/snapshot.rs、position.rs、handle.rs，分页源和edit事务/位置/代际 | snapshot_、generation_坐标/handle；AC-01 |
-| [ ] T-03 | work | T-02 | 新grammar/src/、runtime/src/lexer/、grammars/*.at；Atom编译规则/Pratt表、checkpoint完整状态 | grammar_、grammar_reject_、lossless_词法；AC-02、03 |
-| [ ] T-04 | work | T-03 | 新runtime/src/{parse,cst,recovery}/，字段/错误节点/同步、结构outline；不可深递归 | lossless_、recovery_、depth_构建查询释放；AC-03 |
+| [x] T-01 | work | 用户执行指令 | 新experimental/ac-syntax工作区/锁版本，冻结包依赖、grammar/schema、坐标边界；做最小Atom→跨块CST→edit→fresh等价；新docs/reports/plan787/feasibility.md | 两语言最小输入、配置变更、core语法表达审计；公开接缝不足回规划；AC-01–05 |
+| [x] T-02 | work | T-01 | 新runtime/src/snapshot.rs、position.rs、handle.rs，分页源和edit事务/位置/代际 | snapshot_、generation_坐标/handle；AC-01 |
+| [x] T-03 | work | T-02 | 新grammar/src/、runtime/src/lexer/、grammars/*.at；Atom编译规则/Pratt表、checkpoint完整状态 | grammar_、grammar_reject_、lossless_词法；AC-02、03 |
+| [x] T-04 | work | T-03 | 新runtime/src/{parse,cst,recovery}/，字段/错误节点/同步、结构outline；不可深递归 | lossless_、recovery_、depth_构建查询释放；AC-03 |
 | [ ] T-05 | work | T-04 | 新adapters/core/与runtime/src/edit/；真实Program投影、声明级复用、回退/取消/迟到 | core_projection_、incremental_local_、incremental_replay_、generation_；AC-03、04 |
 | [ ] T-06 | work | T-05、D-783 | 新adapters/artifacts/与paging；加法扩展ac-artifact-probe/src/schema.rs、codec.rs及对应测试，接真实A01/02/03 | syntax_cache_、syntax_admission_、syntax_budget_、depth_编解码；AC-05 |
 | [ ] T-07 | work | T-06 | 新scripts/verify-ac-syntax-787.ps1、reports/plan787/矩阵/性能、attachments/787/spec-delta.md；兼容旧接口/依赖审计 | acceptance V-01–13、compatibility_、perf_；AC-06；完成→execution_done=7/9 |
@@ -202,6 +202,19 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 | [ ] T-09 | merge | T-08 pass | 冻结提交closeout完整独立套件+触面783套件；沉淀SD/索引，合入归档；批量回归到期判定按技能；guard后清理 | AC-08；实际收尾结束才9/9 |
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
+
+### 执行进度注记（work，2026-10-16）
+
+- T-01 ✅ 工作区/清单冻结+最小闭环；feasibility 报告 [docs/reports/plan787/feasibility.md](../reports/plan787/feasibility.md)（提交 8b1920c33）。
+- T-02 ✅ snapshot/position/handle 33/33（c8eb1f216）。
+- T-03 ✅ grammar 编译器+双 profile .at，grammar_ 6/6 + grammar_reject_ 7/7（85686c3c0/386ccf982）。
+- T-04 ✅ 迭代 unwind/恢复语义修复 + lossless_/recovery_/depth_（f7021cb46；depth_ 4096+ 全路径无栈崩）。
+- T-05 🔄 core 投影 adapter 已落地（8b1920c33）：差分 oracle 17/41 valid 逐字节全等、62/85 invalid 平行；
+  **剩余**：AST span 边界细节对齐（括号组/Binary ±1 字节）后移除两处 `#[ignore]`；
+  增量 edit 族（incremental_local_/incremental_replay_ 主体在 runtime/src/edit 已实现）集成测试未落。
+- T-06/T-07 未开始（D-783 门已通过：783 archived bf773ca9b，SD 已沉淀）。
+- 工作树 `D:/autostack/.wt/lang-787/auto-lang` 分支 `plan-787-dev`，HEAD 8b1920c33，基面 bf773ca9b。
+- workspace 测试面：`RUSTC_WRAPPER= cargo test --manifest-path experimental/ac-syntax/Cargo.toml --workspace` 70/70 绿。
 
 ## 9. 复审记录
 
