@@ -16,7 +16,7 @@
 //!   恢复（内容不定，仅断言成功与单行——红线：不写真实剪贴板）。
 
 mod plan785_provider {
-    use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+    use std::sync::{Arc, Mutex, MutexGuard};
 
     /// core 剪断（永久回归锚）：选定 shim 实现文件零 `ui::clipboard::`
     /// 直引（files 族 `ui::clipboard_native` 保留臂不匹配本串）；
@@ -109,10 +109,12 @@ mod plan785_provider {
     }
 
     /// UI 组件创建路径（VmBridge）注入：bridge 构造后进程默认 clipboard
-    /// provider 在位（arboard adapter）。nextest 每测一进程；裸 cargo test
-    /// 并行下亦为"UI 路径必注册"的合取断言。
+    /// provider 在位（arboard adapter）。F-785-R1-01：bridge 构造会
+    /// if-absent **写槽**——须持共享隔离锁，与 clear→构造窗口的缺席
+    /// 断言测试互斥（本地锁域不相交=无互斥）。
     #[test]
     fn vm_bridge_creation_installs_process_default() {
+        let _g = serialized_default_slot();
         let src = concat!(
             "widget T785Probe {\n",
             "    view {\n",
@@ -191,9 +193,9 @@ mod plan785_provider {
     //（真 arboard adapter 不写用户剪贴板）。
 
     fn serialized_default_slot() -> MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let m = LOCK.get_or_init(|| Mutex::new(()));
-        m.lock().unwrap_or_else(|e| e.into_inner())
+        // F-785-R1-01：共享 crate 级锁（本地 OnceLock 与其他测试文件的
+        // 本地锁不相交=无互斥）；持有者覆盖一切写槽/装配/缺席断言测试。
+        crate::vm::host_capabilities::test_default_slot_lock()
     }
 
     struct DefaultGuard(Option<Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>>);

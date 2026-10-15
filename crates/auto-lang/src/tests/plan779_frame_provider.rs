@@ -32,10 +32,12 @@ mod plan779_provider {
     }
 
     /// UI 组件创建路径（VmBridge）注入：bridge 构造后进程默认 provider
-    /// 在位（frame_bench adapter）。nextest 每测一进程——本测内 bridge 是
-    /// 唯一可能的注册者（裸 cargo test 并行下亦为"UI 路径必注册"的合取断言）。
+    /// 在位（frame_bench adapter）。F-785-R1-01 修正：bridge 构造会
+    /// if-absent 写 frame **与 clipboard** 两槽（785 起 installer 双装配）
+    /// ——须持共享隔离锁，与缺席断言/槽写测试互斥。
     #[test]
     fn vm_bridge_creation_installs_process_default() {
+        let _g = serialized_default_slot();
         let src = concat!(
             "widget T779Probe {\n",
             "    view {\n",
@@ -117,9 +119,10 @@ mod plan779_provider {
     // v01(b) 低层双活与本文件 merge 测试承担。
 
     fn serialized_default_slot() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-        let m = LOCK.get_or_init(|| std::sync::Mutex::new(()));
-        m.lock().unwrap_or_else(|e| e.into_inner())
+        // F-785-R1-01：改挂 crate 级共享锁——本文件的本地锁与 plan785/
+        // adapter 测试不相交=无互斥；高层入口测试会经 installer 双写
+        // frame+clipboard 两槽，必须同域串行。
+        crate::vm::host_capabilities::test_default_slot_lock()
     }
 
     struct DefaultGuard(Option<Arc<dyn FrameProvider>>);

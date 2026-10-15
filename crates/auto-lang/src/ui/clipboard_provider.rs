@@ -53,6 +53,8 @@ mod tests {
     /// 显式 set 恒可替换（Fake provider——不触碰真实 OS 剪贴板；计划 §5
     /// 禁止随意改写用户剪贴板的验收步骤，真 OS 往返由 ui::clipboard 既有
     /// plan418 测试覆盖）。
+    /// F-785-R1-01：本测试 clear/set/restore 写默认槽——须持共享隔离锁
+    ///（crate 级 test_default_slot_lock），与缺席断言/桥装配测试互斥。
     #[test]
     fn compat_install_never_overrides_explicit_default() {
         struct Fake(Option<&'static str>, bool);
@@ -64,6 +66,7 @@ mod tests {
                 self.1
             }
         }
+        let _slot = crate::vm::host_capabilities::test_default_slot_lock();
         let saved = crate::vm::host_capabilities::process_default_clipboard_text_provider();
 
         // 空槽 → 补缺成功（装的是真 arboard adapter——仅入槽，不触 OS）。

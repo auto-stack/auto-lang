@@ -216,10 +216,7 @@ fn v01_process_default_reaches_real_vm_stdout() {
         "provider A 实值须到达 stdout（got {:?}）",
         stdout_a
     );
-    assert!(
-        a.received_snapshot().is_empty(),
-        "get 侧不得触发 set 记录"
-    );
+    assert!(a.received_snapshot().is_empty(), "get 侧不得触发 set 记录");
 
     let b = FakeClipboard::new(Some("beta-β"));
     set_process_default_clipboard_text_provider(b.clone());
@@ -228,7 +225,11 @@ fn v01_process_default_reaches_real_vm_stdout() {
 
     // set 侧（进程默认 B 下）：精确 UTF-8 参数 + Bool true 出口。
     let (_, stdout_set) = auto_lang::run_with_capture(SET_PROGRAM).expect("run set");
-    assert_eq!(stdout_lines(&stdout_set), vec!["true"], "set 成功=Bool true");
+    assert_eq!(
+        stdout_lines(&stdout_set),
+        vec!["true"],
+        "set 成功=Bool true"
+    );
     assert_eq!(
         b.received_snapshot(),
         vec!["hello-β🎉".to_string()],
@@ -397,8 +398,7 @@ fn v03_absent_capability_contract() {
             msg
         );
 
-        let err_set = auto_lang::run_with_capture(SET_PROGRAM)
-            .expect_err("set 侧同形缺席错误");
+        let err_set = auto_lang::run_with_capture(SET_PROGRAM).expect_err("set 侧同形缺席错误");
         assert!(
             err_set
                 .to_string()
@@ -495,8 +495,8 @@ fn v04_instance_override_independent_of_default() {
 #[test]
 fn v05_identity_and_contract_rules_preserved() {
     use auto_lang::vm::native::{
-        shim_clipboard_set_text, shim_clipboard_text, NATIVE_CLIPBOARD_FILES_GET,
-        NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT, NATIVE_DIALOG_OPEN,
+        shim_clipboard_set_text, NATIVE_CLIPBOARD_FILES_GET, NATIVE_CLIPBOARD_SET_TEXT,
+        NATIVE_CLIPBOARD_TEXT, NATIVE_DIALOG_OPEN,
     };
 
     let _g = serialized();
@@ -549,7 +549,10 @@ fn v05_identity_and_contract_rules_preserved() {
     let mut ni3 = NativeInterface::production();
     let rev_before = ni3.binding_revision();
     ni3.merge(&carrier);
-    assert!(ni3.binding_revision() > rev_before, "merge 须 bump revision");
+    assert!(
+        ni3.binding_revision() > rev_before,
+        "merge 须 bump revision"
+    );
 
     // 端到端：VM merge 覆盖 NI 后——provider 保留 + 覆盖 shim 供值。
     let compiled = compile_program(GET_PROGRAM);

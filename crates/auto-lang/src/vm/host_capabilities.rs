@@ -142,6 +142,21 @@ pub fn clear_process_default_clipboard_text_provider() {
     *slot = None;
 }
 
+/// 测试隔离（F-785-R1-01）：进程默认槽（frame / clipboard text）的
+/// **同进程**测试互斥锁。凡直接写槽（set/clear/if-absent）、经宿主入口
+/// 触发装配（VmBridge 构造、run 家族高层入口会 if-absent 写槽）、或
+/// 断言槽状态的 in-crate 测试，都必须持本锁串行并自行 save/restore。
+/// 各测试文件不得自建本地锁——不相交的锁域等于没有互斥（本轮复现：
+/// adapter 测试与 shim 缺席测试并行，clear→AutoVM::new 窗口被补缺写入
+/// 毒化）。nextest 每测独立进程不能替代裸 cargo test 的同进程并行隔离。
+#[cfg(test)]
+pub(crate) fn test_default_slot_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,6 +180,9 @@ mod tests {
     fn absent_default_is_none() {
         // 仅断言 API 形状与 None 语义；set/clear 往返在 fixture（进程外）
         // 与 AutoVM 级测试覆盖，避免本单测污染同进程其他测试的默认槽。
+        // F-785-R1-01：写槽测试须持共享隔离锁（与其他槽写/装配/缺席
+        // 断言测试同域串行）。
+        let _slot = test_default_slot_lock();
         let snapshot = process_default_frame_provider();
         set_process_default_frame_provider(Arc::new(Fake {
             begin: 1,

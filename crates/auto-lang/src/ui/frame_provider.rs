@@ -68,6 +68,8 @@ mod tests {
 
     /// F779-R2-01 优先关系单元锚：兼容安装不覆盖显式默认；空槽才补缺；
     /// 显式 set 恒可替换（save/restore 串行，独占进程默认槽）。
+    /// F-785-R1-01 修正：save/restore 写默认槽——改持 crate 级共享隔离锁
+    ///（本地无锁与其他槽写/缺席断言测试同进程并行可互踩）。
     #[test]
     fn compat_install_never_overrides_explicit_default() {
         struct Fake(i64);
@@ -79,6 +81,7 @@ mod tests {
                 self.0
             }
         }
+        let _slot = crate::vm::host_capabilities::test_default_slot_lock();
         let saved = crate::vm::host_capabilities::process_default_frame_provider();
 
         // 空槽 → 补缺成功。
