@@ -1,6 +1,13 @@
 /// String utility functions
 /// Transpiled from auto-lang/stdlib/auto/str.at + str.rs.at
 
+/// UTF-8 byte length. PLAN-781 阶段 E（T-24）：VM 轨 nat#1526
+/// （`shim_str_byte_len`）的 a2r 镜像——与 `fs::read_text_range` 的字节
+/// 游标同空间（Reader 章 meta 索引偏移累计）。
+pub fn str_byte_len(s: &str) -> i32 {
+    s.len() as i32
+}
+
 /// Get the character at a given index (returns code point as i32)
 /// Returns 0 if index is out of bounds
 pub fn char_at(s: &str, i: i32) -> i32 {

@@ -9798,6 +9798,15 @@ impl RustTrans {
                     }
                     // Fall through to remap table for normal len()
                 }
+                "byte_len" => {
+                    // s.byte_len() -> a2r_std::str::str_byte_len(&s)
+                    // （UTF-8 字节；VM 轨 nat#1526 同语义——PLAN-781 阶段 E）
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::str::str_byte_len(")?;
+                    self.expr_as_str(object, out)?;
+                    write!(out, ")")?;
+                    return Ok(());
+                }
                 "match_count" => {
                     // s.match_count(pattern) -> a2r_std::str::match_count(s, pattern)
                     self.a2r_std_used.set(true);
@@ -14064,6 +14073,10 @@ impl RustTrans {
                         // parity string_utils lib worked around it with explicit
                         // `var c int` annotations.
                         "char_at" => {
+                            return Type::Int;
+                        }
+                        // PLAN-781 阶段 E：byte_len 返回 UTF-8 字节数（i32）。
+                        "byte_len" => {
                             return Type::Int;
                         }
                         // Plan 434 (242 #18-1): `.clone()` preserves the

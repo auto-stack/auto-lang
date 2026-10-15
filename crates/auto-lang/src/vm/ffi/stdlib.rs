@@ -2807,6 +2807,12 @@ mod plan781_byte_len_tests {
         assert_eq!(shim_str_byte_len("😀".into()), 4);
         // 换行/空白按 1 字节计（行偏移累计依赖）：3×3+1+3×3+1 = 20。
         assert_eq!(shim_str_byte_len("第一行\n第二行\n".into()), 20);
+        // 双轨 parity：a2r 镜像（vue 模式转译后端消费同一语义）。
+        assert_eq!(a2r_std::str::str_byte_len("中文"), 6);
+        assert_eq!(
+            a2r_std::str::str_byte_len("第一行\n第二行\n"),
+            shim_str_byte_len("第一行\n第二行\n".into())
+        );
     }
 
     #[test]
