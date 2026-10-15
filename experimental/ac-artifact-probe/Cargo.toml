@@ -1,0 +1,34 @@
+[package]
+name = "ac-artifact-probe"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-783 AC/ACC unified compiler-artifact contract and cache feasibility probe"
+publish = false
+
+# Standalone probe workspace (same pattern as ../ac-core): consumes the
+# ac-core public API and (via an isolated adapter) auto-cache's BlobStore.
+# It must never become a production cache entry point and ac-core must not
+# gain a reverse dependency on product crates through it.
+[workspace]
+
+[dependencies]
+auto-ac-prototype = { path = "../ac-core" }
+auto-cache = { path = "../../crates/auto-cache" }
+blake3 = "1.5"
+rusqlite = { version = "0.30", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_JobObjects",
+    "Win32_System_ProcessStatus",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+debug = false

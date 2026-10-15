@@ -1,0 +1,127 @@
+{
+  "probe": "ac-artifact-probe/0.1.0",
+  "machine": {
+    "os": "windows",
+    "logical_cores": 20,
+    "total_phys": 34163630080,
+    "avail_phys": 8612925440
+  },
+  "fixture": "p04-while-retest.at",
+  "samples_per_scenario": 30,
+  "scenarios": [
+    {
+      "name": "fresh",
+      "what": "cold store: parse→HIR→verify→lower→link→run per sample (distinct source)",
+      "stats": {
+        "n": 30,
+        "p50_ms": 351.12,
+        "p95_ms": 399.34209999999996,
+        "p99_ms": 402.1183,
+        "mean_ms": 348.87502,
+        "min_ms": 304.64910000000003,
+        "max_ms": 402.1183
+      },
+      "ok": 30,
+      "semantic_failures": 0,
+      "private_bytes_delta": 2080768,
+      "disk_total": 4392218,
+      "notes": [
+        "oracle exit 3"
+      ]
+    },
+    {
+      "name": "same-process-hot",
+      "what": "object-hit resume in the same process (link+run only)",
+      "stats": {
+        "n": 30,
+        "p50_ms": 258.39259999999996,
+        "p95_ms": 288.3154,
+        "p99_ms": 289.50140000000005,
+        "mean_ms": 263.71121,
+        "min_ms": 248.1043,
+        "max_ms": 289.50140000000005
+      },
+      "ok": 30,
+      "semantic_failures": 0,
+      "private_bytes_delta": 1765376,
+      "disk_total": 574337,
+      "notes": []
+    },
+    {
+      "name": "restart-disk-hot",
+      "what": "object-hit resume in a NEW process (process spawn + store open + link + run)",
+      "stats": {
+        "n": 30,
+        "p50_ms": 279.0,
+        "p95_ms": 356.0,
+        "p99_ms": 357.0,
+        "mean_ms": 291.76666666666665,
+        "min_ms": 264.0,
+        "max_ms": 357.0
+      },
+      "ok": 30,
+      "semantic_failures": 0,
+      "private_bytes_delta": 0,
+      "disk_total": 821537,
+      "notes": [
+        "wall time includes OS process spawn; restart is not claimed as OS-cold"
+      ]
+    },
+    {
+      "name": "cross-project",
+      "what": "identical content consumed by other projects: full hits, no new chunks",
+      "stats": {
+        "n": 30,
+        "p50_ms": 255.89079999999998,
+        "p95_ms": 358.51300000000003,
+        "p99_ms": 392.0082,
+        "mean_ms": 267.83801,
+        "min_ms": 240.2965,
+        "max_ms": 392.0082
+      },
+      "ok": 30,
+      "semantic_failures": 0,
+      "private_bytes_delta": 0,
+      "disk_total": 1068737,
+      "notes": [
+        "block count 5 → 5 (unchanged = content shared)"
+      ]
+    },
+    {
+      "name": "body-modified",
+      "what": "body-only edit (same signature): object miss → full recompile",
+      "stats": {
+        "n": 30,
+        "p50_ms": 350.4004,
+        "p95_ms": 381.59569999999997,
+        "p99_ms": 388.8753,
+        "mean_ms": 346.9428766666666,
+        "min_ms": 315.8053,
+        "max_ms": 388.8753
+      },
+      "ok": 30,
+      "semantic_failures": 0,
+      "private_bytes_delta": 0,
+      "disk_total": 4402145,
+      "notes": []
+    },
+    {
+      "name": "gc-concurrent-query",
+      "what": "object-hit build latency while GC recycles junk versions concurrently",
+      "stats": {
+        "n": 30,
+        "p50_ms": 333.2416,
+        "p95_ms": 523.2789,
+        "p99_ms": 694.8663,
+        "mean_ms": 354.6135700000001,
+        "min_ms": 293.26750000000004,
+        "max_ms": 694.8663
+      },
+      "ok": 30,
+      "semantic_failures": 0,
+      "private_bytes_delta": 0,
+      "disk_total": 4366691,
+      "notes": []
+    }
+  ]
+}
