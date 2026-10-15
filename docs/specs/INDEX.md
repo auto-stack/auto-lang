@@ -440,3 +440,7 @@
 | host-smithay | Smithay 0.7 合成宿主（winit/nested 开发形态；Linux-target 门控 smithay 依赖，Windows stub）——bind→render→Frame 纹理合成循环，`--frame` PNG 纹理 + `--frames` 帧预算取证 | active（509 Stage 1：骨架 + WSLg/Xvfb 实跑 + shell 首帧像素证据；live attach = Stage 2，见债务簿 509 条目） |
 
 </details>
+
+## 未分组
+
+- [repository-boundaries](repository-boundaries/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
