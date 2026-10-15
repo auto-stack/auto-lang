@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-781
-status: archived
+status: executing
 feature_name: reader-runtime-prerequisites
 title: "Reader 框架前置：原生验收、段落锚点与10MiB导入"
 author: [Codex]
@@ -8,7 +8,7 @@ created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
 current_step: 16
-total_steps: 18
+total_steps: 23
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
   - docs/specs/auto-lang/ui/overview.md
@@ -113,6 +113,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 | SD-05 | add | docs/specs/auto-lang/vm/design/handler-execution-budget.md | 无可信有限预算合同 → 配置来源/合法有限域/默认/累计、错误与取消/支持入口 | 所有入口同规则 | AC-11/12/14 |
 | SD-06 | modify | docs/specs/auto-lang/vm/overview.md | 固定Legacy/UI预算 → 实际policy入口与覆盖，默认10M保持 | 能力声明准确 | AC-11/12/14 |
 | SD-07 | modify | docs/specs/stdlib/design/http-server.md | handler无该预算说明 → HTTP各dispatch/取消终态与真实10MiB档位 | 不以UI片或失败保护替代成功 | AC-12/13/14 |
+| SD-08 | modify | docs/specs/auto-lang/ui/design/scroll-child-anchor.md | 锚点id/归属实现描述 → 序号id+注册表、最近pane归属含无controller嵌套、managed同归属、key全字符集 | 标准controller可用、嵌套零串线（R01/R02） | AC-15 |
+| SD-09 | modify | docs/specs/auto-lang/vm/design/handler-execution-budget.md | V-18 oracle 形状与（若修订）10MiB 验收边界成文 | 取消语义可观测（R03/R04） | AC-16/17 |
 
 不改既有http-service-deployment的默认资源/期限；T-14发现须修改公共配置schema或允许范围时，先追加Spec delta及语义revision再接线。此阶段不发布canonical Specs或ledger。
 
@@ -181,6 +183,13 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 - [ ] AC-12: owner_stage=work；V-16/V-18累计、让片、错误分类与单终态/取消/资源回收成立；不是解除预算保护。
 - [ ] AC-13: owner_stage=work；V-17的10MiB TXT/MD成功+逐字/字节核对+冷启动通过；V-19保留拒写保护，不能以错误路径代替成功。
 - [ ] AC-14: owner_stage=work；V-20调用面清单、支持边界、配置说明、CLI真实hash、原始结果和SD-05~SD-07候选齐全，Reader可用同一CLI/profile复验。
+### 阶段 D（审计缺口）
+
+- [ ] AC-15: owner_stage=work；W-01/W-02 双端全绿——标准 controller 句柄与任意合法 key 字符往返正确；嵌套 pane 归属不串线、inner-only not_found、managed 不误伤；既有 fixture 回归零破坏。
+- [ ] AC-16: owner_stage=work；W-03 oracle 落地且负例红——或修订路线经用户显式裁定记录在案+规范同步，无静默降级。
+- [ ] AC-17: owner_stage=work；W-04 三路生命周期断言绿（LegacyHttp 长忙路径绑定）；旧短路径证据引用全部替换为具体映射。
+- [ ] AC-18: owner_stage=work；四 finding 逐项闭合表（反例→不变量→修复→永久用例→结果）；T-01..T-18 归档面零改动；SD-08/09 候选冻结。
+
 
 ### 整体复审与收尾
 
@@ -240,6 +249,16 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 - [x] T-08: owner_stage=merge；依赖T-07；按merge技能实际落地、规范沉淀、归档/守卫清理及到期批量门；统一交付781 dependency receipt到READER-001 T-25/T-26；不代替Reader业务接入及终审。AC-06。
   [✅ 2026-10-15] merge 收口（回执键 PLAN-781:r2）：**prepared** = reviewed dba0d7e5c + spec 沉积（SD-01~07：3 新 design + 4 modify + plans.md 双索引）；**landed** = rebase 线性重放 ×2（并发 master 前进两次均纯 docs 增量；range-diff 全等）→ ff-only，master tip = delivery `3e1b5fc03`；**ledger_refreshed** = .autoos/specs.json v17→v18（guarded offline projection——store 服务不可达 000；P781-D1/D2/D3/T1/R1/M 六条，file+tags 齐，无关节逐字节不变，回读验证过）；**门禁**（重放终点复跑）= 裸 cargo t 5353/5353 + tu 865/865 + th 135/137（两在案红：F-781-C03 预存 + plan730 boundary 单跑绿）+ plan781 24/24 + e2e 3/3；**cleaned** = wt-guard 复核（pnpm store junction ~350 个按闸门处方逐链接 cmd /c rmdir 剥除后 clean）→ worktree/分支移除 + auto-down 兄弟（普通克隆，guard clean）+ 组目录删除（2026-10-15 实证）；**READER-001 receipt** = T-25/T-26 解阻：锚点 API（scroll-anchor DSL + 9922/9923 + reading.at 接入映射）+ 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）+ 复验命令（scripts/tools/test_reader_import_budget.py --auto-bin <cli> --reader-dir <checkout>）；001 仍须业务接入、实际复验与独立终审（AC-06 不代替）。
 
+### 阶段 D：审计缺口修复（2026-10-15 用户裁定重开）
+
+**重开依据（用户裁定，2026-10-15）**：历史审计（[reports/781-historical-review-20261015.md](reports/781-historical-review-20261015.md)，needs_fix）四 findings 不另立计划，以本计划新增阶段承接——归档终态规则的一次显式例外；原 T-01..T-18 交付事实与记录不动，阶段 D 只修缺口补证据。任务编号延续 T-19..T-23；原 783 草案撤销、编号回收。
+
+- [ ] T-19: owner_stage=work；F-781-R01（P1）：scroll_anchor 合成 id 改不透明序号 + build 期注册表（seq→(pane,key) 查表，collector 回传 rect+seq）——消除冒号歧义拆分与 Debug 字符串取值两类面；单测含标准 `@scrollctl:N` 句柄与 `:`/引号/反斜杠 key 往返；双端 fixture 增真实 `scroll_controller()` controller + 分隔符 key 行（W-01）。AC-15。
+- [ ] T-20: owner_stage=work；依赖T-19；F-781-R02（P1）：vue 全 scroll-pane 元素发射 `data-scroll-pane` 所有权标记；helper 改全量遍历 + `closest('[data-scroll-pane]')===pane` 归属过滤 + 属性比对（弃 CSS selector 拼接）；managed 判据同归属；双端三对照（嵌套同名零串线/仅内层有 key→outer not_found/inner managed 不误伤 outer）+ 原生嵌套探针（W-02）。AC-15。
+- [ ] T-21: owner_stage=work；F-781-R03（P2）：chapter API 成本探针 → 全量 10MiB 全章扫描（1347+1346 章，含冷重启复扫）或**等价完整 oracle**（全形状多章书 TXT+MD 全章逐字+冷重启）+10MiB 维持 hash/TOC/抽样——修订路线须用户显式裁定后执行（审计明文禁静默降级）；损坏章负例证明 oracle 会红（W-03）。AC-16。
+- [ ] T-22: owner_stage=work；F-781-R04（P2）：生命周期断言补齐——`/api/slowwrite` 进入握手（entered 标记）+ 心跳副作用文件；deadline/断连/服务关闭三路断言取消后零写入+单终态+回收观测，绑定 LegacyHttp 长忙路径（W-04）。AC-17。
+- [ ] T-23: owner_stage=work；依赖T-19..22；全量回归（cargo t scroll/plan781 + tu + th + 双端探针 41+43+新增）+ 四 finding 闭合表 + SD-08/09 候选冻结 → execution_done；复审/merge 另属其角色。AC-18。
+
 ## 9. 复审记录
 
 2026-10-14 r1历史：原781锚点立项合同完成；原三个draft均0/8、功能未实施，旧范围/任务/AC/测试/Spec候选完整冻结于Git commit 799eac6fb。该记录是规划交接，不是实现通过。
@@ -284,11 +303,19 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 ### T-08 合并收尾补记（2026-10-15）
 
+### 历史独立审计补记（2026-10-15，用户要求检查 review）
+
+stage=review | review_scope=historical-final-audit | reviewer_identity=本次独立 Codex 上下文，未参与实施 | plan_revision=2 | outcome=needs_fix（审计结论，archived 终态保持） | inspected_checkout=D:/autostack/auto-lang/master@715d96a9c9c1aa1ef97abdaa0eba7afa12add4e0 | historical_tip=e53b85fe7bf8ccffc3113b87a9f957e154f82f0e（当前祖先；涉案四源文件至 HEAD 零差异） | findings=F-781-R01..R04（标准句柄拆分、嵌套 pane 隔离、全章内容 oracle、生命周期 oracle） | evidence=[完整审计报告](../reports/781-historical-review-20261015.md)及 docs/plans/attachments/781/historical-review/{probe.cjs,result.json} | limitations=源路径反例与旧 JSON 检查，未重放真实窗口/浏览器或 cargo 档；原实施树已按 T-08 删除 | next=后续修复 Plan 承接，受影响验收与独立复审后再跑 merge-owned 门禁；本次不修改代码、不重开归档。
+
+### 原 T-08 收尾记录（保留）
+
 - **产物时效观察（Landing≠deployment）**：`target/release/auto.exe` 构建于 10-12（先于 781 三天，陈旧）；auto-down 主检出 781 零改动（无需重建）；本仓为开发仓无运行中的生产进程——如需发布档请 `cargo build --release` 重建。
 - **批量回归到期**：收据 last_covered_plan_id=774（2026-10-14T11:30Z）；PLAN-770（%5=0）落地于收据后 → 到期（777 合并时已具名移交，截至本次仍未执行）；本次合并再次移交 `/auto-plan:regress`（主检出单实例；781 自身 781%5≠0 未新增触发）。
 - **并发注记**：本合并期间 master 被并行会话推进两次（777 归档、782 T-03 簿记，均纯 docs 增量）——两次 rebase 重放均无冲突、range-diff 全等；KNOWN-DEBT 中 777/771 会话的未提交条目未被裹挟（拆分提交实证）。
 
 ## 10. 待澄清事项
+
+T-21 若走合同修订路线（10MiB 全章扫描成本不可接受），修订内容须用户显式裁定后方可执行——审计明文禁止静默降级（F-781-R03）。其余无用户前置决策。
 
 T-09负责动作/帧identity/布局freshness的复用边界；T-01冻结子key公共接口/代际/nearest；T-14冻结有限profile、同步/分片与配置/期限/取消的whole-path可行性（✅ 已冻结于 reports/781-budget-decision.md）。三项均为后续接线硬前置，不把未结束研究计为已实现。共享776/742/778/779热点入场对账；未释放则具名记录受阻任务。
 
