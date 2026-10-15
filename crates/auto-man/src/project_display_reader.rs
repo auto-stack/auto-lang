@@ -83,37 +83,28 @@ pub(crate) struct DisplayRead {
 /// 臂（旧行为逐值保留），不是语法拒绝。
 const MODEL_PARSE_MAX_BRACKET_DEPTH: usize = 64;
 
-/// 迭代计算最大括号嵌套深度。**字符串语义必须过近似真实 lexer**（R2
-/// F786-R2-01）：parse_dq_string、take_bracket_extent/take_arg_list 的串内
-/// 跳过、value-position scan_string 都是**跨 LF 直到闭引号**（转义感知），
-/// 故本筛的两种引号同样跨 LF——遇 LF 提前断会把后续闭引号误判为开引号、
-/// 把同行真实括号藏进"字符串"，导致欠计数绕过深度包络（实测 512 层
-/// abort）。欠计数危险、过计数只多走兼容臂（安全），单引号取跨行为
-/// 最宽解释（skip_to_entry_end 虽行界但为线性跳过，无递归位点）。行/
-/// 块注释内括号不计入（块注释不嵌套，与 scanner.rs 一致）。只数
-/// `{}`/`[]`：递归位点在 scan_value_positions/parse_node/AtomParser 的
-/// 结构化下钻，`()` 参数表是迭代采集不入此列。
-/// 未终止字符串吞掉剩余文本属安全：真实 lexer 要么线性消费该文本
-/// （无递归），要么先 Err（顶层 `"` 未终止 / 包围组未闭合）——两路都
-/// 不会到达递归下钻。
+/// 迭代计算最大括号嵌套深度——**上界必须是解析器结构括号集的超集**
+/// （R3 F786-R3-01 终形）。解析器只在注释外、字符串外的文本上做结构
+/// 下钻（scan_value_positions/parse_node/AtomParser；`()` 参数表为迭代
+/// 采集不数）。因此本筛**只跳注释**（行 `//`、`#` 非 `#[`、块 `/* */`
+/// 不嵌套——这些在任何可达解析状态下都不会成为结构括号），**其余文本
+/// 一律计数，包括字符串内的括号**：计数集 ⊇ 结构括号集，只会过计数
+/// （多走兼容臂，值行为不变），永不欠计数（绕过包络 → 递归 abort）。
+///
+/// 三轮反例教训（为何不按引号跳区域）：各解析路径的字符串语义互不相同
+/// ——parse_dq_string 跨 LF 直到闭引号，skip_to_entry_end（单引号/
+/// f-string/调用值）**行界**且返回外层文档解析器继续解析后续条目。
+/// R1"遇 LF 断"使闭引号被误判为开引号（跨行 `"` + 深数组绕过）；R2
+/// "跨 LF 直到闭引号"使未终止单引号吞到 EOF（`extra: 'abc` 后接深层
+/// `deep:` 数组——解析器行界重入、筛子全吞 → 欠计数 abort）。任何
+/// "按字符串跳过区域"的上界都可能藏住某个可达解析状态会数的括号，
+/// 唯一可靠上界是不跳字符串、只跳注释。
 fn max_bracket_depth(content: &str) -> usize {
     let mut max = 0usize;
     let mut depth = 0usize;
     let mut chars = content.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
-            '"' | '\'' => {
-                let quote = c;
-                while let Some(sc) = chars.next() {
-                    if sc == '\\' {
-                        chars.next();
-                        continue;
-                    }
-                    if sc == quote {
-                        break;
-                    }
-                }
-            }
             '/' if chars.peek() == Some(&'/') => {
                 for sc in chars.by_ref() {
                     if sc == '\n' {

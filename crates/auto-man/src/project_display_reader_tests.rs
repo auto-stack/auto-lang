@@ -879,6 +879,37 @@ fn multiline_deep_input(depth: usize) -> String {
     s
 }
 
+/// R3 F786-R3-01 复现输入构造：未闭合引号（单引号/f-string/调用内双引号）
+/// 只吞当行——skip_to_entry_end 行界返回外层解析器，后续深层条目照常
+/// 解析（解析器重入路径）。`close_later` 在深数组前补一个后续闭引号行
+/// （证明更晚的闭引号救不了按字符串跳过的上界）。
+fn unclosed_quote_deep_input(kind: &str, depth: usize, close_later: bool) -> String {
+    let mut s = String::from("name: \"n\"\ntitle: \"ok\"\n");
+    match kind {
+        "single" => s.push_str("extra: 'abc\n"),
+        "f" => s.push('`'),
+        "call" => s.push_str("extra: env(\"abc\n"),
+        other => unreachable!("unknown kind {other}"),
+    }
+    if kind == "f" {
+        s.push_str("abc\n");
+    }
+    s.push_str("ignored: 0\n");
+    if close_later {
+        s.push_str("note: \"it's later\"\n");
+    }
+    s.push_str("deep: ");
+    for _ in 0..depth {
+        s.push('[');
+    }
+    s.push('0');
+    for _ in 0..depth {
+        s.push(']');
+    }
+    s.push('\n');
+    s
+}
+
 /// 子进程探针结果。`TimedOut` 携带被 kill+wait 回收后的状态——证明
 /// 截止路径终结并回收了子进程（R2 F786-R2-02）。
 #[derive(Debug)]
@@ -997,7 +1028,9 @@ fn run_child_probe(
                 let (reaped_success, diagnostics) = guard.terminate_and_reap();
                 return ProbeOutcome::Completed {
                     success: false,
-                    diagnostics: format!("poll error: {e}; {diagnostics}"),
+                    diagnostics: format!(
+                        "poll error: {e}; reaped_success={reaped_success}; {diagnostics}"
+                    ),
                 };
             }
         }
@@ -1017,6 +1050,12 @@ fn display_reader_v04_deep_nesting_process_isolated() {
                 deep_nesting_input(512),
                 deep_nesting_input(1024),
                 multiline_deep_input(512),
+                // R3 四形态：未闭合引号（单引号/后闭单引号/f-string/调用）
+                // + 512 层——解析器行界重入路径原样重放
+                unclosed_quote_deep_input("single", 512, false),
+                unclosed_quote_deep_input("single", 512, true),
+                unclosed_quote_deep_input("f", 512, false),
+                unclosed_quote_deep_input("call", 512, false),
             ] {
                 let r = read(&input);
                 assert_eq!(r.name.as_deref(), Some("n"));
@@ -1039,10 +1078,20 @@ fn display_reader_v04_deep_nesting_process_isolated() {
         10,
     ) {
         ProbeOutcome::Completed {
-            success: true,
-            diagnostics: _,
-        } => {}
-        other => panic!("深度探针子进程失败（栈溢出 abort/断言失败/超时被回收）：{other:?}"),
+            success,
+            diagnostics,
+        } => {
+            assert!(
+                success,
+                "深度探针子进程失败（栈溢出 abort/断言失败）：{diagnostics}"
+            );
+        }
+        ProbeOutcome::TimedOut {
+            reaped_success,
+            diagnostics,
+        } => {
+            panic!("深度探针超时被 kill+reap（回收态 success={reaped_success}）：{diagnostics}");
+        }
     }
     // 挂起控制：故意睡 30s 的子进程 + 2s 截止——必须 TimedOut，且回收
     // 状态为被 kill 的失败态（证明截止路径终结+回收，而非其自行退出）。
@@ -1053,10 +1102,15 @@ fn display_reader_v04_deep_nesting_process_isolated() {
         2,
     ) {
         ProbeOutcome::TimedOut {
-            reaped_success: false,
-            diagnostics: _,
-        } => {}
-        other => panic!("挂起控制必须超时并被 kill+reap（非成功回收态）：{other:?}"),
+            reaped_success,
+            diagnostics,
+        } => {
+            assert!(
+                !reaped_success,
+                "挂起控制回收态必须是被 kill 的失败态：{diagnostics}"
+            );
+        }
+        other => panic!("挂起控制必须超时并被 kill+reap：{other:?}"),
     }
 }
 
@@ -1089,11 +1143,16 @@ fn display_reader_v04_deep_nesting_boundary_and_awareness() {
     assert_matches_oracle("nodes-512", &nested_nodes, &r);
     assert_eq!(r.name.as_deref(), Some("nn"));
     assert_eq!(r.name_path, compat(CompatReason::DeepNesting));
-    // 感知规则：字符串/行注释/块注释内的括号不计深度——正常输入不受包络影响
+    // 感知规则（R3 终形）：前置筛**只跳注释**——注释外括号全计（含字符串内，
+    // 过计数安全）；包络内正常输入不受影响
     let quoted = "name: \"q\"\ntitle: \"[[[[[[\"\n";
     let r = read(quoted);
     assert_matches_oracle("brackets-in-string", quoted, &r);
-    assert_eq!(r.title_path, model(mv), "字符串内括号不计数");
+    assert_eq!(
+        r.title_path,
+        model(mv),
+        "包络内的字符串括号（6 层）不改变准入结果"
+    );
     let commented = "name: \"cm\"\n// [[[[[\n/* ]]]] */\ntitle: \"T\"\n";
     let r = read(commented);
     assert_matches_oracle("brackets-in-comments", commented, &r);
@@ -1166,7 +1225,8 @@ fn display_reader_v04_deep_nesting_boundary_and_awareness() {
     let r = read(&sq);
     assert_matches_oracle("single-quote-multiline-70", &sq, &r);
     assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
-    // 未终止字符串吞剩余文本：欠计数不发生（真实 lexer 先 Err，无递归）
+    // 未终止字符串（R3 语义下括号照计，此处仅 8 层 ≤64 → 触达解析 → 组
+    // 未闭合先 Err，安全路径不 abort）
     let unterminated = "name: \"u\"\ntitle: \"ok\"\nextra: [\"abc\n[[[[[[[[\n";
     let r = read(unterminated);
     assert_matches_oracle("unterminated-string", unterminated, &r);
@@ -1176,4 +1236,94 @@ fn display_reader_v04_deep_nesting_boundary_and_awareness() {
         compat(CompatReason::ParseError),
         "未终止组先 Err（安全路径），不得 abort"
     );
+
+    // R3 F786-R3-01：未闭合引号（单引号/f-string/调用）只吞当行，解析器
+    // 行界重入后继续解析深层条目——R3 四反例形态进程内复验（筛子只跳
+    // 注释、括号全计 → DeepNesting，不触达解析递归）
+    let su32 = unclosed_quote_deep_input("single", 32, false);
+    let r = read(&su32);
+    assert_matches_oracle("single-unclosed-32", &su32, &r);
+    assert_eq!(r.title.as_deref(), Some("ok"));
+    assert_eq!(
+        r.title_path,
+        model(mv),
+        "包络内未闭合引号输入的准入控制（extra 归 unsupported，title 干净）"
+    );
+    let su65 = unclosed_quote_deep_input("single", 65, false);
+    let r = read(&su65);
+    assert_matches_oracle("single-unclosed-65", &su65, &r);
+    assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    for (tag, input) in [
+        (
+            "single-unclosed-512",
+            unclosed_quote_deep_input("single", 512, false),
+        ),
+        (
+            "single-closed-later-512",
+            unclosed_quote_deep_input("single", 512, true),
+        ),
+        ("f-unclosed-512", unclosed_quote_deep_input("f", 512, false)),
+        (
+            "call-unclosed-512",
+            unclosed_quote_deep_input("call", 512, false),
+        ),
+    ] {
+        let r = read(&input);
+        assert_matches_oracle(tag, &input, &r);
+        assert_eq!(r.name.as_deref(), Some("n"));
+        assert_eq!(r.title.as_deref(), Some("ok"));
+        assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    }
+}
+
+/// R3 终验：复审反例**原样字节**（review-r3 attachments 复制为持久 fixtures）
+/// 逐文件复验——旧 oracle 返回 name=n/title=ok，>64 层 DeepNesting，
+/// 32 层准入控制 Model(Value)（128 在 R3 终形下 >64 → DeepNesting，
+/// 属过计数的保守路由，非行为变化）。
+#[test]
+fn display_reader_v04_r3_counterexample_files_replay() {
+    let cases = [
+        (
+            "r3-plain-512.at",
+            ReadPath::Compat(CompatReason::DeepNesting),
+        ),
+        (
+            "r3-multiline-512.at",
+            ReadPath::Compat(CompatReason::DeepNesting),
+        ),
+        (
+            "r3-single-unclosed-32.at",
+            ReadPath::Model(ModelState::Value),
+        ),
+        (
+            "r3-single-unclosed-128.at",
+            ReadPath::Compat(CompatReason::DeepNesting),
+        ),
+        (
+            "r3-single-unclosed-512.at",
+            ReadPath::Compat(CompatReason::DeepNesting),
+        ),
+        (
+            "r3-single-closed-later-512.at",
+            ReadPath::Compat(CompatReason::DeepNesting),
+        ),
+        (
+            "r3-f-unclosed-512.at",
+            ReadPath::Compat(CompatReason::DeepNesting),
+        ),
+        (
+            "r3-call-unclosed-512.at",
+            ReadPath::Compat(CompatReason::DeepNesting),
+        ),
+    ];
+    for (file, want_title_path) in cases {
+        let path = display_fixture(file);
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let r = read(&content);
+        assert_matches_oracle(file, &content, &r);
+        assert_eq!(r.name.as_deref(), Some("n"), "{file}: name");
+        assert_eq!(r.title.as_deref(), Some("ok"), "{file}: title");
+        assert_eq!(r.title_path, want_title_path, "{file}: title 路径分类");
+    }
 }
