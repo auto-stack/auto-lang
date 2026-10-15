@@ -151,6 +151,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [37-v06-modularization-and-repo-boundaries](37-v06-modularization-and-repo-boundaries.md) | v0.6 结构治理：AutoUI/AutoMan 可拆性、语言内部 crate 分层、宿主/项目模型解耦、去重与退役、独立仓验收 | 📝 调研与设计草案（2026-10-13；证据报告与首批 PLAN-777–780，未实施） |
 | [39-ac-incremental-syntax-and-language-platform](39-ac-incremental-syntax-and-language-platform.md) | AC/ACC增量/热重载/插件与通用语法产品；亚秒周转、全阶段全局cache、分页AST/CST和有界内存工作集、跨工程共享、LSP/外语元信息分层 | 📝 需求与架构建议（2026-10-15；算法/预算/接口未冻结，未实施） |
 | [40-compiler-artifacts-and-cache-lifecycle](40-compiler-artifacts-and-cache-lifecycle.md) | 编译全阶段产物目录、Atom/Batom+Schema、query/content/local/external身份、强数据与失效依赖、共享store/lease/预算及自动GC健康治理 | 📝 目标态合同草案（2026-10-15；格式/策略参数未冻结，未实施） |
+| [41-interface-metadata-and-foreign-abi](41-interface-metadata-and-foreign-abi.md) | AutoABI与C/Rust等foreign ABI分层；共用接口元信息/Foreign IR、use.c自动绑定与resolver、双向插件、target语义与cache/lease接线 | 📝 讨论整合与架构草案（2026-10-15；语法/Schema/ABI支持面未冻结，未实施） |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 
@@ -174,7 +175,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [rust-library-replication-roadmap](strategy/rust-library-replication-roadmap.md) | Rust 库复刻验证路线（parity 语料） | ✅ 现行（Plan 347/348/369） |
 | [python-parity-roadmap](strategy/python-parity-roadmap.md) | Python parity 第三维度（use.py + a2py） | ✅ 现行（Plan 369 首批落地） |
 | [consumer-parity-strategy](strategy/consumer-parity-strategy.md) | Auto 作为库消费者（consumer-mode） | 📝 Draft |
-| [c-ecosystem-strategy](strategy/c-ecosystem-strategy.md) | C 生态战略：一个底座、三个消费面（系统库消费者/嵌入式/内核） | 📝 Draft（2026-09-06，暂缓启动裁决与三重启触发条件在 §11） |
+| [c-ecosystem-strategy](strategy/c-ecosystem-strategy.md) | C ABI互操作、Embedded C、Portable C Backend；保留历史三消费面部署规划，与AutoABI/Foreign IR接线 | 📝 Draft（2026-10-15 §12更新；原a2c工程暂缓/重启条件见§11，新ABI架构不受旧source-only口径限制） |
 | [web-ecosystem-strategy](strategy/web-ecosystem-strategy.md) | Web 生态：契约独立 + Vue 主臂 + React 发射臂扩展时序 | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [harmonyos-ecosystem-strategy](strategy/harmonyos-ecosystem-strategy.md) | 鸿蒙：ArkTS 主线（仓颉/ABC/机器码不做）+ OpenHarmony OS 终态方向 | 📝 Draft 骨架（2026-09-06，待扩充；a2ark rebaseline 为该线首个 plan） |
 | [mobile-jetpack-strategy](strategy/mobile-jetpack-strategy.md) | 移动：Android+iOS 统一 Jetpack Compose（不做 SwiftUI），排鸿蒙后 | 📝 Draft 骨架（2026-09-06，待扩充） |

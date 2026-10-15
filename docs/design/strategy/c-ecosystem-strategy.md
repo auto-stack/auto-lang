@@ -1,5 +1,7 @@
 # C 生态战略：一个底座、三个消费面
 
+> 2026-10-15范围更新：本文原“C是目标代码/不做机器码”的限定适用于a2c部署轨，不能约束现行AC/ACC Native；C生态长期拆为C ABI互操作、Embedded C、Portable C Backend，详见新增§12和[Design41](../41-interface-metadata-and-foreign-abi.md)。旧三消费面和暂缓排期保留为历史部署规划，不代表Native消费C库必须转译成C。
+
 **日期**: 2026-09-06
 **状态**: Draft（战略纲领，作为 GOAL-013 / GOAL-006 后续拆 plan 的锚）
 **关联**: [ecosystem-portfolio-strategy](ecosystem-portfolio-strategy.md)（伞形总战略，本文档为
@@ -35,8 +37,7 @@
 消费面三等前两条线磨出发射质量后进入。上一轮讨论曾裁定"嵌入式先行"，本文档以
 "系统库消费者先行"取代之——理由见 §3.1。
 
-**一条路线铁律**：C 是目标代码（source-to-source），不建 LLVM 后端、不做直接机器码发射；
-任何消费面都不引入运行时/GC——编译期零开销安全是三个消费面共同的价值前提。
+**a2c部署轨约束（范围澄清2026-10-15）**：该后端以C为目标代码，复用C工具链，不自行发机器码；不因此禁止AC/ACC Native经FFI消费同一C包。freestanding/no-heap档不强加GC/host常驻runtime；host库若需要allocator、句柄或动态服务须显式声明，不能把“不引入运行时”泛化成所有C接口的无条件保证。
 
 ---
 
@@ -275,3 +276,21 @@ Stage 1 与 Stage 2 可部分并行（底座就绪即分叉），Stage 3 严格�
    FFI 约定成文 + auto-bindgen 升格裁决）。
 2. consumer-parity-strategy 母篇补记 §3.4 三臂口径。
 3. GOAL-013 描述文字随 Stage 0 立项 plan 更新为新结构。
+
+## 12. C ABI / Embedded C / Portable C 三线定位（2026-10-15）
+
+依据新[A2C讨论](https://chatgpt.com/share/6ad0577b-5c00-83ea-9684-e64956b98cb1)整合，详见[Design41](../41-interface-metadata-and-foreign-abi.md)与[审计记录](../../reports/20261015-c-foreign-abi-discussion-audit.md)。下列为后续建议切口，不自动启动§11暂缓的a2c/Linux/内核大型工程。
+
+| 方向 | 长期价值与实现边界 |
+|---|---|
+| C ABI Interop | 系统SDK、图形/设备、成熟基础库与外部插件宿主；Native直接ABI调用或wrapper，VM/A2C/A2R按各自支持面适配；不要求先转译成C |
+| Embedded C | MCU/RTOS/厂商SDK/特殊CPU；A2C和既有工具链长期有价值，target/freestanding/资源profile明确，不借host探针冒称板级支持 |
+| Portable C Backend | 现有C工程集成、未覆盖Native target与bootstrap；输出可由现有工具链构建的C，不承担所有日常Host应用的唯一部署路径 |
+
+Host优先按真实AutoOS/应用拉力选择平台SDK、设备/图形、数据库/压缩/媒体等接口，不以“重写多少C库”衡量成熟度，不为了C绑定另建一套通用GUI Widget体系。Win32/system、COM等保留不同ABI/对象模型；Linux内核内部接口不是用户态稳定C API，C++只经成熟C API或有限shim选择性接入。
+
+先建设共享的Interface Metadata/Foreign IR与安全wrapper、header/package resolver和包构建/链接信息；C header结合GIR/XML/SDK来源可减少手工绑定，但不能自动推出指针所有权。目标体验是package+use.c自动生成并缓存声明，手工#[c]是明确的底层补充；语法/pac字段和C→Auto工具入口另立计划冻结，现有auto-bindgen Spec不因本节变为完整header importer。
+
+外部宿主消费Auto C导出是与“Auto调C库”对称的方向。SQLite extension可作为小型候选探针，覆盖双向调用、callback、原库释放、装载和错误；不把它替换成APUE/UNP/MCU/Linux内核全部已启动或已验收。共享C包分别验证Native与A2C消费，物理ABI、auto安全包装、runtime服务和热重载能力各有证据。
+
+本轮优先将C互操作纳入既定AC/ABI架构及Design40缓存合同；正式工程仍按专项Plan分配，Rust/AutoUI现行排期与已确认Windows首平台不被历史Linux先行建议覆盖。新增C能力不作为782正在复审修复的阻断。

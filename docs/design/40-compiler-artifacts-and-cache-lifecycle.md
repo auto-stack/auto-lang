@@ -55,6 +55,8 @@ implemented_by_plans: []
 
 原生机器码、第三方编译器文件与原始源码不必拆成Atom节点；用Schema封装描述、输入/输出和引用即可。“统一Atom/Batom+Schema”不等于改变PE/COFF等已有格式。格式转换不应引入文本roundtrip。
 
+[Design41](41-interface-metadata-and-foreign-abi.md)为foreign生态具体化本目录：import/package/target输入归A00，SDK/header生成定义归A01/05/06，接口与layout/ownership元信息归A06，ABI adapter归A08，Rust/C shim编译与库manifest归A09/10，callback/deleter与加载代际归A12。头文件传递依赖/搜索与宏/SDK配置、Rust crate内容/features/依赖/toolchain/实例集合分别进入适用query key；候选CST不能成为可执行FFI授信。来源fingerprint不永久pin全部SDK AST，实际执行/读取引用的code/data按required-data和lease保活。该映射不声明新产物已支持。
+
 ## 4. 统一身份与引用
 
 ### 4.1 分清查找键、内容身份和业务身份

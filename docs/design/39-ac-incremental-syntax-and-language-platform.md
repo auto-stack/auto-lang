@@ -211,6 +211,8 @@ parser 只负责给出模块/声明/导入/属性及可重载边界所需的结�
 
 例如C/C++预处理与宏、Rust cfg/宏/泛型、动态语言运行时定义，不能仅靠grammar保证真实导出。源码声明也不证明目标二进制确实导出同符号。加载器仍须核验库/target/公开接口和运行时能力，解析器不成为新的类型/ABI授信捷径。
 
+C header/SDK、Rust shim与Auto声明汇入统一接口描述及target语义的具体边界见 [Design41](41-interface-metadata-and-foreign-abi.md)。通用parser负责候选结构/索引，foreign语义frontend和adapter负责预处理、布局/调用与生命周期；Import provider不等于物理ABI。相关元信息/绑定/生成库与Design40共用缓存，不能每次import重复分析完整SDK。
+
 ## 9. 后续计划顺序建议（未分配编号）
 
 | 工作包 | 可独立验收成果 | 前置与时序 |

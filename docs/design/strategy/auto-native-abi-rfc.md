@@ -93,6 +93,16 @@ HIR 应保留函数签名、参数的 view/mut/move 语义、外部 ABI 分类�
 布局要求。目标相关的 offset、寄存器和物理签名在 lowering 中确定。HIR/Atom 的内部
 Rust 结构布局不成为 Auto 程序的 ABI；本方案不要求先冻结全部 HIR/编码格式。
 
+### 2.1 C生态与Rust FFI的统一接口层（2026-10-15）
+
+[Design41](../41-interface-metadata-and-foreign-abi.md)整合新讨论，保持“Auto独立ABI+外部ABI adapter”：AutoABI负责Auto模块，C/system等是具体target的外部边界，FFI负责绑定/调用/所有权/错误/回调，Module Runtime负责发现/装载/lease/状态与热重载。尽量复用平台调用惯例，但不把AutoABI改名为C ABI，也不将普通native调用序列化成Atom/Batom或动态Value。
+
+Interface Metadata与Foreign Interface IR共享类型/来源/约束基础，物理布局和调用分类带target及ABI profile；编码Schema版本、AutoABI域、应用接口/库版本分别演进。最小C bootstrap只用于已声明固定入口的发现/握手；不能把返回的AutoABI函数指针当C函数盲调。不同AutoABI域仍默认拒绝，仅显式选择已有转换证据的adapter，不承诺任意跨域自动互通。
+
+Native直接lowering、VM stub/动态调用、A2C/A2R包装分别消费同一接口契约，并保留各自支持矩阵。Rust默认通过真实构建的受限C兼容shim/opaque对象适配，Rust String/Vec/trait布局不成为公开边界；A2C产物也必须通过AutoABI module/runtime conformance才可宣称同域兼容。C宿主→Auto C导出wrapper→Auto内部逻辑作为独立双向验收，外来callback/context/deleter必须进入旧代保活与GC lease。
+
+外部SDK/头文件/包元信息→target语义→布局/adapter→obj/manifest接入Design40统一cache；普通语法扫描仅是候选，不代替预处理/target layout/实际符号与所有权契约。本节是目标态补充，不新增已实现ABI/平台或启动旧C战略的全部部署工程。
+
 ## 3. ABI 独立版本域与兼容检查
 
 ### 3.1 版本政策
@@ -484,8 +494,7 @@ ABI v0.1 的对外冻结至少需要：规范化头文件/描述、公开类型 
 - 用户 2026-10-04 在本会话确认的范围与独立版本域政策是 §1 的依据。
 - v0.6 roadmap / 离线策略是本轮工程基线；Atom/Batom 草案只作为未冻结的设计输入。
 - 旧 Native 战略、所有权与错误设计提供历史意图，不自动视为已实现或已适用于新 ABI。
-- 先前“聊天”模式 ABI 深聊的完整正文尚未定位并对账，本稿不声称已完整继承其所有结论；
-  后续取回正文后应审计冲突/遗漏，保留本轮用户确认项与候选方案的区分。
+- 2026-10-15已读取用户给定的[A2C/ABI分享对话](https://chatgpt.com/share/6ad0577b-5c00-83ea-9684-e64956b98cb1)可见全文，逐项整合与修正见[来源审计](../../reports/20261015-c-foreign-abi-discussion-audit.md)及Design41；不能据此宣称更早未定位的所有聊天也已完整对账。用户需求、对话assistant建议和现行合同仍分别标注。
 - 外部依据均为文中链接的官方 linker 文档、Microsoft 平台文档和 Linux man-pages；
   查询日期 2026-10-04。本文只做设计与文档核查，没有运行 native 构建、装载、
   热重载、WSL 或 ABI conformance 测试，不是平台兼容性收据。

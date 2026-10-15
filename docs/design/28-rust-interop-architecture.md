@@ -1,5 +1,7 @@
 # Design 28：Rust 互操作架构（Auto ↔ Rust Interop Architecture）
 
+> 2026-10-15适用域补充：下文记录旧VM/A2R/430管线及其历史决定，不自动成为新AC/ACC的已实现能力。新原生边界按 [Design41](41-interface-metadata-and-foreign-abi.md) 接入独立AutoABI+Foreign IR/adapter；默认使用经真实Rust工具链构建的受限C兼容shim/opaque对象，type/layout探针和全局cache不能代替跨构建ABI保证。旧fork-rustc/Versioned ABI研究保留历史，不是新主线实施前置；同版本号也不免除features/cfg/依赖/target与生命周期核验。自动生成接口与自动安全分别验证。
+
 > **状态**：现行 canonical design（2026-09-07 立档）
 > **来源**：2026-09-07 auto-musk 会话全链推导 + 两仓代码实勘（musk VM 轨 JSON 桥的
 > 架构追问，逐层深挖至类型系统边界），结论定案与机制清单沉淀于此。
