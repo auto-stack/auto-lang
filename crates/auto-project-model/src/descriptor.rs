@@ -67,6 +67,10 @@ pub enum UnsupportedKind {
     SingleQuotedString,
     /// A `dep` node whose name cannot be represented statically.
     DepNameUnrepresentable,
+    /// Legacy `.am/pac.atom.at` `root { … }` wrapper — explicitly excluded
+    /// from the frozen static subset (T-01); Pac::new hoists it, the model
+    /// refuses static-equivalence until wrapper normalization is designed.
+    RootWrapper,
     /// A modeled field's value has the wrong static shape (e.g. `members`
     /// declared as a scalar string).
     TypeMismatch { field: &'static str },
@@ -83,6 +87,7 @@ impl std::fmt::Display for UnsupportedKind {
             UnsupportedKind::OnOffOutsideToggle => "on/off outside toggle fields",
             UnsupportedKind::SingleQuotedString => "single-quoted string",
             UnsupportedKind::DepNameUnrepresentable => "dep name unrepresentable",
+            UnsupportedKind::RootWrapper => "root wrapper (legacy history form)",
             UnsupportedKind::TypeMismatch { field } => {
                 return write!(f, "type mismatch on '{field}'")
             }
@@ -145,18 +150,34 @@ pub struct RenderDecl {
     pub effective_backend: Option<String>,
 }
 
+/// One node-body prop with its source line (PLAN-780 R1 F-02/F-03:
+/// duplicate keys normalize last-wins on the modeled field while every
+/// declaration stays recorded with provenance).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeProp {
+    pub key: String,
+    pub value: Value,
+    pub line: usize,
+}
+
 /// One `dep` declaration. `name_form` records the syntactic form
 /// (Bare is the only corpus-proven one; Quoted/Arg are grammar-supported).
 #[derive(Debug, Clone, PartialEq)]
 pub struct DependencyDecl {
     pub name: String,
     pub name_form: DepNameForm,
-    /// `path` prop (to_astr) when declared.
+    /// `path` prop (to_astr) when declared — LAST declaration wins,
+    /// mirroring the config VM's accumulation semantics.
     pub path: Option<String>,
-    /// All body props in declaration order (including `path`) with their
-    /// parsed values — version-plane keys are preserved for the PLAN-647
+    /// All body props in declaration order (including every `path`
+    /// occurrence) — version-plane keys are preserved for the PLAN-647
     /// guard plane, not enforced here.
-    pub props: Vec<(String, Value)>,
+    pub props: Vec<NodeProp>,
+    /// Duplicate body keys (2nd+ occurrences), recorded not hidden.
+    pub prop_duplicates: Vec<DuplicateKey>,
+    /// Nested nodes inside the dep body — preserved verbatim (R1 F-03),
+    /// never silently dropped.
+    pub children: Vec<RawNodeDecl>,
     pub line: usize,
 }
 
@@ -267,7 +288,11 @@ pub struct RawProp {
 pub struct RawNodeDecl {
     pub head: String,
     pub name: Option<String>,
-    pub props: Vec<(String, Value)>,
+    /// Verbatim arg-list text for `head(…) { … }` forms (R1 F-03) — the
+    /// only nameable extraction is a single quoted string; everything
+    /// else survives here unmodified.
+    pub raw_args: Option<String>,
+    pub props: Vec<NodeProp>,
     pub children: Vec<RawNodeDecl>,
     pub line: usize,
 }

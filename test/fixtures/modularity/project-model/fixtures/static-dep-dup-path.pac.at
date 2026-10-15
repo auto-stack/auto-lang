@@ -1,0 +1,7 @@
+// PLAN-780 R1 F-02 fixture: duplicate dep body path — LAST declaration wins
+// (config VM accumulation semantics), every occurrence recorded.
+name: "dup-path"
+dep foo {
+    path: "first"
+    path: "second"
+}

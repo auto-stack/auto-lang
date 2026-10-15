@@ -1,0 +1,2 @@
+// PLAN-780 R1 F-01 fixture: variable inside a top-level object document.
+{ "name": "dynamic", "members": [port] }

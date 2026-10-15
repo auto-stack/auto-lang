@@ -1,0 +1,7 @@
+// PLAN-780 R1 F-05 fixture: legacy .am/pac.atom.at root wrapper — explicitly
+// excluded from the frozen static subset (T-01); Pac::new hoists it, the
+// model must refuse static equivalence.
+root {
+ name: "wrapped"
+ render: "vue"
+}

@@ -179,6 +179,7 @@ fn apply_entry(
         Entry::Node {
             head,
             name,
+            raw_args,
             body,
             line,
             name_unsupported,
@@ -186,7 +187,7 @@ fn apply_entry(
             if let Some(u) = name_unsupported {
                 d.unsupported.push(u);
             }
-            apply_node(head, name, body, line, d)
+            apply_node(head, name, raw_args, body, line, d)
         }
         Entry::Unsupported(u) => d.unsupported.push(u),
     }
@@ -429,10 +430,27 @@ fn node_name_string(name: &NodeName) -> Option<String> {
 fn apply_node(
     head: String,
     name: NodeName,
+    raw_args: Option<String>,
     body: Vec<Entry>,
     line: usize,
     d: &mut ProjectDescriptor,
 ) {
+    if head == "root" {
+        // R1 F-05: the legacy `.am/pac.atom.at` wrapper is explicitly
+        // excluded from the frozen static subset (T-01) — Pac::new hoists
+        // it; the model refuses static equivalence until wrapper
+        // normalization is actually designed, and keeps the node verbatim.
+        d.unsupported.push(UnsupportedConstruct {
+            kind: UnsupportedKind::RootWrapper,
+            line,
+            column: 0,
+            raw: "root { … }".to_string(),
+            key: None,
+        });
+        let raw = raw_node_from(head, name, raw_args, body, line, d);
+        d.raw_nodes.push(raw);
+        return;
+    }
     if head == "dep" {
         match node_name_string(&name) {
             Some(dep_name) => {
@@ -443,16 +461,23 @@ fn apply_node(
                 };
                 let mut props = Vec::new();
                 let mut children = Vec::new();
-                collect_body(body, d, &mut props, &mut children);
+                let mut prop_duplicates = Vec::new();
+                collect_body(body, d, &mut props, &mut children, &mut prop_duplicates);
+                // R1 F-02: duplicate body keys normalize LAST-wins — the
+                // config VM's accumulation semantics (old oracle deps of
+                // `path: "first" / path: "second"` resolve to "second").
                 let path = props
                     .iter()
-                    .find(|(k, _)| k == "path")
-                    .map(|(_, v)| astr(v));
+                    .rev()
+                    .find(|p| p.key == "path")
+                    .map(|p| astr(&p.value));
                 d.deps.push(DependencyDecl {
                     name: dep_name,
                     name_form: form,
                     path,
                     props,
+                    prop_duplicates,
+                    children,
                     line,
                 });
             }
@@ -464,58 +489,72 @@ fn apply_node(
                     raw: "dep (…)".to_string(),
                     key: None,
                 });
-                let raw = raw_node_from(head, name, body, line, d);
+                let raw = raw_node_from(head, name, raw_args, body, line, d);
                 d.raw_nodes.push(raw);
             }
         }
         return;
     }
     // Unmodeled node kinds (targets: app/lib/bag/device/test, and anything
-    // else) — catalogued with full props/children, never materialized.
-    let raw = raw_node_from(head, name, body, line, d);
+    // else) — catalogued with full props/args/children, never materialized.
+    let raw = raw_node_from(head, name, raw_args, body, line, d);
     d.raw_nodes.push(raw);
 }
 
 fn raw_node_from(
     head: String,
     name: NodeName,
+    raw_args: Option<String>,
     body: Vec<Entry>,
     line: usize,
     d: &mut ProjectDescriptor,
 ) -> RawNodeDecl {
     let mut props = Vec::new();
     let mut children = Vec::new();
-    collect_body(body, d, &mut props, &mut children);
+    let mut _dups = Vec::new();
+    collect_body(body, d, &mut props, &mut children, &mut _dups);
     RawNodeDecl {
         head,
         name: node_name_string(&name),
+        raw_args,
         props,
         children,
         line,
     }
 }
 
-/// Flatten node-body entries into (props, child raw nodes). Unsupported
-/// body constructs are recorded on the descriptor, not dropped.
+/// Flatten node-body entries into (props, child raw nodes, duplicates).
+/// Unsupported body constructs are recorded on the descriptor, not dropped.
 fn collect_body(
     body: Vec<Entry>,
     d: &mut ProjectDescriptor,
-    props: &mut Vec<(String, Value)>,
+    props: &mut Vec<NodeProp>,
     children: &mut Vec<RawNodeDecl>,
+    duplicates: &mut Vec<DuplicateKey>,
 ) {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for entry in body {
         match entry {
-            Entry::Prop {
-                key,
-                value,
-                line: _,
-            } => match value {
-                ScannedValue::Literal(v) => props.push((key, v)),
-                ScannedValue::Unsupported(u) => d.unsupported.push(u),
-            },
+            Entry::Prop { key, value, line } => {
+                if !seen.insert(key.clone()) {
+                    duplicates.push(DuplicateKey {
+                        key: key.clone(),
+                        line,
+                    });
+                }
+                match value {
+                    ScannedValue::Literal(v) => props.push(NodeProp {
+                        key,
+                        value: v,
+                        line,
+                    }),
+                    ScannedValue::Unsupported(u) => d.unsupported.push(u),
+                }
+            }
             Entry::Node {
                 head,
                 name,
+                raw_args,
                 body,
                 line,
                 name_unsupported,
@@ -523,7 +562,7 @@ fn collect_body(
                 if let Some(u) = name_unsupported {
                     d.unsupported.push(u);
                 }
-                children.push(raw_node_from(head, name, body, line, d))
+                children.push(raw_node_from(head, name, raw_args, body, line, d))
             }
             Entry::Unsupported(u) => d.unsupported.push(u),
         }

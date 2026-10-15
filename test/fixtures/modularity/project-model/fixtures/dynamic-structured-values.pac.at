@@ -1,0 +1,5 @@
+// PLAN-780 R1 F-01 fixture: bare identifiers in structured VALUE positions —
+// only the config VM can evaluate them (probe args resolve `port`).
+name: "structured-dynamic"
+members: [port]
+back: { project: port }

@@ -11,7 +11,10 @@ use auto_project_model::{
 use std::path::Path;
 
 fn fixture(name: &str) -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("fixtures").join(name)
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("fixtures")
+        .join(name)
 }
 
 #[test]
@@ -36,7 +39,10 @@ fn consumer_parses_static_pac_without_compiler_stack() {
 
     let deps = parse_file(&fixture("static-dep-forms.pac.at")).expect("deps parse");
     assert_eq!(deps.deps.len(), 3);
-    assert_eq!(deps.deps[0].path.as_deref(), Some("../../packages/blueprints"));
+    assert_eq!(
+        deps.deps[0].path.as_deref(),
+        Some("../../packages/blueprints")
+    );
 
     let nested = parse_file(&fixture("static-nested-objects.pac.at")).expect("nested parse");
     assert_eq!(nested.external_backend.as_deref(), Some("../ash-server"));

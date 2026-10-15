@@ -1,0 +1,7 @@
+// PLAN-780 R1 F-03 fixture: unmodeled node subtrees and args survive on the
+// DTO (sentinels must stay recoverable from the parse result).
+name: "content-kept"
+dep foo {
+    child Extra { marker: "__CHILD_SENTINEL__" }
+}
+custom("__ARG_ONE__", "__ARG_TWO__") { tag: "kept" }

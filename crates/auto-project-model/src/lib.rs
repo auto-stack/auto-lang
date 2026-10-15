@@ -30,9 +30,9 @@ mod from_scan;
 pub mod scanner;
 
 pub use descriptor::{
-    DepNameForm, DependencyDecl, DisplayFields, DuplicateKey, Identity, ProjectDescriptor,
-    RawNodeDecl, RawProp, RenderDecl, RenderSpec, RuntimeFields, SceneKind, SourceInfo,
-    ToggleFields, ToggleValue, UnsupportedConstruct, UnsupportedKind, WindowSpec,
+    DepNameForm, DependencyDecl, DisplayFields, DuplicateKey, Identity, NodeProp,
+    ProjectDescriptor, RawNodeDecl, RawProp, RenderDecl, RenderSpec, RuntimeFields, SceneKind,
+    SourceInfo, ToggleFields, ToggleValue, UnsupportedConstruct, UnsupportedKind, WindowSpec,
 };
 
 use std::fmt;

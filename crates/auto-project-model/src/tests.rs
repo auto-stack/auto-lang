@@ -162,19 +162,19 @@ fn unmodeled_nodes_and_props_are_catalogued_not_dropped() {
     assert_eq!(app.head, "app");
     assert_eq!(app.name.as_deref(), Some("main"));
     assert_eq!(
-        app.props.iter().find(|(k, _)| k == "srcs"),
-        Some(&(
-            "srcs".to_string(),
-            Value::Array(auto_val::Array::from_vec(vec![Value::Str(
-                "main.at".into()
-            )]))
-        ))
+        app.props.iter().find(|p| p.key == "srcs").map(|p| &p.value),
+        Some(&Value::Array(auto_val::Array::from_vec(vec![Value::Str(
+            "main.at".into()
+        )])))
     );
     let lib = &d.raw_nodes[1];
     assert_eq!(lib.name.as_deref(), Some("auto"));
     assert_eq!(
-        lib.props.iter().find(|(k, _)| k == "recurse"),
-        Some(&("recurse".to_string(), Value::Bool(true)))
+        lib.props
+            .iter()
+            .find(|p| p.key == "recurse")
+            .map(|p| &p.value),
+        Some(&Value::Bool(true))
     );
 }
 
@@ -324,4 +324,109 @@ fn escape_sequences_mirror_atom_parser() {
         Some(Value::Str(s)) => assert_eq!(s.as_str(), "a\tb\nc\"d\\e\\q"),
         other => panic!("expected Str, got {other:?}"),
     }
+}
+
+// ── R1 review regressions (F780-R1-01..05) — permanent controls ────────
+
+/// F-01: bare identifiers in structured VALUE positions classify dynamic —
+/// AtomParser would silently stringify them (`members: [port]` would fake
+/// `["port"]` static while the oracle evaluates the injected arg).
+#[test]
+fn r1_structured_value_bare_idents_are_dynamic() {
+    for (text, field) in [
+        ("members: [port]\n", "array element"),
+        ("back: { project: port }\n", "object value"),
+        ("cfg: { front: make_path(1) }\n", "call in object value"),
+        ("members: [on]\n", "on/off in container"),
+        ("members: [dep_like { a: 1 }]\n", "node in value position"),
+    ] {
+        let d = parse(text);
+        assert!(!d.is_static_equivalent(), "{field}: {text}");
+        assert!(!d.unsupported.is_empty(), "{field} needs a reason: {text}");
+        // the field itself never fakes a value
+        if text.starts_with("members") {
+            assert_eq!(d.members, None);
+        }
+    }
+    // top-level object document: same rule at every value entry
+    let d = parse("{ name: \"dynamic\", members: [port] }");
+    assert!(!d.is_static_equivalent());
+    assert_eq!(d.unsupported[0].kind, UnsupportedKind::BareIdentValue);
+    // quoted static containers stay static (positive control)
+    let ok = parse("members: [\"front\"]\nback: { project: \"back\" }\n");
+    assert!(ok.is_static_equivalent());
+    assert_eq!(
+        ok.members,
+        Some(vec!["front".to_string()]),
+        "clean container still parses statically"
+    );
+    // interpolation inside structured values still classifies
+    let d = parse("members: [\"${a}\"]\n");
+    assert!(!d.is_static_equivalent());
+    assert_eq!(d.unsupported[0].kind, UnsupportedKind::Interpolation);
+}
+
+/// F-02: duplicate dep body keys — LAST declaration wins (mirrors the
+/// config VM accumulation), every occurrence stays recorded.
+#[test]
+fn r1_dep_duplicate_path_last_wins() {
+    let d = parse("dep foo {\n path: \"first\"\n path: \"second\"\n}\n");
+    assert!(d.is_static_equivalent());
+    assert_eq!(d.deps[0].path.as_deref(), Some("second"));
+    assert_eq!(d.deps[0].props.len(), 2, "both declarations preserved");
+    assert_eq!(d.deps[0].prop_duplicates.len(), 1);
+    assert_eq!(d.deps[0].prop_duplicates[0].key, "path");
+    assert_eq!(d.deps[0].props[1].line, 3, "provenance line kept");
+}
+
+/// F-03: unmodeled node subtrees and args survive on the DTO.
+#[test]
+fn r1_unknown_node_children_and_args_preserved() {
+    let d = parse("dep foo {\n child Extra { marker: \"__CHILD_SENTINEL__\" }\n}\n");
+    assert!(d.is_static_equivalent());
+    assert_eq!(d.deps.len(), 1);
+    assert_eq!(d.deps[0].children.len(), 1, "dep child not dropped");
+    assert_eq!(d.deps[0].children[0].head, "child");
+    assert_eq!(d.deps[0].children[0].name.as_deref(), Some("Extra"));
+    assert_eq!(
+        d.deps[0].children[0].props[0].value,
+        Value::Str("__CHILD_SENTINEL__".into())
+    );
+
+    let d = parse("custom(\"__ARG_ONE__\", \"__ARG_TWO__\") { tag: \"kept\" }\n");
+    let repr = format!("{d:?}");
+    assert!(repr.contains("__ARG_ONE__") && repr.contains("__ARG_TWO__"));
+    assert_eq!(d.raw_nodes.len(), 1);
+    assert!(d.raw_nodes[0].raw_args.is_some());
+}
+
+/// F-05: the legacy `root { … }` wrapper is explicitly excluded from the
+/// frozen static subset — classified, node preserved, no fake equivalence.
+#[test]
+fn r1_root_wrapper_is_not_static() {
+    let d = parse("root {\n name: \"wrapped\"\n render: \"vue\"\n}\n");
+    assert!(!d.is_static_equivalent());
+    assert_eq!(d.unsupported[0].kind, UnsupportedKind::RootWrapper);
+    assert_eq!(d.raw_nodes.len(), 1, "wrapper node preserved verbatim");
+    assert_eq!(d.raw_nodes[0].head, "root");
+    assert_eq!(d.identity.name, None, "no hoisted fake value");
+}
+
+/// R1 difference control: a legal EMPTY file is a valid empty config on
+/// both arms — distinct from an unreadable required input.
+#[test]
+fn r1_empty_file_is_legal_empty_config() {
+    let d = parse("");
+    assert!(d.is_static_equivalent());
+    assert!(d.unsupported.is_empty());
+    assert_eq!(d.identity.name, None);
+}
+
+/// R1 comment_eof control: unterminated block comment at EOF accepted
+/// (mirrors the legacy lexer synthesizing CommentEnd).
+#[test]
+fn r1_unterminated_block_comment_eof_accepted() {
+    let d = parse("name: \"ok\"\n/* missing close");
+    assert!(d.is_static_equivalent());
+    assert_eq!(d.identity.name.as_deref(), Some("ok"));
 }

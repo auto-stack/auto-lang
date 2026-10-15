@@ -59,6 +59,10 @@ pub struct FrozenNormalized {
 /// Per-file comparison outcome.
 pub struct ComparisonReport {
     pub path: String,
+    /// `Some(err)` when the file itself could not be read (missing /
+    /// invalid UTF-8 — R1 F-04). Required-input failures are observable
+    /// gate failures, never "both arms parsed an empty config".
+    pub read_error: Option<String>,
     /// `Ok(tuple)` = old arm parsed; `Err(msg)` = the legacy VM itself
     /// failed on this input (recorded — the old capability is the fallback
     /// for everything the static model rejects).
@@ -234,15 +238,30 @@ fn new_tuple(d: &ProjectDescriptor) -> FrozenNormalized {
     }
 }
 
-/// Compare one file's old and new arms.
+/// Compare one file's old and new arms. Read failures (missing file,
+/// invalid UTF-8) surface on `read_error` and as errors on BOTH arms —
+/// they must fail any corpus gate instead of comparing empty configs
+/// (R1 F-04).
 pub fn compare_file(path: &std::path::Path) -> ComparisonReport {
-    let code = std::fs::read_to_string(path).unwrap_or_default();
     let rel = path.to_string_lossy().to_string();
+    let code = match std::fs::read_to_string(path) {
+        Ok(code) => code,
+        Err(e) => {
+            let msg = format!("required input unreadable: {}: {e}", path.display());
+            return ComparisonReport {
+                path: rel,
+                read_error: Some(msg.clone()),
+                old: Err(msg.clone()),
+                new: Err(msg),
+            };
+        }
+    };
     let old = old_normalized_from_code(&code);
     let new = new_normalized_from_code(&code, &SourceInfo::from_path(path))
         .map(|(d, tuple)| (d.is_static_equivalent(), tuple));
     ComparisonReport {
         path: rel,
+        read_error: None,
         old,
         new,
     }
@@ -413,9 +432,16 @@ mod tests {
         let mut static_eq = 0usize;
         let mut dynamic = 0usize;
         let mut template_rejected = 0usize;
+        let mut both_rejected = 0usize;
         let mut failures = Vec::new();
         for f in &files {
             let report = compare_file(f);
+            if let Some(e) = &report.read_error {
+                // R1 F-04: a required managed input that cannot be read
+                // fails the gate outright — never an empty-config pass.
+                failures.push(format!("{}: {}", report.path, e));
+                continue;
+            }
             match (&report.old, &report.new) {
                 (Ok(old), Ok((true, new))) => {
                     let diffs = field_diff(old, new);
@@ -442,7 +468,10 @@ mod tests {
                 // the old arm errors is the honest pair (error preserved,
                 // no silent fallback).
                 (Err(_old_err), Ok((false, _))) => template_rejected += 1,
-                (Err(_), Err(_)) => template_rejected += 1,
+                // both arms refuse (expected-bad fixtures: VM parse error +
+                // model syntax error) — counted separately from templates
+                // so classification never masks a defect.
+                (Err(_), Err(_)) => both_rejected += 1,
                 (Err(e), Ok((true, _))) => failures.push(format!(
                     "{}: OLD arm failed but model claims static: {}",
                     report.path, e
@@ -456,18 +485,24 @@ mod tests {
         );
         assert!(static_eq >= 140, "static-equivalent count {static_eq}");
         assert!(
-            dynamic + template_rejected >= 1,
+            dynamic + template_rejected + both_rejected >= 1,
             "dynamic files must be classified, got 0"
         );
-        // Every corpus file classifies: static-equal / dynamic-classified /
-        // template-rejected (both arms refuse to fake a reading).
-        assert_eq!(static_eq + dynamic + template_rejected, files.len());
+        // Every managed file classifies: static-equal / dynamic-classified /
+        // template-rejected (old arm errors, model classifies) /
+        // both-rejected (expected-bad fixtures) — read failures already
+        // failed above.
+        assert_eq!(
+            static_eq + dynamic + template_rejected + both_rejected,
+            files.len()
+        );
         eprintln!(
-            "P780 corpus: total={} static_equal={} dynamic_classified={} template_rejected={}",
+            "P780 corpus: total={} static_equal={} dynamic_classified={} template_rejected={} both_rejected={}",
             files.len(),
             static_eq,
             dynamic,
-            template_rejected
+            template_rejected,
+            both_rejected
         );
     }
 
@@ -589,6 +624,9 @@ mod tests {
             "static-target-nodes.pac.at",
             "static-dup-keys.pac.at",
             "static-toggles.pac.at",
+            "static-dep-dup-path.pac.at",
+            "static-unknown-node-content.pac.at",
+            "static-empty.pac.at",
         ] {
             let path = fixture(name);
             let report = compare_file(&path);
@@ -601,5 +639,71 @@ mod tests {
                 "{name} frozen-field diffs: {diffs:?}\nold={old:#?}\nnew={new:#?}"
             );
         }
+    }
+
+    /// R1 F-01/F-05: structured-value variables and the root wrapper never
+    /// fake static equivalence; the old arm still evaluates them.
+    #[test]
+    fn project_model_r1_dynamic_structured_and_wrapper() {
+        for name in [
+            "dynamic-structured-values.pac.at",
+            "dynamic-top-object-values.pac.at",
+            "dynamic-root-wrapper.pac.at",
+        ] {
+            let code = std::fs::read_to_string(fixture(name)).unwrap();
+            let (d, _tuple) = new_normalized_from_code(&code, &SourceInfo::inline()).unwrap();
+            assert!(!d.is_static_equivalent(), "{name} must classify");
+            assert!(!d.unsupported.is_empty(), "{name} needs reasons");
+            // old arm keeps evaluating (V-03: no capability loss)
+            assert!(
+                old_normalized_from_code(&code).is_ok(),
+                "{name}: legacy arm still parses"
+            );
+        }
+        // old arm resolves the injected probe arg where the model refuses
+        let code = std::fs::read_to_string(fixture("dynamic-structured-values.pac.at")).unwrap();
+        let old = old_normalized_from_code(&code).unwrap();
+        assert_eq!(old.members_declared, Some(vec!["win32".to_string()]));
+        let (d, new) = new_normalized_from_code(&code, &SourceInfo::inline()).unwrap();
+        assert_eq!(new.members_declared, None);
+        assert!(d
+            .unsupported
+            .iter()
+            .any(|u| u.kind == UnsupportedKind::BareIdentValue));
+    }
+
+    /// R1 F-04: read failures are observable gate failures — never an
+    /// empty-config comparison. Legal empty file stays a valid control.
+    #[test]
+    fn project_model_r1_read_failures_propagate() {
+        let missing =
+            std::env::temp_dir().join(format!("p780-r1-missing-{}-pac.at", std::process::id()));
+        assert!(!missing.exists());
+        let report = compare_file(&missing);
+        assert!(report.read_error.is_some());
+        assert!(report.old.is_err() && report.new.is_err());
+        assert_eq!(report.equal_claim(), None);
+
+        let dir = std::env::temp_dir().join(format!("p780-r1-utf8-{}", std::process::id()));
+        assert!(!dir.exists());
+        std::fs::create_dir(&dir).unwrap();
+        let bad = dir.join("pac.at");
+        std::fs::write(&bad, [255u8, 254u8]).unwrap();
+        let report = compare_file(&bad);
+        std::fs::remove_file(&bad).unwrap();
+        std::fs::remove_dir(&dir).unwrap();
+        assert!(
+            report.read_error.is_some(),
+            "invalid UTF-8 must not become empty equality"
+        );
+        assert!(report.old.is_err() && report.new.is_err());
+
+        // difference control: an empty file IS a legal empty config
+        let code = std::fs::read_to_string(fixture("static-empty.pac.at")).unwrap();
+        assert_eq!(code, "");
+        let old = old_normalized_from_code(&code).unwrap();
+        let (d, new) = new_normalized_from_code(&code, &SourceInfo::inline()).unwrap();
+        assert!(d.is_static_equivalent());
+        assert_eq!(old, new);
     }
 }

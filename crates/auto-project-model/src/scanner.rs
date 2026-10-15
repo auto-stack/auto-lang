@@ -45,6 +45,10 @@ pub(crate) enum Entry {
     Node {
         head: String,
         name: NodeName,
+        /// Verbatim arg-list text (`custom("a", "b") { … }` — PLAN-780 R1
+        /// F-03: unmodeled node args must survive on the DTO, not vanish
+        /// behind the nameable-single-string extraction).
+        raw_args: Option<String>,
         body: Vec<Entry>,
         line: usize,
         /// Interpolation found in the node-name position (template forms
@@ -101,7 +105,7 @@ impl<'a> Scanner<'a> {
     fn parse_object_document(&mut self) -> Result<Vec<Entry>, ProjectModelError> {
         let start_line = self.line;
         let text = self.take_bracket_extent()?;
-        if let Some(u) = scan_unsupported_in_text(&text, start_line, "<document>") {
+        if let Some(u) = scan_value_positions(&text, start_line, "<document>") {
             return Ok(vec![Entry::Unsupported(u)]);
         }
         let atom = auto_atom::AtomParser::parse(&text).map_err(|e| {
@@ -375,7 +379,7 @@ impl<'a> Scanner<'a> {
             }
             Some('{') | Some('[') => {
                 let text = self.take_bracket_extent()?;
-                if let Some(u) = scan_unsupported_in_text(&text, line, key) {
+                if let Some(u) = scan_value_positions(&text, line, key) {
                     return Ok(ScannedValue::Unsupported(u));
                 }
                 let atom = auto_atom::AtomParser::parse(&text).map_err(|e| {
@@ -800,6 +804,7 @@ impl<'a> Scanner<'a> {
         Ok(Entry::Node {
             head,
             name,
+            raw_args,
             body,
             line,
             name_unsupported,
@@ -957,6 +962,226 @@ fn scan_unsupported_in_text(
         }
     }
     None
+}
+
+/// Structure-aware value-position classifier (PLAN-780 R1 F-01).
+///
+/// Walks a structured extent (`{…}` / `[…]`, incl. the top-level object
+/// document) as the static value grammar and classifies everything only
+/// the config VM can produce BEFORE AtomParser builds the literal —
+/// AtomParser renders bare identifiers as plain strings, which would let
+/// `members: [port]` claim static equivalence with `["port"]` while the
+/// oracle evaluates `["win32"]`. Key positions accept bare/quoted
+/// identifiers; VALUE positions accept strings (interpolation-checked),
+/// numbers, true/false/null/nil — and nothing else. `on`/`off` have no
+/// toggle context inside containers, so they classify too.
+fn scan_value_positions(text: &str, base_line: usize, key: &str) -> Option<UnsupportedConstruct> {
+    let mut sc = ValuePositionScanner {
+        chars: text.chars().peekable(),
+        line: base_line,
+        key: key.to_string(),
+    };
+    sc.scan_value()
+}
+
+struct ValuePositionScanner<'a> {
+    chars: std::iter::Peekable<std::str::Chars<'a>>,
+    line: usize,
+    key: String,
+}
+
+impl<'a> ValuePositionScanner<'a> {
+    fn unsupported(&self, kind: UnsupportedKind, raw: String) -> UnsupportedConstruct {
+        UnsupportedConstruct {
+            kind,
+            line: self.line,
+            column: 0,
+            raw,
+            key: Some(self.key.clone()),
+        }
+    }
+
+    fn skip_ws_and_comments(&mut self) {
+        loop {
+            while self.chars.peek().is_some_and(|c| c.is_whitespace()) {
+                if *self.chars.peek().unwrap() == '\n' {
+                    self.line += 1;
+                }
+                self.chars.next();
+            }
+            if self.chars.peek() == Some(&'/') {
+                let mut clone = self.chars.clone();
+                clone.next();
+                if clone.peek() == Some(&'/') {
+                    while self.chars.peek().is_some_and(|c| *c != '\n') {
+                        self.chars.next();
+                    }
+                    continue;
+                }
+                if clone.peek() == Some(&'*') {
+                    self.chars.next();
+                    self.chars.next();
+                    // unterminated block comment at EOF is accepted, mirroring
+                    // the legacy lexer (review R1 comment_eof control)
+                    while let Some(c) = self.chars.next() {
+                        if c == '\n' {
+                            self.line += 1;
+                        }
+                        if c == '*' && self.chars.peek() == Some(&'/') {
+                            self.chars.next();
+                            break;
+                        }
+                    }
+                    continue;
+                }
+            }
+            if self.chars.peek() == Some(&'#') {
+                let mut clone = self.chars.clone();
+                clone.next();
+                if clone.peek() != Some(&'[') {
+                    while self.chars.peek().is_some_and(|c| *c != '\n') {
+                        self.chars.next();
+                    }
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+
+    fn scan_value(&mut self) -> Option<UnsupportedConstruct> {
+        self.skip_ws_and_comments();
+        match self.chars.peek().copied()? {
+            '{' => self.scan_object(),
+            '[' => self.scan_array(),
+            '"' => self.scan_string(),
+            '\'' => Some(self.unsupported(UnsupportedKind::SingleQuotedString, "'…'".to_string())),
+            '`' => Some(self.unsupported(UnsupportedKind::FString, "`…`".to_string())),
+            c if c.is_ascii_digit() || c == '-' || c == '+' => {
+                while self
+                    .chars
+                    .peek()
+                    .is_some_and(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
+                {
+                    self.chars.next();
+                }
+                None
+            }
+            c if is_ident_start(c) => {
+                let mut ident = String::new();
+                while self.chars.peek().is_some_and(|c| is_ident_continue(*c)) {
+                    ident.push(self.chars.next().unwrap());
+                }
+                self.skip_ws_and_comments();
+                if self.chars.peek() == Some(&'(') {
+                    return Some(self.unsupported(UnsupportedKind::Call, format!("{ident}(")));
+                }
+                if self.chars.peek() == Some(&'{') {
+                    return Some(
+                        self.unsupported(UnsupportedKind::BareIdentValue, format!("{ident} {{")),
+                    );
+                }
+                match ident.as_str() {
+                    "true" | "false" | "null" | "nil" => None,
+                    "on" | "off" => {
+                        Some(self.unsupported(UnsupportedKind::OnOffOutsideToggle, ident))
+                    }
+                    _ => Some(self.unsupported(UnsupportedKind::BareIdentValue, ident)),
+                }
+            }
+            _ => None, // unexpected shape: let AtomParser produce the error
+        }
+    }
+
+    fn scan_string(&mut self) -> Option<UnsupportedConstruct> {
+        self.chars.next(); // opening quote
+        loop {
+            match self.chars.next() {
+                None | Some('"') => return None,
+                Some('\\') => {
+                    self.chars.next();
+                }
+                Some('$') => {
+                    if matches!(self.chars.peek(), Some('{'))
+                        || self
+                            .chars
+                            .peek()
+                            .is_some_and(|c| c.is_alphabetic() || *c == '_')
+                    {
+                        return Some(
+                            self.unsupported(UnsupportedKind::Interpolation, "$".to_string()),
+                        );
+                    }
+                }
+                Some(_) => {}
+            }
+        }
+    }
+
+    fn scan_object(&mut self) -> Option<UnsupportedConstruct> {
+        self.chars.next(); // '{'
+        loop {
+            self.skip_ws_and_comments();
+            match self.chars.peek() {
+                None => return None,
+                Some('}') => {
+                    self.chars.next();
+                    return None;
+                }
+                Some('"') => {
+                    if let Some(u) = self.scan_string() {
+                        return Some(u);
+                    }
+                }
+                Some(_) => {
+                    // bare ident / number key — consume the key token
+                    while self
+                        .chars
+                        .peek()
+                        .is_some_and(|c| is_ident_continue(*c) || c.is_ascii_digit())
+                    {
+                        self.chars.next();
+                    }
+                }
+            }
+            self.skip_ws_and_comments();
+            if self.chars.peek() != Some(&':') {
+                continue; // malformed — AtomParser errors later
+            }
+            self.chars.next();
+            if let Some(u) = self.scan_value() {
+                return Some(u);
+            }
+            self.skip_ws_and_comments();
+            if self.chars.peek() == Some(&',') {
+                self.chars.next();
+            }
+        }
+    }
+
+    fn scan_array(&mut self) -> Option<UnsupportedConstruct> {
+        self.chars.next(); // '['
+        loop {
+            self.skip_ws_and_comments();
+            match self.chars.peek() {
+                None => return None,
+                Some(']') => {
+                    self.chars.next();
+                    return None;
+                }
+                _ => {}
+            }
+            // NB: Option `?` propagates None, not Some — classification must
+            // early-return on Some, so this is an explicit if-let.
+            if let Some(u) = self.scan_value() {
+                return Some(u);
+            }
+            self.skip_ws_and_comments();
+            if self.chars.peek() == Some(&',') {
+                self.chars.next();
+            }
+        }
+    }
 }
 
 fn parse_number_text(text: &str) -> Result<Value, String> {
