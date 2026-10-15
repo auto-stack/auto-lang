@@ -1375,6 +1375,7 @@ fn primary_type_name(t: &crate::ast::Type) -> Option<String> {
 }
 
 fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<SessionRuntime, String> {
+    crate::install_ui_host_capabilities();
     crate::vm::native_registry::register_builtin_natives();
 
     // 1. 扁平化 back 链（use 递归、fn 模块限定名、类型/store 去重合并）。

@@ -30,9 +30,7 @@ impl crate::vm::host_capabilities::FrameProvider for FrameBenchProvider {
 /// 幂等性说明：重复注册替换为等价的无状态 adapter，无观测差异；已建
 /// VM 实例的构造期快照不受影响（host_capabilities 快照语义）。
 pub fn install_process_default() {
-    crate::vm::host_capabilities::set_process_default_frame_provider(Arc::new(
-        FrameBenchProvider,
-    ));
+    crate::vm::host_capabilities::set_process_default_frame_provider(Arc::new(FrameBenchProvider));
 }
 
 #[cfg(test)]

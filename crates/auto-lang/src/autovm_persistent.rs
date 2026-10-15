@@ -86,6 +86,7 @@ pub struct AutovmReplSession {
 impl AutovmReplSession {
     /// Create a new persistent AutoVM REPL session
     pub fn new() -> Self {
+        crate::install_ui_host_capabilities();
         // Initialize VM modules (registers HashMap, HashSet, List, etc.)
         // This MUST be called before creating Codegen or VM
         crate::vm::init_io_module();

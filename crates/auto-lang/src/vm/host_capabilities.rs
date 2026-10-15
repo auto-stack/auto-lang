@@ -36,8 +36,7 @@ pub trait FrameProvider: Send + Sync {
 ///
 /// 替换语义：后注册者胜（宿主启动/测试装配用）；已建 VM 实例的快照
 /// 不受影响。
-static PROCESS_DEFAULT_FRAME_PROVIDER: RwLock<Option<Arc<dyn FrameProvider>>> =
-    RwLock::new(None);
+static PROCESS_DEFAULT_FRAME_PROVIDER: RwLock<Option<Arc<dyn FrameProvider>>> = RwLock::new(None);
 
 /// 注册进程默认 frame provider（幂等替换；宿主启动期调用）。
 pub fn set_process_default_frame_provider(provider: Arc<dyn FrameProvider>) {
@@ -87,7 +86,10 @@ mod tests {
         // 仅断言 API 形状与 None 语义；set/clear 往返在 fixture（进程外）
         // 与 AutoVM 级测试覆盖，避免本单测污染同进程其他测试的默认槽。
         let snapshot = process_default_frame_provider();
-        set_process_default_frame_provider(Arc::new(Fake { begin: 1, present: 2 }));
+        set_process_default_frame_provider(Arc::new(Fake {
+            begin: 1,
+            present: 2,
+        }));
         assert!(process_default_frame_provider().is_some());
         // 还原（保 None 或原值——本测试进程内默认槽无既有注册者）。
         match snapshot {

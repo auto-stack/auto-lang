@@ -441,6 +441,20 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
 /// ```ignore
 /// let result = run("1 + 2").unwrap();  // Returns "3"
 /// ```
+/// PLAN-779: 内建宿主能力装配（composition root——crate 根是 ui→vm 单向
+/// 接线的合法层；vm core 不引用 ui）。ui 构建下安装 frame_bench adapter
+/// 为进程默认（幂等）：恢复 779 迁移前"本 crate 全部生产执行路径在 ui
+/// 构建中可观测帧通道"的既有接线（F779-R1-01——程序轨 run 管线、测试/
+/// 调试/ABT/配置/REPL/解释器/back-proxy 各宿主入口统一经此装配）。
+/// no-ui 构建=no-op（缺席=未捕获 0 语义，外部 consumer 自行注入）。
+#[cfg(feature = "ui")]
+fn install_ui_host_capabilities() {
+    crate::ui::frame_provider::install_process_default();
+}
+
+#[cfg(not(feature = "ui"))]
+fn install_ui_host_capabilities() {}
+
 pub fn run(code: &str) -> AutoResult<String> {
     // Plan 081 Phase 1: AutoVM is now the default (no feature flag required)
     // Use execution engine selector to get the engine (with env override support)
@@ -1557,6 +1571,7 @@ async fn execute_autovm_with_deadline(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
+    crate::install_ui_host_capabilities();
     // Plan 560 T03: 脚本模式管线激活——`.as` 源经 s2s lowering（糖→桥，
     // W2 规则表自 T05 起逐条入住）后走正常编译管线；`#[rust]` 行首
     // pragma 预检保留原源（显式压回，555 八格矩阵的压回通道）。
@@ -2137,6 +2152,7 @@ async fn execute_autovm_with_deadline(
 /// Plan 260: Compile and run all `#[test]` functions in the given code.
 /// Returns a TestResult with pass/fail details for each discovered test.
 pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
+    crate::install_ui_host_capabilities();
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::loader::Linker;
@@ -5664,6 +5680,7 @@ pub fn debug_file(path: &str) -> AutoResult<String> {
 
 /// Plan 199 Phase 5: Compile and debug AutoLang code with GDB-style interactive debugger
 async fn debug_autovm(code: &str) -> AutoResult<String> {
+    crate::install_ui_host_capabilities();
     use crate::vm::codegen::Codegen;
     use crate::vm::debugger::GdbController;
     use crate::vm::engine::AutoVM;
@@ -5835,6 +5852,7 @@ pub fn debug_file_agent(path: &str) -> AutoResult<String> {
 }
 
 async fn debug_autovm_agent(code: &str) -> AutoResult<String> {
+    crate::install_ui_host_capabilities();
     use crate::vm::debugger::{AgentCommand, AgentDebugState, AgentRegisters, JsonAgentController};
 
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<AgentCommand>();
@@ -5923,6 +5941,7 @@ pub fn create_vm_from_source(
     usize,
     crate::vm::codegen::ObjectType,
 )> {
+    crate::install_ui_host_capabilities();
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::loader::Linker;
@@ -6092,6 +6111,7 @@ pub fn create_vm_from_abt(
     std::sync::Arc<std::sync::RwLock<String>>,
     usize,
 )> {
+    crate::install_ui_host_capabilities();
     use crate::vm::abt::{asm, parser};
     use crate::vm::engine::AutoVM;
     use crate::vm::native::NativeInterface;
@@ -6303,6 +6323,7 @@ fn extract_node_deep(
 /// let result = eval_config_with_vm(config, &Obj::new()).unwrap();
 /// ```
 pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
+    crate::install_ui_host_capabilities();
     use crate::parser::CompileDest;
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;

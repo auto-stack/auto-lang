@@ -110,7 +110,8 @@ pub struct NativeInterface {
     /// provider 是宿主装配选择，非本结构的隐式全局。内 mut 供 VM 建后注入
     /// （`AutoVM::set_frame_provider`）。注入不 bump binding_revision/
     /// 不撤 proof（绑定身份不变，§host_capabilities 契约注释）。
-    frame_provider: std::sync::RwLock<Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>>>,
+    frame_provider:
+        std::sync::RwLock<Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>>>,
 }
 
 impl Clone for NativeInterface {
@@ -164,7 +165,9 @@ impl NativeInterface {
     }
 
     /// PLAN-779: 当前 provider 快照（None=未捕获 0 语义）。
-    pub fn frame_provider(&self) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>> {
+    pub fn frame_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>> {
         self.frame_provider
             .read()
             .expect("frame_provider poisoned")
@@ -1679,8 +1682,7 @@ pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         .native_interface
         .frame_provider()
         .map_or(0, |p| p.begin_ms());
-    task.ram
-        .push_i32(observed.min(i32::MAX as i64) as i32);
+    task.ram.push_i32(observed.min(i32::MAX as i64) as i32);
     Ok(())
 }
 
@@ -1692,8 +1694,7 @@ pub fn shim_frame_present_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         .native_interface
         .frame_provider()
         .map_or(0, |p| p.present_ms());
-    task.ram
-        .push_i32(observed.min(i32::MAX as i64) as i32);
+    task.ram.push_i32(observed.min(i32::MAX as i64) as i32);
     Ok(())
 }
 

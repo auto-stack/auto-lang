@@ -53,6 +53,7 @@ impl VmInterpreter {
     /// (widget syntax is UI-gated) and hands the AST in directly; plain
     /// `run` keeps its VM-default parse above.
     pub fn run_ast(&mut self, ast: crate::ast::Code) -> AutoResult<Value> {
+        crate::install_ui_host_capabilities();
         // 2. Compile to bytecode
         let mut codegen = Codegen::new();
 
