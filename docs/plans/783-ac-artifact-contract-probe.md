@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-783
-status: drafting
+status: execution_done
 feature_name: AC/ACC 统一编译产物契约与缓存可行性探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-15
 updated_at: 2026-10-15
-current_step: 0
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -173,19 +173,23 @@ T-01只选择既定目标/预算内的实现；不可行留下最小反例回规
 
 | 状态 / ID | owner_stage | 依赖 | 操作与路径（未有者为新建） | 验证 / AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 执行授权 | 核树/基面；新增probe workspace，最小纵向实验；冻结codec范围、布局、依赖、发布协议；新docs/reports/plan783/feasibility.md | 二进制HIR恢复verify/native与对象重启link/run，重放oracle；AC-01–04 |
-| [ ] T-02 | work | T-01 | 新src/{schema,identity}.rs、fixtures及contract报告；A00–12登记与实际子集codec | identity_、admission_；AC-01 |
-| [ ] T-03 | work | T-02 | 新src/layout/，流式造数、两种view、分页/预算计量 | layout_；AC-02 |
-| [ ] T-04 | work | T-02 | 新src/driver.rs、纵线集成测试，复用公开编译/link接口，阶段cache/来源重定位 | native_resume_、invalidation_、admission_；AC-03 |
-| [ ] T-05 | work | T-02、04 | 新src/store/，隔离adapter/refs/lease/发布/回收/故障子进程 | reachability_、concurrency_、recovery_、gc_budget_、store_boundary_；AC-04 |
-| [ ] T-06 | work | T-03–05 | 新verify脚本及docs/reports/plan783/结果、性能报告，矩阵聚合拒绝缺例 | acceptance、perf_，V-01–12当前证据；AC-01–05 |
-| [ ] T-07 | work | T-06 | 最终取舍/迁移差距，新attachments/783/spec-delta.md，更新计划证据及债务候选 | 依赖/范围/SD追踪；AC-06；execution_done=7/9 |
+| [x] T-01 | work | 执行授权 | 核树/基面；新增probe workspace，最小纵向实验；冻结codec范围、布局、依赖、发布协议；新docs/reports/plan783/feasibility.md | 二进制HIR恢复verify/native与对象重启link/run，重放oracle；AC-01–04 `[✅ 已完成]` 基面重核=ec934b000(指纹全匹配)；独立 workspace+lock 离线解析；四 oracle 纵线/对象缺源重启/二进制 HIR 恢复全过(native_resume_ 3/3)；冻结决策 8 项见 feasibility.md §1 |
+| [x] T-02 | work | T-01 | 新src/{schema,identity}.rs、fixtures 及contract报告；A00–12登记与实际子集codec | identity_、admission_；AC-01 `[✅ 已完成]` A00–12 登记+合法/非法样例(lib 测试)；域分离哈希/三分身份/引用四类拒绝；HIR codec(core+scalar)解码全边界校验；identity_ 4/4、admission_ 6/6；contract.md |
+| [x] T-03 | work | T-02 | 新src/layout/，流式造数、两种view、分页/预算计量 | layout_；AC-02 `[✅ 已完成]` 128MiB×2 实测写入；两布局值与纯函数基线+Atom 文本一致；小查询 I/O≤128KiB(上限512KiB)；热缓存≤8MiB+淘汰>0+OS private bytes<32MiB；后缀版本共享>90% 页；layout_ 6/6(修复:payload 填充偏移计数) |
+| [x] T-04 | work | T-02 | 新src/driver.rs、纵线集成测试，复用公开编译/link接口，阶段cache/来源重定位 | native_resume_、invalidation_、admission_；AC-03 `[✅ 已完成]` 四 oracle×(fresh/跨进程对象命中(源已删注入)/HIR 恢复重验)全过；失效矩阵 body-only/profile/target(受控拒绝零产物)/entry/toolchain 全钉；native_resume_ 3/3、invalidation_ 5/5 |
+| [x] T-05 | work | T-02、04 | 新src/store/，隔离adapter/refs/lease/发布/回收/故障子进程 | reachability_、concurrency_、recovery_、gc_budget_、store_boundary_；AC-04 `[✅ 已完成]` BlobStore 适配+chunk 锁;三故障点 kill+幂等恢复；lease OS 真值判活(TTL 过期仍活/进程死即收)；同键冲突报告非 LWW；reader-GC 门锁无半读；共享块删工程不破坏他工程；对象 provenance 回收后仍链接；水位/硬 pin 退让/staging 上限；reparse 拒跳+哨兵不变；reachability_ 4/4、concurrency_ 3/3、recovery_ 4/4、gc_budget_ 4/4(+512 churn closeout)、store_boundary_ 5/5 |
+| [x] T-06 | work | T-03–05 | 新verify脚本及docs/reports/plan783/结果、性能报告，矩阵聚合拒绝缺例 | acceptance、perf_，V-01–12当前证据；AC-01–05 `[✅ 已完成]` verify-ac-artifact-probe.ps1(acceptance/closeout)；30样本×6场景 perf.json+perf-report.md(P95<400ms,语义 30/30×6,GC 并发尾延迟诚实记录)；perf_ 2/2 |
+| [x] T-07 | work | T-06 | 最终取舍/迁移差距，新attachments/783/spec-delta.md，更新计划证据及债务候选 | 依赖/范围/SD追踪；AC-06；execution_done=7/9 `[✅ 已完成]` spec-delta.md(SD-01..05 逐条落地文本)；dep_audit_ 5/5(ac-core 零产品依赖/探针独立/无生产入口切换)；feasibility.md §3 实测发现+§4 边界 |
 | [ ] T-08 | review | T-07 | 同树独立复审全部AC/SD及遗漏/延期/旁路，绑定commit | AC-07，pass→reviewed=8/9，merge-owned pending |
 | [ ] T-09 | merge | T-08 pass | 冻结commit完整probe closeout；按实际diff判门禁、沉淀SD/索引、归档合入；按技能判批量回归到期；wt-guard后清理 | AC-08，实际收尾完成才9/9 |
 
 根crates/编译器源变更若获修订授权，必须重判门禁，不能沿用probe-only豁免。门禁失败导致代码变化时回work/review，再在新冻结提交执行受影响门禁。
 
 ## 9. 复审记录
+
+2026-10-15:`stage: work` 完成,`PLAN-783 r1`,`outcome: pass(工作阶段,execution_done 7/9)`,`worktree D:/autostack/.wt/lang-783/auto-lang`,`branch plan-783-dev`,`base ec934b000`,`code 62d93dae8`,`deps: ac-core(master 内置,指纹复核一致)/auto-cache(同)`。**验收收据**:acceptance 脚本整跑 PASS(13 族:lib 14 + 集成 62 = 76 例全绿,0 skip;`/tmp/ac783-acceptance.log` 同轮);512 churn 通过(210s,断言含 iterations=512/GC≥60 次/final≤48MiB/peak<128MiB);30样本×6场景 perf 报告提交于 docs/reports/plan783/(P95<400ms,语义 30/30×6)。**修复过程钉面的不变式**:A10 回执内容=链接输入纯函数(provenance 走图边);摘要内容不含 span;hit 消费方注册当前版本根(否则只恢复的消费者失去保活);回执 chunk id 用框架字节哈希(与存储 CAS 一致);GC 级联删行+死行可替换;LockFileEx 33/32 都映射为忙;GC low=0 禁用水位语义(测试全回收)。**开放项**:无合同内未闭合 finding;merge-owned 门禁 pending(closeout 完整 probe=512 churn+30 样本 perf 再生+按实际 diff 判根门禁;Category A 预期零根 cargo 档)。债务候选 D-783-A..E 已登记 KNOWN-DEBT。`next_responsible_role: review(T-08)`。
+
+2026-10-15:`stage: work` 进入。用户下达执行指令;基面重核:master 已前进至 `ec934b000`(PLAN-780 合入,plan 簿记+project-model 代码),规划输入全部源码指纹复核不变(parser/adapter/descriptor/verify/native/link/storage 等 SHA-256 与 planning-inputs.tsv 一致),782 仍 executing 未合入,不影响本探针接缝。worktree `D:/autostack/.wt/lang-783/auto-lang`、分支 `plan-783-dev` 已建,基线 `ec934b000`。
 
 2026-10-15：`stage: new`，`PLAN-783 r1`，`outcome: pass`（草案契约预检，非实现/独立验收），`next: work`。当前只授权规划，交付后等待执行指令。新增T-01–09、AC-01–08，所有实施/验收未执行。细节调查归T-01，依赖任务等待真实纵向可行性收据。
 
