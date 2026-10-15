@@ -1,5 +1,7 @@
 # 09 - Compiler Architecture
 
+> 2026-10-15 current-state/target-state clarification: the historical text below predates the active `crates/auto-cache` SQLite registry, disk blob store, fingerprints and GC; see [auto-cache Spec](../specs/auto-cache/project.md). Its blanket statement that global CAS is only a design is stale. This does not establish AC/ACC paged AST/CST or whole-pipeline persistent-query support. The new target is subsecond development turnaround with a bounded resident working set and cross-project persistent artifacts, including AST/CST; see [Design 39 §5](39-ac-incremental-syntax-and-language-platform.md#5-增量编译与模块接口元信息). Historical whole-source maps and interface-hash-only propagation are not the new memory/correctness contract.
+
 ## Status
 
 **Implemented:**

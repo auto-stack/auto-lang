@@ -8,10 +8,10 @@ implemented_by_plans: []
 
 # Design 39：AC/ACC 增量前端、热重载与通用语言解析平台
 
-> 用户需求（2026-10-15）：增量编译、热重载和插件系统从 AC/ACC 架构起点融入；未来将解析能力复用为 Auto 版 tree-sitter，以 Atom/Batom 配置语法，服务 IDE/LSP、第三方语言快速扫描和符号/签名元信息获取。
-> 本稿记录已提出的产品约束和建议架构。具体算法、公开接口、产品名、仓库归属、性能指标与排期尚未冻结；不声明已有通用生成器/增量树/原生热重载实现，不分配正式 Plan，不修改 PLAN-782 合同或实现。
+> 用户需求（2026-10-15）：增量编译、热重载和插件系统从 AC/ACC 架构起点融入；未来将解析能力复用为 Auto 版 tree-sitter，以 Atom/Batom 配置语法，服务 IDE/LSP、第三方语言快速扫描和符号/签名元信息获取。进一步明确最终目标为亚秒级开发周转与尽量少的内存；大型仓库及依赖的完整AST/CST不得以全部常驻为前提，各阶段中间产物须纳入跨工程全局cache，采用磁盘持久化与有界内存工作集。
+> 本稿记录已提出的产品约束和建议架构。具体算法、公开接口、产品名、仓库归属、基准硬件/负载、内存字节预算与排期尚未冻结；亚秒周转是产品目标，尚无达成证据。不声明已有通用生成器/分页增量树/原生热重载实现，不分配正式 Plan，不修改 PLAN-782 合同或实现。
 
-关联：[Design 36](36-ac-data-resource-expansion.md)、[后端演进](strategy/auto-native-backend-evolution.md)、[Native ABI RFC](strategy/auto-native-abi-rfc.md)、[ACC 主体合同](strategy/auto-acc-bootstrap-contract.md)、[Atom Schema](strategy/atom-schema-dsl-design.md)、[旧 AIE](09-compiler.md)、[开发工具](14-developer-tools.md)、[方言拆分](32-autoui-repo-extraction.md)、[模块治理](37-v06-modularization-and-repo-boundaries.md)。
+关联：[Design 36](36-ac-data-resource-expansion.md)、[后端演进](strategy/auto-native-backend-evolution.md)、[Native ABI RFC](strategy/auto-native-abi-rfc.md)、[ACC 主体合同](strategy/auto-acc-bootstrap-contract.md)、[Atom Schema](strategy/atom-schema-dsl-design.md)、[AutoCache现状](../specs/auto-cache/project.md)、[全局cache历史设计](raw/auto-cache.md)、[旧 AIE](09-compiler.md)、[开发工具](14-developer-tools.md)、[方言拆分](32-autoui-repo-extraction.md)、[模块治理](37-v06-modularization-and-repo-boundaries.md)。
 
 ## 1. 结论与范围
 
@@ -20,6 +20,8 @@ implemented_by_plans: []
 建议共享源码与语法服务底座，分别建设 Auto 语义编译和多语言工具消费层：通用产品负责生成/运行解析器、容错具体语法树、增量更新和结构查询；AC/ACC 负责 Auto 名字解析、类型检查、资源分析、HIR 与 native。通用语法服务不依赖 Cranelift、Auto 所有权 checker 或完整编译器运行时。
 
 增量解析、增量语义编译、运行时热重载是三个不同验收面。语法树复用不证明语义缓存正确；缓存命中不证明机器码可安全替换；插件安装也不等于插件可在线卸载。
+
+AST/CST本身就是可持久化的编译中间产物，与语义查询、HIR和对象码进入同一个全局产物依赖图。编辑器的源码分块/rope和编译器的树分块/按需装入采用相同的有界工作集原则；仅把完整AST写到磁盘、命中后仍整库反序列化，不满足本设计。
 
 ## 2. 本地事实与缺口
 
@@ -30,6 +32,7 @@ implemented_by_plans: []
 | experimental/ac-core/src/source/{lexer,parser,ast,adapter}.rs | 当前接口以完整源码为输入，lexer 返回 token Vec，parser 返回 Program/Diagnostic；独立源码 profile 选择支持面 | 可继续作为批处理入口与对照实现；未证明局部重扫、容错 CST 或编辑事务 |
 | experimental/ac-core/src/atom_text.rs | Span 是 start/end 字节偏移；该 Atom reader 跳过注释、不保存版式 | 字节位置可沿用原则；不能直接称 lossless CST 或通用 grammar engine |
 | crates/auto-lang/src/database/mod.rs、compile.rs；Design 09 | 有旧 AIE Database/FileId/FragId 与会话设计；细粒度增量仍有未落地部分 | 可审计复用算法/接口经验，不把旧能力直接记为 ac-core 已实现 |
+| crates/auto-cache/src/{storage,registry,fingerprint,gc,aie_bridge}.rs；auto-cache Spec | 已有磁盘blob、SQLite索引、内容指纹/GC及集成桥；fingerprint当前compute_content_hash仍哈希原源码，AIE bridge接受调用方传入的接口hash | 以已有AutoCache为集成起点；不能把全阶段分页树/跨进程有界查询缓存说成已交付，不能只用接口hash缓存实现产物。Design09“全局CAS仅设计”的笼统表述已过时 |
 | Design 14 | 旧 LSP 共享编译器 parser，文档提出失败后缓存上次有效 AST | 新语法服务须返回当前修订的容错树/诊断；旧 AST 仅可作为显式过期 fallback，不能冒充当前源码 |
 | Native ABI RFC §1/§7/§8 | 已确认静态/动态模块及插件热重载范围，设计了宿主常驻服务、代际与安全回收 | 新前端需要模块/接口身份和重载边界；不在 lexer 内实现 DLL 装载 |
 | 743 inventory；packages/aavm/lib/{token,lexer,parser}.at | token/扫描核心适配，Pratt 核心复用但 S-expr 输出重写 | 复用词法判据、优先级与测试；不能照搬单游标可变状态和 dump 产物作为新公共接口 |
@@ -63,6 +66,8 @@ Source snapshots / edit deltas / position maps
 ```
 
 图中是职责而非已冻结 crate/结构体。建议未来独立发布语法运行库/语法编译器；当前不创建新仓。LSP 是调用分析服务的协议 adapter，不是语法引擎内置网络服务。批处理 AC、常驻 IDE 和后续 Auto ACC 可用不同内部实现，但须通过同一语法/位置/修订契约及 conformance 语料。
+
+所有阶段通过统一artifact/query store读写，不各自建立私有的全依赖内存数据库。磁盘产物、内存已解码对象与各工程的编辑overlay/配置是不同生命周期：共享不可变内容；工程会话只保存overlay、根引用和配置，语义配置不同则保留不同结果而不复制无关源码/语法数据。
 
 Auto 语法与 IDE 使用同一权威语法定义/规则和适配层。手写 Pratt 可以先作为 Auto 插件或兼容实现；通用生成器不要求所有语言采用 Pratt，也不将上下文语义查询塞进通用 parser。若暂时保留双实现，明确唯一规范源、差分语料和退役条件，不能长期人工维护两份不同 Auto 语法。
 
@@ -107,6 +112,65 @@ token 表、词法判据、Pratt binding power 和语法案例可复用；单一
 
 纯空白/注释修改可能只更新位置/展示，但要核查语言的换行/缩进、doc属性、嵌入片段等语义依赖，不能统一忽略。增量结果必须与相同配置下 clean build 的语义/诊断等价；测试另验证实际复用范围和性能，不能只看等价性冒称增量收益。
 
+### 5.1 全阶段全局cache与按需工作集
+
+用户确认跨工程磁盘cache和有界内存工作集为架构要求。建议沿用AutoCache的元数据索引+不可变内容寻址blob方向，把历史“仅构建产物cache”扩展为分阶段、可分页查询的artifact store；具体数据库/分块编码先探针，不另造一套互不相通的parser cache。
+
+| 层 | 可持久化/共享内容 | 内存策略 |
+|---|---|---|
+| 原始源码/位置 | 不可变内容块、行/位置索引；未保存编辑为session overlay | 活动窗口/必要位置页；不先读完所有依赖源码 |
+| token/CST | grammar/scanner身份、token/子树块、checkpoint、error/missing、子块索引 | 按区域/子树页读取、复用；当前操作pin必要页 |
+| AST/声明摘要 | 语言专用投影、符号/导入/签名、到CST的来源映射 | 类型视图尽量借用；索引/声明级按需解码，避免常驻第二棵完整AST |
+| 语义与HIR | 解析后的声明/类型/约束、函数体分析、所需宏/const/泛型输入、版本化HIR与来源 | 按查询/声明/函数体缓存；背景分析可取消且受总预算限制 |
+| lowering/对象/链接输入 | pass配置、目标降级、obj/库/manifest | 需要时加载或交linker；依赖接口与函数体需求分开 |
+| runtime代际 | artifact/state/接口描述与实际装载映像分离 | live代码/状态按lease与代际管理；不能按普通cache淘汰仍在执行的代码 |
+
+三层访问路径：请求先查有界内存cache，再查磁盘索引/blob，真正缺失或过期才重算。索引本身也要分区/按需查询，不能把全仓依赖图/符号表全量装入内存后才宣称AST已分页。后台预热只在预算内按热点做，不默认深度分析整条依赖树。
+
+内存预算以字节和实际保留量计，分别统计活动页、解码对象、索引、字符串驻留、构建任务暂存、pinned快照/代际；节点数/条目数LRU不是总内存上限。预算控制需有任务并发限制、背压/取消与旧snapshot释放策略；不能靠不断加内存掩盖常驻工作集增长。
+
+### 5.2 CST/AST物理格式与Atom/Batom
+
+语法配置是Atom/Batom文档，不意味着每个热路径节点都必须是动态Obj或完整反序列化的struct树。逻辑Node/字段/数组接口与物理紧凑分页存储分开；语法树采用schema数字ID、块内索引/可重定位引用、源码片段引用，提供Atom借用视图与语言强类型访问器。HIR可采用专用结构，但同样以有界查询和可持久化块管理。
+
+Batom作为候选块载体，必须探测随机定位、独立块解码、完整性与引用校验；“支持Batom序列化”不等于已经支持分页/零拷贝。每个请求仅解码需要的块，不能先解压/反序列化整文件或整库。分块粒度要兼顾局部性、压缩比、跨块开销和大声明；大函数也不能成为不可淘汰的无界单块。
+
+不可变子树保存相对宽度/位置映射等可复用数据，文件开头插入文本不应仅因所有绝对offset移动就改写所有下游块；实际布局由探针决定。重扫依然服从词法状态：跨区域未闭合字符串等可扩大失效范围，必须正确回退而非用错误复用满足延迟。进程指针、锁、session ID和内存局部TypeId不直接入持久格式，跨块引用有明确作用域/重定位。
+
+### 5.3 跨工程、跨会话共享
+
+cache identity以输入内容、阶段算法/schema/grammar版本和该阶段真正依赖的上下文为准，项目目录不是普遍隔离键，包名/版本相同也不是充分共享条件。共享层与实例层分离：
+
+- 原文/未展开语法块在语言语法条件相同时可共享；路径与当前revision的展示绑定留在session或来源映射。若路径影响宏/语义，则纳入相应阶段输入。
+- 同包不同feature/cfg/target/依赖解析/宏环境可能有不同语义实例，但无须重复存储相同原文/语法块。不同版本可共享相同不可变块，语义身份不能仅因内容局部相同而合并。
+- AC/ACC不同实现仅在阶段格式与行为兼容经conformance验证后复用结果；不能只看到同schema字符串就授信。缓存HIR重新进入真实类型/结构/资源验证门才获得本进程Checked凭证，不能反序列化一个trusted标志绕过verify；该成本纳入周转测量。
+
+磁盘cache共享不会自动共享各进程解码后的AST/类型对象。建议探测用户级共享编译/分析服务：IDE/LSP/CLI为轻客户端，多个工程是相互隔离的session，公用不可变产物、内存页cache与调度。服务内部也不允许全依赖常驻；同一artifact/context任务采用single-flight并发合并，避免多个项目同时重复分析。
+
+无daemon模式可先用同一磁盘store+不可变只读映射/有界本地cache，必须单独测量解码复制和多进程总内存，不能将“同一磁盘文件”宣传为“只占一份物理内存”。OS文件页cache可回收但不是零开销，评测同时报告私有内存、共享映射/实际驻留与系统总压力。
+
+### 5.4 缓存正确性、事务和回收
+
+输入query key与输出blob内容身份分开；key包含真实实现输入与实际依赖边，接口不变不能复用已变函数体的obj。持久化依赖图需能发现变化而不先重新parse所有文件；已知snapshot/文件变更日志优先，mtime只作提示，初次扫描/恢复确认按实际工作量记录。
+
+blob不可变、完整写入后才原子发布manifest/索引；跨进程同key生产有协调、失败/崩溃恢复和坏块检测。SQLite等存索引不强制每个AST节点一行；热点树批量读取分块blob，避免遍历产生N次随机数据库查询。
+
+GC以session根、产物依赖和短期lease判活；正在读取/发布的块不可删除，崩溃lease有恢复规则。缺失/坏块/旧schema受控失效并重算，不静默返回部分成功。淘汰已解码对象不改变语义；不对live runtime代际套用普通cache删除。后台写盘/GC/预热受前台I/O和延迟预算约束。
+
+### 5.5 亚秒开发周转的验收口径
+
+产品目标：在明确参考设备、仓库/依赖规模与改动类型下，常规开发edit→受影响分析/代码生成→可安全生效的热重载达到亚秒；建议验收以端到端P95 < 1s为主，同时报告P50/P99和峰值内存。具体负载、样本数、字节预算与初版达标范围由下一探针冻结，不能只测parser耗时或缓存查询耗时代表目标已达成。
+
+| 路径 | 必须独立报告 |
+|---|---|
+| 热工作集局部修改 | edit→parse/semantic/codegen→reload生效；实际重算/读取块数、正常与失败行为 |
+| 内存冷、磁盘cache热 | 重启服务/切换工程后的首次操作；验证不全库反序列化、不因进程重启重编依赖 |
+| 磁盘cache冷/公共接口广泛变化 | 完整构建/大范围失效的实际时间和内存；单列长任务，不用热路径数字冒称全部亚秒 |
+| 多工程共享依赖 | 相同与不同配置、多版本/多源码副本分别测；总私有内存、共享页、重复任务与cache命中 |
+| 受限内存/磁盘压力 | 淘汰、重载入、GC/损坏恢复的尾延迟及正确性；避免无界pin/换页抖动 |
+
+一秒内完成仅在约定负载实测后声明；尚无性能结果。大范围语义变化、首次全量构建和安全点等待不能靠降低检查/丢弃受影响项伪装为命中；需要显式进度/取消和归因，并在最终产品支持矩阵说明。磁盘I/O与重计算有取舍，追求有界热点常驻而非每次操作先逐出全部数据。
+
 ## 6. 热重载与三类插件
 
 | 类别 | 扩展内容 | 生命周期与校验 |
@@ -145,13 +209,14 @@ parser 只负责给出模块/声明/导入/属性及可重载边界所需的结�
 
 | 工作包 | 可独立验收成果 | 前置与时序 |
 |---|---|---|
-| A. 前端共享契约与全路径可行性探针 | snapshot/edit/position/CST/恢复/grammar代际/API、增量依赖与模块身份最小合同；两种语法代表例和Auto兼容探针 | 建议作为下一项架构准备计划；可先规划，涉及782实现接口待其fresh收口基线 |
+| A. 前端与全局cache共享契约及全路径探针 | snapshot/edit/分页CST/AST/位置/恢复/grammar代际、阶段key与依赖、AutoCache集成/跨session共享、模块身份；两语法例+Auto、多项目/超内存工作集与端到端延迟探针 | 建议作为下一项架构准备计划；可先规划，涉及782实现接口待其fresh收口基线；数据库/树分页与语法引擎一起评审 |
 | B. enum/is + TokenKind | Auto语言枚举与native分派；语法与语言无关token ID分层，不把通用树kind硬绑Auto enum | 可与A共同规划；无需等待完整parser-generator交付，不向782追加任务 |
 | C. 集合/模块和首个ACC lexer | List<Token>、use、拥有文本适配与真实扫描对拍 | 依赖语言能力；迁移前消费A合同，旧核心按§4.3适配 |
 | D. 通用grammar compiler/runtime MVP | Atom/Batom grammar→parser产物→容错CST/增量edit、结构查询及两个语言profile | 依赖A算法探针；独立产品工作包，不塞进enum计划 |
 | E. Auto parser/AST及增量语义查询 | 共享语法规则、真实AST、声明/签名、查询依赖；clean vs incremental一致 | 根据A/D实测决定先adapter还是生成器接入，不阻塞所有自举语言扩面 |
 | F. ABI/热重载并行线 | 模块descriptor/接口兼容、静态/DLL探针→常驻宿主/lease→状态迁移/发布/回收 | 尽早与A对齐身份，按Native ABI RFC独立实施，不等ACC迁移完再设计 |
 | G. LSP与外语元信息 | 语法outline/query→semantic adapter→interop descriptor逐层验收 | 不把完整多语言语义/FFI包装成语法生成器天然交付 |
+| H. 全阶段cache与共享会话实现 | 持久artifact/query store、字节预算页cache、跨session协调/single-flight、崩溃/GC恢复与依赖元信息 | 消费A及已有AutoCache；与D/E/F按接口分步接入，非全局常驻AST数据库 |
 
 各包大小/拆分由正式auto-plan:new取材后确定。上述是架构分解，不是已批准的实施计划、预算或时间表。需要新架构合同，但不先重写全部旧编译器，不要求先完成整个通用产品才继续自举。
 
@@ -164,6 +229,10 @@ parser 只负责给出模块/声明/导入/属性及可重载边界所需的结�
 - runtime重载期间旧调用/任务/回调/析构仍存活、新代初始化/迁移失败：验证原子切换、旧代保留或明确拒绝，不能仅“DLL加载成功”。
 - 同一外语声明受不同宏/cfg/target影响：候选meta不得直接获可执行绑定；错误/过期/条件不明结果有显式来源状态。
 - 语法歧义、复杂regex、scanner不前进、恶意/超预算输入：明确生成期拒绝/运行期限/恢复策略，不能静默截断成功。性能目标须探针后单列规模、设备和预算，不先许诺“任意语言实时”。
+- 仓库/依赖或单文件总量超过内存预算（含1GiB源码压力例），只查询小范围：记录块读取/解码、索引与临时分配，证明不是全量加载后LRU；结果仍与对应fresh基线等价。1GiB是压力负载候选，非语言尺寸上限或现已支持声明。
+- 重启/切换工程、两个session同时请求同依赖、不同feature版本分叉：验证磁盘热命中、相同key只生产一次、共享原文/语法而隔离语义、私有内存不按依赖副本线性复制；不能只测磁盘去重率。
+- 编辑开头使后续绝对offset改变、跨块词法状态/大声明、查询已淘汰节点：验证位置正确和必要块复用，无悬空指针/旧revision授信；handle允许重新取页而非永久pin整棵树。
+- 在blob准备/索引发布/并发读取/GC时杀生产者、移除或破坏缓存块：无半提交成功、读者安全，受控重算且语义/诊断不变；可证明预算内恢复，不全库重建。
 
 ## 11. 外部一手参考（2026-10-15 核对）
 
@@ -177,4 +246,4 @@ parser 只负责给出模块/声明/导入/属性及可重载边界所需的结�
 
 ## 12. 待冻结决定
 
-grammar算法与支持子集、CST内存布局/树复用、统一位置API与边界整数宽度、grammar/scanner/query版本政策、声明ID匹配、cache/query schema、插件可执行边界/隔离、首批两语言和外语meta来源、产品名/仓库归属、性能/资源预算，均由A及对应专项探针产出后评审。产品方向和从起点融入的要求已记录，不用这些未决项推迟接口分层。
+grammar算法与支持子集、分页CST布局/树复用、位置API与边界整数宽度、grammar/scanner/query版本政策、声明ID匹配、分阶段cache/query schema与AutoCache兼容方式、共享服务/映射模式、可持久语义表示、插件边界、首批语言与外语meta来源、产品名/仓库归属、参考设备/负载与内存字节预算，均由A及对应专项探针产出后评审。亚秒开发周转、全局磁盘cache与有界内存工作集是已确认目标；不能把具体预算未定当作重新回到整库AST常驻的理由。
