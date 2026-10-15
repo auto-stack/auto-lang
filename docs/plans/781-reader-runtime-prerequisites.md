@@ -8,7 +8,7 @@ created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
 current_step: 18
-total_steps: 23
+total_steps: 26
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
   - docs/specs/auto-lang/ui/overview.md
@@ -189,6 +189,7 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 - [ ] AC-16: owner_stage=work；W-03 oracle 落地且负例红——或修订路线经用户显式裁定记录在案+规范同步，无静默降级。
 - [ ] AC-17: owner_stage=work；W-04 三路生命周期断言绿（LegacyHttp 长忙路径绑定）；旧短路径证据引用全部替换为具体映射。
 - [ ] AC-18: owner_stage=work；四 finding 逐项闭合表（反例→不变量→修复→永久用例→结果）；T-01..T-18 归档面零改动；SD-08/09 候选冻结。
+- [ ] AC-19: owner_stage=work；阶段 E（2026-10-15 用户裁定新增）：`auto.str.byte_len` 原语带单测；Reader 章 meta 索引落地（导入一次扫描/章 GET 只读章窗/TOC 与统计直读 meta/缺失诚实失败）且 meta 路径与 parse_book_json 路径全章逐字节 parity；T-26 全章 oracle + W-03 损坏章负例通过。
 
 
 ### 整体复审与收尾
@@ -271,6 +272,14 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 **重开依据（用户裁定，2026-10-15）**：历史审计（[reports/781-historical-review-20261015.md](reports/781-historical-review-20261015.md)，needs_fix）四 findings 不另立计划，以本计划新增阶段承接——归档终态规则的一次显式例外；原 T-01..T-18 交付事实与记录不动，阶段 D 只修缺口补证据。任务编号延续 T-19..T-23；原 783 草案撤销、编号回收。
 
+### 阶段 E：Reader 章 meta 索引架构（2026-10-15 用户裁定新增）
+
+**依据（用户裁定，2026-10-15）**：T-21 成本探针中止（"不走全文扫描的路线"）——改为实现「预先扫描+建立索引 meta 文件+加载章节时只读取章节内容」架构。范围裁定：**Reader 改造由 781 阶段 E 承接**（覆盖阶段 D 的"Reader 只读"边界，显式记录）；READER-001 仍是业务终审 owner。架构（设计讨论定稿，§10 路由补充含 stdlib 勘定）：导入时一次扫描产出每书 `<book_id>.meta.json`（书级 total_chapters/total_words + 每章 `{number,title,offset,length,word_count}` **字节偏移**，受管副本不可变+hash 钉死 ⇒ 索引永免失效）；章 GET = `File.read_text_range`（PLAN-687 已交付，nat#1016，真 seek 窗读+UTF-8 边界安全）+ 首行拆题 + trim；TOC/书章统计直读 meta；meta 缺失/损坏 → 诚实失败（提示重新导入），不静默重建。扫描的字节偏移累计需要新原语（`str.len()` 为字符数、`str.bytes()` 返回 VM 列表在 10MiB 不可用）——`auto.str.byte_len` 净新增（用户先前已裁定 stdlib 修改入 781 且必须配测试）。
+
+- [ ] T-24: owner_stage=work；`auto.str.byte_len(s str) -> int` 原语（UTF-8 字节数；id 实勘避撞）+ 单测（ASCII/CJK/emoji/空串/组合）；catalog 三表接线（签名/白名单/别名）。AC-19。
+- [ ] T-25: owner_stage=work；auto-reader（独立分支，base=main@29b5dec）：meta.at 扫描器（行迭代+byte_len 累计，与 parse_book_json 的 heading/trim/词数口径逐字对齐）+ 导入事务写 meta + chapter_json/library_toc 改造（meta 路径 + File.read_text_range 窗读）+ meta 缺失诚实失败 + parity 测试（meta 路径 vs parse_book_json 路径全章逐字节等，小书全量）。AC-19。
+- [ ] T-26: owner_stage=work；T-21 收口（依赖 T-25）：run_v17 接 deep=True 全章 oracle（索引后分钟级）+ W-03 损坏章负例（受管副本章窗内变异 → oracle 必红）+ 冷重启全章复扫。AC-16。
+
 - [x] T-19: owner_stage=work；F-781-R01（P1）：scroll_anchor 合成 id 改不透明序号 + build 期注册表（seq→(pane,key) 查表，collector 回传 rect+seq）——消除冒号歧义拆分与 Debug 字符串取值两类面；单测含标准 `@scrollctl:N` 句柄与 `:`/引号/反斜杠 key 往返；双端 fixture 增真实 `scroll_controller()` controller + 分隔符 key 行（W-01）。AC-15。
   [✅ 2026-10-15] R01 核心=worktree commit 34bb33090（`scrollanchor:{seq}` 不透明序号 + `register_anchor/lookup_anchor` 稳定注册表，重注册驱逐/stale miss 跳过/dup last-wins 保持；单测 2 个含 `@scrollctl:N`/冒号/引号/反斜杠/CJK 往返与驱逐语义）。**F-781-D01 阻断已解除并结案**（§9 事故记录）：三层根因＝①探针 `filter`→`pane` 参数错（读错 pane 的观测假象，框架未坏——P656 trace 实证 EXEC 后物理 offset 正常落位）②aura `convert_scroll` 双臂样式双写使 Fixed 高（h-32 类）钳死内层 col → pane 不可滚动（`scroll_content_style` 剥滚动轴尺寸类修复，双臂接线 + 单测）③`autoui_visibility` 归属判定与发布空间错位（`resolve_pane_chain` 改发布公式逆运算重写 + w01 实测几何回归锁单测）。W-01 双端全绿：**VM 腿 44/44（清埋点终验 D:/p781-t19/d01r7 + 全迹 d01r6）+ Vue 腿 46/46（D:/p781-t19/vue-final，w01 handle=`__scrollctl_1`）**；fixture std_ctl 已切回 `scroll_controller()`；门禁=plan781 26/26、scroll 72/72、mcp_server 30/30。遗留观察（d01r5 a80 瞬态 + vue backend 冷构建 120s 门）记录于 §9 work 记录，T-23 观察。
 - [x] T-20: owner_stage=work；依赖T-19；F-781-R02（P1）：vue 全 scroll-pane 元素发射 `data-scroll-pane` 所有权标记；helper 改全量遍历 + `closest('[data-scroll-pane]')===pane` 归属过滤 + 属性比对（弃 CSS selector 拼接）；managed 判据同归属；双端三对照（嵌套同名零串线/仅内层有 key→outer not_found/inner managed 不误伤 outer）+ 原生嵌套探针（W-02）。AC-15。
@@ -339,7 +348,7 @@ stage=review | review_scope=historical-final-audit | reviewer_identity=本次独
 
 ## 10. 待澄清事项
 
-T-21 若走合同修订路线（10MiB 全章扫描成本不可接受），修订内容须用户显式裁定后方可执行——审计明文禁止静默降级（F-781-R03）。
+~~T-21 若走合同修订路线（10MiB 全章扫描成本不可接受），修订内容须用户显式裁定后方可执行——审计明文禁止静默降级（F-781-R03）。~~ **已裁定（2026-10-15）**：不走全文扫描路线——成本探针中止（其 D:/p781-t21 遗留数据仅作历史记录）；改为阶段 E 的「预先扫描+索引 meta+按章窗读」架构（见 §8 阶段 E），T-21 的验收经 T-26 以索引后可行的全章 oracle 收口——非降级，是架构升级后的更强 oracle。
 
 **READER-001 路由补充（章索引 meta 设计，2026-10-15 用户裁定方向）**：F-781-R03 成本问题的根因在 Reader 侧章视图不落盘——`chapter_json`/`library_toc` 每请求 `content_of` 全文 + `parse_book_json` 整书重解析+整书 JSON 中间态往返（导入路径函数被读路径 naïve 复用；与传输格式无关）。用户裁定修复方向（781 不实施，001 承接）：**导入时一次扫描产出每书 meta 边车文件**（建议 `<book_id>.meta.json`），含书级统计（total_chapters/total_words）+ 每章 `{number,title,offset,length,word_count}`（偏移单位与 substr 语义一致；trim 口径与现 parse_book_json 逐字对齐）+ source_sha256 与受管副本互证——**副本不可变+hash 钉死 ⇒ 索引永免失效逻辑**。此后 toc/章 GET/书与章统计全部直读 meta（章 GET = read+substr+trim+escape，变体 A 零新原语，预计单章 <1s；变体 B 加 `fs.read_range` 原语真 O(章)，原语交付归 auto-lang）。meta 损坏处置（refuse+幂等重建 vs 拒服务）归 001 裁定。**联动**：该修复落地后 T-21 路线 1（10MiB 全量逐章）从 ~67h 降至分钟级——验证成本随性能修复自然消失。**stdlib 现状勘定（同日，二次修正——零改动结论）**：用户初裁「781 加阶段修改 stdlib 实现 read_range」，勘定后前提推翻——**PLAN-687 已交付 `File.read_text_range(path, offset, limit)`（nat#1016，`auto.file.read_text_range`）**：真 seek+精确窗读（O(limit) IO，无整文件读）、UTF-8 边界安全（mid-char offset 回退/窗尾回退，never-half-char）、EOF 信封 `{text,total,next_offset}`（next_offset=null 仅真 EOF；offset<0/limit≤0→total:-1）、a2r-std 双轨字节级 parity（read_text_range_parity.rs 全边界矩阵 + aavm_runner_tests .at 级调用；engine.at:819 实用先例）——正是 meta 索引章 GET 所需语义，**框架侧零改动**。另：句柄族 `File.open_rw/seek/read/position`（ffi/stdlib.rs，`Mutex<File>`）亦存在但有 id 2841-2843 撞号史与 `File.read` 有损解码/双 open 语义分叉——索引用例不依赖句柄族。`fs.read_range` 别名不新增（PLAN-738 裁决②单权威名收敛）。**001 直接消费 `File.read_text_range` 即可**；用户「加阶段改 stdlib」裁定以本勘定记录为终（无需实施）。
 
