@@ -47,9 +47,9 @@
 | V-11 | `text_record_native.rs` v11（缺 capability 拒绝且无制品）+ gate 步 16/17（capability 控制、SENTINEL 三件制品 hash 保持） | ✅ |
 | V-12 | `text_record_native.rs`（Token 微程序 exit 57、新旧 profile 共存、直接 HIR 腿、**新增 tr01 fixture PE 腿**）+ gate 步 19..23（旧五门实跑）+ 步 24（scope diff） | ✅ |
 
-新测试合计 **86**（hir 18 / source 21 / resources 27 / native 20；含 R1 修复
-+15：变异 5、F-01 负例族 2、F-02/03/04 PE 3、V-07 注入 5）；全套 ac-core
-`cargo test --locked` **448 通过 0 失败**；runtime/text **20/20**（零改动回归）。
+新测试合计 **90**（hir 18 / source 21 / resources 27 / native 24；含 R1 修复
++15、R2 修复 +4：嵌套标记组合三形/标记回滚/移出根字段族/存活与整根对照）；全套
+ac-core `cargo test --locked` **452 通过 0 失败**；runtime/text **20/20**（零改动回归）。
 
 ## 3. 覆盖内省
 
@@ -63,18 +63,18 @@
 
 ## 4. 门禁执行（verify-ac-text-record-782.ps1）
 
-**R1 修复后基线 `56dd15748`（plan-782-dev）：25 步全绿，0 failed，11 gate
-案例，ac-core 448/0**（2026-10-15 实跑；收据 `gate-20261015-124603.txt`，
-原始输出见 receipts 目录 raw-20261015-*/。中间绑定：`836635a2e`→
-gate-20261015-093737（431）、`9726a412c`→gate-20261015-100236（433，R1
-复审基线）——两收据不含 R1 修复，仅作历史链）：
+**R2 修复后基线 `7e59e06f3`（plan-782-dev）：25 步全绿，0 failed，11 gate
+案例，ac-core 452/0**（2026-10-15 实跑；收据 `gate-20261015-134523.txt`。
+中间绑定链：`836635a2e`→093737（431）、`9726a412c`→100236（433，R1 复审
+基线）、`56dd15748`→124603（448，R2 复审基线 a52a54472 的绑定）——历史
+收据不含后续修复）：
 
 | # | 步骤 | 结果 |
 |---|---|---|
 | 1 | warning matcher controls（正/负对照） | PASS |
 | 2 | context（HEAD/branch/rustc/cargo/rust-lld sha256 + raw dir） | PASS |
 | 3 | ac-core `cargo check --locked --all-targets` 零警告 | PASS |
-| 4 | ac-core `cargo test --locked`（448；四 text_record target 在场断言） | PASS |
+| 4 | ac-core `cargo test --locked`（452；四 text_record target 在场断言） | PASS |
 | 5 | ac-core `cargo fmt --check` | PASS |
 | 6 | runtime/text `check --locked --all-targets` 零警告 | PASS |
 | 7 | runtime/text `cargo test --locked`（20；故障注入/预算/trap/合同面） | PASS 10.8s |
@@ -139,11 +139,30 @@ gate-20261015-093737（431）、`9726a412c`→gate-20261015-100236（433，R1
 实证——R1 复审驳回；上表为修复后的实际交付面。旧 gate 收据（433/431 基线）
 不含 R1 修复；修复后基线的 gate 重跑见 §4 更新行。
 
+### 5c. R2 复审修复轮记录（2026-10-15，第二次 needs_fix → 重开 T-04/05/06/07）
+
+两连败诊断（技能检查点）与闭合（复审 extra/more 八控制原文重放全过）：
+
+| 项 | 内容 |
+|---|---|
+| R2-01 剩余不变式 | 聚合存在标记须**跨嵌套合流组合**：外层 join 只给无条件创建的 Agg 传 1，已有内层标记的条目转发标记**值**，外层 skip 恒 0 |
+| 早前检查为何漏 | R1 的嵌套回归两条 clone 均在全真路径且首 if 提前 return——"skipped if"整语句从未执行、无跨迭代 take→skip 重入；标记组合从未被执行 |
+| 修复 | join 转发规则如上；语句尾与回滚共用释放器均消费组合标记 |
+| 永久回归 | `f782_r2_01_nested_marker_composition`（nested_and/nested_or_take_skip/三层嵌套，精确 trace 零 FREE-INVALID）+ `f782_r2_01_nested_marker_rides_the_rollback_releaser`（fail@3 回滚只释放已执行 clone） |
+| R2-02 剩余不变式 | 字段赋值（部分写）**永不复活**所有权已整体移出的根；仅完整根重赋可接收新根 |
+| 早前检查为何漏 | R1 的 F-02 修复只修 replace_frees **调度**（扣除 moved），原样保留 reown 状态翻转——推理的是"释放什么"而非"根是否还可写" |
+| 修复 | match 前统一守卫：字段位（Str/嵌套 record/标量）目标根在本语句 moved 或快照已 dead 且为资源根 → `verify.use-after-move` |
+| 永久回归 | `f782_r2_02_field_write_on_moved_root_rejects`（四形：同语句 Str 位/嵌套位/标量位/跨语句）+ `f782_r2_02_live_replacement_and_whole_rebuild_stay_legal`（两对照精确 trace） |
+| 措辞纠正 | V-07 预算"差 1"控制由 6 改 7（峰值 8，恰好差一字节拒绝第 4 次请求）；R2 复审指出 6 为少一次 2 字节请求空间 |
+
+R2 复审基线 `a52a54472` 的 gate 收据（56dd15748 链）不含 R2 修复；修复后基线
+gate 重跑见 §4 更新行。全套 **452/0**（native 24：+4 R2 回归）。
+
 ## 6. 输入指纹（节选自 gate-20261015-100236.txt）
 
 | 输入 | SHA256 |
 |---|---|
-| head（R1 修复后最终绑定） | `56dd1574821842b6aadc074967a7f1a585315654` |
+| head（R2 修复后最终绑定） | `7e59e06f3e996d519d3d7dbcb21ff6a1b95d85f6` |
 | rust-lld | f436ddda2f519c5ad18b7c7b09a3eadc2d4fc1be88cd9280cc472740fc3b7389 |
 | runtime lib（ac_text_runtime.lib） | 3d7cc13b4c92cbd3d35ebeed7930b3015638a1c2f1a73422d6273aa853b035b9 |
 | runtime 合同 sidecar | a4529883ccb21429e0aee632939eb3935b12ba1c3f750c88988b952351eec87a |

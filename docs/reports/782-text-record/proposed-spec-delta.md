@@ -133,11 +133,12 @@ GOAL-017 不关闭；ACC 桥仍 planned。
 | 771 R1-03 CallBinding 越界 panic | `text_record_hir` binding 越界双模式（V-08） |
 | 771 R1-04 失败分支 oracle 无区分力 | native 测试精确 exit 码 + gate HP01（exit 2 精确 trace）/TN 族（exit 1 钉码） |
 
-闭合判定：T-07 自查零缺口（两层 wrapper 由 0318bcb93 补齐）；**R1 final
-review 另发现六项合同内缺口（F-01..06：嵌套字段隐式复制/move-return 重建/
-短路循环聚合临时/跨类型 LIFO/Move.inner 界检/V-07 实注入），已全部修复并
-各带永久回归（verification.md §5b）——闭合判定以 R1 修复后基线为准
-（全套 448/0）。**
+闭合判定：T-07 自查零缺口（两层 wrapper 由 0318bcb93 补齐）；R1 final
+review 发现六项合同内缺口（F-01..06）已修复（§5b）；**R2 final review 再
+发现两项组合状态缺口——嵌套短路标记不组合（外层 join 覆盖内层存在标记）
+与字段赋值复活已移出根——已修复并各带永久回归（verification.md §5c）。
+闭合判定以 R2 修复后基线为准（全套 452/0；复审 extra/more 八控制原文重放
+全过）。**
 
 ## 附 B：源文件 manifest（T-07 核对）
 
