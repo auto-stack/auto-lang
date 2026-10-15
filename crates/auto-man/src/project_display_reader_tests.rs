@@ -879,6 +879,47 @@ fn multiline_deep_input(depth: usize) -> String {
     s
 }
 
+/// R4 F786-R4-01 复现输入构造：字符串内的注释标记（`"/*"`/`["//",…]`/
+/// `["#",…]`）使任何"识别注释"的筛子藏住后续真实括号。
+fn quoted_marker_deep_input(marker: &str, depth: usize) -> String {
+    let mut s = String::from("name: \"n\"\ntitle: \"ok\"\n");
+    if marker == "/*" {
+        // 块注释形态：字符串后独立的深结构行（标记吞多行）
+        s.push_str("extra: \"/*\"\ndeep: ");
+    } else {
+        // 行注释形态：标记与深数组同行（标记吞本行剩余）
+        s.push_str(&format!("extra: [\"{marker}\", deep-partial: "));
+    }
+    for _ in 0..depth {
+        s.push('[');
+    }
+    s.push('0');
+    for _ in 0..depth {
+        s.push(']');
+    }
+    if marker == "/*" {
+        s.push_str("\nlater: \"*/\"\n");
+    } else {
+        s.push_str("]\n");
+    }
+    s
+}
+
+/// R4 F786-R4-02 复现输入构造：每个数组层以字符串 `"]"` 开头——字符串内
+/// 闭括号逐层抵消 max-depth 型上界（真实嵌套 N 层，旧筛 max=1）。
+fn cancel_depth_input(depth: usize) -> String {
+    let mut s = String::from("name: \"n\"\ntitle: \"ok\"\ndeep: ");
+    for _ in 0..depth {
+        s.push_str("[\"]\",");
+    }
+    s.push('0');
+    for _ in 0..depth {
+        s.push(']');
+    }
+    s.push('\n');
+    s
+}
+
 /// R3 F786-R3-01 复现输入构造：未闭合引号（单引号/f-string/调用内双引号）
 /// 只吞当行——skip_to_entry_end 行界返回外层解析器，后续深层条目照常
 /// 解析（解析器重入路径）。`close_later` 在深数组前补一个后续闭引号行
@@ -1056,6 +1097,11 @@ fn display_reader_v04_deep_nesting_process_isolated() {
                 unclosed_quote_deep_input("single", 512, true),
                 unclosed_quote_deep_input("f", 512, false),
                 unclosed_quote_deep_input("call", 512, false),
+                // R4 四形态：字符串内注释标记藏括号 + 字符串闭括号抵消深度
+                quoted_marker_deep_input("/*", 512),
+                quoted_marker_deep_input("//", 512),
+                quoted_marker_deep_input("#", 512),
+                cancel_depth_input(512),
             ] {
                 let r = read(&input);
                 assert_eq!(r.name.as_deref(), Some("n"));
@@ -1114,12 +1160,12 @@ fn display_reader_v04_deep_nesting_process_isolated() {
     }
 }
 
-/// V04 补充（R1 F786-R1-01 同族状态）：包络边界与感知规则——64 层内仍走
-/// 模型路径；65 层整体兼容；字符串/注释内括号不计深度；节点嵌套同理。
+/// V04 补充（R1..R4 同族状态）：包络边界——开启括号总数 ≤64 走模型路径、
+/// >65 整体兼容；节点嵌套同理；R2/R3/R4 各反例族进程内复验。
 #[test]
 fn display_reader_v04_deep_nesting_boundary_and_awareness() {
     let mv = ModelState::Value;
-    // 边界：64 层（含干净 title）→ 模型路径可用；65 层 → DeepNesting 兼容
+    // 边界：64 个开启括号（含干净 title）→ 模型路径可用；65 → DeepNesting
     let within = deep_nesting_input(64);
     let r = read(&within);
     assert_matches_oracle("depth-64", &within, &r);
@@ -1143,20 +1189,20 @@ fn display_reader_v04_deep_nesting_boundary_and_awareness() {
     assert_matches_oracle("nodes-512", &nested_nodes, &r);
     assert_eq!(r.name.as_deref(), Some("nn"));
     assert_eq!(r.name_path, compat(CompatReason::DeepNesting));
-    // 感知规则（R3 终形）：前置筛**只跳注释**——注释外括号全计（含字符串内，
-    // 过计数安全）；包络内正常输入不受影响
+    // 感知规则（R4 终形）：筛子零词法判定、只数开启括号——字符串/注释内
+    // 的开括号同样计入（过计数安全），包络内正常输入不受影响
     let quoted = "name: \"q\"\ntitle: \"[[[[[[\"\n";
     let r = read(quoted);
     assert_matches_oracle("brackets-in-string", quoted, &r);
     assert_eq!(
         r.title_path,
         model(mv),
-        "包络内的字符串括号（6 层）不改变准入结果"
+        "包络内的字符串括号（6 个开启）不改变准入结果"
     );
     let commented = "name: \"cm\"\n// [[[[[\n/* ]]]] */\ntitle: \"T\"\n";
     let r = read(commented);
     assert_matches_oracle("brackets-in-comments", commented, &r);
-    assert_eq!(r.title_path, model(mv), "注释内括号不计数");
+    assert_eq!(r.title_path, model(mv), "包络内的注释括号（9 个开启）同理");
 
     // R2 F786-R2-01：跨行字符串语义——真实 lexer 跨 LF 直到闭引号，前置筛
     // 必须过近似（遇 LF 断会把闭引号误判为开引号、藏掉同行真实括号）。
@@ -1274,47 +1320,67 @@ fn display_reader_v04_deep_nesting_boundary_and_awareness() {
         assert_eq!(r.title.as_deref(), Some("ok"));
         assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
     }
+
+    // R4 F786-R4-01：字符串内注释标记（块注释吞多行/行注释吞本行）藏住
+    // 真实括号——开启括号计数不受词法影响，全部拦截
+    for (tag, input) in [
+        ("quoted-block-65", quoted_marker_deep_input("/*", 65)),
+        ("quoted-block-512", quoted_marker_deep_input("/*", 512)),
+        ("quoted-line-512", quoted_marker_deep_input("//", 512)),
+        ("quoted-hash-512", quoted_marker_deep_input("#", 512)),
+    ] {
+        let r = read(&input);
+        assert_matches_oracle(tag, &input, &r);
+        assert_eq!(r.title.as_deref(), Some("ok"));
+        assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    }
+    // R4 准入控制：32 个开启括号（含字符串内注释标记）→ Model 不收缩
+    let qb32 = quoted_marker_deep_input("/*", 32);
+    let r = read(&qb32);
+    assert_matches_oracle("quoted-block-32", &qb32, &r);
+    assert_eq!(r.title_path, model(mv));
+    // R4 F786-R4-02：字符串 `]` 逐层抵消——真实嵌套 N、开启数也是 N，
+    // 开启计数上界不受闭括号影响
+    let cd32 = cancel_depth_input(32);
+    let r = read(&cd32);
+    assert_matches_oracle("cancel-depth-32", &cd32, &r);
+    assert_eq!(r.title_path, model(mv), "包络内抵消形态准入控制");
+    let cd65 = cancel_depth_input(65);
+    let r = read(&cd65);
+    assert_matches_oracle("cancel-depth-65", &cd65, &r);
+    assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
 }
 
-/// R3 终验：复审反例**原样字节**（review-r3 attachments 复制为持久 fixtures）
-/// 逐文件复验——旧 oracle 返回 name=n/title=ok，>64 层 DeepNesting，
-/// 32 层准入控制 Model(Value)（128 在 R3 终形下 >64 → DeepNesting，
-/// 属过计数的保守路由，非行为变化）。
+/// R3/R4 终验：复审反例**原样字节**（review-r3/r4 attachments 复制为持久
+/// fixtures）逐文件复验——旧 oracle 返回 name=n/title=ok；开启括号总数
+/// >64 → DeepNesting，32 层准入控制 Model(Value)（128+ 在 R3/R4 终形下
+/// >64 → DeepNesting，属过计数的保守路由，非行为变化）。
 #[test]
-fn display_reader_v04_r3_counterexample_files_replay() {
+fn display_reader_v04_counterexample_files_replay() {
+    let deep = ReadPath::Compat(CompatReason::DeepNesting);
+    let mv = ReadPath::Model(ModelState::Value);
     let cases = [
-        (
-            "r3-plain-512.at",
-            ReadPath::Compat(CompatReason::DeepNesting),
-        ),
-        (
-            "r3-multiline-512.at",
-            ReadPath::Compat(CompatReason::DeepNesting),
-        ),
-        (
-            "r3-single-unclosed-32.at",
-            ReadPath::Model(ModelState::Value),
-        ),
-        (
-            "r3-single-unclosed-128.at",
-            ReadPath::Compat(CompatReason::DeepNesting),
-        ),
-        (
-            "r3-single-unclosed-512.at",
-            ReadPath::Compat(CompatReason::DeepNesting),
-        ),
-        (
-            "r3-single-closed-later-512.at",
-            ReadPath::Compat(CompatReason::DeepNesting),
-        ),
-        (
-            "r3-f-unclosed-512.at",
-            ReadPath::Compat(CompatReason::DeepNesting),
-        ),
-        (
-            "r3-call-unclosed-512.at",
-            ReadPath::Compat(CompatReason::DeepNesting),
-        ),
+        // R3 族：平面/跨行字符串/未闭合引号四形态
+        ("r3-plain-512.at", deep),
+        ("r3-multiline-512.at", deep),
+        ("r3-single-unclosed-32.at", mv),
+        ("r3-single-unclosed-128.at", deep),
+        ("r3-single-unclosed-512.at", deep),
+        ("r3-single-closed-later-512.at", deep),
+        ("r3-f-unclosed-512.at", deep),
+        ("r3-call-unclosed-512.at", deep),
+        // R4 族：字符串内注释标记（quoted-block/line/hash）与字符串闭括号
+        // 逐层抵消（cancel-depth）
+        ("r4-plain-512.at", deep),
+        ("r4-quoted-block-32.at", mv),
+        ("r4-quoted-block-128.at", deep),
+        ("r4-quoted-block-512.at", deep),
+        ("r4-quoted-line-512.at", deep),
+        ("r4-quoted-hash-512.at", deep),
+        ("r4-cancel-depth-32.at", mv),
+        ("r4-cancel-depth-128.at", deep),
+        ("r4-cancel-depth-256.at", deep),
+        ("r4-cancel-depth-512.at", deep),
     ];
     for (file, want_title_path) in cases {
         let path = display_fixture(file);

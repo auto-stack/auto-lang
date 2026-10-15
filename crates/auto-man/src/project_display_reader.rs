@@ -54,10 +54,11 @@ pub(crate) enum CompatReason {
     /// 值虽静态但行形态与旧行归一不等：转义、引号内边缘空白、行内注释、
     /// 非 Str 的 astr 差异（如 nil）。
     LineFormMismatch,
-    /// 括号嵌套深度超过 [`MODEL_PARSE_MAX_BRACKET_DEPTH`]——超出模型
-    /// 递归解析的安全包络（R1 F786-R1-01：512 层嵌套数组使 parse_document
-    /// 进程级栈溢出 abort，catch_unwind 不可捕获）。超限输入不做模型解析，
-    /// 三字段整体走兼容臂，旧行为逐值保留。
+    /// 开启括号字符总数（`[`+`{`）超过 [`MODEL_PARSE_MAX_BRACKET_DEPTH`]——
+    /// 超出模型递归解析的安全包络（R1 F786-R1-01：512 层嵌套数组使
+    /// parse_document 进程级栈溢出 abort，catch_unwind 不可捕获；上界
+    /// 论证见 [`bracket_open_count`]）。超限输入不做模型解析，三字段整体
+    /// 走兼容臂，旧行为逐值保留。
     DeepNesting,
 }
 
@@ -76,76 +77,37 @@ pub(crate) struct DisplayRead {
     pub(crate) title_zh_path: ReadPath,
 }
 
-/// 模型递归解析的括号深度包络。实测（R1 F786-R1-01）：512 层嵌套使
+/// 模型递归解析的括号包络。实测（R1 F786-R1-01）：512 层嵌套使
 /// `parse_document` 在 Windows 默认主线程栈上 STATUS_STACK_OVERFLOW abort
-/// （catch_unwind 不可捕获）；128/32 层通过。真实受管 pac.at 嵌套远低于
-/// 此（个位数）。64 = 已验证通过点之下的成对余量；超限输入整体走兼容
-/// 臂（旧行为逐值保留），不是语法拒绝。
+/// （catch_unwind 不可捕获）；128/32 层通过。真实受管 pac.at 括号开启数
+/// 远低于此。64 = 已验证通过点之下的成对余量；超限输入整体走兼容臂
+/// （旧行为逐值保留），不是语法拒绝。
 const MODEL_PARSE_MAX_BRACKET_DEPTH: usize = 64;
 
-/// 迭代计算最大括号嵌套深度——**上界必须是解析器结构括号集的超集**
-/// （R3 F786-R3-01 终形）。解析器只在注释外、字符串外的文本上做结构
-/// 下钻（scan_value_positions/parse_node/AtomParser；`()` 参数表为迭代
-/// 采集不数）。因此本筛**只跳注释**（行 `//`、`#` 非 `#[`、块 `/* */`
-/// 不嵌套——这些在任何可达解析状态下都不会成为结构括号），**其余文本
-/// 一律计数，包括字符串内的括号**：计数集 ⊇ 结构括号集，只会过计数
-/// （多走兼容臂，值行为不变），永不欠计数（绕过包络 → 递归 abort）。
+/// 统计**开启括号字符总数**（`[` + `{`），不做任何词法判定（不识别
+/// 字符串/注释/转义）。R4 终形上界论证：
 ///
-/// 三轮反例教训（为何不按引号跳区域）：各解析路径的字符串语义互不相同
-/// ——parse_dq_string 跨 LF 直到闭引号，skip_to_entry_end（单引号/
-/// f-string/调用值）**行界**且返回外层文档解析器继续解析后续条目。
-/// R1"遇 LF 断"使闭引号被误判为开引号（跨行 `"` + 深数组绕过）；R2
-/// "跨 LF 直到闭引号"使未终止单引号吞到 EOF（`extra: 'abc` 后接深层
-/// `deep:` 数组——解析器行界重入、筛子全吞 → 欠计数 abort）。任何
-/// "按字符串跳过区域"的上界都可能藏住某个可达解析状态会数的括号，
-/// 唯一可靠上界是不跳字符串、只跳注释。
-fn max_bracket_depth(content: &str) -> usize {
-    let mut max = 0usize;
-    let mut depth = 0usize;
-    let mut chars = content.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '/' if chars.peek() == Some(&'/') => {
-                for sc in chars.by_ref() {
-                    if sc == '\n' {
-                        break;
-                    }
-                }
-            }
-            '#' if !matches!(chars.peek(), Some('[')) => {
-                for sc in chars.by_ref() {
-                    if sc == '\n' {
-                        break;
-                    }
-                }
-            }
-            '/' if chars.peek() == Some(&'*') => {
-                chars.next();
-                let mut prev_star = false;
-                for sc in chars.by_ref() {
-                    match sc {
-                        '*' => prev_star = true,
-                        '/' if prev_star => break,
-                        _ => prev_star = false,
-                    }
-                }
-            }
-            '{' | '[' => {
-                depth += 1;
-                max = max.max(depth);
-            }
-            '}' | ']' => depth = depth.saturating_sub(1),
-            _ => {}
-        }
-    }
-    max
+/// 解析器的结构下钻（scan_value_positions 的 scan_object/scan_array、
+/// parse_node 子节点、AtomParser 结构化字面量）按**嵌套层**递归——元素
+/// 迭代、下钻才递归，且每下钻一层必消费一个被解析为 opener 的 `[`/`{`
+/// 字符。故 **真实递归深度 ≤ 文本中 `[`+`{` 字符总数**：
+/// - 闭括号（无论是否在字符串内）不参与计数，不可能削减上界（R4
+///   F786-R4-02：字符串 `]` 逐层抵消开括号，使 max-depth 型上界失效）；
+/// - 注释/字符串上下文只可能**虚增**计数（其中的 `[`/`{` 被算入，
+///   解析器却不会下钻），过计数仅多走兼容臂，值行为不变（R4
+///   F786-R4-01：字符串内 `/*`、`//`、`#` 使任何"识别注释"的筛子
+///   藏住后续真实括号）；
+/// - 零词法判定 ⇒ 不存在"筛子与某条解析路径的字符串/注释语义不一致"
+///   这一反例族（R1 遇 LF 断 / R2 跨 LF / R3 行界重入同根）。
+fn bracket_open_count(content: &str) -> usize {
+    content.chars().filter(|c| matches!(c, '[' | '{')).count()
 }
 
 /// 读取 pac.at 文本的展示三字段（只读，无副作用）。
 pub(crate) fn read(content: &str) -> DisplayRead {
-    // 深度前置筛：超包络输入不做模型解析（进程级栈溢出不可捕获），
-    // 三字段整体走兼容臂——值行为与旧实现逐值一致，仅路径分类不同。
-    if max_bracket_depth(content) > MODEL_PARSE_MAX_BRACKET_DEPTH {
+    // 开启括号总数前置筛：超包络输入不做模型解析（进程级栈溢出不可
+    // 捕获），三字段整体走兼容臂——值行为与旧实现逐值一致，仅路径分类不同。
+    if bracket_open_count(content) > MODEL_PARSE_MAX_BRACKET_DEPTH {
         let reason = ReadPath::Compat(CompatReason::DeepNesting);
         return DisplayRead {
             name: legacy_scan(content, "name", false),
