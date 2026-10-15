@@ -1,0 +1,26 @@
+# PLAN-779 外部 native provider 消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-lang 的公开面（FrameProvider +
+# AutoVM/NativeInterface/Codegen/Linker 公开 API + run_with_capture），
+# **不启用任何 UI feature**（default-features = false），证明 frame 族
+# 9918/9919 的 core 供值链在无 UI 类型/无 frame_bench 直引下真实工作：
+# 外部 provider 实值经 VM 内建到达 stdout，两实例不串线，缺席=0。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/native-provider-consumer/Cargo.toml
+
+[package]
+name = "native-provider-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-lang = { path = "../../../../crates/auto-lang", default-features = false }
+# 仅用于类型名 auto_val::ValueKey（object_keys 元数据形）——与 auto-lang
+# 同源 path 依赖，单一版本。
+auto-val = { path = "../../../../crates/auto-val" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

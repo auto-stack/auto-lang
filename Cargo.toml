@@ -62,6 +62,11 @@ exclude = [
     # [workspace]，模拟 crate 边界外的真实消费者），门禁经
     # cargo test --manifest-path test/fixtures/modularity/ui-dialect-consumer/Cargo.toml
     "test/fixtures/modularity/ui-dialect-consumer",
+    # PLAN-779: 外部 native provider 消费方探针——独立 fixture crate
+    #（无 UI feature 构建，证明 frame 族 core 供值链在 crate 边界外真实
+    # 工作），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/native-provider-consumer/Cargo.toml
+    "test/fixtures/modularity/native-provider-consumer",
 ]
 resolver = "2"
 

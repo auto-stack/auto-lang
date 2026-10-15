@@ -12,6 +12,8 @@ mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSO
 mod plan728_supply_probes; // PLAN-728: 文件后援分页 rope 探针族（710 形态）
                            // PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影
 mod plan716_supply_probes;
+// PLAN-779: frame native host provider 注入——core 剪断/UI 装配/merge 保 provider 回归锚
+mod plan779_frame_provider;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 #[cfg(feature = "test-trans")]
 mod a2r_c_abi_gates;

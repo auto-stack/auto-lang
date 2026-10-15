@@ -55,6 +55,14 @@ pub fn process_default_frame_provider() -> Option<Arc<dyn FrameProvider>> {
         .clone()
 }
 
+/// 清除进程默认（回到缺席语义：新建 VM 未捕获 0）。测试装配/宿主拆卸用。
+pub fn clear_process_default_frame_provider() {
+    let mut slot = PROCESS_DEFAULT_FRAME_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_FRAME_PROVIDER poisoned");
+    *slot = None;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

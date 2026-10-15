@@ -1670,9 +1670,10 @@ pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// 推 TAG_I64 vs .at int (i32) 消费面错配，json obj 字面量等消费形全断
 /// （下游 plan-022 三断实录）；frame.vm.at 判型同步 `-> int`。值域=进程
 /// 单调 ms <2^31（i32 封顶 ≈24.8 天，saturating——SD-B 注记面）。
-/// PLAN-779：core 不再直读 `ui::frame_bench`——经本 VM NativeInterface
-/// 装配的 [`crate::vm::host_capabilities::FrameProvider`] 供值（UI 宿主
-/// 注册 frame_bench adapter；缺席=未捕获 0，与原 no-ui/未捕获语义一致）。
+/// PLAN-779：core 不再直读 UI 的 frame_bench 通道——经本 VM
+/// NativeInterface 装配的 [`crate::vm::host_capabilities::FrameProvider`]
+/// 供值（UI 宿主注册 frame_bench adapter；缺席=未捕获 0，与原 no-ui/
+/// 未捕获语义一致）。
 pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let observed = vm
         .native_interface
