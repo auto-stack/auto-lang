@@ -1,0 +1,69 @@
+{
+  "bundle": {
+    "action": "create",
+    "bytes": 447777,
+    "file": "auto-man-full.bundle",
+    "head_included": true,
+    "refs_in_bundle": 27,
+    "sha256": "2fc84d897f21b4c2b06fc01a13691c81a3492a46f5ff383cd47647277c56d269",
+    "verify": "ok"
+  },
+  "ignored_keep": [
+    {
+      "path": "Cargo.lock",
+      "payload": "ignored/Cargo.lock",
+      "sha256": "4d3f915ef6b8226fdfa976553d90eefba255c94ce1136c6d4bfb6d93e27d1731"
+    },
+    {
+      "path": ".vscode/iar-vsc.json",
+      "payload": "ignored/.vscode/iar-vsc.json",
+      "sha256": "5b8b55167fc7e2807d97ce1ecd9284fcba960c971293f59802b8645c9f85c8b0"
+    }
+  ],
+  "ignored_listing": [
+    ".vscode/",
+    ".vscode/iar-vsc.json",
+    "Cargo.lock"
+  ],
+  "payload_root": "D:/autostack/.recovery/784-legacy-preservation",
+  "refs_frozen": {
+    "refs/heads/master": "51fafe82e8e0c4e66325ee14088eed8c3270e07e",
+    "refs/remotes/origin/HEAD": "51fafe82e8e0c4e66325ee14088eed8c3270e07e",
+    "refs/remotes/origin/master": "51fafe82e8e0c4e66325ee14088eed8c3270e07e",
+    "refs/remotes/origin/v0.0.x": "b9298671daad948531678319035225bdd37df714",
+    "refs/tags/v0.0.1": "8930b225165fc14f56efb6cd160ab7e9265af0c2",
+    "refs/tags/v0.0.10": "f8c92243b750cd78fbe6241787dad5bf35846f86",
+    "refs/tags/v0.0.11": "81250f35e93519fdd85143deebd637886ad938a4",
+    "refs/tags/v0.0.12": "51fed563534f533ceac7426ff128c8846e676383",
+    "refs/tags/v0.0.13": "90f1cccb9a9af93055b55fe76f812c31eb4f91fc",
+    "refs/tags/v0.0.14": "5a06cfb76c6d12c6531995f633030519335d7a30",
+    "refs/tags/v0.0.15": "1a3075205e78d0e2c3e7b4a7201fdeae6d6b987b",
+    "refs/tags/v0.0.16": "64811a27893e4c42249b0d53530f2d15ecab17bd",
+    "refs/tags/v0.0.17": "2f031c153a8d3d5e34d05114790ad5dd96d1b04f",
+    "refs/tags/v0.0.18": "55f349f873daee35e0db5cb3bed62f243557ab70",
+    "refs/tags/v0.0.18.1": "520acfce189441c4468110c8e46cfcbd7375acae",
+    "refs/tags/v0.0.19": "be1392c384b67bcd971b00764da34a1a18439a49",
+    "refs/tags/v0.0.2": "8f767e79d49fb48bf20ce263685e53e91f1dfca0",
+    "refs/tags/v0.0.20": "281f62a9cfc3797d644ede1f270ffca09e1d1100",
+    "refs/tags/v0.0.3": "70a994d795e7e6b4cc1a4664701b6c7d91d0f7db",
+    "refs/tags/v0.0.4": "7d455a42f9b48680084b264a3f5666ec3d130ab4",
+    "refs/tags/v0.0.4.fix": "8df8084b4a9cd6ab56abfa5c40dca1679fdff576",
+    "refs/tags/v0.0.5": "e666ce0e7b50d9defc6a778133f19b2896a283b7",
+    "refs/tags/v0.0.6": "a11d02d0170308ef97265c247c60c42d607fccea",
+    "refs/tags/v0.0.7": "c10fb21220038912338e52d67a74306ffd70424f",
+    "refs/tags/v0.0.8": "91fb215cc1e1e0f8f5722175efcf4fd2c2731146",
+    "refs/tags/v0.0.9": "37e4eac37c8e357547e115943a727f18b7951a5c"
+  },
+  "repo": {
+    "branch": "master",
+    "head": "51fafe82e8e0c4e66325ee14088eed8c3270e07e",
+    "name": "auto-man",
+    "symref": "refs/heads/master",
+    "toplevel": "D:/autostack/auto-man"
+  },
+  "stash_count": 0,
+  "status_porcelain": [],
+  "tool": "legacy-preservation.py v1",
+  "untracked": [],
+  "wip": []
+}

@@ -1,5 +1,5 @@
 {
-  "base_revision": "d6e9479124d7aa11a92d5c63cc3df30874c2af31",
+  "base_revision": "7d51845ffcca4c886698caa947cbaca93bf7fdca",
   "config_sha256": "822e959d5571ccd8e8009bd654cdbec883f45e298c7eb25a55903fbd90f67091",
   "declared_edges": [
     {
@@ -192,15 +192,6 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "autodown-core",
-      "from": "auto-lang",
-      "kind": "normal",
-      "optional": true,
-      "target": null,
-      "to": "autodown-core",
-      "to_scope": "external"
-    },
-    {
       "dep_key": "shim-metadata",
       "from": "auto-lang",
       "kind": "normal",
@@ -208,6 +199,15 @@
       "target": null,
       "to": "shim-metadata",
       "to_scope": "member"
+    },
+    {
+      "dep_key": "autodown-core",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "unresolved(../auto-down/autodown/packages/engine/rust)",
+      "to_scope": "unresolved"
     },
     {
       "dep_key": "auto-lang",
@@ -273,6 +273,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-project-model",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-val",
       "from": "auto-man",
       "kind": "normal",
@@ -288,6 +297,24 @@
       "optional": false,
       "target": null,
       "to": "auto-lang",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-atom",
+      "from": "auto-project-model",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-project-model",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
       "to_scope": "member"
     },
     {
@@ -330,8 +357,8 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 886,
-    "man_to_language": 571,
+    "core_to_ui": 891,
+    "man_to_language": 573,
     "ui_to_language": 181
   }
 }

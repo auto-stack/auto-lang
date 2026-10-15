@@ -1,0 +1,11 @@
+== V04-N1: strict with missing baseline ==
+配置/基线不合法: strict 需要冻结基线（__nonexistent__.json 缺失）；先在干净树上 --refresh-baseline
+EXIT=3
+
+== V04-N2: missing config ==
+配置/基线不合法: 配置文件不存在或不可读: __nonexistent__.toml
+EXIT=3
+
+== V04-N3: nonexistent root ==
+配置/基线不合法: 配置文件不存在或不可读: module-boundaries.toml
+EXIT=3

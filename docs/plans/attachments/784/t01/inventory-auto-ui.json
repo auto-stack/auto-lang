@@ -1,0 +1,32 @@
+{
+  "branch": "master",
+  "head": "f7d92eef273c7f5592cce9d1612fa28ebe12d45e",
+  "ignored": [
+    ".claude/"
+  ],
+  "last_commit": "f7d92eef273c7f5592cce9d1612fa28ebe12d45e\u0000衍星居士\u0000Sat Feb 28 02:11:21 2026 +0800\u0000refactor(trans): migrate to AURA pipeline (Plan 096 Phase 5)",
+  "name": "auto-ui",
+  "refs": {
+    "refs/heads/master": "f7d92eef273c7f5592cce9d1612fa28ebe12d45e",
+    "refs/remotes/origin/HEAD": "f7d92eef273c7f5592cce9d1612fa28ebe12d45e",
+    "refs/remotes/origin/gpui2": "1e44f92caaa681e6f362eef6c1fada09e9041217",
+    "refs/remotes/origin/gpui3": "233ecff18491c8820c7cbb6c306d41d901ca12a5",
+    "refs/remotes/origin/iced": "7d7fc749d23635f888512bb39a413dc0c611252c",
+    "refs/remotes/origin/master": "f7d92eef273c7f5592cce9d1612fa28ebe12d45e",
+    "refs/tags/v0.1": "1de8af0c4d0a9a29df1467c3ce1590ec6fd24c1d",
+    "refs/tags/v0.2": "c243b71234315fbc0f04535ba22e1839c230de51"
+  },
+  "remotes": [
+    "origin\tgit@gitee.com:auto-stack/auto-ui.git (fetch)",
+    "origin\tgit@gitee.com:auto-stack/auto-ui.git (push)"
+  ],
+  "stash_count": 0,
+  "status_porcelain": [
+    " M Cargo.lock"
+  ],
+  "symref": "refs/heads/master",
+  "toplevel": "D:/autostack/auto-ui",
+  "worktrees": [
+    "D:/autostack/auto-ui"
+  ]
+}
