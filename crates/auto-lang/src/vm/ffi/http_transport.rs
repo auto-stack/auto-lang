@@ -216,6 +216,35 @@ pub(crate) async fn serve_network(
                 tokio::spawn(async move {
                     // permitRAII：连接任务结束（正常/断连/RST）即归还。
                     let _permit = permit;
+                    // PLAN-781 T-22（W-04/F-781-R04）：RST 断连影子侦测。
+                    // hyper h1 dispatch 在响应挂起期只 poll 写侧（服务
+                    // future 就绪前不读连接），客户端 RST 中断对纯等待请求
+                    // 不可见——请求会继续执行至完成/deadline 并产生迟到
+                    // 副作用（W-04 slowwrite 探针实测）。影子句柄
+                    // （SockRef::try_clone 重复句柄，共享 socket 状态含
+                    // nonblocking）以 MSG_PEEK 只看不觉：传输错误 → conn
+                    // 名下 scope 立即取消（§5-3 断连判据在响应等待期的
+                    // 补全）；FIN 保持半关闭契约（plan705 T-05(4)，不判
+                    // 取消）；就绪数据（管道化请求）由 hyper 照常消费。
+                    // 连接任务终结时 abort 影子（重复句柄归还，socket 引
+                    // 用计数不阻正常关闭）。clone 失败降级为旧行为（写失
+                    // 败期检测 + deadline 上界），日志在案。
+                    let shadow_task = match socket2::SockRef::from(&stream)
+                        .try_clone()
+                        .map(std::net::TcpStream::from)
+                        .and_then(tokio::net::TcpStream::from_std)
+                    {
+                        Ok(shadow) => {
+                            Some(tokio::spawn(watch_conn_reset_abort(shadow, conn_id)))
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[HTTP] conn {conn_id} reset-shadow setup failed \
+                                 (fallback: write-failure detection only): {e}"
+                            );
+                            None
+                        }
+                    };
                     // http1_only: the transport contract is HTTP/1.1 — the
                     // auto builder would otherwise also serve h2c
                     // prior-knowledge connections, widening scope silently.
@@ -238,6 +267,9 @@ pub(crate) async fn serve_network(
                     // 错——watch 返回即任务终结证据）→ 取消该连接名下全部
                     // 请求 scope（决策报告 §5-3 断连判据）。
                     let _ = watcher.watch(conn).await;
+                    if let Some(t) = shadow_task {
+                        t.abort();
+                    }
                     super::http_server::cancel_scopes_for_conn(conn_id);
                     crate::http_service_observability::counter_sub(
                         crate::http_service_observability::CounterName::ConnActive,
@@ -255,6 +287,32 @@ pub(crate) async fn serve_network(
         }
     }
     drop(listener); // release the port
+}
+
+/// PLAN-781 T-22（W-04/F-781-R04）：连接级 RST 断连影子侦测。见
+/// [`serve_network`] 连接任务内注释——hyper h1 响应挂起期不 poll 读侧，
+/// 中断检测由本任务承载：MSG_PEEK（零消费）窥视重复句柄；传输错误
+/// （RST/中断等）→ `cancel_scopes_for_conn`；FIN（Ok(0)）按半关闭契约
+/// 直接退出不取消；在途数据（管道化请求）短暂让步等 hyper 消费，防
+/// 就绪自旋。
+async fn watch_conn_reset_abort(shadow: tokio::net::TcpStream, conn_id: u64) {
+    let mut buf = [0u8; 1];
+    loop {
+        match shadow.peek(&mut buf).await {
+            Ok(0) => return, // FIN——半关闭契约（plan705 T-05/4），不判取消
+            Ok(_) => {
+                // 管道化数据在途：hyper 消费后再看（20ms 让步防自旋）。
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            // 传输层错误（含 WSAECONNRESET/ConnectionAborted）——连接
+            // 确证终结，取消 conn 名下全部 scope（幂等；正常终结路径
+            // 由连接任务的 cancel_scopes_for_conn 承载）。
+            Err(_) => {
+                super::http_server::cancel_scopes_for_conn(conn_id);
+                return;
+            }
+        }
+    }
 }
 
 // ============================================================================

@@ -338,6 +338,10 @@ axum = { version = "0.8", features = ["json"] }
 # hyper::upgrade::on (raw WebSocket echo port).
 hyper = { version = "1", default-features = false, features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto", "server-graceful", "service"] }
+# PLAN-781 T-22（W-04/F-781-R04）：transport 影子句柄 RST 断连侦测
+# （SockRef::try_clone + MSG_PEEK；std set_linger 未稳定供测试侧用）。
+# 版本沿用 lock 内既有 0.5.x（tokio 栈传递依赖），不新增拷贝。
+socket2 = "0.5"
 # Plan 214: Python FFI (optional, requires Python dev headers)
 pyo3 = { version = "0.29", optional = true, features = ["auto-initialize"] }
 trans = "0.4.0"
