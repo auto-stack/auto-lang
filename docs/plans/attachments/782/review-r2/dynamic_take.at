@@ -1,0 +1,8 @@
+type Tok { text Str; kind int }
+fn yes() bool { return true }
+fn check(t Tok) bool { return t.kind > 0 }
+fn main() int {
+ let a Tok = Tok { text: "a", kind: 1 }
+ if yes() && check(a.clone()) { return a.text.len() }
+ return 100
+}

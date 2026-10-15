@@ -1,0 +1,8 @@
+type Inner { s Str; n int }
+type Outer { i Inner; n int }
+fn extract(a Outer) Inner { return a.i }
+fn main() int {
+ let a Outer = Outer { i: Inner { s: "abc", n: 1 }, n: 2 }
+ let b Inner = extract(a)
+ return b.s.len() + a.i.s.len()
+}

@@ -1,0 +1,8 @@
+type I { a Str }
+type O { i I; b Str }
+fn extract(move x O) I { return x.i.clone() }
+fn main() int {
+ var r O = O { i: I { a: "aa" }, b: "bbb" }
+ r.i = extract(r.move)
+ return r.i.a.len()
+}

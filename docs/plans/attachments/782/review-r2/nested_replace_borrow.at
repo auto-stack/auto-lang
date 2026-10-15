@@ -1,0 +1,8 @@
+type I { s Str }
+type O { i I }
+fn main() int {
+ var a O = O { i: I { s: "old" } }
+ let v = a.i.s
+ a.i = I { s: "new" }
+ return v.len()
+}

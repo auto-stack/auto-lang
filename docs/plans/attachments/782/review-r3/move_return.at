@@ -1,0 +1,7 @@
+type T { s Str }
+fn consume(move t T) T { return t.move }
+fn main() int {
+ var a T = T { s: "abc" }
+ a = consume(a.move)
+ return a.s.len()
+}

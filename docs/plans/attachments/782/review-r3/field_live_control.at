@@ -1,0 +1,7 @@
+type T { a Str; b Str }
+fn extract(move x T) Str { return x.a.to(Str) }
+fn main() int {
+ var r T = T { a: "aa", b: "bbb" }
+ r.a = "cc".to(Str)
+ return r.b.len()
+}

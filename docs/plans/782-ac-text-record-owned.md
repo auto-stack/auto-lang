@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-782
-status: execution_done
+status: reviewed
 feature_name: AC 文本与 record 组合：拥有型字段、移动与清理
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-14
 updated_at: 2026-10-15
-current_step: 7
+current_step: 8
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -163,7 +163,7 @@ T-01 先做有界完整路径探针：含两个 Str 的构造/深 clone、嵌套
 | [ ] | T-05 | work | T-04 | **R2 重开，尚未验收** @638b10dbe（原 @a2fc74d6d，R1 重开于 F-01/03/04/06）：合并 lowering（text lowerer 扩展，旧 text/record 路径零变化）——§4.5 布局（Str 字段 12/8、资源 record 8 对齐、copyable 嵌套保持 4 对齐，checked u64/u32 上界）；record 局部=栈槽聚合、参数/结果=指针形（ABI-D/E、move-in *mut、out-slot 聚合返回）；RecordCtor（提升字段缓冲入临时聚合+转移）、RecordClone（位拷贝+逐 Str 字段 ac_rt_own_clone）、Move/Borrow 地址直传、FieldGet 按偏移装载视图/标量；出口 buffer_frees 与 RHS 后 replace_frees 逐字消费 T-04 计划；聚合临时语句尾 LIFO 释放；方法体定义+CLI build-source 组合域接线；新增 verify 门（view 模式 Str 参数入 ctor 字段=借用逃逸）。text_record_native **11/11**（V-02 值/trace、V-05 重叠精确 trace、V-09 短路零分配、V-10 256 深/4096 循环/0 次零分配、V-11 能力门+拒绝无制品、V-12 Token 微程序+直接 HIR 腿+新旧 profile 共存）；全套 ac-core **430/0**、零警告、fmt clean | 01..06 |
 | [ ] | T-06 | work | T-05 | **R2 重开，尚未验收** @56dd15748（原 @8558863ec，R1 重开于 F-06 声明纠正）：`scripts/verify-ac-text-record-782.ps1` + `docs/reports/782-text-record/verification.md`。最终基线 **25 步全绿 0 failed**（收据 gate-20261015-093737 绑定 HEAD 836635a2e，原始输出 raw-20261015-091943/）：两 workspace check/test/fmt 零警告（matcher 正负对照；ac-core **431/0** 四 text_record target 在场断言、runtime/text 20/20）；contained-executor 案例走查 11 例——TP01 旗舰 p01 PE exit 30 + 缓冲 id 多重集配对（泄漏/双释放零容忍）+obj/receipt 在场、TP02 重叠形态 exit 9、HP01 直接 HIR tr01 exit 2 精确 trace、TN01..08 钉码负例、profile 隔离（四旧域拒+未知 exit 2+域行）、capability 故意失败控制（exit 1+capability.missing+零制品）、SENTINEL 事务（失败 build 三件制品 hash 保持）、收据身份五针；旧五门实跑 771/741[-SkipMainGates]/745/767/770；**770 gate 归因裁定**——其 per-plan scope 步 allow-list 仅 770 路径、后继树按定义必败，本 gate 不改 770 已合入脚本，实跑全程断言唯一 [FAIL] 即 scope 步、被标 18 文件恰为本计划域内 artifact（同 git diff 重算对拍），实质步骤全绿（真实越界改动仍红=scope 不变式重基 782 域）；自有 scope 隔离+24 项输入/runtime-lib/合同/三 PE/gate 脚本 hash 入收据。**gate 工作发现并修复 T-05 缺口**：FieldGet 的 `Str` 拼写（verify 兼容规则两拼写等价）在合并 lowering 落标量臂→后续 text 操作 unreachable panic（Checked 不可 lowering，tr01 fixture 首跑抓获）；修复=视图装载臂扩 StrBorrow|StrOwn + 永久回归 `hir_fixture_str_typed_field_get_pe`（exit 2+精确 trace），全套 431/0 | 05/06 |
 | [ ] | T-07 | work | T-06 | **R2 重开，尚未验收** @56dd15748（原 @9726a412c，R1 重开：附A 闭合判定重基修复后基线）：`docs/reports/782-text-record/proposed-spec-delta.md` 冻结 SD-01..06——SD-01 新 source-text-record.md 合同（派生资源分类/完整根 move/深 clone/字段视图与替换/FieldGet 两拼写等价/唯一新码 partial-move+扩面七码）、SD-02 D-03/04/05/07 组合消费（标量 copy 适用域划界、backing 按根保守、owned_returns 扩 record 根）、SD-03 HIR 域/record_clone/move 包装形态与派生属性不信自称、SD-04 合并 lowering 已实证阶段范围（通用 pass/ACC 桥仍 planned）、SD-05 ac 工程能力面（runtime 23 符号零新增、770 gate 归因裁定）、SD-06 acc Token 取证与非目标；**附A 前置反例组合闭合核对九类零缺口**——唯一缺项 V-04"两层 wrapper 同源/异源 view-mut"由 @0318bcb93 补齐（mut 链两层：同源 verify.mut-conflict / 异源过，按 SOURCE 不按形式参数号，镜像 770 r4_p07/c02）；附B 源文件 manifest 与支持/拒绝声明对拍无材料冲突。canonical 未发布（归 T-09）。最终基线 gate 重跑 **25/25 全绿**（gate-20261015-100236 绑 9726a412c：ac-core **433/0**、runtime 20/20、旧五门+归因 770） | 06 |
-| [ ] | T-08 | review | T-01..07完成，writes暂停 | 原树独立审计AC01..06与SD、反例/永久测试oracle/遗漏债务/健康；pass→reviewed=8/9，needs_fix回work，不修改实现 | 07 |
+| [x] | T-08 | review | T-01..07完成，writes暂停 | ✅ R3 final pass @17508b703（90/90+37源码重放/组合控制+9 API控制；见R3报告），原树独立审计AC01..06与SD、反例/永久测试oracle/遗漏债务/健康；pass→reviewed=8/9，needs_fix回work，不修改实现 | 07 |
 | [ ] | T-09 | merge | T-08 fresh pass与合入授权 | 实际合入/SD/导航/.autoos/specs.json/spec-index；archive状态和计数；批回归到期用regress；bash wt-guard clean后remove/branch/组清理收据，实际完成9/9 | 08 |
 
 拟定唯一实施树 D:/autostack/.wt/lang-782/auto-lang、branch plan-782-dev；当前未创建。work使用scripts/new-wt-group.sh lang-782 --branch plan-782-dev（master基面、auto-down兄弟detached）或等价仓规路径，不创建任何junction/symlink。主检出仅计划簿记；实施/内检/final review顺序使用同一树。不能将联合回归/实现正确性推迟至merge。
@@ -283,3 +283,15 @@ worktree_path:`D:/autostack/.wt/lang-782/auto-lang`；branch:`plan-782-dev`；ba
 **两连败诊断（技能检查点，全文见 verification.md §5c）**：R2-01 剩余不变式=聚合存在标记须跨嵌套合流组合（外层 join 转发内层标记值、仅无条件创建传 1、外层 skip 恒 0）；早前漏因=R1 嵌套回归两 clone 全在全真路径且首 if 提前 return，"skipped if"整语句未执行、无跨迭代 take→skip 重入，标记组合从未被执行。R2-02 剩余不变式=字段赋值永不复活已整体移出的根；早前漏因=R1 F-02 只修 replace_frees 调度、原样保留 reown 状态翻转——推理"释放什么"而非"根是否还可写"。
 task_ids:T-04/T-05/T-06/T-07（R2 重开面）。evidence：复审 extra/more 八控制原文重放全过——nested_and/nested_or_take_skip exit 3 零 FREE-INVALID（一次 CLONE/FREE 对）、outer_skip/nested_or 对照保持、partial_reown/nested_reown 前门拒 verify.use-after-move、field_live_control/whole_rebuild_control exit 3 正确；新增标量位与跨语句两形同样前门拒。永久回归 +4：`f782_r2_01_nested_marker_composition`（嵌套 &&/||-take-skip/三层，精确 trace）+ `f782_r2_01_nested_marker_rides_the_rollback_releaser`（fail@3 回滚只释放已执行 clone——共享释放器消费组合标记）+ `f782_r2_02_field_write_on_moved_root_rejects`（四形钉码）+ `f782_r2_02_live_replacement_and_whole_rebuild_stay_legal`（两对照精确 trace）。V-07 预算"差 1"控制 6→7（峰值 8 恰差一字节，措辞纠正按复审意见）。全套 ac-core **452/0**（native 24）；零警告；fmt clean；R2 修复基线 gate **25/25**（gate-20261015-134523 绑 `7e59e06f3`；`17508b703` 相对绑定基线仅文档差）。
 blockers:无。next_responsible_role:review（T-08 R3：独立上下文、同一实施树，冻结 `17508b703`；重点复核 §5c 两项闭合、嵌套标记组合/回滚消费、字段位×语句期全矩阵）。
+
+## 9. 复审记录（续：final R3，2026-10-15）
+
+stage: review；review_scope: final；reviewer_identity: 本次 Codex `/root` 独立检查上下文（未参与实施、未创建额外agent，模型/会话标识未暴露）；plan_id: PLAN-782；plan_revision: 1；outcome: **pass**。
+worktree_path: `D:/autostack/.wt/lang-782/auto-lang`；branch: `plan-782-dev`；reviewed_commit: `17508b703c84e6f24496ede7b908621a1c05f365`；base_commit: `4568e4ea795996a759b4747fc56b30a30c4308db`。入口/出口HEAD相同、树clean；auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 clean。dependency_revisions/spec_inputs见 [R3完整报告](attachments/782/review-r3/REVIEW.md) 与baseline-hashes.tsv/spec-inputs.tsv。
+
+已核实§5c两连败诊断与实际设计/oracle调整：外层join转发已有内层Agg.present、字段写统一拒绝复活moved根。四target **90/90**，locked build/all-target check/fmt/diff检查通过、零警告；R1/R2共22原文控制重放、9真实API控制复验；另增15个组合控制——ctor/clone/拥有call-return×正常/fail@3/fail@4=9条真实PE覆盖join后标记0/1的回滚消费，三字段终型×同/跨语句move=6前门拒。全部断言通过，八项历史blocking关闭，无新增阻断。
+
+acceptance_results: AC01..07 pass，AC08 pending merge。SD01..06目标与有限支持/拒绝/non-goal审核通过；冻结delta SHA256 `6c5ea9dd9dd3b16310160ffe8a8f4b935983a1570479103aaac052e0698b5daf`。canonical七输入与R2相同。work联合gate收据7e59e06f3→17508b703仅两文档差、24项gate输入hash重验一致，明确复用其代码相同基线证据；非本轮重新跑全档，不替代merge门禁。
+
+pending_closeout_gates: **merge-owned pending**——冻结提交及实际共同基线的experimental/ac-core/runtime/text locked check/test/fmt、782新旧联合收口gate/能力/事务控制；代码或依赖变化须受影响复审+新冻结门禁。无crates/根Schema改动，根t/tv/tt/tb/tu/taa/docs_gen不适用；tf仅主检出批量到期判定。此pass不表示交付完成或允许跳过门禁合入。
+next: merge（T09：门禁后合入、canonical/导航/ledger/index、归档计数与guard清理）；status=reviewed、current_step=8/9，T08完成，T09仍pending。本轮未修改实现/canonical/ledger、未合入/归档/清理工作树。归档取证使用R3冻结实际hash与案例，不使用verification.md历史节选的旧工具/PE指纹。

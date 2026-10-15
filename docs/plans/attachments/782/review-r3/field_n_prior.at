@@ -1,0 +1,9 @@
+type I { t Str }
+type T { s Str; i I; n int }
+fn extract(move x T) int { return x.n }
+fn main() int {
+ var a T = T { s: "a", i: I { t: "b" }, n: 1 }
+ let k = extract(a.move)
+ a.n = 4
+ return 0
+}

@@ -1,0 +1,6 @@
+type T { s Str }
+fn main() int {
+ let s Str = "first"
+ let a T = T { s: "second" }
+ return s.len() + a.s.len()
+}

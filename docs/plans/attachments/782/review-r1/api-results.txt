@@ -1,0 +1,13 @@
+valid: CHECKED
+call_arg: REJECT ["verify.binding-invalid", "verify.binding-invalid", "verify.binding-invalid", "verify.binding-invalid"]
+call_param: REJECT ["verify.binding-invalid", "verify.binding-invalid"]
+ctor_arg: REJECT ["verify.ctor-arity", "verify.ctor-arity"]
+field_id: REJECT ["verify.field-owner", "verify.field-owner"]
+field_type: REJECT ["verify.bad-reference"]
+move_inner: PANIC
+
+thread 'main' (17700) panicked at src\verify.rs:936:31:
+index out of bounds: the len is 5 but the index is 4294967295
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+self_cycle: REJECT ["verify.record-cycle", "verify.ownership-required", "verify.type-mismatch", "verify.type-mismatch", "verify.type-mismatch"]
+requires: REJECT ["capability.missing"]

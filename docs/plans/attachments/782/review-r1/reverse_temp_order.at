@@ -1,0 +1,3 @@
+type T { s Str }
+fn f(a str, b T) int { return a.len() + b.s.len() }
+fn main() int { return f("first".to(Str).to(str), T { s: "second" }) }
