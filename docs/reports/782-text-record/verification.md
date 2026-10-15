@@ -19,7 +19,8 @@
 | T-04 提交 | `3be6031d1`（text_resources 资源走查扩展 + text_record_resources 25 测试） |
 | T-05 提交 | `a2fc74d6d`（合并 native lowering + text_record_native 11 测试） |
 | T-06 修复提交 | `836635a2e`（gate 工作发现的 lowering 缺口修复 + 永久回归，§5） |
-| T-06 收口提交 | 门禁脚本 + 本文件（见 git log；相对门禁绑定基线仅增 scripts/ 与本报告，ac-core 零代码差） |
+| T-06 收口提交 | `8558863ec`（门禁脚本 + verification.md 首版） |
+| T-07 提交 | `0318bcb93`（V-04 两层 wrapper 反例闭合 +2 测试）+ `9726a412c`（proposed-spec-delta.md 冻结） |
 | 依赖 | 无 auto-down / crates 改动；runtime/text 零源码改动（23 符号、合同 sidecar 原样） |
 
 新增/修改（相对基面）：`experimental/ac-core/src/{hir,descriptor,verify,native,main,lib,text_resources}.rs`、
@@ -36,7 +37,7 @@
 | V-01 | `text_record_hir.rs` 13 测试（组合三元组、四旧域隔离、改一维拒、writer roundtrip）+ gate 步 14/18（profile isolation、receipt identity 五针） | ✅ |
 | V-02 | `text_record_hir.rs`（Str/str/char 字段、传递分类、cycle、copyable 保持）+ `text_record_source.rs`（命名/位置构造、名义失配）+ `text_record_native.rs`（Token 四字段值/char、嵌套深克隆独立性）+ gate TP01 | ✅ |
 | V-03 | `text_record_resources.rs`（use-after-move/double-move/循环重入/缺 .move 对称/ctor 裸转移拒、move 参数被调方清理计划、clone 不扰借用）+ `text_record_source.rs`（move/clone 源码腿、partial-move 含死分支） | ✅ |
-| V-04 | `text_record_resources.rs`（view 参数字段返回合法；owned/mut/move-in 字段逃逸拒；替换/移根期间活跃借用 mut-conflict；悬挂视图使用点拒） | ✅ |
+| V-04 | `text_record_resources.rs`（view 参数字段返回合法；owned/mut/move-in 字段逃逸拒；替换/移根期间活跃借用 mut-conflict；悬挂视图使用点拒；**T-07 补：两层 mut-wrapper 同源拒/异源过**——770 R4-04 传播类组合闭合） | ✅ |
 | V-05 | `text_record_native.rs`（r=r.clone()/transform/字段 concat/move 重建的逐步旧缓冲释放 trace）+ `text_record_resources.rs`（replace_frees 计划形状）+ gate TP02（重叠形态 PE exit 9 + 缓冲配对） | ✅ |
 | V-06 | `text_record_resources.rs`（臂局部自臂出口闭、嵌套 return move、break/体末释放、直接 HIR 腿）+ `text_record_native.rs`（0 次循环零分配） | ✅ |
 | V-07 | `text_record_resources.rs`（P3 双根双字段序、嵌套展开、owned_return 不排空；status/trap 双通道计划形状） | ✅ |
@@ -46,9 +47,9 @@
 | V-11 | `text_record_native.rs` v11（缺 capability 拒绝且无制品）+ gate 步 16/17（capability 控制、SENTINEL 三件制品 hash 保持） | ✅ |
 | V-12 | `text_record_native.rs`（Token 微程序 exit 57、新旧 profile 共存、直接 HIR 腿、**新增 tr01 fixture PE 腿**）+ gate 步 19..23（旧五门实跑）+ 步 24（scope diff） | ✅ |
 
-新测试合计 **69**（hir 13 / source 19 / resources 25 / native 12）；全套 ac-core
-`cargo test --locked` **431 通过 0 失败**（T-05 基线 430 + T-06 回归 1）；
-runtime/text **20/20**（零改动回归）。
+新测试合计 **71**（hir 13 / source 19 / resources 27 / native 12；T-07 +2）；全套
+ac-core `cargo test --locked` **433 通过 0 失败**（T-05 基线 430 + T-06 回归 1 +
+T-07 反例闭合 2）；runtime/text **20/20**（零改动回归）。
 
 ## 3. 覆盖内省
 
@@ -62,16 +63,18 @@ runtime/text **20/20**（零改动回归）。
 
 ## 4. 门禁执行（verify-ac-text-record-782.ps1）
 
-**最终基线 `836635a2e`（plan-782-dev）：25 步全绿，0 failed，11 gate 案例**
-（2026-10-15 实跑；收据 `gate-20261015-093737.txt`，原始输出
-`raw-20261015-091943/`）：
+**最终基线 `9726a412c`（plan-782-dev，T-07 收口）：25 步全绿，0 failed，11 gate
+案例**（2026-10-15 实跑；收据 `gate-20261015-100236.txt`，原始输出
+`raw-20261015-094825/`。中间绑定：T-06 冻结基线 `836635a2e` 同 25 步全绿，
+gate-20261015-093737；T-07 增量为 +2 组合测试与文档，基线重跑后本收据为
+最终绑定）：
 
 | # | 步骤 | 结果 |
 |---|---|---|
 | 1 | warning matcher controls（正/负对照） | PASS |
 | 2 | context（HEAD/branch/rustc/cargo/rust-lld sha256 + raw dir） | PASS |
 | 3 | ac-core `cargo check --locked --all-targets` 零警告 | PASS |
-| 4 | ac-core `cargo test --locked`（431；四 text_record target 在场断言） | PASS 176.2s |
+| 4 | ac-core `cargo test --locked`（433；四 text_record target 在场断言） | PASS 176.2s |
 | 5 | ac-core `cargo fmt --check` | PASS |
 | 6 | runtime/text `check --locked --all-targets` 零警告 | PASS |
 | 7 | runtime/text `cargo test --locked`（20；故障注入/预算/trap/合同面） | PASS 10.8s |
@@ -111,6 +114,7 @@ runtime/text **20/20**（零改动回归）。
 | 发现 | 修复 | 永久回归 |
 |---|---|---|
 | verify 的 FieldGet 兼容规则（T-04 冻结）同时接受 owned 字段读取的 `Str`（declared）与 `str`（retag）两种拼写，但合并 lowering 的 `TStep::Field` 只匹配 `str` 视图拼写——`Str` 拼写落入标量装载臂，消费方 text 操作触发 `native.rs unreachable!` panic（exit 101）：**Checked bundle 不可 lowering，违反后端合同**。T-02 冻结 fixture `tr01-combination.atom` 恰用 `type: Str` 拼写，gate HP01 案例首跑即暴露；T-05 测试的直连腿用内联 atom（str 拼写）未覆盖此面 | `native.rs` `TStep::Field` 视图装载臂扩为 `StrBorrow | StrOwn`——字段读取两种拼写都装载 (ptr,len) 借用视图（读取永不复制 owner，与 §5.2 语义一致） | `text_record_native.rs` `hir_fixture_str_typed_field_get_pe`：tr01 fixture 端到端 build→PE，exit 2 + 精确 trace；全套 431/0 |
+| **V-04 案例缺口（T-07 核对发现）**：冻结案例表"两层 wrapper 同源/异源 view-mut"未物化（T-04 收据证据清单亦未声称，非测试退化） | `0318bcb93` 补 `wrapper_same_source_mut_view_conflict_rejects`（mut 链两层、同源→verify.mut-conflict）+ `wrapper_independent_sources_stay_legal`（异源过——按 SOURCE 不按形式参数号） | 前述两测试；全套 433/0；gate 第 4 轮 25 步全绿重绑定 |
 
 门禁脚本自身迭代记录（非产品面）：第 1 轮在负例步骤暴露 `[string]` 参数
 默认值经类型约束成为空串、`$null -ne` 守卫失效的 PS 5.1 陷阱（13 步后
@@ -118,27 +122,27 @@ runtime/text **20/20**（零改动回归）。
 全绿；第 3 轮在提交 `836635a2e` 冻结基线上重跑全绿并作为绑定收据。三轮
 原始输出均在 receipts 目录。
 
-## 6. 输入指纹（节选自 gate-20261015-093737.txt）
+## 6. 输入指纹（节选自 gate-20261015-100236.txt）
 
 | 输入 | SHA256 |
 |---|---|
-| head（绑定） | `836635a2ef8a1d59866bdc09eefad6cf21d6f926` |
+| head（最终绑定） | `9726a412cc3810bbf6f330565dd7b8c29f1cd6a7` |
 | rust-lld | f436ddda2f519c5ad18b7c7b09a3eadc2d4fc1be88cd9280cc472740fc3b7389 |
 | runtime lib（ac_text_runtime.lib） | 3d7cc13b4c92cbd3d35ebeed7930b3015638a1c2f1a73422d6273aa853b035b9 |
 | runtime 合同 sidecar | a4529883ccb21429e0aee632939eb3935b12ba1c3f750c88988b952351eec87a |
 | schema/text-record.atom | de5d4b955c331687f78cddef7511c5ab349ea658338e1e1f501c640c4f93aa91 |
-| 工具二进制 | ad6ca86c4dc7df69e74cd5624adfd81a38b217a19e3638304fb898cad9753d4c |
+| 工具二进制 | 7eab01d26f166969b6db9269d8712fc1fe1f8d5b2d0c9ce148f5fe0d3d1bc5d6 |
 | gate 脚本自身 | fefaf6e721ca2d1e5746b44b21845275267923e46972b695d48ec6502fd8d38c |
-| PE TP01/TP02/HP01 | cad9aeac…/99c6c1e7…/398253d9…（全文见收据） |
+| PE TP01/TP02/HP01 | 67f70f83…/（TP02 见收据）/75ac2903…（全文见收据） |
 
 （收据内含全部 24 项 gate 输入 hash：src 九文件、tests 四、fixtures 三、
 runtime 四、schema 一等；每案例 case.txt 附输入与 exe hash。）
 
 ## 7. 后续 owner（不在本步）
 
-- T-07：proposed-spec-delta.md 冻结 SD-01..06、核对支持/拒绝/取证声明与
-  前置反例组合闭合；canonical 发布归 merge（T-09）。
-- T-08/T-09：独立复审与合入/沉淀/归档；主仓裸 `cargo t` 等 merge-owned
+- T-08/T-09：独立复审与合入/沉淀/归档（T-07 已冻结
+  [proposed-spec-delta.md](proposed-spec-delta.md)——SD-01..06 + 附A 反例
+  组合闭合零缺口 + 附B 源文件 manifest；canonical 发布归 T-09）；主仓裸 `cargo t` 等 merge-owned
   门禁按 2026-10-14 时序裁定在冻结提交上由 merge 阶段执行（本计划不触
   `crates/`，根档门禁不适用）；批回归到期判定归 `/auto-plan:regress`。
 - 真实 Token/lexer 迁移、enum/List/use、可变实例方法——后续计划另行立项。
