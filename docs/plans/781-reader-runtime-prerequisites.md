@@ -299,6 +299,7 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [✅ 2026-10-15] worktree commit 3d7817a24。实测（D:/p781-t26/{out1,out2}，reader 指向 meta 分支）：**v17-txt deep + 冷重启复扫 11/11**（1347 章两轮 bad=[]）；**v17-md deep** 1346 章全绿；**W-03** 字节变异@6990506 → 精确检出第 900 章 sha-mismatch、首章不受扰；**导入 74.2s**（旧 131.6s——meta 扫描替代整书 JSON 拼接）。对比旧路径：单章 GET ~180s→亚秒（2×1347+1346 章扫分钟级完成）、toc 170-220s→即时。
 
 - [x] T-19: owner_stage=work；F-781-R01（P1）：scroll_anchor 合成 id 改不透明序号 + build 期注册表（seq→(pane,key) 查表，collector 回传 rect+seq）——消除冒号歧义拆分与 Debug 字符串取值两类面；单测含标准 `@scrollctl:N` 句柄与 `:`/引号/反斜杠 key 往返；双端 fixture 增真实 `scroll_controller()` controller + 分隔符 key 行（W-01）。AC-15。
+  [✅ R08-C 修复轮 2026-10-16] lang commit **3dca8a39c**：根级无 controller pane 的**空路径=合法根身份**（vnode_converter `view_to_vtree_with_paths` 约定根 path=[]；根键=`vnode_{id_from_path([])}`=FNV 种子 14695981039346656037，复审实证 renderer 已发布）——移除 `!node.path.is_empty()` 守卫（节点在树中=结构在位，路径恒可计算）；根 pane 被裁行（y=333.6 超 128px 根视口、仍在窗）不再漏链假 visible。**根级回归测试**（复审 fixture 几何：被裁行 clipped_out + 视口内行 visible 正对照，根键=FNV 种子断言）；复审 root-pane-probe 原样重放 **exit 0**（修复前 exit 1）；r9 双探针保持 exit 0；通道 v10/v11/v13/v_anchor 绿；mcp_server 32/32 + plan781 33/33 + scroll 72/72。
   [✅ R09 修复轮 2026-10-16] lang commit **d0a445361**：R08 两处遗漏闭合——**P1**：无 controller 的 Scrollable 祖先经 renderer 自身 widget id（`vnode_{id_from_path(path)}`——`controller_widget_id.or(widget_id)` 派生）入结构链，无 controller 内层 pane 下被裁行不再只按外层裁剪（复审反例：内 pane 底 177、行 y=363.8 隐式假 visible → clipped_out）；**P2**：结构解析成功的**空链**=正确解（真 no_pane，节点在树中但无 Scrollable 祖先）——仅结构不可用（快照缺席/非 vnode id/节点不在树）才回退几何法，pane 外真实可见兄弟节点不再被 content 盒投影误认领后误报 clipped_out。**测试**：混合有/无 controller 嵌套链 + `tool_visibility` 入口 e2e（同坐标按钮 visible+no_pane vs 被裁行 clipped_out 双对照）；复审 short-pane-probe 与 structural-edges 探针原样重放 exit 0；通道 v10/v11/v13/v_anchor 绿；mcp_server 32/32 + plan781 33/33 + scroll 72/72。
   [✅ R08 修复轮 2026-10-16] lang commit **5bc7e58ad**：**归属与可见性裁剪解耦**——①结构法主路径 `resolve_pane_chain_structural`（styled VTree 祖先链：Scrollable controller → `scroll_ctl_<k>`；归属=树事实，与滚动/裁剪状态无关；真非 pane 节点无 Scrollable 祖先 → 稳定 no_pane，不受 offset=0 时 pane 邻近节点落在大 content 盒投影内的几何不可分性影响）；②几何回退的 owner 过滤移除「win∩viewport 正面积相交」合取（content 包含即归属，相交判定移交消费端 compute_visibility）——被裁掉的真实子节点不再丢失 clip 链退化为仅窗口判定（复审反例：短 pane 底=177、行 y=363.8 隐式假 visible=true → 现与显式同判 clipped_out）；D01 std 末行归属经最小 viewport 平手保持。**测试**：两处「滚出视口→无归属」断言翻转为「归属保留+clipped_out」+ 新增四控制结构测试（pane 内可见/被裁仍在窗/窗外走 clip 链/真非 pane→no_pane + 嵌套链序）；通道 **v10（4 项）/v11（9 项）转绿**（r8 复审失败的两例）+ v13（4）/v_anchor（11）绿；mcp_server 31/31 + plan781 32/32 + scroll 72/72。
   [✅ 2026-10-15] R01 核心=worktree commit 34bb33090（`scrollanchor:{seq}` 不透明序号 + `register_anchor/lookup_anchor` 稳定注册表，重注册驱逐/stale miss 跳过/dup last-wins 保持；单测 2 个含 `@scrollctl:N`/冒号/引号/反斜杠/CJK 往返与驱逐语义）。**F-781-D01 阻断已解除并结案**（§9 事故记录）：三层根因＝①探针 `filter`→`pane` 参数错（读错 pane 的观测假象，框架未坏——P656 trace 实证 EXEC 后物理 offset 正常落位）②aura `convert_scroll` 双臂样式双写使 Fixed 高（h-32 类）钳死内层 col → pane 不可滚动（`scroll_content_style` 剥滚动轴尺寸类修复，双臂接线 + 单测）③`autoui_visibility` 归属判定与发布空间错位（`resolve_pane_chain` 改发布公式逆运算重写 + w01 实测几何回归锁单测）。W-01 双端全绿：**VM 腿 44/44（清埋点终验 D:/p781-t19/d01r7 + 全迹 d01r6）+ Vue 腿 46/46（D:/p781-t19/vue-final，w01 handle=`__scrollctl_1`）**；fixture std_ctl 已切回 `scroll_controller()`；门禁=plan781 26/26、scroll 72/72、mcp_server 30/30。遗留观察（d01r5 a80 瞬态 + vue backend 冷构建 120s 门）记录于 §9 work 记录，T-23 观察。
@@ -318,6 +319,7 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [再次复审重开 2026-10-15/review-r4] R05/R06修复后更新关闭表、SD-09/11及冻结证据；不能以旧示例关闭替代完整不变量关闭。仅跑受影响定向验收，整档仍归merge。
   [复审重开 2026-10-15/r3] R04/R05 修复后重冻关闭表与SD-09/11；纠正T-26 CLI hash、Reader canonical Spec目标路径及source_sha256/ph1描述。work/review仅跑必要定向验证，整档tu/th等归merge。
   [✅ 2026-10-15] 收口记录见 §9「T-22/T-23 收口」：四 finding 闭合表（R01..R04 反例→不变量→修复→永久用例→原始结果）+ 冻结块（commits/CLI/配置/fixture/reader 探针目录归属）+ 定向验收（th 137/139 两红在案归因、plan781 28/28、scroll 72/72、a2r parity 绿）+ 复用证据未变核验（ui/ui_gen/fixtures 自 W-02 证据 commit e455c1d16 起零 diff，git diff 实证）+ T-24 rider（str.rs.at 镜像缺口修复 d83458941，a2r_std_signature_parity 基线红→绿）。SD-08..11 候选冻结（§5 表），plan_revision 2→3（§0 版本沿革）。**tu/th 全档按 2026-10-14 裁定归 merge 冻结提交**（tu=ui_gen 触面在案、本回合 ui_gen 零改动；th 的 W-04/预算定向面已在本回合跑绿）；双端探针复用依据=触面零 diff；merge-owned 门禁 pending 如下。
+  [✅ R08-C 修复轮收口 2026-10-16] 见 §9「R08-C 修复轮收口」：根路径=合法身份（守卫移除）+ 根级回归 + root-pane-probe 重放 exit0；冻结块刷新（lang 3dca8a39c / CLI 9a6a3612…）。
   [✅ R09 修复轮收口 2026-10-16] 见 §9「R09 修复轮收口」：P1 无 controller pane 入链（vnode 路径哈希键）+ P2 空结构链为权威 no_pane；复审双探针重放绿 + 通道四例绿；冻结块刷新（lang d0a445361 / CLI 2dbb3c01…）。
   [✅ R08 修复轮收口 2026-10-16] 见 §9「R08 修复轮收口」：归属/裁剪解耦（结构主路径+几何回退修正）+ 四控制测试 + V-10/V-11 通道转绿；D01 收口记录（§9 事故段②"滚出视口目标不被认领"语义随 R08 修正——归属保留、可见性由消费端判定）；冻结块刷新（lang 5bc7e58ad / CLI 4438c8e6…）。
   [✅ R07 修复轮收口 2026-10-16] 见 §9「R07 修复轮收口」：type_of 所有权配平 + 终态平衡回归；SD-11 过时机制文字删改（type_of 语义）+ **SD-12** type_of Spec 候选（接口边界/所有权/避让行/a2r 边界）；定向验收 plan781 **31/31** + tv **163/163** + t01-t07 + r6 反例回放绿 + th（三红归因：常驻 back_proxy + 724/sse_chain 负载 flake 单跑绿）；冻结块刷新（lang 26fcb89f4 / CLI 4ea03eb5…）。
@@ -327,6 +329,13 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [✅ R04/R05 修复轮收口 2026-10-15] 见 §9「R04/R05 修复轮收口」：R04/R05/E01 三行闭合更新（CPU 段取消 + E01 引擎根修 + reader 终形态）、SD-09/SD-11 修正（复审三点：CLI hash 纠正为 226954ac…、SD-11 补 Reader canonical 路径与 ph1 指纹诚实描述、CPU 协作取消入 SD-09）、冻结块刷新（lang 33a9a6a94 / reader 97ceba9 / CLI 6c164733…）、定向验收（tv 163/163 语料档含 E01 触面、th 141/143 两红在案、plan705/702/712/624/567 34/34 帧/catch 族、plan781 29/29 含 E01 永久回归、t01-t07 + 反例回放 + 性能复测）。
 
 ## 9. 复审记录
+
+
+### T-07 再次最终复审（2026-10-16，review-r10，needs_fix）
+
+stage=review | review_scope=final | reviewer_identity=本次独立审查上下文，未参与实现、未委派agent | plan_id=PLAN-781 | plan_revision=3 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | reviewed_commit=d0a445361a4754006742b12782127f2b3cacc139 | base_commit=491e84afbdcbfa3e05755596f5fb8d5187ba2f3a | dependency_revisions=auto-reader@7bb1869aef771e8d02b953f25598361a0516b14d | spec_inputs/acceptance_results/evidence=[r10完整报告](reports/781-final-review-r10-20261016.md)及attachments/781/review-r10/ | findings=R08上轮A/B关闭，但根级无controller合法空路径被跳过，R08-C P1仍open | pending_closeout_gates=merge-owned全档pending | next=work，同一781树修根路径，T-19/T-23重开。
+
+**当前裁决覆盖历史收口**：上轮短pane/foreign/混合嵌套反例均exit0；Rust13/13、原生锚点57/57、通道9/9通过。新增路径键guard排除合法根path=[]：根无controller pane已发布vnode_14695981039346656037，viewport高128，第6行y333.6却因空链假visible；显式根pane、首行及根controller对照正确，稳定帧重查仍失败。AC-09 fail、AC-05未过、AC-18 partial；T-19/T-23重开，完成23/26，保留T-25/R05/R06/R07及T-01..18历史交付。**本轮补齐**10MiB MD导入+1346章全量核对、TXT新进程冷启动1347章全扫、W-03准确检出第900章损坏及恢复控制，均绑定CLI 2dbb3c01…；源副本恢复后SHA256与原件完全相同。大书证据已补齐不再后置，needs_fix仅因根pane观测缺口。未改语义revision、未跑整档回归、未合入/归档。
 
 
 ### T-07 再次最终复审（2026-10-16，review-r9，needs_fix）
@@ -524,6 +533,16 @@ stage=work | plan_id=PLAN-781 | plan_revision=3 | worktree_path=D:/autostack/.wt
 **重放与门禁**：复审 short-pane-probe.py 与 structural-edges.py 原样重放 **exit 0**（row6 隐式=false 修复；短 pane/嵌套/foreign 各形态过）；通道 v10（4）/v11（9）/v13（4）/v_anchor（11）绿；mcp_server **32/32** + plan781 **33/33** + scroll **72/72**。
 
 **冻结块（r9 修复轮）**：lang HEAD=**d0a445361**（树 clean）；reader HEAD=**7bb1869**（未动）；CLI sha256=**2dbb3c01ee5972485ac3b7a59b767652d390e4c880bda38f96b04090b4867065**。merge-owned 全档 pending 不变。
+
+### R08-C 修复轮收口（2026-10-16，r10 needs_fix 后再交 execution_done）
+
+stage=work | plan_id=PLAN-781 | plan_revision=3 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=d0a445361（r10 复审基线） | code_commit=lang **3dca8a39c**（根路径守卫移除 + 根级回归）｜reader 无改动（**7bb1869** 保持） | task_ids=T-19/T-23 再闭（23/26） | blockers=无 | next_responsible_role=review（T-07，含 root-pane 探针与既有矩阵重放）
+
+**F-781-R08-C（根级无 controller pane 空路径被跳过）**：`if !node.path.is_empty()` 把合法根路径 [] 当作结构缺失——vnode_converter 约定根 path=[]、renderer 根键=`vnode_{id_from_path([])}`（FNV 种子 14695981039346656037，复审实证已发布）；根 pane 因此不入结构链，被裁行（y=333.6 超 128px 根视口、仍在 1280×800 窗内）空链→仅窗口判定假 visible=true。修复=守卫移除（节点在树中=结构在位，路径恒可计算；空路径与结构不可用的区分由上层「节点在树中」判定承载——r9 P2 修复语义保持）。**根级真实入口回归**（非空 path 节点之外的根测试）：根键=FNV 种子断言 + 被裁行 clipped_out + 视口内行 visible 正对照。
+
+**重放与门禁**：复审 root-pane-probe.py 原样重放 **exit 0**（修复前 exit 1，失败列表仅 ['root-pane']）；r9 short-pane/structural-edges 双探针保持 exit 0；通道 v10（4）/v11（9）/v13（4）/v_anchor（11）绿；mcp_server **32/32** + plan781 **33/33** + scroll **72/72**。
+
+**冻结块（r10 修复轮）**：lang HEAD=**3dca8a39c**（树 clean）；reader HEAD=**7bb1869**（未动）；CLI sha256=**9a6a3612d8ebb2aa554bebf54babc547022460298c3a1b39c489aaace65647f2**。merge-owned 全档 pending 不变。
 
 ### T-07 最终复审（2026-10-15，final pass）
 
