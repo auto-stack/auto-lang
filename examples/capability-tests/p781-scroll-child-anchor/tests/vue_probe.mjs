@@ -137,7 +137,9 @@ try {
   });
 
   const clickAndWait = async (label, wantReceipt) => {
-    await page.click(`text=${label}`);
+    // F-781-R02 勘定：带引号的 text= 是精确匹配——无引号形态是子串匹配
+    //（'GoMI' 会命中更早的 'GoMiss'，W-02 mi 检查曾因此假红）。
+    await page.click(`text="${label}"`);
     await page.waitForTimeout(300);
     if (!wantReceipt) return true;
     const r = await reply();
@@ -263,8 +265,64 @@ try {
   r = await clickAndWait('QStd', 'applied');
   record('w01_std_state_applied', r === 'applied', r);
 
+  // ── 阶段D W-02（F-781-R02）：嵌套 pane 最近归属——同名 key 零串线、
+  // 仅内层有 key（含无 controller 嵌套 pane）→ 外层 not_found、内层
+  // managed 不误伤外层。同名行在各自 pane 末尾（旧实现取内层目标则
+  // 外层末行不可见——区分性锚定）。
+  const NEST_O = '[data-scroll-ctl="nest-outer"]';
+  const NEST_I = '[data-scroll-ctl="nest-inner"]';
+  // 观测面按最近 pane 归属取目标（同名 key 在嵌套 pane 两侧都有）。
+  const geomOwned = (paneSel, key) => page.evaluate(([ps, k]) => {
+    const pane = document.querySelector(ps);
+    if (!pane) return null;
+    let t = null;
+    for (const el of pane.querySelectorAll('[data-scroll-anchor]')) {
+      if (el.getAttribute('data-scroll-anchor') === k
+          && el.closest('[data-scroll-pane]') === pane) t = el;
+    }
+    if (!t) return { pane: true, target: null };
+    const pr = pane.getBoundingClientRect();
+    const tr = t.getBoundingClientRect();
+    const ct = pr.top + pane.clientTop;
+    const ix = Math.max(0, Math.min(pr.right, tr.right) - Math.max(pr.left, tr.left));
+    const iy = Math.max(0, Math.min(pr.bottom, tr.bottom) - Math.max(ct, tr.top));
+    return { pane: true, target: true, iy, ix, scrollTop: pane.scrollTop };
+  }, [paneSel, key]);
+  r = await clickAndWait('GoNestO', 'queued');
+  record('w02_nest_outer_queued', r === 'queued', r);
+  await page.waitForTimeout(200);
+  g = await geomOwned(NEST_O, 'nest-dup');
+  raw.w02_outer = g;
+  record('w02_nest_outer_same_key_visible', g && g.target && g.ix > 0 && g.iy > 0,
+    g && g.target ? `iy=${g.iy.toFixed(1)}` : 'no target');
+  const innerOff = await page.evaluate(ps => document.querySelector(ps).scrollTop, NEST_I);
+  record('w02_nest_no_cross_scroll', innerOff === 0, `inner scrollTop=${innerOff}`);
+  r = await clickAndWait('QNestO', 'applied');
+  record('w02_nest_outer_state_applied', r === 'applied', r);
+  r = await clickAndWait('GoNestI', 'queued');
+  record('w02_nest_inner_queued', r === 'queued', r);
+  await page.waitForTimeout(200);
+  g = await geomOwned(NEST_I, 'nest-dup');
+  raw.w02_inner = g;
+  record('w02_nest_inner_same_key_visible', g && g.target && g.ix > 0 && g.iy > 0,
+    g && g.target ? `iy=${g.iy.toFixed(1)}` : 'no target');
+  r = await clickAndWait('QNestI', 'applied');
+  record('w02_nest_inner_state_applied', r === 'applied', r);
+  r = await clickAndWait('GoInnerK', 'queued');
+  record('w02_inner_only_queued', r === 'queued', r);
+  r = await clickAndWait('QInnerK', 'invalid:not_found');
+  record('w02_inner_only_outer_not_found', r === 'invalid:not_found', r);
+  r = await clickAndWait('GoPlainK', 'queued');
+  record('w02_plain_inner_queued', r === 'queued', r);
+  r = await clickAndWait('QPlainK', 'invalid:not_found');
+  record('w02_plain_inner_outer_not_found', r === 'invalid:not_found', r);
+  r = await clickAndWait('GoMO', 'queued');
+  record('w02_mo_outer_not_unsupported', r === 'queued', r);
+  r = await clickAndWait('GoMI', 'error:unsupported');
+  record('w02_mi_inner_unsupported', r === 'error:unsupported', r);
+
   // ── V-03：双章换绑（v-if 双 pane 分支）──
-  await page.click('text=SwitchCh');
+  await page.click('text="SwitchCh"');
   await page.waitForTimeout(700);
   const ch2 = await page.evaluate(ps => {
     const pane = document.querySelector(ps);
@@ -291,9 +349,9 @@ try {
   record('v03_new_key_state_applied', r === 'applied', r);
 
   // ── V-05：重排（换回章1 → 字号 large → 窄宽）──
-  await page.click('text=SwitchCh');
+  await page.click('text="SwitchCh"');
   await page.waitForTimeout(700);
-  await page.click('text=FontL');
+  await page.click('text="FontL"');
   await page.waitForTimeout(500);
   r = await clickAndWait('GoA80', 'queued');
   record('v05_large_a80_queued', r === 'queued', r);
@@ -309,7 +367,7 @@ try {
   await page.waitForTimeout(400);
   const off_b = await off();
   record('v05_already_visible_stable', off_a === off_b, `${off_a} -> ${off_b}`);
-  await page.click('text=SetNarrow');
+  await page.click('text="SetNarrow"');
   await page.waitForTimeout(500);
   r = await clickAndWait('GoC50', 'queued');
   record('v05_narrow_c50_queued', r === 'queued', r);
@@ -320,15 +378,15 @@ try {
     g && g.target ? `iy=${g.iy.toFixed(1)}` : 'no target');
 
   // ── V-06：旧 offset 族 + 不回拉（mouse.wheel 真滚动）+ managed ──
-  await page.click('text=OldStart');
+  await page.click('text="OldStart"');
   await page.waitForTimeout(300);
   const o0 = await off();
   record('v06_old_start_zero', o0 === 0, `${o0}`);
-  await page.click('text=OldBy');
+  await page.click('text="OldBy"');
   await page.waitForTimeout(300);
   const o1 = await off();
   record('v06_old_by_moves', Math.abs(o1 - 320) < 30, `${o1}`);
-  await page.click('text=OldEnd');
+  await page.click('text="OldEnd"');
   await page.waitForTimeout(400);
   const o2 = await off();
   record('v06_old_end_large', o2 > o1, `${o2}`);

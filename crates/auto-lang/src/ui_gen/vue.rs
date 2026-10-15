@@ -3858,7 +3858,13 @@ if ((window as any).__AUTO_UI_THEME__ === 'light' || (window as any).__AUTO_UI_T
             script.push_str(&format!(
                 r#"let __scrollCtlSeq = 0
 {sc} {{ return '__scrollctl_' + (++__scrollCtlSeq) }}
-{sce} {{ return document.querySelector('[data-scroll-ctl="' + k + '"]') }}
+// F-781-R02：属性比对寻址（弃 selector 拼接）——句柄含引号/反斜杠等
+// 合法字符时 selector 拼接会异常或错配；全量扫描按 getAttribute 精确等值。
+{sce} {{
+  const els = document.querySelectorAll('[data-scroll-ctl]')
+  for (const el of els) {{ if (el.getAttribute('data-scroll-ctl') === k) return el }}
+  return null
+}}
 {sts} {{ const e = __scrollCtlEl(k); if (!e) return; if (ax === 'x') e.scrollTo({{ left: 0 }}); else e.scrollTo({{ top: 0 }}) }}
 {ste} {{ const e = __scrollCtlEl(k); if (!e) return; if (ax === 'x') e.scrollTo({{ left: e.scrollWidth }}); else e.scrollTo({{ top: e.scrollHeight }}) }}
 {sb} {{ const e = __scrollCtlEl(k); if (!e) return; if (typeof a === 'string') {{ if (a === 'x') e.scrollLeft += b; else e.scrollTop += b }} else {{ e.scrollTop += a }} }}
@@ -3916,6 +3922,12 @@ if ((window as any).__AUTO_UI_THEME__ === 'light' || (window as any).__AUTO_UI_T
             } else {
                 ""
             };
+            // F-781-R02（T-20）：归属谓词的 TS 注解（vue-tsc --noEmit 严格面）。
+            let owns_t = if self.use_typescript {
+                "const owns = (el: Element): boolean => el.closest('[data-scroll-pane]') === e"
+            } else {
+                "var owns = function (el) { return el.closest('[data-scroll-pane]') === e }"
+            };
             script.push_str(&format!(
                 r#"const __sctlAnchorStates{store_t} = {{}}
 {an} {{ __sctlAnchorStates[k + '\u0000' + key] = s }}
@@ -3935,10 +3947,20 @@ if ((window as any).__AUTO_UI_THEME__ === 'light' || (window as any).__AUTO_UI_T
   if (!key) return 'error:empty_key'
   const e = __scrollCtlEl(k)
   if (!e) {{ __sctlAnchorNote(k, key, 'invalid:not_bound'); return 'queued' }}
-  if (e.querySelector('[data-scroll-managed]')) return 'error:unsupported'
-  const found = e.querySelectorAll('[data-scroll-anchor="' + key + '"]')
-  if (found.length === 0) {{ __sctlAnchorNote(k, key, 'invalid:not_found'); return 'queued' }}
-  __sctlToChild(e, found[found.length - 1])
+  // F-781-R02：最近 pane 归属过滤——候选目标与 managed 标记的最近
+  // [data-scroll-pane] 所有者必须是本 pane（嵌套 pane——含无 controller
+  // 者，其元素同样发射标记——的目标/标记不被外层认领）。属性比对替代
+  // CSS selector 拼接：任意 key/句柄字符（引号/反斜杠/冒号/CJK）安全。
+  {owns_t}
+  const mgd = e.querySelectorAll('[data-scroll-managed]')
+  for (const el of mgd) {{ if (owns(el)) return 'error:unsupported' }}
+  let target = null
+  const cands = e.querySelectorAll('[data-scroll-anchor]')
+  for (const el of cands) {{
+    if (el.getAttribute('data-scroll-anchor') === key && owns(el)) target = el
+  }}
+  if (!target) {{ __sctlAnchorNote(k, key, 'invalid:not_found'); return 'queued' }}
+  __sctlToChild(e, target)
   __sctlAnchorNote(k, key, 'applied')
   return 'queued'
 }}
@@ -8264,6 +8286,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // 内联逻辑尺寸 + 条纹背景，节点数恒 1，不随逻辑 extent
                     // 膨胀——§10.4-5）。
                     if matches!(tag.as_str(), "scroll" | "scrollable" | "scroll-pane") {
+                        // F-781-R02（T-20）：所有权标记——全部 scroll-pane 元素
+                        // 发射（含无 controller 者）；helper 以
+                        // closest('[data-scroll-pane]')===pane 判最近 pane 归属，
+                        // 嵌套 pane 的目标/managed 标记不被外层认领。
+                        attrs.push("data-scroll-pane=\"1\"".to_string());
                         if let Some(AuraPropValue::Expr(expr)) = props.get("controller") {
                             self.scroll_ctl_helpers_needed = true;
                             let bound = self.bound_value_or_warn(
@@ -13936,6 +13963,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     attrs.push(format!("orientation=\"{}\"", orientation));
                 }
                 // PLAN-656 T-07: controller 寻址锚 + hidden 内联样式。
+                // F-781-R02（T-20）：所有权标记（与 plain 臂同款，全发射）。
+                attrs.push("data-scroll-pane=\"1\"".to_string());
                 if let Some(AuraPropValue::Expr(expr)) = props.get("controller") {
                     self.scroll_ctl_helpers_needed = true;
                     let bound = self.bound_value_or_warn(
@@ -23903,6 +23932,70 @@ widget Test {
             !sfc_js.contains("scroll_to_child(k: string") && !sfc_js.contains("as string | undefined"),
             "JS 模式不得泄漏 TS 注解:
 {sfc_js}"
+        );
+    }
+
+    /// F-781-R02（T-20）：全部 scroll-pane 元素发射 `data-scroll-pane`
+    /// 所有权标记（含无 controller 者——嵌套归属过滤的锚点）；helper 以
+    /// `closest('[data-scroll-pane]')===pane` 判最近 pane 归属 + 属性比对
+    /// 寻址（弃 CSS selector 拼接——引号/冒号/反斜杠 key 与句柄安全）。
+    #[test]
+    fn plan781_vue_scroll_pane_ownership_marker_and_helper() {
+        // 有 controller 与无 controller 的 scroll-pane 都带标记。
+        let sfc = gen_sfc_from_widget_src(
+            r#"
+widget Test {
+    model { var c str = "a" }
+    view {
+        col {
+            scroll-pane (controller: .c, style: "h-20") {
+                col { scroll-anchor: "nest:dup", text "x" }
+            }
+            scroll-pane (style: "h-20") {
+                col { scroll-anchor: "plain-inner", text "y" }
+            }
+        }
+    }
+}
+"#,
+        );
+        let markers = sfc.matches("data-scroll-pane=\"1\"").count();
+        assert_eq!(
+            markers,
+            2,
+            "两个 scroll-pane 各发射一次所有权标记（含无 controller 者）:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("closest('[data-scroll-pane]')"),
+            "helper 归属谓词在场:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("getAttribute('data-scroll-anchor') === key"),
+            "锚点 key 属性比对（selector 拼接退役）:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("[data-scroll-anchor=\"' + key + '\"]"),
+            "旧 selector 拼接形态不得残留:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("getAttribute('data-scroll-ctl') === k"),
+            "句柄寻址同为属性比对:\n{sfc}"
+        );
+        // managed 判据走同一归属谓词（嵌套 managed 不误伤外层）。
+        assert!(
+            sfc.contains("if (owns(el)) return 'error:unsupported'"),
+            "managed 归属过滤在场:\n{sfc}"
+        );
+    }
+
+    /// F-781-R02（T-20）：shadcn 路 scroll（ScrollArea）同样发射所有权标记。
+    #[test]
+    fn plan781_vue_scroll_area_ownership_marker() {
+        let mut gen = VueGenerator::new_shadcn();
+        let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &HashMap::new(), &HashMap::new());
+        assert!(
+            attrs.iter().any(|a| a == "data-scroll-pane=\"1\""),
+            "shadcn scroll 臂所有权标记:\n{attrs:?}"
         );
     }
 

@@ -11,6 +11,10 @@ widget App {
         var side_ctl str = "side-pane"
         var mgd_ctl str = "mgd-pane"
         var std_ctl str = "-"
+        var nest_ctl str = "nest-outer"
+        var nest_in_ctl str = "nest-inner"
+        var nest_mo_ctl str = "nest-mo"
+        var nest_mi_ctl str = "nest-mi"
         var reply str = "-"
         var old_off float = -1.0
         var chapter int = 1
@@ -106,6 +110,19 @@ widget App {
                     button "OldStart" { onclick: .OldStart }
                     button "OldProbe" { onclick: .OldProbe }
                     text `R=${.reply} old=${.old_off}` { style: "text-xs font-mono text-muted-foreground" }
+                }
+                // 阶段D W-02（F-781-R02）：嵌套 pane 归属三对照按钮。
+                row (style: "gap-2 flex-wrap") {
+                    button "GoNestO" { onclick: .Go(.nest_ctl, "nest-dup") }
+                    button "QNestO" { onclick: .Query(.nest_ctl, "nest-dup") }
+                    button "GoNestI" { onclick: .Go(.nest_in_ctl, "nest-dup") }
+                    button "QNestI" { onclick: .Query(.nest_in_ctl, "nest-dup") }
+                    button "GoInnerK" { onclick: .Go(.nest_ctl, "nest-inner-only") }
+                    button "QInnerK" { onclick: .Query(.nest_ctl, "nest-inner-only") }
+                    button "GoPlainK" { onclick: .Go(.nest_ctl, "plain-inner-only") }
+                    button "QPlainK" { onclick: .Query(.nest_ctl, "plain-inner-only") }
+                    button "GoMO" { onclick: .Go(.nest_mo_ctl, "mo-key") }
+                    button "GoMI" { onclick: .Go(.nest_mi_ctl, "x") }
                 }
             }
 scroll-pane (controller: .std_ctl, style: "border rounded h-32") {
@@ -926,6 +943,121 @@ scroll-pane (controller: .std_ctl, style: "border rounded h-32") {
                     }
                     scroll-pane (controller: .mgd_ctl, style: "border rounded h-32") {
                         scroll-test-content (key: "cap781", extent_h: 10000000.0, extent_w: 200000.0) {}
+                    }
+                }
+                // 阶段D W-02（F-781-R02）：嵌套 pane 三对照——同名 key 零串线
+                //（外/内各有 nest-dup）、仅内层有 key（nest-inner-only /
+                // plain-inner-only——后者在无 controller 嵌套 pane 内）、
+                // 内层 managed 不误伤外层（nest-mo 普通行 + nest-mi managed）。
+                col (style: "w-64 flex flex-col gap-2 shrink-0") {
+                    scroll-pane (controller: .nest_ctl, style: "border rounded flex-1 min-h-0") {
+                        col (style: "px-2") {
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "no-1"
+                                text "NEST-o1 外层行" { style: "text-xs" }
+                            }
+                            scroll-pane (controller: .nest_in_ctl, style: "border rounded h-24") {
+                                col (style: "px-2") {
+                                    col {
+                                        style: "py-2 border-b border-border"
+                                        scroll-anchor: "ni-1"
+                                        text "NEST-i1 内层行" { style: "text-xs" }
+                                    }
+                                    col {
+                                        style: "py-2 border-b border-border"
+                                        scroll-anchor: "ni-2"
+                                        text "NEST-i2 内层行" { style: "text-xs" }
+                                    }
+                                    col {
+                                        style: "py-2 border-b border-border"
+                                        scroll-anchor: "ni-3"
+                                        text "NEST-i3 内层行" { style: "text-xs" }
+                                    }
+                                    col {
+                                        style: "py-2 border-b border-border"
+                                        scroll-anchor: "ni-4"
+                                        text "NEST-i4 内层行" { style: "text-xs" }
+                                    }
+                                    col {
+                                        style: "py-2 border-b border-border"
+                                        scroll-anchor: "nest-inner-only"
+                                        text "NEST-inner-only 内层独有" { style: "text-xs" }
+                                    }
+                                    col {
+                                        style: "py-2 border-b border-border"
+                                        scroll-anchor: "nest-dup"
+                                        text "NEST-inner-dup 内层同键行" { style: "text-xs" }
+                                    }
+                                }
+                            }
+                            scroll-pane (style: "border rounded h-16") {
+                                col (style: "px-2") {
+                                    col {
+                                        style: "py-1 border-b border-border"
+                                        scroll-anchor: "plain-inner-only"
+                                        text "PLAIN-inner 无控内层行" { style: "text-xs" }
+                                    }
+                                    col {
+                                        style: "py-1 border-b border-border"
+                                        scroll-anchor: "plain-inner-2"
+                                        text "PLAIN-inner-2 行" { style: "text-xs" }
+                                    }
+                                }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "no-2"
+                                text "NEST-after 嵌套后行" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "no-3"
+                                text "NEST-o3 外层行" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "no-4"
+                                text "NEST-o4 外层行" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "no-5"
+                                text "NEST-o5 外层行" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "no-6"
+                                text "NEST-o6 外层行" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "no-7"
+                                text "NEST-o7 外层行" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "no-8"
+                                text "NEST-o8 外层行" { style: "text-xs" }
+                            }
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "nest-dup"
+                                text "NEST-outer-dup 外层同键行" { style: "text-xs" }
+                            }
+                        }
+                    }
+                    scroll-pane (controller: .nest_mo_ctl, style: "border rounded h-24") {
+                        col (style: "px-2") {
+                            col {
+                                style: "py-2 border-b border-border"
+                                scroll-anchor: "mo-key"
+                                text "MO-outer 外层普通行" { style: "text-xs" }
+                            }
+                            scroll-pane (controller: .nest_mi_ctl, style: "border rounded h-16") {
+                                scroll-test-content (key: "cap781n", extent_h: 1000000.0, extent_w: 200000.0) {}
+                            }
+                        }
                     }
                 }
             }

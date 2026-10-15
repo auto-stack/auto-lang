@@ -172,12 +172,15 @@ class Driver:
         # 「iced scroll 全局失效」实为读错 pane 的观测假象。
         return self.cli.tool_json("autoui_scroll_state", {"pane": controller})
 
-    def main_offset_y(self):
-        st = self.pane_state("main-pane")
+    def pane_offset_y(self, controller):
+        st = self.pane_state(controller)
         # 按 key 精确寻址（不依赖排序；防御任何过滤面退化）。
-        panes = [p for p in st.get("panes", [])
-                 if p.get("key") == "scroll_ctl_main-pane"]
+        want = f"scroll_ctl_{controller}"
+        panes = [p for p in st.get("panes", []) if p.get("key") == want]
         return panes[0]["offset"][1] if panes else None
+
+    def main_offset_y(self):
+        return self.pane_offset_y("main-pane")
 
     def visible(self, row_needle, deadline=12.0, pane_pin=None):
         """轮询：needle 行可见（真实布局帧 visibility）。返回 payload 或 None。"""
@@ -372,6 +375,41 @@ def main():
         d.raw["w01_std_vis"] = vstd
         ok, det = d.expect_reply("QStd", "applied", deadline=15.0)
         d.check("w01_std_state_applied", ok, det)
+
+        # ── 阶段D W-02（F-781-R02）：嵌套 pane 最近归属——同名 key 零串线、
+        # 仅内层有 key（含无 controller 嵌套 pane）→ 外层 not_found、
+        # 内层 managed 不误伤外层。同名行在各自 pane 末尾（旧实现取内层
+        # 目标则外层末行不可见——区分性锚定）。
+        ok, det = d.press_reply("GoNestO", "queued")
+        d.check("w02_nest_outer_queued", ok, det)
+        vno = d.visible("NEST-outer-dup", pane_pin="nest-outer", deadline=12.0)
+        d.check("w02_nest_outer_same_key_visible", vno and vno.get("visible"),
+                f"intersection={vno.get('intersection') if vno else None}")
+        d.raw["w02_vis_outer_dup"] = vno
+        inner_off = d.pane_offset_y("nest-inner")
+        d.check("w02_nest_no_cross_scroll", inner_off == 0, f"inner off={inner_off}")
+        ok, det = d.expect_reply("QNestO", "applied", deadline=12.0)
+        d.check("w02_nest_outer_state_applied", ok, det)
+        ok, det = d.press_reply("GoNestI", "queued")
+        d.check("w02_nest_inner_queued", ok, det)
+        vni = d.visible("NEST-inner-dup", pane_pin="nest-inner", deadline=12.0)
+        d.check("w02_nest_inner_same_key_visible", vni and vni.get("visible"),
+                f"intersection={vni.get('intersection') if vni else None}")
+        d.raw["w02_vis_inner_dup"] = vni
+        ok, det = d.expect_reply("QNestI", "applied", deadline=12.0)
+        d.check("w02_nest_inner_state_applied", ok, det)
+        ok, det = d.press_reply("GoInnerK", "queued")
+        d.check("w02_inner_only_queued", ok, det)
+        ok, det = d.expect_reply("QInnerK", "invalid:not_found", deadline=12.0)
+        d.check("w02_inner_only_outer_not_found", ok, det)
+        ok, det = d.press_reply("GoPlainK", "queued")
+        d.check("w02_plain_inner_queued", ok, det)
+        ok, det = d.expect_reply("QPlainK", "invalid:not_found", deadline=12.0)
+        d.check("w02_plain_inner_outer_not_found", ok, det)
+        ok, det = d.press_reply("GoMO", "queued")
+        d.check("w02_mo_outer_not_unsupported", ok, det)
+        ok, det = d.press_reply("GoMI", "error:unsupported")
+        d.check("w02_mi_inner_unsupported", ok, det)
 
         # ── V-03：双章换绑 ──
         ok = d.press("SwitchCh")
