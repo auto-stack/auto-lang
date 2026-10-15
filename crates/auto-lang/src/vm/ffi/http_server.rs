@@ -5460,8 +5460,13 @@ fn start_handler(
             // PLAN-730 T-07：handler 异常——本次新建 provisional 文件删除。
             cleanup_legacy_files(&ctx.legacy_stored);
             let reply = handler_error_reply(&ctx, &e);
-            if let Some(tx) = reply_tx {
-                let _ = tx.send(reply);
+            // R04 修复轮：owner 侧幂等收口——不依赖桥/运行时在收件后存
+            // 活（shutdown 排水与 owner 退出/运行时拆除竞速时桥侧
+            // complete_scope 不再运行，scope 泄漏在全局表）；Err 回复恒
+            // Full 非 SSE/File，桥侧后续 complete 幂等无害。
+            let _ = reply_tx.map(|tx| tx.send(reply));
+            if let Some(s) = lookup_scope(ctx.scope_id) {
+                cancel_scope(&s);
             }
             DispatchOutcome::Replied
         }
@@ -5867,6 +5872,23 @@ fn response_handle_reply(
 
 /// handler Err 的 500 形态（legacy 同款）。
 fn handler_error_reply(ctx: &DispatchCtx, e: &crate::vm::engine::VMError) -> ApiReply {
+    // PLAN-781 T-22（R04 修复轮）：协作式取消（engine 驱动环的 scope/
+    // 排水截止探测中止段）映射为 503 取消终态——与 parked 取消
+    // （abort_parked_request/cancel_all_parked）同一客户端可见形态；
+    // 前缀约定与 engine 侧 "request cancelled in '..." 错误成对（同计
+    // 划内生产/消费，预算耗尽仍走 500 指名资源拒绝）。
+    if matches!(e, crate::vm::engine::VMError::RuntimeError(ref m) if m.starts_with("request cancelled in "))
+    {
+        eprintln!(
+            "[HTTP] {} {} [{}] → 503 (cooperative cancel: scope terminal/deadline/drain)",
+            ctx.req_method, ctx.req_path, ctx.request_id
+        );
+        return ApiReply::Full {
+            status: 503,
+            headers: json_reply_headers(&ctx.request_id),
+            body: ApiBody::Text(br#"{"error":"request cancelled"}"#.to_vec()),
+        };
+    }
     eprintln!(
         "[HTTP] {} {} → 500 (handler '{}' error: {:?}, {}ms)",
         ctx.req_method,
@@ -6309,6 +6331,43 @@ pub(crate) fn bind_current_scope(scope_id: u64) -> ScopeGuard {
     ScopeGuard
 }
 
+/// PLAN-781 T-22（R04 修复轮）：优雅关停排水截止（全局；net 线程在
+/// shutdown watch 翻转时设置 = now + shutdown_drain）。owner 可能正被
+/// RUNNING CPU 段阻塞（到达不了 cancel_all_parked），engine 驱动环的
+/// 协作取消探测读取此截止——绑定 HTTP scope 的段在排水截止后终止，
+/// 不产生客户端终态后的业务副作用。None = 未在排水。
+static SHUTDOWN_DRAIN_CUTOFF: std::sync::RwLock<Option<std::time::Instant>> =
+    std::sync::RwLock::new(None);
+
+/// net 线程 shutdown 翻转时调用（见 http_transport serve_network）。
+pub(crate) fn set_shutdown_drain_cutoff(cutoff: std::time::Instant) {
+    if let Ok(mut g) = SHUTDOWN_DRAIN_CUTOFF.write() {
+        *g = Some(cutoff);
+    }
+}
+
+/// PLAN-781 T-22（R04 修复轮）：owner 驱动环的协作式取消探测——当前段
+/// 绑定 HTTP scope 且（a）scope 已终结（取消/deadline/关闭，含已出表）
+/// 或（b）排水截止已过时 true；无绑定（CLI/UI/legacy 程序段）恒 false
+/// （Legacy 语义不变）。连续 CPU 段无 park 边界，deadline/RST/关闭终
+/// 态后不得继续执行业务副作用——由 engine 驱动环周期调用本探测（安全
+/// 指令边界，非抢占）。
+pub(crate) fn current_request_cancelled() -> bool {
+    let Some(id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
+        return false; // 非 HTTP 上下文（CLI/UI 段）不受排水/取消影响
+    };
+    if let Ok(g) = SHUTDOWN_DRAIN_CUTOFF.read() {
+        if let Some(cutoff) = *g {
+            if std::time::Instant::now() >= cutoff {
+                return true;
+            }
+        }
+    }
+    lookup_scope(id)
+        .map(|s| !scope_usable(&s))
+        .unwrap_or(true) // 已出表 = 已终结（finalize 时移除）
+}
+
 /// 流 open shim 调用：把新流登记进当前请求资源组（无 scope → no-op）。
 pub(crate) fn register_scope_stream(stream_id: u64) {
     let Some(scope_id) = CURRENT_SCOPE_ID.with(|c| c.get()) else {
@@ -6733,8 +6792,25 @@ pub(crate) fn drain_ready_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<Park
             let mut p = parked.remove(i);
             match resume_parked_request(vm, &mut p) {
                 ParkedResume::Reply(reply) => {
-                    if let Some(tx) = p.reply_tx.take() {
-                        let _ = tx.send(reply);
+                    // R04 修复轮：owner 侧幂等收口（同 Err 臂）——普通回复
+                    // 发送后立即终结 scope（桥侧 complete 幂等无害），
+                    // 不与 owner 退出/运行时拆除竞速；SSE/File 体许可随
+                    // scope 移交响应体，保持桥侧收口。
+                    let holds_in_body = matches!(
+                        &reply,
+                        ApiReply::Full {
+                            body: ApiBody::Sse(_),
+                            ..
+                        } | ApiReply::Full {
+                            body: ApiBody::File(_),
+                            ..
+                        }
+                    );
+                    let _ = p.reply_tx.take().map(|tx| tx.send(reply));
+                    if !holds_in_body {
+                        if let Some(s) = lookup_scope(p.scope_id) {
+                            complete_scope(&s);
+                        }
                     }
                 }
                 ParkedResume::StillParked => {

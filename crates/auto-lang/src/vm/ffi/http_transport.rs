@@ -281,6 +281,12 @@ pub(crate) async fn serve_network(
                 // Graceful: stop accepting, let in-flight responses/SSE finish
                 // (SSE streams end themselves on the same flag), force close
                 // past the drain budget.
+                // PLAN-781 T-22（R04 修复轮）：排水截止全局可见——owner
+                // 可能正被 RUNNING CPU 段阻塞（cancel_all_parked 到不
+                // 了），engine 驱动环协作取消探测读此截止。
+                super::http_server::set_shutdown_drain_cutoff(
+                    std::time::Instant::now() + cfg.shutdown_drain,
+                );
                 let _ = tokio::time::timeout(cfg.shutdown_drain, graceful.shutdown()).await;
                 break;
             }
@@ -613,12 +619,21 @@ async fn bridge_handler(
             return error_response(503, "server shutting down");
         }
         None => {
-            eprintln!(
-                "[HTTP] request wait timed out / cancelled after {:?}",
-                cfg.request_timeout
-            );
-            super::http_server::cancel_scope(&scope);
-            return error_response(503, "request wait timed out");
+            // R04 修复轮：取消臂与 owner 侧收口竞速——回复可能已入通道
+            //（owner 先 send 后终结 scope，notify 与 reply 同时就绪时
+            // select 随机选臂）。迟到到达的真实回复优先于合成 503；真
+            // 无回复才是取消/超时终态。
+            match reply_rx.try_recv() {
+                Ok(reply) => reply,
+                Err(_) => {
+                    eprintln!(
+                        "[HTTP] request wait timed out / cancelled after {:?}",
+                        cfg.request_timeout
+                    );
+                    super::http_server::cancel_scope(&scope);
+                    return error_response(503, "request wait timed out");
+                }
+            }
         }
     };
 

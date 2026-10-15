@@ -19,10 +19,14 @@
 //! 写入（心跳冻结、至多一个在飞写落盘）、无迟到成功（done 永不出现）、
 //! 单终态（客户端恰一次 503/连接终结；scope 状态机幂等收敛）、task/scope/
 //! live-op 回收（`live_scope_count`/`live_op_count` 回基线）与生命期许可
-//! 归还（容量 1 下 cancel 前 ping 503、cancel 后 ping 200）。旧"断连仅查
-//! ping 存活"短路径证据已并入 W-04 断连测（ping 存活在许可归还断言中承
-//! 载）；plan705/707 族的 scope 机制单测仍持有失效队列/半关闭边界，本族
-//! 持有 LegacyHttp policy 长忙路径的端到端绑定。
+//! 归还（容量 1 下 cancel 前 ping 503、cancel 后 ping 200）。R04 修复轮
+//! 补 CPU 段形态（`/api/cpuloop`：同步 entered/late + 4M 纯 CPU 环、无
+//! park 边界）——engine 驱动环每 HTTP_CANCEL_PROBE_EVERY 步协作式取消
+//! 探测，deadline 负/正对照 + RST/关闭组合，终态后 late 副作用在超全程
+//! 观测窗内缺席。旧"断连仅查 ping 存活"短路径证据已并入 W-04 断连测
+//! （ping 存活在许可归还断言中承载）；plan705/707 族的 scope 机制单测
+//! 仍持有失效队列/半关闭边界，本族持有 LegacyHttp policy 长忙路径的端
+//! 到端绑定。
 
 #[cfg(feature = "test-http-e2e")]
 mod budget_e2e {
@@ -176,6 +180,63 @@ fn ping() str {{
             "heartbeat writes never settled after cancellation \
              (last={last}, total={total}) — execution continued past cancel"
         );
+    }
+
+    // ------------------------------------------------------------------
+    // W-04 CPU 段形态（R04 修复轮，复审反例原样）：同步 entered → 4M 次
+    // 纯 CPU 环（无 park 边界，~32M 指令）→ 同步 late → done。修复=
+    // engine 驱动环每 HTTP_CANCEL_PROBE_EVERY 步的协作式取消探测（安
+    // 全指令边界中止段）；终态后的 late 副作用窗口以超过未取消全程
+    //（~6s）的观测窗证明缺席。
+    // ------------------------------------------------------------------
+
+    fn cpuloop_program(dir: &str) -> String {
+        format!(
+            r#"
+#[api(method = "GET", path = "/api/cpuloop")]
+fn cpuloop() str {{
+    File.write_text("{dir}/entered", "1")
+    var acc int = 0
+    var i int = 0
+    while i < 4000000 {{
+        acc = acc + i
+        i = i + 1
+    }}
+    File.write_text("{dir}/late", "1")
+    return "done"
+}}
+
+#[api(method = "GET", path = "/api/ping")]
+fn ping() str {{
+    return "pong"
+}}
+"#
+        )
+    }
+
+    fn wait_entered(dir: &Path, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        while !dir.join("entered").exists() {
+            assert!(
+                Instant::now() < deadline,
+                "cpuloop handler never entered execution"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// late 副作用缺席证明：观测窗（10s）须超过未取消时的全程耗时
+    /// （~6s）——取消失效时 late 必在窗内落盘（复审反例 5.9s 实测）。
+    fn assert_late_never_written(dir: &Path, ctx: &str) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            assert!(
+                !dir.join("late").exists(),
+                "{ctx}: late side-effect written after terminal — \
+                 cooperative cancel failed (CPU segment ran past cancel)"
+            );
+            std::thread::sleep(Duration::from_millis(200));
+        }
     }
 
     fn slowwrite_dir() -> (tempfile::TempDir, String) {
@@ -376,5 +437,147 @@ fn ping() str {{
         );
         let at_cancel = hb_count(dir.path());
         assert_cancelled_clean(dir.path(), at_cancel, total, op_baseline, "shutdown");
+    }
+
+    /// W-04 CPU 段负例（R04 修复轮；复审反例原样）：deadline=200ms 下
+    /// 纯 CPU 4M 环（无 park 边界）——503 终态后 late 副作用必须在超过
+    /// 未取消全程的观测窗内保持缺席（修复前 5.9s 时 late 落盘）；scope/
+    /// live-op 回收。entered 证明执行确已开始后才被取消。
+    #[test]
+    fn http_e2e_plan781_w04_cpu_deadline_cancels_before_late_write() {
+        let (dir, d) = slowwrite_dir();
+        let port = free_port();
+        std::env::set_var("AUTO_HTTP_STEP_BUDGET", "400000000");
+        std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "200");
+        start_server(&cpuloop_program(&d), port);
+        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let t0 = Instant::now();
+        let (status, body) = http_get(port, "/api/cpuloop");
+        let elapsed = t0.elapsed();
+        assert_eq!(status, 503, "deadline must yield 503 terminal: {body}");
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "terminal must be deadline-bound (~200ms): {elapsed:?}"
+        );
+        assert!(
+            dir.path().join("entered").exists(),
+            "handler must have entered execution before terminal"
+        );
+        assert_late_never_written(dir.path(), "cpu-deadline");
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(
+            crate::vm::ffi::async_http::live_op_count(),
+            op_baseline,
+            "live-op must return to baseline"
+        );
+        assert_eq!(
+            crate::vm::ffi::http_server::live_scope_count(),
+            0,
+            "scope map must be empty"
+        );
+    }
+
+    /// W-04 CPU 段正对照（R04 修复轮）：deadline=30s 下同一有限计算正常
+    /// 完成（200 + late 在场）——取消检查不误伤合法长忙请求（复审控制
+    /// 行 2 的镜像）。
+    #[test]
+    fn http_e2e_plan781_w04_cpu_generous_deadline_completes() {
+        let (dir, d) = slowwrite_dir();
+        let port = free_port();
+        std::env::set_var("AUTO_HTTP_STEP_BUDGET", "400000000");
+        std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
+        start_server(&cpuloop_program(&d), port);
+        let (status, body) = http_get(port, "/api/cpuloop");
+        assert_eq!(status, 200, "{body}");
+        assert!(body.contains("done"), "{body}");
+        assert!(
+            dir.path().join("late").exists(),
+            "positive control: full CPU run must write late"
+        );
+    }
+
+    /// W-04 CPU 段 + RST 组合（R04 修复轮）：deadline 不参与，纯 CPU 段
+    /// 中途 RST 断连——协作取消使 late 缺席；容量 1 许可两态（持有时
+    /// ping 503、归还后 ping 200）。
+    #[test]
+    fn http_e2e_plan781_w04_cpu_rst_disconnect_no_late_write() {
+        let (dir, d) = slowwrite_dir();
+        let port = free_port();
+        std::env::set_var("AUTO_HTTP_STEP_BUDGET", "400000000");
+        std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
+        std::env::set_var("AUTO_HTTP_MAX_INFLIGHT", "1");
+        start_server(&cpuloop_program(&d), port);
+        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        write!(
+            &mut s,
+            "GET /api/cpuloop HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        )
+        .unwrap();
+        wait_entered(dir.path(), Duration::from_secs(15));
+        let (held, held_body) = http_get(port, "/api/ping");
+        assert_eq!(
+            held, 503,
+            "life permit must be held by in-flight cpuloop: {held_body}"
+        );
+        socket2::SockRef::from(&s)
+            .set_linger(Some(Duration::ZERO))
+            .expect("SO_LINGER(0) for RST abort");
+        drop(s);
+        assert_late_never_written(dir.path(), "cpu-rst");
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(
+            crate::vm::ffi::async_http::live_op_count(),
+            op_baseline,
+            "live-op must return to baseline"
+        );
+        assert_eq!(
+            crate::vm::ffi::http_server::live_scope_count(),
+            0,
+            "scope map must be empty"
+        );
+        let (after, after_body) = http_get(port, "/api/ping");
+        assert_eq!(
+            after, 200,
+            "permit must be reclaimed after RST cancel (server alive): {after_body}"
+        );
+        assert!(after_body.contains("pong"), "{after_body}");
+    }
+
+    /// W-04 CPU 段 + 服务关闭组合（R04 修复轮）：排水窗 300ms 在 CPU 段
+    /// 中途触发——单终态（503/连接终结）+ late 缺席 + scope/live-op 回
+    /// 基线。
+    #[test]
+    fn http_e2e_plan781_w04_cpu_shutdown_no_late_write() {
+        let (dir, d) = slowwrite_dir();
+        let port = free_port();
+        std::env::set_var("AUTO_HTTP_STEP_BUDGET", "400000000");
+        std::env::set_var("AUTO_HTTP_REQUEST_TIMEOUT_MS", "30000");
+        std::env::set_var("AUTO_HTTP_SHUTDOWN_DRAIN_MS", "300");
+        start_server(&cpuloop_program(&d), port);
+        let op_baseline = crate::vm::ffi::async_http::live_op_count();
+        let client = std::thread::spawn(move || http_get(port, "/api/cpuloop"));
+        wait_entered(dir.path(), Duration::from_secs(15));
+        assert!(
+            crate::vm::ffi::http_server::test_trigger_shutdown(),
+            "shutdown trigger must be registered"
+        );
+        let (status, body) = client.join().expect("client thread");
+        assert!(
+            status == 503 || status == 0,
+            "shutdown terminal must be 503 or connection close: {status} {body}"
+        );
+        assert_late_never_written(dir.path(), "cpu-shutdown");
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(
+            crate::vm::ffi::async_http::live_op_count(),
+            op_baseline,
+            "live-op must return to baseline"
+        );
+        assert_eq!(
+            crate::vm::ffi::http_server::live_scope_count(),
+            0,
+            "scope map must be empty"
+        );
     }
 }

@@ -39,6 +39,11 @@ pub const RUNAWAY_STRINGS_GROWTH: usize = 500_000;
 pub const RUNAWAY_HEAP_GROWTH: usize = 500_000;
 pub const RUNAWAY_CHECK_EVERY: u64 = 50_000;
 
+/// PLAN-781 T-22（R04 修复轮）：HTTP 段协作式取消探测节拍（步）——连续
+/// CPU 段无 park 边界，deadline/RST/关闭终态后在安全指令边界中止段，
+/// 不继续业务副作用（非抢占；与 runaway 节拍同量级 ≈ 每 5-10ms CPU）。
+pub const HTTP_CANCEL_PROBE_EVERY: u64 = 50_000;
+
 macro_rules! vm_debug {
     ($($arg:tt)*) => {
         if crate::is_vm_debug() {
@@ -3115,6 +3120,22 @@ impl AutoVM {
                         fn_name, task.ip, cap
                     ))));
                 }
+            }
+            // PLAN-781 T-22（R04 修复轮）：HTTP 请求协作式取消——连续 CPU
+            // 段没有 park 边界，deadline/RST/关闭终态后段会继续跑满预算并
+            // 执行迟到副作用（复审反例：503 终态后 ~5.9s 仍写出 late 文
+            // 件）。每 HTTP_CANCEL_PROBE_EVERY 步在安全指令边界探测当前请
+            // 求 scope；已终结即中止段——与预算耗尽同 Err 形态，由 HTTP
+            // 入口统一收口（迟到 500 无消费者=静默失败，不产生第二个终
+            // 态）。无 scope 绑定的 CLI/UI/legacy 程序段恒 false，语义不变。
+            if steps % HTTP_CANCEL_PROBE_EVERY == 0
+                && crate::vm::ffi::http_server::current_request_cancelled()
+            {
+                task.current_fn_n_args = saved_fn_n_args;
+                return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                    "request cancelled in '{}' at ip=0x{:04x} (scope terminal/deadline reached; cooperative cancel at safe instruction boundary)",
+                    fn_name, task.ip
+                ))));
             }
             // PLAN-711 T-11 (D-2): slice 档至多每 clock_check_every 步查一次
             // 墙钟，超 4ms 即到片末——在安全指令边界（step 之间）让出。
