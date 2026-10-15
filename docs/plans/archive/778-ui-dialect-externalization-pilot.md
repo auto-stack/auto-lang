@@ -265,6 +265,13 @@ R3就绪审计：R2覆盖诊断与四象限永久矩阵已落实；pre-restore�
 
 发现物归档：两次 rebase 均因他线并发簿记（非本计划冲突）；首次投影 indent=1 与仓内 indent=2 格式不一致已按守卫协议回滚重写（守卫教训：语义等价断言不足以保证外科边界，需字节级 diff 复核）。
 
+批回归到期判定（cleaned 后）：`.last-batch-regression.json` = last_covered_plan_id **781**、timestamp 2026-10-15（当日）、verdict green——778 非 %5 计划且收据未超 48h，**未到期**；该窗口 tf/tt/tb 三腿已含 778 在途提交期（window_note）。
+
+生产工件观察项（Landing≠deployment，按记录项处理）：
+- `target/release/auto.exe` mtime **2026-10-12 03:59**，早于 delivery 711ce23f6（2026-10-15 09:42）——含 778 parser/dialect 改动的 release 重建待下一生产构建窗口（778 改动不影响既有默认解析行为，仅新增外部注册面；非阻断）。
+- auto-down 无代码改动（兄弟仓仅为 cargo 解析），无依赖仓重建项。
+- vue bundle：778 未触 UI codegen/模板输入，无重生成项。
+
 ## 10. 待澄清事项
 
 T01只能选择等价接口机制；改默认grammar/扩大model子集/搬UiAst需revision。若必须公开全部lexer/符号表私有面，先出失败决策needs_replan，不以getter全开放绕过。
