@@ -270,11 +270,15 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
     let mut seen = HashSet::new();
     candidates.retain(|(_, c, _)| seen.insert(c.clone()));
 
-    // Orphan physical blocks: walk the CAS, set-difference vs the DB's
-    // chunk rows; anything unknown (plus `.tmp` leftovers) is reclaimable
-    // here — the same state recovery handles, reclaimed by GC so the
-    // watermark decision is made on the REAL total (R3-02).
-    let known: HashSet<String> = chunk_sizes.keys().cloned().collect();
+    // Orphan physical blocks — the FULL state matrix (R4-01): a blob file
+    // is garbage unless it is the live payload of a LIVE artifact. That
+    // covers: no row at all (F2 crash), a `deleted`/`tombstoned` row with
+    // the file re-appeared (F2 crash after same-content republication),
+    // and a `live` row with NO artifact (a conflict's committed loser).
+    // Dead-artifact chunks are already in `candidates`; everything else
+    // on disk without a live-artifact reference is reclaimed here so the
+    // watermark decision is made on the REAL total (R3-02/R4-01).
+    let candidate_ids: HashSet<String> = candidates.iter().map(|(_, c, _)| c.clone()).collect();
     let mut orphan_candidates: Vec<(u64, String, u64)> = Vec::new();
     {
         let blocks_dir = store.root.join("blocks").join("blobs");
@@ -290,7 +294,9 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
                     }
                     let name = blob.file_name().to_string_lossy().to_string();
                     let sz = blob.metadata().map(|m| m.len()).unwrap_or(0);
-                    if name.ends_with(".tmp") || !known.contains(&name) {
+                    let garbage = name.ends_with(".tmp")
+                        || (!live_chunk_ids.contains(&name) && !candidate_ids.contains(&name));
+                    if garbage {
                         orphan_candidates.push((0, name, sz));
                     }
                 }
@@ -358,13 +364,26 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
             let (_, name, size) = &orphan_candidates[orphan_idx];
             orphan_idx += 1;
             batch -= 1;
-            // Physical-only garbage (no metadata row): delete the file
-            // directly under the same boundary rules.
+            // Physical garbage (no live-artifact reference). If a metadata
+            // row exists (deleted/tombstoned/conflict-loser), converge it
+            // with the same cascade so republication never hits a zombie.
             if let Some(p) = store.blocks_blob_path(name) {
                 match store.bounded_remove_file(&p) {
                     Ok(true) => {
                         receipt.freed_bytes += size;
                         receipt.orphans_removed += 1;
+                        let db = store.db();
+                        let has_row: Option<String> = db
+                            .query_row(
+                                "SELECT state FROM chunks WHERE chunk_id=?1",
+                                params![name],
+                                |r| r.get(0),
+                            )
+                            .optional()
+                            .unwrap_or(None);
+                        if has_row.is_some() {
+                            let _ = super::cascade_chunk_rows(&db, name);
+                        }
                     }
                     Ok(false) => {
                         receipt.pending_reader_bytes += size;
@@ -376,7 +395,6 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
                 }
             }
         }
-        let _ = total_candidates;
     }
     // Final shrink so the receipt's total_after reflects returned space.
     super::shrink_db(&store.db());

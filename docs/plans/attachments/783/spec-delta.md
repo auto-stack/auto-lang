@@ -17,15 +17,17 @@ A00–A12 全层登记(schema/键成分/引用类别/驻留/再生);实际 codec
 
 来源:README + feasibility.md + perf-report.md。要点:探针位置/依赖/
 运行面(`verify-ac-artifact-probe.ps1` 两档,closeout 恒等校验+新临时
-perf 产物校验成功后原子发布);冻结预算(64KiB 页、≥128MiB/布局、
-8MiB 热、2 页暂存、512KiB 查询、GC 64/48MiB、**8MiB staging——跨进程
-独占预算锁内 原子 measure→check→write 预留(R3-01),PEAK_STAGING 记
-锁内观测的真实并发合计**);发布协议=**单临界区**(共享 liveness 覆盖
-staging 分配→预算→CAS 投放→元数据提交;GC/恢复全程独占 liveness);
-支持面=core/scalar 四 oracle + scalar 兼容控制;限制清单
-(文件/锁级 reader 证明≠DLL 安全、无 pack、造数布局≠通用 CST、
-无亚秒承诺、链接支配对象命中路径 ~200-230ms、NTFS 新写块可见性滞后
-以 settled_space 沉降测量应对)。
+perf 产物校验成功后发布并做发布后哈希验证,IO 失败传播为门禁失败);冻结
+预算(64KiB 页、≥128MiB/布局、8MiB 热、2 页暂存、512KiB 查询、GC
+64/48MiB、**8MiB 临时空间=staging+CAS `.tmp` 双副本之和——跨进程独占
+预算锁横跨 staging 写入至 CAS 放置的原子预留(R3-01/R4-02),并发发布
+在配额窗口内串行,PEAK_TRANSIENT 只记成功预留**);发布协议=**单临界区**
+(共享 liveness 覆盖 staging 分配→预算→CAS 投放→元数据提交;GC/恢复
+全程独占 liveness);GC/恢复候选=**完整状态矩阵**(无行/deleted-tombstoned
+行重现块/无 artifact 的 live 行,R4-01);支持面=core/scalar 四 oracle +
+scalar 兼容控制;限制清单(文件/锁级 reader 证明≠DLL 安全、无 pack、
+造数布局≠通用 CST、无亚秒承诺、链接支配对象命中路径 ~150-200ms、
+NTFS 新写块可见性滞后以 settled_space 沉降测量应对)。
 
 ## SD-03 modify `docs/specs/auto-ac/project.md`
 

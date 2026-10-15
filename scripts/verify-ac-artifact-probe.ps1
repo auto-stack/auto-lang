@@ -55,6 +55,7 @@ $families = [ordered]@{
     "R1 regressions"     = @{ target = "--test review_r1_";     minPassed = 12; allowedIgnored = 0 }
     "R2 regressions"     = @{ target = "--test review_r2_";     minPassed = 6;  allowedIgnored = 0 }
     "R3 regressions"     = @{ target = "--test review_r3_";     minPassed = 4;  allowedIgnored = 0 }
+    "R4 regressions"     = @{ target = "--test review_r4_";     minPassed = 3;  allowedIgnored = 0 }
 }
 
 $failures = @()
@@ -187,8 +188,32 @@ if ($Scope -eq "closeout") {
             $failures += "perf-report-regen (post-run validation: $_)"
         }
         if ($failures.Count -eq $failuresBefore) {
-            # Every artifact check succeeded — publish.
-            Copy-Item $tmpReport $committedReport -Force
+            # Every artifact check succeeded — publish. The publication
+            # itself is a REAL file operation whose failure must propagate
+            # (R4-03): Copy-Item errors are non-terminating under
+            # ErrorActionPreference=Continue, so catch explicitly, verify
+            # the published bytes, and fail the gate on any mismatch —
+            # never claim PASS with the evidence unpublished.
+            $published = $false
+            try {
+                Copy-Item $tmpReport $committedReport -Force -ErrorAction Stop
+                # Post-publish identity check: the committed report must
+                # now be byte-identical to the validated temp artifact.
+                $a = (Get-FileHash $tmpReport -Algorithm SHA256).Hash
+                $b = (Get-FileHash $committedReport -Algorithm SHA256).Hash
+                if ($a -ne $b) {
+                    $failures += "perf-report-publish (post-copy hash mismatch: tmp $a vs committed $b)"
+                } else {
+                    $published = $true
+                }
+            } catch {
+                $failures += "perf-report-publish (Copy-Item failed: $_)"
+            }
+            if ($published) {
+                Write-Host "perf report published and verified (SHA256 match)" -ForegroundColor Green
+            } else {
+                Write-Host "perf report PUBLISH FAILED — old report preserved, gate FAILS" -ForegroundColor Yellow
+            }
         } else {
             # Invalid new report: keep the OLD report bytes untouched; the
             # failures recorded above already fail the gate.

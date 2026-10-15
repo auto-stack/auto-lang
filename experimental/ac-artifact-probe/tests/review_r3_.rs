@@ -86,25 +86,26 @@ fn r3_f01_concurrent_staging_budget_is_atomic() {
             Err(e) => panic!("unexpected error: {}", e),
         }
     }
-    // With all staging resident: 2×3MiB = 6MiB fits the 8MiB cap; the 3rd
-    // and 4th concurrent reservations must be REFUSED. 4 successes (the
-    // R3 counterexample: 12MiB written) means the quota is not atomic.
-    assert!(
-        ok <= 2,
-        "at most two 3MiB in-flight reservations fit the 8MiB cap (got {} ok) — quota not atomic (R3-01)",
-        ok
+    // With the R4-02 protocol the budget lock spans staging write THROUGH
+    // CAS placement reserving BOTH copies (2× framed): concurrent 3MiB
+    // publishes SERIALIZE inside the quota window — each holds at most
+    // 6MiB transient, so all four succeed and the disk total NEVER
+    // exceeds the 8MiB cap (the R3 counterexample's 12MiB is
+    // structurally impossible). The r4_f02 test measures the real disk
+    // bytes under a blocked rename; here we assert the serialized
+    // outcome and the peak semantics.
+    assert_eq!(
+        ok, N,
+        "serialized publishes all succeed under the atomic quota window (got {} ok / {} refused)",
+        ok, refused
     );
+    // The peak records SUCCESSFUL reservations only (R4-02): one publish's
+    // reserved total (staging + CAS tmp ≈ 2×3MiB) — never a counterfactual
+    // refused sum like the R3-era 9,437,328.
+    let peak = ac_artifact_probe::store::PEAK_TRANSIENT.load(std::sync::atomic::Ordering::Relaxed);
     assert!(
-        refused >= N - 2,
-        "overflowing reservations are controlled refusals (got {})",
-        refused
-    );
-    // The observed peak is the real concurrent total (lock-serialized),
-    // not a single-call prediction.
-    let peak = ac_artifact_probe::store::PEAK_STAGING.load(std::sync::atomic::Ordering::Relaxed);
-    assert!(
-        peak > 2 * EACH as u64,
-        "PEAK_STAGING must observe the concurrent sum (got {})",
+        peak >= 2 * EACH as u64 && peak <= 2 * EACH as u64 + 512 * 1024,
+        "PEAK_TRANSIENT must be the successful reservation (≈2×3MiB), got {}",
         peak
     );
     // The timer thread has released the locks; a retry succeeds afterwards.

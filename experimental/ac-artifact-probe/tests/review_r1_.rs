@@ -452,12 +452,18 @@ fn r1_f06_recovery_clears_orphan_rows_trash_and_is_idempotent() {
             project: None,
         })
         .is_err());
-    let _ = run_gc(&s, GcConfig { high: 1, low: 0 }).unwrap();
+    // R4-01: the GC pass itself reclaims the conflict loser (orphan
+    // candidate); recovery afterwards is an idempotent no-op for it.
     let rec = recover(&s, true).unwrap();
+    let gc = run_gc(&s, GcConfig { high: 1, low: 0 }).unwrap();
     assert!(
-        rec.orphan_rows_removed >= 1,
-        "committed orphan row reclaimed: {:?}",
-        rec
+        gc.orphans_removed as u64
+            + rec.orphan_rows_removed as u64
+            + rec.orphan_chunks_removed as u64
+            >= 1,
+        "conflict-loser chunk reclaimed (GC {} / recover {})",
+        gc.orphans_removed,
+        rec.orphan_rows_removed
     );
     // Nothing unreachable remains in the block layer.
     assert_eq!(

@@ -291,7 +291,7 @@ fn cmd_churn(rest: &[String]) -> i32 {
         gc_backoffs += 1;
     }
     peak_staging =
-        ac_artifact_probe::store::PEAK_STAGING.load(std::sync::atomic::Ordering::Relaxed);
+        ac_artifact_probe::store::PEAK_TRANSIENT.load(std::sync::atomic::Ordering::Relaxed);
     let final_space = store.space();
     emit(
         "CHURN",

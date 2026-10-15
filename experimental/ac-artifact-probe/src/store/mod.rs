@@ -145,9 +145,9 @@ fn now_ms() -> u64 {
 /// NOT unique across same-process threads.
 static STAGING_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// Process-wide high-water mark of in-flight staging (measured under the
-/// liveness guard at reservation time, framed bytes included — R2-05).
-pub static PEAK_STAGING: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Process-wide high-water mark of RESERVED transient bytes (staging +
+/// CAS tmp copy), recorded on SUCCESSFUL reservations only (R4-02).
+pub static PEAK_TRANSIENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// True for reparse points (junctions/symlinks). Scans and deletes NEVER
 /// traverse these — a store-internal junction pointing outside must not
@@ -447,7 +447,7 @@ impl ManagedStore {
         self.lock_path(name)
     }
 
-    pub(crate) fn dir_size_pub(p: &Path) -> u64 {
+    pub fn dir_size_pub(p: &Path) -> u64 {
         Self::dir_size(p)
     }
 
@@ -569,40 +569,41 @@ impl ManagedStore {
         // the SHARED liveness guard, so GC/recovery (exclusive) can never
         // observe or delete a half-published payload.
         let _live = self.liveness_shared()?;
-        // ATOMIC budget reservation (R3-01): the shared liveness guard does
-        // NOT exclude other publishers — four concurrent puts each measured
-        // 0 and wrote past the cap together. The staging-budget lock is an
-        // EXCLUSIVE cross-process lock held around measure→check→write, so
-        // the reservation is a real quota: the measured sum includes every
-        // concurrent in-flight write, the full framed bytes (48-byte header
-        // included) are counted, and PEAK_STAGING records the true
-        // concurrent total (each observation serialized under the lock),
-        // not a per-call prediction. Lock order: liveness(shared) →
-        // budget(exclusive) → chunk → sqlite; GC/recover hold
-        // liveness(exclusive) and never take the budget lock — no cycle.
+        // ATOMIC TEMP-SPACE BUDGET (R3-01 + R4-02): the §5.4 contract caps
+        // ALL agreed transient copies at 8 MiB — the staged file AND the
+        // CAS `.tmp` copy the reused BlobStore writes next to the dest.
+        // The budget lock is an EXCLUSIVE cross-process lock held from
+        // measure through the CAS placement, reserving 2× the framed bytes
+        // (both copies, 48-byte header included), so the quota is a real
+        // sum over every concurrent in-flight publish. PEAK records the
+        // observed total on SUCCESSFUL reservations only — refused
+        // requests never touch the measured peak (R4-02).
+        // Lock order: liveness(shared) → budget(exclusive) → chunk →
+        // sqlite; GC/recover hold liveness(exclusive) and never take the
+        // budget lock — no cycle.
         let _budget =
             FileGuard::lock_timeout(&self.lock_path("staging-budget"), true, CHUNK_LOCK_WAIT)?
                 .ok_or_else(|| StoreError::Busy("staging budget lock".into()))?;
         let staging_now = Self::dir_size(&self.root.join("staging"));
-        let staged_total = staging_now + framed.len() as u64;
-        PEAK_STAGING.fetch_max(staged_total, std::sync::atomic::Ordering::Relaxed);
-        if staged_total > Self::STAGING_BUDGET {
+        let reserved_total = staging_now + 2 * framed.len() as u64;
+        if reserved_total > Self::STAGING_BUDGET {
             return Err(StoreError::ResourceExhausted(format!(
-                "staging {} + new {} exceeds budget {}",
+                "transient (staging {} + staged {} + CAS tmp {}) exceeds budget {}",
                 staging_now,
+                framed.len(),
                 framed.len(),
                 Self::STAGING_BUDGET
             )));
         }
+        PEAK_TRANSIENT.fetch_max(reserved_total, std::sync::atomic::Ordering::Relaxed);
 
         // 1. Stage (transient sharing violations retried — AV scanners can
-        // hold a freshly created file; R2 repair-round observation). The
-        // budget lock is still held, so concurrent reservations see these
-        // bytes on disk.
+        //    hold a freshly created file; R2 repair-round observation). The
+        //    budget lock is still held, so concurrent reservations see these
+        //    bytes on disk.
         fs::create_dir_all(staging_dir)?;
         let staged_file = staging_dir.join("payload");
         write_with_retry(&staged_file, &framed)?;
-        drop(_budget);
         fault("after-staging");
 
         // 2. Per-chunk cross-process lock, BOUNDED wait (R1 F-08): same-key
@@ -648,6 +649,12 @@ impl ManagedStore {
             );
         }
         fault("after-chunk-move");
+        // The transient copies are gone (staging still exists until the
+        // final cleanup; the CAS tmp was consumed by the rename) — release
+        // the temp-space budget for the next publisher (R4-02: the lock
+        // spans staging write THROUGH CAS placement so both copies are
+        // inside the quota window).
+        drop(_budget);
 
         // 3. Atomic metadata publish — the SHARED liveness guard taken at
         //    the top of this critical section is still held (R2-01): GC
@@ -1379,13 +1386,13 @@ pub fn recover(
     }
 
     // 5. Orphan blob FILES + interrupted CAS tmp writes (namespace-root
-    //    gate included — R2-04).
-    let committed: std::collections::HashSet<String> = store
-        .db()
-        .prepare("SELECT chunk_id FROM chunks")?
-        .query_map([], |r| r.get(0))?
-        .flatten()
-        .collect();
+    //    gate included — R2-04). Keep-set is the FULL state matrix
+    //    (R4-01): a blob survives only while some ARTIFACT row references
+    //    it — not merely "any chunk row exists". This reclaims: no row
+    //    (F2 crash), deleted/tombstoned row with the file re-appeared
+    //    (F2 crash after same-content republication), and live row with
+    //    no artifact (conflict loser).
+    let committed: std::collections::HashSet<String> = referenced;
     let blocks_dir = store.root.join("blocks").join("blobs");
     if blocks_dir.is_dir() {
         if is_reparse(&blocks_dir) || is_reparse(blocks_dir.parent().unwrap_or(&blocks_dir)) {
