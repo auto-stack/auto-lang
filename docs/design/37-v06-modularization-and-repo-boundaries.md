@@ -148,16 +148,18 @@ AutoMan core 管包、依赖、工具执行；UI 插件接管 UI 工程分析/�
 
 ## 8. 分期与验收
 
-首批正式草案：
+首批探针（2026-10-15 已交付归档；各项完成范围以对应 Spec 为准）：
 
 | Plan | 独立产出 | 前提 |
 |---|---|---|
-| [777](../plans/777-v06-modular-boundary-baseline.md) | 可复现基线、所有者表、增量边界门；观察模式与失败反控 | 用户确认执行；不改 Rust |
-| [778](../plans/778-ui-dialect-externalization-pilot.md) | ParserBridge/注册保持/错误恢复 + 外部 model 方言探针 | 777 基线可复现；不迁全部 AST |
-| [779](../plans/779-ui-native-provider-pilot.md) | frame native 两函数外部 provider + 生产装配 | 777；778 可先完成便于顺序实施 |
-| [780](../plans/780-project-model-decoupling-pilot.md) | 轻项目模型 + pac 静态/执行对拍探针 | 777；不改全量 pac 默认读取 |
+| [777](../plans/archive/777-v06-modular-boundary-baseline.md) | 可复现基线、所有者表、增量边界门；观察模式与失败反控 | 已交付；不改 Rust |
+| [778](../plans/archive/778-ui-dialect-externalization-pilot.md) | ParserBridge/注册保持/错误恢复 + 外部 model 方言探针 | 已交付；不迁全部 AST |
+| [779](../plans/archive/779-ui-native-provider-pilot.md) | frame native 两函数外部 provider + 生产装配 | 已交付；不外推字符串/媒体寿命 |
+| [780](../plans/archive/780-project-model-decoupling-pilot.md) | 轻项目模型 + pac 静态/执行对拍探针 | 已交付；不改全量 pac 默认读取 |
 
 后续 R4–R8 见调研报告，按探针结果分别立 grammar 迁移、native family 迁移、UI crate 化、tool plugin/CLI、runtime/服务生成、UI 搬仓、man 搬仓、UiAst 终态/legacy 退役 Plan。首次三件套独立交付与最终 compatibility 退出分别验收。
+
+2026-10-15 执行编排见[正式拆分与搬迁顺序](../plans/reports/v06-extraction-execution-roadmap.md)。近期仅建三份 drafting 合同：[784旧仓保全](../plans/784-repo-extraction-legacy-preservation.md) → [785文本剪贴板能力](../plans/785-clipboard-text-host-provider.md)；[786展示读取收口](../plans/786-project-display-reader-consolidation.md)在784后可独立进行。UI生产宿主接线及后续UI搬迁等待781当前修复最终review+merge；783隔离实验不是全局前置，按真实热点协调。规划不等于授权立即切旧仓主分支或实施源码。
 
 ### 8.0 既有仓复用与默认分支切换
 
@@ -218,8 +220,8 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 | auto-man 也具备独立仓目标 | 对 Design 32 D4 的新提案；最新用户目标要求可独立，不假定已批准搬仓 |
 | 复用已有 auto-ui/auto-man 仓；legacy 保旧实现，默认分支增量接新实现 | 本轮补充推荐，已核查本地仓；尚未创建分支/切换默认分支或操作远端 |
 | 兼容 AST 暂留，终态退出 | 分期提案，退出门不得取消 |
-| ParserBridge 和 frame provider 首批小型探针 | 已写 drafting；尚未实施 |
-| 静态 pac 优先，但执行型配置不静默破坏 | 必须先对拍调查；默认切换另立 Plan |
+| ParserBridge 和 frame provider 首批小型探针 | 778/779已交付，接口/装配的有界现状见对应Spec；784–786为下一批drafting合同 |
+| 静态 pac 优先，但执行型配置不静默破坏 | 780对拍pilot已交付；786拟首批展示读取收口，全面默认切换仍须另立Plan |
 | 具体 UiAst 承载、完整 native 生命周期接口 | 待完整链路原型，先形成有界决策工件 |
 | 数据/runtime 独立仓名称、版本发布渠道、切换窗口 | 拆仓前决定；不阻止首批仓内边界工作 |
 
