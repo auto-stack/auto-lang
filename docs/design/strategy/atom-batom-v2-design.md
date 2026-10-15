@@ -270,6 +270,10 @@ Batom 字符串/bytes 可在验证后借用；可变长编码不是 Rust/C struc
 profile 或本地缓存格式。外部数据必须校验后访问，不能直接把不可信 bytes cast 成 AtomDoc。
 可搬移 buffer 内保存相对 offset；schema LayoutId、AtomId 均不能变成跨平台 ABI 承诺。
 
+2026-10-15，AC/ACC全局编译cache与大型仓库低内存需求已使上述随机访问场景成为明确需求，见 [Design39 §5](../39-ac-incremental-syntax-and-language-platform.md#5-增量编译与模块接口元信息)。建议专项探针比较Batom读优化profile与独立本地冻结块格式：段/块头、schema/布局版本、对齐/字节序、字段/子节点offset索引、相对引用、完整性与有界校验、映射生命周期，支持只读typed view而不必先构造owned Node/struct树。具体格式与格式名尚未冻结，不把D/S既有候选编码自动宣称为mmap可用。
+
+读优化与传输压缩可以使用不同物理表示，仍遵守同一逻辑模型；热块优先可直接读取，冷块可独立压缩但须按需解压并计入内存/延迟。映射不等于无I/O/无驻留/无校验，也不授予领域Checked凭证。cache数据库负责key/依赖/索引/事务/回收，块格式负责数据布局与读取，两者配合；不因二进制可映射就要求自研完整数据库。
+
 ## 5. 普通 struct 的自动编解码：建议保留，显式启用
 
 ### 5.1 必要性与范围
