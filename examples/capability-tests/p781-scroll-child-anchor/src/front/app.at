@@ -22,11 +22,9 @@ widget App {
 
     on {
         .Init -> {
-            // 阶段D W-01（F-781-R01）：标准 controller 构造被 F-781-D01
-            // 阻断（@scrollctl 前缀句柄使 iced scroll 操作全局失效——见
-            // 计划 §9 D01 记录与 D:/p781-t19/live*.log 追踪）；暂用静态
-            // 句柄保绿基线，D01 闭合后切回 scroll_controller()。
-            .std_ctl = "std-pane"
+            // 阶段D W-01（F-781-R01）：标准 controller 构造（native
+            // "@scrollctl:N" / vue "__scrollctl_N"——两端各自规范形态）。
+            .std_ctl = scroll_controller()
             let r str = scroll_to_child(.main_ctl, "c3")
         }
         .Go(p, k) -> {

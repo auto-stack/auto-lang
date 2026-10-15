@@ -166,11 +166,17 @@ class Driver:
         return False, f"pressed={ok} got={got} want={want}"
 
     def pane_state(self, controller):
-        return self.cli.tool_json("autoui_scroll_state", {"filter": controller})
+        # F-781-D01 勘定：工具参数名是 "pane"（schema 单源）；早期误发
+        # "filter" 被静默忽略 → 无过滤全集按字典序排序，@scrollctl:1 句柄
+        # （'@' < 字母）排首位，panes[0] 读到 std pane 的恒 0 offset——
+        # 「iced scroll 全局失效」实为读错 pane 的观测假象。
+        return self.cli.tool_json("autoui_scroll_state", {"pane": controller})
 
     def main_offset_y(self):
         st = self.pane_state("main-pane")
-        panes = st.get("panes", [])
+        # 按 key 精确寻址（不依赖排序；防御任何过滤面退化）。
+        panes = [p for p in st.get("panes", [])
+                 if p.get("key") == "scroll_ctl_main-pane"]
         return panes[0]["offset"][1] if panes else None
 
     def visible(self, row_needle, deadline=12.0, pane_pin=None):

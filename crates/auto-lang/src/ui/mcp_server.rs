@@ -5098,28 +5098,79 @@ struct Rect4AndViewport {
     offset: [f32; 2],
 }
 
-/// 几何法解析目标的外围 pane 链（内→外）。第一步用目标中心（内层 content
-/// 空间）找含它的最小 viewport pane；此后每步用当前 pane 的 viewport 中心
-/// （父空间）继续上溯。非祖先 pane 的误配由最小 viewport 优先 + `pane`
-/// 显式钉定缓解（阶段 A 边界，决策报告 §5.3）。
+/// 几何法解析目标的外围 pane 链（内→外）。
+///
+/// F-781-D01 收口（w01 第二段，2026-10-15）：归属判定改为**发布公式的
+/// 几何逆运算**。旧实现以「目标中心 ∈ (0,0) 锚定的 content extent 盒」判
+/// 定第一步——与发布空间错位（T-03 勘定：子件 bounds 已 pane 锚定**含
+/// viewport 原点**）：std pane 末行（content 空间 y≈261+原点 125=386）被
+/// 自身 content 盒（0..293）排除，误配 main-pane（content 0..9288 容错吸
+/// 收）→ 减 main offset 后飞出窗 → 恒 clipped_out。
+///
+/// 新判定（逐 pane 独立，两条件同时成立才归属）：
+/// ① content 还原：`content_rect = target − viewport.origin` 整体落在
+///    `[0, content]` 内（0.5px 容差吸收边界舍入）；
+/// ② 滚动态窗口位：`win_rect = target − offset`（发布公式逆）与该 pane
+///    viewport 正面积相交——滚出视口的目标不被该 pane 认领（可见性由
+///    poll 收敛，语义与旧 no_pane 一致）。
+/// 多候选取 viewport 面积最小（最内层）；此后以子 pane viewport 中心
+/// （窗口空间）被祖先 viewport 包含逐层上溯补链；`pane` 显式钉定仍优
+/// 先（决策报告 §5.3）。
 fn resolve_pane_chain(
     target: Rect4,
     panes: &HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
 ) -> Vec<(String, Rect4AndViewport)> {
+    let step_of = |e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry| {
+        Rect4AndViewport {
+            viewport: Rect4 { x: e.viewport[0], y: e.viewport[1], w: e.viewport[2], h: e.viewport[3] },
+            offset: e.offset,
+        }
+    };
+    // 第一步：owner 判定（发布公式逆运算）。
+    let owner = panes
+        .iter()
+        .filter(|(_, e)| e.content[0] > 0.0 && e.content[1] > 0.0)
+        .filter(|(_, e)| {
+            let cx = target.x - e.viewport[0];
+            let cy = target.y - e.viewport[1];
+            let content_inside = cx >= -0.5
+                && cy >= -0.5
+                && cx + target.w.max(0.0) <= e.content[0] + 0.5
+                && cy + target.h.max(0.0) <= e.content[1] + 0.5;
+            if !content_inside {
+                return false;
+            }
+            let wx = target.x - e.offset[0];
+            let wy = target.y - e.offset[1];
+            let ix0 = wx.max(e.viewport[0]);
+            let iy0 = wy.max(e.viewport[1]);
+            let ix1 = (wx + target.w).min(e.viewport[0] + e.viewport[2]);
+            let iy1 = (wy + target.h).min(e.viewport[1] + e.viewport[3]);
+            ix1 > ix0 && iy1 > iy0
+        })
+        .min_by(|a, b| {
+            viewport_area(a.1)
+                .partial_cmp(&viewport_area(b.1))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    let Some((owner_key, owner_entry)) = owner else {
+        return Vec::new();
+    };
     let mut used = std::collections::HashSet::new();
-    let mut chain: Vec<(String, Rect4AndViewport)> = Vec::new();
-    let mut probe = target.center();
+    used.insert(owner_key.clone());
+    let first = step_of(owner_entry);
+    let mut chain = vec![(owner_key.clone(), first)];
+    // 上溯：子 pane 的 viewport（窗口空间）中心被祖先 viewport 包含。
+    let mut probe = first.viewport.center();
     while chain.len() < 4 {
         let best = panes
             .iter()
             .filter(|(k, _)| !used.contains(k.as_str()))
             .filter(|(_, e)| {
-                e.content[0] > 0.0
-                    && e.content[1] > 0.0
-                    && probe.0 >= 0.0
-                    && probe.0 <= e.content[0]
-                    && probe.1 >= 0.0
-                    && probe.1 <= e.content[1]
+                probe.0 >= e.viewport[0]
+                    && probe.0 <= e.viewport[0] + e.viewport[2]
+                    && probe.1 >= e.viewport[1]
+                    && probe.1 <= e.viewport[1] + e.viewport[3]
             })
             .min_by(|a, b| {
                 viewport_area(a.1)
@@ -5129,11 +5180,7 @@ fn resolve_pane_chain(
         match best {
             Some((k, e)) => {
                 used.insert(k.clone());
-                let step = Rect4AndViewport {
-                    viewport: Rect4 { x: e.viewport[0], y: e.viewport[1], w: e.viewport[2], h: e.viewport[3] },
-                    offset: e.offset,
-                };
-                // 该 pane 的 viewport 表达在父空间——以其中心继续上溯。
+                let step = step_of(e);
                 probe = step.viewport.center();
                 chain.push((k.clone(), step));
             }
@@ -6183,13 +6230,52 @@ mod tests_plan781_t11 {
                     entry([100.0, 50.0, 400.0, 300.0], [0.0, 500.0], [400.0, 5000.0]));
         panes.insert("vnode_outer".to_string(),
                     entry([0.0, 0.0, 800.0, 600.0], [0.0, 0.0], [800.0, 5000.0]));
-        // 目标中心 (200, 1500) 落在两 pane 的 content 盒内；内 pane viewport
-        // 面积更小 → 先内后外。
-        let target = Rect4 { x: 150.0, y: 1450.0, w: 100.0, h: 100.0 };
+        // 目标（pane 锚定含 viewport 原点）content y 650..750，滚 500 后
+        // win y 150..250 ⊆ viewport(50..350)；内 pane viewport 面积更小
+        // → 先内后外。
+        let target = Rect4 { x: 150.0, y: 700.0, w: 100.0, h: 100.0 };
         let chain = resolve_pane_chain(target, &panes);
         assert_eq!(chain.len(), 2, "inner + outer");
         assert_eq!(chain[0].0, "scroll_ctl_reading-pane");
         assert_eq!(chain[1].0, "vnode_outer");
+        // 滚出视口的目标不被任何 pane 认领（F-781-D01 新语义：win 与
+        // viewport 无正面积交集 → 无 owner → no_pane，而非误配大 content
+        // 盒 pane 后假 clipped_out）。
+        let scrolled_out = Rect4 { x: 150.0, y: 1450.0, w: 100.0, h: 100.0 };
+        let chain = resolve_pane_chain(scrolled_out, &panes);
+        assert!(chain.is_empty(), "滚出视口 → 无归属");
+    }
+
+    /// F-781-D01 收口（T-19/W-01）：发布公式逆运算的 owner 判定。旧实现以
+    /// (0,0) 锚定 content 盒匹配目标中心——发布空间含 viewport 原点，
+    /// std pane 末行（content_rect 底缘贴 content 末端 + 原点偏移）被自身
+    /// content 盒排除、误配大 content 的 main pane（减其 offset 飞出窗）。
+    #[test]
+    fn plan781_resolve_chain_owner_by_inverse_transform() {
+        let mut panes = HashMap::new();
+        // w01 实测几何：std pane viewport [0,125,1280,128] content 293.4，
+        // 锚点滚动 165；main pane 大 content（曾吞掉错位目标）。
+        panes.insert("scroll_ctl_@scrollctl:1".to_string(),
+                    entry([0.0, 125.0, 1280.0, 128.0], [0.0, 165.0], [1280.0, 293.4]));
+        panes.insert("scroll_ctl_main-pane".to_string(),
+                    entry([28.0, 253.0, 1024.0, 535.0], [0.0, 3234.0], [1024.0, 9288.0]));
+        // 末行发布 rect（含 viewport 原点）：content y 260.8+125=385.8。
+        let target = Rect4 { x: 8.0, y: 385.8, w: 198.8, h: 31.6 };
+        let chain = resolve_pane_chain(target, &panes);
+        assert_eq!(chain.len(), 1, "owner=std，无嵌套祖先");
+        assert_eq!(chain[0].0, "scroll_ctl_@scrollctl:1");
+        let (inter, flags) = compute_visibility(
+            target,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+            (1280.0, 800.0),
+        );
+        assert!(flags.is_empty(), "滚动后末行可见: {flags:?}");
+        assert!(inter.expect("intersection").positive());
+        // 滚动前（offset 0）：win y 385.8 出 viewport 底 → 无 owner。
+        panes.insert("scroll_ctl_@scrollctl:1".to_string(),
+                    entry([0.0, 125.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 293.4]));
+        let chain = resolve_pane_chain(target, &panes);
+        assert!(chain.is_empty(), "未滚动 → 末行在视口外无归属");
     }
 
     #[test]

@@ -3366,6 +3366,38 @@ impl<'a> AuraViewBuilder<'a> {
         (axes, policy, controller, on_scroll)
     }
 
+    /// F-781-D01 收口（w01 勘定，2026-10-15）：scroll-pane 内层 col 继承
+    /// pane 样式的**视觉类**（padding/border/bg/radius——Plan 409 §10 续 3
+    /// 双写语义保留），但**滚动轴尺寸类必须剥除**：Fixed/百分比/min/max 高
+    /// 落到内容 col 会把限高传导给整个子树（iced 限高→溢出行挤压为零高、
+    /// content==viewport→pane 永不可滚动，锚点/offset/滚动条全失效）；Fill
+    /// 高（h-full/flex-1）侥幸于滚动轴压缩语义取 intrinsic，剥除为幂等。
+    /// vue 轨是单元素映射（overflow-* 直接上 pane 元素）无此双写面——剥除
+    /// 即对齐 vue 行为。宽度类仅在水平/双轴 pane 剥除；竖直 pane 的
+    /// w-full 内容铺宽依赖保留。
+    fn scroll_content_style(style: Style, axes: crate::ui::scroll::ScrollAxes) -> Style {
+        use crate::ui::scroll::ScrollAxes;
+        use crate::ui::style::StyleClass;
+        let strip_h = axes.y;
+        let strip_w = axes.x;
+        let is_axis_sizing = |c: &StyleClass| match c {
+            StyleClass::Height(_)
+            | StyleClass::HeightPercent(_)
+            | StyleClass::MinHeight(_)
+            | StyleClass::MaxHeight(_) => strip_h,
+            StyleClass::Width(_)
+            | StyleClass::WidthPercent(_)
+            | StyleClass::MinWidth(_)
+            | StyleClass::MaxWidth(_) => strip_w,
+            _ => false,
+        };
+        let mut style = style;
+        style.classes.retain(|c| !is_axis_sizing(c));
+        style.hover_classes.retain(|c| !is_axis_sizing(c));
+        style.variant_classes.retain(|(_, c)| !is_axis_sizing(c));
+        style
+    }
+
     /// Tracked convert_scroll — mirrors `convert_scroll` but recurses via
     /// `convert_node_tracked_ctx` (path/probe tracking).
     fn convert_scroll_tracked_ctx(
@@ -3396,8 +3428,11 @@ impl<'a> AuraViewBuilder<'a> {
             .spacing(spacing)
             .padding(padding);
         let scroll_style = style.clone();
+        // PLAN-656 T-03: scroll-pane 语义提前——内层 col 的样式剥除需要轴信息。
+        let (axes, scrollbar_policy, controller, on_scroll) =
+            self.scroll_pane_semantics(props, events, bindings);
         if let Some(s) = style {
-            builder = builder.with_style(s);
+            builder = builder.with_style(Self::scroll_content_style(s, axes));
         }
         for child in child_views {
             builder = builder.child(child);
@@ -3406,9 +3441,6 @@ impl<'a> AuraViewBuilder<'a> {
         // Plan 057 续:`auto_scroll: "…"` 标记 → VM 端唯一挂 blocklist_scroll id
         // 的主列表(snap_to_end 目标);块内 max-h 滚动区不再共享同 id。
         let auto_scroll = self.extract_string(props, "auto_scroll").is_some();
-        // PLAN-656 T-03: scroll-pane 语义（axis/scrollbar/controller/onscroll）。
-        let (axes, scrollbar_policy, controller, on_scroll) =
-            self.scroll_pane_semantics(props, events, bindings);
         // PLAN-781 T-03: controller pane 的锚点归属后置注入（tracked 镜像）。
         let col_view = match controller.as_ref() {
             Some(c) => Self::inject_anchor_pane(col_view, c.key()),
@@ -8730,9 +8762,14 @@ impl<'a> AuraViewBuilder<'a> {
             .padding(padding);
         // style(px-3 py-4 padding + flex-1/h-full)进内层 col;Scrollable 层也带
         // style(flex-1/h-full → build_scrollable 读 Fill 得有界高度才能真正滚动)。
+        // F-781-D01 收口：内层 col 的样式经 scroll_content_style 剥除滚动轴
+        // 尺寸类（h-32 类 Fixed 高会把内容钳到 viewport→pane 永不可滚动）。
         let scroll_style = style.clone();
+        // PLAN-656 T-03: scroll-pane 语义提前——内层 col 的样式剥除需要轴信息。
+        let (axes, scrollbar_policy, controller, on_scroll) =
+            self.scroll_pane_semantics(props, events, bindings);
         if let Some(s) = style {
-            builder = builder.with_style(s);
+            builder = builder.with_style(Self::scroll_content_style(s, axes));
         }
         for child in child_views {
             builder = builder.child(child);
@@ -8741,9 +8778,6 @@ impl<'a> AuraViewBuilder<'a> {
         // Plan 057 续:`auto_scroll: "…"` 标记 → VM 端唯一挂 blocklist_scroll id
         // 的主列表(snap_to_end 目标);块内 max-h 滚动区不再共享同 id。
         let auto_scroll = self.extract_string(props, "auto_scroll").is_some();
-        // PLAN-656 T-03: scroll-pane 语义（axis/scrollbar/controller/onscroll）。
-        let (axes, scrollbar_policy, controller, on_scroll) =
-            self.scroll_pane_semantics(props, events, bindings);
         // PLAN-781 T-03: controller pane 的锚点归属后置注入。
         let col_view = match controller.as_ref() {
             Some(c) => Self::inject_anchor_pane(col_view, c.key()),
@@ -27868,5 +27902,54 @@ mod plan047_convergence_tests {
             .unwrap();
         let k2 = conv_build(&bridge, &widget.computed, &armed);
         assert!(k2.contains("true"), "级联失效产物保真: {k2}");
+    }
+
+    /// F-781-D01 收口（T-19/W-01，2026-10-15）：scroll-pane 内层 col 的样式
+    /// 剥除——滚动轴尺寸类（Y 轴剥 Height 族 / X 轴剥 Width 族）不落内容，
+    /// 视觉类（padding/border/rounded）与跨轴宽度保留；hover 变体同步剥。
+    /// 反例锚：`h-32` 类 Fixed 高曾把 std pane 内容钳到 viewport 高（iced
+    /// 限高传导→溢出行零高、content==viewport→pane 永不可滚动，锚点行
+    /// zero_size 恒不可见）；vue 单元素映射无此面。
+    #[test]
+    fn plan781_scroll_content_style_strips_axis_sizing() {
+        use crate::ui::scroll::ScrollAxes;
+        use crate::ui::style::{Style, StyleClass};
+
+        let has = |s: &Style, f: &dyn Fn(&StyleClass) -> bool| {
+            s.classes.iter().any(|c| f(c)) || s.variant_classes.iter().any(|(_, c)| f(c))
+        };
+        let heightish = |c: &StyleClass| {
+            matches!(
+                c,
+                StyleClass::Height(_) | StyleClass::HeightPercent(_) | StyleClass::MinHeight(_) | StyleClass::MaxHeight(_)
+            )
+        };
+        let widthish = |c: &StyleClass| {
+            matches!(
+                c,
+                StyleClass::Width(_) | StyleClass::WidthPercent(_) | StyleClass::MinWidth(_) | StyleClass::MaxWidth(_)
+            )
+        };
+
+        // Y 轴（缺省）pane："border rounded h-32 px-2 w-full hover:h-64"——
+        // Height 族剥（含 hover 变体），border/rounded/px-2/w-full 保留。
+        let pane = Style::parse("border rounded h-32 px-2 w-full hover:h-64").unwrap();
+        let content = AuraViewBuilder::scroll_content_style(pane, ScrollAxes::Y);
+        assert!(!has(&content, &heightish), "Y 轴 pane：Height 族须剥除");
+        assert!(has(&content, &|c| matches!(c, StyleClass::Border)), "视觉类 border 保留");
+        assert!(has(&content, &|c| matches!(c, StyleClass::Rounded)), "视觉类 rounded 保留");
+        assert!(has(&content, &|c| matches!(c, StyleClass::PaddingX(_))), "padding 保留");
+        assert!(has(&content, &widthish), "Y 轴 pane：跨轴 Width（w-full 铺宽）保留");
+
+        // X 轴 pane："w-96 h-32"——Width 剥、Height 保留。
+        let pane = Style::parse("w-96 h-32").unwrap();
+        let content = AuraViewBuilder::scroll_content_style(pane, ScrollAxes::X);
+        assert!(!has(&content, &widthish), "X 轴 pane：Width 族须剥除");
+        assert!(has(&content, &heightish), "X 轴 pane：跨轴 Height 保留");
+
+        // 双轴：两族都剥。
+        let pane = Style::parse("h-[400px] max-h-[600px] w-1/2").unwrap();
+        let content = AuraViewBuilder::scroll_content_style(pane, ScrollAxes::BOTH);
+        assert!(!has(&content, &heightish) && !has(&content, &widthish), "双轴 pane：两族都剥");
     }
 }
