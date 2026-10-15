@@ -1,0 +1,5 @@
+{"file": "model.log", "command": ["cargo", "test", "-p", "auto-project-model", "--locked"], "exit_code": 0, "sha256": "6714237f07990516c56cdea285bf57f2d615aa178c061f5d3d483037ff26ed44"}
+{"file": "consumer.log", "command": ["cargo", "test", "--manifest-path", "test/fixtures/modularity/project-model/consumer/Cargo.toml", "--locked"], "exit_code": 0, "sha256": "5e893af23448d7f65433e1b9a99c63c0dfa6cd35a2d74adee6d18149cb53f138"}
+{"file": "adapter.log", "command": ["cargo", "test", "-p", "auto-man", "--lib", "project_model", "--locked", "--", "--nocapture"], "exit_code": 0, "sha256": "68727df0da8bfe927411b46e0c65a679db480e49ea5752a14b7dedf82ebd625a"}
+{"file": "check.log", "command": ["cargo", "check", "-p", "auto-lang", "-p", "auto-man", "--locked"], "exit_code": 0, "sha256": "2b20de97c733f5caee9674116fc186dea586ce90972f383f847dd19992df5f35"}
+{"file": "fmt-model.log", "command": ["cargo", "fmt", "-p", "auto-project-model", "--", "--check"], "exit_code": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}

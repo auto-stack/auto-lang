@@ -1,0 +1,5 @@
+{"file": "fmt-adapter-consumer.log", "command": ["rustfmt", "--check", "--edition", "2021", "crates/auto-man/src/project_model_adapter.rs", "test/fixtures/modularity/project-model/consumer/src/lib.rs"], "exit": 0}
+{"file": "separator.log", "command": ["cargo", "test", "-p", "auto-man", "--lib", "p780_separator_semantics", "--locked", "--", "--nocapture"], "exit": 0}
+{"file": "consumer-deps.log", "command": ["cargo", "tree", "--manifest-path", "test/fixtures/modularity/project-model/consumer/Cargo.toml", "--locked", "--offline", "--edges", "normal", "--prefix", "none"], "exit": 0}
+{"file": "diff-check.log", "command": ["git", "diff", "--check", "075a9b4ab6cb4284f3c259b348f2571322107fec", "HEAD"], "exit": 0}
+{"file": "production-diff.log", "command": ["git", "diff", "075a9b4ab6cb4284f3c259b348f2571322107fec", "HEAD", "--", "crates/auto-man/src/pac.rs", "crates/auto-man/src/vue.rs", "crates/auto-man/src/rust_ui.rs", "crates/auto-man/src/asset.rs", "crates/auto-man/src/target.rs", "crates/auto-lang/src"], "exit": 0}

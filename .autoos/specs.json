@@ -1799,6 +1799,17 @@
             "correction_merge:3002c30f"
           ],
           "content": "交付=已发布分支汇流：auto-lang 纠偏 merge 3002c30（第一父 v0.5.0 tag e05e2d3）+ 收据链至 45db8e25；auto-os merge 853a551；notes 1391bd7 / down c39ac7f / musk cherry-pick -x / jade-edit 快进，37 仓 refs 存档 final-refs-20261013.json。SD-00 none：不新增 AutoLang 运行时 spec（书面说明在计划 §规范增量），designs 零条目非欠填。ledger 离线投影（无 store writer 可达），P775-R7/P775-M，version 18→19。归档 docs/plans/archive/775-v06-main-convergence.md。无 worktree/分支待清（auto-lang 侧从未建树；lang-775 组已先行消失，处置见 P775-R7）。批量回归：2026-10-14 收据窗口 766→774 已含 775 合并工作并显式消费 775%5 触发，<48h 未到期，归档时不 due。docs-only 关账无生产工件需重建。"
+        },
+        {
+          "id": "P780-M",
+          "title": "PLAN-780 合入沉淀收据（轻项目模型与 pac.at 兼容性探针交付）",
+          "file": "docs/plans/archive/780-project-model-decoupling-pilot.md",
+          "tags": [
+            "plan:780",
+            "delivery:ec934b000",
+            "completion:delivered"
+          ],
+          "content": "交付=crates/auto-project-model（轻静态模型）+ auto-man 显式探针 adapter（生产零切换）+ fixtures/consumer/survey + T04 owner map + SD-01（新 project-model spec）/SD-02（auto-man pilot 节）。核心结论：170 受管 pac.at=157 可静态解析且与 VM 管线逐字段对拍相等，5 模板需执行型渲染；VM 对象键迭代序跨进程不稳定（结构化比较）。merge 门禁：裸 cargo t 三跑 5352/5353（旋转负载 flake 单跑全绿+零 auto-lang 改动归因）；不触 VM/codegen/trans/book/ui_gen/aavm 无 tv/tt/tb/tu/taa。ledger 离线投影（无 store writer，备份+外科+读回校验）v21→22。批回归 780%5=0 到期移交 /auto-plan:regress。生产部署面 N/A（auto-lang 无发布二进制/web bundle）。"
         }
       ]
     },
@@ -6834,6 +6845,17 @@
             "plan:781",
             "commit:3e1b5fc03"
           ]
+        },
+        {
+          "id": "P780-D1",
+          "title": "轻静态项目模型 project-model（pac.at 冻结静态子集/DTO/分类纪律）",
+          "file": "docs/specs/project-model/project.md",
+          "tags": [
+            "plan:780",
+            "commit:ec934b000",
+            "reviewed:68fcc3bf7"
+          ],
+          "content": "PLAN-780 SD-01 落地：crates/auto-project-model 仅依赖 auto-atom/auto-val（normal 闭包无 compiler/VM/man/UI，外部 consumer 独立 manifest 门）。公开 parse_document/parse_file 只读入口；ProjectDescriptor 冻结字段归一化对齐 Pac 语义（identity/render 三形态+legacy/scene/members/defines/dep 裸名-引号-参数/展示运行字段/toggle/external_backend+source 行号）。纪律：未知属性/节点入 raw_props/raw_nodes（dep 体 children/重复/行号保留，重复 path last-wins）；变量/调用/插值/赋值/f-string/root wrapper/类型形态 unsupported 分类或 stage 错误，非静态不计等价、无静默回退。注释/分隔语义：块注释内换行仅位置不分隔；数组/对象逗号规则不对称（数组值后逗号换行注释混排、对象逗号仅同行）；顶层 # 注释合法而容器值位 # 双臂拒绝；id6 逗号混排（[\"a\",/*c*/,\"b\"]）为保留限制（AtomParser 值层拒绝，不假 static）。错误带 path/stage/位置，Io 失败必红 corpus 门。对拍探针 auto-man project_model_adapter（170 受管文件=157 static 相等+9 dynamic+2 template+2 both_rejected，豁免=精确全路径清单+stage 诊断）。生产读取零切换；后续接线按 T04 owner map 另立计划。"
         }
       ]
     },
@@ -8231,6 +8253,16 @@
             "plan:781",
             "commit:3e1b5fc03"
           ]
+        },
+        {
+          "id": "P780-T",
+          "title": "auto-project-model 单测 30 + adapter 探针 11 + 外部 consumer 3 + fixtures 21（R1–R4 永久反例矩阵）",
+          "file": "crates/auto-project-model/src/tests.rs",
+          "tags": [
+            "plan:780",
+            "commit:12e6e77db"
+          ],
+          "content": "model 30/30：静态语法/归一化/unsupported 八类分类/staged 错误 + R1 值位分类与保留（结构化变量分类/dep 重复 last-wins/子树与 args 哨兵/root wrapper）+ R2 终止性（线程+recv_timeout 2s 外部截止，12 例边界矩阵）+ R3 trivia 分隔矩阵（16 合法+7 负控）+ R4 成对真实换行 vs 注释内换行（17 例+CRLF+容器 # 三态）。adapter 11/11：corpus 对拍（read_error 必红/双拒与模板豁免=精确仓根相对路径 allowlist+new_error_stage 结构化诊断/影子负控）、fixture 边缘形态、V-03 动态无回退、V-04 路径基点 parity、V-05 零副作用、R3 双臂 trivia parity、R4 矩阵、oracle 不对称分隔语义断言。consumer 3/3（独立 manifest 仅依赖 model=AC-01）。fixtures 21 例（static 13/dynamic 6/bad 3 含空文件控制）+ survey 工具（149 语料分类）。merge 裸 cargo t：三次整档 5352/5353，每次单个不同负载 flake（plan484/plan707/plan776）均单跑绿、皆在本计划零改动 crate（并发竞争归因，非代码缺陷）。"
         }
       ]
     },
@@ -11111,10 +11143,21 @@
             "plan_revision:6"
           ],
           "content": "final closeout pass（2026-10-15，主检出关账会话，与执行同体系限制已声明）。AC-01..07 全 pass：v0.5.0 tag e05e2d3d 与远端 v0.6-dev 尖端 94173fe2 均为 origin/master 2a510751 祖先；auto-os merge 853a551 双父 e7fadc47/71d3b5f4 cat-file 重验；auto-notes main=1391bd7、auto-down master=c39ac7f 与收据汇合点一致；742/744/773/774 均经各自后续复审走到 archived（合流未强改状态）。保全候选处置：.wt/lang-775 组（auto-os 脏集成候选+plan-775-dev 分支）已消失、无移除收据，候选分支与 main 同指 853a551 无 commit 损失，仅未提交子模块 WIP 丢失，用户 2026-10-15 知情并授权关账。REG-5（taa 两确定性红，json.encode 泛型 adapter，b1230e767）按 2026-10-02 aavm 豁免非阻塞，KNOWN-DEBT 在册。"
+        },
+        {
+          "id": "P780-R5",
+          "title": "PLAN-780 第五轮独立 final review pass（R1–R4 全部 findings 闭合）",
+          "file": "docs/plans/attachments/780/review-r5/REVIEW.md",
+          "tags": [
+            "plan:780",
+            "reviewed:68fcc3bf7",
+            "plan_revision:1"
+          ],
+          "content": "reviewed_commit=68fcc3bf7（rebase 后 12e6e77db，range-diff 全=）。五轮闭合：R1 五项+格式（值位分类 Option-? 根因/dep last-wins/子树 args 保留/IO 传播/root wrapper/consumer fmt）、R2 两项（前进保证+终止性外部截止/豁免身份+诊断）、R3 两项（trivia-分隔统一 per-container oracle 语义/精确全路径豁免+影子负控）、R4 一项（块注释内换行=位置非分隔+成对矩阵）。历轮独立反例/终止控制/四门禁反控全过；id6 逗号混排限制如实入冻结 SD。AC01–04 pass（冻结 pilot 范围），AC05 merge-owned。分隔 oracle/组合矩阵/影子门禁等复审脚本随 attachments 入库可重放。"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 21
+  "version": 22
 }
