@@ -15,6 +15,7 @@ use auto_lang::aura::{AuraRoute, AuraWidget};
 use auto_lang::database::{UIArtifact, UIBackend, UICache};
 use auto_lang::ui_gen::{BackendGenerator, VueGenerator};
 
+use crate::project_display_reader::{self, DisplayRead};
 use crate::util::hash_string;
 use crate::AutoResult;
 
@@ -2515,61 +2516,34 @@ fn parse_workspace_path(content: &str, key: &str) -> Option<String> {
 /// Parse project name from pac.at content
 /// PLAN-063 Phase B T13 (KD 061 D28): pac.at 可选 `title:` 字段——
 /// document.title 展示名(回退 name;name 是包标识不宜作展示标题)。
+/// PLAN-786: 字段读取收口到 [`crate::project_display_reader`]；本函数
+/// 保留为 title 单字段测试入口（`pac_title_overrides_document_title`
+/// 基线），断言不变——生产读取经 `project_display_reader::read` 一次完成。
+#[cfg(test)]
 fn parse_pac_title(content: &str) -> Option<String> {
-    parse_pac_scalar(content, "title")
+    project_display_reader::read(content).title
 }
 
 /// PLAN-015：展示名 locale 链（document.title）——AUTO_LOCALE（缺省 zh）
-/// 且声明 `title_zh:` 时取中文，否则 `title:`。行级解析与 [`parse_pac_title`]
-/// 同族；AUTO_LOCALE 惯例与 auto-lang i18n_lookup 同款（本 crate 私有副本）。
-fn parse_pac_display_title(content: &str) -> Option<String> {
+/// 且声明 `title_zh:` 时取中文，否则 `title:`。PLAN-786: 字段值来自
+/// project_display_reader 一次读取；locale 判定仍在此处，env 只在
+/// 展示入口读一次（纯判定走 `_in` 显式入参形态，单测用，env 无关）。
+fn parse_pac_display_title(display: &DisplayRead) -> Option<String> {
     let prefers_zh = std::env::var("AUTO_LOCALE")
         .unwrap_or_else(|_| "zh".to_string())
         .to_ascii_lowercase()
         .starts_with("zh");
-    parse_pac_display_title_in(content, prefers_zh)
+    parse_pac_display_title_in(display, prefers_zh)
 }
 
 /// 纯判定形态（locale 显式入参）——单测用，env 无关。
-fn parse_pac_display_title_in(content: &str, prefers_zh: bool) -> Option<String> {
+fn parse_pac_display_title_in(display: &DisplayRead, prefers_zh: bool) -> Option<String> {
     if prefers_zh {
-        if let Some(zh) = parse_pac_scalar(content, "title_zh") {
-            return Some(zh);
+        if let Some(zh) = &display.title_zh {
+            return Some(zh.clone());
         }
     }
-    parse_pac_title(content)
-}
-
-fn parse_pac_scalar(content: &str, key: &str) -> Option<String> {
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with(&format!("{key}:")) {
-            if let Some(colon_pos) = line.find(':') {
-                let value = line[colon_pos + 1..].trim();
-                let value = value.trim_end_matches(',');
-                let value = value.trim_matches('"').trim_matches('\'');
-                if !value.is_empty() {
-                    return Some(value.to_string());
-                }
-            }
-        }
-    }
-    None
-}
-
-fn parse_pac_name(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with("name:") {
-            if let Some(colon_pos) = line.find(':') {
-                let value = line[colon_pos + 1..].trim();
-                let value = value.trim_end_matches(',');
-                let value = value.trim_matches('"').trim_matches('\'');
-                return Some(value.to_string());
-            }
-        }
-    }
-    None
+    display.title.clone()
 }
 
 /// Parse the `shadcn:` toggle from pac.at content (Plan 013).
@@ -3334,12 +3308,13 @@ export default router
             return Err(format!("Entry file '{}' not found", app_at.display()).into());
         }
 
-        // Get project name
-        let name = parse_pac_name(&pac_content)
-            .unwrap_or_else(|| "aura-app".to_string());
+        // Get project name + display title — PLAN-786: 三字段一次读取收口
+        // 到 project_display_reader（name/title/title_zh；locale 链在下方）。
+        let display = project_display_reader::read(&pac_content);
+        let name = display.name.clone().unwrap_or_else(|| "aura-app".to_string());
         // PLAN-063 Phase B T13 (KD 061 D28): 展示名 title 可选透传。
         // PLAN-015：locale 链——AUTO_LOCALE=zh（缺省）优先 title_zh。
-        let index_title = parse_pac_display_title(&pac_content);
+        let index_title = parse_pac_display_title(&display);
 
         // Plan 013: shadcn-vue mapping toggle (`shadcn: off` in pac.at).
         let shadcn = parse_shadcn(&pac_content);
@@ -10024,20 +9999,25 @@ title: \"Auto Musk\"
 
     /// PLAN-015：document.title locale 链——zh（缺省 locale）优先 title_zh，
     /// en 恒 title；title_zh 缺席两 locale 一致。
+    /// PLAN-786：字段读取经 project_display_reader（断言基线不变，入参
+    /// 形态从 content 改为一次读取的 DisplayRead）。
     #[test]
     fn pac_display_title_locale_chain() {
         let pac = "name: \"x\"
 title: \"Calculator\"
 title_zh: \"计算器\"
 ";
-        assert_eq!(parse_pac_display_title_in(pac, true).as_deref(), Some("计算器"));
-        assert_eq!(parse_pac_display_title_in(pac, false).as_deref(), Some("Calculator"));
+        let read = project_display_reader::read(pac);
+        assert_eq!(parse_pac_display_title_in(&read, true).as_deref(), Some("计算器"));
+        assert_eq!(parse_pac_display_title_in(&read, false).as_deref(), Some("Calculator"));
         let no_zh = "name: \"x\"
 title: \"Clock\"
 ";
-        assert_eq!(parse_pac_display_title_in(no_zh, true).as_deref(), Some("Clock"));
-        assert_eq!(parse_pac_display_title_in(no_zh, false).as_deref(), Some("Clock"));
-        assert_eq!(parse_pac_display_title_in("name: \"x\"", true), None);
+        let read_no_zh = project_display_reader::read(no_zh);
+        assert_eq!(parse_pac_display_title_in(&read_no_zh, true).as_deref(), Some("Clock"));
+        assert_eq!(parse_pac_display_title_in(&read_no_zh, false).as_deref(), Some("Clock"));
+        let read_name_only = project_display_reader::read("name: \"x\"");
+        assert_eq!(parse_pac_display_title_in(&read_name_only, true), None);
     }
 
     /// PLAN-063 Phase B T12 (KD 061 D27): ext 手写 .vue 的 ui 家族导入

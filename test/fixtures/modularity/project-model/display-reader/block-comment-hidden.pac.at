@@ -1,0 +1,4 @@
+name: "commented"
+/*
+title: hidden in block comment
+*/
