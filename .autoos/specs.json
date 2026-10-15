@@ -1838,6 +1838,16 @@
       "stage:merge"
      ],
      "content": "merge 收据：rebase 六提交 range-diff 全等价（45203b5ca→1868e522d）；裸 cargo t 5364/5364 + tv 163/163（冻结与 delivery 双跑）；SD-01/02 沉淀 vm/ui overview；ledger v23→v24 守卫式离线投影（零扰动）；批回归到期判定与 guard-clean 清理见计划终态。"
+    },
+    {
+     "id": "P784-M",
+     "title": "PLAN-784 合入沉淀收据（旧仓保全与拆分迁移准备交付）",
+     "file": "docs/plans/reports/784-repo-preservation.md",
+     "tags": [
+      "plan:784",
+      "completion:delivered"
+     ],
+     "content": "交付物：scripts/legacy-preservation.py（inventory/preserve/anchor/verify/recover-drill/snapshots/drill）、legacy refs 两仓各 branch+tag（本地未 push）、准备树 .wt/lang-784/{auto-ui,auto-man}@codex/v06-extraction（未替换代码树，显式转交）、仓外恢复位置三代并存（v1 松散/v2 schema1/v2.1 schema2 LATEST）、777 边界基线重锚 7d51845ff（36→39 边，strict pass 0 违例 2 豁免）、迁出清单 attachments/784/t04/migration-inventory.md、新规范 docs/specs/repository-boundaries/project.md。Category A 无 Rust 改动。"
     }
    ]
   },
@@ -6942,6 +6952,17 @@
       "spec:ui/overview"
      ],
      "content": "FrameBenchProvider 读既有 frame_bench 通道（门控/时源/note 语义不变）；install_process_default 统一 if-absent。装配位置=VmBridge 两构造、run_file_dynamic_ui_inner、CLI ui-iced 入口、crate 根 install_ui_host_capabilities 漏斗（run/test/debug/create×2/config/REPL/解释器/back_proxy）；no-ui=no-op。UI 开/关两构建显式默认均真实供值；a2r 臂与未迁族清单在案。"
+    },
+    {
+     "id": "P784-D1",
+     "title": "仓库边界与 legacy 保全 current-state：三仓身份/状态寻址快照/治理规则",
+     "file": "docs/specs/repository-boundaries/project.md",
+     "tags": [
+      "plan:784",
+      "commit:ff7f20064",
+      "sha256:3285de1b50564b96"
+     ],
+     "content": "PLAN-784 SD-01 落地：docs/specs/repository-boundaries/project.md 为三仓身份与 legacy 保全 canonical 规范。现行规则：auto-ui/auto-man 复用既有仓身份与 gitee 远端；主分支在迁移验收前维持旧版本（不 reset/orphan/force-push/清空）；legacy 锚=本地分支 legacy/pre-v06-extraction + 标签 legacy-pre-v06-{f7d92eef,51fafe82}；payload 位于仓外 D:/autostack/.recovery/784-legacy-preservation（状态寻址快照 snapshots/<snap-id>/，身份=tip+完整 refs→objectID+保留内容 hash；同态幂等复用/变态新增/旧快照不可覆盖；verify 对 wip/untracked/ignored 原文件漂移判红；创建/复用/复核三处断言 bundle 实际承载 refs 覆盖冻结映射）；准备树 .wt/lang-784/{auto-ui,auto-man}@codex/v06-extraction 显式转交后续迁移计划；模块边界门基线锚 7d51845ff（39 边）。"
     }
    ]
   },
@@ -8378,6 +8399,16 @@
       "fixture:native-provider-consumer"
      ],
      "content": "外部独立 manifest（no-ui）6 测：显式 A/B 经 run_with_capture 与低层双活实例 stdout 真值/不串线/缺席 0/clamp i32::MAX/ID-契约-merge 规则；UI 开=同源经 workspace 锁库 6/6。in-crate：plan779_frame_provider（剪断源扫描/VmBridge 装配/merge 保 provider/高层优先关系）+ frame_provider 单元锚。门禁=cargo test --manifest-path …/native-provider-consumer/Cargo.toml + 复审 ui-consumer harness。"
+    },
+    {
+     "id": "P784-T",
+     "title": "legacy-preservation 永久反控 drill 8 控制（幂等/冲突/漂移/快照保留/损坏/refs 矩阵）",
+     "file": "scripts/legacy-preservation.py",
+     "tags": [
+      "plan:784",
+      "commit:80f11a1c3"
+     ],
+     "content": "python scripts/legacy-preservation.py drill 8/8：D1 同 tip anchor 幂等 / D2 异 tip 拒绝且原 ref 不动 / D3 HEAD 漂移拒绝 / D4 同 HEAD 变 WIP=独立快照 / D5 A→B 重复保全旧快照字节不变+同态 reuse / D6 wip+untracked+ignored 原文件漂移与删除四反控判红+复绿+备份不动 / D7 快照 bundle 损坏拒绝且零改写 / D8 同 HEAD refs 新增(tag 指旧 bundle 不可达提交)/移动/删除矩阵+bare fetch 实际恢复断言。控制间 payload 强制隔离。真实仓复核入口：preserve/verify/anchor/recover-drill/snapshots。"
     }
    ]
   },
@@ -11299,10 +11330,21 @@
       "commit:45203b5ca"
      ],
      "content": "R3 final pass@45203b5ca：R1-F01 门开程序轨/R1-F02 格式/R2-F01 兼容装配覆盖显式 provider 全 closed；独立补控（优先关系/实例快照覆盖/有限并发/空槽补缺）四组通过；外部 consumer UI 开关双 6/6。边界：不外推 heap/media/async 与呈现性能；fixture ui-iced 新锁解析问题保留为后续发行依赖身份检查。"
+    },
+    {
+     "id": "P784-R3",
+     "title": "PLAN-784 第三轮独立最终复审 pass（R1 三项/R2 一项全闭合，19/19+8/8）",
+     "file": "docs/plans/attachments/784/review-r3/REVIEW.md",
+     "tags": [
+      "plan:784",
+      "reviewed_commit:80f11a1c3(rebase 前 d2f12ca2e)",
+      "spec_sha256:3285de1b50564b96"
+     ],
+     "content": "final pass：R1（快照覆盖/ignored 漂移/链接）与 R2（快照身份遗漏 refs）全 closed。独立 harness 19/19、永久 drill 8/8；缺 ref 旧 bundle+manifest 同步改 hash 的伪装反控仍被 verify/preserve exit 4 拦截；两真实仓新代快照独立恢复（11/29 refs、3/23 tags、tree 相等）；原仓/三代 payload 前后不变；两 strict pass；三树 wt-guard clean。SD-01 重读冻结 SHA256 3285de1b…。"
     }
    ]
   }
  ],
  "project": "auto-lang",
- "version": 24
+ "version": 25
 }
