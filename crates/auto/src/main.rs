@@ -492,7 +492,11 @@ enum Commands {
             help = "PLAN-102 D-1: windowless bridge host — serve adopted apps' frames/InputMsg over a loopback WebSocket (with --bridge-token) instead of native OS windows"
         )]
         bridge_ws: Option<u16>,
-        #[arg(long, requires = "bridge_ws", help = "Static token guarding the bridge WS endpoint (loopback + token; no token = no listener)")]
+        #[arg(
+            long,
+            requires = "bridge_ws",
+            help = "Static token guarding the bridge WS endpoint (loopback + token; no token = no listener)"
+        )]
         bridge_token: Option<String>,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
@@ -961,6 +965,10 @@ fn real_main(cli: Cli) -> Result<()> {
     // 无渲染泵进程的 frame 读数本就恒 0）。
     #[cfg(feature = "ui-iced")]
     auto_lang::ui::frame_provider::install_process_default();
+    // PLAN-785: clipboard text adapter 同点装配（if-absent 兼容默认；auto
+    // 的 ui-iced 传递开启 auto-lang/ui-iced ⇒ ui-clipboard，门控随形）。
+    #[cfg(feature = "ui-iced")]
+    auto_lang::ui::clipboard_provider::install_process_default();
 
     // Determine AI mode: -ai flag or --format json
     let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
@@ -1175,7 +1183,11 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         // PLAN-031：rqhost daemon——阻塞直至末窗退出（锁管道被占 =
         // 第二实例干净退出码 0）。
-        Some(Commands::Rqhost { pipe, bridge_ws, bridge_token }) => {
+        Some(Commands::Rqhost {
+            pipe,
+            bridge_ws,
+            bridge_token,
+        }) => {
             let wellknown =
                 pipe.unwrap_or_else(|| auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe());
             if !ai_mode {
@@ -1217,7 +1229,9 @@ fn real_main(cli: Cli) -> Result<()> {
             // PLAN-781 T-15: 宿主可信预算配置 fail-fast——非法值指名报错 +
             // 非零退出，先于任何业务 dispatch（决策报告 D-1；serve 面）。
             if let Err(e) = auto_lang::vm::budget_policy::parse_http_step_budget(
-                std::env::var(auto_lang::vm::budget_policy::HTTP_STEP_BUDGET_ENV).ok().as_deref(),
+                std::env::var(auto_lang::vm::budget_policy::HTTP_STEP_BUDGET_ENV)
+                    .ok()
+                    .as_deref(),
             ) {
                 return Err(miette::miette!("{e}"));
             }
@@ -1252,7 +1266,9 @@ fn real_main(cli: Cli) -> Result<()> {
             // 非零退出，先于任何业务 dispatch/窗口/服务启动（决策报告 D-1；
             // run 面覆盖 vm/vue/desktop 全形态）。
             if let Err(e) = auto_lang::vm::budget_policy::parse_http_step_budget(
-                std::env::var(auto_lang::vm::budget_policy::HTTP_STEP_BUDGET_ENV).ok().as_deref(),
+                std::env::var(auto_lang::vm::budget_policy::HTTP_STEP_BUDGET_ENV)
+                    .ok()
+                    .as_deref(),
             ) {
                 return Err(miette::miette!("{e}"));
             }

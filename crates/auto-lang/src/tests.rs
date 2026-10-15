@@ -14,6 +14,8 @@ mod plan728_supply_probes; // PLAN-728: 文件后援分页 rope 探针族（710 
 mod plan716_supply_probes;
 // PLAN-779: frame native host provider 注入——core 剪断/UI 装配/merge 保 provider 回归锚
 mod plan779_frame_provider;
+// PLAN-785: clipboard text 2925/2926 host provider——core 剪断/缺席契约/装配优先回归锚
+mod plan785_clipboard_provider;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 #[cfg(feature = "test-trans")]
 mod a2r_c_abi_gates;
@@ -436,8 +438,8 @@ mod plan082_shell_query_tests;
 // 非 yield handler 同步对拍 + resume 段 .at try/catch 捕获）。
 #[cfg(test)]
 mod plan702_segment_tests;
-mod plan781_budget_tests;
 mod plan781_budget_http_tests;
+mod plan781_budget_tests;
 // PLAN-711 T-11：CPU 可续跑执行片（AC-13 假成功修复红绿 + 片等价性 +
 // 累计护栏 + bridge 有界泵/写队列 D-2 纪律）。
 #[cfg(test)]

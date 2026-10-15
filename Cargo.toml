@@ -67,6 +67,11 @@ exclude = [
     # 工作），门禁经
     # cargo test --manifest-path test/fixtures/modularity/native-provider-consumer/Cargo.toml
     "test/fixtures/modularity/native-provider-consumer",
+    # PLAN-785: 外部 clipboard text provider 消费方探针——独立 fixture
+    # crate（无 UI feature 构建，证明文本剪贴板 2925/2926 core 供值链在
+    # crate 边界外真实工作），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/clipboard-provider-consumer/Cargo.toml
+    "test/fixtures/modularity/clipboard-provider-consumer",
 ]
 resolver = "2"
 

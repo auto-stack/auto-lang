@@ -817,6 +817,15 @@ impl AutoVM {
             native_interface.set_frame_provider(provider);
         }
 
+        // PLAN-785: 同纪律快照文本剪贴板 provider（2925/2926 能力=注入；
+        // 缺席快照 = shim 侧 feature-disabled 形 VMError，与 no-ui 构建
+        // 迁移前行为一致）。
+        if let Some(provider) =
+            crate::vm::host_capabilities::process_default_clipboard_text_provider()
+        {
+            native_interface.set_clipboard_text_provider(provider);
+        }
+
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
         // The codegen's handle_c_import populates CFFI_GLOBAL during compilation;
         // here we merge those shims into the VM's NativeInterface so CALL_NAT can find them.
@@ -1249,6 +1258,23 @@ impl AutoVM {
         &self,
     ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>> {
         self.native_interface.frame_provider()
+    }
+
+    /// PLAN-785: 实例级 clipboard text provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 2925/2926。
+    pub fn set_clipboard_text_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>,
+    ) {
+        self.native_interface.set_clipboard_text_provider(provider);
+    }
+
+    /// PLAN-785: 本 VM 当前 clipboard text provider（None=缺席错误语义）。
+    pub fn clipboard_text_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>> {
+        self.native_interface.clipboard_text_provider()
     }
 
     /// Plan 197 Task 9: Load generic registry from codegen

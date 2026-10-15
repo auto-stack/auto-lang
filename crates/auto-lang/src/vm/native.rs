@@ -112,6 +112,12 @@ pub struct NativeInterface {
     /// 不撤 proof（绑定身份不变，§host_capabilities 契约注释）。
     frame_provider:
         std::sync::RwLock<Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>>>,
+    /// PLAN-785: 文本剪贴板能力槽（2925/2926）。语义与 frame_provider
+    /// 槽逐条相同（per-NativeInterface 持有、Clone 保留、注入不动绑定
+    /// 身份）；None = 缺席 → shim 报 feature-disabled 形 VMError。
+    clipboard_text_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>>,
+    >,
 }
 
 impl Clone for NativeInterface {
@@ -133,6 +139,14 @@ impl Clone for NativeInterface {
                     .expect("frame_provider poisoned")
                     .clone(),
             ),
+            // PLAN-785: clipboard text provider 随装配克隆保留（同上，
+            // merge_native_interface 经 Clone+merge 路径不丢宿主能力）。
+            clipboard_text_provider: std::sync::RwLock::new(
+                self.clipboard_text_provider
+                    .read()
+                    .expect("clipboard_text_provider poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -149,6 +163,7 @@ impl NativeInterface {
             binding_conflicts: Vec::new(),
             reference_proofs: std::sync::Mutex::new(HashMap::new()),
             frame_provider: std::sync::RwLock::new(None),
+            clipboard_text_provider: std::sync::RwLock::new(None),
         }
     }
 
@@ -171,6 +186,28 @@ impl NativeInterface {
         self.frame_provider
             .read()
             .expect("frame_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-785: 注入/替换本接口（=本 VM）的 clipboard text provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_clipboard_text_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>,
+    ) {
+        *self
+            .clipboard_text_provider
+            .write()
+            .expect("clipboard_text_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-785: 当前 clipboard text provider（None=缺席错误语义）。
+    pub fn clipboard_text_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>> {
+        self.clipboard_text_provider
+            .read()
+            .expect("clipboard_text_provider poisoned")
             .clone()
     }
 
@@ -2038,23 +2075,44 @@ pub fn shim_code_editor_paste(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 }
 
 // ── Plan 418: OS clipboard natives (arboard) ───────────────────────────
+// PLAN-785 依赖倒置：core 不再直引 `crate::ui::clipboard`——经本 VM
+// NativeInterface 装配的 [`crate::vm::host_capabilities::ClipboardTextProvider`]
+// 供值（UI 宿主注册 arboard adapter；外部 no-ui 宿主可注入自定义实现）。
+// 能力=注入：provider 缺席时保留迁移前 no-ui 构建的同形 VMError（函数名
+// 即 2925/2926 诊断定位面）；provider 在而 OS 不可用 = empty/false（值
+// 语义不变，非 raise）。shim 体因此 feature 中性——`ui-clipboard` 仅决定
+// adapter 是否编译/装配，不再决定本函数的编译形态。
 
 /// `clipboard_text() -> String` (empty when the clipboard is unavailable).
-#[cfg(feature = "ui-clipboard")]
 pub fn shim_clipboard_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let text = crate::ui::clipboard::clipboard_get().unwrap_or_default();
-    let idx = vm.add_string(text.into_bytes());
-    vm.rc_push_str_idx(task, idx as usize);
-    Ok(())
+    match vm.native_interface.clipboard_text_provider() {
+        Some(provider) => {
+            let text = provider.text().unwrap_or_default();
+            let idx = vm.add_string(text.into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(
+            "clipboard_text: the `ui-clipboard` feature is disabled".into(),
+        )),
+    }
 }
 
 /// `clipboard_set_text(text) -> Bool`
-#[cfg(feature = "ui-clipboard")]
 pub fn shim_clipboard_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let text = pop_string_arg(task, vm);
-    let ok = crate::ui::clipboard::clipboard_set(&text);
-    task.ram.push_nv(auto_val::encode_bool(ok));
-    Ok(())
+    match vm.native_interface.clipboard_text_provider() {
+        Some(provider) => {
+            // pop_string_arg 已物化 owned String（utf8_lossy）——provider 收
+            // 纯 `&str`，接口零 VM 索引/借用缓冲泄漏（V02 ownership）。
+            let text = pop_string_arg(task, vm);
+            let ok = provider.set_text(&text);
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(
+            "clipboard_set_text: the `ui-clipboard` feature is disabled".into(),
+        )),
+    }
 }
 
 // ── Plan 485: native clipboard files/images (CF_HDROP / DIBV5+PNG) ─────
@@ -3046,18 +3104,6 @@ pub fn shim_code_editor_copy(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_code_editor_paste(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(
         "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
-    ))
-}
-#[cfg(not(feature = "ui-clipboard"))]
-pub fn shim_clipboard_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "clipboard_text: the `ui-clipboard` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "ui-clipboard"))]
-pub fn shim_clipboard_set_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "clipboard_set_text: the `ui-clipboard` feature is disabled".into(),
     ))
 }
 #[cfg(not(feature = "ui-dialog"))]

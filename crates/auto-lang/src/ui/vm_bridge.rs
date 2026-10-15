@@ -637,6 +637,9 @@ impl VmBridge {
         //（幂等；AutoVM::new 构造期快照，见 host_capabilities）。core shim
         // 9918/9919 已不直引 frame_bench，UI 组件路径经此注入恢复同源供值。
         crate::ui::frame_provider::install_process_default();
+        // PLAN-785: clipboard text adapter 同点并入（if-absent 兼容默认）。
+        #[cfg(feature = "ui-clipboard")]
+        crate::ui::clipboard_provider::install_process_default();
 
         let widget_name = widget.name.clone();
 
@@ -759,6 +762,9 @@ impl VmBridge {
         crate::vm::native_registry::register_builtin_natives();
         // PLAN-779: 同 new_with_children——UI 宿主能力装配（frame provider）。
         crate::ui::frame_provider::install_process_default();
+        // PLAN-785: clipboard text adapter 同点并入（if-absent 兼容默认）。
+        #[cfg(feature = "ui-clipboard")]
+        crate::ui::clipboard_provider::install_process_default();
 
         let widget_name = decl.name.to_string();
 

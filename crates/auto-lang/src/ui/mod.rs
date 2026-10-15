@@ -71,6 +71,11 @@ pub mod scroll;
 // Plan 418: OS clipboard bridge (arboard) behind `ui-clipboard`.
 #[cfg(feature = "ui-clipboard")]
 pub mod clipboard;
+// PLAN-785: clipboard text host provider adapter——委托 ui::clipboard 既有
+// 实现，经 vm::host_capabilities 显式装配（core shim 2925/2926 不再直引
+// ui；779 frame_provider 同构）。
+#[cfg(feature = "ui-clipboard")]
+pub mod clipboard_provider;
 // PLAN-681: native open/save file dialogs — host of the `dialog_open`/
 // `dialog_save` VM builtins (natives 2927/2928) for a2r generated apps,
 // behind `ui-dialog` (enabled by `ui-iced`).

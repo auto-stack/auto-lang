@@ -173,11 +173,11 @@ pub mod parser;
 pub mod query;
 pub use parser::Parser;
 pub mod dialect; // 方言扩展体系（PR-1 基建）
-// PLAN-778: 方言外部化最小桥面 —— 外部 crate 实现 Dialect 时的唯一解析入口。
+                 // PLAN-778: 方言外部化最小桥面 —— 外部 crate 实现 Dialect 时的唯一解析入口。
 pub mod parser_bridge;
 pub use dialect::DialectPriority;
 pub use parser_bridge::ParserBridge;
-                 // Plan 088 Phase 6: Type checking module for parameter passing modes
+// Plan 088 Phase 6: Type checking module for parameter passing modes
 pub mod autovm_repl;
 pub mod patch;
 pub mod typeck;
@@ -448,9 +448,13 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
 /// 可观测帧通道"的既有接线（F779-R1-01——程序轨 run 管线、测试/调试/
 /// ABT/配置/REPL/解释器/back-proxy 各宿主入口统一经此装配）。
 /// no-ui 构建=no-op（缺席=未捕获 0 语义，外部 consumer 自行注入）。
+/// PLAN-785: clipboard text adapter 同纪律并入（2925/2926——core shim
+/// 已不直引 ui::clipboard；缺席槽=no-ui 迁移前 VMError 语义）。
 #[cfg(feature = "ui")]
 fn install_ui_host_capabilities() {
     crate::ui::frame_provider::install_process_default();
+    #[cfg(feature = "ui-clipboard")]
+    crate::ui::clipboard_provider::install_process_default();
 }
 
 #[cfg(not(feature = "ui"))]
@@ -5585,6 +5589,9 @@ fn run_file_dynamic_ui_inner(
     // frame provider 进程默认（覆盖库消费者不经 CLI main 的形态；-q
     // rqhost 客户端在 build 之后分岔，同样受益于此处注册）。
     crate::ui::frame_provider::install_process_default();
+    // PLAN-785: clipboard text adapter 同点并入（if-absent 兼容默认）。
+    #[cfg(feature = "ui-clipboard")]
+    crate::ui::clipboard_provider::install_process_default();
     let comp = build_dynamic_component_inner(code, path, override_scenario)?;
     // PLAN-031 T-05：-q vm 轨分岔（env 门）——装载链零改：CWD/主题/后端
     // 序由 run_vm_ui 上游照常执行（组件已按同链装载），仅"自开 OS 窗"

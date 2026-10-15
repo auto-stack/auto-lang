@@ -77,6 +77,71 @@ pub fn clear_process_default_frame_provider() {
     *slot = None;
 }
 
+// ── PLAN-785: 文本剪贴板能力（auto.clipboard.text 2925 / set_text 2926）──
+//
+// 779 装配模式的第一个真实迁移批次：core 只持本接口与 per-VM 存储；
+// OS 实现留在 UI 侧（clipboard_provider adapter 委托既有 arboard 桥），
+// no-ui 宿主可注入自定义 provider。与 frame 族的差别：文本能力进出均
+// 为**值**——出参 owned `String`（None=宿主不可用→shim 落空串，非
+// raise）、入参 `&str`（shim 侧已 `pop_string_arg` 物化为 owned Rust
+// String，接口不泄漏 VM 字符串索引/借用缓冲）。
+//
+// 缺席语义（V03/R-C）：无 provider = 与迁移前 no-ui 构建同形 VMError
+//（shim 侧保留原 "the `ui-clipboard` feature is disabled" 文本，函数名
+// 即 2925/2926 诊断定位面）；有 provider 但 OS 不可用 = empty/false。
+// 任何状态不得伪装成功写入。
+
+/// 文本剪贴板能力接口（ owning Rust 文本/布尔值域，无 UI 类型）。
+pub trait ClipboardTextProvider: Send + Sync {
+    /// 读剪贴板文本（None = 宿主/OS 不可用；空剪贴板返回 `Some("")`，
+    /// 与 arboard `get_text` 的空串形一致——由实现方保证）。
+    fn text(&self) -> Option<String>;
+    /// 写剪贴板文本；false = 写入失败（不可用/被占用）。
+    fn set_text(&self, text: &str) -> bool;
+}
+
+/// 进程级默认 clipboard text provider（显式注册；None = 未注册 → shim
+/// 缺席错误）。替换/快照/if-absent 语义与 frame 族逐条相同。
+static PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER: RwLock<Option<Arc<dyn ClipboardTextProvider>>> =
+    RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_clipboard_text_provider(provider: Arc<dyn ClipboardTextProvider>) {
+    let mut slot = PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER poisoned");
+    *slot = Some(provider);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子——语义同 frame 族 F779-R2-01）。
+/// 供 UI 等内建宿主隐式入口：不覆盖调用方显式默认。
+pub fn set_process_default_clipboard_text_provider_if_absent(
+    provider: Arc<dyn ClipboardTextProvider>,
+) {
+    let mut slot = PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_clipboard_text_provider() -> Option<Arc<dyn ClipboardTextProvider>> {
+    PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER
+        .read()
+        .expect("PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到缺席语义）。测试装配/宿主拆卸用。
+pub fn clear_process_default_clipboard_text_provider() {
+    let mut slot = PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CLIPBOARD_TEXT_PROVIDER poisoned");
+    *slot = None;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
