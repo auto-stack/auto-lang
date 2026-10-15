@@ -7,7 +7,7 @@ author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-14T00:00:00Z
 plan_revision: 2
-current_step: 16
+current_step: 17
 total_steps: 23
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -249,7 +249,7 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 - [x] T-08: owner_stage=merge；依赖T-07；按merge技能实际落地、规范沉淀、归档/守卫清理及到期批量门；统一交付781 dependency receipt到READER-001 T-25/T-26；不代替Reader业务接入及终审。AC-06。
   [✅ 2026-10-15] merge 收口（回执键 PLAN-781:r2）：**prepared** = reviewed dba0d7e5c + spec 沉积（SD-01~07：3 新 design + 4 modify + plans.md 双索引）；**landed** = rebase 线性重放 ×2（并发 master 前进两次均纯 docs 增量；range-diff 全等）→ ff-only，master tip = delivery `3e1b5fc03`；**ledger_refreshed** = .autoos/specs.json v17→v18（guarded offline projection——store 服务不可达 000；P781-D1/D2/D3/T1/R1/M 六条，file+tags 齐，无关节逐字节不变，回读验证过）；**门禁**（重放终点复跑）= 裸 cargo t 5353/5353 + tu 865/865 + th 135/137（两在案红：F-781-C03 预存 + plan730 boundary 单跑绿）+ plan781 24/24 + e2e 3/3；**cleaned** = wt-guard 复核（pnpm store junction ~350 个按闸门处方逐链接 cmd /c rmdir 剥除后 clean）→ worktree/分支移除 + auto-down 兄弟（普通克隆，guard clean）+ 组目录删除（2026-10-15 实证）；**READER-001 receipt** = T-25/T-26 解阻：锚点 API（scroll-anchor DSL + 9922/9923 + reading.at 接入映射）+ 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）+ 复验命令（scripts/tools/test_reader_import_budget.py --auto-bin <cli> --reader-dir <checkout>）；001 仍须业务接入、实际复验与独立终审（AC-06 不代替）。
 
-### 阶段 D 事故记录：F-781-D01（2026-10-15，T-19 实施期发现）
+### 阶段 D 事故记录：F-781-D01（2026-10-15，T-19 实施期发现；同日结案）
 
 **现象**：任一 pane 的 controller 绑定值为 `@scrollctl:` 前缀句柄（`scroll_controller()` 分配或 .at 字面串均可复现）时，**全部** iced scroll_to 类操作静默失效（MCP scroll action、旧 API intent、锚点 finals 三路齐哑；ScrollStateReader 读操作照常投递）；静态手写句柄零影响。最小复现：p781 fixture std pane + 单按 OldEnd（D:/p781-t19/live*.log，P656-EXEC 显示消费端以正确 id/offset 发射 Task，物理 offset 恒 0）。
 
@@ -257,14 +257,22 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 **含义**：这是比审计 R01 更深的一层缺陷——标准 `scroll_controller()` 入口在 781 交付中从未被实机走过（全部 fixture 用手写句柄），D01 属于 R01 同域的未爆面。T-19 的 W-01 端到端验收以其为硬前置。
 
-**状态**：根因未明，追踪档案 D:/p781-t19/{live-stderr,live2,live3,live4,live5}.log + out1..out6 报告。下一步：D01 专项根因（候选面：iced Task 批处理对本 app 自定义 shell 的投递路径、prime/read-back 心跳与 scroll_to 同批次的执行序、CONTROLLER_HANDLE_PREFIX 在未 grep 到的镜像仓/生成代码中的消费）。
+**结案（2026-10-15 D01 专项根因，三层）**：
+
+1. **主根因＝观测假象，框架从未坏**：探针 `vm_probe.py::pane_state()` 以参数名 `"filter"` 调用 `autoui_scroll_state`，工具 schema 参数名为 `"pane"`——未知参数被静默忽略 → 无过滤全集按字典序排序取 `panes[0]`。静态句柄时 `scroll_ctl_main-pane` 恰好字典序第一（main<mgd<side<std）纯属巧合；`@scrollctl:1` 存在时 `scroll_ctl_@scrollctl:1`（'@'=0x40 先于字母）排第一 → 探针读到的一直是 **std pane 的恒 0 offset**（该 pane 当时不可滚动）。P656-READ trace 实证 EXEC 后物理 offset 全程正常落位（OldBy→320 / OldEnd→8753）——"全局静默失效"是读错 pane 的假象。修复：探针参数名 + `main_offset_y` 按 key 精确寻址（不依赖排序）。
+2. **次生缺陷 A（真缺陷，w01 阻断段一）**：aura 层 `convert_scroll` 双臂自 Plan 409 §10 续 3 起 pane 样式**双写**（内层 col 与 Scrollable 各带一份；当时意图＝padding/边框进内容、flex 尺寸进 pane，vue 轨单元素映射无此面）。Fixed 高类（h-32）落到内层 col 后 iced 限高传导整个子树——实测溢出行挤压为零高（行 5+ y=viewport 底、h=0）→ content==viewport → pane 永不可滚动 → 锚点行 zero_size 恒不可见；Fill 高（h-full/flex-1）侥幸于滚动轴压缩语义取 intrinsic，main pane 由此从未暴露。修复＝`scroll_content_style()` 剥除滚动轴尺寸类（Y 剥 Height 族/X 剥 Width 族/双轴都剥；padding/border/bg/radius 视觉类保留），双臂接线，单测 `plan781_scroll_content_style_strips_axis_sizing` 锁定。
+3. **次生缺陷 B（真缺陷，w01 阻断段二）**：`autoui_visibility` 的 `resolve_pane_chain` 以「目标中心 ∈ (0,0) 锚定 content 盒」判 pane 归属——与发布空间（T-03 r4 勘定：子件 bounds 已 pane 锚定**含 viewport 原点**）错位；std pane 末行（content_rect 底缘贴 content 末端）被自身 content 盒排除、误配大 content 的 main pane（减其 offset 飞出窗 → 恒 clipped_out）。修复＝归属判定改**发布公式逆运算**（`content_rect=target−viewport.origin` 整体在 `[0,content]`（0.5px 容差）**且** `win_rect=target−offset` 与 viewport 正面积相交——滚出视口目标无归属→no_pane 语义保持），上溯改窗口空间 viewport 包含；单测 `plan781_resolve_chain_owner_by_inverse_transform`（w01 实测几何回归锁）+ 既有链测试更新（滚出视口→无归属新语义）。
+
+**验证**：cargo t plan781 **26/26**（新增 2）+ scroll **72/72** + mcp_server **30/30**；VM 腿全矩阵 **44/44 全绿**（D:/p781-t19/d01r6，w01_std_colon_key_located intersection=[8,220.8,198.8,31.6]、v01_a80/v06 全族）；fixture std_ctl 已切回 `scroll_controller()`（静态句柄保绿基线退役）。原候选面排除记录：Task 批投递路径与 prime/read-back 执行序未发现缺陷（EXEC 后物理落位正常）；CONTROLLER_HANDLE_PREFIX 无镜像仓/生成代码消费。
+
+**遗留观察（非阻断）**：d01r5 一次瞬态——EXEC y=4717（a80 锚点终态）后一拍 READ=5561、无被跟踪写入者，a80 检查 poll 竞态错过 4717 窗口；同二进制 r6（P043+P656 全迹）复跑无复现全绿。唯一无迹发射器族＝P043 写臂回显（复现包建议带 P043_DEBUG）；与 plan730/plan707 时序 flake 同类，T-23 全量回归时观察。
 
 ### 阶段 D：审计缺口修复（2026-10-15 用户裁定重开）
 
 **重开依据（用户裁定，2026-10-15）**：历史审计（[reports/781-historical-review-20261015.md](reports/781-historical-review-20261015.md)，needs_fix）四 findings 不另立计划，以本计划新增阶段承接——归档终态规则的一次显式例外；原 T-01..T-18 交付事实与记录不动，阶段 D 只修缺口补证据。任务编号延续 T-19..T-23；原 783 草案撤销、编号回收。
 
-- [ ] T-19: owner_stage=work；F-781-R01（P1）：scroll_anchor 合成 id 改不透明序号 + build 期注册表（seq→(pane,key) 查表，collector 回传 rect+seq）——消除冒号歧义拆分与 Debug 字符串取值两类面；单测含标准 `@scrollctl:N` 句柄与 `:`/引号/反斜杠 key 往返；双端 fixture 增真实 `scroll_controller()` controller + 分隔符 key 行（W-01）。AC-15。
-  [进行中 2026-10-15，worktree commit 34bb33090] 核心修复已落地：`scrollanchor:{seq}` 不透明序号 id + `register_anchor/lookup_anchor` 稳定注册表（重注册驱逐、stale miss 跳过、dup last-wins 保持）——R01 的两类面（冒号歧义、Debug 抓串）结构性根除；单测 2 个（往返含 `@scrollctl:N`/冒号/引号/反斜杠/CJK + 驱逐语义），scroll 71/71、plan781 24/24。fixture/探针 W-01 双端接线完成。**受阻发现 F-781-D01**（见 §9/§10）：`@scrollctl:` 前缀句柄使 iced scroll 操作全局静默失效——W-01 的标准句柄端到端验收被阻；fixture 暂以静态句柄保绿基线（全探针仅剩 w01 可见性一项待查），D01 根因清晰后切回 `scroll_controller()`。
+- [x] T-19: owner_stage=work；F-781-R01（P1）：scroll_anchor 合成 id 改不透明序号 + build 期注册表（seq→(pane,key) 查表，collector 回传 rect+seq）——消除冒号歧义拆分与 Debug 字符串取值两类面；单测含标准 `@scrollctl:N` 句柄与 `:`/引号/反斜杠 key 往返；双端 fixture 增真实 `scroll_controller()` controller + 分隔符 key 行（W-01）。AC-15。
+  [✅ 2026-10-15] R01 核心=worktree commit 34bb33090（`scrollanchor:{seq}` 不透明序号 + `register_anchor/lookup_anchor` 稳定注册表，重注册驱逐/stale miss 跳过/dup last-wins 保持；单测 2 个含 `@scrollctl:N`/冒号/引号/反斜杠/CJK 往返与驱逐语义）。**F-781-D01 阻断已解除并结案**（§9 事故记录）：三层根因＝①探针 `filter`→`pane` 参数错（读错 pane 的观测假象，框架未坏——P656 trace 实证 EXEC 后物理 offset 正常落位）②aura `convert_scroll` 双臂样式双写使 Fixed 高（h-32 类）钳死内层 col → pane 不可滚动（`scroll_content_style` 剥滚动轴尺寸类修复，双臂接线 + 单测）③`autoui_visibility` 归属判定与发布空间错位（`resolve_pane_chain` 改发布公式逆运算重写 + w01 实测几何回归锁单测）。W-01 双端全绿：**VM 腿 44/44（清埋点终验 D:/p781-t19/d01r7 + 全迹 d01r6）+ Vue 腿 46/46（D:/p781-t19/vue-final，w01 handle=`__scrollctl_1`）**；fixture std_ctl 已切回 `scroll_controller()`；门禁=plan781 26/26、scroll 72/72、mcp_server 30/30。遗留观察（d01r5 a80 瞬态 + vue backend 冷构建 120s 门）记录于 §9 work 记录，T-23 观察。
 - [ ] T-20: owner_stage=work；依赖T-19；F-781-R02（P1）：vue 全 scroll-pane 元素发射 `data-scroll-pane` 所有权标记；helper 改全量遍历 + `closest('[data-scroll-pane]')===pane` 归属过滤 + 属性比对（弃 CSS selector 拼接）；managed 判据同归属；双端三对照（嵌套同名零串线/仅内层有 key→outer not_found/inner managed 不误伤 outer）+ 原生嵌套探针（W-02）。AC-15。
 - [ ] T-21: owner_stage=work；F-781-R03（P2）：chapter API 成本探针 → 全量 10MiB 全章扫描（1347+1346 章，含冷重启复扫）或**等价完整 oracle**（全形状多章书 TXT+MD 全章逐字+冷重启）+10MiB 维持 hash/TOC/抽样——修订路线须用户显式裁定后执行（审计明文禁静默降级）；损坏章负例证明 oracle 会红（W-03）。AC-16。
 - [ ] T-22: owner_stage=work；F-781-R04（P2）：生命周期断言补齐——`/api/slowwrite` 进入握手（entered 标记）+ 心跳副作用文件；deadline/断连/服务关闭三路断言取消后零写入+单终态+回收观测，绑定 LegacyHttp 长忙路径（W-04）。AC-17。
@@ -298,6 +306,8 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 2026-10-15 work（T-17/T-18/T-06，阶段 C 收口 → execution_done）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=bde7a6bb9 | code_commit=dba0d7e5c（T-17 fixture+driver） | dependency_revisions=同上 | task_ids=T-17,T-18,T-06 | evidence=V-17 全链（TXT 含冷重启 8/8 + MD 导入/哈希/TOC/章节）；V-19 6/6×2；V-14 4/4；V-15 6/6；V-16 单测；V-18 th；V-20 三入口；裸 cargo t 5353/5353（第五轮；前四轮各一个不同 timing 测试单跑绿=瞬态负载 flake）；证据 D:/p781-t18/{out,out-final,out-cold} + D:/p781-t05/out + D:/p781-t17 | 发现登记=KNOWN-DEBT F-781-C01（段泵串行公平性，新计划候选）/C02（路由 001）/C03（th 预存红）；决策报告 r3 | 统一冻结=实现 commits 65ddc5d2f→f75b32e31→1042beeb3→292e8755a→114e80c48(merge)→bde7a6bb9→dba0d7e5c；CLI=worktree target/debug/auto.exe sha256=b7f09980744a…；驱动=test_native_reader_acceptance.py + p781 双探针 + test_reader_import_budget.py；config=双 env 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）；fixture 哈希=报告内 fixtures 节；SD-01~07 候选=§5 表+两决策报告（发布归 T-08）；Reader 接入映射=9922/9923 + scroll-anchor DSL + 双端 helper（001 T-25/T-26 承接，READER-001 复验命令=上述驱动 --auto-bin --reader-dir） | blockers=无（work-owned AC-01~04、07~14 全过；AC-05 归 review、AC-06 归 merge） | next_responsible_role=review（T-07 最终独立复审）
 
+2026-10-15 work（阶段 D / F-781-D01 专项根因收口）：stage=work | plan_id=PLAN-781 | plan_revision=2 | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | base_commit=34bb33090 | code_commit=ab65017c0（aura_view_builder 样式剥除 + mcp_server 归属逆运算 + fixture 切回 scroll_controller() + vm_probe 参数修复） | task_ids=T-19（D01 解阻，收口 [✅]） | evidence=D01 三层根因与修复见 §9 事故记录结案段；复现链 d01r1（4 红）→d01r2（探针修后仅 w01 红）→d01r5（样式修后 w01 绿、a80 一次瞬态）→d01r6（全迹 44/44 全绿）→d01r7（清埋点终验 44/44）；vue 腿 46/46（D:/p781-t19/vue-final，w01 handle=__scrollctl_1）；cargo t plan781 26/26 + scroll 72/72 + mcp_server 30/30；CLI=重建 target/debug/auto.exe（vue 腿报告 sha256=52e2f153…） | 观察记录=d01r5 a80 瞬态（P043 回显族唯一无迹发射器，T-23 全量回归观察）；vue 腿 backend 冷构建 >120s 就绪门（预热 examples/rust-workspace 后通过——非本回合缺陷，探针复跑前置条件） | blockers=无 | next_responsible_role=work（T-20 R02 嵌套 pane 归属探针）
+
 ### T-07 最终复审（2026-10-15，final pass）
 
 - stage: review；review_scope: final；**reviewer_identity/limitations: 实施会话兼任复审（无独立上下文可用）——按 auto-plan-review 纪律以工件重建裁决：全部 required oracle 在冻结基线重放、独立新反例、不信实施侧摘要；该局限显式记录**。
@@ -328,7 +338,7 @@ stage=review | review_scope=historical-final-audit | reviewer_identity=本次独
 
 T-21 若走合同修订路线（10MiB 全章扫描成本不可接受），修订内容须用户显式裁定后方可执行——审计明文禁止静默降级（F-781-R03）。
 
-**F-781-D01（2026-10-15 新发现）**：`@scrollctl:` 前缀 controller 句柄使 iced scroll 操作全局静默失效（详见 §9 事故记录）。T-19 的 W-01 标准句柄端到端验收以其根因/修复为硬前置；无用户决策需要，但若根因牵涉 iced 上游或 app shell 架构层，修复方案可能超出阶段 D 的“缺口修复”边界——届时按 needs_replan 报告。其余无用户前置决策。
+**F-781-D01（2026-10-15 新发现；同日结案）**：~~`@scrollctl:` 前缀 controller 句柄使 iced scroll 操作全局静默失效~~ **已结案**（详见 §9 事故记录结案段）：主根因为探针参数名错读（观测假象，框架未坏）+ 两个真缺陷（pane 样式双写钳死 Fixed 高 pane 的可滚动性；visibility 归属解析与发布空间错位）——三处修复均落 T-19 范围内（探针/aura 层/MCP 观测面），未涉 iced 上游或 app shell 架构层，无需 needs_replan。T-19 W-01 解阻。
 
 T-09负责动作/帧identity/布局freshness的复用边界；T-01冻结子key公共接口/代际/nearest；T-14冻结有限profile、同步/分片与配置/期限/取消的whole-path可行性（✅ 已冻结于 reports/781-budget-decision.md）。三项均为后续接线硬前置，不把未结束研究计为已实现。共享776/742/778/779热点入场对账；未释放则具名记录受阻任务。
 
