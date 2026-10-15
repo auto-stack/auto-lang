@@ -952,29 +952,40 @@ impl<'p, 'a> Machine<'p, 'a> {
             f.alt + 1 < self.p.rules[f.rule as usize].alts.len()
         };
         if has_next {
-            let s = self.stack.last().unwrap().save;
-            self.restore(s);
-            let now = self.save();
-            let f = self.stack.last_mut().unwrap();
-            f.alt += 1;
-            f.step = 0;
-            f.consumed_any = false;
-            f.save = now;
+            self.advance_alt();
         } else {
             self.handle_frame_failure();
         }
     }
 
-    /// 子帧失败信号分派到父帧（wait 语义）。
-    fn dispatch_child_failure(&mut self) {
+    /// 子帧失败信号分派到当前顶帧（wait 语义）。
+    /// `child_consumed`：失败子帧是否消费过 token——归入本帧（分派包装规则
+    /// 自身不 consume；不传播则其恢复永不触发）。
+    /// 返回 true = 本帧也失败（继续 unwind 上抛）；false = 已消化（停止）。
+    /// Pratt 帧失败由统一迭代 unwind 处理（禁止递归级联：V-12）。
+    fn dispatch_child_failure(&mut self, child_consumed: bool) -> bool {
         if self.stack.last().unwrap().is_pratt() {
-            self.fail_pratt();
-            return;
+            return true; // pratt 帧自身失败 → 上抛
+        }
+        if child_consumed {
+            self.stack.last_mut().unwrap().consumed_any = true;
         }
         let w = self.stack.last().unwrap().wait;
         self.stack.last_mut().unwrap().wait = Wait::None;
         match w {
-            Wait::None | Wait::OnceStep => self.fail_alt(),
+            Wait::None | Wait::OnceStep => {
+                // 尝试下一 alt；耗尽 → 本帧失败上抛。
+                let has_next = {
+                    let f = self.stack.last().unwrap();
+                    f.alt + 1 < self.p.rules[f.rule as usize].alts.len()
+                };
+                if has_next {
+                    self.advance_alt();
+                    false
+                } else {
+                    true
+                }
+            }
             Wait::Optional => {
                 let s = self.stack
                     .last()
@@ -983,45 +994,76 @@ impl<'p, 'a> Machine<'p, 'a> {
                     .unwrap_or_else(|| self.stack.last().unwrap().save);
                 self.restore(s);
                 self.stack.last_mut().unwrap().step += 1;
+                false
             }
             Wait::RepItem { .. } => {
                 // 回滚到迭代起点（不是 alt 入口：已成功的前序迭代不回滚）。
                 let s = self.stack.last().unwrap().rep_save.unwrap_or(self.stack.last().unwrap().save);
                 self.restore(s);
                 self.end_list_step();
+                false
             }
         }
     }
 
+    /// alt 推进（原 fail_alt 的有下一 alt 分支）。
+    fn advance_alt(&mut self) {
+        let s = self.stack.last().unwrap().save;
+        self.restore(s);
+        let now = self.save();
+        let f = self.stack.last_mut().unwrap();
+        f.alt += 1;
+        f.step = 0;
+        // consumed_any 不重置：恢复触发语义 = 本规则任一次尝试曾消费（部分匹配）。
+        f.save = now;
+    }
+
+    /// 帧失败：恢复 / 迭代上抛（一次一层，禁止递归级联——V-12 深嵌套失败
+    /// 路径同样不允许原生深递归）。
     fn handle_frame_failure(&mut self) {
-        let (rule, frame_save, consumed, recover, field, pushed_active, is_decl) = {
-            let f = self.stack.last().unwrap();
-            (
-                f.rule,
-                f.frame_save,
-                f.consumed_any,
-                self.p.rules[f.rule as usize].recover,
-                f.pratt_field,
-                f.pushed_active,
-                f.is_decl_frame,
-            )
-        };
-        self.restore(frame_save);
-        if is_decl {
-            // 声明尝试失败：尚未注册（restore 已截断 decls）。
-        }
-        if recover && consumed {
+        loop {
+            let (rule, frame_save, consumed, recover, field, pushed_active, is_pratt) = {
+                let f = self.stack.last().unwrap();
+                (
+                    f.rule,
+                    f.frame_save,
+                    f.consumed_any,
+                    if f.is_pratt() { false } else { self.p.rules[f.rule as usize].recover },
+                    f.pratt_field,
+                    f.pushed_active,
+                    f.is_pratt(),
+                )
+            };
+            self.restore(frame_save);
+            if recover && consumed {
             let mut err_leaves: Vec<(u32, u32)> = Vec::new();
-            // 恢复节点必须覆盖规则起点起的全部字节：先收 pending trivia
-            // （restore 后 = 本规则前导/中途 trivia），消费时连同 flush 的
-            // trivia 叶一起回收（丢弃任何字节都会破坏无损重建）。
+            // 覆盖语义：restore 把光标放回规则入口，恢复循环从入口**重新消费**
+            // 到停点。帧入口光标已越过 leading trivia（List peek 预跳）——从旧流
+            // 回扫重建其叶子；mid trivia 由循环内 peek/consume 自然重建
+            // （restore 只能截断 pending 长度、不能还原内容，禁止依赖过期缓冲）。
+            self.pending.clear();
+            let mut err_leaves: Vec<(u32, u32)> = Vec::new();
             {
-                let trivia: Vec<u32> = self.pending.drain(..).collect();
-                for ti in trivia {
-                    let tok = self.toks[ti as usize];
+                let mut t = frame_save.i;
+                let mut lead: Vec<usize> = Vec::new();
+                while t > 0 {
+                    let prev = &self.toks[t - 1];
+                    let is_triv = prev.token != u32::MAX
+                        && self.trivia_tok.get(prev.token as usize).copied().unwrap_or(false);
+                    if is_triv {
+                        lead.push(t - 1);
+                        t -= 1;
+                    } else {
+                        break;
+                    }
+                }
+                lead.reverse();
+                for ti in lead {
+                    let tok = self.toks[ti];
                     err_leaves.push((self.alloc_leaf(&tok, FLAG_TRIVIA), NO_FIELD));
                 }
             }
+            let mut loop_ate_token = 0usize;
             loop {
                 let pk = match self.peek() {
                     Some(pk) => pk,
@@ -1030,9 +1072,9 @@ impl<'p, 'a> Machine<'p, 'a> {
                 if self.p.recovery.sync.contains(&pk.token) {
                     break;
                 }
-                // first(rule) 停点必须先消费 ≥1 token：当前 token 即规则起点时
-                // 立即停会零前进（失败的声明首 token 往往就是规则起始符）。
-                if !err_leaves.is_empty() && self.first.starts(rule, pk.token) {
+                // first(rule) 停点必须在恢复循环内消费 ≥1 个 token（前导 trivia
+                // flush 不算）：失败的声明首 token 往往就是规则起始符。
+                if loop_ate_token > 0 && self.first.starts(rule, pk.token) {
                     break;
                 }
                 let before = self.stack.last().unwrap().children.len();
@@ -1041,6 +1083,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                 }
                 let appended: Vec<(u32, u32)> =
                     self.stack.last_mut().unwrap().children.drain(before..).collect();
+                loop_ate_token += 1;
                 err_leaves.extend(appended);
             }
             let (start_abs, end_abs) = if err_leaves.is_empty() {
@@ -1053,7 +1096,20 @@ impl<'p, 'a> Machine<'p, 'a> {
                 let nd = self.nodes[last.0 as usize];
                 (s, nd.start as u64 + nd.len as u64)
             };
-            let missing = self.alloc_node(KIND_MISSING, Vec::new(), Some(self.p.rule_kind(rule)), false);
+            let missing = {
+                let m = CstNode {
+                    kind: KIND_MISSING,
+                    start: start_abs as u32,
+                    len: 0,
+                    first_child: 0,
+                    child_count: 0,
+                    expected: self.p.rule_kind(rule),
+                    flags: FLAG_MISSING,
+                    decl: 0,
+                };
+                self.nodes.push(m);
+                (self.nodes.len() - 1) as u32
+            };
             let mut kids = vec![(missing, NO_FIELD)];
             kids.extend(err_leaves);
             let node = self.alloc_node(self.p.rule_kind(rule), kids, None, true);
@@ -1062,16 +1118,25 @@ impl<'p, 'a> Machine<'p, 'a> {
                 start_abs,
                 end_abs,
             );
-            self.complete_frame_success(node, field);
-            return;
-        }
-        if pushed_active {
-            self.active_rules.pop();
-        }
-        self.stack.pop();
-        match self.stack.last_mut() {
-            Some(_) => self.dispatch_child_failure(),
-            None => self.root_failure_wrap(),
+                self.complete_frame_success(node, field);
+                return;
+            }
+            if pushed_active {
+                self.active_rules.pop();
+            }
+            self.stack.pop();
+            match self.stack.last_mut() {
+                None => {
+                    self.root_failure_wrap();
+                    return;
+                }
+                Some(_) => {
+                    if self.dispatch_child_failure(consumed) {
+                        continue; // 父帧也失败 → 迭代上抛
+                    }
+                    return;
+                }
+            }
         }
     }
 
@@ -1401,9 +1466,18 @@ impl<'p, 'a> Machine<'p, 'a> {
             (op, lhs, rhs)
         };
         let ((_, _, op_leaf, op_tok, op_trivia), lhs, rhs) = popped;
-        let mk_missing = |k: u32| CstNode { kind: KIND_MISSING, start: 0, len: 0, first_child: 0, child_count: 0, expected: k, flags: FLAG_MISSING, decl: 0 };
         let missing_id = {
-            let m = mk_missing(TOKEN_KIND_BASE + op_tok);
+            let op_start = self.nodes[op_leaf as usize].start;
+            let m = CstNode {
+                kind: KIND_MISSING,
+                start: op_start,
+                len: 0,
+                first_child: 0,
+                child_count: 0,
+                expected: TOKEN_KIND_BASE + op_tok,
+                flags: FLAG_MISSING,
+                decl: 0,
+            };
             self.nodes.push(m);
             (self.nodes.len() - 1) as u32
         };
@@ -1437,13 +1511,32 @@ impl<'p, 'a> Machine<'p, 'a> {
         self.stack.last_mut().unwrap().pratt_stage = PrattStage::Done { node };
     }
 
+    /// pratt 帧失败：恢复光标、pop、并入统一迭代 unwind。
     fn fail_pratt(&mut self) {
         let frame_save = self.stack.last().unwrap().frame_save;
         self.restore(frame_save);
         self.stack.pop();
-        match self.stack.last_mut() {
-            Some(_) => self.dispatch_child_failure(),
-            None => self.root_failure_wrap(),
+        loop {
+            match self.stack.last_mut() {
+                None => {
+                    self.root_failure_wrap();
+                    return;
+                }
+                Some(_) => {
+                    if self.dispatch_child_failure(true) {
+                        // 父帧也失败：pop 它并继续（与 handle_frame_failure 同一纪律）。
+                        let pushed_active = self.stack.last().unwrap().pushed_active;
+                        let fs = self.stack.last().unwrap().frame_save;
+                        self.restore(fs);
+                        if pushed_active {
+                            self.active_rules.pop();
+                        }
+                        self.stack.pop();
+                        continue;
+                    }
+                    return;
+                }
+            }
         }
     }
 
