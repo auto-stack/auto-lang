@@ -71,6 +71,11 @@ pub enum UnsupportedKind {
     /// from the frozen static subset (T-01); Pac::new hoists it, the model
     /// refuses static-equivalence until wrapper normalization is designed.
     RootWrapper,
+    /// A value-position token outside the static subset inside a structured
+    /// extent (operators/expressions like `1 * 2`, stray separators,
+    /// mismatched closers, unknown characters) — only the config VM can
+    /// evaluate or reject it. (R2 F-01: classified, never skipped.)
+    ValueSyntax,
     /// A modeled field's value has the wrong static shape (e.g. `members`
     /// declared as a scalar string).
     TypeMismatch { field: &'static str },
@@ -88,6 +93,7 @@ impl std::fmt::Display for UnsupportedKind {
             UnsupportedKind::SingleQuotedString => "single-quoted string",
             UnsupportedKind::DepNameUnrepresentable => "dep name unrepresentable",
             UnsupportedKind::RootWrapper => "root wrapper (legacy history form)",
+            UnsupportedKind::ValueSyntax => "value syntax outside static subset",
             UnsupportedKind::TypeMismatch { field } => {
                 return write!(f, "type mismatch on '{field}'")
             }

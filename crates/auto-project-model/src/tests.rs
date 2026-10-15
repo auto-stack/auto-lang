@@ -430,3 +430,88 @@ fn r1_unterminated_block_comment_eof_accepted() {
     assert!(d.is_static_equivalent());
     assert_eq!(d.identity.name.as_deref(), Some("ok"));
 }
+
+// ── R2 review regressions (F780-R2-01/02) — termination & boundary matrix ──
+
+/// Deadline-protected parse (R2 F-01): a wedged scan fails the test within
+/// the deadline instead of hanging the suite. Returns the parse outcome —
+/// a syntax `Err` is a legitimate result (malformed static input); only a
+/// timeout counts as non-termination. The worker thread is leaked on
+/// timeout; process exit reaps it.
+fn parse_outcome_with_deadline(
+    text: &str,
+    ms: u64,
+) -> Option<Result<ProjectDescriptor, crate::ProjectModelError>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let owned = text.to_string();
+    std::thread::spawn(move || {
+        let _ = tx.send(crate::parse_document(&owned, SourceInfo::inline()));
+    });
+    rx.recv_timeout(std::time::Duration::from_millis(ms)).ok()
+}
+
+/// R2 F-01: adversarial value-position inputs must TERMINATE and classify —
+/// the review's four timeout cases plus the boundary matrix (unknown tokens,
+/// mismatched closers, missing colons, expressions) at every value entry
+/// (array / object / top-level object document).
+#[test]
+fn r2_value_scanner_terminates_and_classifies() {
+    let cases = [
+        // review timeout repros
+        ("members: [1 * 2]\n", "expression in array"),
+        ("members: [1 : 2]\n", "stray separator in array"),
+        ("members: [1}\n", "mismatched closer"),
+        ("back: { @: 1 }\n", "unknown char in key position"),
+        // boundary matrix extensions
+        ("members: [*]\n", "operator element"),
+        ("cfg: { a: 1 * 2 }\n", "expression in object value"),
+        ("cfg: { a: : 1 }\n", "double colon"),
+        ("cfg: { a 1 }\n", "missing colon"),
+        (
+            "{ \"members\": [1 * 2] }\n",
+            "expression in top-level object doc",
+        ),
+        ("{ @: 1 }\n", "unknown key in top-level doc"),
+        ("members: [1 2 3]\n", "adjacent numbers (no separator)"),
+        ("cfg: { a: }\n", "missing value in object"),
+    ];
+    for (text, why) in cases {
+        let Some(outcome) = parse_outcome_with_deadline(text, 2000) else {
+            panic!("scanner failed to terminate within deadline — {why}: {text:?}");
+        };
+        match outcome {
+            // classified dynamic — never a static claim without reasons
+            Ok(d) => {
+                assert!(
+                    !d.is_static_equivalent(),
+                    "{why}: {text:?} must not claim static equivalence"
+                );
+                assert!(
+                    !d.unsupported.is_empty(),
+                    "{why}: {text:?} needs a classification reason"
+                );
+            }
+            // malformed static input — a staged syntax error is the honest
+            // outcome (V-05), equally terminating
+            Err(e) => assert!(
+                matches!(
+                    e.stage,
+                    crate::ErrorStage::Value | crate::ErrorStage::Document
+                ),
+                "{why}: {text:?} unexpected error stage {:?}",
+                e.stage
+            ),
+        }
+    }
+    // positive controls still parse statically within the deadline
+    for text in [
+        "members: [\"front\", \"back\"]\n",
+        "back: { project: \"back\" }\n",
+        "cfg: { a: 1, b: [2, 3] }\n",
+    ] {
+        let Some(Ok(d)) = parse_outcome_with_deadline(text, 2000) else {
+            panic!("clean input failed to terminate or errored: {text:?}");
+        };
+        assert!(d.is_static_equivalent(), "{text:?}");
+    }
+}

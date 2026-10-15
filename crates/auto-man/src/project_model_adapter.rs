@@ -17,7 +17,8 @@ use crate::pac::{Pac, Scene};
 use crate::TargetKind;
 use auto_lang::config::{AutoConfig, BackendConfig};
 use auto_project_model::{
-    parse_document as model_parse, ProjectDescriptor, RenderSpec, SceneKind, SourceInfo, WindowSpec,
+    parse_document as model_parse, ErrorStage, ProjectDescriptor, RenderSpec, SceneKind,
+    SourceInfo, WindowSpec,
 };
 use auto_val::{Obj, Value};
 
@@ -70,6 +71,9 @@ pub struct ComparisonReport {
     /// `Ok((static_equivalent, tuple))` = parsed with the descriptor's
     /// static-equivalence flag; `Err(msg)` = new-arm syntax error (recorded).
     pub new: Result<(bool, FrozenNormalized), String>,
+    /// Structural error stage of the new arm when `new` is `Err` — bound to
+    /// the expected-bad allowlist entries (R2 F-02 diagnosis surface).
+    pub new_error_stage: Option<ErrorStage>,
 }
 
 impl ComparisonReport {
@@ -253,17 +257,37 @@ pub fn compare_file(path: &std::path::Path) -> ComparisonReport {
                 read_error: Some(msg.clone()),
                 old: Err(msg.clone()),
                 new: Err(msg),
+                new_error_stage: Some(ErrorStage::Io),
             };
         }
     };
     let old = old_normalized_from_code(&code);
-    let new = new_normalized_from_code(&code, &SourceInfo::from_path(path))
-        .map(|(d, tuple)| (d.is_static_equivalent(), tuple));
+    let (new, new_error_stage) = match new_normalized_from_code(&code, &SourceInfo::from_path(path))
+    {
+        Ok((d, tuple)) => (Ok((d.is_static_equivalent(), tuple)), None),
+        Err(msg) => (Err(msg.clone()), stage_from_message(&msg)),
+    };
     ComparisonReport {
         path: rel,
         read_error: None,
         old,
         new,
+        new_error_stage,
+    }
+}
+
+/// Recover the structural stage from a wrapped new-arm error message
+/// (`new arm parse failed: [<stage>] …`).
+fn stage_from_message(msg: &str) -> Option<ErrorStage> {
+    let rest = msg.split_once("parse failed: [")?.1;
+    let stage = rest.split_once(']')?.0;
+    match stage {
+        "io" => Some(ErrorStage::Io),
+        "document" => Some(ErrorStage::Document),
+        "entry" => Some(ErrorStage::Entry),
+        "value" => Some(ErrorStage::Value),
+        "node-body" => Some(ErrorStage::NodeBody),
+        _ => None,
     }
 }
 
@@ -281,6 +305,22 @@ mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
     use std::process::Command;
+
+    /// Expected-bad fixtures: the ONLY inputs allowed to be rejected by
+    /// BOTH arms (VM parse error + model syntax error), each bound to its
+    /// expected new-arm error stage (R2 F-02: identity + diagnosis).
+    const EXPECTED_BOTH_REJECTED: [(&str, &str); 2] = [
+        ("bad-missing-brace.pac.at", "value"),
+        ("bad-missing-value.pac.at", "value"),
+    ];
+    /// Inputs whose OLD arm fails config-VM parse (render-pipeline-only
+    /// template / undefined-variable fixtures) while the model CLASSIFIES
+    /// them non-static — identity-bound, so an unexpected old-arm failure
+    /// can never hide in this bucket (R2 F-02).
+    const EXPECTED_TEMPLATE_REJECTED: [&str; 2] = [
+        "crates/auto-man/assets/templates/clib/pac.at",
+        "fixtures/dynamic-expressions.pac.at",
+    ];
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -429,6 +469,9 @@ mod tests {
             "expected the managed corpus (149 at T-01), got {}",
             files.len()
         );
+        let mut template_files: Vec<String> = Vec::new();
+        let mut both_files: Vec<String> = Vec::new();
+        let mut dynamic_files: Vec<String> = Vec::new();
         let mut static_eq = 0usize;
         let mut dynamic = 0usize;
         let mut template_rejected = 0usize;
@@ -458,6 +501,7 @@ mod tests {
                     // dynamic/unsupported — old arm still parses (V-03);
                     // equality is never claimed.
                     dynamic += 1;
+                    dynamic_files.push(report.path.clone());
                 }
                 (Ok(_), Err(e)) => {
                     failures.push(format!("{}: new arm syntax error: {}", report.path, e));
@@ -467,11 +511,40 @@ mod tests {
                 // eval_config_with_vm) — model classifying non-static while
                 // the old arm errors is the honest pair (error preserved,
                 // no silent fallback).
-                (Err(_old_err), Ok((false, _))) => template_rejected += 1,
-                // both arms refuse (expected-bad fixtures: VM parse error +
-                // model syntax error) — counted separately from templates
-                // so classification never masks a defect.
-                (Err(_), Err(_)) => both_rejected += 1,
+                (Err(_old_err), Ok((false, _))) => {
+                    let rel = f.strip_prefix(repo_root()).unwrap_or(f);
+                    if EXPECTED_TEMPLATE_REJECTED.iter().any(|p| rel.ends_with(p)) {
+                        template_rejected += 1;
+                        template_files.push(rel.to_string_lossy().to_string());
+                    } else {
+                        failures.push(format!(
+                            "{}: UNEXPECTED template-rejected input — old arm error outside the template allowlist",
+                            report.path
+                        ));
+                    }
+                }
+                // both arms refuse — ONLY expected-bad fixtures may land
+                // here (identity-bound allowlist below); an unexpected
+                // corrupted required input must fail the gate (R2 F-02).
+                (Err(_), Err(_)) => {
+                    let rel = f.strip_prefix(repo_root()).unwrap_or(f);
+                    match EXPECTED_BOTH_REJECTED.iter().find(|(p, _)| rel.ends_with(p)) {
+                        Some((_, want_stage)) => {
+                            assert_eq!(
+                                report.new_error_stage.map(|s| s.to_string()),
+                                Some(want_stage.to_string()),
+                                "{}: unexpected new-arm error stage",
+                                report.path
+                            );
+                            both_rejected += 1;
+                            both_files.push(rel.to_string_lossy().to_string());
+                        }
+                        None => failures.push(format!(
+                            "{}: UNEXPECTED both-rejected input (not in the expected-bad allowlist) — investigate before gating",
+                            report.path
+                        )),
+                    }
+                }
                 (Err(e), Ok((true, _))) => failures.push(format!(
                     "{}: OLD arm failed but model claims static: {}",
                     report.path, e
@@ -504,6 +577,13 @@ mod tests {
             template_rejected,
             both_rejected
         );
+        for (bucket, list) in [
+            ("template_rejected", &template_files),
+            ("both_rejected", &both_files),
+            ("dynamic_classified", &dynamic_files),
+        ] {
+            eprintln!("P780 bucket {} = {:?}", bucket, list);
+        }
     }
 
     /// V-03 (AC-02): dynamic inputs — model rejects/classifies, the explicit
@@ -705,5 +785,35 @@ mod tests {
         let (d, new) = new_normalized_from_code(&code, &SourceInfo::inline()).unwrap();
         assert!(d.is_static_equivalent());
         assert_eq!(old, new);
+    }
+}
+
+#[cfg(test)]
+mod p780_separator_semantics {
+    /// R2 F-01 oracle pin: the config VM's separator grammar for structured
+    /// values — same-line adjacency errors; newline/comma/trailing-comma
+    /// are legal. The static scanner's `check_separation` mirrors this.
+    #[test]
+    fn oracle_separator_semantics() {
+        use super::old_normalized_from_code as old;
+        assert!(
+            old("members: [1 2 3]\n").is_err(),
+            "same-line adjacency errors"
+        );
+        assert_eq!(
+            old("members: [\n1\n2\n]\n").unwrap().members_declared,
+            Some(vec!["1".to_string(), "2".to_string()]),
+            "newline separation is legal"
+        );
+        assert_eq!(
+            old("members: [\n1,\n2\n]\n").unwrap().members_declared,
+            Some(vec!["1".to_string(), "2".to_string()]),
+            "multiline commas are legal"
+        );
+        assert_eq!(
+            old("members: [1, 2,]\n").unwrap().members_declared,
+            Some(vec!["1".to_string(), "2".to_string()]),
+            "trailing comma is legal"
+        );
     }
 }

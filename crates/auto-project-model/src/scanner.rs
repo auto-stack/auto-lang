@@ -275,6 +275,10 @@ impl<'a> Scanner<'a> {
             Some(c) if is_ident_start(c) => self.parse_node(ident, None, line, col),
             Some('"') => self.parse_node(ident, None, line, col),
             Some('{') => self.parse_node(ident, None, line, col),
+            // template node-name interpolation (`lib ${name} {}`, R2: route
+            // to parse_node so it CLASSIFIES instead of erroring — the old
+            // arm's render-only form errors, the model must classify)
+            Some('$') => self.parse_node(ident, None, line, col),
             Some('(') => {
                 let raw_args = self.take_arg_list()?;
                 self.parse_node(ident, raw_args, line, col)
@@ -1049,6 +1053,40 @@ impl<'a> ValuePositionScanner<'a> {
         }
     }
 
+    /// Skip spaces/tabs only (no newlines) — used to police SAME-LINE
+    /// adjacency: the config VM accepts `,` or newline separators between
+    /// elements/pairs and rejects same-line adjacency (R2 oracle probe:
+    /// adjacent `[1 2 3]` errors, newline-separated arrays are Ok).
+    fn skip_inline_ws(&mut self) {
+        while self
+            .chars
+            .peek()
+            .is_some_and(|c| matches!(c, ' ' | '\t' | '\r'))
+        {
+            self.chars.next();
+        }
+    }
+
+    /// After an element/pair: a comma or a line break must separate the
+    /// next one — anything else on the same line is adjacent-value syntax
+    /// the config VM rejects → classify.
+    fn check_separation(&mut self, closer: char) -> Option<UnsupportedConstruct> {
+        self.skip_inline_ws();
+        match self.chars.peek() {
+            Some(',') => {
+                self.chars.next();
+                None
+            }
+            Some(&c) if c == closer || c == '\n' => None,
+            Some(c) => {
+                let raw = c.to_string();
+                self.chars.next();
+                Some(self.unsupported(UnsupportedKind::ValueSyntax, raw))
+            }
+            None => None,
+        }
+    }
+
     fn scan_value(&mut self) -> Option<UnsupportedConstruct> {
         self.skip_ws_and_comments();
         match self.chars.peek().copied()? {
@@ -1089,7 +1127,15 @@ impl<'a> ValuePositionScanner<'a> {
                     _ => Some(self.unsupported(UnsupportedKind::BareIdentValue, ident)),
                 }
             }
-            _ => None, // unexpected shape: let AtomParser produce the error
+            // Progress guarantee (R2 F-01): a value-position token outside
+            // the static subset is CONSUMED and classified — never skipped,
+            // so the enclosing container loop always advances. Expressions
+            // (`1 * 2`), stray separators and unknown characters land here.
+            other => {
+                let raw = other.to_string();
+                self.chars.next();
+                Some(self.unsupported(UnsupportedKind::ValueSyntax, raw))
+            }
         }
     }
 
@@ -1134,13 +1180,21 @@ impl<'a> ValuePositionScanner<'a> {
                     }
                 }
                 Some(_) => {
-                    // bare ident / number key — consume the key token
+                    // bare ident / number key — consume the key token; a
+                    // key-position character outside that set (e.g. `@`)
+                    // must still make progress (R2 F-01) → classify.
+                    let start_len = self.chars.clone().count();
                     while self
                         .chars
                         .peek()
                         .is_some_and(|c| is_ident_continue(*c) || c.is_ascii_digit())
                     {
                         self.chars.next();
+                    }
+                    if self.chars.clone().count() == start_len {
+                        let raw = self.chars.peek().copied().unwrap_or('?').to_string();
+                        self.chars.next();
+                        return Some(self.unsupported(UnsupportedKind::ValueSyntax, raw));
                     }
                 }
             }
@@ -1152,9 +1206,8 @@ impl<'a> ValuePositionScanner<'a> {
             if let Some(u) = self.scan_value() {
                 return Some(u);
             }
-            self.skip_ws_and_comments();
-            if self.chars.peek() == Some(&',') {
-                self.chars.next();
+            if let Some(u) = self.check_separation('}') {
+                return Some(u);
             }
         }
     }
@@ -1176,9 +1229,8 @@ impl<'a> ValuePositionScanner<'a> {
             if let Some(u) = self.scan_value() {
                 return Some(u);
             }
-            self.skip_ws_and_comments();
-            if self.chars.peek() == Some(&',') {
-                self.chars.next();
+            if let Some(u) = self.check_separation(']') {
+                return Some(u);
             }
         }
     }
