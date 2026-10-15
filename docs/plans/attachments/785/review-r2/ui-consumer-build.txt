@@ -1,0 +1,6 @@
+warning: linker stdout: 正在创建库 D:\autostack\.wt\lang-785\auto-lang\scratch\p785-ui-form\ui-consumer.lib 和对象 D:\autostack\.wt\lang-785\auto-lang\scratch\p785-ui-form\ui-consumer.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: 1 warning emitted
+

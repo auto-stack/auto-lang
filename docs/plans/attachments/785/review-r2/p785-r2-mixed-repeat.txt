@@ -1,0 +1,377 @@
+
+RUN=1 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.28s
+
+RUN=2 EXIT=0
+
+running 20 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.28s
+
+RUN=3 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.29s
+
+RUN=4 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.29s
+
+RUN=5 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.29s
+
+RUN=6 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.28s
+
+RUN=7 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.28s
+
+RUN=8 EXIT=0
+
+running 20 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.29s
+
+RUN=9 EXIT=0
+
+running 20 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.28s
+
+RUN=10 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.30s
+
+RUN=11 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.28s
+
+RUN=12 EXIT=0
+
+running 20 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.29s
+
+RUN=13 EXIT=0
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.29s
+
+RUN=14 EXIT=101
+
+running 20 tests
+test tests::plan779_frame_provider::plan779_provider::core_frame_shims_have_no_ui_frame_bench_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test ui::frame_provider::tests::adapter_reads_same_source ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... FAILED
+test tests::plan779_frame_provider::plan779_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan320_tests::plan320_tests::test_basic_struct ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_len_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_basic_print ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_toplevel ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push_then_len ... ok
+test tests::plan320_tests::plan320_tests::test_list_push_int_basic ... ok
+test tests::plan320_tests::plan320_tests::test_list_struct_push ... ok
+test tests::plan779_frame_provider::plan779_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan779_frame_provider::plan779_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test ui::frame_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test vm::host_capabilities::tests::absent_default_is_none ... ok
+
+failures:
+
+---- tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation stdout ----
+
+thread 'tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation' (16012) panicked at crates\auto-lang\src\tests\plan785_clipboard_provider.rs:55:9:
+缺席=无 provider
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation
+
+test result: FAILED. 19 passed; 1 failed; 0 ignored; 0 measured; 6894 filtered out; finished in 0.29s
+

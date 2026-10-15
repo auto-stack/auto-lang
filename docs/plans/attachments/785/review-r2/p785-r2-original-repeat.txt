@@ -1,0 +1,361 @@
+
+RUN=1 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=2 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=3 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=4 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=5 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=6 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=7 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=8 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=9 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=10 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=11 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.13s
+
+RUN=12 EXIT=0
+
+running 6 tests
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=13 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=14 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=15 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=16 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=17 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=18 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=19 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=20 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=21 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=22 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=23 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=24 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=25 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=26 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=27 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=28 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.12s
+
+RUN=29 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
+RUN=30 EXIT=0
+
+running 6 tests
+test tests::plan785_clipboard_provider::plan785_provider::core_clipboard_shims_have_no_ui_clipboard_reference ... ok
+test tests::plan785_clipboard_provider::plan785_provider::merge_native_interface_preserves_instance_provider ... ok
+test tests::plan785_clipboard_provider::plan785_provider::high_level_compat_default_respects_explicit_choice ... ok
+test ui::clipboard_provider::tests::compat_install_never_overrides_explicit_default ... ok
+test tests::plan785_clipboard_provider::plan785_provider::shim_absent_error_and_provider_delegation ... ok
+test tests::plan785_clipboard_provider::plan785_provider::vm_bridge_creation_installs_process_default ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6908 filtered out; finished in 0.11s
+
