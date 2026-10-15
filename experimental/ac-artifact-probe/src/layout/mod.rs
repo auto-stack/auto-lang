@@ -566,7 +566,7 @@ impl<'s> LayoutView<'s> {
         let payload_owned = {
             let buf = &mut self.staging[slot];
             buf.clear();
-            let mut f = fs::File::open(&path)?;
+            let f = fs::File::open(&path)?;
             // BOUNDED read (R2-02): at most one framed page (+1 byte to
             // detect oversize) — a malformed huge file cannot make the
             // read path allocate it before validation rejects.

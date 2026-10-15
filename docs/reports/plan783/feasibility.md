@@ -13,7 +13,7 @@
 | 元数据层 | SQLite(WAL + busy_timeout 8s);artifacts/chunks/edges/roots/leases/txns 六表;发布=**共享 liveness 锁内**单事务;GC/恢复=**独占 liveness 锁**全阶段 | 三故障点恢复幂等(V-08)+ lease/发布与 GC 互锁(R1 F-01) |
 | HIR codec | 二进制定长标签格式(v1):core+scalar 受限可执行子集;解码全索引边界校验;chunk 框架(48B 头+blake3)自带校验;**读取时 CAS 地址复验**(框架字节哈希必须等于请求地址) | 14 项 lib 单测 + V-02 + R1 F-04 |
 | 布局 | A=32B 定长记录表+payload 独立页流(算术索引);B=变长记录+10B 目录项分页;页 64KiB 内容寻址,版本=页清单,未改页逐块共享;**读取路径完整准入**(框架+地址+字段界) | V-03(≥128MiB/布局实测写入)+ R1 F-05 |
-| 发布协议 | staging 写入 →[F1]→ chunk 锁(有界等待)→CAS 投放 →[F2]→ 共享 liveness 内 SQLite 单事务(chunk 状态 upsert 回 live;required 边目标存活校验);GC tombstone →[F3]→ 独占门锁→trash→删除+级联删行 | `AC_PROBE_FAULT` 注入;R1 F-03/06/08 |
+| 发布协议 | **单临界区**(R2-01/03/R3-01):共享 liveness 覆盖 staging 分配→**跨进程独占预算锁内的原子预算预留(measure→check→write,8MiB,含 48B 框架;PEAK_STAGING 记锁内真实并发合计)**→chunk 锁(有界等待)→CAS 投放 →[F2]→SQLite 单事务(chunk 状态 upsert 回 live;required 边目标存活校验);GC tombstone →[F3]→独占门锁→trash→删除+级联删行;GC/恢复全程独占 liveness 且入口共拿 namespace 根 reparse 门(R3-03) | `AC_PROBE_FAULT` 注入;R1/R2/R3 反例回归 |
 | 子进程 | 60s 默认截止(测试经 `AC_PROBE_RUN_DEADLINE_MS` 收紧);Job Object 树杀;管道并发排干 | `subproc.rs`;挂死 exe 用例 3s 内受控失败 |
 | 目标面 | 仅 `x86_64-pc-windows-msvc`(宿主);其余受控拒绝且零产物 | V-05 |
 
@@ -41,7 +41,7 @@
 ## 4. 限制与后续(不做即声明的边界)
 
 - reader 安全性证明止于**文件/锁级**;不冒称 DLL/callback 运行代际安全(A12 Future)。
-- 无 pack/compaction;SQLite 主文件不收缩(行删除走 freelist)——恢复趟清 trash、GC 清块,但 DB 高水位是已声明行为(收据分列 blocks/db_main/WAL)。
+- 无 pack/compaction;SQLite 主文件经 auto_vacuum=INCREMENTAL+checkpoint 在回收后**真实收缩**(R2/R3 轮修复),原 64/48MiB 总量合同在 512-churn 实测达成;NTFS 新写块可见性滞后以 settled_space 沉降测量应对(R3-02)。
 - 布局人口为**确定性造数**,证明分页/预算/共享机制,不冒充通用 CST。
 - 亚秒周转未宣称;实测距离见 perf 报告(P95 意义达标,链接支配收益结构未变)。
 - 生产差距与迁移路线(现有两条 GC 入口、fingerprint 粗粒度、BlobStore tmp 名修复上移、无 single-flight 服务化)见 spec-delta(SD-04)。

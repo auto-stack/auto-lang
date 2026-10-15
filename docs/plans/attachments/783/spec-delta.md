@@ -16,11 +16,16 @@ A00–A12 全层登记(schema/键成分/引用类别/驻留/再生);实际 codec
 ## SD-02 add `docs/specs/auto-ac/artifact-probe.md`
 
 来源:README + feasibility.md + perf-report.md。要点:探针位置/依赖/
-运行面(`verify-ac-artifact-probe.ps1` 两档);冻结预算(64KiB 页、
-≥128MiB/布局、8MiB 热、2 页暂存、512KiB 查询、GC 64/48MiB、8MiB
-staging);支持面=core/scalar 四 oracle + scalar 兼容控制;限制清单
+运行面(`verify-ac-artifact-probe.ps1` 两档,closeout 恒等校验+新临时
+perf 产物校验成功后原子发布);冻结预算(64KiB 页、≥128MiB/布局、
+8MiB 热、2 页暂存、512KiB 查询、GC 64/48MiB、**8MiB staging——跨进程
+独占预算锁内 原子 measure→check→write 预留(R3-01),PEAK_STAGING 记
+锁内观测的真实并发合计**);发布协议=**单临界区**(共享 liveness 覆盖
+staging 分配→预算→CAS 投放→元数据提交;GC/恢复全程独占 liveness);
+支持面=core/scalar 四 oracle + scalar 兼容控制;限制清单
 (文件/锁级 reader 证明≠DLL 安全、无 pack、造数布局≠通用 CST、
-无亚秒承诺、链接支配对象命中路径 ~210ms)。
+无亚秒承诺、链接支配对象命中路径 ~200-230ms、NTFS 新写块可见性滞后
+以 settled_space 沉降测量应对)。
 
 ## SD-03 modify `docs/specs/auto-ac/project.md`
 
@@ -39,8 +44,11 @@ staging);支持面=core/scalar 四 oracle + scalar 兼容控制;限制清单
 2. 元数据删除 vs 物理释放:现有 GC 两条入口按记录大小计,无 lease/图保活/
    崩溃恢复/物理释放收据;探针实现了 tombstone→门锁→trash→删除 +
    级联删行 + 幂等恢复(含已提交孤儿行与 trash 残留的恢复趟,R1 F-06),
-   作为迁移目标形态的参考实现(非生产代码)。注意:SQLite 主文件不收缩
-   (freelist 复用),DB 高水位是声明行为。
+   作为迁移目标形态的参考实现(非生产代码)。探针 store 以
+   `auto_vacuum=INCREMENTAL`+checkpoint 使 SQLite 主文件在回收后**真实
+   收缩**(R2/R3 轮修复),GC 收敛决策用**沉降后的物理总量**
+   (settled_space:orphan/tmp/trash 全计,R3-02)——原 64/48MiB 水位
+   总量合同在 512-churn 上实测达成。
 3. `fingerprint::compute_content_hash` 直哈原源码——各阶段细粒度键
    (profile/caps/target/backend 成分化)在探针 identity.rs 有完整参照。
 4. 迁移边界:探针不并入任何生产入口;退役/迁移由后续计划决策,防第三套

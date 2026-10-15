@@ -54,6 +54,7 @@ $families = [ordered]@{
     "V-12 dep-audit"     = @{ target = "--test dep_audit_";     minPassed = 5;  allowedIgnored = 0 }
     "R1 regressions"     = @{ target = "--test review_r1_";     minPassed = 12; allowedIgnored = 0 }
     "R2 regressions"     = @{ target = "--test review_r2_";     minPassed = 6;  allowedIgnored = 0 }
+    "R3 regressions"     = @{ target = "--test review_r3_";     minPassed = 4;  allowedIgnored = 0 }
 }
 
 $failures = @()
@@ -166,6 +167,11 @@ if ($Scope -eq "closeout") {
         $failures += "perf-generation (node exit $LASTEXITCODE, artifact present: $(Test-Path $tmpReport))"
     } else {
         Write-Host "== regenerated perf report contract (temp output)" -ForegroundColor Cyan
+        # ATOMIC PROMOTION (R3-04): Test-PerfReport and the binding/overlap
+        # checks only APPEND to $failures — an invalid report must never be
+        # published over the old evidence. Snapshot the failure count and
+        # promote ONLY when this validation added zero new failures.
+        $failuresBefore = $failures.Count
         Test-PerfReport -Path $tmpReport -MinSamples 30 -Tag "perf-report-regen"
         # Binding: the regenerated report must carry the frozen commit.
         try {
@@ -177,10 +183,16 @@ if ($Scope -eq "closeout") {
             if ([long]$gc.gc_deleted_during_queries -le 0) {
                 $failures += "perf-report-regen (gc deletions did not overlap the timed queries)"
             }
-            # Promote only after validation.
-            Copy-Item $tmpReport $committedReport -Force
         } catch {
             $failures += "perf-report-regen (post-run validation: $_)"
+        }
+        if ($failures.Count -eq $failuresBefore) {
+            # Every artifact check succeeded — publish.
+            Copy-Item $tmpReport $committedReport -Force
+        } else {
+            # Invalid new report: keep the OLD report bytes untouched; the
+            # failures recorded above already fail the gate.
+            Write-Host "perf regeneration INVALID — old report preserved, new evidence NOT published" -ForegroundColor Yellow
         }
     }
     Remove-Item Env:AC_PROBE_SOURCE_COMMIT -ErrorAction SilentlyContinue

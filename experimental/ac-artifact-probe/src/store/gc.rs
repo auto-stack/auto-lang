@@ -139,6 +139,11 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
     let t0 = now_ms();
     let mut receipt = GcReceipt::default();
     receipt.stale_leases_swept = store.sweep_stale_leases()?;
+    // Namespace-root gates (R3-03): the SAME boundary rule recover enforces
+    // — a reparse point at a managed namespace root is a hard refusal.
+    // GC deletes inside staging/trash/blocks; it must not enumerate
+    // through a junction any more than recovery may.
+    super::check_namespace_roots(store)?;
     let space = store.space();
     receipt.total_before = space.total;
     if space.total <= cfg.high {
@@ -242,12 +247,14 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
         return Ok(receipt);
     }
 
-    // Batch 2: unreachable chunks, oldest first. Convergence against the
-    // §5.4 TOTAL contract (R2-05) is decided by MEASURED totals: after
-    // each deletion batch the DB is actually shrunk (WAL truncate +
-    // incremental vacuum) and the store re-measured — the GC's own
-    // metadata churn therefore counts, and the loop continues until the
-    // measured total is under the low watermark or candidates run out.
+    // Batch 2: unreachable chunks, oldest first. Candidates ALSO include
+    // unaccounted physical blocks (R3-02): under the exclusive liveness
+    // guard there are no in-flight publishers, so any blob file without a
+    // live chunk row — a crashed F2 publish, a conflict's committed loser,
+    // a leftover CAS `.tmp` — is garbage this pass may reclaim. The
+    // convergence decision uses the SETTLED PHYSICAL total (settled_space,
+    // R3-02), which always counts orphans/tmp/trash — never just "rows
+    // with live metadata".
     let mut candidates: Vec<(u64, String, u64)> = Vec::new(); // (created, chunk, size)
     for (aid, cid, created) in &all_artifacts {
         if !live_artifacts.contains(aid) && !live_chunk_ids.contains(cid) {
@@ -263,38 +270,57 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
     let mut seen = HashSet::new();
     candidates.retain(|(_, c, _)| seen.insert(c.clone()));
 
+    // Orphan physical blocks: walk the CAS, set-difference vs the DB's
+    // chunk rows; anything unknown (plus `.tmp` leftovers) is reclaimable
+    // here — the same state recovery handles, reclaimed by GC so the
+    // watermark decision is made on the REAL total (R3-02).
+    let known: HashSet<String> = chunk_sizes.keys().cloned().collect();
+    let mut orphan_candidates: Vec<(u64, String, u64)> = Vec::new();
+    {
+        let blocks_dir = store.root.join("blocks").join("blobs");
+        if blocks_dir.is_dir() {
+            for shard in std::fs::read_dir(&blocks_dir)?.flatten() {
+                let shard_path = shard.path();
+                if !shard_path.is_dir() || super::is_reparse(&shard_path) {
+                    continue;
+                }
+                for blob in std::fs::read_dir(&shard_path)?.flatten() {
+                    if super::is_reparse(&blob.path()) {
+                        continue;
+                    }
+                    let name = blob.file_name().to_string_lossy().to_string();
+                    let sz = blob.metadata().map(|m| m.len()).unwrap_or(0);
+                    if name.ends_with(".tmp") || !known.contains(&name) {
+                        orphan_candidates.push((0, name, sz));
+                    }
+                }
+            }
+        }
+    }
+
+    let total_candidates = candidates.len() + orphan_candidates.len();
     let mut idx = 0usize;
-    // Convergence decisions use TRANSACTIONAL accounting (R2-05 repair):
-    // the DB's live-chunk size sum drops the instant a delete commits,
-    // while an NTFS directory walk immediately after mass renames can
-    // lag (measured undercount during the 512-churn debug). The receipt
-    // still reports the real walked totals.
-    let live_sum_db = |db: &rusqlite::Connection| -> u64 {
-        db.query_row(
-            "SELECT COALESCE(SUM(size), 0) FROM chunks WHERE state='live'",
-            [],
-            |r| r.get::<_, i64>(0),
-        )
-        .map(|v| v.max(0) as u64)
-        .unwrap_or(0)
-    };
+    let mut orphan_idx = 0usize;
     loop {
         if cfg.low > 0 {
             super::shrink_db(&store.db());
-            let s = store.space();
-            let measured = s.total - s.blocks + live_sum_db(&store.db());
-            if measured <= cfg.low || idx >= candidates.len() {
+            let measured = super::settled_space(store).total;
+            if measured <= cfg.low
+                || (idx >= candidates.len() && orphan_idx >= orphan_candidates.len())
+            {
                 break;
             }
-        } else if idx >= candidates.len() {
+        } else if idx >= candidates.len() && orphan_idx >= orphan_candidates.len() {
             break;
         }
-        // Delete a bounded batch, then re-measure (avoids per-candidate
-        // full walks while keeping the decision measured, not estimated).
-        let batch_end = (idx + 32).min(candidates.len());
-        while idx < batch_end {
+        // Delete a bounded batch (dead candidates first, then orphans),
+        // then re-measure (avoids per-candidate full walks while keeping
+        // the decision measured on real bytes, not estimates).
+        let mut batch = 32usize;
+        while batch > 0 && idx < candidates.len() {
             let (_, cid, size) = &candidates[idx];
             idx += 1;
+            batch -= 1;
             // Invalidate logically first (tombstone), then take the gate.
             store.db().execute(
                 "UPDATE chunks SET state='tombstoned' WHERE chunk_id=?1 AND state='live'",
@@ -328,25 +354,48 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
                 }
             }
         }
+        while batch > 0 && orphan_idx < orphan_candidates.len() {
+            let (_, name, size) = &orphan_candidates[orphan_idx];
+            orphan_idx += 1;
+            batch -= 1;
+            // Physical-only garbage (no metadata row): delete the file
+            // directly under the same boundary rules.
+            if let Some(p) = store.blocks_blob_path(name) {
+                match store.bounded_remove_file(&p) {
+                    Ok(true) => {
+                        receipt.freed_bytes += size;
+                        receipt.orphans_removed += 1;
+                    }
+                    Ok(false) => {
+                        receipt.pending_reader_bytes += size;
+                        receipt.failed_deletes += 1;
+                    }
+                    Err(_) => {
+                        receipt.failed_deletes += 1;
+                    }
+                }
+            }
+        }
+        let _ = total_candidates;
     }
     // Final shrink so the receipt's total_after reflects returned space.
     super::shrink_db(&store.db());
 
-    // Post-condition (R2-05): the transactional measure decides whether we
-    // genuinely reached low; the receipt's total_after reports the REAL
-    // walked total (file metadata may settle slightly later on NTFS).
+    // Post-condition (R3-02): the SETTLED PHYSICAL total decides whether we
+    // genuinely reached low — orphans/tmp/trash included. Anything still
+    // above low after exhausting reclaimable candidates is reported as an
+    // explicit bounded health state, never a silent pass.
     if cfg.low > 0 {
-        let s = store.space();
-        let measured = s.total - s.blocks + live_sum_db(&store.db());
+        let measured = super::settled_space(store).total;
         if measured > cfg.low && receipt.backoff.is_none() {
             receipt.backoff = Some(format!(
-                "accounted total {} still above low watermark {} after exhausting reclaimable candidates",
+                "physical total {} still above low watermark {} after exhausting reclaimable candidates",
                 measured, cfg.low
             ));
         }
     }
 
-    receipt.total_after = store.space().total;
+    receipt.total_after = super::settled_space(store).total;
     receipt.duration_ms = now_ms().saturating_sub(t0);
     Ok(receipt)
 }

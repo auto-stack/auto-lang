@@ -6,7 +6,7 @@
     "os": "windows",
     "logical_cores": 20,
     "total_phys": 34163630080,
-    "avail_phys": 14252572672
+    "avail_phys": 15023972352
   },
   "fixture": "p04-while-retest.at",
   "samples_per_scenario": 30,
@@ -16,17 +16,17 @@
       "what": "cold store: parse→HIR→verify→lower→link→run per sample (distinct source)",
       "stats": {
         "n": 30,
-        "p50_ms": 239.1002,
-        "p95_ms": 253.1849,
-        "p99_ms": 280.779,
-        "mean_ms": 241.38505999999998,
-        "min_ms": 225.4415,
-        "max_ms": 280.779
+        "p50_ms": 298.4576,
+        "p95_ms": 363.34909999999996,
+        "p99_ms": 393.5396,
+        "mean_ms": 283.88560666666666,
+        "min_ms": 199.5931,
+        "max_ms": 393.5396
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 2117632,
-      "disk_total": 4412770,
+      "private_bytes_delta": 1806336,
+      "disk_total": 4392218,
       "gc_runs": 0,
       "gc_ran": 0,
       "gc_deleted_chunks": 0,
@@ -41,16 +41,16 @@
       "what": "object-hit resume in the same process (link+run only)",
       "stats": {
         "n": 30,
-        "p50_ms": 189.899,
-        "p95_ms": 200.5736,
-        "p99_ms": 208.047,
-        "mean_ms": 188.71629666666664,
-        "min_ms": 174.5055,
-        "max_ms": 208.047
+        "p50_ms": 272.13599999999997,
+        "p95_ms": 322.40619999999996,
+        "p99_ms": 327.9561,
+        "mean_ms": 270.23553666666675,
+        "min_ms": 193.4561,
+        "max_ms": 327.9561
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 1437696,
+      "private_bytes_delta": 1888256,
       "disk_total": 1563137,
       "gc_runs": 0,
       "gc_ran": 0,
@@ -65,11 +65,11 @@
       "stats": {
         "n": 30,
         "p50_ms": 217.0,
-        "p95_ms": 234.0,
-        "p99_ms": 281.0,
-        "mean_ms": 218.66666666666666,
-        "min_ms": 185.0,
-        "max_ms": 281.0
+        "p95_ms": 280.0,
+        "p99_ms": 325.0,
+        "mean_ms": 219.26666666666668,
+        "min_ms": 187.0,
+        "max_ms": 325.0
       },
       "ok": 30,
       "semantic_failures": 0,
@@ -89,16 +89,16 @@
       "what": "identical content consumed by other projects: full hits, no new chunks",
       "stats": {
         "n": 30,
-        "p50_ms": 183.71599999999998,
-        "p95_ms": 219.85469999999998,
-        "p99_ms": 226.39319999999998,
-        "mean_ms": 185.93702,
-        "min_ms": 170.826,
-        "max_ms": 226.39319999999998
+        "p50_ms": 263.73069999999996,
+        "p95_ms": 294.1314,
+        "p99_ms": 302.1609,
+        "mean_ms": 262.9415933333333,
+        "min_ms": 234.1302,
+        "max_ms": 302.1609
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 126976,
+      "private_bytes_delta": -98304,
       "disk_total": 3853857,
       "gc_runs": 0,
       "gc_ran": 0,
@@ -114,16 +114,16 @@
       "what": "body-only edit (same signature): object miss → full recompile",
       "stats": {
         "n": 30,
-        "p50_ms": 230.4199,
-        "p95_ms": 255.8939,
-        "p99_ms": 272.081,
-        "mean_ms": 229.22557999999998,
-        "min_ms": 206.7437,
-        "max_ms": 272.081
+        "p50_ms": 335.0605,
+        "p95_ms": 388.57750000000004,
+        "p99_ms": 390.7373,
+        "mean_ms": 338.19938,
+        "min_ms": 296.2517,
+        "max_ms": 390.7373
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 413696,
+      "private_bytes_delta": 266240,
       "disk_total": 4451345,
       "gc_runs": 0,
       "gc_ran": 0,
@@ -137,24 +137,24 @@
       "what": "object-hit build latency while GC recycles junk versions concurrently (hair-pin trigger, no floor: every dead candidate reclaimed per pass)",
       "stats": {
         "n": 30,
-        "p50_ms": 210.3485,
-        "p95_ms": 253.59759999999997,
-        "p99_ms": 274.8978,
-        "mean_ms": 216.96619666666663,
-        "min_ms": 186.2604,
-        "max_ms": 274.8978
+        "p50_ms": 341.8618,
+        "p95_ms": 508.56469999999996,
+        "p99_ms": 544.1850000000001,
+        "mean_ms": 369.6179266666666,
+        "min_ms": 247.6219,
+        "max_ms": 544.1850000000001
       },
       "ok": 30,
       "semantic_failures": 0,
-      "private_bytes_delta": 200704,
-      "disk_total": 164926,
-      "gc_runs": 25,
-      "gc_ran": 25,
-      "gc_deleted_chunks": 89,
-      "gc_deleted_during_queries": 85,
+      "private_bytes_delta": 602112,
+      "disk_total": 156734,
+      "gc_runs": 21,
+      "gc_ran": 21,
+      "gc_deleted_chunks": 73,
+      "gc_deleted_during_queries": 69,
       "worker_failures": 0,
       "notes": [
-        "gc runs=25 ran=25 deleted-chunks=89 during-timed-queries=85 (hair-pin trigger from steady base, low=0; proving=true, failures=0)"
+        "gc runs=21 ran=21 deleted-chunks=73 during-timed-queries=69 (hair-pin trigger from steady base, low=0; proving=true, failures=0)"
       ]
     }
   ]

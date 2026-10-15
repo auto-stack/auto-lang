@@ -569,9 +569,20 @@ impl ManagedStore {
         // the SHARED liveness guard, so GC/recovery (exclusive) can never
         // observe or delete a half-published payload.
         let _live = self.liveness_shared()?;
-        // Atomic budget reservation (R2-03): measured under the same guard
-        // every publisher uses, and counting the FULL framed bytes
-        // (48-byte header included), not the raw payload.
+        // ATOMIC budget reservation (R3-01): the shared liveness guard does
+        // NOT exclude other publishers — four concurrent puts each measured
+        // 0 and wrote past the cap together. The staging-budget lock is an
+        // EXCLUSIVE cross-process lock held around measure→check→write, so
+        // the reservation is a real quota: the measured sum includes every
+        // concurrent in-flight write, the full framed bytes (48-byte header
+        // included) are counted, and PEAK_STAGING records the true
+        // concurrent total (each observation serialized under the lock),
+        // not a per-call prediction. Lock order: liveness(shared) →
+        // budget(exclusive) → chunk → sqlite; GC/recover hold
+        // liveness(exclusive) and never take the budget lock — no cycle.
+        let _budget =
+            FileGuard::lock_timeout(&self.lock_path("staging-budget"), true, CHUNK_LOCK_WAIT)?
+                .ok_or_else(|| StoreError::Busy("staging budget lock".into()))?;
         let staging_now = Self::dir_size(&self.root.join("staging"));
         let staged_total = staging_now + framed.len() as u64;
         PEAK_STAGING.fetch_max(staged_total, std::sync::atomic::Ordering::Relaxed);
@@ -585,10 +596,13 @@ impl ManagedStore {
         }
 
         // 1. Stage (transient sharing violations retried — AV scanners can
-        // hold a freshly created file; R2 repair-round observation).
+        // hold a freshly created file; R2 repair-round observation). The
+        // budget lock is still held, so concurrent reservations see these
+        // bytes on disk.
         fs::create_dir_all(staging_dir)?;
         let staged_file = staging_dir.join("payload");
         write_with_retry(&staged_file, &framed)?;
+        drop(_budget);
         fault("after-staging");
 
         // 2. Per-chunk cross-process lock, BOUNDED wait (R1 F-08): same-key
@@ -1004,6 +1018,19 @@ impl ManagedStore {
         rename_with_retry(&p, &trash)?;
         Ok(remove_with_retry(&trash))
     }
+
+    /// CAS blob path by chunk id (namespace gates already checked by the
+    /// caller). Used by GC's orphan reclamation (R3-02).
+    pub(crate) fn blocks_blob_path(&self, chunk_id: &str) -> Option<PathBuf> {
+        self.blobs.get(chunk_id)
+    }
+
+    /// Boundary-checked physical file removal for orphan garbage (no
+    /// metadata row): canonical containment + bounded retry (R3-02).
+    pub(crate) fn bounded_remove_file(&self, p: &Path) -> Result<bool, StoreError> {
+        self.check_inside(p)?;
+        Ok(remove_with_retry(p))
+    }
 }
 
 /// Bounded retry for transient Windows sharing violations (os 32) on
@@ -1188,6 +1215,49 @@ pub(crate) fn shrink_db(db: &Connection) {
     );
 }
 
+/// Namespace-root boundary gate shared by GC and recovery (R2-04/R3-03):
+/// staging/trash/locks/logs (and the blocks CAS tree) must not themselves
+/// be reparse points. Fail closed with a Boundary error; external content
+/// on the far side of any junction is never touched.
+pub(crate) fn check_namespace_roots(store: &ManagedStore) -> Result<(), StoreError> {
+    for ns in ["staging", "trash", "locks", "logs"] {
+        let dir = store.root.join(ns);
+        if dir.is_dir() && is_reparse(&dir) {
+            return Err(StoreError::Boundary(format!(
+                "managed namespace `{}` is a reparse point — refusing to operate through it",
+                ns
+            )));
+        }
+    }
+    let blocks = store.root.join("blocks").join("blobs");
+    if blocks.is_dir() && (is_reparse(&blocks) || is_reparse(blocks.parent().unwrap_or(&blocks))) {
+        return Err(StoreError::Boundary(
+            "blocks namespace is a reparse point — refusing to operate through it".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Physical total measurement settled for NTFS visibility lag (R3-02):
+/// under the exclusive liveness guard there are no concurrent writers, so
+/// any growth between two walks is directory-entry propagation catching
+/// up. Walk up to three times (short settle sleeps) and keep the LAST
+/// (largest-visibility) observation — the measured total always includes
+/// crash orphans, CAS tmp files and trash, never just "rows with live
+/// metadata".
+pub(crate) fn settled_space(store: &ManagedStore) -> crate::store::SpaceReport {
+    let mut last = store.space();
+    for _ in 0..2 {
+        std::thread::sleep(Duration::from_millis(120));
+        let next = store.space();
+        if next.total <= last.total {
+            break;
+        }
+        last = next;
+    }
+    last
+}
+
 // ---------------------------------------------------------------------------
 // Recovery — full state reconciliation (R1 F-06)
 // ---------------------------------------------------------------------------
@@ -1219,20 +1289,12 @@ pub fn recover(
     let _exclusive = store.liveness_exclusive()?;
     let mut receipt = RecoveryReceipt::default();
 
-    // 0. Namespace-root gates (R2-04): every managed namespace directory
-    //    we are about to enumerate/delete inside must itself not be a
-    //    reparse point. A junction at a namespace root is a hard boundary
-    //    violation — refuse the whole pass (fail closed, external content
-    //    preserved) rather than enumerating through it.
-    for ns in ["staging", "trash", "locks", "logs"] {
-        let dir = store.root.join(ns);
-        if dir.is_dir() && is_reparse(&dir) {
-            return Err(StoreError::Boundary(format!(
-                "managed namespace `{}` is a reparse point — refusing to operate through it",
-                ns
-            )));
-        }
-    }
+    // 0. Namespace-root gates (R2-04/R3-03): shared with GC — every managed
+    // namespace directory we are about to enumerate/delete inside must
+    // itself not be a reparse point. A junction at a namespace root is a
+    // hard boundary violation — refuse the whole pass (fail closed,
+    // external content preserved) rather than enumerating through it.
+    check_namespace_roots(store)?;
 
     // 1. Staging leftovers.
     for entry in fs::read_dir(store.root.join("staging"))?.flatten() {

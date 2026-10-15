@@ -190,7 +190,7 @@ fn cmd_churn(rest: &[String]) -> i32 {
     let mut gc_deleted = 0u64;
     let mut gc_backoffs = 0u64;
     let mut high_crossings = 0u64;
-    let mut peak_staging = 0u64;
+    let peak_staging;
     let mut peak_total = 0u64;
     // Scaled watermarks are a TEST control; the acceptance 512 run always
     // uses the frozen defaults (64/48 MiB) — the receipt records which.
@@ -290,8 +290,8 @@ fn cmd_churn(rest: &[String]) -> i32 {
     if r.backoff.is_some() {
         gc_backoffs += 1;
     }
-    let peak_staging = peak_staging
-        .max(ac_artifact_probe::store::PEAK_STAGING.load(std::sync::atomic::Ordering::Relaxed));
+    peak_staging =
+        ac_artifact_probe::store::PEAK_STAGING.load(std::sync::atomic::Ordering::Relaxed);
     let final_space = store.space();
     emit(
         "CHURN",
