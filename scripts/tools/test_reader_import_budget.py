@@ -280,7 +280,9 @@ def run_v17(fmt, manifests, auto_bin, reader_dir, cold_restart=False):
         if not ok:
             return
         bid = reply.get("book_id", "")
-        verify_book_content(inst, tag, man, bid)
+        # T-26（F-781-R03 修正）：meta 索引（阶段 E T-25）落地后章 GET
+        # = O(章) 窗读——deep 全章逐字 oracle 从 ~67h 降为分钟级，必选。
+        verify_book_content(inst, tag, man, bid, deep=True)
         if cold_restart:
             # 冷启动：reap 本 run 拥有的进程 → 同库重启 → TOC/中章不变。
             old_pid = inst.proc.pid
@@ -300,14 +302,8 @@ def run_v17(fmt, manifests, auto_bin, reader_dir, cold_restart=False):
             n = toc_count(toc) if toc else -1
             record(f"{tag}_cold_restart_live", new_pid != old_pid and st == 200,
                    f"pid {old_pid}→{new_pid} toc_status={st} chapters={n}")
-            mid = man["chapters"][len(man["chapters"]) // 2]
-            st2, body2, _ = http_get_retry(
-                inst2, f"/api/library/chapter?book_id={bid}&number={mid['number']}")
-            ch = inst2.parse_reply(body2) if st2 == 200 else None
-            ok_mid = ch and hashlib.sha256(
-                ch.get("body", "").encode("utf-8")).hexdigest() == mid["body_sha256"]
-            record(f"{tag}_cold_restart_content", bool(ok_mid),
-                   f"chapter {mid['number']} identical={bool(ok_mid)}")
+            # T-26：冷重启后全章复扫（deep——索引随库持久，重启零重解析）。
+            verify_book_content(inst2, f"{tag}_cold", man, bid, deep=True)
             inst2.reap()
             return
     finally:
@@ -415,6 +411,71 @@ def run_v14_dual(manifests, auto_bin, reader_dir):
         b.reap()
 
 
+
+
+def run_w03(manifests, auto_bin, reader_dir):
+    """W-03（T-26/F-781-R03）：损坏章负例——受管副本章窗内字节变异后，
+    deep 全章 oracle 必须检出（body_sha256 失配）；未变异章不受扰。
+    meta 索引窗读意味着变异只影响所属章窗（偏移漂移不波及他章）。
+    用独立 doomed 实例（副本被改，库不回收）。"""
+    man = book_manifest(manifests, "book-10mib.txt")
+    inst = Instance("w03-corrupt", auto_bin, reader_dir, IMPORT_PROFILE)
+    try:
+        if not inst.launch():
+            record("w03_instance", False, "backend not live")
+            return
+        fx = os.path.join(FIXTURE_DIR, man["file"])
+        st, body, _ = inst.import_book(fx)
+        reply = inst.parse_reply(body) if body else None
+        if not (st == 200 and reply and reply.get("code") == "ok"):
+            record("w03_import", False, f"status={st}")
+            return
+        record("w03_import", True, "ok")
+        bid = reply.get("book_id", "")
+        with open(inst.books_json_path(), encoding="utf-8") as f:
+            entry = next((b for b in json.load(f).get("books", [])
+                          if b.get("book_id") == bid), None)
+        mp = entry.get("managed_path", "")
+        size = os.path.getsize(mp)
+        # 变异点：~2/3 处的一个字节（落在某章窗内；ASCII 空格 ↔ 'X'）。
+        off = int(size * 2 / 3)
+        with open(mp, "r+b") as f:
+            f.seek(off)
+            orig = f.read(1)
+            f.seek(off)
+            f.write(b"X" if orig != b"X" else b"Y")
+        # 定位受影响章：manifest 顺序扫描累计字节（章体近似——以内容
+        # sha 失配为准，不要求精确归章）。
+        bad = scan_chapters(inst, bid, man)
+        record("w03_corrupted_chapter_detected", bool(bad),
+               f"bad={bad[:3]} corrupt_at={off}")
+        # 未受扰区：首章（变异点 2/3 处不可能落在首章窗）必须仍逐字一致。
+        st2, body2, _ = http_get_retry(inst, f"/api/library/chapter?book_id={bid}&number=1")
+        ch = inst.parse_reply(body2) if st2 == 200 else None
+        c1 = man["chapters"][0]
+        ok1 = ch and hashlib.sha256(
+            ch.get("body", "").encode("utf-8")).hexdigest() == c1["body_sha256"]
+        record("w03_intact_chapter_unaffected", bool(ok1), "chapter 1 identical")
+    finally:
+        inst.reap()
+
+
+def scan_chapters(inst, bid, man):
+    """全章 body_sha256 扫描，返回失配 [(number, reason)]。"""
+    bad = []
+    for c in man["chapters"]:
+        st, body, _ = http_get_retry(
+            inst, f"/api/library/chapter?book_id={bid}&number={c['number']}")
+        ch = inst.parse_reply(body) if st == 200 else None
+        if not ch:
+            bad.append((c["number"], f"status={st}"))
+            continue
+        got = hashlib.sha256(ch.get("body", "").encode("utf-8")).hexdigest()
+        if got != c["body_sha256"]:
+            bad.append((c["number"], "sha-mismatch"))
+    return bad
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--auto-bin",
@@ -449,6 +510,8 @@ def main():
                      lambda: run_v14_dual(manifests, args.auto_bin, args.reader_dir)))
     if not only or "v15_boot" in only:
         legs.append(("v15_boot", lambda: run_v15_boot(args.auto_bin, args.reader_dir)))
+    if not only or "w03_corrupt" in only:
+        legs.append(("w03_corrupt", lambda: run_w03(manifests, args.auto_bin, args.reader_dir)))
     # 单腿异常不杀全家（此前一次解析崩溃吞掉后续三腿——4 分钟导入学费）。
     for name, leg in legs:
         try:
