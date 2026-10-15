@@ -150,6 +150,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 📝 设计草案（2026-10-13；PLAN-774→770/771，均drafting；标量前置772已交付） |
 | [37-v06-modularization-and-repo-boundaries](37-v06-modularization-and-repo-boundaries.md) | v0.6 结构治理：AutoUI/AutoMan 可拆性、语言内部 crate 分层、宿主/项目模型解耦、去重与退役、独立仓验收 | 📝 调研与设计草案（2026-10-13；证据报告与首批 PLAN-777–780，未实施） |
 | [39-ac-incremental-syntax-and-language-platform](39-ac-incremental-syntax-and-language-platform.md) | AC/ACC增量/热重载/插件与通用语法产品；亚秒周转、全阶段全局cache、分页AST/CST和有界内存工作集、跨工程共享、LSP/外语元信息分层 | 📝 需求与架构建议（2026-10-15；算法/预算/接口未冻结，未实施） |
+| [40-compiler-artifacts-and-cache-lifecycle](40-compiler-artifacts-and-cache-lifecycle.md) | 编译全阶段产物目录、Atom/Batom+Schema、query/content/local/external身份、强数据与失效依赖、共享store/lease/预算及自动GC健康治理 | 📝 目标态合同草案（2026-10-15；格式/策略参数未冻结，未实施） |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 

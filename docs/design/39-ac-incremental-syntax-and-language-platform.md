@@ -23,6 +23,8 @@ implemented_by_plans: []
 
 AST/CST本身就是可持久化的编译中间产物，与语义查询、HIR和对象码进入同一个全局产物依赖图。编辑器的源码分块/rope和编译器的树分块/按需装入采用相同的有界工作集原则；仅把完整AST写到磁盘、命中后仍整库反序列化，不满足本设计。
 
+各层具体数据、Schema/引用身份、存放与自动回收统一见 [Design40：编译中间产物与cache生命周期](40-compiler-artifacts-and-cache-lifecycle.md)。required-data强边与失效/provenance指纹分别处理，避免成品保留导致所有历史上游永不释放；用户交付物与runtime live代际也不能按普通cache淘汰。下一契约探针同时消费两份设计。
+
 ## 2. 本地事实与缺口
 
 以下为 2026-10-15 源码/文档只读观察，非性能或运行验收：
