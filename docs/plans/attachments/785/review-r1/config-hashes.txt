@@ -1,0 +1,14 @@
+[
+  {
+    "Path": "D:\\autostack\\.wt\\lang-785\\auto-lang\\Cargo.lock",
+    "Hash": "686D659A1322EEEF4A180F126DA03563059ED11C03D1E4BBA5398AA04DD5D719"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-785\\auto-lang\\.config\\nextest.toml",
+    "Hash": "0FBEA4B493E2437105D5CD68C616549B1A39AAAD6AE4B2F85FD83ADF4782D5A2"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-785\\auto-lang\\.cargo\\config.toml",
+    "Hash": "A55E53FD140177F0B32CC7B24F577939E418DAC53973C79102B39370A2022445"
+  }
+]
