@@ -1,3 +1,71 @@
+### Plan 784（2026-10-15，final review R3 —— 全部闭合）
+
+审面 `d2f12ca2e37cab568041f2b548f6dad29e516dc4`；**final pass / reviewed 6/7**。F784-R1-01/02/03和F784-R2-01全部closed，无新增阻断项，历史记录保留。
+[R3报告与闭合表](attachments/784/review-r3/REVIEW.md)、[独立19/19结果](attachments/784/review-r3/results.json)、[冻结SD](attachments/784/review-r3/spec-delta-reviewed.md)。
+
+两真实快照独立恢复11/29refs、3/23tags及tree/WIP等原字节；永久drill8/8、refs新增/移动/删除和branch新建、有效缺ref旧bundle+同步hash双反控、三类保留源变更/删除6反控均通过。两个strict均pass/0违例2grandfathered；三树guard、diff-check、规范5链接通过。原仓/实际payload/实现提交前后不变。
+
+T07已于merge收尾完成（2026-10-15）：delivery 2ca68d900 ff-only 落地（rebase 等价证明 range-diff 3/3=），ledger v24→v25（P784-D1/T/R3/M），规范+INDEX 入库，复审附件 r1-r3 随归档提交；执行树 guard-clean 后清理，准备树/refs/三代恢复载荷显式转交后续迁移计划。Category A 无 Rust 门禁。Category A未跑也不要求补跑Rust整档。本轮未merge/发布规范/清理树；不得删除后续迁移用准备树及任一代恢复载荷。
+
+### Plan 784（2026-10-15，final review R2）
+
+审面 `1994280805a524659ca3119ab9845e453a2cbc4a`；**needs_fix / executing 2/7**。R1三项均closed，新增一项blocking；历史R1记录保留。
+[R2完整报告](attachments/784/review-r2/REVIEW.md)、[原始结果](attachments/784/review-r2/results.json)、[冻结SD](attachments/784/review-r2/spec-delta-reviewed.md)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F784-R2-01 | P2 / blocking | 新快照身份只含HEAD/文件状态，忽略refs；同HEAD新增指向独立提交的标签后preserve仍exit0/reuse旧bundle，真实恢复缺该标签。须将完整refs→SHA纳入身份或明确拒绝变化，补新增/移动/删除控制并断言实际bundle可恢复性。 |
+
+两真实快照独立恢复11/29refs、3/23tags与tree一致；A→B旧快照保留、三类源文件变更/删除6反控、drill7/7及规范5链接通过。原仓/实际payload/实现树未变，无真实数据损失证据。
+保留T-01/T-04，重开T-02/T-03/T-05；同树修复提交再审。两次final失败，下次readiness须说明根因与状态身份/manifest/bundle覆盖调整。Category A未跑cargo整档；未merge/发布规范/清理。T07交接、沉淀、归档与guard清理pending；债务登记不批准延后本合同缺口。
+
+### Plan 784（2026-10-15，final review R1）
+
+审面 `3f084979dcabf65e363e19027df9dff0c4b6e0b9`；**needs_fix / executing 2/7**。真实两仓 bundle 已独立恢复；原仓与实际 payload 未变。发现交付工具的重跑保护和漂移校验缺口，不能签发 pass。
+[R1完整报告](attachments/784/review-r1/REVIEW.md)、[原始结果](attachments/784/review-r1/results.json)、[冻结SD](attachments/784/review-r1/spec-delta-reviewed.md)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F784-R1-01 | P1 / blocking | 同payload重复preserve仅复用bundle，却覆盖旧未提交work/head/diff及manifest；A→B反例exit0且A恢复点丢失。须在覆盖前拒绝输入漂移或建立不可覆盖的新快照。 |
+| F784-R1-02 | P2 / blocking | verify只校对ignored/untracked备份，没有比较原文件；ignored源内容变化后仍exit0/ok。须检查明确保留源的存在/hash并加入变更与删除控制。 |
+| F784-R1-03 | P3 / closeout | 新repository-boundaries规范三处../plans链接解析到不存在的docs/specs/plans；修复并重新冻结SD。 |
+
+保留T-01/T-04，重开T-02/T-03/T-05；同树修复提交后复审。原drill4/4、两strict、三树guard及diff-check通过，不能替代上述独立反例。Category A未跑cargo整档；未merge或清理准备树。以上属于本合同未闭合项，登记债务不代表批准延后。
+
+### Plan 779（2026-10-15，独立 final review R3 —— 阻断全部闭合）
+
+审面45203b5cad61680097bc9f39590868bac03c816a；**final pass / reviewed 6/7**，尚未merge/交付。R1两项、R2一项全部closed，无新增阻断。
+[R3报告及完整闭合表](attachments/779/review-r3/REVIEW.md)、[冻结规范增量](attachments/779/review-r3/spec-delta-reviewed.md)。
+
+no-ui/UI同源consumer分别6/6，plan779 4/4、plan755 4/4、默认plan716 14/14、单独门开程序轨/bridge各1/1、check/fmt通过；独立重复安装/显式替换/旧实例快照与覆盖/有限并发优先关系四组通过。兼容默认只补空槽，同写锁原子检查安装，显式默认不再被覆盖。
+
+后续验证项（work报告，未在本轮复现）：独立fixture新ui-iced锁解析windows-core冲突；本轮UI外部证明使用workspace锁定库，不宣称新锁成功。非原no-ui manifest验收阻断，后续跨仓发行须核查依赖身份/patch与独立锁。
+
+T07 merge-owned冻结提交裸cargo t+tv、Spec/ledger/合流/归档/批到期/guard-clean pending。review pass不等于交付完成；本轮未跑整档或merge。历史记录保留。
+
+### Plan 779（2026-10-15，独立 final review R2 —— 历史）
+
+审面42905b4b596dd36ea5b0a08b1406a34dce1215a1；**needs_fix / executing 2/7**。R1两项原finding均closed；门开程序轨/bridge及精确fmt复放通过，no-ui consumer5/5、plan779 3/3、plan755 4/4、默认plan716 14/14、check通过。
+[R2报告](attachments/779/review-r2/REVIEW.md)、[同源UI consumer控制](attachments/779/review-r2/ui-consumer.json)、[原始结果](attachments/779/review-r2/ui-consumer.log)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F779-R2-01 | medium / blocking | 新root助手在所有高层执行入口无条件安装UI默认，覆盖调用方显式provider；同一源UI开启重放4pass/1fail，A17/31输出0/0。需缺省装配/显式替换优先关系及UI开关×入口×provider矩阵，不能只测no-ui。 |
+
+保留T01/T02，重开T03/T04/T05及依赖验收。两轮final失败，下轮work先给根因和覆盖/设计调整，再修复提交复审。merge-owned裸cargo t+tv及T07沉淀/合流/归档/批到期/guard-clean pending；本轮未跑整档/改实现/merge。
+
+### Plan 779（2026-10-15，独立 final review R1 —— 历史）
+
+审面451f612bdb67c1f6947db878bb37b3105c4eb8c5；**needs_fix / executing 2/7**。consumer5/5、plan779 3/3、plan755 4/4、默认门态plan716 14/14、check通过；独立门开程序轨exit101，bridge门开正控通过。
+[R1报告](attachments/779/review-r1/REVIEW.md)、[程序轨失败](attachments/779/review-r1/gate-program.log)、[触面格式](attachments/779/review-r1/fmt-finding.log)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F779-R1-01 | medium / blocking | 单独AUTO_FRAME_BENCH=1程序轨真值2，run_with_capture VM输出0/0，缺宿主provider装配；默认14/14含门关提前返回。需闭合真实宿主/现有探针接线并保留纯Core缺席负控，不能只删失败或期望改0。 |
+| F779-R1-02 | low / closeout | 新frame_provider/host_capabilities及native新增字段/调用rustfmt --check exit1，非全仓预存差异。 |
+
+保留T01/T03，重开T02/T04/T05及依赖验收；同树work修复提交后复审。merge-owned裸cargo t+tv及T07沉淀/合流/归档/批到期/guard-clean pending。本轮未跑整档/改实现/merge。
+
 ### Plan 778（2026-10-15，final review R3 —— 全部闭合）
 
 审面da17a3d44409b8f002ed17250ae23dd867387d8a；**final pass / reviewed 6/7**。F778-R1-01/02/03和F778-R2-01全部closed；无新增阻断项。外部26/26、独立历史7/7、边界3/3、新组合3/3、定向255/255、check/fmt/diff-check通过。
@@ -17,6 +85,67 @@ T07合入前冻结提交裸cargo t+tv与Spec/ledger/合流/归档/批回归到�
 | F778-R2-01 | medium / blocking | Plan冻结及已验证面name [type] [= expr]允许两者同时缺省；外部model { count }在}处Expected type，换行同样报错。type-only正控通过，内建裸字段也拒绝；是pilot支持面/契约缺口，非默认grammar新回归。需按已冻结合同实现或经new显式调整revision，不可静默缩小。AC01/03，T03..05。 |
 
 保留T01/T02，重开T03..05及依赖验收；同树work完成契约闭合、永久正反控与覆盖诊断（连续两次final needs_fix），提交后复审。T06未通过，裸t+tv整档仍merge-owned pending。本轮不改实现/Spec/ledger，不合入或清理。下方R1记录保留历史。
+
+### Plan 780（2026-10-15，独立 final review R5 —— 阻断全部闭合）
+
+审面68fcc3bf768a53f5c0b1c9088c02f2165224f7b0；**final pass / reviewed 6/7**，尚未merge/交付。R1六项/R2两项/R3两项/R4一项全部closed，本轮无新增阻断。
+[R5报告及完整闭合表](attachments/780/review-r5/REVIEW.md)、[冻结规范增量](attachments/780/review-r5/spec-delta-reviewed.md)。
+
+model30/30、consumer3/3、adapter11/11、separator2/2、check/fmt/diff-check通过；独立12/12、终止控制6/6、组合9/9、四原门禁反控均通过。正常corpus170=157+9+2+2；R4矩阵15项一致+1已知安全拒绝边界（双逗号夹注释，非冻结子集必需语法），探索脚本仍exit1，如实保留限制并已冻结入SD01。容器值内#旧新均拒绝，与顶层文档#支持区分。
+
+T07 merge-owned冻结提交裸cargo t及Spec/ledger/合流/归档/批到期/guard-clean pending；review pass不等于交付完成。本轮未跑整档、未merge或清理。下方历史finding记录保留。
+
+### Plan 780（2026-10-15，独立 final review R4 —— 历史）
+
+审面3ab22eeb7b50dcbdc012cc2ce0a7aede9cc5a4dc；**needs_fix / executing 2/7**。R3原组合9/9及两身份影子原门反控通过，完整身份项关闭；R1重放12/12、bounds6/6、缺失/原损坏required反控保持通过。model29/29、consumer3/3、adapter11/11、separator2/2、check/fmt通过。
+[R4报告](attachments/780/review-r4/REVIEW.md)、[16例独立矩阵](attachments/780/review-r4/separator-matrix.json)、[原输入](attachments/780/review-r4/separator-matrix.rs)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F780-R4-01 | medium / blocking | check_separation把块注释内部LF设为passed_break；旧VM不产生语法换行。带逗号合法对象被误拒，无逗号相邻对象/数组却static=true。原三例有独立旧新证据，无超时。需区分源码行数与语法分隔，补array/object/top-object×真实换行/块注释换行成对矩阵。 |
+
+新增16例=12一致+3阻断差异+1安全拒绝边界差异；双逗号夹注释仍被AtomParser拒绝，为非冻结必需语法限制，不加第二阻断，后续Spec不得过度宣称VM语法全覆盖。保留T01/T04，重开T02/T03/T05及依赖验收；同树修复提交后复审。merge-owned裸cargo t及T07沉淀/合流/归档/批到期/guard-clean pending，本轮未跑整档或合入。
+
+### Plan 780（2026-10-15，独立 final review R3 —— 历史）
+
+审面61eea96971c1290c745da4ff74e80795834aa9cb；**needs_fix / executing 2/7**。两连败根因及设计调整已核验。model28/28、consumer3/3、adapter8/8、separator1/1、check/fmt通过；R1独立12/12、R2 bounds6/6及原两个门禁反控通过。新增合法组合4pass/5fail无超时；两个影子身份原门均exit0假绿。
+[R3报告](attachments/780/review-r3/REVIEW.md)、[组合证据](attachments/780/review-r3/combinations.json)、[bad身份反控](attachments/780/review-r3/gate-shadow-bad.json)、[template身份反控](attachments/780/review-r3/gate-shadow-template.json)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F780-R3-01 | medium / blocking | 新check_separation不识别值后注释，builtin分支先吞换行；合法字符串/布尔容器及顶层对象误分类ValueSyntax。需统一trivia/分隔语义及永久组合控制。R2终止项关闭，新修复回归。 |
+| F780-R3-02 | medium / blocking | 两个异常桶ends_with匹配，目录不同同名bad-missing-brace和同后缀dynamic-expressions均被豁免。需完整仓根相对路径精确身份+预期诊断与两个桶负控；延续R2身份不变量。 |
+
+保留T01/T04，重开T02/T03/T05及依赖验收。原输入闭合不代表完整不变量闭合；同树work修复后复审。merge-owned冻结提交裸cargo t及沉淀/合流/归档/批到期/guard-clean pending；本轮未跑整档或merge。
+
+### Plan 780（2026-10-15，独立 final review R2 —— 历史）
+
+审面ee67ea5df5b7cf47a6eaea30bc798489e1ef6618；**needs_fix / executing 2/7**。原12反例和missing-required反控通过；model27/27、consumer3/3、adapter7/7、check/fmt通过。新增边界2pass/4timeout；新增未批准损坏required原门exit0假绿。
+[R2报告](attachments/780/review-r2/REVIEW.md)、[终止控制](attachments/780/review-r2/bounds.json)、[原门反控](attachments/780/review-r2/gate-malformed.json)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F780-R2-01 | high / blocking | scan_value未知字符不消费，array/object循环无前进保证；算术/非法冒号/错配闭符/非法对象键四短输入均超时。需分类或报错并永久守护终止性。 |
+| F780-R2-02 | medium / blocking | 任意双臂Err均计both_rejected，新增损坏required自动获豁免。需有限输入身份及预期诊断约束；R1-F04 I/O反例关闭，豁免范围不变量未完成。 |
+
+保留T01/T04，重开T02/T03/T05及依赖验收。连续两轮final needs_fix，下轮work先补根因与覆盖/设计调整，再修复及复审；整档与merge-owned门禁仍pending。本轮未修实现、合入、发布canonical或清理树。
+
+### Plan 780（2026-10-15，独立 final review R1 —— 历史）
+
+审面6aa07b630939966ac793c9f4cf7b07060330d736；**needs_fix / executing 1/7**。
+model21/21、consumer3/3、adapter5/5和check通过；独立组合3pass/9fail，required缺失输入反控原corpus门exit0假绿。生产读取未切换。
+[R1完整报告](attachments/780/review-r1/REVIEW.md)、[重放输入](attachments/780/review-r1/independent.rs)、[门禁反控](attachments/780/review-r1/gate-negative.json)。
+
+| id | 级别 | 缺口 |
+|---|---|---|
+| F780-R1-01 | high / blocking | members:[port]、back:{project:port}与顶层对象成员中的变量被AtomParser转为字符串，静态标志仍true；旧VM实际值win32，新值port。 |
+| F780-R1-02 | medium / blocking | 重复dep path取第一个（from_scan.rs find首值），违背旧实现后声明覆盖：旧oracle deps=[(foo,second)]，新模型[(foo,first)]仍static=true。 |
+| F780-R1-03 | medium / blocking | 未知节点内容静默丢失：dep内child节点与custom(...) raw args被丢弃，raw_nodes/unsupported为空，违背"不截字段、不丢未知形态"合同。 |
+| F780-R1-04 | high / blocking | adapter read_to_string unwrap_or_default把missing/invalid UTF8当空配置相等；required输入缺失时原corpus门exit0假绿（164/154→165/155计入成功）。 |
+| F780-R1-05 | medium / blocking | 明确排除的root wrapper被宣称static=true（仅列raw node，name空/backend=c），违背T01冻结"root wrapper显式unsupported"。 |
+| F780-R1-06 | low / closeout | 独立consumer（workspace exclude）未被根fmt覆盖，rustfmt --check exit1。 |
+
+保留T01，重开T02..05及依赖验收；同树work修复全部finding（值位变量分类策略/dep重复归一/未知形态保留/读取失败传播+corpus门收紧/wrapper unsupported/consumer格式）后复审。本轮不merge、不发布Spec/ledger、不清理树。
 
 ### Plan 777（2026-10-15，独立 final review R4 —— 已闭合）
 
@@ -1417,11 +1546,21 @@ F-771-R1-01..04与F-771-R2-01全部闭合：旧反例重放/双向源码序值�
 
 ### Plan 781（2026-10-15，阶段 C 实施期发现，work 侧登记）
 
+#### r3 独立复审（2026-10-15）
+
+报告：[781-final-review-r3-20261015.md](reports/781-final-review-r3-20261015.md)。以下为当前合同内阻断项，记债不代表验收完成。
+
+| id | 级别 | 缺口 / 归属 |
+|---|---|---|
+| F-781-R04 | P1 / reopened，T-22 | parked三路测试通过，但连续CPU请求在200ms期限0.219s返回503后，5.973s仍写出late文件（30s期限同计算200正对照）。LegacyHttp循环未响应scope取消；不能用每次心跳park的fixture证明真实导入无迟到副作用。AC-12/14/17。 |
+| F-781-R05 | P2 / new，T-25 | Reader load_meta首尾形状门禁漏内部畸形JSON；`{"version":1,"source_sha256":"x","total_chapters":1,"chapters":[BAD]}`触发raise/catch后的调用帧毒化，chapter_json报str+NoneType（CLI exit1），未诚实返回索引缺失。F-781-E01底层债不能豁免AC-19。 |
+
 | id | 级别 | 缺口 / 归属 |
 |---|---|---|
 | F-781-C01 | P2 / 新计划候选 | VM HTTP 段派发泵串行——单段无 park 的长忙 handler（10MiB 导入 70-230s）占住泵，共居 split-VM 前端的内部 HTTP（Init `/api/books`）饿死（实测 2/2 负载态 + 1/3 安静态）。781-budget-decision r3（D-1 预见的公平性证据坐实）；修复面 = 段泵并发化或 HTTP CpuSlice 化——D-1 冻结为 v1 非目标，需新计划。 |
 | F-781-C02 | P3 / 路由 READER-001 | Reader 前端把 Init 内部调用失败当致命 → 进程退出 → 进行中导入连接中断（consumer 韧性：Init 重试/降级不自杀）。 |
 | F-781-C03 | P3 / 预存（非 781 引入） | th 档 `http_e2e_back_proxy_real_routes_corpora_data_face` 在 776/770/771 合入后的 master 基线即红（`:id` 参数模板转发）——stash 基线同红实证；归属近次合入面，781 记录在案未修。 |
+| F-781-E01 | P2 / 待用户定路由（新计划候选） | **VM 跨帧 raise 毒化**（781 阶段 E T-25 实施期发现）：被调函数内部 raise（即使被 catch）返回后，调用方帧的参数/局部槽位损坏为 None——最小复现 `fn maybe_raise(){try{json.parse("{bad")}catch{}}; fn caller(n int){maybe_raise(); return "n="+n.to_string()}` 崩 str+NoneType；内联 try 安全（跨帧才毒化）。Reader 规避=形状门禁（load_meta/envelope 先 starts_with/ends_with 门禁再 parse，常见损坏零 raise）；books_json 等同模式暴露面在案（Plan 781 §9 阶段 E 记录）。 |
 
 ### Plan 782（2026-10-15，T-03 探针发现的基线预存缺陷，work 侧登记）
 
@@ -1431,3 +1570,64 @@ F-771-R1-01..04与F-771-R2-01全部闭合：旧反例重放/双向源码序值�
 |---|---|---|
 | D-771-A | P3 / 771 交付面 | 命名构造字段值位不支持二元运算表达式：`Pair { left: 1 + 2, ... }` 在纯 record 域报 `source.syntax: expected operator`（771 交付即如此）。需独立修复并回归 771 面；782 组合程序以 let 提升规避。 |
 | D-770-B | P3 / 770 前门缺口 | text 域 assign 位 `.move`（`o = x.move`）产生 `source.internal`（adapter 发射 text descriptor 不接受的 `expr.move`）而非受控拒绝。770 该位本就不支持 move 标记，缺前门拒绝；782 组合域 assign 位 move 走 descriptor 接受的包装表示不受影响。 |
+
+
+### Plan 782 final R1（2026-10-15；合同内阻断，owner=782 work）
+
+受审 `b025a85aa38197700763b944d1b7fec2ecbc4ad0`；证据、原文与合法对照见 [R1 报告](attachments/782/review-r1/REVIEW.md)。下列登记不构成 scope 外延后批准；计划已退回 executing=2/9。
+
+| Finding | 严重度 / AC | 缺口与关闭条件 |
+|---|---|---|
+| F-782-R1-01 | P1 / AC02/03 | 嵌套资源 FieldGet 在 let/return/ctor 隐式位复制，实际 FREE-INVALID。补完整拥有来源门和 clone/copyable 对照，前门拒绝隐式共享 owner。 |
+| F-782-R1-02 | P1 / AC03 | `a = consume(a.move)` 释放同语句已移出的旧 buffer，读取返回值 trap70；按 RHS move 后责任生成 replace_frees，保全返回 owner。 |
+| F-782-R1-03 | P1 / AC04 | pending_aggs 未随短路路径合流，循环 take→skip 重复 free；聚合临时按实际创建路径清理并补动态循环控制。 |
+| F-782-R1-04 | P2 / AC04 | 文本与聚合局部/临时分开清理，跨类型创建顺序 LIFO 失效；补统一顺序及两个方向精确 trace。 |
+| F-782-R1-05 | P1 / AC03/05 | 实际 Bundle Move.inner=u32::MAX 在 verify.rs:936 数组越界 panic；语义前结构界检并补永久 mutation；纠正现有 V08 取证映射。 |
+| F-782-R1-06 | P2 / AC04/06 | mandatory V07 未接实际组合故障注入；Rust 模拟 P6/计划形状/runtime 自测不足。核对 status helper/fatal 实际路径，补第N申请/账本/预算/零长 oracle，并纠正已完成声明。 |
+
+### Plan 782 final R2（2026-10-15；合同内阻断，owner=782 work）
+
+受审 `a52a54472728755027078fe712a1de6d2002f905`；[R2报告与可重放反例](attachments/782/review-r2/REVIEW.md)。R1 原文已闭合，F03完整不变式仍未闭合；以下登记不构成延期批准。
+
+| ID | 等级/验收 | 缺口 |
+|---|---|---|
+| F-782-R2-01 | P1 / AC04 | 外层 LogicalRhs 将内层 Agg.present 覆盖1；嵌套 &&/|| take→skip loop FREE-INVALID；须保留组合存在性并补真实内层跳过控制。 |
+| F-782-R2-02 | P1 / AC03/04 | move 整根后仅字段赋值却恢复整个根 live；Str 字段悬空读取 trap70、嵌套record重复free；须拒绝部分重建，同时保持完整根重建/存活字段替换合法。 |
+
+### Plan 782 final R3 闭合（2026-10-15）
+
+受审 `17508b703c84e6f24496ede7b908621a1c05f365`；[R3完整报告](attachments/782/review-r3/REVIEW.md)。F-782-R1-01..06、F-782-R2-01/02 **全部关闭**；保留上方历史记录。90定向测试、22原文控制、9真实API控制与15新增组合控制复验通过；嵌套聚合存在标记与join后回滚、三字段终型×两语句期moved根均有实际oracle。代码/验收/Spec final pass，merge-owned联合收口/归档/清理仍pending。D-771-A/B/C既有独立登记不受此闭合影响。
+
+### Plan 783 探针边界与后续阶段候选（2026-10-15；work 阶段登记，非验收缺口）
+
+以下为 PLAN-783 探针的**已声明边界**与生产化差距（feasibility.md §4 / perf-report.md / spec-delta SD-04），供后续计划取材；不构成本计划的延期批准。
+
+| ID | 等级 | 内容 |
+|---|---|---|
+| D-783-A | P2 | GC 与查询并发的尾延迟可见（R1 修复后 30 样本：P99 667ms vs 同进程基线 509ms；GC 删除已实证 77 块/22 趟，归因含 liveness 互锁排队+删除 I/O 交错）。生产化需 GC 限速/有界批次让路（Design40 §7.2），探针未实现调度。 |
+| D-783-B | P2 | 对象命中路径由 rust-lld 子进程链接支配（~210ms）：增量链接/对象缓存直出 PE 的增量发布（A10 拆阶段）未做。 |
+| D-783-C | P1（生产差距） | auto-cache `BlobStore::put` 固定 tmp 名：结构性风险（R1 F-08 反例）；探针以 per-chunk LockFileEx 有界等待（10s）串行化规避并实测重叠双进程同键行为——探针证据不构成生产 BlobStore 原生并发安全的证明；生产修复/上移未做（SD-04 差距清单）。 |
+| D-783-D | P2 | 无 pack/compaction：空间归还以 blocks 层字节为证（恢复趟已清 trash，R1 F-06 修复）；SQLite 主文件不收缩（freelist 复用，高水位为声明行为）；NTFS 簇级 slack 未计量（已声明局限）。 |
+| D-783-E | P2 | A03 布局人口为确定性造数：证明分页/预算/共享机制，不冒充通用 CST；真实 grammar-driven CST 归 Design39 线后续计划。 |
+
+### Plan 783 final R1 阻断（2026-10-15）
+
+受审 `62d93dae82546e5685f164382345ad4050690fa2`，结论 **needs_fix**；[完整报告与复现](attachments/783/review-r1.md)。以下均为既有 r1 合同内缺口，不能以债务登记替代修复。T-01..07 重开；历史工作收据保留，非当前通过证明。
+
+| ID | 等级 | 未闭合事项 |
+|---|---|---|
+| F-783-R1-01 | P1 | GC 快照后新 lease+hard root 取得成功，但仍删除产物；实测 lease_live=true/readable=false。 |
+| F-783-R1-02 | P1 | perf --root 无 marker 检查即递归删除目录；受控外部哨兵丢失。 |
+| F-783-R1-03 | P1 | GC 留 deleted chunk 行，重发布 INSERT OR IGNORE 不复活；put成功/get miss。 |
+| F-783-R1-04 | P1 | CAS 读只验自校验不验请求 ChunkId；合法异内容替换被接受。 |
+| F-783-R1-05 | P1 | LayoutView 绕过框架/身份门；损坏页返回值，非法偏移触发 panic。 |
+| F-783-R1-06 | P2 | conflict 的无 artifact chunk 行永不入回收；recover 不处理 trash。D-783-D 的 recover 释放说法待修正。 |
+| F-783-R1-07 | P1 | churn 仅7种源码，gc_runs 是调用次数；perf 未证实际删除，资源计量及尾延迟归因不成立。D-783-A 删除 I/O 归因待重证。 |
+| F-783-R1-08 | P2 | 同 chunk 竞争立即 Internal 失败，未有串行/重试协议；所谓跨进程并发测试实际顺序执行。D-783-C 探针串行零复现依据待修正。 |
+| F-783-R1-09 | P1 | 聚合器接纳 ignored/无摘要；acceptance 为66 passed+1 ignored，非76/0，perf 合同无env直接返回。 |
+| F-783-R1-10 | P2 | probe cargo fmt --check失败；依赖shim warning属未改基线。 |
+| F-783-R1-11 | P2 | 诊断render使用空path/source，丢当前工程来源绑定。 |
+
+### Plan 783 R1 修复轮（2026-10-15；work 同树修复,受审基线待 R2 重绑）
+
+R1 全部 11 项 finding 已修复并以 `tests/review_r1_.rs` 12 项永久回归钉面(逐条镜像反例):F-01 liveness 互锁(发布/注册共享锁 vs GC/恢复独占锁+注册时存活校验);F-02 perf 改为独占 marker 子目录、绝不删给定目录;F-03 chunk 状态 upsert 回 live+级联删行;F-04 读取时 CAS 地址复验(HIR/object 双消费者);F-05 布局读取路径完整准入(框架+地址+字段界,未知布局/短记录/越界偏移受控拒绝);F-06 恢复覆盖已提交孤儿行/trash 残留/tombstone 级联;F-07 churn 512 真异版本+判别 oracle(越限/真删/收敛),perf GC 场景 22 趟/77 块真实删除/0 失败;F-08 有界等待(10s)+失败清理 staging+真实重叠双进程同键竞争;F-09 聚合器清单化(在场/最小通过数/ignored 白名单+已提交 perf 合同实证校验);F-10 cargo fmt 全绿;F-11 诊断绑定当前工程源路径。下列候选条目已按修复后事实制正。闭合由 R2 独立复审确认,本节不构成最终通过声明。
