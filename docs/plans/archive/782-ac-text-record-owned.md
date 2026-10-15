@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-782
-status: reviewed
+status: archived
 feature_name: AC 文本与 record 组合：拥有型字段、移动与清理
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-14
 updated_at: 2026-10-15
-current_step: 8
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -164,7 +164,7 @@ T-01 先做有界完整路径探针：含两个 Str 的构造/深 clone、嵌套
 | [ ] | T-06 | work | T-05 | **R2 重开，尚未验收** @56dd15748（原 @8558863ec，R1 重开于 F-06 声明纠正）：`scripts/verify-ac-text-record-782.ps1` + `docs/reports/782-text-record/verification.md`。最终基线 **25 步全绿 0 failed**（收据 gate-20261015-093737 绑定 HEAD 836635a2e，原始输出 raw-20261015-091943/）：两 workspace check/test/fmt 零警告（matcher 正负对照；ac-core **431/0** 四 text_record target 在场断言、runtime/text 20/20）；contained-executor 案例走查 11 例——TP01 旗舰 p01 PE exit 30 + 缓冲 id 多重集配对（泄漏/双释放零容忍）+obj/receipt 在场、TP02 重叠形态 exit 9、HP01 直接 HIR tr01 exit 2 精确 trace、TN01..08 钉码负例、profile 隔离（四旧域拒+未知 exit 2+域行）、capability 故意失败控制（exit 1+capability.missing+零制品）、SENTINEL 事务（失败 build 三件制品 hash 保持）、收据身份五针；旧五门实跑 771/741[-SkipMainGates]/745/767/770；**770 gate 归因裁定**——其 per-plan scope 步 allow-list 仅 770 路径、后继树按定义必败，本 gate 不改 770 已合入脚本，实跑全程断言唯一 [FAIL] 即 scope 步、被标 18 文件恰为本计划域内 artifact（同 git diff 重算对拍），实质步骤全绿（真实越界改动仍红=scope 不变式重基 782 域）；自有 scope 隔离+24 项输入/runtime-lib/合同/三 PE/gate 脚本 hash 入收据。**gate 工作发现并修复 T-05 缺口**：FieldGet 的 `Str` 拼写（verify 兼容规则两拼写等价）在合并 lowering 落标量臂→后续 text 操作 unreachable panic（Checked 不可 lowering，tr01 fixture 首跑抓获）；修复=视图装载臂扩 StrBorrow|StrOwn + 永久回归 `hir_fixture_str_typed_field_get_pe`（exit 2+精确 trace），全套 431/0 | 05/06 |
 | [ ] | T-07 | work | T-06 | **R2 重开，尚未验收** @56dd15748（原 @9726a412c，R1 重开：附A 闭合判定重基修复后基线）：`docs/reports/782-text-record/proposed-spec-delta.md` 冻结 SD-01..06——SD-01 新 source-text-record.md 合同（派生资源分类/完整根 move/深 clone/字段视图与替换/FieldGet 两拼写等价/唯一新码 partial-move+扩面七码）、SD-02 D-03/04/05/07 组合消费（标量 copy 适用域划界、backing 按根保守、owned_returns 扩 record 根）、SD-03 HIR 域/record_clone/move 包装形态与派生属性不信自称、SD-04 合并 lowering 已实证阶段范围（通用 pass/ACC 桥仍 planned）、SD-05 ac 工程能力面（runtime 23 符号零新增、770 gate 归因裁定）、SD-06 acc Token 取证与非目标；**附A 前置反例组合闭合核对九类零缺口**——唯一缺项 V-04"两层 wrapper 同源/异源 view-mut"由 @0318bcb93 补齐（mut 链两层：同源 verify.mut-conflict / 异源过，按 SOURCE 不按形式参数号，镜像 770 r4_p07/c02）；附B 源文件 manifest 与支持/拒绝声明对拍无材料冲突。canonical 未发布（归 T-09）。最终基线 gate 重跑 **25/25 全绿**（gate-20261015-100236 绑 9726a412c：ac-core **433/0**、runtime 20/20、旧五门+归因 770） | 06 |
 | [x] | T-08 | review | T-01..07完成，writes暂停 | ✅ R3 final pass @17508b703（90/90+37源码重放/组合控制+9 API控制；见R3报告），原树独立审计AC01..06与SD、反例/永久测试oracle/遗漏债务/健康；pass→reviewed=8/9，needs_fix回work，不修改实现 | 07 |
-| [ ] | T-09 | merge | T-08 fresh pass与合入授权 | 实际合入/SD/导航/.autoos/specs.json/spec-index；archive状态和计数；批回归到期用regress；bash wt-guard clean后remove/branch/组清理收据，实际完成9/9 | 08 |
+| [x] | T-09 | merge | T-08 fresh pass与合入授权 | ✅ 已完成：merge-owned 联合门禁 25/25 于冻结提交 `17508b703` 实跑（gate-20261015-141557，452/0+runtime 20/20+旧五门+归因 770）；SD-01..06 canonical 落地（新 source-text-record.md + 五文件修改，`99d92513f`）；rebase 17 对 range-diff 全等+1 对仅 plans.md 行合并消解，ff-only 落地（master tip==`99d92513f`）；ledger 守护式离线投影 v22→v23（P782-1/2/T/R3/M 五条目，零扰动证明：仅版本+5 追加）；spec-index 再生（31 projects）；R3 复审簿记+附件 r1..r3 提交（`a1cd75457`）；归档+清理收据见 §9 | 08 |
 
 拟定唯一实施树 D:/autostack/.wt/lang-782/auto-lang、branch plan-782-dev；当前未创建。work使用scripts/new-wt-group.sh lang-782 --branch plan-782-dev（master基面、auto-down兄弟detached）或等价仓规路径，不创建任何junction/symlink。主检出仅计划簿记；实施/内检/final review顺序使用同一树。不能将联合回归/实现正确性推迟至merge。
 
@@ -295,3 +295,11 @@ acceptance_results: AC01..07 pass，AC08 pending merge。SD01..06目标与有限
 
 pending_closeout_gates: **merge-owned pending**——冻结提交及实际共同基线的experimental/ac-core/runtime/text locked check/test/fmt、782新旧联合收口gate/能力/事务控制；代码或依赖变化须受影响复审+新冻结门禁。无crates/根Schema改动，根t/tv/tt/tb/tu/taa/docs_gen不适用；tf仅主检出批量到期判定。此pass不表示交付完成或允许跳过门禁合入。
 next: merge（T09：门禁后合入、canonical/导航/ledger/index、归档计数与guard清理）；status=reviewed、current_step=8/9，T08完成，T09仍pending。本轮未修改实现/canonical/ledger、未合入/归档/清理工作树。归档取证使用R3冻结实际hash与案例，不使用verification.md历史节选的旧工具/PE指纹。
+
+## 11. spec-sync 回写记录（merge，v1 惯例）
+
+2026-10-15，stage:merge，plan_id:PLAN-782，plan_revision:1，outcome:pass，completion_kind:delivered。
+prepared：R3 pass（reviewed_commit `17508b703`）+ 冻结 delta（SHA256 6c5ea9dd…）→ canonical 落地 `99d92513f`（SD-01 新 source-text-record.md；SD-02..06 五文件；三模块 plans.md 行）。landed：merge-owned 联合门禁 25/25 于冻结提交实跑绑定 gate-20261015-141557（25 步：双 workspace 零警告/452 测试/11 案例含缓冲配对与故意失败控制/旧五门/归因 770 scope/24 输入 hash）；rebase master 后 17 对 range-diff 全等 + 1 对（spec deposit）仅 plans.md 行合并消解（无丢弃）；主检出 `git merge --ff-only` 落地，master tip==plan-782-dev tip==`99d92513f`。ledger_refreshed：`.autoos/specs.json` v22→v23 守护式离线投影（channel=guarded offline projection, no store writer reachable；备份+零扰动 diff 证明：仅 version + P782-M/P782-1/P782-2/P782-T/P782-R3 五追加，无删改）；`python scripts/spec-index.py` 再生（31 projects）。archived：本文件 git mv 至 docs/plans/archive/，status: archived，9/9；R3 复审簿记与附件 r1..r3 随 `a1cd75457` 入库。cleaned：见下方 cleaned 行。生产制品观察：本仓为语言/实验库仓，无后端二进制/守护进程/web bundle 部署面，Landing≠Deployment 项不适用（无可重启生产进程）。
+
+2026-10-15，PLAN-782:r1 cleaned checkpoint：wt-guard clean（无 reparse point）→ `git worktree remove` + `git branch -d plan-782-dev`（was 99d92513f=master tip）→ auto-down 兄弟（detached c39ac7f，clean，零修改）经其主检出移除 → 组目录 `D:/autostack/.wt/lang-782` 删除。批回归到期判定：782%5≠0；`.last-batch-regression.json` 见下。merge 9/9 全checkpoint 完成（prepared/landed/ledger_refreshed/archived/cleaned），completion_kind: delivered。
+批回归到期判定（2026-10-15）：收据 last_covered_plan_id=781 @ 2026-10-15T03:55Z（~2.5h 前）——782%5=2≠0 落地不触发；<48h 不触发。**未到期，不运行**；下一次到期由后续 %5 计划或 48h+合并规则触发（届时 PLAN-782 的 experimental/ac-core 面进入批量窗口）。
