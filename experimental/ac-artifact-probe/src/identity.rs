@@ -77,7 +77,10 @@ pub struct QueryKey {
 impl QueryKey {
     pub fn new(layer_spec: &schema::LayerSpec, mut components: Vec<(String, String)>) -> Self {
         components.sort_by(|a, b| a.0.cmp(&b.0));
-        QueryKey { layer: layer_spec.id, components }
+        QueryKey {
+            layer: layer_spec.id,
+            components,
+        }
     }
 
     /// Canonical textual form (stable, diagnostic-friendly).
@@ -96,14 +99,21 @@ impl QueryKey {
     /// Hash form for index lookups (domain: query-key of the layer).
     pub fn hash(&self) -> String {
         let parts: Vec<Vec<u8>> = std::iter::once(self.layer.as_bytes().to_vec())
-            .chain(self.components.iter().flat_map(|(k, v)| vec![k.clone().into_bytes(), v.clone().into_bytes()]))
+            .chain(
+                self.components
+                    .iter()
+                    .flat_map(|(k, v)| vec![k.clone().into_bytes(), v.clone().into_bytes()]),
+            )
             .collect();
         let refs: Vec<&[u8]> = parts.iter().map(|v| v.as_slice()).collect();
         domain_hash(&format!("qk/{}", self.layer), &refs)
     }
 
     pub fn component(&self, name: &str) -> Option<&str> {
-        self.components.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
+        self.components
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -195,7 +205,9 @@ pub enum IdentityError {
 impl fmt::Display for IdentityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IdentityError::BadRef { what, detail } => write!(f, "bad reference ({}): {}", what, detail),
+            IdentityError::BadRef { what, detail } => {
+                write!(f, "bad reference ({}): {}", what, detail)
+            }
             IdentityError::UnknownLayer(l) => write!(f, "unknown layer: {}", l),
         }
     }
@@ -223,7 +235,12 @@ pub fn validate_external_ref(
     if r.index >= len {
         return Err(IdentityError::BadRef {
             what: "index",
-            detail: format!("{} index {} out of bounds (len {})", r.category.as_str(), r.index, len),
+            detail: format!(
+                "{} index {} out of bounds (len {})",
+                r.category.as_str(),
+                r.index,
+                len
+            ),
         });
     }
     Ok(())
@@ -244,9 +261,15 @@ pub fn decl_summary_key(profile: &str, snapshot: &SourceSnapshotId) -> QueryKey 
         schema::layer("A04").unwrap(),
         vec![
             ("profile".into(), profile.into()),
-            ("schema".into(), schema::layer("A04").unwrap().schema_id.into()),
+            (
+                "schema".into(),
+                schema::layer("A04").unwrap().schema_id.into(),
+            ),
             ("snapshot".into(), snapshot.as_str().into()),
-            ("frontend-version".into(), "ac-core-parse-resolve-typecheck".into()),
+            (
+                "frontend-version".into(),
+                "ac-core-parse-resolve-typecheck".into(),
+            ),
         ],
     )
 }
@@ -332,8 +355,14 @@ mod tests {
     #[test]
     fn query_key_canonical_order_independent() {
         let layer = schema::layer("A07").unwrap();
-        let k1 = QueryKey::new(layer, vec![("a".into(), "1".into()), ("b".into(), "2".into())]);
-        let k2 = QueryKey::new(layer, vec![("b".into(), "2".into()), ("a".into(), "1".into())]);
+        let k1 = QueryKey::new(
+            layer,
+            vec![("a".into(), "1".into()), ("b".into(), "2".into())],
+        );
+        let k2 = QueryKey::new(
+            layer,
+            vec![("b".into(), "2".into()), ("a".into(), "1".into())],
+        );
         assert_eq!(k1.canonical(), k2.canonical());
         assert_eq!(k1.hash(), k2.hash());
         // Different layers never collide on the same components.
@@ -352,7 +381,9 @@ mod tests {
             index: 3,
         };
         assert!(validate_external_ref(&r, "ac783/a07-hir/v1", &[(RefCategory::Expr, 7)]).is_ok());
-        assert!(validate_external_ref(&r, "ac783/a09-object/v1", &[(RefCategory::Expr, 7)]).is_err());
+        assert!(
+            validate_external_ref(&r, "ac783/a09-object/v1", &[(RefCategory::Expr, 7)]).is_err()
+        );
         assert!(validate_external_ref(&r, "ac783/a07-hir/v1", &[(RefCategory::Expr, 3)]).is_err());
         assert!(validate_external_ref(&r, "ac783/a07-hir/v1", &[(RefCategory::Def, 9)]).is_err());
     }

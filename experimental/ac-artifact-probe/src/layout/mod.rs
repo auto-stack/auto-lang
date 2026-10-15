@@ -26,7 +26,6 @@ use crate::codec::{frame_chunk, unframe_chunk, ChunkKind, CodecError};
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 pub const PAGE_SIZE: usize = 64 * 1024;
@@ -43,6 +42,8 @@ pub const B_DIR_ENTRY: usize = 10;
 pub const B_DIR_ENTRIES_PER_PAGE: u64 = (PAGE_SIZE / B_DIR_ENTRY) as u64;
 /// Layout B record header: kind u16 + parent u32 + span u32×2 + len u8.
 pub const B_HEADER: usize = 13;
+/// Population bound on a synthetic payload (the generator emits 8..=72).
+pub const MAX_SYNTH_PAYLOAD: usize = 72;
 
 #[derive(Clone, Debug)]
 pub enum LayoutError {
@@ -108,7 +109,11 @@ pub fn expected_record(id: u64, seed: u64, modified_from: Option<u64>, seed2: u6
     };
     let h = mix64(id.wrapping_mul(0xA24B_AED4_97F1_2345) ^ effective_seed);
     let kind = (h % 977) as u16;
-    let parent = if id == 0 { None } else { Some(id.saturating_sub(1) / 3) };
+    let parent = if id == 0 {
+        None
+    } else {
+        Some(id.saturating_sub(1) / 3)
+    };
     let span_start = ((h >> 16) & 0xFFFF_FFFF) as u32;
     let span_end = span_start.saturating_add(((h >> 40) % 4096) as u32);
     let payload_len = 8 + ((h >> 24) % 65) as usize; // 8..=72
@@ -123,13 +128,22 @@ pub fn expected_record(id: u64, seed: u64, modified_from: Option<u64>, seed2: u6
         }
         ctr += 1;
     }
-    SynthRecord { id, kind, parent, span: (span_start, span_end), payload }
+    SynthRecord {
+        id,
+        kind,
+        parent,
+        span: (span_start, span_end),
+        payload,
+    }
 }
 
 /// Atom-style semantic baseline rendering of a record (the text form both
 /// layouts must agree with).
 pub fn render_record_atom(r: &SynthRecord) -> String {
-    let parent = r.parent.map(|p| p.to_string()).unwrap_or_else(|| "none".into());
+    let parent = r
+        .parent
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| "none".into());
     format!(
         "node(id: {}, kind: {}, parent: {}, span: {}..{}, payload_len: {}, payload_head: {})",
         r.id,
@@ -138,7 +152,11 @@ pub fn render_record_atom(r: &SynthRecord) -> String {
         r.span.0,
         r.span.1,
         r.payload.len(),
-        r.payload.iter().take(8).map(|b| format!("{:02x}", b)).collect::<String>()
+        r.payload
+            .iter()
+            .take(8)
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
     )
 }
 
@@ -152,7 +170,9 @@ pub struct LayoutStore {
 
 impl LayoutStore {
     pub fn new(root: &Path) -> Self {
-        LayoutStore { root: root.to_path_buf() }
+        LayoutStore {
+            root: root.to_path_buf(),
+        }
     }
 
     pub fn page_path(&self, chunk_id: &str) -> PathBuf {
@@ -186,7 +206,9 @@ impl LayoutStore {
     pub fn total_disk_bytes(&self) -> u64 {
         let mut total = 0;
         let dir = self.root.join("pages");
-        let Ok(shards) = fs::read_dir(&dir) else { return 0 };
+        let Ok(shards) = fs::read_dir(&dir) else {
+            return 0;
+        };
         for shard in shards.flatten() {
             if let Ok(files) = fs::read_dir(shard.path()) {
                 for f in files.flatten() {
@@ -223,7 +245,10 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn data_size(&self) -> u64 {
-        (self.record_pages.len() as u64 + self.payload_pages.len() as u64 + self.data_pages.len() as u64 + self.dir_pages.len() as u64)
+        (self.record_pages.len() as u64
+            + self.payload_pages.len() as u64
+            + self.data_pages.len() as u64
+            + self.dir_pages.len() as u64)
             * PAGE_SIZE as u64
     }
 }
@@ -242,7 +267,10 @@ pub struct BuildReport {
 }
 
 fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
 }
 
 /// Build layout A for a population version. `base` enables prefix sharing:
@@ -302,7 +330,8 @@ pub fn build_layout_a(
             let r = expected_record(id, seed, modified_from, seed2);
             let b = &mut page[(slot as usize) * A_RECORD_SIZE..(slot as usize + 1) * A_RECORD_SIZE];
             b[0..2].copy_from_slice(&r.kind.to_le_bytes());
-            b[2..6].copy_from_slice(&(r.parent.map(|p| p as u32).unwrap_or(u32::MAX)).to_le_bytes());
+            b[2..6]
+                .copy_from_slice(&(r.parent.map(|p| p as u32).unwrap_or(u32::MAX)).to_le_bytes());
             b[6..10].copy_from_slice(&r.span.0.to_le_bytes());
             b[10..14].copy_from_slice(&r.span.1.to_le_bytes());
             b[14..16].copy_from_slice(&(r.payload.len() as u16).to_le_bytes());
@@ -412,7 +441,12 @@ fn finish_report(
     let mut bytes_written = 0u64;
     let mut shared = 0usize;
     let base_ids: Option<std::collections::HashSet<&String>> = base.map(|b| {
-        b.record_pages.iter().chain(&b.payload_pages).chain(&b.data_pages).chain(&b.dir_pages).collect()
+        b.record_pages
+            .iter()
+            .chain(&b.payload_pages)
+            .chain(&b.data_pages)
+            .chain(&b.dir_pages)
+            .collect()
     });
     for id in &all {
         let sz = store.chunk_len(id).unwrap_or(0);
@@ -472,8 +506,17 @@ pub struct LayoutView<'s> {
 }
 
 impl<'s> LayoutView<'s> {
-    pub fn open(store: &'s LayoutStore, manifest: Manifest) -> Self {
-        LayoutView {
+    /// Open a frozen view, refusing unknown layout names at admission
+    /// (R1 F-05: unknown layouts must be a controlled rejection, never a
+    /// silent fallthrough into the B branch).
+    pub fn open(store: &'s LayoutStore, manifest: Manifest) -> Result<Self, LayoutError> {
+        if manifest.layout != "A" && manifest.layout != "B" {
+            return Err(LayoutError::BadState(format!(
+                "unknown layout name `{}` (accepted: A, B)",
+                manifest.layout
+            )));
+        }
+        Ok(LayoutView {
             store,
             manifest,
             hot: HashMap::new(),
@@ -481,13 +524,23 @@ impl<'s> LayoutView<'s> {
             hot_bytes: 0,
             staging: [Vec::with_capacity(PAGE_SIZE), Vec::with_capacity(PAGE_SIZE)],
             staging_next: 0,
-            stats: ViewStats { staging_buffers: STAGING_PAGES, staging_bytes: PAGE_SIZE * STAGING_PAGES, ..Default::default() },
-        }
+            stats: ViewStats {
+                staging_buffers: STAGING_PAGES,
+                staging_bytes: PAGE_SIZE * STAGING_PAGES,
+                ..Default::default()
+            },
+        })
     }
 
     /// Ensure a page is hot; on miss load it through the bounded staging
     /// buffer (I/O counted). `cid` is only materialized by the caller when
     /// a miss is possible, keeping the hot path allocation-free.
+    ///
+    /// ADMISSION (R1 F-05): the whole framed chunk is read and validated —
+    /// magic/version/kind/checksum via `unframe_chunk` — and the framed
+    /// bytes must hash to the manifest's page address. A corrupt page or a
+    /// substituted-but-valid chunk is a controlled rejection; only then is
+    /// the payload trusted, and it must be exactly one page.
     fn ensure_page(&mut self, key: PageKey, cid: Option<&str>) -> Result<(), LayoutError> {
         if self.hot.contains_key(&key) {
             self.stats.hot_hits += 1;
@@ -498,37 +551,59 @@ impl<'s> LayoutView<'s> {
             return Ok(());
         }
         self.stats.hot_misses += 1;
-        let cid = cid.ok_or_else(|| LayoutError::BadState(format!("page {:?} missing from manifest", key)))?;
+        let cid = cid.ok_or_else(|| {
+            LayoutError::BadState(format!("page {:?} missing from manifest", key))
+        })?;
         let path = self.store.page_path(cid);
-        // Staging rotation: at most STAGING_PAGES raw buffers exist.
+        // Staging rotation: at most STAGING_PAGES raw read buffers exist
+        // and are reused for every miss (the framed chunk = one page +
+        // header rides the same budget).
         let slot = self.staging_next;
         self.staging_next = (self.staging_next + 1) % STAGING_PAGES;
-        let buf = &mut self.staging[slot];
-        buf.clear();
-        buf.resize(PAGE_SIZE, 0);
-        let mut f = fs::File::open(&path)?;
-        f.seek(SeekFrom::Start(crate::codec::CHUNK_HEADER_LEN as u64))?;
-        let mut pos = 0usize;
-        while pos < PAGE_SIZE {
-            let n = f.read(&mut buf[pos..])?;
-            if n == 0 {
-                return Err(LayoutError::BadState(format!("page chunk truncated: {}", path.display())));
+        let payload_owned = {
+            let buf = &mut self.staging[slot];
+            buf.clear();
+            let mut f = fs::File::open(&path)?;
+            std::io::Read::read_to_end(&mut f, buf)?;
+            self.stats.reads += 1;
+            self.stats.bytes_read += buf.len() as u64;
+            // Admission: framing (magic/version/kind/checksum), page size,
+            // and the CAS address (framed bytes must hash to `cid`).
+            let (kind, payload) = unframe_chunk(buf)?;
+            if kind != ChunkKind::LayoutData {
+                return Err(LayoutError::BadState(format!(
+                    "page chunk {} has kind {:?}, expected LayoutData",
+                    cid, kind
+                )));
             }
-            pos += n;
-        }
-        self.stats.reads += 1;
-        self.stats.bytes_read += PAGE_SIZE as u64;
+            if payload.len() != PAGE_SIZE {
+                return Err(LayoutError::BadState(format!(
+                    "page chunk {} payload is {} bytes, expected {}",
+                    cid,
+                    payload.len(),
+                    PAGE_SIZE
+                )));
+            }
+            let actual = crate::identity::ChunkId::from_parts(&[buf.as_slice()]).0;
+            if actual != cid {
+                return Err(LayoutError::BadState(format!(
+                    "page chunk address mismatch: manifest says {}, bytes hash to {}",
+                    cid, actual
+                )));
+            }
+            payload.to_vec()
+        };
         // Hot insert (owned copy; accounting counts the copy).
-        while !self.lru.is_empty() && buf.len() + self.hot_bytes > HOT_BUDGET {
+        while !self.lru.is_empty() && payload_owned.len() + self.hot_bytes > HOT_BUDGET {
             let victim = self.lru.pop_front().unwrap();
             if let Some(v) = self.hot.remove(&victim) {
                 self.hot_bytes -= v.len();
                 self.stats.hot_evictions += 1;
             }
         }
-        if buf.len() + self.hot_bytes <= HOT_BUDGET {
-            self.hot.insert(key, buf.clone());
-            self.hot_bytes += buf.len();
+        if payload_owned.len() + self.hot_bytes <= HOT_BUDGET {
+            self.hot.insert(key, payload_owned.clone());
+            self.hot_bytes += payload_owned.len();
             self.lru.push_back(key);
         }
         Ok(())
@@ -552,7 +627,10 @@ impl<'s> LayoutView<'s> {
 
     fn record_inner(&mut self, id: u64) -> Result<SynthRecord, LayoutError> {
         if id >= self.manifest.record_count {
-            return Err(LayoutError::BadState(format!("record id {} out of range", id)));
+            return Err(LayoutError::BadState(format!(
+                "record id {} out of range",
+                id
+            )));
         }
         if self.manifest.layout == "A" {
             let page = (id / A_RECORDS_PER_PAGE) as u32;
@@ -567,18 +645,35 @@ impl<'s> LayoutView<'s> {
             let span1 = u32::from_le_bytes(b[10..14].try_into().unwrap());
             let plen = u16::from_le_bytes(b[14..16].try_into().unwrap()) as usize;
             let poff = u64::from_le_bytes(b[16..24].try_into().unwrap());
+            // Bounded-field validation (R1 F-05): a checksum-valid but
+            // structurally invalid record is a controlled rejection, never
+            // a panic and never a wrong slice.
+            if plen > MAX_SYNTH_PAYLOAD {
+                return Err(LayoutError::BadState(format!(
+                    "record {} payload length {} exceeds population bound {}",
+                    id, plen, MAX_SYNTH_PAYLOAD
+                )));
+            }
             let ppage = (poff / PAGE_SIZE as u64) as u32;
             let pin = (poff % PAGE_SIZE as u64) as usize;
+            if pin + plen > PAGE_SIZE {
+                return Err(LayoutError::BadState(format!(
+                    "record {} payload [{}, +{}] crosses the page bound {}",
+                    id, pin, plen, PAGE_SIZE
+                )));
+            }
             let cid = self.manifest.payload_pages.get(ppage as usize).cloned();
             self.ensure_page(PageKey::APayload(ppage), cid.as_deref())?;
             let payload_page = self.hot[&PageKey::APayload(ppage)].clone();
-            // Payloads never straddle pages (builder pads).
-            debug_assert!(pin + plen <= PAGE_SIZE);
             let payload = payload_page[pin..pin + plen].to_vec();
             Ok(SynthRecord {
                 id,
                 kind,
-                parent: if parent_raw == u32::MAX { None } else { Some(parent_raw as u64) },
+                parent: if parent_raw == u32::MAX {
+                    None
+                } else {
+                    Some(parent_raw as u64)
+                },
                 span: (span0, span1),
                 payload,
             })
@@ -592,6 +687,12 @@ impl<'s> LayoutView<'s> {
             let dpage = u32::from_le_bytes(e[0..4].try_into().unwrap());
             let doff = u32::from_le_bytes(e[4..8].try_into().unwrap()) as usize;
             let dlen = u16::from_le_bytes(e[8..10].try_into().unwrap()) as usize;
+            if dlen < B_HEADER || doff + dlen > PAGE_SIZE {
+                return Err(LayoutError::BadState(format!(
+                    "record {} directory entry invalid: offset {} len {} (page {})",
+                    id, doff, dlen, PAGE_SIZE
+                )));
+            }
             let cid = self.manifest.data_pages.get(dpage as usize).cloned();
             self.ensure_page(PageKey::BData(dpage), cid.as_deref())?;
             let data_bytes = self.hot[&PageKey::BData(dpage)].clone();
@@ -601,11 +702,23 @@ impl<'s> LayoutView<'s> {
             let span0 = u32::from_le_bytes(b[6..10].try_into().unwrap());
             let span1 = u32::from_le_bytes(b[10..14].try_into().unwrap());
             let plen = b[14] as usize;
+            if B_HEADER + plen > dlen {
+                return Err(LayoutError::BadState(format!(
+                    "record {} truncated: header+payload {} exceeds directory length {}",
+                    id,
+                    B_HEADER + plen,
+                    dlen
+                )));
+            }
             let payload = b[15..15 + plen].to_vec();
             Ok(SynthRecord {
                 id,
                 kind,
-                parent: if parent_raw == u32::MAX { None } else { Some(parent_raw as u64) },
+                parent: if parent_raw == u32::MAX {
+                    None
+                } else {
+                    Some(parent_raw as u64)
+                },
                 span: (span0, span1),
                 payload,
             })

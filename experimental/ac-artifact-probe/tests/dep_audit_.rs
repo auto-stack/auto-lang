@@ -15,14 +15,24 @@ fn dep_audit_ac_core_has_no_product_dependencies() {
     let ac_core = manifest_dir().join("../ac-core/Cargo.toml");
     let text = std::fs::read_to_string(&ac_core).expect("ac-core Cargo.toml");
     // ac-core must never depend on product crates (its own doc contract).
-    for banned in ["auto-cache", "auto-lang", "auto-atom", "auto-val", "auto-vm", "auto-down"] {
+    for banned in [
+        "auto-cache",
+        "auto-lang",
+        "auto-atom",
+        "auto-val",
+        "auto-vm",
+        "auto-down",
+    ] {
         assert!(
             !text.contains(banned),
             "ac-core must not depend on {} (found in Cargo.toml)",
             banned
         );
     }
-    assert!(text.contains("[workspace]"), "ac-core remains a standalone workspace");
+    assert!(
+        text.contains("[workspace]"),
+        "ac-core remains a standalone workspace"
+    );
 }
 
 #[test]
@@ -35,7 +45,11 @@ fn dep_audit_probe_is_standalone_and_names_its_dependencies() {
     assert!(text.contains("auto-cache"));
     // And nothing else from the product surface.
     for banned in ["auto-lang", "auto-atom", "auto-val", "auto-vm"] {
-        assert!(!text.contains(banned), "probe must not depend on {}", banned);
+        assert!(
+            !text.contains(banned),
+            "probe must not depend on {}",
+            banned
+        );
     }
 }
 
@@ -62,19 +76,27 @@ fn dep_audit_no_production_cache_entry_switch() {
     // exports and the ac-core lib exports mention nothing about the probe.
     let cache_lib = manifest_dir().join("../../crates/auto-cache/src/lib.rs");
     let text = std::fs::read_to_string(&cache_lib).unwrap();
-    assert!(!text.contains("ac-artifact-probe"), "no probe coupling in auto-cache");
+    assert!(
+        !text.contains("ac-artifact-probe"),
+        "no probe coupling in auto-cache"
+    );
     assert!(!text.contains("ac_artifact_probe"));
     let core_lib = manifest_dir().join("../ac-core/src/lib.rs");
     let text = std::fs::read_to_string(&core_lib).unwrap();
-    assert!(!text.contains("artifact-probe"), "no probe coupling in ac-core");
+    assert!(
+        !text.contains("artifact-probe"),
+        "no probe coupling in ac-core"
+    );
 }
 
 #[test]
 fn dep_audit_schema_registry_covers_declared_codec_layers() {
     // The A00–A12 registry's codec subset matches what the driver actually
     // produces (V-12: 支持面与证据相符).
-    let codec_layers: Vec<&str> =
-        ac_artifact_probe::schema::codec_layers().iter().map(|l| l.id).collect();
+    let codec_layers: Vec<&str> = ac_artifact_probe::schema::codec_layers()
+        .iter()
+        .map(|l| l.id)
+        .collect();
     assert_eq!(codec_layers, vec!["A00", "A04", "A07", "A09", "A10"]);
     // Every layer has a full boundary entry (sample coverage asserted in
     // the lib unit tests; here assert the public surface is queryable).

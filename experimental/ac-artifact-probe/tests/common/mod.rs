@@ -60,7 +60,11 @@ pub fn run_node_deadlined(args: &[&str], secs: u64) -> NodeOut {
             }
         }
     }
-    NodeOut { code: r.code.unwrap_or(-1), lines, raw: format!("{}{}", r.stdout, r.stderr) }
+    NodeOut {
+        code: r.code.unwrap_or(-1),
+        lines,
+        raw: format!("{}{}", r.stdout, r.stderr),
+    }
 }
 
 pub fn first<'a>(out: &'a NodeOut, key: &str) -> &'a serde_json::Value {

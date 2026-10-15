@@ -31,11 +31,16 @@ staging);支持面=core/scalar 四 oracle + scalar 兼容控制;限制清单
 ## SD-04 modify `docs/specs/auto-cache/project.md`
 
 "现状差距与实验/迁移边界"节,实测差距清单:
-1. `BlobStore::put` 固定 tmp 名:同哈希并发写共享 tmp 路径,无外层锁必然
-   互毁(探针以 per-chunk LockFileEx 串行后 0 复现)——生产化需上移或修复。
+1. `BlobStore::put` 固定 tmp 名:同哈希并发写共享 tmp 路径——结构性风险
+   (R1 F-08 反例:无外层协调时竞争失败);探针以 per-chunk LockFileEx
+   有界等待串行化规避并实测**重叠双进程**同键(同内容/异内容)行为。
+   **探针证据不构成生产 BlobStore 原生并发安全的证明**——生产化需修复
+   或上移该串行化。
 2. 元数据删除 vs 物理释放:现有 GC 两条入口按记录大小计,无 lease/图保活/
    崩溃恢复/物理释放收据;探针实现了 tombstone→门锁→trash→删除 +
-   级联删行 + 幂等恢复,作为迁移目标形态的参考实现(非生产代码)。
+   级联删行 + 幂等恢复(含已提交孤儿行与 trash 残留的恢复趟,R1 F-06),
+   作为迁移目标形态的参考实现(非生产代码)。注意:SQLite 主文件不收缩
+   (freelist 复用),DB 高水位是声明行为。
 3. `fingerprint::compute_content_hash` 直哈原源码——各阶段细粒度键
    (profile/caps/target/backend 成分化)在探针 identity.rs 有完整参照。
 4. 迁移边界:探针不并入任何生产入口;退役/迁移由后续计划决策,防第三套

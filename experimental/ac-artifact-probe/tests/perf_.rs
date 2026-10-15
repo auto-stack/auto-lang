@@ -12,10 +12,10 @@ use common::scratch;
 
 #[test]
 fn perf_scenarios_execute_with_zero_semantic_failures() {
-    // Quick machinery run (2 samples per scenario); full-sample runs are
+    // Quick machinery run (3 samples per scenario); full-sample runs are
     // produced by the acceptance script / closeout via the node perf bin.
     let root = scratch("perf-quick");
-    let report = perf::run_scenarios(&root, "p04-while-retest.at", 2);
+    let report = perf::run_scenarios(&root, "p04-while-retest.at", 3);
     assert_eq!(report.scenarios.len(), 6, "six scenarios");
     let names: Vec<&str> = report.scenarios.iter().map(|s| s.name.as_str()).collect();
     for expected in [
@@ -26,16 +26,40 @@ fn perf_scenarios_execute_with_zero_semantic_failures() {
         "body-modified",
         "gc-concurrent-query",
     ] {
-        assert!(names.contains(&expected), "missing scenario {} in {:?}", expected, names);
+        assert!(
+            names.contains(&expected),
+            "missing scenario {} in {:?}",
+            expected,
+            names
+        );
     }
     for s in &report.scenarios {
         assert_eq!(s.semantic_failures, 0, "scenario {}: {}", s.name, s.what);
-        assert!(s.ok >= 2, "scenario {} ran its samples", s.name);
+        assert!(s.ok >= 3, "scenario {} ran its samples", s.name);
         assert!(s.stats.p50_ms > 0.0);
         assert!(s.stats.p50_ms <= s.stats.p95_ms);
         assert!(s.stats.p95_ms <= s.stats.p99_ms);
         assert!(s.stats.max_ms >= s.stats.min_ms);
     }
+    // R1 F-07: the GC scenario must PROVE real reclamation — GC ran,
+    // deleted physical chunks, no worker failures — or it counts as a
+    // semantic failure above; here assert the recorded evidence directly.
+    let gc = report
+        .scenarios
+        .iter()
+        .find(|s| s.name == "gc-concurrent-query")
+        .unwrap();
+    assert!(
+        gc.gc_ran >= 1,
+        "GC ran during the scenario: {}",
+        gc.notes.join("; ")
+    );
+    assert!(
+        gc.gc_deleted_chunks > 0,
+        "GC deleted for real: {}",
+        gc.notes.join("; ")
+    );
+    assert_eq!(gc.worker_failures, 0);
 }
 
 #[test]
@@ -51,8 +75,12 @@ fn perf_full_report_contract_when_provided() {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(30);
-    let bytes = std::fs::read(&path)
-        .unwrap_or_else(|e| panic!("perf report {} missing ({}): run the perf pass first", path, e));
+    let bytes = std::fs::read(&path).unwrap_or_else(|e| {
+        panic!(
+            "perf report {} missing ({}): run the perf pass first",
+            path, e
+        )
+    });
     let report: perf::PerfReport = serde_json::from_slice(&bytes)
         .unwrap_or_else(|e| panic!("perf report not valid JSON: {}", e));
     assert_eq!(report.scenarios.len(), 6);

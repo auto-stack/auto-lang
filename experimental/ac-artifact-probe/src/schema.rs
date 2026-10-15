@@ -253,7 +253,13 @@ const fn ObjectLayer() -> LayerSpec {
         schema_id: "ac783/a09-object/v1",
         producer: "native lowering (real Cranelift path)",
         consumers: &["linker driver"],
-        key_inputs: &["hir-artifact", "target", "backend-id", "lowering-options", "entry"],
+        key_inputs: &[
+            "hir-artifact",
+            "target",
+            "backend-id",
+            "lowering-options",
+            "entry",
+        ],
         ref_kinds: &["provenance"], // upstream HIR is NOT required once the object exists
         storage: "raw native object bytes as one immutable chunk",
         residency: "independently linkable; HIR/CST need not stay resident",
@@ -269,7 +275,10 @@ pub fn layer(id: &str) -> Option<&'static LayerSpec> {
 
 /// Layers with real codec coverage in this probe.
 pub fn codec_layers() -> Vec<&'static LayerSpec> {
-    LAYERS.iter().filter(|l| l.coverage == LayerCoverage::Codec).collect()
+    LAYERS
+        .iter()
+        .filter(|l| l.coverage == LayerCoverage::Codec)
+        .collect()
 }
 
 /// One legal/illegal payload description sample for a layer seam. For
@@ -286,7 +295,10 @@ pub const SAMPLES: &[LayerSample] = &[
     LayerSample {
         layer_id: "A00",
         legal: &["(source-bytes, module-logical-name) snapshot record referencing a raw blob"],
-        illegal: &["snapshot claiming absolute path identity as content key", "snapshot embedding the user's only source copy as store-owned data"],
+        illegal: &[
+            "snapshot claiming absolute path identity as content key",
+            "snapshot embedding the user's only source copy as store-owned data",
+        ],
     },
     LayerSample {
         layer_id: "A01",
@@ -296,12 +308,18 @@ pub const SAMPLES: &[LayerSample] = &[
     LayerSample {
         layer_id: "A02",
         legal: &["region-scoped token block with scanner checkpoint"],
-        illegal: &["token block keyed by mtime", "checkpoint storing process pointers"],
+        illegal: &[
+            "token block keyed by mtime",
+            "checkpoint storing process pointers",
+        ],
     },
     LayerSample {
         layer_id: "A03",
         legal: &["immutable subtree page shared between two snapshot versions"],
-        illegal: &["mutable in-place CST node", "full-file CST residency as a hit requirement"],
+        illegal: &[
+            "mutable in-place CST node",
+            "full-file CST residency as a hit requirement",
+        ],
     },
     LayerSample {
         layer_id: "A04",
@@ -321,7 +339,10 @@ pub const SAMPLES: &[LayerSample] = &[
     LayerSample {
         layer_id: "A07",
         legal: &["restored bundle that re-enters the real verifier before any use"],
-        illegal: &["persisted trusted flag constructing a Checked credential", "bundle restored from text roundtrip claimed as binary restore"],
+        illegal: &[
+            "persisted trusted flag constructing a Checked credential",
+            "bundle restored from text roundtrip claimed as binary restore",
+        ],
     },
     LayerSample {
         layer_id: "A08",
@@ -331,12 +352,18 @@ pub const SAMPLES: &[LayerSample] = &[
     LayerSample {
         layer_id: "A09",
         legal: &["object chunk linkable while its upstream HIR is cold/absent"],
-        illegal: &["object hit after body-only edit (same signature)", "fake blob standing in for real lowering"],
+        illegal: &[
+            "object hit after body-only edit (same signature)",
+            "fake blob standing in for real lowering",
+        ],
     },
     LayerSample {
         layer_id: "A10",
         legal: &["link receipt bound to real persisted object bytes"],
-        illegal: &["store GC deleting the user's delivered exe", "PE nondeterminism treated as semantic failure"],
+        illegal: &[
+            "store GC deleting the user's delivered exe",
+            "PE nondeterminism treated as semantic failure",
+        ],
     },
     LayerSample {
         layer_id: "A11",
@@ -407,7 +434,11 @@ mod tests {
             assert!(!s.illegal.is_empty(), "{} illegal sample", l.id);
         }
         for s in SAMPLES {
-            assert!(layer(s.layer_id).is_some(), "unknown sample layer {}", s.layer_id);
+            assert!(
+                layer(s.layer_id).is_some(),
+                "unknown sample layer {}",
+                s.layer_id
+            );
         }
     }
 

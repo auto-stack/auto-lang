@@ -1,13 +1,21 @@
 //! Watermark garbage collection (PLAN-783 §5.4 / Design 40 §7).
 //!
+//! Runs under the EXCLUSIVE liveness guard for the whole decide-and-delete
+//! phase (review R1 F-01): publishers, lease grants and root registrations
+//! hold it shared, so a GC snapshot can never race an acquisition —
+//! whatever the snapshot decided is exactly what the deletion loop does,
+//! and anything registered after the snapshot sees post-GC state with a
+//! fresh liveness check.
+//!
 //! Reachability: live roots (project soft roots + hard pins) and live
 //! leases seed an artifact set; the `required`-edge closure defines which
-//! CHUNKS stay. Everything else — unreachable chunks, orphan blobs, stale
+//! CHUNKS stay. Everything else — unreachable chunks, orphan rows, stale
 //! staging, trash residue — is reclaimable in (oldest-first) batches down
 //! to the low watermark. If the LIVE set alone already exceeds the low
 //! watermark, GC reports a bounded backoff (stop-write status) and deletes
-//! no live data. Deletion is tombstone → gate lock → trash → remove; a
-//! blocked gate leaves a pending-reader entry, never a partial read.
+//! no live data. Deletion is tombstone → gate lock → trash → remove with
+//! the SAME row cascade as recovery; a blocked gate leaves a
+//! pending-reader entry, never a partial read.
 
 use super::{now_secs, FileGuard, ManagedStore, StoreError};
 use rusqlite::{params, OptionalExtension};
@@ -20,7 +28,10 @@ pub const GC_LOW: u64 = 48 * 1024 * 1024;
 pub const TEMP_CAP: u64 = 8 * 1024 * 1024;
 
 pub fn gc_config_default() -> GcConfig {
-    GcConfig { high: GC_HIGH, low: GC_LOW }
+    GcConfig {
+        high: GC_HIGH,
+        low: GC_LOW,
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -63,19 +74,19 @@ fn now_ms() -> u64 {
 /// Artifact ids seeding the live set: soft roots + hard pins + live leases.
 fn live_seed_artifacts(store: &ManagedStore) -> Result<HashSet<String>, StoreError> {
     let mut seeds: HashSet<String> = HashSet::new();
-    let db = store.db();
     {
+        let db = store.db();
         let mut stmt = db.prepare("SELECT artifact FROM roots")?;
         for a in stmt.query_map([], |r| r.get::<_, String>(0))?.flatten() {
             seeds.insert(a);
         }
     }
-    let leases: Vec<(String, u8, Option<String>)> = db
+    let leases: Vec<(String, u8, Option<String>)> = store
+        .db()
         .prepare("SELECT lease_id, released, artifact FROM leases")?
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
         .flatten()
         .collect();
-    drop(db);
     for (lid, released, artifact) in leases {
         if released == 0 && store.lease_live(&lid)? {
             if let Some(a) = artifact {
@@ -87,17 +98,19 @@ fn live_seed_artifacts(store: &ManagedStore) -> Result<HashSet<String>, StoreErr
 }
 
 /// Transitive closure over `required` edges from the seed artifacts.
-fn required_closure(store: &ManagedStore, seeds: &HashSet<String>) -> Result<HashSet<String>, StoreError> {
+fn required_closure(
+    store: &ManagedStore,
+    seeds: &HashSet<String>,
+) -> Result<HashSet<String>, StoreError> {
     let mut live: HashSet<String> = seeds.clone();
     let mut frontier: Vec<String> = seeds.iter().cloned().collect();
     while let Some(src) = frontier.pop() {
-        let db = store.db();
-        let dsts: Vec<String> = db
+        let dsts: Vec<String> = store
+            .db()
             .prepare("SELECT dst FROM edges WHERE src=?1 AND kind='required'")?
             .query_map(params![src], |r| r.get(0))?
             .flatten()
             .collect();
-        drop(db);
         for d in dsts {
             if live.insert(d.clone()) {
                 frontier.push(d);
@@ -105,6 +118,21 @@ fn required_closure(store: &ManagedStore, seeds: &HashSet<String>) -> Result<Has
         }
     }
     Ok(live)
+}
+
+/// One full chunk deletion under the gate: physical removal (trash-move
+/// first) + the metadata cascade (R1 F-03/F-06). Returns Ok(false) when a
+/// reader holds the shared gate (pending) or the blob was already gone.
+pub(crate) fn delete_chunk_full(store: &ManagedStore, cid: &str) -> Result<bool, StoreError> {
+    let gate = FileGuard::try_lock(&store.lock_path_pub(&format!("gate-{}", cid)), true)?;
+    let Some(_g) = gate else { return Ok(false) };
+    let removed = store.blob_remove(cid)?;
+    store.db().execute(
+        "UPDATE chunks SET state='tombstoned' WHERE chunk_id=?1 AND state='live'",
+        params![cid],
+    )?;
+    super::cascade_chunk_rows(&store.db(), cid)?;
+    Ok(removed)
 }
 
 pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreError> {
@@ -122,24 +150,32 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
     receipt.ran = true;
     receipt.reason = "over high watermark".into();
 
+    // EXCLUSIVE liveness for the whole decide+delete phase (R1 F-01):
+    // acquisitions/publishes either preceded the snapshot (counted) or
+    // wait and re-check liveness afterwards.
+    let _exclusive = store.liveness_exclusive()?;
+
     // Live set and its chunks.
     let seeds = live_seed_artifacts(store)?;
     let live_artifacts = required_closure(store, &seeds)?;
-    let db = store.db();
-    let all_artifacts: Vec<(String, String, u64)> = db
+    let all_artifacts: Vec<(String, String, u64)> = store
+        .db()
         .prepare("SELECT artifact_id, payload_chunk, created_epoch FROM artifacts")?
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get::<_, u64>(2)?)))?
         .flatten()
         .collect();
-    let chunk_states: HashMap<String, (String, u64)> = db
+    let chunk_sizes: HashMap<String, (String, u64)> = store
+        .db()
         .prepare("SELECT chunk_id, state, size FROM chunks")?
         .query_map([], |r| {
-            Ok((r.get::<_, String>(0)?, (r.get::<_, String>(1)?, r.get::<_, u64>(2)?)))
+            Ok((
+                r.get::<_, String>(0)?,
+                (r.get::<_, String>(1)?, r.get::<_, u64>(2)?),
+            ))
         })?
         .flatten()
         .collect();
-    drop(db);
-    receipt.scanned_chunks = chunk_states.len();
+    receipt.scanned_chunks = chunk_sizes.len();
     let mut live_chunk_ids: HashSet<String> = HashSet::new();
     for (aid, cid, _) in &all_artifacts {
         if live_artifacts.contains(aid) {
@@ -148,15 +184,17 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
     }
     receipt.live_chunks = live_chunk_ids.len();
 
-    let mut live_bytes = space.db + space.locks + space.logs;
+    // Uncompressible floor = main DB file + locks + logs + live chunks.
+    // The WAL/SHM are transient (checkpoint shrinks them) and stay in the
+    // ACCOUNTED total, but not in the floor — otherwise write bursts
+    // spuriously trigger backoff (R1 F-07 repair).
+    let mut live_bytes = space.db_main + space.locks + space.logs;
     for cid in &live_chunk_ids {
-        live_bytes += chunk_states.get(cid).map(|(_, s)| *s).unwrap_or(0);
+        live_bytes += chunk_sizes.get(cid).map(|(_, s)| *s).unwrap_or(0);
     }
     receipt.live_bytes = live_bytes;
 
-    // Batch 1: reclaimable junk (never live): stale staging (grace passed),
-    // orphan blob files, trash residue.
-    // Orphans are handled by `recover`; here we only clear old staging.
+    // Batch 1: reclaimable junk (never live): stale staging (grace passed).
     let staging_old: Vec<std::path::PathBuf> = {
         let mut v = Vec::new();
         if let Ok(rd) = std::fs::read_dir(store.root.join("staging")) {
@@ -167,10 +205,11 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
                 if e.path().is_dir() {
                     if let Ok(meta) = e.metadata() {
                         if let Ok(modt) = meta.modified() {
-                            let age = now_secs()
-                                .saturating_sub(
-                                    modt.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
-                                );
+                            let age = now_secs().saturating_sub(
+                                modt.duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_secs())
+                                    .unwrap_or(0),
+                            );
                             if age > 600 {
                                 v.push(e.path());
                             }
@@ -182,7 +221,7 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
         v
     };
     for p in staging_old {
-        let sz = ManagedStore::dir_size(&p);
+        let sz = ManagedStore::dir_size_pub(&p);
         if std::fs::remove_dir_all(&p).is_ok() {
             receipt.staging_removed += 1;
             receipt.freed_bytes += sz;
@@ -207,7 +246,7 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
     let mut candidates: Vec<(u64, String, u64)> = Vec::new(); // (created, chunk, size)
     for (aid, cid, created) in &all_artifacts {
         if !live_artifacts.contains(aid) && !live_chunk_ids.contains(cid) {
-            if let Some((state, size)) = chunk_states.get(cid) {
+            if let Some((state, size)) = chunk_sizes.get(cid) {
                 if state == "live" {
                     candidates.push((*created, cid.clone(), *size));
                 }
@@ -219,9 +258,11 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
     let mut seen = HashSet::new();
     candidates.retain(|(_, c, _)| seen.insert(c.clone()));
 
+    // Watermark progress is tracked incrementally (a full space() walk per
+    // candidate would be O(store) × O(candidates) — quadratic on churn).
+    let mut accounted_total = space.total;
     for (_, cid, size) in &candidates {
-        let after = store.space().total;
-        if cfg.low > 0 && after <= cfg.low {
+        if cfg.low > 0 && accounted_total <= cfg.low {
             break;
         }
         // Invalidate logically first (tombstone), then take the gate.
@@ -229,45 +270,23 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
             "UPDATE chunks SET state='tombstoned' WHERE chunk_id=?1 AND state='live'",
             params![cid],
         )?;
-        super::fault("after-tombstone");
-        let gate = FileGuard::try_lock(
-            &store.lock_path(&format!("gate-{}", cid)),
-            true,
-        )?;
+        super::fault_pub("after-tombstone");
+        let gate = FileGuard::try_lock(&store.lock_path_pub(&format!("gate-{}", cid)), true)?;
         match gate {
             Some(_g) => {
                 receipt.invalid_bytes += size;
-                let removed = store.blob_remove(cid)?;
-                // Converge metadata with physical state: the artifact rows
-                // carrying this (now deleted) chunk are logically gone;
-                // leaving them would block same-key republication forever.
-                {
-                    let db = store.db();
-                    db.execute(
-                        "DELETE FROM edges WHERE src IN (SELECT artifact_id FROM artifacts WHERE payload_chunk=?1)",
-                        params![cid],
-                    )?;
-                    db.execute(
-                        "DELETE FROM roots WHERE artifact IN (SELECT artifact_id FROM artifacts WHERE payload_chunk=?1)",
-                        params![cid],
-                    )?;
-                    db.execute("DELETE FROM artifacts WHERE payload_chunk=?1", params![cid])?;
-                }
-                if removed {
+                if store.blob_remove(cid)? {
                     receipt.freed_bytes += size;
                     receipt.deleted_chunks += 1;
+                    accounted_total = accounted_total.saturating_sub(*size);
                 } else {
                     // Blocked remove (reader/AV holds a handle): the trash
                     // copy remains and is reported as pending, not freed.
-                    // Rows were already removed — the pending-delete trash
-                    // entry is reclaimed by `recover`.
                     receipt.pending_reader_bytes += size;
                     receipt.failed_deletes += 1;
                 }
-                store.db().execute(
-                    "UPDATE chunks SET state='deleted' WHERE chunk_id=?1",
-                    params![cid],
-                )?;
+                // Metadata converges with physical state (R1 F-03/F-06).
+                super::cascade_chunk_rows(&store.db(), cid)?;
             }
             None => {
                 // A reader is active under the shared gate: revert to live

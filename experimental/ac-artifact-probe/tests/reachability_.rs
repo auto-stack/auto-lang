@@ -29,7 +29,12 @@ fn reachability_deleting_one_project_keeps_shared_chunks_of_the_other() {
     for p in ["proj-a", "proj-b"] {
         let out = vertical_and_run(
             &store,
-            &VerticalCfg { project: p.into(), source: src.clone(), work_dir: root.join(p), ..Default::default() },
+            &VerticalCfg {
+                project: p.into(),
+                source: src.clone(),
+                work_dir: root.join(p),
+                ..Default::default()
+            },
         )
         .unwrap();
         assert_eq!(out.exit_code, Some(10));
@@ -39,16 +44,28 @@ fn reachability_deleting_one_project_keeps_shared_chunks_of_the_other() {
     // Project A closes: its roots go away.
     store.remove_project_roots("proj-a").unwrap();
     let receipt = trigger_gc(&store);
-    assert!(receipt.ran || receipt.total_after < receipt.total_before || store.space().blocks_count <= chunks_before);
+    assert!(
+        receipt.ran
+            || receipt.total_after < receipt.total_before
+            || store.space().blocks_count <= chunks_before
+    );
 
     // Project B still hits everything (shared chunks were NOT deleted).
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "proj-b".into(), source: src, work_dir: root.join("proj-b"), ..Default::default() },
+        &VerticalCfg {
+            project: "proj-b".into(),
+            source: src,
+            work_dir: root.join("proj-b"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(10));
-    assert_eq!(out.counters.parse, 0, "project B must still hit after A's deletion");
+    assert_eq!(
+        out.counters.parse, 0,
+        "project B must still hit after A's deletion"
+    );
     assert_eq!(out.counters.lower, 0);
 }
 
@@ -60,11 +77,22 @@ fn reachability_object_linkable_after_upstream_hir_reclaimed() {
     std::fs::write(&src, "fn main() int { return 40 + 2 }").unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(42));
-    let a09 = out.artifacts.iter().find(|(l, _)| l == "A09").unwrap().1.clone();
+    let a09 = out
+        .artifacts
+        .iter()
+        .find(|(l, _)| l == "A09")
+        .unwrap()
+        .1
+        .clone();
 
     // Keep ONLY the object rooted; the upstream HIR/snapshot/summary lose
     // their roots (provenance edges are NOT required-data — §5.1/A09).
@@ -102,12 +130,29 @@ fn reachability_lease_pins_against_gc_and_release_is_os_truth() {
     std::fs::write(&src, "fn main() int { return 9 }").unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(9));
-    let a07 = out.artifacts.iter().find(|(l, _)| l == "A07").unwrap().1.clone();
-    let a09 = out.artifacts.iter().find(|(l, _)| l == "A09").unwrap().1.clone();
+    let a07 = out
+        .artifacts
+        .iter()
+        .find(|(l, _)| l == "A07")
+        .unwrap()
+        .1
+        .clone();
+    let a09 = out
+        .artifacts
+        .iter()
+        .find(|(l, _)| l == "A09")
+        .unwrap()
+        .1
+        .clone();
 
     // Unroot everything except the delivered object; a live lease holds
     // the HIR artifact even with no roots at all.
@@ -116,10 +161,18 @@ fn reachability_lease_pins_against_gc_and_release_is_os_truth() {
     let lease = store.acquire_lease("reader", 1, Some(&a07)).unwrap(); // TTL 1s — liveness must NOT be TTL-decided
     std::thread::sleep(Duration::from_millis(1500)); // TTL long expired
     trigger_gc(&store);
-    assert!(store.lease_live(&lease.lease_id).unwrap(), "lease past TTL is still live while held");
+    assert!(
+        store.lease_live(&lease.lease_id).unwrap(),
+        "lease past TTL is still live while held"
+    );
     let still_object = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(still_object.exit_code, Some(9));
@@ -129,10 +182,18 @@ fn reachability_lease_pins_against_gc_and_release_is_os_truth() {
     store.remove_project_roots("keep").unwrap();
     let hir_out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
-    assert_eq!(hir_out.counters.hir_restore, 1, "leased HIR must not have been deleted");
+    assert_eq!(
+        hir_out.counters.hir_restore, 1,
+        "leased HIR must not have been deleted"
+    );
     assert_eq!(hir_out.exit_code, Some(9));
 
     // Holder releases (drop in THIS process) → sweep + GC reclaim it.
@@ -142,7 +203,12 @@ fn reachability_lease_pins_against_gc_and_release_is_os_truth() {
     // After reclaim, the object (rebuilt above) still runs.
     let final_out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: root.join("m.at"), work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: root.join("m.at"),
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(final_out.exit_code, Some(9));
@@ -157,10 +223,21 @@ fn reachability_cross_process_lease_pinning() {
     std::fs::write(&src, "fn main() int { return 8 }").unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
-    let a07 = out.artifacts.iter().find(|(l, _)| l == "A07").unwrap().1.clone();
+    let a07 = out
+        .artifacts
+        .iter()
+        .find(|(l, _)| l == "A07")
+        .unwrap()
+        .1
+        .clone();
     store.remove_project_roots("p").unwrap();
     drop(store);
 
@@ -197,7 +274,10 @@ fn reachability_cross_process_lease_pinning() {
     assert!(!lease_id.is_empty(), "lease holder did not report its id");
 
     let store = ManagedStore::open(&store_root).unwrap();
-    assert!(store.lease_live(&lease_id).unwrap(), "cross-process lease is live");
+    assert!(
+        store.lease_live(&lease_id).unwrap(),
+        "cross-process lease is live"
+    );
     trigger_gc(&store);
     assert!(
         store.lease_live(&lease_id).unwrap(),
@@ -208,9 +288,18 @@ fn reachability_cross_process_lease_pinning() {
     // Wait out the crashed holder: OS lock released at process death even
     // though the row was never marked released.
     let status = holder.wait().unwrap();
-    assert!(status.code().is_none() || status.code() != Some(0), "holder must have aborted");
+    assert!(
+        status.code().is_none() || status.code() != Some(0),
+        "holder must have aborted"
+    );
     let store = ManagedStore::open(&store_root).unwrap();
-    assert!(!store.lease_live(&lease_id).unwrap(), "holder exited → lock released by OS");
+    assert!(
+        !store.lease_live(&lease_id).unwrap(),
+        "holder exited → lock released by OS"
+    );
     let n = store.sweep_stale_leases().unwrap();
-    assert_eq!(n, 1, "crashed lease reclaimed by sweep (row was never released)");
+    assert_eq!(
+        n, 1,
+        "crashed lease reclaimed by sweep (row was never released)"
+    );
 }

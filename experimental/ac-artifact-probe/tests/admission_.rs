@@ -5,9 +5,7 @@
 
 mod common;
 
-use ac_artifact_probe::codec::{
-    self, ChunkKind, CodecError,
-};
+use ac_artifact_probe::codec::{self, ChunkKind, CodecError};
 use ac_artifact_probe::driver::{vertical_and_run, VerticalCfg};
 use ac_artifact_probe::store::{ManagedStore, PutRequest};
 use ac_artifact_probe::{identity, schema};
@@ -96,12 +94,18 @@ fn admission_owner_tamper_rejected_by_real_verifier() {
     // find a Binary add
     let mut add = None;
     for (i, e) in body.exprs.iter().enumerate() {
-        if let ExprKind::Binary { op: auto_ac_prototype::hir::BinOp::AddI32, .. } = e.kind {
+        if let ExprKind::Binary {
+            op: auto_ac_prototype::hir::BinOp::AddI32,
+            ..
+        } = e.kind
+        {
             add = Some(i);
             break;
         }
     }
-    let Some(add) = add else { panic!("fixture must contain an add") };
+    let Some(add) = add else {
+        panic!("fixture must contain an add")
+    };
     // find a bool-PRODUCING expr: a comparison (the core surface's while
     // condition lowers to a Lt binary; bool arrives as a named type ref).
     let bool_expr = body
@@ -110,7 +114,10 @@ fn admission_owner_tamper_rejected_by_real_verifier() {
         .position(|e| {
             matches!(
                 e.kind,
-                ExprKind::Binary { op: auto_ac_prototype::hir::BinOp::LtI32, .. }
+                ExprKind::Binary {
+                    op: auto_ac_prototype::hir::BinOp::LtI32,
+                    ..
+                }
             )
         })
         .expect("fixture has a comparison");
@@ -157,12 +164,17 @@ fn admission_store_chunk_corruption_is_controlled() {
     let last = bad.len() - 1;
     bad[last] ^= 0x7F;
     std::fs::write(&blob_path, &bad).unwrap();
-    // Reader must fail controlled (checksum), never return wrong bytes.
+    // Reader must fail controlled — address mismatch (the stronger,
+    // earlier admission gate) or checksum — never return wrong bytes.
     match store.get_artifact("A07", &key) {
-        Err(ac_artifact_probe::store::StoreError::Codec(
-            CodecError::ChecksumMismatch { .. },
-        )) => {}
-        other => panic!("expected controlled checksum rejection, got {:?}", other.map(|o| o.map(|a| a.chunk_id))),
+        Err(ac_artifact_probe::store::StoreError::Codec(CodecError::ChecksumMismatch {
+            ..
+        })) => {}
+        Err(ac_artifact_probe::store::StoreError::ChunkAddressMismatch { .. }) => {}
+        other => panic!(
+            "expected controlled corruption rejection, got {:?}",
+            other.map(|o| o.map(|a| a.chunk_id))
+        ),
     }
     let _ = bytes;
 }
@@ -205,7 +217,12 @@ fn admission_restored_bundle_reverified_before_use_in_driver() {
     let store = ManagedStore::open(&root.join("store")).unwrap();
     let src_path = root.join("m.at");
     std::fs::write(&src_path, "fn main() int { return 6 * 7 }").unwrap();
-    let cfg = VerticalCfg { project: "p".into(), source: src_path.clone(), work_dir: root.join("w"), ..Default::default() };
+    let cfg = VerticalCfg {
+        project: "p".into(),
+        source: src_path.clone(),
+        work_dir: root.join("w"),
+        ..Default::default()
+    };
     let out = vertical_and_run(&store, &cfg).unwrap();
     assert_eq!(out.exit_code, Some(42));
 
@@ -214,7 +231,10 @@ fn admission_restored_bundle_reverified_before_use_in_driver() {
     let out2 = vertical_and_run(&store, &cfg).unwrap();
     assert_eq!(out2.exit_code, Some(42));
     assert_eq!(out2.counters.hir_restore, 1, "HIR-hit path must restore");
-    assert_eq!(out2.counters.verify, 1, "restored bundle must re-enter the real verifier");
+    assert_eq!(
+        out2.counters.verify, 1,
+        "restored bundle must re-enter the real verifier"
+    );
     assert_eq!(out2.counters.parse, 0, "source front end must be skipped");
     assert_eq!(out2.counters.lower, 1, "object miss must re-lower");
 }
@@ -222,8 +242,20 @@ fn admission_restored_bundle_reverified_before_use_in_driver() {
 #[test]
 fn admission_probe_lowering_determinism() {
     let src = "fn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }";
-    let p1 = auto_ac_prototype::source::compile_parts_with(src, "main", &[], auto_ac_prototype::source::SourceProfile::Core).unwrap();
-    let p2 = auto_ac_prototype::source::compile_parts_with(src, "main", &[], auto_ac_prototype::source::SourceProfile::Core).unwrap();
+    let p1 = auto_ac_prototype::source::compile_parts_with(
+        src,
+        "main",
+        &[],
+        auto_ac_prototype::source::SourceProfile::Core,
+    )
+    .unwrap();
+    let p2 = auto_ac_prototype::source::compile_parts_with(
+        src,
+        "main",
+        &[],
+        auto_ac_prototype::source::SourceProfile::Core,
+    )
+    .unwrap();
     let c1 = auto_ac_prototype::verify::verify(p1.bundle).unwrap();
     let c2 = auto_ac_prototype::verify::verify(p2.bundle).unwrap();
     let sel1 = auto_ac_prototype::native::find_entry(&c1, "d_main").unwrap();

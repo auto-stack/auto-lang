@@ -19,14 +19,35 @@ fn invalidation_body_only_change_matrix() {
     std::fs::write(&v1, "fn main() int { return 3 * 9 }").unwrap();
     std::fs::write(&v2, "fn main() int { return 3 * 10 }").unwrap();
 
-    let out1 = vertical_and_run(&store, &VerticalCfg { project: "p".into(), source: v1.clone(), work_dir: root.join("w1"), ..Default::default() }).unwrap();
+    let out1 = vertical_and_run(
+        &store,
+        &VerticalCfg {
+            project: "p".into(),
+            source: v1.clone(),
+            work_dir: root.join("w1"),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(out1.exit_code, Some(27));
-    let out2 = vertical_and_run(&store, &VerticalCfg { project: "p".into(), source: v2.clone(), work_dir: root.join("w2"), ..Default::default() }).unwrap();
+    let out2 = vertical_and_run(
+        &store,
+        &VerticalCfg {
+            project: "p".into(),
+            source: v2.clone(),
+            work_dir: root.join("w2"),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     // Explicit matrix: snapshot MISS (new bytes), summary MISS+recompute
     // with CONTENT identity preserved (signatures equal; the artifact row
     // key follows the snapshot), HIR MISS, object MISS + re-lower.
     assert_eq!(out2.counters.parse, 1, "body change → full miss");
-    assert_eq!(out2.counters.lower, 1, "object must be invalidated on body change");
+    assert_eq!(
+        out2.counters.lower, 1,
+        "object must be invalidated on body change"
+    );
     assert_eq!(out2.exit_code, Some(30));
     // Summary content identity across the body edit (rebuilt from source).
     let s1 = ac_artifact_probe::codec::build_decl_summary(
@@ -55,7 +76,12 @@ fn invalidation_profile_change_misses_all_layers() {
     std::fs::write(&src, "fn main() int { var i = 2; i = i * 2; return i }").unwrap();
     let core_out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w-core"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w-core"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(core_out.exit_code, Some(4));
@@ -74,14 +100,26 @@ fn invalidation_profile_change_misses_all_layers() {
         },
     )
     .unwrap();
-    assert_eq!(scalar_out.exit_code, Some(4), "scalar rebuild preserves semantics");
+    assert_eq!(
+        scalar_out.exit_code,
+        Some(4),
+        "scalar rebuild preserves semantics"
+    );
     assert_eq!(scalar_out.counters.parse, 1, "profile change → full miss");
     assert_eq!(scalar_out.counters.lower, 1);
-    assert!(store.space().blocks_count > blocks_before, "profile change adds new content");
+    assert!(
+        store.space().blocks_count > blocks_before,
+        "profile change adds new content"
+    );
     // Core artifacts remain independently valid (hit again in-process).
     let core_again = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: root.join("m.at"), work_dir: root.join("w-core"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: root.join("m.at"),
+            work_dir: root.join("w-core"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(core_again.counters.parse, 0);
@@ -127,7 +165,12 @@ fn invalidation_entry_change_selects_different_object() {
     .unwrap();
     let a = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w1"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w1"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(a.exit_code, Some(11));
@@ -136,7 +179,13 @@ fn invalidation_entry_change_selects_different_object() {
     // wrapper target (a DIFFERENT object key) and exits 11 directly.
     let b = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w2"), entry: "second".into(), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w2"),
+            entry: "second".into(),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(b.exit_code, Some(11));
@@ -156,21 +205,42 @@ fn invalidation_toolchain_change_keeps_object_hits_but_relinks() {
     std::fs::write(&src, "fn main() int { return 21 * 2 }").unwrap();
     let a = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w"), toolchain_fp: "lld-v1".into(), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w"),
+            toolchain_fp: "lld-v1".into(),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(a.exit_code, Some(42));
-    let a10_v1 = a.artifacts.iter().find(|(l, _)| l == "A10").unwrap().1.clone();
+    let a10_v1 = a
+        .artifacts
+        .iter()
+        .find(|(l, _)| l == "A10")
+        .unwrap()
+        .1
+        .clone();
 
     // Toolchain fingerprint changes the LINK receipt (A10), not the object:
     // the object still hits (no re-lower), a fresh link happens.
     let b = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w"), toolchain_fp: "lld-v2".into(), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w"),
+            toolchain_fp: "lld-v2".into(),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(b.exit_code, Some(42));
-    assert_eq!(b.counters.lower, 0, "object hit: toolchain does not invalidate lowering");
+    assert_eq!(
+        b.counters.lower, 0,
+        "object hit: toolchain does not invalidate lowering"
+    );
     assert_eq!(b.counters.link, 1, "relink is real");
     assert_ne!(
         a10_v1,

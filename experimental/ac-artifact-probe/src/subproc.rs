@@ -138,8 +138,12 @@ pub fn run_deadlined(mut cmd: Command, timeout: Duration) -> std::io::Result<Run
         }
     }
     // Drain threads finish at EOF (job guard guarantees grandchildren die).
-    let stdout = rx_out.recv_timeout(Duration::from_secs(10)).unwrap_or_default();
-    let stderr = rx_err.recv_timeout(Duration::from_secs(10)).unwrap_or_default();
+    let stdout = rx_out
+        .recv_timeout(Duration::from_secs(10))
+        .unwrap_or_default();
+    let stderr = rx_err
+        .recv_timeout(Duration::from_secs(10))
+        .unwrap_or_default();
     Ok(RunResult {
         code,
         timed_out,

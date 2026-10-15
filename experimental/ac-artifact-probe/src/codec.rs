@@ -23,41 +23,80 @@ use std::fmt;
 /// distinct categories (the admission tests distinguish them).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CodecError {
-    Truncated { at: &'static str },
-    LengthOverflow { what: &'static str, count: u64, available: u64 },
+    Truncated {
+        at: &'static str,
+    },
+    LengthOverflow {
+        what: &'static str,
+        count: u64,
+        available: u64,
+    },
     BadMagic(u32),
     UnsupportedFraming(u16),
     UnknownChunkKind(u8),
-    TooLarge { len: u64, cap: u64 },
-    ChecksumMismatch { expected: String, actual: String },
-    TrailingBytes { extra: u64 },
+    TooLarge {
+        len: u64,
+        cap: u64,
+    },
+    ChecksumMismatch {
+        expected: String,
+        actual: String,
+    },
+    TrailingBytes {
+        extra: u64,
+    },
     UnsupportedVersion(u16),
     UnsupportedDomain(u8),
     UnsupportedFeature(&'static str),
     InvalidUtf8,
-    IndexOutOfBounds { what: &'static str, index: u64, len: u64 },
-    BadTag { what: &'static str, tag: u8 },
+    IndexOutOfBounds {
+        what: &'static str,
+        index: u64,
+        len: u64,
+    },
+    BadTag {
+        what: &'static str,
+        tag: u8,
+    },
 }
 
 impl fmt::Display for CodecError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CodecError::Truncated { at } => write!(f, "truncated input at {}", at),
-            CodecError::LengthOverflow { what, count, available } => {
-                write!(f, "{} count {} exceeds remaining bytes {}", what, count, available)
+            CodecError::LengthOverflow {
+                what,
+                count,
+                available,
+            } => {
+                write!(
+                    f,
+                    "{} count {} exceeds remaining bytes {}",
+                    what, count, available
+                )
             }
             CodecError::BadMagic(m) => write!(f, "bad chunk magic {:#x}", m),
             CodecError::UnsupportedFraming(v) => write!(f, "unsupported framing version {}", v),
             CodecError::UnknownChunkKind(k) => write!(f, "unknown chunk kind {}", k),
             CodecError::TooLarge { len, cap } => write!(f, "payload {} exceeds cap {}", len, cap),
             CodecError::ChecksumMismatch { expected, actual } => {
-                write!(f, "chunk checksum mismatch: expected {} got {}", expected, actual)
+                write!(
+                    f,
+                    "chunk checksum mismatch: expected {} got {}",
+                    expected, actual
+                )
             }
-            CodecError::TrailingBytes { extra } => write!(f, "{} trailing bytes after payload", extra),
+            CodecError::TrailingBytes { extra } => {
+                write!(f, "{} trailing bytes after payload", extra)
+            }
             CodecError::UnsupportedVersion(v) => write!(f, "unsupported codec version {}", v),
             CodecError::UnsupportedDomain(d) => write!(f, "unsupported HIR domain code {}", d),
             CodecError::UnsupportedFeature(what) => {
-                write!(f, "feature outside the probe's restricted executable subset: {}", what)
+                write!(
+                    f,
+                    "feature outside the probe's restricted executable subset: {}",
+                    what
+                )
             }
             CodecError::InvalidUtf8 => write!(f, "invalid utf-8 string"),
             CodecError::IndexOutOfBounds { what, index, len } => {
@@ -138,14 +177,21 @@ pub fn unframe_chunk(bytes: &[u8]) -> Result<(ChunkKind, &[u8]), CodecError> {
     let kind = ChunkKind::from_u8(bytes[6])?;
     let len = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
     if len > MAX_CHUNK {
-        return Err(CodecError::TooLarge { len, cap: MAX_CHUNK });
+        return Err(CodecError::TooLarge {
+            len,
+            cap: MAX_CHUNK,
+        });
     }
     let end = CHUNK_HEADER_LEN + len as usize;
     if bytes.len() < end {
-        return Err(CodecError::Truncated { at: "chunk payload" });
+        return Err(CodecError::Truncated {
+            at: "chunk payload",
+        });
     }
     if bytes.len() > end {
-        return Err(CodecError::TrailingBytes { extra: (bytes.len() - end) as u64 });
+        return Err(CodecError::TrailingBytes {
+            extra: (bytes.len() - end) as u64,
+        });
     }
     let expected = &bytes[16..48];
     let actual = blake3::hash(&bytes[CHUNK_HEADER_LEN..end]);
@@ -184,14 +230,14 @@ fn hex(b: &[u8]) -> String {
 pub const HIR_CODEC_VERSION: u16 = 1;
 
 use auto_ac_prototype::hir::{
-    Access, BinOp, Bundle, CallBinding, Def, DefKind, Effect, Expr, ExprKind, FnSig,
-    HirDomain, LocalDef, LocalRole, LoopId, LogicOp, Module, OverflowPolicy, ParamMode, Place,
-    PlaceKind, Stmt, TypeDef, TypeKind, TypeUse, UnaryOp,
+    Access, BinOp, Bundle, CallBinding, Def, DefKind, Effect, Expr, ExprKind, FnSig, HirDomain,
+    LocalDef, LocalRole, LogicOp, LoopId, Module, OverflowPolicy, ParamMode, Place, PlaceKind,
+    Stmt, TypeDef, TypeKind, TypeUse, UnaryOp,
 };
 
 // Re-exported for driver use (ExprId etc. are constructed by decode).
 pub use auto_ac_prototype::hir::{
-    Body, BodyId, Block, BlockId, DefId, ExprId, LocalId, PlaceId, TypeId,
+    Block, BlockId, Body, BodyId, DefId, ExprId, LocalId, PlaceId, TypeId,
 };
 
 fn domain_code(d: HirDomain) -> Result<u8, CodecError> {
@@ -242,7 +288,9 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                     encode_sig(&mut w, sig)?;
                 }
                 TypeKind::Str | TypeKind::StrOwned | TypeKind::Char | TypeKind::Record(_) => {
-                    return Err(CodecError::UnsupportedFeature("type kind outside core/scalar subset"))
+                    return Err(CodecError::UnsupportedFeature(
+                        "type kind outside core/scalar subset",
+                    ))
                 }
             }
         }
@@ -267,7 +315,9 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                     w.u32(ty.0);
                 }
                 DefKind::Method { .. } => {
-                    return Err(CodecError::UnsupportedFeature("method defs (record domain)"))
+                    return Err(CodecError::UnsupportedFeature(
+                        "method defs (record domain)",
+                    ))
                 }
             }
         }
@@ -297,7 +347,11 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                 w.u8(u8::from(l.mutable_explicit));
                 match l.param_mode {
                     ParamMode::View => w.u8(0),
-                    _ => return Err(CodecError::UnsupportedFeature("param ownership mode (text/record)")),
+                    _ => {
+                        return Err(CodecError::UnsupportedFeature(
+                            "param ownership mode (text/record)",
+                        ))
+                    }
                 }
                 w.span(&l.span);
             }
@@ -307,7 +361,9 @@ pub fn encode_bundle(bundle: &Bundle) -> Result<Vec<u8>, CodecError> {
                 match p.kind {
                     PlaceKind::Local => w.u8(0),
                     PlaceKind::FieldPath(_) => {
-                        return Err(CodecError::UnsupportedFeature("field-path places (record domain)"))
+                        return Err(CodecError::UnsupportedFeature(
+                            "field-path places (record domain)",
+                        ))
                     }
                 }
                 w.u32(p.local.0);
@@ -359,7 +415,12 @@ fn encode_expr(w: &mut Writer, k: &ExprKind) -> Result<(), CodecError> {
             w.u8(1);
             w.i32(*value);
         }
-        ExprKind::Binary { op, overflow, lhs, rhs } => {
+        ExprKind::Binary {
+            op,
+            overflow,
+            lhs,
+            rhs,
+        } => {
             w.u8(2);
             w.u8(binop_code(*op));
             w.u8(match overflow {
@@ -385,7 +446,11 @@ fn encode_expr(w: &mut Writer, k: &ExprKind) -> Result<(), CodecError> {
             w.u32(lhs.0);
             w.u32(rhs.0);
         }
-        ExprKind::Call { callee, eval_args, bindings } => {
+        ExprKind::Call {
+            callee,
+            eval_args,
+            bindings,
+        } => {
             w.u8(5);
             w.u32(callee.0);
             w.u32(eval_args.len() as u32);
@@ -399,7 +464,11 @@ fn encode_expr(w: &mut Writer, k: &ExprKind) -> Result<(), CodecError> {
                 w.u8(u8::from(b.moved));
             }
         }
-        _ => return Err(CodecError::UnsupportedFeature("expression kind outside core/scalar subset")),
+        _ => {
+            return Err(CodecError::UnsupportedFeature(
+                "expression kind outside core/scalar subset",
+            ))
+        }
     }
     Ok(())
 }
@@ -445,7 +514,11 @@ fn encode_stmt(w: &mut Writer, s: &Stmt) -> Result<(), CodecError> {
             w.u8(6);
             w.u32(target.0);
         }
-        Stmt::Drop { .. } => return Err(CodecError::UnsupportedFeature("drop statement (text resource plan)")),
+        Stmt::Drop { .. } => {
+            return Err(CodecError::UnsupportedFeature(
+                "drop statement (text resource plan)",
+            ))
+        }
     }
     Ok(())
 }
@@ -479,7 +552,10 @@ fn binop_from_code(v: u8) -> Result<BinOp, CodecError> {
         8 => Ok(BinOp::GeI32),
         9 => Ok(BinOp::Eq),
         10 => Ok(BinOp::Ne),
-        t => Err(CodecError::BadTag { what: "binop", tag: t }),
+        t => Err(CodecError::BadTag {
+            what: "binop",
+            tag: t,
+        }),
     }
 }
 
@@ -591,9 +667,18 @@ pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
                 0 => TypeKind::I32,
                 1 => TypeKind::Bool,
                 2 => TypeKind::Function(decode_sig(&mut r)?),
-                t => return Err(CodecError::BadTag { what: "type.kind", tag: t }),
+                t => {
+                    return Err(CodecError::BadTag {
+                        what: "type.kind",
+                        tag: t,
+                    })
+                }
             };
-            types.push(TypeDef { id_text: tid, kind, span: tspan });
+            types.push(TypeDef {
+                id_text: tid,
+                kind,
+                span: tspan,
+            });
         }
         let n_defs = r.count("defs")?;
         let mut defs = Vec::with_capacity(n_defs as usize);
@@ -613,14 +698,28 @@ pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
                     let effect = match r.u8("intrinsic.effect")? {
                         0 => Effect::Observable,
                         1 => Effect::Pure,
-                        t => return Err(CodecError::BadTag { what: "effect", tag: t }),
+                        t => {
+                            return Err(CodecError::BadTag {
+                                what: "effect",
+                                tag: t,
+                            })
+                        }
                     };
                     let ty = TypeId(r.u32("intrinsic.ty")?);
                     DefKind::Intrinsic { symbol, effect, ty }
                 }
-                t => return Err(CodecError::BadTag { what: "def.kind", tag: t }),
+                t => {
+                    return Err(CodecError::BadTag {
+                        what: "def.kind",
+                        tag: t,
+                    })
+                }
             };
-            defs.push(Def { id_text: did, kind, span: dspan });
+            defs.push(Def {
+                id_text: did,
+                kind,
+                span: dspan,
+            });
         }
         let n_bodies = r.count("bodies")?;
         let mut bodies = Vec::with_capacity(n_bodies as usize);
@@ -638,18 +737,33 @@ pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
                 let role = match r.u8("local.role")? {
                     0 => LocalRole::Param,
                     1 => LocalRole::Binding,
-                    t => return Err(CodecError::BadTag { what: "local.role", tag: t }),
+                    t => {
+                        return Err(CodecError::BadTag {
+                            what: "local.role",
+                            tag: t,
+                        })
+                    }
                 };
                 let index = match r.u8("local.index-tag")? {
                     0 => None,
                     1 => Some(r.u32("local.index")?),
-                    t => return Err(CodecError::BadTag { what: "local.index-tag", tag: t }),
+                    t => {
+                        return Err(CodecError::BadTag {
+                            what: "local.index-tag",
+                            tag: t,
+                        })
+                    }
                 };
                 let mutable = r.u8("local.mutable")? != 0;
                 let mutable_explicit = r.u8("local.mutable-explicit")? != 0;
                 let param_mode = match r.u8("local.param-mode")? {
                     0 => ParamMode::View,
-                    t => return Err(CodecError::BadTag { what: "param-mode", tag: t }),
+                    t => {
+                        return Err(CodecError::BadTag {
+                            what: "param-mode",
+                            tag: t,
+                        })
+                    }
                 };
                 let lspan = r.span()?;
                 locals.push(LocalDef {
@@ -670,14 +784,22 @@ pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
                 let pid = r.string("place.id")?;
                 let tag = r.u8("place.kind")?;
                 if tag != 0 {
-                    return Err(CodecError::BadTag { what: "place.kind", tag });
+                    return Err(CodecError::BadTag {
+                        what: "place.kind",
+                        tag,
+                    });
                 }
                 let local = LocalId(r.u32("place.local")?);
                 let ty = r.type_use()?;
                 let access = match r.u8("place.access")? {
                     0 => Access::Mutable,
                     1 => Access::ReadOnly,
-                    t => return Err(CodecError::BadTag { what: "access", tag: t }),
+                    t => {
+                        return Err(CodecError::BadTag {
+                            what: "access",
+                            tag: t,
+                        })
+                    }
                 };
                 let pspan = r.span()?;
                 places.push(Place {
@@ -696,7 +818,12 @@ pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
                 let ty = r.type_use()?;
                 let espan = r.span()?;
                 let kind = decode_expr(&mut r)?;
-                exprs.push(Expr { id_text: eid, ty, kind, span: espan });
+                exprs.push(Expr {
+                    id_text: eid,
+                    ty,
+                    kind,
+                    span: espan,
+                });
             }
             let n_blocks = r.count("blocks")?;
             let mut blocks = Vec::with_capacity(n_blocks as usize);
@@ -708,7 +835,11 @@ pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
                 for _ in 0..n_stmts {
                     stmts.push(decode_stmt(&mut r)?);
                 }
-                blocks.push(Block { id_text: kbid, stmts, span: kspan });
+                blocks.push(Block {
+                    id_text: kbid,
+                    stmts,
+                    span: kspan,
+                });
             }
             let loops = r.strs("loops")?;
             bodies.push(Body {
@@ -723,10 +854,21 @@ pub fn decode_bundle(payload: &[u8]) -> Result<Bundle, CodecError> {
                 span: bspan,
             });
         }
-        modules.push(Module { id_text, path, types, defs, bodies, span });
+        modules.push(Module {
+            id_text,
+            path,
+            types,
+            defs,
+            bodies,
+            span,
+        });
     }
     r.expect_end()?;
-    let bundle = Bundle { domain, requires, modules };
+    let bundle = Bundle {
+        domain,
+        requires,
+        modules,
+    };
     validate_bundle(&bundle)?;
     Ok(bundle)
 }
@@ -744,31 +886,58 @@ fn decode_sig(r: &mut Reader) -> Result<FnSig, CodecError> {
 fn decode_expr(r: &mut Reader) -> Result<ExprKind, CodecError> {
     let tag = r.u8("expr.kind")?;
     match tag {
-        0 => Ok(ExprKind::ReadLocal { local: LocalId(r.u32("read.local")?) }),
-        1 => Ok(ExprKind::Constant { value: r.i32("const")? }),
+        0 => Ok(ExprKind::ReadLocal {
+            local: LocalId(r.u32("read.local")?),
+        }),
+        1 => Ok(ExprKind::Constant {
+            value: r.i32("const")?,
+        }),
         2 => {
             let op = binop_from_code(r.u8("binop")?)?;
             let ov = match r.u8("overflow")? {
                 0 => OverflowPolicy::Trap,
-                t => return Err(CodecError::BadTag { what: "overflow", tag: t }),
+                t => {
+                    return Err(CodecError::BadTag {
+                        what: "overflow",
+                        tag: t,
+                    })
+                }
             };
             let lhs = ExprId(r.u32("bin.lhs")?);
             let rhs = ExprId(r.u32("bin.rhs")?);
-            Ok(ExprKind::Binary { op, overflow: ov, lhs, rhs })
+            Ok(ExprKind::Binary {
+                op,
+                overflow: ov,
+                lhs,
+                rhs,
+            })
         }
         3 => {
             let op = match r.u8("unop")? {
                 0 => UnaryOp::NegI32,
                 1 => UnaryOp::NotBool,
-                t => return Err(CodecError::BadTag { what: "unop", tag: t }),
+                t => {
+                    return Err(CodecError::BadTag {
+                        what: "unop",
+                        tag: t,
+                    })
+                }
             };
-            Ok(ExprKind::Unary { op, operand: ExprId(r.u32("un.operand")?) })
+            Ok(ExprKind::Unary {
+                op,
+                operand: ExprId(r.u32("un.operand")?),
+            })
         }
         4 => {
             let op = match r.u8("logicop")? {
                 0 => LogicOp::And,
                 1 => LogicOp::Or,
-                t => return Err(CodecError::BadTag { what: "logicop", tag: t }),
+                t => {
+                    return Err(CodecError::BadTag {
+                        what: "logicop",
+                        tag: t,
+                    })
+                }
             };
             Ok(ExprKind::Logical {
                 op,
@@ -791,32 +960,62 @@ fn decode_expr(r: &mut Reader) -> Result<ExprKind, CodecError> {
                 let moved = r.u8("bind.moved")? != 0;
                 bindings.push(CallBinding { param, arg, moved });
             }
-            Ok(ExprKind::Call { callee, eval_args, bindings })
+            Ok(ExprKind::Call {
+                callee,
+                eval_args,
+                bindings,
+            })
         }
-        t => Err(CodecError::BadTag { what: "expr.kind", tag: t }),
+        t => Err(CodecError::BadTag {
+            what: "expr.kind",
+            tag: t,
+        }),
     }
 }
 
 fn decode_stmt(r: &mut Reader) -> Result<Stmt, CodecError> {
     let tag = r.u8("stmt.kind")?;
     match tag {
-        0 => Ok(Stmt::Let { local: LocalId(r.u32("let.local")?), value: ExprId(r.u32("let.value")?) }),
-        1 => Ok(Stmt::Return { value: ExprId(r.u32("ret.value")?) }),
+        0 => Ok(Stmt::Let {
+            local: LocalId(r.u32("let.local")?),
+            value: ExprId(r.u32("let.value")?),
+        }),
+        1 => Ok(Stmt::Return {
+            value: ExprId(r.u32("ret.value")?),
+        }),
         2 => {
             let cond = ExprId(r.u32("if.cond")?);
             let then = BlockId(r.u32("if.then")?);
             let els = match r.u8("if.else-tag")? {
                 0 => None,
                 1 => Some(BlockId(r.u32("if.else")?)),
-                t => return Err(CodecError::BadTag { what: "if.else-tag", tag: t }),
+                t => {
+                    return Err(CodecError::BadTag {
+                        what: "if.else-tag",
+                        tag: t,
+                    })
+                }
             };
             Ok(Stmt::If { cond, then, els })
         }
-        3 => Ok(Stmt::Loop { id: LoopId(r.u32("loop.id")?), body: BlockId(r.u32("loop.body")?) }),
-        4 => Ok(Stmt::Assign { place: PlaceId(r.u32("assign.place")?), value: ExprId(r.u32("assign.value")?) }),
-        5 => Ok(Stmt::Break { target: LoopId(r.u32("break.target")?) }),
-        6 => Ok(Stmt::Continue { target: LoopId(r.u32("continue.target")?) }),
-        t => Err(CodecError::BadTag { what: "stmt.kind", tag: t }),
+        3 => Ok(Stmt::Loop {
+            id: LoopId(r.u32("loop.id")?),
+            body: BlockId(r.u32("loop.body")?),
+        }),
+        4 => Ok(Stmt::Assign {
+            place: PlaceId(r.u32("assign.place")?),
+            value: ExprId(r.u32("assign.value")?),
+        }),
+        5 => Ok(Stmt::Break {
+            target: LoopId(r.u32("break.target")?),
+        }),
+        6 => Ok(Stmt::Continue {
+            target: LoopId(r.u32("continue.target")?),
+        }),
+        t => Err(CodecError::BadTag {
+            what: "stmt.kind",
+            tag: t,
+        }),
     }
 }
 
@@ -836,11 +1035,19 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
                 DefKind::Method { ty, .. } => (*ty, None),
             };
             if ty.0 as u64 >= n_types {
-                return Err(CodecError::IndexOutOfBounds { what: "type", index: ty.0 as u64, len: n_types });
+                return Err(CodecError::IndexOutOfBounds {
+                    what: "type",
+                    index: ty.0 as u64,
+                    len: n_types,
+                });
             }
             if let Some(bid) = body {
                 if bid.0 as u64 >= n_bodies {
-                    return Err(CodecError::IndexOutOfBounds { what: "body", index: bid.0 as u64, len: n_bodies });
+                    return Err(CodecError::IndexOutOfBounds {
+                        what: "body",
+                        index: bid.0 as u64,
+                        len: n_bodies,
+                    });
                 }
             }
         }
@@ -848,7 +1055,11 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
         let check_tu = |tu: &TypeUse| -> Result<(), CodecError> {
             if let TypeUse::Ref(t) = tu {
                 if t.0 as u64 >= n_types {
-                    return Err(CodecError::IndexOutOfBounds { what: "type", index: t.0 as u64, len: n_types });
+                    return Err(CodecError::IndexOutOfBounds {
+                        what: "type",
+                        index: t.0 as u64,
+                        len: n_types,
+                    });
                 }
             }
             Ok(())
@@ -869,17 +1080,29 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
             let n_blocks = body.blocks.len() as u64;
             let n_loops = body.loops.len() as u64;
             if body.owner.0 as u64 >= n_defs {
-                return Err(CodecError::IndexOutOfBounds { what: "def (body owner)", index: body.owner.0 as u64, len: n_defs });
+                return Err(CodecError::IndexOutOfBounds {
+                    what: "def (body owner)",
+                    index: body.owner.0 as u64,
+                    len: n_defs,
+                });
             }
             if body.entry.0 as u64 >= n_blocks {
-                return Err(CodecError::IndexOutOfBounds { what: "block (body entry)", index: body.entry.0 as u64, len: n_blocks });
+                return Err(CodecError::IndexOutOfBounds {
+                    what: "block (body entry)",
+                    index: body.entry.0 as u64,
+                    len: n_blocks,
+                });
             }
             for l in &body.locals {
                 check_tu(&l.ty)?;
             }
             for p in &body.places {
                 if p.local.0 as u64 >= n_locals {
-                    return Err(CodecError::IndexOutOfBounds { what: "local (place)", index: p.local.0 as u64, len: n_locals });
+                    return Err(CodecError::IndexOutOfBounds {
+                        what: "local (place)",
+                        index: p.local.0 as u64,
+                        len: n_locals,
+                    });
                 }
                 check_tu(&p.ty)?;
             }
@@ -887,14 +1110,22 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
                 check_tu(&e.ty)?;
                 let check = |i: &ExprId| -> Result<(), CodecError> {
                     if i.0 as u64 >= n_exprs {
-                        return Err(CodecError::IndexOutOfBounds { what: "expr", index: i.0 as u64, len: n_exprs });
+                        return Err(CodecError::IndexOutOfBounds {
+                            what: "expr",
+                            index: i.0 as u64,
+                            len: n_exprs,
+                        });
                     }
                     Ok(())
                 };
                 match &e.kind {
                     ExprKind::ReadLocal { local } => {
                         if local.0 as u64 >= n_locals {
-                            return Err(CodecError::IndexOutOfBounds { what: "local (read)", index: local.0 as u64, len: n_locals });
+                            return Err(CodecError::IndexOutOfBounds {
+                                what: "local (read)",
+                                index: local.0 as u64,
+                                len: n_locals,
+                            });
                         }
                     }
                     ExprKind::Binary { lhs, rhs, .. } | ExprKind::Logical { lhs, rhs, .. } => {
@@ -902,9 +1133,15 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
                         check(rhs)?;
                     }
                     ExprKind::Unary { operand, .. } => check(operand)?,
-                    ExprKind::Call { callee, eval_args, .. } => {
+                    ExprKind::Call {
+                        callee, eval_args, ..
+                    } => {
                         if callee.0 as u64 >= n_defs {
-                            return Err(CodecError::IndexOutOfBounds { what: "def (call callee)", index: callee.0 as u64, len: n_defs });
+                            return Err(CodecError::IndexOutOfBounds {
+                                what: "def (call callee)",
+                                index: callee.0 as u64,
+                                len: n_defs,
+                            });
                         }
                         for a in eval_args {
                             check(a)?;
@@ -917,7 +1154,11 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
                 for s in &blk.stmts {
                     let check_e = |i: &ExprId| -> Result<(), CodecError> {
                         if i.0 as u64 >= n_exprs {
-                            return Err(CodecError::IndexOutOfBounds { what: "expr", index: i.0 as u64, len: n_exprs });
+                            return Err(CodecError::IndexOutOfBounds {
+                                what: "expr",
+                                index: i.0 as u64,
+                                len: n_exprs,
+                            });
                         }
                         Ok(())
                     };
@@ -926,36 +1167,64 @@ fn validate_bundle(b: &Bundle) -> Result<(), CodecError> {
                         Stmt::Assign { place, value } => {
                             check_e(value)?;
                             if place.0 as u64 >= n_places {
-                                return Err(CodecError::IndexOutOfBounds { what: "place", index: place.0 as u64, len: n_places });
+                                return Err(CodecError::IndexOutOfBounds {
+                                    what: "place",
+                                    index: place.0 as u64,
+                                    len: n_places,
+                                });
                             }
                         }
                         Stmt::If { cond, then, els } => {
                             check_e(cond)?;
                             if then.0 as u64 >= n_blocks {
-                                return Err(CodecError::IndexOutOfBounds { what: "block", index: then.0 as u64, len: n_blocks });
+                                return Err(CodecError::IndexOutOfBounds {
+                                    what: "block",
+                                    index: then.0 as u64,
+                                    len: n_blocks,
+                                });
                             }
                             if let Some(e) = els {
                                 if e.0 as u64 >= n_blocks {
-                                    return Err(CodecError::IndexOutOfBounds { what: "block", index: e.0 as u64, len: n_blocks });
+                                    return Err(CodecError::IndexOutOfBounds {
+                                        what: "block",
+                                        index: e.0 as u64,
+                                        len: n_blocks,
+                                    });
                                 }
                             }
                         }
                         Stmt::Loop { id, body } => {
                             if id.0 as u64 >= n_loops {
-                                return Err(CodecError::IndexOutOfBounds { what: "loop", index: id.0 as u64, len: n_loops });
+                                return Err(CodecError::IndexOutOfBounds {
+                                    what: "loop",
+                                    index: id.0 as u64,
+                                    len: n_loops,
+                                });
                             }
                             if body.0 as u64 >= n_blocks {
-                                return Err(CodecError::IndexOutOfBounds { what: "block", index: body.0 as u64, len: n_blocks });
+                                return Err(CodecError::IndexOutOfBounds {
+                                    what: "block",
+                                    index: body.0 as u64,
+                                    len: n_blocks,
+                                });
                             }
                         }
                         Stmt::Break { target } | Stmt::Continue { target } => {
                             if target.0 as u64 >= n_loops {
-                                return Err(CodecError::IndexOutOfBounds { what: "loop", index: target.0 as u64, len: n_loops });
+                                return Err(CodecError::IndexOutOfBounds {
+                                    what: "loop",
+                                    index: target.0 as u64,
+                                    len: n_loops,
+                                });
                             }
                         }
                         Stmt::Drop { local } => {
                             if local.0 as u64 >= n_locals {
-                                return Err(CodecError::IndexOutOfBounds { what: "local (drop)", index: local.0 as u64, len: n_locals });
+                                return Err(CodecError::IndexOutOfBounds {
+                                    what: "local (drop)",
+                                    index: local.0 as u64,
+                                    len: n_locals,
+                                });
                             }
                         }
                     }
@@ -1005,7 +1274,11 @@ impl<'a> Reader<'a> {
         let n = self.u32(what)? as u64;
         let available = (self.buf.len() - self.pos) as u64;
         if n > available {
-            return Err(CodecError::LengthOverflow { what, count: n, available });
+            return Err(CodecError::LengthOverflow {
+                what,
+                count: n,
+                available,
+            });
         }
         Ok(n as u32)
     }
@@ -1013,13 +1286,19 @@ impl<'a> Reader<'a> {
         let n = self.u32(at)? as u64;
         let available = (self.buf.len() - self.pos) as u64;
         if n > available {
-            return Err(CodecError::LengthOverflow { what: at, count: n, available });
+            return Err(CodecError::LengthOverflow {
+                what: at,
+                count: n,
+                available,
+            });
         }
         self.take(n as usize, at)
     }
     fn string(&mut self, at: &'static str) -> Result<String, CodecError> {
         let b = self.bytes(at)?;
-        std::str::from_utf8(b).map(|s| s.to_string()).map_err(|_| CodecError::InvalidUtf8)
+        std::str::from_utf8(b)
+            .map(|s| s.to_string())
+            .map_err(|_| CodecError::InvalidUtf8)
     }
     fn strs(&mut self, what: &'static str) -> Result<Vec<String>, CodecError> {
         let n = self.count(what)?;
@@ -1042,7 +1321,10 @@ impl<'a> Reader<'a> {
         if end < start {
             // Not a codec error per se, but a nonsensical span is refused at
             // the reader boundary rather than flowing downstream.
-            return Err(CodecError::BadTag { what: "span order", tag: 0xff });
+            return Err(CodecError::BadTag {
+                what: "span order",
+                tag: 0xff,
+            });
         }
         Ok(auto_ac_prototype::atom_text::Span { start, end })
     }
@@ -1051,15 +1333,23 @@ impl<'a> Reader<'a> {
             0 => match self.u8("typeuse.builtin")? {
                 0 => Ok(TypeUse::Builtin(auto_ac_prototype::hir::BuiltinType::I32)),
                 1 => Ok(TypeUse::Builtin(auto_ac_prototype::hir::BuiltinType::Bool)),
-                t => Err(CodecError::BadTag { what: "builtin type", tag: t }),
+                t => Err(CodecError::BadTag {
+                    what: "builtin type",
+                    tag: t,
+                }),
             },
             1 => Ok(TypeUse::Ref(TypeId(self.u32("typeuse.ref")?))),
-            t => Err(CodecError::BadTag { what: "typeuse.tag", tag: t }),
+            t => Err(CodecError::BadTag {
+                what: "typeuse.tag",
+                tag: t,
+            }),
         }
     }
     fn expect_end(&self) -> Result<(), CodecError> {
         if self.pos != self.buf.len() {
-            return Err(CodecError::TrailingBytes { extra: (self.buf.len() - self.pos) as u64 });
+            return Err(CodecError::TrailingBytes {
+                extra: (self.buf.len() - self.pos) as u64,
+            });
         }
         Ok(())
     }
@@ -1081,7 +1371,7 @@ pub struct FnSummary {
     pub name: String,
     #[serde(default)]
     pub owner_record: Option<String>,
-    pub receiver: String, // free | static | view
+    pub receiver: String,              // free | static | view
     pub params: Vec<(String, String)>, // (name, canonical type word)
     pub result: String,
 }
@@ -1106,7 +1396,10 @@ pub fn canonical_type_word(t: &auto_ac_prototype::source::ast::TypeAnn) -> Strin
 }
 
 /// Build the summary from the REAL parsed source AST (no synthetic data).
-pub fn build_decl_summary(program: &auto_ac_prototype::source::ast::Program, module: &str) -> DeclSummary {
+pub fn build_decl_summary(
+    program: &auto_ac_prototype::source::ast::Program,
+    module: &str,
+) -> DeclSummary {
     use auto_ac_prototype::source::ast::{Item, Receiver};
     let mut fns = Vec::new();
     for item in &program.items {
@@ -1151,7 +1444,10 @@ pub fn build_decl_summary(program: &auto_ac_prototype::source::ast::Program, mod
             }
         }
     }
-    DeclSummary { module: module.into(), fns }
+    DeclSummary {
+        module: module.into(),
+        fns,
+    }
 }
 
 /// Summary payload = canonical JSON (stable field order via struct serde).
@@ -1188,7 +1484,10 @@ pub struct SnapshotRecord {
     pub registered_from_path: String,
 }
 
-pub fn encode_json_chunk<T: serde::Serialize>(kind: ChunkKind, v: &T) -> Result<Vec<u8>, CodecError> {
+pub fn encode_json_chunk<T: serde::Serialize>(
+    kind: ChunkKind,
+    v: &T,
+) -> Result<Vec<u8>, CodecError> {
     let payload = serde_json::to_vec(v).map_err(|_| CodecError::InvalidUtf8)?;
     Ok(frame_chunk(kind, &payload))
 }
@@ -1230,7 +1529,10 @@ mod tests {
         let mut bad = chunk.clone();
         let last = bad.len() - 1;
         bad[last] ^= 0x01;
-        assert!(matches!(unframe_chunk(&bad), Err(CodecError::ChecksumMismatch { .. })));
+        assert!(matches!(
+            unframe_chunk(&bad),
+            Err(CodecError::ChecksumMismatch { .. })
+        ));
         // Truncation.
         assert!(matches!(
             unframe_chunk(&chunk[..chunk.len() - 3]),
@@ -1246,11 +1548,17 @@ mod tests {
         // Unknown framing version.
         let mut vbad = chunk.clone();
         vbad[4] = 9;
-        assert!(matches!(unframe_chunk(&vbad), Err(CodecError::UnsupportedFraming(9))));
+        assert!(matches!(
+            unframe_chunk(&vbad),
+            Err(CodecError::UnsupportedFraming(9))
+        ));
         // Unknown kind byte.
         let mut kbad = chunk.clone();
         kbad[6] = 77;
-        assert!(matches!(unframe_chunk(&kbad), Err(CodecError::UnknownChunkKind(77))));
+        assert!(matches!(
+            unframe_chunk(&kbad),
+            Err(CodecError::UnknownChunkKind(77))
+        ));
     }
 
     #[test]
@@ -1275,7 +1583,10 @@ mod tests {
         // It really is binary, not text: payload has no "hir(" marker.
         let (_, payload) = unframe_chunk(&chunk).unwrap();
         let as_text = String::from_utf8_lossy(payload);
-        assert!(!as_text.contains("hir("), "binary codec must not be a text encoding");
+        assert!(
+            !as_text.contains("hir("),
+            "binary codec must not be a text encoding"
+        );
     }
 
     #[test]
@@ -1347,7 +1658,11 @@ mod tests {
         let reframed = frame_chunk(ChunkKind::Hir, &w.out);
         assert!(matches!(
             decode_bundle_chunk(&reframed),
-            Err(CodecError::IndexOutOfBounds { what: "body", index: 9, len: 0 })
+            Err(CodecError::IndexOutOfBounds {
+                what: "body",
+                index: 9,
+                len: 0
+            })
         ));
         let _ = payload;
     }
@@ -1379,15 +1694,33 @@ mod tests {
     fn decl_summary_content_identical_across_body_edit() {
         let p1 = "fn main() int { return 1 }";
         let p2 = "fn main() int { return 2 }";
-        let s1 = build_decl_summary(&auto_ac_prototype::source::parse_program(p1).expect("p"), "m");
-        let s2 = build_decl_summary(&auto_ac_prototype::source::parse_program(p2).expect("p"), "m");
-        assert_eq!(encode_decl_summary(&s1).unwrap(), encode_decl_summary(&s2).unwrap());
+        let s1 = build_decl_summary(
+            &auto_ac_prototype::source::parse_program(p1).expect("p"),
+            "m",
+        );
+        let s2 = build_decl_summary(
+            &auto_ac_prototype::source::parse_program(p2).expect("p"),
+            "m",
+        );
+        assert_eq!(
+            encode_decl_summary(&s1).unwrap(),
+            encode_decl_summary(&s2).unwrap()
+        );
         let p3 = "fn main(x int) int { return x }";
-        let s3 = build_decl_summary(&auto_ac_prototype::source::parse_program(p3).expect("p"), "m");
-        assert_ne!(encode_decl_summary(&s1).unwrap(), encode_decl_summary(&s3).unwrap());
+        let s3 = build_decl_summary(
+            &auto_ac_prototype::source::parse_program(p3).expect("p"),
+            "m",
+        );
+        assert_ne!(
+            encode_decl_summary(&s1).unwrap(),
+            encode_decl_summary(&s3).unwrap()
+        );
         // int/i32 synonym canonicalization.
         let p4 = "fn main() i32 { return 1 }";
-        let s4 = build_decl_summary(&auto_ac_prototype::source::parse_program(p4).expect("p"), "m");
+        let s4 = build_decl_summary(
+            &auto_ac_prototype::source::parse_program(p4).expect("p"),
+            "m",
+        );
         assert_eq!(s1.fns[0].result, s4.fns[0].result);
     }
 }

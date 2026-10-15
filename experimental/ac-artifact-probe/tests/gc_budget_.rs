@@ -13,11 +13,10 @@ use ac_artifact_probe::store::{run_gc, GcConfig, ManagedStore};
 use ac_artifact_probe::store::{GC_HIGH, GC_LOW};
 use common::{first, run_node, scratch};
 
-/// Full 512-iteration churn is the plan's acceptance load. It runs the
-/// real pipeline end to end each iteration; on this machine that is
-/// minutes, so it is marked ignored-by-default and executed by the
-/// acceptance script explicitly (never skipped silently: the script's
-/// `-Scope closeout` runs it with --ignored).
+/// Full 512-iteration churn is the plan's acceptance load with the FROZEN
+/// default watermarks (64/48 MiB): 512 genuinely distinct versions, real
+/// watermark crossings and reclamation. Merge-owned: executed explicitly
+/// by the closeout script with --ignored.
 #[test]
 #[ignore]
 fn gc_budget_churn_512_converges_between_watermarks() {
@@ -36,28 +35,53 @@ fn gc_budget_churn_512_converges_between_watermarks() {
             "--iterations",
             "512",
             "--ops",
-            "300",
+            "800",
             "--gc-every",
             "8",
         ],
-        900,
+        1800,
     );
     assert_eq!(out.code, 0, "{}", out.raw);
     let c = first(&out, "CHURN");
     assert_eq!(c["iterations"], 512, "all iterations ran");
-    assert!(
-        c["gc_runs"].as_u64().unwrap() >= 60,
-        "GC ran periodically: {}",
-        c["gc_runs"]
+    assert_eq!(
+        c["distinct_versions"], 512,
+        "512 DISTINCT versions (R1 F-07)"
     );
-    // Convergence: after the final pass the store sits under the low
-    // watermark (live set is one version + index), and the PEAK stayed
-    // bounded (no unbounded growth across 512 versions).
+    assert_eq!(
+        c["watermark_scale"], false,
+        "acceptance churn uses the frozen watermarks"
+    );
+    // Discriminating oracle (R1 F-07): the load actually crossed the high
+    // watermark, GC actually RAN and DELETED, and it converged below low.
     assert!(
-        c["final_total"].as_u64().unwrap() <= GC_LOW,
-        "final total {} must converge below the {} low watermark",
+        c["high_crossings"].as_u64().unwrap() >= 1,
+        "the load must actually cross the frozen high watermark: {}",
+        c["high_crossings"]
+    );
+    assert!(c["gc_ran"].as_u64().unwrap() >= 1, "GC ran for real");
+    assert!(
+        c["gc_deleted_chunks"].as_u64().unwrap() > 0,
+        "GC physically deleted chunks: {}",
+        c["gc_deleted_chunks"]
+    );
+    // Watermark convergence semantics (SQLite main file never shrinks —
+    // declared behavior, D-783-D): the frozen-watermark run must drop
+    // back BELOW the high watermark after crossing (net real reclamation,
+    // peak bounded, staging budget respected); full convergence to the
+    // live set is then proven by one explicit full sweep (hair-trigger,
+    // no floor — the operator/recovery semantic).
+    assert!(
+        c["final_total"].as_u64().unwrap() <= GC_HIGH,
+        "final total {} must drop back below the high watermark {}",
         c["final_total"],
-        GC_LOW
+        GC_HIGH
+    );
+    assert!(
+        c["final_total"].as_u64().unwrap() < c["peak_total"].as_u64().unwrap(),
+        "net space was reclaimed (final {} vs peak {})",
+        c["final_total"],
+        c["peak_total"]
     );
     assert!(
         c["peak_total"].as_u64().unwrap() < 2 * GC_HIGH,
@@ -65,10 +89,42 @@ fn gc_budget_churn_512_converges_between_watermarks() {
         c["peak_total"],
         GC_HIGH
     );
+    assert!(
+        c["peak_staging"].as_u64().unwrap() <= 8 * 1024 * 1024,
+        "staging budget respected: {}",
+        c["peak_staging"]
+    );
+    // Full-sweep convergence: after the frozen run, one explicit sweep
+    // reclaims every remaining dead candidate; blocks converge to the
+    // live set (3 projects × ~5 chunks).
+    let sweep = run_node(&[
+        "gc",
+        "--store",
+        root.join("store").to_str().unwrap(),
+        "--high",
+        "1",
+        "--low",
+        "0",
+    ]);
+    assert_eq!(sweep.code, 0, "{}", sweep.raw);
+    let swept = first(&sweep, "GC");
+    assert!(
+        swept["deleted_chunks"].as_u64().unwrap() > 0,
+        "the sweep reclaimed the remaining dead chunks: {:?}",
+        swept
+    );
+    let space = run_node(&["space", "--store", root.join("store").to_str().unwrap()]);
+    let blocks = first(&space, "SPACE")["blocks_count"].as_u64().unwrap();
+    assert!(
+        blocks <= 20,
+        "blocks converge to the live set after the sweep: {}",
+        blocks
+    );
 }
 
-/// Quick variant proving the churn machinery and convergence behavior
-/// (same assertions, small iteration count) for everyday runs.
+/// Quick variant with SCALED watermarks (test control; the frozen defaults
+/// are proven by the 512 load above): the same discriminating oracle at
+/// small scale — real crossings, real deletions, real convergence.
 #[test]
 fn gc_budget_churn_small_converges() {
     let root = scratch("gc-churn-small");
@@ -84,11 +140,33 @@ fn gc_budget_churn_small_converges() {
         "120",
         "--gc-every",
         "4",
+        "--high",
+        "800000",
+        "--low",
+        "600000",
     ]);
     assert_eq!(out.code, 0, "{}", out.raw);
     let c = first(&out, "CHURN");
     assert_eq!(c["iterations"], 24);
-    assert!(c["final_total"].as_u64().unwrap() <= GC_LOW, "converged: {}", c["final_total"]);
+    assert_eq!(c["distinct_versions"], 24);
+    assert_eq!(c["watermark_scale"], true);
+    assert!(
+        c["high_crossings"].as_u64().unwrap() >= 1,
+        "crossed the scaled watermark"
+    );
+    assert!(c["gc_ran"].as_u64().unwrap() >= 1);
+    assert!(
+        c["gc_deleted_chunks"].as_u64().unwrap() > 0,
+        "reclaimed for real"
+    );
+    // Blocks converge to the live set (3 projects × ~5 chunks); the store
+    // does not grow with history. (final_TOTAL is not asserted here: the
+    // SQLite file never shrinks without VACUUM — accounted separately.)
+    assert!(
+        c["blocks_count"].as_u64().unwrap() <= 20,
+        "blocks converged to the live set: {}",
+        c["blocks_count"]
+    );
 }
 
 #[test]
@@ -122,10 +200,12 @@ fn gc_budget_hard_pins_over_budget_backoff_no_live_deletion() {
 
     // GC with a floor the pinned live set cannot reach: backoff.
     let receipt = run_gc(&store, GcConfig { high: 1, low: 1 }).unwrap();
-    let backoff = receipt
-        .backoff
-        .clone()
-        .unwrap_or_else(|| panic!("pinned-over-budget GC must report backoff, got {:?}", receipt));
+    let backoff = receipt.backoff.clone().unwrap_or_else(|| {
+        panic!(
+            "pinned-over-budget GC must report backoff, got {:?}",
+            receipt
+        )
+    });
     assert!(backoff.contains("stop-write") || backoff.contains("live set"));
     // No live (pinned) data was deleted: every pinned project still loads.
     let space_after = store.space();
@@ -142,7 +222,12 @@ fn gc_budget_hard_pins_over_budget_backoff_no_live_deletion() {
             },
         )
         .unwrap();
-        assert_eq!(out.exit_code, Some(30 + i), "pinned project {} still builds/hits", i);
+        assert_eq!(
+            out.exit_code,
+            Some(30 + i),
+            "pinned project {} still builds/hits",
+            i
+        );
     }
     let _ = &pinned;
 
@@ -152,7 +237,10 @@ fn gc_budget_hard_pins_over_budget_backoff_no_live_deletion() {
         store.remove_project_roots(&format!("p{i}")).unwrap();
     }
     let receipt = run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
-    assert!(receipt.deleted_chunks > 0, "unpinned content is reclaimable");
+    assert!(
+        receipt.deleted_chunks > 0,
+        "unpinned content is reclaimable"
+    );
 }
 
 #[test]
@@ -170,14 +258,22 @@ fn gc_budget_staging_cap_is_controlled_resource_rejection() {
     std::fs::write(&src, "fn main() int { return 1 }").unwrap();
     match vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     ) {
         Err(ac_artifact_probe::driver::DriverError::Store(
             ac_artifact_probe::store::StoreError::ResourceExhausted(msg),
         )) => {
             assert!(msg.contains("staging"), "{}", msg);
         }
-        other => panic!("expected staging-budget rejection, got {:?}", other.map(|o| o.exit_code)),
+        other => panic!(
+            "expected staging-budget rejection, got {:?}",
+            other.map(|o| o.exit_code)
+        ),
     }
 }
 
@@ -191,7 +287,12 @@ fn gc_budget_receipt_separates_logical_freed_pending() {
     std::fs::write(&src, "fn main() int { return 6 }").unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(6));
@@ -200,11 +301,19 @@ fn gc_budget_receipt_separates_logical_freed_pending() {
     let receipt = run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
     let after = store.space();
     assert!(receipt.deleted_chunks >= 1);
-    assert!(receipt.invalid_bytes >= receipt.freed_bytes, "logical ≥ freed (freed is physical)");
+    assert!(
+        receipt.invalid_bytes >= receipt.freed_bytes,
+        "logical ≥ freed (freed is physical)"
+    );
     // Physical bytes really left the BLOCK layer (the DB/WAL may grow from
     // the GC's own journal writes — that is real accounted usage, not a
     // failure to free).
     assert!(receipt.freed_bytes > 0);
-    assert!(after.blocks < before.blocks, "blocks {} → {}", before.blocks, after.blocks);
+    assert!(
+        after.blocks < before.blocks,
+        "blocks {} → {}",
+        before.blocks,
+        after.blocks
+    );
     assert!(after.blocks_count < before.blocks_count);
 }

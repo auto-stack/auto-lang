@@ -33,7 +33,11 @@ fn concurrency_same_key_different_content_reports_conflict() {
     let a = store.put_artifact(put(1)).unwrap();
     // Same key, different bytes: controlled CONFLICT, both ids visible.
     match store.put_artifact(put(2)) {
-        Err(StoreError::Conflict { existing, attempted, .. }) => {
+        Err(StoreError::Conflict {
+            existing,
+            attempted,
+            ..
+        }) => {
             assert_eq!(existing, a);
             assert_ne!(attempted, a);
         }
@@ -95,7 +99,12 @@ fn concurrency_reader_gc_interleave_no_partial_reads() {
     std::fs::write(&live, "fn main() int { return 5 }").unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "live".into(), source: live.clone(), work_dir: root.join("wl"), ..Default::default() },
+        &VerticalCfg {
+            project: "live".into(),
+            source: live.clone(),
+            work_dir: root.join("wl"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(5));
@@ -110,7 +119,12 @@ fn concurrency_reader_gc_interleave_no_partial_reads() {
         for _ in 0..40 {
             let out = vertical_and_run(
                 &store,
-                &VerticalCfg { project: "live".into(), source: live_src.clone(), work_dir: live_dir.clone(), ..Default::default() },
+                &VerticalCfg {
+                    project: "live".into(),
+                    source: live_src.clone(),
+                    work_dir: live_dir.clone(),
+                    ..Default::default()
+                },
             )
             .unwrap();
             assert_eq!(out.exit_code, Some(5));

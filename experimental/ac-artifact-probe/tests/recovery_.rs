@@ -32,7 +32,12 @@ fn recovery_after_staging_crash() {
     let store = ManagedStore::open(&store_root).unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "healthy".into(), source: src.clone(), work_dir: root.join("wh"), ..Default::default() },
+        &VerticalCfg {
+            project: "healthy".into(),
+            source: src.clone(),
+            work_dir: root.join("wh"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(12));
@@ -58,14 +63,26 @@ fn recovery_after_staging_crash() {
     // hits; the store keeps working.
     let store = ManagedStore::open(&store_root).unwrap();
     let receipt = recover(&store, true).unwrap();
-    assert!(receipt.staging_dirs_removed >= 1, "staging leftover reclaimed: {:?}", receipt);
+    assert!(
+        receipt.staging_dirs_removed >= 1,
+        "staging leftover reclaimed: {:?}",
+        receipt
+    );
     let still = vertical_and_run(
         &store,
-        &VerticalCfg { project: "healthy".into(), source: src.clone(), work_dir: root.join("wh"), ..Default::default() },
+        &VerticalCfg {
+            project: "healthy".into(),
+            source: src.clone(),
+            work_dir: root.join("wh"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(still.exit_code, Some(12));
-    assert_eq!(still.counters.parse, 0, "healthy artifact still hits after another session's crash");
+    assert_eq!(
+        still.counters.parse, 0,
+        "healthy artifact still hits after another session's crash"
+    );
 }
 
 #[test]
@@ -77,7 +94,12 @@ fn recovery_after_chunk_move_crash() {
     let store = ManagedStore::open(&store_root).unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "healthy".into(), source: src.clone(), work_dir: root.join("wh"), ..Default::default() },
+        &VerticalCfg {
+            project: "healthy".into(),
+            source: src.clone(),
+            work_dir: root.join("wh"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(13));
@@ -108,7 +130,12 @@ fn recovery_after_chunk_move_crash() {
     let _ = receipt;
     let still = vertical_and_run(
         &store,
-        &VerticalCfg { project: "healthy".into(), source: src, work_dir: root.join("wh"), ..Default::default() },
+        &VerticalCfg {
+            project: "healthy".into(),
+            source: src,
+            work_dir: root.join("wh"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(still.exit_code, Some(13));
@@ -152,7 +179,12 @@ fn recovery_after_tombstone_crash() {
     // A fresh build of the same source works (recompute after miss).
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "fresh".into(), source: src, work_dir: root.join("wf"), ..Default::default() },
+        &VerticalCfg {
+            project: "fresh".into(),
+            source: src,
+            work_dir: root.join("wf"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(14));
@@ -169,7 +201,12 @@ fn recovery_does_not_wipe_healthy_store() {
     let store = ManagedStore::open(&store_root).unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "healthy".into(), source: src.clone(), work_dir: root.join("wh"), ..Default::default() },
+        &VerticalCfg {
+            project: "healthy".into(),
+            source: src.clone(),
+            work_dir: root.join("wh"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(15));
@@ -197,11 +234,20 @@ fn recovery_does_not_wipe_healthy_store() {
         // Healthy live content still present and hitting.
         let still = vertical_and_run(
             &store,
-            &VerticalCfg { project: "healthy".into(), source: src.clone(), work_dir: root.join("wh"), ..Default::default() },
+            &VerticalCfg {
+                project: "healthy".into(),
+                source: src.clone(),
+                work_dir: root.join("wh"),
+                ..Default::default()
+            },
         )
         .unwrap();
         assert_eq!(still.exit_code, Some(15));
-        assert_eq!(still.counters.parse, 0, "no healthy-store wipe after {}", at);
+        assert_eq!(
+            still.counters.parse, 0,
+            "no healthy-store wipe after {}",
+            at
+        );
         drop(store);
     }
     let _ = first;

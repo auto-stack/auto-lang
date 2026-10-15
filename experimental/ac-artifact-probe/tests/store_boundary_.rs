@@ -19,7 +19,12 @@ fn store_boundary_missing_source_without_hit_is_explicit_unavailable() {
     let absent = root.join("no-such.at");
     let err = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: absent.clone(), work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: absent.clone(),
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap_err();
     match err {
@@ -40,7 +45,12 @@ fn store_boundary_missing_toolchain_is_explicit_unavailable_not_fake_hit() {
     // Prime the store so the next run would be an object hit.
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(3));
@@ -50,7 +60,12 @@ fn store_boundary_missing_toolchain_is_explicit_unavailable_not_fake_hit() {
     std::env::set_var("AC741_RUST_LLD", root.join("definitely-missing-lld.exe"));
     let err = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .map_err(|e| e.to_string());
     std::env::remove_var("AC741_RUST_LLD");
@@ -66,7 +81,14 @@ fn store_boundary_not_managed_root_refuses_deleting_operations() {
     // A directory that LOOKS like a store but has no ownership marker.
     let fake = root.join("fake-store");
     std::fs::create_dir_all(fake.join("blocks").join("blobs").join("ab")).unwrap();
-    std::fs::write(fake.join("blocks").join("blobs").join("ab").join("deadbeef"), b"junk").unwrap();
+    std::fs::write(
+        fake.join("blocks")
+            .join("blobs")
+            .join("ab")
+            .join("deadbeef"),
+        b"junk",
+    )
+    .unwrap();
     let err = match ManagedStore::open_existing(&fake) {
         Err(e) => e,
         Ok(_) => panic!("open_existing must refuse an unmanaged directory"),
@@ -83,7 +105,12 @@ fn store_boundary_gc_never_leaves_the_managed_namespace() {
     std::fs::write(&src, "fn main() int { return 4 }").unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src.clone(), work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src.clone(),
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(4));
@@ -96,7 +123,9 @@ fn store_boundary_gc_never_leaves_the_managed_namespace() {
     let stray = store_root.join("user-notes.txt");
     std::fs::write(&stray, "user data").unwrap();
     let hash_of = |p: &std::path::Path| -> String {
-        blake3::hash(&std::fs::read(p).unwrap()).to_hex().to_string()
+        blake3::hash(&std::fs::read(p).unwrap())
+            .to_hex()
+            .to_string()
     };
     let (h_src, h_exe, h_stray) = (hash_of(&src), hash_of(&exe_copy), hash_of(&stray));
 
@@ -105,7 +134,11 @@ fn store_boundary_gc_never_leaves_the_managed_namespace() {
     assert!(receipt.deleted_chunks >= 1, "managed content WAS reclaimed");
     assert_eq!(hash_of(&src), h_src, "user source untouched");
     assert_eq!(hash_of(&exe_copy), h_exe, "delivered exe untouched");
-    assert_eq!(hash_of(&stray), h_stray, "stray file inside store root untouched (outside managed namespaces)");
+    assert_eq!(
+        hash_of(&stray),
+        h_stray,
+        "stray file inside store root untouched (outside managed namespaces)"
+    );
 }
 
 #[test]
@@ -117,7 +150,12 @@ fn store_boundary_reparse_jump_is_not_followed_by_scans() {
     std::fs::write(&src, "fn main() int { return 2 }").unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(2));
@@ -151,8 +189,15 @@ fn store_boundary_reparse_jump_is_not_followed_by_scans() {
         ])
         .output()
         .expect("mklink");
-    assert!(status.status.success(), "junction setup failed: {:?}", status);
-    assert!(ac_artifact_probe::store::is_reparse(&junction), "junction detected as reparse");
+    assert!(
+        status.status.success(),
+        "junction setup failed: {:?}",
+        status
+    );
+    assert!(
+        ac_artifact_probe::store::is_reparse(&junction),
+        "junction detected as reparse"
+    );
 
     // Recovery (orphan scan) and GC must NOT delete through the junction.
     let rec = ac_artifact_probe::store::recover(&store, true).unwrap();

@@ -9,7 +9,7 @@ mod common;
 use ac_artifact_probe::driver::{vertical_and_run, VerticalCfg};
 use ac_artifact_probe::store::ManagedStore;
 use ac_artifact_probe::subproc::run_deadlined;
-use common::{fixture_path, first, run_node, scratch, NODE_EXE, ORACLE};
+use common::{first, fixture_path, run_node, scratch, NODE_EXE, ORACLE};
 use std::process::Command;
 use std::time::Duration;
 
@@ -67,11 +67,31 @@ fn native_resume_four_fixtures_fresh_restart_hirhit_and_source_absent() {
         assert_eq!(out_json.code, 0, "{} restart: {}", fixture, out_json.raw);
         let result = first(&out_json, "RESULT");
         assert_eq!(result["exit_code"], *want, "{} restart exit", fixture);
-        assert_eq!(result["counters"]["parse"], 0, "{}: front end must be skipped", fixture);
-        assert_eq!(result["counters"]["verify"], 0, "{}: verifier must be skipped on object hit", fixture);
-        assert_eq!(result["counters"]["lower"], 0, "{}: lowering must be skipped on object hit", fixture);
-        assert_eq!(result["counters"]["link"], 1, "{}: link is still real", fixture);
-        assert_eq!(result["counters"]["run"], 1, "{}: run is still real", fixture);
+        assert_eq!(
+            result["counters"]["parse"], 0,
+            "{}: front end must be skipped",
+            fixture
+        );
+        assert_eq!(
+            result["counters"]["verify"], 0,
+            "{}: verifier must be skipped on object hit",
+            fixture
+        );
+        assert_eq!(
+            result["counters"]["lower"], 0,
+            "{}: lowering must be skipped on object hit",
+            fixture
+        );
+        assert_eq!(
+            result["counters"]["link"], 1,
+            "{}: link is still real",
+            fixture
+        );
+        assert_eq!(
+            result["counters"]["run"], 1,
+            "{}: run is still real",
+            fixture
+        );
         assert_eq!(result["hits"]["object"], "hit");
 
         // -- HIR hit in a new process (object layer purged): binary restore
@@ -96,10 +116,22 @@ fn native_resume_four_fixtures_fresh_restart_hirhit_and_source_absent() {
         assert_eq!(out_json.code, 0, "{} hir-hit: {}", fixture, out_json.raw);
         let result = first(&out_json, "RESULT");
         assert_eq!(result["exit_code"], *want, "{} hir-hit exit", fixture);
-        assert_eq!(result["counters"]["hir_restore"], 1, "{}: binary restore happened", fixture);
-        assert_eq!(result["counters"]["verify"], 1, "{}: restored bundle re-verified", fixture);
+        assert_eq!(
+            result["counters"]["hir_restore"], 1,
+            "{}: binary restore happened",
+            fixture
+        );
+        assert_eq!(
+            result["counters"]["verify"], 1,
+            "{}: restored bundle re-verified",
+            fixture
+        );
         assert_eq!(result["counters"]["lower"], 1);
-        assert_eq!(result["counters"]["parse"], 0, "{}: no source needed for HIR hit", fixture);
+        assert_eq!(
+            result["counters"]["parse"], 0,
+            "{}: no source needed for HIR hit",
+            fixture
+        );
 
         // -- restore the source for the next fixture ---------------------------
         std::fs::copy(&moved, &src).unwrap();
@@ -117,7 +149,12 @@ fn native_resume_binary_restore_is_not_a_text_roundtrip() {
     std::fs::write(&src, "fn main() int { return 2 + 2 }").unwrap();
     let out = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     )
     .unwrap();
     assert_eq!(out.exit_code, Some(4));
@@ -135,7 +172,10 @@ fn native_resume_binary_restore_is_not_a_text_roundtrip() {
         .unwrap()
         .expect("HIR artifact");
     let text = String::from_utf8_lossy(&hir_art.payload);
-    assert!(!text.contains("hir("), "payload must be binary, found Atom text form");
+    assert!(
+        !text.contains("hir("),
+        "payload must be binary, found Atom text form"
+    );
     assert!(!text.contains("module("));
 }
 
@@ -152,13 +192,25 @@ fn native_resume_deadlined_exe_run() {
     std::fs::write(&src, "fn main() int { while 1 < 2 { }; return 0 }").unwrap();
     let r = vertical_and_run(
         &store,
-        &VerticalCfg { project: "p".into(), source: src, work_dir: root.join("w"), ..Default::default() },
+        &VerticalCfg {
+            project: "p".into(),
+            source: src,
+            work_dir: root.join("w"),
+            ..Default::default()
+        },
     );
     match r {
         Err(ac_artifact_probe::driver::DriverError::Run(msg)) => {
-            assert!(msg.contains("deadline") || msg.contains("exceeded"), "{}", msg);
+            assert!(
+                msg.contains("deadline") || msg.contains("exceeded"),
+                "{}",
+                msg
+            );
         }
-        other => panic!("expected run-deadline error, got {:?}", other.map(|o| o.exit_code)),
+        other => panic!(
+            "expected run-deadline error, got {:?}",
+            other.map(|o| o.exit_code)
+        ),
     }
     // Sanity: the deadline executor itself works for a fast command.
     let mut fast = Command::new("cmd");

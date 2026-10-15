@@ -6,18 +6,31 @@
 //! through an isolated adapter (the fixed-temp-name write is serialized by
 //! a per-chunk cross-process file lock — the audit point for SD-04).
 //!
-//! Publish protocol (fault points `AC_PROBE_FAULT`):
+//! ## Liveness interlock (review R1 F-01/F-03/F-08)
+//!
+//! All metadata mutations that can change what stays alive (publish,
+//! lease acquisition, root registration/replacement, purge) hold the
+//! SHARED `liveness` lock while committing; GC and recovery hold it
+//! EXCLUSIVELY for their whole decide-and-delete phase. A lease/root
+//! therefore can never be granted for a chunk that a concurrent GC is
+//! deleting: registration runs either before the GC snapshot (and is
+//! counted) or after GC finished (and re-checks target liveness — a dead
+//! target is a controlled `TargetMissing`). Same-key producers wait
+//! bounded on the per-chunk lock instead of failing instantly, and every
+//! failed publish reclaims its staging directory.
+//!
+//! ## Publish protocol (fault points `AC_PROBE_FAULT`)
+//!
 //!   1. stage framed payload under `staging/<txn>/`          [F1 after-staging]
-//!   2. per-chunk lock → move into the blob CAS
-//!   3. single SQLite txn: chunk row + artifact + edges + root
-//!                                                            [F2 after-chunk-move]
-//! Recovery (`recover`): staging leftovers, orphan blobs (no committed
-//! row), interrupted tombstone deletes. Tombstone gates:
-//!   [F3 after-tombstone] — GC marks, dies, restart completes.
+//!   2. per-chunk lock (bounded wait) → move into the blob CAS
+//!   3. shared liveness → single SQLite txn: chunk state
+//!      upsert (deleted → live), artifact + edges + root      [F2 after-chunk-move]
 //!
 //! Reader/GC interlock: readers hold a shared lock on the chunk's gate
 //! file; GC deletes only under the exclusive lock; a new reader seeing a
 //! tombstone gets a controlled miss (recompute), never a partial read.
+//! CAS admission: every read recomputes the framed-byte content identity
+//! and refuses a mismatched address (review R1 F-04).
 
 use crate::codec::{frame_chunk, unframe_chunk, ChunkKind, CodecError};
 use crate::identity::{ArtifactId, ChunkId, QueryKey, RefKind};
@@ -25,7 +38,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 
 pub mod gc;
 
@@ -38,12 +51,29 @@ pub enum StoreError {
     Codec(CodecError),
     /// Two producers published different content under one (layer, key).
     /// Never last-writer-wins: the loser sees both content ids.
-    Conflict { layer: String, key: String, existing: String, attempted: String },
+    Conflict {
+        layer: String,
+        key: String,
+        existing: String,
+        attempted: String,
+    },
     /// The chunk is tombstoned (logically invalidated); callers recompute.
     TombstonedMiss(String),
     NotManaged(PathBuf),
     ResourceExhausted(String),
     Boundary(String),
+    /// A coordination lock was not free within the bounded wait (§5.4:
+    /// bounded backoff; the caller may retry).
+    Busy(String),
+    /// A lease/root/publication names an artifact whose payload is not
+    /// live — the final atomic liveness decision refused it.
+    TargetMissing(String),
+    /// The blob at a CAS address does not hash to that address: content
+    /// substitution is rejected at admission.
+    ChunkAddressMismatch {
+        requested: String,
+        actual: String,
+    },
     Internal(String),
 }
 
@@ -62,6 +92,13 @@ impl std::fmt::Display for StoreError {
             StoreError::NotManaged(p) => write!(f, "not a managed store: {}", p.display()),
             StoreError::ResourceExhausted(d) => write!(f, "resource exhausted: {}", d),
             StoreError::Boundary(d) => write!(f, "store boundary violation: {}", d),
+            StoreError::Busy(d) => write!(f, "busy (bounded wait exceeded): {}", d),
+            StoreError::TargetMissing(d) => write!(f, "target not live: {}", d),
+            StoreError::ChunkAddressMismatch { requested, actual } => write!(
+                f,
+                "CAS address mismatch: requested {} but blob hashes to {}",
+                requested, actual
+            ),
             StoreError::Internal(d) => write!(f, "internal: {}", d),
         }
     }
@@ -84,7 +121,6 @@ impl From<CodecError> for StoreError {
         StoreError::Codec(e)
     }
 }
-
 impl From<auto_cache::storage::Error> for StoreError {
     fn from(e: auto_cache::storage::Error) -> Self {
         StoreError::Io(e.to_string())
@@ -92,7 +128,17 @@ impl From<auto_cache::storage::Error> for StoreError {
 }
 
 pub fn now_secs() -> u64 {
-    std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// True for reparse points (junctions/symlinks). Scans and deletes NEVER
@@ -102,10 +148,6 @@ pub fn is_reparse(p: &Path) -> bool {
     std::fs::symlink_metadata(p)
         .map(|m| m.file_type().is_symlink())
         .unwrap_or(false)
-}
-
-fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------
@@ -118,13 +160,44 @@ mod flock {
     use std::io;
     use std::os::windows::io::AsRawHandle;
     use std::path::Path;
-    use windows_sys::Win32::System::IO::OVERLAPPED;
+    use std::time::{Duration, Instant};
     use windows_sys::Win32::Storage::FileSystem::{
         LockFileEx, UnlockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
     };
+    use windows_sys::Win32::System::IO::OVERLAPPED;
 
     pub struct FileGuard {
         file: File,
+    }
+
+    fn try_lock_once(file: &File, exclusive: bool) -> io::Result<bool> {
+        let flags: u32 = LOCKFILE_FAIL_IMMEDIATELY
+            | if exclusive {
+                LOCKFILE_EXCLUSIVE_LOCK
+            } else {
+                0
+            };
+        let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
+        let ok = unsafe {
+            LockFileEx(
+                file.as_raw_handle() as _,
+                flags,
+                0,
+                u32::MAX,
+                u32::MAX,
+                &mut overlapped,
+            )
+        };
+        if ok != 0 {
+            return Ok(true);
+        }
+        let err = io::Error::last_os_error();
+        // 32 ERROR_SHARING_VIOLATION / 33 ERROR_LOCK_VIOLATION: the
+        // byte range is held by someone else — a clean "busy".
+        if err.raw_os_error() == Some(32) || err.raw_os_error() == Some(33) {
+            return Ok(false);
+        }
+        Err(err)
     }
 
     impl FileGuard {
@@ -132,23 +205,40 @@ mod flock {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let file = OpenOptions::new().read(true).write(true).create(true).open(path)?;
-            let flags: u32 = LOCKFILE_FAIL_IMMEDIATELY
-                | if exclusive { LOCKFILE_EXCLUSIVE_LOCK } else { 0 };
-            let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
-            let ok = unsafe {
-                LockFileEx(file.as_raw_handle() as _, flags, 0, u32::MAX, u32::MAX, &mut overlapped)
-            };
-            if ok != 0 {
-                return Ok(Some(FileGuard { file }));
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(path)?;
+            if try_lock_once(&file, exclusive)? {
+                Ok(Some(FileGuard { file }))
+            } else {
+                Ok(None)
             }
-            let err = io::Error::last_os_error();
-            // 32 ERROR_SHARING_VIOLATION / 33 ERROR_LOCK_VIOLATION: the
-            // byte range is held by someone else — a clean "busy".
-            if err.raw_os_error() == Some(32) || err.raw_os_error() == Some(33) {
-                return Ok(None);
+        }
+
+        /// Bounded blocking acquire (§5.4 bounded backoff — R1 F-08): wait
+        /// up to `deadline` for the holder to release, then give up.
+        pub fn lock_timeout(
+            path: &Path,
+            exclusive: bool,
+            deadline: Duration,
+        ) -> io::Result<Option<FileGuard>> {
+            if let Some(g) = Self::try_lock(path, exclusive)? {
+                return Ok(Some(g));
             }
-            Err(err)
+            let end = Instant::now() + deadline;
+            loop {
+                std::thread::sleep(Duration::from_millis(10));
+                match Self::try_lock(path, exclusive)? {
+                    Some(g) => return Ok(Some(g)),
+                    None => {
+                        if Instant::now() >= end {
+                            return Ok(None);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -156,7 +246,13 @@ mod flock {
         fn drop(&mut self) {
             let mut overlapped: OVERLAPPED = unsafe { std::mem::zeroed() };
             unsafe {
-                UnlockFileEx(self.file.as_raw_handle() as _, 0, u32::MAX, u32::MAX, &mut overlapped)
+                UnlockFileEx(
+                    self.file.as_raw_handle() as _,
+                    0,
+                    u32::MAX,
+                    u32::MAX,
+                    &mut overlapped,
+                )
             };
         }
     }
@@ -167,6 +263,7 @@ mod flock {
     use std::fs::{File, OpenOptions};
     use std::io;
     use std::path::Path;
+    use std::time::Duration;
 
     pub struct FileGuard {
         _file: File,
@@ -177,13 +274,31 @@ mod flock {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let file = OpenOptions::new().read(true).write(true).create(true).open(path)?;
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .open(path)?;
             Ok(Some(FileGuard { _file: file }))
+        }
+
+        pub fn lock_timeout(
+            path: &Path,
+            exclusive: bool,
+            deadline: Duration,
+        ) -> io::Result<Option<FileGuard>> {
+            Self::try_lock(path, exclusive)
         }
     }
 }
 
 pub use flock::FileGuard;
+
+/// Bounded waits for the coordination locks (probe-scale; production would
+/// make these configurable).
+pub const LIVENESS_SHARED_WAIT: Duration = Duration::from_secs(10);
+pub const LIVENESS_EXCLUSIVE_WAIT: Duration = Duration::from_secs(30);
+pub const CHUNK_LOCK_WAIT: Duration = Duration::from_secs(10);
 
 // ---------------------------------------------------------------------------
 // Managed store
@@ -208,12 +323,18 @@ pub struct ManagedStore {
 }
 
 /// Classified on-disk accounting: blocks, DB/WAL, staging, trash, locks,
-/// logs — everything counts (PLAN-783 §5.4).
+/// logs — everything counts (PLAN-783 §5.4). `db` = main file + WAL + SHM
+/// (full accounted usage); `db_main` = the main journal file only — the
+/// GC's uncompressible floor, because WAL/SHM are transient and shrink
+/// back at checkpoint (counting them would spuriously back off during
+/// write bursts — review R1 F-07 repair).
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct SpaceReport {
     pub blocks: u64,
     pub blocks_count: u64,
     pub db: u64,
+    #[serde(default)]
+    pub db_main: u64,
     pub staging: u64,
     pub trash: u64,
     pub locks: u64,
@@ -226,7 +347,8 @@ pub struct PutRequest {
     pub key: QueryKey,
     pub kind: ChunkKind,
     pub payload: Vec<u8>,
-    /// (target artifact id, kind) — required edges keep targets live.
+    /// (target artifact id, kind) — required edges keep targets alive AND
+    /// are liveness-checked at publication time (atomic final decision).
     pub edges: Vec<(String, RefKind)>,
     /// Project soft-root registration (None = store-internal artifact).
     pub project: Option<String>,
@@ -243,6 +365,12 @@ pub struct LoadedArtifact {
 impl ManagedStore {
     /// Open (creating when absent) an isolated managed store.
     pub fn open(root: &Path) -> Result<Self, StoreError> {
+        if is_reparse(root) {
+            return Err(StoreError::Boundary(format!(
+                "store root is a reparse point: {}",
+                root.display()
+            )));
+        }
         fs::create_dir_all(root)?;
         for d in ["blocks", "staging", "locks", "trash", "logs"] {
             fs::create_dir_all(root.join(d))?;
@@ -291,12 +419,37 @@ impl ManagedStore {
         if canon.starts_with(&self.canonical_root) {
             Ok(canon)
         } else {
-            Err(StoreError::Boundary(format!("path escapes store root: {}", canon.display())))
+            Err(StoreError::Boundary(format!(
+                "path escapes store root: {}",
+                canon.display()
+            )))
         }
     }
 
     fn lock_path(&self, name: &str) -> PathBuf {
         self.root.join("locks").join(format!("{}.lock", name))
+    }
+
+    pub(crate) fn lock_path_pub(&self, name: &str) -> PathBuf {
+        self.lock_path(name)
+    }
+
+    pub(crate) fn dir_size_pub(p: &Path) -> u64 {
+        Self::dir_size(p)
+    }
+
+    /// SHARED liveness guard — held by publishers / registrars while
+    /// committing metadata that can change what stays alive.
+    pub(crate) fn liveness_shared(&self) -> Result<FileGuard, StoreError> {
+        FileGuard::lock_timeout(&self.lock_path("liveness"), false, LIVENESS_SHARED_WAIT)?
+            .ok_or_else(|| StoreError::Busy("liveness shared lock".into()))
+    }
+
+    /// EXCLUSIVE liveness guard — held by GC/recovery for their whole
+    /// decide-and-delete phase.
+    pub(crate) fn liveness_exclusive(&self) -> Result<FileGuard, StoreError> {
+        FileGuard::lock_timeout(&self.lock_path("liveness"), true, LIVENESS_EXCLUSIVE_WAIT)?
+            .ok_or_else(|| StoreError::Busy("liveness exclusive lock".into()))
     }
 
     // -- space accounting ---------------------------------------------------
@@ -321,12 +474,19 @@ impl ManagedStore {
     pub fn space(&self) -> SpaceReport {
         let blocks = self.blobs.total_size().unwrap_or(0);
         let blocks_count = self.blobs.count().unwrap_or(0) as u64;
-        let db = ["journal.db", "journal.db-wal", "journal.db-shm"]
+        let db_main = self
+            .root
+            .join("journal.db")
+            .metadata()
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let db = ["journal.db-wal", "journal.db-shm"]
             .iter()
             .map(|f| self.root.join(f))
             .filter(|p| p.is_file())
             .map(|p| p.metadata().map(|m| m.len()).unwrap_or(0))
-            .sum();
+            .sum::<u64>()
+            + db_main;
         let staging = Self::dir_size(&self.root.join("staging"));
         let trash = Self::dir_size(&self.root.join("trash"));
         let locks = Self::dir_size(&self.root.join("locks"));
@@ -335,6 +495,7 @@ impl ManagedStore {
             blocks,
             blocks_count,
             db,
+            db_main,
             staging,
             trash,
             locks,
@@ -371,40 +532,90 @@ impl ManagedStore {
     pub const STAGING_BUDGET: u64 = 8 * 1024 * 1024;
 
     pub fn put_artifact(&self, req: PutRequest) -> Result<String, StoreError> {
-        let space = self.space();
-        if space.staging + req.payload.len() as u64 > Self::STAGING_BUDGET {
+        // Staging-budget check measures ONLY the staging namespace (an
+        // O(staging) walk); a full space() here would be O(store) per put
+        // — quadratic on churn (found in the R1 repair round).
+        let staging_now = Self::dir_size(&self.root.join("staging"));
+        if staging_now + req.payload.len() as u64 > Self::STAGING_BUDGET {
             return Err(StoreError::ResourceExhausted(format!(
                 "staging {} + new {} exceeds budget {}",
-                space.staging,
+                staging_now,
                 req.payload.len(),
                 Self::STAGING_BUDGET
             )));
         }
-        let framed = frame_chunk(req.kind, &req.payload);
-        let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
-        let art_id = Self::artifact_id(&req, &chunk_id);
-
-        // 1. Stage.
         let txn = format!("t{}-{}", now_ms(), crate::sysinfo::current_pid());
         let staging_dir = self.root.join("staging").join(&txn);
-        fs::create_dir_all(&staging_dir)?;
+        let result = self.put_inner(&req, &staging_dir);
+        if result.is_err() {
+            // R1 F-08: a failed publish never leaves staging behind.
+            let _ = fs::remove_dir_all(&staging_dir);
+        }
+        result
+    }
+
+    fn put_inner(&self, req: &PutRequest, staging_dir: &Path) -> Result<String, StoreError> {
+        let framed = frame_chunk(req.kind, &req.payload);
+        let chunk_id = ChunkId::from_parts(&[framed.as_slice()]).0;
+        let art_id = Self::artifact_id(req, &chunk_id);
+
+        // 1. Stage.
+        fs::create_dir_all(staging_dir)?;
         let staged_file = staging_dir.join("payload");
         fs::write(&staged_file, &framed)?;
         fault("after-staging");
 
-        // 2. Per-chunk cross-process lock → CAS insert. This serializes the
-        //    reused BlobStore's fixed temp name for identical content and
-        //    gives same-chunk producers a defined write turn.
-        let _chunk_lock = FileGuard::try_lock(&self.lock_path(&format!("chunk-{}", chunk_id)), true)?
-            .ok_or_else(|| StoreError::Internal("chunk lock unavailable".into()))?;
-        self.blobs.put(&chunk_id, &staged_file)?;
+        // 2. Per-chunk cross-process lock, BOUNDED wait (R1 F-08): same-key
+        //    producers serialize; the fixed tmp name in the reused
+        //    BlobStore is never raced. A busy chunk is a controlled error.
+        let _chunk_lock = FileGuard::lock_timeout(
+            &self.lock_path(&format!("chunk-{}", chunk_id)),
+            true,
+            CHUNK_LOCK_WAIT,
+        )?
+        .ok_or_else(|| StoreError::Busy(format!("chunk lock for {} (holder active)", chunk_id)))?;
+        // CAS placement with bounded retry on transient sharing violations
+        // (os 32 — the reused BlobStore's copy+rename under AV/churn);
+        // placement is idempotent (identical content, per-chunk locked).
+        let mut placed = false;
+        let mut last_err: Option<StoreError> = None;
+        for attempt in 0..4 {
+            match self.blobs.put(&chunk_id, &staged_file) {
+                Ok(_) => {
+                    placed = true;
+                    break;
+                }
+                Err(e) => {
+                    let transient = matches!(
+                        &e,
+                        auto_cache::storage::Error::Io(io)
+                            if io.raw_os_error() == Some(32) || io.raw_os_error() == Some(5)
+                    );
+                    last_err = Some(StoreError::from(e));
+                    if !transient {
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(25 * (attempt + 1)));
+                }
+            }
+        }
+        if !placed {
+            return Err(
+                last_err.unwrap_or_else(|| StoreError::Internal("CAS placement failed".into()))
+            );
+        }
         fault("after-chunk-move");
 
-        // 3. Atomic metadata publish.
+        // 3. Atomic metadata publish under the SHARED liveness guard: GC
+        //    cannot decide+delete between our checks and our commit.
+        let _live = self.liveness_shared()?;
         let db = self.db.lock().unwrap();
         let tx = db.unchecked_transaction()?;
+        // Chunk state upsert (R1 F-03): republication of previously
+        // deleted/tombstoned content restores 'live'.
         tx.execute(
-            "INSERT OR IGNORE INTO chunks(chunk_id, kind, size, state, created_epoch) VALUES (?1, ?2, ?3, 'live', ?4)",
+            "INSERT INTO chunks(chunk_id, kind, size, state, created_epoch) VALUES (?1, ?2, ?3, 'live', ?4)
+             ON CONFLICT(chunk_id) DO UPDATE SET state='live' WHERE state != 'live'",
             params![chunk_id, req.kind as u8, framed.len() as u64, now_secs()],
         )?;
         let existing: Option<(String, String)> = tx
@@ -418,7 +629,11 @@ impl ManagedStore {
         // claim: republication replaces it instead of conflicting forever.
         let existing_is_dead = existing.as_ref().is_some_and(|(_, cid)| {
             let state: Option<String> = tx
-                .query_row("SELECT state FROM chunks WHERE chunk_id=?1", params![cid], |r| r.get(0))
+                .query_row(
+                    "SELECT state FROM chunks WHERE chunk_id=?1",
+                    params![cid],
+                    |r| r.get(0),
+                )
                 .optional()
                 .unwrap_or(None);
             !matches!(state.as_deref(), Some("live"))
@@ -438,6 +653,17 @@ impl ManagedStore {
         };
         match &existing {
             None => {
+                // Atomic final liveness decision (R1 F-01): every REQUIRED
+                // edge target must be live at commit time — a target that a
+                // concurrent GC already deleted refuses this publication.
+                for (dst, kind) in &req.edges {
+                    if *kind == RefKind::RequiredData && !row_chunk_live(&tx, dst)? {
+                        return Err(StoreError::TargetMissing(format!(
+                            "required edge target {} is not live",
+                            dst
+                        )));
+                    }
+                }
                 tx.execute(
                     "INSERT INTO artifacts(artifact_id, layer, key_hash, key_canonical, payload_chunk, created_epoch) VALUES (?1,?2,?3,?4,?5,?6)",
                     params![art_id, req.layer, req.key.hash(), req.key.canonical(), chunk_id, now_secs()],
@@ -463,11 +689,9 @@ impl ManagedStore {
                 // chunk row, then report the conflict — never overwrite.
                 tx.execute(
                     "INSERT OR IGNORE INTO txns(txn_id, phase, detail, epoch) VALUES (?1, 'conflict', ?2, ?3)",
-                    params![txn, format!("{} vs {}", id, art_id), now_secs()],
+                    params![staging_dir.file_name().unwrap().to_string_lossy(), format!("{} vs {}", id, art_id), now_secs()],
                 )?;
                 tx.commit()?;
-                drop(_chunk_lock);
-                let _ = fs::remove_dir_all(&staging_dir);
                 return Err(StoreError::Conflict {
                     layer: req.layer.into(),
                     key: req.key.canonical(),
@@ -478,18 +702,23 @@ impl ManagedStore {
         }
         tx.execute(
             "INSERT OR REPLACE INTO txns(txn_id, phase, detail, epoch) VALUES (?1, 'committed', '', ?2)",
-            params![txn, now_secs()],
+            params![staging_dir.file_name().unwrap().to_string_lossy(), now_secs()],
         )?;
         tx.commit()?;
         drop(db);
+        drop(_live);
         drop(_chunk_lock);
-        let _ = fs::remove_dir_all(&staging_dir);
+        let _ = fs::remove_dir_all(staging_dir);
         Ok(art_id)
     }
 
     /// Lookup by (layer, key); a tombstoned chunk reads as a miss (the
     /// caller recomputes) — never a partial read and never an error.
-    pub fn get_artifact(&self, layer: &str, key: &QueryKey) -> Result<Option<LoadedArtifact>, StoreError> {
+    pub fn get_artifact(
+        &self,
+        layer: &str,
+        key: &QueryKey,
+    ) -> Result<Option<LoadedArtifact>, StoreError> {
         let row: Option<(String, String, u8)> = self
             .db
             .lock()
@@ -500,15 +729,26 @@ impl ManagedStore {
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()?;
-        let Some((art_id, chunk_id, kind_byte)) = row else { return Ok(None) };
-        let kind = ChunkKind::from_code(kind_byte).ok_or_else(|| StoreError::Internal("bad kind".into()))?;
+        let Some((art_id, chunk_id, kind_byte)) = row else {
+            return Ok(None);
+        };
+        let kind = ChunkKind::from_code(kind_byte)
+            .ok_or_else(|| StoreError::Internal("bad kind".into()))?;
         match self.read_chunk_gated(&chunk_id) {
             Ok(Some(bytes)) => {
                 let (k, payload) = unframe_chunk(&bytes)?;
                 if k != kind {
-                    return Err(StoreError::Internal(format!("kind mismatch for {}", chunk_id)));
+                    return Err(StoreError::Internal(format!(
+                        "kind mismatch for {}",
+                        chunk_id
+                    )));
                 }
-                Ok(Some(LoadedArtifact { artifact_id: art_id, chunk_id, kind, payload: payload.to_vec() }))
+                Ok(Some(LoadedArtifact {
+                    artifact_id: art_id,
+                    chunk_id,
+                    kind,
+                    payload: payload.to_vec(),
+                }))
             }
             Ok(None) => Ok(None),
             Err(StoreError::TombstonedMiss(_)) => Ok(None),
@@ -516,7 +756,10 @@ impl ManagedStore {
         }
     }
 
-    /// Reader-side interlock: shared gate → tombstone check → read.
+    /// Reader-side interlock: shared gate → tombstone check → read →
+    /// CAS ADMISSION (R1 F-04): the framed bytes must hash to the very
+    /// address being read; a substituted but self-consistent chunk is a
+    /// controlled rejection, never wrong bytes.
     pub fn read_chunk_gated(&self, chunk_id: &str) -> Result<Option<Vec<u8>>, StoreError> {
         let gate = FileGuard::try_lock(&self.lock_path(&format!("gate-{}", chunk_id)), false)?
             .ok_or_else(|| StoreError::Internal("gate lock unavailable".into()))?;
@@ -524,7 +767,11 @@ impl ManagedStore {
             .db
             .lock()
             .unwrap()
-            .query_row("SELECT state FROM chunks WHERE chunk_id=?1", params![chunk_id], |r| r.get(0))
+            .query_row(
+                "SELECT state FROM chunks WHERE chunk_id=?1",
+                params![chunk_id],
+                |r| r.get(0),
+            )
             .optional()?;
         match state.as_deref() {
             None => return Ok(None), // unknown chunk = miss
@@ -533,23 +780,51 @@ impl ManagedStore {
             Some("live") => {}
             Some(other) => return Err(StoreError::Internal(format!("bad chunk state {}", other))),
         }
-        let Some(path) = self.blobs.get(chunk_id) else { return Ok(None) };
+        let Some(path) = self.blobs.get(chunk_id) else {
+            return Ok(None);
+        };
         let bytes = fs::read(&path)?;
         drop(gate);
+        // Admission: recompute the framed-byte content identity.
+        let actual = ChunkId::from_parts(&[bytes.as_slice()]).0;
+        if actual != chunk_id {
+            return Err(StoreError::ChunkAddressMismatch {
+                requested: chunk_id.to_string(),
+                actual,
+            });
+        }
         Ok(Some(bytes))
     }
 
     // -- roots / pins / leases ------------------------------------------------
 
-    pub fn register_root(&self, project: &str, artifact: &str, kind: &str) -> Result<(), StoreError> {
-        self.db.lock().unwrap().execute(
-            "INSERT OR IGNORE INTO roots(project, artifact, kind) VALUES (?1, ?2, ?3)",
-            params![project, artifact, kind],
-        )?;
+    pub fn register_root(
+        &self,
+        project: &str,
+        artifact: &str,
+        kind: &str,
+    ) -> Result<(), StoreError> {
+        // Atomic liveness decision (R1 F-01): a root on a dead payload is
+        // refused — it would silently pin nothing while claiming protection.
+        let _live = self.liveness_shared()?;
+        {
+            let db = self.db.lock().unwrap();
+            if !row_chunk_live(&db, artifact)? {
+                return Err(StoreError::TargetMissing(format!(
+                    "cannot root {} under {}: payload not live",
+                    artifact, project
+                )));
+            }
+            db.execute(
+                "INSERT OR IGNORE INTO roots(project, artifact, kind) VALUES (?1, ?2, ?3)",
+                params![project, artifact, kind],
+            )?;
+        }
         Ok(())
     }
 
     pub fn remove_project_roots(&self, project: &str) -> Result<usize, StoreError> {
+        let _live = self.liveness_shared()?;
         let n = self.db.lock().unwrap().execute(
             "DELETE FROM roots WHERE project=?1 AND kind='soft'",
             params![project],
@@ -559,6 +834,7 @@ impl ManagedStore {
 
     /// Remove roots of one kind (test/lifecycle seam: unpinning hard pins).
     pub fn remove_roots(&self, project: &str, kind: &str) -> Result<usize, StoreError> {
+        let _live = self.liveness_shared()?;
         let n = self.db.lock().unwrap().execute(
             "DELETE FROM roots WHERE project=?1 AND kind=?2",
             params![project, kind],
@@ -569,25 +845,58 @@ impl ManagedStore {
     /// Drop all artifact metadata rows of a layer (test seam for forced
     /// misses: the payloads stay until GC reclaims them as unreachable).
     pub fn purge_layer(&self, layer: &str) -> Result<usize, StoreError> {
+        let _live = self.liveness_shared()?;
         let db = self.db.lock().unwrap();
-        db.execute("DELETE FROM edges WHERE src IN (SELECT artifact_id FROM artifacts WHERE layer=?1)", params![layer])?;
-        let n = db.execute("DELETE FROM roots WHERE artifact IN (SELECT artifact_id FROM artifacts WHERE layer=?1)", params![layer])?;
-        let _ = n;
+        db.execute(
+            "DELETE FROM edges WHERE src IN (SELECT artifact_id FROM artifacts WHERE layer=?1)",
+            params![layer],
+        )?;
+        db.execute("DELETE FROM roots WHERE artifact IN (SELECT artifact_id FROM artifacts WHERE layer=?1)", params![layer])?;
         let m = db.execute("DELETE FROM artifacts WHERE layer=?1", params![layer])?;
         Ok(m)
     }
 
-    pub fn acquire_lease(&self, purpose: &str, ttl_secs: u64, artifact: Option<&str>) -> Result<Lease, StoreError> {
-        let id = format!("ls-{}-{}", now_ms(), crate::sysinfo::current_pid());
+    pub fn acquire_lease(
+        &self,
+        purpose: &str,
+        ttl_secs: u64,
+        artifact: Option<&str>,
+    ) -> Result<Lease, StoreError> {
         // Hold the lock file for the lease's lifetime (OS releases it when
         // the holder dies — TTL/PID alone never decide liveness).
-        let guard = FileGuard::try_lock(&self.lock_path(&format!("lease-{}", id)), true)?
+        let id = format!("ls-{}-{}", now_ms(), crate::sysinfo::current_pid());
+        let lock_path = self.lock_path(&format!("lease-{}", id));
+        let guard = FileGuard::try_lock(&lock_path, true)?
             .ok_or_else(|| StoreError::Internal("lease lock unavailable".into()))?;
-        self.db.lock().unwrap().execute(
-            "INSERT INTO leases(lease_id, purpose, artifact, lock_path, acquired_epoch, heartbeat_epoch, ttl_secs, released) VALUES (?1,?2,?3,?4,?5,?5,?6,0)",
-            params![id, purpose, artifact, self.lock_path(&format!("lease-{}", id)).display().to_string(), now_secs(), ttl_secs],
-        )?;
-        Ok(Lease { store_root: self.root.clone(), lease_id: id, _guard: guard })
+        // Interlock (R1 F-01): the grant runs either before a concurrent
+        // GC's snapshot or after it finished — and in the latter case the
+        // target must still be live, else the grant is refused.
+        {
+            let _live = self.liveness_shared()?;
+            if let Some(a) = artifact {
+                let db = self.db.lock().unwrap();
+                if !row_chunk_live(&db, a)? {
+                    return Err(StoreError::TargetMissing(format!(
+                        "cannot lease {}: payload not live",
+                        a
+                    )));
+                }
+                db.execute(
+                    "INSERT INTO leases(lease_id, purpose, artifact, lock_path, acquired_epoch, heartbeat_epoch, ttl_secs, released) VALUES (?1,?2,?3,?4,?5,?5,?6,0)",
+                    params![id, purpose, artifact, lock_path.display().to_string(), now_secs(), ttl_secs],
+                )?;
+            } else {
+                self.db.lock().unwrap().execute(
+                    "INSERT INTO leases(lease_id, purpose, artifact, lock_path, acquired_epoch, heartbeat_epoch, ttl_secs, released) VALUES (?1,?2,NULL,?3,?4,?4,?5,0)",
+                    params![id, purpose, lock_path.display().to_string(), now_secs(), ttl_secs],
+                )?;
+            }
+        }
+        Ok(Lease {
+            store_root: self.root.clone(),
+            lease_id: id,
+            _guard: guard,
+        })
     }
 
     /// A lease is live iff its row is unreleased AND its lock file is still
@@ -603,7 +912,9 @@ impl ManagedStore {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        let Some((released, lock_path)) = row else { return Ok(false) };
+        let Some((released, lock_path)) = row else {
+            return Ok(false);
+        };
         if released != 0 {
             return Ok(false);
         }
@@ -649,16 +960,62 @@ impl ManagedStore {
         self.db.lock().unwrap()
     }
 
+    /// Physical removal with a trash-move first: a blocked final remove
+    /// leaves a reclaimable state instead of a half-deleted block.
+    /// Transient sharing violations (os 32 — AV scanners and racing opens
+    /// are a Windows reality under churn) are retried a bounded number of
+    /// times before surfacing. Returns Ok(true) when the bytes actually
+    /// left the disk.
     pub(crate) fn blob_remove(&self, chunk_id: &str) -> Result<bool, StoreError> {
         let path = self.blobs.get(chunk_id);
         let Some(p) = path else { return Ok(false) };
         self.check_inside(&p)?;
-        // Trash-move first: a blocked final remove leaves a reclaimable
-        // state instead of a half-deleted block.
         let trash = self.root.join("trash").join(chunk_id);
-        fs::rename(&p, &trash)?;
-        Ok(fs::remove_file(&trash).is_ok())
+        rename_with_retry(&p, &trash)?;
+        Ok(remove_with_retry(&trash))
     }
+}
+
+/// Bounded retry for transient Windows sharing violations (os 32) on
+/// rename/remove — AV scanners and racing opens under churn; a persistent
+/// violation still surfaces as an error.
+fn rename_with_retry(src: &Path, dst: &Path) -> Result<(), StoreError> {
+    let mut last = None;
+    for attempt in 0..5 {
+        match fs::rename(src, dst) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.raw_os_error() == Some(32) || e.raw_os_error() == Some(5) => {
+                last = Some(e);
+                std::thread::sleep(Duration::from_millis(20 * (attempt + 1)));
+            }
+            Err(e) => return Err(StoreError::Io(e.to_string())),
+        }
+    }
+    Err(StoreError::Io(
+        last.map(|e| e.to_string()).unwrap_or_default(),
+    ))
+}
+
+fn remove_with_retry(p: &Path) -> bool {
+    for attempt in 0..5 {
+        if fs::remove_file(p).is_ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(20 * (attempt + 1)));
+    }
+    false
+}
+
+/// `true` iff the artifact row exists and its payload chunk is live.
+fn row_chunk_live(db: &Connection, artifact: &str) -> Result<bool, StoreError> {
+    let state: Option<String> = db
+        .query_row(
+            "SELECT c.state FROM artifacts a JOIN chunks c ON c.chunk_id = a.payload_chunk WHERE a.artifact_id=?1",
+            params![artifact],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(matches!(state.as_deref(), Some("live")))
 }
 
 /// A held lease. Drop releases the OS lock (the row stays for receipts).
@@ -672,9 +1029,10 @@ impl Lease {
     /// Explicit release: mark the row and drop the lock.
     pub fn release(self) {
         if let Ok(store) = ManagedStore::open_existing(&self.store_root) {
-            let _ = store
-                .db()
-                .execute("UPDATE leases SET released=1 WHERE lease_id=?1", params![self.lease_id]);
+            let _ = store.db().execute(
+                "UPDATE leases SET released=1 WHERE lease_id=?1",
+                params![self.lease_id],
+            );
         }
     }
 }
@@ -749,15 +1107,45 @@ fn fault(name: &str) {
     }
 }
 
+pub(crate) fn fault_pub(name: &str) {
+    fault(name)
+}
+
+/// Metadata cascade when a chunk's payload leaves the store: edges, roots
+/// and artifact rows referencing it converge with physical state (R1
+/// F-03/F-06) so same-key republication can never hit a zombie row.
+pub(crate) fn cascade_chunk_rows(db: &Connection, cid: &str) -> Result<(), StoreError> {
+    db.execute(
+        "DELETE FROM edges WHERE src IN (SELECT artifact_id FROM artifacts WHERE payload_chunk=?1)",
+        params![cid],
+    )?;
+    db.execute(
+        "DELETE FROM roots WHERE artifact IN (SELECT artifact_id FROM artifacts WHERE payload_chunk=?1)",
+        params![cid],
+    )?;
+    db.execute("DELETE FROM artifacts WHERE payload_chunk=?1", params![cid])?;
+    db.execute(
+        "UPDATE chunks SET state='deleted' WHERE chunk_id=?1",
+        params![cid],
+    )?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
-// Recovery
+// Recovery — full state reconciliation (R1 F-06)
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct RecoveryReceipt {
     pub staging_dirs_removed: usize,
     pub orphan_chunks_removed: usize,
+    /// Committed chunk rows no artifact references (e.g. a conflict's
+    /// shared chunk whose artifact was refused).
+    pub orphan_rows_removed: usize,
+    /// Chunk rows claiming 'live' whose blob is gone (stale metadata).
+    pub stale_rows_removed: usize,
     pub tombstone_deletes_completed: usize,
+    pub trash_files_removed: usize,
     pub aborted_txn_rows: usize,
     pub freed_bytes: u64,
 }
@@ -765,9 +1153,15 @@ pub struct RecoveryReceipt {
 /// Reconcile a store after crashes. `assumed_exclusive` skips the staging
 /// grace period (operator- or test-invoked right after a crash, with no
 /// concurrent producers); the default mode only reclaims staging older
-/// than the grace window.
-pub fn recover(store: &ManagedStore, assumed_exclusive: bool) -> Result<RecoveryReceipt, StoreError> {
+/// than the grace window. Runs under the EXCLUSIVE liveness guard, so it
+/// cannot interleave with publishers, registrars, or GC.
+pub fn recover(
+    store: &ManagedStore,
+    assumed_exclusive: bool,
+) -> Result<RecoveryReceipt, StoreError> {
+    let _exclusive = store.liveness_exclusive()?;
     let mut receipt = RecoveryReceipt::default();
+
     // 1. Staging leftovers.
     for entry in fs::read_dir(store.root.join("staging"))?.flatten() {
         let p = entry.path();
@@ -776,7 +1170,13 @@ pub fn recover(store: &ManagedStore, assumed_exclusive: bool) -> Result<Recovery
         }
         if p.is_dir() {
             let age = now_secs().saturating_sub(
-                entry.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0),
+                entry
+                    .metadata()
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
             );
             if assumed_exclusive || age > 600 {
                 let sz = ManagedStore::dir_size(&p);
@@ -786,13 +1186,69 @@ pub fn recover(store: &ManagedStore, assumed_exclusive: bool) -> Result<Recovery
             }
         }
     }
-    // 2. Orphan blobs: present on disk, no committed chunk row. Blob file
-    //    names ARE the chunk ids (BlobStore sharding is internal), so scan
-    //    the CAS via a temporary listing through the blocks dir.
+
+    // 2. Tombstoned chunks: complete the interrupted delete with the SAME
+    //    cascade as live GC (rows converge with physical state).
+    let tombstoned: Vec<String> = store
+        .db()
+        .prepare("SELECT chunk_id FROM chunks WHERE state='tombstoned'")?
+        .query_map([], |r| r.get(0))?
+        .flatten()
+        .collect();
+    for cid in tombstoned {
+        if gc::delete_chunk_full(store, &cid)? {
+            receipt.tombstone_deletes_completed += 1;
+        }
+    }
+
+    // 3. Committed orphan chunk ROWS: no artifact references them (e.g.
+    //    a conflict's committed loser chunk) — the blob is unreachable
+    //    junk that plain GC (artifact-driven) can never see.
+    let referenced: std::collections::HashSet<String> = store
+        .db()
+        .prepare("SELECT DISTINCT payload_chunk FROM artifacts")?
+        .query_map([], |r| r.get(0))?
+        .flatten()
+        .collect();
+    let live_rows: Vec<String> = store
+        .db()
+        .prepare("SELECT chunk_id FROM chunks WHERE state='live'")?
+        .query_map([], |r| r.get(0))?
+        .flatten()
+        .collect();
+    for cid in live_rows {
+        if !referenced.contains(&cid) {
+            let sz: u64 = store
+                .db()
+                .query_row(
+                    "SELECT size FROM chunks WHERE chunk_id=?1",
+                    params![cid],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+            if gc::delete_chunk_full(store, &cid)? {
+                receipt.orphan_rows_removed += 1;
+                receipt.freed_bytes += sz;
+            }
+        }
+    }
+
+    // 4. Stale rows: chunk claims 'live' but the blob is gone (external
+    //    deletion / lost file). The metadata converges to 'deleted' with
+    //    the same row cascade as any other delete.
+    for cid in live_rows_retained(store)? {
+        if store.blobs.get(&cid).is_none() {
+            if gc::delete_chunk_full(store, &cid)? {
+                receipt.stale_rows_removed += 1;
+            }
+        }
+    }
+
+    // 5. Orphan blob FILES + interrupted CAS tmp writes.
     let committed: std::collections::HashSet<String> = store
         .db()
         .prepare("SELECT chunk_id FROM chunks")?
-        .query_map([], |r| r.get::<_, String>(0))?
+        .query_map([], |r| r.get(0))?
         .flatten()
         .collect();
     let blocks_dir = store.root.join("blocks").join("blobs");
@@ -808,7 +1264,6 @@ pub fn recover(store: &ManagedStore, assumed_exclusive: bool) -> Result<Recovery
                 }
                 let name = blob.file_name().to_string_lossy().to_string();
                 if name.ends_with(".tmp") {
-                    // Interrupted CAS write; safe to reclaim.
                     let sz = blob.metadata().map(|m| m.len()).unwrap_or(0);
                     let _ = fs::remove_file(blob.path());
                     receipt.orphan_chunks_removed += 1;
@@ -824,30 +1279,41 @@ pub fn recover(store: &ManagedStore, assumed_exclusive: bool) -> Result<Recovery
             }
         }
     }
-    // 3. Complete interrupted tombstone deletes.
-    let tombstoned: Vec<(String, u64)> = store
-        .db()
-        .prepare("SELECT chunk_id, size FROM chunks WHERE state='tombstoned'")?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .flatten()
-        .collect();
-    for (cid, sz) in tombstoned {
-        let gate = FileGuard::try_lock(&store.lock_path(&format!("gate-{}", cid)), true)?;
-        if let Some(_g) = gate {
-            if store.blob_remove(&cid)? {
-                receipt.freed_bytes += sz;
+
+    // 6. Trash residue (R1 F-06): pending deletes from blocked removes are
+    //    retried here; whatever still cannot be removed stays and is
+    //    reported by `space().trash`, never silently counted as freed.
+    let trash_dir = store.root.join("trash");
+    if trash_dir.is_dir() {
+        for entry in fs::read_dir(&trash_dir)?.flatten() {
+            if is_reparse(&entry.path()) {
+                continue;
             }
-            store.db().execute(
-                "UPDATE chunks SET state='deleted' WHERE chunk_id=?1",
-                params![cid],
-            )?;
-            receipt.tombstone_deletes_completed += 1;
+            if entry.path().is_file() {
+                let sz = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                if fs::remove_file(entry.path()).is_ok() {
+                    receipt.trash_files_removed += 1;
+                    receipt.freed_bytes += sz;
+                }
+            }
         }
     }
-    // 4. Journal hygiene: mark lingering staging-phase txns aborted.
+
+    // 7. Journal hygiene: mark lingering staging-phase txns aborted.
     receipt.aborted_txn_rows = store.db().execute(
         "UPDATE txns SET phase='aborted' WHERE phase IN ('staging','conflict')",
         [],
     )?;
     Ok(receipt)
+}
+
+fn live_rows_retained(store: &ManagedStore) -> Result<Vec<String>, StoreError> {
+    // Rows still live after the orphan-row pass above.
+    let v: Vec<String> = store
+        .db()
+        .prepare("SELECT chunk_id FROM chunks WHERE state='live'")?
+        .query_map([], |r| r.get(0))?
+        .flatten()
+        .collect();
+    Ok(v)
 }

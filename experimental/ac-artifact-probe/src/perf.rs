@@ -7,7 +7,7 @@
 //! No sub-second claim is made; this measures the distance.
 
 use crate::driver::{vertical_and_run, VerticalCfg};
-use crate::store::{gc_config_default, run_gc, ManagedStore};
+use crate::store::{run_gc, GcConfig, ManagedStore};
 use crate::subproc::run_deadlined;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -32,14 +32,31 @@ pub struct ScenarioReport {
     pub stats: SampleStats,
     pub ok: usize,
     pub semantic_failures: usize,
+    /// OS-measured private-bytes delta for THIS scenario's process section
+    /// (in-process scenarios only; restart-disk-hot spans processes and
+    /// reports 0 with a note — no fabricated numbers).
     pub private_bytes_delta: i64,
     pub disk_total: u64,
+    /// GC scenario evidence (R1 F-07): actual runs and deletions.
+    #[serde(default)]
+    pub gc_runs: u64,
+    #[serde(default)]
+    pub gc_ran: u64,
+    #[serde(default)]
+    pub gc_deleted_chunks: u64,
+    #[serde(default)]
+    pub worker_failures: u64,
     pub notes: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, serde::Deserialize)]
 pub struct PerfReport {
     pub probe: String,
+    /// Bound source identity of the run (R1 F-07: report configuration).
+    #[serde(default)]
+    pub source_commit: String,
+    #[serde(default)]
+    pub build_profile: String,
     pub machine: MachineInfo,
     pub fixture: String,
     pub samples_per_scenario: usize,
@@ -82,9 +99,8 @@ fn fixture_source(fixture: &str) -> String {
     let p = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../ac-core/fixtures/source/valid")
         .join(fixture);
-    std::fs::read_to_string(&p).unwrap_or_else(|_| {
-        panic!("fixture {} not found at {}", fixture, p.display())
-    })
+    std::fs::read_to_string(&p)
+        .unwrap_or_else(|_| panic!("fixture {} not found at {}", fixture, p.display()))
 }
 
 /// Expected exit codes for the four oracle fixtures (source_native.rs).
@@ -105,8 +121,29 @@ fn write_variant(work: &Path, tag: &str, src: &str) -> PathBuf {
 }
 
 pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
-    let _ = std::fs::remove_dir_all(root);
+    // R1 F-02: this entrypoint NEVER deletes a caller-provided directory.
+    // All scratch lives in a fresh, uniquely named, marker-carrying
+    // subdirectory under `root` (created if absent; a reparse root is
+    // refused). Sibling content in `root` is untouchable.
+    if root.exists() && crate::store::is_reparse(root) {
+        panic!("perf root {} is a reparse point — refusing", root.display());
+    }
+    let samples = samples.max(1);
     std::fs::create_dir_all(root).unwrap();
+    let root = root.join(format!(
+        "run-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("AC783-PERF-ROOT.marker"),
+        b"probe-owned perf scratch",
+    )
+    .unwrap();
     let src = fixture_source(fixture);
     let want_exit = fixture_exit(fixture);
     let mut scenarios: Vec<ScenarioReport> = Vec::new();
@@ -146,6 +183,10 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             semantic_failures: semfail,
             private_bytes_delta: mem1.private_bytes as i64 - mem0.private_bytes as i64,
             disk_total: store.space().total,
+            gc_runs: 0,
+            gc_ran: 0,
+            gc_deleted_chunks: 0,
+            worker_failures: 0,
             notes: vec![format!("oracle exit {}", want_exit)],
         });
     }
@@ -171,7 +212,8 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             let t = Instant::now();
             let out = vertical_and_run(&shared, &base_cfg("w-hot")).unwrap();
             times.push(t.elapsed().as_secs_f64() * 1000.0);
-            if out.exit_code == Some(want_exit) && out.counters.link == 1 && out.counters.parse == 0 {
+            if out.exit_code == Some(want_exit) && out.counters.link == 1 && out.counters.parse == 0
+            {
                 ok += 1;
             } else {
                 semfail += 1;
@@ -187,6 +229,10 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             private_bytes_delta: mem1.private_bytes as i64 - mem0.private_bytes as i64,
             disk_total: shared.space().total,
             notes: vec![],
+            gc_runs: 0,
+            gc_ran: 0,
+            gc_deleted_chunks: 0,
+            worker_failures: 0,
         });
     }
 
@@ -212,7 +258,10 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             let r = run_deadlined(cmd, Duration::from_secs(crate::SUBPROC_DEADLINE_SECS)).unwrap();
             times.push(r.elapsed_ms as f64);
             // Process spawn + store open + link + run; semantic check via RESULT line.
-            if r.code == Some(0) && r.stdout.contains("\"object\":\"hit\"") && r.stdout.contains(&format!("\"exit_code\":{}", want_exit)) {
+            if r.code == Some(0)
+                && r.stdout.contains("\"object\":\"hit\"")
+                && r.stdout.contains(&format!("\"exit_code\":{}", want_exit))
+            {
                 ok += 1;
             } else {
                 semfail += 1;
@@ -220,12 +269,17 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
         }
         scenarios.push(ScenarioReport {
             name: "restart-disk-hot".into(),
-            what: "object-hit resume in a NEW process (process spawn + store open + link + run)".into(),
+            what: "object-hit resume in a NEW process (process spawn + store open + link + run)"
+                .into(),
             stats: stats_of(times),
             ok,
             semantic_failures: semfail,
             private_bytes_delta: 0,
             disk_total: shared.space().total,
+            gc_runs: 0,
+            gc_ran: 0,
+            gc_deleted_chunks: 0,
+            worker_failures: 0,
             notes: vec![
                 "wall time includes OS process spawn; restart is not claimed as OS-cold".into(),
             ],
@@ -263,7 +317,14 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             semantic_failures: semfail,
             private_bytes_delta: 0,
             disk_total: shared.space().total,
-            notes: vec![format!("block count {} → {} (unchanged = content shared)", before, after)],
+            gc_runs: 0,
+            gc_ran: 0,
+            gc_deleted_chunks: 0,
+            worker_failures: 0,
+            notes: vec![format!(
+                "block count {} → {} (unchanged = content shared)",
+                before, after
+            )],
         });
     }
 
@@ -301,13 +362,20 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             semantic_failures: semfail,
             private_bytes_delta: 0,
             disk_total: shared.space().total,
+            gc_runs: 0,
+            gc_ran: 0,
+            gc_deleted_chunks: 0,
+            worker_failures: 0,
             notes: vec![],
         });
     }
 
-    // 6. GC-concurrent query: object-hit builds while GC churns junk.
+    // 6. GC-concurrent query: object-hit builds while GC ACTUALLY reclaims
+    //    junk versions (R1 F-07): the worker uses scaled watermarks
+    //    (2 MiB / 1 MiB) so real tombstone→delete cycles overlap the
+    //    queries; every build/GC failure propagates; the receipt records
+    //    the runs and the physically deleted bytes.
     {
-        // Fill junk above the watermark in background thread, repeatedly.
         let shared = std::sync::Arc::new(ManagedStore::open(&root.join("s-gc")).unwrap());
         let base = write_variant(&root, "gc-base", &src);
         let cfg0 = VerticalCfg {
@@ -317,28 +385,73 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             ..Default::default()
         };
         vertical_and_run(&shared, &cfg0).unwrap();
+        let mem_before = crate::sysinfo::current_process_memory();
         let gc_store = shared.clone();
         let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop_t = stop.clone();
+        struct GcWorker {
+            junk_n: u64,
+            gc_runs: u64,
+            gc_ran: u64,
+            gc_deleted: u64,
+            build_failures: u64,
+            gc_failures: u64,
+            errors: Vec<String>,
+        }
         let gc_thread = std::thread::spawn(move || {
-            let mut junk_n = 0u64;
-            while !stop_t.load(std::sync::atomic::Ordering::SeqCst) {
-                // junk project version with real (but disposable) content
-                let srcj = format!("fn main() int {{ return {} }}", 7000 + junk_n % 50);
-                let pj = gc_store.root.join(format!("junk-{junk_n}.at"));
+            let mut w = GcWorker {
+                junk_n: 0,
+                gc_runs: 0,
+                gc_ran: 0,
+                gc_deleted: 0,
+                build_failures: 0,
+                gc_failures: 0,
+                errors: Vec::new(),
+            };
+            // Minimum junk iterations guarantee the scenario actually
+            // produces reclaimable versions even on a fast query loop
+            // (R1 F-07: the proving oracle needs real deletions). The
+            // trigger is a hair-pin high watermark measured from the
+            // steady base with NO floor (low=0, the established test
+            // semantic: reclaim every dead candidate) — real watermark
+            // boundaries are exercised by the churn load (gc_budget_).
+            const MIN_JUNK_ITERS: u64 = 12;
+            let gc_cfg = GcConfig {
+                high: gc_store.space().total + 1,
+                low: 0,
+            };
+            while !stop_t.load(std::sync::atomic::Ordering::SeqCst) || w.junk_n < MIN_JUNK_ITERS {
+                // Distinct junk version every iteration (real version churn).
+                let srcj = format!("fn main() int {{ return {} * 0 + 1 }}", w.junk_n);
+                let pj = gc_store.root.join(format!("junk-{}.at", w.junk_n));
                 std::fs::write(&pj, srcj).unwrap();
                 let cfg = VerticalCfg {
-                    project: format!("junk-{}", junk_n % 3),
+                    project: format!("junk-{}", w.junk_n % 3),
                     source: pj,
-                    work_dir: gc_store.root.join(format!("wj-{}", junk_n % 3)),
+                    work_dir: gc_store.root.join(format!("wj-{}", w.junk_n % 3)),
                     ..Default::default()
                 };
-                let _ = vertical_and_run(&gc_store, &cfg);
-                junk_n += 1;
-                let _ = run_gc(&gc_store, gc_config_default());
+                if let Err(e) = vertical_and_run(&gc_store, &cfg) {
+                    w.build_failures += 1;
+                    w.errors.push(format!("build@{}: {}", w.junk_n, e));
+                }
+                w.junk_n += 1;
+                match run_gc(&gc_store, gc_cfg) {
+                    Ok(r) => {
+                        w.gc_runs += 1;
+                        if r.ran {
+                            w.gc_ran += 1;
+                        }
+                        w.gc_deleted += r.deleted_chunks as u64;
+                    }
+                    Err(e) => {
+                        w.gc_failures += 1;
+                        w.errors.push(format!("gc@{}: {}", w.junk_n, e));
+                    }
+                }
                 std::thread::sleep(Duration::from_millis(5));
             }
-            junk_n
+            w
         });
         let mut times = Vec::new();
         let mut ok = 0;
@@ -360,25 +473,44 @@ pub fn run_scenarios(root: &Path, fixture: &str, samples: usize) -> PerfReport {
             }
         }
         stop.store(true, std::sync::atomic::Ordering::SeqCst);
-        let _junk = gc_thread.join();
+        // R1 F-07: worker failures are evidence, not noise.
+        let mut w = gc_thread.join().expect("gc worker must not panic");
+        let mem1 = crate::sysinfo::current_process_memory();
+        let worker_failures = w.build_failures + w.gc_failures;
+        let proving = w.gc_ran > 0 && w.gc_deleted > 0 && worker_failures == 0;
+        let error_notes = std::mem::take(&mut w.errors);
         scenarios.push(ScenarioReport {
             name: "gc-concurrent-query".into(),
-            what: "object-hit build latency while GC recycles junk versions concurrently".into(),
+            what: "object-hit build latency while GC recycles junk versions concurrently (hair-pin trigger, no floor: every dead candidate reclaimed per pass)".into(),
             stats: stats_of(times),
             ok,
-            semantic_failures: semfail,
-            private_bytes_delta: 0,
+            semantic_failures: semfail + if proving { 0 } else { 1 },
+            private_bytes_delta: mem1.private_bytes as i64 - mem_before.private_bytes as i64,
             disk_total: shared.space().total,
-            notes: vec![],
+            gc_runs: w.gc_runs,
+            gc_ran: w.gc_ran,
+            gc_deleted_chunks: w.gc_deleted,
+            worker_failures,
+            notes: std::iter::once(format!(
+                "gc runs={} ran={} deleted-chunks={} (hair-pin trigger from steady base, low=0; proving={}, failures={})",
+                w.gc_runs, w.gc_ran, w.gc_deleted, proving, worker_failures
+            ))
+            .chain(error_notes.iter().take(5).cloned())
+            .collect(),
         });
     }
 
     let m = crate::sysinfo::system_memory();
     PerfReport {
         probe: crate::PROBE_ID.into(),
+        source_commit: std::env::var("AC_PROBE_SOURCE_COMMIT")
+            .unwrap_or_else(|_| "uncommitted".into()),
+        build_profile: "release".into(),
         machine: MachineInfo {
             os: std::env::consts::OS.to_string(),
-            logical_cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0),
+            logical_cores: std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(0),
             total_phys: m.total_phys,
             avail_phys: m.avail_phys,
         },

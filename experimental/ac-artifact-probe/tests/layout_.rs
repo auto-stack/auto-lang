@@ -9,8 +9,8 @@
 mod common;
 
 use ac_artifact_probe::layout::{
-    self, expected_record, render_record_atom, LayoutStore, LayoutView, HOT_BUDGET,
-    PAGE_SIZE, QUERY_PAYLOAD_CAP, RECORD_COUNT,
+    self, expected_record, render_record_atom, LayoutStore, LayoutView, HOT_BUDGET, PAGE_SIZE,
+    QUERY_PAYLOAD_CAP, RECORD_COUNT,
 };
 use common::scratch;
 
@@ -21,7 +21,9 @@ fn sample_ids() -> Vec<u64> {
     let mut v = vec![0, RECORD_COUNT - 1, RECORD_COUNT / 2];
     let mut x = 1u64;
     for _ in 0..40 {
-        x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        x = x
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         v.push(x % RECORD_COUNT);
     }
     v
@@ -51,8 +53,8 @@ fn layout_both_match_semantic_baseline_and_write_at_least_128mib() {
     );
 
     let store = LayoutStore::new(&root);
-    let mut va = LayoutView::open(&store, ra.manifest.clone());
-    let mut vb = LayoutView::open(&store, rb.manifest.clone());
+    let mut va = LayoutView::open(&store, ra.manifest.clone()).unwrap();
+    let mut vb = LayoutView::open(&store, rb.manifest.clone()).unwrap();
     for id in sample_ids() {
         let want = expected_record(id, 0xC0FFEE, None, 0);
         let got_a = va.record(id).unwrap();
@@ -71,7 +73,7 @@ fn layout_small_query_reads_within_frozen_budgets() {
     let store = LayoutStore::new(&root);
 
     for (manifest, name) in [(ra.manifest.clone(), "A"), (rb.manifest.clone(), "B")] {
-        let mut v = LayoutView::open(&store, manifest);
+        let mut v = LayoutView::open(&store, manifest).unwrap();
         let mut max_io = 0u64;
         for id in sample_ids() {
             let before = v.stats.bytes_read;
@@ -97,7 +99,11 @@ fn layout_small_query_reads_within_frozen_budgets() {
         // I/O staging is structurally ≤2 pages and hot cache ≤ budget.
         assert_eq!(v.stats.staging_buffers, 2);
         assert_eq!(v.stats.staging_bytes, PAGE_SIZE * 2);
-        assert!(v.stats.hot_bytes_now <= HOT_BUDGET, "hot cache {} over budget", v.stats.hot_bytes_now);
+        assert!(
+            v.stats.hot_bytes_now <= HOT_BUDGET,
+            "hot cache {} over budget",
+            v.stats.hot_bytes_now
+        );
     }
 }
 
@@ -107,7 +113,7 @@ fn layout_hot_cache_bounded_with_real_memory_evidence() {
     let (ra, _) = build_both(&root);
     let store = LayoutStore::new(&root);
     let mem0 = ac_artifact_probe::sysinfo::current_process_memory();
-    let mut v = LayoutView::open(&store, ra.manifest.clone());
+    let mut v = LayoutView::open(&store, ra.manifest.clone()).unwrap();
     // Sweep far beyond the 8 MiB hot budget (400+ distinct pages).
     let mut ids = Vec::new();
     for page in 0..400u64 {
@@ -143,7 +149,15 @@ fn layout_suffix_version_shares_unchanged_pages() {
     let v1 = layout::build_layout_a(&store, 1, 0xC0FFEE, None, 0, None).unwrap();
     // Version 2: only records from the last 8 record-table pages change.
     let modified_from = RECORD_COUNT - 8 * (PAGE_SIZE as u64 / 32);
-    let v2 = layout::build_layout_a(&store, 2, 0xC0FFEE, Some(modified_from), 0x5A5A, Some(&v1.manifest)).unwrap();
+    let v2 = layout::build_layout_a(
+        &store,
+        2,
+        0xC0FFEE,
+        Some(modified_from),
+        0x5A5A,
+        Some(&v1.manifest),
+    )
+    .unwrap();
 
     // Sharing: most page chunks are identical ⇒ shared with the base.
     let shared_ratio = v2.shared_with_base as f64 / v2.total_pages as f64;
@@ -153,16 +167,22 @@ fn layout_suffix_version_shares_unchanged_pages() {
         shared_ratio * 100.0
     );
     // Values: prefix records keep v1 values; modified records differ.
-    let mut view2 = LayoutView::open(&store, v2.manifest.clone());
+    let mut view2 = LayoutView::open(&store, v2.manifest.clone()).unwrap();
     let keep = expected_record(1000, 0xC0FFEE, Some(modified_from), 0x5A5A); // == v1 value
     assert_eq!(keep, expected_record(1000, 0xC0FFEE, None, 0));
     assert_eq!(view2.record(1000).unwrap(), keep);
     let changed = expected_record(RECORD_COUNT - 1, 0xC0FFEE, Some(modified_from), 0x5A5A);
-    assert_ne!(changed, expected_record(RECORD_COUNT - 1, 0xC0FFEE, None, 0));
+    assert_ne!(
+        changed,
+        expected_record(RECORD_COUNT - 1, 0xC0FFEE, None, 0)
+    );
     assert_eq!(view2.record(RECORD_COUNT - 1).unwrap(), changed);
     // v1 remains readable independently (immutable version).
-    let mut view1 = LayoutView::open(&store, v1.manifest.clone());
-    assert_eq!(view1.record(RECORD_COUNT - 1).unwrap(), expected_record(RECORD_COUNT - 1, 0xC0FFEE, None, 0));
+    let mut view1 = LayoutView::open(&store, v1.manifest.clone()).unwrap();
+    assert_eq!(
+        view1.record(RECORD_COUNT - 1).unwrap(),
+        expected_record(RECORD_COUNT - 1, 0xC0FFEE, None, 0)
+    );
 }
 
 #[test]
@@ -190,6 +210,6 @@ fn layout_out_of_range_id_is_controlled_miss() {
     let root = scratch("layout-range");
     let store = LayoutStore::new(&root);
     let ra = layout::build_layout_a(&store, 1, 0xC0FFEE, None, 0, None).unwrap();
-    let mut v = LayoutView::open(&store, ra.manifest.clone());
+    let mut v = LayoutView::open(&store, ra.manifest.clone()).unwrap();
     assert!(v.record(RECORD_COUNT + 5).is_err());
 }

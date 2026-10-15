@@ -3,7 +3,9 @@
 
 #[cfg(windows)]
 pub mod imp {
-    use windows_sys::Win32::System::ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX};
+    use windows_sys::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS_EX,
+    };
     use windows_sys::Win32::System::SystemInformation::GlobalMemoryStatusEx;
     use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetCurrentProcessId};
 
@@ -46,11 +48,15 @@ pub mod imp {
         unsafe {
             let mut st: windows_sys::Win32::System::SystemInformation::MEMORYSTATUSEX =
                 std::mem::zeroed();
-            st.dwLength = std::mem::size_of::<windows_sys::Win32::System::SystemInformation::MEMORYSTATUSEX>()
-                as u32;
+            st.dwLength = std::mem::size_of::<
+                windows_sys::Win32::System::SystemInformation::MEMORYSTATUSEX,
+            >() as u32;
             let ok = GlobalMemoryStatusEx(&mut st);
             assert_ne!(ok, 0, "GlobalMemoryStatusEx failed");
-            SystemMemory { total_phys: st.ullTotalPhys, avail_phys: st.ullAvailPhys }
+            SystemMemory {
+                total_phys: st.ullTotalPhys,
+                avail_phys: st.ullAvailPhys,
+            }
         }
     }
 
@@ -74,7 +80,12 @@ pub mod imp {
         // Non-Windows hosts are outside this probe's native scope; the
         // numbers stay zero and layout tests that need real evidence are
         // Windows-gated.
-        ProcessMemory { private_bytes: 0, working_set: 0, peak_working_set: 0, page_faults: 0 }
+        ProcessMemory {
+            private_bytes: 0,
+            working_set: 0,
+            peak_working_set: 0,
+            page_faults: 0,
+        }
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -84,7 +95,10 @@ pub mod imp {
     }
 
     pub fn system_memory() -> SystemMemory {
-        SystemMemory { total_phys: 0, avail_phys: 0 }
+        SystemMemory {
+            total_phys: 0,
+            avail_phys: 0,
+        }
     }
 
     pub fn current_pid() -> u32 {
