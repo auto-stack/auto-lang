@@ -183,8 +183,11 @@ pub struct CallParenRule {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct NewlinePolicy {
     pub significant: bool,
-    /// 语句结束符 token（`;` `}`），与换行一起作为声明/语句边界。
+    /// 语句边界 token（`;` `}`）：边界检查用（`;`/`}`/换行 皆可为界）。
+    /// **不消费** `}`——它是块的结束 token，由块规则消费。
     pub stmt_end: Vec<TokenId>,
+    /// 项间实际**消费**的分隔 token（仅 `;`）。
+    pub sep_consume: Vec<TokenId>,
 }
 
 /// 恢复规则：同步点 token 集合（在 grammar 中声明）。

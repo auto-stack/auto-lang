@@ -1,0 +1,57 @@
+// interface-mini-v1 — 独立声明描述小语言（PLAN-787 §5.2）。
+// 只作声明描述：api/note；类型含义/实际导出/ABI 全部 unknown，绝不宣称 C 兼容。
+// 词法面：引号字符串（\ 转义、可跨行）、可嵌套 /* */ 块注释、// 行注释、ASCII 名。
+grammar(name: "interface-mini-v1", revision: 1, newline: false, stmt-end: ["semi"], sep: ["semi"], sync: ["semi"]) {
+    tokens {
+        ws(trivia: true) { charset: " \t\r\n" }
+        line-comment(trivia: true) { line-comment: "//" }
+        block-comment(trivia: true) { block-comment: "/*", close: "*/", nested: true }
+        api { literal: "api" }
+        note { literal: "note" }
+        i32 { literal: "i32" }
+        ident { charset: "a-zA-Z_", cont: "a-zA-Z0-9_" }
+        int { charset: "0-9" }
+        string { quote: "\"", escape: true }
+        lparen { literal: "(" }
+        rparen { literal: ")" }
+        colon { literal: ":" }
+        comma { literal: "," }
+        arrow { literal: "->" }
+        semi { literal: ";" }
+    }
+    rules {
+        program { list { decl() {} } }
+        decl(recover: true) {
+            alt { api-decl() {} }
+            alt { note-decl() {} }
+        }
+        api-decl {
+            api(field: "kw")
+            ident(field: "name")
+            lparen() {}
+            params(repeat: "opt", field: "params")
+            rparen() {}
+            arrow() {}
+            type(field: "ty")
+            semi() {}
+        }
+        note-decl {
+            note(field: "kw")
+            string(field: "text")
+            semi() {}
+        }
+        params { param() {} many { param-tail() {} } }
+        param-tail { comma() {} param() {} }
+        param {
+            ident(field: "name")
+            colon() {}
+            type(field: "ty")
+        }
+        type { i32() {} }
+    }
+    outline {
+        decl-rule: "decl"
+        name-field: "name"
+        params-field: "params"
+    }
+}

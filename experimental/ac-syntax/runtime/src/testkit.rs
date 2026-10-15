@@ -269,7 +269,7 @@ pub fn mini_program() -> GrammarProgram {
             call_args: None,
         }],
         start: rules::PROGRAM,
-        newline: NewlinePolicy { significant: false, stmt_end: vec![toks::SEMI] },
+        newline: NewlinePolicy { significant: false, stmt_end: vec![toks::SEMI], sep_consume: vec![toks::SEMI] },
         recovery: RecoverySpec { sync: vec![toks::SEMI] },
         outline: Some(OutlineSpec {
             decl_rule: "decl".into(),

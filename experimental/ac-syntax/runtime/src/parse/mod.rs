@@ -239,13 +239,17 @@ struct Frame {
     /// RepItem 迭代起点完整状态：item 失败回滚到迭代起点（非 alt 入口！）；
     /// 成功后零前进 → 结束 List。
     rep_save: Option<Save>,
+    /// Optional 步起点状态：item 失败回滚到步起点（非 alt 入口）。
+    opt_save: Option<Save>,
     pushed_active: bool,
     is_decl_frame: bool,
     // pratt 状态
     pratt_vals: Vec<u32>,
-    pratt_ops: Vec<(u8, Assoc, u32, u32)>, // (binding, assoc, op leaf node, op token id)
+    pratt_ops: Vec<(u8, Assoc, u32, u32, Vec<u32>)>, // (binding, assoc, op leaf, op token, op 前导 trivia 叶)
     pratt_stage: PrattStage,
     pratt_field: u32,
+    /// 调用后缀 open 括号前导 trivia（close 时并入 Call 孩子）。
+    pratt_extra: Vec<u32>,
     node_start: usize,
 }
 
@@ -451,12 +455,14 @@ impl<'p, 'a> Machine<'p, 'a> {
                 wait: Wait::None,
                 list_started: false,
                 rep_save: None,
+                opt_save: None,
                 pushed_active: false,
                 is_decl_frame: false,
                 pratt_vals: Vec::new(),
                 pratt_ops: Vec::new(),
                 pratt_stage: PrattStage::WantPrimary { anchor: None },
                 pratt_field: field,
+                pratt_extra: Vec::new(),
                 node_start: self.nodes.len(),
             });
             return;
@@ -487,12 +493,14 @@ impl<'p, 'a> Machine<'p, 'a> {
             wait: Wait::None,
             list_started: false,
             rep_save: None,
+                opt_save: None,
             pushed_active: true,
             is_decl_frame: is_decl,
             pratt_vals: Vec::new(),
             pratt_ops: Vec::new(),
             pratt_stage: PrattStage::WantPrimary { anchor: None },
             pratt_field: field,
+            pratt_extra: Vec::new(),
             node_start: self.nodes.len(),
         });
     }
@@ -511,12 +519,14 @@ impl<'p, 'a> Machine<'p, 'a> {
             wait: Wait::None,
             list_started: false,
             rep_save: None,
+                opt_save: None,
             pushed_active: false,
             is_decl_frame: false,
             pratt_vals: Vec::new(),
             pratt_ops: Vec::new(),
             pratt_stage: PrattStage::WantPrimary { anchor: None },
             pratt_field: field,
+            pratt_extra: Vec::new(),
             node_start: self.nodes.len(),
         });
     }
@@ -646,20 +656,20 @@ impl<'p, 'a> Machine<'p, 'a> {
         let cap: u64 = std::env::var("AC787_TRACE_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(u64::MAX);
         loop {
             steps += 1;
+            if self.stack.is_empty() {
+                return Ok(());
+            }
             if trace && steps <= cap {
                 let f = self.stack.last().unwrap();
                 let st = if f.is_pratt() { format!("pratt {:?}", f.pratt_stage_variant()) } else { format!("r{} a{} s{}", f.rule, f.alt, f.step) };
-                let pk = self.toks.get(self.i).map(|t| (t.token, t.start)).unwrap_or((u32::MAX, u64::MAX));
-                eprintln!("#{steps} {} i={} pk={:?} stack={} nodes={} diags={}", st, self.i, pk, self.stack.len(), self.nodes.len(), self.diags.len());
+                let pk = self.toks.get(self.i).map(|t| (t.token, t.start, t.line)).unwrap_or((u32::MAX, u64::MAX, 0));
+                eprintln!("#{steps} {} i={} pk={:?} last_line={} bracket={} stack={} nodes={}", st, self.i, pk, self.last_line, self.bracket, self.stack.len(), self.nodes.len());
             }
             if trace && steps > cap {
                 return Err(RtError::InvalidProgram("trace cap".into()));
             }
             if steps & 0xFFFF == 0 && self.mem_estimate() > self.budget.work_bytes {
                 return Err(RtError::ResourceExhausted { what: "parse work bytes", limit: self.budget.work_bytes });
-            }
-            if self.stack.is_empty() {
-                return Ok(());
             }
             if self.stack.last().unwrap().is_pratt() {
                 self.step_pratt()?;
@@ -733,7 +743,10 @@ impl<'p, 'a> Machine<'p, 'a> {
             },
             Repeat::Optional => match step.atom {
                 Atom::Rule(r) => {
-                    self.stack.last_mut().unwrap().wait = Wait::Optional;
+                    let sv = self.save();
+                    let f = self.stack.last_mut().unwrap();
+                    f.wait = Wait::Optional;
+                    f.opt_save = Some(sv);
                     self.push_rule(r, field, false);
                 }
                 Atom::Tok(t) => {
@@ -753,7 +766,10 @@ impl<'p, 'a> Machine<'p, 'a> {
                     }
                 }
                 Atom::Pratt(x) => {
-                    self.stack.last_mut().unwrap().wait = Wait::Optional;
+                    let sv = self.save();
+                    let f = self.stack.last_mut().unwrap();
+                    f.wait = Wait::Optional;
+                    f.opt_save = Some(sv);
                     self.push_pratt(x, field);
                 }
             },
@@ -764,10 +780,11 @@ impl<'p, 'a> Machine<'p, 'a> {
                     _ => 2,
                 };
                 if kind >= 1 {
-                    // 分隔 token 消费（`;` 等）。
+                    // 分隔 token 消费（仅 sep_consume=`;`；`}` 是边界不消费，
+                    // 留给块规则的右括号步骤）。
                     loop {
                         match self.peek() {
-                            Some(pk) if self.p.newline.stmt_end.contains(&pk.token) => {
+                            Some(pk) if self.p.newline.sep_consume.contains(&pk.token) => {
                                 if self.consume().is_err() {
                                     self.fail_alt();
                                     return Ok(());
@@ -959,7 +976,11 @@ impl<'p, 'a> Machine<'p, 'a> {
         match w {
             Wait::None | Wait::OnceStep => self.fail_alt(),
             Wait::Optional => {
-                let s = self.stack.last().unwrap().save;
+                let s = self.stack
+                    .last()
+                    .unwrap()
+                    .opt_save
+                    .unwrap_or_else(|| self.stack.last().unwrap().save);
                 self.restore(s);
                 self.stack.last_mut().unwrap().step += 1;
             }
@@ -1177,14 +1198,13 @@ impl<'p, 'a> Machine<'p, 'a> {
                 Ok(())
             }
             PrattStage::WantOp => {
-                // bootstrap：primary 交付的孩子 → vals。
+                // bootstrap：primary 交付的孩子 → vals（无条件搬移：
+                // 每次 WantOp 进入时 children 应为空，滞留即丢失操作数）。
                 {
                     let f = self.stack.last_mut().unwrap();
-                    if f.pratt_vals.is_empty() {
-                        let kids = std::mem::take(&mut f.children);
-                        for (n, _) in kids {
-                            f.pratt_vals.push(n);
-                        }
+                    let kids = std::mem::take(&mut f.children);
+                    for (n, _) in kids {
+                        f.pratt_vals.push(n);
                     }
                 }
                 let pk = match self.peek() {
@@ -1208,25 +1228,29 @@ impl<'p, 'a> Machine<'p, 'a> {
                                     return Ok(());
                                 }
                             };
+                            let mut f_open_trivia: Vec<u32> = Vec::new();
                             if self.consume().is_err() {
                                 self.fail_pratt();
                                 return Ok(());
                             }
-                            let open_leaf = {
+                            let (open_leaf, open_trivia) = {
                                 let f = self.stack.last_mut().unwrap();
-                                let n = f.children.len();
-                                let (l, _) = f.children.remove(n - 1);
-                                f.children.clear();
-                                l
+                                let mut taken = std::mem::take(&mut f.children);
+                                let (l, _) = taken.pop().expect("consume pushed open leaf");
+                                let triv: Vec<u32> = taken.into_iter().map(|(n, _)| n).collect();
+                                (l, triv)
                             };
+                            f_open_trivia = open_trivia;
                             if let Some(args_rule) = table.call_args {
                                 let f = self.stack.last_mut().unwrap();
                                 f.pratt_stage = PrattStage::WantArgs { callee, open_leaf };
+                                f.pratt_extra = f_open_trivia;
                                 f.wait = Wait::OnceStep;
                                 self.push_rule(args_rule, NO_FIELD, false);
                             } else {
                                 let f = self.stack.last_mut().unwrap();
                                 f.pratt_stage = PrattStage::WantClose { callee, open_leaf };
+                                f.pratt_extra = f_open_trivia;
                             }
                             return Ok(());
                         }
@@ -1253,9 +1277,15 @@ impl<'p, 'a> Machine<'p, 'a> {
                     .map(|o| o.assoc)
                     .unwrap_or(Assoc::Left);
                 loop {
-                    let top = self.stack.last().unwrap().pratt_ops.last().copied();
+                    let top = self
+                        .stack
+                        .last()
+                        .unwrap()
+                        .pratt_ops
+                        .last()
+                        .map(|(tb, ta, _, _, _)| (*tb, *ta));
                     match top {
-                        Some((tb, tassoc, _, _)) => {
+                        Some((tb, tassoc)) => {
                             let reduce = match tassoc {
                                 Assoc::Left => tb as i8 >= b,
                                 Assoc::Right => tb as i8 > b,
@@ -1274,15 +1304,17 @@ impl<'p, 'a> Machine<'p, 'a> {
                     self.fail_pratt();
                     return Ok(());
                 }
-                let op_leaf = {
+                // 取走全部孩子：最后一个 = 运算符叶；其余 = 前导 trivia 叶
+                // （必须进入归约节点，否则丢字节破坏无损）。
+                let (op_leaf, trivia) = {
                     let f = self.stack.last_mut().unwrap();
-                    let n = f.children.len();
-                    let (l, _) = f.children.remove(n - 1);
-                    f.children.clear();
-                    l
+                    let mut taken = std::mem::take(&mut f.children);
+                    let (l, _) = taken.pop().expect("consume pushed op leaf");
+                    let triv: Vec<u32> = taken.into_iter().map(|(n, _)| n).collect();
+                    (l, triv)
                 };
                 let f = self.stack.last_mut().unwrap();
-                f.pratt_ops.push((b as u8, assoc, op_leaf, op_tok));
+                f.pratt_ops.push((b as u8, assoc, op_leaf, op_tok, trivia));
                 f.pratt_stage = PrattStage::WantPrimary { anchor: Some(self.last_line) };
                 Ok(())
             }
@@ -1318,15 +1350,26 @@ impl<'p, 'a> Machine<'p, 'a> {
             self.fail_pratt();
             return;
         }
+        // close 前导 trivia（args 末到 `)` 之间）+ open 前导 trivia 一并入树。
+        let mut close_trivia: Vec<u32> = Vec::new();
         let close_leaf = {
             let f = self.stack.last_mut().unwrap();
-            let n = f.children.len();
-            let (l, _) = f.children.remove(n - 1);
+            let mut taken = std::mem::take(&mut f.children);
+            let (l, _) = taken.pop().expect("consume pushed close leaf");
+            close_trivia = taken.into_iter().map(|(n, _)| n).collect();
             l
         };
-        let mut kids = vec![(callee, NO_FIELD), (open_leaf, NO_FIELD)];
+        let open_trivia = std::mem::take(&mut self.stack.last_mut().unwrap().pratt_extra);
+        let mut kids = vec![(callee, NO_FIELD)];
+        for t in open_trivia {
+            kids.push((t, NO_FIELD));
+        }
+        kids.push((open_leaf, NO_FIELD));
         if let Some(a) = args_node {
             kids.push((a, NO_FIELD));
+        }
+        for t in close_trivia {
+            kids.push((t, NO_FIELD));
         }
         kids.push((close_leaf, NO_FIELD));
         let node = self.alloc_node(KIND_CALL, kids, None, false);
@@ -1338,18 +1381,30 @@ impl<'p, 'a> Machine<'p, 'a> {
     }
 
     fn reduce_one(&mut self) {
+        // 先弹 op——调用方 reduce 循环以 ops 递减为前进不变式；operand 不足
+        // （非法中间态防御）以 missing 补位，绝不静默返回造成循环停滞。
         let popped = {
             let f = self.stack.last_mut().unwrap();
-            if f.pratt_vals.len() < 2 || f.pratt_ops.is_empty() {
-                return;
-            }
-            let op = f.pratt_ops.pop().unwrap();
-            let rhs = f.pratt_vals.pop().unwrap();
-            let lhs = f.pratt_vals.pop().unwrap();
+            let Some(op) = f.pratt_ops.pop() else { return };
+            let rhs = f.pratt_vals.pop();
+            let lhs = f.pratt_vals.pop();
             (op, lhs, rhs)
         };
-        let ((_, _, op_leaf, op_tok), lhs, rhs) = popped;
-        let kids = vec![(lhs, NO_FIELD), (op_leaf, NO_FIELD), (rhs, NO_FIELD)];
+        let ((_, _, op_leaf, op_tok, op_trivia), lhs, rhs) = popped;
+        let mk_missing = |k: u32| CstNode { kind: KIND_MISSING, start: 0, len: 0, first_child: 0, child_count: 0, expected: k, flags: FLAG_MISSING, decl: 0 };
+        let missing_id = {
+            let m = mk_missing(TOKEN_KIND_BASE + op_tok);
+            self.nodes.push(m);
+            (self.nodes.len() - 1) as u32
+        };
+        let lhs = lhs.unwrap_or(missing_id);
+        let rhs = rhs.unwrap_or(missing_id);
+        let mut kids = vec![(lhs, NO_FIELD)];
+        for t in op_trivia {
+            kids.push((t, NO_FIELD));
+        }
+        kids.push((op_leaf, NO_FIELD));
+        kids.push((rhs, NO_FIELD));
         let node = self.alloc_node(TOKEN_KIND_BASE + op_tok, kids, None, false);
         self.stack.last_mut().unwrap().pratt_vals.push(node);
     }

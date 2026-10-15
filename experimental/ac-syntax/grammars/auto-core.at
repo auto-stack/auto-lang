@@ -1,0 +1,210 @@
+// auto-core — Auto core-i32 源码语法的 Atom 配置（PLAN-787 §5.2）。
+// 合同 = experimental/ac-core 现行 lexer/parser 行为（source-core-i32）：
+//  - fn/let/var/赋值/return/if-else/while/loop/break/continue；
+//  - 位置/命名调用；callee 与 `(` 同行（未括号时）；括号内换行自由；
+//  - 优先级 `<`(1) < `+`(2) < `*`(3) 全左结合；`-` 仅直接缀于整数字面量前；
+//  - 换行/`;`/`}` 分隔语句；运算符后行 = 表达式结束（锚定 primary 同行）；
+//  - `//` 行注释；`/*` 不支持（未知字节→错误叶）；非 ASCII 拒绝；
+//  - 全语言保留字（Reserved）不可作名——登记为无规则引用的 token。
+grammar(name: "auto-core", revision: 1, newline: true, stmt-end: ["semi", "rbrace"], sep: ["semi"], sync: ["semi", "rbrace"]) {
+    tokens {
+        ws(trivia: true) { charset: " \t\r\n" }
+        line-comment(trivia: true) { line-comment: "//" }
+        // 关键字（声明先于 ident：同长取声明序）
+        fn { literal: "fn" }
+        let { literal: "let" }
+        var { literal: "var" }
+        if { literal: "if" }
+        else { literal: "else" }
+        while { literal: "while" }
+        loop { literal: "loop" }
+        break { literal: "break" }
+        continue { literal: "continue" }
+        return { literal: "return" }
+        true-kw { literal: "true" }
+        false-kw { literal: "false" }
+        int-kw { literal: "int" }
+        i32 { literal: "i32" }
+        bool { literal: "bool" }
+        // 保留字：无任何规则引用 → 不可开始/继续任何构造（= ac-core Reserved 拒绝）
+        r-alias { literal: "alias" }
+        r-as { literal: "as" }
+        r-await { literal: "await" }
+        r-catch { literal: "catch" }
+        r-const { literal: "const" }
+        r-copy { literal: "copy" }
+        r-dep { literal: "dep" }
+        r-enum { literal: "enum" }
+        r-ext { literal: "ext" }
+        r-go { literal: "go" }
+        r-has { literal: "has" }
+        r-hold { literal: "hold" }
+        r-impl { literal: "impl" }
+        r-in { literal: "in" }
+        r-is { literal: "is" }
+        r-link { literal: "link" }
+        r-mod { literal: "mod" }
+        r-move { literal: "move" }
+        r-nil { literal: "nil" }
+        r-null { literal: "null" }
+        r-outlet { literal: "outlet" }
+        r-pac { literal: "pac" }
+        r-reply { literal: "reply" }
+        r-routes { literal: "routes" }
+        r-shared { literal: "shared" }
+        r-spawn { literal: "spawn" }
+        r-spec { literal: "spec" }
+        r-super { literal: "super" }
+        r-super2 { literal: "super2" }
+        r-super3 { literal: "super3" }
+        r-super4 { literal: "super4" }
+        r-tag { literal: "tag" }
+        r-take { literal: "take" }
+        r-task { literal: "task" }
+        r-to { literal: "to" }
+        r-try { literal: "try" }
+        r-union { literal: "union" }
+        r-use { literal: "use" }
+        r-view { literal: "view" }
+        r-with { literal: "with" }
+        r-yield { literal: "yield" }
+        for { literal: "for" }
+        type-kw { literal: "type" }
+        static { literal: "static" }
+        mut { literal: "mut" }
+        // 标点
+        lparen { literal: "(" }
+        rparen { literal: ")" }
+        lbrace { literal: "{" }
+        rbrace { literal: "}" }
+        comma { literal: "," }
+        semi { literal: ";" }
+        colon { literal: ":" }
+        assign { literal: "=" }
+        plus { literal: "+" }
+        star { literal: "*" }
+        lt { literal: "<" }
+        minus { literal: "-" }
+        // 标识符（最后声明：同长关键字号胜）
+        ident { charset: "a-zA-Z_", cont: "a-zA-Z0-9_" }
+        int-lit { charset: "0-9" }
+    }
+    rules {
+        program { list { fn-item() {} } }
+        fn-item(recover: true) {
+            fn(field: "kw")
+            ident(field: "name")
+            lparen() {}
+            params(repeat: "opt", field: "params")
+            rparen() {}
+            type(field: "ty")
+            block(field: "body")
+        }
+        params { param() {} many { param-tail() {} } }
+        param-tail { comma() {} param() {} }
+        param {
+            ident(field: "name")
+            colon() {}
+            type(field: "ty")
+        }
+        type {
+            alt { int-kw() {} }
+            alt { i32() {} }
+            alt { bool() {} }
+        }
+        block { lbrace() {} list-nl { stmt() {} } rbrace() {} }
+        stmt(recover: true) {
+            alt { let-stmt() {} }
+            alt { var-stmt() {} }
+            alt { assign-stmt() {} }
+            alt { return-stmt() {} }
+            alt { if-stmt() {} }
+            alt { while-stmt() {} }
+            alt { loop-stmt() {} }
+            alt { break() {} }
+            alt { continue() {} }
+        }
+        let-stmt {
+            let(field: "kw")
+            ident(field: "name")
+            type-ann(repeat: "opt")
+            assign() {}
+            expr(field: "value")
+        }
+        var-stmt {
+            var(field: "kw")
+            ident(field: "name")
+            type-ann(repeat: "opt")
+            assign() {}
+            expr(field: "value")
+        }
+        type-ann { colon() {} type() {} }
+        assign-stmt {
+            ident(field: "name")
+            assign() {}
+            expr(field: "value")
+        }
+        return-stmt {
+            return(field: "kw")
+            expr(field: "value")
+        }
+        if-stmt {
+            if(field: "kw")
+            expr(field: "cond")
+            block(field: "then")
+            else-block(repeat: "opt")
+        }
+        else-block { else() {} block() {} }
+        while-stmt {
+            while(field: "kw")
+            expr(field: "cond")
+            block(field: "body")
+        }
+        loop-stmt {
+            loop(field: "kw")
+            block(field: "body")
+        }
+        expr { pratt(of: "expr-table") }
+        atom-expr {
+            alt { int-literal() {} }
+            alt { true-kw() {} }
+            alt { false-kw() {} }
+            alt { ident() {} }
+            alt { lparen() {} expr() {} rparen() {} }
+        }
+        int-literal {
+            minus(repeat: "opt", field: "sign")
+            int-lit(field: "value", same-line: true)
+        }
+        args { arg(repeat: "opt") many { arg-tail() {} } }
+        arg-tail { comma() {} arg() {} }
+        arg {
+            alt { named-arg() {} }
+            alt { expr() {} }
+        }
+        named-arg {
+            ident(field: "label")
+            colon() {}
+            expr(field: "value")
+        }
+    }
+    pratt(expr-table) {
+        primary: "atom-expr"
+        op(binding: 1, assoc: "left") { of: "<" }
+        op(binding: 2, assoc: "left") { of: "+" }
+        op(binding: 3, assoc: "left") { of: "*" }
+        group: ["(", ")"]
+        call {
+            open: "("
+            close: ")"
+            args: "args"
+            same-line: true
+            nl-free: true
+        }
+    }
+    outline {
+        decl-rule: "fn-item"
+        name-field: "name"
+        params-field: "params"
+    }
+}

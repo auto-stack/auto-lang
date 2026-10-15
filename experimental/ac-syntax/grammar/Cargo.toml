@@ -6,5 +6,6 @@ publish.workspace = true
 
 [dependencies]
 auto-atom = { workspace = true }
+auto-val = { path = "../../../crates/auto-val" }
 ac-syntax-rt = { workspace = true }
 blake3 = { workspace = true }

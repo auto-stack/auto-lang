@@ -114,6 +114,10 @@ pub fn encode_canonical(p: &GrammarProgram) -> Vec<u8> {
     for t in &p.newline.stmt_end {
         w.extend_from_slice(&t.to_le_bytes());
     }
+    put_u32(&mut w, p.newline.sep_consume.len() as u32);
+    for t in &p.newline.sep_consume {
+        w.extend_from_slice(&t.to_le_bytes());
+    }
     w.push(p.newline.significant as u8);
 
     put_u32(&mut w, p.recovery.sync.len() as u32);
@@ -251,6 +255,11 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
     for _ in 0..n {
         stmt_end.push(r.u32()?);
     }
+    let n = r.u32()? as usize;
+    let mut sep_consume = Vec::with_capacity(n);
+    for _ in 0..n {
+        sep_consume.push(r.u32()?);
+    }
     let significant = r.u8()? != 0;
     let n = r.u32()? as usize;
     let mut sync = Vec::with_capacity(n);
@@ -293,7 +302,7 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
         pratt,
         field_names,
         start,
-        newline: NewlinePolicy { significant, stmt_end },
+        newline: NewlinePolicy { significant, stmt_end, sep_consume },
         recovery: RecoverySpec { sync },
         outline,
         identity: crate::identity::PackageIdentity {
