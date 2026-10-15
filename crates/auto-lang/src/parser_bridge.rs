@@ -17,8 +17,10 @@ use crate::error::{pos_to_span, AutoError, AutoResult};
 use crate::session::Scenario;
 use crate::token::{Pos, Token, TokenKind};
 
-/// 游标 checkpoint：lexer 全状态（字符迭代器 + 计数器 + 缓冲 token，Plan 395
-/// `LexerState` 复用）+ `cur`/`prev` token 快照。`restore` 后解析位置完全回滚。
+/// 游标+上下文 checkpoint：lexer 全状态（字符迭代器 + 计数器 + 缓冲 token，
+/// Plan 395 `LexerState` 复用）+ `cur`/`prev` token 快照 + 语句级 context
+/// 旗标（in_on_body/in_fn_body/in_dot_rhs/with_header/body_depth，R1 扩展）。
+/// `restore` 后解析位置与语句上下文完全回滚；errors/warnings 仍单调追加。
 ///
 /// 字段仅供 crate 内（parser.rs 派发器）构造，外部持有者只作不透明令牌在
 /// `checkpoint()`/`restore()` 间传递。
@@ -26,6 +28,11 @@ pub struct BridgeCheckpoint<'a> {
     pub(crate) lexer: crate::lexer::LexerState<'a>,
     pub(crate) cur: Token,
     pub(crate) prev: Token,
+    pub(crate) in_on_body: bool,
+    pub(crate) in_fn_body: bool,
+    pub(crate) in_dot_rhs: bool,
+    pub(crate) with_header: bool,
+    pub(crate) body_depth: u32,
 }
 
 /// `Dialect` 实现方可见的最小解析桥面（PLAN-778）。
@@ -86,7 +93,10 @@ impl<'p, 'a> ParserBridge<'p, 'a> {
             self.parser.next();
             Ok(())
         } else {
-            Err(self.syntax_error(format!("expected '{}', got '{}'", word, self.parser.cur.text)))
+            Err(self.syntax_error(format!(
+                "expected '{}', got '{}'",
+                word, self.parser.cur.text
+            )))
         }
     }
 
@@ -102,8 +112,8 @@ impl<'p, 'a> ParserBridge<'p, 'a> {
         self.parser.bridge_checkpoint()
     }
 
-    /// 回滚到 checkpoint 状态。桥面不回滚 errors/warnings（诊断单调追加，
-    /// 由核心错误上限约束）。
+    /// 回滚到 checkpoint 状态：游标（lexer + cur/prev）与语句级 context 旗标
+    /// 一并恢复。桥面不回滚 errors/warnings（诊断单调追加，由核心错误上限约束）。
     pub fn restore(&mut self, cp: BridgeCheckpoint<'a>) {
         self.parser.bridge_restore(cp);
     }

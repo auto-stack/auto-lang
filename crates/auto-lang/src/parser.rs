@@ -239,9 +239,12 @@ pub struct Parser<'a> {
     /// 方言；builtin = `with_session` 按 session 装配的内建方言（UiDialect 等，
     /// 随 with_session 重建）；post = `Append` 后接的外部方言。派发序恒为
     /// pre → builtin → post，外部注册跨 `with_session` 保留。
-    dialects_pre: Vec<Box<dyn crate::dialect::Dialect>>,
-    dialects_builtin: Vec<Box<dyn crate::dialect::Dialect>>,
-    dialects_post: Vec<Box<dyn crate::dialect::Dialect>>,
+    /// R1（F778-R1-01）：元素为 Arc 共享句柄——派发时克隆 Arc 调用而非移出，
+    /// 活跃方言在自身委托核心解析（如闭包体内嵌语句再派发）期间仍留在表内，
+    /// 合法递归派发可见完整方言表。
+    dialects_pre: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
+    dialects_builtin: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
+    dialects_post: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
     pub skip_check: bool,
     pub compile_dest: CompileDest,
     /// Error recovery: collected errors during parsing
@@ -628,6 +631,8 @@ impl<'a> Parser<'a> {
         dialect: Box<dyn crate::dialect::Dialect>,
         priority: crate::dialect::DialectPriority,
     ) {
+        // R1：内部存储 Arc 共享句柄（派发期间活跃方言保持在表）。
+        let dialect: std::sync::Arc<dyn crate::dialect::Dialect> = dialect.into();
         match priority {
             crate::dialect::DialectPriority::Override => self.dialects_pre.push(dialect),
             crate::dialect::DialectPriority::Append => self.dialects_post.push(dialect),
@@ -648,10 +653,10 @@ impl<'a> Parser<'a> {
     /// "当前有哪些内建方言"（外部方言经 register_dialect 显式注册，不在此）。
     fn build_dialects(
         session: &crate::session::CompilerSession,
-    ) -> Vec<Box<dyn crate::dialect::Dialect>> {
-        let mut v: Vec<Box<dyn crate::dialect::Dialect>> = Vec::new();
+    ) -> Vec<std::sync::Arc<dyn crate::dialect::Dialect>> {
+        let mut v: Vec<std::sync::Arc<dyn crate::dialect::Dialect>> = Vec::new();
         if session.scenario == crate::session::Scenario::UI {
-            v.push(Box::new(crate::dialect::ui::UiDialect));
+            v.push(std::sync::Arc::new(crate::dialect::ui::UiDialect));
         }
         // 未来内建方言（Shell 等）在此注册
         v
@@ -663,7 +668,7 @@ impl<'a> Parser<'a> {
         self.dialect_section(section).len()
     }
 
-    fn dialect_section(&self, section: u8) -> &Vec<Box<dyn crate::dialect::Dialect>> {
+    fn dialect_section(&self, section: u8) -> &Vec<std::sync::Arc<dyn crate::dialect::Dialect>> {
         match section {
             0 => &self.dialects_pre,
             1 => &self.dialects_builtin,
@@ -671,66 +676,80 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn dialect_section_mut(
-        &mut self,
-        section: u8,
-    ) -> &mut Vec<Box<dyn crate::dialect::Dialect>> {
-        match section {
-            0 => &mut self.dialects_pre,
-            1 => &mut self.dialects_builtin,
-            _ => &mut self.dialects_post,
-        }
-    }
-
-    /// 游标 checkpoint（PLAN-778）：lexer 全状态（Plan 395 LexerState）+
-    /// cur/prev token 快照。供 ParserBridge 与方言派发器共用。
+    /// 游标+上下文 checkpoint（PLAN-778；R1 F778-R1-02 扩展）：lexer 全状态
+    /// （Plan 395 LexerState）+ cur/prev token 快照 + 语句级 context 旗标
+    /// （in_on_body/in_fn_body/in_dot_rhs/with_header/body_depth）。
+    /// 供 ParserBridge 与方言派发器共用。
     pub(crate) fn bridge_checkpoint(&self) -> crate::parser_bridge::BridgeCheckpoint<'a> {
         crate::parser_bridge::BridgeCheckpoint {
             lexer: self.lexer.save_state(),
             cur: self.cur.clone(),
             prev: self.prev.clone(),
+            in_on_body: self.in_on_body,
+            in_fn_body: self.in_fn_body,
+            in_dot_rhs: self.in_dot_rhs,
+            with_header: self.with_header,
+            body_depth: self.body_depth,
         }
     }
 
     pub(crate) fn bridge_restore(&mut self, cp: crate::parser_bridge::BridgeCheckpoint<'a>) {
+        self.restore_context_flags(&cp);
         self.lexer.restore_state(cp.lexer);
         self.cur = cp.cur;
         self.prev = cp.prev;
+    }
+
+    /// 仅恢复语句级 context 旗标（不动游标/lexer）——派发错误边界用：
+    /// 委托核心解析的 Err 可能泄漏 fn/on 体旗标，恢复点继续解析时必须回到
+    /// 方言调用前的语句上下文；游标保持在失败位置（错误位置不变量）。
+    pub(crate) fn restore_context_flags(&mut self, cp: &crate::parser_bridge::BridgeCheckpoint<'a>) {
+        self.in_on_body = cp.in_on_body;
+        self.in_fn_body = cp.in_fn_body;
+        self.in_dot_rhs = cp.in_dot_rhs;
+        self.with_header = cp.with_header;
+        self.body_depth = cp.body_depth;
     }
 
     /// 尝试用已注册的方言解析当前语句起始标识符。
     /// 在 parse_stmt_inner 的 TokenKind::Ident 分支首位置调用。
     /// 返回 Ok(Some(stmt)) 表示某方言已处理；Ok(None) 表示无方言接管。
     ///
-    /// PLAN-778 恢复不变量（核心保证，非方言纪律）：
-    /// - Err 不丢注册：逐条 remove/insert 临时移出单条方言，显式 match 无
-    ///   `?` 提前退出——Err 路径同样先移回再返回。（修复旧实现 `mem::take`
-    ///   整表移出 + `?` 提前返回导致 Err 后方言表永久为空的缺陷。）
-    /// - Ok(None) 不吞 token：调用方言前取 checkpoint，None 后强制 restore。
+    /// PLAN-778 恢复不变量（核心保证，非方言纪律；R1 修订）：
+    /// - 注册永不移出（F778-R1-01）：方言表存 Arc 共享句柄，派发时克隆调用。
+    ///   活跃方言在自身委托核心解析（闭包体内嵌语句再派发）期间仍在表内，
+    ///   合法递归派发可见完整方言表；Err/None 天然不丢注册（从未移出，
+    ///   旧 `mem::take` 整表 + `?` 丢表缺陷不复存在）。
+    /// - Ok(None) 不吞 token：调用方言前取 checkpoint，None 后强制 restore
+    ///   （含游标与 context 旗标）。
+    /// - Err 边界恢复 context（F778-R1-02）：委托核心解析泄漏的语句级
+    ///   context 旗标在错误边界恢复；游标保持在失败位置（错误位置不变量）。
     fn try_dialect_stmt(&mut self, ident: &str) -> AutoResult<Option<Stmt>> {
         let mut section = 0u8;
         while section < 3 {
             let mut i = 0;
             while i < self.dialect_section_len(section) {
-                let dialect = &self.dialect_section(section)[i];
                 // PLAN-778：matches() 是"该方言在当前 session 下生效"的契约——
                 // 外部方言跨 with_session 持久注册后，场景门控必须在派发时生效
                 // （内建方言此前仅靠 build_dialects 的注册时机巧合满足）。
+                let dialect = &self.dialect_section(section)[i];
                 if !dialect.matches(&self.session) || !dialect.keywords().contains(&ident) {
                     i += 1;
                     continue;
                 }
                 let cp = self.bridge_checkpoint();
-                let dialect = self.dialect_section_mut(section).remove(i);
+                let dialect = std::sync::Arc::clone(dialect);
                 let outcome = {
                     let mut bridge = crate::parser_bridge::ParserBridge::new(self);
                     dialect.try_parse_stmt(&mut bridge, ident)
                 };
-                self.dialect_section_mut(section).insert(i, dialect);
                 match outcome {
                     Ok(Some(stmt)) => return Ok(Some(stmt)),
                     Ok(None) => self.bridge_restore(cp),
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        self.restore_context_flags(&cp);
+                        return Err(e);
+                    }
                 }
                 i += 1;
             }
@@ -741,27 +760,31 @@ impl<'a> Parser<'a> {
 
     /// 尝试用已注册的方言解析当前真实 TokenKind（view/on 等非 Ident 的 UI token）。
     /// 在 parse_stmt_inner 的 TokenKind::View / TokenKind::On arm 里调用。
-    /// 恢复不变量同 `try_dialect_stmt`（Err 不丢注册 / None 强制回滚游标）。
+    /// 恢复不变量同 `try_dialect_stmt`（Arc 注册永不出表 / None 强制回滚
+    /// 游标+context / Err 边界恢复 context，游标留失败位置）。
     fn try_token_dialect_stmt(&mut self, kind: TokenKind) -> AutoResult<Option<Stmt>> {
         let mut section = 0u8;
         while section < 3 {
             let mut i = 0;
             while i < self.dialect_section_len(section) {
-                if !self.dialect_section(section)[i].matches(&self.session) {
+                let dialect = &self.dialect_section(section)[i];
+                if !dialect.matches(&self.session) {
                     i += 1;
                     continue;
                 }
                 let cp = self.bridge_checkpoint();
-                let dialect = self.dialect_section_mut(section).remove(i);
+                let dialect = std::sync::Arc::clone(dialect);
                 let outcome = {
                     let mut bridge = crate::parser_bridge::ParserBridge::new(self);
                     dialect.try_parse_token_stmt(&mut bridge, kind)
                 };
-                self.dialect_section_mut(section).insert(i, dialect);
                 match outcome {
                     Ok(Some(stmt)) => return Ok(Some(stmt)),
                     Ok(None) => self.bridge_restore(cp),
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        self.restore_context_flags(&cp);
+                        return Err(e);
+                    }
                 }
                 i += 1;
             }
@@ -3274,8 +3297,10 @@ impl<'a> Parser<'a> {
                     if matches!(op, Op::Dot) {
                         self.in_dot_rhs = true;
                     }
-                    let rhs = self.expr_pratt(power.r)?;
+                    // PLAN-778 R1（F778-R1-02）：Err 平衡恢复（同类泄漏位点）。
+                    let rhs_res = self.expr_pratt(power.r);
                     self.in_dot_rhs = saved_dot_rhs;
+                    let rhs = rhs_res?;
                     match op {
                         Op::Range => {
                             lhs = Expr::Range(Range {
@@ -9389,10 +9414,13 @@ impl<'a> Parser<'a> {
             } else {
                 // Plan 028 T14：fn 体内的语句同样不能被方言声明关键字拦截
                 //（`msg.blocks = ...` 是局部赋值，非 msg 声明）。
+                // PLAN-778 R1（F778-R1-02）：Err 平衡恢复——`body()?` 提前退出
+                // 会把 in_fn_body=true 泄漏给恢复点后续语句。
                 let prev_fn_body = self.in_fn_body;
                 self.in_fn_body = true;
-                let b = self.body()?;
+                let body_res = self.body();
                 self.in_fn_body = prev_fn_body;
+                let b = body_res?;
                 b
             }
         } else {
@@ -14149,9 +14177,12 @@ impl<'a> Parser<'a> {
             }
 
             // Parse body with on-handler conventions (`.field` = state access)
+            // PLAN-778 R1（F778-R1-02）：Err 平衡恢复 + 保存前值（嵌套 fn/on 体）。
+            let prev_on_body = self.in_on_body;
             self.in_on_body = true;
-            let body = self.body()?;
-            self.in_on_body = false;
+            let body_res = self.body();
+            self.in_on_body = prev_on_body;
+            let body = body_res?;
 
             watchers.push(WatchDecl {
                 sources,
@@ -17690,9 +17721,12 @@ impl<'a> Parser<'a> {
                 self.define(param.as_str(), meta);
             }
             // Parse body
+            // PLAN-778 R1（F778-R1-02）：Err 平衡恢复 + 保存前值（嵌套 fn/on 体）。
+            let prev_on_body = self.in_on_body;
             self.in_on_body = true;
-            let body = self.body()?;
-            self.in_on_body = false;
+            let body_res = self.body();
+            self.in_on_body = prev_on_body;
+            let body = body_res?;
             self.exit_scope();
 
             handlers.push(OnHandler {

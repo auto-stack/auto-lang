@@ -16,13 +16,11 @@ fn ui_session() -> CompilerSession {
     CompilerSession::ui()
 }
 
-fn override_parser<'a>(
-    code: &'a str,
-    probe: Arc<Probe>,
-) -> Parser<'a> {
-    Parser::from(code)
-        .with_session(ui_session())
-        .with_dialect(Box::new(ExternalModelDialect::new(probe)), DialectPriority::Override)
+fn override_parser<'a>(code: &'a str, probe: Arc<Probe>) -> Parser<'a> {
+    Parser::from(code).with_session(ui_session()).with_dialect(
+        Box::new(ExternalModelDialect::new(probe)),
+        DialectPriority::Override,
+    )
 }
 
 /// V-01（AC-01）：外部方言真实接管 `model { count int = 1 }`，产出 typed
@@ -47,7 +45,10 @@ fn v01_external_model_subset_produces_typed_block() {
     let f = &block.fields[0];
     assert_eq!(&*f.name, "count");
     assert!(matches!(f.ty, Type::Int), "ty 应为核心文法解析的 int");
-    assert!(matches!(f.init, Expr::Int(1)), "init 应为核心文法解析的字面量 1");
+    assert!(
+        matches!(f.init, Expr::Int(1)),
+        "init 应为核心文法解析的字面量 1"
+    );
     assert!(!f.mutable);
     assert!(!f.is_primary);
     assert!(f.decorators.is_empty());
@@ -103,11 +104,15 @@ fn v02_ui_view_param_on_and_scene_unchanged() {
     let probe = Arc::new(Probe::default());
 
     // view 参数模式：fn f(view x int) —— view 仍是参数模式关键字。
-    let ast = override_parser("fn f(view x int) { }", probe.clone()).parse().unwrap();
+    let ast = override_parser("fn f(view x int) { }", probe.clone())
+        .parse()
+        .unwrap();
     assert!(matches!(&ast.stmts[0], Stmt::Fn(_)), "view 参数模式保持");
 
     // Godot scene 声明（任何场景识别，Plan 306）：不被方言路径吞掉。
-    let ast = override_parser("scene Main : Node2D { }", probe.clone()).parse().unwrap();
+    let ast = override_parser("scene Main : Node2D { }", probe.clone())
+        .parse()
+        .unwrap();
     assert!(
         !matches!(&ast.stmts[0], Stmt::ModelBlock(_)),
         "scene 声明不得落进 model 方言"
@@ -182,7 +187,8 @@ fn v03_registration_propagates_into_nested_bodies() {
     // widget 体内嵌 model：冻结边界——parse_widget_decl 的体循环直接调内建
     // parse_model_block_inner，不经方言派发（PLAN-778 §T-01 冻结矩阵传播记录；
     // widget 内部结构迁移列后续清单）。widget 本身照常解析，probe 不增。
-    let code = "widget W {\n  msg Msg { S }\n  model { e int = 0 }\n  view { col { text \"hi\" } }\n}";
+    let code =
+        "widget W {\n  msg Msg { S }\n  model { e int = 0 }\n  view { col { text \"hi\" } }\n}";
     let ast = override_parser(code, probe.clone()).parse().unwrap();
     assert!(ast.stmts.iter().any(|s| matches!(s, Stmt::WidgetDecl(_))));
     assert_eq!(
@@ -208,11 +214,7 @@ fn v03_two_parser_instances_isolated() {
         .parse()
         .unwrap();
     assert!(matches!(&ast2.stmts[0], Stmt::ModelBlock(_)));
-    assert_eq!(
-        probe.accepts.load(Ordering::SeqCst),
-        1,
-        "实例间注册不串线"
-    );
+    assert_eq!(probe.accepts.load(Ordering::SeqCst), 1, "实例间注册不串线");
 }
 
 /// V-04（AC-02）：Err 后注册仍在 + 核心恢复点继续解析合法语句。
@@ -307,7 +309,8 @@ fn v05_default_builtin_path_unchanged_without_registration() {
 #[test]
 fn v05_conflict_resolution_distinguishable() {
     let probe = Arc::new(Probe::default());
-    let code = "widget W {\n  msg Msg { S }\n  view { col { text \"hi\" } }\n}\nmodel { count int = 1 }";
+    let code =
+        "widget W {\n  msg Msg { S }\n  view { col { text \"hi\" } }\n}\nmodel { count int = 1 }";
 
     let ast = override_parser(code, probe.clone()).parse().unwrap();
     assert!(
