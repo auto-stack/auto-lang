@@ -809,6 +809,14 @@ impl AutoVM {
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
         let mut native_interface = NativeInterface::production();
 
+        // PLAN-779: 宿主能力装配——构造期快照进程默认 frame provider 进
+        // 本实例（每 VM 独立槽：之后进程默认替换/其他实例注入互不影响，
+        // 两实例可持不同 provider 不串线）。core 零 UI 引用；宿主注册点
+        // 见 vm::host_capabilities（UI adapter / 外部 consumer）。
+        if let Some(provider) = crate::vm::host_capabilities::process_default_frame_provider() {
+            native_interface.set_frame_provider(provider);
+        }
+
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
         // The codegen's handle_c_import populates CFFI_GLOBAL during compilation;
         // here we merge those shims into the VM's NativeInterface so CALL_NAT can find them.
@@ -1224,6 +1232,23 @@ impl AutoVM {
         let mut ni = (*self.native_interface).clone();
         ni.merge(other);
         self.native_interface = Arc::new(ni);
+    }
+
+    /// PLAN-779: 实例级 frame provider 注入/覆盖（宿主 adapter、外部
+    /// consumer、测试装配用）。覆盖构造期的进程默认快照；只影响本 VM，
+    /// 不触碰绑定身份（revision/proof 不失效）。读取面=shim 9918/9919。
+    pub fn set_frame_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>,
+    ) {
+        self.native_interface.set_frame_provider(provider);
+    }
+
+    /// PLAN-779: 本 VM 当前 frame provider（None=未捕获 0 语义）。
+    pub fn frame_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>> {
+        self.native_interface.frame_provider()
     }
 
     /// Plan 197 Task 9: Load generic registry from codegen

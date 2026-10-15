@@ -105,6 +105,12 @@ pub struct NativeInterface {
     reference_proofs: std::sync::Mutex<
         HashMap<u16, Result<Option<crate::stdlib_assembly::reference::ReferenceProof>, String>>,
     >,
+    /// PLAN-779: 宿主能力装配槽（pilot=frame 族）。None=未捕获（读侧 0）。
+    /// per-NativeInterface（即 per-VM）持有，两实例互不串线；Arc 共享同一
+    /// provider 是宿主装配选择，非本结构的隐式全局。内 mut 供 VM 建后注入
+    /// （`AutoVM::set_frame_provider`）。注入不 bump binding_revision/
+    /// 不撤 proof（绑定身份不变，§host_capabilities 契约注释）。
+    frame_provider: std::sync::RwLock<Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>>>,
 }
 
 impl Clone for NativeInterface {
@@ -118,6 +124,14 @@ impl Clone for NativeInterface {
             binding_conflicts: self.binding_conflicts.clone(),
             binding_revision: self.binding_revision,
             reference_proofs: std::sync::Mutex::new(HashMap::new()),
+            // PLAN-779: provider 随装配克隆保留（merge_native_interface 经
+            // Clone+merge 路径不丢宿主能力；proof 按既有规则清空不变）。
+            frame_provider: std::sync::RwLock::new(
+                self.frame_provider
+                    .read()
+                    .expect("frame_provider poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -133,7 +147,28 @@ impl NativeInterface {
             binding_revision: 0,
             binding_conflicts: Vec::new(),
             reference_proofs: std::sync::Mutex::new(HashMap::new()),
+            frame_provider: std::sync::RwLock::new(None),
         }
+    }
+
+    /// PLAN-779: 注入/替换本接口（=本 VM）的 frame provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_frame_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>,
+    ) {
+        *self
+            .frame_provider
+            .write()
+            .expect("frame_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-779: 当前 provider 快照（None=未捕获 0 语义）。
+    pub fn frame_provider(&self) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>> {
+        self.frame_provider
+            .read()
+            .expect("frame_provider poisoned")
+            .clone()
     }
 
     /// Common production binding order, including the VM overrides.
@@ -1635,41 +1670,30 @@ pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// 推 TAG_I64 vs .at int (i32) 消费面错配，json obj 字面量等消费形全断
 /// （下游 plan-022 三断实录）；frame.vm.at 判型同步 `-> int`。值域=进程
 /// 单调 ms <2^31（i32 封顶 ≈24.8 天，saturating——SD-B 注记面）。
+/// PLAN-779：core 不再直读 `ui::frame_bench`——经本 VM NativeInterface
+/// 装配的 [`crate::vm::host_capabilities::FrameProvider`] 供值（UI 宿主
+/// 注册 frame_bench adapter；缺席=未捕获 0，与原 no-ui/未捕获语义一致）。
 pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _ = vm;
+    let observed = vm
+        .native_interface
+        .frame_provider()
+        .map_or(0, |p| p.begin_ms());
     task.ram
-        .push_i32(frame_begin_observed().min(i32::MAX as i64) as i32);
+        .push_i32(observed.min(i32::MAX as i64) as i32);
     Ok(())
-}
-
-/// no-`ui` 构建无帧泵=未捕获，按通道语义返回 0（与 a2r_std::frame 同源）。
-#[cfg(feature = "ui")]
-fn frame_begin_observed() -> i64 {
-    crate::ui::frame_bench::frame_begin_ms()
-}
-
-#[cfg(not(feature = "ui"))]
-fn frame_begin_observed() -> i64 {
-    0
 }
 
 /// `auto.frame.present_ms() -> int` — 呈现完成时间戳（711 帧泵消费时刻，
 /// R-1 序障≥present；单调毫秒；未捕获=0）。出口 int lane 同上（供⑨-a）。
+/// PLAN-779 同 begin_ms：provider 供值，core 零 UI 引用。
 pub fn shim_frame_present_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _ = vm;
+    let observed = vm
+        .native_interface
+        .frame_provider()
+        .map_or(0, |p| p.present_ms());
     task.ram
-        .push_i32(frame_present_observed().min(i32::MAX as i64) as i32);
+        .push_i32(observed.min(i32::MAX as i64) as i32);
     Ok(())
-}
-
-#[cfg(feature = "ui")]
-fn frame_present_observed() -> i64 {
-    crate::ui::frame_bench::frame_present_ms()
-}
-
-#[cfg(not(feature = "ui"))]
-fn frame_present_observed() -> i64 {
-    0
 }
 
 /// `auto.diff_files_window(path_a, path_b, ctx, rows_offset, rows_limit) -> Str`

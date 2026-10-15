@@ -16,6 +16,10 @@ pub mod component;
 // VM 内建 9918/9919 + a2r 臂同源，SD-B 契约）。
 pub mod frame_bench;
 
+// PLAN-779: UI host frame provider adapter——读 frame_bench 通道，经
+// vm::host_capabilities 显式装配（core shim 9918/9919 不再直引 ui）。
+pub mod frame_provider;
+
 // PLAN-725 T-00: 键入帧五段成本链分段探针（S1..S4+孤儿帧——AUTO_FRAME_BENCH
 // 同门复用，[P725-FRAME] 行随帧吐出，阶梯谱脚本消费）。
 pub mod frame_segments;

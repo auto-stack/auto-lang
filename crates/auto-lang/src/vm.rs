@@ -65,6 +65,8 @@ pub mod native_catalog;
 // Plan 019 批次八: autodown_* 文档 natives（JSON 传输；feature autodown 门控）。
 pub mod autodown_natives;
 pub mod host_bridge;
+// PLAN-779: 宿主能力装配点（frame provider 接口 + 进程默认；core 不引 UI）。
+pub mod host_capabilities;
 pub mod native;
 pub mod shell_bridge;
 // Plan 061:外部后端 cdylib 插件 ABI(merged 模式,BackendRegistry + 装载器)

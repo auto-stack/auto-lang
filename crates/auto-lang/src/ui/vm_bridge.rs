@@ -633,6 +633,10 @@ impl VmBridge {
 
         // Ensure BIGVM_NATIVES is populated before AutoVM::new()
         crate::vm::native_registry::register_builtin_natives();
+        // PLAN-779: UI 宿主能力装配——frame_bench adapter 注册为进程默认
+        //（幂等；AutoVM::new 构造期快照，见 host_capabilities）。core shim
+        // 9918/9919 已不直引 frame_bench，UI 组件路径经此注入恢复同源供值。
+        crate::ui::frame_provider::install_process_default();
 
         let widget_name = widget.name.clone();
 
@@ -753,6 +757,8 @@ impl VmBridge {
     ) -> Result<Self> {
         // Ensure BIGVM_NATIVES is populated before AutoVM::new().
         crate::vm::native_registry::register_builtin_natives();
+        // PLAN-779: 同 new_with_children——UI 宿主能力装配（frame provider）。
+        crate::ui::frame_provider::install_process_default();
 
         let widget_name = decl.name.to_string();
 

@@ -955,6 +955,13 @@ fn main() -> Result<()> {
 }
 
 fn real_main(cli: Cli) -> Result<()> {
+    // PLAN-779: 宿主能力装配——UI host 启动即注册 frame provider 进程默认
+    //（frame_bench adapter；幂等）。auto bin 默认带 ui-iced；无 UI 构建下
+    // 本调用随 feature 一起缺席（core 缺席语义=未捕获 0，不损失行为——
+    // 无渲染泵进程的 frame 读数本就恒 0）。
+    #[cfg(feature = "ui-iced")]
+    auto_lang::ui::frame_provider::install_process_default();
+
     // Determine AI mode: -ai flag or --format json
     let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
 

@@ -5564,6 +5564,10 @@ fn run_file_dynamic_ui_inner(
     override_scenario: Option<&crate::session::CompilerSession>,
 ) -> AutoResult<String> {
     use crate::ui::iced::run_dynamic_iced;
+    // PLAN-779: UI 宿主能力装配——`auto run` UI 入口在组件/VM 构造前注册
+    // frame provider 进程默认（覆盖库消费者不经 CLI main 的形态；-q
+    // rqhost 客户端在 build 之后分岔，同样受益于此处注册）。
+    crate::ui::frame_provider::install_process_default();
     let comp = build_dynamic_component_inner(code, path, override_scenario)?;
     // PLAN-031 T-05：-q vm 轨分岔（env 门）——装载链零改：CWD/主题/后端
     // 序由 run_vm_ui 上游照常执行（组件已按同链装载），仅"自开 OS 窗"
