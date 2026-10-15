@@ -826,10 +826,16 @@ impl Verifier {
 
         for (bi, body) in m.bodies.iter().enumerate() {
             self.check_profile_ops(m, body);
-            if self.domain == HirDomain::TextRecord {
+            // F-782-R1-05: structural/reference bounds checks come FIRST
+            // (check_body opens with check_reference_bounds and rejects
+            // controlled); the text-record semantic rules index expr tables
+            // and only run on a structurally valid body.
+            self.check_body(m, BodyId(bi as u32), body, &type_map, &sigs);
+            if self.domain == HirDomain::TextRecord
+                && Self::reference_bounds_diags(m, body).is_empty()
+            {
                 self.check_text_record_rules(m, body, &type_map, &resource_map);
             }
-            self.check_body(m, BodyId(bi as u32), body, &type_map, &sigs);
         }
     }
 
@@ -969,48 +975,103 @@ impl Verifier {
             }
         }
         // Bare transfer of an existing resource record: the RHS/return
-        // value reads a whole local whose type is a resource record without
-        // a `move` wrapper (or a clone/ctor/call). Copyable records keep
-        // the 771 value-copy semantics and are untouched here.
+        // value must be an OWNING expression form (fresh construction,
+        // clone, owning call result, or a `move` wrapper). Reading a whole
+        // local (F-782-R1-01 original face) AND reading a resource record
+        // FIELD (a view of the root's nested aggregate, never a copy of
+        // its owner) are both implicit-copy attempts. Copyable records
+        // keep the 771 value-copy semantics and are untouched here.
+        let is_owning_form = |k: &hir::ExprKind| {
+            matches!(
+                k,
+                hir::ExprKind::RecordCtor { .. }
+                    | hir::ExprKind::RecordClone { .. }
+                    | hir::ExprKind::Call { .. }
+                    | hir::ExprKind::Move { .. }
+            )
+        };
         for bl in &body.blocks {
             for s in &bl.stmts {
-                let (value, what, code) = match s {
+                let (value, what, what_verb, code) = match s {
                     hir::Stmt::Assign { value, .. } => (
                         value,
                         "assign to a resource record",
+                        "assign to",
                         "verify.resource-assign",
                     ),
                     hir::Stmt::Let { value, .. } => (
                         value,
                         "let-bind an existing resource record",
+                        "let-bind",
                         "verify.resource-assign",
                     ),
                     hir::Stmt::Return { value } => (
                         value,
                         "return an owned record local",
+                        "return",
                         "verify.ownership-required",
                     ),
                     _ => continue,
                 };
                 let eid = *value;
-                if let hir::ExprKind::ReadLocal { local } = &body.exprs[eid.0 as usize].kind {
-                    let vt = self.value_of(&body.locals[local.0 as usize].ty, type_map);
-                    if let ValueType::Record(tid) = vt {
+                let e = &body.exprs[eid.0 as usize];
+                if is_owning_form(&e.kind) {
+                    continue;
+                }
+                let vt = self.value_of(&e.ty, type_map);
+                if let ValueType::Record(tid) = vt {
+                    if resource.get(tid as usize).copied().unwrap_or(false) {
+                        let msg = if let hir::ExprKind::ReadLocal { local } = &e.kind {
+                            format!(
+                                "cannot {} `{}` by implicit copy: its type owns text buffers; use `<local>.move` to transfer it or `<local>.clone()` for an independent copy{}",
+                                what,
+                                body.locals[local.0 as usize].id_text,
+                                if code == "verify.ownership-required" {
+                                    " (or a fresh construction)"
+                                } else {
+                                    ""
+                                },
+                            )
+                        } else {
+                            format!(
+                                "cannot {} a resource record field value by implicit copy: the field view never owns its buffers; clone it, construct a fresh value, or move the whole root",
+                                what_verb,
+                            )
+                        };
+                        self.error(code, msg, e.span);
+                    }
+                }
+            }
+        }
+        // F-782-R1-01 ctor entry: a record-constructor FIELD argument of
+        // resource-record type must likewise be an owning form — a bare
+        // field read stores a bitwise copy of the nested aggregate and the
+        // new root schedules frees for buffers it does not own.
+        for e in &body.exprs {
+            if let hir::ExprKind::RecordCtor {
+                eval_args,
+                bindings,
+                ..
+            } = &e.kind
+            {
+                for b in bindings {
+                    let Some(&aid) = eval_args.get(b.arg as usize) else {
+                        continue;
+                    };
+                    let Some(arg) = body.exprs.get(aid.0 as usize) else {
+                        continue;
+                    };
+                    if is_owning_form(&arg.kind) {
+                        continue;
+                    }
+                    if let ValueType::Record(tid) = self.value_of(&arg.ty, type_map) {
                         if resource.get(tid as usize).copied().unwrap_or(false) {
-                            let owner = &body.locals[local.0 as usize];
                             self.error(
-                                code,
+                                "verify.ownership-required",
                                 format!(
-                                    "cannot {} `{}` by implicit copy: its type owns text buffers; use `<local>.move` to transfer it or `<local>.clone()` for an independent copy{}",
-                                    what,
-                                    owner.id_text,
-                                    if code == "verify.ownership-required" {
-                                        " (or return a fresh construction)"
-                                    } else {
-                                        ""
-                                    },
+                                    "constructor field argument implicitly copies a resource record field; clone the value, construct a fresh one, or move the whole root",
                                 ),
-                                bl.span,
+                                arg.span,
                             );
                         }
                     }
@@ -1698,6 +1759,16 @@ impl Verifier {
     /// violate these (the binder resolves against the body's own tables);
     /// mutated bundles can, and must be rejected before any indexing walk.
     fn check_reference_bounds(&mut self, m: &hir::Module, body: &hir::Body) -> bool {
+        let diags = Self::reference_bounds_diags(m, body);
+        let ok = diags.is_empty();
+        self.diags.extend(diags);
+        ok
+    }
+
+    /// Pure half of the reference-bounds walk (F-782-R1-05): callers that
+    /// only need the outcome — e.g. gating the text-record semantic rules
+    /// on structural validity — must not double-emit the diagnostics.
+    fn reference_bounds_diags(m: &hir::Module, body: &hir::Body) -> Vec<Diagnostic> {
         fn type_use_ok(u: &hir::TypeUse, n_types: usize) -> bool {
             match u {
                 hir::TypeUse::Ref(t) => (t.0 as usize) < n_types,
@@ -1915,9 +1986,7 @@ impl Verifier {
                 }
             }
         }
-        let ok = diags.is_empty();
-        self.diags.extend(diags);
-        ok
+        diags
     }
 
     fn check_params(

@@ -377,3 +377,116 @@ hir(schema: "auto.hir.text-record.draft", revision: 1u32, profile: "text-record-
     let diags = verify::verify_text_record(bundle).expect_err("cross-record clone rejects");
     assert!(has(&diags, "verify.type-mismatch"), "{:?}", codes(&diags));
 }
+
+// -- V-08 (F-782-R1-05 repair): REAL programmatic mutations — bind a valid
+// -- document, mutate the Bundle in Rust, re-verify: every mutation is a
+// -- controlled rejection, never a panic (completing IS the no-panic
+// -- proof). The Move.inner case panicked before the structural-bounds
+// -- ordering fix (index 4294967295 out of bounds).
+
+fn tr01_mutated<F: FnOnce(&mut hir::Bundle)>(f: F) -> Vec<Diagnostic> {
+    let mut b = bind_tr(&fixture("tr01-combination.atom"));
+    let before = format!("{:?}", b.modules[0].bodies);
+    f(&mut b);
+    // the mutation must actually change the bundle
+    assert_ne!(
+        before,
+        format!("{:?}", b.modules[0].bodies),
+        "mutation no-op"
+    );
+    verify::verify_text_record(b).expect_err("mutated bundle must reject")
+}
+
+#[test]
+fn mutation_move_inner_oob_rejects_without_panic() {
+    // F-782-R1-05 original counterexample: Move.inner = ExprId(u32::MAX)
+    // panicked in check_text_record_rules before the bounds gate; now the
+    // structural walk reports it first
+    let ds = tr01_mutated(|b| {
+        for body in b.modules[0].bodies.iter_mut() {
+            for e in body.exprs.iter_mut() {
+                if let hir::ExprKind::Move { inner } = &mut e.kind {
+                    *inner = hir::ExprId(u32::MAX);
+                }
+            }
+        }
+    });
+    assert!(has(&ds, "verify.bad-reference"), "{:?}", codes(&ds));
+}
+
+#[test]
+fn mutation_field_get_oob_base_and_path_reject() {
+    let ds = tr01_mutated(|b| {
+        for body in b.modules[0].bodies.iter_mut() {
+            for e in body.exprs.iter_mut() {
+                if let hir::ExprKind::FieldGet { base, .. } = &mut e.kind {
+                    *base = hir::ExprId(u32::MAX);
+                }
+            }
+        }
+    });
+    assert!(has(&ds, "verify.bad-reference"), "{:?}", codes(&ds));
+    let ds2 = tr01_mutated(|b| {
+        for body in b.modules[0].bodies.iter_mut() {
+            for e in body.exprs.iter_mut() {
+                if let hir::ExprKind::FieldGet { path, .. } = &mut e.kind {
+                    path.push(hir::FieldId(u32::MAX));
+                }
+            }
+        }
+    });
+    assert!(!ds2.is_empty(), "field-path oob must reject, got none");
+}
+
+#[test]
+fn mutation_ctor_and_call_binding_oob_reject() {
+    let ds = tr01_mutated(|b| {
+        for body in b.modules[0].bodies.iter_mut() {
+            for e in body.exprs.iter_mut() {
+                if let hir::ExprKind::RecordCtor { bindings, .. } = &mut e.kind {
+                    for cb in bindings.iter_mut() {
+                        cb.arg = u32::MAX;
+                    }
+                }
+            }
+        }
+    });
+    assert!(!ds.is_empty(), "ctor binding arg oob must reject");
+    let ds2 = tr01_mutated(|b| {
+        for body in b.modules[0].bodies.iter_mut() {
+            for e in body.exprs.iter_mut() {
+                if let hir::ExprKind::Call { bindings, .. } = &mut e.kind {
+                    for cb in bindings.iter_mut() {
+                        cb.arg = u32::MAX;
+                    }
+                }
+            }
+        }
+    });
+    assert!(!ds2.is_empty(), "call binding arg oob must reject");
+}
+
+#[test]
+fn mutation_requires_removal_rejects() {
+    // the module derives ac.runtime.text.v1 from its resource ops; a
+    // bundle that silently drops the requires line fails the derivation
+    let mut b = bind_tr(&fixture("tr01-combination.atom"));
+    b.requires.clear();
+    let ds = verify::verify_text_record(b).expect_err("requires removal must reject");
+    assert!(
+        has(&ds, "capability.missing") || has(&ds, "verify.profile-op"),
+        "{:?}",
+        codes(&ds)
+    );
+}
+
+#[test]
+fn mutation_type_id_remap_rejects() {
+    // retarget a local's type to another record type id: nominal typing
+    // must reject rather than misinterpret the aggregate
+    let ds = tr01_mutated(|b| {
+        let l = b.modules[0].bodies[2].locals.iter_mut().next().unwrap();
+        l.ty = hir::TypeUse::Ref(hir::TypeId(u32::MAX));
+    });
+    assert!(has(&ds, "verify.bad-reference"), "{:?}", codes(&ds));
+}

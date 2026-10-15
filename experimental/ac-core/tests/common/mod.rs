@@ -168,7 +168,7 @@ pub fn build_fixture(fixture_rel: &str, entry_id: &str) -> Result<Vec<u8>, Strin
             .collect::<Vec<_>>()
             .join("\n")
     })?;
-    native::lower_object(&checked, &sel).map_err(|ds| {
+    native::lower_object(&checked, &sel, &native::RuntimeInjection::default()).map_err(|ds| {
         ds.iter()
             .map(|d| d.render(&fixture_rel, &src))
             .collect::<Vec<_>>()

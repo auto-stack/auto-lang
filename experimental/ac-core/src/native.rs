@@ -505,6 +505,20 @@ pub fn find_entry(
     }
 }
 
+/// Test-surface runtime injection (PLAN-782 F-782-R1-06): build-time knobs
+/// that emit calls to the EXISTING runtime control symbols in the startup
+/// wrapper — no language-level entry, no new runtime symbols. Test
+/// families own the values; production builds pass the default (all off).
+#[derive(Default, Clone, Copy)]
+pub struct RuntimeInjection {
+    /// `ac_rt_fail_nth_alloc(n)`: the nth allocator invocation fails.
+    pub fail_nth_alloc: Option<i32>,
+    /// `ac_rt_fail_ledger_nth(n)`: the nth ledger insert fails.
+    pub fail_ledger_nth: Option<i32>,
+    /// `ac_rt_set_budget(bytes)`: live-byte budget ceiling.
+    pub set_budget: Option<i64>,
+}
+
 /// Lower the entry's module to a COFF object. The object defines every
 /// function of the module and the generic `ac_start` wrapper. Text-domain
 /// modules (PLAN-770) dispatch to the dedicated text lowerer below; the
@@ -512,12 +526,13 @@ pub fn find_entry(
 pub fn lower_object(
     checked: &CheckedModule,
     sel: &EntrySelection,
+    inj: &RuntimeInjection,
 ) -> Result<Vec<u8>, Vec<Diagnostic>> {
     if matches!(
         checked.domain(),
         hir::HirDomain::Text | hir::HirDomain::TextRecord
     ) {
-        return lower_text_object(checked, sel);
+        return lower_text_object(checked, sel, inj);
     }
     let module = &checked.bundle().modules[sel.module];
 
@@ -2211,6 +2226,10 @@ fn runtime_lang_sig(name: &str) -> Option<Signature> {
             &[types::I32],
         ),
         "ac_rt_char_from_codepoint" | "ac_rt_char_to_codepoint" => (&[types::I32], &[types::I32]),
+        // F-782-R1-06 test-surface control knobs (wrapper-only emission)
+        "ac_rt_fail_nth_alloc" | "ac_rt_fail_ledger_nth" | "ac_rt_set_budget" => {
+            (&[types::I64], &[])
+        }
         _ => return None,
     };
     Some(Signature {
@@ -2325,6 +2344,7 @@ fn op_ref(e: &hir::Expr) -> &hir::BinOp {
 fn lower_text_object(
     checked: &CheckedModule,
     sel: &EntrySelection,
+    inj: &RuntimeInjection,
 ) -> Result<Vec<u8>, Vec<Diagnostic>> {
     let module = &checked.bundle().modules[sel.module];
 
@@ -2647,12 +2667,12 @@ fn lower_text_object(
                 rt_refs,
                 lit_gvs,
                 abic_slot: None,
-                pending_temps: Vec::new(),
+                pending: Vec::new(),
                 layouts: tr_layouts,
                 rslots,
                 rvars,
                 rtids,
-                pending_aggs: Vec::new(),
+                rollback_on_fail: matches!(checked.domain(), hir::HirDomain::TextRecord),
             };
             fx.emit_block(body.entry);
             let trap = fx.ensure_trap_block();
@@ -2697,6 +2717,42 @@ fn lower_text_object(
             fb.seal_block(blk);
             let entry_ref = om.declare_func_in_func(mod_func_ids[&sel.def.0], &mut fb.func);
             let exit_ref = om.declare_func_in_func(exit_id, &mut fb.func);
+            // PLAN-782 F-782-R1-06: the test-surface injection knobs fire in
+            // the wrapper BEFORE the entry - the control symbols are part of
+            // the linked text runtime (no language-level entry, no new
+            // runtime symbol; production builds keep the default all-off).
+            let needs_rt = checked.requires_runtime_text()
+                || checked
+                    .required_capabilities()
+                    .iter()
+                    .any(|c| c == "ac.runtime.text.v1");
+            if needs_rt {
+                for (sym, val) in [
+                    ("ac_rt_fail_nth_alloc", inj.fail_nth_alloc.map(|v| v as i64)),
+                    (
+                        "ac_rt_fail_ledger_nth",
+                        inj.fail_ledger_nth.map(|v| v as i64),
+                    ),
+                    ("ac_rt_set_budget", inj.set_budget),
+                ] {
+                    let Some(v) = val else { continue };
+                    let Some(sig) = runtime_lang_sig(sym) else {
+                        return Err(vec![backend_diag(format!(
+                            "unknown runtime symbol `{}`",
+                            sym
+                        ))]);
+                    };
+                    let fid = match om.declare_function(sym, Linkage::Import, &sig) {
+                        Ok(id) => id,
+                        Err(e) => {
+                            return Err(vec![backend_diag(format!("declare {}: {}", sym, e))])
+                        }
+                    };
+                    let fref = om.declare_func_in_func(fid, &mut fb.func);
+                    let arg = fb.ins().iconst(types::I64, v);
+                    fb.ins().call(fref, &[arg]);
+                }
+            }
             let call = fb.ins().call(entry_ref, &[]);
             let result = fb.inst_results(call)[0];
             fb.ins().call(exit_ref, &[result]);
@@ -2764,11 +2820,15 @@ struct TextEmitter<'c> {
     /// The shared ABI-C out-length stack slot (see `abic_out_slot`).
     abic_slot: Option<cranelift_codegen::ir::StackSlot>,
     /// Owned temporaries of the statement being emitted, in production
-    /// order (freed LIFO at the statement's end). A `merged` entry exists
-    /// only on the executed path of a short-circuit right side (r4 R4-02):
-    /// the join passes its pointer as a block param (null on the skipped
-    /// edge), and the tail free is guarded — no allocation, no free there.
-    pending_temps: Vec<PendingTemp>,
+    /// order (freed LIFO at the statement's end — F-782-R1-04: ONE list
+    /// across text buffers and record aggregates so the tail order is the
+    /// actual creation order, not a type-category order). A `merged` text
+    /// entry / a marked aggregate exists only on the executed path of a
+    /// short-circuit right side (r4 R4-02 + F-782-R1-03): the join passes
+    /// its pointer (text) or a presence flag (aggregate) as a block param
+    /// — null/zero on the skipped edge — and the tail free is guarded, so
+    /// no allocation means no free there.
+    pending: Vec<PendingStmtTemp>,
     // -- PLAN-782 combination state (empty on a pure text module) --
     /// record layouts (section 4.5); empty when the module has no records
     layouts: BTreeMap<u32, TrLayout>,
@@ -2778,28 +2838,31 @@ struct TextEmitter<'c> {
     rvars: BTreeMap<u32, Variable>,
     /// record-type ids of the rslots/rvars entries
     rtids: BTreeMap<u32, u32>,
-    /// pending aggregate TEMPORARIES of the statement (ctor/clone/call
-    /// results not yet received by an owning position): their Str-field
-    /// buffers free at the statement tail, LIFO like text temps
-    pending_aggs: Vec<AggTemp>,
+    /// F-782-R1-06: in the combination domain a runtime status failure
+    /// inside a statement rolls the statement's partial output back
+    /// (reverse creation order) before the fatal trap; the pure text
+    /// profile keeps its landed trap contract unchanged.
+    rollback_on_fail: bool,
 }
 
-/// One pending aggregate temporary (PLAN-782).
+/// One pending statement temporary: an owned text buffer or an
+/// unreceived record aggregate (PLAN-782; unified F-782-R1-03/04).
 #[derive(Clone, Copy)]
-struct AggTemp {
-    slot: cranelift_codegen::ir::StackSlot,
-    tid: u32,
-    /// the expr id that produced the value (un-pend key for transfers)
-    src: u32,
-}
-
-/// One pending owned temporary of the current statement.
-#[derive(Clone, Copy)]
-struct PendingTemp {
-    ptr: Value,
-    /// short-circuit RHS temp: the value is a join param that is null on
-    /// the skipped path — free it only when non-null (r4 R4-02)
-    merged: bool,
+enum PendingStmtTemp {
+    /// an owned text buffer; `ptr` is a join param (null on the skipped
+    /// edge) after a short-circuit merge
+    Text { ptr: Value, merged: bool },
+    /// a record aggregate temp (ctor/clone/call result not yet received);
+    /// `present` is a join param (1 on the executed edge, 0 on the skipped
+    /// edge) after a short-circuit merge — the stack slot itself persists
+    /// across loop iterations and must never be walked on the skip path
+    Agg {
+        slot: cranelift_codegen::ir::StackSlot,
+        tid: u32,
+        /// the expr id that produced the value (un-pend key for transfers)
+        src: u32,
+        present: Option<Value>,
+    },
 }
 
 impl<'c> TextEmitter<'c> {
@@ -2830,31 +2893,14 @@ impl<'c> TextEmitter<'c> {
     /// diamond, so the skipped path executes no free while the executed
     /// path frees exactly once — still at the statement tail.
     fn release_stmt_temps(&mut self) {
-        use cranelift_codegen::ir::condcodes::IntCC;
-        while let Some(t) = self.pending_temps.pop() {
-            if !t.merged {
-                self.call_rt("ac_rt_own_free", &[t.ptr]);
-                continue;
-            }
-            let is_null = self.fb.ins().icmp_imm(IntCC::Equal, t.ptr, 0);
-            let free_b = self.fb.create_block();
-            let cont = self.fb.create_block();
-            self.fb.ins().brif(is_null, cont, &[], free_b, &[]);
-            self.fb.seal_block(free_b);
-            self.fb.switch_to_block(free_b);
-            self.call_rt("ac_rt_own_free", &[t.ptr]);
-            self.fb.ins().jump(cont, &[]);
-            self.fb.seal_block(cont);
-            self.fb.switch_to_block(cont);
-        }
-        // PLAN-782: unreceived aggregate temporaries free their Str-field
-        // buffers at the same statement tail, LIFO (the aggregate storage
-        // itself is a stack slot - nothing to free there)
-        while let Some(agg) = self.pending_aggs.pop() {
-            let addr = self.fb.ins().stack_addr(types::I64, agg.slot, 0);
-            let mut paths = self.agg_str_paths(agg.tid);
-            paths.reverse();
-            self.free_agg_buffers(addr, agg.tid, &paths);
+        // ONE unified LIFO drain (F-782-R1-03/04): creation order across
+        // text buffers and record aggregates, never type-category order.
+        while let Some(t) = self.pending.pop() {
+            // F-782-R1-03: the shared guarded free (a short-circuit RHS
+            // aggregate exists only on the executed path - the presence
+            // marker gates the buffer walk; the slot persists across loop
+            // iterations and holds stale pointers on the skip path)
+            self.free_pending_entry(&t);
         }
     }
 
@@ -2862,8 +2908,10 @@ impl<'c> TextEmitter<'c> {
     /// value escapes into an owning `let` local or an owned `return`).
     fn transfer_root(&mut self, v: &TVal) {
         if let TVal::T { ptr, .. } = v {
-            if let Some(pos) = self.pending_temps.iter().rposition(|p| p.ptr == *ptr) {
-                self.pending_temps.remove(pos);
+            if let Some(pos) = self.pending.iter().rposition(
+                |p| matches!(p, PendingStmtTemp::Text { ptr: q, merged: false } if *q == *ptr),
+            ) {
+                self.pending.remove(pos);
             }
         }
     }
@@ -2899,43 +2947,120 @@ impl<'c> TextEmitter<'c> {
             .unwrap_or_else(|| panic!("internal: `{sym}` must return the pointer"));
         let len = self.fb.ins().stack_load(types::I32, slot, 0);
         self.negative_trap(len);
-        self.pending_temps.push(PendingTemp { ptr, merged: false });
+        self.pending
+            .push(PendingStmtTemp::Text { ptr, merged: false });
         (ptr, len)
     }
 
     /// `v < 0` branches to the trap70 block (runtime failure channel).
+    /// F-782-R1-06 (combination domain only): the failing statement's
+    /// partial output - the pending statement temporaries, exactly the
+    /// ctor/clone field buffers created so far - is freed in reverse
+    /// creation order BEFORE the trap; owned ROOT locals are not (the
+    /// fatal contract relies on OS reclamation for live owners). Guards
+    /// mirror the statement-tail release: a merged text temp may be null
+    /// and a marked aggregate absent on the converged path.
     fn negative_trap(&mut self, v: Value) {
         use cranelift_codegen::ir::condcodes::IntCC;
         let zero = self.fb.ins().iconst(types::I32, 0);
         let neg = self.icmp_bool(IntCC::SignedLessThan, v, zero);
-        self.branch_to_trap_on(neg);
+        if !self.rollback_on_fail {
+            self.branch_to_trap_on(neg);
+            return;
+        }
+        let rb = self.fb.create_block();
+        let cont = self.fb.create_block();
+        self.fb.ins().brif(neg, rb, &[], cont, &[]);
+        self.fb.seal_block(rb);
+        self.fb.switch_to_block(rb);
+        let snapshot: Vec<PendingStmtTemp> = self.pending.clone();
+        for t in snapshot.iter().rev() {
+            self.free_pending_entry(t);
+        }
+        let trap = self.ensure_trap_block();
+        self.fb.ins().jump(trap, &[]);
+        self.fb.seal_block(cont);
+        self.fb.switch_to_block(cont);
+    }
+
+    /// Free ONE pending statement temp with its path guards (shared by the
+    /// statement-tail release and the failure rollback).
+    fn free_pending_entry(&mut self, t: &PendingStmtTemp) {
+        use cranelift_codegen::ir::condcodes::IntCC;
+        match *t {
+            PendingStmtTemp::Text { ptr, merged } => {
+                if !merged {
+                    self.call_rt("ac_rt_own_free", &[ptr]);
+                    return;
+                }
+                let is_null = self.fb.ins().icmp_imm(IntCC::Equal, ptr, 0);
+                let free_b = self.fb.create_block();
+                let cont = self.fb.create_block();
+                self.fb.ins().brif(is_null, cont, &[], free_b, &[]);
+                self.fb.seal_block(free_b);
+                self.fb.switch_to_block(free_b);
+                self.call_rt("ac_rt_own_free", &[ptr]);
+                self.fb.ins().jump(cont, &[]);
+                self.fb.seal_block(cont);
+                self.fb.switch_to_block(cont);
+            }
+            PendingStmtTemp::Agg {
+                slot, tid, present, ..
+            } => {
+                let walk = |fx: &mut Self| {
+                    let addr = fx.fb.ins().stack_addr(types::I64, slot, 0);
+                    let mut paths = fx.agg_str_paths(tid);
+                    paths.reverse();
+                    fx.free_agg_buffers(addr, tid, &paths);
+                };
+                match present {
+                    None => walk(self),
+                    Some(marker) => {
+                        let taken = self.fb.ins().icmp_imm(IntCC::NotEqual, marker, 0);
+                        let free_b = self.fb.create_block();
+                        let cont = self.fb.create_block();
+                        self.fb.ins().brif(taken, free_b, &[], cont, &[]);
+                        self.fb.seal_block(free_b);
+                        self.fb.switch_to_block(free_b);
+                        walk(self);
+                        self.fb.ins().jump(cont, &[]);
+                        self.fb.seal_block(cont);
+                        self.fb.switch_to_block(cont);
+                    }
+                }
+            }
+        }
     }
 
     /// Emit the resource plan's free schedule at one exit position.
     fn emit_exit_frees(&mut self, bid: u32, idx: Option<usize>) {
-        if let Some(frees) = self.plan.exit_frees.get(&(bid, idx)) {
-            for &l in frees {
-                let (p, _) = self.tvars[&l];
-                let ptr = self.fb.use_var(p);
-                self.call_rt("ac_rt_own_free", &[ptr]);
-            }
-        }
-        // PLAN-782: the unified buffer schedule - plain owned-Str roots
-        // (empty path, already freed by the loop above in the text list)
-        // and one own_free per Str field buffer of the live record roots
-        // (probe P3 order)
+        // F-782-R1-04: the planner's UNIFIED buffer_frees list interleaves
+        // plain-Str roots and record-root field buffers in reverse creation
+        // order — consume it verbatim when present so cross-type creation
+        // order, not the type category, drives the exit order.
         if let Some(bufs) = self.plan.buffer_frees.get(&(bid, idx)) {
             let flags = cranelift_codegen::ir::MemFlags::trusted();
             for b in bufs {
                 if let Some(&(p, _)) = self.tvars.get(&b.root) {
-                    // a plain owned-Str root: its free already ran in the
-                    // exit_frees loop above (both lists carry it) - skip
-                    let _ = p;
+                    // a plain owned-Str root: its buffer is the local's
+                    // current pointer
+                    let ptr = self.fb.use_var(p);
+                    self.call_rt("ac_rt_own_free", &[ptr]);
                     continue;
                 }
                 let addr = self.root_addr(b.root);
                 let off = self.path_offset(self.rtids[&b.root], &b.path) as i32;
                 let ptr = self.fb.ins().load(types::I64, flags, addr, off);
+                self.call_rt("ac_rt_own_free", &[ptr]);
+            }
+            return;
+        }
+        // pure-text modules (no records anywhere): the 770 exit_frees
+        // schedule, unchanged
+        if let Some(frees) = self.plan.exit_frees.get(&(bid, idx)) {
+            for &l in frees {
+                let (p, _) = self.tvars[&l];
+                let ptr = self.fb.use_var(p);
                 self.call_rt("ac_rt_own_free", &[ptr]);
             }
         }
@@ -3413,8 +3538,12 @@ impl<'c> TextEmitter<'c> {
     /// Un-pend the aggregate temp produced by `src` (ownership transferred
     /// into a let/assign/move-arg/owned return).
     fn unpend_agg(&mut self, src: u32) {
-        if let Some(pos) = self.pending_aggs.iter().rposition(|a| a.src == src) {
-            self.pending_aggs.remove(pos);
+        if let Some(pos) = self
+            .pending
+            .iter()
+            .rposition(|p| matches!(p, PendingStmtTemp::Agg { src: sid, .. } if *sid == src))
+        {
+            self.pending.remove(pos);
         }
     }
 
@@ -3490,7 +3619,7 @@ impl<'c> TextEmitter<'c> {
                 rhs: ExprId,
                 var: Variable,
                 merge: cranelift_codegen::ir::Block,
-                /// pending_temps length at RHS entry (r4 R4-02): entries
+                /// pending-list length at RHS entry (r4 R4-02): entries
                 /// beyond this were allocated inside the RHS region only
                 temps_mark: usize,
             },
@@ -3784,10 +3913,11 @@ impl<'c> TextEmitter<'c> {
                             }
                         }
                     }
-                    self.pending_aggs.push(AggTemp {
+                    self.pending.push(PendingStmtTemp::Agg {
                         slot,
                         tid,
                         src: id.0,
+                        present: None,
                     });
                     slots.insert(id.0, TVal::R { addr, tid });
                 }
@@ -3845,6 +3975,25 @@ impl<'c> TextEmitter<'c> {
                     // field re-clones through the runtime (design 5)
                     self.copy_aggregate(taddr, addr, tid);
                     let flags = cranelift_codegen::ir::MemFlags::trusted();
+                    // F-782-R1-06: neutralize the bitwise-copied SOURCE
+                    // pointers, then pend the aggregate BEFORE the clone
+                    // loop — a mid-clone failure's rollback walks the slot
+                    // (fields cloned so far free in reverse; the untouched
+                    // nulls are no-ops in own_free, and the SOURCE's own
+                    // buffers are never touched)
+                    for path in self.agg_str_paths(tid) {
+                        let off = self.path_offset(tid, &path) as i32;
+                        let zero = self.fb.ins().iconst(types::I64, 0);
+                        let zlen = self.fb.ins().iconst(types::I32, 0);
+                        self.fb.ins().store(flags, zero, taddr, off);
+                        self.fb.ins().store(flags, zlen, taddr, off + 8);
+                    }
+                    self.pending.push(PendingStmtTemp::Agg {
+                        slot,
+                        tid,
+                        src: id.0,
+                        present: None,
+                    });
                     for path in self.agg_str_paths(tid) {
                         let off = self.path_offset(tid, &path) as i32;
                         let ptr = self.fb.ins().load(types::I64, flags, addr, off);
@@ -3859,11 +4008,6 @@ impl<'c> TextEmitter<'c> {
                         self.fb.ins().store(flags, cptr, taddr, off);
                         self.fb.ins().store(flags, clen, taddr, off + 8);
                     }
-                    self.pending_aggs.push(AggTemp {
-                        slot,
-                        tid,
-                        src: id.0,
-                    });
                     slots.insert(id.0, TVal::R { addr: taddr, tid });
                 }
                 TStep::MoveP(id) => {
@@ -3994,11 +4138,11 @@ impl<'c> TextEmitter<'c> {
                     self.fb.switch_to_block(rhs_b);
                     // r5 R5-01: freeze the RHS temp boundary HERE — the
                     // lhs (including logicals nested inside it) has fully
-                    // evaluated, so pending_temps below this mark execute
+                    // evaluated, so pending entries below this mark execute
                     // on every path and keep their real (unconditionally
                     // freed) pointers; only the rhs region rides the join
-                    // as null-on-skip params.
-                    let temps_mark = self.pending_temps.len();
+                    // as null/zero-on-skip params.
+                    let temps_mark = self.pending.len();
                     stack.push(TStep::LogicalRhs {
                         dest,
                         rhs,
@@ -4020,32 +4164,59 @@ impl<'c> TextEmitter<'c> {
                         _ => unreachable!("verifier: logical operands are bool"),
                     };
                     self.fb.def_var(var, r);
-                    // r4 R4-02: owned temporaries allocated inside the RHS
-                    // region exist ONLY on the executed path. The statement
-                    // tail still frees them (774 D-04: later statement
-                    // effects precede the FREE), so their pointers are
-                    // carried through the join as block params — the
-                    // skipped edge forwards null, and the tail free is
-                    // null-guarded. Without this the tail free used an SSA
-                    // value the skip predecessor never defined (backend
-                    // verifier error on every RHS-owned-temp short
-                    // circuit).
-                    let rhs_temps = self.pending_temps.split_off(temps_mark);
-                    let mut phis: Vec<Value> = Vec::new();
+                    // r4 R4-02 + F-782-R1-03: owned temporaries allocated
+                    // inside the RHS region exist ONLY on the executed path
+                    // — text buffers ride the join as pointer params (null
+                    // on the skipped edge), record aggregates as presence
+                    // flags (1 taken / 0 skipped; the aggregate's stack slot
+                    // persists across loop iterations and holds stale
+                    // pointers on the skip path). The statement tail still
+                    // frees them (774 D-04: later statement effects precede
+                    // the FREE), guarded on the param.
+                    let rhs_temps = self.pending.split_off(temps_mark);
+                    let mut merged: Vec<PendingStmtTemp> = Vec::new();
                     let cont = if rhs_temps.is_empty() {
                         self.fb.ins().jump(merge, &[]);
                         self.fb.seal_block(merge);
                         merge
                     } else {
                         let cont = self.fb.create_block();
-                        for _ in &rhs_temps {
-                            phis.push(self.fb.append_block_param(cont, types::I64));
+                        for t in &rhs_temps {
+                            match *t {
+                                PendingStmtTemp::Text { .. } => {
+                                    let p = self.fb.append_block_param(cont, types::I64);
+                                    merged.push(PendingStmtTemp::Text {
+                                        ptr: p,
+                                        merged: true,
+                                    });
+                                }
+                                PendingStmtTemp::Agg { slot, tid, src, .. } => {
+                                    let p = self.fb.append_block_param(cont, types::I64);
+                                    merged.push(PendingStmtTemp::Agg {
+                                        slot,
+                                        tid,
+                                        src,
+                                        present: Some(p),
+                                    });
+                                }
+                            }
                         }
-                        let args: Vec<cranelift_codegen::ir::BlockArg> =
-                            rhs_temps.iter().map(|t| t.ptr.into()).collect();
+                        // the executed edge forwards each text pointer /
+                        // aggregate presence `1` positionally
+                        let args: Vec<cranelift_codegen::ir::BlockArg> = rhs_temps
+                            .iter()
+                            .zip(merged.iter())
+                            .map(|(old, new)| match (old, new) {
+                                (
+                                    PendingStmtTemp::Text { ptr, .. },
+                                    PendingStmtTemp::Text { .. },
+                                ) => (*ptr).into(),
+                                _ => self.fb.ins().iconst(types::I64, 1).into(),
+                            })
+                            .collect();
                         self.fb.ins().jump(cont, &args);
                         // the skip edge (the lhs branch straight into
-                        // `merge`) forwards null for every RHS temp; both
+                        // `merge`) forwards null/0 for every RHS temp; both
                         // edges exist before the join is sealed
                         self.fb.switch_to_block(merge);
                         let null = self.fb.ins().iconst(types::I64, 0);
@@ -4057,11 +4228,8 @@ impl<'c> TextEmitter<'c> {
                         cont
                     };
                     self.fb.switch_to_block(cont);
-                    for p in phis {
-                        self.pending_temps.push(PendingTemp {
-                            ptr: p,
-                            merged: true,
-                        });
+                    for t in merged {
+                        self.pending.push(t);
                     }
                     let v = self.fb.use_var(var);
                     slots.insert(dest.0, TVal::I(v));
@@ -4115,7 +4283,8 @@ impl<'c> TextEmitter<'c> {
                             let ptr = self.fb.inst_results(call)[0];
                             let len = self.fb.ins().stack_load(types::I32, slot, 0);
                             self.negative_trap(len);
-                            self.pending_temps.push(PendingTemp { ptr, merged: false });
+                            self.pending
+                                .push(PendingStmtTemp::Text { ptr, merged: false });
                             TVal::T { ptr, len }
                         }
                         Vt2::StrBorrow => {
@@ -4134,10 +4303,11 @@ impl<'c> TextEmitter<'c> {
                             margs.push(outp);
                             self.fb.ins().call(fnref, &margs);
                             let addr = self.fb.ins().stack_addr(types::I64, slot, 0);
-                            self.pending_aggs.push(AggTemp {
+                            self.pending.push(PendingStmtTemp::Agg {
                                 slot,
                                 tid: *tid,
                                 src: id.0,
+                                present: None,
                             });
                             TVal::R { addr, tid: *tid }
                         }

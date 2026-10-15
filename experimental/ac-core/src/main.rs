@@ -106,6 +106,9 @@ struct SourceArgs {
     output: Option<PathBuf>,
     capabilities: Vec<String>,
     support_libs: Vec<PathBuf>,
+    /// F-782-R1-06 test-surface runtime injection knobs (all off by
+    /// default; emitted into the startup wrapper, never the language).
+    injection: native::RuntimeInjection,
 }
 
 /// Parse the shared option set of the two source commands. `need_build`
@@ -117,6 +120,7 @@ fn parse_source_args(args: &[String], need_build: bool) -> Result<SourceArgs, St
     let mut output: Option<PathBuf> = None;
     let mut capabilities = Vec::new();
     let mut support_libs = Vec::new();
+    let mut injection = native::RuntimeInjection::default();
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -135,6 +139,36 @@ fn parse_source_args(args: &[String], need_build: bool) -> Result<SourceArgs, St
             "--capability" => {
                 i += 1;
                 capabilities.push(args.get(i).ok_or("--capability needs a value")?.clone());
+            }
+            "--rt-fail-nth-alloc" => {
+                i += 1;
+                let Some(v) = args.get(i) else {
+                    return Err("--rt-fail-nth-alloc needs <n>".to_string());
+                };
+                injection.fail_nth_alloc = Some(
+                    v.parse()
+                        .map_err(|_| format!("invalid --rt-fail-nth-alloc value `{v}`"))?,
+                );
+            }
+            "--rt-fail-ledger-nth" => {
+                i += 1;
+                let Some(v) = args.get(i) else {
+                    return Err("--rt-fail-ledger-nth needs <n>".to_string());
+                };
+                injection.fail_ledger_nth = Some(
+                    v.parse()
+                        .map_err(|_| format!("invalid --rt-fail-ledger-nth value `{v}`"))?,
+                );
+            }
+            "--rt-set-budget" => {
+                i += 1;
+                let Some(v) = args.get(i) else {
+                    return Err("--rt-set-budget needs <bytes>".to_string());
+                };
+                injection.set_budget = Some(
+                    v.parse()
+                        .map_err(|_| format!("invalid --rt-set-budget value `{v}`"))?,
+                );
             }
             "--support-lib" => {
                 i += 1;
@@ -181,6 +215,7 @@ fn parse_source_args(args: &[String], need_build: bool) -> Result<SourceArgs, St
         output,
         capabilities,
         support_libs,
+        injection,
     })
 }
 
@@ -316,6 +351,7 @@ fn build_source(
         &args.support_libs,
         &receipt_extra,
         &success_extra,
+        &args.injection,
     )
 }
 
@@ -400,7 +436,15 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
         Ok(s) => s,
         Err(diags) => return fail(diags),
     };
-    finish_build(&checked, &sel, &args.output, &args.support_libs, "", "")
+    finish_build(
+        &checked,
+        &sel,
+        &args.output,
+        &args.support_libs,
+        "",
+        "",
+        &native::RuntimeInjection::default(),
+    )
 }
 
 /// The one post-Checked build tail shared by BOTH modes (plan §2/§5.4,
@@ -423,6 +467,7 @@ fn finish_build(
     support_libs: &[PathBuf],
     receipt_extra: &str,
     success_extra: &str,
+    inj: &native::RuntimeInjection,
 ) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::Diagnostic>)> {
     let fail = |diags: Vec<auto_ac_prototype::atom_text::Diagnostic>| Err((EXIT_PIPELINE, diags));
     let mut receipt_extra = receipt_extra.to_string();
@@ -446,7 +491,7 @@ fn finish_build(
             Err(diags) => return fail(diags),
         }
     }
-    let obj_bytes = match native::lower_object(checked, sel) {
+    let obj_bytes = match native::lower_object(checked, sel, inj) {
         Ok(b) => b,
         Err(diags) => return fail(diags),
     };
@@ -821,7 +866,7 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{}|{}|{}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
+                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{}|{}|{}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]... [--rt-fail-nth-alloc <n>] [--rt-fail-ledger-nth <n>] [--rt-set-budget <bytes>] (test-surface injection)",
                         SOURCE_PROFILE, SCALAR_SOURCE_PROFILE, TEXT_SOURCE_PROFILE,
                         RECORD_SOURCE_PROFILE, TEXT_RECORD_SOURCE_PROFILE
                     );

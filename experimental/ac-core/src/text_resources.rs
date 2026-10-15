@@ -1729,13 +1729,23 @@ impl<'a> ResourceWalk<'a> {
                                             self.body.blocks[bid as usize].span,
                                         );
                                     }
-                                    self.plan.replace_frees.insert(
-                                        (bid, idx),
-                                        vec![RecordBuffer {
-                                            root: target,
-                                            path: place_path.clone(),
-                                        }],
-                                    );
+                                    // F-782-R1-02: the old field buffer's
+                                    // free is only scheduled when the root
+                                    // still OWNS it after the RHS — an RHS
+                                    // that moves the whole target root out
+                                    // (`r.f = ... consume(r.move)`) left the
+                                    // buffers with the move; the returned
+                                    // value re-owns the root and must not
+                                    // double-free them.
+                                    if !moved.contains(&target) {
+                                        self.plan.replace_frees.insert(
+                                            (bid, idx),
+                                            vec![RecordBuffer {
+                                                root: target,
+                                                path: place_path.clone(),
+                                            }],
+                                        );
+                                    }
                                     reown_root = Some(target);
                                     reown_block = was_live_block;
                                 }
@@ -1778,8 +1788,13 @@ impl<'a> ResourceWalk<'a> {
                                     // itself) or a nested resource-record
                                     // field replacement. Old buffers free
                                     // after the RHS; the root is re-owned.
+                                    // F-782-R1-02: same RHS-move deduction
+                                    // for whole-root re-assignment —
+                                    // `a = consume(a.move)` must not free
+                                    // the buffers the callee already owns
+                                    // (the returned aggregate carries them).
                                     let bufs: Vec<RecordBuffer> = if place_path.is_empty() {
-                                        if was_live_block.is_some() {
+                                        if was_live_block.is_some() && !moved.contains(&target) {
                                             str_field_paths(m, self.resource, tid)
                                                 .into_iter()
                                                 .rev()

@@ -529,3 +529,406 @@ fn hir_fixture_str_typed_field_get_pe() {
         "make LIT, view read, callee frees the move-in root"
     );
 }
+
+// -- F-782-R1-02/03/04 permanent regressions (review R1 counterexamples) --
+
+#[test]
+fn f782_r1_02_same_statement_move_return_rebuild() {
+    // `a = consume(a.move)` where consume returns its move param whole:
+    // the returned aggregate carries the SAME buffers the RHS moved out,
+    // so no replace_frees may run for them — one LIT, one final FREE
+    let dir = temp_dir("f2-move-ret");
+    let src = write_src(
+        &dir,
+        "m.at",
+        r#"type T { s Str }
+fn consume(move t T) T { return t.move }
+fn main() int {
+    var a T = T { s: "abc" }
+    a = consume(a.move)
+    return a.s.len()
+}
+"#,
+    );
+    let exe = dir.join("m.exe");
+    build_tr(&src, &exe, &[]);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 3, "a.s.len() after the rebuild");
+    assert_eq!(
+        run.stderr, "LIT len=3\nLIT id=1\nTEXT-SCALARS n=3\nFREE id=1\n",
+        "single free at the final exit (before: FREE-then-RT-FAIL -7, exit 70)"
+    );
+    // the fresh-destination control keeps the identical shape
+    let src2 = write_src(
+        &dir,
+        "c.at",
+        r#"type T { s Str }
+fn consume(move t T) T { return t.move }
+fn main() int {
+    let a T = T { s: "abc" }
+    let b T = consume(a.move)
+    return b.s.len()
+}
+"#,
+    );
+    let exe2 = dir.join("c.exe");
+    build_tr(&src2, &exe2, &[]);
+    let run2 = run_pe(&exe2);
+    assert_eq!(run2.code, 3);
+    assert_eq!(run2.stderr, run.stderr, "same target vs fresh target");
+}
+
+#[test]
+fn f782_r1_03_short_circuit_loop_aggregate_temps() {
+    // take->skip across loop iterations: iteration 1 executes the RHS
+    // clone (freed at ITS statement tail), iteration 2 skips — the
+    // aggregate temp's presence marker must keep the skip side free-less
+    // (before: the stale slot was walked again -> FREE-INVALID)
+    let dir = temp_dir("f3-short-loop");
+    let src = write_src(
+        &dir,
+        "s.at",
+        r#"type Tok { text Str; kind int }
+fn check(t Tok) bool { return t.kind > 0 }
+fn cond(i int) bool { return i == 0 }
+fn main() int {
+    let a Tok = Tok { text: "a", kind: 1 }
+    var i int = 0
+    loop {
+        if cond(i) && check(a.clone()) { i = i + 1 } else { i = i + 1 }
+        if i == 2 { break }
+    }
+    return a.text.len()
+}
+"#,
+    );
+    let exe = dir.join("s.exe");
+    build_tr(&src, &exe, &[]);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 1);
+    assert_eq!(
+        run.stderr,
+        "LIT len=1\nLIT id=1\nCLONE len=1\nCLONE id=2\nFREE id=2\nTEXT-SCALARS n=1\nFREE id=1\n",
+        "iteration 1 clones and frees once; iteration 2 frees NOTHING"
+    );
+
+    // skip->take: iteration 1 skips, iteration 2 executes
+    let src2 = write_src(
+        &dir,
+        "r.at",
+        r#"type Tok { text Str; kind int }
+fn check(t Tok) bool { return t.kind > 0 }
+fn cond(i int) bool { return i == 1 }
+fn main() int {
+    let a Tok = Tok { text: "a", kind: 1 }
+    var i int = 0
+    loop {
+        if cond(i) && check(a.clone()) { i = i + 1 } else { i = i + 1 }
+        if i == 2 { break }
+    }
+    return a.text.len()
+}
+"#,
+    );
+    let exe2 = dir.join("r.exe");
+    build_tr(&src2, &exe2, &[]);
+    let run2 = run_pe(&exe2);
+    assert_eq!(run2.code, 1);
+    assert_eq!(
+        run2.stderr,
+        "LIT len=1\nLIT id=1\nCLONE len=1\nCLONE id=2\nFREE id=2\nTEXT-SCALARS n=1\nFREE id=1\n",
+        "mirrored loop: one clone, one free, in the TAKING iteration only"
+    );
+
+    // nested logical RHS with two aggregate temps: both freed LIFO at the
+    // statement tail on the executed path; the outer-skipped second if
+    // allocates nothing
+    let src3 = write_src(
+        &dir,
+        "n.at",
+        r#"type Tok { text Str; kind int }
+fn check(t Tok) bool { return t.kind > 0 }
+fn yes() bool { return true }
+fn no() bool { return false }
+fn main() int {
+    let a Tok = Tok { text: "a", kind: 1 }
+    if yes() && (check(a.clone()) && check(a.clone())) { return a.text.len() }
+    if no() && (check(a.clone()) && check(a.clone())) { return 100 }
+    return 100
+}
+"#,
+    );
+    let exe3 = dir.join("n.exe");
+    build_tr(&src3, &exe3, &[]);
+    let run3 = run_pe(&exe3);
+    assert_eq!(run3.code, 1);
+    assert_eq!(
+        run3.stderr,
+        "LIT len=1\nLIT id=1\nCLONE len=1\nCLONE id=2\nCLONE len=1\nCLONE id=3\nFREE id=3\nFREE id=2\nTEXT-SCALARS n=1\nFREE id=1\n",
+        "nested RHS temps free LIFO at the tail; the skipped second if has zero clones"
+    );
+}
+
+#[test]
+fn f782_r1_04_mixed_creation_order_lifo() {
+    // statement temps: text id1 created FIRST, record id2 second — the
+    // tail must free 2 then 1 (before: type-category order freed 1 then 2)
+    let dir = temp_dir("f4-order");
+    let src = write_src(
+        &dir,
+        "rev.at",
+        r#"type T { s Str }
+fn f(a str, b T) int { return a.len() + b.s.len() }
+fn main() int { return f("first".to(Str).to(str), T { s: "second" }) }
+"#,
+    );
+    let exe = dir.join("rev.exe");
+    build_tr(&src, &exe, &[]);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 11);
+    assert_eq!(
+        run.stderr, "CLONE len=5\nCLONE id=1\nLIT len=6\nLIT id=2\nTEXT-SCALARS n=5\nTEXT-SCALARS n=6\nFREE id=2\nFREE id=1\n",
+        "creation-order LIFO across types (record freed first)"
+    );
+
+    // locals at the function exit: text id1 first, record id2 second
+    let src2 = write_src(
+        &dir,
+        "loc.at",
+        r#"type T { s Str }
+fn main() int {
+    let s Str = "first"
+    let a T = T { s: "second" }
+    return s.len() + a.s.len()
+}
+"#,
+    );
+    let exe2 = dir.join("loc.exe");
+    build_tr(&src2, &exe2, &[]);
+    let run2 = run_pe(&exe2);
+    assert_eq!(run2.code, 11);
+    assert_eq!(
+        run2.stderr, "LIT len=5\nLIT id=1\nLIT len=6\nLIT id=2\nTEXT-SCALARS n=5\nTEXT-SCALARS n=6\nFREE id=2\nFREE id=1\n",
+        "exit frees the record root before the earlier text root"
+    );
+
+    // the mirrored control (record created first) keeps its correct order
+    let src3 = write_src(
+        &dir,
+        "ctl.at",
+        r#"type T { s Str }
+fn f(a T, b str) int { return a.s.len() + b.len() }
+fn main() int { return f(T { s: "first" }, "second".to(Str).to(str)) }
+"#,
+    );
+    let exe3 = dir.join("ctl.exe");
+    build_tr(&src3, &exe3, &[]);
+    let run3 = run_pe(&exe3);
+    assert_eq!(run3.code, 11);
+    assert_eq!(
+        run3.stderr, "LIT len=5\nLIT id=1\nCLONE len=6\nCLONE id=2\nTEXT-SCALARS n=5\nTEXT-SCALARS n=6\nFREE id=2\nFREE id=1\n",
+        "mirrored creation order: unchanged correct LIFO"
+    );
+}
+
+// -- V-07 (F-782-R1-06 repair): REAL fault injection through the runtime
+// -- control surface (--rt-fail-nth-alloc / --rt-set-budget /
+// -- rt-fail-ledger-nth emit wrapper calls to the EXISTING runtime
+// -- symbols) on actual combination construction/clone/replacement code.
+// -- Oracle: the failing statement's PARTIAL OUTPUT rolls back in reverse
+// -- before the fatal trap; the old target is never committed/overwritten;
+// -- exact-fit budgets and zero-length fields are the boundary controls.
+
+fn build_tr_inj(
+    src: &Path,
+    exe: &Path,
+    fail_nth: Option<i32>,
+    budget: Option<i64>,
+    ledger_nth: Option<i32>,
+) {
+    let lib = common::text_runtime_lib();
+    let mut c = Command::new(EXE);
+    c.args([
+        "build-source",
+        &src.display().to_string(),
+        "--source-profile",
+        TR,
+        "--entry",
+        "main",
+        "--capability",
+        TEXT_CAP,
+    ]);
+    if let Some(n) = fail_nth {
+        c.args(["--rt-fail-nth-alloc"]).arg(n.to_string());
+    }
+    if let Some(b) = budget {
+        c.args(["--rt-set-budget"]).arg(b.to_string());
+    }
+    if let Some(n) = ledger_nth {
+        c.args(["--rt-fail-ledger-nth"]).arg(n.to_string());
+    }
+    c.args(["--support-lib"]).arg(&lib).arg("--output").arg(exe);
+    let b = run_deadlined(c, Duration::from_secs(600)).expect("spawn build");
+    assert!(!b.timed_out, "build deadline");
+    assert_eq!(b.code, 0, "build failed:\n{}", b.stderr);
+}
+
+#[test]
+fn v07_clone_partial_output_rolls_back_before_trap() {
+    // allocs: "aa"(1) "bb"(2) clone-a(3) clone-b(4) — failing the 4th
+    // rolls the successful clone-a back (FREE id=3) before RT-FAIL/70;
+    // the source root's own buffers are untouched
+    let dir = temp_dir("v07-clone-f4");
+    let src = write_src(
+        &dir,
+        "c.at",
+        r#"type T { a Str; b Str }
+fn main() int {
+    let x T = T { a: "aa", b: "bb" }
+    let y T = x.clone()
+    return y.a.len()
+}
+"#,
+    );
+    let exe = dir.join("c.exe");
+    build_tr_inj(&src, &exe, Some(4), None, None);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 70, "fatal trap exit");
+    assert_eq!(
+        run.stderr,
+        "LIT len=2\nLIT id=1\nLIT len=2\nLIT id=2\nCLONE len=2\nCLONE id=3\nCLONE len=2\nRT-FAIL code=-5\nFREE id=3\n",
+        "partial clone rolls back in reverse; source buffers never freed"
+    );
+}
+
+#[test]
+fn v07_ctor_field_failure_rolls_back_before_trap() {
+    // the 2nd field's literal allocation fails: the 1st field's buffer is
+    // the statement's partial output and frees before the trap
+    let dir = temp_dir("v07-ctor-f2");
+    let src = write_src(
+        &dir,
+        "n.at",
+        r#"type T { a Str; b Str }
+fn main() int {
+    let x T = T { a: "aa", b: "bb" }
+    return x.a.len()
+}
+"#,
+    );
+    let exe = dir.join("n.exe");
+    build_tr_inj(&src, &exe, Some(2), None, None);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 70);
+    assert_eq!(
+        run.stderr, "LIT len=2\nLIT id=1\nLIT len=2\nRT-FAIL code=-5\nFREE id=1\n",
+        "first field buffer rolled back; no id assigned to the failed one"
+    );
+}
+
+#[test]
+fn v07_replacement_failure_preserves_old_target() {
+    // r = r.clone() failing at the 2nd clone field: the old root's buffers
+    // (id1/id2) are NOT freed — the commit (replace_frees) only runs after
+    // a fully materialized RHS; only the partial clone rolls back
+    let dir = temp_dir("v07-repl-f4");
+    let src = write_src(
+        &dir,
+        "r.at",
+        r#"type T { a Str; b Str }
+fn main() int {
+    var r T = T { a: "aa", b: "bb" }
+    r = r.clone()
+    return r.a.len()
+}
+"#,
+    );
+    let exe = dir.join("r.exe");
+    build_tr_inj(&src, &exe, Some(4), None, None);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 70);
+    assert_eq!(
+        run.stderr,
+        "LIT len=2\nLIT id=1\nLIT len=2\nLIT id=2\nCLONE len=2\nCLONE id=3\nCLONE len=2\nRT-FAIL code=-5\nFREE id=3\n",
+        "old target id1/id2 survive uncommitted; partial clone id3 rolled back"
+    );
+}
+
+#[test]
+fn v07_budget_boundary_exact_fit_vs_one_short() {
+    // four 2-byte buffers: budget 8 = exact fit (success, full pairing);
+    // budget 6 rejects the 4th request with ERR_BUDGET (-4) — the
+    // budget rejection makes no allocator call and still rolls back
+    let dir = temp_dir("v07-budget");
+    let src = write_src(
+        &dir,
+        "b.at",
+        r#"type T { a Str; b Str }
+fn main() int {
+    let x T = T { a: "aa", b: "bb" }
+    let y T = x.clone()
+    return y.a.len()
+}
+"#,
+    );
+    let exe = dir.join("b8.exe");
+    build_tr_inj(&src, &exe, None, Some(8), None);
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 2, "exact-fit budget succeeds");
+    assert_eq!(
+        run.stderr,
+        "LIT len=2\nLIT id=1\nLIT len=2\nLIT id=2\nCLONE len=2\nCLONE id=3\nCLONE len=2\nCLONE id=4\nTEXT-SCALARS n=2\nFREE id=4\nFREE id=3\nFREE id=2\nFREE id=1\n",
+        "exact fit: full lifecycle pairing"
+    );
+    let exe6 = dir.join("b6.exe");
+    build_tr_inj(&src, &exe6, None, Some(6), None);
+    let run6 = run_pe(&exe6);
+    assert_eq!(run6.code, 70, "one byte short traps");
+    assert_eq!(
+        run6.stderr,
+        "LIT len=2\nLIT id=1\nLIT len=2\nLIT id=2\nCLONE len=2\nCLONE id=3\nCLONE len=2\nRT-FAIL code=-4\nFREE id=3\n",
+        "ERR_BUDGET (-4) distinct from env-OOM (-5); rollback still runs"
+    );
+}
+
+#[test]
+fn v07_ledger_failure_and_zero_length_control() {
+    // the 1st ledger insert fails: the runtime itself already rolled the
+    // user buffer back (HeapFree inside try_alloc), so no id exists and
+    // the compiler rollback has nothing to free
+    let dir = temp_dir("v07-ledger");
+    let src = write_src(
+        &dir,
+        "l.at",
+        r#"type T { a Str; b Str }
+fn main() int {
+    let x T = T { a: "aa", b: "bb" }
+    return x.a.len()
+}
+"#,
+    );
+    let exe = dir.join("l.exe");
+    build_tr_inj(&src, &exe, None, None, Some(1));
+    let run = run_pe(&exe);
+    assert_eq!(run.code, 70);
+    assert_eq!(
+        run.stderr, "LIT len=2\nRT-FAIL code=-5\n",
+        "ledger-refused allocation never gets an id; no double handling"
+    );
+    // zero-length fields allocate nothing: the injection can never fire
+    let zsrc = write_src(
+        &dir,
+        "z.at",
+        r#"type T { a Str; b Str }
+fn main() int {
+    let x T = T { a: "", b: "" }
+    return x.a.len()
+}
+"#,
+    );
+    let zexe = dir.join("z.exe");
+    build_tr_inj(&zsrc, &zexe, Some(1), None, None);
+    let zrun = run_pe(&zexe);
+    assert_eq!(zrun.code, 0, "zero-length = zero allocations = no failure");
+    assert_eq!(zrun.stderr, "LIT len=0\nLIT len=0\nTEXT-SCALARS n=0\n");
+}

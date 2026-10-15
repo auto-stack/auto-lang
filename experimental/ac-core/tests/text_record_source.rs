@@ -324,3 +324,81 @@ fn text_domain_move_face_unchanged() {
         Some(SourceProfile::TextRecord)
     );
 }
+
+// -- F-782-R1-01: a resource-record FIELD read is a view of the root's
+// -- nested aggregate, never an implicit copy of its owner — every owning
+// -- position (let/assign/return/ctor field) rejects it at the front door.
+
+#[test]
+fn nested_resource_field_read_is_not_an_implicit_copy() {
+    // let of a nested resource field (double-free before the fix: the new
+    // root bitwise-copied the aggregate and scheduled its own frees)
+    let ds = compile_err(concat!(
+        "type Inner { s Str; n int }\n",
+        "type Outer { i Inner; n int }\n",
+        "fn main() int {\n",
+        "    let a Outer = Outer { i: Inner { s: \"abc\", n: 1 }, n: 2 }\n",
+        "    let b Inner = a.i\n",
+        "    return b.s.len() + a.i.s.len()\n",
+        "}\n"
+    ));
+    assert!(has(&ds, "verify.resource-assign"), "{:?}", codes(&ds));
+
+    // bare return of a view parameter's field
+    let ds = compile_err(concat!(
+        "type Inner { s Str; n int }\n",
+        "type Outer { i Inner; n int }\n",
+        "fn extract(a Outer) Inner { return a.i }\n",
+        "fn main() int { return 0 }\n"
+    ));
+    assert!(has(&ds, "verify.ownership-required"), "{:?}", codes(&ds));
+
+    // constructor field argument
+    let ds = compile_err(concat!(
+        "type I { s Str }\n",
+        "type O { i I }\n",
+        "fn main() int {\n",
+        "    let a O = O { i: I { s: \"abc\" } }\n",
+        "    let b O = O { i: a.i }\n",
+        "    return b.i.s.len() + a.i.s.len()\n",
+        "}\n"
+    ));
+    assert!(has(&ds, "verify.ownership-required"), "{:?}", codes(&ds));
+
+    // whole-root assign through a field read
+    let ds = compile_err(concat!(
+        "type I { s Str }\n",
+        "type O { i I }\n",
+        "fn main() int {\n",
+        "    var a O = O { i: I { s: \"abc\" } }\n",
+        "    var b O = O { i: I { s: \"x\" } }\n",
+        "    b = a\n",
+        "    return 0\n",
+        "}\n"
+    ));
+    assert!(has(&ds, "verify.resource-assign"), "{:?}", codes(&ds));
+}
+
+#[test]
+fn nested_resource_field_clone_and_copyable_read_stay_legal() {
+    // the legal sibling: `.clone()` deep-copies the nested resource field
+    compile_ok(concat!(
+        "type Inner { s Str; n int }\n",
+        "type Outer { i Inner; n int }\n",
+        "fn main() int {\n",
+        "    let a Outer = Outer { i: Inner { s: \"abc\", n: 1 }, n: 2 }\n",
+        "    let b Inner = a.i.clone()\n",
+        "    return b.s.len() + a.i.s.len()\n",
+        "}\n"
+    ));
+    // a copyable (resource-free) nested field keeps the 771 value copy
+    compile_ok(concat!(
+        "type Tag { num int }\n",
+        "type Outer { t Tag; n int }\n",
+        "fn main() int {\n",
+        "    let a Outer = Outer { t: Tag { num: 7 }, n: 1 }\n",
+        "    let b Tag = a.t\n",
+        "    return b.num + a.t.num\n",
+        "}\n"
+    ));
+}
