@@ -380,7 +380,10 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
     // The source adapter names defs `d_<name>` (ac-core CLI contract).
     let sel = native::find_entry(&checked, &format!("d_{}", cfg.entry))
         .map_err(|ds| DriverError::Backend(render_diags(&ds, &path_disp, "")))?;
-    let obj_bytes = native::lower_object(&checked, &sel)
+    // PLAN-782 gave lower_object a test-surface RuntimeInjection knob;
+    // production builds pass the all-off default (ac-core contract) — the
+    // probe lowers with identical semantics to the pre-782 2-arg form.
+    let obj_bytes = native::lower_object(&checked, &sel, &native::RuntimeInjection::default())
         .map_err(|ds| DriverError::Backend(render_diags(&ds, &path_disp, "")))?;
     c.lower += 1;
     let obj_art = store.put_artifact(PutRequest {

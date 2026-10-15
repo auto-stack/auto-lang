@@ -260,8 +260,18 @@ fn admission_probe_lowering_determinism() {
     let c2 = auto_ac_prototype::verify::verify(p2.bundle).unwrap();
     let sel1 = auto_ac_prototype::native::find_entry(&c1, "d_main").unwrap();
     let sel2 = auto_ac_prototype::native::find_entry(&c2, "d_main").unwrap();
-    let o1 = auto_ac_prototype::native::lower_object(&c1, &sel1).unwrap();
-    let o2 = auto_ac_prototype::native::lower_object(&c2, &sel2).unwrap();
+    let o1 = auto_ac_prototype::native::lower_object(
+        &c1,
+        &sel1,
+        &auto_ac_prototype::native::RuntimeInjection::default(),
+    )
+    .unwrap();
+    let o2 = auto_ac_prototype::native::lower_object(
+        &c2,
+        &sel2,
+        &auto_ac_prototype::native::RuntimeInjection::default(),
+    )
+    .unwrap();
     println!("fresh-vs-fresh equal: {}", o1 == o2);
     // restored roundtrip
     let b = c2.into_bundle();
@@ -269,7 +279,12 @@ fn admission_probe_lowering_determinism() {
     let restored = codec::decode_bundle_chunk(&chunk).unwrap();
     let cr = auto_ac_prototype::verify::verify(restored).unwrap();
     let selr = auto_ac_prototype::native::find_entry(&cr, "d_main").unwrap();
-    let or_ = auto_ac_prototype::native::lower_object(&cr, &selr).unwrap();
+    let or_ = auto_ac_prototype::native::lower_object(
+        &cr,
+        &selr,
+        &auto_ac_prototype::native::RuntimeInjection::default(),
+    )
+    .unwrap();
     println!("fresh-vs-restored equal: {}", o1 == or_);
     assert_eq!(o1, o2, "fresh lowering must be deterministic");
     assert_eq!(o1, or_, "restored-bundle lowering must match fresh");
