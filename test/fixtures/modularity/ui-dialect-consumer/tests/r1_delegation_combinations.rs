@@ -100,6 +100,13 @@ fn r1_delegated_error_restores_context_at_recovery_point() {
     let recovery = ParserBridge::new(&mut p).checkpoint();
     let result = p.parse_stmt();
     assert!(result.is_err(), "缺 RBrace 的 fn 体必须报错");
+    // R2 收编更强 oracle：在 harness checkpoint restore **之前**直接观察
+    // in_fn_body——证明 context 恢复来自派发 Err 边界，而非后续 restore 遮蔽
+    // 了错误出口问题。
+    assert!(
+        !ParserBridge::new(&mut p).in_fn_body(),
+        "context 必须在 checkpoint restore 之前已由 Err 边界恢复"
+    );
     {
         let mut b = ParserBridge::new(&mut p);
         b.restore(recovery);

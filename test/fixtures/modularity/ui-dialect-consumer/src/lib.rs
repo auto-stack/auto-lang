@@ -113,8 +113,18 @@ fn parse_model_subset(b: &mut ParserBridge<'_, '_>) -> AutoResult<Option<Stmt>> 
         }
         let name = b.cur_text();
         b.advance();
-        // 可选类型：`name type = expr` / 无类型 `name = expr`。
-        let ty = if b.is_kind(TokenKind::Asn) {
+        // 可选类型：`name type = expr` / `name = expr` / 裸字段 `name`。
+        // 冻结文法（§T-01 第 6 条）允许类型与初值**同时省略**（F778-R2-01
+        // 闭合）：裸字段终止符 = 行界/块界/EOF；其余非 `=` token 交给核心
+        // 类型文法，非法形态（如数字）得到合法的类型错误。
+        // 注意：内建 parse_model_block_inner 无裸字段支持（`=` 前必 parse_type）
+        // ——内建路径行为保持不变；裸字段是本外部子集的合同面，差异属合同
+        // 要求而非默认文法漂移。
+        let ty = if b.is_kind(TokenKind::Asn)
+            || b.is_kind(TokenKind::Newline)
+            || b.is_kind(TokenKind::RBrace)
+            || b.is_kind(TokenKind::EOF)
+        {
             Type::Unknown
         } else {
             b.parse_type()?
