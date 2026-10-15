@@ -288,6 +288,7 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [再次复审重开 2026-10-15/review-r4] R05原畸形JSON崩溃已闭，但缺数字字段不变量未闭：仅删除正常meta第一章body_len，load_meta仍接受，章读返回原标题+空正文+原word_count。须验证每个必需字段的真实存在性，保留E01及原示例已修事实。
   [复审重开 2026-10-15/r3] F-781-R05：保留原正例/parity 进展；内部 JSON 损坏但首尾形状合法时仍触发跨帧毒化，未满足损坏索引诚实失败。须补完整拒绝路径与正常控制。
   [✅ 2026-10-15] reader worktree `plan-781e-meta-index`（D:/autostack/.wt/reader-781e/auto-reader）commit 41c5dd3：scan_meta_json（importers.at，与 parse_book_json 同切分规则、字节偏移累计、书级统计）+ meta 边车（<data>/<book_id>.meta.json，verified_write 读回校验，导入先写 meta 后写库）+ chapter_json/toc_json meta 路径（窗读+trim 同口径；空副本与缺失同判——t06 S7 语义）+ 诚实失败（meta 缺失/损坏 → "索引缺失"/[]，形状门禁规避 VM 跨帧 raise 毒化）。**测试**：t07 parity 规格 20 项全过（混合/无章头/MD 三书全章 parity + meta 缺失/损坏/偏移变异负例）+ t01-t06 既有规格面全绿。**实施期发现 VM 缺陷**（见 §9 F-781-E01）。READER-001 为该分支的业务终审 owner。
+  [✅ R05 r6 修复轮 2026-10-16] reader commit **7bb1869**（+lang **23a77e8bd** type_of 原语）：字符串形态判别废弃（复审指令：不再依赖已证伪前提——浮点 0.0 位模式恰为 0、两形同为 "0"；且实施探针实证取负形态判别本身受池/槽混叠波及、同值字面量/解析来源结果不一致）→ **`type_of` VM 类型谓词原语**（auto#1527 + 裸名 + 白名单避让行；f32/f64→float、数组字面量=堆对象；单测 11 断言含 json 解析 0.0/int 0 分离）。`num_domain_ok` = `type_of(x)=="int" && x > -1`——0.0/字符串/bool/null/浮点全拒、int 0 收。t07 S12 增 0.0 拒收（**66/66**）；r6 反例回放绿（body_len=0.0 → 整体"索引缺失"、restore 正常、exit 0）；t01-t07 全绿。
   [✅ R05 r5 修复轮 2026-10-16] reader commit **b7932fe**：**数字消费域=非负 VM 整数（含合法 0）**——`num_domain_ok` 双判别：`> -1` 拒字符串/None/负值（动态比较 false 不 raise）+ **`"" + x` 与 `x.to_string()` 两形一致拒浮点**（concat 对浮点输出位模式整数、to_string 输出截断整数——浮点两形必不一致；探针实证 -0.5/0.5/2.0 均 diff、0/19/10485760 均 same；取模不可用——VM 对浮点取模先截断）。r5 反例回放绿：body_len=-0.5 → 整体"索引缺失"、restore 正常、exit 0。**t07 S12 数字域矩阵**：合法 0 **接受**（空章长度=扫描器真实产出）+ body_len {字符串/-3/-0.5/1.5} 与 body_off {-0.5/1.5/"0"} 全拒 + 恢复 parity——t07 **63/63**。数字域语义统一：缺失/字符串/负整数/负小数/正小数一律拒绝，"错类型标量边界"收窄为仅 title/source_sha256 字符串字段值语义（SD-11 同步）。
   [✅ R05 r4 修复轮 2026-10-15] reader commit **dcd6ca4**：**全部必需字段真实探测**——存在性 `"" +` 拼接（typed 绑定对缺失 None 静默流过=r4 反例根因：仅删一章 body_len → 章节空正文假成功）+ **数字字段消费前提 `> -1` 判别**（字符串/负数为 false 且不 raise——偏移/长度/计数结构上非负；错类型数字字段与缺字段同拒，r3 的"错类型边界"收窄为仅字符串字段值语义）；顶层 4 + 条目 5 字段全覆盖。**验证**：t07 42/42（S9 升级为拒绝语义 + **S11 逐字段删除矩阵**：五字段各自仅删一章 → 整体"索引缺失"/toc[] + 恢复 parity）+ 复审 r4 反例回放绿（meta-missing-one-field.as：LOAD_META 空 → ACTUAL 索引缺失（整体拒绝）→ RECOVERED 正常，exit 0）+ 错类型矩阵绿（string_body_len/string_body_off → 索引缺失）。**新观察登记**：循环上下文中 `find`(json 标题) 形态出现池/槽混叠（标题槽读作 check 消息内容）——S11 改全串相等断言绕开，F-781-E02 候选登记 KNOWN-DEBT。
   [✅ R05 修复轮 2026-10-15] reader commits **29162ce（词法准入中间形态）→ 97ceba9（终形态，基于 E01 引擎根修 33a9a6a94）**：load_meta 恢复 try/catch 安全形态（E01 根修后 catch 不再毒化调用方——毒化机制三探针实锤：catcher pre-try 槽损坏 + 上溯一层 + 后续调用栈雷）+ **条目级必需字段探测**（五字段 typed 绑定/`""` 拼接，缺任一 → raise → catch → ""——原生速；29162ce 的 jsonx.valid_meta 词法全扫描实测 46s/章已回退，jsonx.at 复原）。错类型标量=既有动态类型边界（静默强转、不崩溃不毒化——t07 S9 记录受控形态；词法级严拒需类型谓词原语，SD-11 边界记录）。**验证**：t01-t07 全绿（t07 增 S7 内部畸形/S8 缺字段/S9 错类型边界/S10 恢复控制）+ 复审反例回放绿（attachments/781/review-r3/meta-corruption.as：corrupt→"索引缺失"受控、restore→恢复正常、exit 0 vs 修复前 exit-1 str+NoneType）+ 性能复测（1347 章单章 46s→0.46s 含 CLI 启动，亚秒保持）。
@@ -312,11 +313,19 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [再次复审重开 2026-10-15/review-r4] R05/R06修复后更新关闭表、SD-09/11及冻结证据；不能以旧示例关闭替代完整不变量关闭。仅跑受影响定向验收，整档仍归merge。
   [复审重开 2026-10-15/r3] R04/R05 修复后重冻关闭表与SD-09/11；纠正T-26 CLI hash、Reader canonical Spec目标路径及source_sha256/ph1描述。work/review仅跑必要定向验证，整档tu/th等归merge。
   [✅ 2026-10-15] 收口记录见 §9「T-22/T-23 收口」：四 finding 闭合表（R01..R04 反例→不变量→修复→永久用例→原始结果）+ 冻结块（commits/CLI/配置/fixture/reader 探针目录归属）+ 定向验收（th 137/139 两红在案归因、plan781 28/28、scroll 72/72、a2r parity 绿）+ 复用证据未变核验（ui/ui_gen/fixtures 自 W-02 证据 commit e455c1d16 起零 diff，git diff 实证）+ T-24 rider（str.rs.at 镜像缺口修复 d83458941，a2r_std_signature_parity 基线红→绿）。SD-08..11 候选冻结（§5 表），plan_revision 2→3（§0 版本沿革）。**tu/th 全档按 2026-10-14 裁定归 merge 冻结提交**（tu=ui_gen 触面在案、本回合 ui_gen 零改动；th 的 W-04/预算定向面已在本回合跑绿）；双端探针复用依据=触面零 diff；merge-owned 门禁 pending 如下。
+  [✅ R05 r6 修复轮收口 2026-10-16] 见 §9「R05 r6 修复轮收口」：type_of 原语 + num_domain_ok 类型判别（0.0/int 0 可靠分离）+ S12 增 0.0（t07 66/66）+ r6 反例回放绿；定向验收 tv 163/163 + th（plan776_r5 一过性负载 flake 三连单跑绿 + 族 66/66）+ plan781 30/30（含 type_of 单测）+ plan705/736 30/30 + t01-t07；冻结块刷新（lang 23a77e8bd / reader 7bb1869 / CLI 075dc7df…）；SD-11 数字域语义经类型谓词成立。
   [✅ R05 r5/H-01 修复轮收口 2026-10-16] 见 §9「R05 r5 修复轮收口」：数字域完整关闭（r5 反例回放绿 + S12 矩阵 63/63）+ H-781-01 两 unused 警告清理（lang 6f91f1809，_dir/_dir2 保留 TempDir 寿命）；冻结块刷新（lang 6f91f1809 / reader b7932fe / CLI 287dd67d…）；定向验收 t01-t07 全绿 + th 142/144（cpu_shutdown 一过性并行 flake 单跑绿、两常驻红在案）+ plan781 29/29 + plan705/736 30/30；SD-11 数字合法域统一。
   [✅ R05/R06 修复轮收口 2026-10-15] 见 §9「R05/R06 修复轮收口」：R05 全字段真实探测（存在性+数字前提，错类型数字同拒）+ R06 服务代际隔离；复审 r4 反例（missing-body_len 假成功、重启误取消）双回放绿；冻结块刷新（lang 4c374ef1d / reader dcd6ca4 / CLI 8bff4d2f…）；定向验收 th 142/144 两红在案 + plan705/736 30/30 + t01-t07 全绿（t07 42/42）+ S11 逐字段矩阵；新观察 F-781-E02 登记。
   [✅ R04/R05 修复轮收口 2026-10-15] 见 §9「R04/R05 修复轮收口」：R04/R05/E01 三行闭合更新（CPU 段取消 + E01 引擎根修 + reader 终形态）、SD-09/SD-11 修正（复审三点：CLI hash 纠正为 226954ac…、SD-11 补 Reader canonical 路径与 ph1 指纹诚实描述、CPU 协作取消入 SD-09）、冻结块刷新（lang 33a9a6a94 / reader 97ceba9 / CLI 6c164733…）、定向验收（tv 163/163 语料档含 E01 触面、th 141/143 两红在案、plan705/702/712/624/567 34/34 帧/catch 族、plan781 29/29 含 E01 永久回归、t01-t07 + 反例回放 + 性能复测）。
 
 ## 9. 复审记录
+
+
+### T-07 再次最终复审（2026-10-16，review-r6，needs_fix）
+
+stage=review | review_scope=final | reviewer_identity=本次 Codex 审查上下文，未参与本轮实现、未委派 agent | plan_id=PLAN-781 | plan_revision=3 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | reviewed_commit=6f91f1809429e741fb71e7d85c9621aee07dacc3 | base_commit=491e84afbdcbfa3e05755596f5fb8d5187ba2f3a | dependency_revisions=auto-reader@b7932fefbcce22ab9eddf3083b4a31ef2c1e9e36 | spec_inputs/acceptance_results/evidence=[r6完整报告](reports/781-final-review-r6-20261016.md)及 attachments/781/review-r6/ | pending_closeout_gates=merge-owned t/tu/tv/th和Reader自有门禁pending | next=work，同一Reader树修R05类型判别/合同一致性，T-25/T-23重开，T-22不重开。
+
+**当前裁决覆盖历史关闭声明**：旧-0.5/缺字段/字符串数字反例已闭，H-781-01两个新增warnings已清，R06重启保持通过；Reader t07 63/63、原生锚点57/57、重启1/1。R05仍有一项准入合同缺口：浮点0.0的两种字符串均为"0"，num_domain_ok接受它，与本轮“仅非负VM整数、拒绝全部浮点”声明不符。独立解析再序列化保留0.0，非整数归一化。0.0数值等于合法零，未证明越界，不把空正文单独当作新危害；须使实现/合同/Spec一致并补零值类型控制。T-25/T-23由完成重开；完成任务重新计数23/26（保留原T-08历史交付勾选，不表示本轮可合入）。本轮未重跑Vue及10MiB全章HTTP链，不能宣称整体pass；不改plan_revision。
 
 ### 再次最终复审（review-r5工件；合同r3；2026-10-16，needs_fix）
 
@@ -440,6 +449,16 @@ stage=work | plan_id=PLAN-781 | plan_revision=3 | worktree_path=D:/autostack/.wt
 **冻结块（r5 修复轮）**：lang HEAD=**6f91f1809**（树 clean）；reader HEAD=**b7932fe**；CLI sha256=**287dd67d28a1e969ba7cdfb495339e765825bdc9cd26f082a81844ad348fd8ea**。定向验收：t01-t07 全绿 + r5 反例回放 + `cargo th` **142/144**（cpu_shutdown 一过性并行负载 flake 单跑绿；两常驻红在案同前）+ plan781 **29/29** + plan705/736 **30/30**。merge-owned 全档 pending 不变。
 
 **SD-11 数字合法域统一（复审要求）**：数字字段（version/total_chapters/total_words/number/body_off/body_len/word_count）合法域=非负 VM 整数（含 0）；缺失/字符串/负整数/负小数/正小数一律整体拒绝（"索引缺失"/[]）。历史"错类型标量=动态类型边界"表述废止，收窄为：仅字符串字段（title/source_sha256）的值语义松转换为残留边界。
+
+### R05 r6 修复轮收口（2026-10-16，r6 needs_fix 后再交 execution_done）
+
+stage=work | plan_id=PLAN-781 | plan_revision=3 | worktree_path=D:/autostack/.wt/lang-781/auto-lang（+auto-reader） | branch=plan-781-dev（+plan-781e-meta-index） | base_commit=6f91f1809（r6 复审基线） | code_commit=lang **23a77e8bd**（type_of 原语 + 单测）｜reader **7bb1869**（num_domain_ok 类型判别 + S12 增 0.0） | task_ids=T-25/T-23 再闭（23/26；T-22/R06/H-01 保持闭合） | blockers=无 | next_responsible_role=review（T-07）
+
+**R05（0.0 浮点漏网，类型判别终解）**：r5 字符串形态判别对 0.0 失真（位模式恰为 0，两形同为 "0"）；实施探针进一步实证取负形态判别不可靠（同值字面量/解析来源输出不一致——池/槽混叠波及判别层，F-781-E02 家族）。按复审 r4 明示的「原语方案」许可以及 byte_len（T-24）先例，**新增 `auto.type_of(x) -> str` VM 类型谓词原语**（nat#1527；白名单避让行防动态 #[vm] 撞号——T-03 教训；f32/f64→"float"、数组字面量→"object"（堆对象）；单测 11 断言含 json 解析 0.0 与 int 0 的分离）。`num_domain_ok` = `type_of(x)=="int" && x > -1`：0.0/任意浮点/字符串/bool/null 全拒，int 0（合法空章长度）收。t07 S12 拒绝域增 "0.0"（**66/66**）；r6 反例回放绿（body_len=0.0 → 整体"索引缺失"、第二章对照、restore 正常、exit 0）。
+
+**定向验收**：`cargo tv` **163/163**（VM 触面——新增原生必跑）；`cargo t plan781` **30/30**（含 type_of 单测）；plan705/736 **30/30**；`cargo th` 全档 141/144——三红归因：back_proxy corpora（F-781-C03 预存）+ plan730 boundary（在案 flake 单跑绿）+ plan776_r5_credential_unwrapped **一过性负载 flake**（30s 超时形态单次出现后三连单跑 0.6s 绿 + 族 66/66——该族 r3 轮同形态在案）；t01-t07 全绿。
+
+**冻结块（r6 修复轮）**：lang HEAD=**23a77e8bd**（树 clean）；reader HEAD=**7bb1869**；CLI sha256=**075dc7dfc5cccd3d6851ad017a0209e97e77e6685c0e71d7ff81f61ced6a55b9**。SD-11 数字域语义（非负 VM 整数）经类型谓词**成立**（r6 复审已确认该合同表述，仅判别不成立——现已一致）。merge-owned 全档 pending 不变（type_of 触 stdlib/VM，merge 侧 tv 必跑）。
 
 ### T-07 最终复审（2026-10-15，final pass）
 
