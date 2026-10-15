@@ -261,7 +261,7 @@ R3就绪审计：R2覆盖诊断与四象限永久矩阵已落实；pre-restore�
 | landed | master tip = 711ce23f6 = plan-778-dev tip（`git merge --ff-only`，无 merge commit；rebase 两次吸收并发 491e84afb[P781 ledger repoint] 与 602bc850f[782 簿记]，specs.json 冲突以 master 格式 indent=2 守卫式重放，外科 diff +60/−2） |
 | ledger_refreshed | `.autoos/specs.json` 离线投影（本仓既有通道；byte 备份+程序化 upsert+schema/读回守卫）；P778-1（designs）/P778-T（tests）/P778-R3（reviews）/P778-M（reports）四条目，version 20→21（合并 P781 并发 repoint 后基线）；无关条目字节语义零扰动断言 |
 | archived | docs/plans/archive/778-ui-dialect-externalization-pilot.md；附件 review-r1/r2/r3 + 报告随本提交入默认分支；7/7 任务闭合 |
-| cleaned | （本提交后执行， receipts 见下方更新） |
+| cleaned | wt-guard clean（exit0，无 reparse point）→ worktree lang-778/auto-lang、auto-down 兄弟、分支 plan-778-dev、组目录 `.wt/lang-778` 全部移除并验证；他线 770/780/781/782 组未触碰 |
 
 发现物归档：两次 rebase 均因他线并发簿记（非本计划冲突）；首次投影 indent=1 与仓内 indent=2 格式不一致已按守卫协议回滚重写（守卫教训：语义等价断言不足以保证外科边界，需字节级 diff 复核）。
 
