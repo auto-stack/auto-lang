@@ -1088,9 +1088,18 @@ impl<'a> ValuePositionScanner<'a> {
     ///   (`{ a: 1` + newline + `, b: 2 }` → "Expected key, got Comma") and
     ///   the next KEY may simply begin.
     ///
-    /// Trivia (line/block comments, including multi-line block comments
-    /// which count as a passed break) is handled uniformly. Every step
+    /// Trivia (line/block comments) is handled uniformly. A newline INSIDE
+    /// a block comment updates the source line counter only — it is NOT a
+    /// syntactic break (R4 F-01: the VM treats the whole comment as trivia;
+    /// `x /*multi-line*/, y` keeps the comma same-line-legal, while
+    /// `x /*multi-line*/ y` stays same-line adjacency). Every step
     /// consumes input or returns — the progress guarantee holds.
+    ///
+    /// Known frozen-subset limitation (R4 review, non-blocking): comma runs
+    /// interleaved with comments (`["a", /*c*/, "b"]`) are VM-legal but the
+    /// value layer (AtomParser) rejects them — the model errors honestly
+    /// instead of claiming static; recorded for the SD-01 limitation list,
+    /// not silently widened.
     fn check_separation(&mut self, kind: SepKind, closer: char) -> Option<UnsupportedConstruct> {
         let mut passed_break = false;
         loop {
@@ -1130,15 +1139,15 @@ impl<'a> ValuePositionScanner<'a> {
                         self.chars.next();
                     }
                 }
-                // block comments are trivia; a newline inside one still
-                // counts as a passed break
+                // block comments are trivia: newlines inside update the
+                // source line counter only, never the separation state
+                // (R4 F-01 — the VM treats the whole comment as trivia)
                 Some('/') if self.peek2_is('*') => {
                     self.chars.next();
                     self.chars.next();
                     while let Some(c) = self.chars.next() {
                         if c == '\n' {
                             self.line += 1;
-                            passed_break = true;
                         }
                         if c == '*' && self.chars.peek() == Some(&'/') {
                             self.chars.next();

@@ -598,3 +598,78 @@ fn r3_trivia_separation_matrix_stays_static() {
         assert!(!d.unsupported.is_empty(), "{text:?}");
     }
 }
+
+// ── R4 review regressions (F780-R4-01) — comment-internal newlines ────
+
+/// R4 F-01: a newline inside a block comment is a source-position fact,
+/// NOT a syntactic separator — the VM treats the whole comment as trivia.
+/// The review's three blocking cases plus the paired real-newline vs
+/// comment-newline matrix (legal forms assert static + values; VM-rejected
+/// forms assert classification).
+#[test]
+fn r4_comment_newline_is_not_a_separator() {
+    // (input, expected static)
+    let cases: Vec<(&str, bool)> = vec![
+        // review blocking case 0: legal, must stay static with the field
+        ("back: { project: \"b\" /*multi\nline*/, extra: 1 }\n", true),
+        // review blocking case 1: VM "Expected infix operator" → classify
+        ("back: { project: \"b\" /*multi\nline*/ extra: 1 }\n", false),
+        // review blocking case 2: VM rejects adjacency → classify
+        ("members: [\"a\" /*multi\nline*/ \"b\"]\n", false),
+        // paired real-newline vs comment-only-newline
+        ("members: [\"a\" /*c*/ \"b\"]\n", false), // same-line w/ comment
+        ("members: [\"a\"\n\"b\"]\n", true),       // real newline separates
+        ("cfg: { a: true /*c*/ false }\n", false), // adjacency
+        ("cfg: { a: true\nb: false }\n", true),    // real newline separates pairs (R4 id 3)
+        ("cfg: [true /*multi\nline*/ false]\n", false), // comment-newline ≠ separation
+        ("cfg: [true\nfalse]\n", true),            // real newline separates
+        // CRLF real break (R4 matrix id 12/13)
+        ("members: [\"a\"\r\n\"b\"]\n", true),
+        ("back: { project: \"b\",\r\n extra: 1 }\n", true),
+        // nested builtin newline inside object value (id 14)
+        ("cfg: { a: true /*c*/, b: [false\ntrue] }\n", true),
+        // single-line block comment forms (id 5/7/8/15)
+        (
+            "{ name: \"ok\" /*comment*/, back: {project: \"b\"} }\n",
+            true,
+        ),
+        ("cfg: { a: true, /*c*/ b: false }\n", true),
+        ("members: [\"a\" /*c*/ \"b\"]\n", false),
+    ];
+    for (text, want_static) in cases {
+        let d = parse(text);
+        assert_eq!(
+            d.is_static_equivalent(),
+            want_static,
+            "{text:?} — unsupported: {:?}",
+            d.unsupported
+        );
+    }
+    // case 0 keeps its field (the R4 failure dropped external_backend)
+    let d = parse("back: { project: \"b\" /*multi\nline*/, extra: 1 }\n");
+    assert_eq!(d.external_backend.as_deref(), Some("b"));
+    // top-object paired control
+    let d = parse("{ \"members\": [\"a\" /*multi\nline*/ \"b\"] }");
+    assert!(!d.is_static_equivalent());
+    // `#` comments INSIDE structured values are VM-illegal (R4 oracle:
+    // "Expected infix operator, got Hash" — matrix ids 3/4/11 all old-Err):
+    // the model refuses consistently, never claims static.
+    for text in [
+        "cfg: { a: true # line\nb: false }\n",
+        "members: [\"a\" # line\n, \"b\"]\n",
+        "members: [\"a\", #c\n \"b\"]\n",
+    ] {
+        let outcome = crate::parse_document(text, SourceInfo::inline());
+        match outcome {
+            Ok(d) => assert!(!d.is_static_equivalent(), "{text:?}"),
+            Err(e) => assert!(
+                matches!(
+                    e.stage,
+                    crate::ErrorStage::Value | crate::ErrorStage::Document
+                ),
+                "{text:?}: unexpected stage {:?}",
+                e.stage
+            ),
+        }
+    }
+}
