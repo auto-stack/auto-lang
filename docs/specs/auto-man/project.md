@@ -100,14 +100,15 @@ opens: ".txt,.md,.at,.json"
   声明集 → 拒绝并 toast；未声明 app id → 未知应用拒绝。
 - 与 PLAN-015 四名称契约正交：同为平铺 `key: value` 行读键，互不依赖。
 
-## 静态项目模型 pilot（PLAN-780）
+## 静态项目模型 pilot（PLAN-780；PLAN-786 首个有限生产消费面）
 
 现有依赖声明门、pac 字段/展示和构建协议全部保持；本节新增 pilot 说明：
 
 - `project_model_adapter` 为**显式旧新探针**：旧臂 `AutoConfig`→`Pac`，
   新臂轻模型（`crates/auto-project-model`，见
-  [project-model spec](../project-model/project.md)），只在冻结域比较；
-  **生产默认读取保持原路径**（pac.rs/vue.rs/rust_ui.rs 等零切换）。
+  [project-model spec](../project-model/project.md)），只在冻结域比较。
+  生产默认读取保持原路径，**例外=Vue 展示三字段**（PLAN-786，见下）；
+  pac.rs/rust_ui.rs 等其余读取零切换，adapter 本身仍是测试/探针消费者。
 - static 成功逐冻结字段比较；dynamic/unsupported 只分类，不计相等；
   读取/编码失败使 required corpus 门失败（不以空配置代替）。
 - 双拒/模板特例仅允许**完整仓根相对路径精确命中**的有限清单；双拒绑定
@@ -117,6 +118,22 @@ opens: ".txt,.md,.at,.json"
   实际文件身份在 adapter 测试清单维护；不允许泛化为任意双臂 Err 均成功。
 - 文本副本消除与动态管线后续按 T04 owner map 另立迁移计划。当前模型独立
   消费成立，不等于 auto-man 仓库拆分或生产切换完成。
+
+### 展示字段统一只读入口（PLAN-786）
+
+Vue 工程生成经内部 `project_display_reader` 一次读取 name/title/title_zh
+——project-model DTO 的**首个有限生产消费**。字段准入条件：行门槛集合 ==
+provenance 行集合、无重复键、唯一声明行的旧行归一与模型值相等；不满足者
+走**唯一一份**显式兼容扫描器，保留旧行为（name 首匹配可空串、title 族跳空
+续扫）。兼容原因具名：ParseError / HiddenOrPhantomLine / DuplicateKey /
+UnsupportedValue / LineFormMismatch / DeepNesting。locale（AUTO_LOCALE
+zh 前缀）与 title→name/目录兜底职责保留在原调用者；其余字段/读取器、
+物化与 VM 路径不变——不解除 auto-man 的语言依赖、不新增反向边。
+DeepNesting 安全前置：`parse_document` 前对原文统计全部 `[`/`{` 字符
+（无词法跳过、无递减；>64 三字段整体走兼容、不触模型——512 层嵌套实测
+栈溢出 abort 不可 catch_unwind）。计数含字符串/注释内字符与平铺组，
+非实测嵌套深度、非语法限制；≤64 照常走解析/准入分类。反例字节与
+64/65 边界（数组/对象/节点/混合/平铺/字符串/注释）为持久回归。
 
 ## 模块架构
 
