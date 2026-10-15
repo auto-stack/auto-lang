@@ -2779,6 +2779,75 @@ pub fn shim_str_is_digit(s: String) -> bool {
     s.len() == 1 && s.as_bytes()[0].is_ascii_digit()
 }
 
+/// UTF-8 byte length. PLAN-781 阶段 E（T-24）：Reader 章 meta 索引的
+/// 字节偏移累计专用——`str.len()` 是 PLAN-055 的字符数语义、
+/// `str.bytes()` 返回 VM 列表在大文本（10MiB 书）不可用；Rust
+/// `String::len()` 即 UTF-8 字节数，与 `File.read_text_range`（nat#1016，
+/// PLAN-687）的字节偏移语义天然一致。
+#[auto_macros::rust_fn("Str.byte_len", "auto.str.byte_len")]
+pub fn shim_str_byte_len(s: String) -> i32 {
+    s.len() as i32
+}
+
+/// PLAN-781 阶段 E（T-24）单测：UTF-8 字节口径 + 与
+/// `File.read_text_range`（nat#1016）游标语义的一致性——章 meta 索引
+/// 的偏移累计与窗读共用同一字节空间。
+#[cfg(test)]
+mod plan781_byte_len_tests {
+    use super::*;
+
+    #[test]
+    fn plan781_str_byte_len_utf8_bytes() {
+        assert_eq!(shim_str_byte_len(String::new()), 0);
+        assert_eq!(shim_str_byte_len("abc".into()), 3);
+        // 与 str.len()（PLAN-055 字符语义）互补：中文 2 字符 = 6 字节。
+        assert_eq!(shim_str_byte_len("中文".into()), 6);
+        assert_eq!(shim_str_byte_len("a中b".into()), 5);
+        // emoji 4 字节（代理对之外的合法 UTF-8 面）。
+        assert_eq!(shim_str_byte_len("😀".into()), 4);
+        // 换行/空白按 1 字节计（行偏移累计依赖）：3×3+1+3×3+1 = 20。
+        assert_eq!(shim_str_byte_len("第一行\n第二行\n".into()), 20);
+    }
+
+    #[test]
+    fn plan781_str_byte_len_matches_read_text_range_cursor() {
+        let dir = std::env::temp_dir().join("auto_lang_plan781_byte_len");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("cjk.txt");
+        let body = "第1章 标题\n正文中文两行\n";
+        std::fs::write(&p, body).unwrap();
+        let total = shim_str_byte_len(body.to_string());
+        // 整窗读：envelope 的 total（文件字节数）必须与 byte_len 一致；
+        // 读到真 EOF 时 next_offset=null。
+        let env = shim_file_read_text_range(p.to_str().unwrap().to_string(), 0, total + 16);
+        assert!(
+            env.contains(&format!("\"total\":{total}")),
+            "envelope total == str.byte_len: {env}"
+        );
+        assert!(env.contains("\"next_offset\":null"), "真 EOF: {env}");
+        // 半窗读：next_offset = byte cursor（=窗内文本的 byte_len）。
+        let half = shim_file_read_text_range(
+            p.to_str().unwrap().to_string(),
+            0,
+            shim_str_byte_len("第1章 标题\n".to_string()),
+        );
+        assert!(
+            half.contains(&format!(
+                "\"next_offset\":{}",
+                shim_str_byte_len("第1章 标题\n".to_string())
+            )),
+            "next_offset == 窗文本 byte_len: {half}"
+        );
+        // 中文字节界内偏移回退到边界后仍完整无半字（meta 章窗行对齐前提）。
+        let mid = shim_str_byte_len("第1章 ".to_string()) + 1; // 落在「标」字中间
+        let env2 = shim_file_read_text_range(p.to_str().unwrap().to_string(), mid, 6);
+        // 回退语义（PLAN-687）：start 回退到前边界、窗尾回退——产出完整
+        // 字符（"标题\n"），绝不半字。
+        assert!(env2.contains("标题"), "mid-char 回退到边界产出完整字: {env2}");
+        let _ = std::fs::remove_file(&p);
+    }
+}
+
 /// Get character at byte index (returns single-char string)
 ///
 /// Plan 434 (AA2R): boundary-safe — a byte index inside a multi-byte char
