@@ -2779,6 +2779,36 @@ pub fn shim_str_is_digit(s: String) -> bool {
     s.len() == 1 && s.as_bytes()[0].is_ascii_digit()
 }
 
+/// 运行时值类型名（PLAN-781 T-25 R05 r6）：`type_of(x) -> str`——
+/// int/float/str/bool/null/list/object/future。多态参数须裸 shim（rust_fn
+/// 的类型化编组不支持 any）；.at 调用形如 `type_of(x)`（auto. 前缀省略，
+/// 同 json.parse 先例）。动机：Reader meta 数字字段的消费域判别——
+/// 字符串形态判别（concat 位模式 vs to_string 截断）对浮点 0.0 失真
+/// 且受池/槽混叠（F-781-E02 家族）波及，类型谓词为可靠面。
+pub fn shim_type_of(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = task.ram.pop_nv();
+    let t: &'static str = if auto_val::is_i32(nv) {
+        "int"
+    } else if auto_val::is_f32(nv) || auto_val::is_f64(nv) {
+        "float"
+    } else if auto_val::is_string(nv) {
+        "str"
+    } else if auto_val::is_bool(nv) {
+        "bool"
+    } else if auto_val::is_null(nv) {
+        "null"
+    } else if auto_val::is_list(nv) {
+        "list"
+    } else if auto_val::is_object(nv) {
+        "object"
+    } else if auto_val::is_future(nv) {
+        "future"
+    } else {
+        "unknown"
+    };
+    push_string_result(task, vm, t.to_string())
+}
+
 /// UTF-8 byte length. PLAN-781 阶段 E（T-24）：Reader 章 meta 索引的
 /// 字节偏移累计专用——`str.len()` 是 PLAN-055 的字符数语义、
 /// `str.bytes()` 返回 VM 列表在大文本（10MiB 书）不可用；Rust
@@ -10438,6 +10468,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Plan 340: Simple JSON HTTP helpers (return body string directly) for
     // VM+VM split mode codegen rewriting.
     natives.register_shim_by_name("auto.http.get_json", shim_http_get_json);
+    // PLAN-781 T-25（R05 r6）：多态类型谓词（Reader meta 数字域判别）。
+    // 裸名单注册供 .at 直接 `type_of(x)` 调用（delay_async 先例）。
+    natives.register_shim_by_name("auto.type_of", shim_type_of);
+    natives.register_shim_by_name("type_of", shim_type_of);
     natives.register_shim_by_name("auto.http.post_json", shim_http_post_json);
     natives.register_shim_by_name("auto.http.put_json", shim_http_put_json);
     natives.register_shim_by_name("auto.http.delete_json", shim_http_delete_json);

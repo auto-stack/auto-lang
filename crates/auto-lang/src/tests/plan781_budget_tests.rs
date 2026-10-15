@@ -432,3 +432,53 @@ fn wp_caller(m int) int {
         }
     }
 }
+
+/// PLAN-781 T-25（R05 r6）：`type_of` 类型谓词——浮点 0.0 与 int 0 的
+/// 可靠区分（字符串形态判别对 0.0 失真：位模式恰为 0）。
+#[test]
+fn plan781_type_of_vm_tags() {
+    let code = r#"
+fn tag_int() str { return type_of(0) }
+fn tag_float_zero() str { return type_of(0.0) }
+fn tag_float() str { return type_of(1.5) }
+fn tag_str() str { return type_of("19") }
+fn tag_bool() str { return type_of(true) }
+fn tag_null() str { return type_of(null) }
+fn tag_list() str { return type_of([1, 2]) }
+fn tag_obj() str { return type_of(json.parse("{\"a\":1}")) }
+fn tag_parsed_zero() str { return type_of(json.parse("{\"x\":0.0}").x) }
+fn tag_parsed_int_zero() str { return type_of(json.parse("{\"x\":0}").x) }
+fn tag_neg_half() str { return type_of(json.parse("{\"x\":-0.5}").x) }
+"#;
+    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(code).expect("compile");
+    let expect = |fname: &str, want: &str| {
+        let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+        let outcome = vm.call_fn_by_name_segment(&mut task, fname, 0);
+        match outcome {
+            crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {
+                let nv = task.ram.pop_nv();
+                assert!(
+                    auto_val::is_string(nv),
+                    "{fname}: expected string tag, nv={nv:?}"
+                );
+                let idx = auto_val::decode_string(nv) as usize;
+                let pool = vm.strings.read().unwrap();
+                let s = String::from_utf8(pool[idx].clone()).unwrap();
+                assert_eq!(s, want, "{fname}");
+            }
+            other => panic!("{fname}: unexpected outcome {other:?}"),
+        }
+    };
+    expect("tag_int", "int");
+    expect("tag_float_zero", "float");
+    expect("tag_float", "float");
+    expect("tag_str", "str");
+    expect("tag_bool", "bool");
+    expect("tag_null", "null");
+    // 数组字面量为堆对象（tag 5）；is_list 为专用列表引用形态。
+    expect("tag_list", "object");
+    expect("tag_obj", "object");
+    expect("tag_parsed_zero", "float");
+    expect("tag_parsed_int_zero", "int");
+    expect("tag_neg_half", "float");
+}
