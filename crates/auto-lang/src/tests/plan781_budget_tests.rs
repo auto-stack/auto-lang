@@ -346,3 +346,89 @@ fn closure_target() str {
         other => panic!("tight budget must exhaust closure drive: {other:?}"),
     }
 }
+
+/// F-781-E01 回归（PLAN-781 T-22 根修）：跨帧 raise+catch 后调用方帧
+/// 槽完整性。根因 = intercept_error 跨帧弹帧条件 `old_bp >= handler.bp`
+/// 把 try 帧自身也弹掉（old_bp 全仓语义=帧自身 bp）→ 同帧 catch 后 RET
+/// 弹空、current_fn_n_args 不恢复 → 调用方 LOAD_LOCAL 参数臂
+/// （bp-n_args+param_idx-1 依赖该计数）走 null 守卫读 None。四形态：
+/// 同帧 native raise / 跨两层 / catch 带参绑定 / opcode raise（除零）。
+#[test]
+fn plan781_e01_cross_frame_raise_catch_restores_caller_frame() {
+    let code = r#"
+fn maybe_raise() str {
+    var out str = "ok"
+    try {
+        json.parse("{bad")
+        out = "no-raise"
+    } catch {
+        out = "caught"
+    }
+    return out
+}
+fn caller(n int) int {
+    let a str = maybe_raise()
+    let r str = a + "|n=" + n.to_string()
+    if r == "caught|n=42" {
+        return 1
+    }
+    return 0
+}
+fn deep_raise() str {
+    var z int = 0
+    var d int = 1 / z
+    return "unreachable" + d.to_string()
+}
+fn mid() str {
+    var out str = "ok"
+    try {
+        out = deep_raise()
+    } catch {
+        out = "deep-caught"
+    }
+    return out
+}
+fn outer(k int) int {
+    let a str = mid()
+    let r str = a + "|k=" + k.to_string()
+    if r == "deep-caught|k=7" {
+        return 1
+    }
+    return 0
+}
+fn with_param() str {
+    var out str = "ok"
+    try {
+        json.parse("[bad")
+    } catch e {
+        out = "p:" + e.len().to_string()
+    }
+    return out
+}
+fn wp_caller(m int) int {
+    let a str = with_param()
+    let r str = a + "|m=" + m.to_string()
+    if r.len() > 4 {
+        return 1
+    }
+    return 0
+}
+"#;
+    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(code).expect("compile");
+    for (fname, arg) in [("caller", 42i32), ("outer", 7), ("wp_caller", 9)] {
+        let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+        task.ram.push_i32(arg);
+        let outcome = vm.call_fn_by_name_segment(&mut task, fname, 1);
+        match outcome {
+            crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {
+                let nv = task.ram.pop_nv();
+                assert_eq!(
+                    auto_val::decode_i32(nv),
+                    1,
+                    "{fname}: caller frame poisoned after callee catch"
+                );
+            }
+            other => panic!("{fname}: unexpected outcome {other:?}"),
+        }
+    }
+}

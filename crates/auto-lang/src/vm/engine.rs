@@ -13090,12 +13090,27 @@ impl AutoVM {
         // bp，否则 catch 体 RET 弹错帧 → 返回地址错乱（现场 ip 出界
         // Terminated，catch 永不生效）。同帧情形（错误与 try 同帧，既有
         // 702 测试面）无帧可弃，行为逐字节不变。
+        // PLAN-781 T-22（F-781-E01 根修）：CallFrame.old_bp 全仓一致语义
+        // = **帧自身 bp**（五处压帧点均在 `task.bp = sp-1` 之后捕获）。
+        // 原 `>=` 把 try 帧**自己**也弹掉——同帧 catch 后 RET 弹空，
+        // current_fn_n_args 不再恢复，调用方 LOAD_LOCAL 参数臂
+        // （bp - n_args + param_idx - 1 依赖 task.current_fn_n_args）走
+        // null 守卫 → 调用方参数/局部槽位读作 None（跨帧 raise 毒化，
+        // 最小复现 maybe_raise/caller 实锤）。改严格 `>` 只弹被调帧。
+        // 弹帧时同步恢复 n_args/n_locals 链（最外被弹帧的 old_* 即 try
+        // 帧的值）——否则 catch 体内参数寻址仍读被调帧计数。
+        let mut last_popped: Option<crate::vm::task::CallFrame> = None;
         while let Some(fr) = task.call_stack.last() {
-            if fr.old_bp >= handler.bp {
-                task.call_stack.pop();
+            if fr.old_bp > handler.bp {
+                last_popped = task.call_stack.pop();
             } else {
                 break;
             }
+        }
+        if let Some(fr) = last_popped {
+            task.current_fn_n_args = fr.old_fn_n_args;
+            task.current_fn_n_locals = fr.old_fn_n_locals;
+            task.num_locals = task.current_fn_n_locals;
         }
         task.bp = task.bp.min(handler.bp);
         // Push the error message as a string value for the catch handler to
