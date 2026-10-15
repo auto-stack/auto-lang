@@ -56,6 +56,7 @@ $families = [ordered]@{
     "R2 regressions"     = @{ target = "--test review_r2_";     minPassed = 6;  allowedIgnored = 0 }
     "R3 regressions"     = @{ target = "--test review_r3_";     minPassed = 4;  allowedIgnored = 0 }
     "R4 regressions"     = @{ target = "--test review_r4_";     minPassed = 3;  allowedIgnored = 0 }
+    "R5 regressions"     = @{ target = "--test review_r5_";     minPassed = 2;  allowedIgnored = 0 }
 }
 
 $failures = @()

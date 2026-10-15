@@ -14,7 +14,6 @@ use ac_artifact_probe::identity::ChunkId;
 use ac_artifact_probe::schema;
 use ac_artifact_probe::store::{recover, run_gc, GcConfig, ManagedStore, PutRequest, StoreError};
 use common::scratch;
-use std::io::Write;
 use std::sync::Arc;
 
 fn key(s: &str) -> ac_artifact_probe::identity::QueryKey {

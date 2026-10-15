@@ -304,7 +304,6 @@ pub fn run_gc(store: &ManagedStore, cfg: GcConfig) -> Result<GcReceipt, StoreErr
         }
     }
 
-    let total_candidates = candidates.len() + orphan_candidates.len();
     let mut idx = 0usize;
     let mut orphan_idx = 0usize;
     loop {

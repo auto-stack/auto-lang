@@ -569,15 +569,16 @@ impl ManagedStore {
         // the SHARED liveness guard, so GC/recovery (exclusive) can never
         // observe or delete a half-published payload.
         let _live = self.liveness_shared()?;
-        // ATOMIC TEMP-SPACE BUDGET (R3-01 + R4-02): the §5.4 contract caps
-        // ALL agreed transient copies at 8 MiB — the staged file AND the
-        // CAS `.tmp` copy the reused BlobStore writes next to the dest.
-        // The budget lock is an EXCLUSIVE cross-process lock held from
-        // measure through the CAS placement, reserving 2× the framed bytes
-        // (both copies, 48-byte header included), so the quota is a real
-        // sum over every concurrent in-flight publish. PEAK records the
-        // observed total on SUCCESSFUL reservations only — refused
-        // requests never touch the measured peak (R4-02).
+        // ATOMIC TEMP-SPACE BUDGET (R3-01 + R4-02 + R5-01): the §5.4
+        // contract caps ALL agreed transient copies at 8 MiB — the staged
+        // file AND the CAS `.tmp` copy — INCLUDING residue from earlier
+        // failed publishes or crashes (leftover `.tmp` files inside the
+        // blocks namespace). The budget lock is an EXCLUSIVE cross-process
+        // lock held from measure through the CAS placement, reserving
+        // 2× framed bytes (both copies, 48-byte header included) plus the
+        // measured leftovers, so a controlled failure earlier can never
+        // push a later ordinary write past the cap. PEAK records the
+        // observed total on SUCCESSFUL reservations only (R4-02).
         // Lock order: liveness(shared) → budget(exclusive) → chunk →
         // sqlite; GC/recover hold liveness(exclusive) and never take the
         // budget lock — no cycle.
@@ -585,11 +586,13 @@ impl ManagedStore {
             FileGuard::lock_timeout(&self.lock_path("staging-budget"), true, CHUNK_LOCK_WAIT)?
                 .ok_or_else(|| StoreError::Busy("staging budget lock".into()))?;
         let staging_now = Self::dir_size(&self.root.join("staging"));
-        let reserved_total = staging_now + 2 * framed.len() as u64;
+        let tmp_residue = self.cas_tmp_bytes();
+        let reserved_total = staging_now + tmp_residue + 2 * framed.len() as u64;
         if reserved_total > Self::STAGING_BUDGET {
             return Err(StoreError::ResourceExhausted(format!(
-                "transient (staging {} + staged {} + CAS tmp {}) exceeds budget {}",
+                "transient (staging {} + leftover CAS tmp {} + staged {} + CAS tmp {}) exceeds budget {}",
                 staging_now,
+                tmp_residue,
                 framed.len(),
                 framed.len(),
                 Self::STAGING_BUDGET
@@ -644,6 +647,10 @@ impl ManagedStore {
             }
         }
         if !placed {
+            // Clean up OUR tmp copy under the still-held budget lock
+            // (R5-01): the dest may be held, the tmp is ours; anything
+            // that still remains is counted by the next reservation.
+            self.discard_own_cas_tmp(&chunk_id);
             return Err(
                 last_err.unwrap_or_else(|| StoreError::Internal("CAS placement failed".into()))
             );
@@ -1465,4 +1472,49 @@ fn live_rows_retained(store: &ManagedStore) -> Result<Vec<String>, StoreError> {
         .flatten()
         .collect();
     Ok(v)
+}
+
+impl ManagedStore {
+    /// Sum of leftover CAS `.tmp` files inside the blocks namespace —
+    /// residue from failed placements (bounded retries exhausted) or
+    /// crashes mid-window. Counted into every temp-space reservation
+    /// (R5-01): a controlled failure earlier must consume quota, not
+    /// silently push the next write past the cap.
+    fn cas_tmp_bytes(&self) -> u64 {
+        let blocks = self.root.join("blocks").join("blobs");
+        let mut total = 0u64;
+        let Ok(shards) = fs::read_dir(&blocks) else {
+            return 0;
+        };
+        for shard in shards.flatten() {
+            let p = shard.path();
+            if !p.is_dir() || is_reparse(&p) {
+                continue;
+            }
+            let Ok(files) = fs::read_dir(&p) else {
+                continue;
+            };
+            for f in files.flatten() {
+                if is_reparse(&f.path()) {
+                    continue;
+                }
+                if f.file_name().to_string_lossy().ends_with(".tmp") {
+                    total += f.metadata().map(|m| m.len()).unwrap_or(0);
+                }
+            }
+        }
+        total
+    }
+
+    /// Best-effort removal of THIS publish's CAS `.tmp` copy after a
+    /// failed placement (R5-01): the dest may be held (os5), but the tmp
+    /// file itself is ours and unheld. Runs under the still-held budget
+    /// lock; a blocked removal simply leaves residue counted by the next
+    /// reservation.
+    fn discard_own_cas_tmp(&self, chunk_id: &str) {
+        if let Some(dest) = self.blobs.get(chunk_id) {
+            let tmp = dest.with_extension("tmp");
+            let _ = remove_with_retry(&tmp);
+        }
+    }
 }
