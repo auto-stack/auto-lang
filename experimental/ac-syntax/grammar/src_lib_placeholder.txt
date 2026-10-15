@@ -1,0 +1,1 @@
+//! ac-syntax-grammar：Atom 语法配置 → 语法程序编译器（T-03 实现）。

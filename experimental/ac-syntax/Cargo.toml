@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "runtime",
+    "grammar",
+    "adapters/core",
+    "adapters/artifacts",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace.dependencies]
+blake3 = "1.5"
+auto-atom = { path = "../../crates/auto-atom" }
+auto-ac-prototype = { path = "../ac-core" }
+ac-artifact-probe = { path = "../ac-artifact-probe" }
+ac-syntax-rt = { path = "runtime" }
+ac-syntax-grammar = { path = "grammar" }
+
+[profile.release]
+debug = true

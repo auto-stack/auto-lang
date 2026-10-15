@@ -1,0 +1,10 @@
+[package]
+name = "ac-syntax-core-adapter"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+ac-syntax-rt = { workspace = true }
+ac-syntax-grammar = { workspace = true }
+auto-ac-prototype = { workspace = true }
