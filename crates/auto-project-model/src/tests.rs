@@ -515,3 +515,86 @@ fn r2_value_scanner_terminates_and_classifies() {
         assert!(d.is_static_equivalent(), "{text:?}");
     }
 }
+
+// ── R3 review regressions (F780-R3-01) — trivia/separation matrix ─────
+
+/// R3 F-01: legal frozen syntax (comments around values/separators/closers,
+/// newline-separated builtins) must stay STATIC. Review cases 0–4 plus the
+/// placement × value-kind × container matrix; same-line adjacency stays a
+/// negative control (covered in r2 above).
+#[test]
+fn r3_trivia_separation_matrix_stays_static() {
+    let legal = [
+        // review failing cases (old arm Ok — review combinations.json)
+        (
+            "members: [\"a\" // comment\n, \"b\"]\n",
+            Some(vec!["a", "b"]),
+        ),
+        (
+            "members: [\"a\" /* block */ , \"b\"]\n",
+            Some(vec!["a", "b"]),
+        ),
+        ("cfg: { a: true\nb: false }\n", None),
+        ("cfg: [true\nfalse]\n", None),
+        (
+            "{ name: \"ok\", back: { project: \"b\" /* comment */ } }",
+            None,
+        ),
+        // review passing cases (keep pinned)
+        ("members: [\"a\", \"b\",]\n", Some(vec!["a", "b"])),
+        ("members: [\n1\n2\n]\n", Some(vec!["1", "2"])),
+        ("members: [ // leading comment\n \"a\"]\n", Some(vec!["a"])),
+        ("cfg: [true, false]\n", None),
+        // matrix extensions: comment placement × value kind × container
+        ("members: [1 /* v */ , 2]\n", Some(vec!["1", "2"])),
+        ("members: [true // c\n, false]\n", None),
+        (
+            "members: [\"a\" , // after comma\n \"b\"]\n",
+            Some(vec!["a", "b"]),
+        ),
+        ("members: [\"a\" /* c */]\n", Some(vec!["a"])),
+        ("members: [\"a\" // c\n]\n", Some(vec!["a"])),
+        ("cfg: { a: \"x\" /* v */ , b: 2 }\n", None),
+        ("cfg: { a: true /* v */ }\n", None),
+        ("cfg: { /* k */ a: 1 }\n", None),
+        ("{ \"members\": [\"a\" /* c */] }\n", Some(vec!["a"])),
+        ("{ \"members\": [true\nfalse] }\n", None),
+        // multi-line block comment separates
+        (
+            "members: [\"a\" /* span\nlines */ , \"b\"]\n",
+            Some(vec!["a", "b"]),
+        ),
+    ];
+    for (text, want_members) in legal {
+        let d = parse(text);
+        assert!(
+            d.is_static_equivalent(),
+            "legal input misclassified: {text:?} — {:?}",
+            d.unsupported
+        );
+        if let Some(want) = want_members {
+            assert_eq!(
+                d.members,
+                Some(want.into_iter().map(String::from).collect::<Vec<_>>()),
+                "{text:?}"
+            );
+        }
+    }
+    // negative control: same-line adjacency still classifies (no separator,
+    // no line break — even with a same-line block comment between)
+    for text in [
+        // object comma AFTER a passed break / doubled — VM oracle: Err
+        "cfg: { a: 1\n, b: 2 }\n",
+        "cfg: { a: 1 // c\n, b: 2 }\n",
+        "cfg: { a: 1,, b: 2 }\n",
+        // array comma at element position — VM oracle: Err
+        "cfg: [\n, 1]\n",
+        "members: [1 2]\n",
+        "members: [\"a\" /* c */ \"b\"]\n",
+        "cfg: { a: 1 b: 2 }\n",
+    ] {
+        let d = parse(text);
+        assert!(!d.is_static_equivalent(), "{text:?}");
+        assert!(!d.unsupported.is_empty(), "{text:?}");
+    }
+}

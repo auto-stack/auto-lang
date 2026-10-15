@@ -988,6 +988,13 @@ fn scan_value_positions(text: &str, base_line: usize, key: &str) -> Option<Unsup
     sc.scan_value()
 }
 
+/// Which container's separation grammar applies (see check_separation).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SepKind {
+    Array,
+    Object,
+}
+
 struct ValuePositionScanner<'a> {
     chars: std::iter::Peekable<std::str::Chars<'a>>,
     line: usize,
@@ -1053,8 +1060,8 @@ impl<'a> ValuePositionScanner<'a> {
         }
     }
 
-    /// Skip spaces/tabs only (no newlines) — used to police SAME-LINE
-    /// adjacency: the config VM accepts `,` or newline separators between
+    /// Skip spaces/tabs/CR only (no newlines) — used to police SAME-LINE
+    /// adjacency: the config VM accepts `,` or line-break separators between
     /// elements/pairs and rejects same-line adjacency (R2 oracle probe:
     /// adjacent `[1 2 3]` errors, newline-separated arrays are Ok).
     fn skip_inline_ws(&mut self) {
@@ -1067,24 +1074,98 @@ impl<'a> ValuePositionScanner<'a> {
         }
     }
 
-    /// After an element/pair: a comma or a line break must separate the
-    /// next one — anything else on the same line is adjacent-value syntax
-    /// the config VM rejects → classify.
-    fn check_separation(&mut self, closer: char) -> Option<UnsupportedConstruct> {
-        self.skip_inline_ws();
-        match self.chars.peek() {
-            Some(',') => {
-                self.chars.next();
-                None
+    /// After an element/pair, separation must follow. The two container
+    /// kinds have DIFFERENT VM-oracle grammars (R3 probes):
+    ///
+    /// - Array: after an element, any RUN of commas / line breaks /
+    ///   comments separates (`[1 // c` + newline + `, 2]` Ok, `[1,, 2]`
+    ///   Ok); a comma at ELEMENT position before any element of that slot
+    ///   (e.g. `[` + newline + `, 1]`) errors — the container loop
+    ///   classifies that via scan_value's fallback.
+    /// - Object: a comma is legal only SAME-LINE directly after the value
+    ///   (`{ a: 1, b: 2 }`, `{ a: 1,` + newline + ` b: 2 }`, trailing
+    ///   `{ a: 1, }` Ok); once a line break passed, a comma errors
+    ///   (`{ a: 1` + newline + `, b: 2 }` → "Expected key, got Comma") and
+    ///   the next KEY may simply begin.
+    ///
+    /// Trivia (line/block comments, including multi-line block comments
+    /// which count as a passed break) is handled uniformly. Every step
+    /// consumes input or returns — the progress guarantee holds.
+    fn check_separation(&mut self, kind: SepKind, closer: char) -> Option<UnsupportedConstruct> {
+        let mut passed_break = false;
+        loop {
+            self.skip_inline_ws();
+            match self.chars.peek().copied() {
+                Some(',') => match kind {
+                    SepKind::Array => {
+                        self.chars.next();
+                        passed_break = true; // comma runs are legal separators
+                    }
+                    SepKind::Object if !passed_break => {
+                        self.chars.next();
+                        return None;
+                    }
+                    // comma after a line break — the VM rejects this form
+                    SepKind::Object => {
+                        let raw = ','.to_string();
+                        self.chars.next();
+                        return Some(self.unsupported(UnsupportedKind::ValueSyntax, raw));
+                    }
+                },
+                Some(c) if c == closer => return None,
+                Some('\n') => {
+                    self.chars.next();
+                    self.line += 1;
+                    passed_break = true;
+                }
+                // line comments end their line; the newline arm above
+                // carries the break on the next iteration
+                Some('/') if self.peek2_is('/') => {
+                    while self.chars.peek().is_some_and(|c| *c != '\n') {
+                        self.chars.next();
+                    }
+                }
+                Some('#') if !self.peek2_is('[') => {
+                    while self.chars.peek().is_some_and(|c| *c != '\n') {
+                        self.chars.next();
+                    }
+                }
+                // block comments are trivia; a newline inside one still
+                // counts as a passed break
+                Some('/') if self.peek2_is('*') => {
+                    self.chars.next();
+                    self.chars.next();
+                    while let Some(c) = self.chars.next() {
+                        if c == '\n' {
+                            self.line += 1;
+                            passed_break = true;
+                        }
+                        if c == '*' && self.chars.peek() == Some(&'/') {
+                            self.chars.next();
+                            break;
+                        }
+                    }
+                }
+                None => return None,
+                // content: legal once a separator/break passed; same-line
+                // adjacency without one classifies (consuming a char keeps
+                // the progress guarantee)
+                Some(c) => {
+                    if passed_break {
+                        return None;
+                    }
+                    let raw = c.to_string();
+                    self.chars.next();
+                    return Some(self.unsupported(UnsupportedKind::ValueSyntax, raw));
+                }
             }
-            Some(&c) if c == closer || c == '\n' => None,
-            Some(c) => {
-                let raw = c.to_string();
-                self.chars.next();
-                Some(self.unsupported(UnsupportedKind::ValueSyntax, raw))
-            }
-            None => None,
         }
+    }
+
+    fn peek2_is(&self, c: char) -> bool {
+        let mut clone = self.chars.clone();
+        clone.next();
+        clone.peek() == Some(&c)
     }
 
     fn scan_value(&mut self) -> Option<UnsupportedConstruct> {
@@ -1110,7 +1191,11 @@ impl<'a> ValuePositionScanner<'a> {
                 while self.chars.peek().is_some_and(|c| is_ident_continue(*c)) {
                     ident.push(self.chars.next().unwrap());
                 }
-                self.skip_ws_and_comments();
+                // R3 F-01: inline-only skip — the `(`/`{` lookahead is a
+                // same-line question, and eating newlines here would make a
+                // following-line element look same-line adjacent to
+                // check_separation.
+                self.skip_inline_ws();
                 if self.chars.peek() == Some(&'(') {
                     return Some(self.unsupported(UnsupportedKind::Call, format!("{ident}(")));
                 }
@@ -1206,7 +1291,7 @@ impl<'a> ValuePositionScanner<'a> {
             if let Some(u) = self.scan_value() {
                 return Some(u);
             }
-            if let Some(u) = self.check_separation('}') {
+            if let Some(u) = self.check_separation(SepKind::Object, '}') {
                 return Some(u);
             }
         }
@@ -1229,7 +1314,7 @@ impl<'a> ValuePositionScanner<'a> {
             if let Some(u) = self.scan_value() {
                 return Some(u);
             }
-            if let Some(u) = self.check_separation(']') {
+            if let Some(u) = self.check_separation(SepKind::Array, ']') {
                 return Some(u);
             }
         }

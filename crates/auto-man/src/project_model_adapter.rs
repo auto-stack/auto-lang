@@ -309,18 +309,80 @@ mod tests {
     /// Expected-bad fixtures: the ONLY inputs allowed to be rejected by
     /// BOTH arms (VM parse error + model syntax error), each bound to its
     /// expected new-arm error stage (R2 F-02: identity + diagnosis).
+    /// R3 F-02: entries are FULL repo-relative paths — matching is exact
+    /// (`exempted_by`), so same-name/same-suffix files in other
+    /// directories can never inherit an exemption.
     const EXPECTED_BOTH_REJECTED: [(&str, &str); 2] = [
-        ("bad-missing-brace.pac.at", "value"),
-        ("bad-missing-value.pac.at", "value"),
+        (
+            "test/fixtures/modularity/project-model/fixtures/bad-missing-brace.pac.at",
+            "value",
+        ),
+        (
+            "test/fixtures/modularity/project-model/fixtures/bad-missing-value.pac.at",
+            "value",
+        ),
     ];
     /// Inputs whose OLD arm fails config-VM parse (render-pipeline-only
     /// template / undefined-variable fixtures) while the model CLASSIFIES
-    /// them non-static — identity-bound, so an unexpected old-arm failure
-    /// can never hide in this bucket (R2 F-02).
+    /// them non-static — full repo-relative paths, exact match only.
     const EXPECTED_TEMPLATE_REJECTED: [&str; 2] = [
         "crates/auto-man/assets/templates/clib/pac.at",
-        "fixtures/dynamic-expressions.pac.at",
+        "test/fixtures/modularity/project-model/fixtures/dynamic-expressions.pac.at",
     ];
+
+    /// Normalize an absolute managed path to a repo-relative `/`-separated
+    /// string (exact identity for the exemption lists).
+    fn rel_identity(f: &Path, root: &Path) -> String {
+        f.strip_prefix(root)
+            .unwrap_or(f)
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
+    /// Exact-match exemption lookup — suffix/same-name shadows never match.
+    fn exempted_by<'a, T>(rel: &str, list: &'a [T]) -> Option<&'a T>
+    where
+        T: AsRef<str>,
+    {
+        list.iter().find(|p| p.as_ref() == rel)
+    }
+
+    /// R3 F-02: exemption identity is exact — shadow files sharing a name
+    /// or suffix with an allowlisted input must NOT be exempted.
+    #[test]
+    fn project_model_r3_exemption_identity_is_exact() {
+        let root = repo_root();
+        let shadow_bad = root.join("scratch/shadow/bad-missing-brace.pac.at");
+        let shadow_tpl = root.join("scratch/shadow/fixtures/dynamic-expressions.pac.at");
+        assert_eq!(
+            rel_identity(&shadow_bad, &root),
+            "scratch/shadow/bad-missing-brace.pac.at"
+        );
+        assert!(exempted_by(
+            &rel_identity(&shadow_bad, &root),
+            &EXPECTED_BOTH_REJECTED.map(|(p, _)| p.to_string())
+        )
+        .is_none());
+        assert!(exempted_by(
+            &rel_identity(&shadow_tpl, &root),
+            &EXPECTED_TEMPLATE_REJECTED.map(|p| p.to_string())
+        )
+        .is_none());
+        // the real allowlisted identities do match
+        assert!(exempted_by(
+            &rel_identity(&fixture("bad-missing-brace.pac.at"), &root),
+            &EXPECTED_BOTH_REJECTED.map(|(p, _)| p.to_string())
+        )
+        .is_some());
+        assert!(exempted_by(
+            &rel_identity(
+                &root.join("crates/auto-man/assets/templates/clib/pac.at"),
+                &root
+            ),
+            &EXPECTED_TEMPLATE_REJECTED.map(|p| p.to_string())
+        )
+        .is_some());
+    }
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -458,6 +520,35 @@ mod tests {
         diffs
     }
 
+    /// R3 F-01 parity matrix: every legal trivia/separation shape parses
+    /// on BOTH arms with equal frozen fields (the review's oracle-first
+    /// methodology, made permanent).
+    #[test]
+    fn project_model_r3_trivia_parity_matrix() {
+        let cases = [
+            "members: [\"a\" // comment\n, \"b\"]\n",
+            "members: [\"a\" /* block */ , \"b\"]\n",
+            "cfg: { a: true\nb: false }\n",
+            "cfg: [true\nfalse]\n",
+            "{ name: \"ok\", back: { project: \"b\" /* comment */ } }",
+            "members: [\"a\", \"b\",]\n",
+            "members: [ // leading comment\n \"a\"]\n",
+            "members: [true // c\n, false]\n",
+            // NOTE: object comma AFTER a passed break is an old-arm ERROR
+            // (R3 oracle probe) — it is a negative control in the model
+            // tests, not a parity case.
+        ];
+        for code in cases {
+            let old = old_normalized_from_code(code)
+                .unwrap_or_else(|e| panic!("old arm must accept {code:?}: {e}"));
+            let (d, new) = new_normalized_from_code(code, &SourceInfo::inline())
+                .unwrap_or_else(|e| panic!("new arm must accept {code:?}: {e}"));
+            assert!(d.is_static_equivalent(), "{code:?}");
+            let diffs = field_diff(&old, &new);
+            assert!(diffs.is_empty(), "{code:?}: {diffs:?}");
+        }
+    }
+
     /// V-02 (AC-02): over the whole managed corpus — every file classified;
     /// every static-equivalent file equal on the frozen subset; dynamic
     /// files classified (never faked green).
@@ -512,10 +603,12 @@ mod tests {
                 // the old arm errors is the honest pair (error preserved,
                 // no silent fallback).
                 (Err(_old_err), Ok((false, _))) => {
-                    let rel = f.strip_prefix(repo_root()).unwrap_or(f);
-                    if EXPECTED_TEMPLATE_REJECTED.iter().any(|p| rel.ends_with(p)) {
+                    // R3 F-02: exact repo-relative identity — same-name
+                    // shadows in other directories never inherit exemption.
+                    let rel = rel_identity(f, &repo_root());
+                    if EXPECTED_TEMPLATE_REJECTED.iter().any(|p| p == &rel) {
                         template_rejected += 1;
-                        template_files.push(rel.to_string_lossy().to_string());
+                        template_files.push(rel.clone());
                     } else {
                         failures.push(format!(
                             "{}: UNEXPECTED template-rejected input — old arm error outside the template allowlist",
@@ -527,9 +620,9 @@ mod tests {
                 // here (identity-bound allowlist below); an unexpected
                 // corrupted required input must fail the gate (R2 F-02).
                 (Err(_), Err(_)) => {
-                    let rel = f.strip_prefix(repo_root()).unwrap_or(f);
-                    match EXPECTED_BOTH_REJECTED.iter().find(|(p, _)| rel.ends_with(p)) {
-                        Some((_, want_stage)) => {
+                    let rel = rel_identity(f, &repo_root());
+                    match EXPECTED_BOTH_REJECTED.iter().find(|(p, _)| p == &rel) {
+                        Some(&(_, want_stage)) => {
                             assert_eq!(
                                 report.new_error_stage.map(|s| s.to_string()),
                                 Some(want_stage.to_string()),
@@ -537,7 +630,7 @@ mod tests {
                                 report.path
                             );
                             both_rejected += 1;
-                            both_files.push(rel.to_string_lossy().to_string());
+                            both_files.push(rel.clone());
                         }
                         None => failures.push(format!(
                             "{}: UNEXPECTED both-rejected input (not in the expected-bad allowlist) — investigate before gating",
@@ -790,6 +883,43 @@ mod tests {
 
 #[cfg(test)]
 mod p780_separator_semantics {
+    /// R3 F-01 oracle pin (asymmetric separator grammar): object commas
+    /// are same-line-only; array commas/newlines mix freely after a value.
+    #[test]
+    fn oracle_asymmetric_separator_semantics() {
+        use super::old_normalized_from_code as old;
+        // object: legal comma placements
+        assert!(old("cfg: { a: 1, }\n").is_ok(), "obj trailing comma Ok");
+        assert!(
+            old("cfg: { a: 1,\nb: 2 }\n").is_ok(),
+            "obj comma before newline Ok"
+        );
+        // object: comma AFTER a passed break errors ("Expected key")
+        assert!(
+            old("cfg: { a: 1\n, b: 2 }\n").is_err(),
+            "obj comma after newline Err"
+        );
+        assert!(
+            old("cfg: { a: 1 // c\n, b: 2 }\n").is_err(),
+            "obj comment then comma Err"
+        );
+        assert!(
+            old("cfg: { a: 1,, b: 2 }\n").is_err(),
+            "obj double comma Err"
+        );
+        // array: comma runs and comment-then-comma are legal after a value;
+        // a comma at element position errors
+        assert!(
+            old("cfg: [1 // c\n, 2]\n").is_ok(),
+            "arr comma after comment Ok"
+        );
+        assert!(old("cfg: [1,, 2]\n").is_ok(), "arr double comma Ok");
+        assert!(
+            old("cfg: [\n, 1]\n").is_err(),
+            "arr leading comma after newline Err"
+        );
+    }
+
     /// R2 F-01 oracle pin: the config VM's separator grammar for structured
     /// values — same-line adjacency errors; newline/comma/trailing-comma
     /// are legal. The static scanner's `check_separation` mirrors this.
