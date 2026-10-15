@@ -1862,6 +1862,23 @@
       "completion:delivered"
      ],
      "content": "交付物：scripts/legacy-preservation.py（inventory/preserve/anchor/verify/recover-drill/snapshots/drill）、legacy refs 两仓各 branch+tag（本地未 push）、准备树 .wt/lang-784/{auto-ui,auto-man}@codex/v06-extraction（未替换代码树，显式转交）、仓外恢复位置三代并存（v1 松散/v2 schema1/v2.1 schema2 LATEST）、777 边界基线重锚 7d51845ff（36→39 边，strict pass 0 违例 2 豁免）、迁出清单 attachments/784/t04/migration-inventory.md、新规范 docs/specs/repository-boundaries/project.md。Category A 无 Rust 改动。"
+    },
+    {
+     "id": "P783-M",
+     "title": "PLAN-783 merge 收据：closeout 冻结基线绿+SD-01..05 沉淀",
+     "file": "docs/specs/auto-ac/artifact-probe.md",
+     "content": "PLAN-783 交付收据：delivery c00f77b52（ff-only 线性落地）；Spec 沉淀 artifact-contract.md+artifact-probe.md 新建、auto-ac/project.md 探针导航、auto-cache/project.md 差距清单、auto-hir/stage-contract.md 信任规则;closeout=512 churn 冻结水位+30 样本 perf 再生绑定冻结提交+发布后 SHA256 验证全过;债务 D-783-A..E 已登记 KNOWN-DEBT（探针外后续）。分类 A（零 crates/** 改动,零根 cargo 档）。",
+     "tags": [
+      "plan:783",
+      "commit:c00f77b52",
+      "sha256:e00bd5dfa724b7f62f81ebba198c9f983c332b6d10134911"
+     ],
+     "related": [
+      "PLAN-783"
+     ],
+     "status": "accepted",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15"
     }
    ]
   },
@@ -7007,6 +7024,40 @@
       "sha256:3285de1b50564b96"
      ],
      "content": "PLAN-784 SD-01 落地：docs/specs/repository-boundaries/project.md 为三仓身份与 legacy 保全 canonical 规范。现行规则：auto-ui/auto-man 复用既有仓身份与 gitee 远端；主分支在迁移验收前维持旧版本（不 reset/orphan/force-push/清空）；legacy 锚=本地分支 legacy/pre-v06-extraction + 标签 legacy-pre-v06-{f7d92eef,51fafe82}；payload 位于仓外 D:/autostack/.recovery/784-legacy-preservation（状态寻址快照 snapshots/<snap-id>/，身份=tip+完整 refs→objectID+保留内容 hash；同态幂等复用/变态新增/旧快照不可覆盖；verify 对 wip/untracked/ignored 原文件漂移判红；创建/复用/复核三处断言 bundle 实际承载 refs 覆盖冻结映射）；准备树 .wt/lang-784/{auto-ui,auto-man}@codex/v06-extraction 显式转交后续迁移计划；模块边界门基线锚 7d51845ff（39 边）。"
+    },
+    {
+     "id": "P783-D1",
+     "title": "auto-ac 产物契约：A00–A12 身份/引用/失效/信任规则（实验冻结）",
+     "file": "docs/specs/auto-ac/artifact-contract.md",
+     "content": "PLAN-783 交付：编译各层产物统一契约。A00–A12 全层登记（键成分/引用类别/驻留/再生），实际 codec 面=A00/A04/A07/A09/A10（core+scalar 受限可执行子集）。身份三分 QueryKey/ArtifactId/ChunkId+域分离 blake3+路径不入内容键；恢复 HIR 不带信任（一律重过本域 verifier）；对象键以 HIR 查询键哈希为成分（缺源命中可计算）；provenance 与 required-data 分离（GC 只沿 required 保活）；同键异内容=不确定性报告；CAS 读取准入复验地址。canonical=artifact-contract.md",
+     "tags": [
+      "plan:783",
+      "commit:c00f77b52",
+      "sha256:9a9e30c0de3d3d83ede1b0b010e00faf067d3b243c63fb8a"
+     ],
+     "related": [
+      "PLAN-783"
+     ],
+     "status": "accepted",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15"
+    },
+    {
+     "id": "P783-D2",
+     "title": "auto-ac 产物探针：冻结预算/单临界区发布/完整状态矩阵 GC",
+     "file": "docs/specs/auto-ac/artifact-probe.md",
+     "content": "PLAN-783 交付：experimental/ac-artifact-probe 独立 workspace。冻结预算（64KiB 页/128MiB 布局×2/8MiB 热/512KiB 查询/GC 64-48MiB/8MiB 临时空间=staging+CAS tmp 双副本+残留 tmp 原子配额）；发布=单临界区（共享 liveness 覆盖 staging→预算→CAS→提交；GC/恢复独占）；GC/恢复候选=完整状态矩阵；lease OS 真值判活；namespace 根 reparse 硬边界；SQLite auto_vacuum 真收缩+settled_space 沉降物理总量。六轮独立复审反例全部永久回归钉面。canonical=artifact-probe.md",
+     "tags": [
+      "plan:783",
+      "commit:c00f77b52",
+      "sha256:e00bd5dfa724b7f62f81ebba198c9f983c332b6d10134911"
+     ],
+     "related": [
+      "PLAN-783"
+     ],
+     "status": "accepted",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15"
     }
    ]
   },
@@ -8467,6 +8518,23 @@
       "commit:80f11a1c3"
      ],
      "content": "python scripts/legacy-preservation.py drill 8/8：D1 同 tip anchor 幂等 / D2 异 tip 拒绝且原 ref 不动 / D3 HEAD 漂移拒绝 / D4 同 HEAD 变 WIP=独立快照 / D5 A→B 重复保全旧快照字节不变+同态 reuse / D6 wip+untracked+ignored 原文件漂移与删除四反控判红+复绿+备份不动 / D7 快照 bundle 损坏拒绝且零改写 / D8 同 HEAD refs 新增(tag 指旧 bundle 不可达提交)/移动/删除矩阵+bare fetch 实际恢复断言。控制间 payload 强制隔离。真实仓复核入口：preserve/verify/anchor/recover-drill/snapshots。"
+    },
+    {
+     "id": "P783-T",
+     "title": "ac-artifact-probe 18 族永久回归（五层复审反例+V-01..12 必验矩阵）",
+     "file": "docs/specs/auto-ac/artifact-probe.md",
+     "content": "PLAN-783 测试资产：cargo test --manifest-path experimental/ac-artifact-probe/Cargo.toml；identity_/admission_/layout_/native_resume_/invalidation_/reachability_/concurrency_/recovery_/gc_budget_/store_boundary_/perf_/dep_audit_ + review_r1..r5（12+6+4+3+2 五层复审反例）。聚合 scripts/verify-ac-artifact-probe.ps1 -Scope acceptance|closeout（清单化最小通过数+ignored 白名单+512 恒等校验+perf 冻结绑定再生+发布后 SHA256 验证）。acceptance 93+1 白名单；512 churn 冻结水位绿。",
+     "tags": [
+      "plan:783",
+      "commit:c00f77b52",
+      "sha256:e00bd5dfa724b7f62f81ebba198c9f983c332b6d10134911"
+     ],
+     "related": [
+      "PLAN-783"
+     ],
+     "status": "accepted",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15"
     }
    ]
   },
@@ -11414,10 +11482,27 @@
       "spec_sha256:3285de1b50564b96"
      ],
      "content": "final pass：R1（快照覆盖/ignored 漂移/链接）与 R2（快照身份遗漏 refs）全 closed。独立 harness 19/19、永久 drill 8/8；缺 ref 旧 bundle+manifest 同步改 hash 的伪装反控仍被 verify/preserve exit 4 拦截；两真实仓新代快照独立恢复（11/29 refs、3/23 tags、tree 相等）；原仓/三代 payload 前后不变；两 strict pass；三树 wt-guard clean。SD-01 重读冻结 SHA256 3285de1b…。"
+    },
+    {
+     "id": "P783-R6",
+     "title": "PLAN-783 独立终审 R6 pass（R1–R5 五轮反例修复清偿）",
+     "file": "docs/plans/783-ac-artifact-contract-probe.md",
+     "content": "PLAN-783 复审：独立 Codex 上下文，受审 aa8c666ca，18 族 93 passed+1 白名单 ignored，R5 三项（残留 tmp 预算/报告同步/警告）全闭；清理受阻补充控制（持住 tmp→残留吃配额→释放后 recover 回收）通过。merge 后落地基线发现 PLAN-782 lower_object API 语义冲突，补传 RuntimeInjection::default()（全关默认=生产合同，与旧 2 参语义逐位一致），新冻结基线全套 closeout PASS——该适配 delta 待 R7 复审确认。证据 docs/plans/attachments/783/review-r6.md",
+     "tags": [
+      "plan:783",
+      "commit:c00f77b52",
+      "sha256:8f22328285842c4d6c90b9ab370d51250698f6ff3264ac6c"
+     ],
+     "related": [
+      "PLAN-783"
+     ],
+     "status": "accepted",
+     "created": "2026-10-15",
+     "last_modified": "2026-10-15"
     }
    ]
   }
  ],
  "project": "auto-lang",
- "version": 26
+ "version": 27
 }
