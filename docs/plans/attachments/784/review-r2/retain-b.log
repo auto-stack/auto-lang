@@ -1,0 +1,2 @@
+{"action": "create", "bundle_sha256": "c952f664d6221552a3575dfc0a6035b57a817d4c4c518e496fa6064ea8b4a943", "head": "cf220e20346c578d5dd4db85d156a441dc2ab08f", "ignored_keep": 0, "manifest": "D:/autostack/.review/plan784-r2-f3da9a6bbb634ff3b2bd59adfa431e81/retention-payload/retention/snapshots/5bfb9565bad5cd27/manifest.json", "repo": "retention", "snapshot": "5bfb9565bad5cd27", "untracked": 0, "wip": 1}
+

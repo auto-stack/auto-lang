@@ -1,0 +1,3 @@
+{"action": "create", "bundle_sha256": "a5cd69b4ee12cd4dfefdb493bfffe43109c1cf311d4ed822852a4d8e8035b1b0", "head": "2feea2fb5395831170fdab3cac08a83184021b86", "ignored_keep": 0, "manifest": "D:/autostack/.review/plan784-r1-cc154ca4083c4cb88384b34a994f5fa9/payload-dirty/dirty-overwrite/manifest.json", "repo": "dirty-overwrite", "untracked": 0, "wip": 1}
+
+bundle: create dirty-overwrite-full.bundle sha256=a5cd69b4ee12…

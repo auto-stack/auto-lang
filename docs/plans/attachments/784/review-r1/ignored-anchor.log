@@ -1,0 +1,2 @@
+{"branch": {"action": "create", "name": "legacy/pre", "sha": "c2c4e40a0c9d6261b33c8b1e9723cda31c0f064d"}, "repo": "ignored-drift", "tag": {"action": "create", "name": "legacy-pre", "sha": "c2c4e40a0c9d6261b33c8b1e9723cda31c0f064d"}, "tip": "c2c4e40a0c9d6261b33c8b1e9723cda31c0f064d"}
+

@@ -1,0 +1,27 @@
+[
+  {
+    "line": 6,
+    "target": "../../design/37-v06-modularization-and-repo-boundaries.md",
+    "exists": true
+  },
+  {
+    "line": 33,
+    "target": "../plans/reports/784-repo-preservation.md",
+    "exists": false
+  },
+  {
+    "line": 50,
+    "target": "../design/repository-layout.md",
+    "exists": true
+  },
+  {
+    "line": 57,
+    "target": "../plans/attachments/784/t04/migration-inventory.md",
+    "exists": false
+  },
+  {
+    "line": 58,
+    "target": "../plans/reports/v06-extraction-execution-roadmap.md",
+    "exists": false
+  }
+]
