@@ -353,3 +353,40 @@ fn direct_hir_control_flow_verifies_and_plans() {
         "pick's owning returns and the fresh-return free are planned"
     );
 }
+
+#[test]
+fn wrapper_same_source_mut_view_conflict_rejects() {
+    // V-04 counterexample closure (770 R4-04 relayed through the
+    // combination domain): the mut x view exclusivity pair rides the
+    // wrapper signatures -- passing one source into both wrapper params
+    // through TWO levels still rejects at the front door
+    let ds = err(concat!(
+        "type Tok { text Str; kind int }\n",
+        "fn both(mut a Tok, b Tok) int { a.kind = 1; return a.kind + b.kind }\n",
+        "fn relay(mut a Tok, b Tok) int { return both(a.mut, b) }\n",
+        "fn relay2(mut a Tok, b Tok) int { return relay(a.mut, b) }\n",
+        "fn main() int {\n",
+        "    var x Tok = Tok { text: \"abc\", kind: 1 }\n",
+        "    return relay2(x.mut, x)\n",
+        "}\n"
+    ));
+    assert!(has(&ds, "verify.mut-conflict"), "{:?}", codes(&ds));
+}
+
+#[test]
+fn wrapper_independent_sources_stay_legal() {
+    // the positive control: distinct sources through the same two-level
+    // wrapper stay legal -- read/mut pairing is per SOURCE, not per formal
+    // parameter number
+    ok(concat!(
+        "type Tok { text Str; kind int }\n",
+        "fn both(mut a Tok, b Tok) int { a.kind = 1; return a.kind + b.kind }\n",
+        "fn relay(mut a Tok, b Tok) int { return both(a.mut, b) }\n",
+        "fn relay2(mut a Tok, b Tok) int { return relay(a.mut, b) }\n",
+        "fn main() int {\n",
+        "    var x Tok = Tok { text: \"abc\", kind: 1 }\n",
+        "    var y Tok = Tok { text: \"d\", kind: 2 }\n",
+        "    return relay2(x.mut, y)\n",
+        "}\n"
+    ));
+}
