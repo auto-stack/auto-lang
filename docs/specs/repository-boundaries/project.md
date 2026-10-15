@@ -30,7 +30,10 @@ auto-ui 主检出带未提交 `M Cargo.lock`（原始字节已保全）；auto-m
   auto-man `legacy-pre-v06-51fafe82`）—— 不可挪动的归档锚；
 - 全量 git bundle（含全部 refs+HEAD）+ 未提交/ignored 载荷的原始字节备份 +
   SHA256 清单，位于仓外独立恢复位置（路径与 hash 见
-  [PLAN-784 保全收据](../plans/reports/784-repo-preservation.md)）；
+  [PLAN-784 保全收据](../../plans/reports/784-repo-preservation.md)）；
+  保全为**状态寻址快照**（`snapshots/<snap-id>/`，snap-id 由 tip+WIP+保留内容
+  hash 派生）：同态重跑幂等复用、状态变化新增独立快照、既有快照永不被覆盖，
+  verify 对全部保留原文件（含 ignored）做漂移检测；
   恢复演练（disposable clone）已验证 refs/tree/tag 完整可恢复。
 
 ## 迁移准备状态
@@ -54,5 +57,5 @@ auto-ui 主检出带未提交 `M Cargo.lock`（原始字节已保全）；auto-m
 ## 迁出入口清单
 
 迁出候选路径 → 未来 owner → 资源/生成物/测试/消费者 → 在途计划的重放基线表
-见 [PLAN-784 迁出清单附件](../plans/attachments/784/t04/migration-inventory.md)；
-编排顺序见[正式拆分与搬迁路线](../plans/reports/v06-extraction-execution-roadmap.md)。
+见 [PLAN-784 迁出清单附件](../../plans/attachments/784/t04/migration-inventory.md)；
+编排顺序见[正式拆分与搬迁路线](../../plans/reports/v06-extraction-execution-roadmap.md)。
