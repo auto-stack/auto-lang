@@ -9,6 +9,11 @@
 //!
 //! 进程默认槽是进程级全局——所有测试经 `serialized()` 互斥串行并做
 //! save/restore，避免并行线程互踩。
+//!
+//! 双构建门禁（F779-R2-01 后）：除本 manifest 的 no-ui 形态外，同源测试
+//! 须在 UI 启用形态复跑（复审 ui-consumer 形态；本仓等价命令：
+//! `cargo test --manifest-path <本manifest> --features auto-lang/ui`）——
+//! v01(a) 显式默认经高层入口供值在两构建下同真。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
@@ -214,6 +219,25 @@ fn v01_two_live_instances_do_not_cross_talk() {
 }
 
 // ── V-02 表示/缺席 ──────────────────────────────────────────────────────
+
+/// 高层入口缺席（F779-R2-01 覆盖矩阵补格）：无显式默认时经
+/// run_with_capture 全管线读 0。**模式不变断言**——no-ui 构建无装配=0；
+/// ui 构建下兼容默认补缺 frame_bench adapter，门关无泵同读 0（两构建
+/// 同一期望；"补缺且门开供真值"由 in-crate 计划面与 plan716 程序轨
+/// 探针承担）。
+#[test]
+fn v02_high_level_absent_default_yields_zero() {
+    let _g = serialized();
+    let _guard = DefaultGuard::new();
+
+    clear_process_default_frame_provider();
+    let (_, stdout) = auto_lang::run_with_capture(FRAME_PROGRAM).expect("run absent");
+    assert_eq!(
+        stdout_lines(&stdout),
+        vec!["0", "0"],
+        "高层入口缺席默认=未捕获 0（no-ui 无装配 / ui 兼容默认无泵，两形同 0）"
+    );
+}
 
 /// 无 provider（缺席）→ 未捕获语义 0（与 core 现状 no-ui/未捕获一致）。
 #[test]

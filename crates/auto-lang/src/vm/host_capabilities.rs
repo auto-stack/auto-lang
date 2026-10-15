@@ -38,12 +38,27 @@ pub trait FrameProvider: Send + Sync {
 /// 不受影响。
 static PROCESS_DEFAULT_FRAME_PROVIDER: RwLock<Option<Arc<dyn FrameProvider>>> = RwLock::new(None);
 
-/// 注册进程默认 frame provider（幂等替换；宿主启动期调用）。
+/// 注册进程默认 frame provider（显式权威 API：替换现存值，后注册者胜）。
+/// 宿主启动/测试装配用；已建 VM 实例的快照不受影响。
 pub fn set_process_default_frame_provider(provider: Arc<dyn FrameProvider>) {
     let mut slot = PROCESS_DEFAULT_FRAME_PROVIDER
         .write()
         .expect("PROCESS_DEFAULT_FRAME_PROVIDER poisoned");
     *slot = Some(provider);
+}
+
+/// 兼容默认装配（F779-R2-01）：**仅当槽位为空时**安装。检查与安装在同一
+/// 写锁临界区内完成——并发的显式 `set_` 与本操作互斥，不存在"检查后
+/// 被覆盖/覆盖他人"的窗口。供 UI 等内建宿主的隐式入口使用：兼容默认
+/// 只补缺，不覆盖调用方显式选择（显式 `set_` 恒胜；需要强制替换走显式
+/// API）。
+pub fn set_process_default_frame_provider_if_absent(provider: Arc<dyn FrameProvider>) {
+    let mut slot = PROCESS_DEFAULT_FRAME_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_FRAME_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
 }
 
 /// 当前进程默认（`AutoVM::new` 构造期快照消费）。

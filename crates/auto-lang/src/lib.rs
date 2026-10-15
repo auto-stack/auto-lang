@@ -442,10 +442,11 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
 /// let result = run("1 + 2").unwrap();  // Returns "3"
 /// ```
 /// PLAN-779: 内建宿主能力装配（composition root——crate 根是 ui→vm 单向
-/// 接线的合法层；vm core 不引用 ui）。ui 构建下安装 frame_bench adapter
-/// 为进程默认（幂等）：恢复 779 迁移前"本 crate 全部生产执行路径在 ui
-/// 构建中可观测帧通道"的既有接线（F779-R1-01——程序轨 run 管线、测试/
-/// 调试/ABT/配置/REPL/解释器/back-proxy 各宿主入口统一经此装配）。
+/// 接线的合法层；vm core 不引用 ui）。ui 构建下装配 frame_bench adapter
+/// 为**兼容默认**（F779-R2-01：仅空槽补缺、同锁原子，不覆盖调用方显式
+/// set 的默认）：恢复 779 迁移前"本 crate 全部生产执行路径在 ui 构建中
+/// 可观测帧通道"的既有接线（F779-R1-01——程序轨 run 管线、测试/调试/
+/// ABT/配置/REPL/解释器/back-proxy 各宿主入口统一经此装配）。
 /// no-ui 构建=no-op（缺席=未捕获 0 语义，外部 consumer 自行注入）。
 #[cfg(feature = "ui")]
 fn install_ui_host_capabilities() {

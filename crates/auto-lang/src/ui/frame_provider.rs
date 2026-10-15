@@ -25,12 +25,26 @@ impl crate::vm::host_capabilities::FrameProvider for FrameBenchProvider {
     }
 }
 
-/// 注册进程默认 frame provider = frame_bench adapter（幂等替换）。
+/// 装配 UI 兼容默认 frame provider = frame_bench adapter（F779-R2-01：
+/// **仅当进程默认槽为空时**安装——`set_..._if_absent` 同锁原子，检查与
+/// 安装无并发窗口）。
 ///
-/// 幂等性说明：重复注册替换为等价的无状态 adapter，无观测差异；已建
-/// VM 实例的构造期快照不受影响（host_capabilities 快照语义）。
+/// 优先关系（装配契约）：
+/// 1. 调用方**显式**注册（`set_process_default_frame_provider`，权威 API）
+///    恒胜——本兼容安装不覆盖它；
+/// 2. 无人注册时空槽由本兼容默认补缺（ui 构建下内建宿主入口恢复 779 前
+///    的帧观测接线）；
+/// 3. 实例级 `AutoVM::set_frame_provider` 在 1/2 之上按 VM 独立生效
+///    （构造期快照 + 实例覆盖，均不受后续进程默认变化影响）。
+/// 需要强制替换显式默认时，调用方使用显式 `set_` API 表达。
+///
+/// 本函数供全部内建隐式入口统一调用：VmBridge 构造、
+/// `run_file_dynamic_ui_inner`、`install_ui_host_capabilities`（run 家族/
+/// test/debug/ABT/config/REPL/解释器/back-proxy 漏斗）、auto CLI main。
 pub fn install_process_default() {
-    crate::vm::host_capabilities::set_process_default_frame_provider(Arc::new(FrameBenchProvider));
+    crate::vm::host_capabilities::set_process_default_frame_provider_if_absent(Arc::new(
+        FrameBenchProvider,
+    ));
 }
 
 #[cfg(test)]
@@ -50,5 +64,45 @@ mod tests {
             crate::vm::host_capabilities::FrameProvider::present_ms(&p),
             crate::ui::frame_bench::frame_present_ms()
         );
+    }
+
+    /// F779-R2-01 优先关系单元锚：兼容安装不覆盖显式默认；空槽才补缺；
+    /// 显式 set 恒可替换（save/restore 串行，独占进程默认槽）。
+    #[test]
+    fn compat_install_never_overrides_explicit_default() {
+        struct Fake(i64);
+        impl crate::vm::host_capabilities::FrameProvider for Fake {
+            fn begin_ms(&self) -> i64 {
+                self.0
+            }
+            fn present_ms(&self) -> i64 {
+                self.0
+            }
+        }
+        let saved = crate::vm::host_capabilities::process_default_frame_provider();
+
+        // 空槽 → 补缺成功。
+        crate::vm::host_capabilities::clear_process_default_frame_provider();
+        install_process_default();
+        assert!(
+            crate::vm::host_capabilities::process_default_frame_provider().is_some(),
+            "空槽时兼容默认须补缺"
+        );
+
+        // 显式默认 → 兼容安装不覆盖。
+        crate::vm::host_capabilities::set_process_default_frame_provider(Arc::new(Fake(17)));
+        install_process_default();
+        let cur = crate::vm::host_capabilities::process_default_frame_provider().unwrap();
+        assert_eq!(
+            crate::vm::host_capabilities::FrameProvider::begin_ms(&*cur),
+            17,
+            "兼容安装不得覆盖显式默认"
+        );
+
+        // 还原。
+        match saved {
+            Some(p) => crate::vm::host_capabilities::set_process_default_frame_provider(p),
+            None => crate::vm::host_capabilities::clear_process_default_frame_provider(),
+        }
     }
 }
