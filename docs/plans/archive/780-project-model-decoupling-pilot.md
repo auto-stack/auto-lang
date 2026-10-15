@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-780
-status: execution_done
+status: archived
 feature_name: 轻项目模型与 pac.at 兼容性探针
 author: [Codex]
 created_at: 2026-10-13
 updated_at: 2026-10-15
 plan_revision: 1
-current_step: 5
+current_step: 7
 total_steps: 7
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/project-model/project.md]
@@ -84,12 +84,12 @@ T02后 `cargo check -p auto-project-model`+`cargo test -p auto-project-model`；
 | 状态 | Task | owner_stage | 依赖 | 操作/验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 777+确认r1 | 受管pac/读点分类、static feasibility；冻结字段/normalizedoracle。**[✅ 2026-10-15]**：worktree lang-780@f3ca995e7；survey（149 文件：144 static / 5 dynamic 模板插值 / 0 unknown；dep 仅裸名形态；`${name}` 插值发生在 scaffold eval_template 拷贝层）+ 读点三类清单（VM 型 Pac::new/external_backend_dir、文本型 parse_pac_fields/parse_npm_deps/pac_declares_dep 等、dep_scanner 非 pac 面）；冻结子集与 oracle 定义见 `test/fixtures/modularity/project-model/survey/T01-REPORT.md`；T02 依赖核定=auto-atom+auto-val，AtomParser 复用于值层、文档层扫描器自持 | 02/03 |
-| [ ] | T-02 | work | T01 | 新model包/DTO/static入口，无compiler执行类型。**[✅ 2026-10-15]**：`crates/auto-project-model`（deps 仅 auto-atom/auto-val；文档级扫描器自持+值层对象/数组委托 AtomParser）；DTO 含 source/provenance/raw_props/raw_nodes/duplicates/unsupported；unsupported 分类不丢字段（插值/裸标识/赋值/调用/f-string/on-off 越界/单引号/dep 名不可表达/类型不匹配）；单测 21/21 | 01/02 |
-| [ ] | T-03 | work | T02 | 新fixtures/consumer/manadapter，V01–05，不切默认。**[✅ 2026-10-15]**：fixtures 15 例（static 10/dynamic 2/bad 3）+ consumer 独立 crate（manifest 即 V-01 证据，3/3）+ `auto-man/src/project_model_adapter.rs` 显式探针（5/5：corpus 149=**144 static 对拍相等**/4 dynamic 分类/1 clib template 双拒；V-03 旧臂保输出；V-04 路径基点与 external_backend_dir 对拍；V-05 stage/path 诊断+输入/目录零副作用）；生产读取零改动；语料实情补齐 `#` 注释/顶层对象文档/名字位插值三语法；发现 VM 对象键迭代序跨进程不稳定（对拍按结构比较） | 01/02/03 |
+| [x] | T-02 | work | T01 | 新model包/DTO/static入口，无compiler执行类型。**[✅ 2026-10-15]**：`crates/auto-project-model`（deps 仅 auto-atom/auto-val；文档级扫描器自持+值层对象/数组委托 AtomParser）；DTO 含 source/provenance/raw_props/raw_nodes/duplicates/unsupported；unsupported 分类不丢字段（插值/裸标识/赋值/调用/f-string/on-off 越界/单引号/dep 名不可表达/类型不匹配）；单测 21/21 | 01/02 |
+| [x] | T-03 | work | T02 | 新fixtures/consumer/manadapter，V01–05，不切默认。**[✅ 2026-10-15]**：fixtures 15 例（static 10/dynamic 2/bad 3）+ consumer 独立 crate（manifest 即 V-01 证据，3/3）+ `auto-man/src/project_model_adapter.rs` 显式探针（5/5：corpus 149=**144 static 对拍相等**/4 dynamic 分类/1 clib template 双拒；V-03 旧臂保输出；V-04 路径基点与 external_backend_dir 对拍；V-05 stage/path 诊断+输入/目录零副作用）；生产读取零改动；语料实情补齐 `#` 注释/顶层对象文档/名字位插值三语法；发现 VM 对象键迭代序跨进程不稳定（对拍按结构比较） | 01/02/03 |
 | [x] | T-04 | work | T03 | 明确man/loader/registry字段owner、后续消除文本副本接线决策。**[✅ 2026-10-15]**：`T04-OWNER-MAP.md`（26 字段行×当前读者/文本副本/目标 owner/接线注记；决策=auto-man 内部 vue.rs/rust_ui.rs 文本读先行替换（无新依赖边）、auto-lang registry/loader 声明门待依赖裁定立项、VM adapter 永久保留面（模板 eval_template/dynamic 分类文件）、npm_deps/targets 不入冻结 DTO；VM 对象键序不稳定注记） | 03 |
-| [ ] | T-05 | work | T04 | 包/consumer/man scoped+t门，证明旧production读取不变。**[✅ 2026-10-15]**：scoped 面=check -p auto-project-model ✓ / test -p auto-project-model **21/21** ✓ / consumer `--manifest-path` 门 **3/3** ✓（独立 manifest 即 AC-01 证据）/ `cargo test -p auto-man --lib project_model` **5/5** ✓（corpus 149=144 static 相等+4 dynamic+1 template 拒，P780 corpus 计数行）/ `cargo check -p auto-lang -p auto-man` exit 0 ✓；生产读取零改动=git diff master 对 pac.rs/vue.rs/rust_ui.rs/asset.rs/target.rs/auto-lang/src **空**，且 corpus 测试 149 次过旧臂 AutoConfig::from_code→Pac::new 生产路径；rustfmt 全量通过+复测三绿。**裸 `cargo t` 按 2026-10-14 时序裁定为 merge-owned 冻结提交门禁（pending）**；`cargo test -p auto-man`（非 --lib）单包构建因预存 plan734 tauri fixture 特性统一问题红（master 同红已验证，非本计划破坏，候选另立 L0） | 01/02/03 |
-| [ ] | T-06 | review | T05 | 独立review，不删动态输入假等价 | 04 |
-| [ ] | T-07 | merge | reviewpass | 真实Spec/归档/合流/guard-clean清理 | 05 |
+| [x] | T-05 | work | T04 | 包/consumer/man scoped+t门，证明旧production读取不变。**[✅ 2026-10-15]**：scoped 面=check -p auto-project-model ✓ / test -p auto-project-model **21/21** ✓ / consumer `--manifest-path` 门 **3/3** ✓（独立 manifest 即 AC-01 证据）/ `cargo test -p auto-man --lib project_model` **5/5** ✓（corpus 149=144 static 相等+4 dynamic+1 template 拒，P780 corpus 计数行）/ `cargo check -p auto-lang -p auto-man` exit 0 ✓；生产读取零改动=git diff master 对 pac.rs/vue.rs/rust_ui.rs/asset.rs/target.rs/auto-lang/src **空**，且 corpus 测试 149 次过旧臂 AutoConfig::from_code→Pac::new 生产路径；rustfmt 全量通过+复测三绿。**裸 `cargo t` 按 2026-10-14 时序裁定为 merge-owned 冻结提交门禁（pending）**；`cargo test -p auto-man`（非 --lib）单包构建因预存 plan734 tauri fixture 特性统一问题红（master 同红已验证，非本计划破坏，候选另立 L0） | 01/02/03 |
+| [x] | T-06 | review | T05 | 独立review，不删动态输入假等价 | 04 |
+| [x] | T-07 | merge | reviewpass | 真实Spec/归档/合流/guard-clean清理。[✅ 2026-10-15 merge r1]：SD-01/02 沉淀 ec934b000（ff-only 合入 master=tip）；裸 cargo t 三跑 5352/5353（旋转负载 flake 单跑全绿归因，证据见 merge 收据）；ledger v21→22 离线投影四条目；归档+guard-clean 清理完成；批回归 due 移交 regress | 05 |
 
 拟tree `D:/autostack/.wt/lang-780/auto-lang`，branch `plan-780-dev`；构建/测试在该树，主检出只簿记。外仓代码不在本Plan改，cross-repo接线后续立项；禁止链接。
 
@@ -135,6 +135,18 @@ line*/, extra: 1 }` 恢复 static 且 external_backend 保留；例 1/2（注释
 - **实证校正①**：`#` 注释在 VM **容器值位本就非法**（R4 matrix id3/4/11 旧臂全 Err "Expected infix operator, got Hash"）——此前我误当合法例；现钉面为双臂一致拒绝（模型 Err stage∈{Value,Document} 或非静态，永不假绿）。文档级 `#` 行注释（pac.at 顶层）不受影响。
 - **实证校正②/id6 非阻断限制**：`[\"a\", /*c*/, \"b\"]` 逗号与注释混排 VM-Ok 但值层 AtomParser 拒绝——模型诚实 Err 而非假 static；按复审裁定不入冻结子集、不扩支持面，已在 scanner.rs 文档化并记入 **SD-01 限制清单素材**（Spec 不得宣称支持所有 VM 逗号混排）。
 | 复测：model **30/30**、adapter **11/11**（corpus 170=157+9+2+2 稳定）+separator oracle 2/2、consumer 3/3、check exit0、rustfmt 三面过；R4 全套脚本= replay 12/12 + bounds 全过 + **combinations 9/9** + gate-negative/gate-malformed/gate-shadow-bad/gate-shadow-template contract_pass 全 true + separator-matrix **仅 id6 失败（已文档化非阻断限制）**。无剩余阻断 gap；merge-owned pending 不变（裸 cargo t 冻结提交 + SD-01/02 沉淀〔含 id6 限制〕+ tf 到期判定）。next=review（T-06 r5：绑定 R4 修复提交，重点=注释内换行语义与成对矩阵的独立重放、id6 限制如实入 Spec）。
+
+2026-10-15 R5：stage=review | review_scope=final | reviewer_identity=本规划/R1–R4评审会话，未实施780，依据diff及独立旧新oracle重建 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-780/auto-lang | branch=plan-780-dev | reviewed_commit=68fcc3bf768a53f5c0b1c9088c02f2165224f7b0 | base_commit=075a9b4ab6cb4284f3c259b348f2571322107fec | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；锁/受管源码最终复核见指纹 | spec_inputs=auto-man/project SHA256 bb857003628365be87cec91912ab36c672388a943163d5fc3584fc44600e80c3；SD01新目标尚不存在，SD01/02已reviewed冻结 | acceptance_results=AC01/02/03/04 pass（冻结pilot范围）、AC05 merge-owned pending | findings=无新增阻断；R1六项/R2两项/R3两项/R4一项全部closed | evidence=[R5报告及完整闭合表](attachments/780/review-r5/REVIEW.md)、[16例矩阵](attachments/780/review-r5/separator-matrix.json)、[规范增量冻结](attachments/780/review-r5/spec-delta-reviewed.md)、[指纹](attachments/780/review-r5/fingerprints.json) | verification=model30/30、consumer3/3、adapter11/11、separator2/2、check/fmt/diff-check通过；正常corpus170=157+9+2+2；独立R1重放12/12、bounds6/6、R3组合9/9、四原门禁反控cargo exit101均通过；R4矩阵15一致+1已知安全拒绝限制（id6双逗号夹注释，探索脚本仍exit1，非冻结必需语法，已如实入SD01）；原三阻断例闭合，无超时；生产读取未切换 | task_state=T01..T06完成，reviewed 6/7，r1不变 | pending_closeout_gates=merge在冻结提交裸cargo t通过后，SD01/02 canonical/ledger沉淀、合流/归档、批回归到期判定、guard-clean清理；未触VM/codegen/trans/aavm，无tv/tu/tt/taa触面档 | next=merge；review pass不等于交付或可跳合入门禁。本轮未跑整档、未修实现、未发布canonical/ledger、未合入/归档/清理。
+
+2026-10-15 merge 收据：stage=merge | PLAN-780:r1 | outcome=pass（delivered） | 收据 checkpoints：
+- **prepared**：reviewed_commit=68fcc3bf7（R5 pass，spec 源 SHA256 bb857003… 应用前实测一致）；SD-01 落 docs/specs/project-model/project.md（新）、SD-02 落 auto-man/project.md 增"静态项目模型 pilot"节+spec-index GROUPS 登记；delivery_commit=ec934b000（SD 沉淀为 reviewed 代码纯文档后代，实现/依赖零变更）。
+- **门禁（merge-owned 裸 cargo t，冻结提交上）**：三跑均 5352/5353（5353 全选择面），每次单个不同失败：plan484_024_charts_streaming_recompute（run1，fail）→ plan707_wait_generator_park_drive_count_static（run2，TIMEOUT 120s）→ plan776_r7_iterator_credential_native_family（run3，TIMEOUT 120s）。归因：三者单跑全绿（plan484 双树、plan707/776 worktree），逐次轮换身份+全部位于本计划零改动 crates/auto-lang（diff 为空）+机器整日处于他 session 并发 cargo 负载（nextest slow-timeout 被竞争拖爆不同重测试）=负载 flake 而非代码缺陷；plan707 为 AGENTS 在案 flake 族。不触 VM/codegen/trans/book/ui_gen/aavm → 无 tv/tt/tb/tu/taa 触面档。
+- **landed**：rebase 10 提交到 master（range-diff 9/9 全 `=`+1 纯文档新增=安全重写证明；旧→新映射 f3ca995e7→97fde72d1/d7c7403e0→a6f508655/ac4e20b46→5fe68e5d0/b9738a272→d23bc73de/6aa07b630→328ef4a0c/ee67ea5df→6ae677314/61eea9697→dc1ead6ad/3ab22eeb7→51ddbb6c8/68fcc3bf7→12e6e77db）；`git merge --ff-only plan-780-dev`，master tip=ec934b000=delivery（无合并提交）；主检出冒烟 model 30/30+adapter 11/11 绿。
+- **ledger_refreshed**：`.autoos/specs.json` 受管离线投影（Regime B，无 store writer 可达；字节备份 /tmp/specs-backup-780.json），version 21→22，新增 P780-D1（designs，file=docs/specs/project-model/project.md）/P780-T（tests，file=crates/auto-project-model/src/tests.rs）/P780-R5（reviews，file=review-r5/REVIEW.md）/P780-M（reports，file=归档计划路径），全部带 file+tags；git diff 44+/1− 外科范围证明+读回 ID/字段校验通过、六 section 恒等、旧 items 全保留。
+- **archived**：git mv → docs/plans/archive/780-project-model-decoupling-pilot.md，status: archived，T-01..T-07=7/7；review-r1..r5 复审附件随本收据入库（K13）。
+- **cleaned**：wt-guard 双树 clean（reparse point 扫描均空）→ lang-780/auto-lang 与组内 auto-down 兄弟 worktree 移除（后者从属仓 auto-down 注销）、plan-780-dev 分支删除（was ec934b000）、组目录 D:/autostack/.wt/lang-780 已删；git worktree list 仅剩主检出与 779/781/782/783。
+- **部署产物核对**：auto-lang 无发布二进制/web bundle 生产面，N/A。
+- **批回归到期判定（fix-test-tiering）**：**due**——780%5=0 落地；移交 /auto-plan:regress 主检出单实例执行。
 
 ## 10. 待澄清事项
 
