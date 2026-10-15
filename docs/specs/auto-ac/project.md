@@ -148,6 +148,15 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
   open（List 未冻结，仍为后续 owner）。
 - char/str/List/完整 int 宽度的语言实现状态仍 open（合同≠实现，双态表述）。
 
+## 独立产物契约探针导航（PLAN-783）
+
+- [artifact-contract.md](artifact-contract.md)：A00–A12 编译产物统一契约（身份/
+  引用/失效/信任规则;实际 codec 面=A00/A04/A07/A09/A10）。
+- [artifact-probe.md](artifact-probe.md)：`experimental/ac-artifact-probe/` 独立
+  实验 workspace 的支持面、冻结预算、协议与限制清单。
+- 探针**不改变 ac-core 语言面、不新增生产入口**（ac-core 零产品依赖由
+  dep_audit 永久断言）;六轮独立复审（R1–R6）反例全部以永久回归钉面。
+
 ## 边界与已知限制
 
 - 不宣称：完整 Auto 源码编译（仅两个独立 source profile，旧 AST 未接）、生产 ABI 冻结、DLL/热重载、Linux 发布验收、

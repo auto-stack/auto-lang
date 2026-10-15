@@ -122,6 +122,14 @@ X7 后端补做名字解析/typecheck；X8 凭证来自输入标记而非本进�
   status 失败部分输出 trap 前逆序回滚 + 旧目标不提交——真实 PE 实证
   （256 深/4096 循环/0 次零分配/真实故障注入）。
 - 通用 pass（跨域 lowering/优化）与 ACC 桥仍 planned。
+## 持久产物的信任与溯源规则（PLAN-783 探针冻结）
+
+- **持久 payload 不携带信任**（R4/X4 的持久面）：磁盘 trusted 标志不能构造
+  `CheckedModule`——探针二进制恢复路径重过本域 verify 的实测依据。
+- **恢复重验义务**：任何持久 HIR（A07）消费前必须经本域 verify 入口
+  （`verify`/`verify_scalar`）;探针对象/HIR 命中路径均遵守。
+- **provenance 非强 pin**：对象与其 HIR 输入哈希的关联是溯源边（图 metadata）,
+  不保活上游——HIR 回收后对象仍可链接运行。
 
 ## 边界与已知限制
 

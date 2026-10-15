@@ -40,3 +40,24 @@
   竞态观察（P591-D3）——均登记 KNOWN-DEBT。
 
 > 来源：PLAN-591（r1，9b3639122）；Anchor：crates/auto-cache/src/methods_pack.rs、sandbox.rs。
+
+## 探针现状差距与实验/迁移边界（PLAN-783，实测清单）
+
+1. **`BlobStore::put` 固定 tmp 名**：同哈希并发写共享同一 `*.tmp` 路径——结构性
+   风险（无外层协调时竞争失败,PLAN-783 R1 F-08 反例）。探针以 per-chunk
+   LockFileEx 有界等待串行化规避并实测**重叠双进程**同键（同内容/异内容）行为;
+   **探针证据不构成生产 BlobStore 原生并发安全的证明**——生产化需修复或上移该
+   串行化。
+2. **元数据删除 vs 物理释放**：现有 GC 两条入口（`gc.rs::run_gc` 与
+   `lib.rs::AutoCache::run_gc`）按记录大小计,无 lease/图保活/崩溃恢复/物理
+   释放收据。探针实现了 tombstone→门锁→trash→删除 + 级联删行 + 幂等恢复
+  （含已提交孤儿行与 trash 残留的恢复趟）,作为迁移目标形态的参考实现
+   （非生产代码）。探针 store 以 `auto_vacuum=INCREMENTAL`+checkpoint 使
+   SQLite 主文件在回收后**真实收缩**,GC 收敛决策用**沉降后的物理总量**
+  （orphan/tmp/trash 全计）——原 64/48MiB 水位总量合同在 512-churn 上实测达成。
+3. **`fingerprint::compute_content_hash` 直哈原源码**——各阶段细粒度键
+  （profile/caps/target/backend 成分化）在探针 identity.rs 有完整参照。
+4. **迁移边界**：探针不并入任何生产入口;退役/迁移由后续计划决策,防第三套
+   生产缓存。探针详情 [auto-ac/artifact-probe.md](../auto-ac/artifact-probe.md)。
+
+> 来源：PLAN-783（r6 pass,aa8c666ca）;探针 `experimental/ac-artifact-probe/`。
