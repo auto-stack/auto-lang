@@ -83,10 +83,19 @@ pub(crate) struct DisplayRead {
 /// 臂（旧行为逐值保留），不是语法拒绝。
 const MODEL_PARSE_MAX_BRACKET_DEPTH: usize = 64;
 
-/// 迭代计算最大括号嵌套深度（字符串/转义/注释感知——引号与注释内的
-/// 括号不计入；块注释不嵌套，与 scanner.rs 语义一致）。只数 `{}`/`[]`：
-/// 递归位点在 scan_value_positions/parse_node/AtomParser 的结构化下钻，
-/// `()` 参数表是迭代采集不入此列。
+/// 迭代计算最大括号嵌套深度。**字符串语义必须过近似真实 lexer**（R2
+/// F786-R2-01）：parse_dq_string、take_bracket_extent/take_arg_list 的串内
+/// 跳过、value-position scan_string 都是**跨 LF 直到闭引号**（转义感知），
+/// 故本筛的两种引号同样跨 LF——遇 LF 提前断会把后续闭引号误判为开引号、
+/// 把同行真实括号藏进"字符串"，导致欠计数绕过深度包络（实测 512 层
+/// abort）。欠计数危险、过计数只多走兼容臂（安全），单引号取跨行为
+/// 最宽解释（skip_to_entry_end 虽行界但为线性跳过，无递归位点）。行/
+/// 块注释内括号不计入（块注释不嵌套，与 scanner.rs 一致）。只数
+/// `{}`/`[]`：递归位点在 scan_value_positions/parse_node/AtomParser 的
+/// 结构化下钻，`()` 参数表是迭代采集不入此列。
+/// 未终止字符串吞掉剩余文本属安全：真实 lexer 要么线性消费该文本
+/// （无递归），要么先 Err（顶层 `"` 未终止 / 包围组未闭合）——两路都
+/// 不会到达递归下钻。
 fn max_bracket_depth(content: &str) -> usize {
     let mut max = 0usize;
     let mut depth = 0usize;
@@ -100,7 +109,7 @@ fn max_bracket_depth(content: &str) -> usize {
                         chars.next();
                         continue;
                     }
-                    if sc == quote || sc == '\n' {
+                    if sc == quote {
                         break;
                     }
                 }

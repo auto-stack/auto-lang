@@ -864,55 +864,199 @@ fn deep_nesting_input(depth: usize) -> String {
     s
 }
 
-/// V04 补充（R1 F786-R1-01）：超深嵌套的进程隔离回归。栈溢出 abort 不可
-/// 被 catch_unwind 捕获，只能以子进程验证——child 模式跑真实 read()，
-/// parent 以 10s 外部截止守护（溢出时子进程以 STATUS_STACK_OVERFLOW
-/// 退出码失败，修复后干净退出 0）。
-#[test]
-fn display_reader_v04_deep_nesting_process_isolated() {
-    if std::env::var("P786_DEEP_PROBE").is_ok() {
-        // child：复审反例原样重放（512 层），必须返回旧 oracle 的标题且不崩溃
-        let r = read(&deep_nesting_input(512));
-        assert_eq!(r.name.as_deref(), Some("n"));
-        assert_eq!(r.title.as_deref(), Some("ok"));
-        assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
-        // 1024 层加固：同一包络判定复用，不依赖具体层数
-        let r = read(&deep_nesting_input(1024));
-        assert_eq!(r.title.as_deref(), Some("ok"));
-        std::process::exit(0);
+/// R2 F786-R2-01 复现输入构造：跨行字符串（真实 lexer 跨 LF 直到闭引号）
+/// 后接 N 层嵌套数组——R1 前置筛因"遇 LF 断"欠计数绕过包络的精确形态。
+fn multiline_deep_input(depth: usize) -> String {
+    let mut s = String::from("name: \"n\"\ntitle: \"ok\"\nextra: [\"hello\nworld\", ");
+    for _ in 0..depth {
+        s.push('[');
     }
-    // parent：自执行子进程 + 10s 外部截止
+    s.push('0');
+    for _ in 0..depth {
+        s.push(']');
+    }
+    s.push_str("]\n");
+    s
+}
+
+/// 子进程探针结果。`TimedOut` 携带被 kill+wait 回收后的状态——证明
+/// 截止路径终结并回收了子进程（R2 F786-R2-02）。
+#[derive(Debug)]
+enum ProbeOutcome {
+    Completed {
+        success: bool,
+        diagnostics: String,
+    },
+    TimedOut {
+        reaped_success: bool,
+        diagnostics: String,
+    },
+}
+
+/// 子进程生命周期守护：任何退出路径（成功/失败/超时/轮询错误/中途
+/// panic 的 Drop 兜底）都保证 kill + wait 回收；管道诊断被收集并保留。
+struct ChildGuard {
+    child: Option<std::process::Child>,
+}
+
+impl ChildGuard {
+    /// 显式终结并回收，返回 (状态成功性, 诊断)。幂等：取走后为空。
+    fn terminate_and_reap(&mut self) -> (bool, String) {
+        let mut child = match self.child.take() {
+            Some(c) => c,
+            None => return (false, String::new()),
+        };
+        let _ = child.kill();
+        let status = child.wait().expect("reap killed child");
+        let mut out = child.stdout.take().map(|mut s| {
+            use std::io::Read;
+            let mut buf = String::new();
+            let _ = s.read_to_string(&mut buf);
+            buf
+        });
+        let mut err = child.stderr.take().map(|mut s| {
+            use std::io::Read;
+            let mut buf = String::new();
+            let _ = s.read_to_string(&mut buf);
+            buf
+        });
+        let diagnostics = format!(
+            "status={status} stdout={} stderr={}",
+            out.take().unwrap_or_default(),
+            err.take().unwrap_or_default()
+        );
+        (status.success(), diagnostics)
+    }
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        // 兜底：panic/提前返回路径同样终结+回收（take 后为空则无事可做）
+        if self.child.is_some() {
+            self.terminate_and_reap();
+        }
+    }
+}
+
+/// 以外部截止运行自执行子探针：截止保护的是**子进程生命周期**——超时
+/// 即 kill+wait 回收并报告回收后状态，而非只断言了事（R2 F786-R2-02）。
+/// 轮询错误路径同样终结+回收后以 Completed(false) 报告。
+fn run_child_probe(
+    test_name: &str,
+    env_key: &str,
+    env_value: &str,
+    deadline_secs: u64,
+) -> ProbeOutcome {
+    use std::io::Read;
     use std::process::{Command, Stdio};
     let exe = std::env::current_exe().expect("test exe");
-    let mut child = Command::new(exe)
-        .args([
-            "--exact",
-            "project_display_reader_tests::display_reader_v04_deep_nesting_process_isolated",
-            "--nocapture",
-        ])
-        .env("P786_DEEP_PROBE", "1")
+    let child = Command::new(exe)
+        .args(["--exact", test_name, "--nocapture"])
+        .env(env_key, env_value)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn probe child");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut guard = ChildGuard { child: Some(child) };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(deadline_secs);
     loop {
-        match child.try_wait().expect("poll probe child") {
-            Some(status) => {
-                assert!(
-                    status.success(),
-                    "深度探针子进程异常退出：{status}（栈溢出 abort 或断言失败）"
-                );
-                return;
+        let poll = guard
+            .child
+            .as_mut()
+            .expect("guard holds child")
+            .try_wait()
+            .map_err(|e| e.to_string());
+        match poll {
+            Ok(Some(status)) => {
+                // 正常回收路径：取走子进程，读尽管道诊断（进程已退出，读不阻塞）
+                let mut child = guard.child.take().expect("child present");
+                let mut buf = String::new();
+                if let Some(s) = child.stdout.as_mut() {
+                    let _ = s.read_to_string(&mut buf);
+                }
+                let mut errbuf = String::new();
+                if let Some(s) = child.stderr.as_mut() {
+                    let _ = s.read_to_string(&mut errbuf);
+                }
+                return ProbeOutcome::Completed {
+                    success: status.success(),
+                    diagnostics: format!("status={status} stdout={buf} stderr={errbuf}"),
+                };
             }
-            None => {
-                assert!(
-                    std::time::Instant::now() < deadline,
-                    "深度探针超过 10s 外部截止（挂起）"
-                );
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let (reaped_success, diagnostics) = guard.terminate_and_reap();
+                    return ProbeOutcome::TimedOut {
+                        reaped_success,
+                        diagnostics,
+                    };
+                }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
+            Err(e) => {
+                let (reaped_success, diagnostics) = guard.terminate_and_reap();
+                return ProbeOutcome::Completed {
+                    success: false,
+                    diagnostics: format!("poll error: {e}; {diagnostics}"),
+                };
+            }
         }
+    }
+}
+
+/// V04 补充（R1 F786-R1-01 + R2 F786-R2-01）：超深嵌套的进程隔离回归。
+/// 栈溢出 abort 不可被 catch_unwind 捕获，只能以子进程验证——child 模式
+/// 跑真实 read()（平面 512/1024 + 跨行字符串 512 反例原样重放），parent
+/// 以 10s 外部截止守护子进程生命周期（超时 kill+reap，非仅断言）。
+#[test]
+fn display_reader_v04_deep_nesting_process_isolated() {
+    if let Ok(mode) = std::env::var("P786_PROBE_MODE") {
+        // child 模式：三种反例形态原样重放，必须返回旧 oracle 的标题且不崩溃
+        if mode == "deep" {
+            for input in [
+                deep_nesting_input(512),
+                deep_nesting_input(1024),
+                multiline_deep_input(512),
+            ] {
+                let r = read(&input);
+                assert_eq!(r.name.as_deref(), Some("n"));
+                assert_eq!(r.title.as_deref(), Some("ok"));
+                assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+            }
+            std::process::exit(0);
+        }
+        if mode == "hang" {
+            // 挂起控制：故意睡 30s 超过父侧 2s 截止——证明截止路径终结+回收
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            std::process::exit(0);
+        }
+    }
+    // parent：深度探针 10s 截止
+    match run_child_probe(
+        "project_display_reader_tests::display_reader_v04_deep_nesting_process_isolated",
+        "P786_PROBE_MODE",
+        "deep",
+        10,
+    ) {
+        ProbeOutcome::Completed {
+            success: true,
+            diagnostics: _,
+        } => {}
+        other => panic!("深度探针子进程失败（栈溢出 abort/断言失败/超时被回收）：{other:?}"),
+    }
+    // 挂起控制：故意睡 30s 的子进程 + 2s 截止——必须 TimedOut，且回收
+    // 状态为被 kill 的失败态（证明截止路径终结+回收，而非其自行退出）。
+    match run_child_probe(
+        "project_display_reader_tests::display_reader_v04_deep_nesting_process_isolated",
+        "P786_PROBE_MODE",
+        "hang",
+        2,
+    ) {
+        ProbeOutcome::TimedOut {
+            reaped_success: false,
+            diagnostics: _,
+        } => {}
+        other => panic!("挂起控制必须超时并被 kill+reap（非成功回收态）：{other:?}"),
     }
 }
 
@@ -954,4 +1098,82 @@ fn display_reader_v04_deep_nesting_boundary_and_awareness() {
     let r = read(commented);
     assert_matches_oracle("brackets-in-comments", commented, &r);
     assert_eq!(r.title_path, model(mv), "注释内括号不计数");
+
+    // R2 F786-R2-01：跨行字符串语义——真实 lexer 跨 LF 直到闭引号，前置筛
+    // 必须过近似（遇 LF 断会把闭引号误判为开引号、藏掉同行真实括号）。
+    // 32 层（包络内，解析成功）→ 准入控制：title 仍 Model(Value)。
+    let ml32 = multiline_deep_input(32);
+    let r = read(&ml32);
+    assert_matches_oracle("multiline-32", &ml32, &r);
+    assert_eq!(r.title.as_deref(), Some("ok"));
+    assert_eq!(r.title_path, model(mv), "包络内跨行字符串不收缩模型路径");
+    // 65 层（跨行字符串后）→ DeepNesting：R2 反例形态在包络判定下正确路由
+    let ml65 = multiline_deep_input(65);
+    let r = read(&ml65);
+    assert_matches_oracle("multiline-65", &ml65, &r);
+    assert_eq!(r.title.as_deref(), Some("ok"));
+    assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    // 512 层（R2 反例原量级）进程内安全（前置筛拦截，不触达解析递归）
+    let ml512 = multiline_deep_input(512);
+    let r = read(&ml512);
+    assert_matches_oracle("multiline-512", &ml512, &r);
+    assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    // CRLF 跨行字符串 + 深数组：串内 \r\n 不闭串
+    let crlf = format!("name: \"c\"\ntitle: \"ok\"\nextra: [\"a\r\nb\", {}]\n", {
+        let mut inner = String::new();
+        for _ in 0..80 {
+            inner.push('[');
+        }
+        inner.push('0');
+        for _ in 0..80 {
+            inner.push(']');
+        }
+        inner
+    });
+    let r = read(&crlf);
+    assert_matches_oracle("crlf-multiline-80", &crlf, &r);
+    assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    // 转义/引号转换：串内 \" 不闭串、串内转义的 \\n 与真实 LF 混排
+    let escaped = format!(
+        "name: \"e\"\ntitle: \"ok\"\nextra: [\"x\\\"y\\nz\nw\", {}]\n",
+        {
+            let mut inner = String::new();
+            for _ in 0..70 {
+                inner.push('{');
+            }
+            inner.push('0');
+            for _ in 0..70 {
+                inner.push('}');
+            }
+            inner
+        }
+    );
+    let r = read(&escaped);
+    assert_matches_oracle("escape-transitions-70", &escaped, &r);
+    assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    // 单引号跨行（过近似最宽解释）+ 深数组 → 同样计入
+    let sq = format!("name: \"s\"\ntitle: \"ok\"\nextra: ['ab\ncd', {}]\n", {
+        let mut inner = String::new();
+        for _ in 0..70 {
+            inner.push('[');
+        }
+        inner.push('0');
+        for _ in 0..70 {
+            inner.push(']');
+        }
+        inner
+    });
+    let r = read(&sq);
+    assert_matches_oracle("single-quote-multiline-70", &sq, &r);
+    assert_eq!(r.title_path, compat(CompatReason::DeepNesting));
+    // 未终止字符串吞剩余文本：欠计数不发生（真实 lexer 先 Err，无递归）
+    let unterminated = "name: \"u\"\ntitle: \"ok\"\nextra: [\"abc\n[[[[[[[[\n";
+    let r = read(unterminated);
+    assert_matches_oracle("unterminated-string", unterminated, &r);
+    assert_eq!(r.title.as_deref(), Some("ok"));
+    assert_eq!(
+        r.title_path,
+        compat(CompatReason::ParseError),
+        "未终止组先 Err（安全路径），不得 abort"
+    );
 }
