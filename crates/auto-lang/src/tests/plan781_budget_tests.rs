@@ -482,3 +482,86 @@ fn tag_neg_half() str { return type_of(json.parse("{\"x\":-0.5}").x) }
     expect("tag_parsed_int_zero", "int");
     expect("tag_neg_half", "float");
 }
+
+/// F-781-R07 回归：type_of 消费输入的引用份额必须释放——100 次重复
+/// 调用（对象参 / 每轮新动态字符串参）后终态资源平衡（heap/池回到
+/// 基线；复审独立宿主实证修复前 heap 0→100、pool +100）。
+#[test]
+fn plan781_type_of_input_stake_released_repeated_calls() {
+    let code = r#"
+fn call_obj() str {
+    let o = json.parse("{\"a\":1}")
+    return type_of(o)
+}
+fn call_str(s str) str {
+    return type_of(s)
+}
+fn warm_str() str {
+    return type_of("x")
+}
+fn call_str_once(i int) str {
+    return type_of("dyn-" + i.to_string())
+}
+"#;
+    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(code).expect("compile");
+    let vm = std::rc::Rc::new(vm);
+    let run = |fname: &str, arg: Option<i32>| -> String {
+        let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+        if let Some(a) = arg {
+            task.ram.push_i32(a);
+        }
+        let outcome = vm.call_fn_by_name_segment(&mut task, fname, usize::from(arg.is_some()));
+        match outcome {
+            crate::vm::engine::SegmentOutcome::Completed(Ok(())) => {
+                let nv = task.ram.pop_nv();
+                let idx = auto_val::decode_string(nv) as usize;
+                let s = {
+                    let pool = vm.strings.read().unwrap();
+                    String::from_utf8(pool[idx].clone()).unwrap()
+                };
+                // 排除延迟回收：显式任务栈释放 + 全量收割（复审探针同款）。
+                vm.rc_release_task_stack(&mut task);
+                drop(task);
+                vm.reap_all();
+                s
+            }
+            other => panic!("{fname}: unexpected {other:?}"),
+        }
+    };
+    // 对象参：100 次调用后 heap 回基线。
+    let heap_base = vm.heap_objects.len();
+    for _ in 0..100 {
+        assert_eq!(run("call_obj", None), "object");
+    }
+    assert_eq!(
+        vm.heap_objects.len(),
+        heap_base,
+        "type_of object input stake leaked: heap {} -> {}",
+        heap_base,
+        vm.heap_objects.len()
+    );
+    // 每轮新动态字符串参（内联生成+消费，逐次独立段调用——与对象腿
+    // 同形）：100 次后池回基线；预热驻留结果常量 "str"（非泄漏）。
+    let _ = run("warm_str", None);
+    vm.reap_all();
+    let pool_base = vm.strings.read().unwrap().len();
+    for i in 0..100 {
+        assert_eq!(run("call_str_once", Some(i)), "str");
+    }
+    let pool_now = vm.strings.read().unwrap().len();
+    // 恒定 +1 为一次性驻留常量（首调用内联 concat 形状的池驻留，非
+    // 按调用累积）；修复前为每调用 +1（100 次 → +100，复审实证）。
+    // 斜率型二次断言：再 100 次仍 ≤ base+1——按调用零泄漏。
+    assert!(
+        pool_now <= pool_base + 1,
+        "type_of dynamic-string input stake leaked: pool {pool_base} -> {pool_now}"
+    );
+    for i in 100..200 {
+        assert_eq!(run("call_str_once", Some(i)), "str");
+    }
+    let pool_final = vm.strings.read().unwrap().len();
+    assert!(
+        pool_final <= pool_base + 1,
+        "type_of per-call pool leak: {pool_base} -> {pool_now} -> {pool_final} over 200 calls"
+    );
+}

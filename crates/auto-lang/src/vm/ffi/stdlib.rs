@@ -2786,7 +2786,12 @@ pub fn shim_str_is_digit(s: String) -> bool {
 /// 字符串形态判别（concat 位模式 vs to_string 截断）对浮点 0.0 失真
 /// 且受池/槽混叠（F-781-E02 家族）波及，类型谓词为可靠面。
 pub fn shim_type_of(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let nv = task.ram.pop_nv();
+    // F-781-R07：消费参数须配平所有权——pop_arg_nv 取值并清槽、
+    // StakeGuard 恰一次释放其堆/池引用份额（同 shim_json_from_value
+    // 先例）。裸 pop_nv 只读 tag 不释放：复审实证 100 次调用残留
+    // 100 份输入引用（对象 heap 0→100、动态串 pool +100）。
+    let nv = crate::vm::native::pop_arg_nv(task);
+    let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
     let t: &'static str = if auto_val::is_i32(nv) {
         "int"
     } else if auto_val::is_f32(nv) || auto_val::is_f64(nv) {
