@@ -1,0 +1,2 @@
+BLOCKED_CLEANUP residual=3145776 large_rejected=true small_succeeded=true total=3145776 cap=8388608
+AFTER_RECOVER tmp=0 ordinary_3mib_succeeded=true recovery=RecoveryReceipt { staging_dirs_removed: 0, orphan_chunks_removed: 2, orphan_rows_removed: 0, stale_rows_removed: 0, tombstone_deletes_completed: 0, trash_files_removed: 0, aborted_txn_rows: 0, freed_bytes: 6291552 }

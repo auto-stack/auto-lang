@@ -1,0 +1,35 @@
+== lib-unit (--lib)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-01 identity (--test identity_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-02 admission (--test admission_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-03 layout (--test layout_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-04 native-resume (--test native_resume_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-05 invalidation (--test invalidation_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-06 reachability (--test reachability_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-07 concurrency (--test concurrency_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-08 recovery (--test recovery_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-09 gc-budget (--test gc_budget_)
+test result: ok. 999 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out;
+== V-10 store-boundary (--test store_boundary_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-11 perf (--test perf_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== V-12 dep-audit (--test dep_audit_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== R1 regressions (--test review_r1_)
+test result: ok. 999 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;
+== committed perf report contract (>=30 samples/scenario)
+== full 512-iteration churn (merge-owned, frozen watermarks)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out;
+== regenerate full perf report (>=30 samples/scenario)
+== regenerated perf report contract
+
+VERIFY-AC-ARTIFACT-PROBE [closeout]: PASS (all families ran with required case counts)

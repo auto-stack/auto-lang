@@ -1867,10 +1867,10 @@
      "id": "P783-M",
      "title": "PLAN-783 merge 收据：closeout 冻结基线绿+SD-01..05 沉淀",
      "file": "docs/specs/auto-ac/artifact-probe.md",
-     "content": "PLAN-783 交付收据：delivery c00f77b52（ff-only 线性落地）；Spec 沉淀 artifact-contract.md+artifact-probe.md 新建、auto-ac/project.md 探针导航、auto-cache/project.md 差距清单、auto-hir/stage-contract.md 信任规则;closeout=512 churn 冻结水位+30 样本 perf 再生绑定冻结提交+发布后 SHA256 验证全过;债务 D-783-A..E 已登记 KNOWN-DEBT（探针外后续）。分类 A（零 crates/** 改动,零根 cargo 档）。",
+     "content": "PLAN-783 交付收据（收口）：delivery 88b17cab9（46dc5f442 文档修复 rebase 后 ff-only 线性落地，range-diff 全等；首次落地 c00f77b52 语义冲突修复链见 R6/R8 项）。Spec 沉淀 artifact-contract.md+artifact-probe.md 新建、auto-ac/project.md 探针导航、auto-cache/project.md 差距清单、auto-hir/stage-contract.md 信任规则节。closeout 收据核验：512 churn+30 样本 perf（绑定 a3cbe7643/c00f77b52）输入等价性在落地尖复核 diff=0；人读报告=冻结 JSON 逐值一致。ledger v28；计划归档 docs/plans/archive/783-ac-artifact-contract-probe.md（archived 9/9）；worktree lang-783 经 wt-guard 清理。批量回归未到期（782/783 非 %5，收据 2026-10-15T03:55Z 未满 48h；下一个 %5 触发=785 落地）。",
      "tags": [
       "plan:783",
-      "commit:c00f77b52",
+      "commit:88b17cab9",
       "sha256:e00bd5dfa724b7f62f81ebba198c9f983c332b6d10134911"
      ],
      "related": [
@@ -1878,7 +1878,7 @@
      ],
      "status": "accepted",
      "created": "2026-10-15",
-     "last_modified": "2026-10-15"
+     "last_modified": "2026-10-16"
     }
    ]
   },
@@ -11487,7 +11487,7 @@
      "id": "P783-R6",
      "title": "PLAN-783 独立终审 R6 pass（R1–R5 五轮反例修复清偿）",
      "file": "docs/plans/783-ac-artifact-contract-probe.md",
-     "content": "PLAN-783 复审：独立 Codex 上下文，受审 aa8c666ca，18 族 93 passed+1 白名单 ignored，R5 三项（残留 tmp 预算/报告同步/警告）全闭；清理受阻补充控制（持住 tmp→残留吃配额→释放后 recover 回收）通过。merge 后落地基线发现 PLAN-782 lower_object API 语义冲突，补传 RuntimeInjection::default()（全关默认=生产合同，与旧 2 参语义逐位一致），新冻结基线全套 closeout PASS——该适配 delta 待 R7 复审确认。证据 docs/plans/attachments/783/review-r6.md",
+     "content": "PLAN-783 复审：独立 Codex 上下文，受审 aa8c666ca，18 族 93 passed+1 白名单 ignored，R5 三项（残留 tmp 预算/报告同步/警告）全闭；清理受阻补充控制（持住 tmp→残留吃配额→释放后 recover 回收）通过。merge 后落地基线发现 PLAN-782 lower_object API 语义冲突，补传 RuntimeInjection::default()（全关默认=生产合同，与旧 2 参语义逐位一致），新冻结基线全套 closeout PASS——该适配 delta 待 R7 复审确认。证据 docs/plans/attachments/783/review-r6.md。（已收口：R7 needs_fix→修复 46dc5f442→R8 pass，见 P783-R8）",
      "tags": [
       "plan:783",
       "commit:c00f77b52",
@@ -11498,11 +11498,28 @@
      ],
      "status": "accepted",
      "created": "2026-10-15",
-     "last_modified": "2026-10-15"
+     "last_modified": "2026-10-16"
+    },
+    {
+     "id": "P783-R8",
+     "title": "PLAN-783 终审链收口：R7 needs_fix→docs-only 修复→R8 pass",
+     "file": "docs/plans/archive/783-ac-artifact-contract-probe.md",
+     "content": "PLAN-783 复审收口：R7 受影响复审（绑定 c00f77b52）发现 closeout 人读报告表头损坏/旧读数混杂（P2），work 于 46dc5f442 docs-only 纠错（标题恢复+GC 21/73/69+读数统一冻结 JSON+负载说明改实际采样轮）；R8 文档受影响复审 pass（绑定 46dc5f442，rebase 后落地 88b17cab9），报告与冻结 JSON 逐值一致（SHA256 3b420a25…），复用 R7 验收 18 族 93 passed+1 白名单 ignored；closeout 512/30 收据输入等价性经 a3cbe7643↔落地尖 diff=0 复核。AC-01..08 全闭。证据 docs/plans/attachments/783/review-r7.md / review-r8.md",
+     "tags": [
+      "plan:783",
+      "commit:88b17cab9",
+      "sha256:c086ccbf846d31df8864d651186a9f7ba4a38e3a"
+     ],
+     "related": [
+      "PLAN-783"
+     ],
+     "status": "accepted",
+     "created": "2026-10-16",
+     "last_modified": "2026-10-16"
     }
    ]
   }
  ],
  "project": "auto-lang",
- "version": 27
+ "version": 28
 }

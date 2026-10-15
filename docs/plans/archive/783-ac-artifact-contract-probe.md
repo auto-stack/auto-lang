@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-783
-status: execution_done
+status: archived
 feature_name: AC/ACC 统一编译产物契约与缓存可行性探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-15
 updated_at: 2026-10-16
-current_step: 7
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -168,7 +168,7 @@ work运行定向验收和必要的独立cargo check。没有crates源码/语法�
 | AC-08 | merge | 冻结提交完整probe通过，Spec/索引沉淀、归档合入、guard清理有实际收据 |
 
 ## 8. 执行步骤
-**当前状态（2026-10-16，R7 修复完成）**：F-783-R7-01（P2）已修——`docs/reports/plan783/perf-report.md` 于原树 `46dc5f442`（基线 `c00f77b52`）docs-only 纠错：标题前多段旧 GC 表行残片（`78f312a7d` 手工补丁引入）清除；表格 GC 行 22/77/73→21/73/69；正文 fresh/hot/restart/GC-P99/亚秒距离读数统一到冻结 JSON（246/187/217/503/258/206）；负载说明改为实际采样轮（本轮与 512 churn 同机串行，R5 轮 ~270ms 并行承压仅作标注历史）。修复后完整读回+程序化逐值对 JSON 核对通过；零代码改动（Category A 零根 cargo 档），按 R7 裁定未重跑 512/30。T-06/07 重闭，`execution_done 7/9`，待 R8 文档受影响复审（绑定 `46dc5f442`）后归档清理。详见 [R7报告](attachments/783/review-r7.md)。
+**当前状态（2026-10-16，merge 收口完成）**：`archived 9/9`。R8 pass（绑定 `46dc5f442`）后 merge 收口：closeout 512/30 收据输入等价复核（a3cbe7643↔落地尖 `88b17cab9` diff=0）、文档修复落地（46dc5f442 rebase→`88b17cab9`，range-diff 全等 ff-only；主检出报告=R8 冻结件 `3b420a25…` 逐字节一致）、ledger v28（+P783-R8/~P783-M/~P783-R6）、归档与 wt-guard 清理。批量回归未到期（782/783 非 %5，收据未满 48h；下一 %5 触发=785 落地）。终审链：R1–R5 反例修复→R6 pass→落地语义冲突修复→R7 needs_fix（报告纠错）→R8 pass。详见 §9 merge 收据与 [R7](attachments/783/review-r7.md)/[R8](attachments/783/review-r8.md) 报告。
 
 T-01只选择既定目标/预算内的实现；不可行留下最小反例回规划，不把“研究完成”替代实现。初始全部未完成。
 
@@ -181,12 +181,24 @@ T-01只选择既定目标/预算内的实现；不可行留下最小反例回规
 | [x] T-05 | work | T-02、04 | 新src/store/，隔离adapter/refs/lease/发布/回收/故障子进程 | reachability_、concurrency_、recovery_、gc_budget_、store_boundary_；AC-04 `[R6复审通过；历史分项证据保留]` BlobStore 适配+chunk 锁;三故障点 kill+幂等恢复；lease OS 真值判活(TTL 过期仍活/进程死即收)；同键冲突报告非 LWW；reader-GC 门锁无半读；共享块删工程不破坏他工程；对象 provenance 回收后仍链接；水位/硬 pin 退让/staging 上限；reparse 拒跳+哨兵不变；reachability_ 4/4、concurrency_ 3/3、recovery_ 4/4、gc_budget_ 4/4(+512 churn closeout)、store_boundary_ 5/5 |
 | [x] T-06 | work | T-03–05 | 新verify脚本及docs/reports/plan783/结果、性能报告，矩阵聚合拒绝缺例 | acceptance、perf_，V-01–12当前证据；AC-01–05 `[✅ 已完成;R7纠错后重闭]` verify-ac-artifact-probe.ps1(acceptance/closeout)；30样本×6场景 perf.json+perf-report.md(语义30/30×6;GC 21趟/73删/69重叠,P95=502/P99=503ms,绑定a3cbe7643;R7报告纠错=46dc5f442,表头/计数/正文/负载说明全对齐冻结JSON)；perf_ 2/2 |
 | [x] T-07 | work | T-06 | 最终取舍/迁移差距，新attachments/783/spec-delta.md，更新计划证据及债务候选 | 依赖/范围/SD追踪；AC-06；execution_done=7/9 `[✅ 已完成;R7纠错后重闭]` spec-delta.md(SD-01..05 逐条落地文本)；dep_audit_ 5/5(ac-core 零产品依赖/探针独立/无生产入口切换)；feasibility.md §3 实测发现+§4 边界；R7报告纠错46dc5f442落于原树 |
-| [ ] T-08 | review | T-07 | 同树独立复审全部AC/SD及遗漏/延期/旁路，绑定commit | AC-07；R6 pass，绑定aa8c666ca，18族93通过+1白名单ignored；reviewed=8/9，merge-owned完整closeout pending，详见review-r6.md |
-| [ ] T-09 | merge | T-08 pass | 冻结commit完整probe closeout；按实际diff判门禁、沉淀SD/索引、归档合入；按技能判批量回归到期；wt-guard后清理 | AC-08，实际收尾完成才9/9 |
+| [x] T-08 | review | T-07 | 同树独立复审全部AC/SD及遗漏/延期/旁路，绑定commit | AC-07；R8文档受影响复审pass，绑定46dc5f442；复用R7验收93+1白名单，reviewed=8/9，merge收尾pending |
+| [x] T-09 | merge | T-08 pass | 冻结commit完整probe closeout；按实际diff判门禁、沉淀SD/索引、归档合入；按技能判批量回归到期；wt-guard后清理 | AC-08 `[✅ 已完成]` closeout 收据核验输入等价(a3cbe7643↔88b17cab9 diff=0)；落地 88b17cab9(range-diff 全等 ff-only)；ledger v28；归档+wt-guard 清理完成；批量回归判定未到期(782/783 非%5,<48h) |
 
 根crates/编译器源变更若获修订授权，必须重判门禁，不能沿用probe-only豁免。门禁失败导致代码变化时回work/review，再在新冻结提交执行受影响门禁。
 
 ## 9. 复审记录
+2026-10-16：`stage: merge`（PLAN-783:r1）**收口——pass**。
+- `prepared`：R8 pass 绑定 `46dc5f442`（触面=docs/reports/plan783/perf-report.md 14+/11-）；canonical SD-01..05 前轮已落地（6b4ea4390→c00f77b52 链），本轮零新增 Spec delta。
+- `landed`（第三次=文档修复）：46dc5f442 rebase onto master(1cb4009eb)→`88b17cab9`，`git range-diff` 全等（1: 46dc5f442 = 1: 88b17cab9）；main `git merge --ff-only plan-783-dev` 成功，master 尖=88b17cab9 线性无 merge commit；落地后主检出 perf-report.md SHA256=`3b420a25…`=R8 冻结件逐字节一致。
+- closeout 收据核验：512 churn+30 样本 perf 收据（绑定 a3cbe7643/c00f77b52，见本节 merge 进行中条目+R7 报告/审计附件）输入等价在落地尖复核——`git diff --exit-code a3cbe7643 88b17cab9 -- experimental/ac-artifact-probe experimental/ac-core crates/auto-cache scripts/verify-ac-artifact-probe.ps1`=0；`perf.json` c00f77b52→88b17cab9 不变。docs-only 触面按 Category A 零根 cargo 档（R7/R8 同裁定），不为文档纠错重跑载荷。
+- `ledger_refreshed`：v27→v28（guarded offline projection，channel=offline 无 store writer：字节级备份+外科手术+六段 schema 集合验证+读回+备份逐项范围证明）——新增 reviews `P783-R8`（终审链收口）、更新 reports `P783-M`（收口收据）与 reviews `P783-R6`（悬置"待 R7"句闭合）；范围=+1 项/~2 项/version+1，其余与备份逐项等价。
+- `archived`：git mv → docs/plans/archive/783-ac-artifact-contract-probe.md，status archived 9/9；全部 783 复审证据附件（review-r1..r8+replay 脚本+反例，gitignored `*.json` 除外——其 SHA256 已录于各轮报告）随归档提交落库。
+- 批量回归到期判定：**未到期**——`.last-batch-regression.json` last_covered_plan_id=781（2026-10-15T03:55Z，green）；其后落地 782/783 均非 %5 计划、48h 未满；下一个 %5 触发点=785 落地。
+- Landing≠deployment：本仓无后端二进制/web bundle 义务；探针代码前轮已落地并冒烟，本轮 docs-only 无生产触面，无陈旧产物需重建。
+- `cleaned`：wt-guard clean（reparse 扫描空）→ worktree `D:/autostack/.wt/lang-783/auto-lang` 与分支 `plan-783-dev` 移除、组目录 `lang-783` 删除（组内仅本仓）；移除后 `git worktree list`/分支核验通过。
+
+2026-10-16：`stage: review`，`review_scope: final(落地后文档受影响复审)`，`PLAN-783 r1`，**`outcome: pass (R8)`**。reviewer=本次独立Codex复审上下文（未参与实施/merge、未派生代理/联系其它聊天）。原树 `D:/autostack/.wt/lang-783/auto-lang` / `plan-783-dev`，受审 `46dc5f442851bbcc6d7e7c647d21b0966f1f5a64`，base `c00f77b526be85e758afaf2187f316eaa01559d8`；进出clean、HEAD未漂移。唯一差异为perf-report.md文档修复，代码/依赖/测试脚本/冻结JSON diff=0；F-783-R7-01关闭，标题、六场景分位数/30/30、GC21/73/69及正文读数与JSON逐值一致，旧残片消失，负载叙述区分本轮与R5历史。完整读回与独立程序核对PASS，diff检查PASS；复用R7的18族93 passed/0 failed/1白名单ignored，不为docs-only纠错重跑512/30或根cargo档。详见 [R8报告/冻结产物/审计脚本及输出](attachments/783/review-r8.md)。AC-01..07 pass、AC-08剩余merge收尾pending；T-01..08完成，`status: reviewed,current_step:8/9`。Spec impact及空touched_goals保留，canonical/ledger未改；所有基线/依赖/Spec指纹见R8报告。`next_responsible_role: merge`：核验可复用closeout512/30完整收据及输入/配置等价，落文档修复并完成剩余登记/归档/guard清理；本轮不代替merge宣称收据已全部核验。未修实现、未执行新merge、未归档或移除树。
+
 2026-10-16（R7 修复轮收口）：`stage: work`，`PLAN-783 r1`，`outcome: pass(修复完成,待 R8 文档受影响复审)`，`code 46dc5f442`（基线 c00f77b52，同树 `D:/autostack/.wt/lang-783/auto-lang` / `plan-783-dev`）。**F-783-R7-01（P2）闭合**：成因定位=`78f312a7d`（merge 首次落地 closeout 再生）的手工补丁把多段旧 GC 表行残片（516/707/774…共 7 段）拼进标题行，`c00f77b52` 补数未清除且在残片内改了计数；closeout 脚本只校验/发布 perf.json（grep 证实零 perf-report 触点），人读报告为手工维护，无工具 bug 需纠正——方法改进=修复后完整读回+程序化逐值核对。修复内容（docs-only，14+/11-）：标题恢复独立成行（suffix 改"落地 closeout 再生"）；表格 GC 行计数 22/77/73→21/73/69；正文 fresh 346→246/hot 327→187/restart 232→217 且方向更正（restart 比同进程 hot 高约 30ms=进程生成+开仓开销，仍低于 fresh 246，磁盘热路径成立）/GC P99 774→503/重叠 73/77→69/73/亚秒距离 398/437→258/206；负载说明统一为实际采样轮（本轮与 512 churn 同机串行；R5 轮 ~270ms 为当轮同机并行承压读数，仅作标注历史）。**验收**：修复后完整读回+程序化交叉核对全绿——表格六行 P50/P95/P99/全对逐值=冻结 JSON（SHA256 d4a711b4…与 worktree perf.json 逐字节一致）、GC 计数三处 21/73/69（证据条长格式+表格紧凑+重叠 69/73）、20 个旧轮数字零残留、并行说法仅存于标注 R5 历史处；worktree 进出 clean。零代码改动，Category A 零根 cargo 档；按 R7 裁定未重跑 512/30（JSON 输入等价性 R7 已审计 diff=0）。T-06/07 重闭，`status: execution_done,current_step:7/9`。`next_responsible_role: review(T-08 R8 文档受影响复审,绑定 46dc5f442;通过后归档清理)`。merge-owned 剩余：归档+wt-guard 清理、可复用 512/30 收据核验 pending。
 
 2026-10-16：`stage: review`，`review_scope: final(落地后受影响复审)`，`PLAN-783 r1`，**`outcome: needs_fix (R7)`**。reviewer=本次独立Codex复审上下文（未参与实施/merge、未派生代理或联系其它聊天）。原树 `D:/autostack/.wt/lang-783/auto-lang` / `plan-783-dev`，受审 `c00f77b526be85e758afaf2187f316eaa01559d8`，R6基线 `aa8c666caa793891c9085efa3f8675ef8f6fe7d1`，rebase后适配提交adfd66a65。进出clean、HEAD/报告指纹不变；delivery已为main祖先，落地事实不撤销。RuntimeInjection::default三字段None，仅text注入路径读取，core/scalar适配无新增语义；acceptance **18族93 passed/0 failed/1白名单ignored PASS**，fmt/diff绿。仅F-783-R7-01(P2)：closeout人读报告首行被旧GC表格串污染；正文fresh346/restart232/hot327/GC-P99=774及P95=398/437，与当前JSON246/217/187/503及258/206不一致，表内GC旧22/77/73与当前21/73/69不符。详见 [R7报告/冻结产物/原始输出](attachments/783/review-r7.md)。ac-core依赖已变为324210641c2d2f7b5a3eac36ed3ed07632630cef，其他依赖及脚本未变；a3cbe7643与受审HEAD的probe/core/cache/验证脚本输入目录diff为0，JSON30×6语义全对及source_commit绑定保留。本轮未重跑merge-owned512/30；其可复用收据与配置同一性由merge收尾核验。AC-01..04 pass，AC-05/06 partial、AC-07未通过本轮、AC-08已沉淀/落地部分保留且归档清理pending。保留T-01..05，重开T-06/07/08，`status: executing,current_step:5/9`。`next_responsible_role: work/merge`：原树docs-only纠正完整报告并提交，再做文档受影响复审；不要求为此重跑512/30。Spec impact与空touched_goals保留，canonical/ledger本轮未改；未修实现或报告、未执行新merge、未归档/清理树。

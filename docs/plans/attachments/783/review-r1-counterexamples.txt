@@ -1,0 +1,12 @@
+R1 republish successful but readable=false
+R2 CAS swapped same-kind frame accepted: expected=first actual=other
+R3 corrupt page reader accepted kind=99
+R3 malformed offset panicked=true
+
+thread 'main' (25612) panicked at src\layout\mod.rs:577:39:
+range end index 65543 out of range for slice of length 65536
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+R4 conflict after full GC+recovery blocks=1 deleted=1 orphan_removed=0
+R4 recover retains trash bytes=1000
+R5 same-chunk contender result=Err(Internal("chunk lock unavailable"))
+R6 lease acquired+hard root during GC: lease_live=true target_readable=false deleted=151

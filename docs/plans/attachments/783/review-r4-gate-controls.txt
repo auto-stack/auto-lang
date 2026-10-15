@@ -1,0 +1,4 @@
+mode=valid exit=0 old_report_preserved=False
+mode=invalid-report exit=1 old_report_preserved=True
+mode=no-output exit=1 old_report_preserved=True
+mode=publish-blocked exit=0 old_report_preserved=True

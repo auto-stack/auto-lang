@@ -1,0 +1,7 @@
+TABLE fresh: three percentiles + 30/30 PASS
+TABLE same-process-hot: three percentiles + 30/30 PASS
+TABLE restart-disk-hot: three percentiles + 30/30 PASS
+TABLE cross-project: three percentiles + 30/30 PASS
+TABLE body-modified: three percentiles + 30/30 PASS
+TABLE gc-concurrent-query: three percentiles + 30/30 PASS
+Heading, narrative, GC counts, old-fragment removal and frozen JSON identity: PASS

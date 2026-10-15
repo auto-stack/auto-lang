@@ -1,0 +1,4 @@
+GC_ORPHAN before=3260952 after=3235888 low=524288 backoff=None deleted=0
+GC_ORPHAN actual_blocks=3145776 block_count=1
+STAGING_BUDGET round=0 actual=12583104 cap=8388608 reported=3145776 success=4 rejected=0
+STAGING_BUDGET violated=true

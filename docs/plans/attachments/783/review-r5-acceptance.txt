@@ -1,0 +1,648 @@
+== lib-unit (--lib)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib test) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe --tests` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.18s
+     Running unittests src\lib.rs (experimental\ac-artifact-probe\target\release\deps\ac_artifact_probe-edb1cd553cf3f581.exe)
+
+running 14 tests
+test schema::tests::codec_coverage_is_the_declared_subset ... ok
+test schema::tests::every_layer_has_legal_and_illegal_samples ... ok
+test schema::tests::registry_is_complete_and_unique ... ok
+test schema::tests::future_layers_are_refused ... ok
+test identity::tests::snapshot_identity_ignores_path ... ok
+test identity::tests::identity_domain_separation ... ok
+test identity::tests::external_ref_validation_rejects_bad_owner_and_bounds ... ok
+test identity::tests::query_key_canonical_order_independent ... ok
+test codec::tests::chunk_framing_roundtrip_and_corruption ... ok
+test codec::tests::decl_summary_content_identical_across_body_edit ... ok
+test codec::tests::text_domain_bundle_refused ... ok
+test codec::tests::bundle_structural_tamper_rejected_by_reader ... ok
+test codec::tests::bundle_reencoded_index_tamper_rejected ... ok
+test codec::tests::bundle_binary_roundtrip_semantic_equal_and_spans_preserved ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+== V-01 identity (--test identity_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\identity_.rs (experimental\ac-artifact-probe\target\release\deps\identity_-cbbe010ec8d8ffdf.exe)
+
+running 4 tests
+test identity_snapshot_uses_logical_name_not_path ... ok
+test identity_summary_codec_content_determinism ... ok
+test identity_body_only_edit_keeps_summary_shares_but_invalidates_object ... ok
+test identity_same_content_different_paths_shares_snapshot_and_hits ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+
+== V-02 admission (--test admission_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.18s
+     Running tests\admission_.rs (experimental\ac-artifact-probe\target\release\deps\admission_-55be937f4ba505ae.exe)
+
+running 7 tests
+test admission_unknown_schema_and_future_layers_refused ... ok
+test admission_corrupt_hir_chunk_rejected_by_reader ... ok
+test admission_owner_tamper_rejected_by_real_verifier ... ok
+test admission_semantic_tamper_rejected_by_real_verifier ... ok
+test admission_probe_lowering_determinism ... ok
+test admission_store_chunk_corruption_is_controlled ... ok
+test admission_restored_bundle_reverified_before_use_in_driver ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+== V-03 layout (--test layout_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.19s
+     Running tests\layout_.rs (experimental\ac-artifact-probe\target\release\deps\layout_-9ed7169b0be86cec.exe)
+
+running 6 tests
+test layout_suffix_version_shares_unchanged_pages ... ok
+test layout_corrupt_page_is_controlled_rejection ... ok
+test layout_out_of_range_id_is_controlled_miss ... ok
+test layout_both_match_semantic_baseline_and_write_at_least_128mib ... ok
+test layout_hot_cache_bounded_with_real_memory_evidence ... ok
+test layout_small_query_reads_within_frozen_budgets ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.01s
+
+== V-04 native-resume (--test native_resume_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.24s
+     Running tests\native_resume_.rs (experimental\ac-artifact-probe\target\release\deps\native_resume_-bc573474ac1923c9.exe)
+
+running 3 tests
+test native_resume_binary_restore_is_not_a_text_roundtrip ... ok
+test native_resume_deadlined_exe_run ... ok
+test native_resume_four_fixtures_fresh_restart_hirhit_and_source_absent ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.81s
+
+== V-05 invalidation (--test invalidation_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\invalidation_.rs (experimental\ac-artifact-probe\target\release\deps\invalidation_-fb0c8bcde0511355.exe)
+
+running 5 tests
+test invalidation_unsupported_target_rejected_before_production ... ok
+test invalidation_body_only_change_matrix ... ok
+test invalidation_toolchain_change_keeps_object_hits_but_relinks ... ok
+test invalidation_entry_change_selects_different_object ... ok
+test invalidation_profile_change_misses_all_layers ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21s
+
+== V-06 reachability (--test reachability_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.15s
+     Running tests\reachability_.rs (experimental\ac-artifact-probe\target\release\deps\reachability_-3211d440221498fe.exe)
+
+running 4 tests
+test reachability_object_linkable_after_upstream_hir_reclaimed ... ok
+test reachability_deleting_one_project_keeps_shared_chunks_of_the_other ... ok
+test reachability_lease_pins_against_gc_and_release_is_os_truth ... ok
+test reachability_cross_process_lease_pinning ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.36s
+
+== V-07 concurrency (--test concurrency_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\concurrency_.rs (experimental\ac-artifact-probe\target\release\deps\concurrency_-ee956eac7bde1f0e.exe)
+
+running 3 tests
+test concurrency_same_key_different_content_reports_conflict ... ok
+test concurrency_two_processes_same_key_one_conflict_reported ... ok
+test concurrency_reader_gc_interleave_no_partial_reads ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.75s
+
+== V-08 recovery (--test recovery_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\recovery_.rs (experimental\ac-artifact-probe\target\release\deps\recovery_-4fa1ab1ce1f3a6b5.exe)
+
+running 4 tests
+test recovery_after_chunk_move_crash ... ok
+test recovery_after_staging_crash ... ok
+test recovery_after_tombstone_crash ... ok
+test recovery_does_not_wipe_healthy_store ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.94s
+
+== V-09 gc-budget (--test gc_budget_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\gc_budget_.rs (experimental\ac-artifact-probe\target\release\deps\gc_budget_-75fc590a5d918cc2.exe)
+
+running 5 tests
+test gc_budget_churn_512_converges_between_watermarks ... ignored
+test gc_budget_staging_cap_is_controlled_resource_rejection ... ok
+test gc_budget_receipt_separates_logical_freed_pending ... ok
+test gc_budget_hard_pins_over_budget_backoff_no_live_deletion ... ok
+test gc_budget_churn_small_converges ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 8.84s
+
+== V-10 store-boundary (--test store_boundary_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running tests\store_boundary_.rs (experimental\ac-artifact-probe\target\release\deps\store_boundary_-3d79316d02f3440b.exe)
+
+running 5 tests
+test store_boundary_not_managed_root_refuses_deleting_operations ... ok
+test store_boundary_missing_source_without_hit_is_explicit_unavailable ... ok
+test store_boundary_missing_toolchain_is_explicit_unavailable_not_fake_hit ... ok
+test store_boundary_gc_never_leaves_the_managed_namespace ... ok
+test store_boundary_reparse_jump_is_not_followed_by_scans ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.65s
+
+== V-11 perf (--test perf_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\perf_.rs (experimental\ac-artifact-probe\target\release\deps\perf_-2aec16697d241815.exe)
+
+running 2 tests
+test perf_full_report_contract_when_provided ... ok
+test perf_scenarios_execute_with_zero_semantic_failures ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.39s
+
+== V-12 dep-audit (--test dep_audit_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\dep_audit_.rs (experimental\ac-artifact-probe\target\release\deps\dep_audit_-3a6ad1b8e30b30cc.exe)
+
+running 5 tests
+test dep_audit_probe_lives_only_under_experimental ... ok
+test dep_audit_probe_is_standalone_and_names_its_dependencies ... ok
+test dep_audit_ac_core_has_no_product_dependencies ... ok
+test dep_audit_schema_registry_covers_declared_codec_layers ... ok
+test dep_audit_no_production_cache_entry_switch ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+== R1 regressions (--test review_r1_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running tests\review_r1_.rs (experimental\ac-artifact-probe\target\release\deps\review_r1_-a48a94cff625d210.exe)
+
+running 12 tests
+test r1_f05_layout_b_short_record_and_unknown_layout_rejected ... ok
+test r1_f05_layout_reader_rejects_corrupt_substituted_and_malformed ... ok
+test r1_f04_cas_substitution_rejected_at_admission ... ok
+test r1_f11_diagnostics_name_the_current_project_path ... ok
+test r1_f08_overlapping_processes_identical_and_conflicting ... ok
+test r1_f06_recovery_clears_orphan_rows_trash_and_is_idempotent ... ok
+test r1_f04_object_consumer_substitution_is_controlled ... ok
+test r1_f03_republish_after_gc_delete_restores_readability ... ok
+test r1_f01_grants_during_gc_never_cover_deleted_targets ... ok
+test r1_f06_tombstone_recovery_cascades_rows ... ok
+test r1_f02_perf_root_never_deletes_unowned_content ... ok
+test r1_f08_busy_chunk_waits_bounded_then_reports_and_cleans_staging ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.06s
+
+== R2 regressions (--test review_r2_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running tests\review_r2_.rs (experimental\ac-artifact-probe\target\release\deps\review_r2_-b0f4ecf105568fcd.exe)
+
+running 6 tests
+test r2_f02_layout_b_header_bounds_and_a_offset_no_truncation ... ok
+test r2_f04_trash_root_junction_refused_and_sentinel_survives ... ok
+test r2_f03_same_process_concurrent_puts_all_readable ... ok
+test r2_f05_total_converges_below_low_watermark_with_real_db_shrink ... ok
+test r2_f01_put_during_recover_stays_readable ... ok
+test r2_f05_churn_small_total_under_low ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.73s
+
+== R3 regressions (--test review_r3_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.12s
+     Running tests\review_r3_.rs (experimental\ac-artifact-probe\target\release\deps\review_r3_-0b35d638bfcbe86d.exe)
+
+running 4 tests
+test r3_f01_budget_lock_does_not_break_same_key_serialization ... ok
+test r3_f02_gc_counts_and_reclaims_crash_orphans ... ok
+test r3_f03_gc_staging_root_junction_refused_and_sentinel_survives ... ok
+test r3_f01_concurrent_staging_budget_is_atomic ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21s
+
+== R4 regressions (--test review_r4_)
+warning: unused doc comment
+   --> D:\autostack\.wt\lang-783\auto-lang\crates\shim-metadata\src\classify.rs:213:13
+    |
+213 |               /// 回调令牌,wrapper adapter 重入 VM);其余拥有外来类型 v1 跳过
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+214 | /             Ty::OpaqueOwned(n) if n.contains("Fn") => {
+215 | |                 args.push(ArgPlan::Callback);
+216 | |                 continue;
+217 | |             }
+    | |_____________- rustdoc does not generate documentation for match arms
+    |
+    = help: use `//` for a plain comment
+    = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `shim-metadata` (lib) generated 1 warning
+warning: unused variable: `total_candidates`
+   --> src\store\gc.rs:307:9
+    |
+307 |     let total_candidates = candidates.len() + orphan_candidates.len();
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_total_candidates`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (lib) generated 1 warning (run `cargo fix --lib -p ac-artifact-probe` to apply 1 suggestion)
+warning: unused import: `std::io::Write`
+  --> tests\review_r4_.rs:17:5
+   |
+17 | use std::io::Write;
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `ac-artifact-probe` (test "review_r4_") generated 1 warning (run `cargo fix --test "review_r4_" -p ac-artifact-probe` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.13s
+     Running tests\review_r4_.rs (experimental\ac-artifact-probe\target\release\deps\review_r4_-bcbbb9317efd34cd.exe)
+
+running 3 tests
+test r4_f02_transient_budget_covers_staging_plus_cas_tmp ... ok
+test r4_f01_live_row_without_artifact_reclaimed_by_gc ... ok
+test r4_f01_deleted_row_reappeared_blob_reclaimed_by_gc_and_recover ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s
+
+== committed perf report contract (>=30 samples/scenario)
+
+VERIFY-AC-ARTIFACT-PROBE [acceptance]: PASS (all families ran with required case counts)

@@ -1,0 +1,4 @@
+mode=valid exit=0 old_report_preserved=False log=C:\Users\zhaop\AppData\Local\Temp\ac783-r4-gate-2057586d28ad43feb1f789424ca97933/valid.log
+mode=invalid-report exit=1 old_report_preserved=True log=C:\Users\zhaop\AppData\Local\Temp\ac783-r4-gate-2057586d28ad43feb1f789424ca97933/invalid-report.log
+mode=no-output exit=1 old_report_preserved=True log=C:\Users\zhaop\AppData\Local\Temp\ac783-r4-gate-2057586d28ad43feb1f789424ca97933/no-output.log
+mode=publish-blocked exit=1 old_report_preserved=True log=C:\Users\zhaop\AppData\Local\Temp\ac783-r4-gate-2057586d28ad43feb1f789424ca97933/publish-blocked.log

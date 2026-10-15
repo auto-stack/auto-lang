@@ -1,0 +1,9 @@
+B_RECORD len=13 outcome=controlled-error
+B_RECORD len=14 outcome=controlled-error
+B_RECORD len=15 outcome=controlled-error
+B_RECORD len=21 outcome=controlled-error
+B_RECORD len=22 outcome=controlled-error
+B_RECORD len=23 outcome=accepted
+A_OFFSET_2POW48 accepted=false
+RECOVER_PUBLISH put_ok=true readable=true orphans_removed=601
+TRASH_NAMESPACE_JUNCTION recover_ok=false external_sentinel_survived=true
