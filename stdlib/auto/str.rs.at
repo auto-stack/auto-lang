@@ -1,5 +1,13 @@
 /// Rust implementation of String utility functions
 
+/// UTF-8 byte length. PLAN-781 阶段 E（T-24）：VM 轨 nat#1526
+/// （`auto.str.byte_len`）的 a2r 镜像——与 `File.read_text_range` 的字节
+/// 游标同空间（Reader 章 meta 索引偏移累计）。
+#[rs]
+pub fn str_byte_len(s str) int {
+    return s.len() as int
+}
+
 /// Get the character at a given byte offset (returns code point as int)
 /// If index is out of bounds, returns 0
 #[rs]
