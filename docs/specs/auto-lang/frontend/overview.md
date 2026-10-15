@@ -17,7 +17,8 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 - `Parser` 持有 `Lexer`、`TypeStore`、`InferenceContext`、`ModuleTracker` 与方言表，
   不再依赖 `Universe`（plan-090）。
 - 方言体系（轴 A）已实现：`Dialect` trait + `UiDialect`（`Scenario::UI` 下接管
-  `widget`/`msg`/`model`/`view`/`on`），产出仍是基础 `Stmt` 变体。
+  `widget`/`msg`/`model`/`view`/`on`），产出仍是基础 `Stmt` 变体；PLAN-778 起
+  支持外部 crate 经 `ParserBridge` 显式注册方言（见"方言外部化"节）。
 - `use` 体系两层：预处理用 `scan_use_statements`（字符串级，免解析）；
   解析后用 `ModulePath`（`pac`/`super` 前缀）+ `ModuleResolver`/`FilesystemResolver` 落盘。
 - AST 序列化三件套 `ToNode`/`ToAtom`/`AtomWriter` 覆盖全部 AST 类型（S 表达式文本）。
@@ -74,6 +75,8 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 - `crates/auto-lang/src/ast.rs:ToNode`、`ast.rs:ToAtom`、`ast.rs:AtomWriter`
 - `crates/auto-lang/src/ast/module_path.rs:ModulePath`、`module_path.rs:PathPrefix`
 - `crates/auto-lang/src/dialect.rs:Dialect`、`dialect/ui.rs:UiDialect`
+- `crates/auto-lang/src/parser_bridge.rs:ParserBridge`（PLAN-778 方言外部化最小桥面）、
+  `dialect.rs:DialectPriority`
 - `crates/auto-lang/src/use_scanner.rs:scan_use_statements`、`use_scanner.rs:UseStatement`
 - `crates/auto-lang/src/resolver.rs:ModuleResolver`、`resolver.rs:FilesystemResolver`
 - 一键入口：`crates/auto-lang/src/lib.rs:parse`（`parse(code) -> AutoResult<Code>`；
@@ -93,12 +96,40 @@ let resolver = FilesystemResolver::new(PathBuf::from("stdlib/auto"));
 let path = resolver.resolve_with_prefix(&module_path, current_file)?;
 ```
 
+## 方言外部化（PLAN-778 pilot）
+
+方言外部化（PLAN-778 pilot）：`Dialect::try_parse_stmt/try_parse_token_stmt` 接收最小
+`ParserBridge`。桥面提供 token 游标、checkpoint/restore、核心表达式/类型解析、场景与
+fn/on 体上下文查询、当前位置语法错误工厂；不暴露 Parser 本体、lexer、scope、符号表或
+TypeStore，不提供通用 warning 出口。
+
+`Parser::register_dialect/with_dialect` 显式注册外部方言。`Override` 注册位于内建段
+之前，`Append` 位于其后；各段按注册顺序咨询，首个返回 Some 的匹配方言接管。
+`with_session` 只重建内建段，外部注册保持；派发时检查 matches 场景门控。Arc 共享句柄
+使外部委托核心解析时，合法递归语句派发仍能看见完整注册表。
+
+派发器在 Ok(None) 后回滚 lexer/cur/prev 游标与 in_on_body/in_fn_body/in_dot_rhs/
+with_header/body_depth 五个上下文旗标。Err 时注册不丢失，恢复这五个旗标，游标保留
+失败位置；errors/warnings 单调追加。checkpoint 不承诺符号表等全部解析副作用的事务回滚。
+
+独立外部 consumer 已验证无注解的 `model { [var] name [type] [= expr] }` 字段子集：
+类型和初值可同时省略；裸字段在行界/块界形成字段，类型 Unknown、初值 Nil；EOF 后仍须
+满足 model 块闭合。类型或初值存在时委托核心解析。字段注解走 None 回退内建；其他 UI
+文法保持内建，UI AST/consumer 继续兼容。
+
+裸字段支持属于显式注册的外部 pilot，默认内建 model 仍要求类型或初值，行为不变。生产
+入口和导入中新建的 Parser 不自动继承外部注册；需要各入口显式注入。widget 体内 model
+由结构解析器直连内建，不经过语句方言派发；widget/msg/component/actions/style/view/
+on/store 的完整外部化、生产接线与 UI AST 迁移尚未完成。
+
 ## 已知坑
 
 - `parser.rs` 超 20k 行（`wc -l crates/auto-lang/src/parser.rs` = 20562，2026-09-07 快照），
   语句/表达式/类型解析高度集中，改动需跑全量测试。
-- 方言派发用 `mem::take` 移出方言表规避自引用借用（复现：`rg -n "mem::take" crates/auto-lang/src/parser.rs`，
-  2026-09-07 快照 611-634 行），新增方言照此模式。
+- 方言派发不再用 `mem::take` 移表（PLAN-778 已废除该模式——Err 提前退出会永久丢
+  失整张方言表，且委托递归期间活跃方言不可见）：方言表元素为 Arc 共享句柄，派发
+  克隆调用、结构上无移出；Err 边界恢复五旗标、None 回滚游标+旗标（见"方言外部化"
+  节）。新增方言走 `register_dialect`/`with_dialect` 显式注册，勿恢复移出式派发。
 - `view` 在 Core 语言是参数模式关键字、在 UI 场景是语句关键字——同一 TokenKind 两义，
   由 `try_parse_token_stmt` 按 session 场景分派。
 - `scan_use_statements` 是字符串匹配：字符串字面量内的 "use xxx" 行、条件编译分支中的

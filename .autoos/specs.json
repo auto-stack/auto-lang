@@ -4,6 +4,21 @@
       "id": "reports",
       "items": [
         {
+          "id": "P778-M",
+          "title": "PLAN-778 合入沉淀收据（canonical 落地与门禁状态）",
+          "file": "docs/reports/778-ui-dialect-externalization/verification.md",
+          "content": "交付 da17a3d44：parser_bridge.rs 最小桥面、Dialect 改收 bridge+DialectPriority、三段 Arc 方言表显式注册、派发恢复不变量（Err 不丢注册/五旗标边界恢复、None 游标+旗标回滚、matches 派发门控）、fn/on/watch/dot-RHS 四处 ? 泄漏根源修复、外部 fixture（根 exclude）。SD-01 落 frontend/overview（新增方言外部化节+原位替换 mem::take 坑点）；plans.md 行+INDEX 再生；ledger 离线投影 4 条（P778-1/T/R3/M）。merge-owned 裸 cargo t+tv 于冻结基线执行，结果记计划 §9。",
+          "tags": [
+            "plan:PLAN-778",
+            "stage:merge",
+            "commit:da17a3d44"
+          ],
+          "related": [],
+          "status": "active",
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15"
+        },
+        {
           "id": "P771-M",
           "title": "PLAN-771 合入沉淀收据（canonical 落地与门禁状态）",
           "file": "docs/reports/771-record/verification.md",
@@ -4099,6 +4114,20 @@
       "id": "designs",
       "items": [
         {
+          "id": "P778-1",
+          "title": "frontend 方言外部化合同：ParserBridge 桥面 + 三段 Arc 注册与派发恢复不变量",
+          "file": "docs/specs/auto-lang/frontend/overview.md",
+          "content": "PLAN-778 pilot：Dialect::try_parse_stmt/try_parse_token_stmt 收最小 ParserBridge（游标/checkpoint/核心 expr·type/context/syntax_error 工厂；不暴露 Parser/lexer/符号表，无通用 warning 出口）。register_dialect/with_dialect 显式注册，Override 前插/Append 后接，with_session 只重建内建段，派发时 matches 场景门控；Arc 共享句柄——委托递归期间活跃方言留表可见。恢复不变量（核心保证）：Ok(None) 回滚游标+五旗标（in_on/in_fn/in_dot_rhs/with_header/body_depth）；Err 不丢注册、边界恢复五旗标、游标留失败位；errors/warnings 单调追加，无全副作用事务承诺。外部已验证 model 冻结子集 model { [var] name [type] [= expr] }（裸字段=行界/块界终止，Unknown/Nil；内建路径不变仍要求类型或初值）；注解 None 回退内建；widget 体 model 直连内建不经方言派发；生产入口/导入不自动继承注册。旧 mem::take 移表坑点已原位替换废弃。",
+          "tags": [
+            "plan:PLAN-778",
+            "commit:da17a3d44"
+          ],
+          "related": [],
+          "status": "active",
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15"
+        },
+        {
           "id": "P771-2",
           "title": "auto-hir record 域：名义类型/字段 place/构造/借位/方法形态与阶段责任",
           "file": "docs/specs/auto-hir/project.md",
@@ -6812,6 +6841,20 @@
       "id": "tests",
       "items": [
         {
+          "id": "P778-T",
+          "title": "外部 UI 方言 consumer 测试族（桥面合同 + R1 委托组合 + R2 裸字段边界矩阵）",
+          "file": "test/fixtures/modularity/ui-dialect-consumer/tests/v01_v05_external_dialect.rs",
+          "content": "独立 fixture crate（test/fixtures/modularity/ui-dialect-consumer，脱离根 workspace，path 依赖公开面）26 项：V01-V05 正反控（typed 结果/非内建替跑、Core 赋值·view 参数·scene·widget 兼容、with_session·嵌套 block·实例隔离、Err 恢复点·错误位置 offset·注解 None 回滚、默认路径·Override/Append 冲突区分）+ R1 委托组合 6 项（闭包内嵌 model accepts=2、兄弟块控制、委托 Err 恢复点 context（pre-restore 强 oracle [false,true,false]）、成功委托正控、token None 回滚、token Err 再派发）+ R2 边界 8 项（可选组合四象限、裸+typed 多行、var×裸、非法负控、内建拒绝控制）。门禁：cargo test --manifest-path test/fixtures/modularity/ui-dialect-consumer/Cargo.toml。",
+          "tags": [
+            "plan:PLAN-778",
+            "tier:external-gate"
+          ],
+          "related": [],
+          "status": "active",
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15"
+        },
+        {
           "id": "P771-T",
           "title": "record 测试族（HIR 变异门/源码前端/真实 PE 三层）",
           "file": "experimental/ac-core/tests/record_native.rs",
@@ -8194,6 +8237,21 @@
     {
       "id": "reviews",
       "items": [
+        {
+          "id": "P778-R3",
+          "title": "PLAN-778 第三轮独立最终复审 pass（R1 三发现/R2 一发现修复后全闭合）",
+          "file": "docs/plans/attachments/778/review-r3/REVIEW.md",
+          "content": "审面 da17a3d44（base 87f45dc4e）；F778-R1-01（Arc 注册/委托递归 accepts=2 复证）、F778-R1-02（pre-restore in_fn_body=false 收编并通过）、F778-R1-03（fmt/diff-check）、F778-R2-01（裸字段四象限/var/负控/内建拒绝全过）全部 closed；AC-01..04 pass、AC-05 merge-owned。外部 26/26、独立 7/7、边界 3/3、补充组合 3/3、定向 255/255、check exit0。R1/R2 历史 needs_fix 与覆盖诊断见计划 §9。合入前须冻结提交裸 cargo t+tv。",
+          "tags": [
+            "plan:PLAN-778",
+            "outcome:pass",
+            "commit:da17a3d44"
+          ],
+          "related": [],
+          "status": "active",
+          "created": "2026-10-15",
+          "last_modified": "2026-10-15"
+        },
         {
           "id": "P771-R3",
           "title": "PLAN-771 第三轮独立最终复审 pass（R1 四发现/R2 一发现修复清偿）",
@@ -11058,5 +11116,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 20
+  "version": 21
 }
