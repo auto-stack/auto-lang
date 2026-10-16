@@ -68,15 +68,25 @@ switch ($Scope) {
         if ($LASTEXITCODE -ne 0) { Pop-Location; exit 1 }
         $raw = Join-Path $reportDir "turnaround-raw.jsonl"
         $summary = Join-Path $reportDir "turnaround-summary.json"
+        # The worker writes raw rows to $raw and prints ONE summary JSON line
+        # to stdout; the pipe below is the ONLY writer of $summary (F798-R2-01:
+        # a stale `$benchOut |` here used to truncate the file to 0 bytes).
         & (Join-Path $ws "target/release/av_probe_worker.exe") bench-turnaround --samples $Samples --gate-ms $GateMs --out "$raw" | Out-File $summary -Encoding utf8
         $code = $LASTEXITCODE
         Pop-Location
-        $benchOut | Out-File (Join-Path $reportDir "turnaround-summary.json") -Encoding utf8
-        if ($code -ne 0) {
-            Write-Host "FAILED: turnaround hard gate (exit $code)"
+        # Sanity: the summary must be parseable JSON on BOTH the success and
+        # the failure path - the gate result rides in it.
+        try {
+            $null = Get-Content -LiteralPath $summary -Raw | ConvertFrom-Json
+        } catch {
+            Write-Host "FAILED: summary at $summary is not parseable JSON: $_"
             exit 1
         }
-        Write-Host "turnaround PASS — raw samples: $raw"
+        if ($code -ne 0) {
+            Write-Host "FAILED: turnaround hard gate (exit $code) - summary: $summary raw: $raw"
+            exit 1
+        }
+        Write-Host "turnaround PASS - summary: $summary raw: $raw"
     }
     "acceptance" {
         Run-Tests "vertical" "acceptance-vertical"

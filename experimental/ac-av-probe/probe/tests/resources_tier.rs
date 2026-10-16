@@ -403,12 +403,25 @@ fn main() int {
             1,
             "rev {rev}"
         );
-        // Managed staging partition (§5.5 r2): decode/index staging of this
-        // small module stays far under the 16 MiB staging budget; the full
-        // 32 MiB partition check runs on the big module below.
+        // Managed partitions (§3 r2, F798-R2-02): staging ≤16 MiB, hot
+        // closure ≤8 MiB, AV live slots ≤8 MiB — per round, on the counters
+        // finalized AFTER the closure codec roundtrip.
         assert!(
-            *r.counters.get("peak_staging_bytes").unwrap_or(&0) < 16 * 1024 * 1024,
+            *r.counters.get("peak_staging_bytes").unwrap_or(&0) <= 16 * 1024 * 1024,
             "rev {rev}: staging over budget"
+        );
+        assert!(
+            *r.counters.get("peak_hot_bytes").unwrap_or(&0) <= 8 * 1024 * 1024,
+            "rev {rev}: hot partition over budget"
+        );
+        assert!(
+            *r.counters.get("av_peak_slot_bytes").unwrap_or(&0) <= 8 * 1024 * 1024,
+            "rev {rev}: exec slot partition over budget"
+        );
+        assert!(
+            *r.counters.get("peak_staging_bytes").unwrap_or(&0)
+                >= *r.counters.get("peak_hot_bytes").unwrap_or(&0),
+            "rev {rev}: staging peak must include the closure codec phase"
         );
         edited_rounds += 1;
         if rev % 64 == 0 {
@@ -463,6 +476,35 @@ fn main() int {
     );
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&work_root);
+}
+
+/// F798-R2-02 counter-control: the peak sampler must observe a transient
+/// memory spike that the endpoint delta cannot see (endpoint low, process
+/// peak high). A ~96 MiB spike is allocated mid-scope and freed before the
+/// end; the sampler's peak must catch it while mem_end - mem_start stays
+/// low. This is the discriminating oracle for peak-vs-delta evidence.
+#[test]
+#[cfg(windows)]
+fn av_resources_peak_sampler_distinguishes_transient_spike() {
+    use auto_av_probe::mempeek::{sample_private_bytes, PeakSampler};
+    let m0 = sample_private_bytes();
+    let sampler = PeakSampler::start(5);
+    let spike: Vec<Vec<u8>> = (0..96).map(|_| vec![7u8; 1024 * 1024]).collect();
+    // Hold the spike long enough for at least one poll.
+    std::thread::sleep(std::time::Duration::from_millis(120));
+    let _ = spike.len();
+    drop(spike);
+    let peak = sampler.stop();
+    let delta = sample_private_bytes().saturating_sub(m0);
+    assert!(
+        peak >= 64 * 1024 * 1024,
+        "sampler must catch the transient spike (peak {} bytes)",
+        peak
+    );
+    assert!(
+        delta < 32 * 1024 * 1024,
+        "endpoint delta must stay low ({delta} bytes) while the peak was {peak}"
+    );
 }
 
 /// V-11 smoke: the six-scenario bench runs end-to-end on a scaled load

@@ -596,6 +596,7 @@ impl Driver {
         };
         // Whole-closure admission through the REAL codec + verifier (the
         // executor accepts only this credential).
+        let mut closure_bytes_total: usize = 0;
         let loaded: LoadedModule = match obs.span("verify_load", Some("request"), |_| {
             encode_abc(&merged)
                 .map_err(|e| StageDiag {
@@ -604,6 +605,7 @@ impl Driver {
                     message: "closure re-encode failed".to_string(),
                 })
                 .and_then(|bytes| {
+                    closure_bytes_total = bytes.total_len;
                     decode_abc(&bytes.to_flat()).map_err(|e| StageDiag {
                         stage: "abc-load".to_string(),
                         code: e.code(),
@@ -623,6 +625,14 @@ impl Driver {
         };
         obs.set_counter("verify_load", 1);
         obs.counter("closure_encodes", 1);
+        // Hot partition: the loaded closure retained through execution
+        // (code/data). Staging peak is finalized AFTER the closure codec
+        // roundtrip — the decode/index/assembly staging lives until here
+        // (F798-R2-02).
+        obs.set_counter("peak_hot_bytes", closure_bytes_total as u64);
+        staging_now += closure_bytes_total;
+        staging_peak = staging_peak.max(staging_now);
+        obs.set_counter("peak_staging_bytes", staging_peak as u64);
 
         // ---- manifest ----------------------------------------------------
         let mut manifest_out: Option<ModuleManifest> = None;
@@ -667,6 +677,7 @@ impl Driver {
             execute(&loaded, &limits, &cancel)
         });
         obs.set_counter("av_execute", 1);
+        obs.set_counter("av_peak_slot_bytes", trace.peak_slot_bytes);
         if let ExecOutcome::Success { steps, .. } = &outcome {
             obs.set_counter("av_steps", *steps);
         }

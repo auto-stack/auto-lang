@@ -10,6 +10,7 @@ pub mod cache;
 pub mod driver;
 pub mod hir_adapter;
 pub mod load256;
+pub mod mempeek;
 pub mod native_reference;
 pub mod observations;
 pub mod worker_restore;

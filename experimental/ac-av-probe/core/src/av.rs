@@ -56,6 +56,9 @@ impl CancelCheck {
 #[derive(Clone, Debug, Default)]
 pub struct ExecTrace {
     pub events: Vec<TraceEvent>,
+    /// High-water live slot data across all frames during execution (the
+    /// execution partition of the managed 32 MiB budget, §3).
+    pub peak_slot_bytes: u64,
 }
 
 struct Frame {
@@ -97,6 +100,7 @@ pub fn execute_entry(
     let started = Instant::now();
     let mut steps: u64 = 0;
     let mut slot_bytes: usize = 0;
+    let mut slot_bytes_peak: usize = 0;
 
     let entry_fn = match m.funcs.get(m.entry as usize) {
         Some(f) => f,
@@ -136,6 +140,7 @@ pub fn execute_entry(
         });
     }
     slot_bytes += frame.slots.len() * SLOT_CELL_BYTES;
+    slot_bytes_peak = slot_bytes_peak.max(slot_bytes);
     let mut frames: Vec<Frame> = Vec::with_capacity(16);
     frames.push(frame);
 
@@ -310,6 +315,7 @@ pub fn execute_entry(
                         });
                     }
                     slot_bytes += nf.slots.len() * SLOT_CELL_BYTES;
+                    slot_bytes_peak = slot_bytes_peak.max(slot_bytes);
                     if slot_bytes > limits.max_slot_bytes {
                         return (
                             ExecOutcome::Resource {

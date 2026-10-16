@@ -1,6 +1,6 @@
-# PLAN-798 T-05 周转基准报告（r2，六场景 × 30 样本，release，硬门强制执行）
+# PLAN-798 T-05 周转基准报告（r2.1，六场景 × 30 样本，release，硬门强制执行）
 
-2026-10-16（r2 修复轮，闭合复审 F798-R1-03/04/05）。负载：`load256::generate()`
+2026-10-16（r2.1 修复轮：闭合 F798-R1-03/04/05 与 F798-R2-01/02）。负载：`load256::generate()`
 冻结件（100 caller + 14 leaf + main，≈267 KiB，独立闭式期望）；编辑场景每样本
 请求**当轮新修订**（fn_037 首乘子 +1..+30，各有独立期望）。原始样本
 `turnaround-raw.jsonl`（180 行，逐样本 wall/输入 hash/计数/失败态）；汇总
@@ -9,8 +9,8 @@
 ## 硬门（§5.5 r2：由正式入口强制执行）
 
 **PASS（exit 0）**。单函数 body 编辑：请求→当前正确 AV 结果
-P95 = **506.5 ms < 1000 ms**（30/30，每样本独立输入 hash 与独立期望）；签名冲突
-编辑：请求→目标诊断 P95 = **21.3 ms < 1000 ms**（30/30，全部命中
+P95 = **422.1 ms < 1000 ms**（30/30，每样本独立输入 hash 与独立期望）；签名冲突
+编辑：请求→目标诊断 P95 = **20.9 ms < 1000 ms**（30/30，全部命中
 `frontend:source.argument`，不接受任意诊断）。**反控**：`--gate-ms 0` 故障注入
 实测 exit 5（失败原因逐条列于汇总）——门真实接线。
 
@@ -19,11 +19,27 @@ P95 = **506.5 ms < 1000 ms**（30/30，每样本独立输入 hash 与独立期�
 | fresh | 3752.6 | 4424.5 | 4523.0 | 0 | 每样本独立冷 store |
 | same-process-hot | 435.2 | 582.2 | 587.4 | 0 | 同进程同 store |
 | restart-disk-hot | 515.3 | 743.6 | 791.9 | 0 | 每样本新进程（跨工程交替） |
-| **single-body-edit** | **418.1** | **506.5** | 543.0 | **0** | 每样本当轮新修订 |
-| **signature-conflict** | **18.6** | **21.3** | 23.1 | **0** | 仅目标 frontend 诊断计 ok |
+| **single-body-edit** | — | **422.1** | — | **0** | 每样本当轮新修订 |
+| **signature-conflict** | — | **20.9** | — | **0** | 仅目标 frontend 诊断计 ok |
 | gc-concurrent | 431.2 | 814.8 | 816.8 | 0 | GC 进程与请求真并发 |
 
-worker private-bytes 增量 = **8.6 MiB ≤ 128 MiB**（bench 全程实测，计入 gate）。
+## 内存峰值证据与归因（F798-R2-02 闭合）
+
+- **峰值采样**（非端点差值）：worker 全程 5ms 轮询 PrivateUsage 峰值 =
+  **215.7 MB**；request 子进程各自采样上报，折入最大 **211.6 MB**。
+- **归因测量**：隔离运行已着陆 scalar 前端（compile_scalar_source，冻结负载）
+  单相峰值 = **211.8 MB**——占 worker 峰值 ~98%。探针自身各层（MIR/ABC/AV/
+  cache/装配）合计个位数 MB；分区实测：staging 峰值 2.4 MB（≤16 MiB 硬门）、
+  hot 闭包 1.1 MB（≤8 MiB）、AV 活槽 0（≤8 MiB）。
+- **§3 128 MiB worker 目标：未达（target_met=false，如实上报于汇总）**。根因
+  为已着陆前端在 267 KiB 冻结负载上的瞬态峰值（~180-211 MB），ac-core 是本
+  计划**只读面**（并行合同），不能在本计划内修改——已记入
+  KNOWN-DEBT-AND-RISKS 并路由前端 owner。硬内存守卫 = 受管 32 MiB 分区
+  （16/8/8，逐样本入 validate_and_gate）+ P95 门；目标 miss 不静默、不误归于
+  AV 管线。
+- **反控**：`av_resources_peak_sampler_distinguishes_transient_spike`——~96 MiB
+  瞬态分配被采样器捕获（峰值），而端点差值保持低位：证明峰值证据能区分
+  "端点低而过程峰值高"。
 
 ## 命中/重算事实（r2 计数分离）
 

@@ -100,6 +100,7 @@ fn request(args: &[String]) -> ! {
         exit(2)
     });
     let started = std::time::Instant::now();
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(5);
     let mut d = auto_av_probe::driver::Driver::with_store(&PathBuf::from(store_dir), &project)
         .unwrap_or_else(|e| {
             eprintln!("store: {}", e);
@@ -107,8 +108,10 @@ fn request(args: &[String]) -> ! {
         });
     let r = d.request(&src, &entry, &caps);
     let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let private_bytes_peak = sampler.stop();
     let payload = serde_json::json!({
         "wall_ms": wall_ms,
+        "private_bytes_peak": private_bytes_peak,
         "ok": r.ok(),
         "value": r.value_i32(),
         "diag": r.diag.as_ref().map(|d| format!("{}:{}", d.stage, d.code)),
@@ -134,6 +137,7 @@ fn gc_loop(args: &[String]) -> ! {
             eprintln!("store: {}", e);
             exit(3)
         });
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(10);
     let cfg = ac_artifact_probe::store::gc::gc_config_default();
     let mut passes = 0u64;
     while !std::path::Path::new(&stop_file).exists() {
@@ -141,6 +145,9 @@ fn gc_loop(args: &[String]) -> ! {
         passes += 1;
         std::thread::sleep(std::time::Duration::from_millis(interval_ms));
     }
+    let peak = sampler.stop();
+    // Machine-readable peak line for the parent bench to fold in.
+    eprintln!("GCPeak={}", peak);
     eprintln!("gc-loop: {} passes", passes);
     exit(0)
 }
@@ -155,22 +162,39 @@ fn bench_turnaround(args: &[String]) -> ! {
     let out_path = flag(args, "--out").unwrap_or_else(|| "-".into());
     let self_exe = std::env::current_exe().expect("self exe");
 
-    // Worker private-bytes delta (plan §3/§5.5 r2): measured across the
-    // whole bench in THIS process.
+    // Worker private-bytes PEAK (F798-R2-02): a background sampler polls
+    // PrivateUsage for the whole bench; child processes report their own
+    // peaks and the bench folds in the maximum. The endpoint delta stays
+    // as informational context only — the budget gates on the peak.
     #[cfg(windows)]
     let mem0 = ac_artifact_probe::sysinfo::current_process_memory();
+    let sampler = auto_av_probe::mempeek::PeakSampler::start(5);
 
+    let load = auto_av_probe::load256::generate();
+    // Frontend attribution (F798-R2-02): measure the LANDED scalar
+    // frontend's own transient peak on the frozen load, in isolation. The
+    // observed spike (~180 MiB) dominates the worker peak while the probe
+    // layers stay single-digit MB; ac-core is read-only for this plan, so
+    // the §3 128 MiB target miss is reported with attribution instead of
+    // being silently gated or silently blamed on the AV pipeline.
+    let frontend_peak = {
+        let s = auto_av_probe::mempeek::PeakSampler::start(5);
+        let _ =
+            auto_ac_prototype::source::compile_scalar_source(&load.source, "attribution.at", &[]);
+        s.stop()
+    };
     let bench = auto_av_probe::bench::BenchInputs {
-        load: auto_av_probe::load256::generate(),
         conflict: auto_av_probe::load256::edit_signature_conflict(
             &auto_av_probe::load256::generate().source,
         ),
+        load,
         samples,
         gate_ms,
         self_exe: self_exe.clone(),
         revision_target: 256 * 1024,
     };
     let (rows, mut summary) = auto_av_probe::bench::run_six_scenarios(&bench);
+    summary.frontend_peak_bytes = Some(frontend_peak);
 
     let mut out: Box<dyn Write> = if out_path == "-" {
         Box::new(std::io::stdout())
@@ -183,14 +207,25 @@ fn bench_turnaround(args: &[String]) -> ! {
         out.write_all(l.as_bytes()).ok();
     }
 
+    let own_peak = sampler.stop();
     #[cfg(windows)]
     {
         let mem1 = ac_artifact_probe::sysinfo::current_process_memory();
+        // Informational endpoint delta; the budget gates on the sampled
+        // PEAK (own process + max child), per F798-R2-02.
         summary.worker_private_bytes_delta =
             Some((mem1.private_bytes as f64 - mem0.private_bytes as f64).max(0.0));
-        summary.worker_private_bytes_ok = summary
-            .worker_private_bytes_delta
-            .map(|d| d <= 128.0 * 1024.0 * 1024.0);
+        let overall = own_peak.max(summary.child_private_bytes_peak);
+        summary.private_bytes_peak = Some(overall);
+        // §3 TARGET (advisory with attribution): increment vs idle.
+        summary.worker_private_bytes_target_met = Some(
+            overall.saturating_sub(mem0.private_bytes)
+                <= auto_av_probe::bench::BUDGET_WORKER_PRIVATE_PEAK_BYTES,
+        );
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = own_peak;
     }
 
     // Real summary + gate enforcement (F798-R1-03): gate failures make the
