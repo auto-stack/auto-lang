@@ -29,7 +29,7 @@ pub const ABI_PROFILE: &str = "autoabi.win-x64.v0.1-candidate";
 pub const TARGET: &str = "x86_64-pc-windows-msvc";
 
 /// Scalar kinds legal in record fields of the T-01/T-02 candidate set.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum SemScalar {
     Bool,
     U8,
@@ -127,6 +127,192 @@ pub struct RecordLayout {
     pub fields: Vec<FieldLayout>,
     pub size: u32,
     pub align: u32,
+}
+
+/// Owned field type of a descriptor record: a scalar or a named record
+/// reference (nested records — declaration order, acyclic).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FieldTyOwned {
+    Scalar(SemScalar),
+    Record(String),
+}
+
+impl FieldTyOwned {
+    pub fn spell(&self) -> String {
+        match self {
+            FieldTyOwned::Scalar(s) => s.spell().to_string(),
+            FieldTyOwned::Record(n) => format!("rec {n}"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FieldDefOwned {
+    pub name: String,
+    pub ty: FieldTyOwned,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordDefOwned {
+    pub name: String,
+    pub fields: Vec<FieldDefOwned>,
+}
+
+impl From<&RecordDef> for RecordDefOwned {
+    fn from(def: &RecordDef) -> Self {
+        RecordDefOwned {
+            name: def.name.to_string(),
+            fields: def
+                .fields
+                .iter()
+                .map(|f| FieldDefOwned {
+                    name: f.name.to_string(),
+                    ty: FieldTyOwned::Scalar(f.ty),
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Controlled layout failures (V-07): these are rejections and resource
+/// states, never panics and never wrapped answers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LayoutError {
+    UnknownRecord(String),
+    RecursiveRecord(Vec<String>),
+    NestingTooDeep(usize),
+    RecordTooLarge { record: String, size: u64 },
+    OffsetOverflow { record: String, field: String },
+}
+
+impl std::fmt::Display for LayoutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LayoutError::UnknownRecord(n) => write!(f, "unknown record '{n}'"),
+            LayoutError::RecursiveRecord(p) => write!(f, "recursive record chain {}", p.join("->")),
+            LayoutError::NestingTooDeep(d) => write!(f, "nesting depth {d} exceeds limit"),
+            LayoutError::RecordTooLarge { record, size } => {
+                write!(f, "record '{record}' size {size} exceeds budget")
+            }
+            LayoutError::OffsetOverflow { record, field } => {
+                write!(f, "offset overflow in '{record}' at field '{field}'")
+            }
+        }
+    }
+}
+
+/// Resource ceilings for layout computation (contract-decision.md §6):
+/// a record beyond these is a controlled resource state, distinct from
+/// any ABI-compatibility rejection.
+pub const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
+/// Nested-record chains must stay bounded; >=4096 depth works (plan
+/// §5.5), deeper is a controlled rejection.
+pub const MAX_NESTING_DEPTH: usize = 4096;
+
+/// Resolved record table (descriptor type set) with full layout: nested
+/// records under the frozen rules, cycle detection, depth and size
+/// ceilings. All arithmetic checked; overflow is `OffsetOverflow`.
+pub fn layout_record_owned(table: &std::collections::BTreeMap<String, RecordDefOwned>, name: &str) -> Result<RecordLayout, LayoutError> {
+    let mut seen = Vec::new();
+    layout_owned_inner(table, name, &mut seen, 0)
+}
+
+fn layout_owned_inner(
+    table: &std::collections::BTreeMap<String, RecordDefOwned>,
+    name: &str,
+    seen: &mut Vec<String>,
+    depth: usize,
+) -> Result<RecordLayout, LayoutError> {
+    if depth > MAX_NESTING_DEPTH {
+        return Err(LayoutError::NestingTooDeep(depth));
+    }
+    if seen.iter().any(|s| s == name) {
+        let mut chain = seen.clone();
+        chain.push(name.to_string());
+        return Err(LayoutError::RecursiveRecord(chain));
+    }
+    let def = table
+        .get(name)
+        .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
+    seen.push(name.to_string());
+    let mut fields = Vec::with_capacity(def.fields.len());
+    let mut offset: u32 = 0;
+    let mut align: u32 = 1;
+    for f in &def.fields {
+        let (size, fa, flayout) = match &f.ty {
+            FieldTyOwned::Scalar(s) => (s.size_align().0, s.size_align().1, None),
+            FieldTyOwned::Record(n) => {
+                let l = layout_owned_inner(table, n, seen, depth + 1)?;
+                (l.size, l.align, Some(l))
+            }
+        };
+        offset = offset
+            .checked_add(fa - 1)
+            .and_then(|v| v.checked_sub(v % fa))
+            .ok_or_else(|| LayoutError::OffsetOverflow {
+                record: name.to_string(),
+                field: f.name.clone(),
+            })?;
+        align = align.max(fa);
+        if let Some(nested) = flayout {
+            for nf in nested.fields {
+                fields.push(FieldLayout {
+                    name: format!("{}.{}", f.name, nf.name),
+                    offset: offset + nf.offset,
+                    size: nf.size,
+                });
+            }
+        } else {
+            fields.push(FieldLayout {
+                name: f.name.clone(),
+                offset,
+                size,
+            });
+        }
+        offset = offset
+            .checked_add(size)
+            .ok_or_else(|| LayoutError::OffsetOverflow {
+                record: name.to_string(),
+                field: f.name.clone(),
+            })?;
+        if offset as u64 > MAX_RECORD_BYTES {
+            return Err(LayoutError::RecordTooLarge {
+                record: name.to_string(),
+                size: offset as u64,
+            });
+        }
+    }
+    seen.pop();
+    let size = offset
+        .checked_add(align - 1)
+        .and_then(|v| v.checked_sub(v % align))
+        .ok_or_else(|| LayoutError::OffsetOverflow {
+            record: name.to_string(),
+            field: "<tail>".into(),
+        })?;
+    if size as u64 > MAX_RECORD_BYTES {
+        return Err(LayoutError::RecordTooLarge {
+            record: name.to_string(),
+            size: size as u64,
+        });
+    }
+    Ok(RecordLayout {
+        record: name.to_string(),
+        fields,
+        size,
+        align,
+    })
+}
+
+/// Canonical textual form of an owned record definition (the key input;
+/// nested references spelled `rec <name>`).
+pub fn canonical_record_owned(def: &RecordDefOwned) -> String {
+    let mut s = format!("rec {} {{", def.name);
+    for f in &def.fields {
+        s.push_str(&format!(" {} {};", f.ty.spell(), f.name));
+    }
+    s.push_str(" }");
+    s
 }
 
 /// Compute the record layout with the frozen algorithm. Offsets are

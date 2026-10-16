@@ -21,7 +21,9 @@
 
 pub mod ctool;
 pub mod decl;
+pub mod descriptor;
 pub mod emit;
 pub mod layout;
 pub mod run;
 pub mod semref;
+pub mod validate;

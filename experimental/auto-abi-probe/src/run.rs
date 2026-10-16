@@ -49,9 +49,12 @@ pub fn scratch(case: &str) -> PathBuf {
 /// Link object files into a staged PE (not published) with the REAL
 /// ac-core staged-link entry. `objs[0]` is the primary object (it must
 /// contain the entry symbol); the rest ride along as additional link
-/// inputs — exactly how mixed-producer PEs are formed.
+/// inputs — exactly how mixed-producer PEs are formed. Single-object
+/// links are legal (e.g. the C layout oracle measures by itself); the
+/// INTEROP requirement of two independent producers is a property the
+/// leg tests assert on their own inputs, not a linker constraint.
 pub fn link_pe(dir: &Path, objs: &[PathBuf], entry: &str) -> Result<PathBuf, ProbeError> {
-    assert!(objs.len() >= 2, "interop legs link at least two objects");
+    assert!(!objs.is_empty(), "a link needs at least one object");
     let lld = auto_ac_prototype::link::find_rust_lld()
         .map_err(|e| ProbeError(format!("find_rust_lld: {e:?}")))?;
     let sdk = auto_ac_prototype::link::find_sdk_um_dir()

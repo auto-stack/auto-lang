@@ -179,14 +179,31 @@ fn run_deadlined(
 }
 
 /// Compile one C source into `obj_out` with the frozen flags. `include_dir`
-/// is the probe's `cside/` directory (the C sources include only the
-/// probe's own header — no SDK/INCLUDE closure needed at T-01; header
-/// closure enters the cache keys with the T-05 recipe).
+/// is the probe's `cside/` directory; the resolved cl.exe's own MSVC
+/// include dir is added automatically so freestanding headers (stdint.h)
+/// resolve without a vcvars environment. The wider SDK/ucrt header
+/// closure is NOT implied — T-01/T-02 C sources include only probe-owned
+/// headers plus freestanding fixed-width types; header closure enters
+/// the cache keys with the T-05 recipe.
 pub fn compile_c(src: &Path, include_dir: &Path, obj_out: &Path) -> Result<(), CToolError> {
     let tool = find_cl()?;
+    // cl.exe = <msvc>/bin/Hostx64/x64/cl.exe -> <msvc>/include
+    let msvc_root = tool
+        .cl_exe
+        .ancestors()
+        .nth(4)
+        .ok_or_else(|| CToolError("cannot derive MSVC root from cl path".into()))?;
+    let msvc_include = msvc_root.join("include");
+    if !msvc_include.join("stdint.h").is_file() {
+        return Err(CToolError(format!(
+            "MSVC include dir missing stdint.h: {}",
+            msvc_include.display()
+        )));
+    }
     let mut cmd = Command::new(&tool.cl_exe);
     cmd.args(CL_FLAGS);
     cmd.arg(format!("-I{}", include_dir.display()));
+    cmd.arg(format!("-I{}", msvc_include.display()));
     cmd.arg(src);
     cmd.arg(format!("-Fo:{}", obj_out.display()));
     let (code, out, err) = auto_ac_prototype::link::run_deadlined_split(&mut cmd, COMPILE_DEADLINE)
