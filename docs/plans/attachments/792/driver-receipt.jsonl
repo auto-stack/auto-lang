@@ -24,17 +24,17 @@
     {
       "case": "V01-fresh-resolve",
       "ok": true,
-      "detail": "fresh lock 生成 (4s)，patch 单源 + pin 全命中"
+      "detail": "fresh lock 生成 (2s)，patch 单源 + pin 全命中"
     },
     {
       "case": "V01-real-build",
       "ok": true,
-      "detail": "cargo build --locked (177s)，产物 在位"
+      "detail": "cargo build --locked (130s)，产物 在位"
     },
     {
       "case": "V02-relocated-locked-build",
       "ok": true,
-      "detail": "B 内 locked build (132s)，本地 target=有（无共享 target 回退）"
+      "detail": "B 内 locked build (127s)，本地 target=有（无共享 target 回退）"
     },
     {
       "case": "V02-metadata-identity",
@@ -107,9 +107,19 @@
       "detail": "exit=0，固定名 staging 位外来字节保留"
     },
     {
-      "case": "V03h-foreign-trash-sibling-refused",
+      "case": "V03h-foreign-fixed-backup-sibling-preserved",
       "ok": true,
-      "detail": "exit=1，外来换出位字节保留，既有交付不动"
+      "detail": "exit=0，历史固定换出名外来字节保留（backup 唯一名不认领固定名）"
+    },
+    {
+      "case": "V03i-raw-toml-single-quote-rejected",
+      "ok": true,
+      "detail": "exit=1，TOML 语义诊断在案，零产出"
+    },
+    {
+      "case": "V03j-other-app-delivery-survives",
+      "ok": true,
+      "detail": "exit=0，他应用交付与其用户数据在固定换出名上完整存活"
     },
     {
       "case": "V03-restore-green",
