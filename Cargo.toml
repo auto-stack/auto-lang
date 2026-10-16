@@ -151,6 +151,11 @@ exclude = [
     # 9900..9905/9922/9923 core 供值链在 crate 边界外真实工作），门禁经
     # cargo test --manifest-path test/fixtures/modularity/scroll-provider-consumer/Cargo.toml
     "test/fixtures/modularity/scroll-provider-consumer",
+    # PLAN-802: 外部 code editor host provider 消费方探针——独立 fixture
+    # crate（无 UI feature 构建，证明 code_editor 22 native 全族 core 供值
+    # 链在 crate 边界外真实工作），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/code-editor-provider-consumer/Cargo.toml
+    "test/fixtures/modularity/code-editor-provider-consumer",
     # PLAN-792: 生成式 Rust UI 独立消费方探针——非 cargo 消费者本身；消费
     # bundle 由正式生成入口（auto gen --delivery-root）在受管 scratch 生成，
     # 门禁经

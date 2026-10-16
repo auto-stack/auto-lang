@@ -647,6 +647,10 @@ impl VmBridge {
         // PLAN-794: scroll host adapter 同点并入（if-absent 兼容默认；
         // controller 注册表接线恢复，9900..9905/9922/9923）。
         crate::ui::scroll_host_provider::install_process_default();
+        // PLAN-802: code editor host adapter 同点并入（if-absent 兼容默认；
+        // editor 注册表接线恢复，22 native 全族）。
+        #[cfg(feature = "code-editor")]
+        crate::ui::code_editor_provider::install_process_default();
 
         let widget_name = widget.name.clone();
 
@@ -779,6 +783,10 @@ impl VmBridge {
         // PLAN-794: scroll host adapter 同点并入（if-absent 兼容默认；
         // 同 new_with_children）。
         crate::ui::scroll_host_provider::install_process_default();
+        // PLAN-802: code editor host adapter 同点并入（if-absent 兼容默认；
+        // 同 new_with_children）。
+        #[cfg(feature = "code-editor")]
+        crate::ui::code_editor_provider::install_process_default();
 
         let widget_name = decl.name.to_string();
 

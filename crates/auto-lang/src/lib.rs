@@ -459,6 +459,9 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
 /// PLAN-794: scroll host adapter 同纪律并入（9900..9905 + 9922/9923——
 /// core 八 shim 已不直引 ui::scroll；ui 构建恢复 controller 注册表接线，
 /// 缺席槽=T-01 冻结降级臂）。
+/// PLAN-802: code editor host adapter 同纪律并入（22 native 全族——core
+/// shim 已不直引 ui::code_editor；code-editor 构建恢复 editor 注册表
+/// 接线，缺席槽=802 T-01 冻结缺席臂）。
 #[cfg(feature = "ui")]
 fn install_ui_host_capabilities() {
     crate::ui::frame_provider::install_process_default();
@@ -467,6 +470,8 @@ fn install_ui_host_capabilities() {
     #[cfg(all(windows, feature = "native-clipboard"))]
     crate::ui::clipboard_media_provider::install_process_default();
     crate::ui::scroll_host_provider::install_process_default();
+    #[cfg(feature = "code-editor")]
+    crate::ui::code_editor_provider::install_process_default();
 }
 
 #[cfg(not(feature = "ui"))]
@@ -5611,6 +5616,10 @@ fn run_file_dynamic_ui_inner(
     // PLAN-794: scroll host adapter 同点并入（if-absent 兼容默认；ui 单
     // 门控——controller 注册表接线恢复，9900..9905/9922/9923）。
     crate::ui::scroll_host_provider::install_process_default();
+    // PLAN-802: code editor host adapter 同点并入（if-absent 兼容默认；
+    // code-editor 单门控——editor 注册表接线恢复，22 native 全族）。
+    #[cfg(feature = "code-editor")]
+    crate::ui::code_editor_provider::install_process_default();
     let comp = build_dynamic_component_inner(code, path, override_scenario)?;
     // PLAN-031 T-05：-q vm 轨分岔（env 门）——装载链零改：CWD/主题/后端
     // 序由 run_vm_ui 上游照常执行（组件已按同链装载），仅"自开 OS 窗"

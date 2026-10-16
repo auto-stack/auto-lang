@@ -87,6 +87,13 @@ pub mod clipboard_media_provider;
 // `ui`（与被委托的 scroll 模块一致——队列层纯 Rust 无 OS 面）；renderer
 // binding/measured 状态仍为单一真源，adapter 只做 core DTO 转换。
 pub mod scroll_host_provider;
+// PLAN-802: code editor host provider adapter——委托 ui::code_editor 既有
+// 注册表（22 native 全族；779/785/790/794 同构）。单门控 `code-editor`
+//（与被委托的 code_editor 模块一致）；cut/copy/paste 实现级第二门控
+// `ui-clipboard` 在方法体内（无此 feature 返 None = 组合特征 raise 臂）。
+// editor 注册表仍是单一真源，adapter 只做 core 值域转换。
+#[cfg(feature = "code-editor")]
+pub mod code_editor_provider;
 // PLAN-681: native open/save file dialogs — host of the `dialog_open`/
 // `dialog_save` VM builtins (natives 2927/2928) for a2r generated apps,
 // behind `ui-dialog` (enabled by `ui-iced`).

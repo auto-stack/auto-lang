@@ -863,6 +863,16 @@ impl AutoVM {
             {
                 native_interface.set_scroll_host_provider(provider);
             }
+
+            // PLAN-802: 同纪律快照 code editor provider（22 native 全族）。
+            // 缺席快照 = shim 侧 802 T-01 冻结缺席臂（21 项 raise
+            // feature-disabled 形、9913 scroll_to 弹参返 false），与迁移前
+            // feature-off 构建逐字面值同形。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_code_editor_host_provider()
+            {
+                native_interface.set_code_editor_provider(provider);
+            }
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
@@ -1348,6 +1358,24 @@ impl AutoVM {
         &self,
     ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>> {
         self.native_interface.scroll_host_provider()
+    }
+
+    /// PLAN-802: 实例级 code editor provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 2910..2915/2919..
+    /// 2924/2932/2933/2939/9906/9908..9913。
+    pub fn set_code_editor_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>,
+    ) {
+        self.native_interface.set_code_editor_provider(provider);
+    }
+
+    /// PLAN-802: 本 VM 当前 code editor provider（None=T-01 冻结缺席臂）。
+    pub fn code_editor_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>> {
+        self.native_interface.code_editor_provider()
     }
 
     /// Plan 197 Task 9: Load generic registry from codegen

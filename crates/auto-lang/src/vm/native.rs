@@ -133,6 +133,15 @@ pub struct NativeInterface {
     scroll_host_provider: std::sync::RwLock<
         Option<std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>>,
     >,
+    /// PLAN-802: code editor 能力槽（22 native 全族：2910..2915、
+    /// 2919..2924、2932/2933、2939、9906、9908..9913）。装配语义与
+    /// scroll_host_provider 槽逐条相同（per-NativeInterface 持有、Clone
+    /// 保留、注入不动绑定身份）；缺席语义 = 802 T-01 冻结矩阵的缺席臂
+    /// （21 项 raise feature-disabled 形 VMError、9913 scroll_to 弹参
+    /// 返 false——与迁移前 feature-off 构建逐字面值同形）。
+    code_editor_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>>,
+    >,
 }
 
 impl Clone for NativeInterface {
@@ -176,6 +185,14 @@ impl Clone for NativeInterface {
                     .expect("scroll_host_provider poisoned")
                     .clone(),
             ),
+            // PLAN-802: code editor provider 随装配克隆保留（同上——
+            // merge_native_interface 经 Clone+merge 路径不丢宿主能力）。
+            code_editor_provider: std::sync::RwLock::new(
+                self.code_editor_provider
+                    .read()
+                    .expect("code_editor_provider poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -195,6 +212,7 @@ impl NativeInterface {
             clipboard_text_provider: std::sync::RwLock::new(None),
             clipboard_media_provider: std::sync::RwLock::new(None),
             scroll_host_provider: std::sync::RwLock::new(None),
+            code_editor_provider: std::sync::RwLock::new(None),
         }
     }
 
@@ -283,6 +301,28 @@ impl NativeInterface {
         self.scroll_host_provider
             .read()
             .expect("scroll_host_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-802: 注入/替换本接口（=本 VM）的 code editor provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_code_editor_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>,
+    ) {
+        *self
+            .code_editor_provider
+            .write()
+            .expect("code_editor_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-802: 当前 code editor provider（None=T-01 冻结缺席臂语义）。
+    pub fn code_editor_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>> {
+        self.code_editor_provider
+            .read()
+            .expect("code_editor_provider poisoned")
             .clone()
     }
 
@@ -1583,14 +1623,35 @@ pub fn shim_shell_run(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // Read / jump live code_editor state by storage key from handler
 // expressions. Text auto-binding (INPUT_TEXT) covers most oninput flows;
 // these natives add cursor/selection/find access and explicit writes for
-// both VM and script use. Behind the `code-editor` feature; without it the
-// shims raise a clear runtime error instead of failing to compile the VM.
+// both VM and script use.
+//
+// PLAN-802 依赖倒置：本族 22 项（2910..2915、2919..2924、2932/2933、2939、
+// 9906、9908..9913）不再直引 `crate::ui::code_editor`（editor 注册表 /
+// 寄宿 scroll controller / OS 剪贴板桥）——经本 VM NativeInterface 装配的
+// [`crate::vm::host_capabilities::CodeEditorHostProvider`] 供值（UI 宿主
+// 注册委托既有 registry 的 adapter；外部 no-ui 宿主可注入自定义实现）。
+// shim 体因此 feature 中性：`code-editor` feature 仅决定 UI adapter 是否
+// 编译/装配，不再决定本函数的编译形态。
+//
+// 缺席语义（T-01 冻结矩阵 = 迁移前 feature-off 分支逐字面值）：无
+// provider → raise `…: the \`code-editor\` feature is disabled`（弹参前
+// raise，镜像旧 cfg-off stub）；9913 scroll_to 唯一例外——弹参后 push
+// Bool false（值缺席臂）。cut/copy/paste 为组合特征文案（
+// `code-editor`+`ui-clipboard`），provider 在位但宿主无剪贴板面
+// （`Option<bool>` → None）时同文案。
 
 /// `code_editor_text(key) -> String`
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_text: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    match crate::ui::code_editor::code_editor_text(&key) {
+    match provider.text(&key) {
         Some(text) => {
             let idx = vm.add_string(text.into_bytes());
             vm.rc_push_str_idx(task, idx as usize);
@@ -1604,11 +1665,19 @@ pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 
 /// `code_editor_delta(key) -> String` — Plan 673 §4.2: destructive read of
 /// the unified delta queue as `{"revision":N,"deltas":[...]}` (empty queue →
-/// `"deltas":[]` at the current watermark).
-#[cfg(feature = "code-editor")]
+/// `"deltas":[]` at the current watermark). PLAN-802: provider 单次调用即
+/// 恰一次队列消费（text 不清队列；空队列保水位——实现方契约）。
 pub fn shim_code_editor_delta(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_delta: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    match crate::ui::code_editor::code_editor_delta(&key) {
+    match provider.delta(&key) {
         Some(json) => {
             let idx = vm.add_string(json.into_bytes());
             vm.rc_push_str_idx(task, idx as usize);
@@ -1624,8 +1693,17 @@ pub fn shim_code_editor_delta(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 /// structured write (insert/delete/replace per the interval shape). False on
 /// invalid input (unknown key, start > end, out of bounds, non-char-boundary
 /// offsets); the delta enters the same queue human typing uses.
-#[cfg(feature = "code-editor")]
+/// 负 offset 钳位留在 shim（i32→usize 边界，PLAN-802 T-01 冻结——stderr
+/// 形与迁移前一致，不触 provider）。
 pub fn shim_code_editor_edit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_edit: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     // Args push left-to-right: pop the LAST (replacement) first.
     let replacement = pop_string_arg(task, vm);
     let end = task.ram.pop_i32();
@@ -1635,61 +1713,90 @@ pub fn shim_code_editor_edit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         eprintln!("code_editor_edit: negative offsets [{start}, {end})");
         false
     } else {
-        crate::ui::code_editor::code_editor_edit(&key, start as usize, end as usize, &replacement)
+        provider.edit(&key, start as usize, end as usize, &replacement)
     };
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
 }
 
 /// `code_editor_cursor_line(key) -> Int` (0-based line)
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_cursor_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_cursor_line: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let line = crate::ui::code_editor::code_editor_cursor(&key)
-        .map(|(l, _, _)| l)
-        .unwrap_or(0);
+    let line = provider.cursor(&key).map_or(0, |c| c.line);
     task.ram.push_i32(line as i32);
     Ok(())
 }
 
 /// `code_editor_cursor_col(key) -> Int` (char column)
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_cursor_col: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let col = crate::ui::code_editor::code_editor_cursor(&key)
-        .map(|(_, c, _)| c)
-        .unwrap_or(0);
+    let col = provider.cursor(&key).map_or(0, |c| c.char_col);
     task.ram.push_i32(col as i32);
     Ok(())
 }
 
 /// `code_editor_selection_len(key) -> Int` (bytes)
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_selection_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_selection_len: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let sel = crate::ui::code_editor::code_editor_cursor(&key)
-        .map(|(_, _, s)| s)
-        .unwrap_or(0);
+    let sel = provider.cursor(&key).map_or(0, |c| c.selection_bytes);
     task.ram.push_i32(sel as i32);
     Ok(())
 }
 
 /// `code_editor_find(key) -> Bool` — jump to the next regex match (wraps).
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_find: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let found = crate::ui::code_editor::code_editor_find(&key);
+    let found = provider.find(&key);
     task.ram.push_nv(auto_val::encode_bool(found));
     Ok(())
 }
 
 /// `code_editor_set_text(key, text)` — programmatic write (diff-guarded).
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_set_text: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     // Args push left-to-right: pop the LAST (text) first, then the key.
     let text = pop_string_arg(task, vm);
     let key = pop_string_arg(task, vm);
-    if !crate::ui::code_editor::code_editor_set_text(&key, &text) {
+    if !provider.set_text(&key, &text) {
         return Err(VMError::RuntimeError(format!(
             "code_editor_set_text: no editor registered for key {key:?}"
         )));
@@ -1701,21 +1808,21 @@ pub fn shim_code_editor_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 /// load (total bytes; -1 = no editor / IO error / invalid UTF-8). Error is
 /// a VALUE (not a raise): the caller's load loop treats -1 as the empty-tab
 /// path, mirroring `File.read_text`'s `unwrap_or_default` convention.
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_load_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_load_file: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     // Args push left-to-right: pop the LAST (path) first, then the key.
     let path = pop_string_arg(task, vm);
     let key = pop_string_arg(task, vm);
-    let n = crate::ui::code_editor::code_editor_load_file(&key, &path).unwrap_or(-1);
+    let n = provider.load_file(&key, &path).unwrap_or(-1);
     task.ram.push_i32(n as i32);
     Ok(())
-}
-
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_load_file(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_load_file: the `code-editor` feature is disabled".into(),
-    ))
 }
 
 // ── PLAN-703 供⑤: diff engine consumption endpoints (9915/9916/9917) ──
@@ -1849,44 +1956,45 @@ pub fn shim_diff_dirs(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 /// materialized NATIVE-side from the rope and written in one pass — zero
 /// full-text VM transit. Error is a VALUE (false), not a raise: the
 /// caller's save flow treats false as the guarded/failed path, mirroring
-/// the load side's -1 convention.
-#[cfg(feature = "code-editor")]
+/// the load side's -1 convention. PLAN-802: provider 供值（UI adapter 直写
+/// rope 字节——BOM/EOL 包装归 front，701 Spec 不变）。
 pub fn shim_code_editor_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_save: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     // Args push left-to-right: pop the LAST (path) first, then the key.
     let path = pop_string_arg(task, vm);
     let key = pop_string_arg(task, vm);
-    let ok = crate::ui::code_editor::code_editor_save(&key, &path);
+    let ok = provider.save(&key, &path);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
-}
-
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_save(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_save: the `code-editor` feature is disabled".into(),
-    ))
 }
 
 /// PLAN-701 供②a: `code_editor_set_cursor(key, line, col) -> Bool` —
 /// programmatic cursor placement (session restore / goto-line). 0-based
 /// line/char-col (read-side `code_editor_cursor_*` convention); clamped
 /// into the document, selection dropped. false = no editor for key.
-#[cfg(feature = "code-editor")]
+/// PLAN-802: provider 供值；负参 max(0) 钳位留 shim（T-01 冻结）。
 pub fn shim_code_editor_set_cursor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_set_cursor: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let col = pop_arg_i32(task).max(0) as usize;
     let line = pop_arg_i32(task).max(0) as usize;
     let key = pop_string_arg(task, vm);
-    let ok = crate::ui::code_editor::code_editor_set_cursor(&key, line, col);
+    let ok = provider.set_cursor(&key, line, col);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
-}
-
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_set_cursor(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _ = vm;
-    Err(VMError::RuntimeError(
-        "code_editor_set_cursor: the `code-editor` feature is disabled".into(),
-    ))
 }
 
 /// PLAN-701 供②b: `code_editor_scroll_offset_x(key) -> Float` /
@@ -1894,39 +2002,37 @@ pub fn shim_code_editor_set_cursor(_task: &mut AutoTask, vm: &AutoVM) -> Result<
 /// Single source = the scroll controller registry projection (bind 预热 +
 /// intent-drain 投影 + ScrollStateReader 读回校正，MCP 心跳 2s 节拍收敛；
 /// 见 renderer `editor-scroll-{key}` 绑定臂)。Unbound/unmeasured → 0.0
-/// (top) — the session-restore neutral value.
-#[cfg(feature = "code-editor")]
+/// (top) — the session-restore neutral value. PLAN-802: provider 供值
+///（UI adapter 委托 editor_scroll_handle + controller_snapshot——投影
+/// 单源不迁；两读共享一次 DTO 读取，T-01 冻结）。
 pub fn shim_code_editor_scroll_offset_x(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_scroll_offset_x: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let handle = crate::ui::code_editor::editor_scroll_handle(&key);
-    let snap = crate::ui::scroll::controller::controller_snapshot(&handle);
-    task.ram.push_f64(snap.offset_x);
+    let offset = provider.scroll_offset(&key);
+    task.ram.push_f64(offset.x);
     Ok(())
 }
 
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_scroll_offset_y(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_scroll_offset_y: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let handle = crate::ui::code_editor::editor_scroll_handle(&key);
-    let snap = crate::ui::scroll::controller::controller_snapshot(&handle);
-    task.ram.push_f64(snap.offset_y);
+    let offset = provider.scroll_offset(&key);
+    task.ram.push_f64(offset.y);
     Ok(())
-}
-
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_scroll_offset_x(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _ = vm;
-    Err(VMError::RuntimeError(
-        "code_editor_scroll_offset_x: the `code-editor` feature is disabled".into(),
-    ))
-}
-
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_scroll_offset_y(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _ = vm;
-    Err(VMError::RuntimeError(
-        "code_editor_scroll_offset_y: the `code-editor` feature is disabled".into(),
-    ))
 }
 
 /// PLAN-701 供②b: `code_editor_scroll_to(key, x, y) -> Bool` — apply a
@@ -1935,40 +2041,27 @@ pub fn shim_code_editor_scroll_offset_y(_task: &mut AutoTask, vm: &AutoVM) -> Re
 /// it to `operation::scroll_to` on `editor-scroll-{key}` (unbound handle =
 /// scroller not built — intent silently dropped by the drain's unprimed
 /// rule; we report true = request enqueued, mirroring shim_scroll_to).
-#[cfg(feature = "code-editor")]
+/// PLAN-802: provider 供值（UI adapter 双轴 ScrollTo intent 入队恒 true，
+/// X 先 Y 后——794 ScrollIntentDto 委托同源）；**缺席=弹参后 push false**
+/// （本族唯一值缺席臂，T-01 冻结=迁移前 feature-off 分支逐字面值）。
 pub fn shim_code_editor_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    use crate::ui::scroll::{enqueue_intent, ScrollIntent, ScrollSource};
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            // 唯一值缺席臂：镜像迁移前 feature-off 分支（弹 3 参、push
+            // false，不 raise）。
+            let _ = pop_f64_operand(task);
+            let _ = pop_f64_operand(task);
+            let _ = pop_string_arg(task, vm);
+            task.ram.push_nv(auto_val::encode_bool(false));
+            return Ok(());
+        }
+    };
     let y = pop_f64_operand(task);
     let x = pop_f64_operand(task);
     let key = pop_string_arg(task, vm);
-    let handle = crate::ui::code_editor::editor_scroll_handle(&key);
-    enqueue_intent(
-        &handle,
-        ScrollIntent::ScrollTo {
-            axis: crate::ui::scroll::Axis::X,
-            offset: x,
-            source: ScrollSource::Programmatic,
-        },
-    );
-    enqueue_intent(
-        &handle,
-        ScrollIntent::ScrollTo {
-            axis: crate::ui::scroll::Axis::Y,
-            offset: y,
-            source: ScrollSource::Programmatic,
-        },
-    );
-    task.ram.push_nv(auto_val::encode_bool(true));
-    Ok(())
-}
-
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _ = pop_f64_operand(task);
-    let _ = pop_f64_operand(task);
-    let _ = pop_string_arg(task, vm);
-    let _ = vm;
-    task.ram.push_nv(auto_val::encode_bool(false));
+    let ok = provider.scroll_to(&key, x, y);
+    task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
 }
 
@@ -2058,26 +2151,37 @@ pub fn shim_shell_add_recent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
 /// `code_editor_fold_toggle(key, line_1based) -> Bool` — toggle the fold
 /// whose opener sits on `line` (1-based, gutter numbering). Returns `true`
 /// when the region is folded afterwards. View state only — no undo entry.
-#[cfg(feature = "code-editor")]
+/// PLAN-802: 1 基→0 基钳位（max(1)-1）留 shim，provider 收 0 基行。
 pub fn shim_code_editor_fold_toggle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_fold_toggle: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     // Args push left-to-right: pop the LAST (line) first, then the key.
     let line_1based = task.ram.pop_i32();
     let key = pop_string_arg(task, vm);
-    let folded = crate::ui::code_editor::code_editor_with(&key, |core| {
-        core.fold_toggle(line_1based.max(1) as usize - 1)
-    })
-    .unwrap_or(false);
+    let folded = provider.fold_toggle(&key, line_1based.max(1) as usize - 1);
     task.ram.push_nv(auto_val::encode_bool(folded));
     Ok(())
 }
 
 /// `code_editor_fold_hidden_count(key) -> Int` — lines currently hidden by
 /// folding (tests / MCP assertions read this).
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_fold_hidden_count(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_fold_hidden_count: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let count = crate::ui::code_editor::code_editor_with(&key, |core| core.fold_hidden_count())
-        .unwrap_or(0);
+    let count = provider.fold_hidden_count(&key);
     task.ram.push_i32(count as i32);
     Ok(())
 }
@@ -2085,68 +2189,124 @@ pub fn shim_code_editor_fold_hidden_count(task: &mut AutoTask, vm: &AutoVM) -> R
 // ── Plan 418: editor action natives (menu/toolbar handlers) ────────────
 // Same semantics as the editor's internal Ctrl+Z/Y/A/C/X/V handling, but
 // triggered programmatically from `.at` handlers (auto-edit menus).
+// PLAN-802: provider 供值；cut/copy/paste 的 `Option<bool>` None 臂 =
+// 宿主有编辑器面但无 OS 剪贴板面（= 迁移前 code-editor on +
+// ui-clipboard off 组合的 raise 臂，组合特征文案逐字面值）。
 
 /// `code_editor_undo(key) -> Bool` — true when an editor exists.
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_undo(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_undo: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let ok = crate::ui::code_editor::code_editor_undo(&key);
+    let ok = provider.undo(&key);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
 }
 
 /// `code_editor_redo(key) -> Bool`
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_redo(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_redo: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let ok = crate::ui::code_editor::code_editor_redo(&key);
+    let ok = provider.redo(&key);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
 }
 
 /// `code_editor_select_all(key) -> Bool`
-#[cfg(feature = "code-editor")]
 pub fn shim_code_editor_select_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_select_all: the `code-editor` feature is disabled".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let ok = crate::ui::code_editor::code_editor_select_all(&key);
+    let ok = provider.select_all(&key);
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
 }
 
 /// `code_editor_cut(key) -> Bool` — selection → OS clipboard, then delete.
-#[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
 pub fn shim_code_editor_cut(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_cut: the `code-editor`+`ui-clipboard` features are required".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let ok = crate::ui::code_editor::code_editor_clipboard_op(
-        &key,
-        crate::ui::code_editor::ClipboardOp::Cut,
-    );
-    task.ram.push_nv(auto_val::encode_bool(ok));
-    Ok(())
+    match provider.cut(&key) {
+        Some(ok) => {
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            Ok(())
+        }
+        // None = 宿主无编辑器剪贴板面（错误路径栈弃置，可观察面=组合
+        // 特征文案——T-01 冻结）。
+        None => Err(VMError::RuntimeError(
+            "code_editor_cut: the `code-editor`+`ui-clipboard` features are required".into(),
+        )),
+    }
 }
 
 /// `code_editor_copy(key) -> Bool` — selection → OS clipboard.
-#[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
 pub fn shim_code_editor_copy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_copy: the `code-editor`+`ui-clipboard` features are required".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let ok = crate::ui::code_editor::code_editor_clipboard_op(
-        &key,
-        crate::ui::code_editor::ClipboardOp::Copy,
-    );
-    task.ram.push_nv(auto_val::encode_bool(ok));
-    Ok(())
+    match provider.copy(&key) {
+        Some(ok) => {
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(
+            "code_editor_copy: the `code-editor`+`ui-clipboard` features are required".into(),
+        )),
+    }
 }
 
 /// `code_editor_paste(key) -> Bool` — OS clipboard → insert at cursor.
-#[cfg(all(feature = "code-editor", feature = "ui-clipboard"))]
 pub fn shim_code_editor_paste(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
+            ))
+        }
+    };
     let key = pop_string_arg(task, vm);
-    let ok = crate::ui::code_editor::code_editor_clipboard_op(
-        &key,
-        crate::ui::code_editor::ClipboardOp::Paste,
-    );
-    task.ram.push_nv(auto_val::encode_bool(ok));
-    Ok(())
+    match provider.paste(&key) {
+        Some(ok) => {
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(
+            "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
+        )),
+    }
 }
 
 // ── Plan 418: OS clipboard natives (arboard) ───────────────────────────
@@ -2996,106 +3156,10 @@ pub fn shim_sys_users(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Ok(())
 }
 
-// Feature-off stubs: same signatures, clear runtime error.
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_text: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_delta(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_delta: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_edit(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_edit: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_cursor_line(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_cursor_line: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_cursor_col(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_cursor_col: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_selection_len(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_selection_len: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_find(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_find: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_set_text(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_set_text: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_fold_toggle(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_fold_toggle: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_fold_hidden_count(
-    _task: &mut AutoTask,
-    vm: &AutoVM,
-) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_fold_hidden_count: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_undo(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_undo: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_redo(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_redo: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "code-editor"))]
-pub fn shim_code_editor_select_all(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_select_all: the `code-editor` feature is disabled".into(),
-    ))
-}
-#[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
-pub fn shim_code_editor_cut(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_cut: the `code-editor`+`ui-clipboard` features are required".into(),
-    ))
-}
-#[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
-pub fn shim_code_editor_copy(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_copy: the `code-editor`+`ui-clipboard` features are required".into(),
-    ))
-}
-#[cfg(not(all(feature = "code-editor", feature = "ui-clipboard")))]
-pub fn shim_code_editor_paste(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
-    ))
-}
+// PLAN-802: code_editor 族 22 项已单态化（feature 中性，provider 装配）——
+// 本处原 feature-off stub 群（text/delta/edit/cursor_line/cursor_col/
+// selection_len/find/set_text/fold_toggle/fold_hidden_count/undo/redo/
+// select_all/cut/copy/paste）并入各 shim 的缺席臂，逐字面值保留。
 #[cfg(not(feature = "ui-dialog"))]
 pub fn shim_dialog_open(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     Err(VMError::RuntimeError(

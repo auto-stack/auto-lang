@@ -348,6 +348,157 @@ pub fn clear_process_default_scroll_host_provider() {
     *slot = None;
 }
 
+// ── PLAN-802: code editor 宿主能力（22 native 全族）─────────────────────
+//
+// 779/785/790/794 装配模式的 code_editor 批次（2910..2915、2919..2924、
+// 2932/2933、2939、9906、9908..9913）：core shim 不再直引 UI 侧
+// code_editor 注册表（及 editor 寄宿 scroll controller / OS 剪贴板
+// 桥），经本接口由宿主供值——UI 宿主注册委托既有 registry 的 adapter
+// （editor 注册表仍是单一真源，core 不复制第二份 rope/undo/fold 状态）；
+// no-ui 宿主可注入自定义实现（V01 外部 consumer fixture）。
+//
+// 值域纪律（计划 §2/§5 + T-01 冻结矩阵）：接口只使用 owned 标准库值——
+// `String` 键/文本/delta JSON、usize/i64/f64 标量、core 自有 DTO；不暴露
+// `CodeEditorCore`/rope/`ScrollIntent`/`ClipboardOp`/renderer 引用或 VM 堆
+// 句柄。19 具名方法覆盖 22 native（cursor×3 / scroll_offset×2 共享一次
+// 读取，与迁移前 `code_editor_cursor`/`controller_snapshot` 单调用形态
+// 同构）；禁止字符串 method 总分发。
+//
+// 单位/语义锚（T-01 冻结，673/701 不变）：
+// - 光标：0 基行 + char 列；selection_len = bytes；fold 入口 1 基行（shim
+//   侧 max(1)-1 转 0 基后入接口）；edit offset = byte offset（char 边界
+//   校验在实现侧，非边界返 false）。
+// - delta：destructive read——每次调用恰消费一次队列，空队列返当前水位
+//   的 `"deltas":[]` JSON；`text` 不清队列。
+// - save：rope→文件直写（无全文 VM 字符串往返）；BOM/EOL 包装归 front。
+// - scroll_offset：未绑定/未测量 = 0.0（注册表 default 投影同形）。
+// - cut/copy/paste：`Option<bool>`——None = 宿主有编辑器面但无 OS 剪贴板
+//   面（= 迁移前 code-editor on + ui-clipboard off 组合的 raise 臂），
+//   Some(b) = 操作执行结果；任何实现不得伪装成功写入。
+//
+// 缺席语义（T-01 冻结矩阵，= 迁移前 feature-off 分支逐字面值）：无
+// provider 时 21 项 raise `…: the \`code-editor\` feature is disabled`
+//（cut/copy/paste 为组合特征文案）；9913 scroll_to 唯一例外——弹参后
+// push Bool false（值缺席臂，非 raise）。
+
+/// `code_editor_cursor_line/col/selection_len`（2911..2913）的共享读取
+/// 形态（core 自有；UI adapter 由 `code_editor_cursor` 的
+/// `Option<(usize, usize, usize)>` 直投影）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodeEditorCursorDto {
+    /// 光标行（**0 基**，与读侧 673/701 口径一致）。
+    pub line: usize,
+    /// 光标列（**char 列**，非字节）。
+    pub char_col: usize,
+    /// 选区长度（**bytes**，非 char 数）。
+    pub selection_bytes: usize,
+}
+
+/// `code_editor_scroll_offset_x/y`（9911/9912）的共享读取形态。未绑定/
+/// 未测量 = (0.0, 0.0)——由实现方保证（UI adapter = controller 注册表
+/// default 投影同形）。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct CodeEditorScrollOffsetDto {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// code editor 宿主能力接口（owning 值域，无 UI 类型；19 方法 ↔ 22 native，
+/// 映射表见计划 T-01 冻结矩阵）。
+///
+/// 实现契约：方法在 VM 锁外调用，实现方自管内部同步；不跨回调持锁/借用
+/// （UI 注册表回调重入安全由既有 editor 实现保证，adapter 不新增锁序）。
+pub trait CodeEditorHostProvider: Send + Sync {
+    /// 2910：全文本读出（None = 无此键编辑器 → shim raise no-editor）。
+    fn text(&self, key: &str) -> Option<String>;
+    /// 2939：统一 delta 队列 destructive read（None = 无此键编辑器）。
+    fn delta(&self, key: &str) -> Option<String>;
+    /// 9906：区间结构化写（插入/删除/替换按区间形状）。false = 无此键/
+    /// 反区间/越界/非 UTF-8 char 边界；成功进人机统一 delta 队列。
+    /// 负 offset 钳位在 shim 侧（i32→usize 边界），不到本方法。
+    fn edit(&self, key: &str, start: usize, end: usize, replacement: &str) -> bool;
+    /// 2911..2913 共享：光标三元组读出（None = 无此键 → shim 落 0）。
+    fn cursor(&self, key: &str) -> Option<CodeEditorCursorDto>;
+    /// 2914：跳到下一个正则匹配（wrap）。
+    fn find(&self, key: &str) -> bool;
+    /// 2915：程序化全文写（diff-guarded）；false = 无此键（shim raise）。
+    fn set_text(&self, key: &str, text: &str) -> bool;
+    /// 9908：批量装载（返回总 bytes；None = 无此键/IO 失败/非 UTF-8 →
+    /// shim 落 -1 **值**，非 raise）。
+    fn load_file(&self, key: &str, path: &str) -> Option<i64>;
+    /// 9909：rope→文件直写；false = 无此键/IO 失败（**值**，非 raise）。
+    fn save(&self, key: &str, path: &str) -> bool;
+    /// 9910：程序化光标放置（0 基行/char 列，钳位入文档，弃选区）；
+    /// false = 无此键。负参钳位在 shim 侧。
+    fn set_cursor(&self, key: &str, line: usize, char_col: usize) -> bool;
+    /// 9911/9912 共享：editor 寄宿 scroller 偏移读出（未绑定 = (0.0, 0.0)）。
+    fn scroll_offset(&self, key: &str) -> CodeEditorScrollOffsetDto;
+    /// 9913：程序化滚动（双轴绝对偏移）。UI 宿主 = intent 入队恒 true
+    /// （未绑定句柄由 drain 静默丢弃）；no-ui 宿主自定义。
+    fn scroll_to(&self, key: &str, x: f64, y: f64) -> bool;
+    /// 2932：折叠切换（line_0 = 0 基行；1 基→0 基钳位在 shim 侧）。
+    /// true = 折叠后处于折叠态。纯视图状态，无 undo 条目。
+    fn fold_toggle(&self, key: &str, line_0: usize) -> bool;
+    /// 2933：当前被折叠隐藏的行数。
+    fn fold_hidden_count(&self, key: &str) -> usize;
+    /// 2919：撤销一步；false = 无此键。
+    fn undo(&self, key: &str) -> bool;
+    /// 2920：重做一步；false = 无此键。
+    fn redo(&self, key: &str) -> bool;
+    /// 2921：全选；false = 无此键。
+    fn select_all(&self, key: &str) -> bool;
+    /// 2922：选区→OS 剪贴板后删除。None = 宿主无编辑器剪贴板面
+    /// （shim raise 组合特征文案）。
+    fn cut(&self, key: &str) -> Option<bool>;
+    /// 2923：选区→OS 剪贴板（不删除）。None 同上。
+    fn copy(&self, key: &str) -> Option<bool>;
+    /// 2924：OS 剪贴板→光标处插入。None 同上。
+    fn paste(&self, key: &str) -> Option<bool>;
+}
+
+/// 进程级默认 code editor host provider（显式注册；None = 未注册 → shim
+/// 走 T-01 冻结的缺席臂）。替换/快照/if-absent 语义与 frame/text/media/
+/// scroll 族逐条相同。
+static PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER:
+    RwLock<Option<Arc<dyn CodeEditorHostProvider>>> = RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_code_editor_host_provider(provider: Arc<dyn CodeEditorHostProvider>) {
+    let mut slot = PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER poisoned");
+    *slot = Some(provider);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子——语义同 frame/text/media/scroll 族）。
+/// 供 UI 等内建宿主隐式入口：不覆盖调用方显式默认。
+pub fn set_process_default_code_editor_host_provider_if_absent(
+    provider: Arc<dyn CodeEditorHostProvider>,
+) {
+    let mut slot = PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_code_editor_host_provider() -> Option<Arc<dyn CodeEditorHostProvider>> {
+    PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER
+        .read()
+        .expect("PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到 T-01 冻结缺席臂语义）。测试装配/宿主拆卸用。
+pub fn clear_process_default_code_editor_host_provider() {
+    let mut slot = PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER poisoned");
+    *slot = None;
+}
+
 /// 测试隔离（crate 级共享，cfg(test)）——持有者 = **清空/替换进程默认
 /// 槽的测试**（clear/set/restore 序列需跨操作原子，防彼此互踩）。普通
 /// 程序测试**零配合豁免**：其唯一槽写是 install 的 if-absent 补缺，对

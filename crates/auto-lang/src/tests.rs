@@ -22,6 +22,9 @@ mod plan790_clipboard_media_provider;
 // PLAN-794: scroll controller/子锚点 9900..9905+9922/9923 host provider——
 // core 剪断/降级契约/装配身份/真实 UI adapter 接线回归锚
 mod plan794_scroll_host_provider;
+// PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
+// 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
+mod plan802_code_editor_provider;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 #[cfg(feature = "test-trans")]
 mod a2r_c_abi_gates;
