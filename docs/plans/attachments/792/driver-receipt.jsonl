@@ -1,0 +1,91 @@
+{
+  "toolchain": {
+    "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05)",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)"
+  },
+  "environment": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "cargo_source_replacement": "aliyun sparse (用户级 ~/.cargo/config.toml)",
+    "scrubbed_env": [
+      "AUTO_RUST_WORKSPACE",
+      "AUTO_LANG_CRATE",
+      "AUTO_LANG_ROOT",
+      "AUTO_DELIVERY_SOURCE_ROOT",
+      "CARGO_TARGET_DIR",
+      "RUSTC_WRAPPER"
+    ]
+  },
+  "results": [
+    {
+      "case": "generate-delivery",
+      "ok": true,
+      "detail": "app=uiminimal, crates=10, 资源=1, pins=12, 多槽锁冻结=['windows', 'windows-core'], 规模=33.7MiB"
+    },
+    {
+      "case": "V01-fresh-resolve",
+      "ok": true,
+      "detail": "fresh lock 生成 (3s)，patch 单源 + pin 全命中"
+    },
+    {
+      "case": "V01-real-build",
+      "ok": true,
+      "detail": "cargo build --locked (173s)，产物 在位"
+    },
+    {
+      "case": "V02-relocated-locked-build",
+      "ok": true,
+      "detail": "B 内 locked build (144s)，本地 target=有（无共享 target 回退）"
+    },
+    {
+      "case": "V02-metadata-identity",
+      "ok": true,
+      "detail": "iced_widget 单源@B内=True，越界 path 依赖=无"
+    },
+    {
+      "case": "V02-resource-identity",
+      "ok": true,
+      "detail": "1 资源校验一致（字节=producer）"
+    },
+    {
+      "case": "V03a-bad-hash-rejected",
+      "ok": true,
+      "detail": "资源字节与 producer 不等: avatar.png"
+    },
+    {
+      "case": "V03a-missing-resource-rejected",
+      "ok": true,
+      "detail": "资源缺失: avatar.png"
+    },
+    {
+      "case": "V03b-missing-patch-red",
+      "ok": true,
+      "detail": "exit=101（锁需更新被拒——确定性红）"
+    },
+    {
+      "case": "V03c-incompatible-pin-red",
+      "ok": true,
+      "detail": "exit=101（不兼容 pin 与冻结锁冲突——确定性红）"
+    },
+    {
+      "case": "V03d-foreign-dir-rejected",
+      "ok": true,
+      "detail": "exit=1，外来文件未被覆盖"
+    },
+    {
+      "case": "V03-restore-green",
+      "ok": true,
+      "detail": "A 包校验 1 资源校验一致（字节=producer）；B 已绿（V02）"
+    },
+    {
+      "case": "V04-dev-mode-preserved",
+      "ok": true,
+      "detail": "仓外项目 → project-local rust-workspace + workspace 继承清单（路由不变）"
+    },
+    {
+      "case": "V04-template-output-identity",
+      "ok": true,
+      "detail": "dev/交付 main.rs 逐字节同源；UI 类型跨面编译由 V01/V02 真实 build 证明"
+    }
+  ],
+  "scratch": "D:\\autostack\\.wt\\lang-792\\scratch-consumer"
+}
