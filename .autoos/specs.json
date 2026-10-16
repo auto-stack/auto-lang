@@ -1984,6 +1984,18 @@
             "stage:merge"
           ],
           "status": "active"
+        },
+        {
+          "id": "P787-M",
+          "title": "PLAN-787 合入收据（delivery/沉淀/投影/归档/清理）",
+          "content": "PLAN-787 合入收据：delivery 44d3b7e8d+docs 53f8cf837（spec 沉淀 12 文件：auto-syntax 三新 canonical+auto-ac SD-04/05/06+索引/overview/双 plans.md+INDEX 再生 37 项目）ff-only 合入；ledger v37→v38 受管离线投影（P787-D1..D5/T/R8/M，备份 v37-787）；closeout 门禁 ALL PASS（代码 rebase 前后零差异）；归档 docs/plans/archive/787-ac-grammar-incremental-cst.md；worktree guard clean 后清理。上游 F787-R6-03 租约缺陷经 fix-783-lease-id 修复回绑（7c0caa18c）。",
+          "file": "docs/plans/archive/787-ac-grammar-incremental-cst.md",
+          "tags": [
+            "PLAN-787",
+            "stage:merge",
+            "delivery:44d3b7e8d"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -7375,6 +7387,66 @@
             "delivery:f7c54e4ed71b"
           ],
           "status": "active"
+        },
+        {
+          "id": "P787-D1",
+          "title": "auto-syntax 模块契约（有限双 profile 语法服务）",
+          "content": "有限双 profile（auto-core core-i32 / interface-mini-v1）语法服务独立 workspace（experimental/ac-syntax：runtime/grammar/双 adapter）；依赖方向单向 snapshot→grammar→CST→结构查询，运行时不依赖 ac-core/Cranelift/auto-cache；Atom 配置为唯一规则源。实验边界：非完整 tree-sitter/任意 CFG/动态插件/LSP/生产 parser 切换（core 投影仅对照）。验证入口 scripts/verify-ac-syntax-787.ps1（16 族矩阵含 64MiB 预算档）。",
+          "file": "docs/specs/auto-syntax/project.md",
+          "tags": [
+            "PLAN-787",
+            "stage:merge",
+            "delivery:44d3b7e8d"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P787-D2",
+          "title": "auto-syntax grammar contract（规则程序合同 v1）",
+          "content": "规则程序合同 v1：token matcher 五类+trivia；sequence/choice/repeat/rule/field/Pratt 步；newline/sep/sync 旋钮配置驱动（无语言分支代码）。编译期拒绝左递归/可空 repeat/未知引用/非前进 scanner（定位到节点路径，不留半成品）。GrammarId=名称+canonical hash，四版本参与产物键；同名不同内容隔离；codec 往返身份绑定（装载重验；可按 (grammar-id,revision) 从 store 装载不编译 .at）。关键字拼写/优先级双配置反控钉面（改配置必改解析结果，排除硬编码包装）。",
+          "file": "docs/specs/auto-syntax/grammar-contract.md",
+          "tags": [
+            "PLAN-787",
+            "stage:merge",
+            "delivery:44d3b7e8d"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P787-D3",
+          "title": "auto-syntax snapshot & CST 合同（坐标/词法/无损树/增量/恢复）",
+          "content": "16KiB 内容寻址快照页+Rc 保活；UTF-8 边界/UTF-16 floor/CRLF 行内策略/分页行索引（跨页续行回溯）。CST=不可变共享内容块+长度目录+根孩子目录（块内边局部下标、块跨树 Rc 共享、封块即 shrink_to_fit）；声明单元相对跨度；无损逐字节重建断言；全路径迭代无爆栈、无固定深度上限。零宽坐标合同：epsilon 放已消费 token 终点（与伪造 start=0 占位可区分）。checkpoint=scanner 实际状态（mid token 含原始起始行；终态按末 token 拼写重放）；增量=嫁接共享采纳（1MiB 中部编辑节点复用≥99.99%/真实读取≤48KiB）+200 轮 fresh 等价；迟到/取消会话域仲裁。",
+          "file": "docs/specs/auto-syntax/snapshot-cst.md",
+          "tags": [
+            "PLAN-787",
+            "stage:merge",
+            "delivery:44d3b7e8d"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P787-D4",
+          "title": "auto-ac artifact-contract 语法产物接入（A01/A02/A03 真实生产者）",
+          "content": "A01/A02/A03 真实语法生产者（experimental/ac-syntax/adapters/artifacts）：A01 SyntaxGrammar canonical 二进制（身份重验）；A02 TokenStream+完整 checkpoint（A02→A01+源页；SourcePage 内容寻址源字节）；A03 持久化规范形（页内容由树逻辑内容决定，fresh/增量同键 CAS 幂等；不可达节点不入页；目录 2048 条/页）+按需页视图+子树读取 admission（归属/跨度/父子/字段/kind 在真实入口验证整棵可达子树）+范围查询坐标合同（窗口=name 字段范围、限额在物化前判定，驻留上界=limit+一源页）。发布仲裁会话域（published_revision 仅内存，先注册后定点删除）。五 kind 公开读入口（按 key/按 id）全接入。",
+          "file": "docs/specs/auto-ac/artifact-contract.md",
+          "tags": [
+            "PLAN-787",
+            "stage:merge",
+            "delivery:44d3b7e8d"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P787-D5",
+          "title": "auto-ac artifact-probe 787 加法扩展与预算证据口径",
+          "content": "PLAN-787 加法扩展：ChunkKind×5（6..10；旧 kind 字节与拒绝面不变；GC 零改动；kind 解码 codec 单一事实源——store from_code 委派 from_u8，无重复表漂移）。三层 coverage 翻转（dep_audit 同步）；A02 key_inputs 补 grammar-id；源页键 page-hash。syntax_budget_ 证据口径：builder 受管≤8MiB=实际容量+同驻留合计（源页 put 三份驻留全计）；hot≤8MiB+manifest≤16MiB；OS=各阶段期间采样器峰值（build/warm/冷恢复/源重建，生成器分列）；单查询增量读取≤512KiB；缺失项显式（parse 内部工作栈仅 OS 可见；非 Windows sysinfo=0 整体缺口）。冻结值不变。",
+          "file": "docs/specs/auto-ac/artifact-probe.md",
+          "tags": [
+            "PLAN-787",
+            "stage:merge",
+            "delivery:44d3b7e8d"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -8940,6 +9012,18 @@
           "tags": [
             "PLAN-792",
             "tests:delivery+driver"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P787-T",
+          "title": "auto-syntax 验收矩阵与八轮复审反例钉面",
+          "content": "验收矩阵 16 族（snapshot/grammar/grammar_reject/lossless/recovery/core_projection/incremental_local/incremental_replay/generation/depth/depth_persisted/syntax_cache 10/syntax_admission 18/compatibility/perf/syntax_budget 含 64MiB）raw 合计 112；八轮复审独立反例探针（R1 7/R2 18/R3 8/R4 3/R5 4/R6 4/R7 1/R8 replay）全绿钉面；merge closeout=完整独立语法 workspace+783 触面（--lib 14/admission_ 7/dep_audit_ 5）ALL PASS。矩阵与读数 docs/reports/plan787/matrix.md。",
+          "file": "scripts/verify-ac-syntax-787.ps1",
+          "tags": [
+            "PLAN-787",
+            "stage:merge",
+            "tests:matrix+probes"
           ],
           "status": "active"
         }
@@ -12020,10 +12104,23 @@
             "reviewed_commit:41d95ea95"
           ],
           "status": "active"
+        },
+        {
+          "id": "P787-R8",
+          "title": "PLAN-787 final review R8 — pass",
+          "content": "R8 final pass（绑定 d17b94fec，rebase 后 44d3b7e8d）：R7-01 kind 表统一闭合（codec from_u8 单一事实源+store 委派；未知字节仍拒绝）；原 R7 反例 1/1、R1-R6 共 44 例保持；cache 10/admission 18/probe 边界面全绿。此前 R1-R7 七轮 needs_fix 全部清偿（规范形幂等/子树 admission/查询坐标/预算诚实计量/上游 lease 序列修复回绑/kind 统一）。完整报告 docs/plans/attachments/787/review-r8/REVIEW.md。",
+          "file": "docs/plans/attachments/787/review-r8/REVIEW.md",
+          "tags": [
+            "PLAN-787",
+            "r8",
+            "pass",
+            "commit:d17b94fec"
+          ],
+          "status": "active"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 37
+  "version": 38
 }
