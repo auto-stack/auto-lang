@@ -15,6 +15,7 @@ use auto_test_case::discovery::load_suite;
 use auto_test_case::ir::{resolve_case, resolve_oracle};
 use auto_test_case::report::IdentityHashes;
 use auto_test_case::sha256::{hex, sha256};
+use auto_test_case::suite::apply_defaults;
 
 /// One row of the staleness summary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,6 +29,21 @@ pub enum RowVerdict {
         check: String,
         drifted_axes: Vec<String>,
     },
+}
+
+/// R3 (F05): which native identity axes APPLY to one row, derived from the
+/// check's ACTUAL consumption path — not a single global set.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NativeApplicability {
+    /// "ac" | "syntax" (only these carry native records).
+    pub adapter: String,
+    /// ac/build|run from source/hir: the lld/sdk content axes apply IFF the
+    /// row actually linked (obj/exe produced or a run observed). Product
+    /// consumers and check rows never link.
+    pub links_conditionally: bool,
+    /// The contract declares the trace-marks support library — its CONTENT
+    /// hash is an actual link input and binds the row.
+    pub support_lib: bool,
 }
 
 fn fingerprint(v: &dyn std::fmt::Debug) -> String {
@@ -61,18 +77,21 @@ pub fn toolchain_axes(limits: &Limits) -> BTreeMap<String, String> {
 /// Recompute the current identity of every declared check through the real
 /// pipeline. Checks whose references no longer resolve get an identity with
 /// an empty oracle hash AND an extra marker axis so they are unambiguously
-/// stale rather than silently equal.
+/// stale rather than silently equal. R3 (F05): each entry also carries the
+/// row's native-axis APPLICABILITY (adapter / conditional linking / support
+/// lib) so the comparison uses the axes the row actually consumed.
 pub fn current_identities(
     suite_path: &Path,
     limits: &Limits,
-) -> Result<BTreeMap<String, IdentityHashes>, String> {
+) -> Result<BTreeMap<String, (IdentityHashes, NativeApplicability)>, String> {
     let loaded = load_suite(suite_path, limits).map_err(|e| format!("suite load: {}", e))?;
     let mut out = BTreeMap::new();
     for file in &loaded.cases {
         for spec in &file.specs {
             let resolved = resolve_case(spec.clone(), &file.doc, &loaded.fixture_base, limits).ok();
             for check in &spec.checks {
-                let oracle = resolve_oracle(&spec.id, check, &loaded.fixture_base, limits).ok();
+                let (check, _) = apply_defaults(check, &loaded.suite.defaults);
+                let oracle = resolve_oracle(&spec.id, &check, &loaded.fixture_base, limits).ok();
                 let identity = IdentityHashes {
                     suite: loaded.suite_sha256.clone(),
                     case_file: file.sha256.clone(),
@@ -86,9 +105,20 @@ pub fn current_identities(
                         // value (or another unresolvable state) is stale.
                         None => hex(&sha256(b"<unresolvable-oracle>")),
                     },
-                    contract: fingerprint(&spec),
+                    contract: fingerprint(spec),
                 };
-                out.insert(format!("{}:{}", spec.id, check.id), identity);
+                let applicability = NativeApplicability {
+                    adapter: check.adapter.as_str().to_string(),
+                    links_conditionally: check.adapter == auto_test_case::contract::Adapter::Ac
+                        && check.product_from.is_none()
+                        && matches!(
+                            check.action,
+                            auto_test_case::contract::Action::Build
+                                | auto_test_case::contract::Action::Run
+                        ),
+                    support_lib: check.options.effective_support_lib().is_some(),
+                };
+                out.insert(format!("{}:{}", spec.id, check.id), (identity, applicability));
             }
         }
     }
@@ -167,6 +197,17 @@ pub fn check_with_native(
                 continue;
             }
         };
+        let cur = &cur.0;
+        let applicability = &current.get(&key).unwrap().1;
+        // R3 (F05): the support-lib content axis recomputes lazily — only
+        // rows whose contract actually declares the library pay for it.
+        if applicability.support_lib {
+            if let Some((k, v)) = crate::test_cases::ac::support_lib_identity() {
+                current_native
+                    .get_or_insert_with(crate::test_cases::ac::current_toolchain_identity)
+                    .insert(k, v);
+            }
+        }
         let short = |h: &str| h.chars().take(8).collect::<String>();
         let mut drifted = Vec::new();
         for (axis, old_val, now) in [
@@ -187,11 +228,14 @@ pub fn check_with_native(
                 }
             }
         }
-        // R1 (F07): native rows compare the ACTUAL worker/tool axes bound
-        // at execution time. A row without a native record, a missing
-        // axis, or any extra unverifiable axis is drift — never silent
-        // consistency. Lazy discovery keeps non-native suites cheap.
-        if r.get("adapter").and_then(|a| a.as_str()) == Some("ac") {
+        // R1 (F07) + R3 (F05): native rows compare the worker/tool axes
+        // bound at execution time AGAINST the row's own applicability set:
+        // worker-exe + protocol on every native row (ac AND syntax); the
+        // lld/sdk content axes only on ac build/run rows that actually
+        // linked; the support-lib content axis when the contract declares
+        // it. Missing, extra or contradicting axes are drift — never
+        // silent consistency. Lazy discovery keeps non-native suites cheap.
+        if matches!(r.get("adapter").and_then(|a| a.as_str()), Some("ac") | Some("syntax")) {
             let current = current_native
                 .get_or_insert_with(crate::test_cases::ac::current_toolchain_identity);
             let row_axes: BTreeMap<String, String> = r
@@ -212,21 +256,59 @@ pub fn check_with_native(
             if row_axes.is_empty() {
                 drifted.push("native.toolchain absent — cannot confirm the worker identity".into());
             } else {
-                for (k, now) in current.iter() {
-                    match row_axes.get(k) {
-                        Some(old_v) if old_v == now => {}
-                        Some(old_v) => {
-                            drifted.push(format!("native.{} {}→{}", k, short(old_v), short(now)));
-                        }
-                        None => {
-                            drifted.push(format!("native.{} missing (now {})", k, short(now)));
-                        }
+                let linked = r["native"]["exit_code"].is_i64()
+                    || r.get("artifacts")
+                        .and_then(|a| a.as_array())
+                        .map(|arr| {
+                            arr.iter().any(|a| {
+                                a.get("logical_path")
+                                    .and_then(|l| l.as_str())
+                                    .map(|l| l == "app.obj" || l == "app.exe")
+                                    .unwrap_or(false)
+                            })
+                        })
+                        .unwrap_or(false);
+                let mut applicable: Vec<&str> =
+                    vec!["worker-exe-sha256", "ac-worker-protocol"];
+                if applicability.links_conditionally && linked {
+                    applicable.extend(["lld-sha256", "sdk-um-sha256"]);
+                }
+                if applicability.support_lib {
+                    applicable.push("support-lib-trace-marks-sha256");
+                }
+                for k in &applicable {
+                    match current.get(*k) {
+                        None => drifted.push(format!(
+                            "native.{} not recomputable now — cannot confirm the row",
+                            k
+                        )),
+                        Some(now) => match row_axes.get(*k) {
+                            Some(old_v) if old_v == now => {}
+                            Some(old_v) => {
+                                drifted.push(format!(
+                                    "native.{} {}→{}",
+                                    k,
+                                    short(old_v),
+                                    short(now)
+                                ));
+                            }
+                            None => {
+                                drifted.push(format!(
+                                    "native.{} missing (now {})",
+                                    k,
+                                    short(now)
+                                ));
+                            }
+                        },
                     }
                 }
+                // Extra axes the row cannot justify are protocol drift —
+                // a check row carrying linker axes, or a foreign axis name,
+                // never passes as consistent.
                 for k in row_axes.keys() {
-                    if !current.contains_key(k) {
+                    if !applicable.contains(&k.as_str()) {
                         drifted.push(format!(
-                            "native.{} present in the old report but unverifiable now",
+                            "native.{} present but not applicable to this row's consumption path",
                             k
                         ));
                     }

@@ -82,7 +82,7 @@ fn exec_inner(
     // and artifact writes. runtime Budget::default is an internal resource
     // policy, never a substitute for this deadline.
     let total = req.budget.total_ms;
-    let mut check_budget = |phase: &str| -> Result<(), WorkerError> {
+    let check_budget = |phase: &str| -> Result<(), WorkerError> {
         if started.elapsed().as_millis() as u64 > total {
             return Err(infra(
                 "budget.total",
@@ -289,6 +289,7 @@ fn exec_inner(
             lld_path: String::new(),
             lld_sha256: String::new(),
             sdk_um: String::new(),
+            sdk_um_sha256: String::new(),
             ac_core_version: String::new(),
             worker_version: String::new(),
             worker_exe_sha256: crate::exec::worker_exe_sha256_public(),

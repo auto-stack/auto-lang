@@ -312,3 +312,63 @@ hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\"
 ```test-case
 case { schema: "autolang.case/2", id: "ac.hir.graph-self-cycle", source: { text: "hir(schema:\"auto.hir.core.draft\",revision:1u32,profile:\"core-i32-draft\"){module m {types {type ti i32 {} type te function {params:[];result:i32}} declarations {function de te {name:\"entry\";body:\"be\"}} bodies {body be {owner:\"de\";entry:\"ke\";expressions {expr ea constant {type:i32;value:1i32} expr eb constant {type:i32;value:2i32} expr ec binary {type:bool;op:lt_i32;lhs:\"ea\";rhs:\"eb\"} expr en constant {type:i32;value:0i32}} blocks {block ke {if(cond:\"ec\",then:\"ke\",else:\"kn\") {}} block kn {return(value:\"en\") {}}}}}}}", syntax: "hir-atom", path: "main.atom" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "verify", code: "verify.block-structure" } } } ] }
 ```
+
+```test-case
+case { schema: "autolang.case/2", id: "ac.hir.type-param-mismatch", source: { text: "// Draft, schema-bound Atom text. Not executable Auto source.
+// INVALID: signature param 1 is bool but local l_b (index 1) is i32.
+hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {
+    module m_add {
+        path: \"examples.add\"
+
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_add function {
+                params: [\"t_i32\", \"t_bool\"]
+                result: \"t_i32\"
+            }
+        }
+
+        declarations {
+            function d_add t_add {
+                name: \"add\"
+                body: \"b_add\"
+            }
+        }
+
+        bodies {
+            body b_add {
+                owner: \"d_add\"
+                entry: \"k_entry\"
+
+                locals {
+                    local l_a t_i32 { name: \"a\"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: \"b\"; role: param; index: 1u32 }
+                    local l_sum t_i32 { name: \"sum\"; role: binding; mutable: false }
+                }
+
+                expressions {
+                    expr e_a read_local { type: \"t_i32\"; local: \"l_a\" }
+                    expr e_b read_local { type: \"t_i32\"; local: \"l_b\" }
+                    expr e_add binary {
+                        type: \"t_i32\"
+                        op: add_i32
+                        overflow: trap
+                        lhs: \"e_a\"
+                        rhs: \"e_b\"
+                    }
+                    expr e_sum read_local { type: \"t_i32\"; local: \"l_sum\" }
+                }
+
+                blocks {
+                    block k_entry {
+                        let(local: \"l_sum\", value: \"e_add\") {}
+                        return(value: \"e_sum\") {}
+                    }
+                }
+            }
+        }
+    }
+}
+", syntax: "hir-atom", path: "main.atom" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "verify", code: "verify.type-mismatch" } } } ] }
+```

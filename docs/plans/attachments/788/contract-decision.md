@@ -169,21 +169,64 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
 3. **driver 路径的 stdout/stderr**：probe 的 run 腿是 String（783 既有事实，未改
    subproc）；worker 的 run 腿保留在 worker 侧（run_deadlined_captured），因此预算、
    cap、原始 bytes 在**所有路径**成立；driver 自带 run 腿未被 worker 使用。
-4. **本批 V-06 的非 ASCII 生产者**：core/scalar 程序无 print 内建（trap stderr 为
-   ASCII），worker 路径的非 UTF-8 字节生产者随 text 批次导入到来；字节保真已在执行器
-   层（link_capture_ native_bytes_ 对照 lossy wrapper）与 worker 协议层证明。
+4. **本批 V-06 的非 ASCII 生产者**（R3 修订）：core/scalar 程序无 print 内建（trap
+   stderr 为 ASCII），语言内非 UTF-8 字节生产者随 text 批次导入；R3 起真实 worker
+   路径的生产者已经**产品消费腿**覆盖——测试内 rustc 构建的真实 PE 经
+   `ac/run product`（同一 contained 执行器/cap/base64 链/父侧严格解码）：NUL+CRLF
+   为可比对 oracle 字节（consume_and_run 全 runner 路径），非法 UTF-8（0xff/0xfe/0x80）
+   在未声明 stderr 流上经协议逐字节保真并被完整 admission 接受
+   （`r3_native_bytes_real_worker_path_producers`）。语言内生产者仍随 text 批次导入。
 5. **跨进程重启复用**：worker 级 exec 双请求经同一磁盘 store 证明复用；真新进程由
    783 native_resume_（跨进程 node 二进制）证明；T-08 验收矩阵在 AC_CASE_STORE 钉根
    下补齐 runner 级重启样本。
 
-## 10. R1 修复后的补充冻结（2026-10-16，复审 R1 后）
+## 10. R1 修复后的补充冻结（2026-10-16，复审 R1 后；R2/R3 修订见标注）
 
-1. **工具链身份轴收敛为两轴**：`worker-exe-sha256`（worker 可执行文件内容哈希——
-   静态内嵌 ac-core 与全部已解析依赖，等价于 compiler+worker recipe 身份，同时作为
-   缓存 compiler_fp）+ `ac-worker-protocol`（"acworker/1"）。lld/sdk/版本串留在响应
-   中作展示，不进身份（stale 可重算的轴才可进行级身份）。
+1. **工具链身份轴**（R3 定稿，取代 R1 两轴收敛案）：按**每行实际消费路径**绑定可
+   重算身份集合——`worker-exe-sha256`+`ac-worker-protocol` 恒在；`lld-sha256`
+   （rust-lld 文件内容哈希）与 `sdk-um-sha256`（SDK um/x64 kernel32.lib 内容哈希，
+   **非路径**——路径不证明库内容身份）仅绑定真实链接过的 ac/build|run 行（产出
+   obj/exe 或含 run 观察）；产品消费 run 与 check/syntax 行只有恒在两轴；声明
+   support_lib 时 `support-lib-trace-marks-sha256`（库文件内容哈希）入轴。stale
+   按同一适用集合比较：缺轴/多轴/值漂移均 STALE，未知/缺失不静默相等；测试走
+   production stale（auto-case 子进程 + AC_CASE_WORKER 换 worker），不注入缩小轴集。
 2. **预算语义**：单一绝对 total 自 admission 起算（父墙=total，无宽限）；build 段
    预算覆盖前端→lower→link；run 取 min(run_ms, 剩余 total)；每个出口（含 check、
-   语言失败、typed 重放、cache 命中）核预算。
+   语言失败、typed 重放、cache 命中）核预算。R3 补充：**request 写入（stdin）与
+   响应等待/进程回收同受该墙钟约束**——写入线程化，不读 stdin 的 worker 由
+   deadline 杀树解除满管阻塞，不产生 ~1.2s 的迟到失败。
 3. **非参与组合**：`cache: fresh|read-only` 声明在 ac/check 或 hir-atom 输入上为
    admission ERROR（契约层门控 + worker 镜像拒绝）；默认 reuse 不承诺参与。
+4. **流 cap 语义**（R3）：stdout/stderr 的 1MiB cap 按父侧**解码后字节数**强制
+   （validate_response），与是否声明流 oracle 无关；worker stderr 排空带 cap 信号，
+   超量=受控 ERROR 不截断成功。
+5. **部分产物语义**（R3）：语言失败响应可携带合法部分产物（canonical hir.atom=
+   前端在失败边界前的真实输出，manifest 照常核验/持久化）；obj/exe 是成功产物，
+   出现在失败响应中=伪造，一律拒绝（负向保留 typed backend oracle）。
+
+## 11. R3 修复后的补充冻结（2026-10-17，复审 R3 后）
+
+1. **性能计时口径**（落实 §8 原冻结"含校验/发布"）：会话样本墙钟=请求构造→IPC→
+   **serde 解析→validate_response→manifest 准入+持久化→oracle 比较**；one-shot
+   样本=spawn→同链→close（reap）。判定一律经 runner 同名公共入口
+   （validate_response / admit_and_persist_artifacts / compare_stream_field）——
+   harness 不复刻判定。原始样本 JSONL **逐样本先落盘**（gate 断言前，失败/拒绝
+   样本保留）；CPU/IO/峰值内存为本批缺口如实标注，不 0 填充。
+2. **body-edit 配方**（回归 §8 冻结原文）：p04 循环界 **3↔4 真交替**（独立 exit 3/4
+   oracle）+ 每样本唯一 marker 注释（不缓存旧结果）；逐样本断言 parse==1 且
+   object=lowered。
+3. **GC 并发场景**：783 GC 以**独立真实进程**（新 bin `ac-artifact-probe/src/bin/
+   store-gc.rs`，与 783 套件同一 ManagedStore+run_gc）并发运行；每样本 barrier
+   证明（gc-started 行 + 请求前零等待探测未见结束 + 结束行时间戳 > 请求起点），
+   30/30 样本带起止区间与重叠毫秒数。
+4. **修订流（V-13）**：双真实 worker 车道、固定 100ms 到达时钟（驱动器从不等响应
+   ——到达时刻无累积漂移为断言）；每 7 个修订一个 heavy（31 连插 64KiB+31 连删，
+   fresh↔incremental 等价检查按累计文档解析、成本二次增长，~520ms）vs 后继 light
+   （~3ms）产生**真实错序完成**；latest-wins 发布仲裁拒绝一切非最新完成（错序/
+   superseded 取消均留痕），发布序列严格递增、最终发布=最新修订；全部 50 条记录
+   留存（含拒绝），积压深度可见（≥2）。
+5. **验收器**：required ID 按 **executed-ok 精确名**解析（libtest 行 `test <name>
+   ... ok`），逐 ID 绑定所属 test binary，逐 binary 最小计数；prose 文本与名字前缀
+   均不能替代（负控永久入 selftest）。closeout 的根 cargo t/tv/tt 按 **nextest 实际
+   输出**（PASS 行 + "N tests run: M passed, K failed, J skipped"）另行核对，跳过
+   不设白名单。

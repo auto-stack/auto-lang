@@ -202,9 +202,22 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
     }
 
     let link_start = Instant::now();
-    let toolchain = toolchain_identity();
     let lld = link::find_rust_lld().map_err(|d| infra("tool.missing", d.message))?;
     let sdk = link::find_sdk_um_dir().map_err(|d| infra("tool.missing", d.message))?;
+    // R3 (F05): a linking row reports the REAL external tools it consumed
+    // (linker content hash + SDK library content hash) — the pre-link
+    // placeholder identity is replaced once the link actually ran.
+    let lld_bytes =
+        std::fs::read(&lld).map_err(|e| infra("tool.missing", format!("read lld: {}", e)))?;
+    let toolchain = ToolchainOut {
+        lld_path: lld.display().to_string(),
+        lld_sha256: sha256_hex(&lld_bytes),
+        sdk_um: sdk.display().to_string(),
+        sdk_um_sha256: sdk_um_sha256_of(&sdk),
+        ac_core_version: auto_ac_prototype::VERSION.to_string(),
+        worker_version: env!("CARGO_PKG_VERSION").to_string(),
+        worker_exe_sha256: worker_exe_sha256(),
+    };
     let obj_path = scratch.join("app.obj");
     let tmp_obj = scratch.join("app.obj.tmp-788");
     std::fs::write(&tmp_obj, &obj_bytes)
@@ -964,10 +977,20 @@ fn driver_toolchain(
         lld_path: lld.display().to_string(),
         lld_sha256: sha256_hex(lld_bytes),
         sdk_um: sdk.display().to_string(),
+        sdk_um_sha256: sdk_um_sha256_of(sdk),
         ac_core_version: auto_ac_prototype::VERSION.to_string(),
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
         worker_exe_sha256: worker_exe_sha256(),
     }
+}
+
+/// R3 (F05): the SDK axis is CONTENT-based — sha256 of the kernel32.lib
+/// the link consumes (the display path stays out of identity). Missing
+/// file → empty (a linking row then fails the parent's axis admission).
+fn sdk_um_sha256_of(sdk: &std::path::Path) -> String {
+    std::fs::read(sdk.join("kernel32.lib"))
+        .map(|b| sha256_hex(&b))
+        .unwrap_or_default()
 }
 
 fn verify_of(
@@ -1036,6 +1059,7 @@ fn toolchain_identity() -> ToolchainOut {
         lld_path: String::new(),
         lld_sha256: String::new(),
         sdk_um: String::new(),
+        sdk_um_sha256: String::new(),
         ac_core_version: auto_ac_prototype::VERSION.to_string(),
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
         worker_exe_sha256: worker_exe_sha256(),

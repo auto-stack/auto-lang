@@ -21,10 +21,16 @@ use std::time::{Duration, Instant};
 use auto_test_case::compare::{compare_bytes, Mismatch};
 use auto_test_case::contract::{BudgetSpec, CheckSpec, Completion, MessageMatcher};
 use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
-use auto_test_case::report::{ArtifactRef, NativeRecord, Status};
+use auto_test_case::report::{ArtifactRef, NativeRecord};
 use auto_test_case::sha256::{hex, sha256};
 
 use super::avm::Verdict;
+
+/// Frozen per-stream cap (mirrors the worker's `MAX_STDOUT_BYTES`,
+/// contract-decision §5). Enforced on DECODED bytes in
+/// [`validate_response`] (R3 F03) — a declared oracle is irrelevant to the
+/// cap.
+pub const MAX_STREAM_BYTES: usize = 1 << 20;
 
 /// Locate (and on first use build) the worker binary. Env override first;
 /// otherwise find `experimental/ac-case-worker` from this crate's source
@@ -121,11 +127,20 @@ fn call_worker(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("spawn ac-case-worker ({}): {}", exe.display(), e))?;
+    // R3 (F03): the request write happens on its OWN thread — a worker
+    // that never reads stdin cannot wedge the parent on a full pipe; the
+    // deadline below (which spans spawn, write, read and reap) is the
+    // timely cutoff for the write as well. On deadline kill the blocked
+    // write unblocks via the broken pipe.
     {
         let mut stdin = child.stdin.take().expect("piped stdin");
-        let _ = writeln!(stdin, r#"{{"op":"begin","schema":"acworker/1"}}"#);
-        let _ = writeln!(stdin, r#"{{"op":"request","request":{} }}"#, request_json);
-        let _ = writeln!(stdin, r#"{{"op":"end"}}"#);
+        let request_json = request_json.to_string();
+        std::thread::spawn(move || {
+            let _ = writeln!(stdin, r#"{{"op":"begin","schema":"acworker/1"}}"#);
+            let _ = writeln!(stdin, r#"{{"op":"request","request":{} }}"#, request_json);
+            let _ = writeln!(stdin, r#"{{"op":"end"}}"#);
+            let _ = stdin.flush();
+        });
     }
     // R1 (F03): stdout is read with a HARD bound (the IPC metadata cap plus
     // slack) — an oversized or runaway response is a controlled failure,
@@ -134,6 +149,7 @@ fn call_worker(
     let mut stdout_pipe = child.stdout.take().expect("piped stdout");
     let mut stderr_pipe = child.stderr.take().expect("piped stderr");
     const READ_CAP: usize = 8 << 20; // 2× the frozen IPC metadata cap
+    const STDERR_CAP: usize = 1 << 20;
     let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
     let out_reader = std::thread::spawn(move || {
         let mut buf = Vec::new();
@@ -154,26 +170,30 @@ fn call_worker(
         }
         let _ = tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
     });
+    // R3 (F03): the stderr drain reports OVER-CAP instead of silently
+    // truncating — a worker that floods stderr is a controlled
+    // infrastructure failure, never a truncated success.
     let err_reader = std::thread::spawn(move || {
-        // R2 (F05): the stderr drain is BOUNDED — a chatty worker cannot
-        // wedge the parent on an unbounded allocation either.
-        const STDERR_CAP: usize = 1 << 20;
         let mut sink = Vec::new();
         let mut chunk = [0u8; 65536];
+        let mut exceeded: Option<usize> = None;
         loop {
             match stderr_pipe.read(&mut chunk) {
                 Ok(0) => break,
                 Ok(n) => {
                     sink.extend_from_slice(&chunk[..n]);
                     if sink.len() > STDERR_CAP {
-                        sink.truncate(STDERR_CAP);
+                        exceeded = Some(sink.len());
                         break;
                     }
                 }
                 Err(_) => break,
             }
         }
-        sink
+        match exceeded {
+            Some(observed) => Err(observed),
+            None => Ok(sink),
+        }
     });
     let response = match rx.recv_timeout(deadline.saturating_sub(started.elapsed())) {
         Ok(Ok(bytes)) => String::from_utf8_lossy(&bytes).to_string(),
@@ -226,7 +246,16 @@ fn call_worker(
             }
         }
     };
-    let _ = err_reader.join();
+    // R3 (F03): the stderr cap is enforced on the RESULT, not just the
+    // buffer — an over-cap stderr makes the whole observation a refusal
+    // even though the response line itself looked fine.
+    let stderr_result = err_reader.join().unwrap_or(Ok(Vec::new()));
+    if let Err(observed) = stderr_result {
+        return Err(format!(
+            "worker stderr exceeded the {} byte bound ({} observed) — the observation is refused, never a truncated success",
+            STDERR_CAP, observed
+        ));
+    }
     if !status.success() {
         return Err(format!(
             "ac-case-worker exited abnormally ({:?}); no response is trusted from a dead worker",
@@ -265,8 +294,10 @@ fn call_worker(
 /// nonce/hash echo binds the response to THIS request; the schema,
 /// ok/error exclusivity and the action's required result shape are checked
 /// parent-side — the worker's own admission is never trusted. Extracted so
-/// the admission table itself is unit-testable without a process.
-pub(crate) fn validate_response(
+/// the admission table itself is unit-testable without a process (and
+/// reused by the R3 turnaround harness, which must judge through the same
+/// entry the runner uses).
+pub fn validate_response(
     v: &serde_json::Value,
     nonce: &str,
     request_hash: &str,
@@ -318,10 +349,21 @@ pub(crate) fn validate_response(
                 return Err("typed diagnostics must carry code and message".to_string());
             }
         }
-        // Strict stream encodings even when nothing compares them.
+        // Strict stream encodings even when nothing compares them — and the
+        // DECODED size is capped (R3 F03): an over-cap stream is a refusal
+        // regardless of whether the case declares a stream oracle.
         if let Some(run) = &ok.run {
             for (name, raw) in [("stdout", &run.stdout_b64), ("stderr", &run.stderr_b64)] {
-                b64d_strict(raw).map_err(|e| format!("{}: {}", name, e))?;
+                let decoded =
+                    b64d_strict(raw).map_err(|e| format!("{}: {}", name, e))?;
+                if decoded.len() > MAX_STREAM_BYTES {
+                    return Err(format!(
+                        "{} decoded {} bytes exceeds the {} byte stream cap — refused regardless of declared comparison",
+                        name,
+                        decoded.len(),
+                        MAX_STREAM_BYTES
+                    ));
+                }
             }
         }
     }
@@ -557,138 +599,39 @@ pub fn run_check(
     }
 
     // Artifacts: FULL parent-side manifest admission (R1 F04) before any
-    // byte is buffered: fixed kind/logical sets, uniqueness, in-scratch
-    // location with an ancestor reparse audit, declared-length match via
-    // metadata, and the single/total caps — then read, hash-verify and
-    // persist. Oracle byte-comparison happens only over admitted products.
-    let mut artifacts: Vec<ArtifactRef> = Vec::new();
-    let raw_artifacts = ok["artifacts"].as_array().cloned().unwrap_or_default();
-    let mut seen_logical = std::collections::BTreeSet::new();
-    let mut declared_total = 0u64;
-    for a in &raw_artifacts {
-        let logical = a["logical"].as_str().unwrap_or("");
-        let kind = a["kind"].as_str().unwrap_or("");
-        let declared_bytes = a["bytes"].as_u64().unwrap_or(u64::MAX);
-        let path_text = a["path"].as_str().unwrap_or("");
-        let legal: &[(&str, &str)] = if check.adapter == auto_test_case::contract::Adapter::Syntax {
-            &[
-                ("syntax", "reconstructed.at"),
-                ("syntax", "outline.json"),
-                ("syntax", "cst.canonical"),
-            ]
-        } else {
-            &[("hir", "hir.atom"), ("obj", "app.obj"), ("exe", "app.exe")]
+    // byte is buffered, then read + hash-verify + persist — extracted
+    // (R3 F02) so the turnaround harness judges worker responses through
+    // the SAME admission entry the runner uses. Oracle byte-comparison
+    // happens only over admitted products.
+    let (artifacts, seen_logical) =
+        match admit_and_persist_artifacts(ok, check.adapter, &scratch, artifact_dir) {
+            Ok(v) => v,
+            Err(e) => return Ok(Verdict::error(e)),
         };
-        if !legal.iter().any(|(k, l)| *k == kind && *l == logical) {
-            return Ok(Verdict::error(format!(
-                "worker artifact {:?}/{} is outside the fixed manifest set",
-                kind, logical
-            )));
-        }
-        if !seen_logical.insert(logical.to_string()) {
-            return Ok(Verdict::error(format!(
-                "worker manifest declares {:?} twice",
-                logical
-            )));
-        }
-        if declared_bytes > (64 << 20) as u64 {
-            return Ok(Verdict::error(format!(
-                "worker artifact {:?} declares {} bytes — over the 64MiB single-artifact cap",
-                logical, declared_bytes
-            )));
-        }
-        declared_total += declared_bytes;
-        if declared_total > (128 << 20) as u64 {
-            return Ok(Verdict::error(format!(
-                "check artifact total {} exceeds the 128MiB cap (declared, pre-read)",
-                declared_total
-            )));
-        }
-        let path = Path::new(path_text);
-        // In-scratch + reparse-clean BEFORE reading a byte.
-        let scratch_canon =
-            std::fs::canonicalize(&scratch).map_err(|e| format!("canonicalize scratch: {}", e))?;
-        let path_canon = std::fs::canonicalize(path)
-            .map_err(|e| format!("worker artifact {:?} path unusable: {}", logical, e))?;
-        if !path_canon.starts_with(&scratch_canon) {
-            return Ok(Verdict::error(format!(
-                "worker artifact {:?} path {:?} is outside this request's scratch — never accepted",
-                logical, path_text
-            )));
-        }
-        if path.file_name().and_then(|f| f.to_str()) != Some(logical) {
-            return Ok(Verdict::error(format!(
-                "worker artifact {:?} path file name does not match its logical identity",
-                logical
-            )));
-        }
-        let meta = std::fs::symlink_metadata(&path_canon)
-            .map_err(|e| format!("worker artifact {:?}: {}", logical, e))?;
-        if meta.file_type().is_symlink() {
-            return Ok(Verdict::error(format!(
-                "worker artifact {:?} is a reparse point",
-                logical
-            )));
-        }
-        if meta.len() != declared_bytes {
-            return Ok(Verdict::error(format!(
-                "worker artifact {:?} declares {} bytes but the file is {} — manifest mismatch",
-                logical,
-                declared_bytes,
-                meta.len()
-            )));
-        }
-    }
-    // R2 F04: a LANGUAGE failure legally carries NO products — the
-    // required-set admission applies only to diagnostics-free successes
-    // (a failure with forged success products is refused below).
+    // R2 F04 + R3 F04: a LANGUAGE failure legally carries PARTIAL products
+    // — the canonical HIR (hir.atom) is the frontend's real output and
+    // exists before the failing boundary (e.g. a typed backend rejection
+    // at entry selection). obj/exe are SUCCESS artifacts: a failure
+    // response carrying them is forged and refused. SYNTAX failures
+    // legitimately carry their projections (reconstruction is lossless
+    // even for broken trees).
     let diags = ok["diagnostics"]
         .as_array()
         .map(|d| !d.is_empty())
         .unwrap_or(false);
-    let artifacts_declared = ok["artifacts"]
-        .as_array()
-        .map(|a| !a.is_empty())
-        .unwrap_or(false);
     let is_ac = check.adapter == auto_test_case::contract::Adapter::Ac;
-    if is_ac && diags && artifacts_declared {
-        // AC success artifacts (hir/obj/exe) on a language failure are
-        // forged products. SYNTAX failures legitimately carry their
-        // projections (reconstruction is lossless even for broken trees).
-        return Ok(Verdict::error(
-            "language failure carrying success artifacts — refused".to_string(),
-        ));
+    if is_ac && diags {
+        let forged = seen_logical.iter().any(|l| l == "app.obj" || l == "app.exe");
+        if forged {
+            return Ok(Verdict::error(
+                "language failure carrying success artifacts (obj/exe) — refused".to_string(),
+            ));
+        }
     }
     if !diags {
         if let Err(e) = require_products(check, &seen_logical) {
             return Ok(Verdict::error(e));
         }
-    }
-    let has = |l: &str| seen_logical.contains(l);
-    let _ = has;
-    let is_syntax = check.adapter == auto_test_case::contract::Adapter::Syntax;
-    let _ = is_syntax;
-    for a in &raw_artifacts {
-        let logical = a["logical"].as_str().unwrap_or("");
-        let path_text = a["path"].as_str().unwrap_or("");
-        let want_sha = a["sha256"].as_str().unwrap_or("");
-        let bytes = std::fs::read(path_text)
-            .map_err(|e| format!("read worker artifact {}: {}", logical, e))?;
-        let got_sha = hex(&sha256(&bytes));
-        if got_sha != want_sha {
-            return Ok(Verdict::error(format!(
-                "worker manifest mismatch for {}: hashes {} but manifest says {}",
-                logical, got_sha, want_sha
-            )));
-        }
-        let stored = artifact_dir.join(sanitize(logical));
-        std::fs::write(&stored, &bytes).map_err(|e| format!("persist {}: {}", logical, e))?;
-        artifacts.push(ArtifactRef {
-            logical_path: logical.to_string(),
-            stored_path: stored.display().to_string(),
-            sha256: got_sha,
-            bytes: Some(bytes.len()),
-        });
     }
 
     // Canonical-HIR golden (and any other declared byte artifacts).
@@ -735,43 +678,8 @@ pub fn run_check(
         }
         // R2 F03: the wire field is <key>_b64; a missing/invalid field is
         // a protocol refusal, never a silent empty stream.
-        let mut stream_err: Option<String> = None;
-        let mut compare_stream = |key: &str,
-                                  want: Option<&auto_test_case::contract::StreamExpect>,
-                                  out: &mut Vec<Mismatch>| {
-            let Some(w) = want else {
-                // Undeclared streams are not read here at all (their
-                // encoding was still strictly validated in
-                // validate_response — F06).
-                return;
-            };
-            let field = format!("{}_b64", key);
-            let raw = match run[&field].as_str() {
-                Some(r) => r,
-                None => {
-                    stream_err = Some(format!(
-                        "worker run response missing {} — never an empty stream",
-                        &field
-                    ));
-                    return;
-                }
-            };
-            let actual_b = match b64d_strict(raw) {
-                Ok(b) => b,
-                Err(e) => {
-                    stream_err = Some(format!("worker stream {}: {}", &field, e));
-                    return;
-                }
-            };
-            if let Some(m) = compare_bytes(w.text.as_bytes(), &actual_b, w.compare, key) {
-                out.push(m);
-            }
-        };
-        compare_stream("stdout", oracle.stdout.as_ref(), &mut mismatches);
-        compare_stream("stderr", oracle.stderr.as_ref(), &mut mismatches);
-        if let Some(e) = stream_err {
-            return Err(e);
-        }
+        compare_stream_field(run, "stdout", oracle.stdout.as_ref(), &mut mismatches)?;
+        compare_stream_field(run, "stderr", oracle.stderr.as_ref(), &mut mismatches)?;
     } else if oracle.exit.is_some() || oracle.stdout.is_some() || oracle.stderr.is_some() {
         mismatches.push(Mismatch {
             observation: "run".into(),
@@ -796,19 +704,24 @@ pub fn run_check(
         })
         .collect();
     if let Some(tc) = ok.get("toolchain") {
-        // R1 (F07): native rows carry exactly the axes the stale checker
-        // can RE-COMPUTE (the worker exe content hash embeds compiler and
-        // dependency versions; the protocol version pins the IPC face).
-        // Display-only fields (lld path, sdk dir, version strings) stay in
-        // the worker response, out of the identity.
-        // R2 (F09): the FULL real tool axes — worker exe hash (embeds the
-        // compiler) + the actual linker content hash + the SDK um dir —
-        // every axis the stale checker can independently recompute.
+        // R3 (F05): axes bind by APPLICABILITY — worker exe + protocol on
+        // every row; the linker/SDK CONTENT axes only on rows that actually
+        // linked (obj/exe produced or a run observed). check/syntax rows
+        // and language failures before the linker never bind them, and the
+        // stale checker enforces the SAME applicability set, so a missing
+        // or extra axis is drift, never silent equality.
+        let linked = ok.get("run").map(|r| !r.is_null()).unwrap_or(false)
+            || artifacts
+                .iter()
+                .any(|a| a.logical_path == "app.obj" || a.logical_path == "app.exe");
         for (axis, key) in [
             ("worker-exe-sha256", "worker_exe_sha256"),
             ("lld-sha256", "lld_sha256"),
-            ("sdk-um", "sdk_um"),
+            ("sdk-um-sha256", "sdk_um_sha256"),
         ] {
+            if !linked && (key == "lld_sha256" || key == "sdk_um_sha256") {
+                continue;
+            }
             if let Some(v) = tc[key].as_str() {
                 if !v.is_empty() {
                     native.toolchain.push((axis.to_string(), v.to_string()));
@@ -818,6 +731,18 @@ pub fn run_check(
         native
             .toolchain
             .push(("ac-worker-protocol".to_string(), "acworker/1".to_string()));
+        // R3 (F05): a declared support library binds its CONTENT hash —
+        // an actual input of the link, not just a contract name.
+        if check.options.effective_support_lib().is_some() {
+            if let Ok(lib) = trace_marks_lib() {
+                if let Ok(bytes) = std::fs::read(&lib) {
+                    native.toolchain.push((
+                        "support-lib-trace-marks-sha256".to_string(),
+                        hex(&sha256(&bytes)),
+                    ));
+                }
+            }
+        }
     }
     native.cache_mode = Some(check.options.effective_cache().as_str().to_string());
     if let Some(cache) = ok.get("cache") {
@@ -862,6 +787,146 @@ pub fn run_check(
     verdict.artifacts = artifacts;
     verdict.native = Some(native);
     Ok(verdict)
+}
+
+/// R3 (F02/F04): FULL parent-side manifest admission + persistence for a
+/// worker response — fixed kind/logical sets, uniqueness, in-scratch with
+/// an ancestor reparse audit, declared-length match, single/total caps,
+/// then read + hash-verify + persist under the check's artifact dir.
+/// Extracted from [`run_check`] so the turnaround harness judges worker
+/// responses through the SAME admission entry the runner uses. Err maps to
+/// an ERROR verdict. Returns the persisted artifacts and the admitted
+/// logical set (for the partial-product rules).
+pub fn admit_and_persist_artifacts(
+    ok: &serde_json::Value,
+    adapter: auto_test_case::contract::Adapter,
+    scratch: &Path,
+    artifact_dir: &Path,
+) -> Result<(Vec<ArtifactRef>, std::collections::BTreeSet<String>), String> {
+    let mut artifacts: Vec<ArtifactRef> = Vec::new();
+    let raw_artifacts = ok["artifacts"].as_array().cloned().unwrap_or_default();
+    let mut seen_logical = std::collections::BTreeSet::new();
+    let mut declared_total = 0u64;
+    for a in &raw_artifacts {
+        let logical = a["logical"].as_str().unwrap_or("");
+        let kind = a["kind"].as_str().unwrap_or("");
+        let declared_bytes = a["bytes"].as_u64().unwrap_or(u64::MAX);
+        let path_text = a["path"].as_str().unwrap_or("");
+        let legal: &[(&str, &str)] = if adapter == auto_test_case::contract::Adapter::Syntax {
+            &[
+                ("syntax", "reconstructed.at"),
+                ("syntax", "outline.json"),
+                ("syntax", "cst.canonical"),
+            ]
+        } else {
+            &[("hir", "hir.atom"), ("obj", "app.obj"), ("exe", "app.exe")]
+        };
+        if !legal.iter().any(|(k, l)| *k == kind && *l == logical) {
+            return Err(format!(
+                "worker artifact {:?}/{} is outside the fixed manifest set",
+                kind, logical
+            ));
+        }
+        if !seen_logical.insert(logical.to_string()) {
+            return Err(format!("worker manifest declares {:?} twice", logical));
+        }
+        if declared_bytes > (64 << 20) as u64 {
+            return Err(format!(
+                "worker artifact {:?} declares {} bytes — over the 64MiB single-artifact cap",
+                logical, declared_bytes
+            ));
+        }
+        declared_total += declared_bytes;
+        if declared_total > (128 << 20) as u64 {
+            return Err(format!(
+                "check artifact total {} exceeds the 128MiB cap (declared, pre-read)",
+                declared_total
+            ));
+        }
+        let path = Path::new(path_text);
+        // In-scratch + reparse-clean BEFORE reading a byte.
+        let scratch_canon =
+            std::fs::canonicalize(scratch).map_err(|e| format!("canonicalize scratch: {}", e))?;
+        let path_canon = std::fs::canonicalize(path)
+            .map_err(|e| format!("worker artifact {:?} path unusable: {}", logical, e))?;
+        if !path_canon.starts_with(&scratch_canon) {
+            return Err(format!(
+                "worker artifact {:?} path {:?} is outside this request's scratch — never accepted",
+                logical, path_text
+            ));
+        }
+        if path.file_name().and_then(|f| f.to_str()) != Some(logical) {
+            return Err(format!(
+                "worker artifact {:?} path file name does not match its logical identity",
+                logical
+            ));
+        }
+        let meta = std::fs::symlink_metadata(&path_canon)
+            .map_err(|e| format!("worker artifact {:?}: {}", logical, e))?;
+        if meta.file_type().is_symlink() {
+            return Err(format!("worker artifact {:?} is a reparse point", logical));
+        }
+        if meta.len() != declared_bytes {
+            return Err(format!(
+                "worker artifact {:?} declares {} bytes but the file is {} — manifest mismatch",
+                logical,
+                declared_bytes,
+                meta.len()
+            ));
+        }
+    }
+    for a in &raw_artifacts {
+        let logical = a["logical"].as_str().unwrap_or("");
+        let path_text = a["path"].as_str().unwrap_or("");
+        let want_sha = a["sha256"].as_str().unwrap_or("");
+        let bytes =
+            std::fs::read(path_text).map_err(|e| format!("read worker artifact {}: {}", logical, e))?;
+        let got_sha = hex(&sha256(&bytes));
+        if got_sha != want_sha {
+            return Err(format!(
+                "worker manifest mismatch for {}: hashes {} but manifest says {}",
+                logical, got_sha, want_sha
+            ));
+        }
+        let stored = artifact_dir.join(sanitize(logical));
+        std::fs::write(&stored, &bytes).map_err(|e| format!("persist {}: {}", logical, e))?;
+        artifacts.push(ArtifactRef {
+            logical_path: logical.to_string(),
+            stored_path: stored.display().to_string(),
+            sha256: got_sha,
+            bytes: Some(bytes.len()),
+        });
+    }
+    Ok((artifacts, seen_logical))
+}
+
+/// R3 (F02): one stream oracle comparison — wire field `<key>_b64`,
+/// strict decode, byte compare. Extracted from [`run_check`] so the
+/// turnaround harness judges through the SAME entry. Err = protocol
+/// refusal; byte mismatches land in `out`.
+pub fn compare_stream_field(
+    run: &serde_json::Value,
+    key: &str,
+    want: Option<&auto_test_case::contract::StreamExpect>,
+    out: &mut Vec<Mismatch>,
+) -> Result<(), String> {
+    let Some(w) = want else {
+        // Undeclared streams are not compared here at all (their encoding
+        // and decoded cap were still validated in validate_response).
+        return Ok(());
+    };
+    let field = format!("{}_b64", key);
+    let raw = run[&field].as_str().ok_or_else(|| {
+        format!(
+            "worker run response missing {} — never an empty stream",
+            &field
+        )
+    })?;
+    let actual_b = b64d_strict(raw).map_err(|e| format!("worker stream {}: {}", &field, e))?;
+    if let Some(m) = compare_bytes(w.text.as_bytes(), &actual_b, w.compare, key) {
+        out.push(m);
+    }
+    Ok(())
 }
 
 /// `ac/run` consuming an upstream build's products: the RUN goes through
@@ -1004,19 +1069,10 @@ pub fn consume_and_run(
         })
         .collect();
     if let Some(tc) = ok.get("toolchain") {
-        // R1 (F07): native rows carry exactly the axes the stale checker
-        // can RE-COMPUTE (the worker exe content hash embeds compiler and
-        // dependency versions; the protocol version pins the IPC face).
-        // Display-only fields (lld path, sdk dir, version strings) stay in
-        // the worker response, out of the identity.
-        // R2 (F09): the FULL real tool axes — worker exe hash (embeds the
-        // compiler) + the actual linker content hash + the SDK um dir —
-        // every axis the stale checker can independently recompute.
-        for (axis, key) in [
-            ("worker-exe-sha256", "worker_exe_sha256"),
-            ("lld-sha256", "lld_sha256"),
-            ("sdk-um", "sdk_um"),
-        ] {
+        // R3 (F05): a product-consumption run never links — only the
+        // worker exe + protocol axes apply (same applicability set the
+        // stale checker enforces for consumer rows).
+        for (axis, key) in [("worker-exe-sha256", "worker_exe_sha256")] {
             if let Some(v) = tc[key].as_str() {
                 if !v.is_empty() {
                     native.toolchain.push((axis.to_string(), v.to_string()));
@@ -1067,11 +1123,13 @@ fn trace_marks_lib() -> Result<PathBuf, String> {
         .clone()
 }
 
-/// The ACTUAL current toolchain identity for stale comparison (R1 F07):
-/// the worker binary's content hash (it statically embeds the compiler),
-/// the resolved linker's file hash and the SDK um dir — the same axes the
-/// executor binds into native records. Rows missing or contradicting any
-/// axis are stale, never silently consistent.
+/// The ACTUAL current toolchain identity for stale comparison (R1 F07,
+/// R3 F05): the worker binary's content hash (it statically embeds the
+/// compiler), the resolved linker's content hash, and the CONTENT hash of
+/// the SDK library the link consumes — the same axes the executor binds
+/// into native records, axis by axis. Stale applies them per row by the
+/// row's own applicability set; a row missing or contradicting an
+/// applicable axis is stale, never silently consistent.
 pub fn current_toolchain_identity() -> BTreeMap<String, String> {
     let mut m = BTreeMap::new();
     if let Ok(exe) = worker_binary() {
@@ -1082,16 +1140,32 @@ pub fn current_toolchain_identity() -> BTreeMap<String, String> {
     // R2 (F09): the EXTERNAL tools are recomputed here with the same
     // resolution order ac-core uses (env override -> rustc sysroot ->
     // registry roots), keeping the stale axes equal to the execution axes.
+    // R3 (F05): the SDK axis is CONTENT-based (kernel32.lib hash), not a
+    // path — a path proves nothing about library contents.
     if let Some(lld) = resolve_rust_lld() {
         if let Ok(bytes) = std::fs::read(&lld) {
             m.insert("lld-sha256".into(), hex(&sha256(&bytes)));
         }
     }
     if let Some(sdk) = resolve_sdk_um_dir() {
-        m.insert("sdk-um".into(), sdk.display().to_string());
+        if let Ok(bytes) = std::fs::read(sdk.join("kernel32.lib")) {
+            m.insert("sdk-um-sha256".into(), hex(&sha256(&bytes)));
+        }
     }
     m.insert("ac-worker-protocol".into(), "acworker/1".into());
     m
+}
+
+/// R3 (F05): the CONTENT identity of the named support library ("trace-
+/// marks") — an actual link input, recomputable by the stale checker for
+/// rows whose contract declares it.
+pub fn support_lib_identity() -> Option<(String, String)> {
+    let lib = trace_marks_lib().ok()?;
+    let bytes = std::fs::read(&lib).ok()?;
+    Some((
+        "support-lib-trace-marks-sha256".to_string(),
+        hex(&sha256(&bytes)),
+    ))
 }
 
 /// Mirror of ac-core's `find_rust_lld` resolution (displayed identity only;
@@ -1218,7 +1292,10 @@ fn escape_tail(s: &str) -> String {
     out
 }
 
-fn b64(bytes: &[u8]) -> String {
+/// Local base64 (std) ENCODE for request payloads — pub for the R3
+/// turnaround harness, which builds session requests exactly like the
+/// runner does.
+pub fn b64(bytes: &[u8]) -> String {
     // Local base64 (std): auto-lang must not grow a base64 dependency for
     // one protocol field; this is the standard alphabet, padded.
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -1248,8 +1325,10 @@ fn b64(bytes: &[u8]) -> String {
 
 /// Strict standard-alphabet base64 decode (R2 F03): malformed padding or
 /// characters are an error — the forgiving decoder silently turned
-/// protocol damage into empty streams.
-fn b64d_strict(s: &str) -> Result<Vec<u8>, String> {
+/// protocol damage into empty streams. R3: pub for the integration
+/// harness (bytes-preservation proofs decode through the runner's own
+/// decoder).
+pub fn b64d_strict(s: &str) -> Result<Vec<u8>, String> {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes = s.as_bytes();
     if bytes.len() % 4 != 0 {
@@ -1285,33 +1364,4 @@ fn b64d_strict(s: &str) -> Result<Vec<u8>, String> {
         }
     }
     Ok(out)
-}
-
-fn b64d(s: &str) -> Vec<u8> {
-    fn val(c: u8) -> Option<u32> {
-        match c {
-            b'A'..=b'Z' => Some((c - b'A') as u32),
-            b'a'..=b'z' => Some((c - b'a' + 26) as u32),
-            b'0'..=b'9' => Some((c - b'0' + 52) as u32),
-            b'+' => Some(62),
-            b'/' => Some(63),
-            _ => None,
-        }
-    }
-    let mut out = Vec::with_capacity(s.len() / 4 * 3);
-    let mut acc = 0u32;
-    let mut bits = 0u32;
-    for &c in s.as_bytes() {
-        if c == b'=' {
-            break;
-        }
-        let Some(v) = val(c) else { continue };
-        acc = (acc << 6) | v;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((acc >> bits) as u8);
-        }
-    }
-    out
 }

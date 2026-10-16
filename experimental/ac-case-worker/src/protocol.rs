@@ -363,7 +363,14 @@ pub struct SpanOut {
 pub struct ToolchainOut {
     pub lld_path: String,
     pub lld_sha256: String,
+    /// Display-only SDK um/x64 dir path.
     pub sdk_um: String,
+    /// R3 (F05): the CONTENT identity of the linked SDK — sha256 of the
+    /// kernel32.lib the link actually consumes. A path alone proves
+    /// nothing about library contents; the axis value the parent binds
+    /// comes from THIS hash, never from `sdk_um`.
+    #[serde(default)]
+    pub sdk_um_sha256: String,
     pub ac_core_version: String,
     pub worker_version: String,
     /// R1 (F07): the worker executable's content hash — it statically
