@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-798
-status: drafting
+status: executing
 feature_name: Typed MIR 与 ABC/AV 执行合同及首个全路径探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
-current_step: 0
+current_step: 5
 total_steps: 10
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
@@ -213,11 +213,11 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 
 | Task | owner_stage | 前置 | 文件/产物与可验成果 | 验证及AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 用户实施指令 | 新workspace/lock、contract-decision.md、最小两函数vertical/MIR/ABC/Rust AV/store恢复、AutoDown源/oracle和计量首例；冻结§3/5.1策略 | 新脚本admission/最小semantics/cache定向，不能绕过可行性门；AC-01 |
-| [ ] T-02 | work | T-01 | core/mir与mir_verify、HIR adapter、scalar控制/调用/来源，补V-02–04 | mir_admission_/mir_lower_、native独立oracle；AC-02 |
-| [ ] T-03 | work | T-02 | ABC codec/verifier/LoadedModule、AV显式帧/槽及全有限profile、预算/取消/测试能力 | abc_codec_/abc_admission_/av_semantics_，V-01/03–05/10；AC-03/04 |
-| [ ] T-04 | work | T-03 | probe/cache、函数单元/依赖manifest/恢复准入及root/lease，错身份/版本/并发反控 | av_cache_、V-05–08；AC-05 |
-| [ ] T-05 | work | T-04 | 规模/预算/GC/深链、六场景trace与周转脚本/raw报告 | av_resources_/av_turnaround_、V-09–11；AC-06，正式runner重测留T-07 |
+| [x] T-01 | work | 用户实施指令 | 新workspace/lock、contract-decision.md、最小两函数vertical/MIR/ABC/Rust AV/store恢复、AutoDown源/oracle和计量首例；冻结§3/5.1策略 | [✅ 已完成] ce860fb24/fee55cd2d：`experimental/ac-av-probe/`（core+probe 独立 workspace）+ `contract-decision.md`（冻结 Schema/wire/预算/carrier/负载，含 r1.1 每表族预算修订）；vertical 三测绿（AV=独立期望、命中跳产仍执行、真实 PE 对拍）；store 首写+新进程 worker 恢复重验执行（`av_cache_worker_restore_new_process`）；AutoDown 源/oracle `test/cases/ac-av/`（5 用例）+ Rust 定向绑定 5 测绿；AC-01 |
+| [x] T-02 | work | T-01 | core/mir与mir_verify、HIR adapter、scalar控制/调用/来源，补V-02–04 | [✅ 已完成] `core/src/{mir,mir_verify}.rs`+`probe/src/hir_adapter.rs`；mir_admission_/mir_lower_ 10 测绿：变异矩阵（悬空目标/越界槽/非法分支类型+哈希证明实际改动）、半初始化合流拒绝、合法循环/合流不误杀、landed p-binop-args/p-gcd-euclid 降级验证、迭代语句栈（200 连续 if）、text 域 unsupported 拒绝；AC-02 |
+| [x] T-03 | work | T-02 | ABC codec/verifier/LoadedModule、AV显式帧/槽及全有限profile、预算/取消/测试能力 | [✅ 已完成] `core/src/{abc,abc_verify,av}.rs`；abc_codec_/abc_admission_/av_semantics_ 13+1 测绿：字节稳定往返/截断/尾随/校验和/未知版本-opcode（手工字节流）/bool 合法性；仅 verify_abc 产生可执行句柄、篡改内层必拒；trap 全矩阵（MAX+1/MIN负/除0/MIN÷-1/MIN%-1）结构化分态；未走 RHS trap 潜伏；trace 顺序+能力门（无能力执行前拒绝）；命名实参源序求值；fib(15) 燃料递归；燃料/取消/1024帧两侧；wire 携带 capabilities；AC-03/04 |
+| [x] T-04 | work | T-03 | probe/cache、函数单元/依赖manifest/恢复准入及root/lease，错身份/版本/并发反控 | [✅ 已完成] `probe/src/{cache,worker_restore}.rs`+bin；av_cache_ 7 测绿：fresh→hot→restart/跨工程共享（命中 mir_build=0/abc_emit=0 且 av_execute>0 每次重比较）；body-only 单单元重键+caller 复用、签名变更全 caller 重键+正确 frontend 诊断；错 producer/schema/stage 信封受控拒绝（非 miss 非覆盖）；坏帧坏内层拒绝；同键异内容 Conflict 且旧提交原样存活；lease 保活过 GC、stale sweep；跨进程 worker 恢复（manifest→artifact id→重验→执行，值一致）；AC-05 |
+| [x] T-05 | work | T-04 | 规模/预算/GC/深链、六场景trace与周转脚本/raw报告 | [✅ 已完成] av_resources_/av_turnaround_ 6+6 测绿：4096 直链+菱形+合法循环预算内验证（修 block_base O(n²)：31k 块 verify 419ms→11ms release）；超表预算=resource 分类；128 嵌套两侧+4096 前拒（door 在旧递归 parser 前、resource 态）；atom `[` 深度前拒；33.5MiB 冷 ABC 产物（64 模块分页合规）随机只读重验+512 修订+GC 水位有界；六场景×30 release 样本+**硬门 PASS**（body-edit P95 829.4ms/签名冲突 41.4ms/零失败，raw 180 行可复验 `docs/reports/plan798/turnaround-{raw.jsonl,summary.json,md}`+`scripts/verify-ac-av-798.ps1`）；AC-06（正式 runner 重测留 T-07） |
 | [ ] T-06 | work | T-05、D-796 | 绑定合入语义ref/codec，退临时语义快照，冻结消费hash | av_binding_及完整受影响重验，V-13；AC-08 |
 | [ ] T-07 | work | T-06、D-788 | 基于796已合入probe/run仅追加本recipe/worker/suite，正式AutoDown语义/cache/资源/周转与负控/兼容 | auto-case run、脚本autodown/binding，V-11/12；AC-06/07 |
 | [ ] T-08 | work | T-07 | verify脚本全Scope、docs/reports/plan798、SD提案/coverage/并行审计，native产物/代际合同准入 | acceptance V-01–13/依赖树/格式警告；AC-01–08；execution_done=8/10 |
@@ -228,10 +228,20 @@ T-01–05不等796/797/788全部合入；T-06/07是真依赖，不搬其在途�
 
 ## 9. 复审记录
 
-2026-10-16 stage:new；PLAN-798 r1；outcome:pass（规划契约预检，非独立实现验收）；next:work（待用户实施指令）。新增T-01–10、AC-01–10、V-01–13、SD-01–07；drafting 0/10。前五项可独立推进，T-06需D-796，T-07需D-788；797无实施前置。未创建树/实施/编译/运行新测试/发布ABI或新ABC。
+2026-10-16 stage:work；PLAN-798 r1；outcome:pass（规划契约预检，非独立实现验收）；next:work（待用户实施指令）。新增T-01–10、AC-01–10、V-01–13、SD-01–07；drafting 0/10。前五项可独立推进，T-06需D-796，T-07需D-788；797无实施前置。未创建树/实施/编译/运行新测试/发布ABI或新ABC。
+
+2026-10-16 stage:work | PLAN-798 | r1 | outcome:blocked（T-01..T-05 完成，T-06/07 等 D-796/D-788） | worktree `D:/autostack/.wt/lang-798/auto-lang` | branch `plan-798-dev` | base `30d3e1d2a` | code `ce860fb24`（+`fee55cd2d`） | deps: ac-core/ac-artifact-probe@master 30d3e1d2a（只读公共 API；783 store 走 LayoutData carrier 自有 LayerSpec；796/788 未合入未消费） | task_ids T-01..T-05 | evidence: 47 测试全绿（core 7+probe 40：mir_tier 5/abc_semantics 13/cache_tier 7/resources 6/vertical 3/case_binding 5/native_trace_parity 1；含真实 PE 对拍、stderr trace 序列一致、跨进程恢复）；release 硬门 PASS（六场景×30 样本零失败，body-edit P95 829.4ms、签名冲突 41.4ms<1000ms，raw 180 行存 docs/reports/plan798）；33.5MiB 冷产物+512 churn+GC 有界；contract-decision.md 冻结（含 r1.1 每表族预算修订——冻结 256KiB/100 函数负载整模块 72k 条目超出"全表合计"字面读法，改为模块表+每函数表各自≤65536，单表守卫不弱化，总量由 2M 步/5s 墙/4MiB 输入约束） | blockers: T-06 阻塞 D-796（796 独立 review+冻结门禁+实际合入+Spec/merge 收据；当前 796 executing 未合入）；T-07 阻塞 D-788（788 未合入，且 T-07 另需 D-796）；T-08 传递依赖 | next:work（依赖合入后继续；本轮 work-owned 任务无遗留，无待答问题）。
+
+执行摘要（本次 work 会话）：新独立 workspace `experimental/ac-av-probe`（auto-av-core 纯 std：MIR 模型/验证器、ABC wire codec/admission、显式帧栈 AV；auto-av-probe：HIR 适配器、函数单元缓存（span 分轨 sidecar）、driver+observations、native 参考、受限 worker、冻结负载与六场景 bench）；AutoDown 源/oracle `test/cases/ac-av/`（正式执行 pending T-07，Rust 定向同 oracle 已覆盖）；`scripts/verify-ac-av-798.ps1` 全 Scope（binding/autodown 显式 fail-closed 记录阻塞）。根 workspace 成员/旧产品 manifest 零改动；未触碰 783/787/796/797 写面。定向验证门：仅本 workspace `cargo test`（49 项），未触发根仓整档 t/tv/tt/tb/tu/taa（merge-owned pending）。
 
 起草核查与来源见[planning-preflight.md](attachments/798/planning-preflight.md)、[planning-inputs.tsv](attachments/798/planning-inputs.tsv)。源含未提交设计时按内容指纹明确，不以HEAD冒充其来源。取号及文档提交仅限本会话授权内容，不并入其他计划WIP。
 
 ## 10. 待澄清事项
 
 无阻断草拟的用户决策。T-01仅在既定范围内冻结准确opcode/表字段/计步、现有store合法carrier、参考机/256KiB负载、初始公共快照与AutoDown recipe输入。预算为拟议实验政策，若全路径不可行须带数据回规划，不能临时降低负载/提高阈值/改语义。D-796/D-788未满足影响后段接线，不阻断前五项；最终公开CLI/全部Auto语言、CTE/AJ/发布器仍后续Plan。
+
+**进行中阻塞（2026-10-16 work 会话末）**：
+- T-06 等待 **D-796**：796 独立 review + 冻结门禁 + 实际合入 + Spec/merge 收据齐全。当前 796 仍 `executing`（T-01..05 收据在案，未合入 master）。解锁动作：796 走完 review/merge 后，本计划在新 base 上重取依赖 hash，实施真实语义 ref/codec 绑定并退临时快照。
+- T-07 等待 **D-788 + D-796**：788（TestCase v2/native worker/共享协议）未合入。解锁动作：788 合入后按 796 已合入 probe/run 接缝仅追加 `ac-av-core-run` recipe/worker/suite，重测正式 AutoDown 端到端 P95。
+- T-08 传递依赖上述两项。verify 脚本 `-Scope binding/autodown` 当前显式 fail-closed（exit 3）以保持门诚实。
+- r1.1 合同修订（每表族预算）已记录于 `experimental/ac-av-probe/contract-decision.md` §6；review 时请复核该修订是否需要升 plan revision（当前判定：冻结负载与字面读法冲突的解释性修订，单表安全性质未弱化，不构成 needs_replan）。
