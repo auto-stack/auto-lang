@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-795
-status: execution_done
+status: archived
 feature_name: 包锁模型与校验核心抽取
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
 plan_revision: 1
-current_step: 6
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/package-lock/project.md]
@@ -89,8 +89,8 @@ Target→DTO和Git probing留上层；core接收调用方提供的automan版本�
 | [x] | T-04 | work | T03 | auto-man lock.rs兼容委托及Target/Git adapter；旧API构造/方法真实编译 | 02/04 |
 | [x] | T-05 | work | T04 | 外部consumer及V01..04、metadata/777边界；检查792写面未侵入（R1 修复轮：777 基线已在原树重锚，strict pass/0 violations，见 9 节修复记录） | 01–04 |
 | [x] | T-06 | work | T05 | 净删/搬迁/未迁清单和SD素材，提交冻结代码与并行交接收据（R1 修复轮：基线重锚提交 edf982e52，冻结 HEAD 前移） | 01–04 |
-| [ ] | T-07 | review | T06 | 独立真实锁流程/负控/公开兼容和SD冻结 | 05 |
-| [ ] | T-08 | merge | final pass | 裸t+定向门、沉淀/归档/guard、regress到期交接；必要时792刷新source闭包 | 06 |
+| [x] | T-07 | review | T06 | 独立真实锁流程/负控/公开兼容和SD冻结（R2 final pass，F-795-R1-01 已闭合） | 05 |
+| [x] | T-08 | merge | final pass | 裸t+定向门、沉淀/归档/guard、regress到期交接；必要时792刷新source闭包（未触发：792 写面零侵入） | 06 |
 
 ### 任务证据（work 轮）
 
@@ -101,6 +101,18 @@ Target→DTO和Git probing留上层；core接收调用方提供的automan版本�
 - **T-06 净删/搬迁/未迁清单**：旧 lock.rs 253 行（生产 173）→ 门面 179 生产行（投影/委托/Git 观测）+ 核心 224 生产行（模型/规则/codec 单一定义，含视图 trait 与文档）；规则实现单份（无第二套 verify/序列化）。**未迁**（仍携语言栈留 auto-man）：resolver、Target 全家、builder、exporter、可执行模板、git/index/pull、AUTOMAN_VERSION 戳。SD 素材：`docs/specs/package-lock/project.md` 新增 + `docs/specs/auto-man/project.md` 分工节与模块行改写；INDEX/specs.json/plans.md 双索引归 merge。冻结代码提交=11ddc162e。
 
 ## 9. 复审记录
+
+2026-10-16 stage=merge | PLAN-795:r1 | plan_revision=1 | outcome=pass | delivery_commit=491bb3933（master tip ff-only） | 检查点：
+- prepared=R2 pass 绑定 edf982e52；canonical delta=SD-01/02（worktree 提交内）+索引/ledger 素材；docs-only 沉淀提交 196bd44e2（rebase 后 491bb3933），`git diff edf982e52 196bd44e2 --name-only` 仅 docs/specs|docs/plans/reports|scripts/spec-index.py|.autoos/specs.json，实现/依赖零变动（可承接 R2 证据）。
+- 冻结门禁（@edf982e52，docs-only 后代代码恒等）：裸 cargo t **5326/5326 全绿**（90.9s，1 slow=plan738 p4 67.9s）；定向 core 25+门面 lock:: 9+consumer 4 全绿；verify-deps.sh PASS；变更 Rust 文件 rustfmt --check 0；实现 diff --check 0；777 strict pass/0 violations（R2 独立复验一致）；tv/tt/tb/tu/taa 零触发不适用。
+- landed=worktree clean + wt-guard clean → rebase master（零冲突）→ `git merge --ff-only plan-795-dev`；master tip=491bb3933；range-diff 全等（579f6dec0..edf982e52 ↔ 056539f39..d27734bfa 两条 `=`，edf982e52..196bd44e2 ↔ d27734bfa..491bb3933 一条 `=`）；hash 映射 11ddc162e→a48b8c88f、edf982e52→d27734bfa、196bd44e2→491bb3933。
+- ledger_refreshed=.autoos/specs.json v33→v34 **guarded offline projection**（无 store writer 可达，791 先例；byte-exact 备份→外科增量 4 条（designs/tests/reviews/reports 各+1，P795-D1/T/R2/M 全带 file+tags）→diff 证明仅新增+version 行→回读校验六节 id/计数/字段）；channel 诚实登记为离线受管投影。
+- archived=本记录+R1/R2 附件（attachments/795/review-r1、review-r2）+复审方 R2 簿记随归档提交入库；git mv 至 docs/plans/archive/；status=archived；canonical 索引（INDEX/overview/goals/双 plans.md）已在 delivery 提交内。
+- 部署产物观察=auto-lang 仓无后端守护/发布二进制/web bundle 消费本变更面（纯库 crate 抽取）；不适用重建项如实登记。
+- regress 交接=795%5==0 到期，落地后移交 /auto-plan:regress（主检出单实例；收据见 .last-batch-regression.json 更新）。
+- cleaned=（清理完成后由收尾提交回填：worktree/分支/组目录移除与 guard 结果。）
+
+2026-10-16 stage=review | review_scope=final | reviewer_identity=本聊天 Codex（沿用实施以外的 R1 复审上下文，未另派 agent，具体模型/session ID未暴露） | plan_id=PLAN-795 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-795/auto-lang | branch=plan-795-dev | reviewed_commit=edf982e52902e0b3b8d18c1f1366bab98dd1f161 | base_commit=579f6dec0941fb711664679a9cb8c29fa71bad20 | repair_base=11ddc162ecd839b98cee748e3d2c27cfd05df301 | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；R1 八项依赖/锁/配置/SD 指纹全部一致，见 [R2 fingerprints](attachments/795/review-r2/fingerprints.json) | spec_inputs=canonical auto-man project.md f12b0b4098450025b918847e7e2dfc29b07619a16574bc341b5e62a3f9ad8ba8、goals.md 9f2b22ebf1362941e58c69166c8c58c32a36121b877b63e4509391206e4cd72e；冻结 [SD副本](attachments/795/review-r2/spec-delta.diff) SHA256=d4b8d58709ca256e2d1a8ad1e761842072bb2ae5768c4be50fa37db979127602 | acceptance_results=AC-01..05 pass、AC-06 pending | findings=F-795-R1-01关闭；修复仅基线JSON，重绑base/config且增加两合法边，零原边删改，规则和grandfather未放宽；独立strict exit0/pass/0 violations/2 grandfathered，metadata45边零差异；无新增finding | evidence=[R2完整报告](attachments/795/review-r2/review.md)、[strict原始报告](attachments/795/review-r2/boundary.json)；入场/退场HEAD一致且实现树clean；实现/测试/依赖/验收输入均未变，明确复用R1 38项+fresh4组及闭包/fmt/health证据，本轮不重跑行为面 | pending_closeout_gates=merge-owned裸cargo t+双crate/consumer定向验收+fmt复核、规范/ledger/索引、归档/guard清理、795%5=0批回归交接；本轮未执行整档或收尾 | next=merge在冻结提交运行门禁后沉淀与清理；Plan=reviewed，T-07完成，7/8；未合入、未归档、未宣称交付完成。
 
 2026-10-16 stage=work | PLAN-795 | plan_revision=1 | outcome=pass（R1 修复轮：F-795-R1-01 闭合，T-05/T-06 重闭，6/8） | worktree=D:/autostack/.wt/lang-795/auto-lang | branch=plan-795-dev | base_commit=579f6dec0 | code_commit=edf982e52（=11ddc162e 实现 + 基线重锚提交） | dependency_revisions=与 R1 受审一致（auto-down@c39ac7f9；审计内 cargo metadata --locked 45 声明边零差异复核通过，实现/依赖未变） | task_ids=T-05、T-06（重闭；T-01..T-04 证据保留） | finding_closure=F-795-R1-01：finding=777 strict 两项红（config_drift+stale，基线未绑定四锚定输入）→ invariant=work-owned metadata/777 闸门须在送审冻结 HEAD 上 strict=pass → affected=仅 .autoos/module-boundaries-baseline.json → fix=原树（干净受管）`--refresh-baseline`，差异审查=base_revision 3e1a9742c→11ddc162e、config_sha256 重绑、+2 条 member 边（man→auto-package-lock、auto-package-lock→auto-val）、规则/边零删改、grandfather 仍 2 条 R5 边不变 → results=提交 edf982e52 后冻结 HEAD 复跑 strict **pass/0 violations**，grandfathered=2 不变，new_allowed=[]（新边已入基线） → remaining=无 | evidence_reuse=按 R1 裁定"只改基线、依赖/配置经审计复核不变"复用 R1 行为证据（core25+门面9+consumer4=38 pass、fresh 探针 4 组、闭包、fmt），未重跑行为面 | blockers=无 | merge-owned pending（不变）：裸 cargo t + 双 crate/consumer 定向验收 + fmt 复核 + specs.json/INDEX/plans.md 沉淀 + 归档/guard 清理 + tf 到期交接（795%5==0）；777 基线已不再是 pending 项 | next_responsible_role=review（T-07 重审，建议聚焦 F-795-R1-01 复验与基线 diff 审查）
 
