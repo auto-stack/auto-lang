@@ -13,9 +13,9 @@
 | 层 | 覆盖 | 查询键成分 | 引用类别 | 驻留/再生 |
 |---|---|---|---|---|
 | A00 输入 | **codec** | 源字节+逻辑模块名（域分离;**路径不入内容键**） | provenance | 用户源不归仓所有;仓持不可变内容副本 |
-| A01 语法表 | Future | grammar-id/revision | required | 按代际共享 |
-| A02 词法 | Future | snapshot+scanner-abi | required | 冷 |
-| A03 CST | 探针造数 | snapshot+grammar+parser-ver | required/provenance | 不可变子树页;全树驻留永非命中前提 |
+| A01 语法表 | **codec**（787 起真实语法生产者） | grammar-id/revision+scanner-abi | required | 按代际共享 |
+| A02 词法 | **codec**（787 起真实语法生产者） | snapshot+grammar-id+scanner-abi+lexer-ver | required（→A01+源页） | 冷 |
+| A03 CST | **codec**（787 起真实语法生产者;规范形分页） | snapshot+grammar+parser-ver | required/provenance | 不可变子树页;全树驻留永非命中前提 |
 | A04 AST 摘要 | **codec** | profile+schema+snapshot+frontend-ver | provenance | **内容=签名投影（int/i32 归一;无 span）**——body 编辑共享 chunk |
 | A05 宏 | Future | 展开输入+env | required | 副作用不可控即禁共享 |
 | A06 语义/接口 | Future | profile+summary-ids | required | 接口查询不装载函数体 |
@@ -26,8 +26,46 @@
 | A11 诊断 | Future | stage-key+revision | provenance | 有界 |
 | A12 热重载 | Future | generation+state-schema | required | 非普通 LRU |
 
-实际 codec 面 = **A00/A04/A07/A09/A10**（core+scalar 受限可执行子集）;其余层为
-schema 接缝 + 合法/非法描述样例（生产/消费经 `require_producible` 受控拒绝）。
+实际 codec 面 = **A00/A04/A07/A09/A10**（core+scalar 受限可执行子集）+ 787 起
+**A01/A02/A03 真实语法生产者**（`experimental/ac-syntax/adapters/artifacts`，
+见下方语法产物节）;其余层为 schema 接缝 + 合法/非法描述样例（生产/消费经
+`require_producible` 受控拒绝）。
+
+## 语法产物接入（PLAN-787，A01/A02/A03）
+
+真实生产者 = `experimental/ac-syntax/adapters/artifacts`（加法扩展;旧 kind
+字节与拒绝面不变）：
+
+- **A01 `SyntaxGrammar`**：语法程序 canonical 二进制；装载身份重验（内容
+  hash 与键 grammar-id 不符=受控 miss/错误）；可按（grammar-id, revision）
+  从 store 装载——跨进程恢复不编译 .at 源。
+- **A02 `TokenStream`**：token 流 + **完整 scanner checkpoint**（终态按末
+  token 拼写重放还原真实 mid——嵌套注释深度/转义挂起/mode；恢复续扫与
+  fresh 词法尾部全等）。键含 grammar 身份（跨 grammar 真读拒绝）；
+  **A02 --required--> A01 + 源页**。源字节以内容寻址 **`SourcePage`** 持久化
+  （快照 16KiB 页聚合 ≤256KiB store 源页，跨快照/工程共享），manifest 记
+  源页表可流式重建原文。
+- **A03 `CstPage`/`CstManifest`**：**持久化规范形**——页内容由树逻辑内容
+  （根孩子文档序+先序 DFS+相对跨度/字段/标记）决定，与内存块分配历史无关；
+  同一 snapshot 的 fresh/增量树页字节相同 → 同键 CAS 幂等复用；不可达节点
+  不入页；键形历史稳定（布局演进必须引入布局版本分量）。目录分页 **2048
+  条/页**（framed ≤512KiB）。按需页视图：重启小查询禁调 parser、视图 lease；
+  **子树读取 admission 在真实入口验证整棵可达子树**（页内声明归属一致/
+  绝对跨度≤源长/非 trivia 孩子⊆父 span、trivia 孩子右界⊆父 span/边字段在
+  grammar 字段名表内/kind 在声明面内；decl_range 保持根级单点检查）。
+- **范围查询坐标合同**：源覆盖窗口=outline name 字段绝对范围（不含前导
+  trivia），origin 平移受校验（checked_sub 受控退出）；窗口驻留超限→受控
+  ResourceExhausted，且**限额在物化之前判定**（驻留上界=limit+一 store 源页），
+  绝不用空 name 冒充成功。
+- **required 闭包**：put_cst 链 = manifest --required--> 数据页+目录页+A02
+  （→A01+源页）；流式链 = manifest --required--> 数据页+目录页+源页+A01
+  （流式无 A02 工件，直接闭包）。
+- **发布仲裁（会话域）**：`published_revision` 仅存 store 会话内存、**不进
+  内容工件**（同文本跨修订幂等复用；跨会话/重启 revision=0 是新文档发布，
+  不是迟到任务）；原子序=先注册新根、成功后定点删除被替换旧根行——注册
+  失败旧当前根完好保留。
+- **五 kind 的公开产物读入口（按 key/按 id）全接入**：kind 解码以 codec
+  帧层为单一事实源，store 元数据层委派之，无重复表漂移（未知字节仍拒绝）。
 
 ## 身份与引用规则（探针实测钉面）
 

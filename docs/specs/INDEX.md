@@ -450,6 +450,7 @@
 |---|---|---|---|
 | auto-cosmic | active（509 | 5 | [auto-cosmic/project.md](auto-cosmic/project.md) |
 | auto-hir | experimental | 0 | [auto-hir/project.md](auto-hir/project.md) |
+| auto-syntax — Atom 语法驱动的增量词法与无损 CST | experimental（PLAN-787 | 2 | [auto-syntax/project.md](auto-syntax/project.md) |
 | auto-ac | experimental | 0 | [auto-ac/project.md](auto-ac/project.md) |
 | auto-acc | planned（目标态合同；AC=首版原生编译器，ACC=Auto | 0 | [auto-acc/project.md](auto-acc/project.md) |
 
@@ -462,6 +463,15 @@
 | host-libcosmic | VTree→libcosmic Element 真实 lowering（Linux）/ Windows headless 回退 | partial（lowering TODO，见债务簿 365 条目；509 裁定后为观察态——libcosmic 发 crates.io 版 + iced 0.14 rebase 再重估） |
 | ports-linux | zbus/UPower/D-Bus 真实适配 | partial（通知 D-Bus push 集成 TODO） |
 | host-smithay | Smithay 0.7 合成宿主（winit/nested 开发形态；Linux-target 门控 smithay 依赖，Windows stub）——bind→render→Frame 纹理合成循环，`--frame` PNG 纹理 + `--frames` 帧预算取证 | active（509 Stage 1：骨架 + WSLg/Xvfb 实跑 + shell 首帧像素证据；live attach = Stage 2，见债务簿 509 条目） |
+
+</details>
+
+<details><summary>auto-syntax 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| runtime | snapshot/position/handle/lexer/parse/cst/recovery/edit/outline（词法-解析-CST-增量运行时） |  |
+| adapters/core | 现有 Program 投影对照 + 增量编辑（不替换生产编译入口） |  |
 
 </details>
 

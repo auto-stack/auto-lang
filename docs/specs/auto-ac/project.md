@@ -157,6 +157,17 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 - 探针**不改变 ac-core 语言面、不新增生产入口**（ac-core 零产品依赖由
   dep_audit 永久断言）;六轮独立复审（R1–R6）反例全部以永久回归钉面。
 
+## Atom 语法实验导航（PLAN-787）
+
+- [../auto-syntax/project.md](../auto-syntax/project.md)：有限双 profile 语法
+  服务独立 workspace（snapshot→grammar→CST→结构查询；实验命名，不决定未来
+  仓/产品品牌）。
+- core 投影 adapter 仅**对照**（差分 oracle），不替换编译入口；生产 parser
+  零切换（compatibility_ 审计断言）。
+- A01/A02/A03 的真实语法生产者接入（加法扩展）：见
+  [artifact-contract.md](artifact-contract.md) 语法产物节与
+  [artifact-probe.md](artifact-probe.md) 787 扩展节。
+
 ## 边界与已知限制
 
 - 不宣称：完整 Auto 源码编译（仅两个独立 source profile，旧 AST 未接）、生产 ABI 冻结、DLL/热重载、Linux 发布验收、

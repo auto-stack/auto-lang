@@ -43,3 +43,24 @@ HEAD）→发布后 SHA256 验证;校验或发布 IO 失败均传播为门禁失
 为确定性造数（证明分页/预算/共享机制,不冒充通用 CST）;无亚秒承诺（收益结构
 由 rust-lld 链接支配 ~150-200ms,见 perf-report）;生产差距见
 [auto-cache/project.md](../auto-cache/project.md) 探针边界节。
+
+## PLAN-787 加法扩展（语法产物生产者）
+
+- 新 ChunkKind ×5（加法：SyntaxGrammar=6/TokenStream=7/CstPage=8/
+  CstManifest=9/SourcePage=10；旧 kind 字节与拒绝面不变；GC 算法零改动；
+  kind 解码以 codec 帧层为单一事实源——store 元数据层 `from_code` 委派
+  `from_u8`，五 kind 的公开产物读入口（按 key/按 id）全接入，无重复表漂移）。
+- 三层 coverage 期望翻转（dep_audit 同步）：A01/A02/A03 Future→真实生产者
+  （`experimental/ac-syntax/adapters/artifacts`）；Future 拒绝面换 A05 起。
+- A02 key_inputs 补 grammar-id；源页键 page-hash（内容寻址）。
+- 787 的 `syntax_budget_` 在同冻结预算合同下运行（**work-owned，修复提交上
+  实测**）：builder 受管 ≤8MiB = 实际容量（Vec capacity×元素+String 堆容量
+  +返回树/源码页计入）+ 同驻留合计（parse 产物在目录页落盘/页 put 期间存活；
+  payload 克隆+framed 副本各计一份——**源页 put 三份驻留全计**；finish 时
+  move 前目录与 JSON/edges 同驻留）；视图受管 = hot ≤8MiB + manifest 目录
+  ≤16MiB 合同；OS private bytes = 各阶段（build/warm/冷恢复/源重建）期间
+  采样器峰值（生成器独立进程分列）；单查询增量读取（manifest 实读分列）
+  ≤512KiB。**明确排除项**：parse Machine 内部工作栈/回溯暂存仅 OS 采样器
+  可见；非 Windows sysinfo=0 时 OS 证据整体缺口（显式记录）。冻结值
+  （staging 8MiB/64-48MiB 水位）不变。验证入口
+  `scripts/verify-ac-syntax-787.ps1`（acceptance/closeout）。
