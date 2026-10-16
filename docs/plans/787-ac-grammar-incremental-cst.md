@@ -203,6 +203,23 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
 
+### 执行进度注记（work，2026-10-16 复审 R7 修复轮 → d17b94fec）
+
+单项 F787-R7-01（P2）闭合：store 侧 `ChunkKind::from_code` 本地枚举表漏
+`SourcePage=10`（与 codec 帧层漂移），公开产物读入口（get_artifact /
+get_artifact_by_id）读合法 SourcePage 元数据即 `Internal("bad kind")`。
+修复=**统一 kind 表**：codec `from_u8` 提为 pub(crate) 单一事实源，store
+`from_code` 委派之（未知字节仍 None 拒绝，边界不变）；永久正控
+`syntax_cache_source_page_artifact_reads_by_key_and_id`（真实生产→重开→
+按 key/按 id 读取全等 + put_peak 三份口径下界自检）。七连败诊断链补充：
+R4-R6 的加法接入在"写路径注册了 codec 枚举"与"读路径的 store 元数据层
+还有第二张表"之间留缝——枚举重复表是结构性漂移源，本轮消除（唯一表+委派）。
+
+修复提交 `d17b94fec`（5 文件 +110/−33）。证据：R7 反例 **1/1**（修复前
+0/1）、R1-R6 共 44 例保持全绿；probe --lib 14/admission 7/dep_audit 5/
+identity 4 全绿；acceptance 16 族 ALL PASS（raw 112，含 64MiB work-owned）；
+rustfmt 净。
+
 ### 执行进度注记（work，2026-10-16 复审 R6 修复轮 → 8e9c12c99）
 
 R6 三项 finding 闭合（含上游归属路由）。六连败后诊断要点：R5 轮闭合了
@@ -388,6 +405,32 @@ ac-core 零 diff——compatibility_ 审计）。
 - workspace 测试面：`RUSTC_WRAPPER= cargo test --manifest-path experimental/ac-syntax/Cargo.toml --workspace` 70/70 绿。
 
 ## 9. 复审记录
+
+### 2026-10-16 work R7 修复轮 handoff（R7-01 闭合 → 送审）
+
+stage: work；plan_id: PLAN-787；plan_revision: 1；outcome: pass（execution_done 7/9）；
+worktree: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+base_commit: bf773ca9b（起草；依赖/合流审计基面 7c0caa18c）；code_commit: d17b94fec；
+dependency_revisions: 同实施树 path 依赖，绑定 d17b94fec；
+task_ids: T-06/T-07（R7 重开后修复重勾）。
+readiness：R7 反例 1/1 + R1..R6 共 44 例保持；probe 拒绝边界面全绿；
+acceptance 16 族 ALL PASS（raw 112 含 64MiB work-owned）；未闭合
+in-contract findings/覆盖缺口/未决合同决定：无。SD-05 已补五 kind 读入口
+全接入说明（单一 kind 表）。
+merge-owned pending：final pass 后完整独立语法 workspace + 受影响 783
+套件 + SD/索引/ledger 沉淀 + 合流归档/guard 清理（无根整档/docs_gen）。
+blockers: 无；next_responsible_role: review（T-08 绑定 d17b94fec）。
+
+### 2026-10-16 final review R7 — needs_fix（历史；修复见上方 R7 修复轮 handoff）
+
+stage: review；review_scope: final；reviewer_identity: 当前独立审查会话，未参与实施、未创建代理；PLAN-787 r1。
+worktree_path: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；reviewed_commit: `8e9c12c99baccc1f3905c798a8ff454d774000aa`；original_base: `bf773ca9bfc5a2d6ed672f904011419b03eff1ef`；delivery/dependency_base: `7c0caa18c91ada8b4de3861cb4225919a001df17`（merge64919895d回绑）。
+同树auto-atom/auto-ac-prototype/ac-artifact-probe依赖，版本/Spec/配置hash及结束clean见 [R7完整报告](attachments/787/review-r7/REVIEW.md)。冻结SD SHA-256 `957c18bb1943181161aa54ac4a0080a5ef3dd66118d50f2f0faeb9dbe0005fb7`；整体暂不批准，未发布canonical/ledger。
+
+R1 7/7、R2 18/18、R3 8/8、R4 3/3、R5 4/4、R6 4/4独立重放均通过（有重叠）；R6初次同名探针缓存误复用R5产物已识别为无效证据，隔离package重新编译原R6源码并核用例名后4/4通过，详见报告身份注记。source put786496B≥786480B下界；8MiB名在2359296B即受控exit4；128次租约0失败，upstream reachability_5/5（含跨进程/释放/GC）。check/fmt/diff-check绿；相对新审计基面生产源码零diff。
+新增 F787-R7-01（P2，AC-05/06，T-06/07）：codec已登记SourcePage=10，store::ChunkKind::from_code却仅补6..9漏10。真实put_source_pages成功写出的合法source工件，get_artifact_by_id与原get_artifact按键读取均Internal("bad kind")；A01读取正控通过。现有CstView raw chunk源重建另一路仍可工作，不声称所有源重建失效。须补齐/统一映射及真实生产→重开→双入口永久正控，不吞错为miss，不批准延期。
+工作阶段acceptance含64MiB独立16族全绿、raw passed合计111次（过滤有重叠），见R7报告及日志；AC-01..04 pass，AC-05 fail（新接入缺口）、AC-06 partial、AC-07 fail、AC-08 pending。保留T-01..05，仅重开T-06/T-07，executing 5/9，T-08/T-09未完成。
+next: 原树work补SourcePage读接缝/永久oracle后提交，按hash复用未改实现/依赖/输入的证据，重验影响范围；无需每一行小修重复无关长时负载。merge-owned仍为最终pass后冻结完整独立语法workspace+受影响783套件、SD/索引/ledger、合流归档/guard清理；不跑根整档/docs_gen。本轮未修实现/合入。
 
 ### 2026-10-16 work R6 修复轮 handoff（R6 findings 全闭合 + 上游租约按归属回绑 → 送审）
 
