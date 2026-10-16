@@ -684,7 +684,9 @@ fn dispatch_check(
         (Adapter::Ac, auto_test_case::contract::Action::Check)
         | (Adapter::Ac, auto_test_case::contract::Action::Build)
         | (Adapter::Ac, auto_test_case::contract::Action::Run) => {
-            ac::run_check(resolved, check, oracle, &project_dir, &artifact_dir)
+            ac::run_check(
+                resolved, check, oracle, &project_dir, &artifact_dir, run_dir,
+            )
         }
         // v2 decodes syntax/parse + syntax/edit so the contract face is
         // stable, but the executor binds only after PLAN-787 merges — an

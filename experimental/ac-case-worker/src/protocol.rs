@@ -70,6 +70,17 @@ pub struct WorkerRequest {
     pub budget: ReqBudget,
     /// Absolute path of the parent-owned scratch dir for this request.
     pub scratch: String,
+    /// PLAN-788 T-05 cache participation: unified-store root the worker
+    /// opens (reuse semantics per `cache`). None = no store, direct path.
+    pub store_root: Option<String>,
+    /// "fresh" | "reuse" | "read-only" (defaults to reuse with a store).
+    pub cache: Option<String>,
+    /// Store project namespace (roots/GC identity; cross-project runs use
+    /// distinct projects over shared content).
+    pub project: Option<String>,
+    /// Ask the worker to also produce the canonical HIR bytes (the parent
+    /// declares a hir.atom golden); observation-only, never published.
+    pub include_hir: Option<bool>,
 }
 
 impl WorkerRequest {
@@ -137,6 +148,17 @@ impl WorkerRequest {
                     self.budget.build_ms, self.budget.run_ms, self.budget.total_ms
                 ),
             ));
+        }
+        if let Some(c) = &self.cache {
+            if !matches!(c.as_str(), "fresh" | "reuse" | "read-only") {
+                return Err(WorkerError::admission(
+                    "request.cache",
+                    format!(
+                        "unknown cache mode {:?} (supported: fresh, reuse, read-only)",
+                        c
+                    ),
+                ));
+            }
         }
         let path = std::path::Path::new(&self.scratch);
         if !path.is_absolute() {
@@ -212,6 +234,15 @@ pub struct ToolchainOut {
     pub worker_version: String,
 }
 
+/// Cache observation for the report record (T-05): mode, driver hit/miss
+/// lines, and the REAL stage counters.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct CacheOut {
+    pub mode: String,
+    pub hits: Vec<(String, String)>,
+    pub counters: Vec<(String, u32)>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct OkOut {
     /// Empty on success; the FIRST diagnostic's stage/code is the language
@@ -222,6 +253,8 @@ pub struct OkOut {
     pub run: Option<RunOut>,
     pub trace: Vec<SpanOut>,
     pub toolchain: ToolchainOut,
+    #[serde(default)]
+    pub cache: Option<CacheOut>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

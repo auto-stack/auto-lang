@@ -182,10 +182,51 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// PLAN-788 T-05 cache participation modes: how one vertical call treats
+/// the unified store. Existing callers keep [`vertical`] (= Reuse).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriverCacheMode {
+    /// get → compute → publish (the 783 default semantics).
+    Reuse,
+    /// No cache READS; real recompute; still publishes under the safe
+    /// contract (freshness is provable via the counters).
+    Fresh,
+    /// Reads allowed (hits consumed), writes forbidden — misses recompute
+    /// and link/run for real but publish nothing (store untouched).
+    ReadOnly,
+}
+
+/// [`vertical`] with cache-mode control and per-stage wall spans (the
+/// worker's trace source; spans are measured, never inferred).
+pub struct ObservedVertical {
+    pub outcome: VerticalOutcome,
+    /// (stage, wall_ms) in observation order: frontend / hir-restore /
+    /// verify / lower / link / total.
+    pub stage_ms: Vec<(&'static str, u64)>,
+}
+
 /// One full build/resume through the real pipeline. Never bypasses the
 /// verifier; object bytes always come from real `lower_object`.
 pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutcome, DriverError> {
+    vertical_inner(store, cfg, DriverCacheMode::Reuse).map(|o| o.outcome)
+}
+
+/// Cache-mode + trace surface over the SAME single pipeline (PLAN-788).
+pub fn vertical_observed(
+    store: &ManagedStore,
+    cfg: &VerticalCfg,
+    mode: DriverCacheMode,
+) -> Result<ObservedVertical, DriverError> {
+    vertical_inner(store, cfg, mode)
+}
+
+fn vertical_inner(
+    store: &ManagedStore,
+    cfg: &VerticalCfg,
+    mode: DriverCacheMode,
+) -> Result<ObservedVertical, DriverError> {
     let t0 = now_ms();
+    let mut stage_ms: Vec<(&'static str, u64)> = Vec::new();
     if cfg.target != SUPPORTED_TARGET {
         return Err(DriverError::UnsupportedTarget(cfg.target.clone()));
     }
@@ -233,16 +274,20 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
             crate::schema::layer("A00").unwrap(),
             vec![("snapshot".into(), snapshot.0.clone())],
         );
-        let art = store.put_artifact(PutRequest {
-            layer: "A00",
-            key,
-            kind: ChunkKind::SnapshotRecord,
-            payload: bytes.clone(),
-            edges: vec![],
-            project: None,
-        })?;
-        artifacts.push(("A00".into(), art));
-        c.store_puts += 1;
+        if mode == DriverCacheMode::ReadOnly {
+            artifacts.push(("A00".into(), "read-only".into()));
+        } else {
+            let art = store.put_artifact(PutRequest {
+                layer: "A00",
+                key,
+                kind: ChunkKind::SnapshotRecord,
+                payload: bytes.clone(),
+                edges: vec![],
+                project: None,
+            })?;
+            artifacts.push(("A00".into(), art));
+            c.store_puts += 1;
+        }
     }
 
     // -- layer keys ----------------------------------------------------------
@@ -257,7 +302,15 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
     let obj_key = object_key_by_hash(&hir_key.hash(), &cfg.target, BACKEND_ID, &cfg.entry);
 
     // -- A09 object hit: skip everything up to link --------------------------
-    if let Some(loaded) = store.get_artifact("A09", &obj_key)? {
+    // Fresh mode forbids reading prior compilation results — the get itself
+    // is skipped so a fresh run provably recomputes (parse/verify/lower
+    // counters all move).
+    let a09_hit = if mode == DriverCacheMode::Fresh {
+        None
+    } else {
+        store.get_artifact("A09", &obj_key)?
+    };
+    if let Some(loaded) = a09_hit {
         hits.object = "hit";
         hits.hir = "skipped(object-hit)";
         // The link receipt for THIS toolchain fingerprint is created when
@@ -267,7 +320,9 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
         // receipt bytes, so cold upstreams never fork the receipt content.
         let lkey = link_key(&obj_key, &cfg.toolchain_fp);
         let a10_id = match store.get_artifact("A10", &lkey)? {
-            Some(m) => m.artifact_id,
+            Some(m) if mode != DriverCacheMode::ReadOnly => m.artifact_id,
+            Some(_) => "read-only".into(),
+            None if mode == DriverCacheMode::ReadOnly => "read-only".into(),
             None => {
                 let manifest = ObjectManifest {
                     object_chunk: loaded.chunk_id.clone(),
@@ -296,18 +351,28 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
         artifacts.push(("A10".into(), a10_id));
         artifacts.push(("A09".into(), loaded.artifact_id.clone()));
         let (exe, link_ms) = link_only(&loaded.payload, cfg, &mut c)?;
+        stage_ms.push(("link", link_ms));
         // A hit consumer still owns its current-version roots: a consumer
         // that only resumes must not leave its deliverables unrooted and
         // GC-able (PLAN-783 §5.4: project roots follow consumption).
-        set_current_roots(store, &cfg.project, &artifacts)?;
-        return Ok(finish(
-            cfg, c, hits, artifacts, &exe, &snapshot, link_ms, t0,
-        ));
+        if mode != DriverCacheMode::ReadOnly {
+            set_current_roots(store, &cfg.project, &artifacts)?;
+        }
+        let mut outcome = finish(cfg, c, hits, artifacts, &exe, &snapshot, link_ms, t0);
+        stage_ms.push(("total", outcome.total_ms));
+        outcome.total_ms = outcome.total_ms;
+        return Ok(ObservedVertical { outcome, stage_ms });
     }
 
     // -- HIR: restore (binary) or build (real front end), then REAL verify ----
     let path_disp = cfg.source.display().to_string();
-    let checked = if let Some(loaded) = store.get_artifact("A07", &hir_key)? {
+    let t_hir = now_ms();
+    let a07_hit = if mode == DriverCacheMode::Fresh {
+        None
+    } else {
+        store.get_artifact("A07", &hir_key)?
+    };
+    let checked = if let Some(loaded) = a07_hit {
         hits.hir = "hit(restored)";
         c.hir_restore += 1;
         let bundle = codec::decode_bundle_chunk(&loaded.payload)?;
@@ -316,8 +381,11 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
         let text_ctx = source_bytes
             .as_ref()
             .map(|b| String::from_utf8_lossy(b).to_string());
+        let t_verify = now_ms();
         let checked = verify_real(bundle, &path_disp, text_ctx.as_deref().unwrap_or(""))?;
         c.verify += 1;
+        stage_ms.push(("hir-restore", t_verify.saturating_sub(t_hir)));
+        stage_ms.push(("verify", now_ms().saturating_sub(t_verify)));
         artifacts.push(("A07".into(), loaded.artifact_id.clone()));
         checked
     } else {
@@ -333,26 +401,34 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
         c.decl_summary_build += 1;
         let summary_payload = codec::encode_decl_summary(&summary)?;
         let skey = decl_summary_key(cfg.profile.as_str(), &snapshot);
-        let summary_art = store.put_artifact(PutRequest {
-            layer: "A04",
-            key: skey,
-            kind: ChunkKind::DeclSummary,
-            payload: summary_payload,
-            edges: vec![],
-            project: None,
-        })?;
-        artifacts.push(("A04".into(), summary_art));
-        c.store_puts += 1;
+        if mode == DriverCacheMode::ReadOnly {
+            artifacts.push(("A04".into(), "read-only".into()));
+        } else {
+            let summary_art = store.put_artifact(PutRequest {
+                layer: "A04",
+                key: skey,
+                kind: ChunkKind::DeclSummary,
+                payload: summary_payload,
+                edges: vec![],
+                project: None,
+            })?;
+            artifacts.push(("A04".into(), summary_art));
+            c.store_puts += 1;
+        }
         hits.summary = "computed";
 
         // The adapter's own front end runs inside compile_parts_with (one
         // extra parse; counted as one resolve/typecheck + bind here).
+        let t_fe = now_ms();
         let parts = compile_parts_with(&text, &cfg.logical_name, &capabilities, cfg.profile)
             .map_err(|ds| DriverError::Frontend(render_diags(&ds, &path_disp, &text)))?;
         c.resolve_typecheck += 1;
         c.bind += 1;
+        let t_verify = now_ms();
         let checked = verify_real(parts.bundle, &path_disp, &text)?;
         c.verify += 1;
+        stage_ms.push(("frontend", t_verify.saturating_sub(t_fe)));
+        stage_ms.push(("verify", now_ms().saturating_sub(t_verify)));
 
         // A07: persist the binary bundle (provenance: the snapshot).
         let bundle = checked.bundle().clone();
@@ -360,20 +436,24 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
         c.hir_encode += 1;
         let snap_art = artifacts
             .iter()
-            .find(|(l, _)| l == "A00")
+            .find(|(l, id)| l == "A00" && id.as_str() != "read-only")
             .map(|(_, id)| id.clone());
-        let art = store.put_artifact(PutRequest {
-            layer: "A07",
-            key: hir_key.clone(),
-            kind: ChunkKind::Hir,
-            payload: chunk,
-            edges: snap_art
-                .map(|a| vec![(a, identity::RefKind::Provenance)])
-                .unwrap_or_default(),
-            project: None,
-        })?;
-        artifacts.push(("A07".into(), art));
-        c.store_puts += 1;
+        if mode == DriverCacheMode::ReadOnly {
+            artifacts.push(("A07".into(), "read-only".into()));
+        } else {
+            let art = store.put_artifact(PutRequest {
+                layer: "A07",
+                key: hir_key.clone(),
+                kind: ChunkKind::Hir,
+                payload: chunk,
+                edges: snap_art
+                    .map(|a| vec![(a, identity::RefKind::Provenance)])
+                    .unwrap_or_default(),
+                project: None,
+            })?;
+            artifacts.push(("A07".into(), art));
+            c.store_puts += 1;
+        }
         checked
     };
     // -- real lowering → A09 ---------------------------------------------------
@@ -383,24 +463,32 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
     // PLAN-782 gave lower_object a test-surface RuntimeInjection knob;
     // production builds pass the all-off default (ac-core contract) — the
     // probe lowers with identical semantics to the pre-782 2-arg form.
+    let t_lower = now_ms();
     let obj_bytes = native::lower_object(&checked, &sel, &native::RuntimeInjection::default())
         .map_err(|ds| DriverError::Backend(render_diags(&ds, &path_disp, "")))?;
     c.lower += 1;
-    let obj_art = store.put_artifact(PutRequest {
-        layer: "A09",
-        key: obj_key.clone(),
-        kind: ChunkKind::Object,
-        payload: obj_bytes.clone(),
-        // Provenance only: the object stays linkable when the HIR is gone.
-        edges: artifacts
-            .iter()
-            .find(|(l, _)| l == "A07")
-            .map(|(_, id)| vec![(id.clone(), identity::RefKind::Provenance)])
-            .unwrap_or_default(),
-        project: None,
-    })?;
-    artifacts.push(("A09".into(), obj_art.clone()));
-    c.store_puts += 1;
+    stage_ms.push(("lower", now_ms().saturating_sub(t_lower)));
+    let obj_art = if mode == DriverCacheMode::ReadOnly {
+        artifacts.push(("A09".into(), "read-only".into()));
+        "read-only".to_string()
+    } else {
+        let art = store.put_artifact(PutRequest {
+            layer: "A09",
+            key: obj_key.clone(),
+            kind: ChunkKind::Object,
+            payload: obj_bytes.clone(),
+            // Provenance only: the object stays linkable when the HIR is gone.
+            edges: artifacts
+                .iter()
+                .find(|(l, id)| l == "A07" && id.as_str() != "read-only")
+                .map(|(_, id)| vec![(id.clone(), identity::RefKind::Provenance)])
+                .unwrap_or_default(),
+            project: None,
+        })?;
+        artifacts.push(("A09".into(), art.clone()));
+        c.store_puts += 1;
+        art
+    };
     hits.object = "lowered";
 
     // -- link + publish + run ---------------------------------------------------
@@ -423,24 +511,34 @@ pub fn vertical(store: &ManagedStore, cfg: &VerticalCfg) -> Result<VerticalOutco
     let mpayload =
         serde_json::to_vec(&manifest).map_err(|e| DriverError::Internal(e.to_string()))?;
     let mut receipt_edges = vec![(obj_art.clone(), identity::RefKind::RequiredData)];
-    if let Some((_, hir_id)) = artifacts.iter().find(|(l, _)| l == "A07") {
+    if let Some((_, hir_id)) = artifacts
+        .iter()
+        .find(|(l, id)| l == "A07" && id.as_str() != "read-only")
+    {
         receipt_edges.push((hir_id.clone(), identity::RefKind::Provenance));
     }
-    let mart = store.put_artifact(PutRequest {
-        layer: "A10",
-        key: link_key(&obj_key, &cfg.toolchain_fp),
-        kind: ChunkKind::ObjectManifest,
-        payload: mpayload,
-        edges: receipt_edges,
-        project: None,
-    })?;
-    artifacts.push(("A10".into(), mart));
-    c.store_puts += 1;
+    if mode == DriverCacheMode::ReadOnly {
+        artifacts.push(("A10".into(), "read-only".into()));
+    } else {
+        let mart = store.put_artifact(PutRequest {
+            layer: "A10",
+            key: link_key(&obj_key, &cfg.toolchain_fp),
+            kind: ChunkKind::ObjectManifest,
+            payload: mpayload,
+            edges: receipt_edges,
+            project: None,
+        })?;
+        artifacts.push(("A10".into(), mart));
+        c.store_puts += 1;
+    }
 
-    set_current_roots(store, &cfg.project, &artifacts)?;
-    Ok(finish(
-        cfg, c, hits, artifacts, &exe, &snapshot, link_ms, t0,
-    ))
+    if mode != DriverCacheMode::ReadOnly {
+        set_current_roots(store, &cfg.project, &artifacts)?;
+    }
+    stage_ms.push(("link", link_ms));
+    let outcome = finish(cfg, c, hits, artifacts, &exe, &snapshot, link_ms, t0);
+    stage_ms.push(("total", outcome.total_ms));
+    Ok(ObservedVertical { outcome, stage_ms })
 }
 
 /// Real verification in the bundle's OWN domain — the only door to a
@@ -586,11 +684,25 @@ pub fn vertical_and_run(
     store: &ManagedStore,
     cfg: &VerticalCfg,
 ) -> Result<VerticalOutcome, DriverError> {
-    let mut out = vertical(store, cfg)?;
-    let exe = PathBuf::from(&out.exe);
-    let (code, stdout, stderr) = run_and_record(&exe, &mut out.counters)?;
-    out.exit_code = code;
-    out.stdout = stdout;
-    out.stderr = stderr;
-    Ok(out)
+    vertical_and_run_observed(store, cfg, DriverCacheMode::Reuse).map(|o| o.outcome)
+}
+
+/// Cache-mode + trace surface over vertical_and_run (PLAN-788 T-05); the
+/// run span is appended to the stage trace.
+pub fn vertical_and_run_observed(
+    store: &ManagedStore,
+    cfg: &VerticalCfg,
+    mode: DriverCacheMode,
+) -> Result<ObservedVertical, DriverError> {
+    let t_run = now_ms();
+    let mut observed = vertical_inner(store, cfg, mode)?;
+    let exe = PathBuf::from(&observed.outcome.exe);
+    let (code, stdout, stderr) = run_and_record(&exe, &mut observed.outcome.counters)?;
+    observed.outcome.exit_code = code;
+    observed.outcome.stdout = stdout;
+    observed.outcome.stderr = stderr;
+    observed
+        .stage_ms
+        .push(("run", now_ms().saturating_sub(t_run)));
+    Ok(observed)
 }

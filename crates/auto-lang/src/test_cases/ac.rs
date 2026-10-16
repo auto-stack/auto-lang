@@ -173,6 +173,7 @@ pub fn run_check(
     oracle: &ResolvedOracle,
     _project_dir: &Path,
     artifact_dir: &Path,
+    run_dir: &Path,
 ) -> Result<Verdict, String> {
     let started = Instant::now();
     let input_bytes = case
@@ -203,7 +204,7 @@ pub fn run_check(
     let input_sha = hex(&sha256(&input_bytes));
     let request_hash = hex(&sha256(
         format!(
-            "acworker/1|{}|{}|{}|{}|{}|{}|{}|{}",
+            "acworker/1|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             check.action.as_str(),
             input_sha,
             check.options.effective_profile().as_str(),
@@ -211,7 +212,9 @@ pub fn run_check(
             build_ms,
             run_ms,
             total_ms,
-            scratch.display()
+            scratch.display(),
+            check.options.effective_cache().as_str(),
+            run_dir.join("cache-store").display().to_string()
         )
         .as_bytes(),
     ));
@@ -233,6 +236,17 @@ pub fn run_check(
             "run_ms": budget.run_ms,
             "total_ms": budget.total_ms,
         },
+        // Cache participation (T-05): one store per run by default
+        // (cross-check reuse inside the run); AC_CASE_STORE pins a
+        // persistent root for the restart/disk-hot scenarios. The cache
+        // mode travels from the check's own options; a hir.atom golden
+        // asks the worker for the canonical bytes.
+        "store_root": std::env::var("AC_CASE_STORE").ok().unwrap_or_else(|| {
+            run_dir.join("cache-store").display().to_string()
+        }),
+        "cache": check.options.effective_cache().as_str(),
+        "project": "ac-case",
+        "include_hir": !oracle.artifacts.is_empty(),
         "scratch": scratch.display().to_string(),
     });
     let ipc = WorkerIpc {
@@ -470,6 +484,22 @@ pub fn run_check(
         }
     }
     native.cache_mode = Some(check.options.effective_cache().as_str().to_string());
+    if let Some(cache) = ok.get("cache") {
+        native.cache_hits = cache["hits"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|h| Some((h[0].as_str()?.to_string(), h[1].as_str()?.to_string())))
+            .collect();
+        native.counters = cache["counters"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|c| Some((c[0].as_str()?.to_string(), c[1].as_u64()? as u32)))
+            .collect();
+    }
 
     // Declared perf assertion (absent = record-only; the reference recipe
     // owns the P95 gates — ordinary cases never carry wall clocks).

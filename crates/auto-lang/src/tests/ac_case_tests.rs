@@ -340,3 +340,61 @@ fn _keep_v2_suite() -> String {
         "{ id: \"x\", adapter: \"ac\", action: \"check\", expect: { completion: \"success\" } }",
     )
 }
+
+#[test]
+fn native_cache_runner_reuses_store_within_run() {
+    let root = temp_root("cache-run");
+    write(
+        &root,
+        "t04ac.suite.ad",
+        &format!(
+            "```test-suite
+suite {{ schema: \"autolang.suite/2\", id: \"t04ac\", include: [\"two.case.ad\"] }}
+```
+"
+        ),
+    );
+    // Two independent ac/run checks over the SAME source: the per-run
+    // unified store makes the second an object hit (frontend skipped,
+    // link+run real) — the native records must show both truths.
+    write(&root, "two.case.ad", &format!(
+        "```test-case
+case {{ schema: \"autolang.case/2\", id: \"ac.two\", source: {{ text: \"{P04}\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"program\" }}, checks: [ {{ id: \"r1\", adapter: \"ac\", action: \"run\", expect: {{ completion: \"success\", exit: 3 }} }}, {{ id: \"r2\", adapter: \"ac\", action: \"run\", expect: {{ completion: \"success\", exit: 3 }} }} ] }}
+```
+"
+    ));
+    let report = run(&root, "out");
+    let rows: Vec<_> = report
+        .results
+        .iter()
+        .map(|r| (r.check_id.clone(), r.status, r.detail.clone()))
+        .collect();
+    assert_eq!(status_of(&report, "r1"), Status::Pass, "{:?}", rows);
+    assert_eq!(status_of(&report, "r2"), Status::Pass, "{:?}", rows);
+    let object_hit = |check: &str| {
+        report
+            .results
+            .iter()
+            .find(|r| r.check_id == check)
+            .unwrap()
+            .native
+            .as_ref()
+            .unwrap()
+            .cache_hits
+            .iter()
+            .find(|(k, _)| k == "object")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default()
+    };
+    assert_eq!(object_hit("r1"), "lowered", "first check computes");
+    assert_eq!(
+        object_hit("r2"),
+        "hit",
+        "second check consumes the store hit"
+    );
+    // PASS is never cached: both checks re-observed the exit oracle.
+    for check in ["r1", "r2"] {
+        let row = report.results.iter().find(|r| r.check_id == check).unwrap();
+        assert_eq!(row.native.as_ref().unwrap().exit_code, Some(3));
+    }
+}

@@ -51,6 +51,10 @@ fn req(kind: &str, input: InputSpec, run_ms: u64) -> WorkerRequest {
             total_ms: 70_000,
         },
         scratch: s,
+        store_root: None,
+        cache: None,
+        project: None,
+        include_hir: None,
     }
 }
 

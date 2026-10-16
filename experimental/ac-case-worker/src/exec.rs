@@ -12,8 +12,9 @@
 //! with the protocol stays stable.
 
 use crate::protocol::{
-    ArtifactOut, DiagOut, InputSpec, OkOut, ReqBudget, RunOut, SpanOut, ToolchainOut, WorkerError,
-    WorkerRequest, MAX_RUN_MS, MAX_SINGLE_ARTIFACT_BYTES, MAX_STDERR_BYTES, MAX_STDOUT_BYTES,
+    ArtifactOut, CacheOut, DiagOut, InputSpec, OkOut, ReqBudget, RunOut, SpanOut, ToolchainOut,
+    WorkerError, WorkerRequest, MAX_RUN_MS, MAX_SINGLE_ARTIFACT_BYTES, MAX_STDERR_BYTES,
+    MAX_STDOUT_BYTES,
 };
 use auto_ac_prototype::atom_text::Diagnostic;
 use auto_ac_prototype::source::adapter::{
@@ -41,6 +42,19 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
         _ => SourceProfile::Core,
     };
 
+    // Cache participation (T-05): auto-source build/run requests route
+    // through the 783 driver (single pipeline, real hits/misses); the run
+    // leg stays HERE so per-request budgets, stream caps and raw bytes hold
+    // on every path. Raw-HIR inputs and `check` (whose observation IS the
+    // frontend) keep the direct path — recorded as cache mode "none".
+    let cache_mode = req.cache.as_deref().unwrap_or("reuse");
+    let via_driver = req.store_root.is_some()
+        && matches!(req.kind.as_str(), "build" | "run")
+        && matches!(req.input, InputSpec::Source { .. });
+    if via_driver {
+        return exec_via_driver(req, profile, cache_mode);
+    }
+
     // ---- frontend + verify (check/build/run all need a Checked module) --
     let (checked, hir_bytes, failure_diags) = frontend(req, profile, &mut trace)?;
     let checked = match checked {
@@ -55,6 +69,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 run: None,
                 trace,
                 toolchain: toolchain_identity(),
+                cache: None,
             });
         }
     };
@@ -78,6 +93,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             run: None,
             trace,
             toolchain: toolchain_identity(),
+            cache: None,
         });
     }
     check_total(&started, req)?;
@@ -98,6 +114,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 run: None,
                 trace,
                 toolchain: toolchain_identity(),
+                cache: None,
             });
         }
     };
@@ -116,6 +133,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 run: None,
                 trace,
                 toolchain: toolchain_identity(),
+                cache: None,
             });
         }
     };
@@ -173,6 +191,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             run: None,
             trace,
             toolchain,
+            cache: None,
         });
     }
 
@@ -229,6 +248,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
         }),
         trace,
         toolchain,
+        cache: None,
     })
 }
 
@@ -351,6 +371,313 @@ fn select_entry(
                 _ => Err(ds),
             }
         }
+    }
+}
+
+/// Driver-path execution (T-05): the 783 unified store supplies real
+/// hit/miss/resume semantics for auto-source build/run; canonical-HIR
+/// observation and the contained raw-bytes run stay worker-owned.
+fn exec_via_driver(
+    req: &WorkerRequest,
+    profile: SourceProfile,
+    cache_mode: &str,
+) -> Result<OkOut, WorkerError> {
+    use ac_artifact_probe::driver::{vertical_observed, DriverCacheMode, VerticalCfg};
+    let started = Instant::now();
+    let mode = match cache_mode {
+        "fresh" => DriverCacheMode::Fresh,
+        "read-only" => DriverCacheMode::ReadOnly,
+        _ => DriverCacheMode::Reuse,
+    };
+    let store_root = req.store_root.as_deref().unwrap();
+    let store = if mode == DriverCacheMode::ReadOnly {
+        ac_artifact_probe::store::ManagedStore::open_existing(std::path::Path::new(store_root))
+            .map_err(|e| {
+                infra(
+                    "store.missing-root",
+                    format!("read-only store {:?}: {}", store_root, e),
+                )
+            })?
+    } else {
+        ac_artifact_probe::store::ManagedStore::open(std::path::Path::new(store_root))
+            .map_err(|e| infra("store.open", format!("{}: {}", store_root, e)))?
+    };
+
+    let scratch = std::path::Path::new(&req.scratch);
+    let input_path = scratch.join("input.at");
+    let input_bytes = match &req.input {
+        InputSpec::Source { source_b64 } => {
+            b64d(source_b64).map_err(|e| infra("request.input", format!("base64: {}", e)))?
+        }
+        InputSpec::Hir { .. } => unreachable!("caller gates the driver path to source inputs"),
+    };
+    std::fs::write(&input_path, &input_bytes)
+        .map_err(|e| infra("request.scratch", format!("stage input: {}", e)))?;
+
+    // REAL toolchain fingerprint: the actual linker file hash plus the
+    // compiler version — never a caller-supplied constant (§5.4).
+    let lld = link::find_rust_lld().map_err(|d| infra("tool.missing", d.message))?;
+    let sdk = link::find_sdk_um_dir().map_err(|d| infra("tool.missing", d.message))?;
+    let lld_bytes =
+        std::fs::read(&lld).map_err(|e| infra("tool.missing", format!("read lld: {}", e)))?;
+    let toolchain_fp = format!(
+        "lld-sha256:{}+ac-core:{}+worker:{}",
+        sha256_hex(&lld_bytes),
+        auto_ac_prototype::VERSION,
+        env!("CARGO_PKG_VERSION")
+    );
+
+    let cfg = VerticalCfg {
+        project: req.project.clone().unwrap_or_else(|| "ac-case".into()),
+        source: input_path.clone(),
+        snapshot_override: None,
+        logical_name: "main".into(),
+        profile,
+        target: "x86_64-pc-windows-msvc".to_string(),
+        entry: req.entry.clone(),
+        toolchain_fp,
+        work_dir: scratch.to_path_buf(),
+    };
+    // Build+link through the driver under the cache mode; the run leg (for
+    // kind=run) stays HERE so budgets, caps and raw bytes hold everywhere.
+    let observed = match vertical_observed(&store, &cfg, mode) {
+        Ok(o) => o,
+        Err(
+            e @ (ac_artifact_probe::driver::DriverError::Frontend(_)
+            | ac_artifact_probe::driver::DriverError::Verify(_)),
+        ) => {
+            // Language failure: replay through the TYPED frontend — the
+            // driver's rendered string is display-only; failures are never
+            // cached anywhere, so the replay IS the observation.
+            return typed_replay(profile, &input_bytes, &lld, &lld_bytes, &sdk, &e);
+        }
+        Err(other) => return Err(infra("driver.failed", format!("{:?}", other))),
+    };
+    let out = observed.outcome;
+
+    let mut trace: Vec<SpanOut> = observed
+        .stage_ms
+        .iter()
+        .map(|(s, ms)| SpanOut {
+            stage: s.to_string(),
+            wall_ms: *ms,
+        })
+        .collect();
+
+    // Canonical HIR on request (parent declared a hir.atom golden): the
+    // driver's binary bundle is NOT the canonical atom text — run the real
+    // frontend for it (observation-only; nothing published).
+    let hir_bytes = if req.include_hir.unwrap_or(false) {
+        let t = Instant::now();
+        let src_text = String::from_utf8(input_bytes.clone())
+            .map_err(|_| infra("request.input", "source must be UTF-8 text"))?;
+        let parts = compile_parts_with_observer(
+            &src_text,
+            "main",
+            &[],
+            profile,
+            &mut TracingObserver::default(),
+        )
+        .map_err(|ds| {
+            infra(
+                "driver.inconsistent",
+                format!(
+                    "driver accepted a program the typed frontend rejects: {:?}",
+                    ds.first().map(|d| d.code.clone())
+                ),
+            )
+        })?;
+        trace.push(SpanOut {
+            stage: "hir-golden".into(),
+            wall_ms: ms(t),
+        });
+        parts.atom_text.into_bytes()
+    } else {
+        Vec::new()
+    };
+
+    // Artifacts from the driver's REAL files (parent re-verifies hashes).
+    let mut artifacts = Vec::new();
+    if !hir_bytes.is_empty() {
+        let p = scratch.join("hir.atom");
+        std::fs::write(&p, &hir_bytes)
+            .map_err(|e| infra("request.scratch", format!("write hir: {}", e)))?;
+        artifacts.push(artifact("hir", "hir.atom", &p)?);
+    }
+    let obj_path = scratch.join("app.obj");
+    if obj_path.is_file() {
+        artifacts.push(artifact("obj", "app.obj", &obj_path)?);
+    }
+    let exe_path = std::path::PathBuf::from(&out.exe);
+    if exe_path.is_file() {
+        artifacts.push(artifact("exe", "app.exe", &exe_path)?);
+    }
+
+    // Run leg (worker-owned): exact budget, caps, raw bytes.
+    let mut run = None;
+    let mut counters_extra: Vec<(String, u32)> = Vec::new();
+    if req.kind == "run" {
+        let t = Instant::now();
+        let run_budget = Duration::from_millis(req.budget.run_ms.min(MAX_RUN_MS));
+        let mut cmd = std::process::Command::new(&exe_path);
+        let captured = link::run_deadlined_captured(
+            &mut cmd,
+            run_budget,
+            link::CaptureCaps {
+                stdout_max: MAX_STDOUT_BYTES,
+                stderr_max: MAX_STDERR_BYTES,
+            },
+        )
+        .map_err(|e| match e {
+            link::SubprocError::Deadline | link::SubprocError::DeadlineCollect => infra(
+                "budget.run",
+                format!(
+                    "run exceeded its {}ms budget; the tree was terminated",
+                    run_budget.as_millis()
+                ),
+            ),
+            link::SubprocError::OutputCapExceeded {
+                stream,
+                observed: obs,
+                cap,
+            } => infra(
+                "output.cap",
+                format!(
+                    "{} exceeded its capture cap ({} > {} bytes); the tree was terminated",
+                    stream, obs, cap
+                ),
+            ),
+            other => infra("run.failed", format!("{:?}", other)),
+        })?;
+        trace.push(SpanOut {
+            stage: "run".into(),
+            wall_ms: ms(t),
+        });
+        counters_extra.push(("run".into(), 1));
+        run = Some(RunOut {
+            exit_code: captured.exit_code,
+            stdout_b64: b64(&captured.stdout),
+            stderr_b64: b64(&captured.stderr),
+        });
+    }
+    trace.push(SpanOut {
+        stage: "done".into(),
+        wall_ms: ms(started),
+    });
+
+    let mut cache = cache_out(cache_mode, &out);
+    // Worker-owned legs override the driver's counter (the driver never
+    // ran it): merge by key, never duplicate.
+    for (k, v) in counters_extra {
+        if let Some(slot) = cache.counters.iter_mut().find(|(n, _)| *n == k) {
+            slot.1 = v;
+        } else {
+            cache.counters.push((k, v));
+        }
+    }
+
+    Ok(OkOut {
+        diagnostics: vec![],
+        hir_b64: (!hir_bytes.is_empty()).then(|| b64(&hir_bytes)),
+        artifacts,
+        run,
+        trace,
+        toolchain: driver_toolchain(&lld, &lld_bytes, &sdk),
+        cache: Some(cache),
+    })
+}
+
+/// Typed replay of a driver-reported language failure: the real frontend
+/// and verifier produce the stage/code/span observation the parent's error
+/// oracle matches against (never the driver's rendered string).
+fn typed_replay(
+    profile: SourceProfile,
+    input_bytes: &[u8],
+    lld: &std::path::Path,
+    lld_bytes: &[u8],
+    sdk: &std::path::Path,
+    driver_error: &ac_artifact_probe::driver::DriverError,
+) -> Result<OkOut, WorkerError> {
+    let _ = driver_error;
+    let src_text = String::from_utf8(input_bytes.to_vec())
+        .map_err(|_| infra("request.input", "source must be UTF-8 text"))?;
+    let mut trace: Vec<SpanOut> = Vec::new();
+    let mut obs = TracingObserver::default();
+    match compile_parts_with_observer(&src_text, "main", &[], profile, &mut obs) {
+        Ok(parts) => {
+            let t = Instant::now();
+            match verify_of(profile, parts.bundle) {
+                Ok(_) => Err(infra(
+                    "driver.inconsistent",
+                    "driver rejected a program the typed pipeline accepts",
+                )),
+                Err(ds) => {
+                    trace.push(SpanOut {
+                        stage: "verify".into(),
+                        wall_ms: ms(t),
+                    });
+                    Ok(OkOut {
+                        diagnostics: diags_mapped(&ds, "verify"),
+                        hir_b64: None,
+                        artifacts: vec![],
+                        run: None,
+                        trace,
+                        toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                        cache: None,
+                    })
+                }
+            }
+        }
+        Err(ds) => {
+            let stage = obs.failed_stage.clone().unwrap_or_else(|| "parse".into());
+            Ok(OkOut {
+                diagnostics: diags_mapped(&ds, &stage),
+                hir_b64: None,
+                artifacts: vec![],
+                run: None,
+                trace,
+                toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                cache: None,
+            })
+        }
+    }
+}
+
+fn cache_out(mode: &str, out: &ac_artifact_probe::driver::VerticalOutcome) -> CacheOut {
+    let c = &out.counters;
+    CacheOut {
+        mode: mode.to_string(),
+        hits: vec![
+            ("summary".into(), out.hits.summary.to_string()),
+            ("hir".into(), out.hits.hir.to_string()),
+            ("object".into(), out.hits.object.to_string()),
+        ],
+        counters: vec![
+            ("parse".into(), c.parse),
+            ("resolve_typecheck".into(), c.resolve_typecheck),
+            ("bind".into(), c.bind),
+            ("verify".into(), c.verify),
+            ("hir_encode".into(), c.hir_encode),
+            ("hir_restore".into(), c.hir_restore),
+            ("lower".into(), c.lower),
+            ("link".into(), c.link),
+            ("run".into(), c.run),
+            ("store_puts".into(), c.store_puts),
+        ],
+    }
+}
+
+fn driver_toolchain(
+    lld: &std::path::Path,
+    lld_bytes: &[u8],
+    sdk: &std::path::Path,
+) -> ToolchainOut {
+    ToolchainOut {
+        lld_path: lld.display().to_string(),
+        lld_sha256: sha256_hex(lld_bytes),
+        sdk_um: sdk.display().to_string(),
+        ac_core_version: auto_ac_prototype::VERSION.to_string(),
+        worker_version: env!("CARGO_PKG_VERSION").to_string(),
     }
 }
 
