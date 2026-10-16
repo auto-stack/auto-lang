@@ -2,11 +2,11 @@
 plan_id: PLAN-798
 status: executing
 feature_name: Typed MIR 与 ABC/AV 执行合同及首个全路径探针
-plan_revision: 1
+plan_revision: 2
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
-current_step: 5
+current_step: 2
 total_steps: 10
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
@@ -68,7 +68,7 @@ Rust独立workspace、锁定依赖；复用ac-core公开API、783 `ManagedStore`
 
 拟新文件：`core/src/{contract,mir,mir_verify,abc,abc_verify,av}.rs`、`probe/src/{hir_adapter,cache,driver,native_reference,observations}.rs`及受限worker。实际名称可等价调整但保留验证边界。未来入口 `scripts/verify-ac-av-798.ps1 -Scope admission|semantics|cache|resources|turnaround|binding|autodown|acceptance|closeout` 由T-01/T-08创建；下文新命令/测试族均未存在、未执行。
 
-拟议探针策略（非用户给定值、非语言永久语法上限）：单source/HIR/ABC输入≤4MiB，单次codec页≤256KiB；所有类型/常量/函数/块/局部槽/指令表条目合计≤65536，按实际分配前检查；旧source/HIR文本前端探针递归预算为128层（含括号/块及连续表达式构造路径，按现有token流作有界前置准入，不能只数花括号），超出在旧递归parser前报resource；不改变旧独立CLI支持面。MIR/ABC验证每请求≤200万工作步、wall≤5s；AV每执行≤100万指令步、≤1024帧、活槽数据≤8MiB、wall≤2s，取消每≤1024指令检查。大于表预算是resource拒绝，不是非法语法/unknown opcode。条目计数和指令fuel定义在T-01钉死，不能通过不计验证/分配规避。
+拟议探针策略（非用户给定值、非语言永久语法上限）：单source/HIR/ABC输入≤4MiB，单次codec页≤256KiB；条目预算为**每持久/准入工件的分配上界**（r2 修订，替代 r1 的"全部表合计"字面读法）：模块级表（类型+常量+导入+函数计数）≤65536 且**每个函数单元**（槽+块+指令）≤65536，均按实际分配前检查；整模块/闭包**组合上界**由请求级预算约束——单输入≤4MiB、MIR/ABC验证每请求≤200万工作步且wall≤5s。修订动因：r1 冻结负载（256KiB/100 函数，§5.5 同为冻结项不得缩小）整模块展开 72k 条目，与"合计≤65536"不可同时成立；按工件族划分后单表分配守卫不变，组合规模仍有显式上界（步数/墙钟/输入），不构成无界放宽。旧source/HIR文本前端探针递归预算为128层（含括号/块及连续表达式构造路径，按现有token流作有界前置准入，不能只数花括号），超出在旧递归parser前报resource；不改变旧独立CLI支持面。MIR/ABC验证每请求≤200万工作步、wall≤5s；AV每执行≤100万指令步、≤1024帧、活槽数据≤8MiB、wall≤2s，取消每≤1024指令检查。大于表预算是resource拒绝，不是非法语法/unknown opcode。条目计数和指令fuel定义在T-01钉死，不能通过不计验证/分配规避。
 
 总受管热点/暂存/VM工作集≤32MiB（代码/数据热点8MiB、解码/索引/编译暂存16MiB、执行帧/槽8MiB），worker private-bytes相对空载增量目标≤128MiB；外部native构建/工具进程单报，不冒称受管预算覆盖其内存。请求/响应元数据各≤4MiB、stdout/stderr各≤1MiB、测试trace≤64KiB；溢出报resource不截断成成功。
 
@@ -130,7 +130,7 @@ native对拍沿旧HIR→Cranelift，不由新MIR/ABC生成expected；观察真�
 
 key至少区分owner/profile、当前body和签名、实际callee签名/类型/常量、算法/Schema、MIR/ABC/AV语义版本、能力/资源影响语义的配置；source映射分轨。纯portable MIR/ABC不因无关native CPU改变而全失效；native参考对象key另含target/CPU/ABI/backend/flags。producer版本变化失效适用层。能力变化至少重走装载准入，不从持久“已授权”字段继承权限。
 
-测试fresh、同进程hot、重启磁盘热、跨工程相同逻辑输入共享、单body/签名/依赖/profile/语义版本变更。正常cache hit必须仍运行AV并重新比较oracle，分别计mir_build/abc_emit/verify/load/av_execute；禁调build/emit反控证明跳过生产，不缓存PASS。CTE结果缓存留后续计划，不能将av_execute=0当本执行测试命中目标。
+测试fresh、同进程hot、重启磁盘热、跨工程相同逻辑输入共享、单body/签名/依赖/profile/语义版本变更。正常cache hit必须仍运行AV并重新比较oracle，计数语义（r2 收紧）：`mir_lower_modules`=整模块 lowering 的**真实调用次数**（任一 miss 触发即为 1，不按单元数冒领）；`mir_units_persisted`/`mir_units_restored`=MIR 单元真实持久化/恢复重验（restore 须重入 verify_mir，不得以 ABC 恢复或共用 Rust 结构冒充）；`abc_units_emitted`=单元 emit 次数；`closure_encodes`=闭包装配后的整闭包 codec 次数；`av_execute`=执行次数。命中声明须配**禁调反控**（producer 未被调用才是 0）；分别计mir_build/abc_emit/verify/load/av_execute 的 r1 表述以上述计数为准。CTE结果缓存留后续计划，不能将av_execute=0当本执行测试命中目标。
 
 数据强引用是执行所需类型/常量/函数单元和模块manifest；失效/来源ref不永久pin旧HIR/AST。实际执行中lease保活数据，不将活帧存盘。良好frame替换错地址/错owner/key、非法内层、缺块必须在真实消费入口拒绝或受控miss重建；没有再生输入报unavailable，不读Nil/0或旧PASS。冲突/取消/写失败保留旧已提交结果并释放暂存/lease。
 
@@ -138,13 +138,13 @@ key至少区分owner/profile、当前body和签名、实际callee签名/类型/�
 
 从T-01 trace请求、已有前端/verify、依赖验证、cache读取/解码、MIR lowering/verify、ABC emit/verify/load、AV执行/结果比较和发布观察；包含IPC/排队/IO/取消，嵌套span不能重复相加。native编译/链接/运行单独trace用于对拍，不混入AV执行微基准后称完整native周转。
 
-T-05使用至少32MiB真实MIR/ABC产物（多个各≤4MiB模块，流式生成）、随机只读一个函数/模块和512次局部修订+GC，验证32MiB受管/OS增量观察及783物理水位收敛（无live超额时继承64/48MiB策略）；强引用及活lease保活，用户哨兵不变。新建小scratch不扫用户cache。
+T-05使用至少32MiB真实MIR/ABC产物（多个各≤4MiB模块，流式生成）、随机只读一个函数/模块和512次局部修订+GC（r2 收紧：每轮**真实编辑输入**——替换目标必须在当轮源码中命中且输入 hash 变化，逐轮断言新独立 expected 与实际重编单元数；不得出现零变更循环）；GC/水位断言作用于**承载冷产物的同一store**；32MiB**受管分区**预算（热点8/暂存16/执行8）与 worker private-bytes 相对空载增量≤128MiB 须有实际计量（不得以持久文件大小冒充运行工作集），783物理水位收敛（无live超额时继承64/48MiB策略）在压力 store 上取回收前后证据；强引用及活lease保活，用户哨兵不变。新建小scratch不扫用户cache。
 
 新MIR/ABC的4096块直链及混合CFG在预算内遍历/编码/验证/释放；旧source/HIR路径的连续/交错控制/表达式嵌套在128预算边界两侧分别完成或前置resource拒绝，另用4096层输入证明拒绝发生在旧递归parser之前。T-01复用`source::lexer::tokenize`及`atom_text::tokenize`核其真实递归风险和前门覆盖，不另造lexer/parser；若无法安全覆盖所有表达式递归路径则该可行性门不通过，回规划而非靠扩大线程栈或崩溃转译。验证坏ref/表达式引用环反控，CFG合法循环不能一概当非法cycle。成功或明确resource拒绝均依先冻结预算决定，不能把宿主stack overflow算资源状态。1024帧guest递归预算与HIR深度不同，执行链在边界两侧分别证明完成或resource；死循环靠真实fuel/取消终止，trace/IPC过量同样有边界控制。
 
-T-01固定参考Windows机器/工具、256KiB core/scalar输入（由100个有意义函数body组成，非纯空白填充）、局部编辑位置及独立expected；key规模/负载不能随结果缩小。六场景各≥30样本：fresh、同进程hot、restart/cross-project磁盘热、单body编辑、callee签名变更（合法更新或正确诊断）、GC并发。报告P50/P95/P99、真实重算/命中、I/O/内存、全部失败样本。
+T-01固定参考Windows机器/工具、256KiB core/scalar输入（由100个有意义函数body组成，非纯空白填充）、局部编辑位置及独立expected；key规模/负载不能随结果缩小。六场景各≥30样本（r2 语义收紧，防"标签与条件不符"）：**fresh**=每样本独立冷store（真实冷态，不得共用已热根）；**同进程hot**=同进程同store重复请求；**restart磁盘热**=每样本**新进程**（子进程入口）冷内存热磁盘，跨工程样本交替项目标签；**单body编辑**=每样本产生**当轮新修订**（逐样本不同的编辑内容与随之变化的独立expected），不得重复同一源码；**callee签名变更**=校验**目标诊断 stage+code**（frontend 绑定诊断），不接受任意 diag/resource/infra 错误；**GC并发**=GC与请求**真实并发**（独立GC进程/线程与请求重叠），不得串行完成后计量。每样本绑定输入 hash 与独立 expected，值/诊断全量校验。报告P50/P95/P99、真实重算/命中、I/O/内存、全部失败样本（不得删失败样本）。
 
-**硬门**：warm session的单函数body编辑，或造成调用签名冲突的编辑，从实际请求入队至当前正确AV结果/诊断发布P95<1000ms；含当次必要前端/verify/依赖/cache/MIR/ABC/AV及比较。前端可整模块重查，但如实计量，不谎称前端细粒度增量已完成。native参考冷构建、全冷/广泛失效、超过预算的压力另报；不可扣实际IPC/等待，不能只加阶段P95。T-07正式AutoDown接入后按同负载重测；不能以Rust定向结果代替runner端到端。
+**硬门**（r2 强制接线语义）：warm session的单函数body编辑，或造成调用签名冲突的编辑，从实际请求入队至当前正确AV结果/诊断发布P95<1000ms；**正式入口必须执行该门**——worker 以 gate 阈值断言两路径 P95 与全部样本成功并以非零退出码传递失败，`--gate-ms 0` 故障注入必须失败（反控）；脚本透传退出码并生成真实汇总结构（非 raw 复写）；含当次必要前端/verify/依赖/cache/MIR/ABC/AV及比较。前端可整模块重查，但如实计量，不谎称前端细粒度增量已完成。native参考冷构建、全冷/广泛失效、超过预算的压力另报；不可扣实际IPC/等待，不能只加阶段P95。T-07正式AutoDown接入后按同负载重测；不能以Rust定向结果代替runner端到端。
 
 ### 5.6 796/797绑定与AutoDown
 
@@ -213,11 +213,11 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 
 | Task | owner_stage | 前置 | 文件/产物与可验成果 | 验证及AC |
 |---|---|---|---|---|
-| [x] T-01 | work | 用户实施指令 | 新workspace/lock、contract-decision.md、最小两函数vertical/MIR/ABC/Rust AV/store恢复、AutoDown源/oracle和计量首例；冻结§3/5.1策略 | [✅ 已完成] ce860fb24/fee55cd2d：`experimental/ac-av-probe/`（core+probe 独立 workspace）+ `contract-decision.md`（冻结 Schema/wire/预算/carrier/负载，含 r1.1 每表族预算修订）；vertical 三测绿（AV=独立期望、命中跳产仍执行、真实 PE 对拍）；store 首写+新进程 worker 恢复重验执行（`av_cache_worker_restore_new_process`）；AutoDown 源/oracle `test/cases/ac-av/`（5 用例）+ Rust 定向绑定 5 测绿；AC-01 |
+[复审R1重开→r2 增补：按 §3 r2 预算合同重写 contract-decision（模块表+每函数表+组合上界及 V-09 三反控）；MIR 单元真实持久化/恢复重验接线（F06）；Cargo.lock 强制入库（-f 越过根 .gitignore）、清零新增警告、两 package fmt 过检（F07）。历史收据] ce860fb24/fee55cd2d：`experimental/ac-av-probe/`（core+probe 独立 workspace）+ `contract-decision.md`（冻结 Schema/wire/预算/carrier/负载，含 r1.1 每表族预算修订）；vertical 三测绿（AV=独立期望、命中跳产仍执行、真实 PE 对拍）；store 首写+新进程 worker 恢复重验执行（`av_cache_worker_restore_new_process`）；AutoDown 源/oracle `test/cases/ac-av/`（5 用例）+ Rust 定向绑定 5 测绿；AC-01 |
 | [x] T-02 | work | T-01 | core/mir与mir_verify、HIR adapter、scalar控制/调用/来源，补V-02–04 | [✅ 已完成] `core/src/{mir,mir_verify}.rs`+`probe/src/hir_adapter.rs`；mir_admission_/mir_lower_ 10 测绿：变异矩阵（悬空目标/越界槽/非法分支类型+哈希证明实际改动）、半初始化合流拒绝、合法循环/合流不误杀、landed p-binop-args/p-gcd-euclid 降级验证、迭代语句栈（200 连续 if）、text 域 unsupported 拒绝；AC-02 |
 | [x] T-03 | work | T-02 | ABC codec/verifier/LoadedModule、AV显式帧/槽及全有限profile、预算/取消/测试能力 | [✅ 已完成] `core/src/{abc,abc_verify,av}.rs`；abc_codec_/abc_admission_/av_semantics_ 13+1 测绿：字节稳定往返/截断/尾随/校验和/未知版本-opcode（手工字节流）/bool 合法性；仅 verify_abc 产生可执行句柄、篡改内层必拒；trap 全矩阵（MAX+1/MIN负/除0/MIN÷-1/MIN%-1）结构化分态；未走 RHS trap 潜伏；trace 顺序+能力门（无能力执行前拒绝）；命名实参源序求值；fib(15) 燃料递归；燃料/取消/1024帧两侧；wire 携带 capabilities；AC-03/04 |
-| [x] T-04 | work | T-03 | probe/cache、函数单元/依赖manifest/恢复准入及root/lease，错身份/版本/并发反控 | [✅ 已完成] `probe/src/{cache,worker_restore}.rs`+bin；av_cache_ 7 测绿：fresh→hot→restart/跨工程共享（命中 mir_build=0/abc_emit=0 且 av_execute>0 每次重比较）；body-only 单单元重键+caller 复用、签名变更全 caller 重键+正确 frontend 诊断；错 producer/schema/stage 信封受控拒绝（非 miss 非覆盖）；坏帧坏内层拒绝；同键异内容 Conflict 且旧提交原样存活；lease 保活过 GC、stale sweep；跨进程 worker 恢复（manifest→artifact id→重验→执行，值一致）；AC-05 |
-| [x] T-05 | work | T-04 | 规模/预算/GC/深链、六场景trace与周转脚本/raw报告 | [✅ 已完成] av_resources_/av_turnaround_ 6+6 测绿：4096 直链+菱形+合法循环预算内验证（修 block_base O(n²)：31k 块 verify 419ms→11ms release）；超表预算=resource 分类；128 嵌套两侧+4096 前拒（door 在旧递归 parser 前、resource 态）；atom `[` 深度前拒；33.5MiB 冷 ABC 产物（64 模块分页合规）随机只读重验+512 修订+GC 水位有界；六场景×30 release 样本+**硬门 PASS**（body-edit P95 829.4ms/签名冲突 41.4ms/零失败，raw 180 行可复验 `docs/reports/plan798/turnaround-{raw.jsonl,summary.json,md}`+`scripts/verify-ac-av-798.ps1`）；AC-06（正式 runner 重测留 T-07） |
+[复审R1重开→r2 增补：计数语义按 §5.4 r2（mir_lower_modules 真实调用/单元持久化/恢复/闭包编码分离，命中配禁调反控）；MIR 层存取接线并入本任务。历史收据] `probe/src/{cache,worker_restore}.rs`+bin；av_cache_ 7 测绿：fresh→hot→restart/跨工程共享（命中 mir_build=0/abc_emit=0 且 av_execute>0 每次重比较）；body-only 单单元重键+caller 复用、签名变更全 caller 重键+正确 frontend 诊断；错 producer/schema/stage 信封受控拒绝（非 miss 非覆盖）；坏帧坏内层拒绝；同键异内容 Conflict 且旧提交原样存活；lease 保活过 GC、stale sweep；跨进程 worker 恢复（manifest→artifact id→重验→执行，值一致）；AC-05 |
+[复审R1重开→r2 增补：六场景按 §5.5 r2 语义重做（每样本冷store/新进程/当轮新修订/目标诊断/真并发GC）；churn 按 r2 真实逐轮编辑+同store水位+受管/私有内存计量；硬门强制接线+gate-ms 0 反控+真实汇总。历史收据] av_resources_/av_turnaround_ 6+6 测绿：4096 直链+菱形+合法循环预算内验证（修 block_base O(n²)：31k 块 verify 419ms→11ms release）；超表预算=resource 分类；128 嵌套两侧+4096 前拒（door 在旧递归 parser 前、resource 态）；atom `[` 深度前拒；33.5MiB 冷 ABC 产物（64 模块分页合规）随机只读重验+512 修订+GC 水位有界；六场景×30 release 样本+**硬门 PASS**（body-edit P95 829.4ms/签名冲突 41.4ms/零失败，raw 180 行可复验 `docs/reports/plan798/turnaround-{raw.jsonl,summary.json,md}`+`scripts/verify-ac-av-798.ps1`）；AC-06（正式 runner 重测留 T-07） |
 | [ ] T-06 | work | T-05、D-796 | 绑定合入语义ref/codec，退临时语义快照，冻结消费hash | av_binding_及完整受影响重验，V-13；AC-08 |
 | [ ] T-07 | work | T-06、D-788 | 基于796已合入probe/run仅追加本recipe/worker/suite，正式AutoDown语义/cache/资源/周转与负控/兼容 | auto-case run、脚本autodown/binding，V-11/12；AC-06/07 |
 | [ ] T-08 | work | T-07 | verify脚本全Scope、docs/reports/plan798、SD提案/coverage/并行审计，native产物/代际合同准入 | acceptance V-01–13/依赖树/格式警告；AC-01–08；execution_done=8/10 |
@@ -235,6 +235,10 @@ T-01–05不等796/797/788全部合入；T-06/07是真依赖，不搬其在途�
 执行摘要（本次 work 会话）：新独立 workspace `experimental/ac-av-probe`（auto-av-core 纯 std：MIR 模型/验证器、ABC wire codec/admission、显式帧栈 AV；auto-av-probe：HIR 适配器、函数单元缓存（span 分轨 sidecar）、driver+observations、native 参考、受限 worker、冻结负载与六场景 bench）；AutoDown 源/oracle `test/cases/ac-av/`（正式执行 pending T-07，Rust 定向同 oracle 已覆盖）；`scripts/verify-ac-av-798.ps1` 全 Scope（binding/autodown 显式 fail-closed 记录阻塞）。根 workspace 成员/旧产品 manifest 零改动；未触碰 783/787/796/797 写面。定向验证门：仅本 workspace `cargo test`（49 项），未触发根仓整档 t/tv/tt/tb/tu/taa（merge-owned pending）。
 
 起草核查与来源见[planning-preflight.md](attachments/798/planning-preflight.md)、[planning-inputs.tsv](attachments/798/planning-inputs.tsv)。源含未提交设计时按内容指纹明确，不以HEAD冒充其来源。取号及文档提交仅限本会话授权内容，不并入其他计划WIP。
+
+
+2026-10-16 stage:review | review_scope:final（readiness核查及定向反例；发现已知未完成项后未展开完整最终验收） | reviewer_identity:独立于实施会话的Codex主审上下文，未用代理，未伪造模型/session编号 | plan_id:PLAN-798 | plan_revision:1 | outcome:needs_replan | worktree_path:D:/autostack/.wt/lang-798/auto-lang | branch:plan-798-dev | reviewed_commit:ce860fb244597d7929b5bc911880326cb945fa78 | base_commit:30d3e1d2a011e2a34243bb8a2b141259af721edc | dependency_revisions:ac-core/ac-artifact-probe来自同树冻结提交且diff未改；实际Cargo.lock未跟踪，hash见报告；796/788均executing未满足合入门 | spec_inputs:4个canonical输入hash及SD-01..07冻结见[报告](attachments/798/review-r1/review.md)和[SD快照](attachments/798/review-r1/sd-frozen.md) | acceptance_results:AC01/04/08 partial、AC02/03 pending、AC05/06 fail、AC07未实施、AC09不通过、AC10 merge pending | findings:F798-R1-01..07开放（依赖/后段缺交付、总条目预算改每函数预算未经revision、周转硬门未接线、六场景证据不符、512churn实际零编辑及资源证据缺失、MIR持久化恢复未接线与计数不符、锁/新增警告/fmt） | evidence:gate-ms=0反控实跑exit0且body-edit832.4154ms；原raw编辑30样本仅1次重算；512替换循环changed_inputs=0；fmt两package检查exit1；Git diff-check/实现clean及HEAD末次复核通过；[可重放脚本](attachments/798/review-r1/replay.ps1)与[实际反控raw](attachments/798/review-r1/gate-replay.jsonl) | pending_closeout_gates:最终pass后由merge执行冻结workspace完整套件/native及实际触面兼容，根档按最终diff判定，tf仅主检出到期批量；此轮未执行 | next:auto-plan-new明确修订资源合同，再由auto-plan-work在原树闭合全部finding/完成T06..08并提交后重新送审。重开T01/T04/T05，保留T02/03原work标记（不代表独立验收通过），current_step=2/10；旧47/49全绿和硬门PASS仅历史收据，不能作为当前就绪证据。未修改实现、canonical Spec、ledger，未合入/归档/清理。
+2026-10-16 stage:new | PLAN-798 | r2 | outcome:pass（有界修订，可交 work） | next:work | 修订动因：复审 R1 F798-R1-02 判定 r1 §3"全部表条目合计≤65536"与 §5.5 冻结负载（256KiB/100 函数，72k 条目）不可同时成立且未经 revision 不得改。r2 决策：条目预算按**工件族**划分（模块表/每函数表各 ≤65536，分配前检查），组合上界显式落到请求级预算（4MiB 输入、2M 验证步、5s 墙）；授权依据=复审指示"通过 auto-plan-new 显式解决冻结负载与总条目预算冲突"+负载为冻结项不得缩小。同步收紧（F03–F06 的验收语义，不改目标）：§5.4 计数语义（mir_lower_modules/单元持久化/恢复/闭包编码分离+禁调反控）、§5.5 六场景逐条语义（冷store/新进程/当轮新修订/目标诊断/真并发GC）、churn 真实编辑+同store水位+受管与私有内存计量、硬门强制接线+gate-ms 0 反控。受影响旧证据标失效：r1 的 47/49 测试与周转 P95 PASS 为历史收据（复审已裁）；V-09/V-11 按新语义重验。任务 T-01/04/05 保持复审重开态并按 r2 增补执行；T-02/03 标记保留（非验收通过）。F798-R1-07（锁/警告/fmt）并入 T-01 增补。F01（T-06..08 等 D-796/D-788）不属本修订范围。
 
 ## 10. 待澄清事项
 
