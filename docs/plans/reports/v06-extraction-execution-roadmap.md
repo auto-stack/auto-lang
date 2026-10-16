@@ -4,15 +4,17 @@
 
 ## 当前切换点
 
+**2026-10-16 继续更新（793/795合流后）**：793、795已归档；792/794继续各自执行/修复。新增 [799前端模型](../799-frontend-ast-model-extraction.md) 与 [800 Man依赖模型](../800-man-dependency-model-extraction.md)，均可不等792/794整体结束并行实施。并行写面及合入责任以[四线合流合同](model-decoupling-parallel-order-20261016.md)为准：同时ready推荐792→794→799→800，但不是depends_on；就绪先合，后合入者承担闭包及受影响复审/重验。下面793/795 drafting描述为早期快照。
+
 **2026-10-16 更新（789–791合流后）**：781、784、785、786、789、790、791均已合并归档；792前置已满足，可独立开工。新增793/794/795为可与792并行的三份drafting合同。下方早期计数与“准备状态”为历史规划快照，不作为今日放行依据；783/787/788按实际共享写面协调，不设为全局等待条件。
 
 ## 与792并行的三个实施计划
 
 | Plan | 独立交付与主写面 | 与792及彼此的边界 |
 |---|---|---|
-| [793 诊断基础抽取](../793-diagnostics-foundation-extraction.md) | 新auto-diagnostics、error.rs薄兼容出口；切断error→AST依赖 | 不改rust_ui/ui_gen、native/scroll或Man锁。旧错误类型身份和路径保持，不要求792改调用协议 |
+| [793 诊断基础抽取](../archive/793-diagnostics-foundation-extraction.md) | 已归档：新auto-diagnostics、error.rs薄兼容出口；切断error→AST依赖 | 不改rust_ui/ui_gen、native/scroll或Man锁。旧错误类型身份和路径保持，不要求792改调用协议 |
 | [794 scroll宿主迁移](../794-scroll-host-provider.md) | native八函数9900–9905/9922–9923、owned provider及UI adapter | 不改诊断/包锁/生成工程发行；完整继承781锚点状态与真实可见性oracle |
-| [795 包锁核心](../795-package-lock-core-extraction.md) | 新auto-package-lock、lock.rs轻门面与Target/Git adapter | pac.lock与792的Cargo.lock不同；不接管rust_ui或依赖版本/patch决策 |
+| [795 包锁核心](../archive/795-package-lock-core-extraction.md) | 已归档：新auto-package-lock、lock.rs轻门面与Target/Git adapter | pac.lock与792的Cargo.lock不同；不接管rust_ui或依赖版本/patch决策 |
 
 四条线均不等待其余新计划整体完成。各自专用组树可并行实现、定向测试；新增crate/public facade只按兼容方式接入，不借并行重写公共合同。共享写面单独排短窗口：
 

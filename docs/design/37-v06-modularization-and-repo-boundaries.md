@@ -228,11 +228,20 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 
 789/790/791已归档，792进入独立UI构建发行线；同时建立三条生产解耦合同：
 
-- [793](../plans/793-diagnostics-foundation-extraction.md)：error.rs通用诊断迁为auto-diagnostics，利用现有Name=AutoStr切断error→AST边，旧类型/诊断出口兼容；完整AST/parser外置仍另验。
+- [793](../plans/archive/793-diagnostics-foundation-extraction.md)：已交付，error.rs通用诊断迁为auto-diagnostics，利用现有Name=AutoStr切断error→AST边，旧类型/诊断出口兼容；完整AST/parser外置仍另验。
 - [794](../plans/794-scroll-host-provider.md)：scroll controller六函数与781子锚点二函数统一owned provider；registry/测量/renderer状态机留UI，不复制为第二份core实现。
-- [795](../plans/795-package-lock-core-extraction.md)：pac.lock模型/codec/校验迁为auto-package-lock，Target/Git观测留Man adapter；保留旧公开API，不混同Cargo发行锁。
+- [795](../plans/archive/795-package-lock-core-extraction.md)：已交付，pac.lock模型/codec/校验迁为auto-package-lock，Target/Git观测留Man adapter；保留旧公开API，不混同Cargo发行锁。
 
 这些目标包不依赖792的生成工程接口，主要实现文件互不重叠；manifest/统一出口/边界基线存在小共享面，按路线图写入窗口串行合流。四线后合入者须重核当前闭包及792交付清单，不用独立worktree作为语义无冲突的证明。没有创建agent或授权远端/旧仓切换；本节是规划目标，不写为已实现Spec。
+
+### 8.5 模型独立与适配层归位（2026-10-16，拟实施）
+
+793诊断/795包锁已交付，在其基础上新增两份合同，与792发行验证、794 scroll实现并行：
+
+- [799 前端模型](../plans/799-frontend-ast-model-extraction.md)：auto-lang → auto-ast → 轻值/词法；AST数据/类型表达/序列化单一来源，ParserExt实现和解析耦合测试留上层。保留旧AST类型身份和UI兼容节点，不把Parser/推断倒灌底层，不提前宣称UiAst终态完成。
+- [800 Man依赖模型](../plans/800-man-dependency-model-extraction.md)：auto-man语言adapter → auto-package-resolver；轻名称/路径规则与ModulePath/ExecutionMode/pac legacy读取分开，生产旧resolver真实委托。源配置继续归project-model、锁格式归package-lock，不重复发明模型或改变pac协议。
+
+源码主写面不同，manifest/导出/Spec与边界基线按小共享窗口串行。若同时ready推荐792→794→799→800；没有新交付硬依赖，允许就绪先合，后合入者承担闭包/兼容与受影响复审重验。完整责任矩阵见[并行与合流合同](../plans/reports/model-decoupling-parallel-order-20261016.md)。这两份仍为目标计划，本轮不发布为现行Spec、不启动agent或实施源码。
 
 ## 9. 决策状态
 
