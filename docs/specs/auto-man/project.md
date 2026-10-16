@@ -30,6 +30,25 @@ AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析�
   即复现锚）；`verify()` 对无 commit 条目校验物化路径存在性。锁文件保持
   TOML 文本可 diff。
 
+## pac.lock 核心抽取分工（PLAN-795）
+
+锁模型/codec/校验规则的单一定义在 `crates/auto-package-lock`
+（见 [package-lock spec](../package-lock/project.md)）；`auto-man/src/lock.rs`
+是生产 adapter + 兼容门面：
+
+- **adapter 职责**（留在 auto-man）：`Target`→锁条目投影（Dep/Device kind
+  过滤、字段提取）、Git commit 观测（`get_git_commit`，`git rev-parse HEAD`）、
+  `AUTOMAN_VERSION` 版本戳供给。
+- **门面契约**：旧公开 `LockFile`/`LockEntry` 字段构造与
+  `new/from_targets/load/save/verify/get/from_target` 方法保持；全部规则
+  （排序/查找/校验/编解码）委托 core 单份实现（`LockedEntryView` 视图零
+  DTO 往返），无第二套 verify 或序列化实现。
+- **格式冻结**：TOML/JSON 字节、错误阶段/文本、统一化路径语义、重名首条
+  命中均按 579f6dec0 旧臂冻结（golden 三面钉住：core/门面/consumer）。
+- **未迁清单**：resolver/Target/build/exporter/可执行模板仍携语言栈留在
+  auto-man；本抽取不解除 `auto-man→auto-lang` 依赖边。此 pac.lock 与
+  PLAN-792 的 Cargo.lock 发行锁为不同合同。
+
 **标准多包消费样例（PLAN-637）**：`examples/ui/stylekit` 为声明门控的
 canonical 消费示范——消费方 pac.at 声明 `dep stylekit { path: "../../ui/stylekit" }`
 （相对路径形态）后即可 `use stylekit.styles: <name>` 导入 pub 配方；截至
@@ -165,7 +184,7 @@ graph LR
 | resolver | 依赖解析（ModuleResolver trait 实现） | active |
 | builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号 | active |
 | exporter | IDE 工程导出：cmake / ghs / iar | active |
-| git / index / lock / pull | 依赖获取、注册索引、锁文件 | active |
+| git / index / lock / pull | 依赖获取、注册索引、锁文件（PLAN-795 起 lock 为 Target/Git adapter+兼容门面，规则单一定义在 auto-package-lock，见上节） | active |
 | scanner / target / dir / cache | 工程扫描、target 目录管理、本地缓存 | active |
 | vue / tauri / jet / ark / rust_ui | 各前端生态的工程集成；vue 侧含 desktop 宿主 scaffold（Plan 465：`generate_desktop_host` + `assets/wm/` WM 运行时资产 rust_embed + `apps-registry.ts` 注册表生成；`auto run --desktop/--apps`；Plan 515：`assets/wm/Wallpaper.vue` 桌面壁纸层三档组件 + host App.vue 生成期配置注入 `shell.desktop.wallpaper`）；**PLAN-038 Phase B（P038-3）**：`generate_tailwind_config`（auto-man/cmd_vue/cmd_tauri）补 `success/warning/info/error → hsl(var(--*))`；`regenerate_source_files` 与 scaffold 同源重写 `tailwind.config.cjs`（磁盘残留旧模板会漏映射）；codegen 全路径（scaffold / write_project_files / regenerate / prepare_vue_sources）写 `src/vite-env.d.ts` + `src/auto-select/overlay.ts` + `src/auto-sources.ts`（缺失时空 map，消除 P657-D2 phase-ordering 对手工 stub 的依赖）；画廊 VM demo 级联发射 `emit_gallery_vm_demos`（Plan 625 T-10/632：loadable 单 widget 示例改名 `Demo*` 相邻拷贝自有模块 + `AppViewport.vm.at` 条件实例化——发射器保证模块组件源可达，组件状态桥接为运行时职责，见 auto-lang docs/specs/auto-lang/ui/architecture.md ADR-20；Plan 633：fullstack 内嵌档——back 语料不再一票否决，back 链传递闭包级联为 `<ns>_<mod>` 唯一 stem（use 行/链内互引/item 调用点限定仅 back 链三层改写，组件调用不动），发射前 core 场景解析探针，back 缺失/native-ns(use auto.*)/~Stream 签名严格降级静态面板，见 auto-lang docs/specs/auto-lang/vm/architecture.md ADR-21） | active |
 

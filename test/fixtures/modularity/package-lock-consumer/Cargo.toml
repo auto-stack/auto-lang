@@ -1,0 +1,31 @@
+# PLAN-795 外部锁核心消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-package-lock 的公开面
+# （LockFile/LockEntry/LockedEntryView/find_entry/sort_dependencies/
+# ResolvedDependency/verify_dependencies/is_json_path/load/save），证明
+# pac.lock 模型/codec/校验核心可被无 auto-lang/auto-man/auto-gen/auto-ui/
+# renderer 的外部 consumer 编译并运行：fresh manifest 读写验证、冻结
+# 格式字节与错误文本与 auto-man 历史实现一致（AC-01/V01）。
+#
+# 闭包证明 = 本 manifest 的依赖表 + verify-deps.sh（cargo tree 断言
+# normal/build 闭包无 auto-lang/auto-man/auto-gen/auto-ui/auto-vm）。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/package-lock-consumer/Cargo.toml
+# 依赖闭包断言（V01 oracle）：
+#   bash test/fixtures/modularity/package-lock-consumer/verify-deps.sh
+
+[package]
+name = "package-lock-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-package-lock = { path = "../../../../crates/auto-package-lock" }
+# Tests construct AutoPath (the core's codec path type — leaf data crate).
+auto-val = { path = "../../../../crates/auto-val" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

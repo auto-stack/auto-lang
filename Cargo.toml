@@ -25,6 +25,10 @@ members = [
     "crates/auto-macros",
     # Plan 078: AutoMan migration from ../auto-man
     "crates/auto-man",
+    # PLAN-795: pac.lock core (model/TOML-JSON codec/verify rules), extracted
+    # Target-free from auto-man; auto-man keeps the Target→projection, Git
+    # observation and compatibility facade over this crate.
+    "crates/auto-package-lock",
     "crates/auto-lsp",
     "crates/auto-val",
     # PLAN-036 T-02: shell pack a2r 生成物（无窗组件库——入库=真编译门）
@@ -93,6 +97,12 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/gen-core-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/gen-core-consumer/verify-deps.sh
     "test/fixtures/modularity/gen-core-consumer",
+    # PLAN-795: 外部锁核心消费方探针——独立 fixture crate（仅依赖
+    # auto-package-lock/auto-val，证明 pac.lock 模型/codec/校验核心无
+    # auto-lang/auto-man/生成器/renderer 闭包可用），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/package-lock-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/package-lock-consumer/verify-deps.sh
+    "test/fixtures/modularity/package-lock-consumer",
 ]
 resolver = "2"
 

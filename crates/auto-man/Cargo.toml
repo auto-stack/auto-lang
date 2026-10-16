@@ -15,6 +15,9 @@ auto-lang = { path = "../auto-lang", features = ["ui-iced"] }
 auto-project-model = { path = "../auto-project-model" }
 regex = "1"
 auto-val = { path = "../auto-val" }
+# PLAN-795: pac.lock core (model/codec/verify) — lock.rs is the Target/Git
+# adapter + compatibility facade delegating to this crate.
+auto-package-lock = { path = "../auto-package-lock" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
 blake3 = { workspace = true }  # Plan 134: File hashing utilities

@@ -52,6 +52,10 @@ schema = "module-boundaries/1"
 # 纯生成层，auto-gen（Auto 可执行模板 adapter）之下；禁依赖 auto-lang
 # （闭包由 test/fixtures/modularity/gen-core-consumer 钉住）。
 "auto-gen-core" = "man-ecosystem"
+# PLAN-795：pac.lock 模型/codec/校验核心——man 生态的纯锁层，
+# auto-man（Target/Git adapter + 兼容门面）之下；禁依赖 auto-lang
+# （闭包由 test/fixtures/modularity/package-lock-consumer 钉住）。
+"auto-package-lock" = "man-ecosystem"
 # 顶层装配/工具/CLI（允许依赖任意下层域）。
 "auto" = "cli"
 "auto-lsp" = "tool"
