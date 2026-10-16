@@ -438,7 +438,7 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 893,
+    "core_to_ui": 885,
     "man_to_language": 573,
     "ui_to_language": 181
   }
