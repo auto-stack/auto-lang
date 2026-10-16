@@ -4681,10 +4681,21 @@ fn delivery_swap_in(staging: &Path, delivery_root: &Path) -> AutoResult<()> {
     Ok(())
 }
 
-/// R3-F01：既往换出残桩 GC——仅回收同时具备换出事务标记（本线写入）与
-/// delivery-manifest.json 的 `.{name}.delivery-old-*` 目录；无标记的模式名
-/// 目录（如其他应用的合法交付包被人为放在该命名下）只报告、不删除。
+/// R3-F01/R4-F01：既往换出残桩 GC——仅在**成功替代产物已在交付根落位**
+/// （`delivery_root` 含 delivery-manifest.json）时，回收同时具备换出事务
+/// 标记与清单的 `.{name}.delivery-old-*` 目录。
+///
+/// 换出事务标记只证明「本线曾把旧根换出」，**不证明新包已成功提交**；
+/// 根缺失/未完成时备份可能是唯一旧包（待恢复态），绝不可回收。清单+标记
+/// 双条件仍必要（排除无标记外来目录），但不再是充分条件。
 fn delivery_gc_stale_backups(delivery_root: &Path) {
+    // 成功替代证明：交付根在位且是完整交付包。缺此证明即视为可能存在
+    // 待恢复的唯一旧备份——直接返回，不触碰任何 backup。
+    let replacement_ok =
+        delivery_root.is_dir() && delivery_root.join("delivery-manifest.json").is_file();
+    if !replacement_ok {
+        return;
+    }
     let parent = delivery_root.parent().unwrap_or_else(|| Path::new("."));
     let prefix = format!(
         ".{}.delivery-old-",
@@ -5124,7 +5135,8 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     // 守卫（外来非空目录拒绝；换装语义下不清理既有交付）。
     delivery_guard_root(delivery_root)?;
     let final_root = delivery_root.to_path_buf();
-    // R3-F01：陈残换出桩 GC（仅回收带换出事务标记+清单的既往残桩）。
+    // R3-F01/R4-F01：陈残换出桩 GC——仅当交付根已是完整替代产物时回收
+    // 冗余残桩；根缺失/未完成（待恢复唯一旧包）时 GC 为 no-op。
     delivery_gc_stale_backups(delivery_root);
 
     // R1-F02/R2-F01：独立 staging 生成——成功前不动旧交付。staging 用
@@ -5349,6 +5361,9 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     // 后的交付根不带运行期标记）。
     let _ = fs::remove_file(staging.join(DELIVERY_STAGING_MARKER));
     delivery_swap_in(&staging, &final_root)?;
+    // R4-F01：成功发布后回收冗余残桩——含根缺失待恢复态留下的旧备份
+    // （此刻已被新包替代）。失败路径不走这里，唯一旧包得以保留。
+    delivery_gc_stale_backups(&final_root);
     // 成功换装：staging 路径已不存在，守卫 Drop 为 no-op。
 
     println!(
@@ -8057,6 +8072,92 @@ pub fn create_item(name str) str {
                 .all(|e| e.path().join("app").join("mine.txt").is_file()),
             "模式名位仅存外来数据（无事务标记不被清理），本轮 backup 已清"
         );
+    }
+
+    /// R4-F01 永久用例：根缺失/唯一备份 + 生成失败保旧——旧根换出并写
+    /// 换出标记后、staging 落位前中断留下的待恢复态（交付根缺失，唯一旧
+    /// 包在 backup），重试生成失败时绝不可删该备份；成功重试后才可回收
+    /// （此刻已被新包替代）。换出标记 ≠ 已提交可回收。
+    #[test]
+    fn delivery_gc_preserves_pending_recovery_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let producer = test_producer_root();
+        let project = dir.path().join("proj");
+        let front = project.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        let write_pac = |modules: &str| {
+            std::fs::write(
+                project.join("pac.at"),
+                format!(
+                    "{{ name: \"uiminimal\", scene: \"ui\", render: \"rust\", window: \"fit\" }}\n{modules}"
+                ),
+            )
+            .unwrap();
+        };
+        write_pac("");
+        std::fs::write(
+            front.join("app.at"),
+            "widget App {\n    view {\n        col {\n            text `hi`\n        }\n    }\n}\n",
+        )
+        .unwrap();
+
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(v) => std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", v),
+                    None => std::env::remove_var("AUTO_DELIVERY_SOURCE_ROOT"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_DELIVERY_SOURCE_ROOT"));
+        std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", &producer);
+
+        let delivery = dir.path().join("recovery-target");
+        generate_rust_ui_delivery(&project, &delivery).expect("首交失败");
+        let last_good = delivery.join("app").join("last-good-user-data.txt");
+        std::fs::write(&last_good, b"last good artifact must survive failed retry").unwrap();
+        let manifest_before = std::fs::read(delivery.join("delivery-manifest.json")).unwrap();
+
+        // 模拟 delivery_swap_in 中断态：旧根已换出+事务标记已写，新包未落位。
+        let backup = dir.path().join(".recovery-target.delivery-old-999999-3");
+        std::fs::rename(&delivery, &backup).unwrap();
+        std::fs::write(backup.join(DELIVERY_SWAP_MARKER), "pid=999999\n").unwrap();
+        assert!(!delivery.exists(), "待恢复态：交付根缺失");
+
+        // 失败重试（sidecar 模块缺失——apply 阶段在 GC 之后判红）。
+        write_pac("\nrust_sidecar {\n    modules: [\"glue:missing.rs\"]\n}\n");
+        let err = generate_rust_ui_delivery(&project, &delivery)
+            .expect_err("缺 sidecar 模块的重试必须显式 Err");
+        assert!(
+            err.to_string().contains("module 'glue'") || err.to_string().contains("not found"),
+            "失败诊断指向缺失模块（实际：{err}）"
+        );
+        assert!(!delivery.exists(), "失败后不落新包");
+        assert!(backup.is_dir(), "待恢复唯一旧包存活");
+        assert!(
+            backup.join("app").join("last-good-user-data.txt").is_file(),
+            "last-good 载荷存活"
+        );
+        assert_eq!(
+            std::fs::read(backup.join("delivery-manifest.json")).unwrap(),
+            manifest_before,
+            "备份清单字节不变"
+        );
+        assert!(
+            backup.join(DELIVERY_SWAP_MARKER).is_file(),
+            "换出标记保留（事务未完成）"
+        );
+
+        // 成功重试：新包落位后才允许回收已被替代的旧备份。
+        write_pac("");
+        generate_rust_ui_delivery(&project, &delivery).expect("成功重试失败");
+        assert!(
+            delivery.join("delivery-manifest.json").is_file(),
+            "成功重试后新交付在位"
+        );
+        assert!(!backup.exists(), "成功发布后旧备份才可回收");
+        assert!(!delivery.join(DELIVERY_STAGING_MARKER).exists());
     }
 
     /// R1-F02 永久用例：再交付准备失败保留旧交付——成功交付后，producer
