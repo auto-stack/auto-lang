@@ -10,12 +10,12 @@
 // 行扫描（prepare_env/load_pac_at）与 Pac/Super/None 前缀对
 // FilesystemResolver 的委托留在此 adapter。
 
+use auto_lang::ast::{ModulePath, PathPrefix};
+use auto_lang::mode::ExecutionMode;
+use auto_lang::resolver::ModuleResolver;
+use auto_package_resolver::PackageResolverCore;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use auto_lang::resolver::ModuleResolver;
-use auto_lang::mode::ExecutionMode;
-use auto_lang::ast::{ModulePath, PathPrefix};
-use auto_package_resolver::PackageResolverCore;
 
 /// Dependency with execution mode
 ///
@@ -188,12 +188,13 @@ impl AutoManResolver {
 
                             // Try to find the package
                             if let Ok(pkg_path) = self.core.find_package_path(package_name) {
-                                self.core.add_dependency(
-                                    package_name.to_string(),
-                                    pkg_path,
-                                    mode,
+                                self.core
+                                    .add_dependency(package_name.to_string(), pkg_path, mode);
+                                log::info!(
+                                    "Dependency '{}' with mode '{}'",
+                                    package_name,
+                                    mode.as_str()
                                 );
-                                log::info!("Dependency '{}' with mode '{}'", package_name, mode.as_str());
                             }
                         }
                     }
@@ -201,7 +202,10 @@ impl AutoManResolver {
             }
         }
 
-        log::info!("Loaded {} dependencies from pac.at", self.core.dependencies().len());
+        log::info!(
+            "Loaded {} dependencies from pac.at",
+            self.core.dependencies().len()
+        );
         Ok(())
     }
 
@@ -269,11 +273,7 @@ impl AutoManResolver {
             PathPrefix::Dep(dep_name) => {
                 // PLAN-800: dependency lookup + not-declared error +
                 // module-in-dep judgment all live in the core (single rule set)
-                let segments: Vec<&str> = module_path
-                    .segments
-                    .iter()
-                    .map(|s| s.as_str())
-                    .collect();
+                let segments: Vec<&str> = module_path.segments.iter().map(|s| s.as_str()).collect();
                 self.core
                     .resolve_in_dependency(dep_name.as_str(), &segments)
             }
@@ -1158,23 +1158,18 @@ mod plan800_tests {
         fs::write(v1.join("old_mod.at"), "// old").unwrap();
         fs::write(v2.join("new_mod.at"), "// new").unwrap();
 
-        let mut resolver = AutoManResolver::new(
-            tmp.path().join("app"),
-            PathBuf::from("stdlib/auto"),
-        );
+        let mut resolver =
+            AutoManResolver::new(tmp.path().join("app"), PathBuf::from("stdlib/auto"));
         resolver.add_dependency("pkg".to_string(), v1.clone(), ExecutionMode::AutoVM);
-        assert_eq!(
-            resolver.resolve("pkg").unwrap(),
-            v1.join("package.at")
-        );
+        assert_eq!(resolver.resolve("pkg").unwrap(), v1.join("package.at"));
 
         // replace: new path/mode authoritative immediately
         resolver.add_dependency("pkg".to_string(), v2.clone(), ExecutionMode::Rust);
+        assert_eq!(resolver.resolve("pkg").unwrap(), v2.join("package.at"));
         assert_eq!(
-            resolver.resolve("pkg").unwrap(),
-            v2.join("package.at")
+            resolver.get_dependency_mode("pkg"),
+            Some(ExecutionMode::Rust)
         );
-        assert_eq!(resolver.get_dependency_mode("pkg"), Some(ExecutionMode::Rust));
         assert_eq!(resolver.get_dependencies().len(), 1);
         assert_eq!(resolver.get_dependencies()["pkg"].path, v2);
 
@@ -1185,6 +1180,8 @@ mod plan800_tests {
         assert!(resolved.starts_with(&v2) && resolved.ends_with("new_mod.at"));
         // old module under the replaced path is gone from resolution
         let old = ModulePath::dep(AutoStr::from("pkg"), vec![AutoStr::from("old_mod")]);
-        assert!(resolver.resolve_with_prefix(&old, tmp.path().join("app/main.at")).is_err());
+        assert!(resolver
+            .resolve_with_prefix(&old, tmp.path().join("app/main.at"))
+            .is_err());
     }
 }

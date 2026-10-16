@@ -60,8 +60,11 @@ auto-gen/auto-vm/UI 闭包的外部 consumer 独立消费（外部消费方探�
 6. **`with_extension` 语义保持**：候选构造用 `with_extension("at")`（替换已有
    扩展，如 `a.b`→`a.at`），不改为 append。
 7. **包路径候选错误**：`PackagePathNotFound{searched_local}`（Display
-   `File not found: <path>`）——adapter 映射回 `AutoManError::FileNotFound`；
-   旧调用点（load_pac_at）对 Err 静默不插入依赖，外部不可观察。
+   `File not found: <path>`，镜像历史 `AutoManError::FileNotFound` 文本）。
+   auto-man 的 legacy pac 扫描调用点（`load_pac_at`）以 `if let Ok` **静默忽略**
+   该错误（找不到的依赖不插入），与抽取前一致、外部不可观察；生产代码中
+   **不存在** core 错误到 `AutoManError` 的映射——旧私有 `find_package_path`
+   的 `FileNotFound` 构造已随算法搬迁删除，其错误面本就无消费方。
 
 ## 模块清单
 

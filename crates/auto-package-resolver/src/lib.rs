@@ -56,7 +56,11 @@ impl<M: Default> DependencyEntry<M> {
 
 /// `find_package_path` 的未找到错误（包路径候选全部落空）
 ///
-/// adapter 侧映射回 `AutoManError::FileNotFound(searched_local)`。
+/// Display 文本镜像历史 `AutoManError::FileNotFound` 形态。auto-man 的
+/// legacy pac 扫描调用点（`load_pac_at`）以 `if let Ok` 静默忽略本错误
+/// （找不到的依赖不插入，与抽取前一致、外部不可观察）——生产代码中
+/// **不存在** core 错误到 `AutoManError` 的映射；旧私有
+/// `find_package_path` 的 `FileNotFound` 构造已随算法搬迁删除。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackagePathNotFound {
     /// 最后搜索的项目本地 packages/ 候选路径
@@ -341,10 +345,7 @@ mod tests {
 
     fn core() -> PackageResolverCore<&'static str> {
         // mode label = &'static str proves opacity: rules never read it
-        PackageResolverCore::new(
-            PathBuf::from("/project"),
-            PathBuf::from("stdlib/auto"),
-        )
+        PackageResolverCore::new(PathBuf::from("/project"), PathBuf::from("stdlib/auto"))
     }
 
     #[test]
@@ -406,7 +407,10 @@ mod tests {
         // file module arm (afile.at exists)
         assert_eq!(c.resolve("afile").unwrap(), sp.join("afile.at"));
         // package directory arm (adir/package.at exists, adir.at does not)
-        assert_eq!(c.resolve("adir").unwrap(), sp.join("adir").join("package.at"));
+        assert_eq!(
+            c.resolve("adir").unwrap(),
+            sp.join("adir").join("package.at")
+        );
     }
 
     #[test]
@@ -483,10 +487,13 @@ mod tests {
                 searched_local: project.join("packages").join("missing")
             }
         );
-        assert_eq!(err.to_string(), format!(
-            "File not found: {}",
-            project.join("packages").join("missing").display()
-        ));
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "File not found: {}",
+                project.join("packages").join("missing").display()
+            )
+        );
     }
 
     #[test]
@@ -516,7 +523,9 @@ mod tests {
         assert!(err.starts_with("Ambiguous module 'api' in dependency - both '"));
         assert!(err.contains("' and '") && err.ends_with("' exist"));
         // neither → searched-locations error
-        let err = c.find_module_in_dep(&dep, &["deep", "missing"]).unwrap_err();
+        let err = c
+            .find_module_in_dep(&dep, &["deep", "missing"])
+            .unwrap_err();
         assert!(err.contains("Module 'deep.missing' not found in dependency."));
         assert!(err.contains("Searched locations:"));
         assert!(err.contains(&format!("Dependency root: {}", dep.display())));
@@ -549,7 +558,8 @@ mod tests {
         let mut c = core();
         c.add_dependency("database".into(), dep.clone(), "m");
         assert_eq!(
-            c.resolve_in_dependency("database", &["connection"]).unwrap(),
+            c.resolve_in_dependency("database", &["connection"])
+                .unwrap(),
             dep.join("connection.at")
         );
         let err = c.resolve_in_dependency("database", &["nope"]).unwrap_err();
@@ -576,10 +586,7 @@ mod tests {
         // same-name replace: new path/mode immediately authoritative,
         // old path no longer consulted (no stale shadow map)
         c.add_dependency("pkg".into(), v2.clone(), "mode2");
-        assert_eq!(
-            c.resolve("pkg").unwrap(),
-            v2.join("package.at")
-        );
+        assert_eq!(c.resolve("pkg").unwrap(), v2.join("package.at"));
         assert_eq!(
             c.resolve_in_dependency("pkg", &["mod_b"]).unwrap(),
             v2.join("mod_b.at")

@@ -52,20 +52,14 @@ fn external_consumer_resolves_file_and_directory_modules() {
     write(&dep.join("connection.at"), "// connection");
     write(&dep.join("models").join("mod.at"), "// models");
 
-    let core = PackageResolverCore::<ConsumerMode>::new(
-        root.join("app"),
-        root.join("stdlib"),
-    );
+    let core = PackageResolverCore::<ConsumerMode>::new(root.join("app"), root.join("stdlib"));
     // dependency view is required before in-dependency resolution works
     let mut core = core;
-    core.add_dependency(
-        "database".to_string(),
-        dep.clone(),
-        ConsumerMode::Wasm,
-    );
+    core.add_dependency("database".to_string(), dep.clone(), ConsumerMode::Wasm);
 
     assert_eq!(
-        core.resolve_in_dependency("database", &["connection"]).unwrap(),
+        core.resolve_in_dependency("database", &["connection"])
+            .unwrap(),
         dep.join("connection.at")
     );
     assert_eq!(
@@ -73,9 +67,13 @@ fn external_consumer_resolves_file_and_directory_modules() {
         dep.join("models").join("mod.at")
     );
     // deep segment path
-    write(&dep.join("api").join("v1").join("handlers.at"), "// handlers");
+    write(
+        &dep.join("api").join("v1").join("handlers.at"),
+        "// handlers",
+    );
     assert_eq!(
-        core.resolve_in_dependency("database", &["api", "v1", "handlers"]).unwrap(),
+        core.resolve_in_dependency("database", &["api", "v1", "handlers"])
+            .unwrap(),
         dep.join("api").join("v1").join("handlers.at")
     );
 }
@@ -88,15 +86,10 @@ fn external_consumer_ambiguity_must_not_succeed() {
     write(&dep.join("models.at"), "// file form");
     write(&dep.join("models").join("mod.at"), "// dir form");
 
-    let mut core = PackageResolverCore::<ConsumerMode>::new(
-        root.join("app"),
-        root.join("stdlib"),
-    );
+    let mut core = PackageResolverCore::<ConsumerMode>::new(root.join("app"), root.join("stdlib"));
     core.add_dependency("dep".to_string(), dep.clone(), ConsumerMode::default());
 
-    let err = core
-        .resolve_in_dependency("dep", &["models"])
-        .unwrap_err();
+    let err = core.resolve_in_dependency("dep", &["models"]).unwrap_err();
     assert!(err.starts_with("Ambiguous module 'models' in dependency - both '"));
     assert!(err.contains("' and '"));
     assert!(err.ends_with("' exist"));
@@ -108,10 +101,7 @@ fn external_consumer_missing_module_error_projection() {
     let dep = root.join("dep");
     write(&dep.join("keep.at"), "// keep the dir non-empty");
 
-    let mut core = PackageResolverCore::<ConsumerMode>::new(
-        root.join("app"),
-        root.join("stdlib"),
-    );
+    let mut core = PackageResolverCore::<ConsumerMode>::new(root.join("app"), root.join("stdlib"));
     core.add_dependency("dep".to_string(), dep.clone(), ConsumerMode::default());
 
     let err = core
@@ -140,7 +130,13 @@ fn external_consumer_find_package_path_candidates() {
     let root = fresh_dir("pkgpath");
     let project = root.join("proj");
     let std_root = root.join("stdlib");
-    write(&project.join("packages").join("local_pkg").join("package.at"), "// local");
+    write(
+        &project
+            .join("packages")
+            .join("local_pkg")
+            .join("package.at"),
+        "// local",
+    );
     write(&std_root.join("io.at"), "// std");
 
     let core = PackageResolverCore::<ConsumerMode>::new(project.clone(), std_root.clone());
@@ -164,10 +160,7 @@ fn external_consumer_find_package_path_candidates() {
 #[test]
 fn external_consumer_mode_labels_are_opaque() {
     let root = fresh_dir("mode");
-    let mut core = PackageResolverCore::<ConsumerMode>::new(
-        root.join("app"),
-        root.join("stdlib"),
-    );
+    let mut core = PackageResolverCore::<ConsumerMode>::new(root.join("app"), root.join("stdlib"));
 
     // entry constructors work for any mode type; default comes from the
     // mode type itself (adapter's ExecutionMode::default = AutoVM analog)
@@ -189,10 +182,7 @@ fn external_consumer_same_name_replace_is_immediately_visible() {
     write(&v1.join("old_mod.at"), "// old");
     write(&v2.join("new_mod.at"), "// new");
 
-    let mut core = PackageResolverCore::<ConsumerMode>::new(
-        root.join("app"),
-        root.join("stdlib"),
-    );
+    let mut core = PackageResolverCore::<ConsumerMode>::new(root.join("app"), root.join("stdlib"));
     core.add_dependency("pkg".into(), v1.clone(), ConsumerMode::Native);
     assert_eq!(
         core.resolve_in_dependency("pkg", &["old_mod"]).unwrap(),
@@ -208,7 +198,10 @@ fn external_consumer_same_name_replace_is_immediately_visible() {
         v2.join("new_mod.at")
     );
     assert!(core.resolve_in_dependency("pkg", &["old_mod"]).is_err());
-    assert_eq!(core.dependencies().get("pkg").unwrap().mode, ConsumerMode::Wasm);
+    assert_eq!(
+        core.dependencies().get("pkg").unwrap().mode,
+        ConsumerMode::Wasm
+    );
     assert_eq!(core.dependencies().len(), 1);
 }
 
@@ -221,12 +214,13 @@ fn external_consumer_resolve_and_existence_rules() {
     write(&libs.join("afile.at"), "// file module");
     write(&libs.join("adir").join("package.at"), "// package dir");
 
-    let mut core = PackageResolverCore::<ConsumerMode>::new(
-        root.join("app"),
-        std_root.clone(),
-    );
+    let mut core = PackageResolverCore::<ConsumerMode>::new(root.join("app"), std_root.clone());
     core.add_search_path(libs.clone());
-    core.add_dependency("ghost".into(), root.join("nowhere"), ConsumerMode::default());
+    core.add_dependency(
+        "ghost".into(),
+        root.join("nowhere"),
+        ConsumerMode::default(),
+    );
 
     // std arm constructs without disk check; exists() requires the disk
     assert_eq!(core.resolve("std.io").unwrap(), std_root.join("io.at"));
@@ -240,7 +234,10 @@ fn external_consumer_resolve_and_existence_rules() {
     );
     // search-path arm: file module and package directory
     assert_eq!(core.resolve("afile").unwrap(), libs.join("afile.at"));
-    assert_eq!(core.resolve("adir").unwrap(), libs.join("adir").join("package.at"));
+    assert_eq!(
+        core.resolve("adir").unwrap(),
+        libs.join("adir").join("package.at")
+    );
     // frozen asymmetry: exists() has no package.at arm
     assert!(core.exists("afile"));
     assert!(!core.exists("adir"));
