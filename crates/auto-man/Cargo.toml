@@ -22,6 +22,10 @@ auto-package-lock = { path = "../auto-package-lock" }
 # resolver.rs is the language adapter (ExecutionMode/pac.at scan/
 # ModuleResolver trait) delegating to this crate.
 auto-package-resolver = { path = "../auto-package-resolver" }
+# PLAN-803: Man template/builder asset single source + pure scaffold path
+# planning — asset.rs is the compat facade (Auto eval + file IO adapter)
+# delegating to this crate.
+auto-man-assets = { path = "../auto-man-assets" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
 blake3 = { workspace = true }  # Plan 134: File hashing utilities
@@ -60,6 +64,8 @@ chrono = { workspace = true }  # Plan 082: Timestamp formatting
 [dev-dependencies]
 tauri = { version = "2", default-features = false, features = ["test"] }
 tempfile = { workspace = true }
+# PLAN-803 V03/V04: 门面↔资源层字节对照与 exporter 测试直接消费资源 crate
+auto-man-assets = { path = "../auto-man-assets" }
 
 [lib]
 name = "auto_man"

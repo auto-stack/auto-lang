@@ -49,6 +49,34 @@ AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析�
   auto-man；本抽取不解除 `auto-man→auto-lang` 依赖边。此 pac.lock 与
   PLAN-792 的 Cargo.lock 发行锁为不同合同。
 
+## 模板资源层抽取分工（PLAN-803）
+
+三组 Man 资源（`assets/templates` 五族、`assets/builders/ghs`、
+`assets/builders/iar`）的嵌入与纯脚手架路径规划单一定义在
+`crates/auto-man-assets`（见 [auto-man-assets spec](../auto-man-assets/project.md)）；
+`auto-man/src/asset.rs` 是语言/IO adapter + 兼容门面：
+
+- **adapter 职责**（留在 auto-man）：`Templates::copy` 的逐文件
+  Auto 求值（`set_global`→`eval_template`→`repr`）与文件物化
+  （create_dir_all/create/write），含旧臂失败阶段——unwrap panic 语义
+  与「先创建/截断文件再求值」的遗留顺序（行为改善另立计划）；
+  GHS/IAR 访问器的 AutoStr 转换；`Templates/GHSTemplate/IARTemplate`
+  inherent+RustEmbed 双形态 get/iter/compressed 转发。
+- **旧公开面不变**：类型名/方法签名/`pub use asset::*` 根 re-export
+  保持；exporter（ghs.rs/iar.rs）与 `Automan::create_by_template`
+  消费路径零改动。
+- **冻结投影**：五族 copy 成功输出、Unicode 包名输出、未知族零副作用、
+  `..` 路径 panic、GHS app mold 预存求值失败边界，均按基线
+  `1dd123361a` 旧臂实测冻结（`tests/plan803_asset_facade_tests.rs`；
+  探针收据 docs/plans/attachments/803/）。
+- **遗留限制如实入账**（非新安全承诺）：模板注入可见性（`set_global`
+  侧表对 eval_template 可见——基线实测五族全部渲染成功但插值形态
+  含旧 VM 怪癖）、copy 先建后求值的破坏性失败窗口、GHS program.gpj
+  模板解析级失败——仍在上层，未随资源迁移修复。
+- `assets/` 其余资产（am.at/gallery/shadcn-ui/wm）不属本抽取，仍在
+  auto-man（gallery/wm 由 vue/画廊栈消费，shadcn-ui 被 auto-lang
+  ui_gen 契约锚定）。
+
 ## 依赖解析核心抽取分工（PLAN-800）
 
 已解析依赖视图与模块路径规则的单一定义在 `crates/auto-package-resolver`
@@ -231,7 +259,7 @@ graph LR
 | vue / tauri / jet / ark / rust_ui | 各前端生态的工程集成；vue 侧含 desktop 宿主 scaffold（Plan 465：`generate_desktop_host` + `assets/wm/` WM 运行时资产 rust_embed + `apps-registry.ts` 注册表生成；`auto run --desktop/--apps`；Plan 515：`assets/wm/Wallpaper.vue` 桌面壁纸层三档组件 + host App.vue 生成期配置注入 `shell.desktop.wallpaper`）；**PLAN-038 Phase B（P038-3）**：`generate_tailwind_config`（auto-man/cmd_vue/cmd_tauri）补 `success/warning/info/error → hsl(var(--*))`；`regenerate_source_files` 与 scaffold 同源重写 `tailwind.config.cjs`（磁盘残留旧模板会漏映射）；codegen 全路径（scaffold / write_project_files / regenerate / prepare_vue_sources）写 `src/vite-env.d.ts` + `src/auto-select/overlay.ts` + `src/auto-sources.ts`（缺失时空 map，消除 P657-D2 phase-ordering 对手工 stub 的依赖）；画廊 VM demo 级联发射 `emit_gallery_vm_demos`（Plan 625 T-10/632：loadable 单 widget 示例改名 `Demo*` 相邻拷贝自有模块 + `AppViewport.vm.at` 条件实例化——发射器保证模块组件源可达，组件状态桥接为运行时职责，见 auto-lang docs/specs/auto-lang/ui/architecture.md ADR-20；Plan 633：fullstack 内嵌档——back 语料不再一票否决，back 链传递闭包级联为 `<ns>_<mod>` 唯一 stem（use 行/链内互引/item 调用点限定仅 back 链三层改写，组件调用不动），发射前 core 场景解析探针，back 缺失/native-ns(use auto.*)/~Stream 签名严格降级静态面板，见 auto-lang docs/specs/auto-lang/vm/architecture.md ADR-21） | active |
 
 | api_gen / tauri_backend / vscode / pkg | API/后端/扩展代码生成器，包管理器抽象（bun/npm）；api_gen server 生成器状态种子契约（**Plan 670 F-R1-A**）：`use api::Db`/`State<Db>` 种子仅当契约实际定义 Db（primary 类型存在，api.rs 才发 `pub type Db`）时发射，无 Db 标量契约走无状态退化路径（镜像 db_full_cover 分支形态）——生成物必须可编译（E0432 契约）；route A（无 db 覆盖的 scalar API 实现，以及含非薄业务体的 api.rs handler 内联转译）已落地，伴生模块导入/调用和 `List<T>.new` 构造由 Plan 742 补齐（r1–r5 复审收敛体路径不变量：代码区字面量保持/模块 token 身份与作用域遮蔽/借用实参切分（比较 `<`/`>` 非泛型定界）/返回出口矩阵——详见 design/api-generation-integrity.md §2）；转译失败由装配预检拒绝，`AUTO_A2R_BODY=0` 才允许显式标记的 scaffold | active |
-| asset / fs / util / version / error 等 | 基础设施与公共类型 | active |
+| asset / fs / util / version / error 等 | 基础设施与公共类型；**PLAN-803 起 asset 为兼容门面**——三组资源（templates/builders-ghs/builders-iar）唯一来源与纯路径规划在 crates/auto-man-assets（见上节），本模块保 Auto 求值/IO adapter 与 inherent+RustEmbed 双形态转发 | active |
 | up | 升级功能 | disabled（zip 依赖已移除，模块注释停用） |
 
 ## 画廊 host 内嵌四档与 routable 档（PLAN-675 SD-01）

@@ -326,7 +326,7 @@ mod tests {
     /// template / undefined-variable fixtures) while the model CLASSIFIES
     /// them non-static — full repo-relative paths, exact match only.
     const EXPECTED_TEMPLATE_REJECTED: [&str; 2] = [
-        "crates/auto-man/assets/templates/clib/pac.at",
+        "crates/auto-man-assets/assets/templates/clib/pac.at",
         "test/fixtures/modularity/project-model/fixtures/dynamic-expressions.pac.at",
     ];
 
@@ -376,7 +376,7 @@ mod tests {
         .is_some());
         assert!(exempted_by(
             &rel_identity(
-                &root.join("crates/auto-man/assets/templates/clib/pac.at"),
+                &root.join("crates/auto-man-assets/assets/templates/clib/pac.at"),
                 &root
             ),
             &EXPECTED_TEMPLATE_REJECTED.map(|p| p.to_string())
@@ -697,7 +697,7 @@ mod tests {
         // on the legacy arm — that capability is untouched.
         let template = repo_root()
             .join("crates")
-            .join("auto-man")
+            .join("auto-man-assets")
             .join("assets")
             .join("templates")
             .join("app")

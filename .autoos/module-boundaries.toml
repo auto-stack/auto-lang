@@ -68,6 +68,11 @@ schema = "module-boundaries/1"
 # adapter）之下；std-only、禁依赖 auto-lang/auto-val
 # （闭包由 test/fixtures/modularity/package-resolver-consumer 钉住）。
 "auto-package-resolver" = "man-ecosystem"
+# PLAN-803：Man 模板/构建器资源单一来源 + 纯脚手架路径规划——man
+# 生态的纯资源层，auto-man（asset.rs Auto 求值/IO adapter）之下；
+# rust-embed+std、禁依赖 auto-lang/auto-man/auto-val
+# （闭包由 test/fixtures/modularity/man-assets-consumer 钉住）。
+"auto-man-assets" = "man-ecosystem"
 # 顶层装配/工具/CLI（允许依赖任意下层域）。
 "auto" = "cli"
 "auto-lsp" = "tool"
@@ -214,6 +219,13 @@ exit_phase = "-"          # 生产标准库留语言仓
 id = "auto-man-assets"
 coverage_group = "assets"
 root = "crates/auto-man/assets"
+owner = "auto-man"
+exit_phase = "R7"
+
+[[assets]]
+id = "man-template-assets"
+coverage_group = "assets"
+root = "crates/auto-man-assets/assets"
 owner = "auto-man"
 exit_phase = "R7"
 

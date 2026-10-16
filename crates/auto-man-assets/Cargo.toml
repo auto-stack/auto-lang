@@ -1,0 +1,19 @@
+[package]
+name = "auto-man-assets"
+version = "0.1.0"
+edition = "2021"
+description = "Man template & builder asset single source plus pure scaffold path planning, extracted language-free from auto-man (PLAN-803)"
+license = "Proprietary"
+keywords = ["automation", "package-manager", "assets"]
+
+[dependencies]
+# std-only core plus rust-embed: the resource layer must not depend on
+# auto-lang/auto-man/auto-gen/auto-val/auto-vm/auto-ui — the closure is
+# pinned by test/fixtures/modularity/man-assets-consumer (PLAN-803 V01)
+# and the module-boundaries baseline ("auto-man-assets" = man-ecosystem).
+rust-embed = { workspace = true }
+
+[dev-dependencies]
+# Byte-hash freeze oracle (dev-only: never enters the normal/build closure).
+sha2 = "0.10"
+tempfile = { workspace = true }
