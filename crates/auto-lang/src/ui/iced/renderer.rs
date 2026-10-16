@@ -30980,9 +30980,20 @@ fn render_dynamic_view(
                 let p725_t_tail = std::time::Instant::now();
                 widget = widget.hosted();
                 crate::ui::frame_segments::arm_probe("ce_hosted", p725_t_tail.elapsed());
+                // PLAN-802（F802-R1-01 补齐）：VM 轨同构 bind——29480 起
+                // desktop 泛型臂把 editor 寄宿 scroller 绑进 scroll
+                // controller 注册表（handle = widget id，core::
+                // editor_scroll_handle 单源）；本轨（render_dynamic_view）
+                // 漏绑导致 scroll_to 写端点 intent 在 VM 轨永不被 drain
+                // 消费（pane 缺失静默丢弃/unprimed 空转——实机探针实录）。
+                // 补齐后 701 供②b 端点合同在 VM 轨闭环：读=注册表投影、
+                // 写=intent 排空解析为 operation::scroll_to、读回心跳
+                // ≤2s 收敛（读回臂 20652 原样）。
+                let scroll_id = crate::ui::code_editor::editor_scroll_handle(&key);
+                crate::ui::scroll::bind_controller(&scroll_id, &scroll_id);
                 let p725_t_sc = std::time::Instant::now();
                 let scroller = iced::widget::scrollable(widget)
-                    .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
+                    .id(iced::widget::Id::from(scroll_id))
                     .style(
                         |_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
                             scrollbar_style()
