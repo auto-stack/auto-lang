@@ -697,6 +697,7 @@ fn base_outcome(
         identity: identity.clone(),
         artifacts: Vec::new(),
         duration_ms: 0,
+        native: None,
     }
 }
 
@@ -720,6 +721,7 @@ fn error_outcome(
         identity: IdentityHashes::default(),
         artifacts: Vec::new(),
         duration_ms: 0,
+        native: None,
     }
 }
 

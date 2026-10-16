@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use crate::compare::Mismatch;
 
 pub const REPORT_SCHEMA: &str = "autolang.test-report/1";
+pub const REPORT_SCHEMA_V2: &str = "autolang.test-report/2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Status {
@@ -68,6 +69,24 @@ pub struct ArtifactRef {
     pub bytes: Option<usize>,
 }
 
+/// PLAN-788 v2: native-adapter observation record attached to a check
+/// outcome — the worker's stage trace, cache state, real counters and
+/// toolchain identity. Purely observational (comparisons stay in the
+/// parent); absent on v1 reports and on non-native checks.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NativeRecord {
+    pub exit_code: Option<i32>,
+    /// (stage, wall_ms) spans from the worker trace, in observation order.
+    pub stage_spans: Vec<(String, u64)>,
+    pub cache_mode: Option<String>,
+    /// Driver hit/miss summary lines (summary / hir / object).
+    pub cache_hits: Vec<(String, String)>,
+    /// (counter, value) pairs from the real driver counters.
+    pub counters: Vec<(String, u32)>,
+    /// Worker toolchain identity axes (lld hash, SDK dir, versions).
+    pub toolchain: Vec<(String, String)>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CheckOutcome {
     pub suite_id: String,
@@ -86,6 +105,8 @@ pub struct CheckOutcome {
     pub identity: IdentityHashes,
     pub artifacts: Vec<ArtifactRef>,
     pub duration_ms: u128,
+    /// PLAN-788 v2 native observation record (None on v1-shaped outcomes).
+    pub native: Option<NativeRecord>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -179,7 +200,10 @@ impl RunReport {
         for (k, v) in &counts {
             summary_parts.push(format!("\"{}\": {}", k, v));
         }
-        s.push_str(&format!("  \"summary\": {{ {} }},\n", summary_parts.join(", ")));
+        s.push_str(&format!(
+            "  \"summary\": {{ {} }},\n",
+            summary_parts.join(", ")
+        ));
         s.push_str(&format!(
             "  \"toolchain\": {{ {} }},\n",
             self.toolchain
@@ -263,6 +287,61 @@ impl RunReport {
                 json_str(&r.identity.contract)
             ));
             s.push_str(&format!("      \"duration_ms\": {}\n", r.duration_ms));
+            if let Some(n) = &r.native {
+                let mut parts: Vec<String> = Vec::new();
+                if let Some(code) = n.exit_code {
+                    parts.push(format!("\"exit_code\": {}", code));
+                }
+                if let Some(mode) = &n.cache_mode {
+                    parts.push(format!("\"cache_mode\": {}", json_str(mode)));
+                }
+                if !n.cache_hits.is_empty() {
+                    parts.push(format!(
+                        "\"cache_hits\": [{}]",
+                        n.cache_hits
+                            .iter()
+                            .map(|(k, v)| format!("[{}, {}]", json_str(k), json_str(v)))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                if !n.counters.is_empty() {
+                    parts.push(format!(
+                        "\"counters\": [{}]",
+                        n.counters
+                            .iter()
+                            .map(|(k, v)| format!("[{}, {}]", json_str(k), v))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                if !n.stage_spans.is_empty() {
+                    parts.push(format!(
+                        "\"stage_spans\": [{}]",
+                        n.stage_spans
+                            .iter()
+                            .map(|(k, v)| format!("[{}, {}]", json_str(k), v))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                if !n.toolchain.is_empty() {
+                    parts.push(format!(
+                        "\"toolchain\": [{}]",
+                        n.toolchain
+                            .iter()
+                            .map(|(k, v)| format!("[{}, {}]", json_str(k), json_str(v)))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+                if !parts.is_empty() {
+                    s.push_str(&format!(
+                        "      \"native\": {{\n        {}\n      }},\n",
+                        parts.join(",\n        ")
+                    ));
+                }
+            }
             s.push_str(&format!(
                 "    }}{}\n",
                 if i + 1 < self.results.len() { "," } else { "" }
@@ -299,6 +378,17 @@ impl RunReport {
             ));
             for m in &r.mismatches {
                 out.push_str(&format!("    {}\n", m));
+            }
+            if let Some(n) = &r.native {
+                let bits: Vec<String> = std::iter::once(match n.exit_code {
+                    Some(c) => format!("exit={}", c),
+                    None => "exit=none".to_string(),
+                })
+                .chain(n.cache_hits.iter().map(|(k, v)| format!("{}={}", k, v)))
+                .collect();
+                if !bits.is_empty() {
+                    out.push_str(&format!("    native {}\n", bits.join(" ")));
+                }
             }
         }
         let counts = self.counts();
@@ -368,6 +458,7 @@ mod tests {
             identity: IdentityHashes::default(),
             artifacts: vec![],
             duration_ms: 1,
+            native: None,
         }
     }
 

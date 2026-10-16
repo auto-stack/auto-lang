@@ -34,7 +34,11 @@ fn minimal_case_decodes() {
 
 #[test]
 fn wrong_schema_is_rejected() {
-    let err = decode(&minimal_case().replace(CASE_SCHEMA, "autolang.case/2")).unwrap_err();
+    // v2 is a supported dispatch now (PLAN-788); unknown majors stay
+    // rejected with the same message shape.
+    let err = decode(&minimal_case().replace(CASE_SCHEMA, "autolang.case/3")).unwrap_err();
+    assert!(err.message.contains("unsupported schema"), "{}", err);
+    let err = decode(&minimal_case().replace(CASE_SCHEMA, "autolang.case/1.1")).unwrap_err();
     assert!(err.message.contains("unsupported schema"), "{}", err);
 }
 

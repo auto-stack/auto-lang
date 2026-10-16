@@ -1,14 +1,47 @@
-//! Contract schemas (`autolang.case/1`) and strict decoding from [`CVal`].
+//! Contract schemas (`autolang.case/1`, and the strict v2 superset
+//! `autolang.case/2` from PLAN-788) and strict decoding from [`CVal`].
 //!
-//! Every decode failure carries a field path (e.g. `checks[2].expect`) and a
+//! Every decode failure carries a field path (e.g. `checks[2].expect.stdout`) and a
 //! concrete reason; unknown fields, wrong types, invalid id/path forms,
 //! unsupported fields (this pilot: variants/relations/recipes/budgets/
 //! platform/native adapters) are all errors — nothing is parsed then ignored.
+//!
+//! v2 is a strict superset (PLAN-788 T-01 contract-decision.md §3): the v1
+//! accept/reject sets are byte-identical — a v1 document carrying any v2-only
+//! field is still a located unknown-field error, and v2 avm/a2r checks behave
+//! exactly like v1. v2 adds: source syntax `hir-atom` (.atom raw HIR input),
+//! adapters `ac`/`syntax`, actions check/build (ac) and parse/edit (syntax),
+//! typed v2 stages, ac options (profile/target/entry/cache/budget), the
+//! native `exit` oracle and optional `perf` assertion face. `syntax` is
+//! decodable from day one but its executor is bound only after PLAN-787
+//! merges (D-787); until then executing it is an admission ERROR, never a
+//! SKIP and never silently green.
 
 use crate::admission::{check_limit, validate_virtual_path, Limits};
 use crate::atom::CVal;
 
 pub const CASE_SCHEMA: &str = "autolang.case/1";
+pub const CASE_SCHEMA_V2: &str = "autolang.case/2";
+
+/// Which contract version a document decoded under. New-in-v2 fields are
+/// only reachable under [`ContractVersion::V2`]; v1 known-field sets are
+/// untouched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContractVersion {
+    V1,
+    V2,
+}
+
+// PLAN-788 frozen budget hard caps (contract-decision.md §5). Declared
+// per-check budgets may only tighten these; raising them is a contract
+// revision, not a case-author decision.
+pub const BUDGET_HARD_CAP_BUILD_MS: u64 = 60_000;
+pub const BUDGET_HARD_CAP_RUN_MS: u64 = 5_000;
+pub const BUDGET_HARD_CAP_TOTAL_MS: u64 = 70_000;
+/// The only target the first native batch imports (Windows x64 msvc).
+pub const AC_TARGET: &str = "x86_64-pc-windows-msvc";
+/// Implicit ac entry when the case declares none.
+pub const AC_ENTRY_DEFAULT: &str = "main";
 
 // ------------------------------------------------------------------ types --
 
@@ -16,6 +49,12 @@ pub const CASE_SCHEMA: &str = "autolang.case/1";
 pub enum Adapter {
     Avm,
     A2r,
+    /// PLAN-788 v2: native AC adapter (core/scalar via the ac-case worker).
+    Ac,
+    /// PLAN-788 v2: 787 grammar adapter. Decodable now; the executor binds
+    /// only after PLAN-787 merges (D-787) — executing it before that is an
+    /// admission ERROR.
+    Syntax,
 }
 
 impl Adapter {
@@ -23,6 +62,8 @@ impl Adapter {
         match self {
             Adapter::Avm => "avm",
             Adapter::A2r => "a2r",
+            Adapter::Ac => "ac",
+            Adapter::Syntax => "syntax",
         }
     }
 }
@@ -31,6 +72,14 @@ impl Adapter {
 pub enum Action {
     Run,
     Emit,
+    /// ac: frontend + verify only (no PE).
+    Check,
+    /// ac: Checked → real COFF/PE.
+    Build,
+    /// syntax: CST/diagnostics projection over one source.
+    Parse,
+    /// syntax: bounded edit sequence against one base (T-06).
+    Edit,
 }
 
 impl Action {
@@ -38,6 +87,10 @@ impl Action {
         match self {
             Action::Run => "run",
             Action::Emit => "emit",
+            Action::Check => "check",
+            Action::Build => "build",
+            Action::Parse => "parse",
+            Action::Edit => "edit",
         }
     }
 }
@@ -56,6 +109,9 @@ pub enum Syntax {
     Auto,
     /// `.as` (lowered by the pipeline via the entry path suffix)
     AutoScript,
+    /// `.atom` (v2 only): raw HIR Atom text input — checked/bound by the
+    /// real descriptor binder, never derived-only negatives.
+    HirAtom,
 }
 
 impl Syntax {
@@ -63,6 +119,7 @@ impl Syntax {
         match self {
             Syntax::Auto => "at",
             Syntax::AutoScript => "as",
+            Syntax::HirAtom => "atom",
         }
     }
 
@@ -70,6 +127,7 @@ impl Syntax {
         match self {
             Syntax::Auto => "auto",
             Syntax::AutoScript => "auto-script",
+            Syntax::HirAtom => "hir-atom",
         }
     }
 }
@@ -98,24 +156,122 @@ pub struct FileEntry {
     pub payload: PayloadSpec,
 }
 
+/// AC source profile the first native batch imports (PLAN-788 §1: core and
+/// scalar only; text/record/text-record are explicitly NOT imported and are
+/// decode errors, never SKIPs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AcProfile {
+    Core,
+    Scalar,
+}
+
+impl AcProfile {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AcProfile::Core => "core",
+            AcProfile::Scalar => "scalar",
+        }
+    }
+}
+
+/// Cache participation mode for ac checks (contract-decision.md §6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheMode {
+    /// No cache reads; real recompute; publishes under the safe contract.
+    Fresh,
+    /// get→compute→publish (HIR hits re-verify; object hits still link+run).
+    Reuse,
+    /// Existing store only (missing root is an infrastructure error); hits
+    /// consumed, misses reported and really recomputed but never published.
+    ReadOnly,
+}
+
+impl CacheMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CacheMode::Fresh => "fresh",
+            CacheMode::Reuse => "reuse",
+            CacheMode::ReadOnly => "read-only",
+        }
+    }
+}
+
+/// Per-check ac budget declaration. `None` fields mean "hard cap" — decode
+/// fills nothing here; the executor clamps to the frozen constants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BudgetSpec {
+    pub build_ms: Option<u64>,
+    pub run_ms: Option<u64>,
+    pub total_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
     /// a2r/emit only: module name passed to the emitter (legacy-compat
     /// metadata; does not affect emitted bytes).
     pub module_name: Option<String>,
+    /// ac only (v2). Decoded to its effective value: absent → the frozen
+    /// implicit default (Core / AC_TARGET / "main" / Reuse).
+    pub ac_profile: Option<AcProfile>,
+    pub ac_target: Option<String>,
+    pub ac_entry: Option<String>,
+    pub ac_cache: Option<CacheMode>,
+    pub ac_budget: Option<BudgetSpec>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { module_name: None }
+        Options {
+            module_name: None,
+            ac_profile: None,
+            ac_target: None,
+            ac_entry: None,
+            ac_cache: None,
+            ac_budget: None,
+        }
     }
 }
 
+impl Options {
+    /// Effective ac option values: the declared value, else the suite
+    /// default already merged by `apply_defaults`, else the frozen implicit
+    /// default. Executors must consume ac options ONLY through these.
+    pub fn effective_profile(&self) -> AcProfile {
+        self.ac_profile.unwrap_or(AcProfile::Core)
+    }
+
+    pub fn effective_target(&self) -> &str {
+        self.ac_target.as_deref().unwrap_or(AC_TARGET)
+    }
+
+    pub fn effective_entry(&self) -> &str {
+        self.ac_entry.as_deref().unwrap_or(AC_ENTRY_DEFAULT)
+    }
+
+    pub fn effective_cache(&self) -> CacheMode {
+        self.ac_cache.unwrap_or(CacheMode::Reuse)
+    }
+
+    /// Effective budget: declared/merged value, `None` field = hard cap.
+    pub fn effective_budget(&self) -> BudgetSpec {
+        self.ac_budget.unwrap_or_default()
+    }
+}
+
+/// Typed stage for error completions. v1/avm keeps `parse`/`type`/`run`;
+/// v2 ac checks use the full pipeline boundary set (contract-decision.md §4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
     Parse,
     Type,
     Run,
+    Resolve,
+    Typecheck,
+    Bind,
+    Verify,
+    Capability,
+    Backend,
+    Link,
 }
 
 impl Stage {
@@ -124,7 +280,52 @@ impl Stage {
             Stage::Parse => "parse",
             Stage::Type => "type",
             Stage::Run => "run",
+            Stage::Resolve => "resolve",
+            Stage::Typecheck => "typecheck",
+            Stage::Bind => "bind",
+            Stage::Verify => "verify",
+            Stage::Capability => "capability",
+            Stage::Backend => "backend",
+            Stage::Link => "link",
         }
+    }
+
+    /// Stages legal in an error completion for this adapter. avm/a2r keep
+    /// the v1 set byte-identically; ac gets the typed pipeline boundaries;
+    /// syntax negatives are parse-stage diagnostics only (rest binds at
+    /// T-06).
+    pub fn supported_for(adapter: Adapter) -> &'static [&'static str] {
+        match adapter {
+            Adapter::Avm | Adapter::A2r => &["parse", "type", "run"],
+            Adapter::Ac => &[
+                "parse",
+                "resolve",
+                "typecheck",
+                "bind",
+                "verify",
+                "capability",
+                "backend",
+                "link",
+                "run",
+            ],
+            Adapter::Syntax => &["parse"],
+        }
+    }
+
+    fn decode(s: &str) -> Option<Stage> {
+        Some(match s {
+            "parse" => Stage::Parse,
+            "type" => Stage::Type,
+            "run" => Stage::Run,
+            "resolve" => Stage::Resolve,
+            "typecheck" => Stage::Typecheck,
+            "bind" => Stage::Bind,
+            "verify" => Stage::Verify,
+            "capability" => Stage::Capability,
+            "backend" => Stage::Backend,
+            "link" => Stage::Link,
+            _ => return None,
+        })
     }
 }
 
@@ -172,6 +373,14 @@ pub struct ArtifactExpect {
     pub compare: Compare,
 }
 
+/// Optional performance assertion face (v2 ac). Absent fields are
+/// record-only; the reference-environment recipe (contract-decision §8)
+/// decides enforcement — ordinary unit tests never carry wall-clock gates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct PerfExpect {
+    pub total_ms_max: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExpectSpec {
     pub completion: Completion,
@@ -179,6 +388,11 @@ pub struct ExpectSpec {
     pub stdout: Option<StreamExpect>,
     pub stderr: Option<StreamExpect>,
     pub artifacts: Vec<ArtifactExpect>,
+    /// v2 ac/run only: native exit-code oracle. A trap (exit 70) is an
+    /// ordinary declarable exit, not an error completion.
+    pub exit: Option<i32>,
+    /// v2 ac only: optional perf assertion face.
+    pub perf: Option<PerfExpect>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -386,15 +600,19 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
     )?;
 
     let schema = req_str(&f, "schema")?;
-    if schema != CASE_SCHEMA {
+    let version = if schema == CASE_SCHEMA {
+        ContractVersion::V1
+    } else if schema == CASE_SCHEMA_V2 {
+        ContractVersion::V2
+    } else {
         return Err(err(
             "case.schema",
             format!(
-                "unsupported schema {:?} (this pilot implements {})",
-                schema, CASE_SCHEMA
+                "unsupported schema {:?} (this pilot implements {}, {})",
+                schema, CASE_SCHEMA, CASE_SCHEMA_V2
             ),
         ));
-    }
+    };
 
     let id = req_str(&f, "id")?;
     if !valid_case_id(&id) {
@@ -417,7 +635,7 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
         None
     };
 
-    let source = decode_source(f.req("source")?, "case.source")?;
+    let source = decode_source(f.req("source")?, "case.source", version)?;
     let files = decode_files(f.sub("files"), "case.files")?;
     check_limit(
         "max_files_per_case",
@@ -464,7 +682,7 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
     .map_err(|e| err("case.checks", e.to_string()))?;
     let mut checks = Vec::new();
     for (i, cv) in checks_list.iter().enumerate() {
-        checks.push(decode_check(cv, &format!("case.checks[{}]", i))?);
+        checks.push(decode_check(cv, &format!("case.checks[{}]", i), version)?);
     }
     let mut seen = std::collections::BTreeSet::new();
     for c in &checks {
@@ -553,17 +771,29 @@ fn decode_payload_from(f: &Fields) -> Result<PayloadSpec, ContractError> {
     Ok(PayloadSpec::Text(text))
 }
 
-fn decode_source(v: &CVal, path: &str) -> Result<SourceSpec, ContractError> {
+fn decode_source(
+    v: &CVal,
+    path: &str,
+    version: ContractVersion,
+) -> Result<SourceSpec, ContractError> {
     let pairs = as_obj(v, path)?;
     let f = Fields::new(path, pairs, &["block", "file", "text", "syntax", "path"])?;
     let payload = decode_payload_from(&f)?;
     let syntax = match req_str(&f, "syntax")?.as_str() {
         "auto" => Syntax::Auto,
         "auto-script" => Syntax::AutoScript,
+        "hir-atom" if version == ContractVersion::V2 => Syntax::HirAtom,
         other => {
             return Err(err(
                 &f.path_of("syntax"),
-                format!("unknown syntax {:?} (supported: auto, auto-script)", other),
+                format!(
+                    "unknown syntax {:?} (supported: {})",
+                    other,
+                    match version {
+                        ContractVersion::V1 => "auto, auto-script",
+                        ContractVersion::V2 => "auto, auto-script, hir-atom",
+                    }
+                ),
             ))
         }
     };
@@ -609,7 +839,11 @@ fn decode_files(v: Option<&CVal>, path: &str) -> Result<Vec<FileEntry>, Contract
     Ok(out)
 }
 
-fn decode_check(v: &CVal, path: &str) -> Result<CheckSpec, ContractError> {
+fn decode_check(
+    v: &CVal,
+    path: &str,
+    version: ContractVersion,
+) -> Result<CheckSpec, ContractError> {
     let pairs = as_obj(v, path)?;
     let f = Fields::new(
         path,
@@ -637,30 +871,47 @@ fn decode_check(v: &CVal, path: &str) -> Result<CheckSpec, ContractError> {
     let adapter = match req_str(&f, "adapter")?.as_str() {
         "avm" => Adapter::Avm,
         "a2r" => Adapter::A2r,
+        "ac" if version == ContractVersion::V2 => Adapter::Ac,
+        "syntax" if version == ContractVersion::V2 => Adapter::Syntax,
         other => {
-            return Err(err(&f.path_of("adapter"), format!("adapter {:?} is not available in this pilot (supported: avm, a2r; native/ac/acc and others belong to Design 35 phase B)", other)))
+            return Err(err(&f.path_of("adapter"), format!("adapter {:?} is not available ({} implements avm, a2r{}; native/ac/acc and others belong to Design 35 phase B)", other, if version == ContractVersion::V2 { "v2" } else { "v1" }, if version == ContractVersion::V2 { ", ac, syntax" } else { "" })))
         }
     };
     let action = match req_str(&f, "action")?.as_str() {
         "run" => Action::Run,
         "emit" => Action::Emit,
+        "check" if version == ContractVersion::V2 => Action::Check,
+        "build" if version == ContractVersion::V2 => Action::Build,
+        "parse" if version == ContractVersion::V2 => Action::Parse,
+        "edit" if version == ContractVersion::V2 => Action::Edit,
         other => {
             return Err(err(
                 &f.path_of("action"),
                 format!(
-                    "action {:?} is not available in this pilot (supported: run, emit)",
-                    other
+                    "action {:?} is not available (supported: run, emit{})",
+                    other,
+                    if version == ContractVersion::V2 {
+                        ", check, build, parse, edit"
+                    } else {
+                        ""
+                    }
                 ),
             ))
         }
     };
     match (adapter, action) {
-        (Adapter::Avm, Action::Run) | (Adapter::A2r, Action::Emit) => {}
+        (Adapter::Avm, Action::Run)
+        | (Adapter::A2r, Action::Emit)
+        | (Adapter::Ac, Action::Check)
+        | (Adapter::Ac, Action::Build)
+        | (Adapter::Ac, Action::Run)
+        | (Adapter::Syntax, Action::Parse)
+        | (Adapter::Syntax, Action::Edit) => {}
         (a, act) => {
             return Err(err(
                 &f.path_of("action"),
                 format!(
-                    "illegal combination {}/{} (this pilot: avm/run, a2r/emit)",
+                    "illegal combination {}/{} (supported: avm/run, a2r/emit, ac/check, ac/build, ac/run, syntax/parse, syntax/edit)",
                     a.as_str(),
                     act.as_str()
                 ),
@@ -690,7 +941,7 @@ fn decode_check(v: &CVal, path: &str) -> Result<CheckSpec, ContractError> {
         }
     };
 
-    let expect = decode_expect(f.req("expect")?, &f.path_of("expect"), adapter)?;
+    let expect = decode_expect(f.req("expect")?, &f.path_of("expect"), adapter, action)?;
 
     Ok(CheckSpec {
         id,
@@ -712,8 +963,11 @@ fn decode_options(
 ) -> Result<Options, ContractError> {
     let pairs = as_obj(v, path)?;
     let known: &[&str] = match adapter {
-        Adapter::Avm => &[], // avm/run has no options in v1
+        Adapter::Avm => &[], // avm/run has no options (v1 and v2)
         Adapter::A2r => &["module_name"],
+        Adapter::Ac => &["profile", "target", "entry", "cache", "budget"],
+        // syntax options (edit sequences etc.) freeze at T-06; none today.
+        Adapter::Syntax => &[],
     };
     let f = Fields::new(path, pairs, known)?;
     let module_name = opt_str(&f, "module_name")?;
@@ -735,50 +989,214 @@ fn decode_options(
             ));
         }
     }
-    Ok(Options { module_name })
+
+    let mut ac_profile = None;
+    let mut ac_target = None;
+    let mut ac_entry = None;
+    let mut ac_cache = None;
+    let mut ac_budget = None;
+    if adapter == Adapter::Ac {
+        // Only DECLARED values are stored — implicit defaults resolve at
+        // execution via the `effective_*` accessors, so a suite default can
+        // still fill an undeclared case field through apply_defaults.
+        ac_profile = match f.sub("profile") {
+            None => None,
+            Some(CVal::Str(s)) if s == "core" => Some(AcProfile::Core),
+            Some(CVal::Str(s)) if s == "scalar" => Some(AcProfile::Scalar),
+            Some(CVal::Str(s)) => {
+                return Err(err(
+                    &f.path_of("profile"),
+                    format!(
+                        "profile {:?} is not imported in this batch (supported: core, scalar; text/record/text-record remain guarded by the legacy gates)",
+                        s
+                    ),
+                ))
+            }
+            Some(other) => {
+                return Err(err(
+                    &f.path_of("profile"),
+                    format!("expected string, got {}", other.type_name()),
+                ))
+            }
+        };
+        ac_target = match f.sub("target") {
+            None => None,
+            Some(CVal::Str(s)) if s == AC_TARGET => Some(s.clone()),
+            Some(CVal::Str(s)) => {
+                return Err(err(
+                    &f.path_of("target"),
+                    format!(
+                        "target {:?} is not supported (this batch imports {} only)",
+                        s, AC_TARGET
+                    ),
+                ))
+            }
+            Some(other) => {
+                return Err(err(
+                    &f.path_of("target"),
+                    format!("expected string, got {}", other.type_name()),
+                ))
+            }
+        };
+        ac_entry = match f.sub("entry") {
+            None => None,
+            Some(CVal::Str(s)) => {
+                let ok = !s.is_empty()
+                    && s.len() <= 64
+                    && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+                if !ok {
+                    return Err(err(
+                        &f.path_of("entry"),
+                        "entry must be a function-name identifier ([A-Za-z0-9_], non-empty, <=64 chars)",
+                    ));
+                }
+                Some(s.clone())
+            }
+            Some(other) => {
+                return Err(err(
+                    &f.path_of("entry"),
+                    format!("expected string, got {}", other.type_name()),
+                ))
+            }
+        };
+        ac_cache = match f.sub("cache") {
+            None => None,
+            Some(CVal::Str(s)) if s == "fresh" => Some(CacheMode::Fresh),
+            Some(CVal::Str(s)) if s == "reuse" => Some(CacheMode::Reuse),
+            Some(CVal::Str(s)) if s == "read-only" => Some(CacheMode::ReadOnly),
+            Some(CVal::Str(s)) => {
+                return Err(err(
+                    &f.path_of("cache"),
+                    format!(
+                        "unknown cache mode {:?} (supported: fresh, reuse, read-only)",
+                        s
+                    ),
+                ))
+            }
+            Some(other) => {
+                return Err(err(
+                    &f.path_of("cache"),
+                    format!("expected string, got {}", other.type_name()),
+                ))
+            }
+        };
+        ac_budget = match f.sub("budget") {
+            None => None,
+            Some(bv) => {
+                let bp = f.path_of("budget");
+                let bpairs = as_obj(bv, &bp)?;
+                let bf = Fields::new(&bp, bpairs, &["build_ms", "run_ms", "total_ms"])?;
+                let read_ms = |key: &str, cap: u64| -> Result<Option<u64>, ContractError> {
+                    match bf.sub(key) {
+                        None => Ok(None),
+                        Some(CVal::Int(n)) if *n > 0 && (*n as u64) <= cap => Ok(Some(*n as u64)),
+                        Some(CVal::Int(n)) => Err(err(
+                            &bf.path_of(key),
+                            format!(
+                                "{} must be in (0, {}] ms — frozen hard cap (got {})",
+                                key, cap, n
+                            ),
+                        )),
+                        Some(other) => Err(err(
+                            &bf.path_of(key),
+                            format!("expected integer, got {}", other.type_name()),
+                        )),
+                    }
+                };
+                Some(BudgetSpec {
+                    build_ms: read_ms("build_ms", BUDGET_HARD_CAP_BUILD_MS)?,
+                    run_ms: read_ms("run_ms", BUDGET_HARD_CAP_RUN_MS)?,
+                    total_ms: read_ms("total_ms", BUDGET_HARD_CAP_TOTAL_MS)?,
+                })
+            }
+        };
+    }
+
+    Ok(Options {
+        module_name,
+        ac_profile,
+        ac_target,
+        ac_entry,
+        ac_cache,
+        ac_budget,
+    })
 }
 
-/// Per-adapter observable-channel support table (Plan 773 F-02, frozen for
-/// v1). A channel declared for an adapter that cannot observe it is an
-/// ADMISSION error — parsed-then-ignored expectations are forbidden.
+/// Per-adapter observable-channel support table (Plan 773 F-02 for v1;
+/// PLAN-788 extends it for `ac`). A channel declared for an adapter that
+/// cannot observe it is an ADMISSION error — parsed-then-ignored
+/// expectations are forbidden. Action-level narrowing (exit/stdout/stderr
+/// are ac/run-only; ac artifacts are the canonical HIR only) is enforced in
+/// [`decode_expect`]. `syntax` exposes no channels until T-06 freezes its
+/// projection face.
 pub fn channel_supported(adapter: Adapter, channel: &str) -> bool {
     match (adapter, channel) {
         (Adapter::Avm, "result") => true,
         (Adapter::Avm, "stdout") => true,
         (Adapter::Avm, "stderr") => true,
         (Adapter::A2r, "artifacts") => true,
+        (Adapter::Ac, "exit") => true,
+        (Adapter::Ac, "stdout") => true,
+        (Adapter::Ac, "stderr") => true,
+        (Adapter::Ac, "artifacts") => true,
+        (Adapter::Ac, "perf") => true,
         _ => false,
     }
 }
 
-fn decode_expect(v: &CVal, path: &str, adapter: Adapter) -> Result<ExpectSpec, ContractError> {
+/// Logical artifact path ac checks may byte-compare against: the canonical
+/// HIR emitted by the real frontend. obj/exe identity is manifest-bound
+/// (product_from handoff / run observation), never a byte golden.
+pub const AC_HIR_ARTIFACT_PATH: &str = "hir.atom";
+
+fn decode_expect(
+    v: &CVal,
+    path: &str,
+    adapter: Adapter,
+    action: Action,
+) -> Result<ExpectSpec, ContractError> {
+    let v2_channels = adapter == Adapter::Ac;
     let pairs = as_obj(v, path)?;
-    let f = Fields::new(
-        path,
-        pairs,
-        &["completion", "result", "stdout", "stderr", "artifacts"],
-    )?;
+    let known: &[&str] = if v2_channels {
+        &[
+            "completion",
+            "result",
+            "stdout",
+            "stderr",
+            "artifacts",
+            "exit",
+            "perf",
+        ]
+    } else {
+        &["completion", "result", "stdout", "stderr", "artifacts"]
+    };
+    let f = Fields::new(path, pairs, known)?;
 
     // Frozen support table: every declared channel must be observable by
     // this adapter, else the check never loads (F-02: unsupported fields
     // may not be skipped after decode).
-    for channel in ["result", "stdout", "stderr", "artifacts"] {
+    let channels: &[&str] = if v2_channels {
+        &["result", "stdout", "stderr", "artifacts", "exit", "perf"]
+    } else {
+        &["result", "stdout", "stderr", "artifacts"]
+    };
+    for channel in channels {
         if f.sub(channel).is_some() && !channel_supported(adapter, channel) {
+            let adapter_channels = match adapter {
+                Adapter::Avm => "result, stdout, stderr",
+                Adapter::A2r => "artifacts",
+                Adapter::Ac => "exit, stdout, stderr, artifacts (hir.atom), perf",
+                Adapter::Syntax => "none until T-06 (787 grammar projection face)",
+            };
             return Err(err(
                 &f.path_of(channel),
                 format!(
                     "`{}` is not an observable channel for {}/{} in this pilot (supported by {}: {})",
                     channel,
                     adapter.as_str(),
-                    match adapter {
-                        Adapter::Avm => "run",
-                        Adapter::A2r => "emit",
-                    },
+                    action.as_str(),
                     channel,
-                    match adapter {
-                        Adapter::Avm => "result, stdout, stderr",
-                        Adapter::A2r => "artifacts",
-                    }
+                    adapter_channels
                 ),
             ));
         }
@@ -788,14 +1206,18 @@ fn decode_expect(v: &CVal, path: &str, adapter: Adapter) -> Result<ExpectSpec, C
         CVal::Str(s) if s == "success" => Completion::Success,
         CVal::Obj(cp) => {
             let cf = Fields::new(&f.path_of("completion"), cp, &["stage", "code", "message"])?;
-            let stage = match req_str(&cf, "stage")?.as_str() {
-                "parse" => Stage::Parse,
-                "type" => Stage::Type,
-                "run" => Stage::Run,
-                other => {
+            let stage_str = req_str(&cf, "stage")?;
+            let stage = match Stage::decode(&stage_str) {
+                Some(s) if Stage::supported_for(adapter).contains(&s.as_str()) => s,
+                _ => {
                     return Err(err(
                         &format!("{}.stage", f.path_of("completion")),
-                        format!("unknown stage {:?} (supported: parse, type, run)", other),
+                        format!(
+                            "unknown or unsupported stage {:?} for {} (supported: {})",
+                            stage_str,
+                            adapter.as_str(),
+                            Stage::supported_for(adapter).join(", ")
+                        ),
                     ))
                 }
             };
@@ -886,6 +1308,16 @@ fn decode_expect(v: &CVal, path: &str, adapter: Adapter) -> Result<ExpectSpec, C
             None => Ok(None),
             Some(sv) => {
                 let sp = f.path_of(key);
+                if adapter == Adapter::Ac && action != Action::Run {
+                    return Err(err(
+                        &sp,
+                        format!(
+                            "`{}` is an ac/run observation — ac/{} exposes no process streams",
+                            key,
+                            action.as_str()
+                        ),
+                    ));
+                }
                 let pairs = as_obj(sv, &sp)?;
                 let sf = Fields::new(&sp, pairs, &["text", "compare"])?;
                 // F-02: streams are success-completion observations; an
@@ -909,6 +1341,63 @@ fn decode_expect(v: &CVal, path: &str, adapter: Adapter) -> Result<ExpectSpec, C
     let stdout = decode_stream("stdout")?;
     let stderr = decode_stream("stderr")?;
 
+    let exit = match f.sub("exit") {
+        None => None,
+        Some(CVal::Int(n)) if i32::try_from(*n).is_ok() => {
+            if adapter != Adapter::Ac || action != Action::Run {
+                return Err(err(
+                    &f.path_of("exit"),
+                    "`exit` is an ac/run observation — only the native run exposes an exit code",
+                ));
+            }
+            if matches!(completion, Completion::Error { .. }) {
+                return Err(err(
+                    &f.path_of("exit"),
+                    "`exit` expectations require completion \"success\" — a native trap exit (e.g. 70) IS a success completion with an exit code",
+                ));
+            }
+            Some(*n as i32)
+        }
+        Some(CVal::Int(n)) => {
+            return Err(err(
+                &f.path_of("exit"),
+                format!("exit code {} is outside the i32 native exit-code range", n),
+            ))
+        }
+        Some(other) => {
+            return Err(err(
+                &f.path_of("exit"),
+                format!("expected integer, got {}", other.type_name()),
+            ))
+        }
+    };
+
+    let perf = match f.sub("perf") {
+        None => None,
+        Some(pv) => {
+            let pp = f.path_of("perf");
+            let ppairs = as_obj(pv, &pp)?;
+            let pf = Fields::new(&pp, ppairs, &["total_ms_max"])?;
+            let total_ms_max = match pf.sub("total_ms_max") {
+                None => None,
+                Some(CVal::Int(n)) if *n > 0 => Some(*n as u64),
+                Some(CVal::Int(n)) => {
+                    return Err(err(
+                        &pf.path_of("total_ms_max"),
+                        format!("total_ms_max must be > 0 (got {})", n),
+                    ))
+                }
+                Some(other) => {
+                    return Err(err(
+                        &pf.path_of("total_ms_max"),
+                        format!("expected integer, got {}", other.type_name()),
+                    ))
+                }
+            };
+            Some(PerfExpect { total_ms_max })
+        }
+    };
+
     let mut artifacts = Vec::new();
     if let Some(av) = f.sub("artifacts") {
         let ap = f.path_of("artifacts");
@@ -925,6 +1414,15 @@ fn decode_expect(v: &CVal, path: &str, adapter: Adapter) -> Result<ExpectSpec, C
             let af = Fields::new(&ipath, pairs, &["path", "file", "compare"])?;
             let p = req_str(&af, "path")?;
             validate_virtual_path(&p).map_err(|e| err(&af.path_of("path"), e.to_string()))?;
+            if adapter == Adapter::Ac && p != AC_HIR_ARTIFACT_PATH {
+                return Err(err(
+                    &af.path_of("path"),
+                    format!(
+                        "ac artifact byte-oracles support {:?} only (canonical HIR); obj/exe identity is manifest-bound — observe via ac/run or product_from, not byte goldens (got {:?})",
+                        AC_HIR_ARTIFACT_PATH, p
+                    ),
+                ));
+            }
             let file = req_str(&af, "file")?;
             validate_virtual_path(&file).map_err(|e| err(&af.path_of("file"), e.to_string()))?;
             let compare = decode_compare(af.sub("compare"), &format!("{}.compare", ipath))?;
@@ -942,6 +1440,8 @@ fn decode_expect(v: &CVal, path: &str, adapter: Adapter) -> Result<ExpectSpec, C
         stdout,
         stderr,
         artifacts,
+        exit,
+        perf,
     })
 }
 

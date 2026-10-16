@@ -10,9 +10,13 @@ use std::collections::BTreeMap;
 
 use crate::admission::validate_virtual_path;
 use crate::atom::CVal;
-use crate::contract::{Adapter, CheckSpec, ContractError, Options};
+use crate::contract::{
+    Adapter, BudgetSpec, CheckSpec, ContractError, ContractVersion, Options, AC_TARGET,
+    BUDGET_HARD_CAP_BUILD_MS, BUDGET_HARD_CAP_RUN_MS, BUDGET_HARD_CAP_TOTAL_MS,
+};
 
 pub const SUITE_SCHEMA: &str = "autolang.suite/1";
+pub const SUITE_SCHEMA_V2: &str = "autolang.suite/2";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuiteSpec {
@@ -150,15 +154,19 @@ pub fn decode_suite(v: &CVal) -> Result<SuiteSpec, ContractError> {
     )?;
 
     let schema = req_str(props, "schema", "suite")?;
-    if schema != SUITE_SCHEMA {
+    let version = if schema == SUITE_SCHEMA {
+        ContractVersion::V1
+    } else if schema == SUITE_SCHEMA_V2 {
+        ContractVersion::V2
+    } else {
         return Err(err(
             "suite.schema",
             format!(
-                "unsupported schema {:?} (this pilot implements {})",
-                schema, SUITE_SCHEMA
+                "unsupported schema {:?} (this pilot implements {}, {})",
+                schema, SUITE_SCHEMA, SUITE_SCHEMA_V2
             ),
         ));
-    }
+    };
     let id = req_str(props, "id", "suite")?;
     if id.is_empty()
         || id.len() > 64
@@ -211,11 +219,23 @@ pub fn decode_suite(v: &CVal) -> Result<SuiteSpec, ContractError> {
         }
         if let Some((_, ov)) = dpairs.iter().find(|(k, _)| k == "options") {
             let opairs = as_obj(ov, "suite.defaults.options")?;
-            check_known(opairs, &["avm", "a2r"], "suite.defaults.options")?;
+            let adapter_keys: &[&str] = match version {
+                ContractVersion::V1 => &["avm", "a2r"],
+                ContractVersion::V2 => &["avm", "a2r", "ac", "syntax"],
+            };
+            check_known(opairs, adapter_keys, "suite.defaults.options")?;
             for (adapter, av) in opairs {
                 let apath = format!("suite.defaults.options.{}", adapter);
                 let apairs = as_obj(av, &apath)?;
-                check_known(apairs, &["run", "emit"], &apath)?;
+                let action_keys: &[&str] = match adapter.as_str() {
+                    "avm" => &["run"],
+                    "a2r" => &["emit"],
+                    "ac" => &["check", "build", "run"],
+                    // syntax options freeze at T-06 — none are mergeable yet.
+                    "syntax" => &[],
+                    _ => unreachable!("check_known gates the adapter keys"),
+                };
+                check_known(apairs, action_keys, &apath)?;
                 for (action, val) in apairs {
                     let as_obj_val = as_obj(val, &format!("{}.{}", apath, action))?;
                     // Validate that defaults decode as options for this combo.
@@ -262,10 +282,29 @@ pub fn decode_suite(v: &CVal) -> Result<SuiteSpec, ContractError> {
                         match item {
                             CVal::Str(s) if s == "avm" => required_adapters.push(Adapter::Avm),
                             CVal::Str(s) if s == "a2r" => required_adapters.push(Adapter::A2r),
+                            CVal::Str(s) if s == "ac" && version == ContractVersion::V2 => {
+                                required_adapters.push(Adapter::Ac)
+                            }
+                            CVal::Str(s) if s == "syntax" && version == ContractVersion::V2 => {
+                                required_adapters.push(Adapter::Syntax)
+                            }
                             CVal::Str(other) => {
                                 return Err(err(
                                     &format!("suite.required.adapters[{}]", i),
-                                    format!("unknown adapter {:?}", other),
+                                    format!(
+                                        "unknown adapter {:?} ({} implements avm, a2r{})",
+                                        other,
+                                        if version == ContractVersion::V2 {
+                                            "v2"
+                                        } else {
+                                            "v1"
+                                        },
+                                        if version == ContractVersion::V2 {
+                                            ", ac, syntax"
+                                        } else {
+                                            ""
+                                        }
+                                    ),
                                 ))
                             }
                             other => {
@@ -305,6 +344,8 @@ fn validate_options_shape(
 ) -> Result<(), ContractError> {
     let known: &[&str] = match adapter {
         "avm" => &[],
+        "ac" => &["profile", "target", "entry", "cache", "budget"],
+        "syntax" => &[],
         _ => &["module_name"],
     };
     for (k, v) in pairs {
@@ -330,8 +371,119 @@ fn validate_options_shape(
                 format!("expected string, got {}", v.type_name()),
             ));
         }
+        // ac defaults are fully value-validated HERE (suite level) so that
+        // apply_defaults' later infallible reconstruction can never see an
+        // illegal merged raw value — case-declared values were already
+        // validated by `decode_options`.
+        if adapter == "ac" {
+            validate_ac_option_value(k, v)?;
+        }
     }
     Ok(())
+}
+
+fn validate_ac_option_value(k: &str, v: &CVal) -> Result<(), ContractError> {
+    let path = format!("suite.defaults.options.ac.{}", k);
+    match k {
+        "profile" => match v {
+            CVal::Str(s) if s == "core" || s == "scalar" => Ok(()),
+            CVal::Str(s) => Err(err(
+                &path,
+                format!(
+                    "profile {:?} is not imported in this batch (supported: core, scalar)",
+                    s
+                ),
+            )),
+            other => Err(err(
+                &path,
+                format!("expected string, got {}", other.type_name()),
+            )),
+        },
+        "target" => match v {
+            CVal::Str(s) if s == AC_TARGET => Ok(()),
+            CVal::Str(s) => Err(err(
+                &path,
+                format!(
+                    "target {:?} is not supported (this batch imports {} only)",
+                    s, AC_TARGET
+                ),
+            )),
+            other => Err(err(
+                &path,
+                format!("expected string, got {}", other.type_name()),
+            )),
+        },
+        "entry" => match v {
+            CVal::Str(s)
+                if !s.is_empty()
+                    && s.len() <= 64
+                    && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+            {
+                Ok(())
+            }
+            CVal::Str(_) => Err(err(
+                &path,
+                "entry must be a function-name identifier ([A-Za-z0-9_], non-empty, <=64 chars)",
+            )),
+            other => Err(err(
+                &path,
+                format!("expected string, got {}", other.type_name()),
+            )),
+        },
+        "cache" => match v {
+            CVal::Str(s) if s == "fresh" || s == "reuse" || s == "read-only" => Ok(()),
+            CVal::Str(s) => Err(err(
+                &path,
+                format!(
+                    "unknown cache mode {:?} (supported: fresh, reuse, read-only)",
+                    s
+                ),
+            )),
+            other => Err(err(
+                &path,
+                format!("expected string, got {}", other.type_name()),
+            )),
+        },
+        "budget" => {
+            let bpairs = as_obj(v, &path)?;
+            for (bk, bv) in bpairs {
+                let cap = match bk.as_str() {
+                    "build_ms" => BUDGET_HARD_CAP_BUILD_MS,
+                    "run_ms" => BUDGET_HARD_CAP_RUN_MS,
+                    "total_ms" => BUDGET_HARD_CAP_TOTAL_MS,
+                    other => {
+                        return Err(err(
+                            &format!("suite.defaults.options.ac.budget.{}", other),
+                            format!(
+                                "unknown budget field {:?} (known: build_ms, run_ms, total_ms)",
+                                other
+                            ),
+                        ))
+                    }
+                };
+                match bv {
+                    CVal::Int(n) if *n > 0 && (*n as u64) <= cap => {}
+                    CVal::Int(n) => {
+                        return Err(err(
+                            &format!("suite.defaults.options.ac.budget.{}", bk),
+                            format!(
+                                "{} must be in (0, {}] ms — frozen hard cap (got {})",
+                                bk, cap, n
+                            ),
+                        ))
+                    }
+                    other => {
+                        return Err(err(
+                            &format!("suite.defaults.options.ac.budget.{}", bk),
+                            format!("expected integer, got {}", other.type_name()),
+                        ))
+                    }
+                }
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Deep-merge objects (recursive), replace arrays wholesale; local wins.
@@ -375,36 +527,170 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
     let action = merged.action.as_str();
     if let Some(actions) = defaults.options.get(adapter) {
         if let Some(base) = actions.get(action) {
-            let local = CVal::Obj(vec![(
-                "module_name".to_string(),
-                merged
-                    .options
-                    .module_name
-                    .clone()
-                    .map(CVal::Str)
-                    .unwrap_or(CVal::Null),
-            )])
+            // Rebuild the case-local options as raw values so every
+            // adapter's fields participate in the deep-merge (v2 ac has
+            // profile/target/entry/cache/budget; `key: null` marks unset
+            // locals and is dropped before merging — suite defaults fill
+            // the gaps, the frozen implicit defaults cover the rest at
+            // decode time).
+            let opt = |v: &Option<String>| v.clone().map(CVal::Str).unwrap_or(CVal::Null);
+            let budget_val = |b: &Option<BudgetSpec>| match b {
+                None => CVal::Null,
+                Some(b) => CVal::Obj(vec![
+                    (
+                        "build_ms".to_string(),
+                        b.build_ms
+                            .map(|n| CVal::Int(n as i64))
+                            .unwrap_or(CVal::Null),
+                    ),
+                    (
+                        "run_ms".to_string(),
+                        b.run_ms.map(|n| CVal::Int(n as i64)).unwrap_or(CVal::Null),
+                    ),
+                    (
+                        "total_ms".to_string(),
+                        b.total_ms
+                            .map(|n| CVal::Int(n as i64))
+                            .unwrap_or(CVal::Null),
+                    ),
+                ]),
+            };
+            let local = CVal::Obj(vec![
+                (
+                    "module_name".to_string(),
+                    merged
+                        .options
+                        .module_name
+                        .clone()
+                        .map(CVal::Str)
+                        .unwrap_or(CVal::Null),
+                ),
+                (
+                    "profile".to_string(),
+                    opt(&merged.options.ac_profile.map(|p| p.as_str().to_string())),
+                ),
+                ("target".to_string(), opt(&merged.options.ac_target)),
+                ("entry".to_string(), opt(&merged.options.ac_entry)),
+                (
+                    "cache".to_string(),
+                    opt(&merged.options.ac_cache.map(|c| c.as_str().to_string())),
+                ),
+                ("budget".to_string(), budget_val(&merged.options.ac_budget)),
+            ])
             .filter_nulls();
             let combined = deep_merge(base, &local);
             let pairs = combined.as_obj().unwrap_or(&[]);
             let mut module_name = None;
-            let mut from_default = false;
+            let mut from_default_module = false;
+            let mut ac_profile = None;
+            let mut ac_target = None;
+            let mut ac_entry = None;
+            let mut ac_cache = None;
+            let mut ac_budget = None;
             for (k, v) in pairs {
-                if k == "module_name" {
-                    if let CVal::Str(s) = v {
-                        if merged.options.module_name.is_none() {
-                            from_default = true;
+                match k.as_str() {
+                    "module_name" => {
+                        if let CVal::Str(s) = v {
+                            if merged.options.module_name.is_none() {
+                                from_default_module = true;
+                            }
+                            module_name = Some(s.clone());
                         }
-                        module_name = Some(s.clone());
                     }
+                    "profile" => {
+                        if let CVal::Str(s) = v {
+                            ac_profile = Some(s.clone());
+                        }
+                    }
+                    "target" => {
+                        if let CVal::Str(s) = v {
+                            ac_target = Some(s.clone());
+                        }
+                    }
+                    "entry" => {
+                        if let CVal::Str(s) = v {
+                            ac_entry = Some(s.clone());
+                        }
+                    }
+                    "cache" => {
+                        if let CVal::Str(s) = v {
+                            ac_cache = Some(s.clone());
+                        }
+                    }
+                    "budget" => {
+                        if let CVal::Obj(bp) = v {
+                            let mut b = BudgetSpec::default();
+                            for (bk, bv) in bp {
+                                let n = match bv {
+                                    CVal::Int(n) => Some(*n as u64),
+                                    _ => None,
+                                };
+                                match bk.as_str() {
+                                    "build_ms" => b.build_ms = n,
+                                    "run_ms" => b.run_ms = n,
+                                    "total_ms" => b.total_ms = n,
+                                    _ => {}
+                                }
+                            }
+                            ac_budget = Some(b);
+                        }
+                    }
+                    _ => {}
                 }
             }
             let had_module = module_name.is_some();
-            merged.options = Options { module_name };
+            if merged.adapter == Adapter::Ac {
+                // Merged raw values are legal by construction (case values
+                // validated at decode_options, suite values at decode_suite),
+                // so reconstruction is infallible; absent fields keep the
+                // frozen implicit defaults for execution-side `effective_*`.
+                merged.options = Options {
+                    module_name,
+                    ac_profile: None,
+                    ac_target: None,
+                    ac_entry: None,
+                    ac_cache: None,
+                    ac_budget: None,
+                };
+                // Preserve the DECLARED-vs-default distinction: only
+                // store what the merged object actually carries; the rest
+                // resolves through effective_* at execution.
+                if let Some(p) = ac_profile {
+                    merged.options.ac_profile = match p.as_str() {
+                        "scalar" => Some(crate::contract::AcProfile::Scalar),
+                        _ => Some(crate::contract::AcProfile::Core),
+                    };
+                }
+                if let Some(t) = ac_target {
+                    merged.options.ac_target = Some(t);
+                }
+                if let Some(e) = ac_entry {
+                    merged.options.ac_entry = Some(e);
+                }
+                if let Some(c) = ac_cache {
+                    merged.options.ac_cache = match c.as_str() {
+                        "fresh" => Some(crate::contract::CacheMode::Fresh),
+                        "read-only" => Some(crate::contract::CacheMode::ReadOnly),
+                        _ => Some(crate::contract::CacheMode::Reuse),
+                    };
+                }
+                if let Some(b) = ac_budget {
+                    merged.options.ac_budget = Some(b);
+                }
+            } else {
+                merged.options = Options {
+                    module_name,
+                    ac_profile: None,
+                    ac_target: None,
+                    ac_entry: None,
+                    ac_cache: None,
+                    ac_budget: None,
+                };
+            }
             if had_module {
                 origins.push(FieldOrigin {
                     field: "options.module_name".to_string(),
-                    source: if from_default {
+                    source: if from_default_module {
                         "suite-default"
                     } else {
                         "case"

@@ -210,8 +210,8 @@ pub fn resolve_oracle(
     let mut artifacts = Vec::new();
     for want in &expect.artifacts {
         let full = ref_base.join(want.file.replace('/', std::path::MAIN_SEPARATOR_STR));
-        let bytes = read_bounded(&full, "max_sidecar_bytes", limits.max_sidecar_bytes)
-            .map_err(|e| {
+        let bytes =
+            read_bounded(&full, "max_sidecar_bytes", limits.max_sidecar_bytes).map_err(|e| {
                 fail(format!(
                     "expected artifact {} (check {:?}): {}",
                     want.file, check.id, e
@@ -295,6 +295,8 @@ mod tests {
                     stdout: None,
                     stderr: None,
                     artifacts: vec![],
+                    exit: None,
+                    perf: None,
                 },
                 product_from: None,
                 skip: None,
