@@ -1,0 +1,18 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running unittests src\lib.rs (test\fixtures\modularity\diagnostics-consumer\target\debug\deps\diagnostics_consumer-7c0cd7cdf81ce1f9.exe)
+
+running 5 tests
+test tests::from_conversions_and_question_propagation ... ok
+test tests::lex_error_mapping_preserved ... ok
+test tests::suggestion_helpers_and_span_helpers ... ok
+test tests::families_construct_and_project_standalone ... ok
+test tests::attach_source_and_rendering_standalone ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests diagnostics_consumer
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,790 @@
+[
+  {
+    "id": "syntax_unexpected_token",
+    "family": "syntax",
+    "proj": {
+      "display": "unexpected token",
+      "code": "auto_syntax_E0001",
+      "severity": null,
+      "help": "Expected ';', but found 'let'",
+      "url": null,
+      "labels": [
+        {
+          "text": "unexpected token",
+          "offset": 12,
+          "len": 3
+        }
+      ],
+      "related_codes": null,
+      "debug": "Syntax(UnexpectedToken { expected: \"';'\", found: \"'let'\", span: SourceSpan { offset: SourceOffset(12), length: 3 } })",
+      "rendered": "auto_syntax_E0001\n\n  × unexpected token\n  help: Expected ';', but found 'let'\n"
+    }
+  },
+  {
+    "id": "syntax_generic",
+    "family": "syntax",
+    "proj": {
+      "display": "expected expression",
+      "code": "auto_syntax_E0007",
+      "severity": null,
+      "help": null,
+      "url": null,
+      "labels": [
+        {
+          "text": "expected expression",
+          "offset": 5,
+          "len": 7
+        }
+      ],
+      "related_codes": null,
+      "debug": "Syntax(Generic { message: \"expected expression\", span: SourceSpan { offset: SourceOffset(5), length: 7 } })",
+      "rendered": "auto_syntax_E0007\n\n  × expected expression\n"
+    }
+  },
+  {
+    "id": "syntax_unterminated_string",
+    "family": "syntax",
+    "proj": {
+      "display": "unterminated string literal",
+      "code": "auto_syntax_E0003",
+      "severity": null,
+      "help": "Add a closing quote (\") to end the string",
+      "url": null,
+      "labels": [
+        {
+          "text": "string starts here",
+          "offset": 0,
+          "len": 6
+        }
+      ],
+      "related_codes": null,
+      "debug": "Syntax(UnterminatedString { span: SourceSpan { offset: SourceOffset(0), length: 6 } })",
+      "rendered": "auto_syntax_E0003\n\n  × unterminated string literal\n  help: Add a closing quote (\") to end the string\n"
+    }
+  },
+  {
+    "id": "lexer_unknown_escape",
+    "family": "lexer",
+    "proj": {
+      "display": "unknown escape sequence",
+      "code": "auto_lexer_E0001",
+      "severity": null,
+      "help": "Valid escape sequences are: \\n, \\t, \\r, \\0, \\\\, \\'",
+      "url": null,
+      "labels": [
+        {
+          "text": "unknown escape sequence",
+          "offset": 3,
+          "len": 2
+        }
+      ],
+      "related_codes": null,
+      "debug": "Lexer(UnknownEscapeSequence { sequence: \"\\\\q\", span: SourceSpan { offset: SourceOffset(3), length: 2 } })",
+      "rendered": "auto_lexer_E0001\n\n  × unknown escape sequence\n  help: Valid escape sequences are: \\n, \\t, \\r, \\0, \\\\, \\'\n"
+    }
+  },
+  {
+    "id": "lexer_unterminated_char",
+    "family": "lexer",
+    "proj": {
+      "display": "unterminated character literal",
+      "code": "auto_lexer_E0002",
+      "severity": null,
+      "help": "Character literals must be enclosed in single quotes (')",
+      "url": null,
+      "labels": [
+        {
+          "text": "character literal not closed",
+          "offset": 7,
+          "len": 4
+        }
+      ],
+      "related_codes": null,
+      "debug": "Lexer(UnterminatedChar { span: SourceSpan { offset: SourceOffset(7), length: 4 } })",
+      "rendered": "auto_lexer_E0002\n\n  × unterminated character literal\n  help: Character literals must be enclosed in single\n        quotes (')\n"
+    }
+  },
+  {
+    "id": "lex_raw_via_from",
+    "family": "lexer_raw",
+    "proj": {
+      "display": "raw block not closed: missing '}' for style block",
+      "code": null,
+      "severity": null,
+      "help": null,
+      "url": null,
+      "labels": null,
+      "related_codes": null,
+      "debug": "Msg(\"raw block not closed: missing '}' for style block\")",
+      "rendered": "  × raw block not closed: missing '}' for style block\n"
+    }
+  },
+  {
+    "id": "type_mismatch",
+    "family": "type",
+    "proj": {
+      "display": "type mismatch",
+      "code": "auto_type_E0101",
+      "severity": null,
+      "help": "Expected type 'Int', but found 'String'",
+      "url": null,
+      "labels": [
+        {
+          "text": "this expression has type 'String'",
+          "offset": 9,
+          "len": 5
+        }
+      ],
+      "related_codes": null,
+      "debug": "Type(Mismatch { expected: \"Int\", found: \"String\", span: SourceSpan { offset: SourceOffset(9), length: 5 } })",
+      "rendered": "auto_type_E0101\n\n  × type mismatch\n  help: Expected type 'Int', but found 'String'\n"
+    }
+  },
+  {
+    "id": "type_cannot_modify_view_param_cjk",
+    "family": "type",
+    "proj": {
+      "display": "Cannot modify view parameter '计数器'",
+      "code": "auto_type_E0204",
+      "severity": null,
+      "help": "View parameters are immutable. Consider using 'mut' instead of 'view' if you need to modify it",
+      "url": null,
+      "labels": [
+        {
+          "text": "parameter '计数器' is declared as view (immutable)",
+          "offset": 4,
+          "len": 9
+        },
+        {
+          "text": "consider using 'mut' instead",
+          "offset": 4,
+          "len": 9
+        }
+      ],
+      "related_codes": null,
+      "debug": "Type(CannotModifyViewParam { param: \"计数器\", span: SourceSpan { offset: SourceOffset(4), length: 9 } })",
+      "rendered": "auto_type_E0204\n\n  × Cannot modify view parameter '计数器'\n  help: View parameters are immutable. Consider using\n        'mut' instead of 'view' if you need to modify it\n"
+    }
+  },
+  {
+    "id": "type_constraint_violation",
+    "family": "type",
+    "proj": {
+      "display": "Type 'MyType' does not satisfy constraint 'Drawable'",
+      "code": "auto_type_E0201",
+      "severity": null,
+      "help": "Ensure the type implements all required methods from the spec",
+      "url": null,
+      "labels": [
+        {
+          "text": "type 'MyType' doesn't implement spec 'Drawable'",
+          "offset": 20,
+          "len": 6
+        }
+      ],
+      "related_codes": null,
+      "debug": "Type(ConstraintViolation { type_name: \"MyType\", spec_name: \"Drawable\", span: SourceSpan { offset: SourceOffset(20), length: 6 } })",
+      "rendered": "auto_type_E0201\n\n  × Type 'MyType' does not satisfy constraint 'Drawable'\n  help: Ensure the type implements all required methods\n        from the spec\n"
+    }
+  },
+  {
+    "id": "name_undefined_with_suggestion",
+    "family": "name",
+    "proj": {
+      "display": "undefined variable",
+      "code": "auto_name_E0201",
+      "severity": "Error",
+      "help": "Variable 'conut' is not defined in this scope. Did you mean 'count'?",
+      "url": null,
+      "labels": [
+        {
+          "text": "variable 'conut' not found",
+          "offset": 4,
+          "len": 5
+        }
+      ],
+      "related_codes": null,
+      "debug": "Name(UndefinedVariable { name: \"conut\", span: SourceSpan { offset: SourceOffset(4), length: 5 }, suggested: Some(\"count\") })",
+      "rendered": "auto_name_E0201\n\n  × undefined variable\n  help: Variable 'conut' is not defined in this scope. Did\n        you mean 'count'?\n"
+    }
+  },
+  {
+    "id": "name_undefined_no_suggestion",
+    "family": "name",
+    "proj": {
+      "display": "undefined variable",
+      "code": "auto_name_E0201",
+      "severity": "Error",
+      "help": "Variable 'zzzzz' is not defined in this scope",
+      "url": null,
+      "labels": [
+        {
+          "text": "variable 'zzzzz' not found",
+          "offset": 4,
+          "len": 5
+        }
+      ],
+      "related_codes": null,
+      "debug": "Name(UndefinedVariable { name: \"zzzzz\", span: SourceSpan { offset: SourceOffset(4), length: 5 }, suggested: None })",
+      "rendered": "auto_name_E0201\n\n  × undefined variable\n  help: Variable 'zzzzz' is not defined in this scope\n"
+    }
+  },
+  {
+    "id": "name_duplicate_with_original_span",
+    "family": "name",
+    "proj": {
+      "display": "duplicate definition",
+      "code": "auto_name_E0202",
+      "severity": "Error",
+      "help": "The name 'x' is already defined in this scope",
+      "url": null,
+      "labels": [
+        {
+          "text": "'x' is already defined",
+          "offset": 30,
+          "len": 1
+        }
+      ],
+      "related_codes": null,
+      "debug": "Name(DuplicateDefinition { name: \"x\", span: SourceSpan { offset: SourceOffset(30), length: 1 }, original_span: Some(SourceSpan { offset: SourceOffset(4), length: 1 }) })",
+      "rendered": "auto_name_E0202\n\n  × duplicate definition\n  help: The name 'x' is already defined in this scope\n"
+    }
+  },
+  {
+    "id": "name_immutable_assignment",
+    "family": "name",
+    "proj": {
+      "display": "cannot assign to immutable variable",
+      "code": "auto_name_E0203",
+      "severity": "Error",
+      "help": "Use 'mut' instead of 'let' to make 'total' mutable",
+      "url": null,
+      "labels": [
+        {
+          "text": "'total' is immutable",
+          "offset": 15,
+          "len": 5
+        }
+      ],
+      "related_codes": null,
+      "debug": "Name(ImmutableAssignment { name: \"total\", span: SourceSpan { offset: SourceOffset(15), length: 5 } })",
+      "rendered": "auto_name_E0203\n\n  × cannot assign to immutable variable\n  help: Use 'mut' instead of 'let' to make 'total' mutable\n"
+    }
+  },
+  {
+    "id": "name_undefined_function_suggestion",
+    "family": "name",
+    "proj": {
+      "display": "undefined function",
+      "code": "auto_name_E0204",
+      "severity": "Error",
+      "help": "Function 'prinln' is not defined. Did you mean 'println'?",
+      "url": null,
+      "labels": [
+        {
+          "text": "function 'prinln' not found",
+          "offset": 0,
+          "len": 6
+        }
+      ],
+      "related_codes": null,
+      "debug": "Name(UndefinedFunction { name: \"prinln\", span: SourceSpan { offset: SourceOffset(0), length: 6 }, suggested: Some(\"println\") })",
+      "rendered": "auto_name_E0204\n\n  × undefined function\n  help: Function 'prinln' is not defined. Did you mean\n        'println'?\n"
+    }
+  },
+  {
+    "id": "runtime_division_by_zero",
+    "family": "runtime",
+    "proj": {
+      "display": "division by zero",
+      "code": "auto_runtime_E0301",
+      "severity": null,
+      "help": "Division by zero is undefined",
+      "url": null,
+      "labels": [
+        {
+          "text": "attempting to divide by zero",
+          "offset": 8,
+          "len": 1
+        }
+      ],
+      "related_codes": null,
+      "debug": "Runtime(DivisionByZero { span: SourceSpan { offset: SourceOffset(8), length: 1 } })",
+      "rendered": "auto_runtime_E0301\n\n  × division by zero\n  help: Division by zero is undefined\n"
+    }
+  },
+  {
+    "id": "runtime_index_out_of_bounds",
+    "family": "runtime",
+    "proj": {
+      "display": "index out of bounds",
+      "code": "auto_runtime_E0303",
+      "severity": null,
+      "help": "Index 7 is out of bounds for array of length 3",
+      "url": null,
+      "labels": [
+        {
+          "text": "index 7 is out of bounds",
+          "offset": 2,
+          "len": 3
+        }
+      ],
+      "related_codes": null,
+      "debug": "Runtime(IndexOutOfBounds { index: 7, len: 3, span: SourceSpan { offset: SourceOffset(2), length: 3 } })",
+      "rendered": "auto_runtime_E0303\n\n  × index out of bounds\n  help: Index 7 is out of bounds for array of length 3\n"
+    }
+  },
+  {
+    "id": "runtime_out_of_memory_no_span",
+    "family": "runtime",
+    "proj": {
+      "display": "out of memory",
+      "code": "auto_runtime_E0306",
+      "severity": null,
+      "help": "The heap has run out of available memory",
+      "url": null,
+      "labels": null,
+      "related_codes": null,
+      "debug": "Runtime(OutOfMemory)",
+      "rendered": "auto_runtime_E0306\n\n  × out of memory\n  help: The heap has run out of available memory\n"
+    }
+  },
+  {
+    "id": "comptime_compile_error",
+    "family": "comptime",
+    "proj": {
+      "display": "compile_error: feature disabled in strict mode",
+      "code": "auto_comptime_E0401",
+      "severity": null,
+      "help": "This error was triggered by compile_error() at compile time",
+      "url": null,
+      "labels": [
+        {
+          "text": "compile_error called here",
+          "offset": 10,
+          "len": 13
+        }
+      ],
+      "related_codes": null,
+      "debug": "Comptime(CompileError { message: \"feature disabled in strict mode\", span: SourceSpan { offset: SourceOffset(10), length: 13 } })",
+      "rendered": "auto_comptime_E0401\n\n  × compile_error: feature disabled in strict mode\n  help: This error was triggered by compile_error() at\n        compile time\n"
+    }
+  },
+  {
+    "id": "comptime_resource_limit",
+    "family": "comptime",
+    "proj": {
+      "display": "compile-time resource limit exceeded",
+      "code": "auto_comptime_E0403",
+      "severity": null,
+      "help": "steps: 1000000 (limit: 65536)",
+      "url": null,
+      "labels": [
+        {
+          "text": "limit exceeded here",
+          "offset": 0,
+          "len": 5
+        }
+      ],
+      "related_codes": null,
+      "debug": "Comptime(ResourceLimit { limit: \"steps\", value: \"1000000\", max: \"65536\", span: SourceSpan { offset: SourceOffset(0), length: 5 } })",
+      "rendered": "auto_comptime_E0403\n\n  × compile-time resource limit exceeded\n  help: steps: 1000000 (limit: 65536)\n"
+    }
+  },
+  {
+    "id": "warning_unused_variable",
+    "family": "warning",
+    "proj": {
+      "display": "unused variable",
+      "code": "auto_warning_W0001",
+      "severity": "Warning",
+      "help": "Variable 'unused_var' is defined but never used",
+      "url": null,
+      "labels": [
+        {
+          "text": "unused variable 'unused_var'",
+          "offset": 4,
+          "len": 10
+        }
+      ],
+      "related_codes": null,
+      "debug": "Warning(UnusedVariable { name: \"unused_var\", span: SourceSpan { offset: SourceOffset(4), length: 10 } })",
+      "rendered": "auto_warning_W0001\n\n  ⚠ unused variable\n  help: Variable 'unused_var' is defined but never used\n"
+    }
+  },
+  {
+    "id": "warning_suspicious_block_keyword",
+    "family": "warning",
+    "proj": {
+      "display": "suspicious block keyword",
+      "code": "auto_warning_W0009",
+      "severity": "Warning",
+      "help": "'veiw' looks like a misspelling of the block keyword 'view' — it was parsed as a view element",
+      "url": null,
+      "labels": [
+        {
+          "text": "did you mean 'view'?",
+          "offset": 0,
+          "len": 4
+        }
+      ],
+      "related_codes": null,
+      "debug": "Warning(SuspiciousBlockKeyword { found: \"veiw\", suggestion: \"view\", span: SourceSpan { offset: SourceOffset(0), length: 4 } })",
+      "rendered": "auto_warning_W0009\n\n  ⚠ suspicious block keyword\n  help: 'veiw' looks like a misspelling of the block\n        keyword 'view' — it was parsed as a view element\n"
+    }
+  },
+  {
+    "id": "warning_escape_fallback",
+    "family": "warning",
+    "proj": {
+      "display": "ownership fallback to smart pointer",
+      "code": "auto_warning_W0007",
+      "severity": "Warning",
+      "help": "'items' could not be borrowed safely: borrowed across await. Fallback: Rc<RefCell<T>> (Tier 3). To avoid this, restructure so the value does not escape its scope, or use an explicit clone.",
+      "url": null,
+      "labels": [
+        {
+          "text": "'items' fell back to Rc<RefCell<T>> (Tier 3)",
+          "offset": 6,
+          "len": 5
+        }
+      ],
+      "related_codes": null,
+      "debug": "Warning(EscapeFallback { name: \"items\", reason: \"borrowed across await\", tier_desc: \"Rc<RefCell<T>> (Tier 3)\", span: SourceSpan { offset: SourceOffset(6), length: 5 } })",
+      "rendered": "auto_warning_W0007\n\n  ⚠ ownership fallback to smart pointer\n  help: 'items' could not be borrowed safely: borrowed\n        across await. Fallback: Rc<RefCell<T>> (Tier 3).\n        To avoid this, restructure so the value does not\n        escape its scope, or use an explicit clone.\n"
+    }
+  },
+  {
+    "id": "warning_rc_cycle",
+    "family": "warning",
+    "proj": {
+      "display": "potential reference cycle",
+      "code": "auto_warning_W0008",
+      "severity": "Warning",
+      "help": "'Node' may form a reference cycle: field contains List<Self>. Consider Weak<T> for back-references to avoid leaks.",
+      "url": null,
+      "labels": [
+        {
+          "text": "potential cycle in 'Node'",
+          "offset": 0,
+          "len": 4
+        }
+      ],
+      "related_codes": null,
+      "debug": "Warning(RcCycle { name: \"Node\", reason: \"field contains List<Self>\", span: SourceSpan { offset: SourceOffset(0), length: 4 } })",
+      "rendered": "auto_warning_W0008\n\n  ⚠ potential reference cycle\n  help: 'Node' may form a reference cycle: field contains\n        List<Self>. Consider Weak<T> for back-references\n        to avoid leaks.\n"
+    }
+  },
+  {
+    "id": "from_string",
+    "family": "from",
+    "proj": {
+      "display": "module root not found",
+      "code": null,
+      "severity": null,
+      "help": null,
+      "url": null,
+      "labels": null,
+      "related_codes": null,
+      "debug": "Msg(\"module root not found\")",
+      "rendered": "  × module root not found\n"
+    }
+  },
+  {
+    "id": "from_str",
+    "family": "from",
+    "proj": {
+      "display": "static message",
+      "code": null,
+      "severity": null,
+      "help": null,
+      "url": null,
+      "labels": null,
+      "related_codes": null,
+      "debug": "Msg(\"static message\")",
+      "rendered": "  × static message\n"
+    }
+  },
+  {
+    "id": "from_io_custom",
+    "family": "from",
+    "proj": {
+      "display": "config not found",
+      "code": null,
+      "severity": null,
+      "help": null,
+      "url": null,
+      "labels": null,
+      "related_codes": null,
+      "debug": "Io(\"config not found\")",
+      "rendered": "  × config not found\n"
+    }
+  },
+  {
+    "id": "from_lex_error_structured",
+    "family": "from",
+    "proj": {
+      "display": "unknown character",
+      "code": "auto_lexer_E0005",
+      "severity": null,
+      "help": "This character is not valid in AutoLang source code",
+      "url": null,
+      "labels": [
+        {
+          "text": "unknown character",
+          "offset": 1,
+          "len": 1
+        }
+      ],
+      "related_codes": null,
+      "debug": "Lexer(UnknownCharacter { character: \"$\", span: SourceSpan { offset: SourceOffset(1), length: 1 } })",
+      "rendered": "auto_lexer_E0005\n\n  × unknown character\n  help: This character is not valid in AutoLang source\n        code\n"
+    }
+  },
+  {
+    "id": "attach_syntax",
+    "family": "attached",
+    "proj": {
+      "display": "expected expression",
+      "code": "auto_syntax_E0007",
+      "severity": null,
+      "help": null,
+      "url": null,
+      "labels": [
+        {
+          "text": "expected expression",
+          "offset": 5,
+          "len": 7
+        }
+      ],
+      "related_codes": null,
+      "debug": "SyntaxWithSource(SyntaxErrorWithSource { source: NamedSource { name: \"bad.at\", source: \"<redacted>\", language: None, error: Generic { message: \"expected expression\", span: SourceSpan { offset: SourceOffset(5), length: 7 } } })",
+      "rendered": "auto_syntax_E0007\n\n  × expected expression\n  ╰─▶ expected expression\n   ╭─[bad.at:1:6]\n 1 │ let conut = 1\n   ·      ───┬───\n   ·         ╰── expected expression\n 2 │ let count = 2\n   ╰────\n"
+    }
+  },
+  {
+    "id": "attach_double_idempotent",
+    "family": "attached",
+    "proj": {
+      "display": "expected expression",
+      "code": "auto_syntax_E0007",
+      "severity": null,
+      "help": null,
+      "url": null,
+      "labels": [
+        {
+          "text": "expected expression",
+          "offset": 5,
+          "len": 7
+        }
+      ],
+      "related_codes": null,
+      "debug": "SyntaxWithSource(SyntaxErrorWithSource { source: NamedSource { name: \"bad.at\", source: \"<redacted>\", language: None, error: Generic { message: \"expected expression\", span: SourceSpan { offset: SourceOffset(5), length: 7 } } })",
+      "rendered": "auto_syntax_E0007\n\n  × expected expression\n  ╰─▶ expected expression\n   ╭─[bad.at:1:6]\n 1 │ let conut = 1\n   ·      ───┬───\n   ·         ╰── expected expression\n 2 │ let count = 2\n   ╰────\n"
+    }
+  },
+  {
+    "id": "attach_msg_zero_span",
+    "family": "attached",
+    "proj": {
+      "display": "link failed for module 'pac'",
+      "code": "auto_link_E0401",
+      "severity": "Error",
+      "help": null,
+      "url": null,
+      "labels": [
+        {
+          "text": "link failed for module 'pac'",
+          "offset": 0,
+          "len": 0
+        }
+      ],
+      "related_codes": null,
+      "debug": "MsgWithSource(MsgWithSource { source: NamedSource { name: \"link.at\", source: \"<redacted>\", language: None, message: \"link failed for module 'pac'\", span: SourceSpan { offset: SourceOffset(0), length: 0 }, help: None })",
+      "rendered": "auto_link_E0401\n\n  × link failed for module 'pac'\n  ╰─▶ link failed for module 'pac'\n   ╭─[link.at:1:1]\n 1 │ let conut = 1\n   · ▲\n   · ╰── link failed for module 'pac'\n 2 │ let count = 2\n   ╰────\n"
+    }
+  },
+  {
+    "id": "attach_lexer_structured",
+    "family": "attached",
+    "proj": {
+      "display": "unknown escape sequence",
+      "code": "auto_lexer_E0001",
+      "severity": null,
+      "help": "Valid escape sequences are: \\n, \\t, \\r, \\0, \\\\, \\'",
+      "url": null,
+      "labels": [
+        {
+          "text": "unknown escape sequence",
+          "offset": 3,
+          "len": 2
+        }
+      ],
+      "related_codes": null,
+      "debug": "LexerWithSource(LexerErrorWithSource { source: NamedSource { name: \"esc.at\", source: \"<redacted>\", language: None, error: UnknownEscapeSequence { sequence: \"\\\\q\", span: SourceSpan { offset: SourceOffset(3), length: 2 } } })",
+      "rendered": "auto_lexer_E0001\n\n  × unknown escape sequence\n  ╰─▶ unknown escape sequence\n   ╭─[esc.at:1:4]\n 1 │ let c = '\\q'\n   ·    ─┬\n   ·     ╰── unknown escape sequence\n   ╰────\n  help: Valid escape sequences are: \\n, \\t, \\r, \\0, \\\\, \\'\n"
+    }
+  },
+  {
+    "id": "with_source_constructor",
+    "family": "attached",
+    "proj": {
+      "display": "missing closing delimiter",
+      "code": "auto_syntax_E0006",
+      "severity": null,
+      "help": "Add '}' to close this block",
+      "url": null,
+      "labels": [
+        {
+          "text": "opened here",
+          "offset": 0,
+          "len": 1
+        }
+      ],
+      "related_codes": null,
+      "debug": "SyntaxWithSource(SyntaxErrorWithSource { source: NamedSource { name: \"block.at\", source: \"<redacted>\", language: None, error: MissingDelimiter { delimiter: \"}\", context: \"block\", span: SourceSpan { offset: SourceOffset(0), length: 1 } } })",
+      "rendered": "auto_syntax_E0006\n\n  × missing closing delimiter\n  ╰─▶ missing closing delimiter\n   ╭─[block.at:1:1]\n 1 │ { let x = 1\n   · ┬\n   · ╰── opened here\n   ╰────\n  help: Add '}' to close this block\n"
+    }
+  },
+  {
+    "id": "with_source_lexer_constructor",
+    "family": "attached",
+    "proj": {
+      "display": "unterminated character literal",
+      "code": "auto_lexer_E0002",
+      "severity": null,
+      "help": "Character literals must be enclosed in single quotes (')",
+      "url": null,
+      "labels": [
+        {
+          "text": "character literal not closed",
+          "offset": 7,
+          "len": 4
+        }
+      ],
+      "related_codes": null,
+      "debug": "LexerWithSource(LexerErrorWithSource { source: NamedSource { name: \"char.at\", source: \"<redacted>\", language: None, error: UnterminatedChar { span: SourceSpan { offset: SourceOffset(7), length: 4 } } })",
+      "rendered": "auto_lexer_E0002\n\n  × unterminated character literal\n  ╰─▶ unterminated character literal\n   ╭─[char.at:1:8]\n 1 │ let c = 'ab\n   ·        ──┬─\n   ·          ╰── character literal not closed\n   ╰────\n  help: Character literals must be enclosed in single\n        quotes (')\n"
+    }
+  },
+  {
+    "id": "unicode_cjk_span_attached",
+    "family": "unicode",
+    "proj": {
+      "display": "此处需要表达式",
+      "code": "auto_syntax_E0007",
+      "severity": null,
+      "help": null,
+      "url": null,
+      "labels": [
+        {
+          "text": "此处需要表达式",
+          "offset": 11,
+          "len": 12
+        }
+      ],
+      "related_codes": null,
+      "debug": "SyntaxWithSource(SyntaxErrorWithSource { source: NamedSource { name: \"cjk.at\", source: \"<redacted>\", language: None, error: Generic { message: \"此处需要表达式\", span: SourceSpan { offset: SourceOffset(11), length: 12 } } })",
+      "rendered": "auto_syntax_E0007\n\n  × 此处需要表达式\n  ╰─▶ 此处需要表达式\n   ╭─[cjk.at:1:12]\n 1 │ 让 x = 「你好世界」\n   ·          ────┬───\n   ·              ╰── 此处需要表达式\n 2 │ 返回 x\n   ╰────\n"
+    }
+  },
+  {
+    "id": "unicode_cjk_type_param_bare",
+    "family": "unicode",
+    "proj": {
+      "display": "Cannot modify view parameter '視圖參數'",
+      "code": "auto_type_E0204",
+      "severity": null,
+      "help": "View parameters are immutable. Consider using 'mut' instead of 'view' if you need to modify it",
+      "url": null,
+      "labels": [
+        {
+          "text": "parameter '視圖參數' is declared as view (immutable)",
+          "offset": 11,
+          "len": 12
+        },
+        {
+          "text": "consider using 'mut' instead",
+          "offset": 11,
+          "len": 12
+        }
+      ],
+      "related_codes": null,
+      "debug": "Type(CannotModifyViewParam { param: \"視圖參數\", span: SourceSpan { offset: SourceOffset(11), length: 12 } })",
+      "rendered": "auto_type_E0204\n\n  × Cannot modify view parameter '視圖參數'\n  help: View parameters are immutable. Consider using\n        'mut' instead of 'view' if you need to modify it\n"
+    }
+  },
+  {
+    "id": "multiple_mixed_bare",
+    "family": "multiple",
+    "proj": {
+      "display": "aborting due to 3 previous errors\n  error[1]: unexpected token\n  error[2]: undefined variable\n  error[3]: unused variable",
+      "code": "auto_syntax_E0099",
+      "severity": "Error",
+      "help": "Fix the reported errors and try again",
+      "url": null,
+      "labels": [
+        {
+          "text": "unexpected token",
+          "offset": 10,
+          "len": 1
+        }
+      ],
+      "related_codes": [
+        "auto_syntax_E0001",
+        "auto_name_E0201",
+        "auto_warning_W0001"
+      ],
+      "debug": "MultipleErrors { count: 3, plural: \"s\", errors: [Syntax(UnexpectedToken { expected: \"')'\", found: \"'}'\", span: SourceSpan { offset: SourceOffset(10), length: 1 } }), Name(UndefinedVariable { name: \"conut\", span: SourceSpan { offset: SourceOffset(4), length: 5 }, suggested: Some(\"count\") }), Warning(UnusedVariable { name: \"tmp\", span: SourceSpan { offset: SourceOffset(20), length: 3 } })] }",
+      "rendered": "auto_syntax_E0099\n\n  × aborting due to 3 previous errors\n  │   error[1]: unexpected token\n  │   error[2]: undefined variable\n  │   error[3]: unused variable\n  help: Fix the reported errors and try again\n\nError: auto_syntax_E0001\n\n  × unexpected token\n  help: Expected ')', but found '}'\n\nError: auto_name_E0201\n\n  × undefined variable\n  help: Variable 'conut' is not defined in this scope. Did\n        you mean 'count'?\n\nWarning: auto_warning_W0001\n\n  ⚠ unused variable\n  help: Variable 'tmp' is defined but never used\n"
+    }
+  },
+  {
+    "id": "multiple_attach_nested",
+    "family": "multiple",
+    "proj": {
+      "display": "aborting due to 3 previous errors\n  error[1]: unexpected token\n  error[2]: undefined variable\n  error[3]: unused variable",
+      "code": "auto_syntax_E0099",
+      "severity": "Error",
+      "help": "Fix the reported errors and try again",
+      "url": null,
+      "labels": [
+        {
+          "text": "unexpected token",
+          "offset": 10,
+          "len": 1
+        }
+      ],
+      "related_codes": [
+        "auto_syntax_E0001",
+        "auto_name_E0201",
+        "auto_warning_W0001"
+      ],
+      "debug": "MultipleErrors { count: 3, plural: \"s\", errors: [SyntaxWithSource(SyntaxErrorWithSource { source: NamedSource { name: \"multi.at\", source: \"<redacted>\", language: None, error: UnexpectedToken { expected: \"')'\", found: \"'}'\", span: SourceSpan { offset: SourceOffset(10), length: 1 } } }), Name(UndefinedVariable { name: \"conut\", span: SourceSpan { offset: SourceOffset(4), length: 5 }, suggested: Some(\"count\") }), Warning(UnusedVariable { name: \"tmp\", span: SourceSpan { offset: SourceOffset(20), length: 3 } })] }",
+      "rendered": "auto_syntax_E0099\n\n  × aborting due to 3 previous errors\n  │   error[1]: unexpected token\n  │   error[2]: undefined variable\n  │   error[3]: unused variable\n   ╭─[multi.at:1:11]\n 1 │ let conut = 1\n   ·           ┬\n   ·           ╰── unexpected token\n 2 │ let count = 2\n   ╰────\n  help: Fix the reported errors and try again\n\nError: auto_syntax_E0001\n\n  × unexpected token\n  ╰─▶ unexpected token\n   ╭─[multi.at:1:11]\n 1 │ let conut = 1\n   ·           ┬\n   ·           ╰── unexpected token\n 2 │ let count = 2\n   ╰────\n  help: Expected ')', but found '}'\n\nError: auto_name_E0201\n\n  × undefined variable\n   ╭─[multi.at:1:5]\n 1 │ let conut = 1\n   ·     ──┬──\n   ·       ╰── variable 'conut' not found\n 2 │ let count = 2\n   ╰────\n  help: Variable 'conut' is not defined in this scope. Did\n        you mean 'count'?\n\nWarning: auto_warning_W0001\n\n  ⚠ unused variable\n   ╭─[multi.at:2:7]\n 1 │ let conut = 1\n 2 │ let count = 2\n   ·       ─┬─\n   ·        ╰── unused variable 'tmp'\n   ╰────\n  help: Variable 'tmp' is defined but never used\n"
+    }
+  },
+  {
+    "id": "multiple_single_no_plural",
+    "family": "multiple",
+    "proj": {
+      "display": "aborting due to 1 previous error\n  error[1]: division by zero",
+      "code": "auto_syntax_E0099",
+      "severity": "Error",
+      "help": "Fix the reported errors and try again",
+      "url": null,
+      "labels": [
+        {
+          "text": "attempting to divide by zero",
+          "offset": 8,
+          "len": 1
+        }
+      ],
+      "related_codes": [
+        "auto_runtime_E0301"
+      ],
+      "debug": "MultipleErrors { count: 1, plural: \"\", errors: [Runtime(DivisionByZero { span: SourceSpan { offset: SourceOffset(8), length: 1 } })] }",
+      "rendered": "auto_syntax_E0099\n\n  × aborting due to 1 previous error\n  │   error[1]: division by zero\n  help: Fix the reported errors and try again\n\nError: auto_runtime_E0301\n\n  × division by zero\n  help: Division by zero is undefined\n"
+    }
+  }
+]
