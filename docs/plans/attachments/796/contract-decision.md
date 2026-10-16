@@ -55,10 +55,14 @@ RecGroup（组内容版本=成员排序后 hash；成员重复/非 record 成员
 组件：query、package、module、algo=`ac796-bidir-worklist/1`、schema、producer、
 target-sem=`logical-only/v1`（语义目标无关；797 拥物理布局，将来 target 耦合语义须显式
 换 namespace 而非静默）、caps=`core-i32-bool/1`，及按查询类型的输入指纹：
-- InferBody：目标 fn-sig-fp + fn-body-fp + fn/type 候选集 fp；
+- InferBody：目标 fn-sig-fp + fn-body-fp + fn/type 候选集 fp + **called-sigs-fp**
+  （目标语法调用的被调签名集指纹——T-05 换轮测试暴露"同键不同内容"与 783 CAS
+  冲突后冻结：被读签名变化必须是键变化，一个键结构上不可能持有两种内容；
+  783 的 Conflict 行为是正确的，语义层不得绕过）；
 - FnSig：fn-sig-fp；RecordFields：field-set-fp；ListCandidates：candidate-set-fp。
-细粒度依赖 manifest 随 payload 存放，命中时整体重验（§5.4"先验证完整新鲜"）。
-调用者不变而 callee 签名变 → 键不变、manifest 失配 → Stale（有 reason 审计串）。
+细粒度依赖 manifest 随 payload 存放，命中时整体重验（§5.4"先验证完整新鲜"，
+覆盖 body/负依赖/source-map 键外输入）。
+调用者不变而 callee 签名变 → called-sigs-fp 变 → 键变 → Miss（fresh 重算）。
 target body 变 → 键变 → Miss。callee body 变且调用者未读其 body → 仍命中
 （消费者读什么才算什么，不搞一刀切接口 hash）。
 
