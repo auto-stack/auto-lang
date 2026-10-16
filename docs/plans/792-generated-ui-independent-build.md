@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-792
-status: drafting
+status: executing
 feature_name: 生成式 Rust UI 依赖身份与独立构建交付
 author: [Codex]
 created_at: 2026-10-16
@@ -98,6 +98,8 @@ merge-owned裸cargo t；ui_gen改动加tu，若触VM/compiler再tv；不是自�
 ## 9. 复审记录
 
 2026-10-16 stage=new | plan_revision=1 | outcome=blocked（合同preflight通过；789/790/791交付前置未满足） | next=三项合流后work；此前仅只读准备 | 0/8；fresh-lock/独立build尚未执行，不借785的rlib证据宣布通过。这里的blocked是交接记录，不新增Plan后端状态，frontmatter维持drafting。
+
+2026-10-16 stage=work | PLAN-792 | plan_revision=1 | 入场执行 | worktree=D:/autostack/.wt/lang-792/auto-lang | branch=plan-792-dev（repo 命名规约覆盖合同拟称 codex/plan-792-dev；PLAN-726 组布局含 auto-down 兄弟） | base_commit=ccf66f013 | 前置绑定：789=48dae3c48b8762dbe35809bccc45238c76e20955、790=249a80f2ca3a0b6f64fb21e230729b704214855b、791=1120ae3b4102d004dc11a3c8ebc0262a2c5be5d2（均 ff-only 落地+归档验证） | 用户显式授权 /auto-plan:work 实施。
 
 ## 10. 待澄清事项
 
