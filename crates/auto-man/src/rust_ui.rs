@@ -5349,7 +5349,7 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
             "total_files": total_files,
             "total_bytes": total_bytes,
             "includes_language_source": true,
-            "note": "受管包含语言源码依赖（auto-lang 全库等 9 crate——语言尚未拆完，非纯 core/独立 UI 仓）；iced_widget 为本地 patch 单源（消费根 [patch.crates-io]）",
+            "note": "受管包含语言源码依赖（auto-lang 全库等 10 crate——语言尚未拆完，非纯 core/独立 UI 仓）；iced_widget 为本地 patch 单源（消费根 [patch.crates-io]）",
         },
     });
     let manifest_path = delivery_root.join("delivery-manifest.json");

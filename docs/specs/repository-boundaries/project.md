@@ -3,6 +3,10 @@
 > **Status**: active（PLAN-784 SD-01）
 > 范围：auto-lang / auto-ui / auto-man 三仓身份、旧实现保全与 v0.6 拆分迁移准备状态
 
+模块子页：[generated-ui-distribution](generated-ui-distribution.md)（PLAN-792 SD-01：
+生成式 Rust UI 交付布局/消费根 patch/应用独立锁/资源 allowlist 与 producer
+身份合同——G/H 搬仓硬门的首个可执行发行面）。
+
 v0.6 模块化（[Design 37](../../design/37-v06-modularization-and-repo-boundaries.md)）复用既有
 auto-ui / auto-man 仓身份与远端 URL；不另建新仓。本页登记三仓**当前真实状态**与
 legacy 保全锚，目标态拆分不在本页冒称已完成。
