@@ -77,6 +77,10 @@ impl RustEmbed for Templates {
     // `impl Iterator`，外部 `let _: Filenames = <Templates as RustEmbed>::iter()`
     // 会以 E0308 失编（公开 API 回归）。必须转发底层 **trait** 入口，
     // 不能转发 inherent iter()（后者本就是 opaque，derive 亦如此）。
+    // F803-R2-01：该返回类型细化**有意**作为本 crate 公开 API 的一部分
+    //（旧臂兼容承诺），按 rustc 指引在方法级最小范围局部允许
+    // refining_impl_trait，不回退 opaque、不扩大 allow 范围。
+    #[allow(refining_impl_trait)]
     fn iter() -> Filenames {
         <TemplateAssets as RustEmbed>::iter()
     }
@@ -130,6 +134,10 @@ impl RustEmbed for GHSTemplate {
     // `impl Iterator`，外部 `let _: Filenames = <GHSTemplate as RustEmbed>::iter()`
     // 会以 E0308 失编（公开 API 回归）。必须转发底层 **trait** 入口，
     // 不能转发 inherent iter()（后者本就是 opaque，derive 亦如此）。
+    // F803-R2-01：该返回类型细化**有意**作为本 crate 公开 API 的一部分
+    //（旧臂兼容承诺），按 rustc 指引在方法级最小范围局部允许
+    // refining_impl_trait，不回退 opaque、不扩大 allow 范围。
+    #[allow(refining_impl_trait)]
     fn iter() -> Filenames {
         <GhsAssets as RustEmbed>::iter()
     }
@@ -189,6 +197,10 @@ impl RustEmbed for IARTemplate {
     // `impl Iterator`，外部 `let _: Filenames = <IARTemplate as RustEmbed>::iter()`
     // 会以 E0308 失编（公开 API 回归）。必须转发底层 **trait** 入口，
     // 不能转发 inherent iter()（后者本就是 opaque，derive 亦如此）。
+    // F803-R2-01：该返回类型细化**有意**作为本 crate 公开 API 的一部分
+    //（旧臂兼容承诺），按 rustc 指引在方法级最小范围局部允许
+    // refining_impl_trait，不回退 opaque、不扩大 allow 范围。
+    #[allow(refining_impl_trait)]
     fn iter() -> Filenames {
         <IarAssets as RustEmbed>::iter()
     }
