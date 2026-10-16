@@ -1,6 +1,6 @@
 {
-  "base_revision": "ea291d3abbc6a25bdbd4c8bf301e9a972d31adf0",
-  "config_sha256": "9f29e12a714f75df2ecd4e0a65514d8a30c825e5025bd750036cf3f5bf1fcc0a",
+  "base_revision": "5fb0776acc2b1fbeb69d23802974024c44bba2e4",
+  "config_sha256": "1e174464a67c6e680a429504ff7d99a6336d227693f82f1da0960ef81c94e2ac",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -372,6 +372,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-package-resolver",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-package-resolver",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-project-model",
       "from": "auto-man",
       "kind": "normal",
@@ -466,7 +475,7 @@
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
     "core_to_ui": 885,
-    "man_to_language": 574,
+    "man_to_language": 575,
     "ui_to_language": 181
   }
 }
