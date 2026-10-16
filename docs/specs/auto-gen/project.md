@@ -10,7 +10,7 @@ AutoGen 代码生成器（bin 名 `autogen`）：从 Auto 格式数据源 + **Au
 - 加载 Auto 格式数据源（DataLoader），经 AutoInterpreter 执行模板（TemplateEngine）渲染输出目标代码。
 - guard（保护区段保留/覆盖/dry_run/失败反控/批次语义）与输出文件编排：**由 auto-gen-core 拥有**，本 crate 经 `TemplateRenderer` 边界交付 owned 渲染文本（`AutoTemplateRenderer` = TemplateEngine + 共享 LoadedData 解释器）。
 - 提供配置文件驱动的批量生成（GenerationSpec / GeneratorConfig；fstr_note 等 Auto 侧配置留 adapter，duration 保持整调用语义）。
-- 保留 deprecated legacy API（AutoGen/OneGen/Mold）：模板执行与 guard feed 走同一核心（`auto_gen_core::feed_guarded_legacy`），不再有第二份算法。
+- 保留 deprecated legacy API（AutoGen/OneGen/Mold）：模板执行仍在 adapter（自有 `AutoInterpreter` + `eval_template`，与 core 零解释器规则不冲突）；guard feed 算法单一定义在 core（`auto_gen_core::feed_guarded_legacy`），adapter 不再有第二份实现。
 - 不做：生成编排/守护算法的本地副本；模板语法演进；auto-man 模板资产迁移（见"未迁项"）。
 
 ## 模块架构

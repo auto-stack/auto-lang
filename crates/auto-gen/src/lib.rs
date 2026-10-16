@@ -21,8 +21,8 @@ pub use template::{Template, TemplateEngine};
 // LEGACY CODE - Kept for backward compatibility during transition
 // ============================================================================
 
-use auto_val::{AutoPath, AutoResult, AutoStr};
 use auto_lang::atom::Atom;
+use auto_val::{AutoPath, AutoResult, AutoStr};
 
 pub struct Mold {
     pub name: AutoStr,

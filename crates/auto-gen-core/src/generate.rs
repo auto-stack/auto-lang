@@ -249,7 +249,9 @@ mod tests {
         let sentinel = b"precious\n".to_vec();
         std::fs::write(dir.join("bad.txt"), &sentinel).unwrap();
 
-        let mut renderer = FakeRenderer::new().with("good.txt", "fresh").failing("bad.txt");
+        let mut renderer = FakeRenderer::new()
+            .with("good.txt", "fresh")
+            .failing("bad.txt");
         let report = generate(
             &[spec("good"), spec("bad")],
             &OutputConfig {
@@ -263,8 +265,11 @@ mod tests {
         assert!(format!("{}", report.errors[0]).contains("template:bad.txt"));
         // good.txt pre-exists (even empty), so the guard-merge path applies and
         // re-adds the trailing newline — old GuardProcessor::merge semantics.
-        assert_eq!(std::fs::read(dir.join("good.txt")).unwrap(), b"fresh
-");
+        assert_eq!(
+            std::fs::read(dir.join("good.txt")).unwrap(),
+            b"fresh
+"
+        );
         assert_eq!(std::fs::read(dir.join("bad.txt")).unwrap(), sentinel);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -389,7 +394,9 @@ mod tests {
         // the file stem); the core then strips ONE trailing ".at".
         let dir = tempfile_dir();
         let mut renderer = FakeRenderer::new();
-        renderer.outputs.insert("double.at".to_string(), "x".to_string());
+        renderer
+            .outputs
+            .insert("double.at".to_string(), "x".to_string());
         let s = TemplateSpec {
             template_path: PathBuf::from("double.at.at"),
             output_name: None,

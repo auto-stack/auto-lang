@@ -131,10 +131,11 @@ impl CodeGenerator {
         loaded_data: &mut LoadedData,
     ) -> Result<(), GenError> {
         // Read the library file
-        let lib_code = std::fs::read_to_string(lib_path).map_err(|e| GenError::TemplateLoadError {
-            path: lib_path.clone(),
-            reason: e.to_string(),
-        })?;
+        let lib_code =
+            std::fs::read_to_string(lib_path).map_err(|e| GenError::TemplateLoadError {
+                path: lib_path.clone(),
+                reason: e.to_string(),
+            })?;
 
         // Get mutable access to the shared interpreter
         let mut interp = loaded_data.interp.borrow_mut();
