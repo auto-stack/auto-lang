@@ -95,8 +95,10 @@ fn v02_golden_replay_matches_frozen_arm() {
     let parsed: Value = serde_json::from_slice(&bytes).expect("fixture valid JSON");
     let cases = parsed.as_array().expect("cases array");
     // 语料规模钉：冻结件为 34 例（防期望侧被部分截断/扩充后静默对拍）。
-    // fixture 与冻结件的字节一致性（SHA256 d23a26cf…d309）由 PLAN-789 复审
-    // 侧核对，见 docs/plans/attachments/789/t01-frontend-dag.md。
+    // fixture 与冻结件的字节一致性（SHA256 37beb238…dc21）由 PLAN-789 复审
+    // 侧核对，见 docs/plans/attachments/789/t01-frontend-dag.md；fixture 以
+    // `git add -f` 入库（.gitignore *.json 的精确例外，F-789-R1-01），
+    // 干净检出可重放。
     assert_eq!(cases.len(), 34, "frozen corpus is 34 cases");
 
     let mut mismatches = Vec::new();

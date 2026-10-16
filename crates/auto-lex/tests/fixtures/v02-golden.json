@@ -1,0 +1,2305 @@
+[
+  {
+    "id": "keywords_core",
+    "input": "view take hold on\nfn f() { }",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "View",
+        "text": "view",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 4
+      },
+      {
+        "kind": "Take",
+        "text": "take",
+        "line": 1,
+        "at": 5,
+        "pos": 5,
+        "len": 4
+      },
+      {
+        "kind": "Hold",
+        "text": "hold",
+        "line": 1,
+        "at": 10,
+        "pos": 10,
+        "len": 4
+      },
+      {
+        "kind": "Ident",
+        "text": "on",
+        "line": 1,
+        "at": 15,
+        "pos": 15,
+        "len": 2
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 2,
+        "at": 0,
+        "pos": 17,
+        "len": 1
+      },
+      {
+        "kind": "Fn",
+        "text": "fn",
+        "line": 2,
+        "at": 1,
+        "pos": 18,
+        "len": 2
+      },
+      {
+        "kind": "Ident",
+        "text": "f",
+        "line": 2,
+        "at": 4,
+        "pos": 21,
+        "len": 1
+      },
+      {
+        "kind": "LParen",
+        "text": "(",
+        "line": 2,
+        "at": 5,
+        "pos": 22,
+        "len": 1
+      },
+      {
+        "kind": "RParen",
+        "text": ")",
+        "line": 2,
+        "at": 6,
+        "pos": 23,
+        "len": 1
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 2,
+        "at": 8,
+        "pos": 25,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 2,
+        "at": 10,
+        "pos": 27,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 2,
+        "at": 11,
+        "pos": 28,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "on_header_newstart",
+    "input": "on {\n  5 -> 7\n}",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "On",
+        "text": "on",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 2
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 1,
+        "at": 3,
+        "pos": 3,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 2,
+        "at": 0,
+        "pos": 4,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "5",
+        "line": 2,
+        "at": 3,
+        "pos": 7,
+        "len": 1
+      },
+      {
+        "kind": "Arrow",
+        "text": "->",
+        "line": 2,
+        "at": 5,
+        "pos": 9,
+        "len": 2
+      },
+      {
+        "kind": "Int",
+        "text": "7",
+        "line": 2,
+        "at": 8,
+        "pos": 12,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 3,
+        "at": 0,
+        "pos": 13,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 3,
+        "at": 1,
+        "pos": 14,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 3,
+        "at": 2,
+        "pos": 15,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "on_as_ident_in_fn",
+    "input": "fn on(ev str) {}",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Fn",
+        "text": "fn",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 2
+      },
+      {
+        "kind": "Ident",
+        "text": "on",
+        "line": 1,
+        "at": 3,
+        "pos": 3,
+        "len": 2
+      },
+      {
+        "kind": "LParen",
+        "text": "(",
+        "line": 1,
+        "at": 5,
+        "pos": 5,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "ev",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 2
+      },
+      {
+        "kind": "Ident",
+        "text": "str",
+        "line": 1,
+        "at": 9,
+        "pos": 9,
+        "len": 3
+      },
+      {
+        "kind": "RParen",
+        "text": ")",
+        "line": 1,
+        "at": 12,
+        "pos": 12,
+        "len": 1
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 1,
+        "at": 14,
+        "pos": 14,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 1,
+        "at": 15,
+        "pos": 15,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 16,
+        "pos": 16,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "unicode_cjk_ident",
+    "input": "let 变量 = \"中文内容\"",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Let",
+        "text": "let",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 3
+      },
+      {
+        "kind": "Ident",
+        "text": "变量",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 6
+      },
+      {
+        "kind": "Asn",
+        "text": "=",
+        "line": 1,
+        "at": 11,
+        "pos": 11,
+        "len": 1
+      },
+      {
+        "kind": "Str",
+        "text": "中文内容",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 14
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 27,
+        "pos": 27,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "unicode_emdash_prose",
+    "input": "# — 手写注释\nfn f() { }",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Hash",
+        "text": "#",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "手写注释",
+        "line": 1,
+        "at": 3,
+        "pos": 3,
+        "len": 12
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 2,
+        "at": 0,
+        "pos": 15,
+        "len": 1
+      },
+      {
+        "kind": "Fn",
+        "text": "fn",
+        "line": 2,
+        "at": 1,
+        "pos": 16,
+        "len": 2
+      },
+      {
+        "kind": "Ident",
+        "text": "f",
+        "line": 2,
+        "at": 4,
+        "pos": 19,
+        "len": 1
+      },
+      {
+        "kind": "LParen",
+        "text": "(",
+        "line": 2,
+        "at": 5,
+        "pos": 20,
+        "len": 1
+      },
+      {
+        "kind": "RParen",
+        "text": ")",
+        "line": 2,
+        "at": 6,
+        "pos": 21,
+        "len": 1
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 2,
+        "at": 8,
+        "pos": 23,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 2,
+        "at": 10,
+        "pos": 25,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 2,
+        "at": 11,
+        "pos": 26,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "crlf_basic",
+    "input": "let a = 1\r\nlet b = 2\r\n",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Let",
+        "text": "let",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 3
+      },
+      {
+        "kind": "Ident",
+        "text": "a",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 1
+      },
+      {
+        "kind": "Asn",
+        "text": "=",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "1",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 2,
+        "at": 0,
+        "pos": 10,
+        "len": 1
+      },
+      {
+        "kind": "Let",
+        "text": "let",
+        "line": 2,
+        "at": 1,
+        "pos": 11,
+        "len": 3
+      },
+      {
+        "kind": "Ident",
+        "text": "b",
+        "line": 2,
+        "at": 5,
+        "pos": 15,
+        "len": 1
+      },
+      {
+        "kind": "Asn",
+        "text": "=",
+        "line": 2,
+        "at": 7,
+        "pos": 17,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "2",
+        "line": 2,
+        "at": 9,
+        "pos": 19,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 3,
+        "at": 0,
+        "pos": 21,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 3,
+        "at": 1,
+        "pos": 22,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "comments_mixed",
+    "input": "// line comment\n/* block\n span */\n/// doc comment\nlet a = 1",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "CommentLine",
+        "text": "//",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 2
+      },
+      {
+        "kind": "CommentContent",
+        "text": "/ line comment",
+        "line": 1,
+        "at": 2,
+        "pos": 2,
+        "len": 14
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 2,
+        "at": 0,
+        "pos": 16,
+        "len": 1
+      },
+      {
+        "kind": "CommentStart",
+        "text": "/*",
+        "line": 2,
+        "at": 1,
+        "pos": 17,
+        "len": 2
+      },
+      {
+        "kind": "CommentContent",
+        "text": "*block\n span ",
+        "line": 2,
+        "at": 3,
+        "pos": 19,
+        "len": 13
+      },
+      {
+        "kind": "CommentEnd",
+        "text": "*/",
+        "line": 2,
+        "at": 16,
+        "pos": 32,
+        "len": 2
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 3,
+        "at": 0,
+        "pos": 34,
+        "len": 1
+      },
+      {
+        "kind": "DocComment",
+        "text": "doc comment",
+        "line": 3,
+        "at": 1,
+        "pos": 35,
+        "len": 16
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 4,
+        "at": 0,
+        "pos": 51,
+        "len": 1
+      },
+      {
+        "kind": "Let",
+        "text": "let",
+        "line": 4,
+        "at": 1,
+        "pos": 52,
+        "len": 3
+      },
+      {
+        "kind": "Ident",
+        "text": "a",
+        "line": 4,
+        "at": 5,
+        "pos": 56,
+        "len": 1
+      },
+      {
+        "kind": "Asn",
+        "text": "=",
+        "line": 4,
+        "at": 7,
+        "pos": 58,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "1",
+        "line": 4,
+        "at": 9,
+        "pos": 60,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 4,
+        "at": 10,
+        "pos": 61,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "str_escapes",
+    "input": "\"a\\nb\\tc\\\\d\\\"e\"",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Str",
+        "text": "a\nb\tc\\d\"e",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 15
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 15,
+        "pos": 15,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "char_literals",
+    "input": "'a' '\\n' '\\\\' '\\''",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Char",
+        "text": "a",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 3
+      },
+      {
+        "kind": "Char",
+        "text": "\n",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 4
+      },
+      {
+        "kind": "Char",
+        "text": "\\",
+        "line": 1,
+        "at": 9,
+        "pos": 9,
+        "len": 4
+      },
+      {
+        "kind": "Char",
+        "text": "'",
+        "line": 1,
+        "at": 14,
+        "pos": 14,
+        "len": 4
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 18,
+        "pos": 18,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "fstr_dollar",
+    "input": "f\"hello $you ${1+2} again\"",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "FStrStart",
+        "text": "f\"",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 2
+      },
+      {
+        "kind": "FStrPart",
+        "text": "hello ",
+        "line": 1,
+        "at": 2,
+        "pos": 2,
+        "len": 6
+      },
+      {
+        "kind": "FStrNote",
+        "text": "$",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "you",
+        "line": 1,
+        "at": 9,
+        "pos": 9,
+        "len": 3
+      },
+      {
+        "kind": "FStrPart",
+        "text": " ",
+        "line": 1,
+        "at": 12,
+        "pos": 12,
+        "len": 1
+      },
+      {
+        "kind": "FStrNote",
+        "text": "$",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 1
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 1,
+        "at": 14,
+        "pos": 14,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "1",
+        "line": 1,
+        "at": 15,
+        "pos": 15,
+        "len": 1
+      },
+      {
+        "kind": "Add",
+        "text": "+",
+        "line": 1,
+        "at": 16,
+        "pos": 16,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "2",
+        "line": 1,
+        "at": 17,
+        "pos": 17,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 1,
+        "at": 18,
+        "pos": 18,
+        "len": 1
+      },
+      {
+        "kind": "FStrPart",
+        "text": " again",
+        "line": 1,
+        "at": 19,
+        "pos": 19,
+        "len": 6
+      },
+      {
+        "kind": "FStrEnd",
+        "text": "\"",
+        "line": 1,
+        "at": 25,
+        "pos": 25,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 26,
+        "pos": 26,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "fstr_backtick",
+    "input": "`raw $x ${y} tail`",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "FStrStart",
+        "text": "`",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 1
+      },
+      {
+        "kind": "FStrPart",
+        "text": "raw ",
+        "line": 1,
+        "at": 1,
+        "pos": 1,
+        "len": 4
+      },
+      {
+        "kind": "FStrNote",
+        "text": "$",
+        "line": 1,
+        "at": 5,
+        "pos": 5,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "x",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 1
+      },
+      {
+        "kind": "FStrPart",
+        "text": " ",
+        "line": 1,
+        "at": 7,
+        "pos": 7,
+        "len": 1
+      },
+      {
+        "kind": "FStrNote",
+        "text": "$",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 1
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 1,
+        "at": 9,
+        "pos": 9,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "y",
+        "line": 1,
+        "at": 10,
+        "pos": 10,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 1,
+        "at": 11,
+        "pos": 11,
+        "len": 1
+      },
+      {
+        "kind": "FStrPart",
+        "text": " tail",
+        "line": 1,
+        "at": 12,
+        "pos": 12,
+        "len": 5
+      },
+      {
+        "kind": "FStrEnd",
+        "text": "`",
+        "line": 1,
+        "at": 17,
+        "pos": 17,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 18,
+        "pos": 18,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "fstr_note_hash",
+    "input": "`hello #{2+1} again`",
+    "mode": "lex",
+    "note": "#",
+    "tokens": [
+      {
+        "kind": "FStrStart",
+        "text": "`",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 1
+      },
+      {
+        "kind": "FStrPart",
+        "text": "hello ",
+        "line": 1,
+        "at": 1,
+        "pos": 1,
+        "len": 6
+      },
+      {
+        "kind": "FStrNote",
+        "text": "#",
+        "line": 1,
+        "at": 7,
+        "pos": 7,
+        "len": 1
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "2",
+        "line": 1,
+        "at": 9,
+        "pos": 9,
+        "len": 1
+      },
+      {
+        "kind": "Add",
+        "text": "+",
+        "line": 1,
+        "at": 10,
+        "pos": 10,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "1",
+        "line": 1,
+        "at": 11,
+        "pos": 11,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 1,
+        "at": 12,
+        "pos": 12,
+        "len": 1
+      },
+      {
+        "kind": "FStrPart",
+        "text": " again",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 6
+      },
+      {
+        "kind": "FStrEnd",
+        "text": "`",
+        "line": 1,
+        "at": 19,
+        "pos": 19,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 20,
+        "pos": 20,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "fstr_braces_escape",
+    "input": "f\"{{world}} end\"",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "FStrStart",
+        "text": "f\"",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 2
+      },
+      {
+        "kind": "FStrPart",
+        "text": "{world} end",
+        "line": 1,
+        "at": 2,
+        "pos": 2,
+        "len": 11
+      },
+      {
+        "kind": "FStrEnd",
+        "text": "\"",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 14,
+        "pos": 14,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "numbers",
+    "input": "1 2.5 3f 4d 125u 41i8 0x1F 0b101 1_000 10.5",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Int",
+        "text": "1",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 1
+      },
+      {
+        "kind": "Float",
+        "text": "2.5",
+        "line": 1,
+        "at": 2,
+        "pos": 2,
+        "len": 3
+      },
+      {
+        "kind": "Float",
+        "text": "3",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 1
+      },
+      {
+        "kind": "Double",
+        "text": "4",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 1
+      },
+      {
+        "kind": "Uint",
+        "text": "125",
+        "line": 1,
+        "at": 10,
+        "pos": 10,
+        "len": 3
+      },
+      {
+        "kind": "I8",
+        "text": "41",
+        "line": 1,
+        "at": 14,
+        "pos": 14,
+        "len": 2
+      },
+      {
+        "kind": "Int",
+        "text": "0x1F",
+        "line": 1,
+        "at": 17,
+        "pos": 17,
+        "len": 4
+      },
+      {
+        "kind": "Int",
+        "text": "0b101",
+        "line": 1,
+        "at": 22,
+        "pos": 22,
+        "len": 5
+      },
+      {
+        "kind": "Int",
+        "text": "1000",
+        "line": 1,
+        "at": 28,
+        "pos": 28,
+        "len": 4
+      },
+      {
+        "kind": "Float",
+        "text": "10.5",
+        "line": 1,
+        "at": 33,
+        "pos": 33,
+        "len": 4
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 37,
+        "pos": 37,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "operators",
+    "input": "+ - * ** / % = == != <= >= .. ..= -> => |> ? ?? ?. .? @ ~",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Add",
+        "text": "+",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 1
+      },
+      {
+        "kind": "Sub",
+        "text": "-",
+        "line": 1,
+        "at": 2,
+        "pos": 2,
+        "len": 1
+      },
+      {
+        "kind": "Star",
+        "text": "*",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 1
+      },
+      {
+        "kind": "Power",
+        "text": "**",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 2
+      },
+      {
+        "kind": "Div",
+        "text": "/",
+        "line": 1,
+        "at": 9,
+        "pos": 9,
+        "len": 1
+      },
+      {
+        "kind": "Mod",
+        "text": "%",
+        "line": 1,
+        "at": 11,
+        "pos": 11,
+        "len": 1
+      },
+      {
+        "kind": "Asn",
+        "text": "=",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 1
+      },
+      {
+        "kind": "Eq",
+        "text": "==",
+        "line": 1,
+        "at": 15,
+        "pos": 15,
+        "len": 2
+      },
+      {
+        "kind": "Neq",
+        "text": "!=",
+        "line": 1,
+        "at": 18,
+        "pos": 18,
+        "len": 2
+      },
+      {
+        "kind": "Le",
+        "text": "<=",
+        "line": 1,
+        "at": 21,
+        "pos": 21,
+        "len": 2
+      },
+      {
+        "kind": "Ge",
+        "text": ">=",
+        "line": 1,
+        "at": 24,
+        "pos": 24,
+        "len": 2
+      },
+      {
+        "kind": "Range",
+        "text": "..",
+        "line": 1,
+        "at": 27,
+        "pos": 27,
+        "len": 2
+      },
+      {
+        "kind": "RangeEq",
+        "text": "..=",
+        "line": 1,
+        "at": 30,
+        "pos": 30,
+        "len": 3
+      },
+      {
+        "kind": "Arrow",
+        "text": "->",
+        "line": 1,
+        "at": 34,
+        "pos": 34,
+        "len": 2
+      },
+      {
+        "kind": "DoubleArrow",
+        "text": "=>",
+        "line": 1,
+        "at": 37,
+        "pos": 37,
+        "len": 2
+      },
+      {
+        "kind": "PipeGt",
+        "text": "|>",
+        "line": 1,
+        "at": 40,
+        "pos": 40,
+        "len": 2
+      },
+      {
+        "kind": "Question",
+        "text": "?",
+        "line": 1,
+        "at": 43,
+        "pos": 43,
+        "len": 1
+      },
+      {
+        "kind": "QuestionQuestion",
+        "text": "??",
+        "line": 1,
+        "at": 45,
+        "pos": 45,
+        "len": 2
+      },
+      {
+        "kind": "Question",
+        "text": "?",
+        "line": 1,
+        "at": 48,
+        "pos": 48,
+        "len": 1
+      },
+      {
+        "kind": "Dot",
+        "text": ".",
+        "line": 1,
+        "at": 49,
+        "pos": 49,
+        "len": 1
+      },
+      {
+        "kind": "DotQuestion",
+        "text": "?.",
+        "line": 1,
+        "at": 51,
+        "pos": 51,
+        "len": 2
+      },
+      {
+        "kind": "At",
+        "text": "@",
+        "line": 1,
+        "at": 54,
+        "pos": 54,
+        "len": 1
+      },
+      {
+        "kind": "Tilde",
+        "text": "~",
+        "line": 1,
+        "at": 56,
+        "pos": 56,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 57,
+        "pos": 57,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "eof_empty",
+    "input": "",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "eof_trailing_nl",
+    "input": "let a = 1\n",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Let",
+        "text": "let",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 3
+      },
+      {
+        "kind": "Ident",
+        "text": "a",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 1
+      },
+      {
+        "kind": "Asn",
+        "text": "=",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "1",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 2,
+        "at": 0,
+        "pos": 9,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 2,
+        "at": 1,
+        "pos": 10,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "dot_props",
+    "input": "a.view b.mut c.take d.move",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Ident",
+        "text": "a",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 1
+      },
+      {
+        "kind": "DotView",
+        "text": ".view ",
+        "line": 1,
+        "at": 1,
+        "pos": 1,
+        "len": 5
+      },
+      {
+        "kind": "Ident",
+        "text": "b",
+        "line": 1,
+        "at": 7,
+        "pos": 7,
+        "len": 1
+      },
+      {
+        "kind": "DotMut",
+        "text": ".mut ",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 4
+      },
+      {
+        "kind": "Ident",
+        "text": "c",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 1
+      },
+      {
+        "kind": "DotTake",
+        "text": ".take ",
+        "line": 1,
+        "at": 14,
+        "pos": 14,
+        "len": 5
+      },
+      {
+        "kind": "Ident",
+        "text": "d",
+        "line": 1,
+        "at": 20,
+        "pos": 20,
+        "len": 1
+      },
+      {
+        "kind": "DotMove",
+        "text": ".move ",
+        "line": 1,
+        "at": 21,
+        "pos": 21,
+        "len": 5
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 26,
+        "pos": 26,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "hyphen_idents",
+    "input": "preview-card a-b a - b",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Ident",
+        "text": "preview-card",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 12
+      },
+      {
+        "kind": "Ident",
+        "text": "a-b",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 3
+      },
+      {
+        "kind": "Ident",
+        "text": "a",
+        "line": 1,
+        "at": 17,
+        "pos": 17,
+        "len": 1
+      },
+      {
+        "kind": "Sub",
+        "text": "-",
+        "line": 1,
+        "at": 19,
+        "pos": 19,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "b",
+        "line": 1,
+        "at": 21,
+        "pos": 21,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 22,
+        "pos": 22,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "hash_tokens",
+    "input": "#if #for #is #{ #debug(1) #[attr]",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "HashIf",
+        "text": "#if",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 3
+      },
+      {
+        "kind": "HashFor",
+        "text": "#for",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 4
+      },
+      {
+        "kind": "HashIs",
+        "text": "#is",
+        "line": 1,
+        "at": 9,
+        "pos": 9,
+        "len": 3
+      },
+      {
+        "kind": "HashBrace",
+        "text": "#{",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 2
+      },
+      {
+        "kind": "HashIdent",
+        "text": "debug",
+        "line": 1,
+        "at": 16,
+        "pos": 16,
+        "len": 6
+      },
+      {
+        "kind": "LParen",
+        "text": "(",
+        "line": 1,
+        "at": 22,
+        "pos": 22,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "1",
+        "line": 1,
+        "at": 23,
+        "pos": 23,
+        "len": 1
+      },
+      {
+        "kind": "RParen",
+        "text": ")",
+        "line": 1,
+        "at": 24,
+        "pos": 24,
+        "len": 1
+      },
+      {
+        "kind": "Hash",
+        "text": "#",
+        "line": 1,
+        "at": 26,
+        "pos": 26,
+        "len": 1
+      },
+      {
+        "kind": "LSquare",
+        "text": "[",
+        "line": 1,
+        "at": 27,
+        "pos": 27,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "attr",
+        "line": 1,
+        "at": 28,
+        "pos": 28,
+        "len": 4
+      },
+      {
+        "kind": "RSquare",
+        "text": "]",
+        "line": 1,
+        "at": 32,
+        "pos": 32,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 33,
+        "pos": 33,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "cstr_raw_str",
+    "input": "c\"hi\" `raw`",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "CStr",
+        "text": "hi",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 5
+      },
+      {
+        "kind": "FStrStart",
+        "text": "`",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 1
+      },
+      {
+        "kind": "FStrPart",
+        "text": "raw",
+        "line": 1,
+        "at": 7,
+        "pos": 7,
+        "len": 3
+      },
+      {
+        "kind": "FStrEnd",
+        "text": "`",
+        "line": 1,
+        "at": 10,
+        "pos": 10,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 11,
+        "pos": 11,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "multi_str",
+    "input": "\"\"\"a\nb\"\"\"",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Str",
+        "text": "a\nb",
+        "line": 2,
+        "at": 0,
+        "pos": 0,
+        "len": 9
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 2,
+        "at": 9,
+        "pos": 9,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "multi_fstr",
+    "input": "f\"\"\"x $y z\"\"\"",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "FStrStart",
+        "text": "f\"\"\"",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 4
+      },
+      {
+        "kind": "FStrPart",
+        "text": "x ",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 2
+      },
+      {
+        "kind": "FStrNote",
+        "text": "$",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "y",
+        "line": 1,
+        "at": 7,
+        "pos": 7,
+        "len": 1
+      },
+      {
+        "kind": "FStrPart",
+        "text": " z",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 2
+      },
+      {
+        "kind": "FStrEnd",
+        "text": "\"\"\"",
+        "line": 1,
+        "at": 10,
+        "pos": 10,
+        "len": 3
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 13,
+        "pos": 13,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "else_suppress_nl",
+    "input": "if a { 1 } else { 2 }",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "If",
+        "text": "if",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 2
+      },
+      {
+        "kind": "Ident",
+        "text": "a",
+        "line": 1,
+        "at": 3,
+        "pos": 3,
+        "len": 1
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 1,
+        "at": 5,
+        "pos": 5,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "1",
+        "line": 1,
+        "at": 7,
+        "pos": 7,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 1,
+        "at": 9,
+        "pos": 9,
+        "len": 1
+      },
+      {
+        "kind": "Else",
+        "text": "else",
+        "line": 1,
+        "at": 11,
+        "pos": 11,
+        "len": 4
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 1,
+        "at": 16,
+        "pos": 16,
+        "len": 1
+      },
+      {
+        "kind": "Int",
+        "text": "2",
+        "line": 1,
+        "at": 18,
+        "pos": 18,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 1,
+        "at": 20,
+        "pos": 20,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 1,
+        "at": 21,
+        "pos": 21,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "view_on_widget",
+    "input": "Comp {\n  view {\n    Text(\"hi\")\n  }\n  on click -> msg()\n}",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Ident",
+        "text": "Comp",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 4
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 1,
+        "at": 5,
+        "pos": 5,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 2,
+        "at": 0,
+        "pos": 6,
+        "len": 1
+      },
+      {
+        "kind": "View",
+        "text": "view",
+        "line": 2,
+        "at": 3,
+        "pos": 9,
+        "len": 4
+      },
+      {
+        "kind": "LBrace",
+        "text": "{",
+        "line": 2,
+        "at": 8,
+        "pos": 14,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 3,
+        "at": 0,
+        "pos": 15,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "Text",
+        "line": 3,
+        "at": 5,
+        "pos": 20,
+        "len": 4
+      },
+      {
+        "kind": "LParen",
+        "text": "(",
+        "line": 3,
+        "at": 9,
+        "pos": 24,
+        "len": 1
+      },
+      {
+        "kind": "Str",
+        "text": "hi",
+        "line": 3,
+        "at": 10,
+        "pos": 25,
+        "len": 4
+      },
+      {
+        "kind": "RParen",
+        "text": ")",
+        "line": 3,
+        "at": 14,
+        "pos": 29,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 4,
+        "at": 0,
+        "pos": 30,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 4,
+        "at": 3,
+        "pos": 33,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 5,
+        "at": 0,
+        "pos": 34,
+        "len": 1
+      },
+      {
+        "kind": "On",
+        "text": "on",
+        "line": 5,
+        "at": 3,
+        "pos": 37,
+        "len": 2
+      },
+      {
+        "kind": "Ident",
+        "text": "click",
+        "line": 5,
+        "at": 6,
+        "pos": 40,
+        "len": 5
+      },
+      {
+        "kind": "Arrow",
+        "text": "->",
+        "line": 5,
+        "at": 12,
+        "pos": 46,
+        "len": 2
+      },
+      {
+        "kind": "Ident",
+        "text": "msg",
+        "line": 5,
+        "at": 15,
+        "pos": 49,
+        "len": 3
+      },
+      {
+        "kind": "LParen",
+        "text": "(",
+        "line": 5,
+        "at": 18,
+        "pos": 52,
+        "len": 1
+      },
+      {
+        "kind": "RParen",
+        "text": ")",
+        "line": 5,
+        "at": 19,
+        "pos": 53,
+        "len": 1
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 6,
+        "at": 0,
+        "pos": 54,
+        "len": 1
+      },
+      {
+        "kind": "RBrace",
+        "text": "}",
+        "line": 6,
+        "at": 1,
+        "pos": 55,
+        "len": 1
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 6,
+        "at": 2,
+        "pos": 56,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "use_pac_super",
+    "input": "use pac.db\nuse super.utils",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Use",
+        "text": "use",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 3
+      },
+      {
+        "kind": "Pac",
+        "text": "pac",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 3
+      },
+      {
+        "kind": "Dot",
+        "text": ".",
+        "line": 1,
+        "at": 7,
+        "pos": 7,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "db",
+        "line": 1,
+        "at": 8,
+        "pos": 8,
+        "len": 2
+      },
+      {
+        "kind": "Newline",
+        "text": "\n",
+        "line": 2,
+        "at": 0,
+        "pos": 10,
+        "len": 1
+      },
+      {
+        "kind": "Use",
+        "text": "use",
+        "line": 2,
+        "at": 1,
+        "pos": 11,
+        "len": 3
+      },
+      {
+        "kind": "Super",
+        "text": "super",
+        "line": 2,
+        "at": 5,
+        "pos": 15,
+        "len": 5
+      },
+      {
+        "kind": "Dot",
+        "text": ".",
+        "line": 2,
+        "at": 10,
+        "pos": 20,
+        "len": 1
+      },
+      {
+        "kind": "Ident",
+        "text": "utils",
+        "line": 2,
+        "at": 11,
+        "pos": 21,
+        "len": 5
+      },
+      {
+        "kind": "EOF",
+        "text": "",
+        "line": 2,
+        "at": 16,
+        "pos": 26,
+        "len": 0
+      }
+    ],
+    "error": null
+  },
+  {
+    "id": "err_bad_char_escape",
+    "input": "'\\q'",
+    "mode": "lex",
+    "note": null,
+    "tokens": [],
+    "error": {
+      "kind": "lexer",
+      "code": "auto_lexer_E0001",
+      "display": "unknown escape sequence",
+      "debug": "UnknownEscapeSequence { sequence: \"\\\\q\", span: SourceSpan { offset: SourceOffset(0), length: 2 } }"
+    }
+  },
+  {
+    "id": "err_unterminated_char",
+    "input": "'a",
+    "mode": "lex",
+    "note": null,
+    "tokens": [],
+    "error": {
+      "kind": "lexer",
+      "code": "auto_lexer_E0002",
+      "display": "unterminated character literal",
+      "debug": "UnterminatedChar { span: SourceSpan { offset: SourceOffset(0), length: 1 } }"
+    }
+  },
+  {
+    "id": "err_empty_char",
+    "input": "'",
+    "mode": "lex",
+    "note": null,
+    "tokens": [],
+    "error": {
+      "kind": "lexer",
+      "code": "auto_lexer_E0003",
+      "display": "empty character literal",
+      "debug": "EmptyChar { span: SourceSpan { offset: SourceOffset(0), length: 1 } }"
+    }
+  },
+  {
+    "id": "err_unknown_char",
+    "input": "let a = ^1",
+    "mode": "lex",
+    "note": null,
+    "tokens": [
+      {
+        "kind": "Let",
+        "text": "let",
+        "line": 1,
+        "at": 0,
+        "pos": 0,
+        "len": 3
+      },
+      {
+        "kind": "Ident",
+        "text": "a",
+        "line": 1,
+        "at": 4,
+        "pos": 4,
+        "len": 1
+      },
+      {
+        "kind": "Asn",
+        "text": "=",
+        "line": 1,
+        "at": 6,
+        "pos": 6,
+        "len": 1
+      }
+    ],
+    "error": {
+      "kind": "lexer",
+      "code": "auto_lexer_E0005",
+      "display": "unknown character",
+      "debug": "UnknownCharacter { character: \"^\", span: SourceSpan { offset: SourceOffset(8), length: 1 } }"
+    }
+  },
+  {
+    "id": "err_invalid_ident_start",
+    "input": "f\"$ 1\"",
+    "mode": "lex",
+    "note": null,
+    "tokens": [],
+    "error": {
+      "kind": "lexer",
+      "code": "auto_lexer_E0004",
+      "display": "invalid identifier",
+      "debug": "InvalidIdentifierStart { character: \" \", span: SourceSpan { offset: SourceOffset(3), length: 1 } }"
+    }
+  },
+  {
+    "id": "style_ok",
+    "input": "{ nested { } /* c */ \"s}\" tail }",
+    "mode": "raw_block",
+    "note": null,
+    "raw": " nested { } /* c */ \"s}\" tail "
+  },
+  {
+    "id": "style_unterminated_comment",
+    "input": "{ /* never ends",
+    "mode": "raw_block",
+    "note": null,
+    "error": {
+      "kind": "msg",
+      "display": "unterminated CSS comment in style block (line 1)"
+    }
+  },
+  {
+    "id": "err_unterminated_style_block",
+    "input": "{ color: red",
+    "mode": "raw_block",
+    "note": null,
+    "error": {
+      "kind": "msg",
+      "display": "unterminated style block: missing closing '}'"
+    }
+  }
+]
