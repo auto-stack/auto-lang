@@ -76,10 +76,10 @@ pub use atom_helpers::*;
 // 坏旧门面 `ast::* + error::*` glob 兼容（E0659）——永久回归测试
 // crates/auto-lang/tests/ast_facade_glob_compat.rs 钉住。语法级
 // Type/Node/Arg 保持模型原名；auto_val::Arg/Type 因模型已有同名项不导出。
+pub use auto_lex::token::Pos;
 use auto_val::AutoResult;
 #[allow(hidden_glob_reexports)]
 pub use auto_val::{AutoStr, Node as AutoNode, Op, Shared, Value};
-pub use auto_lex::token::Pos;
 use std::{fmt, io};
 
 pub type Name = AutoStr;
