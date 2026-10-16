@@ -526,10 +526,12 @@ fn syntax_cache_range_query_leading_trivia_across_pages() {
         // 非首声明：decl 0 在前（其后再有跨页 trivia），查询 decl 1。
         (
             "second-decl",
-            format!("api g() -> i32;\n{}", " ".repeat(page + 3)),
+            format!("api g() -> i32;\n{}", " ".repeat(page * 2 + 100)),
             1,
             "f",
         ),
+        // F787-R5-02：前导 trivia >2MiB（旧隐藏 guard 会静默空名）。
+        ("over-2mib-trivia", " ".repeat((2 << 20) + 10), 0, "f"),
     ];
     for (name, prefix, decl_idx, expect_name) in cases {
         let expect_name = *expect_name;
@@ -585,4 +587,66 @@ fn syntax_cache_range_query_leading_trivia_across_pages() {
         );
         let _ = std::fs::remove_dir_all(&root);
     }
+}
+
+/// F787-R5-02 阈值两侧永久 oracle：语义 name 窗口超限 → 受控
+/// ResourceExhausted（exit 4），绝不用空 name 冒充成功；阈值内精确取名。
+/// 用 AC787_QUERY_WINDOW_LIMIT 把阈值压到可测区间（两侧各一例）。
+#[test]
+fn syntax_cache_range_query_name_window_limit_is_controlled() {
+    let p = mini_grammar();
+    let text = "api f() -> i32;\n";
+    let root = scratch("cache-r5-window-limit");
+    let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+    let mut b = ac_syntax_artifact_adapter::StreamingCstBuilder::new(&sas, &p);
+    b.push_chunk(text).unwrap();
+    b.finish(text.len() as u64).unwrap();
+    let id = b.stream_snapshot_id();
+
+    // 阈值内（name 字段 `f` 很小）：精确 name=f，exit 0。
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-query"));
+    cmd.arg(&root)
+        .arg(p.grammar_id().as_str())
+        .arg(p.revision.to_string())
+        .arg(&id)
+        .arg(text.len().to_string())
+        .arg("0");
+    let r = run_deadlined(cmd, 30);
+    assert!(
+        r.stdout.contains("name=f"),
+        "under-limit query must keep exact name: {}",
+        r.stdout
+    );
+
+    // 阈值外（limit=1 字节，name 窗口必超）：受控 ResourceExhausted exit 4，
+    // 不是 name= 空的假成功。
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-query"));
+    cmd.env("AC787_QUERY_WINDOW_LIMIT", "1")
+        .arg(&root)
+        .arg(p.grammar_id().as_str())
+        .arg(p.revision.to_string())
+        .arg(&id)
+        .arg(text.len().to_string())
+        .arg("0");
+    let out = ac_artifact_probe::subproc::run_deadlined(cmd, std::time::Duration::from_secs(30))
+        .expect("spawn over-limit query");
+    assert!(!out.timed_out, "over-limit query must finish promptly");
+    assert_eq!(
+        out.code,
+        Some(4),
+        "over-limit name window must be controlled ResourceExhausted, got {:?} stdout={} stderr={}",
+        out.code,
+        out.stdout,
+        out.stderr
+    );
+    assert!(
+        !out.stdout.contains("name=f"),
+        "over-limit must not pretend successful exact name"
+    );
+    assert!(
+        out.stderr.contains("ResourceExhausted"),
+        "over-limit must name the controlled resource exit: {}",
+        out.stderr
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }

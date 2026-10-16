@@ -770,3 +770,96 @@ fn syntax_admission_subtree_cross_page_nonzero_origin_ok() {
     assert_eq!(items[0].name, "small");
     assert_eq!(items[0].syntax_ok, true);
 }
+
+// ---- F787-R5-01 零宽 epsilon 坐标合同（生产者/准入统一）----
+// 空产生式（如空参数 args）给出**已消费 token 终点**上的零宽节点；准入
+// 父子约束据此放行合法 epsilon，同时保留真实越源/越父/错归属拒绝。
+
+/// 正控：合法空参/非空参调用经真实 parse→put→decl_subtree 全链可读（R5-01）。
+/// auto-core 的 `args` 规则在空参时匹配空产生式，产生零宽 epsilon——不得被
+/// 父子跨度误拒。
+#[test]
+fn syntax_admission_epsilon_empty_and_nonempty_args_survive_subtree() {
+    let core_src = std::fs::read_to_string(format!(
+        "{}/../../grammars/auto-core.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let p = compile_grammar(&core_src).unwrap();
+    let cs = CompiledScanner::compile(&p).unwrap();
+    for (tag, txt) in [
+        ("no-args", "fn main() int { return f() }\n"),
+        ("one-arg", "fn main() int { return f(1) }\n"),
+    ] {
+        let snap = Snapshot::from_text(&Rc::new(PageStore::new()), txt);
+        let out = parse_snapshot(&p, &cs, &snap, &Budget::default()).unwrap();
+        let root = scratch(&format!("adm-r5-eps-{tag}"));
+        let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+        let t = sas.put_tokens(&p, &snap, &out.tokens).unwrap();
+        sas.put_cst(&p, &snap, &out.tree, &t).unwrap();
+        let v = sas.open_cst(&p, &snap).unwrap().expect("manifest");
+        let st = v.decl_subtree(0).unwrap_or_else(|e| {
+            panic!("{tag}: legal empty/nonempty args must survive admission: {e:?}")
+        });
+        assert!(st.node_total() > 0, "{tag}: subtree must be non-empty");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// 反控：伪造零宽 child（start=0/len=0 占位形）挂在后位父 span 下——
+/// 准入仍须拒绝（区分合法 epsilon 的真实坐标 vs 坏跨度占位）。
+#[test]
+fn syntax_admission_zero_width_placeholder_outside_parent_rejected() {
+    let root = scratch("adm-r5-zw-bad");
+    let p = mini_grammar();
+    let s = Snapshot::from_text(&Rc::new(PageStore::new()), "x");
+    let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+    let (rule, tok) = decl_kinds(&p);
+    // 父 [23,26)；零宽 child start=0/len=0（旧占位形）→ abs [0,0) 在父外。
+    plant_single_decl_manifest(
+        &sas,
+        &p,
+        &s,
+        32,
+        &[
+            [rule, 23, 3, 0, 1, 0, 1, 0], // 父
+            [tok, 0, 0, 1, 0, 0, 1, 0],   // 零宽占位 child
+        ],
+        &[(1, u32::MAX)],
+    );
+    match sas.open_cst(&p, &s) {
+        Err(_) | Ok(None) => {}
+        Ok(Some(v)) => {
+            assert!(
+                v.decl_subtree(0).is_err(),
+                "zero-width placeholder outside parent span must still be rejected"
+            );
+        }
+    }
+}
+
+/// 正控：零宽 epsilon 位于父 span 内（真实坐标）——准入放行。
+#[test]
+fn syntax_admission_zero_width_epsilon_inside_parent_accepted() {
+    let root = scratch("adm-r5-zw-ok");
+    let p = mini_grammar();
+    let s = Snapshot::from_text(&Rc::new(PageStore::new()), "x");
+    let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+    let (rule, tok) = decl_kinds(&p);
+    // 父 [23,26)；零宽 child start=25/len=0（已消费 token 终点形）→ 父内。
+    plant_single_decl_manifest(
+        &sas,
+        &p,
+        &s,
+        32,
+        &[[rule, 23, 3, 0, 1, 0, 1, 0], [tok, 25, 0, 1, 0, 0, 1, 0]],
+        &[(1, u32::MAX)],
+    );
+    match sas.open_cst(&p, &s) {
+        Err(_) | Ok(None) => {}
+        Ok(Some(v)) => {
+            v.decl_subtree(0)
+                .expect("zero-width epsilon with real in-parent coordinate must be accepted");
+        }
+    }
+}

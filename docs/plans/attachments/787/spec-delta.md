@@ -75,10 +75,14 @@ F787-R1-01..10 + R2-01..11 + R3-01..06 + R4-01..06 修复后的实际实现重�
   +按需页视图（重启小查询禁调 parser；视图 lease）+**子树读取 admission 在
   真实入口验证整棵可达子树**（页内声明归属一致/绝对跨度≤源长/非 trivia 孩子
   ⊆父 span、trivia 孩子右界⊆父 span/边字段在 grammar 字段名表内/kind 在声明
-  面内；decl_range 保持根级单点检查）；**范围查询坐标合同**：源覆盖窗口=声明
-  单元坐标域 [origin, span_hi)（origin 含前导 trivia，可位于语义 span 之前的
-  源页），origin 平移受校验（checked_sub 受控退出，不下溢 panic/不饱和错位），
-  文本切片两端为 token 边界（页边界切多字节字符时先切再转码）。required 闭包
+  面内；decl_range 保持根级单点检查）；**零宽坐标合同（F787-R5-01）**：空产生式
+  （epsilon，如空 args/params）由生产者放在**已消费 token 终点**上（零宽但
+  start 为真实坐标），与 MISSING 占位一致走父子约束；伪造 start=0 占位形
+  零宽 child 在父外仍拒绝——合法 epsilon 与坏跨度可区分。**范围查询坐标合同
+  （F787-R5-02）**：源覆盖窗口=outline name 字段绝对范围（语义 span 内，
+  不含前导 trivia），按真实 token 范围取源；窗口驻留超限 → 受控
+  ResourceExhausted（AC787_QUERY_WINDOW_LIMIT 可测阈值两侧），绝不用空 name
+  冒充精确恢复成功。required 闭包
   （当前根 GC 存活覆盖可重开全数据）：put_cst 链 = manifest
   --required--> 数据页+目录页+A02（→A01+源页）；流式链 = manifest
   --required--> 数据页+目录页+**源页+A01**（流式无 A02 工件——直接闭包，
@@ -97,14 +101,20 @@ F787-R1-01..10 + R2-01..11 + R3-01..06 + R4-01..06 修复后的实际实现重�
 - **after**：记录 787 加法扩展（五 ChunkKind 含 SourcePage、三层 coverage 翻转
   （dep_audit 期望同步）、A02 key_inputs 补 grammar-id/page-hash、Future 拒绝面
   换 A05 起）；GC 边界、staging 8MiB、64/48MiB 水位等冻结值不变；787 的
-  syntax_budget_ 在同预算合同下运行，**证据口径（F787-R4-04）**：builder
+  syntax_budget_ 在同预算合同下运行，**证据口径（F787-R4-04 + F787-R5-03）**：builder
   受管 ≤8MiB = 实际容量（Vec capacity×元素大小+String/内层堆容量）+ 同驻留
   合计（parse 产物在目录页落盘/页 put 期间仍存活；payload 克隆/编码副本；
-  finish 时 move 前目录与 JSON/edges 同驻留）；视图受管 = hot 页缓存 ≤8MiB +
+  finish 时 move 前目录与 JSON/edges 同驻留）。返回树驻留项逐项计入：
+  `blocks`/`root_edges`/`decls`/`bases`/`block_decl` Vec 外层 + 各 `CstBlock`
+  的 nodes/edges/fields capacity + `tree.diags` 及其 message String capacity
+  + tokens/lex_diags；push_chunk 期间 snap/store 源码页 payload（活到返回）
+  与 put_source_pages 聚合 buf+framed 克隆峰值一并进入同驻留高水位。
+  视图受管 = hot 页缓存 ≤8MiB +
   manifest 目录计入 ≤16MiB 合同；OS private bytes = 各阶段（build/warm 查询/
   冷恢复查询）**期间采样器**的最大观测增量（生成器独立进程分列），非返回点
   当前值；单查询增量读取（目录页+数据页，manifest 一次性入口成本分列）≤512KiB。
-  **明确缺失项**：parse Machine 内部工作栈/回溯暂存在 parse_snapshot 返回前
+  **明确排除项**：parse Machine 内部工作栈/回溯暂存在 parse_snapshot 返回前
   释放——不在受管口径内、仅 OS 采样器可见；非 Windows 宿主 sysinfo=0 时 OS
-  证据整体缺口（显式记录，不冒充通过）。
+  证据整体缺口（显式记录，不冒充通过）。原预算合同（staging 8MiB、64/48MiB
+  水位）不变——本次仅补齐漏计项，不改写合同线。
 - **acceptance**：AC-05/06。

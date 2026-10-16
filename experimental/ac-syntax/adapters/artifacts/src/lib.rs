@@ -200,20 +200,28 @@ impl SyntaxArtifactStore {
     /// 发布快照源字节（内容寻址，跨快照/工程共享）。快照页（16KiB）按
     /// `SRC_STORE_PAGE_BYTES` 聚合为 store 源页——大负载下控制 put 次数
     /// （probe 每次提交有全目录扫描成本），聚合粒度仍是内容寻址共享单位。
-    /// 返回 (artifact ids, chunk ids)，均按文档序。
+    /// 返回 (artifact ids, chunk ids, put 瞬态峰值)：峰值 = 聚合 buf 及其
+    /// framed 克隆的同驻留上界（F787-R5-03 put 路径计量）。
     pub fn put_source_pages(
         &self,
         snap: &Snapshot,
-    ) -> Result<(Vec<String>, Vec<String>), AdapterError> {
+    ) -> Result<(Vec<String>, Vec<String>, usize), AdapterError> {
         let mut arts = Vec::new();
         let mut chunks = Vec::new();
+        let mut put_peak = 0usize;
         let mut buf: Vec<u8> = Vec::with_capacity(SRC_STORE_PAGE_BYTES);
         let flush = |buf: &mut Vec<u8>,
                      arts: &mut Vec<String>,
-                     chunks: &mut Vec<String>|
+                     chunks: &mut Vec<String>,
+                     put_peak: &mut usize|
          -> Result<(), AdapterError> {
             if buf.is_empty() {
                 return Ok(());
+            }
+            // put 瞬态：聚合 buf + payload 克隆（framed 副本）同驻留。
+            let concurrent = buf.capacity() + buf.len();
+            if concurrent > *put_peak {
+                *put_peak = concurrent;
             }
             let hash = ac_artifact_probe::identity::domain_hash("src-page", &[&buf[..]]);
             let art = self.store.put_artifact(PutRequest {
@@ -236,12 +244,12 @@ impl SyntaxArtifactStore {
         };
         for pref in snap.page_refs() {
             if buf.len() + pref.bytes().len() > SRC_STORE_PAGE_BYTES && !buf.is_empty() {
-                flush(&mut buf, &mut arts, &mut chunks)?;
+                flush(&mut buf, &mut arts, &mut chunks, &mut put_peak)?;
             }
             buf.extend_from_slice(pref.bytes());
         }
-        flush(&mut buf, &mut arts, &mut chunks)?;
-        Ok((arts, chunks))
+        flush(&mut buf, &mut arts, &mut chunks, &mut put_peak)?;
+        Ok((arts, chunks, put_peak))
     }
 
     // ---- A02 tokens-checkpoints ----
@@ -255,7 +263,7 @@ impl SyntaxArtifactStore {
         tokens: &[Token],
     ) -> Result<String, AdapterError> {
         let a01 = self.put_grammar(p)?;
-        let (src_arts, _src_chunks) = self.put_source_pages(snap)?;
+        let (src_arts, _src_chunks, _put_peak) = self.put_source_pages(snap)?;
         let cp = derive_final_checkpoint(p, snap, tokens);
         let mut payload = Vec::with_capacity(tokens.len() * 25 + 4 + 4 + 40);
         payload.extend_from_slice(&TOKENS_CODEC_VERSION.to_le_bytes());
@@ -326,7 +334,7 @@ impl SyntaxArtifactStore {
         tree: &CstTree,
         required_a02: &str,
     ) -> Result<String, AdapterError> {
-        let (src_arts, src_chunks) = self.put_source_pages(snap)?;
+        let (src_arts, src_chunks, _put_peak) = self.put_source_pages(snap)?;
         let canon = canonicalize(tree)?;
         let mut page_arts: Vec<String> = Vec::with_capacity(canon.pages.len());
         let mut pages: Vec<PageEntry> = Vec::with_capacity(canon.pages.len());
@@ -1771,6 +1779,11 @@ impl<'a> StreamingCstBuilder<'a> {
     pub fn push_chunk(&mut self, chunk: &str) -> Result<(), AdapterError> {
         let store_rc = Rc::new(ac_syntax_rt::snapshot::PageStore::new());
         let snap = Snapshot::from_text(&store_rc, chunk);
+        // snap/store 源码页在本函数返回前一直存活（F787-R5-03）——先计入
+        // 高水位，再跑 put_source_pages/parse。
+        let snap_page_bytes: usize = snap.page_refs().iter().map(|p| p.bytes().len()).sum();
+        self.current_transient = snap_page_bytes;
+        self.touch_peak_with(0);
         // 身份时序（F787-R2-03）：本块 snapshot hash **先**入 parts 再构造任何
         // 页/目录页键——否则首块键恒为空前缀 hash，第二份文档在共享 store 里
         // 必然 Conflict（"新文档必须空 store"不能成为隐藏条件）。
@@ -1778,15 +1791,19 @@ impl<'a> StreamingCstBuilder<'a> {
         part.push(0);
         self.snap_hash_parts.push(part);
         // 源页持久化（内容寻址，跨块去重；artifact ids 保留供 manifest 闭包）。
-        let (arts, chunks) = self.sas.put_source_pages(&snap)?;
+        // put 瞬态峰值（聚合 buf + framed 克隆）与 snap 页同驻留，一并采样。
+        let (arts, chunks, put_peak) = self.sas.put_source_pages(&snap)?;
+        self.touch_peak_with(put_peak);
         self.src_page_arts.extend(arts);
         self.src_page_chunks.extend(chunks);
         let out = ac_syntax_rt::parse::parse_snapshot(self.p, &self.scanner, &snap, &self.budget)
             .map_err(AdapterError::Rt)?;
-        // 受管峰值（F787-R3-06 + R4-04 容量口径）：parse 树/词法产物**实际
-        // 容量**（nodes/edges/fields capacity + tokens/诊断），整个块处理期间
-        // 驻留（块结束才释放）；数据页编码/目录页落盘的同驻留经
-        // current_transient 并入。parse Machine 内部工作栈/回溯暂存在
+        // 受管峰值（F787-R3-06 + R4-04 + R5-03 容量口径）：parse 树/词法产物
+        // **实际容量**（nodes/edges/fields、blocks/root_edges/decls/bases/
+        // block_decl、tree.diags 及其 String、tokens/词法诊断）+ 本块 snap/
+        // store 源码页 payload（活到 push_chunk 返回——页仓文档：活快照钉住
+        // 的页计入持有者工作集）。put 聚合 buf 已在 put_source_pages 阶段
+        // 采样（上界），此处不重复。parse Machine 内部工作栈/回溯暂存在
         // parse_snapshot 返回前已释放——不在受管口径内，由 OS 阶段采样覆盖
         // （预算测试的 sampler 缺失项说明）。
         let transient_base: usize = out
@@ -1799,6 +1816,8 @@ impl<'a> StreamingCstBuilder<'a> {
                     + b.fields.capacity() * 4
             })
             .sum::<usize>()
+            + out.tree.blocks.capacity() * std::mem::size_of::<std::rc::Rc<CstBlock>>()
+            + out.tree.root_edges.capacity() * std::mem::size_of::<(u32, u32)>()
             + out.tree.bases.capacity() * 4
             + out.tree.block_decl.capacity() * std::mem::size_of::<Vec<u32>>()
             + out
@@ -1808,8 +1827,16 @@ impl<'a> StreamingCstBuilder<'a> {
                 .map(|v| v.capacity() * 4)
                 .sum::<usize>()
             + out.tree.decls.capacity() * std::mem::size_of::<ac_syntax_rt::cst::DeclUnit>()
+            + out.tree.diags.capacity() * std::mem::size_of::<ac_syntax_rt::cst::SynDiag>()
+            + out
+                .tree
+                .diags
+                .iter()
+                .map(|d| d.message.capacity())
+                .sum::<usize>()
             + out.tokens.capacity() * std::mem::size_of::<Token>()
-            + out.lex_diags.capacity() * std::mem::size_of::<LexDiag>();
+            + out.lex_diags.capacity() * std::mem::size_of::<LexDiag>()
+            + snap_page_bytes;
         self.current_transient = transient_base;
         self.touch_peak_with(0);
         let tree = &out.tree;

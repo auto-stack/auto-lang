@@ -783,6 +783,11 @@ impl<'p, 'a> Machine<'p, 'a> {
     /// 组装节点（构建期跨度为绝对；min/max 由孩子推导；空集 → 零宽）。
     /// 孩子跨块（只有根：嫁接采纳块/已封块的孩子）→ 树级 `root_edges`
     /// 目录，节点块内置零；否则边为开放块局部下标。
+    ///
+    /// 零宽坐标合同（F787-R5-01）：空产生式/无位置孩子给出**当前解析光标**
+    /// （peek 起点，否则上一 token 终点）上的零宽节点——start 是真实坐标，
+    /// 不是 0 占位。准入父子约束据此区分合法 epsilon 与坏跨度；父语义 span
+    /// 仍不吸收零宽 epsilon（与 MISSING 占位不同——后者携带 FLAG_MISSING）。
     fn alloc_node(
         &mut self,
         kind: u32,
@@ -798,7 +803,9 @@ impl<'p, 'a> Machine<'p, 'a> {
             if nd.flags & FLAG_TRIVIA != 0 {
                 continue; // 语义 span 不含 trivia（无损覆盖由孩子序列承担）
             }
-            if nd.len > 0 || nd.child_count > 0 || nd.start > 0 {
+            // 有位置贡献：非零宽 / 有结构孩子 / MISSING 占位。
+            // 零宽 epsilon（空产生式）不扩展父语义 span。
+            if nd.len > 0 || nd.child_count > 0 || (nd.flags & FLAG_MISSING != 0) {
                 let s = nd.start as u64;
                 let e = s + nd.len as u64;
                 min_start = min_start.min(s);
@@ -806,7 +813,18 @@ impl<'p, 'a> Machine<'p, 'a> {
             }
         }
         let (start, len) = if min_start == u64::MAX {
-            (0, 0)
+            // 空产生式：放在**已消费 token 终点**（即父内解析光标），零宽但
+            // 坐标真实（F787-R5-01）。用上一 token 终点而非下一 token 起点——
+            // 后者可能落到下一声明，越出父语义 span。不用 peek()（会把 trivia
+            // 推进 pending）。
+            let pos = self
+                .i
+                .checked_sub(1)
+                .and_then(|j| self.toks.get(j))
+                .map(|t| t.end)
+                .or_else(|| self.toks.get(self.i).map(|t| t.start))
+                .unwrap_or(0);
+            (pos as u32, 0)
         } else {
             ((min_start) as u32, (max_end - min_start) as u32)
         };

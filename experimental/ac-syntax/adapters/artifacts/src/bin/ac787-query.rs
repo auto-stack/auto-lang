@@ -1,15 +1,40 @@
-//! PLAN-787 V-09 跨进程恢复探针（F787-R1-09/R2-09/R3-06）：只读 store——
+//! PLAN-787 V-09 跨进程恢复探针（F787-R1-09/R2-09/R3-06/R5-02）：只读 store——
 //! grammar 程序从 store 反序列化（**不编译 .at 源**），CST 查询走 manifest/
 //! 页路径（无 parse_snapshot 调用面）。源校验/命名**按范围取源**：
 //! - 源完整性：源页流式 hash（零驻留）；
-//! - outline 名：仅物化目标声明 span 覆盖的源页（≤512KiB 量级），子树
-//!   origin 平移到切片坐标系——**无整源驻留、无整源 Snapshot**。
+//! - outline 名：仅物化 name 字段绝对范围覆盖的源页（F787-R5-02：不把
+//!   前导 trivia 算进窗口——合法多 MiB 空白不得逼出静默空名），按真实
+//!   token 范围读取——**无整源驻留、无坐标饱和、无空 outline 冒充成功**。
+//! - 窗口驻留超限 → 受控 ResourceExhausted（exit 4）。
 //! 用法：ac787-query <store-dir> <grammar-id> <grammar-revision> <stream-id>
 //!       <total-len> <decl-idx>
 //! 输出（stdout 末行，k=v 空白分隔）：
 //! `QUERY decls=<d> nodes=<n> src_len=<s> src_hash=<h> span=<o>,<e> name=<m>`
 
 use ac_syntax_artifact_adapter::SyntaxArtifactStore;
+use ac_syntax_rt::cst::CstTree;
+use ac_syntax_rt::program::GrammarProgram;
+
+/// 在声明子树内找 outline name 字段的绝对字节范围（与 outline::outline 同
+/// 搜索序：先序第一个命中字段的孩子）。
+fn name_field_range(p: &GrammarProgram, tree: &CstTree, decl_node: u32) -> Option<(u64, u64)> {
+    let spec = p.outline.as_ref()?;
+    let name_field = p.field_id(&spec.name_field)?;
+    let mut stack = vec![decl_node];
+    while let Some(n) = stack.pop() {
+        if let Some(c) = tree.field_child(n, name_field) {
+            let (s, e) = tree.abs_range(c);
+            if e > s {
+                return Some((s, e));
+            }
+        }
+        let kids: Vec<u32> = tree.children(n).to_vec();
+        for &c in kids.iter().rev() {
+            stack.push(c);
+        }
+    }
+    None
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -38,13 +63,17 @@ fn main() {
         .unwrap_or_else(|| panic!("stream manifest {stream_id} missing"));
     let subtree = view.decl_subtree(decl_idx).expect("decl subtree");
     let (span_lo, span_hi) = view.decl_range(decl_idx).expect("decl range");
-    // 源覆盖窗口 = 声明**单元坐标域** [origin, span_hi)（F787-R4-03）：声明
-    // origin 覆盖前导 trivia，可位于语义 span 之前的源页——窗口从 origin
-    // 起算，否则 origin 平移到切片坐标系时无符号下溢/切片缺字节。物化与
-    // 窗口相交的源页（页粒度 ≤512KiB 级；按需上界不回退为整源驻留）。
-    let origin = subtree.decls[0].origin;
 
-    // 源完整性：流式 hash + 只物化窗口覆盖页（F787-R3-06 + R4-03）。
+    // name 字段绝对范围——真正需要的 token/源范围（F787-R5-02）。前导 trivia
+    // 不在 name 字段内，不得物化进查询窗口。
+    let name_span = name_field_range(&prog, &subtree, subtree.root);
+
+    // 源完整性：流式 hash（零驻留）+ 仅物化 name 字段覆盖页。
+    // name 为空（无 outline 规格/字段）时窗口为空——精确结果，不是截断。
+    let (need_lo, need_hi) = match name_span {
+        Some((s, e)) => (s, e),
+        None => (u64::MAX, u64::MAX),
+    };
     let mut hasher = blake3::Hasher::new();
     let mut src_len: u64 = 0;
     let mut slice_start: u64 = u64::MAX;
@@ -54,7 +83,7 @@ fn main() {
         let page_lo = src_len;
         src_len += page.len() as u64;
         let page_hi = src_len;
-        if page_hi > origin && page_lo < span_hi {
+        if need_lo != u64::MAX && page_hi > need_lo && page_lo < need_hi {
             if slice_start == u64::MAX {
                 slice_start = page_lo;
             }
@@ -65,36 +94,40 @@ fn main() {
     .expect("stream source pages");
     let src_hash = hasher.finalize().to_hex().to_string();
 
-    // outline：子树 origin 受校验平移到切片坐标系 + 仅窗口文本的 Snapshot。
-    // 文本切片取 [origin, span_hi)（两端都是 token 边界——页边界可能切开多
-    // 字节字符，切片前转整缓冲会误拒；切片坐标系以 origin 为零点，平移基准
-    // = origin）。checked_sub——回归即受控退出（不下溢 panic、不饱和错位/
-    // 吞错冒充成功）。
-    let name = if slice_start != u64::MAX && window_pages.len() <= (2 << 20) {
-        let shift = slice_start;
-        let lo = (origin - shift) as usize;
-        let hi = (span_hi - shift) as usize;
-        let mut sub = subtree.clone();
-        for d in &mut sub.decls {
-            d.origin = d.origin.checked_sub(origin).unwrap_or_else(|| {
+    // 窗口驻留上限（默认 2MiB；AC787_QUERY_WINDOW_LIMIT 可覆盖供阈值两侧
+    // 永久 oracle）。超限 = 受控 ResourceExhausted，不是空 outline（R5-02）。
+    let query_window_limit: usize = std::env::var("AC787_QUERY_WINDOW_LIMIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2 << 20);
+    if window_pages.len() > query_window_limit {
+        eprintln!(
+            "query: name-field window {} bytes exceeds limit {} (span {},{}); ResourceExhausted",
+            window_pages.len(),
+            query_window_limit,
+            need_lo,
+            need_hi
+        );
+        std::process::exit(4);
+    }
+
+    let name = match (name_span, slice_start) {
+        (Some((s, e)), base) if base != u64::MAX => {
+            let lo = (s - base) as usize;
+            let hi = (e - base) as usize;
+            if hi > window_pages.len() {
                 eprintln!(
-                    "query: decl origin {} precedes the slice start {origin}",
-                    d.origin
+                    "query: name field [{s},{e}) not covered by materialized window (base {base}, len {})",
+                    window_pages.len()
                 );
                 std::process::exit(3);
-            });
+            }
+            std::str::from_utf8(&window_pages[lo..hi])
+                .expect("utf8 name slice")
+                .to_string()
         }
-        let text = std::str::from_utf8(&window_pages[lo..hi]).expect("utf8 source slice");
-        let snap = ac_syntax_rt::snapshot::Snapshot::from_text(
-            &std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()),
-            text,
-        );
-        ac_syntax_rt::outline::outline(&prog, &sub, &snap)
-            .ok()
-            .and_then(|items| items.first().map(|i| i.name.clone()))
-            .unwrap_or_default()
-    } else {
-        String::new()
+        // 无 name 字段 / 字段为空：精确空名，不是被 guard 截断。
+        _ => String::new(),
     };
     println!(
         "QUERY decls={} nodes={} src_len={} src_hash={} span={},{} name={}",
