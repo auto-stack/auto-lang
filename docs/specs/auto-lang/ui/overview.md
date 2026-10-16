@@ -57,7 +57,21 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **adapter**：`ui::frame_provider::FrameBenchProvider` 从既有 `frame_bench` 通道读取；捕获开关（`AUTO_FRAME_BENCH` 门控零开销）、时源、renderer note 语义不变。`install_process_default` 统一调用 if-absent——**兼容默认只补空槽，不覆盖调用方显式选择**（优先关系契约见 vm/overview 三层清单）。
 - **自动装配位置**：VmBridge 两构造（`new_with_children`/`new_from_decls`）、`run_file_dynamic_ui_inner`、CLI ui-iced 入口（auto crate main），以及 crate 根组合助手 `install_ui_host_capabilities`。根助手覆盖 run 家族执行漏斗（`execute_autovm_with_deadline`）、test/debug、`create_vm_from_source/abt`、配置求值、REPL、解释器、back_proxy 的宿主创建路径；ui 构建提供兼容默认，no-ui 构建助手为 no-op。**不得**沿用"仅前三点注入、其余库程序轨须自行注册"的早期不完整描述。
 - **调用方保证**：高层入口前设置显式默认，UI 开/关两种构建均保持真实供值；无人注册时 UI 宿主恢复 frame_bench 默认，门开可读真值。原始 AutoVM 仍只按构造时默认快照，UI 实现不接回 vm core。
-- **未迁边界**：本 pilot 仅迁 VM frame 两函数——a2r_std 及生成 handler 的 frame 直接臂保留；clipboard、scroll、editor、terminal 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
+- **未迁边界**：frame 两函数与文本剪贴板 2925/2926（PLAN-785，见下节）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；clipboard files/images、editor、scroll、terminal 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
+
+## 现状（2026-10-16）——文本剪贴板 adapter 宿主装配（PLAN-785）
+
+> 779 装配模式的第一个真实迁移批次（VM 侧契约见 vm/overview 文本剪贴板节）。SD-02。
+
+UI 的 ArboardClipboardProvider 仅委托现有 clipboard_get/clipboard_set。
+ui+ui-clipboard 可用宿主在 install_ui_host_capabilities、run_file_dynamic_ui_inner、
+VmBridge 两构造及 auto CLI ui-iced 入口调用兼容 installer；autovm_persistent 经统一助手覆盖。
+原始 AutoVM 仅快照默认，不自动回接 UI。no-ui 宿主可显式注入无 UI 类型 provider。
+此批只迁文本 2925/2926；files/images 2934..2937、editor、scroll、terminal/media 未迁。
+ui-clipboard 单开现在可编译但无 ui 模块/adapter，缺席错误语义保持；
+ui 或 ui+ui-clipboard 不含 iced 的现存构建缺陷另记 F-785-P01。
+外部 no-ui 独立 manifest 与 workspace 锁定 UI rlib 重放分别验证；
+后者不证明全新独立 UI 锁的发行依赖闭包，既有解析漂移保留。
 
 ## 现状（2026-10-11）——remote-frame 宿主侧远程帧消费元件（PLAN-760）
 

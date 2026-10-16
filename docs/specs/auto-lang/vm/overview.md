@@ -77,6 +77,7 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - 退出审计三挂点（plan-575）：`vm/ffi/stdlib.rs` `exit_audit`/`exit_audit_path`/`install_exit_audit_panic_hook`——`Process.exit` shim（site=vm_process_exit）、全局 panic hook（code=101+消息+位置，链式保留既有 hook）、desktop 装配管线 `run_session` 正常返回（site=main_return，实机 shutdown 端到证）三 site 落笔；路径 env `AUTO_DESKTOP_EXIT_LOG`（缺省 %LOCALAPPDATA%/auto-desktop/exit-audit.log），写失败静默=零行为变更（G3）；用途=静默退出归因常驻取证面（526 降档🟡 疑外部击杀，真实复现审计指认 site 即重启归因；台账 scratch/p575/ledger.jsonl）。
 - TestCase 协议 pilot 的 VM 侧观测通道（Plan 773，Design 35 A）：`run_with_capture_and_path_staged` 为 `run_with_capture_and_path` 的 staged 孪生（旧 API 签名/行为原样）——engine 陷阱点在 typed `VMError` 仍存活处记录变体名（`task.last_error_code`），经线程内中继随失败带出，构成 run 阶段强 oracle 的**类型化** code 通道（`vm_error_code`）；`.as` lower、result/stdout 观测、产物注册（执行过即注册，PASS/FAIL 皆然）与 avm/run adapter 见 `src/test_cases/avm.rs`。pilot 语料经 `cases/pilot/` 引用式合同原位消费旧 vm 目录（不动 wrapper/发现式 corpus runner 门禁）；旧 `expected.error`（any-Err，内容忽略）类弱断言在 pilot 轨必须强化为 stage+code/message 强辨识后才算已证。档位：`cargo tv` 经 `vm_file_tests::pilot_aggregate_vm` 触达 avm 半部。
 - frame native 9918/9919 为标量宿主能力 pilot（PLAN-779，Design 37 §4）：core shim 经 `vm::host_capabilities::FrameProvider` 供值，不再直引 UI 的 frame_bench；canonical 名/固定 ID/int 单槽/i32 上界饱和/未捕获 0 全保持。装配三层优先关系（显式 set 恒胜 / 兼容 if-absent 同锁补缺 / 实例独立）详见下节 [Frame native 宿主能力装配（PLAN-779）](#frame-native-宿主能力装配plan-779)。
+- 文本剪贴板 native 2925/2926 为 779 装配模式的首个真实迁移批次（PLAN-785）：core shim 经 `vm::host_capabilities::ClipboardTextProvider` 供值，不再直引 ui::clipboard；缺席=原 feature-disabled VMError、在位不可用=空串/false。详见 [文本剪贴板 native 宿主能力（PLAN-785）](#文本剪贴板-native-宿主能力plan-785)。
 
 ## Frame native 宿主能力装配（PLAN-779）
 
@@ -91,6 +92,20 @@ frame native（9918/9919，`auto.frame.begin_ms/present_ms`）是 native/宿主�
 3. 实例 provider 独立于之后的默认变化，可在该 VM 上显式覆盖。
 
 无 provider 的原始 Core/no-ui 路径读 0；高层入口是否安装兼容默认由组合宿主负责（见 ui/overview 的装配位置清单）。`FrameProvider` 的 `Send + Sync` 只约束 provider 自身可共享，不改变 VM 线程亲和，不承诺 VM 跨线程迁移。本 pilot 不外推 heap handle、media 或 async 寿命已解决。验证边界：外部 no-ui 独立 manifest 与同源 UI 库链接的 consumer 各 6/6、门开程序轨/bridge 真值控制、默认优先关系/实例/有限并发控制（R3 独立补控）；独立 fixture 全新锁的 ui-iced 依赖解析（windows-core 双实例）**未**在本次验收通过，作为后续 fixture/发行依赖身份检查事项保留。
+
+
+## 文本剪贴板 native 宿主能力（PLAN-785）
+
+文本剪贴板 native 2925/2926（auto.clipboard.text/set_text）通过
+vm::host_capabilities::ClipboardTextProvider 供值，core 两 shim 不直接调用
+ui::clipboard。接口 text 返回 Option<String>（owned），set_text 接受 &str 并返回 bool；
+VM shim 保持 add_string/rc_push_str_idx 与 pop_string_arg/encode_bool 的既有编码及释放路径。
+provider 缺席时保留 clipboard_text / clipboard_set_text 的原
+“the `ui-clipboard` feature is disabled” VMError；provider 在位但不可用时返回空串/false。
+显式默认 set 可替换；兼容 if-absent 在同一写锁内补空槽，不覆盖显式默认。
+AutoVM 构造快照默认，实例覆盖及 NI Clone 独立，VM merge 保留目标实例 provider；
+provider 注入不改变 binding revision/proof，native 注册/merge 原有失效规则保持。
+Send+Sync 约束 provider，不增加 VM 跨线程迁移承诺。
 
 
 ## 布尔短路求值语义（plan-615）
