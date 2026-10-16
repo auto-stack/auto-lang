@@ -1915,6 +1915,17 @@
             "completion:delivered",
             "commit:ecce1dc8c"
           ]
+        },
+        {
+          "id": "P790-M",
+          "title": "PLAN-790 合入沉淀收据（文件/图像剪贴板宿主能力依赖倒置交付）",
+          "file": "docs/plans/reports/790-clipboard-media-merge.md",
+          "tags": [
+            "plan:790",
+            "completion:delivered",
+            "commit:b57617392"
+          ],
+          "content": "交付 ff-only 链（range-diff 3/3 等价、commit1 仅 exclude 上下文适配）：f9234e0c4 实现→9a6cae26a(R1 修复)→b57617392(SD 沉淀)→投影/基线锚定合入。冻结门禁：裸 t 5326/5326 + tv 163/163 + clipboard OS 30/30（rebased tip；首基线另有 t 5390/5390——两次瞬态 flake 均归因复绿：plan730 上传时序/真 OS 剪贴板争用）。core 四 shim 零 ui::clipboard_native 直引；G3 值降级族差异冻结；外部 consumer 双形态 8/8+10/10。观察项：rr-cache 污染事故清除（rebase 编辑器异常写入+rerere 重放，82 条全清为性能缓存无损）；789 收据预告的批量回归 790 落地触发归 regress。"
         }
       ]
     },
@@ -7163,6 +7174,28 @@
             "commit:ecce1dc8c",
             "sha256:ab0aefe9f5b37955"
           ]
+        },
+        {
+          "id": "P790-D1",
+          "title": "VM ClipboardMediaProvider 契约与 files/image 四函数装配（2934..2937）",
+          "file": "docs/specs/auto-lang/vm/overview.md",
+          "tags": [
+            "plan:790",
+            "commit:b57617392",
+            "sha256:271c4b20e4515a3c"
+          ],
+          "content": "PLAN-790 SD-01：clipboard_files_get/files_set/image_get/image_set（2934..2937，canonical/ID 不变）经 vm::host_capabilities::ClipboardMediaProvider 供值，core 单体平台/feature 中性 shim 零 ui::clipboard_native 直引；值域全标准库 owned（Vec<PathBuf>/ClipboardImage{path,width,height}/&Path）；缺席/失败=G3 值降级（空表/false/null，非 VMError——与文本族 2925/2926 feature-disabled 形构成族差异）；三级装配（实例注入>构造期快照>if-absent 兼容默认）+注入零 revision/proof 失效+Clone/merge 保 provider；files_set 双 ListData 形解码、read 锁不越 provider 回调、临时 PNG 落 temp 消费期可读。"
+        },
+        {
+          "id": "P790-D2",
+          "title": "UI NativeClipboardMediaProvider 装配与剪贴板族未迁边界收窄",
+          "file": "docs/specs/auto-lang/ui/overview.md",
+          "tags": [
+            "plan:790",
+            "commit:b57617392",
+            "sha256:ddb6b9f8e9b05974"
+          ],
+          "content": "PLAN-790 SD-02：NativeClipboardMediaProvider 无状态委托 clipboard_native 既有 CF_HDROP/DIBV5+PNG 桥（Plan 485 语义原样）；windows×native-clipboard 双门控——非 Windows 无 adapter 不装配不伪造可用 OS（缺席=G3 值降级）；宿主接线四点与 779/785 同集（install_ui_host_capabilities 统一漏斗/run_file_dynamic_ui_inner/VmBridge 两构造/auto CLI main）；显式默认恒胜兼容安装。未迁清单更新：files/image 迁出，剩余=code_editor(2919..2924)/dialog(2927/2928)/scroll controller 族/dnd_start(2938)/term 等。"
         }
       ]
     },
@@ -8664,6 +8697,16 @@
             "plan:785",
             "commit:ecce1dc8c"
           ]
+        },
+        {
+          "id": "P790-T",
+          "title": "剪贴板 media provider 永久测试资产（外部 fixture 双形态 + in-crate 七锚 + 严格 PNG 控制）",
+          "file": "test/fixtures/modularity/clipboard-media-provider-consumer/tests/clipboard_media_vm.rs",
+          "tags": [
+            "plan:790",
+            "commit:b57617392"
+          ],
+          "content": "外部 fixture（独立 no-ui workspace）10 测：V01 全管线四函数实值 stdout+低层双实例不串线+set 精确 PathBuf；V02 双 ListData 形/空列表/相邻周期/空-None-失败值语义；V03 缺席=G3 值降级逐字面值+显式默认幸存+Clone/merge/ID 钉扎；V04 真 OS files/image 往返（命名互斥锁、严格 PNG 自校验先于喂 OS——image_helper_assert_strict_png 独立于被测侧解码器）+非 Windows 静态控制。in-crate plan790 七锚：core 剪断 grep/降级+委托/双 ListData/身份规则/快照隔离/50 轮 reap 回基线/merge 保 provider。存量 plan485 VM OS 测试补实例级 adapter 注入（依赖倒置后原静默空转已修）。"
         }
       ]
     },
@@ -11670,10 +11713,21 @@
             "reviewed_commit:c49ca102a",
             "outcome:pass"
           ]
+        },
+        {
+          "id": "P790-R2",
+          "title": "PLAN-790 独立最终复审 R1→R2（一轮 needs_fix 后 pass）",
+          "file": "docs/plans/attachments/790/review-r2/REVIEW.md",
+          "tags": [
+            "plan:790",
+            "reviewed_commit:8c906b126",
+            "outcome:pass"
+          ],
+          "content": "R1 needs_fix @be5dfea0c（F-R1-01 P2：fixture PNG Adler32 误含 DEFLATE 块头致严格解压拒绝、依赖解码器容错；F-R1-02 P3：新增 fixture 命名警告+fmt 失败）；R2 pass @8c906b126：两 finding CLOSED——Adler 范围改正+严格自校验控制（外部 zlib/篡改三反控全命中）、命名/fmt/零警告；无新增 finding。独立重放 no-ui 8/8+ui-host 10/10+禁止静默跳过 OS 探针 1/1（严格 PNG 控制+四函数往返+临时 PNG 断言完整执行）；SD 冻结 03C8EB39... 与实现一致。"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 31
+  "version": 32
 }
