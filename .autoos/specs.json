@@ -4,6 +4,17 @@
       "id": "reports",
       "items": [
         {
+          "id": "P789-M1",
+          "title": "PLAN-789 交付回执（词法基础抽取）",
+          "content": "物理搬迁 2658 行（token 521+lexer 2137）→crates/auto-lex；auto-lang 净删 2712 行（token 521→7、lexer 2137→8、error 1300→1231）只留薄 re-export+From 投影；边界 lang-core 域+禁向规则+基线显式重锚 8a5b93920（落 master 后可解析）；冻结门禁 bare cargo t 5318/5318 + tv 163/163 于交付提交 48dae3c48；rebase range-diff 3/3 全等后 ff-only 线性合入。",
+          "file": "docs/plans/archive/789-lexical-foundation-extraction.md",
+          "tags": [
+            "plan:789",
+            "commit:48dae3c48",
+            "completion:delivered"
+          ]
+        },
+        {
           "id": "P781-M1",
           "title": "PLAN-781 merge 沉积回执（r3 阶段 D/E 收口）",
           "content": "delivery 17d73db9e（rebase 全等 18/18，ff-only）；冻结门禁 裸 t 5382/5382 + tv 163/163 + th 142/144（F-781-C03 预存+plan730 flake 单跑绿）+ tu 867/0；SD-01..12 沉积（2 新原语规范+6 modify）；reader 分支 7bb1869 留 READER-001 终审；批量回归到期（785%5==0 触发）交 /auto-plan:regress。",
@@ -4219,6 +4230,30 @@
       "id": "designs",
       "items": [
         {
+          "id": "P789-D2",
+          "title": "前端词法外置事实：兼容出口与未迁残留边",
+          "content": "frontend/overview 增量：Lexer→Parser→AST 管线中词法层为底层 crate auto-lex；auto-lang token/lexer 模块=薄 re-export（同一类型身份跨 crate 互传），error.rs re-export LexerError/span 助手并以 From<LexError> for AutoError 等价投影（结构化→AutoError::Lexer、Raw→Msg，旧臂一致）；Lexer 在 auto-lang 保持 crate 私有。未迁残留（Parser→AST/TypeStore/InferenceContext/ModuleTracker/session、error→ast::Name、内建 UiDialect）归下一批 UI 文法外置，逐边 owner 见 plan 789 t01 DAG 附件——不得冒称完整前端独立。",
+          "file": "docs/specs/auto-lang/frontend/overview.md",
+          "tags": [
+            "PLAN-789",
+            "r2",
+            "48dae3c48"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P789-D1",
+          "title": "auto-lex 词法基础 crate（Token/Lexer 单一来源）",
+          "content": "PLAN-789 交付 auto-lex：Token/TokenKind/Pos 与 Lexer/LexerState 单一实现自 auto-lang 逐字抽取（token.rs R100 零差异、lexer.rs 仅 AutoResult→LexResult 签名重命名）；依赖闭包=auto-val+strum/miette/thiserror（module-boundaries lang-core 域+禁向规则 lang-core-no-monolith-no-man-no-tools，DAG auto-lang→auto-lex→auto-val 零违例）；错误=LexerError E0001..E0005 逐字+LexError 全集（Raw=raw-block 旧臂 Msg 投影），不倒灌 auto-lang 错误聚合器；外部消费门 test/fixtures/modularity/lex-consumer（独立 manifest 唯一依赖 auto-lex）。",
+          "file": "docs/specs/auto-lex/project.md",
+          "tags": [
+            "PLAN-789",
+            "r2",
+            "48dae3c48"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P781-D4",
           "title": "原语 str.byte_len / type_of（VM+a2r 双轨/所有权）",
           "content": "auto.str.byte_len（nat#1526，UTF-8 字节长度，与 File.read_text_range 游标同空间，a2r 双轨+parity）；auto.type_of（nat#1527，运行时类型谓词——0.0/int 0 可靠分离；多态参数消费须 pop_arg_nv+StakeGuard 配平 R07；白名单避让防动态撞号）。canonical: docs/specs/stdlib/design/primitive-str-byte-len.md + primitive-type-of.md",
@@ -7135,6 +7170,18 @@
       "id": "tests",
       "items": [
         {
+          "id": "P789-T1",
+          "title": "PLAN-789 测试资产（golden 重放/状态/身份/consumer）",
+          "content": "auto-lex V02 冻结 golden 重放 34 例（期望=基面旧实现生成冻结件 SHA256 37beb238…dc21，git add -f 入库可干净检出重放）+V03 游标/checkpoint(LIFO)/push_token/坏转义/未闭合串旧行为/fstr note 跨状态 6 例+67 迁移内联单测；auto-lang plan789_lex_extraction 类型身份/错误投影 3 例（跨路径互传+E0001 code+Msg 投影）；lex-consumer 独立 fixture 4 例（#[cfg(test)] 隔离零警告）；定向档 parser::tests 180/dialect 7/model 15/widget 68/infer 130/task 95/import 59 族全绿+ui-dialect-consumer 26/26；merge 冻结门禁 bare cargo t 5318/5318 + cargo tv 163/163（绑定 48dae3c48）。",
+          "file": "crates/auto-lex/tests/v02_golden_replay.rs",
+          "tags": [
+            "PLAN-789",
+            "r2",
+            "48dae3c48"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P786-T",
           "title": "display_reader 永久对拍族 V01..V05 + R1..R4 反例字节 fixtures（18 文件）",
           "file": "crates/auto-man/src/project_display_reader_tests.rs",
@@ -8623,6 +8670,19 @@
     {
       "id": "reviews",
       "items": [
+        {
+          "id": "P789-R1",
+          "title": "PLAN-789 最终独立复审（r2，pass）",
+          "content": "r1 needs_fix 三项全闭后 r2 pass：F-789-R1-01/P1 golden 被 .gitignore 忽略未提交→git add -f 入库（blob hash=旧臂冻结件）；F-789-R1-02/P2 strict 基线 config_drift+stale→归因（根 manifest=785+789、auto-lang manifest=781+789、余=纯 789）后 clean 树显式 --refresh-baseline，正控 strict pass 0 violations+负控 --self-test 15/15；F-789-R1-03/P2 consumer 3 警告→#[cfg(test)] 隔离零警告。绑定 reviewed_commit f3726816d；词法逐字等价（token 原字节/lexer 仅签名重命名）、ParserBridge 26/26、类型身份 3/3、物理去重成立。F-789-P01（plan051 corpus 预存缺口）留债。",
+          "file": "docs/plans/attachments/789/review-r2/review.md",
+          "tags": [
+            "PLAN-789",
+            "r2",
+            "pass",
+            "f3726816d"
+          ],
+          "status": "verified"
+        },
         {
           "id": "P786-R5",
           "title": "PLAN-786 第五轮独立最终复审 pass（R1..R4 全闭合）",
@@ -11615,5 +11675,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 30
+  "version": 31
 }

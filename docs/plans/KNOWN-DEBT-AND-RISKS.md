@@ -1,3 +1,9 @@
+### Plan 790（2026-10-16，独立 final review R2 —— 全部闭合）
+
+受审 `8c906b1262faf3e0b6dccd20aa551279fb735c08`；**final pass / reviewed 7/8**。
+[R2报告/AC/闭环](attachments/790/review-r2/REVIEW.md)、[有效PNG独立校验](attachments/790/review-r2/png-check.log)、[真OS完整路径](attachments/790/review-r2/strict-os.log)。F790-R1-01/02均CLOSED，无新增finding；下方R1为历史记录。
+
+新PNG严格zlib通过、旧坏样本及CRC/Adler/像素篡改四反控均拒绝；no-ui 8/8、ui-host 10/10、禁止跳过OS探针1/1完整执行；新fixture零警告、所有触面fmt通过。生产/依赖/配置未变，复用R1所有权与专属7/7证据。merge-owned裸t/tv+OS定向、777基线复核与规范/ledger/归档/guard清理仍pending，未合入或交付。
 ### Plan 790（2026-10-16，独立 final review R1）
 
 受审 `be5dfea0c716d31b21c6fa634a506c9b05475c0c`；**needs_fix / executing 4/8**。
@@ -1851,3 +1857,7 @@ identity_/concurrency_/review_r* 全绿。修复轮提取的预存后续债候�
 - D-787-02 debug 构建下增量编辑时延不优于 fresh（227ms vs 200ms，264KiB）：
   增量收益本轮以重扫字节/重解析声明数/内容块复用率为证据面，时延优势
   非主张；release 档复测留待后续语言扩面决策（matrix.md §2/§5 如实声明）。
+
+### Plan 791 final review R3（2026-10-16，pass）
+
+受审 `561a61fc694f6f1a0a493300bf6385c8e11f96dd`；[R3报告](attachments/791/review-r3/review.md)。F-791-R2-01关闭：基线唯一变化为base_revision重绑，41声明边/规则与2项grandfather完全不变，新冻结头strict独立实跑pass/0 violations/2 grandfathered。R1两项保持关闭；实现/fixtures/测试配置/依赖锁未变，明确复用R2独立50项+consumer4项及health证据。此前R1/R2开放结论均为历史，当前无合同内未解finding；D-791-01..03预存行为/未迁债仍保留。计划reviewed 7/8；merge-owned裸cargo t+定向全测及规范/ledger/归档/guard清理pending，未宣称交付完成。
