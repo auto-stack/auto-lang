@@ -722,7 +722,7 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
 
     // Data blobs: per-check record bytes and out slots (unique names).
     let mut data_ids: Vec<(String, cranelift_module::DataId)> = Vec::new();
-    let mut add_data = |om: &mut ObjectModule, name: String, bytes: Vec<u8>, align: u64| -> Result<cranelift_module::DataId, String> {
+    let add_data = |om: &mut ObjectModule, name: String, bytes: Vec<u8>, align: u64| -> Result<cranelift_module::DataId, String> {
         let id = om
             .declare_data(&name, Linkage::Export, true, false)
             .map_err(|e| format!("declare data {name}: {e}"))?;
