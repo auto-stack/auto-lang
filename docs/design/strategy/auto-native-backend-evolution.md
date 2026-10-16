@@ -1,21 +1,35 @@
-# AC/ACC 后端演进：Cranelift、自举、SSA 与自主代码生成
+# AC/AV/AJ统一编译与执行：分层执行、增量发布及后端演进
 
-> 更新：2026-10-16（正确性/性能分期与ABI、cache、测试交付门）。具体接口、优化集与选型探针按专项 Plan 验证。
+> 更新：2026-10-16（AC/AV/AJ统一服务、分层执行、增量发布及近期/后续实施边界）。具体接口、优化集与选型探针按专项 Plan 验证。
 > 记录目标架构，不表示全部能力已实现。AC 指 Rust 实现的首版原生编译器；
 > ACC 指 Auto 实现的编译器主体，现有 roadmap 的 AAC 与之指同一条自举路线，命名另行统一。
-> 用户确认：v0.6 借助Cranelift完成约定AC/ACC原生自举，正确性优先，独立MIR/Typed MIR与性能优化延期到v0.7；v0.7先按证据复用后端优化，自己的低层IR/SSA/后端并非必交成果。
+> 2026-10-16后续用户确认：v0.6正确性优先，最小Typed MIR与新ABC/Rust AV基础进入本版，AV支撑CTE；AAC/AAV在所需能力齐备后迁移。延期到v0.7的是性能优化及按需SSA/自主低层后端，不再是MIR整体。共同合同见[Design43](../43-ac-av-typed-mir-and-abc.md)，不回溯扩大在途Plan。
 
 关联：[AC 子集与目标代码](auto-ac-subset-and-target.md)、[HIR](auto-hir-design.md)、
 [Native ABI](auto-native-abi-rfc.md)、[v0.6 roadmap](../../roadmap-v0.6.md)、
 [旧 Native 战略](native-backend-strategy.md)。
 
-## 1. 两条演进轴
+## 1. 实现语言、执行引擎与代码生成的演进轴
 
-AC → ACC 改变编译器主体的实现语言，Cranelift → 自主后端改变机器码生成实现。
+AC → AAC（旧称ACC）和AV → AAV分别改变编译器与新版VM主体的实现语言；Cranelift → 自主后端改变机器码生成实现。AV是长期产品名，先Rust实现，不使用navm；现有AVM/AAVM是旧实现，不因新名称获得兼容/自举授信。
 自举与后端重写分开验收；不要求实现 ACC 时同时替换机器码后端。
 Auto 掌握源语言语义、HIR、编译流程、ABI、运行时与驱动；外部后端库和系统 linker 可继续复用。
 ACC 的能力声明必须包含实际主体清单，不能只用 Auto 包装 Rust 前端或迁移 CLI 就称自举完成。
 “完善”以约定语言覆盖/平台/编译器主体及其验收为边界，不等于整个 Auto 生态已原生支持。
+
+### 1.1 统一编译服务与分层执行
+
+AC负责语义/CTE、提前编译及发布驱动，AV负责新ABC解释执行，AJ负责按需快速/优化编译；共同消费Typed MIR、语义/Meta和全局cache，不维护三套类型系统或优化器。在线AJ与提前编译复用编译核心，触发和装载策略不同；无需先运行代码才编译冷函数。应用按部署profile裁剪，不要求携带完整AC。完整合同见[Design43 §8–10](../43-ac-av-typed-mir-and-abc.md#8-acavaj统一平台与分层执行)。
+
+长期开发路径为T0解释启动→T1热点快速编译→T2收益驱动优化；若已有有效原生cache可直接使用，不重复热身。不同层共享语义/逻辑签名，不强制同一帧或对象布局；入口adapter、代际/lease及内联依赖显式。首版允许旧帧留旧代执行完，模块发布仍遵守一致快照事务。OSR/deopt/任意帧迁移和完整热点调度是后续专项能力。CTE先只用AV；以后采用AJ也不得绕过权限、确定性和资源计量。
+
+### 1.2 发布是一套配置，不是每次冷编
+
+发布固定源码/依赖/target/CPU/ABI/优化与runtime profile，计算入口、导出、初始化、反射和实例等完整闭包；校验缓存后只补编缺失/不匹配部分，再真实链接/验证/打包。未执行冷函数也须覆盖；关闭解释/JIT的native profile不得依赖回退到AV。
+
+开发期优化产物满足相同发布合同才能复用；调试/插桩、热重载调用、推测假设或跨模块优化上下文不匹配时可只重编该层，上游语义/CTE/MIR继续命中。推测版本须证明条件或保留合法guard/回退；JIT内存不可直接存盘缝合，须可重定位代码/数据与符号、ABI/runtime、依赖及recipe。
+
+统一管理逻辑查询单元、优化/编译单元、装载单元，不将每个MIR基本块强制作为最小持久单元。跨函数内联允许，但记录body/layout/假设依赖。native发布与portable ABC包分别声明target/runtime需求，仍优先复用平台linker；全局cache不自动等于自研全增量链接器。无cache构建用于一致性/可复现验证，不是每次release默认步骤。
 
 ## 2. 实现与参考路线
 
@@ -38,7 +52,7 @@ Zig 已迁至 Codeberg，旧 GitHub 仓不再镜像；0.15.1 发布说明仅作�
 ~~~text
 Auto source → resolve/typecheck → Typed/Checked HIR
                                       ↓
-                         Auto 语义/资源正确降级
+                       最小 Typed MIR / 语义资源 lowering
                                       ↓
                       Cranelift adapter → CLIF/SSA
                                       ↓
@@ -47,6 +61,8 @@ Auto source → resolve/typecheck → Typed/Checked HIR
                         object → link → native
 ~~~
 
+这是未来共享MIR的native路线；既有HIR直达Cranelift成果按原合同保留，接线迁移另立Plan。MIR另经ABC lowering接Rust AV，并由AV支撑CTE；A2X主要消费Typed HIR。详见Design43。
+
 公共 HIR 保留结构化控制流、语言类型、所有权/资源与效果信息，低层 SSA 不反向成为所有后端
 的公共数据模型。接入 Cranelift 本身就需处理基本块、分支、循环与 SSA 值；
 FunctionBuilder 可维护可变源变量与 SSA 值的对应，不必先自己写完整 SSA 构造算法。
@@ -54,7 +70,7 @@ FunctionBuilder 可维护可变源变量与 SSA 值的对应，不必先自己�
 v0.6 要建立下列基础，按后续计划逐项实现：
 - HIR 语义不变量和 effect 契约：数值/溢出、trap/错误、短路、调用顺序、内存、借用/移动与释放。
 - 明确阶段输入/输出、profile、来源映射、失败分类与产物身份；为将来pass保留合同，不强制本版实现通用优化框架。
-- 正确性必需的脱糖、所有权/清理规划、ABI lowering与合法化仍需实现；独立MIR/Typed MIR与性能优化工作推迟到v0.7。
+- 以最小Typed MIR承载正确性必需的控制流/求值顺序、调用、所有权/清理；后端负责具体ABI/表示合法化。MIR默认有类型，v0.6不要求SSA或通用优化框架。
 - 若启用后端优化或实施语义改写，仍须重验溢出/trap/副作用/资源，记录配置与版本、失效分析缓存；不能借分期放松正确性。
 - 从 HIR 向 CLIF/平台 ABI 的降级与隔离接口，公共 HIR 不泄漏后端私有结构。
 
@@ -66,7 +82,7 @@ v0.6 要建立下列基础，按后续计划逐项实现：
 
 ### 3.1 首条正式集成管线的交付门（2026-10-16）
 
-语义侧新增架构前置：[Design42](../42-semantic-metadata-inference-and-comptime.md)要求元信息/类型推导/实例化与AVM编译期求值共享查询/身份/store，runtime反射由语义事实投影。v0.6要规划这些语言基础；支撑元编程的HIR→ABC子集不能随全量旧AVM迁移延期。具体范围/首批反射API另立Plan，不将未解决的语言规则藏在Codegen。
+语义侧前置：[Design42](../42-semantic-metadata-inference-and-comptime.md)要求元信息/类型推导/实例化与CTE共享查询/身份/store，runtime反射由语义事实投影。[Design43](../43-ac-av-typed-mir-and-abc.md)确定先设计最小Typed MIR和新ABC、实现Rust AV子集，再接真实CTE；checked HIR片段→MIR→ABC→AV→冻结结果返回语义查询，不等待全程序final Checked。完整旧AVM迁移可分期，新AV必要子集不能一起延期。
 
 用户要求增量/cache与新测试从开始进入编译器。现有有限profile/783探针不追溯称为下面全部完成。下一条正式集成的source→HIR→object→link/run，即使仅返回常量/hello-world，也须同时通过：
 
@@ -80,6 +96,12 @@ v0.6 要建立下列基础，按后续计划逐项实现：
 | G-06 周转 | 从首例记录关联端到端trace和各阶段耗时/等待、命中/重算、I/O及内存；代表编辑负载以P95<1s为目标，P50/P99与压力长尾另报；阶段都<1s不能替代总周转，未测/未达保持明确状态 |
 
 文件级失效可作早期增量粒度，但不能每次全量重编后伪称缓存命中；未实现层级保留future，不能写空工件充覆盖。私有hello不要求先完成全部公开模块ABI。
+
+### 3.2 v0.6与后续AJ/发布能力的边界
+
+现在设计共同编译服务、逻辑单元/产物身份、跨层签名与代际、内联/假设依赖、机器码重定位和发布闭包/profile。v0.6先交最小MIR/ABC/AV、AV驱动CTE和实际store/AutoDown；在已承诺native profile的后续有限发布计划中落实缓存复用、补编、真实链接和发布快照。首探针只验证合同/有限产物，不交完整发布器。
+
+完整T1/T2热点调度、推测优化、OSR/deopt和所有平台portable包另行实现，不新增为796/797或首个AV计划的交付门。AJ可先共用Cranelift，不要求自研codegen。阶段实施顺序不能抹去首例cache/资源/端到端P95<1s的要求；发布时延和冷构建单独量化，不保证任何首次release亚秒。
 
 ## 4. ACC 通过后端桥接继续使用 Cranelift
 
@@ -103,12 +125,12 @@ Rust AC 可直接调用库；Auto ACC 通过明确桥接继续调用它。
 
 建议按吞吐定义P=几何平均(T_LLVM/T_Auto)，目标P≥0.8，即几何平均耗时比≤1.25；不等于所有程序最多慢20%。每项/分组回退、编译耗时、增量P95、峰值内存与代码尺寸另报。代表基准/权重/单项阈值由计划先冻结；固定同机/target/CPU/工具链/输入与语义。若LLVM基线来自等价C/Rust，须保留Auto溢出、边界、trap、ownership与同等runtime成本，不能借UB/省检查取快；无LLVM adapter时不得宣称同源后端对拍。
 
-先测Cranelift none/speed/speed_and_size，再查Auto lowering的多余分配/复制/调用及信息丢失，只补后端看不到且实测有益的语言级变换。达到目标可保留HIR→CLIF；只有分析/优化/多后端确需稳定CFG/SSA表示时，才引入AutoMIR/Typed MIR，不以自己造优化器为交付目标。
+先测Cranelift none/speed/speed_and_size，再查Auto lowering的多余分配/复制/调用及信息丢失，只补后端看不到且实测有益的语言级变换。达到目标可保留Cranelift；最小Typed MIR已由AC/AV共同执行语义需求确定，是否引入SSA/更低层IR和优化集仍按收益决定，不以自己造优化器为交付目标。
 
-Cranelift本身有优化器：锁定0.126.2的Context::optimize含控制流处理和egraph入口，并有别名分析/冗余load处理；AC当前native两处opt_level=none。启用speed需正确性对拍及新cache配置键，不能据上游能力宣称本项目达到80%。后端也不能重建已丢失的Auto ownership、公开接口/重载边界和语义依赖，这些仍归Auto。以下图为有必要性证据后采用的可选路线：
+Cranelift本身有优化器：锁定0.126.2的Context::optimize含控制流处理和egraph入口，并有别名分析/冗余load处理；AC当前native两处opt_level=none。启用speed需正确性对拍及新cache配置键，不能据上游能力宣称本项目达到80%。后端也不能重建已丢失的Auto ownership、公开接口/重载边界和语义依赖，这些仍归Auto。以下是最小MIR之上按必要性扩展的优化/低层路线：
 
 ~~~text
-Typed/Checked HIR → Auto 低层 IR / CFG / SSA
+Typed/Checked HIR → Typed MIR → 按需低层 IR / SSA
                               ↓
                     Auto 分析与优化 passes
                               ↓
@@ -118,8 +140,7 @@ Typed/Checked HIR → Auto 低层 IR / CFG / SSA
 ~~~
 
 若决定建设自己的SSA/优化体系，先接Cranelift，用同一HIR/语料隔离验证，再评估自主代码生成；无必要性证据则不启动此分支。
-Auto 低层 IR（工作名 AutoMIR，未冻结）确定块/值/类型、phi 或 block arguments、
-effect/内存、目标降级与 verifier；不在 v0.6 提前冻结具体指令集。
+Typed MIR的最小块/值/类型、effect/资源与verifier在v0.6专项Plan定界；phi或block arguments、SSA及Machine IR等进一步选择仍按探针/优化需求决定。ABC有独立执行格式和验证器，不与MIR共享物理指令编号或版本。
 v0.7 按性能证据选择内联、公共子表达式、循环等优化，而非先列全套算法作为发行保证。
 低层 IR 也可用 Atom/Batom 描述，其 Schema/profile 与公共 HIR 分开版本化。
 
@@ -161,7 +182,7 @@ ACC桥接、自举、自主SSA。741提供有界native基础，后续能力逐�
 以约定编译器主体的原生自举、Windows首平台及静态/动态模块/热重载为边界，
 预计26–36个正式计划，包含741；主体排期可按约30个考虑。
 若边界需拆分、返工或集成修复，预留35–45个计划的容量。
-这是工程估算，不是已经批准的合同数量，也不是用计划数保证工期。
+这是早期native-only工程估算，不是已经批准的合同数量，也不是用计划数保证工期。2026-10-16新增最小MIR、ABC/AV、CTE依赖后，该估算不覆盖新增工作；须在首个全路径探针后重新估算容量和日历，不宣称原工期不变。
 
 | 工作组 | 独立可验收成果 | 预计计划数 |
 |---|---|---:|
@@ -272,7 +293,7 @@ C headers/SDK/GIR等元信息与Rust构建的C兼容shim汇入共享Interface Me
 
 ### 7.8 当前优先级与在途计划边界（2026-10-16）
 
-类型/泛型/comptime/反射进入语言实现前，先将Design42分解为语义身份与推导合同、HIR→ABC及受控AVM/缓存回路、runtime描述保留三类有界工作包。AutoDown接线与ABI探针仍优先可推进；不能等完整AC后再补类型/元信息架构，也不向787追加这些实现。
+类型/泛型/comptime/反射进入语言实现前，按Design42/43安排语义身份与推导合同、Typed MIR与ABC/AV全路径探针、AV驱动CTE/缓存回路、runtime描述保留等有界工作包。AutoDown接线与ABI探针仍优先可推进；不能等完整AC后再补类型/元信息架构，也不向787追加这些实现。
 
 §7.4/7.5保留历史快照，不能据其旧drafting状态推断当前交付。新的优先安排：
 
@@ -280,6 +301,8 @@ C headers/SDK/GIR等元信息与Rust构建的C兼容shim汇入共享Interface Me
 2. 紧邻优先规划Design35 B阶段AutoDown AC source/HIR/native adapter，先引用现有fixtures/oracles，不大搬语料；syntax/增量观测以明确adapter能力表接入，保留Rust内省与既有CLI门禁。
 3. 同时准备最小AutoABI合同和Auto↔Auto/C双向探针，公开互操作前冻结有限profile；不等完整AC，也不提前承诺完整C importer/Rust生态。
 4. 首条新语法→真实原生集成按§3.1 G-01–05交付，从第一例消费统一cache/增量与新测试。之后enum/is、List/use等扩面逐项继承这些合同。
+
+2026-10-16后续优先级更新：796继续共同语义/CT模型合同，797继续有限native ABI/C双向探针，不追加VM/MIR验收。下一步先规划“Typed MIR与ABC/AV执行合同及首个全路径探针”，纳入AC/AV/AJ共同服务、单元身份/profile/代际/可重定位产物合同和有限cache对照，但不实现完整AJ/发布器。再规划“AV驱动CTE查询与冻结缓存闭环”；native共享MIR接线与有限增量发布另立有界计划，完整分层AJ随后实施。ABC/AV设计可与796/797并行研究，最终真实绑定等其合入，不能复制权威模型。影响和依赖见[评估收据](../../plans/attachments/ac-foundations-20261016/ac-av-mir-impact.md)。
 
 以上是工作包优先级，不分配新号、不启动代理或实施；787影响记录见docs/plans/attachments/787/strategy-impact-20261016.md，不替换其r1执行合同。
 

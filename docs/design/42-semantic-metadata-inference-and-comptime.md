@@ -8,9 +8,11 @@ implemented_by_plans: []
 
 # Design 42：语义元信息、类型推导、反射与编译期执行
 
-用户要求：v0.6应规划完整meta信息及编译期/运行期反射；类型推导独立详细设计；元信息、类型、泛型实例化和AVM编译期结果从第一天纳入增量与全局cache。本文确立架构边界及后续实施要求，具体语法、Schema字段/编号、首批反射API与支持矩阵仍需正式Plan冻结；不声明已实现、不修改787执行合同或现行Spec。
+用户要求：v0.6应规划完整meta信息及编译期/运行期反射；类型推导独立详细设计；元信息、类型、泛型实例化和AV编译期结果从第一天纳入增量与全局cache。本文确立架构边界及后续实施要求，具体语法、Schema字段/编号、首批反射API与支持矩阵仍需正式Plan冻结；不声明已实现、不修改787执行合同或现行Spec。
 
 关联：[Design39](39-ac-incremental-syntax-and-language-platform.md)、[Design40](40-compiler-artifacts-and-cache-lifecycle.md)、[Design41](41-interface-metadata-and-foreign-abi.md)、[HIR语义](strategy/auto-hir-design.md)、[后端战略](strategy/auto-native-backend-evolution.md)、[ABI RFC](strategy/auto-native-abi-rfc.md)、[AutoDown测试](35-autodown-test-cases.md)。
+
+2026-10-16后续确认见[Design43](43-ac-av-typed-mir-and-abc.md)：新引擎长期名为AV（先Rust、后Auto实现AAV）；CTE依赖checked HIR片段→最小Typed MIR→新ABC→AV。本文中目标态AVM称谓以AV为准，旧源码审计仍称旧AVM。最小MIR进入v0.6，性能优化另行分期。
 
 ## 1. 现状审计与重新划界
 
@@ -37,7 +39,7 @@ implemented_by_plans: []
 | Inference Work State | 类型变量、约束/替换、候选集合、worklist、临时假设、诊断构造；单次查询/任务拥有 | 局部暂存，受预算/取消控制；不作为稳定全局事实或持久TypeId |
 | Runtime Reflection Projection | 被选择的类型/字段/属性/成员描述，已授权的访问/调用adapter，必要target layout与模块代际 | 独立版本化工件；链接保留/剥离，运行时按需读；可调用代码有generation lease |
 
-“单一事实来源”是共享语义查询合同和已提交不可变结果，不是唯一常驻HashMap或全局大锁。编译器、AVM、native/A2X、FFI、LSP分别消费其投影，不维护互相改写的权威类型副本。codegen可有局部寄存器/栈槽/layout缓存，但不能发现新语义或悄悄推导为Any。
+“单一事实来源”是共享语义查询合同和已提交不可变结果，不是唯一常驻HashMap或全局大锁。编译器、AV、native/A2X、FFI、LSP分别消费其投影，不维护互相改写的权威类型副本。codegen可有局部寄存器/栈槽/layout缓存，但不能发现新语义或悄悄推导为Any。
 
 ## 3. 身份、类型与物理布局
 
@@ -63,7 +65,7 @@ snapshot/CST → declarations/scope/import summaries
                          ↓
              checked executable HIR fragment
                          ↓
-                 ABC → AVM execution
+                 Typed MIR → ABC → AV execution
                          ↓
              frozen CT value/type/diagnostic
                          ↕
@@ -71,14 +73,16 @@ snapshot/CST → declarations/scope/import summaries
                          ↓
                  final Checked HIR
                     ↙          ↘
-          native lowering     ABC backend
+          Typed MIR → native   Typed MIR → ABC → AV
 ```
 
 不能先要求整个程序final Checked，再执行决定类型的comptime；也不能把未检查工作态直接送VM。先检查所请求函数和可执行依赖，形成有明确profile的checked片段；结果回灌继续推导/实例化。普通运行时泛型替换未必调用VM，只有依赖编译期值/类型计算时才发起CT查询。
 
 语义服务统一调度签名、body、实例与CT任务，记录依赖、等待/取消与发布状态。递归函数允许先收集显式签名再检查body；递归类型走组合同。comptime值/布局自依赖等无合法解的环报带查询链的错误；不能把所有环都当“再迭代直到好了”。有限单调分析才采用有终止条件的固定点，算法在专项Plan冻结。
 
-不要求全量重写AVM后才实现comptime：先建立受限HIR→ABC，复用兼容解释器时重新验证数值/调用/资源语义；后端不再回读旧AST重推导。MIR可选，v0.6不依赖自有优化器。全部旧AVM/A2X迁移仍可分阶段，但支撑本版元编程的HIR→ABC子集不能一并延期。
+CTE之前先设计新ABC及最小Typed MIR，实现Rust AV的必要执行子集；不等待完整runtime/插件/JIT，也不将旧AVM视为天然兼容。类型/meta投影、常量装载冻结和值/帧/调用模型分别审计，只有通过语义验证的旧组件才可复用。后端不回读旧AST或将表达式格式化为源码重推导；不另造用完即丢的CT解释器。v0.6最小MIR是正确性与多后端共用层，不以前置SSA/自有优化器为要求；完整旧后端迁移仍分阶段。
+
+AC/AV/AJ共享语义服务与MIR，不再分别推导类型；详见[Design43 §8–10](43-ac-av-typed-mir-and-abc.md)。CTE先用AV解释即可，快速/优化JIT不是本版CTE前置；未来编译执行仍受同一语义、权限、预算及结果冻结合同约束。画像/优化不改名义类型身份。发布snapshot/profile选择的反射保留和实例集合是部署闭包输入，不按开发时实际运行过哪些类型裁剪。
 
 ## 5. 类型推导详细设计边界
 
@@ -125,9 +129,10 @@ snapshot/CST → declarations/scope/import summaries
 | 层级 | 实际应存的语义产物 | 不应作为稳定payload的东西 |
 |---|---|---|
 | A04 | 声明/作用域/导入摘要及来源映射 | 整个可变Parser/Universe |
-| A05 | CT执行recipe/ABC身份、冻结结果、类型/生成项描述、输入依赖manifest | VmInterpreter堆、任意宿主句柄/地址 |
+| A05 | CT执行recipe/ABC及AV语义身份、冻结结果、类型/生成项描述、输入依赖manifest | VmInterpreter堆、任意宿主句柄/地址 |
 | A06 | 类型/签名/字段/方法/约束、body推导结果、泛型实例及反射/FFI接口投影 | 未解决替换表、推导器内部指针 |
 | A07 | final HIR与消费的语义/资源事实引用 | 输入trusted标志 |
+| A08/A09 | 已实现的Typed MIR/lowering结果、ABC模块及版本/profile；共享语义/常量引用 | CLIF/解释器活对象、宿主调用地址或可反序列化trusted凭证 |
 | A09/A10 | 描述数据/访问adapter及链接保留表、剥离策略指纹 | 把全部编译meta无条件塞进exe |
 | A11 | 诊断、展开/推导/CT调用来源链、工具查询结果 | 迟到旧修订结果冒充当前 |
 | A12 | 运行代际绑定/状态schema描述 | 运行中对象/可调用地址作为普通可淘汰cache |
@@ -136,7 +141,7 @@ Schema可映射Atom/Batom，热路径typed view、按声明/实例/组分块。�
 
 ### 7.1 key、依赖与命中
 
-CT base key至少有callee实例/语义版本、常量与类型实参、profile/target/语言语义、HIR→ABC及AVM版本、允许能力和外部输入域。记录实际读取的函数实现、类型/字段/签名、解析候选域/反射集合、显式文件/环境值等完整依赖；上次依赖manifest先验证新鲜，验证本身经版本化查询进行，不能在命中后才发现漏读输入。动态控制流采用上次有效依赖集时，决定路径的条件及其输入也必须被覆盖。
+CT base key至少有callee实例/语义版本、常量与类型实参、profile/target/语言语义、HIR→MIR→ABC lowering及ABC/AV版本、允许能力和外部输入域。记录实际读取的函数实现、类型/字段/签名、解析候选域/反射集合、显式文件/环境值等完整依赖；上次依赖manifest先验证新鲜，验证本身经版本化查询进行，不能在命中后才发现漏读输入。动态控制流采用上次有效依赖集时，决定路径的条件及其输入也必须被覆盖。
 
 “源码没变就命中”仅在所有依赖/配置也未变时成立。例：计算常量调用helper，helper body变就失效；计算sizeof(T)，字段或target/布局规则变就失效；列举字段生成代码，新增字段即使旧字段未变也失效；外部文件字节变而mtime不变仍失效。body-only修改是否传播看消费者是否读body，不用一刀切接口hash。
 
@@ -144,15 +149,15 @@ QueryKey是输入recipe，Artifact/内容身份是输出；重算结果未变可
 
 ### 7.2 确定性与结果物化
 
-AVM comptime默认无任意文件/网络/时间/随机/FFI权限；有必要的宿主服务经能力broker提供快照输入及依赖记录。不可追踪/不可重放副作用明确拒绝可缓存语境，或标记为受限制的非缓存构建操作，不能取旧结果时悄悄省掉应发生的外部效果。
+AV的CTE profile默认无任意文件/网络/时间/随机/FFI权限；有必要的宿主服务经能力broker提供快照输入及依赖记录。不可追踪/不可重放副作用明确拒绝可缓存语境，或标记为受限制的非缓存构建操作，不能取旧结果时悄悄省掉应发生的外部效果。
 
-冻结结果只包含可移植标量/文本/聚合/类型引用及支持的常量图，保留别名/循环或明确拒绝不支持形态；不将指针/VM句柄直接写盘。原生lowering从冻结常量生成目标数据与重定位；宿主AVM和目标机器的表示不是同一层。
+冻结结果只包含可移植标量/文本/聚合/类型引用及支持的常量图，保留别名/循环或明确拒绝不支持形态；不将指针/VM句柄直接写盘。原生lowering从冻结常量生成目标数据与重定位；宿主AV和目标机器的表示不是同一层。
 
 成功命中跳过VM执行，但校验payload身份、版本/引用、依赖新鲜和本次消费准入；缓存值不是Checked HIR凭证。需要恢复HIR时仍经verify。坏块受控miss/重算，缺失再生输入则明确unavailable，不能把错误值变成0/Nil。
 
 ### 7.3 生命周期
 
-依赖指纹用于失效，不默认强pin全部body/旧AST。若保留的常量结果消费时仍需其类型描述/数据页，这些是required-data；若编译进native后无需历史AVM执行图，则只留recipe/溯源，不永久pin解释器工件。runtime活代际单独lease，不由普通LRU强制卸载。
+依赖指纹用于失效，不默认强pin全部body/旧AST。若保留的常量结果消费时仍需其类型描述/数据页，这些是required-data；若编译进native后无需历史AV执行图，则只留recipe/溯源，不永久pin解释器工件。runtime活代际单独lease，不由普通LRU强制卸载。
 
 相同完整key跨工程共享结果和不可变meta；overlay、配置、当前诊断和lease属于会话。两个producer同key需single-flight/冲突检测；结果与依赖manifest原子发布。增量元编程不能成为绕过Design40自动预算/回收的第二套缓存。
 
@@ -163,11 +168,11 @@ AVM comptime默认无任意文件/网络/时间/随机/FFI权限；有必要的�
 建议工作包（未分配Plan、非实施授权）：
 
 1. 语义身份/Schema/查询、类型推导规则和代表性递归/泛型/反射探针；冻结完整覆盖矩阵与阶段准入。
-2. HIR→ABC与受控AVM、有限实例化/CT查询回路；从首例持久结果/依赖、资源上限与AutoDown用例，不等语言完整后补cache。
+2. 最小Typed MIR与新ABC/Rust AV执行合同及全路径探针；之后接有限实例化/CT查询回路。真实AV就绪后实现CTE，从首例持久结果/依赖、资源上限与AutoDown用例，不等语言完整后补cache。
 3. 编译期反射及runtime描述投影/保留、链接/装载及代际兼容；与有限AutoABI/FFI合同共享类型身份，不让ABI或Codegen反过来拥有语义事实。
-4. 逐项语言/元编程扩面与旧consumer迁移；完整旧AVM/A2X迁移和Typed MIR/优化按既定分期，不用本稿宣称全部已纳入某一在途Plan。
+4. 逐项语言/元编程扩面与旧consumer迁移；完整旧AVM/A2X迁移及进阶优化分期；最小Typed MIR进入v0.6，详见Design43，不用本稿宣称全部已纳入某一在途Plan。
 
-787仍只负责语法/分页，其partial CST不授类型或CT执行信任。AutoDown接线/ABI优先工作继续推进，同时上述语义合同须在泛型、元编程或新HIR→ABC开始实施前形成正式可执行Plan。
+787仍只负责语法/分页，其partial CST不授类型或CT执行信任。AutoDown接线/ABI优先工作继续推进，同时上述语义合同须在泛型、元编程或新HIR→MIR→ABC/AV开始实施前形成正式可执行Plan。
 
 ## 9. 必须落地的区分性验证
 
@@ -175,7 +180,7 @@ AVM comptime默认无任意文件/网络/时间/随机/FFI权限；有必要的�
 |---|---|---|
 | M-01 | 同名不同模块类型、递归类型、重启后intern顺序不同 | 名义身份不混淆，持久ref重映射正确，递归图有界验证 |
 | M-02 | 调用者不变，只改helper body/类型字段/target/VM版本 | 相关CT与实例化失效；未依赖查询仍可命中；结果与fresh一致 |
-| M-03 | AST/依赖不变的第二构建及进程重启 | 真AVM执行计数0，冻结结果及native观察与fresh一致，不伪计数 |
+| M-03 | AST/依赖不变的第二构建及进程重启 | 真实AV执行计数0，冻结结果及native观察与fresh一致，不伪计数 |
 | M-04 | 字段枚举新增成员、方法候选/导入新增、原不存在名字被定义 | 负依赖/集合依赖使旧结果失效，不误复用 |
 | M-05 | 未解决类型、矛盾约束、歧义、递归CT/实例化环 | 定位/依赖链错误；无Any兜底、无无限求解；合法递归兄弟通过 |
 | M-06 | type-dependent CT与跨宿主/target宽度 | 已检查片段可执行，目标类型/布局正确，无宿主地址/宽度泄漏 |
@@ -185,7 +190,7 @@ AVM comptime默认无任意文件/网络/时间/随机/FFI权限；有必要的�
 | M-10 | 热重载布局变化，旧对象/callback/deleter仍活 | 旧描述/代码保活，新旧TypeId不串代，释放后可自动回收 |
 | M-11 | 大类型/实例集合仅查一个签名，持续编辑/回收 | 页/索引/求解暂存有预算；不会每进程复制全类型库，空间长期收敛 |
 | M-12 | 只改来源位置，body值相同；反射读取doc/source | 普通值可共享而来源更新；读取doc/source时相应失效，诊断链准确 |
-| M-13 | meta查询/推导/实例化/CT各例及其端到端调用链，冷热/变更/压力分场景 | 每阶段从首例有真实span/计数/内存I/O，依赖不变CT命中时AVM执行0且miss正控实际执行；代表负载预算与端到端亚秒目标关联，等待/嵌套查询不漏算或重算 |
+| M-13 | meta查询/推导/实例化/CT各例及其端到端调用链，冷热/变更/压力分场景 | 每阶段从首例有真实span/计数/内存I/O，依赖不变CT命中时AV执行0且miss正控实际执行；代表负载预算与端到端亚秒目标关联，等待/嵌套查询不漏算或重算 |
 
 各实施Plan须将适用项绑定实际入口/owner/正反例/资源负载和预期值；上表是设计验收要求，不是已执行测试。现有旧CTEE字符串往返/截断/数组退Nil不作为兼容正确性oracle。
 

@@ -37,7 +37,7 @@ HIR 语义契约：有哪些概念、哪些程序有效、顺序和行为是什�
 
 ## 3. 层级与前后端边界
 
-2026-10-16语义工作态补充见[Design42](../42-semantic-metadata-inference-and-comptime.md)：签名/类型推导/实例化与CT查询互相调度；只把已检查可执行片段lower到ABC供AVM求值，不要求整程序先final Checked，也不允许Unknown片段进入VM。结果作为版本化冻结产物回灌，最后产生最终Checked HIR。runtime反射从语义meta投影，codegen不再成为类型事实owner。
+2026-10-16语义工作态补充见[Design42](../42-semantic-metadata-inference-and-comptime.md)：签名/类型推导/实例化与CT查询互相调度；只把已检查可执行片段经Typed MIR/ABC送AV求值，不要求整程序先final Checked，也不允许Unknown片段进入VM。结果作为版本化冻结产物回灌，最后产生最终Checked HIR。runtime反射从语义meta投影，codegen不再成为类型事实owner。
 
 建议公共 AutoHIR 保持有类型的结构化高层表示：保留函数、结构化分支/循环、领域操作、
 类型/泛型/接口信息和已解析引用。它不是 ABC，也不是只为 native 定制的低层指令列表。
@@ -46,9 +46,10 @@ HIR 语义契约：有哪些概念、哪些程序有效、顺序和行为是什�
 源码 / AST
     → 名称解析、类型推导/检查、语义分析
     → Checked AutoHIR
-        → native 专属 lowering / 运行时 ABI / 布局 / 链接
-        → A2X 专属 lowering / 宿主语言表示与互操作
-        → VM CodeGen / ABC
+        → A2X 专属结构化 lowering / 宿主语言表示与互操作
+        → Typed MIR（共同执行语义）
+            → native 专属 lowering / 运行时 ABI / 布局 / 链接
+            → ABC lowering / 验证 / AV
 ```
 
 前端可以内部保留未完成推导的工作状态；交给后端的 Checked AutoHIR 必须有明确能力 profile，
@@ -61,8 +62,8 @@ HIR 语义契约：有哪些概念、哪些程序有效、顺序和行为是什�
 ### 3.1 后端演进与优化层级（2026-10-04 用户确认）
 
 完整版本路线见 [AC/ACC 后端演进](auto-native-backend-evolution.md)。
-v0.6的公共HIR经正确语义/资源降级进入Cranelift；独立MIR/性能优化延期v0.7。
-v0.7先测后端优化及高收益语言级变换，按证据决定是否建设低层CFG/SSA，不强制自有IR或后端重写。
+2026-10-16后续确认以[Design43](../43-ac-av-typed-mir-and-abc.md)为准：v0.6设计实现最小Typed MIR作为AC/AV共同执行语义层，AV经新ABC执行并支撑CTE。已有HIR→Cranelift按原合同保留，迁移单列Plan。
+v0.7先测后端优化及高收益语言级变换，按证据决定SSA/进一步低层IR及自主后端；不再将最小MIR整体推迟。
 公共 HIR 保持语言类型、结构化控制流、所有权/效果与来源，不强制全部后端消费一个 SSA 格式。
 
 v0.6 先明确 pass 输入/输出阶段、前置条件、profile、顺序、分析失效与诊断，
@@ -71,9 +72,11 @@ v0.6 先明确 pass 输入/输出阶段、前置条件、profile、顺序、分�
 未执行分支的 trap 不可因常量折叠变成无条件编译错误。
 具体内联/循环等进阶优化以性能证据安排，不将整套自研优化器列为 v0.6 门槛。
 
-Auto 低层 IR 的 phi/block arguments、effect/内存模型与 verifier 属 v0.7 设计项；
-其 Atom/Batom Schema/profile 与公共 HIR 分开，不预冻结后端指令编号或物理布局。
+最小MIR的类型、控制流、effect/资源与verifier属于v0.6专项设计；SSA的phi/block arguments与机器相关低层扩展按探针/性能需求决定。
+MIR的Atom/Batom Schema/profile与公共HIR及ABC执行格式分别版本化，不在本文冻结指令编号或物理布局。
 这些是后续计划边界，不扩充 Plan 741 的有界语义/native 验收。
+
+2026-10-16统一执行补充：AC提前编译、AJ快速/优化编译共用MIR编译服务，AV执行ABC；AJ不要求从ABC逆向恢复HIR。前端和语义产物在配置相容时跨执行模式共享，原生码按target/ABI/优化与调用策略分域。源码转译仍从Typed HIR保留结构；增量单元、优化单元和装载单元分离，发布从冻结快照/完整闭包复用有效产物。完整分层调度/OSR/deopt可后续实现，合同见[Design43](../43-ac-av-typed-mir-and-abc.md)。
 
 ## 4. 核心模块与引用身份
 

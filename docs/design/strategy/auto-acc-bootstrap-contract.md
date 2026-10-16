@@ -11,9 +11,9 @@
 
 ## 0. 定位与不变式
 
-2026-10-16元编程与meta补充见[Design42](../42-semantic-metadata-inference-and-comptime.md)：v0.6规划完整语义meta、编译期与runtime反射；类型推导/实例化/AVM CT由语义查询统一调度，CT冻结结果与类型事实进入A05/A06及统一cache。支持本版元编程的HIR→ABC子集与全量旧AVM迁移分开；有限泛型不能仅凭内建List证明，实际支持/生成类型等矩阵仍由专项Plan冻结。旧库存清单是历史取证，不因新目标自动改成implemented。
+2026-10-16元编程与meta补充见[Design42](../42-semantic-metadata-inference-and-comptime.md)：v0.6规划完整语义meta、编译期与runtime反射；类型推导/实例化/AV驱动CTE由语义查询统一调度，CT冻结结果与类型事实进入A05/A06及统一cache。按[Design43](../43-ac-av-typed-mir-and-abc.md)，支持本版元编程的checked HIR→Typed MIR→新ABC→Rust AV子集与全量旧AVM迁移分开；有限泛型不能仅凭内建List证明，实际支持/生成类型等矩阵仍由专项Plan冻结。旧库存清单是历史取证，不因新目标自动改成implemented。
 
-2026-10-16版本分期细化：本文件的阶段/effect/pass模板保留为变换正确性要求，不代表v0.6必须实施独立MIR或通用优化框架。v0.6正确性、自举、ABI边界、首条全链路的增量/global cache和AutoDown测试门槛见后端演进战略§3/§7.8；v0.7先测Cranelift优化档，按收益决定是否补语言级pass/Typed MIR。不得因优化延期省略资源lowering或持久HIR恢复重验。
+2026-10-16后续分期：v0.6引入最小Typed MIR作为AC/AV共同执行语义层，先有Rust AV执行子集再接CTE，随后按自举所需能力迁移AAC/AAV；不是先完成全部AC再补新VM。既有S2–S6/profile交付事实不改，MIR接线及新的CheckedMIR验证门另立Plan，不直接扩张现有CheckedModule保证。v0.7按收益补语言级优化/SSA/自主低层后端，不要求v0.6通用优化框架；不得省略资源lowering或持久恢复重验。
 
 ACC = Auto 实现的编译器主体。本契约给"源码 adapter、运行时、ABI、ACC 迁移"四类后续工作
 提供共同的前置边界。四条不变式贯穿全文：
@@ -209,6 +209,8 @@ Cranelift 消费库；候选 B：**独立后端进程**——以批处理作业�
 （布局/调用/热重载）按 auto-native-abi-rfc 单独演进，两者禁止互相冒充。
 **后端职责边界**：后端不做名字解析/typecheck/优化决策（X7）；它只消费合法投影并拒绝
 能力外请求。
+
+2026-10-16统一编译服务补充：AAC未来迁移的是前端/语义/MIR/构建驱动等约定主体；AJ与提前编译共用优化/codegen和产物服务，不重复迁移两套权威语义。自举及发布默认允许经完整key校验的增量cache复用，同时以固定快照/profile的无cache路径对照验证，不能把热身生成代码或旧运行内存当自编译结果。分层JIT、OSR/deopt不因AAC/AAV命名自动成为既有自举Plan验收。
 
 ## 5. 自举代际判据（Gen1→Gen2→Gen3）
 

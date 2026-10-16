@@ -15,7 +15,7 @@ implemented_by_plans: []
 
 ## 1. 架构决定与非目标
 
-2026-10-16时序：统一身份/阶段依赖/store从首次编译集成开始消费，不等完整语言后补。首个hello-world全链路也须验fresh、热点、重启、变更失效和有界回收；无实现层级保持future。AutoDown同时观察真实重算/命中与语义/诊断等价，不只看耗时或去重。v0.7延后的是自有MIR与性能优化，不包含这些生命周期责任；交付门见后端战略§3.1。
+2026-10-16时序：统一身份/阶段依赖/store从首次编译集成开始消费，不等完整语言后补。首个hello-world全链路也须验fresh、热点、重启、变更失效和有界回收；无实现层级保持future。AutoDown同时观察真实重算/命中与语义/诊断等价，不只看耗时或去重。最新分期见[Design43](43-ac-av-typed-mir-and-abc.md)：最小Typed MIR与ABC/AV基础进入v0.6，v0.7按需扩展性能优化/SSA/自主低层后端，不包含这些生命周期责任的延期；交付门见后端战略§3.1。
 
 统一的是产物的语义模型、Schema/版本、身份/引用、依赖、物理访问与生命周期；不强制所有阶段共用一个万能Node结构，也不要求每次操作复制/保存全阶段完整状态。类型化内存视图、冻结二进制块、调试Atom文本是同一逻辑数据的不同消费形式。
 
@@ -37,7 +37,7 @@ implemented_by_plans: []
 
 ## 3. 全阶段产物目录
 
-2026-10-16语义细化见[Design42](42-semantic-metadata-inference-and-comptime.md)：A05保存可物化的AVM编译期结果/类型或生成项描述及依赖manifest；A06保存类型/签名/推导结果/泛型实例等不可变语义事实，不持久化求解器可变状态。runtime反射为A09/A10投影并受A12代际生命周期约束。CT源码不变仍须核依赖函数body、反射类型/候选集合、target/配置/VM版本及受控外部输入；只有完整输入不变才跳过执行，不另建私有meta/CT缓存。
+2026-10-16语义细化见[Design42](42-semantic-metadata-inference-and-comptime.md)：A05保存可物化的AV编译期结果/类型或生成项描述及依赖manifest；A06保存类型/签名/推导结果/泛型实例等不可变语义事实，不持久化求解器可变状态。runtime反射为A09/A10投影并受A12代际生命周期约束。CT源码不变仍须核依赖函数body、反射类型/候选集合、target/配置/VM版本及受控外部输入；只有完整输入不变才跳过执行，不另建私有meta/CT缓存。
 
 以下A-*为设计条目标识，不是冻结的wire tag或现有文件名。每类需有独立领域Schema、受管入口、版本、key组成、再生recipe、引用策略与oracle。小型临时结果可只驻内存；只有收益/成本适宜的结果才持久化。
 
@@ -51,8 +51,8 @@ implemented_by_plans: []
 | A-05 展开与条件结果 | 宏token/展开结构、comptime条件/依赖、生成来源 | Record/Variant+Schema、源码/结构payload | 按展开调用/实例；完整记录实际文件/环境/工具输入；不可控制副作用则禁用相应共享cache |
 | A-06 解析/类型/接口元信息 | scope、符号/跨模块引用、类型/约束/impl/泛型与资源效果摘要、公开接口 | 类型化ID表、Record/Variant+Schema；原文签名候选与语义已确认信息分层 | 模块摘要/声明/查询；依赖接口无需先装载所有函数体；所需宏/泛型/const内容按需取 |
 | A-07 公共HIR | Unchecked Bundle、签名/类型/定义/expr/place/body/control/effect/resource/source | AutoHIR Schema；Atom调试/交换、Batom类型化块+安全view | body/类型表/定义表分区；持久结果不能直接反序列化为本进程Checked凭证 |
-| A-08 语义lowering/pass结果 | 规范化/清理计划、目标能力门、pass链与分析失效信息 | 各pass输入/输出Schema与版本；结构化清理/能力表 | 只缓存实际实现的pass；细粒度按body/模块；重写后按契约重验，不预先发明全部pass |
-| A-09 后端/对象产物 | backend输入/必要IR、COFF/ELF obj、调试/重定位/符号、runtime需求 | Auto描述用Schema；CLIF等私有IR若缓存使用后端自有格式/版本；obj保持真实原生Bytes | 模块/后端可验证单元；不强行转成Node；CPU/target/后端/选项/实际body依赖进key |
+| A-08 语义lowering/pass结果 | Typed MIR、规范化/清理计划、目标能力门、pass链与分析失效信息 | 各pass输入/输出Schema与版本；结构化清理/能力表 | 只缓存实际实现的pass；细粒度按body/模块；重写后按契约重验，不预先发明全部pass |
+| A-09 后端/对象产物 | 新ABC模块及执行profile、backend输入/必要IR、COFF/ELF obj、调试/重定位/符号、runtime需求 | Auto描述用Schema；CLIF等私有IR若缓存使用后端自有格式/版本；obj保持真实原生Bytes | 模块/后端可验证单元；不强行转成Node；CPU/target/后端/选项/实际body依赖进key |
 | A-10 链接/发布产物 | exe/lib/DLL、导入/导出、链接收据、接口/ABI/runtime/artifact manifest | 原生文件+Atom/Batom/Schema manifest；内容绑定 | 重用link输入、原子发布；用户请求的交付副本是独立输出，不因cache GC消失 |
 | A-11 工具投影与诊断 | 分阶段诊断、span、outline/index、外语候选meta、查询结果 | 版本化Record/Variant；领域状态/来源明确 | 查询/快照级；诊断随revision映射，失败结果只在完整输入键与适用范围内复用 |
 | A-12 热重载与状态 | generation/dispatch/state schema/迁移recipe、在途引用 | 描述可用Schema；仅显式声明的可持久状态可编码，线程/代码指针/lease是活运行态 | 旧代保持到安全点和lease释放；可选回滚代数/TTL有预算；runtime回收不是普通缓存LRU |
@@ -60,6 +60,20 @@ implemented_by_plans: []
 原生机器码、第三方编译器文件与原始源码不必拆成Atom节点；用Schema封装描述、输入/输出和引用即可。“统一Atom/Batom+Schema”不等于改变PE/COFF等已有格式。格式转换不应引入文本roundtrip。
 
 [Design41](41-interface-metadata-and-foreign-abi.md)为foreign生态具体化本目录：import/package/target输入归A00，SDK/header生成定义归A01/05/06，接口与layout/ownership元信息归A06，ABI adapter归A08，Rust/C shim编译与库manifest归A09/10，callback/deleter与加载代际归A12。头文件传递依赖/搜索与宏/SDK配置、Rust crate内容/features/依赖/toolchain/实例集合分别进入适用query key；候选CST不能成为可执行FFI授信。来源fingerprint不永久pin全部SDK AST，实际执行/读取引用的code/data按required-data和lease保活。该映射不声明新产物已支持。
+
+[Design43](43-ac-av-typed-mir-and-abc.md)明确：MIR、ABC及AV版本/语义profile进入各适用query key；可移植ABC与target相关机器码cache分域。A05通过ArtifactId引用ABC及冻结结果，不重复存活VM堆；装载后的表/指令和portable常量可按需物化，不将格式可序列化视为可直接信任执行。各层均是目标目录，不代表当前783已实现所有producer。
+
+### 3.1 分层执行与增量发布的产物扩展
+
+按[Design43 §8–10](43-ac-av-typed-mir-and-abc.md)的AC/AV/AJ统一架构，A08保存共同MIR及适用优化结果，A09可同时有ABC、AJ快速/优化和发布原生版本，A10保存发布快照/完整闭包/链接清单，A12管理当前安装的代码版本与代际lease。未来运行画像/推测假设作为有版本、来源和预算的输入/描述纳入相关A00/A08/A09，不把进程指针/活反馈对象存成可移植payload。逻辑产物不为每层重复拷贝语义图。
+
+查询键除输入与实际依赖外，按消费者区分target/CPU、优化档、插桩/调试、热重载/调用策略、ABI/runtime服务版本、画像及推测条件等。输入源码一致不保证dev/release机器码可互用；原生miss时仍可命中语义/CTE/MIR。跨单元内联保存callee body/layout等依赖，查询粒度与优化/装载单元不同，不强制MIR基本块逐个落盘。
+
+持久机器码须有符号/重定位、数据、ABI/runtime要求、验证/生成recipe等；已装载JIT内存地址不是可发布文件。发布固定快照/profile并遍历入口/导出/初始化/反射/实例等完整闭包，校验cache后补编缺失，包含未运行冷代码。匹配的优化版本可复用，不匹配重编适用层；纯native禁回退profile不得采用需要解释器才能纠正假设的版本。
+
+cache回收不改变构建结果：有输入可再生，无输入明确缺失；发布交付物应独立复制或进入受管持久发布store，部署不依赖开发cache，不能让普通LRU删除发布物。增量发布仍可用完整平台链接，不承诺现有linker全增量。验证覆盖warm→release、首次/第二次发布、body/接口/profile/target失效、cache损坏/回收和清除开发cache后运行；与同快照/profile的无cache构建比较语义/闭包。发布/冷构建耗时独立于编辑P95<1s报告。
+
+以上是新增producer和查询合同的目标，不说明当前783或AJ已经提供这些能力；首个MIR/AV探针只验证其有限支持面，完整发布器和分层AJ另立计划。
 
 ## 4. 统一身份与引用
 

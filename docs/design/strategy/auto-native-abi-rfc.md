@@ -37,6 +37,10 @@ supersedes: []
    NVIDIA 显卡是开发环境信息，不自动引入 CUDA/GPU ABI 需求。
 5. 跨界类型按上一轮推荐细化；linker、x86-32 和运行时参与方式需要给出方案。
 
+2026-10-16更新：新版AV/CTE进入v0.6路线，见[Design43](../43-ac-av-typed-mir-and-abc.md)，但不扩张本RFC或797的原生profile验收。AV字节码内部调用/模块格式、AutoABI和平台C ABI分别版本化；AV↔native通过受控adapter，逻辑类型共用不意味着对象/帧物理布局相同，原生互调不自动提供沙箱。
+
+2026-10-16 AC/AV/AJ补充：统一逻辑签名不要求解释帧/JIT帧/公开AutoABI物理布局相同；跨层调用需要明确adapter、错误/资源和lease。AJ快速/优化版本及发布机器码记录同域ABI/runtime、target/CPU、调用策略与依赖。发布复用匹配的可重定位产物，不把JIT内存地址当链接输入，也不因此要求v0.6自研整套平台linker。完整多层运行时互调不加入797验收，参见[Design43](../43-ac-av-typed-mir-and-abc.md)。
+
 ### 1.2 本稿建议（尚未裁定）
 
 | 问题 | 建议 |

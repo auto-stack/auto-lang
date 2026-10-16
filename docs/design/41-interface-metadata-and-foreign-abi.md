@@ -29,6 +29,10 @@ implemented_by_plans: []
 
 同一Auto业务函数可有AutoABI入口、C导出wrapper、Rust FFI入口或VM adapter；每个入口的ABI/模式/错误契约明确，业务实现无需复制。可重载跨模块调用仍按dispatch/lease规则，即使物理签名相同也不能绕过生命周期。
 
+2026-10-16分层执行补充见[Design43](43-ac-av-typed-mir-and-abc.md)：解释/快速JIT/优化JIT和发布原生版本共享逻辑接口，物理帧/调用可经adapter适配；内部调用合同、AutoABI及平台C ABI分别存在。推测/内联版本须记录被依赖body/layout和模块代际，不能仅因公开签名没变就继续调用旧实现。外部callback/deleter及在途代码仍按lease保活；新版本安装先复核快照，模块组切换保持已批准的一致性事务。
+
+这不扩大797的Windows x64原生互调面；完整解释↔JIT互调、代码替换、OSR/deopt和loader另立Plan。发布闭包必须包含承诺的FFI导入、runtime服务和反射保留，机器码cache匹配不替代ABI/权限/部署依赖验证。
+
 ## 2. 架构与四份契约
 
 ```text

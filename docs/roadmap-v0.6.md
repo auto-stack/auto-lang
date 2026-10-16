@@ -1,16 +1,16 @@
 # Auto v0.6 Roadmap（规划基线 v2）
 
-> 更新：2026-10-16（编译器语义meta/类型推导/元编程分期补充；其余版本规划保留原基线）。
+> 更新：2026-10-16（AC/AV/AJ统一架构、Typed MIR/ABC/CTE、分层执行与增量发布；其余版本规划保留原基线）。
 > 性质：跨仓版本规划基线 v2；已确认方向、交付分层与近期工作边界可据此分解任务。
 > 具体架构 RFC、执行 Plan 与发行验收矩阵仍分阶段评审；本文不代表全部能力已实现。
 > 基线限制：主工作电脑暂不可访问，部分仓库未 push 的 v0.5 工作尚不可见；
 > 本文依据用户本次讨论与本地已同步文档，不能代替最终 v0.5 基线核查。
 > 已确认：十条方向（本轮追加应用通信/AutoAI与系统级DevTools；包含应用演进、独立化及统一安装体系），
-> 以及 Atom/BAtom → HIR → AC/AAC → A2X/AVM 的架构主线；
+> 以及 Atom/Batom → Typed HIR → A2X，或经Typed MIR进入AC/native与ABC/AV的架构主线；
 > 完整知识管理流程在 v0.6 做原型设计与调研性开发，v0.7 成为主线。
 > 目标窗口：2026 年 12 月底（用户预期）；主打交付与调研范围见 §1.5。
 > 编译器分期已确认：v0.6 AC/ACC（本文称 AAC）借助 Cranelift 完成约定原生自举；
-> v0.7先按证据复用Cranelift优化及少量高收益变换，按需引入低层IR/SSA，不强制自主IR/后端重写。
+> v0.6新增最小Typed MIR与Rust AV必要子集，在其上接CTE；AC/AV/AJ共用编译/产物服务，现有native支持面逐步落实增量发布，完整分层AJ后续专项实现。AC/AV能力齐备后迁移AAC/AAV。v0.7先按证据复用Cranelift优化及少量高收益变换，按需扩展SSA/低层IR，不强制自主后端重写。新增工作须重估容量/日历，AAV全量实现未自动成为本版硬门槛。
 > 待细化：功能/平台矩阵、后端版本与探针、量化验收和阶段调度；不得跳过设计/Plan 审批。
 
 ## 1. 版本定位与十条方向
@@ -132,7 +132,7 @@ Career、娱乐、OpenBusiness/应用市场等方向的产品化版本另定。
 
 | 交付线 | 建议在实施前固定的验收边界 | 主要风险 |
 |---|---|---|
-| AC/AAC | Windows x64 首平台、Cranelift 主后端；HIR/native 路径与 pass 基础可用；约定编译器主体 Auto 实现并通过原生自编译/重复构建，保留后端桥接与依赖清单 | HIR 语义、库互操作、运行时/链接与自举能力彼此依赖；自举不等于全生态原生覆盖 |
+| AC/AAC与AV基础 | Windows x64、Cranelift主后端；共同语义/Typed HIR、最小MIR/新ABC/Rust AV支撑CTE，native支持面增量发布；约定编译器主体Auto实现并自编译/重复构建 | AC/AV/AJ统一架构先设计；完整分层JIT/OSR/deopt后续实现，AAC/AAV按能力门分期；自举不等于全生态原生覆盖 |
 | Linux | 固定首个发行版、硬件/图形栈与设备矩阵；原生桌面会话、系统集成、四个主打 app/28-app 组合及安装更新路径验收 | 图形、输入法、外部窗口、系统服务与硬件行为需实际环境验证 |
 | Python | 固定高级支持矩阵，以真实 AI/科学计算工作流验证数据输入、模型/库调用、设备执行与结果管理 | 批量数据交换、回调/线程、设备/环境与错误诊断 |
 | ROS2 | 固定 ROS2 版本/环境；核定 node/topic/service/action/parameter、消息类型、QoS、执行/退出语义及工具兼容；用真实仿真或实机任务验收 | 语言绑定可能较快，但生态集成与运行语义不能由绑定数量代替 |
@@ -156,7 +156,7 @@ AI 可以加速实现、机械迁移、测试和问题定位；架构决策、�
 若关键门槛未按时达到，应及时调整已量化的扩展范围，
 不能以缩小测试、包装 demo 或默默降低自举/生态验收来维持发布表象。
 
-**建议推至 v0.7 的候选**：全部 A2X/AVM 后端正式迁移到 HIR、非必要的全仓深层重构、
+**建议推至 v0.7 的候选**：全部旧 A2X/AVM 后端正式迁移到 HIR（不包含本版CTE所需新AV子集）、非必要的全仓深层重构、
 AC 多目标与进阶优化扩面、复杂独立 app 的完整鸿蒙适配，以及 AutoScape/Godot 的产品化。
 编译器 v0.7 方向另明确为自主低层 IR/SSA、优化体系与自主后端实验；
 可以继续输出至 Cranelift，不把完全替换它列为版本硬门槛，不改变知识管理成为主线的安排。
@@ -299,25 +299,28 @@ Notes保留独立轻量捕获入口，与Jade分工；Launcher、Reader、Blog�
 ### 3.1 目标架构（已确认）
 
 ```text
-Auto Source → AST → 名称解析 / 类型检查 / 语义分析 → AutoHIR
-                                                    │
-                    ┌───────────────────────────────┼────────────────────────┐
-                    ▼                               ▼                        ▼
-              Native 后端                      A2X 后端                 VM CodeGen
-                    │                               │                        │
-             目标文件 / 链接                   Rust / C / Python             ABC
-                    │                               │                        │
-             原生可执行文件                    宿主工具链                    AVM
+Auto Source → AST → resolve / infer / instantiate ↔ CTE request
+                                  ↓                    ↓
+                          final Typed/Checked HIR   checked HIR fragment
+                             │       │                 ↓
+                             │       └──────────→ Typed MIR
+                             ↓                      │    │
+                       A2X structured lowering      │    └→ ABC → Rust AV
+                             ↓                      ↓              ↓
+                      Rust / C / Python / ...   Cranelift      frozen CT result
+                                                    ↓              ↳ semantic queries
+                                              object/link/native
 ```
 
-HIR 是核心工程，AC/AAC 是首个正式落地后端。HIR 稳定后，a2r、a2c、a2py 等
-逐个改为独立 HIR 后端；在 12 月底目标下，全量正式迁移建议作为 v0.7 候选，
-v0.6 保留代表性接入探针与设计验证。AVM 编译路径最终也迁移为
-`AST → HIR → VM CodeGen → ABC → AVM`。AVM 执行的仍是 ABC。
+分层及命名以[Design43](design/43-ac-av-typed-mir-and-abc.md)为准：AC是原生编译器，AV是新版VM的长期名称，均先用Rust建立参照实现；AJ负责按需快速/优化编译，与AC提前编译复用共同MIR、优化/codegen及产物服务，不要求部署携带完整AC。AAC（旧称ACC）与AAV分别是Auto实现的编译器/新版VM主体，达到所需能力后迁移。现有AVM/AAVM/AA2R保留旧实现名称及事实，不当作新路线交付证据。
 
-2026-10-16补充：v0.6还要规划完整语义meta及编译期/运行期反射，类型推导、有限泛型实例化和AVM编译期执行须从初始架构进入统一语义查询；详见[Design42](design/42-semantic-metadata-inference-and-comptime.md)。这不是宣称现有AC已经具备这些能力，实际类型/反射/生成项支持矩阵须Plan冻结。完整meta覆盖所承诺语言面，runtime仅保留按构建/反射合同选择的描述，不要求全类型图常驻或随exe发布。
+Typed HIR保留结构和语言语义，A2X主要从这里转译；Typed MIR显式化控制流、求值顺序、调用与资源义务，供native与AV共用；ABC是独立版本化、可验证的AV执行格式。最小MIR进入v0.6，不要求先有SSA或完整优化器。已有HIR直达Cranelift路径按原profile保留，另立计划接入共享MIR，不回溯否定已交付成果。
 
-全量旧AVM/A2X迁移仍可延期，但**支撑本版元编程的已检查HIR片段→ABC→受控AVM**应在v0.6定界实施，和类型推导/实例化形成可检测依赖环的查询回路。MIR可选且不作为此前置。编译期冻结结果、类型/签名/实例化及runtime投影从首例纳入全局store、失效/预算/生命周期和AutoDown验证；输入源码未变但依赖/target/反射集合改变时仍须失效，不承诺只看源码hash即可跳过AVM。
+v0.6规划完整语义meta及编译期/运行期反射，具体语言/profile及生成项支持矩阵由Plan冻结；见[Design42](design/42-semantic-metadata-inference-and-comptime.md)。完整meta覆盖所承诺语言面，runtime只保留选定投影，不要求全类型图常驻或随exe发布。
+
+CTE之前设计新ABC并实现Rust AV必要子集，管线为checked HIR片段→Typed MIR→ABC→AV→冻结结果→语义查询；不等待全程序final Checked，也不默认旧AVM数据/指令兼容。CTE与AV runtime共用引擎，以能力和限额profile区分，不另造临时解释器。全量旧AVM/A2X迁移、完整插件隔离/JIT另行分期。
+
+从首例将MIR/ABC、CTE冻结结果、类型/签名/实例化及runtime投影纳入统一store、依赖失效、预算/lease/自动清理、AutoDown和端到端trace。依赖/target/Meta集合/算法或AV语义变化仍需失效，不能只看源文件hash。代表编辑负载P95<1s，冷构建/压力另报，未测不称达标。
 
 ### 3.2 Atom/BAtom 与 HIR 的边界
 
@@ -336,12 +339,13 @@ v0.6 保留代表性接入探针与设计验证。AVM 编译路径最终也迁�
 
 ### 3.3 Rust AC → Auto AAC → 自举闭环
 
-1. 先以 Rust 实现 AC，复用可复用的现有前端能力，经 HIR 连接 native 生成器。
-2. 以 Auto 实现编译器主体，按模块与 Rust 参照实现对拍。
-3. Rust AC 编译 AAC 源码，生成第一代原生 AAC。
-4. 第一代 AAC 编译自身，生成下一代；再重复一轮，验证结果与行为一致性。
+1. 建立基础Rust AC与共同语义/Meta/HIR，继续既有native闭环。
+2. 设计最小Typed MIR、新ABC及AV合同，实现Rust AV有限执行子集；可与AC按依赖并行。
+3. 以AV接CTE查询、Meta访问、结果冻结和全局增量缓存，完善约定AC/AV能力。
+4. 所需语言/库/运行时能力齐备后，迁移Auto编译器主体AAC并与Rust参照对拍；Rust AC编译出第一代AAC，再做下一代自编译与重复构建。
+5. AAV在AC可编译VM主体所需能力后迁移，与Rust AV按同一ABC/语义profile对拍；它不同于AAC编译器自举。具体本版交付面另立Plan，不默认要求所有运行时/JIT完成。
 
-2026-10-13现行实施队列：741/743/745及标量[772（开发线原767）](plans/archive/772-ac-scalar-ops-short-circuit.md)已交付；接下来先执行[774共同数据/资源契约（原769）](plans/774-ac-data-resource-contract.md)，实际验证、独立复审并合入后，[770文本/字符](plans/770-ac-text-char-native.md)与[771标量record/方法](plans/771-ac-record-method-native.md)可以并行。**770/771未改号**；774、770、771目前均为drafting。之后再推进文本聚合组合、List/enum/模块、真实ACC组件与后端桥，最终按上述代际验收。详见[后端演进§7.5](design/strategy/auto-native-backend-evolution.md#75-现行acacc队列与编号映射2026-10-13)。
+以下是2026-10-13历史队列快照，当前优先级及796/797影响见§3.3.2，不据此推断实时状态：741/743/745及标量[772（开发线原767）](plans/archive/772-ac-scalar-ops-short-circuit.md)已交付；接下来先执行[774共同数据/资源契约（原769）](plans/774-ac-data-resource-contract.md)，实际验证、独立复审并合入后，[770文本/字符](plans/770-ac-text-char-native.md)与[771标量record/方法](plans/771-ac-record-method-native.md)可以并行。**770/771未改号**；774、770、771目前均为drafting。之后再推进文本聚合组合、List/enum/模块、真实ACC组件与后端桥，最终按上述代际验收。详见[后端演进§7.5](design/strategy/auto-native-backend-evolution.md#75-现行acacc队列与编号映射2026-10-13)。
 
 自举范围必须包括所声明的编译器主体，不能只迁移 CLI 或包装 Rust 前端就宣称完成。
 v0.6 的 Rust AC 与 Auto AAC/ACC 均沿 Cranelift 主路径：AC 直接调用，
@@ -352,21 +356,37 @@ a2r 可以辅助构建/验证迁移模块，但不能代替原生 AC/AAC 自编�
 
 ### 3.3.1 Pass、SSA 与自主后端分期（用户确认）
 
-v0.6：Typed/Checked HIR → Auto 语义降级与基础优化 → Cranelift IR/SSA → native。
-先明确效果/所有权/求值顺序、pass 前后条件、校验、诊断、来源和优化前后对拍；
-不要求先自写整套 SSA 构造、通用优化器或机器码后端。
+v0.6：Typed/Checked HIR → 最小Typed MIR → Cranelift/native或ABC/AV。先完成精确数值、控制流、调用、资源/effect和验证；CTE消费已检查片段并回灌语义查询。MIR默认有类型，不维护一套平行无类型MIR；不要求先自写SSA、通用优化框架或机器码后端。
 
-v0.7：Typed HIR → 自主低层 CFG/SSA → 自主分析/优化 → Cranelift 适配或自主代码生成。
-具体 phi/block arguments、内存/effect 模型和进阶优化由实证设计决定。
-按 target/profile/构建模式逐步并存，只有能力/ABI/正确性/收益/维护门槛达成才切主后端。
-Cranelift 可保留参考/备用；公开 HIR 不强制变成 SSA，公开 ABI 不因后端变化自动改变。
+v0.7：在共同MIR上按性能证据增加少量高收益优化，按需扩展SSA/目标低层IR和自主代码生成；Cranelift可长期保留。A2X仍主要消费Typed HIR，不强迫先摊平控制流再恢复结构。公开ABI不因内部IR或后端更换自动改变。
 
-完整比较和接口见 [AC/ACC 后端演进](design/strategy/auto-native-backend-evolution.md)。
-Plan 741 继续只做首个有界 HIR/native 闭环；pass 框架、自举和自主后端分别制定后续计划。
-AC/ACC主线初估26–36个计划（含741），主体按约30个、修复/集成预留35–45个容量；
-这是约定主体/Windows/模块热重载范围的估算，不代表全部Auto生态原生化或已批准合同。
-先细化最近2–3个候选，源码计算子集与ACC能力清单明确后重估；
-拆分、前置与已创建队列见 [后端演进 §7](design/strategy/auto-native-backend-evolution.md#7-与-plan-741-和后续计划的关系)。
+完整边界见[AC/AV后端战略](design/strategy/auto-native-backend-evolution.md)和[Design43](design/43-ac-av-typed-mir-and-abc.md)。不扩张741及其他既有Plan的验收。此前26–36个native主体计划及35–45个含修复容量是历史估算，不覆盖新增MIR/ABC/AV/CTE，需在有界探针后重新估算，不能据此承诺原日历不变。
+
+### 3.3.2 796/797边界与紧接着的规划顺序（2026-10-16）
+
+[影响评估](plans/attachments/ac-foundations-20261016/ac-av-mir-impact.md)：796继续语义身份/类型推导及CT模型合同，797继续有限Windows x64原生AutoABI/C双向探针；二者不追加MIR、AV或真实CTE验收。主检出调查796为executing r1、797为drafting r1，实际推进以各自最新收据为准，本文不改状态或revision。
+
+优先规划“Typed MIR与ABC/AV执行合同及首个全路径探针”，在有限profile中证明HIR→MIR→ABC→Rust AV与现有native的语义一致、非法输入拒绝、cache/资源与周转可观察；增加AC/AV/AJ共同服务、单元/ref/profile、代际与可重定位产物合同及有限复用/失效用例，首例不交完整JIT或发布器。过大则拆共同设计/可行性、最小MIR、ABC/AV单向依赖计划。之后规划“AV驱动CTE查询与冻结缓存闭环”，以及native共用MIR迁移/有限增量发布/语言扩面；完整AJ分层执行按专项计划实施。接入真实796/797/788输出以实际合入revision为门，不复制在途权威模型，不等待整个AC/AAC完工。
+
+这里只更新工作包顺序，未分配新计划编号或启动实施；787/788、796/797及auto-lang/auto-ui/auto-man拆分保持原合同和单写边界。
+
+### 3.3.3 AC/AV/AJ、分层执行及增量发布的阶段边界
+
+长期平台共用语义/MIR、模块/ABI、依赖与cache：开发以AV解释获得快速反馈，热点可由AJ快速编译，值得进一步优化时进入优化编译；已有合适原生cache可直接使用。提前编译与AJ调用共同编译核心，不要求先执行冷代码才生成机器码，也不消除target/执行帧/装载差异。
+
+| 能力 | 现在必须确定的设计 | 近期实施与后续边界 |
+|---|---|---|
+| 单元与共同服务 | 语义查询、代码生成/优化和装载单元分离；版本/ref/profile、内联及实际依赖、取消/资源预算 | 首MIR/ABC/AV探针实测有限单元/缓存；不将每个MIR基本块强制落盘 |
+| 跨层调用与重载 | 逻辑签名/物理adapter、快照/代际/lease、异步编译结果安装准入和假设失效 | 不扩张796/797；完整JIT替换、OSR/deopt后续。原有native模块/热重载目标仍按其计划推进 |
+| 机器码复用 | 可重定位代码/数据、符号/ABI/runtime/target和生成recipe；不持久化进程地址 | 先复用已有native对象路径；任意在线JIT代码跨进程恢复后续 |
+| 发布 | 冻结快照/profile、完整部署闭包、cache验证/补编、真实链接和原子输出 | v0.6已承诺native支持面落实有限增量发布；完整发布器另立计划，不阻塞首个AV/CTE |
+| T1快速/T2优化JIT | 触发/收益、运行画像、版本/假设、回退和权限边界 | 完整调度/推测优化/OSR/deopt不新增为本版基础交付门，后续按证据实施 |
+
+发布默认复用满足发布合同的产物，仅补编缺失/失效单元。release是独立配置，不等于清空cache；调试、插桩、CPU、ABI、热重载调用或优化假设不匹配可只重编原生层，语义/CTE/MIR尽量复用。发布须覆盖入口/导出/初始化/反射/实例及未运行冷代码，不按开发期覆盖率裁剪。
+
+纯native发布可裁剪解释器/JIT，但不得依赖解释回退或未支持的动态生成；portable发布包以ABC及接口/资源/依赖描述为主体，可选target机器码切片，完整格式产品化另立Plan。开发JIT内存不直接当发布文件，“缝合”仍需重定位/符号/ABI及部署闭包验证；继续允许平台linker，不要求自研完整链接器。
+
+无cache构建作为一致性/可复现验证保留，不成为每次release强制流程。首次release或大范围配置变化可能补编多数原生单元；发布/冷构建耗时单报，不承诺与编辑端到端P95<1s相同。交付物不依赖开发cache存活，GC后仍可运行。详细合同/首批与后续矩阵见[Design43 §8–10](design/43-ac-av-typed-mir-and-abc.md#8-acavaj统一平台与分层执行)。
 
 ### 3.4 HIR 稳定与迁移验收
 
@@ -385,8 +405,8 @@ AC/ACC主线初估26–36个计划（含741），主体按约30个、修复/集�
 | A0 基线恢复与发布 | 取回各仓提交、未提交/未跟踪工作和在途分支；核对 Plan、接口及已完成项；完成 v0.5 收尾与发布 | 各仓版本/提交组合可复现，相关发布验收完成 |
 | A1 最小架构决策 | 更新三仓拆分设计；明确 package/install 核心与实体语义，以及 Atom/BAtom、方言、工具链扩展和 HIR 的职责边界 | 有可执行的依赖图、迁移清单和审批过的阶段计划 |
 | A2 解耦、减面与拆仓 | 按完整基线核查死码/旧路径；先建立依赖缝再搬迁；完成三仓独立构建与组合验证 | 语言核心构建不被 UI 实现拖入，工具链职责清楚，既有应用链路通过验证 |
-| A3 HIR 与 Rust AC | 整理必要的 Atom/BAtom 核心；实现语义前端、HIR、native 生成与链接；同步运行 A2X/VM 小探针 | HIR 契约过稳定门，Rust AC 可构建 AAC 所需程序 |
-| A4 AAC 自举 | Auto 编译器主体迁移、参照对拍、原生自编译与重复构建 | 达到约定的自举范围与闭环门禁 |
+| A3 共同语义、Rust AC/AV与CTE | 整理必要Atom/Batom、语义/Meta/HIR；最小Typed MIR、新ABC/Rust AV与native；AV驱动CTE及统一cache/AutoDown、有限增量发布；设计AJ共同服务/代际，A2X保留结构化探针 | 所需profile语义、资源、缓存及周转可验证，Rust AC可构建AAC所需程序 |
+| A4 AAC自举及AAV分期迁移 | Auto编译器主体迁移、参照对拍、原生自编译与重复构建；具备VM主体所需能力后按专项范围迁移AAV | AAC达到约定自举门禁；AAV按独立支持矩阵对拍，不混用旧AAVM证据 |
 | A5 后端接入探针与迁移规划 | 验证 A2X/VM 的代表性语料可消费 HIR；全量正式迁移建议放到 v0.7，实际范围待确认 | HIR 保留各类后端所需信息，旧后端持续支撑应用；正式替换另设验收 |
 | A6 跨仓版本收口 | 验收 AC/AAC、Linux、Python、ROS2、统一 package/install、四个主打 app 演进、28 个 demo 独立化和鸿蒙 demo 目标；汇总其他线调研/原型成果 | 固定的平台/任务矩阵、安装/更新闭环、独立应用组合与差异化流程可复现；知识及其他探索线按已批准原型范围验收，完成 v0.6 发布门禁 |
 
