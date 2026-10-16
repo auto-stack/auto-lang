@@ -1,0 +1,14 @@
+[
+  {
+    "id": 801,
+    "path": "docs/plans/801-dialect-api-dependency-inversion.md"
+  },
+  {
+    "id": 802,
+    "path": "docs/plans/802-code-editor-host-provider.md"
+  },
+  {
+    "id": 803,
+    "path": "docs/plans/803-man-template-assets-extraction.md"
+  }
+]

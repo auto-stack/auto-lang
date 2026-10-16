@@ -4,7 +4,9 @@
 
 ## 当前切换点
 
-**2026-10-16 继续更新（793/795合流后）**：793、795已归档；792/794继续各自执行/修复。新增 [799前端模型](../799-frontend-ast-model-extraction.md) 与 [800 Man依赖模型](../800-man-dependency-model-extraction.md)，均可不等792/794整体结束并行实施。并行写面及合入责任以[四线合流合同](model-decoupling-parallel-order-20261016.md)为准：同时ready推荐792→794→799→800，但不是depends_on；就绪先合，后合入者承担闭包及受影响复审/重验。下面793/795 drafting描述为早期快照。
+**2026-10-17 核实更新**：792、794均已合入归档；规划期间[800](../archive/800-man-dependency-model-extraction.md)也已归档8/8、清理完成。用户确认时799尚未实施，随后已转executing，主检出仍无auto-ast。新增[801方言接口](../801-dialect-api-dependency-inversion.md)、[802 CodeEditor宿主](../802-code-editor-host-provider.md)、[803 Man模板资源](../803-man-template-assets-extraction.md)，详见[本批并行/合流合同](extraction-next-parallel-order-20261017.md)。**现在可并行799/802/803；801硬等799合入**，无800待交付依赖。下方2026-10-15/16状态、781 executing叙述及早期准备计数均为历史快照，不作今日放行依据。
+
+**2026-10-16 继续更新（793/795合流后，历史快照）**：793、795已归档；792/794继续各自执行/修复。新增 [799前端模型](../799-frontend-ast-model-extraction.md) 与 [800 Man依赖模型](../archive/800-man-dependency-model-extraction.md)，均可不等792/794整体结束并行实施。并行写面及合入责任以[四线合流合同](model-decoupling-parallel-order-20261016.md)为准：同时ready推荐792→794→799→800，但不是depends_on；就绪先合，后合入者承担闭包及受影响复审/重验。下面793/795 drafting描述为早期快照。
 
 **2026-10-16 更新（789–791合流后）**：781、784、785、786、789、790、791均已合并归档；792前置已满足，可独立开工。新增793/794/795为可与792并行的三份drafting合同。下方早期计数与“准备状态”为历史规划快照，不作为今日放行依据；783/787/788按实际共享写面协调，不设为全局等待条件。
 
@@ -13,7 +15,7 @@
 | Plan | 独立交付与主写面 | 与792及彼此的边界 |
 |---|---|---|
 | [793 诊断基础抽取](../archive/793-diagnostics-foundation-extraction.md) | 已归档：新auto-diagnostics、error.rs薄兼容出口；切断error→AST依赖 | 不改rust_ui/ui_gen、native/scroll或Man锁。旧错误类型身份和路径保持，不要求792改调用协议 |
-| [794 scroll宿主迁移](../794-scroll-host-provider.md) | native八函数9900–9905/9922–9923、owned provider及UI adapter | 不改诊断/包锁/生成工程发行；完整继承781锚点状态与真实可见性oracle |
+| [794 scroll宿主迁移](../archive/794-scroll-host-provider.md) | 已归档：native八函数9900–9905/9922–9923、owned provider及UI adapter | 不改诊断/包锁/生成工程发行；完整继承781锚点状态与真实可见性oracle |
 | [795 包锁核心](../archive/795-package-lock-core-extraction.md) | 已归档：新auto-package-lock、lock.rs轻门面与Target/Git adapter | pac.lock与792的Cargo.lock不同；不接管rust_ui或依赖版本/patch决策 |
 
 四条线均不等待其余新计划整体完成。各自专用组树可并行实现、定向测试；新增crate/public facade只按兼容方式接入，不借并行重写公共合同。共享写面单独排短窗口：
@@ -35,7 +37,7 @@
 | [789 词法基础抽取](../archive/789-lexical-foundation-extraction.md) | 新 auto-lex 独立 crate；生产 Parser 消费单一 Token/Lexer 实现，兼容错误/位置/桥面；完整前端剩余环登记 | 已合并归档8/8 |
 | [790 文件/图像剪贴板](../archive/790-clipboard-files-images-provider.md) | 2934..2937 宿主 provider、真实 no-ui VM 消费及 Windows OS 接线；引用与临时图像路径寿命验收 | 已合并归档8/8 |
 | [791 生成核心抽取](../archive/791-generation-core-extraction.md) | 新 auto-gen-core；guard/输出编排单一实现，Auto解释执行留 adapter，原CLI/legacy保持 | 已合并归档8/8 |
-| [792 生成UI独立构建](../792-generated-ui-independent-build.md) | 修复 fresh-lock UI消费；显式可重定位交付根、根patch/应用锁/source资源身份与真正外部构建 | 789/790/791 final review+merge后冻结闭包并实施；此前仅可只读准备 |
+| [792 生成UI独立构建](../archive/792-generated-ui-independent-build.md) | 已归档：fresh-lock UI消费、可重定位受管交付根与source/资源身份 | 后续闭包变更者负责更新实际交付清单及受影响重验，不代表UI全库已独立 |
 
 本批是实际仓内解耦与发行地基，不再只做探针；每项都有物理删边/单一实现或独立构建验收。四份合同不代表本轮已获实施、发布或旧仓主分支切换授权。取材与验证见 [本批输入指纹](../attachments/extraction-batch-20261016/inputs.json)。
 
@@ -90,6 +92,6 @@ A/B可与不重叠的C或Man E准备交错；D要求相关grammar/native切口�
 - 结构搬运与语义重构分Plan；禁止借搬仓去更新金样掩盖漂移。失败时恢复旧入口与旧产物的方法可执行。
 - 每Plan同组唯一worktree，无链接；最终review后才跑冻结提交merge-owned门禁，批量tf仍主检出单实例；不与783的探针误混成生产替换。
 
-## 准备状态
+## 2026-10-15规划时的准备状态（历史）
 
 取材见[输入指纹](../attachments/modularization-planning-20261015/inputs.md)。旧auto-ui/auto-man本地tip和WIP已只读确认，未fetch、未改变refs。三份新计划0步完成，待各合同确认后work；本轮不实施、不发布canonical Spec/ledger。

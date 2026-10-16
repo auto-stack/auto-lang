@@ -148,7 +148,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [27-knowledge-base-lifecycle](27-knowledge-base-lifecycle.md) | current/target-state、canonical source、ADR/Spec/Plan/Generated Catalog 生命周期 | ✅ **现行 canonical design**（Plan 543） |
 | [35-autodown-test-cases](35-autodown-test-cases.md) | AutoDown 统一文件用例、同源多后端 oracle、执行/比较/覆盖协议与渐进迁移 | 📝 设计草案（2026-10-12；静态盘点完成，runner 未实施） |
 | [36-ac-data-resource-expansion](36-ac-data-resource-expansion.md) | AC 文本/标量 record 扩面：类型与资源契约、内部 ABI 探针、并行分支与集成门 | 📝 设计草案（2026-10-13；PLAN-774→770/771，均drafting；标量前置772已交付） |
-| [37-v06-modularization-and-repo-boundaries](37-v06-modularization-and-repo-boundaries.md) | v0.6 结构治理：AutoUI/AutoMan 可拆性、语言内部 crate 分层、宿主/项目模型解耦、去重与退役、独立仓验收 | 📝 目标设计；777–780探针已交付，784–786迁移首批合同drafting（2026-10-15），尚未正式搬仓 |
+| [37-v06-modularization-and-repo-boundaries](37-v06-modularization-and-repo-boundaries.md) | v0.6 结构治理：AutoUI/AutoMan 可拆性、语言内部 crate 分层、宿主/项目模型解耦、去重与退役、独立仓验收 | 📝 分期设计；792/794/800已交付，799执行中；801–803后续合同已建立（2026-10-17），尚未正式搬仓 |
 | [39-ac-incremental-syntax-and-language-platform](39-ac-incremental-syntax-and-language-platform.md) | AC/ACC增量/热重载/插件与通用语法产品；亚秒周转、全阶段全局cache、分页AST/CST和有界内存工作集、跨工程共享、LSP/外语元信息分层 | 📝 需求与架构建议（2026-10-15；算法/预算/接口未冻结，未实施） |
 | [40-compiler-artifacts-and-cache-lifecycle](40-compiler-artifacts-and-cache-lifecycle.md) | 编译全阶段产物目录、Atom/Batom+Schema、query/content/local/external身份、强数据与失效依赖、共享store/lease/预算及自动GC健康治理 | 📝 目标态合同草案（2026-10-15；格式/策略参数未冻结，未实施） |
 | [41-interface-metadata-and-foreign-abi](41-interface-metadata-and-foreign-abi.md) | AutoABI与C/Rust等foreign ABI分层；共用接口元信息/Foreign IR、use.c自动绑定与resolver、双向插件、target语义与cache/lease接线 | 📝 讨论整合与架构草案（2026-10-15；语法/Schema/ABI支持面未冻结，未实施） |

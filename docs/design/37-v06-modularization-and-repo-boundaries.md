@@ -220,7 +220,7 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 | [789](../plans/archive/789-lexical-foundation-extraction.md) | Token/Pos/Lexer单一来源 | auto-lang → auto-lex；词法层不依赖AST/Parser/VM/UI，原诊断与桥面恢复保持。AST/type-store/inference剩余环单独列清，完整文法外置仍未完成 |
 | [790](../plans/archive/790-clipboard-files-images-provider.md) | 文件/图像剪贴板四native | VM编解码 → owned provider合同 ← UI/OS adapter；不传UI或VM句柄；真实VM、OS与ownership/临时路径寿命可验 |
 | [791](../plans/archive/791-generation-core-extraction.md) | 通用生成编排与可执行Auto模板 | auto-gen(Auto adapter) → auto-gen-core；核心无语言引擎依赖，默认生产调用迁移，保留原模板/legacy行为 |
-| [792](../plans/792-generated-ui-independent-build.md) | 选定Iced生成工程的发行地基 | 前三项合流后冻结source/lock/patch/资源身份，独立consumer fresh-lock真实build和重定位成功，开发源码无隐式兜底 |
+| [792](../plans/archive/792-generated-ui-independent-build.md) | 选定Iced生成工程的发行地基 | 已交付；选定consumer fresh-lock/locked与重定位合同见对应Spec，仍包含auto-lang全库，不代表UI独立仓 |
 
 789/790/791按实际文件热点并行，workspace/规则共用写面短窗口串行合流；792先准备后在合流闭包上实施。这里登记目标合同，不提前发布为Spec现状。旧仓仍遵守§8.0增量承接历史的流程；完成本批不自动授权G/H主分支切换。后续A/B/D/E剩余切口、其他宿主族与I/J终态退出继续列入路线，不能因首个生成工程可建而删除。
 
@@ -229,7 +229,7 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 789/790/791已归档，792进入独立UI构建发行线；同时建立三条生产解耦合同：
 
 - [793](../plans/archive/793-diagnostics-foundation-extraction.md)：已交付，error.rs通用诊断迁为auto-diagnostics，利用现有Name=AutoStr切断error→AST边，旧类型/诊断出口兼容；完整AST/parser外置仍另验。
-- [794](../plans/794-scroll-host-provider.md)：scroll controller六函数与781子锚点二函数统一owned provider；registry/测量/renderer状态机留UI，不复制为第二份core实现。
+- [794](../plans/archive/794-scroll-host-provider.md)：已交付，scroll controller六函数与781子锚点二函数统一owned provider；registry/测量/renderer状态机留UI，不复制为第二份core实现。
 - [795](../plans/archive/795-package-lock-core-extraction.md)：已交付，pac.lock模型/codec/校验迁为auto-package-lock，Target/Git观测留Man adapter；保留旧公开API，不混同Cargo发行锁。
 
 这些目标包不依赖792的生成工程接口，主要实现文件互不重叠；manifest/统一出口/边界基线存在小共享面，按路线图写入窗口串行合流。四线后合入者须重核当前闭包及792交付清单，不用独立worktree作为语义无冲突的证明。没有创建agent或授权远端/旧仓切换；本节是规划目标，不写为已实现Spec。
@@ -239,9 +239,23 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 793诊断/795包锁已交付，在其基础上新增两份合同，与792发行验证、794 scroll实现并行：
 
 - [799 前端模型](../plans/799-frontend-ast-model-extraction.md)：auto-lang → auto-ast → 轻值/词法；AST数据/类型表达/序列化单一来源，ParserExt实现和解析耦合测试留上层。保留旧AST类型身份和UI兼容节点，不把Parser/推断倒灌底层，不提前宣称UiAst终态完成。
-- [800 Man依赖模型](../plans/800-man-dependency-model-extraction.md)：auto-man语言adapter → auto-package-resolver；轻名称/路径规则与ModulePath/ExecutionMode/pac legacy读取分开，生产旧resolver真实委托。源配置继续归project-model、锁格式归package-lock，不重复发明模型或改变pac协议。
+- [800 Man依赖模型](../plans/archive/800-man-dependency-model-extraction.md)：auto-man语言adapter → auto-package-resolver；轻名称/路径规则与ModulePath/ExecutionMode/pac legacy读取分开，生产旧resolver真实委托。源配置继续归project-model、锁格式归package-lock，不重复发明模型或改变pac协议。
 
 源码主写面不同，manifest/导出/Spec与边界基线按小共享窗口串行。若同时ready推荐792→794→799→800；没有新交付硬依赖，允许就绪先合，后合入者承担闭包/兼容与受影响复审重验。完整责任矩阵见[并行与合流合同](../plans/reports/model-decoupling-parallel-order-20261016.md)。这两份仍为目标计划，本轮不发布为现行Spec、不启动agent或实施源码。
+
+### 8.6 后续迁移合同（2026-10-17）
+
+核实792/794已合入归档；规划期间800也已归档8/8（交付02b11c4b4、清理回填2d246b4e8），799从尚未实施转为executing，主检出仍无auto-ast。新增：
+
+| Plan | 实际切口 | 入场条件 |
+|---|---|---|
+| [801 方言接口](../plans/801-dialect-api-dependency-inversion.md) | auto-parser-api轻合同、生产Parser端口与旧API适配，外部model实现不拉语言实现包 | 硬等799审查合入；完整UI文法与入口传播另验 |
+| [802 CodeEditor宿主](../plans/802-code-editor-host-provider.md) | 22 native全族owned provider、单一UI adapter及实际装配 | 785/790/794已满足，可与799/803并行 |
+| [803 Man模板资源](../plans/803-man-template-assets-extraction.md) | 三组资源/纯路径计划独立auto-man-assets，旧copy/GHS/IAR真委托，语言/IO留上层 | 786/791/792已满足，可与799/802并行，无800 API硬依赖 |
+
+当前可并行799、802、803；799交付后801不必等待其他线。800已交付，本批同步其实际源码/Spec，不重开合同。共享manifest/导出/装配/777基线小窗口串行，后合入者承担792实际交付闭包及受影响验证；完整规则见[本批编排](../plans/reports/extraction-next-parallel-order-20261017.md)。§8.3–8.5的早期状态和推荐顺序为历史规划，今日放行以本节及实际代码/合同为准。
+
+之后继续完整UI文法、剩余宿主族、UI SDK分层、Man管理/命令与语言adapter切口；满足真实D/E/F退出门才另立G/H旧仓承接。803不借结构迁移修复模板变量注入或先写后render的遗留行为，后续行为修复单列。新合同不是现行Spec，不授权旧仓默认分支/远端切换。
 
 ## 9. 决策状态
 
@@ -252,8 +266,8 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 | auto-man 也具备独立仓目标 | 对 Design 32 D4 的新提案；最新用户目标要求可独立，不假定已批准搬仓 |
 | 复用已有 auto-ui/auto-man 仓；legacy 保旧实现，默认分支增量接新实现 | 本轮补充推荐，已核查本地仓；尚未创建分支/切换默认分支或操作远端 |
 | 兼容 AST 暂留，终态退出 | 分期提案，退出门不得取消 |
-| ParserBridge 和 frame provider 首批小型探针 | 778/779已交付，接口/装配的有界现状见对应Spec；784–786为下一批drafting合同 |
-| 静态 pac 优先，但执行型配置不静默破坏 | 780对拍pilot已交付；786拟首批展示读取收口，全面默认切换仍须另立Plan |
+| ParserBridge 和 frame provider 首批小型探针 | 778/779及784–786、800均已交付；799执行中，801–803为后续合同 |
+| 静态 pac 优先，但执行型配置不静默破坏 | 780对拍pilot及786有限展示读取已交付，全面默认切换仍须另立Plan |
 | 具体 UiAst 承载、完整 native 生命周期接口 | 待完整链路原型，先形成有界决策工件 |
 | 数据/runtime 独立仓名称、版本发布渠道、切换窗口 | 拆仓前决定；不阻止首批仓内边界工作 |
 

@@ -1,0 +1,75 @@
+{
+  "stage": "new",
+  "contract_preflight": "pass",
+  "date": "2026-10-17",
+  "source_commit": "2d246b4e86c1ebf5138f6a316c1896e56a5d35f8",
+  "plans": [
+    {
+      "plan": 801,
+      "revision": 1,
+      "tasks": 8,
+      "criteria": 6,
+      "outcome": "blocked",
+      "prerequisites": {
+        "789": "archived",
+        "793": "archived",
+        "799": "executing"
+      },
+      "sha256": "34aabc48fa44cdd178601817c6cf2fe5be7561a4e0455f07b5d2bf57e125079a"
+    },
+    {
+      "plan": 802,
+      "revision": 1,
+      "tasks": 8,
+      "criteria": 6,
+      "outcome": "pass",
+      "prerequisites": {
+        "785": "archived",
+        "790": "archived",
+        "794": "archived"
+      },
+      "sha256": "301df896d94c1456eea46667639019221f3a49b7fdbc0c301d88f9785fb82c88"
+    },
+    {
+      "plan": 803,
+      "revision": 1,
+      "tasks": 8,
+      "criteria": 6,
+      "outcome": "pass",
+      "prerequisites": {
+        "786": "archived",
+        "791": "archived",
+        "792": "archived"
+      },
+      "sha256": "ef3021da0d2fb9e33c43f9e8b88982fbfbd4d84f795053a398726d732a2bcab8"
+    }
+  ],
+  "parallel_now": [
+    799,
+    802,
+    803
+  ],
+  "hard_gate": "799 archived -> 801 work",
+  "local_links_checked": 39,
+  "input_files_checked": 105,
+  "checks": "New IDs unique; sections/tasks/AC/owners, actual dependency states, local links, SHA256, diff whitespace",
+  "historical_duplicate_prefixes_unchanged": [
+    13,
+    152,
+    212,
+    229,
+    233,
+    234,
+    235,
+    293,
+    294,
+    325,
+    355,
+    407,
+    450,
+    451,
+    452,
+    453
+  ],
+  "not_executed": "No implementation or runtime/Cargo tests; drafting contract validation only"
+}
