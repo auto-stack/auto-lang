@@ -730,6 +730,12 @@ enum Commands {
             help = "Parser scenario: core, ui, or shell (overrides pac.at scene)"
         )]
         scene: Option<String>,
+        #[arg(
+            long,
+            help = "PLAN-792: rust backend explicit relocatable delivery bundle root \
+                    (managed source/resource bundle + consumer-root patch; dev mode unchanged)"
+        )]
+        delivery_root: Option<String>,
     },
 
     // ========== AutoUI Widget Library (Plan 331) ==========
@@ -2253,6 +2259,7 @@ fn real_main(cli: Cli) -> Result<()> {
             output,
             project,
             scene,
+            delivery_root,
         }) => {
             if !ai_mode {
                 init_logger();
@@ -2268,6 +2275,17 @@ fn real_main(cli: Cli) -> Result<()> {
             })?;
             if let Some(ref s) = scene {
                 am.set_scene(s.clone());
+            }
+            // PLAN-792：显式交付模式根（仅 rust 后端生效；其余后端设置即报错，
+            // 不静默忽略）。
+            if let Some(ref d) = delivery_root {
+                if am.pac_backend_is_rust_only() {
+                    am.set_delivery_root(d.clone());
+                } else {
+                    return Err(miette::miette!(
+                        "--delivery-root 仅支持 rust 后端（pac.at render/backend 需为 rust）"
+                    ));
+                }
             }
             am.gen(output, project).map_err(|e| {
                 if ai_mode {

@@ -40,6 +40,9 @@ pub struct Automan {
     scene_override: Option<String>,
     /// --gen-only CLI flag: stop after code generation, skip npm/gradle steps.
     gen_only: bool,
+    /// PLAN-792: `auto gen --delivery-root <dir>` — Rust 后端显式可搬动交付
+    /// 模式（Some 时走 rust_ui::generate_rust_ui_delivery，开发模式行为不变）。
+    delivery_root: Option<PathBuf>,
 }
 
 // Static API
@@ -245,6 +248,7 @@ impl Automan {
             vm_server_mode: false,
             scene_override: None,
             gen_only: false,
+            delivery_root: None,
         })
     }
 
@@ -328,6 +332,12 @@ impl Automan {
     /// Accepts "core", "ui", or "shell". Overrides pac.at scene field.
     pub fn set_scene(&mut self, scene: String) {
         self.scene_override = Some(scene);
+    }
+
+    /// PLAN-792: Set explicit delivery mode root (--delivery-root CLI flag).
+    /// Rust 后端生成切换为受管可搬动交付 bundle；None = 开发模式不变。
+    pub fn set_delivery_root(&mut self, root: String) {
+        self.delivery_root = Some(PathBuf::from(root));
     }
 
     /// Plan 401: per-project dev-server ports declared in pac.at
@@ -462,6 +472,17 @@ impl Automan {
         let all = BackendType::all_variants();
         let idx = crate::util::select_backend(&all, "run")?;
         Ok(all[idx].clone())
+    }
+
+    /// PLAN-792：--delivery-root 前置校验——有效前端是否为 rust（与
+    /// resolve_backend 同优先级：CLI --render 覆盖 → pac 默认前端）。
+    /// 交互选择路径（无覆盖且无 pac 默认）判 false（不弹交互去凑交付条件）。
+    pub fn pac_backend_is_rust_only(&self) -> bool {
+        use auto_lang::config::BackendType;
+        if let Some(ref render_name) = self.render_override {
+            return BackendType::from_str(render_name) == Some(BackendType::Rust);
+        }
+        self.pac.default_frontend() == Some(BackendType::Rust)
     }
 
     pub fn set_port(&mut self, port: AutoStr) -> AutoResult<()> {
@@ -1260,17 +1281,37 @@ impl Automan {
                         }
                         BackendType::Rust => {
                             println!("  Generating Rust UI (backend: rust)");
-                            let output_path = if frontends.len() > 1 {
-                                output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("gen").join("front").join("rust")
-                                }).or_else(|| Some(member_dir.join("gen").join("front").join("rust")))
+                            // PLAN-792：显式交付模式（--delivery-root）——受管
+                            // 可搬动 bundle；未设置时开发模式（rust-workspace
+                            // 共享工作区）行为不变。
+                            if let Some(ref delivery) = self.delivery_root {
+                                crate::rust_ui::generate_rust_ui_delivery(&member_dir, delivery)?;
                             } else {
-                                output.as_ref().map(|o| std::path::PathBuf::from(o))
-                            };
-                            if let Some(ref out) = output_path {
-                                crate::rust_ui::generate_rust_ui(&member_dir, Some(out.as_path()), project)?;
-                            } else {
-                                crate::rust_ui::generate_rust_ui(&member_dir, None, project)?;
+                                let output_path = if frontends.len() > 1 {
+                                    output
+                                        .as_ref()
+                                        .map(|o| {
+                                            std::path::PathBuf::from(o)
+                                                .join("gen")
+                                                .join("front")
+                                                .join("rust")
+                                        })
+                                        .or_else(|| {
+                                            Some(member_dir.join("gen").join("front").join("rust"))
+                                        })
+                                } else {
+                                    output.as_ref().map(|o| std::path::PathBuf::from(o))
+                                };
+
+                                if let Some(ref out) = output_path {
+                                    crate::rust_ui::generate_rust_ui(
+                                        &member_dir,
+                                        Some(out.as_path()),
+                                        project,
+                                    )?;
+                                } else {
+                                    crate::rust_ui::generate_rust_ui(&member_dir, None, project)?;
+                                }
                             }
                         }
                         BackendType::Vscode => {
@@ -1373,19 +1414,35 @@ impl Automan {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                    // For multi-backend, create output subdirectory
-                    let output_path = if frontends.len() > 1 {
-                        output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("gen").join("front").join("rust")
-                        }).or_else(|| Some(root_dir.join("gen").join("front").join("rust")))
+                    // PLAN-792：显式交付模式（--delivery-root）——受管可搬动
+                    // bundle；未设置时开发模式行为不变。
+                    if let Some(ref delivery) = self.delivery_root {
+                        crate::rust_ui::generate_rust_ui_delivery(&root_dir, delivery)?;
                     } else {
-                        output.as_ref().map(|o| std::path::PathBuf::from(o))
-                    };
+                        // For multi-backend, create output subdirectory
+                        let output_path = if frontends.len() > 1 {
+                            output
+                                .as_ref()
+                                .map(|o| {
+                                    std::path::PathBuf::from(o)
+                                        .join("gen")
+                                        .join("front")
+                                        .join("rust")
+                                })
+                                .or_else(|| Some(root_dir.join("gen").join("front").join("rust")))
+                        } else {
+                            output.as_ref().map(|o| std::path::PathBuf::from(o))
+                        };
 
-                    if let Some(ref out) = output_path {
-                        crate::rust_ui::generate_rust_ui(&root_dir, Some(out.as_path()), project)?;
-                    } else {
-                        crate::rust_ui::generate_rust_ui(&root_dir, None, project)?;
+                        if let Some(ref out) = output_path {
+                            crate::rust_ui::generate_rust_ui(
+                                &root_dir,
+                                Some(out.as_path()),
+                                project,
+                            )?;
+                        } else {
+                            crate::rust_ui::generate_rust_ui(&root_dir, None, project)?;
+                        }
                     }
                 }
                 BackendType::Vscode => {

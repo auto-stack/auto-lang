@@ -527,6 +527,85 @@ pub fn generate_rust_ui(
 ) -> AutoResult<()> {
     println!("{}", "Generating Rust UI code".bright_cyan());
 
+    // Determine output directory — use shared workspace at examples/rust-workspace/
+    let ws_dir = ensure_shared_workspace(project_dir);
+    let member_name = front_member_name(project_dir);
+    let default_output = ws_dir.join(&member_name);
+    let output = output_dir
+        .map(|p| p.to_path_buf())
+        .unwrap_or(default_output);
+
+    fs::create_dir_all(&output).map_err(|e| format!("Failed to create output directory: {}", e))?;
+
+    // PLAN-792：编译相位抽取为 compile_rust_ui_app（开发/交付共享）；
+    // None = 无 .at/无 WidgetDecl（既有早退语义，输出字节与直写路径一致）。
+    let Some(compiled) = compile_rust_ui_app(project_dir)? else {
+        return Ok(());
+    };
+    let project_name = compiled.project_name;
+    let main_widget = compiled.main_widget;
+    let full_code = compiled.main_rs;
+
+    // Write output as a Cargo project
+    let src_dir = output.join("src");
+    fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create src directory: {}", e))?;
+
+    let main_rs = src_dir.join("main.rs");
+    fs::write(&main_rs, &full_code)
+        .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
+
+    // Generate Cargo.toml with workspace dependencies
+    let cargo_toml = generate_cargo_toml(&project_name, project_dir);
+    let cargo_path = output.join("Cargo.toml");
+    fs::write(&cargo_path, &cargo_toml)
+        .map_err(|e| format!("Failed to write {}: {}", cargo_path.display(), e))?;
+
+    // PLAN-013 T2: pac.at rust_sidecar 供给(用户 .rs 模块 + Cargo 依赖)。
+    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    if !sidecar.is_empty() {
+        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &output)?;
+        println!(
+            "{}",
+            "  rust_sidecar applied (modules + deps)".bright_green()
+        );
+    }
+
+    // Note: no per-member .cargo/config.toml needed — the workspace-level
+    // .cargo/config.toml sets target-dir for all members.
+
+    // Update workspace members to include the newly created project
+    let _ = ensure_shared_workspace(project_dir);
+
+    println!();
+    println!("{} {}", "  Generated".bright_green(), output.display());
+    println!("{} {} (main widget)", "  Entry".bright_green(), main_widget);
+    println!();
+    println!(
+        "{}",
+        "  Rust UI project generated successfully!"
+            .bright_green()
+            .bold()
+    );
+
+    Ok(())
+}
+
+/// PLAN-792：编译相位产物（开发落点与交付落点共享的纯计算结果）。
+pub(crate) struct CompiledRustUiApp {
+    pub(crate) project_name: String,
+    /// 入口 widget 名（打印用）。
+    pub(crate) main_widget: String,
+    /// 生成的 main.rs 最终内容（含 __InitLoaded 载荷类型改写后的形态）。
+    pub(crate) main_rs: String,
+}
+
+/// Phase A（纯计算）：front 收集 → 组件编译 → wrap_example → api 载荷类型
+/// 改写。开发模式（generate_rust_ui）与交付模式（generate_rust_ui_delivery）
+/// 共享。PLAN-792 抽取自 generate_rust_ui 直写路径：`__InitLoaded` 改写从
+/// "写盘后读回"改为内存内完成，最终落盘字节与抽取前一致。
+///
+/// 返回 `Ok(None)` = 无 .at 文件或无 WidgetDecl（既有早退语义）。
+pub(crate) fn compile_rust_ui_app(project_dir: &Path) -> AutoResult<Option<CompiledRustUiApp>> {
     let front_dir = find_front_dir(project_dir);
 
     if !front_dir.exists() {
@@ -547,7 +626,7 @@ pub fn generate_rust_ui(
             "{}",
             "  No .at files found in front directory".bright_yellow()
         );
-        return Ok(());
+        return Ok(None);
     }
 
     println!(
@@ -555,16 +634,6 @@ pub fn generate_rust_ui(
         "  Found".bright_green(),
         at_files.len()
     );
-
-    // Determine output directory — use shared workspace at examples/rust-workspace/
-    let ws_dir = ensure_shared_workspace(project_dir);
-    let member_name = front_member_name(project_dir);
-    let default_output = ws_dir.join(&member_name);
-    let output = output_dir
-        .map(|p| p.to_path_buf())
-        .unwrap_or(default_output);
-
-    fs::create_dir_all(&output).map_err(|e| format!("Failed to create output directory: {}", e))?;
 
     // Get project name from pac.at
     let pac_path = project_dir.join("pac.at");
@@ -628,7 +697,7 @@ pub fn generate_rust_ui(
             "{}",
             "  No components generated (no WidgetDecl nodes found)".bright_yellow()
         );
-        return Ok(());
+        return Ok(None);
     }
 
     // Deduplicate API imports and generate API client once
@@ -645,52 +714,25 @@ pub fn generate_rust_ui(
 
     // Wrap in main() boilerplate
     let main_widget = extract_main_widget(&all_components);
-    let full_code = wrap_example(&project_name, &all_components, project_dir);
-
-    // Write output as a Cargo project
-    let src_dir = output.join("src");
-    fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create src directory: {}", e))?;
-
-    let main_rs = src_dir.join("main.rs");
-    fs::write(&main_rs, &full_code)
-        .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
-
-    // Generate Cargo.toml with workspace dependencies
-    let cargo_toml = generate_cargo_toml(&project_name, project_dir);
-    let cargo_path = output.join("Cargo.toml");
-    fs::write(&cargo_path, &cargo_toml)
-        .map_err(|e| format!("Failed to write {}: {}", cargo_path.display(), e))?;
-
-    // PLAN-013 T2: pac.at rust_sidecar 供给(用户 .rs 模块 + Cargo 依赖)。
-    let sidecar = crate::sidecar::load_sidecar(project_dir);
-    if !sidecar.is_empty() {
-        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &output)?;
-        println!(
-            "{}",
-            "  rust_sidecar applied (modules + deps)".bright_green()
-        );
-    }
+    let mut full_code = wrap_example(&project_name, &all_components, project_dir);
 
     // PLAN-013 T2: __InitLoaded 载荷类型修正——ui_gen 硬编码
     // Vec<serde_json::Value>(JSON API 客户端世界);merged db 吸收时
     // init fn 返回具体类型(如 Vec<String>),按 api 契约改写 msg 变体。
+    // PLAN-792：改写移入纯计算相位（内存内），落盘字节与写后读回一致。
     {
         let api_module = parse_api_module(project_dir);
         if let Some(module) = &api_module {
             if let Some(db) = merged_db_impl(project_dir, module) {
-                if let Ok(main_content) = fs::read_to_string(&main_rs) {
-                    if let Some(init_fn) = extract_init_api_func(&main_content) {
-                        if let Some(ep) = module.endpoints.iter().find(|e| e.fn_name == init_fn) {
-                            if let Some(rust_ty) = merged_scalar_rust_ty(&ep.return_type) {
-                                let rewritten = main_content.replace(
-                                    "__InitLoaded(Vec<serde_json::Value>)",
-                                    &format!("__InitLoaded({rust_ty})"),
-                                );
-                                if rewritten != main_content {
-                                    fs::write(&main_rs, &rewritten).map_err(|e| {
-                                        format!("Failed to rewrite {}: {}", main_rs.display(), e)
-                                    })?;
-                                }
+                if let Some(init_fn) = extract_init_api_func(&full_code) {
+                    if let Some(ep) = module.endpoints.iter().find(|e| e.fn_name == init_fn) {
+                        if let Some(rust_ty) = merged_scalar_rust_ty(&ep.return_type) {
+                            let rewritten = full_code.replace(
+                                "__InitLoaded(Vec<serde_json::Value>)",
+                                &format!("__InitLoaded({rust_ty})"),
+                            );
+                            if rewritten != full_code {
+                                full_code = rewritten;
                             }
                         }
                     }
@@ -699,24 +741,11 @@ pub fn generate_rust_ui(
         }
     }
 
-    // Note: no per-member .cargo/config.toml needed — the workspace-level
-    // .cargo/config.toml sets target-dir for all members.
-
-    // Update workspace members to include the newly created project
-    let _ = ensure_shared_workspace(project_dir);
-
-    println!();
-    println!("{} {}", "  Generated".bright_green(), output.display());
-    println!("{} {} (main widget)", "  Entry".bright_green(), main_widget);
-    println!();
-    println!(
-        "{}",
-        "  Rust UI project generated successfully!"
-            .bright_green()
-            .bold()
-    );
-
-    Ok(())
+    Ok(Some(CompiledRustUiApp {
+        project_name,
+        main_widget,
+        main_rs: full_code,
+    }))
 }
 
 /// Extract API function names from `use back.api: fn1, fn2, ...` statements.
@@ -3122,11 +3151,8 @@ fn to_snake_case(s: &str) -> String {
 /// from the workspace-level `[workspace.dependencies]`.
 pub(crate) fn generate_cargo_toml(project_name: &str, project_dir: &Path) -> String {
     let snake_name = to_snake_case(project_name);
-    // 014: pac.at `exe_name` — 显式 `[[bin]]` 控制产物名(包名/工作区成员
-    // 不动;缺省无 [[bin]],产物名 = 包名)。at-app 据此产出 auto-term.exe。
-    let bin_block = parse_pac_exe_name(&project_dir.join("pac.at"))
-        .map(|exe| format!("\n[[bin]]\nname = \"{exe}\"\npath = \"src/main.rs\"\n"))
-        .unwrap_or_default();
+    // 014: pac.at `exe_name`（pac_bin_block——交付清单同源复用）。
+    let bin_block = pac_bin_block(project_dir);
 
     format!(
         r#"[package]
@@ -3932,6 +3958,932 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
     let _ = fs::write(config_dir.join("config.toml"), config);
 
     ws_dir
+}
+
+// ==================== PLAN-792：显式可搬动交付模式 ====================
+//
+// 目标（docs/plans/792-generated-ui-independent-build.md）：
+// 在没有开发主检出/临时 worktree 路径兜底的独立消费者中，真实生成、全新
+// 解析并构建一个最小 Iced 工程，再 locked 重放；依赖/资源来源完整可追溯。
+//
+// 布局（镜像生产仓根布局——auto-lang build.rs 以 `../../crates` 与根
+// Cargo.lock 为编译期输入，非镜像布局会在 build.rs unwrap 处红）：
+//
+//   <delivery_root>/
+//     Cargo.toml            # 受管 workspace 根：members=[app+crates/*]、
+//                           # default-members=[app]、[workspace.dependencies]
+//                           # 表副本、[patch.crates-io] iced_widget（消费根
+//                           # patch——不写在依赖包内）
+//     Cargo.lock            # 交付阶段 fresh 解析一次后冻结（--locked 重放）
+//     app/                  # 生成的应用 member（与开发模式同一生成管线）
+//     crates/<closure>      # 受管源码 crate（字节级副本，仅 auto-lang 清单
+//                           # 做投影修剪：剥交付闭包外 optional path 依赖）
+//     crates/patches/iced_widget/  # 本地 patch 随包发行（PLAN-043 走查）
+//     stdlib/、docs/schema/ # 仓库根级编译期输入（include_str! 越界面）
+//     assets/               # 资源 allowlist（src/front 非 .at 文件 + hash）
+//     delivery-manifest.json # producer 身份/闭包规模/资源与 pin 清单
+
+/// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
+/// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
+pub const DELIVERY_CRATES: [&str; 9] = [
+    "auto-lang",
+    "auto-val",
+    "auto-atom",
+    "auto-lex",
+    "auto-cache",
+    "shim-metadata",
+    "auto-bindgen",
+    "auto-macros",
+    "a2r-std",
+];
+
+/// 随包发行的本地 patch（相对 crates/patches/）。
+pub const DELIVERY_PATCHES: [&str; 1] = ["iced_widget"];
+
+/// 仓库根级编译期输入（auto-lang include_str! 越界引用面：stdlib_assembly
+/// 的 loader/manifest/providers + native_registry + aura/schema_loader——
+/// 缺一即受管 build 红，受管阶段判红不回退主检出）。
+const DELIVERY_ROOT_INPUTS: [&str; 5] = [
+    "stdlib/assembly-providers.json",
+    "stdlib/auto/image.at",
+    "stdlib/auto/image.rs.at",
+    "stdlib/auto/image.vm.at",
+    "docs/schema/aura.at",
+];
+
+/// 投影修剪：vendored auto-lang/Cargo.toml 剥除的 optional path 依赖行
+///（autodown-core 跨仓 → auto-down；auto-test-case 测试协议 crate——均不在
+/// 交付闭包内且非默认 feature 启用；cargo 对成员的 optional path 依赖仍读
+/// manifest，不剥则解析红）。
+const DELIVERY_PROJECTION_STRIP_DEPS: [&str; 2] = [
+    "autodown-core = { path = \"../../../auto-down/autodown/packages/engine/rust\", optional = true }",
+    "auto-test-case = { path = \"../auto-test-case\", optional = true }",
+];
+
+/// 投影修剪：feature 行改写（保留 feature 名维持 cfg 面与零新警告，仅剥
+/// dep: 引用）。
+const DELIVERY_PROJECTION_FEATURE_REWRITES: [(&str, &str); 2] = [
+    (
+        "autodown = [\"ui-iced\", \"dep:autodown-core\"]",
+        "autodown = [\"ui-iced\"]",
+    ),
+    ("test-cases = [\"dep:auto-test-case\"]", "test-cases = []"),
+];
+
+/// 历史漂移家族（779/785 记录的 fresh-lock 失败面：wgpu-hal 宏边界 E0277
+/// 源于图形栈新补丁流入）：交付应用清单按 producer 已验证的应用锁
+/// （examples/rust-workspace/Cargo.lock）钉扎单版本槽成员。iced_widget 不
+/// 入列（patch 单源控制）；多版本槽成员（如 windows/windows-core 三槽并存）
+/// 无法以清单直依赖钉扎（TOML 单键），由冻结锁控制并显式登记。
+pub const DELIVERY_PIN_FAMILY: [&str; 14] = [
+    "iced",
+    "iced_core",
+    "iced_futures",
+    "iced_graphics",
+    "iced_renderer",
+    "iced_runtime",
+    "iced_tiny_skia",
+    "iced_wgpu",
+    "wgpu",
+    "wgpu-core",
+    "wgpu-hal",
+    "wgpu-types",
+    // 多槽恒定成员（0.57/0.58/0.62 三槽并存）：清单无法对同名多槽包重复
+    // 声明直依赖——永不进 pins，恒落 pins_multi_slot_lock_frozen 披露。
+    "windows",
+    "windows-core",
+];
+
+/// 交付目录拷贝时跳过的目录名（与 auto-lang build.rs 哈希漫步的跳过面同源：
+/// 构建闭包不含这三类产物）。
+const DELIVERY_COPY_SKIP_DIRS: [&str; 3] = ["target", ".git", "node_modules"];
+
+/// 受管文件记录（delivery-manifest.json 的 crates/root_inputs/resources 条目）。
+#[derive(Clone)]
+struct DeliveryFileRecord {
+    rel: String,
+    bytes: u64,
+    blake3: String,
+}
+
+/// 单个受管目录（crate/patch/资源树）的拷贝结果。
+struct DeliveryCopiedDir {
+    records: Vec<DeliveryFileRecord>,
+    digest: String,
+}
+
+/// 递归拷贝 `src` → `dst`，跳过 `skip` 命名的目录；返回逐文件记录与目录
+/// digest（对排序后的 "rel\0len\nblake3\n" 清单再 blake3——目录身份与机器/
+/// 检出无关）。
+fn delivery_copy_dir(src: &Path, dst: &Path, skip: &[&str]) -> AutoResult<DeliveryCopiedDir> {
+    let mut records: Vec<DeliveryFileRecord> = Vec::new();
+    fn walk(
+        src: &Path,
+        dst: &Path,
+        rel: &str,
+        skip: &[&str],
+        records: &mut Vec<DeliveryFileRecord>,
+    ) -> std::io::Result<()> {
+        fs::create_dir_all(dst)?;
+        for entry in fs::read_dir(src)? {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            let path = entry.path();
+            let child_rel = if rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel}/{name}")
+            };
+            if path.is_dir() {
+                if skip.contains(&name.as_str()) {
+                    continue;
+                }
+                walk(&path, &dst.join(&name), &child_rel, skip, records)?;
+            } else {
+                let content = fs::read(&path)?;
+                fs::write(dst.join(&name), &content)?;
+                records.push(DeliveryFileRecord {
+                    rel: child_rel,
+                    bytes: content.len() as u64,
+                    blake3: blake3::hash(&content).to_hex().to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+    walk(src, dst, "", skip, &mut records)
+        .map_err(|e| format!("delivery: 拷贝 {} 失败: {e}", src.display()))?;
+    records.sort_by(|a, b| a.rel.cmp(&b.rel));
+    let digest = delivery_dir_digest(&records);
+    Ok(DeliveryCopiedDir { records, digest })
+}
+
+/// 目录 digest：对排序后逐文件 "rel\0len\nblake3\n" 串接再 blake3。
+fn delivery_dir_digest(records: &[DeliveryFileRecord]) -> String {
+    let mut acc = String::new();
+    for r in records {
+        acc.push_str(&r.rel);
+        acc.push('\0');
+        acc.push_str(&r.bytes.to_string());
+        acc.push('\n');
+        acc.push_str(&r.blake3);
+        acc.push('\n');
+    }
+    blake3::hash(acc.as_bytes()).to_hex().to_string()
+}
+
+/// 交付模式 producer 源根解析序（仅用于定位**待拷贝源**，解析结果不进入
+/// 生成物）：AUTO_DELIVERY_SOURCE_ROOT → AUTO_LANG_ROOT → CWD 仓库漫步
+///（既有 find_lang_repo_root，兄弟/主检出）→ 编译期 CARGO_MANIFEST_DIR
+/// 上溯。候选必须含 crates/auto-lang 与根 Cargo.toml，否则受管判红。
+fn delivery_producer_root() -> AutoResult<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(p) = std::env::var_os("AUTO_DELIVERY_SOURCE_ROOT") {
+        candidates.push(PathBuf::from(p));
+    }
+    if let Some(p) = std::env::var_os("AUTO_LANG_ROOT") {
+        candidates.push(PathBuf::from(p));
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if let Some(root) = find_lang_repo_root(&cwd) {
+        candidates.push(root);
+    }
+    if let Some(root) = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+    {
+        candidates.push(root.to_path_buf());
+    }
+    for c in candidates {
+        if c.join("crates").join("auto-lang").is_dir() && c.join("Cargo.toml").is_file() {
+            return Ok(c);
+        }
+    }
+    Err("delivery: producer 源根未解析（需含 crates/auto-lang 与根 Cargo.toml；可用 AUTO_DELIVERY_SOURCE_ROOT 钉死）".into())
+}
+
+/// producer git 身份（best-effort：非 git 检出记录 null）。
+fn delivery_git_identity(root: &Path) -> (Option<String>, bool) {
+    let run = |args: &[&str]| -> Option<String> {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    let head = run(&["rev-parse", "HEAD"]).filter(|s| !s.is_empty());
+    let dirty = run(&["status", "--porcelain"])
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    (head, dirty)
+}
+
+/// producer ui_gen 指纹（与 auto-lang build.rs 的 AUTO_UI_GEN_FINGERPRINT
+/// 同源文件集：crates/auto-lang/src/ui_gen/**，blake3 over 排序 rel+内容）。
+fn delivery_ui_gen_fingerprint(root: &Path) -> AutoResult<String> {
+    let dir = root
+        .join("crates")
+        .join("auto-lang")
+        .join("src")
+        .join("ui_gen");
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    fn walk(dir: &Path, rel: &str, out: &mut Vec<(String, Vec<u8>)>) {
+        let Ok(rd) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let child_rel = if rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel}/{name}")
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, &child_rel, out);
+            } else if let Ok(content) = fs::read(&path) {
+                out.push((child_rel, content));
+            }
+        }
+    }
+    walk(&dir, "", &mut entries);
+    if entries.is_empty() {
+        return Err("delivery: producer ui_gen 源目录为空（源根可疑）".into());
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut acc = Vec::new();
+    for (rel, content) in &entries {
+        acc.extend_from_slice(rel.as_bytes());
+        acc.push(0);
+        acc.extend_from_slice(&(content.len() as u64).to_le_bytes());
+        acc.push(0xFF);
+        acc.extend_from_slice(content);
+    }
+    Ok(blake3::hash(&acc).to_hex().to_string())
+}
+
+/// 文本抽取根 manifest 的一个 `[section]`（头行到下一个顶层 `[` 前，字节
+/// 原样——表副本与 producer 逐字节同源）。
+fn delivery_extract_toml_section(root_manifest: &str, header: &str) -> AutoResult<String> {
+    let mut out: Option<String> = None;
+    let mut capturing = false;
+    for line in root_manifest.lines() {
+        if capturing {
+            if line.starts_with('[') {
+                break;
+            }
+            out.as_mut().unwrap().push_str(line);
+            out.as_mut().unwrap().push('\n');
+        } else if line.trim() == header {
+            out = Some(format!("{header}\n"));
+            capturing = true;
+        }
+    }
+    out.ok_or_else(|| format!("delivery: producer 根 manifest 缺 {header} 段").into())
+}
+
+/// 从 producer 应用锁（examples/rust-workspace/Cargo.lock）提取
+/// `[[package]]` name→versions。
+fn delivery_lock_versions(lock_text: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut name: Option<String> = None;
+    for line in lock_text.lines() {
+        let t = line.trim();
+        if t.starts_with("[[package]]") {
+            name = None;
+        } else if let Some(v) = t.strip_prefix("name = ") {
+            name = Some(v.trim_matches('"').to_string());
+        } else if let Some(v) = t.strip_prefix("version = ") {
+            if let Some(n) = &name {
+                out.push((n.clone(), v.trim_matches('"').to_string()));
+                name = None;
+            }
+        }
+    }
+    out
+}
+
+/// 交付 pin 集：单版本槽家族成员 → `=ver` 精确钉（直依赖边，仅约束解析
+/// 不增 feature）；多版本槽成员 → 显式登记为"冻结锁控制"（清单无法对同
+/// 名多槽包重复声明直依赖）。
+fn delivery_pins(producer_root: &Path) -> AutoResult<(Vec<(String, String)>, Vec<String>)> {
+    // 根 Cargo.lock（git 跟踪；examples/rust-workspace/ 整目录被忽略，
+    // 任意检出不保证在位——图形栈版本两锁经比对一致）。
+    let lock_path = producer_root.join("Cargo.lock");
+    let lock_text = fs::read_to_string(&lock_path).map_err(|e| {
+        format!(
+            "delivery: producer 应用锁不可读（{}）: {e}",
+            lock_path.display()
+        )
+    })?;
+    let versions = delivery_lock_versions(&lock_text);
+    let mut pins = Vec::new();
+    let mut multi_slot = Vec::new();
+    for fam in DELIVERY_PIN_FAMILY {
+        let mut slots: Vec<String> = versions
+            .iter()
+            .filter(|(n, _)| n == fam)
+            .map(|(_, v)| v.clone())
+            .collect();
+        slots.sort();
+        slots.dedup();
+        match slots.len() {
+            0 => {}
+            1 => pins.push((fam.to_string(), format!("={}", slots[0]))),
+            _ => multi_slot.push(fam.to_string()),
+        }
+    }
+    if pins.is_empty() {
+        return Err("delivery: pin 家族在 producer 应用锁中零命中（锁可疑）".into());
+    }
+    Ok((pins, multi_slot))
+}
+
+/// 交付根 workspace manifest（消费根 patch 就位于此，不写在依赖包内）。
+fn generate_delivery_root_manifest(producer_root: &Path, app_member: &str) -> AutoResult<String> {
+    let root_manifest = fs::read_to_string(producer_root.join("Cargo.toml"))
+        .map_err(|e| format!("delivery: producer 根 manifest 不可读: {e}"))?;
+    let ws_deps = delivery_extract_toml_section(&root_manifest, "[workspace.dependencies]")?;
+    let profile_dev = delivery_extract_toml_section(&root_manifest, "[profile.dev]")?;
+    let mut members: Vec<String> = Vec::new();
+    members.push(format!("    \"app\""));
+    for c in DELIVERY_CRATES {
+        members.push(format!("    \"crates/{c}\""));
+    }
+    let members_toml = members.join(",\n");
+    Ok(format!(
+        r#"# PLAN-792 受管交付根（显式可搬动交付模式——生成物，勿手改）。
+# 镜像生产仓布局：members 含应用与受管源码闭包（[workspace.dependencies]
+# 表为 producer 根表逐字节副本）；plain `cargo build` 只建 app。
+[workspace]
+members = [
+{members_toml}
+]
+default-members = ["{app_member}"]
+resolver = "2"
+
+{ws_deps}
+{profile_dev}
+# 顶层 patch（PLAN-043 走查 2026-09-25）：iced_widget 本地补丁随包发行——
+# patch 写在消费根，不写在依赖包内；删此段则 --locked 重放确定性红。
+[patch.crates-io]
+iced_widget = {{ path = "crates/patches/iced_widget" }}
+"#
+    ))
+}
+
+/// 交付应用 manifest：自包含（无 workspace 继承）——语言 crate 以受管本地
+/// source bundle 相对路径解析；registry 依赖规格与开发模式
+/// generate_cargo_toml 同源同规格。
+fn generate_delivery_app_manifest(
+    project_name: &str,
+    project_dir: &Path,
+    pin_lines: &[String],
+) -> String {
+    let snake_name = to_snake_case(project_name);
+    let bin_block = pac_bin_block(project_dir);
+    let pin_block = if pin_lines.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "# PLAN-792 drift pins（779/785 fresh-lock 失败家族；来源 = producer\n# examples/rust-workspace/Cargo.lock 已验证版本，default-features=false 仅\n# 约束解析不增 feature 面）。\n{}\n",
+            pin_lines.join("\n")
+        )
+    };
+    format!(
+        r#"# PLAN-792 交付应用 member（生成物）——自包含清单：不继承 workspace、
+# 不隐式搜索开发主检出/编译期 CARGO_MANIFEST_DIR；所有本地 path 依赖均在
+# 交付根内。
+[package]
+name = "{snake_name}"
+version = "0.1.0"
+edition = "2021"
+{bin_block}
+[features]
+ui-iced = ["auto-lang/ui-iced"]
+default = ["ui-iced", "auto-lang/default"]
+
+[dependencies]
+auto-lang = {{ path = "../crates/auto-lang" }}
+serde_json = "1"
+# PLAN-039 T-13（E-D5-A）：back `pub type` struct 发射的 serde derive 依赖。
+serde = {{ version = "1", features = ["derive"] }}
+# PLAN-018:a2r 全局 List 字面量(非 const 初始化)走 once_cell::Lazy 形态
+# (trans/rust.rs global_lazy_used;api_gen.rs db 路径同款先例)。
+once_cell = "1"
+reqwest = {{ version = "0.12", features = ["blocking", "json", "multipart", "cookies", "gzip", "brotli"] }}
+tungstenite = {{ version = "0.24", features = ["native-tls"] }}
+lazy_static = "1"
+tokio = {{ version = "1", features = ["rt"] }}
+iced = {{ version = "0.14", features = ["tokio", "advanced"] }}
+{pin_block}"#
+    )
+}
+
+/// pac.at `exe_name` → 显式 `[[bin]]` 块（014；generate_cargo_toml 同源）。
+fn pac_bin_block(project_dir: &Path) -> String {
+    parse_pac_exe_name(&project_dir.join("pac.at"))
+        .map(|exe| format!("\n[[bin]]\nname = \"{exe}\"\npath = \"src/main.rs\"\n"))
+        .unwrap_or_default()
+}
+
+/// 投影修剪 vendored auto-lang/Cargo.toml：剥闭包外 optional path 依赖行
+///（连带其紧邻上行注释），feature 行改写为无 dep: 引用形态。幂等：已修剪
+/// 的清单二次运行零改动。
+fn delivery_apply_projection(vendored_manifest: &Path) -> AutoResult<Vec<String>> {
+    let text = fs::read_to_string(vendored_manifest)
+        .map_err(|e| format!("delivery: 读 vendored manifest 失败: {e}"))?;
+    let mut edits = Vec::new();
+    let mut out: Vec<String> = Vec::new();
+    for line in text.lines() {
+        if DELIVERY_PROJECTION_STRIP_DEPS
+            .iter()
+            .any(|m| line.contains(m))
+        {
+            // Consecutively pop out all immediately adjacent comment lines above (belonging to the stripped dep's explanation block)——avoid dangling comments in the vendored copy
+            while out
+                .last()
+                .map(|l: &String| l.trim().starts_with('#'))
+                .unwrap_or(false)
+            {
+                out.pop();
+            }
+            edits.push(format!("strip dep: {}", line.trim()));
+            continue;
+        }
+        let mut line = line.to_string();
+        for &(from, to) in &DELIVERY_PROJECTION_FEATURE_REWRITES {
+            if line.trim() == from {
+                line = line.replace(from, to);
+                edits.push(format!("rewrite feature: {from} -> {to}"));
+            }
+        }
+        out.push(line);
+    }
+    let joined = out.join("\n");
+    let joined = if text.ends_with('\n') {
+        format!("{joined}\n")
+    } else {
+        joined
+    };
+    if joined != text {
+        fs::write(vendored_manifest, &joined)
+            .map_err(|e| format!("delivery: 写投影 manifest 失败: {e}"))?;
+    }
+    let expected =
+        DELIVERY_PROJECTION_STRIP_DEPS.len() + DELIVERY_PROJECTION_FEATURE_REWRITES.len();
+    if edits.len() == expected {
+        return Ok(edits);
+    }
+    // 已投影形态（再交付/幂等重放）：strip 标记与改写前形态全缺席 + 改写后
+    // 形态全在位 → Ok（零编辑）；否则判 producer 清单结构漂移。
+    let already_projected = DELIVERY_PROJECTION_STRIP_DEPS
+        .iter()
+        .all(|m| !text.contains(m))
+        && DELIVERY_PROJECTION_FEATURE_REWRITES
+            .iter()
+            .all(|(from, _)| !text.contains(from))
+        && DELIVERY_PROJECTION_FEATURE_REWRITES
+            .iter()
+            .all(|(_, to)| text.contains(to));
+    if already_projected {
+        return Ok(Vec::new());
+    }
+    Err(format!(
+        "delivery: 投影修剪不完整（期望 {expected} 处，实际 {} 处）——producer 清单结构漂移，受管判红",
+        edits.len()
+    )
+    .into())
+}
+
+/// 交付根守卫：空目录或既往交付（有 delivery-manifest.json 标记）才允许
+/// （再交付清理已知路径重生成）；外来非空目录显式拒绝，不覆盖他者内容。
+fn delivery_guard_root(delivery_root: &Path) -> AutoResult<bool> {
+    if !delivery_root.exists() {
+        return Ok(false);
+    }
+    if !delivery_root.is_dir() {
+        return Err(format!("delivery: 交付根不是目录：{}", delivery_root.display()).into());
+    }
+    let marker = delivery_root.join("delivery-manifest.json");
+    if marker.is_file() {
+        return Ok(true);
+    }
+    let empty = fs::read_dir(delivery_root)
+        .map(|mut it| it.next().is_none())
+        .unwrap_or(false);
+    if empty {
+        return Ok(false);
+    }
+    Err(format!(
+        "delivery: 交付根非空且无 delivery-manifest.json（外来目录，拒绝覆盖）：{}",
+        delivery_root.display()
+    )
+    .into())
+}
+
+/// 再交付清理：仅移除交付自身拥有的已知路径；未知条目保留并告警。
+fn delivery_clean_known(delivery_root: &Path) {
+    let known_dirs = [
+        "app", "crates", "assets", "stdlib", "docs", "examples", ".cargo",
+    ];
+    let known_files = ["Cargo.toml", "Cargo.lock", "delivery-manifest.json"];
+    for d in known_dirs {
+        let p = delivery_root.join(d);
+        if p.exists() {
+            if fs::remove_dir_all(&p).is_err() {
+                eprintln!("⚠ delivery: 清理 {d} 失败（继续，可能残留旧产物）");
+            }
+        }
+    }
+    for f in known_files {
+        let p = delivery_root.join(f);
+        if p.is_file() {
+            let _ = fs::remove_file(&p);
+        }
+    }
+    if let Ok(rd) = fs::read_dir(delivery_root) {
+        for entry in rd.flatten() {
+            eprintln!("⚠ delivery: 未知条目保留未动：{}", entry.path().display());
+        }
+    }
+}
+
+/// crate 名唯一性断言：bundle 内 crates/ 全部实际成员（含多余目录——按
+/// package.name 判）的包名不得重复（同包 source 重复 = 身份冲突，显式
+/// 拒绝）；应用名也不得与 vendored 撞名。
+fn delivery_assert_unique_crates(delivery_root: &Path, app_package: &str) -> AutoResult<()> {
+    let crates_dir = delivery_root.join("crates");
+    let mut manifest_dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&crates_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.file_name().and_then(|n| n.to_str()) == Some("patches") {
+                if let Ok(patches) = fs::read_dir(&path) {
+                    for p in patches.flatten() {
+                        if p.path().is_dir() {
+                            manifest_dirs.push(p.path());
+                        }
+                    }
+                }
+            } else {
+                manifest_dirs.push(path);
+            }
+        }
+    }
+    manifest_dirs.sort();
+    let mut seen: Vec<String> = Vec::new();
+    for dir in &manifest_dirs {
+        let manifest = dir.join("Cargo.toml");
+        if !manifest.is_file() {
+            continue;
+        }
+        let text = fs::read_to_string(&manifest)
+            .map_err(|e| format!("delivery: 读 {} 失败: {e}", manifest.display()))?;
+        let value: toml::Value = toml::from_str(&text)
+            .map_err(|e| format!("delivery: 解析 {} 失败: {e}", manifest.display()))?;
+        let name = value
+            .get("package")
+            .and_then(|p| p.get("name"))
+            .and_then(|n| n.as_str())
+            .ok_or_else(|| format!("delivery: {} 缺 package.name", manifest.display()))?;
+        if seen.iter().any(|s| s == name) {
+            return Err(format!(
+                "delivery: 同包 source 重复（{} 在 bundle 内出现多次）——身份冲突显式拒绝",
+                name
+            )
+            .into());
+        }
+        seen.push(name.to_string());
+    }
+    if seen.iter().any(|s| s == app_package) {
+        return Err(format!(
+            "delivery: 应用包名 {app_package} 与受管 crate 撞名——身份冲突显式拒绝"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// 资源 allowlist：src/front 下非 .at 文件递归收集入 assets/（运行期 CWD
+/// 相对解析——消费侧从 assets/ 运行，与开发模式 src/front 行为对齐）。
+fn delivery_copy_resources(
+    front_dir: &Path,
+    delivery_root: &Path,
+) -> AutoResult<Vec<serde_json::Value>> {
+    let mut out = Vec::new();
+    if !front_dir.is_dir() {
+        return Ok(out);
+    }
+    fn walk(
+        dir: &Path,
+        rel: &str,
+        dst_base: &Path,
+        origin_base: &Path,
+        out: &mut Vec<serde_json::Value>,
+    ) -> AutoResult<()> {
+        for entry in fs::read_dir(dir).map_err(|e| format!("delivery: 读资源目录失败: {e}"))?
+        {
+            let entry = entry.map_err(|e| format!("delivery: 遍历资源目录失败: {e}"))?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            let child_rel = if rel.is_empty() {
+                name.clone()
+            } else {
+                format!("{rel}/{name}")
+            };
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, &child_rel, dst_base, origin_base, out)?;
+            } else if path.extension().and_then(|e| e.to_str()) != Some("at") {
+                let content = fs::read(&path)
+                    .map_err(|e| format!("delivery: 读资源 {} 失败: {e}", path.display()))?;
+                let dst = dst_base.join(&child_rel);
+                if let Some(parent) = dst.parent() {
+                    fs::create_dir_all(parent).map_err(|e| {
+                        format!("delivery: 建资源目录 {} 失败: {e}", parent.display())
+                    })?;
+                }
+                fs::write(&dst, &content)
+                    .map_err(|e| format!("delivery: 写资源 {} 失败: {e}", dst.display()))?;
+                out.push(serde_json::json!({
+                    "rel": child_rel,
+                    "origin_rel": path.strip_prefix(origin_base)
+                        .map(|p| p.to_string_lossy().replace('\\', "/"))
+                        .unwrap_or_default(),
+                    "bytes": content.len(),
+                    "blake3": blake3::hash(&content).to_hex().to_string(),
+                }));
+            }
+        }
+        Ok(())
+    }
+    walk(
+        front_dir,
+        "",
+        &delivery_root.join("assets"),
+        front_dir,
+        &mut out,
+    )?;
+    out.sort_by(|a, b| a["rel"].as_str().cmp(&b["rel"].as_str()));
+    Ok(out)
+}
+
+/// 重定位自检：cargo 可见的生成清单（根/应用 manifest 与 Cargo.lock）不得
+/// 残留 producer 绝对路径（受管判红，不静默出包）。
+fn delivery_relocation_selfcheck(delivery_root: &Path, producer_root: &Path) -> AutoResult<()> {
+    let needle = producer_root.to_string_lossy().to_lowercase();
+    for rel in ["Cargo.toml", "app/Cargo.toml", "Cargo.lock"] {
+        let p = delivery_root.join(rel);
+        let Ok(text) = fs::read_to_string(&p) else {
+            continue;
+        };
+        if text.to_lowercase().contains(&needle) {
+            return Err(
+                format!("delivery: {rel} 残留 producer 绝对路径——重定位不安全，受管判红").into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// PLAN-792：显式可搬动交付模式生成入口。
+///
+/// 与开发模式（generate_rust_ui → rust-workspace 共享工作区 + workspace
+/// 继承清单）共享同一编译相位 compile_rust_ui_app；差异仅在落点与清单形态：
+/// 交付根为镜像生产仓布局的受管 bundle（见本节头注），manifest 不隐式搜索
+/// D:/autostack 或编译期 CARGO_MANIFEST_DIR。锁由交付管线在受管阶段 fresh
+/// 解析一次后冻结（本函数不自动跑 cargo；消费侧 `cargo build --locked`）。
+pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> AutoResult<()> {
+    println!(
+        "{}",
+        "Generating Rust UI delivery bundle (PLAN-792 explicit delivery mode)".bright_cyan()
+    );
+
+    let producer_root = delivery_producer_root()?;
+    let front_dir = find_front_dir(project_dir);
+    if !front_dir.exists() {
+        return Err(format!("Front directory not found: {}", front_dir.display()).into());
+    }
+
+    let Some(compiled) = compile_rust_ui_app(project_dir)? else {
+        return Err(
+            "delivery: 前端无 .at 组件（受管交付拒绝空应用——受管阶段判红，不静默出空包)".into(),
+        );
+    };
+
+    // 守卫 + 再交付清理
+    let is_redelivery = delivery_guard_root(delivery_root)?;
+    if is_redelivery {
+        println!(
+            "  {} 既往交付标记在案——清理已知路径后重生成",
+            "Note:".bright_yellow()
+        );
+        delivery_clean_known(delivery_root);
+    }
+    fs::create_dir_all(delivery_root).map_err(|e| format!("delivery: 建交付根失败: {e}"))?;
+
+    // 受管源码闭包
+    let mut crate_entries: Vec<serde_json::Value> = Vec::new();
+    let mut total_files: u64 = 0;
+    let mut total_bytes: u64 = 0;
+    let mut projection_edits: Vec<String> = Vec::new();
+    for name in DELIVERY_CRATES {
+        let src = producer_root.join("crates").join(name);
+        if !src.is_dir() {
+            return Err(
+                format!("delivery: producer 缺受管 crate 源（crates/{name}）——受管判红").into(),
+            );
+        }
+        let dst = delivery_root.join("crates").join(name);
+        let copied = delivery_copy_dir(&src, &dst, &DELIVERY_COPY_SKIP_DIRS)?;
+        total_files += copied.records.len() as u64;
+        total_bytes += copied.records.iter().map(|r| r.bytes).sum::<u64>();
+        let mut edits: Vec<String> = Vec::new();
+        if name == "auto-lang" {
+            edits = delivery_apply_projection(&dst.join("Cargo.toml"))?;
+            projection_edits = edits.clone();
+        }
+        crate_entries.push(serde_json::json!({
+            "name": name,
+            "kind": "source",
+            "origin_rel": format!("crates/{name}"),
+            "files": copied.records.len(),
+            "bytes": copied.records.iter().map(|r| r.bytes).sum::<u64>(),
+            "digest": copied.digest,
+            "projection_edits": edits,
+        }));
+        println!(
+            "  {} crates/{name}（{} 文件，digest {}..）",
+            "Vendored".bright_green(),
+            copied.records.len(),
+            &copied.digest[..12.min(copied.digest.len())]
+        );
+    }
+    for name in DELIVERY_PATCHES {
+        let src = producer_root.join("crates").join("patches").join(name);
+        if !src.is_dir() {
+            return Err(format!(
+                "delivery: producer 缺受管 patch 源（crates/patches/{name}）——受管判红"
+            )
+            .into());
+        }
+        let dst = delivery_root.join("crates").join("patches").join(name);
+        let copied = delivery_copy_dir(&src, &dst, &DELIVERY_COPY_SKIP_DIRS)?;
+        total_files += copied.records.len() as u64;
+        total_bytes += copied.records.iter().map(|r| r.bytes).sum::<u64>();
+        crate_entries.push(serde_json::json!({
+            "name": name,
+            "kind": "patch",
+            "origin_rel": format!("crates/patches/{name}"),
+            "files": copied.records.len(),
+            "bytes": copied.records.iter().map(|r| r.bytes).sum::<u64>(),
+            "digest": copied.digest,
+        }));
+    }
+
+    // 仓库根级编译期输入（include_str! 越界面——缺一即 build 红）
+    let mut root_input_entries: Vec<serde_json::Value> = Vec::new();
+    for rel in DELIVERY_ROOT_INPUTS {
+        let src = producer_root.join(rel);
+        if !src.is_file() {
+            return Err(format!("delivery: producer 缺根级编译输入（{rel}）——受管判红").into());
+        }
+        let dst = delivery_root.join(rel);
+        let content = fs::read(&src).map_err(|e| format!("delivery: 读 {rel} 失败: {e}"))?;
+        if let Some(parent) = dst.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("delivery: 建 {} 失败: {e}", parent.display()))?;
+        }
+        fs::write(&dst, &content).map_err(|e| format!("delivery: 写 {rel} 失败: {e}"))?;
+        total_files += 1;
+        total_bytes += content.len() as u64;
+        root_input_entries.push(serde_json::json!({
+            "rel": rel,
+            "bytes": content.len(),
+            "blake3": blake3::hash(&content).to_hex().to_string(),
+        }));
+    }
+
+    // 根 manifest（消费根 patch）+ pin 集
+    let app_package = to_snake_case(&compiled.project_name);
+    // default-members 用 member 路径 "app"（固定应用位；包名是 ui_minimal 等）。
+    let root_manifest = generate_delivery_root_manifest(&producer_root, "app")?;
+    let root_manifest_path = delivery_root.join("Cargo.toml");
+    fs::write(&root_manifest_path, &root_manifest)
+        .map_err(|e| format!("delivery: 写交付根 manifest 失败: {e}"))?;
+
+    let (pins, multi_slot) = delivery_pins(&producer_root)?;
+    let pin_lines: Vec<String> = pins
+        .iter()
+        .map(|(n, v)| format!("{n} = {{ version = \"{v}\", default-features = false }}"))
+        .collect();
+
+    // 应用 member（main.rs 与开发模式同一编译相位产物）
+    let app_dir = delivery_root.join("app");
+    fs::create_dir_all(app_dir.join("src"))
+        .map_err(|e| format!("delivery: 建应用目录失败: {e}"))?;
+    let app_manifest =
+        generate_delivery_app_manifest(&compiled.project_name, project_dir, &pin_lines);
+    fs::write(app_dir.join("Cargo.toml"), &app_manifest)
+        .map_err(|e| format!("delivery: 写应用 manifest 失败: {e}"))?;
+    fs::write(app_dir.join("src").join("main.rs"), &compiled.main_rs)
+        .map_err(|e| format!("delivery: 写应用 main.rs 失败: {e}"))?;
+
+    // PLAN-013 T2：rust_sidecar 供给（与开发模式同调用面；写入交付 app member）
+    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    if !sidecar.is_empty() {
+        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &app_dir)?;
+        println!(
+            "{}",
+            "  rust_sidecar applied to delivery app member (modules + deps)".bright_green()
+        );
+    }
+
+    // 资源 allowlist
+    let resources = delivery_copy_resources(&front_dir, delivery_root)?;
+    if resources.is_empty() {
+        let _ = fs::remove_dir(delivery_root.join("assets"));
+    }
+    total_files += resources.len() as u64;
+    for r in &resources {
+        total_bytes += r["bytes"].as_u64().unwrap_or(0);
+    }
+
+    // 身份断言 + 重定位自检
+    delivery_assert_unique_crates(delivery_root, &app_package)?;
+    delivery_relocation_selfcheck(delivery_root, &producer_root)?;
+
+    // delivery-manifest.json（producer 身份/闭包规模/资源与 pin 清单）
+    let (git_head, git_dirty) = delivery_git_identity(&producer_root);
+    let ui_gen_fp = delivery_ui_gen_fingerprint(&producer_root)?;
+    let main_blake3 = blake3::hash(compiled.main_rs.as_bytes())
+        .to_hex()
+        .to_string();
+    let manifest = serde_json::json!({
+        "schema": "generated-ui-delivery/1",
+        "producer": {
+            "generator": "auto-man rust_ui delivery mode (PLAN-792)",
+            "source_root": producer_root.to_string_lossy().replace('\\', "/"),
+            "git_head": git_head,
+            "git_dirty": git_dirty,
+            "ui_gen_fingerprint": ui_gen_fp,
+            "app_lock_source": "Cargo.lock (workspace root)",
+        },
+        "layout": {
+            "workspace_root": "Cargo.toml",
+            "app_member": "app",
+            "crates_dir": "crates",
+            "resources_dir": if resources.is_empty() { serde_json::Value::Null } else { serde_json::json!("assets") },
+            "run_note": "运行期本地资产按 CWD 相对解析：从 assets/ 运行应用二进制（开发模式为 src/front，行为对齐）",
+        },
+        "crates": crate_entries,
+        "root_inputs": root_input_entries,
+        "app": {
+            "package": app_package,
+            "project_name": compiled.project_name,
+            "main_widget": compiled.main_widget,
+            "main_rs_blake3": main_blake3,
+            "main_rs_bytes": compiled.main_rs.len(),
+        },
+        "resources": resources,
+        "pins": pins.iter().cloned().collect::<std::collections::BTreeMap<String, String>>(),
+        "pins_multi_slot_lock_frozen": multi_slot,
+        "projection_edits_auto_lang": projection_edits,
+        "disclosure": {
+            "total_files": total_files,
+            "total_bytes": total_bytes,
+            "includes_language_source": true,
+            "note": "受管包含语言源码依赖（auto-lang 全库等 9 crate——语言尚未拆完，非纯 core/独立 UI 仓）；iced_widget 为本地 patch 单源（消费根 [patch.crates-io]）",
+        },
+    });
+    let manifest_path = delivery_root.join("delivery-manifest.json");
+    fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&manifest).unwrap_or_default(),
+    )
+    .map_err(|e| format!("delivery: 写 delivery-manifest.json 失败: {e}"))?;
+
+    println!(
+        "  {} 交付根 {}（受管 {} 文件 / {:.1} MiB；pin {} 项，多槽锁冻结 {} 项）",
+        "Delivered".bright_green(),
+        delivery_root.display(),
+        total_files,
+        total_bytes as f64 / (1024.0 * 1024.0),
+        pins.len(),
+        multi_slot.len()
+    );
+    println!(
+        "{}",
+        "  下一步（受管阶段）：cargo generate-lockfile 全新解析一次后冻结；消费侧 cargo build --locked"
+            .bright_cyan()
+    );
+    Ok(())
 }
 
 /// Get the member directory name for a frontend project in the shared workspace.
@@ -6212,4 +7164,274 @@ pub fn create_item(name str) str {
         let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/shell-pack");
         generate_shell_pack_lib(&out).expect("shell pack regen 失败");
     }
+
+    // ==================== PLAN-792 交付模式定向测试 ====================
+
+    /// 测试用 producer 源根（编译期 CARGO_MANIFEST_DIR 上溯到仓根——与
+    /// delivery_producer_root 的末位候选同源，测试内显式钉死避免 CWD 依赖）。
+    fn test_producer_root() -> PathBuf {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .unwrap()
+            .to_path_buf();
+        assert!(root.join("crates").join("auto-lang").is_dir());
+        root
+    }
+
+    /// PLAN-792：pin 提取——单版本槽精确钉扎、多版本槽显式登记（清单无法
+    /// 对同名多槽包重复声明直依赖）、锁缺失受管判红。
+    #[test]
+    fn delivery_pins_single_and_multi_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = dir.path().join("Cargo.lock");
+        let _ = &lock;
+        std::fs::write(
+            &lock,
+            "[[package]]\nname = \"wgpu-hal\"\nversion = \"27.0.4\"\n\n\
+             [[package]]\nname = \"windows-core\"\nversion = \"0.57.0\"\n\n\
+             [[package]]\nname = \"windows-core\"\nversion = \"0.62.2\"\n",
+        )
+        .unwrap();
+        let (pins, multi) = delivery_pins(dir.path()).unwrap();
+        assert!(
+            pins.contains(&("wgpu-hal".to_string(), "=27.0.4".to_string())),
+            "单槽 wgpu-hal 精确钉扎：{pins:?}"
+        );
+        assert_eq!(multi, vec!["windows-core".to_string()], "多槽登记");
+        assert!(!pins.iter().any(|(n, _)| n == "windows-core"));
+
+        let missing = dir.path().join("absent");
+        assert!(delivery_pins(&missing).is_err(), "锁缺失受管判红");
+    }
+
+    /// PLAN-792：交付根 manifest 装配——[patch.crates-io] 在消费根（不写
+    /// 在依赖包内）、default-members 只含 app、[workspace.dependencies] 表
+    /// 为 producer 根表字节副本。
+    #[test]
+    fn delivery_root_manifest_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let root_manifest = dir.path().join("Cargo.toml");
+        std::fs::write(
+            &root_manifest,
+            "[workspace]\nmembers = [\"crates/x\"]\n\n\
+             [workspace.dependencies]\nserde_json = \"1\"\ntoml = \"0.8\"\n\n\
+             [profile.dev]\ndebug = \"line-tables-only\"\n\n\
+             [patch.crates-io]\niced_widget = { path = \"crates/patches/iced_widget\" }\n",
+        )
+        .unwrap();
+        let manifest = generate_delivery_root_manifest(dir.path(), "app").unwrap();
+        assert!(
+            manifest.contains(
+                "[patch.crates-io]\niced_widget = { path = \"crates/patches/iced_widget\" }"
+            ),
+            "消费根 patch 就位"
+        );
+        assert!(
+            manifest.contains("default-members = [\"app\"]"),
+            "plain cargo build 只建 app"
+        );
+        assert!(
+            manifest.contains("[workspace.dependencies]\nserde_json = \"1\"\ntoml = \"0.8\"\n"),
+            "表副本逐字节同源"
+        );
+        assert!(
+            manifest.contains("[profile.dev]\ndebug = \"line-tables-only\""),
+            "profile 副本随包"
+        );
+        assert!(
+            manifest.contains("\"crates/auto-lang\""),
+            "受管闭包成员在列"
+        );
+        // 缺段判红
+        let bare = dir.path().join("bare");
+        std::fs::create_dir_all(&bare).unwrap();
+        std::fs::write(bare.join("Cargo.toml"), "[workspace]\nmembers = []\n").unwrap();
+        assert!(generate_delivery_root_manifest(&bare, "app").is_err());
+    }
+
+    /// PLAN-792：投影修剪——剥闭包外 optional path 依赖 + feature 行改写保
+    /// 留 feature 名；幂等（二次运行零改动）；计数不足受管判红。
+    #[test]
+    fn delivery_projection_strip_and_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let m = dir.path().join("Cargo.toml");
+        let original = "[features]\nautodown = [\"ui-iced\", \"dep:autodown-core\"]\n\
+             test-cases = [\"dep:auto-test-case\"]\n\n\
+             [dependencies]\n# comment\nautodown-core = { path = \"../../../auto-down/autodown/packages/engine/rust\", optional = true }\n\
+             auto-test-case = { path = \"../auto-test-case\", optional = true }\n\
+             auto-val = { path = \"../auto-val\" }\n";
+        std::fs::write(&m, original).unwrap();
+        let edits = delivery_apply_projection(&m).unwrap();
+        assert_eq!(edits.len(), 4, "2 strip + 2 rewrite");
+        let text = std::fs::read_to_string(&m).unwrap();
+        assert!(!text.contains("autodown-core"), "跨仓 optional dep 剥除");
+        assert!(!text.contains("auto-test-case"), "测试协议 dep 剥除");
+        assert!(text.contains("autodown = [\"ui-iced\"]"), "feature 名保留");
+        assert!(text.contains("test-cases = []"), "feature 名保留");
+        assert!(
+            text.contains("auto-val = { path = \"../auto-val\" }"),
+            "闭包内依赖不动"
+        );
+        // 幂等：已修剪清单二次运行零改动
+        let stripped = std::fs::read_to_string(&m).unwrap();
+        delivery_apply_projection(&m).unwrap();
+        assert_eq!(std::fs::read_to_string(&m).unwrap(), stripped);
+        // 计数不足判红（结构漂移的 producer）
+        let drift = dir.path().join("drift.toml");
+        std::fs::write(
+            &drift,
+            "[dependencies]\nauto-val = { path = \"../auto-val\" }\n",
+        )
+        .unwrap();
+        assert!(delivery_apply_projection(&drift).is_err());
+    }
+
+    /// PLAN-792 端到端：generate_rust_ui_delivery 真实生成——镜像布局
+    /// （crates/ + 根级编译输入）、自包含应用清单（path 依赖 + pin 块）、
+    /// 资源 allowlist + hash、delivery-manifest.json 身份字段、外来目录
+    /// 显式拒绝、再交付（标记在案）重生成。不跑 cargo（锁/构建由交付
+    /// driver 的 V01/V02 覆盖——本测试是生成器内容门）。
+    #[test]
+    fn delivery_bundle_end_to_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let producer = test_producer_root();
+        let project = dir.path().join("proj");
+        let front = project.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "{ name: \"ui-minimal\", scene: \"ui\", render: \"rust\", window: \"fit\" }",
+        )
+        .unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            "widget App {\n    model {\n        var count int = 0\n    }\n    view {\n        col {\n            text `Count: ${.count}`\n            image (src: \"avatar.png\") {\n                style: \"w-16 h-16\"\n            }\n            button \"+1\" { onclick: () => {.count += 1} }\n            style: \"items-center gap-4 p-6\"\n        }\n    }\n}\n",
+        )
+        .unwrap();
+        std::fs::write(front.join("avatar.png"), b"\x89PNG-fixture-bytes").unwrap();
+
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(v) => std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", v),
+                    None => std::env::remove_var("AUTO_DELIVERY_SOURCE_ROOT"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_DELIVERY_SOURCE_ROOT"));
+        std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", &producer);
+
+        let delivery = dir.path().join("delivery");
+        generate_rust_ui_delivery(&project, &delivery).expect("交付生成失败");
+
+        // 镜像布局 + 根级编译输入
+        assert!(delivery.join("crates/auto-lang/src/lib.rs").is_file());
+        assert!(delivery
+            .join("crates/patches/iced_widget/src/lib.rs")
+            .is_file());
+        for rel in DELIVERY_ROOT_INPUTS {
+            assert!(delivery.join(rel).is_file(), "根级编译输入缺失：{rel}");
+        }
+        // 根 manifest：消费根 patch + default-members + app 成员
+        let root_manifest = std::fs::read_to_string(delivery.join("Cargo.toml")).unwrap();
+        assert!(root_manifest.contains("[patch.crates-io]"));
+        assert!(root_manifest.contains("default-members = [\"app\"]"));
+        assert!(root_manifest.contains("\"app\""));
+        // 投影修剪生效
+        let vendored =
+            std::fs::read_to_string(delivery.join("crates/auto-lang/Cargo.toml")).unwrap();
+        assert!(
+            !vendored.lines().any(|l| l.contains("autodown-core = ")),
+            "跨仓 optional dep 边剥除"
+        );
+        assert!(
+            !vendored.lines().any(|l| l.contains("auto-test-case = ")),
+            "测试协议 dep 边剥除"
+        );
+        assert!(
+            !vendored.contains("../../../auto-down"),
+            "跨仓 path 引用零残留（重定位安全）"
+        );
+        assert!(vendored.contains("test-cases = []"));
+        // 应用清单：自包含 path 依赖 + pin 块；无 workspace 继承
+        let app_manifest = std::fs::read_to_string(delivery.join("app/Cargo.toml")).unwrap();
+        assert!(app_manifest.contains("auto-lang = { path = \"../crates/auto-lang\" }"));
+        assert!(!app_manifest.contains(".workspace = true"));
+        assert!(
+            app_manifest.contains("wgpu-hal = { version = \"=27."),
+            "drift pin 在列"
+        );
+        // 生成 main.rs：handler + 本地资产引用（与开发模式同一编译相位）
+        let main_rs = std::fs::read_to_string(delivery.join("app/src/main.rs")).unwrap();
+        assert!(main_rs.contains("avatar.png"), "本地资产引用");
+        assert!(main_rs.contains("count"), "handler 状态字段");
+        // 资源 allowlist + hash
+        let asset = delivery.join("assets/avatar.png");
+        assert!(asset.is_file(), "资源入包");
+        let manifest: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(delivery.join("delivery-manifest.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["schema"], "generated-ui-delivery/1");
+        let resources = manifest["resources"].as_array().unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_eq!(resources[0]["rel"], "avatar.png");
+        let content = std::fs::read(&asset).unwrap();
+        assert_eq!(
+            resources[0]["blake3"].as_str().unwrap(),
+            blake3::hash(&content).to_hex().to_string(),
+            "资源 hash 与 producer 相等"
+        );
+        // producer 身份字段（git/ui_gen 指纹/来源可追溯）
+        assert!(manifest["producer"]["ui_gen_fingerprint"].is_string());
+        assert!(manifest["producer"]["source_root"].is_string());
+        // 闭包规模如实披露（受管包含语言源码——非纯 core）
+        assert_eq!(manifest["disclosure"]["includes_language_source"], true);
+        assert!(
+            manifest["disclosure"]["total_bytes"].as_u64().unwrap() > 1_000_000,
+            "auto-lang 全库规模明示"
+        );
+        assert!(manifest["pins"]["wgpu-hal"].is_string(), "pin 表在案");
+
+        // 再交付：标记在案 → 重生成成功
+        generate_rust_ui_delivery(&project, &delivery).expect("再交付失败");
+
+        // 外来目录显式拒绝（非空且无标记）
+        let foreign = dir.path().join("foreign");
+        std::fs::create_dir_all(&foreign).unwrap();
+        std::fs::write(foreign.join("mine.txt"), b"keep").unwrap();
+        assert!(generate_rust_ui_delivery(&project, &foreign).is_err());
+        assert!(foreign.join("mine.txt").is_file(), "外来内容不被覆盖");
+    }
+
+    /// PLAN-792：同包 source 重复显式拒绝——bundle 内两份同名 crate 即身份
+    /// 冲突红（构造：把 auto-val 目录复制为第二个成员位）。
+    #[test]
+    fn delivery_duplicate_crate_identity_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let crates = dir.path().join("crates");
+        for name in ["auto-lang", "auto-val", "dupe-as-val"] {
+            let c = crates.join(name);
+            std::fs::create_dir_all(&c).unwrap();
+            let pkg = if name == "auto-lang" {
+                "auto-lang"
+            } else {
+                "auto-val"
+            };
+            std::fs::write(
+                c.join("Cargo.toml"),
+                format!("[package]\nname = \"{pkg}\"\nversion = \"0.1.0\"\n"),
+            )
+            .unwrap();
+        }
+        let err = delivery_assert_unique_crates(dir.path(), "app");
+        assert!(err.is_err(), "同包 source 重复必须显式拒绝");
+        assert!(
+            delivery_assert_unique_crates(dir.path(), "auto-lang").is_err(),
+            "应用撞名拒绝"
+        );
+    }
+
 }
