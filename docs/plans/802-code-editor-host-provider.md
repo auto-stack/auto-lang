@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-802
-status: drafting
+status: executing
 feature_name: CodeEditor native 全族宿主能力迁移
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/code-editor-session-endpoints.md]
 new_spec_components: []
@@ -98,18 +98,22 @@ work命令：`cargo check -p auto-lang`，新consumer `cargo test --manifest-pat
 
 | 状态 | ID | owner_stage | 依赖 | 已核对路径/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 785/790/794已合、合同确认 | vm/native.rs/native_catalog.rs、ui/code_editor/core和701Spec，全22项旧臂/feature/栈/装配及端口清单 | 01/02/03 |
-| [ ] | T-02 | work | T01 | vm/host_capabilities及NativeInterface/AutoVM，owned provider/全部shim委托，check/定向V01/02 | 01/02 |
-| [ ] | T-03 | work | T02 | 新ui/code_editor_provider.rs（拟名）、统一安装及实际宿主入口，复用editor/scroll/clipboard，V04 | 03 |
-| [ ] | T-04 | work | T03 | 新no-ui consumer、VM/UI测试V01–05，delta/drop/真load/save/undo/fold及负控 | 01/02/03 |
-| [ ] | T-05 | work | T04 | V06真UI滚动/OS剪贴板，V07 777边界/792触面，共享窗口串行 | 03/04 |
-| [ ] | T-06 | work | T05 | 22映射/剩余边/净删与SD收据，提交冻结代码送审 | 04 |
+| [x] | T-01 | work | 785/790/794已合、合同确认 | 22 项旧臂/缺席/单位/弹序/方法粒度冻结：[t01-frozen-matrix.md](attachments/802/t01-frozen-matrix.md)（19 方法↔22 native 全映射；scroll_to 唯一值缺席臂；cut/copy/paste Option<bool> 组合特征臂；catalog/codegen 零改动裁定） | 01/02/03 |
+| [x] | T-02 | work | T01 | host_capabilities CodeEditorHostProvider（19 方法）/NativeInterface 槽+Clone+merge/AutoVM 快照+实例覆盖/22 shim 单态化委托；`cargo check` default+no-default PASS、定向 27/27（[收据](attachments/802/t06-work-receipt.md)§二） | 01/02 |
+| [x] | T-03 | work | T02 | 新 ui/code_editor_provider.rs（真注册表 adapter，剪贴板实现级第二门控返 None）+ 四漏斗装配（install_ui_host_capabilities/run_file_dynamic_ui_inner/VmBridge 两构造）；compat 单测 PASS | 03 |
+| [x] | T-04 | work | T03 | 新 no-ui consumer fixture（7 测试：V01 真VM全管线×2/V02 缺席矩阵+身份/V03 delta+ownership）+ in-crate plan802（7 测试：V04 装配寿命/V05 真注册表往返+文件IO+swap 寿命）；施工期发现预存局部槽≥16 限制（P802-D1，非本改面） | 01/02/03 |
+| [x] | T-05 | work | T04 | V06 真 controller 注册表投影链+真 arboard 剪贴板往返（保存恢复）PASS；live iced 窗口消费链如实登记条件缺口；V07 777 口径 52→23/剩余边清单/a2r 臂 25 处未动/792 闭包不变 metadata 证明（[收据](attachments/802/t06-work-receipt.md)§三/四） | 03/04 |
+| [x] | T-06 | work | T05 | 22映射/剩余边/净删与SD收据齐（[t06-work-receipt.md](attachments/802/t06-work-receipt.md)）；冻结代码 `4029dd705` 送审；merge 门 pending | 04 |
 | [ ] | T-07 | review | T06 | 同树独立反控/AC/SD审查，merge门保持pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、Spec/ledger/归档/wt-guard清理 | 06 |
 
 ## 9. 复审记录
 
 2026-10-17 / stage: new / PLAN-802 revision: 1 / outcome: pass / next: work（合同确认后）。仅合同预检通过，T/AC未实施；与799/800/803主写面分离，见[预检](attachments/extraction-next-20261017/preflight.md)。
+
+2026-10-17 / stage: work / PLAN-802 revision: 1 / T-01 完成：22项旧臂矩阵冻结（attachments/802/t01-frozen-matrix.md），取材 1dd123361；worktree 拟建 `D:/autostack/.wt/lang-802/auto-lang`、branch `plan-802-dev`（AGENTS.md 仓规命名——计划 §6 原拟 `codex/plan-802-dev` 系起草方前缀，路径/唯一树不变，非合同要素）。next: T-02。
+
+2026-10-17 / stage: work / PLAN-802 revision: 1 / outcome: pass（work-owned 全完成，送 final review） / worktree `D:/autostack/.wt/lang-802/auto-lang` / branch `plan-802-dev` / base `1dd123361` / code `4029dd705` / deps: auto-down sibling `c39ac7f` detached 只读 / task_ids: T-01..T-06 / evidence: [t06-work-receipt.md](attachments/802/t06-work-receipt.md)（fixture 7/7 + in-crate 7/7 + 定向 27/27；缺席矩阵逐字面值；真 controller/arboard 组件验证；vm/native.rs `crate::ui` 52→23 本族生产边清零；792 闭包不变 metadata 证明；a2r 臂未动）/ blockers: 无阻塞；如实登记 1 条件缺口（V06 live iced 窗口消费链未跑实机，补验条件已记）+ 1 施工期预存发现（局部槽≥16 限制→KNOWN-DEBT P802-D1）/ merge 门 pending：裸 `cargo t`+`cargo tv`（未触 ui_gen 故无 tu；无 aavm 触面）由 merge 在冻结提交执行 / next_responsible_role: review（T-07 同树独立反控/AC/SD 审查）。
 
 ## 10. 待澄清事项
 
