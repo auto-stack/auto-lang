@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-781
-status: execution_done
+status: archived
 feature_name: reader-runtime-prerequisites
 title: "Reader 框架前置：原生验收、段落锚点与10MiB导入"
 author: [Codex]
 created_at: 2026-10-14T00:00:00Z
 updated_at: 2026-10-15T00:00:00Z
 plan_revision: 3
-current_step: 23
+current_step: 25
 total_steps: 26
 supersedes_spec_components:
   - docs/specs/widgets/scroll-pane.md
@@ -172,36 +172,36 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 ### 阶段 A
 
-- [ ] AC-07: owner_stage=work；V-07真实split实例身份、独立数据和启动错误拒绝可观察，双实例不串线。
-- [ ] AC-08: owner_stage=work；V-08/V-09通过真实保存/冷启动链路取得结果；如现有consumer失败，通道须以等价框架正对照证明可用且明确记录Reader实际失败，不把其目标授PASS。
-- [ ] AC-09: owner_stage=work；V-10/V-11/V-13正负对照区分新鲜、失效、隐藏、剪裁与视口外目标；恢复后测试不补scroll，截图与几何来自同一窗口。
-- [ ] AC-10: owner_stage=work；V-12失败非零/required缺证据不pass、owned进程收尾、raw证据和冻结CLI/driver命令完整；正常产品默认行为与观测门控不回归。
+- [x] AC-07: owner_stage=work；V-07真实split实例身份、独立数据和启动错误拒绝可观察，双实例不串线。
+- [x] AC-08: owner_stage=work；V-08/V-09通过真实保存/冷启动链路取得结果；如现有consumer失败，通道须以等价框架正对照证明可用且明确记录Reader实际失败，不把其目标授PASS。
+- [x] AC-09: owner_stage=work；V-10/V-11/V-13正负对照区分新鲜、失效、隐藏、剪裁与视口外目标；恢复后测试不补scroll，截图与几何来自同一窗口。
+- [x] AC-10: owner_stage=work；V-12失败非零/required缺证据不pass、owned进程收尾、raw证据和冻结CLI/driver命令完整；正常产品默认行为与观测门控不回归。
 
 ### 阶段 B
 
-- [ ] AC-01: owner_stage=work；双端新API按真实布局使V-01/02/05目标可见，无字符占比和测试侧补滚动。
-- [ ] AC-02: owner_stage=work；V-03/04的pending、失败、绑定代际与作用域满足§5，不产生假完成。
-- [ ] AC-03: owner_stage=work；V-06及旧controller API/回声/滚动位保持不回归，managed边界明确。
-- [ ] AC-04: owner_stage=work；交付真实CLI文件hash、接口/fixture命令、Spec候选与Reader接入映射；明确001尚需业务接入和复审。
+- [x] AC-01: owner_stage=work；双端新API按真实布局使V-01/02/05目标可见，无字符占比和测试侧补滚动。
+- [x] AC-02: owner_stage=work；V-03/04的pending、失败、绑定代际与作用域满足§5，不产生假完成。
+- [x] AC-03: owner_stage=work；V-06及旧controller API/回声/滚动位保持不回归，managed边界明确。
+- [x] AC-04: owner_stage=work；交付真实CLI文件hash、接口/fixture命令、Spec候选与Reader接入映射；明确001尚需业务接入和复审。
 
 ### 阶段 C
 
-- [ ] AC-11: owner_stage=work；T-14冻结profile后V-14/V-15正负通过，默认10M与实例隔离成立，生产配置真实传到执行入口。
-- [ ] AC-12: owner_stage=work；V-16/V-18累计、让片、错误分类与单终态/取消/资源回收成立；不是解除预算保护。
-- [ ] AC-13: owner_stage=work；V-17的10MiB TXT/MD成功+逐字/字节核对+冷启动通过；V-19保留拒写保护，不能以错误路径代替成功。
-- [ ] AC-14: owner_stage=work；V-20调用面清单、支持边界、配置说明、CLI真实hash、原始结果和SD-05~SD-07候选齐全，Reader可用同一CLI/profile复验。
+- [x] AC-11: owner_stage=work；T-14冻结profile后V-14/V-15正负通过，默认10M与实例隔离成立，生产配置真实传到执行入口。
+- [x] AC-12: owner_stage=work；V-16/V-18累计、让片、错误分类与单终态/取消/资源回收成立；不是解除预算保护。
+- [x] AC-13: owner_stage=work；V-17的10MiB TXT/MD成功+逐字/字节核对+冷启动通过；V-19保留拒写保护，不能以错误路径代替成功。
+- [x] AC-14: owner_stage=work；V-20调用面清单、支持边界、配置说明、CLI真实hash、原始结果和SD-05~SD-07候选齐全，Reader可用同一CLI/profile复验。
 ### 阶段 D（审计缺口）
 
-- [ ] AC-15: owner_stage=work；W-01/W-02 双端全绿——标准 controller 句柄与任意合法 key 字符往返正确；嵌套 pane 归属不串线、inner-only not_found、managed 不误伤；既有 fixture 回归零破坏。
-- [ ] AC-16: owner_stage=work；W-03 oracle 落地且负例红——或修订路线经用户显式裁定记录在案+规范同步，无静默降级。
-- [ ] AC-17: owner_stage=work；W-04 三路生命周期断言绿（LegacyHttp 长忙路径绑定）；旧短路径证据引用全部替换为具体映射。
-- [ ] AC-18: owner_stage=work；四 finding 逐项闭合表（反例→不变量→修复→永久用例→结果）；T-01..T-18 归档面零改动；SD-08/09 候选冻结。
-- [ ] AC-19: owner_stage=work；阶段 E（2026-10-15 用户裁定新增）：`auto.str.byte_len` 原语带单测；Reader 章 meta 索引落地（导入一次扫描/章 GET 只读章窗/TOC 与统计直读 meta/缺失诚实失败）且 meta 路径与 parse_book_json 路径全章逐字节 parity；T-26 全章 oracle + W-03 损坏章负例通过。
+- [x] AC-15: owner_stage=work；W-01/W-02 双端全绿——标准 controller 句柄与任意合法 key 字符往返正确；嵌套 pane 归属不串线、inner-only not_found、managed 不误伤；既有 fixture 回归零破坏。
+- [x] AC-16: owner_stage=work；W-03 oracle 落地且负例红——或修订路线经用户显式裁定记录在案+规范同步，无静默降级。
+- [x] AC-17: owner_stage=work；W-04 三路生命周期断言绿（LegacyHttp 长忙路径绑定）；旧短路径证据引用全部替换为具体映射。
+- [x] AC-18: owner_stage=work；四 finding 逐项闭合表（反例→不变量→修复→永久用例→结果）；T-01..T-18 归档面零改动；SD-08/09 候选冻结。
+- [x] AC-19: owner_stage=work；阶段 E（2026-10-15 用户裁定新增）：`auto.str.byte_len` 原语带单测；Reader 章 meta 索引落地（导入一次扫描/章 GET 只读章窗/TOC 与统计直读 meta/缺失诚实失败）且 meta 路径与 parse_book_json 路径全章逐字节 parity；T-26 全章 oracle + W-03 损坏章负例通过。
 
 
 ### 整体复审与收尾
 
-- [ ] AC-05: owner_stage=review；固定同一实现commit/CLI/profile/consumer基线上，独立重放三阶段正负、调用覆盖与布局/生命周期反例，审SD-01~07；全部required通过才reviewed。
+- [x] AC-05: owner_stage=review；固定同一实现commit/CLI/profile/consumer基线上，独立重放三阶段正负、调用覆盖与布局/生命周期反例，审SD-01~07；全部required通过才reviewed。
 - [ ] AC-06: owner_stage=merge；实际合并/规范沉淀/归档/守卫清理与单一前置receipt完成，给001具体commit、接口、配置和通道命令；001仍须接入、实际复验及独立终审。
 
 ## 8. 执行步骤
@@ -253,7 +253,7 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
 
 - [x] T-06: owner_stage=work；依赖T-05/T-13/T-18；统一冻结SD-01~07候选、实现commit、CLI/driver/config/fixture hash、三阶段raw结果和Reader接入/复验命令；仅在全部work-owned AC完成后交execution_done。AC-04/10/14。
   [✅ 2026-10-15] 统一冻结记录见本节下方交接记录。SD-01~07 候选内容 = §5 规范增量表 + 两份决策报告（781-interface-decision r1-r6、781-budget-decision r1-r3）——发布归 T-08 merge（SD-02/04/05 为新文件候选：ui/design/scroll-child-anchor.md、ui/design/native-acceptance-channel.md、vm/design/handler-execution-budget.md；其余为既有文件 modify）。
-- [ ] T-07: owner_stage=review；依赖T-06；同一781树独立final review，重跑三阶段全部required oracle并独立选择新混排/失效/取消反例，核SD-01~07与整体承接；所有required通过才reviewed，不以单阶段绿灯代替全计划通过。AC-05。
+- [x] T-07: owner_stage=review；依赖T-06；同一781树独立final review，重跑三阶段全部required oracle并独立选择新混排/失效/取消反例，核SD-01~07与整体承接；所有required通过才reviewed，不以单阶段绿灯代替全计划通过。AC-05。
 - [x] T-08: owner_stage=merge；依赖T-07；按merge技能实际落地、规范沉淀、归档/守卫清理及到期批量门；统一交付781 dependency receipt到READER-001 T-25/T-26；不代替Reader业务接入及终审。AC-06。
   [✅ 2026-10-15] merge 收口（回执键 PLAN-781:r2）：**prepared** = reviewed dba0d7e5c + spec 沉积（SD-01~07：3 新 design + 4 modify + plans.md 双索引）；**landed** = rebase 线性重放 ×2（并发 master 前进两次均纯 docs 增量；range-diff 全等）→ ff-only，master tip = delivery `3e1b5fc03`；**ledger_refreshed** = .autoos/specs.json v17→v18（guarded offline projection——store 服务不可达 000；P781-D1/D2/D3/T1/R1/M 六条，file+tags 齐，无关节逐字节不变，回读验证过）；**门禁**（重放终点复跑）= 裸 cargo t 5353/5353 + tu 865/865 + th 135/137（两在案红：F-781-C03 预存 + plan730 boundary 单跑绿）+ plan781 24/24 + e2e 3/3；**cleaned** = wt-guard 复核（pnpm store junction ~350 个按闸门处方逐链接 cmd /c rmdir 剥除后 clean）→ worktree/分支移除 + auto-down 兄弟（普通克隆，guard clean）+ 组目录删除（2026-10-15 实证）；**READER-001 receipt** = T-25/T-26 解阻：锚点 API（scroll-anchor DSL + 9922/9923 + reading.at 接入映射）+ 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）+ 复验命令（scripts/tools/test_reader_import_budget.py --auto-bin <cli> --reader-dir <checkout>）；001 仍须业务接入、实际复验与独立终审（AC-06 不代替）。
 
@@ -329,6 +329,31 @@ T-14限一个调查交接轮：用匹配CLI、隔离HTTP实例与10MiB fixture�
   [✅ R04/R05 修复轮收口 2026-10-15] 见 §9「R04/R05 修复轮收口」：R04/R05/E01 三行闭合更新（CPU 段取消 + E01 引擎根修 + reader 终形态）、SD-09/SD-11 修正（复审三点：CLI hash 纠正为 226954ac…、SD-11 补 Reader canonical 路径与 ph1 指纹诚实描述、CPU 协作取消入 SD-09）、冻结块刷新（lang 33a9a6a94 / reader 97ceba9 / CLI 6c164733…）、定向验收（tv 163/163 语料档含 E01 触面、th 141/143 两红在案、plan705/702/712/624/567 34/34 帧/catch 族、plan781 29/29 含 E01 永久回归、t01-t07 + 反例回放 + 性能复测）。
 
 ## 9. 复审记录
+
+### T-07 最终复审（review-r11，2026-10-16，pass）
+
+stage=review | plan_revision=3 | outcome=**pass** | reviewed_commit=3dca8a39c | evidence=[r11 完整报告](reports/781-final-review-r11-20261016.md)：R08 全反例关闭；130 项定向测试 + 57 项原生锚点 + 9 项通道验收通过；MD 1346 章、TXT 冷启动 1347 章、W-03 损坏负例通过。R01..R08（含 E01/R05-R08 修复轮）全部闭合。
+
+### T-08 合并收口（PLAN-781:r3，2026-10-16）
+
+- **prepared** = reviewed 3dca8a39c + SD-01..12 canonical delta（docs-only 后代 32ad23a58 → rebase 后 delivery=**17d73db9e**，range-diff 18/18 全等）。
+- **landed** = master 两次 rebase（并行 785 会话推进 master 后重放，两次 range-diff 全等）→ `git merge --ff-only`：master tip == 17d73db9e == delivery（TIP==DELIVERY 实证；30 files +2456/−106，SD-10/12 新规范入 main）。
+- **gates（冻结 delivery 17d73db9e 实跑）** = 裸 `cargo t` **5382/5382**（首轮一个瞬态 flake 即刻全量复跑全绿）+ `cargo tv` **163/163** + `cargo tu` **867/0（2 ignored）** + `cargo th` **142/144**（F-781-C03 预存在单跑同红 + plan730 boundary 在案 flake 单跑绿）。
+- **ledger_refreshed** = `.autoos/specs.json` v29→**v30** 受管离线投影（store 不可达；字节级备份+外科手术范围+schema 六节校验+回读断言；P781-D1..D4 designs 更新/新增、P781-T1 tests、P781-R1 reviews、P781-M1 reports——file/tags 齐）。
+- **archived** = 本文件 git mv 至 docs/plans/archive/ + status: archived；plans.md 双索引行 + spec-index.py 再生成（下方 cleaned 后提交）。
+- **cleaned** = lang worktree `D:/autostack/.wt/lang-781/auto-lang` wt-guard clean → worktree/分支移除 + 组目录删除；**auto-reader worktree（plan-781e-meta-index @7bb1869）保留**——READER-001 为其业务终审 owner（回执见下）。
+- **READER-001 dependency receipt（T-25/F-26 解阻）**：锚点 API（scroll-anchor DSL + 9922/9923 + 归属/身份语义）+ 导入 profile（AUTO_HTTP_STEP_BUDGET=1000000000 + AUTO_HTTP_REQUEST_TIMEOUT_MS=300000）+ 章 meta 索引架构（branch plan-781e-meta-index @7bb1869：meta 边车/窗读/数字域准入/parity——本仓 CLI 9a6a3612/287dd67d 系列可复验，驱动 scripts/tools/test_reader_import_budget.py + t01-t07 规格）+ 已知边界（F-781-C01/C02/E02 在案）。001 仍须业务接入、实际复验与独立终审。
+- **产物时效（Landing≠deployment）**：`target/release/auto.exe` 未重建（开发仓无运行中生产进程；如需发布档 `cargo build --release`）；reader 生产部署独立归 001。
+- **批量回归**：**DUE**——785%5==0 已于其收据具名（781%5≠0 不新增触发）；交 `/auto-plan:regress` 主检出单实例执行。
+
+
+### T-07 再次最终复审（2026-10-16，review-r11，final pass）
+
+stage=review | review_scope=final | reviewer_identity=本次独立审查上下文，未参与实现、未委派agent | plan_id=PLAN-781 | plan_revision=3 | outcome=pass | worktree_path=D:/autostack/.wt/lang-781/auto-lang | branch=plan-781-dev | reviewed_commit=3dca8a39c62596b93de9785b9ac940f904983b32 | base_commit=491e84afbdcbfa3e05755596f5fb8d5187ba2f3a | dependency_revisions=auto-reader@7bb1869aef771e8d02b953f25598361a0516b14d | spec_inputs/acceptance_results/evidence=[r11最终报告](reports/781-final-review-r11-20261016.md)、attachments/781/review-r11/及报告逐项绑定的r8/r10未变触面证据 | findings=R01..R08与H-781-01验收缺口关闭，无新阻断 | pending_closeout_gates=merge-owned裸t+tv+tu+tt+th及Reader自有门禁pending；tf仅merge到期判定后主检出批量档 | next=merge，门禁通过/规范沉淀/实际合入/新receipt/归档清理尚未执行。
+
+**本轮结论**：根path=[]合法键入链，根级无controller第6行与显式pane同为clipped_out，可见首行/根controller保持；短pane、foreign、混合嵌套反例全部exit0。Rust定向130/130、a2r签名配对1/1、原生锚点57/57、原生通道9/9通过并owned-port sweep clean。复用依据明确：自r8至当前净变更仅mcp_server.rs，Reader/预算/HTTP/类型/Vue/trans及输入无变，重验fixture哈希匹配；r8的Vue59、Reader66、预算/生命周期/引用配平及r10的MD1346章、TXT冷启动1347章、W-03损坏/恢复均保留有效。SD-01..12通过，冻结hash=32656cd0…；CLI=9a6a3612…；依赖/HEAD/配置核对无漂移。AC-01..05及07..19通过，AC-06仍归merge；Reader业务终审不被此pass代替。Plan置reviewed，**不表示已交付/可跳门禁合入**。
+
+**当前进度归一化**：T-07标完成；T-08勾选改为本次阶段D/E合入待办（原r2 T-08历史落地、规范与清理记录原文完整保留，不否认既往交付），故当前完成25/26。只变进度和审查记录，不改任务含义/验收目标及plan_revision；merge前不得宣称本轮T-08完成。
 
 
 ### T-07 再次最终复审（2026-10-16，review-r10，needs_fix）

@@ -4,6 +4,20 @@
       "id": "reports",
       "items": [
         {
+          "id": "P781-M1",
+          "title": "PLAN-781 merge 沉积回执（r3 阶段 D/E 收口）",
+          "content": "delivery 17d73db9e（rebase 全等 18/18，ff-only）；冻结门禁 裸 t 5382/5382 + tv 163/163 + th 142/144（F-781-C03 预存+plan730 flake 单跑绿）+ tu 867/0；SD-01..12 沉积（2 新原语规范+6 modify）；reader 分支 7bb1869 留 READER-001 终审；批量回归到期（785%5==0 触发）交 /auto-plan:regress。",
+          "status": "delivered",
+          "file": "docs/plans/781-reader-runtime-prerequisites.md",
+          "tags": [
+            "PLAN-781",
+            "r3",
+            "merge",
+            "17d73db9e",
+            "2026-10-16"
+          ]
+        },
+        {
           "id": "P786-M",
           "title": "PLAN-786 合入沉淀收据（展示字段读取收口交付）",
           "file": "docs/plans/reports/786-display-reader-merge.md",
@@ -4205,6 +4219,20 @@
       "id": "designs",
       "items": [
         {
+          "id": "P781-D4",
+          "title": "原语 str.byte_len / type_of（VM+a2r 双轨/所有权）",
+          "content": "auto.str.byte_len（nat#1526，UTF-8 字节长度，与 File.read_text_range 游标同空间，a2r 双轨+parity）；auto.type_of（nat#1527，运行时类型谓词——0.0/int 0 可靠分离；多态参数消费须 pop_arg_nv+StakeGuard 配平 R07；白名单避让防动态撞号）。canonical: docs/specs/stdlib/design/primitive-str-byte-len.md + primitive-type-of.md",
+          "status": "active",
+          "file": "docs/specs/stdlib/design/primitive-type-of.md",
+          "tags": [
+            "PLAN-781",
+            "r3",
+            "17d73db9e",
+            "6bd61174d2e9",
+            "5376cd3671cb"
+          ]
+        },
+        {
           "id": "P786-D2",
           "title": "project-model 首个有限生产消费者与消费侧安全前置（开启括号计数包络）",
           "file": "docs/specs/project-model/project.md",
@@ -6928,33 +6956,42 @@
         },
         {
           "id": "P781-D1",
-          "title": "子内容锚点（scroll-anchor/9922/9923）双端合同",
-          "content": "scroll-anchor DSL（可挂任意元素，pane 归属=最近 ordinary scroll-pane）+ auto.scroll.to_child/anchor_state（回执 queued/error；状态 pending/applied/invalid）+ nearest 冻结公式（顶/底对齐三分支+clamp）；代际语义=首绑前入队采用当前绑定/换绑 not_bound/当帧 key 消失一次性 not_found；managed/virtual/X 轴 unsupported；vue 轨=pane 作用域公式直算（scrollIntoView 级联滚动被裁定排除）。",
+          "title": "子内容锚点（scroll-anchor/9922-9923）双端合同",
+          "content": "ordinary scroll-pane 稳定子 key 定位：DSL scroll-anchor + native to_child/anchor_state（回执非完成证明）；身份=不透明序号+build 期注册表（R01——@scrollctl:N/任意合法字符 key 往返无损）；vue 全 pane data-scroll-pane 所有权标记+最近 pane 归属过滤（R02——嵌套零串线）；nearest 三分支冻结公式与代际语义。canonical: docs/specs/auto-lang/ui/design/scroll-child-anchor.md + docs/specs/widgets/scroll-pane.md",
           "file": "docs/specs/auto-lang/ui/design/scroll-child-anchor.md",
           "tags": [
-            "plan:781",
-            "commit:3e1b5fc03"
-          ]
+            "PLAN-781",
+            "r3",
+            "17d73db9e",
+            "f7f037768f17"
+          ],
+          "status": "active"
         },
         {
           "id": "P781-D2",
-          "title": "原生验收通道合同（split VM 真实实例证据）",
-          "content": "auto run -r vm --no-merge 真实实例上的动作/帧身份/裁剪几何/冷启动证据合同：身份三件套、/__auto/health/live 就绪、autoui_scroll_state/autoui_visibility 只读 oracle（content-space 坐标，窗口化仅减 offset）、恢复期零驱动滚动纪律、owned-port sweep。驱动 scripts/tools/test_native_reader_acceptance.py。",
-          "file": "docs/specs/auto-lang/ui/design/native-acceptance-channel.md",
+          "title": "HTTP handler 执行预算与取消语义（LegacyHttp）",
+          "content": "AUTO_HTTP_STEP_BUDGET 请求级累计上限（跨 park/resume 不重置，耗尽=指名 500 资源拒绝）；取消生效面=park 边界∪引擎 50k 步协作探测（连续 CPU 段终态后无迟到副作用）；排水截止按服务代际归属（重启不污染）；RST 影子句柄侦测（hyper h1 挂起期读侧盲区）；FIN=半关闭契约。canonical: docs/specs/auto-lang/vm/design/handler-execution-budget.md",
+          "file": "docs/specs/auto-lang/vm/design/handler-execution-budget.md",
           "tags": [
-            "plan:781",
-            "commit:3e1b5fc03"
-          ]
+            "PLAN-781",
+            "r3",
+            "17d73db9e",
+            "357397a087e4"
+          ],
+          "status": "active"
         },
         {
           "id": "P781-D3",
-          "title": "HTTP handler 请求级累计执行预算",
-          "content": "env AUTO_HTTP_STEP_BUDGET（宿主可信，1..=4G 严格十进制，非法启动期指名非零退出；默认 10M 逐字节不变）→ DriveBudget::LegacyHttp：段帽=policy、跨 park/resume/嵌套 fn 累计不重置（task.cpu_steps_total）、逐指令精确（N-1/N/N+1 可控）、耗尽=指名资源拒绝。入口矩阵=命名段派发/closure/同步+段恢复；SSE 帧/UI bridge/back_proxy/middleware 维持既有。长导入 profile=双 env（+AUTO_HTTP_REQUEST_TIMEOUT_MS）。已知边界 F-781-C01（段泵串行公平性，新计划候选）。",
-          "file": "docs/specs/auto-lang/vm/design/handler-execution-budget.md",
+          "title": "原生验收通道与 pane 链结构解析",
+          "content": "split VM+HTTP 真实实例的动作/帧身份/裁剪几何/冷启动证据合同；autoui_visibility 的 pane 链=结构法主路径（VTree 祖先链，含无 controller/根级空路径 pane；有效空链=权威 no_pane）——归属与可见性裁剪分离（R08/R09/R08-C：被裁子节点不假 visible、pane 外节点不被投影误认领）。canonical: docs/specs/auto-lang/ui/design/native-acceptance-channel.md",
+          "file": "docs/specs/auto-lang/ui/design/native-acceptance-channel.md",
           "tags": [
-            "plan:781",
-            "commit:3e1b5fc03"
-          ]
+            "PLAN-781",
+            "r3",
+            "17d73db9e",
+            "e314c3aac5d8"
+          ],
+          "status": "active"
         },
         {
           "id": "P780-D1",
@@ -8495,13 +8532,15 @@
         },
         {
           "id": "P781-T1",
-          "title": "双端锚点矩阵 + 预算测试资产",
-          "content": "examples/capability-tests/p781-scroll-child-anchor/（vm_probe 41 + vue_probe 43，V-01~06 全矩阵）；cargo t plan781（24：V-14/15/16 单测族）+ cargo th http_e2e_plan781（3：低预算指名拒/宽预算成/断连不楔死）；scripts/tools/test_reader_import_budget.py + test/fixtures/reader-import-budget/（V-14/15/17/18/19/20；10MiB 双端格式 + 逐章 sha256 边车）。",
-          "file": "scripts/tools/test_reader_import_budget.py",
+          "title": "PLAN-781 测试资产（预算/生命周期/锚点/通道/原语）",
+          "content": "plan781 单测族（预算/累计/配置/closure/归属/结构链/type_of 含终态平衡）+ th W-04 生命周期族（park 三路+CPU 四路+重启）+ 双端锚点 fixture（p781-scroll-child-anchor 41+43→57/59）+ 原生通道驱动（v07~v13）+ reader-import-budget 全链（deep 全章 oracle）。cargo t plan781 33/33、tv 163/163、th 142/144（两红在案）、tu 867/0。",
+          "file": "crates/auto-lang/src/tests/plan781_budget_tests.rs",
           "tags": [
-            "plan:781",
-            "commit:3e1b5fc03"
-          ]
+            "PLAN-781",
+            "r3",
+            "17d73db9e"
+          ],
+          "status": "active"
         },
         {
           "id": "P780-T",
@@ -11453,15 +11492,16 @@
         },
         {
           "id": "P781-R1",
-          "title": "PLAN-781 最终独立复审 pass（局限：实施会话兼任）",
-          "content": "final pass @ reviewed dba0d7e5c（重放基线 CLI b7f09980744a）：三阶段 required oracle 全重放（阶段 A 核心 5/5 + 阶段 B 41/41+43/43 + 阶段 C 24/24+3/3+12/12）+ 独立新反例（导入中途杀进程 3/3 无部分写；梯度 200K 同实例 4KiB 成/256KiB 指名拒/服务继续 4/4）；SD-01~07 审过；实施会话兼任复审的局限显式记录；merge 门禁（裸 t 5353/5353、tu 865/865、th 135/137 两在案红归因）在重放终点复跑。",
-          "file": "docs/plans/781-reader-runtime-prerequisites.md",
+          "title": "PLAN-781 最终独立复审（r11，pass）",
+          "content": "review-r11 pass：R01..R08 全反例关闭（CPU 取消/E01 根修/R05 数字域/R06 服务代际/R07 所有权/R08 结构归属含根级空路径）；130 项定向测试+57 原生锚点+9 通道验收通过；MD 1346 章/TXT 冷启动 1347 章/W-03 损坏负例通过。报告 docs/plans/reports/781-final-review-r11-20261016.md。",
+          "file": "docs/plans/reports/781-final-review-r11-20261016.md",
           "tags": [
-            "plan:781",
-            "reviewed:dba0d7e5c",
-            "plan_revision:2",
-            "rebased:3e1b5fc03"
-          ]
+            "PLAN-781",
+            "r3",
+            "pass",
+            "17d73db9e"
+          ],
+          "status": "verified"
         },
         {
           "id": "P775-R7",
@@ -11575,5 +11615,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 29
+  "version": 30
 }
