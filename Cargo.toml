@@ -19,6 +19,10 @@ members = [
     # PLAN-789: lexical foundation crate (Token/Lexer single source,
     # extracted verbatim from auto-lang; no auto-lang/auto-man/UI deps).
     "crates/auto-lex",
+    # PLAN-793: diagnostics foundation crate (AutoError aggregation +
+    # syntax/type/name/runtime/comptime/warning families, extracted verbatim
+    # from auto-lang; no AST/parser/VM/UI deps).
+    "crates/auto-diagnostics",
     # PLAN-780: light static project-model for pac.at (pilot probe; depends
     # only on auto-atom/auto-val — no compiler/VM/UI types cross this boundary)
     "crates/auto-project-model",
@@ -103,6 +107,17 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/package-lock-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/package-lock-consumer/verify-deps.sh
     "test/fixtures/modularity/package-lock-consumer",
+    # PLAN-793: 外部诊断消费方探针——独立 fixture crate（仅依赖
+    # auto-diagnostics/auto-lex/miette，证明诊断基础无 auto-lang/Man/UI
+    # 闭包可用），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/diagnostics-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/diagnostics-consumer/verify-deps.sh
+    "test/fixtures/modularity/diagnostics-consumer",
+    # PLAN-793: 互操作消费方探针——独立 fixture crate（同时依赖 auto-lang
+    # 与 auto-diagnostics，证明新旧路径同一类型互传+真实管线错误阶段保持），
+    # 门禁经
+    # cargo test --manifest-path test/fixtures/modularity/diagnostics-interop-consumer/Cargo.toml
+    "test/fixtures/modularity/diagnostics-interop-consumer",
 ]
 resolver = "2"
 

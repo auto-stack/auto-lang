@@ -1,0 +1,28 @@
+# PLAN-793 V03 互操作消费方 gate（独立 fixture crate）。
+#
+# 角色：模拟同时消费 auto-lang 与 auto-diagnostics 的外部 crate——证明
+# `auto_lang::error::*` 兼容门面与 `auto_diagnostics::error::*` 新路径是
+# **同一类型**（编译期互传 + 运行期投影一致）：真实 parse/compile/route
+# 管线错误经 auto_lang 入口产生，再经 auto_diagnostics 的 attach_source/
+# format_error/From 走完整链路，错误阶段保持、坏输入不成功/不吞错。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，空 [workspace] 表使其
+# 成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。
+#
+# 门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/diagnostics-interop-consumer/Cargo.toml
+
+[package]
+name = "diagnostics-interop-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-lang = { path = "../../../../crates/auto-lang" }
+auto-diagnostics = { path = "../../../../crates/auto-diagnostics" }
+# Diagnostic trait 投影面（code/severity/labels/help）。
+miette = "7.2"
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

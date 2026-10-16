@@ -31,10 +31,13 @@ schema = "module-boundaries/1"
 "auto-atom" = "data"
 "auto-val" = "data"
 # 语言核心域（Design 37 §2"语言"行的已拆出部分）——PLAN-789 首个成员
-# auto-lex（Token/Lexer/词法错误单一来源，自 auto-lang 逐字抽取交付）。
+# auto-lex（Token/Lexer/词法错误单一来源，自 auto-lang 逐字抽取交付）；
+# PLAN-793 增 auto-diagnostics（AutoError 聚合 + 各族诊断单一来源，
+# 自 auto-lang 逐字抽取，无 AST/parser/VM/UI 依赖）。
 # 与 lang-monolith 的关系：单向 lang-monolith → lang-core（抽取方向）；
 # lang-core 禁反向依赖 lang-monolith/man/工具/UI。
 "auto-lex" = "lang-core"
+"auto-diagnostics" = "lang-core"
 # 语言工具基建（被 auto-lang 消费的底层 util/生成/测试基建）。
 "auto-cache" = "lang-infra"
 "shim-metadata" = "lang-infra"

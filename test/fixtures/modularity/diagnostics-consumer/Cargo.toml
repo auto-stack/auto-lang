@@ -1,0 +1,31 @@
+# PLAN-793 V01 外部诊断消费方 gate（独立 fixture crate）。
+#
+# 角色：模拟"外部 crate"——manifest 即验收证据：正常依赖只有 auto-diagnostics
+#（诊断单一来源）与 auto-lex（LexError/LexerError 构造面，本就在
+# auto-diagnostics 闭包内），构建+测试成功证明诊断基础可脱离
+# auto-lang/auto-man/auto-vm/UI 独立消费（AC-01：正常/build 闭包无
+# auto-lang/Man/UI、非借主库 rlib——本目录显式脱离根 workspace，
+# 空 [workspace] 使其成为独立解析单元）。
+#
+# 门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/diagnostics-consumer/Cargo.toml
+# 依赖闭包断言（V01 oracle）：
+#   bash test/fixtures/modularity/diagnostics-consumer/verify-deps.sh
+
+[package]
+name = "diagnostics-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-diagnostics = { path = "../../../../crates/auto-diagnostics" }
+# LexError/LexerError 构造面（From<LexError> 映射验收）；auto-lex 本就是
+# auto-diagnostics 的正常依赖，闭包不因它扩大。
+auto-lex = { path = "../../../../crates/auto-lex" }
+# Diagnostic trait 投影面（code/severity/labels）；与 auto-diagnostics 的
+# workspace miette 7.x 统一解析为同一实例。
+miette = "7.2"
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

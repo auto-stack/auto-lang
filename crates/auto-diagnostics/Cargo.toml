@@ -1,0 +1,21 @@
+[package]
+name = "auto-diagnostics"
+version = "0.1.0"
+edition = "2021"
+description = "AutoLang diagnostics foundation: AutoError aggregation + syntax/type/name/runtime/comptime/warning families + source attach/format (PLAN-793 extraction from auto-lang; no AST/parser/VM/UI dependency)"
+license = "MIT"
+
+[dependencies]
+# TypeError::CannotModifyViewParam 载荷 AutoStr（= auto-lang ast::Name 的
+# 同一底层类型 ecow::EcoString，字段类型身份保持，无 AST 依赖）。
+auto-val = { path = "../auto-val" }
+# LexerError/LexError 单一定义与 span 助手（PLAN-789 边界保持：
+# 结构化五变体经 re-export 同一类型，Raw 经 From 映射 Msg）。
+auto-lex = { path = "../auto-lex" }
+# 诊断投影 derive（code/severity/help/labels/span）。
+miette = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# V02 golden 重放（tests/ 集成测试读取冻结 JSON 对拍）。
+serde_json = { workspace = true }
