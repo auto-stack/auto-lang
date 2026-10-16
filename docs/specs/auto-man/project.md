@@ -49,6 +49,29 @@ AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析�
   auto-man；本抽取不解除 `auto-man→auto-lang` 依赖边。此 pac.lock 与
   PLAN-792 的 Cargo.lock 发行锁为不同合同。
 
+## 依赖解析核心抽取分工（PLAN-800）
+
+已解析依赖视图与模块路径规则的单一定义在 `crates/auto-package-resolver`
+（见 [package-resolver spec](../package-resolver/project.md)）；
+`auto-man/src/resolver.rs` 是语言 adapter + 兼容门面：
+
+- **adapter 职责**（留在 auto-man）：`ExecutionMode`（解析/默认/alias 语义）、
+  `ModulePath`/`PathPrefix`/`ModuleResolver` trait 实现接线、pac.at legacy 行
+  扫描（`prepare_env`/`load_pac_at`：mode:/use/dep:/("pkg", mode:) 形态与
+  警告/缺文件/坏 mode 行为原样）、Pac/Super/None 前缀对语言
+  `FilesystemResolver::with_package_root(project_root)` 的委托。
+- **门面契约**：旧公开 `Dependency` = 核心泛型条目的语言侧实例
+  （`DependencyEntry<ExecutionMode>` 类型别名——字段形状与
+  `new`/`with_default_mode` 调用面保持）；`AutoManResolver` 全部公开方法/
+  返回类型保持，`get_dependencies()` 直接借用核心内**单一权威 map**
+  （无第二份 map/路径算法）；同名 `add_dependency` 替换后立即解析正确。
+- **行为冻结**：resolve 三臂无盘构造、exists 差异（无 package.at 臂/键即真）、
+  歧义不得成功、错误文本逐字、search 插入序与候选序均按 b0d6d4aab 旧臂冻结
+  （T-01 冻结表：`docs/plans/attachments/800/t01-freeze.md`）。
+- **未迁清单**：语言 trait/AST 前缀/ExecutionMode/pac.at 扫描/Target/build/
+  Git/动态配置/CLI 留 adapter；不复制第二套 ExecutionMode 解析器或 pac parser
+  （780 源配置模型与 795 锁 core 所有权不变）。
+
 **标准多包消费样例（PLAN-637）**：`examples/ui/stylekit` 为声明门控的
 canonical 消费示范——消费方 pac.at 声明 `dep stylekit { path: "../../ui/stylekit" }`
 （相对路径形态）后即可 `use stylekit.styles: <name>` 导入 pub 配方；截至
@@ -200,7 +223,7 @@ graph LR
 |---|---|---|
 | automan | 核心编排：命令分发、工程上下文 | active |
 | pac | pac.at 包定义解析与模型 | active |
-| resolver | 依赖解析（ModuleResolver trait 实现） | active |
+| resolver | 依赖解析（ModuleResolver trait 实现；PLAN-800 起为语言 adapter——ExecutionMode/pac.at 行扫描/trait 接线留此，路径规则单一定义在 auto-package-resolver，见上节） | active |
 | builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号 | active |
 | exporter | IDE 工程导出：cmake / ghs / iar | active |
 | git / index / lock / pull | 依赖获取、注册索引、锁文件（PLAN-795 起 lock 为 Target/Git adapter+兼容门面，规则单一定义在 auto-package-lock，见上节） | active |

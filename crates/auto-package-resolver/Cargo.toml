@@ -1,0 +1,17 @@
+[package]
+name = "auto-package-resolver"
+version = "0.1.0"
+edition = "2021"
+description = "Resolved dependency view and module path resolution core, extracted Target/mode-free from auto-man resolver.rs (PLAN-800)"
+license = "Proprietary"
+keywords = ["automation", "package-manager", "resolver"]
+
+[dependencies]
+# std-only core: the resolver rules below must not depend on
+# auto-lang/auto-man/auto-vm/auto-val or any interpreter/UI stack — the
+# closure is pinned by test/fixtures/modularity/package-resolver-consumer
+# (PLAN-800 V01) and the module-boundaries strict baseline
+# ("auto-package-resolver" = man-ecosystem).
+
+[dev-dependencies]
+tempfile = { workspace = true }

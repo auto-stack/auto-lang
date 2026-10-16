@@ -1,43 +1,30 @@
 // Plan 078 Stage 3: AutoMan-based Module Resolver
 //
 // Plan 081 Phase 3: Track ExecutionMode per dependency
+//
+// PLAN-800: 依赖视图（name→path→mode 单一 map）、包路径候选
+// （find_package_path）、依赖内模块判定（file.at/mod.at/歧义）与
+// std/相对/命名依赖/search 路径命名规则已抽至 auto-package-resolver
+// 轻核心（std-only，路径算法不再有第二份实现）。本文件是语言适配层：
+// ExecutionMode、ModulePath/PathPrefix/ModuleResolver trait、pac.at legacy
+// 行扫描（prepare_env/load_pac_at）与 Pac/Super/None 前缀对
+// FilesystemResolver 的委托留在此 adapter。
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use auto_lang::resolver::ModuleResolver;
 use auto_lang::mode::ExecutionMode;
 use auto_lang::ast::{ModulePath, PathPrefix};
-use auto_val::AutoStr;
+use auto_package_resolver::PackageResolverCore;
 
 /// Dependency with execution mode
 ///
 /// **Plan 081**: Each dependency can specify its execution mode
 /// (autovm, evaluator, c, rust) independently.
-#[derive(Debug, Clone)]
-pub struct Dependency {
-    /// Dependency name
-    pub name: String,
-    /// Path to the dependency
-    pub path: PathBuf,
-    /// Execution mode for this dependency
-    pub mode: ExecutionMode,
-}
-
-impl Dependency {
-    /// Create a new dependency
-    pub fn new(name: String, path: PathBuf, mode: ExecutionMode) -> Self {
-        Self { name, path, mode }
-    }
-
-    /// Create a dependency with default mode (AutoVM)
-    pub fn with_default_mode(name: String, path: PathBuf) -> Self {
-        Self {
-            name,
-            path,
-            mode: ExecutionMode::default(), // AutoVM
-        }
-    }
-}
+///
+/// PLAN-800: 核心泛型条目的语言侧实例（类型别名保持字段形状与
+/// `new`/`with_default_mode` 调用面；mode 对核心不透明）。
+pub type Dependency = auto_package_resolver::DependencyEntry<ExecutionMode>;
 
 /// AutoMan-based module resolver
 ///
@@ -49,18 +36,12 @@ impl Dependency {
 ///
 /// **Plan 081 Phase 3**: Each dependency can specify its execution mode
 pub struct AutoManResolver {
-    /// Standard library root directory
-    std_root: PathBuf,
-    /// Project root directory
-    project_root: PathBuf,
-    /// Package dependencies from pac.at
-    /// **Plan 081**: Now includes mode information
-    dependencies: HashMap<String, Dependency>,
+    /// PLAN-800: 单一权威核心——依赖 map、search paths、std/project roots
+    /// 与全部语言无关路径规则（adapter 不留副本 map）
+    core: PackageResolverCore<ExecutionMode>,
     /// Default execution mode for this project
     /// **Plan 081**: Read from `mode:` field in pac.at
     default_mode: ExecutionMode,
-    /// Additional search paths
-    search_paths: Vec<PathBuf>,
 }
 
 impl AutoManResolver {
@@ -81,11 +62,8 @@ impl AutoManResolver {
     /// ```
     pub fn new(project_root: PathBuf, std_root: PathBuf) -> Self {
         Self {
-            std_root,
-            project_root,
-            dependencies: HashMap::new(),
+            core: PackageResolverCore::new(project_root, std_root),
             default_mode: ExecutionMode::default(), // Plan 081: AutoVM is default
-            search_paths: Vec::new(),
         }
     }
 
@@ -99,7 +77,7 @@ impl AutoManResolver {
     /// * `Err(AutoManError)` - Error reading or parsing pac.at
     pub fn prepare_env(mut self) -> Result<Self, crate::AutoManError> {
         // Try to read pac.at from project root
-        let pac_path = self.project_root.join("pac.at");
+        let pac_path = self.core.project_root().join("pac.at");
 
         if pac_path.exists() {
             // Parse pac.at and load dependencies
@@ -161,22 +139,24 @@ impl AutoManResolver {
                 let package_name = rest.trim().trim_matches('"');
 
                 // Try to find the package in standard locations
-                if let Ok(pkg_path) = self.find_package_path(package_name) {
-                    let dep = Dependency::with_default_mode(
+                if let Ok(pkg_path) = self.core.find_package_path(package_name) {
+                    // Plan 081 frozen: use/dep: rows get the hard AutoVM
+                    // default (with_default_mode), not the project default_mode
+                    self.core.add_dependency(
                         package_name.to_string(),
-                        pkg_path
+                        pkg_path,
+                        ExecutionMode::default(),
                     );
-                    self.dependencies.insert(package_name.to_string(), dep);
                 }
             } else if let Some(rest) = line.strip_prefix("dep:") {
                 let package_name = rest.trim().trim_matches('"').trim();
 
-                if let Ok(pkg_path) = self.find_package_path(package_name) {
-                    let dep = Dependency::with_default_mode(
+                if let Ok(pkg_path) = self.core.find_package_path(package_name) {
+                    self.core.add_dependency(
                         package_name.to_string(),
-                        pkg_path
+                        pkg_path,
+                        ExecutionMode::default(),
                     );
-                    self.dependencies.insert(package_name.to_string(), dep);
                 }
             }
             // **Plan 081 Phase 3**: Parse dependency with mode specification
@@ -207,13 +187,12 @@ impl AutoManResolver {
                             };
 
                             // Try to find the package
-                            if let Ok(pkg_path) = self.find_package_path(package_name) {
-                                let dep = Dependency::new(
+                            if let Ok(pkg_path) = self.core.find_package_path(package_name) {
+                                self.core.add_dependency(
                                     package_name.to_string(),
                                     pkg_path,
-                                    mode
+                                    mode,
                                 );
-                                self.dependencies.insert(package_name.to_string(), dep);
                                 log::info!("Dependency '{}' with mode '{}'", package_name, mode.as_str());
                             }
                         }
@@ -222,46 +201,15 @@ impl AutoManResolver {
             }
         }
 
-        log::info!("Loaded {} dependencies from pac.at", self.dependencies.len());
+        log::info!("Loaded {} dependencies from pac.at", self.core.dependencies().len());
         Ok(())
-    }
-
-    /// Find the path for a package
-    ///
-    /// Searches in:
-    /// 1. Project's packages/ directory
-    /// 2. AutoMan's global package cache (future)
-    /// 3. Standard library
-    fn find_package_path(&self, package_name: &str) -> Result<PathBuf, crate::AutoManError> {
-        // Check project-local packages/
-        let local_pkg = self.project_root.join("packages").join(package_name);
-        if local_pkg.exists() {
-            return Ok(local_pkg);
-        }
-
-        // Check for package.at file
-        let pkg_at = local_pkg.join("package.at");
-        if pkg_at.exists() {
-            return Ok(local_pkg);
-        }
-
-        // Check if it's a standard library module
-        if package_name.starts_with("std.") {
-            let std_path = self.std_root.join(&package_name[4..]).with_extension("at");
-            if std_path.exists() {
-                return Ok(std_path);
-            }
-        }
-
-        // Package not found
-        Err(crate::AutoManError::FileNotFound(local_pkg))
     }
 
     /// Add a search path for modules
     ///
     /// Search paths are checked in order before the standard library.
     pub fn add_search_path(&mut self, path: PathBuf) {
-        self.search_paths.push(path);
+        self.core.add_search_path(path);
     }
 
     /// Get the execution mode for a dependency
@@ -275,14 +223,14 @@ impl AutoManResolver {
     /// * `Some(ExecutionMode)` - If dependency exists
     /// * `None` - If dependency not found
     pub fn get_dependency_mode(&self, name: &str) -> Option<ExecutionMode> {
-        self.dependencies.get(name).map(|dep| dep.mode)
+        self.core.dependencies().get(name).map(|dep| dep.mode)
     }
 
     /// Get all dependencies
     ///
     /// **Plan 081 Phase 3**: Returns all dependencies with their modes
     pub fn get_dependencies(&self) -> &HashMap<String, Dependency> {
-        &self.dependencies
+        self.core.dependencies()
     }
 
     /// Get the default execution mode for this project
@@ -296,8 +244,7 @@ impl AutoManResolver {
     ///
     /// **Plan 081 Phase 3**: Manually add a dependency with mode
     pub fn add_dependency(&mut self, name: String, path: PathBuf, mode: ExecutionMode) {
-        let dep = Dependency::new(name.clone(), path, mode);
-        self.dependencies.insert(name, dep);
+        self.core.add_dependency(name, path, mode);
     }
 
     /// Resolve a module path with prefix awareness
@@ -320,171 +267,43 @@ impl AutoManResolver {
     ) -> Result<PathBuf, String> {
         match &module_path.prefix {
             PathPrefix::Dep(dep_name) => {
-                // Look up dependency by name
-                let dep = self.dependencies.get(dep_name.as_str())
-                    .ok_or_else(|| {
-                        let declared_deps: Vec<_> = self.dependencies.keys().collect();
-                        format!(
-                            "Dependency '{}' not declared in pac.at.\n\
-                             \n\
-                             Add it to your pac.at file:\n\
-                             dep {}(path: \"path/to/{}\")\n\
-                             \n\
-                             Declared dependencies: {}",
-                            dep_name,
-                            dep_name,
-                            dep_name,
-                            if declared_deps.is_empty() {
-                                "(none)".to_string()
-                            } else {
-                                declared_deps.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
-                            }
-                        )
-                    })?;
-
-                // Build path from segments within dependency
-                let segments = &module_path.segments;
-                self.find_module_in_dep(&dep.path, segments)
+                // PLAN-800: dependency lookup + not-declared error +
+                // module-in-dep judgment all live in the core (single rule set)
+                let segments: Vec<&str> = module_path
+                    .segments
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect();
+                self.core
+                    .resolve_in_dependency(dep_name.as_str(), &segments)
             }
             // For other prefixes, use the package root
             PathPrefix::Pac | PathPrefix::Super(_) | PathPrefix::None => {
                 // Delegate to base resolver logic
-                let base_resolver = auto_lang::resolver::FilesystemResolver::with_package_root(self.project_root.clone());
+                let base_resolver = auto_lang::resolver::FilesystemResolver::with_package_root(
+                    self.core.project_root().to_path_buf(),
+                );
                 base_resolver.resolve_with_prefix(module_path, current_file)
             }
         }
-    }
-
-    /// Find a module within a dependency directory
-    ///
-    /// **Plan 131 Task 8**: Resolves module paths within declared dependencies
-    fn find_module_in_dep(
-        &self,
-        dep_root: &std::path::Path,
-        segments: &[AutoStr],
-    ) -> Result<PathBuf, String> {
-        // Build path from segments
-        let mut module_path = dep_root.to_path_buf();
-        for segment in segments {
-            module_path.push(segment.as_str());
-        }
-
-        // Try file module first
-        let file_module = module_path.with_extension("at");
-        if file_module.exists() {
-            // Check for ambiguity
-            let dir_module = module_path.join("mod.at");
-            if dir_module.exists() {
-                let segment_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
-                return Err(format!(
-                    "Ambiguous module '{}' in dependency - both '{}' and '{}' exist",
-                    segment_strs.join("."),
-                    file_module.display(),
-                    dir_module.display()
-                ));
-            }
-            return Ok(file_module);
-        }
-
-        // Try directory module
-        let dir_module = module_path.join("mod.at");
-        if dir_module.exists() {
-            return Ok(dir_module);
-        }
-
-        // Enhanced not found error with searched locations
-        let segment_strs: Vec<&str> = segments.iter().map(|s| s.as_str()).collect();
-        Err(format!(
-            "Module '{}' not found in dependency.\n\
-             \n\
-             Searched locations:\n\
-             - {} (file module)\n\
-             - {} (directory module)\n\
-             \n\
-             Dependency root: {}",
-            segment_strs.join("."),
-            file_module.display(),
-            dir_module.display(),
-            dep_root.display()
-        ))
     }
 }
 
 impl ModuleResolver for AutoManResolver {
     fn resolve(&self, module_name: &str) -> Result<PathBuf, String> {
-        // Handle standard library modules
-        if let Some(rest) = module_name.strip_prefix("std.") {
-            return Ok(self.std_root.join(format!("{}.at", rest)));
-        }
-
-        // Handle relative imports
-        if module_name.starts_with("./") || module_name.starts_with("../") {
-            return Ok(self.project_root.join(module_name));
-        }
-
-        // Check if it's a known dependency from pac.at
-        // **Plan 081**: dependencies now contain mode information
-        if let Some(dep) = self.dependencies.get(module_name) {
-            return Ok(dep.path.join("package.at"));
-        }
-
-        // Search in additional paths
-        for search_path in &self.search_paths {
-            let module_path = search_path.join(module_name).with_extension("at");
-            if module_path.exists() {
-                return Ok(module_path);
-            }
-
-            // Try as package directory
-            let pkg_path = search_path.join(module_name).join("package.at");
-            if pkg_path.exists() {
-                return Ok(pkg_path);
-            }
-        }
-
-        // Package not found
-        Err(format!(
-            "Module '{}' not found. Available dependencies: {:?}",
-            module_name,
-            self.dependencies.keys().collect::<Vec<_>>()
-        ))
+        self.core.resolve(module_name)
     }
 
     fn get_std_root(&self) -> PathBuf {
-        self.std_root.clone()
+        self.core.std_root().to_path_buf()
     }
 
     fn search_paths(&self) -> Vec<PathBuf> {
-        let mut paths = self.search_paths.clone();
-        paths.push(self.std_root.clone());
-        // **Plan 081**: Extract paths from Dependency objects
-        paths.extend(self.dependencies.values().map(|dep| dep.path.clone()));
-        paths
+        self.core.module_search_paths()
     }
 
     fn exists(&self, module_name: &str) -> bool {
-        // Check standard library
-        if let Some(rest) = module_name.strip_prefix("std.") {
-            let std_path = self.std_root.join(format!("{}.at", rest));
-            if std_path.exists() {
-                return true;
-            }
-        }
-
-        // Check dependencies
-        if self.dependencies.contains_key(module_name) {
-            return true;
-        }
-
-        // Check search paths
-        for search_path in &self.search_paths {
-            let module_path = search_path.join(module_name).with_extension("at");
-            if module_path.exists() {
-                return true;
-            }
-        }
-
-        false
+        self.core.exists(module_name)
     }
 }
 
@@ -502,7 +321,7 @@ mod tests {
         );
 
         assert_eq!(resolver.get_std_root(), PathBuf::from("stdlib/auto"));
-        assert_eq!(resolver.project_root, PathBuf::from("."));
+        assert_eq!(resolver.core.project_root(), std::path::Path::new("."));
     }
 
     #[test]
@@ -512,8 +331,8 @@ mod tests {
             PathBuf::from("stdlib/auto")
         );
 
-        let path = resolver.resolve("std.io").unwrap();
-        assert_eq!(path, PathBuf::from("stdlib/auto/io.at"));
+        let path = resolver.resolve("std.io");
+        assert_eq!(path, Ok(PathBuf::from("stdlib/auto/io.at")));
     }
 
     #[test]
@@ -523,11 +342,11 @@ mod tests {
             PathBuf::from("stdlib/auto")
         );
 
-        let path = resolver.resolve("./utils").unwrap();
-        assert_eq!(path, PathBuf::from("/project/./utils"));
+        let path = resolver.resolve("./utils");
+        assert_eq!(path, Ok(PathBuf::from("/project/./utils")));
 
-        let path = resolver.resolve("../common").unwrap();
-        assert_eq!(path, PathBuf::from("/project/../common"));
+        let path = resolver.resolve("../common");
+        assert_eq!(path, Ok(PathBuf::from("/project/../common")));
     }
 
     #[test]
@@ -539,8 +358,9 @@ mod tests {
 
         resolver.add_search_path(PathBuf::from("packages"));
 
-        assert_eq!(resolver.search_paths.len(), 1);
-        assert_eq!(resolver.search_paths[0], PathBuf::from("packages"));
+        let raw = resolver.core.added_search_paths();
+        assert_eq!(raw.len(), 1);
+        assert_eq!(raw[0], PathBuf::from("packages"));
     }
 
     #[test]
@@ -563,7 +383,7 @@ mod tests {
         );
 
         // std.* modules should resolve to std_root
-        let result = resolver.find_package_path("std.io");
+        let result = resolver.core.find_package_path("std.io");
         // This will fail if the file doesn't exist, which is expected in tests
         // Just verify the path construction
         assert!(result.is_err() || result.unwrap().starts_with("stdlib/auto"));
@@ -604,8 +424,8 @@ use std.fs
         let resolver = resolver.unwrap();
 
         // Verify dependencies were loaded (packages that exist on disk)
-        assert!(resolver.dependencies.contains_key("std.io"));
-        assert!(resolver.dependencies.contains_key("std.fs"));
+        assert!(resolver.core.dependencies().contains_key("std.io"));
+        assert!(resolver.core.dependencies().contains_key("std.fs"));
 
         // Cleanup
         fs::remove_file(&pac_at_path).ok();
@@ -1268,5 +1088,103 @@ dep database(path: "../database")"#,
             "Error should mention 'Searched locations', got: {}",
             err
         );
+    }
+}
+
+// PLAN-800: 生产入口委托与适配边界定向测试（V02/V03/V04）。
+#[cfg(test)]
+mod plan800_tests {
+    use super::*;
+    use auto_lang::ast::ModulePath;
+    use auto_val::AutoStr;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_pac_prefix_delegates_to_filesystem_resolver() {
+        // V02/V04: Pac prefix goes through the production entry to the
+        // language FilesystemResolver with the project root as package root
+        let tmp = TempDir::new().unwrap();
+        let project = tmp.path().join("app");
+        fs::create_dir_all(project.join("src")).unwrap();
+        fs::write(project.join("utils.at"), "// pac module").unwrap();
+
+        let resolver = AutoManResolver::new(project.clone(), PathBuf::from("stdlib/auto"));
+        let path = ModulePath::pac(vec![AutoStr::from("utils")]);
+        let result = resolver.resolve_with_prefix(&path, project.join("src/main.at"));
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        assert!(result.unwrap().ends_with("utils.at"));
+    }
+
+    #[test]
+    fn test_super_prefix_delegates_to_filesystem_resolver() {
+        // V02/V04: Super prefix walks up from the importing file's directory
+        let tmp = TempDir::new().unwrap();
+        let project = tmp.path().join("app");
+        fs::create_dir_all(project.join("src")).unwrap();
+        fs::write(project.join("shared.at"), "// super module").unwrap();
+
+        let resolver = AutoManResolver::new(project.clone(), PathBuf::from("stdlib/auto"));
+        let path = ModulePath::super_path(vec![AutoStr::from("shared")]);
+        let result = resolver.resolve_with_prefix(&path, project.join("src/main.at"));
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let resolved = result.unwrap();
+        assert!(resolved.ends_with("shared.at"));
+    }
+
+    #[test]
+    fn test_prepare_env_without_pac_at() {
+        // V03: no pac.at — warn + Ok with an empty dependency map
+        let tmp = TempDir::new().unwrap();
+        let project = tmp.path().join("empty_app");
+        fs::create_dir_all(&project).unwrap();
+
+        let resolver = AutoManResolver::new(project, PathBuf::from("stdlib/auto"));
+        let resolver = resolver.prepare_env().unwrap();
+        assert_eq!(resolver.get_dependencies().len(), 0);
+        assert_eq!(resolver.get_default_mode(), ExecutionMode::AutoVM);
+    }
+
+    #[test]
+    fn test_same_name_dependency_replace_is_immediately_visible() {
+        // V03 counter-control: same-name add_dependency replacement updates
+        // path AND mode at once through the single authoritative map — no
+        // stale shadow map survives in the adapter
+        let tmp = TempDir::new().unwrap();
+        let v1 = tmp.path().join("v1");
+        let v2 = tmp.path().join("v2");
+        fs::create_dir_all(&v1).unwrap();
+        fs::create_dir_all(&v2).unwrap();
+        fs::write(v1.join("old_mod.at"), "// old").unwrap();
+        fs::write(v2.join("new_mod.at"), "// new").unwrap();
+
+        let mut resolver = AutoManResolver::new(
+            tmp.path().join("app"),
+            PathBuf::from("stdlib/auto"),
+        );
+        resolver.add_dependency("pkg".to_string(), v1.clone(), ExecutionMode::AutoVM);
+        assert_eq!(
+            resolver.resolve("pkg").unwrap(),
+            v1.join("package.at")
+        );
+
+        // replace: new path/mode authoritative immediately
+        resolver.add_dependency("pkg".to_string(), v2.clone(), ExecutionMode::Rust);
+        assert_eq!(
+            resolver.resolve("pkg").unwrap(),
+            v2.join("package.at")
+        );
+        assert_eq!(resolver.get_dependency_mode("pkg"), Some(ExecutionMode::Rust));
+        assert_eq!(resolver.get_dependencies().len(), 1);
+        assert_eq!(resolver.get_dependencies()["pkg"].path, v2);
+
+        let path = ModulePath::dep(AutoStr::from("pkg"), vec![AutoStr::from("new_mod")]);
+        let result = resolver.resolve_with_prefix(&path, tmp.path().join("app/main.at"));
+        assert!(result.is_ok());
+        let resolved = result.unwrap();
+        assert!(resolved.starts_with(&v2) && resolved.ends_with("new_mod.at"));
+        // old module under the replaced path is gone from resolution
+        let old = ModulePath::dep(AutoStr::from("pkg"), vec![AutoStr::from("old_mod")]);
+        assert!(resolver.resolve_with_prefix(&old, tmp.path().join("app/main.at")).is_err());
     }
 }

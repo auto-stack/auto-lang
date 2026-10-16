@@ -33,6 +33,10 @@ members = [
     # Target-free from auto-man; auto-man keeps the Target→projection, Git
     # observation and compatibility facade over this crate.
     "crates/auto-package-lock",
+    # PLAN-800: resolved dependency view & module path resolution core,
+    # extracted language-free from auto-man resolver.rs; auto-man keeps
+    # ExecutionMode/pac.at scanning/ModuleResolver trait as the adapter.
+    "crates/auto-package-resolver",
     "crates/auto-lsp",
     "crates/auto-val",
     # PLAN-036 T-02: shell pack a2r 生成物（无窗组件库——入库=真编译门）
@@ -107,6 +111,12 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/package-lock-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/package-lock-consumer/verify-deps.sh
     "test/fixtures/modularity/package-lock-consumer",
+    # PLAN-800: 外部解析核心消费方探针——独立 fixture crate（仅依赖
+    # auto-package-resolver/std，证明依赖视图/路径候选/依赖内模块判定核心
+    # 无 auto-lang/auto-man/auto-val/VM/UI 闭包可用），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/package-resolver-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/package-resolver-consumer/verify-deps.sh
+    "test/fixtures/modularity/package-resolver-consumer",
     # PLAN-793: 外部诊断消费方探针——独立 fixture crate（仅依赖
     # auto-diagnostics/auto-lex/miette，证明诊断基础无 auto-lang/Man/UI
     # 闭包可用），门禁经

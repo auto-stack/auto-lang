@@ -59,6 +59,11 @@ schema = "module-boundaries/1"
 # auto-man（Target/Git adapter + 兼容门面）之下；禁依赖 auto-lang
 # （闭包由 test/fixtures/modularity/package-lock-consumer 钉住）。
 "auto-package-lock" = "man-ecosystem"
+# PLAN-800：已解析依赖视图/包路径候选/依赖内模块判定核心——man 生态的
+# 纯解析层，auto-man（ExecutionMode/pac.at 扫描/ModuleResolver trait
+# adapter）之下；std-only、禁依赖 auto-lang/auto-val
+# （闭包由 test/fixtures/modularity/package-resolver-consumer 钉住）。
+"auto-package-resolver" = "man-ecosystem"
 # 顶层装配/工具/CLI（允许依赖任意下层域）。
 "auto" = "cli"
 "auto-lsp" = "tool"

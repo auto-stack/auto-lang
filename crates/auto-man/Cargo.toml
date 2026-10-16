@@ -18,6 +18,10 @@ auto-val = { path = "../auto-val" }
 # PLAN-795: pac.lock core (model/codec/verify) — lock.rs is the Target/Git
 # adapter + compatibility facade delegating to this crate.
 auto-package-lock = { path = "../auto-package-lock" }
+# PLAN-800: resolved dependency view & module path resolution core —
+# resolver.rs is the language adapter (ExecutionMode/pac.at scan/
+# ModuleResolver trait) delegating to this crate.
+auto-package-resolver = { path = "../auto-package-resolver" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
 blake3 = { workspace = true }  # Plan 134: File hashing utilities
