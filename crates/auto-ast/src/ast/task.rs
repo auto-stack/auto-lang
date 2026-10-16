@@ -5,7 +5,7 @@
 
 use crate::ast::{AtomWriter, ToAtomStr};
 use crate::ast::{Body, Expr, Fn, Name, Type};
-use crate::token::Pos;
+use auto_lex::token::Pos;
 use auto_val::{AutoStr, Node as AutoNode, Value};
 use std::{fmt, io as stdio};
 

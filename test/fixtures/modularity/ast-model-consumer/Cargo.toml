@@ -1,0 +1,26 @@
+# PLAN-799 V01 外部 AST 模型消费方 gate（独立 fixture crate）。
+#
+# 角色：模拟"外部 crate"——manifest 即验收证据：唯一依赖是 auto-ast（path），
+# 构建+测试成功证明 AST 模型（Core/UI 兼容节点、类型表达、ToNode/ToAtom/
+# AtomWriter 序列化、ModulePath）可脱离 auto-lang/Parser/TypeStore/推断/VM/
+# renderer/Man 独立消费（AC-01：正常 DAG 无反向边、不借主库 rlib）。
+#
+# V02 golden 重放：tests/v02-golden.txt 冻结自旧实现（auto-lang@143aff0a2
+# 改动前，36 case × Display/ToAtom/ToNode 三投影，SHA256 1e74a8df…，生成
+# 记录 docs/plans/attachments/799/）——期望不得由新实现再造。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/ast-model-consumer/Cargo.toml
+
+[package]
+name = "ast-model-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-ast = { path = "../../../../crates/auto-ast" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

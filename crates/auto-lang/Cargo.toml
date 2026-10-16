@@ -172,6 +172,9 @@ auto-lex = { path = "../auto-lex" }
 # PLAN-793: 诊断基础单一来源（AutoError 聚合 + 各族诊断 + source attach/
 # 格式化）；error 模块为薄 re-export 门面，error→ast 边已切断。
 auto-diagnostics = { path = "../auto-diagnostics" }
+# PLAN-799: AST model single source (Code/Stmt/Expr/Type/UI-compat nodes +
+# ToNode/ToAtom/AtomWriter); the ast module is a thin re-export facade.
+auto-ast = { path = "../auto-ast" }
 auto-cache = { path = "../auto-cache" }
 # Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
 shim-metadata = { path = "../shim-metadata" }

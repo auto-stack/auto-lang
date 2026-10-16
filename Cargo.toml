@@ -16,6 +16,10 @@ members = [
     # auto-gen stays the Auto executable-template adapter over it.
     "crates/auto-gen-core",
     "crates/auto-lang",
+    # PLAN-799: AST model crate (Code/Stmt/Expr/Type/UI-compat nodes +
+    # ToNode/ToAtom/AtomWriter serialization; extracted verbatim from
+    # auto-lang; no Parser/TypeStore/inference/VM/UI deps).
+    "crates/auto-ast",
     # PLAN-789: lexical foundation crate (Token/Lexer single source,
     # extracted verbatim from auto-lang; no auto-lang/auto-man/UI deps).
     "crates/auto-lex",
@@ -90,6 +94,11 @@ exclude = [
     # crate 边界外真实工作），门禁经
     # cargo test --manifest-path test/fixtures/modularity/clipboard-provider-consumer/Cargo.toml
     "test/fixtures/modularity/clipboard-provider-consumer",
+    # PLAN-799: 外部 AST 模型消费方探针——独立 fixture crate（唯一依赖
+    # auto-ast，证明 AST 模型无 auto-lang/Parser/VM/UI 依赖 + V02 旧实现
+    # golden 重放），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/ast-model-consumer/Cargo.toml
+    "test/fixtures/modularity/ast-model-consumer",
     # PLAN-789: 外部词法消费方探针——独立 fixture crate（唯一依赖
     # auto-lex，证明词法基础无 auto-lang/auto-man/UI 依赖），门禁经
     # cargo test --manifest-path test/fixtures/modularity/lex-consumer/Cargo.toml

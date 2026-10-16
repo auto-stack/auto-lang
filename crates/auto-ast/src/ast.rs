@@ -1,0 +1,1361 @@
+mod alias;
+pub use alias::*;
+mod body;
+pub use body::*;
+mod branch;
+pub use branch::*;
+mod call;
+pub use call::*;
+pub mod cover;
+pub use cover::*;
+mod dep_;
+pub use dep_::*;
+mod enums;
+pub use enums::*;
+mod ext;
+pub use ext::*;
+mod fun;
+pub use fun::*;
+pub mod fstr;
+pub use fstr::*;
+mod grid;
+pub use grid::*;
+mod hold;
+pub use hold::*;
+mod if_;
+pub use if_::*;
+mod is;
+pub use is::*;
+mod for_;
+pub use for_::*;
+mod node;
+pub use node::*;
+mod module_path;
+pub use module_path::{ModulePath, PathPrefix};
+mod on;
+pub use on::*;
+mod store;
+pub use store::*;
+mod tag;
+pub use tag::*;
+mod try_;
+pub use try_::*;
+mod task;
+pub use task::*;
+mod spec;
+pub use spec::*;
+mod types;
+pub use types::*;
+mod type_alias;
+pub use type_alias::*;
+mod union;
+pub use union::*;
+mod use_;
+pub use use_::*;
+mod range;
+pub use range::*;
+pub mod ui;
+pub use ui::*;
+mod route;
+pub use route::*;
+
+// Plan 095: Compile-time execution AST nodes
+mod comptime;
+pub use comptime::*;
+
+mod atom_helpers;
+pub use atom_helpers::*;
+
+// PLAN-799：轻值原语的同源 re-export（兼作模块内部导入）——独立消费方
+// （V01 fixture manifest 仅依赖 auto-ast）构造 AST 值（Op/AutoStr）与消费
+// ToNode 产物（Node/Value）所需。全部是 auto_val 同一 item 的再导出（glob
+// 同源不歧义）；语法级 Type/Node/Arg 保持模型原名不受影响（auto_val::Arg
+// 因模型已有同名 Arg 不再导出）。
+#[allow(hidden_glob_reexports)]
+pub use auto_val::{AutoResult, AutoStr, Node as AutoNode, Op, Shared, Value};
+// 同上：call/task 源位置 Pos 的同源 re-export（auto-lex 依赖仅此一项）。
+pub use auto_lex::token::Pos;
+use std::{fmt, io};
+
+pub type Name = AutoStr;
+
+/// Converts AST node to ATOM format Value (for primitive/atomic types)
+///
+/// # When to Implement ToAtom vs ToNode
+///
+/// - **ToNode**: For AST types that are naturally represented as nodes
+///   with children, properties, and arguments (If, For, Fn, Store, etc.)
+///
+/// - **ToAtom**: For primitive/atomic types that map to simple values
+///   (Type → Value::Str, Key → Value::Int/Bool/Str, Pair → Value::Pair)
+///
+/// # Example
+///
+/// ```rust
+/// use auto_ast::ast::*;
+///
+/// let ty = Type::Int;
+/// let value = ty.to_atom();  // Returns Value::Str("int")
+/// ```
+pub trait ToAtom {
+    fn to_atom(&self) -> AutoStr;
+}
+
+pub trait AtomWriter {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()>;
+}
+
+/// Helper trait to convert any AtomWriter implementer to AutoStr
+///
+/// This trait provides a convenience method `to_atom_str()` that converts
+/// any type implementing `AtomWriter` directly to `AutoStr` without needing
+/// to manually manage the buffer.
+pub trait ToAtomStr {
+    fn to_atom_str(&self) -> AutoStr;
+}
+
+// Blanket implementation for all AtomWriter types
+impl<T: AtomWriter> ToAtomStr for T {
+    fn to_atom_str(&self) -> AutoStr {
+        let mut buf = Vec::new();
+        let _ = self.write_atom(&mut buf);
+        String::from_utf8(buf).unwrap_or_default().into()
+    }
+}
+
+/// Converts AST node to ATOM format Node directly (for complex structures)
+///
+/// # When to Implement ToNode vs ToAtom
+///
+/// - **ToNode**: For AST types that are naturally represented as nodes
+///   with children, properties, and arguments (If, For, Fn, Store, etc.)
+///
+/// - **ToAtom**: For primitive/atomic types that map to simple values
+///   (Type → Value::Str, Key → Value::Int/Bool/Str, Pair → Value::Pair)
+///
+/// ```
+pub trait ToNode {
+    fn to_node(&self) -> AutoNode;
+}
+
+#[derive(Debug, Clone)]
+pub struct Code {
+    pub stmts: Vec<Stmt>,
+    /// Source line numbers for each statement (parallel to stmts)
+    pub source_lines: Vec<usize>,
+    /// Plan 306 Phase 3: Script-level (file-wide) annotations captured verbatim
+    /// (e.g. `tool` from `#[tool]`, `icon("res://icon.png")` from `#[icon(...)]`).
+    /// Transpiler metadata only — NOT serialized by Display/ToNode/ToAtom, since it
+    /// is reconstructed from source on every parse and is irrelevant to the VM/IR.
+    /// GDScript emits these as `@tool` / `@icon(...)` at the script top.
+    pub file_attrs: Vec<Name>,
+}
+
+impl Code {
+    pub fn new() -> Self {
+        Self {
+            stmts: Vec::new(),
+            source_lines: Vec::new(),
+            file_attrs: Vec::new(),
+        }
+    }
+}
+
+impl Default for Code {
+    fn default() -> Self {
+        Self {
+            stmts: Vec::default(),
+            source_lines: Vec::default(),
+            file_attrs: Vec::default(),
+        }
+    }
+}
+
+impl fmt::Display for Code {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(code ")?;
+        let last = self.stmts.len();
+        let last = if last > 0 { last - 1 } else { 0 };
+        for (i, stmt) in self.stmts.iter().enumerate() {
+            write!(f, "{}", stmt)?;
+            if i < last {
+                write!(f, " ")?;
+            }
+        }
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Stmt {
+    Expr(Expr),
+    If(If),
+    For(For),
+    Try(Try), // Plan 010 (MS3-A): try/catch
+    Is(Is),
+    Store(Store),
+    Block(Body),
+    Fn(Fn),
+    EnumDecl(EnumDecl),
+    TypeDecl(TypeDecl),
+    Union(Union),
+    Tag(Tag),
+    SpecDecl(SpecDecl),
+    Node(Node),
+    Use(Use),
+
+    /// PLAN-037 T6: top-level `use.web` statement — web (Vue/TS/npm) ecosystem
+    /// imports, the frontend sibling of `use.rust` / `use.py`. Each entry is
+    /// an ExtImport (kind modifier component/composable, default plain import).
+    /// Consumed by the Vue codegen; other backends must fail with an explicit
+    /// "requires vue render" error.
+    UseWeb(Vec<crate::ast::ui::ExtImport>),
+    Dep(DepStmt), // Plan 092: Dependency declaration
+    OnEvents(OnEvents),
+    Comment(AutoStr),
+    Alias(Alias),
+    TypeAlias(TypeAlias), // Type alias: type List<T> = List<T, DefaultStorage>
+    EmptyLine(usize),
+    Break,
+    Continue,
+    Return(Box<Expr>), // Return statement with value
+    Reply(Box<Expr>),  // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+    Ext(Ext),          // Type extension (like Rust's impl)
+    // Plan 096: UI scenario statements
+    WidgetDecl(WidgetDecl),
+    // Plan 351: shared store (scene:ui)
+    StoreDecl(crate::ast::ui::StoreDecl),
+    /// Plan 451 P3: top-level `actions { ... }` declaration — the widget
+    /// block's actions lifted to module level so it can live in its own
+    /// file and travel to the host widget via `use`. Merge priority (both
+    /// vm and vue): host widget's own block > same-file top-level > first
+    /// `use`d module's block (in import order). Handler refs are validated
+    /// against the HOST widget's on{} after merge, not at parse time.
+    ActionsDecl(crate::ast::ui::ActionsBlock),
+    /// Plan 367 P2-3: view fragment declaration
+    ViewFragmentDecl(crate::ast::ui::ViewFragmentDecl),
+    /// PLAN-607: top-level style recipe declaration (Design 29 Phase 3)
+    StyleRecipeDecl(crate::ast::ui::StyleRecipeDecl),
+    MsgDecl(MsgDecl),
+    ModelBlock(ModelBlock),
+    ViewBlock(ViewBlock),
+    // Plan 306: Godot scene declaration (.tscn generation)
+    SceneDecl(SceneDecl),
+    // Plan 121: Task/Msg system
+    TaskDef(TaskDef),
+    // Plan 095: Compile-time execution
+    HashIf(HashIf),
+    HashFor(HashFor),
+    HashIs(HashIs),
+    HashBrace(HashBrace),
+    // Plan 212 Phase 2.4: Macro invocation
+    MacroCall(MacroCall),
+}
+
+impl Stmt {
+    pub fn as_fn(&self) -> Option<&Fn> {
+        match self {
+            Stmt::Fn(fn_decl) => Some(fn_decl),
+            _ => None,
+        }
+    }
+
+    pub fn is_decl(&self) -> bool {
+        match self {
+            Stmt::Fn(_)
+            | Stmt::TypeDecl(_)
+            | Stmt::EnumDecl(_)
+            | Stmt::Store(_)
+            | Stmt::Union(_)
+            | Stmt::Tag(_)
+            | Stmt::SpecDecl(_)
+            | Stmt::Alias(_)
+            | Stmt::TypeAlias(_)
+            | Stmt::Ext(_)  // Plan 035 Phase 5.2: Ext statement is a declaration
+            | Stmt::TaskDef(_) => true,  // Plan 387: task definition is a declaration
+            _ => false,
+        }
+    }
+
+    pub fn is_new_block(&self) -> bool {
+        match self {
+            Stmt::Block(_)
+            | Stmt::Fn(_)
+            | Stmt::TypeDecl(_)
+            | Stmt::EnumDecl(_)
+            | Stmt::SpecDecl(_) => true,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for Stmt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Stmt::Use(use_stmt) => write!(f, "{}", use_stmt),
+            Stmt::UseWeb(entries) => write!(
+                f,
+                "use.web ({} web import{})",
+                entries.len(),
+                if entries.len() == 1 { "" } else { "s" }
+            ),
+            Stmt::Expr(expr) => write!(f, "{}", expr),
+            Stmt::If(if_stmt) => write!(f, "{}", if_stmt),
+            Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
+            Stmt::Is(is_stmt) => write!(f, "{}", is_stmt),
+            Stmt::Block(body) => write!(f, "{}", body),
+            Stmt::Store(store) => write!(f, "{}", store),
+            Stmt::Fn(fn_decl) => write!(f, "{}", fn_decl),
+            Stmt::TypeDecl(type_decl) => write!(f, "{}", type_decl),
+            Stmt::EnumDecl(enum_decl) => write!(f, "{}", enum_decl),
+            Stmt::Node(node) => write!(f, "{}", node),
+            Stmt::OnEvents(on_events) => write!(f, "{}", on_events),
+            Stmt::Comment(cmt) => write!(f, "{}", cmt),
+            Stmt::Alias(alias) => write!(f, "{}", alias),
+            Stmt::TypeAlias(type_alias) => write!(f, "{}", type_alias),
+            Stmt::EmptyLine(n) => write!(f, "(nl*{})", n),
+            Stmt::Union(u) => write!(f, "{}", u),
+            Stmt::Tag(tag) => write!(f, "{}", tag),
+            Stmt::SpecDecl(spec_decl) => write!(f, "{}", spec_decl),
+            Stmt::Break => write!(f, "(break)"),
+            Stmt::Continue => write!(f, "(continue)"),
+            Stmt::Return(expr) => write!(f, "(return {})", expr),
+            Stmt::Reply(expr) => write!(f, "(reply {})", expr), // Plan 124 Phase 2.3
+            Stmt::Ext(ext) => write!(f, "{}", ext),
+            Stmt::Dep(dep) => write!(f, "{}", dep),
+            // Plan 096: UI scenario statements
+            Stmt::WidgetDecl(widget) => write!(f, "(widget {})", widget.name),
+            Stmt::StoreDecl(store) => write!(f, "(store {})", store.name),
+            Stmt::ViewFragmentDecl(frag) => write!(f, "(view fn {})", frag.name),
+            Stmt::StyleRecipeDecl(recipe) => write!(f, "(style-recipe {})", recipe.name),
+            Stmt::ActionsDecl(_) => write!(f, "(actions)"),
+            Stmt::Try(_) => write!(f, "(try)"),
+            Stmt::MsgDecl(msg) => write!(f, "(msg {} variants)", msg.variants.len()),
+            Stmt::ModelBlock(model) => write!(f, "(model {} fields)", model.fields.len()),
+            Stmt::ViewBlock(_view) => write!(f, "(view)"),
+            // Plan 306: Godot scene declaration
+            Stmt::SceneDecl(scene) => write!(f, "(scene {} : {})", scene.name, scene.node_type),
+            // Plan 121: Task/Msg system
+            Stmt::TaskDef(task) => write!(f, "{}", task),
+            // Plan 095: Compile-time execution
+            Stmt::HashIf(hash_if) => write!(f, "{}", hash_if),
+            Stmt::HashFor(hash_for) => write!(f, "{}", hash_for),
+            Stmt::HashIs(hash_is) => write!(f, "{}", hash_is),
+            Stmt::HashBrace(hash_brace) => write!(f, "{}", hash_brace),
+            Stmt::MacroCall(macro_call) => write!(f, "{}", macro_call),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Expr {
+    // value exprs
+    Int(i32),
+    Uint(u32),
+    I8(i8),
+    U8(u8),
+    I64(i64),
+    U64(u64),
+    Byte(u8),
+    Float(f64, AutoStr),
+    Double(f64, AutoStr),
+    Bool(bool),
+    Char(char),
+    Str(AutoStr),
+    CStr(AutoStr),
+    Ident(Name),
+    GenName(Name), // names that is generated during parsing or gen that need not to be stored in SymbolTable
+    // composite exprs
+    Ref(Name),
+    // Borrow expressions (Phase 3)
+    View(Box<Expr>), // Immutable borrow (like Rust &T)
+    Mut(Box<Expr>),  // Mutable borrow (like Rust &mut T)
+    Move(Box<Expr>), // Ownership transfer (Plan 122: renamed from Take)
+    Take(Box<Expr>), // DEPRECATED - use Move instead
+    Hold(Hold),      // Hold path binding (temporary borrow with syntax sugar)
+    Unary(Op, Box<Expr>),
+    Bina(Box<Expr>, Op, Box<Expr>),
+    /// Dot expression: object.field or Type.method
+    /// Used for both field access and method calls
+    /// Examples:
+    ///   - Field access: obj.field
+    ///   - Static method: List.new()
+    ///   - Instance method: list.push(1)
+    Dot(Box<Expr>, Name),
+    Range(Range),
+    Array(Vec<Expr>),
+    Pair(Pair),
+    Block(Body),
+    Object(Vec<Pair>),
+    Call(Call),
+    Node(Node),
+    Index(/*array*/ Box<Expr>, /*index*/ Box<Expr>),
+    Lambda(Fn),       // Named lambda function
+    Closure(Closure), // Plan 060: Closure:  x => expr or (a, b) => expr
+    FStr(FStr),
+    Grid(Grid),
+    Cover(Cover),
+    Uncover(TagUncover),
+    // Plan 120: Pattern matching for Option/Result in is statements
+    OptionPattern(crate::ast::cover::OptionCover), // Some(x) or None in is branch
+    ResultPattern(crate::ast::cover::ResultCover), // Ok(x) or Err(e) in is branch
+    OptionUncover(crate::ast::cover::OptionUncover), // Extract value from Some
+    ResultUncover(crate::ast::cover::ResultUncover), // Extract value from Ok/Err
+    // Plan 165: Struct destructuring pattern for is statement
+    StructPattern(crate::ast::cover::StructCover), // Point { x, y } in is branch
+    // stmt exprs
+    If(If),
+    Nil,
+    Null,
+    // May type operators (Phase 1b.3)
+    NullCoalesce(Box<Expr>, Box<Expr>), // left ?? right
+    ErrorPropagate(Box<Expr>),          // expression.?
+    Cast {
+        expr: Box<Expr>,
+        target_type: Type,
+    }, // expr.as(Type) — type conversion (zero-cost reinterpret)
+    To {
+        expr: Box<Expr>,
+        target_type: Type,
+    }, // expr.to(Type) — explicit type conversion (may allocate)
+    TupleDestruct {
+        names: Vec<Name>,
+        expr: Box<Expr>,
+    }, // let (a, b) = expr
+    // Plan 120: Option and Result constructors
+    Some(Box<Expr>), // Some(value)
+    None,            // None
+    Ok(Box<Expr>),   // Ok(value)
+    Err(Box<Expr>),  // Err(message)
+    // Plan 6B-4.14: Smart pointer constructors
+    BoxExpr(Box<Expr>), // Box(value) → Box::new(value) in Rust
+    ArcExpr(Box<Expr>), // Arc(value) → Arc::new(value) in Rust
+    // Router navigation (Plan 105)
+    NavCall {
+        path: Box<Expr>,
+        params: Vec<Pair>, // key-value pairs for route params
+    },
+    // Plan 124: Async/Future/Await system
+    /// Async block: ~{ stmts }
+    /// Returns a Future<T> value
+    AsyncBlock {
+        body: Body,
+        return_type: Option<Type>, // Type inference will fill this
+    },
+    /// Await expression: expr.await
+    /// Unwraps Future<T> to T
+    Await {
+        expr: Box<Expr>,
+    },
+    /// Plan 126: Go expression: expr.go
+    /// Spawns async block to background worker pool
+    /// Returns void (fire-and-forget)
+    Go {
+        expr: Box<Expr>, // Must be ~T (Future)
+    },
+    /// Plan 321: Yield expression for generators.
+    /// `yield expr` suspends the generator and sends expr's value to the caller.
+    /// Returns nil when resumed (MVP; bidirectional yield is future work).
+    Yield(Box<Expr>),
+    /// Plan 095: Compile-time expression #{ expr }
+    /// Evaluates expr at compile time and substitutes the result
+    Comptime(Box<HashBrace>),
+    /// Plan 200: Tuple expression (expr1, expr2, ...)
+    Tuple(Vec<Expr>),
+    /// Plan 223: is as expression (e.g., `let x = is y { ... }`)
+    Is(Box<crate::ast::is::Is>),
+}
+
+fn fmt_array(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
+    write!(f, "(array ")?;
+    for (i, elem) in elems.iter().enumerate() {
+        write!(f, "{}", elem)?;
+        if i < elems.len() - 1 {
+            write!(f, " ")?;
+        }
+    }
+    write!(f, ")")
+}
+
+fn fmt_object(f: &mut fmt::Formatter, pairs: &Vec<Pair>) -> fmt::Result {
+    write!(f, "(object ")?;
+    for (i, pair) in pairs.iter().enumerate() {
+        write!(f, "{}", pair)?;
+        if i < pairs.len() - 1 {
+            write!(f, " ")?;
+        }
+    }
+    write!(f, ")")
+}
+
+fn fmt_block(f: &mut fmt::Formatter, body: &Body) -> fmt::Result {
+    write!(f, "{}", body)
+}
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Expr::Byte(b) => write!(f, "(byte {})", b),
+            Expr::Int(i) => write!(f, "(int {})", i),
+            Expr::Uint(u) => write!(f, "(uint {})", u),
+            Expr::I8(i) => write!(f, "(i8 {})", i),
+            Expr::U8(u) => write!(f, "(u8 {})", u),
+            Expr::I64(i) => write!(f, "(i64 {})", i),
+            Expr::U64(u) => write!(f, "(u64 {})", u),
+            Expr::Float(v, _) => write!(f, "(float {})", v),
+            Expr::Double(v, _) => write!(f, "(double {})", v),
+            Expr::Bool(b) => write!(f, "({})", b),
+            Expr::Char(c) => write!(f, "(char '{}')", c),
+            Expr::Str(s) => write!(f, "(str \"{}\")", s),
+            Expr::CStr(s) => write!(f, "(cstr \"{}\")", s),
+            Expr::Ident(n) => write!(f, "(name {})", n),
+            Expr::Ref(n) => write!(f, "(ref {})", n),
+            Expr::View(e) => write!(f, "({}.view)", e),
+            Expr::Mut(e) => write!(f, "({}.mut)", e),
+            Expr::Move(e) => write!(f, "({}.move)", e),
+            Expr::Take(e) => write!(f, "({}.take)", e),
+            Expr::Hold(hold) => write!(f, "{}", hold),
+            Expr::Bina(l, op, r) => write!(f, "(bina {} {} {})", l, op, r),
+            Expr::Dot(object, field) => write!(f, "(dot {}.{})", object, field),
+            Expr::Unary(op, e) => write!(f, "(una {} {})", op, e),
+            Expr::Array(elems) => fmt_array(f, elems),
+            Expr::Pair(pair) => write!(f, "{}", pair),
+            Expr::Object(pairs) => fmt_object(f, pairs),
+            Expr::Block(body) => fmt_block(f, body),
+            Expr::If(if_) => write!(f, "{}", if_),
+            Expr::Call(call) => fmt_call(f, &call),
+            Expr::Node(node) => write!(f, "{}", node),
+            Expr::Index(array, index) => write!(f, "(index {} {})", array, index),
+            Expr::Lambda(lambda) => write!(f, "{}", lambda),
+            Expr::Closure(closure) => write!(f, "{}", closure),
+            Expr::FStr(fstr) => write!(f, "{}", fstr),
+            Expr::Grid(grid) => write!(f, "{}", grid),
+            Expr::Cover(cover) => write!(f, "{}", cover),
+            Expr::Uncover(uncover) => write!(f, "{}", uncover),
+            // Plan 120: Option/Result patterns for is statement
+            Expr::OptionPattern(cover) => write!(f, "{}", cover),
+            Expr::ResultPattern(cover) => write!(f, "{}", cover),
+            Expr::OptionUncover(uncover) => write!(f, "{}", uncover),
+            Expr::ResultUncover(uncover) => write!(f, "{}", uncover),
+            // Plan 165: Struct destructuring pattern
+            Expr::StructPattern(sc) => write!(f, "{}", sc),
+            Expr::GenName(name) => write!(f, "(gen-name {})", name),
+            Expr::Nil => write!(f, "(nil)"),
+            Expr::Null => write!(f, "(null)"),
+            Expr::Range(r) => write!(f, "{}", r),
+            Expr::NullCoalesce(l, r) => write!(f, "(?? {} {})", l, r),
+            Expr::ErrorPropagate(e) => write!(f, "(?. {})", e),
+            Expr::Cast { expr, target_type } => write!(f, "(as {} {})", expr, target_type),
+            Expr::To { expr, target_type } => write!(f, "(to {} {})", expr, target_type),
+            Expr::TupleDestruct { names, expr } => write!(
+                f,
+                "(destr ({}) {})",
+                names
+                    .iter()
+                    .map(|n| n.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                expr
+            ),
+            // Plan 120: Option and Result constructors
+            Expr::Some(e) => write!(f, "(Some {})", e),
+            Expr::None => write!(f, "None"),
+            Expr::Ok(e) => write!(f, "(Ok {})", e),
+            Expr::Err(e) => write!(f, "(Err {})", e),
+            // Plan 6B-4.14: Smart pointer constructors
+            Expr::BoxExpr(e) => write!(f, "(Box {})", e),
+            Expr::ArcExpr(e) => write!(f, "(Arc {})", e),
+            Expr::NavCall { path, params } => {
+                write!(f, "(nav {} ", path)?;
+                for (i, param) in params.iter().enumerate() {
+                    write!(f, "{}", param)?;
+                    if i < params.len() - 1 {
+                        write!(f, " ")?;
+                    }
+                }
+                write!(f, ")")
+            }
+            // Plan 124: Async/Future/Await
+            Expr::AsyncBlock { body, return_type } => {
+                write!(f, "(async {}", body)?;
+                if let Some(ty) = return_type {
+                    write!(f, " :{}", ty)?;
+                }
+                write!(f, ")")
+            }
+            Expr::Await { expr } => write!(f, "({}.await)", expr),
+            // Plan 126: .go postfix operator for spawning background tasks
+            Expr::Go { expr } => write!(f, "({}.go)", expr),
+            // Plan 321: yield expression
+            Expr::Yield(expr) => write!(f, "(yield {})", expr),
+            Expr::Comptime(hash_brace) => write!(f, "{}", hash_brace),
+            Expr::Tuple(elems) => fmt_tuple(f, elems),
+            Expr::Is(is) => write!(f, "(is-expr {})", is.target),
+        }
+    }
+}
+
+fn fmt_tuple(f: &mut fmt::Formatter, elems: &Vec<Expr>) -> fmt::Result {
+    write!(f, "(tuple ")?;
+    for (i, elem) in elems.iter().enumerate() {
+        write!(f, "{}", elem)?;
+        if i < elems.len() - 1 {
+            write!(f, " ")?;
+        }
+    }
+    write!(f, ")")
+}
+
+impl Expr {
+    pub fn repr(&self) -> AutoStr {
+        match self {
+            Expr::Int(i) => i.to_string().into(),
+            Expr::Uint(u) => u.to_string().into(),
+            Expr::Float(f, _) => f.to_string().into(),
+            Expr::Bool(b) => b.to_string().into(),
+            Expr::Char(c) => c.to_string().into(),
+            Expr::Str(s) => s.clone(),
+            Expr::Ident(n) => n.clone(),
+            Expr::Ref(n) => n.clone(),
+            Expr::Bina(l, op, r) => format!("{}{}{}", l.repr(), op.repr(), r.repr()).into(),
+            Expr::Unary(op, e) => format!("{}{}", op.repr(), e.repr()).into(),
+            Expr::Array(elems) => format!(
+                "[{}]",
+                elems
+                    .iter()
+                    .map(|e| e.repr())
+                    .collect::<Vec<AutoStr>>()
+                    .join(", ")
+            )
+            .into(),
+            Expr::Pair(pair) => format!("{}:{}", pair.key.to_string(), pair.value.repr()).into(),
+            Expr::Object(pairs) => format!(
+                "{{{}}}",
+                pairs
+                    .iter()
+                    .map(|p| p.repr().to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ".into())
+            )
+            .into(),
+            _ => self.to_string().into(),
+        }
+    }
+
+    pub fn to_code(&self) -> AutoStr {
+        match self {
+            Expr::Int(i) => i.to_string().into(),
+            Expr::Uint(u) => u.to_string().into(),
+            Expr::Float(f, _) => f.to_string().into(),
+            Expr::Bool(b) => b.to_string().into(),
+            Expr::Char(c) => c.to_string().into(),
+            Expr::Str(s) => format!("\"{}\"", s).into(),
+            Expr::Ident(n) => n.clone(),
+            Expr::Ref(n) => n.clone(),
+            Expr::Bina(l, op, r) => format!("{}{}{}", l.to_code(), op.repr(), r.to_code()).into(),
+            Expr::Unary(op, e) => format!("{}{}", op.repr(), e.to_code()).into(),
+            Expr::Array(elems) => format!(
+                "[{}]",
+                elems
+                    .iter()
+                    .map(|e| e.to_code())
+                    .collect::<Vec<AutoStr>>()
+                    .join(", ")
+            )
+            .into(),
+            Expr::Pair(pair) => format!("{}:{}", pair.key.to_string(), pair.value.to_code()).into(),
+            Expr::Object(pairs) => format!(
+                "{{{}}}",
+                pairs
+                    .iter()
+                    .map(|p| p.repr().to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )
+            .into(),
+            _ => self.to_string().into(),
+        }
+    }
+}
+
+impl<T: AtomWriter> AtomWriter for Vec<T> {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        write!(f, "array(")?;
+        for (i, elem) in self.iter().enumerate() {
+            elem.write_atom(f)?;
+            if i < self.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
+impl AtomWriter for Pair {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        write!(
+            f,
+            "pair({}, {})",
+            self.key.to_atom_str(),
+            self.value.to_atom_str()
+        )?;
+        Ok(())
+    }
+}
+
+impl AtomWriter for Expr {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        match self {
+            Expr::Int(i) => write!(f, "{}", i)?,
+            Expr::Uint(u) => write!(f, "{}", u)?,
+            Expr::Float(fl, _) => write!(f, "{}", fl)?,
+            Expr::Bool(b) => write!(f, "{}", b)?,
+            Expr::Char(c) => write!(f, "{}", c)?,
+            Expr::Str(s) => write!(f, "\"{}\"", s)?,
+            Expr::Ident(n) => write!(f, "{}", n)?,
+            Expr::Ref(n) => write!(f, "ref({})", n)?,
+            Expr::Bina(l, op, r) => {
+                // Special case for dot operator (field access): output as "bina(left, right)"
+                if *op == auto_val::Op::Dot {
+                    write!(f, "bina({}, {})", l.to_atom_str(), r.to_atom_str())?;
+                } else if *op == auto_val::Op::Asn {
+                    // Assignment: output as "asn left right" not "bina(asn, left, right)"
+                    write!(f, "asn {} {}", l.to_atom_str(), r.to_atom_str())?;
+                } else {
+                    let op_str = match op {
+                        auto_val::Op::Add => "+",
+                        auto_val::Op::Sub => "-",
+                        auto_val::Op::Mul => "*",
+                        auto_val::Op::Div => "/",
+                        auto_val::Op::Eq => "==",
+                        auto_val::Op::Neq => "!=",
+                        auto_val::Op::Lt => "<",
+                        auto_val::Op::Le => "<=",
+                        auto_val::Op::Gt => ">",
+                        auto_val::Op::Ge => ">=",
+                        auto_val::Op::AddEq => "+=",
+                        auto_val::Op::SubEq => "-=",
+                        auto_val::Op::MulEq => "*=",
+                        auto_val::Op::DivEq => "/=",
+                        auto_val::Op::Range => "..",
+                        auto_val::Op::RangeEq => "..=",
+                        _ => "?",
+                    };
+                    write!(
+                        f,
+                        "bina({}, {}, {})",
+                        op_str,
+                        l.to_atom_str(),
+                        r.to_atom_str()
+                    )?;
+                }
+            }
+            Expr::Unary(op, e) => {
+                let op_str = match op {
+                    auto_val::Op::Not => "!",
+                    auto_val::Op::Sub => "-",
+                    auto_val::Op::Mul => "*",
+                    auto_val::Op::Add => "&",
+                    _ => "?",
+                };
+                write!(f, "una({}, {})", op_str, e.to_atom_str())?;
+            }
+            Expr::Array(elems) => {
+                // Delegate to Vec<Expr> AtomWriter which outputs [elem1, elem2, ...]
+                write!(f, "{}", elems.to_atom_str())?;
+            }
+            Expr::Pair(pair) => {
+                write!(f, "pair({}, ", pair.key.to_atom_str())?;
+                pair.value.write_atom(f)?;
+                write!(f, ")")?;
+            }
+            Expr::Object(pairs) => {
+                write!(f, "obj {{")?;
+                for (i, pair) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    } else {
+                        write!(f, " ")?;
+                    }
+                    write!(
+                        f,
+                        "pair({}, {})",
+                        pair.key.to_atom_str(),
+                        pair.value.to_atom_str()
+                    )?;
+                }
+                write!(f, " }}")?;
+            }
+            Expr::FStr(fstr) => fstr.write_atom(f)?,
+            Expr::Index(array, index) => {
+                // Check if this is a slice expression (index with range or range with step)
+                match &**index {
+                    Expr::Range(range) => {
+                        // Check if end is a Range (step syntax: arr[0..10..2] → Range(0, Range(10, 2)))
+                        if let Expr::Range(inner_range) = &*range.end {
+                            let start_str = match &*range.start {
+                                Expr::Int(i) => i.to_string(),
+                                Expr::Nil => "0".to_string(),
+                                _ => range.start.to_atom_str().to_string(),
+                            };
+                            let end_str = match &*inner_range.start {
+                                Expr::Int(i) => i.to_string(),
+                                _ => inner_range.start.to_atom_str().to_string(),
+                            };
+                            let step_str = match &*inner_range.end {
+                                Expr::Int(i) => i.to_string(),
+                                _ => inner_range.end.to_atom_str().to_string(),
+                            };
+                            write!(
+                                f,
+                                "slice({}, {}, {}, {})",
+                                array.to_atom_str(),
+                                start_str,
+                                end_str,
+                                step_str
+                            )?;
+                        } else if let Expr::Range(inner_range) = &*range.start {
+                            // Old format: Range(Range(0, 10), 2) — step in start
+                            let start_str = match &*inner_range.start {
+                                Expr::Int(i) => i.to_string(),
+                                _ => inner_range.start.to_atom_str().to_string(),
+                            };
+                            let end_str = match &*inner_range.end {
+                                Expr::Int(i) => i.to_string(),
+                                _ => inner_range.end.to_atom_str().to_string(),
+                            };
+                            let step_str = match &*range.end {
+                                Expr::Int(i) => i.to_string(),
+                                _ => range.end.to_atom_str().to_string(),
+                            };
+                            write!(
+                                f,
+                                "slice({}, {}, {}, {})",
+                                array.to_atom_str(),
+                                start_str,
+                                end_str,
+                                step_str
+                            )?;
+                        } else {
+                            // Simple slice: arr[0..10] or arr[..5] or arr[5..]
+                            let start_str = match &*range.start {
+                                Expr::Nil => "0".to_string(),
+                                Expr::Int(i) => i.to_string(),
+                                _ => range.start.to_atom_str().to_string(),
+                            };
+                            let end_str = match &*range.end {
+                                Expr::Nil => "len".to_string(),
+                                Expr::Int(i) => i.to_string(),
+                                _ => range.end.to_atom_str().to_string(),
+                            };
+                            write!(
+                                f,
+                                "slice({}, {}, {})",
+                                array.to_atom_str(),
+                                start_str,
+                                end_str
+                            )?;
+                        }
+                    }
+                    _ => {
+                        write!(f, "index({}, {})", array.to_atom_str(), index.to_atom_str())?;
+                    }
+                }
+            }
+            Expr::Lambda(lambda) => lambda.write_atom(f)?,
+            Expr::Closure(closure) => closure.write_atom(f)?,
+            Expr::Call(call) => call.write_atom(f)?,
+            Expr::Node(node) => node.write_atom(f)?,
+            Expr::Block(body) => body.write_atom(f)?,
+            Expr::Range(range) => range.write_atom(f)?,
+            _ => write!(f, "{}", self)?,
+        }
+        Ok(())
+    }
+}
+
+// ToAtom implementations
+
+impl ToAtom for Expr {
+    fn to_atom(&self) -> AutoStr {
+        // Use the ToAtomStr helper trait for cleaner implementation
+        self.to_atom_str()
+    }
+}
+
+impl ToNode for Expr {
+    fn to_node(&self) -> AutoNode {
+        match self {
+            Expr::Byte(b) => {
+                let mut node = AutoNode::new("byte");
+                node.add_arg(auto_val::Arg::Pos(Value::Int(*b as i32)));
+                node
+            }
+            Expr::Int(i) => {
+                let mut node = AutoNode::new("int");
+                node.add_arg(auto_val::Arg::Pos(Value::Int(*i)));
+                node
+            }
+            Expr::Uint(u) => {
+                let mut node = AutoNode::new("uint");
+                node.add_arg(auto_val::Arg::Pos(Value::Uint(*u)));
+                node
+            }
+            Expr::I8(i) => {
+                let mut node = AutoNode::new("i8");
+                node.add_arg(auto_val::Arg::Pos(Value::Int(*i as i32)));
+                node
+            }
+            Expr::U8(u) => {
+                let mut node = AutoNode::new("u8");
+                node.add_arg(auto_val::Arg::Pos(Value::Int(*u as i32)));
+                node
+            }
+            Expr::I64(i) => {
+                let mut node = AutoNode::new("i64");
+                node.add_arg(auto_val::Arg::Pos(Value::Int(*i as i32)));
+                node
+            }
+            Expr::U64(u) => {
+                let mut node = AutoNode::new("u64");
+                // For u64 values that don't fit in i32, we need to handle them specially
+                node.add_arg(auto_val::Arg::Pos(Value::Uint(*u as u32)));
+                node
+            }
+            Expr::Float(v, _) => {
+                let mut node = AutoNode::new("float");
+                node.add_arg(auto_val::Arg::Pos(Value::Double(*v)));
+                node
+            }
+            Expr::Double(v, _) => {
+                let mut node = AutoNode::new("double");
+                node.add_arg(auto_val::Arg::Pos(Value::Double(*v)));
+                node
+            }
+            Expr::Bool(b) => {
+                let mut node = AutoNode::new("bool");
+                node.add_arg(auto_val::Arg::Pos(Value::Bool(*b)));
+                node
+            }
+            Expr::Char(c) => {
+                let mut node = AutoNode::new("char");
+                node.add_arg(auto_val::Arg::Pos(Value::Int(*c as i32)));
+                node
+            }
+            Expr::Str(s) => {
+                let mut node = AutoNode::new("str");
+                node.add_arg(auto_val::Arg::Pos(Value::Str(s.clone())));
+                node
+            }
+            Expr::CStr(s) => {
+                let mut node = AutoNode::new("cstr");
+                node.add_arg(auto_val::Arg::Pos(Value::Str(s.clone())));
+                node
+            }
+            Expr::Ident(n) => {
+                let mut node = AutoNode::new("name");
+                node.add_arg(auto_val::Arg::Pos(Value::Str(n.clone())));
+                node
+            }
+            Expr::Ref(n) => {
+                let mut node = AutoNode::new("ref");
+                node.add_arg(auto_val::Arg::Pos(Value::Str(n.clone())));
+                node
+            }
+            Expr::View(e) => {
+                let mut node = AutoNode::new("view");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Mut(e) => {
+                let mut node = AutoNode::new("mut");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Move(e) => {
+                let mut node = AutoNode::new("move");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Take(e) => {
+                let mut node = AutoNode::new("take");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Bina(l, op, r) => {
+                let mut node = AutoNode::new("bina");
+                node.add_kid(l.to_node());
+                node.add_arg(auto_val::Arg::Pos(Value::str(&*op.repr())));
+                node.add_kid(r.to_node());
+                node
+            }
+            Expr::Unary(op, e) => {
+                let mut node = AutoNode::new("una");
+                node.add_arg(auto_val::Arg::Pos(Value::str(&*op.repr())));
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Array(elems) => {
+                let mut node = AutoNode::new("array");
+                for elem in elems {
+                    node.add_kid(elem.to_node());
+                }
+                node
+            }
+            Expr::Pair(pair) => pair.to_node(),
+            Expr::Object(pairs) => {
+                let mut node = AutoNode::new("object");
+                for pair in pairs {
+                    node.add_kid(pair.to_node());
+                }
+                node
+            }
+            Expr::Block(body) => body.to_node(),
+            Expr::If(if_) => if_.to_node(),
+            Expr::Call(call) => call.to_node(),
+            Expr::Node(node) => node.to_node(),
+            Expr::Index(array, index) => {
+                let mut node = AutoNode::new("index");
+                node.add_kid(array.to_node());
+                node.add_kid(index.to_node());
+                node
+            }
+            Expr::Lambda(lambda) => lambda.to_node(),
+            Expr::Closure(closure) => closure.to_node(),
+            Expr::FStr(fstr) => fstr.to_node(),
+            Expr::Grid(grid) => grid.to_node(),
+            Expr::Cover(cover) => cover.to_node(),
+            Expr::Uncover(uncover) => uncover.to_node(),
+            // Plan 120: Option/Result patterns for is statement
+            Expr::OptionPattern(cover) => cover.to_node(),
+            Expr::ResultPattern(cover) => cover.to_node(),
+            Expr::OptionUncover(uncover) => uncover.to_node(),
+            Expr::ResultUncover(uncover) => uncover.to_node(),
+            // Plan 165: Struct destructuring pattern
+            Expr::StructPattern(sc) => sc.to_node(),
+            Expr::GenName(name) => {
+                let mut node = AutoNode::new("gen-name");
+                node.add_arg(auto_val::Arg::Pos(Value::Str(name.clone())));
+                node
+            }
+            Expr::Hold(hold) => {
+                let mut node = AutoNode::new("hold");
+                node.add_kid(hold.path.to_node());
+                node.add_arg(auto_val::Arg::Pos(Value::Str(hold.name.clone())));
+                node.add_kid(hold.body.to_node());
+                node
+            }
+            Expr::Nil => AutoNode::new("nil"),
+            Expr::Null => AutoNode::new("null"),
+            Expr::Range(r) => r.to_node(),
+            Expr::NullCoalesce(l, r) => {
+                let mut node = AutoNode::new("??");
+                node.add_kid(l.to_node());
+                node.add_kid(r.to_node());
+                node
+            }
+            Expr::ErrorPropagate(e) => {
+                let mut node = AutoNode::new("?.");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Cast { expr, target_type } => {
+                let mut node = AutoNode::new("as");
+                node.add_kid(expr.to_node());
+                node.add_arg(auto_val::Arg::Pos(Value::str(format!("{:?}", target_type))));
+                node
+            }
+            Expr::To { expr, target_type } => {
+                let mut node = AutoNode::new("to");
+                node.add_kid(expr.to_node());
+                node.add_arg(auto_val::Arg::Pos(Value::str(format!("{:?}", target_type))));
+                node
+            }
+            Expr::TupleDestruct { names, expr } => {
+                let mut node = AutoNode::new("tuple_destruct");
+                for n in names {
+                    node.add_arg(auto_val::Arg::Pos(Value::str(n.as_str())));
+                }
+                node.add_kid(expr.to_node());
+                node
+            }
+            Expr::Dot(object, field) => {
+                let mut node = AutoNode::new("dot");
+                node.add_kid(object.to_node());
+                node.add_arg(auto_val::Arg::Pos(Value::str(field.as_str())));
+                node
+            }
+            // Plan 105: Router navigation
+            Expr::NavCall { path, params } => {
+                let mut node = AutoNode::new("nav");
+                node.add_kid(path.to_node());
+                for pair in params {
+                    node.add_kid(pair.to_node());
+                }
+                node
+            }
+            // Plan 120: Option and Result constructors
+            Expr::Some(e) => {
+                let mut node = AutoNode::new("Some");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::None => AutoNode::new("None"),
+            Expr::Ok(e) => {
+                let mut node = AutoNode::new("Ok");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::Err(e) => {
+                let mut node = AutoNode::new("Err");
+                node.add_kid(e.to_node());
+                node
+            }
+            // Plan 6B-4.14: Smart pointer constructors
+            Expr::BoxExpr(e) => {
+                let mut node = AutoNode::new("Box");
+                node.add_kid(e.to_node());
+                node
+            }
+            Expr::ArcExpr(e) => {
+                let mut node = AutoNode::new("Arc");
+                node.add_kid(e.to_node());
+                node
+            }
+            // Plan 124: Async/Future/Await
+            Expr::AsyncBlock { body, return_type } => {
+                let mut node = AutoNode::new("async");
+                if let Some(ty) = return_type {
+                    node.set_prop("return_type", Value::Str(ty.to_string().into()));
+                }
+                for stmt in &body.stmts {
+                    node.add_kid(stmt.to_node());
+                }
+                node
+            }
+            Expr::Await { expr } => {
+                let mut node = AutoNode::new("await");
+                node.add_kid(expr.to_node());
+                node
+            }
+            // Plan 126: .go postfix operator for spawning background tasks
+            Expr::Go { expr } => {
+                let mut node = AutoNode::new("go");
+                node.add_kid(expr.to_node());
+                node
+            }
+            // Plan 321: yield expression
+            Expr::Yield(expr) => {
+                let mut node = AutoNode::new("yield");
+                node.add_kid(expr.to_node());
+                node
+            }
+            // Plan 095: Compile-time expression #{ expr }
+            Expr::Comptime(hash_brace) => hash_brace.to_node(),
+            Expr::Tuple(elems) => {
+                let mut node = AutoNode::new("tuple");
+                for elem in elems {
+                    node.add_kid(elem.to_node());
+                }
+                node
+            }
+            Expr::Is(is) => {
+                let mut node = AutoNode::new("is-expr");
+                node.add_kid(is.target.to_node());
+                node
+            }
+        }
+    }
+}
+
+impl ToNode for Stmt {
+    fn to_node(&self) -> AutoNode {
+        match self {
+            Stmt::Expr(expr) => expr.to_node(), // Changed from expr.to_atom().to_node()
+            Stmt::If(if_) => if_.to_node(),
+            Stmt::For(for_) => for_.to_node(),
+            Stmt::Is(is) => is.to_node(),
+            Stmt::Store(store) => store.to_node(),
+            Stmt::Block(body) => body.to_node(),
+            Stmt::Fn(fn_) => fn_.to_node(),
+            Stmt::EnumDecl(enum_decl) => enum_decl.to_node(),
+            Stmt::TypeDecl(type_decl) => type_decl.to_node(),
+            Stmt::Union(union) => union.to_node(),
+            Stmt::Tag(tag) => tag.to_node(),
+            Stmt::SpecDecl(spec_decl) => spec_decl.to_node(),
+            Stmt::Node(node) => node.to_node(),
+            Stmt::Use(use_) => use_.to_node(),
+            // PLAN-037 T6: use.web entries carry no node payload.
+            Stmt::UseWeb(_) => AutoNode::new("use.web"),
+            Stmt::OnEvents(on_events) => on_events.to_node(),
+            Stmt::Comment(comment) => {
+                let mut node = AutoNode::new("comment");
+                node.add_arg(auto_val::Arg::Pos(Value::str(comment.as_str())));
+                node
+            }
+            Stmt::Alias(alias) => alias.to_node(),
+            Stmt::TypeAlias(type_alias) => type_alias.to_node(),
+            Stmt::EmptyLine(n) => {
+                let mut node = AutoNode::new("nl");
+                node.set_prop("count", Value::Int(*n as i32));
+                node
+            }
+            Stmt::Break => AutoNode::new("break"),
+            Stmt::Continue => AutoNode::new("continue"),
+            Stmt::Return(_) => AutoNode::new("return"),
+            Stmt::Ext(ext) => ext.to_node(),
+            Stmt::Dep(dep) => dep.to_node(),
+            // Plan 096: UI scenario statements
+            Stmt::WidgetDecl(widget) => {
+                let mut node = AutoNode::new("widget");
+                node.add_arg(auto_val::Arg::Pos(Value::str(widget.name.as_str())));
+                node
+            }
+            Stmt::ActionsDecl(_) => AutoNode::new("actions"),
+            Stmt::StyleRecipeDecl(recipe) => {
+                let mut node = AutoNode::new("style-recipe");
+                node.add_arg(auto_val::Arg::Pos(Value::str(recipe.name.as_str())));
+                node
+            }
+            Stmt::StoreDecl(store) => {
+                let mut node = AutoNode::new("store");
+                node.add_arg(auto_val::Arg::Pos(Value::str(store.name.as_str())));
+                node
+            }
+            Stmt::ViewFragmentDecl(frag) => {
+                let mut node = AutoNode::new("view-fn");
+                node.add_arg(auto_val::Arg::Pos(Value::str(frag.name.as_str())));
+                node
+            }
+            Stmt::Try(_) => AutoNode::new("try"),
+            Stmt::MsgDecl(msg) => {
+                let mut node = AutoNode::new("msg");
+                node.set_prop("variants", Value::Int(msg.variants.len() as i32));
+                node
+            }
+            Stmt::ModelBlock(model) => {
+                let mut node = AutoNode::new("model");
+                node.set_prop("fields", Value::Int(model.fields.len() as i32));
+                node
+            }
+            Stmt::ViewBlock(_) => AutoNode::new("view"),
+            // Plan 306: Godot scene declaration
+            Stmt::SceneDecl(scene) => {
+                let mut node = AutoNode::new("scene");
+                node.add_arg(auto_val::Arg::Pos(Value::str(scene.name.as_str())));
+                node.set_prop("type", Value::str(scene.node_type.as_str()));
+                node
+            }
+            // Plan 121: Task/Msg system
+            Stmt::TaskDef(task) => task.to_node(),
+            // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+            Stmt::Reply(expr) => {
+                let mut node = AutoNode::new("reply");
+                node.add_arg(auto_val::Arg::Pos(Value::node(expr.to_node())));
+                node
+            }
+            // Plan 095: Compile-time execution
+            Stmt::HashIf(hash_if) => hash_if.to_node(),
+            Stmt::HashFor(hash_for) => hash_for.to_node(),
+            Stmt::HashIs(hash_is) => hash_is.to_node(),
+            Stmt::HashBrace(hash_brace) => hash_brace.to_node(),
+            Stmt::MacroCall(macro_call) => macro_call.to_node(),
+        }
+    }
+}
+
+impl AtomWriter for Stmt {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        // Delegate to each variant's to_atom_str
+        write!(f, "{}", self.to_atom())?;
+        Ok(())
+    }
+}
+
+impl ToAtom for Stmt {
+    fn to_atom(&self) -> AutoStr {
+        match self {
+            Stmt::UseWeb(_) => AutoStr::from("use.web"),
+            Stmt::Expr(expr) => expr.to_atom(),
+            Stmt::If(if_) => if_.to_atom(),
+            Stmt::For(for_) => for_.to_atom(),
+            Stmt::Is(is) => is.to_atom(),
+            Stmt::Store(store) => store.to_atom(),
+            Stmt::Block(body) => body.to_atom(),
+            Stmt::Fn(fn_) => fn_.to_atom(),
+            Stmt::EnumDecl(enum_decl) => enum_decl.to_atom(),
+            Stmt::TypeDecl(type_decl) => type_decl.to_atom(),
+            Stmt::Union(union) => union.to_atom(),
+            Stmt::Tag(tag) => tag.to_atom(),
+            Stmt::SpecDecl(spec_decl) => spec_decl.to_atom(),
+            Stmt::Node(node) => node.to_atom(),
+            Stmt::Use(use_) => use_.to_atom(),
+            Stmt::OnEvents(on_events) => on_events.to_atom(),
+            Stmt::Comment(comment) => comment.clone(),
+            Stmt::Alias(alias) => alias.to_atom(),
+            Stmt::TypeAlias(type_alias) => type_alias.to_atom(),
+            Stmt::EmptyLine(n) => format!("(nl (count {}))", n).into(),
+            Stmt::Break => "(break)".into(),
+            Stmt::Continue => "(continue)".into(),
+            Stmt::Return(expr) => format!("(return {})", expr.to_atom()).into(),
+            Stmt::Ext(ext) => ext.to_atom(),
+            Stmt::Dep(dep) => dep.to_atom(),
+            // Plan 096: UI scenario statements
+            Stmt::WidgetDecl(widget) => format!("(widget {})", widget.name).into(),
+            Stmt::StoreDecl(store) => format!("(store {})", store.name).into(),
+            Stmt::ViewFragmentDecl(frag) => format!("(view fn {})", frag.name).into(),
+            Stmt::StyleRecipeDecl(recipe) => format!("(style-recipe {})", recipe.name).into(),
+            Stmt::ActionsDecl(_) => "(actions)".into(),
+            Stmt::Try(_) => "(try)".into(),
+            Stmt::MsgDecl(msg) => format!("(msg {} variants)", msg.variants.len()).into(),
+            Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),
+            Stmt::ViewBlock(_) => "(view)".into(),
+            // Plan 306: Godot scene declaration
+            Stmt::SceneDecl(scene) => {
+                format!("(scene {} : {})", scene.name, scene.node_type).into()
+            }
+            // Plan 121: Task/Msg system
+            Stmt::TaskDef(task) => task.to_atom(),
+            // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+            Stmt::Reply(expr) => format!("(reply {})", expr.to_atom()).into(),
+            // Plan 095: Compile-time execution
+            Stmt::HashIf(hash_if) => hash_if.to_atom_str(),
+            Stmt::HashFor(hash_for) => hash_for.to_atom_str(),
+            Stmt::HashIs(hash_is) => hash_is.to_atom_str(),
+            Stmt::HashBrace(hash_brace) => hash_brace.to_atom_str(),
+            Stmt::MacroCall(macro_call) => macro_call.to_atom_str(),
+        }
+    }
+}
+
+impl ToNode for Code {
+    fn to_node(&self) -> AutoNode {
+        let mut node = AutoNode::new("code");
+        for stmt in &self.stmts {
+            node.add_kid(stmt.to_node()); // Changed from stmt.to_atom().to_node()
+        }
+        node
+    }
+}
+
+impl AtomWriter for Code {
+    fn write_atom(&self, f: &mut impl io::Write) -> AutoResult<()> {
+        write!(f, "(code")?;
+        for stmt in &self.stmts {
+            write!(f, " {}", stmt.to_atom_str())?;
+        }
+        write!(f, ")")?;
+        Ok(())
+    }
+}
+
+impl ToAtom for Code {
+    fn to_atom(&self) -> AutoStr {
+        self.to_atom_str()
+    }
+}
+
+// ============================================================
+// Markdown Test Infrastructure for to_atom() tests
+// ============================================================

@@ -39,10 +39,11 @@
 - **镜像布局的硬理由**：auto-lang `build.rs` 以 `../../crates` 与根
   `Cargo.lock` 为编译期输入（缺失即 unwrap 红）；非镜像布局在受管 build
   阶段确定性失败。
-- **交付闭包**（10 crate + 1 patch + 5 根级输入；闭包清单随 auto-lang
-  必需 path 依赖演进——PLAN-793 后含 auto-diagnostics）：auto-lang（全库，
+- **交付闭包**（11 crate + 1 patch + 5 根级输入；闭包清单随 auto-lang
+  必需 path 依赖演进——PLAN-793 后含 auto-diagnostics、PLAN-799 后含
+  auto-ast）：auto-lang（全库，
   含 UI——语言源码尚未拆完，**如实披露的受管包含，不冒称纯 core/独立
-  UI 仓**）、auto-val、auto-atom、auto-lex、auto-diagnostics、auto-cache、
+  UI 仓**）、auto-val、auto-atom、auto-lex、auto-diagnostics、auto-ast、auto-cache、
   shim-metadata、auto-bindgen、auto-macros、a2r-std + crates/patches/iced_widget +
   stdlib/assembly-providers.json、stdlib/auto/image.{at,rs.at,vm.at}、
   docs/schema/aura.at。

@@ -327,7 +327,7 @@ impl Type {
     /// # Examples
     ///
     /// ```rust
-    /// use auto_lang::ast::Type;
+    /// use auto_ast::ast::Type;
     ///
     /// assert!(Type::Int.is_optimized_by_value());      // true: small type
     /// assert!(Type::Bool.is_optimized_by_value());     // true: small type

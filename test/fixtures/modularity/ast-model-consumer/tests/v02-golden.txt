@@ -1,0 +1,295 @@
+### core-code
+--Display--
+(code (let (name x) (type int) (bina (int 1) (op +) (int 2))) (if (branch (bina (name x) (op >) (int 10)) (body (var (name y) (str "big")))) (else (body (name small)))) (for ((name i) (name items)) (name items) (body (call (name push) (args (name i))))) (try) (is (name res) (eq (Ok (name v)) (body (return (name v)))) (else (body (break)))) (return (tuple (int 1) (int 2))))
+--ToAtom--
+(code let(x, int, bina(+, 1, 2)) if { bina(>, x, 10) { var(y, String, "big") }; else { small } } for in(i, items) { call push (i) } (try) is(res) { eq((Ok (name v))) { { (return v) } } else { { (break) } } } (return (tuple (int 1) (int 2))))
+--ToNode--
+Node { name: "code", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "let", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("x"), Str("type"): Str("int")} }, kids: Kids { map: {Int(0): Node(Node { name: "bina", id: "", num_args: 0, args: Args { args: [Pos(Str("+"))] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(1))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(2))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(1): Node(Node { name: "if", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "branch", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "bina", id: "", num_args: 0, args: Args { args: [Pos(Str(">"))] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("x"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(10))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(1): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("var(y, String, \"big\")")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(1): Node(Node { name: "else", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("small")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(2): Node(Node { name: "for", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "iter", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("index"): Str("i"), Str("name"): Str("items")} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("items"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(2): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("call push (i)")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(3): Node(Node { name: "try", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(4): Node(Node { name: "is", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("res"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "eq", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "Ok", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("v"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(1): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("(return v)")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(2): Node(Node { name: "else", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("(break)")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(5): Node(Node { name: "return", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### expr-closure
+--Display--
+(closure (a : int) : int => (bina (name a) (op *) (int 2)))
+--ToAtom--
+|a:int|:int bina(*, a, 2)
+--ToNode--
+Node { name: "closure", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("return"): Str("int")} }, kids: Kids { map: {Int(0): Node(Node { name: "param", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("a"), Str("type"): Str("int")} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "bina", id: "", num_args: 0, args: Args { args: [Pos(Str("*"))] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("a"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(2))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### expr-fstr
+--Display--
+(fstr (str "n=") (name n) (str "!"))
+--ToAtom--
+fstr("n=", n, "!")
+--ToNode--
+Node { name: "fstr", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "str", id: "", num_args: 0, args: Args { args: [Pos(Str("n="))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("n"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(2): Node(Node { name: "str", id: "", num_args: 0, args: Args { args: [Pos(Str("!"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### expr-index-slice
+--Display--
+(index (name arr) (range (start (int 0)) (end (nil)) (eq false)))
+--ToAtom--
+slice(arr, 0, len)
+--ToNode--
+Node { name: "index", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("arr"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "range", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("eq"): Bool(false)} }, kids: Kids { map: {Int(0): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(0))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "nil", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### expr-object
+--Display--
+(object (pair "width" (int 320)) (pair "title" (str "demo")))
+--ToAtom--
+obj { pair("width", 320), pair("title", "demo") }
+--ToNode--
+Node { name: "object", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "pair", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "str", id: "", num_args: 0, args: Args { args: [Pos(Str("width"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(320))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(1): Node(Node { name: "pair", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "str", id: "", num_args: 0, args: Args { args: [Pos(Str("title"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "str", id: "", num_args: 0, args: Args { args: [Pos(Str("demo"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### expr-cast
+--Display--
+(as (name raw) uint)
+--ToAtom--
+(as (name raw) uint)
+--ToNode--
+Node { name: "as", id: "", num_args: 0, args: Args { args: [Pos(Str("Uint"))] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("raw"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### expr-async-await
+--Display--
+(async (body ((call (name fetch) (args (str "url"))).await)) :str)
+--ToAtom--
+(async (body ((call (name fetch) (args (str "url"))).await)) :str)
+--ToNode--
+Node { name: "async", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("return_type"): Str("str")} }, kids: Kids { map: {Int(0): Node(Node { name: "await", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "call", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("return"): Str("void")} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("fetch"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "args", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("\"url\"")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### generic-type
+--Display--
+List<int>
+--ToAtom--
+List<int>
+--ToNode--
+Node { name: "type", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("List<int>")} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### decl-type
+--Display--
+(type-decl (name Box<T>) (members (member (name value) (type T))))
+--ToAtom--
+type Box { member(value, T) }
+--ToNode--
+Node { name: "type-decl", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("Box"), Str("kind"): Str("user")} }, kids: Kids { map: {Int(0): Node(Node { name: "member", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("value"), Str("type"): Str("T")} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### decl-typealias
+--Display--
+type Ints = List<int>
+--ToAtom--
+type_alias(name("Ints"), params([]), target(List<int>))
+--ToNode--
+Node { name: "type_alias", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("Ints"), Str("params"): Array(Array { values: [] }), Str("target"): Node(Node { name: "type", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("List<int>")} }, kids: Kids { map: {}, lazy: None }, text: "" })} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### decl-enum
+--Display--
+(enum (name Color) (item (name Red) (value 0)) (item (name Green) (value 0)))
+--ToAtom--
+enum(name("Color")) { item(name("Red"), value(int(0))) item(name("Green"), value(int(0))) }
+--ToNode--
+Node { name: "enum", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("Color")} }, kids: Kids { map: {Int(0): Node(Node { name: "item", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("Red"), Str("value"): Int(0)} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "item", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("Green"), Str("value"): Int(0)} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### import-use-auto
+--Display--
+(use (module_path math.trig))
+--ToAtom--
+use(module_path("math.trig"))
+--ToNode--
+Node { name: "use", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("module_path"): Str("math.trig")} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### import-use-rust
+--Display--
+(use (kind rust) (module_path pac.serde.json) (pub))
+--ToAtom--
+use(kind("rust"), module_path("pac.serde.json"))
+--ToNode--
+Node { name: "use", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("kind"): Str("rust"), Str("module_path"): Str("pac.serde.json")} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### import-dep
+--Display--
+(dep iced (version 0.13) (features [canvas]))
+--ToAtom--
+dep(iced, version("0.13"), features([canvas]))
+--ToNode--
+Node { name: "dep", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("iced"), Str("version"): Str("0.13"), Str("features"): Array(Array { values: [Str("canvas")] })} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### nested-deep-if-fn-hold
+--Display--
+(if (branch (bina (call (name check) (args (name deep))) (op &&) (true)) (body (fn (name inner) (params (param (name z) (type float) (mode view))) (ret void) (body (hold (dot (name ctx).res) as h (body (yield (name h)))))))))
+--ToAtom--
+if { bina(?, call check (deep), true) { fn inner ((z, float)) void { (hold (dot (name ctx).res) as h (body (yield (name h)))) } } }
+--ToNode--
+Node { name: "if", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "branch", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "bina", id: "", num_args: 0, args: Args { args: [Pos(Str("&&"))] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "call", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("return"): Str("void")} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("check"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "args", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("deep")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(1): Node(Node { name: "bool", id: "", num_args: 0, args: Args { args: [Pos(Bool(true))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(1): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("fn inner ((z, float)) void { (hold (dot (name ctx).res) as h (body (yield (name h)))) }")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### expr-node
+--Display--
+(node (name Button))
+--ToAtom--
+node Button
+--ToNode--
+Node { name: "node", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("Button")} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### expr-grid
+--Display--
+(grid (data (row (int 1) (int 2)) (row (int 3) (int 4))))
+--ToAtom--
+(grid (data (row (int 1) (int 2)) (row (int 3) (int 4))))
+--ToNode--
+Node { name: "grid", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "data", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "row", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(1))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(2))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(1): Node(Node { name: "row", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(3))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "int", id: "", num_args: 0, args: Args { args: [Pos(Int(4))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### comptime-macro
+--Display--
+(#debug ((name x)))
+--ToAtom--
+(#debug ((name x)))
+--ToNode--
+Node { name: "macro_call", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("debug")} }, kids: Kids { map: {Int(0): Node(Node { name: "name", id: "", num_args: 0, args: Args { args: [Pos(Str("x"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### comptime-hash-if
+--Display--
+(#if (true) (body (#debug ((name x)))) else (body (name fallback)))
+--ToAtom--
+(#if (true) (body (#debug ((name x)))) else (body (name fallback)))
+--ToNode--
+Node { name: "hash_if", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "bool", id: "", num_args: 0, args: Args { args: [Pos(Bool(true))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("(#debug ((name x)))")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(2): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("fallback")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### pattern-cover-tag
+--Display--
+(tag-cover (kind Shape) (tag Circle) (bindings r))
+--ToAtom--
+(tag-cover (kind Shape) (tag Circle) (bindings r))
+--ToNode--
+Node { name: "tag-cover", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "kind", id: "", num_args: 0, args: Args { args: [Pos(Str("Shape"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "tag", id: "", num_args: 0, args: Args { args: [Pos(Str("Circle"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(2): Node(Node { name: "bindings", id: "", num_args: 0, args: Args { args: [Pos(Str("r"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### pattern-uncover
+--Display--
+(tag-cover (kind Shape) (tag Rect) (bindings w h))
+--ToAtom--
+(tag-cover (kind Shape) (tag Rect) (bindings w h))
+--ToNode--
+Node { name: "tag-uncover", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("src"): Str("shape"), Str("binding"): Str("area")} }, kids: Kids { map: {Int(0): Node(Node { name: "tag-cover", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "kind", id: "", num_args: 0, args: Args { args: [Pos(Str("Shape"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "tag", id: "", num_args: 0, args: Args { args: [Pos(Str("Rect"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(2): Node(Node { name: "bindings", id: "", num_args: 0, args: Args { args: [Pos(Str("w")), Pos(Str("h"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### pattern-option-some
+--Display--
+(Some v)
+--ToAtom--
+(Some v)
+--ToNode--
+Node { name: "option-cover", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("variant"): Str("Some"), Str("binding"): Str("v")} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### pattern-result-err
+--Display--
+(Err e)
+--ToAtom--
+(Err e)
+--ToNode--
+Node { name: "result-cover", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("variant"): Str("Err"), Str("binding"): Str("e")} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### pattern-struct
+--Display--
+(struct-cover Point.Cartesian {x y: dy})
+--ToAtom--
+(struct-cover Point.Cartesian {x y: dy})
+--ToNode--
+Node { name: "struct-cover", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("type_name"): Str("Point"), Str("variant"): Str("Cartesian")} }, kids: Kids { map: {Int(0): Node(Node { name: "field-binding", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("field"): Str("x"), Str("binding"): Str("x")} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "field-binding", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("field"): Str("y"), Str("binding"): Str("dy")} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### task-def
+--Display--
+(task sync (attrs single) (state (count mut (int 0))) (start (fn (name start) (ret void) (body (name init)))) (on(ctx) (Tick -> (body (name tick)))))
+--ToAtom--
+#[single] task sync {
+    count mut = 0
+
+    fn start() ! { init }
+
+    on {(ctx)
+        Tick -> { tick }
+    }
+}
+--ToNode--
+Node { name: "task", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("sync")} }, kids: Kids { map: {Int(0): Node(Node { name: "attr", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("kind"): Str("single")} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "state", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("count"), Str("mutable"): Bool(true), Str("initial"): Str("0")} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(2): Node(Node { name: "fn", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("name"): Str("start"), Str("kind"): Str("Function"), Str("return"): Str("void")} }, kids: Kids { map: {Int(0): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("init")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" }), Int(3): Node(Node { name: "on", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("context_param"): Str("ctx")} }, kids: Kids { map: {Int(0): Node(Node { name: "handler", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("pattern"): Str("Tick")} }, kids: Kids { map: {Int(0): Node(Node { name: "body", id: "", num_args: 0, args: Args { args: [Pos(Array(Array { values: [Str("tick")] }))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### on-events
+--Display--
+(on (arrow (from (int 5)) (to (int 7)) (with (int 10))) (cond-arrow (from (name btn)) (cond (true)) (arrow (from (int 9)) (to (int 10)))))
+--ToAtom--
+on { arrow(from(5), to(7)) cond-arrow(from(btn), cond(true)) { arrow(from(9), to(10)) } }
+--ToNode--
+Node { name: "on", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {Int(0): Node(Node { name: "arrow", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("from"): Str("5"), Str("to"): Str("7"), Str("with"): Str("10")} }, kids: Kids { map: {}, lazy: None }, text: "" }), Int(1): Node(Node { name: "cond-arrow", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("from"): Str("btn"), Str("cond"): Str("true")} }, kids: Kids { map: {Int(0): Node(Node { name: "arrow", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("from"): Str("9"), Str("to"): Str("10")} }, kids: Kids { map: {}, lazy: None }, text: "" })}, lazy: None }, text: "" })}, lazy: None }, text: "" }
+
+### ui-widget-decl
+--Display--
+(widget Counter)
+--ToAtom--
+(widget Counter)
+--ToNode--
+Node { name: "widget", id: "", num_args: 0, args: Args { args: [Pos(Str("Counter"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-store-decl
+--Display--
+(store counter)
+--ToAtom--
+(store counter)
+--ToNode--
+Node { name: "store", id: "", num_args: 0, args: Args { args: [Pos(Str("counter"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-view-fragment
+--Display--
+(view fn row)
+--ToAtom--
+(view fn row)
+--ToNode--
+Node { name: "view-fn", id: "", num_args: 0, args: Args { args: [Pos(Str("row"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-style-recipe
+--Display--
+(style-recipe btn-primary)
+--ToAtom--
+(style-recipe btn-primary)
+--ToNode--
+Node { name: "style-recipe", id: "", num_args: 0, args: Args { args: [Pos(Str("btn-primary"))] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-actions-decl
+--Display--
+(actions)
+--ToAtom--
+(actions)
+--ToNode--
+Node { name: "actions", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-use-web
+--Display--
+use.web (1 web import)
+--ToAtom--
+use.web
+--ToNode--
+Node { name: "use.web", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-model-block
+--Display--
+(model 0 fields)
+--ToAtom--
+(model 0 fields)
+--ToNode--
+Node { name: "model", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("fields"): Int(0)} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-view-block
+--Display--
+(view)
+--ToAtom--
+(view)
+--ToNode--
+Node { name: "view", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-scene-decl
+--Display--
+(scene Main : Control)
+--ToAtom--
+(scene Main : Control)
+--ToNode--
+Node { name: "scene", id: "", num_args: 0, args: Args { args: [Pos(Str("Main"))] }, props: Obj { values: {Str("type"): Str("Control")} }, kids: Kids { map: {}, lazy: None }, text: "" }
+
+### ui-msg-decl
+--Display--
+(msg 1 variants)
+--ToAtom--
+(msg 1 variants)
+--ToNode--
+Node { name: "msg", id: "", num_args: 0, args: Args { args: [] }, props: Obj { values: {Str("variants"): Int(1)} }, kids: Kids { map: {}, lazy: None }, text: "" }

@@ -86,6 +86,9 @@ where
 
 pub mod api;
 pub mod ast;
+// PLAN-799: 解析便利层（ParserExt 对 Code/Name/Expr/Is/Arrow/OnEvents 的
+// 六类 impl + Parser 耦合测试）——模型已在 auto-ast，解析注入留上层。
+mod ast_parse_ext;
 pub mod atom;
 // a2r Standard Library - Rust implementations of AutoLang standard types
 pub mod a2r_std;

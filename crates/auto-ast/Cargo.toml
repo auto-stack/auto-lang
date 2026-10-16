@@ -1,0 +1,16 @@
+[package]
+name = "auto-ast"
+version = "0.1.0"
+edition = "2021"
+
+# PLAN-799: AST 模型单一来源（Code/Stmt/Expr/Type/UI 兼容节点 + ToNode/
+# ToAtom/AtomWriter 序列化行为），自 auto-lang 逐字抽取。依赖闭包 = T-01
+# 冻结（attachments/799/t01-audit.md §2）：仅 auto-val（轻值/Node 表示）、
+# auto-lex（token::Pos，call/task 源位置）、serde（fun.rs 手工 Serialize）。
+# 禁依赖 auto-lang/Parser/TypeStore/推断/VM/renderer/Man——lang-core 域规则
+#（.autoos/module-boundaries.toml）。
+
+[dependencies]
+auto-val = { path = "../auto-val" }
+auto-lex = { path = "../auto-lex" }
+serde = { workspace = true }

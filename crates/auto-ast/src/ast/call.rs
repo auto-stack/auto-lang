@@ -1,6 +1,6 @@
 use super::{Expr, Name, Type};
 use crate::ast::{AtomWriter, ToAtomStr};
-use crate::token::Pos;
+use auto_lex::token::Pos;
 use auto_val::AutoStr;
 use std::{fmt, io as stdio};
 

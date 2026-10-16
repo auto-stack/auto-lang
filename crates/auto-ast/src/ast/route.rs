@@ -68,7 +68,7 @@ impl RouteDef {
     /// # Example
     ///
     /// ```
-    /// use auto_lang::ast::RouteDef;
+    /// use auto_ast::ast::RouteDef;
     ///
     /// let route = RouteDef::new("/user/:id".to_string(), "user".to_string());
     /// assert_eq!(route.path, "/user/:id");
@@ -150,7 +150,7 @@ impl Default for RoutesBlock {
 /// # Examples
 ///
 /// ```
-/// use auto_lang::ast::extract_route_params;
+/// use auto_ast::ast::extract_route_params;
 ///
 /// assert_eq!(extract_route_params("/button"), vec![] as Vec<String>);
 /// assert_eq!(extract_route_params("/user/:id"), vec!["id"]);

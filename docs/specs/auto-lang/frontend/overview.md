@@ -21,6 +21,16 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   `AutoError::Msg`，旧臂一致）；`Lexer` 在本 crate 仍不公开（`mod lexer`
   私有，外部消费者直接依赖 auto-lex）。规范见
   [auto-lex/project.md](../../auto-lex/project.md)。
+- PLAN-799 起 AST 模型外置为底层 crate **auto-ast**（`crates/auto-ast`，
+  `Code`/`Stmt`/`Expr`/`Type`/UI 兼容节点与 `ToNode`/`ToAtom`/`AtomWriter`
+  序列化单一实现，依赖仅 auto-val+auto-lex+serde）：本模块 `ast.rs` 是其
+  **薄门面**（单行 glob re-export，同一类型身份，旧 `crate::ast::*`/
+  `auto_lang::ast::*` 路径与 `pub mod ui/cover/fstr` 子路径全部保持）；
+  解析便利层归上层——`ParserExt` 对 `Code`/`Name`/`Expr`/`Is`/`Arrow`/
+  `OnEvents` 的六类 impl（含 OnEvents `skip_check`）与 Parser 耦合测试
+  （`test/ast/*.test.md` oracle）在私有模块 `ast_parse_ext`（旧
+  `ast::parsers` 本就非 pub，无外部路径消费）。规范见
+  [auto-ast/project.md](../../auto-ast/project.md)。
 - **未迁事实**（不得冒称完整前端独立）：`Parser` 仍持有 `Lexer`（经兼容
   出口）、`TypeStore`、`InferenceContext`、`ModuleTracker`、session 与方言表，
   不再依赖 `Universe`（plan-090）；PLAN-793 起通用诊断整体外置为底层 crate

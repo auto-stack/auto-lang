@@ -38,6 +38,10 @@ schema = "module-boundaries/1"
 # lang-core 禁反向依赖 lang-monolith/man/工具/UI。
 "auto-lex" = "lang-core"
 "auto-diagnostics" = "lang-core"
+# PLAN-799：AST 模型 crate（Code/Stmt/Expr/Type/UI 兼容节点 + ToNode/
+# ToAtom/AtomWriter，自 auto-lang 逐字抽取；依赖闭包 = auto-val/auto-lex/
+# serde，闭包由 test/fixtures/modularity/ast-model-consumer 钉住）。
+"auto-ast" = "lang-core"
 # 语言工具基建（被 auto-lang 消费的底层 util/生成/测试基建）。
 "auto-cache" = "lang-infra"
 "shim-metadata" = "lang-infra"
