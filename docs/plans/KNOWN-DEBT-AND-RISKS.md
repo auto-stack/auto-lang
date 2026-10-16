@@ -1,9 +1,10 @@
-### Plan 787（2026-10-16，final review R6，needs_fix；含783上游归属）
+### Plan 787（2026-10-16，final review R6，needs_fix → 同日 work 修复轮全闭合）
 
 受审 `462b27e5a011160f56b6944189708b110828b08b`；[R6报告/复现/闭环](attachments/787/review-r6/REVIEW.md)。R1 7/7、R2 18/18、R3 8/8、R4 3/3、R5 4/4均绿（有重叠），旧空args/大trivia例闭合；当前 **executing 5/9**，保留T01..05，重开T06/07，不批准延期。
 F787-R6-01（P2）：source put同驻留三份只计两份，256KiB页计524288B/实际下界786480B；新计量64MiB work-owned必验被后置merge，旧matrix不能复用；未声称总预算实际超限。F787-R6-02（P2）：窗口先全物化后判2MiB，8MiB名称实际驻留8388623B才拒绝。
 F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释放128次91次SQLite唯一键冲突；787实际syntax_cache_ 7/8通过、1红，单例重试绿。须由783依赖owner在合规worktree/计划内补唯一性后787绑定提交，不能跨计划私修或调用侧sleep遮红。
 定向15族14绿/raw passed107次+failed1次（过滤重叠）；check/fmt/diff-check绿。readiness已知必验缺口故未重复长时64MiB整轮final；完整验收尚未通过。merge-owned正确范围=最终pass后完整独立语法/783触面+知识/合流归档/guard收尾，无根整档/docs_gen。未修实现或合入。
+**修复轮闭环（work，同日）**：R6-01 ✅ put_peak=capacity+2×len+64（三份：聚合buf+payload克隆+探针framed）；64MiB work-owned 在修复提交上实测（acceptance 16族 raw 111 + 独立复跑：managed 8027KiB≤8MiB、OS各阶段采样峰值17176KiB≤64MiB、源重建阶段已入采样口径）。R6-02 ✅ 限额改 append 前判定（驻留上界=limit+一源页≤256KiB；8MiB名/默认2MiB实测2359296B恰为界内）+永久oracle `syntax_cache_range_query_window_limit_bounds_materialization`（512KiB名+64KiB限，自报物化≤320KiB）。R6-03 ✅ 按归属经独立 `fix-783-lease-id` worktree 修复（LEASE_SEQ 进程序列镜像 STAGING_SEQ；永久回归 `reachability_sequential_same_millisecond_leases_do_not_collide` 128连发全绿；probe 全套件绿）落 master `7c0caa18c`，787 merge 回绑 + 兼容审计基面重锚 7c0caa18c；787 侧无私修/无sleep。六代反例 R1-R6 全绿无空过。矩阵/SD 已按新口径更新；merge-owned 门禁清单已更正（无根整档/docs_gen）。
 
 ### Plan 787（2026-10-16，独立 final review R5，needs_fix）
 

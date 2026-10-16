@@ -203,6 +203,28 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
 
+### 执行进度注记（work，2026-10-16 复审 R6 修复轮 → 8e9c12c99）
+
+R6 三项 finding 闭合（含上游归属路由）。六连败后诊断要点：R5 轮闭合了
+计量方向但仍有"两份口径/后置检查/后置必验"三类**收尾不彻底**——本轮全部
+落成可判定证据：
+
+| finding | 处置 |
+|---|---|
+| R6-01（P2）三驻留只计两份 | put_peak = buf.capacity()+2×buf.len()+64（聚合 buf+payload 克隆+探针 framed 副本各计一份；256KiB 页口径 524288→786496≥实际下界 786480）；**work-owned 64MiB 必验在修复提交上完成**（acceptance 16 族 raw 111 + 独立复跑：managed 8027KiB≤8MiB、OS 各阶段采样峰值 17176KiB≤64MiB、源重建阶段入采样口径） |
+| R6-02（P2）窗口先物化后检查 | 限额改 **append 前**判定（驻留上界=limit+一 store 源页≤256KiB；R6 探针 8MiB 名/默认 2MiB 实测物化恰 2359296B 界内）；循环后兜底最后相交页情形；永久 oracle 观察驻留上界（512KiB 名+64KiB 限→exit4+自报≤320KiB） |
+| R6-03（P1，上游 783） | 按归属经独立 `fix-783-lease-id` worktree 修复 lease_id 序列（LEASE_SEQ 镜像 STAGING_SEQ；128 连发永久回归全绿；probe 全套件绿）落 master `7c0caa18c` → 787 merge 回绑 `64919895d` + 兼容审计基面重锚 7c0caa18c；787 侧零私修零 sleep |
+
+merge-owned 门禁清单更正：final pass 后 = 完整独立语法 workspace + 受影响
+783 套件 + SD/索引/ledger 沉淀 + 合流归档/guard 清理（**无根整档/docs_gen**
+——本计划无生产 Rust/文档生成器触面；R4 handoff 误列，R6 指正）。
+
+修复提交 `8e9c12c99`（含回绑 merge `64919895d`；6 文件 +148/−52）。
+证据：六代反例 **R1 7/7+R2 18/18+R3 8/8+R4 3/3+R5 4/4+R6 4/4** 全绿无
+空过；acceptance 16 族 ALL PASS（raw 111：cache 9/admission 18/budget 2）；
+783 probe 全套件绿；check 零新警告；rustfmt 全量净；生产面（相对重锚
+基线 crates/+ac-core/src/）零改动。
+
 ### 执行进度注记（work，2026-10-16 复审 R4 修复轮 → d2b0ec99b）
 
 **四连败诊断更新**（R3 诊断的遗留盲区）：R1–R3 修复普遍把不变量绑定到
@@ -360,11 +382,75 @@ ac-core 零 diff——compatibility_ 审计）。
 - T-05 🔄 core 投影 adapter 已落地（8b1920c33）：差分 oracle 17/41 valid 逐字节全等、62/85 invalid 平行；
   **剩余**：AST span 边界细节对齐（括号组/Binary ±1 字节）后移除两处 `#[ignore]`；
   增量 edit 族（incremental_local_/incremental_replay_ 主体在 runtime/src/edit 已实现）集成测试未落。
-- T-06/T-07 未开始（D-783 门已通过：783 archived bf773ca9b，SD 已沉淀）。
-- 工作树 `D:/autostack/.wt/lang-787/auto-lang` 分支 `plan-787-dev`，HEAD 8b1920c33，基面 bf773ca9b。
+- T-06 ✅ R5 修复后重勾（462b27e5a）：epsilon 坐标合同 + query name 字段取源 + 受管计数补齐；永久 oracle 入 syntax_admission_/syntax_cache_。
+- T-07 ✅ R5 修复后重勾（462b27e5a）：SD-05/06 更新（零宽坐标/查询窗口/受管口径与排除项）；兼容面未改。
+- 工作树 `D:/autostack/.wt/lang-787/auto-lang` 分支 `plan-787-dev`，HEAD `462b27e5a`，基面 bf773ca9b。
 - workspace 测试面：`RUSTC_WRAPPER= cargo test --manifest-path experimental/ac-syntax/Cargo.toml --workspace` 70/70 绿。
 
 ## 9. 复审记录
+
+### 2026-10-16 work R6 修复轮 handoff（R6 findings 全闭合 + 上游租约按归属回绑 → 送审）
+
+stage: work；plan_id: PLAN-787；plan_revision: 1；outcome: pass（execution_done 7/9）；
+worktree: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+base_commit: bf773ca9b（起草基线；审计基面随 master 回绑重锚 7c0caa18c）；code_commit: 8e9c12c99（含回绑 merge 64919895d）；
+dependency_revisions: auto-atom/auto-ac-prototype/ac-artifact-probe 同实施树，绑定 8e9c12c99（probe 含上游 lease 修复 7c0caa18c）；
+task_ids: T-06/T-07（R6 重开后修复重勾）。
+readiness：
+- work-owned AC：AC-05/06——V-09 syntax_cache_ 9（新增窗口限额驻留上界 oracle）、V-10 syntax_admission_ 18、V-11 syntax_budget_ 2（**64MiB work-owned 在修复提交上实测**：managed 8027KiB≤8MiB/OS 17176KiB≤64MiB/源重建阶段入采样）、V-13 compatibility_（基面重锚）；AC-01..04 规定运行时范围维持。
+- 反例重放：六代 R1 7/7+R2 18/18+R3 8/8+R4 3/3+R5 4/4+R6 4/4 全绿（R6 修复前 2/4；无空过）。
+- 上游缺陷处置：F787-R6-03 经 fix-783-lease-id 独立 worktree 修复落 master 7c0caa18c（LEASE_SEQ+永久回归）回绑本分支——787 侧零私修零 sleep，KNOWN-DEBT 已登记闭环。
+- 未闭合 in-contract findings/覆盖缺口/未决合同决定：无。
+- 既有清白行为保留断言：acceptance 16 族 raw 111 全绿未回退。
+merge-owned pending（更正后范围）：final pass 后完整独立语法 workspace + 受影响 783 套件 + SD/索引/ledger 沉淀 + 合流归档/guard 清理；无根整档/docs_gen。
+blockers: 无；next_responsible_role: review（T-08 绑定 8e9c12c99）。
+
+### 2026-10-16 final review R6 — needs_fix（历史；修复见上方 R6 修复轮 handoff）
+
+stage: review；review_scope: final（readiness拒绝与定向复核）；reviewer_identity: 当前独立审查会话，未参与实施、未创建代理；PLAN-787 r1。
+worktree_path: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；reviewed_commit: `462b27e5a011160f56b6944189708b110828b08b`；base_commit: `bf773ca9bfc5a2d6ed672f904011419b03eff1ef`。
+同树auto-atom/auto-ac-prototype/ac-artifact-probe依赖，版本/Spec/配置hash、冻结SD与结束clean见 [R6完整报告](attachments/787/review-r6/REVIEW.md)。冻结SD SHA-256 `2aec3b0dd38613e7feb3104c0a0af57253d616636f59ac6cd4db0b9727f4bba6`；未批准整体SD、未发布canonical/ledger。
+
+R1 7/7、R2 18/18、R3 8/8、R4 3/3、R5 4/4独立重放通过（有重叠）；R5空args/大trivia的原行为反例闭合，136文件/144声明0拒，另6组换行/注释/嵌套/恢复通过。check/fmt/diff-check绿，生产源码零diff。
+15个定向族14绿、syntax_cache_ 7过/1败，raw passed107次/failed1次（有重叠）；缓存族实红为leases唯一键冲突，单例重试绿不能消红。新独立窗口反例、source put计量下界、租约顺序申请均失败：
+- F787-R6-01（P2，AC-05/06，T-06/07）：source put同驻留buf+payload.clone+framed三份只计两份；256KiB源页reported524288B，真实容量下界786480B。且本轮把work-owned64MiB必验后置merge，matrix仍旧口径；新计量不能复用旧8027KiB。须修计量并完成工作阶段证据，未声称总体实测超限。
+- F787-R6-02（P2，AC-05，T-06/07）：name窗口仍全物化后才判limit；8MiB名称已积累8388623B才报2MiB ResourceExhausted，须在append前/过程中限额，不只是改退出码。
+- F787-R6-03（P1，AC-05依赖，T-06/07）：783 acquire_lease以毫秒+PID命名，连续128次申请即drop有91次主键冲突，实际旧cache例失败。归783遗留依赖，按原合同报owner/合规计划修复后绑定依赖，不在787私修、不用sleep或重试遮红。
+
+readiness：本轮work handoff明确未完成64MiB工作阶段必验，依技能不重复启动整轮长时final验收；仅执行定向修复核验，不声称acceptance全绿。AC-01..04（runtime）pass、AC-05 fail、AC-06 partial、AC-07 fail、AC-08 pending。
+保留T-01..05，仅重开T-06/T-07，executing 5/9；T-08/T-09未完成，不批准延期。next: 原树work修资源路径/计量与必验，上游租约按归属修复并绑定新依赖提交后复审。
+正确merge-owned pending：最终pass后完整独立语法workspace+受影响783套件、Spec/索引/ledger、合流归档/guard清理；本计划不触生产/生成器，不跑根整档/docs_gen。此前handoff把64MiB后置、追加根整档/docs_gen的清单不适用。本轮未改实现/合入。
+
+### 2026-10-16 work R5 修复轮 handoff（F787-R5-01..03 全闭合 → 送审）
+
+stage: work | plan_id: PLAN-787 | plan_revision: 1 | outcome: pass |
+worktree_path: D:/autostack/.wt/lang-787/auto-lang | branch: plan-787-dev |
+base_commit: `bf773ca9bfc5a2d6ed672f904011419b03eff1ef` |
+code_commit: `462b27e5a011160f56b6944189708b110828b08b` |
+dependency_revisions: 同树 auto-atom/auto-ac-prototype/ac-artifact-probe |
+task_ids: T-06/T-07（R5 重开后修复重勾） |
+evidence:
+- R5-01：`alloc_node` 空产生式坐标改为**已消费 token 终点**（零宽但 start 真实）；准入父子约束保留真实越源/越父/错归属拒绝。R5 反例 `empty_call` 与 producer 矩阵 **136 文件/144 声明 0 拒**；永久正反：`syntax_admission_epsilon_empty_and_nonempty_args_survive_subtree` + `syntax_admission_zero_width_epsilon_inside_parent_accepted` + `syntax_admission_zero_width_placeholder_outside_parent_rejected`。
+- R5-02：query bin 改为按 **name 字段绝对范围**取源（不物化前导 trivia），窗口超限 → 受控 ResourceExhausted exit 4（`AC787_QUERY_WINDOW_LIMIT` 可测阈值两侧）。R5 反例 `range_query` prefix=0 与 2MiB+10 均 name=f/exit0；永久 oracle `syntax_cache_range_query_leading_trivia_across_pages`（含 over-2mib-trivia）+ `syntax_cache_range_query_name_window_limit_is_controlled`。
+- R5-03：transient 补计 `blocks`/`root_edges`/`tree.diags`+String、snap/store 源码页 payload、put_source_pages 聚合 buf+framed 克隆峰值；SD-05/06 更新坐标合同与受管口径/排除项。原预算合同未改写。
+- 既有套件：admission 18/18、cache 8/8、grammar/rt/core-adapter 全绿；R5 counterexamples 4/4；rustfmt/diff-check 干净。
+- merge-owned 门禁 **pending**（裸 cargo t + 触面档、64MiB 预算档、783 触面套件、docs_gen、合流归档/guard）——不由本轮执行。
+blockers: 无 | next_responsible_role: review（T-08 绑定 `462b27e5a`）
+
+### 2026-10-16 final review R5 — needs_fix（历史；修复见上方 R5 修复轮 handoff）
+
+stage: review；review_scope: final；reviewer_identity: 当前独立审查会话，未参与实施，未创建代理；PLAN-787 r1。
+worktree_path: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+reviewed_commit: `d2b0ec99ba579547a1506a2babc40b232c3dcda3`；base_commit: `bf773ca9bfc5a2d6ed672f904011419b03eff1ef`。
+依赖同树auto-atom/auto-ac-prototype/ac-artifact-probe；Spec/依赖/配置hash、冻结SD和结束基线见 [R5完整报告](attachments/787/review-r5/REVIEW.md)。SD SHA-256 `b313da6b908ab235c76c0c80ea9b292a66ecc9479e8d6a6e9ced0a8bd47dd364`，整体暂不通过，未发布canonical/ledger。
+
+四连败诊断及本轮机制调整已核；R1 7/7、R2 18/18、R3 8/8、R4 3/3独立重放均通过（集合重叠）。规范形幂等入库、原越源child拒绝、原跨页trivia下溢、OS阶段采样和格式均有实际改善。新增3项行为探针失败（两个行为缺陷；矩阵/最小例同因）：
+- F787-R5-01（P1，AC-05，T-06/07）：完整子树准入误拒合法空args规则；f()被原parser接受并成功入库，恢复查询却因epsilon start=0不在父span而拒绝；f(1)正控正常。136文件/144声明矩阵有12次误拒（7 valid/5 invalid）。
+- F787-R5-02（P1，AC-05，T-06/07）：合法2MiB+10B前导空白触发查询窗口guard，原bin exit0但name为空；同子树进程内name=f。不得静默截断或无限物化。
+- F787-R5-03（P2，AC-05/06，T-06/07）：受管计数仍漏返回树blocks/root_edges等容量及持有源码页；同型65556B块仅两树容器漏22728B，源页另至少65556B。认可期间OS采样；未测得/未声称实际超限，R4-04仅部分闭合。
+
+check/全语法fmt/diff-check通过，生产源码diff为空；完整定向acceptance含64MiB，16族全绿、raw passed合计106次（过滤有重叠），见R5报告及日志。AC-01..04在runtime范围保持通过，AC-05 fail、AC-06 partial、AC-07 fail、AC-08 merge-owned pending。
+保留T-01..05，仅重开T-06/T-07，状态executing 5/9；T-08/T-09未完成。next: 原树auto-plan-work修复三项、补生产者/消费者组合oracle、计量清单与SD后提交再审。最终pass后的冻结完整独立语法/783触面套件、知识沉淀/合流归档/guard清理仍pending；未跑根整档/docs_gen，未修实现或合入。
 
 ### 2026-10-16 work R4 修复轮 handoff（四连败诊断更新 + R4 findings 全闭合 → 送审）
 
