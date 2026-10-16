@@ -13,7 +13,7 @@ OUT = SPECS / "INDEX.md"
 
 # project 目录名 -> 视图分组（分组只是视图，不是实体层级）
 GROUPS = {
-    "语言核心": ["auto-lang", "auto-val", "auto-atom", "auto-test-case", "a2r-std", "stdlib", "aavm", "project-model"],
+    "语言核心": ["auto-lang", "auto-lex", "auto-val", "auto-atom", "auto-test-case", "a2r-std", "stdlib", "aavm", "project-model"],
     "工具链": ["auto-cli", "auto-man", "auto-gen", "auto-lsp", "auto-vm",
                "auto-cache", "auto-bindgen", "auto-macros", "shim-metadata"],
     "UI/Web 生态": ["auto-playground", "widgets", "forge-ui", "lab-ui",
