@@ -12,7 +12,7 @@ use ac_syntax_rt::snapshot::{PageStore, Snapshot};
 use auto_ac_prototype::source::parse_program;
 use std::rc::Rc;
 
-fn core_grammar() -> GrammarProgram {
+pub fn core_grammar() -> GrammarProgram {
     let src = std::fs::read_to_string(format!("{}/../../grammars/auto-core.at", env!("CARGO_MANIFEST_DIR"))).unwrap();
     compile(&src).unwrap()
 }

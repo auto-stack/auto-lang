@@ -269,7 +269,7 @@ pub struct Budget {
 
 impl Default for Budget {
     fn default() -> Self {
-        Budget { max_parse_depth: 1 << 20, work_bytes: 64 << 20 }
+        Budget { max_parse_depth: 1 << 20, work_bytes: 256 << 20 }
     }
 }
 

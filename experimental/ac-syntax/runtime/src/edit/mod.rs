@@ -75,8 +75,28 @@ pub fn incremental_lex(
         .iter()
         .position(|t| t.end > e.start && (if span_edit { t.start < e.end } else { t.start <= e.start }))
         .unwrap_or(old_tokens.len());
-    // at-rest checkpoint：affected_first 前一 token 边界（非错误 token 之后）。
-    let cp_idx = affected_first; // checkpoint 在 token[cp_idx] 起点
+    // at-rest checkpoint：回退跳过紧邻前导 trivia（splice 在 token 边界切分会
+    // 把连续 trivia 拆成两个叶，fresh 全量扫是一个 lexeme——从上一语义 token
+    // 起重扫保证编辑区 trivia 完整重建）。前一 token（语义）非错误 = at-rest。
+    let mut cp_idx = affected_first; // checkpoint 在 token[cp_idx] 起点
+    while cp_idx > 0
+        && old_tokens[cp_idx - 1].token != u32::MAX
+        && p.scanner.rules.iter().any(|r| r.token == old_tokens[cp_idx - 1].token && r.trivia)
+    {
+        cp_idx -= 1;
+    }
+    // 边界安全判据：前一 token 是 trivia（重扫将完整重建 trivia 链）或与当前
+    // token 之间存在字节间隙；两侧都是语义 token 且直接相邻（粘连 lexeme 被
+    // 切开）的边界不安全（`api add` → `apixadd` 类重组分叉）。BOF 安全。
+    let is_trivia_tok = |t: &Token| {
+        t.token != u32::MAX && p.scanner.rules.iter().any(|r| r.token == t.token && r.trivia)
+    };
+    while cp_idx > 0
+        && !is_trivia_tok(&old_tokens[cp_idx - 1])
+        && old_tokens[cp_idx - 1].end == old_tokens[cp_idx].start
+    {
+        cp_idx -= 1;
+    }
     if cp_idx == 0 {
         // 文档起点即 at-rest。
     } else if old_tokens[cp_idx - 1].error {
@@ -102,7 +122,11 @@ pub fn incremental_lex(
     let mut j = 0usize;
     while j < new_head.len() {
         let nt = &new_head[j];
-        if nt.start + 1 > shifted_end {
+        // 对齐点只取非 trivia token：trivia 处对齐会把连续 trivia 在
+        // head/tail 边界拆裂（与全量词法的完整 lexeme 不一致 → 树分叉）。
+        let nt_is_trivia = nt.token != u32::MAX
+            && p.scanner.rules.iter().any(|r| r.token == nt.token && r.trivia);
+        if !nt_is_trivia && nt.start + 1 > shifted_end {
             // 进入编辑区之后：尝试对齐。
             let old_pos = (nt.start as i64 - delta) as u64;
             let oi = old_tokens[cp_idx..]
@@ -110,6 +134,14 @@ pub fn incremental_lex(
                 .position(|t| t.start == old_pos && t.token == nt.token && t.end - t.start == nt.end - nt.start);
             if let Some(rel) = oi {
                 let o = cp_idx + rel;
+                // 对齐点边界安全判据同 checkpoint：前一 token 为 trivia 或有间隙。
+                if o > 0
+                    && !is_trivia_tok(&old_tokens[o - 1])
+                    && old_tokens[o - 1].end == old_tokens[o].start
+                {
+                    j += 1;
+                    continue;
+                }
                 // 连续 K 对齐验证。
                 let mut k = 0;
                 while k < CONVERGE_K {
@@ -144,12 +176,10 @@ pub fn incremental_lex(
         _ => {
             // 到 EOF 都未对齐（删除至尾部等）——整流即新流。
             let nh_len = new_head.len();
-            return Ok(Splice {
-                rescan_bytes: new_snap.len().saturating_sub(rescan_start),
-                tokens: new_head,
-                new_base: nh_len,
-                old_base: old_tokens.len(),
-            });
+            // 到 EOF 未对齐（未闭合吃满尾部等）：重扫无法与旧流对齐——
+            // 记录原因，交给上层全文回退（结果 = fresh）。
+            let _ = old_tokens;
+            return Err(FallbackReason::NoConvergence);
         }
     };
     // 拼接：head = new_head[..an]；tail = old_tokens[ao..] 平移。
@@ -161,8 +191,12 @@ pub fn incremental_lex(
         let b = &old_tokens[ao - 1];
         a.line as i64 - b.line as i64
     };
-    let mut tokens = Vec::with_capacity(an + old_tokens.len() - ao);
-    tokens.extend_from_slice(&new_head[..an]);
+    // 全量流 = checkpoint 前旧前缀（字节未变，原样保留）+ 重扫 head + 平移 tail。
+    // 少前缀会把增量流截断（1MiB 负载实测丢 ~40 万 token）。
+    let mut tokens = Vec::with_capacity(cp_idx + an + old_tokens.len() - ao);
+    tokens.extend_from_slice(&old_tokens[..cp_idx]);
+    let head = new_head[..an].to_vec();
+    tokens.extend_from_slice(&head);
     for t in &old_tokens[ao..] {
         tokens.push(Token {
             token: t.token,
@@ -173,7 +207,7 @@ pub fn incremental_lex(
         });
     }
     let rescan_bytes = new_head.get(an).map(|t| t.start).unwrap_or(new_snap.len()) - rescan_start;
-    Ok(Splice { tokens, new_base: an, old_base: ao, rescan_bytes })
+    Ok(Splice { tokens, new_base: cp_idx + an, old_base: ao, rescan_bytes })
 }
 
 /// 增量重解析（编辑后）。edits 基于旧 snapshot 坐标。
@@ -231,8 +265,27 @@ pub fn incremental_reparse(
         if e > affected_lo && s < affected_hi {
             continue; // 相交 → 重解析
         }
-        // 声明 token 范围（旧流，含 leading trivia；span 起点即首 trivia）。
-        let lo = old.tokens.partition_point(|t| t.start < s);
+        // 含 error/missing 节点的声明也重解析：子树可拷贝，但诊断 Vec 不随
+        // 嫁接转移——重验证使 fresh 与增量的诊断集一致（round5 差分实测）。
+        let mut has_err = false;
+        let mut stack = vec![d.node];
+        while let Some(n) = stack.pop() {
+            let nd = old.tree.nodes[n as usize];
+            if nd.flags & (crate::cst::FLAG_ERROR | crate::cst::FLAG_MISSING) != 0 {
+                has_err = true;
+                break;
+            }
+            for &c in old.tree.children(n).iter().rev() {
+                stack.push(c);
+            }
+        }
+        if has_err {
+            continue;
+        }
+        // 声明 token 范围：起点用 DeclUnit.origin（帧 cover_from，**含前导
+        // trivia**——嫁接检查点在 leading trivia 上，语义 span 起点会对不上键）；
+        // 尾点用语义 span 尾（尾部 trivia 归下一单元）。
+        let lo = old.tokens.partition_point(|t| t.start < d.origin);
         let hi = old.tokens.partition_point(|t| t.start < e);
         by_old_tok.insert(lo, GraftCandidate { decl: *d, tok_lo: lo, tok_hi: hi });
         reused += 1;
