@@ -1,7 +1,7 @@
 {
-  "last_covered_plan_id": 795,
-  "timestamp": "2026-10-16T16:10:00Z",
-  "covered_commit": "44a1494f92f041d81e7854af9051a2ed6ad96600",
+  "last_covered_plan_id": 800,
+  "timestamp": "2026-10-17T00:00:00Z",
+  "covered_commit": "22436586409513757c56cdece6d03e2c085b6d35",
   "legs": [
     "tf",
     "tt",
@@ -9,42 +9,36 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 94.2,
-      "run": 6324,
-      "passed": 6320,
-      "failed": 4,
+      "seconds": 103.0,
+      "run": 6333,
+      "passed": 6333,
+      "failed": 0,
       "skipped": 519,
-      "note": "首跑 fail-fast 于 plan484_024（负载时序族）；--no-fail-fast 全量 4 红（ffi_dual_013_dep_method/dep_parity_017_dep_lifecycle/ffi_dual_017_dep_lifecycle/plan484_024）均 solo 绿——ffi 族为上份收据 ffi_dual_019 同族负载时序，plan484_024 为在案 flake"
+      "note": "终跑 --no-fail-fast 全量 6333/6333 全绿；过程中 fail-fast 首跑红 ffi_dual_019_dep_layout_invariants、一次中间跑红 plan484_024——均上份收据在案负载时序族（本窗口再次 solo/复跑绿确认）"
     },
     "tt": {
-      "seconds": 113.3,
-      "run": 5698,
-      "passed": 5697,
-      "failed": 1,
+      "seconds": 136.8,
+      "run": 5707,
+      "passed": 5707,
+      "failed": 0,
       "skipped": 1798,
-      "note": "首跑 fail-fast 于 plan707_spike_cancel_gap（在案 flake）；全量唯一红 plan484_024 solo 绿"
+      "note": "全绿（1 slow）"
     },
     "tb": {
-      "seconds": 96.1,
-      "run": 5350,
-      "passed": 5347,
-      "failed": 3,
+      "seconds": 101.5,
+      "run": 5359,
+      "passed": 5359,
+      "failed": 0,
       "skipped": 1548,
-      "note": "3 红（state_file lock_serializes=791 收据在案锁时序 flake/plan484_024/plan707_cancel_active_job）均 solo 绿；另首跑 fail-fast 轮 plan498_legend_toggle 亦 solo 绿（chart 交互族，tf 全量同窗口 PASS）"
+      "note": "全绿（1 slow）"
     }
   },
   "new_reds": [],
   "known_reds_seen": [
-    "ffi_dual_tests::ffi_dual_013_dep_method",
-    "ffi_dep_parity_tests::dep_parity_017_dep_lifecycle",
-    "ffi_dual_tests::ffi_dual_017_dep_lifecycle",
-    "plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute",
-    "plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped",
-    "plan707_cancel_tests::plan707_cancel_active_job_aborts_and_frees_permit",
-    "state_file::tests::lock_serializes_critical_sections",
-    "plan498_chart_interaction_tests::plan498_charts::plan498_legend_toggle_visibility"
+    "ffi_dual_tests::ffi_dual_019_dep_layout_invariants",
+    "plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute"
   ],
-  "taa": "not_triggered: window fbe2e69b7..HEAD touches zero aavm trigger paths",
-  "environment": "外部并行负载在场（他仓 cargo test/build + lang-794 树 p781 例程运行），全部红项 solo 复绿归因负载时序族",
-  "window": "fbe2e69b7..HEAD (791 merge closeout -> 795 closeout, 13 commits docs+795 delivery)"
+  "taa": "not_triggered: window 44a1494f92..HEAD touches zero aavm trigger paths",
+  "environment": "主检出单实例（预检 0 nextest/cargo/rustc）；PLAN-800 merge 收口触发（800%5=0）",
+  "window": "44a1494f92..22436586409513757c56cdece6d03e2c085b6d35 (795 closeout -> 800 closeout: 792 delivery+merge / 787 delivery+merge+ledger v38 / 788 bookkeeping / 798 r2 / 800 delivery+merge)"
 }
