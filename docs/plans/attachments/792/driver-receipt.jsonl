@@ -24,17 +24,17 @@
     {
       "case": "V01-fresh-resolve",
       "ok": true,
-      "detail": "fresh lock 生成 (2s)，patch 单源 + pin 全命中"
+      "detail": "fresh lock 生成 (4s)，patch 单源 + pin 全命中"
     },
     {
       "case": "V01-real-build",
       "ok": true,
-      "detail": "cargo build --locked (116s)，产物 在位"
+      "detail": "cargo build --locked (177s)，产物 在位"
     },
     {
       "case": "V02-relocated-locked-build",
       "ok": true,
-      "detail": "B 内 locked build (110s)，本地 target=有（无共享 target 回退）"
+      "detail": "B 内 locked build (132s)，本地 target=有（无共享 target 回退）"
     },
     {
       "case": "V02-metadata-identity",
@@ -95,6 +95,21 @@
       "case": "V03f-sidecar-external-path-rejected",
       "ok": true,
       "detail": "exit=1，未产出应用清单（外部 path 不入交付物）"
+    },
+    {
+      "case": "V03g-sidecar-root-relative-rejected",
+      "ok": true,
+      "detail": "exit=1，诊断含根相对，未产出应用清单"
+    },
+    {
+      "case": "V03h-foreign-staging-sibling-preserved",
+      "ok": true,
+      "detail": "exit=0，固定名 staging 位外来字节保留"
+    },
+    {
+      "case": "V03h-foreign-trash-sibling-refused",
+      "ok": true,
+      "detail": "exit=1，外来换出位字节保留，既有交付不动"
     },
     {
       "case": "V03-restore-green",

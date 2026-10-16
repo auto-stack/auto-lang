@@ -104,6 +104,22 @@ merge-owned裸cargo t；ui_gen改动加tu，若触VM/compiler再tv；不是自�
 
 ## 9. 复审记录
 
+2026-10-16 stage=review | review_scope=final（R2） | reviewer_identity=独立于实施的本轮Codex复审上下文，未另开agent | plan_id=PLAN-792 | plan_revision=1 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-792/auto-lang | branch=plan-792-dev | reviewed_commit=477e498199ed6302a1e9724e89cbb8d2625bb65b | base_commit=ccf66f013b4b6351202f4e47669f8c51f7457c54 | dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；789/790/791祖先证据沿用R1（本轮其后代） | spec_inputs/SD冻结/AC矩阵=[R2报告](attachments/792/review-r2.md) | acceptance_results=AC01正常最小输入pass；AC02/04 partial；AC03/05 fail；AC06 pending | finding_closure=R1-F01资源及F04格式CLOSED；F02/03原反例闭合但完整不变量未闭合，见R2新反例 | findings=F-792-R2-01（P1，换装修复无归属递归删除同级固定staging/backup外来目录）、F-792-R2-02（P2，Windows根相对path绕过两层检查，成功发行主检出依赖） | evidence=delivery7/7、正式资源7控全符合预期、换装/路径10控含三条合同失败；独立fresh真实build149s，完整重定位driver详报告 | pending_closeout_gates=裸t/合同触面tu及实际VM触面tv、规范/ledger/归档/guard清理均pending | next=原树修复提交后复审；executing 2/8，保留T01/02，重开T03..06。第二次final needs_fix，下次交接须附根因及覆盖/设计调整表，映射两轮finding到机制修复与组合反例。历史“全闭合/19绿”不代表本轮通过；根Cargo.lock实际被ignore，已冻结真实输入快照与hash，不能再称git已提交。未改实施/合入。
+
+2026-10-16 stage=work | PLAN-792 | plan_revision=1 | outcome=pass（review-r2 needs_fix 两项全修+根因/覆盖调整表，三交 final review） | worktree=D:/autostack/.wt/lang-792/auto-lang | branch=plan-792-dev | base=ccf66f013 | code=dc645528f（R2 修复：11c3f9ca0 → 8a83e1f39 → 477e49819 → dc645528f） | 修复证据=R2 探针复放三反例闭合（foreign staging survives=true；foreign backup exit1+survives=true；根相对 exit1+emitted=false）+七正常/失败控制照常绿；定向 8/8（新增 delivery_foreign_sibling_dirs_preserved+根相对反例入 delivery_sidecar_external_path_rejected）；driver 22/22（V03g 根相对/V03h 两态外来保留）；rustfmt 0 diff；rust_ui 回归 39/2 预存=基线 | blockers=无 | next=review（T-07 三审）
+
+  **两轮 finding → 机制修复 → 组合反例映射表（skill 双失败诊断）**：
+
+  | finding | 根因（机制层） | 机制修复 | 代表组合反例（已绑定永久用例/驱动） |
+  |---|---|---|---|
+  | R1-F01 资源 hash 无消费 | 校验只做"文件 vs fixture"对拍——清单 hash 无任何消费方 | 资源字段改 SHA-256 + **随包 verify.py** 唯一正式消费入口（独立可执行） | 四态：等长篡改/坏 hash 记录（64 零）/缺资源/未登记资源（V03a 四控 + 审查 7 控复放） |
+  | R1-F02 失败先删旧包 | clean-then-generate：生成前清理既有交付 | 预检 → 独立 staging 全量生成+校验 → 成功才换装 | 破损 producer / 预检后缺 sidecar 模块 / rename 被拒（os error 5）三失败路径保留旧包（审查 R2 探针 3 控） |
+  | R2-F01 外来同级目录被删 | R1-F02 修复引入：固定名 sibling + 无条件 remove_dir_all = **凭名字认领所有权** | staging 唯一属主名（pid+ns）+内置标记+守卫只清本次自有；换出保留名做属主检查（marker/空），外来占据显式拒绝——**生成器只删可证明自有产物** | 固定名 staging 位外来字节保留（成功路径共存）+ 换出保留名外来占据拒绝且双方字节不动（V03h 两态 + 审查反例复放 + 单元 delivery_foreign_sibling_dirs_preserved 三段） |
+  | R1-F03+R2-F02 外部源漏检 | ①复用开发 sidecar 注入无边界校验；②检查只认 `is_absolute()`——Windows RootDir（`/x` 无盘符）为假且词法深度把 RootDir 当普通分量，`path::join` 实际丢弃基目录 | 前置 sidecar 拒绝 + 全 manifest 边界自检，两处 `absolute_like = is_absolute ∨ 首分量 RootDir/Prefix` | D 盘绝对 / `../../../` 越界 / `/autostack/...` 根相对三反例 + registry/包内 `../crates/` 合法控制（单元三态+V03f/V03g+审查两轮反例复放） |
+  | R1-F04 fmt | 新增块手写格式漂移 | rustfmt --check 清零纳入每轮自检 | 每轮修复后 rustfmt --check rust_ui.rs = 0 diff |
+
+  **共性根因自省**：①校验/清理逻辑以"生成器视角"书写（信任自己创建的名字/依赖 producer 在场），而非"消费者/占有者视角"（独立可验证、所有权可证明）——R1-F01/F02/R2-F01 同源；②Windows 路径语义（join 丢弃基目录、RootDir 无盘符）未进入词法模型——R2-F02。设计调整：所有权一律以内容标记（delivery-manifest.json/.delivery-staging.marker）证明、删除只作用于本次独占创建或标记证实的路径；路径边界一律按"是否丢弃解析基"判外部（is_absolute ∨ RootDir/Prefix ∨ ParentDir 穿出）。**R2 纠正采纳**：根 Cargo.lock 为 .gitignore 本地输入（非 git 跟踪）——manifest 现绑定 `root_lock_sha256` 实际内容身份，t01 收据的"git 跟踪"表述作废（以 R2 报告冻结快照与本行为准）。
+
 2026-10-16 stage=review | review_scope=final | reviewer_identity=独立于实施的本轮 Codex 复审上下文（未另开 agent，不虚构模型/会话ID） | plan_id=PLAN-792 | plan_revision=1 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-792/auto-lang | branch=plan-792-dev | reviewed_commit=8a83e1f39383b43c01b5b159dacef8d2a89fd7c2 | base_commit=ccf66f013b4b6351202f4e47669f8c51f7457c54 | dependency_revisions=789/790/791 三个交付 SHA 均为受审提交祖先（见报告冻结基线） | spec_inputs/SD冻结/AC矩阵=[独立R1报告](attachments/792/review-r1.md) | acceptance_results=AC01正常最小输入pass；AC02/04 partial；AC03/05 fail；AC06 merge-owned pending | findings=F-792-R1-01（P2，hash未被正式受管入口校验，测试函数改hash仍True）、F-792-R1-02（P1，再交付准备失败先删旧应用）、F-792-R1-03（P2，sidecar主检出绝对path成功发行）、F-792-R1-04（P3，两处新增格式diff） | evidence=定向delivery5/5、独立fresh真实build161s、正式入口反例及日志均在报告；SD冻结patch hash=A9EEFE98CDF469BB1E9284754467FEBD45CE6113C67246DC495AF18459A1C1A0 | pending_closeout_gates=裸t/合同触面tu及实际新增VM触面tv、规范/ledger/归档/guard清理均未执行 | next=原树修复T03..06并提交后复审；保留T01/02，重开T03..06，executing 2/8；下方work完成/无finding陈述仅为历史，不再代表当前验收状态。未改实施/合入。
 
 2026-10-16 stage=new | plan_revision=1 | outcome=blocked（合同preflight通过；789/790/791交付前置未满足） | next=三项合流后work；此前仅只读准备 | 0/8；fresh-lock/独立build尚未执行，不借785的rlib证据宣布通过。这里的blocked是交接记录，不新增Plan后端状态，frontmatter维持drafting。
@@ -125,4 +141,4 @@ merge-owned裸cargo t；ui_gen改动加tu，若触VM/compiler再tv；不是自�
 - **rustfmt 1.98 全仓漂移**：当前 stable rustfmt 对 master 的 auto-man/auto crate 产生 ~42 文件大规模重排（master 在该工具链下非 fmt-clean；历史 fmt 门疑用旧版 rustfmt）。本计划改动仅触及 3 文件、未引入全仓重排；fmt 工具链钉扎/门禁口径需单独裁定。
 - **plan734_commands_fixture 编译红（预存）**：`cargo nextest -p auto-man`（全测试目标）下 tauri 2.12.4 `Wry` configured-out 编译红，主检出同款——影响 nextest 全目标档，裸 `--lib` 不受影响。
 - **rust_ui 两预存红（threads=1）**：`merged_api_client_crud_fallback_for_uncovered_endpoints` 与 `test_shell_pack_lib_freshness`（主检出基线同款 31 通过/2 红）；并行裸跑另有 4 例 env/state_file 竞争族（nextest 进程隔离不现）。
-- **交付边界如实登记**：bundle 含 auto-lang 全库（33.7MiB，语言源码尚未拆完）；已证平台仅 Windows/x86_64-pc-windows-msvc；`examples/rust-workspace/`（含其 Cargo.lock）整目录被 .gitignore 忽略，任意检出不保证在位（pin 源因此用根 Cargo.lock）。
+- **交付边界如实登记**：bundle 含 auto-lang 全库（33.7MiB，语言源码尚未拆完）；已证平台仅 Windows/x86_64-pc-windows-msvc；根 Cargo.lock 与 `examples/rust-workspace/`（含其 Cargo.lock）**均为 .gitignore 本地输入**（R2 复审纠正——非 git 跟踪；任意检出不保证在位）。pin 源用根锁且 manifest 绑定 `root_lock_sha256` 实际内容身份。
