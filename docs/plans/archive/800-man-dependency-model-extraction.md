@@ -144,8 +144,10 @@ work-owned readiness（r1）：F800-R1-01/02 两 finding 闭合、无未结 in-c
 - **archived**：`git mv` → docs/plans/archive/800-man-dependency-model-extraction.md，
   status=archived，8/8；本收据与 attachments/800/**（含 review-r1/r2 材料）随终态提交
   入库 master。
-- **cleaned**：wt-guard clean → 移除 lang-800/auto-lang 工作树 + plan-800-dev 分支 +
-  auto-down 只读兄弟 + 组目录（回填见下）。
+- **cleaned**：wt-guard 双树 clean（auto-lang/auto-down 均无 reparse point）→
+  `git worktree remove` lang-800/auto-lang + `git branch -d plan-800-dev`（was 02b11c4b4，
+  已落地）+ auto-down 只读兄弟移除 + 空组目录 `rmdir D:/autostack/.wt/lang-800`——
+  零残留（2026-10-17 回填验证）。
 - **batch_regression**：800%5=0 → 到期，交接 `/auto-plan:regress`（主检出单实例；
   收据 docs/plans/.last-batch-regression.json 由该技能落盘）。
 
