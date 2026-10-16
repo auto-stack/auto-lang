@@ -1,0 +1,1 @@
+{"artifacts": [{"kind": "exe", "logical": "app.exe", "path": "C:\\Users\\zhaop\\AppData\\Local\\Temp\\p788-review-r1-80a2bev0\\outside.bin", "bytes": 999, "sha256": "033742098ce3cd5999b793709fa574a292b26789d48c880c6202c43b34a22bfb"}]}

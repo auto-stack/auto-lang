@@ -175,3 +175,15 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
 5. **跨进程重启复用**：worker 级 exec 双请求经同一磁盘 store 证明复用；真新进程由
    783 native_resume_（跨进程 node 二进制）证明；T-08 验收矩阵在 AC_CASE_STORE 钉根
    下补齐 runner 级重启样本。
+
+## 10. R1 修复后的补充冻结（2026-10-16，复审 R1 后）
+
+1. **工具链身份轴收敛为两轴**：`worker-exe-sha256`（worker 可执行文件内容哈希——
+   静态内嵌 ac-core 与全部已解析依赖，等价于 compiler+worker recipe 身份，同时作为
+   缓存 compiler_fp）+ `ac-worker-protocol`（"acworker/1"）。lld/sdk/版本串留在响应
+   中作展示，不进身份（stale 可重算的轴才可进行级身份）。
+2. **预算语义**：单一绝对 total 自 admission 起算（父墙=total，无宽限）；build 段
+   预算覆盖前端→lower→link；run 取 min(run_ms, 剩余 total)；每个出口（含 check、
+   语言失败、typed 重放、cache 命中）核预算。
+3. **非参与组合**：`cache: fresh|read-only` 声明在 ac/check 或 hir-atom 输入上为
+   admission ERROR（契约层门控 + worker 镜像拒绝）；默认 reuse 不承诺参与。
