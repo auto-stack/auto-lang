@@ -150,3 +150,6 @@ T-06 证据：rustfmt 触面文件（fmt 递归波及的 43 个非触面文件�
 ## 10. 待澄清事项
 
 DTO具体字段在T01按现有state/anchor投影冻结；若必须改变UI状态机、feature缺席值或加入新跨线程调度，先出具体冲突修订，不能顺手发明新的scroll架构。
+
+
+2026-10-16 cleaned：PLAN-794:r1 | stage=merge | checkpoint=cleaned | wt-guard clean（D:/autostack/.wt/lang-794/auto-lang）→ git worktree remove 成功 → branch codex/plan-794-dev 删除（was 5ddef1315）→ 组目录保留 auto-down 兄弟（依赖线自管，非本计划清理面）| 交付主链：master=c9c37968d（delivery 5ddef1315 + 归档簿记）| completion_kind=delivered
