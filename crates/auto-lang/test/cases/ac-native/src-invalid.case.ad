@@ -43,3 +43,25 @@ fn main() int { return f
 (3) }
 ", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "parse", code: "source.syntax" } } } ] }
 ```
+# R2 (F01/F04): the SAME typed negative through build and run actions —
+# language failures are observations on every action, never gate-2 errors.
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.undefined-build", source: { text: "fn main() int { return x }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "bld", adapter: "ac", action: "build", expect: { completion: { stage: "resolve", code: "source.undefined" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.undefined-run", source: { text: "fn main() int { return x }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", expect: { completion: { stage: "resolve", code: "source.undefined" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.wrong-stage-build-red", source: { text: "fn main() int { return x }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "bld-red", adapter: "ac", action: "build", expect: { completion: { stage: "parse", code: "source.syntax" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.entry-missing-backend", source: { text: "fn helper() int { return 1 }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", expect: { completion: { stage: "backend", code: "entry.not-found" } } } ] }
+```
+
+# R2 (F01): both grammars carry their own LEGAL/ILLEGAL matrix.
+```test-case
+case { schema: "autolang.case/2", id: "ac.syntax.core-invalid", source: { text: "fn main( int { return 3 }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "parse", adapter: "syntax", action: "parse", options: { grammar: "auto-core" }, expect: { completion: { stage: "parse", code: "syntax.parse" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.syntax.mini-invalid", source: { text: "api ( : ; )", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "parse", adapter: "syntax", action: "parse", options: { grammar: "interface-mini-v1" }, expect: { completion: { stage: "parse", code: "syntax.parse" } } } ] }
+```

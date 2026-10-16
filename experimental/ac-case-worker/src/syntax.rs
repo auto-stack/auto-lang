@@ -16,7 +16,7 @@
 //!   real runtime numbers.
 
 use crate::protocol::{
-    ArtifactOut, DiagOut, EditStep, OkOut, SpanOut, ToolchainOut, WorkerError, WorkerRequest,
+    ArtifactOut, DiagOut, OkOut, SpanOut, ToolchainOut, WorkerError, WorkerRequest,
 };
 use ac_syntax_grammar;
 use ac_syntax_rt::cst;
@@ -77,6 +77,23 @@ fn exec_inner(
     cs: &CompiledScanner,
     started: Instant,
 ) -> Result<OkOut, WorkerError> {
+    // R2 (F07): the request total budget bounds the WHOLE syntax request —
+    // parse, every edit step, the fresh-equivalence oracle, projections
+    // and artifact writes. runtime Budget::default is an internal resource
+    // policy, never a substitute for this deadline.
+    let total = req.budget.total_ms;
+    let mut check_budget = |phase: &str| -> Result<(), WorkerError> {
+        if started.elapsed().as_millis() as u64 > total {
+            return Err(infra(
+                "budget.total",
+                format!(
+                    "syntax {} phase exceeded the {}ms request budget",
+                    phase, total
+                ),
+            ));
+        }
+        Ok(())
+    };
     let input = match &req.input {
         crate::protocol::InputSpec::Source { source_b64 } => {
             b64d(source_b64).map_err(|e| infra("request.input", format!("base64: {}", e)))?
@@ -114,6 +131,7 @@ fn exec_inner(
     let mut revision: u32 = snap.revision();
 
     let mut cur = cur;
+    check_budget("parse")?;
     if req.kind == "edit" {
         let steps = req.edits.as_deref().unwrap_or(&[]);
         for (i, step) in steps.iter().enumerate() {
@@ -196,6 +214,7 @@ fn exec_inner(
                 grafted_decls: inc.reused_decls,
             };
             revision = new_snap.revision();
+            check_budget(&format!("edit-{}", i))?;
             trace.push(SpanOut {
                 stage: format!("edit-{}", i),
                 wall_ms: ms(t_step),
@@ -234,6 +253,7 @@ fn exec_inner(
     let canonical = cur.tree.canonical();
     let outline_json = render_outline(&outline_items);
 
+    check_budget("projection")?;
     let mut artifacts = Vec::new();
     let mut write_artifact = |logical: &str, bytes: &[u8]| -> Result<(), WorkerError> {
         let path = scratch.join(logical);
@@ -253,6 +273,7 @@ fn exec_inner(
     write_artifact("outline.json", outline_json.as_bytes())?;
     write_artifact("cst.canonical", canonical.as_bytes())?;
 
+    check_budget("done")?;
     trace.push(SpanOut {
         stage: "done".into(),
         wall_ms: ms(started),

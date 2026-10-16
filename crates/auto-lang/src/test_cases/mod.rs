@@ -39,6 +39,7 @@ use auto_test_case::suite::apply_defaults;
 
 pub mod a2r;
 pub mod ac;
+mod ac_protocol;
 pub mod avm;
 pub mod materialize;
 pub mod stale;

@@ -27,3 +27,16 @@ fn main() int { let b bool = below(2); if b { return 4 } else { return 0 } }", s
 ```test-case
 case { schema: "autolang.case/2", id: "ac.core.named-arg-binding", source: { text: "fn pair(a int, b int) int { return a * 10 + b } fn main() int { return pair(b: 3, a: 7) }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 73 } } ] }
 ```
+
+# R2 (F01): the CONTRACTED p15/p16 semantics — trace marks through the real
+# trace-marks runtime (capability + named support lib), stderr = the
+# observable-before-trap stream, exit = the numeric oracle.
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.named-eval-order-marks", source: { text: "fn pair(a int, b int) int { return a * 10 + b } fn main() int { return pair(b: mark_b(), a: mark_a()) }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: { capabilities: ["hir.test.trace.v1"], support_lib: "trace-marks" }, expect: { completion: "success", exit: 12, stderr: { text: "ba" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.observable-before-trap", source: { text: "fn main() int { let observed = mark_a(); return 2147483647 + 1 }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: { capabilities: ["hir.test.trace.v1"], support_lib: "trace-marks" }, expect: { completion: "success", exit: 70, stderr: { text: "a" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.trace-without-capability", source: { text: "fn main() int { let observed = mark_a(); return 2147483647 + 1 }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", expect: { completion: { stage: "resolve", code: "source.undefined" } } } ] }
+```

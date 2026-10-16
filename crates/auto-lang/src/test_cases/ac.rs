@@ -155,8 +155,24 @@ fn call_worker(
         let _ = tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
     });
     let err_reader = std::thread::spawn(move || {
+        // R2 (F05): the stderr drain is BOUNDED — a chatty worker cannot
+        // wedge the parent on an unbounded allocation either.
+        const STDERR_CAP: usize = 1 << 20;
         let mut sink = Vec::new();
-        let _ = stderr_pipe.read_to_end(&mut sink);
+        let mut chunk = [0u8; 65536];
+        loop {
+            match stderr_pipe.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => {
+                    sink.extend_from_slice(&chunk[..n]);
+                    if sink.len() > STDERR_CAP {
+                        sink.truncate(STDERR_CAP);
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
         sink
     });
     let response = match rx.recv_timeout(deadline.saturating_sub(started.elapsed())) {
@@ -183,17 +199,57 @@ fn call_worker(
         }
     };
     let _ = out_reader.join();
-    // Reap within the same wall: wait() after kill/exit is prompt; the
-    // stderr drain joined here cannot outlive the (dead) child.
-    let status = child
-        .wait()
-        .map_err(|e| format!("wait ac-case-worker: {}", e))?;
+    // R2 (F05): the SAME absolute deadline bounds the post-response wait —
+    // a worker that answered and then hung (or slept past its budget) is
+    // killed at the deadline, never accepted late. The worker's leaked
+    // self-containment job reaps its whole tree on that kill.
+    let wait_left = deadline.saturating_sub(started.elapsed());
+    let wait_deadline = std::time::Instant::now() + wait_left;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if std::time::Instant::now() >= wait_deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = err_reader.join();
+                    return Err(format!(
+                        "ac-case-worker outlived its {:?} budget after answering; the tree was killed",
+                        deadline
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(e) => {
+                let _ = err_reader.join();
+                return Err(format!("wait ac-case-worker: {}", e));
+            }
+        }
+    };
     let _ = err_reader.join();
     if !status.success() {
         return Err(format!(
             "ac-case-worker exited abnormally ({:?}); no response is trusted from a dead worker",
             status.code()
         ));
+    }
+    // R2 (F05): metadata budget — everything EXCEPT the declared byte
+    // payloads is bounded by the frozen 4MiB IPC metadata cap.
+    {
+        let parsed: serde_json::Value = serde_json::from_str(&response)
+            .map_err(|e| format!("worker response undecodable (pre-line): {}", e))?;
+        let payload_len: usize = ["stdout_b64", "stderr_b64", "hir_b64"]
+            .iter()
+            .filter_map(|k| parsed["ok"]["run"][k].as_str().map(|s| s.len()))
+            .chain(parsed["ok"]["hir_b64"].as_str().map(|s| s.len()))
+            .sum();
+        let metadata = response.len().saturating_sub(payload_len);
+        if metadata > 4 << 20 {
+            return Err(format!(
+                "worker response metadata {} bytes exceeds the 4MiB IPC metadata cap",
+                metadata
+            ));
+        }
     }
     let line = response
         .lines()
@@ -238,9 +294,36 @@ pub(crate) fn validate_response(
         ));
     }
     if has_ok && kind == "run" && v["ok"]["run"].is_null() {
-        return Err(format!(
-            "run request answered without a run observation — the response shape is refused"
-        ));
+        // R2 F04: a LANGUAGE failure (ok.diagnostics non-empty) legally
+        // carries no run observation; only a diagnostics-free ok must.
+        let diags = v["ok"]["diagnostics"]
+            .as_array()
+            .map(|d| !d.is_empty())
+            .unwrap_or(false);
+        if !diags {
+            return Err(format!(
+                "run request answered without a run observation — the response shape is refused"
+            ));
+        }
+    }
+    // R2 F06: typed admission — the whole response must deserialize into
+    // the versioned protocol types (deny_unknown_fields + field types +
+    // enums). Malformed shapes (e.g. run as an integer) are refused here.
+    let typed: crate::test_cases::ac_protocol::WorkerResponse =
+        serde_json::from_value(v.clone())
+            .map_err(|e| format!("response is not a typed acworker/1 value: {}", e))?;
+    if let Some(ok) = &typed.ok {
+        for d in &ok.diagnostics {
+            if d.code.is_empty() || d.message.is_empty() {
+                return Err("typed diagnostics must carry code and message".to_string());
+            }
+        }
+        // Strict stream encodings even when nothing compares them.
+        if let Some(run) = &ok.run {
+            for (name, raw) in [("stdout", &run.stdout_b64), ("stderr", &run.stderr_b64)] {
+                b64d_strict(raw).map_err(|e| format!("{}: {}", name, e))?;
+            }
+        }
     }
     Ok(v.clone())
 }
@@ -334,6 +417,14 @@ pub fn run_check(
             serde_json::json!(check.options.effective_grammar())
         } else {
             serde_json::Value::Null
+        },
+        "capabilities": check.options.effective_capabilities(),
+        "support_lib": match check.options.effective_support_lib() {
+            Some("trace-marks") => serde_json::json!(trace_marks_lib()
+                .map_err(|e| e)?
+                .display()
+                .to_string()),
+            _ => serde_json::Value::Null,
         },
         "edits": match (&check.options.syntax_edits, check.action) {
             (Some(steps), auto_test_case::contract::Action::Edit) => serde_json::json!(steps
@@ -548,36 +639,35 @@ pub fn run_check(
             )));
         }
     }
-    // The action's REQUIRED product set must be present (a run without an
-    // exe, a build without obj+exe, is a malformed response).
-    let has = |l: &str| seen_logical.contains(l);
-    let is_syntax = check.adapter == auto_test_case::contract::Adapter::Syntax;
-    match (is_syntax, check.action) {
-        (_, auto_test_case::contract::Action::Build) => {
-            if !has("app.obj") || !has("app.exe") {
-                return Ok(Verdict::error(
-                    "build response must carry both app.obj and app.exe".to_string(),
-                ));
-            }
-        }
-        (false, auto_test_case::contract::Action::Run) => {
-            if !has("app.exe") {
-                return Ok(Verdict::error(
-                    "run response must carry app.exe".to_string(),
-                ));
-            }
-        }
-        // T-06: syntax parse/edit must carry the lossless reconstruction
-        // (the losslessness oracle's minimum; outline/canonical ride along).
-        (true, _) => {
-            if !has("reconstructed.at") {
-                return Ok(Verdict::error(
-                    "syntax response must carry reconstructed.at".to_string(),
-                ));
-            }
-        }
-        _ => {}
+    // R2 F04: a LANGUAGE failure legally carries NO products — the
+    // required-set admission applies only to diagnostics-free successes
+    // (a failure with forged success products is refused below).
+    let diags = ok["diagnostics"]
+        .as_array()
+        .map(|d| !d.is_empty())
+        .unwrap_or(false);
+    let artifacts_declared = ok["artifacts"]
+        .as_array()
+        .map(|a| !a.is_empty())
+        .unwrap_or(false);
+    let is_ac = check.adapter == auto_test_case::contract::Adapter::Ac;
+    if is_ac && diags && artifacts_declared {
+        // AC success artifacts (hir/obj/exe) on a language failure are
+        // forged products. SYNTAX failures legitimately carry their
+        // projections (reconstruction is lossless even for broken trees).
+        return Ok(Verdict::error(
+            "language failure carrying success artifacts — refused".to_string(),
+        ));
     }
+    if !diags {
+        if let Err(e) = require_products(check, &seen_logical) {
+            return Ok(Verdict::error(e));
+        }
+    }
+    let has = |l: &str| seen_logical.contains(l);
+    let _ = has;
+    let is_syntax = check.adapter == auto_test_case::contract::Adapter::Syntax;
+    let _ = is_syntax;
     for a in &raw_artifacts {
         let logical = a["logical"].as_str().unwrap_or("");
         let path_text = a["path"].as_str().unwrap_or("");
@@ -643,18 +733,45 @@ pub fn run_check(
                 });
             }
         }
-        let compare_stream = |key: &str, want: Option<&auto_test_case::contract::StreamExpect>| {
-            let mut out = Vec::new();
-            let actual_b = b64d(run[key].as_str().unwrap_or(""));
-            if let Some(w) = want {
-                if let Some(m) = compare_bytes(w.text.as_bytes(), &actual_b, w.compare, key) {
-                    out.push(m);
+        // R2 F03: the wire field is <key>_b64; a missing/invalid field is
+        // a protocol refusal, never a silent empty stream.
+        let mut stream_err: Option<String> = None;
+        let mut compare_stream = |key: &str,
+                                  want: Option<&auto_test_case::contract::StreamExpect>,
+                                  out: &mut Vec<Mismatch>| {
+            let Some(w) = want else {
+                // Undeclared streams are not read here at all (their
+                // encoding was still strictly validated in
+                // validate_response — F06).
+                return;
+            };
+            let field = format!("{}_b64", key);
+            let raw = match run[&field].as_str() {
+                Some(r) => r,
+                None => {
+                    stream_err = Some(format!(
+                        "worker run response missing {} — never an empty stream",
+                        &field
+                    ));
+                    return;
                 }
+            };
+            let actual_b = match b64d_strict(raw) {
+                Ok(b) => b,
+                Err(e) => {
+                    stream_err = Some(format!("worker stream {}: {}", &field, e));
+                    return;
+                }
+            };
+            if let Some(m) = compare_bytes(w.text.as_bytes(), &actual_b, w.compare, key) {
+                out.push(m);
             }
-            out
         };
-        mismatches.extend(compare_stream("stdout", oracle.stdout.as_ref()));
-        mismatches.extend(compare_stream("stderr", oracle.stderr.as_ref()));
+        compare_stream("stdout", oracle.stdout.as_ref(), &mut mismatches);
+        compare_stream("stderr", oracle.stderr.as_ref(), &mut mismatches);
+        if let Some(e) = stream_err {
+            return Err(e);
+        }
     } else if oracle.exit.is_some() || oracle.stdout.is_some() || oracle.stderr.is_some() {
         mismatches.push(Mismatch {
             observation: "run".into(),
@@ -684,11 +801,18 @@ pub fn run_check(
         // dependency versions; the protocol version pins the IPC face).
         // Display-only fields (lld path, sdk dir, version strings) stay in
         // the worker response, out of the identity.
-        if let Some(h) = tc["worker_exe_sha256"].as_str() {
-            if !h.is_empty() {
-                native
-                    .toolchain
-                    .push(("worker-exe-sha256".to_string(), h.to_string()));
+        // R2 (F09): the FULL real tool axes — worker exe hash (embeds the
+        // compiler) + the actual linker content hash + the SDK um dir —
+        // every axis the stale checker can independently recompute.
+        for (axis, key) in [
+            ("worker-exe-sha256", "worker_exe_sha256"),
+            ("lld-sha256", "lld_sha256"),
+            ("sdk-um", "sdk_um"),
+        ] {
+            if let Some(v) = tc[key].as_str() {
+                if !v.is_empty() {
+                    native.toolchain.push((axis.to_string(), v.to_string()));
+                }
             }
         }
         native
@@ -836,7 +960,15 @@ pub fn consume_and_run(
     }
     for (key, want) in [("stdout", expect_stdout), ("stderr", expect_stderr)] {
         if let Some(w) = want {
-            let actual = b64d(run[key].as_str().unwrap_or(""));
+            let field = format!("{}_b64", key);
+            let raw = run[&field].as_str().ok_or_else(|| {
+                format!(
+                    "consumer run response missing {} — never an empty stream",
+                    &field
+                )
+            })?;
+            let actual =
+                b64d_strict(raw).map_err(|e| format!("consumer stream {}: {}", &field, e))?;
             if let Some(m) = compare_bytes(w.text.as_bytes(), &actual, w.compare, key) {
                 mismatches.push(m);
             }
@@ -877,11 +1009,18 @@ pub fn consume_and_run(
         // dependency versions; the protocol version pins the IPC face).
         // Display-only fields (lld path, sdk dir, version strings) stay in
         // the worker response, out of the identity.
-        if let Some(h) = tc["worker_exe_sha256"].as_str() {
-            if !h.is_empty() {
-                native
-                    .toolchain
-                    .push(("worker-exe-sha256".to_string(), h.to_string()));
+        // R2 (F09): the FULL real tool axes — worker exe hash (embeds the
+        // compiler) + the actual linker content hash + the SDK um dir —
+        // every axis the stale checker can independently recompute.
+        for (axis, key) in [
+            ("worker-exe-sha256", "worker_exe_sha256"),
+            ("lld-sha256", "lld_sha256"),
+            ("sdk-um", "sdk_um"),
+        ] {
+            if let Some(v) = tc[key].as_str() {
+                if !v.is_empty() {
+                    native.toolchain.push((axis.to_string(), v.to_string()));
+                }
             }
         }
         native
@@ -898,6 +1037,36 @@ pub fn consume_and_run(
     Ok(verdict)
 }
 
+/// Resolve the NAMED support library "trace-marks" (R2 F01): the PLAN-741
+/// trace-marks runtime, built once per process from the ac-core
+/// test-support crate (a warm no-op rebuild is ~1s). Named-lib admission
+/// keeps arbitrary paths out of the contract; the build is the same one
+/// ac-core's own trace tests use.
+fn trace_marks_lib() -> Result<PathBuf, String> {
+    static CACHE: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../experimental/ac-core/test-support");
+            let out = Command::new("cargo")
+                .args(["build", "--locked"])
+                .current_dir(&dir)
+                .output()
+                .map_err(|e| format!("spawn cargo for trace-marks: {}", e))?;
+            if !out.status.success() {
+                let tail = String::from_utf8_lossy(&out.stderr);
+                return Err(format!("trace-marks build failed:\n{}", tail));
+            }
+            let lib = dir.join("target/debug/ac_trace_support.lib");
+            if lib.is_file() {
+                Ok(lib)
+            } else {
+                Err(format!("trace-marks library missing at {}", lib.display()))
+            }
+        })
+        .clone()
+}
+
 /// The ACTUAL current toolchain identity for stale comparison (R1 F07):
 /// the worker binary's content hash (it statically embeds the compiler),
 /// the resolved linker's file hash and the SDK um dir — the same axes the
@@ -910,8 +1079,115 @@ pub fn current_toolchain_identity() -> BTreeMap<String, String> {
             m.insert("worker-exe-sha256".into(), hex(&sha256(&bytes)));
         }
     }
+    // R2 (F09): the EXTERNAL tools are recomputed here with the same
+    // resolution order ac-core uses (env override -> rustc sysroot ->
+    // registry roots), keeping the stale axes equal to the execution axes.
+    if let Some(lld) = resolve_rust_lld() {
+        if let Ok(bytes) = std::fs::read(&lld) {
+            m.insert("lld-sha256".into(), hex(&sha256(&bytes)));
+        }
+    }
+    if let Some(sdk) = resolve_sdk_um_dir() {
+        m.insert("sdk-um".into(), sdk.display().to_string());
+    }
     m.insert("ac-worker-protocol".into(), "acworker/1".into());
     m
+}
+
+/// Mirror of ac-core's `find_rust_lld` resolution (displayed identity only;
+/// the linker itself is never invoked here).
+fn resolve_rust_lld() -> Option<PathBuf> {
+    if let Ok(env_path) = std::env::var("AC741_RUST_LLD") {
+        let p = PathBuf::from(env_path);
+        if p.is_file() {
+            return Some(p);
+        }
+        return None;
+    }
+    let out = std::process::Command::new("rustc")
+        .args(["--print", "sysroot"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let sysroot = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let candidate =
+        PathBuf::from(sysroot).join("lib/rustlib/x86_64-pc-windows-msvc/bin/rust-lld.exe");
+    candidate.is_file().then_some(candidate)
+}
+
+/// Mirror of ac-core's `find_sdk_um_dir` resolution.
+fn resolve_sdk_um_dir() -> Option<PathBuf> {
+    if let Ok(env_dir) = std::env::var("AC741_SDK_UM_LIB") {
+        let p = PathBuf::from(env_dir);
+        return p.join("kernel32.lib").is_file().then_some(p);
+    }
+    let out = std::process::Command::new("reg")
+        .args([
+            "query",
+            r"HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots",
+            "/v",
+            "KitsRoot10",
+        ])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut roots = Vec::new();
+    if let Some(pos) = text.find("KitsRoot10") {
+        if let Some(rp) = text[pos..].find("REG_SZ") {
+            let line = &text[pos + rp + "REG_SZ".len()..];
+            let val = line.lines().next().unwrap_or("").trim();
+            if !val.is_empty() {
+                roots.push(PathBuf::from(val));
+            }
+        }
+    }
+    roots.push(PathBuf::from(r"C:\Program Files (x86)\Windows Kits"));
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(root.join("Lib")) else {
+            continue;
+        };
+        let mut versions: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.join("um/x64/kernel32.lib").is_file())
+            .collect();
+        versions.sort();
+        if let Some(latest) = versions.pop() {
+            return Some(latest.join("um/x64"));
+        }
+    }
+    None
+}
+
+/// R2 F04: required products are a SUCCESS-shape contract — only a
+/// diagnostics-free response must carry them; language failures carry none.
+fn require_products(
+    check: &CheckSpec,
+    seen_logical: &std::collections::BTreeSet<String>,
+) -> Result<(), String> {
+    let has = |l: &str| seen_logical.contains(l);
+    match (check.adapter, check.action) {
+        (_, auto_test_case::contract::Action::Build) => {
+            if !has("app.obj") || !has("app.exe") {
+                return Err("build response must carry both app.obj and app.exe".to_string());
+            }
+        }
+        (auto_test_case::contract::Adapter::Ac, auto_test_case::contract::Action::Run) => {
+            if !has("app.exe") {
+                return Err("run response must carry app.exe".to_string());
+            }
+        }
+        // T-06: syntax parse/edit must carry the lossless reconstruction.
+        (auto_test_case::contract::Adapter::Syntax, _) => {
+            if !has("reconstructed.at") {
+                return Err("syntax response must carry reconstructed.at".to_string());
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn effective_budget(b: &BudgetSpec) -> BudgetSpec {
@@ -968,6 +1244,47 @@ fn b64(bytes: &[u8]) -> String {
         });
     }
     out
+}
+
+/// Strict standard-alphabet base64 decode (R2 F03): malformed padding or
+/// characters are an error — the forgiving decoder silently turned
+/// protocol damage into empty streams.
+fn b64d_strict(s: &str) -> Result<Vec<u8>, String> {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes = s.as_bytes();
+    if bytes.len() % 4 != 0 {
+        return Err(format!("length {} is not a multiple of 4", bytes.len()));
+    }
+    let mut out = Vec::with_capacity(bytes.len() / 4 * 3);
+    for (ci, chunk) in bytes.chunks(4).enumerate() {
+        let mut vals = [0u32; 4];
+        let mut pad = 0usize;
+        for (i, &c) in chunk.iter().enumerate() {
+            if c == b'=' {
+                if i < 2 || (i == 2 && chunk[3] != b'=') || ci * 4 + 4 != bytes.len() {
+                    return Err("misplaced '=' padding".to_string());
+                }
+                pad += 1;
+            } else {
+                let v = T.iter().position(|&t| t == c).ok_or_else(|| {
+                    format!("invalid base64 byte {:?} at chunk {}", c as char, ci)
+                })?;
+                if pad > 0 {
+                    return Err("data after '=' padding".to_string());
+                }
+                vals[i] = v as u32;
+            }
+        }
+        let n = (vals[0] << 18) | (vals[1] << 12) | (vals[2] << 6) | vals[3];
+        out.push((n >> 16) as u8);
+        if pad < 2 {
+            out.push((n >> 8) as u8);
+        }
+        if pad < 1 {
+            out.push(n as u8);
+        }
+    }
+    Ok(out)
 }
 
 fn b64d(s: &str) -> Vec<u8> {

@@ -17,11 +17,12 @@
 | V-09 | AC-04 | cache_t05_ body 编辑全 miss exit4 + 783 invalidation_ 3 绿 + plan788_r1_ compiler recipe 换 fp 全 miss；改 expected→FAIL（语料 red-controls + ac_case_tests 错 exit 红） |
 | V-10 | AC-04 | 783 concurrency_/store_boundary_ 9 绿 + cache_t05_ read-only 缺根 infra/命中消费/miss 永不发布 + gc-concurrent 场景 30 样本功能恒验 |
 | V-11 | AC-05 | syntax_t06_ 7/7（两语法 lossless/typed 诊断+span/多 decl graft 复用≥1 或显式 fallback、rescan≤64KiB、reparse≤2）+ 语料 syntax 3 case 金样 |
-| V-12 | AC-06 | turnaround_t08_ 1/1：六场景×30 样本，P95 硬门 **hot 458ms / body-edit 468ms < 1000ms**；raw 全量留存 turnaround-samples.json；详见 perf-report.md |
-| V-13 | AC-06 | revision_trace_sequential_edits（revision 0→2、逐步 span、最终产物属最终修订）；50×100ms 修订流复用 787 VersionedPublish 语义（compatibility_），端到端流采样归 syntax 性能配方后续 |
+| V-12 | AC-06 | turnaround_t08_（R2 重测）：六场景×30 样本（全路径墙钟含 spawn/收割；body-edit 逐样本唯一内容+计数断言；GC 真并发 3 轮重叠），P95 硬门 **hot 736ms / body-edit 753ms < 1000ms**，syntax edit 门 P95 亚毫秒；完整 raw（native/syntax 两文件，含 counters/hits/input sha/worker sha/错误，先写后判） |
+| V-13 | AC-06 | turnaround revision-stream：50 次 ~100ms 到达修订请求，每请求 k 步顺序应用终止修订=k 严格递增至 50，最终发布重建含全部编辑（latest-wins）；单飞 IPC 构造上无积压/错序窗口；syntax_t06_ revision_trace_sequential_edits（0→2 逐步 span） |
 | V-14 | AC-07 | ac_native_suite_full_run：32 case（≥24）全符合（2 红控 by-design FAIL）+ legacy-map 32 行双向对账 + 聚合门=1；v1/CLI 兼容 test_cases_tests 26 绿 |
 | V-15 | AC-01/07 | r1 报告 v2 合法 JSON（serde_json round-trip）+ schema 随 suite 分派 + stale check_with_native 同轴 Fresh/换 worker Stale（身份轴 worker-exe-sha256 每路径恒在） |
 
-未导入面（如实）：text/record/text-record profile（旧门禁守护）；p15 评估序 trace-marks
-变体（需 runtime-lib 批次，账本标注）；V-13 50 修订流端到端采样；V-06 worker 路径非
-ASCII 生产者。均不冒称已支持。
+未导入面（如实）：text/record/text-record profile（旧门禁守护）；V-06 worker 路径非
+ASCII 生产者（本批 core/scalar 程序无输出内建；字节保真已在执行器/协议层反控）。
+p15/p16 指定语义已通过 trace-marks 支持库落地（语料 ac.core.named-eval-order-marks /
+ac.core.observable-before-trap，stderr 字节 oracle）。

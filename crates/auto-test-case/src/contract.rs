@@ -217,6 +217,11 @@ pub struct Options {
     pub ac_entry: Option<String>,
     pub ac_cache: Option<CacheMode>,
     pub ac_budget: Option<BudgetSpec>,
+    /// v2 ac only (R2 F01): declared frontend capabilities (e.g.
+    /// "hir.test.trace.v1"); empty when absent.
+    pub ac_capabilities: Option<Vec<String>>,
+    /// v2 ac only (R2 F01): NAMED support library to link ("trace-marks").
+    pub ac_support_lib: Option<String>,
     /// syntax only (T-06): grammar selector, default "auto-core".
     pub syntax_grammar: Option<String>,
     /// syntax only (T-06): ordered single-edit steps.
@@ -232,6 +237,8 @@ impl Default for Options {
             ac_entry: None,
             ac_cache: None,
             ac_budget: None,
+            ac_capabilities: None,
+            ac_support_lib: None,
             syntax_grammar: None,
             syntax_edits: None,
         }
@@ -261,6 +268,16 @@ impl Options {
     /// Effective budget: declared/merged value, `None` field = hard cap.
     pub fn effective_budget(&self) -> BudgetSpec {
         self.ac_budget.unwrap_or_default()
+    }
+
+    /// Effective declared capabilities (R2 F01): merged list, else empty.
+    pub fn effective_capabilities(&self) -> &[String] {
+        self.ac_capabilities.as_deref().unwrap_or(&[])
+    }
+
+    /// Effective NAMED support library (R2 F01), else none.
+    pub fn effective_support_lib(&self) -> Option<&str> {
+        self.ac_support_lib.as_deref()
     }
 
     /// Effective syntax grammar (T-06): declared/merged, else auto-core.
@@ -1000,7 +1017,15 @@ fn decode_options(
     let known: &[&str] = match adapter {
         Adapter::Avm => &[], // avm/run has no options (v1 and v2)
         Adapter::A2r => &["module_name"],
-        Adapter::Ac => &["profile", "target", "entry", "cache", "budget"],
+        Adapter::Ac => &[
+            "profile",
+            "target",
+            "entry",
+            "cache",
+            "budget",
+            "capabilities",
+            "support_lib",
+        ],
         // T-06 frozen syntax options: the grammar selector and the ordered
         // single-edit sequence (coordinates relative to the CURRENT
         // revision at each step — sequential application).
@@ -1032,6 +1057,8 @@ fn decode_options(
     let mut ac_entry = None;
     let mut ac_cache = None;
     let mut ac_budget = None;
+    let mut ac_capabilities = None;
+    let mut ac_support_lib = None;
     if adapter == Adapter::Ac {
         // Only DECLARED values are stored — implicit defaults resolve at
         // execution via the `effective_*` accessors, so a suite default can
@@ -1113,6 +1140,55 @@ fn decode_options(
             Some(other) => {
                 return Err(err(
                     &f.path_of("cache"),
+                    format!("expected string, got {}", other.type_name()),
+                ))
+            }
+        };
+        ac_capabilities = match f.sub("capabilities") {
+            None => None,
+            Some(v) => {
+                let path = f.path_of("capabilities");
+                let list = as_list(v, &path)?;
+                if list.len() > 16 {
+                    return Err(err(
+                        &path,
+                        format!("at most 16 capabilities, got {}", list.len()),
+                    ));
+                }
+                let mut caps = Vec::new();
+                for (i, item) in list.iter().enumerate() {
+                    let s = as_str(item, &format!("{}[{}]", path, i))?;
+                    let ok = !s.is_empty()
+                        && s.len() <= 64
+                        && s.chars().all(|c| {
+                            c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '-')
+                        });
+                    if !ok {
+                        return Err(err(
+                            &format!("{}[{}]", path, i),
+                            "capability names are lowercase dotted ids (<=64 chars)",
+                        ));
+                    }
+                    caps.push(s.to_string());
+                }
+                Some(caps)
+            }
+        };
+        ac_support_lib = match f.sub("support_lib") {
+            None => None,
+            Some(CVal::Str(s)) if s == "trace-marks" => Some(s.clone()),
+            Some(CVal::Str(s)) => {
+                return Err(err(
+                    &f.path_of("support_lib"),
+                    format!(
+                        "unknown support library {:?} (this batch names only \"trace-marks\" — the PLAN-741 trace-marks runtime)",
+                        s
+                    ),
+                ))
+            }
+            Some(other) => {
+                return Err(err(
+                    &f.path_of("support_lib"),
                     format!("expected string, got {}", other.type_name()),
                 ))
             }
@@ -1236,6 +1312,8 @@ fn decode_options(
         ac_entry,
         ac_cache,
         ac_budget,
+        ac_capabilities,
+        ac_support_lib,
         syntax_grammar,
         syntax_edits,
     })

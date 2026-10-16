@@ -180,6 +180,38 @@ mod job {
     impl JobGuard {
         /// Child must be suspended: the job is in place before the process
         /// can run (and therefore before it can spawn descendants).
+        /// PLAN-788 R2: create a kill-on-close job and assign the CURRENT
+        /// process (self-containment — a parent kill reaps this process's
+        /// whole tree).
+        pub fn for_current_process() -> Option<JobGuard> {
+            use windows_sys::Win32::System::Threading::GetCurrentProcess;
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return None;
+                }
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                if SetInformationJobObject(
+                    job,
+                    JobObjectExtendedLimitInformation,
+                    &info as *const _ as *const core::ffi::c_void,
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                ) == 0
+                {
+                    CloseHandle(job);
+                    return None;
+                }
+                // A pseudo-handle works for assignment; no extra rights or
+                // lifetime management needed on our own process.
+                if AssignProcessToJobObject(job, GetCurrentProcess()) == 0 {
+                    CloseHandle(job);
+                    return None;
+                }
+                Some(JobGuard(job))
+            }
+        }
+
         pub fn for_child(child: &Child) -> Option<JobGuard> {
             unsafe {
                 let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
@@ -710,6 +742,27 @@ pub struct LinkReceipt {
     pub exe: PathBuf,
     pub receipt_path: PathBuf,
     pub entry_symbol: String,
+}
+
+/// PLAN-788 R2 (F05): the calling process places ITSELF into a
+/// kill-on-close job at startup. A parent that kills this process then
+/// reaps the whole tree — including any descendant that escaped its own
+/// containment — via the job handle leaked here for the process lifetime.
+/// Windows-only; Ok(()) elsewhere (no job semantics to offer).
+pub fn enter_self_containment() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let guard = job::JobGuard::for_current_process()
+            .ok_or_else(|| "self-containment job creation failed".to_string())?;
+        // Intentionally leak: the handle must outlive every spawn this
+        // process makes; process death closes it and kills the tree.
+        std::mem::forget(guard);
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(())
+    }
 }
 
 /// A successful link staged at a temporary path, not yet published.

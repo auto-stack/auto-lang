@@ -100,6 +100,22 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
         }
     };
 
+    // R2 (F01): the build-side capability backstop — a checked module
+    // requiring undeclared capabilities is a typed capability failure.
+    if let Err(ds) = native::capabilities_check(&checked, &req.capabilities) {
+        check_total(&started, req)?;
+        return Ok(OkOut {
+            diagnostics: diags_mapped(&ds, "capability"),
+            hir_b64: None,
+            artifacts: vec![],
+            run: None,
+            trace,
+            toolchain: toolchain_identity(),
+            cache: None,
+            metric_gaps: metric_gaps(),
+        });
+    }
+
     // ---- canonical HIR artifact (always present once checked) ----------
     let scratch = Path::new(&req.scratch);
     let hir_path = scratch.join("hir.atom");
@@ -194,12 +210,23 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
     std::fs::write(&tmp_obj, &obj_bytes)
         .map_err(|e| infra("request.scratch", format!("stage obj: {}", e)))?;
     let exe_path = scratch.join("app.exe");
-    let staged =
-        link::link_object_staged(&lld, &sdk, &tmp_obj, &exe_path, native::START_SYMBOL, &[])
-            .map_err(|d| {
-                let _ = std::fs::remove_file(&tmp_obj);
-                infra("link.failed", d.message)
-            })?;
+    let support_libs: Vec<PathBuf> = req
+        .support_lib
+        .as_ref()
+        .map(|p| vec![PathBuf::from(p)])
+        .unwrap_or_default();
+    let staged = link::link_object_staged(
+        &lld,
+        &sdk,
+        &tmp_obj,
+        &exe_path,
+        native::START_SYMBOL,
+        &support_libs,
+    )
+    .map_err(|d| {
+        let _ = std::fs::remove_file(&tmp_obj);
+        infra("link.failed", d.message)
+    })?;
     let receipt = link::publish_artifacts(&staged, &tmp_obj, &obj_path)
         .map_err(|d| infra("link.failed", d.message))?;
     trace.push(SpanOut {
@@ -422,6 +449,7 @@ fn frontend(
     profile: SourceProfile,
     trace: &mut Vec<SpanOut>,
 ) -> Result<(Option<verify::CheckedModule>, Vec<u8>, Vec<DiagOut>), WorkerError> {
+    let capabilities: Vec<String> = req.capabilities.clone();
     match &req.input {
         InputSpec::Source { source_b64 } => {
             let src = String::from_utf8(
@@ -431,18 +459,19 @@ fn frontend(
             // The observer starts its clock AT CONSTRUCTION so the first
             // stage's span is real, never 0 (R1 F10).
             let mut obs = TracingObserver::new();
-            let parts = match compile_parts_with_observer(&src, "main", &[], profile, &mut obs) {
-                Ok(p) => p,
-                Err(ds) => {
-                    // The observer's failed boundary is the ONLY valid
-                    // parse/resolve/typecheck attribution (ac-core reports
-                    // all of them as Stage::Text). Its spans belong in the
-                    // trace even on failure (R1 F10: negative-trace).
-                    let stage = obs.failed_stage.clone().unwrap_or_else(|| "parse".into());
-                    trace.extend(obs.spans);
-                    return Ok((None, Vec::new(), diags_mapped(&ds, &stage)));
-                }
-            };
+            let parts =
+                match compile_parts_with_observer(&src, "main", &capabilities, profile, &mut obs) {
+                    Ok(p) => p,
+                    Err(ds) => {
+                        // The observer's failed boundary is the ONLY valid
+                        // parse/resolve/typecheck attribution (ac-core reports
+                        // all of them as Stage::Text). Its spans belong in the
+                        // trace even on failure (R1 F10: negative-trace).
+                        let stage = obs.failed_stage.clone().unwrap_or_else(|| "parse".into());
+                        trace.extend(obs.spans);
+                        return Ok((None, Vec::new(), diags_mapped(&ds, &stage)));
+                    }
+                };
             trace.extend(obs.spans);
             let t = Instant::now();
             let checked = match verify_of(profile, parts.bundle) {
@@ -613,6 +642,12 @@ fn exec_via_driver(
         entry: req.entry.clone(),
         toolchain_fp,
         compiler_fp: Some(compiler_fp.clone()),
+        capabilities: req.capabilities.clone(),
+        support_libs: req
+            .support_lib
+            .as_ref()
+            .map(|p| vec![std::path::PathBuf::from(p)])
+            .unwrap_or_default(),
         work_dir: scratch.to_path_buf(),
     };
     // Build+link through the driver under the cache mode; the run leg (for

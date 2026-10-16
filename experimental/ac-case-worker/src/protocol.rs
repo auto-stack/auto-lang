@@ -94,6 +94,13 @@ pub struct WorkerRequest {
     /// PLAN-788 T-06: syntax grammar for parse/edit requests
     /// ("auto-core" | "interface-mini-v1").
     pub grammar: Option<String>,
+    /// PLAN-788 R2 (F01): declared frontend capabilities (e.g.
+    /// "hir.test.trace.v1") — passed to the real compile entry.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    /// PLAN-788 R2 (F01): absolute path of a validated support library to
+    /// link (the trace-marks runtime); none for capability-free builds.
+    pub support_lib: Option<String>,
     /// PLAN-788 T-06: ordered single-edit STEPS for edit requests; each
     /// step's coordinates are relative to the CURRENT revision at that
     /// step (sequential application, one edit per revision — the
@@ -223,6 +230,42 @@ impl WorkerRequest {
                 "request.edits",
                 "edit requests require a non-empty edit sequence",
             ));
+        }
+        if let Some(lib) = &self.support_lib {
+            let path = std::path::Path::new(lib);
+            if !path.is_absolute() {
+                return Err(WorkerError::admission(
+                    "request.support_lib",
+                    "support library path must be absolute",
+                ));
+            }
+            let meta = std::fs::symlink_metadata(path).map_err(|e| {
+                WorkerError::admission(
+                    "request.support_lib",
+                    format!("support library {:?}: {}", lib, e),
+                )
+            })?;
+            if meta.file_type().is_symlink() {
+                return Err(WorkerError::admission(
+                    "request.support_lib",
+                    "support library must not be a reparse point",
+                ));
+            }
+            if !meta.is_file() {
+                return Err(WorkerError::admission(
+                    "request.support_lib",
+                    "support library must be a regular file",
+                ));
+            }
+            if meta.len() as usize > MAX_SINGLE_ARTIFACT_BYTES {
+                return Err(WorkerError::admission(
+                    "request.support_lib",
+                    format!(
+                        "support library {} bytes exceeds the single-artifact cap",
+                        meta.len()
+                    ),
+                ));
+            }
         }
         if let Some(c) = &self.cache {
             if !matches!(c.as_str(), "fresh" | "reuse" | "read-only") {

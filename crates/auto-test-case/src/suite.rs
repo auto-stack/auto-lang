@@ -651,6 +651,8 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     ac_entry: None,
                     ac_cache: None,
                     ac_budget: None,
+                    ac_capabilities: None,
+                    ac_support_lib: None,
                     syntax_grammar: None,
                     syntax_edits: None,
                 };
@@ -687,6 +689,8 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     ac_entry: None,
                     ac_cache: None,
                     ac_budget: None,
+                    ac_capabilities: None,
+                    ac_support_lib: None,
                     syntax_grammar: None,
                     syntax_edits: None,
                 };

@@ -48,6 +48,8 @@ fn req(kind: &str, source: &str, cache: Option<&str>, store: Option<&str>) -> Wo
         include_hir: None,
         grammar: None,
         edits: None,
+        capabilities: Vec::new(),
+        support_lib: None,
     }
 }
 

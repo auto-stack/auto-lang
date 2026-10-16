@@ -57,6 +57,8 @@ fn req(kind: &str, input: InputSpec, run_ms: u64) -> WorkerRequest {
         include_hir: None,
         grammar: None,
         edits: None,
+        capabilities: Vec::new(),
+        support_lib: None,
     }
 }
 

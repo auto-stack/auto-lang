@@ -156,6 +156,12 @@ pub struct VerticalCfg {
     /// User entry def (selects the `ac_start` wrapper target).
     pub entry: String,
     pub toolchain_fp: String,
+    /// PLAN-788 R2 (F01): declared frontend capabilities — passed to the
+    /// real compile entry (they are already part of hir_bundle_key via the
+    /// capabilities component). Empty keeps the legacy 783 shape.
+    pub capabilities: Vec<String>,
+    /// PLAN-788 R2 (F01): support libraries linked into the produced PE.
+    pub support_libs: Vec<PathBuf>,
     /// PLAN-788 R1 (F08): actual compiler/worker recipe identity folded
     /// into the A07/A09 cache keys (None keeps the legacy 783 keys — the
     /// probe's own callers are unchanged). The worker passes its own
@@ -178,6 +184,8 @@ impl Default for VerticalCfg {
             entry: "main".into(),
             toolchain_fp: "default-lld".into(),
             compiler_fp: None,
+            capabilities: Vec::new(),
+            support_libs: Vec::new(),
             work_dir: std::env::temp_dir(),
         }
     }
@@ -299,11 +307,10 @@ fn vertical_inner(
     }
 
     // -- layer keys ----------------------------------------------------------
-    let capabilities: Vec<String> = Vec::new(); // core/scalar corpus needs none
     let mut hir_key = hir_bundle_key(
         cfg.profile.as_str(),
         cfg.profile.hir_domain().as_str(),
-        &capabilities,
+        &cfg.capabilities,
         &snapshot,
         codec::HIR_CODEC_VERSION,
     );
@@ -464,7 +471,7 @@ fn vertical_inner(
         let parts = auto_ac_prototype::source::adapter::compile_parts_with_observer(
             &text,
             &cfg.logical_name,
-            &capabilities,
+            &cfg.capabilities,
             cfg.profile,
             &mut collector,
         )
@@ -652,9 +659,15 @@ fn link_only(
         .map_err(|d| DriverError::Link(d.render("", "").trim_end().to_string()))?;
     let sdk = link::find_sdk_um_dir()
         .map_err(|d| DriverError::Link(d.render("", "").trim_end().to_string()))?;
-    let staged =
-        link::link_object_staged(&lld, &sdk, &obj_path, &exe_path, native::START_SYMBOL, &[])
-            .map_err(|d| DriverError::Link(d.render("", "").trim_end().to_string()))?;
+    let staged = link::link_object_staged(
+        &lld,
+        &sdk,
+        &obj_path,
+        &exe_path,
+        native::START_SYMBOL,
+        &cfg.support_libs,
+    )
+    .map_err(|d| DriverError::Link(d.render("", "").trim_end().to_string()))?;
     std::fs::rename(&staged.tmp_exe, &exe_path)
         .map_err(|e| DriverError::Internal(format!("publish staged exe: {}", e)))?;
     c.link += 1;

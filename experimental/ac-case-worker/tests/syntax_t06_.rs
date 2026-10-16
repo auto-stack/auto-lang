@@ -13,9 +13,6 @@ use std::path::PathBuf;
 fn b64(s: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(s.as_bytes())
 }
-fn b64d(s: &str) -> Vec<u8> {
-    base64::engine::general_purpose::STANDARD.decode(s).unwrap()
-}
 
 static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -51,6 +48,8 @@ fn req(kind: &str, grammar: &str, source: &str, edits: Vec<EditStep>) -> WorkerR
         cache: None,
         project: None,
         include_hir: None,
+        capabilities: Vec::new(),
+        support_lib: None,
         grammar: Some(grammar.into()),
         edits: (!edits.is_empty()).then_some(edits),
     }

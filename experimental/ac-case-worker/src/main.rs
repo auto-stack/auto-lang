@@ -9,10 +9,16 @@ use ac_case_worker::protocol::{
     Envelope, WorkerResponse, SESSION_MAX_LIFETIME_MS, SESSION_MAX_LINE_BYTES,
     SESSION_MAX_REQUESTS, WORKER_SCHEMA,
 };
-use std::io::{BufRead, Write};
+use std::io::Write;
 use std::time::{Duration, Instant};
 
 fn main() {
+    // R2 (F05): self-containment — a parent kill reaps this process's
+    // whole tree via the leaked kill-on-close job handle.
+    if let Err(e) = auto_ac_prototype::link::enter_self_containment() {
+        eprintln!("ac-case-worker: self-containment unavailable: {}", e);
+        std::process::exit(2);
+    }
     let started = Instant::now();
     // R1 (F03): the session lifetime is a HARD wall clock enforced even
     // while idle — a watchdog exits the process when the budget is spent,
@@ -30,11 +36,14 @@ fn main() {
     let mut requests: u32 = 0;
     let mut began = false;
 
-    for line in stdin.lock().lines() {
-        // R1 (F03): a request line beyond the frozen bound is rejected,
-        // never buffered without limit.
-        if let Ok(l) = &line {
-            if l.len() > SESSION_MAX_LINE_BYTES {
+    // R2 (F05): lines are read with a PRE-ALLOCATION bound — fill_buf
+    // scans for the newline without ever buffering an unbounded line.
+    let mut stdin_lock = stdin.lock();
+    loop {
+        let line = match read_line_bounded(&mut stdin_lock, SESSION_MAX_LINE_BYTES) {
+            Ok(Some(l)) => l,
+            Ok(None) => break, // EOF ends the session cleanly
+            Err(observed) => {
                 let _ = writeln!(
                     out,
                     "{}",
@@ -43,22 +52,14 @@ fn main() {
                         ac_case_worker::WorkerError {
                             code: "session.line-cap".into(),
                             message: format!(
-                                "request line {} bytes exceeds the {} byte bound",
-                                l.len(),
-                                SESSION_MAX_LINE_BYTES
+                                "request line exceeds the {} byte bound ({}+ observed)",
+                                SESSION_MAX_LINE_BYTES, observed
                             ),
                         }
                     ))
                     .unwrap()
                 );
                 let _ = out.flush();
-                std::process::exit(2);
-            }
-        }
-        let line = match line {
-            Ok(l) => l,
-            Err(e) => {
-                eprintln!("ac-case-worker: stdin error: {}", e);
                 std::process::exit(2);
             }
         };
@@ -162,6 +163,49 @@ fn main() {
                     std::process::exit(2);
                 }
                 let _ = out.flush();
+            }
+        }
+    }
+}
+
+/// R2 (F05): read ONE line with a hard pre-allocation cap. Ok(None) = EOF;
+/// Err(observed) = the line exceeded `cap` bytes before its newline.
+fn read_line_bounded<R: std::io::BufRead>(r: &mut R, cap: usize) -> Result<Option<String>, usize> {
+    let mut line = Vec::new();
+    loop {
+        let available = match r.fill_buf() {
+            Ok(b) => b,
+            Err(_) => {
+                return if line.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(String::from_utf8_lossy(&line).to_string()))
+                };
+            }
+        };
+        if available.is_empty() {
+            return if line.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(String::from_utf8_lossy(&line).to_string()))
+            };
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(nl) => {
+                if line.len() + nl > cap {
+                    return Err(line.len() + nl);
+                }
+                line.extend_from_slice(&available[..nl]);
+                r.consume(nl + 1);
+                return Ok(Some(String::from_utf8_lossy(&line).to_string()));
+            }
+            None => {
+                if line.len() + available.len() > cap {
+                    return Err(line.len() + available.len());
+                }
+                let take = available.len();
+                line.extend_from_slice(available);
+                r.consume(take);
             }
         }
     }

@@ -450,7 +450,14 @@ fn r1_response_admission_table() {
     use crate::test_cases::ac::validate_response;
     let good = serde_json::json!({
         "schema": "acworker/1", "nonce": "n", "request_hash": "h",
-        "ok": { "run": { "exit_code": 3, "stdout_b64": "", "stderr_b64": "" } },
+        "ok": {
+            "diagnostics": [],
+            "artifacts": [],
+            "run": { "exit_code": 3, "stdout_b64": "", "stderr_b64": "" },
+            "trace": [],
+            "toolchain": { "lld_path": "", "lld_sha256": "", "sdk_um": "", "ac_core_version": "", "worker_version": "", "worker_exe_sha256": "abc" },
+            "metric_gaps": []
+        },
     });
     validate_response(&good, "n", "h", "run").expect("well-formed response accepted");
     // F03: wrong schema, ok+error both, neither, missing run on a run
@@ -635,7 +642,9 @@ fn ac_native_suite_full_run_and_ledger_reconcile() {
     assert!(case_count >= 24, "corpus floor: got {} cases", case_count);
     let mut fails = Vec::new();
     for r in &report.results {
-        let expected_fail = r.check_id == "bld-bad-golden" || r.check_id == "run-wrong-exit";
+        let expected_fail = r.check_id == "bld-bad-golden"
+            || r.check_id == "run-wrong-exit"
+            || r.check_id == "bld-red";
         let ok = match (expected_fail, r.status) {
             (true, Status::Fail) => true,
             (false, Status::Pass) => true,
