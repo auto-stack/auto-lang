@@ -1,7 +1,7 @@
 {
-  "last_covered_plan_id": 781,
-  "timestamp": "2026-10-15T03:55:00Z",
-  "covered_commit": "075a9b4ab6cb4284f3c259b348f2571322107fec",
+  "last_covered_plan_id": 786,
+  "timestamp": "2026-10-16T00:00:00Z",
+  "covered_commit": "17d73db9eb758edcd55c7f0fc0dd8226931a21e8",
   "legs": [
     "tf",
     "tt",
@@ -9,36 +9,35 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 1831.9,
-      "run": 6349,
-      "passed": 6346,
-      "failed": 2,
-      "timeout": 1,
+      "seconds": 95.7,
+      "run": 6367,
+      "passed": 6366,
+      "failed": 1,
+      "timeout": 0,
       "skipped": 519,
-      "note": "三非绿全 solo 绿：ffi_dual_019（REG-2 在案满池红/定向绿）+ plan492 pkg_canary（负载 flake，781 T-13 同族先例）+ 010_process_command（满池 1800s 超时，bare 单跑 0.36s 绿）"
+      "note": "唯一红 plan707_cancel_active_job_aborts_and_frees_permit solo 0.40s 绿=满池负载 flake；另一次 fail-fast 预跑的 plan484_024_charts_streaming_recompute solo 0.33s 绿（同族瞬态，未在本轮全量复现）"
     },
     "tt": {
-      "seconds": 154.8,
-      "run": 5725,
-      "passed": 5725,
+      "seconds": 137.7,
+      "run": 5743,
+      "passed": 5743,
       "failed": 0,
       "skipped": 1796
     },
     "tb": {
-      "seconds": 110.8,
-      "run": 5377,
-      "passed": 5377,
+      "seconds": 77.0,
+      "run": 5395,
+      "passed": 5395,
       "failed": 0,
-      "skipped": 1546
+      "skipped": 1546,
+      "note": "首次 fail-fast 瞬态中止，--no-fail-fast 复跑全绿"
     }
   },
   "new_reds": [],
-  "known_reds_seen": [
-    "ffi_dual_019_dep_layout_invariants (REG-2)"
-  ],
+  "known_reds_seen": [],
   "flake_observations": [
-    "plan492 pkg_canary 与 010_process_command 满池红/超时后 solo 绿（负载族）"
+    "plan484 charts streaming recompute 与 plan707 cancel permit 满池红/单跑绿（负载时序族，延续 781 收据 plan492 pkg_canary 同类）"
   ],
-  "window_note": "窗口 14e387537..075a9b4ab 覆盖 PLAN-777 归档 + PLAN-778/779/780?（以 git log 为准）+ PLAN-781 合并（delivery 3e1b5fc03→清理簿记）。触发=770（%5）落于 774 收据后（777 合并已移交）。taa 未触发（窗口 diff 零 aavm 路径）。窗口含 782 在途未合入（不计）。",
+  "window_note": "窗口 075a9b4ab..HEAD 覆盖 PLAN-782/783/784/785/786 落地与 781 合并收尾簿记；785 触发（%5==0）。taa 未触发（窗口 diff 零 aavm 路径）。787/788 在途未合入不计。触发缘=merge 技能 cleaned 后到期判定交接。",
   "verdict": "green"
 }
