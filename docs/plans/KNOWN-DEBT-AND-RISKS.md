@@ -1,10 +1,29 @@
+### Plan 787（2026-10-16，final review R6，needs_fix；含783上游归属）
+
+受审 `462b27e5a011160f56b6944189708b110828b08b`；[R6报告/复现/闭环](attachments/787/review-r6/REVIEW.md)。R1 7/7、R2 18/18、R3 8/8、R4 3/3、R5 4/4均绿（有重叠），旧空args/大trivia例闭合；当前 **executing 5/9**，保留T01..05，重开T06/07，不批准延期。
+F787-R6-01（P2）：source put同驻留三份只计两份，256KiB页计524288B/实际下界786480B；新计量64MiB work-owned必验被后置merge，旧matrix不能复用；未声称总预算实际超限。F787-R6-02（P2）：窗口先全物化后判2MiB，8MiB名称实际驻留8388623B才拒绝。
+F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释放128次91次SQLite唯一键冲突；787实际syntax_cache_ 7/8通过、1红，单例重试绿。须由783依赖owner在合规worktree/计划内补唯一性后787绑定提交，不能跨计划私修或调用侧sleep遮红。
+定向15族14绿/raw passed107次+failed1次（过滤重叠）；check/fmt/diff-check绿。readiness已知必验缺口故未重复长时64MiB整轮final；完整验收尚未通过。merge-owned正确范围=最终pass后完整独立语法/783触面+知识/合流归档/guard收尾，无根整档/docs_gen。未修实现或合入。
+
+### Plan 787（2026-10-16，独立 final review R5，needs_fix）
+
+受审 `d2b0ec99ba579547a1506a2babc40b232c3dcda3`；[R5报告/旧例闭环/新反例](attachments/787/review-r5/REVIEW.md)。R1 7/7、R2 18/18、R3 8/8、R4 3/3全部绿（集合重叠）；当前 **needs_fix / executing 5/9**，不批准延期，下方旧轮开放结论保留历史。
+F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
+acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
+
 ### Plan 797（2026-10-16，独立 final 就绪核查 R1，needs_fix；同日 work 修复轮）
+
+R3（2026-10-16）：实施 HEAD 仍 `635053f74aa49f89d74ffef6db9c70df7c363c06`、树 clean，较 R2 无任何新增实施提交。当前 master `f35c9aab437b564716988977027a00e36b16f9f7` 上 D-796/D-788 ancestry 均 exit1；T-06/T-07 未完成，维持 **needs_fix / executing 5/9**。F01 OPEN、F02 PARTIAL/OPEN、F03 CLOSED；锁及 Spec 草稿身份与 R2 一致，复用 R2 证据、不重复测试、不计为第三轮完整代码验收。详见 Plan §9 R3；依赖交付后原树完成 T-06/T-07，再最终验收，merge-owned 收尾仍 pending。
+
+R2 独立就绪复核 `635053f74aa49f89d74ffef6db9c70df7c363c06`：**needs_fix / executing 5/9**，[R2报告](attachments/797/review-r2/review.md)。F-797-R1-03 独立确认 CLOSED（HEAD blob=实际锁，locked/offline metadata 在跳过本机 sccache 端口阻断后 exit0、120 packages）；F-797-R1-02 文件缺失子项关闭，T-07 终稿/V-01–11 仍 PARTIAL/OPEN；F-797-R1-01 OPEN，T-06 实际语义绑定/正式 AutoDown/性能复测尚未实施，D-796/D-788 未满足。当前 goals Spec 输入已变，终稿须重绑。没有 Rust/native 测试、没有完整 final pass；原树完成 T-06/T-07 后再审，merge-owned 门禁/收尾仍 pending。以下为 R1/工作轮历史。
 
 受审 `defcc8eaa1fdcfa619feda99721d0b93c25035fb`；[报告](attachments/797/review-r1/review.md)。R1 后 work 修复轮 commit `635053f74`。当前 **executing 5/9**。**F-797-R1-03 已关闭**：Cargo.lock 强制入提交（blob `598833812a`，`--locked --offline` 全绿）。**F-797-R1-02 部分关闭**：verify/freeze/support-matrix/SD 草稿/并行审计已交，V-01–11 终收口与 hash 冻结仍待 T-06。**F-797-R1-01 仍打开（P1，AC-05/06，T-06）**：仍使用本地 semref snapshot，case 明示正式 AutoDown execution pending，D-796/D-788 尚未满足；真实合同/正式 runner/性能复测未完成。T-02–05 历史测试证据在锁一致后允许复用，但不得自动作为 final pass。
 
 这些是原合同内完成性/提交完整性缺口，登记不批准延期。可独立项已补交；依赖交付后完成 T-06/T-07 终收口，再申请完整 final review。修复轮仅跑 probe 定向 `--locked --offline` 与 verify acceptance/closeout，无整档/合入；merge-owned 门禁与归档/清理仍 pending。
 
 ### Plan 794（2026-10-16，独立 final review R1，needs_fix）
+
+R2（2026-10-16）复核 `d027e5f617a3d33bb8b1897779569020f886f0e2`：**F-794-R1-01/02/03全部CLOSED**，下方R1开放记录保留为历史。[R2报告](attachments/794/review-r2/review.md)。strict pass/0违例/2既有窄grandfather、定向9/9零本批文件告警；旧oracle反例现在正确拒绝，独立6控制覆盖pending多次查询与成功/失败出口，真实VM60/60保留旧57项；consumer5/5、源码/32轮ownership2/2重放通过；guard clean。生产代码/依赖/测试配置/Vue探针与CLI未变且hash一致，明确复用R1 Vue59/59。无新增finding，Plan=reviewed 7/8；merge-owned裸t+tv、规范/ledger/合流/归档/guard清理仍pending，未合入交付。
 
 受审 `91974d8f8d826a9cdb3ea6a50038a518bc02c4e9`；[完整报告与反例](attachments/794/review-r1/review.md)。F-794-R1-01（P2，T05/06）：Cargo.toml改动令777 strict因stale_baseline退出2；须审查变化后恢复有效冻结基线，不放宽规则。F-794-R1-02（P2，T05）：原VM探针expect_reply只press一次后读缓存标签，确定性负控pressed=False+旧applied误绿；实机原跑56/57，换绑旧key粘住pending。重新执行只读查询的独立控制组57/57，不能替代修复指定oracle。F-794-R1-03（P3，T06）：新增plan794测试126行unused_mut，与零新增告警交接不符。均为合同内开放项，登记不批准延期。
 
@@ -1958,3 +1977,34 @@ put 次数进一步上升（64MiB 构建 366s，仍为 probe 边界）；D-787-0
 ### Plan 792 final review R3（2026-10-16，needs_fix）
 
 受审 `dc645528f506f7887be8e4428ade53486cd9b777`；[R3报告/闭合/正式反例](attachments/792/review-r3.md)。根因/覆盖表已核，R2十组旧例按预期通过，R1资源/格式保持CLOSED；完整约束仍失败：F-792-R3-01（P1）备份只看通用manifest存在，CLI成功却删掉另一应用unrelated_app的合法交付包；F-792-R3-02（P2）边界只匹配固定文本path空格/双引号，现行sidecar原始TOML表及源manifest的紧凑单引号path均成功发行，真实cargo metadata确认本地源在包外。两项均延续原合同约束，登记不批准延期或缩小要求。driver23/23（CLI1+验收22）、delivery8/8、资源7控；fresh真实build117s、重定位locked121s。Plan回executing 2/8，T03..06重开；下轮覆盖表须治理操作归属与TOML语义，未修实现/合入，merge-owned全档及收尾pending。
+
+### Plan 792 final review R4（2026-10-16，needs_fix）
+
+受审 `33d45f70879ed5066ffbe9198ba59c83a5fac0f1`；[R4报告/旧例闭合/新增GC反例](attachments/792/review-r4.md)。R3他应用交付与两TOML入口均CLOSED，旧13条语义观察与资源7控按预期；新增F-792-R4-01（P1，修复回归）：生成前GC只看换出标记+清单，未证明已有新包成功替代。正式旧包处于换出后、换入前状态（根缺失），重试先GC删唯一旧备份，再因缺sidecar模块exit1，最终新旧包均不存在。不是新增自动恢复要求，而是本次失败不得主动销毁唯一已有旧包。delivery8/8、fmt/diff-check绿；正常独立构建收尾证据见报告。Plan回executing 2/8，T03..06重开；后续覆盖表需区分事务标记存在与成功提交后可回收。合同内开放项不批准延期；未改实施/合入，merge-owned全档/规范/ledger/归档/guard均pending。
+
+### Plan 792 final review R5（2026-10-16，pass）
+
+受审 `41d95ea95d6d8209d2373336e758729826bc1fbf`；[R5报告/全部闭环/AC/SD](attachments/792/review-r5.md)。R4-F01 CLOSED：正式失败重试保留唯一旧备份/载荷/清单/标记，随后成功重试才回收；R1..R3保持闭合，无新增finding。delivery9/9、独立资源7控、全部先前反例及生命周期控制按预期，fmt/diff-check绿。正常新生成包4621构建输入与R4字节完全一致，依赖/工具链/driver/配置未变，明确复用R4 fresh171s/relocated locked150s/driver25绿的证据；未声称重新跑完整构建。SD LF冻结patch对当前main dry-run通过；并行794 UI新事实/795 Man规范须增量保留。Plan=reviewed 7/8，merge-owned集成冻结裸t/合同触面tu及实际VM触面tv、受集成闭包变化影响的consumer检查、规范/ledger/索引/归档/guard清理pending。下方各轮开放状态为历史；尚未合入/交付。
+
+### Plan 798 readiness / 定向复审 R1（2026-10-16，needs_replan）
+
+受审 `ce860fb244597d7929b5bc911880326cb945fa78`；[报告/反例/AC/SD快照](attachments/798/review-r1/review.md)。F798-R1-01..07开放：T06..08尚未实施、796/788未满足合入门；全表合计65536改每函数65536未升revision（须回规划）；周转gate-ms=0反控body-edit832.4154ms仍exit0；编辑30样本仅1次重算、restart未换进程、GC串行；512churn替换未命中实际零编辑，内存/正确压力store水位证据缺失；MIR缓存仅定义未接线，mir_build计数掩盖整模块lowering；独立锁未跟踪且新增警告/fmt红。重开T01/T04/T05，executing 2/10；保留T02/03原work标记但未授独立验收pass。已知未完成项使本轮止于readiness与定向核查，完整语义/信任矩阵pending。均为合同内开放项，登记不批准延期；先显式修订资源合同，再原树work闭合并补齐实际绑定/runner/证据后送审。未改实现/合入，merge-owned全档和收尾pending。
+
+### Plan 798 readiness / 定向复审 R2（2026-10-16，needs_fix）
+
+受审 `31628c5d7e11e92d92e0d931f89700d8a34eba91`，plan r2；[报告/证据](attachments/798/review-r2.md)。R1预算revision、锁入库及worker阈值旧例有实证进展（0ms反控worker exit5）；R1-F01持续开放，T06..08仍未完成，binding子进程exit3。R1-F03/F05未全闭：F798-R2-01 P2正式脚本在写summary后又用未赋值benchOut覆盖，独立反控29bytes→0；F798-R2-02 P1私有内存仅bench前后端点差，暂存计数在closure重分配前记录，不能证明OS峰值/8+16+8分区上界（未声称实测已超限）。正规化丢失T01/04/05行首的任务表、重开T05，executing4/10；其余work声明保留但未授完整独立pass。已知未交付使本轮仍止于readiness/定向检查，完整最终验收pending；原树先闭合所有finding及必验项。登记不批准延期，未改实施/合入；merge-owned全档与收尾pending。
+
+### Plan 798 R2 修复轮新债务候选：已着陆 scalar 前端瞬态内存峰值（2026-10-16，F798-R2-02 归因）
+
+PLAN-798 T-05 峰值采样（worktree 修复轮）实测：`auto_ac_prototype::source::
+compile_scalar_source` 在 267 KiB 冻结参考负载上的**单相瞬态峰值 ≈180-211 MB
+（peak working set / PrivateUsage）**，稳定复现（隔离归因测量 211.8 MB、
+request 子进程 211.6 MB、bench worker 全程 215.7 MB，端点差值仅 ~7 MB）。
+后果：PLAN-798 §3 "worker private-bytes 相对空载增量目标≤128 MiB" 在冻结
+负载上未达——探针自身 MIR/ABC/AV/cache 各层合计个位数 MB，目标 miss ~98%
+由该前端相位贡献。ac-core 为 798 的只读面（并行合同），本计划内不可修。
+归属建议：ac-core 前端 owner（PLAN-741/745/767 面）在后续计划中对
+compile_scalar_source 的瞬态分配做剖析与收敛（或由 798 后续修订在依赖合入
+后重定目标语义）。证据：docs/reports/plan798/turnaround.md（r2.1 内存章节）
++ turnaround-summary.json（frontend_peak_bytes/target_met 字段）+
+av_resources_peak_sampler_distinguishes_transient_spike（采样器区分性反控）。
