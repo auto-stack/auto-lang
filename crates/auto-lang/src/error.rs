@@ -17,8 +17,7 @@
 // crate 外 2 消费者（auto/main.rs、auto-lsp/diagnostics.rs）+ crate 内
 // ~15 文件全部经下方 re-export，零改动。
 pub use auto_diagnostics::error::{
-    attach_source, find_best_match, format_error, pos_to_span, print_error, span_from,
-    AutoError, AutoResult, ComptimeError, LexerError, LexerErrorWithSource, MietteError,
-    MsgWithSource, NameError, Result, RuntimeError, SyntaxError, SyntaxErrorWithSource,
-    TypeError, Warning,
+    attach_source, find_best_match, format_error, pos_to_span, print_error, span_from, AutoError,
+    AutoResult, ComptimeError, LexerError, LexerErrorWithSource, MietteError, MsgWithSource,
+    NameError, Result, RuntimeError, SyntaxError, SyntaxErrorWithSource, TypeError, Warning,
 };

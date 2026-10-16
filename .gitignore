@@ -159,6 +159,9 @@ test_temp.txt
 # Local migration backups (pre-spec-migration snapshots)
 /.backup/
 *.json
+# PLAN-793：诊断投影冻结 golden（V02 重放期望，旧实现生成；*.json 母规则
+# 曾吞掉本件——R1 F-793-R1-01，fresh clone 重放必红）
+!crates/auto-diagnostics/tests/fixtures/v02-golden.json
 # I6 双端共享布局期望值表（465 T4 产出；472 T2 修复入库）
 !crates/auto-lang/src/ui/layout_cases.json
 # Plan 668：27_c_abi use.c manifest（*.json 母规则曾吞掉 engine_face_full
