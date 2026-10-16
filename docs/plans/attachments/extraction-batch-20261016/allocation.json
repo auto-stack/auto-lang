@@ -1,0 +1,22 @@
+[
+  {
+    "id": 789,
+    "slug": "lexical-foundation-extraction",
+    "path": "docs/plans/789-lexical-foundation-extraction.md"
+  },
+  {
+    "id": 790,
+    "slug": "clipboard-files-images-provider",
+    "path": "docs/plans/790-clipboard-files-images-provider.md"
+  },
+  {
+    "id": 791,
+    "slug": "generation-core-extraction",
+    "path": "docs/plans/791-generation-core-extraction.md"
+  },
+  {
+    "id": 792,
+    "slug": "generated-ui-independent-build",
+    "path": "docs/plans/792-generated-ui-independent-build.md"
+  }
+]

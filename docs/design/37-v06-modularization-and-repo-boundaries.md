@@ -159,7 +159,7 @@ AutoMan core 管包、依赖、工具执行；UI 插件接管 UI 工程分析/�
 
 后续 R4–R8 见调研报告，按探针结果分别立 grammar 迁移、native family 迁移、UI crate 化、tool plugin/CLI、runtime/服务生成、UI 搬仓、man 搬仓、UiAst 终态/legacy 退役 Plan。首次三件套独立交付与最终 compatibility 退出分别验收。
 
-2026-10-15 执行编排见[正式拆分与搬迁顺序](../plans/reports/v06-extraction-execution-roadmap.md)。近期仅建三份 drafting 合同：[784旧仓保全](../plans/784-repo-extraction-legacy-preservation.md) → [785文本剪贴板能力](../plans/785-clipboard-text-host-provider.md)；[786展示读取收口](../plans/786-project-display-reader-consolidation.md)在784后可独立进行。UI生产宿主接线及后续UI搬迁等待781当前修复最终review+merge；783隔离实验不是全局前置，按真实热点协调。规划不等于授权立即切旧仓主分支或实施源码。
+执行编排见[正式拆分与搬迁顺序](../plans/reports/v06-extraction-execution-roadmap.md)。2026-10-15 首批合同现已交付：[784旧仓保全](../plans/archive/784-repo-extraction-legacy-preservation.md)、[785文本剪贴板能力](../plans/archive/785-clipboard-text-host-provider.md)、[786展示读取收口](../plans/archive/786-project-display-reader-consolidation.md)；781亦已合并归档。2026-10-16 第二批合同见§8.3；783/787/788隔离实验与集成线不是全局前置，按真实热点协调。规划不等于授权立即切旧仓主分支或实施源码。
 
 ### 8.0 既有仓复用与默认分支切换
 
@@ -210,6 +210,19 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 4. **恢复期**：新边界合入后，受影响在途树重同步、修订实际路径/依赖并复跑触面验证；后续feature按新接口进入，旧兼容入口有明确退出阶段。
 
 冻结以迁移范围和验收结束为界，不定无依据的停工天数。没有“等全生态WIP清零”的要求；确实与迁移重叠的未提交代码必须先形成保全/交接收据，不靠stash/reset丢掉它。资源上各树只跑允许的scoped门禁；tf及其他规定重档保持主检出单实例串行，不能把功能并行扩大为机器重测并发。
+
+### 8.3 第二批实际解耦合同（2026-10-16，尚未实施）
+
+781/784/785/786已合并归档，下一批按“先仓内独立crate/能力，再固定发行闭包”推进：
+
+| Plan | 责任切口 | 拟定依赖方向与退出条件 |
+|---|---|---|
+| [789](../plans/789-lexical-foundation-extraction.md) | Token/Pos/Lexer单一来源 | auto-lang → auto-lex；词法层不依赖AST/Parser/VM/UI，原诊断与桥面恢复保持。AST/type-store/inference剩余环单独列清，完整文法外置仍未完成 |
+| [790](../plans/790-clipboard-files-images-provider.md) | 文件/图像剪贴板四native | VM编解码 → owned provider合同 ← UI/OS adapter；不传UI或VM句柄；真实VM、OS与ownership/临时路径寿命可验 |
+| [791](../plans/791-generation-core-extraction.md) | 通用生成编排与可执行Auto模板 | auto-gen(Auto adapter) → auto-gen-core；核心无语言引擎依赖，默认生产调用迁移，保留原模板/legacy行为 |
+| [792](../plans/792-generated-ui-independent-build.md) | 选定Iced生成工程的发行地基 | 前三项合流后冻结source/lock/patch/资源身份，独立consumer fresh-lock真实build和重定位成功，开发源码无隐式兜底 |
+
+789/790/791按实际文件热点并行，workspace/规则共用写面短窗口串行合流；792先准备后在合流闭包上实施。这里登记目标合同，不提前发布为Spec现状。旧仓仍遵守§8.0增量承接历史的流程；完成本批不自动授权G/H主分支切换。后续A/B/D/E剩余切口、其他宿主族与I/J终态退出继续列入路线，不能因首个生成工程可建而删除。
 
 ## 9. 决策状态
 

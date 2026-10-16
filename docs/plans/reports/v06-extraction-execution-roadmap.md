@@ -4,6 +4,21 @@
 
 ## 当前切换点
 
+**2026-10-16 更新**：781、784、785、786 均已合并归档。前面的探针与首批生产切口已经交付；当前下一批合同为 789–792（均 drafting，尚未实施），详见下节。下方 2026-10-15 的状态计数与“准备状态”为历史规划快照，不作为今日放行依据。783/787/788 按实际共享写面协调，不设为全局等待条件。
+
+## 下一批实施计划（2026-10-16）
+
+| Plan | 实际交付 | 依赖与编排 |
+|---|---|---|
+| [789 词法基础抽取](../789-lexical-foundation-extraction.md) | 新 auto-lex 独立 crate；生产 Parser 消费单一 Token/Lexer 实现，兼容错误/位置/桥面；完整前端剩余环登记 | 784/778 已交付；可先实施，不等其他新计划 |
+| [790 文件/图像剪贴板](../790-clipboard-files-images-provider.md) | 2934..2937 宿主 provider、真实 no-ui VM 消费及 Windows OS 接线；引用与临时图像路径寿命验收 | 781/785 已交付；native热点一次一写方，与789/791无实现交集可并行 |
+| [791 生成核心抽取](../791-generation-core-extraction.md) | 新 auto-gen-core；guard/输出编排单一实现，Auto解释执行留 adapter，原CLI/legacy保持 | 784/786 已交付；与789的workspace成员/777规则短窗口串行写入，实施可并行 |
+| [792 生成UI独立构建](../792-generated-ui-independent-build.md) | 修复 fresh-lock UI消费；显式可重定位交付根、根patch/应用锁/source资源身份与真正外部构建 | 789/790/791 final review+merge后冻结闭包并实施；此前仅可只读准备 |
+
+本批是实际仓内解耦与发行地基，不再只做探针；每项都有物理删边/单一实现或独立构建验收。四份合同不代表本轮已获实施、发布或旧仓主分支切换授权。取材与验证见 [本批输入指纹](../attachments/extraction-batch-20261016/inputs.json)。
+
+本批结束后仍需落实 A 的 AST/type-store/inference/完整parser DAG切口、B完整UI文法、C其余scroll/editor/term/media宿主族、D UI分层、E剩余Man核心/tool协议与薄CLI；792只证明选定Iced生成应用发行面，不覆盖所有后端/资源。满足D/F等真实退出条件后才进入G/H整仓搬迁；I/J兼容退出和净瘦身继续保留。后续按已交付代码再建中等计划，不预占空壳编号。
+
 777基线、778外部Dialect、779 frame provider、780 project-model均已合并归档。779落地并不证明字符串/媒体寿命、全部文法、完整独立仓发行已解决。
 
 781当前合同仍executing（18/26），涉及UI/VM/UI生成及原生验收；它的早期合并历史不能替代当前修复收口。783仍executing（7/9），范围限定experimental/ac-artifact-probe及资料，不是UI/Man搬迁硬前置。实施前重核状态和真实diff，不凭这些计数永久放行。
@@ -12,9 +27,9 @@
 
 | 顺序 | Plan | 交付 | 入场条件 |
 |---|---|---|---|
-| 1 | [784 旧仓保全](../784-repo-extraction-legacy-preservation.md) | legacy恢复锚、未提交载荷保全、隔离准备树及刷新迁出owner清单 | 可先确认执行；不需等781/783结束 |
-| 2 | [785 文本剪贴板能力](../785-clipboard-text-host-provider.md) | 按779模式真迁2925/2926实现依赖，覆盖字符串ownership与feature错误 | 784完成；781当前修复review+merge且宿主热点释放后接生产代码 |
-| 3 | [786 展示字段读取](../786-project-display-reader-consolidation.md) | 780模型用于Man首批生产读取，重复扫描收口、明确兼容策略 | 784完成；不依赖785或781，可在无同文件写入时独立推进 |
+| 1 | [784 旧仓保全](../archive/784-repo-extraction-legacy-preservation.md) | legacy恢复锚、未提交载荷保全、隔离准备树及刷新迁出owner清单 | 已合并归档；原入场条件保留在归档合同 |
+| 2 | [785 文本剪贴板能力](../archive/785-clipboard-text-host-provider.md) | 按779模式真迁2925/2926实现依赖，覆盖字符串ownership与feature错误 | 已合并归档 |
+| 3 | [786 展示字段读取](../archive/786-project-display-reader-consolidation.md) | 780模型用于Man首批生产读取，重复扫描收口、明确兼容策略 | 已合并归档 |
 
 计划号是推荐编排顺序，不把无依赖的工作强制串行；并行不意味着整档测试并发。只建drafting合同，不在本次创建树、改代码、移动旧仓refs或改主分支。
 
