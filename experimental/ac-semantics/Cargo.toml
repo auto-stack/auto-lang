@@ -1,0 +1,16 @@
+[workspace]
+members = ["contract", "core", "probe"]
+resolver = "2"
+
+# PLAN-796: independent experimental workspace for the AC semantic
+# metadata/inference contract and probe. It must NOT join the root
+# auto-lang workspace (same pattern as ../ac-core and
+# ../ac-artifact-probe: an empty [workspace] table there detaches them;
+# here the workspace root IS this directory). No root members change.
+
+[workspace.package]
+edition = "2021"
+publish = false
+
+[profile.release]
+debug = false

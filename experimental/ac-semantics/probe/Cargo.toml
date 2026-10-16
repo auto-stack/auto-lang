@@ -1,0 +1,16 @@
+[package]
+name = "ac-sema-probe"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-796 persistence probe: 783 ManagedStore consumer in an isolated namespace, page/dependency/lease lifecycle, budgets and turnaround harness"
+publish = false
+
+[dependencies]
+ac-sema-contract = { path = "../contract" }
+ac-sema-core = { path = "../core", features = ["core-ast"] }
+ac-artifact-probe = { path = "../../ac-artifact-probe" }
+auto-ac-prototype = { path = "../../ac-core" }
+
+[[bin]]
+name = "sema-probe"
+path = "src/main.rs"

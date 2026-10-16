@@ -1,0 +1,12 @@
+[package]
+name = "ac-sema-contract"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-796 semantic identity/metadata contract: nominal refs, content versions, recursive groups, coverage matrix, versioned page codec"
+publish = false
+
+# Contract library constraint (plan §2): compact semantic model, validation
+# and deterministic queries only — NO auto-lang/UI/VM/Cranelift/auto-man
+# dependency. blake3 is a hashing primitive, not a product dependency.
+[dependencies]
+blake3 = "1.5"
