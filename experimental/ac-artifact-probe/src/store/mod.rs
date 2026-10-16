@@ -145,6 +145,14 @@ fn now_ms() -> u64 {
 /// NOT unique across same-process threads.
 static STAGING_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Process-global lease identity sequence (F787-R6-03): millisecond + pid is
+/// NOT unique across same-process sequential grants either — released rows
+/// keep their `lease_id` in the leases table, so same-millisecond sequential
+/// acquire+release cycles collide on the PRIMARY KEY (91/128 observed).
+/// Mirrors STAGING_SEQ: grant uniqueness comes from the sequence, liveness
+/// stays decided by the OS lock file + TTL/PID as before.
+static LEASE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Process-wide high-water mark of RESERVED transient bytes (staging +
 /// CAS tmp copy), recorded on SUCCESSFUL reservations only (R4-02).
 pub static PEAK_TRANSIENT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -921,8 +929,19 @@ impl ManagedStore {
         artifact: Option<&str>,
     ) -> Result<Lease, StoreError> {
         // Hold the lock file for the lease's lifetime (OS releases it when
-        // the holder dies — TTL/PID alone never decide liveness).
-        let id = format!("ls-{}-{}", now_ms(), crate::sysinfo::current_pid());
+        // the holder dies — TTL/PID alone never decide liveness). The id
+        // carries a process-global sequence: same-millisecond sequential
+        // grants (released rows keep their lease_id in the table) must not
+        // collide on the leases PRIMARY KEY (F787-R6-03 — the same
+        // uniqueness class STAGING_SEQ already solves for staging txn ids;
+        // liveness semantics unchanged: OS lock + TTL/PID).
+        let seq = LEASE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let id = format!(
+            "ls-{}-{}-{}",
+            now_ms(),
+            crate::sysinfo::current_pid(),
+            seq
+        );
         let lock_path = self.lock_path(&format!("lease-{}", id));
         let guard = FileGuard::try_lock(&lock_path, true)?
             .ok_or_else(|| StoreError::Internal("lease lock unavailable".into()))?;

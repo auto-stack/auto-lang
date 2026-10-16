@@ -303,3 +303,21 @@ fn reachability_cross_process_lease_pinning() {
         "crashed lease reclaimed by sweep (row was never released)"
     );
 }
+
+/// F787-R6-03（787 复审移交的上游缺陷回归）：lease_id 携带进程内全局序列
+/// ——同毫秒**顺序**申请-释放循环不得撞 leases 主键。修复前 `ls-{ms}-{pid}`
+/// 在已释放行仍残留表内时，128 连发 91 次 UNIQUE constraint 失败；liveness
+/// 语义不变（OS 锁文件裁定，TTL/PID 不参与）。
+#[test]
+fn reachability_sequential_same_millisecond_leases_do_not_collide() {
+    let root = scratch("reach-lease-seq");
+    let store = ManagedStore::open(&root.join("store")).unwrap();
+    for i in 0..128 {
+        let lease = store
+            .acquire_lease("seq-probe", 3600, None)
+            .unwrap_or_else(|e| panic!("grant #{i} failed: {e}"));
+        assert!(store.lease_live(&lease.lease_id).unwrap());
+        // 释放后行仍留在 leases 表——同毫秒内的下一发正是旧实现的碰撞点。
+        drop(lease);
+    }
+}
