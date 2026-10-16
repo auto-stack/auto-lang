@@ -4,6 +4,9 @@ mod a2c_tests;
 // Plan 768: TestCase protocol adapter + runner integration (real VM/a2r)
 #[cfg(feature = "test-cases")]
 mod test_cases_tests;
+// PLAN-788: ac native adapter integration (real ac-case-worker process)
+#[cfg(feature = "test-cases")]
+mod ac_case_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
 mod plan703_supply_probes;

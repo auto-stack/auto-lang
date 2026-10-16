@@ -19,8 +19,15 @@ use auto_test_case::sha256::{hex, sha256};
 /// One row of the staleness summary.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RowVerdict {
-    Fresh { case: String, check: String },
-    Stale { case: String, check: String, drifted_axes: Vec<String> },
+    Fresh {
+        case: String,
+        check: String,
+    },
+    Stale {
+        case: String,
+        check: String,
+        drifted_axes: Vec<String>,
+    },
 }
 
 fn fingerprint(v: &dyn std::fmt::Debug) -> String {
@@ -39,8 +46,15 @@ pub fn toolchain_axes(limits: &Limits) -> BTreeMap<String, String> {
         "vendored-parser".to_string(),
         auto_test_case::document::vendored_parser_fingerprint(),
     );
-    m.insert("auto-lang".to_string(), env!("CARGO_PKG_VERSION").to_string());
+    m.insert(
+        "auto-lang".to_string(),
+        env!("CARGO_PKG_VERSION").to_string(),
+    );
     m.insert("limits".to_string(), fingerprint(&limits));
+    // PLAN-788: the ac worker IPC identity — a protocol revision invalidates
+    // every prior native result row (per-check worker/toolchain builds also
+    // travel in each row's native record).
+    m.insert("ac-case-worker".to_string(), "acworker/1".to_string());
     m
 }
 
@@ -109,8 +123,16 @@ pub fn check(
     }
     let mut verdicts = Vec::new();
     for r in results {
-        let case = r.get("case").and_then(|v| v.as_str()).unwrap_or("?").to_string();
-        let check = r.get("check").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+        let case = r
+            .get("case")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?")
+            .to_string();
+        let check = r
+            .get("check")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?")
+            .to_string();
         let key = format!("{}:{}", case, check);
         let get = |axis: &str| {
             r.get("identity")

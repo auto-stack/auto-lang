@@ -84,7 +84,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
 
     // ---- lowering + real link (build/run) ------------------------------
     let sel_start = Instant::now();
-    let sel = match native::find_entry(&checked, &format!("d_{}", req.entry)) {
+    let sel = match select_entry(&checked, &req.entry) {
         Ok(s) => s,
         Err(ds) => {
             trace.push(SpanOut {
@@ -315,6 +315,41 @@ fn frontend(
             // the atom text the binder consumed (no re-render pipeline
             // exists, and inventing one is out of contract).
             Ok((Some(checked), bytes, Vec::new()))
+        }
+    }
+}
+
+/// Entry selection with the raw-HIR name fallback: source documents
+/// follow the adapter's `d_<name>` def-id convention, but a hand-authored
+/// HIR document carries author-chosen ids — resolve by function NAME then,
+/// still through the same signature-checked single-match finder.
+fn select_entry(
+    checked: &verify::CheckedModule,
+    entry: &str,
+) -> Result<native::EntrySelection, Vec<Diagnostic>> {
+    let direct = format!("d_{}", entry);
+    match native::find_entry(checked, &direct) {
+        Ok(s) => Ok(s),
+        Err(ds) => {
+            if !ds.iter().any(|d| d.code == "entry.not-found") {
+                return Err(ds);
+            }
+            let bundle = checked.bundle();
+            let by_name: Vec<&str> = bundle
+                .modules
+                .iter()
+                .flat_map(|m| m.defs.iter())
+                .filter_map(|d| match &d.kind {
+                    auto_ac_prototype::hir::DefKind::Function { name, .. } if name == entry => {
+                        Some(d.id_text.as_str())
+                    }
+                    _ => None,
+                })
+                .collect();
+            match by_name.as_slice() {
+                [only] => native::find_entry(checked, only),
+                _ => Err(ds),
+            }
         }
     }
 }

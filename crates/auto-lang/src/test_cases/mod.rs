@@ -29,9 +29,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use auto_test_case::admission::{
-    check_no_reparse_ancestors, validate_output_domain, Limits,
-};
+use auto_test_case::admission::{check_no_reparse_ancestors, validate_output_domain, Limits};
 use auto_test_case::contract::{Adapter, CaseSpec, CheckSpec, Stage};
 use auto_test_case::discovery::{load_suite, CaseFile, LoadedSuite};
 use auto_test_case::ir::{resolve_case, resolve_oracle, ResolvedCase, ResolvedOracle};
@@ -40,6 +38,7 @@ use auto_test_case::sha256::{hex, sha256};
 use auto_test_case::suite::apply_defaults;
 
 pub mod a2r;
+pub mod ac;
 pub mod avm;
 pub mod materialize;
 pub mod stale;
@@ -169,11 +168,7 @@ impl Selection {
                 .as_deref()
                 .map(|a| a == check.adapter.as_str())
                 .unwrap_or(true)
-            && self
-                .check
-                .as_deref()
-                .map(|c| c == check.id)
-                .unwrap_or(true)
+            && self.check.as_deref().map(|c| c == check.id).unwrap_or(true)
     }
 }
 
@@ -208,9 +203,13 @@ pub fn run_suite_selected(
     // Selector shape validation happens before ANY load or execution: a
     // typo'd adapter name is a contract error, not a full run that exits 1.
     if let Some(a) = &selection.adapter {
-        if a != Adapter::Avm.as_str() && a != Adapter::A2r.as_str() {
+        if a != Adapter::Avm.as_str()
+            && a != Adapter::A2r.as_str()
+            && a != Adapter::Ac.as_str()
+            && a != Adapter::Syntax.as_str()
+        {
             return Err(format!(
-                "bad selector: adapter {:?} is not a declared adapter (avm, a2r)",
+                "bad selector: adapter {:?} is not a declared adapter (avm, a2r, ac, syntax)",
                 a
             ));
         }
@@ -282,7 +281,15 @@ pub fn run_suite_selected(
 
     for case_file in &loaded.cases {
         for spec in case_file.specs.iter() {
-            run_case(&loaded, case_file, spec, &run_dir, limits, selection, &mut report);
+            run_case(
+                &loaded,
+                case_file,
+                spec,
+                &run_dir,
+                limits,
+                selection,
+                &mut report,
+            );
         }
     }
 
@@ -290,8 +297,7 @@ pub fn run_suite_selected(
     // but only cases that actually have a selected (non-NOT_RUN) check
     // participate — a fully unselected case is NOT_RUN and breaks the gate
     // through the exit reducer, not through phantom coverage gaps.
-    let mut case_adapters: BTreeMap<String, std::collections::BTreeSet<String>> =
-        BTreeMap::new();
+    let mut case_adapters: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
     let mut selected_cases: Vec<String> = Vec::new();
     for r in &report.results {
         if r.status == Status::NotRun {
@@ -338,10 +344,7 @@ fn run_case(
     // suite-declared fixture base (imports keep legacy files in place).
     let ref_base = loaded.fixture_base.clone();
 
-    let any_selected = spec
-        .checks
-        .iter()
-        .any(|c| selection.matches(&spec.id, c));
+    let any_selected = spec.checks.iter().any(|c| selection.matches(&spec.id, c));
 
     // Resolve payloads only when some check of this case will run; a
     // partial run must not read (or fail on) fixtures it never touches.
@@ -460,18 +463,16 @@ fn run_case(
             // sidecars must exist, be readable, bounded, and reparse-clean
             // BEFORE the check can execute.
             match resolve_oracle(&spec.id, &check, &ref_base, limits) {
-                Err(e) => error_outcome(loaded, spec, &check, &format!("oracle resolution failed: {}", e)),
+                Err(e) => error_outcome(
+                    loaded,
+                    spec,
+                    &check,
+                    &format!("oracle resolution failed: {}", e),
+                ),
                 Ok(oracle) => {
                     let identity = identity_base(&oracle.oracle_sha256);
                     dispatch_check(
-                        loaded,
-                        spec,
-                        resolved,
-                        &check,
-                        &oracle,
-                        run_dir,
-                        &identity,
-                        started,
+                        loaded, spec, resolved, &check, &oracle, run_dir, &identity, started,
                     )
                 }
             }
@@ -539,7 +540,12 @@ fn consume_products(
     let oracle = match resolve_oracle(&spec.id, check, ref_base, limits) {
         Ok(o) => o,
         Err(e) => {
-            return error_outcome(loaded, spec, check, &format!("oracle resolution failed: {}", e))
+            return error_outcome(
+                loaded,
+                spec,
+                check,
+                &format!("oracle resolution failed: {}", e),
+            )
         }
     };
     let identity = identity_base(&oracle.oracle_sha256);
@@ -604,6 +610,41 @@ fn consume_products(
         upstream,
         consumed.keys().collect::<Vec<_>>()
     ));
+    // An ac/run consumer RUNS the manifest-verified exe (PLAN-788 §5.2: a
+    // consumer never recompiles source to replace a bad product; the
+    // consumed bytes ARE the build's real output).
+    if check.adapter == Adapter::Ac && check.action == auto_test_case::contract::Action::Run {
+        match consumed.get("app.exe") {
+            None => mismatches.push(auto_test_case::compare::Mismatch {
+                observation: "consumed product app.exe".into(),
+                kind: "missing",
+                expected: "the upstream build's exe".into(),
+                actual: "absent from consumed manifest".into(),
+                first_diff: None,
+            }),
+            Some(exe_bytes) => match ac::consume_and_run(
+                exe_bytes,
+                check,
+                oracle.exit,
+                oracle.stdout.as_ref(),
+                oracle.stderr.as_ref(),
+            ) {
+                Ok(v) => {
+                    mismatches.extend(v.mismatches);
+                    o.native = v.native;
+                }
+                Err(e) => {
+                    o.status = Status::Error;
+                    o.detail = Some(format!(
+                        "{}; ac consumer run: {}",
+                        o.detail.unwrap_or_default(),
+                        e
+                    ));
+                    return o;
+                }
+            },
+        }
+    }
     if mismatches.is_empty() {
         o.status = Status::Pass;
     } else {
@@ -640,6 +681,15 @@ fn dispatch_check(
         (Adapter::A2r, auto_test_case::contract::Action::Emit) => {
             a2r::run_check(resolved, check, oracle, &project_dir, &artifact_dir)
         }
+        (Adapter::Ac, auto_test_case::contract::Action::Check)
+        | (Adapter::Ac, auto_test_case::contract::Action::Build)
+        | (Adapter::Ac, auto_test_case::contract::Action::Run) => {
+            ac::run_check(resolved, check, oracle, &project_dir, &artifact_dir)
+        }
+        // v2 decodes syntax/parse + syntax/edit so the contract face is
+        // stable, but the executor binds only after PLAN-787 merges — an
+        // admission ERROR, never a SKIP and never a silent pass.
+        (Adapter::Syntax, _) => Err("syntax adapter is not bound yet: waiting for the PLAN-787 merge (D-787); executing a syntax check is an admission ERROR, not a skip".to_string()),
         _ => Err("unreachable adapter/action (contract decode enforces the matrix)".to_string()),
     };
     match dispatched {
@@ -648,6 +698,7 @@ fn dispatch_check(
             o.mismatches = verdict.mismatches;
             o.detail = verdict.detail;
             o.artifacts = verdict.artifacts;
+            o.native = verdict.native;
         }
         Err(e) => {
             o.status = Status::Error;

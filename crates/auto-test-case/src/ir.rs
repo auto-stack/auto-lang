@@ -186,6 +186,11 @@ pub struct ResolvedOracle {
     pub stdout: Option<StreamExpect>,
     pub stderr: Option<StreamExpect>,
     pub artifacts: Vec<ResolvedArtifact>,
+    /// v2 ac/run native exit oracle (PLAN-788): part of the content-bound
+    /// identity — changing an expected exit invalidates old PASSes.
+    pub exit: Option<i32>,
+    /// v2 ac optional perf assertion face (record-only unless declared).
+    pub perf: Option<crate::contract::PerfExpect>,
     pub oracle_sha256: String,
 }
 
@@ -230,6 +235,12 @@ pub fn resolve_oracle(
     // Content-bound oracle identity: declarations AND sidecar bytes.
     let mut combined = String::new();
     combined.push_str(&format!("{:?}\0", expect.completion));
+    if let Some(e) = &expect.exit {
+        combined.push_str(&format!("exit\0{}\0", e));
+    }
+    if let Some(pf) = &expect.perf {
+        combined.push_str(&format!("perf\0{:?}\0", pf.total_ms_max));
+    }
     if let Some(r) = &expect.result {
         combined.push_str(&format!("result\0{}\0{}\0", r.format, r.text));
     }
@@ -252,6 +263,8 @@ pub fn resolve_oracle(
         stdout: expect.stdout.clone(),
         stderr: expect.stderr.clone(),
         artifacts,
+        exit: expect.exit,
+        perf: expect.perf,
         oracle_sha256,
     })
 }

@@ -31,6 +31,8 @@ pub struct Verdict {
     pub mismatches: Vec<Mismatch>,
     pub detail: Option<String>,
     pub artifacts: Vec<ArtifactRef>,
+    /// PLAN-788 v2 native observation record (None for avm/a2r checks).
+    pub native: Option<auto_test_case::report::NativeRecord>,
 }
 
 impl Verdict {
@@ -40,6 +42,7 @@ impl Verdict {
             mismatches: vec![],
             detail: None,
             artifacts: vec![],
+            native: None,
         }
     }
     pub fn fail(mismatches: Vec<Mismatch>) -> Verdict {
@@ -48,6 +51,7 @@ impl Verdict {
             mismatches,
             detail: None,
             artifacts: vec![],
+            native: None,
         }
     }
     pub fn error(detail: impl Into<String>) -> Verdict {
@@ -56,6 +60,7 @@ impl Verdict {
             mismatches: vec![],
             detail: Some(detail.into()),
             artifacts: vec![],
+            native: None,
         }
     }
 }
