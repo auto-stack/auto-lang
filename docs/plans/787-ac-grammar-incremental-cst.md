@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-787
-status: execution_done
+status: executing
 feature_name: Atom 语法驱动的增量词法与无损 CST 首条闭环
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-15
-updated_at: 2026-10-15
+updated_at: 2026-10-16
 current_step: 7
 total_steps: 9
 supersedes_spec_components:
@@ -203,6 +203,52 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
 
+### 执行进度注记（work，2026-10-16 复审 R1 修复轮 → afbacfbcc）
+
+复审 R1（needs_fix，10 findings）全部修复并验证，工作树 HEAD `afbacfbcc`
+（基面 bf773ca9b；修复 diff 34 文件 +4259/−1625）：
+
+- F01 ✅ snapshot 页 `Rc` 保活（PageRef 持页引用）：活快照压力不丢页、
+  释放后未引用字节可回收（正反测试）。
+- F02 ✅ locate_line 跨页续行行起点回溯；UTF-16/CRLF/emoji 往返正反例。
+- F03 ✅ 增量词法 Scanner 硬限窗口 + 流式 K 收敛即停：rescan_bytes=实际
+  扫描位置；1MiB 中部编辑真实源页读取 ≤48KiB、报告 214B（永久反控
+  incremental_local_lexer_real_reads_are_bounded）。
+- F04 ✅ CST 重构为不可变共享内容块（CstBlock）+长度目录（bases）+根孩子
+  目录：perform_graft=旧块整体 Rc 采纳（零节点复制）+ splice 前缀身份映射；
+  reused_decls 改为**实际嫁接计数**（候选命中才算）。1MiB 中部单 body 编辑
+  节点复用 1147999/1148131（99.99%，新节点 132）；开头插入零后缀复制。
+- F05 ✅ A02 键含 grammar-id；payload v2 含完整 checkpoint（offset/mode/
+  mid/line）往返；A02 --required--> A01+源页；跨 grammar 真读 miss。
+- F06 ✅ manifest --required--> 全部数据页+声明目录页+A02（闭包覆盖全树）；
+  SourcePage 内容寻址源字节持久化（快照 16KiB 页聚合 ≤256KiB store 源页）
+  + source_bytes/for_each_source_page 重建；当前根替换（清旧硬根+软根）+
+  CstView 持 store lease——GC 保活（lease 内强制 GC 存活）与释放后物理回收
+  （deleted_chunks>0 + miss）测试。
+- F07 ✅ 读入口结构校验：manifest 页表连续性/decl 页号与节点范围/node_lo
+  不变式/根边范围 + decode 页数一致 + 边目标越界 + chunk kind 校验；坏
+  manifest ref 反例受控（不 panic）。
+- F08 ✅ 64MiB 端到端有界：生成器独立进程（ac787-gen bin，峰值分列）；流式
+  读文件（不整源驻留）；声明目录在线整页落盘（builder 受管峰值 4089KiB≤8MiB，
+  不累积 2.57M 目录）；hot 8092KiB+manifest 1064KiB≤16MiB（索引计入）；
+  Windows 实测 OS private bytes 增量 12176KiB≤64MiB（非 Windows sysinfo=0
+  显式证据缺口行，不冒充）；巨声明 6 万参数受控 ResourceExhausted。
+- F09 ✅ 真子进程恢复（ac787-query bin：grammar 按 (id,revision) 从 store
+  反序列化、CST 走 manifest/页、源重建）；depth 真 ≥4096 同时未闭合嵌套 +
+  depth_persisted_ 编解码往返；perf 同轮 fresh 对照 + 旧 parser 对照 +
+  回退确实发生断言；verify closeout 参数修复（--lib 独立参数；schema_ 不存在
+  → dep_audit_）+ **acceptance 含 work-owned perf_/syntax_budget_**（16 族
+  90 项 ALL PASS）。
+- F10 ✅ 新增警告清零（余 shim-metadata 预存归属）；rustfmt --check 全量
+  干净；register_root/put 错误传播（flush_batch .expect 移除）。
+
+反例重放：review-r1 counterexamples **7/7 通过**（修复前 1 pass/6 fail）。
+783 触面：--lib 14/14、admission_ 7/7、dep_audit_ 5/5（codec 面期望随真实
+生产者翻转——对应测试更新授权内）、identity_/concurrency_/review_r* 全绿。
+probe 加法：ChunkKind::SourcePage=10、A02 key_inputs 补 grammar-id/page-hash。
+touched_goals=[] 说明：本计划零生产目标改动（experimental 面新增；crates/
+ac-core 零 diff——compatibility_ 审计）。
+
 ### 执行进度注记（work，2026-10-16 第二轮收口）
 
 - T-01 ✅ feasibility 报告（8b1920c33）。
@@ -240,6 +286,49 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 - workspace 测试面：`RUSTC_WRAPPER= cargo test --manifest-path experimental/ac-syntax/Cargo.toml --workspace` 70/70 绿。
 
 ## 9. 复审记录
+
+### 2026-10-16 final review R1 — needs_fix（当前有效）
+
+stage: review；review_scope: final（readiness 拒绝及有界风险审查）；reviewer_identity: 当前独立 Codex 会话，未参与实施、未创建代理。
+plan_id: PLAN-787；plan_revision: 1；outcome: needs_fix；status: executing，2/9。
+worktree_path: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+reviewed_commit: 4eed69e67085eb150d30443d5c2f41d2530e34c6；base_commit: bf773ca9bfc5a2d6ed672f904011419b03eff1ef。
+
+[完整报告/AC/SD/修复要求](attachments/787/review-r1/REVIEW.md)、[反例](attachments/787/review-r1/probes/counterexamples.rs)、[重放输出](attachments/787/review-r1/counterexamples.log)、[Spec 输入 hash](attachments/787/review-r1/spec-inputs.tsv)、[依赖 hash](attachments/787/review-r1/baseline-hashes.tsv)、[冻结 SD](attachments/787/review-r1/spec-delta.md)。
+冻结 SD SHA-256 EEC8FB8D32AB7FC613ACD151AFF921FF22B4921A6D03E9467D9CD097B9FFCAC7。
+dependency_revisions: 三项 path 依赖实际位于同一实施树，均绑定 reviewed_commit 与锁/清单 hash（不是 work 收据所称主检出）。
+
+acceptance_results: AC-01 fail、AC-02 partial、AC-03 partial、AC-04 fail、AC-05 fail、AC-06 fail、AC-07 fail、AC-08 pending。
+现有 acceptance 13 族/78 次通过记录；独立 7 例=1 pass/6 fail。新工作区 check 成功但新增 23 警告；直接 rustfmt check 不通过。
+findings: F787-R1-01..10，均未闭合：活跃快照丢页；跨页续行坐标错；全后缀扫描却报局部；复制 arena 冒称内容页共享；A02 跨 grammar 串用/未持久 checkpoint；GC 引用图/源页/lease 生命周期；有效封装坏引用 panic；预算非有界与 OS 缺证；oracle/closeout 参数/SD 缺口；新增警告与错误传播。
+
+保留 T-01/T-03，重开 T-02/T-04/T-05/T-06/T-07，T-08/T-09 未完成。上方 work 完成进度及 ALL PASS 为历史声明，不能覆盖本轮 findings。
+pending_closeout_gates: 完整独立语法套件、受影响 783 独立套件，以及 Spec/索引/ledger、合入归档/guard 清理；新冻结提交复审通过后由 merge 执行，不跑根整档/docs_gen。
+next: 同树 auto-plan-work 修复全部 findings、补定向反例与完整验收后提交再审。本轮仅审查和簿记，未修实现、未合入、未发布规范。
+
+
+### 2026-10-16 work 修复轮 handoff（R1 findings 全闭合 → 送审）
+
+stage: work；plan_id: PLAN-787；plan_revision: 1；outcome: pass（execution_done 7/9 恢复）；
+worktree: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+base_commit: bf773ca9bfc5a2d6ed672f904011419b03eff1ef；code_commit: afbacfbcc644d246a2bf3a0ae6185bbd9e6ca457；
+dependency_revisions: auto-atom/auto-ac-prototype/ac-artifact-probe 均为本树 path 依赖（同一实施树，绑定 afbacfbcc）；
+task_ids: T-02、T-04、T-05、T-06、T-07（复核重勾，证据见上方修复轮注记）。
+
+readiness 记录：
+- work-owned AC：AC-01..AC-06 全部以修复后代码重验——AC-01（snapshot_4+generation_3+position/snapshot 单测 38）、
+  AC-02（grammar_13+grammar_reject_7+跨 grammar token miss）、AC-03（lossless_15+recovery_4+core_projection_15+depth_4+depth_persisted_1）、
+  AC-04（incremental_local_3：真实读取 ≤48KiB/节点复用 99.99%/开头插入零复制；incremental_replay_4：双 profile 200 轮 fresh 等价）、
+  AC-05（syntax_cache_4+syntax_admission_6+syntax_budget_2：required 图/lease-GC 生命周期/64MiB 有界+OS 实测）、
+  AC-06（compatibility_3+perf_2+matrix.md 修复轮+spec-delta 更新稿）。
+- 未闭合 in-contract findings / 覆盖缺口 / 未决合同决定：无（F787-R1-01..10 全闭合，逐项见修复轮注记）。
+- 反例重放：review-r1 counterexamples 7/7 通过（修复前 1/6）；既有清白行为保留断言（replay 200 轮 fresh 等价未回退）。
+- 两轮失败诊断条款：不适用（首轮 final review 失败后的修复即闭合全部 findings，含不变量级修复——F04 为架构级
+  内容块重构而非例子级补丁）。
+- merge-owned pending：closeout 完整独立语法套件 + 783 触面（--lib/admission_/dep_audit_）+ Spec/索引/ledger 沉淀 +
+  合入归档/guard 清理；不跑根整档/docs_gen。
+
+blockers: 无；next_responsible_role: review（T-08 同树独立最终验收，绑定 afbacfbcc）。
 
 2026-10-15 draft handoff：stage:new；PLAN-787 r1；outcome:pass（可交付的规划契约，非实现验收）；next:work（先独立T-01–05，T-06前核D-783）。新增T-01–09、AC-01–08、V-01–13、SD-01–06，当前0/9，未执行编译/测试。用户只授权规划，未创建实施树。
 
