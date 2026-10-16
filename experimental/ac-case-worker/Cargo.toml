@@ -1,0 +1,31 @@
+[package]
+name = "ac-case-worker"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-788 AC native test-case worker: bounded versioned IPC over ac-core and the PLAN-783 unified store"
+publish = false
+
+# Standalone worker workspace (same pattern as ../ac-core and
+# ../ac-artifact-probe): the worker owns the experimental compiler stack
+# (Cranelift via ac-core) so the auto-lang product build graph stays
+# zero-Cranelift; auto-lang talks to this process over versioned JSON IPC.
+# It must not gain a dependency on auto-lang/auto-test-case product crates —
+# the protocol contract lives in auto-test-case and the worker consumes
+# serde-shaped mirror types (see docs/plans/788-*.md §2).
+[workspace]
+
+[dependencies]
+auto-ac-prototype = { path = "../ac-core" }
+ac-artifact-probe = { path = "../ac-artifact-probe" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+debug = false
