@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-795
-status: executing
+status: execution_done
 feature_name: 包锁模型与校验核心抽取
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/package-lock/project.md]
@@ -83,20 +83,36 @@ Target→DTO和Git probing留上层；core接收调用方提供的automan版本�
 
 | 状态 | ID | owner_stage | 依赖 | 操作/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 786/791归档、合同确认 | 冻结lock.rs/Target公开API、serde/错误旧臂、Git与path行为，确定轻投影和版本来源 | 02/04 |
-| [ ] | T-02 | work | T01 | 新crates/auto-package-lock，模型/codec和无Target输入；cargo check新crate | 01/02 |
-| [ ] | T-03 | work | T02 | 迁排序/查询/verify单一规则，observer/路径负控；保留原错误阶段 | 02/03 |
-| [ ] | T-04 | work | T03 | auto-man lock.rs兼容委托及Target/Git adapter；旧API构造/方法真实编译 | 02/04 |
-| [ ] | T-05 | work | T04 | 外部consumer及V01..04、metadata/777边界；检查792写面未侵入 | 01–04 |
-| [ ] | T-06 | work | T05 | 净删/搬迁/未迁清单和SD素材，提交冻结代码与并行交接收据 | 01–04 |
+| [x] | T-01 | work | 786/791归档、合同确认 | 冻结lock.rs/Target公开API、serde/错误旧臂、Git与path行为，确定轻投影和版本来源 | 02/04 |
+| [x] | T-02 | work | T01 | 新crates/auto-package-lock，模型/codec和无Target输入；cargo check新crate | 01/02 |
+| [x] | T-03 | work | T02 | 迁排序/查询/verify单一规则，observer/路径负控；保留原错误阶段 | 02/03 |
+| [x] | T-04 | work | T03 | auto-man lock.rs兼容委托及Target/Git adapter；旧API构造/方法真实编译 | 02/04 |
+| [x] | T-05 | work | T04 | 外部consumer及V01..04、metadata/777边界；检查792写面未侵入 | 01–04 |
+| [x] | T-06 | work | T05 | 净删/搬迁/未迁清单和SD素材，提交冻结代码与并行交接收据 | 01–04 |
 | [ ] | T-07 | review | T06 | 独立真实锁流程/负控/公开兼容和SD冻结 | 05 |
 | [ ] | T-08 | merge | final pass | 裸t+定向门、沉淀/归档/guard、regress到期交接；必要时792刷新source闭包 | 06 |
+
+### 任务证据（work 轮）
+
+- **T-01 冻结**：临时探针测试在 579f6dec0 旧臂捕获 golden（探针即删）：TOML pretty（`automan_version` 先、`[[dependencies]]` 块、反斜杠 path 字面量单引号形态 `'deps\zeta-lib'`、尾换行）、JSON pretty（2 空格、无尾换行、空锁 `[]`）、错误文本（读失败带 AutoPath 统一化路径 `Z:/...`、JSON/TOML 解析阶段前缀）、`G-PATHSTR` 证实 `deps\sub\pac.lock.json`→统一化 `deps/sub/pac.lock.json` 选 JSON、verify 混入 App kind 目标被过滤（单错误臂输出）。轻投影定型：`LockEntry` 五字段 owned String 投影 + `ResolvedDependency{name,version}`；版本来源=调用方（auto-man 传 `AUTOMAN_VERSION`=0.1.0，core 永不代填）。
+- **T-02/T-03 核心 Crate**：`crates/auto-package-lock`（model 112/verify 58/codec 54 生产行）依赖仅 auto-val+serde/serde_json/toml+std；`LockedEntryView` 四字段只读视图 + `find_entry`/`sort_dependencies`/`verify_dependencies` 单一规则；codec 保持 AutoPath 统一化路径语义与 save 先序列化后建目录再写盘次序。`cargo check`/`clippy --all-targets` 零警告。
+- **T-04 门面**：旧公开 `LockFile`/`LockEntry` pub 字段构造与 `new/from_targets/load/save/verify/get/from_target` 全保持（serde derives 保留）；规则零复制——`get`/`verify` 经 `LockedEntryView` 零 DTO 委托，`load`/`save`/排序经 core；Target 投影（Dep/Device 过滤）与 `get_git_commit`（`git rev-parse HEAD`）留 adapter。
+- **T-05 验证**：core 单测 14 + 合同 11（V02/V03：格式冻结/空锁/Unicode/Windows 路径/统一化选 JSON/大小写敏感/错误阶段/路径正负控（真目录过、文件与缺失红、有 commit 跳过）/聚合并序/重名首条/save 建目录失败反控不覆写）、门面 9（V04：golden TOML/JSON 相等、from_targets kind 过滤+排序+未物化复绿、真 Git 临时仓 commit==HEAD、委托错误文本逐字）、consumer 4+闭包 PASS（V01：闭包=package-lock-consumer→auto-package-lock→auto-val，无 auto-lang/man/gen/ui/vm）。777 strict：新边 auto-man→auto-package-lock、auto-package-lock→auto-val 均 allowed，唯一红=`config_drift_since_baseline`（基线重锚归 merge 干净树，791 先例）。792 写面零侵入（diff 触面：module-boundaries/根 members+exclude/auto-man Cargo+lock.rs/新 crate/新 fixture/specs 两件）。**预存红归因**：`rust_ui::tests::review738_r5_lock_binding_state_machine`/`review751_empty_lock_identity_matrix` 在基线 579f6dec0 裸复现（stash 验证，非本计划引入；792 域）。
+- **T-06 净删/搬迁/未迁清单**：旧 lock.rs 253 行（生产 173）→ 门面 179 生产行（投影/委托/Git 观测）+ 核心 224 生产行（模型/规则/codec 单一定义，含视图 trait 与文档）；规则实现单份（无第二套 verify/序列化）。**未迁**（仍携语言栈留 auto-man）：resolver、Target 全家、builder、exporter、可执行模板、git/index/pull、AUTOMAN_VERSION 戳。SD 素材：`docs/specs/package-lock/project.md` 新增 + `docs/specs/auto-man/project.md` 分工节与模块行改写；INDEX/specs.json/plans.md 双索引归 merge。冻结代码提交=11ddc162e。
 
 ## 9. 复审记录
 
 2026-10-16 stage=new | plan_revision=1 | outcome=pass（合同preflight） | next=合同确认后work | 0/8；本轮未运行Rust或探测网络Git。
 
 2026-10-16 stage=work | PLAN-795 | plan_revision=1 | 入场执行 | worktree=D:/autostack/.wt/lang-795/auto-lang | branch=plan-795-dev（repo 命名规约覆盖合同拟称 codex/plan-795-dev；PLAN-726 组布局含 auto-down 兄弟 detached@c39ac7f） | base_commit=579f6dec0 | 前置验证：786/791 已归档；inputs.json 指纹复核 lock.rs=407127b5/target.rs=a483fa96/auto-man project.md=f12b0b40/module-boundaries=82718ad2 四项全等 | 用户显式授权 /auto-plan:work 实施。
+
+2026-10-16 stage=work | PLAN-795 | plan_revision=1 | outcome=pass（work-owned T-01..T-06 全闭合，6/8） | worktree=D:/autostack/.wt/lang-795/auto-lang | branch=plan-795-dev | base_commit=579f6dec0 | code_commit=11ddc162e | dependency_revisions=auto-val@579f6dec0(主仓同基)、serde/serde_json/toml 走 workspace 版本 | task_ids=T-01..T-06 | evidence=AC-01: consumer 4/4+闭包 PASS（verify-deps.sh，闭包仅 auto-val）；AC-02: golden TOML/JSON 三面钉死（core/门面/consumer），旧 API 编译+行为保持（门面 9/9）；AC-03: 单一规则实现（sort/find/verify/codec 各一份于 core，门面零复制），错误阶段/文本/聚合并序冻结，路径存在≠commit 校验（有 commit 跳过路径检查负控）；AC-04: 生产路径真实委托（from_targets/load/save/verify/get 全走 core），净删/搬迁/未迁清单见任务证据节 | blockers=无 | merge-owned pending：裸 cargo t + 双 crate 定向验收（cargo test -p auto-package-lock 全档 + cargo test -p auto-man --lib lock:: + consumer manifest 门禁 + verify-deps.sh）+ cargo fmt --check（work 已过单文件，merge 复核）+ 777 基线重锚（--refresh-baseline，干净树）+ specs.json/INDEX/plans.md 沉淀 + 归档/guard 清理 + tf 到期交接（795%5==0，落地触发） | next_responsible_role=review（T-07）
+
+#### work 轮附记
+
+- 环境注记：sccache 默认端口 4226 落 Windows 保留段（4144-4243）启动失败；本会话改 SCCACHE_SERVER_PORT=52117 绕过（保留段清单 netsh 复核）。不影响仓内产物。
+- 预存红（非本计划）：auto-man `rust_ui::tests::review738_r5_lock_binding_state_machine`、`review751_empty_lock_identity_matrix` 在基线 579f6dec0 stash 裸复现红（792 域）；"lock" 字面过滤器会误触达它们，定向门禁须用 `lock::` 前缀过滤。
+- 触面档判定：diff 未触 auto-lang crates/、trans、book、ui_gen、aavm——tv/tt/tb/tu/taa 均零触发；merge 门=裸 t+上述双 crate 定向。
 
 ## 10. 待澄清事项
 
