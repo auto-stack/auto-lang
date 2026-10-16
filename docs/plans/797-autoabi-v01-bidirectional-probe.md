@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-797
-status: drafting
+status: executing
 feature_name: 首版 AutoABI 合同与双向互调探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
-current_step: 0
+current_step: 5
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -174,11 +174,11 @@ work仅相关反例/模块及必要check；最终review后merge冻结提交执�
 
 | 状态 / ID | owner_stage | 依赖 | 新建/修改路径及结果 | 验证 / AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/797/contract-decision.md，冻结候选原型/语义ref快照/资源/工具/perf；最小layout缓存与三腿探针 | 首个独立C工具/obj与双向原生可行性，缺工具止住相关任务，不换假oracle；AC-01–05 |
-| [ ] T-02 | work | T-01 | 新contract/src/{descriptor,layout,validate}.rs、独立审定C header/oracle | abi_contract_、abi_layout_、abi_admission_；AC-01 |
-| [ ] T-03 | work | T-02 | 新probe/src/{emit,build,link}.rs与C参考源/独立producer/consumer recipes，零改ac-core | abi_calls_三腿/异质控制；AC-02 |
-| [ ] T-04 | work | T-03 | 新provider资源/错误/callback fixtures与真实账本 | abi_resource_；AC-03 |
-| [ ] T-05 | work | T-04 | store adapter/阶段trace/六场景/512churn，首批.case.ad与oracle从T-01维护 | abi_cache_、abi_turnaround_；AC-04、05 |
+| [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/797/contract-decision.md，冻结候选原型/语义ref快照/资源/工具/perf；最小layout缓存与三腿探针 | 首个独立C工具/obj与双向原生可行性，缺工具止住相关任务，不换假oracle；AC-01–05。[✅ 已完成] cargo test 13/13 绿（三腿真PE exit 0+负例1；MSVC cl 19.44.35222 冻结；783 store ABI-L0 首例持久化重开命中；semref 快照 blake3 15f81fd0..；commit plan-797-dev T-01） |
+| [x] T-02 | work | T-01 | 新contract/src/{descriptor,layout,validate}.rs、独立审定C header/oracle | abi_contract_、abi_layout_、abi_admission_；AC-01。[✅ 已完成] descriptor/1+fingerprint、12 维 admission 拒绝矩阵（native 0 调）、layout 引擎==C 编译器 sizeof/offsetof（padding/序/嵌套+错 offset 反控红）、递归/超深/超预算受控拒绝；workspace 28/28 绿（commit plan-797-dev T-02） |
+| [x] T-03 | work | T-02 | 新probe/src/{emit,build,link}.rs与C参考源/独立producer/consumer recipes，零改ac-core | abi_calls_三腿/异质控制；AC-02。[✅ 已完成] 三腿全套（含 C→AutoABI→C 嵌套链、fallible out-sentinel、record 冻结 offset、可观察计数器）exit 0；swap/错 offset/漏调用负例各 exit 恰 1；produce/consume 配方 admission 先行；abi_calls_ 7/7、workspace 35/35 绿（commit plan-797-dev T-03） |
+| [x] T-04 | work | T-03 | 新provider资源/错误/callback fixtures与真实账本 | abi_resource_；AC-03。[✅ 已完成] C provider 真 arena/代际账本/原方 destroy/失败注入回滚/buffer 规则/同步 callback；AutoABI 与 C 双消费者全协议 exit 0 + 回滚控制红；abi_resource_ 3/3、workspace 38/38 绿（commit plan-797-dev T-04） |
+| [x] T-05 | work | T-04 | store adapter/阶段trace/六场景/512churn，首批.case.ad与oracle从T-01维护 | abi_cache_、abi_turnaround_；AC-04、05。[✅ 已完成] ABI-O1 对象层（命中禁调 producer、真实输入失效矩阵、tamper=受控 CAS 拒绝、缺块=miss 重算）、512 修订 churn（rooted+leased 存活、块层收敛 live 集、用户哨兵不变、lease 释放翻转）；六场景×30 全绿，硬门 body-edit P95=539.5ms、descriptor-reject P95=0.1ms（<1000ms），210 样本 JSONL 全保留；abi_cache_ 6/6+abi_turnaround_ 1/1、workspace 45/45 绿（commit plan-797-dev T-05） |
 | [ ] T-06 | work | T-05、D-796、D-788 | 绑定796合入contract与受限probe adapter，只追加ABI recipe/worker；退出临时模型，正式AutoDown全执行/性能重测 | abi_binding_、原v1/v2兼容；AC-06 |
 | [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan797/、attachments/797/spec-delta.md与freeze proposal，来源/并行边界审计 | acceptance V-01–11，支持表与SD；execution_done=7/9 |
 | [ ] T-08 | review | T-07 | 同树独立review，绑定native工具/接口版本，核互调/资源/兼容承诺 | AC-07；pass→reviewed=8/9，merge pending |
@@ -190,8 +190,16 @@ T-01–05可与796/787/788并行，不能提前实现依赖其未合入API的T-0
 
 2026-10-16 stage:new；PLAN-797 r1；outcome:pass（规划契约）；next:work，T-06需D-796/D-788。新增T-01–09/AC-01–08/SD-01–05/V-01–11；0/9。仅草拟/调查，未实施/测试/安装工具或发布ABI，未创建树。
 
+2026-10-16 stage:work；PLAN-797 r1；outcome:**blocked**（外部依赖门，非实现缺口）；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`；base `5dcf4e3c2`；code HEAD `defcc8eaa`（T-01 `b00100cbd`/T-02 `b4fc9c644`/T-03 `34866a61e`/T-04 `5ac81f738`/T-05 `defcc8eaa` 五提交，树 clean）；deps：ac-core/ac-artifact-probe@worktree（=master `5dcf4e3c2` 钉）、MSVC cl 19.44.35222（blake3 443ac315…）、rust-lld(sysroot)、SDK 10.0.26100.0、semref 快照=797 本地 `autoabi-semref-snapshot/0`（blake3 15f81fd0…）；task_ids T-01..T-05 [x]（current_step 5/9）。
+
+**work-owned AC 结果**：AC-01 ✓（descriptor/1+12 维 admission 拒绝矩阵 native 0 调+合法兄弟过；布局引擎==C 编译器 sizeof/offsetof 含 padding/序/嵌套+错 offset 反控红）；AC-02 ✓（三腿真 PE 互调：A 独立双 obj、B→cl.exe C、C(cl)→AutoABI 含 C→AutoABI→C 嵌套链；异质 8 参跨 GPR/栈/XMM；swap/错 offset/漏调用负例 exit 恰 1）；AC-03 ✓（真 arena/逐槽 live+代际账本/原方 destroy/失败注入回滚 out 哨兵不变/buffer 空与 null 与 cap 规则/同步 callback 双 cb 序列+stored_cb=0；双消费者）；AC-04 ✓（ABI-L0/ABI-O1 层真持久化、命中禁调 producer、真实输入失效矩阵、tamper=受控 CAS 拒、缺块=miss 重算、512 churn rooted+leased 存活/块层收敛 live 集/用户哨兵不变）；AC-05 部分✓（六场景×30 全绿、**body-edit P95=539.5ms**、**descriptor-reject P95=0.1ms** 双硬门<1000ms、210 样本 JSONL 全保留、cl 预热单列；正式 adapter 复测归 T-06）；AC-06 阻塞（D-796/D-788）。测试面：`experimental/auto-abi-probe` 内 `cargo test` 45/45（定向，未触发整档，符合 2026-10-14 时序裁定；裸 t/tv 等为 merge-owned pending）。
+
+**open in-contract findings**：无未修复 finding。**required coverage gaps**：T-06 绑定 796 真实 semantic contract+正式 AutoDown runner 注册与全重测；T-07 freeze proposal/verify 脚本/报告（依赖 T-06）。**blockers**：D-796=796 独立 review/门禁/合入/Spec 齐全（现 executing 5/9 未合）；D-788=788 合入（现 executing，T-05 已交未审）。**unblock**：两门满足后回 work 续 T-06（同树 `defcc8eaa` 起），重放 V-01..09+正式 AutoDown 执行。**遗留边界声明**：emit 源为受限声明 IR 非 Auto parser；v0.1-candidate 冻结态待 review/merge；774 ABI-A–E 未动。next_responsible_role: work（门后恢复）/当前由用户调度依赖计划。
+
 预检/来源见[planning-preflight.md](attachments/797/planning-preflight.md)。候选v0.1不是现有产品支持声明。
 
 ## 10. 待澄清事项
 
-无阻断起草的用户决策。T-01需冻结实际C工具可用性、context/status/out精确签名、target header/descriptor/错误/资源上限及参考负载。工具或whole-path不可行留下反例回规划，不能用Rust同编译器自测代替C。正式版本号/冻结范围按最终证据评审，不先保证全部ABI/未来类型。
+**阻塞（work 阶段交接，2026-10-16）**：T-06/T-07 等待 D-796（PLAN-796 合入，现 executing 5/9）与 D-788（PLAN-788 合入，现 executing 未终审）。两者均为外部依赖门，非本计划实现缺口；解锁后 T-06 需在同一 worktree（`defcc8eaa` 基）切换真实 semantic contract、追加正式 probe recipe/worker、退出临时 semref 快照（收据）并全重验，T-07 随后产出 freeze proposal。
+
+T-01 需冻结的实际 C 工具可用性（已冻结：cl 19.44.35222 在机可用）、context/status/out 精确签名、target header/descriptor/错误/资源上限及参考负载（已随 contract-decision.md §1–9 冻结）。工具或 whole-path 不可行留下反例回规划，不能用 Rust 同编译器自测代替 C。正式版本号/冻结范围按最终证据评审，不先保证全部 ABI/未来类型。
