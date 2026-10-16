@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-787
-status: reviewed
+status: archived
 feature_name: Atom 语法驱动的增量词法与无损 CST 首条闭环
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-15
 updated_at: 2026-10-16
-current_step: 8
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -201,7 +201,7 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 | [x] T-06 | work | T-05、D-783 | 新adapters/artifacts/与paging；加法扩展ac-artifact-probe/src/schema.rs、codec.rs及对应测试，接真实A01/02/03 | syntax_cache_、syntax_admission_、syntax_budget_、depth_编解码；AC-05 |
 | [x] T-07 | work | T-06 | 新scripts/verify-ac-syntax-787.ps1、reports/plan787/矩阵/性能、attachments/787/spec-delta.md；兼容旧接口/依赖审计 | acceptance V-01–13、compatibility_、perf_；AC-06；完成→execution_done=7/9 |
 | [x] T-08 | review | T-07 | 同树独立最终验收，绑定冻结commit/API/SD/补充反例，遗漏与债务扫描 | AC-07；pass→reviewed=8/9，merge-owned pending |
-| [ ] T-09 | merge | T-08 pass | 冻结提交closeout完整独立套件+触面783套件；沉淀SD/索引，合入归档；批量回归到期判定按技能；guard后清理 | AC-08；实际收尾结束才9/9 |
+| [x] T-09 | merge | T-08 pass | 冻结提交closeout完整独立套件+触面783套件；沉淀SD/索引，合入归档；批量回归到期判定按技能；guard后清理 | AC-08；实际收尾结束才9/9 |
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
 
@@ -407,6 +407,17 @@ ac-core 零 diff——compatibility_ 审计）。
 - workspace 测试面：`RUSTC_WRAPPER= cargo test --manifest-path experimental/ac-syntax/Cargo.toml --workspace` 70/70 绿。
 
 ## 9. 复审记录
+
+### 2026-10-16 merge 合入收据（PLAN-787:r1，consolidation receipt）
+
+- prepared：reviewed 基线 d17b94fec（R8 pass）；canonical Spec 差=SD-01..06 全应用（auto-syntax 三新 + auto-ac 三改 + 索引/overview/双 plans.md + INDEX 再生 37 项目，scripts/spec-index.py GROUPS 登记）；delivery 候选=d17b94fec 的 docs-only 后裔。
+- 合入门禁（merge-owned，冻结基线）：verify -Scope closeout **ALL PASS**（16 族含 64MiB work-owned + 完整独立语法 workspace + 783 触面 --lib 14/admission_ 7/dep_audit_ 5）。本计划零生产面（crates//ac-core 相对重锚基线 7c0caa18c diff 为空），按计划 §6 冻结合同不跑根整档/docs_gen（八轮复审一致确认范围）。
+- landed：分支 rebase 到 master（17 提交重放；range-diff 46 全 `=`；**代码内容零差异**——`git diff 10f178df3 HEAD -- experimental/ crates/ test/` 为空，closeout 证据按"代码/依赖/测试配置未变"复用）；旧→新映射 d17b94fec→44d3b7e8d、10f178df3→53f8cf837；`git merge --ff-only plan-787-dev` → master tip = **b52188c58**（无 merge commit）。
+- ledger_refreshed：`.autoos/specs.json` v37→v38 **guarded offline projection**（本会话无 store writer；字节级备份 .autoos/specs.json.bak-v37-787 sha256 5ca84b52…；脚本化 upsert 仅 P787 条目+版本——范围守卫 git diff +99/−2；回读校验 IDs 全在/计数恰 +8/六节完整）。条目：designs P787-D1..D5（file=canonical 路径+tags delivery:44d3b7e8d）、tests P787-T、reviews P787-R8、reports P787-M。
+- archived：docs/plans/archive/787-ac-grammar-incremental-cst.md（git mv）；终态 9/9；completion_kind: delivered。
+- cleaned：待 worktree guard 清理后回填。
+- 部署工件核查：本计划纯 experimental（experimental/ac-syntax+probe 加法），无生产 release/web 工件消费者——无需重建发布物（观察项记录，非缺口）。
+- 批量回归到期判定：787 % 5 = 2 ≠ 0；收据 docs/plans/.last-batch-regression.json 今日内由 793 收尾刷新（last_covered 795），48h 窗口内——**未到期**。
 
 ### 2026-10-16 final review R8 — pass（当前有效）
 
