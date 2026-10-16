@@ -430,19 +430,21 @@ pub fn emit_callee_suite(
 ) -> Result<Vec<u8>, String> {
     let mut om = new_module(module_name)?;
 
-    // p797_inner: defined locally (suite-internal helper) or imported.
-    let inner_id = {
+    // p797_inner: imported (the C side provides it) or simply part of
+    // `defs` (the defs loop declares it as Export). Never pre-declared
+    // as an Export that no def will define.
+    let inner_import = if import_inner {
         let sig = Signature {
             call_conv: WINCALL,
             params: vec![AbiParam::new(types::I64)],
             returns: vec![AbiParam::new(types::I64)],
         };
-        om.declare_function(
-            "p797_inner",
-            if import_inner { Linkage::Import } else { Linkage::Export },
-            &sig,
+        Some(
+            om.declare_function("p797_inner", Linkage::Import, &sig)
+                .map_err(|e| format!("declare p797_inner: {e}"))?,
         )
-        .map_err(|e| format!("declare p797_inner: {e}"))?
+    } else {
+        None
     };
 
     // Module-global counter for BumpV1 (writable, zero-initialized).
@@ -467,6 +469,11 @@ pub fn emit_callee_suite(
             .map_err(|e| format!("declare {}: {e}", d.symbol))?;
         ids.push((d, id));
     }
+    let inner_id = inner_import.or_else(|| {
+        ids.iter()
+            .find(|(d, _)| d.symbol == "p797_inner")
+            .map(|(_, id)| *id)
+    });
 
     for (d, fid) in &ids {
         let sig = decl_signature(d);
@@ -481,7 +488,10 @@ pub fn emit_callee_suite(
             fb.seal_block(entry);
             let params = fb.block_params(entry).to_vec();
             let inner_ref = if d.body == BodyKind::OuterV1 {
-                Some(om.declare_func_in_func(inner_id, &mut fb.func))
+                Some(om.declare_func_in_func(
+                    inner_id.expect("OuterV1 requires p797_inner (imported or in defs)"),
+                    &mut fb.func,
+                ))
             } else {
                 None
             };
@@ -516,6 +526,33 @@ fn lower_body(
 ) -> Result<cranelift_codegen::ir::Value, String> {
     match body {
         BodyKind::MixV1 => Ok(emit_mix_v1_body(fb, args)),
+        BodyKind::MixV1Alt => {
+            // Same frozen semantics, different instruction shape:
+            // pairs first, then fold — wrapping iadd is associative, so
+            // the result equals oracle_mix_v1 exactly.
+            let a = sext_i32_to_i64(fb, args[0]);
+            let b = sext_i32_to_i64(fb, args[1]);
+            let c = sext_i32_to_i64(fb, args[2]);
+            let d = sext_i32_to_i64(fb, args[3]);
+            let g = sext_i32_to_i64(fb, args[6]);
+            let fi = fb.ins().fcvt_to_sint(types::I64, args[5]);
+            let hi = fb.ins().fcvt_to_sint(types::I64, args[7]);
+            let e2 = weighted_i64(fb, args[4], 2);
+            let a1 = weighted_i64(fb, a, 1);
+            let b3 = weighted_i64(fb, b, 3);
+            let c7 = weighted_i64(fb, c, 7);
+            let d11 = weighted_i64(fb, d, 11);
+            let g13 = weighted_i64(fb, g, 13);
+            let f1000 = weighted_i64(fb, fi, 1000);
+            let h17 = weighted_i64(fb, hi, 17);
+            let p1 = fb.ins().iadd(e2, h17);
+            let p2 = fb.ins().iadd(a1, b3);
+            let p3 = fb.ins().iadd(c7, d11);
+            let p4 = fb.ins().iadd(g13, f1000);
+            let q1 = fb.ins().iadd(p1, p2);
+            let q2 = fb.ins().iadd(p3, p4);
+            Ok(fb.ins().iadd(q1, q2))
+        }
         BodyKind::InnerV1 => {
             let m3 = weighted_i64(fb, args[0], 3);
             let c11 = fb.ins().iconst(types::I64, 11);

@@ -20,6 +20,7 @@
 #![cfg(windows)]
 
 pub mod build;
+pub mod cache;
 pub mod ctool;
 pub mod decl;
 pub mod descriptor;
@@ -28,4 +29,5 @@ pub mod layout;
 pub mod link;
 pub mod run;
 pub mod semref;
+pub mod trace;
 pub mod validate;

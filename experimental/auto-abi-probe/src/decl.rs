@@ -26,6 +26,10 @@ pub enum AbiScalar {
 pub enum BodyKind {
     /// T-01 heterogeneous weighted sum.
     MixV1,
+    /// SAME semantics as MixV1, different lowering (reassociated sum):
+    /// the body-edit scenario's implementation change with an unchanged
+    /// public interface — same oracle, different object content.
+    MixV1Alt,
     /// Nested-call inner helper: x*3 + 11.
     InnerV1,
     /// f64 return path: a*2.5 + b*1.25 (binary-exact coefficients).
