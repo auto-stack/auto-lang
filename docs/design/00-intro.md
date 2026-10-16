@@ -159,6 +159,17 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 ## 五、战略路线图（`strategy/`）
 
+2026-10-16跨路线阶段入口：[v0.6总体矩阵](../roadmap-v0.6.md#7-v06路线阶段与拆分边界矩阵2026-10-16)。以下专题只补目标态，当前能力仍查Spec；候选不自动成为发布门禁，机器人算法暂不纳入，下一条独立路线待讨论。
+
+| 专题 | 归位与复用 | 状态 |
+|---|---|---|
+| [system-foundations-v06](strategy/system-foundations-v06.md) | 通信/AutoAI/DevTools与Lens接缝；引用auto-os既有RFC/F0–F5，不复制协议权威 | 阶段/验收/依赖补充，未实施 |
+| [autographics-forge-v06](strategy/autographics-forge-v06.md) | 第三代互联网下的场景/组合、创造工具与承载游戏 | 独立原型候选，未实施 |
+| [knowledge-learning-v06](strategy/knowledge-learning-v06.md) | 复用AutoDown/Jade，论文、scope/来源/检索与学习 | 有限原型候选，完整流程v0.7 |
+| [autodown-typesetting-v06](strategy/autodown-typesetting-v06.md) | 复用统一文档引擎，补布局/增量/资源与adapter实验 | 调研/技术原型候选，未实施 |
+| [input-method-v06](strategy/input-method-v06.md) | 引擎/会话/平台/候选窗职责与独立宿主 | 调研/原型候选，未实施 |
+| [platforms-v06](strategy/platforms-v06.md) | 复用鸿蒙/Mobile/Web，补Linux和真实组合验收 | 保留平台目标，支持集待Plan冻结 |
+
 | 文档 | 主题 | 状态 |
 |------|------|------|
 | [ecosystem-portfolio-strategy](strategy/ecosystem-portfolio-strategy.md) | **生态版图伞形总战略**：动静结合第一优势（全生态设计原点）+ 三大市场（需求侧 3 + 供给侧 1）+ 寄生期合作层原则 + 优先级总表与不做清单（各分战略入口） | 📝 Draft（2026-09-06） |
@@ -181,9 +192,9 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [web-ecosystem-strategy](strategy/web-ecosystem-strategy.md) | Web 生态：契约独立 + Vue 主臂 + React 发射臂扩展时序 | 📝 Draft 骨架（2026-09-06，待扩充） |
 | [harmonyos-ecosystem-strategy](strategy/harmonyos-ecosystem-strategy.md) | 鸿蒙：ArkTS 主线（仓颉/ABC/机器码不做）+ OpenHarmony OS 终态方向 | 📝 Draft 骨架（2026-09-06，待扩充；a2ark rebaseline 为该线首个 plan） |
 | [mobile-jetpack-strategy](strategy/mobile-jetpack-strategy.md) | 移动：Android+iOS 统一 Jetpack Compose（不做 SwiftUI），排鸿蒙后 | 📝 Draft 骨架（2026-09-06，待扩充） |
-| [ros2-ecosystem-strategy](strategy/ros2-ecosystem-strategy.md) | ROS2：C 消费面生态绑定包（rcl 纯 C + IDL 生成），C 轨重启触发条件之一 | 📝 Draft 骨架（2026-09-06，待扩充） |
+| [ros2-ecosystem-strategy](strategy/ros2-ecosystem-strategy.md) | AutoOS通信先行、ROS2边界兼容；旧C绑定方案留档，机器人算法暂不纳入 | 📝 2026-10-16补充分期/验收，完整兼容集待冻结 |
 | [native-backend-strategy](strategy/native-backend-strategy.md) | Native 战略：当前 AC/ACC/Cranelift 分期 + 历史自主生态/开发形态/fork-rustc 论证 | 2026-10-04 文首对齐新路线；旧阶段顺序保留为历史 |
-| [thirdgen-internet-strategy](strategy/thirdgen-internet-strategy.md) | 第三代互联网（AI+XR，曾用名"元宇宙/WEB3.0"）：三大市场之三，Godot/3D 引擎为入口（双形态优势 + 引擎侧静态缝合前提） | 📝 Draft 骨架（2026-09-06，待扩充） |
+| [thirdgen-internet-strategy](strategy/thirdgen-internet-strategy.md) | 第三代互联网（AI+XR）：AutoGraphics/创造入口；Godot参考/可选实验，旧静态缝合论证留档 | 📝 2026-10-16对齐后续讨论，阶段见autographics-forge-v06 |
 | [script-mode-interop](strategy/script-mode-interop.md) | 脚本模式互操作（AutoScript .as 糖→py 桥 lowering/错误模型/null 体系） | 📝 Draft（裁决闭环，待立项） |
 
 ## 六、专题诊断（根级）

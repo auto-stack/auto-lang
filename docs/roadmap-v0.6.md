@@ -1,6 +1,6 @@
 # Auto v0.6 Roadmap（规划基线 v2）
 
-> 更新：2026-10-16（AC/AV/AJ统一架构、Typed MIR/ABC/CTE、分层执行与增量发布；其余版本规划保留原基线）。
+> 更新：2026-10-16（复用专项设计，补齐路线阶段、验收、依赖与拆分边界；总体矩阵见§7，机器人算法暂不纳入）。
 > 性质：跨仓版本规划基线 v2；已确认方向、交付分层与近期工作边界可据此分解任务。
 > 具体架构 RFC、执行 Plan 与发行验收矩阵仍分阶段评审；本文不代表全部能力已实现。
 > 基线限制：主工作电脑暂不可访问，部分仓库未 push 的 v0.5 工作尚不可见；
@@ -12,6 +12,7 @@
 > 编译器分期已确认：v0.6 AC/ACC（本文称 AAC）借助 Cranelift 完成约定原生自举；
 > v0.6新增最小Typed MIR与Rust AV必要子集，在其上接CTE；AC/AV/AJ共用编译/产物服务，现有native支持面逐步落实增量发布，完整分层AJ后续专项实现。AC/AV能力齐备后迁移AAC/AAV。v0.7先按证据复用Cranelift优化及少量高收益变换，按需扩展SSA/低层IR，不强制自主后端重写。新增工作须重估容量/日历，AAV全量实现未自动成为本版硬门槛。
 > 待细化：功能/平台矩阵、后端版本与探针、量化验收和阶段调度；不得跳过设计/Plan 审批。
+> 本轮仅整理目标文档，不实施代码、不扩张在途Plan、不将候选全部新增为发布门禁；下一条独立路线及日历优先级待讨论。用户新约束：AutoOS跨进程通信框架先于具体机器人算法。
 
 ## 1. 版本定位与十条方向
 
@@ -26,7 +27,7 @@ v0.5 的语言/Rust 生态、Web/iced UI、虚拟桌面和应用能力是待发�
 | 1. 工程整理与编译器架构 | auto-lang / auto-ui / auto-man 拆开，后两者独立到外部仓库；整理架构、工程组织、文档与知识；覆盖 Rust 代码复审、重构及 Auto 对应实现；AC/AAC 自主编译器架构为主打产品 | 明确 HIR、首个 native target、运行时/互操作与真实自举验收；旧后端全迁移及全仓深层重构为延期候选，见 §1.5 |
 | 2. AutoUI / AutoOS 平台化 | Linux 生态全支持为主打交付；鸿蒙至少做到虚拟桌面与 28 个 demo 正常运行，复杂独立 app 可延后；Web/Windows 既有能力继续维护 | Linux 的发行版、硬件、桌面会话与系统集成矩阵待核定；鸿蒙需从 a2ark demo 基础验证整套桌面/28-app 场景 |
 | 3. Python / AI / 科学计算 | Python 生态高级支持为主打交付，加强 PyTorch 等模型与库支持，使 Auto 可承担真实科学开发工作流 | 代表性任务、数据交换、GPU/设备、回调、错误诊断和可复现环境 |
-| 4. ROS2 / Godot | ROS2 生态完整支持为主打交付；Godot 在 v0.6 以调研为主 | ROS2 发布/运行路径、接口与工具兼容范围、仿真/实机任务矩阵待核定；Godot 正式产品化为 v0.7 候选 |
+| 4. ROS2兼容 / AutoGraphics | 保留此前ROS2生态支持意图，先建立AutoOS自身跨进程通信再做兼容；图形仍为调研/原型路线 | ROS2支持矩阵待冻结，不纳入机器人算法；图形按自有语义/组合与底层库探针展开，Godot为参考/可选实验后端，见§7 |
 | 5. AutoScape / AutoWeb | v0.6 以调研与原型为主，研究应用访问体系 | 既有 M1 + M2-lite 施工图作为输入，不再自动视为 v0.6 产品化承诺；正式交付为 v0.7 候选 |
 | 6. 知识库与个人知识管理 OS | v0.6 做原型设计与调研性开发，验证统一 Jade 个人知识与 Musk 项目知识底座的方向；完整流程在 v0.7 成为主线 | v0.6 核定原型与调研范围；v0.7 推进完整跨应用知识管理流程 |
 | 7. 主打 app 演进与应用独立化 | 持续开发 auto-shell、auto-musk、auto-edit、jade-edit；将 AutoOS 的 28 个 demo 产品版独立到单独仓库，与新的系统交互共同演进 | 核对完整 v0.5 的应用清单与状态；确定四个 app 的功能验收、教学版/产品版关系、跨应用流程及独立构建/发行 |
@@ -135,7 +136,7 @@ Career、娱乐、OpenBusiness/应用市场等方向的产品化版本另定。
 | AC/AAC与AV基础 | Windows x64、Cranelift主后端；共同语义/Typed HIR、最小MIR/新ABC/Rust AV支撑CTE，native支持面增量发布；约定编译器主体Auto实现并自编译/重复构建 | AC/AV/AJ统一架构先设计；完整分层JIT/OSR/deopt后续实现，AAC/AAV按能力门分期；自举不等于全生态原生覆盖 |
 | Linux | 固定首个发行版、硬件/图形栈与设备矩阵；原生桌面会话、系统集成、四个主打 app/28-app 组合及安装更新路径验收 | 图形、输入法、外部窗口、系统服务与硬件行为需实际环境验证 |
 | Python | 固定高级支持矩阵，以真实 AI/科学计算工作流验证数据输入、模型/库调用、设备执行与结果管理 | 批量数据交换、回调/线程、设备/环境与错误诊断 |
-| ROS2 | 固定 ROS2 版本/环境；核定 node/topic/service/action/parameter、消息类型、QoS、执行/退出语义及工具兼容；用真实仿真或实机任务验收 | 语言绑定可能较快，但生态集成与运行语义不能由绑定数量代替 |
+| ROS2兼容 | 先有AutoOS跨进程框架；固定ROS2版本/环境与兼容矩阵，以真实ROS节点/工具交互验证Topic/Service/Action等约定语义；机器人算法暂不纳入 | 旧“完整支持”意图不由有限bridge冒称实现；本版最终兼容范围需再冻结，算法不作为本轮框架验收 |
 | 四个 app | 各选少量高价值差异化流程，与对应竞品/传统流程比较，并给首批用户实际使用；Jade 的知识能力按原型分期交付 | 功能堆积不能证明差异化；完整新基线与用户反馈不可省略 |
 | 28 个 app 独立化 | 清单、独立构建、版本组合、教学版/产品版关系及必要运行验收 | 批量模板/依赖/资产迁移与组合回归 |
 | 鸿蒙 demo | 固定设备/API；虚拟桌面与 28 个 demo 的启动、布局、交互、状态、导航和必要服务逐项验证 | 旧生成器差距、平台 API、桌面集成及真实设备上的组合问题 |
@@ -497,7 +498,7 @@ CLI 核心闭环先行，Launcher/独立 app/知识包尽早接入，共享同�
 2. AC 的 Windows x64/Cranelift 主路径已定；继续锁定版本与平台探针、运行时/桥接和 AAC 主体覆盖清单。
 3. Atom/BAtom 可复用面、HIR Schema 分层及方言扩展契约。
 4. 三仓拆分的共享设施归属与具体先后顺序。
-5. Linux/鸿蒙、ROS2/Godot、AutoScape 与知识系统各自的代表性工作流。
+5. Linux/鸿蒙、通信/ROS2兼容、AutoGraphics/AutoForge、AutoScape与知识系统的代表工作流；机器人算法在通信框架之后另议。
 6. 完整 v0.5 到手后的现状差异与已完成项，以及日期临时计划的正式编号对账。
 7. 四个主打 app 的进一步开发清单、已建仓产品的功能验收/演进清单，以及新交互形式的个人活动验收。
 8. Career、娱乐服务与共建/成本分摊商业模式的独立调研范围，暂不指定正式交付版本。
@@ -509,3 +510,77 @@ CLI 核心闭环先行，Launcher/独立 app/知识包尽早接入，共享同�
 这些是专项实施前的决策，不阻止保存本版规划，也不撤销已批准完成的应用独立化。
 近期任务和实际状态见 [提前开发任务文件](design/strategy/v0.6-offline-development-strategy.md) §7；
 本版提交范围与复核结论见 [规划复核记录](reports/v0.6-planning-review-20261004.md)。
+
+## 7. v0.6路线阶段与拆分边界矩阵（2026-10-16）
+
+本节是当前跨路线阶段总入口；专项文档拥有技术细节，Spec/已合入Plan拥有当前实现事实。§1.5月度表保留早期时间建议，不是本轮重排后的承诺；未决定下一条独立路线。源材料覆盖、复用与核查见[本轮记录](plans/reports/v06-route-doc-audit-20261016.md)。
+
+### 7.1 成熟度与承诺规则
+
+| 成熟度 | 完成判据 |
+|---|---|
+| 调研 | 有来源/版本的方案比较、关键未知、可行/不可行证据及下一步决定；只有待办不算完成 |
+| 技术原型 | 可重复运行，证明技术假设；固定环境/输入、独立oracle、失败/资源边界，区分mock与真实路径 |
+| 展示demo | 一条真实用户流程，结果可观察，有退出重开或必要持久化及失败案例；录像不是唯一证据 |
+| 可用alpha | 在约定任务/环境中连续使用，具备必要持久化、取消/恢复与用户试用记录 |
+| 正式交付 | 公开支持矩阵内完成兼容、安装/发行、组合回归与已批准验收；不能用单个demo替代 |
+
+已确认目标继续保留；**候选**是本版可选择的投入终点，不表示必须全部同时完成；**条件阶段**需前置及容量确认后才纳入。所有新预算/阈值、设备/样本范围在实现前由Plan冻结。本轮没有执行功能/性能验收。
+
+**独立核心**表示核心成果可保留、接线另验；**部分独立**表示限定阶段可先做；**协调线**直接涉及拆分边界。这些不是优先级。独立workspace仍要检查传递依赖、共享写面和资源身份，不能因新crate而豁免AST/Value/VM、VTree/native/provider、pac/build/发行协调。
+
+### 7.2 总体路线矩阵
+
+| 路线与专项入口 | v0.6阶段及承诺 | 关键验收 | 依赖与拆分边界 |
+|---|---|---|---|
+| [三仓拆分](design/37-v06-modularization-and-repo-boundaries.md) | 已确认结构目标，按Plan交付 | DAG禁边、真实独立消费者/构建发行、兼容出口与最终UI领域解耦分别验收 | 协调线；792/794/799/800等按具名合同合流，不设全局等待 |
+| [AC/AAC自举](design/strategy/auto-native-backend-evolution.md) | 已确认主打交付 | 固定主体/语言支持清单、Windows x64原生Gen1–3及独立行为核对 | 独立核心；依所需语言/数据/CTE能力，旧框架迁移不是全局前置 |
+| [语义meta/MIR/AV/CTE](design/43-ac-av-typed-mir-and-abc.md) | 已确认本版基础；有限探针→必要能力 | Checked HIR→MIR→ABC→AV实际执行/恢复重验，再证明真实CTE影响编译；资源/失效反例 | 独立核心；796/798按各自门，正式runner受788影响；探针不冒称CTE完成，阶段汇总见后端演进 |
+| [增量/语法/cache/发布](design/strategy/auto-native-backend-evolution.md) | 从首例纳入；完整AJ后续专项 | 冷热/重启/跨工程、精确失效、代表编辑P95<1s按Plan验；发布真实闭包/链接 | 独立核心；生产入口/测试adapter协调，不缓存PASS替代当前执行 |
+| [AutoABI/FFI/插件](design/strategy/auto-native-abi-rfc.md) | 有限ABI基础；插件/重载为条件原型 | 独立互调/所有权；真实装载卸载、代际及失败回退另验 | 独立核心；依796类型/788测试门；旧VM shim/UI宿主/Man插件接线协调 |
+| [C接口摄入/部署轨](design/strategy/c-ecosystem-strategy.md) | header/Foreign IR窄原型候选；部署轨保留重启条件 | 固定header/target的签名/布局对照与拒绝矩阵 | 扫描独立；旧use.c/FFI/a2c/构建器修改协调，MCU不自动启动 |
+| [通信/ROS2兼容](design/strategy/system-foundations-v06.md) | 通信已确认重点，F0→F1→F2；ROS2支持集待定 | 两真实进程、typed call、任务/取消/回执、重启失效与背压；ROS2映射/bridge另验 | 部分独立；不等Batom v2，旧Task/Msg接线需SDK；通信框架先于机器人算法 |
+| [AutoAI/daemon/client](design/strategy/system-foundations-v06.md) | 复用现有服务，Agent profile按版本重点推进 | 普通client/Agent同义调用与错误、取消释放，轮次/token/耗时及成功率 | daemon/client可独立改进；系统profile依通信，agent的Atom/Value依赖重核 |
+| [DevTools/AutoLens](design/strategy/system-foundations-v06.md) | DevTools已确认重点；离线F3→真实F4/F5；Lens有限原型候选 | 树/布局/像素diff分别验；两backend共同能力+第三方样板；捕获内容来源可追溯 | 离线独立，活体树/动作/source/采集依UI与平台adapter；传输依通信 |
+| [AutoGraphics](design/strategy/autographics-forge-v06.md) | 调研＋独立技术原型候选；UI融合为条件阶段 | 独立2D/3D、不同Surface独立更新与输入/生命周期；真实UI组合另验 | 图形核心独立；UI共享GPU/焦点/纹理/RenderQueue协调，不复制VTree |
+| [AutoForge/承载游戏](design/strategy/autographics-forge-v06.md) | 创造交互原型候选；游戏先规则/内容实验 | 选择→要求→真实变更→结果/日志→回退；模拟标明；游戏状态/资源规则可复验 | 流程/规则部分独立；真实选择/source依DevTools，重载依构建/runtime，3D依Graphics |
+| [知识/论文/学习](design/strategy/knowledge-learning-v06.md) | 已确认v0.6原型/v0.7主线；选择有限闭环 | 导入/来源→锚点→笔记/查询→重开；原文修订重定位/失效；目标驱动学习流程 | 核心独立；Jade/Musk/UI、包安装、跨app任务/活体采集分别后接 |
+| [AutoDown/Typst](design/strategy/autodown-typesetting-v06.md) | 调研＋排版原型候选 | 固定文档布局/导出及增量实测；缺资源、旧修订、取消与释放反例 | 排版独立；编辑器/预览依UI，动态库与资源发行接ABI/Man |
+| [输入法](design/strategy/input-method-v06.md) | 调研＋单平台独立宿主原型候选 | 输入/组合/候选/提交/取消、切焦点不串写与配置重开 | 引擎独立；文本组件/候选窗/桌面依UI/platform；完整输入栈后续 |
+| [AutoScape/AutoWeb](design/31-autoscape-autoweb.md) | 已确认调研/原型；真实激活/网络为条件阶段 | URI/Intent/provider解析及拒绝；真实session/导航另验，网络安全关闸同船 | resolver独立；真实provider依UI/SDK/发行，service复用通信，不另造安装器 |
+| [Linux/Web/Windows](design/strategy/platforms-v06.md) | Linux已确认主打；既有Web/Windows保持 | 首个发行版/设备/会话及应用、安装、系统集成矩阵 | 环境探针可独立；renderer/native/桌面/发行协调 |
+| [鸿蒙/后续移动](design/strategy/platforms-v06.md) | 鸿蒙已确认桌面+28demo；Android/iOS等后续候选 | 固定API/设备逐项启动/布局/交互/状态/服务 | SDK原生探针可独立；a2ark/a2jet与构建发行协调，单demo不替代矩阵 |
+| [Python/AI/科学计算](design/strategy/python-parity-roadmap.md) | 已确认高级支持主打 | 真实模型/库任务，数据/设备/回调/错误及约定发布路径有独立oracle | 参考程序/环境独立；use.py/Value/VM/trans协调；不开展机器人算法 |
+| [四大app/独立产品](design/strategy/demo-app-independence-strategy.md) | 已确认持续演进/独立化；少量流程达到可用alpha | 每项持久化/恢复/独立构建运行及差异化任务；清单逐项取证 | 锁定工具链业务部分可先做；组件/媒体/编辑器/宿主与发行协调 |
+| [Package/Install](design/strategy/unified-package-install-strategy.md) | 已确认必做，模型→CLI→Launcher/实体 | 四类实体、真实安装升级卸载/保留数据/失败恢复、统一核心 | 协调线；复用轻模型/锁，不另造pac算法；依构建/资源/平台adapter |
+| 社区/媒体共享、Career、OpenBusiness/市场 | 需求/机制调研候选，产品版次未定 | 场景、来源/可见性/修订、成本模型的证据/未知；见§1.2–1.4 | 机制研究可独立；在线/支付/授权/运营与市场另定范围，本轮不作法律或商业可行结论 |
+
+**机器人算法暂不纳入。** BEV/SLAM、模型训练、板级算法SDK/部署与机器人算法demo不进入本轮候选或验收；保留历史讨论，通信框架成立后另议。ROS2协议兼容与算法开发分别管理。
+
+### 7.3 依赖与接线规则
+
+```mermaid
+flowchart TD
+  AC[独立AC/语义/cache] --> AV[MIR/ABC/AV与CTE]
+  AV --> AAC[AAC所需能力与主体自举]
+  AC --> ABI[版本化ABI互调]
+  ABI --> Plugin[插件/重载条件原型]
+  Comm[独立通信schema与两进程原型] --> Bind[语言/应用adapter与ROS2兼容]
+  Comm --> Tools[真实DevTools与Agent profile]
+  UI[拆分后的UI/宿主公开接缝] --> Tools
+  Graphics[独立图形/Surface] --> Fusion[UI融合与创造demo]
+  UI --> Fusion
+  Tools --> Fusion
+  Knowledge[知识/论文核心] --> Apps[Jade/Musk等真实消费]
+  Type[独立排版/输入引擎] --> Apps
+  UI --> Apps
+  Man[Man模型/构建发行/安装] --> Apps
+```
+
+图为接线关系，不是全局串行计划；ABI独立阶段、AAC既有native路径等以专项合同为准，不要求先完成新AV/ABI才继续现有实验。ROS2映射调研可先记录，算法启动门仍为通信框架。
+跨界使用独立模型、版本化协议/公开SDK、资源bundle和adapter；保持消费者兼容，不复制AST/Value/VTree/TypeStore/pac算法。接线须核对依赖闭包与版本身份，独立测试不能抵消真实集成验收。
+
+### 7.4 后续选择流程
+
+下一轮比较战略收益、拆分独立性、前置成熟度、最小成果与投入，再选一条新增独立路线；不以矩阵行序当排名，不启动所有原型。已批准在途Plan继续自身范围。
+选定后才建立/修订中等实施Plan，冻结target/样本/oracle/预算、代码写面、adapter责任和合入门；本轮不分配实施计划号、不把目标写成现行Spec、不运行构建/功能门禁。

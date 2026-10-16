@@ -1,5 +1,14 @@
 # C 生态战略：一个底座、三个消费面
 
+## v0.6 阶段与独立工作范围（2026-10-16）
+
+C ABI 互操作是本版 native 基础，消费[AutoABI RFC](auto-native-abi-rfc.md)和 Design41；Portable C 发射、MCU/内核消费保留原重启条件，不因本轮路线整理全部启动。机器人算法不在本轮范围，通信先行见[系统阶段](system-foundations-v06.md)。
+
+独立候选为 C header/接口元信息摄入的调研与窄原型：选定 header/target/预处理配置，提取函数和有限布局，对照 C 编译器验证；typedef、宏、回调及不支持结构逐项拒绝/报告。原型产出不自动成为可执行 FFI，也不宣称已支持 `use.c` 新语法。
+797仅证明其有限 ABI profile，header importer、Rust shim 产品和 DLL 热重载是后续独立阶段；完整插件 demo 必须真实独立装载/调用/释放并验证版本/所有权错误，不能只以静态链接互调通过代替。
+接口扫描与独立 C oracle 可不等拆分；改旧 parser、FFI 注册、Value/VM 栈、a2c 发射及 auto-man 构建器时需协调。输入输出采用 Foreign IR/ABI合同，不造第二套类型系统或包来源解析。
+验收负载、首批库和性能预算待选路线后冻结；不恢复“全 Rust/C 库绑定”或嵌入式部署为 v0.6 隐含门槛。
+
 > 2026-10-15范围更新：本文原“C是目标代码/不做机器码”的限定适用于a2c部署轨，不能约束现行AC/ACC Native；C生态长期拆为C ABI互操作、Embedded C、Portable C Backend，详见新增§12和[Design41](../41-interface-metadata-and-foreign-abi.md)。旧三消费面和暂缓排期保留为历史部署规划，不代表Native消费C库必须转译成C。
 
 **日期**: 2026-09-06

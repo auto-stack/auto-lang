@@ -1,5 +1,7 @@
 # 移动生态战略（Android + iOS 统一 Jetpack Compose）
 
+> 2026-10-16：本轮不增加移动平台实现；v0.6/后续边界见[平台阶段设计](platforms-v06.md)。保留现有路线与rebaseline前提，下面历史库状态不是当前平台兼容性证明。
+
 **日期**: 2026-09-06
 **状态**: Draft（骨架，待扩充）
 **关联**: [ecosystem-portfolio-strategy](ecosystem-portfolio-strategy.md)（伞形总战略）、

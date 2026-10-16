@@ -3,12 +3,26 @@ status: proposed
 describes: target-state
 scope: auto-native-abi-and-hot-reload
 created_at: 2026-10-04
-updated_at: 2026-10-04
+updated_at: 2026-10-16
 implemented_by_plans: []
 supersedes: []
 ---
 
 # Auto Native ABI RFC：独立版本域、原生模块与热重载
+
+## v0.6 阶段合同与拆分边界（2026-10-16）
+
+保留版本化 AutoABI、foreign adapter 与插件/重载的长期设计；将本版不同成熟度分别验收，不把静态互调外推为动态插件已经交付。
+
+| 阶段 | 本版位置 | 验收 |
+|---|---|---|
+| 有限 AutoABI profile | 797在途合同及后续类型绑定 | Windows x64 独立编译 AutoABI↔AutoABI、AutoABI↔C 双向互调；布局/参数/返回、原方释放、失败部分输出回收有独立 C oracle 和反例。类型描述消费796；不以一个编译单元自测冒充跨边界 |
+| 插件装载闭环 | 待选择的后续原型 | 真实独立模块的发现/版本协商→装载→调用→显式释放/卸载；版本错误、失效handle、所有权违例和未提供能力明确失败。797不含DLL loader/Rust shim产品，不因其通过省掉本阶段 |
+| 热重载 | 需独立Plan的有限原型 | 旧调用留旧代、切换新代、状态兼容/迁移、失败保留旧代、资源回收可观察；静态重新链接不叫热重载。不承诺任意对象/线程迁移 |
+
+独立 ABI/Foreign IR、header扫描与原生 conformance 不等待三仓拆分或完整 AAC；正式类型/测试接线按797的D-796/D-788门消费真实合入版本。目标类型范围、版本/线程/回调支持面及性能预算随Plan冻结。
+旧 VM shim、Value/栈编解码、UI native/provider、AutoMan plugin发现/构建是不同 adapter，修改时与各拆分所有者协调；公共 ABI 不能直接暴露它们的 Rust 类型。完整 Rust/C 生态、跨平台 ABI 和通用插件市场不是本稿新增门禁。
+总体范围见[路线矩阵](../../roadmap-v0.6.md#7-v06路线阶段与拆分边界矩阵2026-10-16)，实际已交付面以Spec/复审/merge收据为准。
 
 > Draft RFC。用户确认的产品范围与兼容政策见 §1；技术建议尚待评审和原型验证，
 > 本文不表示 AC/ACC、ABI 或热重载已经实现。只整理设计，不启动代码计划或分配

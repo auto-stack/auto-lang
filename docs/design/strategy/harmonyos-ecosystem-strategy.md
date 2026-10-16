@@ -1,5 +1,7 @@
 # 鸿蒙生态战略（ArkTS 主线；AutoUI 下一主战场）
 
+> 2026-10-16：v0.6已确认目标与验收/依赖/拆分接缝补充见[平台阶段设计](platforms-v06.md)。保留ArkTS主线；下面旧库存按其日期核查，不把旧“能否跑通待证”覆盖用户后续demo输入，也不把一个demo当整套桌面/28项验收。
+
 **日期**: 2026-09-06
 **状态**: Draft（骨架，待扩充）
 **关联**: [ecosystem-portfolio-strategy](ecosystem-portfolio-strategy.md)（伞形总战略）、
