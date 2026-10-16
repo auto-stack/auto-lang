@@ -101,7 +101,22 @@ pub fn check(
     suite_path: &Path,
     report_json: &serde_json::Value,
 ) -> Result<Vec<RowVerdict>, String> {
+    check_with_native(suite_path, report_json, None)
+}
+
+/// [`check`] with an injectable CURRENT native toolchain identity (R1
+/// F07): production computes the real axes (`None`); tests can pin them so
+/// worker/toolchain drift is deterministic without mutating the process
+/// environment.
+pub fn check_with_native(
+    suite_path: &Path,
+    report_json: &serde_json::Value,
+    native_axes: Option<BTreeMap<String, String>>,
+) -> Result<Vec<RowVerdict>, String> {
     let limits = Limits::defaults();
+    // The ACTUAL worker/tool identity is computed lazily: only reports
+    // carrying native rows pay for the discovery.
+    let mut current_native: Option<BTreeMap<String, String>> = native_axes;
     let current = current_identities(suite_path, &limits)?;
     let new_toolchain = toolchain_axes(&limits);
     let old_toolchain: BTreeMap<String, String> = report_json
@@ -169,6 +184,52 @@ pub fn check(
             if let Some(old_v) = old_toolchain.get(k) {
                 if old_v != new_v {
                     drifted.push(format!("toolchain.{} {}→{}", k, short(old_v), short(new_v)));
+                }
+            }
+        }
+        // R1 (F07): native rows compare the ACTUAL worker/tool axes bound
+        // at execution time. A row without a native record, a missing
+        // axis, or any extra unverifiable axis is drift — never silent
+        // consistency. Lazy discovery keeps non-native suites cheap.
+        if r.get("adapter").and_then(|a| a.as_str()) == Some("ac") {
+            let current = current_native
+                .get_or_insert_with(crate::test_cases::ac::current_toolchain_identity);
+            let row_axes: BTreeMap<String, String> = r
+                .get("native")
+                .and_then(|n| n.get("toolchain"))
+                .and_then(|t| t.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|p| {
+                            Some((
+                                p[0].as_str()?.to_string(),
+                                p[1].as_str().unwrap_or("").to_string(),
+                            ))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if row_axes.is_empty() {
+                drifted.push("native.toolchain absent — cannot confirm the worker identity".into());
+            } else {
+                for (k, now) in current.iter() {
+                    match row_axes.get(k) {
+                        Some(old_v) if old_v == now => {}
+                        Some(old_v) => {
+                            drifted.push(format!("native.{} {}→{}", k, short(old_v), short(now)));
+                        }
+                        None => {
+                            drifted.push(format!("native.{} missing (now {})", k, short(now)));
+                        }
+                    }
+                }
+                for k in row_axes.keys() {
+                    if !current.contains_key(k) {
+                        drifted.push(format!(
+                            "native.{} present in the old report but unverifiable now",
+                            k
+                        ));
+                    }
                 }
             }
         }

@@ -12,9 +12,11 @@ use crate::test_cases::run_suite;
 /// Disjoint output directory for a fixture root (Plan 773 F-05: outputs
 /// may not live inside the suite/fixture tree). Sibling of the fixture dir.
 fn out_of(root: &Path, sub: &str) -> PathBuf {
-    root.parent()
-        .unwrap_or(Path::new("."))
-        .join(format!("{}-{}", root.file_name().unwrap().to_string_lossy(), sub))
+    root.parent().unwrap_or(Path::new(".")).join(format!(
+        "{}-{}",
+        root.file_name().unwrap().to_string_lossy(),
+        sub
+    ))
 }
 
 fn temp_root(tag: &str) -> PathBuf {
@@ -703,7 +705,7 @@ fn product_consumer_rejects_result_observation() {
             .detail
             .as_deref()
             .unwrap()
-            .contains("result/stdout/stderr observations on a product consumer"),
+            .contains("result observations (and streams outside ac/run) on a product consumer"),
         "{:?}",
         consumer.detail
     );
@@ -790,8 +792,12 @@ fn proposals_bind_old_and_new_identity_with_real_diff() {
     assert!(p.shared_consumers.contains(&"t05e.p:second".to_string()));
 
     let proposal_dir = out_of(&root, "proposals");
-    let n = write_proposals(&proposals, &proposal_dir, Some(&out_of(&root, "out").join("report.json")))
-        .unwrap();
+    let n = write_proposals(
+        &proposals,
+        &proposal_dir,
+        Some(&out_of(&root, "out").join("report.json")),
+    )
+    .unwrap();
     assert_eq!(n, 2);
     let candidate = proposal_dir.join("t05e.p").join("emit").join("hello.rs");
     assert_eq!(
@@ -839,10 +845,12 @@ fn proposal_read_failures_propagate() {
     .unwrap();
     assert_eq!(report.count(Status::Fail), 1);
     // Sabotage the persisted actual's recorded path.
-    report.results[0].artifacts[0].stored_path =
-        out_of(&root, "out").join("no-such-file.rs").display().to_string();
-    let err = collect_proposals(&report, &root.join("t05.suite.ad"), &Limits::defaults())
-        .unwrap_err();
+    report.results[0].artifacts[0].stored_path = out_of(&root, "out")
+        .join("no-such-file.rs")
+        .display()
+        .to_string();
+    let err =
+        collect_proposals(&report, &root.join("t05.suite.ad"), &Limits::defaults()).unwrap_err();
     assert!(err.contains("reading actual"), "{}", err);
 }
 
@@ -858,8 +866,12 @@ fn pilot_dir() -> PathBuf {
 /// tier) each run the pilot suite through this and assert their half.
 pub(crate) fn run_pilot_for_aggregate(tag: &str) -> auto_test_case::report::RunReport {
     let out = std::env::temp_dir().join(format!("atc-pilot-agg-{}-{}", tag, std::process::id()));
-    crate::test_cases::run_suite(&pilot_dir().join("pilot.suite.ad"), &out, &Limits::defaults())
-        .expect("suite loads")
+    crate::test_cases::run_suite(
+        &pilot_dir().join("pilot.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("suite loads")
 }
 
 /// Full pilot run: 21 cases / 26 checks, everything green. This is also the
@@ -960,13 +972,22 @@ fn pilot_legacy_map_reconciles() {
             fs::read(src_as).expect("legacy source .at or .as exists")
         };
         assert_eq!(cols[12], sha(&src_bytes), "source hash drift: {}", cols[0]);
-        let oracle_ext = ["expected.out", "expected.result", "expected.error", "expected.rs"]
-            .iter()
-            .find(|ext| legacy_dir.join(format!("{}.{}", stem, ext)).is_file())
-            .expect("legacy oracle exists");
-        let oracle_bytes =
-            fs::read(legacy_dir.join(format!("{}.{}", stem, oracle_ext))).unwrap();
-        assert_eq!(cols[13], sha(&oracle_bytes), "oracle hash drift: {}", cols[0]);
+        let oracle_ext = [
+            "expected.out",
+            "expected.result",
+            "expected.error",
+            "expected.rs",
+        ]
+        .iter()
+        .find(|ext| legacy_dir.join(format!("{}.{}", stem, ext)).is_file())
+        .expect("legacy oracle exists");
+        let oracle_bytes = fs::read(legacy_dir.join(format!("{}.{}", stem, oracle_ext))).unwrap();
+        assert_eq!(
+            cols[13],
+            sha(&oracle_bytes),
+            "oracle hash drift: {}",
+            cols[0]
+        );
         // Engineering context columns are present and non-empty.
         assert!(!cols[14].is_empty(), "entry mode missing: {}", cols[0]);
         assert!(!cols[15].is_empty(), "project context missing: {}", cols[0]);
@@ -1191,7 +1212,10 @@ fn selection_prevents_execution_and_validates_selectors() {
     )
     .unwrap_err();
     assert!(err.contains("bad selector"), "{}", err);
-    assert!(!out_of(&root, "out1").exists(), "no scratch on bad selector");
+    assert!(
+        !out_of(&root, "out1").exists(),
+        "no scratch on bad selector"
+    );
     assert_eq!(fs::read(&root.join("c.case.ad")).unwrap(), before);
 
     // Zero-match selector: same treatment.
@@ -1228,7 +1252,9 @@ fn selection_prevents_execution_and_validates_selectors() {
         .unwrap()
         .flat_map(|run| {
             let run = run.unwrap().path();
-            std::fs::read_dir(&run).unwrap().map(move |c| c.unwrap().path())
+            std::fs::read_dir(&run)
+                .unwrap()
+                .map(move |c| c.unwrap().path())
         })
         .filter(|p| p.to_string_lossy().contains("other"))
         .collect();
@@ -1266,8 +1292,7 @@ fn output_domain_overlap_rejected_before_execution() {
         .collect();
 
     // out == fixture/suite root → rejected, nothing executed or written.
-    let err = run_suite(&root.join("t05.suite.ad"), &root, &Limits::defaults())
-        .unwrap_err();
+    let err = run_suite(&root.join("t05.suite.ad"), &root, &Limits::defaults()).unwrap_err();
     assert!(err.contains("output path rejected"), "{}", err);
     // out == PARENT of the root (contains inputs) → rejected too.
     let err = run_suite(
@@ -1278,7 +1303,12 @@ fn output_domain_overlap_rejected_before_execution() {
     .unwrap_err();
     assert!(err.contains("output path rejected"), "{}", err);
     for (path, bytes) in &snapshot {
-        assert_eq!(&fs::read(path).unwrap(), bytes, "{} untouched", path.display());
+        assert_eq!(
+            &fs::read(path).unwrap(),
+            bytes,
+            "{} untouched",
+            path.display()
+        );
     }
     assert_eq!(
         fs::read_to_string(root.join("report.json")).unwrap(),
@@ -1297,7 +1327,11 @@ fn output_domain_overlap_rejected_before_execution() {
                 .then_some(p)
         })
         .collect();
-    assert!(runs.is_empty(), "no run scratch after rejections: {:?}", runs);
+    assert!(
+        runs.is_empty(),
+        "no run scratch after rejections: {:?}",
+        runs
+    );
 }
 
 /// F-773-R1-06: oracle identity tracks sidecar CONTENT — mutating expected
@@ -1354,7 +1388,10 @@ fn oracle_identity_tracks_content_and_toolchain_binds() {
         before.results[0].identity.source, after.results[0].identity.source,
         "source identity is content of inputs, not of oracles"
     );
-    assert_eq!(before.results[0].identity.suite, after.results[0].identity.suite);
+    assert_eq!(
+        before.results[0].identity.suite,
+        after.results[0].identity.suite
+    );
 
     // Toolchain identity: present, and sensitive to the effective limits.
     for (k, _) in [
@@ -1428,10 +1465,9 @@ fn stale_check_detects_oracle_drift() {
 
     // Unmodified tree: everything FRESH.
     let verdicts = crate::test_cases::stale::check(&root.join("t05.suite.ad"), &old).unwrap();
-    assert!(verdicts.iter().all(|v| matches!(
-        v,
-        crate::test_cases::stale::RowVerdict::Fresh { .. }
-    )));
+    assert!(verdicts
+        .iter()
+        .all(|v| matches!(v, crate::test_cases::stale::RowVerdict::Fresh { .. })));
 
     // Mutate the oracle sidecar: the old PASS is STALE on the oracle axis.
     let mut drifted = golden.clone();
@@ -1480,7 +1516,11 @@ fn expansion_and_byte_limits_are_enforced() {
     let lint_errors =
         crate::test_cases::materialize::lint_resolve(&root.join("t05.suite.ad"), &tuned)
             .unwrap_err();
-    assert!(lint_errors.contains("max_expanded_checks_per_run"), "{}", lint_errors);
+    assert!(
+        lint_errors.contains("max_expanded_checks_per_run"),
+        "{}",
+        lint_errors
+    );
 
     // Oversized document: bounded read rejects without full buffering.
     let tiny = Limits {
@@ -1508,9 +1548,11 @@ fn lint_resolves_references_or_fails_located() {
         "# C\n```test-case\ncase { schema: \"autolang.case/1\", id: \"r07.a\", source: { text: \"fn main() { print(1) }\", syntax: \"auto\", path: \"main.at\" }, entry: { mode: \"script\" }, checks: [ { id: \"emit\", adapter: \"a2r\", action: \"emit\", expect: { completion: \"success\", artifacts: [ { path: \"main.rs\", file: \"expected.rs\" } ] } } ] }\n```\n# D\n```test-case\ncase { schema: \"autolang.case/1\", id: \"r07.missing\", source: { text: \"fn main() { print(2) }\", syntax: \"auto\", path: \"main.at\" }, entry: { mode: \"script\" }, checks: [ { id: \"emit\", adapter: \"a2r\", action: \"emit\", expect: { completion: \"success\", artifacts: [ { path: \"main.rs\", file: \"no-such-expected.rs\" } ] } } ] }\n```\n",
     )
     .unwrap();
-    let errors =
-        crate::test_cases::materialize::lint_resolve(&root.join("t05.suite.ad"), &Limits::defaults())
-            .unwrap();
+    let errors = crate::test_cases::materialize::lint_resolve(
+        &root.join("t05.suite.ad"),
+        &Limits::defaults(),
+    )
+    .unwrap();
     assert_eq!(errors.len(), 1, "{:?}", errors);
     assert!(
         errors[0].contains("no-such-expected.rs") && errors[0].contains("r07.missing"),
@@ -1525,9 +1567,11 @@ fn lint_resolves_references_or_fails_located() {
         "# C\n```test-case\ncase { schema: \"autolang.case/1\", id: \"r07b.a\", source: { block: \"no-such-anchor\", syntax: \"auto\", path: \"main.at\" }, entry: { mode: \"script\" }, checks: [ { id: \"vm\", adapter: \"avm\", action: \"run\", expect: { completion: \"success\" } } ] }\n```\n",
     )
     .unwrap();
-    let errors =
-        crate::test_cases::materialize::lint_resolve(&root2.join("t05.suite.ad"), &Limits::defaults())
-            .unwrap();
+    let errors = crate::test_cases::materialize::lint_resolve(
+        &root2.join("t05.suite.ad"),
+        &Limits::defaults(),
+    )
+    .unwrap();
     assert!(
         errors.iter().any(|e| e.contains("no-such-anchor")),
         "{:?}",

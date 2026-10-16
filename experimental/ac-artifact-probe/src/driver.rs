@@ -24,7 +24,7 @@ use auto_ac_prototype::atom_text::Diagnostic;
 use auto_ac_prototype::hir::HirDomain;
 use auto_ac_prototype::link;
 use auto_ac_prototype::native;
-use auto_ac_prototype::source::{compile_parts_with, parse_program_with, SourceProfile};
+use auto_ac_prototype::source::{parse_program_with, SourceProfile};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -156,6 +156,13 @@ pub struct VerticalCfg {
     /// User entry def (selects the `ac_start` wrapper target).
     pub entry: String,
     pub toolchain_fp: String,
+    /// PLAN-788 R1 (F08): actual compiler/worker recipe identity folded
+    /// into the A07/A09 cache keys (None keeps the legacy 783 keys — the
+    /// probe's own callers are unchanged). The worker passes its own
+    /// executable content hash: it statically embeds the compiler, so the
+    /// hash covers compiler + worker code and their resolved dependency
+    /// versions.
+    pub compiler_fp: Option<String>,
     pub work_dir: PathBuf,
 }
 
@@ -170,6 +177,7 @@ impl Default for VerticalCfg {
             target: SUPPORTED_TARGET.into(),
             entry: "main".into(),
             toolchain_fp: "default-lld".into(),
+            compiler_fp: None,
             work_dir: std::env::temp_dir(),
         }
     }
@@ -292,13 +300,20 @@ fn vertical_inner(
 
     // -- layer keys ----------------------------------------------------------
     let capabilities: Vec<String> = Vec::new(); // core/scalar corpus needs none
-    let hir_key = hir_bundle_key(
+    let mut hir_key = hir_bundle_key(
         cfg.profile.as_str(),
         cfg.profile.hir_domain().as_str(),
         &capabilities,
         &snapshot,
         codec::HIR_CODEC_VERSION,
     );
+    // F08: the compiler that produced an artifact is part of its identity —
+    // a changed worker binary must not resume stale HIR/objects.
+    if let Some(fp) = &cfg.compiler_fp {
+        hir_key
+            .components
+            .push(("compiler-recipe".into(), fp.clone()));
+    }
     let obj_key = object_key_by_hash(&hir_key.hash(), &cfg.target, BACKEND_ID, &cfg.entry);
 
     // -- A09 object hit: skip everything up to link --------------------------
@@ -308,7 +323,10 @@ fn vertical_inner(
     let a09_hit = if mode == DriverCacheMode::Fresh {
         None
     } else {
-        store.get_artifact("A09", &obj_key)?
+        let t = now_ms();
+        let hit = store.get_artifact("A09", &obj_key)?;
+        stage_ms.push(("cache-read", now_ms().saturating_sub(t)));
+        hit
     };
     if let Some(loaded) = a09_hit {
         hits.object = "hit";
@@ -358,9 +376,8 @@ fn vertical_inner(
         if mode != DriverCacheMode::ReadOnly {
             set_current_roots(store, &cfg.project, &artifacts)?;
         }
-        let mut outcome = finish(cfg, c, hits, artifacts, &exe, &snapshot, link_ms, t0);
+        let outcome = finish(cfg, c, hits, artifacts, &exe, &snapshot, link_ms, t0);
         stage_ms.push(("total", outcome.total_ms));
-        outcome.total_ms = outcome.total_ms;
         return Ok(ObservedVertical { outcome, stage_ms });
     }
 
@@ -370,7 +387,10 @@ fn vertical_inner(
     let a07_hit = if mode == DriverCacheMode::Fresh {
         None
     } else {
-        store.get_artifact("A07", &hir_key)?
+        let t = now_ms();
+        let hit = store.get_artifact("A07", &hir_key)?;
+        stage_ms.push(("cache-read", now_ms().saturating_sub(t)));
+        hit
     };
     let checked = if let Some(loaded) = a07_hit {
         hits.hir = "hit(restored)";
@@ -417,17 +437,44 @@ fn vertical_inner(
         }
         hits.summary = "computed";
 
-        // The adapter's own front end runs inside compile_parts_with (one
-        // extra parse; counted as one resolve/typecheck + bind here).
-        let t_fe = now_ms();
-        let parts = compile_parts_with(&text, &cfg.logical_name, &capabilities, cfg.profile)
-            .map_err(|ds| DriverError::Frontend(render_diags(&ds, &path_disp, &text)))?;
+        // The adapter's own front end runs through the OBSERVED variant of
+        // the same single pipeline (PLAN-788 R1 F10): parse/resolve/
+        // typecheck/emit/bind spans come from the real stage boundaries —
+        // counted as one resolve/typecheck + bind here (783 counter
+        // semantics unchanged).
+        struct SpanCollector<'a> {
+            stage_ms: &'a mut Vec<(&'static str, u64)>,
+            t_stage: std::time::Instant,
+        }
+        impl<'a> auto_ac_prototype::source::adapter::SourceObserver for SpanCollector<'a> {
+            fn stage(
+                &mut self,
+                stage: auto_ac_prototype::source::adapter::SourceStage,
+                _diags: &[auto_ac_prototype::atom_text::Diagnostic],
+            ) {
+                let wall = self.t_stage.elapsed().as_millis() as u64;
+                self.t_stage = std::time::Instant::now();
+                self.stage_ms.push((stage.as_str(), wall));
+            }
+        }
+        let mut collector = SpanCollector {
+            stage_ms: &mut stage_ms,
+            t_stage: std::time::Instant::now(),
+        };
+        let parts = auto_ac_prototype::source::adapter::compile_parts_with_observer(
+            &text,
+            &cfg.logical_name,
+            &capabilities,
+            cfg.profile,
+            &mut collector,
+        )
+        .map_err(|ds| DriverError::Frontend(render_diags(&ds, &path_disp, &text)))?;
+        drop(collector);
         c.resolve_typecheck += 1;
         c.bind += 1;
         let t_verify = now_ms();
         let checked = verify_real(parts.bundle, &path_disp, &text)?;
         c.verify += 1;
-        stage_ms.push(("frontend", t_verify.saturating_sub(t_fe)));
         stage_ms.push(("verify", now_ms().saturating_sub(t_verify)));
 
         // A07: persist the binary bundle (provenance: the snapshot).
@@ -694,8 +741,8 @@ pub fn vertical_and_run_observed(
     cfg: &VerticalCfg,
     mode: DriverCacheMode,
 ) -> Result<ObservedVertical, DriverError> {
-    let t_run = now_ms();
     let mut observed = vertical_inner(store, cfg, mode)?;
+    let t_run = now_ms();
     let exe = PathBuf::from(&observed.outcome.exe);
     let (code, stdout, stderr) = run_and_record(&exe, &mut observed.outcome.counters)?;
     observed.outcome.exit_code = code;

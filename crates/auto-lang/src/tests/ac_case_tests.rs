@@ -398,3 +398,171 @@ case {{ schema: \"autolang.case/2\", id: \"ac.two\", source: {{ text: \"{P04}\",
         assert_eq!(row.native.as_ref().unwrap().exit_code, Some(3));
     }
 }
+
+// ---- PLAN-788 R1 repairs: parent-side admission, consumer reds, report --
+
+#[test]
+fn r1_response_admission_table() {
+    use crate::test_cases::ac::validate_response;
+    let good = serde_json::json!({
+        "schema": "acworker/1", "nonce": "n", "request_hash": "h",
+        "ok": { "run": { "exit_code": 3, "stdout_b64": "", "stderr_b64": "" } },
+    });
+    validate_response(&good, "n", "h", "run").expect("well-formed response accepted");
+    // F03: wrong schema, ok+error both, neither, missing run on a run
+    // request, identity mismatch — each is a controlled refusal.
+    let bad_schema = serde_json::json!({ "schema": "acworker/999", "nonce": "n", "request_hash": "h", "ok": {} });
+    assert!(validate_response(&bad_schema, "n", "h", "check").is_err());
+    let both = serde_json::json!({ "schema": "acworker/1", "nonce": "n", "request_hash": "h", "ok": {}, "error": {"code":"x","message":"y"} });
+    assert!(validate_response(&both, "n", "h", "check").is_err());
+    let neither = serde_json::json!({ "schema": "acworker/1", "nonce": "n", "request_hash": "h" });
+    assert!(validate_response(&neither, "n", "h", "check").is_err());
+    let no_run =
+        serde_json::json!({ "schema": "acworker/1", "nonce": "n", "request_hash": "h", "ok": {} });
+    assert!(validate_response(&no_run, "n", "h", "run").is_err());
+    let foreign = serde_json::json!({ "schema": "acworker/1", "nonce": "other", "request_hash": "h", "ok": {} });
+    assert!(validate_response(&foreign, "n", "h", "check").is_err());
+}
+
+#[test]
+fn r1_consumer_invalid_exe_is_error_not_pass() {
+    // F02 red shape: an invalid product exe makes the consumer verdict an
+    // ERROR — the runner must propagate it (gate 2), never a PASS.
+    use crate::test_cases::ac::consume_and_run;
+    use auto_test_case::contract::{CacheMode, Options};
+    let root = temp_root("bad-product");
+    let exe = root.join("app.exe");
+    std::fs::write(&exe, b"not a PE executable").unwrap();
+    let check = auto_test_case::contract::CheckSpec {
+        id: "red".into(),
+        adapter: auto_test_case::contract::Adapter::Ac,
+        action: auto_test_case::contract::Action::Run,
+        tier: None,
+        options: Options::default(),
+        expect: auto_test_case::contract::ExpectSpec {
+            completion: auto_test_case::contract::Completion::Success,
+            result: None,
+            stdout: None,
+            stderr: None,
+            artifacts: vec![],
+            exit: Some(3),
+            perf: None,
+        },
+        product_from: Some("upstream".into()),
+        skip: None,
+    };
+    let _ = CacheMode::Reuse;
+    let verdict = consume_and_run(&exe, &check, Some(3), None, None, None)
+        .expect("consumer execution completes with a verdict");
+    assert_eq!(verdict.status, Status::Error, "{:?}", verdict.detail);
+    assert!(
+        verdict
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("ac consumer run failed")
+            || verdict
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("run"),
+        "{:?}",
+        verdict.detail
+    );
+}
+
+#[test]
+fn r1_runner_report_v2_legal_json_schema_and_native_axes() {
+    // F06/F07: a real v2 run emits autolang.test-report/2, the JSON parses
+    // with a standard parser, native rows carry the verifiable identity
+    // axes, and the stale checker reads the report back.
+    let root = temp_root("report-v2");
+    write(&root, "t04ac.suite.ad", &format!(
+        "```test-suite\nsuite {{ schema: \"autolang.suite/2\", id: \"t04ac\", include: [\"r.case.ad\"] }}\n```\n"
+    ));
+    write(&root, "r.case.ad", &format!(
+        "```test-case\ncase {{ schema: \"autolang.case/2\", id: \"ac.r\", source: {{ text: \"{P04}\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"program\" }}, checks: [ {{ id: \"run\", adapter: \"ac\", action: \"run\", expect: {{ completion: \"success\", exit: 3 }} }} ] }}\n```\n"
+    ));
+    let report = run(&root, "out");
+    assert_eq!(
+        report.schema, "autolang.test-report/2",
+        "suite/2 → report/2"
+    );
+    let json = report.to_json();
+    let v: serde_json::Value = serde_json::from_str(&json).expect("runner report is legal JSON");
+    assert_eq!(v["schema"], "autolang.test-report/2");
+    let row = &v["results"][0];
+    assert!(row["native"]["exit_code"].is_i64(), "native record present");
+    let axes: Vec<(String, String)> = row["native"]["toolchain"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| {
+            (
+                p[0].as_str().unwrap().to_string(),
+                p[1].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert!(
+        axes.iter()
+            .any(|(k, val)| k == "worker-exe-sha256" && !val.is_empty()),
+        "identity axes: {:?}",
+        axes
+    );
+    // Stale reads the SAME report: identical pinned axes → Fresh; a
+    // different worker → Stale with the axis named (F07 red control,
+    // without env mutation).
+    let same: std::collections::BTreeMap<String, String> = axes.clone().into_iter().collect();
+    let verdicts = crate::test_cases::stale::check_with_native(
+        &root.join("t04ac.suite.ad"),
+        &v,
+        Some(same.clone()),
+    )
+    .expect("stale reads the report");
+    assert!(
+        verdicts
+            .iter()
+            .all(|x| matches!(x, crate::test_cases::stale::RowVerdict::Fresh { .. })),
+        "matching axes stay fresh: {:?}",
+        verdicts
+    );
+    let mut drifted = same.clone();
+    drifted.insert("worker-exe-sha256".into(), "differentworkerhash0000".into());
+    let verdicts = crate::test_cases::stale::check_with_native(
+        &root.join("t04ac.suite.ad"),
+        &v,
+        Some(drifted),
+    )
+    .expect("stale reads the report again");
+    assert!(
+        verdicts
+            .iter()
+            .any(|x| matches!(x, crate::test_cases::stale::RowVerdict::Stale { .. })),
+        "a changed worker must be stale: {:?}",
+        verdicts
+    );
+}
+
+#[test]
+fn r1_consumer_streams_observed_not_rejected() {
+    // F02: an ac/run product consumer's stdout observation is supported
+    // (the old generic guard rejected it as an admission error).
+    let root = temp_root("consumer-streams");
+    write(&root, "t04ac.suite.ad", &format!(
+        "```test-suite\nsuite {{ schema: \"autolang.suite/2\", id: \"t04ac\", include: [\"cs.case.ad\"] }}\n```\n"
+    ));
+    write(&root, "cs.case.ad", &format!(
+        "```test-case\ncase {{ schema: \"autolang.case/2\", id: \"ac.cs\", source: {{ text: \"{P04}\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"program\" }}, checks: [ \
+{{ id: \"bld\", adapter: \"ac\", action: \"build\", expect: {{ completion: \"success\" }} }}, \
+{{ id: \"cns\", adapter: \"ac\", action: \"run\", product_from: \"bld\", expect: {{ completion: \"success\", exit: 3, stdout: {{ text: \"\" }} }} }} ] }}\n```\n"
+    ));
+    let report = run(&root, "out");
+    let rows: Vec<_> = report
+        .results
+        .iter()
+        .map(|r| (r.check_id.clone(), r.status, r.detail.clone()))
+        .collect();
+    assert_eq!(status_of(&report, "bld"), Status::Pass, "{:?}", rows);
+    assert_eq!(status_of(&report, "cns"), Status::Pass, "{:?}", rows);
+}

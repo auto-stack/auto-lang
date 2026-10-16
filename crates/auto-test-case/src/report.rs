@@ -85,6 +85,9 @@ pub struct NativeRecord {
     pub counters: Vec<(String, u32)>,
     /// Worker toolchain identity axes (lld hash, SDK dir, versions).
     pub toolchain: Vec<(String, String)>,
+    /// Metrics this batch cannot capture — recorded as gaps, never as 0
+    /// (unimplemented stages are absent spans, not 0ms entries).
+    pub gaps: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -286,7 +289,12 @@ impl RunReport {
                 json_str(&r.identity.oracle),
                 json_str(&r.identity.contract)
             ));
-            s.push_str(&format!("      \"duration_ms\": {}\n", r.duration_ms));
+            if r.native.is_some() {
+                // native is the LAST field: duration_ms needs its comma now.
+                s.push_str(&format!("      \"duration_ms\": {},\n", r.duration_ms));
+            } else {
+                s.push_str(&format!("      \"duration_ms\": {}\n", r.duration_ms));
+            }
             if let Some(n) = &r.native {
                 let mut parts: Vec<String> = Vec::new();
                 if let Some(code) = n.exit_code {
@@ -335,9 +343,20 @@ impl RunReport {
                             .join(", ")
                     ));
                 }
+                if !n.gaps.is_empty() {
+                    parts.push(format!(
+                        "\"gaps\": [{}]",
+                        n.gaps
+                            .iter()
+                            .map(|g| json_str(g))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
                 if !parts.is_empty() {
+                    // LAST field of the result object — no trailing comma.
                     s.push_str(&format!(
-                        "      \"native\": {{\n        {}\n      }},\n",
+                        "      \"native\": {{\n        {}\n      }}\n",
                         parts.join(",\n        ")
                     ));
                 }

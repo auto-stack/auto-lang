@@ -684,6 +684,30 @@ pub fn decode_case(v: &CVal, limits: &Limits) -> Result<CaseSpec, ContractError>
     for (i, cv) in checks_list.iter().enumerate() {
         checks.push(decode_check(cv, &format!("case.checks[{}]", i), version)?);
     }
+    // PLAN-788 R1 (F08): a cache declaration that promises behavioral
+    // participation (fresh/read-only) on a combination that never touches
+    // the unified store is an admission error — ac/check observes the real
+    // frontend itself, and raw-HIR inputs bypass the driver pipeline. A
+    // silent no-op would misreport the requested mode.
+    for (i, c) in checks.iter().enumerate() {
+        let participates = c.adapter == Adapter::Ac
+            && matches!(c.action, Action::Build | Action::Run)
+            && source.syntax == Syntax::Auto;
+        if !participates {
+            if let Some(mode) = c.options.ac_cache {
+                if matches!(mode, CacheMode::Fresh | CacheMode::ReadOnly) {
+                    return Err(err(
+                        &format!("case.checks[{}].options.cache", i),
+                        format!(
+                            "cache {:?} requires auto-source ac/build|run store participation — ac/check observes the real frontend and raw-HIR inputs bypass the unified store (omit cache, or the default reuse)",
+                            mode.as_str()
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
     let mut seen = std::collections::BTreeSet::new();
     for c in &checks {
         if !seen.insert(c.id.clone()) {

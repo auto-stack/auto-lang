@@ -23,10 +23,13 @@ pub const MAX_RUN_MS: u64 = 5_000;
 pub const MAX_TOTAL_MS: u64 = 70_000;
 pub const SESSION_MAX_REQUESTS: u32 = 256;
 pub const SESSION_MAX_LIFETIME_MS: u64 = 180_000;
+/// Hard bound on ONE stdin request line (the largest legal request is the
+/// bounded source payload; beyond this the line is rejected, not buffered).
+pub const SESSION_MAX_LINE_BYTES: usize = MAX_IPC_METADATA_BYTES * 2;
 
 /// Session envelope read from stdin, one JSON line each.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "op")]
+#[serde(tag = "op", deny_unknown_fields)]
 pub enum Envelope {
     #[serde(rename = "begin")]
     Begin { schema: String },
@@ -37,15 +40,21 @@ pub enum Envelope {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "kind")]
+#[serde(tag = "kind", deny_unknown_fields)]
 pub enum InputSpec {
     #[serde(rename = "source")]
     Source { source_b64: String },
     #[serde(rename = "hir")]
     Hir { hir_b64: String },
+    /// PLAN-788 R1 (F01): a product consumer's already-built exe — the
+    /// worker runs it under the SAME contained, budgeted, capped executor
+    /// (never a bare parent-side Command). ac/run only, no store.
+    #[serde(rename = "product")]
+    Product { exe_path: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct ReqBudget {
     pub build_ms: u64,
     pub run_ms: u64,
@@ -53,6 +62,7 @@ pub struct ReqBudget {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkerRequest {
     pub schema: String,
     /// "check" | "build" | "run".
@@ -185,6 +195,19 @@ impl WorkerRequest {
                 "scratch must be an existing directory",
             ));
         }
+        // R1 (F04): the FULL ancestor chain is audited — a reparse point
+        // anywhere above the scratch is a controlled refusal.
+        let mut cur = path.to_path_buf();
+        while cur.pop() {
+            if let Ok(md) = std::fs::symlink_metadata(&cur) {
+                if md.file_type().is_symlink() {
+                    return Err(WorkerError::admission(
+                        "request.scratch",
+                        format!("scratch ancestor {:?} is a reparse point", cur.display()),
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -192,6 +215,7 @@ impl WorkerRequest {
 /// One typed diagnostic as observed at a pipeline boundary. `stage` uses
 /// the PLAN-788 v2 stage set (contract-decision §4).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct DiagOut {
     pub stage: String,
     pub code: String,
@@ -213,6 +237,7 @@ pub struct ArtifactOut {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct RunOut {
     pub exit_code: Option<i32>,
     pub stdout_b64: String,
@@ -226,17 +251,25 @@ pub struct SpanOut {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ToolchainOut {
     pub lld_path: String,
     pub lld_sha256: String,
     pub sdk_um: String,
     pub ac_core_version: String,
     pub worker_version: String,
+    /// R1 (F07): the worker executable's content hash — it statically
+    /// embeds the compiler and its resolved dependencies, so this single
+    /// axis IS the compiler/worker recipe identity the parent binds into
+    /// native records and the stale checker re-verifies.
+    #[serde(default)]
+    pub worker_exe_sha256: String,
 }
 
 /// Cache observation for the report record (T-05): mode, driver hit/miss
 /// lines, and the REAL stage counters.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct CacheOut {
     pub mode: String,
     pub hits: Vec<(String, String)>,
@@ -244,6 +277,7 @@ pub struct CacheOut {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct OkOut {
     /// Empty on success; the FIRST diagnostic's stage/code is the language
     /// observation the parent compares against its error-completion oracle.
@@ -255,9 +289,13 @@ pub struct OkOut {
     pub toolchain: ToolchainOut,
     #[serde(default)]
     pub cache: Option<CacheOut>,
+    /// Metrics this build cannot capture (gaps — never 0-filled).
+    #[serde(default)]
+    pub metric_gaps: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct WorkerError {
     /// Stable machine code ("request.schema", "budget.run", "output.cap",
     /// "tool.missing", "request.internal", ...).
@@ -277,6 +315,7 @@ impl WorkerError {
 /// One response line (success or infrastructure failure; language
 /// diagnostics are SUCCESS-shaped — they are observations, not errors).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct WorkerResponse {
     pub schema: String,
     pub nonce: String,

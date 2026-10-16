@@ -206,7 +206,13 @@ fn native_cache_trace_records_stage_spans() {
     let store = root.join("store").display().to_string();
     let ok = exec::execute(&req("run", P04_3, Some("reuse"), Some(&store))).unwrap();
     let stages: Vec<&str> = ok.trace.iter().map(|s| s.stage.as_str()).collect();
-    for expect in ["frontend", "verify", "lower", "link", "run", "total"] {
+    // R1 F10: the driver path reports the REAL frontend boundaries
+    // (parse/resolve/typecheck/emit/bind from the observer), not a merged
+    // "frontend" blob.
+    for expect in [
+        "parse", "resolve", "typecheck", "emit", "bind", "verify", "lower", "link", "run",
+        "total",
+    ] {
         assert!(
             stages.contains(&expect),
             "trace {:?} missing {}",

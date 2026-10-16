@@ -47,7 +47,24 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
     // leg stays HERE so per-request budgets, stream caps and raw bytes hold
     // on every path. Raw-HIR inputs and `check` (whose observation IS the
     // frontend) keep the direct path — recorded as cache mode "none".
+    // PLAN-788 R1 (F01): a product consumer's RUN also lives in this
+    // contained, budgeted executor — never a bare Command in the parent.
+    if let InputSpec::Product { exe_path } = &req.input {
+        return run_product(req, exe_path);
+    }
+
     let cache_mode = req.cache.as_deref().unwrap_or("reuse");
+    // R1 (F08 mirror): behavioral cache modes on non-participating
+    // combinations are rejected here too (the contract gate is primary;
+    // the worker never silently no-ops a requested mode).
+    if matches!(cache_mode, "fresh" | "read-only")
+        && (req.kind == "check" || !matches!(req.input, InputSpec::Source { .. }))
+    {
+        return Err(WorkerError::admission(
+            "request.cache",
+            "cache fresh/read-only requires auto-source ac/build|run store participation",
+        ));
+    }
     let via_driver = req.store_root.is_some()
         && matches!(req.kind.as_str(), "build" | "run")
         && matches!(req.input, InputSpec::Source { .. });
@@ -61,7 +78,9 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
         Some(c) => c,
         None => {
             // Language diagnostics ARE the observation — a well-formed
-            // negative-case result, not a worker error.
+            // negative-case result, not a worker error. The total budget
+            // still applies to every exit (R1 F05).
+            check_total(&started, req)?;
             return Ok(OkOut {
                 diagnostics: failure_diags,
                 hir_b64: None,
@@ -70,6 +89,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 trace,
                 toolchain: toolchain_identity(),
                 cache: None,
+                metric_gaps: metric_gaps(),
             });
         }
     };
@@ -82,6 +102,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
     let hir_artifact = artifact("hir", "hir.atom", &hir_path)?;
 
     if req.kind == "check" {
+        check_total(&started, req)?;
         trace.push(SpanOut {
             stage: "done".into(),
             wall_ms: ms(started),
@@ -94,6 +115,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             trace,
             toolchain: toolchain_identity(),
             cache: None,
+            metric_gaps: metric_gaps(),
         });
     }
     check_total(&started, req)?;
@@ -107,6 +129,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 stage: "backend".into(),
                 wall_ms: ms(sel_start),
             });
+            check_total(&started, req)?;
             return Ok(OkOut {
                 diagnostics: diags_mapped(&ds, "backend"),
                 hir_b64: Some(b64(&hir_bytes)),
@@ -115,6 +138,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 trace,
                 toolchain: toolchain_identity(),
                 cache: None,
+                metric_gaps: metric_gaps(),
             });
         }
     };
@@ -126,6 +150,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 stage: "backend".into(),
                 wall_ms: ms(sel_start),
             });
+            check_total(&started, req)?;
             return Ok(OkOut {
                 diagnostics: diags_mapped(&ds, "backend"),
                 hir_b64: Some(b64(&hir_bytes)),
@@ -134,6 +159,7 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
                 trace,
                 toolchain: toolchain_identity(),
                 cache: None,
+                metric_gaps: metric_gaps(),
             });
         }
     };
@@ -174,12 +200,16 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
         stage: "link".into(),
         wall_ms: ms(link_start),
     });
+    // The build segment (frontend → lower → link) carries its own budget;
+    // the total covers everything (R1 F05).
+    check_build(&started, req)?;
     check_total(&started, req)?;
 
     let obj_artifact = artifact("obj", "app.obj", &obj_path)?;
     let exe_artifact = artifact("exe", "app.exe", &receipt.exe)?;
 
     if req.kind == "build" {
+        check_total(&started, req)?;
         trace.push(SpanOut {
             stage: "done".into(),
             wall_ms: ms(started),
@@ -192,12 +222,13 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             trace,
             toolchain,
             cache: None,
+            metric_gaps: metric_gaps(),
         });
     }
 
     // ---- contained raw-bytes run under the budget and caps --------------
     let run_start = Instant::now();
-    let run_budget = Duration::from_millis(req.budget.run_ms.min(MAX_RUN_MS));
+    let run_budget = remaining_run_budget(req, started);
     let mut cmd = std::process::Command::new(&receipt.exe);
     let captured = link::run_deadlined_captured(
         &mut cmd,
@@ -207,7 +238,60 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             stderr_max: MAX_STDERR_BYTES,
         },
     )
-    .map_err(|e| match e {
+    .map_err(|e| map_run_err(e, run_budget))?;
+    trace.push(SpanOut {
+        stage: "run".into(),
+        wall_ms: ms(run_start),
+    });
+    trace.push(SpanOut {
+        stage: "done".into(),
+        wall_ms: ms(started),
+    });
+    check_total(&started, req)?;
+
+    Ok(OkOut {
+        diagnostics: vec![],
+        hir_b64: Some(b64(&hir_bytes)),
+        artifacts: vec![hir_artifact, obj_artifact, exe_artifact],
+        run: Some(RunOut {
+            exit_code: captured.exit_code,
+            stdout_b64: b64(&captured.stdout),
+            stderr_b64: b64(&captured.stderr),
+        }),
+        trace,
+        toolchain,
+        cache: None,
+        metric_gaps: metric_gaps(),
+    })
+}
+
+/// PLAN-788 R1 (F05): the run budget is additionally capped by whatever
+/// REMAINS of the total — a stage may use less than its slice, never more.
+fn remaining_run_budget(req: &WorkerRequest, started: Instant) -> Duration {
+    let run = req.budget.run_ms.min(MAX_RUN_MS);
+    let total_left = req
+        .budget
+        .total_ms
+        .saturating_sub(started.elapsed().as_millis() as u64);
+    Duration::from_millis(run.min(total_left.max(1)))
+}
+
+fn check_build(started: &Instant, req: &WorkerRequest) -> Result<(), WorkerError> {
+    if started.elapsed().as_millis() as u64 > req.budget.build_ms {
+        return Err(infra(
+            "budget.build",
+            format!(
+                "build segment exceeded its {}ms budget (took {}ms)",
+                req.budget.build_ms,
+                started.elapsed().as_millis()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn map_run_err(e: link::SubprocError, run_budget: Duration) -> WorkerError {
+    match e {
         link::SubprocError::Deadline | link::SubprocError::DeadlineCollect => infra(
             "budget.run",
             format!(
@@ -227,29 +311,100 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
             ),
         ),
         other => infra("run.failed", format!("{:?}", other)),
-    })?;
-    trace.push(SpanOut {
-        stage: "run".into(),
-        wall_ms: ms(run_start),
-    });
-    trace.push(SpanOut {
-        stage: "done".into(),
-        wall_ms: ms(started),
-    });
+    }
+}
 
+/// Contained, budgeted, capped raw-bytes run of a product consumer's exe
+/// (R1 F01): the parent never spawns product executables itself.
+fn run_product(req: &WorkerRequest, exe_path: &str) -> Result<OkOut, WorkerError> {
+    let started = Instant::now();
+    if req.kind != "run" {
+        return Err(WorkerError::admission(
+            "request.kind",
+            "product input is an ac/run observation only",
+        ));
+    }
+    if req.store_root.is_some() {
+        return Err(WorkerError::admission(
+            "request.cache",
+            "product runs do not participate in the unified store",
+        ));
+    }
+    let path = Path::new(exe_path);
+    if !path.is_absolute() {
+        return Err(WorkerError::admission(
+            "request.input",
+            "product exe path must be absolute",
+        ));
+    }
+    let meta = std::fs::symlink_metadata(path).map_err(|e| {
+        infra(
+            "request.input",
+            format!("product exe {:?}: {}", exe_path, e),
+        )
+    })?;
+    if meta.file_type().is_symlink() {
+        return Err(WorkerError::admission(
+            "request.input",
+            "product exe must not be a reparse point",
+        ));
+    }
+    if !meta.is_file() {
+        return Err(WorkerError::admission(
+            "request.input",
+            "product exe must be a regular file",
+        ));
+    }
+    if meta.len() as usize > MAX_SINGLE_ARTIFACT_BYTES {
+        return Err(infra(
+            "artifact.cap",
+            format!(
+                "product exe {} bytes exceeds the single-artifact cap",
+                meta.len()
+            ),
+        ));
+    }
+    let run_budget = remaining_run_budget(req, started);
+    let mut cmd = std::process::Command::new(path);
+    let captured = link::run_deadlined_captured(
+        &mut cmd,
+        run_budget,
+        link::CaptureCaps {
+            stdout_max: MAX_STDOUT_BYTES,
+            stderr_max: MAX_STDERR_BYTES,
+        },
+    )
+    .map_err(|e| map_run_err(e, run_budget))?;
+    check_total(&started, req)?;
     Ok(OkOut {
         diagnostics: vec![],
-        hir_b64: Some(b64(&hir_bytes)),
-        artifacts: vec![hir_artifact, obj_artifact, exe_artifact],
+        hir_b64: None,
+        artifacts: vec![],
         run: Some(RunOut {
             exit_code: captured.exit_code,
             stdout_b64: b64(&captured.stdout),
             stderr_b64: b64(&captured.stderr),
         }),
-        trace,
-        toolchain,
+        trace: vec![
+            SpanOut {
+                stage: "run".into(),
+                wall_ms: ms(started),
+            },
+            SpanOut {
+                stage: "done".into(),
+                wall_ms: ms(started),
+            },
+        ],
+        toolchain: toolchain_identity(),
         cache: None,
+        metric_gaps: metric_gaps(),
     })
+}
+
+/// Metrics this worker build cannot capture — reported as gaps, never 0
+/// (R1 F10).
+fn metric_gaps() -> Vec<String> {
+    vec!["cpu_ms".into(), "io_bytes".into(), "peak_rss".into()]
 }
 
 /// Frontend for both input forms. Returns (Checked, canonical HIR bytes,
@@ -267,14 +422,18 @@ fn frontend(
                 b64d(source_b64).map_err(|e| infra("request.input", format!("base64: {}", e)))?,
             )
             .map_err(|_| infra("request.input", "source must be UTF-8 text"))?;
-            let mut obs = TracingObserver::default();
+            // The observer starts its clock AT CONSTRUCTION so the first
+            // stage's span is real, never 0 (R1 F10).
+            let mut obs = TracingObserver::new();
             let parts = match compile_parts_with_observer(&src, "main", &[], profile, &mut obs) {
                 Ok(p) => p,
                 Err(ds) => {
                     // The observer's failed boundary is the ONLY valid
                     // parse/resolve/typecheck attribution (ac-core reports
-                    // all of them as Stage::Text).
+                    // all of them as Stage::Text). Its spans belong in the
+                    // trace even on failure (R1 F10: negative-trace).
                     let stage = obs.failed_stage.clone().unwrap_or_else(|| "parse".into());
+                    trace.extend(obs.spans);
                     return Ok((None, Vec::new(), diags_mapped(&ds, &stage)));
                 }
             };
@@ -296,6 +455,7 @@ fn frontend(
             });
             Ok((Some(checked), parts.atom_text.into_bytes(), Vec::new()))
         }
+        InputSpec::Product { .. } => unreachable!("product inputs never reach the frontend"),
         InputSpec::Hir { hir_b64 } => {
             let bytes =
                 b64d(hir_b64).map_err(|e| infra("request.input", format!("base64: {}", e)))?;
@@ -409,7 +569,9 @@ fn exec_via_driver(
         InputSpec::Source { source_b64 } => {
             b64d(source_b64).map_err(|e| infra("request.input", format!("base64: {}", e)))?
         }
-        InputSpec::Hir { .. } => unreachable!("caller gates the driver path to source inputs"),
+        InputSpec::Hir { .. } | InputSpec::Product { .. } => {
+            unreachable!("caller gates the driver path to source inputs")
+        }
     };
     std::fs::write(&input_path, &input_bytes)
         .map_err(|e| infra("request.scratch", format!("stage input: {}", e)))?;
@@ -427,6 +589,14 @@ fn exec_via_driver(
         env!("CARGO_PKG_VERSION")
     );
 
+    // F08: the cache key carries the ACTUAL compiler/worker recipe — this
+    // executable statically embeds ac-core, so its content hash covers
+    // compiler + worker code and their resolved dependency versions.
+    let own_exe = std::env::current_exe()
+        .map_err(|e| infra("worker.identity", format!("current_exe: {}", e)))?;
+    let own_bytes = std::fs::read(&own_exe)
+        .map_err(|e| infra("worker.identity", format!("read self: {}", e)))?;
+    let compiler_fp = format!("worker-sha256:{}", sha256_hex(&own_bytes));
     let cfg = VerticalCfg {
         project: req.project.clone().unwrap_or_else(|| "ac-case".into()),
         source: input_path.clone(),
@@ -436,6 +606,7 @@ fn exec_via_driver(
         target: "x86_64-pc-windows-msvc".to_string(),
         entry: req.entry.clone(),
         toolchain_fp,
+        compiler_fp: Some(compiler_fp.clone()),
         work_dir: scratch.to_path_buf(),
     };
     // Build+link through the driver under the cache mode; the run leg (for
@@ -444,16 +615,29 @@ fn exec_via_driver(
         Ok(o) => o,
         Err(
             e @ (ac_artifact_probe::driver::DriverError::Frontend(_)
-            | ac_artifact_probe::driver::DriverError::Verify(_)),
+            | ac_artifact_probe::driver::DriverError::Verify(_)
+            | ac_artifact_probe::driver::DriverError::Backend(_)),
         ) => {
-            // Language failure: replay through the TYPED frontend — the
+            // Language failure: replay through the TYPED pipeline — the
             // driver's rendered string is display-only; failures are never
-            // cached anywhere, so the replay IS the observation.
-            return typed_replay(profile, &input_bytes, &lld, &lld_bytes, &sdk, &e);
+            // cached anywhere, so the replay IS the observation. Backend
+            // replays cover entry/lowering diagnostics (F09) — tool/IO/
+            // linker failures never reach this arm.
+            return typed_replay(
+                profile,
+                &input_bytes,
+                req.entry.as_str(),
+                &lld,
+                &lld_bytes,
+                &sdk,
+                &e,
+            );
         }
         Err(other) => return Err(infra("driver.failed", format!("{:?}", other))),
     };
     let out = observed.outcome;
+    check_build(&started, req)?;
+    check_total(&started, req)?;
 
     let mut trace: Vec<SpanOut> = observed
         .stage_ms
@@ -463,6 +647,10 @@ fn exec_via_driver(
             wall_ms: *ms,
         })
         .collect();
+
+    // Counters for worker-owned legs (hir-golden, run) — merged by key
+    // over the driver's counters, never duplicating an axis.
+    let mut counters_extra: Vec<(String, u32)> = Vec::new();
 
     // Canonical HIR on request (parent declared a hir.atom golden): the
     // driver's binary bundle is NOT the canonical atom text — run the real
@@ -476,7 +664,7 @@ fn exec_via_driver(
             "main",
             &[],
             profile,
-            &mut TracingObserver::default(),
+            &mut TracingObserver::new(),
         )
         .map_err(|ds| {
             infra(
@@ -491,6 +679,10 @@ fn exec_via_driver(
             stage: "hir-golden".into(),
             wall_ms: ms(t),
         });
+        // F10: the golden's frontend call is REAL work and must be counted
+        // as its own axis — never folded into (nor hidden from) the
+        // driver's hit counters.
+        counters_extra.push(("hir-golden".into(), 1));
         parts.atom_text.into_bytes()
     } else {
         Vec::new()
@@ -515,10 +707,9 @@ fn exec_via_driver(
 
     // Run leg (worker-owned): exact budget, caps, raw bytes.
     let mut run = None;
-    let mut counters_extra: Vec<(String, u32)> = Vec::new();
     if req.kind == "run" {
         let t = Instant::now();
-        let run_budget = Duration::from_millis(req.budget.run_ms.min(MAX_RUN_MS));
+        let run_budget = remaining_run_budget(req, started);
         let mut cmd = std::process::Command::new(&exe_path);
         let captured = link::run_deadlined_captured(
             &mut cmd,
@@ -528,27 +719,7 @@ fn exec_via_driver(
                 stderr_max: MAX_STDERR_BYTES,
             },
         )
-        .map_err(|e| match e {
-            link::SubprocError::Deadline | link::SubprocError::DeadlineCollect => infra(
-                "budget.run",
-                format!(
-                    "run exceeded its {}ms budget; the tree was terminated",
-                    run_budget.as_millis()
-                ),
-            ),
-            link::SubprocError::OutputCapExceeded {
-                stream,
-                observed: obs,
-                cap,
-            } => infra(
-                "output.cap",
-                format!(
-                    "{} exceeded its capture cap ({} > {} bytes); the tree was terminated",
-                    stream, obs, cap
-                ),
-            ),
-            other => infra("run.failed", format!("{:?}", other)),
-        })?;
+        .map_err(|e| map_run_err(e, run_budget))?;
         trace.push(SpanOut {
             stage: "run".into(),
             wall_ms: ms(t),
@@ -564,6 +735,7 @@ fn exec_via_driver(
         stage: "done".into(),
         wall_ms: ms(started),
     });
+    check_total(&started, req)?;
 
     let mut cache = cache_out(cache_mode, &out);
     // Worker-owned legs override the driver's counter (the driver never
@@ -584,53 +756,41 @@ fn exec_via_driver(
         trace,
         toolchain: driver_toolchain(&lld, &lld_bytes, &sdk),
         cache: Some(cache),
+        metric_gaps: metric_gaps(),
     })
 }
 
-/// Typed replay of a driver-reported language failure: the real frontend
-/// and verifier produce the stage/code/span observation the parent's error
-/// oracle matches against (never the driver's rendered string).
+/// Typed replay of a driver-reported language failure: the real frontend,
+/// verifier and (for Backend reports) entry-selection/lowering produce the
+/// stage/code/span observation the parent's error oracle matches against —
+/// never the driver's rendered string, never a string-shaped classifier.
 fn typed_replay(
     profile: SourceProfile,
     input_bytes: &[u8],
+    entry: &str,
     lld: &std::path::Path,
     lld_bytes: &[u8],
     sdk: &std::path::Path,
     driver_error: &ac_artifact_probe::driver::DriverError,
 ) -> Result<OkOut, WorkerError> {
-    let _ = driver_error;
+    let replay_backend = matches!(
+        driver_error,
+        ac_artifact_probe::driver::DriverError::Backend(_)
+    );
     let src_text = String::from_utf8(input_bytes.to_vec())
         .map_err(|_| infra("request.input", "source must be UTF-8 text"))?;
     let mut trace: Vec<SpanOut> = Vec::new();
-    let mut obs = TracingObserver::default();
-    match compile_parts_with_observer(&src_text, "main", &[], profile, &mut obs) {
-        Ok(parts) => {
-            let t = Instant::now();
-            match verify_of(profile, parts.bundle) {
-                Ok(_) => Err(infra(
-                    "driver.inconsistent",
-                    "driver rejected a program the typed pipeline accepts",
-                )),
-                Err(ds) => {
-                    trace.push(SpanOut {
-                        stage: "verify".into(),
-                        wall_ms: ms(t),
-                    });
-                    Ok(OkOut {
-                        diagnostics: diags_mapped(&ds, "verify"),
-                        hir_b64: None,
-                        artifacts: vec![],
-                        run: None,
-                        trace,
-                        toolchain: driver_toolchain(lld, lld_bytes, sdk),
-                        cache: None,
-                    })
-                }
-            }
+    let mut obs = TracingObserver::new();
+    let parts = match compile_parts_with_observer(&src_text, "main", &[], profile, &mut obs) {
+        Ok(p) => {
+            trace.extend(obs.spans);
+            p
         }
         Err(ds) => {
+            // F10: observer spans travel with the failure.
             let stage = obs.failed_stage.clone().unwrap_or_else(|| "parse".into());
-            Ok(OkOut {
+            trace.extend(obs.spans);
+            return Ok(OkOut {
                 diagnostics: diags_mapped(&ds, &stage),
                 hir_b64: None,
                 artifacts: vec![],
@@ -638,9 +798,88 @@ fn typed_replay(
                 trace,
                 toolchain: driver_toolchain(lld, lld_bytes, sdk),
                 cache: None,
-            })
+                metric_gaps: metric_gaps(),
+            });
+        }
+    };
+    let t = Instant::now();
+    let checked = match verify_of(profile, parts.bundle) {
+        Ok(c) => {
+            trace.push(SpanOut {
+                stage: "verify".into(),
+                wall_ms: ms(t),
+            });
+            c
+        }
+        Err(ds) => {
+            trace.push(SpanOut {
+                stage: "verify".into(),
+                wall_ms: ms(t),
+            });
+            return Ok(OkOut {
+                diagnostics: diags_mapped(&ds, "verify"),
+                hir_b64: None,
+                artifacts: vec![],
+                run: None,
+                trace,
+                toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                cache: None,
+                metric_gaps: metric_gaps(),
+            });
+        }
+    };
+    if replay_backend {
+        // The driver's Backend failure maps to the real entry/lowering
+        // boundary: replay entry selection (and lowering when the entry
+        // resolves) for the typed diagnostic; a clean replay contradicts
+        // the driver report and is an infrastructure inconsistency.
+        let t = Instant::now();
+        let sel = match select_entry(&checked, entry) {
+            Err(ds) => {
+                trace.push(SpanOut {
+                    stage: "backend".into(),
+                    wall_ms: ms(t),
+                });
+                return Ok(OkOut {
+                    diagnostics: diags_mapped(&ds, "backend"),
+                    hir_b64: None,
+                    artifacts: vec![],
+                    run: None,
+                    trace,
+                    toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                    cache: None,
+                    metric_gaps: metric_gaps(),
+                });
+            }
+            Ok(sel) => sel,
+        };
+        match native::lower_object(&checked, &sel, &native::RuntimeInjection::default()) {
+            Err(ds) => {
+                trace.push(SpanOut {
+                    stage: "backend".into(),
+                    wall_ms: ms(t),
+                });
+                return Ok(OkOut {
+                    diagnostics: diags_mapped(&ds, "backend"),
+                    hir_b64: None,
+                    artifacts: vec![],
+                    run: None,
+                    trace,
+                    toolchain: driver_toolchain(lld, lld_bytes, sdk),
+                    cache: None,
+                    metric_gaps: metric_gaps(),
+                });
+            }
+            Ok(_) => {}
         }
     }
+    Err(infra(
+        "driver.inconsistent",
+        format!(
+            "driver rejected a program the typed pipeline accepts: {}",
+            driver_error
+        ),
+    ))
 }
 
 fn cache_out(mode: &str, out: &ac_artifact_probe::driver::VerticalOutcome) -> CacheOut {
@@ -678,6 +917,7 @@ fn driver_toolchain(
         sdk_um: sdk.display().to_string(),
         ac_core_version: auto_ac_prototype::VERSION.to_string(),
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
+        worker_exe_sha256: worker_exe_sha256(),
     }
 }
 
@@ -694,21 +934,27 @@ fn verify_of(
 /// Stage-boundary recorder: wall time per completed stage plus attribution
 /// of the boundary a failure came from (the ONLY source of parse/resolve/
 /// typecheck attribution — ac-core reports all three as Stage::Text).
-#[derive(Default)]
 struct TracingObserver {
     spans: Vec<SpanOut>,
-    last: Option<Instant>,
+    last: Instant,
     failed_stage: Option<String>,
+}
+
+impl TracingObserver {
+    fn new() -> Self {
+        TracingObserver {
+            spans: Vec::new(),
+            last: Instant::now(),
+            failed_stage: None,
+        }
+    }
 }
 
 impl SourceObserver for TracingObserver {
     fn stage(&mut self, stage: SourceStage, diags: &[Diagnostic]) {
         let now = Instant::now();
-        let wall = self
-            .last
-            .map(|l| l.elapsed().as_millis() as u64)
-            .unwrap_or(0);
-        self.last = Some(now);
+        let wall = self.last.elapsed().as_millis() as u64;
+        self.last = now;
         if !diags.is_empty() {
             self.failed_stage = Some(stage.as_str().to_string());
         }
@@ -734,13 +980,31 @@ fn diag_out(d: &Diagnostic, stage: String) -> DiagOut {
 }
 
 fn toolchain_identity() -> ToolchainOut {
+    // Display fields are filled opportunistically (discovery is only run
+    // on paths that link); the IDENTITY axis (worker exe hash) is always
+    // present so every native row carries the same verifiable set.
     ToolchainOut {
         lld_path: String::new(),
         lld_sha256: String::new(),
         sdk_um: String::new(),
         ac_core_version: auto_ac_prototype::VERSION.to_string(),
         worker_version: env!("CARGO_PKG_VERSION").to_string(),
+        worker_exe_sha256: worker_exe_sha256(),
     }
+}
+
+/// Content hash of THIS executable (cached): the compiler/worker recipe
+/// identity (R1 F07/F08 — also the cache compiler_fp).
+fn worker_exe_sha256() -> String {
+    static CACHE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            std::env::current_exe()
+                .and_then(|p| std::fs::read(p))
+                .map(|b| sha256_hex(&b))
+                .unwrap_or_default()
+        })
+        .clone()
 }
 
 fn artifact(kind: &str, logical: &str, path: &PathBuf) -> Result<ArtifactOut, WorkerError> {

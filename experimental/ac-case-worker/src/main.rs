@@ -6,13 +6,24 @@
 
 use ac_case_worker::exec;
 use ac_case_worker::protocol::{
-    Envelope, WorkerResponse, SESSION_MAX_LIFETIME_MS, SESSION_MAX_REQUESTS, WORKER_SCHEMA,
+    Envelope, WorkerResponse, SESSION_MAX_LIFETIME_MS, SESSION_MAX_LINE_BYTES,
+    SESSION_MAX_REQUESTS, WORKER_SCHEMA,
 };
 use std::io::{BufRead, Write};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 fn main() {
     let started = Instant::now();
+    // R1 (F03): the session lifetime is a HARD wall clock enforced even
+    // while idle — a watchdog exits the process when the budget is spent,
+    // so neither an idle session nor a wedged request outlives it. Normal
+    // `end`/EOF exits race harmlessly against it.
+    let lifetime = Duration::from_millis(SESSION_MAX_LIFETIME_MS);
+    std::thread::spawn(move || {
+        std::thread::sleep(lifetime);
+        eprintln!("ac-case-worker: session lifetime cap exceeded");
+        std::process::exit(2);
+    });
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
@@ -20,6 +31,30 @@ fn main() {
     let mut began = false;
 
     for line in stdin.lock().lines() {
+        // R1 (F03): a request line beyond the frozen bound is rejected,
+        // never buffered without limit.
+        if let Ok(l) = &line {
+            if l.len() > SESSION_MAX_LINE_BYTES {
+                let _ = writeln!(
+                    out,
+                    "{}",
+                    serde_json::to_string(&WorkerResponse::err(
+                        ("", ""),
+                        ac_case_worker::WorkerError {
+                            code: "session.line-cap".into(),
+                            message: format!(
+                                "request line {} bytes exceeds the {} byte bound",
+                                l.len(),
+                                SESSION_MAX_LINE_BYTES
+                            ),
+                        }
+                    ))
+                    .unwrap()
+                );
+                let _ = out.flush();
+                std::process::exit(2);
+            }
+        }
         let line = match line {
             Ok(l) => l,
             Err(e) => {

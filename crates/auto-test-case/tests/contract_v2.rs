@@ -482,6 +482,7 @@ fn contract_v2_report_native_record_renders() {
             counters: vec![("parse".into(), 0), ("link".into(), 1)],
             stage_spans: vec![("link".into(), 120)],
             toolchain: vec![("lld".into(), "abc".into())],
+            gaps: vec!["cpu_ms".into(), "peak_rss".into()],
         }),
     };
     o.status = Status::Pass;
@@ -492,4 +493,102 @@ fn contract_v2_report_native_record_renders() {
     assert!(json.contains("\"native\""));
     assert!(r.to_console().contains("exit=3"), "console native line");
     assert_eq!(r.exit_code(), 0, "native record never changes the gate");
+}
+
+// ---- PLAN-788 R1 repairs: JSON legality + cache-declaration gate ------
+
+#[test]
+fn contract_v2_report_json_round_trips_through_standard_parser() {
+    use auto_test_case::report::{CheckOutcome, IdentityHashes, NativeRecord, RunReport, Status};
+    let mk = |native: Option<NativeRecord>, detail: Option<String>| {
+        let mut r = RunReport::new("s", "h", &["ac".into()]);
+        r.schema = auto_test_case::report::REPORT_SCHEMA_V2.to_string();
+        let mut o = CheckOutcome {
+            suite_id: "s".into(),
+            case_id: "c".into(),
+            check_id: "ac".into(),
+            execution_key: "s:h:c:ac".into(),
+            adapter: "ac".into(),
+            action: "run".into(),
+            tier: None,
+            status: Status::Pass,
+            mismatches: vec![],
+            detail,
+            identity: IdentityHashes::default(),
+            artifacts: vec![],
+            duration_ms: 7,
+            native,
+        };
+        o.status = Status::Pass;
+        r.results = vec![o];
+        r
+    };
+    // Full native record: standard parser must round-trip (F06: the old
+    // emitter produced a missing comma after duration_ms and a trailing
+    // comma after native — both illegal).
+    let full = mk(
+        Some(NativeRecord {
+            exit_code: Some(3),
+            cache_mode: Some("reuse".into()),
+            cache_hits: vec![("hir".into(), "hit(restored)".into())],
+            counters: vec![("parse".into(), 0), ("run".into(), 1)],
+            stage_spans: vec![("frontend".into(), 12), ("run".into(), 34)],
+            toolchain: vec![("lld-sha256".into(), "dead\\bee\"f".into())],
+            gaps: vec!["cpu_ms".into()],
+        }),
+        None,
+    );
+    let v: serde_json::Value = serde_json::from_str(&full.to_json()).expect("legal JSON");
+    assert_eq!(v["results"][0]["native"]["exit_code"], 3);
+    assert_eq!(v["results"][0]["native"]["stage_spans"][1][1], 34);
+    assert_eq!(v["results"][0]["native"]["gaps"][0], "cpu_ms");
+    // No-native and multi-line detail rows stay legal too.
+    let none = mk(None, Some("multi\nline — detail \u{2014} ok".into()));
+    let v: serde_json::Value = serde_json::from_str(&none.to_json()).expect("legal JSON");
+    assert!(v["results"][0].get("native").is_none());
+    // v1 reports are unchanged and legal.
+    let mut v1 = mk(None, None);
+    v1.schema = auto_test_case::report::REPORT_SCHEMA.to_string();
+    let json = v1.to_json();
+    let v: serde_json::Value = serde_json::from_str(&json).expect("v1 legal");
+    assert_eq!(v["schema"], "autolang.test-report/1");
+}
+
+#[test]
+fn contract_v2_cache_declaration_requires_participation() {
+    // fresh on ac/check: the frontend-observing action never touches the
+    // store — declaring a behavioral mode is an admission error.
+    let err = decode(&v2_case(&ac_check(
+        "check",
+        "expect: { completion: \"success\" }",
+        "options: { cache: \"fresh\" },",
+    )))
+    .unwrap_err();
+    assert!(
+        err.path.contains("options.cache") && err.message.contains("participation"),
+        "{}",
+        err
+    );
+    // read-only on a raw-HIR run: the driver path needs auto-source input.
+    let hir = concat!(
+        "case { schema: \"autolang.case/2\", id: \"ok.hir\", ",
+        "source: { text: \"hir {}\", syntax: \"hir-atom\", path: \"main.atom\" }, ",
+        "entry: { mode: \"program\" }, ",
+        "checks: [ { id: \"ac\", adapter: \"ac\", action: \"run\", options: { cache: \"read-only\" }, expect: { completion: \"success\", exit: 0 } } ] }"
+    );
+    let err = decode(hir).unwrap_err();
+    assert!(err.message.contains("participation"), "{}", err);
+    // The default (undeclared) and explicit reuse stay legal everywhere.
+    decode(&v2_case(&ac_check(
+        "check",
+        "expect: { completion: \"success\" }",
+        "",
+    )))
+    .unwrap();
+    decode(&v2_case(&ac_check(
+        "check",
+        "expect: { completion: \"success\" }",
+        "options: { cache: \"reuse\" },",
+    )))
+    .unwrap();
 }

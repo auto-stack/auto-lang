@@ -242,8 +242,19 @@ pub fn run_suite_selected(
     // canonicalization resolve the real (verbatim) form.
     let out_existed = out_dir.exists();
     std::fs::create_dir_all(out_dir).map_err(|e| format!("scratch root: {}", e))?;
-    let audit = check_no_reparse_ancestors(out_dir)
-        .and_then(|()| validate_output_domain(out_dir, &protected_roots(&loaded)));
+    let protected = protected_roots(&loaded);
+    let mut audit = check_no_reparse_ancestors(out_dir)
+        .and_then(|()| validate_output_domain(out_dir, &protected));
+    // R1 (F04): a pinned store root (AC_CASE_STORE) is an output domain
+    // too — it must be reparse-clean and disjoint from every protected
+    // root, exactly like the run scratch.
+    if let Ok(store) = std::env::var("AC_CASE_STORE") {
+        let store_path = std::path::PathBuf::from(&store);
+        std::fs::create_dir_all(&store_path).map_err(|e| format!("store root: {}", e))?;
+        audit = audit
+            .and_then(|()| check_no_reparse_ancestors(&store_path))
+            .and_then(|()| validate_output_domain(&store_path, &protected));
+    }
     if let Err(e) = audit {
         // Best effort: remove the directory only if this call created it and
         // it is still empty (a pre-existing directory is the caller's).
@@ -271,6 +282,11 @@ pub fn run_suite_selected(
         .map(|a| a.as_str().to_string())
         .collect();
     let mut report = RunReport::new(&loaded.suite.id, &loaded.suite_sha256, &required);
+    // R1 (F06): a v2 suite produces a v2 report — the schema follows the
+    // suite version every case of the run decoded under.
+    if loaded.suite.schema == auto_test_case::suite::SUITE_SCHEMA_V2 {
+        report.schema = auto_test_case::report::REPORT_SCHEMA_V2.to_string();
+    }
     report.load_errors = loaded.errors.iter().map(|e| e.to_string()).collect();
 
     // Toolchain/config identity bound into the report (F-06): core crate,
@@ -524,13 +540,17 @@ fn consume_products(
         );
         return o;
     }
+    // R1 (F02): ac/run consumers DO observe the consumed product's run —
+    // stdout/stderr are supported there; the avm legacy `result` channel
+    // remains unimplemented for every consumer.
+    let ac_run_consumer =
+        check.adapter == Adapter::Ac && check.action == auto_test_case::contract::Action::Run;
     if check.expect.result.is_some()
-        || check.expect.stdout.is_some()
-        || check.expect.stderr.is_some()
+        || (!ac_run_consumer && (check.expect.stdout.is_some() || check.expect.stderr.is_some()))
     {
         let mut o = base_outcome(loaded, spec, check, Status::Error, &identity_base(""));
         o.detail = Some(
-            "result/stdout/stderr observations on a product consumer are unimplemented in this pilot — declare artifact expectations over the consumed manifest".to_string(),
+            "result observations (and streams outside ac/run) on a product consumer are unimplemented in this pilot — declare artifact expectations over the consumed manifest".to_string(),
         );
         return o;
     }
@@ -622,27 +642,44 @@ fn consume_products(
                 actual: "absent from consumed manifest".into(),
                 first_diff: None,
             }),
-            Some(exe_bytes) => match ac::consume_and_run(
-                exe_bytes,
-                check,
-                oracle.exit,
-                oracle.stdout.as_ref(),
-                oracle.stderr.as_ref(),
-            ) {
-                Ok(v) => {
-                    mismatches.extend(v.mismatches);
-                    o.native = v.native;
+            Some(exe_bytes) => {
+                let exe_path = made
+                    .iter()
+                    .find(|a| a.logical_path == "app.exe")
+                    .map(|a| std::path::PathBuf::from(&a.stored_path))
+                    .expect("app.exe present in made (manifest verified above)");
+                let _ = exe_bytes; // hash-verified above; the worker re-reads the file
+                match ac::consume_and_run(
+                    &exe_path,
+                    check,
+                    oracle.exit,
+                    oracle.stdout.as_ref(),
+                    oracle.stderr.as_ref(),
+                    oracle.perf.and_then(|pf| pf.total_ms_max),
+                ) {
+                    Ok(v) => {
+                        // R1 (F02): the consumer verdict's own status
+                        // travels — an execution ERROR is never swallowed
+                        // into a PASS.
+                        if v.status == Status::Error {
+                            o.status = Status::Error;
+                            o.detail = v.detail;
+                            return o;
+                        }
+                        mismatches.extend(v.mismatches);
+                        o.native = v.native;
+                    }
+                    Err(e) => {
+                        o.status = Status::Error;
+                        o.detail = Some(format!(
+                            "{}; ac consumer run: {}",
+                            o.detail.unwrap_or_default(),
+                            e
+                        ));
+                        return o;
+                    }
                 }
-                Err(e) => {
-                    o.status = Status::Error;
-                    o.detail = Some(format!(
-                        "{}; ac consumer run: {}",
-                        o.detail.unwrap_or_default(),
-                        e
-                    ));
-                    return o;
-                }
-            },
+            }
         }
     }
     if mismatches.is_empty() {
