@@ -104,3 +104,13 @@ code_editor 滚动族（9911..9913，非目标）直引保持原样。
 | v06_no_pullback_after_user_scroll | PASS | anchor=2706 user=1806 stable=1806 |
 | v06_managed_unsupported | PASS | error:unsupported |
 | no_page_errors | PASS | zero |
+
+## R1 修复轮补录（2026-10-16，绑定 d027e5f61）
+
+| 项 | 命令/动作 | 结果 |
+|---|---|---|
+| F-794-R1-01 | `modularity-audit.py --refresh-baseline`（干净提交 7a566c89b）→ strict → 入库 d027e5f61 → strict 复跑 | declared_edges=43；strict **pass 0 violations**（2 既有 grandfather 保持），基线入库前后两跑均绿 |
+| F-794-R1-02 | vm_probe.py expect_reply 重写 + 永久负控 + 重入队重放；`AUTO_BIN=<worktree>/target/debug/auto.exe python tests/vm_probe.py` | **ALL 60 P781 VM CHECKS PASSED**（×2 跑）；负控 `oracle_failed_press_stale_label_rejected` 确定性拒绝（stub press=False stale=applied）；`requeue_pending_to_terminal_replay` samples=['applied']（重入队确定走 pending 分支，终态经新鲜查询到达；样本序列如实入 detail） |
+| F-794-R1-03 | 去 unused_mut 后 `cargo t scroll_host_provider` | **9/9 pass，零 plan794 文件警告**（grep 计数=0） |
+| wt-guard | 356 junction 逐链接 `cmd /c rmdir` → 清 p656/p781 gen、rust-workspace、dist → 杀 vite node/esbuild/PID19128 遗留进程 → 重跑 guard | **wt-guard: clean, exit0** |
+| 复审原红复现对照 | 复审 R1 原跑 56/57（v03_old_key_not_found_on_ch2 粘 pending） | 修复后同 case 绿（60/60 内） |
