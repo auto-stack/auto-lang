@@ -174,13 +174,13 @@ work仅相关反例/模块及必要check；最终review后merge冻结提交执�
 
 | 状态 / ID | owner_stage | 依赖 | 新建/修改路径及结果 | 验证 / AC |
 |---|---|---|---|---|
-| [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/797/contract-decision.md，冻结候选原型/语义ref快照/资源/工具/perf；最小layout缓存与三腿探针 | 首个独立C工具/obj与双向原生可行性，缺工具止住相关任务，不换假oracle；AC-01–05。[✅ 已完成] cargo test 13/13 绿（三腿真PE exit 0+负例1；MSVC cl 19.44.35222 冻结；783 store ABI-L0 首例持久化重开命中；semref 快照 blake3 15f81fd0..；commit plan-797-dev T-01） |
+| [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/797/contract-decision.md，冻结候选原型/语义ref快照/资源/工具/perf；最小layout缓存与三腿探针 | [✅ 已完成] 历史 13/13 与原生可行性记录保留（T-01 `b00100cbd`）。R1 锁子项 **F-797-R1-03 已关闭**（commit `635053f74`）：`experimental/auto-abi-probe/Cargo.lock` 强制入提交（对抗 `.gitignore:8`），blob `598833812a`==worktree `git hash-object`，SHA256 `C7EC8DD5…`，size 27959；`cargo metadata/check/test --locked --offline` 全绿。锁一致性核对后允许引用未变依赖上的历史定向证据；后续依赖/锁变化须重跑受影响面。 |
 | [x] T-02 | work | T-01 | 新contract/src/{descriptor,layout,validate}.rs、独立审定C header/oracle | abi_contract_、abi_layout_、abi_admission_；AC-01。[✅ 已完成] descriptor/1+fingerprint、12 维 admission 拒绝矩阵（native 0 调）、layout 引擎==C 编译器 sizeof/offsetof（padding/序/嵌套+错 offset 反控红）、递归/超深/超预算受控拒绝；workspace 28/28 绿（commit plan-797-dev T-02） |
 | [x] T-03 | work | T-02 | 新probe/src/{emit,build,link}.rs与C参考源/独立producer/consumer recipes，零改ac-core | abi_calls_三腿/异质控制；AC-02。[✅ 已完成] 三腿全套（含 C→AutoABI→C 嵌套链、fallible out-sentinel、record 冻结 offset、可观察计数器）exit 0；swap/错 offset/漏调用负例各 exit 恰 1；produce/consume 配方 admission 先行；abi_calls_ 7/7、workspace 35/35 绿（commit plan-797-dev T-03） |
 | [x] T-04 | work | T-03 | 新provider资源/错误/callback fixtures与真实账本 | abi_resource_；AC-03。[✅ 已完成] C provider 真 arena/代际账本/原方 destroy/失败注入回滚/buffer 规则/同步 callback；AutoABI 与 C 双消费者全协议 exit 0 + 回滚控制红；abi_resource_ 3/3、workspace 38/38 绿（commit plan-797-dev T-04） |
 | [x] T-05 | work | T-04 | store adapter/阶段trace/六场景/512churn，首批.case.ad与oracle从T-01维护 | abi_cache_、abi_turnaround_；AC-04、05。[✅ 已完成] ABI-O1 对象层（命中禁调 producer、真实输入失效矩阵、tamper=受控 CAS 拒绝、缺块=miss 重算）、512 修订 churn（rooted+leased 存活、块层收敛 live 集、用户哨兵不变、lease 释放翻转）；六场景×30 全绿，硬门 body-edit P95=539.5ms、descriptor-reject P95=0.1ms（<1000ms），210 样本 JSONL 全保留；abi_cache_ 6/6+abi_turnaround_ 1/1、workspace 45/45 绿（commit plan-797-dev T-05） |
 | [ ] T-06 | work | T-05、D-796、D-788 | 绑定796合入contract与受限probe adapter，只追加ABI recipe/worker；退出临时模型，正式AutoDown全执行/性能重测 | abi_binding_、原v1/v2兼容；AC-06 |
-| [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan797/、attachments/797/spec-delta.md与freeze proposal，来源/并行边界审计 | acceptance V-01–11，支持表与SD；execution_done=7/9 |
+| [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan797/、attachments/797/spec-delta.md与freeze proposal，来源/并行边界审计 | **部分交付（F-797-R1-02 可独立准备面）**：`scripts/verify-autoabi-797.ps1`（acceptance/closeout）、`docs/reports/plan797/{freeze-proposal,support-matrix,r1-repair-baseline}.md`、`attachments/797/{spec-delta,source-parallel-audit}.md` 已入 `635053f74`；verify acceptance 全绿、closeout 清单诚实标 V-09 partial / V-10 pending。**未关闭**：V-01–11 最终收口、SD/支持矩阵/freeze 终稿 hash、正式 AutoDown 与 AC-05 复测（等 T-06）。execution_done 仍等 7/9 |
 | [ ] T-08 | review | T-07 | 同树独立review，绑定native工具/接口版本，核互调/资源/兼容承诺 | AC-07；pass→reviewed=8/9，merge pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交门禁；仅在通过后沉淀有限profile冻结状态、Spec/ledger、归档合入、批量到期判定、guard清理 | AC-08；实际完成9/9 |
 
@@ -196,9 +196,17 @@ T-01–05可与796/787/788并行，不能提前实现依赖其未合入API的T-0
 
 **open in-contract findings**：无未修复 finding。**required coverage gaps**：T-06 绑定 796 真实 semantic contract+正式 AutoDown runner 注册与全重测；T-07 freeze proposal/verify 脚本/报告（依赖 T-06）。**blockers**：D-796=796 独立 review/门禁/合入/Spec 齐全（现 executing 5/9 未合）；D-788=788 合入（现 executing，T-05 已交未审）。**unblock**：两门满足后回 work 续 T-06（同树 `defcc8eaa` 起），重放 V-01..09+正式 AutoDown 执行。**遗留边界声明**：emit 源为受限声明 IR 非 Auto parser；v0.1-candidate 冻结态待 review/merge；774 ABI-A–E 未动。next_responsible_role: work（门后恢复）/当前由用户调度依赖计划。
 
+2026-10-16 stage:review；review_scope:final（就绪核查 R1，未进入完整代码验收）；reviewer: 当前独立 Codex 复审聊天，未实施本分支；PLAN-797 r1；outcome:**needs_fix**；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`；reviewed_commit `defcc8eaa1fdcfa619feda99721d0b93c25035fb`；base `5dcf4e3c2d5266cfa4ebf1444d6d7e154305d3c4`，树 clean（忽略的本机锁另列）。[完整基线、AC矩阵、Spec输入与 findings](attachments/797/review-r1/review.md)。F-797-R1-01/P1：T-06 真实 semantic contract/正式 AutoDown/性能复测未完成（AC-05/06）；F-797-R1-02/P2：T-07 验收脚本/报告/freeze/Spec delta 未提交（AC-06/07）；F-797-R1-03/P2：独立 Cargo.lock 被忽略且无提交 blob，重开 T-01 锁交付子项。D-796/D-788 未满足；本轮未运行测试、未独立认证前五项历史通过数。status:executing；current_step:4/9（保留 T-02–05 实施标记及历史证据，依赖一致性与完整验收 pending）；pending_closeout_gates: 最终 review 后由 merge 执行 ABI 完整套件/真实 C 三腿与实际触面兼容/回归，规范沉淀/归档/guard 清理均未做；next:work，原树补齐后再审，不合入。
+
+2026-10-16 stage:work（R1 needs_fix 修复轮）；PLAN-797 r1；outcome:**blocked**（F-797-R1-01 仍等 D-796/D-788；可独立项已补齐）；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`；base `5dcf4e3c2`；code HEAD `635053f74`（在 `defcc8eaa` 上追加 R1 修复提交，树 clean）；deps：ac-core/ac-artifact-probe@worktree（=master `5dcf4e3c2` 钉）、MSVC cl 19.44.35222、rust-lld(sysroot)、SDK 10.0.26100.0、semref 快照仍 `autoabi-semref-snapshot/0`（blake3 `15f81fd0…`，退役归 T-06）；Cargo.lock 已入提交（blob `598833812a`，SHA256 `C7EC8DD5…`）。task_ids：T-01 [x]（锁子项关闭）、T-02–05 [x]、T-06 [ ]、T-07 [ ]（可独立材料已交）、T-08–09 [ ]；current_step 5/9。
+
+**finding 闭环**：F-797-R1-03 **关闭**（锁强制入库 + `--locked --offline` metadata/check/test 全绿；`git ls-files`/blob==hash-object 复核）。F-797-R1-02 **部分关闭**（verify 脚本/freeze-proposal/support-matrix/SD-01–05 草稿/source-parallel-audit/`docs/reports/plan797/` 已提交；V-01–11 终收口与 hash 冻结仍等 T-06）。F-797-R1-01 **仍打开**（真实 semantic contract/正式 AutoDown/性能复测 = T-06，外部依赖门）。健康补丁：`emit.rs` 去 `unused_mut`。验证：`scripts/verify-autoabi-797.ps1 -Scope acceptance|closeout` 均 exit 0（probe `cargo test --locked --offline` 绿；closeout 清单诚实不伪称 AC-05/06）。按 2026-10-14 时序未跑整档 t/tv/taa（merge-owned pending）。**work-owned AC**：AC-01–04 历史证据保留且锁一致后可复用；AC-05 部分（正式 adapter 复测归 T-06）；AC-06 未完成。next:work（D-796/D-788 满足后 T-06/T-07 收口）/当前由用户调度依赖计划；完整 final review 仍不得提前申请。
+
 预检/来源见[planning-preflight.md](attachments/797/planning-preflight.md)。候选v0.1不是现有产品支持声明。
 
 ## 10. 待澄清事项
+
+2026-10-16 独立就绪核查 R1：**needs_fix**。R1 报告仍为 finding 依据。R1 修复轮后开放项收敛为：**F-797-R1-01（P1，T-06）** —— 真实 semantic contract / 正式 AutoDown / 性能复测，等 D-796/D-788；**F-797-R1-02（P2 部分）** —— T-07 可独立材料已交（commit `635053f74`），V-01–11 终收口与 freeze/SD hash 冻结仍等 T-06。**F-797-R1-03 已关闭**（Cargo.lock 入提交）。历史测试/性能总数在依赖一致性与完整验收前不得充作最终验收。D-796/D-788 满足后续 T-06/T-07，再申请完整 final review。
 
 **阻塞（work 阶段交接，2026-10-16）**：T-06/T-07 等待 D-796（PLAN-796 合入，现 executing 5/9）与 D-788（PLAN-788 合入，现 executing 未终审）。两者均为外部依赖门，非本计划实现缺口；解锁后 T-06 需在同一 worktree（`defcc8eaa` 基）切换真实 semantic contract、追加正式 probe recipe/worker、退出临时 semref 快照（收据）并全重验，T-07 随后产出 freeze proposal。
 
