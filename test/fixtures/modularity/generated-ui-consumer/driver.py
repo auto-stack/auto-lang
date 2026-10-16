@@ -85,6 +85,14 @@ def norm_lower(p) -> str:
     return str(p).replace("\\", "/").lower()
 
 
+def path_within(child, base) -> bool:
+    """规范化路径的**组件包含**（R2：字符串子串会被 consumer-b-elsewhere
+    等相似前缀欺骗；驱动器/分隔符/大小写归一后逐组件比较）。"""
+    c = [x for x in norm_lower(child).split("/") if x not in ("", ".")]
+    b = [x for x in norm_lower(base).split("/") if x not in ("", ".")]
+    return len(c) >= len(b) and c[: len(b)] == b
+
+
 def run_verify_entry(bundle: Path) -> subprocess.CompletedProcess:
     """R1-F01：随包受管校验正式入口 verify.py（消费清单 sha256，独立可执行）。"""
     return subprocess.run(
@@ -248,19 +256,18 @@ def main() -> int:
         bundle_b, consumer_env(), timeout=600,
     )
     meta = json.loads(r.stdout)
-    # R1-F03：真实路径包含关系——所有 path 依赖（source 为空）的
-    # manifest_path 必须在 B 内（不再有盘符前缀过滤/包名特例）。
+    # R1-F03/R2：真实路径包含（组件级）——所有 path 依赖（source 为空）
+    # 的 manifest_path 必须在 B 内（无盘符前缀过滤/包名特例/子串误判）。
     outside = [
         p["name"]
         for p in meta["packages"]
         if p.get("source") is None
         and p["name"] != app_pkg
-        and norm_lower(bundle_b) not in norm_lower(p["manifest_path"])
+        and not path_within(p["manifest_path"], bundle_b)
     ]
     iced_w = [p for p in meta["packages"] if p["name"] == "iced_widget"]
     single_source = (
-        len(iced_w) == 1
-        and norm_lower(bundle_b) in norm_lower(iced_w[0]["manifest_path"])
+        len(iced_w) == 1 and path_within(iced_w[0]["manifest_path"], bundle_b)
     )
     record(
         "V02-metadata-identity",
@@ -422,6 +429,70 @@ def main() -> int:
         "V03f-sidecar-external-path-rejected",
         r.returncode != 0 and not emitted.is_file(),
         f"exit={r.returncode}，未产出应用清单（外部 path 不入交付物）",
+    )
+
+    # (g) R2-F02：Windows 根相对 path（/autostack/...——is_absolute 假但
+    #     解析落当前盘根指向主检出）→ 同样显式拒绝。
+    rootrel_proj = scratch / "rootrel-proj"
+    shutil.copytree(PROJ, rootrel_proj)
+    with (rootrel_proj / "pac.at").open("a") as f:
+        f.write(
+            '\nrust_sidecar {\n    deps: ["auto-val:path:/autostack/auto-lang/crates/auto-val"]\n}\n'
+        )
+    rootrel_bundle = scratch / "consumer-rootrel"
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(rootrel_bundle)],
+        rootrel_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    emitted = rootrel_bundle / "app" / "Cargo.toml"
+    diag = r.stdout + r.stderr
+    record(
+        "V03g-sidecar-root-relative-rejected",
+        r.returncode != 0 and not emitted.is_file() and "根相对" in diag,
+        f"exit={r.returncode}，诊断含根相对，未产出应用清单",
+    )
+
+    # (h) R2-F01：外来同级目录字节保留——固定名 staging 位与换出保留名
+    #     上的外来内容不被删除/覆盖（复放审查两反例）。
+    sib_base = scratch / "consumer-siblings"
+    copytree_no_target(bundle_a, sib_base)
+    legacy_stage = sib_base.parent / f".{sib_base.name}.delivery-staging"
+    legacy_stage.mkdir(exist_ok=True)
+    (legacy_stage / "mine.txt").write_text("unrelated sibling data")
+    trash_name = sib_base.parent / f".{sib_base.name}.delivery-old"
+    trash_name.mkdir(exist_ok=True)
+    (trash_name / "mine.txt").write_text("unrelated sibling data")
+    sib_proj = scratch / "siblings-run"
+    shutil.copytree(PROJ, sib_proj)
+    # 首交（delivery-root 新位置）：固定名 staging 位外来内容不动
+    fresh_dest = scratch / "consumer-siblings-fresh"
+    legacy_fresh = scratch / f".{fresh_dest.name}.delivery-staging"
+    legacy_fresh.mkdir(exist_ok=True)
+    (legacy_fresh / "mine.txt").write_text("unrelated sibling data")
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(fresh_dest)],
+        sib_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    record(
+        "V03h-foreign-staging-sibling-preserved",
+        r.returncode == 0
+        and (legacy_fresh / "mine.txt").read_text() == "unrelated sibling data",
+        f"exit={r.returncode}，固定名 staging 位外来字节保留",
+    )
+    # 再交付（既有交付 + 换出保留名被外来占据）：显式拒绝且双方字节不动
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(sib_base)],
+        sib_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    record(
+        "V03h-foreign-trash-sibling-refused",
+        r.returncode != 0
+        and (trash_name / "mine.txt").read_text() == "unrelated sibling data"
+        and (sib_base / "delivery-manifest.json").is_file(),
+        f"exit={r.returncode}，外来换出位字节保留，既有交付不动",
     )
 
     # 正常输入恢复复绿：A/B 未受负控影响

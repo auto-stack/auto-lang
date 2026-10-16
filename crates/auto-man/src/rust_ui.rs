@@ -4270,8 +4270,9 @@ fn delivery_lock_versions(lock_text: &str) -> Vec<(String, String)> {
 /// 不增 feature）；多版本槽成员 → 显式登记为"冻结锁控制"（清单无法对同
 /// 名多槽包重复声明直依赖）。
 fn delivery_pins(producer_root: &Path) -> AutoResult<(Vec<(String, String)>, Vec<String>)> {
-    // 根 Cargo.lock（git 跟踪；examples/rust-workspace/ 整目录被忽略，
-    // 任意检出不保证在位——图形栈版本两锁经比对一致）。
+    // 根 Cargo.lock（本地实际输入——Cargo.lock 整体被 .gitignore 忽略、
+    // examples/rust-workspace/ 同样不保证在位；消费其内容并以 SHA-256
+    // 记入 manifest 绑定身份，图形栈版本与应用锁经比对一致）。
     let lock_path = producer_root.join("Cargo.lock");
     let lock_text = fs::read_to_string(&lock_path).map_err(|e| {
         format!(
@@ -4565,6 +4566,53 @@ fn delivery_sibling_path(delivery_root: &Path, suffix: &str) -> PathBuf {
         .join(format!(".{name}.{suffix}"))
 }
 
+/// staging 目录内置属主标记（R2-F01：唯一名之外的归属证明——含此标记
+/// 的目录方可被生成器删除）。
+const DELIVERY_STAGING_MARKER: &str = ".delivery-staging.marker";
+
+/// R2-F01：本次运行独占的 staging 路径（pid+纳秒唯一名——绝不复用固定
+/// 名，也就绝不凭名字触碰同级外来目录）。若唯一名意外命中已存目录：
+/// 含属主标记（既往崩溃残留）才清理，否则判红拒绝。
+fn delivery_new_staging(delivery_root: &Path) -> AutoResult<PathBuf> {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let staging = delivery_sibling_path(
+        delivery_root,
+        &format!("delivery-staging-{}-{nanos}", std::process::id()),
+    );
+    if staging.exists() {
+        if staging.join(DELIVERY_STAGING_MARKER).is_file() {
+            fs::remove_dir_all(&staging).map_err(|e| {
+                format!(
+                    "delivery: 清理同号 staging 残留失败（{}）: {e}",
+                    staging.display()
+                )
+            })?;
+        } else {
+            return Err(format!(
+                "delivery: staging 唯一名意外命中外来目录（{}）——拒绝触碰",
+                staging.display()
+            )
+            .into());
+        }
+    }
+    Ok(staging)
+}
+
+/// R2-F01：staging 属主守卫——本次运行创建的 staging 在任何失败/提前返回
+/// 路径上都被清理（只可能删到本次独占名）；成功换装后路径已不存在，Drop
+/// 为 no-op。
+struct StagingGuard(PathBuf);
+impl Drop for StagingGuard {
+    fn drop(&mut self) {
+        if self.0.is_dir() {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 /// R1-F02：换装——staging 全部生成且校验成功后整体替换旧交付。
 /// 旧包先换出到残桩位，新包换入；换入失败回滚旧包后显式 Err（staging
 /// 保留供诊断）。残桩清理失败只告警（新包已生效、旧包完整残留非混合态）。
@@ -4575,6 +4623,20 @@ fn delivery_swap_in(staging: &Path, delivery_root: &Path) -> AutoResult<()> {
     }
     let trash = delivery_sibling_path(delivery_root, "delivery-old");
     if trash.exists() {
+        // R2-F01：固定保留名上的已存内容仅当可证明归属（含
+        // delivery-manifest.json 的既往换出残留，或空目录）才清理；外来
+        // 目录占据保留名则显式拒绝（不删不覆盖）。
+        let owned = trash.join("delivery-manifest.json").is_file()
+            || fs::read_dir(&trash)
+                .map(|mut it| it.next().is_none())
+                .unwrap_or(false);
+        if !owned {
+            return Err(format!(
+                "delivery: 换出保留名被外来目录占据（{}，无 delivery-manifest.json 且非空）——拒绝删除/覆盖；可手动移开后重试",
+                trash.display()
+            )
+            .into());
+        }
         fs::remove_dir_all(&trash)
             .map_err(|e| format!("delivery: 清理既往换出残桩失败（{}）: {e}", trash.display()))?;
     }
@@ -4619,9 +4681,16 @@ fn delivery_validate_sidecar(sidecar: &crate::sidecar::SidecarSpec) -> AutoResul
             continue;
         };
         let p = Path::new(path_value);
-        if p.is_absolute() {
+        // R2-F02：Windows 根相对（/x——is_absolute 为假但拼接丢弃基目录落
+        // 当前盘根）与盘符/verbatim 前缀同属"丢弃解析基"的外部形态。
+        let absolute_like = p.is_absolute()
+            || matches!(
+                p.components().next(),
+                Some(std::path::Component::RootDir) | Some(std::path::Component::Prefix(_))
+            );
+        if absolute_like {
             return Err(format!(
-                "delivery: rust_sidecar 依赖 {name} 使用外部绝对 path（{path_value}）——交付模式显式拒绝（包内仅受管闭包源；registry 依赖用 `name:version` 形态）"
+                "delivery: rust_sidecar 依赖 {name} 使用外部绝对/根相对 path（{path_value}）——交付模式显式拒绝（包内仅受管闭包源；registry 依赖用 `name:version` 形态）"
             )
             .into());
         }
@@ -4711,9 +4780,17 @@ fn delivery_boundary_selfcheck(delivery_root: &Path, producer_root: &Path) -> Au
                 continue;
             };
             let value = &t[idx + 8..idx + 8 + end];
-            if Path::new(value).is_absolute() {
+            // R2-F02：绝对形态含 Windows 根相对/盘符前缀（is_absolute 假但
+            // 解析丢弃 manifest 基目录——`path::join` 语义直接落盘根）。
+            let vp = Path::new(value);
+            let absolute_like = vp.is_absolute()
+                || matches!(
+                    vp.components().next(),
+                    Some(std::path::Component::RootDir) | Some(std::path::Component::Prefix(_))
+                );
+            if absolute_like {
                 return Err(format!(
-                    "delivery: {} 含绝对 path（{value}）——越界源，受管判红",
+                    "delivery: {} 含绝对/根相对 path（{value}）——越界源，受管判红",
                     m.display()
                 )
                 .into());
@@ -4984,16 +5061,23 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     delivery_guard_root(delivery_root)?;
     let final_root = delivery_root.to_path_buf();
 
-    // R1-F02：独立 staging 生成——成功前不动旧交付。
-    let staging = delivery_sibling_path(delivery_root, "delivery-staging");
-    if staging.exists() {
-        fs::remove_dir_all(&staging)
-            .map_err(|e| format!("delivery: 清理遗留 staging 失败: {e}"))?;
-    }
+    // R1-F02/R2-F01：独立 staging 生成——成功前不动旧交付。staging 用
+    // 本次运行独占的唯一名（pid+ns）+ 内置属主标记，绝不凭固定名认领同级
+    // 目录；失败路径由 StagingGuard 清理（只删本次确实拥有的路径）。
+    let staging = delivery_new_staging(delivery_root)?;
+    let _staging_guard = StagingGuard(staging.clone());
     if let Some(parent) = staging.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("delivery: 建 staging 父目录失败: {e}"))?;
     }
     fs::create_dir_all(&staging).map_err(|e| format!("delivery: 建 staging 失败: {e}"))?;
+    fs::write(
+        staging.join(DELIVERY_STAGING_MARKER),
+        format!(
+            "auto-man delivery staging (PLAN-792) pid={}\n",
+            std::process::id()
+        ),
+    )
+    .map_err(|e| format!("delivery: 写 staging 标记失败: {e}"))?;
     // 生成体一律落 staging（下方 delivery_root 遮蔽为 staging 路径）。
     let delivery_root = staging.as_path();
 
@@ -5132,6 +5216,14 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     // delivery-manifest.json（producer 身份/闭包规模/资源与 pin 清单）
     let (git_head, git_dirty) = delivery_git_identity(&producer_root);
     let ui_gen_fp = delivery_ui_gen_fingerprint(&producer_root)?;
+    use sha2::{Digest, Sha256};
+    let root_lock_sha256 = format!(
+        "{:x}",
+        Sha256::digest(
+            &fs::read(producer_root.join("Cargo.lock"))
+                .map_err(|e| format!("delivery: 读 producer 根锁失败: {e}"))?
+        )
+    );
     let main_blake3 = blake3::hash(compiled.main_rs.as_bytes())
         .to_hex()
         .to_string();
@@ -5144,6 +5236,8 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
             "git_dirty": git_dirty,
             "ui_gen_fingerprint": ui_gen_fp,
             "app_lock_source": "Cargo.lock (workspace root)",
+            // R2：根锁为本地输入（非 git 跟踪）——绑定实际内容身份。
+            "root_lock_sha256": root_lock_sha256,
         },
         "layout": {
             "workspace_root": "Cargo.toml",
@@ -5185,8 +5279,11 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     .map_err(|e| format!("delivery: 写 delivery-manifest.json 失败: {e}"))?;
 
     // R1-F02：staging 全部生成且校验通过——整体换装（失败路径已在上方
-    // 显式 Err 返回并保留旧交付）。
+    // 显式 Err 返回并保留旧交付）。staging 属主标记随使命完成移除（换装
+    // 后的交付根不带运行期标记）。
+    let _ = fs::remove_file(staging.join(DELIVERY_STAGING_MARKER));
     delivery_swap_in(&staging, &final_root)?;
+    // 成功换装：staging 路径已不存在，守卫 Drop 为 no-op。
 
     println!(
         "  {} 交付根 {}（受管 {} 文件 / {:.1} MiB；pin {} 项，多槽锁冻结 {} 项）",
@@ -7724,11 +7821,28 @@ pub fn create_item(name str) str {
         );
         assert!(manifest["pins"]["wgpu-hal"].is_string(), "pin 表在案");
 
-        // 再交付：标记在案 → staging 重生成+整体换装成功（旧包换出）
+        // 再交付：标记在案 → 唯一名 staging 重生成+整体换装成功（旧包换出）
         generate_rust_ui_delivery(&project, &delivery).expect("再交付失败");
         assert!(
             !delivery_sibling_path(&delivery, "delivery-old").exists(),
             "换出残桩已清理"
+        );
+        let staging_leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .contains(".delivery-staging-")
+            })
+            .collect();
+        assert!(
+            staging_leftovers.is_empty(),
+            "成功/失败路径均不残留 staging"
+        );
+        assert!(
+            !delivery.join(DELIVERY_STAGING_MARKER).exists(),
+            "staging 属主标记不随交付包发行"
         );
 
         // 外来目录显式拒绝（非空且无标记）
@@ -7737,6 +7851,89 @@ pub fn create_item(name str) str {
         std::fs::write(foreign.join("mine.txt"), b"keep").unwrap();
         assert!(generate_rust_ui_delivery(&project, &foreign).is_err());
         assert!(foreign.join("mine.txt").is_file(), "外来内容不被覆盖");
+    }
+
+    /// R2-F01 永久用例：外来同级目录字节保留——①固定名 staging 位
+    ///（.delivery.delivery-staging，历史保留名）上的外来内容不被触碰
+    ///（本轮起 staging 用唯一名）；②换出保留名（.delivery.delivery-old）
+    /// 被外来目录占据时再交付显式拒绝，外来内容与既有交付字节均不动；
+    /// ③移开外来目录后重试成功（正常换装恢复）。
+    #[test]
+    fn delivery_foreign_sibling_dirs_preserved() {
+        let dir = tempfile::tempdir().unwrap();
+        let producer = test_producer_root();
+        let project = dir.path().join("proj");
+        let front = project.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "{ name: \"uiminimal\", scene: \"ui\", render: \"rust\", window: \"fit\" }",
+        )
+        .unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            "widget App {\n    view {\n        col {\n            text `hi`\n        }\n    }\n}\n",
+        )
+        .unwrap();
+
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(v) => std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", v),
+                    None => std::env::remove_var("AUTO_DELIVERY_SOURCE_ROOT"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_DELIVERY_SOURCE_ROOT"));
+        std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", &producer);
+
+        let delivery = dir.path().join("delivery");
+        // ① 固定名 staging 位上的外来内容（R2 反例 1 复放）
+        let legacy_stage = delivery_sibling_path(&delivery, "delivery-staging");
+        std::fs::create_dir_all(&legacy_stage).unwrap();
+        std::fs::write(legacy_stage.join("mine.txt"), b"unrelated sibling data").unwrap();
+        generate_rust_ui_delivery(&project, &delivery).expect("外来固定名 staging 不应阻断首交");
+        assert_eq!(
+            std::fs::read(legacy_stage.join("mine.txt")).unwrap(),
+            b"unrelated sibling data",
+            "外来 staging 位内容字节保留"
+        );
+
+        // ② 换出保留名被外来目录占据（R2 反例 2 复放）→ 显式拒绝
+        let trash = delivery_sibling_path(&delivery, "delivery-old");
+        std::fs::create_dir_all(&trash).unwrap();
+        std::fs::write(trash.join("mine.txt"), b"unrelated sibling data").unwrap();
+        let manifest_before =
+            std::fs::read_to_string(delivery.join("delivery-manifest.json")).unwrap();
+        let err =
+            generate_rust_ui_delivery(&project, &delivery).expect_err("外来换出保留名必须拒绝");
+        assert!(
+            err.to_string().contains("外来目录占据"),
+            "占据诊断（实际：{err}）"
+        );
+        assert_eq!(
+            std::fs::read(trash.join("mine.txt")).unwrap(),
+            b"unrelated sibling data",
+            "外来换出位内容字节保留"
+        );
+        assert_eq!(
+            std::fs::read_to_string(delivery.join("delivery-manifest.json")).unwrap(),
+            manifest_before,
+            "既有交付字节不变"
+        );
+
+        // ③ 移开外来目录 → 重试成功（正常换装恢复；残留 staging 已由守卫清理）
+        std::fs::rename(&trash, dir.path().join("foreign-moved-aside")).unwrap();
+        generate_rust_ui_delivery(&project, &delivery).expect("移开后重试失败");
+        assert!(
+            dir.path().join("foreign-moved-aside/mine.txt").is_file(),
+            "移开的仍是外来内容，未被生成器触碰"
+        );
+        assert!(
+            !delivery_sibling_path(&delivery, "delivery-old").exists(),
+            "本轮换出残桩已清理"
+        );
     }
 
     /// R1-F02 永久用例：再交付准备失败保留旧交付——成功交付后，producer
@@ -7856,8 +8053,22 @@ pub fn create_item(name str) str {
         let err = generate_rust_ui_delivery(&project, &delivery)
             .expect_err("外部绝对 path sidecar 必须拒绝");
         assert!(
-            err.to_string().contains("外部绝对 path"),
+            err.to_string().contains("外部绝对/根相对"),
             "绝对路径诊断（实际：{err}）"
+        );
+        assert!(!delivery.join("app/Cargo.toml").is_file(), "拒绝时不产出");
+
+        // Windows 根相对路径（R2 反例复放：is_absolute 为假但 path::join
+        // 语义丢弃基目录、解析落当前盘根——实际指向主检出）
+        mk_project(
+            "\nrust_sidecar {\n    deps: [\"auto-val:path:/autostack/auto-lang/crates/auto-val\"]\n}\n",
+        );
+        let delivery = dir.path().join("d-rootrel");
+        let err = generate_rust_ui_delivery(&project, &delivery)
+            .expect_err("Windows 根相对 path sidecar 必须拒绝");
+        assert!(
+            err.to_string().contains("根相对"),
+            "根相对诊断（实际：{err}）"
         );
         assert!(!delivery.join("app/Cargo.toml").is_file(), "拒绝时不产出");
 

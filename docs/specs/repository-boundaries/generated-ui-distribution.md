@@ -70,14 +70,23 @@
   源/根级输入在**预检阶段**判红；**再交付经独立 staging 生成+全部校验
   成功后整体换装**——准备或生成失败保留旧交付字节（失败不切换任何旧
   生产产物），**不回退主检出、不复制原 target/rlib 作 oracle**。
-- **sidecar 边界**：交付模式显式拒绝 rust_sidecar 的外部 path 依赖
-  （绝对路径——任意根；或越出交付根的相对 `..`）；registry 版本依赖
-  （`name:version`）与项目内 .rs 模块照常。全部 bundle Cargo.toml 的每个
-  `path = "…"` 值经边界自检：必须相对且按 manifest 目录词法解析后落在
-  交付根内（覆盖任何来源的越界源）。
+- **staging/换出目录属主（R2）**：staging 用本次运行独占唯一名（pid+ns）
+  + 内置属主标记，失败由守卫清理——绝不凭固定名认领同级目录；换出保留
+  名（`.<name>.delivery-old`）上的已存内容仅当可证明归属（含
+  delivery-manifest.json 的既往换出残留，或空目录）才清理，外来目录占据
+  则显式拒绝（不删不覆盖）。生成器只删除能证明是自己产物的路径。
+- **sidecar 边界**：交付模式显式拒绝 rust_sidecar 的外部 path 依赖——
+  绝对路径（任意根，含 Windows 根相对 `/x` 与盘符/verbatim 前缀：此类
+  形态在 `path::join` 语义下丢弃解析基目录）与越出交付根的相对 `..`；
+  registry 版本依赖（`name:version`）与项目内 .rs 模块照常。全部 bundle
+  Cargo.toml 的每个 `path = "…"` 值经边界自检：必须相对、无 RootDir/
+  Prefix 分量、且按 manifest 目录词法解析后落在交付根内（覆盖任何来源
+  的越界源）。
 - **可追溯**：delivery-manifest.json 记录 producer 源根/git HEAD/dirty/
-  ui_gen 指纹、逐 crate 文件数字节数与目录 digest（blake3——producer 身份）、
-  资源 SHA-256（消费侧可独立校验）、pin 表、投影修剪明细与闭包规模披露。
+  ui_gen 指纹、producer 根 Cargo.lock 的 SHA-256（根锁为本地实际输入、
+  整体被 .gitignore 忽略——以内容 hash 绑定身份而非跟踪状态）、逐 crate
+  文件数字节数与目录 digest（blake3——producer 身份）、资源 SHA-256
+  （消费侧可独立校验）、pin 表、投影修剪明细与闭包规模披露。
 - **消费合同**：交付根即独立 workspace 根（自有应用 Cargo.lock）；重定位
   （A→B，不带 target/）后 `cargo build --locked` 须过；metadata 全部本地
   path source 在交付根内；运行期本地资产按 CWD 相对解析（消费侧自 assets/
