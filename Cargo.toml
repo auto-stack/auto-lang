@@ -12,6 +12,9 @@ members = [
     # live in auto-lang/src/test_cases and depend on this crate).
     "crates/auto-test-case",
     "crates/auto-gen",
+    # PLAN-791: interpreter-free generation core (guard/output/error/report);
+    # auto-gen stays the Auto executable-template adapter over it.
+    "crates/auto-gen-core",
     "crates/auto-lang",
     # PLAN-789: lexical foundation crate (Token/Lexer single source,
     # extracted verbatim from auto-lang; no auto-lang/auto-man/UI deps).

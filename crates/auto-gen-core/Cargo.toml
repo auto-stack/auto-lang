@@ -1,0 +1,15 @@
+[package]
+name = "auto-gen-core"
+version = "0.1.0"
+edition = "2021"
+description = "Interpreter-free generation core: guarded sections, output orchestration, generic errors and generation reports (PLAN-791)"
+license = "Proprietary"
+keywords = ["automation", "code generation"]
+
+[dependencies]
+# Shared value types (AutoStr) keep the public guard/report types identical
+# to the historical auto-gen API. auto-val is a leaf data crate — the core
+# must NOT depend on auto-lang/auto-man or any interpreter/UI stack.
+auto-val = { path = "../auto-val" }
+regex = { workspace = true }
+thiserror = { workspace = true }
