@@ -123,7 +123,7 @@ mod plan794_scroll {
             *self.snapshot.lock().unwrap()
         }
         fn enqueue_anchor_request(&self, handle: &str, key: &str) -> Result<(), &'static str> {
-            let mut replies = self.anchor_reply.lock().unwrap();
+            let replies = self.anchor_reply.lock().unwrap();
             match replies.get(&(handle.to_string(), key.to_string())) {
                 Some(r) => r.clone(),
                 None => Ok(()),

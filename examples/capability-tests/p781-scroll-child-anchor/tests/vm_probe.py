@@ -153,17 +153,38 @@ class Driver:
         return got == want, f"pressed={ok} got={got} want={want}"
 
     def expect_reply(self, label, want, deadline=12.0):
-        """press 一次 + 轮询回执直至 want——状态查询经 drain/prime 节拍
-        （pending → 终态）有真实时间窗，一次性读会撞 pending。"""
-        ok = self.press(label)
+        """每轮重新执行查询直至 want（F-794-R1-02 修复 oracle）。
+
+        旧实现 press 一次后只轮询快照里的 R=<receipt> 标签——handler 不跑
+        native 不刷新，首轮 pending 会粘住成假红；press 失败也不阻止
+        got==want 比对成假绿。修复契约：
+        - 仅用于只读 Query 面（Q* 按钮——重按=重跑 scroll_anchor_state，
+          零副作用）；不得用于 Go 入队按钮（后写覆盖会重置 pending）。
+        - 每轮 press 重新执行查询动作；press 失败立即判负（不读旧标签）。
+        - 样本序列入 detail（pending→终态真实重放可见）。
+        """
+        samples = []
         t0 = time.monotonic()
-        got = None
         while time.monotonic() - t0 < deadline:
+            if not self.press(label):
+                return False, f"query action failed; samples={samples!r} want={want}"
             got = self.reply()
+            samples.append(got)
             if got == want:
-                return True, f"pressed={ok} got={got}"
+                return True, f"samples={samples!r}"
             time.sleep(POLL)
-        return False, f"pressed={ok} got={got} want={want}"
+        return False, f"samples={samples!r} want={want}"
+
+    def oracle_negative_control(self):
+        """F-794-R1-02 永久负控（桩式，不依赖 UI 时序）：失败点击 + 旧成功
+        标签不得通过——验证 expect_reply 的失败传播，防 oracle 回退。"""
+        class FailedQuery:
+            def press(self, label, deadline=8.0):
+                return False
+            def reply(self, deadline=8.0):
+                return "applied"  # 早期成功请求残留的旧标签
+        got = Driver.expect_reply(FailedQuery(), "QC50", "applied", deadline=0.01)
+        return (got[0] is False), f"stub press=False stale=applied -> {got!r}"
 
     def pane_state(self, controller):
         # F-781-D01 勘定：工具参数名是 "pane"（schema 单源）；早期误发
@@ -274,6 +295,10 @@ def main():
             return 2
         d = Driver(cli)
 
+        # ── F-794-R1-02 永久负控（oracle 自检，先于任何 UI 断言）──
+        ok, det = d.oracle_negative_control()
+        d.check("oracle_failed_press_stale_label_rejected", ok, det)
+
         # ── V-03/V-01：Init 先发目标 —— 零驱动滚动下 c3 可见 + applied ──
         v = d.visible("V03-c3", pane_pin="main-pane")
         d.check("v03_init_target_visible", v and v.get("visible"),
@@ -281,6 +306,14 @@ def main():
         d.raw["v03_init_vis_c3"] = v
         ok, det = d.expect_reply("QC3", "applied", deadline=15.0)
         d.check("v03_init_state_applied", ok, det)
+
+        # ── F-794-R1-02 pending→终态真实重放：applied 后重入队（781 后写
+        # 覆盖重新 pending）→ 新鲜查询重新到达 applied（样本序列入证据；
+        # 重入队确保状态机真实走了 pending 分支而非首读即终态）──
+        ok, det = d.press_reply("GoC3", "queued")
+        d.check("requeue_c3_queued", ok, det)
+        ok, det = d.expect_reply("QC3", "applied", deadline=15.0)
+        d.check("requeue_pending_to_terminal_replay", ok, det)
 
         # ── V-01：双长段。中文 c50（顶对齐：高于视口 → 起始区域可见）──
         off0 = d.main_offset_y()
