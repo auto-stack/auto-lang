@@ -1,7 +1,7 @@
 {
-  "last_covered_plan_id": 790,
-  "timestamp": "2026-10-16T06:22:11Z",
-  "covered_commit": "fbe2e69b75cea4c81da6515a285975243162b3a5",
+  "last_covered_plan_id": 795,
+  "timestamp": "2026-10-16T16:10:00Z",
+  "covered_commit": "44a1494f92f041d81e7854af9051a2ed6ad96600",
   "legs": [
     "tf",
     "tt",
@@ -9,38 +9,42 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 92.2,
+      "seconds": 94.2,
       "run": 6324,
-      "passed": 6322,
-      "failed": 2,
+      "passed": 6320,
+      "failed": 4,
       "skipped": 519,
-      "note": "首跑 fail-fast 于 rqhost multi_client_concurrent_adoption ABORT 0xc0000374（solo 绿=负载瞬态）；--no-fail-fast 全量两红均 solo 绿：ffi_dual_019_dep_layout_invariants（5.2s 时序族）+ clipboard_files_set_get_roundtrip（真 OS 剪贴板外部争用——本机当日第 3 次，命名锁只管测试间互斥）"
+      "note": "首跑 fail-fast 于 plan484_024（负载时序族）；--no-fail-fast 全量 4 红（ffi_dual_013_dep_method/dep_parity_017_dep_lifecycle/ffi_dual_017_dep_lifecycle/plan484_024）均 solo 绿——ffi 族为上份收据 ffi_dual_019 同族负载时序，plan484_024 为在案 flake"
     },
     "tt": {
-      "seconds": 109.0,
+      "seconds": 113.3,
       "run": 5698,
-      "passed": 5698,
-      "failed": 0,
-      "skipped": 1798
+      "passed": 5697,
+      "failed": 1,
+      "skipped": 1798,
+      "note": "首跑 fail-fast 于 plan707_spike_cancel_gap（在案 flake）；全量唯一红 plan484_024 solo 绿"
     },
     "tb": {
-      "seconds": 70.8,
+      "seconds": 96.1,
       "run": 5350,
-      "passed": 5349,
-      "failed": 1,
+      "passed": 5347,
+      "failed": 3,
       "skipped": 1548,
-      "note": "唯一红 plan484_024_charts_streaming_recompute solo 绿——上份收据已记录负载时序族"
+      "note": "3 红（state_file lock_serializes=791 收据在案锁时序 flake/plan484_024/plan707_cancel_active_job）均 solo 绿；另首跑 fail-fast 轮 plan498_legend_toggle 亦 solo 绿（chart 交互族，tf 全量同窗口 PASS）"
     }
   },
   "new_reds": [],
   "known_reds_seen": [
-    "plan484_024_charts_streaming_recompute（上份收据 flake_observations 在案，solo 绿复现同形）"
+    "ffi_dual_tests::ffi_dual_013_dep_method",
+    "ffi_dep_parity_tests::dep_parity_017_dep_lifecycle",
+    "ffi_dual_tests::ffi_dual_017_dep_lifecycle",
+    "plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute",
+    "plan707_spike_tests::plan707_spike_cancel_gap_active_job_future_not_stopped",
+    "plan707_cancel_tests::plan707_cancel_active_job_aborts_and_frees_permit",
+    "state_file::tests::lock_serializes_critical_sections",
+    "plan498_chart_interaction_tests::plan498_charts::plan498_legend_toggle_visibility"
   ],
-  "flake_observations": [
-    "ffi_dual_019_dep_layout_invariants 满池红/单跑绿（新观察，负载时序族——非窗口代码面：窗口=789 词法抽取+790 剪贴板 provider，均不触 FFI dual 布局）",
-    "clipboard_files_set_get_roundtrip 真 OS 剪贴板争用（外部进程写剪贴板破坏 set→get 窗口；当日跨 3 树 3 次同形，solo/复跑均绿；GlobalClipboardTestLock 只覆盖测试间互斥，不防宿主 OS 层干扰）",
-    "rqhost multi_client_concurrent_adoption 满池 ABORT 0xc0000374（solo 绿；与并发自点名测试相符的负载敏感）"
-  ],
-  "window_note": "窗口 17d73db9e..covered_commit 覆盖 PLAN-789（auto-lex 词法抽取）+ PLAN-790（剪贴板 media provider 倒置）落地；PLAN-791（generation-core 抽取）在本档执行期间并发合入（fbe2e69b7，其 scoped cargo test -p auto-gen 与本档并行=纪律允许的 scoped 负载，部分满池瞬态或与其相关）——791 门禁由其自身 merge 收据覆盖，本档 last_covered=790 不替其背书。触发=790（%5==0）merge 交接；taa 未触发（窗口 diff 零 aavm 路径）。787/788 在途未合入不计。",
-  "verdict": "green"
+  "taa": "not_triggered: window fbe2e69b7..HEAD touches zero aavm trigger paths",
+  "environment": "外部并行负载在场（他仓 cargo test/build + lang-794 树 p781 例程运行），全部红项 solo 复绿归因负载时序族",
+  "window": "fbe2e69b7..HEAD (791 merge closeout -> 795 closeout, 13 commits docs+795 delivery)"
 }
