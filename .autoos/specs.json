@@ -1973,6 +1973,17 @@
             "commit:2a2b15478",
             "completion:delivered"
           ]
+        },
+        {
+          "id": "P792-M",
+          "title": "PLAN-792 合入沉淀收据（生成式 Rust UI 独立构建交付）",
+          "content": "merge 收据（checkpoint prepared/landed/ledger_refreshed/archived/cleaned + 冻结门禁数字）：五轮复审链全闭合交付；rebase over 并行 789..795（Cargo.toml exclude 并集+ui/overview 794 节并集+闭包追踪 auto-diagnostics）；详见 docs/plans/reports/792-generated-ui-delivery-merge.md。",
+          "file": "docs/plans/reports/792-generated-ui-delivery-merge.md",
+          "tags": [
+            "PLAN-792",
+            "stage:merge"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -7328,6 +7339,42 @@
             "2a2b15478"
           ],
           "status": "active"
+        },
+        {
+          "id": "P792-D1",
+          "title": "生成式 Rust UI 可搬动交付合同（SD-01）",
+          "content": "PLAN-792 SD-01：镜像仓布局受管 bundle（crates/ 闭包+patch+stdlib/docs 根级编译输入）；消费根 [patch.crates-io] iced_widget 单源；应用独立锁+漂移家族精确 pin（wgpu/iced 12 项，windows 双包多槽冻结披露）；资源 allowlist SHA-256+随包 verify.py 正式校验入口；staging/backup 唯一属主名+事务标记，任何既存目录（含他应用合法交付包）不被认领删除，陈残 GC 双条件；边界自检 TOML 语义遍历（RootDir/Prefix/越界拒绝，解析失败 fail-closed）；投影修剪剥闭包外 optional path 依赖；producer 身份（git/ui_gen 指纹/根锁 SHA-256）入 delivery-manifest。闭包=auto-lang 全库等 10 crate（793 后含 auto-diagnostics）+patch+5 根级输入，如实披露非纯 core。",
+          "file": "docs/specs/repository-boundaries/generated-ui-distribution.md",
+          "tags": [
+            "PLAN-792",
+            "sd:01",
+            "delivery:e98c33f28088"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P792-D2",
+          "title": "auto-man rust_ui 显式交付模式与错误阶段（SD-02）",
+          "content": "PLAN-792 SD-02：rust_ui 两显式模式（开发=共享/项目本地 rust-workspace+继承清单零变化；交付=auto gen --delivery-root，非 rust 后端显式报错）；共享编译相位 compile_rust_ui_app（main.rs 逐字节同源）；受管判红错误阶段（空前端/producer 未解析/闭包缺失/投影不完整/外来目录/crate 撞名）；锁冻结与消费构建归交付管线/消费侧，生成器不自动跑 cargo；sidecar/[[bin]]/__InitLoaded 语义两模式同源。",
+          "file": "docs/specs/auto-man/project.md",
+          "tags": [
+            "PLAN-792",
+            "sd:02",
+            "delivery:aa785b1dbfbc"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P792-D3",
+          "title": "ui/overview 生成式 Rust UI 独立构建证据边界（SD-03）",
+          "content": "PLAN-792 SD-03：区分 779/785 no-ui 外部 manifest 实证与其时借 workspace 锁定 rlib 的 UI 重放（不构成新锁发行验证）与本轮 fresh-lock 真实构建（独立消费者零环境覆盖 fresh 解析+真实 build+重定位 locked 重放，UI 外部证明不再依赖 workspace rlib；779/785 漂移定性为时变生态漂移，以独立锁+pin+冻结重放闭合非根治）。已证平台=Windows/x86_64-pc-windows-msvc（cargo/rustc 1.98）；全 renderer 发行/registry 发布不在覆盖内。",
+          "file": "docs/specs/auto-lang/ui/overview.md",
+          "tags": [
+            "PLAN-792",
+            "sd:03",
+            "delivery:f7c54e4ed71b"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -8882,6 +8929,17 @@
           "tags": [
             "PLAN-793",
             "2a2b15478"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P792-T",
+          "title": "PLAN-792 测试资产（定向生成器 9 用例 + generated-ui-consumer driver 25 用例）",
+          "content": "cargo test -p auto-man --lib delivery（pins 单/多槽、根 manifest 形态、投影幂等、端到端 bundle、同包重复拒绝、旧交付存活、sidecar 边界含根相对/单引号 TOML、外来同级保留四段、GC 失败保旧+成功回收）；外部 fixture test/fixtures/modularity/generated-ui-consumer driver.py 25 用例（V01 fresh 解析+真实 build/V02 重定位 locked+metadata 组件包含+资源 sha256/V03 十二负控+恢复绿/V04 开发路由+模板字节同源）；随包 verify.py 四态正式入口。",
+          "file": "test/fixtures/modularity/generated-ui-consumer/driver.py",
+          "tags": [
+            "PLAN-792",
+            "tests:delivery+driver"
           ],
           "status": "active"
         }
@@ -11949,10 +12007,23 @@
             "pass",
             "a8faf1e31"
           ]
+        },
+        {
+          "id": "P792-R5",
+          "title": "PLAN-792 独立最终复审 R5（五轮链后 pass）",
+          "content": "R1..R4 needs_fix（资源正式入口/失败保旧 staging 换装/Windows 根相对+TOML 语义/backup 事务归属+GC 生命周期）逐轮闭合→R5 pass@41d95ea95：R4-F01 CLOSED（GC 失败保旧+成功回收重放）；定向 9/9+资源 7 控；R4 完整构建证据按 4621 构建输入零差异+同锁复用（merge 整合致闭包变化则失效——兑现：793 后补 auto-diagnostics 重跑 driver 25/25）。AC01..05 pass，AC06 merge-owned pending。",
+          "file": "docs/plans/attachments/792/review-r5.md",
+          "tags": [
+            "PLAN-792",
+            "r5",
+            "pass",
+            "reviewed_commit:41d95ea95"
+          ],
+          "status": "active"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 36
+  "version": 37
 }
