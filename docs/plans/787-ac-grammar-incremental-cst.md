@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-787
-status: executing
+status: execution_done
 feature_name: Atom 语法驱动的增量词法与无损 CST 首条闭环
 plan_revision: 1
 author: [Codex]
