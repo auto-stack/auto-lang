@@ -118,6 +118,11 @@ exclude = [
     # 门禁经
     # cargo test --manifest-path test/fixtures/modularity/diagnostics-interop-consumer/Cargo.toml
     "test/fixtures/modularity/diagnostics-interop-consumer",
+    # PLAN-794: 外部 scroll host provider 消费方探针——独立 fixture crate
+    #（无 UI feature 构建，证明 scroll controller/子锚点
+    # 9900..9905/9922/9923 core 供值链在 crate 边界外真实工作），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/scroll-provider-consumer/Cargo.toml
+    "test/fixtures/modularity/scroll-provider-consumer",
 ]
 resolver = "2"
 

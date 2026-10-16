@@ -225,6 +225,129 @@ pub fn clear_process_default_clipboard_media_provider() {
     *slot = None;
 }
 
+// ── PLAN-794: scroll controller 与子锚点宿主能力（9900..9905 + 9922/9923）──
+//
+// 779/785/790 装配模式的 scroll 族批次：core shim 不再直引 UI 的 scroll
+// 模块（controller 注册表/intent 队列/锚点状态机），经本接口由宿主供值——
+// UI 宿主注册委托既有 registry 的 adapter（renderer 排空/测量/锚点状态机
+// 仍是单一真源，core 不复制第二个 registry）；no-ui 宿主可注入自定义
+// 实现（V01 外部 consumer）。值域纪律（计划 §2/§5）：接口只使用 owned
+// 标准库值——`String` 句柄/错误 reason、f64 测量、core 自有轴/intent/状态
+// DTO；不暴露 UI `Axis`/`ScrollIntent` 类型、VM heap id、字符串池索引或
+// renderer 引用。
+//
+// 缺席语义（T-01 冻结矩阵，= 迁移前 no-ui 降级臂逐字面值）：controller
+// → Int 0；to_start/to_end/by/to → Bool false；state → Float 0.0（均非
+// raise）；to_child → "error:unsupported"；anchor_state → "unknown"。
+// 句柄语义：任意非空 opaque string（不强制 "@scrollctl:" 前缀——.at 侧
+// 裸字符串柄等价）；9901..9904 空串句柄跳过入队仍按 provider 在位性返
+// true/false。
+
+/// 单个滚动轴（core 自有形态；UI 宿主 adapter 转换为 UI 侧 Axis 类型）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ScrollAxisDto {
+    X,
+    Y,
+}
+
+/// 程序化滚动意图（core 自有形态；natives 恒 Programmatic 来源，故不带
+/// source 字段——UI adapter 落 `ScrollSource::Programmatic`）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ScrollIntentDto {
+    ToStart { axis: ScrollAxisDto },
+    ToEnd { axis: ScrollAxisDto },
+    ScrollBy { axis: ScrollAxisDto, delta: f64 },
+    ScrollTo { axis: ScrollAxisDto, offset: f64 },
+}
+
+/// `auto.scroll.state` 的测量快照投影（8 具名字段 record 的值源；未绑定/
+/// 未测量 = 全零——由实现方保证，与 controller 注册表 default 投影一致）。
+/// progress 由实现方按其几何单源投影——core 不复制滚动算法。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ScrollSnapshotDto {
+    pub offset_x: f64,
+    pub offset_y: f64,
+    pub viewport_w: f64,
+    pub viewport_h: f64,
+    pub content_w: f64,
+    pub content_h: f64,
+    pub progress_x: f64,
+    pub progress_y: f64,
+}
+
+/// PLAN-781 锚点请求状态（core 自有形态；`Invalid(reason)` 的 reason
+/// `not_found`/`not_bound`/`unsupported`/`unmeasured` 由实现方透传）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScrollAnchorStateDto {
+    Pending,
+    Applied,
+    Invalid(String),
+}
+
+/// scroll 宿主能力接口（owning 值域，无 UI 类型；五方法对应八 native：
+/// controller 句柄分配 / intent 入队（to 双轴坐标形 = 两次调用，X 先 Y 后，
+/// 由 shim 编排）/ 快照读出 / 锚点请求入队 / 锚点状态查询）。
+///
+/// 实现契约：enqueue_anchor_request 返回 Err(reason) 即回执
+/// "error:{reason}"（bad_handle/empty_key/unsupported 由实现方校验——UI
+/// adapter 委托既有 controller::enqueue_anchor_request 原语义）；状态机
+/// 完整继承 781（queued≠完成、managed 拒绝、换绑代际、一次性消费——见
+/// controller.rs，renderer 侧解析不迁）。方法在 VM 锁外调用，实现方自管
+/// 内部同步。
+pub trait ScrollHostProvider: Send + Sync {
+    /// 分配下一个 controller 句柄（不透明非空串）。
+    fn next_controller_handle(&self) -> String;
+    /// 程序化 intent 入队（renderer/宿主消费期排空解析）。
+    fn enqueue_intent(&self, handle: &str, intent: ScrollIntentDto);
+    /// 最近测量快照读出（未绑定 → 全零默认）。
+    fn controller_snapshot(&self, handle: &str) -> ScrollSnapshotDto;
+    /// 锚点定位请求入队；Err(reason) → "error:{reason}" 回执。
+    fn enqueue_anchor_request(&self, handle: &str, key: &str) -> Result<(), &'static str>;
+    /// 锚点请求状态查询；None = 无记录（"unknown"）。
+    fn anchor_request_state(&self, handle: &str, key: &str) -> Option<ScrollAnchorStateDto>;
+}
+
+/// 进程级默认 scroll host provider（显式注册；None = 未注册 → shim 走
+/// T-01 冻结的缺席降级臂）。替换/快照/if-absent 语义与 frame/text/media
+/// 族逐条相同。
+static PROCESS_DEFAULT_SCROLL_HOST_PROVIDER: RwLock<Option<Arc<dyn ScrollHostProvider>>> =
+    RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_scroll_host_provider(provider: Arc<dyn ScrollHostProvider>) {
+    let mut slot = PROCESS_DEFAULT_SCROLL_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_SCROLL_HOST_PROVIDER poisoned");
+    *slot = Some(provider);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子——语义同 frame/text/media 族）。
+/// 供 UI 等内建宿主隐式入口：不覆盖调用方显式默认。
+pub fn set_process_default_scroll_host_provider_if_absent(provider: Arc<dyn ScrollHostProvider>) {
+    let mut slot = PROCESS_DEFAULT_SCROLL_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_SCROLL_HOST_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_scroll_host_provider() -> Option<Arc<dyn ScrollHostProvider>> {
+    PROCESS_DEFAULT_SCROLL_HOST_PROVIDER
+        .read()
+        .expect("PROCESS_DEFAULT_SCROLL_HOST_PROVIDER poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到 T-01 冻结的缺席降级语义）。测试装配/宿主拆卸用。
+pub fn clear_process_default_scroll_host_provider() {
+    let mut slot = PROCESS_DEFAULT_SCROLL_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_SCROLL_HOST_PROVIDER poisoned");
+    *slot = None;
+}
+
 /// 测试隔离（crate 级共享，cfg(test)）——持有者 = **清空/替换进程默认
 /// 槽的测试**（clear/set/restore 序列需跨操作原子，防彼此互踩）。普通
 /// 程序测试**零配合豁免**：其唯一槽写是 install 的 if-absent 补缺，对

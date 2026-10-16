@@ -82,6 +82,11 @@ pub mod clipboard_provider;
 // VM 缺席 provider → G3 值降级，不把 UI 默认伪造为可用 OS。
 #[cfg(all(windows, feature = "native-clipboard"))]
 pub mod clipboard_media_provider;
+// PLAN-794: scroll host provider adapter——委托 ui::scroll::controller 既有
+// 注册表/锚点状态机（9900..9905 + 9922/9923；779/785/790 同构）。单门控
+// `ui`（与被委托的 scroll 模块一致——队列层纯 Rust 无 OS 面）；renderer
+// binding/measured 状态仍为单一真源，adapter 只做 core DTO 转换。
+pub mod scroll_host_provider;
 // PLAN-681: native open/save file dialogs — host of the `dialog_open`/
 // `dialog_save` VM builtins (natives 2927/2928) for a2r generated apps,
 // behind `ui-dialog` (enabled by `ui-iced`).

@@ -853,6 +853,16 @@ impl AutoVM {
             {
                 native_interface.set_clipboard_media_provider(provider);
             }
+
+            // PLAN-794: 同纪律快照 scroll host provider（9900..9905/
+            // 9922/9923）。缺席快照 = shim 侧 T-01 冻结降级臂（Int 0 /
+            // false / 0.0 / "error:unsupported" / "unknown"），与迁移前
+            // no-ui 构建同形。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_scroll_host_provider()
+            {
+                native_interface.set_scroll_host_provider(provider);
+            }
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
@@ -1321,6 +1331,23 @@ impl AutoVM {
         &self,
     ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>> {
         self.native_interface.clipboard_media_provider()
+    }
+
+    /// PLAN-794: 实例级 scroll host provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 9900..9905/9922/9923。
+    pub fn set_scroll_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>,
+    ) {
+        self.native_interface.set_scroll_host_provider(provider);
+    }
+
+    /// PLAN-794: 本 VM 当前 scroll host provider（None=降级臂语义）。
+    pub fn scroll_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>> {
+        self.native_interface.scroll_host_provider()
     }
 
     /// Plan 197 Task 9: Load generic registry from codegen

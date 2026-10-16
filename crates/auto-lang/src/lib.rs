@@ -453,6 +453,9 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
 /// PLAN-790: clipboard media adapter 同纪律并入（2934..2937——core shim
 /// 已不直引 ui::clipboard_native；windows+native-clipboard 下恢复 OS 接线，
 /// 其余形态缺席槽=G3 值降级，非 Windows 不伪造可用 OS）。
+/// PLAN-794: scroll host adapter 同纪律并入（9900..9905 + 9922/9923——
+/// core 八 shim 已不直引 ui::scroll；ui 构建恢复 controller 注册表接线，
+/// 缺席槽=T-01 冻结降级臂）。
 #[cfg(feature = "ui")]
 fn install_ui_host_capabilities() {
     crate::ui::frame_provider::install_process_default();
@@ -460,6 +463,7 @@ fn install_ui_host_capabilities() {
     crate::ui::clipboard_provider::install_process_default();
     #[cfg(all(windows, feature = "native-clipboard"))]
     crate::ui::clipboard_media_provider::install_process_default();
+    crate::ui::scroll_host_provider::install_process_default();
 }
 
 #[cfg(not(feature = "ui"))]
@@ -5601,6 +5605,9 @@ fn run_file_dynamic_ui_inner(
     // windows+native-clipboard 双门控——非 Windows 不装配）。
     #[cfg(all(windows, feature = "native-clipboard"))]
     crate::ui::clipboard_media_provider::install_process_default();
+    // PLAN-794: scroll host adapter 同点并入（if-absent 兼容默认；ui 单
+    // 门控——controller 注册表接线恢复，9900..9905/9922/9923）。
+    crate::ui::scroll_host_provider::install_process_default();
     let comp = build_dynamic_component_inner(code, path, override_scenario)?;
     // PLAN-031 T-05：-q vm 轨分岔（env 门）——装载链零改：CWD/主题/后端
     // 序由 run_vm_ui 上游照常执行（组件已按同链装载），仅"自开 OS 窗"
