@@ -13,6 +13,9 @@ members = [
     "crates/auto-test-case",
     "crates/auto-gen",
     "crates/auto-lang",
+    # PLAN-789: lexical foundation crate (Token/Lexer single source,
+    # extracted verbatim from auto-lang; no auto-lang/auto-man/UI deps).
+    "crates/auto-lex",
     # PLAN-780: light static project-model for pac.at (pilot probe; depends
     # only on auto-atom/auto-val — no compiler/VM/UI types cross this boundary)
     "crates/auto-project-model",
@@ -72,6 +75,10 @@ exclude = [
     # crate 边界外真实工作），门禁经
     # cargo test --manifest-path test/fixtures/modularity/clipboard-provider-consumer/Cargo.toml
     "test/fixtures/modularity/clipboard-provider-consumer",
+    # PLAN-789: 外部词法消费方探针——独立 fixture crate（唯一依赖
+    # auto-lex，证明词法基础无 auto-lang/auto-man/UI 依赖），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/lex-consumer/Cargo.toml
+    "test/fixtures/modularity/lex-consumer",
 ]
 resolver = "2"
 

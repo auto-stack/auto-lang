@@ -13,9 +13,19 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 
 ## 现状
 
-- 管线为 `Lexer → Parser → AST`，`Lexer` 是 parser 的内部组件（lib.rs 中 `mod lexer` 不公开）。
-- `Parser` 持有 `Lexer`、`TypeStore`、`InferenceContext`、`ModuleTracker` 与方言表，
-  不再依赖 `Universe`（plan-090）。
+- 管线为 `Lexer → Parser → AST`。PLAN-789 起词法层外置为底层 crate
+  **auto-lex**（`crates/auto-lex`，Token/TokenKind/Pos/Lexer/LexerState 单一
+  实现，依赖仅 auto-val+诊断基建）：auto-lang 的 `token`/`lexer` 模块是薄
+  re-export 出口（同一类型身份），`error.rs` re-export `LexerError` 并以
+  `From<LexError>` 等价投影（结构化→`AutoError::Lexer`、raw-block 字符串→
+  `AutoError::Msg`，旧臂一致）；`Lexer` 在本 crate 仍不公开（`mod lexer`
+  私有，外部消费者直接依赖 auto-lex）。规范见
+  [auto-lex/project.md](../../auto-lex/project.md)。
+- **未迁事实**（不得冒称完整前端独立）：`Parser` 仍持有 `Lexer`（经兼容
+  出口）、`TypeStore`、`InferenceContext`、`ModuleTracker`、session 与方言表，
+  不再依赖 `Universe`（plan-090）；`error.rs` 依赖 `ast::Name`（TypeError
+  变体）阻碍错误层整体下放——残留边与 owner 见
+  `docs/plans/attachments/789/t01-frontend-dag.md`（下一批 UI 文法外置）。
 - 方言体系（轴 A）已实现：`Dialect` trait + `UiDialect`（`Scenario::UI` 下接管
   `widget`/`msg`/`model`/`view`/`on`），产出仍是基础 `Stmt` 变体；PLAN-778 起
   支持外部 crate 经 `ParserBridge` 显式注册方言（见"方言外部化"节）。
@@ -66,8 +76,12 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 
 ## 关键入口
 
-- `crates/auto-lang/src/lexer.rs:Lexer`（内部模块，经 `Lexer::next` 供 token）
-- `crates/auto-lang/src/token.rs:TokenKind`、`token.rs:Token`、`token.rs:Pos`
+- `crates/auto-lex/src/lexer.rs:Lexer`、`lexer.rs:LexerState`（PLAN-789 单一
+  实现；auto-lang 经 `src/lexer.rs` 薄 re-export 私有消费）
+- `crates/auto-lex/src/token.rs:TokenKind`、`token.rs:Token`、`token.rs:Pos`
+  （auto-lang 经 `src/token.rs` re-export，`auto_lang::token` 公开路径不变）
+- `crates/auto-lex/src/error.rs:LexerError`/`LexError`（auto-lang `error.rs`
+  re-export + `From<LexError> for AutoError` 投影）
 - `crates/auto-lang/src/parser.rs:Parser`、`Parser::parse`、`Parser::parse_stmt`、`Parser::parse_expr`
 - `crates/auto-lang/src/parser.rs:Parser::build_dialects`、`Parser::try_dialect_stmt`
 - `crates/auto-lang/src/parser_helpers.rs:ModuleTracker`、`parser_helpers.rs:LambdaIdGenerator`
@@ -146,4 +160,5 @@ on/store 的完整外部化、生产接线与 UI AST 迁移尚未完成。
 - `docs/design/01-architecture.md`、`docs/design/10-language-syntax.md`
 - `docs/plan-reports/01-ast-core.md`、`docs/plan-indices/01-ast-core.md`
 - `docs/design/dialect-extension-diagnosis.md`（方言体系来源，dialect.rs 头注指向）
-- 代码核对：`crates/auto-lang/src/{lexer,token,parser,parser_helpers,ast,dialect,use_scanner,resolver}.rs`、`ast/`、`dialect/`
+- 代码核对：`crates/auto-lang/src/{parser,parser_helpers,ast,dialect,use_scanner,resolver}.rs`、`ast/`、`dialect/`、
+  `crates/auto-lex/src/{token,lexer,error}.rs`（PLAN-789 词法外置）

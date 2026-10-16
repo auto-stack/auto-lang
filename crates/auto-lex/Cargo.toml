@@ -1,0 +1,19 @@
+[package]
+name = "auto-lex"
+version = "0.1.0"
+edition = "2021"
+description = "AutoLang lexical foundation: Token/TokenKind/Pos + Lexer/LexerState (PLAN-789 extraction from auto-lang; no auto-lang/auto-man/UI dependency)"
+license = "MIT"
+
+[dependencies]
+# Token.text 底层字符串表示（数据域，无向上依赖）。
+auto-val = { path = "../auto-val" }
+# TokenKind Display（snake_case 序列化）。
+strum_macros = { workspace = true }
+# LexerError 诊断 derive（code/label/span）。
+miette = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# V02 golden 重放（tests/ 集成测试读取冻结 JSON 对拍）。
+serde_json = { workspace = true }

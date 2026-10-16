@@ -7,9 +7,13 @@
 #![allow(unused_assignments)]
 
 use crate::ast::Name;
-use crate::token::Pos;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
+
+// PLAN-789：词法层错误/位置助手的单一实现已迁至 auto-lex，此处 re-export
+// 同一类型与函数（`auto_lang::error::LexerError`/`span_from`/`pos_to_span`
+// 旧路径保持可用，诊断 code/label/span 零转换损失）。
+pub use auto_lex::error::{pos_to_span, span_from, LexerError};
 
 fn multiple_errors_display(errors: &[AutoError], count: &usize, plural: &str) -> String {
     let mut msg = format!("aborting due to {} previous error{}", count, plural);
@@ -91,33 +95,6 @@ pub fn find_best_match(target: &str, candidates: &[String]) -> Option<String> {
     }
 
     best_match
-}
-
-/// Convert a `Pos` to a `SourceSpan` for use with miette diagnostics
-///
-/// # Example
-///
-/// ```rust
-/// use auto_lang::error::pos_to_span;
-/// use auto_lang::token::Pos;
-///
-/// let pos = Pos {
-///     line: 5,
-///     at: 10,
-///     pos: 100,
-///     len: 5,
-/// };
-/// let span = pos_to_span(pos);
-/// assert_eq!(span.offset(), 100);
-/// assert_eq!(span.len(), 5);
-/// ```
-pub fn pos_to_span(pos: Pos) -> SourceSpan {
-    SourceSpan::new(pos.pos.into(), pos.len.into())
-}
-
-/// Create a span from absolute position and length
-pub fn span_from(offset: usize, len: usize) -> SourceSpan {
-    SourceSpan::new(offset.into(), len.into())
 }
 
 /// Syntax error with attached source code for displaying code snippets
@@ -473,6 +450,20 @@ impl<'a> From<&'a str> for AutoError {
     }
 }
 
+/// PLAN-789：auto-lex 词法面全集错误 → 聚合器等价投影。
+/// 结构化五变体 → `AutoError::Lexer`（与抽取前旧臂同型：旧 lexer 直接返回
+/// `LexerError::X.into()`）；raw-block 字符串错误 → `AutoError::Msg`
+/// （旧臂 `String.into()` 投影一致，无诊断 code）。parser 内 `self.lexer.next()?`
+/// 经此转换，诊断 code/span/Display 逐字保持。
+impl From<auto_lex::error::LexError> for AutoError {
+    fn from(e: auto_lex::error::LexError) -> Self {
+        match e {
+            auto_lex::error::LexError::Lexer(le) => AutoError::Lexer(le),
+            auto_lex::error::LexError::Raw(msg) => AutoError::Msg(msg),
+        }
+    }
+}
+
 impl AutoError {
     /// Attach source code to a syntax error
     pub fn with_source(err: SyntaxError, name: String, code: String) -> Self {
@@ -492,70 +483,10 @@ impl AutoError {
 }
 
 // ============================================================================
-// Lexer Errors (E0001-E0099)
+// Lexer Errors (E0001-E0099) —— 单一定义在 auto-lex（`auto_lex::error::
+// LexerError`），上方 re-export；auto-lang 只保留聚合（AutoError::Lexer）
+// 与带源包装（LexerErrorWithSource）。
 // ============================================================================
-
-/// Lexer errors during tokenization
-#[derive(Error, Diagnostic, Debug, Clone)]
-pub enum LexerError {
-    /// Unknown escape sequence in character literal
-    #[error("unknown escape sequence")]
-    #[diagnostic(
-        code(auto_lexer_E0001),
-        help("Valid escape sequences are: \\n, \\t, \\r, \\0, \\\\, \\'")
-    )]
-    UnknownEscapeSequence {
-        sequence: String,
-        #[label("unknown escape sequence")]
-        span: SourceSpan,
-    },
-
-    /// Unterminated character literal
-    #[error("unterminated character literal")]
-    #[diagnostic(
-        code(auto_lexer_E0002),
-        help("Character literals must be enclosed in single quotes (')")
-    )]
-    UnterminatedChar {
-        #[label("character literal not closed")]
-        span: SourceSpan,
-    },
-
-    /// Empty character literal
-    #[error("empty character literal")]
-    #[diagnostic(
-        code(auto_lexer_E0003),
-        help("Character literals must contain exactly one character")
-    )]
-    EmptyChar {
-        #[label("empty character literal")]
-        span: SourceSpan,
-    },
-
-    /// Invalid identifier start
-    #[error("invalid identifier")]
-    #[diagnostic(
-        code(auto_lexer_E0004),
-        help("Identifiers must start with a letter or underscore")
-    )]
-    InvalidIdentifierStart {
-        character: String,
-        #[label("identifiers must start with a letter or underscore")]
-        span: SourceSpan,
-    },
-
-    /// Unknown character
-    #[error("unknown character")]
-    #[diagnostic(
-        code(auto_lexer_E0005),
-        help("This character is not valid in AutoLang source code")
-    )]
-    UnknownCharacter {
-        character: String,
-        #[label("unknown character")]
-        span: SourceSpan,
-    },
-}
 
 // ============================================================================
 // Syntax Errors (E0101-E0199)

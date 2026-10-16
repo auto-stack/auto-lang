@@ -30,6 +30,11 @@ schema = "module-boundaries/1"
 # 数据域（Atom/Value 基础表示）——Design 37：数据域只依赖更低层。
 "auto-atom" = "data"
 "auto-val" = "data"
+# 语言核心域（Design 37 §2"语言"行的已拆出部分）——PLAN-789 首个成员
+# auto-lex（Token/Lexer/词法错误单一来源，自 auto-lang 逐字抽取交付）。
+# 与 lang-monolith 的关系：单向 lang-monolith → lang-core（抽取方向）；
+# lang-core 禁反向依赖 lang-monolith/man/工具/UI。
+"auto-lex" = "lang-core"
 # 语言工具基建（被 auto-lang 消费的底层 util/生成/测试基建）。
 "auto-cache" = "lang-infra"
 "shim-metadata" = "lang-infra"
@@ -77,6 +82,15 @@ from_domains = ["lang-infra"]
 to_domains = ["lang-monolith", "man", "man-ecosystem", "runtime", "tool", "cli", "host-tool"]
 kinds = ["normal", "build"]
 
+# PLAN-789：语言核心域（已拆出的 lang-core 成员）禁向——不得反向依赖
+# 巨 crate（lang-monolith）、man/工具/UI/host，也不得引运行时（词法层
+# 纯内存）。数据域（auto-val/auto-atom）与 lang-infra 为其合法下层。
+[[rules.forbidden_declared]]
+id = "lang-core-no-monolith-no-man-no-tools"
+from_domains = ["lang-core"]
+to_domains = ["lang-monolith", "man", "man-ecosystem", "runtime", "ui", "tool", "cli", "host-tool"]
+kinds = ["normal", "build"]
+
 [[rules.forbidden_declared]]
 id = "lang-no-man-no-tools"
 from_domains = ["lang-monolith"]
@@ -107,7 +121,7 @@ kinds = ["normal", "build"]
 # “必须 optional”没有设计依据（777 r1 复审 F06 裁定）。
 [[rules.forbidden_declared]]
 id = "out-of-root-edges-must-be-optional"
-from_domains = ["lang-monolith", "lang-infra", "runtime"]
+from_domains = ["lang-monolith", "lang-core", "lang-infra", "runtime"]
 to_domains = ["ui", "man", "man-ecosystem"]
 to_scopes = ["external"]
 kinds = ["normal", "build"]

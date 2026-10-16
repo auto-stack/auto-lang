@@ -1,0 +1,521 @@
+use auto_val::AutoStr;
+use std::fmt;
+use strum_macros;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct Pos {
+    pub line: usize,
+    pub at: usize,
+    pub pos: usize,
+    pub len: usize,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy, strum_macros::Display)]
+#[strum(serialize_all = "snake_case")]
+pub enum TokenKind {
+    // Literals
+    Int,
+    Uint,
+    U8,
+    I8,
+    Bool, // ADDED: bool literal
+    Byte, // ADDED: byte literal
+    Float,
+    Double,
+    Str,  // "hello"
+    CStr, // c"hello"
+    Char, // 'c'
+    Ident,
+
+    // Operators
+    LParen,           // (
+    RParen,           // )
+    LSquare,          // [
+    RSquare,          // ]
+    LBrace,           // {
+    RBrace,           // }
+    Comma,            // ,
+    Semi,             // ;
+    Newline,          // \n
+    Add,              // +
+    Sub,              // -
+    Star,             // *
+    Power,            // ** (Plan 560 T07: 幂算子)
+    Div,              // /
+    Mod,              // %
+    Not,              // !
+    Lt,               // <
+    Gt,               // >
+    Le,               // <=
+    Ge,               // >=
+    Asn,              // =
+    Eq,               // ==
+    Neq,              // !=
+    AddEq,            // +=
+    SubEq,            // -=
+    MulEq,            // *=
+    DivEq,            // /=
+    ModEq,            // %=
+    Dot,              // .
+    Range,            // ..
+    RangeEq,          // ..=
+    Colon,            // :
+    VBar,             // |
+    PipeGt,           // |>  (Plan 514 W5 管道算子)
+    Amp,              // &
+    CommentLine,      // //
+    CommentContent,   // any text in comment
+    CommentStart,     // /*
+    CommentEnd,       // */
+    DocComment,       // ///
+    Arrow,            // ->
+    DoubleArrow,      // =>
+    Question,         // ?
+    QuestionQuestion, // ??
+    DotQuestion,      // ?.
+    DotQuest,         // .? (Plan 120: error propagation operator)
+    At,               // @
+    Hash,             // #
+    Tilde,            // ~
+
+    // Comptime keywords (compile-time execution) - Plan 095
+    HashIf,    // #if
+    HashFor,   // #for
+    HashIs,    // #is
+    HashBrace, // #{
+    HashIdent, // #ident — macro invocation prefix (Plan 212 Phase 2.4)
+
+    // Keywords
+    True,
+    False,
+    Nil,  // nil for variables
+    Null, // null for pointers
+    If,
+    Else,
+    For,
+    Loop, // Plan 200: loop { body } desugars to for ever { body }
+    Break,
+    Continue,
+    Return, // ADDED: return keyword for early returns
+    Yield,  // Plan 321: yield keyword for generators
+    Try,    // Plan 010 (MS3-A): try { } catch { }
+    Catch,  // Plan 010 (MS3-A): catch handler
+    While,  // Plan 010 (MS3-A): while (cond) { }
+    Is,
+    With, // Plan 560 T09 (E2): with expr { } / with expr as x { }
+    Var,
+    In,
+    Fn,
+    Type,
+    Union,
+    Tag,
+    Let,
+    Mut,
+    Move,
+    Copy,
+    Const,
+    View,
+    Take,
+    Hold,
+    Has,
+    Spec,
+    Use,
+    Pac,    // Plan 131: package keyword (use pac.db)
+    Super,  // Plan 131: super keyword (use super.utils)
+    Super2, // super2 = two levels up (use super2.types)
+    Super3, // super3 = three levels up (use super3.types)
+    Super4, // super4 = four levels up (use super4.types)
+    As,
+    To, // Plan 162: .to(Type) method keyword for explicit type conversion
+    Enum,
+    On,
+    Alias,
+    Node,   // ADDED: node keyword for typed node definitions
+    Ext,    // ADDED: ext keyword for type extensions (Plan 035)
+    Static, // ADDED: static keyword for static methods (Plan 035)
+    Shared, // ADDED: shared keyword for static storage (Plan 6B-4.19)
+    Impl,   // ADDED: impl keyword for trait implementations (Plan 059)
+    And,    // Plan 072 (reverted): && logical and operator
+    Or,     // Plan 072 (reverted): || logical or operator
+    Dep,    // ADDED: dep keyword for dependency declaration (Plan 092)
+
+    // Router keywords (Plan 105)
+    Routes,
+    Outlet,
+    Link,
+    Route,
+    Nav,
+
+    // Plan 120: Option and Result type keywords
+    NoneKW, // None literal
+    SomeKW, // Some(value) constructor
+    OkKW,   // Ok(value) constructor
+    ErrKW,  // Err(message) constructor
+
+    // Plan 121: Task/Msg system keywords
+    Task,  // task keyword
+    Spawn, // spawn method name (reserved)
+
+    // Plan 124: Async/Future/Await system keywords
+    Await, // await keyword (postfix operator)
+    Reply, // reply keyword (in on blocks)
+
+    // Plan 126: Phase 4 - Micro-concurrency (.go postfix operator)
+    Go, // go keyword (postfix operator for spawning background tasks)
+
+    DotView,
+    DotMut,
+    DotMove,
+    DotTake,
+    // .type is handled as a special field name in codegen/eval, not as a special token
+
+    // Format Str
+    FStrStart,
+    FStrPart,
+    FStrEnd,
+    FStrNote,
+
+    // Keywords For AutoData
+    Grid,
+
+    // EOF
+    EOF,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub pos: Pos,
+    pub text: AutoStr,
+}
+
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.kind {
+            TokenKind::Newline => write!(f, "<nl>"),
+            TokenKind::Colon => write!(f, "<:>"),
+            TokenKind::Range => write!(f, "<..>"),
+            TokenKind::RangeEq => write!(f, "<..=>"),
+            TokenKind::Dot => write!(f, "<.>"),
+            TokenKind::Comma => write!(f, "<,>"),
+            TokenKind::Semi => write!(f, "<;>"),
+            TokenKind::LParen => write!(f, "<(>"),
+            TokenKind::RParen => write!(f, "<)>"),
+            TokenKind::LSquare => write!(f, "<[>"),
+            TokenKind::RSquare => write!(f, "<]>"),
+            TokenKind::LBrace => write!(f, "<{{>"),
+            TokenKind::RBrace => write!(f, "<}}>"),
+            TokenKind::Add => write!(f, "<+>"),
+            TokenKind::Sub => write!(f, "<->"),
+            TokenKind::Star => write!(f, "<*>"),
+            TokenKind::Div => write!(f, "</>"),
+            TokenKind::Mod => write!(f, "<%>"),
+            TokenKind::Not => write!(f, "<!>"),
+            TokenKind::Lt => write!(f, "<lt>"),
+            TokenKind::Gt => write!(f, "<gt>"),
+            TokenKind::Le => write!(f, "<le>"),
+            TokenKind::Ge => write!(f, "<ge>"),
+            TokenKind::Asn => write!(f, "<=>"),
+            TokenKind::Eq => write!(f, "<==>"),
+            TokenKind::Neq => write!(f, "<!=>"),
+            TokenKind::Arrow => write!(f, "<->>"),
+            TokenKind::DoubleArrow => write!(f, "<=>>"),
+            TokenKind::Hash => write!(f, "<#>"),
+            TokenKind::HashIf => write!(f, "<#if>"),
+            TokenKind::HashFor => write!(f, "<#for>"),
+            TokenKind::HashIs => write!(f, "<#is>"),
+            TokenKind::HashBrace => write!(f, "<#{}>", "{"),
+            TokenKind::True => write!(f, "<true>"),
+            TokenKind::False => write!(f, "<false>"),
+            TokenKind::Nil => write!(f, "<nil>"),
+            TokenKind::If => write!(f, "<if>"),
+            TokenKind::Else => write!(f, "<else>"),
+            TokenKind::For => write!(f, "<for>"),
+            TokenKind::Loop => write!(f, "<loop>"),
+            TokenKind::Var => write!(f, "<var>"),
+            TokenKind::Let => write!(f, "<let>"),
+            TokenKind::Mut => write!(f, "<mut>"),
+            TokenKind::View => write!(f, "<view>"),
+            TokenKind::Take => write!(f, "<take>"),
+            TokenKind::Move => write!(f, "<move>"),
+            TokenKind::Hold => write!(f, "<hold>"),
+            TokenKind::In => write!(f, "<in>"),
+            TokenKind::Fn => write!(f, "<fn>"),
+            TokenKind::Type => write!(f, "<type>"),
+            TokenKind::Union => write!(f, "<union>"),
+            TokenKind::Tag => write!(f, "<tag>"),
+            TokenKind::Alias => write!(f, "<alias>"),
+            TokenKind::Node => write!(f, "<node>"),
+            TokenKind::And => write!(f, "<&&>"),
+            TokenKind::Or => write!(f, "<||>"),
+            TokenKind::Routes => write!(f, "<routes>"),
+            TokenKind::Outlet => write!(f, "<outlet>"),
+            TokenKind::Link => write!(f, "<link>"),
+            TokenKind::Route => write!(f, "<route>"),
+            TokenKind::Nav => write!(f, "<nav>"),
+            TokenKind::FStrNote => write!(f, "<{}>", self.text),
+            TokenKind::FStrStart => write!(f, "<fstrs>"),
+            TokenKind::FStrEnd => write!(f, "<fstre>"),
+            TokenKind::FStrPart => write!(f, "<fstrp:{}>", self.text),
+            TokenKind::CommentLine => write!(f, "<//>"),
+            TokenKind::CommentContent => write!(f, "<comment:...>"),
+            TokenKind::CommentStart => write!(f, "</*>"),
+            TokenKind::CommentEnd => write!(f, "<*/>"),
+            TokenKind::DocComment => write!(f, "<///>"),
+            TokenKind::EOF => write!(f, "<eof>"),
+            TokenKind::Char => write!(f, "<'{}'>", self.text),
+            TokenKind::Is => write!(f, "<is>"),
+            TokenKind::With => write!(f, "<with>"),
+            TokenKind::Return => write!(f, "<return>"),
+            TokenKind::Yield => write!(f, "<yield>"),
+            TokenKind::On => write!(f, "<on>"),
+            TokenKind::Question => write!(f, "<?>"),
+            TokenKind::QuestionQuestion => write!(f, "??"),
+            TokenKind::DotQuestion => write!(f, "?."),
+            TokenKind::DotQuest => write!(f, ".?"),
+            TokenKind::Use => write!(f, "<use>"),
+            TokenKind::Pac => write!(f, "<pac>"),
+            TokenKind::Super => write!(f, "<super>"),
+            TokenKind::Super2 => write!(f, "<super2>"),
+            TokenKind::Super3 => write!(f, "<super3>"),
+            TokenKind::Super4 => write!(f, "<super4>"),
+            TokenKind::Spec => write!(f, "<spec>"),
+            TokenKind::CStr => write!(f, "<cstr:{}>", self.text),
+            TokenKind::At => write!(f, "<@>"),
+            TokenKind::Tilde => write!(f, "<~>"),
+            TokenKind::Task => write!(f, "<task>"),
+            TokenKind::Spawn => write!(f, "<spawn>"),
+            TokenKind::Await => write!(f, "<await>"),
+            TokenKind::Reply => write!(f, "<reply>"),
+            TokenKind::Go => write!(f, "<go>"),
+            _ => write!(f, "<{}:{}>", self.kind, self.text),
+        }
+    }
+}
+
+impl Token {
+    pub fn new(kind: TokenKind, pos: Pos, text: AutoStr) -> Self {
+        Token { kind, pos, text }
+    }
+
+    pub fn int(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::Int, pos, text)
+    }
+
+    pub fn uint(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::Uint, pos, text)
+    }
+
+    pub fn u8(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::U8, pos, text)
+    }
+
+    pub fn i8(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::I8, pos, text)
+    }
+
+    pub fn float(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::Float, pos, text)
+    }
+
+    pub fn double(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::Double, pos, text)
+    }
+
+    pub fn char(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::Char, pos, text)
+    }
+
+    pub fn str(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::Str, pos, text)
+    }
+
+    pub fn fstr_part(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::FStrPart, pos, text)
+    }
+
+    pub fn ident(pos: Pos, text: AutoStr) -> Self {
+        Token::new(TokenKind::Ident, pos, text)
+    }
+
+    pub fn eof(pos: Pos) -> Self {
+        Token::new(TokenKind::EOF, pos, "".into())
+    }
+}
+
+impl fmt::Display for Pos {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}:{}", self.line, self.at, self.len)
+    }
+}
+
+impl Token {
+    /// Plan 416 5-C: every string the lexer's `keyword` path recognises
+    /// (`keyword_kind` returns Some). Single source of truth for tooling
+    /// (LSP completion / syntax docs). A unit test asserts the round trip.
+    pub fn all_keywords() -> &'static [&'static str] {
+        &[
+            "alias", "as", "await", "break", "catch", "const", "continue", "copy", "dep", "else",
+            "enum", "ext", "false", "fn", "for", "go", "has", "hold", "if", "impl", "in", "is",
+            "let", "link", "loop", "mod", "move", "mut", "nil", "null", "outlet", "pac", "reply",
+            "return", "routes", "shared", "spawn", "spec", "static", "super", "super2", "super3",
+            "super4", "tag", "take", "task", "to", "true", "try", "type", "union", "use", "var",
+            "view", "while", "yield",
+        ]
+    }
+
+    pub fn keyword_kind(text: &str) -> Option<TokenKind> {
+        match text {
+            "true" => Some(TokenKind::True),
+            "false" => Some(TokenKind::False),
+            "nil" => Some(TokenKind::Nil),
+            "null" => Some(TokenKind::Null),
+            "if" => Some(TokenKind::If),
+            "else" => Some(TokenKind::Else),
+            "for" => Some(TokenKind::For),
+            "loop" => Some(TokenKind::Loop),   // Plan 200 Task 1.1
+            "while" => Some(TokenKind::While), // Plan 010 (MS3-A)
+            "try" => Some(TokenKind::Try),     // Plan 010 (MS3-A)
+            "catch" => Some(TokenKind::Catch), // Plan 010 (MS3-A)
+            "is" => Some(TokenKind::Is),
+            // Plan 560 T09 (E2)：with 上下文管理器糖（§10 裁决：新
+            // 关键字；零冲突——#[with(...)] 注解参数位方括号封闭）。
+            "with" => Some(TokenKind::With),
+            "var" => Some(TokenKind::Var),
+            "in" => Some(TokenKind::In),
+            "fn" => Some(TokenKind::Fn),
+            "type" => Some(TokenKind::Type),
+            "union" => Some(TokenKind::Union),
+            "tag" => Some(TokenKind::Tag),
+            "let" => Some(TokenKind::Let),
+            "mut" => Some(TokenKind::Mut),
+            "move" => Some(TokenKind::Move),
+            "view" => Some(TokenKind::View),
+            "take" => Some(TokenKind::Take),
+            "copy" => Some(TokenKind::Copy), // Plan 122: Deprecated - emit warning in parser
+            "hold" => Some(TokenKind::Hold),
+            "has" => Some(TokenKind::Has),
+            "spec" => Some(TokenKind::Spec),
+            "use" => Some(TokenKind::Use),
+            "pac" => Some(TokenKind::Pac), // Plan 131: package keyword
+            "super" => Some(TokenKind::Super), // Plan 131: super keyword
+            "super2" => Some(TokenKind::Super2),
+            "super3" => Some(TokenKind::Super3),
+            "super4" => Some(TokenKind::Super4),
+            "as" => Some(TokenKind::As),
+            "to" => Some(TokenKind::To),
+            "enum" => Some(TokenKind::Enum),
+            // Plan 408: 'grid' is no longer a hard keyword — lexed as Ident so it
+            // can be used as a route name, widget name, or variable. The AutoData
+            // grid(...) literal is parsed via a text-based check in parse_expr
+            // (parser.rs). Mirrors Plan 379's treatment of 'route' and Plan 354's
+            // treatment of 'nav'. "grid" => Some(TokenKind::Grid),
+            "alias" => Some(TokenKind::Alias),
+            "break" => Some(TokenKind::Break),
+            "continue" => Some(TokenKind::Continue),
+            "return" => Some(TokenKind::Return),
+            "yield" => Some(TokenKind::Yield),
+            "ext" => Some(TokenKind::Ext),
+            "static" => Some(TokenKind::Static),
+            "shared" => Some(TokenKind::Shared),
+            "impl" => Some(TokenKind::Impl),
+            "const" => Some(TokenKind::Const),
+            "and" => None, // Plan 072 reverted: use && operator instead
+            "or" => None,  // Plan 072 reverted: use || operator instead
+            "dep" => Some(TokenKind::Dep), // Plan 092: dependency declaration
+            "routes" => Some(TokenKind::Routes), // Plan 105: router keywords
+            "outlet" => Some(TokenKind::Outlet),
+            "link" => Some(TokenKind::Link),
+            // Plan 379: 'route' is no longer a keyword — lexed as Ident so it
+            // can be used as a method name, in particular axum's Router::route()
+            // (.route("/", get(handler))). The singular 'route' TokenKind was
+            // never consumed by the parser (only 'routes' the block keyword is,
+            // via parse_routes_block_inner), so dropping the keyword is safe.
+            // Mirrors Plan 354's treatment of 'nav'. "route" => Some(TokenKind::Route),
+            // Plan 354: 'nav' is no longer a keyword — lexed as Ident so it
+            // parses as a function call nav(...) in handler bodies and view DSL.
+            // The existing call() handler (parser.rs ~9926) routes it to parse_nav_call.
+            // Plan 120: Option and Result type keywords (PascalCase like Rust)
+            "None" => Some(TokenKind::NoneKW),
+            "Some" => Some(TokenKind::SomeKW),
+            "Ok" => Some(TokenKind::OkKW),
+            "Err" => Some(TokenKind::ErrKW),
+            // Plan 121: Task/Msg system keywords
+            "task" => Some(TokenKind::Task),
+            "spawn" => Some(TokenKind::Spawn),
+            // Plan 124: Async/Future/Await system keywords
+            "await" => Some(TokenKind::Await),
+            "reply" => Some(TokenKind::Reply),
+            // Plan 126: Phase 4 - Micro-concurrency
+            "go" => Some(TokenKind::Go),
+            "mod" => Some(TokenKind::Mod), // mod name { ... } module declaration
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spec_keyword() {
+        // Test that "spec" is recognized as a keyword
+        let kind = Token::keyword_kind("spec");
+        assert_eq!(kind, Some(TokenKind::Spec));
+
+        // Test that "Spec" (capitalized) is NOT recognized as a keyword
+        let kind = Token::keyword_kind("Spec");
+        assert_eq!(kind, None);
+
+        // Test that other keywords still work
+        assert_eq!(Token::keyword_kind("has"), Some(TokenKind::Has));
+        assert_eq!(Token::keyword_kind("fn"), Some(TokenKind::Fn));
+        assert_eq!(Token::keyword_kind("type"), Some(TokenKind::Type));
+    }
+
+    #[test]
+    fn test_spec_display() {
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 4,
+        };
+        let token = Token::new(TokenKind::Spec, pos, "spec".into());
+        assert_eq!(format!("{}", token), "<spec>");
+    }
+
+    #[test]
+    fn test_go_keyword() {
+        // Plan 126: Test that "go" is recognized as a keyword
+        let kind = Token::keyword_kind("go");
+        assert_eq!(kind, Some(TokenKind::Go));
+
+        // Test that "Go" (capitalized) is NOT recognized as a keyword
+        let kind = Token::keyword_kind("Go");
+        assert_eq!(kind, None);
+    }
+
+    #[test]
+    fn test_loop_keyword() {
+        // Plan 200 Task 1.1: loop keyword
+        assert_eq!(Token::keyword_kind("loop"), Some(TokenKind::Loop));
+    }
+}
+
+#[cfg(test)]
+mod all_keywords_tests {
+    /// Plan 416 5-C: every advertised keyword must be recognised by the
+    /// lexer's keyword_kind (the advertised list is the tooling surface).
+    #[test]
+    fn test_all_keywords_round_trip() {
+        for kw in super::Token::all_keywords() {
+            assert!(
+                super::Token::keyword_kind(kw).is_some(),
+                "advertised keyword {:?} not recognised by keyword_kind",
+                kw
+            );
+        }
+    }
+}

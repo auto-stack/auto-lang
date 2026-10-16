@@ -968,7 +968,7 @@ impl<'a> Parser<'a> {
             Ok(token) => token,
             Err(err) => {
                 // Record the lexer error
-                self.errors.push(err);
+                self.errors.push(err.into());
                 // Check if we've hit the error limit
                 if self.errors.len() >= self.error_limit {
                     // Set cur to EOF and return to stop parsing

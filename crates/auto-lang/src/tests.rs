@@ -137,6 +137,9 @@ mod plan_088_parser_tests;
 mod plan_088_tests;
 #[cfg(test)]
 mod test_double_lexer;
+// PLAN-789: 词法抽取类型身份/错误投影经兼容出口的 V03 树内侧。
+#[cfg(test)]
+mod plan789_lex_extraction;
 #[cfg(test)]
 mod test_float_full;
 #[cfg(test)]

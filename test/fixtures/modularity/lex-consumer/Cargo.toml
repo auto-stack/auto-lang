@@ -1,0 +1,21 @@
+# PLAN-789 V01 外部词法消费方 gate（独立 fixture crate）。
+#
+# 角色：模拟"外部 crate"——manifest 即验收证据：唯一依赖是 auto-lex（path），
+# 构建+测试成功证明词法基础可脱离 auto-lang/auto-man/auto-vm/UI 独立消费
+#（AC-01：正常 DAG 无反向边、不借主库 rlib）。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/lex-consumer/Cargo.toml
+
+[package]
+name = "lex-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-lex = { path = "../../../../crates/auto-lex" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

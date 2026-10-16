@@ -167,6 +167,8 @@ test-native-dock = ["ui-iced", "native-dock"]
 [dependencies]
 auto-val = { path = "../auto-val", features = ["serde"] }
 auto-atom = { path = "../auto-atom" }
+# PLAN-789: 词法基础单一来源（Token/Lexer）；token/lexer 模块为薄 re-export。
+auto-lex = { path = "../auto-lex" }
 auto-cache = { path = "../auto-cache" }
 # Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
 shim-metadata = { path = "../shim-metadata" }
