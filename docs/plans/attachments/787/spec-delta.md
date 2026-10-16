@@ -82,7 +82,9 @@ F787-R1-01..10 + R2-01..11 + R3-01..06 + R4-01..06 修复后的实际实现重�
   （F787-R5-02）**：源覆盖窗口=outline name 字段绝对范围（语义 span 内，
   不含前导 trivia），按真实 token 范围取源；窗口驻留超限 → 受控
   ResourceExhausted（AC787_QUERY_WINDOW_LIMIT 可测阈值两侧），绝不用空 name
-  冒充精确恢复成功。required 闭包
+  冒充精确恢复成功；**限额在物化之前判定（F787-R6-02）**——窗口已越限即
+  受控退出，查询进程驻留上界 = limit + 一个 store 源页（≤256KiB 超前），
+  不先整窗物化再检查。required 闭包
   （当前根 GC 存活覆盖可重开全数据）：put_cst 链 = manifest
   --required--> 数据页+目录页+A02（→A01+源页）；流式链 = manifest
   --required--> 数据页+目录页+**源页+A01**（流式无 A02 工件——直接闭包，
@@ -101,17 +103,20 @@ F787-R1-01..10 + R2-01..11 + R3-01..06 + R4-01..06 修复后的实际实现重�
 - **after**：记录 787 加法扩展（五 ChunkKind 含 SourcePage、三层 coverage 翻转
   （dep_audit 期望同步）、A02 key_inputs 补 grammar-id/page-hash、Future 拒绝面
   换 A05 起）；GC 边界、staging 8MiB、64/48MiB 水位等冻结值不变；787 的
-  syntax_budget_ 在同预算合同下运行，**证据口径（F787-R4-04 + F787-R5-03）**：builder
+  syntax_budget_ 在同预算合同下运行（**work-owned，在修复提交上实测**，
+  F787-R6-01），**证据口径（F787-R4-04 + R5-03 + R6-01）**：builder
   受管 ≤8MiB = 实际容量（Vec capacity×元素大小+String/内层堆容量）+ 同驻留
-  合计（parse 产物在目录页落盘/页 put 期间仍存活；payload 克隆/编码副本；
-  finish 时 move 前目录与 JSON/edges 同驻留）。返回树驻留项逐项计入：
+  合计（parse 产物在目录页落盘/页 put 期间仍存活；payload 克隆+探针 framed
+  副本**各计一份**；finish 时 move 前目录与 JSON/edges 同驻留）。返回树驻留项逐项计入：
   `blocks`/`root_edges`/`decls`/`bases`/`block_decl` Vec 外层 + 各 `CstBlock`
   的 nodes/edges/fields capacity + `tree.diags` 及其 message String capacity
   + tokens/lex_diags；push_chunk 期间 snap/store 源码页 payload（活到返回）
-  与 put_source_pages 聚合 buf+framed 克隆峰值一并进入同驻留高水位。
+  与 put_source_pages **三份**峰值（聚合 buf 保留+payload 克隆+探针 framed
+  副本，F787-R6-01：修复前两份口径在 256KiB 页少计 262192B）一并进入同驻留
+  高水位。
   视图受管 = hot 页缓存 ≤8MiB +
   manifest 目录计入 ≤16MiB 合同；OS private bytes = 各阶段（build/warm 查询/
-  冷恢复查询）**期间采样器**的最大观测增量（生成器独立进程分列），非返回点
+  冷恢复查询/源重建）**期间采样器**的最大观测增量（生成器独立进程分列），非返回点
   当前值；单查询增量读取（目录页+数据页，manifest 一次性入口成本分列）≤512KiB。
   **明确排除项**：parse Machine 内部工作栈/回溯暂存在 parse_snapshot 返回前
   释放——不在受管口径内、仅 OS 采样器可见；非 Windows 宿主 sysinfo=0 时 OS

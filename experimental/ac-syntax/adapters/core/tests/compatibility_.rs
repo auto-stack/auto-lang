@@ -62,11 +62,15 @@ fn compatibility_probe_old_chunk_kinds_untouched() {
 fn compatibility_dependency_audit_no_production_surface_touched() {
     // 本计划范围：experimental/ac-syntax 新增 + ac-artifact-probe 加法扩展。
     // crates/** 与 experimental/ac-core/src/** 必须零改动（worktree diff 核对）。
+    // 审计基面（F787-R6-03 修复后重锚）：原 bf773ca9b 为 787 起草基线；R6
+    // 上游租约缺陷经 fix-783-lease-id 落 master（7c0caa18c）并回绑本分支后，
+    // master 侧已含其它在途计划的生产行——基面重锚到合并进来的 master 头，
+    // 断言语义不变：787 自身改动相对基线零生产面。
     let out = std::process::Command::new("git")
         .args([
             "diff",
             "--name-only",
-            "bf773ca9b",
+            "7c0caa18c",
             "HEAD",
             "--",
             "crates/",

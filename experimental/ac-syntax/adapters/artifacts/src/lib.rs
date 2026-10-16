@@ -200,8 +200,9 @@ impl SyntaxArtifactStore {
     /// 发布快照源字节（内容寻址，跨快照/工程共享）。快照页（16KiB）按
     /// `SRC_STORE_PAGE_BYTES` 聚合为 store 源页——大负载下控制 put 次数
     /// （probe 每次提交有全目录扫描成本），聚合粒度仍是内容寻址共享单位。
-    /// 返回 (artifact ids, chunk ids, put 瞬态峰值)：峰值 = 聚合 buf 及其
-    /// framed 克隆的同驻留上界（F787-R5-03 put 路径计量）。
+    /// 返回 (artifact ids, chunk ids, put 瞬态峰值)：峰值 = 聚合 buf +
+    /// payload 克隆 + 探针 framed 副本**三份**同驻留上界（F787-R5-03/R6-01
+    /// put 路径计量）。
     pub fn put_source_pages(
         &self,
         snap: &Snapshot,
@@ -218,8 +219,11 @@ impl SyntaxArtifactStore {
             if buf.is_empty() {
                 return Ok(());
             }
-            // put 瞬态：聚合 buf + payload 克隆（framed 副本）同驻留。
-            let concurrent = buf.capacity() + buf.len();
+            // put 同驻留（F787-R5-03 + R6-01 三份口径）：聚合 buf（保留）+
+            // payload 克隆（PutRequest）+ 探针侧 framed 副本（frame_chunk 对
+            // 借用的 req.payload 另行分配，请求存活至 put_inner 返回）。
+            // framed ≈ payload+48B 头；克隆容量==len。
+            let concurrent = buf.capacity() + 2 * buf.len() + 64;
             if concurrent > *put_peak {
                 *put_peak = concurrent;
             }

@@ -650,3 +650,51 @@ fn syntax_cache_range_query_name_window_limit_is_controlled() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F787-R6-02 永久 oracle：超限拒绝发生在**继续大规模分配之前**——真实
+/// 大 name 字段（512KiB）+ 小 limit（64KiB）下 exit 4，且 stderr 自报的
+/// 已物化窗口 ≤ limit + 一个 store 源页（256KiB）——限额在 append 前判定
+/// （修复前：先整窗物化再在循环后检查，8MiB 名称先积累 8MiB 驻留）。
+#[test]
+fn syntax_cache_range_query_window_limit_bounds_materialization() {
+    let p = mini_grammar();
+    let name = "x".repeat(512 << 10);
+    let text = format!("api {name}() -> i32;\n");
+    let root = scratch("cache-r6-window-bound");
+    let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+    let mut b = ac_syntax_artifact_adapter::StreamingCstBuilder::new(&sas, &p);
+    b.push_chunk(&text).unwrap();
+    b.finish(text.len() as u64).unwrap();
+    let id = b.stream_snapshot_id();
+
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-query"));
+    cmd.env("AC787_QUERY_WINDOW_LIMIT", (64 << 10).to_string())
+        .arg(&root)
+        .arg(p.grammar_id().as_str())
+        .arg(p.revision.to_string())
+        .arg(&id)
+        .arg(text.len().to_string())
+        .arg("0");
+    let out = ac_artifact_probe::subproc::run_deadlined(cmd, std::time::Duration::from_secs(120))
+        .expect("spawn bounded query");
+    assert!(!out.timed_out, "bounded rejection must finish promptly");
+    assert_eq!(
+        out.code,
+        Some(4),
+        "over-limit big name must be controlled ResourceExhausted, stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    let materialized: usize = out
+        .stderr
+        .split("window ")
+        .nth(1)
+        .and_then(|s| s.split_whitespace().next())
+        .and_then(|s| s.parse().ok())
+        .expect("stderr must report the materialized window bytes");
+    assert!(
+        materialized <= (64 << 10) + (256 << 10),
+        "rejection must precede further mass allocation: at most one 256KiB source page overshoot over the limit, observed {materialized} bytes"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

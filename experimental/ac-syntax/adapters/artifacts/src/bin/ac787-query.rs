@@ -68,7 +68,24 @@ fn main() {
     // 不在 name 字段内，不得物化进查询窗口。
     let name_span = name_field_range(&prog, &subtree, subtree.root);
 
-    // 源完整性：流式 hash（零驻留）+ 仅物化 name 字段覆盖页。
+    // 窗口驻留上限（默认 2MiB；AC787_QUERY_WINDOW_LIMIT 可覆盖供阈值两侧
+    // 永久 oracle）。F787-R6-02：限额在 **append 之前**判定——窗口已超限
+    // （允许单源页粒度超前：store 源页 ≤256KiB）即受控 ResourceExhausted
+    // （exit 4），不为超限名称继续大规模分配；循环后兜底覆盖"越限页恰为
+    // 最后一个相交页"的情形。
+    let query_window_limit: usize = std::env::var("AC787_QUERY_WINDOW_LIMIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2 << 20);
+    fn window_reject(materialized: usize, limit: usize, lo: u64, hi: u64) -> ! {
+        eprintln!(
+            "query: name-field window {} bytes exceeds limit {} (span {},{}); ResourceExhausted",
+            materialized, limit, lo, hi
+        );
+        std::process::exit(4);
+    }
+
+    // 源完整性：流式 hash（零驻留）+ 仅物化 name 字段覆盖页（有界）。
     // name 为空（无 outline 规格/字段）时窗口为空——精确结果，不是截断。
     let (need_lo, need_hi) = match name_span {
         Some((s, e)) => (s, e),
@@ -87,28 +104,18 @@ fn main() {
             if slice_start == u64::MAX {
                 slice_start = page_lo;
             }
+            // R6-02：append 前判限额——已越限即拒绝，驻留上界 = limit + 一页。
+            if window_pages.len() > query_window_limit {
+                window_reject(window_pages.len(), query_window_limit, need_lo, need_hi);
+            }
             window_pages.extend_from_slice(page);
         }
         Ok(())
     })
     .expect("stream source pages");
     let src_hash = hasher.finalize().to_hex().to_string();
-
-    // 窗口驻留上限（默认 2MiB；AC787_QUERY_WINDOW_LIMIT 可覆盖供阈值两侧
-    // 永久 oracle）。超限 = 受控 ResourceExhausted，不是空 outline（R5-02）。
-    let query_window_limit: usize = std::env::var("AC787_QUERY_WINDOW_LIMIT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(2 << 20);
     if window_pages.len() > query_window_limit {
-        eprintln!(
-            "query: name-field window {} bytes exceeds limit {} (span {},{}); ResourceExhausted",
-            window_pages.len(),
-            query_window_limit,
-            need_lo,
-            need_hi
-        );
-        std::process::exit(4);
+        window_reject(window_pages.len(), query_window_limit, need_lo, need_hi);
     }
 
     let name = match (name_span, slice_start) {

@@ -1,4 +1,4 @@
-# PLAN-787 验收矩阵与性能报告（T-07；复审 R1+R2+R3+R4 修复轮）
+# PLAN-787 验收矩阵与性能报告（T-07；复审 R1+R2+R3+R4+R5+R6 修复轮）
 
 - 工作树 `D:/autostack/.wt/lang-787/auto-lang`，分支 `plan-787-dev`
 - 基面 master `bf773ca9b`；本轮修复绑定提交见 §4
@@ -62,7 +62,31 @@ OS=各阶段期间采样器峰值：build/warm 查询/冷恢复/源重建分列+
 8827→8027KiB 仍 ≤8MiB 合同，不放宽预算）；spec-delta 重写（会话域仲裁/
 DECL_INDEX_PAGE=2048/规范形/admission/预算证据边界）；rustfmt 全量净。
 
-## 1. V 矩阵（acceptance 实测 2026-10-16 R4 修复轮）
+## 0d. 复审 R6 修复轮（2026-10-16，F787-R6-01..03 全闭合）
+
+R6 独立反例 **4/4 通过**（修复前 2/4：8MiB 名称窗口/put 峰值下界断言红；
+R1 7、R2 18、R3 8、R4 3、R5 4 例全部保持通过——六代全绿）。要点：
+**上游租约缺陷按归属修复**（F787-R6-03/P1：783 `acquire_lease` 的
+`ls-{ms}-{pid}` 在已释放行残留时同毫秒顺序申请撞 leases 主键，128 连发
+91 次 UNIQUE 冲突——经独立 fix worktree `fix-783-lease-id` 以 `LEASE_SEQ`
+进程内序列修复【staging 事务 ID 既有的 STAGING_SEQ 同类机制；liveness
+语义不变：OS 锁文件裁定】+ 永久回归
+`reachability_sequential_same_millisecond_leases_do_not_collide`，落
+master `7c0caa18c` 后回绑本分支重验；787 侧未私修、未 sleep 遮红）；
+**源页 put 三驻留计量**（F787-R6-01：聚合 buf + payload 克隆 + 探针 framed
+副本三份同驻留，put_peak = capacity + 2×len + 64——修复前两份口径在
+256KiB 页少计 262192B）；**查询窗口有界物化**（F787-R6-02：限额在
+**append 之前**判定——窗口已越限即受控 exit 4，驻留上界 = limit + 一个
+store 源页 ≤256KiB，不再先整窗物化再检查；8MiB 名称/默认 2MiB limit 实测
+物化恰为 2MiB+256KiB 边界内）；**work-owned 64MiB 必验在修复提交上完成**
+（R4 轮曾误列为 merge-owned pending——本计划 §6/验收脚本明确
+syntax_budget_ 为 work-owned，已更正；见 §2 新口径读数）；兼容审计基面
+随 master 回绑重锚 7c0caa18c（断言语义不变：787 自身改动相对基线零
+生产面）。merge-owned 门禁清单更正：final pass 后 = 完整独立语法
+workspace + 受影响 783 套件 + SD/索引/ledger 沉淀 + 合流归档/guard 清理
+（本计划无生产 Rust/文档生成器触面，不含根整档/docs_gen）。
+
+## 1. V 矩阵（acceptance 实测 2026-10-16 R6 修复轮）
 
 | ID | AC | filter | 实测 | 状态 |
 |---|---|---|---|---|
@@ -74,18 +98,19 @@ DECL_INDEX_PAGE=2048/规范形/admission/预算证据边界）；rustfmt 全量�
 | V-06 | 增量局部 | incremental_local_ | 3（1MiB：真实读取 ≤48KiB+报告 214B、重解析 ≤1 声明、**内容块节点复用 1147999/1148131=99.99%**、fresh 全等；开头插入零后缀复制） | PASS |
 | V-07 | 增量状态/回退可见 | incremental_replay_ | 4（core+mini 各 200 轮确定种子；未闭合回退=fresh；逆序屏障） | PASS |
 | V-08 | 代际/迟到/取消 | generation_（+handle 单测） | 3 | PASS |
-| V-09 | 持久化/重启小查询 | syntax_cache_ | 7（跨 store 实例、checkpoint 完整往返+**恢复对照 fresh 尾**、双工程共享隔离、真子进程查询精确断言+负控、**同 snapshot fresh/增量入库幂等共存（正反序/重复编辑/重开）**、**跨页前导 trivia 查询（空白/CRLF/Unicode 注释/多页/非首声明）**） | PASS |
-| V-10 | 数据拒绝 | syntax_admission_ | 15（坏块/缺页/坏身份/截断页/坏 manifest ref/根替换+lease+GC 生命周期/**同文本跨修订复用**/**重启会话发布**/**注册失败保旧根**/**越源 span 拒绝**/**子树 admission：越源 child/越父 span/异归属/坏字段拒绝+跨页非零 origin 正控**均受控） | PASS |
-| V-11 | 64MiB 工作集 | syntax_budget_ | 2（见 §2 大负载读数；含巨声明受控 ResourceExhausted） | PASS |
+| V-09 | 持久化/重启小查询 | syntax_cache_ | 9（跨 store 实例、checkpoint 完整往返+**恢复对照 fresh 尾**、双工程共享隔离、真子进程查询精确断言+负控、**同 snapshot fresh/增量入库幂等共存（正反序/重复编辑/重开）**、**跨页前导 trivia 查询（空白/CRLF/Unicode 注释/多页/非首声明）**、**name 窗口限额受控 exit4**、**窗口限额驻留上界（真实 512KiB 名+64KiB limit，自报物化 ≤limit+256KiB）**） | PASS |
+| V-10 | 数据拒绝 | syntax_admission_ | 18（坏块/缺页/坏身份/截断页/坏 manifest ref/根替换+lease+GC 生命周期/**同文本跨修订复用**/**重启会话发布**/**注册失败保旧根**/**越源 span 拒绝**/**子树 admission：越源 child/越父 span/异归属/坏字段拒绝+跨页非零 origin 正控**/**空 args 零宽生产者正控**等均受控） | PASS |
+| V-11 | 64MiB 工作集 | syntax_budget_ | 2（**work-owned，R6 修复提交上实测**；见 §2 大负载读数；含巨声明受控 ResourceExhausted） | PASS |
 | V-12 | 深度全路径 | depth_ / depth_persisted_ | 4 + 1（**真 ≥4096 同时未闭合嵌套**；持久化编解码往返全路径迭代） | PASS |
-| V-13 | 兼容/证据 | compatibility_ / perf_ | 3 + 2（含 core 旧 parser 对照） | PASS |
+| V-13 | 兼容/证据 | compatibility_ / perf_ | 3 + 2（含 core 旧 parser 对照；**审计基面随 master 回绑重锚 7c0caa18c**） | PASS |
 
-复审反例重放：R1 **7/7** + R2 **18/18** + R3 **8/8** + R4 **3/3** 全部通过
-（R4 修复前 0/3；四代探针植入件在键形稳定下真实命中，无空过——R4 修复中
-曾短暂引入 A03 键布局分量致 R2 两例 miss，已回退保持键形历史稳定）。
-acceptance 16 族 raw passed 合计 **106**（snapshot 4/grammar 13/reject 7/
+复审反例重放：R1 **7/7** + R2 **18/18** + R3 **8/8** + R4 **3/3** +
+R5 **4/4** + R6 **4/4** 全部通过（R6 修复前 2/4；四代探针植入件在键形
+稳定下真实命中，无空过——R4 修复中曾短暂引入 A03 键布局分量致 R2 两例
+miss，已回退保持键形历史稳定）。
+acceptance 16 族 raw passed 合计 **111**（snapshot 4/grammar 13/reject 7/
 lossless 15/recovery 4/projection 19/local 3/replay 4/generation 3/depth 4/
-persisted 1/cache 7/admission 15/compat 3/perf 2/budget 2；过滤族有重叠，
+persisted 1/cache 9/admission 18/compat 3/perf 2/budget 2；过滤族有重叠，
 非独立测试去重总数）。
 
 ## 2. 性能读数（perf_，32 样本/场景 + 3 预热，debug 构建，单线程）
@@ -104,23 +129,26 @@ persisted 1/cache 7/admission 15/compat 3/perf 2/budget 2；过滤族有重叠�
 - core 对照（F787-R1-09 新增）：361KiB core 文档，CST fresh parse
   P50 441.7ms vs 旧手写 parser P50 78.7ms（debug 构建，对照证据——新路径
   不替换生产入口，时延优势不是本计划交付主张）。
-- V-11 大负载（R4 修复轮实测）：64MiB / 2,567,818 声明，**生成器独立进程**
+- V-11 大负载（**R6 修复轮实测**——F787-R6-01 要求 work-owned 证据在修复
+  提交上完成）：64MiB / 2,567,818 声明，**生成器独立进程**
   （ac787-gen，自身 private bytes 峰值 948KiB 分列）：
-  - 流式构建 538.5s（页 put 主导，probe 每次提交全目录扫描为放大项——783
-    边界，不在本计划修）；200 次随机子树查询 1.5s；
-  - **builder 受管工作集峰值 8027KiB ≤ 8MiB**（F787-R4-04 诚实口径：实际
-    容量（Vec capacity×元素+String 堆容量）+同驻留合计——parse 产物在目录
-    页落盘/页 put 期间存活、payload framed 副本、finish 时 move 前目录与
-    JSON/edges 同驻留；put 路径零克隆；封块 shrink_to_fit+token 收紧使单
-    64KiB 块 parse 瞬态容量口径 5.88→3.0MiB，诚实计量下峰值 8827→8027KiB
-    仍满足合同，不放宽预算）；
+  - 流式构建 361.4s（页 put 主导，probe 每次提交全目录扫描为放大项——783
+    边界，不在本计划修）；200 次随机子树查询 0.7s；
+  - **builder 受管工作集峰值 8027KiB ≤ 8MiB**（F787-R4-04/R5-03/R6-01 诚实
+    口径：实际容量（Vec capacity×元素+String 堆容量+R5 起返回树/源码页
+    计入）+同驻留合计——parse 产物在目录页落盘/页 put 期间存活、**源页 put
+    三份驻留（聚合 buf+payload 克隆+探针 framed 副本）全计**、finish 时
+    move 前目录与 JSON/edges 同驻留；put 路径零克隆；封块 shrink_to_fit+
+    token 收紧使单 64KiB 块 parse 瞬态容量口径 5.88→3.0MiB，诚实计量下
+    峰值 8827→8027KiB 仍满足合同，不放宽预算）；
   - hot 页缓存 8092KiB ≤ 8MiB；manifest 目录 1162KiB；**受管合计 ≤16MiB**（索引计入）；
   - 单子树 payload ≤512KiB、单页解码 ≤512KiB；
-  - **OS private bytes（Windows 实测，各阶段期间采样器峰值——R4-04 口径）：
-    build 15,860KiB / warm 查询 14,648KiB / 冷恢复查询 17,340KiB / 终态
-    15,180KiB，runtime 增量峰值 17,340KiB ≤ 64MiB 目标**；非 Windows 宿主
-    sysinfo 返回 0 → 测试显式记录证据缺口，不作断言；**缺失项显式记录**
-    （parse Machine 内部工作栈/回溯暂存仅 OS 采样器可见，不在受管口径内）；
+  - **OS private bytes（Windows 实测，各阶段期间采样器峰值——R4-04/R6 口径）：
+    build 15,352KiB / warm 查询 14,628KiB / 冷恢复查询 17,176KiB / 源重建
+    15,232KiB / 终态 15,192KiB，runtime 增量峰值 17,176KiB ≤ 64MiB 目标**；
+    非 Windows 宿主 sysinfo 返回 0 → 测试显式记录证据缺口，不作断言；
+    **缺失项显式记录**（parse Machine 内部工作栈/回溯暂存仅 OS 采样器
+    可见，不在受管口径内）；
   - 视图单次 chunk 读取峰值（数据/目录/源页统一）≤512KiB；**单次恢复查询
     增量读取（manifest 实读分列后）≤512KiB**；
   - 磁盘 316MiB（源页+树页 CAS）；源重建逐页比对与生成文件全等（64MiB 零整源驻留）。
