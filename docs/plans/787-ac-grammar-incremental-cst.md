@@ -6,7 +6,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-15
 updated_at: 2026-10-15
-current_step: 4
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -195,15 +195,38 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 | [x] T-02 | work | T-01 | 新runtime/src/snapshot.rs、position.rs、handle.rs，分页源和edit事务/位置/代际 | snapshot_、generation_坐标/handle；AC-01 |
 | [x] T-03 | work | T-02 | 新grammar/src/、runtime/src/lexer/、grammars/*.at；Atom编译规则/Pratt表、checkpoint完整状态 | grammar_、grammar_reject_、lossless_词法；AC-02、03 |
 | [x] T-04 | work | T-03 | 新runtime/src/{parse,cst,recovery}/，字段/错误节点/同步、结构outline；不可深递归 | lossless_、recovery_、depth_构建查询释放；AC-03 |
-| [ ] T-05 | work | T-04 | 新adapters/core/与runtime/src/edit/；真实Program投影、声明级复用、回退/取消/迟到 | core_projection_、incremental_local_、incremental_replay_、generation_；AC-03、04 |
-| [ ] T-06 | work | T-05、D-783 | 新adapters/artifacts/与paging；加法扩展ac-artifact-probe/src/schema.rs、codec.rs及对应测试，接真实A01/02/03 | syntax_cache_、syntax_admission_、syntax_budget_、depth_编解码；AC-05 |
-| [ ] T-07 | work | T-06 | 新scripts/verify-ac-syntax-787.ps1、reports/plan787/矩阵/性能、attachments/787/spec-delta.md；兼容旧接口/依赖审计 | acceptance V-01–13、compatibility_、perf_；AC-06；完成→execution_done=7/9 |
+| [x] T-05 | work | T-04 | 新adapters/core/与runtime/src/edit/；真实Program投影、声明级复用、回退/取消/迟到 | core_projection_、incremental_local_、incremental_replay_、generation_；AC-03、04 |
+| [x] T-06 | work | T-05、D-783 | 新adapters/artifacts/与paging；加法扩展ac-artifact-probe/src/schema.rs、codec.rs及对应测试，接真实A01/02/03 | syntax_cache_、syntax_admission_、syntax_budget_、depth_编解码；AC-05 |
+| [x] T-07 | work | T-06 | 新scripts/verify-ac-syntax-787.ps1、reports/plan787/矩阵/性能、attachments/787/spec-delta.md；兼容旧接口/依赖审计 | acceptance V-01–13、compatibility_、perf_；AC-06；完成→execution_done=7/9 |
 | [ ] T-08 | review | T-07 | 同树独立最终验收，绑定冻结commit/API/SD/补充反例，遗漏与债务扫描 | AC-07；pass→reviewed=8/9，merge-owned pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交closeout完整独立套件+触面783套件；沉淀SD/索引，合入归档；批量回归到期判定按技能；guard后清理 | AC-08；实际收尾结束才9/9 |
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
 
-### 执行进度注记（work，2026-10-16）
+### 执行进度注记（work，2026-10-16 第二轮收口）
+
+- T-01 ✅ feasibility 报告（8b1920c33）。
+- T-02 ✅ snapshot/position/handle 33/33（c8eb1f216）。
+- T-03 ✅ grammar 编译器+双 profile .at（85686c3c0/386ccf982）。
+- T-04 ✅ 迭代 unwind/恢复语义（f7021cb46；depth 4096+ 无栈崩）。
+- T-05 ✅ core 投影 **valid 41/41 逐字节全等 + invalid 85/85 接受/拒绝平行**
+  （e5d55c2b8：close_call 后缀操作数、语义 span、组透传、嵌套 args 收集、
+  named label 定位、type-ann 去冒号）+ 增量 edit 族 6/6（0a73848e5：splice
+  前缀保留、词法粘连安全边界、error 声明重验证、1MiB 重扫 214B/复用 99.99%、
+  200 轮 replay 双 profile fresh 等价、逆序屏障）。
+- T-06 ✅ 783 探针加法扩展（4 ChunkKind + A01/02/03→Codec，GC 零改动）+ 真实
+  生产者 adapter（A01 身份重验 / A02 往返 / A03 活子树 BFS 分页+目录分页+按需
+  页视图+64MiB 流式构建器）；cache 3/3 + admission 4/4 + budget 1/1（64MiB
+  256.8 万声明 hot 8177KiB≤8MiB）（39ccc0792）。
+- T-07 ✅ 矩阵族补齐（snapshot_/generation_/compatibility_/perf_）+
+  `scripts/verify-ac-syntax-787.ps1 -Scope acceptance` **ALL PASS** +
+  matrix.md + spec-delta.md（4eed69e67）。workspace 106/106 绿。
+- 工作树 HEAD `4eed69e67`，基面 `bf773ca9b`。
+- **work 完成（execution_done 7/9）**：T-08 独立最终验收（同树、绑定冻结
+  commit/SD/反例、遗漏与债务扫描）→ T-09 merge（closeout 完整套件含 64MiB
+  负载与 783 触面族）。
+
+
 
 - T-01 ✅ 工作区/清单冻结+最小闭环；feasibility 报告 [docs/reports/plan787/feasibility.md](../reports/plan787/feasibility.md)（提交 8b1920c33）。
 - T-02 ✅ snapshot/position/handle 33/33（c8eb1f216）。
@@ -221,6 +244,17 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 2026-10-15 draft handoff：stage:new；PLAN-787 r1；outcome:pass（可交付的规划契约，非实现验收）；next:work（先独立T-01–05，T-06前核D-783）。新增T-01–09、AC-01–08、V-01–13、SD-01–06，当前0/9，未执行编译/测试。用户只授权规划，未创建实施树。
 
 预检及依赖状态见 [planning-preflight.md](attachments/787/planning-preflight.md)。783复审/merge结果尚待其owner收口，不在本轮重复审查或修复。
+
+
+2026-10-16 work handoff：stage:work；PLAN-787 r1；outcome:pass（execution_done 7/9）；
+worktree:D:/autostack/.wt/lang-787/auto-lang；branch:plan-787-dev；
+base:bf773ca9b；code:4eed69e67；
+deps:auto-atom@主检出、auto-ac-prototype@主检出、ac-artifact-probe@主检出（783 已合入版）；
+tasks:T-01..T-07；
+evidence:verify-ac-syntax-787.ps1 acceptance ALL PASS（13 族）；V-05 valid 41/41 全等+invalid 85/85 平行；
+V-06 1MiB 重扫 214B/复用≥95%；V-07 双 profile 200 轮 replay fresh 等价；V-11 64MiB hot 8177KiB≤8MiB；
+V-12 depth 4096+ 全路径无栈崩；V-13 依赖审计零生产面；报告 docs/reports/plan787/{feasibility,matrix}.md；
+blockers:无；next:review（T-08 同树独立最终验收，merge-owned closeout 门禁 pending）
 
 ## 10. 待澄清事项
 
