@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-792
-status: executing
+status: execution_done
 feature_name: 生成式 Rust UI 依赖身份与独立构建交付
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/auto-lang/ui/overview.md]
 new_spec_components: [docs/specs/repository-boundaries/generated-ui-distribution.md]
@@ -86,12 +86,18 @@ merge-owned裸cargo t；ui_gen改动加tu，若触VM/compiler再tv；不是自�
 
 | 状态 | ID | owner_stage | 依赖 | 实施/产出/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 789/790/791合流、合同确认 | 绑定三项交付SHA，复放UI独立锁错误；冻结选定target/feature/source/patch/资源布局决策及失败旧臂 | 01/04 |
-| [ ] | T-02 | work | T01 | 修复选定真实依赖解析/身份冲突；统一消费根patch，生成应用独立锁；metadata/tree与fresh resolve | 01/02 |
-| [ ] | T-03 | work | T02 | rust_ui及必要ui_gen路径加入显式交付根/模式；开发路径保持；定向生成器测试 | 02/03 |
-| [ ] | T-04 | work | T03 | 受管source/resource bundle清单、producer/hash与缺失拒绝；不复制整workspace或原target | 03/04 |
-| [ ] | T-05 | work | T04 | 新test/fixtures/modularity/generated-ui-consumer与重定位driver；V01..04真实build/locked及失败控制 | 01–04 |
-| [ ] | T-06 | work | T05 | source/lock/资源hash、平台范围/未迁依赖及构建日志收据、SD素材；提交代码与可复放入口 | 01–04 |
+| [x] | T-01 | work | 789/790/791合流、合同确认 | 绑定三项交付SHA，复放UI独立锁错误；冻结选定target/feature/source/patch/资源布局决策及失败旧臂 | 01/04 |
+[✅ 已完成] 前置 SHA 绑定（789=48dae3c48/790=249a80f2c/791=1120ae3b4）+ worktree 入场记录见 §9。复现结论：779/785 fresh-lock E0277 为时变生态漂移，2026-10-16 探针 fresh 解析收敛至已提交锁版本集且 wgpu-hal 编译通过（不宣称根治，以独立锁+pin+冻结重放闭合）；布局裁定=镜像仓布局受管 bundle（六项原型验证含 workspace 继承断裂/optional path dep manifest 读/include_str 越界面）。收据 attachments/792/t01-dependency-freeze.md。
+| [x] | T-02 | work | T01 | 修复选定真实依赖解析/身份冲突；统一消费根patch，生成应用独立锁；metadata/tree与fresh resolve | 01/02 |
+[✅ 已完成] commit 11c3f9ca0：投影修剪（剥闭包外 optional path deps）+ 消费根 [patch.crates-io] iced_widget + pin 家族（wgpu/iced 12 项精确钉、windows/windows-core 多槽登记冻结锁控制、同名基础依赖并入基础行）+ 根级编译期输入五件随包。原型与消费 bundle fresh 解析实证：iced_widget patch 单源、pin 12/12 命中、三槽并存同已提交锁。
+| [x] | T-03 | work | T02 | rust_ui及必要ui_gen路径加入显式交付根/模式；开发路径保持；定向生成器测试 | 02/03 |
+[✅ 已完成] commit 11c3f9ca0：compile_rust_ui_app 相位抽取（开发/交付共享，开发路径回归 31 通过/2 预存红=主检出基线同款）+ generate_rust_ui_delivery + auto gen --delivery-root CLI（非 rust 后端显式报错）；ui_gen 无路径逻辑零改动。定向生成器测试 5 项绿（pins 单/多槽、根 manifest 形态、投影幂等、端到端 bundle、同包重复拒绝）。
+| [x] | T-04 | work | T03 | 受管source/resource bundle清单、producer/hash与缺失拒绝；不复制整workspace或原target | 03/04 |
+[✅ 已完成] commit 11c3f9ca0：delivery_copy_dir 跳过 target/.git/node_modules；资源 allowlist（src/front 非 .at + blake3）；delivery-manifest.json（producer git/ui_gen 指纹、逐 crate digest、闭包规模披露含 auto-lang 全库）；外来目录/同包重复/缺输入显式拒绝；重定位自检（生成清单零 producer 绝对路径）。
+| [x] | T-05 | work | T04 | 新test/fixtures/modularity/generated-ui-consumer与重定位driver；V01..04真实build/locked及失败控制 | 01–04 |
+[✅ 已完成] commit 8a83e1f39（fixture+driver+SD 素材）：driver.py 14/14 全绿——V01 fresh 解析（patch 单源+pin 12/12 命中）+ 真实 build 173s 产物在位；V02 重定位（不带 target/）locked build 144s + metadata 零越界 path 依赖 + 资源字节=producer；V03 四负控（等长坏 hash/缺资源/漏 patch exit101/不兼容 pin exit101/外来目录拒绝不覆盖）+ 恢复复绿；V04 开发路由不变（project-local rust-workspace+继承清单）+ dev/交付 main.rs 逐字节同源。收据 attachments/792/driver-receipt.json。首轮 3 FAIL 均为 driver 自身路径规范化/资产层级 bug（已修+等长篡改加强），重跑全绿。
+| [x] | T-06 | work | T05 | source/lock/资源hash、平台范围/未迁依赖及构建日志收据、SD素材；提交代码与可复放入口 | 01–04 |
+[✅ 已完成] 收据三件入 attachments/792/（t01-dependency-freeze.md：工具链/环境身份+原失败复现结论+闭包冻结+六项原型裁定+预存红登记；driver-receipt.json：14 用例+toolchain+scrubbed env 清单）。SD-01（新 generated-ui-distribution.md）/SD-02（auto-man/project.md 交付模式节）/SD-03（ui/overview.md 现状节）已在 worktree 备稿待 merge 正式沉淀。代码两提交：11c3f9ca0（生成器+CLI）、8965cc994（fixture+driver+SD 素材+exclude 登记）；可复放入口=driver.py（根 Cargo.toml exclude 注释在案）。
 | [ ] | T-07 | review | T06 | 独立fresh/locked重定位与负控、生成/资源身份及SD冻结 | 05 |
 | [ ] | T-08 | merge | final pass | 裸t+实际触面tu/tv，沉淀/归档/guard清理，后续G/H入场证据交接 | 06 |
 
@@ -101,6 +107,17 @@ merge-owned裸cargo t；ui_gen改动加tu，若触VM/compiler再tv；不是自�
 
 2026-10-16 stage=work | PLAN-792 | plan_revision=1 | 入场执行 | worktree=D:/autostack/.wt/lang-792/auto-lang | branch=plan-792-dev（repo 命名规约覆盖合同拟称 codex/plan-792-dev；PLAN-726 组布局含 auto-down 兄弟） | base_commit=ccf66f013 | 前置绑定：789=48dae3c48b8762dbe35809bccc45238c76e20955、790=249a80f2ca3a0b6f64fb21e230729b704214855b、791=1120ae3b4102d004dc11a3c8ebc0262a2c5be5d2（均 ff-only 落地+归档验证） | 用户显式授权 /auto-plan:work 实施。
 
+2026-10-16 stage=work | PLAN-792 | plan_revision=1 | outcome=pass（work-owned 全部完成，交付 final review） | worktree=D:/autostack/.wt/lang-792/auto-lang | branch=plan-792-dev | base=ccf66f013 | code=8a83e1f39（11c3f9ca0 生成器/CLI → 8a83e1f39 fixture/driver/SD 素材/exclude） | deps=无依赖仓改动（auto-down 兄弟 detached 只读） | tasks=T-01..T-06 | evidence=AC-01 V01 fresh 解析+真实 build（173s）产物在位，原失败闭合方式=独立锁+pin+冻结重放（时变生态漂移如实登记不冒称根治）；AC-02 V02/04 重定位 locked build（144s）+metadata 零越界+dev 路由与模板字节同源，类型 source 与顶层 patch 一致（iced_widget patch 单源）；AC-03 V03 四负控确定性红+恢复复绿，零主检出/原 target 回退；AC-04 闭包 9 crate+patch+5 根级输入+资源 allowlist 全 hash/digest 入 delivery-manifest，含 auto-lang 全库如实披露（33.7MiB）。定向门=生成器测试 5/5 绿 + rust_ui 回归 31 通过/2 预存红（=主检出基线） + cargo check auto-man/auto 0 错。收据=attachments/792/{t01-dependency-freeze.md,driver-receipt.json} | blockers=无 | next=review（T-07）
+
+  **readiness 明细**：work-owned AC-01..04 全部绑定当前测试/脚本证据（driver.py 14 用例可复放，绑定 8a83e1f39）；in-contract findings 空；受影响先例重放=779/785 的 fresh-lock 失败类经 V01 闭合（不再借 workspace rlib），开发路径回归=既有 rust_ui 测试基线不变。**merge-owned 待办（不阻塞 work 交接）**：裸 cargo t + 触面 tu（rust_ui/ui_gen 生成器改动）按 2026-10-14 时序裁定在冻结提交执行；SD-01/02/03 正式沉淀 + INDEX/specs.json；KNOWN-DEBT 候选沉淀（见 §10——主检出 KNOWN-DEBT 文件当前被并行会话未提交修改占用，本计划候选暂记 §10 待 review/merge 沉淀）。
+
 ## 10. 待澄清事项
 
 版本发布渠道和registry帐号不作为初版本地交付包硬前置；无远端发布授权。若依赖升级必须改变UI/语言能力、金样或支持平台，先呈现具体冲突修订，不能扩大范围升级整个图形栈或降低fresh-lock验收。完整UI/Man仓外置及所有后端/资源发行另立后续计划。
+
+### 债务候选（work 期间发现，待 review/merge 沉淀 KNOWN-DEBT——文件当前被并行会话未提交修改占用）
+
+- **rustfmt 1.98 全仓漂移**：当前 stable rustfmt 对 master 的 auto-man/auto crate 产生 ~42 文件大规模重排（master 在该工具链下非 fmt-clean；历史 fmt 门疑用旧版 rustfmt）。本计划改动仅触及 3 文件、未引入全仓重排；fmt 工具链钉扎/门禁口径需单独裁定。
+- **plan734_commands_fixture 编译红（预存）**：`cargo nextest -p auto-man`（全测试目标）下 tauri 2.12.4 `Wry` configured-out 编译红，主检出同款——影响 nextest 全目标档，裸 `--lib` 不受影响。
+- **rust_ui 两预存红（threads=1）**：`merged_api_client_crud_fallback_for_uncovered_endpoints` 与 `test_shell_pack_lib_freshness`（主检出基线同款 31 通过/2 红）；并行裸跑另有 4 例 env/state_file 竞争族（nextest 进程隔离不现）。
+- **交付边界如实登记**：bundle 含 auto-lang 全库（33.7MiB，语言源码尚未拆完）；已证平台仅 Windows/x86_64-pc-windows-msvc；`examples/rust-workspace/`（含其 Cargo.lock）整目录被 .gitignore 忽略，任意检出不保证在位（pin 源因此用根 Cargo.lock）。
