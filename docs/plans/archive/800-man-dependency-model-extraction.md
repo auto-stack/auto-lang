@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-800
-status: reviewed
+status: archived
 feature_name: Man 依赖模型与路径解析核心解耦
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 7
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/package-resolver/project.md]
@@ -97,7 +97,7 @@ work、独立final review、merge分别交接；未分配额外agent或模型。
 | [x] | T-05 | work | T04 | 新外部consumer、V01..05、metadata/777精确边界；799两种兼容接线及792条件触面核查 | 01–04 | [✅ 已完成] package-resolver-consumer 7/7 + verify-deps.sh PASS（闭包=仅核心）；module-boundaries 登记 man-ecosystem+audit 零违规；792 work 时点未合入、review-r1 时点已合入——经核对 rust_ui DELIVERY_CRATES 10 项不含 auto-man 且闭包无本包边→不入 792 交付闭包、无清单接线义务（详见 t06 §6 merge 注记）；794 diff 面零 auto-lang/VM/UI 文件；799 兼容=旧 ast 路径身份不变；证据全录 attachments/800/t06-work-receipt.md |
 | [x] | T-06 | work | T05 | 净删/搬迁/未迁和合流收据、SD素材，提交冻结代码、work项闭合 | 01–04 | [✅ 已完成·r1] r0 收据+SD 素材随 `5c1f43b5d`；review-r1 needs_fix（F01 错误映射描述失实/F02 新核心未过 rustfmt）已修——四处文档对齐真实边界（无 adapter 映射、legacy 调用点静默忽略）、新文件全量 rustfmt+adapter 定点修 7 处（余 26 处标记行经比对全部逐字存在于 master=历史搬运）；r1 修复提交 `c50e7a1c6`，三面定向复验全绿；SD01 新 hash `8BF942D5…`；明细 t06 §6 |
 | [x] | T-07 | review | T06 | 同树独立真实路径/模式/负控/单一实现及SD冻结 | 05 |
-| [ ] | T-08 | merge | final pass | 同步/必要复审、冻结门/条件792重验；规范/ledger/归档/guard，800到期批回归交接 | 06 |
+| [x] | T-08 | merge | final pass | 同步/必要复审、冻结门/条件792重验；规范/ledger/归档/guard，800到期批回归交接 | 06 | [✅ 已完成] R2 pass 绑定 c50e7a1c6；rebase over 792/787/788/798 线（range-diff 2/2 全等，映射 5c1f43b5d→50c3a955c、c50e7a1c6→02b11c4b4；SD02 按含 792 章节的当前 main 增量并集落位）；冻结门禁全绿：裸 cargo t 5335/5335（首跑 plan484_024 满档负载 flake——solo 绿于 worktree/master 双侧、零 auto-lang 触面，P793 同 flake 在案先例；有据重跑过）+ 核心 14/14 + adapter resolver:: 38/38 + consumer 7/7 + verify-deps.sh PASS；delivery 02b11c4b4 ff-only 落 master；792 重验=DELIVERY_CRATES 10 项不含 auto-man、闭包无本包边（R1/R2 已核，main 代码面未再变）；SD-01/02 canonical + 双 plans.md 行 + GROUPS/INDEX 再生；ledger v38→v39 guarded offline projection（P800-D1/D2/T/R2/M）；归档 archive/800-…；wt-guard clean 后工作树/分支/auto-down 兄弟/组目录清理；800%5=0 批回归到期交接 /auto-plan:regress |
 
 ## 9. 复审记录
 
@@ -114,6 +114,40 @@ work-owned readiness：AC-01..04 全闭合（V01..05 证据绑定 5c1f43b5d）�
 work-owned readiness（r1）：F800-R1-01/02 两 finding 闭合、无未结 in-contract 项；受影响面定向复验通过；行为零变化（P2 纯文档、P3 纯格式）。
 
 2026-10-17 stage=review | review_scope=final | reviewer_identity=当前独立审核对话（未参与实现、无额外agent） | PLAN-800 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-800/auto-lang | branch=plan-800-dev | reviewed_commit=c50e7a1c670c695766dfd81dcd572b446a99a31c | base_commit=b0d6d4aab50bfcb137d55b0f88e9f2bd82b8f644 | dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 | spec_inputs=main auto-man AA785B1D…/SD01 8BF942D5…/SD02 8FCA0393…（完整指纹与冻结副本见R2收据） | acceptance_results=AC01..05 pass、AC06 merge-owned pending | findings=F800-R1-01/02 closed，无新阻断项 | evidence=[R2最终复审收据](attachments/800/review-r2/REVIEW.md)：核心14/14、resolver筛选38 passed/1预存ignored、consumer7/7、闭包/新文件格式/独立反例全通过；adapter规范化前后字节一致，残余格式全为历史代码 | pending_closeout_gates=同步/必要受影响复审、冻结裸cargo t+两crate+consumer、Spec/ledger/索引/归档/guard清理、800批回归到期交接 | next=merge。T07完成，7/8；reviewed只表示代码/验收/规范审查通过，merge-owned门通过前不得合入或宣称交付完成。
+
+## 9.5 合入收口记录（PLAN-800:r1，merge stage）
+
+- **prepared**：reviewed 基线 c50e7a1c6（R2 pass，plan_revision 1）；canonical diff=SD-01 新
+  docs/specs/package-resolver/project.md + SD-02 auto-man spec 增量节（rebase 后按含 792
+  章节的当前 main 并集落位，非整文件覆盖）；delivery 候选=rebase 后 tip。
+- **landed**：rebase over master 143aff0a2（792/787/788/798 线合入后），`git range-diff`
+  2/2 全等（`5c1f43b5d→50c3a955c`、`c50e7a1c6→02b11c4b4`）；master `git merge --ff-only
+  plan-800-dev`，tip=delivery commit `02b11c4b4`，零 merge commit。冲突面零（Cargo.toml
+  /auto-man spec/manifest 自动并集正确，双侧 section/member 逐项核验）。
+- **frozen_gates**（02b11c4b4 上，worktree）：裸 `cargo t` **5335/5335**（1 slow；首跑红
+  plan484_024_charts_streaming_recompute=满档并行负载 flake——solo 复跑绿于 worktree 与
+  master 双侧、本计划零 auto-lang 触面、P793 同 flake 在案先例，归因后有据重跑过）；
+  `cargo test -p auto-package-resolver` 14/14；`cargo test -p auto-man --lib resolver::`
+  38 passed/1 预存 ignored；consumer fixture 7/7 + verify-deps.sh PASS。无 VM/trans/book/
+  ui_gen 触面→不跑 tv/tt/tb/tu。
+- **792 重验**：master DELIVERY_CRATES 10 项不含 auto-man、全部闭包清单无
+  auto-man→auto-package-resolver 边（R1/R2 复核；R2 后 main 代码面未变，本次 landing
+  仅新增不被其消费的成员）——本包不入 792 交付闭包，无清单/锁接线义务。
+- **ledger_refreshed**：`.autoos/specs.json` v38→v39 **guarded offline projection**
+  （Regime B，无 store writer；沿用 P787/P792/P794 先例）：备份 v38-800；新增
+  P800-D1/D2（designs）、P800-T（tests）、P800-R2（reviews）、P800-M（reports）五条目，
+  均带 file/tags；范围守卫=diff 仅 P800 条目+版本号；回读校验 IDs/六节完整。
+- **spec_deposit**：SD-01/02 随 delivery 入库；`docs/specs/package-resolver/plans.md` 新建
+  （800 行）+ `docs/specs/auto-man/plans.md` 追加 800 行；`scripts/spec-index.py` GROUPS
+  工具链登记 package-resolver + INDEX 再生（38 项目，余 ungrouped 仅预存
+  repository-boundaries）。
+- **archived**：`git mv` → docs/plans/archive/800-man-dependency-model-extraction.md，
+  status=archived，8/8；本收据与 attachments/800/**（含 review-r1/r2 材料）随终态提交
+  入库 master。
+- **cleaned**：wt-guard clean → 移除 lang-800/auto-lang 工作树 + plan-800-dev 分支 +
+  auto-down 只读兄弟 + 组目录（回填见下）。
+- **batch_regression**：800%5=0 → 到期，交接 `/auto-plan:regress`（主检出单实例；
+  收据 docs/plans/.last-batch-regression.json 由该技能落盘）。
 
 ## 10. 待澄清事项
 

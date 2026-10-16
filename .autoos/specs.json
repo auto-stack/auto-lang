@@ -1996,6 +1996,19 @@
             "delivery:44d3b7e8d"
           ],
           "status": "active"
+        },
+        {
+          "id": "P800-M",
+          "title": "PLAN-800 合入收据（delivery/沉淀/投影/归档/清理）",
+          "content": "delivery 02b11c4b4（rebase over 792/787/788/798 线，range-diff 2/2 全等：5c1f43b5d→50c3a955c、c50e7a1c6→02b11c4b4）ff-only 合入；SD02 按含 792 章节的当前 main 增量并集；冻结门禁全绿（裸 t 5335/5335+两 crate 定向+consumer+闭包）；SD-01/02 canonical + 双 plans.md 行 + spec-index GROUPS/INDEX 再生 38 项目；ledger v38→v39 guarded offline projection（P800-D1/D2/T/R2/M，备份 v38-800）；归档 docs/plans/archive/800-man-dependency-model-extraction.md；792 交付闭包不含本包（无接线义务）；800%5=0 批回归到期交接 /auto-plan:regress。",
+          "file": "docs/plans/archive/800-man-dependency-model-extraction.md",
+          "tags": [
+            "PLAN-800",
+            "stage:merge",
+            "delivery:02b11c4b4",
+            "ledger:v38-v39"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -7447,6 +7460,31 @@
             "delivery:44d3b7e8d"
           ],
           "status": "active"
+        },
+        {
+          "id": "P800-D1",
+          "title": "auto-package-resolver 模块契约（依赖视图/路径解析核心）",
+          "content": "PLAN-800 自 auto-man resolver.rs 抽出的已解析依赖视图与路径规则单一定义：std-only 零第三方依赖（闭包由 package-resolver-consumer 探针 + verify-deps.sh 钉住，module-boundaries man-ecosystem 域）。DependencyEntry<M> 不透明模式标签 + PackageResolverCore<M> 单一权威 map（同名替换立即可见）；find_package_path/find_module_in_dep/resolve/exists/module_search_paths 规则与错误文本逐字冻结（resolve std/相对/依赖三臂不查盘、exists 无 package.at 臂、歧义不得成功、HashMap 无序枚举只归一无序比较）；找包失败由 legacy 调用点 if let Ok 静默忽略（无 adapter 映射，R1 修正）。",
+          "file": "docs/specs/package-resolver/project.md",
+          "tags": [
+            "PLAN-800",
+            "stage:merge",
+            "delivery:02b11c4b4",
+            "sha256:8bf942d5f5ae"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P800-D2",
+          "title": "auto-man resolver 语言 adapter 分工（PLAN-800）",
+          "content": "resolver.rs 重写为语言 adapter+兼容门面：ExecutionMode 语义/ModulePath/PathPrefix/ModuleResolver trait/pac.at legacy 行扫描/Pac-Super-None 前缀对 FilesystemResolver 委托留 auto-man；旧公开 Dependency=DependencyEntry<ExecutionMode> 类型别名（字段形状与 new/with_default_mode 调用面保持），get_dependencies 借用核心单一 map，路径算法净删（auto-man 内定义 grep=0）。未迁清单（语言 trait/AST/Target/build/Git/CLI）与 780 源模型/795 锁 core 所有权不变；use/dep: 行获硬 AutoVM 默认为冻结历史行为。",
+          "file": "docs/specs/auto-man/project.md",
+          "tags": [
+            "PLAN-800",
+            "stage:merge",
+            "delivery:02b11c4b4"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -9024,6 +9062,18 @@
             "PLAN-787",
             "stage:merge",
             "tests:matrix+probes"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P800-T",
+          "title": "package-resolver 三面验证（核心/adapter/consumer）",
+          "content": "核心单测 14（三臂无盘构造/exists 差异/组合序/候选优先级/歧义/错误文本/泛型不透明/同名替换）；adapter resolver:: 38+1 预存 ignore（34 旧例断言零改动 + plan800_tests 4 新例：Pac/Super 生产入口委托、无 pac.at、adapter 级替换）；外部探针 package-resolver-consumer 7 + verify-deps.sh（normal/build 闭包=仅 auto-package-resolver，无 auto-lang/auto-ast/auto-man/auto-gen/auto-ui/auto-vm/auto-val）。merge 冻结门 02b11c4b4：裸 t 5335/5335（plan484_024 满档 flake 归因后有据重跑）+ 三面全绿。",
+          "file": "test/fixtures/modularity/package-resolver-consumer/tests/resolver_consumer.rs",
+          "tags": [
+            "PLAN-800",
+            "stage:merge",
+            "delivery:02b11c4b4"
           ],
           "status": "active"
         }
@@ -12117,10 +12167,23 @@
             "commit:d17b94fec"
           ],
           "status": "active"
+        },
+        {
+          "id": "P800-R2",
+          "title": "PLAN-800 final review R2 — pass",
+          "content": "R2 pass（绑定 c50e7a1c6；rebase 后映射 02b11c4b4，range-diff 全等）：F800-R1-01（错误映射描述失实）closed——四处文档对齐真实边界；F800-R1-02（新核心未过 rustfmt）closed——新文件 fmt exit 0，adapter 残余格式差异全部为 master 历史代码（R1/R2 字节对比相等）。AC01..05 pass、AC06 merge-owned。R1 独立 counterexamples 七组优先级/回落/点号扩展/错误文本控制复放通过。完整报告 docs/plans/attachments/800/review-r2/REVIEW.md。",
+          "file": "docs/plans/attachments/800/review-r2/REVIEW.md",
+          "tags": [
+            "PLAN-800",
+            "r2",
+            "pass",
+            "commit:c50e7a1c6"
+          ],
+          "status": "active"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 38
+  "version": 39
 }

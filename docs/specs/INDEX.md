@@ -148,6 +148,7 @@
 | shim-metadata | active | 2 | [shim-metadata/project.md](shim-metadata/project.md) |
 | auto-gen-core | active | 3 | [auto-gen-core/project.md](auto-gen-core/project.md) |
 | auto-package-lock | active | 3 | [package-lock/project.md](package-lock/project.md) |
+| auto-package-resolver | active | 1 | [package-resolver/project.md](package-resolver/project.md) |
 
 <details><summary>auto-cli 模块明细</summary>
 
@@ -173,7 +174,7 @@
 | `title_zh` | **中文展示名**（自由文本） | zh locale 优先取用；缺席/空白回落 `title`（两 locale 输出一致，零配置零回归） |
 | automan | 核心编排：命令分发、工程上下文 | active |
 | pac | pac.at 包定义解析与模型 | active |
-| resolver | 依赖解析（ModuleResolver trait 实现） | active |
+| resolver | 依赖解析（ModuleResolver trait 实现；PLAN-800 起为语言 adapter——ExecutionMode/pac.at 行扫描/trait 接线留此，路径规则单一定义在 auto-package-resolver，见上节） | active |
 | builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号 | active |
 | exporter | IDE 工程导出：cmake / ghs / iar | active |
 | git / index / lock / pull | 依赖获取、注册索引、锁文件（PLAN-795 起 lock 为 Target/Git adapter+兼容门面，规则单一定义在 auto-package-lock，见上节） | active |
@@ -283,6 +284,14 @@
 | model | LockEntry/LockFile/LockedEntryView/ResolvedDependency + sort/find 单一规则 | active |
 | verify | verify_dependencies 单一校验规则（错误文本/聚合序冻结） | active |
 | codec | load/save/is_json_path 单一编解码（AutoPath 路径语义） | active |
+
+</details>
+
+<details><summary>package-resolver 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| lib | DependencyEntry/PackagePathNotFound/PackageResolverCore + 全部路径规则 | active |
 
 </details>
 
