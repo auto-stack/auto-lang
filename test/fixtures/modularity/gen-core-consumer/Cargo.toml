@@ -1,0 +1,28 @@
+# PLAN-791 外部生成核心消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-gen-core 的公开面
+# （generate/OutputConfig/TemplateSpec/TemplateRenderer/RenderedTemplate/
+# GenReport/GuardProcessor/GuardedSection/Conflict/GenError/GenResult/
+# SourceLocation/feed_guarded_legacy），证明纯生成核心可被无
+# auto-lang/auto-man/auto-vm/UI 的外部 consumer 编译并运行：fake
+# renderer 的 owned 文本真实落到文件，guard/dry_run/失败反控语义与
+# core 单测一致。AC-01/V01 的闭包证明=本 manifest 的依赖表 +
+# verify-deps.sh（cargo tree 断言闭包内无 auto-lang/auto-man/auto-vm）。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/gen-core-consumer/Cargo.toml
+# 依赖闭包断言（V01 oracle）：
+#   bash test/fixtures/modularity/gen-core-consumer/verify-deps.sh
+
+[package]
+name = "gen-core-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-gen-core = { path = "../../../../crates/auto-gen-core" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

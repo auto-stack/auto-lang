@@ -87,6 +87,12 @@ exclude = [
     # 供值链在 crate 边界外真实工作），门禁经
     # cargo test --manifest-path test/fixtures/modularity/clipboard-media-provider-consumer/Cargo.toml
     "test/fixtures/modularity/clipboard-media-provider-consumer",
+    # PLAN-791: 外部生成核心消费方探针——独立 fixture crate（仅依赖
+    # auto-gen-core，证明纯生成核心无解释器/无 auto-lang 闭包可用），
+    # 门禁经
+    # cargo test --manifest-path test/fixtures/modularity/gen-core-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/gen-core-consumer/verify-deps.sh
+    "test/fixtures/modularity/gen-core-consumer",
 ]
 resolver = "2"
 
