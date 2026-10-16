@@ -6,9 +6,15 @@
 //! 消费者只需 rust-embed 即可枚举读取全部资源并按模板族+包名生成
 //! 「源资源键 → 相对输出路径」的纯计划（[`plan_template_family`]）。
 //!
-//! 纯计划不做任何 IO：不创建目录、不渲染、不写盘；模板内容中的
+//! 纯计划无输出 IO：不创建目录、不渲染、不写文件；模板内容中的
 //! `${name}` 保持原始字节（Auto 求值与文件物化留在 auto-man 的
-//! asset.rs 兼容门面上层）。依赖闭包由
+//! asset.rs 兼容门面上层）。**构建模式边界**（F803-R1-03）：本 crate
+//! 随 workspace 只启用 rust-embed `compression`（无 `debug-embed`），
+//! 默认调试态 `iter()/get()` 为动态模式——枚举/读取宏展开期记录的源码
+//! 资源目录（有读盘，目录缺失时枚举静默为空）；发行态（或显式
+//! `debug-embed`）字节内嵌二进制，与源码目录无关。可重复反控：
+//! `test/fixtures/modularity/man-assets-consumer/mode-boundary-probe.py`。
+//! 依赖闭包由
 //! `test/fixtures/modularity/man-assets-consumer`（PLAN-803 V01）钉住。
 
 use rust_embed::Embed;
@@ -64,7 +70,10 @@ fn split_first_segment(path: &str) -> (&str, &str) {
 /// - 输出相对路径 = 余段 `sub_path.replace("name", pac_name)` 逐字同臂；
 /// - 未知族返回空 vec（旧臂零匹配、零副作用）。
 ///
-/// 接收包名字符串，不读 pac、不执行 Auto、无任何 IO/写盘。
+/// 接收包名字符串，不读 pac、不执行 Auto、无输出 IO（不创建目录、
+/// 不渲染、不写文件）。注意：默认调试态下 rust-embed 动态枚举会读
+/// 源码资源目录（见模块级「构建模式边界」说明）；发行态/`debug-embed`
+/// 则读内嵌字节。
 pub fn plan_template_family(template: &str, pac_name: &str) -> Vec<PlannedFile> {
     let mut out = Vec::new();
     for key in TemplateAssets::iter() {

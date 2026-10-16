@@ -4,7 +4,7 @@ use auto_lang::interpreter::AutoInterpreter;
 use auto_man_assets::{plan_template_family, GhsAssets, IarAssets, TemplateAssets};
 use auto_val::AutoStr;
 use auto_val::Value;
-use rust_embed::{EmbeddedCompressedFile, EmbeddedFile, RustEmbed};
+use rust_embed::{EmbeddedCompressedFile, EmbeddedFile, Filenames, RustEmbed};
 use std::fs::{create_dir_all, File};
 use std::io::Write;
 use std::path::Path;
@@ -72,8 +72,13 @@ impl RustEmbed for Templates {
     fn compressed(file_path: &str) -> Option<EmbeddedCompressedFile> {
         TemplateAssets::compressed(file_path)
     }
-    fn iter() -> impl Iterator<Item = std::borrow::Cow<'static, str>> + 'static {
-        TemplateAssets::iter()
+    // F803-R1-01：保持旧 derive trait impl 的具体返回类型 Filenames——
+    // RPITIT 的隐藏类型为具体类型时跨 crate 对调用方可见；若此处写
+    // `impl Iterator`，外部 `let _: Filenames = <Templates as RustEmbed>::iter()`
+    // 会以 E0308 失编（公开 API 回归）。必须转发底层 **trait** 入口，
+    // 不能转发 inherent iter()（后者本就是 opaque，derive 亦如此）。
+    fn iter() -> Filenames {
+        <TemplateAssets as RustEmbed>::iter()
     }
 }
 
@@ -120,8 +125,13 @@ impl RustEmbed for GHSTemplate {
     fn compressed(file_path: &str) -> Option<EmbeddedCompressedFile> {
         GhsAssets::compressed(file_path)
     }
-    fn iter() -> impl Iterator<Item = std::borrow::Cow<'static, str>> + 'static {
-        GhsAssets::iter()
+    // F803-R1-01：保持旧 derive trait impl 的具体返回类型 Filenames——
+    // RPITIT 的隐藏类型为具体类型时跨 crate 对调用方可见；若此处写
+    // `impl Iterator`，外部 `let _: Filenames = <GHSTemplate as RustEmbed>::iter()`
+    // 会以 E0308 失编（公开 API 回归）。必须转发底层 **trait** 入口，
+    // 不能转发 inherent iter()（后者本就是 opaque，derive 亦如此）。
+    fn iter() -> Filenames {
+        <GhsAssets as RustEmbed>::iter()
     }
 }
 
@@ -174,8 +184,13 @@ impl RustEmbed for IARTemplate {
     fn compressed(file_path: &str) -> Option<EmbeddedCompressedFile> {
         IarAssets::compressed(file_path)
     }
-    fn iter() -> impl Iterator<Item = std::borrow::Cow<'static, str>> + 'static {
-        IarAssets::iter()
+    // F803-R1-01：保持旧 derive trait impl 的具体返回类型 Filenames——
+    // RPITIT 的隐藏类型为具体类型时跨 crate 对调用方可见；若此处写
+    // `impl Iterator`，外部 `let _: Filenames = <IARTemplate as RustEmbed>::iter()`
+    // 会以 E0308 失编（公开 API 回归）。必须转发底层 **trait** 入口，
+    // 不能转发 inherent iter()（后者本就是 opaque，derive 亦如此）。
+    fn iter() -> Filenames {
+        <IarAssets as RustEmbed>::iter()
     }
 }
 

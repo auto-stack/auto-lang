@@ -12,7 +12,7 @@ use auto_man::exporter::{Exporter, GHSExporter, IARExporter};
 use auto_man::Pac;
 use auto_man_assets::{GhsAssets, IarAssets, TemplateAssets};
 use auto_val::{AutoPath, Obj};
-use rust_embed::RustEmbed;
+use rust_embed::{Filenames, RustEmbed};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -72,12 +72,18 @@ const FROZEN_UNI_APP: [(&str, &str); 2] = [
 
 /// 基线旧臂 Templates::copy("clib", …/组件) 输出冻结（attachments/803 t01 探针实测，非新 repr 合成）。
 const FROZEN_UNI_CLIB: [(&str, &str); 3] = [
-    ("组件/pac.at",
-     "name: \"组件\"\nversion: \"0.1.0\"\n\nlib name: \"组件\"\nversion: \"0.1.0\"\n\n {}\n"),
-    ("组件/组件.c",
-     "#include \"组件.h\"\n\nint _add(int a, int b) {\n    return a + b;\n}\n"),
-    ("组件/组件.h",
-     "#ifndef _组件_H\n#define _组件_H\n\nint 组件_add(int a, int b);\n\n#endif // _组件_H\n"),
+    (
+        "组件/pac.at",
+        "name: \"组件\"\nversion: \"0.1.0\"\n\nlib name: \"组件\"\nversion: \"0.1.0\"\n\n {}\n",
+    ),
+    (
+        "组件/组件.c",
+        "#include \"组件.h\"\n\nint _add(int a, int b) {\n    return a + b;\n}\n",
+    ),
+    (
+        "组件/组件.h",
+        "#ifndef _组件_H\n#define _组件_H\n\nint 组件_add(int a, int b);\n\n#endif // _组件_H\n",
+    ),
 ];
 
 /// 基线旧臂 Templates::copy("libdemo", …/组件) 输出冻结（attachments/803 t01 探针实测，非新 repr 合成）。
@@ -97,11 +103,7 @@ const FROZEN_UNI_LIBDEMO: [(&str, &str); 4] = [
 // ---------------------------------------------------------------------------
 
 fn fresh_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "plan803_facade_{}_{}",
-        tag,
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("plan803_facade_{}_{}", tag, std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     dir
 }
@@ -150,11 +152,7 @@ fn check_frozen(tag: &str, family: &str, pac: &str, frozen: &[(&str, &str)]) {
         let got = files
             .get(*rel)
             .unwrap_or_else(|| panic!("{tag}: 缺文件 {rel}"));
-        assert_eq!(
-            &String::from_utf8_lossy(got),
-            want,
-            "{tag}/{rel}: 字节漂移"
-        );
+        assert_eq!(&String::from_utf8_lossy(got), want, "{tag}/{rel}: 字节漂移");
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -205,6 +203,17 @@ fn embed_keys<E: RustEmbed>() -> Vec<String> {
     E::iter().map(|k| k.to_string()).collect()
 }
 
+/// F803-R1-01 编译正控：旧 derive trait impl 的具体返回类型 `Filenames`
+/// 必须在跨 crate 调用方继续可见（RPITIT 隐藏类型为具体类型时跨 crate
+/// 泄露）。若门面 trait impl 误写 `-> impl Iterator`，本函数以 E0308
+/// 失编——与复审反例（review-r1/new-api-counterexample.log）同形。
+#[test]
+fn trait_iter_returns_concrete_filenames_type() {
+    let _: Filenames = <Templates as RustEmbed>::iter();
+    let _: Filenames = <GHSTemplate as RustEmbed>::iter();
+    let _: Filenames = <IARTemplate as RustEmbed>::iter();
+}
+
 #[test]
 fn facade_forwards_all_bytes_to_single_source() {
     // inherent 形态（无需 trait import 的旧调用）与 trait 形态逐一对照
@@ -242,13 +251,34 @@ fn facade_forwards_all_bytes_to_single_source() {
 fn builder_accessors_match_single_source_bytes() {
     // exporter 消费的 3+4 项：门面 inherent 方法 = 资源层字节（UTF-8 同构）
     let pairs = [
-        (GHSTemplate::default().unwrap(), GhsAssets::get("default.gpj").unwrap()),
-        (GHSTemplate::program().unwrap(), GhsAssets::get("program.gpj").unwrap()),
-        (GHSTemplate::subproject().unwrap(), GhsAssets::get("subproject.gpj").unwrap()),
-        (IARTemplate::eww().unwrap(), IarAssets::get("iar.eww").unwrap()),
-        (IARTemplate::ewp().unwrap(), IarAssets::get("iar.ewp").unwrap()),
-        (IARTemplate::ewt().unwrap(), IarAssets::get("iar.ewt").unwrap()),
-        (IARTemplate::ewd().unwrap(), IarAssets::get("iar.ewd").unwrap()),
+        (
+            GHSTemplate::default().unwrap(),
+            GhsAssets::get("default.gpj").unwrap(),
+        ),
+        (
+            GHSTemplate::program().unwrap(),
+            GhsAssets::get("program.gpj").unwrap(),
+        ),
+        (
+            GHSTemplate::subproject().unwrap(),
+            GhsAssets::get("subproject.gpj").unwrap(),
+        ),
+        (
+            IARTemplate::eww().unwrap(),
+            IarAssets::get("iar.eww").unwrap(),
+        ),
+        (
+            IARTemplate::ewp().unwrap(),
+            IarAssets::get("iar.ewp").unwrap(),
+        ),
+        (
+            IARTemplate::ewt().unwrap(),
+            IarAssets::get("iar.ewt").unwrap(),
+        ),
+        (
+            IARTemplate::ewd().unwrap(),
+            IarAssets::get("iar.ewd").unwrap(),
+        ),
     ];
     for (acc, embed) in pairs {
         assert_eq!(acc.as_str().as_bytes(), embed.data.as_ref());
@@ -316,7 +346,11 @@ fn iar_exporter_minimal_project_writes_template_derived_files() {
     assert!(!files.is_empty(), "iar 导出为空");
     // 工作区文件：eww 模板（资源层唯一字节）真实驱动生成
     let eww = String::from_utf8_lossy(&files["demo.eww"]).to_string();
-    assert!(eww.starts_with("<?xml"), "eww 非 XML：{}", &eww[..40.min(eww.len())]);
+    assert!(
+        eww.starts_with("<?xml"),
+        "eww 非 XML：{}",
+        &eww[..40.min(eww.len())]
+    );
     assert!(eww.contains("<workspace>"), "eww 缺 workspace 结构");
     assert!(eww.contains("demo"), "eww 未含应用名");
     // 应用三件套（ewp/ewt/ewd 模板经 rename 落为 demo.*）
@@ -342,9 +376,8 @@ fn ghs_exporter_minimal_project_freezes_legacy_boundary() {
     std::fs::create_dir_all(&dir).unwrap();
     let mut pac = mini_pac("ghs");
     let mut exporter = GHSExporter::new(AutoPath::new(dir.to_string_lossy().to_string()));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        exporter.export(&mut pac)
-    }));
+    let outcome =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| exporter.export(&mut pac)));
 
     // default.gpj 在 app mold 失败前已真实生成（模板字节驱动）
     let files = files_under(&dir);
@@ -362,4 +395,3 @@ fn ghs_exporter_minimal_project_freezes_legacy_boundary() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
-

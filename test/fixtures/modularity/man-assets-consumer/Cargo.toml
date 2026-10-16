@@ -11,6 +11,9 @@
 # normal/build 闭包无 auto-lang/auto-man/auto-gen/auto-ui/auto-vm/
 # auto-val/auto-ast）。
 #
+# 构建模式边界（F803-R1-03）：默认调试态 rust-embed 动态读源码资源
+# 目录、发行态内嵌；可重复反控 mode-boundary-probe.py（缺资源真失败）。
+#
 # 显式脱离根 workspace：本目录在根 Cargo.toml exclude 内，且此处空
 # [workspace] 表使其成为独立解析单元。门禁入口：
 #   cargo test --manifest-path test/fixtures/modularity/man-assets-consumer/Cargo.toml

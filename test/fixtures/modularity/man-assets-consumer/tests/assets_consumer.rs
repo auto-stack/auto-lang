@@ -7,6 +7,11 @@
 //! and drive the pure scaffold path planning: per-family projections,
 //! multi-`name` replacement, nested directories, unknown families, Unicode
 //! package names, and unrendered `${name}` bytes.
+//!
+//! Build-mode note (F803-R1-03): default debug builds read the crate's
+//! source assets directory dynamically (rust-embed, no `debug-embed`);
+//! release builds embed the bytes. The boundary + missing-resource control
+//! is pinned by `mode-boundary-probe.py` next to this fixture.
 
 use auto_man_assets::{plan_template_family, GhsAssets, IarAssets, TemplateAssets};
 
@@ -48,10 +53,16 @@ fn external_consumer_enumerates_all_three_groups() {
         assert!(!f.data.is_empty(), "{key} empty");
     }
     for key in GHS_KEYS {
-        assert!(GhsAssets::get(key).expect(key).data.len() > 100, "{key} tiny");
+        assert!(
+            GhsAssets::get(key).expect(key).data.len() > 100,
+            "{key} tiny"
+        );
     }
     for key in IAR_KEYS {
-        assert!(IarAssets::get(key).expect(key).data.len() > 100, "{key} tiny");
+        assert!(
+            IarAssets::get(key).expect(key).data.len() > 100,
+            "{key} tiny"
+        );
     }
 }
 
@@ -66,7 +77,10 @@ fn external_consumer_plans_family_paths() {
     assert_eq!(
         projection,
         [
-            ("libdemo/apps/name_demo/name_demo.c", "apps/mylib_demo/mylib_demo.c"),
+            (
+                "libdemo/apps/name_demo/name_demo.c",
+                "apps/mylib_demo/mylib_demo.c"
+            ),
             ("libdemo/libs/name/name.c", "libs/mylib/mylib.c"),
             ("libdemo/libs/name/name.h", "libs/mylib/mylib.h"),
             ("libdemo/pac.at", "pac.at"),
@@ -76,7 +90,9 @@ fn external_consumer_plans_family_paths() {
     // top-level family: `name.at`→`mylib.at`, `pac.at` untouched
     let app = plan_template_family("app", "mylib");
     assert_eq!(
-        app.iter().map(|p| p.output_rel.as_str()).collect::<Vec<_>>(),
+        app.iter()
+            .map(|p| p.output_rel.as_str())
+            .collect::<Vec<_>>(),
         ["mylib.at", "pac.at"]
     );
 
@@ -95,18 +111,21 @@ fn external_consumer_unknown_family_and_unicode_name() {
 
     let uni = plan_template_family("clib", "组件");
     assert_eq!(
-        uni.iter().map(|p| p.output_rel.as_str()).collect::<Vec<_>>(),
+        uni.iter()
+            .map(|p| p.output_rel.as_str())
+            .collect::<Vec<_>>(),
         ["组件.c", "组件.h", "pac.at"]
     );
 }
 
+/// Zero **output** IO contract: planning/enum never creates or writes files.
+/// (F803-R1-03 build-mode boundary: in default debug builds rust-embed
+/// dynamically reads the crate's source assets directory; release builds
+/// embed the bytes. Pinned by mode-boundary-probe.py next to this fixture.)
 #[test]
-fn external_consumer_planning_is_io_free() {
-    // planning writes nothing: a plain scratch dir stays empty across calls
-    let dir = std::env::temp_dir().join(format!(
-        "man_assets_consumer_iofree_{}",
-        std::process::id()
-    ));
+fn external_consumer_planning_has_no_output_io() {
+    let dir =
+        std::env::temp_dir().join(format!("man_assets_consumer_iofree_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let before: Vec<_> = std::fs::read_dir(&dir)

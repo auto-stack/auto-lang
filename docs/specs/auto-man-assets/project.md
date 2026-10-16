@@ -24,7 +24,16 @@ auto-lang/auto-man/auto-val/auto-gen/auto-vm/UI 闭包的外部 consumer 独立
   **余段**（去掉族前缀）对子串 `"name"` 的字面全量替换；未知族返回空。
 - `PlannedFile{source_key, output_rel, bytes}`：bytes 为未求值原始字节
   （`${name}` 保持原样——内容求值与文件物化在 auto-man adapter）。
-- 零 IO：枚举/计划不创建目录、不渲染、不写盘（无路径参数、无 fs 写）。
+- 零输出 IO：枚举/计划不创建目录、不渲染、不写文件（无路径参数、
+  无 fs 写）。
+- **构建模式边界**（F803-R1-03 修正）：本 crate 随 workspace 只启用
+  rust-embed `compression`（无 `debug-embed`）。默认调试态 `iter()/get()`
+  为动态模式——枚举/读取宏展开期记录的**源码资源目录**（有读盘；该
+  目录缺失时枚举静默为空、`get` 返回 None，同旧臂机理）；发行态（或
+  显式 `debug-embed`）字节内嵌二进制，与源码目录无关。「零输出 IO」
+  不覆盖调试态读盘，也不构成全模式内嵌承诺。可重复反控：
+  `test/fixtures/modularity/man-assets-consumer/mode-boundary-probe.py`
+  （解包副本上移开资源目录：debug 测试非零、release 零；缺资源真失败）。
 - 不做：Auto 求值/模板引擎（`eval_template`/`set_global`/`repr` 链留
   auto-man `asset.rs` 门面）、pac.at 解析、exporter 生成编排
   （auto-gen 所有权）、GHS/IAR 工程结构语义（字节无语言含义地透出）、
