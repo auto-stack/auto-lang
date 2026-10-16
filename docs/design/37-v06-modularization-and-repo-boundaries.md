@@ -257,6 +257,20 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 
 之后继续完整UI文法、剩余宿主族、UI SDK分层、Man管理/命令与语言adapter切口；满足真实D/E/F退出门才另立G/H旧仓承接。803不借结构迁移修复模板变量注入或先写后render的遗留行为，后续行为修复单列。新合同不是现行Spec，不授权旧仓默认分支/远端切换。
 
+### 8.7 声明文法、OS宿主与构建规则继续迁移（2026-10-17）
+
+在801–803合同基础上继续建立三项：
+
+| Plan | 迁移切口 | 对799/801及当前复审线的依赖 |
+|---|---|---|
+| [804](../plans/804-dialog-dnd-host-provider.md) | dialog两项+dnd_start共三native owned provider，合并VM/a2r重复对话框构建逻辑，保旧parent策略/输入线程/完成语义 | 无799/801硬依赖；与802共享装配短窗口串行，不消费其未交付API |
+| [805](../plans/805-toolchain-rules-core-extraction.md) | auto-toolchain-core单份八类配置/flags/命令模板，生产Ninja真实委托，加载/定位/执行留adapter | 无799/801/803接口依赖；内联命令模板不是803资产资源 |
+| [806](../plans/806-ui-declarations-dialect-extraction.md) | auto-ui-dialect完整msg/model与注解算法外置，顶层和widget/component/store内部统一委托 | 硬等799→801审查合入，不把778裸字段pilot扩为默认文法 |
+
+本轮观察802 latest readiness为needs_fix（V06实机证据待补），799/803也仍在复审/修复收口，均未合入；801仍drafting。804/805可在合同确认后独立推进，不把前端前置放大全局停工；806先规划、后等待真实API。§8.6状态为上一轮快照，本轮调度以[804–806编排](../plans/reports/extraction-followup-parallel-order-20261017.md)及实际合同/代码为准。
+
+804后仍有diff四项、term/media等宿主或算法边；805后仍有Target/构建DAG/管理编排/薄CLI；806后仍有完整结构/事件UI文法。UI/Man真正G/H搬仓需相应D/E/F退出门，不因三项合同创建即放行；去重/退役与UiAst终态继续保留。此次不写canonical Spec，不修复或合并其他计划。
+
 ## 9. 决策状态
 
 | 决策 | 状态 |

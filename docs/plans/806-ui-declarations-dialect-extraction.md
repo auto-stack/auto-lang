@@ -1,0 +1,114 @@
+---
+plan_id: PLAN-806
+status: drafting
+feature_name: UI msg 与 model 声明文法正式外置
+author: [Codex]
+created_at: 2026-10-17
+updated_at: 2026-10-17
+plan_revision: 1
+current_step: 0
+total_steps: 8
+supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md]
+new_spec_components: [docs/specs/auto-ui-dialect/project.md]
+touched_goals: [GOAL-003, GOAL-007]
+affects: [auto-ui-dialect, auto-lang/frontend]
+depends_on: [PLAN-799, PLAN-801]
+---
+
+# [PLAN-806] UI msg 与 model 声明文法正式外置
+
+## 0. 变更摘要
+
+799/801合入后，新建只依赖轻AST/词法/诊断/解析接口的auto-ui-dialect，将现有完整msg/model声明算法及字段注解迁出Parser；顶层、widget/component/store中的所有内部调用真实委托。默认UI生产路径使用新实现，不只追加外部fixture。
+
+## 1. 目标
+
+msg/model完整现有文法有独立实现包、无auto-lang/Parser/UI renderer反向依赖，原AST/诊断/场景及消费行为保持。删除Parser里的原算法，旧公开parse_msg_decl/parse_model_block仅兼容委托。
+
+非目标：完整widget/view/on/actions/style/computed文法、自动向所有import传播任意外部注册、分离UiAst/lowering、关闭既有无UI-feature场景解析能力或搬整个auto-ui仓。默认组合宿主仍可依赖轻UI文法包，不能宣称纯Core Parser/整仓无UI依赖已经完成。
+
+## 2. 架构方案
+
+auto-ui-dialect → 801实际auto-parser-api + 799实际auto-ast + 既有轻词法/诊断；auto-lang组合层提供端口并装配默认UI声明方言。新crate normal/build/dev均不得依赖auto-lang或复制Parser/模型/lexer。核心expr/type沿端口委托，不复制Pratt/类型文法。
+
+顶层经同一builtin派发段，保Override/builtin/Append次序和旧场景/fn/on护栏；结构文法内部通过同一msg/model解析函数，不能保留一条隐蔽旧实现。旧入口保持Rust调用形状和AST类型身份。
+
+## 3. 技术栈
+
+Rust轻方言crate、801安全ParseContext/checkpoint机制、真实Parser/类型/VM/UI生成消费对照及独立方言构建consumer。新API以801最终交付为准，不预写不存在的方法。
+
+## 4. 需求分析与背景调查
+
+用户2026-10-17授权继续建立后续合同。本轮只计划，不执行Rust/建agent或树、不改799/801/802/803状态或验收。取材9932962bc157be13bcaa0520011c7c78082cb2fe及[指纹](attachments/extraction-followup-20261017/inputs.json)。799仍在复审/修复收口、未合入；801 drafting，主检出无auto-ast/auto-parser-api。**两项合入是work硬前置**，不能从worktree复制或假定未来API。
+
+Parser现有parse_msg_decl_inner支持旧msg Name（名字读弃）、quoted variants、多个payload及named/positional payload；named探测当前直用lexer lookahead。parse_model_block_inner支持var、类型/初值和primary/Consume/Provide/NavParam注解、未知注解特定诊断；三个inner方法在widget/component/store等结构路径被直连。只改UiDialect顶层分支会漏掉生产调用。
+
+778/801 model pilot允许显式外部子集的bare field，但默认内建model仍需类型或初值。正式默认切换不能顺手把pilot扩展变为默认文法；未知注解/恢复/字段flags必须保留。低层UI兼容AST仍由799共享，不能以本轮外置删节点。
+
+## 5. 详细设计
+
+T01在799/801交付上完成有界整链可行性：msg命名payload的安全lookahead、完整model注解/expr/type、顶层与结构内调用、错误位置和None/Err恢复。冻结所有callsite/可见性/port差额；可用checkpoint+advance/restore等价实现lookahead，不公开lexer/Parser/TypeStore。如果确需新增通用端口，必须在本计划具名说明/测试其Core含义和兼容性；不能加parse_model/parse_msg回调把真正算法留Parser伪装迁出。无法等价则needs_replan，保留硬目标。
+
+搬parse_msg_decl_inner、parse_model_block_inner、parse_model_field_annotations完整算法至新crate；保留旧msg Name丢弃、quoted/name/payload_names、字段mutable/is_primary/decorators、错误文本/阶段/位置、现有空行/逗号/宽容拼写行为。不要趁抽取收紧/扩展文法或修复历史怪癖。所有结构路径与顶层用同一实现，原公开方法只薄委托。
+
+生产默认装配不冒充用户Override注册；外部Override/Append及with_session/递归保持，Core同名变量/fn/on体对象字段不被抢声明。UI场景在已有无renderer/no-ui feature组合仍可解析，不能偷加UI feature才能解析的新限制。新crate保留纯文法依赖，默认组合位置及仍有的core→轻UI文法边单独登记，后续Parser/组合宿主分层再清理。
+
+pilot不保第二份model算法：801独立model consumer改为复用新model解析实现的显式扩展策略，或等价单源入口；裸字段支持只在显式pilot策略启用，默认false。T01据实际交付确定表达方式，原pilot对照保留，不能既删bare-field正控又宣称兼容。
+
+生产import中新建Parser使用同一默认UI声明实现，并验证一个真实导入文件消费；不承诺本轮让所有自定义外部注册跨import自动继承。完整widget/view/on/actions/style等剩余方法/装配边列清，迁位与净删分列。受影响792包/来源/资源按已交付入口补清单并验证，不能沿用漏新crate的固定闭包。
+
+### 规范增量
+
+| delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-01 | add | docs/specs/auto-ui-dialect/project.md | 无独立生产文法包→完整msg/model及端口/依赖边界 | 由pilot进入真实文法迁移 | AC-01/02/03 |
+| SD-02 | modify | docs/specs/auto-lang/frontend/overview.md | 默认内建算法→组合装配/兼容委托及真实结构/import调用 | 不漏生产内部路径 | AC-02/03/04 |
+| SD-03 | modify | docs/specs/auto-lang/frontend/design/dialect-system.md | 声明分派与端口权限/恢复规约、默认与pilot策略区别 | 不改变Core和外部优先级 | AC-02/03 |
+| SD-04 | modify | docs/specs/auto-lang/ui/design/scenario-dialect.md | msg/model正式外置，其他UI grammar仍上层 | 不夸大全UI文法已拆出 | AC-03/04 |
+
+## 6. 测试设计
+
+work→同树独立final review→merge，无额外agent/模型。拟唯一树D:/autostack/.wt/lang-806/auto-lang，branch codex/plan-806-dev。fixture由T02/T05建立；当前仅规划，不是已执行证据。799/801实际SHA/API/Spec先冻结；单计划一棵树，不从别线拼临时实现。
+
+| Case / owner | AC / 不变量 | 输入/真实入口 | oracle与边界 |
+|---|---|---|---|
+| V01 / work | 01 独立闭包 | 新test/fixtures/modularity/ui-declarations-consumer，轻包编译/单测及metadata；含语言driver分开放上层 | normal/build/dev无auto-lang/Parser/VM/renderer，真算法而非转调Parser函数；AST同一类型 |
+| V02 / work | 02 msg全族 | canonical/legacy-name/quoted variant、unit/多payload/named与positional、泛型类型；坏payload/缺闭括号 | 新旧MsgDecl/AST/诊断位置相同，名字/quoted/payload_names不丢；lookahead不吞token，后续语句可按旧规则恢复 |
+| V03 / work | 02 model全族 | var/类型/初值、四注解及组合、未知注解、缺闭块；默认bare field反控+显式pilot正控 | 字段flags/类型/init/decorator及具体错误同旧臂；默认不意外接收bare，显式pilot仍接收；两者共用一份字段算法 |
+| V04 / work | 03 场景/所有生产调用 | 顶层、widget、component兼容结构、store及真实import文件；Core同名赋值/view参数、fn/on体msg字段、混排注册/递归 | 每个内部调用确实到新算法，默认UI无需显式注册；Core对照与优先级/五旗标/None/Err规则保持；不以顶层fixture代全覆盖 |
+| V05 / work | 03 消费保持 | 上述AST真实类型/VM handler、quoted/name payload的Vue/Rust代表生成及model注解消费 | 关键输出/运行结果等于冻结旧臂/既有golden，不更新金样掩盖语义变化；不要求重写其余生成器 |
+| V06 / work | 04 单源/交付 | 源码方法/调用清单、旧算法删除、777精确规则、792真实交付driver | 原Parser只兼容委托，pilot无平行实现；新包独立source唯一；受影响fresh/locked/重定位及缺包/坏hash等控制通过 |
+
+work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consumer及801原consumer manifest test，定向场景/结构/import/错误恢复与消费测试（T05记录实际filter/选择数）。典型平链/嵌套expr/type及坏输入沿已有支持域验证，不新增任意固定语法上限或承诺无限资源。最终review后merge冻结裸cargo t+tv；实际修改ui_gen/trans分别追加tu/tt，work/review不跑整档。tf主检出到期单实例，本轮不跑Cargo/docs_gen。
+
+## 7. 验收标准
+
+| ID | owner_stage | 可观察结果 |
+|---|---|---|
+| AC-01 | work | 完整msg/model文法在轻包独立实现，无Parser反调/模型复制，V01通过 |
+| AC-02 | work | 全语法/注解/错误/lookahead及默认/pilot区别保持，V02/03通过 |
+| AC-03 | work | 顶层/结构/import生产真委托，场景/注册/递归/消费保持，V04/05通过 |
+| AC-04 | work | 旧算法删除、未迁UI族/净删/792/SD收据齐全，V06通过 |
+| AC-05 | review | 同树独立逐项AC/SD及遗漏/恢复审查通过，绑定799/801/实现SHA，merge门pending |
+| AC-06 | merge | 冻结日常/语料及实际触面门、Spec/ledger/归档/guard清理完成 |
+
+## 8. 执行步骤
+
+| 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
+|---|---|---|---|---|---|
+| [ ] | T-01 | work | 799/801审查合入、合同确认 | parser.rs三算法/all callsites、801最终端口及pilot，整链可行性/差额/旧臂/默认策略冻结 | 01/02/03 |
+| [ ] | T-02 | work | T01 | 新crates/auto-ui-dialect及完整msg/model/注解算法，安全lookahead，轻consumer与check/V01 | 01/02 |
+| [ ] | T-03 | work | T02 | Parser公开/inner薄委托与UiDialect默认装配、全部widget/component/store及默认import路径接线，V04 | 02/03 |
+| [ ] | T-04 | work | T03 | 801 pilot复用单份model、默认bare反控及显式bare正控；删除原算法，V02/03/05 | 02/03 |
+| [ ] | T-05 | work | T04 | V01–06全矩阵、777精确边/792source闭包与受影响交付控制，实际命令收据 | 01–04 |
+| [ ] | T-06 | work | T05 | 未迁widget/view/on等清单、净删/组合宿主剩余边及SD/SHA收据，提交送审 | 04 |
+| [ ] | T-07 | review | T06 | 同树独立完整语法/所有调用/恢复/消费/SD审查，merge门pending | 05 |
+| [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
+
+## 9. 复审记录
+
+2026-10-17 / stage: new / PLAN-806 revision: 1 / outcome: blocked / next: 799与801审查合入后，work以真实API执行T-01。此前仅只读准备，不复制未交付类型/接口；不等待802/803/804/805整体完成。[预检](attachments/extraction-followup-20261017/preflight.md)。
+
+## 10. 待澄清事项
+
+无待用户决定的问题；阻塞是799/801交付前置。T01有界确认lookahead和pilot单源策略，不能改默认文法/放宽AC。后续完整widget/view/on迁移须据本批实际端口与剩余图另立中等计划。

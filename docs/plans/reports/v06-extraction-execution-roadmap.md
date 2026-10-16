@@ -4,6 +4,8 @@
 
 ## 当前切换点
 
+**2026-10-17 后续更新（804–806）**：802最新readiness needs_fix、尚需V06实机证据；799/803也继续复审/修复收口，尚未合入；801 drafting。新增[804对话框/拖出](../804-dialog-dnd-host-provider.md)、[805工具链核心](../805-toolchain-rules-core-extraction.md)、[806 msg/model生产文法](../806-ui-declarations-dialect-extraction.md)。**804/805不依赖799/801，可独立推进；806硬等799→801交付**。802/803自身也不等799/801，各自继续原收口；共享装配/Man接线规则和后续搬仓门见[本批编排](extraction-followup-parallel-order-20261017.md)。以下状态为历史快照。
+
 **2026-10-17 核实更新**：792、794均已合入归档；规划期间[800](../archive/800-man-dependency-model-extraction.md)也已归档8/8、清理完成。用户确认时799尚未实施，随后已转executing，主检出仍无auto-ast。新增[801方言接口](../801-dialect-api-dependency-inversion.md)、[802 CodeEditor宿主](../802-code-editor-host-provider.md)、[803 Man模板资源](../803-man-template-assets-extraction.md)，详见[本批并行/合流合同](extraction-next-parallel-order-20261017.md)。**现在可并行799/802/803；801硬等799合入**，无800待交付依赖。下方2026-10-15/16状态、781 executing叙述及早期准备计数均为历史快照，不作今日放行依据。
 
 **2026-10-16 继续更新（793/795合流后，历史快照）**：793、795已归档；792/794继续各自执行/修复。新增 [799前端模型](../799-frontend-ast-model-extraction.md) 与 [800 Man依赖模型](../archive/800-man-dependency-model-extraction.md)，均可不等792/794整体结束并行实施。并行写面及合入责任以[四线合流合同](model-decoupling-parallel-order-20261016.md)为准：同时ready推荐792→794→799→800，但不是depends_on；就绪先合，后合入者承担闭包及受影响复审/重验。下面793/795 drafting描述为早期快照。
