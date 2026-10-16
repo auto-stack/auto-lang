@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-800
-status: execution_done
+status: reviewed
 feature_name: Man 依赖模型与路径解析核心解耦
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/package-resolver/project.md]
@@ -96,7 +96,7 @@ work、独立final review、merge分别交接；未分配额外agent或模型。
 | [x] | T-04 | work | T03 | AutoManResolver生产薄委托、旧API/get_dependencies和替换可见性保持；删除原路径算法，check/定向测试 | 02/03 | [✅ 已完成] adapter 薄委托（trait 四方法一行委托；Pac/Super/None 继续走 FilesystemResolver）；`Dependency=DependencyEntry<ExecutionMode>` 别名保调用面；auto-man 内路径算法 grep=0；`cargo test -p auto-man --lib resolver::` 38/38 绿（1 预存 ignore，含 4 新 plan800 例） |
 | [x] | T-05 | work | T04 | 新外部consumer、V01..05、metadata/777精确边界；799两种兼容接线及792条件触面核查 | 01–04 | [✅ 已完成] package-resolver-consumer 7/7 + verify-deps.sh PASS（闭包=仅核心）；module-boundaries 登记 man-ecosystem+audit 零违规；792 work 时点未合入、review-r1 时点已合入——经核对 rust_ui DELIVERY_CRATES 10 项不含 auto-man 且闭包无本包边→不入 792 交付闭包、无清单接线义务（详见 t06 §6 merge 注记）；794 diff 面零 auto-lang/VM/UI 文件；799 兼容=旧 ast 路径身份不变；证据全录 attachments/800/t06-work-receipt.md |
 | [x] | T-06 | work | T05 | 净删/搬迁/未迁和合流收据、SD素材，提交冻结代码、work项闭合 | 01–04 | [✅ 已完成·r1] r0 收据+SD 素材随 `5c1f43b5d`；review-r1 needs_fix（F01 错误映射描述失实/F02 新核心未过 rustfmt）已修——四处文档对齐真实边界（无 adapter 映射、legacy 调用点静默忽略）、新文件全量 rustfmt+adapter 定点修 7 处（余 26 处标记行经比对全部逐字存在于 master=历史搬运）；r1 修复提交 `c50e7a1c6`，三面定向复验全绿；SD01 新 hash `8BF942D5…`；明细 t06 §6 |
-| [ ] | T-07 | review | T06 | 同树独立真实路径/模式/负控/单一实现及SD冻结 | 05 |
+| [x] | T-07 | review | T06 | 同树独立真实路径/模式/负控/单一实现及SD冻结 | 05 |
 | [ ] | T-08 | merge | final pass | 同步/必要复审、冻结门/条件792重验；规范/ledger/归档/guard，800到期批回归交接 | 06 |
 
 ## 9. 复审记录
@@ -113,7 +113,8 @@ work-owned readiness：AC-01..04 全闭合（V01..05 证据绑定 5c1f43b5d）�
 
 work-owned readiness（r1）：F800-R1-01/02 两 finding 闭合、无未结 in-contract 项；受影响面定向复验通过；行为零变化（P2 纯文档、P3 纯格式）。
 
+2026-10-17 stage=review | review_scope=final | reviewer_identity=当前独立审核对话（未参与实现、无额外agent） | PLAN-800 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-800/auto-lang | branch=plan-800-dev | reviewed_commit=c50e7a1c670c695766dfd81dcd572b446a99a31c | base_commit=b0d6d4aab50bfcb137d55b0f88e9f2bd82b8f644 | dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 | spec_inputs=main auto-man AA785B1D…/SD01 8BF942D5…/SD02 8FCA0393…（完整指纹与冻结副本见R2收据） | acceptance_results=AC01..05 pass、AC06 merge-owned pending | findings=F800-R1-01/02 closed，无新阻断项 | evidence=[R2最终复审收据](attachments/800/review-r2/REVIEW.md)：核心14/14、resolver筛选38 passed/1预存ignored、consumer7/7、闭包/新文件格式/独立反例全通过；adapter规范化前后字节一致，残余格式全为历史代码 | pending_closeout_gates=同步/必要受影响复审、冻结裸cargo t+两crate+consumer、Spec/ledger/索引/归档/guard清理、800批回归到期交接 | next=merge。T07完成，7/8；reviewed只表示代码/验收/规范审查通过，merge-owned门通过前不得合入或宣称交付完成。
+
 ## 10. 待澄清事项
 
 T01具体轻投影/借用设计须保持旧HashMap引用API及mode身份；若需修改既有source配置识别/不兼容规范路径，应先具名修订。不能把legacy扫描弱点偷偷修成新的pac协议，也不能为避环复制语言AST/模式枚举解析。
-
