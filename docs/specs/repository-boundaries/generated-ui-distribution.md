@@ -31,7 +31,8 @@
   crates/<交付闭包>      # 字节级副本（仅 auto-lang Cargo.toml 投影修剪）
   crates/patches/iced_widget/  # 本地 patch 随包发行（PLAN-043 走查）
   stdlib/、docs/schema/ # 仓库根级编译期输入（include_str! 越界面）
-  assets/               # 资源 allowlist（src/front 非 .at 文件 + blake3）
+  assets/               # 资源 allowlist（src/front 非 .at 文件 + SHA-256）
+  verify.py             # 随包受管资源校验入口（消费清单 hash，独立可执行）
   delivery-manifest.json # producer 身份/闭包规模/资源/pin/投影修剪记录
 ```
 
@@ -61,14 +62,22 @@
   fresh-lock wgpu-hal/windows-core 漂移为时变生态漂移（2026-10-16 实测
   fresh 解析已收敛至已提交锁版本集），本轮以"独立锁+pin+冻结重放"闭合
   该失败类，不宣称生态漂移被根治。
-- **确定性失败（无静默回退）**：缺资源/坏 hash 受管校验阶段判红；消费根
-  漏 patch / 不兼容 pin → `cargo build --locked` 确定性红（锁需更新被拒）；
-  外来非空目录（无 delivery-manifest.json 标记）显式拒绝不覆盖；producer
-  缺闭包源/根级输入受管判红，**不回退主检出、不复制原 target/rlib 作
-  oracle**。
+- **确定性失败（无静默回退）**：资源校验经**随包受管入口 `verify.py`**
+  （消费 delivery-manifest.json 的资源 SHA-256；无 producer/原工程也可独立
+  执行）——缺资源/等长篡改/坏 hash/未登记资源逐项判红；消费根漏 patch /
+  不兼容 pin → `cargo build --locked` 确定性红（锁需更新被拒）；外来非空
+  目录（无 delivery-manifest.json 标记）显式拒绝不覆盖；producer 缺闭包
+  源/根级输入在**预检阶段**判红；**再交付经独立 staging 生成+全部校验
+  成功后整体换装**——准备或生成失败保留旧交付字节（失败不切换任何旧
+  生产产物），**不回退主检出、不复制原 target/rlib 作 oracle**。
+- **sidecar 边界**：交付模式显式拒绝 rust_sidecar 的外部 path 依赖
+  （绝对路径——任意根；或越出交付根的相对 `..`）；registry 版本依赖
+  （`name:version`）与项目内 .rs 模块照常。全部 bundle Cargo.toml 的每个
+  `path = "…"` 值经边界自检：必须相对且按 manifest 目录词法解析后落在
+  交付根内（覆盖任何来源的越界源）。
 - **可追溯**：delivery-manifest.json 记录 producer 源根/git HEAD/dirty/
-  ui_gen 指纹、逐 crate 文件数字节数与目录 digest、资源 blake3、pin 表、
-  投影修剪明细与闭包规模披露。
+  ui_gen 指纹、逐 crate 文件数字节数与目录 digest（blake3——producer 身份）、
+  资源 SHA-256（消费侧可独立校验）、pin 表、投影修剪明细与闭包规模披露。
 - **消费合同**：交付根即独立 workspace 根（自有应用 Cargo.lock）；重定位
   （A→B，不带 target/）后 `cargo build --locked` 须过；metadata 全部本地
   path source 在交付根内；运行期本地资产按 CWD 相对解析（消费侧自 assets/

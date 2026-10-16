@@ -21,6 +21,8 @@ auto-package-lock = { path = "../auto-package-lock" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
 blake3 = { workspace = true }  # Plan 134: File hashing utilities
+# PLAN-792 R1-F01: 资源 hash 用 SHA-256（随包 verify.py 经 python hashlib 独立可校验）
+sha2 = "0.10"
 
 # Error handling
 thiserror = { workspace = true }

@@ -85,32 +85,37 @@ def norm_lower(p) -> str:
     return str(p).replace("\\", "/").lower()
 
 
-def verify_delivery(bundle: Path) -> tuple[bool, str]:
-    """受管资源/清单校验：delivery-manifest.json 条目 vs 实际文件。
+def run_verify_entry(bundle: Path) -> subprocess.CompletedProcess:
+    """R1-F01：随包受管校验正式入口 verify.py（消费清单 sha256，独立可执行）。"""
+    return subprocess.run(
+        [sys.executable, str(bundle / "verify.py")],
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+    )
 
-    资源按 assets/<rel> 解析；字节与 producer 源（fixture src/front）逐字节
-    相等（等价于 blake3 与 producer 相等）；缺失/坏字节判红。
-    """
+
+def verify_delivery(bundle: Path) -> tuple[bool, str]:
+    """受管资源校验（双层）：① 正式入口 verify.py（清单 sha256 逐资源 +
+    未登记文件判红——无 producer 也可执行）；② 与 producer 源（fixture
+    src/front）逐字节对拍。"""
+    r = run_verify_entry(bundle)
+    if r.returncode != 0:
+        return False, (r.stdout + r.stderr).strip()
     mp = bundle / "delivery-manifest.json"
     if not mp.is_file():
         return False, "delivery-manifest.json 缺失"
     manifest = json.loads(mp.read_text(encoding="utf-8"))
     problems = []
-    for r in manifest.get("resources", []):
-        f = bundle / "assets" / r["rel"]
+    for res in manifest.get("resources", []):
+        f = bundle / "assets" / res["rel"]
         if not f.is_file():
-            problems.append(f"资源缺失: {r['rel']}")
+            problems.append(f"资源缺失: {res['rel']}")
             continue
-        data = f.read_bytes()
-        src = PROJ / "src" / "front" / r["rel"]
-        expected = src.read_bytes() if src.is_file() else None
-        if expected is not None and data != expected:
-            problems.append(f"资源字节与 producer 不等: {r['rel']}")
-        elif len(data) != r["bytes"]:
-            problems.append(f"资源大小漂移: {r['rel']}")
+        src = PROJ / "src" / "front" / res["rel"]
+        if src.is_file() and f.read_bytes() != src.read_bytes():
+            problems.append(f"资源字节与 producer 不等: {res['rel']}")
     if problems:
         return False, "; ".join(problems)
-    return True, f"{len(manifest.get('resources', []))} 资源校验一致（字节=producer）"
+    return True, f"{len(manifest.get('resources', []))} 资源校验一致（verify.py 绿 + 字节=producer）"
 
 
 def main() -> int:
@@ -120,6 +125,13 @@ def main() -> int:
     args = ap.parse_args()
 
     scratch = Path(args.scratch).resolve()
+    # 守卫：scratch 不得位于 repo/worktree 内（仓内 scratch 会改变 V04 的
+    # 仓外工程形态——R1 复审实录）。
+    if str(scratch).replace("\\", "/").lower().startswith(
+        str(WT_ROOT).replace("\\", "/").lower() + "/"
+    ):
+        log(f"scratch 不得位于 worktree 内：{scratch}")
+        return 1
     if scratch.exists():
         shutil.rmtree(scratch)
     scratch.mkdir(parents=True)
@@ -236,16 +248,15 @@ def main() -> int:
         bundle_b, consumer_env(), timeout=600,
     )
     meta = json.loads(r.stdout)
+    # R1-F03：真实路径包含关系——所有 path 依赖（source 为空）的
+    # manifest_path 必须在 B 内（不再有盘符前缀过滤/包名特例）。
     outside = [
         p["name"]
         for p in meta["packages"]
         if p.get("source") is None
         and p["name"] != app_pkg
         and norm_lower(bundle_b) not in norm_lower(p["manifest_path"])
-        and norm_lower(p["manifest_path"]).startswith("d:/")
     ]
-    # 过滤：仅断言 path 依赖（source 为空）不在 B 外——registry 包
-    # manifest_path 在 CARGO_HOME 缓存，属正常。
     iced_w = [p for p in meta["packages"] if p["name"] == "iced_widget"]
     single_source = (
         len(iced_w) == 1
@@ -262,19 +273,50 @@ def main() -> int:
     record("V02-resource-identity", ok, detail)
 
     # ================= V03：负控（确定性红 + 恢复复绿） =================
-    # (a) 资源坏 hash（等长篡改——防大小校验漏检）：受管校验阶段判红
+    # (a) 资源负控四态——全部经随包正式入口 verify.py（R1-F01：消费清单
+    #     sha256，无 producer 也可执行）判红：
+    #     ① 等长篡改资源字节（防大小校验漏检）
     tamper = scratch / "consumer-bad-resource"
     copytree_no_target(bundle_a, tamper)
     tampered = bytearray((tamper / "assets" / "avatar.png").read_bytes())
     tampered[len(tampered) // 2] ^= 0xFF
     (tamper / "assets" / "avatar.png").write_bytes(bytes(tampered))
-    ok, detail = verify_delivery(tamper)
-    record("V03a-bad-hash-rejected", not ok, detail)
-
-    # (a') 资源缺失：同样判红
+    rv = run_verify_entry(tamper)
+    record(
+        "V03a-eqlen-tamper-red",
+        rv.returncode != 0 and "hash 不符" in (rv.stdout + rv.stderr),
+        f"exit={rv.returncode}，诊断含 hash 不符",
+    )
+    #     ② 清单坏 hash（记录值篡改——R1 反例：64 个 0）
+    tamper2 = scratch / "consumer-bad-hash"
+    copytree_no_target(bundle_a, tamper2)
+    m2 = json.loads((tamper2 / "delivery-manifest.json").read_text(encoding="utf-8"))
+    m2["resources"][0]["sha256"] = "0" * 64
+    (tamper2 / "delivery-manifest.json").write_text(
+        json.dumps(m2, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    rv = run_verify_entry(tamper2)
+    record(
+        "V03a-corrupt-hash-red",
+        rv.returncode != 0,
+        f"exit={rv.returncode}（记录 hash 与实际不符——判红）",
+    )
+    #     ③ 资源缺失
     (tamper / "assets" / "avatar.png").unlink()
-    ok, detail = verify_delivery(tamper)
-    record("V03a-missing-resource-rejected", not ok, detail)
+    rv = run_verify_entry(tamper)
+    record(
+        "V03a-missing-resource-red",
+        rv.returncode != 0 and "资源缺失" in (rv.stdout + rv.stderr),
+        f"exit={rv.returncode}，诊断含资源缺失",
+    )
+    #     ④ 未登记资源（清空 allowlist 逃逸的对偶面：文件在而清单不认）
+    (tamper2 / "assets" / "unlisted.png").write_bytes(b"\x89PNG-unlisted")
+    rv = run_verify_entry(tamper2)
+    record(
+        "V03a-unlisted-resource-red",
+        rv.returncode != 0 and "未登记资源" in (rv.stdout + rv.stderr),
+        f"exit={rv.returncode}，诊断含未登记资源",
+    )
 
     # (b) 消费根漏 patch：--locked 确定性红（lock 以 patch 身份冻结）
     nopatch = scratch / "consumer-nopatch"
@@ -321,6 +363,65 @@ def main() -> int:
         "V03d-foreign-dir-rejected",
         r.returncode != 0 and (foreign / "mine.txt").is_file(),
         f"exit={r.returncode}，外来文件未被覆盖",
+    )
+
+    # (e) R1-F02：再交付准备失败保留旧交付——既有成功交付（含 sentinel），
+    #     producer 破损（闭包 crate 缺 manifest）→ 显式 Err 且旧字节不动；
+    #     producer 恢复 → 再交付成功（换装）。
+    old_target = scratch / "consumer-redeliver"
+    copytree_no_target(bundle_a, old_target)
+    sentinel = old_target / "app" / "previous-build.txt"
+    sentinel.write_text("old delivery must survive failed preparation")
+    manifest_before = (old_target / "delivery-manifest.json").read_text(encoding="utf-8")
+    broken_producer = scratch / "broken-producer"
+    (broken_producer / "crates" / "auto-lang").mkdir(parents=True)
+    (broken_producer / "Cargo.toml").write_text("[workspace]\n")
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(old_target)],
+        gen_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(broken_producer)}),
+    )
+    preserved = (
+        r.returncode != 0
+        and sentinel.is_file()
+        and (old_target / "delivery-manifest.json").read_text(encoding="utf-8")
+        == manifest_before
+    )
+    record(
+        "V03e-redelivery-failure-preserves-old",
+        preserved,
+        f"exit={r.returncode}，sentinel/清单字节保留={sentinel.is_file()}",
+    )
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(old_target)],
+        gen_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    record(
+        "V03e-redelivery-after-restore",
+        r.returncode == 0 and (old_target / "delivery-manifest.json").is_file(),
+        "producer 恢复后再交付成功（staging 换装）",
+    )
+
+    # (f) R1-F03：sidecar 外部绝对 path（复放审查反例——与 producer 不同根
+    #     的主检出绝对路径）→ 生成显式拒绝，不产出应用清单。
+    sidecar_proj = scratch / "sidecar-proj"
+    shutil.copytree(PROJ, sidecar_proj)
+    with (sidecar_proj / "pac.at").open("a") as f:
+        f.write(
+            '\nrust_sidecar {\n    deps: ["auto-val:path:D:/autostack/auto-lang/crates/auto-val"]\n}\n'
+        )
+    sidecar_bundle = scratch / "consumer-sidecar"
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(sidecar_bundle)],
+        sidecar_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    emitted = sidecar_bundle / "app" / "Cargo.toml"
+    record(
+        "V03f-sidecar-external-path-rejected",
+        r.returncode != 0 and not emitted.is_file(),
+        f"exit={r.returncode}，未产出应用清单（外部 path 不入交付物）",
     )
 
     # 正常输入恢复复绿：A/B 未受负控影响

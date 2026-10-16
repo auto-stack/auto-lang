@@ -4479,24 +4479,25 @@ fn delivery_apply_projection(vendored_manifest: &Path) -> AutoResult<Vec<String>
     .into())
 }
 
-/// 交付根守卫：空目录或既往交付（有 delivery-manifest.json 标记）才允许
-/// （再交付清理已知路径重生成）；外来非空目录显式拒绝，不覆盖他者内容。
-fn delivery_guard_root(delivery_root: &Path) -> AutoResult<bool> {
+/// 交付根守卫：空目录或既往交付（有 delivery-manifest.json 标记）才允许；
+/// 外来非空目录显式拒绝，不覆盖他者内容。（R1-F02：换装语义——不再在
+/// 生成前清理既有交付；旧包经 staging 成功后整体换出。）
+fn delivery_guard_root(delivery_root: &Path) -> AutoResult<()> {
     if !delivery_root.exists() {
-        return Ok(false);
+        return Ok(());
     }
     if !delivery_root.is_dir() {
         return Err(format!("delivery: 交付根不是目录：{}", delivery_root.display()).into());
     }
     let marker = delivery_root.join("delivery-manifest.json");
     if marker.is_file() {
-        return Ok(true);
+        return Ok(());
     }
     let empty = fs::read_dir(delivery_root)
         .map(|mut it| it.next().is_none())
         .unwrap_or(false);
     if empty {
-        return Ok(false);
+        return Ok(());
     }
     Err(format!(
         "delivery: 交付根非空且无 delivery-manifest.json（外来目录，拒绝覆盖）：{}",
@@ -4505,31 +4506,245 @@ fn delivery_guard_root(delivery_root: &Path) -> AutoResult<bool> {
     .into())
 }
 
-/// 再交付清理：仅移除交付自身拥有的已知路径；未知条目保留并告警。
-fn delivery_clean_known(delivery_root: &Path) {
-    let known_dirs = [
-        "app", "crates", "assets", "stdlib", "docs", "examples", ".cargo",
+/// R1-F02：producer 输入预检——闭包 crate manifest/patch/根级编译输入/根
+/// manifest 与根锁逐项在位检查。任何缺失在触碰旧交付或建 staging 之前
+/// 判红（失败保留旧交付字节，满足"失败不切换任何旧生产产物"）。
+fn delivery_preflight_producer(producer_root: &Path) -> AutoResult<()> {
+    let mut missing: Vec<String> = Vec::new();
+    for c in DELIVERY_CRATES {
+        if !producer_root
+            .join("crates")
+            .join(c)
+            .join("Cargo.toml")
+            .is_file()
+        {
+            missing.push(format!("crates/{c}/Cargo.toml"));
+        }
+    }
+    for p in DELIVERY_PATCHES {
+        if !producer_root
+            .join("crates")
+            .join("patches")
+            .join(p)
+            .join("Cargo.toml")
+            .is_file()
+        {
+            missing.push(format!("crates/patches/{p}/Cargo.toml"));
+        }
+    }
+    for rel in DELIVERY_ROOT_INPUTS {
+        if !producer_root.join(rel).is_file() {
+            missing.push(rel.to_string());
+        }
+    }
+    for rel in ["Cargo.toml", "Cargo.lock"] {
+        if !producer_root.join(rel).is_file() {
+            missing.push(rel.to_string());
+        }
+    }
+    if !missing.is_empty() {
+        return Err(format!(
+            "delivery: producer 预检失败（缺 {} 项输入：{}）——受管判红，既有交付不受影响",
+            missing.len(),
+            missing.join("、")
+        )
+        .into());
+    }
+    Ok(())
+}
+
+/// staging/换出残桩的兄弟路径（与交付根同父同卷——rename 不跨卷）。
+fn delivery_sibling_path(delivery_root: &Path, suffix: &str) -> PathBuf {
+    let name = delivery_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("delivery");
+    delivery_root
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!(".{name}.{suffix}"))
+}
+
+/// R1-F02：换装——staging 全部生成且校验成功后整体替换旧交付。
+/// 旧包先换出到残桩位，新包换入；换入失败回滚旧包后显式 Err（staging
+/// 保留供诊断）。残桩清理失败只告警（新包已生效、旧包完整残留非混合态）。
+fn delivery_swap_in(staging: &Path, delivery_root: &Path) -> AutoResult<()> {
+    if !delivery_root.exists() {
+        fs::rename(staging, delivery_root).map_err(|e| format!("delivery: 交付根落位失败: {e}"))?;
+        return Ok(());
+    }
+    let trash = delivery_sibling_path(delivery_root, "delivery-old");
+    if trash.exists() {
+        fs::remove_dir_all(&trash)
+            .map_err(|e| format!("delivery: 清理既往换出残桩失败（{}）: {e}", trash.display()))?;
+    }
+    fs::rename(delivery_root, &trash)
+        .map_err(|e| format!("delivery: 旧交付换出失败（旧包未动）: {e}"))?;
+    match fs::rename(staging, delivery_root) {
+        Ok(()) => {}
+        Err(e) => {
+            if fs::rename(&trash, delivery_root).is_ok() {
+                return Err(format!(
+                    "delivery: 新交付换入失败（旧包已回滚原位；staging 保留供诊断）: {e}"
+                )
+                .into());
+            }
+            return Err(format!(
+                "delivery: 新交付换入且回滚失败（旧包在 {}，staging 保留）: {e}",
+                trash.display()
+            )
+            .into());
+        }
+    }
+    if let Err(e) = fs::remove_dir_all(&trash) {
+        eprintln!(
+            "⚠ delivery: 旧交付清理失败（新包已生效；旧包完整残留于 {}）: {e}",
+            trash.display()
+        );
+    }
+    Ok(())
+}
+
+/// R1-F03：交付模式 sidecar 边界——外部 path 依赖显式拒绝（绝对路径或
+/// 越出交付根的相对路径都会把不可搬动源写进生成物，破坏独立构建边界）。
+/// registry 版本依赖（`name:version` 形态）与项目内 .rs 模块照常。
+/// path 依赖的 sidecar 存储形态为 `{ path = "REL" }`（sidecar::fill），
+/// 相对值按 app/ member 解析。
+fn delivery_validate_sidecar(sidecar: &crate::sidecar::SidecarSpec) -> AutoResult<()> {
+    for (name, spec) in &sidecar.deps {
+        let Some(rest) = spec.strip_prefix("{ path = \"") else {
+            continue; // registry 版本依赖
+        };
+        let Some(path_value) = rest.strip_suffix("\" }") else {
+            continue;
+        };
+        let p = Path::new(path_value);
+        if p.is_absolute() {
+            return Err(format!(
+                "delivery: rust_sidecar 依赖 {name} 使用外部绝对 path（{path_value}）——交付模式显式拒绝（包内仅受管闭包源；registry 依赖用 `name:version` 形态）"
+            )
+            .into());
+        }
+        // 相对形态按 app/（根下一层）词法解析：ParentDir 穿出根即越界。
+        let mut depth: Vec<String> = vec!["app".to_string()];
+        let mut escaped = false;
+        for comp in p.components() {
+            match comp {
+                std::path::Component::ParentDir => {
+                    // 弹到根层仍合法（根即交付根）；仅在已处根层再向外弹
+                    // 才是越界。
+                    if depth.is_empty() {
+                        escaped = true;
+                        break;
+                    }
+                    depth.pop();
+                }
+                std::path::Component::CurDir => {}
+                other => depth.push(other.as_os_str().to_string_lossy().to_string()),
+            }
+        }
+        if escaped {
+            return Err(format!(
+                "delivery: rust_sidecar 依赖 {name} 的相对 path 越出交付根（{path_value}）——交付模式显式拒绝（受管闭包 crate 用 path=\"../crates/<name>\" 形态）"
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+/// R1-F03 强化：交付边界自检——bundle 内全部 Cargo.toml 的每个
+/// `path = "…"` 值必须相对、且按其 manifest 目录词法解析后落在交付根内
+///（覆盖任何来源的越界源：sidecar/未来注入路径）；并保留 producer 绝对
+/// 路径残留扫描。staging 内通过后才允许换装。
+fn delivery_boundary_selfcheck(delivery_root: &Path, producer_root: &Path) -> AutoResult<()> {
+    let mut manifests: Vec<PathBuf> = vec![
+        delivery_root.join("Cargo.toml"),
+        delivery_root.join("app").join("Cargo.toml"),
     ];
-    let known_files = ["Cargo.toml", "Cargo.lock", "delivery-manifest.json"];
-    for d in known_dirs {
-        let p = delivery_root.join(d);
-        if p.exists() {
-            if fs::remove_dir_all(&p).is_err() {
-                eprintln!("⚠ delivery: 清理 {d} 失败（继续，可能残留旧产物）");
+    fn collect_manifests(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if path.is_dir() {
+                if matches!(name.as_str(), "target" | ".git" | "node_modules") {
+                    continue;
+                }
+                collect_manifests(&path, out);
+            } else if name == "Cargo.toml" {
+                out.push(path);
             }
         }
     }
-    for f in known_files {
-        let p = delivery_root.join(f);
-        if p.is_file() {
-            let _ = fs::remove_file(&p);
+    collect_manifests(&delivery_root.join("crates"), &mut manifests);
+    let producer_abs = producer_root.to_string_lossy().to_lowercase();
+    for m in &manifests {
+        let Ok(text) = fs::read_to_string(m) else {
+            continue;
+        };
+        if text.to_lowercase().contains(&producer_abs) {
+            return Err(format!(
+                "delivery: {} 残留 producer 绝对路径——重定位不安全，受管判红",
+                m.display()
+            )
+            .into());
+        }
+        // manifest 相对交付根的目录分量（词法包含基准）
+        let base: Vec<String> = m
+            .parent()
+            .and_then(|p| p.strip_prefix(delivery_root).ok())
+            .map(|rel| {
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for line in text.lines() {
+            let t = line.trim();
+            let Some(idx) = t.find("path = \"") else {
+                continue;
+            };
+            let Some(end) = t[idx + 8..].find('"') else {
+                continue;
+            };
+            let value = &t[idx + 8..idx + 8 + end];
+            if Path::new(value).is_absolute() {
+                return Err(format!(
+                    "delivery: {} 含绝对 path（{value}）——越界源，受管判红",
+                    m.display()
+                )
+                .into());
+            }
+            let mut depth = base.clone();
+            let mut escaped = false;
+            for comp in Path::new(value).components() {
+                match comp {
+                    std::path::Component::ParentDir => {
+                        // 弹到根层仍合法（根即交付根）；仅在已处根层再向外
+                        // 弹才是越界。
+                        if depth.is_empty() {
+                            escaped = true;
+                            break;
+                        }
+                        depth.pop();
+                    }
+                    std::path::Component::CurDir => {}
+                    other => depth.push(other.as_os_str().to_string_lossy().to_string()),
+                }
+            }
+            if escaped {
+                return Err(format!(
+                    "delivery: {} 的 path 越出交付根（{value}）——越界源，受管判红",
+                    m.display()
+                )
+                .into());
+            }
         }
     }
-    if let Ok(rd) = fs::read_dir(delivery_root) {
-        for entry in rd.flatten() {
-            eprintln!("⚠ delivery: 未知条目保留未动：{}", entry.path().display());
-        }
-    }
+    Ok(())
 }
 
 /// crate 名唯一性断言：bundle 内 crates/ 全部实际成员（含多余目录——按
@@ -4631,13 +4846,16 @@ fn delivery_copy_resources(
                 }
                 fs::write(&dst, &content)
                     .map_err(|e| format!("delivery: 写资源 {} 失败: {e}", dst.display()))?;
+                use sha2::{Digest, Sha256};
                 out.push(serde_json::json!({
                     "rel": child_rel,
                     "origin_rel": path.strip_prefix(origin_base)
                         .map(|p| p.to_string_lossy().replace('\\', "/"))
                         .unwrap_or_default(),
                     "bytes": content.len(),
-                    "blake3": blake3::hash(&content).to_hex().to_string(),
+                    // R1-F01：资源 hash 用 SHA-256（随包 verify.py 经 python
+                    // hashlib 独立可校验；crate digest 仍为 blake3 producer 身份）。
+                    "sha256": format!("{:x}", Sha256::digest(&content)),
                 }));
             }
         }
@@ -4656,21 +4874,76 @@ fn delivery_copy_resources(
 
 /// 重定位自检：cargo 可见的生成清单（根/应用 manifest 与 Cargo.lock）不得
 /// 残留 producer 绝对路径（受管判红，不静默出包）。
-fn delivery_relocation_selfcheck(delivery_root: &Path, producer_root: &Path) -> AutoResult<()> {
-    let needle = producer_root.to_string_lossy().to_lowercase();
-    for rel in ["Cargo.toml", "app/Cargo.toml", "Cargo.lock"] {
-        let p = delivery_root.join(rel);
-        let Ok(text) = fs::read_to_string(&p) else {
-            continue;
-        };
-        if text.to_lowercase().contains(&needle) {
-            return Err(
-                format!("delivery: {rel} 残留 producer 绝对路径——重定位不安全，受管判红").into(),
-            );
-        }
-    }
-    Ok(())
-}
+/// 随包发行的受管资源校验入口（R1-F01：消费 delivery-manifest.json 的
+/// resources allowlist——SHA-256 逐资源核对 + assets/ 未登记文件判红；
+/// 无 producer/原工程也可独立执行）。
+const DELIVERY_VERIFY_PY: &str = r#"#!/usr/bin/env python3
+"""PLAN-792 交付包受管资源校验（随包发行；无 producer/原工程也可执行）。
+
+消费 delivery-manifest.json 的 resources allowlist：
+  1) 逐资源存在 + 字节数 + SHA-256 与记录相等（等长篡改判红）；
+  2) assets/ 下不得有未登记文件（清空 allowlist 逃逸判红）。
+退出码：0=通过；1=发现问题（逐条诊断）。
+用法：python verify.py   （在交付根内）
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+
+def main() -> int:
+    manifest_path = ROOT / "delivery-manifest.json"
+    if not manifest_path.is_file():
+        print("[verify-delivery] FAIL delivery-manifest.json 缺失")
+        return 1
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        print(f"[verify-delivery] FAIL delivery-manifest.json 不可读: {e}")
+        return 1
+    problems = []
+    listed = set()
+    for r in manifest.get("resources", []):
+        rel = r.get("rel", "")
+        listed.add(rel)
+        f = ROOT / "assets" / rel
+        if not f.is_file():
+            problems.append(f"资源缺失: assets/{rel}")
+            continue
+        data = f.read_bytes()
+        actual = hashlib.sha256(data).hexdigest()
+        recorded = str(r.get("sha256", ""))
+        if actual != recorded:
+            problems.append(
+                f"hash 不符: assets/{rel} 记录={recorded} 实际={actual}"
+            )
+        elif len(data) != int(r.get("bytes", -1)):
+            problems.append(
+                f"字节数不符: assets/{rel} 记录={r.get('bytes')} 实际={len(data)}"
+            )
+    assets_dir = ROOT / "assets"
+    if assets_dir.is_dir():
+        for f in sorted(assets_dir.rglob("*")):
+            if f.is_file():
+                rel = f.relative_to(assets_dir).as_posix()
+                if rel not in listed:
+                    problems.append(f"未登记资源: assets/{rel}")
+    for p in problems:
+        print(f"[verify-delivery] FAIL {p}")
+    if problems:
+        return 1
+    print(f"[verify-delivery] PASS {len(listed)} 资源校验一致（SHA-256=清单记录）")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+"#;
 
 /// PLAN-792：显式可搬动交付模式生成入口。
 ///
@@ -4679,6 +4952,9 @@ fn delivery_relocation_selfcheck(delivery_root: &Path, producer_root: &Path) -> 
 /// 交付根为镜像生产仓布局的受管 bundle（见本节头注），manifest 不隐式搜索
 /// D:/autostack 或编译期 CARGO_MANIFEST_DIR。锁由交付管线在受管阶段 fresh
 /// 解析一次后冻结（本函数不自动跑 cargo；消费侧 `cargo build --locked`）。
+///
+/// R1-F02：全部生成/校验在独立 staging 完成，成功后整体换装——准备或
+/// 生成失败保留既有交付字节（失败不切换任何旧生产产物）。
 pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> AutoResult<()> {
     println!(
         "{}",
@@ -4697,16 +4973,29 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
         );
     };
 
-    // 守卫 + 再交付清理
-    let is_redelivery = delivery_guard_root(delivery_root)?;
-    if is_redelivery {
-        println!(
-            "  {} 既往交付标记在案——清理已知路径后重生成",
-            "Note:".bright_yellow()
-        );
-        delivery_clean_known(delivery_root);
+    // R1-F02：producer 完整性预检（触碰旧交付/staging 之前）。
+    delivery_preflight_producer(&producer_root)?;
+
+    // R1-F03：sidecar 外部 path 显式拒绝（registry 版本依赖/项目内模块照常）。
+    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    delivery_validate_sidecar(&sidecar)?;
+
+    // 守卫（外来非空目录拒绝；换装语义下不清理既有交付）。
+    delivery_guard_root(delivery_root)?;
+    let final_root = delivery_root.to_path_buf();
+
+    // R1-F02：独立 staging 生成——成功前不动旧交付。
+    let staging = delivery_sibling_path(delivery_root, "delivery-staging");
+    if staging.exists() {
+        fs::remove_dir_all(&staging)
+            .map_err(|e| format!("delivery: 清理遗留 staging 失败: {e}"))?;
     }
-    fs::create_dir_all(delivery_root).map_err(|e| format!("delivery: 建交付根失败: {e}"))?;
+    if let Some(parent) = staging.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("delivery: 建 staging 父目录失败: {e}"))?;
+    }
+    fs::create_dir_all(&staging).map_err(|e| format!("delivery: 建 staging 失败: {e}"))?;
+    // 生成体一律落 staging（下方 delivery_root 遮蔽为 staging 路径）。
+    let delivery_root = staging.as_path();
 
     // 受管源码闭包
     let mut crate_entries: Vec<serde_json::Value> = Vec::new();
@@ -4804,15 +5093,15 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     let app_dir = delivery_root.join("app");
     fs::create_dir_all(app_dir.join("src"))
         .map_err(|e| format!("delivery: 建应用目录失败: {e}"))?;
-    let app_manifest =
-        generate_delivery_app_manifest(&compiled.project_name, project_dir, &pins);
+    let app_manifest = generate_delivery_app_manifest(&compiled.project_name, project_dir, &pins);
     fs::write(app_dir.join("Cargo.toml"), &app_manifest)
         .map_err(|e| format!("delivery: 写应用 manifest 失败: {e}"))?;
     fs::write(app_dir.join("src").join("main.rs"), &compiled.main_rs)
         .map_err(|e| format!("delivery: 写应用 main.rs 失败: {e}"))?;
 
-    // PLAN-013 T2：rust_sidecar 供给（与开发模式同调用面；写入交付 app member）
-    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    // PLAN-013 T2：rust_sidecar 供给（与开发模式同调用面；写入交付 app
+    // member——外部 path 已在 R1-F03 前置拒绝，此处仅 registry 版本依赖
+    // 与项目内 .rs 模块）。
     if !sidecar.is_empty() {
         crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &app_dir)?;
         println!(
@@ -4831,9 +5120,14 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
         total_bytes += r["bytes"].as_u64().unwrap_or(0);
     }
 
-    // 身份断言 + 重定位自检
+    // 身份断言 + 交付边界自检（R1-F03：全部 manifest 的 path 越界/绝对
+    // 路径扫描——覆盖 sidecar 与任何未来注入源；producer 残留扫描保留）。
     delivery_assert_unique_crates(delivery_root, &app_package)?;
-    delivery_relocation_selfcheck(delivery_root, &producer_root)?;
+    delivery_boundary_selfcheck(delivery_root, &producer_root)?;
+
+    // R1-F01：随包受管资源校验入口（消费清单 sha256；无 producer 可执行）。
+    fs::write(delivery_root.join("verify.py"), DELIVERY_VERIFY_PY)
+        .map_err(|e| format!("delivery: 写 verify.py 失败: {e}"))?;
 
     // delivery-manifest.json（producer 身份/闭包规模/资源与 pin 清单）
     let (git_head, git_dirty) = delivery_git_identity(&producer_root);
@@ -4857,6 +5151,11 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
             "crates_dir": "crates",
             "resources_dir": if resources.is_empty() { serde_json::Value::Null } else { serde_json::json!("assets") },
             "run_note": "运行期本地资产按 CWD 相对解析：从 assets/ 运行应用二进制（开发模式为 src/front，行为对齐）",
+        },
+        "verification": {
+            "entry": "verify.py",
+            "resources_algo": "sha-256",
+            "note": "python verify.py（交付根内）——缺资源/等长篡改/坏 hash/未登记资源判红",
         },
         "crates": crate_entries,
         "root_inputs": root_input_entries,
@@ -4885,10 +5184,14 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     )
     .map_err(|e| format!("delivery: 写 delivery-manifest.json 失败: {e}"))?;
 
+    // R1-F02：staging 全部生成且校验通过——整体换装（失败路径已在上方
+    // 显式 Err 返回并保留旧交付）。
+    delivery_swap_in(&staging, &final_root)?;
+
     println!(
         "  {} 交付根 {}（受管 {} 文件 / {:.1} MiB；pin {} 项，多槽锁冻结 {} 项）",
         "Delivered".bright_green(),
-        delivery_root.display(),
+        final_root.display(),
         total_files,
         total_bytes as f64 / (1024.0 * 1024.0),
         pins.len(),
@@ -4896,7 +5199,7 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     );
     println!(
         "{}",
-        "  下一步（受管阶段）：cargo generate-lockfile 全新解析一次后冻结；消费侧 cargo build --locked"
+        "  下一步（受管阶段）：cargo generate-lockfile 全新解析一次后冻结；资源校验 python verify.py；消费侧 cargo build --locked"
             .bright_cyan()
     );
     Ok(())
@@ -7383,22 +7686,32 @@ pub fn create_item(name str) str {
         let main_rs = std::fs::read_to_string(delivery.join("app/src/main.rs")).unwrap();
         assert!(main_rs.contains("avatar.png"), "本地资产引用");
         assert!(main_rs.contains("count"), "handler 状态字段");
-        // 资源 allowlist + hash
+        // 资源 allowlist + hash（R1-F01：sha256——随包 verify.py 可独立校验）
         let asset = delivery.join("assets/avatar.png");
         assert!(asset.is_file(), "资源入包");
+        let verify_entry = delivery.join("verify.py");
+        assert!(verify_entry.is_file(), "随包受管校验入口 verify.py 在案");
+        assert!(
+            std::fs::read_to_string(&verify_entry)
+                .unwrap()
+                .contains("sha256"),
+            "verify.py 消费清单 sha256"
+        );
         let manifest: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(delivery.join("delivery-manifest.json")).unwrap(),
         )
         .unwrap();
         assert_eq!(manifest["schema"], "generated-ui-delivery/1");
+        assert_eq!(manifest["verification"]["entry"], "verify.py");
         let resources = manifest["resources"].as_array().unwrap();
         assert_eq!(resources.len(), 1);
         assert_eq!(resources[0]["rel"], "avatar.png");
         let content = std::fs::read(&asset).unwrap();
+        use sha2::{Digest, Sha256};
         assert_eq!(
-            resources[0]["blake3"].as_str().unwrap(),
-            blake3::hash(&content).to_hex().to_string(),
-            "资源 hash 与 producer 相等"
+            resources[0]["sha256"].as_str().unwrap(),
+            format!("{:x}", Sha256::digest(&content)),
+            "资源 sha256 与文件实际值相等"
         );
         // producer 身份字段（git/ui_gen 指纹/来源可追溯）
         assert!(manifest["producer"]["ui_gen_fingerprint"].is_string());
@@ -7411,8 +7724,12 @@ pub fn create_item(name str) str {
         );
         assert!(manifest["pins"]["wgpu-hal"].is_string(), "pin 表在案");
 
-        // 再交付：标记在案 → 重生成成功
+        // 再交付：标记在案 → staging 重生成+整体换装成功（旧包换出）
         generate_rust_ui_delivery(&project, &delivery).expect("再交付失败");
+        assert!(
+            !delivery_sibling_path(&delivery, "delivery-old").exists(),
+            "换出残桩已清理"
+        );
 
         // 外来目录显式拒绝（非空且无标记）
         let foreign = dir.path().join("foreign");
@@ -7420,6 +7737,156 @@ pub fn create_item(name str) str {
         std::fs::write(foreign.join("mine.txt"), b"keep").unwrap();
         assert!(generate_rust_ui_delivery(&project, &foreign).is_err());
         assert!(foreign.join("mine.txt").is_file(), "外来内容不被覆盖");
+    }
+
+    /// R1-F02 永久用例：再交付准备失败保留旧交付——成功交付后，producer
+    /// 破损（闭包 crate 缺 manifest）的再交付显式 Err，旧包字节/标记/
+    /// sentinel 完整；producer 恢复后再交付成功（换装）。
+    #[test]
+    fn delivery_redelivery_failure_preserves_old() {
+        let dir = tempfile::tempdir().unwrap();
+        let producer = test_producer_root();
+        let project = dir.path().join("proj");
+        let front = project.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "{ name: \"uiminimal\", scene: \"ui\", render: \"rust\", window: \"fit\" }",
+        )
+        .unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            "widget App {\n    model {\n        var count int = 0\n    }\n    view {\n        col {\n            text `Count: ${.count}`\n            button \"+1\" { onclick: () => {.count += 1} }\n        }\n    }\n}\n",
+        )
+        .unwrap();
+
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(v) => std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", v),
+                    None => std::env::remove_var("AUTO_DELIVERY_SOURCE_ROOT"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_DELIVERY_SOURCE_ROOT"));
+        std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", &producer);
+
+        let delivery = dir.path().join("delivery");
+        generate_rust_ui_delivery(&project, &delivery).expect("首交失败");
+        let sentinel = delivery.join("app").join("previous-build.txt");
+        std::fs::write(&sentinel, b"old delivery must survive failed preparation").unwrap();
+        let manifest_before =
+            std::fs::read_to_string(delivery.join("delivery-manifest.json")).unwrap();
+
+        // 破损 producer：crates/auto-lang 目录在但缺 manifest（复放 R1 反例）
+        let broken = dir.path().join("broken-producer");
+        std::fs::create_dir_all(broken.join("crates").join("auto-lang")).unwrap();
+        std::fs::write(broken.join("Cargo.toml"), "[workspace]\n").unwrap();
+        std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", &broken);
+        let err = generate_rust_ui_delivery(&project, &delivery)
+            .expect_err("破损 producer 的再交付必须显式 Err");
+        assert!(
+            err.to_string().contains("预检失败"),
+            "预检判红（实际：{err}）"
+        );
+        assert!(sentinel.is_file(), "旧交付 sentinel 存活");
+        assert_eq!(
+            std::fs::read_to_string(delivery.join("delivery-manifest.json")).unwrap(),
+            manifest_before,
+            "旧交付清单字节不变"
+        );
+        assert!(
+            !delivery_sibling_path(&delivery, "delivery-staging").exists()
+                || std::fs::read_dir(delivery_sibling_path(&delivery, "delivery-staging"))
+                    .map(|mut it| it.next().is_none())
+                    .unwrap_or(true),
+            "失败后无残留 staging（或仅空壳）"
+        );
+
+        // producer 恢复 → 再交付成功（新包换入，旧 sentinel 随旧包换出）
+        std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", &producer);
+        generate_rust_ui_delivery(&project, &delivery).expect("恢复后再交付失败");
+        assert!(delivery.join("delivery-manifest.json").is_file());
+    }
+
+    /// R1-F03 永久用例：sidecar 外部 path 显式拒绝——绝对路径（含与
+    /// producer 不同根）与越出交付根的相对 `..` 均判红且不产出；registry
+    /// 版本依赖照常入清单；包内相对 path（../crates/…）合法。
+    #[test]
+    fn delivery_sidecar_external_path_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let producer = test_producer_root();
+        let project = dir.path().join("proj");
+        let front = project.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        let base_pac = "{ name: \"uiminimal\", scene: \"ui\", render: \"rust\", window: \"fit\" }";
+
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(v) => std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", v),
+                    None => std::env::remove_var("AUTO_DELIVERY_SOURCE_ROOT"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_DELIVERY_SOURCE_ROOT"));
+        std::env::set_var("AUTO_DELIVERY_SOURCE_ROOT", &producer);
+
+        let mk_project = |sidecar_block: &str| {
+            std::fs::create_dir_all(&front).unwrap();
+            std::fs::write(
+                project.join("pac.at"),
+                format!("{base_pac}\n{sidecar_block}"),
+            )
+            .unwrap();
+            std::fs::write(
+                front.join("app.at"),
+                "widget App {\n    view {\n        col {\n            text `hi`\n        }\n    }\n}\n",
+            )
+            .unwrap();
+        };
+
+        // 绝对路径（与 producer 不同根——复放 R1 反例形态）
+        mk_project(
+            "\nrust_sidecar {\n    deps: [\"auto-val:path:D:/some-other-root/crates/auto-val\"]\n}\n",
+        );
+        let delivery = dir.path().join("d-abs");
+        let err = generate_rust_ui_delivery(&project, &delivery)
+            .expect_err("外部绝对 path sidecar 必须拒绝");
+        assert!(
+            err.to_string().contains("外部绝对 path"),
+            "绝对路径诊断（实际：{err}）"
+        );
+        assert!(!delivery.join("app/Cargo.toml").is_file(), "拒绝时不产出");
+
+        // 相对 `..` 越出交付根
+        mk_project("\nrust_sidecar {\n    deps: [\"ext:path:../../../outside\"]\n}\n");
+        let delivery = dir.path().join("d-esc");
+        let err = generate_rust_ui_delivery(&project, &delivery)
+            .expect_err("越出交付根的相对 path sidecar 必须拒绝");
+        assert!(
+            err.to_string().contains("越出交付根"),
+            "越界诊断（实际：{err}）"
+        );
+
+        // 合法控制：registry 版本依赖照常；包内相对 path 合法
+        mk_project(
+            "\nrust_sidecar {\n    deps: [\"libloading:0.8\", \"auto-val:path:../crates/auto-val\"]\n}\n",
+        );
+        let delivery = dir.path().join("d-ok");
+        generate_rust_ui_delivery(&project, &delivery).expect("合法 sidecar 交付失败");
+        let app_manifest = std::fs::read_to_string(delivery.join("app/Cargo.toml")).unwrap();
+        assert!(
+            app_manifest.contains("libloading = \"0.8\""),
+            "registry 版本依赖入清单"
+        );
+        assert!(
+            app_manifest.contains("auto-val = { path = \"../crates/auto-val\" }"),
+            "包内相对 path 合法"
+        );
+        assert!(!app_manifest.contains("D:/"), "无绝对路径残留");
     }
 
     /// PLAN-792：同包 source 重复显式拒绝——bundle 内两份同名 crate 即身份
@@ -7449,5 +7916,4 @@ pub fn create_item(name str) str {
             "应用撞名拒绝"
         );
     }
-
 }
