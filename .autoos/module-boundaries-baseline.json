@@ -1,6 +1,6 @@
 {
-  "base_revision": "11ddc162ecd839b98cee748e3d2c27cfd05df301",
-  "config_sha256": "a4272341bdc3d6b89f30620be14260b29b5e7e6b72e13ee37b43c34aed12c468",
+  "base_revision": "5d4b94f3617ac9224face60b1bd4b0286eb2a732",
+  "config_sha256": "03f9fdd54ebd8f412ef36e8dba772ace4811f1fe3aa72fb33452b4355d2bf30d",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -111,6 +111,24 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-lex",
+      "from": "auto-diagnostics",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lex",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-diagnostics",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-gen-core",
       "from": "auto-gen",
       "kind": "normal",
@@ -180,6 +198,15 @@
       "optional": false,
       "target": null,
       "to": "auto-cache",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-diagnostics",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-diagnostics",
       "to_scope": "member"
     },
     {
