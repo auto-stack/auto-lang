@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-785
-status: execution_done
+status: archived
 feature_name: 文本剪贴板宿主能力依赖倒置
 author: [Codex]
 created_at: 2026-10-15
 updated_at: 2026-10-16
 plan_revision: 1
-current_step: 6
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md]
 new_spec_components: []
@@ -91,8 +91,8 @@ T01先冻结当前调用入口/feature/错误/值编码/生命周期矩阵，登
 | [x] | T-04 | work | T03 | UI clipboard adapter接全部受支持宿主；V04/05、保留779/未迁族。[✅ 已完成：ui/clipboard_provider.rs ArboardClipboardProvider（纯委托既有函数+plan418 既有测试不动）+优先关系单测；六处宿主接线（统一 installer/run_file_dynamic_ui_inner/VmBridge×2/auto CLI main/autovm_persistent 经统一）；plan779 4/4+779 fixture 6/6+clipboard 族 21/21 全绿（未迁 files/image/editor 族零改动）] | 03 |
 | [x] | T-05 | work | T04 | 定向encoding/ownership/contract/入口回归+check/fmt，无整档。[✅ R2 重闭 2026-10-16：缺席锚改构造式（engine.rs new_inner+cfg(test) new_without_host_snapshot），in-crate shim 缺席测试零全局槽操作；R2 混合反例命令集（clipboard_provider+frame_provider+host_capabilities+plan320_tests 21测 threads=16）30/30 绿+合并提交 10/10，原过滤 30/30；日常档 plan785 6/6（含新 hammer）/plan779 4/4；fixture no-ui 10/10+UI 重放 10/10（head=c49ca102a）；check 0 错+触面 rustfmt 清 | 01/02/03 |
 | [x] | T-06 | work | T05 | 实现提交、永久案例与覆盖记录、SD素材，确认所有work项闭合。[✅ R2 重闭 2026-10-16：修复 commit cb5fa865b + master 同步 merge c49ca102a（781 重查仍未合入、R08-C 只触 ui/iced/view_tree 区，不相交保持）；永久组合反例=absence_anchor_survives_concurrent_implicit_installs（构造式缺席×普通高层入口并发，架构级钉面）；诊断/覆盖调整表见 §9 R2 记录；merge-owned 门禁保持 pending（冻结提交裸 cargo t+tv，T-08） | 01/02/03 |
-| [ ] | T-07 | review | T06 | 独立final，不能以默认0/空串/跳过OS代替注入证据 | 04 |
-| [ ] | T-08 | merge | review pass | t+tv冻结门、SD/ledger/归档合流/清理 | 05 |
+| [x] | T-07 | review | T06 | 独立final，不能以默认0/空串/跳过OS代替注入证据 | 04 |
+| [x] | T-08 | merge | review pass | t+tv冻结门、SD/ledger/归档合流/清理。[✅ 已完成：rebase 全等 2431eb300（range-diff 3/3 =；crates/test 与受审提交零差异；映射 64c72d20c→d03ea0cd8/012c89b99→dea54b85f/cb5fa865b→2431eb300）；SD-01/02 沉淀 c8f697009（源 hash 与 R3 冻结 delta 吻合）；冻结门禁 裸 cargo t 5371/5371（72.2s）+ tv 163/163（5.17s）；合入收据 ecce1dc8c ff-only 落 master；ledger v28→v29 受管离线投影（+P785-D1/D2/T/R3/M，五护栏过）；归档+清理收据见 §9 合并记录] | 05 |
 
 ## 9. 复审记录
 
@@ -113,6 +113,18 @@ T01先冻结当前调用入口/feature/错误/值编码/生命周期矩阵，登
 5. **检测为什么此前漏掉**：R1 重放过滤集只含自愿持锁的 6 具名测试——无非协作写者入池；R2 加入 plan320 后非协作写者立即复现。教训入册：隔离验证的过滤集必须包含不知情写者（普通程序测试），本轮重放口径已升级为混合集。
 6. **覆盖调整**：重放=混合集（slot 家族+plan320_tests，21 测 threads=16）30 轮+原过滤 30 轮+合并提交 10 轮；日常档 plan785 含 hammer（6 测）。
 stage=work | plan_id=PLAN-785 | plan_revision=1 | worktree_path=D:/autostack/.wt/lang-785/auto-lang | branch=plan-785-dev | base_commit=0ac6e2ff5（R2 复审基线） | code_commit=**cb5fa865b**（R2 修复）+ **c49ca102a**（master 同步 merge） | dependency_revisions=auto-down c39ac7f 不变；master@f73350a3f（相对 7c1eb2753 仅 docs/plans 差异零 crates 冲突）；PLAN-781 重查=仍未合入（树 HEAD 3dca8a39c，R08-C 只触 ui/iced/view_tree 区，与 785 触面不相交保持，不宣称依赖交付） | task_ids=T-05/T-06 再闭（6/8） | findings 闭合=F-785-R1-02（R2 已确认 closed）；F-785-R1-01 完整不变式本轮闭：生产写 API 未动（与 R1/原始一致），隔离架构重排为构造式缺席锚+独立进程全局合同+参与者窄锁 | evidence=混合集 30/30+原过滤 30/30+合并提交 10/10；plan785 6/6+plan779 4/4；fixture no-ui 10/10；UI 锁定重放 10/10（ui-consumer.json head=c49ca102a、frozen sha=1ab9ee3e、frozen_source_unchanged=true）；check --locked --offline 0 错；触面文件 rustfmt 清 | blockers=无 | next_responsible_role=review（T-07 R3：重点=诊断表核验、混合反例重放复跑、构造式锚与 fixture 合同分工边界、hammer 时长（日常档 ~2.7s））
+
+2026-10-16 stage=review | review_scope=final | reviewer_identity=本聊天Codex（独立于实施、沿用R1/R2复审上下文、无子代理） | plan_id=PLAN-785 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-785/auto-lang | branch=plan-785-dev | reviewed_commit=c49ca102abb198006ef1737a87522e37292a2c99 | base_commit=0ac6e2ff5ced743974ce274bb0fa8cf424c14453（原生产diff基面340ab95fd） | dependency_revisions=auto-down c39ac7f不变；master@f73350a3f已吸收，当前main@67b44e040仅Plan/附件差异；781仍未合入、树HEAD=3dca8a39c，后续若吸收其生产改动须受影响复审及新冻结门禁 | acceptance_results=AC01/02/03/04 pass，AC05 merge pending | findings=F-785-R1-01完整关闭（构造式缺席锚+独立进程公开入口全局合同+参与者窄锁；非仅原例关闭）；F-785-R1-02保持closed；无新增阻断项 | evidence=[R3报告及闭合表](attachments/785/review-r3/review.md)：原过滤7/7；R2混合反例21项×30轮全绿（每轮20s截止，无死锁）；no-ui10/10；UI同源fixture+独立控制14/14（含额外2线程×20次逐次expect成功/实值输出）；779外部6/6；check两包0错；触面fmt/diff-check通过；生产new()仍传true，cfg(test)绕过无外部API，无生产写域/TLS/watchdog残留；HEAD/clean稳定 | spec_inputs=vm/ui overview指纹未变，冻结[SD](attachments/785/review-r3/spec-delta.md)，hash及依赖/config指纹见baseline.txt/报告 | pending_closeout_gates=merge在冻结提交裸cargo t+tv，再SD/ledger/合流归档/批回归到期判定/guard-clean；本轮未跑整档 | next=merge；T-07完成，reviewed 7/8。本pass只表示代码/验收/规范审查通过，merge-owned门禁通过前不得合入或宣称交付完成。
+### T-08 合并收据（2026-10-16，stage=merge，completion_kind=delivered）
+
+- **prepared**：R3 pass @c49ca102a（reviewed_commit，plan_revision 1）；冻结 spec-delta（review-r3/spec-delta.md，vm AB378E0B…/ui BB13D724…改前指纹逐字吻合）；交付链 rebase 全等 2431eb300→SD 沉淀 c8f697009→收据 ecce1dc8c。
+- **landed**：master tip = ecce1dc8c（`git merge --ff-only plan-785-dev`，零 merge commit）；old→new 映射 64c72d20c→d03ea0cd8、012c89b99→dea54b85f、cb5fa865b→2431eb300，`git range-diff` 三提交全等 `=`（安全改写证明）；`git diff c49ca102a 2431eb300 -- crates/ test/` 零差异。
+- **merge-owned 冻结门禁**（交付提交 c8f697009）：裸 cargo t **5371/5371 PASS**（1548 skipped，72.2s）；cargo tv **163/163 PASS**（5.17s）；未触 ui_gen/aavm/trans（不 tu/taa/tt）。
+- **ledger_refreshed**：`.autoos/specs.json` v28→v29（Regime B **受管离线投影**——HTTP 探测 store 不在线；五护栏：字节备份 `.autoos/specs.json.p785-bak`/脚本改写/作用域 diff（其余条目逐项相等，恰 +5）/schema 六节校验/回读验证）；条目 P785-D1、P785-D2（designs）/P785-T（tests）/P785-R3（reviews）/P785-M（reports）——最低四节面满足，全部带 file+tags。
+- **archived**：本文件 git mv 至 docs/plans/archive/，status=archived，8/8；SD canonical 在 master（vm/overview 30f59c0e…/ui/overview ab0aefe9…）；合入报告 docs/plans/reports/785-clipboard-provider-merge.md 随分支落库。
+- **cleaned**：wt-guard 双树 clean → worktree/分支/组目录移除（见下补记）。
+- **观察项**：auto.exe 未随合并重建（本计划行为面零变，非必需；需要现值可 `cargo build -p auto`）；KNOWN-DEBT 中 F-785-P01/P02 条目仍在工作区（该文件同时携带 786 会话未提交记录——归属其簿记会话，随下次文件级提交落库，计划 §9 已有完整描述，无信息丢失）。
+- **批量回归**：785 % 5 == 0 → **到期**，已交接 /auto-plan:regress（主检出单实例）。
 
 ## 10. 待澄清事项
 
