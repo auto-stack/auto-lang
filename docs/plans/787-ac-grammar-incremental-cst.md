@@ -203,6 +203,35 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
 
+### 执行进度注记（work，2026-10-16 复审 R2 修复轮 → f7ea3a9e9）
+
+**两连败诊断（技能条款：连续两次 final 未过后，先诊断再修复）**——R1 修复
+轮的系统性根因：修复普遍停在"旧反例转绿 + 自有断言通过"，未把每项修复提升
+为不变量级重写，且验收 oracle 强度不足（canonical 丢 field、诊断只比数量、
+replay 链 fresh、子进程无截止、计量只算常驻容器）。R2 逐项不变量/漏检原因/
+设计调整：
+
+| finding | 不变量 | R1 为何漏检 | R2 设计/oracle 调整 |
+|---|---|---|---|
+| R2-01 | 错误/strict 判定只看当前根**可达**内容 | fresh 树全可达，等价比较不触发 | has_error_nodes 改可达遍历 + 错误修复反例 |
+| R2-02 | 持久化当前根有**版本仲裁**（迟到旧任务不覆盖） | 内存 VersionedPublish 屏障测试冒充了真实入口 | manifest.revision + 发布前仲裁；流式根按工程 |
+| R2-03 | 流式页键身份必须含**当前块**内容 | 单文档负载测不出键冲突 | part 先行再构键 + 双文档共享 store 反例 |
+| R2-04 | 当前根 required 闭包=**可重开全数据** | 只断言 manifest/页，未断言源/grammar | 源页+grammar 边 + GC 后源重建/grammar 装载 |
+| R2-05 | admission：先判界后运算/图无环/身份必验 | 旧例在 schema 缺字段层提前拒，未证结构拒绝 | checked 顺序 + BFS 环拒绝 + 流身份强校验 |
+| R2-06 | checkpoint=scanner **实际状态**（可恢复续扫） | 往返测试只验 EOF mode=0 形状 | 末 token 拼写重放 + 恢复续扫=fresh 尾部对照 |
+| R2-07 | 树实例身份**全局**不可混淆 | handle 设计只考虑单会话 | 全局原子 id + 跨会话双向反控 |
+| R2-08 | 合法 core 深输入无固定句法上限 | CST 深度测试不覆盖投影递归 | 节点访问预算 + 平链/嵌套/块投影测试 |
+| R2-09 | 计量=**实际读取/驻留/OS 全阶段** | 只统计常驻容器与页缓存 | 目录页 4096 条 + 全 chunk 读取峰值 + 暂存计入 + 查询/重建采样 |
+| R2-10 | oracle 必须能检出**字段/诊断/会话链**突变 | 断言强度低于被比对象 | canonical 含 field + 全字段诊断 + 增量工件链 + 子进程截止 + 精确断言 |
+| R2-11 | 格式检查覆盖全部新改面 | fmt 只跑了 src 目录 | 全 workspace rs 文件 --check |
+
+修复提交 `f7ea3a9e93bb76e0187c10fa280f032baa0fbcbd`（18 文件 +752/−182）。
+证据：R2 反例 **18/18**（修复前 7/11）、R1 反例 7/7 保持、acceptance
+**16 族 95 项 ALL PASS**（core_projection 19、syntax_cache 5 新增强度）、
+783 触面 --lib 14/admission_ 7/dep_audit_ 5 全绿（probe 增 root_artifacts/
+get_artifact_by_id 只读缝隙，加法）。64MiB 负载：受管峰值含暂存 4811KiB≤8MiB、
+OS 全阶段增量 15972KiB≤64MiB、目录页 framed≈250KiB≤512KiB。
+
 ### 执行进度注记（work，2026-10-16 复审 R1 修复轮 → afbacfbcc）
 
 复审 R1（needs_fix，10 findings）全部修复并验证，工作树 HEAD `afbacfbcc`
@@ -287,7 +316,29 @@ ac-core 零 diff——compatibility_ 审计）。
 
 ## 9. 复审记录
 
-### 2026-10-16 final review R1 — needs_fix（当前有效）
+### 2026-10-16 final review R2 — needs_fix（当前有效）
+
+stage: review；review_scope: final；reviewer_identity: 当前 Codex 会话，延续 R1 独立审查，未参与实施、未创建代理。
+plan_id: PLAN-787；plan_revision: 1；outcome: needs_fix；status: executing 1/9。
+worktree_path: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+reviewed_commit: afbacfbcc644d246a2bf3a0ae6185bbd9e6ca457；base_commit: bf773ca9bfc5a2d6ed672f904011419b03eff1ef；previous_review: 4eed69e67085eb150d30443d5c2f41d2530e34c6。
+dependency_revisions: auto-atom/auto-ac-prototype/ac-artifact-probe 均绑定 reviewed_commit 的同树 path 依赖，清单/锁 hash 见附件。
+
+[完整报告/闭环表/AC/SD/11 项 finding](attachments/787/review-r2/REVIEW.md)、[独立反例](attachments/787/review-r2/probes/counterexamples.rs)、[反例输出](attachments/787/review-r2/counterexamples.log)、[acceptance 输出](attachments/787/review-r2/acceptance.log)、[预算实际读取观测](attachments/787/review-r2/budget-observation.md)。
+spec_inputs: [主检出 Spec/Design hash](attachments/787/review-r2/spec-inputs.tsv)；[依赖 hash](attachments/787/review-r2/baseline-hashes.tsv)；
+[冻结 SD](attachments/787/review-r2/spec-delta.md) SHA-256 05143F502E3BF0EC8E6952EBC41A6D4A6E790DCF270139A4111EEB3779AF981D，未获通过，不发布 canonical。
+
+acceptance_results: AC-01 fail、AC-02 partial、AC-03 fail、AC-04 fail、AC-05 fail、AC-06 fail、AC-07 fail、AC-08 pending。
+现有 acceptance 16 族/90 次通过记录；独立 18 例=7 pass/11 fail（旧七例全绿，不能替代不变量闭合）。
+check 通过且新增警告清零（仅 shim-metadata 既有警告）；diff-check 通过；全语法文件直接 rustfmt check 仍失败。
+findings: F787-R2-01..11 均未闭合——共享块旧错污染修复树；真实持久化迟到发布覆盖当前根；流式不同文档前缀键冲突；GC 删当前源页；有效 frame 下的引用下界 panic/环图成功/错身份成功；checkpoint 猜测 depth=1；跨会话 handle 串树；core strict 固定 2048 深度；目录查询约 2.97MB 与峰值漏计；字段/完整诊断/连续 replay/子进程截止 oracle 缺口；格式未净。
+
+仅 T-01 保持完成；T-02..T-07 重开，current_step=1/9；T-08/T-09 未勾。上方“全部修复”及旧 work 进度为历史主张，不能覆盖本轮结果。
+pending_closeout_gates: 新冻结提交 final pass 后执行完整独立语法工作区+受影响 783 独立套件、Spec/索引/ledger、合入归档/guard 清理；不跑根整档/docs_gen。
+next: 原树 auto-plan-work 修复全部当前 findings；第二次 final 非通过，下一 handoff 先提交根因与覆盖/设计调整表、旧反例与完整不变量证据，再送最终复审。本轮未修实施代码、未合入、未发布规范。
+
+
+### 2026-10-16 final review R1 — needs_fix（历史记录；当前见 R2）
 
 stage: review；review_scope: final（readiness 拒绝及有界风险审查）；reviewer_identity: 当前独立 Codex 会话，未参与实施、未创建代理。
 plan_id: PLAN-787；plan_revision: 1；outcome: needs_fix；status: executing，2/9。
@@ -329,6 +380,22 @@ readiness 记录：
   合入归档/guard 清理；不跑根整档/docs_gen。
 
 blockers: 无；next_responsible_role: review（T-08 同树独立最终验收，绑定 afbacfbcc）。
+
+### 2026-10-16 work R2 修复轮 handoff（两连败诊断 + R2 findings 全闭合 → 送审）
+
+stage: work；plan_id: PLAN-787；plan_revision: 1；outcome: pass（execution_done 7/9 恢复）；
+worktree: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+base_commit: bf773ca9bfc5a2d6ed672f904011419b03eff1ef；code_commit: f7ea3a9e93bb76e0187c10fa280f032baa0fbcbd；
+dependency_revisions: 同一实施树 path 依赖，绑定 f7ea3a9e9；
+task_ids: T-02..T-07（R2 重开后复核重勾）。
+诊断链接：见上方修复轮注记的诊断表（两连败根因=修复未到不变量级+oracle 强度不足）。
+readiness：R2 反例 18/18 + R1 反例 7/7 保持 + acceptance 16 族 95 项 ALL PASS
+（含 work-owned perf_/syntax_budget_）+ 783 触面全绿 + rustfmt 全量 clean +
+零新增警告。未闭合 in-contract findings：无。既有清白行为保留断言：200 轮
+replay（全字段诊断+增量工件链）未回退。
+merge-owned pending：closeout 完整独立套件 + 783 触面（--lib/admission_/dep_audit_）
++ Spec/索引/ledger 沉淀 + 合入归档/guard 清理。
+blockers: 无；next_responsible_role: review（T-08 绑定 f7ea3a9e9）。
 
 2026-10-15 draft handoff：stage:new；PLAN-787 r1；outcome:pass（可交付的规划契约，非实现验收）；next:work（先独立T-01–05，T-06前核D-783）。新增T-01–09、AC-01–08、V-01–13、SD-01–06，当前0/9，未执行编译/测试。用户只授权规划，未创建实施树。
 

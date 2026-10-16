@@ -1,3 +1,12 @@
+### Plan 787（2026-10-16，独立 final review R2）
+
+受审 `afbacfbcc644d246a2bf3a0ae6185bbd9e6ca457`；**needs_fix / executing 1/9**。
+[R2 报告/闭环/AC/SD](attachments/787/review-r2/REVIEW.md)、[18 例重放](attachments/787/review-r2/counterexamples.log)、[目录读取量](attachments/787/review-r2/budget-observation.md)。下方 R1 为历史；登记不批准延期。
+
+R1 旧七例通过（活页/坐标/真实停扫闭合，块已真实共享，新警告清零）；新组合 11 例失败。F787-R2-01..09（P1）：不可达旧错误污染已修复树；迟到持久化覆盖当前根/工程归属；多文档流式首块键冲突；GC 删当前源页；有效封装的下界 panic/环图/错身份未拒绝；checkpoint 深度猜测；跨会话 handle 串树；合法 core 深链被固定 2048 拒绝；索引页约 2.97MB 查询读取与 staging/OS 峰值漏计。
+F787-R2-10（P2）：字段突变 canonical 不变、只比诊断数、replay 每轮 fresh 替代连续增量、子进程无截止；F787-R2-11（P3）：新 grammar 测试格式未净。
+acceptance 16 族绿不证明全部不变量；仅保留 T01，重开 T02..07。第二次 final 失败，下一轮先核根因/覆盖调整和全反例闭环。未修实现/合入；merge-owned 冻结完整独立套件及收尾 pending。
+
 ### Plan 790（2026-10-16，独立 final review R2 —— 全部闭合）
 
 受审 `8c906b1262faf3e0b6dccd20aa551279fb735c08`；**final pass / reviewed 7/8**。
@@ -1861,3 +1870,13 @@ identity_/concurrency_/review_r* 全绿。修复轮提取的预存后续债候�
 ### Plan 791 final review R3（2026-10-16，pass）
 
 受审 `561a61fc694f6f1a0a493300bf6385c8e11f96dd`；[R3报告](attachments/791/review-r3/review.md)。F-791-R2-01关闭：基线唯一变化为base_revision重绑，41声明边/规则与2项grandfather完全不变，新冻结头strict独立实跑pass/0 violations/2 grandfathered。R1两项保持关闭；实现/fixtures/测试配置/依赖锁未变，明确复用R2独立50项+consumer4项及health证据。此前R1/R2开放结论均为历史，当前无合同内未解finding；D-791-01..03预存行为/未迁债仍保留。计划reviewed 7/8；merge-owned裸cargo t+定向全测及规范/ledger/归档/guard清理pending，未宣称交付完成。
+
+### Plan 787 复审 R2 修复轮（2026-10-16，findings 全闭合送审）
+
+受审修复提交 `f7ea3a9e93bb76e0187c10fa280f032baa0fbcbd`（R2 报告
+attachments/787/review-r2/）。F787-R2-01..11 全部闭合：R2 反例 18/18（修复前
+7/11）、R1 反例 7/7 保持、acceptance 16 族 95 项 ALL PASS。两连败诊断已入
+计划 §9（根因=修复未到不变量级+oracle 强度不足）。预存后续债候选更新：
+D-787-01（probe put 提交成本超线性）维持——R2 轮目录页加密到 4096 条/页后
+put 次数进一步上升（64MiB 构建 366s，仍为 probe 边界）；D-787-02（debug 档
+增量时延非主张面）维持。
