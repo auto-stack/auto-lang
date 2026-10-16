@@ -56,6 +56,8 @@ fn req(
         cache: None,
         project: None,
         include_hir: None,
+        grammar: None,
+        edits: None,
     }
 }
 

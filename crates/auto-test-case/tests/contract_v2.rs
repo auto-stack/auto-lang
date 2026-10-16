@@ -592,3 +592,55 @@ fn contract_v2_cache_declaration_requires_participation() {
     )))
     .unwrap();
 }
+
+#[test]
+fn contract_v2_syntax_options_and_edits_bounds() {
+    // T-06: grammar selector and bounded single-edit steps decode; the
+    // wrong grammar, over-long sequences, inverted spans and oversized
+    // inserts are located admission errors.
+    let syn_case = |options: &str| {
+        format!(
+            concat!(
+                "case {{ schema: \"autolang.case/2\", id: \"ok.syn\", ",
+                "source: {{ text: \"fn main() int {{ return 3 }}\", syntax: \"auto\", path: \"main.at\" }}, ",
+                "entry: {{ mode: \"program\" }}, ",
+                "checks: [ {{ id: \"sy\", adapter: \"syntax\", action: \"parse\", options: {}, ",
+                "expect: {{ completion: \"success\" }} }} ] }}"
+            ),
+            options
+        )
+    };
+    decode(&syn_case("{ grammar: \"interface-mini-v1\" }")).unwrap();
+    decode(&syn_case("{ grammar: \"auto-core\" }")).unwrap();
+    let err = decode(&syn_case("{ grammar: \"nope\" }")).unwrap_err();
+    assert!(err.message.contains("unknown grammar"), "{}", err);
+
+    let edit_case = |edits: &str| {
+        format!(
+            concat!(
+                "case {{ schema: \"autolang.case/2\", id: \"ok.syn\", ",
+                "source: {{ text: \"fn main() int {{ return 3 }}\", syntax: \"auto\", path: \"main.at\" }}, ",
+                "entry: {{ mode: \"program\" }}, ",
+                "checks: [ {{ id: \"sy\", adapter: \"syntax\", action: \"edit\", options: {{ grammar: \"auto-core\", edits: {} }}, ",
+                "expect: {{ completion: \"success\" }} }} ] }}"
+            ),
+            edits
+        )
+    };
+    decode(&edit_case("[{ start: 0, end: 0, insert: \"x\" }]")).unwrap();
+    let err = decode(&edit_case("[]")).unwrap_err();
+    assert!(err.message.contains("1..=64"), "{}", err);
+    let err = decode(&edit_case("[{ start: 5, end: 2, insert: \"x\" }]")).unwrap_err();
+    assert!(err.message.contains("half-open"), "{}", err);
+    // syntax artifacts are restricted to the three logical projections.
+    let err = decode(&syn_case("{}").replace(
+        "expect: { completion: \"success\" }",
+        "expect: { completion: \"success\", artifacts: [ { path: \"app.exe\", file: \"x\" } ] }",
+    ))
+    .unwrap_err();
+    assert!(
+        err.message.contains("syntax artifact byte-oracles"),
+        "{}",
+        err
+    );
+}

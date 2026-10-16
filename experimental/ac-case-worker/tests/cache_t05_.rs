@@ -46,6 +46,8 @@ fn req(kind: &str, source: &str, cache: Option<&str>, store: Option<&str>) -> Wo
         cache: cache.map(|s| s.to_string()),
         project: None,
         include_hir: None,
+        grammar: None,
+        edits: None,
     }
 }
 

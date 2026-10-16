@@ -720,15 +720,26 @@ fn dispatch_check(
         }
         (Adapter::Ac, auto_test_case::contract::Action::Check)
         | (Adapter::Ac, auto_test_case::contract::Action::Build)
-        | (Adapter::Ac, auto_test_case::contract::Action::Run) => {
-            ac::run_check(
-                resolved, check, oracle, &project_dir, &artifact_dir, run_dir,
-            )
-        }
-        // v2 decodes syntax/parse + syntax/edit so the contract face is
-        // stable, but the executor binds only after PLAN-787 merges — an
-        // admission ERROR, never a SKIP and never a silent pass.
-        (Adapter::Syntax, _) => Err("syntax adapter is not bound yet: waiting for the PLAN-787 merge (D-787); executing a syntax check is an admission ERROR, not a skip".to_string()),
+        | (Adapter::Ac, auto_test_case::contract::Action::Run) => ac::run_check(
+            resolved,
+            check,
+            oracle,
+            &project_dir,
+            &artifact_dir,
+            run_dir,
+        ),
+        // T-06: syntax parse/edit bound against the MERGED 787 runtime
+        // (D-787 satisfied — delivery b52188c58); the same worker
+        // executor carries the request.
+        (Adapter::Syntax, auto_test_case::contract::Action::Parse)
+        | (Adapter::Syntax, auto_test_case::contract::Action::Edit) => ac::run_check(
+            resolved,
+            check,
+            oracle,
+            &project_dir,
+            &artifact_dir,
+            run_dir,
+        ),
         _ => Err("unreachable adapter/action (contract decode enforces the matrix)".to_string()),
     };
     match dispatched {

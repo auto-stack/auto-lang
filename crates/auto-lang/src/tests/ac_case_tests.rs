@@ -229,26 +229,70 @@ fn ac_native_hir_atom_input_checks() {
 }
 
 #[test]
-fn ac_native_syntax_check_is_admission_error_not_skip() {
-    let root = temp_root("syntax-unbound");
-    write(&root, "t04ac.suite.ad", &format!(
-        "```test-suite\nsuite {{ schema: \"autolang.suite/2\", id: \"t04ac\", include: [\"sy.case.ad\"] }}\n```\n"
-    ));
-    write(&root, "sy.case.ad", &format!(
-        "```test-case\ncase {{ schema: \"autolang.case/2\", id: \"ac.sy\", source: {{ text: \"{P04}\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"program\" }}, checks: [ {{ id: \"sp\", adapter: \"syntax\", action: \"parse\", expect: {{ completion: \"success\" }} }} ] }}\n```\n"
+fn syntax_parse_and_edit_dispatch_with_goldens() {
+    // T-06: syntax parse/edit run through the real dispatch (the merged
+    // 787 runtime); the lossless reconstruction golden IS the input bytes,
+    // and an edit's golden is the edited text. A WRONG golden must FAIL.
+    let root = temp_root("syntax-dispatch");
+    write(
+        &root,
+        "t04ac.suite.ad",
+        &format!(
+            "```test-suite
+suite {{ schema: \"autolang.suite/2\", id: \"t04ac\", include: [\"syn.case.ad\"] }}
+```
+"
+        ),
+    );
+    // Golden sidecars live next to the suite (fixture_root default ".").
+    write(&root, "p04-reconstructed.atom", P04);
+    let p04_edited = P04.replace("3", "4");
+    write(&root, "p04-edited.atom", &p04_edited);
+    // Byte offset of the loop bound for the edit step.
+    let pos3 = P04.find('3').unwrap();
+    write(&root, "syn.case.ad", &format!(
+        "```test-case
+case {{ schema: \"autolang.case/2\", id: \"ac.syn\", source: {{ text: \"{P04}\", syntax: \"auto\", path: \"main.at\" }}, entry: {{ mode: \"program\" }}, checks: [ {{ id: \"parse-ok\", adapter: \"syntax\", action: \"parse\", expect: {{ completion: \"success\", artifacts: [ {{ path: \"reconstructed.at\", file: \"p04-reconstructed.atom\" }} ] }} }}, {{ id: \"edit-ok\", adapter: \"syntax\", action: \"edit\", options: {{ grammar: \"auto-core\", edits: [ {{ start: {pos3}, end: {}, insert: \"4\" }} ] }}, expect: {{ completion: \"success\", artifacts: [ {{ path: \"reconstructed.at\", file: \"p04-edited.atom\" }} ] }} }}, {{ id: \"edit-red\", adapter: \"syntax\", action: \"parse\", expect: {{ completion: \"success\", artifacts: [ {{ path: \"reconstructed.at\", file: \"p04-edited.atom\" }} ] }} }} ] }}
+```
+",
+        pos3 + 1
     ));
     let report = run(&root, "out");
-    let row = report.results.iter().find(|r| r.check_id == "sp").unwrap();
-    // D-787 unmet: ERROR with the binding precondition named, never SKIP,
-    // never green.
-    assert_eq!(row.status, Status::Error);
-    let detail = row.detail.clone().unwrap_or_default();
-    assert!(detail.contains("PLAN-787"), "{}", detail);
-    assert_eq!(
-        report.exit_code(),
-        2,
-        "an unbound adapter is a contract error"
+    let rows: Vec<_> = report
+        .results
+        .iter()
+        .map(|r| (r.check_id.clone(), r.status, r.detail.clone()))
+        .collect();
+    assert_eq!(status_of(&report, "parse-ok"), Status::Pass, "{:?}", rows);
+    assert_eq!(status_of(&report, "edit-ok"), Status::Pass, "{:?}", rows);
+    // Red control: the unedited reconstruction against the EDITED golden
+    // must FAIL on bytes — a good expectation never passes on bad bytes.
+    let red = report
+        .results
+        .iter()
+        .find(|r| r.check_id == "edit-red")
+        .unwrap();
+    assert_eq!(red.status, Status::Fail);
+    assert!(
+        red.mismatches
+            .iter()
+            .any(|m| m.observation.contains("reconstructed")),
+        "{:#?}",
+        red.mismatches
     );
+    // Native records carry the syntax observation axes (revision/grammar).
+    let edit_row = report
+        .results
+        .iter()
+        .find(|r| r.check_id == "edit-ok")
+        .unwrap();
+    let native = edit_row.native.as_ref().expect("native record");
+    let rev = native
+        .counters
+        .iter()
+        .find(|(k, _)| k == "revision")
+        .map(|(_, v)| *v);
+    assert_eq!(rev, Some(1), "{:?}", native.counters);
 }
 
 #[test]

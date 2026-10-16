@@ -651,6 +651,8 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     ac_entry: None,
                     ac_cache: None,
                     ac_budget: None,
+                    syntax_grammar: None,
+                    syntax_edits: None,
                 };
                 // Preserve the DECLARED-vs-default distinction: only
                 // store what the merged object actually carries; the rest
@@ -685,6 +687,8 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     ac_entry: None,
                     ac_cache: None,
                     ac_budget: None,
+                    syntax_grammar: None,
+                    syntax_edits: None,
                 };
             }
             if had_module {

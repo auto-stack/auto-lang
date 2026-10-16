@@ -55,6 +55,8 @@ fn req(kind: &str, input: InputSpec, run_ms: u64) -> WorkerRequest {
         cache: None,
         project: None,
         include_hir: None,
+        grammar: None,
+        edits: None,
     }
 }
 

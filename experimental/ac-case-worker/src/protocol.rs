@@ -91,6 +91,23 @@ pub struct WorkerRequest {
     /// Ask the worker to also produce the canonical HIR bytes (the parent
     /// declares a hir.atom golden); observation-only, never published.
     pub include_hir: Option<bool>,
+    /// PLAN-788 T-06: syntax grammar for parse/edit requests
+    /// ("auto-core" | "interface-mini-v1").
+    pub grammar: Option<String>,
+    /// PLAN-788 T-06: ordered single-edit STEPS for edit requests; each
+    /// step's coordinates are relative to the CURRENT revision at that
+    /// step (sequential application, one edit per revision — the
+    /// incremental engine's supported shape).
+    pub edits: Option<Vec<EditStep>>,
+}
+
+/// One bounded syntax edit step (base = the snapshot the step applies to).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct EditStep {
+    pub start: u64,
+    pub end: u64,
+    pub insert_b64: String,
 }
 
 impl WorkerRequest {
@@ -107,7 +124,10 @@ impl WorkerRequest {
                 ),
             ));
         }
-        if !matches!(self.kind.as_str(), "check" | "build" | "run") {
+        if !matches!(
+            self.kind.as_str(),
+            "check" | "build" | "run" | "parse" | "edit"
+        ) {
             return Err(WorkerError::admission(
                 "request.kind",
                 format!(
@@ -157,6 +177,51 @@ impl WorkerRequest {
                     MAX_BUILD_MS, MAX_RUN_MS, MAX_TOTAL_MS,
                     self.budget.build_ms, self.budget.run_ms, self.budget.total_ms
                 ),
+            ));
+        }
+        if let Some(g) = &self.grammar {
+            if !matches!(g.as_str(), "auto-core" | "interface-mini-v1") {
+                return Err(WorkerError::admission(
+                    "request.grammar",
+                    format!(
+                        "unknown grammar {:?} (supported: auto-core, interface-mini-v1)",
+                        g
+                    ),
+                ));
+            }
+        }
+        if self.grammar.is_some() != matches!(self.kind.as_str(), "parse" | "edit") {
+            return Err(WorkerError::admission(
+                "request.grammar",
+                "grammar is required for parse/edit and forbidden otherwise",
+            ));
+        }
+        if let Some(edits) = &self.edits {
+            if self.kind != "edit" {
+                return Err(WorkerError::admission(
+                    "request.edits",
+                    "edits are only valid on edit requests",
+                ));
+            }
+            if edits.is_empty() || edits.len() > 64 {
+                return Err(WorkerError::admission(
+                    "request.edits",
+                    format!("edit sequence must be 1..=64 steps, got {}", edits.len()),
+                ));
+            }
+            for (i, e) in edits.iter().enumerate() {
+                let n = b64_len(&e.insert_b64);
+                if n > 64 * 1024 {
+                    return Err(WorkerError::admission(
+                        "request.edits",
+                        format!("edit[{}] insert {} bytes exceeds the 64KiB step cap", i, n),
+                    ));
+                }
+            }
+        } else if self.kind == "edit" {
+            return Err(WorkerError::admission(
+                "request.edits",
+                "edit requests require a non-empty edit sequence",
             ));
         }
         if let Some(c) = &self.cache {
@@ -346,4 +411,11 @@ impl WorkerResponse {
             error: Some(error),
         }
     }
+}
+
+fn b64_len(s: &str) -> usize {
+    s.len()
+        .saturating_sub(s.chars().filter(|c| *c == '=').count())
+        * 3
+        / 4
 }

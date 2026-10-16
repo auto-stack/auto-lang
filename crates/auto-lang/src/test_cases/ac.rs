@@ -323,9 +323,29 @@ pub fn run_check(
         // persistent root for the restart/disk-hot scenarios. The cache
         // mode travels from the check's own options; a hir.atom golden
         // asks the worker for the canonical bytes.
-        "store_root": std::env::var("AC_CASE_STORE").ok().unwrap_or_else(|| {
-            run_dir.join("cache-store").display().to_string()
-        }),
+        "store_root": if check.adapter == auto_test_case::contract::Adapter::Syntax {
+            serde_json::Value::Null
+        } else {
+            serde_json::json!(std::env::var("AC_CASE_STORE").ok().unwrap_or_else(|| {
+                run_dir.join("cache-store").display().to_string()
+            }))
+        },
+        "grammar": if check.adapter == auto_test_case::contract::Adapter::Syntax {
+            serde_json::json!(check.options.effective_grammar())
+        } else {
+            serde_json::Value::Null
+        },
+        "edits": match (&check.options.syntax_edits, check.action) {
+            (Some(steps), auto_test_case::contract::Action::Edit) => serde_json::json!(steps
+                .iter()
+                .map(|s| serde_json::json!({
+                    "start": s.start,
+                    "end": s.end,
+                    "insert_b64": b64(s.insert.as_bytes()),
+                }))
+                .collect::<Vec<_>>()),
+            _ => serde_json::Value::Null,
+        },
         "cache": check.options.effective_cache().as_str(),
         "project": "ac-case",
         "include_hir": !oracle.artifacts.is_empty(),
@@ -459,7 +479,15 @@ pub fn run_check(
         let kind = a["kind"].as_str().unwrap_or("");
         let declared_bytes = a["bytes"].as_u64().unwrap_or(u64::MAX);
         let path_text = a["path"].as_str().unwrap_or("");
-        let legal: &[(&str, &str)] = &[("hir", "hir.atom"), ("obj", "app.obj"), ("exe", "app.exe")];
+        let legal: &[(&str, &str)] = if check.adapter == auto_test_case::contract::Adapter::Syntax {
+            &[
+                ("syntax", "reconstructed.at"),
+                ("syntax", "outline.json"),
+                ("syntax", "cst.canonical"),
+            ]
+        } else {
+            &[("hir", "hir.atom"), ("obj", "app.obj"), ("exe", "app.exe")]
+        };
         if !legal.iter().any(|(k, l)| *k == kind && *l == logical) {
             return Ok(Verdict::error(format!(
                 "worker artifact {:?}/{} is outside the fixed manifest set",
@@ -523,18 +551,28 @@ pub fn run_check(
     // The action's REQUIRED product set must be present (a run without an
     // exe, a build without obj+exe, is a malformed response).
     let has = |l: &str| seen_logical.contains(l);
-    match check.action {
-        auto_test_case::contract::Action::Build => {
+    let is_syntax = check.adapter == auto_test_case::contract::Adapter::Syntax;
+    match (is_syntax, check.action) {
+        (_, auto_test_case::contract::Action::Build) => {
             if !has("app.obj") || !has("app.exe") {
                 return Ok(Verdict::error(
                     "build response must carry both app.obj and app.exe".to_string(),
                 ));
             }
         }
-        auto_test_case::contract::Action::Run => {
+        (false, auto_test_case::contract::Action::Run) => {
             if !has("app.exe") {
                 return Ok(Verdict::error(
                     "run response must carry app.exe".to_string(),
+                ));
+            }
+        }
+        // T-06: syntax parse/edit must carry the lossless reconstruction
+        // (the losslessness oracle's minimum; outline/canonical ride along).
+        (true, _) => {
+            if !has("reconstructed.at") {
+                return Ok(Verdict::error(
+                    "syntax response must carry reconstructed.at".to_string(),
                 ));
             }
         }

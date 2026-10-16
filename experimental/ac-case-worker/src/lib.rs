@@ -15,8 +15,9 @@
 
 pub mod exec;
 pub mod protocol;
+pub mod syntax;
 
 pub use protocol::{
-    Envelope, InputSpec, OkOut, ReqBudget, WorkerError, WorkerRequest, WorkerResponse,
-    WORKER_SCHEMA,
+    ArtifactOut, CacheOut, DiagOut, Envelope, InputSpec, OkOut, ReqBudget, RunOut, SpanOut,
+    ToolchainOut, WorkerError, WorkerRequest, WorkerResponse, WORKER_SCHEMA,
 };

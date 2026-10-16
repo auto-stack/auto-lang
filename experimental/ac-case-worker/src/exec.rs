@@ -53,6 +53,12 @@ pub fn execute(req: &WorkerRequest) -> Result<OkOut, WorkerError> {
         return run_product(req, exe_path);
     }
 
+    // T-06: syntax parse/edit — the 787 runtime is single-threaded (Rc/
+    // RefCell), which is exactly this executor's shape.
+    if matches!(req.kind.as_str(), "parse" | "edit") {
+        return crate::syntax::execute(req);
+    }
+
     let cache_mode = req.cache.as_deref().unwrap_or("reuse");
     // R1 (F08 mirror): behavioral cache modes on non-participating
     // combinations are rejected here too (the contract gate is primary;
@@ -1041,6 +1047,15 @@ fn infra(code: &str, message: impl Into<String>) -> WorkerError {
 
 fn ms(t: Instant) -> u64 {
     t.elapsed().as_millis() as u64
+}
+
+/// Public re-exports for the syntax adapter (same crate).
+pub fn sha256_hex_public(bytes: &[u8]) -> String {
+    sha256_hex(bytes)
+}
+
+pub fn worker_exe_sha256_public() -> String {
+    worker_exe_sha256()
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

@@ -17,6 +17,8 @@ publish = false
 [dependencies]
 auto-ac-prototype = { path = "../ac-core" }
 ac-artifact-probe = { path = "../ac-artifact-probe" }
+ac-syntax-rt = { path = "../ac-syntax/runtime" }
+ac-syntax-grammar = { path = "../ac-syntax/grammar" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"

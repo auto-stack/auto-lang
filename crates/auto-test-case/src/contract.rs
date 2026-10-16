@@ -217,6 +217,10 @@ pub struct Options {
     pub ac_entry: Option<String>,
     pub ac_cache: Option<CacheMode>,
     pub ac_budget: Option<BudgetSpec>,
+    /// syntax only (T-06): grammar selector, default "auto-core".
+    pub syntax_grammar: Option<String>,
+    /// syntax only (T-06): ordered single-edit steps.
+    pub syntax_edits: Option<Vec<SyntaxEdit>>,
 }
 
 impl Default for Options {
@@ -228,6 +232,8 @@ impl Default for Options {
             ac_entry: None,
             ac_cache: None,
             ac_budget: None,
+            syntax_grammar: None,
+            syntax_edits: None,
         }
     }
 }
@@ -255,6 +261,11 @@ impl Options {
     /// Effective budget: declared/merged value, `None` field = hard cap.
     pub fn effective_budget(&self) -> BudgetSpec {
         self.ac_budget.unwrap_or_default()
+    }
+
+    /// Effective syntax grammar (T-06): declared/merged, else auto-core.
+    pub fn effective_grammar(&self) -> &str {
+        self.syntax_grammar.as_deref().unwrap_or("auto-core")
     }
 }
 
@@ -982,7 +993,7 @@ fn decode_check(
 fn decode_options(
     v: &CVal,
     adapter: Adapter,
-    _action: Action,
+    action: Action,
     path: &str,
 ) -> Result<Options, ContractError> {
     let pairs = as_obj(v, path)?;
@@ -990,8 +1001,10 @@ fn decode_options(
         Adapter::Avm => &[], // avm/run has no options (v1 and v2)
         Adapter::A2r => &["module_name"],
         Adapter::Ac => &["profile", "target", "entry", "cache", "budget"],
-        // syntax options (edit sequences etc.) freeze at T-06; none today.
-        Adapter::Syntax => &[],
+        // T-06 frozen syntax options: the grammar selector and the ordered
+        // single-edit sequence (coordinates relative to the CURRENT
+        // revision at each step — sequential application).
+        Adapter::Syntax => &["grammar", "edits"],
     };
     let f = Fields::new(path, pairs, known)?;
     let module_name = opt_str(&f, "module_name")?;
@@ -1136,6 +1149,86 @@ fn decode_options(
         };
     }
 
+    let (syntax_grammar, syntax_edits) = if adapter == Adapter::Syntax {
+        let g = match f.sub("grammar") {
+            None => Some("auto-core".to_string()),
+            Some(CVal::Str(s)) if s == "auto-core" || s == "interface-mini-v1" => Some(s.clone()),
+            Some(CVal::Str(s)) => {
+                return Err(err(
+                    &f.path_of("grammar"),
+                    format!(
+                        "unknown grammar {:?} (supported: auto-core, interface-mini-v1)",
+                        s
+                    ),
+                ))
+            }
+            Some(other) => {
+                return Err(err(
+                    &f.path_of("grammar"),
+                    format!("expected string, got {}", other.type_name()),
+                ))
+            }
+        };
+        let e = match f.sub("edits") {
+            None => None,
+            Some(v) => {
+                let list = as_list(v, &f.path_of("edits"))?;
+                if list.is_empty() || list.len() > 64 {
+                    return Err(err(
+                        &f.path_of("edits"),
+                        format!("edit sequence must be 1..=64 steps, got {}", list.len()),
+                    ));
+                }
+                let mut out = Vec::new();
+                for (i, item) in list.iter().enumerate() {
+                    let ipath = format!("{}.edits[{}]", f.path, i);
+                    let pairs = as_obj(item, &ipath)?;
+                    let ef = Fields::new(&ipath, pairs, &["start", "end", "insert"])?;
+                    let read_u64 = |key: &str| -> Result<u64, ContractError> {
+                        match ef.sub(key) {
+                            Some(CVal::Int(n)) if *n >= 0 => Ok(*n as u64),
+                            Some(other) => Err(err(
+                                &ef.path_of(key),
+                                format!("expected non-negative integer, got {}", other.type_name()),
+                            )),
+                            None => Err(err(&ef.path_of(key), "required field is missing")),
+                        }
+                    };
+                    let start = read_u64("start")?;
+                    let end = read_u64("end")?;
+                    if end < start {
+                        return Err(err(
+                            &ef.path_of("end"),
+                            "edit span is half-open [start,end) — end must be >= start",
+                        ));
+                    }
+                    let insert = req_str(&ef, "insert")?;
+                    if insert.len() > 64 * 1024 {
+                        return Err(err(
+                            &ef.path_of("insert"),
+                            format!(
+                                "edit[{}] insert {} bytes exceeds the 64KiB step cap",
+                                i,
+                                insert.len()
+                            ),
+                        ));
+                    }
+                    out.push(SyntaxEdit { start, end, insert });
+                }
+                Some(out)
+            }
+        };
+        if action == Action::Edit && e.is_none() {
+            return Err(err(
+                &f.path_of("edits"),
+                "syntax/edit requires a non-empty edit sequence",
+            ));
+        }
+        (g, e)
+    } else {
+        (None, None)
+    };
+
     Ok(Options {
         module_name,
         ac_profile,
@@ -1143,8 +1236,24 @@ fn decode_options(
         ac_entry,
         ac_cache,
         ac_budget,
+        syntax_grammar,
+        syntax_edits,
     })
 }
+
+/// One bounded syntax edit step (T-06): coordinates are relative to the
+/// CURRENT revision at this step (sequential application).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyntaxEdit {
+    pub start: u64,
+    pub end: u64,
+    pub insert: String,
+}
+
+/// Logical artifact paths syntax checks may byte-compare against (T-06):
+/// the lossless reconstruction, the outline projection and the canonical
+/// CST form — all of the FINAL revision.
+pub const SYNTAX_ARTIFACT_PATHS: &[&str] = &["reconstructed.at", "outline.json", "cst.canonical"];
 
 /// Per-adapter observable-channel support table (Plan 773 F-02 for v1;
 /// PLAN-788 extends it for `ac`). A channel declared for an adapter that
@@ -1164,6 +1273,8 @@ pub fn channel_supported(adapter: Adapter, channel: &str) -> bool {
         (Adapter::Ac, "stderr") => true,
         (Adapter::Ac, "artifacts") => true,
         (Adapter::Ac, "perf") => true,
+        (Adapter::Syntax, "artifacts") => true,
+        (Adapter::Syntax, "perf") => true,
         _ => false,
     }
 }
@@ -1438,6 +1549,15 @@ fn decode_expect(
             let af = Fields::new(&ipath, pairs, &["path", "file", "compare"])?;
             let p = req_str(&af, "path")?;
             validate_virtual_path(&p).map_err(|e| err(&af.path_of("path"), e.to_string()))?;
+            if adapter == Adapter::Syntax && !SYNTAX_ARTIFACT_PATHS.contains(&p.as_str()) {
+                return Err(err(
+                    &af.path_of("path"),
+                    format!(
+                        "syntax artifact byte-oracles support {:?} only (got {:?})",
+                        SYNTAX_ARTIFACT_PATHS, p
+                    ),
+                ));
+            }
             if adapter == Adapter::Ac && p != AC_HIR_ARTIFACT_PATH {
                 return Err(err(
                     &af.path_of("path"),
