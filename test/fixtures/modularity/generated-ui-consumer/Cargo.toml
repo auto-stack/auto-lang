@@ -1,0 +1,8 @@
+# PLAN-792: 生成式 Rust UI 独立消费方探针——本目录不是 cargo 消费者本身；
+# 真正的消费 bundle 由 driver.py 用正式生成入口（auto gen --delivery-root）
+# 在受管 scratch 生成（proj/ 为最小输入工程：handler + 本地资产）。
+# 门禁入口（V01..V04 真实 build/locked/负控）：
+#   python test/fixtures/modularity/generated-ui-consumer/driver.py
+# 生成器内容门（不跑 cargo）：
+#   cargo test -p auto-man --lib delivery -- --test-threads=1
+[workspace]

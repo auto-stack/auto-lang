@@ -1,0 +1,7 @@
+name: "uiminimal"
+version: "1.0.0"
+scene: "ui"
+render: "rust"
+title: "UI Minimal"
+title_zh: "最小 UI 交付"
+window: "fit"

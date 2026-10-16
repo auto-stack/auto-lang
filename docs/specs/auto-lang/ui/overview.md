@@ -74,6 +74,22 @@ ui 或 ui+ui-clipboard 不含 iced 的现存构建缺陷另记 F-785-P01。
 外部 no-ui 独立 manifest 与 workspace 锁定 UI rlib 重放分别验证；
 后者不证明全新独立 UI 锁的发行依赖闭包，既有解析漂移保留。
 
+## 现状（2026-10-16）——生成式 Rust UI 独立构建/交付（PLAN-792）
+
+> 区分历史证据边界与本轮 fresh-lock 真实构建：779/785 的 no-ui 外部
+> manifest 实证继续成立；其"UI 外部形态"当时借 workspace 锁定 rlib 直编
+> （779 R3 法），**不构成新锁发行验证**——所记录的 fresh-lock
+> wgpu-hal/windows-core 漂移属时变生态漂移（2026-10-16 实测 fresh 解析
+> 已收敛至已提交锁版本集，非"已根治"）。本轮以 `auto gen
+> --delivery-root` 受管可搬动 bundle 闭合该失败类：消费根 iced_widget
+> patch 单源 + 应用独立锁 + 历史漂移家族精确 pin（wgpu/iced 家族 12 项；
+> windows/windows-core 多槽登记为冻结锁控制）+ 资源 allowlist/producer
+> 身份可回放，独立消费者在零环境覆盖下完成全新解析、真实 build 与重定位
+> locked 重放（V01/V02），UI 外部证明不再依赖 workspace rlib。已证平台=
+> Windows/x86_64-pc-windows-msvc（cargo/rustc 1.98）；全部 renderer 后端
+> 发行/registry 发布等渠道不在本轮覆盖（合同见
+> [repository-boundaries/generated-ui-distribution.md](../../repository-boundaries/generated-ui-distribution.md)）。
+
 ## 现状（2026-10-16）——文件/图像剪贴板 adapter 宿主装配（PLAN-790）
 
 > 779/785 装配模式的 files/image 批次（VM 侧契约见 vm/overview 文件/图像

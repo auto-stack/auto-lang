@@ -78,6 +78,25 @@ plan-637 共 16 个 demo 以此形态消费（capability-tests/style-import 为�
 `form` → `label`（FormLabel.vue 内部 import）。无闭包时 Form 页整页 TS2307/500。
 Write-if-missing 与 CLI 回退语义不变。
 
+## Rust UI 显式交付模式（PLAN-792 SD-02）
+
+`rust_ui` 生成两显式模式：**开发**（框架仓内共享 `examples/rust-workspace/`
++ workspace 继承清单；仓外项目项目仓内 `rust-workspace/`——既有行为零变化）
+与**交付**（`auto gen --delivery-root <dir>`，有效前端须为 rust，否则显式
+报错不静默忽略）：
+
+- 交付产物为镜像生产仓布局的受管 bundle；布局/消费根 patch/独立锁/drift
+  pin/资源 allowlist/投影修剪合同见
+  [repository-boundaries/generated-ui-distribution.md](../repository-boundaries/generated-ui-distribution.md)。
+- **错误阶段（受管判红，不静默回退主检出）**：前端无 .at 组件、producer
+  源根未解析、闭包 crate/根级编译输入缺失、投影修剪不完整（producer
+  结构漂移）、外来非空目录、crate 名重复/应用撞名 → 显式 Err。锁冻结
+  （fresh 解析一次）与消费构建（`--locked`）由交付管线/消费侧执行，生成器
+  不自动跑 cargo。
+- 交付与开发共享编译相位 `compile_rust_ui_app`（main.rs 逐字节同源）；
+  `exe_name` [[bin]]（pac_bin_block）、rust_sidecar、`__InitLoaded` 载荷
+  类型改写语义两模式同源。
+
 ## pac.at 四名称契约（PLAN-015）
 
 每个 AutoUI app 在 pac.at 声明四个名称，展示名与工程标识解绑：

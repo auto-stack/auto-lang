@@ -4341,15 +4341,35 @@ iced_widget = {{ path = "crates/patches/iced_widget" }}
 fn generate_delivery_app_manifest(
     project_name: &str,
     project_dir: &Path,
-    pin_lines: &[String],
+    pins: &[(String, String)],
 ) -> String {
     let snake_name = to_snake_case(project_name);
     let bin_block = pac_bin_block(project_dir);
+    // 与基础依赖同名的 pin（如 iced——TOML 单键不可重复声明）直接并入基础
+    // 行用精确版本；pin 块只列其余家族成员。
+    const BASE_KEYS: [&str; 9] = [
+        "serde_json",
+        "serde",
+        "once_cell",
+        "reqwest",
+        "tungstenite",
+        "lazy_static",
+        "tokio",
+        "iced",
+        "auto-lang",
+    ];
+    let pin_of = |n: &str| pins.iter().find(|(pn, _)| pn == n).map(|(_, v)| v.clone());
+    let iced_ver = pin_of("iced").unwrap_or_else(|| "0.14".to_string());
+    let pin_lines: Vec<String> = pins
+        .iter()
+        .filter(|(n, _)| !BASE_KEYS.contains(&n.as_str()))
+        .map(|(n, v)| format!("{n} = {{ version = \"{v}\", default-features = false }}"))
+        .collect();
     let pin_block = if pin_lines.is_empty() {
         String::new()
     } else {
         format!(
-            "# PLAN-792 drift pins（779/785 fresh-lock 失败家族；来源 = producer\n# examples/rust-workspace/Cargo.lock 已验证版本，default-features=false 仅\n# 约束解析不增 feature 面）。\n{}\n",
+            "# PLAN-792 drift pins（779/785 fresh-lock 失败家族；来源 = producer\n# 根 Cargo.lock 已验证版本，default-features=false 仅约束解析不增\n# feature 面；iced 等与基础依赖同名者并入基础行精确版本）。\n{}\n",
             pin_lines.join("\n")
         )
     };
@@ -4378,7 +4398,7 @@ reqwest = {{ version = "0.12", features = ["blocking", "json", "multipart", "coo
 tungstenite = {{ version = "0.24", features = ["native-tls"] }}
 lazy_static = "1"
 tokio = {{ version = "1", features = ["rt"] }}
-iced = {{ version = "0.14", features = ["tokio", "advanced"] }}
+iced = {{ version = "{iced_ver}", features = ["tokio", "advanced"] }}
 {pin_block}"#
     )
 }
@@ -4779,17 +4799,13 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
         .map_err(|e| format!("delivery: 写交付根 manifest 失败: {e}"))?;
 
     let (pins, multi_slot) = delivery_pins(&producer_root)?;
-    let pin_lines: Vec<String> = pins
-        .iter()
-        .map(|(n, v)| format!("{n} = {{ version = \"{v}\", default-features = false }}"))
-        .collect();
 
     // 应用 member（main.rs 与开发模式同一编译相位产物）
     let app_dir = delivery_root.join("app");
     fs::create_dir_all(app_dir.join("src"))
         .map_err(|e| format!("delivery: 建应用目录失败: {e}"))?;
     let app_manifest =
-        generate_delivery_app_manifest(&compiled.project_name, project_dir, &pin_lines);
+        generate_delivery_app_manifest(&compiled.project_name, project_dir, &pins);
     fs::write(app_dir.join("Cargo.toml"), &app_manifest)
         .map_err(|e| format!("delivery: 写应用 manifest 失败: {e}"))?;
     fs::write(app_dir.join("src").join("main.rs"), &compiled.main_rs)

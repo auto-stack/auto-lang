@@ -1,0 +1,19 @@
+// PLAN-792 generated-ui-consumer 最小交付应用：
+// UI 创建（col/text/image/button）+ 一次事件 handler（onclick 闭包）+
+// 本地资产解析（avatar.png——运行期 CWD 相对，交付包 assets/ 同源）。
+widget App {
+    model {
+        var count int = 0
+    }
+
+    view {
+        col {
+            text `Count: ${.count}`
+            image (src: "avatar.png") {
+                style: "w-16 h-16"
+            }
+            button "+1" { onclick: () => {.count += 1} }
+            style: "items-center gap-4 p-6"
+        }
+    }
+}
