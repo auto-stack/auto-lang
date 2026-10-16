@@ -78,6 +78,7 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - TestCase 协议 pilot 的 VM 侧观测通道（Plan 773，Design 35 A）：`run_with_capture_and_path_staged` 为 `run_with_capture_and_path` 的 staged 孪生（旧 API 签名/行为原样）——engine 陷阱点在 typed `VMError` 仍存活处记录变体名（`task.last_error_code`），经线程内中继随失败带出，构成 run 阶段强 oracle 的**类型化** code 通道（`vm_error_code`）；`.as` lower、result/stdout 观测、产物注册（执行过即注册，PASS/FAIL 皆然）与 avm/run adapter 见 `src/test_cases/avm.rs`。pilot 语料经 `cases/pilot/` 引用式合同原位消费旧 vm 目录（不动 wrapper/发现式 corpus runner 门禁）；旧 `expected.error`（any-Err，内容忽略）类弱断言在 pilot 轨必须强化为 stage+code/message 强辨识后才算已证。档位：`cargo tv` 经 `vm_file_tests::pilot_aggregate_vm` 触达 avm 半部。
 - frame native 9918/9919 为标量宿主能力 pilot（PLAN-779，Design 37 §4）：core shim 经 `vm::host_capabilities::FrameProvider` 供值，不再直引 UI 的 frame_bench；canonical 名/固定 ID/int 单槽/i32 上界饱和/未捕获 0 全保持。装配三层优先关系（显式 set 恒胜 / 兼容 if-absent 同锁补缺 / 实例独立）详见下节 [Frame native 宿主能力装配（PLAN-779）](#frame-native-宿主能力装配plan-779)。
 - 文本剪贴板 native 2925/2926 为 779 装配模式的首个真实迁移批次（PLAN-785）：core shim 经 `vm::host_capabilities::ClipboardTextProvider` 供值，不再直引 ui::clipboard；缺席=原 feature-disabled VMError、在位不可用=空串/false。详见 [文本剪贴板 native 宿主能力（PLAN-785）](#文本剪贴板-native-宿主能力plan-785)。
+- 文件/图像剪贴板 native 2934..2937 为同模式 files/image 批次（PLAN-790）：core shim 经 `vm::host_capabilities::ClipboardMediaProvider` 供值，不再直引 ui::clipboard_native；缺席/失败=G3 **值降级**（空表/false/null，非 VMError——与文本族构成族差异）。详见 [文件/图像剪贴板 native 宿主能力（PLAN-790）](#文件图像剪贴板-native-宿主能力plan-790)。
 
 ## Frame native 宿主能力装配（PLAN-779）
 
@@ -106,6 +107,33 @@ provider 缺席时保留 clipboard_text / clipboard_set_text 的原
 AutoVM 构造快照默认，实例覆盖及 NI Clone 独立，VM merge 保留目标实例 provider；
 provider 注入不改变 binding revision/proof，native 注册/merge 原有失效规则保持。
 Send+Sync 约束 provider，不增加 VM 跨线程迁移承诺。
+
+
+## 文件/图像剪贴板 native 宿主能力（PLAN-790）
+
+文件/图像剪贴板 native 2934..2937（auto.clipboard.files_get/files_set/
+image_get/image_set，canonical 名与钉扎 ID 不变）通过
+vm::host_capabilities::ClipboardMediaProvider 供值，core 四 shim 为单一
+feature/平台中性体，**不直接调用 ui::clipboard_native**。接口值域全为标准库
+owned 数据：files_get 返回 `Vec<PathBuf>`、files_set 收 `&[PathBuf]` 返
+bool、image_get 返回 `Option<ClipboardImage{path,width,height}>`、image_set
+收 `&Path` 返 bool——零 VM 堆句柄/字符串池索引/UI 类型/Win32 HANDLE。
+
+**缺席/失败语义=G3 值降级**（与文本族 2925/2926 的 feature-disabled
+VMError 形构成族差异，PLAN-790 T-01 矩阵冻结）：provider 缺席或供值失败
+一律空表/false/null（.at 代码零平台分支），任何 provider 不得用 Result
+吞错改异常、不得伪装成功写入；set 侧缺席仍消费实参保持栈纪律。
+
+装配三级与 779/785 同构：实例注入（`AutoVM::set_clipboard_media_provider`）
+> 构造期进程默认快照（`AutoVM::new`）> 兼容默认 if-absent 补空槽（UI
+宿主）；注入不 bump binding_revision/不撤 proof；NI Clone 与 VM merge
+保 provider。编解码契约：files_set 收两种 ListData 形（`<Value>` 仅 Str
+元素、`<String>` 全收），列表 read 锁不越 provider 回调（owned 数据先
+collect 后调）；image_get 记录字段 path(lossy Str)/width/height(Int i32)；
+临时 PNG 由实现方落 temp 不即删、返回路径消费期可读。外部 no-ui 宿主可
+注入不依赖 UI 的自定义 provider；真 no-ui 消费方探针
+（test/fixtures/modularity/clipboard-media-provider-consumer，独立
+workspace）为验收 oracle。
 
 
 ## 布尔短路求值语义（plan-615）

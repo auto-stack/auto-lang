@@ -57,7 +57,7 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **adapter**：`ui::frame_provider::FrameBenchProvider` 从既有 `frame_bench` 通道读取；捕获开关（`AUTO_FRAME_BENCH` 门控零开销）、时源、renderer note 语义不变。`install_process_default` 统一调用 if-absent——**兼容默认只补空槽，不覆盖调用方显式选择**（优先关系契约见 vm/overview 三层清单）。
 - **自动装配位置**：VmBridge 两构造（`new_with_children`/`new_from_decls`）、`run_file_dynamic_ui_inner`、CLI ui-iced 入口（auto crate main），以及 crate 根组合助手 `install_ui_host_capabilities`。根助手覆盖 run 家族执行漏斗（`execute_autovm_with_deadline`）、test/debug、`create_vm_from_source/abt`、配置求值、REPL、解释器、back_proxy 的宿主创建路径；ui 构建提供兼容默认，no-ui 构建助手为 no-op。**不得**沿用"仅前三点注入、其余库程序轨须自行注册"的早期不完整描述。
 - **调用方保证**：高层入口前设置显式默认，UI 开/关两种构建均保持真实供值；无人注册时 UI 宿主恢复 frame_bench 默认，门开可读真值。原始 AutoVM 仍只按构造时默认快照，UI 实现不接回 vm core。
-- **未迁边界**：frame 两函数与文本剪贴板 2925/2926（PLAN-785，见下节）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；clipboard files/images、editor、scroll、terminal 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
+- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）与文件/图像剪贴板 2934..2937（PLAN-790，见下节）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；editor、scroll、terminal 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
 
 ## 现状（2026-10-16）——文本剪贴板 adapter 宿主装配（PLAN-785）
 
@@ -67,11 +67,31 @@ UI 的 ArboardClipboardProvider 仅委托现有 clipboard_get/clipboard_set。
 ui+ui-clipboard 可用宿主在 install_ui_host_capabilities、run_file_dynamic_ui_inner、
 VmBridge 两构造及 auto CLI ui-iced 入口调用兼容 installer；autovm_persistent 经统一助手覆盖。
 原始 AutoVM 仅快照默认，不自动回接 UI。no-ui 宿主可显式注入无 UI 类型 provider。
-此批只迁文本 2925/2926；files/images 2934..2937、editor、scroll、terminal/media 未迁。
+此批只迁文本 2925/2926；files/images 2934..2937 后续由 PLAN-790 迁出（见下节），
+editor、scroll、terminal/media 仍未迁。
 ui-clipboard 单开现在可编译但无 ui 模块/adapter，缺席错误语义保持；
 ui 或 ui+ui-clipboard 不含 iced 的现存构建缺陷另记 F-785-P01。
 外部 no-ui 独立 manifest 与 workspace 锁定 UI rlib 重放分别验证；
 后者不证明全新独立 UI 锁的发行依赖闭包，既有解析漂移保留。
+
+## 现状（2026-10-16）——文件/图像剪贴板 adapter 宿主装配（PLAN-790）
+
+> 779/785 装配模式的 files/image 批次（VM 侧契约见 vm/overview 文件/图像
+> 剪贴板节）。SD-02。
+
+UI 的 NativeClipboardMediaProvider（无状态）仅委托现有 clipboard_native
+四函数（CF_HDROP files / DIBV5+PNG image，Plan 485 桥语义原样：失败=空表/
+false/None 值降级）；临时 PNG 生命周期沿用既有 OS 策略（落 temp 不即删，
+消费期可读）。adapter 挂 `windows × native-clipboard` 双门控——非 Windows
+无 adapter 模块，宿主入口不装配，VM 缺席 provider=G3 值降级，**不把 UI
+默认伪造为可用 OS**。宿主接线四点与 779/785 同集：install_ui_host_capabilities
+（run 家族/测试/调试/ABT/配置/REPL/解释器/back-proxy 漏斗+autovm_persistent）、
+run_file_dynamic_ui_inner、VmBridge 两构造、auto CLI main——各带同形 cfg。
+显式默认恒胜兼容安装（if-absent 同锁原子）；no-ui 宿主可注入不依赖 UI 的
+自定义 provider（外部消费方探针 clipboard-media-provider-consumer 为验收
+oracle，no-ui/ui-host 两形态）。**未迁边界**：core→ui 生产直引剩余=
+code_editor（2919..2924）、dialog（2927/2928）、scroll controller 族、
+dnd_start（2938）、term/media 等。
 
 ## 现状（2026-10-11）——remote-frame 宿主侧远程帧消费元件（PLAN-760）
 
