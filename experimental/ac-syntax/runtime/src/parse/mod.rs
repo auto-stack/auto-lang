@@ -109,6 +109,9 @@ pub fn parse_tokens_with_graft(
     m.run()?;
     let grafted = m.graft_count;
     let tree = m.finish();
+    // token 流收紧容量（F787-R4-04：倍增松弛是真实驻留——流式构建的
+    // 每块瞬态按实际字节计）。
+    m.toks.shrink_to_fit();
     Ok(ParseOutput {
         tree,
         tokens: m.toks,
@@ -438,10 +441,12 @@ impl<'p, 'a> Machine<'p, 'a> {
         }
     }
 
-    /// 封当前开放块（仅在声明边界调用）；返回新开放块基址。
+    /// 封当前开放块（仅在声明边界调用）；返回新开放块基址。封块即
+    /// shrink_to_fit（F787-R4-04：倍增容量松弛是真实驻留——流式构建的
+    /// 每块瞬态按实际字节计，不按分配上界）。
     fn seal_open(&mut self) {
         if !self.open.nodes.is_empty() {
-            let ob = std::mem::replace(
+            let mut ob = std::mem::replace(
                 &mut self.open,
                 OpenBlock {
                     nodes: Vec::new(),
@@ -450,6 +455,9 @@ impl<'p, 'a> Machine<'p, 'a> {
                     decls: Vec::new(),
                 },
             );
+            ob.nodes.shrink_to_fit();
+            ob.edges.shrink_to_fit();
+            ob.fields.shrink_to_fit();
             self.blocks.push(Rc::new(CstBlock {
                 nodes: ob.nodes,
                 edges: ob.edges,

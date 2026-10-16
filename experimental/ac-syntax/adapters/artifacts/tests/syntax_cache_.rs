@@ -9,7 +9,7 @@ use ac_syntax_grammar::compile as compile_grammar;
 use ac_syntax_rt::lexer::CompiledScanner;
 use ac_syntax_rt::parse::parse_snapshot;
 use ac_syntax_rt::program::{Budget, GrammarProgram};
-use ac_syntax_rt::snapshot::{PageStore, Snapshot};
+use ac_syntax_rt::snapshot::{Edit, EditRequest, PageStore, Snapshot};
 use std::rc::Rc;
 
 fn mini_grammar() -> GrammarProgram {
@@ -361,6 +361,227 @@ api f() -> i32;
         assert_eq!(
             resumed, tail,
             "checkpoint resume must equal the fresh lex tail of the extended text"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// F787-R4-01 永久 oracle：同一 snapshot 的 fresh 与增量树入库共存。
+/// fresh arena 与增量共享块的布局不同，但规范形（`canonicalize`）相同——
+/// 两次 put 必须幂等复用（修复前：A03 页键含块序号且内容为内存块原样
+/// 编码，第二次 put 在 page=0 返回 Store::Conflict）。覆盖：fresh→增量、
+/// 增量→fresh（反向序）、重复编辑、跨 store 实例重开查询；control：不同
+/// 文本的 manifest id 不同。
+#[test]
+fn syntax_cache_fresh_and_incremental_same_snapshot_coexist() {
+    let p = mini_grammar();
+    let cs = CompiledScanner::compile(&p).unwrap();
+    let text = (0..40)
+        .map(|i| format!("api f{i}() -> i32;\n"))
+        .collect::<String>();
+    let store_rc = Rc::new(PageStore::new());
+    let s = Snapshot::from_text(&store_rc, &text);
+    let old = parse_snapshot(&p, &cs, &s, &Budget::default()).unwrap();
+    let pos = text.find("f20").unwrap() as u64;
+    let ed = Edit {
+        start: pos,
+        end: pos,
+        insert: b"new_".to_vec(),
+    };
+    let ns = s
+        .edit(&EditRequest {
+            base_revision: 0,
+            edits: vec![ed.clone()],
+        })
+        .unwrap();
+    let inc =
+        ac_syntax_rt::edit::incremental_reparse(&p, &cs, &old, &s, &ns, &[ed], &Budget::default())
+            .unwrap();
+    let fresh = parse_snapshot(&p, &cs, &ns, &Budget::default()).unwrap();
+    // 前提：逻辑等价（结构/跨度/字段/标记）且确有增量复用。
+    assert_eq!(inc.tree.canonical(), fresh.tree.canonical());
+    assert!(inc.reused_decls > 0, "incremental path must reuse decls");
+
+    let root = scratch("cache-r4-coexist");
+    let (tok, m_fresh_first) = {
+        let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+        let t = sas.put_tokens(&p, &ns, &fresh.tokens).unwrap();
+        let m_fresh = sas.put_cst(&p, &ns, &fresh.tree, &t).unwrap();
+        // 同 snapshot 的增量树 put：幂等复用（同键同内容），不再 Conflict。
+        let m_inc = sas
+            .put_cst(&p, &ns, &inc.tree, &t)
+            .expect("incremental put of the same snapshot must be idempotent");
+        assert_eq!(
+            m_fresh, m_inc,
+            "canonical pages must give the same manifest artifact"
+        );
+        (t, m_fresh)
+    };
+
+    // 反向序（独立 store）：增量先入、fresh 后入——同为幂等。
+    {
+        let root2 = scratch("cache-r4-coexist-rev");
+        let sas = SyntaxArtifactStore::open(&root2, "proj").unwrap();
+        let t = sas.put_tokens(&p, &ns, &inc.tokens).unwrap();
+        let m_inc = sas.put_cst(&p, &ns, &inc.tree, &t).unwrap();
+        let m_fresh = sas
+            .put_cst(&p, &ns, &fresh.tree, &t)
+            .expect("fresh put after incremental must be idempotent");
+        assert_eq!(m_inc, m_fresh);
+        let _ = std::fs::remove_dir_all(&root2);
+    }
+
+    // 重开（新 store 实例 = 跨进程恢复语义）：编辑后声明可查、名字正确。
+    {
+        let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+        let view = sas.open_cst(&p, &ns).unwrap().expect("manifest hit");
+        assert_eq!(view.decl_count(), 40);
+        let st = view.decl_subtree(20).unwrap();
+        let items = ac_syntax_rt::outline::outline(&p, &st, &ns).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "new_f20");
+    }
+
+    // 重复编辑：在编辑后的 snapshot 上再编辑 → 新 snapshot 的两棵树仍幂等。
+    {
+        let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+        let pos2 = ns.read_str(0, ns.len()).unwrap().find("f30").unwrap() as u64;
+        let ed2 = Edit {
+            start: pos2,
+            end: pos2,
+            insert: b"v2_".to_vec(),
+        };
+        let ns2 = ns
+            .edit(&EditRequest {
+                base_revision: ns.revision(),
+                edits: vec![ed2.clone()],
+            })
+            .unwrap();
+        let inc_out = ac_syntax_rt::parse::ParseOutput {
+            tree: inc.tree.clone(),
+            tokens: inc.tokens.clone(),
+            lex_diags: inc.lex_diags.clone(),
+            grafted_decls: inc.reused_decls,
+        };
+        let inc2 = ac_syntax_rt::edit::incremental_reparse(
+            &p,
+            &cs,
+            &inc_out,
+            &ns,
+            &ns2,
+            &[ed2],
+            &Budget::default(),
+        )
+        .unwrap();
+        let fresh2 = parse_snapshot(&p, &cs, &ns2, &Budget::default()).unwrap();
+        assert_eq!(inc2.tree.canonical(), fresh2.tree.canonical());
+        let t2 = sas.put_tokens(&p, &ns2, &fresh2.tokens).unwrap();
+        let m1 = sas.put_cst(&p, &ns2, &fresh2.tree, &t2).unwrap();
+        let m2 = sas
+            .put_cst(&p, &ns2, &inc2.tree, &t2)
+            .expect("second-edit incremental put must be idempotent");
+        assert_eq!(m1, m2);
+
+        // control：不同文本（不同 snapshot id）的 manifest id 必然不同。
+        assert_ne!(
+            m1, m_fresh_first,
+            "different snapshots must not share a manifest artifact"
+        );
+        assert!(
+            sas.open_cst(&p, &ns).is_ok(),
+            "old snapshot manifest still hit"
+        );
+        assert!(sas.open_cst(&p, &ns2).unwrap().is_some());
+    }
+    let _ = tok;
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F787-R4-03 永久 oracle：跨源页前导 trivia 的范围查询。声明单元 origin
+/// 覆盖前导 trivia，可位于语义 span 之前的源页——查询 bin 的源覆盖窗口
+/// 从 origin 起算（修复前只物化语义 span 相交页，origin 平移无符号下溢
+/// exit=101）。覆盖：跨页空白、CRLF、Unicode 注释 trivia、多页 trivia、
+/// 非首声明；断言精确 span 与 outline 名。
+#[test]
+fn syntax_cache_range_query_leading_trivia_across_pages() {
+    let p = mini_grammar();
+    let decl = "api f() -> i32;";
+    let page = 256 * 1024;
+    // (名字, 前导 trivia 文本, 查询的声明序号, 期望名)
+    let cases: &[(&str, String, usize, &str)] = &[
+        // 跨页空白前导（origin=0 在页 0，语义 span 在页 1）。
+        ("space-cross", " ".repeat(page + 10), 0, "f"),
+        // CRLF 前导（跨页）。
+        ("crlf-cross", "\r\n".repeat(page / 2 + 5), 0, "f"),
+        // Unicode 注释 trivia（非 ASCII 多字节字符块，>256KiB 跨 store 源页
+        // 边界——页边界可切字符；窗口切片在 token 边界，from_utf8 必须安全）。
+        (
+            "unicode-comment",
+            format!("/* {} */{}", "🌙か文".repeat(page / 8), " ".repeat(8)),
+            0,
+            "f",
+        ),
+        // 多页 trivia（>2 个源页）。
+        ("multi-page", " ".repeat(page * 2 + 100), 0, "f"),
+        // 非首声明：decl 0 在前（其后再有跨页 trivia），查询 decl 1。
+        (
+            "second-decl",
+            format!("api g() -> i32;\n{}", " ".repeat(page + 3)),
+            1,
+            "f",
+        ),
+    ];
+    for (name, prefix, decl_idx, expect_name) in cases {
+        let expect_name = *expect_name;
+        let decl_idx = *decl_idx;
+        let text = format!("{prefix}{decl}\n");
+        let root = scratch(&format!("cache-r4-trivia-{name}"));
+        let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+        let mut b = ac_syntax_artifact_adapter::StreamingCstBuilder::new(&sas, &p);
+        b.push_chunk(&text).unwrap();
+        b.finish(text.len() as u64).unwrap();
+        let id = b.stream_snapshot_id();
+
+        // 进程内期望值（视图直读）：
+        let view = sas
+            .open_cst_stream(&p, &id, text.len() as u64)
+            .unwrap()
+            .expect("manifest");
+        let (span_lo, span_hi) = view.decl_range(decl_idx).unwrap();
+        let st = view.decl_subtree(decl_idx).unwrap();
+        assert!(
+            st.decls[0].origin < span_lo || prefix.is_empty(),
+            "case {name}: leading trivia must place origin before the semantic span"
+        );
+        drop(view);
+
+        let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-query"));
+        cmd.arg(&root)
+            .arg(p.grammar_id().as_str())
+            .arg(p.revision.to_string())
+            .arg(&id)
+            .arg(text.len().to_string())
+            .arg(decl_idx.to_string());
+        let r = run_deadlined(cmd, 120);
+        let last = r.stdout.lines().last().unwrap_or("");
+        assert!(
+            last.starts_with("QUERY "),
+            "case {name}: unexpected output: {}",
+            r.stdout
+        );
+        let fields: std::collections::HashMap<&str, &str> = last
+            .split_whitespace()
+            .skip(1)
+            .map(|kv| kv.split_once('=').expect("k=v field"))
+            .collect();
+        assert_eq!(
+            fields["span"],
+            format!("{span_lo},{span_hi}"),
+            "case {name}: exact span"
+        );
+        assert_eq!(
+            fields["name"], expect_name,
+            "case {name}: outline name (no underflow / no swallowed error)"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

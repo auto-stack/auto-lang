@@ -492,10 +492,12 @@ fn syntax_admission_out_of_source_span_is_rejected() {
         .unwrap();
     match sas.open_cst(&p, &s) {
         Err(_) | Ok(None) => {}
-        Ok(Some(v)) => assert!(
-            v.decl_range(0).is_err(),
-            "one-byte source must not expose a successful [9,10) declaration span"
-        ),
+        Ok(Some(v)) => {
+            assert!(
+                v.decl_range(0).is_err(),
+                "one-byte source must not expose a successful [9,10) declaration span"
+            );
+        }
     }
 }
 
@@ -508,4 +510,263 @@ fn put_all(
     let out = parse_snapshot(p, &cs, s, &Budget::default()).unwrap();
     let t = sas.put_tokens(p, s, &out.tokens)?;
     sas.put_cst(p, s, &out.tree, &t)
+}
+
+// ---- F787-R4-02：子树读取完整 admission（永久 oracle） ----
+//
+// 反例形态：经正常 put_artifact 构造**有效 frame/hash** 的页与 manifest——
+// 根节点 span 合法（decl_range 通过 = accepted control），但可达子树内含
+// 越源/越父/异归属/坏字段的 child。decl_subtree 必须在实际读取入口拒绝；
+// 修复前只有根级检查（F787-R3-05），坏 child 直接进入返回树。
+
+/// 植入一个单声明 manifest：页 payload 由节点/边值表构造（32B 节点 =
+/// kind,start,len,first_child,child_count,expected,decl,flags）。
+fn plant_single_decl_manifest(
+    sas: &SyntaxArtifactStore,
+    p: &GrammarProgram,
+    s: &Snapshot,
+    total_len: u64,
+    nodes: &[[u32; 8]],
+    edges: &[(u32, u32)],
+) {
+    use ac_artifact_probe::{codec::ChunkKind, identity::QueryKey, schema, store::PutRequest};
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
+    payload.extend_from_slice(&(edges.len() as u32).to_le_bytes());
+    for nd in nodes {
+        for v in nd.iter() {
+            payload.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+    for (c, f) in edges {
+        payload.extend_from_slice(&c.to_le_bytes());
+        payload.extend_from_slice(&f.to_le_bytes());
+    }
+    let cid = ac_artifact_probe::codec::framed_chunk_id(ChunkKind::CstPage, &payload).to_string();
+    sas.inner()
+        .put_artifact(PutRequest {
+            layer: "A03",
+            key: QueryKey::new(
+                schema::layer("A03").unwrap(),
+                vec![(
+                    "page".into(),
+                    format!("r4-{}", s.id().as_str()[..6].to_owned()),
+                )],
+            ),
+            kind: ChunkKind::CstPage,
+            payload,
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+    let m = serde_json::json!({
+        "snapshot": s.id().as_str(),
+        "grammar": p.grammar_id().as_str(),
+        "total_len": total_len,
+        "diags": [],
+        "root_edges": [],
+        "pages": [{"chunk": cid, "first_node": 0, "node_count": nodes.len() as u32}],
+        "decl_index": [],
+        "decl_count": 1,
+        "decls": [{"origin": 0, "node": 0, "node_lo": 0, "page": 0}],
+        "source_pages": [],
+    });
+    let key = QueryKey::new(
+        schema::layer("A03").unwrap(),
+        vec![
+            ("source-snapshot".into(), s.id().as_str().into()),
+            ("grammar-id".into(), p.grammar_id().as_str().into()),
+            (
+                "parser-version".into(),
+                ac_syntax_rt::PARSER_ABI_VERSION.to_string(),
+            ),
+            ("page".into(), "manifest".into()),
+        ],
+    );
+    sas.inner()
+        .put_artifact(PutRequest {
+            layer: "A03",
+            key,
+            kind: ChunkKind::CstManifest,
+            payload: serde_json::to_vec(&m).unwrap(),
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+}
+
+fn decl_kinds(p: &GrammarProgram) -> (u32, u32) {
+    let rule = ac_syntax_rt::program::RULE_KIND_BASE
+        + p.rules.iter().position(|r| r.name == "api-decl").unwrap() as u32;
+    let tok = ac_syntax_rt::program::TOKEN_KIND_BASE
+        + p.tokens.iter().position(|t| t.name == "api").unwrap() as u32;
+    (rule, tok)
+}
+
+/// 反例：根合法（[0,1)，decl_range 通过），child span [9,10) 越出源长 1——
+/// 子树入口必须拒绝（修复前 Ok 返回坏树）。区分性 control：prefix 内
+/// decl_range(0) == (0,1) 通过（根级单点检查的语义范围）。
+#[test]
+fn syntax_admission_subtree_child_span_outside_source_rejected() {
+    let root = scratch("adm-r4-childsrc");
+    let p = mini_grammar();
+    let s = Snapshot::from_text(&Rc::new(PageStore::new()), "x");
+    let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+    let (rule, tok) = decl_kinds(&p);
+    plant_single_decl_manifest(
+        &sas,
+        &p,
+        &s,
+        1,
+        &[
+            [rule, 0, 1, 0, 1, 0, 1, 0], // 根：合法 rule，span [0,1)
+            [tok, 9, 1, 1, 0, 0, 1, 0],  // child：越源 [9,10)
+        ],
+        &[(1, u32::MAX)],
+    );
+    match sas.open_cst(&p, &s) {
+        Err(_) | Ok(None) => {}
+        Ok(Some(v)) => {
+            assert_eq!(
+                v.decl_range(0).unwrap(),
+                (0, 1),
+                "root-only check is an accepted control"
+            );
+            assert!(
+                v.decl_subtree(0).is_err(),
+                "invalid child span must not escape the actual subtree read entry"
+            );
+        }
+    }
+}
+
+/// 反例：child span 在源内（total_len=8）但越出父 span [0,1)——父子约束
+/// 拒绝（与越源反例区分：绝对跨度界不触发）。
+#[test]
+fn syntax_admission_subtree_child_beyond_parent_span_rejected() {
+    let root = scratch("adm-r4-childpar");
+    let p = mini_grammar();
+    let s = Snapshot::from_text(&Rc::new(PageStore::new()), "x");
+    let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+    let (rule, tok) = decl_kinds(&p);
+    plant_single_decl_manifest(
+        &sas,
+        &p,
+        &s,
+        8,
+        &[
+            [rule, 0, 1, 0, 1, 0, 1, 0], // 父：[0,1)
+            [tok, 2, 2, 1, 0, 0, 1, 0],  // child：[2,4) 在源内、在父外
+        ],
+        &[(1, u32::MAX)],
+    );
+    match sas.open_cst(&p, &s) {
+        Err(_) | Ok(None) => {}
+        Ok(Some(v)) => {
+            assert_eq!(v.decl_range(0).unwrap(), (0, 1));
+            assert!(
+                v.decl_subtree(0).is_err(),
+                "child span escaping its parent must be rejected at load admission"
+            );
+        }
+    }
+}
+
+/// 反例：child 归属其它声明槽位（decl=2 ≠ 根 decl=1）——归属约束拒绝
+/// （跨声明边不得进入子树）。spans/字段均合法，区分归属维度。
+#[test]
+fn syntax_admission_subtree_foreign_decl_child_rejected() {
+    let root = scratch("adm-r4-childown");
+    let p = mini_grammar();
+    let s = Snapshot::from_text(&Rc::new(PageStore::new()), "x");
+    let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+    let (rule, tok) = decl_kinds(&p);
+    plant_single_decl_manifest(
+        &sas,
+        &p,
+        &s,
+        4,
+        &[
+            [rule, 0, 4, 0, 1, 0, 1, 0], // 根：[0,4) decl=1
+            [tok, 0, 4, 1, 0, 0, 2, 0],  // child：[0,4) 合法，但 decl=2
+        ],
+        &[(1, u32::MAX)],
+    );
+    match sas.open_cst(&p, &s) {
+        Err(_) | Ok(None) => {}
+        Ok(Some(v)) => {
+            assert!(
+                v.decl_subtree(0).is_err(),
+                "foreign-decl child must be rejected"
+            );
+        }
+    }
+}
+
+/// 反例：边字段 id 越出 grammar 字段名表——字段适用性拒绝（spans/归属
+/// 均合法，区分字段维度）。
+#[test]
+fn syntax_admission_subtree_bad_field_rejected() {
+    let root = scratch("adm-r4-field");
+    let p = mini_grammar();
+    let s = Snapshot::from_text(&Rc::new(PageStore::new()), "x");
+    let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+    let (rule, tok) = decl_kinds(&p);
+    assert!(p.field_names.len() < 900);
+    plant_single_decl_manifest(
+        &sas,
+        &p,
+        &s,
+        4,
+        &[[rule, 0, 4, 0, 1, 0, 1, 0], [tok, 0, 4, 1, 0, 0, 1, 0]],
+        &[(1, 999)],
+    );
+    match sas.open_cst(&p, &s) {
+        Err(_) | Ok(None) => {}
+        Ok(Some(v)) => {
+            assert!(
+                v.decl_subtree(0).is_err(),
+                "edge field outside the grammar field table must be rejected"
+            );
+        }
+    }
+}
+
+/// 正控（跨页目录 + 非零 origin + 超预算声明独占页）：真实树走规范形
+/// put_cst——超大首声明（> CST_CANON_PAGE_NODES 节点）独占页 0，后续
+/// 声明落页 1（非零 origin）；其子树读取必须通过 admission 并与 fresh
+/// outline 全等。
+#[test]
+fn syntax_admission_subtree_cross_page_nonzero_origin_ok() {
+    use ac_syntax_artifact_adapter::CST_CANON_PAGE_NODES;
+    let p = mini_grammar();
+    let cs = CompiledScanner::compile(&p).unwrap();
+    // 每参数 ≈4 节点（param/name/type）——5000 参数 > 4096 节点预算。
+    let mut text = String::from("api big(");
+    for i in 0..5000 {
+        if i > 0 {
+            text.push_str(", ");
+        }
+        text.push_str(&format!("p{i}: i32"));
+    }
+    text.push_str(") -> i32;\napi small(x: i32) -> i32;\n");
+    let snap = Snapshot::from_text(&Rc::new(PageStore::new()), &text);
+    let out = parse_snapshot(&p, &cs, &snap, &Budget::default()).unwrap();
+    let root = scratch("adm-r4-crosspage");
+    let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+    let t = sas.put_tokens(&p, &snap, &out.tokens).unwrap();
+    sas.put_cst(&p, &snap, &out.tree, &t).unwrap();
+    let view = sas.open_cst(&p, &snap).unwrap().expect("manifest");
+    assert!(
+        view.debug_page_chunk(1).is_some(),
+        "oversized first decl must leave the small decl on a later page"
+    );
+    let _ = CST_CANON_PAGE_NODES;
+    let st = view
+        .decl_subtree(1)
+        .expect("cross-page decl subtree admission");
+    let items = ac_syntax_rt::outline::outline(&p, &st, &snap).unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "small");
+    assert_eq!(items[0].syntax_ok, true);
 }

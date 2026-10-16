@@ -5,9 +5,12 @@
 //! - A02 `tokens-checkpoints`：token 流 + **完整 scanner checkpoint**（mode/
 //!   未闭合状态/行，F787-R1-05）+ 源页（内容寻址 SourcePage，F787-R1-06）；
 //!   键含 grammar 身份——跨 grammar 真读拒绝；
-//! - A03 `tolerant-cst`：内存内容块（`CstBlock`）即持久页（同构序列化），
-//!   manifest 记目录/根边/页映射/源页表——重启后 `CstView` 按 manifest 小范围
-//!   查询，**按需取页**，禁调 parser 且不反序列化整树；
+//! - A03 `tolerant-cst`：**规范形**分页（`canonicalize`——页内容由树逻辑
+//!   内容决定，与内存块分配历史无关；同一 snapshot 的 fresh/增量树页字节
+//!   相同 → 同键 CAS 幂等复用，F787-R4-01），manifest 记目录/根边/页映射/
+//!   源页表——重启后 `CstView` 按 manifest 小范围查询，**按需取页**，禁调
+//!   parser 且不反序列化整树；子树读取 admission 在真实入口验证整棵可达
+//!   子树的归属/绝对跨度/父子约束/字段与 kind 适用面（F787-R4-02）；
 //! - required-data 图（F787-R1-06）：manifest --required--> 全部数据页 + 全部
 //!   声明目录页 + A02（A02 --required--> A01 + 源页）。GC 从当前根出发的
 //!   required 闭包覆盖整棵可达树；
@@ -19,9 +22,12 @@
 use ac_artifact_probe::identity::QueryKey;
 use ac_artifact_probe::schema;
 use ac_artifact_probe::store::{ManagedStore, PutRequest, StoreError};
-use ac_syntax_rt::cst::{CstBlock, CstNode, CstTree, UNGRAFTED_DECL};
-use ac_syntax_rt::lexer::{CompiledScanner, MidToken, ScanCheckpoint, Token};
-use ac_syntax_rt::program::{Budget, GrammarProgram, RtError};
+use ac_syntax_rt::cst::{CstBlock, CstNode, CstTree, FLAG_TRIVIA, NO_FIELD, UNGRAFTED_DECL};
+use ac_syntax_rt::lexer::{CompiledScanner, LexDiag, MidToken, ScanCheckpoint, Token};
+use ac_syntax_rt::program::{
+    Budget, GrammarProgram, RtError, KIND_CALL, KIND_ERROR, KIND_MISSING, RULE_KIND_BASE,
+    TOKEN_KIND_BASE,
+};
 use ac_syntax_rt::snapshot::Snapshot;
 use ac_syntax_rt::{PARSER_ABI_VERSION, RUNTIME_VERSION, SCANNER_ABI_VERSION};
 use std::path::Path;
@@ -33,6 +39,12 @@ pub const CST_HOT_BUDGET: usize = 8 << 20;
 /// store 源页聚合粒度（快照 16KiB 页的聚合上限：256KiB/源页——内容寻址
 /// 共享单位，兼顾大负载的 put 次数）。
 pub const SRC_STORE_PAGE_BYTES: usize = 256 * 1024;
+
+/// 规范页节点预算（F787-R4-01）：顶层单元（声明子树/根级 trivia）按文档序
+/// 装页；单元永不拆页，超预算单元独占一页——与内存块"声明边界封块"语义
+/// 一致（CST_BLOCK_NODES 同为 4096）。键形保持不变（无遗留 store 需隔离；
+/// 未来布局算法演进时**必须**为 A03 键引入布局版本分量隔离新旧页）。
+pub const CST_CANON_PAGE_NODES: usize = 4096;
 
 pub struct SyntaxArtifactStore {
     store: ManagedStore,
@@ -297,11 +309,16 @@ impl SyntaxArtifactStore {
         Ok(Some((tokens, cp)))
     }
 
-    // ---- A03 tolerant-cst（分页 = 内存内容块同构） ----
+    // ---- A03 tolerant-cst（持久化规范形，F787-R4-01） ----
 
     /// 序列化整树为页 chunk + manifest，返回 manifest artifact id。
-    /// 页 = 内容块（块内边为局部下标，同 wire 格式）；manifest required
-    /// A02 + 全部页（F787-R1-06：当前根的 required 闭包覆盖全树）。
+    ///
+    /// 页 = **规范形**（`canonicalize`）：从树逻辑内容（根孩子文档序 + 先序
+    /// DFS + 相对跨度/字段/标记）重打包，与内存块分配历史无关——fresh 解析
+    /// 与增量嫁接的块布局不同（封块时机/共享采纳），但同一 snapshot 的两棵
+    /// 树规范页字节相同 → 同键同内容 → CAS 幂等复用（修复前：页键含块序号
+    /// 且内容为内存块原样编码，两种布局同键不同内容 → Conflict）。manifest
+    /// required A02 + 全部页（F787-R1-06：当前根的 required 闭包覆盖全树）。
     pub fn put_cst(
         &self,
         p: &GrammarProgram,
@@ -310,10 +327,18 @@ impl SyntaxArtifactStore {
         required_a02: &str,
     ) -> Result<String, AdapterError> {
         let (src_arts, src_chunks) = self.put_source_pages(snap)?;
-        let mut page_arts: Vec<String> = Vec::with_capacity(tree.blocks.len());
-        let mut pages: Vec<PageEntry> = Vec::with_capacity(tree.blocks.len());
-        for (bi, blk) in tree.blocks.iter().enumerate() {
-            let payload = encode_block(blk);
+        let canon = canonicalize(tree)?;
+        let mut page_arts: Vec<String> = Vec::with_capacity(canon.pages.len());
+        let mut pages: Vec<PageEntry> = Vec::with_capacity(canon.pages.len());
+        for (bi, page) in canon.pages.iter().enumerate() {
+            let payload = encode_cst_page(&page.nodes, &page.edges);
+            // 先算 chunk id 再 move payload——put 路径零克隆（受管峰值口径：
+            // payload 与克隆副本不再同驻留，F787-R4-04）。
+            let chunk = ac_artifact_probe::codec::framed_chunk_id(
+                ac_artifact_probe::codec::ChunkKind::CstPage,
+                &payload,
+            )
+            .to_string();
             let mut comps = cst_key_base(snap, p);
             comps.push(("page".into(), bi.to_string()));
             let key = QueryKey::new(layer("A03"), comps);
@@ -321,32 +346,17 @@ impl SyntaxArtifactStore {
                 layer: "A03",
                 key,
                 kind: ac_artifact_probe::codec::ChunkKind::CstPage,
-                payload: payload.clone(),
+                payload,
                 edges: vec![],
                 project: None,
             })?;
-            let chunk = ac_artifact_probe::codec::framed_chunk_id(
-                ac_artifact_probe::codec::ChunkKind::CstPage,
-                &payload,
-            )
-            .to_string();
             page_arts.push(art);
             pages.push(PageEntry {
                 chunk,
-                first_node: tree.bases[bi],
-                node_count: blk.nodes.len() as u32,
+                first_node: canon.page_first[bi],
+                node_count: page.nodes.len() as u32,
             });
         }
-        let decls: Vec<DeclEntry> = tree
-            .decls
-            .iter()
-            .map(|d| DeclEntry {
-                origin: d.origin,
-                node: d.node,
-                node_lo: d.node_lo,
-                page: tree.block_of(d.node),
-            })
-            .collect();
         let manifest = CstManifest {
             snapshot: snap.id().as_str().to_string(),
             grammar: p.grammar_id().as_str().to_string(),
@@ -360,11 +370,11 @@ impl SyntaxArtifactStore {
                     end: d.end,
                 })
                 .collect(),
-            root_edges: tree.root_edges.clone(),
+            root_edges: canon.root_edges.clone(),
             pages,
             decl_index: Vec::new(),
-            decl_count: decls.len() as u64,
-            decls,
+            decl_count: canon.decls.len() as u64,
+            decls: canon.decls,
             source_pages: src_chunks,
         };
         let mut edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = vec![(
@@ -505,6 +515,11 @@ impl SyntaxArtifactStore {
             }
         }
         validate_manifest(&manifest)?;
+        let grammar_admission = identity.map(|(_, p)| GrammarBounds {
+            field_count: p.field_names.len(),
+            token_count: p.tokens.len(),
+            rule_count: p.rules.len(),
+        });
         // 视图 lease（F787-R1-06）：manifest artifact 在读期间保活；视图 drop
         // （lease 释放）后，非当前根的旧版本可被 GC 回收。
         let lease = self
@@ -516,6 +531,7 @@ impl SyntaxArtifactStore {
             store: &self.store,
             manifest,
             declared_total_len: declared_len,
+            grammar_admission,
             hot: std::cell::RefCell::new(PageCache::new(CST_HOT_BUDGET)),
             max_chunk_read: std::cell::Cell::new(mbytes),
             total_chunk_read: std::cell::Cell::new(mbytes as u64),
@@ -525,13 +541,191 @@ impl SyntaxArtifactStore {
     }
 }
 
-/// A03 manifest/page 键的公共分量。
+/// A03 manifest/page 键的公共分量。键形保持历史稳定（F787-R4-01 修复不
+/// 改键：规范形使同 snapshot 的 fresh/增量页字节相同，同键同内容即幂等；
+/// 未来布局算法演进时必须引入布局版本分量隔离新旧页）。
 fn cst_key_base(snap: &Snapshot, p: &GrammarProgram) -> Vec<(String, String)> {
     vec![
         ("source-snapshot".into(), snap.id().as_str().to_string()),
         ("grammar-id".into(), p.grammar_id().as_str().to_string()),
         ("parser-version".into(), PARSER_ABI_VERSION.to_string()),
     ]
+}
+
+// ---- A03 持久化规范形（F787-R4-01） ----
+
+struct CanonicalUnit {
+    /// 单元首节点（= 根，先序首）的规范全局 id。
+    first_new: u32,
+    node_count: u32,
+    /// 声明单元 origin（根级 trivia/error 单元为 None，跨度保持绝对）。
+    origin: Option<u64>,
+    /// 所属规范页。
+    page: u32,
+}
+
+struct CanonicalCst {
+    pages: Vec<CstPageData>,
+    /// 每页首节点规范全局 id（manifest PageEntry.first_node）。
+    page_first: Vec<u32>,
+    /// 规范树根孩子（规范全局 id + field，文档序；根节点自身不入页）。
+    root_edges: Vec<(u32, u32)>,
+    /// 声明目录（文档序；node/node_lo = 单元先序首）。
+    decls: Vec<DeclEntry>,
+    _units: Vec<CanonicalUnit>,
+}
+
+/// 把内存树（fresh 解析或增量嫁接布局）重打包为规范持久形。页内容只由树
+/// 逻辑内容决定：顶层单元 = 根孩子（文档序），单元内先序 DFS（孩子按边
+/// 序）；节点载荷（相对跨度/期望/标记）原样复制，边重编为规范页局部下标，
+/// 块内声明序号重编为页内序号。**不可达节点不入页**（未嫁接槽位/回溯孤儿
+/// ——与 has_error_nodes 的可达性语义一致，F787-R2-01）。同一 snapshot 的
+/// fresh/增量树规范形字节相同（canonical() 全等 ⇒ 先序序列/载荷全等）。
+fn canonicalize(tree: &CstTree) -> Result<CanonicalCst, AdapterError> {
+    let mut origins: HashMap<u32, u64> = HashMap::with_capacity(tree.decls.len());
+    for d in &tree.decls {
+        origins.insert(d.node, d.origin);
+    }
+    let total = tree.node_total() as usize;
+    let mut new_of_old: HashMap<u32, u32> = HashMap::with_capacity(total);
+    let mut order: Vec<u32> = Vec::with_capacity(total);
+    let mut root_edges: Vec<(u32, u32)> = Vec::with_capacity(tree.root_edges.len());
+    let mut unit_spans: Vec<(u32, u32, Option<u64>, u32)> =
+        Vec::with_capacity(tree.root_edges.len()); // (first_new, count, origin, old_root)
+    let mut stack: Vec<u32> = Vec::new();
+    let mut kids: Vec<u32> = Vec::new();
+    for &(child, field) in &tree.root_edges {
+        let first_new = order.len() as u32;
+        // 声明标记与 DeclUnit 目录一致（根级 trivia 单元 decl=0 且无目录项）。
+        let is_decl = tree.node(child).decl != 0;
+        if is_decl != origins.contains_key(&child) {
+            return Err(AdapterError::Admissions(format!(
+                "root child {child}: decl-marked node without a DeclUnit entry (or vice versa)"
+            )));
+        }
+        stack.push(child);
+        while let Some(n) = stack.pop() {
+            if new_of_old.insert(n, order.len() as u32).is_some() {
+                return Err(AdapterError::Admissions(format!(
+                    "tree is not acyclic: node {n} reached twice from the root"
+                )));
+            }
+            order.push(n);
+            kids.clear();
+            tree.for_each_child(n, |c, _| kids.push(c));
+            for &c in kids.iter().rev() {
+                stack.push(c);
+            }
+        }
+        let count = order.len() as u32 - first_new;
+        root_edges.push((
+            new_of_old
+                .get(&child)
+                .copied()
+                .ok_or_else(|| AdapterError::Admissions("empty root child unit".into()))?,
+            field,
+        ));
+        unit_spans.push((
+            first_new,
+            count,
+            if is_decl { Some(origins[&child]) } else { None },
+            child,
+        ));
+    }
+    // 页打包：单元按文档序装页；预算满即换页，超预算单元独占页。
+    let mut pages: Vec<CstPageData> = Vec::new();
+    let mut page_first: Vec<u32> = Vec::new();
+    let mut page_counts: Vec<u32> = Vec::new();
+    let mut page_decl_seen: Vec<u32> = Vec::new();
+    let mut units: Vec<CanonicalUnit> = Vec::with_capacity(unit_spans.len());
+    let mut page_nodes: usize = 0;
+    for &(first_new, count, origin, _old_root) in &unit_spans {
+        let cnt = count as usize;
+        if pages.is_empty() || page_nodes + cnt > CST_CANON_PAGE_NODES {
+            pages.push(CstPageData {
+                nodes: Vec::with_capacity(cnt.min(CST_CANON_PAGE_NODES)),
+                edges: Vec::new(),
+            });
+            page_first.push(first_new);
+            page_counts.push(0);
+            page_decl_seen.push(0);
+            page_nodes = 0;
+        }
+        let page = (pages.len() - 1) as u32;
+        page_nodes += cnt;
+        page_counts[page as usize] += count;
+        if origin.is_some() {
+            page_decl_seen[page as usize] += 1;
+        }
+        units.push(CanonicalUnit {
+            first_new,
+            node_count: count,
+            origin,
+            page,
+        });
+    }
+    // 物化：按单元 → 先序序复制节点；孩子边重编为页内局部下标；声明序号
+    // = 页内声明序（1 起），根级 trivia 单元保持 decl=0。
+    let mut page_decl_ordinal: Vec<u32> = vec![0; pages.len()];
+    let mut decls: Vec<DeclEntry> = Vec::with_capacity(origins.len());
+    let mut edges: Vec<(u32, u32)> = Vec::new();
+    for u in &units {
+        let pi = u.page as usize;
+        let base = page_first[pi];
+        if u.origin.is_some() {
+            page_decl_ordinal[pi] += 1;
+            decls.push(DeclEntry {
+                origin: u.origin.unwrap(),
+                node: u.first_new,
+                node_lo: u.first_new,
+                page: u.page,
+            });
+        }
+        let ordinal = if u.origin.is_some() {
+            page_decl_ordinal[pi]
+        } else {
+            0
+        };
+        for g in u.first_new..u.first_new + u.node_count {
+            let o = order[g as usize];
+            let nd = *tree.node(o);
+            let first_child = pages[pi].edges.len() as u32;
+            edges.clear();
+            tree.for_each_child(o, |c, f| edges.push((c, f)));
+            let child_count = edges.len() as u32;
+            for (c, f) in edges.drain(..) {
+                let Some(&cn) = new_of_old.get(&c) else {
+                    return Err(AdapterError::Admissions(format!(
+                        "child {c} of node {o} is not reachable from the root"
+                    )));
+                };
+                let local = cn - base;
+                if cn < base || local >= page_counts[pi] {
+                    return Err(AdapterError::Admissions(format!(
+                        "unit subtree crosses the canonical page boundary: child {c} (new {cn}) outside page {pi} [{base},{})",
+                        base + page_counts[pi]
+                    )));
+                }
+                pages[pi].edges.push((local, f));
+            }
+            let mut nn = nd;
+            nn.first_child = first_child;
+            nn.child_count = child_count;
+            nn.decl = ordinal;
+            pages[pi].nodes.push(nn);
+        }
+    }
+    debug_assert_eq!(
+        pages.iter().map(|p| p.nodes.len() as u32).sum::<u32>(),
+        page_counts.iter().sum::<u32>()
+    );
+    Ok(CanonicalCst {
+        pages,
+        page_first,
+        root_edges,
+        decls,
+        _units: units,
+    })
 }
 
 // ---- checkpoint 编解码（F787-R1-05：完整 mode/未闭合状态/行） ----
@@ -772,12 +966,13 @@ fn decode_tokens_v2(mut b: &[u8]) -> Result<(Vec<Token>, ScanCheckpoint), String
 
 // ---- CST 块 <-> 页 wire 编解码（块内边 = 局部下标） ----
 
-/// 块 → 页 payload：[u32 n][u32 e][nodes×32B][edges×(child u32, field u32)]。
-fn encode_block(blk: &CstBlock) -> Vec<u8> {
-    let mut out = Vec::with_capacity(8 + blk.nodes.len() * 32 + blk.edges.len() * 8);
-    out.extend_from_slice(&(blk.nodes.len() as u32).to_le_bytes());
-    out.extend_from_slice(&(blk.edges.len() as u32).to_le_bytes());
-    for nd in &blk.nodes {
+/// 页 → payload：[u32 n][u32 e][nodes×32B][edges×(child u32, field u32)]。
+/// 规范页与流式块共用同一 wire 格式（F787-R4-01 起 put_cst 写规范页）。
+fn encode_cst_page(nodes: &[CstNode], edges: &[(u32, u32)]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(8 + nodes.len() * 32 + edges.len() * 8);
+    out.extend_from_slice(&(nodes.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(edges.len() as u32).to_le_bytes());
+    for nd in nodes {
         out.extend_from_slice(&nd.kind.to_le_bytes());
         out.extend_from_slice(&nd.start.to_le_bytes());
         out.extend_from_slice(&nd.len.to_le_bytes());
@@ -788,11 +983,22 @@ fn encode_block(blk: &CstBlock) -> Vec<u8> {
         out.push(nd.flags);
         out.extend_from_slice(&[0u8; 3]);
     }
-    for k in 0..blk.edges.len() {
-        out.extend_from_slice(&blk.edges[k].to_le_bytes());
-        out.extend_from_slice(&blk.fields[k].to_le_bytes());
+    for &(c, f) in edges {
+        out.extend_from_slice(&c.to_le_bytes());
+        out.extend_from_slice(&f.to_le_bytes());
     }
     out
+}
+
+/// 内存内容块（流式路径）→ 页 payload：edges/fields 平行数组转配对视图。
+fn encode_block(blk: &CstBlock) -> Vec<u8> {
+    let edges: Vec<(u32, u32)> = blk
+        .edges
+        .iter()
+        .zip(&blk.fields)
+        .map(|(&c, &f)| (c, f))
+        .collect();
+    encode_cst_page(&blk.nodes, &edges)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -819,7 +1025,6 @@ pub struct CstManifest {
 /// 单声明查询增量读取（目录页+数据页 ≈ 285KiB）满足小范围 payload ≤512KiB
 /// 合同的总量口径）。
 pub const DECL_INDEX_PAGE: usize = 2048;
-
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct DeclIndexPage {
@@ -966,6 +1171,14 @@ impl PageCache {
 
 use std::collections::HashMap;
 
+/// 视图 admission 用的 grammar 声明面上界（打开入口的 identity 提供）。
+#[derive(Clone, Copy)]
+struct GrammarBounds {
+    field_count: usize,
+    token_count: usize,
+    rule_count: usize,
+}
+
 /// 分页只读视图。持有 store lease（manifest artifact）——读期间 GC 不回收
 /// 本版本；drop（lease 释放）后旧版本可被 GC 回收（F787-R1-06）。
 pub struct CstView<'s> {
@@ -973,6 +1186,9 @@ pub struct CstView<'s> {
     manifest: CstManifest,
     /// 流式视图的 total_len 由调用方声明（与 manifest 一致性在 open 时校验）。
     declared_total_len: Option<u64>,
+    /// grammar 声明面上界（字段名表/token/rule 数——子树 admission 用；
+    /// 两个打开入口都带 identity，None 仅保留给未来无 identity 入口）。
+    grammar_admission: Option<GrammarBounds>,
     hot: std::cell::RefCell<PageCache>,
     /// 单次 chunk 读取峰值（framed 字节；数据页/目录页/源页统一口径——
     /// F787-R2-09：小范围查询 payload 合同的完整观测）。
@@ -1077,6 +1293,16 @@ impl<'s> CstView<'s> {
         Ok((lo, hi))
     }
     /// 单声明子树重建（仅取该声明所在页；页内节点为块内局部结构）。
+    ///
+    /// 读取 admission（F787-R4-02）在**本真实入口**对整棵可达子树执行：
+    /// (a) 归属——全部可达节点与声明根同属一个页内声明槽位（跨声明/根级
+    /// 边拒绝）；(b) 绝对跨度界——origin+start+len ≤ total_len（先判后算，
+    /// u64 无下溢）；(c) 父子约束——非 trivia 孩子必须落在父节点绝对 span
+    /// 内，trivia 孩子右端不得越出父 span（左溢出合法：前导 trivia 不参与
+    /// 语义 span）；(d) 字段/kind 适用——边字段为 NO_FIELD 或 grammar 字段
+    /// 名表内 id，节点 kind 在 token/rule/合成 kind 声明面内。caller 无需
+    /// 另调 helper 即可拒绝坏树（decl_range 保持根级单点检查——其语义范围
+    /// 只有根节点自身，是本入口的 accepted control）。
     pub fn decl_subtree(&self, i: usize) -> Result<CstTree, AdapterError> {
         let d = self.decl_entry(i)?;
         let Some(pe) = self.manifest.pages.get(d.page as usize) else {
@@ -1102,9 +1328,16 @@ impl<'s> CstView<'s> {
                 p0.nodes.len()
             )));
         }
-        // BFS 收集可达节点。树不变量：每个节点恰一个父——边目标重复出现
-        // （环/共享孩子）即非树，受控拒绝（F787-R2-05：不得装回环边后
-        // 返回 Ok，否则 canonical/outline 等无环遍历无限增长）。
+        // 归属前提：声明根必须携带页内声明序号（根级节点不可作声明根）。
+        let root_decl_slot = p0.nodes[root_local].decl;
+        if root_decl_slot == 0 {
+            return Err(AdapterError::Admissions(
+                "decl root node carries no in-page declaration slot (decl=0)".into(),
+            ));
+        }
+        let total = self.total_len();
+        // BFS 收集可达节点 + 逐节点/逐边 admission。树不变量：每个节点恰一父
+        // ——边目标重复出现（环/共享孩子）即非树，受控拒绝（F787-R2-05）。
         let mut seen = std::collections::HashSet::new();
         let mut order = Vec::new();
         let mut stack = vec![root_local];
@@ -1112,19 +1345,72 @@ impl<'s> CstView<'s> {
         while let Some(n) = stack.pop() {
             order.push(n);
             let nd = p0.nodes[n];
+            // (a) 归属：同页同声明槽位。
+            if nd.decl != root_decl_slot {
+                return Err(AdapterError::Admissions(format!(
+                    "node {n} belongs to decl slot {} but the subtree root is slot {root_decl_slot}",
+                    nd.decl
+                )));
+            }
+            // (b) 绝对跨度界（先判后算）。
+            let ps = d.origin + nd.start as u64;
+            let pe_end = ps + nd.len as u64;
+            if pe_end > total {
+                return Err(AdapterError::Admissions(format!(
+                    "node {n} span [{ps},{pe_end}) beyond source total_len {total}"
+                )));
+            }
+            // (d) kind 适用面。
+            if let Some(b) = self.grammar_admission {
+                let k = nd.kind;
+                let kind_ok = k == KIND_ERROR
+                    || k == KIND_MISSING
+                    || k == KIND_CALL
+                    || (TOKEN_KIND_BASE..TOKEN_KIND_BASE + b.token_count as u32).contains(&k)
+                    || (RULE_KIND_BASE..RULE_KIND_BASE + b.rule_count as u32).contains(&k);
+                if !kind_ok {
+                    return Err(AdapterError::Admissions(format!(
+                        "node {n} kind {k} outside the grammar declaration surface"
+                    )));
+                }
+            }
             for k in 0..nd.child_count as usize {
                 let idx = nd.first_child as usize + k;
-                let Some(&(c, _)) = p0.edges.get(idx) else {
+                let Some(&(c, f)) = p0.edges.get(idx) else {
                     return Err(AdapterError::Admissions(format!(
                         "edge slot {idx} missing from page {}",
                         d.page
                     )));
                 };
+                // (d) 字段适用面。
+                if let Some(b) = self.grammar_admission {
+                    if f != NO_FIELD && f as usize >= b.field_count {
+                        return Err(AdapterError::Admissions(format!(
+                            "edge field {f} outside the grammar field table ({} entries)",
+                            b.field_count
+                        )));
+                    }
+                }
                 let cl = c as usize;
                 if cl >= p0.nodes.len() {
                     return Err(AdapterError::Admissions(format!(
                         "edge target {cl} outside page nodes ({})",
                         p0.nodes.len()
+                    )));
+                }
+                // (c) 父子约束（trivia 语义 span 左溢出合法——见 doc）。
+                let cnd = p0.nodes[cl];
+                let cs = d.origin + cnd.start as u64;
+                let ce = cs + cnd.len as u64;
+                if cnd.flags & FLAG_TRIVIA != 0 {
+                    if ce > pe_end {
+                        return Err(AdapterError::Admissions(format!(
+                            "trivia child {cl} [{cs},{ce}) escapes parent {n} end {pe_end}"
+                        )));
+                    }
+                } else if cs < ps || ce > pe_end {
+                    return Err(AdapterError::Admissions(format!(
+                        "child {cl} span [{cs},{ce}) escapes parent {n} [{ps},{pe_end})"
                     )));
                 }
                 if !seen.insert(cl) {
@@ -1378,6 +1664,10 @@ pub struct StreamingCstBuilder<'a> {
     snap_hash_parts: Vec<Vec<u8>>,
     diags: Vec<DiagEntry>,
     working_set_peak: usize,
+    /// 当前块处理期间仍驻留的 parse 产物实际容量足迹（tree/tokens/词法诊断；
+    /// push_chunk 结束清零——F787-R4-04：目录页落盘/页 put 的同驻留合计
+    /// 必须包含它，此前 write_decl_page 漏计）。
+    current_transient: usize,
 }
 
 impl<'a> StreamingCstBuilder<'a> {
@@ -1402,6 +1692,7 @@ impl<'a> StreamingCstBuilder<'a> {
             snap_hash_parts: Vec::new(),
             diags: Vec::new(),
             working_set_peak: 0,
+            current_transient: 0,
         }
     }
 
@@ -1411,18 +1702,39 @@ impl<'a> StreamingCstBuilder<'a> {
         self
     }
 
-    /// 受管工作集字节（目录缓冲 + 页表/源页表/诊断；峰值计量用）。
+    /// 受管工作集字节（F787-R4-04：**实际容量**口径——Vec capacity×元素
+    /// 大小 + String/内层 Vec 的堆容量，不再用固定每项字节数估计）。
     pub fn managed_bytes(&self) -> usize {
+        fn strs(v: &Vec<String>) -> usize {
+            v.capacity() * std::mem::size_of::<String>()
+                + v.iter().map(|s| s.capacity()).sum::<usize>()
+        }
         self.decls_buf.capacity() * std::mem::size_of::<DeclEntry>()
             + self.pages.capacity() * std::mem::size_of::<PageEntry>()
-            + self.page_arts.capacity() * 70
-            + self.page_chunks.capacity() * 70
-            + self.src_page_chunks.capacity() * 70
+            + self.pages.iter().map(|p| p.chunk.capacity()).sum::<usize>()
+            + strs(&self.page_arts)
+            + strs(&self.page_chunks)
+            + strs(&self.src_page_chunks)
+            + strs(&self.src_page_arts)
             + self.decl_index.capacity() * std::mem::size_of::<PageEntry>()
-            + self.decl_index_arts.capacity() * 70
+            + self
+                .decl_index
+                .iter()
+                .map(|p| p.chunk.capacity())
+                .sum::<usize>()
+            + strs(&self.decl_index_arts)
             + self.diags.capacity() * std::mem::size_of::<DiagEntry>()
-            + self.snap_hash_parts.capacity() * 80
-            + self.src_page_arts.capacity() * 70
+            + self
+                .diags
+                .iter()
+                .map(|d| d.message.capacity())
+                .sum::<usize>()
+            + self.snap_hash_parts.capacity() * std::mem::size_of::<Vec<u8>>()
+            + self
+                .snap_hash_parts
+                .iter()
+                .map(|p| p.capacity())
+                .sum::<usize>()
     }
 
     pub fn working_set_peak(&self) -> usize {
@@ -1433,12 +1745,24 @@ impl<'a> StreamingCstBuilder<'a> {
         self.decl_count
     }
 
-    /// 受管峰值采样（F787-R2-09）：常驻目录 + 调用点仍驻留的暂存量
-    /// （parse 树/页 payload/目录页 JSON 等）——不只统计常驻容器。
+    /// 受管峰值采样（F787-R2/3-09 + R4-04）：常驻目录（实际容量）+ 当前
+    /// 仍驻留的 parse 产物（`current_transient`）+ 调用点瞬存量（页 payload
+    /// /目录页 JSON/put 克隆与编码副本等）——不只统计常驻容器。
     fn touch_peak_with(&mut self, transient: usize) {
-        let b = self.managed_bytes() + transient;
+        let b = self.managed_bytes() + self.current_transient + transient;
         if b > self.working_set_peak {
             self.working_set_peak = b;
+            if std::env::var("AC787_DEBUG_PEAK").is_ok() {
+                eprintln!(
+                    "PEAK b={} managed={} transient={} extra={} pages={} chunk_buf_cap={}",
+                    b,
+                    self.managed_bytes(),
+                    self.current_transient,
+                    transient,
+                    self.pages.len(),
+                    self.decls_buf.capacity()
+                );
+            }
         }
     }
 
@@ -1459,23 +1783,45 @@ impl<'a> StreamingCstBuilder<'a> {
         self.src_page_chunks.extend(chunks);
         let out = ac_syntax_rt::parse::parse_snapshot(self.p, &self.scanner, &snap, &self.budget)
             .map_err(AdapterError::Rt)?;
-        // 受管峰值（F787-R3-06）：parse 树/词法产物仍驻留；此基线在整个块
-        // 处理期间有效（树直到块结束才释放），数据页编码处合并 payload 计入。
+        // 受管峰值（F787-R3-06 + R4-04 容量口径）：parse 树/词法产物**实际
+        // 容量**（nodes/edges/fields capacity + tokens/诊断），整个块处理期间
+        // 驻留（块结束才释放）；数据页编码/目录页落盘的同驻留经
+        // current_transient 并入。parse Machine 内部工作栈/回溯暂存在
+        // parse_snapshot 返回前已释放——不在受管口径内，由 OS 阶段采样覆盖
+        // （预算测试的 sampler 缺失项说明）。
         let transient_base: usize = out
             .tree
             .blocks
             .iter()
-            .map(|b| b.nodes.len() * 40)
+            .map(|b| {
+                b.nodes.capacity() * std::mem::size_of::<CstNode>()
+                    + b.edges.capacity() * 4
+                    + b.fields.capacity() * 4
+            })
             .sum::<usize>()
-            + out.tokens.len() * std::mem::size_of::<Token>();
-        self.touch_peak_with(transient_base);
+            + out.tree.bases.capacity() * 4
+            + out.tree.block_decl.capacity() * std::mem::size_of::<Vec<u32>>()
+            + out
+                .tree
+                .block_decl
+                .iter()
+                .map(|v| v.capacity() * 4)
+                .sum::<usize>()
+            + out.tree.decls.capacity() * std::mem::size_of::<ac_syntax_rt::cst::DeclUnit>()
+            + out.tokens.capacity() * std::mem::size_of::<Token>()
+            + out.lex_diags.capacity() * std::mem::size_of::<LexDiag>();
+        self.current_transient = transient_base;
+        self.touch_peak_with(0);
         let tree = &out.tree;
         // 块 → 数据页；块内声明 → 目录条目（全局 id = next_global + 局部）。
         for (bi, blk) in tree.blocks.iter().enumerate() {
             let payload = encode_block(blk);
-            // 同驻留合计（F787-R3-06）：parse 树 + 页 payload 同时在堆上。
-            self.touch_peak_with(transient_base + payload.len());
+            // 同驻留合计（F787-R3-06 + R4-04）：parse 树 + 页 payload 及其
+            // framed 副本（≈2×payload.len()；put 路径零克隆——chunk id 先算
+            // 后 move）同时在堆上。
+            self.touch_peak_with(payload.len() * 2);
             let idx = self.pages.len();
+            let base = self.next_global;
             let key = QueryKey::new(
                 layer("A03"),
                 vec![
@@ -1488,20 +1834,20 @@ impl<'a> StreamingCstBuilder<'a> {
                     ("page".into(), idx.to_string()),
                 ],
             );
-            let art = self.sas.inner().put_artifact(PutRequest {
-                layer: "A03",
-                key,
-                kind: ac_artifact_probe::codec::ChunkKind::CstPage,
-                payload: payload.clone(),
-                edges: vec![],
-                project: None,
-            })?;
+            // 先算 chunk id 再 move payload——零克隆（F787-R4-04）。
             let chunk_id = ac_artifact_probe::codec::framed_chunk_id(
                 ac_artifact_probe::codec::ChunkKind::CstPage,
                 &payload,
             )
             .to_string();
-            let base = self.next_global;
+            let art = self.sas.inner().put_artifact(PutRequest {
+                layer: "A03",
+                key,
+                kind: ac_artifact_probe::codec::ChunkKind::CstPage,
+                payload,
+                edges: vec![],
+                project: None,
+            })?;
             for di in 0..tree.block_decl[bi].len() {
                 if tree.block_decl[bi][di] == UNGRAFTED_DECL {
                     continue;
@@ -1538,6 +1884,8 @@ impl<'a> StreamingCstBuilder<'a> {
             });
         }
         self.prefix_len += chunk.len() as u64;
+        // 块处理完毕：parse 产物随 out 释放——受管口径回到常驻目录。
+        self.current_transient = 0;
         self.touch_peak_with(0);
         Ok(())
     }
@@ -1555,8 +1903,10 @@ impl<'a> StreamingCstBuilder<'a> {
         };
         let payload =
             serde_json::to_vec(&page).map_err(|e| AdapterError::Admissions(e.to_string()))?;
-        // 目录页瞬态计入受管峰值（F787-R3-06：JSON + 条目缓冲）。
-        self.touch_peak_with(payload.len() + cap);
+        // 目录页瞬态计入受管峰值（F787-R3-06 + R4-04）：JSON + 条目缓冲 +
+        // **仍在 push_chunk 存活的 parse 产物**（current_transient）+ framed
+        // 副本（≈2×payload.len()；put 零克隆——chunk id 先算后 move）同驻留。
+        self.touch_peak_with(payload.len() * 2 + cap);
         let key = QueryKey::new(
             layer("A03"),
             vec![
@@ -1576,19 +1926,20 @@ impl<'a> StreamingCstBuilder<'a> {
                 ac_artifact_probe::identity::RefKind::RequiredData,
             ));
         }
-        let art = self.sas.inner().put_artifact(PutRequest {
-            layer: "A03",
-            key,
-            kind: ac_artifact_probe::codec::ChunkKind::CstManifest,
-            payload: payload.clone(),
-            edges,
-            project: None,
-        })?;
+        // 先算 chunk id 再 move payload——零克隆（F787-R4-04）。
         let cid = ac_artifact_probe::codec::framed_chunk_id(
             ac_artifact_probe::codec::ChunkKind::CstManifest,
             &payload,
         )
         .to_string();
+        let art = self.sas.inner().put_artifact(PutRequest {
+            layer: "A03",
+            key,
+            kind: ac_artifact_probe::codec::ChunkKind::CstManifest,
+            payload,
+            edges,
+            project: None,
+        })?;
         self.decl_index_arts.push(art);
         self.decl_index.push(PageEntry {
             chunk: cid,
@@ -1611,6 +1962,10 @@ impl<'a> StreamingCstBuilder<'a> {
             let taken = std::mem::take(&mut self.decls_buf);
             self.write_decl_page(taken)?;
         }
+        // 同驻留快照（F787-R4-04）：页表/目录/源页表此刻仍在 self 上，即将
+        // move 进局部 manifest——之后 managed_bytes() 不再计它们，但它们与
+        // manifest JSON/edges 仍同驻留。先取 move 前的实际容量作基线。
+        let managed_before = self.managed_bytes();
         let manifest = CstManifest {
             snapshot: self.stream_snapshot_component(),
             grammar: self.p.grammar_id().as_str().to_string(),
@@ -1634,24 +1989,22 @@ impl<'a> StreamingCstBuilder<'a> {
         );
         // required 闭包（F787-R2-04）：数据页 + 目录页 + **源页 artifact** +
         // **A01 语法表**——当前根的 GC 闭包覆盖可重开的全部数据（源可重建、
-        // grammar 可再装载）。
+        // grammar 可再装载）。art id 组** move**（不整组克隆——收尾同驻留
+        // 峰值就是 edges 本身，F787-R4-04）。
         let mut edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = Vec::new();
         edges.extend(
-            self.page_arts
-                .iter()
-                .cloned()
+            std::mem::take(&mut self.page_arts)
+                .into_iter()
                 .map(|a| (a, ac_artifact_probe::identity::RefKind::RequiredData)),
         );
         edges.extend(
-            self.decl_index_arts
-                .iter()
-                .cloned()
+            std::mem::take(&mut self.decl_index_arts)
+                .into_iter()
                 .map(|a| (a, ac_artifact_probe::identity::RefKind::RequiredData)),
         );
         edges.extend(
-            self.src_page_arts
-                .iter()
-                .cloned()
+            std::mem::take(&mut self.src_page_arts)
+                .into_iter()
                 .map(|a| (a, ac_artifact_probe::identity::RefKind::RequiredData)),
         );
         // A01 语法（new() 已发布，幂等重取 artifact id）。
@@ -1662,7 +2015,17 @@ impl<'a> StreamingCstBuilder<'a> {
         ));
         let payload =
             serde_json::to_vec(&manifest).map_err(|e| AdapterError::Admissions(e.to_string()))?;
-        self.touch_peak_with(payload.len() + edges.len() * 70);
+        // 收尾峰值（F787-R4-04）：move 前的目录容量（managed_before——字段
+        // 已 take 进局部 manifest，managed_bytes() 现不可见但内存仍驻留）+
+        // edges Vec 实际分配 + manifest JSON 及 framed 副本（≈2×payload.len()；
+        // put 零克隆——payload move 入请求）同驻留。
+        let edges_alloc = edges.capacity()
+            * std::mem::size_of::<(String, ac_artifact_probe::identity::RefKind)>()
+            + edges.iter().map(|(a, _)| a.capacity()).sum::<usize>();
+        let finish_peak = managed_before + edges_alloc + payload.len() * 2;
+        if finish_peak > self.working_set_peak {
+            self.working_set_peak = finish_peak;
+        }
         let art = self.sas.inner().put_artifact(PutRequest {
             layer: "A03",
             key: mkey,

@@ -35,6 +35,51 @@ fn os_private() -> u64 {
     ac_artifact_probe::sysinfo::current_process_memory().private_bytes
 }
 
+/// OS 阶段内峰值采样器（F787-R4-04）：后台线程以固定间隔采样 private bytes
+/// 的最大观测——构建/查询**进行期间**的峰值，不再只取返回点当前值（末尾
+/// 采样无法证明阶段内部最大驻留）。drop 时停止并 join。
+struct PeakSampler {
+    peak: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl PeakSampler {
+    fn start(interval_ms: u64) -> Self {
+        let peak = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut sampler = PeakSampler {
+            peak: peak.clone(),
+            stop: stop.clone(),
+            handle: None,
+        };
+        sampler.handle = Some(std::thread::spawn(move || {
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                let m = os_private();
+                peak.fetch_max(m, std::sync::atomic::Ordering::Relaxed);
+                std::thread::sleep(std::time::Duration::from_millis(interval_ms));
+            }
+            // 停止前补一次采样（短阶段兜底）。
+            let m = os_private();
+            peak.fetch_max(m, std::sync::atomic::Ordering::Relaxed);
+        }));
+        sampler
+    }
+
+    fn peak(&self) -> u64 {
+        self.peak.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl Drop for PeakSampler {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+    }
+}
+
 /// 子进程受截止执行（F787-R2-10：复用探针 run_deadlined——裸 output 无截止）。
 fn run_deadlined(cmd: std::process::Command, secs: u64) -> ac_artifact_probe::subproc::RunResult {
     let r = ac_artifact_probe::subproc::run_deadlined(cmd, std::time::Duration::from_secs(secs))
@@ -82,10 +127,11 @@ fn syntax_budget_64mib_streaming_small_queries() {
     );
 
     // 2) runtime：从文件流式读取（行边界缓冲 ~64KiB，不整源驻留）。
+    //    构建阶段带 OS 期间采样器（F787-R4-04：阶段内峰值，非返回点当前值）。
     let sas = SyntaxArtifactStore::open(&root, "big").unwrap();
     sas.put_grammar(&p).unwrap();
     let rt_base = os_private();
-    let mut rt_peak = rt_base;
+    let build_sampler = PeakSampler::start(25);
     let mut builder = StreamingCstBuilder::new(&sas, &p);
     let t0 = std::time::Instant::now();
     {
@@ -105,26 +151,22 @@ fn syntax_budget_64mib_streaming_small_queries() {
                 builder.push_chunk(&chunk).expect("chunk build");
                 chunk.clear();
                 chunks += 1;
-                if chunks % 16 == 0 {
-                    rt_peak = rt_peak.max(os_private());
-                }
+                let _ = chunks;
             }
         }
         if !chunk.is_empty() {
             builder.push_chunk(&chunk).expect("tail chunk build");
         }
     }
-    rt_peak = rt_peak.max(os_private());
-    rt_peak = rt_peak.max(os_private());
     let manifest_art = builder.finish(real_bytes as u64).expect("finish");
     // 受管峰值在 finish **之后**读取（F787-R3-06：finish 的 manifest JSON/
     // edges 瞬态也计入；此前在 finish 前读取会漏掉）。
     let managed_peak = builder.working_set_peak();
-    rt_peak = rt_peak.max(os_private());
     assert!(!manifest_art.is_empty());
     let stream_id = builder.stream_snapshot_id();
     let build_secs = t0.elapsed().as_secs_f64();
-    rt_peak = rt_peak.max(os_private());
+    let build_peak = build_sampler.peak();
+    drop(build_sampler);
     let decl_count = builder.decl_count() as usize;
 
     // builder 受管工作集（常驻目录 + parse 树/页 payload/目录页 JSON 等暂存，
@@ -159,7 +201,9 @@ fn syntax_budget_64mib_streaming_small_queries() {
         real_bytes >> 20
     );
 
-    // 3) 重开视图（新会话语义）：目录直读（零页 IO）+ 随机小查询。
+    // 3) 重开视图（新会话语义）：目录直读（零页 IO）+ 随机小查询（warm 查询
+    //    阶段带 OS 期间采样器——F787-R4-04）。
+    let warm_sampler = PeakSampler::start(10);
     let view = sas
         .open_cst_stream(&p, &stream_id, real_bytes as u64)
         .expect("open streaming view")
@@ -178,10 +222,14 @@ fn syntax_budget_64mib_streaming_small_queries() {
     }
     let max_page_payload = view.debug_max_page_payload();
     let query_secs = t1.elapsed().as_secs_f64();
+    let warm_peak = warm_sampler.peak();
+    drop(warm_sampler);
 
     // 单查询读取界（F787-R3-06）：manifest 一次性入口成本之外，单次小查询
-    // 的增量读取（目录页+数据页）≤512KiB；累计口径含 manifest。
-    {
+    // 的增量读取（目录页+数据页）≤512KiB；累计口径含 manifest。冷恢复查询
+    // 单列 OS 峰值（F787-R4-04：warm/cold 分列）。
+    let cold_peak = {
+        let cold_sampler = PeakSampler::start(10);
         let q_view = sas
             .open_cst_stream(&p, &stream_id, real_bytes as u64)
             .expect("open fresh recovery view")
@@ -196,9 +244,10 @@ fn syntax_budget_64mib_streaming_small_queries() {
             total - manifest_read,
             manifest_read
         );
+        let peak = cold_sampler.peak();
         drop(q_view);
-        rt_peak = rt_peak.max(os_private());
-    }
+        peak
+    };
 
     // 受管预算：hot 页缓存 ≤8MiB；hot + manifest 目录 ≤16MiB（索引计入）。
     let hot = view.debug_hot_bytes();
@@ -218,8 +267,10 @@ fn syntax_budget_64mib_streaming_small_queries() {
         "single page payload {max_page_payload} > 512KiB"
     );
 
-    // 4) 源重建（流式逐页比对，零整源驻留）：与生成文件逐字节一致。
-    {
+    // 4) 源重建（流式逐页比对，零整源驻留）：与生成文件逐字节一致。重建
+    //    阶段同样带 OS 期间采样器（F787-R4-04 全阶段口径）。
+    let rebuild_peak = {
+        let rebuild_sampler = PeakSampler::start(10);
         use std::io::Read;
         let mut f = std::fs::File::open(&src_file).unwrap();
         let mut expect: Vec<u8> = Vec::new();
@@ -251,11 +302,20 @@ fn syntax_budget_64mib_streaming_small_queries() {
             "source file has bytes beyond rebuilt total {consumed}"
         );
         assert_eq!(consumed, real_bytes as u64);
-    }
+        let peak = rebuild_sampler.peak();
+        drop(rebuild_sampler);
+        peak
+    };
 
-    // OS 终态采样（F787-R2-09：覆盖构建/查询/源重建全阶段后的峰值）+
-    // 证据断言（Windows 实测；其它宿主 sysinfo=0 → 显式缺口记录，不作断言）。
-    rt_peak = rt_peak.max(os_private());
+    // OS 证据（F787-R4-04：各阶段**期间采样器**的最大观测，非返回点当前值；
+    // 生成器进程分列）。runtime 峰值 = build/warm/cold/源重建各阶段采样最大
+    // 值的全局最大，相对构建前基线的增量。
+    let end_sample = os_private();
+    let rt_peak = build_peak
+        .max(warm_peak)
+        .max(cold_peak)
+        .max(rebuild_peak)
+        .max(end_sample);
     let rt_delta = rt_peak.saturating_sub(rt_base);
     if OS_EVIDENCE {
         assert!(
@@ -272,7 +332,7 @@ fn syntax_budget_64mib_streaming_small_queries() {
     drop(view);
 
     eprintln!(
-        "BUDGET64 src={}MiB decls={} build={:.1}s query200={:.1}s managed_peak={}KiB hot={}KiB manifest={}KiB disk={}MiB rt_private_delta={}KiB gen_peak={}KiB",
+        "BUDGET64 src={}MiB decls={} build={:.1}s query200={:.1}s managed_peak={}KiB hot={}KiB manifest={}KiB disk={}MiB rt_build_peak={}KiB rt_warm_peak={}KiB rt_cold_peak={}KiB rt_rebuild_peak={}KiB rt_end={}KiB rt_private_delta={}KiB gen_peak={}KiB",
         real_bytes >> 20,
         decl_count,
         build_secs,
@@ -281,8 +341,21 @@ fn syntax_budget_64mib_streaming_small_queries() {
         hot >> 10,
         manifest_bytes >> 10,
         du >> 20,
+        build_peak.saturating_sub(rt_base) >> 10,
+        warm_peak.saturating_sub(rt_base) >> 10,
+        cold_peak.saturating_sub(rt_base) >> 10,
+        rebuild_peak.saturating_sub(rt_base) >> 10,
+        end_sample.saturating_sub(rt_base) >> 10,
         rt_delta >> 10,
         gen_peak >> 10,
+    );
+    // 受管口径的缺失项（F787-R4-04：显式记录，不以低常驻值冒充峰值）：
+    // parse Machine 内部工作栈/回溯暂存在 parse_snapshot 返回前释放——
+    // 不在受管计量内，仅 OS 采样器可见；非 Windows 宿主 sysinfo=0 时 OS
+    // 证据整体缺口。
+    eprintln!(
+        "BUDGET64 MISSING-ITEMS: managed accounting covers resident directories + co-resident parse outputs/pages (actual capacities); parse-internal work stacks/backtracking are OS-sampler-only; os-evidence={} host",
+        OS_EVIDENCE
     );
     let _ = std::fs::remove_dir_all(&root);
 }
