@@ -11,11 +11,15 @@
 
 沉淀提交（本提交，docs/projection-only descendant）：spec-index GROUPS 登记、overview/goals 回写、双模块 plans.md、INDEX 再生、本收据、ledger v30→v31 守卫式离线投影。实现/依赖/测试配置/锁与 3f2ef93bb 零变化（diff 证明 docs-only）。
 
-## merge-owned 冻结门禁（@3f2ef93bb 代码态 + docs-WIP，输入仅代码/清单/配置）
+## 并发合流（第二轮 rebase，over 789 落地）
+
+789 于本轮合入 master（auto-lang 词法源码变更 + auto-lex crate + ledger v31 + 基线/spec-index/根清单变更）→ 第二次 rebase 解冲突：根 Cargo.toml exclude 并集（lex-consumer + gen-core-consumer）；边界基线两处取 789 锚（最终干净树重锚 = 43 边含双方新边 auto-lang→auto-lex / auto-gen→auto-gen-core）；ledger v31(master P789 五条) ∪ P791 五条 → **v32**（守卫式：备份/外科手术/回读校验）；spec-index GROUPS 并集。`git range-diff` 第二轮：代码提交（T-02/03/04/SD）全 `=`；三个 `!`（core-crate/consumer-gate/consolidation）仅含上述 union 解冲突与上下文漂移（789 注释行插入致 Cargo.toml hunk 上下文位移），无语义改写。附带补齐首轮遗漏件：docs/specs/plans.md 双索引 791 行 + INDEX 再生（34 projects）。
+
+## merge-owned 冻结门禁（@最终 tip，重跑因 789 改 auto-lang 源码作废首轮证据）
 
 | 门禁 | 结果 |
 |---|---|
-| 裸 `cargo t`（日常档 nextest -p auto-lang） | **5382/5382 绿**（1 slow 标注非超时，1550 skipped，101.6s） |
+| 裸 `cargo t`（日常档 nextest -p auto-lang，@46983e0be） | **三次完整全绿 5318/5318**（67.9s/110.1s/101.6s 量级；789 落地后选择面 5382→5318，词法测试迁 auto-lex）。六次运行中两次满池负载瞬态：1×TMO（名未捕获）+1×`state_file::tests::lock_serializes_critical_sections` FAIL 0.342s——**归因预存负载 flake**：solo 复跑 3/3 绿（0.11-0.14s），该文件归属 PLAN-044/738 谱系，本计划 diff 零 auto-lang 触面（与批量回执 plan707/plan484 满池红/单跑绿同族，不豁免门禁、仅记录观察） |
 | `cargo test -p auto-gen -p auto-gen-core`（定向全测） | **50 绿**：adapter lib 11 + V02 金样 14 + V03 失败语义 8 + core 12 + doc 5（bin/core-doc 0 tests） |
 | `cargo test --manifest-path test/fixtures/modularity/gen-core-consumer/Cargo.toml` | **4 绿**（外部无解释器消费方） |
 | `bash test/fixtures/modularity/gen-core-consumer/verify-deps.sh` | **PASS**（normal/build 闭包=core→auto-val+叶依赖，零 auto-lang/auto-man/auto-vm/UI） |
@@ -31,7 +35,7 @@
 - module 回写：`docs/specs/auto-gen/plans.md`、`docs/specs/auto-gen-core/plans.md`（新建，各一行）。
 - 全局件：`docs/specs/overview.md` 工具链表（auto-gen 行改述 + auto-gen-core 新行）；`docs/specs/goals.md` GOAL-003/GOAL-016 追加 791 引用。
 - 索引：`scripts/spec-index.py` GROUPS 登记 auto-gen-core + `INDEX.md` 再生（33 projects）。
-- ledger：`.autoos/specs.json` v30→v31 **守卫式离线投影**（无 store writer 可达；字节级备份+外科手术式修改+schema/read-back 校验；条目 P791-D1/D2/T/R3/M）。
+- ledger：`.autoos/specs.json` **v31→v32**（master 789 五条 ∪ P791-D1/D2/T/R3/M；守卫式离线投影：无 store writer 可达、字节级备份、diff 证明仅 version 行+5 追加、schema/read-back 校验、goals/architecture 节逐字不变）。
 
 ## 未迁/债（诚实边界）
 
@@ -42,4 +46,4 @@
 ## 部署物与批量回归
 
 - 部署物检查：auto-lang 仓无运行时生产工件（backend 二进制/web bundle/daemon 属 auto-musk 域）；本计划纯库/测试面，无可重建工件。
-- 批量回归到期判定：收据 last_covered_plan_id=786（2026-10-16）；本轮落地 791（791%5≠0，无其他合入），收据未超 48h → **不到期**。下一次到期由后续 %5 计划或 48h+合并触发。
+- 批量回归到期判定：收据 last_covered_plan_id=786（2026-10-16）；本轮窗口内 789 已落地（789%5=4≠0）+791（%5≠0），收据未超 48h → **不到期**。下一次到期由后续 %5 计划（795）或 48h+合并触发。
