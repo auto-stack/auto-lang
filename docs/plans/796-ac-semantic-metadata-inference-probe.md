@@ -177,6 +177,16 @@ D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.
 
 ## 9. 复审记录
 
+### 2026-10-16 R2：修复交接就绪复核
+
+- stage: review；review_scope: final（就绪门未通过，未进入完整验收）；reviewer_identity: Codex，独立于实施上下文，沿用 R1 检查上下文；plan_revision: 1；outcome: **needs_fix**。
+- worktree_path: D:/autostack/.wt/lang-796/auto-lang；branch: plan-796-dev；reviewed_commit: `5a8cd61ba8621abe4a755e2fa05c5d808b4afcde`；base_commit: `056539f3997e199750ee15811d5c3ba9adba30eb`；主检出核查头 `a7ae85c3ed235ea0b3a8447b04825817576c7589`。
+- 实际增量：相对 R1 `91b173577` 仅 `docs/plans/attachments/796/contract-decision.md` 7 行新增/3 行删除，补记既有 called-sigs-fp 键规则；无实现、测试或正式 runner 接线改动。此补交修正文档交接，不关闭 R1 两项 finding。
+- F-796-R1-01 **OPEN**：788 仍 executing，头 `54e6a46caf1badddaba898a471492ae52e7a1fbf` 对 master 的 `git merge-base --is-ancestor` exit=1；D-788 未满足，T-06 未完成，case 仍 not-executed。F-796-R1-02 **OPEN**：实施树验收脚本和 spec-delta.md 存在性检查均 False；T-07 未完成。work 自身最新回执亦明确“本轮无可修复项”“维持 executing 5/9”。这是原合同尚未完成，并非新发现的实现回归。
+- acceptance_results: AC-01/02/03 未独立验收；AC-04 partial（实际 adapter/IPC 周转缺席）；AC-05 fail；AC-06 partial；AC-07 未完成；AC-08 pending。spec_inputs 与 dependency_revisions 同 R1：实现及依赖树未变；未交付可冻结的完整 Spec delta，本轮不通过规范审查。
+- evidence/limitations: 只读提交 diff、主 Plan/work 回执、788 状态/祖先检查和文件检查。未将 work 的清洁性声明作为独立证据，未运行测试；按技能就绪规则，已知未完成的 work-owned 项先返回 work，避免重复完整 final-review 周期。本轮也不授信 R1 未审查的 T-01..05。
+- next: 先满足 D-788，再于原树完成并提交 T-06/T-07，附两项 finding 闭合表和完整验收交接后重新送审。保持 executing/current_step=5，所有未完成勾选不变。merge-owned 门禁、规范沉淀、归档和 guard 清理继续 pending；未修改实现或合入。
+
 ### 2026-10-16 R1：最终审查就绪核查
 
 - stage: review；review_scope: final（未进入完整验收）；reviewer_identity: Codex，本上下文未参与实施，未创建代理；plan_revision: 1；outcome: **needs_fix**。
@@ -197,6 +207,8 @@ D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.
 2026-10-16 stage:work | PLAN-796 | r1 | outcome:blocked（独立工作全部完成，末段等外部依赖） | worktree D:/autostack/.wt/lang-796/auto-lang | branch plan-796-dev | base 056539f39 | code 91b173577（00260c12c T-01 → 587bd557d T-02 → 9c6307b77 T-03 → 2c8d5bf46 T-04 → 91b173577 T-05） | deps: ac-core/ac-artifact-probe 合入版只读消费，零改（diff 056539f39..91b173577 于 experimental/ac-artifact-probe、experimental/ac-core、crates/ 均为空） | task_ids T-01..T-05 全闭 | evidence: workspace experimental/ac-semantics 全测试 60 绿 0 红——sema_identity_ 14、infer_core_ 13+4（差分对照含 240 生成例）、meta_query_ 7、sema_cache_ 12（跨进程 put→exit→get 命中不调 compute）、sema_budget_ 5（≥32MiB 流式页/受管≤16MiB/private Δ≤64MiB OS 证据/4096 深链全路径/512 换轮 GC 收敛哨兵存活）、sema_turnaround_ 5；报告 docs/reports/plan796/turnaround.{md,json} 硬门 local-body-edit P95=4.32ms<1000ms PASS（八行含全冷/广泛失效，30 原始样本不删）；冻结决策 D1–D12 见 attachments/796/contract-decision.md（含 T-05 期间修正：InferBody 键增加 called-sigs-fp，同键异容结构性不可能）；.case.ad/oracle 三套齐（not-executed until D-788，Rust 对应用例真实执行）。 | blockers: T-06 等 D-788（788 最终 review/门禁/合入/Spec/merge 收据齐全），T-07 依赖 T-06；本阶段无其它独立授权工作。 | next_responsible_role: work（D-788 满足后做 T-06 probe adapter/AutoDown，再 T-07 verify 脚本/矩阵审计/SD 收口）。merge-owned 门禁（根 cargo t、独立 sema 全套、受影响 788 套件、tf 到期判定）全部 pending，冻结提交上执行。
 
 2026-10-16 stage:work（R1 needs_fix 回执）| PLAN-796 | r1 | 两项 findings 确认为 D-788 门控的原合同未完项（F-796-R1-01=T-06/AC-05、F-796-R1-02=T-07/AC-06），本轮无可修复项——原授权仅前五项，T-07 依赖 T-06。R1 记录中"worktree 清洁性未核实"已补核：发现 T-05 漏提交的 D7 冻结记录（contract-decision.md，docs-only），补交 5a8cd61ba 后实施树清洁（git status 0 项）；work 树头现为 5a8cd61ba（91b173577 + 该 docs 补交）。D-788 未满足复核成立：788 实施头 54e6a46 非 master 祖先（merge-base --is-ancestor exit=1）。维持 executing 5/9、不合入；D-788 满足后同树恢复 work（T-06 → T-07 → 重申 final review）。
+
+2026-10-16 stage:work（R2 needs_fix 回执）| PLAN-796 | r1 | F-796-R1-02 可做部分本轮已交付，F-796-R1-01 维持 D-788 外部门控 | worktree 同树 | branch plan-796-dev | code d85f89fc7（91b173577 → 5a8cd61ba D7 补交 → d85f89fc7） | 交付：①sema_boundary_ 6 例（V-09 全项：core 默认树零后端依赖、拆分热点零触碰 diff 证明、接口常量出处锁定、797 消费面冻结、case pending 诚实性、manifest 审计）；②scripts/verify-ac-semantics-796.ps1 统一验收入口（acceptance 11 行 PASS + V-08 诚实 BLOCKED 按设计 exit 1，closeout 门禁清单）；③attachments/796/spec-delta.md（SD-01..06 终稿、SD-07/08 显式 pending D-788）。contract-decision.md 补 CT 接缝 schema 冻结段（provenance 审计暴露的真缺口）。workspace 66 绿 0 红（+6 boundary）。T-07 勾选条件（V-08+execution_done=7/9）不满足，维持未勾；F-796-R1-01（T-06）无变化：788 头 54e6a46 仍非 master 祖先。 | blockers 不变：T-06 等 D-788、T-07 完成依赖 T-06。 | next_responsible_role: work（D-788 后 T-06 接线 + T-07 收口：V-08 实装入 verify 脚本、SD-07/08 定稿、execution_done=7/9 送审）。
 
 来源/边界及起草检查见[planning-preflight.md](attachments/796/planning-preflight.md)；该pass不代表功能或亚秒已达标。
 
