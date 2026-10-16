@@ -1,0 +1,75 @@
+Diff in \\?\D:\autostack\.wt\lang-800\auto-lang\crates\auto-package-resolver\src\lib.rs:341:
+ 
+     fn core() -> PackageResolverCore<&'static str> {
+         // mode label = &'static str proves opacity: rules never read it
+-        PackageResolverCore::new(
+-            PathBuf::from("/project"),
+-            PathBuf::from("stdlib/auto"),
+-        )
++        PackageResolverCore::new(PathBuf::from("/project"), PathBuf::from("stdlib/auto"))
+     }
+ 
+     #[test]
+Diff in \\?\D:\autostack\.wt\lang-800\auto-lang\crates\auto-package-resolver\src\lib.rs:406:
+         // file module arm (afile.at exists)
+         assert_eq!(c.resolve("afile").unwrap(), sp.join("afile.at"));
+         // package directory arm (adir/package.at exists, adir.at does not)
+-        assert_eq!(c.resolve("adir").unwrap(), sp.join("adir").join("package.at"));
++        assert_eq!(
++            c.resolve("adir").unwrap(),
++            sp.join("adir").join("package.at")
++        );
+     }
+ 
+     #[test]
+Diff in \\?\D:\autostack\.wt\lang-800\auto-lang\crates\auto-package-resolver\src\lib.rs:483:
+                 searched_local: project.join("packages").join("missing")
+             }
+         );
+-        assert_eq!(err.to_string(), format!(
+-            "File not found: {}",
+-            project.join("packages").join("missing").display()
+-        ));
++        assert_eq!(
++            err.to_string(),
++            format!(
++                "File not found: {}",
++                project.join("packages").join("missing").display()
++            )
++        );
+     }
+ 
+     #[test]
+Diff in \\?\D:\autostack\.wt\lang-800\auto-lang\crates\auto-package-resolver\src\lib.rs:516:
+         assert!(err.starts_with("Ambiguous module 'api' in dependency - both '"));
+         assert!(err.contains("' and '") && err.ends_with("' exist"));
+         // neither → searched-locations error
+-        let err = c.find_module_in_dep(&dep, &["deep", "missing"]).unwrap_err();
++        let err = c
++            .find_module_in_dep(&dep, &["deep", "missing"])
++            .unwrap_err();
+         assert!(err.contains("Module 'deep.missing' not found in dependency."));
+         assert!(err.contains("Searched locations:"));
+         assert!(err.contains(&format!("Dependency root: {}", dep.display())));
+Diff in \\?\D:\autostack\.wt\lang-800\auto-lang\crates\auto-package-resolver\src\lib.rs:549:
+         let mut c = core();
+         c.add_dependency("database".into(), dep.clone(), "m");
+         assert_eq!(
+-            c.resolve_in_dependency("database", &["connection"]).unwrap(),
++            c.resolve_in_dependency("database", &["connection"])
++                .unwrap(),
+             dep.join("connection.at")
+         );
+         let err = c.resolve_in_dependency("database", &["nope"]).unwrap_err();
+Diff in \\?\D:\autostack\.wt\lang-800\auto-lang\crates\auto-package-resolver\src\lib.rs:576:
+         // same-name replace: new path/mode immediately authoritative,
+         // old path no longer consulted (no stale shadow map)
+         c.add_dependency("pkg".into(), v2.clone(), "mode2");
+-        assert_eq!(
+-            c.resolve("pkg").unwrap(),
+-            v2.join("package.at")
+-        );
++        assert_eq!(c.resolve("pkg").unwrap(), v2.join("package.at"));
+         assert_eq!(
+             c.resolve_in_dependency("pkg", &["mod_b"]).unwrap(),
+             v2.join("mod_b.at")

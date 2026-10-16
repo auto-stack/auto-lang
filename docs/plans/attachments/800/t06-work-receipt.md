@@ -5,6 +5,12 @@ worktree `D:/autostack/.wt/lang-800/auto-lang`，branch `plan-800-dev`，
 detached `c39ac7f`（依赖仓只读，未修改——跨仓 path 依赖 autodown-core 解析用，
 PLAN-726 T-04 布局）。
 
+> **r1 修订（2026-10-17）**：按 review-r1 needs_fix 修复两项——F800-R1-01
+> （P2，错误映射描述失实）与 F800-R1-02（P3，新核心未过 rustfmt）；修复提交
+> `c50e7a1c6`，冻结代码基线由 `5c1f43b5d` 前进为 `c50e7a1c6`。§2 搬迁表与
+> 上文涉及"adapter 映射"的表述已就地修正；本文其余 r0 证据（测试数/闭包/
+> 合流对账）在 r1 复验中全部复跑通过。修复明细见文末 §6。
+
 ## 1. 净改动（staged diff --stat）
 
 ```
@@ -24,7 +30,7 @@ PLAN-726 T-04 布局）。
 
 | 项 | 处置 | 证据 |
 |---|---|---|
-| `find_package_path` 算法 | **搬迁** core（错误改 `PackagePathNotFound`，adapter 映射 `AutoManError::FileNotFound`） | auto-man 内 `fn find_package_path` 定义 grep=0 |
+| `find_package_path` 算法 | **搬迁** core（错误改 `PackagePathNotFound`；legacy 调用点 `if let Ok` 静默忽略，**无 adapter 映射**——r1 修正） | auto-man 内 `fn find_package_path` 定义 grep=0 |
 | `find_module_in_dep` 算法 | **搬迁** core（segments `&[AutoStr]`→`&[&str]`，AutoStr 转换在 adapter） | 同上 `fn find_module_in_dep` grep=0 |
 | dep 未声明错误文本构造 | **搬迁** core `resolve_in_dependency` | adapter 无 format! 该文本 |
 | `resolve`/`exists`/`search_paths` 组合规则 | **搬迁** core；trait impl 留 adapter 薄委托 | `impl ModuleResolver for AutoManResolver` 四方法各一行委托 |
@@ -70,3 +76,24 @@ PLAN-726 T-04 布局）。
 - 未改 VM/trans/book/ui_gen → 不触发 tv/tt/tb/tu（如复审扩大触面再按规则补）。
 - 800%5=0 → 合入后批回归到期交接（`/auto-plan:regress` 主检出单实例）。
 - specs/ledger 沉淀（`.autoos/specs.json` upsert + spec-index）与归档/guard 清理。
+
+## 6. r1 修复记录（finding → invariant → fix → results）
+
+review-r1（reviewed_commit `5c1f43b5d`，attachments/800/review-r1/REVIEW.md）
+needs_fix 两项；修复提交 `c50e7a1c6`（同树同分支）。
+
+| finding | invariant | 受影响路径/状态 | 修复与永久用例 | 当前结果 | 余留缺口 |
+|---|---|---|---|---|---|
+| F800-R1-01 [P2] SD-01/core 文档/t01/t06 四处声称 adapter 将 `PackagePathNotFound` 映射回 `AutoManError::FileNotFound`；实际 `resolver.rs` 三个调用点（use/dep:/("pkg",mode:) 臂）均为 `if let Ok` 静默忽略 | 知识增量与代码真实边界一致：私有不可观察错误不沉淀为不存在的规范转换；找包失败静默跳过是冻结行为（r0 与旧代码一致，无行为回归） | `docs/specs/package-resolver/project.md` §冻结语义7、`crates/auto-package-resolver/src/lib.rs` PackagePathNotFound 文档、主检出 t01-freeze §1/§2/§3.4、t06 §2 | 四处就地改述为真实语义（legacy 调用点静默忽略、无 adapter 映射、旧私有 FileNotFound 构造已随搬迁删除且无消费方）；按审核裁定不为私有不可观察错误添加无意义映射代码；同因扫描其余文档（SD-02/auto-man spec）无此失实表述 | 措辞与代码一致（grep 无正向"映射回"残留）；行为零变化 | 无 |
+| F800-R1-02 [P3] 新核心 `rustfmt --check` exit 1（6 处确定性格式差异） | 新增文件过格式门；不引入新格式债，亦不对历史搬运代码做无关格式改写 | `crates/auto-package-resolver/src/lib.rs`、consumer fixture 三文件、`crates/auto-man/src/resolver.rs` 新代码区域 | 新文件全量 rustfmt（--check exit 0）；adapter 定点修 7 处本计划新代码（import 序、add_dependency 委托、Loaded 日志、segments 收集、plan800_tests 三处）；rustfmt 仍标记的 26 行经内容比对全部逐字存在于 master b0d6d4aab（历史搬运，保留原样） | 新文件 fmt exit 0；核心 14/14、adapter resolver:: 38/38（1 预存 ignore）、consumer 7/7、verify-deps.sh PASS 全部复跑通过 | 无 |
+
+r1 后 SD 冻结 hash（worktree `c50e7a1c6`）：
+- SD-01 `docs/specs/package-resolver/project.md`：
+  `8BF942D5F5AE1245F2F6AD098C4F39F351F6DD3A9DFE2639FA510C91CEAFAE3A`
+- SD-02 `docs/specs/auto-man/project.md`（r1 未触，与 r0 冻结一致）：
+  `8FCA03939E763C3B44182AE90D2931CD02F0FF571E96EA4A6ABA582EF0AC725D`
+
+merge 注记（review-r1 §当前合流核对）：792 已合入 main（rust_ui.rs
+DELIVERY_CRATES 10 项不含 auto-man，闭包无 auto-man→auto-package-resolver
+边）——本新包不入 792 交付闭包；merge 时 SD/auto-man spec 须按**当前** master
+版本合并（main 已含 792 新章节，不可覆盖），并履行 metadata 同步核对。

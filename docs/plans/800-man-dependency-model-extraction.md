@@ -4,7 +4,7 @@ status: execution_done
 feature_name: Man 依赖模型与路径解析核心解耦
 author: [Codex]
 created_at: 2026-10-16
-updated_at: 2026-10-16
+updated_at: 2026-10-17
 plan_revision: 1
 current_step: 6
 total_steps: 8
@@ -94,8 +94,8 @@ work、独立final review、merge分别交接；未分配额外agent或模型。
 | [x] | T-02 | work | T01 | 新crates/auto-package-resolver、轻输入/路径候选与歧义规则；cargo check新crate | 01/02 | [✅ 已完成] std-only 新 crate（DependencyEntry<M>/PackageResolverCore<M>/PackagePathNotFound）；`cargo check -p auto-package-resolver` 通过；workspace member/exclude 已登记 |
 | [x] | T-03 | work | T02 | 抽独立resolve/exists/search规则，保留各入口差异；旧语言前缀与mode留Man adapter | 02/03 | [✅ 已完成] find_package_path/find_module_in_dep/resolve/exists/module_search_paths 全入核心，三入口差异冻结（resolve 无盘臂/exists 无 package.at 臂/歧义不得成功/错误文本逐字）；核心单测 14/14 绿 |
 | [x] | T-04 | work | T03 | AutoManResolver生产薄委托、旧API/get_dependencies和替换可见性保持；删除原路径算法，check/定向测试 | 02/03 | [✅ 已完成] adapter 薄委托（trait 四方法一行委托；Pac/Super/None 继续走 FilesystemResolver）；`Dependency=DependencyEntry<ExecutionMode>` 别名保调用面；auto-man 内路径算法 grep=0；`cargo test -p auto-man --lib resolver::` 38/38 绿（1 预存 ignore，含 4 新 plan800 例） |
-| [x] | T-05 | work | T04 | 新外部consumer、V01..05、metadata/777精确边界；799两种兼容接线及792条件触面核查 | 01–04 | [✅ 已完成] package-resolver-consumer 7/7 + verify-deps.sh PASS（闭包=仅核心）；module-boundaries 登记 man-ecosystem+audit 零违规；792 未合入（master 交付面零 diff→无接线义务，后合入者担责）；794 diff 面零 auto-lang/VM/UI 文件；799 兼容=旧 ast 路径身份不变；证据全录 attachments/800/t06-work-receipt.md |
-| [x] | T-06 | work | T05 | 净删/搬迁/未迁和合流收据、SD素材，提交冻结代码、work项闭合 | 01–04 | [✅ 已完成] 收据 attachments/800/t06-work-receipt.md（净改动 stat/搬迁表/V01..05 证据/合流对账/merge-owned 待办）；SD-01 新 spec + SD-02 auto-man spec 增补已在冻结提交内；代码冻结 `5c1f43b5d`（12 文件 +1237/-246） |
+| [x] | T-05 | work | T04 | 新外部consumer、V01..05、metadata/777精确边界；799两种兼容接线及792条件触面核查 | 01–04 | [✅ 已完成] package-resolver-consumer 7/7 + verify-deps.sh PASS（闭包=仅核心）；module-boundaries 登记 man-ecosystem+audit 零违规；792 work 时点未合入、review-r1 时点已合入——经核对 rust_ui DELIVERY_CRATES 10 项不含 auto-man 且闭包无本包边→不入 792 交付闭包、无清单接线义务（详见 t06 §6 merge 注记）；794 diff 面零 auto-lang/VM/UI 文件；799 兼容=旧 ast 路径身份不变；证据全录 attachments/800/t06-work-receipt.md |
+| [x] | T-06 | work | T05 | 净删/搬迁/未迁和合流收据、SD素材，提交冻结代码、work项闭合 | 01–04 | [✅ 已完成·r1] r0 收据+SD 素材随 `5c1f43b5d`；review-r1 needs_fix（F01 错误映射描述失实/F02 新核心未过 rustfmt）已修——四处文档对齐真实边界（无 adapter 映射、legacy 调用点静默忽略）、新文件全量 rustfmt+adapter 定点修 7 处（余 26 处标记行经比对全部逐字存在于 master=历史搬运）；r1 修复提交 `c50e7a1c6`，三面定向复验全绿；SD01 新 hash `8BF942D5…`；明细 t06 §6 |
 | [ ] | T-07 | review | T06 | 同树独立真实路径/模式/负控/单一实现及SD冻结 | 05 |
 | [ ] | T-08 | merge | final pass | 同步/必要复审、冻结门/条件792重验；规范/ledger/归档/guard，800到期批回归交接 | 06 |
 
@@ -107,6 +107,13 @@ work、独立final review、merge分别交接；未分配额外agent或模型。
 
 work-owned readiness：AC-01..04 全闭合（V01..05 证据绑定 5c1f43b5d）；无未结 in-contract finding；旧 API/模式/路径行为断言零改动通过；merge-owned 门显式 pending（非 work 关闭项）。
 
+2026-10-16 stage=review | review_scope=final | reviewer=当前独立审核对话（未参与实现，无额外agent） | PLAN-800 | plan_revision=1 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-800/auto-lang | branch=plan-800-dev | reviewed_commit=5c1f43b5dfebbc5fdffa891046a343ccd902ef79 | base_commit=b0d6d4aab50bfcb137d55b0f88e9f2bd82b8f644 | dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 | acceptance_results=AC01/02/03 pass、AC04 partial、AC05 fail、AC06 merge pending | findings=F800-R1-01 SD错误映射描述与实现不符、F800-R1-02新增核心格式门失败 | evidence=[R1审核收据](attachments/800/review-r1/REVIEW.md)（含Spec冻结hash及独立反例） | pending_closeout_gates=裸t/两crate/consumer/同步/Spec与ledger/归档guard/批回归到期交接 | next=work修复提交后同树定向复审。重开T06/T07，保留T01..05已通过证据；current_step=5/8。792现已合入，当前10crate交付闭包不含auto-man，新core不入闭包，无新增交付接线义务。
+
+2026-10-17 stage=work | PLAN-800 | plan_revision=1 | outcome=pass（r1 修复交接） | worktree=D:/autostack/.wt/lang-800/auto-lang | branch=plan-800-dev | base_commit=b0d6d4aab | code_commit=c50e7a1c6（r0 实现 5c1f43b5d + r1 修复） | dependencies=auto-down c39ac7f（只读不变） | task_ids=T-06（重开→闭合） | findings_closed=F800-R1-01（四处文档对齐真实边界：无 adapter 映射、legacy load_pac_at `if let Ok` 静默忽略；按审核裁定不加无消费方映射代码）；F800-R1-02（新核心/consumer fixture 全量 rustfmt exit 0；adapter 定点修 7 处新代码，余 26 处 rustfmt 标记行内容比对全部逐字存在于 master=历史搬运不格式化） | evidence=复验全绿：核心 14/14、adapter resolver:: 38/38（1 预存 ignore）、consumer 7/7、verify-deps.sh PASS；修复明细+新 SD 冻结 hash（SD01 `8BF942D5…`、SD02 不变）见 attachments/800/t06-work-receipt.md §6 | blockers=无 | next=review（同树定向复审 T-07：绑定 c50e7a1c6；merge-owned 门保持 pending——裸 cargo t + 两 crate 定向门 + consumer 门 + 800 到期批回归交接；merge 时 SD 须按含 792 章节的当前 master 合并）
+
+work-owned readiness（r1）：F800-R1-01/02 两 finding 闭合、无未结 in-contract 项；受影响面定向复验通过；行为零变化（P2 纯文档、P3 纯格式）。
+
 ## 10. 待澄清事项
 
 T01具体轻投影/借用设计须保持旧HashMap引用API及mode身份；若需修改既有source配置识别/不兼容规范路径，应先具名修订。不能把legacy扫描弱点偷偷修成新的pac协议，也不能为避环复制语言AST/模式枚举解析。
+

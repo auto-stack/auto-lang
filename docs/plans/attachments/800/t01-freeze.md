@@ -13,7 +13,7 @@
 | 模式解析与默认/alias 语义 | `ExecutionMode::from_str` 调用（adapter 内） | **adapter**（语言 `auto_lang::mode`） | 模式标签对核心不透明 |
 | 已解析依赖视图（name→path→mode 单一 map） | `dependencies: HashMap<String, Dependency>` L58 | **core**：`PackageResolverCore<M>` 内 `HashMap<String, DependencyEntry<M>>`（唯一权威 map） | §5 单一 map；adapter 不留副本 |
 | std 前缀/相对路径/已声明依赖命名规则 | `ModuleResolver::resolve` L414-451 | **core** `resolve(&str)`（trait impl 留 adapter 薄委托） | 语言无关字符串/路径规则 |
-| 包路径候选 `find_package_path` | L235-258 | **core**（错误改 core 自有类型，adapter 映射回 `AutoManError::FileNotFound` 保持外部错误面） | 语言无关 |
+| 包路径候选 `find_package_path` | L235-258 | **core**（错误改自有 `PackagePathNotFound`，Display 镜像历史 `FileNotFound` 文本；legacy 调用点 `if let Ok` 静默忽略——**无 adapter 映射**，r1 修正） | 语言无关 |
 | 依赖内模块判定 `find_module_in_dep`（file.at/mod.at/歧义） | L361-410 | **core** | 语言无关（segments 以 `&[&str]` 进核心，AutoStr 在 adapter 转换） |
 | dep 未声明错误文本（含 Declared dependencies 枚举） | L322-343 | **core** `resolve_in_dependency`（查 map+错误+判定一体） | 纯字符串投影 |
 | `exists` 存在性规则 | L465-488 | **core** | 语言无关；**与 resolve 的差异冻结**（见 §3） |
@@ -39,9 +39,12 @@
 - core 依赖仅 std（无 auto-val——segments 由 adapter `AutoStr::as_str` 转换；
   无 serde/log——core 不做 IO 日志，日志留 adapter 调用侧）。
 - 错误类型：core `find_package_path` 返回自有 `PackagePathNotFound { searched_local: PathBuf }`
-  （Display "File not found: {path}"），adapter `map_err` 成
-  `crate::AutoManError::FileNotFound`（旧调用点 `load_pac_at` 仅 `if let Ok` 吞错，
-  外部不可观察，映射保持一致性）。resolve/resolve_in_dependency 错误维持 `String`。
+  （Display "File not found: {path}"，镜像历史 `AutoManError::FileNotFound` 文本）。
+  唯一生产调用点 `load_pac_at` 以 `if let Ok` 静默忽略（找不到的依赖不插入，
+  外部不可观察，与旧代码一致）——**生产代码不做 core 错误到 `AutoManError` 的
+  映射**；旧私有 `find_package_path` 的 `FileNotFound` 构造随算法搬迁删除，
+  其错误面本就无消费方（r1 修正：初稿"adapter map_err 保持一致性"为不实描述）。
+  resolve/resolve_in_dependency 错误维持 `String`。
 
 ## 3. 三入口冻结（V02 旧臂；行为=旧代码逐条，改动即行为变更）
 
@@ -78,7 +81,8 @@
 - `search_paths()`（trait）：`[search_paths..., std_root, ...dep paths]` 顺序组合（dep 路径为 map 值序=无序）。
 - `find_package_path(name)`：① `project_root/packages/{name}` 目录存在→Ok；
   ② `.../{name}/package.at` 存在→Ok（同值）；③ `std.` 前缀→`std_root/{rest}.at` 存在→Ok；
-  ④ Err(FileNotFound(local_pkg))。仅供 `load_pac_at`，私有语义。
+  ④ Err(FileNotFound(local_pkg))。仅供 `load_pac_at`，私有语义
+  （旧私有构造随搬迁删除；core 等价错误为 `PackagePathNotFound`，调用点照旧静默忽略）。
 - `get_std_root()`：返回 std_root 克隆。
 - `get_default_mode`/`get_dependency_mode`：map/default_mode 读取；missing→None。
 - `load_pac_at`：读失败→`AutoManError::Io`；pac.at 缺失→`prepare_env` 仅 log::warn；
