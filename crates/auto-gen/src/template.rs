@@ -1,5 +1,5 @@
 use crate::data::LoadedData;
-use crate::error::{GenError, GenResult, SourceLocation};
+use auto_gen_core::{GenError, GenResult, SourceLocation};
 use auto_lang::ast::Code;
 use auto_lang::atom::Atom;
 use auto_lang::interpreter::AutoInterpreter;
@@ -102,9 +102,6 @@ impl TemplateEngine {
         template: &Template,
         loaded_data: &LoadedData,
     ) -> GenResult<AutoStr> {
-        eprintln!("DEBUG TemplateEngine: render_with_data called");
-        eprintln!("DEBUG TemplateEngine: lib_paths = {:?}", self.lib_paths);
-
         // Get mutable access to the shared interpreter
         let mut interp = loaded_data.interp.borrow_mut();
 
@@ -124,8 +121,6 @@ impl TemplateEngine {
                 message: e.to_string(),
             }
         })?;
-
-        eprintln!("DEBUG TemplateEngine: eval_template result = {:?}", result);
 
         // Post-process: filter out `use` statement lines from output
         let filtered = self.filter_use_statements(result.to_astr());

@@ -1,31 +1,28 @@
 // Modules
 mod data;
-mod error;
 mod generator;
-mod guard;
 mod template;
 
 #[cfg(test)]
 mod test_framework;
 
-// Re-exports
-pub use data::{DataLoader, DataSource, LoadedData};
-pub use error::{GenError, GenResult, SourceLocation};
-pub use generator::{
-    CodeGenerator, CodeGeneratorBuilder, GenReport, GenerationSpec, GeneratorConfig, TemplateSpec,
+// Re-exports — the guard/error/report types and TemplateSpec have a single
+// definition in auto-gen-core (PLAN-791); the historical public paths of this
+// crate are preserved via re-export.
+pub use auto_gen_core::{
+    Conflict, GenError, GenReport, GenResult, GuardProcessor, GuardedSection, SourceLocation,
+    TemplateSpec,
 };
-pub use guard::{Conflict, GuardProcessor, GuardedSection};
+pub use data::{DataLoader, DataSource, LoadedData};
+pub use generator::{CodeGenerator, CodeGeneratorBuilder, GenerationSpec, GeneratorConfig};
 pub use template::{Template, TemplateEngine};
 
 // ============================================================================
 // LEGACY CODE - Kept for backward compatibility during transition
 // ============================================================================
 
-use std::{collections::HashMap, path::Path};
-
-use auto_lang::atom::Atom;
 use auto_val::{AutoPath, AutoResult, AutoStr};
-use regex::Regex;
+use auto_lang::atom::Atom;
 
 pub struct Mold {
     pub name: AutoStr,
@@ -163,67 +160,6 @@ impl AutoGen {
         }
     }
 
-    fn feed_guarded(file: &Path, input: AutoStr) -> AutoStr {
-        if !file.is_file() {
-            return input;
-        }
-        let mut current = String::new();
-        let mut guarded_contents: HashMap<AutoStr, AutoStr> = HashMap::new();
-        let mut key: AutoStr = AutoStr::new();
-        let mut is_in_guard = false;
-
-        let starter = "/// ---------- begin of guard:";
-        let ender = "/// ---------- end of guard:";
-        // read contents of the file line by line
-        for line in std::fs::read_to_string(file).unwrap().lines() {
-            if line.starts_with(starter) {
-                // get key
-                key = capture_block(line);
-                is_in_guard = true;
-            } else if line.starts_with(ender) {
-                // ending
-                if !key.is_empty() {
-                    guarded_contents.insert(key.clone(), current.clone().into());
-                }
-                current.clear();
-                is_in_guard = false;
-            } else {
-                if is_in_guard {
-                    current.push_str(line);
-                    current.push('\n');
-                }
-            }
-        }
-
-        // find guarded contents, starting with /// AG_GUARD <GUARD_ID>
-        let mut outputs: Vec<AutoStr> = Vec::new();
-        let mut is_out_guard = false;
-        for line in input.lines() {
-            if line.starts_with(starter) {
-                is_out_guard = true;
-                outputs.push(line.into());
-                // get key
-                // pattern /// AG_GUARD <GUARD_ID> {{{
-                let key = capture_block(line);
-                if guarded_contents.contains_key(&key) {
-                    guarded_contents.remove(&key).map(|c| {
-                        for l in c.lines() {
-                            outputs.push(l.into());
-                        }
-                    });
-                }
-            } else if line.starts_with(ender) {
-                is_out_guard = false;
-                outputs.push(line.into());
-            } else {
-                if !is_out_guard {
-                    outputs.push(line.into());
-                }
-            }
-        }
-        outputs.join("\n").into()
-    }
-
     fn gen_one(&self, mold: &Mold, out_file: &AutoPath) {
         let mut interp = auto_lang::interpreter::AutoInterpreter::new().with_fstr_note(self.note);
         interp.merge_atom(&self.data);
@@ -231,7 +167,11 @@ impl AutoGen {
         match result {
             Ok(result) => {
                 let out_str = result.to_astr();
-                let feeded = Self::feed_guarded(&out_file.path(), out_str);
+                // Legacy guard feed lives in auto-gen-core as the single
+                // byte-exact definition (PLAN-791): join without trailing
+                // newline, exact marker prefixes, absent file passes input
+                // through.
+                let feeded = auto_gen_core::feed_guarded_legacy(&out_file.path(), out_str);
                 std::fs::write(out_file.path(), feeded.as_bytes()).unwrap();
                 println!("generated: {}", out_file.to_astr());
             }
@@ -343,15 +283,6 @@ fn replace_name(name: impl Into<AutoStr>, replace: impl Into<AutoStr>) -> AutoSt
     format!("{}.{}", replace.into(), ext).into()
 }
 
-fn capture_block(line: &str) -> AutoStr {
-    let mut key = "".into();
-    let pat = Regex::new(r"guard: <(\w+)> ---").unwrap();
-    if let Some(caps) = pat.captures(line) {
-        key = caps[1].to_string().into();
-    }
-    key
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,13 +312,6 @@ mod tests {
         let replace = "hello";
         let result = replace_name(name, replace);
         assert_eq!(result, "hello.eww");
-    }
-
-    #[test]
-    fn test_capture_guard() {
-        let line = "/// ---------- begin of guard: <includes> -----------------------------------";
-        let block = capture_block(line);
-        assert_eq!(block, "includes");
     }
 
     #[test]

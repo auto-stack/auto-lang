@@ -1,10 +1,9 @@
 use crate::data::{DataLoader, DataSource, LoadedData};
-use crate::error::{GenError, GenResult};
-use crate::guard::GuardProcessor;
-use crate::template::{Template, TemplateEngine};
-use auto_val::AutoStr;
+use crate::template::TemplateEngine;
+use auto_gen_core::{
+    GenError, GenReport, OutputConfig, RenderedTemplate, TemplateRenderer, TemplateSpec,
+};
 use std::path::PathBuf;
-use std::time::Duration;
 
 /// Configuration for the code generator
 #[derive(Debug, Clone)]
@@ -26,7 +25,8 @@ impl Default for GeneratorConfig {
     }
 }
 
-/// Specification for a generation task
+/// Specification for a generation task (Auto adapter side: the data source is
+/// interpreter-bound; templates are handed to auto-gen-core as-is).
 pub struct GenerationSpec {
     pub data_source: DataSource,
     pub templates: Vec<TemplateSpec>,
@@ -39,25 +39,30 @@ pub struct GenerationSpec {
     pub lib_paths: Vec<PathBuf>,
 }
 
-/// Specification for a single template
-pub struct TemplateSpec {
-    pub template_path: PathBuf,
-    pub output_name: Option<AutoStr>,
-    pub rename: bool,
+/// Auto executable-template renderer: loads a template file and renders it
+/// with the shared interpreter from `LoadedData`. This is the adapter side of
+/// the auto-gen-core boundary — the core receives owned text and never sees
+/// the interpreter, AST or template types.
+struct AutoTemplateRenderer<'a> {
+    engine: &'a TemplateEngine,
+    data: &'a LoadedData,
 }
 
-/// Report from a generation task
-pub struct GenReport {
-    pub files_generated: Vec<PathBuf>,
-    pub errors: Vec<GenError>,
-    pub duration: Duration,
+impl TemplateRenderer for AutoTemplateRenderer<'_> {
+    fn render(&mut self, spec: &TemplateSpec) -> Result<RenderedTemplate, GenError> {
+        let template = self.engine.load(&spec.template_path)?;
+        let rendered = self.engine.render_with_data(&template, self.data)?;
+        Ok(RenderedTemplate {
+            template_name: template.name.clone(),
+            content: rendered.to_string(),
+        })
+    }
 }
 
-/// Main code generator
+/// Main code generator: Auto data/template adapter over auto-gen-core.
 pub struct CodeGenerator {
     data_loader: DataLoader,
     template_engine: TemplateEngine,
-    guard_processor: GuardProcessor,
     config: GeneratorConfig,
 }
 
@@ -66,7 +71,6 @@ impl CodeGenerator {
         Self {
             data_loader: DataLoader::new(),
             template_engine: TemplateEngine::new().with_fstr_note(config.fstr_note),
-            guard_processor: GuardProcessor::new(),
             config,
         }
     }
@@ -76,8 +80,14 @@ impl CodeGenerator {
         CodeGeneratorBuilder::new()
     }
 
-    /// Generate code from a specification
-    pub fn generate(&mut self, spec: &GenerationSpec) -> GenResult<GenReport> {
+    /// Generate code from a specification.
+    ///
+    /// Phase boundary (frozen at extraction, PLAN-791): data and library
+    /// loading failures abort the whole call with a top-level error; each
+    /// template failure is collected into the report and the batch continues.
+    /// Output naming, guard preservation, dry-run and write semantics are
+    /// owned by [`auto_gen_core::generate`].
+    pub fn generate(&mut self, spec: &GenerationSpec) -> Result<GenReport, GenError> {
         let start = std::time::Instant::now();
 
         // Set library search paths for data loader (for use statements in data files)
@@ -94,86 +104,32 @@ impl CodeGenerator {
             self.load_lib_file(lib_path, &mut loaded_data)?;
         }
 
-        let mut files_generated = Vec::new();
-        let mut errors = Vec::new();
-
-        // Process each template
-        for template_spec in &spec.templates {
-            match self.generate_one(&loaded_data, template_spec) {
-                Ok(output_path) => {
-                    files_generated.push(output_path);
-                }
-                Err(e) => {
-                    errors.push(e);
-                }
-            }
-        }
-
-        Ok(GenReport {
-            files_generated,
-            errors,
-            duration: start.elapsed(),
-        })
-    }
-
-    fn generate_one(
-        &mut self,
-        data: &LoadedData,
-        template_spec: &TemplateSpec,
-    ) -> GenResult<PathBuf> {
-        // Load template
-        let template = self.template_engine.load(&template_spec.template_path)?;
-
-        // Render template using the interpreter from loaded data
-        let rendered = self
-            .template_engine
-            .render_with_data(&template, data)?;
-
-        // Determine output path
-        let output_path = self.resolve_output_path(&template_spec, &template)?;
-
-        // Process guard blocks if file exists
-        let final_output = if output_path.exists() && !self.config.overwrite_guarded {
-            let existing = std::fs::read_to_string(&output_path)?;
-            self.guard_processor
-                .merge(&existing, &rendered.to_string())?
-        } else {
-            rendered.to_string()
+        let mut renderer = AutoTemplateRenderer {
+            engine: &self.template_engine,
+            data: &loaded_data,
         };
-
-        // Write output
-        if !self.config.dry_run {
-            if let Some(parent) = output_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&output_path, final_output.as_bytes())?;
-        }
-
-        Ok(output_path)
-    }
-
-    fn resolve_output_path(
-        &self,
-        template_spec: &TemplateSpec,
-        template: &Template,
-    ) -> GenResult<PathBuf> {
-        let output_name = if let Some(name) = &template_spec.output_name {
-            name.to_string()
-        } else {
-            // Use template name, remove trailing .at if present
-            let name = template.name.to_string();
-            if name.ends_with(".at") {
-                name[..name.len() - 3].to_string()
-            } else {
-                name
-            }
-        };
-
-        Ok(self.config.output_dir.join(&output_name))
+        let mut report = auto_gen_core::generate(
+            &spec.templates,
+            &OutputConfig {
+                output_dir: self.config.output_dir.clone(),
+                dry_run: self.config.dry_run,
+                overwrite_guarded: self.config.overwrite_guarded,
+            },
+            &mut renderer,
+        );
+        // Keep the historical duration semantics: the clock covers the whole
+        // generate() call including the data/library load stage, not just the
+        // core's template loop.
+        report.duration = start.elapsed();
+        Ok(report)
     }
 
     /// Load a library file (.at) and merge its definitions into the interpreter
-    fn load_lib_file(&self, lib_path: &PathBuf, loaded_data: &mut LoadedData) -> GenResult<()> {
+    fn load_lib_file(
+        &self,
+        lib_path: &PathBuf,
+        loaded_data: &mut LoadedData,
+    ) -> Result<(), GenError> {
         // Read the library file
         let lib_code = std::fs::read_to_string(lib_path).map_err(|e| GenError::TemplateLoadError {
             path: lib_path.clone(),
@@ -269,7 +225,7 @@ impl CodeGeneratorBuilder {
     pub fn add_template(
         mut self,
         template_path: impl Into<PathBuf>,
-        output_name: impl Into<AutoStr>,
+        output_name: impl Into<auto_val::AutoStr>,
     ) -> Self {
         self.templates.push(TemplateSpec {
             template_path: template_path.into(),
@@ -279,7 +235,7 @@ impl CodeGeneratorBuilder {
         self
     }
 
-    pub fn build(self) -> GenResult<CodeGenerator> {
+    pub fn build(self) -> Result<CodeGenerator, GenError> {
         Ok(CodeGenerator::new(self.config))
     }
 
@@ -301,7 +257,7 @@ impl CodeGeneratorBuilder {
     /// let mut generator = CodeGenerator::new(GeneratorConfig::default());
     /// let _ = generator.generate(&spec);
     /// ```
-    pub fn create_spec(self) -> GenResult<GenerationSpec> {
+    pub fn create_spec(self) -> Result<GenerationSpec, GenError> {
         let data_source = self.data_source.ok_or_else(|| {
             GenError::Other("data_source is required to create a GenerationSpec".to_string())
         })?;
@@ -344,28 +300,5 @@ mod tests {
         assert_eq!(builder.config.output_dir, PathBuf::from("./output"));
         assert_eq!(builder.config.fstr_note, '@');
         assert!(builder.config.dry_run);
-    }
-
-    #[test]
-    fn test_resolve_output_path() {
-        let config = GeneratorConfig::default();
-        let generator = CodeGenerator::new(config);
-
-        let template_spec = TemplateSpec {
-            template_path: PathBuf::from("test.txt.at"),
-            output_name: None,
-            rename: false,
-        };
-
-        let template = Template {
-            name: "test.txt.at".into(),
-            code: auto_lang::ast::Code::default(),
-            source: "".into(),
-        };
-
-        let output_path = generator
-            .resolve_output_path(&template_spec, &template)
-            .unwrap();
-        assert!(output_path.to_str().unwrap().ends_with("test.txt"));
     }
 }

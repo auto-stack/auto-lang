@@ -1,4 +1,4 @@
-use crate::error::{GenError, GenResult};
+use auto_gen_core::{GenError, GenResult};
 use auto_lang::atom::Atom;
 use auto_lang::interpreter::AutoInterpreter;
 use auto_val::{Shared, Value};
@@ -74,9 +74,6 @@ impl DataLoader {
     }
 
     fn parse_auto_to_data(&self, code: &str, _path: PathBuf) -> GenResult<LoadedData> {
-        eprintln!("DEBUG DataLoader: lib_paths = {:?}", self.lib_paths);
-        eprintln!("DEBUG DataLoader: code starts with: {}", &code.chars().take(50).collect::<String>());
-
         // Evaluate the Auto code
         let mut interp = AutoInterpreter::new();
 
@@ -86,8 +83,6 @@ impl DataLoader {
         // }
 
         let value = interp.eval(code);
-
-        eprintln!("DEBUG DataLoader: eval result = {:?}", value);
 
         // Check for errors
         let value = value.map_err(|e| GenError::Other(format!("Eval error: {}", e)))?;

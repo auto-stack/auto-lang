@@ -16,9 +16,10 @@ path = "src/bin/autogen.rs"
 [dependencies]
 clap = { workspace = true }
 auto-lang = { path = "../auto-lang" }
+# PLAN-791: single definition of guard/error/report types and the output
+# orchestration; this crate stays the Auto executable-template adapter.
+auto-gen-core = { path = "../auto-gen-core" }
 auto-val = { path = "../auto-val" }
-regex = { workspace = true }
-thiserror = { workspace = true }
 miette = { workspace = true }
 notify = { version = "7.0", optional = true }
 
