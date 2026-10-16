@@ -1,4 +1,4 @@
-# PLAN-787 验收矩阵与性能报告（T-07；复审 R1+R2+R3+R4+R5+R6 修复轮）
+# PLAN-787 验收矩阵与性能报告（T-07；复审 R1..R7 修复轮）
 
 - 工作树 `D:/autostack/.wt/lang-787/auto-lang`，分支 `plan-787-dev`
 - 基面 master `bf773ca9b`；本轮修复绑定提交见 §4
@@ -86,7 +86,21 @@ syntax_budget_ 为 work-owned，已更正；见 §2 新口径读数）；兼容�
 workspace + 受影响 783 套件 + SD/索引/ledger 沉淀 + 合流归档/guard 清理
 （本计划无生产 Rust/文档生成器触面，不含根整档/docs_gen）。
 
-## 1. V 矩阵（acceptance 实测 2026-10-16 R6 修复轮）
+## 0e. 复审 R7 修复轮（2026-10-16，F787-R7-01 闭合）
+
+R7 独立反例 **1/1 通过**（修复前 0/1；R1–R6 共 44 例保持全绿）。要点：
+**kind 表统一**——store 侧 `ChunkKind::from_code` 曾本地复制枚举表并漏
+`SourcePage=10`，`get_artifact`/`get_artifact_by_id` 在读元数据时即
+`Internal("bad kind")`（合法落盘工件在公开产物读入口不可读；CstView 的
+raw chunk 路径不受影响）；修复为**委派 codec 帧层的唯一表**
+（`from_u8` 提为 pub(crate)，单一事实源——两表不再漂移；未知字节仍
+None 拒绝，边界不变）。永久正控
+`syntax_cache_source_page_artifact_reads_by_key_and_id`：真实
+`put_source_pages` → 新 store 实例重开 → 按 page-hash key 与按 artifact
+id 均可读（kind=SourcePage、payload 全等；附带 put_peak 三份口径下界
+自检）。probe 拒绝边界（--lib/admission_/dep_audit_/identity_）全绿。
+
+## 1. V 矩阵（acceptance 实测 2026-10-16 R7 修复轮）
 
 | ID | AC | filter | 实测 | 状态 |
 |---|---|---|---|---|
@@ -98,19 +112,19 @@ workspace + 受影响 783 套件 + SD/索引/ledger 沉淀 + 合流归档/guard 
 | V-06 | 增量局部 | incremental_local_ | 3（1MiB：真实读取 ≤48KiB+报告 214B、重解析 ≤1 声明、**内容块节点复用 1147999/1148131=99.99%**、fresh 全等；开头插入零后缀复制） | PASS |
 | V-07 | 增量状态/回退可见 | incremental_replay_ | 4（core+mini 各 200 轮确定种子；未闭合回退=fresh；逆序屏障） | PASS |
 | V-08 | 代际/迟到/取消 | generation_（+handle 单测） | 3 | PASS |
-| V-09 | 持久化/重启小查询 | syntax_cache_ | 9（跨 store 实例、checkpoint 完整往返+**恢复对照 fresh 尾**、双工程共享隔离、真子进程查询精确断言+负控、**同 snapshot fresh/增量入库幂等共存（正反序/重复编辑/重开）**、**跨页前导 trivia 查询（空白/CRLF/Unicode 注释/多页/非首声明）**、**name 窗口限额受控 exit4**、**窗口限额驻留上界（真实 512KiB 名+64KiB limit，自报物化 ≤limit+256KiB）**） | PASS |
+| V-09 | 持久化/重启小查询 | syntax_cache_ | 10（**SourcePage 公开产物读入口按 key/按 id 重开可读（R7-01）**、跨 store 实例、checkpoint 完整往返+**恢复对照 fresh 尾**、双工程共享隔离、真子进程查询精确断言+负控、**同 snapshot fresh/增量入库幂等共存（正反序/重复编辑/重开）**、**跨页前导 trivia 查询（空白/CRLF/Unicode 注释/多页/非首声明）**、**name 窗口限额受控 exit4**、**窗口限额驻留上界（真实 512KiB 名+64KiB limit，自报物化 ≤limit+256KiB）**） | PASS |
 | V-10 | 数据拒绝 | syntax_admission_ | 18（坏块/缺页/坏身份/截断页/坏 manifest ref/根替换+lease+GC 生命周期/**同文本跨修订复用**/**重启会话发布**/**注册失败保旧根**/**越源 span 拒绝**/**子树 admission：越源 child/越父 span/异归属/坏字段拒绝+跨页非零 origin 正控**/**空 args 零宽生产者正控**等均受控） | PASS |
 | V-11 | 64MiB 工作集 | syntax_budget_ | 2（**work-owned，R6 修复提交上实测**；见 §2 大负载读数；含巨声明受控 ResourceExhausted） | PASS |
 | V-12 | 深度全路径 | depth_ / depth_persisted_ | 4 + 1（**真 ≥4096 同时未闭合嵌套**；持久化编解码往返全路径迭代） | PASS |
 | V-13 | 兼容/证据 | compatibility_ / perf_ | 3 + 2（含 core 旧 parser 对照；**审计基面随 master 回绑重锚 7c0caa18c**） | PASS |
 
 复审反例重放：R1 **7/7** + R2 **18/18** + R3 **8/8** + R4 **3/3** +
-R5 **4/4** + R6 **4/4** 全部通过（R6 修复前 2/4；四代探针植入件在键形
+R5 **4/4** + R6 **4/4** + R7 **1/1** 全部通过（R7 修复前 0/1；四代探针植入件在键形
 稳定下真实命中，无空过——R4 修复中曾短暂引入 A03 键布局分量致 R2 两例
 miss，已回退保持键形历史稳定）。
-acceptance 16 族 raw passed 合计 **111**（snapshot 4/grammar 13/reject 7/
+acceptance 16 族 raw passed 合计 **112**（snapshot 4/grammar 13/reject 7/
 lossless 15/recovery 4/projection 19/local 3/replay 4/generation 3/depth 4/
-persisted 1/cache 9/admission 18/compat 3/perf 2/budget 2；过滤族有重叠，
+persisted 1/cache 10/admission 18/compat 3/perf 2/budget 2；过滤族有重叠，
 非独立测试去重总数）。
 
 ## 2. 性能读数（perf_，32 样本/场景 + 3 预热，debug 构建，单线程）
@@ -169,7 +183,8 @@ persisted 1/cache 9/admission 18/compat 3/perf 2/budget 2；过滤族有重叠�
 ## 4. 提交绑定
 
 - 修复轮提交见 git log（R1：F787-R1-01..10；R2：F787-R2-01..11；R3：
-  F787-R3-01..06；R4：F787-R4-01..06 全闭合）。
+  F787-R3-01..06；R4：F787-R4-01..06；R5：F787-R5-01..03；R6：
+  F787-R6-01..03；R7：F787-R7-01 全闭合）。
 - 冻结件：feasibility.md（T-01）；本文件（T-07 修复轮）；spec-delta 见
   attachments/787/spec-delta.md（按修复后实现更新）。
 

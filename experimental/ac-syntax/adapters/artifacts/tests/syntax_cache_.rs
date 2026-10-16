@@ -698,3 +698,53 @@ fn syntax_cache_range_query_window_limit_bounds_materialization() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F787-R7-01 永久正控：真实 SourcePage 生产 → **新 store 实例（重开）** →
+/// 公开产物读入口按 key 与按 artifact id 均可读（kind=SourcePage、payload
+/// 逐字节全等）。修复前 store 侧 kind 映射表与 codec 帧层漂移、漏 10——
+/// 两入口在读元数据时即 `Internal("bad kind")`（尚未进入 payload 校验）。
+/// 拒绝边界不变：未知 kind 字节仍拒绝（probe admission 族既有控制）。
+#[test]
+fn syntax_cache_source_page_artifact_reads_by_key_and_id() {
+    use ac_artifact_probe::codec::ChunkKind;
+    use ac_artifact_probe::identity::{domain_hash, QueryKey};
+    use ac_artifact_probe::schema;
+
+    let p = mini_grammar();
+    let text = "api f() -> i32;\n";
+    let snap = Snapshot::from_text(&Rc::new(PageStore::new()), text);
+    let root = scratch("cache-r7-srcpage");
+    let art_ids = {
+        let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+        let (arts, _chunks, put_peak) = sas.put_source_pages(&snap).unwrap();
+        // 三份驻留口径下界自检（R6-01 公式在真实路径上的可见性）。
+        assert!(put_peak >= text.len() * 3);
+        arts
+    };
+    assert_eq!(art_ids.len(), 1, "single aggregated source page");
+
+    // 重开（跨实例恢复语义）+ 公开入口读取。
+    let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+    let hash = domain_hash("src-page", &[text.as_bytes()]);
+    let key = QueryKey::new(
+        schema::layer("A02").unwrap(),
+        vec![("page-hash".into(), hash)],
+    );
+    let by_key = sas
+        .inner()
+        .get_artifact("A02", &key)
+        .unwrap()
+        .expect("SourcePage readable by its page-hash key after reopen");
+    assert_eq!(by_key.kind, ChunkKind::SourcePage);
+    assert_eq!(by_key.payload, text.as_bytes());
+    let by_id = sas
+        .inner()
+        .get_artifact_by_id(&art_ids[0])
+        .unwrap()
+        .expect("SourcePage readable by artifact id after reopen");
+    assert_eq!(by_id.kind, ChunkKind::SourcePage);
+    assert_eq!(by_id.payload, text.as_bytes());
+    assert_eq!(by_id.artifact_id, art_ids[0]);
+    let _ = p;
+    let _ = std::fs::remove_dir_all(&root);
+}

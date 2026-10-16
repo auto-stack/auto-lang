@@ -904,7 +904,10 @@ impl ManagedStore {
 
     /// Artifact payload by artifact id (adapter read seam; gated chunk read —
     /// same admission as key lookups, tombstones read as miss).
-    pub fn get_artifact_by_id(&self, artifact_id: &str) -> Result<Option<LoadedArtifact>, StoreError> {
+    pub fn get_artifact_by_id(
+        &self,
+        artifact_id: &str,
+    ) -> Result<Option<LoadedArtifact>, StoreError> {
         let row: Option<(String, u8)> = self
             .db
             .lock()
@@ -918,14 +921,22 @@ impl ManagedStore {
         let Some((chunk_id, kind_byte)) = row else {
             return Ok(None);
         };
-        let kind = ChunkKind::from_code(kind_byte).ok_or_else(|| StoreError::Internal("bad kind".into()))?;
+        let kind = ChunkKind::from_code(kind_byte)
+            .ok_or_else(|| StoreError::Internal("bad kind".into()))?;
         match self.read_chunk_gated(&chunk_id) {
             Ok(Some(bytes)) => {
                 let (k, payload) = unframe_chunk(&bytes)?;
                 if k != kind {
-                    return Err(StoreError::Internal(format!("kind mismatch for {artifact_id}")));
+                    return Err(StoreError::Internal(format!(
+                        "kind mismatch for {artifact_id}"
+                    )));
                 }
-                Ok(Some(LoadedArtifact { artifact_id: artifact_id.to_string(), chunk_id, kind, payload: payload.to_vec() }))
+                Ok(Some(LoadedArtifact {
+                    artifact_id: artifact_id.to_string(),
+                    chunk_id,
+                    kind,
+                    payload: payload.to_vec(),
+                }))
             }
             Ok(None) => Ok(None),
             Err(StoreError::TombstonedMiss(_)) => Ok(None),
@@ -945,7 +956,12 @@ impl ManagedStore {
     /// Remove ONE root row (project, kind, artifact) — adapter seam for
     /// ordered publication (register new first, then drop the superseded row;
     /// PLAN-787 R3-03: a failed registration must never lose the old root).
-    pub fn remove_root(&self, project: &str, kind: &str, artifact: &str) -> Result<usize, StoreError> {
+    pub fn remove_root(
+        &self,
+        project: &str,
+        kind: &str,
+        artifact: &str,
+    ) -> Result<usize, StoreError> {
         let _live = self.liveness_shared()?;
         let n = self.db.lock().unwrap().execute(
             "DELETE FROM roots WHERE project=?1 AND kind=?2 AND artifact=?3",
@@ -992,12 +1008,7 @@ impl ManagedStore {
         // uniqueness class STAGING_SEQ already solves for staging txn ids;
         // liveness semantics unchanged: OS lock + TTL/PID).
         let seq = LEASE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let id = format!(
-            "ls-{}-{}-{}",
-            now_ms(),
-            crate::sysinfo::current_pid(),
-            seq
-        );
+        let id = format!("ls-{}-{}-{}", now_ms(), crate::sysinfo::current_pid(), seq);
         let lock_path = self.lock_path(&format!("lease-{}", id));
         let guard = FileGuard::try_lock(&lock_path, true)?
             .ok_or_else(|| StoreError::Internal("lease lock unavailable".into()))?;
@@ -1202,20 +1213,13 @@ impl Lease {
 }
 
 impl ChunkKind {
+    /// DB metadata kind → enum. Delegates to the codec's SINGLE kind table
+    /// (F787-R7-01): this locally duplicated match drifted and dropped
+    /// SourcePage=10, so `get_artifact`/`get_artifact_by_id` failed with
+    /// `bad kind` on valid artifacts before payload admission even ran.
+    /// Unknown bytes still map to None — the rejection boundary is unchanged.
     pub(crate) fn from_code(v: u8) -> Option<ChunkKind> {
-        match v {
-            0 => Some(ChunkKind::Hir),
-            1 => Some(ChunkKind::DeclSummary),
-            2 => Some(ChunkKind::Object),
-            3 => Some(ChunkKind::SnapshotRecord),
-            4 => Some(ChunkKind::ObjectManifest),
-            5 => Some(ChunkKind::LayoutData),
-            6 => Some(ChunkKind::SyntaxGrammar),
-            7 => Some(ChunkKind::TokenStream),
-            8 => Some(ChunkKind::CstPage),
-            9 => Some(ChunkKind::CstManifest),
-            _ => None,
-        }
+        ChunkKind::from_u8(v).ok()
     }
 }
 

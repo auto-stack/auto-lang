@@ -94,7 +94,10 @@ F787-R1-01..10 + R2-01..11 + R3-01..06 + R4-01..06 修复后的实际实现重�
   任务）；原子序=先注册新根、成功后定点删除被替换旧根行——注册失败（探针
   trigger 注入等）旧当前根完好保留。新 ChunkKind ×5（加法：SyntaxGrammar/
   TokenStream/CstPage/CstManifest/SourcePage；旧 kind 字节与拒绝面不变；GC
-  算法零改动）。
+  算法零改动；**五 kind 的公开产物读入口（按 key/按 id）全接入**——kind
+  解码以 codec 帧层为单一事实源，store 元数据层委派之，无重复表漂移
+  （F787-R7-01：修复前 store 本地表漏 SourcePage=10，合法工件读入口报
+  bad kind）。
 - **acceptance**：AC-05（V-09..V-11）。
 
 ## SD-06 modify docs/specs/auto-ac/artifact-probe.md

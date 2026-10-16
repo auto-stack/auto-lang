@@ -140,7 +140,12 @@ pub enum ChunkKind {
 }
 
 impl ChunkKind {
-    fn from_u8(v: u8) -> Result<Self, CodecError> {
+    /// The SINGLE kind decoding table — both the frame layer (unframe) and
+    /// the store metadata layer (`ChunkKind::from_code`) decode the same
+    /// byte and must not drift apart. `pub(crate)` for the store delegation:
+    /// a locally duplicated store table dropped SourcePage=10 and made valid
+    /// artifacts unreadable via the public artifact APIs (F787-R7-01).
+    pub(crate) fn from_u8(v: u8) -> Result<Self, CodecError> {
         match v {
             0 => Ok(ChunkKind::Hir),
             1 => Ok(ChunkKind::DeclSummary),
