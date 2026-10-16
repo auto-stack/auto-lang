@@ -4570,6 +4570,11 @@ fn delivery_sibling_path(delivery_root: &Path, suffix: &str) -> PathBuf {
 /// 的目录方可被生成器删除）。
 const DELIVERY_STAGING_MARKER: &str = ".delivery-staging.marker";
 
+/// R3-F01：换出事务标记——backup 目录由本次换出创建后立即写入；陈残 GC
+/// 仅回收同时具备本标记与 delivery-manifest.json 的既往残桩（可验证的
+/// 事务身份，而非"任何交付包都有的清单文件名"）。
+const DELIVERY_SWAP_MARKER: &str = ".delivery-swap.marker";
+
 /// R2-F01：本次运行独占的 staging 路径（pid+纳秒唯一名——绝不复用固定
 /// 名，也就绝不凭名字触碰同级外来目录）。若唯一名意外命中已存目录：
 /// 含属主标记（既往崩溃残留）才清理，否则判红拒绝。
@@ -4614,37 +4619,46 @@ impl Drop for StagingGuard {
 }
 
 /// R1-F02：换装——staging 全部生成且校验成功后整体替换旧交付。
-/// 旧包先换出到残桩位，新包换入；换入失败回滚旧包后显式 Err（staging
-/// 保留供诊断）。残桩清理失败只告警（新包已生效、旧包完整残留非混合态）。
+/// 旧包先换出到 backup 位，新包换入；换入失败回滚旧包后显式 Err（staging
+/// 保留供诊断）。backup 清理失败只告警（新包已生效、旧包完整残留非混合态）。
+/// R3-F01：backup 用**本次操作独占的唯一名**（pid+ns），换出后立刻写入
+/// 换出事务标记——清理只作用于本次换出创建的路径；**任何既存目录（含
+/// 带合法 delivery-manifest.json 的其他应用交付包）都不被认领/删除**。
+/// 陈残 GC 只回收同时具备换出标记+清单的既往残桩（可验证的事务身份）。
 fn delivery_swap_in(staging: &Path, delivery_root: &Path) -> AutoResult<()> {
     if !delivery_root.exists() {
         fs::rename(staging, delivery_root).map_err(|e| format!("delivery: 交付根落位失败: {e}"))?;
         return Ok(());
     }
-    let trash = delivery_sibling_path(delivery_root, "delivery-old");
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let trash = delivery_sibling_path(
+        delivery_root,
+        &format!("delivery-old-{}-{nanos}", std::process::id()),
+    );
     if trash.exists() {
-        // R2-F01：固定保留名上的已存内容仅当可证明归属（含
-        // delivery-manifest.json 的既往换出残留，或空目录）才清理；外来
-        // 目录占据保留名则显式拒绝（不删不覆盖）。
-        let owned = trash.join("delivery-manifest.json").is_file()
-            || fs::read_dir(&trash)
-                .map(|mut it| it.next().is_none())
-                .unwrap_or(false);
-        if !owned {
-            return Err(format!(
-                "delivery: 换出保留名被外来目录占据（{}，无 delivery-manifest.json 且非空）——拒绝删除/覆盖；可手动移开后重试",
-                trash.display()
-            )
-            .into());
-        }
-        fs::remove_dir_all(&trash)
-            .map_err(|e| format!("delivery: 清理既往换出残桩失败（{}）: {e}", trash.display()))?;
+        // 唯一名意外命中既存目录（外来）——拒绝触碰，不删不覆盖。
+        return Err(format!(
+            "delivery: backup 唯一名意外命中外来目录（{}）——拒绝删除/覆盖；可手动移开后重试",
+            trash.display()
+        )
+        .into());
     }
     fs::rename(delivery_root, &trash)
         .map_err(|e| format!("delivery: 旧交付换出失败（旧包未动）: {e}"))?;
+    // 换出事务标记：该目录自此可证明为本线换出残桩（GC 依据；回滚时移除
+    // 以免污染恢复后的旧包）。
+    let marker = trash.join(DELIVERY_SWAP_MARKER);
+    if let Err(e) = fs::write(&marker, format!("pid={}\n", std::process::id())) {
+        let _ = fs::rename(&trash, delivery_root);
+        return Err(format!("delivery: 写换出标记失败（旧包已回滚）: {e}").into());
+    }
     match fs::rename(staging, delivery_root) {
         Ok(()) => {}
         Err(e) => {
+            let _ = fs::remove_file(&marker);
             if fs::rename(&trash, delivery_root).is_ok() {
                 return Err(format!(
                     "delivery: 新交付换入失败（旧包已回滚原位；staging 保留供诊断）: {e}"
@@ -4660,63 +4674,149 @@ fn delivery_swap_in(staging: &Path, delivery_root: &Path) -> AutoResult<()> {
     }
     if let Err(e) = fs::remove_dir_all(&trash) {
         eprintln!(
-            "⚠ delivery: 旧交付清理失败（新包已生效；旧包完整残留于 {}）: {e}",
+            "⚠ delivery: 旧交付清理失败（新包已生效；旧包完整残留于 {}，带换出标记可被后续 GC）: {e}",
             trash.display()
         );
     }
     Ok(())
 }
 
-/// R1-F03：交付模式 sidecar 边界——外部 path 依赖显式拒绝（绝对路径或
-/// 越出交付根的相对路径都会把不可搬动源写进生成物，破坏独立构建边界）。
-/// registry 版本依赖（`name:version` 形态）与项目内 .rs 模块照常。
-/// path 依赖的 sidecar 存储形态为 `{ path = "REL" }`（sidecar::fill），
-/// 相对值按 app/ member 解析。
-fn delivery_validate_sidecar(sidecar: &crate::sidecar::SidecarSpec) -> AutoResult<()> {
-    for (name, spec) in &sidecar.deps {
-        let Some(rest) = spec.strip_prefix("{ path = \"") else {
-            continue; // registry 版本依赖
-        };
-        let Some(path_value) = rest.strip_suffix("\" }") else {
+/// R3-F01：既往换出残桩 GC——仅回收同时具备换出事务标记（本线写入）与
+/// delivery-manifest.json 的 `.{name}.delivery-old-*` 目录；无标记的模式名
+/// 目录（如其他应用的合法交付包被人为放在该命名下）只报告、不删除。
+fn delivery_gc_stale_backups(delivery_root: &Path) {
+    let parent = delivery_root.parent().unwrap_or_else(|| Path::new("."));
+    let prefix = format!(
+        ".{}.delivery-old-",
+        delivery_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("delivery")
+    );
+    let Ok(entries) = fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.starts_with(&prefix) {
             continue;
-        };
-        let p = Path::new(path_value);
-        // R2-F02：Windows 根相对（/x——is_absolute 为假但拼接丢弃基目录落
-        // 当前盘根）与盘符/verbatim 前缀同属"丢弃解析基"的外部形态。
-        let absolute_like = p.is_absolute()
-            || matches!(
-                p.components().next(),
-                Some(std::path::Component::RootDir) | Some(std::path::Component::Prefix(_))
-            );
-        if absolute_like {
-            return Err(format!(
-                "delivery: rust_sidecar 依赖 {name} 使用外部绝对/根相对 path（{path_value}）——交付模式显式拒绝（包内仅受管闭包源；registry 依赖用 `name:version` 形态）"
-            )
-            .into());
         }
-        // 相对形态按 app/（根下一层）词法解析：ParentDir 穿出根即越界。
-        let mut depth: Vec<String> = vec!["app".to_string()];
-        let mut escaped = false;
-        for comp in p.components() {
-            match comp {
-                std::path::Component::ParentDir => {
-                    // 弹到根层仍合法（根即交付根）；仅在已处根层再向外弹
-                    // 才是越界。
-                    if depth.is_empty() {
-                        escaped = true;
-                        break;
-                    }
-                    depth.pop();
+        let path = entry.path();
+        let swap_marker = path.join(DELIVERY_SWAP_MARKER).is_file();
+        let manifest = path.join("delivery-manifest.json").is_file();
+        if swap_marker && manifest {
+            if let Err(e) = fs::remove_dir_all(&path) {
+                eprintln!("⚠ delivery: 陈残换出桩清理失败（{}）: {e}", path.display());
+            }
+        } else {
+            eprintln!(
+                "⚠ delivery: 命名像换出残桩但缺事务标记/清单（{}）——不删除，请人工确认",
+                path.display()
+            );
+        }
+    }
+}
+
+/// R2-F02/R3-F02：绝对形态判定——除 `is_absolute` 外，Windows 根相对
+///（`/x` 无盘符——join 语义丢弃基目录落当前盘根）与盘符/verbatim 前缀
+/// 同属"丢弃解析基"的外部形态。
+fn delivery_path_is_absolute_like(p: &Path) -> bool {
+    p.is_absolute()
+        || matches!(
+            p.components().next(),
+            Some(std::path::Component::RootDir) | Some(std::path::Component::Prefix(_))
+        )
+}
+
+/// 词法包含判定：value 相对 base_depth（manifest 目录相对交付根的层数）
+/// 解析后是否仍在交付根内。ParentDir 在根层再向外弹、或任何 RootDir/
+/// Prefix 分量（丢弃基目录）即越界。
+fn delivery_path_escapes_root(base_depth: usize, value: &str) -> bool {
+    let mut depth = base_depth;
+    for comp in Path::new(value).components() {
+        match comp {
+            std::path::Component::ParentDir => {
+                if depth == 0 {
+                    return true;
                 }
-                std::path::Component::CurDir => {}
-                other => depth.push(other.as_os_str().to_string_lossy().to_string()),
+                depth -= 1;
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => return true,
+            _ => depth += 1,
+        }
+    }
+    false
+}
+
+/// R3-F02：递归收集 TOML 值树中所有键名为 `path` 的字符串值——依赖/
+/// target/patch/workspace 等表的路径引用经解析器归一（空格、单/双引号、
+/// 内联表写法同结论），不再做固定文本模板匹配。
+fn delivery_collect_toml_paths(value: &toml::Value, out: &mut Vec<String>) {
+    match value {
+        toml::Value::Table(t) => {
+            for (k, v) in t {
+                if k == "path" {
+                    if let toml::Value::String(s) = v {
+                        out.push(s.clone());
+                    }
+                }
+                delivery_collect_toml_paths(v, out);
             }
         }
-        if escaped {
-            return Err(format!(
-                "delivery: rust_sidecar 依赖 {name} 的相对 path 越出交付根（{path_value}）——交付模式显式拒绝（受管闭包 crate 用 path=\"../crates/<name>\" 形态）"
-            )
-            .into());
+        toml::Value::Array(a) => {
+            for v in a {
+                delivery_collect_toml_paths(v, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 对一组 path 值应用边界规则（绝对/根相对 + 词法越界），violator 返回
+/// Some(诊断)。
+fn delivery_check_path_values<'a>(
+    base_depth: usize,
+    owner: &str,
+    paths: impl IntoIterator<Item = &'a str>,
+) -> Option<String> {
+    for v in paths {
+        if delivery_path_is_absolute_like(Path::new(v)) {
+            return Some(format!(
+                "{owner} 使用外部绝对/根相对 path（{v}）——交付模式显式拒绝（包内仅受管闭包源；registry 依赖用 `name:version` 形态）"
+            ));
+        }
+        if delivery_path_escapes_root(base_depth, v) {
+            return Some(format!(
+                "{owner} 的相对 path 越出交付根（{v}）——交付模式显式拒绝（受管闭包 crate 用 path=\"../crates/<name>\" 形态）"
+            ));
+        }
+    }
+    None
+}
+
+/// R1-F03/R3-F02：交付模式 sidecar 边界——按**实际 TOML 语义**校验每个
+/// 依赖表达式（sidecar::fill/apply 会把 `{...}` 形态值原样写入
+/// Cargo.toml，`{path='…'}` 等合法变体与 `{ path = "…" }` 同结论）；
+/// registry 版本依赖与项目内 .rs 模块照常。相对值按 app/（根下一层）
+/// 解析。生成后的全 manifest 边界自检为权威兜底。
+fn delivery_validate_sidecar(sidecar: &crate::sidecar::SidecarSpec) -> AutoResult<()> {
+    for (name, spec) in &sidecar.deps {
+        // 解析为 TOML 值（`__dep__ = <spec>` 载体）；解析失败 = 非 TOML
+        // 表达式的版本串（写入形态带引号、cargo 不当 path 消费），由
+        // 生成后边界自检兜底。
+        let candidate = format!("__dep__ = {spec}");
+        let Ok(parsed) = toml::from_str::<toml::Value>(&candidate) else {
+            continue;
+        };
+        let mut paths: Vec<String> = Vec::new();
+        delivery_collect_toml_paths(&parsed, &mut paths);
+        if let Some(diag) = delivery_check_path_values(
+            1,
+            &format!("rust_sidecar 依赖 {name}"),
+            paths.iter().map(|s| s.as_str()),
+        ) {
+            return Err(format!("delivery: {diag}").into());
         }
     }
     Ok(())
@@ -4761,64 +4861,28 @@ fn delivery_boundary_selfcheck(delivery_root: &Path, producer_root: &Path) -> Au
             )
             .into());
         }
-        // manifest 相对交付根的目录分量（词法包含基准）
-        let base: Vec<String> = m
+        // R3-F02：按 TOML 语义解析后遍历全部 path 值（依赖/target/patch/
+        // workspace 表；解析器归一空格/单双引号/内联表——不做固定文本
+        // 匹配）。无法解析的 manifest 无法验证边界 → 受管判红（fail-closed）。
+        let parsed: toml::Value = toml::from_str(&text).map_err(|e| {
+            format!(
+                "delivery: {} 无法按 TOML 解析（{e}）——边界不可验证，受管判红",
+                m.display()
+            )
+        })?;
+        let mut paths: Vec<String> = Vec::new();
+        delivery_collect_toml_paths(&parsed, &mut paths);
+        let base_depth = m
             .parent()
             .and_then(|p| p.strip_prefix(delivery_root).ok())
-            .map(|rel| {
-                rel.components()
-                    .map(|c| c.as_os_str().to_string_lossy().to_string())
-                    .collect()
-            })
-            .unwrap_or_default();
-        for line in text.lines() {
-            let t = line.trim();
-            let Some(idx) = t.find("path = \"") else {
-                continue;
-            };
-            let Some(end) = t[idx + 8..].find('"') else {
-                continue;
-            };
-            let value = &t[idx + 8..idx + 8 + end];
-            // R2-F02：绝对形态含 Windows 根相对/盘符前缀（is_absolute 假但
-            // 解析丢弃 manifest 基目录——`path::join` 语义直接落盘根）。
-            let vp = Path::new(value);
-            let absolute_like = vp.is_absolute()
-                || matches!(
-                    vp.components().next(),
-                    Some(std::path::Component::RootDir) | Some(std::path::Component::Prefix(_))
-                );
-            if absolute_like {
-                return Err(format!(
-                    "delivery: {} 含绝对/根相对 path（{value}）——越界源，受管判红",
-                    m.display()
-                )
-                .into());
-            }
-            let mut depth = base.clone();
-            let mut escaped = false;
-            for comp in Path::new(value).components() {
-                match comp {
-                    std::path::Component::ParentDir => {
-                        // 弹到根层仍合法（根即交付根）；仅在已处根层再向外
-                        // 弹才是越界。
-                        if depth.is_empty() {
-                            escaped = true;
-                            break;
-                        }
-                        depth.pop();
-                    }
-                    std::path::Component::CurDir => {}
-                    other => depth.push(other.as_os_str().to_string_lossy().to_string()),
-                }
-            }
-            if escaped {
-                return Err(format!(
-                    "delivery: {} 的 path 越出交付根（{value}）——越界源，受管判红",
-                    m.display()
-                )
-                .into());
-            }
+            .map(|rel| rel.components().count())
+            .unwrap_or(0);
+        if let Some(diag) = delivery_check_path_values(
+            base_depth,
+            &format!("{}", m.display()),
+            paths.iter().map(|s| s.as_str()),
+        ) {
+            return Err(format!("delivery: {diag}").into());
         }
     }
     Ok(())
@@ -5060,6 +5124,8 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     // 守卫（外来非空目录拒绝；换装语义下不清理既有交付）。
     delivery_guard_root(delivery_root)?;
     let final_root = delivery_root.to_path_buf();
+    // R3-F01：陈残换出桩 GC（仅回收带换出事务标记+清单的既往残桩）。
+    delivery_gc_stale_backups(delivery_root);
 
     // R1-F02/R2-F01：独立 staging 生成——成功前不动旧交付。staging 用
     // 本次运行独占的唯一名（pid+ns）+ 内置属主标记，绝不凭固定名认领同级
@@ -7853,11 +7919,13 @@ pub fn create_item(name str) str {
         assert!(foreign.join("mine.txt").is_file(), "外来内容不被覆盖");
     }
 
-    /// R2-F01 永久用例：外来同级目录字节保留——①固定名 staging 位
-    ///（.delivery.delivery-staging，历史保留名）上的外来内容不被触碰
-    ///（本轮起 staging 用唯一名）；②换出保留名（.delivery.delivery-old）
-    /// 被外来目录占据时再交付显式拒绝，外来内容与既有交付字节均不动；
-    /// ③移开外来目录后重试成功（正常换装恢复）。
+    /// R2-F01/R3-F01 永久用例：外来同级目录字节保留——①固定名 staging
+    /// 位（.delivery.delivery-staging，历史保留名）上的外来内容不被触碰；
+    /// ②**另一应用的合法交付包**（带自己的 delivery-manifest.json，R3 反例
+    /// 复放）放在历史固定换出名（.delivery.delivery-old）上：再交付成功
+    /// 且该应用数据完整存活（本轮起 backup 用唯一名+事务标记，固定名
+    /// 从此不被认领）；③陈残 GC：带换出标记+清单的模式名残桩被回收、
+    /// 仅带清单（无事务标记）的模式名外来目录不被删除；④正常换装恢复。
     #[test]
     fn delivery_foreign_sibling_dirs_preserved() {
         let dir = tempfile::tempdir().unwrap();
@@ -7900,39 +7968,94 @@ pub fn create_item(name str) str {
             "外来 staging 位内容字节保留"
         );
 
-        // ② 换出保留名被外来目录占据（R2 反例 2 复放）→ 显式拒绝
-        let trash = delivery_sibling_path(&delivery, "delivery-old");
-        std::fs::create_dir_all(&trash).unwrap();
-        std::fs::write(trash.join("mine.txt"), b"unrelated sibling data").unwrap();
-        let manifest_before =
-            std::fs::read_to_string(delivery.join("delivery-manifest.json")).unwrap();
-        let err =
-            generate_rust_ui_delivery(&project, &delivery).expect_err("外来换出保留名必须拒绝");
+        // ② 另一应用的合法交付包占据历史固定换出名（R3 反例复放：有效
+        // manifest + 该应用用户数据——"marker 存在 ≠ 本次操作归属"）
+        let other_app = dir.path().join("other-app");
+        let other_proj = dir.path().join("other-proj");
+        let other_front = other_proj.join("src").join("front");
+        std::fs::create_dir_all(&other_front).unwrap();
+        std::fs::write(
+            other_proj.join("pac.at"),
+            "{ name: \"unrelated_app\", scene: \"ui\", render: \"rust\", window: \"fit\" }",
+        )
+        .unwrap();
+        std::fs::write(
+            other_front.join("app.at"),
+            "widget App {\n    view {\n        col {\n            text `hi`\n        }\n    }\n}\n",
+        )
+        .unwrap();
+        generate_rust_ui_delivery(&other_proj, &other_app).expect("他应用交付生成失败");
+        let legacy_trash = delivery_sibling_path(&delivery, "delivery-old");
+        std::fs::rename(&other_app, &legacy_trash).unwrap();
+        std::fs::create_dir_all(legacy_trash.join("app")).unwrap();
+        std::fs::write(
+            legacy_trash.join("app").join("unrelated-user-data.txt"),
+            b"another application's valid delivery",
+        )
+        .unwrap();
+        let other_manifest_before =
+            std::fs::read(legacy_trash.join("delivery-manifest.json")).unwrap();
+        generate_rust_ui_delivery(&project, &delivery).expect("固定名他应用交付不应阻断再交付");
         assert!(
-            err.to_string().contains("外来目录占据"),
-            "占据诊断（实际：{err}）"
+            legacy_trash.join("delivery-manifest.json").is_file(),
+            "历史固定名上的他应用交付完整存活"
         );
-        assert_eq!(
-            std::fs::read(trash.join("mine.txt")).unwrap(),
-            b"unrelated sibling data",
-            "外来换出位内容字节保留"
+        assert!(
+            legacy_trash
+                .join("app")
+                .join("unrelated-user-data.txt")
+                .is_file(),
+            "他应用用户数据存活（不凭清单文件名认领）"
         );
+        // 他应用交付字节原样（身份未被冒认修改）
         assert_eq!(
-            std::fs::read_to_string(delivery.join("delivery-manifest.json")).unwrap(),
-            manifest_before,
-            "既有交付字节不变"
+            std::fs::read(legacy_trash.join("delivery-manifest.json")).unwrap(),
+            other_manifest_before,
+            "固定名上的他应用交付字节不变"
         );
 
-        // ③ 移开外来目录 → 重试成功（正常换装恢复；残留 staging 已由守卫清理）
-        std::fs::rename(&trash, dir.path().join("foreign-moved-aside")).unwrap();
-        generate_rust_ui_delivery(&project, &delivery).expect("移开后重试失败");
+        // ③ 陈残 GC：带换出标记+清单的模式名残桩被回收；仅清单无标记的
+        // 模式名外来目录不被删除
+        let stale = dir.path().join(".delivery.delivery-old-999999-1");
+        std::fs::create_dir_all(stale.join("app")).unwrap();
+        std::fs::write(
+            stale.join("delivery-manifest.json"),
+            "{\"schema\":\"generated-ui-delivery/1\"}",
+        )
+        .unwrap();
+        std::fs::write(stale.join(DELIVERY_SWAP_MARKER), "pid=999999\n").unwrap();
+        let foreign_patterned = dir.path().join(".delivery.delivery-old-888888-2");
+        std::fs::create_dir_all(foreign_patterned.join("app")).unwrap();
+        std::fs::write(
+            foreign_patterned.join("delivery-manifest.json"),
+            "{\"schema\":\"generated-ui-delivery/1\"}",
+        )
+        .unwrap();
+        std::fs::write(
+            foreign_patterned.join("app").join("mine.txt"),
+            b"no transaction marker",
+        )
+        .unwrap();
+        generate_rust_ui_delivery(&project, &delivery).expect("GC 轮次失败");
+        assert!(!stale.exists(), "带事务标记的陈残被 GC 回收");
         assert!(
-            dir.path().join("foreign-moved-aside/mine.txt").is_file(),
-            "移开的仍是外来内容，未被生成器触碰"
+            foreign_patterned.join("app").join("mine.txt").is_file(),
+            "无事务标记的模式名外来目录不被删除"
         );
+
+        // ④ 正常换装恢复（本轮唯一名 backup 均已随成功清理；固定名上的
+        // 他应用交付与模式名外来目录持续存活，不属本生成器清理范围）
+        generate_rust_ui_delivery(&project, &delivery).expect("正常再交付失败");
+        let backups: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains(".delivery-old-"))
+            .collect();
         assert!(
-            !delivery_sibling_path(&delivery, "delivery-old").exists(),
-            "本轮换出残桩已清理"
+            backups
+                .iter()
+                .all(|e| e.path().join("app").join("mine.txt").is_file()),
+            "模式名位仅存外来数据（无事务标记不被清理），本轮 backup 已清"
         );
     }
 
@@ -8069,6 +8192,32 @@ pub fn create_item(name str) str {
         assert!(
             err.to_string().contains("根相对"),
             "根相对诊断（实际：{err}）"
+        );
+        assert!(!delivery.join("app/Cargo.toml").is_file(), "拒绝时不产出");
+
+        // R3 反例复放：raw TOML 单引号内联表——sidecar 原样写入
+        // `name = {path='...'}`（合法 TOML，旧文本匹配绕过；TOML 语义校验同拒）
+        let ext = dir.path().join("external-crate");
+        std::fs::create_dir_all(&ext).unwrap();
+        std::fs::write(
+            ext.join("Cargo.toml"),
+            "[package]\nname=\"x\"\nversion=\"0.1.0\"\n",
+        )
+        .unwrap();
+        let spec = format!(
+            "raw-ext:{{path='{}'}}",
+            ext.to_string_lossy().replace('\\', "/")
+        );
+        mk_project(&format!(
+            "\nrust_sidecar {{\n    deps: [\"{}\"]\n}}\n",
+            spec
+        ));
+        let delivery = dir.path().join("d-rawtoml");
+        let err = generate_rust_ui_delivery(&project, &delivery)
+            .expect_err("单引号内联表 path sidecar 必须拒绝");
+        assert!(
+            err.to_string().contains("外部绝对/根相对"),
+            "TOML 语义诊断（实际：{err}）"
         );
         assert!(!delivery.join("app/Cargo.toml").is_file(), "拒绝时不产出");
 

@@ -453,8 +453,9 @@ def main() -> int:
         f"exit={r.returncode}，诊断含根相对，未产出应用清单",
     )
 
-    # (h) R2-F01：外来同级目录字节保留——固定名 staging 位与换出保留名
-    #     上的外来内容不被删除/覆盖（复放审查两反例）。
+    # (h) R2-F01/R3-F01：外来同级目录字节保留——固定名 staging 位与历史
+    #     固定换出名上的外来内容不被删除/覆盖；backup 用唯一名后固定名
+    #     不再被认领（再交付可成功且双方字节不动）。
     sib_base = scratch / "consumer-siblings"
     copytree_no_target(bundle_a, sib_base)
     legacy_stage = sib_base.parent / f".{sib_base.name}.delivery-staging"
@@ -481,19 +482,86 @@ def main() -> int:
         and (legacy_fresh / "mine.txt").read_text() == "unrelated sibling data",
         f"exit={r.returncode}，固定名 staging 位外来字节保留",
     )
-    # 再交付（既有交付 + 换出保留名被外来占据）：显式拒绝且双方字节不动
+    # 再交付（既有交付 + 历史固定换出名上有外来内容）：成功且外来字节不动
     r = run(
         [str(auto_exe), "gen", "--delivery-root", str(sib_base)],
         sib_proj,
         consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
     )
     record(
-        "V03h-foreign-trash-sibling-refused",
-        r.returncode != 0
-        and (trash_name / "mine.txt").read_text() == "unrelated sibling data"
-        and (sib_base / "delivery-manifest.json").is_file(),
-        f"exit={r.returncode}，外来换出位字节保留，既有交付不动",
+        "V03h-foreign-fixed-backup-sibling-preserved",
+        r.returncode == 0
+        and (trash_name / "mine.txt").read_text() == "unrelated sibling data",
+        f"exit={r.returncode}，历史固定换出名外来字节保留（backup 唯一名不认领固定名）",
     )
+
+    # (i) R3-F02 复放：sidecar 原样写入的单引号内联表 `{path='...'}`（合法
+    #     TOML，旧文本匹配绕过）→ TOML 语义校验拒绝，零产出。
+    raw_ext = scratch / "raw-external-crate"
+    raw_ext.mkdir()
+    (raw_ext / "Cargo.toml").write_text(
+        '[package]\nname = "raw-review-external"\nversion = "0.1.0"\nedition = "2021"\n[workspace]\n'
+    )
+    raw_proj = scratch / "raw-sidecar-proj"
+    shutil.copytree(PROJ, raw_proj)
+    with (raw_proj / "pac.at").open("a") as f:
+        f.write(
+            f"\nrust_sidecar {{\n    deps: [\"raw-review-external:{{path='{raw_ext.as_posix()}'}}\"]\n}}\n"
+        )
+    raw_bundle = scratch / "consumer-rawtoml"
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(raw_bundle)],
+        raw_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    diag = r.stdout + r.stderr
+    record(
+        "V03i-raw-toml-single-quote-rejected",
+        r.returncode != 0
+        and not (raw_bundle / "app" / "Cargo.toml").is_file()
+        and "外部绝对/根相对" in diag,
+        f"exit={r.returncode}，TOML 语义诊断在案，零产出",
+    )
+
+    # (j) R3-F01 复放：**另一应用的合法交付包**（带自己的
+    #     delivery-manifest.json+用户数据）放在历史固定换出名上——再交付
+    #     成功且该应用数据完整存活（marker 存在 ≠ 本次操作归属）。
+    other_proj = scratch / "other-app-proj"
+    shutil.copytree(PROJ, other_proj)
+    (other_proj / "pac.at").write_text(
+        'name: "unrelated_app"\nversion: "1.0.0"\nscene: "ui"\nrender: "rust"\nwindow: "fit"\n'
+    )
+    other_dest = scratch / "other-app-delivery"
+    r = run(
+        [str(auto_exe), "gen", "--delivery-root", str(other_dest)],
+        other_proj,
+        consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+    )
+    if r.returncode != 0:
+        record("V03j-other-app-delivery-survives", False, f"他应用交付生成失败 exit={r.returncode}")
+    else:
+        other_at_fixed = scratch / ".marked-backup.delivery-old"
+        if other_at_fixed.exists():
+            shutil.rmtree(other_at_fixed)
+        shutil.move(str(other_dest), str(other_at_fixed))
+        (other_at_fixed / "app").mkdir(exist_ok=True)
+        (other_at_fixed / "app" / "unrelated-user-data.txt").write_text(
+            "another application's valid delivery"
+        )
+        marked = scratch / "marked-backup"
+        copytree_no_target(bundle_a, marked)
+        r = run(
+            [str(auto_exe), "gen", "--delivery-root", str(marked)],
+            sib_proj,
+            consumer_env({"AUTO_DELIVERY_SOURCE_ROOT": str(WT_ROOT)}),
+        )
+        record(
+            "V03j-other-app-delivery-survives",
+            r.returncode == 0
+            and (other_at_fixed / "app" / "unrelated-user-data.txt").is_file()
+            and (other_at_fixed / "delivery-manifest.json").is_file(),
+            f"exit={r.returncode}，他应用交付与其用户数据在固定换出名上完整存活",
+        )
 
     # 正常输入恢复复绿：A/B 未受负控影响
     ok, detail = verify_delivery(bundle_a)
