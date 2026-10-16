@@ -17,24 +17,29 @@
   },
   "results": [
     {
+      "case": "build-auto-cli",
+      "ok": true,
+      "detail": "31s"
+    },
+    {
       "case": "generate-delivery",
       "ok": true,
-      "detail": "app=uiminimal, crates=10, 资源=1, pins=12, 多槽锁冻结=['windows', 'windows-core'], 规模=33.7MiB"
+      "detail": "app=uiminimal, crates=11, 资源=1, pins=12, 多槽锁冻结=['windows', 'windows-core'], 规模=33.8MiB"
     },
     {
       "case": "V01-fresh-resolve",
       "ok": true,
-      "detail": "fresh lock 生成 (2s)，patch 单源 + pin 全命中"
+      "detail": "fresh lock 生成 (3s)，patch 单源 + pin 全命中"
     },
     {
       "case": "V01-real-build",
       "ok": true,
-      "detail": "cargo build --locked (130s)，产物 在位"
+      "detail": "cargo build --locked (148s)，产物 在位"
     },
     {
       "case": "V02-relocated-locked-build",
       "ok": true,
-      "detail": "B 内 locked build (127s)，本地 target=有（无共享 target 回退）"
+      "detail": "B 内 locked build (141s)，本地 target=有（无共享 target 回退）"
     },
     {
       "case": "V02-metadata-identity",
