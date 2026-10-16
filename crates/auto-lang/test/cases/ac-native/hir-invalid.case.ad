@@ -1,0 +1,314 @@
+# PLAN-788 T-07: raw-HIR negatives from the REAL invalid fixture set
+
+```test-case
+case { schema: "autolang.case/2", id: "ac.hir.ref-dangling-expr", source: { text: "// Draft, schema-bound Atom text. Not executable Auto source.
+// INVALID: e_add.rhs points at e_missing, which is not in the expression table.
+hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {
+    module m_add {
+        path: \"examples.add\"
+
+        types {
+            type t_i32 i32 {}
+            type t_add function {
+                params: [\"t_i32\", \"t_i32\"]
+                result: \"t_i32\"
+            }
+        }
+
+        declarations {
+            function d_add t_add {
+                name: \"add\"
+                body: \"b_add\"
+            }
+        }
+
+        bodies {
+            body b_add {
+                owner: \"d_add\"
+                entry: \"k_entry\"
+
+                locals {
+                    local l_a t_i32 { name: \"a\"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: \"b\"; role: param; index: 1u32 }
+                    local l_sum t_i32 { name: \"sum\"; role: binding; mutable: false }
+                }
+
+                expressions {
+                    expr e_a read_local { type: \"t_i32\"; local: \"l_a\" }
+                    expr e_b read_local { type: \"t_i32\"; local: \"l_b\" }
+                    expr e_add binary {
+                        type: \"t_i32\"
+                        op: add_i32
+                        overflow: trap
+                        lhs: \"e_a\"
+                        rhs: \"e_missing\"
+                    }
+                    expr e_sum read_local { type: \"t_i32\"; local: \"l_sum\" }
+                }
+
+                blocks {
+                    block k_entry {
+                        let(local: \"l_sum\", value: \"e_add\") {}
+                        return(value: \"e_sum\") {}
+                    }
+                }
+            }
+        }
+    }
+}
+", syntax: "hir-atom", path: "main.atom" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "bind", code: "bind.dangling-ref" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.hir.ref-dangling-type", source: { text: "// Draft, schema-bound Atom text. Not executable Auto source.
+// INVALID: e_b.type references undeclared type t_bool.
+hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {
+    module m_add {
+        path: \"examples.add\"
+
+        types {
+            type t_i32 i32 {}
+            type t_add function {
+                params: [\"t_i32\", \"t_i32\"]
+                result: \"t_i32\"
+            }
+        }
+
+        declarations {
+            function d_add t_add {
+                name: \"add\"
+                body: \"b_add\"
+            }
+        }
+
+        bodies {
+            body b_add {
+                owner: \"d_add\"
+                entry: \"k_entry\"
+
+                locals {
+                    local l_a t_i32 { name: \"a\"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: \"b\"; role: param; index: 1u32 }
+                    local l_sum t_i32 { name: \"sum\"; role: binding; mutable: false }
+                }
+
+                expressions {
+                    expr e_a read_local { type: \"t_i32\"; local: \"l_a\" }
+                    expr e_b read_local { type: \"t_bool\"; local: \"l_b\" }
+                    expr e_add binary {
+                        type: \"t_i32\"
+                        op: add_i32
+                        overflow: trap
+                        lhs: \"e_a\"
+                        rhs: \"e_b\"
+                    }
+                    expr e_sum read_local { type: \"t_i32\"; local: \"l_sum\" }
+                }
+
+                blocks {
+                    block k_entry {
+                        let(local: \"l_sum\", value: \"e_add\") {}
+                        return(value: \"e_sum\") {}
+                    }
+                }
+            }
+        }
+    }
+}
+", syntax: "hir-atom", path: "main.atom" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "bind", code: "bind.dangling-type-ref" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.hir.struct-dup-arg", source: { text: "// Draft, schema-bound Atom text. Not executable Auto source.
+// PLAN-741 Phase 2 (QA-02) rejection: two params bound from the same
+// eval_arg — arg 0 is consumed twice and arg 1 is never consumed, so the
+// mapping is not a bijection even though every type happens to match.
+hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {
+    module m_dup_arg {
+        path: \"examples.dup_arg\"
+
+        types {
+            type t_i32 i32 {}
+            type t_entry function { params: []; result: \"t_i32\" }
+            type t_pair function { params: [\"t_i32\", \"t_i32\"]; result: \"t_i32\" }
+        }
+
+        declarations {
+            function d_entry t_entry { name: \"test_entry\"; body: \"b_entry\" }
+            function d_pair t_pair { name: \"pair\"; body: \"b_pair\" }
+        }
+
+        bodies {
+            body b_entry {
+                owner: \"d_entry\"
+                entry: \"k_entry\"
+
+                expressions {
+                    expr e_1 constant { type: \"t_i32\"; value: 1i32 }
+                    expr e_2 constant { type: \"t_i32\"; value: 2i32 }
+                    expr e_call call {
+                        type: \"t_i32\"
+                        callee: \"d_pair\"
+                        eval_args: [\"e_1\", \"e_2\"]
+                        bindings: [
+                            { param: 0u32, arg: 0u32 },
+                            { param: 1u32, arg: 0u32 }
+                        ]
+                    }
+                }
+
+                blocks {
+                    block k_entry { return(value: \"e_call\") {} }
+                }
+            }
+
+            body b_pair {
+                owner: \"d_pair\"
+                entry: \"k_pair\"
+
+                locals {
+                    local l_a t_i32 { name: \"a\"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: \"b\"; role: param; index: 1u32 }
+                }
+
+                expressions {
+                    expr e_a read_local { type: \"t_i32\"; local: \"l_a\" }
+                }
+
+                blocks {
+                    block k_pair { return(value: \"e_a\") {} }
+                }
+            }
+        }
+    }
+}
+", syntax: "hir-atom", path: "main.atom" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "verify", code: "verify.binding-invalid" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.hir.struct-missing-field", source: { text: "// Draft, schema-bound Atom text. Not executable Auto source.
+// INVALID: add_i32 without a declared overflow policy.
+hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {
+    module m_add {
+        path: \"examples.add\"
+
+        types {
+            type t_i32 i32 {}
+            type t_add function {
+                params: [\"t_i32\", \"t_i32\"]
+                result: \"t_i32\"
+            }
+        }
+
+        declarations {
+            function d_add t_add {
+                name: \"add\"
+                body: \"b_add\"
+            }
+        }
+
+        bodies {
+            body b_add {
+                owner: \"d_add\"
+                entry: \"k_entry\"
+
+                locals {
+                    local l_a t_i32 { name: \"a\"; role: param; index: 0u32 }
+                    local l_b t_i32 { name: \"b\"; role: param; index: 1u32 }
+                    local l_sum t_i32 { name: \"sum\"; role: binding; mutable: false }
+                }
+
+                expressions {
+                    expr e_a read_local { type: \"t_i32\"; local: \"l_a\" }
+                    expr e_b read_local { type: \"t_i32\"; local: \"l_b\" }
+                    expr e_add binary {
+                        type: \"t_i32\"
+                        op: add_i32
+                        lhs: \"e_a\"
+                        rhs: \"e_b\"
+                    }
+                    expr e_sum read_local { type: \"t_i32\"; local: \"l_sum\" }
+                }
+
+                blocks {
+                    block k_entry {
+                        let(local: \"l_sum\", value: \"e_add\") {}
+                        return(value: \"e_sum\") {}
+                    }
+                }
+            }
+        }
+    }
+}
+", syntax: "hir-atom", path: "main.atom" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "bind", code: "bind.missing-field" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.hir.type-swap-mismatch", source: { text: "// Draft, schema-bound Atom text. Not executable Auto source.
+// PLAN-741 Phase 2 (QA-02) rejection: swapped bindings with mismatched types.
+// params are [i32, bool]; the mapping sends the bool arg to param 0 and the
+// i32 arg to param 1. Must be rejected at verify with verify.type-mismatch
+// (the r1 verifier passed it by comparing eval_args positionally).
+hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\") {
+    module m_swap_bad {
+        path: \"examples.swap_bad\"
+
+        types {
+            type t_i32 i32 {}
+            type t_bool bool {}
+            type t_entry function { params: []; result: \"t_i32\" }
+            type t_mix function { params: [\"t_i32\", \"t_bool\"]; result: \"t_i32\" }
+        }
+
+        declarations {
+            function d_entry t_entry { name: \"test_entry\"; body: \"b_entry\" }
+            function d_mix t_mix { name: \"mix\"; body: \"b_mix\" }
+        }
+
+        bodies {
+            body b_entry {
+                owner: \"d_entry\"
+                entry: \"k_entry\"
+
+                expressions {
+                    expr e_1 constant { type: \"t_i32\"; value: 1i32 }
+                    expr e_2 constant { type: \"t_i32\"; value: 2i32 }
+                    expr e_lt binary { type: \"t_bool\"; op: lt_i32; lhs: \"e_1\"; rhs: \"e_2\" }
+                    expr e_9 constant { type: \"t_i32\"; value: 9i32 }
+                    expr e_call call {
+                        type: \"t_i32\"
+                        callee: \"d_mix\"
+                        eval_args: [\"e_9\", \"e_lt\"]
+                        bindings: [
+                            { param: 0u32, arg: 1u32 },
+                            { param: 1u32, arg: 0u32 }
+                        ]
+                    }
+                }
+
+                blocks {
+                    block k_entry { return(value: \"e_call\") {} }
+                }
+            }
+
+            body b_mix {
+                owner: \"d_mix\"
+                entry: \"k_mix\"
+
+                locals {
+                    local l_i t_i32 { name: \"i\"; role: param; index: 0u32 }
+                    local l_b t_bool { name: \"b\"; role: param; index: 1u32 }
+                }
+
+                expressions {
+                    expr e_i read_local { type: \"t_i32\"; local: \"l_i\" }
+                }
+
+                blocks {
+                    block k_mix { return(value: \"e_i\") {} }
+                }
+            }
+        }
+    }
+}
+", syntax: "hir-atom", path: "main.atom" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "verify", code: "verify.type-mismatch" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.hir.graph-self-cycle", source: { text: "hir(schema:\"auto.hir.core.draft\",revision:1u32,profile:\"core-i32-draft\"){module m {types {type ti i32 {} type te function {params:[];result:i32}} declarations {function de te {name:\"entry\";body:\"be\"}} bodies {body be {owner:\"de\";entry:\"ke\";expressions {expr ea constant {type:i32;value:1i32} expr eb constant {type:i32;value:2i32} expr ec binary {type:bool;op:lt_i32;lhs:\"ea\";rhs:\"eb\"} expr en constant {type:i32;value:0i32}} blocks {block ke {if(cond:\"ec\",then:\"ke\",else:\"kn\") {}} block kn {return(value:\"en\") {}}}}}}}", syntax: "hir-atom", path: "main.atom" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "verify", code: "verify.block-structure" } } } ] }
+```

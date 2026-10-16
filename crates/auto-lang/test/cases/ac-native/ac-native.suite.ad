@@ -1,0 +1,15 @@
+# PLAN-788 T-07: AC native corpus (v2). fixture_root = repo root so cases
+# reference the REAL ac-core/ac-syntax fixtures in place; outputs live in
+# the runner's owned temp out-dir (outside this root, audited both ways).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ac-native", include: [
+    "core-run.case.ad",
+    "scalar-run.case.ad",
+    "src-invalid.case.ad",
+    "hir-invalid.case.ad",
+    "hir-valid.case.ad",
+    "red-controls.case.ad",
+    "syntax.case.ad"
+], defaults: { tier: "ac-native" } }
+```

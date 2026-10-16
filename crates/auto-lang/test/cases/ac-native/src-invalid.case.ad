@@ -1,0 +1,45 @@
+# PLAN-788 T-07: source negative diagnostics - typed stage/code oracles
+
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.unclosed-brace", source: { text: "fn main() int { return 3", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "parse", code: "source.syntax" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.unclosed-scalar-for", source: { text: "fn main() int {
+    for true {
+    return 0
+}
+", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: { profile: "scalar" }, expect: { completion: { stage: "parse", code: "source.syntax" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.undefined-local", source: { text: "fn main() int { return x }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "resolve", code: "source.undefined" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.undefined-fn", source: { text: "fn main() int { return helper() }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "resolve", code: "source.undefined" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.type-not-on-int", source: { text: "fn main() bool {
+    let x = !1
+    return x
+}
+", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: { profile: "scalar" }, expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.type-neg-on-bool", source: { text: "fn main() bool {
+    let x = -true
+    return x
+}
+", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: { profile: "scalar" }, expect: { completion: { stage: "typecheck", code: "source.type-mismatch" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.newline-rhs", source: { text: "fn main() int {
+ return 1 +
+ 2
+}
+", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "parse", code: "source.syntax" } } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.src.newline-call", source: { text: "fn f(x int) int { return x }
+fn main() int { return f
+(3) }
+", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "chk", adapter: "ac", action: "check", options: {  }, expect: { completion: { stage: "parse", code: "source.syntax" } } } ] }
+```

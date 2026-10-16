@@ -1,0 +1,11 @@
+# PLAN-788 T-06/T-07: syntax adapter through the runner - both grammars, lossless goldens, edit equivalence
+
+```test-case
+case { schema: "autolang.case/2", id: "ac.syntax.core-lossless", source: { text: "fn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "parse", adapter: "syntax", action: "parse", options: { grammar: "auto-core" }, expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/p04-reconstructed.at" } ] } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.syntax.mini-valid", source: { text: "api add(a: i32, b: i32) -> i32; note \"adds two numbers\";", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "parse", adapter: "syntax", action: "parse", options: { grammar: "interface-mini-v1" }, expect: { completion: "success" } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.syntax.edit-equivalence", source: { text: "fn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "edit", adapter: "syntax", action: "edit", options: { grammar: "auto-core", edits: [ { start: 37, end: 38, insert: "4" } ] }, expect: { completion: "success", artifacts: [ { path: "reconstructed.at", file: "oracle/p04-bound-4.at" } ] } } ] }
+```

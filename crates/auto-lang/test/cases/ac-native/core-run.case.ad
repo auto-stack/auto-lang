@@ -1,0 +1,29 @@
+# PLAN-788 T-07: core profile run semantics. Fixture texts are inlined
+# at generation time; byte-oracle goldens live in oracle/ or reference the
+# real fixtures through the suite fixture_root.
+
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.precedence", source: { text: "fn main() int { return 2 + 3 * 4 }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 14 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.loop-retest", source: { text: "fn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 3 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.while-zero", source: { text: "fn main() int { var i = 1; while false { i = i + 1 }; return i }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 1 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.unexecuted-trap", source: { text: "fn main() int { if false { return 2147483647 + 1 } else { return 0 } }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 0 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.add-overflow", source: { text: "fn main() int { return 2147483647 + 1 }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 70 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.mul-overflow", source: { text: "fn main() int { return 2147483647 * 2 }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 70 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.bool-branch", source: { text: "fn below(x int) bool { return x < 3 }
+fn main() int { let b bool = below(2); if b { return 4 } else { return 0 } }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 4 } } ] }
+```
+```test-case
+case { schema: "autolang.case/2", id: "ac.core.named-arg-binding", source: { text: "fn pair(a int, b int) int { return a * 10 + b } fn main() int { return pair(b: 3, a: 7) }", syntax: "auto", path: "main.at" }, entry: { mode: "program" }, checks: [ { id: "run", adapter: "ac", action: "run", options: {  }, expect: { completion: "success", exit: 73 } } ] }
+```

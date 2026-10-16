@@ -610,3 +610,78 @@ fn r1_consumer_streams_observed_not_rejected() {
     assert_eq!(status_of(&report, "bld"), Status::Pass, "{:?}", rows);
     assert_eq!(status_of(&report, "cns"), Status::Pass, "{:?}", rows);
 }
+
+#[test]
+fn ac_native_suite_full_run_and_ledger_reconcile() {
+    // T-07: the ≥24-case corpus through the REAL runner. The two red
+    // controls FAIL by design; everything else must PASS; the ledger maps
+    // every case to its legacy source and gates.
+    use std::collections::BTreeSet;
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ac-native");
+    let out = std::env::temp_dir().join(format!("ac-native-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
+    let report = crate::test_cases::run_suite(
+        &suite_dir.join("ac-native.suite.ad"),
+        &out,
+        &auto_test_case::admission::Limits::defaults(),
+    )
+    .expect("ac-native suite runs");
+    let case_count = report
+        .results
+        .iter()
+        .map(|r| r.case_id.clone())
+        .collect::<BTreeSet<_>>()
+        .len();
+    assert!(case_count >= 24, "corpus floor: got {} cases", case_count);
+    let mut fails = Vec::new();
+    for r in &report.results {
+        let expected_fail = r.check_id == "bld-bad-golden" || r.check_id == "run-wrong-exit";
+        let ok = match (expected_fail, r.status) {
+            (true, Status::Fail) => true,
+            (false, Status::Pass) => true,
+            _ => false,
+        };
+        if !ok {
+            fails.push((r.case_id.clone(), r.check_id.clone(), r.status, r.detail.clone()));
+        }
+    }
+    assert!(
+        fails.is_empty(),
+        "{} non-conforming results: {:#?}",
+        fails.len(),
+        fails
+    );
+    // The ledger maps EVERY case id; each row names a legacy source and a
+    // legacy gate (V-14 reconciliation).
+    let map = std::fs::read_to_string(suite_dir.join("legacy-map.tsv")).unwrap();
+    let mut mapped = BTreeSet::new();
+    for (i, line) in map.lines().enumerate() {
+        if i == 0 || line.trim().is_empty() {
+            continue;
+        }
+        let cols: Vec<&str> = line.split('\t').collect();
+        assert!(cols.len() >= 9, "ledger row {} column count", i);
+        assert!(!cols[0].is_empty() && !cols[4].is_empty(), "ledger row {} source/gate", i);
+        mapped.insert(cols[5].to_string());
+    }
+    let suite_cases: BTreeSet<String> = report
+        .results
+        .iter()
+        .map(|r| r.case_id.clone())
+        .collect();
+    let unmapped: Vec<_> = suite_cases.difference(&mapped).cloned().collect();
+    assert!(
+        unmapped.is_empty(),
+        "cases absent from the ledger: {:?}",
+        unmapped
+    );
+    let stale_rows: Vec<_> = mapped.difference(&suite_cases).cloned().collect();
+    assert!(
+        stale_rows.is_empty(),
+        "ledger rows naming no case: {:?}",
+        stale_rows
+    );
+    // Aggregate gate is 1 (the two by-design FAILs break green exactly as
+    // intended — the acceptance script asserts the same shape).
+    assert_eq!(report.exit_code(), 1);
+}

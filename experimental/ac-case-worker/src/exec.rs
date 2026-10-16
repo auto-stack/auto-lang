@@ -702,7 +702,15 @@ fn exec_via_driver(
             .map_err(|e| infra("request.scratch", format!("write hir: {}", e)))?;
         artifacts.push(artifact("hir", "hir.atom", &p)?);
     }
+    // The driver stages its object as work_dir/link.obj; the manifest face
+    // is the fixed logical set, so the real file is copied to the logical
+    // name (bytes identical — hash-verified parent-side either way).
     let obj_path = scratch.join("app.obj");
+    let driver_obj = scratch.join("link.obj");
+    if driver_obj.is_file() && !obj_path.is_file() {
+        std::fs::copy(&driver_obj, &obj_path)
+            .map_err(|e| infra("request.scratch", format!("stage obj copy: {}", e)))?;
+    }
     if obj_path.is_file() {
         artifacts.push(artifact("obj", "app.obj", &obj_path)?);
     }
