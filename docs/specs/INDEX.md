@@ -145,6 +145,7 @@
 | auto-bindgen | active | 4 | [auto-bindgen/project.md](auto-bindgen/project.md) |
 | auto-macros | active | 2 | [auto-macros/project.md](auto-macros/project.md) |
 | shim-metadata | active | 2 | [shim-metadata/project.md](shim-metadata/project.md) |
+| auto-gen-core | active | 3 | [auto-gen-core/project.md](auto-gen-core/project.md) |
 
 <details><summary>auto-cli 模块明细</summary>
 
@@ -187,10 +188,10 @@
 | 模块 | 职责 | 状态 |
 |---|---|---|
 | bin/autogen | CLI 入口：generate 等子命令、配置文件加载 | active |
-| data | Auto 格式数据源加载（DataSource/LoadedData） | active |
-| template | 模板解析与渲染（Template/TemplateEngine） | active |
-| generator | 生成编排（CodeGenerator/GenReport/GenerationSpec） | active |
-| guard | 保护区段冲突检测与保留（GuardProcessor） | active |
+| data | Auto 格式数据源加载（DataSource/LoadedData，持 Shared\<AutoInterpreter\>） | active |
+| template | Auto 可执行模板加载与渲染（Template/TemplateEngine） | active |
+| generator | adapter 编排：数据/库加载（顶层 Err 阶段）+ AutoTemplateRenderer 委托 core（CodeGenerator/GenerationSpec/GeneratorConfig/Builder） | active |
+| legacy（lib.rs） | deprecated AutoGen/OneGen/Mold 兼容门面 | deprecated |
 | test_framework | 测试辅助 | test-only |
 
 </details>
@@ -260,6 +261,16 @@
 |---|---|---|
 | lib | 提取 + 分类 + shim 生成（进程内 API） | active |
 | bin | 离线 CLI 入口 | active |
+
+</details>
+
+<details><summary>auto-gen-core 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| error | GenError/GenResult/SourceLocation（单一定义，auto-gen re-export） | active |
+| guard | GuardProcessor/GuardedSection/Conflict + feed_guarded_legacy（legacy 字节兼容 feed，单一定义） | active |
+| generate | 输出编排（generate/OutputConfig/TemplateSpec/RenderedTemplate/TemplateRenderer/GenReport） | active |
 
 </details>
 

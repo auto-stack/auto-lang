@@ -1926,6 +1926,18 @@
             "commit:b57617392"
           ],
           "content": "交付 ff-only 链（range-diff 3/3 等价、commit1 仅 exclude 上下文适配）：f9234e0c4 实现→9a6cae26a(R1 修复)→b57617392(SD 沉淀)→投影/基线锚定合入。冻结门禁：裸 t 5326/5326 + tv 163/163 + clipboard OS 30/30（rebased tip；首基线另有 t 5390/5390——两次瞬态 flake 均归因复绿：plan730 上传时序/真 OS 剪贴板争用）。core 四 shim 零 ui::clipboard_native 直引；G3 值降级族差异冻结；外部 consumer 双形态 8/8+10/10。观察项：rr-cache 污染事故清除（rebase 编辑器异常写入+rerere 重放，82 条全清为性能缓存无损）；789 收据预告的批量回归 790 落地触发归 regress。"
+        },
+        {
+          "id": "P791-M",
+          "title": "PLAN-791 合入沉淀收据（生成核心拆分交付）",
+          "file": "docs/plans/reports/791-generation-core-merge.md",
+          "content": "交付=rebase 全等链（range-diff 全 =）+docs-only 沉淀提交；并发 789 合入后二次 rebase 联合解冲突（Cargo.toml exclude 并集/边界基线取 789 锚+最终重刷/ledger v31∪P791→v32/spec-index GROUPS 并集/INDEX 再生/plans.md 双索引补行）。merge-owned 冻结门禁：裸 cargo t 全绿+定向 50 绿（adapter lib 11+V02 14+V03 8+core 12+doc 5）+consumer 4 绿+verify-deps PASS+fmt --check=0+boundaries strict=pass。canonical：SD-01 auto-gen-core/project.md 新增、SD-02 auto-gen/project.md 改写、双模块 plans.md、overview/goals 回写、INDEX 再生。tv/tt/tb/tu/taa 未触面不适用；tf 批量档到期判定见收据。",
+          "tags": [
+            "plan:791",
+            "reviewed_commit:561a61fc6",
+            "rebase_equivalent:3f2ef93bb",
+            "outcome:pass"
+          ]
         }
       ]
     },
@@ -7196,6 +7208,28 @@
             "sha256:ddb6b9f8e9b05974"
           ],
           "content": "PLAN-790 SD-02：NativeClipboardMediaProvider 无状态委托 clipboard_native 既有 CF_HDROP/DIBV5+PNG 桥（Plan 485 语义原样）；windows×native-clipboard 双门控——非 Windows 无 adapter 不装配不伪造可用 OS（缺席=G3 值降级）；宿主接线四点与 779/785 同集（install_ui_host_capabilities 统一漏斗/run_file_dynamic_ui_inner/VmBridge 两构造/auto CLI main）；显式默认恒胜兼容安装。未迁清单更新：files/image 迁出，剩余=code_editor(2919..2924)/dialog(2927/2928)/scroll controller 族/dnd_start(2938)/term 等。"
+        },
+        {
+          "id": "P791-D1",
+          "title": "无解释器生成核心合同（auto-gen-core：guard/输出编排/错误/报告）",
+          "file": "docs/specs/auto-gen-core/project.md",
+          "content": "PLAN-791 SD-01：crates/auto-gen-core 依赖仅 auto-val+regex+thiserror，闭包零 auto-lang/auto-man/auto-vm/UI（gen-core-consumer 外部探针+verify-deps.sh 钉住，module-boundaries man-ecosystem 域）。边界=TemplateRenderer trait 返回 owned RenderedTemplate，core 不持解释器/AST/模板类型。冻结语义五条：①adapter 侧数据/库加载失败=顶层 Err（generate 调用前），单模板错=报告内收集批次继续；②先 render 后 guard 合并再写盘，失败模板永不覆写既有输出，dry_run 零文件系统效应；③guard merge 输出逐行带尾 \n 而 feed_guarded_legacy 用 join(\n) 无尾换行/精确 marker 前缀/缺文件透传，两算法语义不同且并存；④TemplateSpec.rename 兼容携带不消费；⑤GenReport.duration core 计自身循环、adapter 覆写为整调用（历史语义）。",
+          "tags": [
+            "plan:791",
+            "commit:3f2ef93bb",
+            "sha256:0ab2de7a6d9ee5b4"
+          ]
+        },
+        {
+          "id": "P791-D2",
+          "title": "auto-gen 定位改写：Auto 可执行模板 adapter + 兼容门面",
+          "file": "docs/specs/auto-gen/project.md",
+          "content": "PLAN-791 SD-02：纠正旧卡\"简单文本替换\"错误描述（模板经 AutoInterpreter eval_template 执行）。CodeGenerator.generate 真实委托 auto_gen_core::generate（AutoTemplateRenderer=TemplateEngine+共享 LoadedData 解释器）；error/guard/GenReport/TemplateSpec 单一定义移 core 经 re-export 保旧公开路径，CLI/builder API 不变。legacy AutoGen/OneGen/Mold 模板执行留 adapter 自有解释器、guard feed 改调 core::feed_guarded_legacy（净删重复算法）。冻结怪癖：AutoFile/AutoCode 数据与 lib_files 定义对模板不可见（仅 DataSource::Atom 经 merge_atom 可渲染）、fstr_note 共享解释器路径无效、无 guard 输出丢尾换行（filter join）而 guard 合并保留。未迁：auto-man exporter/builder 经 legacy 消费、assets/templates 自有解释器（Man→语言栈边 grandfather，exit R5）。",
+          "tags": [
+            "plan:791",
+            "commit:3f2ef93bb",
+            "sha256:45a666e13e450c50"
+          ]
         }
       ]
     },
@@ -8707,6 +8741,17 @@
             "commit:b57617392"
           ],
           "content": "外部 fixture（独立 no-ui workspace）10 测：V01 全管线四函数实值 stdout+低层双实例不串线+set 精确 PathBuf；V02 双 ListData 形/空列表/相邻周期/空-None-失败值语义；V03 缺席=G3 值降级逐字面值+显式默认幸存+Clone/merge/ID 钉扎；V04 真 OS files/image 往返（命名互斥锁、严格 PNG 自校验先于喂 OS——image_helper_assert_strict_png 独立于被测侧解码器）+非 Windows 静态控制。in-crate plan790 七锚：core 剪断 grep/降级+委托/双 ListData/身份规则/快照隔离/50 轮 reap 回基线/merge 保 provider。存量 plan485 VM OS 测试补实例级 adapter 注入（依赖倒置后原静默空转已修）。"
+        },
+        {
+          "id": "P791-T",
+          "title": "PLAN-791 冻结测试资产（V02 金样/V03 失败语义/core 单测/外部 consumer 门）",
+          "file": "crates/auto-gen/tests/v02_compat_golden.rs",
+          "content": "四层：①crates/auto-gen/tests/{v02_compat_golden(14),v03_failure_semantics(8)}——V02 金样由旧实现在基线 e4ac72a62 生成（库路径三臂经 9c4780c54 detached replay 旧码 bless：非空 lib_files 定义不可见/use 行滤除+非空 lib_paths 惰性/缺库文件顶层 TemplateLoadError 且哨兵字节不变），V03=render 失败不覆写/dry_run 零写入/批次继续/guard 保留与 overwrite/嵌套目录仅成功时建；空输出金样树以 .empty-tree 标记入库（fresh-checkout 正确性）；UPDATE_GOLDENS=1 为唯一 bless 通道。②auto-gen-core 单测 12（fake renderer 真实落盘/两种 guard 字节语义/命名）。③test/fixtures/modularity/gen-core-consumer（独立 workspace）4 测+verify-deps.sh 闭包断言（版本后缀匹配防检出路径误报）。④cargo test -p auto-gen 定向档=50 测。",
+          "tags": [
+            "plan:791",
+            "commit:3f2ef93bb",
+            "sha256:c5818e7296dd1251"
+          ]
         }
       ]
     },
@@ -11724,10 +11769,22 @@
             "outcome:pass"
           ],
           "content": "R1 needs_fix @be5dfea0c（F-R1-01 P2：fixture PNG Adler32 误含 DEFLATE 块头致严格解压拒绝、依赖解码器容错；F-R1-02 P3：新增 fixture 命名警告+fmt 失败）；R2 pass @8c906b126：两 finding CLOSED——Adler 范围改正+严格自校验控制（外部 zlib/篡改三反控全命中）、命名/fmt/零警告；无新增 finding。独立重放 no-ui 8/8+ui-host 10/10+禁止静默跳过 OS 探针 1/1（严格 PNG 控制+四函数往返+临时 PNG 断言完整执行）；SD 冻结 03C8EB39... 与实现一致。"
+        },
+        {
+          "id": "P791-R3",
+          "title": "PLAN-791 独立最终复审 R1→R3（两轮 needs_fix 后 pass）",
+          "file": "docs/plans/attachments/791/review-r3/review.md",
+          "content": "R1 needs_fix（F-R1-01 库路径 oracle 缺失：V02/V03 lib_files/lib_paths 全空无 use 案例；F-R1-02 新增 6 dead_code 警告+fmt/diff-check 失败）@0cd3e3e9f；R2 needs_fix（F-R2-01 R1 修复改 auto-gen/Cargo.toml 字节而 777 基线未刷新，strict stale_baseline）@b54cc4a2a；R3 pass @561a61fc6（rebase 等价 3f2ef93bb）：F-R1-01 以 9c4780c54 旧实现 replay worktree bless 金样+旧码 14/14 后闭；F-R1-02 经 helper 迁移拆分/fmt/EOF 空行清除闭（附带修复空金样目录 git 不可跟踪隐患=.empty-tree 标记）；F-R2-01 干净树 b54cc4a2a 显式 --refresh-baseline 后 strict=pass（41 边/合法边不变、grandfathered 2 不变，无放宽）。50 定向+consumer 4+闭包 PASS 全程绿。",
+          "tags": [
+            "plan:791",
+            "reviewed_commit:561a61fc6",
+            "rebase_equivalent:3f2ef93bb",
+            "outcome:pass"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 32
+  "version": 33
 }

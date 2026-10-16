@@ -30,7 +30,8 @@
 |---|---|---|
 | [auto](auto-cli/project.md)（目录 auto-cli spec） | `auto` CLI 主入口（run/ui/vue/block/docs…） | active |
 | [auto-man](auto-man/project.md) | 包管理器/构建调度/工程导出/各前端生态集成 | active |
-| [auto-gen](auto-gen/project.md) | AutoGen 代码生成器（模板/guard） | active |
+| [auto-gen](auto-gen/project.md) | AutoGen：Auto 数据/可执行模板 adapter + legacy 兼容门面（PLAN-791 起编排/guard 委托 auto-gen-core） | active |
+| [auto-gen-core](auto-gen-core/project.md) | 无解释器生成核心（guard/输出编排/通用错误/生成报告；闭包零 auto-lang） | active |
 | [auto-lsp](auto-lsp/project.md) | LSP 服务器（补全/诊断/hover/跳转/semantic tokens） | active |
 | [auto-vm](auto-vm/project.md) | AutoVM 辅助 CLI（dump_code） | active |
 | [auto-cache](auto-cache/project.md) | 全局构建缓存（sqlite/指纹/GC/sandbox/shim 管线） | active |
