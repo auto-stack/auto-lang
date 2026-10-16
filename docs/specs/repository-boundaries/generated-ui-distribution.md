@@ -70,18 +70,24 @@
   源/根级输入在**预检阶段**判红；**再交付经独立 staging 生成+全部校验
   成功后整体换装**——准备或生成失败保留旧交付字节（失败不切换任何旧
   生产产物），**不回退主检出、不复制原 target/rlib 作 oracle**。
-- **staging/换出目录属主（R2）**：staging 用本次运行独占唯一名（pid+ns）
-  + 内置属主标记，失败由守卫清理——绝不凭固定名认领同级目录；换出保留
-  名（`.<name>.delivery-old`）上的已存内容仅当可证明归属（含
-  delivery-manifest.json 的既往换出残留，或空目录）才清理，外来目录占据
-  则显式拒绝（不删不覆盖）。生成器只删除能证明是自己产物的路径。
+- **staging/backup 目录属主（R2/R3）**：staging 与 backup（换出残桩）都用
+  本次操作独占的**唯一名**（pid+ns）+ 内置标记——staging 标记
+  `.delivery-staging.marker`（创建即写，失败由守卫清理）；backup 在换出
+  后立即写入**换出事务标记** `.delivery-swap.marker`（回滚时移除）。
+  **任何既存目录（含带合法 delivery-manifest.json 的其他应用交付包）都
+  不被认领/删除**；陈残 GC 仅回收同时具备换出事务标记与清单的
+  `.{name}.delivery-old-*` 目录（可验证的事务身份），无标记的模式名目录
+  只报告不删除；历史固定名（无 `-` 后缀）不再被使用。生成器只删除能
+  证明属于本次操作/本线事务的路径。
 - **sidecar 边界**：交付模式显式拒绝 rust_sidecar 的外部 path 依赖——
   绝对路径（任意根，含 Windows 根相对 `/x` 与盘符/verbatim 前缀：此类
   形态在 `path::join` 语义下丢弃解析基目录）与越出交付根的相对 `..`；
   registry 版本依赖（`name:version`）与项目内 .rs 模块照常。全部 bundle
-  Cargo.toml 的每个 `path = "…"` 值经边界自检：必须相对、无 RootDir/
-  Prefix 分量、且按 manifest 目录词法解析后落在交付根内（覆盖任何来源
-  的越界源）。
+  Cargo.toml 的 path 值经 **TOML 语义解析遍历**（解析器归一空格/单双
+  引号/内联表写法——不做固定文本模板匹配；无法解析即受管判红
+  fail-closed）后应用同一规则：无 RootDir/Prefix 分量、且按 manifest
+  目录词法解析后落在交付根内（覆盖任何来源的越界源，含 sidecar 原样
+  写入的 `{path='…'}` 形态）。
 - **可追溯**：delivery-manifest.json 记录 producer 源根/git HEAD/dirty/
   ui_gen 指纹、producer 根 Cargo.lock 的 SHA-256（根锁为本地实际输入、
   整体被 .gitignore 忽略——以内容 hash 绑定身份而非跟踪状态）、逐 crate
