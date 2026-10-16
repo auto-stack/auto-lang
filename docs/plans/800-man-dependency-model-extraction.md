@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-800
-status: drafting
+status: execution_done
 feature_name: Man 依赖模型与路径解析核心解耦
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/package-resolver/project.md]
@@ -90,18 +90,22 @@ work、独立final review、merge分别交接；未分配额外agent或模型。
 
 | 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 780/786/795归档、合同确认 | resolver.rs所有公开方法/模式/观察/legacy pac读取责任表；冻结V02/03旧臂、DTO/单一map方案及共享窗口 | 01/02/04 |
-| [ ] | T-02 | work | T01 | 新crates/auto-package-resolver、轻输入/路径候选与歧义规则；cargo check新crate | 01/02 |
-| [ ] | T-03 | work | T02 | 抽独立resolve/exists/search规则，保留各入口差异；旧语言前缀与mode留Man adapter | 02/03 |
-| [ ] | T-04 | work | T03 | AutoManResolver生产薄委托、旧API/get_dependencies和替换可见性保持；删除原路径算法，check/定向测试 | 02/03 |
-| [ ] | T-05 | work | T04 | 新外部consumer、V01..05、metadata/777精确边界；799两种兼容接线及792条件触面核查 | 01–04 |
-| [ ] | T-06 | work | T05 | 净删/搬迁/未迁和合流收据、SD素材，提交冻结代码、work项闭合 | 01–04 |
+| [x] | T-01 | work | 780/786/795归档、合同确认 | resolver.rs所有公开方法/模式/观察/legacy pac读取责任表；冻结V02/03旧臂、DTO/单一map方案及共享窗口 | 01/02/04 | [✅ 已完成] 冻结面+责任表+DTO/单一map方案见 attachments/800/t01-freeze.md；指纹commit 30d3e1d2a→master b0d6d4aab 关键输入零漂移（仅根Cargo+5行他线）；780/786/795归档核验通过 |
+| [x] | T-02 | work | T01 | 新crates/auto-package-resolver、轻输入/路径候选与歧义规则；cargo check新crate | 01/02 | [✅ 已完成] std-only 新 crate（DependencyEntry<M>/PackageResolverCore<M>/PackagePathNotFound）；`cargo check -p auto-package-resolver` 通过；workspace member/exclude 已登记 |
+| [x] | T-03 | work | T02 | 抽独立resolve/exists/search规则，保留各入口差异；旧语言前缀与mode留Man adapter | 02/03 | [✅ 已完成] find_package_path/find_module_in_dep/resolve/exists/module_search_paths 全入核心，三入口差异冻结（resolve 无盘臂/exists 无 package.at 臂/歧义不得成功/错误文本逐字）；核心单测 14/14 绿 |
+| [x] | T-04 | work | T03 | AutoManResolver生产薄委托、旧API/get_dependencies和替换可见性保持；删除原路径算法，check/定向测试 | 02/03 | [✅ 已完成] adapter 薄委托（trait 四方法一行委托；Pac/Super/None 继续走 FilesystemResolver）；`Dependency=DependencyEntry<ExecutionMode>` 别名保调用面；auto-man 内路径算法 grep=0；`cargo test -p auto-man --lib resolver::` 38/38 绿（1 预存 ignore，含 4 新 plan800 例） |
+| [x] | T-05 | work | T04 | 新外部consumer、V01..05、metadata/777精确边界；799两种兼容接线及792条件触面核查 | 01–04 | [✅ 已完成] package-resolver-consumer 7/7 + verify-deps.sh PASS（闭包=仅核心）；module-boundaries 登记 man-ecosystem+audit 零违规；792 未合入（master 交付面零 diff→无接线义务，后合入者担责）；794 diff 面零 auto-lang/VM/UI 文件；799 兼容=旧 ast 路径身份不变；证据全录 attachments/800/t06-work-receipt.md |
+| [x] | T-06 | work | T05 | 净删/搬迁/未迁和合流收据、SD素材，提交冻结代码、work项闭合 | 01–04 | [✅ 已完成] 收据 attachments/800/t06-work-receipt.md（净改动 stat/搬迁表/V01..05 证据/合流对账/merge-owned 待办）；SD-01 新 spec + SD-02 auto-man spec 增补已在冻结提交内；代码冻结 `5c1f43b5d`（12 文件 +1237/-246） |
 | [ ] | T-07 | review | T06 | 同树独立真实路径/模式/负控/单一实现及SD冻结 | 05 |
 | [ ] | T-08 | merge | final pass | 同步/必要复审、冻结门/条件792重验；规范/ledger/归档/guard，800到期批回归交接 | 06 |
 
 ## 9. 复审记录
 
 2026-10-16 stage=new | plan_revision=1 | outcome=pass（合同preflight） | next=合同确认、共享写面释放后work | 0/8。不以792/794/799为交付硬前置；当前未实施或执行Rust。
+
+2026-10-16 stage=work | PLAN-800 | plan_revision=1 | outcome=pass | worktree=D:/autostack/.wt/lang-800/auto-lang | branch=plan-800-dev（计划拟名 codex/plan-800-dev 按仓规范改 plan-800-dev，见 t01-freeze.md §5） | base_commit=b0d6d4aab | code_commit=5c1f43b5d | dependencies=auto-down 兄弟 detached c39ac7f（只读，autodown-core path 解析） | task_ids=T-01..T-06 | evidence=核心 14/14、adapter resolver:: 38/38（1 预存 ignore）、consumer 7/7+闭包 PASS、check 两 crate 绿、audit 零违规、收据 attachments/800/t06-work-receipt.md | blockers=无 | next=review（T-07 同树独立复审；merge-owned：裸 cargo t + 两 crate 定向门 + consumer 门 + 800 到期批回归交接）
+
+work-owned readiness：AC-01..04 全闭合（V01..05 证据绑定 5c1f43b5d）；无未结 in-contract finding；旧 API/模式/路径行为断言零改动通过；merge-owned 门显式 pending（非 work 关闭项）。
 
 ## 10. 待澄清事项
 
