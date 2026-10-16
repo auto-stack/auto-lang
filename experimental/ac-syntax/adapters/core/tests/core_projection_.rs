@@ -25,7 +25,7 @@ fn project(p: &GrammarProgram, cs: &CompiledScanner, src: &str) -> Result<String
     Ok(format!("{program:?}"))
 }
 
-fn fixtures(sub: &str) -> Vec<(String, String)> {
+pub fn fixtures(sub: &str) -> Vec<(String, String)> {
     let dir = format!("{}/../../../ac-core/fixtures/source/{sub}", env!("CARGO_MANIFEST_DIR"));
     let mut v: Vec<(String, String)> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("read {dir}: {e}"))

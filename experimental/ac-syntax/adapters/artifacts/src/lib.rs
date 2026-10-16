@@ -359,21 +359,31 @@ fn emit_page(tree: &CstTree, groups: &[(usize, usize)]) -> Vec<u8> {
             let _ = li;
         }
     }
+    // 页内 first_child 重写：节点 child_count=0 的无操作；root（页内首节点）
+    // 的跨组边放 manifest（页内置零），其余节点的边已按节点序在 edges 里
+    // 连续排布——按累计值重写。
+    {
+        let mut cursor = 0u32;
+        let mut first = true;
+        for nd in nodes_out.iter_mut() {
+            if first && nd.child_count > 0 {
+                // root（或任何跨组父）——其边放 manifest，页内置零。
+                nd.child_count = 0;
+                nd.first_child = 0;
+                first = false;
+                continue;
+            }
+            first = false;
+            let c = nd.child_count;
+            nd.first_child = cursor;
+            cursor += c;
+        }
+    }
     let mut out = Vec::with_capacity(8 + nodes_out.len() * 32 + edges.len() * 8);
     out.extend_from_slice(&(nodes_out.len() as u32).to_le_bytes());
     out.extend_from_slice(&(edges.len() as u32).to_le_bytes());
-    // 组内 root 组的第一节点是树 root——其 child 边也在页内（root 的孩子组都在本页或被切开？
-    // root 组单独页 + 后续组按页累积——root 的孩子可能分布在后续页！
-    // 处理：root 边在 manifest（root_edges 存全局 id）；页内 root 节点 child_count=0。
-    let mut first = true;
     for nd in &nodes_out {
-        let mut n2 = *nd;
-        if first && nd.child_count > 0 {
-            // root（或任何跨组父）——其边放 manifest，页内置零。
-            n2.child_count = 0;
-            n2.first_child = 0;
-        }
-        first = false;
+        let n2 = *nd;
         out.extend_from_slice(&n2.kind.to_le_bytes());
         out.extend_from_slice(&n2.start.to_le_bytes());
         out.extend_from_slice(&n2.len.to_le_bytes());

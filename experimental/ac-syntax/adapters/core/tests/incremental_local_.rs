@@ -83,7 +83,7 @@ fn incremental_local_body_edit_bounded_rescan_and_reparse() {
 }
 
 #[test]
-fn incremental_insert_at_doc_start_shifts_only_directory() {
+fn incremental_local_insert_at_doc_start_shifts_only_directory() {
     // 开头插入：未变声明子树原样嫁接（相对跨度零改写），结果与 fresh 一致。
     let p = core_grammar();
     let cs = CompiledScanner::compile(&p).unwrap();

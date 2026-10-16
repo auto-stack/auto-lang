@@ -8,3 +8,7 @@ publish.workspace = true
 ac-syntax-rt = { workspace = true }
 ac-syntax-grammar = { workspace = true }
 auto-ac-prototype = { workspace = true }
+ac-artifact-probe = { workspace = true }
+
+[dev-dependencies]
+ac-syntax-artifact-adapter = { path = "../artifacts" }
