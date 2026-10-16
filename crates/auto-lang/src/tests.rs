@@ -16,6 +16,9 @@ mod plan716_supply_probes;
 mod plan779_frame_provider;
 // PLAN-785: clipboard text 2925/2926 host provider——core 剪断/缺席契约/装配优先回归锚
 mod plan785_clipboard_provider;
+// PLAN-790: clipboard media 2934..2937 host provider——core 剪断/降级契约/
+// 装配优先/ownership 回归锚
+mod plan790_clipboard_media_provider;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 #[cfg(feature = "test-trans")]
 mod a2r_c_abi_gates;

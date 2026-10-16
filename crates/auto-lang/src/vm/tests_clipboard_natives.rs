@@ -6,6 +6,9 @@
 //（418 headless guard 同款语义）。非 Windows / 未开 native-clipboard 的
 // 降级臂由 cfg 对称排除——本测试仅覆盖真实臂，降级臂的返回值约定在
 // `ui/clipboard_native.rs` 模块头与 catalog 注释中文档化（G3）。
+// PLAN-790：shim 供值改经 ClipboardMediaProvider 装配——本测试在实例上
+// 注入真实 Win32 adapter（实例级注入不动全局默认槽，无隔离锁义务；
+// headless guard 语义原样）。
 
 use crate::vm::engine::AutoVM;
 use crate::vm::native::{
@@ -16,7 +19,14 @@ use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
 
 fn make_vm() -> AutoVM {
-    AutoVM::new(VirtualFlash::new(1024), 1024)
+    let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
+    // PLAN-790：真实臂注入 OS adapter（缺席注入 = G3 值降级，OS 往返
+    // 断言会走 headless guard 静默跳过——不算 OS 验收，见计划 V04）。
+    #[cfg(all(windows, feature = "native-clipboard"))]
+    vm.set_clipboard_media_provider(std::sync::Arc::new(
+        crate::ui::clipboard_media_provider::NativeClipboardMediaProvider,
+    ));
+    vm
 }
 
 /// 弹出 shim 压入的堆引用 NV 并归还 RC 计数（测试内的栈纪律）。

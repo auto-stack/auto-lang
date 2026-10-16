@@ -76,6 +76,12 @@ pub mod clipboard;
 // ui；779 frame_provider 同构）。
 #[cfg(feature = "ui-clipboard")]
 pub mod clipboard_provider;
+// PLAN-790: clipboard media host provider adapter——委托 ui::clipboard_native
+// 既有实现（files/image 2934..2937；779/785 同构）。双门控 windows ×
+// native-clipboard 与被委托的 Win32 桥函数一致——非 Windows 无 adapter，
+// VM 缺席 provider → G3 值降级，不把 UI 默认伪造为可用 OS。
+#[cfg(all(windows, feature = "native-clipboard"))]
+pub mod clipboard_media_provider;
 // PLAN-681: native open/save file dialogs — host of the `dialog_open`/
 // `dialog_save` VM builtins (natives 2927/2928) for a2r generated apps,
 // behind `ui-dialog` (enabled by `ui-iced`).

@@ -1,0 +1,41 @@
+# PLAN-790 外部 clipboard media provider 消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-lang 的公开面
+# （ClipboardMediaProvider/ClipboardImage + AutoVM/NativeInterface 公开 API
+# + run_with_capture + 四 shim），**不启用任何 UI feature**
+# （default-features = false），证明 files/image 剪贴板 2934..2937 的 core
+# 供值链在无 UI 类型/无 Win32 直引下真实工作：外部 provider 实值经 VM
+# 内建到达 stdout（可区分路径/宽高），set 收到精确 PathBuf 参数，两实例
+# 不串线，缺席=G3 值降级（空表/false/null——与文本族 VMError 形不同）。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/clipboard-media-provider-consumer/Cargo.toml
+# UI 开启形态复跑（V-03/V-04 兼容安装优先矩阵 + 真 OS 往返；计划 §6）：
+#   cargo test --manifest-path <本manifest> --features ui-host
+# ——两形态下本套测试必须同绿（显式默认不被兼容安装覆盖；V-04 真 OS
+# 断言仅 windows×ui-host 形编译运行）。红线（计划 §5）：no-ui 形态测试
+# 不触真实剪贴板（全 fake）；ui-host 形态真 OS 写仅发生在 V-04 命名互斥
+# 锁下的 set→get 即时往返（418/485 同款纪律），其余测试经显式 fake 默认
+# 阻断兼容安装不触 OS。
+
+[package]
+name = "clipboard-media-provider-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[features]
+# passthrough：UI 宿主形态。取 `ui-iced` 超集（含 ui + ui-clipboard +
+# native-clipboard）——785 T01 矩阵同款可建 UI 形态（{ui} 单开预存不可建）。
+# 测试以 `#[cfg(feature = "ui-host")]` 分臂两构建的期望差。
+ui-host = ["auto-lang/ui-iced"]
+
+[dependencies]
+auto-lang = { path = "../../../../crates/auto-lang", default-features = false }
+# ListData<Value>/ObjectData 值类型（auto_val::Value/ValueKey）——与
+# auto-lang 同源 path 依赖，单一版本。
+auto-val = { path = "../../../../crates/auto-val" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

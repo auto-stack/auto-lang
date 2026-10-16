@@ -118,6 +118,13 @@ pub struct NativeInterface {
     clipboard_text_provider: std::sync::RwLock<
         Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>>,
     >,
+    /// PLAN-790: 文件/图像剪贴板能力槽（2934..2937）。装配语义与
+    /// clipboard_text_provider 槽逐条相同（per-NativeInterface 持有、
+    /// Clone 保留、注入不动绑定身份）；差别在缺席语义 = G3 **值降级**
+    ///（空表/false/null，与迁移前无 OS 面同形），非 VMError。
+    clipboard_media_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>>,
+    >,
 }
 
 impl Clone for NativeInterface {
@@ -147,6 +154,13 @@ impl Clone for NativeInterface {
                     .expect("clipboard_text_provider poisoned")
                     .clone(),
             ),
+            // PLAN-790: clipboard media provider 随装配克隆保留（同上）。
+            clipboard_media_provider: std::sync::RwLock::new(
+                self.clipboard_media_provider
+                    .read()
+                    .expect("clipboard_media_provider poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -164,6 +178,7 @@ impl NativeInterface {
             reference_proofs: std::sync::Mutex::new(HashMap::new()),
             frame_provider: std::sync::RwLock::new(None),
             clipboard_text_provider: std::sync::RwLock::new(None),
+            clipboard_media_provider: std::sync::RwLock::new(None),
         }
     }
 
@@ -208,6 +223,28 @@ impl NativeInterface {
         self.clipboard_text_provider
             .read()
             .expect("clipboard_text_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-790: 注入/替换本接口（=本 VM）的 clipboard media provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_clipboard_media_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>,
+    ) {
+        *self
+            .clipboard_media_provider
+            .write()
+            .expect("clipboard_media_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-790: 当前 clipboard media provider（None=G3 值降级语义）。
+    pub fn clipboard_media_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>> {
+        self.clipboard_media_provider
+            .read()
+            .expect("clipboard_media_provider poisoned")
             .clone()
     }
 
@@ -2116,17 +2153,29 @@ pub fn shim_clipboard_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 }
 
 // ── Plan 485: native clipboard files/images (CF_HDROP / DIBV5+PNG) ─────
-// 降级契约（G3）：非 Windows / 未开 `native-clipboard` 时走下方降级臂，
-// 返回空表 / false / null —— .at 代码零平台分支。ui 桥在
-// `ui/clipboard_native.rs`（Win32 双门控同 native-dock）。
+// PLAN-790 依赖倒置：core 不再直引 `ui::clipboard_native`——经本 VM
+// NativeInterface 装配的
+// [`crate::vm::host_capabilities::ClipboardMediaProvider`] 供值（UI 宿主
+// 在 windows+native-clipboard 下注册 Win32 adapter；外部 no-ui 宿主可注入
+// 自定义实现）。降级契约（G3）原样：provider 缺席或供值失败 = 空表 /
+// false / null（**值语义**，非 raise——与文本族 2925/2926 的
+// feature-disabled VMError 形不同，迁移前非 Windows / 未开
+// native-clipboard 臂即此形），.at 代码零平台分支。shim 体因此
+// feature/平台中性——`native-clipboard` 仅决定 UI adapter 是否编译/装配，
+// 不再决定本函数的编译形态。
 
 /// `clipboard_files_get() -> List<str>`（Explorer Ctrl+C 后取路径列表）。
-#[cfg(all(windows, feature = "native-clipboard"))]
 pub fn shim_clipboard_files_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let paths = crate::ui::clipboard_native::clipboard_files_get();
+    // provider 缺席 = G3 空表（与迁移前非 Windows 臂同形）。
+    let paths = match vm.native_interface.clipboard_media_provider() {
+        Some(provider) => provider.files_get(),
+        None => Vec::new(),
+    };
     let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
     for p in paths {
-        list.push(auto_val::Value::Str(auto_val::AutoStr::from(p)));
+        list.push(auto_val::Value::Str(auto_val::AutoStr::from(
+            p.to_string_lossy().into_owned(),
+        )));
     }
     let list_id = vm.insert_heap_object(list);
     vm.rc_push_id(task, list_id as u64);
@@ -2134,7 +2183,6 @@ pub fn shim_clipboard_files_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 }
 
 /// `clipboard_files_set(paths: List<str>) -> Bool`（Explorer Ctrl+V 落地）。
-#[cfg(all(windows, feature = "native-clipboard"))]
 pub fn shim_clipboard_files_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use crate::vm::types::ListData;
     let list_id = crate::vm::native::pop_arg_i32(task) as u64;
@@ -2152,17 +2200,25 @@ pub fn shim_clipboard_files_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
             paths.extend(list.elems.iter().map(std::path::PathBuf::from));
         }
     }
-    let ok = crate::ui::clipboard_native::clipboard_files_set(&paths);
+    // read 锁限 collect 域（guard 已随上面块尾 drop）；provider 回调在锁外，
+    // 收 owned `Vec<PathBuf>`——接口零 VM 索引/借用缓冲泄漏（V02 ownership）。
+    let ok = match vm.native_interface.clipboard_media_provider() {
+        Some(provider) => provider.files_set(&paths),
+        None => false,
+    };
     task.ram.push_nv(auto_val::encode_bool(ok));
     Ok(())
 }
 
 /// `clipboard_image_get() -> {path,width,height} | None`（DIBV5→PNG 存
 /// temp；Record 走 heap ObjectData，Plan 390 §15 H3b 形态）。
-#[cfg(all(windows, feature = "native-clipboard"))]
 pub fn shim_clipboard_image_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use auto_val::{AutoStr, Value, ValueKey};
-    match crate::ui::clipboard_native::clipboard_image_get() {
+    match vm
+        .native_interface
+        .clipboard_media_provider()
+        .and_then(|provider| provider.image_get())
+    {
         Some(img) => {
             let mut rec = crate::vm::types::ObjectData::new();
             rec.set(
@@ -2180,49 +2236,22 @@ pub fn shim_clipboard_image_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
             let id = vm.insert_heap_object(rec);
             vm.rc_push_id(task, id as u64);
         }
+        // provider 缺席或 None（无图像格式/不可用）= G3 null 同形。
         None => task.ram.push_nv(auto_val::encode_null()),
     }
     Ok(())
 }
 
 /// `clipboard_image_set(png_path: str) -> Bool`
-#[cfg(all(windows, feature = "native-clipboard"))]
 pub fn shim_clipboard_image_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // pop_string_arg 已物化 owned String（utf8_lossy）+ StakeGuard.nv 配平
+    //——provider 收纯 `&Path`（缺席臂同样消费实参保持栈纪律）。
     let path = pop_string_arg(task, vm);
-    let ok = crate::ui::clipboard_native::clipboard_image_set(std::path::Path::new(&path));
+    let ok = match vm.native_interface.clipboard_media_provider() {
+        Some(provider) => provider.image_set(std::path::Path::new(&path)),
+        None => false,
+    };
     task.ram.push_nv(auto_val::encode_bool(ok));
-    Ok(())
-}
-
-/// 降级臂（G3）：空表。
-#[cfg(not(all(windows, feature = "native-clipboard")))]
-pub fn shim_clipboard_files_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let list = crate::vm::types::ListData::<auto_val::Value>::new();
-    let list_id = vm.insert_heap_object(list);
-    vm.rc_push_id(task, list_id as u64);
-    Ok(())
-}
-
-/// 降级臂（G3）：false（仍弹出实参保持栈纪律）。
-#[cfg(not(all(windows, feature = "native-clipboard")))]
-pub fn shim_clipboard_files_set(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let _ = pop_arg_i32(task);
-    task.ram.push_nv(auto_val::encode_bool(false));
-    Ok(())
-}
-
-/// 降级臂（G3）：None → null。
-#[cfg(not(all(windows, feature = "native-clipboard")))]
-pub fn shim_clipboard_image_get(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    task.ram.push_nv(auto_val::encode_null());
-    Ok(())
-}
-
-/// 降级臂（G3）：false（仍弹出实参）。
-#[cfg(not(all(windows, feature = "native-clipboard")))]
-pub fn shim_clipboard_image_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _ = pop_string_arg(task, vm);
-    task.ram.push_nv(auto_val::encode_bool(false));
     Ok(())
 }
 

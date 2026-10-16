@@ -79,6 +79,11 @@ exclude = [
     # auto-lex，证明词法基础无 auto-lang/auto-man/UI 依赖），门禁经
     # cargo test --manifest-path test/fixtures/modularity/lex-consumer/Cargo.toml
     "test/fixtures/modularity/lex-consumer",
+    # PLAN-790: 外部 clipboard media provider 消费方探针——独立 fixture
+    # crate（无 UI feature 构建，证明 files/image 剪贴板 2934..2937 core
+    # 供值链在 crate 边界外真实工作），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/clipboard-media-provider-consumer/Cargo.toml
+    "test/fixtures/modularity/clipboard-media-provider-consumer",
 ]
 resolver = "2"
 

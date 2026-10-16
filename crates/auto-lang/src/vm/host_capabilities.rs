@@ -142,6 +142,89 @@ pub fn clear_process_default_clipboard_text_provider() {
     *slot = None;
 }
 
+// ── PLAN-790: 文件/图像剪贴板能力（files_get 2934 / files_set 2935 /
+//    image_get 2936 / image_set 2937）───────────────────────────────────
+//
+// 785 文本批次的 files/image 姊妹篇：core 只持本接口与 per-VM 存储；
+// OS/PNG/DIB 实现留在 UI 侧（clipboard_media_provider adapter 委托既有
+// clipboard_native Win32 桥），no-ui 宿主可注入自定义实现。
+// 与文本族的**关键差别**：迁移前无 OS 面（非 Windows / 未开
+// native-clipboard）走 G3 值降级（空表/false/null），非 VMError——
+// provider 缺席/失败一律保持同形值降级，接口不得用 Result 吞错改异常。
+//
+// 值域纪律（计划 §5）：provider 只使用标准库 owned 数据——路径列表
+// `Vec<PathBuf>`、图像三元组 `ClipboardImage{path,width,height}`；不暴露
+// VM 堆句柄、字符串池索引、UI 类型或 Win32 HANDLE。临时 PNG 生命周期
+// 仍由实现方（既有 OS 策略）管理：落 temp 不即删，返回路径在消费期可读。
+
+/// image_get 产物元数据（G2 Record 值域镜像：owned path + 像素尺寸；
+/// ui 侧 TempImage 的 core 无 UI 形态）。
+pub struct ClipboardImage {
+    /// 临时 PNG 文件路径（实现方保证消费期可读）。
+    pub path: std::path::PathBuf,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// 文件/图像剪贴板能力接口（owning 标准库值域，无 UI 类型）。
+///
+/// 四方法与 VM 内建 2934..2937 一一对应；全部**值语义**：
+/// - 读侧缺席/不可用 = `Vec::new()` / `None`（shim 落空表/null）；
+/// - 写侧失败（含空路径列表）= `false`；
+/// - 任何实现不得伪装成功写入。
+pub trait ClipboardMediaProvider: Send + Sync {
+    /// 读文件列表（CF_HDROP 值域；空 = 缺席/不可用）。
+    fn files_get(&self) -> Vec<std::path::PathBuf>;
+    /// 写文件列表；false = 失败（空输入/被占用/无权限）。
+    fn files_set(&self, paths: &[std::path::PathBuf]) -> bool;
+    /// 读图像为临时 PNG 元数据；None = 无图像格式/不可用。
+    fn image_get(&self) -> Option<ClipboardImage>;
+    /// 写 PNG 文件到剪贴板；false = 失败（不可读/超限/Win32 败）。
+    fn image_set(&self, png_path: &std::path::Path) -> bool;
+}
+
+/// 进程级默认 clipboard media provider（显式注册；None = 未注册 → shim
+/// G3 值降级）。替换/快照/if-absent 语义与 frame/text 族逐条相同。
+static PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER: RwLock<Option<Arc<dyn ClipboardMediaProvider>>> =
+    RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_clipboard_media_provider(provider: Arc<dyn ClipboardMediaProvider>) {
+    let mut slot = PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER poisoned");
+    *slot = Some(provider);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子——语义同 frame/text 族）。
+/// 供 UI 等内建宿主隐式入口：不覆盖调用方显式默认。
+pub fn set_process_default_clipboard_media_provider_if_absent(
+    provider: Arc<dyn ClipboardMediaProvider>,
+) {
+    let mut slot = PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_clipboard_media_provider() -> Option<Arc<dyn ClipboardMediaProvider>> {
+    PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER
+        .read()
+        .expect("PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到 G3 值降级缺席语义）。测试装配/宿主拆卸用。
+pub fn clear_process_default_clipboard_media_provider() {
+    let mut slot = PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_CLIPBOARD_MEDIA_PROVIDER poisoned");
+    *slot = None;
+}
+
 /// 测试隔离（crate 级共享，cfg(test)）——持有者 = **清空/替换进程默认
 /// 槽的测试**（clear/set/restore 序列需跨操作原子，防彼此互踩）。普通
 /// 程序测试**零配合豁免**：其唯一槽写是 install 的 if-absent 补缺，对

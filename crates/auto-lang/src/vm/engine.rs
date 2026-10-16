@@ -844,6 +844,15 @@ impl AutoVM {
             {
                 native_interface.set_clipboard_text_provider(provider);
             }
+
+            // PLAN-790: 同纪律快照文件/图像剪贴板 provider（2934..2937）。
+            // 缺席快照 = shim 侧 G3 值降级（空表/false/null），与迁移前
+            // 非 Windows / 未开 native-clipboard 面同形。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_clipboard_media_provider()
+            {
+                native_interface.set_clipboard_media_provider(provider);
+            }
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
@@ -1295,6 +1304,23 @@ impl AutoVM {
         &self,
     ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>> {
         self.native_interface.clipboard_text_provider()
+    }
+
+    /// PLAN-790: 实例级 clipboard media provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 2934..2937。
+    pub fn set_clipboard_media_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>,
+    ) {
+        self.native_interface.set_clipboard_media_provider(provider);
+    }
+
+    /// PLAN-790: 本 VM 当前 clipboard media provider（None=G3 值降级语义）。
+    pub fn clipboard_media_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>> {
+        self.native_interface.clipboard_media_provider()
     }
 
     /// Plan 197 Task 9: Load generic registry from codegen

@@ -640,6 +640,10 @@ impl VmBridge {
         // PLAN-785: clipboard text adapter 同点并入（if-absent 兼容默认）。
         #[cfg(feature = "ui-clipboard")]
         crate::ui::clipboard_provider::install_process_default();
+        // PLAN-790: clipboard media adapter 同点并入（if-absent 兼容默认；
+        // windows+native-clipboard 双门控——非 Windows 不装配）。
+        #[cfg(all(windows, feature = "native-clipboard"))]
+        crate::ui::clipboard_media_provider::install_process_default();
 
         let widget_name = widget.name.clone();
 
@@ -765,6 +769,10 @@ impl VmBridge {
         // PLAN-785: clipboard text adapter 同点并入（if-absent 兼容默认）。
         #[cfg(feature = "ui-clipboard")]
         crate::ui::clipboard_provider::install_process_default();
+        // PLAN-790: clipboard media adapter 同点并入（if-absent 兼容默认；
+        // windows+native-clipboard 双门控——非 Windows 不装配）。
+        #[cfg(all(windows, feature = "native-clipboard"))]
+        crate::ui::clipboard_media_provider::install_process_default();
 
         let widget_name = decl.name.to_string();
 

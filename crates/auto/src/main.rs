@@ -969,6 +969,11 @@ fn real_main(cli: Cli) -> Result<()> {
     // 的 ui-iced 传递开启 auto-lang/ui-iced ⇒ ui-clipboard，门控随形）。
     #[cfg(feature = "ui-iced")]
     auto_lang::ui::clipboard_provider::install_process_default();
+    // PLAN-790: clipboard media adapter 同点装配（if-absent 兼容默认；
+    // ui-iced 传递开启 native-clipboard，windows × native-clipboard 双门控
+    // 与 adapter 模块一致——非 Windows 不装配）。
+    #[cfg(all(windows, feature = "ui-iced"))]
+    auto_lang::ui::clipboard_media_provider::install_process_default();
 
     // Determine AI mode: -ai flag or --format json
     let ai_mode = cli.ai || matches!(cli.format, Some(OutputFormat::Json));
