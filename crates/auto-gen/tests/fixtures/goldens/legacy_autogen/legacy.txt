@@ -1,0 +1,5 @@
+legacy AuthService
+/// ---------- begin of guard: <u1> ---
+HAND EDITED
+/// ---------- end of guard: ---
+end

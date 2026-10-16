@@ -60,7 +60,7 @@ Status: $is_ready
 
 ---
 
-Status: 1
+Status: true
 
 ---
 

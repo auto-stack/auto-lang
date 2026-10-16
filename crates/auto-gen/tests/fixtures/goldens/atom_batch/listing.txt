@@ -1,0 +1,4 @@
+// generated listing
+item alpha => 1
+item beta => 2
+done

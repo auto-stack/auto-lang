@@ -1,0 +1,5 @@
+// generated listing
+$ for it in items {
+item ${it.name} => ${it.id}
+$ }
+done
