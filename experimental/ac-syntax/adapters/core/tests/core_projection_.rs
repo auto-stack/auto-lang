@@ -42,10 +42,7 @@ fn fixtures(sub: &str) -> Vec<(String, String)> {
     v
 }
 
-// T-05 进行中：valid 语料部分逐字节全等；剩余为 AST span 边界细节对齐。
-// 全等后移除 ignore——红面不入默认门禁。
 #[test]
-#[ignore = "remaining ast span boundary alignment 17/41 exact"]
 fn core_projection_valid_corpus_identical() {
     let p = core_grammar();
     let cs = CompiledScanner::compile(&p).unwrap();
@@ -76,7 +73,6 @@ fn core_projection_valid_corpus_identical() {
 }
 
 #[test]
-#[ignore = "remaining ast span boundary alignment 62/85 parity"]
 fn core_projection_invalid_corpus_accept_reject_parity() {
     let p = core_grammar();
     let cs = CompiledScanner::compile(&p).unwrap();

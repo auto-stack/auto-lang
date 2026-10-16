@@ -502,8 +502,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             wait: Wait::None,
             list_started: false,
             rep_save: None,
-                opt_save: None,
-                cover_from: 0,
+            opt_save: None,
+            cover_from,
             pushed_active: true,
             is_decl_frame: is_decl,
             pratt_vals: Vec::new(),
@@ -529,8 +529,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             wait: Wait::None,
             list_started: false,
             rep_save: None,
-                opt_save: None,
-                cover_from: 0,
+            opt_save: None,
+            cover_from: 0,
             pushed_active: false,
             is_decl_frame: false,
             pratt_vals: Vec::new(),
@@ -1181,7 +1181,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             for n in &mut self.nodes[node_start..] {
                 n.decl = idx;
             }
-            self.nodes[node as usize].start = 0;
+            // 声明节点保留语义相对 span（首个非 trivia 孩子 .. 尾）：
+            // abs = origin + start = 语义 token 起点（如 `fn`），与 ac-core 对齐。
             self.decls.push(DeclUnit { origin, node, node_lo: node_start as u32 });
         }
         self.complete_frame_success(node, field);
@@ -1469,7 +1470,9 @@ impl<'p, 'a> Machine<'p, 'a> {
         kids.push((close_leaf, NO_FIELD));
         let node = self.alloc_node(KIND_CALL, kids, None, false);
         let f = self.stack.last_mut().unwrap();
-        f.pratt_vals.clear();
+        // 调用是**后缀**：仅弹出栈顶操作数（callee）替换为 call 节点；
+        // clear 全部会丢掉已归约的 lhs（d07：`ac_start() + sf_ac_start()`）。
+        f.pratt_vals.pop();
         f.pratt_vals.push(node);
         f.children.clear();
         f.pratt_stage = PrattStage::WantOp;

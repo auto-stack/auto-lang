@@ -45,6 +45,7 @@ pub struct CoreKinds {
     expr_rule: u32,
     args: u32,
     arg: u32,
+    arg_tail: u32,
     named_arg: u32,
     param: u32,
     stmt: u32,
@@ -91,6 +92,7 @@ impl CoreKinds {
             expr_rule: rk(p, "expr"),
             args: rk(p, "args"),
             arg: rk(p, "arg"),
+            arg_tail: rk(p, "arg-tail"),
             named_arg: rk(p, "named-arg"),
             param: rk(p, "param"),
             stmt: rk(p, "stmt"),
@@ -258,27 +260,33 @@ fn project_stmt(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<Stmt> {
             let val_n = cx.tree.field_child(node, value_f).unwrap();
             let kw_kind = if x == cx.k.let_stmt { cx.k.tok_let } else { cx.k.tok_var };
             let kw_n = *cx.tree.children(node).iter().find(|&&c| cx.tree.kind(c) == kw_kind).ok_or_else(|| ProjectionError::Unsupported("let/var kw".into()))?;
+            let value = project_expr(cx, val_n)?;
+            let sp = Span { start: cx.tree.abs_range(node).0 as usize, end: value.span.end };
             Ok(Stmt::Let {
                 kw: span_of(cx.tree, kw_n),
                 name: Ident { name: spelling(cx.tree, cx.snap, name_n)?, span: span_of(cx.tree, name_n) },
                 ann,
                 mutable: x == cx.k.var_stmt,
-                value: project_expr(cx, val_n)?,
-                span: span_of(cx.tree, node),
+                value,
+                span: sp,
             })
         }
         x if x == cx.k.assign_stmt => {
             let name_n = cx.tree.field_child(node, name_f).unwrap();
             let val_n = cx.tree.field_child(node, value_f).unwrap();
+            let value = project_expr(cx, val_n)?;
+            let sp = Span { start: cx.tree.abs_range(node).0 as usize, end: value.span.end };
             Ok(Stmt::Assign {
                 target: AssignTarget { base: Ident { name: spelling(cx.tree, cx.snap, name_n)?, span: span_of(cx.tree, name_n) }, path: Vec::new() },
-                value: project_expr(cx, val_n)?,
-                span: span_of(cx.tree, node),
+                value,
+                span: sp,
             })
         }
         x if x == cx.k.return_stmt => {
             let val_n = cx.tree.field_child(node, value_f).unwrap();
-            Ok(Stmt::Return { value: project_expr(cx, val_n)?, span: span_of(cx.tree, node) })
+            let value = project_expr(cx, val_n)?;
+            let sp = Span { start: cx.tree.abs_range(node).0 as usize, end: value.span.end };
+            Ok(Stmt::Return { value, span: sp })
         }
         x if x == cx.k.if_stmt => {
             let cond_n = cx.tree.field_child(node, cond_f).unwrap();
@@ -302,15 +310,18 @@ fn project_stmt(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<Stmt> {
             Ok(Stmt::Loop { body: project_block(p, cx, body_n)?, span: span_of(cx.tree, node) })
         }
         _ => {
-            // break/continue：叶语句（单个关键字叶）。
-            let kids = cx.tree.children(node);
-            if kids.len() == 1 {
-                let sp = spelling(cx.tree, cx.snap, kids[0])?;
+            // break/continue：叶语句——node 即关键字叶（child_count=0）或单孩子叶。
+            let mut leaf = node;
+            if cx.tree.children(node).len() == 1 {
+                leaf = cx.tree.children(node)[0];
+            }
+            if cx.tree.children(leaf).is_empty() {
+                let sp = spelling(cx.tree, cx.snap, leaf)?;
                 if sp == "break" {
-                    return Ok(Stmt::Break { span: span_of(cx.tree, node) });
+                    return Ok(Stmt::Break { span: span_of(cx.tree, leaf) });
                 }
                 if sp == "continue" {
-                    return Ok(Stmt::Continue { span: span_of(cx.tree, node) });
+                    return Ok(Stmt::Continue { span: span_of(cx.tree, leaf) });
                 }
             }
             Err(ProjectionError::Unsupported(format!("stmt kind {}", cx.tree.kind(node))))
@@ -357,9 +368,29 @@ fn project_expr_inner(cx: &mut Cx, node: u32) -> PResult<Expr> {
         let name = spelling(cx.tree, cx.snap, ident_n)?;
         let mut args = Vec::new();
         if let Some(&args_n) = kids.iter().find(|&&c| cx.tree.kind(c) == cx.k.args) {
-            for a in descendants_of_kind(cx, args_n, cx.k.arg) {
+            // args := arg (, arg)*：只取本层 arg——嵌套调用的 args 子树不得混入。
+            let mut direct: Vec<u32> = Vec::new();
+            for &c in cx.tree.children(args_n) {
+                let ck = cx.tree.kind(c);
+                if ck == cx.k.arg {
+                    direct.push(c);
+                } else if ck == cx.k.arg_tail {
+                    for &gc in cx.tree.children(c) {
+                        if cx.tree.kind(gc) == cx.k.arg {
+                            direct.push(gc);
+                        }
+                    }
+                }
+            }
+            direct.sort_by_key(|&n| cx.tree.abs_range(n).0);
+            for a in direct {
                 if let Some(&na) = cx.tree.children(a).iter().find(|&&c| cx.tree.kind(c) == cx.k.named_arg) {
-                    let label_n = cx.tree.children(na)[0];
+                    let label_n = *cx
+                        .tree
+                        .children(na)
+                        .iter()
+                        .find(|&&c| cx.tree.kind(c) == cx.k.tok_ident)
+                        .ok_or_else(|| ProjectionError::Unsupported("named label".into()))?;
                     let val_n = *cx.tree.children(na).iter().find(|&&c| cx.tree.kind(c) == cx.k.expr_rule).unwrap();
                     args.push(Arg::Named {
                         name: Ident { name: spelling(cx.tree, cx.snap, label_n)?, span: span_of(cx.tree, label_n) },
@@ -383,7 +414,10 @@ fn project_expr_inner(cx: &mut Cx, node: u32) -> PResult<Expr> {
             x if x == cx.k.op_star => BinOp::Mul,
             _ => BinOp::Lt,
         };
-        return Ok(Expr { kind: ExprKind::Binary { op, lhs: Box::new(project_expr(cx, lhs_n)?), rhs: Box::new(project_expr(cx, rhs_n)?) }, span: span_of(cx.tree, node) });
+        let lhs = project_expr(cx, lhs_n)?;
+        let rhs = project_expr(cx, rhs_n)?;
+        let sp = Span { start: lhs.span.start, end: rhs.span.end };
+        return Ok(Expr { kind: ExprKind::Binary { op, lhs: Box::new(lhs), rhs: Box::new(rhs) }, span: sp });
     }
     if kind == cx.k.atom_expr {
         for &c in cx.tree.children(node) {
@@ -399,13 +433,8 @@ fn project_expr_inner(cx: &mut Cx, node: u32) -> PResult<Expr> {
                 return Ok(Expr { kind: ExprKind::Var(Ident { name: spelling(cx.tree, cx.snap, c)?, span: span_of(cx.tree, c) }), span: span_of(cx.tree, c) });
             }
             if ck == cx.k.expr_rule {
-                let mut e = project_expr(cx, c)?;
-                // 括号组：ac-core 组 span = `(` 起、内层表达式尾止（不含 `)`）。
-                if let Some(&lp) = cx.tree.children(node).iter().find(|&&x| cx.tree.kind(x) == cx.k.tok_lparen) {
-                    let ls = cx.tree.abs_range(lp).0 as usize;
-                    e.span = Span { start: ls, end: e.span.end };
-                }
-                return Ok(e);
+                // 括号组：ac-core Paren 帧弹出不改值——组值 = 内层表达式原样。
+                return project_expr(cx, c);
             }
         }
         return Err(ProjectionError::Unsupported("atom-expr empty".into()));

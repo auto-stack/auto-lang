@@ -137,7 +137,7 @@ grammar(name: "auto-core", revision: 1, newline: true, stmt-end: ["semi", "rbrac
             assign() {}
             expr(field: "value")
         }
-        type-ann { colon() {} type() {} }
+        type-ann { type() {} }
         assign-stmt {
             ident(field: "name")
             assign() {}
