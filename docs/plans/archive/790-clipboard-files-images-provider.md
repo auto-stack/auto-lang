@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-790
-status: execution_done
+status: archived
 feature_name: 文件与图像剪贴板宿主能力依赖倒置
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
 plan_revision: 1
-current_step: 6
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md]
 new_spec_components: []
@@ -136,8 +136,10 @@ R1 修复重闭（F790-R1-01/02，code `8c906b126`，仅 fixture 测试文件 1 
 | [x] | T-06 | work | T05 | 剩余宿主族/依赖删边收据、SD素材；提交并确认work验收全部闭合 | 01–04 |
 
 T-06 收据：core→ui 删边扫描——`vm/native.rs` 零 `ui::clipboard_native::` 调用形引用（仅 PLAN-790 说明注释一行，无尾随 `::`）；`host_capabilities.rs` 零 `ui::` 文本；残留 ui 引用=cfg(test) 测试注入（`tests_clipboard_natives` 的 GlobalClipboardTestLock+实例级 adapter 注入，785 前已在案的测试面形态）。SD 素材冻结稿见 §5 规范增量节下（R1 审查 SHA 冻结 `65BD04D0...` 核验一致，无需合同修订）。实施提交 `be5dfea0c` + R1 修复 `8c906b126`（worktree `D:/autostack/.wt/lang-790/auto-lang`，branch `codex/plan-790-dev`，base `e4ac72a62`，共 15 文件：5 新增 + 10 修改——R1 勘误，原记 13 有误；触面文件单独 rustfmt，fmt 递归波及的 48 个非触面文件已全部回滚）。merge-owned 门禁（裸 `cargo t` + `tv` + Windows OS 定向档复验）**pending** 于冻结提交。
-| [ ] | T-07 | review | T06 | 独立重放反控、临时路径与OS证据、源码去边和SD冻结 | 05 |
-| [ ] | T-08 | merge | final pass | 裸t+tv及OS触面门，沉淀/归档/guard清理 | 06 |
+| [x] | T-07 | review | T06 | 独立重放反控、临时路径与OS证据、源码去边和SD冻结 | 05 |
+| [x] | T-08 | merge | final pass | 裸t+tv及OS触面门，沉淀/归档/guard清理 | 06 |
+
+T-08 收据（delivery `249a80f2c`，详 [merge 报告](../reports/790-clipboard-media-merge.md)）：冻结门禁两基线全绿（`8c906b126`：t 5390/5390+tv 163/163+OS 30/30，首跑唯一红=solo 复绿 plan730 并行 flake；rebase 后 `249a80f2c`：t 5326/5326+tv 163/163+OS 30/30，一次真 OS 剪贴板争用瞬态红即时复跑绿——均归因未豁免）；rebase over 789 并发推进（range-diff 2/3 全等+commit1 仅 exclude 上下文适配；映射 be5dfea0c→f9234e0c4/8c906b126→9a6cae26a/c2fbd245e→b57617392）；SD-01/02 沉淀（ui 两处旧未迁清单同步更新）；ledger v31→v32 受管离线投影（P790-D1/D2/T/R2/M，存量逐字节等价+回读校验）；plans.md 双索引；777 基线重锚 e69639875（落 master strict pass 0 violations）；ff-only 合入 master（tip=249a80f2c）；归档+收据提交即本提交。事故记录：rebase 编辑器异常污染 Cargo.toml+rerere 记忆重放，已修复（逐提交零污染验证+rr-cache 全清——纯缓存无损）。批量回归 790%5==0 到期 → regress 交接（789 收据预告）。
 
 ## 9. 复审记录
 
@@ -149,9 +151,12 @@ T-06 收据：core→ui 删边扫描——`vm/native.rs` 零 `ui::clipboard_nati
 
 2026-10-16 stage=work（R1 修复轮） | PLAN-790 | plan_revision=1 | outcome=pass（T-05/T-06 重闭，6/8；T-07 复审待接） | worktree=D:/autostack/.wt/lang-790/auto-lang | branch=codex/plan-790-dev | base=e4ac72a62 | code=8c906b126（实施 be5dfea0c + 修复 8c906b126，树 clean） | deps=auto-down detached@c39ac7f 不变 | tasks=T-05/T-06 重闭 | findings 闭环：F790-R1-01（P2）→ 不变式=夹具合成 PNG 必须严格有效且不依赖被测侧解码器容错 → 修复=Adler32 范围 `z[7..adler_start]`（未压缩数据，旧误含 DEFLATE 块头）+ 新增 `image_helper_assert_strict_png` 独立有效性控制（签名/逐 chunk CRC32 重算/IHDR/LEN-NLEN/Adler32 重算/扫描线逐字节）于 V04 喂 OS 前调用 → 复现对照逐字一致（坏 `7c452808`→`incorrect data check`；正 `d0db2609` 严格 zlib 过）→ 无剩余缺口；F790-R1-02（P3）→ 不变式=新增文件零警告+fmt 清洁 → 修复=`adler_start` 重命名+rustfmt（skip_children）→ 三新文件 fmt check 全过、consumer 目标零警告 → 无剩余缺口。受影响重放：fixture no-ui 8/8、ui-host 10/10（严格校验器实跑于 V04）；生产代码零改动（R1 确认生产面无需变更）。收据勘误：diff 15 文件（原记 13 有误，已在 T-05/T-06 收据更正）。merge-owned 门禁维持 pending（裸 t+tv+OS 定向档于新冻结提交 8c906b126；tf 批量档主检出） | blockers=无 | next_responsible_role=review（T-07 R2：重放两 finding 修复+受影响验收+SD 冻结复核，绑定 8c906b126）
 
+2026-10-16 stage=review | review_scope=final（R2） | reviewer_identity=Codex（延续R1独立审查上下文，未参与实施/修复，未另启agent） | plan_id=PLAN-790 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-790/auto-lang | branch=codex/plan-790-dev | reviewed_commit=8c906b1262faf3e0b6dccd20aa551279fb735c08 | base_commit=e4ac72a6265c85cdadeedbabc7a0c6fd93948e48 | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 | spec_inputs=vm/overview SHA256 9A743FA5050A1577A6FF95F7F01BE8F7CEA460B0CC735ED6161DF0A274EDA123、ui/overview D93459051EA2F53C22F35C32B013682C4416DF639AE9BD2E55253481D3473977 | SD冻结SHA256=03C8EB39A6F5BC054C068E41F6F5E6174EBB684D2C119D379387FAC611D22216（与R1仅CRLF/LF字节差，规范文本未变） | acceptance_results=AC-01..05 pass、AC-06 pending | findings=F790-R1-01/02 CLOSED，无新增 | evidence=[R2报告与闭环](attachments/790/review-r2/REVIEW.md)、[SD冻结](attachments/790/review-r2/spec-delta.md)；新PNG严格zlib与逐字节扫描线通过、旧坏样本及CRC/Adler/像素篡改4个反控均被新helper拒绝；no-ui 8/8、ui-host 10/10、禁止静默跳过OS探针1/1完整执行；新增fixture零警告、所有触面Rust文件fmt及diff --check通过。R1→R2仅fixture变化，生产/锁定依赖/测试配置及兄弟提交未变，复用R1专属7/7及生产全路径核验；审前后HEAD/依赖/树clean不漂移 | pending_closeout_gates=merge-owned冻结裸cargo t+tv+Windows OS定向档、777基线复核、规范/ledger/归档/guard清理；tf仅主检出批量到期档 | next=merge，status=reviewed、7/8；尚未合入或交付，不得跳过merge-owned门禁。
 ## 10. 待澄清事项
 
 T01须冻结原图像临时文件寿命和平台实际支持，不新增跨平台OS承诺。若需要修改.at签名/值编码/清理时机，先给具体不兼容点修订合同；不能通过禁用native-clipboard/改空值expected规避验收。
 
 - **[work 观察项，非阻断]** 777 模块边界 strict 检查在 master 干净树即判红 `stale_baseline`（`Cargo.toml`+`crates/auto-lang/Cargo.toml` 自基线 base_revision 变更——785 合入后的既有漂移，非本批引入；本批仅向根 exclude 列表追加 fixture 项，零依赖边新增）。基线重采样须绑定干净树 HEAD，归 merge 阶段或独立簿记处理。
 - **[work 观察项，非阻断]** no-ui+`native-clipboard` 单开组合自本批**新可建**（旧 Windows 臂直引 `ui::clipboard_native` 使该组合不可编译）；可建后语义=provider 恒缺席→G3 值降级。此为依赖倒置的改善性副产物，非兼容性承诺。
+
+2026-10-16 stage=merge | PLAN-790 | plan_revision=1 | outcome=pass | worktree=D:/autostack/.wt/lang-790/auto-lang（已清理） | branch=codex/plan-790-dev（已删） | reviewed_commit=8c906b126（rebase 映射 9a6cae26a，range-diff 等价） | delivery_commit=249a80f2c（master tip，ff-only） | checkpoints：prepared=冻结 SD/基线核验；landed=master==249a80f2c 无 merge commit；ledger_refreshed=v31→v32 受管离线投影（P790-D1/D2/T/R2/M，file+tags 全，回读验证）；archived=docs/plans/archive/790-clipboard-files-images-provider.md+收据/reports 本提交；cleaned=wt-guard clean+worktree/分支/组目录移除（见收据提交） | 规范=vm/overview+ui/overview（SD-01/02，ui 两处旧清单更新） | 观察=产物（release/vue dist）未重建非本批触面；批量回归 DUE→regress | completion_kind=delivered
