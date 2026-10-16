@@ -203,6 +203,29 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
 
+### 执行进度注记（work，2026-10-16 复审 R3 修复轮 → 15cfeac97）
+
+**三连败诊断更新**（R2 诊断的遗留盲区）：R2 轮的"设计调整"多项仍是旧例
+级补丁——递归只换成计数（栈溢出照旧）、revision 塞进内容 manifest（身份
+混淆）、采样靠末尾再读（非阶段内峰值）。R3 逐项根因/覆盖/设计调整：
+
+| finding | 根因 | 设计调整（机制级） |
+|---|---|---|
+| R3-01 | 预算不限制每层原生栈——递归路径在预算前崩 | **迭代引擎**（projection_engine.rs 显式工作栈）：全部相互递归改帧栈；正常栈深链/真嵌套/调用验证 |
+| R3-02 | 会话修订混入内容身份（key 不含但 payload 含）；跨会话比较裸 revision | 迟到判定域=会话（内存仲裁，不进工件）；同文本跨修订幂等；跨会话 rev0 可发布 |
+| R3-03 | 先删后注册——注册失败旧根已丢 | 先注册新根+定点删除旧行（probe remove_root 缝隙）；失败注入反例 |
+| R3-04 | MidToken 无起始行——checkpoint.line 只是 EOF 位置 | MidToken 携带原始起始行（codec v2）；跨行恢复=fresh 尾部全等对照 |
+| R3-05 | admission 只查编号不查 span/源上界 | manifest inline origin + decl_range 上界 vs total_len 受控拒绝 |
+| R3-06 | 计量各自分散采样；bin 全文源驻留 | 同驻留合计单点采样；manifest 实读分列；单查询增量 ≤512KiB 实测；bin 按范围取源 |
+
+修复提交 `15cfeac97`（新文件 projection_engine.rs；probe 加法 remove_root）。
+证据：R3 反例 **8/8**（修复前 1/7）、R2 18/18 + R1 7/7 保持、acceptance
+**16 族 98 项 ALL PASS**（admission 10 含 5 个新 R3 oracle：同文本复用/
+重启发布/注册失败保旧根/跨行恢复/越源拒绝）、783 触面全绿。64MiB：受管
+峰值含暂存 5142KiB≤8MiB、OS 全阶段 17396KiB≤64MiB、单查询增量读取
+≤512KiB、build 548s（目录页 2048 条后 put 增至 ~1253 目录页——probe put
+成本边界 D-787-01 维持）。
+
 ### 执行进度注记（work，2026-10-16 复审 R2 修复轮 → f7ea3a9e9）
 
 **两连败诊断（技能条款：连续两次 final 未过后，先诊断再修复）**——R1 修复
@@ -316,7 +339,29 @@ ac-core 零 diff——compatibility_ 审计）。
 
 ## 9. 复审记录
 
-### 2026-10-16 final review R2 — needs_fix（当前有效）
+### 2026-10-16 final review R3 — needs_fix（当前有效）
+
+stage: review；review_scope: final；reviewer_identity: 当前 Codex 会话，延续 R1/R2 独立审查，未参与实施、未创建代理。
+plan_id: PLAN-787；plan_revision: 1；outcome: needs_fix；status: executing 2/9。
+worktree_path: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+reviewed_commit: f7ea3a9e93bb76e0187c10fa280f032baa0fbcbd；base_commit: bf773ca9bfc5a2d6ed672f904011419b03eff1ef；previous_review: afbacfbcc644d246a2bf3a0ae6185bbd9e6ca457。
+dependency_revisions: auto-atom/auto-ac-prototype/ac-artifact-probe 均绑定本实施树 reviewed_commit，清单与锁 hash 见附件。
+
+[完整报告/闭环/AC/6 项 finding](attachments/787/review-r3/REVIEW.md)、[原 R2 重放](attachments/787/review-r3/r2-replay.log)、[新反例](attachments/787/review-r3/probes/counterexamples.rs)、[新反例输出](attachments/787/review-r3/counterexamples.log)、[正常栈隔离探针](attachments/787/review-r3/probes/projection-normal-stack.rs)、[acceptance 输出](attachments/787/review-r3/acceptance.log)。
+spec_inputs: [Spec/Design hash](attachments/787/review-r3/spec-inputs.tsv)、[依赖 hash](attachments/787/review-r3/baseline-hashes.tsv)；
+[冻结 SD](attachments/787/review-r3/spec-delta.md) SHA-256 23867BC72A7016E0FF485BC6090F81B5B8B54293529EA50D583742B0A2F5FFC1，未获通过、不发布 canonical。
+
+readiness: 两连败后的根因/覆盖调整表已核存在，但实际机制仍有不变量缺口；原 R2 18/18（含 R1 七例）保持，新 R3 8 例=1 pass/7 fail。
+check/全语法 rs rustfmt/diff-check 通过；新代码零警告（仅既有 shim-metadata）。工作验收 16 族/95 次通过记录全部绿（含 64MiB），见 acceptance.log；预算口径缺口不以断言绿转 pass。
+acceptance_results: AC-01 fail、AC-02 partial、AC-03 fail、AC-04 fail、AC-05 fail、AC-06 fail、AC-07 fail、AC-08 pending。
+findings: F787-R3-01..06 均未闭合：正常 2MiB 栈的 2200 链及 512 真嵌套块投影 stack overflow；同文本异 revision 工件冲突/新会话裸 revision 错比；注册新根失败后旧根已删；跨行 checkpoint 恢复 token 起始行错；有效 frame 越源 span 成功返回；同时驻留与 OS 峰值/按需恢复口径仍缺且 bin 实际全文源 Vec 驻留。
+
+保留 T-01/T-04，重开 T-02/T-03/T-05/T-06/T-07，current_step=2/9；T-08/T-09 未完成。旧 work 的全闭合声明及复审记录保留为历史，不覆盖本轮反例。
+pending_closeout_gates: 新冻结提交 final pass 后完整独立语法工作区+受影响 783 套件、Spec/索引/ledger、合入归档/guard 清理；未跑根整档/docs_gen。
+next: 原树 auto-plan-work 修复全部 findings，先给具体机制/覆盖调整（不能只增线程栈、计数预算、末尾采样或把 revision 塞进内容 key），保留正常栈受截止子进程与所有旧例，提交后复审。本轮未修实现/合入。
+
+
+### 2026-10-16 final review R2 — needs_fix（历史记录；当前见 R3）
 
 stage: review；review_scope: final；reviewer_identity: 当前 Codex 会话，延续 R1 独立审查，未参与实施、未创建代理。
 plan_id: PLAN-787；plan_revision: 1；outcome: needs_fix；status: executing 1/9。
@@ -396,6 +441,22 @@ replay（全字段诊断+增量工件链）未回退。
 merge-owned pending：closeout 完整独立套件 + 783 触面（--lib/admission_/dep_audit_）
 + Spec/索引/ledger 沉淀 + 合入归档/guard 清理。
 blockers: 无；next_responsible_role: review（T-08 绑定 f7ea3a9e9）。
+
+### 2026-10-16 work R3 修复轮 handoff（三连败诊断更新 + R3 findings 全闭合 → 送审）
+
+stage: work；plan_id: PLAN-787；plan_revision: 1；outcome: pass（execution_done 7/9 恢复）；
+worktree: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+base_commit: bf773ca9bfc5a2d6ed672f904011419b03eff1ef；code_commit: 15cfeac97（R3 修复）；
+dependency_revisions: 同一实施树 path 依赖，绑定 15cfeac97；
+task_ids: T-02/T-03/T-05/T-06/T-07（R3 重开后复核重勾）。
+诊断链接：见上方 R3 修复轮注记的诊断表（三连败根因=R2 调整仍是旧例级补丁：
+递归换计数/revision 入内容工件/末尾采样）。
+readiness：R3 反例 8/8 + R2 18/18 + R1 7/7 全绿（三轮无回归）；acceptance
+16 族 98 项 ALL PASS；783 触面 --lib/admission_/dep_audit_ 全绿；rustfmt
+全量 clean；零新增警告。未闭合 in-contract findings：无。
+merge-owned pending：closeout 完整独立套件 + 783 触面 + Spec/索引/ledger
+沉淀 + 合入归档/guard 清理。
+blockers: 无；next_responsible_role: review（T-08 绑定 15cfeac97）。
 
 2026-10-15 draft handoff：stage:new；PLAN-787 r1；outcome:pass（可交付的规划契约，非实现验收）；next:work（先独立T-01–05，T-06前核D-783）。新增T-01–09、AC-01–08、V-01–13、SD-01–06，当前0/9，未执行编译/测试。用户只授权规划，未创建实施树。
 

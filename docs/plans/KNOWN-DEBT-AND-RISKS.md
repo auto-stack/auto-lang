@@ -1,3 +1,27 @@
+### Plan 793 final review R2（2026-10-16，pass）
+
+受审 `a8faf1e311debb96df0c3ed660b7d7ccbb0e23a4`；[R2报告](attachments/793/review-r2.md)。F-793-R1-01..04全部CLOSED：提交内golden与旧臂冻结件字节一致、38例重放通过；真实Type/E0106与Name/E0201及有效控制纳入互操作7/7；六文件fmt/diff-check绿；SD03补auto-lex归属同步、SD02路径修正。独立consumer5/5、strict零违规、闭包PASS；生产代码/依赖/测试配置未变，明确复用R1定向error_tests4/error_spans8证据。无新增finding，R1下方开放状态保留为历史。Plan=reviewed 7/8；merge-owned裸cargo t+tv、新crate/consumer、SD/ledger/归档/guard清理与792互链pending，尚未合入交付。
+
+### Plan 793 final review R1（2026-10-16，needs_fix）
+
+受审 `1bb5660b44d7835617fd88aa0dfbf7ee433b280e`；[R1报告](attachments/793/review-r1.md)。F-793-R1-01（P1）：V02 golden受`*.json`忽略、未入提交，本机38例绿依赖额外文件，干净检出缺oracle；F-793-R1-02（P2）：真实type/infer用例实际因`let x: int`落Syntax/E0099，未覆盖合同V03真实type阶段；F-793-R1-03（P3）：新error门面未过rustfmt；F-793-R1-04（P2）：SD漏同步auto-lex现行From/attach/Name残留归属，且SD02门面路径错。以上为合同内未闭项，不批准转为延期债。独立consumer各5绿，strict零违规，定向error_tests4/error_spans8绿，逐字搬迁仅别名及注释变化，未发现新增诊断行为回归。Plan回executing 2/8，保留T01/02、重开T03..06；原树修复提交再审。merge-owned裸t+tv、知识沉淀/归档/guard清理pending；未改实现/合入。
+
+### Plan 795 final review R2（2026-10-16，pass）
+
+受审 `edf982e52902e0b3b8d18c1f1366bab98dd1f161`；[R2报告](attachments/795/review-r2/review.md)。F-795-R1-01关闭：修复只更新777基线，独立strict=pass/0 violations/2 grandfathered，metadata45边零差异；规则与豁免未放宽。实现/依赖/测试配置/SD均未变，SHA256复核一致，明确复用R1行为38项+fresh4组与闭包/fmt证据。无新增finding；R1开放结论仅保留历史。Plan=reviewed 7/8；merge-owned裸cargo t+定向验收、规范/ledger/归档/guard清理及795批到期交接仍pending，未宣称交付完成。
+
+### Plan 795 final review R1（2026-10-16，needs_fix）
+
+受审 `11ddc162ecd839b98cee748e3d2c27cfd05df301`；[R1报告](attachments/795/review-r1/review.md)。F-795-R1-01（P2，AC-04/05，T-05/06）：777 strict 实跑 exit1，config_drift_since_baseline + stale_baseline 两红；新增两声明边合法、metadata45边零差异，但新crate/根members/auto-man依赖/域配置未重绑冻结基线。须原树审查并显式刷新、不放宽规则或grandfather，提交后strict复绿再复审；不能延期到merge。行为验收38项+fresh独立4组均pass，fmt/diff-check/闭包通过。Plan回executing 4/8，重开T-05/06；merge-owned整档与收尾pending。旧弱verify及Man未迁项为合同明确非目标，未另发现行为回归。
+
+### Plan 787（2026-10-16，独立 final review R3）
+
+受审 `f7ea3a9e93bb76e0187c10fa280f032baa0fbcbd`；**needs_fix / executing 2/9**。
+[R3 报告/闭环/AC/SD](attachments/787/review-r3/REVIEW.md)、[旧18例](attachments/787/review-r3/r2-replay.log)、[新8例](attachments/787/review-r3/counterexamples.log)。下方 R1/R2 为历史；本登记不批准延期。
+
+原 R2 18/18 保持通过；新8例 1过/7红，两个合法深输入在正常2MiB栈投影崩溃（2200链、512真嵌套块，0xC00000FD）。F787-R3-01..06（P1）：递归仅改访问计数未治理栈；内容工件嵌 revision 导致同文本冲突且新会话被误判迟到；发布注册失败丢旧根；跨行 checkpoint 起始行错；有效 frame 越源 span 未拒绝；峰值同时驻留/OS采样口径与大源按需查询未闭合（bin仍整源Vec）。
+两连败诊断表已提供但机制修复不足；acceptance16族95次记录全绿（含64MiB），check/fmt/diff-check绿。保留T01/T04，重开T02/T03/T05..07；先补机制与覆盖调整后同树修复提交再审。未修实现/合入；merge-owned完整独立套件及收尾pending。
+
 ### Plan 787（2026-10-16，独立 final review R2）
 
 受审 `afbacfbcc644d246a2bf3a0ae6185bbd9e6ca457`；**needs_fix / executing 1/9**。
@@ -1880,3 +1904,15 @@ attachments/787/review-r2/）。F787-R2-01..11 全部闭合：R2 反例 18/18（
 D-787-01（probe put 提交成本超线性）维持——R2 轮目录页加密到 4096 条/页后
 put 次数进一步上升（64MiB 构建 366s，仍为 probe 边界）；D-787-02（debug 档
 增量时延非主张面）维持。
+
+### Plan 792 final review R1（2026-10-16，needs_fix）
+
+受审 `8a83e1f39383b43c01b5b159dacef8d2a89fd7c2`；[独立报告/反例/AC/SD冻结](attachments/792/review-r1.md)。F-792-R1-01（P2）：资源校验只在driver比较原fixture，清单hash改零仍True，真实locked构建缺图仍exit0；F-792-R1-02（P1）：再交付准备失败前删除旧app/锁/资源，CLI红时旧产物已丢；F-792-R1-03（P2）：sidecar可成功发行主检出绝对path，破坏独立来源/重定位；F-792-R1-04（P3）：新增rust_ui两处fmt差异。均为合同内开放项，登记不批准延期；Plan回executing 2/8，保留T01/02，重开T03..06。独立fresh build161s、relocated locked131s、delivery单测5/5；首次driver12/14因review scratch在仓内使V04条件不符，按合同仓外独立补跑V04两项全过。新反例仍红；merge-owned全档/规范/ledger/归档/guard均pending，未改实现/合入。
+
+### Plan 787 复审 R3 修复轮（2026-10-16，findings 全闭合送审）
+
+受审修复提交 `15cfeac97`（R3 报告 attachments/787/review-r3/）。F787-R3-01..06
+全部闭合：R3 反例 8/8（修复前 1/7）、R2 18/18 + R1 7/7 保持、acceptance
+16 族 98 项 ALL PASS。三连败诊断已按轮留档计划 §9（R3 根因=R2 调整仍旧例
+级）。D-787-01（probe put 成本超线性）维持——目录页 2048 条后 64MiB 构建
+548s；D-787-02 维持。
