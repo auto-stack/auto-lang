@@ -50,6 +50,10 @@ RecGroup（组内容版本=成员排序后 hash；成员重复/非 record 成员
 是 797 的受控拒绝面，本表示层结构上不可表达按值无限递归。u32/f64 等仅是元信息表示，
 不扩大 i32/bool 推导实现面（§5.1 边界原文）。
 
+CT/实例/runtime 接缝 Schema：`ac796/ct-seam/v1`（CTRequest/CTResult/PortableValue/
+RuntimeProjectionPolicy/InstanceKey；admission 拒 Unknown/地址/宿主 handle/未检可执行
+输入；结果标记仅 `model_compute`，`vm_execute` 由真 AVM 路径独占）。
+
 ## D7 查询键（query key）
 
 组件：query、package、module、algo=`ac796-bidir-worklist/1`、schema、producer、
