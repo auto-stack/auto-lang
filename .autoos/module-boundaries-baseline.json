@@ -1,6 +1,6 @@
 {
-  "base_revision": "3e1a9742c9748de2020abce91cbd3bcb79227270",
-  "config_sha256": "82718ad24a3f3f2f3eb0f533bfcbd51daa21097c33198b17b757a96d013acc0e",
+  "base_revision": "11ddc162ecd839b98cee748e3d2c27cfd05df301",
+  "config_sha256": "a4272341bdc3d6b89f30620be14260b29b5e7e6b72e13ee37b43c34aed12c468",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -309,6 +309,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-package-lock",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-package-lock",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-project-model",
       "from": "auto-man",
       "kind": "normal",
@@ -320,6 +329,15 @@
     {
       "dep_key": "auto-val",
       "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-package-lock",
       "kind": "normal",
       "optional": false,
       "target": null,
