@@ -1,5 +1,5 @@
 {
-  "base_revision": "8a5b939205f873d30fe386d414a88d12d083342c",
+  "base_revision": "e696398759d7931568a2ec0039103a8b5a214e5d",
   "config_sha256": "20c5269761766199b1b52477d1e095ecf103dd37688a878aa7beef12629019ec",
   "declared_edges": [
     {
@@ -375,7 +375,7 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 894,
+    "core_to_ui": 893,
     "man_to_language": 573,
     "ui_to_language": 181
   }
