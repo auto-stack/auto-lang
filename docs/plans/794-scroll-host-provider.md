@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-794
-status: drafting
+status: execution_done
 feature_name: scroll controller 与子锚点宿主能力迁移
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/widgets/scroll-pane.md, docs/specs/auto-lang/ui/design/scroll-child-anchor.md]
 new_spec_components: []
@@ -52,9 +52,16 @@ per-VM隔离针对provider选择及快照，不声称同一UI adapter的既有�
 | ID | 操作 | target | before/after rule | 原因 | AC |
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/auto-lang/vm/overview.md | 八native provider/DTO/缺席与ownership | core去反向边 | AC-01/02/03 |
-| SD-02 | modify | docs/specs/auto-lang/ui/overview.md | UI adapter与生产装配、未迁族清单 | 接回真宿主 | AC-02/04 |
+| SD-02 | modify | docs/specs/auto-lang/ui/overview.md | UI adapter与生产装配、未迁族清单收窄 | 接回真宿主 | AC-02/04 |
 | SD-03 | modify | docs/specs/widgets/scroll-pane.md | 增宿主装配说明，原测量/intent合同保持 | 责任清楚 | AC-04 |
 | SD-04 | modify | docs/specs/auto-lang/ui/design/scroll-child-anchor.md | 调用边界迁provider，不改状态机/完成oracle | 781完整继承 | AC-02/04 |
+
+### SD 冻结素材稿（T-06，供 T-07 复审与 T-08 沉淀）
+
+**SD-01（vm/overview 增补节）**：`scroll_controller/to_start/to_end/by/to/state`（9900..9905）与 `to_child/anchor_state`（9922/9923，canonical `auto.scroll.*`）供值经 per-VM `ScrollHostProvider`（trait 五方法：`next_controller_handle()->String`、`enqueue_intent(&str, ScrollIntentDto)`、`controller_snapshot(&str)->ScrollSnapshotDto`、`enqueue_anchor_request(&str,&str)->Result<(),&'static str>`、`anchor_request_state(&str,&str)->Option<ScrollAnchorStateDto>`；DTO=core 自有 `ScrollAxisDto{X,Y}`/`ScrollIntentDto{ToStart/ToEnd/ScrollBy/ScrollTo}`（无 source——natives 恒 Programmatic）/`ScrollSnapshotDto` 8×f64（progress 由 provider 侧几何单源投影）/`ScrollAnchorStateDto{Pending/Applied/Invalid(String)}`；零 UI 类型/VM 堆 id/字符串池索引/renderer 引用）。装配=779/785/790 同构三级（实例注入 > 构造期进程默认快照 > 兼容 if-absent 补空槽）；注入不 bump binding_revision/不撤 proof；Clone/merge 保 provider。缺席语义=T-01 冻结降级臂逐字面值（controller=Int 0、intent 族=Bool false、state=Float 0.0、to_child="error:unsupported"、anchor_state="unknown"——值语义非 raise，任何 provider 不得伪装成功）。栈解码契约：COUNTED arity 辨识可选轴；弹序与 codegen 左→右压序对齐（可选轴在顶先弹——T-01 勘定修复 656 期 handle 先弹的可选轴误路由，探针实证、库内零破坏面）；`scroll_to(handle,a,b)` a 字符串=轴形单 intent、否则坐标形 X 先 Y 后双 intent；空串句柄跳过入队仍按在位性返 true/false；九轴词只认 "x" 其余归 Y。句柄=任意非空 opaque string（不强制前缀）。
+**SD-02（ui/overview 增补节+未迁清单收窄）**：`ScrollControllerProvider`（无状态）委托 `ui::scroll::controller` 既有注册表/锚点状态机（renderer binding/measured 单一真源、drain 解析不迁、不复制第二 registry），挂 `ui` 单门控（队列层纯 Rust 无 OS 面，无 790 双门控）；progress 经 `ui::scroll::geometry::progress` 单源现算（与迁移前 shim 内联同源同值）。宿主接线四点与 779/785/790 同集：`install_ui_host_capabilities`、`run_file_dynamic_ui_inner`、VmBridge 两构造（全 if-absent）。未迁族清单更新：core→ui 直引剩余=code_editor（2910..2915/2919..2924/9906..9913 含其滚动三函数）、dialog（2927/2928）、dnd_start（2938）、term/media 等按 790 版清单减去 scroll controller 族（9900..9905/9922/9923）。
+**SD-03（widgets/scroll-pane 增补节）**：宿主装配说明——VM 侧八 native 经 `ScrollHostProvider` 装配（UI 生产经 `ScrollControllerProvider` 兼容默认恢复原接线；no-ui 宿主注入自定义实现得真滚动观察面）；原测量/intent 合同（f64 逻辑空间、drain 顺序折叠、未预热晚一拍 F-4 纪律、双轴独立叠加）与 widget 行为零改动。
+**SD-04（scroll-child-anchor 调用边界节更新）**：`to_child/anchor_state` 调用边界迁 provider（core shim 编组 `queued`/`error:<reason>`/`pending`/`applied`/`invalid:<reason>`/`unknown` 字符串）；781 状态机（queued≠完成、managed unsupported 入队即拒、换绑代际、gen=0 采当前绑定、未预热/无采集 pending 晚一拍、not_found/not_bound 一次性、后写覆盖重新 pending、applied 不驻留）与完成 oracle（真实 offset 变化+目标正面积交集）原样留在 controller.rs/renderer——零语义迁移。
 
 ## 6. 测试设计
 
@@ -84,18 +91,46 @@ per-VM隔离针对provider选择及快照，不声称同一UI adapter的既有�
 
 | 状态 | ID | owner_stage | 依赖 | 操作/验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 781/790归档、合同确认 | 冻结native/feature/arity/record与781状态旧臂，列宿主构造清单 | 02/03/04 |
-| [ ] | T-02 | work | T01 | owned provider/DTO、VM及默认快照/优先关系，注册定向控制 | 01/03 |
-| [ ] | T-03 | work | T02 | 八shim去UI引用、栈解码和返回编组，保留降级并配平引用 | 01/02/03 |
-| [ ] | T-04 | work | T03 | UI新adapter及统一宿主安装，委托原registry/collector，不复制状态机 | 02/04 |
-| [ ] | T-05 | work | T04 | 外部consumer、V01..04及真实UI证据，777检查八族删边 | 01–04 |
-| [ ] | T-06 | work | T05 | 触面/未迁族、双端/ownership/并行收据与SD素材；提交冻结代码 | 01–04 |
+| [x] | T-01 | work | 781/790归档、合同确认 | 冻结native/feature/arity/record与781状态旧臂，列宿主构造清单 | 02/03/04 |
+
+T-01 冻结矩阵（实勘 native.rs@8b97d3c9b + native_catalog 9900..9905/9922/9923 + controller.rs）：
+
+| ID | canonical | 实参（压序→弹序） | 返回·provider 在位 | 返回·缺席（=旧 no-ui 臂逐字面值） |
+|---|---|---|---|---|
+| 9900 | auto.scroll.controller | 无实参 | Str（宿主分配不透明非空句柄；UI 宿主="@scrollctl:N"） | Int 0（非空串，旧臂原形） |
+| 9901 | auto.scroll.to_start | handle[,axis]；COUNTED arity≥2 才弹 axis | Bool true | Bool false |
+| 9902 | auto.scroll.to_end | 同上 | Bool true | Bool false |
+| 9903 | auto.scroll.by | handle[,axis],delta；弹 delta→handle→axis(arity≥3) | Bool true | Bool false |
+| 9904 | auto.scroll.to | handle,a,b；弹 b→a→handle；a 字符串=轴形(1 intent)，否则坐标形(2 intents，X 先 Y 后) | Bool true | Bool false |
+| 9905 | auto.scroll.state | handle | "ScrollState" 8 具名字段 record（GenericInstanceData 堆路径，全 Float：offset_x/y、viewport_w/h、content_w/h、progress_x/y） | Float 0.0（非 record） |
+| 9922 | auto.scroll.to_child | handle,key；弹 key→handle | Str "queued"/"error:bad_handle"/"error:empty_key"/"error:unsupported" | Str "error:unsupported" |
+| 9923 | auto.scroll.anchor_state | 同上 | Str "pending"/"applied"/"invalid:<reason>"/"unknown" | Str "unknown" |
+
+轴解码：轴词只认 "x"，其余（含缺省/非字符串）归 Y。句柄=任意非空 opaque string（不新强制 @scrollctl 前缀）；9901..9904 空串句柄=跳过入队仍返 true/false（按 provider 在位性）。
+栈纪律统一裁定：八 shim 统一体恒弹声明 arity（旧 no-ui 臂纪律）；旧 UI 臂在「空句柄+可选轴」组合少弹可选轴（潜伏失衡，正常程序不可达）——按 §5 配平纪律修正，返回值不变（记为合同内对齐，非语义变更）。
+**T-01 勘定（work 期发现，探针实证）**：9901/9902/9903 的旧 UI 臂「先弹 handle 再弹可选轴」与 codegen 左→右压栈（末参在顶）冲突——可选轴形实参被误路由（记录型 provider 探针：`scroll_to_end(h,"x")` 落 handle="x"、axis=Y；`scroll_by(h,"x",d)` 同病）；9904 的 b,a,handle 弹序自洽正确。库内全部 .at 用法（p656/p781 capability tests）均为单轴简写形/无轴形，零破坏面。修复=三 shim 弹序改为「可选轴在顶先弹、handle 后弹」（与 9904 同型），行为按**签名合同**（`to_end(handle, axis?)` 轴路由到轴）对齐；V02 arity 矩阵以此为新回归锚。
+DTO（按现有 state/anchor 投影冻结）：`ScrollAxisDto{X,Y}`；`ScrollIntentDto{ToStart/ToEnd/ScrollBy/ScrollTo}`（无 source——natives 恒 Programmatic，UI adapter 落 source=Programmatic）；`ScrollSnapshotDto` 8×f64（progress 由 provider 侧几何单源投影，core 不复制滚动算法）；`ScrollAnchorStateDto{Pending/Applied/Invalid(String)}`（reason 透传）；trait `ScrollHostProvider` 五方法：next_controller_handle/enqueue_intent/controller_snapshot/enqueue_anchor_request/anchor_request_state。
+781 状态机完整继承：queued≠完成；managed=unsupported（入队即拒）；换绑代际不符→invalid:not_bound（gen=0 请求采当前绑定）；未预热/无采集帧→pending 晚一拍；key 不在当帧→invalid:not_found（一次性）；同 (handle,key) 后写覆盖重新 pending；applied 不驻留拉回；无记录→unknown。
+宿主构造清单（T-04 接线点，全 if-absent 补缺）：`install_ui_host_capabilities`（lib.rs 统一 installer，cfg ui）、`run_file_dynamic_ui_inner`（cfg ui-iced）、VmBridge 两构造（cfg ui-iced）。adapter 门控=feature "ui" 单门控（ui::scroll 队列层纯 Rust 无 OS 面，无 windows/native-clipboard 双门控）。
+| [x] | T-02 | work | T01 | owned provider/DTO、VM及默认快照/优先关系，注册定向控制 | 01/03 |
+| [x] | T-03 | work | T02 | 八shim去UI引用、栈解码和返回编组，保留降级并配平引用 | 01/02/03 |
+| [x] | T-04 | work | T03 | UI新adapter及统一宿主安装，委托原registry/collector，不复制状态机 | 02/04 |
+| [x] | T-05 | work | T04 | 外部consumer、V01..04及真实UI证据，777检查八族删边 | 01–04 |
+| [x] | T-06 | work | T05 | 触面/未迁族、双端/ownership/并行收据与SD素材；提交冻结代码 | 01–04 |
 | [ ] | T-07 | review | T06 | 独立八native及UI实际完成条件、负控、SD冻结 | 05 |
 | [ ] | T-08 | merge | final pass | 裸t+tv及实际tu；沉淀/归档/guard清理，后合入者同步重验 | 06 |
+
+T-02 证据：host_capabilities.rs 增 `ScrollHostProvider` 五方法 trait + 四 DTO（Axis/Intent/Snapshot/AnchorState，全 owned 标准库值域）+ 进程默认槽四 API（set/if_absent/get/clear，同锁原子语义与 779/785/790 逐条相同）；engine.rs `new_inner` 构造期快照 + `AutoVM::set/scroll_host_provider`；native.rs NativeInterface 槽（per-VM RwLock + Clone 保留 + set/get，注入不动 binding_revision）。`cargo check -p auto-lang` 零错误。
+T-03 证据：八 shim 统一 feature 中性体（旧 `#[cfg(feature="ui")]` UI 臂与 `#[cfg(not)]` 降级臂全删合并）；缺席臂=T-01 冻结逐字面值；空句柄/轴解码/双 intent 次序/StakeGuard 配平保持；T-01 勘定=9901/9902/9903 弹序改「可选轴在顶先弹」修复 656 期可选轴误路由（记录型 provider 探针实证，见 §4 勘定注记；库内全部用法为简写形零破坏）。`cargo t scroll` 81/81、`cargo t provider` 36/36。
+T-04 证据：`ui/scroll_host_provider.rs` 新 adapter（DTO↔UI 类型转换 + `install_process_default` if-absent 兼容默认 + 优先关系/同源读/直通三单测）；挂 `ui` 单门控；接线四点=lib.rs 统一 installer、`run_file_dynamic_ui_inner`、VmBridge 两构造。
+T-05 证据：in-crate `tests/plan794_scroll_host_provider.rs` 6/6（剪断锚节区段圈定避 code_editor 误伤/ID 钉扎/缺席降级全矩阵/fake 委托精确参数含坐标形 X 先 Y 后/Clone-merge-两 VM 隔离-实例覆盖不污染默认/真实 adapter→注册表接线含 managed 拒绝+失锚 not_found 驻留+后写覆盖重新 pending）；外部 fixture `scroll-provider-consumer` 5/5（V01 no-ui 真管线 stdout + V02 arity/轴/Unicode/缺席/两 VM/Clone/merge/显式默认优先/32 轮清栈+reap_all 后 heap 活计数回基线）；V03/V04 实机=p781 VM 探针 57/57 + p781 Vue 59/59（首跑 58/59 唯一红=overlay.ts 动态导入竞态与 scroll 无关，二跑全绿，报告存档）+ p656 VM 全过（六旧函数全链 ordinary/managed/on-scroll）；p656 Vue 腿环境性跳过（fixture 无 gen/backend 生成路径预存缺口，非本批触面；冗余覆盖由 781 Vue v06 承担）；777 core_to_ui code 类 570→549（八族直引删净，新增仅 4 处 composition-root install 接线）。收据=attachments/794/work/evidence-summary.md。
+T-06 证据：rustfmt 触面文件（fmt 递归波及的 43 个非触面文件已全部回滚——790 同款坑规避）；`cargo check -p auto-lang -p auto` 零错误零新增警告；SD 冻结素材稿见 §5；merge-owned 门禁（裸 `cargo t`+`tv`；ui_gen 零触面故 tu 不触发；tf 批量档主检出单实例）**pending** 于冻结提交。
 
 ## 9. 复审记录
 
 2026-10-16 stage=new | plan_revision=1 | outcome=pass（合同preflight） | next=合同确认且native热点空闲后work | 0/8；无需等792，不以fake代替UI完成证明。
+
+2026-10-16 stage=work | PLAN-794 | plan_revision=1 | outcome=pass（work 完成，6/8；T-07 review / T-08 merge 待接） | worktree=D:/autostack/.wt/lang-794/auto-lang | branch=codex/plan-794-dev | base=8b97d3c9b | code=91974d8f8（树 clean） | deps=auto-down sibling worktree detached@c39ac7f9（组内解析只读；792/793/795 并行线热点不相交本轮未推进） | tasks=T-01..T-06 | evidence=AC-01（八shim零 ui::scroll 直引——剪断锚节区段圈定 + 777 core_to_ui code 类 570→549；no-ui 独立 manifest fixture 真管线 V01 5/5）；AC-02（ID/arity/缺席/781 语义——in-crate 6/6 + fixture 降级/参数矩阵 + p781 VM 57/57 全状态机 + p656 VM 六旧函数全链）；AC-03（ownership 配平=缺席/空句柄/成功路径恒弹声明 arity + 32 轮清栈 + reap_all 后 heap 活计数回基线；实例选择/优先=构造快照/两 VM 不串/实例覆盖不污染默认/Clone-merge 保 provider/注入不 bump revision）；AC-04（真实 UI adapter→原注册表接线不漂移 + p781 双端 57/57+59/59 + p656 VM；未迁族清单入 SD-02）。T-01 勘定（合同内对齐，非语义变更）：9901/9902/9903 可选轴形弹序修复（656 期潜伏误路由，探针实证+零库内破坏面，V02 新回归锚）。merge-owned pending：裸 `cargo t` + `cargo tv` 于冻结提交 91974d8f8（ui_gen 零触面 tu 不触发；tf 批量档主检出单实例）。验证集：cargo check -p auto-lang/-p auto 零错误零新增警告；cargo t plan794 6/6、scroll 81/81、provider 36/36；fixture 5/5；实机探针见 attachments/794/work/evidence-summary.md | blockers=无合同内未闭项；环境注记=sccache 端口保留段绕开（SCCACHE_SERVER_PORT=42917）、p781 vue 后端冷编译超 CLI 120s 需预热一次、p656 Vue 腿预存 gen 缺失环境性跳过（冗余覆盖在案） | next_responsible_role=review（T-07：独立重放八 native 负控/实机完成 oracle/弹序勘定复核/SD 冻结校验，绑定 91974d8f8）
 
 ## 10. 待澄清事项
 
