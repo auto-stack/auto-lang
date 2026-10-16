@@ -239,9 +239,7 @@ fn v01_process_default_reaches_real_vm_stdout() {
 /// ——换进程默认不影响已建实例；实例级覆盖生效且不污染其他实例/默认。
 #[test]
 fn v01_two_live_instances_do_not_cross_talk() {
-    use auto_lang::vm::native::{
-        shim_clipboard_files_get, shim_clipboard_files_set,
-    };
+    use auto_lang::vm::native::{shim_clipboard_files_get, shim_clipboard_files_set};
 
     let _g = serialized();
     let _guard = DefaultGuard::new();
@@ -275,8 +273,16 @@ fn v01_two_live_instances_do_not_cross_talk() {
         vm.rc_release_id(id);
         first
     };
-    assert_eq!(first_path(&vm1), "C:/plan790-fx/A-快照.txt", "vm1 保持快照 A");
-    assert_eq!(first_path(&vm2), "C:/plan790-fx/B-默认.txt", "vm2 取新默认 B");
+    assert_eq!(
+        first_path(&vm1),
+        "C:/plan790-fx/A-快照.txt",
+        "vm1 保持快照 A"
+    );
+    assert_eq!(
+        first_path(&vm2),
+        "C:/plan790-fx/B-默认.txt",
+        "vm2 取新默认 B"
+    );
 
     // 实例覆盖 C：只影响 vm2。
     vm2.set_clipboard_media_provider(c.clone());
@@ -305,7 +311,9 @@ fn v01_two_live_instances_do_not_cross_talk() {
     assert!(auto_val::decode_bool(task.ram.pop_nv()));
     assert_eq!(
         a.received_files_snapshot(),
-        vec![vec![std::path::PathBuf::from("C:/plan790-fx-set/set-参数.txt")]],
+        vec![vec![std::path::PathBuf::from(
+            "C:/plan790-fx-set/set-参数.txt"
+        )]],
         "set 精确落到快照 provider A"
     );
     assert!(
@@ -329,7 +337,9 @@ fn v02_both_listdata_forms_and_empty_list() {
 
     // 形一：ListData<Value>（含非 Str 元素——跳过）。
     let mut list = auto_lang::vm::types::ListData::<auto_val::Value>::new();
-    list.push(auto_val::Value::Str(auto_val::AutoStr::from("C:/p790/一.txt")));
+    list.push(auto_val::Value::Str(auto_val::AutoStr::from(
+        "C:/p790/一.txt",
+    )));
     list.push(auto_val::Value::Int(7)); // 非 Str：跳过
     let id = vm.insert_heap_object(list);
     vm.rc_push_id(&mut task, id);
@@ -380,7 +390,9 @@ fn v02_owned_data_survives_adjacent_cycles() {
     );
     assert_eq!(
         p.received_files_snapshot(),
-        vec![vec![std::path::PathBuf::from("C:/plan790-fx-cycle/循环-一.png")]],
+        vec![vec![std::path::PathBuf::from(
+            "C:/plan790-fx-cycle/循环-一.png"
+        )]],
         "相邻 set 收到精确参数"
     );
 }
@@ -603,6 +615,10 @@ fn v04_real_os_files_and_image_roundtrip() {
     let rgba: Vec<u8> = (0..w * h * 4).map(|i| (i * 9 + 3) as u8).collect();
     let src_png = std::env::temp_dir().join("plan790-fx-src.png");
     image_helper_save_png(&src_png, w, h, &rgba);
+    // F790-R1-01 修复：有效性控制独立于被测侧解码器——喂 OS 前先严格
+    // 自校验合成 PNG（chunk CRC/zlib 结构/Adler32/扫描线内容），夹具
+    // 不得依赖 image 解码器容错（旧版坏校验流曾被宽容接受）。
+    image_helper_assert_strict_png(&src_png, w, h, &rgba);
 
     let idx = vm.add_string(src_png.to_string_lossy().into_owned().into_bytes());
     vm.rc_push_str_idx(&mut task, idx);
@@ -627,11 +643,9 @@ fn v04_real_os_files_and_image_roundtrip() {
                 .cloned()
         };
         match field("path") {
-            Some(auto_val::Value::Str(p)) => (
-                p.as_str().to_string(),
-                field("width"),
-                field("height"),
-            ),
+            Some(auto_val::Value::Str(p)) => {
+                (p.as_str().to_string(), field("width"), field("height"))
+            }
             other => panic!("path field wrong: {other:?}"),
         }
     };
@@ -650,23 +664,30 @@ fn v04_real_os_files_and_image_roundtrip() {
     let _ = std::fs::remove_file(&src_png);
 }
 
+/// PNG chunk CRC32（RFC 1952 多项式 0xEDB88320——chunk 覆盖 kind+data）。
+#[cfg(all(windows, feature = "ui-host"))]
+fn image_helper_crc32(data: &[u8]) -> u32 {
+    let mut c: u32 = 0xFFFF_FFFF;
+    for &b in data {
+        c ^= b as u32;
+        for _ in 0..8 {
+            c = if c & 1 != 0 {
+                0xEDB8_8320 ^ (c >> 1)
+            } else {
+                c >> 1
+            };
+        }
+    }
+    !c
+}
+
 /// 最小 PNG 落盘（无压缩存储块 + CRC32/Adler32 手写——fixture 保持零
 /// 额外依赖矩阵；真 image 解码由被测侧 auto-lang 承担）。
+/// Adler32 只覆盖未压缩数据（RFC 1950——F790-R1-01 修复：旧版误把
+/// DEFLATE 存储块 5 字节头算入，严格解压 `incorrect data check`）。
 #[cfg(all(windows, feature = "ui-host"))]
 fn image_helper_save_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) {
-    // 最小 PNG 写出（无压缩存储块 + CRC）——独立实现，避免 fixture 直接
-    // 依赖 image crate（保持零额外依赖矩阵）。
-    fn crc32(data: &[u8]) -> u32 {
-        let mut c: u32 = 0xFFFF_FFFF;
-        for &b in data {
-            c ^= b as u32;
-            for _ in 0..8 {
-                c = if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 };
-            }
-        }
-        !c
-    }
-    fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+    fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8], crc32: fn(&[u8]) -> u32) {
         out.extend_from_slice(&(data.len() as u32).to_be_bytes());
         out.extend_from_slice(kind);
         out.extend_from_slice(data);
@@ -693,15 +714,16 @@ fn image_helper_save_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) {
         z[at..at + stride].copy_from_slice(&rgba[row * stride..(row + 1) * stride]);
         at += stride;
     }
-    let Adler_start = z.len() - 4;
+    // Adler32 范围 = 未压缩扫描线数据 z[7..]（不含 zlib 头与存储块头）。
+    let adler_start = z.len() - 4;
     let mut adler1: u32 = 1;
     let mut adler2: u32 = 0;
-    for &b in &z[2..Adler_start] {
+    for &b in &z[7..adler_start] {
         adler1 = (adler1 + b as u32) % 65521;
         adler2 = (adler2 + adler1) % 65521;
     }
     let adler = (adler2 << 16) | adler1;
-    z[Adler_start..].copy_from_slice(&adler.to_be_bytes());
+    z[adler_start..].copy_from_slice(&adler.to_be_bytes());
 
     let mut png = Vec::new();
     png.extend_from_slice(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
@@ -709,17 +731,108 @@ fn image_helper_save_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) {
     ihdr.extend_from_slice(&w.to_be_bytes());
     ihdr.extend_from_slice(&h.to_be_bytes());
     ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8bit RGBA
-    chunk(&mut png, b"IHDR", &ihdr);
-    chunk(&mut png, b"IDAT", &z);
-    chunk(&mut png, b"IEND", &[]);
+    chunk(&mut png, b"IHDR", &ihdr, image_helper_crc32);
+    chunk(&mut png, b"IDAT", &z, image_helper_crc32);
+    chunk(&mut png, b"IEND", &[], image_helper_crc32);
     std::fs::write(path, png).expect("write png");
+}
+
+/// 严格 PNG 自校验（F790-R1-01 有效性控制——不依赖被测侧 image 解码
+/// 器的容错）：签名 + 逐 chunk 重算 CRC32 + IHDR 形状 + IDAT zlib 结构
+///（存储块 LEN/NLEN 一致、长度=扫描线量）+ Adler32 重算比对 + 未压缩
+/// 数据逐字节等于期望扫描线。任一不符即 panic——合成输入喂 OS 前，
+/// 夹具自身先证明其严格有效。
+#[cfg(all(windows, feature = "ui-host"))]
+fn image_helper_assert_strict_png(path: &std::path::Path, w: u32, h: u32, rgba: &[u8]) {
+    let bytes = std::fs::read(path).expect("read back generated png");
+    assert_eq!(
+        &bytes[..8],
+        &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A],
+        "PNG 签名"
+    );
+    // 逐 chunk：长度+kind+data+CRC 重算。
+    let mut at = 8;
+    let mut idat: Option<&[u8]> = None;
+    let mut saw_ihdr = false;
+    while at < bytes.len() {
+        let len = u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap()) as usize;
+        let kind = &bytes[at + 4..at + 8];
+        let data = &bytes[at + 8..at + 8 + len];
+        let stored_crc = u32::from_be_bytes(bytes[at + 8 + len..at + 12 + len].try_into().unwrap());
+        let mut crc_input = Vec::with_capacity(4 + len);
+        crc_input.extend_from_slice(kind);
+        crc_input.extend_from_slice(data);
+        assert_eq!(
+            image_helper_crc32(&crc_input),
+            stored_crc,
+            "chunk {:?} CRC32 必须重算一致",
+            String::from_utf8_lossy(kind)
+        );
+        if kind == b"IHDR" {
+            assert_eq!(len, 13, "IHDR 定长 13");
+            assert_eq!(
+                u32::from_be_bytes(data[0..4].try_into().unwrap()),
+                w,
+                "IHDR 宽"
+            );
+            assert_eq!(
+                u32::from_be_bytes(data[4..8].try_into().unwrap()),
+                h,
+                "IHDR 高"
+            );
+            assert_eq!(&data[8..13], &[8, 6, 0, 0, 0], "8bit RGBA 无交错");
+            saw_ihdr = true;
+        } else if kind == b"IDAT" {
+            assert!(idat.is_none(), "本夹具单 IDAT");
+            idat = Some(data);
+        }
+        at += 12 + len;
+    }
+    assert!(saw_ihdr, "IHDR 存在");
+    let idat = idat.expect("IDAT 存在");
+    // zlib 结构：头 + 单存储块 + Adler32。
+    assert_eq!(&idat[..2], &[0x78, 0x01], "zlib CMF/FLG（存储级）");
+    assert_eq!(idat[2], 0x01, "BFINAL=1, BTYPE=00（存储块）");
+    let raw_len = (w as usize) * (h as usize) * 4 + h as usize;
+    let len = u16::from_le_bytes([idat[3], idat[4]]) as usize;
+    let nlen = u16::from_le_bytes([idat[5], idat[6]]);
+    assert_eq!(len, raw_len, "存储块 LEN=扫描线字节数");
+    assert_eq!(!len as u16, nlen, "NLEN=LEN 补");
+    // Adler32 重算（范围=未压缩数据，修复后的正确口径）。
+    let raw = &idat[7..7 + raw_len];
+    let mut adler1: u32 = 1;
+    let mut adler2: u32 = 0;
+    for &b in raw {
+        adler1 = (adler1 + b as u32) % 65521;
+        adler2 = (adler2 + adler1) % 65521;
+    }
+    let expect_adler = (adler2 << 16) | adler1;
+    assert_eq!(
+        u32::from_be_bytes(idat[7 + raw_len..11 + raw_len].try_into().unwrap()),
+        expect_adler,
+        "Adler32 严格一致（不含 DEFLATE 块头）"
+    );
+    // 内容逐字节：filter=0 行 + RGBA 扫描线。
+    let stride = w as usize * 4;
+    for row in 0..h as usize {
+        let line = &raw[row * (stride + 1)..(row + 1) * (stride + 1)];
+        assert_eq!(line[0], 0, "filter=None");
+        assert_eq!(
+            &line[1..],
+            &rgba[row * stride..(row + 1) * stride],
+            "扫描线 {row} 逐字节一致"
+        );
+    }
 }
 
 /// IHDR 尺寸解析（只读 oracle：魔数 + 尺寸 + 全字节返回供非空校验）。
 #[cfg(all(windows, feature = "ui-host"))]
 fn image_helper_read_png_dims(path: &str) -> (u32, u32, Vec<u8>) {
     let bytes = std::fs::read(path).expect("temp png readable");
-    assert_eq!(&bytes[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+    assert_eq!(
+        &bytes[..8],
+        &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
+    );
     let w = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
     let h = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
     (w, h, bytes)
@@ -735,8 +848,8 @@ fn v04_ui_host_entry_installs_real_os_adapter() {
     let _guard = DefaultGuard::new();
 
     clear_process_default_clipboard_media_provider();
-    let (_, _out) = auto_lang::run_with_capture(GET_FILES_PROGRAM)
-        .expect("ui-host run 入口兼容补缺后读侧成功");
+    let (_, _out) =
+        auto_lang::run_with_capture(GET_FILES_PROGRAM).expect("ui-host run 入口兼容补缺后读侧成功");
     let cur = process_default_clipboard_media_provider()
         .expect("windows ui-host 空槽经 run 入口补缺 Win32 adapter");
     // 读侧走真 OS（值可空——剪贴板无 CF_HDROP 时空表，同 OS 语义）。
