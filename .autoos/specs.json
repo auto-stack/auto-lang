@@ -2009,6 +2009,18 @@
             "ledger:v38-v39"
           ],
           "status": "active"
+        },
+        {
+          "id": "P799-M",
+          "title": "PLAN-799 合入收据（delivery/沉淀/投影/归档/清理）",
+          "content": "delivery PENDING（rebase over master@800 线 range-diff 4/4 全等：ea291d3ab→1d521a9a3、d35d4c084→ed099d15f、4194fccc9→f42a16ba9、8069076b7→5fb0776ac；merge 期基线再采样含 auto-package-resolver 边 f524ca524）ff-only 合入；冻结门禁裸 t 5261/5261+tv 163/163+tt 5633/5633（三次负载 flake：clipboard/plan492 编译链/plan498+499 图表各 solo 秒绿归因后过，plan484_024 同案）+tu 867+2ignored+auto-man delivery 9/9；沉淀=SD-01..03 入库+auto-ast plans.md+GROUPS 登记+INDEX 再生 39 项目；ledger v39→v40 guarded offline projection（P799-D1/T/R3/M，备份 v39-799，范围守卫+回读校验）；归档 archive/799；cleaned guard 双树零残留。",
+          "file": "docs/plans/archive/799-frontend-ast-model-extraction.md",
+          "tags": [
+            "PLAN-799",
+            "stage:merge",
+            "delivery:PENDING"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -7485,6 +7497,19 @@
             "delivery:02b11c4b4"
           ],
           "status": "active"
+        },
+        {
+          "id": "P799-D1",
+          "title": "auto-ast 模块契约（AST 模型单一来源）",
+          "content": "PLAN-799 自 auto-lang 抽出的 AST 模型单一实现：Code/Stmt/Expr/Name(=AutoStr)/Type/UI 兼容节点与 ToNode/ToAtom/AtomWriter 序列化（33 文件 git-mv 逐字搬运；正常依赖闭包=auto-val+auto-lex(token::Pos)+serde，lang-core 域；ast-model-consumer 独立探针钉住零 auto-lang/Parser/VM/UI 反向边）。auto-lang ast.rs 单行 glob 薄门面（旧 crate::ast::*/auto_lang::ast::* 路径与类型身份保持）；解析便利层（ParserExt 六 impl 含 OnEvents skip_check + test/ast markdown oracle）归上层 ast_parse_ext；门面导出面以\"与其他常用 glob 面无不同 item 撞名\"为限（F-799-R1-01：auto_val::AutoResult 与 error::AutoResult 不同 item 回私有，永久回归 ast_facade_glob_compat）；V02 冻结 golden 36 case×三投影（旧实现生成 SHA256 1e74a8df…）crate 内永久重放。",
+          "file": "docs/specs/auto-ast/project.md",
+          "tags": [
+            "PLAN-799",
+            "stage:merge",
+            "delivery:PENDING",
+            "sha256:4b88317ba183"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -9074,6 +9099,18 @@
             "PLAN-800",
             "stage:merge",
             "delivery:02b11c4b4"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P799-T",
+          "title": "AST 模型三面验证（投影/门面兼容/独立消费）",
+          "content": "crates/auto-ast tests/v02_projection_replay.rs——36 case×Display/ToAtom/ToNode 旧实现 golden 永久重放（日常档）+74 模型单测+5 doctest；auto-lang tests/ast_facade_glob_compat.rs（F-799-R1-01 反例固化：ast::*+error::* glob 编译期断言+Pos 双路径同一 item 互传）+tests/ast_cross_path_identity.rs（新旧路径双向互传/六入口坏输入拒绝/双路径投影一致）+ast_parse_ext 11（六便利调用+markdown oracle）；test/fixtures/modularity/ast-model-consumer（manifest 仅 auto-ast）3+1。",
+          "file": "crates/auto-ast/tests/v02_projection_replay.rs",
+          "tags": [
+            "PLAN-799",
+            "stage:merge",
+            "delivery:PENDING"
           ],
           "status": "active"
         }
@@ -12180,10 +12217,22 @@
             "commit:c50e7a1c6"
           ],
           "status": "active"
+        },
+        {
+          "id": "P799-R3",
+          "title": "PLAN-799 final review R3 — pass",
+          "content": "R3 pass（绑定 8069076b7；merge rebase over 800 后映射 5fb0776ac，range-diff 4/4 全等）：F-799-R1-01（门面 glob 歧义）closed——AutoResult 回私有+永久回归 3 测试+复审独立 glob-matrix；F-799-R2-01（根模块导入排序）closed——一行移位+复审同款根入口 rustfmt exit0；外部 ui-dialect oracle --offline 26/26 补齐。AC01..05 pass，AC06 merge-owned（rebase 同步+冻结 t/tv/tt/tu+tf 判定+沉淀/归档/清理——本合并收口执行）。",
+          "file": "docs/plans/attachments/799/review-r3/REVIEW.md",
+          "tags": [
+            "PLAN-799",
+            "stage:review",
+            "reviewed:8069076b7"
+          ],
+          "status": "active"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 39
+  "version": 40
 }
