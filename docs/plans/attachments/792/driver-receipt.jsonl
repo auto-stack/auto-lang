@@ -24,17 +24,17 @@
     {
       "case": "V01-fresh-resolve",
       "ok": true,
-      "detail": "fresh lock 生成 (3s)，patch 单源 + pin 全命中"
+      "detail": "fresh lock 生成 (2s)，patch 单源 + pin 全命中"
     },
     {
       "case": "V01-real-build",
       "ok": true,
-      "detail": "cargo build --locked (173s)，产物 在位"
+      "detail": "cargo build --locked (116s)，产物 在位"
     },
     {
       "case": "V02-relocated-locked-build",
       "ok": true,
-      "detail": "B 内 locked build (144s)，本地 target=有（无共享 target 回退）"
+      "detail": "B 内 locked build (110s)，本地 target=有（无共享 target 回退）"
     },
     {
       "case": "V02-metadata-identity",
@@ -44,17 +44,27 @@
     {
       "case": "V02-resource-identity",
       "ok": true,
-      "detail": "1 资源校验一致（字节=producer）"
+      "detail": "1 资源校验一致（verify.py 绿 + 字节=producer）"
     },
     {
-      "case": "V03a-bad-hash-rejected",
+      "case": "V03a-eqlen-tamper-red",
       "ok": true,
-      "detail": "资源字节与 producer 不等: avatar.png"
+      "detail": "exit=1，诊断含 hash 不符"
     },
     {
-      "case": "V03a-missing-resource-rejected",
+      "case": "V03a-corrupt-hash-red",
       "ok": true,
-      "detail": "资源缺失: avatar.png"
+      "detail": "exit=1（记录 hash 与实际不符——判红）"
+    },
+    {
+      "case": "V03a-missing-resource-red",
+      "ok": true,
+      "detail": "exit=1，诊断含资源缺失"
+    },
+    {
+      "case": "V03a-unlisted-resource-red",
+      "ok": true,
+      "detail": "exit=1，诊断含未登记资源"
     },
     {
       "case": "V03b-missing-patch-red",
@@ -72,9 +82,24 @@
       "detail": "exit=1，外来文件未被覆盖"
     },
     {
+      "case": "V03e-redelivery-failure-preserves-old",
+      "ok": true,
+      "detail": "exit=1，sentinel/清单字节保留=True"
+    },
+    {
+      "case": "V03e-redelivery-after-restore",
+      "ok": true,
+      "detail": "producer 恢复后再交付成功（staging 换装）"
+    },
+    {
+      "case": "V03f-sidecar-external-path-rejected",
+      "ok": true,
+      "detail": "exit=1，未产出应用清单（外部 path 不入交付物）"
+    },
+    {
       "case": "V03-restore-green",
       "ok": true,
-      "detail": "A 包校验 1 资源校验一致（字节=producer）；B 已绿（V02）"
+      "detail": "A 包校验 1 资源校验一致（verify.py 绿 + 字节=producer）；B 已绿（V02）"
     },
     {
       "case": "V04-dev-mode-preserved",
