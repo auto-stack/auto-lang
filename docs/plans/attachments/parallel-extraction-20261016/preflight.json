@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-16",
+  "stage": "new",
+  "contract_preflight": "pass",
+  "baseline": "9c773601abfdb25b80c08d06922d0ad50edc653a",
+  "plans": [
+    {
+      "plan": 793,
+      "status": "drafting",
+      "tasks": 8,
+      "criteria": 6,
+      "dependencies": "all archived",
+      "sha256": "159a542a328046a470fe90dd141dc00e4d855facfa22a71008651cc4b24468a6"
+    },
+    {
+      "plan": 794,
+      "status": "drafting",
+      "tasks": 8,
+      "criteria": 6,
+      "dependencies": "all archived",
+      "sha256": "5d8a863bee71ea832d3e77b8c74186724a381b4ff9137ab825b03209e3a824e6"
+    },
+    {
+      "plan": 795,
+      "status": "drafting",
+      "tasks": 8,
+      "criteria": 6,
+      "dependencies": "all archived",
+      "sha256": "1cd348dc199aa2b8eee2a11e0918197b486f9be7840353d8932392b1f1f0d79b"
+    }
+  ],
+  "batch_next_id_after_allocation": 796,
+  "observed_global_next_id": 798,
+  "parallel_allocations_preserved": [
+    796,
+    797
+  ],
+  "parallel_lanes": [
+    792,
+    793,
+    794,
+    795
+  ],
+  "shared_writes": "manifest/exports/boundary baseline short serialized windows; later landing rechecks producer closure",
+  "scope": "docs/plan only; no implementation, agents, worktrees, cargo tests, spec publication, or old repository writes"
+}

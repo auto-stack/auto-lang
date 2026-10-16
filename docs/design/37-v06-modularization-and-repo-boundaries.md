@@ -211,18 +211,28 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 
 冻结以迁移范围和验收结束为界，不定无依据的停工天数。没有“等全生态WIP清零”的要求；确实与迁移重叠的未提交代码必须先形成保全/交接收据，不靠stash/reset丢掉它。资源上各树只跑允许的scoped门禁；tf及其他规定重档保持主检出单实例串行，不能把功能并行扩大为机器重测并发。
 
-### 8.3 第二批实际解耦合同（2026-10-16，尚未实施）
+### 8.3 第二批实际解耦合同（2026-10-16；789–791已交付，792前置已满足）
 
 781/784/785/786已合并归档，下一批按“先仓内独立crate/能力，再固定发行闭包”推进：
 
 | Plan | 责任切口 | 拟定依赖方向与退出条件 |
 |---|---|---|
-| [789](../plans/789-lexical-foundation-extraction.md) | Token/Pos/Lexer单一来源 | auto-lang → auto-lex；词法层不依赖AST/Parser/VM/UI，原诊断与桥面恢复保持。AST/type-store/inference剩余环单独列清，完整文法外置仍未完成 |
-| [790](../plans/790-clipboard-files-images-provider.md) | 文件/图像剪贴板四native | VM编解码 → owned provider合同 ← UI/OS adapter；不传UI或VM句柄；真实VM、OS与ownership/临时路径寿命可验 |
-| [791](../plans/791-generation-core-extraction.md) | 通用生成编排与可执行Auto模板 | auto-gen(Auto adapter) → auto-gen-core；核心无语言引擎依赖，默认生产调用迁移，保留原模板/legacy行为 |
+| [789](../plans/archive/789-lexical-foundation-extraction.md) | Token/Pos/Lexer单一来源 | auto-lang → auto-lex；词法层不依赖AST/Parser/VM/UI，原诊断与桥面恢复保持。AST/type-store/inference剩余环单独列清，完整文法外置仍未完成 |
+| [790](../plans/archive/790-clipboard-files-images-provider.md) | 文件/图像剪贴板四native | VM编解码 → owned provider合同 ← UI/OS adapter；不传UI或VM句柄；真实VM、OS与ownership/临时路径寿命可验 |
+| [791](../plans/archive/791-generation-core-extraction.md) | 通用生成编排与可执行Auto模板 | auto-gen(Auto adapter) → auto-gen-core；核心无语言引擎依赖，默认生产调用迁移，保留原模板/legacy行为 |
 | [792](../plans/792-generated-ui-independent-build.md) | 选定Iced生成工程的发行地基 | 前三项合流后冻结source/lock/patch/资源身份，独立consumer fresh-lock真实build和重定位成功，开发源码无隐式兜底 |
 
 789/790/791按实际文件热点并行，workspace/规则共用写面短窗口串行合流；792先准备后在合流闭包上实施。这里登记目标合同，不提前发布为Spec现状。旧仓仍遵守§8.0增量承接历史的流程；完成本批不自动授权G/H主分支切换。后续A/B/D/E剩余切口、其他宿主族与I/J终态退出继续列入路线，不能因首个生成工程可建而删除。
+
+### 8.4 可与发行验证并行的边界工作（2026-10-16，拟实施）
+
+789/790/791已归档，792进入独立UI构建发行线；同时建立三条生产解耦合同：
+
+- [793](../plans/793-diagnostics-foundation-extraction.md)：error.rs通用诊断迁为auto-diagnostics，利用现有Name=AutoStr切断error→AST边，旧类型/诊断出口兼容；完整AST/parser外置仍另验。
+- [794](../plans/794-scroll-host-provider.md)：scroll controller六函数与781子锚点二函数统一owned provider；registry/测量/renderer状态机留UI，不复制为第二份core实现。
+- [795](../plans/795-package-lock-core-extraction.md)：pac.lock模型/codec/校验迁为auto-package-lock，Target/Git观测留Man adapter；保留旧公开API，不混同Cargo发行锁。
+
+这些目标包不依赖792的生成工程接口，主要实现文件互不重叠；manifest/统一出口/边界基线存在小共享面，按路线图写入窗口串行合流。四线后合入者须重核当前闭包及792交付清单，不用独立worktree作为语义无冲突的证明。没有创建agent或授权远端/旧仓切换；本节是规划目标，不写为已实现Spec。
 
 ## 9. 决策状态
 

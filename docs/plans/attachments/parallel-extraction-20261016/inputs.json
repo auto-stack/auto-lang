@@ -1,0 +1,35 @@
+{
+  "date": "2026-10-16",
+  "commit": "9c773601abfdb25b80c08d06922d0ad50edc653a",
+  "inputs": {
+    "docs/specs/overview.md": "e6ed4bdc9d17d7d66a9984fcecf9b32660015debe51c2fb749f463e065510a15",
+    "docs/specs/auto-lang/frontend/overview.md": "1e860a18f54aa3b5b324da8b009b24bf609e9666da1aaeb19b301ff7cb2d729a",
+    "docs/specs/auto-lang/vm/overview.md": "271c4b20e4515a3c1266bffe525e8a89a93ed06e2abd0be4a1740215de43ce73",
+    "docs/specs/auto-lang/ui/overview.md": "ddb6b9f8e9b059749036b9cd8d822d059fbfac4ec1c394288d17f781e6b9d1af",
+    "docs/specs/auto-man/project.md": "f12b0b4098450025b918847e7e2dfc29b07619a16574bc341b5e62a3f9ad8ba8",
+    "docs/specs/auto-lex/project.md": "0209bf7dd192b4a95a308308ff224de9bcc664afcfd1269f00ae0ae310a18544",
+    "docs/specs/auto-gen-core/project.md": "0ab2de7a6d9ee5b474399d932869d60a06d6a732d6e9e6ec89aba9b8fb7878bc",
+    "docs/specs/widgets/scroll-pane.md": "5ea330d5e8948827d9c3aa5c412a64fb427a3775780aa6b164db2b5eb91c2524",
+    "docs/specs/auto-lang/ui/design/scroll-child-anchor.md": "f7f037768f17a4359f4d2fe384c437087d464ff9c093a45628264db3ce1724c9",
+    "docs/design/37-v06-modularization-and-repo-boundaries.md": "e0865a4287b722866baffccacfbe5c37bece73a68a8c9975b114c5d0136f6c04",
+    "docs/plans/792-generated-ui-independent-build.md": "4a1d9963d0556ec137b5a312e9fa07deb5b6593b047406abf1f68430c29dda69",
+    "crates/auto-lang/src/error.rs": "93065abff1a9bf64ec0965a25ea0dace645be53acdc01b81caac06a261748413",
+    "crates/auto-lang/src/ast.rs": "e5ceda0404abb42e1e131057a10d1bb06b26a205bfbe0bdfac0db6f932ac24c9",
+    "crates/auto-lang/src/route/discovery.rs": "1322d9c4192bb9b22d6a62c5aee9791c5fd2eafed0e92c4cb65fd314e947d67c",
+    "crates/auto-lang/src/vm/native.rs": "88b3568d1588b915b7db9b82eb755ca7492d2ca26108ec271787b9622f04c779",
+    "crates/auto-lang/src/vm/native_catalog.rs": "289167c761d0ff3381f272f0a30b85b39cd6c0e9fc9f583b70ff3c60b58effb2",
+    "crates/auto-lang/src/ui/scroll/controller.rs": "ff722f197d6fa8249dac2a31093af85c7906c36b23099763e639b3ec97a90d15",
+    "crates/auto-lang/src/vm/host_capabilities.rs": "439b3ff737fb10ebac83bc9f3b35cc09b60692416b74fdd380b39cbf34a41a4a",
+    "crates/auto-man/src/lock.rs": "407127b5f0d0240c1797dbca44ed344104bda72568e78c2662ff6908e358f017",
+    "crates/auto-man/src/target.rs": "a483fa9602fa656437d27ff3d9a06fc94c250845be924e49744ab88bd3477592",
+    "Cargo.toml": "b93943e6d2d1dfde77d9b8cf0b583f7cfdd43c077cdd7797e1e2b39950dc97f9",
+    ".autoos/module-boundaries.toml": "82718ad24a3f3f2f3eb0f533bfcbd51daa21097c33198b17b757a96d013acc0e",
+    "docs/plans/attachments/parallel-extraction-20261016/789-frontend-dag-frozen.md": "f45e27247d0fb5ab0e78e9673ad33ddd5b76b6773c9de21265194d44ba886a1a"
+  },
+  "frozen_dag_origin": {
+    "path": "docs/plans/attachments/789/t01-frontend-dag.md",
+    "sha256": "f45e27247d0fb5ab0e78e9673ad33ddd5b76b6773c9de21265194d44ba886a1a",
+    "note": "origin was untracked at planning time; frozen bytes included here; implementation closure independently rechecks sources"
+  },
+  "design_before_batch_sha256": "c52932384c6df233fc0819e1d4e52552a9f10ac8472c932bd5c2f8675c553347"
+}
