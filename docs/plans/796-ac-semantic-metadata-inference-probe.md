@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-796
-status: drafting
+status: executing
 feature_name: AC 语义元信息与类型推导合同及探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
-current_step: 0
+current_step: 5
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
@@ -163,11 +163,11 @@ work只跑相关定向验收及必要check，不能跑整档。T-06改变crates�
 
 | 状态 / ID | owner_stage | 依赖 | 新建/修改路径与结果 | 验证 / AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/796/contract-decision.md；冻结ref envelope/模型与probe接缝/资源及性能配方；最小语义query首例存盘/重启 | 合法/非法名义ref+一次真实infer/cache；不可行回规划，不能删验收；AC-01–05 |
-| [ ] T-02 | work | T-01 | 新contract/src/{identity,metadata,codec}.rs，完整类别矩阵与SCC/typed view | sema_identity_；AC-01 |
-| [ ] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | infer_core_、meta_query_；AC-01、02 |
-| [ ] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | sema_cache_、sema_budget_；AC-03 |
-| [ ] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | sema_turnaround_；AC-04 |
+| [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/796/contract-decision.md；冻结ref envelope/模型与probe接缝/资源及性能配方；最小语义query首例存盘/重启 | 合法/非法名义ref+一次真实infer/cache；不可行回规划，不能删验收；AC-01–05 |
+| [x] T-02 | work | T-01 | 新contract/src/{identity,metadata,codec}.rs，完整类别矩阵与SCC/typed view | sema_identity_；AC-01 |
+| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | infer_core_、meta_query_；AC-01、02 |
+| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | sema_cache_、sema_budget_；AC-03 |
+| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | sema_turnaround_；AC-04 |
 | [ ] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | 正式AutoDown与probe_adapter_、v1/v2兼容；AC-05 |
 | [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | acceptance V-01–09、SD；AC-06；execution_done=7/9 |
 | [ ] T-08 | review | T-07 | 同树独立review，冻结commit/依赖/接口快照，检查遗漏/延期 | AC-07；pass→reviewed=8/9，merge pending |
@@ -179,8 +179,14 @@ D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.
 
 2026-10-16 stage:new；PLAN-796 r1；outcome:pass（可审阅规划契约）；next:work，T-06前等D-788。新增T-01–09/AC-01–08/V-01–09/SD-01–08，0/9。用户只授权草拟，未实施/编译/跑性能，未创建树。
 
+2026-10-16 stage:work；PLAN-796 r1；用户指令实施，授权前五项独立推进（T-01..T-05），不动 787/788 或拆分路线在途热点；T-06 前等 D-788。入场核：主检出基线 056539f39（仅 docs/plans 簿记改动，无 crates WIP；根有游离未跟踪 ledger_770.py 属他方会话，不并入）；树 D:/autostack/.wt/lang-796/auto-lang、分支 plan-796-dev、base 056539f39。
+
+2026-10-16 stage:work | PLAN-796 | r1 | outcome:blocked（独立工作全部完成，末段等外部依赖） | worktree D:/autostack/.wt/lang-796/auto-lang | branch plan-796-dev | base 056539f39 | code 91b173577（00260c12c T-01 → 587bd557d T-02 → 9c6307b77 T-03 → 2c8d5bf46 T-04 → 91b173577 T-05） | deps: ac-core/ac-artifact-probe 合入版只读消费，零改（diff 056539f39..91b173577 于 experimental/ac-artifact-probe、experimental/ac-core、crates/ 均为空） | task_ids T-01..T-05 全闭 | evidence: workspace experimental/ac-semantics 全测试 60 绿 0 红——sema_identity_ 14、infer_core_ 13+4（差分对照含 240 生成例）、meta_query_ 7、sema_cache_ 12（跨进程 put→exit→get 命中不调 compute）、sema_budget_ 5（≥32MiB 流式页/受管≤16MiB/private Δ≤64MiB OS 证据/4096 深链全路径/512 换轮 GC 收敛哨兵存活）、sema_turnaround_ 5；报告 docs/reports/plan796/turnaround.{md,json} 硬门 local-body-edit P95=4.32ms<1000ms PASS（八行含全冷/广泛失效，30 原始样本不删）；冻结决策 D1–D12 见 attachments/796/contract-decision.md（含 T-05 期间修正：InferBody 键增加 called-sigs-fp，同键异容结构性不可能）；.case.ad/oracle 三套齐（not-executed until D-788，Rust 对应用例真实执行）。 | blockers: T-06 等 D-788（788 最终 review/门禁/合入/Spec/merge 收据齐全），T-07 依赖 T-06；本阶段无其它独立授权工作。 | next_responsible_role: work（D-788 满足后做 T-06 probe adapter/AutoDown，再 T-07 verify 脚本/矩阵审计/SD 收口）。merge-owned 门禁（根 cargo t、独立 sema 全套、受影响 788 套件、tf 到期判定）全部 pending，冻结提交上执行。
+
 来源/边界及起草检查见[planning-preflight.md](attachments/796/planning-preflight.md)；该pass不代表功能或亚秒已达标。
 
 ## 10. 待澄清事项
 
 无阻断起草的用户决策。T-01需冻结准确Schema/稳定名义身份策略、有限推导规则/诊断、递归组codec、现有store的合法opaque页接入、probe消息/资源上限与参考负载；只允许在本文范围内选择。CT执行/全量泛型/反射生成能力仍future，不用模型pass授信。
+
+**进行中阻断（work 收据 2026-10-16）**：T-06/T-07 等 D-788（PLAN-788 最终 review pass、冻结提交门禁、实际合入、Spec 沉淀/merge 收据齐全）。只读在途原型不解锁。解除后恢复 work 于同树 D:/autostack/.wt/lang-796/auto-lang。
