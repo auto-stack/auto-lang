@@ -93,48 +93,53 @@ pub fn fn_sig_canonical(f: &crate::input::InputFn) -> Vec<u8> {
 
 /// Canonical content of one function's BODY (statement/expression
 /// structure with spans EXCLUDED — a whitespace/position-only edit keeps
-/// the body fingerprint).
+/// the body fingerprint). Expression encoding is ITERATIVE (explicit
+/// stack): legal operator chains are unbounded in depth, so no native
+/// recursion on the canonical walk.
 pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
-    fn enc_expr(out: &mut Vec<u8>, e: &crate::input::InputExpr) {
+    fn enc_expr(out: &mut Vec<u8>, root: &crate::input::InputExpr) {
         use crate::input::InputExprKind;
-        match &e.kind {
-            InputExprKind::IntLit(v) => {
-                out.push(b'N');
-                out.extend_from_slice(&v.to_le_bytes());
-            }
-            InputExprKind::BoolLit(v) => {
-                out.push(b'B');
-                out.push(*v as u8);
-            }
-            InputExprKind::Var(n) => {
-                out.push(b'V');
-                out.extend_from_slice(n.as_bytes());
-                out.push(0);
-            }
-            InputExprKind::Call { callee, args } => {
-                out.push(b'C');
-                out.extend_from_slice(callee.as_bytes());
-                out.push(0);
-                out.extend_from_slice(&(args.len() as u32).to_le_bytes());
-                for a in args {
-                    enc_expr(out, a);
+        let mut stack: Vec<&crate::input::InputExpr> = vec![root];
+        while let Some(e) = stack.pop() {
+            match &e.kind {
+                InputExprKind::IntLit(v) => {
+                    out.push(b'N');
+                    out.extend_from_slice(&v.to_le_bytes());
                 }
-            }
-            InputExprKind::Binary { op, lhs, rhs } => {
-                out.push(b'(');
-                out.extend_from_slice(op.as_str().as_bytes());
-                enc_expr(out, lhs);
-                enc_expr(out, rhs);
-            }
-            InputExprKind::Unary { neg, operand } => {
-                out.push(b'U');
-                out.push(*neg as u8);
-                enc_expr(out, operand);
-            }
-            InputExprKind::Unsupported { what } => {
-                out.push(b'X');
-                out.extend_from_slice(what.as_bytes());
-                out.push(0);
+                InputExprKind::BoolLit(v) => {
+                    out.push(b'B');
+                    out.push(*v as u8);
+                }
+                InputExprKind::Var(n) => {
+                    out.push(b'V');
+                    out.extend_from_slice(n.as_bytes());
+                    out.push(0);
+                }
+                InputExprKind::Call { callee, args } => {
+                    out.push(b'C');
+                    out.extend_from_slice(callee.as_bytes());
+                    out.push(0);
+                    out.extend_from_slice(&(args.len() as u32).to_le_bytes());
+                    for a in args.iter().rev() {
+                        stack.push(a);
+                    }
+                }
+                InputExprKind::Binary { op, lhs, rhs } => {
+                    out.push(b'(');
+                    out.extend_from_slice(op.as_str().as_bytes());
+                    stack.push(rhs);
+                    stack.push(lhs);
+                }
+                InputExprKind::Unary { neg, operand } => {
+                    out.push(b'U');
+                    out.push(*neg as u8);
+                    stack.push(operand);
+                }
+                InputExprKind::Unsupported { what } => {
+                    out.push(b'X');
+                    out.extend_from_slice(what.as_bytes());
+                    out.push(0);
+                }
             }
         }
     }

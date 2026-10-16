@@ -8,8 +8,13 @@
 //! registration is edited to claim the old producer supports A06, and
 //! ZERO lines of 783/787 implementation change.
 
+pub mod budget;
 pub mod store;
 
+pub use budget::{
+    publish_streamed, BudgetRejected, HotPages, SessionMeter, StreamError, HOT_BUDGET,
+    MANAGED_BUDGET, SCRATCH_BUDGET,
+};
 pub use store::{
     lookup_only, open_store, publish_infer_result, publish_module_index, publish_record_meta,
     query, run_inference, FetchOutcome, ProbeError, QueryFlow, SEMA_CARRIER, SEMA_LAYER,
