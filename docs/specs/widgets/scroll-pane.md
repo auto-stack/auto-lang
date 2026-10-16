@@ -154,6 +154,10 @@ ordinary scroll-pane）+ native `auto.scroll.to_child/anchor_state`
 回执非完成证明）。nearest 三分支公式、代际语义（首绑前入队采用当前
 绑定、换绑 not_bound、当帧 key 消失 not_found 一次性）与双端实现
 合同见 [auto-lang/ui/design/scroll-child-anchor.md](../auto-lang/ui/design/scroll-child-anchor.md)。
+锚点身份 = 不透明序号 + build 期注册表（F-781-R01——冒号歧义/Debug
+取值面消除，标准 `scroll_controller()` 句柄与任意合法字符 key 往返
+无损）；vue 轨全部 scroll-pane 发射 `data-scroll-pane` 所有权标记、
+最近 pane 归属过滤（F-781-R02——嵌套同名零串线）。
 managed/virtual/X 轴 pane 显式 unsupported；既有 offset 族（9900-9905）
 零改动。
 

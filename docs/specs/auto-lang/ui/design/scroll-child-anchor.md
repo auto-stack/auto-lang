@@ -38,6 +38,12 @@
 - key 解析基于**当帧**锚点注册表；key 消失 → `invalid:not_found`
   （一次性失败不重试）。applied 后用户滚动/视图重建不被旧请求拉回。
 - 同 (handle,key) 重复入队 → 覆盖旧状态（重新 pending）。
+- **身份编码（F-781-R01，阶段 D 修订）**：锚点身份 = 不透明序号
+  `scrollanchor:{seq}` + build 期注册表（seq→(pane,key) 查表，collector
+  回传 rect+seq）——冒号歧义拆分与 Debug 字符串取值两类面消除；重注册
+  驱逐旧 seq、stale miss 跳过、dup last-wins。标准 `scroll_controller()`
+  句柄（`@scrollctl:N`）与任意含 `:`/引号/反斜杠/CJK 的 key 往返无损
+  （单测锁定）。
 
 ## nearest 定位（冻结公式，双端同源）
 
@@ -64,6 +70,13 @@ clamp [0, content_h − vh]
   一次性 not_bound/not_found。
 - managed 桥判据 = pane 内 `data-scroll-managed` 标记
   （`scroll-test-content` 发射）。
+- **最近 pane 归属（F-781-R02，阶段 D 修订）**：plain/shadcn 双臂**全部**
+  scroll-pane 元素（含无 controller 者）发射 `data-scroll-pane="1"` 所有权
+  标记；`scroll_to_child`/`__scrollCtlEl` 改最近 pane 归属过滤
+  （`el.closest('[data-scroll-pane]') === pane`）+ 全量遍历
+  `getAttribute()` 属性比对（弃 CSS selector 拼接——任意合法 key/句柄
+  结构性安全）。嵌套同名 key 零串线；仅内层有 key → 外层 `not_found`；
+  内层 managed 不误伤外层。
 
 ## 验证面
 

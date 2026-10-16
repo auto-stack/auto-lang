@@ -24,7 +24,21 @@ VM+HTTP 实例上的**真实动作、当前帧裁剪几何、隔离库与冷启�
 - `autoui_scroll_state`：pane 真实几何（viewport rect 含原点 / offset /
   content extent），键 = iced widget id（controller pane =
   `scroll_ctl_<name>`）；`frame` = 布局测量代数（仅新鲜采集后增长）。
-- `autoui_visibility`：目标 rect 与 pane 链的有效 clip 的正面积交集；
+- `autoui_visibility`：目标 rect 与 pane 链的有效 clip 的正面积交集。
+  **pane 链解析（阶段 D 修订，F-781-R08/R09/R08-C）**：归属与可见性
+  裁剪分离——
+  - **结构法主路径**：styled VTree 祖先链上的 `Scrollable` 节点即归属
+    （controller 键 → `scroll_ctl_<k>`；无 controller → renderer 自身
+    widget id `vnode_{id_from_path(path)}`，**根节点合法空路径 [] 亦然**
+    ——根键 = FNV 种子 `vnode_14695981039346656037`）。被裁掉的真实
+    子节点保留 clip 链 → 正确判 `clipped_out`（不退化为仅窗口判定的
+    假 visible）。
+  - **有效空链 = 权威 no_pane**：节点在树中解析成功但无 Scrollable
+    祖先时，空链是正确解（pane 外节点不受大 content 盒投影的几何
+    歧义影响）；仅结构不可用（快照缺席/非 vnode id/节点不在树）才
+    回退几何法（content 包含即归属）。
+  - `pane` 显式钉定优先；可见性（visible/clipped_out/outside_window）
+    一律由消费端沿链裁剪判定，不进归属条件。
   flags ∈ `unmeasured/zero_size/clipped_out/outside_window/no_pane`。
   坐标合同：采集 bounds 为 **content-space**（滚动后不变）；窗口化 =
   仅减 offset（决策报告 r4 勘定——不回加 viewport 原点）。

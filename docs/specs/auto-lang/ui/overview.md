@@ -1710,6 +1710,12 @@ a2r 编译面轨随缺省翻转计划另立。
   驱动 `scripts/tools/test_native_reader_acceptance.py`。
 - 两面均已由 `examples/capability-tests/p781-scroll-child-anchor/` 双端
   几何驱动（41+43 项）与阶段 A 病例族（v07~v13）锁定。
+- **阶段 D 修订（2026-10-15/16）**：锚点身份 = 不透明序号 + build 期
+  注册表（`@scrollctl:N` 标准句柄与任意合法字符 key 往返无损）；
+  vue 全 scroll-pane `data-scroll-pane` 所有权标记 + 最近 pane 归属
+  过滤（嵌套零串线）；`autoui_visibility` 的 pane 链解析改**结构法
+  主路径**（VTree 祖先链，含无 controller/根级空路径 pane；有效空链
+  =权威 no_pane）——归属与可见性裁剪分离，被裁子节点不再假 visible。
 
 ## PLAN-759 注记（2026-10-11）
 

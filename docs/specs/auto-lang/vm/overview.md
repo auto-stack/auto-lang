@@ -181,8 +181,17 @@ Plan 419「copy-on-load 所有权协议」+ PLAN-062 T12 stake 影子账本的**
 - 消费入口 = http 命名段派发/closure/同步 + 段恢复循环；SSE 帧、UI
   bridge（CpuSlice）、back_proxy 维持既有。耗尽 = 可识别资源拒绝
   （500 + "per-request cumulative budget … AUTO_HTTP_STEP_BUDGET"），
-  非解析错/空成功/假成功。合同全文见
+  非解析错/空成功/假成功。**取消语义（阶段 D 修订）**：deadline/RST/
+  服务关闭的取消生效面 = park 边界 ∪ 引擎驱动环 50k 步协作探测点
+  （连续 CPU 段无 park 边界同样中止，无迟到副作用；排水截止按服务
+  代际归属）。合同全文见
   [vm/design/handler-execution-budget.md](design/handler-execution-budget.md)。
+  **配套原语（阶段 E）**：`auto.str.byte_len`（nat#1526，UTF-8 字节长度，
+  与 `File.read_text_range` 游标同空间）与 `auto.type_of`（nat#1527，
+  运行时类型谓词——浮点 0.0 与 int 0 可靠分离；多态参数消费须
+  StakeGuard 配平），见
+  [stdlib/design/primitive-str-byte-len.md](../stdlib/design/primitive-str-byte-len.md)
+  / [stdlib/design/primitive-type-of.md](../stdlib/design/primitive-type-of.md)。
 
 ## 关键入口
 
