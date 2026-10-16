@@ -60,7 +60,11 @@ pub struct PackageIdentity {
     pub grammar_id: GrammarId,
 }
 
-pub fn package_identity(name: &str, canonical_program: &[u8], versions: &[&str]) -> PackageIdentity {
+pub fn package_identity(
+    name: &str,
+    canonical_program: &[u8],
+    versions: &[&str],
+) -> PackageIdentity {
     let version_blob: Vec<u8> = versions
         .iter()
         .flat_map(|v| v.as_bytes().iter().copied().chain([b'\0']))

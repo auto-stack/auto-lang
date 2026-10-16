@@ -23,11 +23,13 @@ pub struct Page {
     pub bytes: Vec<u8>,
 }
 
-/// 会话级页仓：hash → 驻留页。编辑后未再引用的旧页随 Rc 释放淘汰。
+/// 会话级页仓：hash → 驻留页。页由 `PageRef`（目录项）以 `Rc` 持有——
+/// 活快照真实保活；编辑后未被任何快照引用的旧页（Rc==1）随预算淘汰
+/// （F787-R1-01：预算语义 = 仓缓存部分，活快照钉住的页计入持有者工作集）。
 #[derive(Default)]
 pub struct PageStore {
     resident: RefCell<HashMap<String, Rc<Page>>>,
-    /// 驻留预算（字节，超出后按插入序淘汰未被引用的页）。
+    /// 驻留预算（字节，超出后淘汰未被引用的页；活快照钉住的页不受影响）。
     budget: usize,
     /// 已请求读出的字节总数（真实读路径计量，V-06 复用率分母）。
     pub read_bytes: std::cell::Cell<u64>,
@@ -65,16 +67,37 @@ impl PageStore {
         }
         p
     }
-    fn get(&self, hash: &str) -> Option<Rc<Page>> {
-        self.resident.borrow().get(hash).cloned()
+    /// 驻留未引用页字节数（测试/预算计量：钉住页不计入可淘汰缓存）。
+    pub fn resident_unreferenced_bytes(&self) -> usize {
+        let m = self.resident.borrow();
+        let mut t = 0usize;
+        for (k, p) in m.iter() {
+            if Rc::strong_count(p) == 1 {
+                t += p.bytes.len();
+                let _ = k;
+            }
+        }
+        t
     }
 }
 
-/// 页引用（目录项）。
+/// 页引用（目录项）：持有页的 `Rc`——活快照对页的真实保活引用。
 #[derive(Clone, Debug)]
 pub struct PageRef {
-    pub hash: String,
-    pub len: u32,
+    page: Rc<Page>,
+}
+
+impl PageRef {
+    pub fn hash(&self) -> &str {
+        &self.page.hash
+    }
+    pub fn len(&self) -> u32 {
+        self.page.bytes.len() as u32
+    }
+    /// 页原始字节（内容寻址块的只读视图）。
+    pub fn bytes(&self) -> &[u8] {
+        &self.page.bytes
+    }
 }
 
 /// 不可变快照（文档版本）。`SnapshotId` 绑定内容（页 hash 链）。
@@ -113,8 +136,8 @@ pub fn snapshot_id_for(pages: &[PageRef], total_len: u64) -> SnapshotId {
     parts.push(total_len.to_le_bytes().to_vec());
     parts.push((pages.len() as u64).to_le_bytes().to_vec());
     for p in pages {
-        parts.push(p.len.to_le_bytes().to_vec());
-        parts.push(p.hash.as_bytes().to_vec());
+        parts.push(p.len().to_le_bytes().to_vec());
+        parts.push(p.hash().as_bytes().to_vec());
     }
     let refs: Vec<&[u8]> = parts.iter().map(|v| v.as_slice()).collect();
     SnapshotId::from_parts(&refs)
@@ -132,7 +155,7 @@ impl Snapshot {
         };
         for chunk in chunks {
             let p = store.intern(chunk.to_vec());
-            pages.push(PageRef { hash: p.hash.clone(), len: chunk.len() as u32 });
+            pages.push(PageRef { page: p });
         }
         let total_len = bytes.len() as u64;
         Snapshot {
@@ -169,7 +192,7 @@ impl Snapshot {
         let mut acc = 0u64;
         v.push(0);
         for p in &self.pages {
-            acc += p.len as u64;
+            acc += p.len() as u64;
             v.push(acc);
         }
         v
@@ -183,9 +206,14 @@ impl Snapshot {
     }
 
     /// 读字节范围（跨页拼接）；计量真实读页字节（V-06 复用统计）。
+    /// 页由目录 `PageRef` 的 `Rc` 直接钉住——活快照不存在"页被淘汰后读失败"
+    /// （F787-R1-01）。
     pub fn read_bytes(&self, start: u64, end: u64) -> Result<Vec<u8>, RtError> {
         if end < start || end > self.total_len {
-            return Err(RtError::BadEdit(format!("range [{start},{end}) out of bounds {}", self.total_len)));
+            return Err(RtError::BadEdit(format!(
+                "range [{start},{end}) out of bounds {}",
+                self.total_len
+            )));
         }
         if start == end {
             return Ok(Vec::new());
@@ -195,14 +223,13 @@ impl Snapshot {
         let mut out = Vec::with_capacity((end - start) as usize);
         let mut i = first;
         while i < self.pages.len() && offsets[i] < end {
-            let page = self
-                .store
-                .get(&self.pages[i].hash)
-                .ok_or_else(|| RtError::Storage(format!("page {} evicted", &self.pages[i].hash[..12])))?;
-            self.store.read_bytes.set(self.store.read_bytes.get() + page.bytes.len() as u64);
+            let page = &self.pages[i].page.bytes;
+            self.store
+                .read_bytes
+                .set(self.store.read_bytes.get() + page.len() as u64);
             let pstart = offsets[i].max(start) - offsets[i];
-            let pend = (end - offsets[i]).min(page.bytes.len() as u64);
-            out.extend_from_slice(&page.bytes[pstart as usize..pend as usize]);
+            let pend = (end - offsets[i]).min(page.len() as u64);
+            out.extend_from_slice(&page[pstart as usize..pend as usize]);
             i += 1;
         }
         Ok(out)
@@ -256,10 +283,16 @@ impl Snapshot {
         }
         for e in &edits {
             if e.end < e.start {
-                return Err(RtError::BadEdit(format!("edit end {} < start {}", e.end, e.start)));
+                return Err(RtError::BadEdit(format!(
+                    "edit end {} < start {}",
+                    e.end, e.start
+                )));
             }
             if e.end > self.total_len {
-                return Err(RtError::BadEdit(format!("edit [{},{}) out of bounds {}", e.start, e.end, self.total_len)));
+                return Err(RtError::BadEdit(format!(
+                    "edit [{},{}) out of bounds {}",
+                    e.start, e.end, self.total_len
+                )));
             }
             if !self.is_char_boundary(e.start)? || !self.is_char_boundary(e.end)? {
                 return Err(RtError::BadEdit(format!(
@@ -275,7 +308,11 @@ impl Snapshot {
         let lo = edits.first().unwrap().start;
         let hi = edits.last().unwrap().end.max(edits.last().unwrap().start);
         let affected_first = self.locate(&offsets, lo);
-        let affected_last = if hi > lo { self.locate(&offsets, hi - 1) } else { self.locate(&offsets, lo) };
+        let affected_last = if hi > lo {
+            self.locate(&offsets, hi - 1)
+        } else {
+            self.locate(&offsets, lo)
+        };
         let mut new_pages: Vec<PageRef> = Vec::with_capacity(self.pages.len() + edits.len() + 4);
         for i in 0..affected_first {
             new_pages.push(self.pages[i].clone());
@@ -285,7 +322,7 @@ impl Snapshot {
         if lo > span_start {
             let bytes = self.read_bytes(span_start, lo)?;
             let p = self.store.intern(bytes);
-            new_pages.push(PageRef { hash: p.hash.clone(), len: (lo - span_start) as u32 });
+            new_pages.push(PageRef { page: p });
         }
         // 编辑区：gap/insert 交替。
         let mut prev_end = lo;
@@ -293,11 +330,11 @@ impl Snapshot {
             if e.start > prev_end {
                 let bytes = self.read_bytes(prev_end, e.start)?;
                 let p = self.store.intern(bytes);
-                new_pages.push(PageRef { hash: p.hash.clone(), len: (e.start - prev_end) as u32 });
+                new_pages.push(PageRef { page: p });
             }
             for chunk in e.insert.chunks(PAGE_BYTES) {
                 let p = self.store.intern(chunk.to_vec());
-                new_pages.push(PageRef { hash: p.hash.clone(), len: chunk.len() as u32 });
+                new_pages.push(PageRef { page: p });
             }
             prev_end = e.end;
         }
@@ -306,7 +343,7 @@ impl Snapshot {
         if span_end > prev_end {
             let bytes = self.read_bytes(prev_end, span_end)?;
             let p = self.store.intern(bytes);
-            new_pages.push(PageRef { hash: p.hash.clone(), len: (span_end - prev_end) as u32 });
+            new_pages.push(PageRef { page: p });
         }
         // 尾部未触页。
         for r in &self.pages[(affected_last + 1)..] {
@@ -330,7 +367,10 @@ impl Snapshot {
 
 impl Document {
     pub fn from_text(store: &Rc<PageStore>, text: &str) -> Document {
-        Document { current: Snapshot::from_text(store, text), store: store.clone() }
+        Document {
+            current: Snapshot::from_text(store, text),
+            store: store.clone(),
+        }
     }
     pub fn edit(&mut self, req: &EditRequest) -> Result<&Snapshot, RtError> {
         let next = self.current.edit(req)?;
@@ -358,7 +398,11 @@ mod tests {
         let s1 = Snapshot::from_text(&store(), "hello world");
         let s2 = Snapshot::from_text(&store(), "hello world");
         let s3 = Snapshot::from_text(&store(), "hello worlds");
-        assert_eq!(s1.id(), s2.id(), "same text shares snapshot id across documents");
+        assert_eq!(
+            s1.id(),
+            s2.id(),
+            "same text shares snapshot id across documents"
+        );
         assert_ne!(s1.id(), s3.id());
     }
 
@@ -368,18 +412,67 @@ mod tests {
         let plen = format!("{}", "x".repeat(PAGE_BYTES));
         let a = Snapshot::from_text(&st, &plen);
         let b = Snapshot::from_text(&st, &plen);
-        assert_eq!(a.page_refs()[0].hash, b.page_refs()[0].hash);
+        assert_eq!(a.page_refs()[0].hash(), b.page_refs()[0].hash());
         // 整页对齐追加：前缀页共享，尾部为小页。
         let c = Snapshot::from_text(&st, &format!("{}y", plen));
-        assert_eq!(a.page_refs()[0].hash, c.page_refs()[0].hash);
+        assert_eq!(a.page_refs()[0].hash(), c.page_refs()[0].hash());
         assert_eq!(c.page_count(), 2);
+    }
+
+    #[test]
+    fn live_snapshot_survives_other_document_pressure() {
+        // F787-R1-01 反例：1 页预算下创建仍活跃的 a 页，再创建 b 文档——
+        // 活快照的读不得因预算淘汰失败。
+        let pages = Rc::new(PageStore::with_budget(PAGE_BYTES));
+        let old = Snapshot::from_text(&pages, &"a".repeat(PAGE_BYTES));
+        let _new = Snapshot::from_text(&pages, &"b".repeat(PAGE_BYTES));
+        assert_eq!(old.read_str(0, 1).unwrap(), "a");
+        // 反向亦然：新快照在旧快照仍在时同样可读。
+        assert_eq!(_new.read_str(0, 1).unwrap(), "b");
+    }
+
+    #[test]
+    fn released_snapshot_pages_are_reclaimable() {
+        // 保活的另一面（F787-R1-01）：快照释放后，其页必须真实可回收——
+        // 以"未引用驻留字节"观测，而非仅目录 hash 不变。
+        let pages = Rc::new(PageStore::with_budget(PAGE_BYTES * 8));
+        let a = Snapshot::from_text(&pages, &"a".repeat(PAGE_BYTES));
+        let b = Snapshot::from_text(&pages, &"b".repeat(PAGE_BYTES));
+        let before = pages.resident_unreferenced_bytes();
+        assert_eq!(before, 0, "all pages pinned by live snapshots");
+        drop(a);
+        let after = pages.resident_unreferenced_bytes();
+        assert!(
+            after >= PAGE_BYTES,
+            "released snapshot pages must be reclaimable, got {after}"
+        );
+        // b 仍活跃：压力（新页插入触发淘汰）后 b 依旧可读，被释放页被淘汰。
+        // 压力页内容互不相同（相同内容会按 hash 去重成单页，产生不了压力）。
+        let mut c_text = String::new();
+        for i in 0..10 {
+            c_text.push_str(&format!("{i:04}\u{0}"));
+            c_text.push_str(&"c".repeat(PAGE_BYTES - 5));
+        }
+        let _c = Snapshot::from_text(&pages, &c_text);
+        assert!(
+            pages.resident_unreferenced_bytes() < after,
+            "pressure must evict released pages"
+        );
+        assert_eq!(b.read_str(0, 1).unwrap(), "b");
     }
 
     #[test]
     fn edit_rejects_bad_base_and_keeps_old() {
         let mut d = Document::from_text(&store(), "fn main() int { return 0 }");
         let before = d.snapshot().clone();
-        let bad = d.edit(&EditRequest { base_revision: 7, edits: vec![Edit { start: 0, end: 0, insert: b"x".to_vec() }] });
+        let bad = d.edit(&EditRequest {
+            base_revision: 7,
+            edits: vec![Edit {
+                start: 0,
+                end: 0,
+                insert: b"x".to_vec(),
+            }],
+        });
         assert!(matches!(bad, Err(RtError::BadEdit(_))));
         assert_eq!(d.snapshot().id(), before.id());
     }
@@ -392,8 +485,16 @@ mod tests {
             e(EditRequest {
                 base_revision: 0,
                 edits: vec![
-                    Edit { start: 1, end: 3, insert: vec![] },
-                    Edit { start: 2, end: 4, insert: vec![] },
+                    Edit {
+                        start: 1,
+                        end: 3,
+                        insert: vec![]
+                    },
+                    Edit {
+                        start: 2,
+                        end: 4,
+                        insert: vec![]
+                    },
                 ],
             }),
             RtError::BadEdit(_)
@@ -402,14 +503,25 @@ mod tests {
         let mut d2 = Document::from_text(&store(), "a😀b");
         let r = d2.edit(&EditRequest {
             base_revision: 0,
-            edits: vec![Edit { start: 2, end: 3, insert: b"x".to_vec() }],
+            edits: vec![Edit {
+                start: 2,
+                end: 3,
+                insert: b"x".to_vec(),
+            }],
         });
-        assert!(matches!(r, Err(RtError::BadEdit(_))), "mid-scalar cut must be rejected");
+        assert!(
+            matches!(r, Err(RtError::BadEdit(_))),
+            "mid-scalar cut must be rejected"
+        );
         // 非法 UTF-8 插入。
         let mut d3 = Document::from_text(&store(), "ab");
         let r = d3.edit(&EditRequest {
             base_revision: 0,
-            edits: vec![Edit { start: 1, end: 1, insert: vec![0xFF, 0xFE] }],
+            edits: vec![Edit {
+                start: 1,
+                end: 1,
+                insert: vec![0xFF, 0xFE],
+            }],
         });
         assert!(matches!(r, Err(RtError::BadEdit(_))));
     }
@@ -420,11 +532,18 @@ mod tests {
         assert_eq!(d.snapshot().revision(), 0);
         d.edit(&EditRequest {
             base_revision: 0,
-            edits: vec![Edit { start: 3, end: 4, insert: b"bee".to_vec() }] // a -> bee
+            edits: vec![Edit {
+                start: 3,
+                end: 4,
+                insert: b"bee".to_vec(),
+            }], // a -> bee
         })
         .unwrap();
         assert_eq!(d.snapshot().revision(), 1);
-        assert_eq!(d.snapshot().read_str(0, d.snapshot().len()).unwrap(), "fn bee() int { return 1 }");
+        assert_eq!(
+            d.snapshot().read_str(0, d.snapshot().len()).unwrap(),
+            "fn bee() int { return 1 }"
+        );
     }
 
     #[test]
@@ -432,18 +551,31 @@ mod tests {
         let st = store();
         let text = "x".repeat(PAGE_BYTES * 3 + 17);
         let mut d = Document::from_text(&st, &text);
-        let old_tail: Vec<String> = d.snapshot().page_refs()[1..].iter().map(|p| p.hash.clone()).collect();
+        let old_tail: Vec<String> = d.snapshot().page_refs()[1..]
+            .iter()
+            .map(|p| p.hash().to_string())
+            .collect();
         d.edit(&EditRequest {
             base_revision: 0,
-            edits: vec![Edit { start: 0, end: 1, insert: b"Y".to_vec() }],
+            edits: vec![Edit {
+                start: 0,
+                end: 1,
+                insert: b"Y".to_vec(),
+            }],
         })
         .unwrap();
         let s = d.snapshot();
         // 新目录 = [插入页, 首页重建余量, 原后缀页...]；后缀页 hash 原样复用。
-        let new_all: Vec<String> = s.page_refs().iter().map(|p| p.hash.clone()).collect();
-        let new_tail: Vec<String> = s.page_refs()[2..].iter().map(|p| p.hash.clone()).collect();
+        let new_all: Vec<String> = s.page_refs().iter().map(|p| p.hash().to_string()).collect();
+        let new_tail: Vec<String> = s.page_refs()[2..]
+            .iter()
+            .map(|p| p.hash().to_string())
+            .collect();
         assert_eq!(new_all.len(), old_tail.len() + 2);
-        assert_eq!(old_tail, new_tail, "inserting at doc start must not rewrite suffix pages");
+        assert_eq!(
+            old_tail, new_tail,
+            "inserting at doc start must not rewrite suffix pages"
+        );
         assert_eq!(s.read_str(0, s.len()).unwrap(), format!("Y{}", &text[1..]));
     }
 
@@ -455,12 +587,23 @@ mod tests {
         d.edit(&EditRequest {
             base_revision: 0,
             edits: vec![
-                Edit { start: 8, end: 11, insert: b"ccc!".to_vec() },
-                Edit { start: 0, end: 3, insert: b"aaa!".to_vec() },
+                Edit {
+                    start: 8,
+                    end: 11,
+                    insert: b"ccc!".to_vec(),
+                },
+                Edit {
+                    start: 0,
+                    end: 3,
+                    insert: b"aaa!".to_vec(),
+                },
             ],
         })
         .unwrap();
-        assert_eq!(d.snapshot().read_str(0, d.snapshot().len()).unwrap(), "aaa! bbb ccc!");
+        assert_eq!(
+            d.snapshot().read_str(0, d.snapshot().len()).unwrap(),
+            "aaa! bbb ccc!"
+        );
     }
 
     #[test]
@@ -469,10 +612,17 @@ mod tests {
         let mut d = Document::from_text(&store(), "a\r\nb");
         d.edit(&EditRequest {
             base_revision: 0,
-            edits: vec![Edit { start: 2, end: 2, insert: b"-".to_vec() }] // \r|\n 中点
+            edits: vec![Edit {
+                start: 2,
+                end: 2,
+                insert: b"-".to_vec(),
+            }], // \r|\n 中点
         })
         .unwrap();
-        assert_eq!(d.snapshot().read_str(0, d.snapshot().len()).unwrap(), "a\r-\nb");
+        assert_eq!(
+            d.snapshot().read_str(0, d.snapshot().len()).unwrap(),
+            "a\r-\nb"
+        );
     }
 
     #[test]
@@ -480,7 +630,9 @@ mod tests {
         let st = store();
         let text = format!("{}middle{}", "A".repeat(PAGE_BYTES), "B".repeat(PAGE_BYTES));
         let s = Snapshot::from_text(&st, &text);
-        let mid = s.read_str(PAGE_BYTES as u64 - 2, PAGE_BYTES as u64 + 5).unwrap();
+        let mid = s
+            .read_str(PAGE_BYTES as u64 - 2, PAGE_BYTES as u64 + 5)
+            .unwrap();
         assert_eq!(mid, "AAmiddl".to_string());
     }
 }

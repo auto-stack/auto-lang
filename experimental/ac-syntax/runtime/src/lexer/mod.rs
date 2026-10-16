@@ -31,8 +31,15 @@ pub struct LexDiag {
 /// 未闭合 token 的跨块状态（携带 token 原始起点，恢复时产出完整 token）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MidToken {
-    Str { start: u64, quote: u8, escape_pending: bool },
-    Block { start: u64, depth: u32 },
+    Str {
+        start: u64,
+        quote: u8,
+        escape_pending: bool,
+    },
+    Block {
+        start: u64,
+        depth: u32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -142,18 +149,41 @@ pub struct Window<'s> {
     buf_start: u64,
     pos: u64,
     line: u32,
+    /// 扫描硬限（F787-R1-03）：越过即视为 EOF——增量重扫的有界保证，
+    /// 未闭合 token 的内部推进同样无法越界。None = 无限制（fresh 全量）。
+    limit: Option<u64>,
 }
 
 const WINDOW_BYTES: usize = 32 * 1024;
 
 impl<'s> Window<'s> {
     pub fn new(snap: &'s Snapshot, offset: u64, line: u32) -> Result<Self, RtError> {
-        let mut w = Window { snap, buf: Vec::new(), buf_start: offset, pos: offset, line };
+        Self::new_with_limit(snap, offset, line, None)
+    }
+    fn new_with_limit(
+        snap: &'s Snapshot,
+        offset: u64,
+        line: u32,
+        limit: Option<u64>,
+    ) -> Result<Self, RtError> {
+        let mut w = Window {
+            snap,
+            buf: Vec::new(),
+            buf_start: offset,
+            pos: offset,
+            line,
+            limit,
+        };
         w.fill(offset)?;
         Ok(w)
     }
+    /// 设扫描硬限（含）；仅允许在扫描开始前设置。
+    pub fn set_limit(&mut self, limit: u64) {
+        self.limit = Some(limit);
+    }
     fn fill(&mut self, at: u64) -> Result<(), RtError> {
-        let end = (at + WINDOW_BYTES as u64).min(self.snap.len());
+        let hard = self.limit.unwrap_or(u64::MAX);
+        let end = (at + WINDOW_BYTES as u64).min(self.snap.len()).min(hard);
         if end < at {
             return Ok(());
         }
@@ -163,13 +193,17 @@ impl<'s> Window<'s> {
     }
     #[inline]
     fn byte(&mut self, at: u64) -> Result<Option<u8>, RtError> {
-        if at >= self.snap.len() {
+        if at >= self.hard_len() {
             return Ok(None);
         }
         if at < self.buf_start || at >= self.buf_start + self.buf.len() as u64 {
             self.fill(at)?;
         }
         Ok(Some(self.buf[(at - self.buf_start) as usize]))
+    }
+    /// 有效文档长 = min(snap.len(), limit)——limit 之后视为 EOF。
+    fn hard_len(&self) -> u64 {
+        self.limit.unwrap_or(u64::MAX).min(self.snap.len())
     }
     fn count_newlines(&mut self, from: u64, to: u64) -> Result<u32, RtError> {
         let mut n = 0;
@@ -199,12 +233,40 @@ impl<'p, 's> Scanner<'p, 's> {
         snap: &'s Snapshot,
         cp: &ScanCheckpoint,
     ) -> Result<Self, RtError> {
-        let w = Window::new(snap, cp.offset, cp.line)?;
-        Ok(Scanner { p, cs, w, mode: cp.mode, mid: cp.mid.clone() })
+        Self::start_bounded(p, cs, snap, cp, None)
+    }
+
+    /// 带扫描硬限的启动（F787-R1-03：增量重扫有界窗口——limit 之前生效，
+    /// 首次拉窗即不越界）。
+    pub fn start_bounded(
+        p: &'p GrammarProgram,
+        cs: &'p CompiledScanner,
+        snap: &'s Snapshot,
+        cp: &ScanCheckpoint,
+        limit: Option<u64>,
+    ) -> Result<Self, RtError> {
+        let w = Window::new_with_limit(snap, cp.offset, cp.line, limit)?;
+        Ok(Scanner {
+            p,
+            cs,
+            w,
+            mode: cp.mode,
+            mid: cp.mid.clone(),
+        })
     }
 
     pub fn checkpoint(&self) -> ScanCheckpoint {
-        ScanCheckpoint { offset: self.w.pos, mode: self.mode, mid: self.mid.clone(), line: self.w.line }
+        ScanCheckpoint {
+            offset: self.w.pos,
+            mode: self.mode,
+            mid: self.mid.clone(),
+            line: self.w.line,
+        }
+    }
+
+    /// 扫描硬限（F787-R1-03）：增量重扫的有界窗口；越界字节视为 EOF。
+    pub fn set_limit(&mut self, limit: u64) {
+        self.w.set_limit(limit);
     }
 
     /// 扫描下一项；None = EOF。
@@ -223,7 +285,13 @@ impl<'p, 's> Scanner<'p, 's> {
         let Some(m) = m else {
             // 无匹配：单字节错误叶（受控、无损、前进）。
             self.advance_past(scan_at + 1)?;
-            return Ok(Some(Token { token: u32::MAX, start: scan_at, end: scan_at + 1, line, error: true }));
+            return Ok(Some(Token {
+                token: u32::MAX,
+                start: scan_at,
+                end: scan_at + 1,
+                line,
+                error: true,
+            }));
         };
         let rule = &self.p.scanner.rules[m.rule as usize];
         let end = start + m.len;
@@ -231,11 +299,17 @@ impl<'p, 's> Scanner<'p, 's> {
         self.mode = rule.next_mode;
         self.mid = None;
         self.advance_past(end)?;
-        Ok(Some(Token { token: rule.token, start, end, line, error: err }))
+        Ok(Some(Token {
+            token: rule.token,
+            start,
+            end,
+            line,
+            error: err,
+        }))
     }
 
     fn snap_len(&self) -> u64 {
-        self.w.snap.len()
+        self.w.hard_len()
     }
 
     fn advance_past(&mut self, end: u64) -> Result<(), RtError> {
@@ -276,10 +350,16 @@ impl<'p, 's> Scanner<'p, 's> {
     fn try_rule(&mut self, ri: u32, at: u64) -> Result<Option<Matched>, RtError> {
         let r = &self.p.scanner.rules[ri as usize];
         let matched: Option<(u64, bool)> = match &r.matcher {
-            Matcher::Literal(s) => self.try_literal(at, s.as_bytes())?.map(|_| (s.len() as u64, false)),
-            Matcher::Charset { first, cont, min_len } => {
-                self.try_charset(at, first, cont, *min_len)?.map(|l| (l, false))
-            }
+            Matcher::Literal(s) => self
+                .try_literal(at, s.as_bytes())?
+                .map(|_| (s.len() as u64, false)),
+            Matcher::Charset {
+                first,
+                cont,
+                min_len,
+            } => self
+                .try_charset(at, first, cont, *min_len)?
+                .map(|l| (l, false)),
             Matcher::LineComment(start) => {
                 if let Some(()) = self.try_literal(at, start.as_bytes())? {
                     let mut i = at + start.len() as u64;
@@ -309,7 +389,11 @@ impl<'p, 's> Scanner<'p, 's> {
                 }
             }
         };
-        Ok(matched.map(|(len, error)| Matched { rule: ri, len, error }))
+        Ok(matched.map(|(len, error)| Matched {
+            rule: ri,
+            len,
+            error,
+        }))
     }
 
     fn try_literal(&mut self, at: u64, lit: &[u8]) -> Result<Option<()>, RtError> {
@@ -380,7 +464,12 @@ impl<'p, 's> Scanner<'p, 's> {
         }
     }
 
-    fn scan_string(&mut self, from: u64, quote: u8, escape: bool) -> Result<Option<(u64, bool)>, RtError> {
+    fn scan_string(
+        &mut self,
+        from: u64,
+        quote: u8,
+        escape: bool,
+    ) -> Result<Option<(u64, bool)>, RtError> {
         let mut i = from;
         let mut pending = false;
         loop {
@@ -411,19 +500,29 @@ impl<'p, 's> Scanner<'p, 's> {
         // token 覆盖 [mid.start(), 闭合点)，长度相对 at（Token.start=mid 起点，
         // 由 next_token 以 start 参数传入——见下）。
         match mid {
-            MidToken::Str { start, quote, escape_pending } => {
+            MidToken::Str {
+                start,
+                quote,
+                escape_pending,
+            } => {
                 let ri = self
                     .find_rule(|r| matches!(&r.matcher, Matcher::StringLit { quote: q, .. } if *q == quote))
                     .ok_or_else(|| RtError::InvalidProgram("checkpoint mid-str has no rule".into()))?;
-                let escape = matches!(&self.p.scanner.rules[ri as usize].matcher,
-                    Matcher::StringLit { escape: true, .. });
+                let escape = matches!(
+                    &self.p.scanner.rules[ri as usize].matcher,
+                    Matcher::StringLit { escape: true, .. }
+                );
                 let mut i = at;
                 let mut pending = escape_pending;
                 loop {
                     match self.w.byte(i)? {
                         None => {
                             let end = self.snap_len();
-                            return Ok(Some(Matched { rule: ri, len: end - start, error: true }));
+                            return Ok(Some(Matched {
+                                rule: ri,
+                                len: end - start,
+                                error: true,
+                            }));
                         }
                         Some(b) => {
                             if pending {
@@ -437,7 +536,11 @@ impl<'p, 's> Scanner<'p, 's> {
                                 continue;
                             }
                             if b == quote {
-                                return Ok(Some(Matched { rule: ri, len: i + 1 - start, error: false }));
+                                return Ok(Some(Matched {
+                                    rule: ri,
+                                    len: i + 1 - start,
+                                    error: false,
+                                }));
                             }
                             i += 1;
                         }
@@ -447,7 +550,9 @@ impl<'p, 's> Scanner<'p, 's> {
             MidToken::Block { start, depth } => {
                 let ri = self
                     .find_rule(|r| matches!(&r.matcher, Matcher::BlockComment { .. }))
-                    .ok_or_else(|| RtError::InvalidProgram("checkpoint mid-block has no rule".into()))?;
+                    .ok_or_else(|| {
+                        RtError::InvalidProgram("checkpoint mid-block has no rule".into())
+                    })?;
                 let (sb, eb, nested) = match &self.p.scanner.rules[ri as usize].matcher {
                     Matcher::BlockComment { start, end, nested } => {
                         (start.as_bytes().to_vec(), end.as_bytes().to_vec(), *nested)
@@ -460,14 +565,22 @@ impl<'p, 's> Scanner<'p, 's> {
                     match self.w.byte(i)? {
                         None => {
                             let end = self.snap_len();
-                            return Ok(Some(Matched { rule: ri, len: end - start, error: true }));
+                            return Ok(Some(Matched {
+                                rule: ri,
+                                len: end - start,
+                                error: true,
+                            }));
                         }
                         Some(_) => {
                             if self.try_literal(i, &eb)? == Some(()) {
                                 d -= 1;
                                 i += eb.len() as u64;
                                 if d == 0 {
-                                    return Ok(Some(Matched { rule: ri, len: i - start, error: false }));
+                                    return Ok(Some(Matched {
+                                        rule: ri,
+                                        len: i - start,
+                                        error: false,
+                                    }));
                                 }
                                 continue;
                             }
@@ -485,7 +598,12 @@ impl<'p, 's> Scanner<'p, 's> {
     }
 
     fn find_rule<F: Fn(&crate::program::ScanRule) -> bool>(&self, f: F) -> Option<u32> {
-        self.p.scanner.rules.iter().position(|r| f(r) && r.mode == self.mode).map(|i| i as u32)
+        self.p
+            .scanner
+            .rules
+            .iter()
+            .position(|r| f(r) && r.mode == self.mode)
+            .map(|i| i as u32)
     }
 }
 
@@ -501,7 +619,17 @@ pub fn lex_all(
     cs: &CompiledScanner,
     snap: &Snapshot,
 ) -> Result<LexOutput, RtError> {
-    lex_from(p, cs, snap, ScanCheckpoint { offset: 0, mode: 0, mid: None, line: 1 })
+    lex_from(
+        p,
+        cs,
+        snap,
+        ScanCheckpoint {
+            offset: 0,
+            mode: 0,
+            mid: None,
+            line: 1,
+        },
+    )
 }
 
 pub fn lex_from(
@@ -557,10 +685,20 @@ impl CheckpointIndex {
 
 pub fn build_checkpoint_index(out: &LexOutput) -> CheckpointIndex {
     let mut offsets = Vec::with_capacity(out.tokens.len() / 4 + 1);
-    offsets.push(ScanCheckpoint { offset: 0, mode: 0, mid: None, line: 1 });
+    offsets.push(ScanCheckpoint {
+        offset: 0,
+        mode: 0,
+        mid: None,
+        line: 1,
+    });
     for t in &out.tokens {
         if !t.error {
-            offsets.push(ScanCheckpoint { offset: t.end, mode: 0, mid: None, line: t.line });
+            offsets.push(ScanCheckpoint {
+                offset: t.end,
+                mode: 0,
+                mid: None,
+                line: t.line,
+            });
         }
     }
     CheckpointIndex { offsets }
@@ -583,7 +721,12 @@ mod tests {
     fn kinds(o: &LexOutput, p: &GrammarProgram) -> Vec<String> {
         o.tokens
             .iter()
-            .filter(|t| !p.scanner.rules.iter().any(|r| r.token == t.token && r.trivia))
+            .filter(|t| {
+                !p.scanner
+                    .rules
+                    .iter()
+                    .any(|r| r.token == t.token && r.trivia)
+            })
             .map(|t| p.token_name(t.token).to_string())
             .collect()
     }
@@ -636,7 +779,11 @@ mod tests {
     #[test]
     fn lexer_token_lines_count_lf_only() {
         let o = lex("api a\r\nnote \"s\";");
-        let first = o.tokens.iter().find(|t| t.token == crate::testkit::toks::NOTE).unwrap();
+        let first = o
+            .tokens
+            .iter()
+            .find(|t| t.token == crate::testkit::toks::NOTE)
+            .unwrap();
         assert_eq!(first.line, 2);
     }
 }

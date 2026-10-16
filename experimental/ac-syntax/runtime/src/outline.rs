@@ -20,7 +20,11 @@ pub struct OutlineItem {
 }
 
 /// 抽取 outline 候选（迭代遍历，无递归）。
-pub fn outline(p: &GrammarProgram, tree: &CstTree, snap: &Snapshot) -> Result<Vec<OutlineItem>, RtError> {
+pub fn outline(
+    p: &GrammarProgram,
+    tree: &CstTree,
+    snap: &Snapshot,
+) -> Result<Vec<OutlineItem>, RtError> {
     let Some(spec) = &p.outline else {
         return Ok(Vec::new());
     };
@@ -30,7 +34,9 @@ pub fn outline(p: &GrammarProgram, tree: &CstTree, snap: &Snapshot) -> Result<Ve
         p.rules
             .iter()
             .position(|r| r.name == spec.decl_rule)
-            .ok_or_else(|| RtError::InvalidProgram(format!("outline decl_rule `{}` unknown", spec.decl_rule)))? as u32,
+            .ok_or_else(|| {
+                RtError::InvalidProgram(format!("outline decl_rule `{}` unknown", spec.decl_rule))
+            })? as u32,
     );
     let mut out = Vec::with_capacity(tree.decls.len());
     for d in &tree.decls {
@@ -68,7 +74,7 @@ pub fn outline(p: &GrammarProgram, tree: &CstTree, snap: &Snapshot) -> Result<Ve
         let mut ok = true;
         let mut stack = vec![node];
         while let Some(n) = stack.pop() {
-            let nd = tree.nodes[n as usize];
+            let nd = tree.node(n);
             if nd.flags & (FLAG_ERROR | FLAG_MISSING) != 0 {
                 ok = false;
                 break;
@@ -78,7 +84,13 @@ pub fn outline(p: &GrammarProgram, tree: &CstTree, snap: &Snapshot) -> Result<Ve
             }
         }
         let (s, e) = tree.abs_range(node);
-        out.push(OutlineItem { name, params_text, start: s, end: e, syntax_ok: ok });
+        out.push(OutlineItem {
+            name,
+            params_text,
+            start: s,
+            end: e,
+            syntax_ok: ok,
+        });
     }
     Ok(out)
 }

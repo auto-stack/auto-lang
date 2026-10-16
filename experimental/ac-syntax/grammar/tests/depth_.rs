@@ -26,7 +26,8 @@ fn depth_flat_chain_deep_expr() {
 
 #[test]
 fn depth_nested_parens_interleaved() {
-    // 交错嵌套：((((1)))+(((1))))*… 构建查询释放全路径。
+    // 真·交错嵌套（F787-R1-09：每层真实开启未闭合括号——不是两轮一闭合
+    // 的伪嵌套）：((((1)+((1)))+…)*2，构建/查询/释放全路径。
     let p = profile("auto-core");
     let mut expr = String::new();
     for i in 0..DEPTH {
@@ -36,15 +37,15 @@ fn depth_nested_parens_interleaved() {
             expr.push_str("1)");
         }
     }
-    if DEPTH % 2 == 0 {
-        expr.push_str(" * 2");
-    }
+    expr.push_str(" * 2");
+    // 再追加一段纯嵌套（(((((1)))))）：确保 ≥4096 层同时未闭合。
+    expr.push_str(&format!(" + {}1{}", "(".repeat(DEPTH), ")".repeat(DEPTH)));
     let text = format!("fn f() int {{ return {expr} }}");
     let (out, snap) = parse(&p, &text);
     out.tree.assert_lossless(&snap).unwrap();
     assert!(out.tree.diags.is_empty(), "{:?}", out.tree.diags);
     let _ = out.tree.canonical();
-    drop(out.tree); // arena Drop 非递归
+    drop(out.tree); // 块数组 Drop 非递归
 }
 
 #[test]

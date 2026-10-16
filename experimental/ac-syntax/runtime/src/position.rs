@@ -40,7 +40,12 @@ impl LineIndex {
             page_newlines.push(nl);
         }
         prefix.push(acc);
-        LineIndex { page_newlines, prefix, page_offsets, total_len: snap.len() }
+        LineIndex {
+            page_newlines,
+            prefix,
+            page_offsets,
+            total_len: snap.len(),
+        }
     }
 
     pub fn line_count(&self) -> u64 {
@@ -124,11 +129,25 @@ impl LineIndex {
         };
         let in_page = (offset - self.page_offsets[page]) as u32;
         let nl_before_in_page = match self.page_newlines[page].binary_search(&in_page) {
-            Ok(_) | Err(_) => self.page_newlines[page].iter().filter(|&&x| x < in_page).count() as u64,
+            Ok(_) | Err(_) => self.page_newlines[page]
+                .iter()
+                .filter(|&&x| x < in_page)
+                .count() as u64,
         };
         let line_no = self.prefix[page] + nl_before_in_page;
         let line_start = if nl_before_in_page == 0 {
-            self.page_offsets[page]
+            // 行可能始于更早的页（跨页续行，F787-R1-02）：回溯找本页之前
+            // 最后一个换行；全部为空则行起于文档起点。
+            let mut p = page;
+            loop {
+                if p == 0 {
+                    break 0;
+                }
+                p -= 1;
+                if let Some(&last) = self.page_newlines[p].last() {
+                    break self.page_offsets[p] + last as u64 + 1;
+                }
+            }
         } else {
             let idx = (nl_before_in_page - 1) as usize;
             self.page_offsets[page] + self.page_newlines[page][idx] as u64 + 1
@@ -165,7 +184,9 @@ impl LineIndex {
     }
 
     fn byte_at(&self, snap: &Snapshot, offset: u64) -> u8 {
-        snap.read_bytes(offset, offset + 1).map(|b| b[0]).unwrap_or(0)
+        snap.read_bytes(offset, offset + 1)
+            .map(|b| b[0])
+            .unwrap_or(0)
     }
 }
 
@@ -198,10 +219,10 @@ mod tests {
         // 😀 = 4 字节 / 2 UTF-16 单元。
         assert_eq!(li.line_col_utf16(&s, 0), (1, 1));
         assert_eq!(li.line_col_utf16(&s, 1), (1, 2)); // b 前是 1 标量(a)+2 单元(emoji) → col 4
-        // 上行应为 (1,4)：a=1, emoji=2 → 偏移1 是 emoji 起点，其前 1 单元 → col 2。对：
-        // 偏移 1 (emoji 起点) 前 = "a" = 1 单元 → col 2 ✓
+                                                      // 上行应为 (1,4)：a=1, emoji=2 → 偏移1 是 emoji 起点，其前 1 单元 → col 2。对：
+                                                      // 偏移 1 (emoji 起点) 前 = "a" = 1 单元 → col 2 ✓
         assert_eq!(li.line_col_utf16(&s, 5), (1, 4)); // b 前 = 1+2 = 3 单元 → col 4
-        // 代理对中点（col 3）→ floor 到 emoji 起点（字节 1）。
+                                                      // 代理对中点（col 3）→ floor 到 emoji 起点（字节 1）。
         assert_eq!(li.offset_of_utf16(&s, 1, 3), 1);
         assert_eq!(li.offset_of_utf16(&s, 1, 1), 0);
         assert_eq!(li.offset_of_utf16(&s, 1, 4), 5);
@@ -219,11 +240,64 @@ mod tests {
 
     #[test]
     fn position_cross_page() {
-        let text = format!("{}\nsecond line", "x".repeat(crate::snapshot::PAGE_BYTES + 10));
+        let text = format!(
+            "{}\nsecond line",
+            "x".repeat(crate::snapshot::PAGE_BYTES + 10)
+        );
         let s = snap(&text);
         let li = LineIndex::build(&s);
         let off = crate::snapshot::PAGE_BYTES as u64 + 10;
         assert_eq!(li.line_col_utf8(&s, off + 1), (2, 1));
         assert_eq!(li.offset_of_utf8(2, 6), off + 6);
+    }
+
+    #[test]
+    fn line_column_inside_cross_page_line() {
+        // F787-R1-02 反例：单行跨多页续行——列号必须从真实行起点（文档
+        // 起点）计，不得把页起点当行起点。
+        const P: usize = crate::snapshot::PAGE_BYTES;
+        let s = snap(&"x".repeat(P + 10));
+        let ix = LineIndex::build(&s);
+        assert_eq!(ix.line_col_utf8(&s, P as u64 + 5), (1, P as u64 + 6));
+        assert_eq!(ix.line_col_utf8(&s, P as u64 - 1), (1, P as u64));
+        // 三页续行同理。
+        let s3 = snap(&"y".repeat(P * 2 + 7));
+        let ix3 = LineIndex::build(&s3);
+        assert_eq!(
+            ix3.line_col_utf8(&s3, (P * 2) as u64 + 3),
+            (1, (P * 2) as u64 + 4)
+        );
+    }
+
+    #[test]
+    fn cross_page_line_crlf_and_utf16_roundtrip() {
+        // CRLF 跨页分裂（页尾 \r、下页头 \n）+ UTF-16 视图往返。
+        const P: usize = crate::snapshot::PAGE_BYTES;
+        let head = "a".repeat(P - 1);
+        let text = format!("{head}\r\n尾巴😀继续\r\nthird",);
+        let s = snap(&text);
+        let li = LineIndex::build(&s);
+        let l2_start = (P + 1) as u64; // \r\n 之后
+        assert_eq!(
+            li.line_col_utf8(&s, l2_start),
+            (2, 1),
+            "line 2 starts right after cross-page CRLF"
+        );
+        // 行 2 内 emoji（4B/2 单元）：其 UTF-16 列与字节往返。
+        let emoji_at = text.find("😀").unwrap() as u64;
+        assert!(emoji_at > l2_start);
+        // emoji 前 = "尾巴" = 2 标量 = 2 UTF-16 单元 → col 3。
+        let (ln, col16) = li.line_col_utf16(&s, emoji_at);
+        assert_eq!((ln, col16), (2, 3));
+        assert_eq!(
+            li.offset_of_utf16(&s, ln, col16),
+            emoji_at,
+            "utf16 roundtrip"
+        );
+        // 代理对中点 floor 到标量起点。
+        assert_eq!(li.offset_of_utf16(&s, ln, col16 + 1), emoji_at);
+        // 跨页续行的 UTF-16 列同样从真实行起点计。
+        let (l2n, c2) = li.line_col_utf16(&s, emoji_at + 1);
+        assert_eq!((l2n, c2), (2, col16 + 2));
     }
 }

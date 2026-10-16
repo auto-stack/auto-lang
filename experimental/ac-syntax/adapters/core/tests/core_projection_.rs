@@ -13,7 +13,11 @@ use auto_ac_prototype::source::parse_program;
 use std::rc::Rc;
 
 pub fn core_grammar() -> GrammarProgram {
-    let src = std::fs::read_to_string(format!("{}/../../grammars/auto-core.at", env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let src = std::fs::read_to_string(format!(
+        "{}/../../grammars/auto-core.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
     compile(&src).unwrap()
 }
 
@@ -26,13 +30,19 @@ fn project(p: &GrammarProgram, cs: &CompiledScanner, src: &str) -> Result<String
 }
 
 pub fn fixtures(sub: &str) -> Vec<(String, String)> {
-    let dir = format!("{}/../../../ac-core/fixtures/source/{sub}", env!("CARGO_MANIFEST_DIR"));
+    let dir = format!(
+        "{}/../../../ac-core/fixtures/source/{sub}",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let mut v: Vec<(String, String)> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("read {dir}: {e}"))
         .filter_map(|e| {
             let p = e.ok()?.path();
             if p.extension()? == "at" {
-                Some((p.file_name()?.to_string_lossy().into_owned(), std::fs::read_to_string(&p).ok()?))
+                Some((
+                    p.file_name()?.to_string_lossy().into_owned(),
+                    std::fs::read_to_string(&p).ok()?,
+                ))
             } else {
                 None
             }
@@ -69,7 +79,12 @@ fn core_projection_valid_corpus_identical() {
         }
     }
     assert!(passed > 0, "no valid fixtures compared: {mismatches:?}");
-    assert!(mismatches.is_empty(), "{} mismatches:\n{}", mismatches.len(), mismatches.join("\n"));
+    assert!(
+        mismatches.is_empty(),
+        "{} mismatches:\n{}",
+        mismatches.len(),
+        mismatches.join("\n")
+    );
 }
 
 #[test]
@@ -83,23 +98,44 @@ fn core_projection_invalid_corpus_accept_reject_parity() {
         let ours = project(&p, &cs, &src);
         match (oracle_ok, ours) {
             (true, Ok(_)) => agree += 1,
-            (true, Err(e)) => mismatches.push(format!("{name}: oracle accepted, projection refused: {e:?}")),
+            (true, Err(e)) => mismatches.push(format!(
+                "{name}: oracle accepted, projection refused: {e:?}"
+            )),
             (false, Err(_)) => agree += 1,
-            (false, Ok(_)) => mismatches.push(format!("{name}: oracle rejected, projection accepted")),
+            (false, Ok(_)) => {
+                mismatches.push(format!("{name}: oracle rejected, projection accepted"))
+            }
         }
     }
     assert!(agree > 0);
-    assert!(mismatches.is_empty(), "{} mismatches:\n{}", mismatches.len(), mismatches.join("\n"));
+    assert!(
+        mismatches.is_empty(),
+        "{} mismatches:\n{}",
+        mismatches.len(),
+        mismatches.join("\n")
+    );
 }
 
 #[test]
 fn core_projection_literal_range_refuses() {
     let p = core_grammar();
     let cs = CompiledScanner::compile(&p).unwrap();
-    for src in ["fn f() int { return 2147483648 }", "fn f() int { return -2147483649 }"] {
-        assert!(matches!(project(&p, &cs, src), Err(ProjectionError::LiteralRange { .. })), "{src}");
+    for src in [
+        "fn f() int { return 2147483648 }",
+        "fn f() int { return -2147483649 }",
+    ] {
+        assert!(
+            matches!(
+                project(&p, &cs, src),
+                Err(ProjectionError::LiteralRange { .. })
+            ),
+            "{src}"
+        );
     }
-    for src in ["fn f() int { return 2147483647 }", "fn f() int { return -2147483648 }"] {
+    for src in [
+        "fn f() int { return 2147483647 }",
+        "fn f() int { return -2147483648 }",
+    ] {
         assert!(project(&p, &cs, src).is_ok(), "{src} must be in-range");
     }
 }

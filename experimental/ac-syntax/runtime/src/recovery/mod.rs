@@ -9,7 +9,12 @@
 use crate::program::{GrammarProgram, RuleId, TokenId};
 
 /// 恢复是否应在此 token 前停（同步命中）。
-pub fn is_sync_point(p: &GrammarProgram, first: &crate::parse::FirstSets, rule: RuleId, tok: TokenId) -> bool {
+pub fn is_sync_point(
+    p: &GrammarProgram,
+    first: &crate::parse::FirstSets,
+    rule: RuleId,
+    tok: TokenId,
+) -> bool {
     if tok == u32::MAX {
         return false; // 错误叶 token 不作为同步点
     }
@@ -28,8 +33,17 @@ mod tests {
     #[test]
     fn recovery_progress_rules() {
         assert!(recovery_makes_progress(1, 0, false));
-        assert!(recovery_makes_progress(0, 1, false), "finite missing action is progress");
-        assert!(recovery_makes_progress(0, 0, true), "termination at EOF is progress");
-        assert!(!recovery_makes_progress(0, 0, false), "zero-progress loop is forbidden");
+        assert!(
+            recovery_makes_progress(0, 1, false),
+            "finite missing action is progress"
+        );
+        assert!(
+            recovery_makes_progress(0, 0, true),
+            "termination at EOF is progress"
+        );
+        assert!(
+            !recovery_makes_progress(0, 0, false),
+            "zero-progress loop is forbidden"
+        );
     }
 }

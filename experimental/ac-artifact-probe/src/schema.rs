@@ -220,7 +220,9 @@ const fn LexSnapLayer() -> LayerSpec {
         schema_id: "ac783/a02-lex/v1",
         producer: "lexer/scanner",
         consumers: &["parser", "incremental lexing"],
-        key_inputs: &["source-snapshot", "scanner-abi", "lexer-version"],
+        // PLAN-787 修复轮（F787-R1-05）：token 产物键补 grammar 身份——同名
+        // 不同内容语法包的 token 流不得互串；源页按内容 hash 键共享。
+        key_inputs: &["source-snapshot", "grammar-id", "scanner-abi", "lexer-version", "page-hash"],
         ref_kinds: &["required-data", "provenance"],
         storage: "read-only positioned blocks per lex region",
         residency: "cold; states converge per region",

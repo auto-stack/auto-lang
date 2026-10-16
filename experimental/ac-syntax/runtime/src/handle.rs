@@ -7,8 +7,8 @@
 
 use crate::cst::CstTree;
 use crate::identity::GrammarId;
-use crate::program::RtError;
 use crate::identity::SnapshotId;
+use crate::program::RtError;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -86,15 +86,22 @@ impl TreeSession {
     pub fn lease(&self, tree: u64) -> Result<TreeLease<'_>, RtError> {
         let mut s = self.inner.borrow_mut();
         if !s.entries.contains_key(&tree) {
-            return Err(RtError::BadHandle(format!("tree {tree} not retained (evicted or unknown)")));
+            return Err(RtError::BadHandle(format!(
+                "tree {tree} not retained (evicted or unknown)"
+            )));
         }
         *s.lease_counts.entry(tree).or_insert(0) += 1;
-        Ok(TreeLease { session: self, tree })
+        Ok(TreeLease {
+            session: self,
+            tree,
+        })
     }
 
     pub fn is_live(&self, tree: u64) -> bool {
         let s = self.inner.borrow();
-        s.current == Some(tree) || (s.entries.contains_key(&tree) && s.lease_counts.get(&tree).copied().unwrap_or(0) > 0)
+        s.current == Some(tree)
+            || (s.entries.contains_key(&tree)
+                && s.lease_counts.get(&tree).copied().unwrap_or(0) > 0)
     }
 
     /// 句柄解析：当前或 lease 内可读；否则受控拒绝。
@@ -115,7 +122,7 @@ impl TreeSession {
             )));
         }
         let entry = s.entries[&h.tree].clone();
-        let node_count = entry.tree.nodes.len() as u32;
+        let node_count = entry.tree.node_total();
         if h.node >= node_count {
             return Err(RtError::BadHandle(format!(
                 "node index {} out of range (tree has {node_count})",
@@ -163,7 +170,10 @@ mod tests {
         let h = NodeHandle { tree: t1, node: 0 };
         assert!(s.resolve(h).is_ok(), "current tree readable");
         let t2 = s.publish(entry());
-        assert!(matches!(s.resolve(h), Err(RtError::BadHandle(_))), "old handle must be rejected");
+        assert!(
+            matches!(s.resolve(h), Err(RtError::BadHandle(_))),
+            "old handle must be rejected"
+        );
         let _ = t2;
     }
 
@@ -176,6 +186,9 @@ mod tests {
         let h = NodeHandle { tree: t1, node: 0 };
         assert!(s.resolve(h).is_ok(), "leased old tree stays readable");
         drop(lease);
-        assert!(matches!(s.resolve(h), Err(RtError::BadHandle(_))), "after release, old tree evicted on next publish");
+        assert!(
+            matches!(s.resolve(h), Err(RtError::BadHandle(_))),
+            "after release, old tree evicted on next publish"
+        );
     }
 }

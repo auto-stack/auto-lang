@@ -31,7 +31,9 @@
 //! token 名；`list`/`list-nl` 子节点包装列表步。
 
 use ac_syntax_rt::program::*;
-use ac_syntax_rt::{identity, GRAMMAR_SCHEMA_VERSION_STR, PARSER_ABI_VERSION, RUNTIME_VERSION, SCANNER_ABI_VERSION};
+use ac_syntax_rt::{
+    identity, GRAMMAR_SCHEMA_VERSION_STR, PARSER_ABI_VERSION, RUNTIME_VERSION, SCANNER_ABI_VERSION,
+};
 use auto_atom::{Atom as AtomDoc, AtomParser};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -63,7 +65,10 @@ struct Ctx {
 
 impl Ctx {
     fn err(&mut self, path: &str, msg: String) {
-        self.diags.push(CompileDiag { message: msg, path: path.to_string() });
+        self.diags.push(CompileDiag {
+            message: msg,
+            path: path.to_string(),
+        });
     }
 
     fn build(&mut self, atom: AtomDoc) -> Result<GrammarProgram, Vec<CompileDiag>> {
@@ -85,17 +90,18 @@ impl Ctx {
         });
         let revision = pint(&root, "revision").unwrap_or(1) as u64;
         let newline_significant = pbool(&root, "newline").unwrap_or(false);
-        let stmt_end: Vec<String> =
-            plist(&root, "stmt-end").unwrap_or_default();
-        let sync: Vec<String> =
-            plist(&root, "sync").unwrap_or_default();
-        let sep: Vec<String> =
-            plist(&root, "sep").unwrap_or_default();
+        let stmt_end: Vec<String> = plist(&root, "stmt-end").unwrap_or_default();
+        let sync: Vec<String> = plist(&root, "sync").unwrap_or_default();
+        let sep: Vec<String> = plist(&root, "sep").unwrap_or_default();
 
         let mut tokens_node = None;
         let mut rules_node = None;
         let mut pratt_nodes: Vec<auto_val::Node> = Vec::new();
-        let mut outline = OutlineSpec { decl_rule: String::new(), name_field: String::new(), params_field: None };
+        let mut outline = OutlineSpec {
+            decl_rule: String::new(),
+            name_field: String::new(),
+            params_field: None,
+        };
         let mut has_outline = false;
         for (_k, kid) in root.kids_iter() {
             let node = match kid {
@@ -122,12 +128,17 @@ impl Ctx {
         let mut literal_of: Vec<Option<String>> = Vec::new();
         if let Some(tn) = &tokens_node {
             for (_k, kid) in tn.kids_iter() {
-                let auto_val::Kid::Node(t) = kid else { continue };
+                let auto_val::Kid::Node(t) = kid else {
+                    continue;
+                };
                 let t = t.as_ref();
                 let tname = t.name.to_string();
                 let id = token_names.len() as u32;
                 if token_names.contains(&tname) {
-                    self.err(&format!("tokens.{tname}"), format!("duplicate token `{tname}`"));
+                    self.err(
+                        &format!("tokens.{tname}"),
+                        format!("duplicate token `{tname}`"),
+                    );
                 }
                 let trivia = pbool(t, "trivia").unwrap_or(false);
                 let matcher = if let Some(lit) = pstr(t, "literal") {
@@ -143,17 +154,26 @@ impl Ctx {
                     if first.is_empty() {
                         self.err(
                             &format!("tokens.{tname}"),
-                            format!("charset `{cs}` matches nothing (non-progressing scanner rule)"),
+                            format!(
+                                "charset `{cs}` matches nothing (non-progressing scanner rule)"
+                            ),
                         );
                     }
                     literal_of.push(None);
-                    Matcher::Charset { first, cont: cont_set, min_len: 1 }
+                    Matcher::Charset {
+                        first,
+                        cont: cont_set,
+                        min_len: 1,
+                    }
                 } else if phas(t, "quote") {
                     let q = pstr(t, "quote").unwrap_or_else(|| "\"".into());
                     let qb = q.as_bytes().first().copied().unwrap_or(b'"');
                     let esc = pbool(t, "escape").unwrap_or(true);
                     literal_of.push(None);
-                    Matcher::StringLit { quote: qb, escape: esc }
+                    Matcher::StringLit {
+                        quote: qb,
+                        escape: esc,
+                    }
                 } else if let Some(start) = pstr(t, "line-comment") {
                     literal_of.push(None);
                     Matcher::LineComment(start)
@@ -172,15 +192,25 @@ impl Ctx {
                     Matcher::Literal("\u{0}impossible".into())
                 };
                 token_names.push(tname.clone());
-                scan_rules.push(ScanRule { mode: 0, matcher, token: id, trivia, next_mode: 0 });
+                scan_rules.push(ScanRule {
+                    mode: 0,
+                    matcher,
+                    token: id,
+                    trivia,
+                    next_mode: 0,
+                });
             }
         }
         if token_names.is_empty() {
             self.err("tokens", "no tokens declared".into());
         }
 
-        let tok_of_literal =
-            |lit: &str| -> Option<u32> { literal_of.iter().position(|l| l.as_deref() == Some(lit)).map(|i| i as u32) };
+        let tok_of_literal = |lit: &str| -> Option<u32> {
+            literal_of
+                .iter()
+                .position(|l| l.as_deref() == Some(lit))
+                .map(|i| i as u32)
+        };
         let tok_of_name =
             |n: &str| -> Option<u32> { token_names.iter().position(|t| t == n).map(|i| i as u32) };
 
@@ -190,18 +220,24 @@ impl Ctx {
         let mut raw_rules: Vec<auto_val::Node> = Vec::new();
         if let Some(rn) = &rules_node {
             for (_k, kid) in rn.kids_iter() {
-                let auto_val::Kid::Node(r) = kid else { continue };
+                let auto_val::Kid::Node(r) = kid else {
+                    continue;
+                };
                 let r = r.as_ref();
                 let rname = r.name.to_string();
                 if rule_names.contains(&rname) {
-                    self.err(&format!("rules.{rname}"), format!("duplicate rule `{rname}`"));
+                    self.err(
+                        &format!("rules.{rname}"),
+                        format!("duplicate rule `{rname}`"),
+                    );
                 }
                 rule_recover.push(pbool(r, "recover").unwrap_or(false));
                 rule_names.push(rname);
                 raw_rules.push(r.clone());
             }
         }
-        let rule_of = |n: &str| -> Option<u32> { rule_names.iter().position(|r| r == n).map(|i| i as u32) };
+        let rule_of =
+            |n: &str| -> Option<u32> { rule_names.iter().position(|r| r == n).map(|i| i as u32) };
 
         let mut field_names: Vec<String> = Vec::new();
         let mut field_of = |n: &str| -> u32 {
@@ -214,29 +250,38 @@ impl Ctx {
             }
         };
 
-        let mut parse_steps = |ctx: &mut Ctx, node: &auto_val::Node, rule_path: &str| -> Vec<Step> {
+        let mut parse_steps = |ctx: &mut Ctx,
+                               node: &auto_val::Node,
+                               rule_path: &str|
+         -> Vec<Step> {
             let mut steps = Vec::new();
             for (_k, kid) in node.kids_iter() {
-                let auto_val::Kid::Node(s) = kid else { continue };
+                let auto_val::Kid::Node(s) = kid else {
+                    continue;
+                };
                 let s = s.as_ref();
                 let sname = s.name.to_string();
                 // `list(...)`/`list-nl(...)`/`many(...)` 包装：把被包装步骤升级为列表步。
-                let (wrapper, inner): (Option<&str>, Option<&auto_val::Node>) =
-                    match sname.as_str() {
-                        "list" | "list-nl" | "many" | "opt" => {
-                            // 形态：子节点 `list { x() {} }`（x 为被包装步骤）。
-                            let mut inner_node = None;
-                            for (_k2, kid2) in s.kids_iter() {
-                                if let auto_val::Kid::Node(sub) = kid2 {
-                                    inner_node = Some(sub.as_ref());
-                                }
+                let (wrapper, inner): (Option<&str>, Option<&auto_val::Node>) = match sname.as_str()
+                {
+                    "list" | "list-nl" | "many" | "opt" => {
+                        // 形态：子节点 `list { x() {} }`（x 为被包装步骤）。
+                        let mut inner_node = None;
+                        for (_k2, kid2) in s.kids_iter() {
+                            if let auto_val::Kid::Node(sub) = kid2 {
+                                inner_node = Some(sub.as_ref());
                             }
-                            (Some(sname.as_str()), inner_node)
                         }
-                        _ => (None, None),
-                    };
+                        (Some(sname.as_str()), inner_node)
+                    }
+                    _ => (None, None),
+                };
                 let target: &auto_val::Node = inner.unwrap_or(s);
-                let sname2 = if inner.is_some() { target.name.to_string() } else { sname.clone() };
+                let sname2 = if inner.is_some() {
+                    target.name.to_string()
+                } else {
+                    sname.clone()
+                };
                 let repeat = if let Some(w) = wrapper {
                     match w {
                         "list" => Repeat::ListPlain,
@@ -266,7 +311,10 @@ impl Ctx {
                         match tok_of_literal(&litv) {
                             Some(t) => Atom::Tok(t),
                             None => {
-                                ctx.err(rule_path, format!("lit `{litv}` has no matching token literal"));
+                                ctx.err(
+                                    rule_path,
+                                    format!("lit `{litv}` has no matching token literal"),
+                                );
                                 Atom::Tok(0)
                             }
                         }
@@ -293,7 +341,10 @@ impl Ctx {
                     }
                     "pratt" => {
                         let pn = pstr(src_props, "of").unwrap_or_default();
-                        match pratt_nodes.iter().position(|p| pos_name(p).as_deref() == Some(pn.as_str())) {
+                        match pratt_nodes
+                            .iter()
+                            .position(|p| pos_name(p).as_deref() == Some(pn.as_str()))
+                        {
                             Some(i) => Atom::Pratt(i as u32),
                             None => {
                                 ctx.err(rule_path, format!("pratt `{pn}` unknown"));
@@ -315,7 +366,12 @@ impl Ctx {
                         }
                     }
                 };
-                steps.push(Step { atom, field, repeat, same_line });
+                steps.push(Step {
+                    atom,
+                    field,
+                    repeat,
+                    same_line,
+                });
             }
             steps
         };
@@ -330,21 +386,34 @@ impl Ctx {
                 .any(|(_k, kid)| matches!(kid, auto_val::Kid::Node(n) if n.name.as_str() == "alt"));
             if has_alt_children {
                 for (_k, kid) in r.kids_iter() {
-                    let auto_val::Kid::Node(a) = kid else { continue };
+                    let auto_val::Kid::Node(a) = kid else {
+                        continue;
+                    };
                     let a = a.as_ref();
                     if a.name.as_str() != "alt" {
-                        self.err(&path, format!("mixed alt/non-alt children in rule `{rname}`"));
+                        self.err(
+                            &path,
+                            format!("mixed alt/non-alt children in rule `{rname}`"),
+                        );
                         continue;
                     }
-                    alts.push(Alt { steps: parse_steps(self, a, &path) });
+                    alts.push(Alt {
+                        steps: parse_steps(self, a, &path),
+                    });
                 }
             } else {
-                alts.push(Alt { steps: parse_steps(self, r, &path) });
+                alts.push(Alt {
+                    steps: parse_steps(self, r, &path),
+                });
             }
             if alts.is_empty() {
                 self.err(&path, format!("rule `{rname}` has no alternatives"));
             }
-            rules.push(RuleSpec { name: rname.clone(), alts, recover: rule_recover[i] });
+            rules.push(RuleSpec {
+                name: rname.clone(),
+                alts,
+                recover: rule_recover[i],
+            });
         }
 
         // ---- pratt 表体 ----
@@ -359,7 +428,9 @@ impl Ctx {
                 });
             let mut ops = Vec::new();
             for (_k, kid) in pn.kids_iter() {
-                let auto_val::Kid::Node(o) = kid else { continue };
+                let auto_val::Kid::Node(o) = kid else {
+                    continue;
+                };
                 let o = o.as_ref();
                 if o.name.as_str() != "op" {
                     continue;
@@ -374,7 +445,11 @@ impl Ctx {
                 }
                 let lit = pstr(o, "of").unwrap_or_default();
                 match tok_of_literal(&lit) {
-                    Some(t) => ops.push(PrattOp { op: t, binding, assoc }),
+                    Some(t) => ops.push(PrattOp {
+                        op: t,
+                        binding,
+                        assoc,
+                    }),
                     None => self.err(&path, format!("op literal `{lit}` has no token")),
                 }
             }
@@ -386,7 +461,9 @@ impl Ctx {
             let mut call_paren = None;
             let mut call_args = None;
             for (_k, kid) in pn.kids_iter() {
-                let auto_val::Kid::Node(c) = kid else { continue };
+                let auto_val::Kid::Node(c) = kid else {
+                    continue;
+                };
                 let c = c.as_ref();
                 if c.name.as_str() == "call" {
                     let open = pstr(c, "open").unwrap_or_else(|| "(".into());
@@ -407,7 +484,14 @@ impl Ctx {
                     }
                 }
             }
-            pratt.push(PrattSpec { primary, ops, group_open, group_close, call_paren, call_args });
+            pratt.push(PrattSpec {
+                primary,
+                ops,
+                group_open,
+                group_close,
+                call_paren,
+                call_args,
+            });
         }
 
         if has_outline {
@@ -415,7 +499,10 @@ impl Ctx {
                 self.err("outline", "decl-rule/name-field required".into());
             }
             if rule_of(&outline.decl_rule).is_none() {
-                self.err("outline", format!("decl-rule `{}` unknown", outline.decl_rule));
+                self.err(
+                    "outline",
+                    format!("decl-rule `{}` unknown", outline.decl_rule),
+                );
             }
         }
 
@@ -452,7 +539,11 @@ impl Ctx {
             })
             .collect();
         // 未声明 sep 时回退为 stmt_end 全集（兼容旧形态；含 `}` 由边界检查兜底）。
-        let sep_ids = if sep_ids.is_empty() { stmt_end_ids.clone() } else { sep_ids };
+        let sep_ids = if sep_ids.is_empty() {
+            stmt_end_ids.clone()
+        } else {
+            sep_ids
+        };
         let start = rule_of("program").unwrap_or_else(|| {
             self.err("rules", "start rule `program` missing".into());
             0
@@ -462,13 +553,23 @@ impl Ctx {
             name,
             revision,
             schema_version: GRAMMAR_SCHEMA_VERSION,
-            scanner: ScannerProgram { mode_names: vec!["code".into()], rules: scan_rules },
-            tokens: token_names.into_iter().map(|n| TokenSpec { name: n }).collect(),
+            scanner: ScannerProgram {
+                mode_names: vec!["code".into()],
+                rules: scan_rules,
+            },
+            tokens: token_names
+                .into_iter()
+                .map(|n| TokenSpec { name: n })
+                .collect(),
             rules,
             pratt,
             field_names,
             start,
-            newline: NewlinePolicy { significant: newline_significant, stmt_end: stmt_end_ids, sep_consume: sep_ids },
+            newline: NewlinePolicy {
+                significant: newline_significant,
+                stmt_end: stmt_end_ids,
+                sep_consume: sep_ids,
+            },
             recovery: RecoverySpec { sync: sync_ids },
             outline: if has_outline { Some(outline) } else { None },
             identity: identity::PackageIdentity {
@@ -477,7 +578,12 @@ impl Ctx {
             },
         };
         let canonical = p.canonical_bytes();
-        let versions = [GRAMMAR_SCHEMA_VERSION_STR, RUNTIME_VERSION, SCANNER_ABI_VERSION, PARSER_ABI_VERSION];
+        let versions = [
+            GRAMMAR_SCHEMA_VERSION_STR,
+            RUNTIME_VERSION,
+            SCANNER_ABI_VERSION,
+            PARSER_ABI_VERSION,
+        ];
         p.identity = identity::package_identity(&p.name, &canonical, &versions);
         Ok(p)
     }
@@ -497,26 +603,24 @@ impl Ctx {
                 if nullable[ri] {
                     continue;
                 }
-                'alts: for alt in &r.alts {
-                    let mut all_null = true;
-                    for s in &alt.steps {
-                        // 步可空 = 原子可空 **或** repeat 为 opt/many/list（fixpoint 语义）。
+                for alt in &r.alts {
+                    // 步可空 = 原子可空 **或** repeat 为 opt/many/list（fixpoint 语义）。
+                    let alt_nullable = alt.steps.iter().all(|s| {
                         let atom_null = match s.atom {
                             Atom::Tok(_) => false,
                             Atom::Rule(sub) => nullable.get(sub as usize).copied().unwrap_or(false),
                             Atom::Pratt(_) => false,
                         };
-                        let snull = atom_null
+                        atom_null
                             || matches!(
                                 s.repeat,
-                                Repeat::Optional | Repeat::ZeroOrMore | Repeat::ListPlain | Repeat::ListNewline
-                            );
-                        if !snull {
-                            all_null = false;
-                            break 'alts;
-                        }
-                    }
-                    if all_null {
+                                Repeat::Optional
+                                    | Repeat::ZeroOrMore
+                                    | Repeat::ListPlain
+                                    | Repeat::ListNewline
+                            )
+                    });
+                    if alt_nullable {
                         nullable[ri] = true;
                         changed = true;
                         break;
@@ -533,7 +637,10 @@ impl Ctx {
                         Atom::Pratt(_) => false,
                     };
                     if item_null
-                        && matches!(s.repeat, Repeat::ZeroOrMore | Repeat::ListPlain | Repeat::ListNewline)
+                        && matches!(
+                            s.repeat,
+                            Repeat::ZeroOrMore | Repeat::ListPlain | Repeat::ListNewline
+                        )
                     {
                         self.err(
                             &format!("rules.{}", r.name),
@@ -577,7 +684,10 @@ impl Ctx {
                     };
                     let rep_nullable = matches!(
                         s.repeat,
-                        Repeat::Optional | Repeat::ZeroOrMore | Repeat::ListPlain | Repeat::ListNewline
+                        Repeat::Optional
+                            | Repeat::ZeroOrMore
+                            | Repeat::ListPlain
+                            | Repeat::ListNewline
                     );
                     if !(snull || rep_nullable) {
                         break;
@@ -594,7 +704,6 @@ impl Ctx {
         Ok(())
     }
 }
-
 
 /// 属性读取（auto-val `get_prop_of` 返回 Value，Nil = 缺席）。
 fn pstr(n: &auto_val::Node, key: &str) -> Option<String> {

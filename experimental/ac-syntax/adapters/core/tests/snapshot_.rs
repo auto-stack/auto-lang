@@ -19,7 +19,14 @@ fn snapshot_utf8_roundtrip_and_identity() {
     let s = a.read_str(0, a.len()).unwrap();
     assert_eq!(s, "fn 中文(emoji 😀 x) {}");
     // 非 UTF-8 插入拒绝。
-    let bad = a.edit(&EditRequest { base_revision: 0, edits: vec![Edit { start: 0, end: 0, insert: vec![0xFF] }] });
+    let bad = a.edit(&EditRequest {
+        base_revision: 0,
+        edits: vec![Edit {
+            start: 0,
+            end: 0,
+            insert: vec![0xFF],
+        }],
+    });
     assert!(matches!(bad, Err(RtError::BadEdit(_))));
 }
 
@@ -60,20 +67,46 @@ fn snapshot_edit_rejections_keep_old_snapshot() {
     let s = snap("fn a() int { return 1 }");
     let before = s.id().clone();
     // 错 base。
-    let r = s.edit(&EditRequest { base_revision: 9, edits: vec![Edit { start: 0, end: 0, insert: b"x".to_vec() }] });
+    let r = s.edit(&EditRequest {
+        base_revision: 9,
+        edits: vec![Edit {
+            start: 0,
+            end: 0,
+            insert: b"x".to_vec(),
+        }],
+    });
     assert!(matches!(r, Err(RtError::BadEdit(_))));
     // 重叠。
     let r = s.edit(&EditRequest {
         base_revision: 0,
         edits: vec![
-            Edit { start: 1, end: 4, insert: vec![] },
-            Edit { start: 3, end: 6, insert: vec![] },
+            Edit {
+                start: 1,
+                end: 4,
+                insert: vec![],
+            },
+            Edit {
+                start: 3,
+                end: 6,
+                insert: vec![],
+            },
         ],
     });
     assert!(matches!(r, Err(RtError::BadEdit(_))));
     // emoji 标量中点。
     let s2 = snap("a😀b");
-    let r = s2.edit(&EditRequest { base_revision: 0, edits: vec![Edit { start: 2, end: 3, insert: b"x".to_vec() }] });
+    let r = s2.edit(&EditRequest {
+        base_revision: 0,
+        edits: vec![Edit {
+            start: 2,
+            end: 3,
+            insert: b"x".to_vec(),
+        }],
+    });
     assert!(matches!(r, Err(RtError::BadEdit(_))));
-    assert_eq!(*s.id(), before, "rejected edits must not mutate the old snapshot");
+    assert_eq!(
+        *s.id(),
+        before,
+        "rejected edits must not mutate the old snapshot"
+    );
 }

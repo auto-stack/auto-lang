@@ -29,7 +29,10 @@ pub struct CharSet {
 
 impl CharSet {
     pub fn empty() -> Self {
-        CharSet { bits: [0; 2], non_ascii: false }
+        CharSet {
+            bits: [0; 2],
+            non_ascii: false,
+        }
     }
     pub fn from_ranges(spec: &[(u8, u8)]) -> Self {
         let mut cs = CharSet::empty();
@@ -62,11 +65,19 @@ pub enum Matcher {
     /// 固定字面量（关键字/运算符）。
     Literal(String),
     /// 字符集合串（标识符/数字）：首字符集 + 后续字符集，最少匹配数。
-    Charset { first: CharSet, cont: CharSet, min_len: u32 },
+    Charset {
+        first: CharSet,
+        cont: CharSet,
+        min_len: u32,
+    },
     /// 行注释：start 字面量到（不含）换行。
     LineComment(String),
     /// 块注释：start..end，可嵌套（interface-mini 的 /* */ 嵌套）。
-    BlockComment { start: String, end: String, nested: bool },
+    BlockComment {
+        start: String,
+        end: String,
+        nested: bool,
+    },
     /// 字符串字面量：引号字节、是否支持 `\` 转义（跨块/跨行状态恢复）。
     StringLit { quote: u8, escape: bool },
 }
@@ -250,7 +261,10 @@ impl GrammarProgram {
     }
     /// 字段名 → id（首次出现顺序分配由编译器保证；重复名取首个）。
     pub fn field_id(&self, name: &str) -> Option<u32> {
-        self.field_names.iter().position(|f| f == name).map(|i| i as u32)
+        self.field_names
+            .iter()
+            .position(|f| f == name)
+            .map(|i| i as u32)
     }
     /// 规范二进制（身份计算与持久化共用同一布局，PROGRAM_CODEC_VERSION 前缀）。
     pub fn canonical_bytes(&self) -> Vec<u8> {
@@ -269,7 +283,10 @@ pub struct Budget {
 
 impl Default for Budget {
     fn default() -> Self {
-        Budget { max_parse_depth: 1 << 20, work_bytes: 256 << 20 }
+        Budget {
+            max_parse_depth: 1 << 20,
+            work_bytes: 256 << 20,
+        }
     }
 }
 

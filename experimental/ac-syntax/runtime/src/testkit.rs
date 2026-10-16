@@ -69,7 +69,11 @@ pub fn mini_program() -> GrammarProgram {
         },
         ScanRule {
             mode: 0,
-            matcher: Matcher::BlockComment { start: "/*".into(), end: "*/".into(), nested: true },
+            matcher: Matcher::BlockComment {
+                start: "/*".into(),
+                end: "*/".into(),
+                nested: true,
+            },
             token: toks::BLOCK_COMMENT,
             trivia: true,
             next_mode: 0,
@@ -100,7 +104,10 @@ pub fn mini_program() -> GrammarProgram {
     }
     rules_scan.push(ScanRule {
         mode: 0,
-        matcher: Matcher::StringLit { quote: b'"', escape: true },
+        matcher: Matcher::StringLit {
+            quote: b'"',
+            escape: true,
+        },
         token: toks::STRING,
         trivia: false,
         next_mode: 0,
@@ -118,18 +125,47 @@ pub fn mini_program() -> GrammarProgram {
     });
     rules_scan.push(ScanRule {
         mode: 0,
-        matcher: Matcher::Charset { first: cs(&[(b'0', b'9')]), cont: cs(&[(b'0', b'9')]), min_len: 1 },
+        matcher: Matcher::Charset {
+            first: cs(&[(b'0', b'9')]),
+            cont: cs(&[(b'0', b'9')]),
+            min_len: 1,
+        },
         token: toks::INT,
         trivia: false,
         next_mode: 0,
     });
 
-    let step = |atom: Atom| Step { atom, field: None, repeat: Repeat::Once, same_line: false };
-    let stepf = |atom: Atom, f: u32| Step { atom, field: Some(f), repeat: Repeat::Once, same_line: false };
-    let rep = |atom: Atom| Step { atom, field: None, repeat: Repeat::ZeroOrMore, same_line: false };
+    let step = |atom: Atom| Step {
+        atom,
+        field: None,
+        repeat: Repeat::Once,
+        same_line: false,
+    };
+    let stepf = |atom: Atom, f: u32| Step {
+        atom,
+        field: Some(f),
+        repeat: Repeat::Once,
+        same_line: false,
+    };
+    let rep = |atom: Atom| Step {
+        atom,
+        field: None,
+        repeat: Repeat::ZeroOrMore,
+        same_line: false,
+    };
     #[allow(unused_variables)]
-    let opt = |atom: Atom| Step { atom, field: None, repeat: Repeat::Optional, same_line: false };
-    let listp = |atom: Atom| Step { atom, field: None, repeat: Repeat::ListPlain, same_line: false };
+    let opt = |atom: Atom| Step {
+        atom,
+        field: None,
+        repeat: Repeat::Optional,
+        same_line: false,
+    };
+    let listp = |atom: Atom| Step {
+        atom,
+        field: None,
+        repeat: Repeat::ListPlain,
+        same_line: false,
+    };
 
     let rs = |name: &str, alts: Vec<Alt>, recover: bool| RuleSpec {
         name: name.into(),
@@ -138,13 +174,23 @@ pub fn mini_program() -> GrammarProgram {
     };
     let grammar_rules = vec![
         // program := decl*（ListPlain：项间跳过 `;` 分隔）
-        rs("program", vec![Alt { steps: vec![listp(Atom::Rule(rules::DECL))] }], false),
+        rs(
+            "program",
+            vec![Alt {
+                steps: vec![listp(Atom::Rule(rules::DECL))],
+            }],
+            false,
+        ),
         // decl := api-decl | note-decl
         rs(
             "decl",
             vec![
-                Alt { steps: vec![step(Atom::Rule(rules::API_DECL))] },
-                Alt { steps: vec![step(Atom::Rule(rules::NOTE_DECL))] },
+                Alt {
+                    steps: vec![step(Atom::Rule(rules::API_DECL))],
+                },
+                Alt {
+                    steps: vec![step(Atom::Rule(rules::NOTE_DECL))],
+                },
             ],
             false,
         ),
@@ -156,7 +202,12 @@ pub fn mini_program() -> GrammarProgram {
                     stepf(Atom::Tok(toks::API), 0),
                     stepf(Atom::Tok(toks::IDENT), 1),
                     step(Atom::Tok(toks::LPAREN)),
-                    Step { atom: Atom::Rule(rules::PARAMS), field: Some(2), repeat: Repeat::Optional, same_line: false },
+                    Step {
+                        atom: Atom::Rule(rules::PARAMS),
+                        field: Some(2),
+                        repeat: Repeat::Optional,
+                        same_line: false,
+                    },
                     step(Atom::Tok(toks::RPAREN)),
                     step(Atom::Tok(toks::ARROW)),
                     stepf(Atom::Rule(rules::TYPE), 3),
@@ -208,15 +259,31 @@ pub fn mini_program() -> GrammarProgram {
             false,
         ),
         // type := i32
-        rs("type", vec![Alt { steps: vec![step(Atom::Tok(toks::I32))] }], false),
+        rs(
+            "type",
+            vec![Alt {
+                steps: vec![step(Atom::Tok(toks::I32))],
+            }],
+            false,
+        ),
         // expr := Pratt
-        rs("expr", vec![Alt { steps: vec![step(Atom::Pratt(0))] }], false),
+        rs(
+            "expr",
+            vec![Alt {
+                steps: vec![step(Atom::Pratt(0))],
+            }],
+            false,
+        ),
         // atom-expr := int | ident | ( expr )
         rs(
             "atom-expr",
             vec![
-                Alt { steps: vec![step(Atom::Tok(toks::INT))] },
-                Alt { steps: vec![step(Atom::Tok(toks::IDENT))] },
+                Alt {
+                    steps: vec![step(Atom::Tok(toks::INT))],
+                },
+                Alt {
+                    steps: vec![step(Atom::Tok(toks::IDENT))],
+                },
                 Alt {
                     steps: vec![
                         step(Atom::Tok(toks::LPAREN)),
@@ -233,16 +300,29 @@ pub fn mini_program() -> GrammarProgram {
         name: "mini-test".into(),
         revision: 1,
         schema_version: GRAMMAR_SCHEMA_VERSION,
-        scanner: ScannerProgram { mode_names: vec!["code".into()], rules: rules_scan },
+        scanner: ScannerProgram {
+            mode_names: vec!["code".into()],
+            rules: rules_scan,
+        },
         tokens: vec![
             TokenSpec { name: "ws".into() },
-            TokenSpec { name: "line-comment".into() },
-            TokenSpec { name: "block-comment".into() },
+            TokenSpec {
+                name: "line-comment".into(),
+            },
+            TokenSpec {
+                name: "block-comment".into(),
+            },
             TokenSpec { name: "api".into() },
-            TokenSpec { name: "note".into() },
-            TokenSpec { name: "ident".into() },
+            TokenSpec {
+                name: "note".into(),
+            },
+            TokenSpec {
+                name: "ident".into(),
+            },
             TokenSpec { name: "int".into() },
-            TokenSpec { name: "string".into() },
+            TokenSpec {
+                name: "string".into(),
+            },
             TokenSpec { name: "(".into() },
             TokenSpec { name: ")".into() },
             TokenSpec { name: ":".into() },
@@ -259,9 +339,21 @@ pub fn mini_program() -> GrammarProgram {
         pratt: vec![PrattSpec {
             primary: rules::ATOM_EXPR,
             ops: vec![
-                PrattOp { op: toks::LT, binding: 1, assoc: Assoc::Left },
-                PrattOp { op: toks::PLUS, binding: 2, assoc: Assoc::Left },
-                PrattOp { op: toks::STAR, binding: 3, assoc: Assoc::Left },
+                PrattOp {
+                    op: toks::LT,
+                    binding: 1,
+                    assoc: Assoc::Left,
+                },
+                PrattOp {
+                    op: toks::PLUS,
+                    binding: 2,
+                    assoc: Assoc::Left,
+                },
+                PrattOp {
+                    op: toks::STAR,
+                    binding: 3,
+                    assoc: Assoc::Left,
+                },
             ],
             group_open: Some(toks::LPAREN),
             group_close: Some(toks::RPAREN),
@@ -269,8 +361,14 @@ pub fn mini_program() -> GrammarProgram {
             call_args: None,
         }],
         start: rules::PROGRAM,
-        newline: NewlinePolicy { significant: false, stmt_end: vec![toks::SEMI], sep_consume: vec![toks::SEMI] },
-        recovery: RecoverySpec { sync: vec![toks::SEMI] },
+        newline: NewlinePolicy {
+            significant: false,
+            stmt_end: vec![toks::SEMI],
+            sep_consume: vec![toks::SEMI],
+        },
+        recovery: RecoverySpec {
+            sync: vec![toks::SEMI],
+        },
         outline: Some(OutlineSpec {
             decl_rule: "decl".into(),
             name_field: "name".into(),

@@ -1,20 +1,26 @@
-# PLAN-787 验收聚合脚本（V-01..V-13 矩阵）
+﻿# PLAN-787 验收聚合脚本（V-01..V-13 矩阵）
 # 用法：
-#   scripts/verify-ac-syntax-787.ps1 -Scope acceptance   # 日常验收（跳过重型负载）
+#   scripts/verify-ac-syntax-787.ps1 -Scope acceptance   # 日常验收（含 work-owned 全矩阵）
 #   scripts/verify-ac-syntax-787.ps1 -Scope closeout     # merge 冻结提交完整套件
+# F787-R1-09/10 修复轮：
+#   - perf_/syntax_budget_ 为 work-owned（V-11/V-13）→ acceptance 必跑（不再
+#     后置 closeout；closeout 另跑完整工作区 + 受影响 783 独立套件）；
+#   - closeout 的 783 触面套件参数修复（--lib 不再与重定向拼成单参数）。
 param(
     [Parameter(Mandatory = $false)]
     [ValidateSet("acceptance", "closeout")]
     [string]$Scope = "acceptance"
 )
 
-$ErrorActionPreference = "Stop"
+# 注意：cargo 向 stderr 输出编译警告（shim-metadata 预存归属）——EAP 必须
+# 为 Continue，否则 PowerShell 把 stderr 行当 NativeCommandError 终止；失败
+# 判定统一走 $LASTEXITCODE 与结果解析。
+$ErrorActionPreference = "Continue"
 Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
 $root = Split-Path -Parent $PSScriptRoot
 $manifest = Join-Path $root "experimental/ac-syntax/Cargo.toml"
-$filter = "--manifest-path $manifest"
 
-# 族表：family -> (package, 最小通过数, 是否 closeout-only)
+# 族表：family -> (package, 最小通过数)
 $families = [ordered]@{
     "snapshot_"              = @{ pkg = "ac-syntax-core-adapter"; min = 4 }
     "grammar_"               = @{ pkg = "ac-syntax-grammar";     min = 6 }
@@ -22,24 +28,21 @@ $families = [ordered]@{
     "lossless_"              = @{ pkg = "ac-syntax-grammar";     min = 9 }
     "recovery_"              = @{ pkg = "ac-syntax-grammar";     min = 4 }
     "core_projection_"       = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
-    "incremental_local_"     = @{ pkg = "ac-syntax-core-adapter"; min = 2 }
+    "incremental_local_"     = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
     "incremental_replay_"    = @{ pkg = "ac-syntax-core-adapter"; min = 4 }
     "generation_"            = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
     "depth_"                 = @{ pkg = "ac-syntax-grammar";     min = 4 }
-    "syntax_cache_"          = @{ pkg = "ac-syntax-artifact-adapter"; min = 3 }
-    "syntax_admission_"      = @{ pkg = "ac-syntax-artifact-adapter"; min = 4 }
+    "depth_persisted_"       = @{ pkg = "ac-syntax-artifact-adapter"; min = 1 }
+    "syntax_cache_"          = @{ pkg = "ac-syntax-artifact-adapter"; min = 4 }
+    "syntax_admission_"      = @{ pkg = "ac-syntax-artifact-adapter"; min = 6 }
     "compatibility_"         = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
-    "perf_"                  = @{ pkg = "ac-syntax-core-adapter"; min = 1; closeoutOnly = $true }
-    "syntax_budget_"         = @{ pkg = "ac-syntax-artifact-adapter"; min = 1; closeoutOnly = $true }
+    "perf_"                  = @{ pkg = "ac-syntax-core-adapter"; min = 2 }
+    "syntax_budget_"         = @{ pkg = "ac-syntax-artifact-adapter"; min = 2 }
 }
 
 $failed = @()
 foreach ($family in $families.Keys) {
     $spec = $families[$family]
-    if ($spec.closeoutOnly -and $Scope -ne "closeout") {
-        Write-Host "[skip-closeout] $family"
-        continue
-    }
     Write-Host "== $family ($($spec.pkg)) =="
     $out = & cargo test "--manifest-path" $manifest "-p" $spec.pkg "--" $family "--test-threads=1" 2>&1
     $text = $out | Out-String
@@ -83,21 +86,26 @@ if ($failed.Count -gt 0) {
     exit 1
 }
 
-# closeout：受影响的 783 独立套件（schema/codec/admission 触面）。
+# closeout：完整独立语法工作区 + 受影响的 783 独立套件（schema/codec/admission 触面）。
 if ($Scope -eq "closeout") {
-    Write-Host "== 783 touched families (schema_/codec lib/admission_) =="
+    Write-Host "== syntax workspace full (all packages, all targets) =="
+    & cargo test "--manifest-path" $manifest "--workspace" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "FAIL syntax workspace full suite"
+        exit 1
+    }
+    Write-Host "PASS syntax workspace full suite"
+
+    Write-Host "== 783 touched families (--lib / admission_ / dep_audit_) =="
     $probe = Join-Path $root "experimental/ac-artifact-probe/Cargo.toml"
-    foreach ($t in @("--lib", "--test admission_", "--test schema_")) {
-        if ($t -eq "--lib") {
-            cargo test "--manifest-path" $probe "--lib 2>&1" | Out-Null
-        } else {
-            cargo test "--manifest-path" $probe $t "--" "--test-threads=1 2>&1" | Out-Null
-        }
+    foreach ($t in @(@("--lib"), @("--test", "admission_"), @("--test", "dep_audit_"))) {
+        $cargoArgs = @("test", "--manifest-path", $probe) + $t + @("--", "--test-threads=1")
+        & cargo @cargoArgs | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "FAIL probe $t"
+            Write-Host "FAIL probe $($t -join ' ')"
             exit 1
         }
-        Write-Host "PASS probe $t"
+        Write-Host "PASS probe $($t -join ' ')"
     }
 }
 

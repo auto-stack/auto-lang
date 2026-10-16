@@ -18,8 +18,17 @@ fn compatibility_core_public_api_unchanged() {
     let p = core_projection_::core_grammar();
     let cs = ac_syntax_rt::lexer::CompiledScanner::compile(&p).unwrap();
     let src = "fn main() int { return 2 + 3 * 4 }";
-    let snap = ac_syntax_rt::snapshot::Snapshot::from_text(&std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()), src);
-    let out = ac_syntax_rt::parse::parse_snapshot(&p, &cs, &snap, &ac_syntax_rt::program::Budget::default()).unwrap();
+    let snap = ac_syntax_rt::snapshot::Snapshot::from_text(
+        &std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()),
+        src,
+    );
+    let out = ac_syntax_rt::parse::parse_snapshot(
+        &p,
+        &cs,
+        &snap,
+        &ac_syntax_rt::program::Budget::default(),
+    )
+    .unwrap();
     let k = ac_syntax_core_adapter::CoreKinds::from_program(&p);
     let ours = ac_syntax_core_adapter::project_strict(&p, &k, &out.tree, &snap).unwrap();
     let oracle = auto_ac_prototype::source::parse_program(src).unwrap();
@@ -54,7 +63,15 @@ fn compatibility_dependency_audit_no_production_surface_touched() {
     // 本计划范围：experimental/ac-syntax 新增 + ac-artifact-probe 加法扩展。
     // crates/** 与 experimental/ac-core/src/** 必须零改动（worktree diff 核对）。
     let out = std::process::Command::new("git")
-        .args(["diff", "--name-only", "bf773ca9b", "HEAD", "--", "crates/", "experimental/ac-core/src/"])
+        .args([
+            "diff",
+            "--name-only",
+            "bf773ca9b",
+            "HEAD",
+            "--",
+            "crates/",
+            "experimental/ac-core/src/",
+        ])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .output()
         .expect("git diff");

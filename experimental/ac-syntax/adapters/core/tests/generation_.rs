@@ -12,7 +12,11 @@ use ac_syntax_rt::snapshot::{PageStore, Snapshot};
 use std::rc::Rc;
 
 fn mini() -> ac_syntax_rt::program::GrammarProgram {
-    let src = std::fs::read_to_string(format!("{}/../../grammars/interface-mini-v1.at", env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let src = std::fs::read_to_string(format!(
+        "{}/../../grammars/interface-mini-v1.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
     compile_grammar(&src).unwrap()
 }
 
@@ -37,16 +41,22 @@ fn generation_cross_tree_handle_rejected() {
             revision: 1,
         },
     });
-    assert!(matches!(s.resolve(h), Err(RtError::BadHandle(_))), "old handle without lease must be rejected");
+    assert!(
+        matches!(s.resolve(h), Err(RtError::BadHandle(_))),
+        "old handle without lease must be rejected"
+    );
 }
 
 #[test]
 fn generation_grammar_hotswap_only_new_requests() {
     // 同一文本、两代 grammar：新代查询用新 identity；旧树在 lease 内可读。
     let base = mini();
-    let src2 = std::fs::read_to_string(format!("{}/../../grammars/interface-mini-v1.at", env!("CARGO_MANIFEST_DIR")))
-        .unwrap()
-        .replace(r#"{ literal: "api" }"#, r#"{ literal: "endpoint" }"#);
+    let src2 = std::fs::read_to_string(format!(
+        "{}/../../grammars/interface-mini-v1.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap()
+    .replace(r#"{ literal: "api" }"#, r#"{ literal: "endpoint" }"#);
     let gen2 = compile_grammar(&src2).unwrap();
     assert_ne!(base.grammar_id(), gen2.grammar_id());
 
@@ -55,12 +65,30 @@ fn generation_grammar_hotswap_only_new_requests() {
     let rc = Rc::new(PageStore::new());
     let s_old = Snapshot::from_text(&rc, text_old);
     let s_new = Snapshot::from_text(&rc, text_new);
-    let out_old = parse_snapshot(&base, &CompiledScanner::compile(&base).unwrap(), &s_old, &Budget::default()).unwrap();
-    let out_new = parse_snapshot(&gen2, &CompiledScanner::compile(&gen2).unwrap(), &s_new, &Budget::default()).unwrap();
+    let out_old = parse_snapshot(
+        &base,
+        &CompiledScanner::compile(&base).unwrap(),
+        &s_old,
+        &Budget::default(),
+    )
+    .unwrap();
+    let out_new = parse_snapshot(
+        &gen2,
+        &CompiledScanner::compile(&gen2).unwrap(),
+        &s_new,
+        &Budget::default(),
+    )
+    .unwrap();
     assert!(out_old.tree.diags.is_empty());
     assert!(out_new.tree.diags.is_empty());
     // 新 grammar 处理旧拼写：错误树（不静默兼容）。
-    let out_cross = parse_snapshot(&gen2, &CompiledScanner::compile(&gen2).unwrap(), &s_old, &Budget::default()).unwrap();
+    let out_cross = parse_snapshot(
+        &gen2,
+        &CompiledScanner::compile(&gen2).unwrap(),
+        &s_old,
+        &Budget::default(),
+    )
+    .unwrap();
     assert!(out_cross.tree.has_errors());
 }
 
@@ -88,7 +116,11 @@ fn generation_reverse_order_completion_and_cancel() {
             vp.complete(*rev, *decls);
         }
     }
-    assert_eq!(vp.published().map(|(r, d)| (*r, *d)), Some((current, 1)), "current root must stay published");
+    assert_eq!(
+        vp.published().map(|(r, d)| (*r, *d)),
+        Some((current, 1)),
+        "current root must stay published"
+    );
     assert_eq!(vp.late().len(), 2, "late old-revision results isolated");
     assert_eq!(vp.cancelled().len(), 1);
 }

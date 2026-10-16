@@ -12,16 +12,22 @@
 //! 节点构建期间一律使用**绝对**跨度（decl=0），声明完成时统一相对化
 //! （origin = 声明首字节）并回写 decl 索引——增量复用免改后缀。
 
-use crate::cst::{CstNode, CstTree, DeclUnit, SynDiag, FLAG_ERROR, FLAG_MISSING, FLAG_TRIVIA, NO_FIELD};
+use crate::cst::{
+    CstBlock, CstNode, CstTree, DeclUnit, SynDiag, CST_BLOCK_NODES, FLAG_ERROR, FLAG_MISSING,
+    FLAG_TRIVIA, NO_FIELD, UNGRAFTED_DECL,
+};
 use crate::lexer::{CompiledScanner, LexDiag, Token};
 use crate::program::*;
 use crate::snapshot::Snapshot;
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct ParseOutput {
     pub tree: CstTree,
     pub tokens: Vec<Token>,
     pub lex_diags: Vec<LexDiag>,
+    /// 实际发生的声明嫁接次数（共享采纳；≠候选数——候选命中才算）。
+    pub grafted_decls: usize,
 }
 
 pub fn parse_snapshot(
@@ -44,7 +50,7 @@ pub fn parse_tokens(
     parse_tokens_with_graft(p, toks, lex_diags, budget, None)
 }
 
-/// 嫁接候选：旧声明子树（POD 区间平移拷贝，相对跨度零改写）。
+/// 嫁接候选：旧声明子树（**整块共享采纳**——不复制节点；相对跨度零改写）。
 pub struct GraftCandidate {
     pub decl: crate::cst::DeclUnit,
     /// 子树覆盖的旧 token 范围 [tok_lo, tok_hi)（含 leading trivia）。
@@ -58,6 +64,9 @@ pub struct GraftInput<'a> {
     /// 新 token ≥ new_base 与旧 token ≥ old_base 一一对齐。
     pub new_base: usize,
     pub old_base: usize,
+    /// 未变前缀（checkpoint 前）：新/旧 token 下标一一相同（F787-R1-04——
+    /// 前缀声明同样整块共享，不静默重解析）。
+    pub prefix_len: usize,
     /// 旧 token 下标（单元首 token，含 trivia）→ 候选。
     pub candidates: std::collections::HashMap<usize, GraftCandidate>,
     /// 位移表：[(edit.end, delta)]；origin >= edit.end 的候选平移 delta。
@@ -66,7 +75,11 @@ pub struct GraftInput<'a> {
 
 impl<'a> GraftInput<'a> {
     pub fn shift_for(&self, origin: u64) -> i64 {
-        self.shifts.iter().filter(|(end, _)| origin >= *end).map(|(_, d)| *d).sum()
+        self.shifts
+            .iter()
+            .filter(|(end, _)| origin >= *end)
+            .map(|(_, d)| *d)
+            .sum()
     }
 }
 
@@ -74,6 +87,8 @@ impl<'a> GraftInput<'a> {
     fn old_index_of(&self, new_idx: usize) -> Option<usize> {
         if new_idx >= self.new_base {
             Some(self.old_base + (new_idx - self.new_base))
+        } else if new_idx < self.prefix_len {
+            Some(new_idx)
         } else {
             None
         }
@@ -92,8 +107,14 @@ pub fn parse_tokens_with_graft(
     let first = FirstSets::compute(p)?;
     let mut m = Machine::new(p, toks, lex_diags, first, budget, graft)?;
     m.run()?;
+    let grafted = m.graft_count;
     let tree = m.finish();
-    Ok(ParseOutput { tree, tokens: m.toks, lex_diags: m.lex_diags })
+    Ok(ParseOutput {
+        tree,
+        tokens: m.toks,
+        lex_diags: m.lex_diags,
+        grafted_decls: grafted,
+    })
 }
 
 /// 规则 first 集与可空性（运行期一次计算；编译期校验复用同算法）。
@@ -113,7 +134,9 @@ impl FirstSets {
         while changed {
             guard += 1;
             if guard > n * n + n + 8 {
-                return Err(RtError::InvalidProgram("first-set fixpoint did not converge".into()));
+                return Err(RtError::InvalidProgram(
+                    "first-set fixpoint did not converge".into(),
+                ));
             }
             changed = false;
             for ri in 0..n {
@@ -228,11 +251,11 @@ enum PrattStage {
 struct Frame {
     kind: FrameKind,
     rule: RuleId,
-    alt: usize,     // usize::MAX = 左递归哨兵（立即失败）
+    alt: usize, // usize::MAX = 左递归哨兵（立即失败）
     step: usize,
     children: Vec<(u32, u32)>,
-    save: Save,        // alt 入口（回溯）
-    frame_save: Save,  // frame 入口
+    save: Save,       // alt 入口（回溯）
+    frame_save: Save, // frame 入口
     consumed_any: bool,
     wait: Wait,
     list_started: bool,
@@ -270,6 +293,15 @@ impl Frame {
     }
 }
 
+/// 开放块构建器（封块前可变；声明边界才封块——声明子树永不跨块）。
+struct OpenBlock {
+    nodes: Vec<CstNode>,
+    edges: Vec<u32>,
+    fields: Vec<u32>,
+    /// 本块内已完成声明的树级下标（封块时并入 block_decl）。
+    decls: Vec<u32>,
+}
+
 struct Machine<'p, 'a> {
     p: &'p GrammarProgram,
     graft: Option<GraftInput<'a>>,
@@ -280,9 +312,25 @@ struct Machine<'p, 'a> {
     last_line: u32,
     bracket: u32,
     expr_anchor: Option<u32>,
-    nodes: Vec<CstNode>,
-    children: Vec<u32>,
-    fields: Vec<u32>,
+    // ---- 分块 arena（F787-R1-04：不可变共享内容块 + 长度目录）----
+    /// 已封块（新建或从旧树采纳共享的 `Rc`）。
+    blocks: Vec<Rc<CstBlock>>,
+    /// 长度目录：与 blocks 平行，块 b 全局 id 基址（升序追加）。
+    bases: Vec<u32>,
+    /// 与 blocks 平行：块内声明序号 → 树级 decls 下标（UNGRAFTED_DECL=洞）。
+    block_decl: Vec<Vec<u32>>,
+    /// 当前开放块（尚未入 blocks）。
+    open: OpenBlock,
+    /// 开放块全局 id 基址。
+    open_base: u32,
+    /// 全局 id 前沿 = 已封节点总数。
+    frontier: u32,
+    /// 旧树块下标 → 本机 blocks 槽位（采纳去重）。
+    adopted: std::collections::HashMap<u32, usize>,
+    /// 根孩子目录（根节点跨块时；finish 组装进 root_edges）。
+    pending_root_edges: Vec<(u32, u32)>,
+    /// 实际嫁接（共享采纳）次数。
+    graft_count: usize,
     diags: Vec<SynDiag>,
     decls: Vec<DeclUnit>,
     root_node: Option<u32>,
@@ -329,7 +377,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                 if op.binding == 0 || op.binding > 100 {
                     return Err(RtError::InvalidProgram(format!(
                         "pratt op `{}` binding {} out of (0,100]",
-                        p.token_name(op.op), op.binding
+                        p.token_name(op.op),
+                        op.binding
                     )));
                 }
                 op_binding[op.op as usize] = op.binding as i8;
@@ -345,9 +394,20 @@ impl<'p, 'a> Machine<'p, 'a> {
             last_line: 1,
             bracket: 0,
             expr_anchor: None,
-            nodes: Vec::new(),
-            children: Vec::new(),
-            fields: Vec::new(),
+            blocks: Vec::new(),
+            bases: Vec::new(),
+            block_decl: Vec::new(),
+            open: OpenBlock {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+                fields: Vec::new(),
+                decls: Vec::new(),
+            },
+            open_base: 0,
+            frontier: 0,
+            adopted: std::collections::HashMap::new(),
+            pending_root_edges: Vec::new(),
+            graft_count: 0,
             diags: Vec::new(),
             decls: Vec::new(),
             root_node: None,
@@ -364,41 +424,100 @@ impl<'p, 'a> Machine<'p, 'a> {
         Ok(m)
     }
 
-    /// 嫁接：拷贝旧声明子树（POD 平移）+ 跳过其 token。
-    fn perform_graft(&mut self, decl: crate::cst::DeclUnit, tok_lo: usize, tok_hi: usize, shift: i64, field: u32) {
+    // ---- 分块 arena 原语 ----
+
+    /// 全局 id → 节点（构建期：开放块 + 已封块统一寻址）。
+    fn m_node(&self, g: u32) -> &CstNode {
+        let off = g as i64 - self.open_base as i64;
+        if off >= 0 && (off as usize) < self.open.nodes.len() {
+            &self.open.nodes[off as usize]
+        } else {
+            let b = self.bases.partition_point(|&base| base <= g) - 1;
+            let blk = &self.blocks[b];
+            &blk.nodes[(g - self.bases[b]) as usize]
+        }
+    }
+
+    /// 封当前开放块（仅在声明边界调用）；返回新开放块基址。
+    fn seal_open(&mut self) {
+        if !self.open.nodes.is_empty() {
+            let ob = std::mem::replace(
+                &mut self.open,
+                OpenBlock {
+                    nodes: Vec::new(),
+                    edges: Vec::new(),
+                    fields: Vec::new(),
+                    decls: Vec::new(),
+                },
+            );
+            self.blocks.push(Rc::new(CstBlock {
+                nodes: ob.nodes,
+                edges: ob.edges,
+                fields: ob.fields,
+            }));
+            self.bases.push(self.open_base);
+            self.block_decl.push(ob.decls);
+            self.frontier = self.open_base + self.blocks.last().unwrap().nodes.len() as u32;
+            self.open_base = self.frontier;
+        }
+    }
+
+    /// 采纳旧树块（Rc 共享，零节点复制）；去重。返回本机 blocks 槽位。
+    fn ensure_adopted(&mut self, old_tree: &CstTree, old_block: u32) -> usize {
+        if let Some(&slot) = self.adopted.get(&old_block) {
+            return slot;
+        }
+        self.seal_open();
+        let slot = self.blocks.len();
+        self.blocks
+            .push(old_tree.blocks[old_block as usize].clone());
+        self.bases.push(self.frontier);
+        let n_decl_slots = old_tree.block_decl[old_block as usize].len();
+        self.block_decl.push(vec![UNGRAFTED_DECL; n_decl_slots]);
+        self.frontier += self.blocks[slot].nodes.len() as u32;
+        self.open_base = self.frontier;
+        self.adopted.insert(old_block, slot);
+        slot
+    }
+
+    /// 嫁接：**共享采纳**旧声明子树所在块（F787-R1-04：不做逐节点复制）+
+    /// 跳过其 token。origin 按编辑位移平移（相对跨度零改写）。
+    fn perform_graft(
+        &mut self,
+        decl: crate::cst::DeclUnit,
+        tok_lo: usize,
+        tok_hi: usize,
+        shift: i64,
+        field: u32,
+    ) {
         let old_tree: &CstTree = match self.graft.as_ref() {
             Some(g) => g.old_tree,
             None => return,
         };
-        let node_lo = decl.node_lo as usize;
-        let node_hi = decl.node as usize;
-        let count = node_hi + 1 - node_lo;
-        let base = self.nodes.len() as u32;
-        let decl_idx_new = (self.decls.len() + 1) as u32;
-        for k in 0..count {
-            let src = old_tree.nodes[node_lo + k];
-            let new_first_child = self.children.len() as u32;
-            for ci in 0..src.child_count as usize {
-                let oc = old_tree.children[(src.first_child as usize) + ci];
-                self.children.push(oc - node_lo as u32 + base);
-                self.fields.push(old_tree.child_fields[(src.first_child as usize) + ci]);
-            }
-            self.nodes.push(CstNode {
-                kind: src.kind,
-                start: src.start,
-                len: src.len,
-                first_child: new_first_child,
-                child_count: src.child_count,
-                expected: src.expected,
-                flags: src.flags,
-                decl: decl_idx_new,
-            });
+        let (ob, root_local) = old_tree.block_and_local(decl.node);
+        let (_, lo_local) = old_tree.block_and_local(decl.node_lo);
+        let slot = self.ensure_adopted(old_tree, ob);
+        let new_base = self.bases[slot];
+        let new_node = new_base + root_local;
+        // 块内声明序号是块内在恰（共享块不重写）：旧树根节点 decl 字段直接沿用。
+        let ordinal = old_tree.blocks[ob as usize].nodes[root_local as usize].decl;
+        let bd = &mut self.block_decl[slot];
+        if ordinal as usize > bd.len() {
+            bd.resize(ordinal as usize, UNGRAFTED_DECL);
         }
-        let new_node = base + count as u32 - 1;
+        bd[(ordinal - 1) as usize] = self.decls.len() as u32;
         let new_origin = (decl.origin as i64 + shift) as u64;
-        self.decls.push(crate::cst::DeclUnit { origin: new_origin, node: new_node, node_lo: base });
+        self.decls.push(crate::cst::DeclUnit {
+            origin: new_origin,
+            node: new_node,
+            node_lo: new_base + lo_local,
+        });
         // 跳过该单元的 token（对齐区数量不变）；pending（leading trivia）随子树丢弃。
-        let cur_new = if self.pending.is_empty() { self.i } else { self.pending[0] as usize };
+        let cur_new = if self.pending.is_empty() {
+            self.i
+        } else {
+            self.pending[0] as usize
+        };
         let skip = tok_hi - tok_lo;
         self.i = (cur_new + skip).min(self.toks.len());
         self.pending.clear();
@@ -409,6 +528,7 @@ impl<'p, 'a> Machine<'p, 'a> {
         top.children.push((new_node, field));
         top.list_started = true;
         top.consumed_any = true;
+        self.graft_count += 1;
     }
 
     fn save(&self) -> Save {
@@ -432,7 +552,10 @@ impl<'p, 'a> Machine<'p, 'a> {
 
     fn push_rule(&mut self, rule: RuleId, field: u32, force_sentinel: bool) {
         let left_rec = force_sentinel
-            || self.active_rules.iter().any(|&(r, i)| r == rule && i == self.i);
+            || self
+                .active_rules
+                .iter()
+                .any(|&(r, i)| r == rule && i == self.i);
         if left_rec {
             if !force_sentinel {
                 self.diag(
@@ -466,7 +589,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                 pratt_stage: PrattStage::WantPrimary { anchor: None },
                 pratt_field: field,
                 pratt_extra: Vec::new(),
-                node_start: self.nodes.len(),
+                node_start: self.open.nodes.len(),
             });
             return;
         }
@@ -480,10 +603,16 @@ impl<'p, 'a> Machine<'p, 'a> {
             self.toks.get(self.i).map(|t| t.start).unwrap_or(0)
         };
         if is_decl {
-            let cur_new = if self.pending.is_empty() { self.i } else { self.pending[0] as usize };
+            let cur_new = if self.pending.is_empty() {
+                self.i
+            } else {
+                self.pending[0] as usize
+            };
             let hit = self.graft.as_ref().and_then(|gi| {
                 let old_idx = gi.old_index_of(cur_new)?;
-                gi.candidates.get(&old_idx).map(|c| (c.decl, c.tok_lo, c.tok_hi, gi.shift_for(c.decl.origin)))
+                gi.candidates
+                    .get(&old_idx)
+                    .map(|c| (c.decl, c.tok_lo, c.tok_hi, gi.shift_for(c.decl.origin)))
             });
             if let Some((decl, tok_lo, tok_hi, shift)) = hit {
                 self.perform_graft(decl, tok_lo, tok_hi, shift, field);
@@ -511,7 +640,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             pratt_stage: PrattStage::WantPrimary { anchor: None },
             pratt_field: field,
             pratt_extra: Vec::new(),
-            node_start: self.nodes.len(),
+            node_start: self.open.nodes.len(),
         });
     }
 
@@ -538,7 +667,7 @@ impl<'p, 'a> Machine<'p, 'a> {
             pratt_stage: PrattStage::WantPrimary { anchor: None },
             pratt_field: field,
             pratt_extra: Vec::new(),
-            node_start: self.nodes.len(),
+            node_start: self.open.nodes.len(),
         });
     }
 
@@ -546,7 +675,11 @@ impl<'p, 'a> Machine<'p, 'a> {
         while self.i < self.toks.len() {
             let t = &self.toks[self.i];
             let is_trivia = t.token != u32::MAX
-                && self.trivia_tok.get(t.token as usize).copied().unwrap_or(false);
+                && self
+                    .trivia_tok
+                    .get(t.token as usize)
+                    .copied()
+                    .unwrap_or(false);
             if is_trivia {
                 self.pending.push(self.i as u32);
                 self.i += 1;
@@ -581,10 +714,21 @@ impl<'p, 'a> Machine<'p, 'a> {
                 top.children.push((node, NO_FIELD));
             }
         }
-        if self.open_toks.get(t.token as usize).copied().unwrap_or(false) {
+        if self
+            .open_toks
+            .get(t.token as usize)
+            .copied()
+            .unwrap_or(false)
+        {
             self.bracket += 1;
         }
-        if self.close_toks.get(t.token as usize).copied().unwrap_or(false) && self.bracket > 0 {
+        if self
+            .close_toks
+            .get(t.token as usize)
+            .copied()
+            .unwrap_or(false)
+            && self.bracket > 0
+        {
             self.bracket -= 1;
         }
         self.last_line = t.line;
@@ -608,10 +752,14 @@ impl<'p, 'a> Machine<'p, 'a> {
     }
 
     fn alloc_leaf(&mut self, t: &Token, extra_flags: u8) -> u32 {
-        let kind = if t.token == u32::MAX { KIND_ERROR } else { TOKEN_KIND_BASE + t.token };
+        let kind = if t.token == u32::MAX {
+            KIND_ERROR
+        } else {
+            TOKEN_KIND_BASE + t.token
+        };
         let flags = if t.error { FLAG_ERROR } else { 0 } | extra_flags;
-        let id = self.nodes.len() as u32;
-        self.nodes.push(CstNode {
+        let local = self.open.nodes.len() as u32;
+        self.open.nodes.push(CstNode {
             kind,
             start: t.start as u32,
             len: (t.end - t.start) as u32,
@@ -621,16 +769,24 @@ impl<'p, 'a> Machine<'p, 'a> {
             flags,
             decl: 0,
         });
-        id
+        self.open_base + local
     }
 
     /// 组装节点（构建期跨度为绝对；min/max 由孩子推导；空集 → 零宽）。
-    fn alloc_node(&mut self, kind: u32, children: Vec<(u32, u32)>, missing: Option<u32>, err: bool) -> u32 {
-        let first_child = self.children.len() as u32;
+    /// 孩子跨块（只有根：嫁接采纳块/已封块的孩子）→ 树级 `root_edges`
+    /// 目录，节点块内置零；否则边为开放块局部下标。
+    fn alloc_node(
+        &mut self,
+        kind: u32,
+        children: Vec<(u32, u32)>,
+        missing: Option<u32>,
+        err: bool,
+    ) -> u32 {
+        let cross = children.iter().any(|&(c, _)| c < self.open_base);
         let mut min_start = u64::MAX;
         let mut max_end = 0u64;
-        for (c, _) in &children {
-            let nd = self.nodes[*c as usize];
+        for &(c, _) in &children {
+            let nd = *self.m_node(c);
             if nd.flags & FLAG_TRIVIA != 0 {
                 continue; // 语义 span 不含 trivia（无损覆盖由孩子序列承担）
             }
@@ -641,33 +797,62 @@ impl<'p, 'a> Machine<'p, 'a> {
                 max_end = max_end.max(e);
             }
         }
-        for (c, f) in children {
-            self.children.push(c);
-            self.fields.push(f);
+        let (start, len) = if min_start == u64::MAX {
+            (0, 0)
+        } else {
+            ((min_start) as u32, (max_end - min_start) as u32)
+        };
+        let flags =
+            if err { FLAG_ERROR } else { 0 } | if missing.is_some() { FLAG_MISSING } else { 0 };
+        let local = self.open.nodes.len() as u32;
+        let id = self.open_base + local;
+        if cross {
+            self.pending_root_edges.extend(children.iter().cloned());
+            self.open.nodes.push(CstNode {
+                kind,
+                start,
+                len,
+                first_child: 0,
+                child_count: 0,
+                expected: missing.unwrap_or(0),
+                flags,
+                decl: 0,
+            });
+        } else {
+            let first_child = self.open.edges.len() as u32;
+            for (c, f) in children {
+                self.open.edges.push(c - self.open_base);
+                self.open.fields.push(f);
+            }
+            self.open.nodes.push(CstNode {
+                kind,
+                start,
+                len,
+                first_child,
+                child_count: self.open.edges.len() as u32 - first_child,
+                expected: missing.unwrap_or(0),
+                flags,
+                decl: 0,
+            });
         }
-        let (start, len) = if min_start == u64::MAX { (0, 0) } else { ((min_start) as u32, (max_end - min_start) as u32) };
-        let id = self.nodes.len() as u32;
-        self.nodes.push(CstNode {
-            kind,
-            start,
-            len,
-            first_child,
-            child_count: self.children.len() as u32 - first_child,
-            expected: missing.unwrap_or(0),
-            flags: if err { FLAG_ERROR } else { 0 } | if missing.is_some() { FLAG_MISSING } else { 0 },
-            decl: 0,
-        });
         id
     }
 
     fn diag(&mut self, msg: String, start: u64, end: u64) {
-        self.diags.push(SynDiag { message: msg, start, end });
+        self.diags.push(SynDiag {
+            message: msg,
+            start,
+            end,
+        });
     }
 
     fn run(&mut self) -> Result<(), RtError> {
         let mut steps: u64 = 0;
         let trace = std::env::var("AC787_TRACE").is_ok();
-        let cap: u64 = std::env::var("AC787_TRACE_CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(u64::MAX);
+        let cap: u64 = std::env::var("AC787_TRACE_CAP")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(u64::MAX);
         loop {
             steps += 1;
             if self.stack.is_empty() {
@@ -675,15 +860,40 @@ impl<'p, 'a> Machine<'p, 'a> {
             }
             if trace && steps <= cap {
                 let f = self.stack.last().unwrap();
-                let st = if f.is_pratt() { format!("pratt {:?} vals={:?} ops={:?}", f.pratt_stage_variant(), f.pratt_vals, f.pratt_ops.iter().map(|o| (o.0, o.3)).collect::<Vec<_>>()) } else { format!("r{} a{} s{}", f.rule, f.alt, f.step) };
-                let pk = self.toks.get(self.i).map(|t| (t.token, t.start, t.line)).unwrap_or((u32::MAX, u64::MAX, 0));
-                eprintln!("#{steps} {} i={} pk={:?} last_line={} bracket={} stack={} nodes={}", st, self.i, pk, self.last_line, self.bracket, self.stack.len(), self.nodes.len());
+                let st = if f.is_pratt() {
+                    format!(
+                        "pratt {:?} vals={:?} ops={:?}",
+                        f.pratt_stage_variant(),
+                        f.pratt_vals,
+                        f.pratt_ops.iter().map(|o| (o.0, o.3)).collect::<Vec<_>>()
+                    )
+                } else {
+                    format!("r{} a{} s{}", f.rule, f.alt, f.step)
+                };
+                let pk = self
+                    .toks
+                    .get(self.i)
+                    .map(|t| (t.token, t.start, t.line))
+                    .unwrap_or((u32::MAX, u64::MAX, 0));
+                eprintln!(
+                    "#{steps} {} i={} pk={:?} last_line={} bracket={} stack={} nodes={}",
+                    st,
+                    self.i,
+                    pk,
+                    self.last_line,
+                    self.bracket,
+                    self.stack.len(),
+                    self.frontier
+                );
             }
             if trace && steps > cap {
                 return Err(RtError::InvalidProgram("trace cap".into()));
             }
             if steps & 0xFFFF == 0 && self.mem_estimate() > self.budget.work_bytes {
-                return Err(RtError::ResourceExhausted { what: "parse work bytes", limit: self.budget.work_bytes });
+                return Err(RtError::ResourceExhausted {
+                    what: "parse work bytes",
+                    limit: self.budget.work_bytes,
+                });
             }
             if self.stack.last().unwrap().is_pratt() {
                 self.step_pratt()?;
@@ -694,14 +904,17 @@ impl<'p, 'a> Machine<'p, 'a> {
     }
 
     fn mem_estimate(&self) -> usize {
-        self.nodes.len() * std::mem::size_of::<CstNode>()
-            + self.children.len() * 8
+        self.frontier as usize * std::mem::size_of::<CstNode>()
+            + self.open.edges.len() * 8
             + self.toks.len() * std::mem::size_of::<Token>()
     }
 
     fn step_rule(&mut self) -> Result<(), RtError> {
         if self.stack.len() > self.budget.max_parse_depth {
-            return Err(RtError::ResourceExhausted { what: "parse depth", limit: self.budget.max_parse_depth });
+            return Err(RtError::ResourceExhausted {
+                what: "parse depth",
+                limit: self.budget.max_parse_depth,
+            });
         }
         let sentinel = self.stack.last().unwrap().alt == usize::MAX;
         if sentinel {
@@ -717,7 +930,8 @@ impl<'p, 'a> Machine<'p, 'a> {
             self.handle_frame_success();
             return Ok(());
         }
-        let step = self.p.rules[rule as usize].alts[self.stack.last().unwrap().alt].steps[step_idx].clone();
+        let step = self.p.rules[rule as usize].alts[self.stack.last().unwrap().alt].steps[step_idx]
+            .clone();
         let field = step.field.unwrap_or(NO_FIELD);
 
         match step.repeat {
@@ -811,7 +1025,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                     }
                     // ListNewline：第二项起需 `;`（已消费）/`}`/换行 分隔——
                     // 已消费分隔符即满足（`; x` 同行合法）。
-                    if kind == 2 && self.stack.last().unwrap().list_started
+                    if kind == 2
+                        && self.stack.last().unwrap().list_started
                         && self.p.newline.significant
                         && self.bracket == 0
                         && !consumed_sep
@@ -828,56 +1043,85 @@ impl<'p, 'a> Machine<'p, 'a> {
                 // 干净失败前的"垃圾跳过"判定：仅顶层声明列表（root frame）启用；
                 // 嵌套列表干净失败 = 列表结束，由外层规则/恢复机制接管——
                 // 否则会把合法的列表终结符（如 `)`）误吃为垃圾。
-                if self.stack.len() == 1 && !matches!(step.repeat, Repeat::ListNewline if self.stack.last().unwrap().list_started && false) {
-                if let Some(pk) = self.peek() {
-                    let can_start_item = match step.atom {
-                        Atom::Tok(t) => pk.token == t,
-                        Atom::Rule(r) => self.first.starts(r, pk.token),
-                        Atom::Pratt(x) => {
-                            let prim = self.p.pratt[x as usize].primary;
-                            self.first.starts(prim, pk.token)
-                        }
-                    };
-                    if !can_start_item && !self.continuation_can_start(rule, step_idx, pk.token) {
-                        // 垃圾：作为 error 叶吃进（逐 token），直到能开始 item/后续/EOF。
-                        let mut ate = 0u32;
-                        loop {
-                            match self.peek() {
-                                Some(pk2) => {
-                                    let starts = match step.atom {
-                                        Atom::Tok(t) => pk2.token == t,
-                                        Atom::Rule(r) => self.first.starts(r, pk2.token),
-                                        Atom::Pratt(x) => {
-                                            let prim = self.p.pratt[x as usize].primary;
-                                            self.first.starts(prim, pk2.token)
-                                        }
-                                    };
-                                    if starts || self.continuation_can_start(rule, step_idx, pk2.token) {
-                                        break;
-                                    }
-                                    if self.consume().is_err() {
-                                        break;
-                                    }
-                                    let leaf = self.stack.last_mut().unwrap().children.pop().unwrap().0;
-                                    let (ls, le) = { let nd = self.nodes[leaf as usize]; (nd.start as u64, nd.start as u64 + nd.len as u64) };
-                                    let node = self.alloc_node(KIND_ERROR, vec![(leaf, NO_FIELD)], None, true);
-                                    self.stack.last_mut().unwrap().children.push((node, NO_FIELD));
-                                    self.diag("skipped unexpected token at top level".into(), ls, le);
-                                    ate += 1;
-                                }
-                                None => break,
+                if self.stack.len() == 1
+                    && !matches!(step.repeat, Repeat::ListNewline if self.stack.last().unwrap().list_started && false)
+                {
+                    if let Some(pk) = self.peek() {
+                        let can_start_item = match step.atom {
+                            Atom::Tok(t) => pk.token == t,
+                            Atom::Rule(r) => self.first.starts(r, pk.token),
+                            Atom::Pratt(x) => {
+                                let prim = self.p.pratt[x as usize].primary;
+                                self.first.starts(prim, pk.token)
                             }
+                        };
+                        if !can_start_item && !self.continuation_can_start(rule, step_idx, pk.token)
+                        {
+                            // 垃圾：作为 error 叶吃进（逐 token），直到能开始 item/后续/EOF。
+                            let mut ate = 0u32;
+                            loop {
+                                match self.peek() {
+                                    Some(pk2) => {
+                                        let starts = match step.atom {
+                                            Atom::Tok(t) => pk2.token == t,
+                                            Atom::Rule(r) => self.first.starts(r, pk2.token),
+                                            Atom::Pratt(x) => {
+                                                let prim = self.p.pratt[x as usize].primary;
+                                                self.first.starts(prim, pk2.token)
+                                            }
+                                        };
+                                        if starts
+                                            || self
+                                                .continuation_can_start(rule, step_idx, pk2.token)
+                                        {
+                                            break;
+                                        }
+                                        if self.consume().is_err() {
+                                            break;
+                                        }
+                                        let leaf = self
+                                            .stack
+                                            .last_mut()
+                                            .unwrap()
+                                            .children
+                                            .pop()
+                                            .unwrap()
+                                            .0;
+                                        let (ls, le) = {
+                                            let nd = *self.m_node(leaf);
+                                            (nd.start as u64, nd.start as u64 + nd.len as u64)
+                                        };
+                                        let node = self.alloc_node(
+                                            KIND_ERROR,
+                                            vec![(leaf, NO_FIELD)],
+                                            None,
+                                            true,
+                                        );
+                                        self.stack
+                                            .last_mut()
+                                            .unwrap()
+                                            .children
+                                            .push((node, NO_FIELD));
+                                        self.diag(
+                                            "skipped unexpected token at top level".into(),
+                                            ls,
+                                            le,
+                                        );
+                                        ate += 1;
+                                    }
+                                    None => break,
+                                }
+                            }
+                            if ate > 0 {
+                                let f = self.stack.last_mut().unwrap();
+                                f.list_started = true;
+                                return Ok(()); // 重新进入本步（现在可开始 item 或 EOF）
+                            }
+                            // 未吃到（peek 已可开始后续）→ List 结束。
+                            self.end_list_step();
+                            return Ok(());
                         }
-                        if ate > 0 {
-                            let f = self.stack.last_mut().unwrap();
-                            f.list_started = true;
-                            return Ok(()); // 重新进入本步（现在可开始 item 或 EOF）
-                        }
-                        // 未吃到（peek 已可开始后续）→ List 结束。
-                        self.end_list_step();
-                        return Ok(());
                     }
-                }
                 }
                 // 尝试 item。
                 match step.atom {
@@ -937,7 +1181,12 @@ impl<'p, 'a> Machine<'p, 'a> {
                 Atom::Rule(r) => self.first.nullable[r as usize],
                 Atom::Pratt(_) => false,
             };
-            if !nullable_step && !matches!(s.repeat, Repeat::Optional | Repeat::ZeroOrMore | Repeat::ListPlain | Repeat::ListNewline) {
+            if !nullable_step
+                && !matches!(
+                    s.repeat,
+                    Repeat::Optional | Repeat::ZeroOrMore | Repeat::ListPlain | Repeat::ListNewline
+                )
+            {
                 return false;
             }
             si += 1;
@@ -1005,7 +1254,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                 }
             }
             Wait::Optional => {
-                let s = self.stack
+                let s = self
+                    .stack
                     .last()
                     .unwrap()
                     .opt_save
@@ -1016,7 +1266,12 @@ impl<'p, 'a> Machine<'p, 'a> {
             }
             Wait::RepItem { .. } => {
                 // 回滚到迭代起点（不是 alt 入口：已成功的前序迭代不回滚）。
-                let s = self.stack.last().unwrap().rep_save.unwrap_or(self.stack.last().unwrap().save);
+                let s = self
+                    .stack
+                    .last()
+                    .unwrap()
+                    .rep_save
+                    .unwrap_or(self.stack.last().unwrap().save);
                 self.restore(s);
                 self.end_list_step();
                 false
@@ -1040,13 +1295,17 @@ impl<'p, 'a> Machine<'p, 'a> {
     /// 路径同样不允许原生深递归）。
     fn handle_frame_failure(&mut self) {
         loop {
-            let (rule, frame_save, consumed, recover, field, pushed_active, is_pratt) = {
+            let (rule, frame_save, consumed, recover, field, pushed_active, _is_pratt) = {
                 let f = self.stack.last().unwrap();
                 (
                     f.rule,
                     f.frame_save,
                     f.consumed_any,
-                    if f.is_pratt() { false } else { self.p.rules[f.rule as usize].recover },
+                    if f.is_pratt() {
+                        false
+                    } else {
+                        self.p.rules[f.rule as usize].recover
+                    },
                     f.pratt_field,
                     f.pushed_active,
                     f.is_pratt(),
@@ -1054,88 +1313,96 @@ impl<'p, 'a> Machine<'p, 'a> {
             };
             self.restore(frame_save);
             if recover && consumed {
-            let mut err_leaves: Vec<(u32, u32)> = Vec::new();
-            // 覆盖语义：restore 把光标放回规则入口，恢复循环从入口**重新消费**
-            // 到停点。帧入口光标已越过 leading trivia（List peek 预跳）——从旧流
-            // 回扫重建其叶子；mid trivia 由循环内 peek/consume 自然重建
-            // （restore 只能截断 pending 长度、不能还原内容，禁止依赖过期缓冲）。
-            self.pending.clear();
-            let mut err_leaves: Vec<(u32, u32)> = Vec::new();
-            {
-                let mut t = frame_save.i;
-                let mut lead: Vec<usize> = Vec::new();
-                while t > 0 {
-                    let prev = &self.toks[t - 1];
-                    let is_triv = prev.token != u32::MAX
-                        && self.trivia_tok.get(prev.token as usize).copied().unwrap_or(false);
-                    if is_triv {
-                        lead.push(t - 1);
-                        t -= 1;
-                    } else {
-                        break;
+                // 覆盖语义：restore 把光标放回规则入口，恢复循环从入口**重新消费**
+                // 到停点。帧入口光标已越过 leading trivia（List peek 预跳）——从旧流
+                // 回扫重建其叶子；mid trivia 由循环内 peek/consume 自然重建
+                // （restore 只能截断 pending 长度、不能还原内容，禁止依赖过期缓冲）。
+                self.pending.clear();
+                let mut err_leaves: Vec<(u32, u32)> = Vec::new();
+                {
+                    let mut t = frame_save.i;
+                    let mut lead: Vec<usize> = Vec::new();
+                    while t > 0 {
+                        let prev = &self.toks[t - 1];
+                        let is_triv = prev.token != u32::MAX
+                            && self
+                                .trivia_tok
+                                .get(prev.token as usize)
+                                .copied()
+                                .unwrap_or(false);
+                        if is_triv {
+                            lead.push(t - 1);
+                            t -= 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    lead.reverse();
+                    for ti in lead {
+                        let tok = self.toks[ti];
+                        err_leaves.push((self.alloc_leaf(&tok, FLAG_TRIVIA), NO_FIELD));
                     }
                 }
-                lead.reverse();
-                for ti in lead {
-                    let tok = self.toks[ti];
-                    err_leaves.push((self.alloc_leaf(&tok, FLAG_TRIVIA), NO_FIELD));
+                let mut loop_ate_token = 0usize;
+                loop {
+                    let pk = match self.peek() {
+                        Some(pk) => pk,
+                        None => break,
+                    };
+                    if self.p.recovery.sync.contains(&pk.token) {
+                        break;
+                    }
+                    // first(rule) 停点必须在恢复循环内消费 ≥1 个 token（前导 trivia
+                    // flush 不算）：失败的声明首 token 往往就是规则起始符。
+                    if loop_ate_token > 0 && self.first.starts(rule, pk.token) {
+                        break;
+                    }
+                    let before = self.stack.last().unwrap().children.len();
+                    if self.consume().is_err() {
+                        break;
+                    }
+                    let appended: Vec<(u32, u32)> = self
+                        .stack
+                        .last_mut()
+                        .unwrap()
+                        .children
+                        .drain(before..)
+                        .collect();
+                    loop_ate_token += 1;
+                    err_leaves.extend(appended);
                 }
-            }
-            let mut loop_ate_token = 0usize;
-            loop {
-                let pk = match self.peek() {
-                    Some(pk) => pk,
-                    None => break,
+                let (start_abs, end_abs) = if err_leaves.is_empty() {
+                    let p = self.peek().map(|t| t.start).unwrap_or(0);
+                    (p, p)
+                } else {
+                    let l = err_leaves[0].0;
+                    let s = self.m_node(l).start as u64;
+                    let last = *err_leaves.last().unwrap();
+                    let nd = *self.m_node(last.0);
+                    (s, nd.start as u64 + nd.len as u64)
                 };
-                if self.p.recovery.sync.contains(&pk.token) {
-                    break;
-                }
-                // first(rule) 停点必须在恢复循环内消费 ≥1 个 token（前导 trivia
-                // flush 不算）：失败的声明首 token 往往就是规则起始符。
-                if loop_ate_token > 0 && self.first.starts(rule, pk.token) {
-                    break;
-                }
-                let before = self.stack.last().unwrap().children.len();
-                if self.consume().is_err() {
-                    break;
-                }
-                let appended: Vec<(u32, u32)> =
-                    self.stack.last_mut().unwrap().children.drain(before..).collect();
-                loop_ate_token += 1;
-                err_leaves.extend(appended);
-            }
-            let (start_abs, end_abs) = if err_leaves.is_empty() {
-                let p = self.peek().map(|t| t.start).unwrap_or(0);
-                (p, p)
-            } else {
-                let l = err_leaves[0].0;
-                let s = self.nodes[l as usize].start as u64;
-                let last = *err_leaves.last().unwrap();
-                let nd = self.nodes[last.0 as usize];
-                (s, nd.start as u64 + nd.len as u64)
-            };
-            let missing = {
-                let m = CstNode {
-                    kind: KIND_MISSING,
-                    start: start_abs as u32,
-                    len: 0,
-                    first_child: 0,
-                    child_count: 0,
-                    expected: self.p.rule_kind(rule),
-                    flags: FLAG_MISSING,
-                    decl: 0,
+                let missing = {
+                    let m = CstNode {
+                        kind: KIND_MISSING,
+                        start: start_abs as u32,
+                        len: 0,
+                        first_child: 0,
+                        child_count: 0,
+                        expected: self.p.rule_kind(rule),
+                        flags: FLAG_MISSING,
+                        decl: 0,
+                    };
+                    self.open.nodes.push(m);
+                    self.open_base + (self.open.nodes.len() - 1) as u32
                 };
-                self.nodes.push(m);
-                (self.nodes.len() - 1) as u32
-            };
-            let mut kids = vec![(missing, NO_FIELD)];
-            kids.extend(err_leaves);
-            let node = self.alloc_node(self.p.rule_kind(rule), kids, None, true);
-            self.diag(
-                format!("recovered at malformed `{}`", self.p.rule_name(rule)),
-                start_abs,
-                end_abs,
-            );
+                let mut kids = vec![(missing, NO_FIELD)];
+                kids.extend(err_leaves);
+                let node = self.alloc_node(self.p.rule_kind(rule), kids, None, true);
+                self.diag(
+                    format!("recovered at malformed `{}`", self.p.rule_name(rule)),
+                    start_abs,
+                    end_abs,
+                );
                 self.complete_frame_success(node, field);
                 return;
             }
@@ -1161,29 +1428,45 @@ impl<'p, 'a> Machine<'p, 'a> {
     fn handle_frame_success(&mut self) {
         let (rule, children, field, node_start, is_decl) = {
             let f = self.stack.last_mut().unwrap();
-            (f.rule, std::mem::take(&mut f.children), f.pratt_field, f.node_start, f.is_decl_frame)
+            (
+                f.rule,
+                std::mem::take(&mut f.children),
+                f.pratt_field,
+                f.node_start,
+                f.is_decl_frame,
+            )
         };
         let kind = self.p.rule_kind(rule);
         let node = self.alloc_node(kind, children, None, false);
         if is_decl {
-            // 声明单元登记：相对化 [node_start..=node]，写 decl 索引。
-            // origin 取孩子最小起点（**含前导 trivia**——语义 span 已排除
+            // 声明单元登记：相对化 [node_start..]（开放块局部区间——封块只在
+            // 声明边界，声明子树必在同一块内），写块内声明序号。
+            // origin 取 cover_from（**含前导 trivia**——语义 span 已排除
             // trivia，用节点自身 start 会把前导 trivia 截断错位）。
             let origin = self.stack.last().unwrap().cover_from;
-            for n in &mut self.nodes[node_start..] {
+            for n in &mut self.open.nodes[node_start..] {
                 if n.start as u64 >= origin {
                     n.start = (n.start as u64 - origin) as u32;
                 } else {
                     n.start = 0;
                 }
             }
-            let idx = (self.decls.len() + 1) as u32;
-            for n in &mut self.nodes[node_start..] {
-                n.decl = idx;
+            let ordinal = self.open.decls.len() as u32 + 1;
+            for n in &mut self.open.nodes[node_start..] {
+                n.decl = ordinal;
             }
+            self.open.decls.push(self.decls.len() as u32);
             // 声明节点保留语义相对 span（首个非 trivia 孩子 .. 尾）：
             // abs = origin + start = 语义 token 起点（如 `fn`），与 ac-core 对齐。
-            self.decls.push(DeclUnit { origin, node, node_lo: node_start as u32 });
+            self.decls.push(DeclUnit {
+                origin,
+                node,
+                node_lo: self.open_base + node_start as u32,
+            });
+            // 封块阈值（仅声明边界；下一声明起换新块——增量编辑按块共享）。
+            if self.open.nodes.len() >= CST_BLOCK_NODES {
+                self.seal_open();
+            }
         }
         self.complete_frame_success(node, field);
     }
@@ -1233,8 +1516,12 @@ impl<'p, 'a> Machine<'p, 'a> {
         }
         while self.i < self.toks.len() {
             let t = self.toks[self.i];
-            let is_trivia =
-                t.token != u32::MAX && self.trivia_tok.get(t.token as usize).copied().unwrap_or(false);
+            let is_trivia = t.token != u32::MAX
+                && self
+                    .trivia_tok
+                    .get(t.token as usize)
+                    .copied()
+                    .unwrap_or(false);
             let n = self.alloc_leaf(&t, if is_trivia { FLAG_TRIVIA } else { 0 });
             children.push((n, NO_FIELD));
             self.i += 1;
@@ -1273,7 +1560,11 @@ impl<'p, 'a> Machine<'p, 'a> {
         let table = &self.p.pratt[table_id as usize];
         match stage_taken {
             PrattStage::WantPrimary { anchor } => {
-                self.expr_anchor = if self.bracket == 0 && self.p.newline.significant { anchor } else { None };
+                self.expr_anchor = if self.bracket == 0 && self.p.newline.significant {
+                    anchor
+                } else {
+                    None
+                };
                 {
                     let f = self.stack.last_mut().unwrap();
                     f.wait = Wait::OnceStep;
@@ -1303,18 +1594,17 @@ impl<'p, 'a> Machine<'p, 'a> {
                 // 调用后缀。
                 if let Some(cp) = &table.call_paren {
                     if pk.token == cp.open {
-                        let ok_line = !cp.callee_same_line
-                            || self.bracket > 0
-                            || pk.line == self.last_line;
+                        let ok_line =
+                            !cp.callee_same_line || self.bracket > 0 || pk.line == self.last_line;
                         if ok_line {
-                            let callee = match self.stack.last().unwrap().pratt_vals.last().copied() {
+                            let callee = match self.stack.last().unwrap().pratt_vals.last().copied()
+                            {
                                 Some(c) => c,
                                 None => {
                                     self.fail_pratt();
                                     return Ok(());
                                 }
                             };
-                            let mut f_open_trivia: Vec<u32> = Vec::new();
                             if self.consume().is_err() {
                                 self.fail_pratt();
                                 return Ok(());
@@ -1326,7 +1616,7 @@ impl<'p, 'a> Machine<'p, 'a> {
                                 let triv: Vec<u32> = taken.into_iter().map(|(n, _)| n).collect();
                                 (l, triv)
                             };
-                            f_open_trivia = open_trivia;
+                            let f_open_trivia = open_trivia;
                             if let Some(args_rule) = table.call_args {
                                 let f = self.stack.last_mut().unwrap();
                                 f.pratt_stage = PrattStage::WantArgs { callee, open_leaf };
@@ -1346,7 +1636,11 @@ impl<'p, 'a> Machine<'p, 'a> {
                     }
                 }
                 // 运算符。
-                let b = if pk.token == u32::MAX { -1 } else { self.op_binding[pk.token as usize] };
+                let b = if pk.token == u32::MAX {
+                    -1
+                } else {
+                    self.op_binding[pk.token as usize]
+                };
                 if b < 0 {
                     self.finish_pratt();
                     return Ok(());
@@ -1401,7 +1695,9 @@ impl<'p, 'a> Machine<'p, 'a> {
                 };
                 let f = self.stack.last_mut().unwrap();
                 f.pratt_ops.push((b as u8, assoc, op_leaf, op_tok, trivia));
-                f.pratt_stage = PrattStage::WantPrimary { anchor: Some(self.last_line) };
+                f.pratt_stage = PrattStage::WantPrimary {
+                    anchor: Some(self.last_line),
+                };
                 Ok(())
             }
             PrattStage::WantArgs { callee, open_leaf } => {
@@ -1439,21 +1735,17 @@ impl<'p, 'a> Machine<'p, 'a> {
         // close 前导 trivia（args 末到 `)` 之间）+ open 前导 trivia 一并入树。
         // taken 里可能仍含 args 交付节点（kids 已按 args_node 参数拼装）——
         // 过滤首个重复引用，否则 args 子树在孩子里出现两次（字节重叠）。
-        let mut close_trivia: Vec<u32> = Vec::new();
-        let close_leaf = {
+        let (close_trivia, close_leaf) = {
             let f = self.stack.last_mut().unwrap();
             let mut taken = std::mem::take(&mut f.children);
             let (l, _) = taken.pop().expect("consume pushed close leaf");
-            let mut skip_args = args_node;
             let mut rest: Vec<u32> = taken.into_iter().map(|(n, _)| n).collect();
-            if let Some(a) = skip_args {
+            if let Some(a) = args_node {
                 if let Some(pos) = rest.iter().position(|&n| n == a) {
                     rest.remove(pos);
                 }
-                skip_args = None;
             }
-            close_trivia = rest;
-            l
+            (rest, l)
         };
         let open_trivia = std::mem::take(&mut self.stack.last_mut().unwrap().pratt_extra);
         let mut kids = vec![(callee, NO_FIELD)];
@@ -1494,7 +1786,7 @@ impl<'p, 'a> Machine<'p, 'a> {
         let (lhs, rhs) = match (lhs, rhs) {
             (Some(l), Some(r)) => (l, r),
             (l, r) => {
-                let op_start = self.nodes[op_leaf as usize].start;
+                let op_start = self.m_node(op_leaf).start;
                 let m = CstNode {
                     kind: KIND_MISSING,
                     start: op_start,
@@ -1505,8 +1797,8 @@ impl<'p, 'a> Machine<'p, 'a> {
                     flags: FLAG_MISSING,
                     decl: 0,
                 };
-                self.nodes.push(m);
-                let mid = (self.nodes.len() - 1) as u32;
+                self.open.nodes.push(m);
+                let mid = self.open_base + (self.open.nodes.len() - 1) as u32;
                 (l.unwrap_or(mid), r.unwrap_or(mid))
             }
         };
@@ -1572,34 +1864,56 @@ impl<'p, 'a> Machine<'p, 'a> {
             self.root_failure_wrap();
         }
         let root = self.root_node.unwrap();
-        // 防御：根完成后仍有未消费 token（不应发生）→ 附加 error 叶。
+        // 防御：根完成后仍有未消费 token（不应发生）→ 附加 error 叶（根目录）。
+        let mut tail_edges: Vec<(u32, u32)> = Vec::new();
         if self.i < self.toks.len() {
-            let mut extras: Vec<(u32, u32)> = Vec::new();
             for k in self.i..self.toks.len() {
                 let t = self.toks[k];
                 let n = self.alloc_leaf(&t, 0);
-                extras.push((n, NO_FIELD));
+                tail_edges.push((n, NO_FIELD));
             }
-            if !extras.is_empty() {
-                let first_child = self.children.len() as u32;
-                for (c, f) in extras {
-                    self.children.push(c);
-                    self.fields.push(f);
-                }
-                let nd = &mut self.nodes[root as usize];
-                nd.child_count += self.children.len() as u32 - first_child;
+            if !tail_edges.is_empty() {
                 self.diag("trailing unparsed tokens".into(), 0, 0);
             }
             self.i = self.toks.len();
         }
         let total_len = self.toks.last().map(|t| t.end).unwrap_or(0);
-        self.nodes[root as usize].decl = 0;
+        // 根节点归一化（根必在当前开放块——它是最后分配的节点）：局部边
+        // （单块小树场景）合并进树级目录，节点块内置零——与持久化 manifest
+        // 的 root_edges 目录同构。
+        let root_local = (root - self.open_base) as usize;
+        debug_assert!(
+            root_local < self.open.nodes.len(),
+            "root must live in the open block"
+        );
+        let root_local = root_local.min(self.open.nodes.len().saturating_sub(1));
+        let (mut root_edges, root_decl_zero) = {
+            let nd = &mut self.open.nodes[root_local];
+            let mut edges = Vec::with_capacity(
+                nd.child_count as usize + self.pending_root_edges.len() + tail_edges.len(),
+            );
+            for k in 0..nd.child_count as usize {
+                let c = self.open_base + self.open.edges[nd.first_child as usize + k];
+                let f = self.open.fields[nd.first_child as usize + k];
+                edges.push((c, f));
+            }
+            nd.first_child = 0;
+            nd.child_count = 0;
+            (edges, nd)
+        };
+        let _ = root_decl_zero;
+        root_edges.append(&mut self.pending_root_edges);
+        root_edges.append(&mut tail_edges);
+        self.open.nodes[root_local].decl = 0;
+        // 封最后一块并组装树。
+        self.seal_open();
         CstTree {
-            nodes: std::mem::take(&mut self.nodes),
-            children: std::mem::take(&mut self.children),
-            child_fields: std::mem::take(&mut self.fields),
+            blocks: std::mem::take(&mut self.blocks),
+            bases: std::mem::take(&mut self.bases),
             root,
+            root_edges,
             decls: std::mem::take(&mut self.decls),
+            block_decl: std::mem::take(&mut self.block_decl),
             diags: std::mem::take(&mut self.diags),
             total_len,
         }
@@ -1635,7 +1949,11 @@ mod tests {
         let text = "api broken( -> i32;\napi ok(x: i32) -> i32;";
         let (out, snap) = parse_mini(text);
         assert!(!out.tree.diags.is_empty());
-        assert_eq!(out.tree.decls.len(), 2, "second valid decl must still parse");
+        assert_eq!(
+            out.tree.decls.len(),
+            2,
+            "second valid decl must still parse"
+        );
         out.tree.assert_lossless(&snap).unwrap();
     }
 

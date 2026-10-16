@@ -10,7 +10,7 @@
 //!   不覆盖当前根/诊断（V-08 事件屏障复现，不靠 sleep）。
 
 use crate::cst::CstTree;
-use crate::lexer::{lex_from, CompiledScanner, LexDiag, ScanCheckpoint, Token};
+use crate::lexer::{CompiledScanner, LexDiag, ScanCheckpoint, Token};
 use crate::parse::parse_tokens;
 use crate::program::*;
 use crate::snapshot::{Edit, Snapshot};
@@ -46,6 +46,8 @@ pub struct Splice {
     /// 对齐区：新 token ≥ new_base 对应旧 token（old_base 起，逐一对齐）。
     pub new_base: usize,
     pub old_base: usize,
+    /// 未变前缀长度（checkpoint 之前新/旧 token 下标一一相同）。
+    pub prefix_len: usize,
     pub rescan_bytes: u64,
 }
 
@@ -59,7 +61,13 @@ pub fn incremental_lex(
     edits: &[Edit],
 ) -> Result<Splice, FallbackReason> {
     if edits.is_empty() {
-        return Ok(Splice { tokens: old_tokens.to_vec(), new_base: old_tokens.len(), old_base: old_tokens.len(), rescan_bytes: 0 });
+        return Ok(Splice {
+            tokens: old_tokens.to_vec(),
+            new_base: old_tokens.len(),
+            old_base: old_tokens.len(),
+            prefix_len: old_tokens.len(),
+            rescan_bytes: 0,
+        });
     }
     if edits.len() > 1 {
         // 多编辑：保守回退（单编辑负载是本切片验收面；批量编辑走 fresh）。
@@ -73,7 +81,14 @@ pub fn incremental_lex(
     let span_edit = e.end > e.start;
     let affected_first = old_tokens
         .iter()
-        .position(|t| t.end > e.start && (if span_edit { t.start < e.end } else { t.start <= e.start }))
+        .position(|t| {
+            t.end > e.start
+                && (if span_edit {
+                    t.start < e.end
+                } else {
+                    t.start <= e.start
+                })
+        })
         .unwrap_or(old_tokens.len());
     // at-rest checkpoint：回退跳过紧邻前导 trivia（splice 在 token 边界切分会
     // 把连续 trivia 拆成两个叶，fresh 全量扫是一个 lexeme——从上一语义 token
@@ -81,7 +96,10 @@ pub fn incremental_lex(
     let mut cp_idx = affected_first; // checkpoint 在 token[cp_idx] 起点
     while cp_idx > 0
         && old_tokens[cp_idx - 1].token != u32::MAX
-        && p.scanner.rules.iter().any(|r| r.token == old_tokens[cp_idx - 1].token && r.trivia)
+        && p.scanner
+            .rules
+            .iter()
+            .any(|r| r.token == old_tokens[cp_idx - 1].token && r.trivia)
     {
         cp_idx -= 1;
     }
@@ -89,7 +107,11 @@ pub fn incremental_lex(
     // token 之间存在字节间隙；两侧都是语义 token 且直接相邻（粘连 lexeme 被
     // 切开）的边界不安全（`api add` → `apixadd` 类重组分叉）。BOF 安全。
     let is_trivia_tok = |t: &Token| {
-        t.token != u32::MAX && p.scanner.rules.iter().any(|r| r.token == t.token && r.trivia)
+        t.token != u32::MAX
+            && p.scanner
+                .rules
+                .iter()
+                .any(|r| r.token == t.token && r.trivia)
     };
     while cp_idx > 0
         && !is_trivia_tok(&old_tokens[cp_idx - 1])
@@ -103,82 +125,95 @@ pub fn incremental_lex(
         return Err(FallbackReason::UnterminatedAtCheckpoint);
     }
     let cp = ScanCheckpoint {
-        offset: old_tokens.get(cp_idx).map(|t| t.start).unwrap_or(old_snap.len()),
+        offset: old_tokens
+            .get(cp_idx)
+            .map(|t| t.start)
+            .unwrap_or(old_snap.len()),
         mode: 0,
         mid: None,
         line: old_tokens.get(cp_idx).map(|t| t.line).unwrap_or(1),
     };
 
-    // 重扫：新 snapshot 从 cp 起扫描，直至越过编辑新区并连续 K 个对齐。
+    // 重扫：新 snapshot 从 cp 起扫描，越过编辑新区后连续 K 个 token 对齐即停
+    // （F787-R1-03：scanner 真正停止——不是扫到 EOF 再挑对齐点；扫描器带
+    // 硬限，未闭合 token 的内部推进同样有界）。
     let shifted_end = (e.end as i64 + delta) as u64;
-    let lx = lex_from(p, cs, new_snap, cp).map_err(|_| FallbackReason::NoConvergence)?;
-    let new_head = lx.tokens;
     let rescan_start = cp.offset;
-    // 在 new_head 中找对齐点：idx 使得 new_head[idx..idx+K] 与 old_tokens[cp_idx + (idx - offset_adjust) ...]
-    // 逐个 kind+spell 相等且位置差恒为 delta。
-    // new_head[j] 对应的旧候选：old_tokens 中 start == new_head[j].start - delta 的 token。
-    let mut align_new: Option<usize> = None;
-    let mut align_old: Option<usize> = None;
-    let mut j = 0usize;
-    while j < new_head.len() {
+    let scan_limit = rescan_start
+        .saturating_add(RESCAN_WINDOW.saturating_mul(2))
+        .min(new_snap.len());
+    let mut sc = crate::lexer::Scanner::start_bounded(p, cs, new_snap, &cp, Some(scan_limit))
+        .map_err(|_| FallbackReason::NoConvergence)?;
+    let mut new_head: Vec<Token> = Vec::new();
+    // 流式 K 连续对齐（原实现先全量扫再回头验证——停不下来）：
+    // token j 匹配旧流 start==j.start-delta 的同 kind/同长 token 且连续 → run+1。
+    let mut run_new: usize = 0; // run 首个 token 的 new_head 下标
+    let mut run_old: usize = 0; // 对应旧 token 下标
+    let mut run_len: usize = 0;
+    let (mut align_new, mut align_old) = (None, None);
+    loop {
+        if sc.checkpoint().offset.saturating_sub(rescan_start) > RESCAN_WINDOW {
+            return Err(FallbackReason::NoConvergence);
+        }
+        let t = match sc.next_token().map_err(|_| FallbackReason::NoConvergence)? {
+            Some(t) => t,
+            None => break, // EOF（或硬限）：未达 K 对齐 → 回退
+        };
+        let j = new_head.len();
+        new_head.push(t);
         let nt = &new_head[j];
-        // 对齐点只取非 trivia token：trivia 处对齐会把连续 trivia 在
-        // head/tail 边界拆裂（与全量词法的完整 lexeme 不一致 → 树分叉）。
+        // 流式续跑：run 内任意 kind（含 trivia）与旧流 run_old+run_len 精确
+        // delta 平移对齐（与原"回头验证 K 窗"同谓词）。
+        if run_len > 0 {
+            let cont = old_tokens.get(run_old + run_len).is_some_and(|b| {
+                (nt.start as i64 - b.start as i64) == delta
+                    && nt.token == b.token
+                    && nt.end - nt.start == b.end - b.start
+            });
+            if cont {
+                run_len += 1;
+                if run_len == CONVERGE_K {
+                    align_new = Some(run_new + CONVERGE_K);
+                    align_old = Some(run_old + CONVERGE_K);
+                    break; // 收敛即停：不扫对齐区之后的任何字节
+                }
+                continue;
+            }
+            run_len = 0;
+        }
+        // 起跑候选：只取非 trivia 且越过编辑区的 token——trivia 处对齐会把
+        // 连续 trivia 在 head/tail 边界拆裂（与全量词法不一致 → 树分叉）。
         let nt_is_trivia = nt.token != u32::MAX
-            && p.scanner.rules.iter().any(|r| r.token == nt.token && r.trivia);
-        if !nt_is_trivia && nt.start + 1 > shifted_end {
-            // 进入编辑区之后：尝试对齐。
-            let old_pos = (nt.start as i64 - delta) as u64;
-            let oi = old_tokens[cp_idx..]
+            && p.scanner
+                .rules
                 .iter()
-                .position(|t| t.start == old_pos && t.token == nt.token && t.end - t.start == nt.end - nt.start);
-            if let Some(rel) = oi {
-                let o = cp_idx + rel;
+                .any(|r| r.token == nt.token && r.trivia);
+        if !nt_is_trivia && nt.start + 1 > shifted_end {
+            let old_pos = (nt.start as i64 - delta) as u64;
+            // 旧流按 start 有序 → 二分定位（线性 position 在大文档回退路径退化）。
+            let base = &old_tokens[cp_idx..];
+            let oi = base.partition_point(|t| t.start < old_pos);
+            if base.get(oi).is_some_and(|t| {
+                t.start == old_pos && t.token == nt.token && t.end - t.start == nt.end - nt.start
+            }) {
+                let o = cp_idx + oi;
                 // 对齐点边界安全判据同 checkpoint：前一 token 为 trivia 或有间隙。
-                if o > 0
-                    && !is_trivia_tok(&old_tokens[o - 1])
-                    && old_tokens[o - 1].end == old_tokens[o].start
-                {
-                    j += 1;
-                    continue;
-                }
-                // 连续 K 对齐验证。
-                let mut k = 0;
-                while k < CONVERGE_K {
-                    let a = new_head.get(j + k);
-                    let b = old_tokens.get(o + k);
-                    match (a, b) {
-                        (Some(a), Some(b))
-                            if a.token == b.token
-                                && a.start as i64 - b.start as i64 == delta
-                                && a.end - a.start == b.end - b.start =>
-                        {
-                            k += 1;
-                        }
-                        _ => break,
-                    }
-                }
-                if k == CONVERGE_K {
-                    align_new = Some(j + CONVERGE_K);
-                    align_old = Some(o + CONVERGE_K);
-                    break;
+                let boundary_safe = o == 0
+                    || is_trivia_tok(&old_tokens[o - 1])
+                    || old_tokens[o - 1].end < old_tokens[o].start;
+                if boundary_safe {
+                    run_new = j;
+                    run_old = o;
+                    run_len = 1;
                 }
             }
         }
-        // 重扫窗超限。
-        if nt.start - rescan_start > RESCAN_WINDOW {
-            return Err(FallbackReason::NoConvergence);
-        }
-        j += 1;
     }
     let (an, ao) = match (align_new, align_old) {
         (Some(a), Some(b)) => (a, b),
         _ => {
-            // 到 EOF 都未对齐（删除至尾部等）——整流即新流。
-            let nh_len = new_head.len();
-            // 到 EOF 未对齐（未闭合吃满尾部等）：重扫无法与旧流对齐——
-            // 记录原因，交给上层全文回退（结果 = fresh）。
-            let _ = old_tokens;
+            // 到 EOF/硬限都未对齐（删除至尾部、未闭合吃满尾部等）——重扫无法
+            // 与旧流对齐：记录原因，交给上层全文回退（结果 = fresh）。
             return Err(FallbackReason::NoConvergence);
         }
     };
@@ -206,8 +241,16 @@ pub fn incremental_lex(
             error: t.error,
         });
     }
-    let rescan_bytes = new_head.get(an).map(|t| t.start).unwrap_or(new_snap.len()) - rescan_start;
-    Ok(Splice { tokens, new_base: cp_idx + an, old_base: ao, rescan_bytes })
+    // 重扫计量 = scanner 实际停止位置（收敛点 K 个 token 末）- checkpoint。
+    // 绑定真实扫描路径，不是"所需逻辑跨度"。
+    let rescan_bytes = sc.checkpoint().offset.saturating_sub(rescan_start);
+    Ok(Splice {
+        tokens,
+        new_base: cp_idx + an,
+        old_base: ao,
+        prefix_len: cp_idx,
+        rescan_bytes,
+    })
 }
 
 /// 增量重解析（编辑后）。edits 基于旧 snapshot 坐标。
@@ -259,7 +302,6 @@ pub fn incremental_reparse(
     use crate::parse::GraftCandidate;
     use std::collections::HashMap;
     let mut by_old_tok: HashMap<usize, GraftCandidate> = HashMap::new();
-    let mut reused = 0usize;
     for d in &old.tree.decls {
         let (s, e) = old.tree.abs_range(d.node);
         if e > affected_lo && s < affected_hi {
@@ -270,7 +312,7 @@ pub fn incremental_reparse(
         let mut has_err = false;
         let mut stack = vec![d.node];
         while let Some(n) = stack.pop() {
-            let nd = old.tree.nodes[n as usize];
+            let nd = old.tree.node(n);
             if nd.flags & (crate::cst::FLAG_ERROR | crate::cst::FLAG_MISSING) != 0 {
                 has_err = true;
                 break;
@@ -287,12 +329,17 @@ pub fn incremental_reparse(
         // 尾点用语义 span 尾（尾部 trivia 归下一单元）。
         let lo = old.tokens.partition_point(|t| t.start < d.origin);
         let hi = old.tokens.partition_point(|t| t.start < e);
-        by_old_tok.insert(lo, GraftCandidate { decl: *d, tok_lo: lo, tok_hi: hi });
-        reused += 1;
+        by_old_tok.insert(
+            lo,
+            GraftCandidate {
+                decl: *d,
+                tok_lo: lo,
+                tok_hi: hi,
+            },
+        );
     }
-    let reparsed = old.tree.decls.len().saturating_sub(reused);
 
-    if reused == 0 {
+    if by_old_tok.is_empty() {
         // 无可复用 → 等价 fresh。
         let out = parse_tokens(p, sp.tokens.clone(), Vec::new(), budget)?;
         let decls = out.tree.decls.len();
@@ -308,22 +355,36 @@ pub fn incremental_reparse(
     }
 
     // 4) 带嫁接的解析：对齐区 token 直接换算旧 token 下标。
-    let shifts: Vec<(u64, i64)> = edits.iter().map(|e| (e.end, e.insert.len() as i64 - (e.end - e.start) as i64)).collect();
+    let shifts: Vec<(u64, i64)> = edits
+        .iter()
+        .map(|e| (e.end, e.insert.len() as i64 - (e.end - e.start) as i64))
+        .collect();
     let graft = crate::parse::GraftInput {
         old_tree: &old.tree,
         new_base: sp.new_base,
         old_base: sp.old_base,
+        prefix_len: sp.prefix_len,
         candidates: by_old_tok,
         shifts,
     };
-    let out = crate::parse::parse_tokens_with_graft(p, sp.tokens.clone(), Vec::new(), budget, Some(graft))?;
+    let out = crate::parse::parse_tokens_with_graft(
+        p,
+        sp.tokens.clone(),
+        Vec::new(),
+        budget,
+        Some(graft),
+    )?;
+    // 复用计量 = 实际嫁接（共享采纳）次数（F787-R1-04：候选命中才算，
+    // 未命中的声明被重解析——如实计数）。
+    let reused_actual = out.grafted_decls;
+    let reparsed_actual = old.tree.decls.len().saturating_sub(reused_actual);
     Ok(IncrementalResult {
         tree: out.tree,
         tokens: out.tokens,
         lex_diags: out.lex_diags,
         rescan_bytes: sp.rescan_bytes,
-        reparsed_decls: reparsed,
-        reused_decls: reused,
+        reparsed_decls: reparsed_actual,
+        reused_decls: reused_actual,
         fallback: None,
     })
 }
@@ -338,7 +399,12 @@ pub struct VersionedPublish<T> {
 
 impl<T> VersionedPublish<T> {
     pub fn new(current_revision: u32) -> Self {
-        VersionedPublish { current_revision, published: None, late: Vec::new(), cancelled: Vec::new() }
+        VersionedPublish {
+            current_revision,
+            published: None,
+            late: Vec::new(),
+            cancelled: Vec::new(),
+        }
     }
 
     /// 完成一个任务：目标 revision == 当前 → 发布；否则入 late（不覆盖当前根）。
@@ -383,7 +449,11 @@ mod tests {
         vp.complete(3, "current");
         assert_eq!(vp.published().map(|(r, _)| *r), Some(3));
         vp.complete(3, "dup-current");
-        assert_eq!(vp.published().map(|(_, v)| *v), Some("current"), "first publish wins");
+        assert_eq!(
+            vp.published().map(|(_, v)| *v),
+            Some("current"),
+            "first publish wins"
+        );
         assert_eq!(vp.late().len(), 2);
     }
 

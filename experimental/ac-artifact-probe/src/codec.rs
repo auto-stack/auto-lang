@@ -134,6 +134,9 @@ pub enum ChunkKind {
     TokenStream = 7,
     CstPage = 8,
     CstManifest = 9,
+    // PLAN-787 修复轮（F787-R1-06）：内容寻址源码页（A02 源字节持久化，
+    // CST required-data 图的源页节点）。
+    SourcePage = 10,
 }
 
 impl ChunkKind {
@@ -149,6 +152,7 @@ impl ChunkKind {
             7 => Ok(ChunkKind::TokenStream),
             8 => Ok(ChunkKind::CstPage),
             9 => Ok(ChunkKind::CstManifest),
+            10 => Ok(ChunkKind::SourcePage),
             k => Err(CodecError::UnknownChunkKind(k)),
         }
     }

@@ -92,12 +92,14 @@ fn dep_audit_no_production_cache_entry_switch() {
 #[test]
 fn dep_audit_schema_registry_covers_declared_codec_layers() {
     // The A00–A12 registry's codec subset matches what the driver actually
-    // produces (V-12: 支持面与证据相符).
+    // produces (V-12: 支持面与证据相符). PLAN-787 T-06: A01/A02/A03 carry real
+    // syntax producers (ac-syntax-artifact-adapter)——codec 面含三者；其 chunk
+    // 生产不在本探针 driver（生产者审计见 syntax 工作区 compatibility_）。
     let codec_layers: Vec<&str> = ac_artifact_probe::schema::codec_layers()
         .iter()
         .map(|l| l.id)
         .collect();
-    assert_eq!(codec_layers, vec!["A00", "A04", "A07", "A09", "A10"]);
+    assert_eq!(codec_layers, vec!["A00", "A01", "A02", "A03", "A04", "A07", "A09", "A10"]);
     // Every layer has a full boundary entry (sample coverage asserted in
     // the lib unit tests; here assert the public surface is queryable).
     for id in ["A00", "A03", "A07", "A12"] {
@@ -106,10 +108,11 @@ fn dep_audit_schema_registry_covers_declared_codec_layers() {
         assert!(!l.storage.is_empty());
         assert!(!l.residency.is_empty());
     }
-    // A03 (CST) is probe-seam only: synthetic population, never a language
-    // product claim.
+    // A03 (CST)：PLAN-787 T-06 起为真实语法产物（分页 CST 生产者 =
+    // ac-syntax-artifact-adapter；探针合成人口已退役）。仍非完整语言产品
+    // 主张——边界见 auto-syntax project Spec。
     assert!(matches!(
         ac_artifact_probe::schema::layer("A03").unwrap().coverage,
-        ac_artifact_probe::schema::LayerCoverage::ProbeSeam
+        ac_artifact_probe::schema::LayerCoverage::Codec
     ));
 }

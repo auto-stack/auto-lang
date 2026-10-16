@@ -149,7 +149,9 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
     let mut r = Reader { b: bytes, pos: 0 };
     let v = r.u16()?;
     if v != PROGRAM_CODEC_VERSION {
-        return Err(format!("program codec version {v} != {PROGRAM_CODEC_VERSION}"));
+        return Err(format!(
+            "program codec version {v} != {PROGRAM_CODEC_VERSION}"
+        ));
     }
     let schema_version = r.u32()?;
     let name = r.str()?;
@@ -168,7 +170,13 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
         let token = r.u32()?;
         let trivia = r.u8()? != 0;
         let next_mode = r.u32()?;
-        rules.push(ScanRule { mode, matcher, token, trivia, next_mode });
+        rules.push(ScanRule {
+            mode,
+            matcher,
+            token,
+            trivia,
+            next_mode,
+        });
     }
 
     let n = r.u32()? as usize;
@@ -204,11 +212,20 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
                 };
                 let same_line = r.u8()? != 0;
                 let field = if r.u8()? != 0 { Some(r.u32()?) } else { None };
-                steps.push(Step { atom, field, repeat, same_line });
+                steps.push(Step {
+                    atom,
+                    field,
+                    repeat,
+                    same_line,
+                });
             }
             alts.push(Alt { steps });
         }
-        grammar_rules.push(RuleSpec { name: rname, alts, recover });
+        grammar_rules.push(RuleSpec {
+            name: rname,
+            alts,
+            recover,
+        });
     }
 
     let n = r.u32()? as usize;
@@ -234,12 +251,24 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
             let close = r.u32()?;
             let newline_free_inside = r.u8()? != 0;
             let callee_same_line = r.u8()? != 0;
-            Some(CallParenRule { open, close, newline_free_inside, callee_same_line })
+            Some(CallParenRule {
+                open,
+                close,
+                newline_free_inside,
+                callee_same_line,
+            })
         } else {
             None
         };
         let call_args = opt_tok(&mut r)?;
-        pratt.push(PrattSpec { primary, ops, group_open, group_close, call_paren, call_args });
+        pratt.push(PrattSpec {
+            primary,
+            ops,
+            group_open,
+            group_close,
+            call_paren,
+            call_args,
+        });
     }
 
     let start = r.u32()?;
@@ -270,7 +299,11 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
         let decl_rule = r.str()?;
         let name_field = r.str()?;
         let params_field = if r.u8()? != 0 { Some(r.str()?) } else { None };
-        Some(OutlineSpec { decl_rule, name_field, params_field })
+        Some(OutlineSpec {
+            decl_rule,
+            name_field,
+            params_field,
+        })
     } else {
         None
     };
@@ -302,7 +335,11 @@ pub fn decode_canonical(bytes: &[u8]) -> Result<GrammarProgram, String> {
         pratt,
         field_names,
         start,
-        newline: NewlinePolicy { significant, stmt_end, sep_consume },
+        newline: NewlinePolicy {
+            significant,
+            stmt_end,
+            sep_consume,
+        },
         recovery: RecoverySpec { sync },
         outline,
         identity: crate::identity::PackageIdentity {
@@ -398,7 +435,11 @@ fn put_matcher(w: &mut Vec<u8>, m: &Matcher) {
             w.push(0);
             put_str(w, s);
         }
-        Matcher::Charset { first, cont, min_len } => {
+        Matcher::Charset {
+            first,
+            cont,
+            min_len,
+        } => {
             w.push(1);
             w.extend_from_slice(&first.bits[0].to_le_bytes());
             w.extend_from_slice(&first.bits[1].to_le_bytes());
@@ -441,7 +482,11 @@ fn get_matcher(r: &mut Reader) -> Result<Matcher, String> {
             let ch = u64::from_le_bytes(r.take(8)?.try_into().unwrap());
             let cna = r.u8()? != 0;
             let min_len = r.u32()?;
-            Matcher::Charset { first: cs(fl, fh, fna), cont: cs(cl, ch, cna), min_len }
+            Matcher::Charset {
+                first: cs(fl, fh, fna),
+                cont: cs(cl, ch, cna),
+                min_len,
+            }
         }
         2 => Matcher::LineComment(r.str()?),
         3 => {
@@ -461,7 +506,6 @@ fn get_matcher(r: &mut Reader) -> Result<Matcher, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::program_codec;
     use crate::testkit;
 

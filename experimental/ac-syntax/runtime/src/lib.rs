@@ -6,18 +6,18 @@
 //!
 //! 所有多树遍历/构建/序列化路径均为显式栈迭代实现（V-12 深度约束）。
 
+pub mod cst;
+pub mod edit;
+pub mod handle;
 pub mod identity;
+pub mod lexer;
+pub mod outline;
+pub mod parse;
+pub mod position;
 pub mod program;
 pub mod program_codec;
-pub mod snapshot;
-pub mod position;
-pub mod handle;
-pub mod lexer;
-pub mod cst;
-pub mod parse;
 pub mod recovery;
-pub mod edit;
-pub mod outline;
+pub mod snapshot;
 
 /// 测试/探针用最小语法程序构造器（doc(hidden)：非产品 API）。
 #[doc(hidden)]

@@ -10,7 +10,11 @@ use ac_syntax_rt::snapshot::{PageStore, Snapshot};
 use std::rc::Rc;
 
 fn mini_grammar() -> GrammarProgram {
-    let src = std::fs::read_to_string(format!("{}/../../grammars/interface-mini-v1.at", env!("CARGO_MANIFEST_DIR"))).unwrap();
+    let src = std::fs::read_to_string(format!(
+        "{}/../../grammars/interface-mini-v1.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
     compile_grammar(&src).unwrap()
 }
 
@@ -20,7 +24,6 @@ fn scratch(family: &str) -> std::path::PathBuf {
     d
 }
 
-
 /// CAS 块文件为只读（不可变契约）；破坏性测试先去只读再改写。
 fn make_writable(p: &std::path::Path) {
     let mut perm = std::fs::metadata(p).unwrap().permissions();
@@ -29,29 +32,13 @@ fn make_writable(p: &std::path::Path) {
     std::fs::set_permissions(p, perm).unwrap();
 }
 
-
-/// 递归收集 CAS chunk 文件（blocks/blobs/<shard>/<chunk>）。
-fn chunk_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let mut out = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(root.join("blocks/blobs")) {
-        for shard in rd.flatten() {
-            if let Ok(inner) = std::fs::read_dir(shard.path()) {
-                for f in inner.flatten() {
-                    let p = f.path();
-                    if p.is_file() {
-                        out.push(p);
-                    }
-                }
-            }
-        }
-    }
-    out.sort();
-    out
-}
-
-
 /// manifest 页 0 的 chunk 文件路径（blocks/blobs/<shard>/<chunk>）。
-fn page_chunk_path(sas: &SyntaxArtifactStore, root: &std::path::Path, p: &GrammarProgram, snap: &Snapshot) -> std::path::PathBuf {
+fn page_chunk_path(
+    sas: &SyntaxArtifactStore,
+    root: &std::path::Path,
+    p: &GrammarProgram,
+    snap: &Snapshot,
+) -> std::path::PathBuf {
     let view = sas.open_cst(p, snap).unwrap().expect("manifest");
     let chunk = view.debug_page_chunk(0).expect("page 0");
     // shard = 完整 chunk id 的前两字符（含 chk 前缀）。
@@ -92,11 +79,17 @@ fn syntax_admission_page_chunk_corruption_controlled() {
     let mut saw_controlled = false;
     for i in 0..view.decl_count() {
         if let Err(e) = view.decl_subtree(i) {
-            assert!(matches!(e, AdapterError::Store(_) | AdapterError::Admissions(_)), "panic-free controlled: {e}");
+            assert!(
+                matches!(e, AdapterError::Store(_) | AdapterError::Admissions(_)),
+                "panic-free controlled: {e}"
+            );
             saw_controlled = true;
         }
     }
-    assert!(saw_controlled, "corrupted page must surface as controlled error");
+    assert!(
+        saw_controlled,
+        "corrupted page must surface as controlled error"
+    );
 }
 
 #[test]
@@ -115,7 +108,10 @@ fn syntax_admission_missing_page_controlled_miss() {
     let mut saw_miss = false;
     for i in 0..view.decl_count() {
         if let Err(e) = view.decl_subtree(i) {
-            assert!(matches!(e, AdapterError::Admissions(_)), "controlled miss: {e}");
+            assert!(
+                matches!(e, AdapterError::Admissions(_)),
+                "controlled miss: {e}"
+            );
             saw_miss = true;
         }
     }
@@ -130,14 +126,27 @@ fn syntax_admission_bad_manifest_identity_rejected() {
     let other_text = "api other(w: i32) -> i32;\n";
     let other_snap = Snapshot::from_text(&Rc::new(PageStore::new()), other_text);
     let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
-    assert!(sas.open_cst(&p, &other_snap).unwrap().is_none(), "different snapshot must key-miss");
+    assert!(
+        sas.open_cst(&p, &other_snap).unwrap().is_none(),
+        "different snapshot must key-miss"
+    );
     // 不同 grammar（同快照）→ key miss。
-    let src2 = std::fs::read_to_string(format!("{}/../../grammars/interface-mini-v1.at", env!("CARGO_MANIFEST_DIR"))).unwrap()
-        .replace(r#"{ literal: "api" }"#, r#"{ literal: "endpoint" }"#);
+    let src2 = std::fs::read_to_string(format!(
+        "{}/../../grammars/interface-mini-v1.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap()
+    .replace(r#"{ literal: "api" }"#, r#"{ literal: "endpoint" }"#);
     let p2 = compile_grammar(&src2).unwrap();
     let _ = out;
-    let snap = Snapshot::from_text(&Rc::new(PageStore::new()), "api a(x: i32) -> i32;\napi b(y: i32) -> i32;\napi c(z: i32) -> i32;\n");
-    assert!(sas.open_cst(&p2, &snap).unwrap().is_none(), "different grammar must key-miss");
+    let snap = Snapshot::from_text(
+        &Rc::new(PageStore::new()),
+        "api a(x: i32) -> i32;\napi b(y: i32) -> i32;\napi c(z: i32) -> i32;\n",
+    );
+    assert!(
+        sas.open_cst(&p2, &snap).unwrap().is_none(),
+        "different grammar must key-miss"
+    );
 }
 
 #[test]
@@ -166,9 +175,139 @@ fn syntax_admission_truncated_page_rejected() {
     for i in 0..view.decl_count() {
         if let Err(e) = view.decl_subtree(i) {
             // 有效 frame + 坏内容：unframe/decode 层受控拒绝（Admissions 或 Store 校验）。
-            assert!(matches!(e, AdapterError::Admissions(_) | AdapterError::Store(_)), "{e}");
+            assert!(
+                matches!(e, AdapterError::Admissions(_) | AdapterError::Store(_)),
+                "{e}"
+            );
             saw_bad = true;
         }
     }
     assert!(saw_bad, "truncated page payload must be rejected");
+}
+
+#[test]
+fn syntax_admission_valid_framed_bad_manifest_ref_is_controlled() {
+    // F787-R1-07 反例：有效 frame/hash 的 manifest，但 decl 引用越界页号——
+    // 真读取入口必须受控错误，绝不 panic。
+    use ac_artifact_probe::{codec::ChunkKind, identity::QueryKey, schema, store::PutRequest};
+    let root = scratch("adm-badref");
+    let p = mini_grammar();
+    let snap = Snapshot::from_text(&Rc::new(PageStore::new()), "api a() -> i32;");
+    let sas = SyntaxArtifactStore::open(&root, "adm").unwrap();
+    let manifest = serde_json::json!({
+        "snapshot": snap.id().as_str(),
+        "grammar": p.grammar_id().as_str(),
+        "total_len": snap.len(),
+        "diags": [],
+        "root_edges": [],
+        "pages": [],
+        "decl_index": [],
+        "decl_count": 1,
+        "decls": [{"origin": 0, "node": 0, "node_lo": 0, "page": 999}],
+        "source_pages": [],
+    });
+    let key = QueryKey::new(
+        schema::layer("A03").unwrap(),
+        vec![
+            ("source-snapshot".into(), snap.id().as_str().into()),
+            ("grammar-id".into(), p.grammar_id().as_str().into()),
+            (
+                "parser-version".into(),
+                ac_syntax_rt::PARSER_ABI_VERSION.to_string(),
+            ),
+            ("page".into(), "manifest".into()),
+        ],
+    );
+    sas.inner()
+        .put_artifact(PutRequest {
+            layer: "A03",
+            key,
+            kind: ChunkKind::CstManifest,
+            payload: serde_json::to_vec(&manifest).unwrap(),
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // validate_manifest 拒绝页号越界（页 999 >= 0 页）→ Err；断言不 panic。
+        matches!(sas.open_cst(&p, &snap), Err(_) | Ok(None) | Ok(Some(_)))
+    }));
+    assert!(outcome.is_ok(), "bad manifest ref must not panic");
+    match sas.open_cst(&p, &snap) {
+        Err(e) => assert!(
+            matches!(e, AdapterError::Admissions(_)),
+            "controlled admission: {e}"
+        ),
+        Ok(None) => panic!("planted manifest must be found (identity matches)"),
+        Ok(Some(v)) => {
+            assert!(
+                matches!(v.decl_subtree(0), Err(AdapterError::Admissions(_))),
+                "decl ref must be rejected"
+            );
+        }
+    }
+}
+
+#[test]
+fn syntax_admission_root_replacement_lease_release_gc_lifecycle() {
+    // F787-R1-06：当前根替换 + 显式 lease 生命周期——GC 保活（lease 内）与
+    // 释放后回收（lease 释放 + 根已被替换 → 旧版本可淘汰）。
+    let p = mini_grammar();
+    let cs = CompiledScanner::compile(&p).unwrap();
+    let root = scratch("adm-lifecycle");
+    let sas = SyntaxArtifactStore::open(&root, "proj").unwrap();
+    sas.put_grammar(&p).unwrap();
+
+    let store_rc = Rc::new(PageStore::new());
+    let text1 = "api v1(a: i32) -> i32;\n";
+    let snap1 = Snapshot::from_text(&store_rc, text1);
+    let out1 = parse_snapshot(&p, &cs, &snap1, &Budget::default()).unwrap();
+    let t1 = sas.put_tokens(&p, &snap1, &out1.tokens).unwrap();
+    sas.put_cst(&p, &snap1, &out1.tree, &t1).unwrap();
+
+    // v2 发布 → 当前根替换（v1 失去 cst-manifest 硬根）。
+    let text2 = "api v2(b: i32) -> i32;\napi v2c(c: i32) -> i32;\n";
+    let snap2 = Snapshot::from_text(&store_rc, text2);
+    let out2 = parse_snapshot(&p, &cs, &snap2, &Budget::default()).unwrap();
+    let t2 = sas.put_tokens(&p, &snap2, &out2.tokens).unwrap();
+    sas.put_cst(&p, &snap2, &out2.tree, &t2).unwrap();
+
+    // v1 经视图 lease 读：强制 GC 后仍可查（lease → manifest → required 闭包）。
+    let v1 = sas
+        .open_cst(&p, &snap1)
+        .unwrap()
+        .expect("v1 view under lease");
+    ac_artifact_probe::store::gc::run_gc(
+        sas.inner(),
+        ac_artifact_probe::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .unwrap();
+    assert!(
+        v1.decl_subtree(0).is_ok(),
+        "leased old version must survive forced GC"
+    );
+    assert!(
+        sas.open_cst(&p, &snap2).unwrap().is_some(),
+        "current root must survive GC"
+    );
+
+    // lease 释放（drop 视图）→ 旧版本可回收：GC 后 v1 miss、v2 仍在。
+    drop(v1);
+    let receipt = ac_artifact_probe::store::gc::run_gc(
+        sas.inner(),
+        ac_artifact_probe::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .unwrap();
+    assert!(
+        receipt.deleted_chunks > 0,
+        "released old version must be physically reclaimed"
+    );
+    assert!(
+        sas.open_cst(&p, &snap1).unwrap().is_none(),
+        "v1 manifest must be gone after reclaim"
+    );
+    assert!(
+        sas.open_cst(&p, &snap2).unwrap().is_some(),
+        "current root v2 must remain queryable"
+    );
 }
