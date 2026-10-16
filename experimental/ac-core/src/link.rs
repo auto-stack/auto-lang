@@ -107,6 +107,14 @@ pub enum SubprocError {
     /// descendant that inherited the pipe handles) did not finish within the
     /// same deadline.
     DeadlineCollect,
+    /// A stream exceeded its capture cap (PLAN-788 T-03): the whole tree is
+    /// terminated and the run is a controlled failure — a truncated success
+    /// is never returned. `observed` is at least `cap + 1` bytes.
+    OutputCapExceeded {
+        stream: &'static str,
+        observed: usize,
+        cap: usize,
+    },
     Wait(std::io::Error),
 }
 
@@ -128,6 +136,16 @@ fn map_subproc(err: SubprocError, spawn_code: &str, what: &str) -> Diagnostic {
             ),
         ),
         SubprocError::Wait(e) => link_diag("link.wait", format!("wait {what}: {e}")),
+        SubprocError::OutputCapExceeded {
+            stream,
+            observed,
+            cap,
+        } => link_diag(
+            "link.output-cap",
+            format!(
+                "subprocess {what}: {stream} exceeded its capture cap ({observed} > {cap} bytes); the tree was terminated and no truncated output is returned"
+            ),
+        ),
     }
 }
 
@@ -277,25 +295,88 @@ fn run_with_deadline(
     run_deadlined_split(cmd, deadline).map(|(code, out, err)| (code, format!("{out}{err}")))
 }
 
-/// [' + "'" + 'run_with_deadline' + "'" + '] with stdout/stderr kept SEPARATE (PLAN-745
+/// [`run_with_deadline`] with stdout/stderr kept SEPARATE (PLAN-745
 /// R3-QA-01): the shared test executor consumes the SAME contained-start /
 /// subtree / single-deadline / full-collection contract as the linker runs
 /// — one implementation, no parallel test-only lifecycle.
+///
+/// PLAN-788 T-03: this is now a compatibility wrapper over the raw-bytes
+/// core; the lossy UTF-8 conversion is display-only and must never be used
+/// as a byte oracle (see [`run_deadlined_captured`]).
 pub fn run_deadlined_split(
     cmd: &mut Command,
     deadline: Duration,
 ) -> Result<(Option<i32>, String, String), SubprocError> {
-    run_with_deadline_inner(cmd, deadline, job::JobGuard::for_child)
+    let run = run_captured_inner(cmd, deadline, CaptureCaps::none(), job::JobGuard::for_child)?;
+    Ok((
+        run.exit_code,
+        String::from_utf8_lossy(&run.stdout).to_string(),
+        String::from_utf8_lossy(&run.stderr).to_string(),
+    ))
+}
+
+/// Per-stream capture caps (PLAN-788 T-03). `usize::MAX` disables a cap
+/// (the legacy wrapper's behavior); a finite cap terminates the whole tree
+/// with [`SubprocError::OutputCapExceeded`] the moment a reader passes it —
+/// never a truncated success.
+#[derive(Clone, Copy, Debug)]
+pub struct CaptureCaps {
+    pub stdout_max: usize,
+    pub stderr_max: usize,
+}
+
+impl CaptureCaps {
+    pub fn none() -> Self {
+        CaptureCaps {
+            stdout_max: usize::MAX,
+            stderr_max: usize::MAX,
+        }
+    }
+}
+
+/// A completed contained run with RAW stream bytes: stdout/stderr are the
+/// exact bytes the process wrote (invalid UTF-8 included); lossy rendering
+/// belongs to callers' display code, never to comparisons.
+#[derive(Debug)]
+pub struct CapturedRun {
+    pub exit_code: Option<i32>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+/// The raw-bytes, capped sibling of [`run_deadlined_split`] (PLAN-788 T-03):
+/// same contained-start / subtree / single-deadline / full-collection
+/// contract, but streams are returned as exact bytes and bounded by `caps`
+/// with immediate tree termination on overflow.
+pub fn run_deadlined_captured(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+) -> Result<CapturedRun, SubprocError> {
+    run_captured_inner(cmd, deadline, caps, job::JobGuard::for_child)
+}
+
+/// [`run_deadlined_captured`] with an injectable containment factory so
+/// tests can deterministically drive the containment-failure branch (same
+/// seam the legacy executor exposes).
+pub fn run_deadlined_captured_with(
+    cmd: &mut Command,
+    deadline: Duration,
+    caps: CaptureCaps,
+    job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
+) -> Result<CapturedRun, SubprocError> {
+    run_captured_inner(cmd, deadline, caps, job_factory)
 }
 
 /// Inner executor with an injectable containment factory so tests can
 /// deterministically drive the containment-failure branch (no product fault
 /// injection switch).
-fn run_with_deadline_inner(
+fn run_captured_inner(
     cmd: &mut Command,
     deadline: Duration,
+    caps: CaptureCaps,
     job_factory: fn(&std::process::Child) -> Option<job::JobGuard>,
-) -> Result<(Option<i32>, String, String), SubprocError> {
+) -> Result<CapturedRun, SubprocError> {
     // Controlled start (R3-QA-01): the suspended child cannot run, and
     // therefore cannot spawn descendants, until it is inside the job.
     #[cfg(windows)]
@@ -330,40 +411,107 @@ fn run_with_deadline_inner(
 
     let mut stdout_pipe = child.stdout.take();
     let mut stderr_pipe = child.stderr.take();
-    let (out_tx, mut out_rx) = std::sync::mpsc::channel::<String>();
-    let (err_tx, mut err_rx) = std::sync::mpsc::channel::<String>();
+    // Readers stream raw bytes in chunks and stop ONE byte past the cap:
+    // Err(observed) means "cap exceeded mid-stream" and the main loop kills
+    // the tree immediately; Ok(buf) is the exact EOF-terminated byte stream
+    // (invalid UTF-8 and all — read_to_string's all-or-nothing validation
+    // is exactly the truncated-success shape the contract forbids).
+    let (out_tx, mut out_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
+    let (err_tx, mut err_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
     let out_reader = std::thread::spawn(move || {
-        // read_to_end + lossy conversion: read_to_string validates UTF-8
-        // all-or-nothing, so one invalid byte (localized tool output, e.g.
-        // GBK ping) would discard every valid byte read before it — exactly
-        // the truncated-success-output the contract forbids.
         let mut buf = Vec::new();
+        let mut chunk = [0u8; 65536];
+        let mut exceeded = false;
         if let Some(p) = stdout_pipe.as_mut() {
-            let _ = p.read_to_end(&mut buf);
+            loop {
+                match p.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if buf.len() > caps.stdout_max {
+                            exceeded = true;
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
         }
-        let _ = out_tx.send(String::from_utf8_lossy(&buf).to_string());
+        let _ = out_tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
     });
     let err_reader = std::thread::spawn(move || {
         let mut buf = Vec::new();
+        let mut chunk = [0u8; 65536];
+        let mut exceeded = false;
         if let Some(p) = stderr_pipe.as_mut() {
-            let _ = p.read_to_end(&mut buf);
+            loop {
+                match p.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if buf.len() > caps.stderr_max {
+                            exceeded = true;
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
         }
-        let _ = err_tx.send(String::from_utf8_lossy(&buf).to_string());
+        let _ = err_tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
     });
+
+    // Stashed early reader results (EOF can arrive while the child still
+    // runs); a cap error is acted on immediately instead of stashed.
+    let mut out_stash: Option<Result<Vec<u8>, usize>> = None;
+    let mut err_stash: Option<Result<Vec<u8>, usize>> = None;
+
+    // Poll one receiver for an immediate cap failure; a normal buffer is
+    // stashed for the final collect. The stream label is known per call
+    // site, so the error identifies the offending stream precisely.
+    fn poll_cap(
+        rx: &mut std::sync::mpsc::Receiver<Result<Vec<u8>, usize>>,
+        stash: &mut Option<Result<Vec<u8>, usize>>,
+        stream: &'static str,
+        cap: usize,
+    ) -> Option<SubprocError> {
+        if stash.is_none() {
+            match rx.try_recv() {
+                Ok(Err(observed)) => {
+                    return Some(SubprocError::OutputCapExceeded {
+                        stream,
+                        observed,
+                        cap,
+                    })
+                }
+                other => *stash = other.ok(),
+            }
+        }
+        None
+    }
 
     // Wait for one reader result within the remaining deadline. Err(()) =
     // collection timed out (the pipe write end is still held by someone).
-    let collect = |rx: &mut std::sync::mpsc::Receiver<String>| -> Result<String, ()> {
+    fn collect(
+        rx: &mut std::sync::mpsc::Receiver<Result<Vec<u8>, usize>>,
+        stash: &mut Option<Result<Vec<u8>, usize>>,
+        deadline: Duration,
+        started: Instant,
+    ) -> Result<Result<Vec<u8>, usize>, ()> {
+        if let Some(stashed) = stash.take() {
+            return Ok(stashed);
+        }
         let remaining = deadline.saturating_sub(started.elapsed());
         if remaining.is_zero() {
             return Err(());
         }
         match rx.recv_timeout(remaining) {
-            Ok(s) => Ok(s),
+            Ok(v) => Ok(v),
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(()),
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Ok(String::new()),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Ok(Ok(Vec::new())),
         }
-    };
+    }
+
     // Reap both readers on every exit path: dropping the job guard kills the
     // whole contained tree, their write ends close, and the joins return
     // promptly. Containment is a hard precondition here, so there is no
@@ -379,15 +527,52 @@ fn run_with_deadline_inner(
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                let (out, err) = (collect(&mut out_rx), collect(&mut err_rx));
+                let (out, err) = (
+                    collect(&mut out_rx, &mut out_stash, deadline, started),
+                    collect(&mut err_rx, &mut err_stash, deadline, started),
+                );
                 match (out, err) {
-                    (Ok(out), Ok(err)) => {
+                    (Ok(Ok(out)), Ok(Ok(err))) => {
                         // Readers have sent their buffers; join reclaims the
                         // threads (they exit right after send).
                         let _ = out_reader.join();
                         let _ = err_reader.join();
                         drop(subtree);
-                        return Ok((status.code(), out, err));
+                        if out.len() > caps.stdout_max {
+                            return Err(SubprocError::OutputCapExceeded {
+                                stream: "stdout",
+                                observed: out.len(),
+                                cap: caps.stdout_max,
+                            });
+                        }
+                        if err.len() > caps.stderr_max {
+                            return Err(SubprocError::OutputCapExceeded {
+                                stream: "stderr",
+                                observed: err.len(),
+                                cap: caps.stderr_max,
+                            });
+                        }
+                        return Ok(CapturedRun {
+                            exit_code: status.code(),
+                            stdout: out,
+                            stderr: err,
+                        });
+                    }
+                    (Ok(Err(observed)), _) => {
+                        reap(subtree, out_reader, err_reader);
+                        return Err(SubprocError::OutputCapExceeded {
+                            stream: "stdout",
+                            observed,
+                            cap: caps.stdout_max,
+                        });
+                    }
+                    (_, Ok(Err(observed))) => {
+                        reap(subtree, out_reader, err_reader);
+                        return Err(SubprocError::OutputCapExceeded {
+                            stream: "stderr",
+                            observed,
+                            cap: caps.stderr_max,
+                        });
                     }
                     _ => {
                         // The child exited but a descendant still holds the
@@ -398,6 +583,18 @@ fn run_with_deadline_inner(
                 }
             }
             Ok(None) => {
+                if let Some(e) = poll_cap(&mut out_rx, &mut out_stash, "stdout", caps.stdout_max) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    reap(subtree, out_reader, err_reader);
+                    return Err(e);
+                }
+                if let Some(e) = poll_cap(&mut err_rx, &mut err_stash, "stderr", caps.stderr_max) {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    reap(subtree, out_reader, err_reader);
+                    return Err(e);
+                }
                 if started.elapsed() > deadline {
                     let _ = child.kill();
                     let _ = child.wait();
@@ -413,7 +610,6 @@ fn run_with_deadline_inner(
         }
     }
 }
-
 /// Locate rust-lld: `AC741_RUST_LLD` override, then the active sysroot.
 /// The sysroot query runs under the deadline executor like every other
 /// subprocess (QA-06: it used a bare `Command::output` with no deadline).
@@ -1177,7 +1373,13 @@ mod tests {
         let started = Instant::now();
         let mut cmd = Command::new("cmd");
         cmd.args(["/C", "ping", "-n", "30", "127.0.0.1"]);
-        let err = run_with_deadline_inner(&mut cmd, Duration::from_secs(10), |_| None).err();
+        let err = run_captured_inner(
+            &mut cmd,
+            Duration::from_secs(10),
+            CaptureCaps::none(),
+            |_| None,
+        )
+        .err();
         let elapsed = started.elapsed();
         assert!(
             matches!(err, Some(SubprocError::ContainmentUnavailable(_))),

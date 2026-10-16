@@ -9,6 +9,11 @@
 //! auto-lang / auto-atom / auto-val product crates.
 
 pub mod atom_text;
+
+/// Package version of this ac-core build (PLAN-788 toolchain identity:
+/// cache keys and worker reports bind against the compiler that ran, not a
+/// caller-supplied constant).
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod descriptor;
 pub mod hir;
 pub mod link;

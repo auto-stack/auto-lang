@@ -145,6 +145,51 @@ pub fn compile_text_record_source(
     })
 }
 
+/// One frontend stage boundary (PLAN-788 T-03 observation seam). The
+/// source frontend reports parse/resolve/typecheck failures all as
+/// `Stage::Text` + `source.*` codes; the boundary that produced them is
+/// only observable here — never from the rendered string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceStage {
+    Parse,
+    Resolve,
+    Typecheck,
+    Emit,
+    Bind,
+}
+
+impl SourceStage {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SourceStage::Parse => "parse",
+            SourceStage::Resolve => "resolve",
+            SourceStage::Typecheck => "typecheck",
+            SourceStage::Emit => "emit",
+            SourceStage::Bind => "bind",
+        }
+    }
+}
+
+/// Narrow structured observation for the source frontend (PLAN-788 T-03):
+/// one callback per COMPLETED stage boundary with the diagnostics that
+/// boundary produced (empty slice = success). The pipeline is not
+/// duplicated — [`compile_parts_with_observer`] runs the exact same
+/// sequence as [`compile_parts_with`] and existing callers are unchanged.
+pub trait SourceObserver {
+    fn stage(&mut self, _stage: SourceStage, _diagnostics: &[Diagnostic]) {}
+}
+
+/// [`compile_parts_with`] with stage-boundary observation (PLAN-788 T-03).
+pub fn compile_parts_with_observer(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+    observer: &mut dyn SourceObserver,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_parts_observed(src, module_path, capabilities, profile, Some(observer))
+}
+
 /// Compile up to (but not including) verification under the explicit
 /// profile: the span-projected bundle plus the adapter receipt data. This
 /// is the seam the §6 mutation matrix exercises — a tampered bundle must
@@ -156,13 +201,65 @@ pub fn compile_parts_with(
     capabilities: &[String],
     profile: SourceProfile,
 ) -> Result<SourceParts, Vec<Diagnostic>> {
-    let program = super::parse_program_with(src, profile).map_err(|d| vec![d])?;
-    let resolved = super::resolve_with(&program, capabilities, profile)?;
-    typecheck::typecheck_with(&resolved, profile)?;
+    compile_parts_observed(src, module_path, capabilities, profile, None)
+}
+
+fn compile_parts_observed(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+    mut observer: Option<&mut dyn SourceObserver>,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    let program = match super::parse_program_with(src, profile) {
+        Ok(p) => {
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Parse, &[]);
+            }
+            p
+        }
+        Err(d) => {
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Parse, std::slice::from_ref(&d));
+            }
+            return Err(vec![d]);
+        }
+    };
+    let resolved = match super::resolve_with(&program, capabilities, profile) {
+        Ok(r) => {
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Resolve, &[]);
+            }
+            r
+        }
+        Err(ds) => {
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Resolve, &ds);
+            }
+            return Err(ds);
+        }
+    };
+    let _ = match typecheck::typecheck_with(&resolved, profile) {
+        Ok(v) => {
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Typecheck, &[]);
+            }
+            v
+        }
+        Err(ds) => {
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Typecheck, &ds);
+            }
+            return Err(ds);
+        }
+    };
 
     let mut em = Emitter::new(&resolved, src.len(), profile);
     em.plan_module();
     let atom_text = em.render(module_path);
+    if let Some(o) = observer.as_deref_mut() {
+        o.stage(SourceStage::Emit, &[]);
+    }
 
     let descriptor = match profile.hir_domain() {
         crate::hir::HirDomain::Core => crate::descriptor(),
@@ -175,7 +272,7 @@ pub fn compile_parts_with(
         Ok(b) => b,
         Err(ds) => {
             let detail: Vec<String> = ds.iter().map(|d| d.render("atom", &atom_text)).collect();
-            return Err(vec![Diagnostic::new(
+            let diag = Diagnostic::new(
                 Stage::Text,
                 "source.internal",
                 format!(
@@ -183,10 +280,26 @@ pub fn compile_parts_with(
                     detail.join("\n")
                 ),
                 Span { start: 0, end: 0 },
-            )]);
+            );
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Bind, std::slice::from_ref(&diag));
+            }
+            return Err(vec![diag]);
         }
     };
-    em.reanchor_spans(&mut bundle, src).map_err(|d| vec![d])?;
+    match em.reanchor_spans(&mut bundle, src) {
+        Ok(()) => {
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Bind, &[]);
+            }
+        }
+        Err(d) => {
+            if let Some(o) = observer.as_deref_mut() {
+                o.stage(SourceStage::Bind, std::slice::from_ref(&d));
+            }
+            return Err(vec![d]);
+        }
+    }
     Ok(SourceParts {
         profile: profile.as_str(),
         input_hash: fnv1a_hex(src.as_bytes()),

@@ -43,7 +43,10 @@ fn t01_core_source_to_pe_and_run() {
     let compiled = auto_ac_prototype::source::compile_source(&src, "main", &[])
         .expect("p04 core source must compile through the real frontend");
     assert_eq!(compiled.profile, "auto.source.core-i32.draft");
-    assert!(!compiled.atom_text.is_empty(), "canonical atom text emitted");
+    assert!(
+        !compiled.atom_text.is_empty(),
+        "canonical atom text emitted"
+    );
 
     let sel = auto_ac_prototype::native::find_entry(&compiled.checked, "d_main")
         .expect("d_main entry must resolve");
@@ -53,8 +56,16 @@ fn t01_core_source_to_pe_and_run() {
         &auto_ac_prototype::native::RuntimeInjection::default(),
     )
     .expect("lowering must produce a COFF object");
-    assert!(obj_bytes.len() > 64, "real COFF object, {} bytes", obj_bytes.len());
-    assert_eq!(&obj_bytes[0..2], b"\x64\x86", "COFF machine image signature");
+    assert!(
+        obj_bytes.len() > 64,
+        "real COFF object, {} bytes",
+        obj_bytes.len()
+    );
+    assert_eq!(
+        &obj_bytes[0..2],
+        b"\x64\x86",
+        "COFF machine image signature"
+    );
 
     let tmp_obj = work.join("p04.obj.tmp-788");
     std::fs::write(&tmp_obj, &obj_bytes).unwrap();
@@ -96,7 +107,10 @@ fn t01_raw_hir_negative_is_typed_rejection() {
         "typed code bind.dangling-ref expected, got {:#?}",
         diags
     );
-    let d = diags.iter().find(|d| d.code == "bind.dangling-ref").unwrap();
+    let d = diags
+        .iter()
+        .find(|d| d.code == "bind.dangling-ref")
+        .unwrap();
     assert_eq!(d.stage, auto_ac_prototype::atom_text::Stage::Bind);
     let slice = src.get(d.span.start..d.span.end).expect("span in range");
     assert!(slice.contains("e_missing"), "span points at `{}`", slice);
@@ -130,7 +144,13 @@ fn t01_fresh_then_hit_trace() {
     .expect("fresh vertical");
     assert_eq!(fresh.exit_code, Some(3), "fresh run oracle");
     assert_eq!(
-        (fresh.counters.parse, fresh.counters.verify, fresh.counters.lower, fresh.counters.link, fresh.counters.run),
+        (
+            fresh.counters.parse,
+            fresh.counters.verify,
+            fresh.counters.lower,
+            fresh.counters.link,
+            fresh.counters.run
+        ),
         (1, 1, 1, 1, 1),
         "fresh: every stage ran once"
     );
@@ -149,7 +169,13 @@ fn t01_fresh_then_hit_trace() {
     assert_eq!(hot.exit_code, Some(3), "hot run oracle re-observed");
     assert_eq!(hot.hits.object, "hit", "second request is an object hit");
     assert_eq!(
-        (hot.counters.parse, hot.counters.verify, hot.counters.lower, hot.counters.link, hot.counters.run),
+        (
+            hot.counters.parse,
+            hot.counters.verify,
+            hot.counters.lower,
+            hot.counters.link,
+            hot.counters.run
+        ),
         (0, 0, 0, 1, 1),
         "hit: frontend/verify/lower skipped, link+run still real"
     );

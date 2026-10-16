@@ -228,6 +228,17 @@ pub fn run_deadlined(
                 "containment unavailable: {reason}"
             )))
         }
+        Err(SubprocError::OutputCapExceeded {
+            stream,
+            observed,
+            cap,
+        }) => {
+            // Unreachable through this legacy wrapper (caps are disabled);
+            // kept exhaustive so a future cap use cannot silently pass.
+            Err(std::io::Error::other(format!(
+                "{stream} exceeded its capture cap ({observed} > {cap})"
+            )))
+        }
     }
 }
 
