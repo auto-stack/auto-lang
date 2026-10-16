@@ -177,11 +177,26 @@ D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.
 
 ## 9. 复审记录
 
+### 2026-10-16 R1：最终审查就绪核查
+
+- stage: review；review_scope: final（未进入完整验收）；reviewer_identity: Codex，本上下文未参与实施，未创建代理；plan_revision: 1；outcome: **needs_fix**。
+- worktree_path: D:/autostack/.wt/lang-796/auto-lang；branch: plan-796-dev；reviewed_commit: `91b17357782c2ba2e93d93e973a2cccc82557470`；base_commit: `056539f3997e199750ee15811d5c3ba9adba30eb`；主检出核查头 `cb0adb4e8059a2bba5811427b017026ee1fd14cd`。
+- dependency_revisions: ac-core tree `324210641c2d2f7b5a3eac36ed3ed07632630cef`，ac-artifact-probe tree `d148cd3adb2ff365e1d746367cb548b24db2e32f`。D-788 未满足：当前 788 Plan 仍 executing，实施头 `54e6a46caf1badddaba898a471492ae52e7a1fbf` 非 master 祖先。
+- **F-796-R1-01（P1，原合同未完成，AC-05/T-06）**：正式 AutoDown adapter/recipe/统一 runner 执行尚未交付。证据：主 Plan 的 T-06 未勾选、work 收据明确 blocked；实施 diff 无 crates/ 接线，三份 `.case.ad` 仍标 `not-executed`。须满足 D-788 后完成真实正反例与原协议兼容验证，不得将 Rust 对应用例替代此项。
+- **F-796-R1-02（P2，原合同未完成，AC-06/T-07）**：统一验收入口、完整验收矩阵与规范增量未收口。实施树缺 `scripts/verify-ac-semantics-796.ps1` 和 `docs/plans/attachments/796/spec-delta.md`；T-07 未勾选。须补齐 V-01–09 和 SD-01–08 可复验交接。
+- acceptance_results: AC-01/02/03 未复验；AC-04 partial（现有库探针报告不覆盖实际 adapter/IPC 周转）；AC-05 fail；AC-06 partial；AC-07 未完成；AC-08 pending。60 绿及 P95=4.32ms 是实施方历史证据，本轮未授信为独立通过。
+- spec_inputs: 主 Plan r1 §5–8、当前 `docs/specs/auto-test-case/project.md`（仍为 v1 支持边界）。SD 表保留原文；T-07 未交付，未冻结可通过的 Spec delta，未发布规范/ledger。
+- limitations/evidence: `git worktree list --porcelain`、提交/base diff、case 文件、报告和文件存在性只读核查。worktree `git status` 在受限环境报 `must be run in a work tree` / `cannot come back to cwd: Permission denied`，清洁性未核实，不据此推断脏改。按 review 技能就绪门，已明确未完成的 work-owned 项返回 work，未运行测试或完整最终审查；T-01..05 保留进度声明，尚未独立验收，不对其实现正确性作结论。
+- pending_closeout_gates: 根 cargo t/适用触面档、独立 sema 全套、受影响 788 套件、tf 到期判定、规范沉淀/归档/guard 均 pending。
+- next: work 于原树等 D-788，完成并提交 T-06/T-07 后重新申请独立 final review。保持 status=executing/current_step=5，T-06..09 未完成；不合入、不修改实现。
+
 2026-10-16 stage:new；PLAN-796 r1；outcome:pass（可审阅规划契约）；next:work，T-06前等D-788。新增T-01–09/AC-01–08/V-01–09/SD-01–08，0/9。用户只授权草拟，未实施/编译/跑性能，未创建树。
 
 2026-10-16 stage:work；PLAN-796 r1；用户指令实施，授权前五项独立推进（T-01..T-05），不动 787/788 或拆分路线在途热点；T-06 前等 D-788。入场核：主检出基线 056539f39（仅 docs/plans 簿记改动，无 crates WIP；根有游离未跟踪 ledger_770.py 属他方会话，不并入）；树 D:/autostack/.wt/lang-796/auto-lang、分支 plan-796-dev、base 056539f39。
 
 2026-10-16 stage:work | PLAN-796 | r1 | outcome:blocked（独立工作全部完成，末段等外部依赖） | worktree D:/autostack/.wt/lang-796/auto-lang | branch plan-796-dev | base 056539f39 | code 91b173577（00260c12c T-01 → 587bd557d T-02 → 9c6307b77 T-03 → 2c8d5bf46 T-04 → 91b173577 T-05） | deps: ac-core/ac-artifact-probe 合入版只读消费，零改（diff 056539f39..91b173577 于 experimental/ac-artifact-probe、experimental/ac-core、crates/ 均为空） | task_ids T-01..T-05 全闭 | evidence: workspace experimental/ac-semantics 全测试 60 绿 0 红——sema_identity_ 14、infer_core_ 13+4（差分对照含 240 生成例）、meta_query_ 7、sema_cache_ 12（跨进程 put→exit→get 命中不调 compute）、sema_budget_ 5（≥32MiB 流式页/受管≤16MiB/private Δ≤64MiB OS 证据/4096 深链全路径/512 换轮 GC 收敛哨兵存活）、sema_turnaround_ 5；报告 docs/reports/plan796/turnaround.{md,json} 硬门 local-body-edit P95=4.32ms<1000ms PASS（八行含全冷/广泛失效，30 原始样本不删）；冻结决策 D1–D12 见 attachments/796/contract-decision.md（含 T-05 期间修正：InferBody 键增加 called-sigs-fp，同键异容结构性不可能）；.case.ad/oracle 三套齐（not-executed until D-788，Rust 对应用例真实执行）。 | blockers: T-06 等 D-788（788 最终 review/门禁/合入/Spec/merge 收据齐全），T-07 依赖 T-06；本阶段无其它独立授权工作。 | next_responsible_role: work（D-788 满足后做 T-06 probe adapter/AutoDown，再 T-07 verify 脚本/矩阵审计/SD 收口）。merge-owned 门禁（根 cargo t、独立 sema 全套、受影响 788 套件、tf 到期判定）全部 pending，冻结提交上执行。
+
+2026-10-16 stage:work（R1 needs_fix 回执）| PLAN-796 | r1 | 两项 findings 确认为 D-788 门控的原合同未完项（F-796-R1-01=T-06/AC-05、F-796-R1-02=T-07/AC-06），本轮无可修复项——原授权仅前五项，T-07 依赖 T-06。R1 记录中"worktree 清洁性未核实"已补核：发现 T-05 漏提交的 D7 冻结记录（contract-decision.md，docs-only），补交 5a8cd61ba 后实施树清洁（git status 0 项）；work 树头现为 5a8cd61ba（91b173577 + 该 docs 补交）。D-788 未满足复核成立：788 实施头 54e6a46 非 master 祖先（merge-base --is-ancestor exit=1）。维持 executing 5/9、不合入；D-788 满足后同树恢复 work（T-06 → T-07 → 重申 final review）。
 
 来源/边界及起草检查见[planning-preflight.md](attachments/796/planning-preflight.md)；该pass不代表功能或亚秒已达标。
 
