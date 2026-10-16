@@ -33,12 +33,16 @@ oracle）归上层 `auto_lang::ast_parse_ext`（私有模块；旧 `ast::parsers
 
 ## 模型与序列化契约
 
-- 轻值原语同源 re-export：`ast` 模块根 `pub use auto_val::{AutoResult,
-  AutoStr, Node as AutoNode, Op, Shared, Value}` 与 `pub use
-  auto_lex::token::Pos`——独立消费方仅依赖 auto-ast 即可构造 AST 值
-  （`Op`/`AutoStr`）与消费 `to_node()` 产物（`Node`/`Value`）。全部为
-  同一 item 的再导出（glob 同源不歧义）；语法级 `Type`/`Node`/`Arg` 保持
-  模型原名，`auto_val::Arg` 因模型已有同名 `Arg`（call.rs）不再导出。
+- 轻值原语同源 re-export：`ast` 模块根 `pub use auto_val::{AutoStr,
+  Node as AutoNode, Op, Shared, Value}` 与 `pub use auto_lex::token::Pos`
+  ——独立消费方仅依赖 auto-ast 即可构造 AST 值（`Op`/`AutoStr`）与消费
+  `to_node()` 产物（`Node`/`Value`）。**导出面以"不与其他常用 glob 面
+  产生不同 item 撞名"为限**（F-799-R1-01：`auto_val::AutoResult` 曾公开
+  再导出，与 `auto_lang::error::AutoResult` 是不同 item，破坏旧门面
+  `ast::* + error::*` glob 兼容——E0659；已回退为模型内部私有，永久回归
+  `crates/auto-lang/tests/ast_facade_glob_compat.rs` 钉住）。语法级
+  `Type`/`Node`/`Arg` 保持模型原名；`auto_val::Arg`/`auto_val::Type` 因
+  模型已有同名项不再导出。
 - 两个 `AutoResult` 是不同类型且各自绑定不变：模型 `AtomWriter` 返回
   `auto_val::AutoResult`（`Result<T, Box<dyn Error>>`）；`ParserExt::parse`
   返回 auto-diagnostics 的富 `AutoResult`（`Result<T, AutoError>`）。

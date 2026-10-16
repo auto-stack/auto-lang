@@ -32,15 +32,20 @@ master@`143aff0a258fdca8bda9a3b8068dc8a9cced623c`（=PLAN-800 R2 复审入库后
 `tv/tt/tu`、tf 批量回归到期判定、Spec/ledger 沉淀与归档、wt-guard 清理。
 依据：2026-10-14 测试时序裁定 + 本计划 §6。
 
-## 3. 表面增量披露（供 review 审）
+## 3. 表面增量披露（供 review 审；r1 修复后口径）
 
-- auto-ast `ast` 模块根新增**同源 re-export**：`pub use auto_val::{AutoResult,
-  AutoStr, Node as AutoNode, Op, Shared, Value}` + `pub use auto_lex::token::Pos`。
+- auto-ast `ast` 模块根新增**同源 re-export**：`pub use auto_val::{AutoStr,
+  Node as AutoNode, Op, Shared, Value}` + `pub use auto_lex::token::Pos`。
   理由：独立消费方（V01）manifest 仅依赖 auto-ast，构造 `Expr::Bina`（Op）、
-  命名 Name 底型（AutoStr）、消费 `to_node()` 产物（Node/Value）必需；全部
-  为同一 item 再导出（glob 同源不歧义），`auto_val::Arg` 因模型已有同名
-  `Arg`（call.rs）与 `auto_val::Type`（与模型 Type 撞名）**不再导出**。旧
-  `auto_lang::ast` 面零删减，仅此新增。
+  命名 Name 底型（AutoStr）、消费 `to_node()` 产物（Node/Value）必需。
+  **F-799-R1-01 修复**：`auto_val::AutoResult` 首版曾公开再导出，与
+  `auto_lang::error::AutoResult`（富 AutoError 版）是**不同 item**，令旧门面
+  合法组合 `ast::* + error::*` 产生 E0659 歧义——已回退为模型内部私有；
+  其余名经全 auto-lang glob 面（error/token/lexer/parser/vm）审计无不同
+  item 撞名（Pos 与 token::Pos 同一 item）。永久回归：
+  `tests/ast_facade_glob_compat.rs`（反例固化，编译期断言）+
+  `tests/ast_cross_path_identity.rs`（parse-identity 探针 Cargo 化：双向
+  互传/坏输入拒绝/双路径投影一致）。旧 `auto_lang::ast` 面零删减。
 - 无行为改动：零算法触碰；golden 重放（旧实现生成）三路径（auto-ast 直连/
   门面/独立 fixture）逐字节一致证明投影不变。
 

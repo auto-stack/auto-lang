@@ -66,14 +66,19 @@ pub use comptime::*;
 mod atom_helpers;
 pub use atom_helpers::*;
 
-// PLAN-799：轻值原语的同源 re-export（兼作模块内部导入）——独立消费方
-// （V01 fixture manifest 仅依赖 auto-ast）构造 AST 值（Op/AutoStr）与消费
-// ToNode 产物（Node/Value）所需。全部是 auto_val 同一 item 的再导出（glob
-// 同源不歧义）；语法级 Type/Node/Arg 保持模型原名不受影响（auto_val::Arg
-// 因模型已有同名 Arg 不再导出）。
+// PLAN-799：轻值原语的同源 re-export——独立消费方（V01 fixture manifest
+// 仅依赖 auto-ast）构造 AST 值（Op/AutoStr）与消费 ToNode 产物（Node/
+// Value）所需。**仅限经审计的同一 item/无撞名集**：这些名字在
+// auto_lang 全部常用 glob 面（error/token/lexer/parser/vm）无不同 item
+// 撞名（Pos 与 auto_lang::token::Pos 同为 auto_lex 同一 item，同 item 不
+// 歧义）。`auto_val::AutoResult` **保持模型内部私有**（F-799-R1-01）：
+// `auto_lang::error::AutoResult`（富 AutoError 版）是不同 item，公开会破
+// 坏旧门面 `ast::* + error::*` glob 兼容（E0659）——永久回归测试
+// crates/auto-lang/tests/ast_facade_glob_compat.rs 钉住。语法级
+// Type/Node/Arg 保持模型原名；auto_val::Arg/Type 因模型已有同名项不导出。
+use auto_val::AutoResult;
 #[allow(hidden_glob_reexports)]
-pub use auto_val::{AutoResult, AutoStr, Node as AutoNode, Op, Shared, Value};
-// 同上：call/task 源位置 Pos 的同源 re-export（auto-lex 依赖仅此一项）。
+pub use auto_val::{AutoStr, Node as AutoNode, Op, Shared, Value};
 pub use auto_lex::token::Pos;
 use std::{fmt, io};
 
