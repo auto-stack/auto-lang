@@ -1,0 +1,22 @@
+[
+  {
+    "Path": "D:\\autostack\\auto-lang\\docs\\specs\\auto-lang\\vm\\overview.md",
+    "Hash": "271C4B20E4515A3C1266BFFE525E8A89A93ED06E2ABD0BE4A1740215DE43CE73"
+  },
+  {
+    "Path": "D:\\autostack\\auto-lang\\docs\\specs\\auto-lang\\ui\\overview.md",
+    "Hash": "DDB6B9F8E9B059749036B9CD8D822D059FBFAC4EC1C394288D17F781E6B9D1AF"
+  },
+  {
+    "Path": "D:\\autostack\\auto-lang\\docs\\specs\\widgets\\scroll-pane.md",
+    "Hash": "5EA330D5E8948827D9C3AA5C412A64FB427A3775780AA6B164DB2B5EB91C2524"
+  },
+  {
+    "Path": "D:\\autostack\\auto-lang\\docs\\specs\\auto-lang\\ui\\design\\scroll-child-anchor.md",
+    "Hash": "F7F037768F17A4359F4D2FE384C437087D464FF9C093A45628264DB3CE1724C9"
+  },
+  {
+    "Path": "D:\\autostack\\auto-lang\\docs\\plans\\794-scroll-host-provider.md",
+    "Hash": "F68F6260278E7910411D0D831729499AE86458ED88FF26CA19CDA9F7DEF9D0A4"
+  }
+]

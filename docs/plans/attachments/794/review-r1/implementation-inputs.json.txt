@@ -1,0 +1,34 @@
+[
+  {
+    "Path": "D:\\autostack\\.wt\\lang-794\\auto-lang\\Cargo.lock",
+    "Hash": "9D5D36FF0062F576DBB6B104DCCCC1592EABBB0667973C6F8120A37FB299F1EC"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-794\\auto-lang\\.cargo\\config.toml",
+    "Hash": "A55E53FD140177F0B32CC7B24F577939E418DAC53973C79102B39370A2022445"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-794\\auto-lang\\.config\\nextest.toml",
+    "Hash": "0FBEA4B493E2437105D5CD68C616549B1A39AAAD6AE4B2F85FD83ADF4782D5A2"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-794\\auto-lang\\.autoos\\module-boundaries.toml",
+    "Hash": "82718AD24A3F3F2F3EB0F533BFCBD51DAA21097C33198B17B757A96D013ACC0E"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-794\\auto-lang\\.autoos\\module-boundaries-baseline.json",
+    "Hash": "9B194F55F8EF6E595DA421CB29EA8A973B281FA1FA704EA0DCFB8A228BC0C0B9"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-794\\auto-lang\\examples\\capability-tests\\p781-scroll-child-anchor\\tests\\vm_probe.py",
+    "Hash": "2BD95A71255BFF9490676D1CA8B50FAC80A9E7FFBF4CD610C406BE1C139970FF"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-794\\auto-lang\\examples\\capability-tests\\p781-scroll-child-anchor\\tests\\vue_probe.mjs",
+    "Hash": "DDA269936E0873394BC504BAE2DBEB03A21D581783021EA0724B1534B0F72966"
+  },
+  {
+    "Path": "D:\\autostack\\.wt\\lang-794\\auto-lang\\target\\debug\\auto.exe",
+    "Hash": "F9690405A4B66C727F4001DB2D2647713F9B44BA852C500D94FFD69230CB90C9"
+  }
+]

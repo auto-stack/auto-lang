@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-794
-status: execution_done
+status: archived
 feature_name: scroll controller 与子锚点宿主能力迁移
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
 plan_revision: 1
-current_step: 6
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/widgets/scroll-pane.md, docs/specs/auto-lang/ui/design/scroll-child-anchor.md]
 new_spec_components: []
@@ -117,8 +117,8 @@ DTO（按现有 state/anchor 投影冻结）：`ScrollAxisDto{X,Y}`；`ScrollInt
 | [x] | T-04 | work | T03 | UI新adapter及统一宿主安装，委托原registry/collector，不复制状态机 | 02/04 |
 | [x] | T-05 | work | T04 | 外部consumer、V01..04及真实UI证据，777检查八族删边；R1重开→重闭：F-794-R1-02 探针oracle修复（新鲜查询+失败传播+永久负控+pending重放），修复后探针 60/60 | 01–04 |
 | [x] | T-06 | work | T05 | 触面/未迁族、双端/ownership/并行收据与SD素材；提交冻结代码；R1重开→重闭：F-794-R1-01 基线重采样@7a566c89b+strict pass、F-794-R1-03 unused_mut清零、T-01旧行9903弹序材料同步 | 01–04 |
-| [ ] | T-07 | review | T06 | 独立八native及UI实际完成条件、负控、SD冻结 | 05 |
-| [ ] | T-08 | merge | final pass | 裸t+tv及实际tu；沉淀/归档/guard清理，后合入者同步重验 | 06 |
+| [x] | T-07 | review | T06 | R2独立final pass@d027e5f61；三finding关闭，VM60/60、查询补控6项、源码/ownership2项、consumer5项及定向9项通过，strict/guard/fmt绿，SD冻结复核 | 05 |
+| [x] | T-08 | merge | final pass | 冻结门禁最终tip重跑通过；SD沉淀+ledger v36+ff-only 5ddef1315+归档+guard清理 | 06 |
 
 **R1 findings 闭环行（finding → invariant → affected → fix → current results → remaining gap）**：
 - F-794-R1-01（P2 基线过期）→ 不变式=Cargo.toml 变更触及 777 STALENESS_PATHSPECS 后冻结基线必须同步重锚且 strict 复跑 → affected=本批 consumer exclude（合法新增，非坏边）→ fix=干净提交 7a566c89b 上 `--refresh-baseline` 显式重采样（declared_edges=43 无新增禁向边）+ strict 复跑 pass（0 violations，2 条既有窄 grandfather 保持）+ 基线入库 d027e5f61 → 剩余缺口=无。
@@ -141,6 +141,11 @@ T-06 证据：rustfmt 触面文件（fmt 递归波及的 43 个非触面文件�
 2026-10-16 R1：stage=review | review_scope=final | reviewer_identity=当前独立Codex审查上下文（未参与实施；未另建agent/树） | plan_id=PLAN-794 | plan_revision=1 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-794/auto-lang | branch=codex/plan-794-dev | reviewed_commit=91974d8f8d826a9cdb3ea6a50038a518bc02c4e9 | base_commit=8b97d3c9bc9c86cb4d8ebde4a5d7856554e83b9c | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8（clean）；本机锁/配置/探针/CLI指纹见附件 | spec_inputs=四目标Spec与原Plan SHA256见附件spec-inputs.json.txt；冻结SD见spec-delta.md及hash | acceptance_results=AC01/03 pass，AC02/04 partial，AC05 fail，AC06 pending | findings=F-794-R1-01(P2：777 strict exit2，Cargo.toml使冻结基线过期)、F-794-R1-02(P2：指定VM查询探针可接受pressed=False+旧applied，且只读缓存pending；原实机56/57)、F-794-R1-03(P3：新增测试126行unused_mut) | evidence=[完整报告与复现](attachments/794/review-r1/review.md)；定向9/9（含计划6例）、外部consumer5/5、独立源码八native及32轮heap/pool配平补控2/2、真实VM重新查询控制组57/57、隔离Vue+VM API后端59/59、触面fmt/diff-check通过；默认Rust后端复跑因原有进程占用生成exe失败，未冒称通过 | pending_closeout_gates=裸cargo t+tv、规范/ledger/归档、guard链接清理；wt-guard实际exit1（生成node_modules含junction，禁止当前移除）；ui_gen未触及不触发tu，tf仍批量单实例 | next=executing 4/8，保留T01..04、重开T05/06，原树修复提交后复审；未修实施代码/合入。上方work通过收据保留为历史，不覆盖本轮开放findings。
 
 2026-10-16 stage=work（R1 修复轮） | PLAN-794 | plan_revision=1 | outcome=pass（T-05/T-06 重闭，6/8；T-07 R2 复审待接） | worktree=D:/autostack/.wt/lang-794/auto-lang | branch=codex/plan-794-dev | base=8b97d3c9b | code=**d027e5f61**（91974d8f8 实施 + 7a566c89b R1 修复 + d027e5f61 基线重锚，树 clean + wt-guard clean） | deps=auto-down detached@c39ac7f 不变 | tasks=T-05/T-06 重闭（闭环行见 §8 R1 findings 闭环行） | findings 闭环：F-794-R1-01 → 干净提交 7a566c89b 上重采样基线（declared_edges=43 无新增禁向边）+ strict 复跑 pass（0 violations）+ 入库 d027e5f61 + 再复跑 pass → 无剩余；F-794-R1-02 → expect_reply 改每轮重按只读 Q* 按钮重跑 native + press 失败立即判负 + 样本序列入证据 + 桩式永久负控 + GoC3 重入队 pending→终态重放 → 修复后探针 **60/60**（原 57 case 全保留；复审原跑 56/57 红项 `v03_old_key_not_found_on_ch2` 现绿）→ 无剩余（Vue 探针同类单读模式为 781 fixture 观察项，未扩面）；F-794-R1-03 → 去无用 mut，`cargo t scroll_host_provider` 9/9 零 plan794 警告 → 无剩余。wt-guard 红项 → 逐链接 rmdir（356 junction 树内目标）+ 清生成树（p656/p781 gen、rust-workspace、dist）+ 杀探针遗留进程（vite node/esbuild/PID19128）→ guard **clean exit0** → 无剩余。材料同步=T-01 旧表 9903 弹序行改 delta→axis→handle（勘定史保留）。受影响重放：cargo t scroll_host_provider 9/9 零警告；VM 探针 60/60×2 跑（样本序列一致）；777 strict pass×2（基线入库前后）。merge-owned 门禁维持 pending（裸 t+tv 于新冻结提交 d027e5f61） | blockers=无 | next_responsible_role=review（T-07 R2：重放三 finding 修复+受影响验收+SD 冻结复核+wt-guard 复核，绑定 d027e5f61）
+
+2026-10-16 R2：stage=review | review_scope=final | reviewer_identity=当前独立Codex审查上下文（未参与实施；延续R1，未另派agent/树） | plan_id=PLAN-794 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-794/auto-lang | branch=codex/plan-794-dev | reviewed_commit=d027e5f617a3d33bb8b1897779569020f886f0e2 | base_commit=8b97d3c9bc9c86cb4d8ebde4a5d7856554e83b9c；R1=91974d8f8d826a9cdb3ea6a50038a518bc02c4e9 | dependency_revisions=auto-down@c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8（clean）；实读锁/配置/CLI指纹见附件 | spec_inputs=四目标Spec hash与R1相同；冻结SD01..04 SHA256=84d2b2776faba28671437fbc91e708986408adb1240057639689923cca4c5bac | acceptance_results=AC01..05 pass，AC06 pending | findings=F-794-R1-01/02/03全部CLOSED，无新增finding；strict pass/0违例/2窄grandfather、原反例现在拒绝失败点击与旧成功标签、定向9/9零本批文件告警；guard clean | evidence=[R2完整报告](attachments/794/review-r2/review.md)；真实VM60/60且旧57项全部保留、查询失败/持续pending/三次重新查询到applied等6控制全过、外部consumer5/5、R1独立源码八native与32轮heap/pool配平2/2重放通过、fmt/diff-check通过；生产/依赖/配置/Vue探针与CLI未变且hash相同，明确复用R1 Vue+VM API后端59/59，不宣称Rust backend新验收 | pending_closeout_gates=merge-owned裸cargo t+tv、Spec/ledger沉淀/合流/归档与guard清理；ui_gen未触及不触发tu，tf主检出批量单实例；本轮未跑整档或docs_gen | next=reviewed 7/8，T07完成、T08待merge；代码/依赖发生语义变化须受影响复审再跑冻结门禁；未合入或宣称交付完成。
+
+
+2026-10-16 merge：PLAN-794:r1 | stage=merge | outcome=delivered | delivery_commit=5ddef1315818f363c9362cf8e7b6c53fe37c7837 | reviewed_commit=d027e5f617a3d33bb8b1897779569020f886f0e2 | base=8b97d3c9b | rebase 93c508d7d 并入：range-diff 修复提交全等，实现提交仅 Cargo.toml 并集上下文（package-lock/diagnostics consumer 成员）+baseline 元数据差异；基线重锚 @7e5225426 declared_edges=48，strict pass 0 违例 2 grandfather | 冻结门禁最终 tip：裸 cargo t 5335/5335（66.1s）+ cargo tv 163/163（sccache SCCACHE_SERVER_PORT=42917）；首轮 @d027e5f61 同绿后因 rebase 交付身份变更按规程重跑 | SD-01..04 落 vm/overview+ui/overview+widgets/scroll-pane+scroll-child-anchor；plans/goals/INDEX 回写 | ledger v35→v36 guarded offline projection（P794-D1/D2/T/R2/M；含预存未提交 P793-* 一并入库，793 已归档） | 详见 docs/plans/reports/794-scroll-host-provider-merge.md | 归档=docs/plans/archive/794-scroll-host-provider.md；清理见 cleaned 回执
 
 ## 10. 待澄清事项
 

@@ -4,6 +4,19 @@
       "id": "reports",
       "items": [
         {
+          "id": "P794-M",
+          "title": "PLAN-794 合入沉淀收据（scroll host provider 交付）",
+          "content": "交付=5ddef1315 ff-only（实现 4f41eb004..2b8a48e5f + specs 沉淀 7e5225426 + 基线重锚 5ddef1315）。冻结门禁最终 tip：裸 t 5335/5335 + tv 163/163（tu 不触发）；777 strict pass 0 违例（declared_edges=48）。SD-01..04 落四目标 Spec + plans/goals/INDEX 回写。ledger v35→v36 guarded offline projection。range-diff：修复提交全等，实现提交仅 Cargo.toml 并集上下文差异。",
+          "file": "docs/plans/reports/794-scroll-host-provider-merge.md",
+          "tags": [
+            "PLAN-794",
+            "delivery:5ddef1315",
+            "outcome:pass",
+            "completion:delivered"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P789-M1",
           "title": "PLAN-789 交付回执（词法基础抽取）",
           "content": "物理搬迁 2658 行（token 521+lexer 2137）→crates/auto-lex；auto-lang 净删 2712 行（token 521→7、lexer 2137→8、error 1300→1231）只留薄 re-export+From 投影；边界 lang-core 域+禁向规则+基线显式重锚 8a5b93920（落 master 后可解析）；冻结门禁 bare cargo t 5318/5318 + tv 163/163 于交付提交 48dae3c48；rebase range-diff 3/3 全等后 ff-only 线性合入。",
@@ -1948,6 +1961,17 @@
             "plan:795",
             "reviewed_commit:edf982e52",
             "outcome:pass"
+          ]
+        },
+        {
+          "id": "P793-M1",
+          "title": "PLAN-793 交付回执（诊断基础抽取）",
+          "content": "物理搬迁 1231 行 error.rs→crates/auto-diagnostics（1237 行，唯三补丁）；auto-lang error.rs 1231→26 行薄门面（20 名冻结公开面）；新增双 consumer fixture（271+179 行）+V02 冻结 golden 入库；边界 lang-core 域+基线合流重锚（union 树 48 边，strict pass）；两次 rebase over 795/787 并发落地（首轮 Cargo.toml exclude 并集+基线取 master 侧后统一重锚，二轮 docs/plans-only 全等），range-diff 终轮 4/4 全等，旧→新映射 827452a2a→39d7c0a0e/a8faf1e31→403bc7fc1/96bd5cc3e→228e15763/27cada126→2a2b15478；冻结门禁 bare cargo t 5324/5326（双在案 flake solo 绿）+tv 163/163+consumer 5/5+7/7 于 delivery 2a2b15478；ledger v35 受管离线投影（本条）。",
+          "file": "docs/plans/archive/793-diagnostics-foundation-extraction.md",
+          "tags": [
+            "plan:793",
+            "commit:2a2b15478",
+            "completion:delivered"
           ]
         }
       ]
@@ -4263,6 +4287,33 @@
     {
       "id": "designs",
       "items": [
+        {
+          "id": "P794-D2",
+          "title": "UI ScrollControllerProvider adapter 与 scroll-pane/child-anchor 调用边界（SD-02/03/04）",
+          "content": "PLAN-794 SD-02/03/04：ScrollControllerProvider（无状态）委托 ui::scroll::controller 原注册表/锚点状态机（renderer binding/measured 单一真源，不复制第二 registry），ui 单门控；progress 经 geometry::progress 单源现算。宿主接线四点 if-absent（install_ui_host_capabilities/run_file_dynamic_ui_inner/VmBridge 两构造）。未迁族清单收窄减 scroll controller 族。scroll-pane 增宿主装配说明，测量/intent 合同零改动。scroll-child-anchor 调用边界迁 provider，781 状态机与完成 oracle 原样留 controller.rs/renderer。",
+          "file": "docs/specs/auto-lang/ui/overview.md",
+          "tags": [
+            "PLAN-794",
+            "SD-02",
+            "SD-03",
+            "SD-04",
+            "delivery:5ddef1315"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P794-D1",
+          "title": "scroll native 宿主能力 ScrollHostProvider/DTO/缺席/装配（SD-01）",
+          "content": "PLAN-794 SD-01：9900..9905+9922/9923 八 native 经 per-VM ScrollHostProvider 供值（trait 五方法 next_controller_handle/enqueue_intent/controller_snapshot/enqueue_anchor_request/anchor_request_state；DTO=ScrollAxisDto/ScrollIntentDto/ScrollSnapshotDto 8×f64/ScrollAnchorStateDto，零 UI 类型/VM 堆 id/池索引/renderer 引用）。装配=779/785/790 同构三级（实例注入>构造期默认快照>兼容 if-absent）；注入不 bump binding_revision。缺席=T-01 冻结降级臂逐字面值（controller=Int 0、intent=Bool false、state=Float 0.0、to_child=error:unsupported、anchor_state=unknown）。弹序勘定：可选轴在顶先弹（修 656 期误路由）。781 状态机完整继承零语义迁移。",
+          "file": "docs/specs/auto-lang/vm/overview.md",
+          "tags": [
+            "PLAN-794",
+            "SD-01",
+            "delivery:5ddef1315",
+            "reviewed:d027e5f61"
+          ],
+          "status": "active"
+        },
         {
           "id": "P789-D2",
           "title": "前端词法外置事实：兼容出口与未迁残留边",
@@ -7253,12 +7304,48 @@
             "commit:edf982e52",
             "outcome:pass"
           ]
+        },
+        {
+          "id": "P793-D1",
+          "title": "auto-diagnostics 诊断基础 crate 合同（单一实现/门面/无 AST 闭包）",
+          "content": "PLAN-793 交付：AutoError 聚合与语法/类型/名称/运行时/comptime/警告各族诊断+WithSource 包装+attach_source/format_error/find_best_match 单一实现自 auto-lang/src/error.rs 逐字迁入 crates/auto-diagnostics（唯三补丁：Name→AutoStr×2+头注；TypeError::CannotModifyViewParam 载荷=auto_val::AutoStr 同一类型，error→AST 边切断）。normal 闭包仅 auto-lex+auto-val+miette/thiserror（module-boundaries 域 lang-core）；auto-lang error.rs=20 名冻结公开面薄门面（auto_lang::error::* 路径/身份零变化），owner 侧 From（route/discovery、infer/unification）合法留存；多错误收集上限留 auto-lang lib.rs。同一性合同 auto_lang::error::X ≡ auto_diagnostics::error::X，消费者不得降级 String。外部消费门 diagnostics-consumer+verify-deps；互操作门 interop-consumer（真实 parse/type/name/route 阶段保持）。",
+          "file": "docs/specs/auto-diagnostics/project.md",
+          "tags": [
+            "PLAN-793",
+            "r2",
+            "2a2b15478"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P793-D2",
+          "title": "前端/词法规范同步：error 薄门面与剩余 DAG 更新",
+          "content": "frontend/overview 增量（SD-02）：未迁事实节改记 PLAN-793 诊断外置——error.rs=auto-diagnostics 薄门面 20 名，原 error→ast::Name 边已切断（残留边与 owner 见 plan 793 t05-t06 附件 §6）；源码清单+代码核对节双列门面/单一定义两路径；外置进度行明确词法（789）+诊断（793）已外置、parser→ast/types/infer/session/module_cache/dialect/ui 归前端外置批次。auto-lex/project 窄同步（SD-03）：From<LexError> for AutoError 与聚合/attach_source 归属改 auto-diagnostics（经 re-export 链身份不变），多错误收集上限仍归 auto-lang lib.rs，原『error.rs 的 ast::Name 边』残留表述销行。",
+          "file": "docs/specs/auto-lang/frontend/overview.md",
+          "tags": [
+            "PLAN-793",
+            "r2",
+            "2a2b15478"
+          ],
+          "status": "active"
         }
       ]
     },
     {
       "id": "tests",
       "items": [
+        {
+          "id": "P794-T",
+          "title": "PLAN-794 测试资产（in-crate plan794 + 外部 scroll-provider-consumer + p781 探针）",
+          "content": "in-crate tests/plan794_scroll_host_provider.rs（剪断锚/ID 钉扎/缺席矩阵/fake 委托精确参数/Clone-merge-两 VM/真实 adapter 接线）；外部 fixture test/fixtures/modularity/scroll-provider-consumer 5/5（V01 no-ui 真管线 + V02 arity/轴/Unicode/缺席/32 轮清栈）；p781 VM 探针 60/60（含 R1 修复：新鲜查询 oracle+永久负控+pending 重放）；Vue 59/59 指纹复用。",
+          "file": "crates/auto-lang/src/tests/plan794_scroll_host_provider.rs",
+          "tags": [
+            "PLAN-794",
+            "delivery:5ddef1315",
+            "outcome:pass"
+          ],
+          "status": "active"
+        },
         {
           "id": "P789-T1",
           "title": "PLAN-789 测试资产（golden 重放/状态/身份/consumer）",
@@ -8786,12 +8873,36 @@
             "commit:edf982e52",
             "outcome:pass"
           ]
+        },
+        {
+          "id": "P793-T1",
+          "title": "PLAN-793 测试资产（V02 golden 重放/双 consumer/定向族）",
+          "content": "auto-diagnostics V02 冻结 golden 重放 38 例/12 族（期望=旧实现公开面生成冻结件 SHA256 e97b9450…2a09d，.gitignore 否定规则入库可干净检出重放；display/code/severity/help/url/labels/related/debug+60 宽无色渲染逐字段对拍）；diagnostics-consumer 独立 fixture 5 例（闭包断言 verify-deps 零 auto-lang/man/vm/ui）+diagnostics-interop-consumer 7 例（同一类型双向互传/真实 parse E0099/真实 type=check_field_type E0106 span(57,1)/真实 name=check_symbol E0201/route Msg/? 传播，有效控制组齐）；定向 error_tests 4/4+error_spans 8/8+lib 测试二进制 6876 全编译；merge 冻结门禁 bare cargo t 5326 run 5324 pass（双红 plan484_024/plan707_cancel 均在案 flake solo 绿）+cargo tv 163/163（绑定 2a2b15478，二次 rebase range-diff 4/4 全等证据复用）。",
+          "file": "crates/auto-diagnostics/tests/v02_golden_replay.rs",
+          "tags": [
+            "PLAN-793",
+            "2a2b15478"
+          ],
+          "status": "active"
         }
       ]
     },
     {
       "id": "reviews",
       "items": [
+        {
+          "id": "P794-R2",
+          "title": "PLAN-794 独立最终复审 R2（三 finding 闭合后 pass）",
+          "content": "R1 needs_fix（F-794-R1-01 P2 基线过期/R1-02 P2 VM 探针 oracle 可接受 stale/R1-03 P3 unused_mut）→ 修复轮全闭环 → R2 pass@d027e5f61：三 finding CLOSED 无新增；VM 60/60 且旧 57 项全保留；查询补控 6 项、consumer 5/5、定向 9/9；strict 0 违例 2 grandfather；guard clean；Vue 59/59 指纹复用。AC01..05 pass，AC06 pending merge-owned 门禁。",
+          "file": "docs/plans/attachments/794/review-r2/review.md",
+          "tags": [
+            "PLAN-794",
+            "r2",
+            "pass",
+            "reviewed_commit:d027e5f61"
+          ],
+          "status": "active"
+        },
         {
           "id": "P789-R1",
           "title": "PLAN-789 最终独立复审（r2，pass）",
@@ -11826,10 +11937,22 @@
             "reviewed_commit:edf982e52",
             "outcome:pass"
           ]
+        },
+        {
+          "id": "P793-R2",
+          "title": "PLAN-793 最终独立复审（r2，pass）",
+          "content": "r1 needs_fix 四项全闭后 r2 pass：F-793-R1-01/P1 golden 被 *.json 忽略未提交→否定规则入库（git show 提交内字节与旧臂冻结件三方相等 SHA256 e97b9450…，38 例重放可干净检出）；F-793-R1-02/P2 真实 type 用例实为 parser 错误→重写 real_type_error_keeps_stage（check_field_type 生产接线 UI 会话，Type/E0106 span(57,1)+有效控制）+real_name_check_error_keeps_stage（check_symbol，Name/E0201）+compile 用例重标注 parser 恢复（SyntaxWithSource/E0007），V03 7/7；F-793-R1-03/P3 门面 fmt→六文件同范围 rustfmt --check 全清；F-793-R1-04/P2 SD 遗漏同步→增 SD-03 auto-lex 窄同步+门面/实现路径修正+计数 18→20。绑定 reviewed_commit a8faf1e31（二次 rebase 后=403bc7fc1，range-diff 全等）；逐字搬迁审计仅 3 补丁、20 名门面完整、owner 侧双 From 留存、777 strict pass 0 violations。",
+          "file": "docs/plans/attachments/793/review-r2.md",
+          "tags": [
+            "PLAN-793",
+            "r2",
+            "pass",
+            "a8faf1e31"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 34
+  "version": 36
 }
