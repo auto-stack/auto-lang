@@ -31,6 +31,6 @@ pub use query::{
     QueryKind, SemaQueryKey,
 };
 pub use reflect::{
-    list_candidates, list_fields, query_field, query_signature, CtAdmission, CtRequest,
-    CtResult, InstanceKey, PortableValue, RuntimeProjectionPolicy,
+    list_candidates, list_fields, query_field, query_signature, CtAdmission, CtRequest, CtResult,
+    InstanceKey, ModelCt, PortableValue, RuntimeProjectionPolicy,
 };

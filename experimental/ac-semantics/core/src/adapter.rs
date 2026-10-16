@@ -90,17 +90,20 @@ fn vt_name(v: &auto_ac_prototype::source::resolve::VT) -> &'static str {
 
 /// Outcome of the old pipeline on one source.
 #[cfg(feature = "core-ast")]
+#[derive(Debug)]
 pub enum OldVerdict {
     Accepted(Box<OldFacts>),
     Rejected(String),
 }
 
 #[cfg(feature = "core-ast")]
+#[derive(Debug)]
 pub struct OldFacts {
     pub fns: Vec<OldFn>,
 }
 
 #[cfg(feature = "core-ast")]
+#[derive(Debug)]
 pub struct OldFn {
     pub name: String,
     pub params: Vec<(String, &'static str)>,

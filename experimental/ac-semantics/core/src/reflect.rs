@@ -247,6 +247,65 @@ impl RuntimeProjectionPolicy {
     }
 }
 
+// ---------------------------------------------------------------------------
+// model CT producer (§5.3: 显式模型 producer 测试缓存/依赖环)
+// ---------------------------------------------------------------------------
+
+/// Explicit MODEL producer for CT requests: admits the request, tracks
+/// the live request chain, and rejects cycles with the full chain in
+/// the diagnostic. Results are always `model_compute` — no AVM
+/// execution is claimed, performed, or marked.
+pub struct ModelCt {
+    chain: Vec<String>,
+}
+
+impl Default for ModelCt {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ModelCt {
+    pub fn new() -> Self {
+        ModelCt { chain: Vec::new() }
+    }
+
+    /// Evaluate one request. `body` is the (model) implementation of
+    /// the callee; it may recursively evaluate dependency requests on
+    /// this same scheduler — a request chain that revisits a callee is
+    /// a controlled `CyclicRequest`, never unbounded recursion.
+    pub fn evaluate<F>(&mut self, req: &CtRequest, body: F) -> Result<CtResult, CtAdmission>
+    where
+        F: FnOnce(&CtRequest, &mut ModelCt) -> Result<CtResult, CtAdmission>,
+    {
+        req.admit()?;
+        if let Some(pos) = self.chain.iter().position(|c| *c == req.callee) {
+            let mut chain: Vec<String> = self.chain[pos..].to_vec();
+            chain.push(req.callee.clone());
+            return Err(CtAdmission::CyclicRequest { chain });
+        }
+        self.chain.push(req.callee.clone());
+        let result = body(req, self);
+        self.chain.pop();
+        result
+    }
+
+    /// Directly fold i32 constants (the simplest model producer): sums
+    /// the i32 arguments. Used by tests and the cache/dependency-cycle
+    /// model scenarios.
+    pub fn fold_i32_sum(req: &CtRequest) -> Result<CtResult, CtAdmission> {
+        req.admit()?;
+        let mut sum = 0i32;
+        for a in &req.args {
+            match a {
+                PortableValue::I32(v) => sum = sum.wrapping_add(*v),
+                _ => return Err(CtAdmission::NonPortableValue("fold expects i32 args")),
+            }
+        }
+        Ok(CtResult::model(PortableValue::I32(sum), req.deps.clone()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

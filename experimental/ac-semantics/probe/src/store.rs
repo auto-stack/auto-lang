@@ -21,13 +21,14 @@ use ac_artifact_probe::codec::ChunkKind;
 use ac_artifact_probe::identity::QueryKey;
 use ac_artifact_probe::store::{ManagedStore, PutRequest, StoreError};
 use ac_sema_contract::{
-    decode_page, encode_page, CachedResult, ModuleIndex, PageBody,
-    PageHeader, PageKind, RecordMeta, ResultFacts, SemaPage, SEMA_PAGE_SCHEMA_V1,
+    decode_page, encode_page, CachedResult, ModuleIndex, PageBody, PageHeader, PageKind,
+    RecordMeta, ResultFacts, SemaPage, SEMA_PAGE_SCHEMA_V1,
 };
 use ac_sema_core::{
     current_fingerprints, freshness_of, infer::InferOutcome, infer::InferSession,
-    manifest_from, query::QueryKind, Freshness, InferSummary, SemaInput, SemaQueryKey,
+    manifest_from, query::QueryKind, Freshness, InferSummary, SemaQueryKey,
 };
+use ac_sema_core::SemaInput;
 use std::path::Path;
 
 /// The isolated semantic namespace layer (contract-decision D8).
@@ -43,6 +44,7 @@ fn store_key(k: &SemaQueryKey) -> QueryKey {
 }
 
 /// What a lookup found (never computed here).
+#[derive(Debug)]
 pub enum FetchOutcome {
     /// Payload decoded AND the full manifest re-validated fresh.
     Hit { page: SemaPage, artifact_id: String },
@@ -61,6 +63,7 @@ pub struct QueryFlow {
     pub compute_calls: u32,
 }
 
+#[derive(Debug)]
 pub enum FetchedOrComputed {
     Hit { page: SemaPage },
     Computed { summary: InferSummary },
@@ -79,23 +82,49 @@ pub fn lookup_only(
         return Ok(FetchOutcome::Miss);
     };
     let page = decode_page(&loaded.payload)?;
-    // consumer identity validation: the cached body must be the right
-    // KIND and the right TARGET before any bytes are trusted further
-    let CachedResult { target, .. } = match &page.body {
-        PageBody::CachedResult(c) => c,
-        _ => {
-            return Err(ProbeError::KindMismatch {
-                expected: "CachedResult",
-                found: format!("{:?}", page.header.kind),
-            })
-        }
+    // consumer identity validation: the page KIND must match the query
+    // (infer→CachedResult, fields→RecordMeta, sig→FnMeta,
+    // candidates→ModuleIndex) and the TARGET must be the queried one —
+    // a mismatched payload is never trusted further
+    let expected_kind = match query {
+        QueryKind::InferBody { .. } => PageKind::CachedResult,
+        QueryKind::FnSig { .. } => PageKind::FnMeta,
+        QueryKind::RecordFields { .. } => PageKind::RecordMeta,
+        QueryKind::ListCandidates { .. } => PageKind::ModuleIndex,
     };
-    let expect_target = ac_sema_core::query::target_logical(input, query);
-    if *target != expect_target {
-        return Err(ProbeError::TargetMismatch {
-            found: target.as_str().to_string(),
-            expected: expect_target.as_str().to_string(),
+    if page.header.kind != expected_kind {
+        return Err(ProbeError::KindMismatch {
+            expected: format!("{expected_kind:?}"),
+            found: format!("{:?}", page.header.kind),
         });
+    }
+    let expect_target = ac_sema_core::query::target_logical(input, query);
+    match &page.body {
+        PageBody::CachedResult(c) => {
+            if c.target != expect_target {
+                return Err(ProbeError::TargetMismatch {
+                    found: c.target.as_str().to_string(),
+                    expected: expect_target.as_str().to_string(),
+                });
+            }
+        }
+        PageBody::FnMeta(m) => {
+            if m.decl.logical != expect_target {
+                return Err(ProbeError::TargetMismatch {
+                    found: m.decl.logical.as_str().to_string(),
+                    expected: expect_target.as_str().to_string(),
+                });
+            }
+        }
+        PageBody::RecordMeta(m) => {
+            if m.shape.decl.logical != expect_target {
+                return Err(ProbeError::TargetMismatch {
+                    found: m.shape.decl.logical.as_str().to_string(),
+                    expected: expect_target.as_str().to_string(),
+                });
+            }
+        }
+        PageBody::ModuleIndex(_) | PageBody::InferBody(_) => {}
     }
     if let PageBody::CachedResult(c) = &page.body {
         let current = current_fingerprints(input);
@@ -104,7 +133,9 @@ pub fn lookup_only(
             Freshness::Stale { reason } => Ok(FetchOutcome::Stale { reason }),
         }
     } else {
-        unreachable!("checked above")
+        // non-cached-result pages carry their identity in the envelope;
+        // a key hit with matching kind/target is a hit
+        Ok(FetchOutcome::Hit { page, artifact_id: loaded.artifact_id })
     }
 }
 
@@ -347,7 +378,7 @@ pub fn run_inference(input: &SemaInput, fn_name: &str) -> InferOutcome {
 pub enum ProbeError {
     Store(StoreError),
     Codec(ac_sema_contract::CodecError),
-    KindMismatch { expected: &'static str, found: String },
+    KindMismatch { expected: String, found: String },
     TargetMismatch { found: String, expected: String },
     UnknownTarget { what: &'static str, name: String },
     NotCacheable(&'static str),

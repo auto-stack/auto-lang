@@ -404,7 +404,7 @@ impl From<RefError> for CodecError {
 // primitive cursor IO
 // ---------------------------------------------------------------------------
 
-struct Cur<'a> {
+pub(crate) struct Cur<'a> {
     buf: &'a [u8],
     pos: usize,
 }
@@ -413,7 +413,7 @@ impl<'a> Cur<'a> {
     fn new(buf: &'a [u8]) -> Self {
         Cur { buf, pos: 0 }
     }
-    fn take(&mut self, n: usize, at: &'static str) -> Result<&'a [u8], CodecError> {
+    pub(crate) fn take(&mut self, n: usize, at: &'static str) -> Result<&'a [u8], CodecError> {
         if self.pos + n > self.buf.len() {
             return Err(CodecError::Truncated { at });
         }
@@ -421,18 +421,18 @@ impl<'a> Cur<'a> {
         self.pos += n;
         Ok(s)
     }
-    fn u8(&mut self, at: &'static str) -> Result<u8, CodecError> {
+    pub(crate) fn u8(&mut self, at: &'static str) -> Result<u8, CodecError> {
         Ok(self.take(1, at)?[0])
     }
-    fn u16(&mut self, at: &'static str) -> Result<u16, CodecError> {
+    pub(crate) fn u16(&mut self, at: &'static str) -> Result<u16, CodecError> {
         let b = self.take(2, at)?;
         Ok(u16::from_le_bytes([b[0], b[1]]))
     }
-    fn u32(&mut self, at: &'static str) -> Result<u32, CodecError> {
+    pub(crate) fn u32(&mut self, at: &'static str) -> Result<u32, CodecError> {
         let b = self.take(4, at)?;
         Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     }
-    fn str(&mut self, at: &'static str) -> Result<String, CodecError> {
+    pub(crate) fn str(&mut self, at: &'static str) -> Result<String, CodecError> {
         let n = self.u32(at)? as usize;
         if n > MAX_VEC_LEN as usize {
             return Err(CodecError::TooLarge { what: "string", len: n as u64 });
@@ -440,14 +440,14 @@ impl<'a> Cur<'a> {
         let b = self.take(n, at)?;
         String::from_utf8(b.to_vec()).map_err(|_| CodecError::BadUtf8)
     }
-    fn vec_len(&mut self, what: &'static str, at: &'static str) -> Result<usize, CodecError> {
+    pub(crate) fn vec_len(&mut self, what: &'static str, at: &'static str) -> Result<usize, CodecError> {
         let n = self.u32(at)?;
         if n > MAX_VEC_LEN {
             return Err(CodecError::TooLarge { what, len: n as u64 });
         }
         Ok(n as usize)
     }
-    fn done(&self) -> Result<(), CodecError> {
+    pub(crate) fn done(&self) -> Result<(), CodecError> {
         if self.pos != self.buf.len() {
             Err(CodecError::TrailingBytes((self.buf.len() - self.pos) as u64))
         } else {

@@ -329,13 +329,18 @@ impl SemaQueryKey {
 }
 
 /// All dependency fingerprints of the CURRENT input, indexed for
-/// manifest validation.
+/// manifest validation. `source_maps` is filled by the publishing layer
+/// with the actual source bytes read (origin → fp); a manifest claiming
+/// a source-map dependency fails CLOSED when the origin is not
+/// registered — reflection that read source/doc cannot silently reuse
+/// a stale result (§5.3).
 #[derive(Clone, Debug, Default)]
 pub struct DependencyFingerprints {
     pub fn_sigs: BTreeMap<String, String>,
     pub fn_bodies: BTreeMap<String, String>,
     pub field_sets: BTreeMap<String, String>,
     pub candidate_sets: BTreeMap<&'static str, String>,
+    pub source_maps: BTreeMap<String, String>,
     pub config: String,
 }
 
@@ -364,6 +369,7 @@ pub fn current_fingerprints(input: &SemaInput) -> DependencyFingerprints {
         fn_bodies,
         field_sets,
         candidate_sets,
+        source_maps: BTreeMap::new(),
         config: fp(
             format!("{INFER_ALGO_ID}\u{1}{TARGET_SEMANTICS}\u{1}{BUILTIN_CAPABILITIES}").as_bytes(),
         ),
@@ -433,7 +439,9 @@ pub fn freshness_of(manifest: &DepManifest, current: &DependencyFingerprints) ->
             }
             "config" => current.config == p.fp,
             "group-content" => true,
-            "source-map" => true,
+            // fail-closed: an unregistered source origin cannot be
+            // validated, so the result is stale rather than trusted
+            "source-map" => current.source_maps.get(&p.origin) == Some(&p.fp),
             _ => true,
         };
         if !ok {
