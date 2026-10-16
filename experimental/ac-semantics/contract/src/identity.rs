@@ -65,11 +65,13 @@ impl PackageId {
 
 /// The declaration kinds the contract models. Records are the only
 /// nominal type carriers of the current profiles; functions carry
-/// signatures and bodies.
+/// signatures and bodies. Discriminants are the wire tags of the page
+/// codec (`DeclRef`).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[repr(u8)]
 pub enum DeclKind {
-    Fn,
-    Record,
+    Fn = 1,
+    Record = 2,
 }
 
 impl DeclKind {

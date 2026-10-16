@@ -341,6 +341,21 @@ pub enum PageBody {
     CachedResult(CachedResult),
 }
 
+/// Byte-level TypeDesc encode (public seam for tests/tools).
+pub fn encode_typedesc_bytes(t: &TypeDesc) -> Result<Vec<u8>, CodecError> {
+    let mut out = Vec::new();
+    encode_typedesc(&mut out, t)?;
+    Ok(out)
+}
+
+/// Byte-level TypeDesc decode: bounded, iterative, trailing-rejecting.
+pub fn decode_typedesc_bytes(bytes: &[u8]) -> Result<TypeDesc, CodecError> {
+    let mut cur = Cur::new(bytes);
+    let t = decode_typedesc(&mut cur)?;
+    cur.done()?;
+    Ok(t)
+}
+
 /// Controlled codec errors — malformed pages are rejected, never panic.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CodecError {
