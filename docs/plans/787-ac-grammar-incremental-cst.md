@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-787
-status: executing
+status: execution_done
 feature_name: Atom 语法驱动的增量词法与无损 CST 首条闭环
 plan_revision: 1
 author: [Codex]
@@ -203,6 +203,33 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
 
+### 执行进度注记（work，2026-10-16 复审 R4 修复轮 → d2b0ec99b）
+
+**四连败诊断更新**（R3 诊断的遗留盲区）：R1–R3 修复普遍把不变量绑定到
+"被点名的入口/生产者"，而非合同的全入口 × 全生产者 × 全坐标系组合——
+R4 三项 P1 分别是：持久化身份绑定了 fresh 解析的内存块布局（增量嫁接
+布局不同却共享键空间）；span admission 只加在 decl_range 根（decl_subtree
+全可达子树未验证）；查询源覆盖窗口按语义 span 推导（单元 origin 含前导
+trivia 可在前一页）。本轮修复全部提升到合同级：
+
+| finding | 不变量 | 设计调整（合同级） |
+|---|---|---|
+| R4-01 | 持久化身份=**树逻辑内容**的函数，与分配历史无关 | `canonicalize` 规范形：根孩子文档序+先序 DFS 重打包页（单元永不拆页/超预算独占页/不可达节点不入页）；fresh/增量页字节相同→同键幂等。键形保持历史稳定（四代探针植入件真实命中；中途曾试加键布局分量致 R2 两例 miss，已回退） |
+| R4-02 | admission=**整棵可达子树**在真实入口 | decl_subtree 内验证：归属（页内声明槽位一致）/绝对跨度≤源长/父子约束（非 trivia ⊆父 span、trivia 右界⊆父 span）/字段与 kind 适用面；decl_range 保持根级单点（accepted control） |
+| R4-03 | 源覆盖窗口=**单元坐标域** [origin, span_hi) | origin 含前导 trivia 可在前一页；平移 checked_sub 受控退出（不饱和/不吞错）；切片两端 token 边界（页边界切多字节字符先切再转码） |
+| R4-04 | 计量=**实际容量+同驻留**，OS=**阶段内峰值** | 受管：capacity×元素+String 堆容量+parse 产物/payload framed/finish move 前目录同点合计；put 零克隆；OS：build/warm/冷恢复/源重建期间采样器+生成器分列+缺失项显式（parse 内部工作栈仅 OS 可见）；**真实削减**：封块 shrink_to_fit+token 收紧（单块瞬态 5.88→3.0MiB），64MiB 档 managed 8027KiB≤8MiB 不放宽预算 |
+| R4-05 | SD 稿=实际机制 | 会话域仲裁（非 manifest revision）/DECL_INDEX_PAGE=2048/规范形/admission/查询坐标/预算证据边界；SD-01 计数按 raw 实测 106 |
+| R4-06 | 格式覆盖全改面 | rustfmt 全量净+Cargo.toml EOF 空行 |
+
+修复提交 `d2b0ec99b`（9 文件 +1168/−170；含 runtime parse/mod.rs 封块
+shrink——受管容量口径下的真实内存削减）。证据：R4 反例 **3/3**（修复前
+0/3）、R1 7/7 + R2 18/18 + R3 8/8 保持（无回归、无空过）；acceptance
+**16 族 ALL PASS**（raw 合计 106：cache 7/admission 15 含新 oracle）；
+783 触面 --lib 14/admission_ 7/dep_audit_ 5 全绿；cargo check 零新警告；
+diff-check 净；生产面零改动。64MiB：managed 8027KiB≤8MiB、OS 各阶段
+采样峰值 17,340KiB≤64MiB（build 15860/warm 14648/冷恢复 17340 分列）、
+单查询增量读取≤512KiB、build 538.5s。
+
 ### 执行进度注记（work，2026-10-16 复审 R3 修复轮 → 15cfeac97）
 
 **三连败诊断更新**（R2 诊断的遗留盲区）：R2 轮的"设计调整"多项仍是旧例
@@ -339,7 +366,53 @@ ac-core 零 diff——compatibility_ 审计）。
 
 ## 9. 复审记录
 
-### 2026-10-16 final review R3 — needs_fix（当前有效）
+### 2026-10-16 work R4 修复轮 handoff（四连败诊断更新 + R4 findings 全闭合 → 送审）
+
+stage: work；plan_id: PLAN-787；plan_revision: 1；outcome: pass（execution_done 7/9）；
+worktree: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+base_commit: bf773ca9bfc5a2d6ed672f904011419b03eff1ef；code_commit: d2b0ec99b（R4 修复）；
+dependency_revisions: 同一实施树 path 依赖（auto-atom/auto-ac-prototype/ac-artifact-probe），绑定 d2b0ec99b；
+task_ids: T-06/T-07（R4 重开后修复重勾）。
+诊断链接：见上方 R4 修复轮注记的四连败诊断表（R1–R3 修复的不变量绑定
+盲区=入口/生产者/坐标系未到合同级组合）。
+readiness：
+- work-owned AC：AC-01..04 规定运行时范围维持（反例+acceptance 全绿）；
+  AC-05——V-09 syntax_cache_ 7（新增同 snapshot fresh/增量入库幂等共存：
+  正反序/重复编辑/重开+跨页 trivia 查询 5 用例）、V-10 syntax_admission_ 15
+  （新增子树 admission 4 反例+跨页非零 origin 正控）、V-11 syntax_budget_ 2
+  （64MiB 诚实容量口径 managed 8027KiB≤8MiB+OS 阶段采样器分列）；AC-06
+  ——spec-delta 重写（会话域仲裁/2048/规范形/admission/预算边界/raw 计数）。
+- 反例重放：R4 **3/3**（修复前 0/3）+ R1 7/7 + R2 18/18 + R3 8/8 全绿
+  （键形稳定保证四代探针植入件真实命中，无空过）。
+- 未闭合 in-contract findings / 覆盖缺口 / 未决合同决定：无（F787-R4-01..06
+  全闭合；预算证据按 R4-04 口径可判定——OS 阶段内峰值+受管实际容量+缺失
+  项显式记录）。
+- 既有清白行为保留断言：acceptance 16 族 106 raw 全绿未回退。
+merge-owned pending：closeout 完整独立语法套件 + 783 触面（--lib/
+admission_/dep_audit_）+ Spec/索引/ledger 沉淀 + 合入归档/guard 清理；
+不跑根整档/docs_gen。
+blockers: 无；next_responsible_role: review（T-08 绑定 d2b0ec99b）。
+
+### 2026-10-16 final review R4 — needs_fix（历史；修复见上方 R4 修复轮 handoff）
+
+stage: review；review_scope: final；reviewer_identity: 当前独立审查会话，未参与实施，未创建代理；PLAN-787 r1。
+worktree_path: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；
+reviewed_commit: `15cfeac977a3a87b35b18aa92e56bfe9097b7174`；base_commit: `bf773ca9bfc5a2d6ed672f904011419b03eff1ef`。
+依赖同树 auto-atom/auto-ac-prototype/ac-artifact-probe；版本/配置及 Spec 输入见 [R4证据目录](attachments/787/review-r4/REVIEW.md)。冻结 SD SHA-256 `CC3F04A2FB2E1DE8785B67D3D5E2FD119E07B15ECA9AD978A58BE7A2443ECEBD`，未获通过。
+
+R1 7/7、R2 18/18、R3 8/8 独立重放均通过（集合有重叠）；投影显式栈、跨行 token、会话仲裁、注册失败保根的原反例闭合。新增三项集成反例全部失败：
+- F787-R4-01（P1）：同 snapshot 的 fresh/增量树布局不同，真实 A03 page key 冲突；不能完成幂等内容入库。
+- F787-R4-02（P1）：根 range 合法的有效 frame 中，越源 child span 经 decl_subtree 成功返回；完整 admission 未闭合。
+- F787-R4-03（P1）：合法跨页前导空白令实际 query bin 重定位 origin 无符号下溢，exit101；prefix=0 正控通过。
+- F787-R4-04（P2）：受管统计仍漏同时驻留/容量，OS仅返回点采样，不能证明合同全阶段峰值；不声称已测得实际超限。认可 manifest 实读分列与单查询增量读取口径。
+- F787-R4-05（P2）：拟议 SD 仍写 manifest revision/4096目录页等已废弃规则，须随实际机制重写。
+- F787-R4-06（P3）：artifacts/src/lib.rs:820 新增多空行未过 rustfmt。
+
+AC-01..04在规定运行时范围通过；AC-05/06/07未通过，AC-08 merge-owned pending。完整工作阶段 acceptance（含64MiB）16族全部通过，各族raw passed合计99次（过滤有重叠），见本轮报告；cargo check通过（仅既有shim警告），diff-check通过，生产源码零改动。未运行根整档/docs_gen或merge closeout。
+保留 T-01..05，重开 T-06/T-07，状态 executing 5/9；T-08/T-09未完成。旧 work handoff 是历史声明，不覆盖本轮反例；不批准转延期债。
+next: 原树 auto-plan-work 修复当前六项并增加永久集成 oracle，更新可复验峰值证据与 SD，提交后同树复审。最终 pass 后仍须冻结提交完整独立语法/783触面门禁、知识沉淀/合流归档/guard清理。本轮未改实现、未合入。
+
+### 2026-10-16 final review R3 — needs_fix（历史）
 
 stage: review；review_scope: final；reviewer_identity: 当前 Codex 会话，延续 R1/R2 独立审查，未参与实施、未创建代理。
 plan_id: PLAN-787；plan_revision: 1；outcome: needs_fix；status: executing 2/9。
