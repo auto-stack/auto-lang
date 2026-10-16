@@ -2,7 +2,7 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-15
-updated_at: 2026-10-15
+updated_at: 2026-10-16
 implemented_by_plans: []
 ---
 
@@ -14,6 +14,8 @@ implemented_by_plans: []
 关联：[Native ABI RFC](strategy/auto-native-abi-rfc.md)、[Rust互操作现状](28-rust-interop-architecture.md)、[C生态战略](strategy/c-ecosystem-strategy.md)、[后端演进](strategy/auto-native-backend-evolution.md)、[Design39](39-ac-incremental-syntax-and-language-platform.md)、[Design40](40-compiler-artifacts-and-cache-lifecycle.md)、[AutoBindgen Spec](../specs/auto-bindgen/project.md)。
 
 ## 1. 统一原则：共享接口描述，分别执行 ABI 契约
+
+2026-10-16时序：ABI合同/C双向互调探针尽早实施，不等完整AC；公开模块/互操作承诺前冻结有限AutoABI profile，随后扩大C导入/Rust C-shim。三个合同域各自版本化/验证，首批范围及门槛见Native ABI RFC§1.5。新ABI/FFI用例从开始纳入AutoDown，元数据/shim/toolchain/target输入纳入全局cache；这里仍是设计要求，不是发布声明。
 
 | 层 | 职责 | 与其它层的界限 |
 |---|---|---|
@@ -49,6 +51,8 @@ Auto declarations      C target headers / SDK metadata     Rust source+rustc shi
 拆分Auto ABI Specification、Interface Metadata Schema、FFI Contract和Module Protocol四份契约，共享基础类型/来源模型，独立版本化。Batom编码/Schema版本、AutoABI域、应用接口版本、foreign library版本、runtime服务版本各自独立。图不是要求现在另造四套大型实现，也不是把语义HIR与foreign元信息强行合并为同一种IR。
 
 ## 3. 统一元数据的最小职责
+
+内部语义事实与推导/CT反射的owner及持久模型见[Design42](42-semantic-metadata-inference-and-comptime.md)。本章Interface Metadata/Foreign IR是其受控消费/外语导入投影，不能取代内部语义服务；target layout与逻辑类型身份分开。runtime保留/调用adapter须和模块代际、ABI/权限绑定，不直接保存TypeInfoStore宿主函数指针或把同名类型视作同版本布局。
 
 以下是后续Schema需要覆盖的类别，字段名/编号未冻结；由可信frontend/adapter生成且再校验，不通过任意字符串约定下游猜测。
 

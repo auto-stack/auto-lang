@@ -2,7 +2,7 @@
 status: proposed
 describes: target-state
 created_at: 2026-10-15
-updated_at: 2026-10-15
+updated_at: 2026-10-16
 implemented_by_plans: []
 ---
 
@@ -14,6 +14,8 @@ implemented_by_plans: []
 关联：[Design39](39-ac-incremental-syntax-and-language-platform.md)、[AutoCache Spec](../specs/auto-cache/project.md)、[AIE Database](../specs/auto-lang/runtime/design/aie-database.md)、[阶段合同](../specs/auto-hir/stage-contract.md)、[AutoHIR](strategy/auto-hir-design.md)、[Atom/Batom](strategy/atom-batom-v2-design.md)、[Native ABI](strategy/auto-native-abi-rfc.md)。
 
 ## 1. 架构决定与非目标
+
+2026-10-16时序：统一身份/阶段依赖/store从首次编译集成开始消费，不等完整语言后补。首个hello-world全链路也须验fresh、热点、重启、变更失效和有界回收；无实现层级保持future。AutoDown同时观察真实重算/命中与语义/诊断等价，不只看耗时或去重。v0.7延后的是自有MIR与性能优化，不包含这些生命周期责任；交付门见后端战略§3.1。
 
 统一的是产物的语义模型、Schema/版本、身份/引用、依赖、物理访问与生命周期；不强制所有阶段共用一个万能Node结构，也不要求每次操作复制/保存全阶段完整状态。类型化内存视图、冻结二进制块、调试Atom文本是同一逻辑数据的不同消费形式。
 
@@ -34,6 +36,8 @@ implemented_by_plans: []
 - ac-core现有S0–S6/Checked/发布和contained runner合同继续有效。本文A-*是产物分类，不替换现有阶段编号或扩大已有profile的支持。
 
 ## 3. 全阶段产物目录
+
+2026-10-16语义细化见[Design42](42-semantic-metadata-inference-and-comptime.md)：A05保存可物化的AVM编译期结果/类型或生成项描述及依赖manifest；A06保存类型/签名/推导结果/泛型实例等不可变语义事实，不持久化求解器可变状态。runtime反射为A09/A10投影并受A12代际生命周期约束。CT源码不变仍须核依赖函数body、反射类型/候选集合、target/配置/VM版本及受控外部输入；只有完整输入不变才跳过执行，不另建私有meta/CT缓存。
 
 以下A-*为设计条目标识，不是冻结的wire tag或现有文件名。每类需有独立领域Schema、受管入口、版本、key组成、再生recipe、引用策略与oracle。小型临时结果可只驻内存；只有收益/成本适宜的结果才持久化。
 

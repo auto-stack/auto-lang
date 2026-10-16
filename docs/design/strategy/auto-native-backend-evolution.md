@@ -1,10 +1,9 @@
 # AC/ACC 后端演进：Cranelift、自举、SSA 与自主代码生成
 
-> 更新：2026-10-13（现行编号与推进队列）；2026-10-04版本路线与分期已由用户确认。具体接口、优化集与选型探针按专项 Plan 验证。
+> 更新：2026-10-16（正确性/性能分期与ABI、cache、测试交付门）。具体接口、优化集与选型探针按专项 Plan 验证。
 > 记录目标架构，不表示全部能力已实现。AC 指 Rust 实现的首版原生编译器；
 > ACC 指 Auto 实现的编译器主体，现有 roadmap 的 AAC 与之指同一条自举路线，命名另行统一。
-> 用户确认：v0.6 借助 Cranelift 完成约定 AC/ACC 原生自举；v0.7 推进自主低层 IR/SSA、
-> 优化体系与自主后端实验，不以完全替换 Cranelift 为硬性门槛。
+> 用户确认：v0.6 借助Cranelift完成约定AC/ACC原生自举，正确性优先，独立MIR/Typed MIR与性能优化延期到v0.7；v0.7先按证据复用后端优化，自己的低层IR/SSA/后端并非必交成果。
 
 关联：[AC 子集与目标代码](auto-ac-subset-and-target.md)、[HIR](auto-hir-design.md)、
 [Native ABI](auto-native-abi-rfc.md)、[v0.6 roadmap](../../roadmap-v0.6.md)、
@@ -34,12 +33,12 @@ Rust 原型先用 Cranelift，版本/API/SDK 由实测锁定；若必须能力�
 无需现在完整 clone Zig；深读时可使用独立参考目录、固定提交，不引入产品依赖。
 Zig 已迁至 Codeberg，旧 GitHub 仓不再镜像；0.15.1 发布说明仅作历史演进案例。
 
-## 3. v0.6：自举与优化基础
+## 3. v0.6：正确性、自举与可持续开发基础
 
 ~~~text
 Auto source → resolve/typecheck → Typed/Checked HIR
                                       ↓
-                         Auto 语义降级与基础优化
+                         Auto 语义/资源正确降级
                                       ↓
                       Cranelift adapter → CLIF/SSA
                                       ↓
@@ -54,16 +53,33 @@ FunctionBuilder 可维护可变源变量与 SSA 值的对应，不必先自己�
 
 v0.6 要建立下列基础，按后续计划逐项实现：
 - HIR 语义不变量和 effect 契约：数值/溢出、trap/错误、短路、调用顺序、内存、借用/移动与释放。
-- pass 的输入/输出阶段、前置条件、支持 profile、顺序、来源映射和失败诊断。
-- 语义变换后的 verifier 与优化前后对拍，记录配置及 pass 版本，分析缓存明确失效。
-- 必要的语义规范化、常量求值和安全简化；具体优化项依据真实程序与收益确定。
+- 明确阶段输入/输出、profile、来源映射、失败分类与产物身份；为将来pass保留合同，不强制本版实现通用优化框架。
+- 正确性必需的脱糖、所有权/清理规划、ABI lowering与合法化仍需实现；独立MIR/Typed MIR与性能优化工作推迟到v0.7。
+- 若启用后端优化或实施语义改写，仍须重验溢出/trap/副作用/资源，记录配置与版本、失效分析缓存；不能借分期放松正确性。
 - 从 HIR 向 CLIF/平台 ABI 的降级与隔离接口，公共 HIR 不泄漏后端私有结构。
 
 不能仅按“read/write”猜所有 effect；trap、资源释放、外部调用和重载边界也影响合法变换。
 常量求值须保持精确宽度/溢出/错误语义；未执行分支中的 trap 不能被提升成无条件编译错误。
 禁止通过排序字段重排初始化或命名参数副作用。内联不得破坏公开/可重载入口边界。
 复杂优化由已选后端承担其支持的部分，v0.6 不要求自写完整通用优化器。
-pass 框架是版本路线要求，不据此扩充正在执行的 Plan 741 的任务/AC。
+2026-10-16分期：v0.6不以LLVM运行性能对标或通用优化框架为门槛；开发周转、内存/磁盘有界与增量正确性仍属本版基础，不随优化工作延期。不回溯扩大已交付计划。
+
+### 3.1 首条正式集成管线的交付门（2026-10-16）
+
+语义侧新增架构前置：[Design42](../42-semantic-metadata-inference-and-comptime.md)要求元信息/类型推导/实例化与AVM编译期求值共享查询/身份/store，runtime反射由语义事实投影。v0.6要规划这些语言基础；支撑元编程的HIR→ABC子集不能随全量旧AVM迁移延期。具体范围/首批反射API另立Plan，不将未解决的语言规则藏在Codegen。
+
+用户要求增量/cache与新测试从开始进入编译器。现有有限profile/783探针不追溯称为下面全部完成。下一条正式集成的source→HIR→object→link/run，即使仅返回常量/hello-world，也须同时通过：
+
+| 门 | 必需能力与区分性验收 |
+|---|---|
+| G-01 正确性 | 显式profile、真实verify/native、阶段负例、trap/副作用/清理；禁止VM/转译替代 |
+| G-02 增量/cache | 真实统一store与阶段依赖；fresh与incremental语义/诊断等价；同进程/重启/跨工程命中；body/接口/config/target变更分轴失效；计量真实跳过阶段 |
+| G-03 生命周期 | 有界热点/索引/暂存、root/lease、自动回收、坏块恢复、不删用户数据；压力有界退让 |
+| G-04 AutoDown | AC source/HIR/native adapter及后续syntax adapter；实际source/oracle与产物链、fresh/缓存模式；required缺例/skip/工具错误不得绿 |
+| G-05 ABI | 私有实验ABI标清；公开独立模块/互操作前冻结有限AutoABI profile，独立编译双方互调及target/布局/ownership/版本错配拒绝 |
+| G-06 周转 | 从首例记录关联端到端trace和各阶段耗时/等待、命中/重算、I/O及内存；代表编辑负载以P95<1s为目标，P50/P99与压力长尾另报；阶段都<1s不能替代总周转，未测/未达保持明确状态 |
+
+文件级失效可作早期增量粒度，但不能每次全量重编后伪称缓存命中；未实现层级保留future，不能写空工件充覆盖。私有hello不要求先完成全部公开模块ABI。
 
 ## 4. ACC 通过后端桥接继续使用 Cranelift
 
@@ -81,7 +97,15 @@ Rust AC 可直接调用库；Auto ACC 通过明确桥接继续调用它。
 另明确路径/版本/时间戳等可复现条件，不默认任意构建字节必须相同。
 保留依赖库/运行时/桥接的来源与版本清单，自举不等同全部依赖都改写成 Auto。
 
-## 5. v0.7：自主低层 IR/SSA 与优化体系
+## 5. v0.7：按收益选择优化，按需引入低层IR
+
+2026-10-16用户提出“LLVM约80%的执行性能、只取约5%的主要优化pass”。采纳少量高收益优化方向；80%是待基准合同冻结/验证的目标，5%没有天然可比的分母，不作精确pass数量保证，不能拿LLVM pass数与egraph规则数换算。
+
+建议按吞吐定义P=几何平均(T_LLVM/T_Auto)，目标P≥0.8，即几何平均耗时比≤1.25；不等于所有程序最多慢20%。每项/分组回退、编译耗时、增量P95、峰值内存与代码尺寸另报。代表基准/权重/单项阈值由计划先冻结；固定同机/target/CPU/工具链/输入与语义。若LLVM基线来自等价C/Rust，须保留Auto溢出、边界、trap、ownership与同等runtime成本，不能借UB/省检查取快；无LLVM adapter时不得宣称同源后端对拍。
+
+先测Cranelift none/speed/speed_and_size，再查Auto lowering的多余分配/复制/调用及信息丢失，只补后端看不到且实测有益的语言级变换。达到目标可保留HIR→CLIF；只有分析/优化/多后端确需稳定CFG/SSA表示时，才引入AutoMIR/Typed MIR，不以自己造优化器为交付目标。
+
+Cranelift本身有优化器：锁定0.126.2的Context::optimize含控制流处理和egraph入口，并有别名分析/冗余load处理；AC当前native两处opt_level=none。启用speed需正确性对拍及新cache配置键，不能据上游能力宣称本项目达到80%。后端也不能重建已丢失的Auto ownership、公开接口/重载边界和语义依赖，这些仍归Auto。以下图为有必要性证据后采用的可选路线：
 
 ~~~text
 Typed/Checked HIR → Auto 低层 IR / CFG / SSA
@@ -93,7 +117,7 @@ Typed/Checked HIR → Auto 低层 IR / CFG / SSA
             Cranelift adapter        自主机器码后端
 ~~~
 
-建议先把自己的 SSA/优化体系接到 Cranelift，再扩展自主代码生成，以同一 HIR/语料隔离验证。
+若决定建设自己的SSA/优化体系，先接Cranelift，用同一HIR/语料隔离验证，再评估自主代码生成；无必要性证据则不启动此分支。
 Auto 低层 IR（工作名 AutoMIR，未冻结）确定块/值/类型、phi 或 block arguments、
 effect/内存、目标降级与 verifier；不在 v0.6 提前冻结具体指令集。
 v0.7 按性能证据选择内联、公共子表达式、循环等优化，而非先列全套算法作为发行保证。
@@ -246,7 +270,22 @@ C headers/SDK/GIR等元信息与Rust构建的C兼容shim汇入共享Interface Me
 
 下一架构合同与Design39/40一起预留import provider、target layout/ABI及foreign元信息产物、缓存key/SDK依赖、加载代码/回调/foreign deleter的代际pin。可先用Auto双向C互调、SQLite外部宿主插件和小型Rust shim探针分阶段验证，未启动全部平台/库的工程；新能力不扩大782验收。use.c自动符号导入与package/header resolver是目标体验，语法与Schema另行冻结，既有auto-bindgen手工manifest面不冒称任意头文件摄入。
 
+### 7.8 当前优先级与在途计划边界（2026-10-16）
+
+类型/泛型/comptime/反射进入语言实现前，先将Design42分解为语义身份与推导合同、HIR→ABC及受控AVM/缓存回路、runtime描述保留三类有界工作包。AutoDown接线与ABI探针仍优先可推进；不能等完整AC后再补类型/元信息架构，也不向787追加这些实现。
+
+§7.4/7.5保留历史快照，不能据其旧drafting状态推断当前交付。新的优先安排：
+
+1. 787继续当前语法/分页合同；其已executing且有在途改动，不临时添加ABI/native/完整TestCase框架。
+2. 紧邻优先规划Design35 B阶段AutoDown AC source/HIR/native adapter，先引用现有fixtures/oracles，不大搬语料；syntax/增量观测以明确adapter能力表接入，保留Rust内省与既有CLI门禁。
+3. 同时准备最小AutoABI合同和Auto↔Auto/C双向探针，公开互操作前冻结有限profile；不等完整AC，也不提前承诺完整C importer/Rust生态。
+4. 首条新语法→真实原生集成按§3.1 G-01–05交付，从第一例消费统一cache/增量与新测试。之后enum/is、List/use等扩面逐项继承这些合同。
+
+以上是工作包优先级，不分配新号、不启动代理或实施；787影响记录见docs/plans/attachments/787/strategy-impact-20261016.md，不替换其r1执行合同。
+
 ## 8. 官方参考与核查范围
+
+2026-10-16补查：[Cranelift优化设置](https://docs.wasmtime.dev/api/src/cranelift_codegen_meta/shared/settings.rs.html)、[Context源码](https://github.com/bytecodealliance/wasmtime/blob/main/cranelift/codegen/src/context.rs)，并只读本机Cargo registry的cranelift-codegen-0.126.2/src/context.rs确认锁定版本入口。未运行优化/LLVM基准，上游当前文档不是锁定版本性能收据。
 
 2026-10-04 查阅官方公开文档/源码，尚未据此执行本项目性能或 ABI 对拍：
 - [Cranelift 定位与平台](https://cranelift.dev/)

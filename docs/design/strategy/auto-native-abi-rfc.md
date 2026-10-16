@@ -60,6 +60,16 @@ supersedes: []
 
 语言grammar/scanner包的代际与runtime业务模块代际是不同版本域。旧语法树/解析会话使用的插件代码同样要有生命周期保护，但本RFC的动态模块安全回收并不自动证明语法包在线换版正确。§7/§8的宿主服务、lease、状态迁移及事务要求继续适用；新的前端合同不冻结公开ABI或缩小v0.6热重载范围。
 
+### 1.5 首版冻结与FFI时序（2026-10-16）
+
+用户重申ABI与C/Rust适配是主线。合同/双向探针应尽早推进，不等完整AC语言面；公开独立模块/跨编译器互操作前冻结有界、按target声明的AutoABI版本/profile。这不是现在宣布ABI v0.1发布，也不要求一次冻结全部未来类型。
+
+首批至少定义：ABI域/target/布局，标量/聚合/切片/opaque handle支持表，参数返回/对齐，符号/发现/descriptor，分配释放/ownership，错误/unwind，回调/线程限制，runtime服务/代际生命周期，兼容拒绝与接口指纹。不支持形态明确拒绝；可限制首版重载能力，但在途调用/callback/deleter保活不能省。
+
+建议顺序：草案→独立编译Auto↔Auto与Auto↔C原生探针→评审冻结有限profile→逐项语言/模块接入→扩大C importer与Rust C-shim。最小C互调可参与冻结验证，不需等待完整AutoABI；Rust走target C兼容shim，私有Rust ABI不作为稳定边界。平台C ABI与AutoABI分别遵守/演进，不把Auto内部全部强改为C布局。
+
+ABI/FFI测试从首例采用AutoDown；target/layout/runtime/shim/toolchain均进入缓存键。正式承诺须含独立编译双方及错target/旧descriptor/错误ownership与deleter反控，不能以单exe私有调用冒称ABI冻结。
+
 ## 2. 分层与边界
 
 ```text

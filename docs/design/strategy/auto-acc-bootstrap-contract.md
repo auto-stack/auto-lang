@@ -11,6 +11,10 @@
 
 ## 0. 定位与不变式
 
+2026-10-16元编程与meta补充见[Design42](../42-semantic-metadata-inference-and-comptime.md)：v0.6规划完整语义meta、编译期与runtime反射；类型推导/实例化/AVM CT由语义查询统一调度，CT冻结结果与类型事实进入A05/A06及统一cache。支持本版元编程的HIR→ABC子集与全量旧AVM迁移分开；有限泛型不能仅凭内建List证明，实际支持/生成类型等矩阵仍由专项Plan冻结。旧库存清单是历史取证，不因新目标自动改成implemented。
+
+2026-10-16版本分期细化：本文件的阶段/effect/pass模板保留为变换正确性要求，不代表v0.6必须实施独立MIR或通用优化框架。v0.6正确性、自举、ABI边界、首条全链路的增量/global cache和AutoDown测试门槛见后端演进战略§3/§7.8；v0.7先测Cranelift优化档，按收益决定是否补语言级pass/Typed MIR。不得因优化延期省略资源lowering或持久HIR恢复重验。
+
 ACC = Auto 实现的编译器主体。本契约给"源码 adapter、运行时、ABI、ACC 迁移"四类后续工作
 提供共同的前置边界。四条不变式贯穿全文：
 

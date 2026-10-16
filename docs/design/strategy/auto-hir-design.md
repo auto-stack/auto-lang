@@ -37,6 +37,8 @@ HIR 语义契约：有哪些概念、哪些程序有效、顺序和行为是什�
 
 ## 3. 层级与前后端边界
 
+2026-10-16语义工作态补充见[Design42](../42-semantic-metadata-inference-and-comptime.md)：签名/类型推导/实例化与CT查询互相调度；只把已检查可执行片段lower到ABC供AVM求值，不要求整程序先final Checked，也不允许Unknown片段进入VM。结果作为版本化冻结产物回灌，最后产生最终Checked HIR。runtime反射从语义meta投影，codegen不再成为类型事实owner。
+
 建议公共 AutoHIR 保持有类型的结构化高层表示：保留函数、结构化分支/循环、领域操作、
 类型/泛型/接口信息和已解析引用。它不是 ABC，也不是只为 native 定制的低层指令列表。
 
@@ -59,8 +61,8 @@ HIR 语义契约：有哪些概念、哪些程序有效、顺序和行为是什�
 ### 3.1 后端演进与优化层级（2026-10-04 用户确认）
 
 完整版本路线见 [AC/ACC 后端演进](auto-native-backend-evolution.md)。
-v0.6 的公共 HIR 经 Auto 语义降级/基础优化进入 Cranelift IR/SSA；
-v0.7 研究自己的低层 CFG/SSA 与优化体系，可先输出到 Cranelift，再接自主代码生成。
+v0.6的公共HIR经正确语义/资源降级进入Cranelift；独立MIR/性能优化延期v0.7。
+v0.7先测后端优化及高收益语言级变换，按证据决定是否建设低层CFG/SSA，不强制自有IR或后端重写。
 公共 HIR 保持语言类型、结构化控制流、所有权/效果与来源，不强制全部后端消费一个 SSA 格式。
 
 v0.6 先明确 pass 输入/输出阶段、前置条件、profile、顺序、分析失效与诊断，
