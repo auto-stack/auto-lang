@@ -415,7 +415,7 @@ ac-core 零 diff——compatibility_ 审计）。
 - landed：分支 rebase 到 master（17 提交重放；range-diff 46 全 `=`；**代码内容零差异**——`git diff 10f178df3 HEAD -- experimental/ crates/ test/` 为空，closeout 证据按"代码/依赖/测试配置未变"复用）；旧→新映射 d17b94fec→44d3b7e8d、10f178df3→53f8cf837；`git merge --ff-only plan-787-dev` → master tip = **b52188c58**（无 merge commit）。
 - ledger_refreshed：`.autoos/specs.json` v37→v38 **guarded offline projection**（本会话无 store writer；字节级备份 .autoos/specs.json.bak-v37-787 sha256 5ca84b52…；脚本化 upsert 仅 P787 条目+版本——范围守卫 git diff +99/−2；回读校验 IDs 全在/计数恰 +8/六节完整）。条目：designs P787-D1..D5（file=canonical 路径+tags delivery:44d3b7e8d）、tests P787-T、reviews P787-R8、reports P787-M。
 - archived：docs/plans/archive/787-ac-grammar-incremental-cst.md（git mv）；终态 9/9；completion_kind: delivered。
-- cleaned：待 worktree guard 清理后回填。
+- cleaned：wt-guard clean（无 reparse point）→ worktree `D:/autostack/.wt/lang-787/auto-lang` 移除（ledger 备份按 v34/v35 先例迁主检出 .autoos/ 未跟踪面）→ 分支 plan-787-dev 删除（was b52188c58，已合并）→ 组目录 `.wt/lang-787` 移除零残留；`git worktree list` 无 lang-787 条目。
 - 部署工件核查：本计划纯 experimental（experimental/ac-syntax+probe 加法），无生产 release/web 工件消费者——无需重建发布物（观察项记录，非缺口）。
 - 批量回归到期判定：787 % 5 = 2 ≠ 0；收据 docs/plans/.last-batch-regression.json 今日内由 793 收尾刷新（last_covered 795），48h 窗口内——**未到期**。
 
