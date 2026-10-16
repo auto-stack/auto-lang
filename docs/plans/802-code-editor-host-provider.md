@@ -102,8 +102,8 @@ work命令：`cargo check -p auto-lang`，新consumer `cargo test --manifest-pat
 | [x] | T-02 | work | T01 | host_capabilities CodeEditorHostProvider（19 方法）/NativeInterface 槽+Clone+merge/AutoVM 快照+实例覆盖/22 shim 单态化委托；`cargo check` default+no-default PASS、定向 27/27（[收据](attachments/802/t06-work-receipt.md)§二） | 01/02 |
 | [x] | T-03 | work | T02 | 新 ui/code_editor_provider.rs（真注册表 adapter，剪贴板实现级第二门控返 None）+ 四漏斗装配（install_ui_host_capabilities/run_file_dynamic_ui_inner/VmBridge 两构造）；compat 单测 PASS | 03 |
 | [x] | T-04 | work | T03 | 新 no-ui consumer fixture（7 测试：V01 真VM全管线×2/V02 缺席矩阵+身份/V03 delta+ownership）+ in-crate plan802（7 测试：V04 装配寿命/V05 真注册表往返+文件IO+swap 寿命）；施工期发现预存局部槽≥16 限制（P802-D1，非本改面） | 01/02/03 |
-| [x] | T-05 | work | T04 | V06 真 controller 注册表投影链+真 arboard 剪贴板往返（保存恢复）PASS；live iced 窗口消费链如实登记条件缺口；V07 777 口径 52→23/剩余边清单/a2r 臂 25 处未动/792 闭包不变 metadata 证明（[收据](attachments/802/t06-work-receipt.md)§三/四） | 03/04 |
-| [x] | T-06 | work | T05 | 22映射/剩余边/净删与SD收据齐（[t06-work-receipt.md](attachments/802/t06-work-receipt.md)）；冻结代码 `4029dd705` 送审；merge 门 pending | 04 |
+| [x] | T-05 | work | T04 | **R1 修复轮补齐**：V06 实机验证 8/8 PASS exit 0（[v06-live/](attachments/802/v06-live/)：程序化 150 命令值直达/clamp 7541=8020−479 精确/真滚轮 0.713s≤2s/未绑定反控/reader 观测）；实机定位预存 VM 轨 bind 缺口并修复（`ad1427e33`，非 802 引入）；V07 777 口径 52→23/剩余边清单/a2r 臂 25 处未动/792 闭包不变 metadata 证明（[收据](attachments/802/t06-work-receipt.md)§三/四） | 03/04 |
+| [x] | T-06 | work | T05 | 22映射/剩余边/净删与SD收据齐（[t06-work-receipt.md](attachments/802/t06-work-receipt.md) 含 R1 修复轮）；冻结代码 `ad1427e33` 送审（worktree git status clean）；merge 门 pending | 04 |
 | [ ] | T-07 | review | T06 | 同树独立反控/AC/SD审查，merge门保持pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、Spec/ledger/归档/wt-guard清理 | 06 |
 
@@ -118,3 +118,7 @@ work命令：`cargo check -p auto-lang`，新consumer `cargo test --manifest-pat
 ## 10. 待澄清事项
 
 无需等待799或800。T01负责每项错误/栈矩阵和方法粒度，不能借未定义删除native。真实OS/renderer必要证据受环境阻塞时记录缺口/条件，不能把模拟改称真实验收。
+
+2026-10-17 / stage: review / review_scope: final / PLAN-802 revision: 1 / outcome: needs_fix（readiness） / reviewed_commit: 4029dd705a1f3d4e39ddbffbb6c5f426c402c2a6 / finding: F802-R1-01（P2，AC-03/V06 必需 live iced 滚动消费与≤2s收敛验证未完成；controller 测试人工 note-back 不能替代） / evidence: [R1报告](attachments/802/review-r1.md) / T-05、T-06 重开，executing 4/8；T01..04保留 work 声明，完整 AC/SD 复审 pending / Git status 受工作树访问问题未确认，未声称 clean / merge-owned 裸 t/tv 与收尾保持 pending / next: 原树 work 补齐必验证据再送审。
+
+2026-10-17 / stage: work（R1 修复轮） / PLAN-802 revision: 1 / outcome: pass（F802-R1-01 闭合，重新送审） / worktree `D:/autostack/.wt/lang-802/auto-lang`（git status clean，`git rev-parse --show-toplevel` 已核验）/ branch `plan-802-dev` / base `1dd123361` / code `ad1427e33`（=4029dd705 + renderer VM 轨 bind 一行修复，diff 1 文件 +12/−1）/ deps: auto-down sibling `c39ac7f` detached 只读 / 闭合：V06 实机探针（[v06-live/](attachments/802/v06-live/)，MCP+Win32 真滚轮）8/8 PASS exit 0——程序化 150 命令值直达无中间值、越界 clamp 7541（=8020−479 精确）、真滚轮回填 0.713s≤701 2s、未绑定反控、ScrollStateReader 观测；实机过程中定位**预存** VM 轨 bind 缺口（render_dynamic_view 臂自 PLAN-629 未绑注册表→scroll_to 写端点 VM 轨恒 no-op；旧 shim 同队列，非 802 引入）并修复（ad1427e33，镜像 29480 desktop 臂既有 bind）/ 回归：plan802+code_editor_natives+plan794+plan728 21/21 PASS / 施工期发现（P802-D1 局部槽≥16 预存限制）维持 KNOWN-DEBT / merge 门 pending：裸 `cargo t`+`cargo tv` 由 merge 在 ad1427e33 冻结基线执行 / next_responsible_role: review（T-07 完整 AC/SD 复审，含 R1 finding 闭合核验）。

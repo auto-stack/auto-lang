@@ -1,10 +1,44 @@
 # PLAN-802 T-06 工作收据（送审冻结基线）
 
-代码提交：`4029dd705`（branch `plan-802-dev`，base `1dd123361`，worktree
-`D:/autostack/.wt/lang-802/auto-lang`）。auto-down 兄弟 `c39ac7f`（detached，
-只读消费）。本收据为 work 阶段证据汇总；merge-owned 门禁（裸 `cargo t`/
-`cargo tv`/触面档/tf 批量回归）按 2026-10-14 时序裁定**保持 pending**，由
-最终 review 通过后的 merge 阶段在冻结提交上执行。
+代码提交：`4029dd705` + R1 修复 `ad1427e33`（branch `plan-802-dev`，base
+`1dd123361`，worktree `D:/autostack/.wt/lang-802/auto-lang`，git status
+clean）。auto-down 兄弟 `c39ac7f`（detached，只读消费）。本收据为 work 阶段
+证据汇总；merge-owned 门禁（裸 `cargo t`/`cargo tv`/触面档/tf 批量回归）按
+2026-10-14 时序裁定**保持 pending**，由最终 review 通过后的 merge 阶段在冻结
+提交上执行。
+
+## R1 修复轮（F802-R1-01 闭合，2026-10-17）
+
+V06 实机验证已补齐：探针应用 + 驱动（[v06-live/](v06-live/)，pac +
+src/front/app.at + v06_driver.py，MCP 标准 urllib 客户端 + Win32 SendInput
+真滚轮）在真实 iced 窗口（`auto run -r vm`，本机 Windows 会话）8/8 PASS
+exit 0（[证据 JSON](v06-live/v06-evidence.json.txt)、[auto 日志](v06-live/v06-auto.log.txt)、
+[末帧截图](v06-live/v06-final-window.png)）：
+
+| 步骤 | 结果 |
+|---|---|
+| baseline-top | oy=0.0（701 顶部中性值） |
+| programmatic-150 | oy=150.0 **命令值直达**（trace 无中间值）；2.25s 含探针采样量化（press+state 每轮 ~0.6s；701 ≤2s 契约对象为用户滚动收敛，非程序化） |
+| clamp-to-max | 越界 999999 → oy=7541.0（= content 8020 − viewport 479.200 精确上界），复采稳定 |
+| user-wheel-readback | **真滚轮**（SendInput，ALT 手法前台化+点击激活）5 格：oy 7541→7241（5×60px），读端点回填 **0.713s ≤ 2.0s**（701 收敛契约，含心跳） |
+| unbound-counter-control | 未绑定键入队（note=unbound-fired）后真实编辑器 oy 不变 |
+| scroll-state-reader-observe | ScrollStateReader pane editor-scroll-ed 可观测（viewport/content/offset 三元） |
+
+**实机验证定位的预存缺口（已修，`ad1427e33`）**：`render_dynamic_view` 的
+code_editor 臂（VM 轨主路径）自 PLAN-629 寄宿化以来未把 editor-scroll-{key}
+绑进 scroll controller 注册表（29480 desktop 泛型臂 701 起已绑）——
+`code_editor_scroll_to` 的 intent 在 VM 轨 pane 缺失被 drain 静默丢弃，写端点
+在 VM 实机窗口恒 no-op。**非 802 迁移引入**（旧 shim 直 enqueue 同一注册表
+同队列；802 provider 化不改变入队目标）。修复 = 镜像 29480 的一行
+`bind_controller(scroll_id, scroll_id)`（handle=widget id 单源）。修复后
+701 供②b 端点合同在 VM 轨闭环。回归：plan802 + code_editor_natives +
+plan794 + plan728 21/21 PASS。
+
+探针资产注记（复现要点）：Init 先于首帧渲染（编辑器注册表空，set_text
+no-editor raise——缺席臂逐字面值在实机再次验证）；内容装载走 value prop
+数据流（`.doc` 模型 → build 期 renderer 侧 set_text，注册表保证在位）；
+驱动 stdout 必须落文件（PIPE 不读灌满后阻塞 auto 进程首帧）；窗口前台化
+需 ALT 键手法（直 SetForegroundWindow 被前台锁静默拒绝）。
 
 ## 一、22 native ↔ 19 provider 方法映射（T-01 矩阵实施核对）
 
@@ -28,23 +62,12 @@ provider 收标准 usize。catalog/codegen/intrinsics 零改动（ID/canonical �
 | `cargo t plan728` | 5/5 PASS（分页 editor load/edit/save 真注册表） |
 | 合并终跑 `cargo t plan802 code_editor_natives plan794 plan785 plan728` | 27/27 PASS |
 
-## 三、V06 证据与条件缺口
+## 三、V06 证据（R1 修复轮后全量闭合）
 
-已验（真组件，非 fake）：
-- 滚动三项：真 controller 注册表 bind→prime→measure→offset 投影读出；
-  `scroll_to` 双轴 intent（X 先 Y 后）入队恒 true；真 `drain_resolved_intents`
-  折叠终态=命令值；clamp (999,-5)→(200,0)；未绑定 handle 静默丢弃
-  （`plan802_scroll::editor_scroll_projection_chain`）。
-- OS 剪贴板：真 arboard 桥往返（本机 Windows 会话）——copy 不删/cut 删/
-  paste 插入、内容正确；readonly 组合臂（copy 允许、cut/paste=Some(false)）；
-  剪贴板保存恢复 + 跨进程互斥锁（`plan802_clipboard::os_clipboard_cut_copy_
-  paste_roundtrip`）。
-
-**条件缺口（如实登记，不称 pass）**：live iced 窗口内 renderer 消费链
-（drain finals→operation::scroll_to→可见偏移≤2s 收敛/ScrollStateReader 心跳
-读回）未跑实机交互（autoui-verifier 实机会话）。701 Spec 的读=注册表投影
-单源契约已由真注册表测试覆盖；缺的是端到端窗口可视化收敛观察。补验条件：
-具备窗口会话的实机 + `auto run -r vm` 编辑器示例（merge 前若环境允许可补）。
+~~条件缺口~~ **已闭合**：live iced 窗口消费链已实机验证（见顶部 R1 修复轮
+表格——程序化命令值直达/clamp 精确上界/真滚轮 ≤2s 收敛/未绑定反控/reader
+观测，8/8 PASS）。保留的组件级证据（真 controller 注册表投影链 + 真 arboard
+剪贴板往返）不变，作为 headless 补充面。
 
 ## 四、V07 边界/剩余边/净删
 
