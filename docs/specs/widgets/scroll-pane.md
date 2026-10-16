@@ -161,6 +161,13 @@ ordinary scroll-pane）+ native `auto.scroll.to_child/anchor_state`
 managed/virtual/X 轴 pane 显式 unsupported；既有 offset 族（9900-9905）
 零改动。
 
+## 宿主装配（PLAN-794）
+
+VM 侧八 native 经 `ScrollHostProvider` 装配（UI 生产经
+`ScrollControllerProvider` 兼容默认恢复原接线；no-ui 宿主注入自定义实现
+得真滚动观察面）。原测量/intent 合同（f64 逻辑空间、drain 顺序折叠、
+未预热晚一拍 F-4 纪律、双轴独立叠加）与 widget 行为**零改动**。
+
 ## 兼容承诺
 
 - `scrollable`/`scroll`/`Scroll` 旧代码零改动（alias + legacy direction）；

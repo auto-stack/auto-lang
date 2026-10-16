@@ -25,6 +25,14 @@
 | 9922 | `auto.scroll.to_child` | `(handle str, key str) -> str` | 入队回执（**非完成证明**）：`"queued"` / `"error:<reason>"`；reason ∈ `bad_handle`（仅空串——任意非空串为合法句柄）/ `empty_key` / `unsupported` |
 | 9923 | `auto.scroll.anchor_state` | `(handle, key) -> str` | `"pending"` / `"applied"` / `"invalid:<reason>"` / `"unknown"`；reason ∈ `not_found` / `not_bound` / `unsupported` / `unmeasured` |
 
+**调用边界（PLAN-794）**：`to_child/anchor_state` 调用边界迁
+`ScrollHostProvider`（core shim 编组 `queued`/`error:<reason>`/`pending`/
+`applied`/`invalid:<reason>`/`unknown` 字符串）；781 状态机（queued≠完成、
+managed unsupported 入队即拒、换绑代际、gen=0 采当前绑定、未预热/无采集
+pending 晚一拍、not_found/not_bound 一次性、后写覆盖重新 pending、applied
+不驻留）与完成 oracle（真实 offset 变化+目标正面积交集）原样留在
+controller.rs/renderer——**零语义迁移**。
+
 完成证明 = `autoui_scroll_state` 读出 offset 变化 + `autoui_visibility`
 目标正面积交集；**禁止**仅以 progress 或入队回执证明。
 

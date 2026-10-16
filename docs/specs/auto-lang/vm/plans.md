@@ -10,6 +10,7 @@
 | 781 | reader-runtime-prerequisites（vm 面） | ✅（reviewed→archived） | archive/ | HTTP handler 请求级累计执行预算：env AUTO_HTTP_STEP_BUDGET（1..=4G，非法启动期指名非零退出；默认 10M 逐字节不变）→ engine DriveBudget::LegacyHttp 段帽=policy、跨 park/resume/嵌套 fn 累计不重置、耗尽=指名资源拒绝；三入口+段恢复消费；canonical [handler-execution-budget.md](design/handler-execution-budget.md)；10MiB 导入 profile=双 env（+AUTO_HTTP_REQUEST_TIMEOUT_MS） |
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|
+| 794 | scroll-host-provider（vm 面） | ✅（reviewed→archived） | archive/ | scroll controller/子锚点八 native（9900..9905/9922/9923）迁 ScrollHostProvider：owned DTO 五方法+三级装配+缺席值降级逐字面值（controller=Int 0/intent=Bool false/state=Float 0.0/to_child=error:unsupported/anchor_state=unknown）；弹序勘定（可选轴在顶先弹）；781 状态机完整继承零语义迁移；SD-01 vm/overview |
 | 001 | vm-function-integration | ⏳ Planning | archive/ | VM 早期函数集成设想，仅停留在规划 |
 | 038 | fix-vm-borrowing | ✅ | archive/ | 早期 VM 借用问题修复 |
 | 039 | vm-tests-migration | 🔧 | archive/ | vm_tests → autovm_tests 按复杂度分级迁移 |

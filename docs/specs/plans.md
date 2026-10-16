@@ -2,6 +2,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |---|---|---|---|---|
+| 794 | scroll-host-provider | reviewed → archived | [794](../plans/archive/794-scroll-host-provider.md) | scroll controller/子锚点八 native（9900..9905/9922/9923）迁 ScrollHostProvider 宿主装配（owned DTO 五方法+三级装配+缺席值降级逐字面值，UI adapter 委托原 registry/状态机零语义迁移，外部 consumer 双形态 oracle） |
 | 791 | generation-core-extraction | reviewed → archived | [791](../plans/archive/791-generation-core-extraction.md) | auto-gen-core 无解释器生成核心（guard/输出编排/错误/报告，闭包零 auto-lang）+ auto-gen 变 Auto 可执行模板 adapter/兼容门面（re-export 保旧公开路径，V02 金样/V03 失败语义字节冻结） |
 | 790 | clipboard-files-images-provider | reviewed → archived | [790](../plans/archive/790-clipboard-files-images-provider.md) | 文件/图像剪贴板 2934..2937 依赖倒置（ClipboardMediaProvider owned 值域+三级装配+G3 值降级族差异冻结，Win32 adapter 双门控四宿主接线，外部 consumer 双形态 oracle） |
 | 789 | lexical-foundation-extraction | reviewed → archived | [789](../plans/archive/789-lexical-foundation-extraction.md) | auto-lex 词法基础 crate（Token/Lexer 单一来源+lang-core 域+golden 重放），auto-lang 薄 re-export 出口，前端残留边 DAG 冻结 |

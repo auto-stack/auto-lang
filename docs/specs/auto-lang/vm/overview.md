@@ -79,6 +79,7 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - frame native 9918/9919 为标量宿主能力 pilot（PLAN-779，Design 37 §4）：core shim 经 `vm::host_capabilities::FrameProvider` 供值，不再直引 UI 的 frame_bench；canonical 名/固定 ID/int 单槽/i32 上界饱和/未捕获 0 全保持。装配三层优先关系（显式 set 恒胜 / 兼容 if-absent 同锁补缺 / 实例独立）详见下节 [Frame native 宿主能力装配（PLAN-779）](#frame-native-宿主能力装配plan-779)。
 - 文本剪贴板 native 2925/2926 为 779 装配模式的首个真实迁移批次（PLAN-785）：core shim 经 `vm::host_capabilities::ClipboardTextProvider` 供值，不再直引 ui::clipboard；缺席=原 feature-disabled VMError、在位不可用=空串/false。详见 [文本剪贴板 native 宿主能力（PLAN-785）](#文本剪贴板-native-宿主能力plan-785)。
 - 文件/图像剪贴板 native 2934..2937 为同模式 files/image 批次（PLAN-790）：core shim 经 `vm::host_capabilities::ClipboardMediaProvider` 供值，不再直引 ui::clipboard_native；缺席/失败=G3 **值降级**（空表/false/null，非 VMError——与文本族构成族差异）。详见 [文件/图像剪贴板 native 宿主能力（PLAN-790）](#文件图像剪贴板-native-宿主能力plan-790)。
+- scroll controller 族 9900..9905 与子锚点 9922/9923 为 scroll 批次（PLAN-794）：core shim 经 per-VM `vm::host_capabilities::ScrollHostProvider` 供值，不再直引 ui::scroll；缺席=值降级（controller=Int 0、intent 族=Bool false、state=Float 0.0、to_child="error:unsupported"、anchor_state="unknown"）。详见 [scroll native 宿主能力（PLAN-794）](#scroll-native-宿主能力plan-794)。
 
 ## Frame native 宿主能力装配（PLAN-779）
 
@@ -134,6 +135,42 @@ collect 后调）；image_get 记录字段 path(lossy Str)/width/height(Int i32)
 注入不依赖 UI 的自定义 provider；真 no-ui 消费方探针
 （test/fixtures/modularity/clipboard-media-provider-consumer，独立
 workspace）为验收 oracle。
+
+
+## scroll native 宿主能力（PLAN-794）
+
+`scroll_controller/to_start/to_end/by/to/state`（9900..9905）与
+`to_child/anchor_state`（9922/9923，canonical `auto.scroll.*`）供值经
+per-VM `ScrollHostProvider`（trait 五方法：`next_controller_handle()->String`、
+`enqueue_intent(&str, ScrollIntentDto)`、`controller_snapshot(&str)->ScrollSnapshotDto`、
+`enqueue_anchor_request(&str,&str)->Result<(),&'static str>`、
+`anchor_request_state(&str,&str)->Option<ScrollAnchorStateDto>`；DTO=core 自有
+`ScrollAxisDto{X,Y}`/`ScrollIntentDto{ToStart/ToEnd/ScrollBy/ScrollTo}`（无
+source——natives 恒 Programmatic）/`ScrollSnapshotDto` 8×f64（progress 由
+provider 侧几何单源投影）/`ScrollAnchorStateDto{Pending/Applied/Invalid(String)}`；
+零 UI 类型/VM 堆 id/字符串池索引/renderer 引用）。core shim **不直接引用**
+ui::scroll；装配=779/785/790 同构三级（实例注入 > 构造期进程默认快照 >
+兼容 if-absent 补空槽）；注入不 bump binding_revision/不撤 proof；Clone/merge
+保 provider。
+
+**缺席语义=T-01 冻结降级臂逐字面值**（controller=Int 0、intent 族=Bool
+false、state=Float 0.0、to_child="error:unsupported"、anchor_state="unknown"
+——值语义非 raise，任何 provider 不得伪装成功）。
+
+栈解码契约：COUNTED arity 辨识可选轴；弹序与 codegen 左→右压序对齐
+（可选轴在顶先弹——T-01 勘定修复 656 期 handle 先弹的可选轴误路由，
+探针实证、库内零破坏面）；`scroll_to(handle,a,b)` a 字符串=轴形单 intent、
+否则坐标形 X 先 Y 后双 intent；空串句柄跳过入队仍按在位性返 true/false；
+九轴词只认 "x" 其余归 Y。句柄=任意非空 opaque string（不强制前缀）。
+
+781 状态机完整继承：queued≠完成；managed=unsupported（入队即拒）；换绑
+代际不符→invalid:not_bound（gen=0 请求采当前绑定）；未预热/无采集帧→
+pending 晚一拍；key 不在当帧→invalid:not_found（一次性）；同 (handle,key)
+后写覆盖重新 pending；applied 不驻留拉回；无记录→unknown。
+
+外部 no-ui 宿主可注入自定义 provider；真 no-ui 消费方探针
+（test/fixtures/modularity/scroll-provider-consumer，独立 workspace）
+为验收 oracle。
 
 
 ## 布尔短路求值语义（plan-615）
