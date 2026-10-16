@@ -1,6 +1,6 @@
 {
-  "base_revision": "e696398759d7931568a2ec0039103a8b5a214e5d",
-  "config_sha256": "20c5269761766199b1b52477d1e095ecf103dd37688a878aa7beef12629019ec",
+  "base_revision": "3e1a9742c9748de2020abce91cbd3bcb79227270",
+  "config_sha256": "82718ad24a3f3f2f3eb0f533bfcbd51daa21097c33198b17b757a96d013acc0e",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -111,6 +111,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-gen-core",
+      "from": "auto-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-gen-core",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-lang",
       "from": "auto-gen",
       "kind": "normal",
@@ -122,6 +131,15 @@
     {
       "dep_key": "auto-val",
       "from": "auto-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-gen-core",
       "kind": "normal",
       "optional": false,
       "target": null,
