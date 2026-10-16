@@ -23,15 +23,22 @@ $fails = 0
 #   summary has failed==0 AND ignored==0, total passed >= MinPassed, and
 #   every required test ID appears in the executed test lines.
 function Test-CargoFamilyOutput {
-    param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds, [int]$MinPassed)
+    param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds, [int]$MinPassed, [string[]]$AllowedIgnored = @())
     if ($ExitCode -ne 0) { return "exit=$ExitCode" }
     $summaries = [regex]::Matches($Text, "(\d+) passed; (\d+) failed; (\d+) ignored")
     if ($summaries.Count -eq 0) { return "no test summaries parsed" }
+    # The ignored TEST NAMES must be an explicit, declared allowlist — a
+    # silent skip anywhere else refuses the family.
+    $ignoredNames = [regex]::Matches($Text, "test (\S+) \.\.\. ignored") | ForEach-Object { $_.Groups[1].Value }
+    foreach ($n in $ignoredNames) {
+        if ($AllowedIgnored -notcontains $n) { return "ignored test not allowlisted: $n" }
+    }
+    $totalIgnored = ($ignoredNames | Measure-Object).Count
     $totalPassed = 0
     foreach ($s in $summaries) {
         $p = [int]$s.Groups[1].Value; $f = [int]$s.Groups[2].Value; $ig = [int]$s.Groups[3].Value
         if ($f -ne 0) { return "failed=$f in a summary" }
-        if ($ig -ne 0) { return "ignored=$ig in a summary (skips are not accepted)" }
+        if ($ig -ne $totalIgnored) { return "summary ignored=$ig does not match named ignored tests ($totalIgnored)" }
         $totalPassed += $p
     }
     if ($totalPassed -lt $MinPassed) { return "totalPassed=$totalPassed < required $MinPassed" }
@@ -42,11 +49,11 @@ function Test-CargoFamilyOutput {
 }
 
 function Run-CargoFamily {
-    param([string]$Name, [string[]]$Argv, [string[]]$RequiredIds, [int]$MinPassed)
+    param([string]$Name, [string[]]$Argv, [string[]]$RequiredIds, [int]$MinPassed, [string[]]$AllowedIgnored = @())
     Write-Host "== $Name" -ForegroundColor Cyan
     $text = (& cargo @Argv 2>&1 | Out-String)
     $code = $LASTEXITCODE
-    $why = Test-CargoFamilyOutput -Text $text -ExitCode $code -RequiredIds $RequiredIds -MinPassed $MinPassed
+    $why = Test-CargoFamilyOutput -Text $text -ExitCode $code -RequiredIds $RequiredIds -MinPassed $MinPassed -AllowedIgnored $AllowedIgnored
     if ($why) {
         $script:fails++
         Write-Host "   FAMILY FAIL ($why)" -ForegroundColor Red
@@ -60,13 +67,16 @@ if ($Scope -eq "selftest") {
     $cases = @(
         @{ name = "fully-legal"; text = "test a ... ok`ntest result: ok. 5 passed; 0 failed; 0 ignored; 0 measured`n"; exit = 0; ids = @("test a"); min = 1; want = $null },
         @{ name = "zero-selected"; text = "running 0 tests`ntest result: ok. 0 passed; 0 failed; 0 ignored"; exit = 0; ids = @(); min = 1; want = "totalPassed=0 < required 1" },
-        @{ name = "partially-skipped"; text = "test result: ok. 4 passed; 0 failed; 999 ignored"; exit = 0; ids = @(); min = 1; want = "ignored=999 in a summary (skips are not accepted)" },
+        @{ name = "partially-skipped"; text = "test result: ok. 4 passed; 0 failed; 999 ignored"; exit = 0; ids = @(); min = 1; want = "summary ignored=999 does not match named ignored tests (0)" },
+        @{ name = "unnamed-skip"; text = "test mystery_tool ... ignored`ntest result: ok. 4 passed; 0 failed; 1 ignored"; exit = 0; ids = @(); min = 1; want = "ignored test not allowlisted: mystery_tool" },
+        @{ name = "allowlisted-skip"; text = "test pilot_oracle_bootstrap ... ignored`ntest result: ok. 4 passed; 0 failed; 1 ignored"; exit = 0; ids = @(); min = 1; want = $null },
         @{ name = "nonzero-exit"; text = "test result: FAILED. 1 passed; 1 failed; 0 ignored"; exit = 101; ids = @(); min = 1; want = "exit=101" },
         @{ name = "family-missing-id"; text = "test unrelated ... ok`ntest result: ok. 3 passed; 0 failed; 0 ignored"; exit = 0; ids = @("test needed"); min = 1; want = "required id missing: test needed" },
         @{ name = "count-substitution"; text = "test result: ok. 1 passed; 0 failed; 0 ignored"; exit = 0; ids = @(); min = 5; want = "totalPassed=1 < required 5" }
     )
     foreach ($c in $cases) {
-        $why = Test-CargoFamilyOutput -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids -MinPassed $c.min
+        $allow = if ($c.name -eq "allowlisted-skip") { @("pilot_oracle_bootstrap") } else { @() }
+        $why = Test-CargoFamilyOutput -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids -MinPassed $c.min -AllowedIgnored $allow
         $ok = if ($null -eq $why) { $null -eq $c.want } else { $why -eq $c.want }
         if ($ok) {
             Write-Host "selftest $($c.name): ok" -ForegroundColor Green
@@ -96,8 +106,11 @@ if ($Scope -eq "acceptance") {
     # V-03/04/11/13/14 runner integration
     Run-CargoFamily "auto-lang ac_case_tests (V-03/04/11/14)" @("test", "-p", "auto-lang", "--features", "test-cases", "--lib", "ac_case_tests") `
         @("ac_native_run_exit_oracle_and_red_sibling", "ac_native_typed_negative_stage_attribution", "ac_product_handoff_run_consumes_real_build", "r1_consumer_invalid_exe_is_error_not_pass", "r1_response_admission_table", "syntax_parse_and_edit_dispatch_with_goldens", "ac_native_suite_full_run_and_ledger_reconcile") 13
+    # pilot_oracle_bootstrap is a PRE-EXISTING deliberate #[ignore] manual
+    # regeneration tool from Plan 768 (documented in the suite), not a
+    # coverage skip — allowlisted by name, nothing else.
     Run-CargoFamily "auto-lang v1 regression" @("test", "-p", "auto-lang", "--features", "test-cases", "--lib", "test_cases_tests") `
-        @("pilot_suite_full_run", "stale_check_detects_oracle_drift") 26
+        @("pilot_suite_full_run", "stale_check_detects_oracle_drift") 26 @("tests::test_cases_tests::pilot_oracle_bootstrap")
     # V-12/V-13 turnaround + hard gates
     Run-CargoFamily "worker turnaround (V-12/13 + gates)" @("test", "--manifest-path", "experimental/ac-case-worker/Cargo.toml", "--release", "--test", "turnaround_t08_", "--", "--nocapture") `
         @("turnaround_native_six_scenarios_p95_gates", "turnaround_syntax_gate_and_revision_stream") 2
