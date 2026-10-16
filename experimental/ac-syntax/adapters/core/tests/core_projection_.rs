@@ -139,3 +139,81 @@ fn core_projection_literal_range_refuses() {
         assert!(project(&p, &cs, src).is_ok(), "{src} must be in-range");
     }
 }
+
+/// F787-R2-08 反控：合法 core 深输入不受固定句法深度上限拒绝——投影以
+/// 节点访问预算受控（PROJECTION_NODE_BUDGET）。大显式线程栈仅隔离测试
+/// 环境，语义上限 = 预算。平链 / 深嵌套 / 深块 / 深调用实参全路径。
+#[test]
+fn supported_core_deep_inputs_project_without_fixed_depth_cutoff() {
+    std::thread::Builder::new()
+        .stack_size(64 << 20)
+        .spawn(|| {
+            let p = core_grammar();
+            let kinds = ac_syntax_core_adapter::CoreKinds::from_program(&p);
+            let cs = ac_syntax_rt::lexer::CompiledScanner::compile(&p).unwrap();
+            // 平链（左脊 2200）。
+            let text = format!("fn f() int {{ return 1{} }}", " + 1".repeat(2200));
+            assert!(
+                auto_ac_prototype::source::parse_program(&text).is_ok(),
+                "legacy core accepts"
+            );
+            let s = ac_syntax_rt::snapshot::Snapshot::from_text(
+                &std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()),
+                &text,
+            );
+            let out = ac_syntax_rt::parse::parse_snapshot(
+                &p,
+                &cs,
+                &s,
+                &ac_syntax_rt::program::Budget::default(),
+            )
+            .unwrap();
+            assert!(!out.tree.has_error_nodes());
+            let r = ac_syntax_core_adapter::project_strict(&p, &kinds, &out.tree, &s);
+            assert!(r.is_ok(), "deep chain must project, got {:?}", r.err());
+            drop(out);
+            // 深嵌套括号（4096+）。
+            let text2 = format!(
+                "fn g() int {{ return {}1{} }}",
+                "(".repeat(4096 + 64),
+                ")".repeat(4096 + 64)
+            );
+            let s2 = ac_syntax_rt::snapshot::Snapshot::from_text(
+                &std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()),
+                &text2,
+            );
+            let out2 = ac_syntax_rt::parse::parse_snapshot(
+                &p,
+                &cs,
+                &s2,
+                &ac_syntax_rt::program::Budget::default(),
+            )
+            .unwrap();
+            assert!(!out2.tree.has_error_nodes());
+            let r2 = ac_syntax_core_adapter::project_strict(&p, &kinds, &out2.tree, &s2);
+            assert!(r2.is_ok(), "deep nesting must project, got {:?}", r2.err());
+            drop(out2);
+            // 深块（2000 语句）+ 深调用实参链。
+            let mut text3 = String::from("fn h() int {");
+            for i in 0..2000 {
+                text3.push_str(&format!(" let v{i} = {i};"));
+            }
+            text3.push_str(" return v0 }");
+            let s3 = ac_syntax_rt::snapshot::Snapshot::from_text(
+                &std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()),
+                &text3,
+            );
+            let out3 = ac_syntax_rt::parse::parse_snapshot(
+                &p,
+                &cs,
+                &s3,
+                &ac_syntax_rt::program::Budget::default(),
+            )
+            .unwrap();
+            let r3 = ac_syntax_core_adapter::project_strict(&p, &kinds, &out3.tree, &s3);
+            assert!(r3.is_ok(), "deep block must project, got {:?}", r3.err());
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}

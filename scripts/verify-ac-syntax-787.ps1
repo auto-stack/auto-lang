@@ -27,13 +27,13 @@ $families = [ordered]@{
     "grammar_reject_"        = @{ pkg = "ac-syntax-grammar";     min = 7 }
     "lossless_"              = @{ pkg = "ac-syntax-grammar";     min = 9 }
     "recovery_"              = @{ pkg = "ac-syntax-grammar";     min = 4 }
-    "core_projection_"       = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
+    "core_projection_"       = @{ pkg = "ac-syntax-core-adapter"; min = 4 }
     "incremental_local_"     = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
     "incremental_replay_"    = @{ pkg = "ac-syntax-core-adapter"; min = 4 }
     "generation_"            = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
     "depth_"                 = @{ pkg = "ac-syntax-grammar";     min = 4 }
     "depth_persisted_"       = @{ pkg = "ac-syntax-artifact-adapter"; min = 1 }
-    "syntax_cache_"          = @{ pkg = "ac-syntax-artifact-adapter"; min = 4 }
+    "syntax_cache_"          = @{ pkg = "ac-syntax-artifact-adapter"; min = 5 }
     "syntax_admission_"      = @{ pkg = "ac-syntax-artifact-adapter"; min = 6 }
     "compatibility_"         = @{ pkg = "ac-syntax-core-adapter"; min = 3 }
     "perf_"                  = @{ pkg = "ac-syntax-core-adapter"; min = 2 }

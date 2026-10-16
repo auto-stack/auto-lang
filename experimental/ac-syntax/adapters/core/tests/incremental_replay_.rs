@@ -141,11 +141,13 @@ fn replay_rounds(p: &GrammarProgram, cs: &CompiledScanner, start: &str, rounds: 
         );
 
         snap = new_snap;
+        // 连续增量会话（F787-R2-10）：下一轮基线 = 本轮**实际增量工件**，
+        // 不是 fresh 重建——证明编辑会话可持续消费增量输出。
         cur = ParseOutput {
-            tree: fresh.tree,
-            tokens: fresh.tokens,
-            lex_diags: fresh.lex_diags,
-            grafted_decls: 0,
+            tree: inc.tree,
+            tokens: inc.tokens,
+            lex_diags: inc.lex_diags,
+            grafted_decls: inc.reused_decls as usize,
         };
     }
     let _ = (text0, fallbacks);

@@ -1,8 +1,8 @@
 # PLAN-787 拟议 Spec 增量（T-07 修复轮冻结稿，merge 时落 canonical）
 
 对照计划 §"规范增量"表（SD-01..06）。本文件为 merge 输入；新模块名称为本仓
-实验命名，不决定未来仓/产品品牌。**复审 R1 修复轮**：按 F787-R1-01..10 修复
-后的实际实现重写（替代 R1 审查时冻结的旧稿——旧稿未获通过）。
+实验命名，不决定未来仓/产品品牌。**复审 R1+R2 修复轮**：按 F787-R1-01..10 + F787-R2-01..11
+修复后的实际实现重写（替代历次审查冻结旧稿——旧稿未获通过）。
 
 ## SD-01 add docs/specs/auto-syntax/project.md
 
@@ -54,15 +54,20 @@
 - **before**：A01/A02 Future、A03 ProbeSeam（合成造数）。
 - **after**：A01/A02/A03 = Codec 且**真实生产者**（ac-syntax-artifact-adapter）：
   A01 语法 canonical 二进制（装载身份重验；可按（grammar-id, revision）从
-  store 装载——跨进程恢复不编译 .at）；A02 token 流+**完整 scanner checkpoint
-  （mode/未闭合状态/行）**，键含 grammar 身份（跨 grammar 真读拒绝）；
-  **A02 --required--> A01+源页**；源字节以**内容寻址 SourcePage** 持久化
-  （快照 16KiB 页聚合为 ≤256KiB store 源页；跨快照/工程共享），manifest 记
-  源页表可重建原文；A03 页=内存内容块同构序列化+目录分页+按需页视图（重启
-  小查询禁调 parser）；**manifest --required--> 全部数据页+目录页+A02**——
-  当前根 required 闭包覆盖全树；**当前根替换 + 视图 lease 生命周期**（GC
-  保活/释放后回收，GC 算法零改动）。新 ChunkKind ×5（加法：SyntaxGrammar/
-  TokenStream/CstPage/CstManifest/SourcePage；旧 kind 字节与拒绝面不变）。
+  store 装载——跨进程恢复不编译 .at）；A02 token 流+**完整 scanner checkpoint**
+  ——终态按末 token 拼写**重放**还原（嵌套注释真实深度/字符串转义挂起/
+  mode），恢复续扫与 fresh 词法尾部全等；键含 grammar 身份（跨 grammar 真读
+  拒绝）；**A02 --required--> A01+源页**。源字节以**内容寻址 SourcePage**
+  持久化（快照 16KiB 页聚合为 ≤256KiB store 源页；跨快照/工程共享），manifest
+  记源页表可流式重建原文。A03 页=内存内容块同构序列化+目录分页（4096 条/页，
+  framed ≤512KiB）+按需页视图（重启小查询禁调 parser；视图 lease）；
+  required 闭包（当前根 GC 存活覆盖可重开全数据）：put_cst 链 = manifest
+  --required--> 数据页+目录页+A02（→A01+源页）；流式链 = manifest
+  --required--> 数据页+目录页+**源页+A01**（流式无 A02 工件——直接闭包，
+  不以 A03→A02 链解释流式保活）。**发布仲裁**：manifest 携带 revision，
+  迟到旧任务（低 revision）只入库不发布——当前根不被覆盖；流式根按工程
+  隔离。新 ChunkKind ×5（加法：SyntaxGrammar/TokenStream/CstPage/CstManifest/
+  SourcePage；旧 kind 字节与拒绝面不变；GC 算法零改动）。
 - **acceptance**：AC-05（V-09..V-11）。
 
 ## SD-06 modify docs/specs/auto-ac/artifact-probe.md

@@ -31,6 +31,16 @@ fn mini_grammar_variant() -> GrammarProgram {
     compile_grammar(&src).unwrap()
 }
 
+/// 子进程受截止执行（F787-R2-10：裸 Command.output 无截止——复用探针的
+/// run_deadlined：wall-clock 上限 + job-object 树杀 + 管道排空）。
+fn run_deadlined(cmd: std::process::Command, secs: u64) -> ac_artifact_probe::subproc::RunResult {
+    let r = ac_artifact_probe::subproc::run_deadlined(cmd, std::time::Duration::from_secs(secs))
+        .expect("spawn child process");
+    assert!(!r.timed_out, "child process timed out (deadline {secs}s)");
+    assert!(r.code == Some(0), "child exited {:?}: {}", r.code, r.stderr);
+    r
+}
+
 fn scratch(family: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("ac787-{family}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
@@ -186,16 +196,20 @@ fn syntax_cache_two_projects_share_content_isolate_roots() {
     drop(vy);
 }
 
-/// V-09 跨进程恢复（F787-R1-09）：**真新进程**（ac787-query bin）——
-/// grammar 程序从 store 反序列化（不编译 .at），CST 查询走 manifest/页
-/// 路径（bin 内无 parse_snapshot 调用面），源文本从源页重建。
+/// V-09 跨进程恢复（F787-R1-09/R2-09/10）：**真新进程**（ac787-query bin，
+/// 受截止）——grammar 程序从 store 反序列化（不编译 .at），CST 查询走
+/// manifest/页路径（bin 内无 parse_snapshot 调用面）；源按页流式 hash 校验；
+/// 精确断言声明 span 与 outline 名（可区分负控：错 decl 不得给出同名同位）。
 #[test]
 fn syntax_cache_cross_process_recovery_query() {
     let p = mini_grammar();
     let cs = CompiledScanner::compile(&p).unwrap();
     let mut text = String::new();
     for i in 0..500 {
-        text.push_str(&format!("api f{i}(a: i32) -> i32;\n"));
+        text.push_str(&format!(
+            "api f{i}(a: i32) -> i32;
+"
+        ));
     }
     let snap = Snapshot::from_text(&Rc::new(PageStore::new()), &text);
     let out = parse_snapshot(&p, &cs, &snap, &Budget::default()).unwrap();
@@ -206,7 +220,6 @@ fn syntax_cache_cross_process_recovery_query() {
     let t = sas.put_tokens(&p, &snap, &out.tokens).unwrap();
     sas.put_cst(&p, &snap, &out.tree, &t).unwrap();
 
-    // 非流式 manifest 也可走 query bin？——bin 面向流式视图；这里再建一个
     // 小流式树驱动跨进程查询。
     let mut b = ac_syntax_artifact_adapter::StreamingCstBuilder::new(&sas, &p);
     b.push_chunk(&text).unwrap();
@@ -215,25 +228,29 @@ fn syntax_cache_cross_process_recovery_query() {
     let stream_id = b.stream_snapshot_id();
     let decl_total = b.decl_count() as usize;
 
-    let outp = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-query"))
-        .arg(&root)
+    // 期望值（进程内独立计算，跨进程对照）：
+    let idx = 7usize;
+    let expected_origin: u64 = text.lines().take(idx).map(|l| l.len() as u64 + 1).sum();
+    let expected_end = expected_origin + format!("api f{idx}(a: i32) -> i32;").len() as u64;
+    let expected_hash = {
+        let mut h = blake3::Hasher::new();
+        h.update(text.as_bytes());
+        h.finalize().to_hex().to_string()
+    };
+
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-query"));
+    cmd.arg(&root)
         .arg(p.grammar_id().as_str())
         .arg(p.revision.to_string())
         .arg(&stream_id)
         .arg(total.to_string())
-        .arg("7")
-        .output()
-        .expect("spawn query process");
-    assert!(
-        outp.status.success(),
-        "query process failed: {}",
-        String::from_utf8_lossy(&outp.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&outp.stdout);
-    let last = stdout.lines().last().unwrap_or("");
+        .arg(idx.to_string());
+    let r = run_deadlined(cmd, 120);
+    let last = r.stdout.lines().last().unwrap_or("");
     assert!(
         last.starts_with("QUERY "),
-        "unexpected query output: {stdout}"
+        "unexpected query output: {}",
+        r.stdout
     );
     let fields: std::collections::HashMap<&str, &str> = last
         .split_whitespace()
@@ -244,6 +261,98 @@ fn syntax_cache_cross_process_recovery_query() {
     let src_len: u64 = fields["src_len"].parse().unwrap();
     let nodes: u32 = fields["nodes"].parse().unwrap();
     assert_eq!(decls, decl_total, "cross-process decl count");
-    assert_eq!(src_len, total, "cross-process rebuilt source length");
+    assert_eq!(src_len, total, "cross-process streamed source length");
+    assert_eq!(
+        fields["src_hash"], expected_hash,
+        "cross-process streamed source hash"
+    );
     assert!(nodes > 0, "cross-process subtree rebuild");
+    // 精确 span/name（可区分断言）。
+    assert_eq!(
+        fields["span"],
+        format!("{expected_origin},{expected_end}"),
+        "cross-process decl span"
+    );
+    assert_eq!(
+        fields["name"],
+        format!("f{idx}"),
+        "cross-process outline name"
+    );
+
+    // 负控：错 decl 索引必须给出**不同**精确值（不是同名同位）。
+    let mut cmd2 = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-query"));
+    cmd2.arg(&root)
+        .arg(p.grammar_id().as_str())
+        .arg(p.revision.to_string())
+        .arg(&stream_id)
+        .arg(total.to_string())
+        .arg("8");
+    let r2 = run_deadlined(cmd2, 120);
+    let last2 = r2.stdout.lines().last().unwrap_or("");
+    let f2: std::collections::HashMap<&str, &str> = last2
+        .split_whitespace()
+        .skip(1)
+        .map(|kv| kv.split_once('=').expect("k=v"))
+        .collect();
+    assert_ne!(
+        f2["span"], fields["span"],
+        "distinct decl must have distinct span"
+    );
+    assert_ne!(
+        f2["name"], fields["name"],
+        "distinct decl must have distinct name"
+    );
+}
+
+/// A02 checkpoint 恢复对照（F787-R2-06）：持久化终态在**续写文本**上恢复
+/// 扫描，与 fresh 全量词法逐 token 全等（真实 mid 状态——嵌套深度/转义）。
+#[test]
+fn syntax_cache_checkpoint_resume_matches_fresh_extension() {
+    let p = mini_grammar();
+    let cs = CompiledScanner::compile(&p).unwrap();
+    // 未闭合嵌套块注释 + 尾转义字符串两个场景分别验证（真实 mid 重放）。
+    for (base, ext) in [
+        (
+            "api a() -> i32;
+/* outer /* inner",
+            " still open */ api b() -> i32;
+",
+        ),
+        (
+            "note \"half\", api c() -> i32;
+note \"tail\\",
+            "closed\"; api d() -> i32;
+",
+        ),
+    ] {
+        let store = Rc::new(PageStore::new());
+        let snap = Snapshot::from_text(&store, base);
+        let lx = ac_syntax_rt::lexer::lex_all(&p, &cs, &snap).unwrap();
+        let root = scratch("cache-cpresume");
+        let sas = SyntaxArtifactStore::open(&root, "proj-cp").unwrap();
+        sas.put_tokens(&p, &snap, &lx.tokens).unwrap();
+        let (tokens2, cp) = sas
+            .get_tokens_with_checkpoint(&p, &snap)
+            .unwrap()
+            .expect("tokens+cp hit");
+        assert_eq!(tokens2, lx.tokens);
+        // 续写文档：从持久化 checkpoint 恢复扫描 → 与 fresh 全量对照。
+        let full_text = format!("{base}{ext}");
+        let full_snap = Snapshot::from_text(&store, &full_text);
+        let fresh = ac_syntax_rt::lexer::lex_all(&p, &cs, &full_snap).unwrap();
+        let mut sc = ac_syntax_rt::lexer::Scanner::start(&p, &cs, &full_snap, &cp).unwrap();
+        let mut resumed = Vec::new();
+        while let Some(t) = sc.next_token().unwrap() {
+            resumed.push(t);
+        }
+        // EOF 终态恢复从最后一个未闭合 token 起重发——与 fresh 全量词法的
+        // 对应尾部逐 token 全等（含跨文本边界的 token 拼接/行号/错误位）。
+        let tail: Vec<ac_syntax_rt::lexer::Token> =
+            fresh.tokens[fresh.tokens.len() - resumed.len()..].to_vec();
+        assert_eq!(
+            resumed, tail,
+            "checkpoint resume must equal the fresh lex tail of the extended text"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

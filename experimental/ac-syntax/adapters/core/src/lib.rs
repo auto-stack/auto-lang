@@ -124,8 +124,13 @@ struct Cx<'a> {
     k: &'a CoreKinds,
     tree: &'a CstTree,
     snap: &'a Snapshot,
-    depth: usize,
+    /// 已访问节点数（F787-R2-08：无固定句法深度上限——资源预算受控）。
+    visited: usize,
 }
+
+/// 投影工作预算（访问节点数）：约 4M 节点——合法 core 承诺面（含深链/深
+/// 嵌套）远低于此；超出 = 受控 TooDeep（预算语义，非语法排除）。
+const PROJECTION_NODE_BUDGET: usize = 1 << 22;
 
 fn span_of(tree: &CstTree, n: u32) -> Span {
     let (s, e) = tree.abs_range(n);
@@ -179,7 +184,7 @@ fn project_fn(
         k,
         tree,
         snap,
-        depth: 0,
+        visited: 0,
     };
     let name_f = p.field_id("name").unwrap();
     let params_f = p.field_id("params").unwrap();
@@ -448,14 +453,13 @@ fn project_stmt(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<Stmt> {
 }
 
 fn project_expr(cx: &mut Cx, node: u32) -> PResult<Expr> {
-    cx.depth += 1;
-    if cx.depth > 2048 {
-        cx.depth -= 1;
+    // 访问预算受控（F787-R2-08）：合法 core 输入（任意深链/嵌套）不设句法
+    // 上限——仅当访问量超过工作预算时受控拒绝（TooDeep 语义=预算耗尽）。
+    cx.visited += 1;
+    if cx.visited > PROJECTION_NODE_BUDGET {
         return Err(ProjectionError::TooDeep);
     }
-    let r = project_expr_inner(cx, node);
-    cx.depth -= 1;
-    r
+    project_expr_inner(cx, node)
 }
 
 fn project_expr_inner(cx: &mut Cx, node: u32) -> PResult<Expr> {

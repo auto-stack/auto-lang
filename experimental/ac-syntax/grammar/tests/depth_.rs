@@ -3,8 +3,8 @@
 //! 编解码路径随 T-06 分页序列化补充。
 
 mod lossless_;
-use lossless_::{parse, profile};
 use ac_syntax_rt::program::Budget;
+use lossless_::{parse, profile};
 
 const DEPTH: usize = 4096;
 
@@ -65,11 +65,26 @@ fn depth_resource_exhausted_is_controlled_not_crash() {
     use ac_syntax_rt::parse::parse_snapshot;
     use ac_syntax_rt::snapshot::{PageStore, Snapshot};
     let cs = CompiledScanner::compile(&p).unwrap();
-    let text = format!("fn f() int {{ return {}1{} }}", "(".repeat(1 << 21), ")".repeat(1 << 21));
+    let text = format!(
+        "fn f() int {{ return {}1{} }}",
+        "(".repeat(1 << 21),
+        ")".repeat(1 << 21)
+    );
     let snap = Snapshot::from_text(&std::rc::Rc::new(PageStore::new()), &text);
-    let r = parse_snapshot(&p, &cs, &snap, &Budget { max_parse_depth: 4096, work_bytes: 64 << 20 });
+    let r = parse_snapshot(
+        &p,
+        &cs,
+        &snap,
+        &Budget {
+            max_parse_depth: 4096,
+            work_bytes: 64 << 20,
+        },
+    );
     assert!(
-        matches!(r, Err(ac_syntax_rt::program::RtError::ResourceExhausted { .. })),
+        matches!(
+            r,
+            Err(ac_syntax_rt::program::RtError::ResourceExhausted { .. })
+        ),
         "deep nesting must hit controlled ResourceExhausted, got {r:?}"
     );
 }

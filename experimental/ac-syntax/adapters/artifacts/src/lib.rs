@@ -344,6 +344,7 @@ impl SyntaxArtifactStore {
         let manifest = CstManifest {
             snapshot: snap.id().as_str().to_string(),
             grammar: p.grammar_id().as_str().to_string(),
+            revision: snap.revision(),
             total_len: snap.len(),
             diags: tree
                 .diags
@@ -386,17 +387,43 @@ impl SyntaxArtifactStore {
             payload: serde_json::to_vec(&manifest)
                 .map_err(|e| AdapterError::Admissions(e.to_string()))?,
             edges,
-            project: Some(self.project.clone()),
+            // 版本工件存储不带工程软根（F787-R2-02：软根会永久钉住历史版本）；
+            // 当前性由下方仲裁后的 cst-manifest 硬根表达。
+            project: None,
         })?;
-        // 当前根替换（F787-R1-06）：同工程仅保留本 manifest 的硬根——先清
-        // 旧硬根与全部旧软根（本 adapter 中 project 软根只落在 manifest 上，
-        // 页/A02/源页均为 store 内部块），再注册当前根。历史版本靠 open 时
-        // 获取的 lease 保活，lease 释放后可被 GC 回收。
-        self.store.remove_roots(&self.project, "cst-manifest")?;
-        self.store.remove_project_roots(&self.project)?;
-        self.store
-            .register_root(&self.project, &art, "cst-manifest")?;
+        self.publish_if_current(&art, snap.revision())?;
         Ok(art)
+    }
+
+    /// 当前发布仲裁（F787-R2-02）：分离"存版本工件"与"当前发布"——仅当
+    /// 无当前根，或本版本 ≥ 当前根版本时替换当前根；迟到旧任务（低 revision）
+    /// 只入库不发布，不得覆盖真实当前根。移除/注册的错误传播（不忽略）。
+    fn publish_if_current(&self, artifact: &str, revision: u32) -> Result<(), AdapterError> {
+        let mut cur_rev: Option<u32> = None;
+        for art in self.store.root_artifacts(&self.project, "cst-manifest")? {
+            if let Some(loaded) = self.store.get_artifact_by_id(&art)? {
+                if let Ok(m) = serde_json::from_slice::<CstManifest>(&loaded.payload) {
+                    cur_rev = Some(m.revision);
+                    break;
+                }
+            }
+        }
+        let publish = match cur_rev {
+            None => true,
+            Some(r) => revision >= r,
+        };
+        if !publish {
+            return Ok(());
+        }
+        self.store.remove_roots(&self.project, "cst-manifest")?;
+        self.store
+            .register_root(&self.project, artifact, "cst-manifest")?;
+        Ok(())
+    }
+
+    /// 本 store 的工程名（流式 builder 的当前根按工程隔离——F787-R2-02）。
+    pub fn project(&self) -> &str {
+        &self.project
     }
 
     /// 打开分页视图（跨进程恢复：新 store 实例 + manifest key → CstView）。
@@ -439,7 +466,14 @@ impl SyntaxArtifactStore {
         let Some(loaded) = self.store.get_artifact("A03", &key)? else {
             return Ok(None);
         };
-        self.view_from_manifest(&loaded.payload, loaded.artifact_id, None, Some(total_len))
+        // 身份强校验（F787-R2-05）：payload 的 snapshot/grammar 必须与请求的
+        // stream id / grammar 一致——有效 key 下错误身份受控拒绝，不旁路。
+        self.view_from_manifest(
+            &loaded.payload,
+            loaded.artifact_id,
+            Some((stream_id, p)),
+            Some(total_len),
+        )
     }
 
     fn view_from_manifest(
@@ -476,6 +510,7 @@ impl SyntaxArtifactStore {
             manifest,
             declared_total_len: declared_len,
             hot: std::cell::RefCell::new(PageCache::new(CST_HOT_BUDGET)),
+            max_chunk_read: std::cell::Cell::new(0),
             _lease: Some(lease),
         }))
     }
@@ -569,10 +604,10 @@ fn decode_checkpoint(b: &[u8]) -> Result<(ScanCheckpoint, usize), String> {
     ))
 }
 
-/// 由 token 流推导 EOF 终态 checkpoint：mode 取产出末 token 的规则 next_mode
-/// （流内可确定；错误尾 token 无法定 mode → 0）；未闭合（末 token error）时
-/// mid 由语法包**唯一**字符串/块注释规则判定起点（无法唯一判定 = None）。
-/// 行号 = 末 token 行 + 其拼写内换行数。推导语义在代码处声明，不做静默截断。
+/// 由 token 流推导 EOF 终态 checkpoint（F787-R2-06：**重放**末 token 拼写还原
+/// scanner 实际状态，不是猜测）——未闭合块注释按嵌套规则重数真实深度；
+/// 未闭合字符串重扫转义挂起；mode 取产出规则的 mode/next_mode（mid 恢复时
+/// find_rule 以 mode 匹配）。行号 = 末 token 行 + 其拼写内换行数。
 fn derive_final_checkpoint(
     p: &GrammarProgram,
     snap: &Snapshot,
@@ -587,40 +622,86 @@ fn derive_final_checkpoint(
         let in_tok_newlines = spelling.iter().filter(|&&b| b == b'\n').count() as u32;
         line = t.line + in_tok_newlines;
         if t.error {
-            let str_rules: Vec<_> = p
+            // 未闭合：按语法包的 matcher 族重放拼写，还原真实 mid 状态。
+            let block_rules: Vec<&ac_syntax_rt::program::ScanRule> = p
+                .scanner
+                .rules
+                .iter()
+                .filter(|r| {
+                    matches!(
+                        r.matcher,
+                        ac_syntax_rt::program::Matcher::BlockComment { .. }
+                    )
+                })
+                .collect();
+            let str_rules: Vec<&ac_syntax_rt::program::ScanRule> = p
                 .scanner
                 .rules
                 .iter()
                 .filter(|r| matches!(r.matcher, ac_syntax_rt::program::Matcher::StringLit { .. }))
                 .collect();
-            if let (Some(r), Some(&first)) = (str_rules.first(), spelling.first()) {
-                if let ac_syntax_rt::program::Matcher::StringLit { quote, .. } = &r.matcher {
-                    if *quote == first && str_rules.len() == 1 {
-                        mid = Some(MidToken::Str {
+            let starts_with = |lit: &str| spelling.starts_with(lit.as_bytes());
+            if block_rules.len() == 1 {
+                if let ac_syntax_rt::program::Matcher::BlockComment { start, end, nested } =
+                    &block_rules[0].matcher
+                {
+                    if starts_with(start) {
+                        // 重放嵌套计数：每个未配对 opener 计一层。
+                        let sb = start.as_bytes();
+                        let eb = end.as_bytes();
+                        let mut depth: u32 = 0;
+                        let mut i = 0usize;
+                        while i < spelling.len() {
+                            if spelling[i..].starts_with(sb) {
+                                depth += 1;
+                                i += sb.len();
+                                continue;
+                            }
+                            if spelling[i..].starts_with(eb) && depth > 0 {
+                                depth -= 1;
+                                i += eb.len();
+                                continue;
+                            }
+                            i += 1;
+                        }
+                        let _ = nested;
+                        mid = Some(MidToken::Block {
                             start: t.start,
-                            quote: *quote,
-                            escape_pending: false,
+                            depth: depth.max(1),
                         });
+                        mode = block_rules[0].mode;
                     }
                 }
             }
-            if mid.is_none() {
-                let block_rules: Vec<_> = p
-                    .scanner
-                    .rules
-                    .iter()
-                    .filter(|r| {
-                        matches!(
-                            r.matcher,
-                            ac_syntax_rt::program::Matcher::BlockComment { .. }
-                        )
-                    })
-                    .collect();
-                if block_rules.len() == 1 {
-                    mid = Some(MidToken::Block {
-                        start: t.start,
-                        depth: 1,
-                    });
+            if mid.is_none() && str_rules.len() == 1 {
+                if let ac_syntax_rt::program::Matcher::StringLit { quote, escape } =
+                    &str_rules[0].matcher
+                {
+                    if spelling.first() == Some(quote) {
+                        let mut pending = false;
+                        for &b in spelling.iter().skip(1) {
+                            if pending {
+                                pending = false;
+                                continue;
+                            }
+                            if *escape && b == b'\\' {
+                                pending = true;
+                                continue;
+                            }
+                            if b == *quote {
+                                // 闭合出现在拼写内 = 不是未闭合（防御：按 token
+                                // error 标记之外的状态不构造 mid）。
+                                pending = false;
+                                break;
+                            }
+                        }
+                        mid = Some(MidToken::Str {
+                            start: t.start,
+                            quote: *quote,
+                            escape_pending: pending,
+                        });
+                        mode = str_rules[0].mode;
+                    }
                 }
             }
         } else if t.token != u32::MAX {
@@ -697,6 +778,10 @@ fn encode_block(blk: &CstBlock) -> Vec<u8> {
 pub struct CstManifest {
     pub snapshot: String,
     pub grammar: String,
+    /// 发布版本仲裁（F787-R2-02）：迟到旧任务（低 revision）不得替换当前根。
+    /// 流式/历史 manifest 无版本语义（默认 0）。
+    #[serde(default)]
+    pub revision: u32,
     pub total_len: u64,
     pub diags: Vec<DiagEntry>,
     /// 树根的孩子边（全局 id + field）——根节点自身不在页内（零边）。
@@ -713,8 +798,9 @@ pub struct CstManifest {
     pub source_pages: Vec<String>,
 }
 
-/// 每目录页声明数。
-pub const DECL_INDEX_PAGE: usize = 50_000;
+/// 每目录页声明数（F787-R2-09：目录页 framed 约 60B/条——4096 条 ≈ 250KiB，
+/// 单声明查询的目录读取满足小范围 payload ≤512KiB 合同）。
+pub const DECL_INDEX_PAGE: usize = 4096;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct DeclIndexPage {
@@ -766,8 +852,8 @@ fn validate_manifest(m: &CstManifest) -> Result<(), AdapterError> {
                 m.pages.len()
             )));
         };
-        let local = d.node as u64 - pe.first_node as u64;
-        if d.node < pe.first_node || local >= pe.node_count as u64 {
+        // 下界先判后算（F787-R2-05：d.node < first_node 时无符号相减溢出 panic）。
+        if d.node < pe.first_node || d.node - pe.first_node >= pe.node_count {
             return Err(AdapterError::Admissions(format!(
                 "decl node {} outside page {} range [{},{})",
                 d.node,
@@ -861,6 +947,9 @@ pub struct CstView<'s> {
     /// 流式视图的 total_len 由调用方声明（与 manifest 一致性在 open 时校验）。
     declared_total_len: Option<u64>,
     hot: std::cell::RefCell<PageCache>,
+    /// 单次 chunk 读取峰值（framed 字节；数据页/目录页/源页统一口径——
+    /// F787-R2-09：小范围查询 payload 合同的完整观测）。
+    max_chunk_read: std::cell::Cell<usize>,
     _lease: Option<ac_artifact_probe::store::Lease>,
 }
 
@@ -930,6 +1019,12 @@ impl<'s> CstView<'s> {
         let pe = self.manifest.pages.get(d.page as usize).ok_or_else(|| {
             AdapterError::Admissions(format!("decl page {} out of range", d.page))
         })?;
+        if d.node < pe.first_node {
+            return Err(AdapterError::Admissions(format!(
+                "decl node {} below page {} base {}",
+                d.node, d.page, pe.first_node
+            )));
+        }
         let page = self.page(d.page)?;
         let local = (d.node - pe.first_node) as usize;
         let nd = page
@@ -969,7 +1064,9 @@ impl<'s> CstView<'s> {
                 p0.nodes.len()
             )));
         }
-        // BFS 收集可达节点（防坏 ref 环：seen 去重；边目标越界在 decode 拒绝）。
+        // BFS 收集可达节点。树不变量：每个节点恰一个父——边目标重复出现
+        // （环/共享孩子）即非树，受控拒绝（F787-R2-05：不得装回环边后
+        // 返回 Ok，否则 canonical/outline 等无环遍历无限增长）。
         let mut seen = std::collections::HashSet::new();
         let mut order = Vec::new();
         let mut stack = vec![root_local];
@@ -986,9 +1083,19 @@ impl<'s> CstView<'s> {
                     )));
                 };
                 let cl = c as usize;
-                if cl < p0.nodes.len() && seen.insert(cl) {
-                    stack.push(cl);
+                if cl >= p0.nodes.len() {
+                    return Err(AdapterError::Admissions(format!(
+                        "edge target {cl} outside page nodes ({})",
+                        p0.nodes.len()
+                    )));
                 }
+                if !seen.insert(cl) {
+                    return Err(AdapterError::Admissions(format!(
+                        "page {} is not a tree: node {cl} referenced twice (cycle/shared child)",
+                        d.page
+                    )));
+                }
+                stack.push(cl);
             }
         }
         order.sort_unstable(); // 页内序 = 文档序
@@ -1096,6 +1203,18 @@ impl<'s> CstView<'s> {
             + std::mem::size_of::<CstManifest>()
     }
 
+    /// gated chunk 读取 + 计量（数据/目录/源页统一走此口径）。
+    fn read_chunk_metered(&self, chunk: &str) -> Result<Option<Vec<u8>>, AdapterError> {
+        let out = self.store.read_chunk_gated(chunk)?;
+        if let Some(b) = &out {
+            let n = b.len();
+            if n > self.max_chunk_read.get() {
+                self.max_chunk_read.set(n);
+            }
+        }
+        Ok(out)
+    }
+
     fn manifest_diags_for(&self, _origin: u64) -> Vec<ac_syntax_rt::cst::SynDiag> {
         // 诊断按声明归属过滤成本高；视图层保留全量诊断的轻量投影（消息可查）。
         self.manifest
@@ -1116,7 +1235,7 @@ impl<'s> CstView<'s> {
             self.manifest.pages.get(idx as usize).ok_or_else(|| {
                 AdapterError::Admissions(format!("page {idx} missing from manifest"))
             })?;
-        let Some(payload) = self.store.read_chunk_gated(&pe.chunk)? else {
+        let Some(payload) = self.read_chunk_metered(&pe.chunk)? else {
             return Err(AdapterError::Admissions(format!(
                 "page chunk {} missing (CAS miss)",
                 &pe.chunk[..8.min(pe.chunk.len())]
@@ -1208,6 +1327,8 @@ pub struct StreamingCstBuilder<'a> {
     page_chunks: Vec<String>,
     pages: Vec<PageEntry>,
     src_page_chunks: Vec<String>,
+    /// 源页 artifact ids（manifest required 闭包用——F787-R2-04）。
+    src_page_arts: Vec<String>,
     decls_buf: Vec<DeclEntry>,
     decl_index: Vec<PageEntry>,
     decl_index_arts: Vec<String>,
@@ -1231,6 +1352,7 @@ impl<'a> StreamingCstBuilder<'a> {
             page_chunks: Vec::new(),
             pages: Vec::new(),
             src_page_chunks: Vec::new(),
+            src_page_arts: Vec::new(),
             decls_buf: Vec::new(),
             decl_index: Vec::new(),
             decl_index_arts: Vec::new(),
@@ -1269,8 +1391,10 @@ impl<'a> StreamingCstBuilder<'a> {
         self.decl_count
     }
 
-    fn touch_peak(&mut self) {
-        let b = self.managed_bytes();
+    /// 受管峰值采样（F787-R2-09）：常驻目录 + 调用点仍驻留的暂存量
+    /// （parse 树/页 payload/目录页 JSON 等）——不只统计常驻容器。
+    fn touch_peak_with(&mut self, transient: usize) {
+        let b = self.managed_bytes() + transient;
         if b > self.working_set_peak {
             self.working_set_peak = b;
         }
@@ -1281,15 +1405,32 @@ impl<'a> StreamingCstBuilder<'a> {
     pub fn push_chunk(&mut self, chunk: &str) -> Result<(), AdapterError> {
         let store_rc = Rc::new(ac_syntax_rt::snapshot::PageStore::new());
         let snap = Snapshot::from_text(&store_rc, chunk);
-        // 源页持久化（内容寻址，跨块去重）。
-        let (_arts, chunks) = self.sas.put_source_pages(&snap)?;
+        // 身份时序（F787-R2-03）：本块 snapshot hash **先**入 parts 再构造任何
+        // 页/目录页键——否则首块键恒为空前缀 hash，第二份文档在共享 store 里
+        // 必然 Conflict（"新文档必须空 store"不能成为隐藏条件）。
+        let mut part = snap.id().as_str().as_bytes().to_vec();
+        part.push(0);
+        self.snap_hash_parts.push(part);
+        // 源页持久化（内容寻址，跨块去重；artifact ids 保留供 manifest 闭包）。
+        let (arts, chunks) = self.sas.put_source_pages(&snap)?;
+        self.src_page_arts.extend(arts);
         self.src_page_chunks.extend(chunks);
         let out = ac_syntax_rt::parse::parse_snapshot(self.p, &self.scanner, &snap, &self.budget)
             .map_err(AdapterError::Rt)?;
+        // 受管峰值（F787-R2-09）：parse 树/词法产物仍驻留时采样。
+        self.touch_peak_with(
+            out.tree
+                .blocks
+                .iter()
+                .map(|b| b.nodes.len() * 40)
+                .sum::<usize>()
+                + out.tokens.len() * std::mem::size_of::<Token>(),
+        );
         let tree = &out.tree;
         // 块 → 数据页；块内声明 → 目录条目（全局 id = next_global + 局部）。
         for (bi, blk) in tree.blocks.iter().enumerate() {
             let payload = encode_block(blk);
+            self.touch_peak_with(payload.len());
             let idx = self.pages.len();
             let key = QueryKey::new(
                 layer("A03"),
@@ -1352,11 +1493,8 @@ impl<'a> StreamingCstBuilder<'a> {
                 end: self.prefix_len + dg.end,
             });
         }
-        let mut part = snap.id().as_str().as_bytes().to_vec();
-        part.push(0);
-        self.snap_hash_parts.push(part);
         self.prefix_len += chunk.len() as u64;
-        self.touch_peak();
+        self.touch_peak_with(0);
         Ok(())
     }
 
@@ -1429,6 +1567,7 @@ impl<'a> StreamingCstBuilder<'a> {
         let manifest = CstManifest {
             snapshot: self.stream_snapshot_component(),
             grammar: self.p.grammar_id().as_str().to_string(),
+            revision: 0, // 流式无快照修订语义；当前性 = 最后一次 finish
             total_len,
             diags: std::mem::take(&mut self.diags),
             root_edges: Vec::new(), // 流式树无单根；视图经声明目录查询
@@ -1447,6 +1586,9 @@ impl<'a> StreamingCstBuilder<'a> {
                 ("page".into(), "manifest".into()),
             ],
         );
+        // required 闭包（F787-R2-04）：数据页 + 目录页 + **源页 artifact** +
+        // **A01 语法表**——当前根的 GC 闭包覆盖可重开的全部数据（源可重建、
+        // grammar 可再装载）。
         let mut edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = Vec::new();
         edges.extend(
             self.page_arts
@@ -1460,8 +1602,21 @@ impl<'a> StreamingCstBuilder<'a> {
                 .cloned()
                 .map(|a| (a, ac_artifact_probe::identity::RefKind::RequiredData)),
         );
+        edges.extend(
+            self.src_page_arts
+                .iter()
+                .cloned()
+                .map(|a| (a, ac_artifact_probe::identity::RefKind::RequiredData)),
+        );
+        // A01 语法（new() 已发布，幂等重取 artifact id）。
+        let grammar_art = self.sas.put_grammar(self.p)?;
+        edges.push((
+            grammar_art,
+            ac_artifact_probe::identity::RefKind::RequiredData,
+        ));
         let payload =
             serde_json::to_vec(&manifest).map_err(|e| AdapterError::Admissions(e.to_string()))?;
+        self.touch_peak_with(payload.len() + edges.len() * 70);
         let art = self.sas.inner().put_artifact(PutRequest {
             layer: "A03",
             key: mkey,
@@ -1470,10 +1625,15 @@ impl<'a> StreamingCstBuilder<'a> {
             edges,
             project: None,
         })?;
-        self.sas.inner().remove_roots("stream", "cst-manifest")?;
+        // 当前根按**本工程**注册（F787-R2-02：流式根不再全工程共用 "stream"，
+        // 独立工程互不取消保活）；无版本语义（revision 0），最后一次 finish
+        // 即当前，替换语义与 put_cst 相同。
         self.sas
             .inner()
-            .register_root("stream", &art, "cst-manifest")?;
+            .remove_roots(self.sas.project(), "cst-manifest")?;
+        self.sas
+            .inner()
+            .register_root(self.sas.project(), &art, "cst-manifest")?;
         Ok(art)
     }
 
@@ -1487,8 +1647,13 @@ impl<'s> CstView<'s> {
     pub fn debug_hot_bytes(&self) -> usize {
         self.hot.borrow().bytes
     }
-    /// 单页最大解码字节（查询 payload 上界观测）。
+    /// 单页最大解码字节（CST 数据页解码口径）。
     pub fn debug_max_page_payload(&self) -> usize {
         self.hot.borrow().max_page
+    }
+    /// 视图生命周期内单次 chunk 读取峰值（framed 字节；数据/目录/源页统一，
+    /// F787-R2-09：小范围查询 payload 合同的完整观测口径）。
+    pub fn debug_max_chunk_read(&self) -> usize {
+        self.max_chunk_read.get()
     }
 }

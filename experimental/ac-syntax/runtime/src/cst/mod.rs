@@ -235,11 +235,17 @@ impl CstTree {
 
     /// 树内是否含 error/missing 节点（strict 投影拒绝面）。
     pub fn has_error_nodes(&self) -> bool {
-        self.blocks.iter().any(|b| {
-            b.nodes
-                .iter()
-                .any(|n| n.flags & (FLAG_ERROR | FLAG_MISSING) != 0)
-        })
+        // 可达性语义（F787-R2-01）：只看当前根可达节点——共享块中未被本树
+        // 嫁接的旧错误节点（修复前版本残留）不得污染已修好的树。
+        let mut stack = vec![self.root];
+        while let Some(n) = stack.pop() {
+            let nd = self.node(n);
+            if nd.flags & (FLAG_ERROR | FLAG_MISSING) != 0 {
+                return true;
+            }
+            self.for_each_child(n, |c, _| stack.push(c));
+        }
+        false
     }
 
     /// 叶序（文档顺序）迭代：显式栈，无递归；构造保证孩子按位置有序。
@@ -309,15 +315,21 @@ impl CstTree {
             };
             let err = if nd.flags & FLAG_ERROR != 0 { "^" } else { "" };
             let triv = if nd.flags & FLAG_TRIVIA != 0 { "~" } else { "" };
+            // 孩子字段按文档序内联（F787-R2-10：字段突变必须可检出；位置
+            // 对应遍历序——分配 ID 差异不参与比较）。
+            let mut fields = String::new();
+            let mut kids = Vec::new();
+            self.for_each_child(n, |c, f| {
+                kids.push(c);
+                fields.push_str(&format!("{f},"));
+            });
             out.push_str(&format!(
-                "{:indent$}n{}{missing}{err}{triv}:[{s},{e}) exp={}\n",
+                "{:indent$}n{}{missing}{err}{triv}:[{s},{e}) exp={} f=[{fields}]\n",
                 "",
                 nd.kind,
                 nd.expected,
                 indent = d
             ));
-            let mut kids = Vec::new();
-            self.for_each_child(n, |c, _| kids.push(c));
             for c in kids.into_iter().rev() {
                 stack.push((c, d + 1));
             }

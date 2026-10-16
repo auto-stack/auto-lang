@@ -35,6 +35,20 @@ fn os_private() -> u64 {
     ac_artifact_probe::sysinfo::current_process_memory().private_bytes
 }
 
+/// 子进程受截止执行（F787-R2-10：复用探针 run_deadlined——裸 output 无截止）。
+fn run_deadlined(cmd: std::process::Command, secs: u64) -> ac_artifact_probe::subproc::RunResult {
+    let r = ac_artifact_probe::subproc::run_deadlined(cmd, std::time::Duration::from_secs(secs))
+        .expect("spawn child process");
+    assert!(!r.timed_out, "generator timed out (deadline {secs}s)");
+    assert!(
+        r.code == Some(0),
+        "generator exited {:?}: {}",
+        r.code,
+        r.stderr
+    );
+    r
+}
+
 #[test]
 fn syntax_budget_64mib_streaming_small_queries() {
     const TARGET_MIB: usize = 64;
@@ -46,17 +60,13 @@ fn syntax_budget_64mib_streaming_small_queries() {
     let src_file = root.join("source.txt");
 
     // 1) 生成器独立进程（生成器与 runtime 分列）：流式写文件 + 自报峰值。
-    let gen = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-gen"))
-        .arg(&src_file)
-        .arg(TARGET_MIB.to_string())
-        .output()
-        .expect("spawn generator process");
-    assert!(
-        gen.status.success(),
-        "generator failed: {}",
-        String::from_utf8_lossy(&gen.stderr)
-    );
-    let gen_out = String::from_utf8_lossy(&gen.stdout);
+    let gen_cmd = {
+        let mut c = std::process::Command::new(env!("CARGO_BIN_EXE_ac787-gen"));
+        c.arg(&src_file).arg(TARGET_MIB.to_string());
+        c
+    };
+    let gen = run_deadlined(gen_cmd, 600);
+    let gen_out = gen.stdout.clone();
     let gen_peak: u64 = gen_out
         .lines()
         .last()
@@ -111,26 +121,14 @@ fn syntax_budget_64mib_streaming_small_queries() {
     let stream_id = builder.stream_snapshot_id();
     let build_secs = t0.elapsed().as_secs_f64();
     rt_peak = rt_peak.max(os_private());
-    let rt_delta = rt_peak.saturating_sub(rt_base);
     let decl_count = builder.decl_count() as usize;
 
-    // builder 受管工作集（在线目录 + 页表 + 源页表）≤ 8MiB。
+    // builder 受管工作集（常驻目录 + parse 树/页 payload/目录页 JSON 等暂存，
+    // F787-R2-09：在暂存量驻留时采样，不只统计常驻容器）≤ 8MiB。
     assert!(
         managed_peak <= 8 << 20,
-        "builder managed working set {managed_peak} > 8MiB (online decl index broken?)"
+        "builder managed working set (incl. transients) {managed_peak} > 8MiB"
     );
-
-    // OS 证据（Windows 实测；其它宿主 sysinfo=0 → 显式缺口记录，不作断言）。
-    if OS_EVIDENCE {
-        assert!(
-            rt_delta <= 64 << 20,
-            "runtime private bytes delta {rt_delta} > 64MiB target (gen peak {gen_peak} separate)"
-        );
-    } else {
-        eprintln!(
-            "BUDGET64 OS-EVIDENCE-GAP: sysinfo returns 0 on this host; managed-only accounting"
-        );
-    }
 
     // 外存核验：store 目录确实承载了源页与树页。
     let du: u64 = {
@@ -228,6 +226,21 @@ fn syntax_budget_64mib_streaming_small_queries() {
             "source file has bytes beyond rebuilt total {consumed}"
         );
         assert_eq!(consumed, real_bytes as u64);
+    }
+
+    // OS 终态采样（F787-R2-09：覆盖构建/查询/源重建全阶段后的峰值）+
+    // 证据断言（Windows 实测；其它宿主 sysinfo=0 → 显式缺口记录，不作断言）。
+    rt_peak = rt_peak.max(os_private());
+    let rt_delta = rt_peak.saturating_sub(rt_base);
+    if OS_EVIDENCE {
+        assert!(
+            rt_delta <= 64 << 20,
+            "runtime private bytes delta {rt_delta} > 64MiB target (gen peak {gen_peak} separate)"
+        );
+    } else {
+        eprintln!(
+            "BUDGET64 OS-EVIDENCE-GAP: sysinfo returns 0 on this host; managed-only accounting"
+        );
     }
 
     // 5) 旧视图释放（真实 lease：drop → lease 释放；页缓存随视图回收）。

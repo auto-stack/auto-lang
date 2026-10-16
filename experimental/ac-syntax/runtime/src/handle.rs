@@ -12,6 +12,11 @@ use crate::program::RtError;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// 树实例 id 全局发生器（F787-R2-07：跨会话不可混淆——每会话从 1 起号会
+/// 让 A 会话的 handle 在 B 会话解析成 B 的树）。
+static TREE_ID_GEN: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct NodeHandle {
@@ -35,7 +40,6 @@ struct SessionInner {
     entries: HashMap<u64, Rc<TreeEntry>>,
     lease_counts: HashMap<u64, u32>,
     current: Option<u64>,
-    next_id: u64,
 }
 
 /// 编辑会话的树注册表：当前根 + lease 的旧树。
@@ -56,16 +60,15 @@ impl TreeSession {
                 entries: HashMap::new(),
                 lease_counts: HashMap::new(),
                 current: None,
-                next_id: 1,
             }),
         }
     }
 
     /// 发布新当前根；未 lease 的旧树淘汰（可淘汰 ≠ 立即释放：Rc 语义）。
+    /// id 取自全局发生器——同一进程内任意两会话的树 id 互不相同。
     pub fn publish(&self, entry: TreeEntry) -> u64 {
         let mut s = self.inner.borrow_mut();
-        let id = s.next_id;
-        s.next_id += 1;
+        let id = TREE_ID_GEN.fetch_add(1, Ordering::SeqCst);
         let keep: Vec<u64> = s
             .lease_counts
             .iter()
@@ -175,6 +178,30 @@ mod tests {
             "old handle must be rejected"
         );
         let _ = t2;
+    }
+
+    #[test]
+    fn foreign_session_handle_is_rejected_both_ways() {
+        // F787-R2-07 反控：两会话各自 publish 后互用对方 handle 必须拒绝
+        // （树 id 全局唯一，跨会话 id 在本会话不存在）。
+        let a = TreeSession::new();
+        let b = TreeSession::new();
+        let ida = a.publish(entry());
+        let idb = b.publish(entry());
+        assert!(
+            b.resolve(NodeHandle { tree: ida, node: 0 }).is_err(),
+            "session A's handle must not resolve in session B"
+        );
+        assert!(
+            a.resolve(NodeHandle { tree: idb, node: 0 }).is_err(),
+            "session B's handle must not resolve in session A"
+        );
+        // 同内容不同文档：两会话各发布同 identity 树，仍互不可解析。
+        assert_ne!(ida, idb);
+        assert!(
+            a.resolve(NodeHandle { tree: ida, node: 0 }).is_ok(),
+            "own handle resolves"
+        );
     }
 
     #[test]

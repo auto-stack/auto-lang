@@ -22,7 +22,10 @@ fn grammar_both_profiles_compile_and_identity_differs() {
     let mini = compiled("interface-mini-v1");
     assert_ne!(core.identity, mini.identity);
     let core2 = compiled("auto-core");
-    assert_eq!(core.identity, core2.identity, "deterministic identity across compiles");
+    assert_eq!(
+        core.identity, core2.identity,
+        "deterministic identity across compiles"
+    );
 }
 
 #[test]
@@ -30,7 +33,10 @@ fn grammar_program_codec_roundtrip_from_atom() {
     let p = compiled("auto-core");
     let bytes = p.canonical_bytes();
     let q = ac_syntax_rt::program_codec::decode_canonical(&bytes).unwrap();
-    assert_eq!(p.identity, q.identity, "atom->binary->program identity binding");
+    assert_eq!(
+        p.identity, q.identity,
+        "atom->binary->program identity binding"
+    );
 }
 
 #[test]
@@ -44,12 +50,25 @@ fn grammar_keyword_spelling_changes_parse_without_runtime_change() {
     let p = compile(&src).expect("variant grammar compiles");
     assert_ne!(p.identity, compiled("auto-core").identity);
     let cs = CompiledScanner::compile(&p).unwrap();
-    let snap = Snapshot::from_text(&std::rc::Rc::new(PageStore::new()), "func main() int { return 0 }");
+    let snap = Snapshot::from_text(
+        &std::rc::Rc::new(PageStore::new()),
+        "func main() int { return 0 }",
+    );
     let out = parse_snapshot(&p, &cs, &snap, &Budget::default()).unwrap();
-    assert_eq!(out.tree.decls.len(), 1, "`func` spelling must drive parse via config");
-    let snap2 = Snapshot::from_text(&std::rc::Rc::new(PageStore::new()), "fn main() int { return 0 }");
+    assert_eq!(
+        out.tree.decls.len(),
+        1,
+        "`func` spelling must drive parse via config"
+    );
+    let snap2 = Snapshot::from_text(
+        &std::rc::Rc::new(PageStore::new()),
+        "fn main() int { return 0 }",
+    );
     let out2 = parse_snapshot(&p, &cs, &snap2, &Budget::default()).unwrap();
-    assert!(out2.tree.has_errors(), "old spelling must not parse as decl start");
+    assert!(
+        out2.tree.has_errors(),
+        "old spelling must not parse as decl start"
+    );
 }
 
 #[test]
@@ -62,14 +81,23 @@ fn grammar_precedence_flip_changes_tree_shape() {
     let run = |src: &str| -> String {
         let p = compile(src).unwrap();
         let cs = CompiledScanner::compile(&p).unwrap();
-        let snap = Snapshot::from_text(&std::rc::Rc::new(PageStore::new()), "fn f() int { return 1 + 2 * 3 }");
+        let snap = Snapshot::from_text(
+            &std::rc::Rc::new(PageStore::new()),
+            "fn f() int { return 1 + 2 * 3 }",
+        );
         let out = parse_snapshot(&p, &cs, &snap, &Budget::default()).unwrap();
         out.tree.canonical()
     };
     let a = run(&load("auto-core"));
     let flipped = load("auto-core")
-        .replace(r#"op(binding: 2, assoc: "left") { of: "+" }"#, r#"op(binding: 3, assoc: "left") { of: "+" }"#)
-        .replace(r#"op(binding: 3, assoc: "left") { of: "*" }"#, r#"op(binding: 2, assoc: "left") { of: "*" }"#);
+        .replace(
+            r#"op(binding: 2, assoc: "left") { of: "+" }"#,
+            r#"op(binding: 3, assoc: "left") { of: "+" }"#,
+        )
+        .replace(
+            r#"op(binding: 3, assoc: "left") { of: "*" }"#,
+            r#"op(binding: 2, assoc: "left") { of: "*" }"#,
+        );
     let b = run(&flipped);
     assert_ne!(a, b, "precedence must come from config, not runtime");
 }

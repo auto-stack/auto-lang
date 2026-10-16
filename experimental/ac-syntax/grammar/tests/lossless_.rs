@@ -37,7 +37,10 @@ fn lossless_core_comments_newlines_crlf() {
 #[test]
 fn lossless_mini_nested_comments_string_escapes() {
     let p = profile("interface-mini-v1");
-    assert_roundtrip(&p, "/* lvl1 /* lvl2 /* lvl3 */ still2 */ out1 */\napi x() -> i32;");
+    assert_roundtrip(
+        &p,
+        "/* lvl1 /* lvl2 /* lvl3 */ still2 */ out1 */\napi x() -> i32;",
+    );
     assert_roundtrip(&p, "note \"esc \\\" \\\\ tail\";\napi y(a: i32) -> i32;");
     assert_roundtrip(&p, "note \"multi\nline\nstring\";");
 }
@@ -47,13 +50,22 @@ fn lossless_bad_decls_partial_tree_keeps_following_decls() {
     let p = profile("auto-core");
     let text = "fn broken( { return 1 }\nfn ok() int { return 2 }\nfn also( int { return 3 }";
     let (out, snap) = parse(&p, text);
-    assert!(!out.tree.diags.is_empty(), "malformed decls must produce diagnostics");
+    assert!(
+        !out.tree.diags.is_empty(),
+        "malformed decls must produce diagnostics"
+    );
     // 坏声明 = 恢复 error 节点（不注册为可查询声明单元）；后续合法声明必须可查询。
-    assert!(!out.tree.decls.is_empty(), "at least the valid decl registers");
+    assert!(
+        !out.tree.decls.is_empty(),
+        "at least the valid decl registers"
+    );
     out.tree.assert_lossless(&snap).unwrap();
     // outline 候选仍可抽取（语法候选，不作语义授信）。
     let items = ac_syntax_rt::outline::outline(&p, &out.tree, &snap).unwrap();
-    assert!(items.iter().any(|i| i.name == "ok"), "outline must surface following valid decl");
+    assert!(
+        items.iter().any(|i| i.name == "ok"),
+        "outline must surface following valid decl"
+    );
 }
 
 #[test]
@@ -76,5 +88,9 @@ fn lossless_deterministic_reparse_same_input_version() {
     let text = "fn a() int { return 1 }\nfn b(x: int) int { return x + 1 }";
     let (o1, _) = parse(&p, text);
     let (o2, _) = parse(&p, text);
-    assert_eq!(o1.tree.canonical(), o2.tree.canonical(), "same input+version must be deterministic");
+    assert_eq!(
+        o1.tree.canonical(),
+        o2.tree.canonical(),
+        "same input+version must be deterministic"
+    );
 }

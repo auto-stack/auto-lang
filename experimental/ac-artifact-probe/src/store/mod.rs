@@ -889,6 +889,50 @@ impl ManagedStore {
         Ok(())
     }
 
+    /// Roots of one project+kind (adapter read seam: version arbitration for
+    /// current-publication decisions — PLAN-787 R2).
+    pub fn root_artifacts(&self, project: &str, kind: &str) -> Result<Vec<String>, StoreError> {
+        let _live = self.liveness_shared()?;
+        let db = self.db.lock().unwrap();
+        let mut stmt = db.prepare("SELECT artifact FROM roots WHERE project=?1 AND kind=?2")?;
+        let out = stmt
+            .query_map(params![project, kind], |r| r.get(0))?
+            .flatten()
+            .collect();
+        Ok(out)
+    }
+
+    /// Artifact payload by artifact id (adapter read seam; gated chunk read —
+    /// same admission as key lookups, tombstones read as miss).
+    pub fn get_artifact_by_id(&self, artifact_id: &str) -> Result<Option<LoadedArtifact>, StoreError> {
+        let row: Option<(String, u8)> = self
+            .db
+            .lock()
+            .unwrap()
+            .query_row(
+                "SELECT payload_chunk, kind FROM artifacts a JOIN chunks c ON c.chunk_id = a.payload_chunk WHERE a.artifact_id=?1",
+                params![artifact_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((chunk_id, kind_byte)) = row else {
+            return Ok(None);
+        };
+        let kind = ChunkKind::from_code(kind_byte).ok_or_else(|| StoreError::Internal("bad kind".into()))?;
+        match self.read_chunk_gated(&chunk_id) {
+            Ok(Some(bytes)) => {
+                let (k, payload) = unframe_chunk(&bytes)?;
+                if k != kind {
+                    return Err(StoreError::Internal(format!("kind mismatch for {artifact_id}")));
+                }
+                Ok(Some(LoadedArtifact { artifact_id: artifact_id.to_string(), chunk_id, kind, payload: payload.to_vec() }))
+            }
+            Ok(None) => Ok(None),
+            Err(StoreError::TombstonedMiss(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     pub fn remove_project_roots(&self, project: &str) -> Result<usize, StoreError> {
         let _live = self.liveness_shared()?;
         let n = self.db.lock().unwrap().execute(
