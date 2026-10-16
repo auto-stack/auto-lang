@@ -206,9 +206,15 @@ T-01–05可与796/787/788并行，不能提前实现依赖其未合入API的T-0
 
 2026-10-16 stage:work（R2 needs_fix 回环）；PLAN-797 r1；outcome:**blocked**（依赖门未变，本轮无可执行新面，零代码/零草稿改动）；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`；code HEAD `635053f74`（未动，树 clean）。R2 三项结论确认接收：F-797-R1-03 CLOSED、F-797-R1-02 PARTIAL（终收口待 T-06）、F-797-R1-01 OPEN（即 T-06）。**依赖门新鲜核查（当前 master `32743f07b`）**：796 worktree HEAD `d85f89fc7584d40146d026e3c79fe0db18b2a78e` ancestry→NOT-MERGED（executing 5/9，未归档）；788 worktree HEAD `720df159c656c1acc8ac32e94458060a03f5f39b` ancestry→NOT-MERGED（executing，未归档）——与 R2 报告所录一致，无新证据满足重试条件。按计划 §8 不提前实现依赖未合入 API 的 T-06；按 R2 路由不把材料补齐当实施完毕、不翻搅已冻结身份的草稿（goals.md 输入漂移留待 T-07 终稿重核）。**unblock**：D-796+D-788 实际合入/Spec 齐全后，同树（`635053f74` 起）完成 T-06（真实语义绑定/快照退出收据/正式 AutoDown 注册与执行/兼容反控/性能复测）→ T-07 终稿（含当前输入 hash 重核）→ T-08 完整 final 验收（前五项高风险路径矩阵与 merge-owned 门禁按 pending_closeout_gates 清单执行）。next_responsible_role: work（门后恢复）；依赖计划由各自 session 推进，本计划不代做。
 
+2026-10-16 stage:review；review_scope:final（R3 就绪复核，非完整代码验收）；reviewer: 当前独立 Codex 复审聊天，未实施本分支；PLAN-797 r1；outcome:**needs_fix**；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`；reviewed_commit `635053f74aa49f89d74ffef6db9c70df7c363c06`（与 R2 完全相同，无新增提交，status --short 空）；base `5dcf4e3c2d5266cfa4ebf1444d6d7e154305d3c4`；当前 master `f35c9aab437b564716988977027a00e36b16f9f7`。D-796 `d85f89fc7584d40146d026e3c79fe0db18b2a78e`、D-788 `720df159c656c1acc8ac32e94458060a03f5f39b` ancestry→master 均 exit1，计划仍 executing；semref 仍为 `temporary-797-local`。F-797-R1-01 OPEN、F-797-R1-02 PARTIAL/OPEN；T-06/T-07 未完成，status:executing、current_step:5/9。锁 blob `598833812a800c9d71574b5cf345f8583c082b88` 与 R2 相同，F03 保持 CLOSED；Spec 草稿 SHA256 `B74BDD3552E407078878833844D3A081E528E96667249CE7BF98ACC45E7AB5EF` 未变，最终输入重绑仍 pending。复用 [R2](attachments/797/review-r2/review.md) 的锁解析及缺口证据，因代码/依赖/测试配置/草稿均未变，不重跑 metadata 或测试，不批准完整 AC/Spec pass；未新增 finding 或启动第三轮完整代码验收。merge-owned 门禁/归档/清理仍 pending；next:work，D-796/D-788 实际交付后完成 T-06/T-07，提交新就绪基线再完整验收。
+
+2026-10-16 stage:work（R3 needs_fix 回环）；PLAN-797 r1；outcome:**blocked**（依赖门与 R2 轮完全一致，零代码/零草稿/零材料改动）；code HEAD `635053f74`（未动，树 clean）。R3 接收：F-797-R1-01 OPEN / F-797-R1-02 PARTIAL / F-797-R1-03 CLOSED，无新增 finding。**依赖门核查（R3 后复查，与 R3 报告所录相同）**：796 `d85f89fc7` 与 788 `720df159c` 对 master ancestry 均 exit1，archive 无 788/796——门未动，无重试条件。维持 R2 回环记录的全部约束（不提前实现未合入 API 的 T-06、不翻搅冻结草稿、不重复完整验收）。**unblock 不变**：D-796+D-788 交付后同树（`635053f74` 起）T-06→T-07→T-08 完整验收。next_responsible_role: work（门后恢复）。备注：三轮复核结论与实施提交均未变化，依赖交付前重复就绪复核不会产生新信息；推进 796/788 合入（或由用户裁定缩小 T-06 绑定范围走 needs_replan 修订）是唯一改变状态的路径。
+
 预检/来源见[planning-preflight.md](attachments/797/planning-preflight.md)。候选v0.1不是现有产品支持声明。
 
 ## 10. 待澄清事项
+
+R3 当前结论（2026-10-16）：**needs_fix / executing 5/9**；实施 HEAD 与 R2 相同，无新增实施提交，T-06/T-07 和依赖阻塞均未变化。F01 OPEN、F02 PARTIAL/OPEN、F03 CLOSED。R2 及其下方记录保留历史，尚无完整 final review pass。
 
 R2 当前结论（2026-10-16）：**needs_fix / executing 5/9**。F-797-R1-03 经独立复核关闭；F-797-R1-02 文件缺失子项关闭、终收口仍 OPEN；F-797-R1-01 仍 OPEN。详见 [R2 报告](attachments/797/review-r2/review.md)。以下 R1/修复轮记录保留历史，不能当作完整 final review 通过。
 
