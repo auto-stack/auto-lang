@@ -19,10 +19,11 @@ auto-lang/auto-man/auto-vm/UI/renderer 反向边（module-boundaries 域
 构建+测试即独立可消费证据。
 
 auto-lang 侧兼容出口：`crate::token`/`crate::lexer` 模块为纯 re-export
-（同一类型身份，跨 crate 互传），`auto_lang::error::LexerError` re-export
-本 crate 的 `error::LexerError`；`From<LexError> for AutoError` 做等价投影
-（结构化五变体 → `AutoError::Lexer`，raw-block 字符串错误 → `AutoError::Msg`，
-与抽取前旧臂一致）。不保留第二份词法实现。
+（同一类型身份，跨 crate 互传），`auto_lang::error::LexerError` 经
+auto-diagnostics 链 re-export 本 crate 的 `error::LexerError`（PLAN-793 起
+`From<LexError> for AutoError` 等价投影随 `AutoError` 定义迁至
+auto-diagnostics：结构化五变体 → `AutoError::Lexer`，raw-block 字符串错误 →
+`AutoError::Msg`，与抽取前旧臂一致）。不保留第二份词法实现。
 
 ## 词法行为与错误契约
 
@@ -32,8 +33,9 @@ auto-lang 侧兼容出口：`crate::token`/`crate::lexer` 模块为纯 re-export
   `pos_to_span`/`span_from` 在本 crate）。
 - 词法面全集 `LexError = Lexer(结构化) | Raw(String)`；`capture_raw_block`
   （widget `style { }` 原始块）的字符串错误落 `Raw`（旧臂 Msg 投影，无诊断
-  code）。本 crate 不是错误聚合器——多错误收集/上限/attach_source 归
-  auto-lang `error.rs`。
+  code）。本 crate 不是错误聚合器——多错误聚合/attach_source（PLAN-793 起）
+  归 auto-diagnostics，多错误收集上限（parser 错误恢复全局 error limit）仍归
+  auto-lang `lib.rs`。
 - 行为冻结基线：PLAN-789 V02 冻结 golden（34 例——Unicode/CRLF/注释三型/
   转义/f-string note/EOF/View/on-header/数字后缀/算子族/comptime token/
   raw-block，含 7 错误例；`docs/plans/attachments/789/v02-golden-frozen.json`，
@@ -52,5 +54,7 @@ auto-lang 侧兼容出口：`crate::token`/`crate::lexer` 模块为纯 re-export
   auto-lang 的 `ParserBridge` checkpoint（`BridgeCheckpoint` 持 `LexerState`）
   字段不透明、恢复语义不变（PLAN-778 冻结矩阵）。
 - 未迁残留（属前端外置后续批次，非本 crate 债）：parser→AST/TypeStore/
-  InferenceContext/ModuleTracker/session 依赖、`error.rs` 的 `ast::Name` 边、
-  内建 UiDialect——见 `docs/plans/attachments/789/t01-frontend-dag.md`。
+  InferenceContext/ModuleTracker/session 依赖、内建 UiDialect——见
+  `docs/plans/attachments/789/t01-frontend-dag.md`（原"`error.rs` 的
+  `ast::Name` 边"已由 PLAN-793 切断，载荷=底层 `AutoStr` 同一类型，
+  见 [auto-diagnostics/project.md](../auto-diagnostics/project.md)）。

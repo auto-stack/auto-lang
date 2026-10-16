@@ -23,9 +23,14 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   [auto-lex/project.md](../../auto-lex/project.md)。
 - **未迁事实**（不得冒称完整前端独立）：`Parser` 仍持有 `Lexer`（经兼容
   出口）、`TypeStore`、`InferenceContext`、`ModuleTracker`、session 与方言表，
-  不再依赖 `Universe`（plan-090）；`error.rs` 依赖 `ast::Name`（TypeError
-  变体）阻碍错误层整体下放——残留边与 owner 见
-  `docs/plans/attachments/789/t01-frontend-dag.md`（下一批 UI 文法外置）。
+  不再依赖 `Universe`（plan-090）；PLAN-793 起通用诊断整体外置为底层 crate
+  **auto-diagnostics**（`crates/auto-diagnostics`，`AutoError` 聚合与各族
+  诊断/attach_source/格式化单一实现，依赖仅 auto-lex+auto-val+诊断基建）：
+  本模块 `error.rs` 是其**薄门面**（20 名冻结公开面纯 re-export，同一类型
+  身份），原 `error.rs → ast::Name` 依赖边已切断（TypeError 载荷=底层
+  `AutoStr` 同一类型）——残留边与 owner 见
+  `docs/plans/attachments/793/t05-t06-gates-and-dag.md` §6（下一批 UI 文法
+  外置）。规范见 [auto-diagnostics/project.md](../../auto-diagnostics/project.md)。
 - 方言体系（轴 A）已实现：`Dialect` trait + `UiDialect`（`Scenario::UI` 下接管
   `widget`/`msg`/`model`/`view`/`on`），产出仍是基础 `Stmt` 变体；PLAN-778 起
   支持外部 crate 经 `ParserBridge` 显式注册方言（见"方言外部化"节）。
@@ -82,6 +87,11 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   （auto-lang 经 `src/token.rs` re-export，`auto_lang::token` 公开路径不变）
 - `crates/auto-lex/src/error.rs:LexerError`/`LexError`（auto-lang `error.rs`
   re-export + `From<LexError> for AutoError` 投影）
+- `crates/auto-lang/src/error.rs`（PLAN-793 薄门面：20 名冻结公开面
+  re-export，`auto_lang::error::*` 路径不变）
+- `crates/auto-diagnostics/src/error.rs`（PLAN-793 单一定义：`AutoError`
+  聚合/各族诊断/WithSource/attach_source/format_error/find_best_match，
+  诊断外置，规范见 [auto-diagnostics/project.md](../../auto-diagnostics/project.md)）
 - `crates/auto-lang/src/parser.rs:Parser`、`Parser::parse`、`Parser::parse_stmt`、`Parser::parse_expr`
 - `crates/auto-lang/src/parser.rs:Parser::build_dialects`、`Parser::try_dialect_stmt`
 - `crates/auto-lang/src/parser_helpers.rs:ModuleTracker`、`parser_helpers.rs:LambdaIdGenerator`
@@ -161,4 +171,9 @@ on/store 的完整外部化、生产接线与 UI AST 迁移尚未完成。
 - `docs/plan-reports/01-ast-core.md`、`docs/plan-indices/01-ast-core.md`
 - `docs/design/dialect-extension-diagnosis.md`（方言体系来源，dialect.rs 头注指向）
 - 代码核对：`crates/auto-lang/src/{parser,parser_helpers,ast,dialect,use_scanner,resolver}.rs`、`ast/`、`dialect/`、
-  `crates/auto-lex/src/{token,lexer,error}.rs`（PLAN-789 词法外置）
+  `crates/auto-lex/src/{token,lexer,error}.rs`（PLAN-789 词法外置）、
+  `crates/auto-lang/src/error.rs`（PLAN-793 诊断薄门面）+
+  `crates/auto-diagnostics/src/error.rs`（PLAN-793 诊断外置单一定义）
+- 外置进度：词法（789）+ 通用诊断（793）已外置；剩余环 parser→ast/
+  types/infer/session/module_cache/dialect/ui 归前端外置批次（Design 37
+  A 波后续），不冒称整个前端已无环。

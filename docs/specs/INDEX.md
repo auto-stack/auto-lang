@@ -9,6 +9,7 @@
 |---|---|---|---|
 | auto-lang（语言核心） | active | 9 | [auto-lang/project.md](auto-lang/project.md) |
 | auto-lex | active | 0 | [auto-lex/project.md](auto-lex/project.md) |
+| auto-diagnostics | active | 0 | [auto-diagnostics/project.md](auto-diagnostics/project.md) |
 | auto-val | active | 7 | [auto-val/project.md](auto-val/project.md) |
 | auto-atom | active | 3 | [auto-atom/project.md](auto-atom/project.md) |
 | auto-test-case | active | 12 | [auto-test-case/project.md](auto-test-case/project.md) |
