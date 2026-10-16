@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-787
-status: execution_done
+status: reviewed
 feature_name: Atom 语法驱动的增量词法与无损 CST 首条闭环
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-15
 updated_at: 2026-10-16
-current_step: 7
+current_step: 8
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -137,6 +137,8 @@ CST对源页和必需子页用required-data，诊断来源/历史跟踪单独表
 
 ### 规范增量
 
+R8最终审核定稿为 [reviewed-spec-delta.md](attachments/787/review-r8/reviewed-spec-delta.md)（hash见§9 R8）；merge据此沉淀，原实施冻结稿与审核术语校准均保留证据，不在review发布canonical。
+
 下表为拟议merge增量；新模块名称是本仓实验命名，不决定未来仓库/产品品牌。本轮不编辑canonical Specs。
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -198,7 +200,7 @@ T-01失败不得靠删core承诺/扩大预算跳过。D-783只阻止依赖接入
 | [x] T-05 | work | T-04 | 新adapters/core/与runtime/src/edit/；真实Program投影、声明级复用、回退/取消/迟到 | core_projection_、incremental_local_、incremental_replay_、generation_；AC-03、04 |
 | [x] T-06 | work | T-05、D-783 | 新adapters/artifacts/与paging；加法扩展ac-artifact-probe/src/schema.rs、codec.rs及对应测试，接真实A01/02/03 | syntax_cache_、syntax_admission_、syntax_budget_、depth_编解码；AC-05 |
 | [x] T-07 | work | T-06 | 新scripts/verify-ac-syntax-787.ps1、reports/plan787/矩阵/性能、attachments/787/spec-delta.md；兼容旧接口/依赖审计 | acceptance V-01–13、compatibility_、perf_；AC-06；完成→execution_done=7/9 |
-| [ ] T-08 | review | T-07 | 同树独立最终验收，绑定冻结commit/API/SD/补充反例，遗漏与债务扫描 | AC-07；pass→reviewed=8/9，merge-owned pending |
+| [x] T-08 | review | T-07 | 同树独立最终验收，绑定冻结commit/API/SD/补充反例，遗漏与债务扫描 | AC-07；pass→reviewed=8/9，merge-owned pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交closeout完整独立套件+触面783套件；沉淀SD/索引，合入归档；批量回归到期判定按技能；guard后清理 | AC-08；实际收尾结束才9/9 |
 
 变更导致旧证据失效须重验；review发现783遗留问题回报归属，不跨计划私修或假设全部稳定。采用新公开接口前以合入版重新绑定，不从在途树cherry-pick顶替D-783。
@@ -405,6 +407,20 @@ ac-core 零 diff——compatibility_ 审计）。
 - workspace 测试面：`RUSTC_WRAPPER= cargo test --manifest-path experimental/ac-syntax/Cargo.toml --workspace` 70/70 绿。
 
 ## 9. 复审记录
+
+### 2026-10-16 final review R8 — pass（当前有效）
+
+stage: review；review_scope: final；reviewer_identity: 当前独立Codex审查会话，未参与实施、未创建代理；PLAN-787 r1。
+worktree_path: D:/autostack/.wt/lang-787/auto-lang；branch: plan-787-dev；reviewed_commit: `d17b94fecbe61d4f830d6c7b9e318c74548a4f6c`；original_base: `bf773ca9bfc5a2d6ed672f904011419b03eff1ef`；delivery/dependency_base: `7c0caa18c91ada8b4de3861cb4225919a001df17`。
+[完整R8报告/AC/复用理由/最终基线](attachments/787/review-r8/REVIEW.md)。本次去重标识绑定本提交，未重复启动实施或审核；依赖同实施树，清单/锁/配置与当前Spec输入hash在附件。
+
+F787-R7-01 **CLOSED**：store::from_code委派codec::from_u8单一表，0..9保持、10正确接通、未知字节仍拒绝；独立原反例1/1通过，真实生产→新store重开→按key/按id的永久正控执行。独立cache10/10、syntax admission18/18、compatibility3/3、probe lib14/14、probe admission7/7、store_boundary5/5；check及语法/本次probe触面fmt、diff-check均通过，仅既有shim warning。无新增finding。
+明示复用R7未受影响证据：原R1..R6重放（7/18/8/3/4/4，重叠；R6只用隔离后核名日志）、独立acceptance16族/raw111含64MiB上界、reachability5/5；源码/依赖/配置/输入核对及kind6/9等价委派的影响分析详见报告/reuse-audit.tsv。另读回本提交实际work acceptance日志16族raw112（重叠，非去重总数），不冒称review全部亲自重跑。原 SourcePage 新读路径由本轮独立验证覆盖。
+AC-01..07 pass；AC-08 merge-owned pending。执行步骤T-01..08完成，状态 **reviewed 8/9**，T-09未完成。
+
+源冻结SD SHA-256 `150cc0172f8a8779c099d84e10547f891026a4c744164d8f9e172e69e4d2a4f7`；**merge采用 [R8审核定稿](attachments/787/review-r8/reviewed-spec-delta.md)**，SHA-256 `0b21d8f2d928f47b022c78924b08cb508b74af6dd589e940d11e2c9cf2ff6780`。只校准SD-05“窗口已物化字节量”与进程物理驻留的术语，原8/16MiB受管与64MiB OS预算/支持面不变；不改plan_revision、不改实施SD/canonical。supersedes/new路径与touched_goals=[]实验零生产说明通过。
+D-787-01/02既定非目标/后续候选维持，无未经批准的in-contract延期。next: merge在冻结提交完成完整独立语法workspace+受影响783独立套件、按审核稿沉淀Spec/索引/ledger、合流归档及guard后清理，批量回归到期按技能核对；不追加根整档/docs_gen。
+**reviewed不等于已交付/已合入，不能跳过merge-owned门禁。** 本次只审核并回写证据/状态；未改实施代码、未提交/发布/合并、未归档/清理树、未消息其他聊天。
 
 ### 2026-10-16 work R7 修复轮 handoff（R7-01 闭合 → 送审）
 
