@@ -129,6 +129,11 @@ pub enum ChunkKind {
     SnapshotRecord = 3,
     ObjectManifest = 4,
     LayoutData = 5,
+    // PLAN-787 加法扩展：真实语法产物（A01/A02/A03 生产者 = ac-syntax-artifact-adapter）。
+    SyntaxGrammar = 6,
+    TokenStream = 7,
+    CstPage = 8,
+    CstManifest = 9,
 }
 
 impl ChunkKind {
@@ -140,6 +145,10 @@ impl ChunkKind {
             3 => Ok(ChunkKind::SnapshotRecord),
             4 => Ok(ChunkKind::ObjectManifest),
             5 => Ok(ChunkKind::LayoutData),
+            6 => Ok(ChunkKind::SyntaxGrammar),
+            7 => Ok(ChunkKind::TokenStream),
+            8 => Ok(ChunkKind::CstPage),
+            9 => Ok(ChunkKind::CstManifest),
             k => Err(CodecError::UnknownChunkKind(k)),
         }
     }

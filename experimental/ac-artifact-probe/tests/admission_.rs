@@ -184,7 +184,8 @@ fn admission_unknown_schema_and_future_layers_refused() {
     // Unknown layer id is not in the registry.
     assert!(schema::layer("A99").is_none());
     // Future layers refuse production through probe machinery.
-    for future in ["A01", "A02", "A05", "A06", "A08", "A11", "A12"] {
+    // PLAN-787：A01/A02 已翻转 Codec——Future 拒绝面换 A05 起。
+    for future in ["A05", "A06", "A08", "A11", "A12"] {
         let spec = schema::layer(future).unwrap();
         assert!(
             matches!(spec.coverage, schema::LayerCoverage::Future),

@@ -100,7 +100,8 @@ pub const LAYERS: &[LayerSpec] = &[
         storage: "shared per language generation, not per project",
         residency: "pinned per generation; replaced wholesale on grammar upgrade",
         regeneration: Regeneration::FromUpstreamRecipe,
-        coverage: LayerCoverage::Future,
+        // PLAN-787：真实语法程序生产者接入（ac-syntax-artifact-adapter）。
+        coverage: LayerCoverage::Codec,
     },
     LexSnapLayer(),
     LayerSpec {
@@ -111,10 +112,10 @@ pub const LAYERS: &[LayerSpec] = &[
         consumers: &["incremental reparsing", "AST projection", "tooling"],
         key_inputs: &["source-snapshot", "grammar-id", "parser-version"],
         ref_kinds: &["required-data", "provenance"],
-        storage: "immutable subtree pages; synthetic-node population in this probe",
+        storage: "immutable subtree pages (PLAN-787 real producer pages; synthetic population retired)",
         residency: "hot pages mapped on demand; full-tree residency is never required",
         regeneration: Regeneration::FromUpstreamRecipe,
-        coverage: LayerCoverage::ProbeSeam,
+        coverage: LayerCoverage::Codec,
     },
     LayerSpec {
         id: "A04",
@@ -224,7 +225,8 @@ const fn LexSnapLayer() -> LayerSpec {
         storage: "read-only positioned blocks per lex region",
         residency: "cold; states converge per region",
         regeneration: Regeneration::FromUpstreamRecipe,
-        coverage: LayerCoverage::Future,
+        // PLAN-787：真实 token/checkpoint 生产者接入（ac-syntax-artifact-adapter）。
+        coverage: LayerCoverage::Codec,
     }
 }
 
@@ -445,15 +447,18 @@ mod tests {
     #[test]
     fn codec_coverage_is_the_declared_subset() {
         let ids: Vec<&str> = codec_layers().iter().map(|l| l.id).collect();
-        assert_eq!(ids, vec!["A00", "A04", "A07", "A09", "A10"]);
+        // PLAN-787：A01/A02/A03 从 Future/ProbeSeam 翻转为 Codec（真实生产者接入）。
+        assert_eq!(ids, vec!["A00", "A01", "A02", "A03", "A04", "A07", "A09", "A10"]);
     }
 
     #[test]
     fn future_layers_are_refused() {
-        let a01 = layer("A01").unwrap();
-        assert!(matches!(a01.coverage, LayerCoverage::Future));
-        let err = require_producible(a01).unwrap_err();
+        let a05 = layer("A05").unwrap();
+        assert!(matches!(a05.coverage, LayerCoverage::Future));
+        let err = require_producible(a05).unwrap_err();
         assert!(err.0.contains("future seam"), "{err}");
-        assert!(require_producible(layer("A07").unwrap()).is_ok());
+        assert!(require_producible(layer("A01").unwrap()).is_ok(), "A01 now real");
+        assert!(require_producible(layer("A02").unwrap()).is_ok(), "A02 now real");
+        assert!(require_producible(layer("A03").unwrap()).is_ok(), "A03 now real");
     }
 }

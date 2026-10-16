@@ -1154,6 +1154,10 @@ impl ChunkKind {
             3 => Some(ChunkKind::SnapshotRecord),
             4 => Some(ChunkKind::ObjectManifest),
             5 => Some(ChunkKind::LayoutData),
+            6 => Some(ChunkKind::SyntaxGrammar),
+            7 => Some(ChunkKind::TokenStream),
+            8 => Some(ChunkKind::CstPage),
+            9 => Some(ChunkKind::CstManifest),
             _ => None,
         }
     }

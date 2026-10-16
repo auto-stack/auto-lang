@@ -8,3 +8,6 @@ publish.workspace = true
 ac-syntax-rt = { workspace = true }
 ac-syntax-grammar = { workspace = true }
 ac-artifact-probe = { workspace = true }
+serde = { workspace = true }
+serde_json = "1"
+
