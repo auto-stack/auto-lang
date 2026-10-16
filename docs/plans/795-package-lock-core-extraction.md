@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-795
-status: drafting
+status: executing
 feature_name: 包锁模型与校验核心抽取
 author: [Codex]
 created_at: 2026-10-16
@@ -95,6 +95,8 @@ Target→DTO和Git probing留上层；core接收调用方提供的automan版本�
 ## 9. 复审记录
 
 2026-10-16 stage=new | plan_revision=1 | outcome=pass（合同preflight） | next=合同确认后work | 0/8；本轮未运行Rust或探测网络Git。
+
+2026-10-16 stage=work | PLAN-795 | plan_revision=1 | 入场执行 | worktree=D:/autostack/.wt/lang-795/auto-lang | branch=plan-795-dev（repo 命名规约覆盖合同拟称 codex/plan-795-dev；PLAN-726 组布局含 auto-down 兄弟 detached@c39ac7f） | base_commit=579f6dec0 | 前置验证：786/791 已归档；inputs.json 指纹复核 lock.rs=407127b5/target.rs=a483fa96/auto-man project.md=f12b0b40/module-boundaries=82718ad2 四项全等 | 用户显式授权 /auto-plan:work 实施。
 
 ## 10. 待澄清事项
 
