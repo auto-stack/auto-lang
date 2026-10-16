@@ -1938,6 +1938,17 @@
             "rebase_equivalent:3f2ef93bb",
             "outcome:pass"
           ]
+        },
+        {
+          "id": "P795-M",
+          "title": "PLAN-795 合入沉淀收据（包锁核心拆分交付）",
+          "file": "docs/plans/reports/795-package-lock-merge.md",
+          "content": "交付=11ddc162e 实现+edf982e52 基线重锚+docs-only 沉淀提交（实现/依赖零变动）。merge-owned 冻结门禁：裸 cargo t 5326/5326 全绿（90.9s）+定向 25+9+4 绿+verify-deps PASS+rustfmt/diff-check 0+boundaries strict pass。canonical：SD-01 package-lock/project.md 新增、SD-02 auto-man/project.md 分工节、双模块 plans.md、overview/goals 回写、INDEX 再生（GROUPS+package-lock）。ledger v33→v34 guarded offline projection（无 store writer 可达；备份+外科增量+回读校验）。tv/tt/tb/tu/taa 未触面不适用；tf 批量档 795%5==0 到期移交 regress。预存红备注：auto-man rust_ui review738/751 基线裸红（792 域）。",
+          "tags": [
+            "plan:795",
+            "reviewed_commit:edf982e52",
+            "outcome:pass"
+          ]
         }
       ]
     },
@@ -7230,6 +7241,18 @@
             "commit:3f2ef93bb",
             "sha256:45a666e13e450c50"
           ]
+        },
+        {
+          "id": "P795-D1",
+          "title": "pac.lock 锁核心合同（auto-package-lock：模型/codec/校验单一规则）",
+          "file": "docs/specs/package-lock/project.md",
+          "content": "PLAN-795 SD-01：crates/auto-package-lock 依赖仅 auto-val+serde/serde_json/toml+std，闭包零 auto-lang/auto-man/auto-gen/auto-vm（package-lock-consumer 外部探针+verify-deps.sh 钉住，module-boundaries man-ecosystem 域）。模型 LockEntry{name,version,url,commit,path}/LockFile{automan_version,dependencies} serde 形状逐字段同历史；单一规则=sort_dependencies(name 稳定排序)/find_entry(重名首条)/verify_dependencies(缺项/版本错/PLAN-635 D6 无 commit 本地路径物化检查，错误按 resolved 序 \n 聚合)/codec(.json 统一化字符串判定大小写敏感,save 先序列化后建目录再写盘)。版本戳恒调用方供给（auto-man 传 AUTOMAN_VERSION）。冻结语义五条（579f6dec0 探针 golden）：TOML 反斜杠字面量形态/JSON 无尾换行/错误阶段文本/重名首条/空 path+空 commit 不检查；路径存在≠commit 校验，verify≠Git 内容/供给链证明。auto-man 门面（SD-02）：旧公开 API 全保持，规则经 LockedEntryView 零 DTO 委托，Git 观测与 Dep/Device 过滤留 adapter；未迁 resolver/Target/build/exporter/可执行模板。",
+          "tags": [
+            "plan:795",
+            "source:579f6dec0",
+            "commit:edf982e52",
+            "outcome:pass"
+          ]
         }
       ]
     },
@@ -8751,6 +8774,17 @@
             "plan:791",
             "commit:3f2ef93bb",
             "sha256:c5818e7296dd1251"
+          ]
+        },
+        {
+          "id": "P795-T",
+          "title": "PLAN-795 冻结测试资产（core 单测+合同/门面 V04/外部 consumer 门）",
+          "file": "crates/auto-package-lock/tests/lock_contract.rs",
+          "content": "三层：①crates/auto-package-lock 单测 14+合同 11（V02 格式冻结 golden：TOML/JSON/空锁/Unicode/Windows 路径/统一化选 JSON/大小写敏感；V03 错误阶段逐字/路径正负控（真目录过/文件与缺失红/有 commit 跳过路径检查）/聚合并序/重名首条/save 目录阻塞反控不覆写）。②auto-man 门面 9（V04：golden TOML/JSON 相等、from_targets kind 过滤+排序、真临时 Git 仓 commit==HEAD、委托错误文本逐字、未物化负控+复绿、save→load 保序且与 core 直输恒等）。③test/fixtures/modularity/package-lock-consumer 4 例+verify-deps.sh（独立 workspace，闭包断言零 auto-lang/man/gen/ui/vm）。golden 由 579f6dec0 旧实现临时探针捕获（探针即删），三面（core/门面/consumer）同字节钉死。",
+          "tags": [
+            "plan:795",
+            "commit:edf982e52",
+            "outcome:pass"
           ]
         }
       ]
@@ -11781,10 +11815,21 @@
             "rebase_equivalent:3f2ef93bb",
             "outcome:pass"
           ]
+        },
+        {
+          "id": "P795-R2",
+          "title": "PLAN-795 独立最终复审 R1→R2（一轮 needs_fix 后 pass）",
+          "file": "docs/plans/attachments/795/review-r2/review.md",
+          "content": "R1 needs_fix（F-795-R1-01 P2：777 strict 独立实跑 exit1 两项违例 config_drift_since_baseline+stale_baseline——work 回执误记唯一红且把 work-owned 边界闸门推迟 merge；38 项定向+fresh 探针 4 组+闭包+fmt 全过，无锁行为回归）@11ddc162e；R2 pass @edf982e52：基线重锚 diff 仅 module-boundaries-baseline.json（base_revision 重绑+config_sha256+两条合法 member 边 man→auto-package-lock/auto-package-lock→auto-val），规则与 grandfather 零放宽，strict 复跑 pass/0 violations；纯基线修复复用 R1 行为证据（8 项 SHA256 全等复核），AC-01..05 全 pass、AC-06 pending merge。",
+          "tags": [
+            "plan:795",
+            "reviewed_commit:edf982e52",
+            "outcome:pass"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 33
+  "version": 34
 }

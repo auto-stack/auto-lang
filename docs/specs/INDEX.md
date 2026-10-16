@@ -146,6 +146,7 @@
 | auto-macros | active | 2 | [auto-macros/project.md](auto-macros/project.md) |
 | shim-metadata | active | 2 | [shim-metadata/project.md](shim-metadata/project.md) |
 | auto-gen-core | active | 3 | [auto-gen-core/project.md](auto-gen-core/project.md) |
+| auto-package-lock | active | 3 | [package-lock/project.md](package-lock/project.md) |
 
 <details><summary>auto-cli 模块明细</summary>
 
@@ -174,7 +175,7 @@
 | resolver | 依赖解析（ModuleResolver trait 实现） | active |
 | builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号 | active |
 | exporter | IDE 工程导出：cmake / ghs / iar | active |
-| git / index / lock / pull | 依赖获取、注册索引、锁文件 | active |
+| git / index / lock / pull | 依赖获取、注册索引、锁文件（PLAN-795 起 lock 为 Target/Git adapter+兼容门面，规则单一定义在 auto-package-lock，见上节） | active |
 | scanner / target / dir / cache | 工程扫描、target 目录管理、本地缓存 | active |
 | vue / tauri / jet / ark / rust_ui | 各前端生态的工程集成；vue 侧含 desktop 宿主 scaffold（Plan 465：`generate_desktop_host` + `assets/wm/` WM 运行时资产 rust_embed + `apps-registry.ts` 注册表生成；`auto run --desktop/--apps`；Plan 515：`assets/wm/Wallpaper.vue` 桌面壁纸层三档组件 + host App.vue 生成期配置注入 `shell.desktop.wallpaper`）；**PLAN-038 Phase B（P038-3）**：`generate_tailwind_config`（auto-man/cmd_vue/cmd_tauri）补 `success/warning/info/error → hsl(var(--*))`；`regenerate_source_files` 与 scaffold 同源重写 `tailwind.config.cjs`（磁盘残留旧模板会漏映射）；codegen 全路径（scaffold / write_project_files / regenerate / prepare_vue_sources）写 `src/vite-env.d.ts` + `src/auto-select/overlay.ts` + `src/auto-sources.ts`（缺失时空 map，消除 P657-D2 phase-ordering 对手工 stub 的依赖）；画廊 VM demo 级联发射 `emit_gallery_vm_demos`（Plan 625 T-10/632：loadable 单 widget 示例改名 `Demo*` 相邻拷贝自有模块 + `AppViewport.vm.at` 条件实例化——发射器保证模块组件源可达，组件状态桥接为运行时职责，见 auto-lang docs/specs/auto-lang/ui/architecture.md ADR-20；Plan 633：fullstack 内嵌档——back 语料不再一票否决，back 链传递闭包级联为 `<ns>_<mod>` 唯一 stem（use 行/链内互引/item 调用点限定仅 back 链三层改写，组件调用不动），发射前 core 场景解析探针，back 缺失/native-ns(use auto.*)/~Stream 签名严格降级静态面板，见 auto-lang docs/specs/auto-lang/vm/architecture.md ADR-21） | active |
 | api_gen / tauri_backend / vscode / pkg | API/后端/扩展代码生成器，包管理器抽象（bun/npm）；api_gen server 生成器状态种子契约（**Plan 670 F-R1-A**）：`use api::Db`/`State<Db>` 种子仅当契约实际定义 Db（primary 类型存在，api.rs 才发 `pub type Db`）时发射，无 Db 标量契约走无状态退化路径（镜像 db_full_cover 分支形态）——生成物必须可编译（E0432 契约）；route A（无 db 覆盖的 scalar API 实现，以及含非薄业务体的 api.rs handler 内联转译）已落地，伴生模块导入/调用和 `List<T>.new` 构造由 Plan 742 补齐（r1–r5 复审收敛体路径不变量：代码区字面量保持/模块 token 身份与作用域遮蔽/借用实参切分（比较 `<`/`>` 非泛型定界）/返回出口矩阵——详见 design/api-generation-integrity.md §2）；转译失败由装配预检拒绝，`AUTO_A2R_BODY=0` 才允许显式标记的 scaffold | active |
@@ -271,6 +272,16 @@
 | error | GenError/GenResult/SourceLocation（单一定义，auto-gen re-export） | active |
 | guard | GuardProcessor/GuardedSection/Conflict + feed_guarded_legacy（legacy 字节兼容 feed，单一定义） | active |
 | generate | 输出编排（generate/OutputConfig/TemplateSpec/RenderedTemplate/TemplateRenderer/GenReport） | active |
+
+</details>
+
+<details><summary>package-lock 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| model | LockEntry/LockFile/LockedEntryView/ResolvedDependency + sort/find 单一规则 | active |
+| verify | verify_dependencies 单一校验规则（错误文本/聚合序冻结） | active |
+| codec | load/save/is_json_path 单一编解码（AutoPath 路径语义） | active |
 
 </details>
 
