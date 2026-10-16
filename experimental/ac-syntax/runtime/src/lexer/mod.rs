@@ -28,16 +28,22 @@ pub struct LexDiag {
     pub end: u64,
 }
 
-/// 未闭合 token 的跨块状态（携带 token 原始起点，恢复时产出完整 token）。
+/// 未闭合 token 的跨块状态（携带 token 原始起点**及起始行**——F787-R3-04：
+/// 跨行未闭合 token 恢复后必须保持原始起始行，checkpoint 的 EOF 行只描述
+/// 当前扫描位置）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MidToken {
     Str {
         start: u64,
+        /// token 原始起始行（1-based）。
+        start_line: u32,
         quote: u8,
         escape_pending: bool,
     },
     Block {
         start: u64,
+        /// token 原始起始行（1-based）。
+        start_line: u32,
         depth: u32,
     },
 }
@@ -276,7 +282,12 @@ impl<'p, 's> Scanner<'p, 's> {
             MidToken::Block { start, .. } => *start,
         });
         let start = mid_start.unwrap_or(self.w.pos);
-        let line = self.w.line;
+        // mid 恢复：token 行 = 原始起始行（F787-R3-04），非 checkpoint 当前行。
+        let line = match &self.mid {
+            Some(MidToken::Str { start_line, .. }) => *start_line,
+            Some(MidToken::Block { start_line, .. }) => *start_line,
+            None => self.w.line,
+        };
         let scan_at = self.w.pos;
         if scan_at >= self.snap_len() && mid_start.is_none() {
             return Ok(None);
@@ -502,6 +513,7 @@ impl<'p, 's> Scanner<'p, 's> {
         match mid {
             MidToken::Str {
                 start,
+                start_line: _,
                 quote,
                 escape_pending,
             } => {
@@ -547,7 +559,11 @@ impl<'p, 's> Scanner<'p, 's> {
                     }
                 }
             }
-            MidToken::Block { start, depth } => {
+            MidToken::Block {
+                start,
+                start_line: _,
+                depth,
+            } => {
                 let ri = self
                     .find_rule(|r| matches!(&r.matcher, Matcher::BlockComment { .. }))
                     .ok_or_else(|| {

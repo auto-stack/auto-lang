@@ -115,8 +115,12 @@ fn syntax_budget_64mib_streaming_small_queries() {
         }
     }
     rt_peak = rt_peak.max(os_private());
-    let managed_peak = builder.working_set_peak();
+    rt_peak = rt_peak.max(os_private());
     let manifest_art = builder.finish(real_bytes as u64).expect("finish");
+    // 受管峰值在 finish **之后**读取（F787-R3-06：finish 的 manifest JSON/
+    // edges 瞬态也计入；此前在 finish 前读取会漏掉）。
+    let managed_peak = builder.working_set_peak();
+    rt_peak = rt_peak.max(os_private());
     assert!(!manifest_art.is_empty());
     let stream_id = builder.stream_snapshot_id();
     let build_secs = t0.elapsed().as_secs_f64();
@@ -174,6 +178,27 @@ fn syntax_budget_64mib_streaming_small_queries() {
     }
     let max_page_payload = view.debug_max_page_payload();
     let query_secs = t1.elapsed().as_secs_f64();
+
+    // 单查询读取界（F787-R3-06）：manifest 一次性入口成本之外，单次小查询
+    // 的增量读取（目录页+数据页）≤512KiB；累计口径含 manifest。
+    {
+        let q_view = sas
+            .open_cst_stream(&p, &stream_id, real_bytes as u64)
+            .expect("open fresh recovery view")
+            .expect("manifest hit");
+        let idx0 = q_view.decl_count() / 3;
+        let _st = q_view.decl_subtree(idx0).expect("recovery query");
+        let total = q_view.debug_total_chunk_read();
+        let manifest_read = q_view.debug_manifest_read();
+        assert!(
+            total - manifest_read <= 512 << 10,
+            "single recovery query incremental reads {} > 512KiB (manifest {})",
+            total - manifest_read,
+            manifest_read
+        );
+        drop(q_view);
+        rt_peak = rt_peak.max(os_private());
+    }
 
     // 受管预算：hot 页缓存 ≤8MiB；hot + manifest 目录 ≤16MiB（索引计入）。
     let hot = view.debug_hot_bytes();

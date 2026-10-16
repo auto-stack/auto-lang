@@ -324,6 +324,15 @@ note \"tail\\",
             "closed\"; api d() -> i32;
 ",
         ),
+        // F787-R3-04：跨行未闭合字符串——恢复后的 token 必须保持**原始起始行**
+        // （checkpoint.line 只描述 EOF 位置）。
+        (
+            "note \"first line
+second line",
+            " closes\";
+api f() -> i32;
+",
+        ),
     ] {
         let store = Rc::new(PageStore::new());
         let snap = Snapshot::from_text(&store, base);

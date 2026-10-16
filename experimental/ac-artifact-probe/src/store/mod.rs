@@ -942,6 +942,18 @@ impl ManagedStore {
         Ok(n)
     }
 
+    /// Remove ONE root row (project, kind, artifact) — adapter seam for
+    /// ordered publication (register new first, then drop the superseded row;
+    /// PLAN-787 R3-03: a failed registration must never lose the old root).
+    pub fn remove_root(&self, project: &str, kind: &str, artifact: &str) -> Result<usize, StoreError> {
+        let _live = self.liveness_shared()?;
+        let n = self.db.lock().unwrap().execute(
+            "DELETE FROM roots WHERE project=?1 AND kind=?2 AND artifact=?3",
+            params![project, kind, artifact],
+        )?;
+        Ok(n)
+    }
+
     /// Remove roots of one kind (test/lifecycle seam: unpinning hard pins).
     pub fn remove_roots(&self, project: &str, kind: &str) -> Result<usize, StoreError> {
         let _live = self.liveness_shared()?;

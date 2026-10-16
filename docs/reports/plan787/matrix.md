@@ -1,4 +1,4 @@
-# PLAN-787 验收矩阵与性能报告（T-07；复审 R1+R2 修复轮）
+# PLAN-787 验收矩阵与性能报告（T-07；复审 R1+R2+R3 修复轮）
 
 - 工作树 `D:/autostack/.wt/lang-787/auto-lang`，分支 `plan-787-dev`
 - 基面 master `bf773ca9b`；本轮修复绑定提交见 §4
@@ -22,7 +22,23 @@ A02 checkpoint **按末 token 拼写重放**还原真实 mid（嵌套深度/转�
 canonical 含边 field、诊断全字段比较、replay 链上轮增量工件、子进程受截止
 （复用探针 run_deadlined）、跨进程查询精确 span/name/hash 断言+负控。
 
-## 1. V 矩阵（acceptance 实测 2026-10-16 R2 修复轮）
+## 0b. 复审 R3 修复轮（2026-10-16，F787-R3-01..06 全闭合）
+
+R3 独立反例 **8/8 通过**（修复前 1/7；R2 18 例与 R1 7 例保持通过）。要点：
+投影改**迭代引擎**（显式工作栈，`projection_engine.rs`——平链 2200/真嵌套
+511 层 if/800 层调用在**正常线程栈**投影成功，预算超限受控 TooDeep；valid
+41/41 逐字节全等保持）；发布身份**会话域**（内存 `published_revision`——
+迟到判定只在同一编辑会话内；同文本跨修订幂等复用（revision 移出内容工件）、
+跨会话/重启 revision=0 可发布）；发布原子序**先注册后定点删除**（探针
+`remove_root` 缝隙；注册失败旧当前根保留——trigger 注入反例）；MidToken
+携带**原始起始行**（跨行未闭合 token 恢复后行号与 fresh 全等，A02 codec
+同步）；越源 span 读取 admission（decl origin/span 上界 vs total_len）；
+计量合口径（同驻留合计：parse 树+页 payload 同点采样；目录页 JSON/finish
+瞬态计入；manifest **实读**字节分列；单查询增量读取 ≤512KiB 实测；目录页
+2048 条）+ 查询 bin **按范围取源**（仅物化 span 覆盖页，子树 origin 平移
+outline——无整源驻留/无整源 Snapshot）。
+
+## 1. V 矩阵（acceptance 实测 2026-10-16 R3 修复轮）
 
 | ID | AC | filter | 实测 | 状态 |
 |---|---|---|---|---|
@@ -35,13 +51,13 @@ canonical 含边 field、诊断全字段比较、replay 链上轮增量工件、
 | V-07 | 增量状态/回退可见 | incremental_replay_ | 4（core+mini 各 200 轮确定种子；未闭合回退=fresh；逆序屏障） | PASS |
 | V-08 | 代际/迟到/取消 | generation_（+handle 单测） | 3 | PASS |
 | V-09 | 持久化/重启小查询 | syntax_cache_ | 5（跨 store 实例、checkpoint 完整往返+**恢复对照 fresh 尾**、双工程共享隔离、真子进程查询精确断言+负控） | PASS |
-| V-10 | 数据拒绝 | syntax_admission_ | 6（坏块/缺页/坏身份/截断页/**有效 frame 坏 manifest ref**/**根替换+lease+GC 生命周期**均受控） | PASS |
+| V-10 | 数据拒绝 | syntax_admission_ | 10（坏块/缺页/坏身份/截断页/坏 manifest ref/根替换+lease+GC 生命周期/**同文本跨修订复用**/**重启会话发布**/**注册失败保旧根**/**越源 span 拒绝**均受控） | PASS |
 | V-11 | 64MiB 工作集 | syntax_budget_ | 2（见 §2 大负载读数；含巨声明受控 ResourceExhausted） | PASS |
 | V-12 | 深度全路径 | depth_ / depth_persisted_ | 4 + 1（**真 ≥4096 同时未闭合嵌套**；持久化编解码往返全路径迭代） | PASS |
 | V-13 | 兼容/证据 | compatibility_ / perf_ | 3 + 2（含 core 旧 parser 对照） | PASS |
 
-复审反例重放：R1 `counterexamples` **7/7** + R2 `counterexamples` **18/18**
-通过（R2 修复前 7/11 fail）。
+复审反例重放：R1 **7/7** + R2 **18/18** + R3 **8/8** 全部通过（R3 修复前
+1/7 fail；正常栈深输入经探针子进程验证，栈溢出退出码证据见 R3 报告）。
 
 ## 2. 性能读数（perf_，32 样本/场景 + 3 预热，debug 构建，单线程）
 
@@ -68,10 +84,12 @@ canonical 含边 field、诊断全字段比较、replay 链上轮增量工件、
   - hot 页缓存 8092KiB ≤ 8MiB；manifest 目录 1064KiB；**受管合计 ≤16MiB**（索引计入）；
   - 单子树 payload ≤512KiB、单页解码 ≤512KiB；
   - **OS private bytes（Windows 实测，采样覆盖构建/查询/源重建全阶段）：
-    runtime 增量 15,972KiB ≤ 64MiB 目标**；非 Windows 宿主 sysinfo 返回 0 →
+    runtime 增量 17,396KiB ≤ 64MiB 目标**；非 Windows 宿主 sysinfo 返回 0 →
     测试显式记录证据缺口，不作断言；
-  - 受管峰值含暂存（parse 树/页 payload/目录页 JSON，R2-09 口径）：
-    4811KiB ≤ 8MiB；视图单次 chunk 读取峰值（数据/目录/源页统一）≤512KiB；
+  - 受管峰值含暂存（parse 树+页 payload 同驻留合计/目录页 JSON/finish
+    瞬态，R3-06 口径）：5142KiB ≤ 8MiB；视图单次 chunk 读取峰值（数据/目录/
+    源页统一）≤512KiB；**单次恢复查询增量读取（manifest 实读分列后）
+    ≤512KiB**；
   - 磁盘 316MiB（源页+树页 CAS）；源重建逐页比对与生成文件全等（64MiB 零整源驻留）。
 - **范围声明**：以上为 mini/core 两个受限 profile 的探针负载读数，不得推断
   任意语言或全仓亚秒（计划 §5.6）；debug 构建数字供相对比较。

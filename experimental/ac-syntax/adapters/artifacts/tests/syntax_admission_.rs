@@ -6,7 +6,7 @@ use ac_syntax_grammar::compile as compile_grammar;
 use ac_syntax_rt::lexer::CompiledScanner;
 use ac_syntax_rt::parse::parse_snapshot;
 use ac_syntax_rt::program::{Budget, GrammarProgram};
-use ac_syntax_rt::snapshot::{PageStore, Snapshot};
+use ac_syntax_rt::snapshot::{Edit, EditRequest, PageStore, Snapshot};
 use std::rc::Rc;
 
 fn mini_grammar() -> GrammarProgram {
@@ -310,4 +310,202 @@ fn syntax_admission_root_replacement_lease_release_gc_lifecycle() {
         sas.open_cst(&p, &snap2).unwrap().is_some(),
         "current root v2 must remain queryable"
     );
+}
+
+/// F787-R3-02：同文本跨修订幂等复用——修订不进内容工件，第二次 put 不
+/// Conflict（正常编辑回到既有文本/跨文档同源共享的适用身份）。
+#[test]
+fn syntax_admission_identical_content_at_new_revision_is_reusable() {
+    let p = mini_grammar();
+    let text = "api f() -> i32;
+";
+    let s0 = Snapshot::from_text(&Rc::new(PageStore::new()), text);
+    let s1 = s0
+        .edit(&EditRequest {
+            base_revision: 0,
+            edits: vec![Edit {
+                start: 0,
+                end: s0.len(),
+                insert: text.as_bytes().to_vec(),
+            }],
+        })
+        .unwrap();
+    assert_eq!(s0.id(), s1.id());
+    assert_eq!(s1.revision(), 1);
+    let root = scratch("adm-same-content");
+    let sas = SyntaxArtifactStore::open(&root, "project").unwrap();
+    put_all(&sas, &p, &s0).unwrap();
+    put_all(&sas, &p, &s1).expect("same source at revision1 must reuse content, not conflict");
+}
+
+/// F787-R3-02：跨会话/重启的 revision=0 是新文档发布，不是旧会话迟到任务。
+#[test]
+fn syntax_admission_fresh_session_revision_zero_can_be_current() {
+    let p = mini_grammar();
+    let root = scratch("adm-restart");
+    {
+        let s0 = Snapshot::from_text(
+            &Rc::new(PageStore::new()),
+            "api a() -> i32;
+",
+        );
+        let s1 = s0
+            .edit(&EditRequest {
+                base_revision: 0,
+                edits: vec![Edit {
+                    start: 4,
+                    end: 5,
+                    insert: b"aa".to_vec(),
+                }],
+            })
+            .unwrap();
+        let sas = SyntaxArtifactStore::open(&root, "project").unwrap();
+        put_all(&sas, &p, &s1).unwrap();
+    } // 会话关闭
+    let new_doc = Snapshot::from_text(
+        &Rc::new(PageStore::new()),
+        "api new() -> i32;
+",
+    );
+    assert_eq!(new_doc.revision(), 0);
+    let sas = SyntaxArtifactStore::open(&root, "project").unwrap();
+    let a = put_all(&sas, &p, &new_doc).unwrap();
+    assert!(
+        sas.inner()
+            .root_artifacts("project", "cst-manifest")
+            .unwrap()
+            .contains(&a),
+        "revision0 in a new session is not a late task from the old session"
+    );
+}
+
+/// F787-R3-03：注册失败的原子性——先注册后删除的顺序保证旧当前根保留
+/// （trigger 注入确定性失败于本测试自有临时 store，无实现改动）。
+#[test]
+fn syntax_admission_failed_root_registration_preserves_previous_current_root() {
+    let p = mini_grammar();
+    let s0 = Snapshot::from_text(
+        &Rc::new(PageStore::new()),
+        "api old() -> i32;
+",
+    );
+    let s1 = s0
+        .edit(&EditRequest {
+            base_revision: 0,
+            edits: vec![Edit {
+                start: 4,
+                end: 7,
+                insert: b"new".to_vec(),
+            }],
+        })
+        .unwrap();
+    let root = scratch("adm-pubfail");
+    let sas = SyntaxArtifactStore::open(&root, "project").unwrap();
+    let first = put_all(&sas, &p, &s0).unwrap();
+    sas.inner()
+        .db()
+        .execute_batch(
+            "CREATE TRIGGER fail_root BEFORE INSERT ON roots WHEN NEW.kind = 'cst-manifest'              BEGIN SELECT RAISE(ABORT, 'injected root registration failure'); END;",
+        )
+        .unwrap();
+    let r = put_all(&sas, &p, &s1);
+    assert!(r.is_err(), "failure control must fire");
+    let roots = sas
+        .inner()
+        .root_artifacts("project", "cst-manifest")
+        .unwrap();
+    assert_eq!(
+        roots,
+        vec![first],
+        "publication error must preserve the previous current root"
+    );
+}
+
+/// F787-R3-05：有效 frame/hash 下越源 span 在读取入口受控拒绝（不能等
+/// outline 读源时才失败）。
+#[test]
+fn syntax_admission_out_of_source_span_is_rejected() {
+    use ac_artifact_probe::{
+        codec::{framed_chunk_id, ChunkKind},
+        identity::QueryKey,
+        schema,
+        store::PutRequest,
+    };
+    let p = mini_grammar();
+    let s = Snapshot::from_text(&Rc::new(PageStore::new()), "x");
+    let sas = SyntaxArtifactStore::open(&scratch("adm-span"), "project").unwrap();
+    let kind = ac_syntax_rt::program::RULE_KIND_BASE
+        + p.rules.iter().position(|r| r.name == "api-decl").unwrap() as u32;
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&1u32.to_le_bytes());
+    payload.extend_from_slice(&0u32.to_le_bytes());
+    for v in [kind, 9u32, 1, 0, 0, 0, 1, 0] {
+        payload.extend_from_slice(&v.to_le_bytes());
+    }
+    let cid = framed_chunk_id(ChunkKind::CstPage, &payload).to_string();
+    sas.inner()
+        .put_artifact(PutRequest {
+            layer: "A03",
+            key: QueryKey::new(
+                schema::layer("A03").unwrap(),
+                vec![("page".into(), "bad-span".into())],
+            ),
+            kind: ChunkKind::CstPage,
+            payload,
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+    let m = serde_json::json!({
+        "snapshot": s.id().as_str(),
+        "grammar": p.grammar_id().as_str(),
+        "total_len": 1,
+        "diags": [],
+        "root_edges": [],
+        "pages": [{"chunk": cid, "first_node": 0, "node_count": 1}],
+        "decl_index": [],
+        "decl_count": 1,
+        "decls": [{"origin": 0, "node": 0, "node_lo": 0, "page": 0}],
+        "source_pages": [],
+    });
+    let key = QueryKey::new(
+        schema::layer("A03").unwrap(),
+        vec![
+            ("source-snapshot".into(), s.id().as_str().into()),
+            ("grammar-id".into(), p.grammar_id().as_str().into()),
+            (
+                "parser-version".into(),
+                ac_syntax_rt::PARSER_ABI_VERSION.to_string(),
+            ),
+            ("page".into(), "manifest".into()),
+        ],
+    );
+    sas.inner()
+        .put_artifact(PutRequest {
+            layer: "A03",
+            key,
+            kind: ChunkKind::CstManifest,
+            payload: serde_json::to_vec(&m).unwrap(),
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+    match sas.open_cst(&p, &s) {
+        Err(_) | Ok(None) => {}
+        Ok(Some(v)) => assert!(
+            v.decl_range(0).is_err(),
+            "one-byte source must not expose a successful [9,10) declaration span"
+        ),
+    }
+}
+
+fn put_all(
+    sas: &SyntaxArtifactStore,
+    p: &GrammarProgram,
+    s: &Snapshot,
+) -> Result<String, ac_syntax_artifact_adapter::AdapterError> {
+    let cs = CompiledScanner::compile(p).unwrap();
+    let out = parse_snapshot(p, &cs, s, &Budget::default()).unwrap();
+    let t = sas.put_tokens(p, s, &out.tokens)?;
+    sas.put_cst(p, s, &out.tree, &t)
 }

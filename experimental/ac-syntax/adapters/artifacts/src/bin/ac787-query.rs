@@ -1,6 +1,9 @@
-//! PLAN-787 V-09 跨进程恢复探针（F787-R1-09/R2-09/10）：只读 store——grammar
-//! 程序从 store 反序列化（**不编译 .at 源**），CST 查询走 manifest/页路径
-//! （无 parse_snapshot 调用面），源文本按**源页流式**校验（零整源驻留）。
+//! PLAN-787 V-09 跨进程恢复探针（F787-R1-09/R2-09/R3-06）：只读 store——
+//! grammar 程序从 store 反序列化（**不编译 .at 源**），CST 查询走 manifest/
+//! 页路径（无 parse_snapshot 调用面）。源校验/命名**按范围取源**：
+//! - 源完整性：源页流式 hash（零驻留）；
+//! - outline 名：仅物化目标声明 span 覆盖的源页（≤512KiB 量级），子树
+//!   origin 平移到切片坐标系——**无整源驻留、无整源 Snapshot**。
 //! 用法：ac787-query <store-dir> <grammar-id> <grammar-revision> <stream-id>
 //!       <total-len> <decl-idx>
 //! 输出（stdout 末行，k=v 空白分隔）：
@@ -25,7 +28,6 @@ fn main() {
 
     let sas = SyntaxArtifactStore::open(std::path::Path::new(store_dir), "query-proc")
         .expect("open store");
-    // grammar 只从 store 装载（canonical 反序列化 + 身份重验）——不触碰 .at。
     let prog = sas
         .get_grammar_by_id(grammar_id, grammar_rev)
         .expect("store read")
@@ -35,33 +37,54 @@ fn main() {
         .expect("open view")
         .unwrap_or_else(|| panic!("stream manifest {stream_id} missing"));
     let subtree = view.decl_subtree(decl_idx).expect("decl subtree");
-    // 源按页流式校验：长度 + blake3（不 materialize 整源——F787-R2-09）。
+    let (span_lo, span_hi) = view.decl_range(decl_idx).expect("decl range");
+
+    // 源完整性：流式 hash + 只物化 span 覆盖页（F787-R3-06）。
     let mut hasher = blake3::Hasher::new();
     let mut src_len: u64 = 0;
+    let mut slice_start: u64 = u64::MAX;
+    let mut slice_end: u64 = 0;
+    let mut span_pages: Vec<u8> = Vec::new();
     view.for_each_source_page(|page| {
         hasher.update(page);
+        let page_lo = src_len;
         src_len += page.len() as u64;
+        let page_hi = src_len;
+        if page_hi > span_lo && page_lo < span_hi {
+            // 覆盖 span 的页：物化相交区间（页粒度 ≤512KiB 级）。
+            if slice_start == u64::MAX {
+                slice_start = page_lo;
+                slice_end = page_hi;
+                span_pages.extend_from_slice(page);
+            } else {
+                slice_end = page_hi;
+                span_pages.extend_from_slice(page);
+            }
+        }
         Ok(())
     })
     .expect("stream source pages");
     let src_hash = hasher.finalize().to_hex().to_string();
-    // 精确查询面（F787-R2-10）：声明绝对范围 + outline 名字（可区分断言）。
-    // outline 需要源快照——按页拼回（探针源 ≤512KiB/页 ×页数；本 bin 用于
-    // 小样本精确断言，大源按需恢复由 for_each_source_page 流式路径证明）。
-    let (span_lo, span_hi) = view.decl_range(decl_idx).expect("decl range");
-    let mut page_bytes: Vec<u8> = Vec::new();
-    view.for_each_source_page(|p| {
-        page_bytes.extend_from_slice(p);
-        Ok(())
-    })
-    .expect("source for outline");
-    let text = std::str::from_utf8(&page_bytes).expect("utf8 source");
-    let snap = ac_syntax_rt::snapshot::Snapshot::from_text(
-        &std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()),
-        text,
-    );
-    let items = ac_syntax_rt::outline::outline(&prog, &subtree, &snap).expect("outline");
-    let name = items.first().map(|i| i.name.clone()).unwrap_or_default();
+
+    // outline：子树 origin 平移到切片坐标系 + 仅切片文本的 Snapshot。
+    let name = if slice_start != u64::MAX && span_pages.len() <= (2 << 20) {
+        let mut sub = subtree.clone();
+        let shift = slice_start;
+        for d in &mut sub.decls {
+            d.origin -= shift;
+        }
+        let text = std::str::from_utf8(&span_pages).expect("utf8 source slice");
+        let snap = ac_syntax_rt::snapshot::Snapshot::from_text(
+            &std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()),
+            text,
+        );
+        ac_syntax_rt::outline::outline(&prog, &sub, &snap)
+            .ok()
+            .and_then(|items| items.first().map(|i| i.name.clone()))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
     println!(
         "QUERY decls={} nodes={} src_len={} src_hash={} span={},{} name={}",
         view.decl_count(),
