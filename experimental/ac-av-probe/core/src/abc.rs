@@ -218,6 +218,26 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
     put_u32(&mut w, m.imports.len() as u32);
     put_u32(&mut w, m.funcs.len() as u32);
     put_u32(&mut w, m.entry);
+    // Module capabilities (e.g. the test trace capability gating Trace
+    // instructions) — admission data, carried in the header.
+    if m.capabilities.len() > u16::MAX as usize {
+        return Err(AbcDecodeError::fmt_err(
+            "abc.encode.capabilities",
+            "too many capabilities".to_string(),
+        ));
+    }
+    put_u16(&mut w, m.capabilities.len() as u16);
+    for c in &m.capabilities {
+        let b = c.as_bytes();
+        if b.len() > u16::MAX as usize {
+            return Err(AbcDecodeError::fmt_err(
+                "abc.encode.capabilities",
+                format!("capability `{}` exceeds wire width", c),
+            ));
+        }
+        put_u16(&mut w, b.len() as u16);
+        w.push(b);
+    }
 
     // Types.
     for t in &m.types {
@@ -391,6 +411,7 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
 // ---------------------------------------------------------------------------
 
 /// Decoded ABC: the reconstructed (unchecked) MIR module plus identity.
+#[derive(Debug)]
 pub struct DecodedAbc {
     pub version: u16,
     pub profile: u16,
@@ -503,6 +524,15 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     let n_imports = c.u32()? as usize;
     let n_funcs = c.u32()? as usize;
     let entry = c.u32()?;
+    let n_caps = c.u16()? as usize;
+    let mut capabilities = Vec::with_capacity(n_caps.min(16));
+    for _ in 0..n_caps {
+        let n = c.u16()? as usize;
+        let cb = c.take(n)?.to_vec();
+        capabilities.push(String::from_utf8(cb).map_err(|_| {
+            AbcDecodeError::fmt_err("abc.decode.capability-utf8", "capability is not UTF-8".to_string())
+        })?);
+    }
     // Quota: counts alone are bounded by the frozen table budget (checked
     // again post-assembly by the verifier; checked HERE before allocation).
     if n_types.saturating_add(n_consts).saturating_add(n_imports).saturating_add(n_funcs)
@@ -523,7 +553,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         imports: Vec::with_capacity(n_imports.min(64)),
         funcs: Vec::with_capacity(n_funcs.min(1024)),
         entry,
-        capabilities: Vec::new(),
+        capabilities,
     };
     // NOTE: owner identity is envelope-level (probe cache); the wire carries
     // structural content. The probe re-stamps owner before verify.
@@ -589,7 +619,12 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     // Functions.
     let mut sidecar_needed = flags & FLAG_SOURCE_SIDECAR != 0;
     let mut raw_funcs: Vec<(TypeIdx, String, Vec<MirSlot>, BlockId, Vec<MirBlock>)> = Vec::with_capacity(n_funcs);
+    // Per-TABLE-FAMILY probe (contract-decision §6 r1.1): module tables were
+    // checked above; each FUNCTION's slot/block/instruction table is checked
+    // at its own boundary — never accumulated across the whole module.
     let mut table_probe = n_types + n_consts + n_imports + n_funcs;
+    let _ = table_probe;
+    let mut fn_probe: usize = 0;
     for _ in 0..n_funcs {
         let sig = c.u32()?;
         let nlen = c.u16()? as usize;
@@ -598,13 +633,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             AbcDecodeError::fmt_err("abc.decode.name-utf8", "function name is not UTF-8".to_string())
         })?;
         let nslots = c.u32()? as usize;
-        table_probe = table_probe.saturating_add(nslots);
-        if table_probe > crate::contract::MAX_TABLE_ENTRIES {
-            return Err(AbcDecodeError::Resource {
-                kind: ResourceKind::TableEntries,
-                message: format!("slot table pushes entries past {}", crate::contract::MAX_TABLE_ENTRIES),
-            });
-        }
+        fn_probe = nslots;
         let mut slots = Vec::with_capacity(nslots.min(4096));
         for _ in 0..nslots {
             let k = c.u8()?;
@@ -621,21 +650,18 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         }
         let entry_block = c.u32()?;
         let nblocks = c.u32()? as usize;
-        table_probe = table_probe.saturating_add(nblocks);
-        if table_probe > crate::contract::MAX_TABLE_ENTRIES {
-            return Err(AbcDecodeError::Resource {
-                kind: ResourceKind::TableEntries,
-                message: format!("block table pushes entries past {}", crate::contract::MAX_TABLE_ENTRIES),
-            });
-        }
+        fn_probe += nblocks;
         let mut blocks = Vec::with_capacity(nblocks.min(4096));
         for _ in 0..nblocks {
             let ninstrs = c.u32()? as usize;
-            table_probe = table_probe.saturating_add(ninstrs);
-            if table_probe > crate::contract::MAX_TABLE_ENTRIES {
+            fn_probe += ninstrs;
+            if fn_probe > crate::contract::MAX_TABLE_ENTRIES {
                 return Err(AbcDecodeError::Resource {
                     kind: ResourceKind::TableEntries,
-                    message: format!("instruction table pushes entries past {}", crate::contract::MAX_TABLE_ENTRIES),
+                    message: format!(
+                        "function `{}` table entries {} exceed the frozen budget {}",
+                        name, fn_probe, crate::contract::MAX_TABLE_ENTRIES
+                    ),
                 });
             }
             let mut instrs = Vec::with_capacity(ninstrs.min(4096));

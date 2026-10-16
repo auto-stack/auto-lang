@@ -6,6 +6,9 @@
 //! Load size, function count, the local-edit position (fn_037's first
 //! multiplier) and the signature-conflict edit are FROZEN by
 //! contract-decision.md; they must never shrink to make a gate pass.
+//! `generate_with_sized` exists ONLY for scaled test smokes (still 100
+//! functions — the per-body block count scales); the release-grade
+//! turnaround gate always uses the frozen 256 KiB form.
 
 /// A deterministic small-prng so constants vary per function but are
 /// reproducible run to run (output must be byte-stable for cache keys).
@@ -26,11 +29,21 @@ pub struct Load256 {
     pub expected_main: i32,
 }
 
-/// Generate the frozen load. `body_edit` flips fn_037's first multiplier
-/// (+1), producing a different but still-correct expected result.
+/// Generate the frozen 256 KiB load. `body_edit` flips fn_037's first
+/// multiplier (+1), producing a different but still-correct expected.
 pub fn generate_with(body_edit: bool) -> Load256 {
-    const TARGET: usize = 256 * 1024;
-    let mut src = String::with_capacity(TARGET + 4096);
+    generate_with_sized(body_edit, 256 * 1024)
+}
+
+pub fn generate() -> Load256 {
+    generate_with(false)
+}
+
+/// Size-parameterized core: ALWAYS 100 caller functions (fn_037 exists at
+/// every scale); the per-body block count shrinks for small targets.
+pub fn generate_with_sized(body_edit: bool, target: usize) -> Load256 {
+    let target = target.max(16 * 1024);
+    let mut src = String::with_capacity(target + 8192);
     let mut expected: i32 = 0;
 
     // 14 leaves: fn_leaf_N(v) = v < 0 ? -v : v + N.
@@ -47,18 +60,17 @@ pub fn generate_with(body_edit: bool) -> Load256 {
         }
     };
 
-    // 100 caller bodies until the size target; block mix keeps every
-    // function meaningful (assignments, branches, loops, a leaf call).
+    // ~200 bytes per mixed block at full scale; scale the block count down
+    // for small targets but keep all 100 functions.
+    let blocks_per_fn = ((target.saturating_sub(src.len() + 6144)) / 100 / 148).max(1);
     let mut rng = Lcg(0x798_5eed);
-    let mut i = 0usize;
     let mut main_calls = String::new();
-    while src.len() < TARGET && i < 100 {
+    for i in 0..100usize {
         let x = (i as i32 % 7) + 1;
         let a0 = rng.between(3, 40) + if body_edit && i == 37 { 1 } else { 0 };
         src.push_str(&format!("fn fn_{i:03}(x int) int {{\n    var acc = x * {a0}\n"));
         let mut acc = x * a0;
-        // ~13 mixed blocks per body lands ≈2.6 KiB per function.
-        for _ in 0..13 {
+        for _ in 0..blocks_per_fn {
             let b = rng.between(2, 60);
             let c = rng.between(1, 20);
             let d = rng.between(1, 25);
@@ -83,18 +95,12 @@ pub fn generate_with(body_edit: bool) -> Load256 {
         let extra = leaf(acc, leaf_n);
         expected = expected.wrapping_add(acc + extra);
         main_calls.push_str(&format!("    total = total + fn_{i:03}({})\n", (i % 7) + 1));
-        i += 1;
     }
-    assert_eq!(i, 100, "load generation reached the function cap before the size target");
     let mut source = src;
     source.push_str("fn main() int {\n    var total = 0\n");
     source.push_str(&main_calls);
     source.push_str("    return total\n}\n");
     Load256 { source, expected_main: expected }
-}
-
-pub fn generate() -> Load256 {
-    generate_with(false)
 }
 
 /// The frozen signature-conflict edit: fn_leaf_1 gains a parameter, turning

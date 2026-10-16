@@ -305,13 +305,6 @@ impl<'a> FnLower<'a> {
         })
     }
 
-    fn callee_sig_idx(&self, callee: &CalleeRef) -> Option<TypeIdx> {
-        match callee {
-            CalleeRef::Func(idx) => self.out.funcs.get(*idx as usize).map(|f| f.sig),
-            CalleeRef::Import(idx) => self.out.imports.get(*idx as usize).map(|i| i.sig),
-        }
-    }
-
     /// Evaluate one expression into a slot (existing local slot or fresh
     /// temp), emitting into the current block. Short-circuit `Logical`
     /// opens new blocks; the cursor lands on the join.
@@ -411,9 +404,22 @@ impl<'a> FnLower<'a> {
                     self.emit(MirInstr::Const { dst, value: c }, sp);
                     return Ok(dst);
                 }
-                let sig_idx = self.callee_sig_idx(&callee_ref).ok_or_else(|| {
-                    AdapterError::inv("lower.callee-sig", "callee lacks a signature".to_string())
-                })?;
+                // The callee signature comes from the HIR def table —
+                // forward and self references resolve before any body of
+                // that function has been lowered.
+                let callee_def = *callee;
+                let hir_ty = self
+                    .hir_module
+                    .defs
+                    .get(callee_def.0 as usize)
+                    .and_then(|d| d.kind.fn_type())
+                    .ok_or_else(|| {
+                        AdapterError::inv(
+                            "lower.callee-sig",
+                            "callee lacks a function type".to_string(),
+                        )
+                    })?;
+                let sig_idx = fn_type_index(hir_ty, self.hir_module, self.out)?;
                 let n_params = self.out.sig_of(sig_idx).map(|s| s.params.len()).unwrap_or(0);
                 let mut actuals: Vec<SlotId> = vec![0; n_params];
                 for b in bindings {

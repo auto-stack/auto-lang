@@ -76,8 +76,13 @@ fn bench_turnaround(args: &[String]) -> ! {
     let samples: usize = flag(args, "--samples")
         .and_then(|s| s.parse().ok())
         .unwrap_or(30);
+    let gate_ms: f64 = flag(args, "--gate-ms")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1000.0);
     let out_path = flag(args, "--out").unwrap_or_else(|| "-".into());
     let load = auto_av_probe::load256::generate();
+    let edited = auto_av_probe::load256::generate_with(true);
+    let conflicted = auto_av_probe::load256::edit_signature_conflict(&load.source);
     let mut out: Box<dyn Write> = if out_path == "-" {
         Box::new(std::io::stdout())
     } else {
@@ -85,7 +90,7 @@ fn bench_turnaround(args: &[String]) -> ! {
     };
     let root = std::env::temp_dir().join(format!("av798-bench-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    let result = auto_av_probe::bench::run_six_scenarios(&root, &load, samples);
+    let result = auto_av_probe::bench::run_six_scenarios(&root, &load, &edited, &conflicted, samples);
     for line in result {
         let mut l = serde_json::to_string(&line).unwrap_or_default();
         l.push('\n');

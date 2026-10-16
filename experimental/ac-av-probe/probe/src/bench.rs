@@ -38,7 +38,38 @@ pub struct SampleRow {
     pub av_execute: u64,
 }
 
-pub fn run_six_scenarios(root: &Path, load: &load256::Load256, samples: usize) -> Vec<SampleRow> {
+#[allow(clippy::too_many_arguments)]
+/// Hard gate (frozen §5.5): warm-session single-body-edit AND
+/// signature-conflict requests must reach the correct AV result/diagnostic
+/// with P95 < `gate_ms` measured from request to published outcome.
+pub fn hard_gate(rows: &[SampleRow], gate_ms: f64) -> Vec<String> {
+    use crate::observations::percentile_ms;
+    let mut failures = Vec::new();
+    for scenario in ["single-body-edit", "signature-conflict"] {
+        let walls: Vec<f64> = rows
+            .iter()
+            .filter(|r| r.scenario == scenario)
+            .map(|r| r.wall_ms)
+            .collect();
+        let p95 = percentile_ms(&walls, 95.0);
+        if p95 >= gate_ms {
+            failures.push(format!("hard gate: {} P95 {:.1}ms >= {:.1}ms", scenario, p95, gate_ms));
+        }
+        let any_bad = rows.iter().any(|r| r.scenario == scenario && !r.ok);
+        if any_bad {
+            failures.push(format!("hard gate: {} has failing samples", scenario));
+        }
+    }
+    failures
+}
+
+pub fn run_six_scenarios(
+    root: &Path,
+    load: &load256::Load256,
+    edited: &load256::Load256,
+    conflicted: &str,
+    samples: usize,
+) -> Vec<SampleRow> {
     let mut rows = Vec::with_capacity(samples * 6);
     let entry = "d_main";
 
@@ -79,7 +110,6 @@ pub fn run_six_scenarios(root: &Path, load: &load256::Load256, samples: usize) -
     }
 
     // 4. single-body-edit: the frozen fn_037 edit (expected changes with it).
-    let edited = load256::generate_with(true);
     {
         let edit_root = root.join("edit");
         let mut d = Driver::with_store(&edit_root, "bench-edit").expect("store");
@@ -91,7 +121,6 @@ pub fn run_six_scenarios(root: &Path, load: &load256::Load256, samples: usize) -
     }
 
     // 5. signature-conflict: correct diagnostic per sample (warm first).
-    let conflicted = load256::edit_signature_conflict(&load.source);
     {
         let sig_root = root.join("sig");
         let mut d = Driver::with_store(&sig_root, "bench-sig").expect("store");

@@ -290,7 +290,8 @@ impl MirModule {
         }
     }
 
-    /// Total table-entry count against the frozen budget.
+    /// Total table-entry count (reporting helper; the FROZEN budget is
+    /// enforced per table family — see mir_verify and contract-decision §6).
     pub fn table_entries(&self) -> usize {
         self.types.len()
             + self.consts.len()

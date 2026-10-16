@@ -144,15 +144,37 @@ impl<'a> Verifier<'a> {
         }
 
         // ---- budget: table entries BEFORE any deep allocation ----------
-        let entries = self.module.table_entries();
-        if entries > MAX_TABLE_ENTRIES {
+        // Scope (contract-decision.md §6 r1.1): the 65_536 cap is a PER-TABLE
+        // allocation guard — module tables (types/consts/imports/functions)
+        // and EACH function's slot/block/instruction table independently.
+        // Whole-module totals are governed by the request-level work-step
+        // and wall budgets (and the 4 MiB input cap), which is what makes
+        // the frozen 100-function reference load representable without
+        // weakening any single-table guard.
+        let module_tables = self.module.types.len()
+            + self.module.consts.len()
+            + self.module.imports.len()
+            + self.module.funcs.len();
+        if module_tables > MAX_TABLE_ENTRIES {
             return Err(MirVerifyError::Resource {
                 kind: ResourceKind::TableEntries,
                 message: format!(
-                    "table entries {} exceed the frozen budget {}",
-                    entries, MAX_TABLE_ENTRIES
+                    "module table entries {} exceed the frozen budget {}",
+                    module_tables, MAX_TABLE_ENTRIES
                 ),
             });
+        }
+        for f in &self.module.funcs {
+            let fn_entries = f.slots.len() + f.blocks.len() + f.flat_instr_count() as usize;
+            if fn_entries > MAX_TABLE_ENTRIES {
+                return Err(MirVerifyError::Resource {
+                    kind: ResourceKind::TableEntries,
+                    message: format!(
+                        "function `{}` table entries {} exceed the frozen budget {}",
+                        f.name, fn_entries, MAX_TABLE_ENTRIES
+                    ),
+                });
+            }
         }
 
         // ---- shape: type table -----------------------------------------
@@ -265,6 +287,18 @@ impl<'a> Verifier<'a> {
 
     fn check_function(&mut self, fi: u32, f: &MirFunction) -> Result<(), MirVerifyError> {
         let _ = fi;
+        // Precomputed block bases (flat instruction offsets): the naive
+        // per-call prefix sum made chain-shaped functions quadratic.
+        let bases: Vec<u32> = {
+            let mut v = Vec::with_capacity(f.blocks.len() + 1);
+            let mut acc = 0u32;
+            v.push(0);
+            for b in &f.blocks {
+                acc += b.instrs.len() as u32;
+                v.push(acc);
+            }
+            v
+        };
         // shape: sig
         let Some(sig) = self.module.sig_of(f.sig).cloned() else {
             return Err(MirVerifyError::inv(
@@ -344,7 +378,7 @@ impl<'a> Verifier<'a> {
         for (bi, b) in f.blocks.iter().enumerate() {
             for (ii, instr) in b.instrs.iter().enumerate() {
                 self.tick(1)?;
-                let flat = f.block_base(bi as u32) + ii as u32;
+                let flat = bases[bi] + ii as u32;
                 let sp = self.span_of(f, flat);
                 let err = |code: &str, msg: String| MirVerifyError::Invalid {
                     code: code.to_string(),
@@ -509,7 +543,7 @@ impl<'a> Verifier<'a> {
             }
             // terminator
             self.tick(1)?;
-            let sp = self.span_of(f, f.block_base(bi as u32) + b.instrs.len() as u32);
+            let sp = self.span_of(f, bases[bi + 1]);
             let err = |code: &str, msg: String| MirVerifyError::Invalid {
                 code: code.to_string(),
                 message: msg,
@@ -553,10 +587,10 @@ impl<'a> Verifier<'a> {
             }
         }
         // ---- definite initialization over the reachable CFG -------------
-        self.check_init(f)
+        self.check_init(f, &bases)
     }
 
-    fn check_init(&mut self, f: &MirFunction) -> Result<(), MirVerifyError> {
+    fn check_init(&mut self, f: &MirFunction, bases: &[u32]) -> Result<(), MirVerifyError> {
         let n = f.slots.len();
         let words = words_for(n);
         let blocks = f.blocks.len();
@@ -642,7 +676,7 @@ impl<'a> Verifier<'a> {
             .iter()
             .enumerate()
             .map(|(bi, b)| {
-                let flat = f.block_base(bi as u32) + b.instrs.len() as u32;
+                let flat = bases[bi + 1];
                 match &b.term {
                     Terminator::Branch { cond, .. } => Some((*cond, flat)),
                     Terminator::Return { value } => Some((*value, flat)),
@@ -706,7 +740,7 @@ impl<'a> Verifier<'a> {
             let mut live = new_in.clone();
         let mut fail: Option<(u32, u32)> = None;
         'blk: for (ii, instr) in f.blocks[b as usize].instrs.iter().enumerate() {
-            let flat = f.block_base(b) + ii as u32;
+            let flat = bases[b as usize] + ii as u32;
             for u in instr.use_slots() {
                 if !bit_is_set(&live, u as usize) {
                     fail = Some((u, flat));

@@ -1,0 +1,80 @@
+{
+ "fresh": {
+  "n": 30,
+  "p50_ms": 782.0,
+  "p95_ms": 841.6,
+  "p99_ms": 1295.7,
+  "max_ms": 1295.7,
+  "failures": 0,
+  "mean_hits": 111.2,
+  "mean_mir_build": 3.83,
+  "mean_av_execute": 1
+ },
+ "same-process-hot": {
+  "n": 30,
+  "p50_ms": 774.9,
+  "p95_ms": 831.5,
+  "p99_ms": 962.0,
+  "max_ms": 962.0,
+  "failures": 0,
+  "mean_hits": 115,
+  "mean_mir_build": 0,
+  "mean_av_execute": 1
+ },
+ "restart-disk-hot": {
+  "n": 30,
+  "p50_ms": 781.0,
+  "p95_ms": 821.8,
+  "p99_ms": 886.7,
+  "max_ms": 886.7,
+  "failures": 0,
+  "mean_hits": 115,
+  "mean_mir_build": 0,
+  "mean_av_execute": 1
+ },
+ "single-body-edit": {
+  "n": 30,
+  "p50_ms": 753.2,
+  "p95_ms": 829.4,
+  "p99_ms": 888.4,
+  "max_ms": 888.4,
+  "failures": 0,
+  "mean_hits": 115.0,
+  "mean_mir_build": 0.03,
+  "mean_av_execute": 1
+ },
+ "signature-conflict": {
+  "n": 30,
+  "p50_ms": 37.9,
+  "p95_ms": 41.4,
+  "p99_ms": 41.5,
+  "max_ms": 41.5,
+  "failures": 0,
+  "mean_hits": 0,
+  "mean_mir_build": 0,
+  "mean_av_execute": 0
+ },
+ "gc-concurrent": {
+  "n": 30,
+  "p50_ms": 940.0,
+  "p95_ms": 1159.2,
+  "p99_ms": 1182.8,
+  "max_ms": 1182.8,
+  "failures": 0,
+  "mean_hits": 115,
+  "mean_mir_build": 0,
+  "mean_av_execute": 1
+ },
+ "hard_gate": {
+  "gate_ms": 1000.0,
+  "p95_ms": {
+   "single-body-edit": 829.4,
+   "signature-conflict": 41.4
+  },
+  "failures": {
+   "single-body-edit": 0,
+   "signature-conflict": 0
+  },
+  "pass": true
+ }
+}
