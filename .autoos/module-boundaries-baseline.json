@@ -1,6 +1,6 @@
 {
-  "base_revision": "7e5225426d91741d5d1d58a14d2b1159ae324fa5",
-  "config_sha256": "03f9fdd54ebd8f412ef36e8dba772ace4811f1fe3aa72fb33452b4355d2bf30d",
+  "base_revision": "ea291d3abbc6a25bdbd4c8bf301e9a972d31adf0",
+  "config_sha256": "9f29e12a714f75df2ecd4e0a65514d8a30c825e5025bd750036cf3f5bf1fcc0a",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -45,6 +45,24 @@
       "optional": false,
       "target": null,
       "to": "shell-pack",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lex",
+      "from": "auto-ast",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lex",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-ast",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
       "to_scope": "member"
     },
     {
@@ -171,6 +189,15 @@
       "optional": false,
       "target": "cfg(windows)",
       "to": "a2r-std",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ast",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ast",
       "to_scope": "member"
     },
     {
@@ -439,7 +466,7 @@
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
     "core_to_ui": 885,
-    "man_to_language": 573,
+    "man_to_language": 574,
     "ui_to_language": 181
   }
 }
