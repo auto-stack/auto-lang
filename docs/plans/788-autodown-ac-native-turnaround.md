@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-788
-status: drafting
+status: executing
 feature_name: AutoDown AC 原生测试接入与增量周转观测
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
-current_step: 0
+current_step: 5
 total_steps: 10
 supersedes_spec_components:
   - docs/specs/auto-test-case/project.md
@@ -216,11 +216,11 @@ T-01是有限whole-path可行性门，不可用研究结论替代后续实现。
 
 | 状态 / ID | owner_stage | 依赖 | 操作/路径与结果 | 验证 / AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 用户执行指令 | 核树/基面/工具链，新增attachments/788/contract-decision.md与最小worker实验；冻结v2/IPC字段/支持表、阶段映射/预算/性能配方、787接缝清单 | 一个case实际source→PE→run及一例typed HIR拒绝；fresh/hit最小trace；不可行回规划，不能降验收；AC-01–06 |
-| [ ] T-02 | work | T-01 | auto-test-case/src/{contract,suite,ir,compare,report,discovery,admission}.rs的版本门控与v2模型/比较/stale身份；旧v1恒定 | contract_v2_、native_report_、v1回归；AC-01 |
-| [ ] T-03 | work | T-01、02 | 新experimental/ac-case-worker/{Cargo.toml,Cargo.lock,src/}；ac-core/source观察与link rawbytes/cap兼容入口；IPC/资源边界 | ac_stage_、process_budget_、native_bytes_；重放既有contained反例；AC-02、03 |
-| [ ] T-04 | work | T-02、03 | 新auto-lang/src/test_cases/ac.rs，mod/materialize/stale及bin/auto-case.rs接分派/产物DAG/CLI；零静态Cranelift依赖 | ac_native_、ac_product_、native_admission_；AC-02、03 |
-| [ ] T-05 | work | T-04 | worker的cache/trace adapter，必要的783 driver窄观察入口，不改GC；关联request→result计时与实际计数 | native_cache_、native_invalidation_、native_store_；AC-04、06 |
+| [x] T-01 | work | 用户执行指令 | 核树/基面/工具链，新增attachments/788/contract-decision.md与最小worker实验；冻结v2/IPC字段/支持表、阶段映射/预算/性能配方、787接缝清单 | [✅ 2026-10-16] 契约冻结见[contract-decision.md](attachments/788/contract-decision.md)（基面2f6b06c74/参考环境i5-13600KF+31.8GB/Win11/rustc1.98.0；787禁触面=ac-syntax/**+probe codec/schema/store_mod）；whole-path实验`experimental/ac-case-worker/tests/feasibility_t01_.rs` 3/3 PASS（source→COFF→PE→run exit3 oracle；typed bind.dangling-ref+span拒绝；fresh/hit计数1,1,1,1,1→0,0,0,1,1）。提交7e6d64fcb | AC-01–06 |
+| [x] T-02 | work | T-01 | auto-test-case/src/{contract,suite,ir,compare,report,discovery,admission}.rs的版本门控与v2模型/比较/stale身份；旧v1恒定 | [✅ 2026-10-16] v2三schema精确分派+全字段面（hir-atom/ac×{check,build,run}/syntax×{parse,edit} decode受理·执行待D-787/typed stages/ac options含冻结预算硬cap/exit/perf/hir.atom-only artifacts/suite v2 defaults值校验+apply_defaults合并/NativeRecord报告）；v1接受/拒绝集字节不变（contract_decode 19 绿+wrong_schema改用case/3）。contract_v2_ 17例+v1回归30+19全绿；auto-lang --features test-cases 编译零错+test_cases_tests 26绿。提交a5e6e66a9（7文件1453行） | AC-01 |
+| [x] T-03 | work | T-01、02 | 新experimental/ac-case-worker/{Cargo.toml,Cargo.lock,src/}；ac-core/source观察与link rawbytes/cap兼容入口；IPC/资源边界 | [✅ 2026-10-16] ac-core：`run_deadlined_captured/_with`（bytes内核+CaptureCaps+OutputCapExceeded立即杀树，旧split=lossy wrapper）、`SourceObserver/compile_parts_with_observer`（同管线边界归因，观察为parse/resolve/typecheck唯一来源）、VERSION常量；worker：`acworker/1` JSON-lines会话（begin/request/end，256请求/180s硬限）、request admission（schema/kind/profile/budget≤冻结cap/scratch绝对+拒reparse）、check/build/run全真实路径+canonical HIR产物+manifest哈希。`link_capture_` 7/7（deadline杀树/输出cap立即终止+精确边界/无效UTF-8·NUL·CRLF字节级round-trip对照lossy wrapper/contained拒绝重放）；`protocol_t03_` 10/10（三前端边界归因、typed bind.dangling-ref+span、真实死循环程序budget.run杀、admission负例、经真实二进制的完整IPC往返）；受影响ac-core lib/native_execution/cli 37绿；t01 3/3不变。提交5791ad12e | AC-02、03 |
+| [x] T-04 | work | T-02、03 | 新auto-lang/src/test_cases/ac.rs，mod/materialize/stale及bin/auto-case.rs接分派/产物DAG/CLI；零静态Cranelift依赖 | [✅ 2026-10-16] ac.rs：worker定位（AC_CASE_WORKER env→仓布局release构建+进程内缓存）、单发IPC+父侧nonce/hash复核+墙钟杀树、父侧全判定（typed stage/code/message/exit/原始bytes/canonical HIR金样/声明perf）、manifest重核+128MiB cap+产物持久化注册；mod.rs：selector收ac/syntax、分派ac×{check,build,run}、syntax=点名D-787的admission ERROR（不SKIP）、ac/run product_from消费=manifest核验后**运行**上游exe（consume_and_run，不重编译）；Verdict增native记录→v2报告；ResolvedOracle把exit/perf纳入内容绑定身份（改期望exit即失效旧PASS）；stale增ac-case-worker轴；worker增HIR按名入口回退。`ac_case_tests` 7/7（exit oracle+红兄、typed stage归属PASS/错stage FAIL、真wrapper.atom HIR check+run exit5、syntax未绑定ERROR exit2、产物交接run+红控、v1载入拒ac、零匹配selector）；test_cases_tests 26+auto-test-case 84绿。提交7ea0ac0f9（8文件，格式噪音已剥离） | AC-02、03 |
+| [x] T-05 | work | T-04 | worker的cache/trace adapter，必要的783 driver窄观察入口，不改GC；关联request→result计时与实际计数 | [✅ 2026-10-16] probe driver.rs窄观察入口：`DriverCacheMode{Reuse,Fresh,ReadOnly}`+`vertical_observed/vertical_and_run_observed`（同一参数化管线 vertical_inner——Fresh跳结果读取/ReadOnly跳全部put+roots/artifact列表标read-only标记；实测阶段span frontend/hir-restore/verify/lower/link/run/total），旧`vertical`保持Reuse wrapper；store/GC/codec/schema零改动（787禁触面）。worker：请求增 store_root/cache/project/include_hir，auto-source build/run经真实store路径（toolchain_fp=lld文件sha256+ac-core版本，非调用方常量），canonical HIR金样走仅观察不发布的前端、run腿留在worker保预算/cap/原始bytes，语言失败typed重放（driver渲染串仅展示）、计数按键合并。ac.rs：per-run store根（AC_CASE_STORE钉持久根）、cache模式随check options、NativeRecord承载hits/counters。`cache_t05_` 7/7（fresh→object-hit计数1,1,1,1→0,0,0,1且link/run仍真、fresh模式热库强制重算、body编辑全miss exit4、read-only缺根infra error、read-only命中消费+miss永不发布、typed重放无cache记录、每请求trace含run/link=PASS从不缓存）；ac_case_tests +跨check复用例 8/8；783回归 native_resume_5+invalidation_3+identity_3+concurrency_4+store_boundary_5 绿；test_cases_tests 26绿。提交54e6a46ca | AC-04、06 |
 | [ ] T-06 | work | T-05、D-787 | worker/syntax adapter及v2edit观察，合入787后绑定真实grammar/API，当前revision/取消/重播/trace | syntax_case_、revision_trace_、syntax局部性能；AC-05、06 |
 | [ ] T-07 | work | T-04–06 | 新test/cases/ac-native/*.case.ad、suite、legacy-map.tsv及独立oracle审计；至少24case，旧fixtures/pilot不改 | coverage_、v1/CLI兼容；AC-07 |
 | [ ] T-08 | work | T-07 | 新scripts/verify-autodown-ac-788.ps1、docs/reports/plan788/矩阵/性能raw数据/命令、attachments/788/spec-delta.md | acceptance V-01–15、turnaround_；SD/范围/债务；完成→execution_done=8/10 |
@@ -233,7 +233,11 @@ T-01是有限whole-path可行性门，不可用研究结论替代后续实现。
 
 2026-10-16：stage:new，PLAN-788 r1，outcome:pass（规划契约预检，非代码/性能验收），next:work；T-01–05可独立，T-06前核D-787。新增T-01–10、AC-01–09、SD-01–06、V-01–15；0/10，未执行实施/测试，未创建树。
 
-来源/预检见[planning-preflight.md](attachments/788/planning-preflight.md)。用户本轮只授权规划，不自动启动实施；亚秒门槛是本计划拟验收合同，不是假报已有结果。
+### 2026-10-16 work handoff — T-01–T-05 完成（用户授权的独立部分），T-06 阻塞于 D-787
+
+stage:work | PLAN-788 | r1 | outcome:pass-scoped（T-01–05 全绿；**非 execution_done**——T-06–08 未做，全部必验完成才可 execution_done） | worktree `D:/autostack/.wt/lang-788/auto-lang` | branch `plan-788-dev` | base `2f6b06c74` | code `54e6a46ca`（T-01 `7e6d64fcb`/T-02 `a5e6e66a9`/T-03 `5791ad12e`/T-04 `7ea0ac0f9`/T-05 `54e6a46ca`，历史干净无格式噪音） | deps: ac-core/ac-artifact-probe@master 基面+本树扩展、auto-down 兄弟 worktree detached `c39ac7f`（组内解析用，零改动） | tasks: T-01✅ T-02✅ T-03✅ T-04✅ T-05✅（5/10） | evidence: worker `feasibility_t01_` 3/3 + `protocol_t03_` 10/10 + `cache_t05_` 7/7；ac-core `link_capture_` 7/7 + 受影响 lib/native_execution/cli 37 绿；auto-test-case 84（含 contract_v2_ 17）绿；auto-lang `ac_case_tests` 8/8 + `test_cases_tests` 26 绿；783 回归 native_resume_/invalidation_/identity_/concurrency_/store_boundary_ 20 绿；契约冻结 attachments/788/contract-decision.md（含 §9 实施修订：hash回显、project/include_hir 字段、driver String 流不参与、本批 V-06 非 ASCII 生产者随 text 批、跨进程重启归属） | blockers: T-06 需 D-787（787 独立 review pass+门禁+实际合入 master+Spec 沉淀+merge 收据；其 needs_fix 重开中）——解锁后绑 syntax adapter 与 V-11/13，再做 T-07 ≥24 case/T-08 验收聚合 | next: D-787 满足后 work 继续 T-06（同树）；merge-owned 门禁（裸 t、tv、tt 触面、worker/probe/783 独立套件、closeout）全部 pending——按 2026-10-14 时序裁定，最终 review pass 后由 merge 在冻结提交统一执行
+
+来源/预检见[planning-preflight.md](attachments/788/planning-preflight.md)。契约决策见[contract-decision.md](attachments/788/contract-decision.md)。亚秒门槛是本计划拟验收合同，T-05 交付的是 trace/计时接线；六场景×30样本实测与 P95 判定归 T-08（参考环境已冻结于决策稿 §1/§8）。
 
 ## 10. 待澄清事项
 
