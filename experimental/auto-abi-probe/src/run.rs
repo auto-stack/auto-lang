@@ -1,28 +1,19 @@
-//! Link + run helpers reusing the merged ac-core entries verbatim
-//! (plan §3): `find_rust_lld` / `find_sdk_um_dir` /
-//! `link_object_staged` / `run_deadlined_split`. Nothing here invents a
-//! second linker or executor.
+//! Probe execution: scratch dirs + running PEs under the contained
+//! executor with the frozen budgets (plan §3; contract-decision §6).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
 
-/// Frozen T-01 probe run budgets (plan §3; full enforcement design in
-/// contract-decision.md §6). The 70s total budget is enforced by the
-/// per-request harness at the caller; this module owns the run leg.
+/// Frozen T-01/T-03 probe run budgets (plan §3). The 70s total budget
+/// is enforced by the per-request harness at the caller; this module
+/// owns the run leg.
 pub const RUN_DEADLINE: Duration = Duration::from_secs(5);
 /// stdout/stderr acceptance caps: outputs beyond 1 MiB each are a FAILED
 /// probe request, never truncated into a green result.
 pub const OUTPUT_CAP: usize = 1024 * 1024;
 
-#[derive(Debug)]
-pub struct ProbeError(pub String);
-
-impl std::fmt::Display for ProbeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "abi.probe: {}", self.0)
-    }
-}
+pub use crate::link::ProbeError;
 
 /// Observed outcome of one PE run: exit code plus collected outputs.
 #[derive(Debug, Clone)]
@@ -35,7 +26,7 @@ pub struct PeRun {
 /// Scratch dir for one named probe case (under the workspace target/ so
 /// nothing leaks outside the build tree). Recreated on every call — a
 /// probe request starts from an empty directory, never from a previous
-/// run's leftovers.
+/// run's leftovers. Case names must be unique per concurrent test.
 pub fn scratch(case: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("target")
@@ -44,32 +35,6 @@ pub fn scratch(case: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("probe scratch dir");
     dir
-}
-
-/// Link object files into a staged PE (not published) with the REAL
-/// ac-core staged-link entry. `objs[0]` is the primary object (it must
-/// contain the entry symbol); the rest ride along as additional link
-/// inputs — exactly how mixed-producer PEs are formed. Single-object
-/// links are legal (e.g. the C layout oracle measures by itself); the
-/// INTEROP requirement of two independent producers is a property the
-/// leg tests assert on their own inputs, not a linker constraint.
-pub fn link_pe(dir: &Path, objs: &[PathBuf], entry: &str) -> Result<PathBuf, ProbeError> {
-    assert!(!objs.is_empty(), "a link needs at least one object");
-    let lld = auto_ac_prototype::link::find_rust_lld()
-        .map_err(|e| ProbeError(format!("find_rust_lld: {e:?}")))?;
-    let sdk = auto_ac_prototype::link::find_sdk_um_dir()
-        .map_err(|e| ProbeError(format!("find_sdk_um_dir: {e:?}")))?;
-    let exe = dir.join("probe.exe");
-    let staged = auto_ac_prototype::link::link_object_staged(
-        &lld,
-        &sdk,
-        &objs[0],
-        &exe,
-        entry,
-        &objs[1..],
-    )
-    .map_err(|e| ProbeError(format!("staged link: {e:?}")))?;
-    Ok(staged.tmp_exe)
 }
 
 /// Run a probe PE under the contained executor with the frozen run

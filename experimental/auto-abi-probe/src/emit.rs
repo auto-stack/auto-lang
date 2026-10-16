@@ -14,16 +14,18 @@
 //! XMM0/XMM1 — any misclassification between producers changes the
 //! result because every parameter carries a distinct weight.
 
-use crate::decl::{AbiScalar, BodyKind, FnDecl, MixInputs, P797_MIX};
+use crate::decl::{AbiScalar, BodyKind, FnDecl, MixInputs, RecValues};
 
-use cranelift_codegen::ir::condcodes::IntCC;
+use std::collections::BTreeMap;
+
+use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::types;
 use cranelift_codegen::ir::{AbiParam, InstBuilder, Signature};
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings::Configurable;
 use cranelift_codegen::settings::{builder as flags_builder, Flags};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{Linkage, Module};
+use cranelift_module::{DataDescription, Linkage, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use target_lexicon::Triple;
 
@@ -33,7 +35,7 @@ const ENTRY_SYMBOL: &str = "p797_entry";
 fn cranelift_type(s: AbiScalar) -> types::Type {
     match s {
         AbiScalar::I32 => types::I32,
-        AbiScalar::I64 => types::I64,
+        AbiScalar::I64 | AbiScalar::Ptr => types::I64,
         AbiScalar::F64 => types::F64,
     }
 }
@@ -143,9 +145,7 @@ pub fn emit_callee(decl: &FnDecl) -> Result<Vec<u8>, String> {
         fb.switch_to_block(entry);
         fb.seal_block(entry);
         let params = fb.block_params(entry).to_vec();
-        let result = match decl.body {
-            BodyKind::MixV1 => emit_mix_v1_body(&mut fb, &params),
-        };
+        let result = lower_body(&mut fb, decl.body, &params, None, None)?;
         fb.ins().return_(&[result]);
         fb.finalize();
     }
@@ -251,4 +251,497 @@ pub fn emit_caller(decl: &FnDecl, inputs: &MixInputs, expected: i64) -> Result<V
 /// Convenience: the T-01 probe declaration.
 pub fn t01_mix_decl() -> &'static FnDecl {
     &P797_MIX
+}
+
+// ---------------------------------------------------------------------------
+// T-03 suite: multi-function callee modules + check-driven callers
+// ---------------------------------------------------------------------------
+
+use crate::decl::P797_MIX;
+use cranelift_codegen::ir::GlobalValue;
+
+/// One in-PE check a suite caller performs. Each check lowers to a 0/1
+/// violation flag; the PE exits with the number of FAILED checks, so a
+/// single-check caller exiting 1 is the exact negative-control shape.
+pub enum SuiteCheck {
+    Mix {
+        symbol: &'static str,
+        inputs: MixInputs,
+        expected: i64,
+        /// Negative control: pass f and h swapped — the frozen weights
+        /// make the result differ.
+        swap_fh: bool,
+    },
+    Facc {
+        symbol: &'static str,
+        a: f64,
+        b: f64,
+        expected: f64,
+    },
+    Outer {
+        symbol: &'static str,
+        a: i32,
+        b: f64,
+        expected: i64,
+    },
+    DivOk {
+        symbol: &'static str,
+        n: i64,
+        d: i64,
+        expected_q: i64,
+    },
+    /// Failure contract: d == 0 must return status -1 AND leave the out
+    /// slot at its pre-call sentinel value.
+    DivZero {
+        symbol: &'static str,
+        n: i64,
+        sentinel: i64,
+    },
+    RecSum {
+        symbol: &'static str,
+        rec: RecValues,
+        expected: i64,
+        /// Negative control: place `tag` at a WRONG offset (12) — the
+        /// callee's frozen offsets then read garbage and diverge.
+        bad_tag_offset: bool,
+    },
+    /// Observable counter: call once per x; the LAST call's return is
+    /// the cumulative total — a missed or extra call changes it.
+    BumpSeq {
+        symbol: &'static str,
+        xs: &'static [i32],
+        expected_total: i64,
+    },
+}
+
+/// Signature of a helper the suite uses: (symbol, params, ret).
+fn helper_sig(params: &[AbiScalar], ret: AbiScalar) -> Signature {
+    Signature {
+        call_conv: WINCALL,
+        params: params.iter().map(|p| AbiParam::new(cranelift_type(*p))).collect(),
+        returns: vec![AbiParam::new(cranelift_type(ret))],
+    }
+}
+
+/// Emit a multi-function AutoABI callee module. `defs` are defined and
+/// exported; `import_inner == false` additionally imports `p797_inner`
+/// (nested chain: the C caller object provides it at link time).
+pub fn emit_callee_suite(
+    module_name: &str,
+    defs: &[FnDecl],
+    import_inner: bool,
+) -> Result<Vec<u8>, String> {
+    let mut om = new_module(module_name)?;
+
+    // p797_inner: defined locally (suite-internal helper) or imported.
+    let inner_id = {
+        let sig = Signature {
+            call_conv: WINCALL,
+            params: vec![AbiParam::new(types::I64)],
+            returns: vec![AbiParam::new(types::I64)],
+        };
+        om.declare_function(
+            "p797_inner",
+            if import_inner { Linkage::Import } else { Linkage::Export },
+            &sig,
+        )
+        .map_err(|e| format!("declare p797_inner: {e}"))?
+    };
+
+    // Module-global counter for BumpV1 (writable, zero-initialized).
+    let mut bump_ctr: Option<cranelift_module::DataId> = None;
+    if defs.iter().any(|d| d.body == BodyKind::BumpV1) {
+        let id = om
+            .declare_data("p797_bump_ctr", Linkage::Export, true, false)
+            .map_err(|e| format!("declare bump ctr: {e}"))?;
+        let mut dd = DataDescription::new();
+        dd.define(vec![0u8; 8].into_boxed_slice());
+        dd.set_align(8);
+        om.define_data(id, &dd).map_err(|e| format!("define bump ctr: {e}"))?;
+        bump_ctr = Some(id);
+    }
+
+    // Pre-declare every function so bodies can reference each other.
+    let mut ids = Vec::new();
+    for d in defs {
+        let sig = decl_signature(d);
+        let id = om
+            .declare_function(d.symbol, Linkage::Export, &sig)
+            .map_err(|e| format!("declare {}: {e}", d.symbol))?;
+        ids.push((d, id));
+    }
+
+    for (d, fid) in &ids {
+        let sig = decl_signature(d);
+        let mut ctx = om.make_context();
+        ctx.func.signature = sig.clone();
+        {
+            let mut fb_ctx = FunctionBuilderContext::new();
+            let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+            let entry = fb.create_block();
+            fb.append_block_params_for_function_params(entry);
+            fb.switch_to_block(entry);
+            fb.seal_block(entry);
+            let params = fb.block_params(entry).to_vec();
+            let inner_ref = if d.body == BodyKind::OuterV1 {
+                Some(om.declare_func_in_func(inner_id, &mut fb.func))
+            } else {
+                None
+            };
+            let ctr = bump_ctr.map(|id| om.declare_data_in_func(id, &mut fb.func));
+            let result = lower_body(&mut fb, d.body, &params, inner_ref, ctr)?;
+            fb.ins().return_(&[result]);
+            fb.finalize();
+        }
+        om.define_function(*fid, &mut ctx)
+            .map_err(|e| format!("define {}: {e}", d.symbol))?;
+    }
+    om.finish().emit().map_err(|e| format!("emit suite callee: {e}"))
+}
+
+fn decl_signature(d: &FnDecl) -> Signature {
+    Signature {
+        call_conv: WINCALL,
+        params: d.params.iter().map(|p| AbiParam::new(cranelift_type(*p))).collect(),
+        returns: vec![AbiParam::new(cranelift_type(d.ret))],
+    }
+}
+
+/// Lower one frozen body family. This is the AutoABI-side implementation
+/// of every frozen semantic; the independent Rust oracles (`decl.rs`)
+/// and hand-written C (`cside/interop_*.c`) are the other two.
+fn lower_body(
+    fb: &mut FunctionBuilder,
+    body: BodyKind,
+    args: &[cranelift_codegen::ir::Value],
+    inner_ref: Option<cranelift_codegen::ir::FuncRef>,
+    bump_ctr: Option<GlobalValue>,
+) -> Result<cranelift_codegen::ir::Value, String> {
+    match body {
+        BodyKind::MixV1 => Ok(emit_mix_v1_body(fb, args)),
+        BodyKind::InnerV1 => {
+            let m3 = weighted_i64(fb, args[0], 3);
+            let c11 = fb.ins().iconst(types::I64, 11);
+            Ok(fb.ins().iadd(m3, c11))
+        }
+        BodyKind::FAccV1 => {
+            let c25 = fb.ins().f64const(2.5);
+            let c125 = fb.ins().f64const(1.25);
+            let m1 = fb.ins().fmul(args[0], c25);
+            let m2 = fb.ins().fmul(args[1], c125);
+            Ok(fb.ins().fadd(m1, m2))
+        }
+        BodyKind::OuterV1 => {
+            let inner = inner_ref.ok_or("OuterV1 needs the inner reference")?;
+            let a = sext_i32_to_i64(fb, args[0]);
+            let t = fb.ins().fcvt_to_sint(types::I64, args[1]);
+            let a7 = weighted_i64(fb, a, 7);
+            let t100 = weighted_i64(fb, t, 100);
+            let x = fb.ins().iadd(a7, t100);
+            let call = fb.ins().call(inner, &[x]);
+            let r = fb.inst_results(call)[0];
+            Ok(fb.ins().iadd(r, a))
+        }
+        BodyKind::FallibleDivV1 => {
+            // (n, d, q*) -> i32 status; d==0 -> -1 with q untouched.
+            let zero = fb.ins().iconst(types::I64, 0);
+            let is_zero = fb.ins().icmp(IntCC::Equal, args[1], zero);
+            let ok_bb = fb.create_block();
+            let fail_bb = fb.create_block();
+            fb.ins().brif(is_zero, fail_bb, &[], ok_bb, &[]);
+            fb.switch_to_block(fail_bb);
+            fb.seal_block(fail_bb);
+            let neg1 = fb.ins().iconst(types::I32, -1);
+            fb.ins().return_(&[neg1]);
+            fb.switch_to_block(ok_bb);
+            fb.seal_block(ok_bb);
+            let q = fb.ins().sdiv(args[0], args[1]);
+            fb.ins().store(cranelift_codegen::ir::MemFlags::new(), q, args[2], 0);
+            let ok_status = fb.ins().iconst(types::I32, 0);
+            Ok(ok_status)
+        }
+        BodyKind::RecSumV1 => {
+            // flag@0 (u8)*1000 + count@4 (i32)*3 + tag@8 (u32)*5 + big@16.
+            let mf = cranelift_codegen::ir::MemFlags::new();
+            let flag8 = fb.ins().load(types::I8, mf, args[0], 0);
+            let flag = fb.ins().uextend(types::I64, flag8);
+            let count32 = fb.ins().load(types::I32, mf, args[0], 4);
+            let count = fb.ins().sextend(types::I64, count32);
+            let tag32 = fb.ins().load(types::I32, mf, args[0], 8);
+            let tag = fb.ins().uextend(types::I64, tag32);
+            let big = fb.ins().load(types::I64, mf, args[0], 16);
+            let f1000 = weighted_i64(fb, flag, 1000);
+            let c3 = weighted_i64(fb, count, 3);
+            let t5 = weighted_i64(fb, tag, 5);
+            let acc = fb.ins().iadd(f1000, c3);
+            let acc = fb.ins().iadd(acc, t5);
+            Ok(fb.ins().iadd(acc, big))
+        }
+        BodyKind::BumpV1 => {
+            let gv = bump_ctr.ok_or("BumpV1 needs the module counter")?;
+            let p = fb.ins().global_value(types::I64, gv);
+            let mf = cranelift_codegen::ir::MemFlags::new();
+            let cur = fb.ins().load(types::I64, mf, p, 0);
+            let x = sext_i32_to_i64(fb, args[0]);
+            let next = fb.ins().iadd(cur, x);
+            fb.ins().store(mf, next, p, 0);
+            Ok(next)
+        }
+    }
+}
+
+/// Emit a suite caller: imports the checked symbols, declares the check
+/// data blobs (record bytes, out slots), runs every check in
+/// `p797_main` accumulating i32 violation flags, exits with the flag
+/// count through the generic entry wrapper.
+pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec<u8>, String> {
+    let mut om = new_module(module_name)?;
+
+    // Collect distinct imported symbols with their machine signatures.
+    let mut imports: Vec<(&'static str, Signature)> = Vec::new();
+    let mut need = |sym: &'static str, params: &[AbiScalar], ret: AbiScalar| {
+        if !imports.iter().any(|(s, _)| *s == sym) {
+            imports.push((sym, helper_sig(params, ret)));
+        }
+    };
+    for c in checks {
+        match c {
+            SuiteCheck::Mix { symbol, .. } => need(symbol, crate::decl::MIX_PARAMS, AbiScalar::I64),
+            SuiteCheck::Facc { symbol, .. } => {
+                need(symbol, &[AbiScalar::F64, AbiScalar::F64], AbiScalar::F64)
+            }
+            SuiteCheck::Outer { symbol, .. } => {
+                need(symbol, &[AbiScalar::I32, AbiScalar::F64], AbiScalar::I64)
+            }
+            SuiteCheck::DivOk { symbol, .. } | SuiteCheck::DivZero { symbol, .. } => {
+                need(symbol, &[AbiScalar::I64, AbiScalar::I64, AbiScalar::Ptr], AbiScalar::I32)
+            }
+            SuiteCheck::RecSum { symbol, .. } => need(symbol, &[AbiScalar::Ptr], AbiScalar::I64),
+            SuiteCheck::BumpSeq { symbol, .. } => {
+                need(symbol, &[AbiScalar::I32], AbiScalar::I64)
+            }
+        }
+    }
+    let mut import_ids = Vec::new();
+    for (sym, sig) in &imports {
+        let id = om
+            .declare_function(sym, Linkage::Import, sig)
+            .map_err(|e| format!("declare import {sym}: {e}"))?;
+        import_ids.push((*sym, id));
+    }
+
+    // ExitProcess import.
+    let exit_sig = Signature {
+        call_conv: WINCALL,
+        params: vec![AbiParam::new(types::I32)],
+        returns: vec![],
+    };
+    let exit_id = om
+        .declare_function("ExitProcess", Linkage::Import, &exit_sig)
+        .map_err(|e| format!("declare ExitProcess: {e}"))?;
+
+    // Data blobs: per-check record bytes and out slots (unique names).
+    let mut data_ids: Vec<(String, cranelift_module::DataId)> = Vec::new();
+    let mut add_data = |om: &mut ObjectModule, name: String, bytes: Vec<u8>, align: u64| -> Result<cranelift_module::DataId, String> {
+        let id = om
+            .declare_data(&name, Linkage::Export, true, false)
+            .map_err(|e| format!("declare data {name}: {e}"))?;
+        let mut dd = DataDescription::new();
+        dd.define(bytes.into_boxed_slice());
+        dd.set_align(align);
+        om.define_data(id, &dd).map_err(|e| format!("define data {name}: {e}"))?;
+        Ok(id)
+    };
+    for (i, c) in checks.iter().enumerate() {
+        match c {
+            SuiteCheck::RecSum { rec, bad_tag_offset, .. } => {
+                let bytes = crate::decl::encode_rec_bytes(rec, if *bad_tag_offset { 12 } else { 8 });
+                let id = add_data(&mut om, format!("p797_d_rec{i}"), bytes.to_vec(), 8)?;
+                data_ids.push((format!("rec{i}"), id));
+            }
+            SuiteCheck::DivOk { .. } => {
+                let id = add_data(&mut om, format!("p797_d_q{i}"), vec![0u8; 8], 8)?;
+                data_ids.push((format!("q{i}"), id));
+            }
+            SuiteCheck::DivZero { sentinel, .. } => {
+                let id = add_data(
+                    &mut om,
+                    format!("p797_d_q{i}"),
+                    sentinel.to_le_bytes().to_vec(),
+                    8,
+                )?;
+                data_ids.push((format!("q{i}"), id));
+            }
+            _ => {}
+        }
+    }
+
+    // p797_main: run checks, accumulate flags.
+    let main_sig = Signature {
+        call_conv: WINCALL,
+        params: vec![],
+        returns: vec![AbiParam::new(types::I32)],
+    };
+    let main_id = om
+        .declare_function("p797_main", Linkage::Export, &main_sig)
+        .map_err(|e| format!("declare p797_main: {e}"))?;
+    let mut ctx = om.make_context();
+    ctx.func.signature = main_sig;
+    {
+        let mut fb_ctx = FunctionBuilderContext::new();
+        let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+
+        let mut frefs = BTreeMap::new();
+        for (sym, id) in &import_ids {
+            let r = om.declare_func_in_func(*id, &mut fb.func);
+            frefs.insert(*sym, r);
+        }
+        let mut drefs = BTreeMap::new();
+        for (name, id) in &data_ids {
+            let g = om.declare_data_in_func(*id, &mut fb.func);
+            drefs.insert(name.clone(), g);
+        }
+
+        let blk = fb.create_block();
+        fb.switch_to_block(blk);
+        fb.seal_block(blk);
+
+        let zero = fb.ins().iconst(types::I32, 0);
+        let mut flags = zero;
+        let mut acc_flag = |fb: &mut FunctionBuilder, f: cranelift_codegen::ir::Value| {
+            flags = fb.ins().iadd(flags, f);
+        };
+
+        let mf = cranelift_codegen::ir::MemFlags::new();
+        let expect_i64 = |fb: &mut FunctionBuilder, got: cranelift_codegen::ir::Value, want: i64| {
+            let w = fb.ins().iconst(types::I64, want);
+            let ne = fb.ins().icmp(IntCC::NotEqual, got, w);
+            fb.ins().uextend(types::I32, ne)
+        };
+        let expect_i32 = |fb: &mut FunctionBuilder, got: cranelift_codegen::ir::Value, want: i64| {
+            let w = fb.ins().iconst(types::I32, want);
+            let ne = fb.ins().icmp(IntCC::NotEqual, got, w);
+            fb.ins().uextend(types::I32, ne)
+        };
+
+        for (i, c) in checks.iter().enumerate() {
+            match c {
+                SuiteCheck::Mix { symbol, inputs, expected, swap_fh } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let (fv, hv) = if *swap_fh { (inputs.h, inputs.f) } else { (inputs.f, inputs.h) };
+                    let a = fb.ins().iconst(types::I32, inputs.a as i64);
+                    let b = fb.ins().iconst(types::I32, inputs.b as i64);
+                    let cc = fb.ins().iconst(types::I32, inputs.c as i64);
+                    let d = fb.ins().iconst(types::I32, inputs.d as i64);
+                    let e = fb.ins().iconst(types::I64, inputs.e);
+                    let fv = fb.ins().f64const(fv);
+                    let g = fb.ins().iconst(types::I32, inputs.g as i64);
+                    let hv = fb.ins().f64const(hv);
+                    let call = fb.ins().call(f, &[a, b, cc, d, e, fv, g, hv]);
+                    let got = fb.inst_results(call)[0];
+                    let fl = expect_i64(&mut fb, got, *expected);
+                    acc_flag(&mut fb, fl);
+                }
+                SuiteCheck::Facc { symbol, a, b, expected } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let av = fb.ins().f64const(*a);
+                    let bv = fb.ins().f64const(*b);
+                    let call = fb.ins().call(f, &[av, bv]);
+                    let got = fb.inst_results(call)[0];
+                    let w = fb.ins().f64const(*expected);
+                    let ne = fb.ins().fcmp(FloatCC::NotEqual, got, w);
+                    let fl = fb.ins().uextend(types::I32, ne);
+                    acc_flag(&mut fb, fl);
+                }
+                SuiteCheck::Outer { symbol, a, b, expected } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let av = fb.ins().iconst(types::I32, *a as i64);
+                    let bv = fb.ins().f64const(*b);
+                    let call = fb.ins().call(f, &[av, bv]);
+                    let got = fb.inst_results(call)[0];
+                    let fl = expect_i64(&mut fb, got, *expected);
+                    acc_flag(&mut fb, fl);
+                }
+                SuiteCheck::DivOk { symbol, n, d, expected_q } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let qp = fb.ins().global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let nv = fb.ins().iconst(types::I64, *n);
+                    let dv = fb.ins().iconst(types::I64, *d);
+                    let call = fb.ins().call(f, &[nv, dv, qp]);
+                    let status = fb.inst_results(call)[0];
+                    let f1 = expect_i32(&mut fb, status, 0);
+                    acc_flag(&mut fb, f1);
+                    let q = fb.ins().load(types::I64, mf, qp, 0);
+                    let f2 = expect_i64(&mut fb, q, *expected_q);
+                    acc_flag(&mut fb, f2);
+                }
+                SuiteCheck::DivZero { symbol, n, sentinel } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let qp = fb.ins().global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let nv = fb.ins().iconst(types::I64, *n);
+                    let dz = fb.ins().iconst(types::I64, 0);
+                    let call = fb.ins().call(f, &[nv, dz, qp]);
+                    let status = fb.inst_results(call)[0];
+                    let f1 = expect_i32(&mut fb, status, crate::decl::status::ERR_DIV_ZERO as i64);
+                    acc_flag(&mut fb, f1);
+                    let q = fb.ins().load(types::I64, mf, qp, 0);
+                    let f2 = expect_i64(&mut fb, q, *sentinel);
+                    acc_flag(&mut fb, f2);
+                }
+                SuiteCheck::RecSum { symbol, rec, expected, .. } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let rp = fb.ins().global_value(types::I64, *drefs.get(&format!("rec{i}")).unwrap());
+                    let call = fb.ins().call(f, &[rp]);
+                    let got = fb.inst_results(call)[0];
+                    let _ = rec;
+                    let fl = expect_i64(&mut fb, got, *expected);
+                    acc_flag(&mut fb, fl);
+                }
+                SuiteCheck::BumpSeq { symbol, xs, expected_total } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let mut last = fb.ins().iconst(types::I64, 0);
+                    for x in *xs {
+                        let xv = fb.ins().iconst(types::I32, *x as i64);
+                        let call = fb.ins().call(f, &[xv]);
+                        last = fb.inst_results(call)[0];
+                    }
+                    let f1 = expect_i64(&mut fb, last, *expected_total);
+                    acc_flag(&mut fb, f1);
+                }
+            }
+        }
+        fb.ins().return_(&[flags]);
+        fb.finalize();
+    }
+    om.define_function(main_id, &mut ctx)
+        .map_err(|e| format!("define p797_main: {e}"))?;
+
+    // Generic entry wrapper.
+    let entry_sig = Signature {
+        call_conv: WINCALL,
+        params: vec![],
+        returns: vec![],
+    };
+    let entry_id = om
+        .declare_function(ENTRY_SYMBOL, Linkage::Export, &entry_sig)
+        .map_err(|e| format!("declare {ENTRY_SYMBOL}: {e}"))?;
+    let mut ctx = om.make_context();
+    ctx.func.signature = entry_sig;
+    {
+        let mut fb_ctx = FunctionBuilderContext::new();
+        let mut fb = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
+        let main_ref = om.declare_func_in_func(main_id, &mut fb.func);
+        let exit_ref = om.declare_func_in_func(exit_id, &mut fb.func);
+        let blk = fb.create_block();
+        fb.switch_to_block(blk);
+        fb.seal_block(blk);
+        let call = fb.ins().call(main_ref, &[]);
+        let result = fb.inst_results(call)[0];
+        fb.ins().call(exit_ref, &[result]);
+        fb.ins().return_(&[]);
+        fb.finalize();
+    }
+    om.define_function(entry_id, &mut ctx)
+        .map_err(|e| format!("define {ENTRY_SYMBOL}: {e}"))?;
+    om.finish().emit().map_err(|e| format!("emit suite caller: {e}"))
 }

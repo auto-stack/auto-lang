@@ -15,6 +15,7 @@ use auto_abi_probe::ctool;
 use auto_abi_probe::decl::{self, FROZEN_INPUTS, HAND_COMPUTED_FROZEN_EXPECTED};
 use auto_abi_probe::emit;
 use auto_abi_probe::layout::{self, REC_MIX};
+use auto_abi_probe::link::link_pe;
 use auto_abi_probe::run::{self, PeRun};
 use ac_artifact_probe::store::ManagedStore;
 
@@ -82,7 +83,7 @@ fn t01_leg_a_autoabi_to_autoabi() {
         write_obj(&dir, "caller.obj", &caller),
         write_obj(&dir, "callee.obj", &callee),
     ];
-    let exe = run::link_pe(&dir, &objs, "p797_entry").expect("link leg A PE");
+    let exe = link_pe(&dir, &objs, "p797_entry").expect("link leg A PE");
     let pe = run::run_pe(&exe).expect("run leg A PE");
     expect_exit(pe, 0, "leg A (AutoABI -> AutoABI)");
 }
@@ -102,7 +103,7 @@ fn t01_leg_a_negative_expected_control() {
         write_obj(&dir, "caller.obj", &caller),
         write_obj(&dir, "callee.obj", &callee),
     ];
-    let exe = run::link_pe(&dir, &objs, "p797_entry").expect("link negative-control PE");
+    let exe = link_pe(&dir, &objs, "p797_entry").expect("link negative-control PE");
     let pe = run::run_pe(&exe).expect("run negative-control PE");
     expect_exit(pe, 1, "leg A negative control (wrong expectation)");
 }
@@ -117,7 +118,7 @@ fn t01_leg_b_autoabi_calls_c() {
     let dir = run::scratch("leg_b");
     let c_obj = compile_c("callee_mix.c", &dir);
     let objs = vec![write_obj(&dir, "caller.obj", &caller), c_obj];
-    let exe = run::link_pe(&dir, &objs, "p797_entry").expect("link leg B PE");
+    let exe = link_pe(&dir, &objs, "p797_entry").expect("link leg B PE");
     let pe = run::run_pe(&exe).expect("run leg B PE");
     expect_exit(pe, 0, "leg B (AutoABI -> C)");
 }
@@ -132,7 +133,7 @@ fn t01_leg_c_c_calls_autoabi() {
     let dir = run::scratch("leg_c");
     let c_obj = compile_c("caller_main.c", &dir);
     let objs = vec![c_obj, write_obj(&dir, "callee.obj", &callee)];
-    let exe = run::link_pe(&dir, &objs, "p797_c_entry").expect("link leg C PE");
+    let exe = link_pe(&dir, &objs, "p797_c_entry").expect("link leg C PE");
     let pe = run::run_pe(&exe).expect("run leg C PE");
     expect_exit(pe, 0, "leg C (C -> AutoABI)");
 }

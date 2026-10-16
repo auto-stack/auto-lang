@@ -15,6 +15,7 @@ use auto_abi_probe::layout::{
     self, FieldDefOwned, FieldTyOwned, LayoutError, RecordDefOwned, SemScalar,
     MAX_NESTING_DEPTH,
 };
+use auto_abi_probe::link::link_pe;
 use auto_abi_probe::run;
 use auto_abi_probe::validate::{
     admit, admit_descriptor, probe_expectation, ConsumerExpectation, Rejection,
@@ -223,7 +224,7 @@ fn run_c_layout_oracle(case: &str) -> CLayout {
     let obj = dir.join("layout_probe.obj");
     ctool::compile_c(&src, &manifest.join("cside"), &obj)
         .expect("cl compiles the layout oracle");
-    let exe = run::link_pe(&dir, &[obj], "p797_layout_entry")
+    let exe = link_pe(&dir, &[obj], "p797_layout_entry")
         .expect("link layout oracle PE");
     let pe = run::run_pe(&exe).expect("run layout oracle PE");
     assert_eq!(pe.code, 0, "layout oracle exit; stdout:\n{}", pe.stdout);
