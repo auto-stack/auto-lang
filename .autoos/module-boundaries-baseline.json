@@ -1,6 +1,6 @@
 {
-  "base_revision": "7d51845ffcca4c886698caa947cbaca93bf7fdca",
-  "config_sha256": "822e959d5571ccd8e8009bd654cdbec883f45e298c7eb25a55903fbd90f67091",
+  "base_revision": "7a76aef57ac8afddbbb3537fa73093b6f3cf567e",
+  "config_sha256": "20c5269761766199b1b52477d1e095ecf103dd37688a878aa7beef12629019ec",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -165,6 +165,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-lex",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lex",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-macros",
       "from": "auto-lang",
       "kind": "normal",
@@ -192,6 +201,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "autodown-core",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "autodown-core",
+      "to_scope": "external"
+    },
+    {
       "dep_key": "shim-metadata",
       "from": "auto-lang",
       "kind": "normal",
@@ -201,13 +219,13 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "autodown-core",
-      "from": "auto-lang",
+      "dep_key": "auto-val",
+      "from": "auto-lex",
       "kind": "normal",
-      "optional": true,
+      "optional": false,
       "target": null,
-      "to": "unresolved(../auto-down/autodown/packages/engine/rust)",
-      "to_scope": "unresolved"
+      "to": "auto-val",
+      "to_scope": "member"
     },
     {
       "dep_key": "auto-lang",
@@ -357,7 +375,7 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 891,
+    "core_to_ui": 894,
     "man_to_language": 573,
     "ui_to_language": 181
   }
